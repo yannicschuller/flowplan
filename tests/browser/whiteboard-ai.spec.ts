@@ -1,3 +1,4 @@
+import { boardInsert } from "./whiteboard-ui";
 import { test, expect, type Page, type BrowserContext } from "@playwright/test";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID, randomBytes, createHash } from "node:crypto";
@@ -153,14 +154,17 @@ test("AI on the whiteboard: themes, summary page, mind map, cancel, notes → re
     await page.goto(`/#page=${board.id}`);
     const demoBoard = page.getByLabel("Whiteboard", { exact: true });
     await expect(demoBoard.locator(".wb-sticky")).toHaveCount(6, { timeout: 60_000 });
+    await demoBoard.getByRole("button", { name: "Einfügen und mehr", exact: true }).click();
+    await expect(demoBoard.locator(".wb-plus").getByRole("button", { name: "Vorlagen", exact: true })).toBeVisible();
     await expect(demoBoard.getByRole("button", { name: "KI", exact: true })).toHaveCount(0);
+    await page.keyboard.press("Escape");
 
     await ada.page.goto(`${origin}/#page=${board.id}`);
     const wb = ada.page.getByLabel("Whiteboard", { exact: true });
     await expect(wb.locator(".wb-sticky")).toHaveCount(6, { timeout: 60_000 });
 
     // 1. Group by theme: nothing selected → the notes in view.
-    await wb.getByRole("button", { name: "KI", exact: true }).click();
+    await boardInsert(wb, "KI");
     const dialog = ada.page.getByRole("dialog", { name: "KI auf dem Whiteboard" });
     await expect(dialog.getByText(/Daten gehen an 127\.0\.0\.1|lokal/)).toBeVisible();
     if (shots) await ada.page.screenshot({ path: `${shots}/menu-desktop-light.png` });
@@ -182,7 +186,7 @@ test("AI on the whiteboard: themes, summary page, mind map, cancel, notes → re
     await expect(wb.locator("g.wb-item.wb-text")).toHaveCount(2);
 
     // 2. A mind map from a description, at the view centre.
-    await wb.getByRole("button", { name: "KI", exact: true }).click();
+    await boardInsert(wb, "KI");
     await dialog.getByRole("button", { name: /Mit KI erzeugen/ }).click();
     const create = ada.page.getByRole("dialog", { name: "Mit KI erzeugen …" });
     await create.getByLabel("Beschreibung").fill("Ideen für unser Sommerfest");
@@ -199,7 +203,7 @@ test("AI on the whiteboard: themes, summary page, mind map, cancel, notes → re
 
     // 3. Cancel: a slow answer is stopped, nothing changes.
     mock.slow = true;
-    await wb.getByRole("button", { name: "KI", exact: true }).click();
+    await boardInsert(wb, "KI");
     await dialog.getByRole("button", { name: /Mit KI erzeugen/ }).click();
     await create.getByLabel("Beschreibung").fill("Noch eine Mindmap");
     await create.getByRole("button", { name: "Erzeugen" }).click();
@@ -212,7 +216,7 @@ test("AI on the whiteboard: themes, summary page, mind map, cancel, notes → re
     mock.slow = false;
 
     // 4. Summary page next to the board, with tasks.
-    await wb.getByRole("button", { name: "KI", exact: true }).click();
+    await boardInsert(wb, "KI");
     await dialog.getByRole("button", { name: /Zusammenfassen als Seite/ }).click();
     const summary = ada.page.getByRole("dialog", { name: "Zusammenfassen als Seite" });
     await expect(summary.getByLabel(/Aufgaben übernehmen/)).toBeChecked();
@@ -278,7 +282,7 @@ test("AI on the whiteboard: themes, summary page, mind map, cancel, notes → re
       const darkBoard = dark.page.getByLabel("Whiteboard", { exact: true });
       await expect(darkBoard.locator(".wb-row-card")).toHaveCount(3, { timeout: 15_000 });
       await dark.page.screenshot({ path: `${shots}/board-desktop-dark.png` });
-      await darkBoard.getByRole("button", { name: "KI", exact: true }).click();
+      await boardInsert(darkBoard, "KI");
       await dark.page.screenshot({ path: `${shots}/menu-desktop-dark.png` });
       await dark.page.getByRole("dialog").getByRole("button", { name: /Zusammenfassen als Seite/ }).click();
       await dark.page.screenshot({ path: `${shots}/summary-dialog-desktop-dark.png` });
@@ -289,7 +293,7 @@ test("AI on the whiteboard: themes, summary page, mind map, cancel, notes → re
       await dark.page.getByRole("dialog").getByLabel("Eigenschaft für die Farbe").selectOption({ label: "Status" });
       await dark.page.screenshot({ path: `${shots}/records-desktop-dark.png` });
       await dark.page.keyboard.press("Escape");
-      await darkBoard.getByRole("button", { name: "KI", exact: true }).click();
+      await boardInsert(darkBoard, "KI");
       await dark.page.getByRole("dialog").getByRole("button", { name: /Mit KI erzeugen/ }).click();
       await dark.page.screenshot({ path: `${shots}/generate-desktop-dark.png` });
       await dark.context.close();
@@ -320,8 +324,7 @@ test("AI on the whiteboard on a phone: from the tool sheet, as a bottom sheet", 
       await ada.page.goto(`${origin}/#page=${board.id}`);
       const wb = ada.page.getByLabel("Whiteboard", { exact: true });
       await expect(wb.locator(".wb-sticky").first()).toBeVisible({ timeout: 60_000 });
-      await wb.getByRole("button", { name: "Weitere Werkzeuge" }).click();
-      await ada.page.getByRole("dialog", { name: "Weitere Werkzeuge" }).getByRole("button", { name: "KI", exact: true }).click();
+      await boardInsert(wb, "KI");
       const dialog = ada.page.getByRole("dialog", { name: "KI auf dem Whiteboard" });
       await expect(dialog.getByRole("button", { name: /Mit KI erzeugen/ })).toBeVisible();
       const box = (await dialog.boundingBox())!;
@@ -331,8 +334,7 @@ test("AI on the whiteboard on a phone: from the tool sheet, as a bottom sheet", 
         await dialog.getByRole("button", { name: /Nach Thema gruppieren/ }).click();
         await expect(wb.locator("g.wb-item.wb-text", { hasText: "Geschwindigkeit" })).toBeVisible({ timeout: 30_000 });
         if (shots) await ada.page.screenshot({ path: `${shots}/cluster-phone-light.png` });
-        await wb.getByRole("button", { name: "Weitere Werkzeuge" }).click();
-        await ada.page.getByRole("dialog", { name: "Weitere Werkzeuge" }).getByRole("button", { name: "KI", exact: true }).click();
+        await boardInsert(wb, "KI");
       }
       await dialog.getByRole("button", { name: /Mit KI erzeugen/ }).click();
       const create = ada.page.getByRole("dialog", { name: "Mit KI erzeugen …" });

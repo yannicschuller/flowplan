@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { boardDraw, boardInsert, boardModeration, boardView } from "./whiteboard-ui";
 import { test, expect, type Page } from "@playwright/test";
 
 const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
@@ -257,7 +258,7 @@ test("pen, frames, emoji, page cards, images, undo and export work", async ({
     .poll(async () => (await wb.locator(".wb-sticky").boundingBox())!.x)
     .toBeGreaterThan(noteBefore.x + 30);
   // Pen stroke.
-  await wb.getByRole("button", { name: "Stift", exact: true }).click();
+  await boardDraw(wb, "Stift");
   await drag(at(60, -100), at(200, 40));
   await expect(wb.locator(".wb-pen")).toHaveCount(1);
   // Undo removes the stroke, redo brings it back.
@@ -266,14 +267,12 @@ test("pen, frames, emoji, page cards, images, undo and export work", async ({
   await wb.getByRole("button", { name: "Wiederholen", exact: true }).click();
   await expect(wb.locator(".wb-pen")).toHaveCount(1);
   // Emoji and a card that opens a page.
-  await wb.getByRole("button", { name: "Emoji", exact: true }).click();
+  await boardInsert(wb, "Emoji");
   const emoji = page.getByRole("dialog", { name: "Emoji einfügen" });
   await emoji.getByPlaceholder(/Rakete/).fill("Rakete");
   await emoji.getByRole("button", { name: /🚀/ }).first().click();
   await expect(wb.locator(".wb-emoji")).toContainText("🚀");
-  await wb
-    .getByRole("button", { name: "Seite verknüpfen", exact: true })
-    .click();
+  await boardInsert(wb, "Seite verknüpfen");
   const cards = page.getByRole("dialog", { name: "Seite verknüpfen" });
   await cards.getByLabel("Seiten suchen").fill(`Zielseite ${tag}`);
   await cards
@@ -296,7 +295,7 @@ test("pen, frames, emoji, page cards, images, undo and export work", async ({
   await page.screenshot({ path: "test-results/whiteboard/tools.png" });
   // SVG export.
   const download = page.waitForEvent("download");
-  await wb.getByRole("button", { name: "Als SVG exportieren" }).click();
+  await boardView(wb, "Als SVG exportieren");
   expect((await download).suggestedFilename()).toBe("whiteboard.svg");
   // The card opens its page on double click (the image on top goes first).
   await wb.focus();
@@ -318,12 +317,8 @@ test("board templates and presenting frames", async ({ page }, testInfo) => {
   );
   await page.goto(`/#page=${board.id}`);
   const wb = page.getByLabel("Whiteboard", { exact: true });
-  // Phones keep templates in the sheet behind "Weitere Werkzeuge".
-  const templates = async () => {
-    if (testInfo.project.name === "mobile")
-      await wb.getByRole("button", { name: "Weitere Werkzeuge" }).click();
-    await wb.getByRole("button", { name: "Vorlagen", exact: true }).click();
-  };
+  // Templates wait in the "+" panel (phones: the sheet behind "Weitere Werkzeuge").
+  const templates = () => boardInsert(wb, "Vorlagen");
   await templates();
   await page
     .getByRole("dialog", { name: "Vorlagen" })
@@ -412,7 +407,7 @@ test("comment pins, tables, voting, timer and full screen", async ({
   await comment.getByRole("button", { name: "Kommentar schließen" }).click();
   await expect(wb.locator("g.wb-comment")).toContainText("2");
   // Voting.
-  await wb.getByRole("button", { name: "Abstimmung", exact: true }).click();
+  await boardModeration(wb, "Abstimmung");
   await wb
     .getByRole("dialog", { name: "Abstimmung" })
     .getByRole("button", { name: "Abstimmung starten" })
@@ -424,7 +419,7 @@ test("comment pins, tables, voting, timer and full screen", async ({
   await expect(wb.locator(".wb-results")).toContainText("Option A");
   await wb.getByRole("button", { name: "Abstimmung beenden" }).click();
   // Timer.
-  await wb.getByRole("button", { name: "Timer", exact: true }).click();
+  await boardModeration(wb, "Timer");
   await wb
     .getByRole("dialog", { name: "Timer einstellen" })
     .getByRole("button", { name: "1 Min" })
@@ -455,13 +450,91 @@ test("comment pins, tables, voting, timer and full screen", async ({
     )
     .toContain("Bitte prüfen");
   // Full screen covers the page and ends again.
-  await wb.getByRole("button", { name: "Vollbild", exact: true }).click();
+  await boardView(wb, "Vollbild");
   await expect(wb).toHaveClass(/wb-fullscreen/);
   const full = (await wb.boundingBox())!;
   expect(full.width).toBeGreaterThanOrEqual(page.viewportSize()!.width - 1);
   await page.screenshot({ path: "test-results/whiteboard/workshop.png" });
-  await wb.getByRole("button", { name: "Vollbild beenden" }).click();
+  await boardView(wb, "Vollbild beenden");
   await expect(wb).not.toHaveClass(/wb-fullscreen/);
+  expect(errors).toEqual([]);
+  await command({ action: "page.delete", pageId: board.id });
+});
+
+test("desktop: a short tool rail, the + panel with search, moderation top right, one bar bottom left", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name === "mobile", "Desktop layout");
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const { command, board } = await setup(page, `Leiste ${Date.now()}`);
+  await page.goto(`/#page=${board.id}`);
+  const wb = page.getByLabel("Whiteboard", { exact: true });
+  const rail = wb.getByRole("toolbar", { name: "Werkzeuge" });
+  await expect(rail).toBeVisible();
+  // Select, pan, eight creation tools (pen, eraser and laser as one) and "+".
+  await expect(rail.getByRole("button")).toHaveCount(11);
+  for (const name of ["Abstimmung", "Timer", "Bild", "Vorlagen", "Rückgängig", "Stempel"])
+    await expect(rail.getByRole("button", { name, exact: true })).toHaveCount(0);
+  // Shortcuts still reach the tools that left the rail.
+  await wb.focus();
+  await page.keyboard.press("e");
+  const plus = rail.getByRole("button", { name: "Einfügen und mehr" });
+  await expect(plus).toHaveClass(/active/);
+  await page.keyboard.press("k");
+  await expect(rail.getByRole("button", { name: "Zeichnen" })).toHaveAttribute("aria-pressed", "true");
+  await expect(wb.locator(".wb-draw-switch").getByRole("button", { name: "Laserpointer" })).toHaveAttribute("aria-pressed", "true");
+  await page.keyboard.press("x");
+  await expect(wb.locator(".wb-draw-switch").getByRole("button", { name: "Radierer" })).toHaveAttribute("aria-pressed", "true");
+  await page.keyboard.press("Escape");
+  await expect(rail.getByRole("button", { name: "Zeichnen" })).toHaveAttribute("aria-pressed", "false");
+  await expect(plus).not.toHaveClass(/active/);
+  // The "+" panel: search first, Enter takes the first match.
+  await plus.click();
+  await expect(plus).toHaveAttribute("aria-expanded", "true");
+  const panel = wb.getByRole("dialog", { name: "Einfügen und mehr" });
+  for (const name of ["Einfügen", "Vorlagen & Bibliothek"])
+    await expect(panel.getByRole("heading", { name })).toBeVisible();
+  const search = panel.getByRole("searchbox");
+  await expect(search).toBeFocused();
+  await search.fill("stemp");
+  await expect(panel.getByRole("button")).toHaveCount(1);
+  await page.keyboard.press("Enter");
+  await expect(panel).toHaveCount(0);
+  await expect(plus).toHaveClass(/active/);
+  await expect(plus).toHaveAttribute("title", "Stempel (E)");
+  await page.keyboard.press("Escape");
+  // Escape closes it and gives the keyboard back to "+"; so does a click outside.
+  await plus.click();
+  await expect(search).toHaveValue("");
+  await search.fill("nichts dergleichen");
+  await expect(panel.getByText("Nichts gefunden.")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(panel).toHaveCount(0);
+  await expect(plus).toBeFocused();
+  await plus.click();
+  await wb.locator(".wb-canvas").click({ position: { x: 600, y: 120 } });
+  await expect(panel).toHaveCount(0);
+  // Moderation: one button top right with its menu.
+  const moderation = wb.getByRole("button", { name: "Moderation", exact: true });
+  await moderation.click();
+  await expect(moderation).toHaveAttribute("aria-expanded", "true");
+  const menu = wb.getByRole("dialog", { name: "Moderation" });
+  for (const name of ["Abstimmung", "Timer", "Privater Modus", "Schätzen", "Alle zu mir holen", "Folge mir"])
+    await expect(menu.getByRole("button", { name, exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  await expect(moderation).toBeFocused();
+  const [mod, box] = [(await moderation.boundingBox())!, (await wb.boundingBox())!];
+  expect(mod.x + mod.width).toBeGreaterThan(box.x + box.width - 40);
+  expect(mod.y).toBeLessThan(box.y + 40);
+  // Undo, redo, zoom and the actions menu share one bar bottom left.
+  const bottom = wb.getByRole("toolbar", { name: "Ansicht" });
+  for (const name of ["Rückgängig", "Wiederholen", "Vergrößern", "Verkleinern", "Ansicht und Aktionen"])
+    await expect(bottom.getByRole("button", { name, exact: true })).toBeVisible();
+  const bar = (await bottom.boundingBox())!;
+  expect(bar.x).toBeLessThan(box.x + 80);
+  expect(bar.y + bar.height).toBeGreaterThan(box.y + box.height - 40);
   expect(errors).toEqual([]);
   await command({ action: "page.delete", pageId: board.id });
 });
@@ -500,18 +573,36 @@ test("phones get one tool bar, a tool sheet and one actions menu, nothing clippe
   const hint = (await wb.locator(".wb-empty span").boundingBox())!;
   const bar = (await dock.boundingBox())!;
   expect(hint.y + hint.height).toBeLessThanOrEqual(bar.y);
-  // The other tools wait in a sheet.
+  // The other tools wait in a sheet – the same sections as the "+" panel on
+  // larger screens, with a search.
   await dock.getByRole("button", { name: "Weitere Werkzeuge" }).click();
   const sheet = wb.getByRole("dialog", { name: "Weitere Werkzeuge" });
   await expect(sheet.getByRole("heading", { name: "Einfügen" })).toBeVisible();
+  await expect(sheet.getByRole("heading", { name: "Vorlagen & Bibliothek" })).toBeVisible();
   expect((await fits(".wb-sheet")).inside).toBe(true);
-  await sheet.getByRole("button", { name: "Radierer" }).click();
+  // Not focused by itself (no keyboard over the sheet), filters by name.
+  await expect(sheet.getByRole("searchbox")).not.toBeFocused();
+  await sheet.getByRole("searchbox").fill("rahm");
+  await expect(sheet.getByRole("button")).toHaveCount(1);
+  await sheet.getByRole("button", { name: "Rahmen", exact: true }).click();
   await expect(sheet).toHaveCount(0);
   await expect(dock.getByRole("button", { name: "Weitere Werkzeuge" })).toHaveClass(/active/);
+  // Pen, eraser and laser share the draw button, with a switch in its options.
+  await dock.getByRole("button", { name: "Zeichnen" }).click();
+  await wb.locator(".wb-draw-switch").getByRole("button", { name: "Radierer" }).click();
+  await expect(dock.getByRole("button", { name: "Zeichnen" })).toHaveAttribute("aria-pressed", "true");
+  // Moderation sits top right, next to the actions.
+  await wb.locator(".wb-corner-end").getByRole("button", { name: "Moderation" }).click();
+  const moderation = wb.getByRole("dialog", { name: "Moderation" });
+  for (const name of ["Abstimmung", "Timer", "Privater Modus", "Schätzen", "Alle zu mir holen"])
+    await expect(moderation.getByRole("button", { name, exact: true })).toBeVisible();
+  expect((await fits(".wb-moderation")).inside).toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(moderation).toHaveCount(0);
   // View and export actions sit in one menu.
   await wb.getByRole("button", { name: "Ansicht und Aktionen" }).click();
   const menu = wb.getByRole("dialog", { name: "Ansicht und Aktionen" });
-  for (const name of ["Alles anzeigen", "Vollbild", "Kommentare ausblenden", "Importieren …", "Als SVG exportieren", "Als PNG exportieren"])
+  for (const name of ["Alles anzeigen", "Vollbild", "Kommentare ausblenden", "Als SVG exportieren", "Als PNG exportieren"])
     await expect(menu.getByRole("button", { name, exact: true })).toBeVisible();
   expect((await fits(".wb-actions")).inside).toBe(true);
   await page.keyboard.press("Escape");

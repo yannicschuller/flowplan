@@ -2,6 +2,7 @@
 // minimap, frames panel and presentation order, search with the tag filter,
 // element links, lists and links in notes, tags, embeds, cropping, the
 // template gallery with own templates, exports and the presenter view.
+import { boardInsert, boardView } from "./whiteboard-ui";
 import { test, expect, type Page } from "@playwright/test";
 import * as Y from "yjs";
 
@@ -67,13 +68,8 @@ const note = (id: string, x: number, y: number, text: string, extra: Record<stri
   fontSize: 16,
   ...extra,
 });
-// The view and actions bar: on narrow boards behind "Ansicht und Aktionen".
-async function viewAction(page: Page, name: string) {
-  const wb = page.getByLabel("Whiteboard", { exact: true });
-  const toggle = wb.getByRole("button", { name: "Ansicht und Aktionen" });
-  if (await toggle.isVisible()) await toggle.click();
-  await wb.getByRole("button", { name, exact: true }).first().click();
-}
+// View and export actions: behind "Ansicht und Aktionen".
+const viewAction = (page: Page, name: string) => boardView(page.getByLabel("Whiteboard", { exact: true }), name);
 
 test("groups move and lock as one; double click enters the group", async ({ page }, info) => {
   test.skip(info.project.name === "mobile", "Desktop pointer gestures");
@@ -283,11 +279,7 @@ test("embeds load only on click; template gallery and own templates; export dial
   await page.goto(`/#page=${board.id}`);
   const wb = page.getByLabel("Whiteboard", { exact: true });
   await expect(wb.locator(".wb-toolbar")).toBeVisible();
-  const insert = async (name: string) => {
-    const more = wb.getByRole("button", { name: "Weitere Werkzeuge" });
-    if (await more.isVisible()) await more.click();
-    await wb.getByRole("button", { name, exact: true }).first().click();
-  };
+  const insert = (name: string) => boardInsert(wb, name);
   await insert("Einbetten");
   const dialog = page.getByRole("dialog", { name: "Einbetten" });
   await dialog.locator("#wb-embed-url").fill("https://evil.example/video");

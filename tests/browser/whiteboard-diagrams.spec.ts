@@ -1,3 +1,4 @@
+import { boardInsert, boardView } from "./whiteboard-ui";
 import { test, expect, type Page } from "@playwright/test";
 
 // Diagrams on whiteboards: shape library, Mermaid import, auto layout,
@@ -38,7 +39,7 @@ test("shape library, Mermaid import, auto layout, copy as Mermaid and a clickabl
   await expect(wb.locator(".wb-canvas")).toBeVisible();
 
   // Shape library: search in German, insert with Enter, then by click.
-  await wb.getByRole("button", { name: "Formenbibliothek", exact: true }).click();
+  await boardInsert(wb, "Formenbibliothek");
   const library = wb.getByRole("dialog", { name: "Formenbibliothek" });
   await expect(library).toBeVisible();
   await library.getByRole("searchbox", { name: "Formen suchen" }).fill("Gateway");
@@ -62,7 +63,7 @@ test("shape library, Mermaid import, auto layout, copy as Mermaid and a clickabl
   await expect(wb.locator(".wb-item")).toHaveCount(0);
 
   // Mermaid import: preview, skipped line, editable shapes and frames.
-  await wb.getByRole("button", { name: "Mermaid/PlantUML importieren …" }).click();
+  await boardInsert(wb, "Mermaid/PlantUML importieren …");
   const dialog = page.getByRole("dialog", { name: "Diagramm importieren" });
   await dialog.getByLabel("Diagrammtext").fill(FLOW);
   await expect(dialog.getByRole("status")).toContainText("Mermaid · Flussdiagramm · 3 Elemente");
@@ -74,7 +75,7 @@ test("shape library, Mermaid import, auto layout, copy as Mermaid and a clickabl
   await expect(wb.locator(".wb-connector")).toHaveCount(2);
   await expect(wb.locator(".wb-frame")).toHaveCount(2);
   // Broken text: the dialog explains it.
-  await wb.getByRole("button", { name: "Mermaid/PlantUML importieren …" }).click();
+  await boardInsert(wb, "Mermaid/PlantUML importieren …");
   await dialog.getByLabel("Diagrammtext").fill("gantt\n  title Plan");
   await expect(dialog.getByRole("status")).toContainText("lässt sich nicht als bearbeitbares Diagramm übernehmen");
   await expect(dialog.getByRole("button", { name: "Importieren", exact: true })).toBeDisabled();
@@ -102,7 +103,7 @@ test("shape library, Mermaid import, auto layout, copy as Mermaid and a clickabl
 
   // Copy as Mermaid.
   await wb.locator(".wb-canvas").click({ position: { x: 500, y: 40 } });
-  await wb.getByRole("button", { name: "Als Mermaid kopieren" }).click();
+  await boardView(wb, "Als Mermaid kopieren");
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain("flowchart");
   const copied = await page.evaluate(() => navigator.clipboard.readText());
   expect(copied).toContain('(["Los"])');
@@ -117,7 +118,7 @@ test("shape library, Mermaid import, auto layout, copy as Mermaid and a clickabl
   await wb.getByRole("combobox", { name: "Bei Klick" }).selectOption({ label: "Bei Klick → zurück" });
   await expect(wb.locator(".wb-link-badges circle")).toHaveCount(2);
   await wb.locator(".wb-canvas").click({ position: { x: 500, y: 40 } });
-  await wb.getByRole("button", { name: "Prototyp abspielen" }).click();
+  await boardView(wb, "Prototyp abspielen");
   const player = page.getByRole("dialog", { name: "Prototyp" });
   await expect(player).toBeVisible();
   await expect(player.locator(".wb-player-bar strong")).toHaveText("Startseite");
@@ -134,7 +135,7 @@ test("shape library, Mermaid import, auto layout, copy as Mermaid and a clickabl
 
   // The SVG export draws the library shapes.
   const download = page.waitForEvent("download");
-  await wb.getByRole("button", { name: "Als SVG exportieren" }).click();
+  await boardView(wb, "Als SVG exportieren");
   const file = await (await download).path();
   const svg = (await import("node:fs")).readFileSync(file!, "utf8");
   expect(svg).toContain("Angemeldet?");
@@ -149,7 +150,7 @@ test("timeline: insert, edit, drag a bar, undo", async ({ page }, info) => {
   await page.goto(`/#page=${board.id}`);
   const wb = page.getByLabel("Whiteboard", { exact: true });
   await expect(wb.locator(".wb-canvas")).toBeVisible();
-  await wb.getByRole("button", { name: "Zeitleiste", exact: true }).click();
+  await boardInsert(wb, "Zeitleiste");
   const timeline = wb.locator(".wb-item.wb-timeline");
   await expect(timeline).toHaveCount(1);
   await expect(timeline).toContainText("Roadmap");
@@ -188,7 +189,7 @@ test("timeline: insert, edit, drag a bar, undo", async ({ page }, info) => {
   if (shots) {
     await page.screenshot({ path: `${shots}/desktop-timeline-light.png` });
     await page.emulateMedia({ colorScheme: "dark" });
-    await wb.getByRole("button", { name: "Formenbibliothek", exact: true }).click();
+    await boardInsert(wb, "Formenbibliothek");
     await page.screenshot({ path: `${shots}/desktop-timeline-library-dark.png` });
     await page.emulateMedia({ colorScheme: "light" });
   }
@@ -204,9 +205,7 @@ test("phone: the shape library is a sheet", async ({ page }, info) => {
   const wb = page.getByLabel("Whiteboard", { exact: true });
   await expect(wb.locator(".wb-canvas")).toBeVisible();
   // The tools that do not fit sit in the "more" sheet.
-  const direct = wb.getByRole("button", { name: "Formenbibliothek", exact: true });
-  if (!(await direct.isVisible())) await wb.getByRole("button", { name: "Weitere Werkzeuge" }).click();
-  await page.getByRole("button", { name: "Formenbibliothek", exact: true }).click();
+  await boardInsert(wb, "Formenbibliothek");
   const sheet = page.getByRole("dialog", { name: "Formenbibliothek" });
   await expect(sheet).toBeVisible();
   const box = (await sheet.boundingBox())!;

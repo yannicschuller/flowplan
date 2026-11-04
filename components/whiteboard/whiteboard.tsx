@@ -76,6 +76,7 @@ import {
   PlayCircle,
   HardDrives,
   Plugs,
+  ChalkboardTeacher,
 } from "@phosphor-icons/react";
 import { Modal, api, sessionEnded } from "../ui";
 import { SHEET_HANDLE, useSheetDrag } from "../sheet-drag";
@@ -404,11 +405,21 @@ export default function Whiteboard({
     [space, setSpace] = useState(false),
     // Layout by the room the board has (see the effect below): "dock" puts
     // the most used tools in one bar at the bottom (phones, short landscape
-    // screens, narrow split panes); "menu" folds view and export actions
-    // into one overflow menu when the action bar would not fit.
+    // screens, narrow split panes); "menu" marks boards too narrow for the
+    // full bottom bar (it then keeps the symbols only where it can).
     [layout, setLayout] = useState<{ dock: boolean; menu: boolean }>({ dock: false, menu: false }),
     [moreOpen, setMoreOpen] = useState(false),
-    [actionsOpen, setActionsOpen] = useState(false);
+    [actionsOpen, setActionsOpen] = useState(false),
+    // The "+" panel next to the tool rail and the moderation menu top right.
+    [plusOpen, setPlusOpen] = useState(false),
+    [plusQuery, setPlusQuery] = useState(""),
+    [moderationOpen, setModerationOpen] = useState(false),
+    // Pen, eraser and laser share one button in the rail: the last used.
+    [lastDraw, setLastDraw] = useState<Tool>("pen"),
+    // Which frame the frame buttons of the bottom bar went to last.
+    [frameNav, setFrameNav] = useState(-1);
+  const plusButton = useRef<HTMLButtonElement>(null),
+    moderationButton = useRef<HTMLButtonElement>(null);
   const [diagram, setDiagram] = useState<DiagramPanel | null>(null);
   const container = useRef<HTMLDivElement>(null),
     svg = useRef<SVGSVGElement>(null),
@@ -865,21 +876,26 @@ export default function Whiteboard({
     });
     return () => cancelAnimationFrame(frame);
   }, []);
-  // The tool sheet and the actions menu close on a tap elsewhere or Escape.
+  // The tool sheet, the "+" panel, the moderation menu and the actions menu
+  // close on a tap elsewhere or Escape.
   useEffect(() => {
-    if (!moreOpen && !actionsOpen) return;
+    if (!moreOpen && !actionsOpen && !plusOpen && !moderationOpen) return;
     const close = () => {
       setMoreOpen(false);
       setActionsOpen(false);
+      setPlusOpen(false);
+      setModerationOpen(false);
     };
     const down = (e: PointerEvent) => {
-      if (!(e.target as Element | null)?.closest?.(".wb-sheet, .wb-actions, .wb-more, .wb-actions-toggle")) close();
+      if (!(e.target as Element | null)?.closest?.(".wb-sheet, .wb-actions, .wb-more, .wb-actions-toggle, .wb-plus, .wb-plus-toggle, .wb-moderation-toggle")) close();
     };
     const key = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       e.stopPropagation();
       close();
-      container.current?.focus({ preventScroll: true });
+      // Back to the button that opened the popover, as with menus.
+      const trigger = plusOpen ? plusButton.current : moderationOpen ? moderationButton.current : null;
+      (trigger || container.current)?.focus({ preventScroll: true });
     };
     document.addEventListener("pointerdown", down, true);
     document.addEventListener("keydown", key, true);
@@ -887,7 +903,15 @@ export default function Whiteboard({
       document.removeEventListener("pointerdown", down, true);
       document.removeEventListener("keydown", key, true);
     };
-  }, [moreOpen, actionsOpen]);
+  }, [moreOpen, actionsOpen, plusOpen, moderationOpen]);
+  // The rail's draw button remembers the draw tool used last (P, X, K).
+  useEffect(() => {
+    if (tool === "pen" || tool === "eraser" || tool === "laser") setLastDraw(tool);
+  }, [tool]);
+  // The "+" panel opens with an empty search.
+  useEffect(() => {
+    if (!plusOpen && !moreOpen) setPlusQuery("");
+  }, [plusOpen, moreOpen]);
   // A finger on the board never scrolls or zooms the page – touch-action
   // alone is not always enough in iOS web views. Menus and fields that
   // scroll themselves keep their touches.
@@ -897,7 +921,7 @@ export default function Whiteboard({
     const move = (e: TouchEvent) => {
       if (!e.cancelable) return;
       const target = e.target as Element | null;
-      if (target?.closest?.(".wb-sheet, .wb-actions, .wb-panel, .wb-comment-popover, .wb-style-bar, textarea, input, select")) return;
+      if (target?.closest?.(".wb-sheet, .wb-actions, .wb-plus, .wb-panel, .wb-comment-popover, .wb-style-bar, textarea, input, select")) return;
       e.preventDefault();
     };
     el.addEventListener("touchmove", move, { passive: false });
@@ -2910,7 +2934,8 @@ export default function Whiteboard({
         />
       );
     })();
-  const tools: [Tool, string, React.ReactNode, string][] = [
+  type ToolDef = [Tool, string, React.ReactNode, string];
+  const tools: ToolDef[] = [
     ["select", t("Auswählen", "Select"), <Cursor key="s" size={18} />, "V"],
     ["hand", t("Verschieben", "Pan"), <Hand key="h" size={18} />, "H"],
     ...(editable
@@ -2930,19 +2955,78 @@ export default function Whiteboard({
           ["table", t("Tabelle", "Table"), <Table key="g" size={18} />, "G"],
           ["comment", t("Kommentar", "Comment||noun"), <ChatCircle key="c" size={18} />, "C"],
           ["stamp", t("Stempel", "Stamp"), <Seal key="e" size={18} />, "E"],
-        ] as [Tool, string, React.ReactNode, string][])
+        ] as ToolDef[])
       : []),
     ["laser", t("Laserpointer", "Laser pointer"), <CursorClick key="k" size={18} />, "K"],
   ];
-  // Phones: the most used tools stay in the bar, the rest wait in a sheet.
-  const dockKeys: Tool[] = ["select", "hand", "sticky", "text", "shape", "pen"];
-  const dockTools = tools.filter(([key]) => dockKeys.includes(key));
-  const moreTools = tools.filter(([key]) => !dockKeys.includes(key));
-  const moreTool = layout.dock ? moreTools.find(([key]) => key === tool) : undefined;
+  const toolBy = (key: Tool) => tools.find(([k]) => k === key)!;
+  // The rail holds the tools that create and draw; pen, eraser and laser
+  // share one button ("draw", the one used last), the stamp waits in the
+  // "+" panel. Every shortcut works as before (onKeyDown above). Phones keep
+  // the most used of them in the dock, the rest come first in its sheet.
+  const drawKeys: Tool[] = ["pen", "eraser", "laser"];
+  const isDraw = (key: Tool) => editable && drawKeys.includes(key);
+  const railKeys: (Tool | "draw")[] = editable
+    ? ["select", "hand", "sticky", "text", "shape", "connector", "draw", "frame", "table", "comment"]
+    : ["select", "hand", "laser"];
+  const dockKeys: (Tool | "draw")[] = editable
+    ? ["select", "hand", "sticky", "text", "shape", "draw"]
+    : railKeys;
   const pickTool = (key: Tool) => {
     setTool(key);
     setShapeMenu(key === "shape" && tool === "shape" ? !shapeMenu : key === "shape");
   };
+  const shownDraw = isDraw(tool) ? tool : lastDraw;
+  const railButton = (key: Tool | "draw") => {
+    if (key === "draw") {
+      const active = isDraw(tool);
+      return (
+        <button
+          key="draw"
+          className={`wb-draw${active ? " active" : ""}`}
+          aria-pressed={active}
+          aria-label={t("Zeichnen", "Draw")}
+          title={t("Zeichnen: Stift (P), Radierer (X), Laserpointer (K)", "Draw: pen (P), eraser (X), laser pointer (K)")}
+          onClick={() => pickTool(shownDraw)}
+        >
+          {toolBy(shownDraw)[2]}
+        </button>
+      );
+    }
+    const [, label, icon, shortcut] = toolBy(key);
+    return (
+      <button
+        key={key}
+        className={tool === key ? "active" : ""}
+        aria-pressed={tool === key}
+        aria-label={label}
+        title={`${label} (${shortcut})`}
+        onClick={() => pickTool(key)}
+      >
+        {icon}
+      </button>
+    );
+  };
+  // Pen, eraser and laser: the switch at the top of their options.
+  const drawSwitch = editable && (
+    <div className="wb-draw-switch" role="group" aria-label={t("Zeichenwerkzeug", "Drawing tool")}>
+      {drawKeys.map((key) => {
+        const [, label, icon, shortcut] = toolBy(key);
+        return (
+          <button
+            key={key}
+            className={tool === key ? "active" : ""}
+            aria-pressed={tool === key}
+            aria-label={label}
+            title={`${label} (${shortcut})`}
+            onClick={() => setTool(key)}
+          >
+            {icon}
+          </button>
+        );
+      })}
+    </div>
+  );
   type BoardAction = {
     key: string;
     label: string;
@@ -2953,20 +3037,53 @@ export default function Whiteboard({
     pressed?: boolean;
     keepOpen?: boolean;
   };
-  const insertActions: BoardAction[] = editable
+  // An entry of the "+" panel (and of the phone sheet): an action or a tool.
+  type PanelItem = BoardAction & { shortcut?: string; tool?: Tool };
+  const toolItem = (key: Tool): PanelItem => {
+    const [, label, icon, shortcut] = toolBy(key);
+    return { key: `tool-${key}`, tool: key, label, title: `${label} (${shortcut})`, icon, shortcut, active: tool === key, pressed: tool === key, run: () => pickTool(key) };
+  };
+  const action = (key: string, label: string, title: string, icon: React.ReactNode, run: () => void, active?: boolean): PanelItem => ({ key, label, title, icon, run, active });
+  // One definition for the "+" panel next to the rail and the sheet behind
+  // "Weitere Werkzeuge" on phones: sections, searchable by name.
+  const panelSections: { key: string; title: string; items: PanelItem[] }[] = editable
     ? [
-        { key: "image", label: t("Bild", "Image"), title: t("Bild einfügen", "Insert image"), icon: <ImageSquare size={18} />, run: () => fileInput.current?.click() },
-        { key: "media", label: t("Bilder und Symbole suchen", "Search images and icons"), title: t("Bilder (Openverse) und Symbole", "Images (Openverse) and icons"), icon: <MagnifyingGlass size={18} />, run: () => setImagesOpen(true) },
-        { key: "emoji", label: t("Emoji", "Emoji"), title: t("Emoji oder Sticker", "Emoji or sticker"), icon: <Smiley size={18} />, run: () => setEmojiOpen(true) },
-        { key: "card", label: t("Seite verknüpfen", "Link page"), title: t("Seite, Datenbank oder Whiteboard verknüpfen", "Link a page, database or whiteboard"), icon: <FileText size={18} />, run: () => setCardOpen(true) },
-        { key: "library", label: t("Formenbibliothek", "Shape library"), title: t("Formenbibliothek: Flussdiagramm, BPMN, UML, ER, Organigramm, Netzwerk, Cloud, Wireframes", "Shape library: flowchart, BPMN, UML, ER, org chart, network, cloud, wireframes"), icon: <Books size={18} />, active: diagram?.kind === "library", run: () => setDiagram((d) => (d?.kind === "library" ? null : { kind: "library" })) },
-        { key: "timeline", label: t("Zeitleiste", "Timeline"), title: t("Zeitleiste (Roadmap) einfügen", "Insert timeline (roadmap)"), icon: <ChartBarHorizontal size={18} />, run: () => void insertLibraryShape(boardApi, "timeline", t) },
-        { key: "racks", label: t("Racks", "Racks"), title: t("Racks und Geräte: Server-Racks planen und verkabeln", "Racks and devices: plan and cable server racks"), icon: <HardDrives size={18} />, active: diagram?.kind === "racks", run: () => setDiagram((d) => (d?.kind === "racks" ? null : { kind: "racks" })) },
-        { key: "templates", label: t("Vorlagen", "Templates"), title: t("Vorlagen: Galerie und eigene Vorlagen", "Templates: gallery and own templates"), icon: <SquaresFour size={18} />, run: () => setTemplatesOpen(true) },
-        ...(boardAi.entry ? [boardAi.entry] : []),
-        ...extras.insertActions,
+        ...(layout.dock
+          ? [{ key: "tools", title: t("Werkzeuge", "Tools"), items: railKeys.filter((k): k is Tool => k !== "draw" && !dockKeys.includes(k)).map(toolItem) }]
+          : []),
+        {
+          key: "insert",
+          title: t("Einfügen", "Insert"),
+          items: [
+            action("image", t("Bild", "Image"), t("Bild einfügen", "Insert image"), <ImageSquare size={18} />, () => fileInput.current?.click()),
+            action("media", t("Bilder und Symbole suchen", "Search images and icons"), t("Bilder (Openverse) und Symbole", "Images (Openverse) and icons"), <MagnifyingGlass size={18} />, () => setImagesOpen(true)),
+            action("emoji", t("Emoji", "Emoji"), t("Emoji oder Sticker", "Emoji or sticker"), <Smiley size={18} />, () => setEmojiOpen(true)),
+            toolItem("stamp"),
+            action("card", t("Seite verknüpfen", "Link page"), t("Seite, Datenbank oder Whiteboard verknüpfen", "Link a page, database or whiteboard"), <FileText size={18} />, () => setCardOpen(true)),
+            ...extras.insertActions,
+            action("timeline", t("Zeitleiste", "Timeline"), t("Zeitleiste (Roadmap) einfügen", "Insert timeline (roadmap)"), <ChartBarHorizontal size={18} />, () => void insertLibraryShape(boardApi, "timeline", t)),
+            action("import", t("Importieren …", "Import …"), t("Importieren … (Excalidraw, draw.io)", "Import … (Excalidraw, draw.io)"), <UploadSimple size={18} />, () => importInput.current?.click()),
+            action("diagram", t("Mermaid/PlantUML importieren …", "Import Mermaid/PlantUML …"), t("Mermaid- oder PlantUML-Text als bearbeitbares Diagramm importieren", "Import Mermaid or PlantUML text as an editable diagram"), <Code size={18} />, () => setDiagram({ kind: "import" })),
+          ],
+        },
+        {
+          key: "library",
+          title: t("Vorlagen & Bibliothek", "Templates & library"),
+          items: [
+            action("templates", t("Vorlagen", "Templates"), t("Vorlagen: Galerie und eigene Vorlagen", "Templates: gallery and own templates"), <SquaresFour size={18} />, () => setTemplatesOpen(true)),
+            action("library", t("Formenbibliothek", "Shape library"), t("Formenbibliothek: Flussdiagramm, BPMN, UML, ER, Organigramm, Netzwerk, Cloud, Wireframes", "Shape library: flowchart, BPMN, UML, ER, org chart, network, cloud, wireframes"), <Books size={18} />, () => setDiagram((d) => (d?.kind === "library" ? null : { kind: "library" })), diagram?.kind === "library"),
+            action("racks", t("Racks", "Racks"), t("Racks und Geräte: Server-Racks planen und verkabeln", "Racks and devices: plan and cable server racks"), <HardDrives size={18} />, () => setDiagram((d) => (d?.kind === "racks" ? null : { kind: "racks" })), diagram?.kind === "racks"),
+          ],
+        },
+        ...(boardAi.entry ? [{ key: "ai", title: t("KI", "AI"), items: [boardAi.entry] }] : []),
       ]
     : [];
+  const panelQuery = plusQuery.trim().toLocaleLowerCase();
+  const panelShown = panelSections
+    .map((s) => ({ ...s, items: s.items.filter((i) => !panelQuery || `${i.label} ${i.title}`.toLocaleLowerCase().includes(panelQuery)) }))
+    .filter((s) => s.items.length);
+  // A tool from the panel in use: its button shows it (like the dock did).
+  const panelTool = panelSections.flatMap((s) => s.items).find((i) => i.tool && i.tool === tool);
   const meetingActions: BoardAction[] = editable
     ? [
         {
@@ -2992,8 +3109,20 @@ export default function Whiteboard({
           },
         },
         ...facilitation.actions,
+        ...(!presenter
+          ? [
+              {
+                key: "follow",
+                label: t("Folge mir", "Follow me"),
+                title: t("Folge mir: alle sehen deinen Ausschnitt", "Follow me: everyone sees your view"),
+                icon: <UsersThree size={18} />,
+                run: () => setMetaValue("presenter", { userId, name: userName || "Jemand", since: Date.now() }),
+              },
+            ]
+          : []),
       ]
     : [];
+  const moderationActive = meetingActions.some((a) => a.active);
   const viewActions: BoardAction[] = [
     {
       key: "snap",
@@ -3008,17 +3137,6 @@ export default function Whiteboard({
         store("flowplan-board-snap", !snapGrid);
       },
     },
-    ...(editable && !presenter
-      ? [
-          {
-            key: "follow",
-            label: t("Folge mir", "Follow me"),
-            title: t("Folge mir: alle sehen deinen Ausschnitt", "Follow me: everyone sees your view"),
-            icon: <UsersThree size={16} />,
-            run: () => setMetaValue("presenter", { userId, name: userName || "Jemand", since: Date.now() }),
-          },
-        ]
-      : []),
     // Racks (#90): the board's ports and cables, cables shown or hidden.
     ...(items.some((i) => i.type === "device")
       ? [
@@ -3085,19 +3203,9 @@ export default function Whiteboard({
     },
     ...extras.viewActions,
   ];
+  // Importing lives in the "+" panel (Einfügen) with everything else that
+  // adds to the board.
   const exportActions: BoardAction[] = [
-    ...(editable
-      ? [
-          {
-            key: "import",
-            label: t("Importieren …", "Import …"),
-            title: t("Importieren … (Excalidraw, draw.io)", "Import … (Excalidraw, draw.io)"),
-            icon: <UploadSimple size={16} />,
-            run: () => importInput.current?.click(),
-          },
-          { key: "diagram", label: t("Mermaid/PlantUML importieren …", "Import Mermaid/PlantUML …"), title: t("Mermaid- oder PlantUML-Text als bearbeitbares Diagramm importieren", "Import Mermaid or PlantUML text as an editable diagram"), icon: <Code size={16} />, run: () => setDiagram({ kind: "import" }) },
-        ]
-      : []),
     { key: "mermaid", label: t("Als Mermaid kopieren", "Copy as Mermaid"), title: t("Formen und Verbindungen (Auswahl oder alles) als Mermaid-Flussdiagramm kopieren", "Copy shapes and connectors (selection or everything) as a Mermaid flowchart"), icon: <ClipboardText size={16} />, run: () => void copyMermaid(boardApi, t) },
     { key: "svg", label: t("Als SVG exportieren", "Export as SVG"), title: t("Als SVG exportieren", "Export as SVG"), icon: <DownloadSimple size={16} />, run: () => exportBoard("svg") },
     { key: "png", label: t("Als PNG exportieren", "Export as PNG"), title: t("Als PNG exportieren", "Export as PNG"), icon: <DownloadSimple size={16} />, run: () => exportBoard("png") },
@@ -3152,8 +3260,9 @@ export default function Whiteboard({
       aria-haspopup="dialog"
       aria-expanded={actionsOpen}
       onClick={() => {
-        setActionsOpen((v) => !v);
-        setMoreOpen(false);
+        const open = !actionsOpen;
+        closePopovers();
+        setActionsOpen(open);
       }}
     >
       <DotsThree size={18} weight="bold" />
@@ -3181,6 +3290,119 @@ export default function Whiteboard({
   const [moreSheet, setMoreSheet] = useState<HTMLDivElement | null>(null);
   useSheetDrag(moreSheet, moreOpen, { onDismiss: closeMore });
   const closeActions = () => setActionsOpen(false);
+  const closePopovers = () => {
+    setMoreOpen(false);
+    setActionsOpen(false);
+    setPlusOpen(false);
+    setModerationOpen(false);
+  };
+  // The "+" panel and the phone sheet: a search field, then the sections.
+  // Enter takes the first match. A pick closes the panel and gives the
+  // keyboard back to the board (dialogs it opens take it from there).
+  const pickPanelItem = (item: PanelItem) => {
+    closePopovers();
+    container.current?.focus({ preventScroll: true });
+    item.run();
+  };
+  const panelBody = (tiles: boolean) => (
+    <>
+      <div className="wb-plus-search">
+        <MagnifyingGlass size={16} aria-hidden />
+        <input
+          type="search"
+          value={plusQuery}
+          // Phones: no keyboard over the sheet until someone wants to type.
+          autoFocus={!layout.dock}
+          placeholder={t("Suchen …", "Search …")}
+          aria-label={t("Werkzeuge und Einfügen durchsuchen", "Search tools and insert options")}
+          onChange={(e) => setPlusQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter") return;
+            e.preventDefault();
+            const first = panelShown[0]?.items[0];
+            if (first) pickPanelItem(first);
+          }}
+        />
+      </div>
+      {panelShown.map((s) => (
+        <section key={s.key} aria-label={s.title}>
+          <h3>{s.title}</h3>
+          <div className={tiles ? "wb-sheet-grid" : "wb-plus-grid"}>
+            {s.items.map((a) => (
+              <button
+                key={a.key}
+                className={a.active ? "active" : undefined}
+                aria-pressed={a.pressed}
+                aria-label={a.label}
+                title={a.title}
+                onClick={() => pickPanelItem(a)}
+              >
+                {a.icon}
+                <span>{a.label}</span>
+                {!tiles && a.shortcut && <kbd aria-hidden>{a.shortcut}</kbd>}
+              </button>
+            ))}
+          </div>
+        </section>
+      ))}
+      {!panelShown.length && <p className="wb-plus-empty">{t("Nichts gefunden.", "Nothing found.")}</p>}
+    </>
+  );
+  const plusToggle = panelSections.length > 0 && (
+    <button
+      ref={plusButton}
+      className={`wb-plus-toggle${plusOpen || panelTool ? " active" : ""}`}
+      aria-label={t("Einfügen und mehr", "Insert and more")}
+      title={panelTool ? panelTool.title : t("Einfügen, Vorlagen und KI", "Insert, templates and AI")}
+      aria-haspopup="dialog"
+      aria-expanded={plusOpen}
+      onClick={() => {
+        const open = !plusOpen;
+        closePopovers();
+        setShapeMenu(false);
+        setPlusOpen(open);
+      }}
+    >
+      {panelTool ? panelTool.icon : <Plus size={18} weight="bold" />}
+    </button>
+  );
+  // Moderation: vote, timer, private mode, estimating, gathering, follow me
+  // – one button top right instead of a row in the tool rail.
+  const moderationToggle = meetingActions.length > 0 && (
+    <button
+      ref={moderationButton}
+      className={`wb-moderation-toggle${moderationOpen || moderationActive ? " active" : ""}`}
+      aria-label={t("Moderation", "Facilitation")}
+      title={t("Moderation: Abstimmung, Timer, privater Modus, Schätzen, Alle zu mir holen", "Facilitation: vote, timer, private mode, estimate, bring everyone here")}
+      aria-haspopup="dialog"
+      aria-expanded={moderationOpen}
+      onClick={() => {
+        const open = !moderationOpen;
+        closePopovers();
+        setModerationOpen(open);
+      }}
+    >
+      <ChalkboardTeacher size={18} />
+      <span>{t("Moderation", "Facilitation")}</span>
+      {moderationActive && <i className="wb-live-dot" aria-hidden />}
+    </button>
+  );
+  // The menu takes the keyboard when it opens.
+  useEffect(() => {
+    if (moderationOpen) container.current?.querySelector<HTMLButtonElement>(".wb-moderation > button")?.focus({ preventScroll: true });
+  }, [moderationOpen]);
+  // Frame by frame through the board without presenting (bottom bar).
+  const goFrame = (step: number) => {
+    if (!slides.length) return;
+    const next = frameNav < 0 || frameNav >= slides.length ? (step > 0 ? 0 : slides.length - 1) : (frameNav + step + slides.length) % slides.length;
+    setFrameNav(next);
+    fitToContent([slides[next]]);
+  };
+  const startPresenting = () => {
+    closePopovers();
+    showSlide(0);
+    container.current?.focus({ preventScroll: true });
+  };
 
   const cardPages = pages
     .filter(
@@ -3971,55 +4193,42 @@ export default function Whiteboard({
         className={`wb-toolbar${layout.dock ? " wb-dock" : ""}`}
         role="toolbar"
         aria-label={t("Werkzeuge", "Tools")}
+        aria-orientation={layout.dock ? "horizontal" : "vertical"}
         onPointerDown={(e) => e.stopPropagation()}
       >
-        {(layout.dock ? dockTools : tools).map(([key, label, icon, shortcut]) => (
-          <button
-            key={key}
-            className={tool === key ? "active" : ""}
-            aria-pressed={tool === key}
-            aria-label={label}
-            title={`${label} (${shortcut})`}
-            onClick={() => pickTool(key)}
-          >
-            {icon}
-          </button>
-        ))}
         {layout.dock ? (
-          moreTools.length + insertActions.length > 0 && (
-            <button
-              className={`wb-more${moreOpen || moreTool ? " active" : ""}`}
-              aria-label={t("Weitere Werkzeuge", "More tools")}
-              title={moreTool ? moreTool[1] : t("Weitere Werkzeuge", "More tools")}
-              aria-haspopup="dialog"
-              aria-expanded={moreOpen}
-              onClick={() => {
-                setMoreOpen((v) => !v);
-                setActionsOpen(false);
-                setShapeMenu(false);
-              }}
-            >
-              {moreTool ? moreTool[2] : <DotsNine size={18} weight="bold" />}
-            </button>
-          )
+          <>
+            {dockKeys.map(railButton)}
+            {panelSections.length > 0 && (
+              <button
+                className={`wb-more${moreOpen || panelTool ? " active" : ""}`}
+                aria-label={t("Weitere Werkzeuge", "More tools")}
+                title={panelTool ? panelTool.label : t("Weitere Werkzeuge", "More tools")}
+                aria-haspopup="dialog"
+                aria-expanded={moreOpen}
+                onClick={() => {
+                  const open = !moreOpen;
+                  closePopovers();
+                  setShapeMenu(false);
+                  setMoreOpen(open);
+                }}
+              >
+                {panelTool ? panelTool.icon : <DotsNine size={18} weight="bold" />}
+              </button>
+            )}
+          </>
         ) : (
-          editable && (
-            <>
-              {[...insertActions, ...meetingActions].map((a) => (
-                <button
-                  key={a.key}
-                  className={a.active ? "active" : undefined}
-                  aria-label={a.label}
-                  title={a.title}
-                  onClick={a.run}
-                >
-                  {a.icon}
-                </button>
-              ))}
-              <span className="wb-sep" />
-              {undoButtons}
-            </>
-          )
+          <>
+            {railKeys.slice(0, 2).map(railButton)}
+            {railKeys.length > 2 && <span className="wb-sep" />}
+            {railKeys.slice(2).map(railButton)}
+            {plusToggle && (
+              <>
+                <span className="wb-sep" />
+                {plusToggle}
+              </>
+            )}
+          </>
         )}
         <input
           ref={fileInput}
@@ -4033,9 +4242,9 @@ export default function Whiteboard({
             if (f) void addImage(f);
           }}
         />
-        {/* With the actions menu the import picker lives here: the menu
-            closes while the file dialog is open. */}
-        {layout.menu && editable && (
+        {/* The import picker lives here: the panel that starts it closes
+            while the file dialog is open. */}
+        {editable && (
           <input
             ref={importInput}
             type="file"
@@ -4046,6 +4255,31 @@ export default function Whiteboard({
           />
         )}
       </div>
+      {!layout.dock && plusOpen && (
+        <div
+          className="wb-plus"
+          role="dialog"
+          aria-label={t("Einfügen und mehr", "Insert and more")}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          {panelBody(false)}
+        </div>
+      )}
+      {!layout.dock && moderationToggle && (
+        <div className="wb-top-end" onPointerDown={(e) => e.stopPropagation()}>
+          {moderationToggle}
+        </div>
+      )}
+      {moderationOpen && (
+        <div
+          className="wb-actions wb-moderation"
+          role="dialog"
+          aria-label={t("Moderation", "Facilitation")}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          {meetingActions.map((a) => menuButton(a, () => setModerationOpen(false)))}
+        </div>
+      )}
       {layout.dock && editable && (
         <div
           className="wb-corner wb-corner-start"
@@ -4058,6 +4292,7 @@ export default function Whiteboard({
       )}
       {layout.dock && (
         <div className="wb-corner wb-corner-end" onPointerDown={(e) => e.stopPropagation()}>
+          {moderationToggle}
           {actionsToggle}
         </div>
       )}
@@ -4070,43 +4305,10 @@ export default function Whiteboard({
           onPointerDown={(e) => e.stopPropagation()}
         >
           <div className={SHEET_HANDLE} aria-hidden />
-          {moreTools.length > 0 && (
-            <section>
-              <h3>{t("Werkzeuge", "Tools")}</h3>
-              <div className="wb-sheet-grid">
-                {moreTools.map(([key, label, icon]) => (
-                  <button
-                    key={key}
-                    className={tool === key ? "active" : undefined}
-                    aria-pressed={tool === key}
-                    aria-label={label}
-                    onClick={() => {
-                      pickTool(key);
-                      closeMore();
-                    }}
-                  >
-                    {icon}
-                    <span>{label}</span>
-                  </button>
-                ))}
-              </div>
-            </section>
-          )}
-          {insertActions.length > 0 && (
-            <section>
-              <h3>{t("Einfügen", "Insert")}</h3>
-              <div className="wb-sheet-grid">{insertActions.map((a) => menuButton(a, closeMore))}</div>
-            </section>
-          )}
-          {meetingActions.length > 0 && (
-            <section>
-              <h3>{t("Moderation", "Facilitation")}</h3>
-              <div className="wb-sheet-grid">{meetingActions.map((a) => menuButton(a, closeMore))}</div>
-            </section>
-          )}
+          {panelBody(true)}
         </div>
       )}
-      {layout.menu && actionsOpen && (
+      {actionsOpen && (
         <div
           className="wb-actions"
           role="dialog"
@@ -4206,6 +4408,7 @@ export default function Whiteboard({
       )}
       {editable && tool === "pen" && (
         <div className="wb-shape-menu" aria-label={t("Stift", "Pen")} onPointerDown={(e) => e.stopPropagation()}>
+          {drawSwitch}
           {strokeColors.map((c) => (
             <button
               key={c}
@@ -4242,60 +4445,62 @@ export default function Whiteboard({
       )}
       {editable && tool === "eraser" && (
         <div className="wb-shape-menu" onPointerDown={(e) => e.stopPropagation()}>
+          {drawSwitch}
           <span className="wb-menu-hint">{t("Über Striche fahren, um sie zu löschen", "Move over strokes to erase them")}</span>
         </div>
       )}
       {tool === "laser" && (
         <div className="wb-shape-menu" onPointerDown={(e) => e.stopPropagation()}>
+          {drawSwitch}
           <span className="wb-menu-hint">{t("Laserpointer: alle sehen deine Spur", "Laser pointer: everyone sees your trail")}</span>
         </div>
       )}
+      {/* Bottom left: undo/redo, zoom, frame by frame, presenting and the
+          view and export menu – one compact bar. Phones keep undo/redo in
+          the corner and zoom in the actions menu. */}
       {!layout.dock && (
-        <div className="wb-zoom" onPointerDown={(e) => e.stopPropagation()}>
+        <div
+          className="wb-zoom"
+          role="toolbar"
+          aria-label={t("Ansicht", "View")}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          {undoButtons}
+          {editable && <span className="wb-sep" />}
+          {zoomButtons}
+          {presenting === null && slides.length > 0 && (
+            <>
+              <span className="wb-sep" />
+              <button
+                aria-label={t("Vorheriger Rahmen", "Previous frame")}
+                title={t("Vorheriger Rahmen", "Previous frame")}
+                onClick={() => goFrame(-1)}
+              >
+                <CaretLeft size={16} />
+              </button>
+              <button
+                aria-label={t("Nächster Rahmen", "Next frame")}
+                title={t("Nächster Rahmen", "Next frame")}
+                onClick={() => goFrame(1)}
+              >
+                <CaretRight size={16} />
+              </button>
+              <button
+                className="wb-zoom-present"
+                aria-label={t("Präsentieren", "Present")}
+                title={t("Präsentieren", "Present")}
+                onClick={startPresenting}
+              >
+                <PresentationChart size={16} />
+                <span>{t("Präsentieren", "Present")}</span>
+              </button>
+            </>
+          )}
+          <span className="wb-sep" />
+          {actionsToggle}
           <span className="wb-status" aria-live="polite">
             {statusLabel(status)}
           </span>
-          {zoomButtons}
-          {layout.menu ? (
-            actionsToggle
-          ) : (
-            <>
-              {viewActions.map((a) => (
-                <button
-                  key={a.key}
-                  className={a.active ? "active" : undefined}
-                  aria-pressed={a.pressed}
-                  aria-label={a.label}
-                  title={a.title}
-                  onClick={a.run}
-                >
-                  {a.icon}
-                </button>
-              ))}
-              {editable && (
-                <label
-                  className="wb-import"
-                  title={t("Importieren … (Excalidraw, draw.io)", "Import … (Excalidraw, draw.io)")}
-                >
-                  <UploadSimple size={16} /> {t("Importieren …", "Import …")}
-                  <input
-                    type="file"
-                    hidden
-                    accept=".excalidraw,.drawio,.xml,.svg,.json,application/json,.mmd,.mermaid,.puml,.plantuml"
-                    aria-label={t("Excalidraw- oder draw.io-Datei importieren", "Import an Excalidraw or draw.io file")}
-                    onChange={importFile}
-                  />
-                </label>
-              )}
-              {exportActions
-                .filter((a) => a.key !== "import")
-                .map((a) => (
-                  <button key={a.key} aria-label={a.label} title={a.title} onClick={a.run}>
-                    {a.icon} {a.key === "svg" || a.key === "png" ? a.key.toUpperCase() : null}
-                  </button>
-                ))}
-            </>
-          )}
         </div>
       )}
       {presenting !== null ? (
@@ -4334,14 +4539,12 @@ export default function Whiteboard({
           </button>
         </div>
       ) : (
+        layout.dock &&
         slides.length > 0 && (
           <button
             className="wb-present-start"
             onPointerDown={(e) => e.stopPropagation()}
-            onClick={() => {
-              showSlide(0);
-              container.current?.focus({ preventScroll: true });
-            }}
+            onClick={startPresenting}
           >
             <PresentationChart size={16} /> {t("Präsentieren", "Present")}
           </button>

@@ -1,3 +1,4 @@
+import { boardModeration } from "./whiteboard-ui";
 import { test, expect, type Page } from "@playwright/test";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID, randomBytes, createHash } from "node:crypto";
@@ -58,7 +59,7 @@ test("two people: private brainstorming, planning poker, gathering and timer mus
   await expect(wb(mira).locator(".wb-frame")).toBeVisible();
 
   // ---- private mode in the frame ----
-  await wb(page).getByRole("button", { name: "Privater Modus", exact: true }).click();
+  await boardModeration(wb(page), "Privater Modus");
   const panel = wb(page).getByRole("dialog", { name: "Privater Modus" });
   await panel.getByLabel("Bereich").selectOption({ label: "Rahmen: Ideen" });
   await panel.getByRole("button", { name: "Privaten Modus starten" }).click();
@@ -119,7 +120,7 @@ test("two people: private brainstorming, planning poker, gathering and timer mus
   await mira.mouse.move(area.x + area.width / 2, area.y + area.height / 2);
   await mira.mouse.wheel(4000, 3000);
   await expect(wb(mira).locator(".wb-frame")).not.toBeInViewport();
-  await wb(page).getByRole("button", { name: "Alle zu mir holen" }).click();
+  await boardModeration(wb(page), "Alle zu mir holen");
   const notice = wb(mira).locator(".wb-fac-notice");
   await expect(notice).toContainText("hat alle hierher geholt", { timeout: 8000 });
   await expect(wb(mira).locator(".wb-frame")).toBeInViewport();
@@ -127,7 +128,7 @@ test("two people: private brainstorming, planning poker, gathering and timer mus
   await expect(wb(mira).locator(".wb-frame")).not.toBeInViewport();
 
   // ---- timer music: started with the timer for everyone ----
-  await wb(page).getByRole("button", { name: "Timer", exact: true }).click();
+  await boardModeration(wb(page), "Timer");
   await wb(page).getByLabel("Musik während des Timers").selectOption("calm");
   await wb(page).getByRole("dialog", { name: "Timer einstellen" }).getByRole("button", { name: "1 Min" }).click();
   // Mira has not touched the page since: the browser may block sound – then "Ton an".

@@ -1,3 +1,4 @@
+import { boardDraw } from "./whiteboard-ui";
 import { test, expect, type Page, type CDPSession } from "@playwright/test";
 
 // Drawing with a pen (Apple Pencil, styluses): pressure, pen-only drawing,
@@ -43,6 +44,9 @@ async function board(page: Page) {
   await page.goto(`/#page=${created.id}`);
   const wb = page.getByLabel("Whiteboard", { exact: true });
   await expect(wb).toBeVisible();
+  // The tool rail in view first: picking a tool must not scroll the page
+  // after the canvas was measured.
+  await wb.getByRole("toolbar", { name: "Werkzeuge" }).scrollIntoViewIfNeeded();
   const box = (await wb.locator(".wb-canvas").boundingBox())!;
   const at = (x: number, y: number) => ({ x: box.x + box.width / 2 + x, y: box.y + box.height / 2 + y });
   return { wb, at };
@@ -55,7 +59,7 @@ test("the pen draws with pressure; then fingers move the board; the eraser and P
   const { wb, at } = await board(page);
   const cdp = await page.context().newCDPSession(page);
 
-  await wb.getByRole("button", { name: "Stift", exact: true }).click();
+  await boardDraw(wb, "Stift");
   await pen(cdp, at(-100, -60), at(80, 40));
   await expect(wb.locator(".wb-pen")).toHaveCount(1);
   // A pressure stroke is a filled outline.
@@ -95,7 +99,7 @@ test("a resting palm does not disturb the pen", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "One run covers pen and touch.");
   const { wb, at } = await board(page);
   const cdp = await page.context().newCDPSession(page);
-  await wb.getByRole("button", { name: "Stift", exact: true }).click();
+  await boardDraw(wb, "Stift");
   const base = { pointerType: "pen" as const, button: "left" as const, buttons: 1, force: 0.5 };
   const from = at(-120, -40),
     to = at(120, -40);
@@ -123,7 +127,7 @@ test("the palm after a stroke does not draw, also with pen-only drawing off", as
   test.skip(testInfo.project.name !== "desktop", "One run covers pen and touch.");
   const { wb, at } = await board(page);
   const cdp = await page.context().newCDPSession(page);
-  await wb.getByRole("button", { name: "Stift", exact: true }).click();
+  await boardDraw(wb, "Stift");
   // Switched off on purpose (not "not decided yet").
   await wb.getByLabel("Nur mit dem Stift zeichnen").check();
   await wb.getByLabel("Nur mit dem Stift zeichnen").uncheck();

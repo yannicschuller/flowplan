@@ -1,3 +1,4 @@
+import { boardDraw, boardInsert, boardModeration } from "./whiteboard-ui";
 import { test, expect, type Page } from "@playwright/test";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID, randomBytes, createHash } from "node:crypto";
@@ -68,7 +69,7 @@ test("mind map, arranging, stamps, drawn shapes, hidden voting, symbols and reco
   await page.keyboard.press("Escape");
 
   // Stamps on a note.
-  await wb.getByRole("button", { name: "Stempel", exact: true }).click();
+  await boardInsert(wb, "Stempel");
   await wb.getByRole("button", { name: "Stempel ⭐" }).click();
   const target = (await wb.locator(".wb-sticky", { hasText: "Zentrale Idee" }).boundingBox())!;
   await page.mouse.click(target.x + target.width / 2, target.y + target.height / 2);
@@ -76,7 +77,7 @@ test("mind map, arranging, stamps, drawn shapes, hidden voting, symbols and reco
   await page.keyboard.press("Escape");
 
   // A roughly drawn rectangle becomes a clean rectangle.
-  await wb.getByRole("button", { name: "Stift", exact: true }).click();
+  await boardDraw(wb, "Stift");
   await wb.getByLabel("Formen erkennen").check();
   const start = await at(150, 120);
   await page.mouse.move(start.x, start.y);
@@ -88,7 +89,7 @@ test("mind map, arranging, stamps, drawn shapes, hidden voting, symbols and reco
   await expect(wb.locator(".wb-pen")).toHaveCount(0);
 
   // Hidden voting: the result waits for the end.
-  await wb.getByRole("button", { name: "Abstimmung", exact: true }).click();
+  await boardModeration(wb, "Abstimmung");
   const panel = wb.getByRole("dialog", { name: "Abstimmung" });
   await panel.getByLabel(/Verdeckt abstimmen/).check();
   await panel.getByRole("button", { name: "Abstimmung starten" }).click();
@@ -96,10 +97,10 @@ test("mind map, arranging, stamps, drawn shapes, hidden voting, symbols and reco
   await expect(panel).toContainText("Ergebnis erscheint");
   await panel.getByRole("button", { name: "Abstimmung beenden" }).click();
   await expect(panel.getByRole("list", { name: "Ergebnis" })).toContainText("Zentrale Idee");
-  await wb.getByRole("button", { name: "Abstimmung", exact: true }).click();
+  await boardModeration(wb, "Abstimmung");
 
   // A symbol from the icon library.
-  await wb.getByRole("button", { name: "Bilder und Symbole suchen" }).click();
+  await boardInsert(wb, "Bilder und Symbole suchen");
   const media = page.getByRole("dialog", { name: "Bilder und Symbole" });
   await media.getByRole("tab", { name: "Symbole" }).click();
   await media.getByLabel("Symbole suchen").fill("rakete");
@@ -107,7 +108,7 @@ test("mind map, arranging, stamps, drawn shapes, hidden voting, symbols and reco
   await expect(wb.locator(".wb-icon-glyph svg")).toHaveCount(1);
 
   // A database record as a live card.
-  await wb.getByRole("button", { name: "Seite verknüpfen" }).click();
+  await boardInsert(wb, "Seite verknüpfen");
   const cards = page.getByRole("dialog", { name: "Seite verknüpfen" });
   await cards.getByLabel("Seiten suchen").fill("Aufgaben");
   await cards.getByRole("button", { name: new RegExp(`Eintrag aus „${db.title ?? "Aufgaben"}`) }).first().click();
@@ -138,7 +139,7 @@ test("laser pointer and follow me reach the other person", async ({ page, browse
   await expect(canvas(other)).toBeVisible();
 
   // Lea points with the laser: the trail shows on the first screen.
-  await other.getByRole("button", { name: "Laserpointer" }).click();
+  await boardDraw(other.getByLabel("Whiteboard", { exact: true }), "Laserpointer");
   const area = (await canvas(other).boundingBox())!;
   await other.mouse.move(area.x + 200, area.y + 200);
   await other.mouse.move(area.x + 400, area.y + 260, { steps: 10 });
@@ -146,7 +147,7 @@ test("laser pointer and follow me reach the other person", async ({ page, browse
 
   // Lea presents: the first person's view follows hers.
   await other.getByRole("button", { name: "Auswählen", exact: true }).click();
-  await other.getByRole("button", { name: "Folge mir" }).click();
+  await boardModeration(other.getByLabel("Whiteboard", { exact: true }), "Folge mir");
   await expect(page.locator(".wb-presenting")).toContainText("Du folgst Lea Laser");
   const before = await page.getByRole("button", { name: "Zoom zurücksetzen" }).textContent();
   await other.getByRole("button", { name: "Vergrößern" }).click();

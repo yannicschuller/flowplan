@@ -10503,8 +10503,8 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
 }
 .wb-zoom {
   position: absolute;
-  right: 12px;
-  bottom: 12px;
+  left: calc(12px + var(--wb-inset-left, 0px));
+  bottom: calc(12px + var(--wb-inset-bottom, 0px));
   display: flex;
   align-items: center;
   gap: 2px;
@@ -10519,19 +10519,243 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
 .wb-zoom-value {
   min-width: 52px;
 }
-.wb-zoom .wb-import {
+.wb-zoom .wb-sep {
+  height: 18px;
+  margin: 0 3px;
+}
+.wb-zoom .wb-zoom-present {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 7px;
-  border-radius: 8px;
-  color: var(--text);
-  cursor: pointer;
+  gap: 6px;
+  padding: 7px 10px;
+  font-size: 13px;
   white-space: nowrap;
 }
-.wb-zoom .wb-import:hover,
-.wb-zoom .wb-import:focus-within {
-  background: var(--hover, var(--blue-light));
+.wb-zoom .wb-status {
+  padding: 0 8px 0 4px;
+  white-space: nowrap;
+}
+/* Narrow boards: the bar never grows past the board; presenting keeps its
+   symbol only. */
+.wb-zoom {
+  max-width: calc(100% - 24px - var(--wb-inset-left, 0px) - var(--wb-inset-right, 0px));
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.wb-zoom > * {
+  flex: none;
+}
+.whiteboard.wb-layout-menu .wb-zoom .wb-zoom-present span {
+  display: none;
+}
+/* The rail: creation and drawing tools, the "+" panel at its end. */
+.wb-toolbar .wb-draw {
+  position: relative;
+}
+/* A small corner mark: pen, eraser and laser share this button. */
+.wb-toolbar .wb-draw::after {
+  content: "";
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  border: 2.5px solid transparent;
+  border-right-color: currentColor;
+  border-bottom-color: currentColor;
+  opacity: 0.55;
+}
+.wb-toolbar .wb-plus-toggle,
+.wb-toolbar .wb-plus-toggle.active {
+  background: var(--blue);
+  color: var(--on-accent);
+}
+.wb-toolbar .wb-plus-toggle:hover {
+  background: var(--accent-strong);
+}
+.wb-toolbar .wb-plus-toggle.active {
+  box-shadow: 0 0 0 3px var(--blue-light);
+}
+.wb-draw-switch {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 2px;
+  padding-bottom: 4px;
+  margin-bottom: 2px;
+  border-bottom: 1px solid var(--border);
+}
+.wb-plus {
+  position: absolute;
+  left: calc(64px + var(--wb-inset-left, 0px));
+  top: 50%;
+  translate: 0 -50%;
+  z-index: 6;
+  width: min(440px, calc(100% - 80px));
+  max-height: calc(100% - 24px);
+  padding: 8px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+  animation: menu-in 0.14s var(--ease-out) both;
+}
+.wb-plus-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  margin-bottom: 8px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+}
+.wb-plus-search:focus-within {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px var(--blue-light);
+}
+.wb-plus-search input,
+.wb-plus-search input:focus {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  box-shadow: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  appearance: none;
+}
+.wb-plus-search input::-webkit-search-cancel-button {
+  display: none;
+}
+.wb-plus h3 {
+  margin: 4px 6px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.wb-plus-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px;
+  margin-bottom: 6px;
+}
+.wb-plus-grid button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.25;
+  text-align: left;
+}
+.wb-plus-grid button > svg {
+  flex: none;
+}
+.wb-plus-grid button > span {
+  flex: 1;
+  min-width: 0;
+}
+.wb-plus-grid button:hover,
+.wb-plus-grid button:focus-visible {
+  background: var(--hover);
+}
+.wb-plus-grid button.active {
+  background: var(--blue-light);
+  color: var(--blue);
+}
+.wb-plus-grid kbd {
+  flex: none;
+  min-width: 18px;
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--muted);
+  font: 500 11px/1.4 var(--font-ui);
+  text-align: center;
+}
+.wb-plus-empty {
+  margin: 0;
+  padding: 10px 8px 12px;
+  color: var(--muted);
+}
+.wb-sheet .wb-plus-search {
+  margin: 0 6px 10px;
+}
+/* 16 px: iOS does not zoom into the field. */
+.wb-sheet .wb-plus-search input {
+  font-size: 16px;
+}
+/* Moderation: one button top right, its menu below it. */
+.wb-top-end {
+  position: absolute;
+  top: calc(12px + var(--wb-inset-top, 0px));
+  right: calc(12px + var(--wb-inset-right, 0px));
+  /* Below the style bar of a selection, which may reach up here. */
+  z-index: 3;
+  display: flex;
+  gap: 6px;
+}
+.wb-top-end .wb-moderation-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+}
+.wb-top-end .wb-moderation-toggle:hover {
+  background: var(--hover);
+}
+.wb-moderation-toggle.active {
+  color: var(--blue);
+}
+.wb-top-end .wb-moderation-toggle.active {
+  background: var(--blue-light);
+  border-color: color-mix(in srgb, var(--blue) 30%, var(--border));
+}
+.wb-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--signal);
+}
+.wb-corner .wb-moderation-toggle {
+  position: relative;
+}
+.wb-corner .wb-moderation-toggle span {
+  display: none;
+}
+.wb-corner .wb-live-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+}
+.wb-actions.wb-moderation {
+  left: auto;
+  right: calc(12px + var(--wb-inset-right, 0px));
+  top: calc(56px + var(--wb-inset-top, 0px));
+  bottom: auto;
+  width: 232px;
+}
+.whiteboard:not(.wb-layout-dock):has(> .wb-side-panel) :is(.wb-top-end, .wb-moderation, .wb-panel) {
+  right: calc(324px + var(--wb-inset-right, 0px));
 }
 .wb-status {
   padding: 0 8px;
@@ -11032,11 +11256,13 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
 }
 .wb-panel {
   position: absolute;
-  left: 64px;
-  top: 50%;
-  translate: 0 -50%;
+  right: calc(12px + var(--wb-inset-right, 0px));
+  top: calc(56px + var(--wb-inset-top, 0px));
   z-index: 5;
   width: 260px;
+  max-height: calc(100% - 124px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   display: grid;
   gap: 10px;
   padding: 12px;
@@ -11091,12 +11317,12 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
 /* The tool bar never grows beyond the board: two columns when space is
    short, scrolling as a last resort. */
 .wb-toolbar {
-  max-height: calc(100% - 24px);
+  max-height: calc(100% - 136px);
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
 }
-@media (max-height: 820px) and (min-width: 761px) {
+@media (max-height: 600px) and (min-width: 761px) {
   .wb-toolbar {
     display: grid;
     grid-template-columns: repeat(2, auto);
@@ -11108,7 +11334,7 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
     margin: 4px 0;
   }
   .wb-shape-menu,
-  .wb-panel {
+  .wb-plus {
     left: 104px;
   }
 }
@@ -11254,8 +11480,8 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
    bar where the full bar does not fit (tablets, narrow windows). */
 .wb-actions {
   position: absolute;
-  right: 12px;
-  bottom: 60px;
+  left: calc(12px + var(--wb-inset-left, 0px));
+  bottom: calc(60px + var(--wb-inset-bottom, 0px));
   z-index: 6;
   display: flex;
   flex-direction: column;
@@ -11274,6 +11500,7 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   animation: menu-in 0.14s var(--ease-out) both;
 }
 .whiteboard.wb-layout-dock .wb-actions {
+  left: auto;
   top: calc(56px + var(--wb-inset-top));
   right: calc(8px + var(--wb-inset-right));
   bottom: auto;
@@ -11323,14 +11550,6 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   border-radius: 8px;
   color: var(--text);
 }
-/* The import entry is a label (it holds the file input): one line, like
-   the buttons next to it. */
-.wb-zoom label.wb-import {
-  flex-direction: row;
-  margin: 0;
-  font-size: inherit;
-  font-weight: inherit;
-}
 .wb-zoom .wb-actions-toggle.active {
   background: var(--blue-light);
   color: var(--blue);
@@ -11373,6 +11592,9 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
 .whiteboard.wb-layout-dock .wb-present-start {
   top: calc(8px + var(--wb-inset-top));
   right: calc(56px + var(--wb-inset-right));
+}
+.whiteboard.wb-layout-dock:has(.wb-corner-end .wb-moderation-toggle) .wb-present-start {
+  right: calc(96px + var(--wb-inset-right));
 }
 .whiteboard.wb-layout-dock .wb-present {
   bottom: calc(68px + var(--wb-inset-bottom));
