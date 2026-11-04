@@ -13,7 +13,7 @@
 //    password (plus code if the app is on) or its passkey.
 // 4. Otherwise a new SSO account – unless OIDC_NEW_ACCOUNTS=false.
 import { randomBytes } from "node:crypto";
-import { all, audit, id, one, run, transaction } from "./db";
+import { audit, id, one, run, transaction } from "./db";
 import { HttpError, hash, identityFromToken } from "./auth";
 import { securityEvent } from "./security-events";
 import { claimProvisionedAccount } from "./scim";
@@ -267,6 +267,3 @@ function hostOf(issuer: string) {
     return issuer;
   }
 }
-
-// For tests and the administration: every pending sign-in of an account.
-export const pendingLinksOf = (userId: string) => all<{ id: string }>("SELECT id FROM oidc_pending_links WHERE user_id=?", userId);

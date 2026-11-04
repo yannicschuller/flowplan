@@ -97,7 +97,6 @@ const registration = z
 
 const relayAad = relayTokenAad,
   liveAad = liveTokenAad;
-export const openRelayToken = (deviceId: string, sealed: string) => openSecret(sealed, relayAad(deviceId));
 export const openLiveToken = (deviceId: string, kind: LiveActivityKind, sealed: string) => openSecret(sealed, liveAad(deviceId, kind));
 
 // What the app needs to register with the relay: which relay, and the

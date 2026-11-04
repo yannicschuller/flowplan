@@ -582,7 +582,6 @@ export const LEGACY_SECTIONS: Record<SettingsArea, Record<string, string>> = {
 
 export type SettingsRoute = { area: SettingsArea; section: string | null; anchor: string | null };
 
-export const sectionsOf = (area: SettingsArea) => SETTINGS_SECTIONS.filter((s) => s.area === area);
 export const findSection = (area: SettingsArea, id: string | null | undefined) =>
   id ? SETTINGS_SECTIONS.find((s) => s.area === area && s.id === id) || null : null;
 

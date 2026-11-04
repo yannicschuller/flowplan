@@ -7,7 +7,6 @@ import { useEffect, useState } from "react";
 import {
   File as FileIcon,
   FileAudio,
-  FilePdf,
   FileVideo,
   Images,
 } from "@phosphor-icons/react";

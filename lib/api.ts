@@ -45,7 +45,7 @@ import { propertiesCollapsed, setPropertiesCollapsed } from "./page-view-prefs";
 import { saveSidebarState, sidebarState } from "./sidebar-state";
 import { changeDocTask, dueTaskCount, indexPageTasks, reindexRowTasks, syncDocTasks } from "./doc-tasks";
 import { syncedUsage } from "./synced-blocks";
-import { linkMention, pageGraph, unlinkedMentions } from "./page-graph";
+import { linkMention } from "./page-graph";
 import { followRename } from "./link-titles";
 import { captureRecord, setCaptureTarget } from "./capture";
 import { deleteInboundAddress, rotateInboundToken, saveInboundAddress } from "./inbound-mail";
@@ -93,7 +93,6 @@ import {
 import {
   assertFieldsWritable,
   hasFieldAccess,
-  hiddenFieldsFor,
   mergeHiddenFields,
   publicHiddenFieldIds,
   readOnlyFieldIds,
@@ -225,7 +224,6 @@ import {
 } from "./permissions";
 import {
   createPage,
-  createWorkspace,
   databaseKinds,
 } from "./seed";
 import type {
@@ -235,7 +233,6 @@ import type {
   Database,
   Row,
   Field,
-  View,
 } from "./types";
 const str = z.string().min(1).max(500),
   uuid = z.string().uuid();

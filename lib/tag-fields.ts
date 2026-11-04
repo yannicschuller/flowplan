@@ -479,9 +479,3 @@ export function taggedRecords(user: Identity, workspaceId: string): TaggedRecord
   return out;
 }
 
-// Tag ids of the readable records of a workspace, by "pageId:rowId", and
-// the tags of every readable record of the databases with tag-backed
-// properties (for -#tag: records without the tag).
-export function recordTagMap(user: Identity, workspaceId: string) {
-  return new Map(taggedRecords(user, workspaceId).map((r) => [`${r.pageId}:${r.rowId}`, r.tags]));
-}

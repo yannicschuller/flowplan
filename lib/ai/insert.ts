@@ -172,9 +172,6 @@ export function selectionText(doc: ProseMirrorNode, from: number, to: number) {
 // nothing is stored in the document, collaborators and undo see nothing.
 const insertedKey = new PluginKey<DecorationSet>("flowplanAiInserted");
 export const AI_INSERTED_MS = 1200;
-export function insertedRange(tr: Transaction) {
-  return (tr.getMeta(insertedKey) as { from: number; to: number } | undefined) || null;
-}
 function insertedDecorations(doc: ProseMirrorNode, from: number, to: number) {
   const marks: Decoration[] = [];
   doc.nodesBetween(from, to, (node, pos) => {

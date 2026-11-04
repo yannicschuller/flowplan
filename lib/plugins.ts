@@ -129,7 +129,6 @@ export function pluginView(row: PluginRow, withSettings = true) {
     public: !!row.public,
   };
 }
-export type PluginView = ReturnType<typeof pluginView>;
 function requirePlugin(pluginId: unknown) {
   const row = one<PluginRow>("SELECT * FROM plugins WHERE id=?", uuid.parse(pluginId));
   if (!row) throw new HttpError(404, "Block-Erweiterung nicht gefunden.");

@@ -94,4 +94,3 @@ export function mobileAdminSummary(now = Date.now(), update: UpdateStatus | null
     },
   };
 }
-export type MobileAdminSummary = ReturnType<typeof mobileAdminSummary>;

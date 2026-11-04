@@ -11,7 +11,7 @@
 import { z } from "zod";
 import { all, id, one, run } from "./db";
 import { HttpError } from "./auth";
-import { cleanPaper, DEFAULT_PAPER, effectivePaper, fullPaper, insertAfter, paperSize, sameSheets, type Paper, type PaperOverride } from "./notebook-paper";
+import { cleanPaper, DEFAULT_PAPER, fullPaper, insertAfter, sameSheets, type Paper, type PaperOverride } from "./notebook-paper";
 import { copyPageInk, deleteSurface, mayEditInk, pageInkDocs, writeSurface } from "./page-ink-store";
 import { emptyInk, hasInk, inkText, parseInk, serializeInk, type InkDoc } from "./ink/model";
 import { cleanRecognizedText } from "./ink/recognized";
@@ -58,10 +58,6 @@ export function notebookSheets(pageId: string): NotebookSheet[] {
     "SELECT id,position,paper,background FROM notebook_sheets WHERE page_id=? ORDER BY position,created_at",
     pageId,
   ).map((s) => ({ id: s.id, position: s.position, paper: parsePaper(s.paper), background: parseBackground(s.background) }));
-}
-// The size of a sheet in points.
-export function sheetSize(defaults: Paper, sheet: Pick<NotebookSheet, "paper" | "background">) {
-  return sheet.background ? { width: sheet.background.width, height: sheet.background.height } : paperSize(effectivePaper(defaults, sheet.paper));
 }
 
 function insertSheet(pageId: string, paper: PaperOverride = {}, background: NotebookBackground | null = null, sheetId = id()) {

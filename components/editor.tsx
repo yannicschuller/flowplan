@@ -105,7 +105,7 @@ import Highlight from "@tiptap/extension-highlight";
 import TextAlign from "@tiptap/extension-text-align";
 import Typography from "@tiptap/extension-typography";
 import Collaboration from "@tiptap/extension-collaboration";
-import { Extension, Node, mergeAttributes } from "@tiptap/core";
+import { Extension } from "@tiptap/core";
 import type { Editor as TiptapEditor } from "@tiptap/core";
 import { SlashMenu, type SlashItem } from "./slash-menu";
 import { readSlashRecents, rememberSlashCommand, slashSections, type SlashSection } from "@/lib/slash-commands";
@@ -141,7 +141,6 @@ import {
   TextHTwo,
   TextHThree,
   Minus,
-  Paperclip,
   Plus,
   Info,
   ChatCenteredText,
@@ -307,8 +306,7 @@ export default function DocumentEditor({
     touched = useRef(false),
     changedByUser = useRef(false),
     creating = useRef<Promise<boolean> | null>(null),
-    draftRef = useRef(draft),
-    timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    draftRef = useRef(draft);
   draftRef.current = draft;
   // The push channel and polling start once the day exists.
   const [liveOn, setLiveOn] = useState(!draft);
@@ -354,7 +352,7 @@ export default function DocumentEditor({
     [toggleTitle, setToggleTitle] = useState("");
   const uploadRef = useRef<HTMLInputElement>(null);
   const [outline, setOutline] = useOutlineOpen();
-  const [tick, setTick] = useState(0);
+  const [, setTick] = useState(0);
   const [references, setReferences] = useState(false),
     [referenceQuery, setReferenceQuery] = useState(""),
     [embed, setEmbed] = useState(false),

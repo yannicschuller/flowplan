@@ -35,11 +35,3 @@ export function readCollapsedSpaces(): Set<string> {
     return new Set();
   }
 }
-export function writeCollapsedSpaces(ids: Set<string>) {
-  try {
-    if (ids.size) localStorage.setItem(COLLAPSED_SPACES_KEY, JSON.stringify([...ids]));
-    else localStorage.removeItem(COLLAPSED_SPACES_KEY);
-  } catch {
-    /* kept for this tab only */
-  }
-}

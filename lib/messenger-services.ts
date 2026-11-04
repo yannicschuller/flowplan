@@ -3,8 +3,6 @@
 // storage and queue live in lib/messengers.ts.
 export const messengerServices = ["telegram", "gotify", "ntfy", "matrix"] as const;
 export type MessengerService = (typeof messengerServices)[number];
-export const isMessengerService = (value: unknown): value is MessengerService =>
-  typeof value === "string" && (messengerServices as readonly string[]).includes(value);
 
 export const messengerNames: Record<MessengerService, string> = {
   telegram: "Telegram",

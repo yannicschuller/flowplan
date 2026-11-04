@@ -43,8 +43,6 @@ function useLoaded(id: string) {
 const pageCounts = new Map<string, number>();
 export const pdfPageCount = (src: string) => pageCounts.get(src) || 0;
 
-export const EMBED_BAR = 28;
-
 export function EmbedShape({ item, transform, interactive = true }: { item: WhiteboardItem; transform: string; interactive?: boolean }) {
   const t = useT();
   const embed = boardEmbed(item);

@@ -19,7 +19,6 @@ export const relativeDateNames = {
   past_days: "Letzte N Tage (inkl. heute)",
   next_days: "Nächste N Tage (inkl. heute)",
 };
-export type RelativeRange = keyof typeof relativeDateNames;
 export const isRelativeOperator = (op: string) =>
   op === "in_relative" || op === "not_in_relative";
 export function validTimeZone(value: string) {

@@ -108,7 +108,6 @@ export function signInMethods(userId: string) {
     totp: !!one("SELECT 1 FROM user_totp WHERE user_id=? AND enabled=1", userId),
   };
 }
-export type SignInMethods = ReturnType<typeof signInMethods>;
 
 // What the account settings show: the methods and the connected identities.
 export function signInOverview(userId: string) {

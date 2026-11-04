@@ -53,7 +53,6 @@ import {
   MAX_ITEMS,
   MAX_WIDGET_BYTES,
   widgetConfigs,
-  widgetKinds,
   type WidgetConfig,
   type WidgetKind,
 } from "./mobile-widget-schema";

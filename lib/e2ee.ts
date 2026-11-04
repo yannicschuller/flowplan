@@ -86,9 +86,6 @@ export function fromBase32(text: string): Uint8Array<ArrayBuffer> {
 // ---- Recovery key: 32 random bytes as 52 base32 characters in groups ----
 
 export const RECOVERY_BYTES = 32;
-export function newRecoveryKey() {
-  return formatRecoveryKey(randomBytes(RECOVERY_BYTES));
-}
 export function formatRecoveryKey(bytes: Uint8Array) {
   return toBase32(bytes).match(/.{1,4}/g)!.join("-");
 }
@@ -201,13 +198,6 @@ async function importPublicKey(publicKey: string) {
   if (raw.length !== 32) throw new Error("Invalid public key.");
   return subtle().importKey("raw", raw, { name: "X25519" }, true, []);
 }
-export function validPublicKey(publicKey: string) {
-  try {
-    return fromBase64(publicKey).length === 32;
-  } catch {
-    return false;
-  }
-}
 
 // A new identity: key pair, both wraps and the recovery key to write down.
 export async function createIdentity(passphrase: string, iterations = PBKDF2_ITERATIONS) {
@@ -292,14 +282,6 @@ export async function decryptContent(key: SpaceKey, data: Uint8Array, context: s
 export async function encryptTitle(key: SpaceKey, pageId: string, title: string) {
   const data = await encryptContent(key, utf8(title), contentContext("title", pageId, key.version));
   return JSON.stringify({ v: key.version, d: toBase64(data) });
-}
-export function titleVersion(cipher: string) {
-  try {
-    const parsed = JSON.parse(cipher) as { v?: unknown };
-    return typeof parsed.v === "number" ? parsed.v : null;
-  } catch {
-    return null;
-  }
 }
 export async function decryptTitle(keys: (version: number) => SpaceKey | undefined, pageId: string, cipher: string) {
   const parsed = JSON.parse(cipher) as { v: number; d: string };

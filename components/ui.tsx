@@ -46,7 +46,6 @@ import {
 import {
   createContext,
   useCallback,
-  useContext,
   useEffect,
   useRef,
   useState,
@@ -257,20 +256,6 @@ export function showError(kind: ErrorKind, detail?: string, options: ErrorOption
 export function reportError(error: unknown, options: ErrorOptions = {}) {
   const { kind, detail } = classifyError(error);
   showError(kind, detail, options);
-}
-// For dialogs that handle their own failures: the alert always goes into the
-// surrounding Modal (a toast outside of one). Passing null clears it.
-export function useDialogError() {
-  const set = useContext(DialogErrorContext);
-  return useCallback(
-    (error: unknown, retry?: () => void) => {
-      if (error === null) return set?.(null);
-      const { kind, detail } = classifyError(error);
-      if (set) set(errorView(kind, detail, retry));
-      else showError(kind, detail, { retry, toast: true });
-    },
-    [set],
-  );
 }
 export function ErrorAlert({
   error,

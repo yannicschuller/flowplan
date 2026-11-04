@@ -23,12 +23,12 @@ import {
   Stop,
   Play,
 } from "@phosphor-icons/react";
-import { useLocale, useT } from "../i18n";
+import { useT } from "../i18n";
 import { WidgetSkeleton } from "../skeleton";
 import { PageIcon } from "../ui";
 import { Sparkline } from "../sparkline";
 import { serverMessage } from "@/lib/i18n-errors";
-import { notificationUrl, pageLocationHash, parsePageLocation, type PageLocation } from "@/lib/page-location";
+import { notificationUrl, parsePageLocation, type PageLocation } from "@/lib/page-location";
 import { dueLabel, dueState } from "@/lib/task-due-plugin";
 import { useCaptureTargets } from "../capture-target";
 import { Select } from "../select";
@@ -36,7 +36,7 @@ import type { Bootstrap, Page, PageKind } from "@/lib/types";
 import type { Locale } from "@/lib/i18n";
 import type { HomeWidget, WidgetConfig } from "@/lib/home-layout-schema";
 import { widgetIcon, widgetName } from "./meta";
-import { clockTime, dayHeading, greeting, hours, localDay, longDate, relativeTime } from "./format";
+import { clockTime, dayHeading, greeting, hours, longDate, relativeTime } from "./format";
 
 // ---- What the widgets get from the start page ----
 
@@ -81,7 +81,6 @@ function useOpen() {
     if (target) env.openPage(target.pageId, target);
   };
 }
-const pageUrl = (pageId: string, rowId?: string | null) => `/${pageLocationHash({ pageId, ...(rowId ? { rowId } : {}) })}`;
 
 // The name of a kind of page; kinds added later get a plain "Page".
 export function kindLabel(kind: string, t: (de: string, en: string) => string) {
@@ -1279,6 +1278,3 @@ function InstanceWidget({ widget, data }: { widget: HomeWidget; data: Record<str
     </>
   );
 }
-
-// The day as the widgets see it (reset at local midnight by the clock).
-export const today = () => localDay();

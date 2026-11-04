@@ -114,7 +114,3 @@ export function watchDocument(key: string, clientId: string, send: (event: strin
     if (set && !set.size) documents.delete(key);
   };
 }
-
-export function documentWatchers(key: string) {
-  return documents.get(key)?.size || 0;
-}

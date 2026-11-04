@@ -80,7 +80,7 @@ export type FacilitationOptions = {
 
 export function useFacilitation(o: FacilitationOptions) {
   const t = useT();
-  const { pageId, doc, itemsMap, editable, userId } = o;
+  const { pageId, doc, itemsMap, editable } = o;
   const url = `/api/whiteboards/${pageId}/facilitation`;
   const [state, setState] = useState<FacilitationState | null>(null);
   const [panel, setPanel] = useState<"private" | "estimate" | null>(null);

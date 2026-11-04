@@ -20,7 +20,6 @@ type T = (de: string, en: string) => string;
 const account = (anchor: string) => settingsHash({ area: "settings", section: "account", anchor });
 
 export default function SecuritySection() {
-  const t = useT();
   const { mutate, onError } = useUserSettings();
   const [data, setData] = useState<MySecurity | null>(null);
   const [busy, setBusy] = useState(false);

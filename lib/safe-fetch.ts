@@ -97,13 +97,8 @@ export function pinnedLookup(allowPrivate: boolean) {
       done(null, list[0].address, list[0].family);
     });
 }
-// A POST to an outside address (webhooks), with the same pinned lookup and
-// no redirects. Resolves with the status code. With allowPrivate (webhooks
-// to the own network) plain http and internal addresses are fine.
-export function safePost(raw: string, body: string, headers: Record<string, string>, allowPrivate = false, timeout = 10_000) {
-  return safeSend(raw, body, headers, { allowPrivate, timeout }).then((r) => r.status);
-}
-// The same with another method (PUT for Matrix; GET, PATCH and DELETE for
+// A request to an outside address with the same pinned lookup and no
+// redirects, with any method (PUT for Matrix; GET, PATCH and DELETE for
 // calendar APIs) and the start of the answer (Slack's message ID), at most
 // `maxBytes` of it, with the answer's headers (Retry-After of chat apps).
 export function safeSend(

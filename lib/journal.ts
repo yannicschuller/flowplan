@@ -203,13 +203,6 @@ function removeDay(page: Page) {
   }
 }
 
-export function journalDays(journalId: string) {
-  return all<Pick<Page, "id" | "title" | "icon" | "journal_date" | "updated_at">>(
-    "SELECT id,title,icon,journal_date,updated_at FROM pages WHERE parent_id=? AND journal_date IS NOT NULL AND deleted_at IS NULL ORDER BY journal_date DESC",
-    journalId,
-  );
-}
-
 // What a new day starts with: the open tasks of the last day before it
 // (without the template's own tasks, which come back by themselves) and
 // the template. Reads only; rollJournal moves the tasks.

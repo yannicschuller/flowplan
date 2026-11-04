@@ -2,7 +2,6 @@
 // exports (PDF print view, EPUB, Word, Markdown). Drawing blocks and
 // notebook sheets become SVG pictures (lib/ink/svg.ts) with their typed and
 // recognised text; callers have checked that the page may be read.
-import { one } from "./db";
 import { drawBlockHeight, drawBlockId, drawBlockPaper, DRAW_BLOCK_WIDTH } from "./draw-block-node";
 import { blockPaperLayout, effectivePaper, paperLayout, paperSize, paperSvg } from "./notebook-paper";
 import { notebookPaper, notebookSheets } from "./notebook";
@@ -64,10 +63,6 @@ export function withInkPictures(html: string, page: Pick<Page, "id" | "kind" | "
     return `<div${attrs.replace(/\bclass="[^"]*"/, "")} class="ink-block-static">${body}</div>`;
   });
 }
-
-// The documents HTML of a page, if it has drawing blocks (exports read it).
-export const hasInkBlocks = (pageId: string) =>
-  String(one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", pageId)?.html || "").includes("data-ink-block");
 
 // The sheets of a published notebook: pictures, or the published PDF page
 // with the ink over it.

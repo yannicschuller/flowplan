@@ -137,7 +137,6 @@ const clipSchema = z.object({
   text: z.string().max(20_000).optional(),
   tags: z.array(z.string().trim().min(1).max(60)).max(20).optional(),
 });
-export type ClipInput = z.infer<typeof clipSchema>;
 
 const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const link = (url: string, title?: string) => `<a href="${esc(url)}">${esc(title?.trim() || url)}</a>`;

@@ -219,10 +219,6 @@ export function stripHiddenCells<T extends { cells?: unknown }>(
   const hidden = hiddenFieldsFor(user, page, fields || storedFields(page.id));
   return hidden.size ? rows.map((r) => ({ ...r, cells: stripCells(r.cells, hidden) })) : rows;
 }
-// Cells as an unauthenticated reader may see them.
-export function publicCells<T>(cells: T, fields: Field[]): T {
-  return stripCells(cells, hiddenFieldIds(publicViewer, fields));
-}
 export function publicHiddenFieldIds(fields: Field[]) {
   return hiddenFieldIds(publicViewer, fields);
 }
