@@ -494,3 +494,15 @@ label.hit-check {
     padding-inline: 4px;
   }
 }
+
+/* ===== Nothing widens the page sideways on phones (#98). The panes below
+   .main-scroll cut off what reaches past the screen's right edge; tables,
+   boards, timelines and the calendar keep their own sideways scrollers.
+   `clip`, not `hidden`: no scroll container, so sticky headers and pinned
+   columns still stick to .main-scroll, which keeps its vertical (momentum)
+   scrolling. ===== */
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) {
+  .main-scroll > * {
+    overflow-x: clip;
+  }
+}

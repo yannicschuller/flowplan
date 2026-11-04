@@ -1918,6 +1918,11 @@ aside[data-callout][data-callout-color="red"] { --callout: #e03131; }
 }
 .data-table-scroll {
   overflow-x: auto;
+  /* The containing block of what is positioned inside the table (the
+     screen-reader labels of the calculation row, .sr-only): otherwise they
+     hang on .scroll-fade outside the scroller, are not clipped by it and
+     widen the page by the whole table (#98). */
+  position: relative;
 }
 /* Horizontal scrollers (tables, boards): a scrollbar that stays visible and,
    while more lies to the right, a fade at the edge (components/scroll-fade.tsx). */

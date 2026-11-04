@@ -169,3 +169,86 @@ test("a swipe on a timeline bar scrolls the timeline instead of moving the bar",
   await expect(bar).toHaveAttribute("aria-label", "Lang: 2026-09-21 bis 2026-10-10");
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });
+
+// #98, follow-up: on the table view the whole page could be pushed sideways
+// into empty space. The screen-reader labels of the calculation row
+// (.sr-only, position: absolute) hung on .scroll-fade outside the table's
+// scroller, so they were not clipped by it and made .main-scroll as wide as
+// the table. Now only the views' own scrollers move sideways.
+test("on a phone the page never scrolls sideways, only the views' own scrollers do", async ({ page }, info) => {
+  test.skip(info.project.name !== "mobile", "The phone layout.");
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const { command, database } = await fixture(page);
+  const views: Record<string, { view: Record<string, unknown>; scroller: string }> = {
+    table: { view: { id: "table", name: "Tabelle", type: "table" }, scroller: ".data-table-scroll" },
+    board: { view: { id: "board", name: "Board", type: "board", groupBy: "c" }, scroller: ".board" },
+    calendar: {
+      view: { id: "cal", name: "Kalender", type: "calendar", dateField: "start", calendar: { mode: "month", timeZone: "UTC" } },
+      scroller: ".calendar-scroll",
+    },
+    timeline: {
+      view: { id: "timeline", name: "Timeline", type: "timeline", dateField: "start", endDateField: "end" },
+      scroller: ".timeline-scroll",
+    },
+  };
+  const day = (offset: number) => new Date(Date.now() + offset * 86400000).toISOString().slice(0, 10);
+  // What can scroll sideways: the document, .main-scroll and the panes in it.
+  const pageOverflow = () =>
+    page.evaluate(() => {
+      const main = document.querySelector<HTMLElement>(".main-scroll")!;
+      const doc = document.scrollingElement!;
+      main.scrollLeft = 2000;
+      doc.scrollLeft = 2000;
+      const result = {
+        doc: doc.scrollWidth - doc.clientWidth,
+        main: main.scrollWidth - main.clientWidth,
+        mainLeft: main.scrollLeft,
+        docLeft: doc.scrollLeft,
+      };
+      main.scrollLeft = 0;
+      return result;
+    });
+  for (const [kind, { view, scroller }] of Object.entries(views)) {
+    const id = await database(`Breit ${kind}`, view);
+    for (let i = 1; i <= 8; i++)
+      await command({
+        action: "row.create",
+        pageId: id,
+        cells: { title: `Eintrag mit längerem Titel ${i}`, start: day(i - 4), end: day(i), a: `A${i}`, b: `B${i}`, c: `Kunde ${i % 4}` },
+      });
+    await page.goto(`/#page=${id}`);
+    const own = page.locator(scroller).first();
+    await expect(own).toBeVisible();
+    await page.waitForTimeout(300);
+    expect(await pageOverflow(), kind).toEqual({ doc: 0, main: 0, mainLeft: 0, docLeft: 0 });
+    // The view's own scroller is wider than the screen and still scrolls.
+    if (kind !== "calendar" || (await own.evaluate((el) => el.scrollWidth > el.clientWidth))) {
+      expect(await own.evaluate((el) => el.scrollWidth - el.clientWidth), kind).toBeGreaterThan(100);
+      expect(await own.evaluate((el) => ((el.scrollLeft = 200), el.scrollLeft)), kind).toBeGreaterThan(100);
+      expect(await pageOverflow(), `${kind}, scrolled`).toEqual({ doc: 0, main: 0, mainLeft: 0, docLeft: 0 });
+      await own.evaluate((el) => (el.scrollLeft = 0));
+    }
+    if (kind === "table") {
+      // The cause itself is gone, not only cut off: without the phone clip
+      // on the panes the page is still no wider than the screen.
+      await page.addStyleTag({ content: ".main-scroll > * { overflow-x: visible !important; }" });
+      expect(await pageOverflow(), "table, unclipped").toEqual({ doc: 0, main: 0, mainLeft: 0, docLeft: 0 });
+      // The pinned title column still sticks to the scroller's left edge
+      // while the table scrolls (the selection column scrolls away).
+      const title = page.locator('th[data-field-id="title"]');
+      await own.evaluate((el) => (el.scrollLeft = 300));
+      const left = (await own.boundingBox())!.x;
+      expect(Math.abs((await title.boundingBox())!.x - left)).toBeLessThan(2);
+      expect(await title.evaluate((el) => getComputedStyle(el).position)).toBe("sticky");
+      await own.evaluate((el) => (el.scrollLeft = 0));
+      // Inside a record opened from the table: neither the dialog nor the page.
+      await page.locator(".row-title-link").first().tap();
+      const dialog = page.getByRole("dialog", { name: "Eintrag", exact: true });
+      await expect(dialog).toBeVisible();
+      expect(await dialog.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
+      expect(await pageOverflow(), "record").toEqual({ doc: 0, main: 0, mainLeft: 0, docLeft: 0 });
+    }
+  }
+  expect(errors).toEqual([]);
+});
