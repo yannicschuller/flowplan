@@ -73,5 +73,102 @@ test("the mobile app signs in with passkeys and SSO through the browser", async 
   const page = await app.newPage();
   await page.goto(origin + "/");
   await expect(page.getByRole("link", { name: "Mit Passkey anmelden" })).toHaveAttribute("href", "/api/auth/desktop");
+  // Password managers fill in nothing in the app's web view (flowplan-app#5):
+  // the same hand-off shows the password form in the system browser.
+  await expect(page.getByRole("link", { name: "Im Browser anmelden" })).toHaveAttribute("href", "/api/auth/desktop");
+  await app.close();
+  // In a browser the page signs in itself.
+  const web = await browser.newContext();
+  const plain = await web.newPage();
+  await plain.goto(origin + "/");
+  await expect(plain.getByRole("button", { name: "Anmelden", exact: true })).toBeVisible();
+  await expect(plain.getByRole("link", { name: "Im Browser anmelden" })).toHaveCount(0);
+  await web.close();
+});
+
+// "Im Browser anmelden" (flowplan-app#5): in the system browser the full
+// sign-in with password and the code from the authenticator app – where
+// password managers fill in both – ends in the hand-off to the app.
+test("the mobile app signs in with password and two-factor code through the browser", async ({ browser }, testInfo) => {
+  test.setTimeout(120_000);
+  test.skip(!process.env.FLOWPLAN_DATA_DIR, "Needs the test server data directory.");
+  test.skip(testInfo.project.name !== "mobile", "One run covers it; the instance setting is global.");
+  const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
+  const { totpCode } = await import("../../lib/totp");
+  const { DatabaseSync } = await import("node:sqlite");
+  const { join } = await import("node:path");
+  const db = new DatabaseSync(join(process.env.FLOWPLAN_DATA_DIR!, "flowplan.sqlite"));
+  db.exec("PRAGMA busy_timeout=5000;");
+  const signup = (on: boolean) =>
+    db
+      .prepare("INSERT INTO instance_settings(key,value) VALUES('allowSignup',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")
+      .run(JSON.stringify(on));
+  // The instance is set up already (otherwise the account would be its first).
+  db.prepare("INSERT OR IGNORE INTO users(id,subject,name,email) VALUES(?,?,?,?)").run(
+    "00000000-0000-4000-8000-0000000000aa",
+    "seed:existing",
+    "Bestehend",
+    "existing@example.test",
+  );
+  const account = { name: "App Passwort", email: `app-totp-${Date.now()}@example.test`, password: "ein-langes-passwort" };
+  const setup = await browser.newContext();
+  try {
+    signup(true);
+    const registered = await setup.request.post(`${origin}/api/auth/register`, { headers: { origin }, data: account });
+    expect(registered.ok(), await registered.text()).toBe(true);
+  } finally {
+    signup(false);
+    db.close();
+  }
+  // An authenticator app for the account.
+  const started = await setup.request.post(`${origin}/api/auth/totp-setup`, { headers: { origin }, data: {} });
+  expect(started.ok(), await started.text()).toBe(true);
+  const { secret } = (await started.json()) as { secret: string };
+  const confirmed = await setup.request.post(`${origin}/api/auth/totp-confirm`, {
+    headers: { origin },
+    data: { code: totpCode(secret, Date.now()) },
+  });
+  expect(confirmed.ok(), await confirmed.text()).toBe(true);
+  await setup.close();
+
+  // The app's sign-in sheet opens the hand-off: the sign-in page with the password form.
+  const verifier = randomBytes(32).toString("base64url");
+  const challenge = createHash("sha256").update(verifier).digest("base64url");
+  const sheet = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await sheet.newPage();
+  await page.goto(`${origin}/api/auth/desktop?challenge=${challenge}`);
+  await expect(page).toHaveURL(new RegExp(`desktop=${challenge}`));
+  await expect(page.locator("input[name=email]")).toHaveAttribute("autocomplete", "username webauthn");
+  await expect(page.locator("input[name=password]")).toHaveAttribute("autocomplete", "current-password");
+  await page.locator("input[name=email]").fill(account.email);
+  await page.locator("input[name=password]").fill(account.password);
+  await page.getByRole("button", { name: "Anmelden", exact: true }).click();
+  // The second step, with the code a password manager fills in.
+  const code = page.locator("input[name=code]");
+  await expect(code).toHaveAttribute("autocomplete", "one-time-code", { timeout: 20_000 });
+  // A step later than the one the setup used (each step counts once).
+  await code.fill(totpCode(secret, Date.now() + 30_000));
+  await page.getByRole("button", { name: "Bestätigen" }).click();
+  // Back to the hand-off, not into the workspace.
+  await expect(page.getByRole("heading", { name: "Bei der Flowplan-App anmelden" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText(account.email)).toBeVisible();
+  await page.getByRole("button", { name: "In der App anmelden" }).click();
+  const handoff = new URL(String(await page.getByRole("link", { name: "Flowplan-App öffnen" }).getAttribute("href")));
+  expect(handoff.searchParams.get("challenge")).toBe(challenge);
+
+  // The app redeems the code: its web view is signed in as that account.
+  const app = await browser.newContext({
+    userAgent:
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 FlowplanMobile/1.0.3",
+  });
+  const redeemed = await app.request.post(`${origin}/api/auth/desktop-redeem`, {
+    headers: { origin },
+    data: { code: handoff.searchParams.get("code"), verifier },
+  });
+  expect(redeemed.ok(), await redeemed.text()).toBe(true);
+  const boot = await app.request.get(`${origin}/api/bootstrap`);
+  expect(boot.ok()).toBe(true);
+  expect(JSON.stringify(await boot.json())).toContain(account.email);
+  await sheet.close();
   await app.close();
 });
