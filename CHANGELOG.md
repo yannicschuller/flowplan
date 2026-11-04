@@ -2,6 +2,20 @@
 
 All releases of Flowplan, newest first. Generated from the commits by the release workflow.
 
+## v0.8.7 – 2026-11-04
+
+- Test: the row queue does not depend on timing after a failure ([24be621](https://github.com/yannicschuller/flowplan/commit/24be6217a61821b0d17bba9172112f32f2245d81))
+- Phones: a database table no longer pushes the whole page sideways (#98) ([c3629b6](https://github.com/yannicschuller/flowplan/commit/c3629b67947ce0a529490d6f49437eae51d0ebee))
+- Database: quick edits of one record no longer fail on a stale version (#104) ([012b89e](https://github.com/yannicschuller/flowplan/commit/012b89e514da39ada5fb3b8501bb7aee663eb498))
+- Help docs: the new whiteboard toolbar ([126a685](https://github.com/yannicschuller/flowplan/commit/126a68536f429c8099ca6fd779a1d9329eb1ba96))
+- Whiteboard: a short tool rail, a "+" panel, moderation top right ([e40d476](https://github.com/yannicschuller/flowplan/commit/e40d476c4144e0e5f1b7650511f12d6571038c09))
+- FLOWPLAN_SETUP_TOKEN: the first account only with the setup link; admin group matched literally ([02ea651](https://github.com/yannicschuller/flowplan/commit/02ea65149ad59e4754ebc0e54a7616a3536a88e0))
+- Visual baselines from ubuntu-latest ([5ce6bed](https://github.com/yannicschuller/flowplan/commit/5ce6bedd74f6f8b69ecbeec38eae5349f002bf7e))
+- Visual baselines: new start page shots to come from the runner ([ae733d2](https://github.com/yannicschuller/flowplan/commit/ae733d2db7832b0d3e711e1c52c0d58da75e344b))
+- Visual baselines from ubuntu-latest ([d6b17cf](https://github.com/yannicschuller/flowplan/commit/d6b17cf875a673e213a7126ba8fbb98e1bcd5739))
+- Security incidents: space below "Nichts offen"; fixed edit times in the visual seed ([890122f](https://github.com/yannicschuller/flowplan/commit/890122fc1a4805aacd1893f6d65ee1c8b6ebe3fd))
+- Browser specs: catch up with the current app, fix what they found ([6c84d9e](https://github.com/yannicschuller/flowplan/commit/6c84d9e7eccb9596724ccce550495e7b234b177e))
+
 ## v0.8.6 – 2026-11-04
 
 - Tests: stable SCIM paging order and a push-status test free of same-millisecond races ([7b9f485](https://github.com/yannicschuller/flowplan/commit/7b9f48582997c8c91045f25669e0a37e8452af14))
