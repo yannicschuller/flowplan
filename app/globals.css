@@ -29755,6 +29755,11 @@ label.ws-search input {
   display: grid;
   gap: 10px;
 }
+/* "Nichts offen" above the resolved incidents: the same space as below the
+   notification note. */
+.settings-empty + .security-incidents:not(:empty) {
+  margin-top: 14px;
+}
 .security-incident {
   display: grid;
   gap: 6px;
