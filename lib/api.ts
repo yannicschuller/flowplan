@@ -152,7 +152,7 @@ import { instanceSettings, saveInstanceSettings } from "./instance-settings";
 import { incidentThreshold, notificationPrefs, resetNotificationPrefs, setEmailForAll, setNotificationPref } from "./notification-prefs";
 import { setWeeklyDigest, weeklyDigestPrefs } from "./weekly-digest";
 import { saveShortcuts, userShortcuts } from "./user-shortcuts";
-import { homeLayout, resetHomeLayout, saveHomeLayout, saveHomeNote, setTeamDefault } from "./home-layout";
+import { homeLayout, resetHomeLayout, saveHomeConfig, saveHomeLayout, saveHomeNote, setTeamDefault } from "./home-layout";
 import { sharePage, updatePageShare } from "./page-share";
 import { limitInviter, mailAllowed } from "./action-limits";
 import { templateCategoryIds } from "./template-categories";
@@ -754,6 +754,9 @@ export function command(
         break;
       case "home.note":
         result = saveHomeNote(user, b);
+        break;
+      case "home.config":
+        result = saveHomeConfig(user, b);
         break;
       case "home.default":
         result = setTeamDefault(user, b);
@@ -3266,7 +3269,10 @@ const rowVersionActions = new Set([
   "row.move",
   "row.schedule",
 ]);
-const editActions = new Set([
+// Commands that change a page's content (`pageId`): recorded as an edit
+// (lib/page-activity.ts); "My activity" counts them from the activity log
+// (lib/my-activity.ts).
+export const editActions = new Set([
   "document.sync",
   "database.update",
   "database.settings",

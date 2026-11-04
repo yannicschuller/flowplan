@@ -14,7 +14,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 88) return;
+  if (globalDb.flowplanSchema === 89) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -1125,7 +1125,15 @@ function migrate(d: DatabaseSync) {
   d.exec(`CREATE TABLE IF NOT EXISTS sidebar_state(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,keys TEXT NOT NULL DEFAULT '[]',updated_at INTEGER NOT NULL,PRIMARY KEY(user_id,workspace_id));
     CREATE INDEX IF NOT EXISTS sidebar_state_workspace ON sidebar_state(workspace_id);`);
   migrateIdentities(d);
-  globalDb.flowplanSchema = 88;
+  // Schema 89 – "My activity" on the start page (#114, lib/my-activity.ts)
+  // reads one person's pages, versions, activity log entries and last
+  // edits of a period: by person and time instead of scanning the tables.
+  // Nothing new is recorded.
+  d.exec(`CREATE INDEX IF NOT EXISTS pages_creator ON pages(created_by,created_at);
+    CREATE INDEX IF NOT EXISTS snapshots_author ON snapshots(created_by,created_at);
+    CREATE INDEX IF NOT EXISTS audit_actor ON audit(actor_id,created_at);
+    CREATE INDEX IF NOT EXISTS page_edits_user ON page_edits(user_id,at);`);
+  globalDb.flowplanSchema = 89;
 }
 // Schema 88 – sign-in identities of an account (#101, lib/identities.ts):
 // every OpenID Connect identity (issuer and subject) an account signs in

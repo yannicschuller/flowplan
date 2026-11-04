@@ -24,6 +24,7 @@ import { rewriteDocument, rewriteSchema } from "./document-rewrite";
 import { visibleFields } from "./field-access";
 import { lockedPageIds, requireUnlocked } from "./journal-extras";
 import { recordPageEdit } from "./page-activity";
+import { myActivity as myActivityData } from "./my-activity";
 import { pagePreview } from "./page-preview";
 import { pageRole, requireMember, requirePage } from "./permissions";
 import { hiddenRowIds } from "./row-access";
@@ -319,7 +320,11 @@ const stats: Builder<"stats"> = (ctx, scope) => {
 
 const instance: Builder<"instance"> = (ctx) => widgetData(ctx, "incident", {}, HOME_WIDGET_BYTES);
 
-const builders: { [K in ServerWidgetKind]: Builder<K> } = { tasks, calendar, journal, database, pinned, focus, habits, counter, activity, stats, instance };
+// The person's own pages created and edited (lib/my-activity.ts): only
+// their numbers, never anyone else's.
+const myActivity: Builder<"myActivity"> = (ctx, scope, config) => myActivityData(scope.user, scope.workspaceId, ctx.today, ctx.zone, config.period);
+
+const builders: { [K in ServerWidgetKind]: Builder<K> } = { tasks, calendar, journal, database, pinned, focus, habits, counter, activity, stats, instance, myActivity };
 
 export const homeDataSchema = z.object({
   workspaceId: uuid,

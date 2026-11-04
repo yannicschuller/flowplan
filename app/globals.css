@@ -28683,6 +28683,67 @@ label.ws-search input {
   font-weight: 650;
   font-variant-numeric: tabular-nums;
 }
+/* "My activity" (#114): the period on the heading's line, two figures with
+   a small chart each – side by side when there is room. */
+.kind-myActivity .home-widget-head {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+.home-mine-period {
+  margin-left: auto;
+  padding: 2px;
+}
+/* One column: the control goes under the heading, aligned with it. */
+.home-widget.size-s .home-mine-period {
+  margin-left: 0;
+}
+.home-mine-period label {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+.home-mine-period label:has(input:focus-visible) {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+.home-mine {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+}
+.home-mine-figure {
+  min-width: 0;
+  padding: 10px 12px 6px;
+  border-radius: 9px;
+  background: var(--surface);
+}
+.home-mine-figure h3 {
+  margin: 0;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.home-mine-value {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin: 2px 0 4px;
+}
+.home-mine-value strong {
+  font-size: 22px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.home-mine-value span {
+  font-size: 12px;
+  color: var(--secondary);
+  font-variant-numeric: tabular-nums;
+}
+.home-mine-note {
+  margin: 6px 0 0;
+  font-size: 11.5px;
+  color: var(--muted);
+}
 .home-instance {
   display: flex;
   align-items: center;

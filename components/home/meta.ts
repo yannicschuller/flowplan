@@ -1,6 +1,7 @@
 // What each start page widget is called, its symbol and what it shows (the
 // widget gallery of the editor and the default headings).
 import {
+  ChartBar,
   ChartLineUp,
   CheckSquare,
   Clock,
@@ -150,6 +151,12 @@ export const widgetMeta: Record<HomeWidgetKind, { icon: Icon; name: Text; descri
     description: { de: "Backups, Fehlerquote, Hintergrunddienste und Speicher – für die Administration.", en: "Backups, error rate, background workers and storage – for administrators." },
     group: "tools",
     adminOnly: true,
+  },
+  myActivity: {
+    icon: ChartBar,
+    name: { de: "Meine Aktivität", en: "My activity" },
+    description: { de: "Seiten, die du erstellt und bearbeitet hast – pro Woche, Monat oder Jahr. Nur für dich sichtbar.", en: "Pages you created and edited – per week, month or year. Visible only to you." },
+    group: "overview",
   },
 };
 export const groupNames: Record<WidgetGroup, Text> = {

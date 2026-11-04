@@ -40,9 +40,10 @@ export const homeWidgetKinds = [
   "stats",
   "links",
   "instance",
+  "myActivity",
 ] as const;
 export type HomeWidgetKind = (typeof homeWidgetKinds)[number];
-export const serverWidgetKinds = ["tasks", "journal", "calendar", "database", "pinned", "focus", "habits", "counter", "activity", "stats", "instance"] as const satisfies readonly HomeWidgetKind[];
+export const serverWidgetKinds = ["tasks", "journal", "calendar", "database", "pinned", "focus", "habits", "counter", "activity", "stats", "instance", "myActivity"] as const satisfies readonly HomeWidgetKind[];
 export type ServerWidgetKind = (typeof serverWidgetKinds)[number];
 export const isServerKind = (kind: HomeWidgetKind): kind is ServerWidgetKind => (serverWidgetKinds as readonly string[]).includes(kind);
 
@@ -51,6 +52,9 @@ export const isServerKind = (kind: HomeWidgetKind): kind is ServerWidgetKind => 
 // a widget never gets wider than the grid.
 export const widgetSizes = ["s", "m", "l", "full"] as const;
 export type WidgetSize = (typeof widgetSizes)[number];
+
+export const activityPeriods = ["week", "month", "year"] as const;
+export type ActivityPeriod = (typeof activityPeriods)[number];
 
 const uuid = z.uuid();
 const viewId = z.string().min(1).max(100);
@@ -139,6 +143,9 @@ export const widgetConfigs = {
       .default([]),
   }),
   instance: z.object({ title }),
+  // Pages the person created and edited (lib/my-activity.ts), per week,
+  // month or year – chosen on the widget itself (home.config).
+  myActivity: z.object({ title, period: z.enum(activityPeriods).default("week") }),
 } satisfies Record<HomeWidgetKind, z.ZodType>;
 export type WidgetConfig<K extends HomeWidgetKind> = z.infer<(typeof widgetConfigs)[K]>;
 
@@ -164,6 +171,7 @@ export const defaultSizes: Record<HomeWidgetKind, WidgetSize> = {
   stats: "m",
   links: "s",
   instance: "s",
+  myActivity: "m",
 };
 
 const widgetId = z.string().regex(/^[a-z0-9-]{1,40}$/i);
@@ -300,6 +308,13 @@ function repairAppearance(raw: unknown): HomeAppearance {
   }
   return out;
 }
+
+// Settings a widget changes on the start page itself, outside the editor
+// (command home.config): only these keys, only for these kinds.
+export const inlineConfigs = {
+  myActivity: z.object({ period: z.enum(activityPeriods) }).strict(),
+} satisfies Partial<Record<HomeWidgetKind, z.ZodObject>>;
+export type InlineKind = keyof typeof inlineConfigs;
 
 // What the browser sends when the person saves: strictly checked.
 export const saveSchema = z.object({
