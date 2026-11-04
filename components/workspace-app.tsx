@@ -458,6 +458,9 @@ export default function WorkspaceApp({
     [parent, setParent] = useState<string | null>(null),
     [spaceId, setSpaceId] = useState(initial.spaces[0]?.id || ""),
     [templates, setTemplates] = useState(false),
+    // Opened from the "New page" dialog (#112): where the page goes, and
+    // back to the dialog when the gallery is closed.
+    [templatesFor, setTemplatesFor] = useState<{ spaceId: string; parent: string | null } | null>(null),
     [share, setShare] = useState(false),
     [pageExport, setPageExport] = useState(false),
     // The page shown as Markdown ("Als Markdown bearbeiten").
@@ -5000,7 +5003,7 @@ export default function WorkspaceApp({
           <div className="type-picker">
             <button
               type="button"
-              className={newKind === "document" ? "chosen" : ""}
+              className={!starterTemplate && newKind === "document" ? "chosen" : ""}
               onClick={() => {
                 setNewKind("document");
                 setStarterTemplate(null);
@@ -5012,7 +5015,7 @@ export default function WorkspaceApp({
             </button>
             <button
               type="button"
-              className={newKind === "database" ? "chosen" : ""}
+              className={!starterTemplate && newKind === "database" ? "chosen" : ""}
               onClick={() => {
                 if (newKind !== "database") setDatabaseChoice(rememberedDatabaseKind());
                 setNewKind("database");
@@ -5025,7 +5028,7 @@ export default function WorkspaceApp({
             </button>
             <button
               type="button"
-              className={newKind === "whiteboard" ? "chosen" : ""}
+              className={!starterTemplate && newKind === "whiteboard" ? "chosen" : ""}
               onClick={() => {
                 setNewKind("whiteboard");
                 setStarterTemplate(null);
@@ -5037,7 +5040,7 @@ export default function WorkspaceApp({
             </button>
             <button
               type="button"
-              className={newKind === "journal" ? "chosen" : ""}
+              className={!starterTemplate && newKind === "journal" ? "chosen" : ""}
               onClick={() => {
                 setNewKind("journal");
                 setStarterTemplate(null);
@@ -5047,15 +5050,33 @@ export default function WorkspaceApp({
               <strong>{t("Journal", "Journal")}</strong>
               <small>{t("Jeden Tag eine Seite, offene Aufgaben wandern mit", "A page every day, open tasks move along")}</small>
             </button>
-            <button type="button" className={newKind === "dashboard" ? "chosen" : ""} onClick={() => { setNewKind("dashboard"); setStarterTemplate(null); }}>
+            <button type="button" className={!starterTemplate && newKind === "dashboard" ? "chosen" : ""} onClick={() => { setNewKind("dashboard"); setStarterTemplate(null); }}>
               <Gauge size={26} />
               <strong>{t("Dashboard", "Dashboard")}</strong>
               <small>{t("Kennzahlen, Diagramme und Aufgaben auf einen Blick", "Metrics, charts and tasks at a glance")}</small>
             </button>
-            <button type="button" className={newKind === "notebook" ? "chosen" : ""} onClick={() => { setNewKind("notebook"); setStarterTemplate(null); }}>
+            <button type="button" className={!starterTemplate && newKind === "notebook" ? "chosen" : ""} onClick={() => { setNewKind("notebook"); setStarterTemplate(null); }}>
               <NotePencil size={26} />
               <strong>{t("Notizbuch", "Notebook")}</strong>
               <small>{t("Handschrift auf Papier oder PDFs, mit Stift", "Handwriting on paper or PDFs, with a pen")}</small>
+            </button>
+            {/* From a template (#112): the gallery with the built-in and the saved templates. */}
+            <button
+              type="button"
+              className={`type-picker-template${starterTemplate ? " chosen" : ""}`}
+              onClick={() => {
+                setTemplatesFor({ spaceId, parent });
+                setCreate(false);
+                setTemplates(true);
+              }}
+            >
+              <SquaresFour size={26} />
+              <strong>{starterTemplate ? t("Vorlage gewählt", "Template chosen") : t("Aus Vorlage", "From a template")}</strong>
+              <small>
+                {starterTemplate
+                  ? t("Tippe, um eine andere Vorlage zu wählen", "Tap to choose another template")
+                  : t("Besprechungsnotizen, Projektsteckbrief, Spezifikation … und deine gespeicherten Vorlagen", "Meeting notes, project brief, spec … and your saved templates")}
+              </small>
             </button>
           </div>
           {newKind === "notebook" && (
@@ -5656,7 +5677,14 @@ export default function WorkspaceApp({
       </Modal>
       <Modal
         open={templates}
-        onClose={() => setTemplates(false)}
+        onClose={() => {
+          setTemplates(false);
+          // Opened from the "New page" dialog: back to it.
+          if (templatesFor) {
+            setTemplatesFor(null);
+            setCreate(true);
+          }
+        }}
         title={t("Vorlagen", "Templates")}
       >
         <p className="muted">
@@ -5686,7 +5714,10 @@ export default function WorkspaceApp({
                   setNewTitle(template.name);
                   setStarterTemplate(templateKey);
                   setNewKind(template.kind as PageKind);
-                  setParent(null);
+                  // From the "New page" dialog the page keeps its place.
+                  if (templatesFor) setSpaceId(templatesFor.spaceId);
+                  setParent(templatesFor?.parent ?? null);
+                  setTemplatesFor(null);
                   setCreate(true);
                 }}
               >
@@ -5711,12 +5742,14 @@ export default function WorkspaceApp({
             const r = await act({
               action: "page.create",
               workspaceId: boot.workspace.id,
-              spaceId: boot.spaces[0].id,
+              spaceId: templatesFor?.spaceId ?? boot.spaces[0].id,
+              ...(templatesFor?.parent ? { parentId: templatesFor.parent } : {}),
               title: t.name,
               kind: t.kind,
               templateId: t.id,
             });
             if (r?.id) {
+              setTemplatesFor(null);
               setTemplates(false);
               void openPage(String(r.id));
             }
