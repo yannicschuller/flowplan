@@ -1,4 +1,13 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+
+// The view's search: the "Suchen" chip turns into the field (and folds back
+// when it is left empty).
+async function databaseSearch(page: Page) {
+  const field = page.getByLabel("Datenbank durchsuchen", { exact: true });
+  if (!(await field.isVisible()))
+    await page.locator("button.toolbar-chip", { hasText: "Suchen" }).first().click();
+  return field;
+}
 test("workspace, documents, databases and mobile navigation", async ({
   page,
 }, testInfo) => {
@@ -32,7 +41,9 @@ test("workspace, documents, databases and mobile navigation", async ({
     .getByRole("button", { name: "Block hinzufügen", exact: true })
     .click();
   await page
-    .getByRole("button", { name: "Aufgabenliste Schritt für Schritt abhaken" })
+    .locator(".slash-menu")
+    .getByRole("option", { name: /^Aufgabenliste/ })
+    .first()
     .click();
   await expect(page.locator(".tiptap")).toBeFocused();
   await page.keyboard.type("Erste Aufgabe");
@@ -42,7 +53,7 @@ test("workspace, documents, databases and mobile navigation", async ({
     fullPage: true,
   });
   if (testInfo.project.name === "mobile")
-    await page.getByRole("button", { name: "Navigation öffnen" }).click();
+    await page.locator(".topbar").getByRole("button", { name: "Navigation öffnen" }).click();
   await page
     .getByRole("button", { name: "Produkt-Roadmap", exact: true })
     .first()
@@ -265,6 +276,7 @@ test("sidebar moves pages and browser history restores the selected page", async
     await expect(page.locator(".sidebar")).not.toBeVisible();
   }
   await page
+    .locator(".topbar")
     .getByRole("button", { name: "Navigation öffnen", exact: true })
     .click();
   if (testInfo.project.name === "desktop") {
@@ -279,6 +291,12 @@ test("sidebar moves pages and browser history restores the selected page", async
       )
       .toBe(parent.id);
   }
+  // The open page itself starts folded in the tree (#97).
+  const parentRow = page.locator(`.page-nav[data-page-id="${parent.id}"]`);
+  if ((await parentRow.getAttribute("aria-expanded")) === "false")
+    await parentRow
+      .getByRole("button", { name: "Unterseiten öffnen", exact: true })
+      .click();
   await page
     .locator(`[data-page-id="${child.id}"]`)
     .getByRole("button", { name: "Navigation child", exact: true })
@@ -440,6 +458,7 @@ test("content archives download and restore through settings with files intact",
   await page.goto("/");
   if (testInfo.project.name === "mobile")
     await page
+      .locator(".topbar")
       .getByRole("button", { name: "Navigation öffnen", exact: true })
       .click();
   await page.locator(".workspace-switch").click();
@@ -448,6 +467,7 @@ test("content archives download and restore through settings with files intact",
   await expect(page.locator(".workspace-switch")).toContainText(title);
   if (testInfo.project.name === "mobile")
     await page
+      .locator(".topbar")
       .getByRole("button", { name: "Navigation öffnen", exact: true })
       .click();
   await page
@@ -600,7 +620,8 @@ test("bulk editing and per-view columns work on desktop and mobile", async ({
       .poll(async () => (await read()).database.views[0].columnWidths.title)
       .toBe(380);
   }
-  await page.getByText("Bulk first", { exact: true }).click();
+  // The row's title (pages with a similar title are suggested elsewhere).
+  await page.locator(".row-title-text", { hasText: /^Bulk first$/ }).click();
   await expect(
     page.getByRole("dialog", { name: "Eintrag", exact: true }),
   ).toBeVisible();
@@ -672,7 +693,9 @@ test("form designer publishes required questions and custom confirmation", async
     kind: "database",
   });
   await page.goto("/#page=" + database.id);
-  await page.getByRole("button", { name: "Formular", exact: true }).click();
+  // Seven views: the ones beyond the fifth are under "Weitere".
+  await page.getByRole("button", { name: /^Weitere Ansichten/ }).click();
+  await page.getByRole("menuitem", { name: "Formular" }).click();
   await page
     .getByRole("button", { name: "Formular gestalten", exact: true })
     .click();
@@ -851,6 +874,7 @@ test("saved page templates create complete independent databases from the galler
   await expect(save).not.toBeVisible();
   if (testInfo.project.name === "mobile")
     await page
+      .locator(".topbar")
       .getByRole("button", { name: "Navigation öffnen", exact: true })
       .click();
   await page.getByRole("button", { name: "Vorlagen", exact: true }).click();
@@ -987,6 +1011,7 @@ test("saved template management renames, changes visibility, deletes and restore
   await page.goto("/");
   if (testInfo.project.name === "mobile")
     await page
+      .locator(".topbar")
       .getByRole("button", { name: "Navigation öffnen", exact: true })
       .click();
   await page.getByRole("button", { name: "Vorlagen", exact: true }).click();
@@ -2144,9 +2169,9 @@ test("chart views aggregate filtered rows, persist settings, export and open sou
     page.getByRole("dialog", { name: "Eintrag", exact: true }),
   ).toBeVisible();
   await page.keyboard.press("Escape");
-  await page.getByLabel("Datenbank durchsuchen", { exact: true }).fill("Alpha");
+  await (await databaseSearch(page)).fill("Alpha");
   await expect(chart.locator("tbody tr")).toHaveText(["Open31"]);
-  await page.getByLabel("Datenbank durchsuchen", { exact: true }).fill("");
+  await (await databaseSearch(page)).fill("");
   await configure();
   await dialog
     .getByRole("combobox", { name: "Diagrammtyp", exact: true })
@@ -2381,14 +2406,13 @@ test("feed views show rich documents, load more entries and preserve searchable 
     .getByRole("button", { name: "Weitere 1 Einträge anzeigen", exact: true })
     .click();
   await expect(feed.getByRole("article")).toHaveCount(21);
-  await page
-    .getByLabel("Datenbank durchsuchen", { exact: true })
+  await (await databaseSearch(page))
     .fill("Suchnadel");
   await expect(feed.getByRole("article")).toHaveCount(1);
   await expect(
     feed.getByRole("article", { name: "Feed Beta", exact: true }),
   ).toBeVisible();
-  await page.getByLabel("Datenbank durchsuchen", { exact: true }).fill("");
+  await (await databaseSearch(page)).fill("");
   await expect(feed.getByRole("article")).toHaveCount(20);
   await alpha
     .getByRole("button", { name: "1 Kommentare zu Feed Alpha", exact: true })
@@ -2845,12 +2869,12 @@ test("grouped tables and lists collapse independently, select visible rows and m
     .getByRole("button", { name: "Gruppe A einklappen", exact: true })
     .click();
   await expect(a.locator(".record-list-item")).toHaveCount(0);
-  await page.getByLabel("Datenbank durchsuchen", { exact: true }).fill("Alpha");
+  await (await databaseSearch(page)).fill("Alpha");
   await expect(page.locator(".record-list-item")).toHaveCount(1);
   await expect(page.locator(".group-view-toolbar")).toContainText(
     "2 Gruppen · 1 Einträge",
   );
-  await page.getByLabel("Datenbank durchsuchen", { exact: true }).fill("");
+  await (await databaseSearch(page)).fill("");
   await page
     .getByRole("button", { name: "Alle ausklappen", exact: true })
     .click();
@@ -2936,7 +2960,7 @@ test("inline math edits in sentences, validates, supports undo and renders on sh
   await expect
     .poll(async () => (await read()).html)
     .toMatch(
-      /<p>Vor <span data-math="\\frac\{a\}\{b\}" class="math-inline">.*<\/span>nach\.<\/p>/,
+      /<p( data-block-id="[^"]+")?>Vor <span data-math="\\frac\{a\}\{b\}" class="math-inline">.*<\/span>nach\.<\/p>/,
     );
   await page.reload();
   await expect(formula).toHaveAttribute("data-math", String.raw`\frac{a}{b}`);

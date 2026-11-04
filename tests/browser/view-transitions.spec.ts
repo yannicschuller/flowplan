@@ -71,7 +71,7 @@ async function dismissWelcome(page: Page) {
 }
 // The entry of a page in the tree (on phones in the navigation drawer).
 async function treeEntry(page: Page, title: string, mobile: boolean) {
-  if (mobile) await page.getByRole("button", { name: "Navigation öffnen", exact: true }).click();
+  if (mobile) await page.locator(".topbar").getByRole("button", { name: "Navigation öffnen", exact: true }).click();
   const entry = page.locator(".page-nav-title", { hasText: title }).first();
   await expect(entry).toBeVisible();
   return entry;
@@ -171,7 +171,7 @@ test("quick successive changes and taps never wait for an animation", async ({ p
   await page.evaluate((id) => (location.hash = `page=${id}`), pages[1].id);
   await expect.poll(async () => (await seen(page)).length).toBe(1);
   if (mobile) {
-    await page.getByRole("button", { name: "Navigation öffnen", exact: true }).tap();
+    await page.locator(".topbar").getByRole("button", { name: "Navigation öffnen", exact: true }).tap();
     await expect(page.locator(".app-shell.nav-open")).toBeVisible();
   } else {
     await page.locator(".sidebar-hide").click();

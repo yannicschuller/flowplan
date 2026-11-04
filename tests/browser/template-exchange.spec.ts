@@ -33,7 +33,7 @@ test("templates can be searched, exported as a file and imported again", async (
   });
   await page.goto(`/#page=${p.id}`);
   if (testInfo.project.name === "mobile")
-    await page.getByRole("button", { name: "Navigation öffnen" }).click();
+    await page.locator(".topbar").getByRole("button", { name: "Navigation öffnen" }).click();
   await page.getByRole("button", { name: "Vorlagen", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Vorlagen" });
   await dialog.getByLabel("Vorlagen durchsuchen").fill(`Protokoll ${tag}`);

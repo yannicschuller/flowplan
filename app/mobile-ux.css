@@ -237,8 +237,52 @@ label.hit-check {
     position: absolute;
     inset: min(0px, calc((100% - 44px) / 2)) 0;
   }
+  /* The fold arrows of headings and the "Tag" / "Eigenschaft" buttons of
+     the page properties (side by side, so they only grow upwards and
+     downwards). */
+  .page-properties-add {
+    position: relative;
+  }
+  /* "+" after the last column of a table: the whole header cell (44 px,
+     its <col> in components/database-view.tsx). */
+  .data-table .add-property {
+    padding: 0;
+  }
+  .data-table .add-property > button {
+    width: 100%;
+    min-height: 44px;
+    justify-content: center;
+  }
+  .heading-fold::after {
+    content: "";
+    position: absolute;
+    inset: min(0px, calc((100% - 44px) / 2));
+  }
+  .page-properties-add::after {
+    content: "";
+    position: absolute;
+    inset: min(0px, calc((100% - 44px) / 2)) 0;
+  }
 }
 @media (pointer: coarse) and (max-width: 767px) {
+  /* The sidebar button at the top left: 44 px to hit, drawn where it was.
+     The breadcrumb clips its overflow, so it takes the bar's height and
+     the room left of the button. */
+  .topbar > .breadcrumb {
+    align-self: stretch;
+    margin-inline-start: -7px;
+    padding-inline-start: 7px;
+  }
+  .topbar .mobile-menu {
+    width: 44px;
+    height: 44px;
+    margin: -7px;
+    padding: 11px;
+  }
+  /* "Suchen und Filter als Sammlung speichern" in an empty sidebar. */
+  .collection-nav-empty {
+    min-height: 44px;
+  }
   /* The page bar: 44 px per tool; the saving state keeps its icon. */
   .page-top-actions {
     gap: 0;
@@ -439,7 +483,11 @@ label.hit-check {
     height: 44px;
     max-width: none;
   }
+  /* Up to eight tools (with Tags and Administration) need more than the
+     drawer's width at 44 px each: two rows of four. */
   .sidebar-tools {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(44px, 1fr));
     gap: 0;
   }
   .sidebar-bottom {

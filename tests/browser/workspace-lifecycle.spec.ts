@@ -24,6 +24,7 @@ async function nav(page: Page, name: string, mobile: boolean) {
     )
   )
     await page
+      .locator(".topbar")
       .getByRole("button", { name: "Navigation öffnen", exact: true })
       .click();
   await page
@@ -34,6 +35,7 @@ async function nav(page: Page, name: string, mobile: boolean) {
 async function switchWorkspace(page: Page, name: string, mobile: boolean) {
   if (mobile)
     await page
+      .locator(".topbar")
       .getByRole("button", { name: "Navigation öffnen", exact: true })
       .click();
   await page.locator(".workspace-switch").click();
@@ -84,6 +86,7 @@ test("space owners rename, trash, restore and purge with stale-draft protection 
     await page.goto(`/#page=${root.id}`);
     if (mobile)
       await page
+        .locator(".topbar")
         .getByRole("button", { name: "Navigation öffnen", exact: true })
         .click();
     await page
@@ -120,6 +123,7 @@ test("space owners rename, trash, restore and purge with stale-draft protection 
     await page.reload();
     if (mobile)
       await page
+        .locator(".topbar")
         .getByRole("button", { name: "Navigation öffnen", exact: true })
         .click();
     await page
@@ -166,6 +170,7 @@ test("space owners rename, trash, restore and purge with stale-draft protection 
     ).not.toContain("Draft before area deletion");
     if (mobile)
       await page
+        .locator(".topbar")
         .getByRole("button", { name: "Navigation öffnen", exact: true })
         .click();
     await page

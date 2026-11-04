@@ -52,10 +52,11 @@ function seed() {
 async function signIn(page: Page, token: string) {
   await page.context().addCookies([{ name: "flowplan_session", value: token, url: origin, httpOnly: true, sameSite: "Lax" }]);
 }
-const names = (page: Page) => page.locator(".sidebar .nav-section .space-name").allTextContents();
+// The spaces (the collections above them look the same).
+const names = (page: Page) => page.locator(".sidebar .nav-section:not(.collections-section) .space-name").allTextContents();
 async function openNavigation(page: Page, mobile: boolean) {
   if (mobile && !(await page.locator(".app-shell").getAttribute("class"))?.includes("nav-open"))
-    await page.getByRole("button", { name: "Navigation öffnen", exact: true }).click();
+    await page.locator(".topbar").getByRole("button", { name: "Navigation öffnen", exact: true }).click();
 }
 const storedOrder = (wid: string) => {
   const d = db();

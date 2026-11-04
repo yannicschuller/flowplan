@@ -161,17 +161,27 @@ async function fixture(page: Page, kind: string) {
   return { source, read, command, footer, open, configure, updateView, errors };
 }
 
+// The view's search: a "Suchen" chip in the toolbar that turns into the field
+// (and folds back when it is left empty).
+async function searchField(page: Page) {
+  const field = page.getByPlaceholder("Suchen …", { exact: true });
+  if (!(await field.isVisible()))
+    await page.locator("button.toolbar-chip", { hasText: "Suchen" }).click();
+  await expect(field).toBeVisible();
+  return field;
+}
+
 test("column calculations persist per view, follow filters and groups and align with visible columns", async ({
   page,
 }, info) => {
   const f = await fixture(page, "views");
   await f.configure("Aufwand", "average", "Ø 2");
   await expect(f.footer).toContainText("Aufwand: Ø 2");
-  await page.getByPlaceholder("Suchen …", { exact: true }).fill("Alpha");
+  await (await searchField(page)).fill("Alpha");
   await expect(f.footer).toContainText("Aufwand: Ø 2");
-  await page.getByPlaceholder("Suchen …", { exact: true }).fill("Beta");
+  await (await searchField(page)).fill("Beta");
   await expect(f.footer).toContainText("Aufwand: Ø 4");
-  await page.getByPlaceholder("Suchen …", { exact: true }).fill("");
+  await (await searchField(page)).fill("");
   await page
     .locator(".database-tabs")
     .getByRole("button", { name: "Andere", exact: true })
@@ -200,12 +210,13 @@ test("column calculations persist per view, follow filters and groups and align 
     fieldOrder: ["n", "title", "date", "check", "tags", "status", "formula"],
     hiddenFields: ["date"],
   });
-  await expect(f.footer.getByRole("button").first()).toHaveAttribute(
-    "aria-label",
-    "Berechnung für Aufwand",
+  // The buttons are named by their visible text ("Aufwand: Ø 3", "Termin:
+  // Berechnen"): the first column comes first, the hidden one is gone.
+  await expect(f.footer.getByRole("button").first()).toHaveAccessibleName(
+    /^Aufwand: /,
   );
   await expect(
-    f.footer.getByRole("button", { name: "Berechnung für Termin" }),
+    f.footer.getByRole("button", { name: /^Termin: / }),
   ).toHaveCount(0);
   const dialog = await f.open("Aufwand");
   await expect(dialog.getByLabel("Spaltenberechnung")).toHaveValue("average");
@@ -244,12 +255,10 @@ test("column counts, percentages, dates and formula failures show accurate previ
   await expect(
     f.footer.getByRole("button", { name: "Kehrwert: Berechnen", exact: true }),
   ).toHaveText("Kehrwert: Berechnen");
-  await page
-    .getByPlaceholder("Suchen …", { exact: true })
-    .fill("No matching entry");
+  await (await searchField(page)).fill("No matching entry");
   await expect(f.footer).toContainText("Einträge zählen 0");
   await expect(f.footer).toContainText("Zeitraum in Tagen Keine Werte");
-  await page.getByPlaceholder("Suchen …", { exact: true }).fill("");
+  await (await searchField(page)).fill("");
   await f.command({
     action: "page.update",
     pageId: f.source.id,
@@ -292,9 +301,10 @@ test("concurrent calculation changes retain local choices and preserve remote co
   );
   await dialog.getByRole("button", { name: "Speichern", exact: true }).click();
   expect((await response).status()).toBe(409);
-  await expect(dialog.getByRole("alert")).toContainText(
-    "Auswahl bleibt erhalten",
-  );
+  // The dialog's own message (the app's conflict notice shows as well).
+  await expect(
+    dialog.getByRole("alert").filter({ hasText: "Auswahl bleibt erhalten" }),
+  ).toBeVisible();
   await expect(dialog.getByLabel("Spaltenberechnung")).toHaveValue("median");
   expect((await f.read()).database.views[0].calculations).toEqual({
     title: "count",

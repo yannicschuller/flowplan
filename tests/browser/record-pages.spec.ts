@@ -42,7 +42,7 @@ test("records open as full pages, can be favourited and restored from the trash"
   await expect(entry).not.toHaveClass(/modal-full/);
   await entry.getByRole("button", { name: "Schließen", exact: true }).click();
   if (mobile)
-    await page.getByRole("button", { name: "Navigation öffnen" }).click();
+    await page.locator(".topbar").getByRole("button", { name: "Navigation öffnen" }).click();
   await expect(
     page
       .locator(".sidebar")

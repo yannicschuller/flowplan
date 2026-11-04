@@ -26,8 +26,8 @@ test("workspaces get an emoji or an image as their symbol", async ({
   });
   expect(bad.status()).toBe(400);
   await page.goto("/");
-  if (await page.getByRole("button", { name: "Navigation öffnen" }).isVisible())
-    await page.getByRole("button", { name: "Navigation öffnen" }).click();
+  if (await page.locator(".topbar").getByRole("button", { name: "Navigation öffnen" }).isVisible())
+    await page.locator(".topbar").getByRole("button", { name: "Navigation öffnen" }).click();
   await page
     .getByRole("button", { name: "Einstellungen", exact: true })
     .click();

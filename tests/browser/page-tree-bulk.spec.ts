@@ -37,7 +37,7 @@ test("sidebar selects several pages for moving, duplicating and trashing and dra
   await expect(page.locator(".tiptap")).toBeVisible();
   const openNav = async () => {
     if (mobile && !(await page.locator(".app-shell.nav-open").count()))
-      await page.getByRole("button", { name: "Navigation öffnen" }).click();
+      await page.locator(".topbar").getByRole("button", { name: "Navigation öffnen" }).click();
   };
   await openNav();
   const nav = page.locator(".sidebar");

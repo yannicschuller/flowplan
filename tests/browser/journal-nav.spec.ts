@@ -62,7 +62,7 @@ async function setup(page: Page, info: TestInfo, days: number, html = (date: str
 }
 const mobile = (info: TestInfo) => info.project.name === "mobile";
 async function openNavigation(page: Page, info: TestInfo) {
-  if (mobile(info)) await page.getByRole("button", { name: "Navigation öffnen" }).click();
+  if (mobile(info)) await page.locator(".topbar").getByRole("button", { name: "Navigation öffnen" }).click();
 }
 
 test("2,000 days: a short journal in the tree, day navigation, Journal: Heute", async ({ page }, info) => {
@@ -163,6 +163,11 @@ test("grouped by year and month: folders, keys and the open day", async ({ page 
   await page.reload();
   await expect(page.locator(".journal-today")).toBeVisible();
   await openNavigation(page, info);
+  // The open page itself starts folded (#97); its days unfold by hand.
+  await page
+    .locator(`.page-nav[data-page-id="${journalId}"]`)
+    .getByRole("button", { name: "Unterseiten öffnen", exact: true })
+    .click();
   const group = page.locator(`#tree-group-${journalId}`);
   const older = localDay(-8);
   const year = group.getByRole("treeitem", { name: new RegExp(`^${older.slice(0, 4)}, \\d+ Tage$`) });

@@ -1,4 +1,13 @@
 import { test, expect, type Page, type Locator } from "@playwright/test";
+
+// The view's search: the "Suchen" chip turns into the field (and folds back
+// when it is left empty).
+async function databaseSearch(page: Page) {
+  const field = page.getByLabel("Datenbank durchsuchen", { exact: true });
+  if (!(await field.isVisible()))
+    await page.locator("button.toolbar-chip", { hasText: "Suchen" }).first().click();
+  return field;
+}
 async function fixture(page: Page, name: string) {
   const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
   await page.request.post("/api/auth/demo", { headers: { origin } });
@@ -285,11 +294,10 @@ test("timeline scales persist, mouse and touch shift and resize ranges, keyboard
     await expect(
       timeline.getByLabel("Timeline: Datum", { exact: true }),
     ).toHaveValue("2026-09-23");
-    await page
-      .getByLabel("Datenbank durchsuchen", { exact: true })
+    await (await databaseSearch(page))
       .fill("Ohne Termin");
     await expect(timeline.locator(".timeline-entry")).toHaveCount(1);
-    await page.getByLabel("Datenbank durchsuchen", { exact: true }).fill("");
+    await (await databaseSearch(page)).fill("");
     if (mobile)
       await timeline
         .locator(".timeline-scroll")

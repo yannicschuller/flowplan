@@ -1,8 +1,12 @@
 import { test, expect } from "@playwright/test";
 
-// Chromium's fake microphone.
+// Chromium's fake microphone. These launch options replace the config's, so
+// they keep its choice of browser (PLAYWRIGHT_CHROMIUM_EXECUTABLE).
 test.use({
-  launchOptions: { args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"] },
+  launchOptions: {
+    executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || undefined,
+    args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"],
+  },
   permissions: ["microphone"],
 });
 

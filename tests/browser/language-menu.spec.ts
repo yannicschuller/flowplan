@@ -11,7 +11,7 @@ test("the language menu on the sign-in page switches the language", async ({ pag
   await expect(trigger).toContainText("DE");
   await trigger.click();
   const menu = page.getByRole("menu");
-  await expect(menu.getByRole("menuitemradio")).toHaveCount(3);
+  await expect(menu.getByRole("menuitemradio")).toHaveCount(4);
   await expect(menu.getByRole("menuitemradio", { name: "Deutsch" })).toHaveAttribute("aria-checked", "true");
   await page.waitForTimeout(400); // the menu fades in
   await page.screenshot({ path: `test-results/language-menu/${info.project.name}-login.png` });
@@ -25,9 +25,12 @@ test("the language menu on the sign-in page switches the language", async ({ pag
 
   // Keyboard: open with Enter, move with the arrows, choose with Enter.
   if (info.project.name === "desktop") {
-    await page.getByRole("button", { name: "Langue: Français" }).focus();
-    await page.keyboard.press("Enter");
-    await expect(page.getByRole("menu")).toBeVisible();
+    // After the reload the button is there before it reacts (hydration).
+    await expect(async () => {
+      await page.getByRole("button", { name: "Langue: Français" }).focus();
+      await page.keyboard.press("Enter");
+      await expect(page.getByRole("menu")).toBeVisible({ timeout: 2000 });
+    }).toPass({ timeout: 30_000 });
     await page.keyboard.press("ArrowDown");
     await page.keyboard.press("Enter");
     await expect(page.locator("html")).toHaveAttribute("lang", /^(de|en)$/, { timeout: 30_000 });
@@ -41,7 +44,7 @@ test("the language list in the settings shows flags and the automatic choice", a
   await page.goto("/#settings/appearance");
   const select = page.getByRole("combobox", { name: "Sprache" });
   await expect(select).toBeAttached({ timeout: 60_000 });
-  await expect(select.locator("option")).toHaveText(["🌐 Automatisch (folgt dem Browser)", "🇩🇪 Deutsch", "🇬🇧 English", "🇫🇷 Français"]);
+  await expect(select.locator("option")).toHaveText(["🌐 Automatisch (folgt dem Browser)", "🇩🇪 Deutsch", "🇬🇧 English", "🇫🇷 Français", "🇨🇳 简体中文"]);
   await expect(select).toHaveValue("");
   await select.scrollIntoViewIfNeeded();
   await page.screenshot({ path: `test-results/language-menu/${info.project.name}-settings.png` });

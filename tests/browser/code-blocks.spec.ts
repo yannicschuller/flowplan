@@ -48,7 +48,7 @@ test("code blocks select languages, preserve literal input, indent, wrap and cop
   await page
     .getByRole("button", { name: "Block hinzufügen", exact: true })
     .click();
-  await page.locator(".slash-menu").getByRole("option", { name: /^Code / }).click();
+  await page.locator(".slash-menu").getByRole("option", { name: /^Code / }).first().click();
   const block = page.locator(".code-block-view"),
     code = block.locator("pre code");
   await expect(block).toBeVisible();

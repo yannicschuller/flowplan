@@ -2,7 +2,6 @@ import { test, expect, type Page, type Browser } from "@playwright/test";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID, randomBytes, createHash } from "node:crypto";
 import { join } from "node:path";
-import { htmlState } from "../../lib/document-server";
 const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
 async function fixture(page: Page, browser: Browser) {
   if (!process.env.FLOWPLAN_DATA_DIR?.startsWith("/tmp/flowplan-inline-e2e."))
@@ -42,6 +41,8 @@ async function fixture(page: Page, browser: Browser) {
     cells: { title: "Review entry" },
   });
   await page.request.get(`/api/pages/${database.id}/rows/${row.id}`);
+  // Imported here, not at the top: see playwright.config.ts.
+  const { htmlState } = await import("../../lib/document-server");
   const db = new DatabaseSync(
     join(process.env.FLOWPLAN_DATA_DIR, "flowplan.sqlite"),
   );

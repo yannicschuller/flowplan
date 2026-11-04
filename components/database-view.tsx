@@ -3126,7 +3126,8 @@ export default function DatabaseView({
                   }}
                 />
               ))}
-              {editable && <col style={{ width: 42 }} />}
+              {/* The "+" column: 44 px, a whole touch target (app/mobile-ux.css). */}
+              {editable && <col style={{ width: 44 }} />}
             </colgroup>
             <thead>
               <tr>

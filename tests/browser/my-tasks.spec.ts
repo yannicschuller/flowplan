@@ -38,9 +38,10 @@ test("a task gets a due date in the editor and is ticked off in Meine Aufgaben",
   await page.keyboard.press("Enter");
   await expect(editor.locator("li[data-checked]")).toHaveCount(2);
   await expect(editor.locator(".task-due")).toHaveCount(1);
-  await page.keyboard.press("Backspace");
+  // One Backspace removes the empty task; the text before stays whole.
   await page.keyboard.press("Backspace");
   await expect(editor.locator("li[data-checked]")).toHaveCount(1);
+  await expect(editor.getByText(taskText, { exact: true })).toBeVisible();
   // The text menu changes the date too (right click on desktop).
   if (info.project.name === "desktop") {
     await editor.getByText(taskText, { exact: true }).click({ button: "right" });

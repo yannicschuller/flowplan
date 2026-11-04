@@ -28,7 +28,8 @@ test("large databases draw rows in steps and keep search over all records", asyn
   await page.getByRole("button", { name: /Weitere 30 von 30/ }).click();
   await expect(rows).toHaveCount(230);
   await expect(page.locator(".more-rows")).toHaveCount(0);
-  // Search still covers all records.
+  // Search still covers all records (the "Suchen" chip turns into the field).
+  await page.locator("button.toolbar-chip", { hasText: "Suchen" }).click();
   await page.getByLabel("Datenbank durchsuchen").fill("Zeile 229");
   await expect(rows).toHaveCount(1);
 });

@@ -7,6 +7,7 @@ async function navigation(page: Page, mobile: boolean) {
     )
   )
     await page
+      .locator(".topbar")
       .getByRole("button", { name: "Navigation öffnen", exact: true })
       .click();
 }

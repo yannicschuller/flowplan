@@ -149,6 +149,9 @@ export function JournalSettingsDialog({
     try {
       const next = await api<JournalSettings>("/api/command", { action: "journal.settings", pageId, ...body });
       setCurrent(next);
+      // The draft takes the saved trackers as the server wrote them (its
+      // order of keys too), so "Nicht gespeichert" goes away.
+      if (body.trackers) setTrackers(next.trackers);
       await onChanged();
       if (done) onError(done);
       return true;

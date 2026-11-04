@@ -61,6 +61,20 @@ export function ChipPopover({
     const first = el.querySelector<HTMLElement>(FOCUSABLE);
     (first || el).focus({ preventScroll: true });
   }, [open]);
+  // A focused control that goes away (a reset button that is no longer
+  // needed) leaves the focus on the page; it returns to the panel, so
+  // Escape and Tab keep working.
+  useEffect(() => {
+    if (!open) return;
+    const el = panel.current;
+    if (!el) return;
+    const observer = new MutationObserver(() => {
+      const active = document.activeElement;
+      if (!active || active === document.body) el.focus({ preventScroll: true });
+    });
+    observer.observe(el, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [open]);
   // A click outside closes the panel (lists of a select inside it count as
   // inside: they are rendered into the dialog).
   useEffect(() => {

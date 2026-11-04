@@ -46,7 +46,7 @@ test("a new status becomes its own board column; a due date can be removed", asy
   const dated = data.rows.find((r: { cells: Record<string, unknown> }) => r.cells.date);
   await page.locator(".database-tabs").getByText(data.database.views[0].name, { exact: true }).click();
   await page.getByText(String(dated.cells.title)).first().click();
-  const remove = page.getByRole("button", { name: `${due.name} entfernen` }).first();
+  const remove = page.getByRole("button", { name: `Datum entfernen: ${due.name}` }).first();
   await expect(remove).toBeVisible();
   await remove.click();
   await expect(page.getByLabel(due.name, { exact: true }).first()).toHaveValue("");

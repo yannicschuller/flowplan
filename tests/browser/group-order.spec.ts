@@ -113,9 +113,10 @@ test("board and table groups reorder, collapse and reset with persistence", asyn
     .toEqual(['"Doing"', '"Open"', '"Done"', "empty"]);
 
   if (testInfo.project.name === "desktop") {
-    await page
-      .locator('.board-column[aria-label="Gruppe Done"] > header')
-      .dragTo(page.locator('.board-column[aria-label="Gruppe Doing"]'));
+    // The board refuses column drags until the previous save has finished.
+    const header = page.locator('.board-column[aria-label="Gruppe Done"] > header');
+    await expect(header).toHaveClass(/column-draggable/);
+    await header.dragTo(page.locator('.board-column[aria-label="Gruppe Doing"]'));
     await expect(
       board.getByRole("button", { name: "Gruppe Done ziehen" }),
     ).toBeHidden();

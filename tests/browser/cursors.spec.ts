@@ -2,7 +2,6 @@ import { test, expect, type Page, type Browser } from "@playwright/test";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID, randomBytes, createHash } from "node:crypto";
 import { join } from "node:path";
-import { htmlState } from "../../lib/document-server";
 
 const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
 async function fixture(page: Page, browser: Browser) {
@@ -54,6 +53,8 @@ async function fixture(page: Page, browser: Browser) {
   });
   await page.request.get(`/api/pages/${source.id}/rows/${row.id}`);
   await page.request.get(`/api/pages/${source.id}/rows/${secondRow.id}`);
+  // Imported here, not at the top: see playwright.config.ts.
+  const { htmlState } = await import("../../lib/document-server");
   const db = new DatabaseSync(
     join(process.env.FLOWPLAN_DATA_DIR!, "flowplan.sqlite"),
   );

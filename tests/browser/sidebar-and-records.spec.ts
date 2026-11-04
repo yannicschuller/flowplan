@@ -123,7 +123,7 @@ test("the page filter in the sidebar finds nested pages and keeps their parents"
   });
   expect(child.ok()).toBe(true);
   await page.goto("/#home");
-  if (info.project.name === "mobile") await page.getByRole("button", { name: "Navigation öffnen" }).click();
+  if (info.project.name === "mobile") await page.locator(".topbar").getByRole("button", { name: "Navigation öffnen" }).click();
   const sidebar = page.locator(".sidebar");
   await sidebar.getByRole("searchbox", { name: "Seiten filtern" }).fill(`kind ${stamp}`);
   await expect(sidebar.locator(".page-nav")).toHaveCount(2);
@@ -143,7 +143,7 @@ test("on phones a long press opens the page menu", async ({ page }, info) => {
   const title = `Langdruck ${Date.now()}`;
   const { host } = await setup(page, "document", title);
   await page.goto("/#home");
-  await page.getByRole("button", { name: "Navigation öffnen" }).click();
+  await page.locator(".topbar").getByRole("button", { name: "Navigation öffnen" }).click();
   const row = page.locator(`.page-nav[data-page-id="${host.id}"] .page-nav-title`);
   await row.scrollIntoViewIfNeeded();
   const box = (await row.boundingBox())!;

@@ -36,6 +36,7 @@ test("turn a line into another block type from the text menu", async ({ page }, 
   await page.keyboard.press("Escape");
   await expect
     .poll(async () => (await (await page.request.get(`/api/pages/${pageId}`)).json()).html, { timeout: 20_000 })
-    .toContain("<h2>Wichtiger Abschnitt</h2>");
+    // Blocks carry their link anchor (data-block-id).
+    .toMatch(/<h2( data-block-id="[^"]+")?>Wichtiger Abschnitt<\/h2>/);
   expect(errors).toEqual([]);
 });

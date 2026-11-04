@@ -49,7 +49,7 @@ test("removing a date with a tap removes it and keeps it removed after a reload"
   // No <label> around the date: WebKit would pass the tap on "Datum
   // entfernen" to the date input and open the picker instead.
   expect(await date.evaluate((el) => !!el.closest("label"))).toBe(false);
-  const remove = dialog.getByRole("button", { name: "Fällig am entfernen" });
+  const remove = dialog.getByRole("button", { name: "Datum entfernen: Fällig am" });
   if (info.project.name === "mobile") await remove.tap();
   else await remove.click();
   await expect(date).toHaveValue("");
@@ -63,7 +63,7 @@ test("removing a date with a tap removes it and keeps it removed after a reload"
 
   await page.reload();
   await expect(page.getByRole("dialog", { name: "Eintrag", exact: true }).getByLabel("Fällig am", { exact: true })).toHaveValue("");
-  await expect(page.getByRole("button", { name: "Fällig am entfernen" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Datum entfernen: Fällig am" })).toHaveCount(0);
 
   // With the keyboard: the focus stays in the field.
   if (info.project.name === "desktop") {
@@ -71,7 +71,7 @@ test("removing a date with a tap removes it and keeps it removed after a reload"
     await page.reload();
     const again = page.getByRole("dialog", { name: "Eintrag", exact: true });
     await expect(again.getByLabel("Fällig am", { exact: true })).toHaveValue("2026-12-24");
-    await again.getByRole("button", { name: "Fällig am entfernen" }).focus();
+    await again.getByRole("button", { name: "Datum entfernen: Fällig am" }).focus();
     await page.keyboard.press("Enter");
     await expect(again.getByLabel("Fällig am", { exact: true })).toBeFocused();
     await expect.poll(async () => (await read()).rows[0].cells.due ?? "", { timeout: 15000 }).toBe("");
@@ -140,7 +140,7 @@ test("no shortcut hints on a phone without a keyboard – in the browser and in 
   const titles = await page.evaluate(() => [...document.querySelectorAll("[title]")].map((el) => el.getAttribute("title") || ""));
   expect(titles.filter((t) => /⌘|Ctrl|Strg/.test(t))).toEqual([]);
   // The sidebar's search has no ⌘K badge.
-  await page.getByRole("button", { name: "Navigation öffnen" }).tap();
+  await page.locator(".topbar").getByRole("button", { name: "Navigation öffnen" }).tap();
   const search = page.locator(".main-nav button", { hasText: "Suchen" });
   await expect(search).toBeVisible();
   await expect(search.locator(".keycap")).toHaveCount(0);

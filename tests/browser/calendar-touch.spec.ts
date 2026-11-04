@@ -139,9 +139,11 @@ test("weekly repeating entries show occurrences that open the original record", 
   await expect
     .poll(async () => (await read()).rows[0].recurrence)
     .toContain('"weekly"');
+  // The select shows the choice ("Wöchentlich" is also a hidden option of
+  // "Wiederkehrende Aufgabe" further down the record).
   await expect(
-    entry.getByText("Wöchentlich", { exact: true }).last(),
-  ).toBeVisible();
+    entry.getByText("Wöchentlich", { exact: true }).filter({ visible: true }),
+  ).toHaveCount(1);
   await entry.getByRole("button", { name: "Schließen", exact: true }).click();
   for (const day of ["03", "10", "17", "24"])
     await expect(

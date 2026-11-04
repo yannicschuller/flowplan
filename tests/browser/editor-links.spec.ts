@@ -1,7 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
-import { htmlState } from "../../lib/document-server";
 
 test("links and mentions in the editor can be clicked", async ({
   page,
@@ -35,6 +34,8 @@ test("links and mentions in the editor can be clicked", async ({
     title: `Links ${tag}`,
   });
   const html = `<p><a href="#page=${target.id}">Zur Zielseite</a> und <a href="https://example.com/">Extern</a> und <span data-type="mention" data-mention="${boot.user.id}" data-label="${boot.user.name}" class="mention">@${boot.user.name}</span></p>`;
+  // Imported here, not at the top: see playwright.config.ts.
+  const { htmlState } = await import("../../lib/document-server");
   const db = new DatabaseSync(join(dir!, "flowplan.sqlite"));
   db.prepare(
     "UPDATE documents SET state=?,html=?,generation=? WHERE page_id=?",

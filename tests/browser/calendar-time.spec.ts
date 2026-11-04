@@ -6,6 +6,15 @@ import {
   type APIRequestContext,
   type Route,
 } from "@playwright/test";
+
+// The view's search: the "Suchen" chip turns into the field (and folds back
+// when it is left empty).
+async function databaseSearch(page: Page) {
+  const field = page.getByLabel("Datenbank durchsuchen", { exact: true });
+  if (!(await field.isVisible()))
+    await page.locator("button.toolbar-chip", { hasText: "Suchen" }).first().click();
+  return field;
+}
 test.use({ timezoneId: "UTC" });
 const pendingAreas = new Map<string, { id: string; name: string }>();
 async function removeArea(
@@ -386,7 +395,7 @@ test("date and time editors reject DST gaps, select fold occurrences and save bo
     const input = tableRow.getByLabel("Beginn", { exact: true });
     await expect(input).toHaveAttribute("type", "datetime-local");
     await input.fill("2026-10-25T01:45");
-    await page.getByLabel("Datenbank durchsuchen", { exact: true }).click();
+    await (await databaseSearch(page)).click();
     await expect
       .poll(async () => (await f.row()).cells.start)
       .toBe("2026-10-25T01:45:00Z");

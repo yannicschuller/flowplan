@@ -32,7 +32,7 @@ test("dragging a page by its handle scrolls the page list at the edges", async (
     );
   await page.goto(`/#page=${ids[0]}`);
   await expect(page.locator(".tiptap")).toBeVisible();
-  await page.getByRole("button", { name: "Navigation öffnen" }).click();
+  await page.locator(".topbar").getByRole("button", { name: "Navigation öffnen" }).click();
   const nav = page.locator(".sidebar");
   const handle = nav.getByRole("button", { name: `Seite 00 ${tag} ziehen` });
   await handle.scrollIntoViewIfNeeded();

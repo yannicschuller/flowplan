@@ -9,6 +9,12 @@ test("notification kinds are switched per channel in the settings", async ({
   await page.request.post("/api/auth/demo", { headers: { origin } });
   const prefs = async () =>
     (await (await page.request.get("/api/bootstrap")).json()).notificationPrefs;
+  // The channels this test switches (chat apps only show where the instance
+  // has them; they follow the inbox).
+  const reminder = async () => {
+    const { inbox, push, email } = (await prefs()).reminder;
+    return { inbox, push, email };
+  };
   await page.goto("/#settings/notifications");
   const inbox = page.getByLabel("Datums-Erinnerungen im Posteingang");
   const push = page.getByLabel("Datums-Erinnerungen als Push");
@@ -16,12 +22,12 @@ test("notification kinds are switched per channel in the settings", async ({
   await push.check();
   await push.uncheck();
   await expect
-    .poll(async () => (await prefs()).reminder)
+    .poll(reminder)
     .toEqual({ inbox: true, push: false, email: true });
   await inbox.uncheck();
   await expect(push).toBeDisabled();
   await expect
-    .poll(async () => (await prefs()).reminder)
+    .poll(reminder)
     .toEqual({ inbox: false, push: false, email: false });
   // A reload keeps the section (#settings/notifications).
   await page.reload();
@@ -33,7 +39,12 @@ test("notification kinds are switched per channel in the settings", async ({
   await page.getByLabel("Datums-Erinnerungen als Push").check();
   await page.getByLabel("Datums-Erinnerungen per E-Mail").check();
   await expect
-    .poll(async () => (await prefs()).reminder)
+    .poll(reminder)
     .toEqual({ inbox: true, push: true, email: true });
+  const restored = await page.request.post("/api/command", {
+    headers: { origin },
+    data: { action: "notification.prefs", kind: "reminder", inbox: true, push: true, email: true, messenger: true },
+  });
+  expect(restored.ok()).toBe(true);
   expect(errors).toEqual([]);
 });

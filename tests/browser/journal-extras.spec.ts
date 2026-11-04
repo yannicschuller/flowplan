@@ -76,7 +76,7 @@ test("journal: statistics, memories, trackers, template, review and PIN", async 
   await expect(review.locator(".journal-review-numbers")).toContainText(/\d+ Tage?/);
   await review.getByRole("button", { name: "Monat", exact: true }).click();
   await expect(review.locator(".journal-review-trackers")).toContainText("Stimmung");
-  await review.getByRole("button", { name: "Schließen" }).click();
+  await review.getByRole("button", { name: "Schließen", exact: true }).click();
 
   // Today: the template is there, trackers can be set.
   await page.locator(".journal-today").click();
@@ -102,24 +102,26 @@ test("journal: statistics, memories, trackers, template, review and PIN", async 
   await settings.getByRole("tab", { name: "Tracker" }).click();
   await settings.getByRole("button", { name: "Sport" }).click();
   await settings.getByRole("button", { name: "Tracker speichern" }).click();
-  await expect(page.locator(".toast, [role=status]").filter({ hasText: "Tracker gespeichert" }).first()).toBeVisible();
+  // The notice shows in the dialog; nothing is left unsaved.
+  await expect(settings.getByRole("alert").filter({ hasText: "Tracker gespeichert" })).toBeVisible();
+  await expect(settings.getByText("Nicht gespeichert", { exact: true })).toHaveCount(0);
   // The place can be switched off for the whole journal.
   await settings.getByRole("tab", { name: "Tagesleiste" }).click();
   await settings.getByRole("switch", { name: /Ort/ }).uncheck();
   await expect(settings.getByRole("switch", { name: /Ort/ })).not.toBeChecked();
   await settings.getByRole("tab", { name: "Sperre" }).click();
-  await settings.getByLabel("Neue PIN").fill("2468");
-  await settings.getByLabel("PIN wiederholen").fill("2468");
+  await settings.getByLabel("Neue PIN").fill("246813");
+  await settings.getByLabel("PIN wiederholen").fill("246813");
   await settings.getByRole("button", { name: "Sperren" }).click();
   await expect(settings.getByLabel("Bisherige PIN")).toBeVisible();
-  await settings.getByRole("button", { name: "Schließen" }).click();
+  await settings.getByRole("button", { name: "Schließen", exact: true }).click();
   // Lock now: the journal asks for the PIN.
   await page.getByRole("button", { name: "Journal jetzt sperren" }).click();
   await expect(page.getByRole("heading", { name: "Dieses Journal ist gesperrt" })).toBeVisible();
-  await page.getByLabel("PIN").fill("1111");
+  await page.getByLabel("PIN").fill("111111");
   await page.getByRole("button", { name: "Entsperren" }).click();
   await expect(page.locator(".journal-lock-error")).toContainText("stimmt nicht");
-  await page.getByLabel("PIN").fill("2468");
+  await page.getByLabel("PIN").fill("246813");
   await page.getByRole("button", { name: "Entsperren" }).click();
   await expect(page.locator(".journal-today")).toBeVisible();
   // Without the place, today's bar has no place field.

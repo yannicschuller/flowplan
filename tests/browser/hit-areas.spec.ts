@@ -143,7 +143,7 @@ test("touch targets are at least 44 × 44 px on a phone", async ({ page }, info)
 
   // The navigation drawer.
   await page.goto(`/#page=${doc.id}`);
-  await page.getByRole("button", { name: "Navigation öffnen" }).click();
+  await page.locator(".topbar").getByRole("button", { name: "Navigation öffnen" }).click();
   await expect(page.locator(".nav-open .sidebar")).toBeVisible();
   await page.waitForTimeout(300);
   found.push(...report("sidebar", await smallTargets(page, ".sidebar")));
