@@ -70,6 +70,8 @@ test("admins configure the instance; stored values override the environment", ()
     banners: [],
     allowWorkspaceCreation: false,
     transcription: false,
+    // No DRAWIO_URL: the public diagrams.net (lib/drawio.ts).
+    drawio: { url: "https://embed.diagrams.net/", origin: "https://embed.diagrams.net", external: true },
     mail: false,
     // No IMPRINT_URL or PRIVACY_URL set.
     legal: {},

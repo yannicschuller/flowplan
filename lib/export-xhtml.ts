@@ -10,6 +10,7 @@ import { ct } from "./content-locale";
 import { footnoteText, URL_PATTERN } from "./footnotes";
 import { documentNode } from "./export-content";
 import { captionCounter, captionText } from "./block-captions";
+import { sanitizeDrawioSvg } from "./drawio-svg";
 
 export type XhtmlContext = {
   // The address a link may keep (absolute, or relative within the export),
@@ -23,6 +24,9 @@ export type XhtmlContext = {
   linked?: (source: string) => { title: string; url: string } | null;
   // A drawing block (or notebook sheet): its picture (address) and text.
   ink?: (attrs: Record<string, unknown>) => { image: string | null; text: string } | null;
+  // The address of a picture given as SVG text (draw.io diagrams); a data:
+  // address without it.
+  svg?: (svg: string) => string;
   // Prefix for ids (footnotes), unique per document in a combined file.
   prefix?: string;
   // The page numbers its captions (Figure 1, Table 1, Listing 1).
@@ -165,6 +169,13 @@ export function documentXhtml(html: string, context: XhtmlContext): string {
         return `<pre class="mermaid">${xml(String(node.attrs.source || ""))}</pre>`;
       case "functionPlot":
         return `<p class="placeholder">${xml(ct("Funktionsgraph (nur in Flowplan)", "Function plot (only in Flowplan)"))}</p>`;
+      case "drawioBlock": {
+        // The stored picture, cleaned (lib/drawio-svg.ts), as a data: image.
+        const label = ct("draw.io-Diagramm", "draw.io diagram");
+        const svg = sanitizeDrawioSvg(String(node.attrs.svg || ""));
+        const src = svg ? (context.svg ? context.svg(svg) : `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`) : null;
+        return src ? `<figure class="drawio"><img src="${xml(src)}" alt="${xml(label)}"/></figure>` : `<p class="placeholder">${xml(label)}</p>`;
+      }
       case "metricBlock":
         return `<p class="placeholder">${xml(ct("Kennzahl (nur in Flowplan)", "Metric (only in Flowplan)"))}</p>`;
       case "bibliography":

@@ -8,6 +8,7 @@ import { calloutColor, calloutIcon } from "./callout-types";
 import { footnoteText } from "./footnotes";
 import { fenceLanguage } from "./code-languages";
 import { importedCodeAttributes, splitInfo } from "./code-block-options";
+import { isDrawioXml } from "./drawio";
 
 const escaped = (text: string) =>
   text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
@@ -254,6 +255,9 @@ export function markdownToRawHtml(
         const { language: written, meta } = splitInfo(token.lang);
         const language = written.toLowerCase();
         if (language === "math") return `<div data-math="${escaped(text)}">${escaped(text)}</div>`;
+        // A draw.io diagram as lib/markdown.ts writes it outside ZIP
+        // exports: the block again, its picture drawn on the next edit.
+        if (language === "drawio" && isDrawioXml(text)) return `<div class="drawio-block" data-drawio="${escaped(text)}" data-drawio-svg=""></div>`;
         if (language === "mermaid" && options.source && !meta)
           return `<div class="mermaid-block" data-mermaid="${escaped(text)}">${escaped(text)}</div>`;
         // Older ids and aliases ("js", "py") as Shiki's ids (lib/code-languages.ts).

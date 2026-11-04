@@ -72,6 +72,8 @@ import {
   type DiagramTarget,
 } from "./mermaid-editor";
 import { DEFAULT_DIAGRAM } from "@/lib/mermaid-source";
+import { drawioNodeView, DrawioEditorDialog, type DrawioTarget } from "./drawio-editor";
+import { drawioEditor } from "@/lib/drawio-prefs";
 import { DocumentBlockControls } from "./document-block-controls";
 import {
   BlockShortcuts,
@@ -162,6 +164,7 @@ import {
   PencilSimpleLine,
   CopySimple,
   ChartLine,
+  FlowArrow,
   UsersThree,
   Note,
   Sparkle,
@@ -345,6 +348,7 @@ export default function DocumentEditor({
     [link, setLink] = useState(false),
     [linkUrl, setLinkUrl] = useState(""),
     [diagram, setDiagram] = useState<DiagramTarget | null>(null),
+    [drawio, setDrawio] = useState<DrawioTarget | null>(null),
     [math, setMath] = useState<MathTarget | null>(null),
     // The image being marked up (position and its attributes).
     [annotate, setAnnotate] = useState<{ pos: number; src: string; original: string | null; annotations: string | null } | null>(null),
@@ -591,6 +595,7 @@ export default function DocumentEditor({
         Toggle,
         ...mathNodeViews(setMath),
         mermaidNodeView(setDiagram),
+        drawioNodeView(setDrawio),
         FunctionPlotView,
         MetricView.configure({ pageId }),
         PluginBlockView.configure({ pageId, title: () => linkedContext.current?.pages.find((p) => p.id === pageId)?.title || "" }),
@@ -1511,6 +1516,19 @@ export default function DocumentEditor({
       icon: Code,
       run: () => setDiagram({ source: DEFAULT_DIAGRAM }),
     },
+    ...(drawioEditor()
+      ? [
+          {
+            id: "drawio",
+            group: "media" as const,
+            name: t("draw.io-Diagramm", "draw.io diagram"),
+            keywords: ["drawio", "draw.io", "diagrams.net", "diagramm", "diagram", "flowchart", "uml", "visio", "schema"],
+            description: t("Diagramme zeichnen mit draw.io", "Draw diagrams with draw.io"),
+            icon: FlowArrow,
+            run: () => setDrawio({ xml: "" }),
+          },
+        ]
+      : []),
     {
       id: "math",
       group: "math",
@@ -2810,6 +2828,7 @@ export default function DocumentEditor({
           onClose={() => setDiagram(null)}
         />
       )}
+      {drawio && <DrawioEditorDialog editor={editor} target={drawio} onClose={() => setDrawio(null)} />}
       {annotate && (
         <ImageAnnotator
           src={annotate.src}

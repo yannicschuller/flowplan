@@ -7,6 +7,8 @@ import { documentExtensions, documentSchema } from "./document-schema";
 import { calloutColor, calloutIcon } from "./callout-types";
 import { fenceLanguage } from "./code-languages";
 import { importedCodeAttributes } from "./code-block-options";
+import { sanitizeDrawioSvg } from "./drawio-svg";
+import { MAX_DRAWIO_XML } from "./drawio";
 const dir = { name: "dir", multiple: false, values: ["ltr", "rtl", "auto"] };
 export function cleanHtml(html: string, transform?: sanitize.Transformer) {
   return sanitize(html, {
@@ -49,6 +51,8 @@ export function cleanHtml(html: string, transform?: sanitize.Transformer) {
         "data-callout",
         "data-math",
         "data-mermaid",
+        "data-drawio",
+        "data-drawio-svg",
         "data-function-plot",
         "data-metric",
         "data-plugin",
@@ -116,7 +120,12 @@ export function cleanHtml(html: string, transform?: sanitize.Transformer) {
     allowedIframeHostnames: embedHosts,
     exclusiveFilter: (frame) => frame.tag === "iframe" && !frame.attribs.src,
     transformTags: {
-      ...(transform ? { "*": transform } : {}),
+      // A draw.io block's picture is cleaned as SVG (lib/drawio-svg.ts),
+      // its diagram kept only within the limit.
+      "*": (tagName, attribs) => {
+        const result = transform ? transform(tagName, attribs) : { tagName, attribs };
+        return "data-drawio" in result.attribs || "data-drawio-svg" in result.attribs ? drawioAttributes(result) : result;
+      },
       // Only the known providers' player URLs survive, not any page on
       // their hosts.
       iframe: (tagName, attribs) =>
@@ -149,6 +158,18 @@ export function cleanHtml(html: string, transform?: sanitize.Transformer) {
     allowedSchemes: ["http", "https", "mailto"],
     allowProtocolRelative: false,
   });
+}
+function drawioAttributes(result: sanitize.Tag): sanitize.Tag {
+  const { "data-drawio": xml, "data-drawio-svg": svg, ...rest } = result.attribs;
+  if (result.tagName !== "div") return { ...result, attribs: rest };
+  return {
+    ...result,
+    attribs: {
+      ...rest,
+      "data-drawio": xml && xml.length <= MAX_DRAWIO_XML ? xml : "",
+      "data-drawio-svg": svg ? sanitizeDrawioSvg(svg) : "",
+    },
+  };
 }
 export function htmlState(html: string) {
   const json = generateJSON(cleanHtml(html) || "<p></p>", documentExtensions);

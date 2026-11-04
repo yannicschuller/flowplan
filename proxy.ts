@@ -7,6 +7,7 @@ import {
 } from "./lib/custom-domain-routing";
 import { upgradeInsecureRequests } from "./lib/instance-https";
 import { BUILD_HEADER } from "./lib/stale-copy";
+import { drawioConfig } from "./lib/drawio";
 
 // Content Security Policy for every page. Scripts run only with the nonce
 // of this request (Next.js adds it to its own scripts), so an injected
@@ -26,7 +27,9 @@ const players = [
   "https://codepen.io",
 ];
 
-export function contentSecurityPolicy(nonce: string | null, dev: boolean, pluginOrigins: string[] = [], https = true) {
+// editorFrames: frames only the app's editor opens (draw.io, lib/drawio.ts),
+// not shared pages or publications.
+export function contentSecurityPolicy(nonce: string | null, dev: boolean, pluginOrigins: string[] = [], https = true, editorFrames: string[] = []) {
   const scripts = nonce
     ? `'self' 'nonce-${nonce}' 'strict-dynamic'`
     : // Static pages without user content (documentation) have no nonce.
@@ -41,7 +44,7 @@ export function contentSecurityPolicy(nonce: string | null, dev: boolean, plugin
     "font-src 'self' data:",
     `connect-src 'self'${dev ? " ws: wss:" : ""}`,
     // Block extensions (lib/plugins.ts) load their frames from their own origins.
-    `frame-src 'self' ${[...players, ...pluginOrigins].join(" ")}`,
+    `frame-src 'self' ${[...new Set([...players, ...pluginOrigins, ...editorFrames])].join(" ")}`,
     "worker-src 'self' blob:",
     "manifest-src 'self'",
     "object-src 'none'",
@@ -50,6 +53,14 @@ export function contentSecurityPolicy(nonce: string | null, dev: boolean, plugin
     "frame-ancestors 'self'",
     ...(dev || !https ? [] : ["upgrade-insecure-requests"]),
   ].join("; ");
+}
+
+// The app itself (/, where the editor runs) may frame draw.io (DRAWIO_URL,
+// lib/drawio.ts); no other page needs it.
+export function editorFrameOrigins(path: string): string[] {
+  if (path !== "/") return [];
+  const drawio = drawioConfig();
+  return drawio ? [drawio.origin] : [];
 }
 
 // Lookups the proxy would repeat for every request, kept for a few seconds:
@@ -164,7 +175,7 @@ export async function proxy(request: NextRequest) {
   }
   const dev = process.env.NODE_ENV === "development";
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
-  const policy = contentSecurityPolicy(nonce, dev, await pluginOrigins(), servedOverHttps(request));
+  const policy = contentSecurityPolicy(nonce, dev, await pluginOrigins(), servedOverHttps(request), editorFrameOrigins(path));
   const headers = new Headers(request.headers);
   headers.delete(CUSTOM_HOST_HEADER);
   if (nonce) headers.set("x-nonce", nonce);

@@ -30,6 +30,10 @@ export type MarkdownContext = {
   plugin?: (pluginId: string) => { name: string; url: string } | null;
   // Drawing blocks: a picture (SVG in the ZIP export) and their text.
   ink?: (attrs: Record<string, unknown>) => { image: string | null; text: string } | null;
+  // draw.io diagrams: the address of a .drawio.svg written next to the
+  // page (ZIP export). Without it the diagram's XML goes into a ```drawio
+  // fence, which the import reads back.
+  drawio?: (attrs: Record<string, unknown>) => string | null;
   // Blocks whose id is written as a marker (#88): those that links point
   // to. A text block ends with " ^id" (Obsidian's block reference), any
   // other block is followed by a line "^id"; lib/markdown-import.ts reads
@@ -160,6 +164,7 @@ const blockLabels: Record<string, () => string> = {
   syncedBlock: () => tr("Synchronisierter Block", "Synced block"),
   whiteboardEmbed: () => tr("Whiteboard", "Whiteboard"),
   drawBlock: () => tr("Handschrift", "Handwriting"),
+  drawioBlock: () => tr("draw.io-Diagramm", "draw.io diagram"),
   media: () => tr("Medium", "Media"),
   linkCard: () => tr("Linkvorschau", "Link preview"),
   functionPlot: () => tr("Funktionsgraph", "Function graph"),
@@ -461,6 +466,13 @@ export function htmlToMarkdown(
         const label = tr("Handschrift", "Handwriting");
         const image = ink?.image ? `![${markdownText(label)}](<${markdownUrl(ink.image)}>)` : `*${markdownText(label)}*`;
         return ink?.text ? `${image}\n\n${markdownText(ink.text)}` : image;
+      }
+      case "drawioBlock": {
+        const label = ct("draw.io-Diagramm", "draw.io diagram");
+        const image = context.drawio?.(node.attrs);
+        if (image) return `![${markdownText(label)}](<${markdownUrl(image)}>)`;
+        const xml = String(node.attrs.xml || "");
+        return xml && !inTable ? fencedCode(xml, "drawio") : `*${markdownText(label)}*`;
       }
       case "pluginBlock": {
         // A placeholder link: the frame cannot live in Markdown; its text can.

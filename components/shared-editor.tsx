@@ -11,6 +11,8 @@ import {
 } from "./math-editor";
 import { documentExtensions, Media, widthStyle } from "@/lib/document-schema";
 import { DrawBlock } from "@/lib/draw-block-node";
+import { DrawioBlock } from "@/lib/drawio-node";
+import { mountDrawioPreview } from "@/lib/drawio-preview";
 import { BlockDirectionExtension } from "@/lib/text-direction";
 import {
   mermaidNodeView,
@@ -83,6 +85,18 @@ export default function SharedEditor({
                         })
                         .catch(() => {});
                     return { dom };
+                  };
+                },
+              })
+            : e.name === "drawioBlock"
+            ? DrawioBlock.extend({
+                // draw.io diagrams show their picture; editing is for members.
+                addNodeView() {
+                  return ({ node }) => {
+                    const dom = document.createElement("div");
+                    dom.contentEditable = "false";
+                    mountDrawioPreview(dom, String(node.attrs.svg || ""), !!node.attrs.xml);
+                    return { dom, ignoreMutation: () => true };
                   };
                 },
               })

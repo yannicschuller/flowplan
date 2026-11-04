@@ -33,6 +33,7 @@ const names: Record<string, string> = {
   toggle: tr("Toggle", "Toggle"),
   mathBlock: tr("Formel", "Formula"),
   mermaidBlock: tr("Diagramm", "Diagram"),
+  drawioBlock: tr("draw.io-Diagramm", "draw.io diagram"),
   columns: tr("Spalten", "Columns"),
   media: tr("Medium", "Media"),
   linkedDatabase: tr("Verknüpfte Datenbank", "Linked database"),
@@ -60,7 +61,7 @@ export function documentBlocks(doc: Node): DocumentBlock[] {
           node.textContent ||
             node.attrs.title ||
             node.attrs.expression ||
-            (node.type.name === "mermaidBlock" && heading
+            (["mermaidBlock", "drawioBlock"].includes(node.type.name) && heading
               ? tr(`unter „${heading}“`, `below “${heading}”`)
               : "") ||
             node.attrs.alt ||

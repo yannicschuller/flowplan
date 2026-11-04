@@ -56,6 +56,7 @@ import { textBacklinks } from "./text-backlinks";
 import { hiddenFileIds } from "./row-files";
 import { addBookmarks, bookmarksDatabase, parseBookmarksHtml } from "./web-clip";
 import { transcriptionEnabled } from "./transcribe";
+import { drawioConfig } from "./drawio";
 import {
   dayEntry,
   journalDayDetails,
@@ -348,6 +349,9 @@ export function bootstrap(user: Identity, wid?: string, agent?: string | null) {
       allowWorkspaceCreation:
         instanceSettings().allowWorkspaceCreation || user.isAdmin,
       transcription: transcriptionEnabled() && !user.demo,
+      // The draw.io editor (DRAWIO_URL, lib/drawio.ts); null when the
+      // address set is not usable.
+      drawio: drawioConfig(),
       mail: !!mailConfig(),
       legal: legalLinks(),
       // Settings → Über Flowplan; a newer release for administrators.

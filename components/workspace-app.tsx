@@ -262,6 +262,7 @@ import { E2eeSetupDialog, E2eeUnlockDialog, EncryptedPage, EncryptedSpaceMembers
 import { createEncryptedSpace, encryptTitle, loadIdentity, openSpace, useE2ee } from "./e2ee-store";
 import { ENCRYPTED_TITLE } from "@/lib/e2ee";
 import { CalendarX, LockKey } from "@phosphor-icons/react";
+import { setDrawioEditor } from "@/lib/drawio-prefs";
 // Shown while the parts load (they use the reader's language).
 function Loading({ what }: { what: "emoji" | "document" | "whiteboard" }) {
   const t = useT();
@@ -520,6 +521,8 @@ export default function WorkspaceApp({
   // comes back by itself, the error toast says why).
   const [layers, setLayers] = useState<Layer[]>([]);
   const boot = useMemo(() => layers.reduce((b, layer) => (layer.boot ? safeLayer(layer.boot, b) : b), bootState), [bootState, layers]);
+  // The draw.io editor the documents' blocks open (lib/drawio-prefs.ts).
+  setDrawioEditor(boot.instance?.drawio);
   const data = useMemo(
     () => (dataState ? layers.reduce((d, layer) => (layer.page ? safeLayer(layer.page, d) : d), dataState) : null),
     [dataState, layers],

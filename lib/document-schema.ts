@@ -22,6 +22,7 @@ import Highlight from "@tiptap/extension-highlight";
 import TextAlign from "@tiptap/extension-text-align";
 import { Subscript, Superscript, TextColor } from "./text-marks";
 import { MermaidBlock } from "./mermaid-node";
+import { DrawioBlock } from "./drawio-node";
 import { FunctionPlot } from "./function-plot-node";
 import { MetricBlock } from "./metric-node";
 import { PluginBlock } from "./plugin-node";
@@ -557,6 +558,7 @@ export const documentExtensions = [
   }),
   FlowCodeBlock,
   MermaidBlock,
+  DrawioBlock,
   FunctionPlot,
   MetricBlock,
   PluginBlock,
