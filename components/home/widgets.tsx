@@ -27,6 +27,9 @@ import { useT } from "../i18n";
 import { WidgetSkeleton } from "../skeleton";
 import { PageIcon } from "../ui";
 import { Sparkline } from "../sparkline";
+import { BarChart, ChartTable } from "../charts";
+import { formatNumber } from "@/lib/field-format";
+import { LOCALE_TAG } from "@/lib/locale-tag";
 import { serverMessage } from "@/lib/i18n-errors";
 import { notificationUrl, parsePageLocation, type PageLocation } from "@/lib/page-location";
 import { dueLabel, dueState } from "@/lib/task-due-plugin";
@@ -34,7 +37,8 @@ import { useCaptureTargets } from "../capture-target";
 import { Select } from "../select";
 import type { Bootstrap, Page, PageKind } from "@/lib/types";
 import type { Locale } from "@/lib/i18n";
-import type { HomeWidget, WidgetConfig } from "@/lib/home-layout-schema";
+import type { ActivityPeriod, HomeWidget, WidgetConfig } from "@/lib/home-layout-schema";
+import type { ActivityFigure, MyActivity } from "@/lib/my-activity";
 import { widgetIcon, widgetName } from "./meta";
 import { clockTime, dayHeading, greeting, hours, longDate, relativeTime } from "./format";
 
@@ -63,6 +67,8 @@ export type HomeEnv = {
   // Fetches the widgets' data again.
   reload: () => void;
   saveNote: (widgetId: string, text: string) => void;
+  // A setting changed on the widget itself (lib/home-layout.ts saveHomeConfig).
+  saveConfig: (widgetId: string, config: Record<string, unknown>) => void;
 };
 export const HomeEnvContext = createContext<HomeEnv | null>(null);
 const useEnv = () => useContext(HomeEnvContext)!;
@@ -275,6 +281,8 @@ function ServerWidget({ widget }: { widget: HomeWidget }) {
       return <StatsWidget widget={widget} data={data} />;
     case "instance":
       return <InstanceWidget widget={widget} data={data} />;
+    case "myActivity":
+      return <MyActivityWidget widget={widget} config={widget.config} data={data} />;
     default:
       return null;
   }
@@ -1275,6 +1283,103 @@ function InstanceWidget({ widget, data }: { widget: HomeWidget; data: Record<str
           ))}
         </ul>
       )}
+    </>
+  );
+}
+
+// The person's own pages created and edited (lib/my-activity.ts): the
+// number, the change against the same stretch of the period before and a
+// small chart per day (per month for a year). The period is chosen here
+// and kept in the widget's settings.
+function MyActivityWidget({ widget, config, data }: DataProps<"myActivity">) {
+  const t = useT();
+  const env = useEnv();
+  const [period, setPeriod] = useState<ActivityPeriod>(config.period);
+  useEffect(() => setPeriod(config.period), [config.period]);
+  const choose = (next: ActivityPeriod) => {
+    if (next === period) return;
+    setPeriod(next);
+    env.saveConfig(widget.id, { period: next });
+  };
+  const names: [ActivityPeriod, string][] = [
+    ["week", t("Woche", "Week")],
+    ["month", t("Monat", "Month")],
+    ["year", t("Jahr", "Year")],
+  ];
+  const result = data as MyActivity;
+  const current = result.period === period;
+  const before = period === "week" ? t("ggü. Vorwoche", "vs. last week") : period === "month" ? t("ggü. Vormonat", "vs. last month") : t("ggü. Vorjahr", "vs. last year");
+  const empty = current && !result.created.total && !result.edited.total && !result.created.previous && !result.edited.previous;
+  const utc = (day: string) => new Date(`${day.length === 7 ? `${day}-01` : day}T00:00:00Z`);
+  const label = (bucket: string) =>
+    result.unit === "month"
+      ? utc(bucket).toLocaleDateString(LOCALE_TAG, { month: "short", timeZone: "UTC" })
+      : period === "week"
+        ? utc(bucket).toLocaleDateString(LOCALE_TAG, { weekday: "short", timeZone: "UTC" })
+        : String(Number(bucket.slice(8)));
+  const tip = (bucket: string) =>
+    result.unit === "month"
+      ? utc(bucket).toLocaleDateString(LOCALE_TAG, { month: "long", year: "numeric", timeZone: "UTC" })
+      : utc(bucket).toLocaleDateString(LOCALE_TAG, { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
+  const day = (value: string) => utc(value).toLocaleDateString(LOCALE_TAG, { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+  const span = current ? `${day(result.from)} – ${day(result.to)}` : "";
+  const figures: { key: "created" | "edited"; label: string; color: number }[] = [
+    { key: "created", label: t("Seiten erstellt", "Pages created"), color: 0 },
+    { key: "edited", label: t("Seiten bearbeitet", "Pages edited"), color: 1 },
+  ];
+  const change = (f: ActivityFigure) => {
+    const delta = f.total - f.previous;
+    return `${delta > 0 ? "+" : delta < 0 ? "−" : "±"}${formatNumber(Math.abs(delta))} ${before}`;
+  };
+  return (
+    <>
+      <Heading widget={widget}>
+        <div className="segmented home-mine-period" role="radiogroup" aria-label={t("Zeitraum", "Period")}>
+          {names.map(([value, name]) => (
+            <label key={value} data-active={period === value}>
+              <input type="radio" name={`home-period-${widget.id}`} checked={period === value} onChange={() => choose(value)} />
+              {name}
+            </label>
+          ))}
+        </div>
+      </Heading>
+      {!current ? (
+        <Loading />
+      ) : empty ? (
+        <Empty>{t("Noch nichts in diesem Zeitraum. Sobald du Seiten erstellst oder bearbeitest, erscheinen sie hier.", "Nothing in this period yet. Once you create or edit pages, they show up here.")}</Empty>
+      ) : (
+        <>
+          <div className="home-mine">
+            {figures.map(({ key, label: name, color }) => {
+              const f = result[key];
+              return (
+                <section key={key} className="home-mine-figure" aria-label={name}>
+                  <h3>{name}</h3>
+                  <p className="home-mine-value">
+                    <strong>{formatNumber(f.total)}</strong>
+                    <span title={t(`Vorheriger Zeitraum bis zum gleichen Tag: ${formatNumber(f.previous)}`, `Previous period up to the same day: ${formatNumber(f.previous)}`)}>{change(f)}</span>
+                  </p>
+                  <BarChart
+                    title={`${name} – ${names.find(([v]) => v === period)![1]}`}
+                    description={result.unit === "month" ? t(`Pro Monat, ${span}`, `Per month, ${span}`) : t(`Pro Tag, ${span}`, `Per day, ${span}`)}
+                    labels={result.buckets.map(label)}
+                    tips={result.buckets.map(tip)}
+                    series={[{ key, label: name, values: f.series, color }]}
+                    formatY={(n) => formatNumber(n)}
+                    height={112}
+                  />
+                </section>
+              );
+            })}
+          </div>
+          <ChartTable
+            caption={`${widgetName(widget, t)}: ${span}`}
+            head={[result.unit === "month" ? t("Monat", "Month") : t("Tag", "Day"), ...figures.map((f) => f.label)]}
+            rows={result.buckets.flatMap((bucket, i) => (result.created.series[i] === null ? [] : [[tip(bucket), formatNumber(result.created.series[i] || 0), formatNumber(result.edited.series[i] || 0)]]))}
+          />
+        </>
+      )}
+      <p className="home-mine-note">{t("Nur du siehst diese Zahlen.", "Only you see these numbers.")}</p>
     </>
   );
 }

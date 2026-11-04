@@ -4,19 +4,22 @@
 // own default for all workspaces, the default the workspace's owners chose
 // for their members, the built-in default (lib/home-layout-schema.ts).
 // Sent with the bootstrap, so every device shows the same start page;
-// changed with the commands home.save, home.reset, home.note, home.default.
+// changed with the commands home.save, home.reset, home.note, home.config,
+// home.default.
 import { z } from "zod";
 import { one, run } from "./db";
 import { HttpError } from "./auth";
 import { requireMember } from "./permissions";
 import {
   defaultLayout,
+  inlineConfigs,
   layoutBytes,
   MAX_LAYOUT_BYTES,
   MAX_NOTE_LENGTH,
   parseLayout,
   saveSchema,
   type HomeLayout,
+  type InlineKind,
 } from "./home-layout-schema";
 import type { Identity } from "./types";
 
@@ -117,6 +120,21 @@ export function saveHomeNote(user: Identity, body: unknown): { ok: true; updated
   // Stored where the shown layout comes from; a team or built-in layout
   // becomes the person's own for this workspace.
   write(user.id, state.source === "personal" ? "" : input.workspaceId, json);
+  return { ok: true, updatedAt: Date.now() };
+}
+
+// A setting changed on the widget itself (the period of "My activity"):
+// like a note, only that widget changes, and only the keys of inlineConfigs.
+export function saveHomeConfig(user: Identity, body: unknown): { ok: true; updatedAt: number } {
+  const input = z
+    .object({ workspaceId: z.uuid(), widgetId: z.string().regex(/^[a-z0-9-]{1,40}$/i), config: z.record(z.string(), z.unknown()) })
+    .parse(body);
+  requireMember(user, input.workspaceId);
+  const state = homeLayout(user, input.workspaceId);
+  const widget = state.layout.widgets.find((w) => w.id === input.widgetId && w.kind in inlineConfigs);
+  if (!widget) throw new HttpError(404, "Dieses Widget gibt es nicht mehr.");
+  Object.assign(widget.config, inlineConfigs[widget.kind as InlineKind].parse(input.config));
+  write(user.id, state.source === "personal" ? "" : input.workspaceId, checkedJson(state.layout));
   return { ok: true, updatedAt: Date.now() };
 }
 

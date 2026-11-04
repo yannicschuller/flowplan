@@ -129,6 +129,19 @@ export default function HomeScreen(props: HomeProps) {
     [workspaceId, boot.home, onHome, notifyError],
   );
 
+  const saveConfig = useCallback(
+    (widgetId: string, config: Record<string, unknown>) => {
+      api("/api/command", { action: "home.config", workspaceId, widgetId, config }).catch(notifyError);
+      // In the layout right away: the widget's data follows its settings.
+      if (boot.home)
+        onHome({
+          ...boot.home,
+          layout: { ...boot.home.layout, widgets: boot.home.layout.widgets.map((w) => (w.id === widgetId ? ({ ...w, config: { ...w.config, ...config } } as typeof w) : w)) },
+        });
+    },
+    [workspaceId, boot.home, onHome, notifyError],
+  );
+
   // ---- Editing ----
   const start = useCallback(() => {
     if (!saved) return;
@@ -174,6 +187,7 @@ export default function HomeScreen(props: HomeProps) {
     action,
     reload,
     saveNote,
+    saveConfig,
   };
   if (!layout) return null;
   const look = layout.appearance;

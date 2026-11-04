@@ -758,6 +758,20 @@ function WidgetSettings({ widget, workspaceId, pages, spaces, onClose, onSave }:
         </>
       );
       break;
+    case "myActivity":
+      fields = (
+        <Choice
+          legend={t("Zeitraum", "Period")}
+          value={c.period}
+          options={[
+            ["week", t("Woche", "Week")],
+            ["month", t("Monat", "Month")],
+            ["year", t("Jahr", "Year")],
+          ]}
+          onChange={(v) => set({ period: v })}
+        />
+      );
+      break;
     case "links":
       fields = <LinkFields links={c.links} onChange={(links) => set({ links })} />;
       break;
