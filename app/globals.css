@@ -30914,3 +30914,10 @@ label.ws-search input {
     transform: rotate(90deg);
   }
 }
+
+/* The iPhone/iPad/Android app: no pinch-to-zoom in documents (the web keeps it
+   for accessibility). Whiteboard and image viewer set touch-action themselves. */
+html.native-app,
+html.native-app body {
+  touch-action: pan-x pan-y;
+}

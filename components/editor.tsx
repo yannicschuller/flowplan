@@ -52,6 +52,7 @@ import {
 } from "@/lib/block-ids";
 import { BlockIds, HeadingLinks } from "@/lib/block-ids-plugin";
 import { showToast } from "./toast";
+import { copyImage } from "@/lib/copy-image";
 import { whiteboardEmbedNode } from "./whiteboard/embed";
 import { drawBlockNode } from "./ink/draw-block";
 import { newDrawBlockId } from "@/lib/draw-block-node";
@@ -159,6 +160,7 @@ import {
   X,
   CalendarBlank,
   PencilSimpleLine,
+  CopySimple,
   ChartLine,
   UsersThree,
   Note,
@@ -1901,6 +1903,22 @@ export default function DocumentEditor({
     if (node?.type.name !== "image") return;
     setAnnotate({ pos: selection.from, src: node.attrs.src || "", original: node.attrs.original, annotations: node.attrs.annotations });
   }
+  // Copies the selected image to the system clipboard (toolbar button; the
+  // right-click menu does not exist on a phone).
+  async function copySelectedImage() {
+    if (!editor) return;
+    const { selection } = editor.state;
+    const node = "node" in selection ? (selection as unknown as { node: { type: { name: string }; attrs: Record<string, string | null> } }).node : null;
+    if (node?.type.name !== "image" || !node.attrs.src) return;
+    try {
+      const result = await copyImage(node.attrs.src);
+      if (result === "copied") showToast({ text: t("Bild kopiert", "Image copied") });
+      else if (result === "unsupported") onError(t("Dieses Gerät kann Bilder nicht in die Zwischenablage kopieren.", "This device cannot copy images to the clipboard."));
+    } catch (e) {
+      if ((e as Error).name === "AbortError") return;
+      onError(t("Das Bild konnte nicht kopiert werden.", "The image could not be copied."));
+    }
+  }
   // Uploads the marked-up image and keeps original and markings on it.
   async function saveAnnotation(target: NonNullable<typeof annotate>, result: AnnotationResult) {
     const current = editor?.state.doc.nodeAt(target.pos);
@@ -2095,6 +2113,15 @@ export default function DocumentEditor({
                 onClick={annotateSelectedImage}
               >
                 <PencilSimpleLine />
+              </button>
+            )}
+            {imageSelected && (
+              <button
+                title={t("Bild kopieren", "Copy image")}
+                aria-label={t("Bild kopieren", "Copy image")}
+                onClick={() => void copySelectedImage()}
+              >
+                <CopySimple />
               </button>
             )}
             <span className="toolbar-separator" />
