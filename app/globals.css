@@ -1336,6 +1336,9 @@ kbd,
   float: left;
   height: 0;
 }
+.document-editor .is-editor-empty[data-placeholder=""]:before {
+  content: none;
+}
 .document-editor ul[data-type="taskList"] {
   list-style: none;
   padding: 0;
@@ -4526,6 +4529,10 @@ mark[data-color] {
 }
 .type-picker small {
   font-size: 11px;
+}
+/* "From a template" (#112): a full-width row under the six kinds. */
+.type-picker > .type-picker-template {
+  grid-column: 1 / -1;
 }
 .type-picker .chosen {
   border-color: var(--blue);

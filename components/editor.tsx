@@ -573,8 +573,11 @@ export default function DocumentEditor({
         // Captions below images, tables and code (lib/block-captions.ts),
         // numbered when the page says so.
         BlockCaptions.configure({ numbered: () => captionsNumbered.current }),
+        // Not on a code block that is the page's only block (#113): its own
+        // header (language, copy) sits where the hint would be drawn.
         Placeholder.configure({
-          placeholder: t("Schreibe etwas oder tippe / für Befehle …", "Write something or type / for commands …"),
+          placeholder: ({ node }) =>
+            node.type.name === "codeBlock" ? "" : t("Schreibe etwas oder tippe / für Befehle …", "Write something or type / for commands …"),
         }),
         Highlight.configure({ multicolor: true }),
         TextColor,
