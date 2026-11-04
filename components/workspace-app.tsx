@@ -805,9 +805,17 @@ export default function WorkspaceApp({
     () => ({ tags: boot.taxonomy?.tags ?? [], createTags: !!boot.taxonomy?.createTags }),
     [boot.taxonomy],
   );
+  // Reloads overlap (after each change, every 10 s, …) and their answers
+  // may come in another order: one that started earlier and answers later
+  // would put back the state from before a change – the record's old values
+  // and version, refused on the next edit (#104). The newest one shown wins.
+  const refreshCount = useRef(0),
+    bootShown = useRef(0),
+    dataShown = useRef(0);
   const refresh = useCallback(async () => {
     if (navigationPending.current) return;
     const version = navigationVersion.current;
+    const count = ++refreshCount.current;
     let result: Bootstrap;
     try {
       result = await api<Bootstrap>(
@@ -825,6 +833,8 @@ export default function WorkspaceApp({
     }
     if (navigationPending.current || version !== navigationVersion.current)
       return;
+    if (count < bootShown.current) return;
+    bootShown.current = count;
     setBoot(result);
     if (
       result.workspace.id !== currentWorkspace.current ||
@@ -856,9 +866,12 @@ export default function WorkspaceApp({
       if (
         pid === currentId.current &&
         version === navigationVersion.current &&
-        !navigationPending.current
-      )
+        !navigationPending.current &&
+        count >= dataShown.current
+      ) {
+        dataShown.current = count;
         setData(p);
+      }
     }
   }, []);
   // Record changes without a connection wait on this device (see

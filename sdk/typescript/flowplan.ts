@@ -1493,7 +1493,7 @@ export type CommandRowCreateResult = {
   id: string;
 };
 
-/** Change properties of a record. `version` must match the record's current version; properties not named stay as they are. */
+/** Change properties of a record. `version` must match the record's current version – or, with `base`, the properties in `cells` must still have the values in `base` (the values the change was made on); properties not named stay as they are. The answer holds the record's new `rowVersion`. */
 export type CommandRowUpdate = {
   action: "row.update";
   pageId: string;
@@ -1501,10 +1501,13 @@ export type CommandRowUpdate = {
   version: number;
   /** Property values by property ID (the first property is the title). */
   cells?: Record<string, unknown>;
+  /** The values of the changed properties the change was made on */
+  base?: Record<string, unknown>;
 };
 
 export type CommandRowUpdateResult = {
   ok: true;
+  rowVersion: number;
 };
 
 /** Move a record to the trash of its database */

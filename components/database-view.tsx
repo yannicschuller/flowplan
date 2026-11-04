@@ -1,5 +1,6 @@
 "use client";
-import { createRowQueue, currentVersion } from "@/lib/row-queue";
+import { rowChanges } from "@/lib/row-queue";
+import { patchBase } from "@/lib/row-patch";
 import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { safeCollisionPadding } from "./safe-area";
 import { serverMessage } from "@/lib/i18n-errors";
@@ -1099,33 +1100,34 @@ export default function DatabaseView({
         : undefined;
   // Also properties of contacts the LDAP directory keeps (lib/contacts.ts).
   const fieldLocked = (r: Row, f: Field) => lockedFields.has(f.id) || contactLocked(data.contacts, r.id, f.id);
-  // Changes of one record run one after the other, each with the record's
-  // current version: a quick second edit (title, then the next field) would
-  // otherwise carry the version from before the first save and be refused.
+  // Changes of one record go through one path (lib/row-queue.ts): one after
+  // the other, each with the newest version known – the server's answer to
+  // the previous change, not only the reloaded data, which may arrive later
+  // (#104). A change of properties also says which values it was made on,
+  // so a newer version that changed only other properties does not refuse it.
   const rowsNow = useRef(data.rows);
   rowsNow.current = data.rows;
-  const rowQueue = useRef(createRowQueue());
+  const rowChange = <T,>(b: Record<string, unknown>, send: (body: Record<string, unknown>) => Promise<T>) => {
+    const rowId = typeof b.rowId === "string" ? b.rowId : null;
+    const shown = () => rowsNow.current.find((r) => r.id === rowId)?.version;
+    const withBase =
+      b.action === "row.update" && rowId && b.cells && typeof b.cells === "object" && b.base === undefined
+        ? { ...b, base: patchBase(rowsNow.current.find((r) => r.id === rowId)?.cells, b.cells as Record<string, unknown>) }
+        : b;
+    return rowChanges.run(withBase, shown, send);
+  };
   const act = async (b: Record<string, unknown>) => {
-    const rowId = typeof b.rowId === "string" && typeof b.version === "number" ? b.rowId : null;
-    const send = async (fresh: boolean) => {
-      try {
-        let sent = b;
-        if (fresh && rowId) {
-          // The reloaded state arrives with the next render.
-          await new Promise((r) => setTimeout(r, 0));
-          const version = currentVersion(b.version as number, rowsNow.current.find((r) => r.id === rowId)?.version);
-          if (version !== b.version) sent = { ...b, version };
-        }
+    try {
+      return await rowChange(b, (sent) => {
         // The action's Idempotency-Key stays with it (lib/idempotency-key.ts).
         const key = idempotencyKeyOf(sent);
         const body = { pageId: page.id, ...sent };
-        return await mutate(key ? keyed(body, key) : body);
-      } catch (e) {
-        onError((e as Error).message);
-        return null;
-      }
-    };
-    return rowId ? rowQueue.current(rowId, send) : send(false);
+        return mutate(key ? keyed(body, key) : body);
+      });
+    } catch (e) {
+      onError((e as Error).message);
+      return null;
+    }
   };
   async function updateSchema(
     nextFields: Field[] = fields,
@@ -3804,7 +3806,7 @@ export default function DatabaseView({
           onOpen={(id, date) => setRowId(id, date)}
           onCreate={createRow}
           onView={updateView}
-          onSchedule={(input) => mutate({ pageId: page.id, ...input })}
+          onSchedule={(input) => rowChange(input, (sent) => mutate({ pageId: page.id, ...sent }))}
         />
       )}
       {view.type === "timeline" && (
@@ -3819,7 +3821,7 @@ export default function DatabaseView({
           viewEditable={viewEditable}
           onOpen={setRowId}
           onView={updateView}
-          onSchedule={(input) => mutate({ pageId: page.id, ...input })}
+          onSchedule={(input) => rowChange(input, (sent) => mutate({ pageId: page.id, ...sent }))}
           onSchema={
             allowFieldChanges
               ? (nextFields, patch) =>

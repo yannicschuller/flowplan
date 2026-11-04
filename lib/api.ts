@@ -1,3 +1,4 @@
+import { patchStillApplies } from "./row-patch";
 import { bannersFor } from "./instance-banners";
 import type { TransactionHook } from "./idempotency";
 import { teamReply } from "./service-desk";
@@ -2233,7 +2234,15 @@ export function command(
         if (!row) throw new HttpError(404, "Datensatz fehlt.");
         assertRowAccess(user, p, row, true);
         autoDatabaseSnapshot(user, p);
-        if (b.version !== row.version)
+        const before = JSON.parse(row.cells);
+        // An older version still applies when the properties it changes
+        // are as the person saw them (`base`, lib/row-patch.ts): the newer
+        // version only changed others – e.g. their own save of the title
+        // a moment ago (#104).
+        if (
+          b.version !== row.version &&
+          !patchStillApplies(before, b.base, (b.cells as Record<string, unknown>) || {})
+        )
           throw new HttpError(
             409,
             "Datensatz wurde geändert. Bitte neu laden.",
@@ -2243,7 +2252,6 @@ export function command(
             400,
             "Dokumentinhalt über den Dokumenteditor bearbeiten.",
           );
-        const before = JSON.parse(row.cells);
         const fieldsNow = database(pid()).fields;
         const patch = validateCellPatch(user, p, fieldsNow, b.cells || {});
         const cells = contactCellsFor(pid(), fieldsNow, before, { ...before, ...patch }, Object.keys(patch));
@@ -3163,6 +3171,13 @@ export function command(
       default:
         throw new HttpError(400, "Unbekannte Aktion.");
     }
+    // A change of one record answers with the record's version after it –
+    // automations included –, so the next change of the same record can
+    // carry it right away (lib/row-queue.ts, #104).
+    if (rowVersionActions.has(action) && typeof b.rowId === "string" && result && typeof result === "object" && !Array.isArray(result)) {
+      const changed = one<{ version: number }>("SELECT version FROM rows WHERE id=?", b.rowId);
+      if (changed) result = { ...result, rowVersion: changed.version };
+    }
     // Content changes: who edited, and followers are told.
     if (editActions.has(action) && typeof b.pageId === "string")
       recordPageEdit(user, b.pageId);
@@ -3237,6 +3252,16 @@ export function commentReactions(user: Identity, commentId: string) {
   }
   return [...byEmoji.values()];
 }
+// Commands that change one record (`rowId`) under its version.
+const rowVersionActions = new Set([
+  "row.update",
+  "row.appearance",
+  "row.recurrence",
+  "row.repeat",
+  "row.detachOccurrence",
+  "row.move",
+  "row.schedule",
+]);
 const editActions = new Set([
   "document.sync",
   "database.update",

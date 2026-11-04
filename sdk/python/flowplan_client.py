@@ -943,17 +943,19 @@ CommandRowCreateResult = TypedDict("CommandRowCreateResult", {
     "id": Required[str],
 }, total=False)
 
-# Change properties of a record. `version` must match the record's current version; properties not named stay as they are.
+# Change properties of a record. `version` must match the record's current version – or, with `base`, the properties in `cells` must still have the values in `base` (the values the change was made on); properties not named stay as they are. The answer holds the record's new `rowVersion`.
 CommandRowUpdate = TypedDict("CommandRowUpdate", {
     "action": Required[Literal["row.update"]],
     "pageId": Required[str],
     "rowId": Required[str],
     "version": Required[int],
     "cells": dict[str, Any],  # Property values by property ID (the first property is the title).
+    "base": dict[str, Any],  # The values of the changed properties the change was made on
 }, total=False)
 
 CommandRowUpdateResult = TypedDict("CommandRowUpdateResult", {
     "ok": Required[Literal[True]],
+    "rowVersion": Required[int],
 }, total=False)
 
 # Move a record to the trash of its database
