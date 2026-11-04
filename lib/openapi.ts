@@ -436,15 +436,17 @@ export const commandActions: ActionDoc[] = [
   {
     action: "row.update",
     summary: "Change properties of a record",
-    description: "`version` must match the record's current version; properties not named stay as they are.",
+    description:
+      "`version` must match the record's current version – or, with `base`, the properties in `cells` must still have the values in `base` (the values the change was made on); properties not named stay as they are. The answer holds the record's new `rowVersion`.",
     input: z.object({
       action: z.literal("row.update"),
       pageId: uuid,
       rowId: uuid,
       version: z.number().int(),
       cells: cells.optional(),
+      base: cells.optional().describe("The values of the changed properties the change was made on"),
     }),
-    result: okResult,
+    result: z.object({ ok: z.literal(true), rowVersion: z.number().int() }),
   },
   {
     action: "row.delete",
