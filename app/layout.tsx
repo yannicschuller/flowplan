@@ -20,6 +20,7 @@ import { ClipboardFallback } from "@/components/clipboard-fallback";
 import { headers } from "next/headers";
 import { THEME_SCRIPT } from "@/lib/theme";
 import { UUID_POLYFILL_SCRIPT } from "@/lib/uuid-polyfill";
+import { NativeAppZoomLock } from "@/components/native-app-zoom-lock";
 import { APP_BARS_SCRIPT } from "@/lib/app-safe-areas";
 import { runningBuild } from "@/lib/offline-assets-server";
 import { BUILD_META, selfHealScript } from "@/lib/stale-copy";
@@ -104,6 +105,7 @@ export default async function RootLayout({
       </head>
       <body>
         <LocaleProvider locale={locale}>
+          <NativeAppZoomLock />
           {children}
           <PdfViewerHost />
           {/* Copy buttons on a plain-http instance (#62). */}
