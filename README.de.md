@@ -369,35 +369,10 @@ Gleichzeitig bearbeiten mit Live-Cursorn (Yjs/CRDT), Kommentare und Textkommenta
 
 ### Architektur
 
-```mermaid
-flowchart LR
-  subgraph clients["Clients"]
-    web["Browser / PWA<br/>Offline-Kopie"]
-    mobile["Apps für iOS und Android<br/>(Expo)"]
-    desktop["Desktop-Apps<br/>macOS · Windows · Linux"]
-  end
-  proxy["Reverse Proxy<br/>HTTPS"]
-  subgraph box["Flowplan-Container"]
-    app["Next.js-Server<br/>Web-App · REST-API · Echtzeit-Sync"]
-    db[("SQLite")]
-    files[("Uploads<br/>Volume")]
-    ls["Litestream"]
-  end
-  s3[("S3-kompatibler Speicher")]
-  web --> proxy
-  mobile --> proxy
-  desktop --> proxy
-  proxy --> app
-  app --> db
-  app --> files
-  db -.-> ls -.->|"laufende Sicherung"| s3
-  files -.->|"gespiegelt"| s3
-  app -.-> idp["OIDC / LDAP"]
-  app -.-> smtp["SMTP"]
-  app -.-> ai["KI-Anbieter<br/>Ollama oder API"]
-  app -.->|"Ende-zu-Ende-verschlüsselt"| relay["Push-Relay<br/>push.flowplan.org oder selbst betrieben"]
-  relay -.-> mobile
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/assets/readme/architecture-de-dark.png">
+  <img src=".github/assets/readme/architecture-de-light.png" alt="Architektur: Clients erreichen den Flowplan-Container über einen Reverse Proxy; SQLite und Uploads, optional nach S3 gesichert; optional OIDC/LDAP, SMTP, KI-Anbieter und Push-Relay" width="100%">
+</picture>
 
 Gestrichelte Linien sind optional. Alles, was Flowplan speichert, liegt in einem Datenverzeichnis (`/app/data`): die SQLite-Datenbank, Uploads und Schlüssel. Das [Push-Relay](https://github.com/yannicschuller/flowplan-push) trägt nur Benachrichtigungen an die mobilen Apps aus und sieht dabei nur Chiffretext.
 

@@ -367,35 +367,10 @@ Live editing with cursors (Yjs/CRDT), comments and inline threads, mentions, rea
 
 ### Architecture
 
-```mermaid
-flowchart LR
-  subgraph clients["Clients"]
-    web["Browser / PWA<br/>offline copy"]
-    mobile["iOS and Android apps<br/>(Expo)"]
-    desktop["Desktop apps<br/>macOS · Windows · Linux"]
-  end
-  proxy["Reverse proxy<br/>HTTPS"]
-  subgraph box["Flowplan container"]
-    app["Next.js server<br/>web app · REST API · real-time sync"]
-    db[("SQLite")]
-    files[("Uploads<br/>volume")]
-    ls["Litestream"]
-  end
-  s3[("S3-compatible storage")]
-  web --> proxy
-  mobile --> proxy
-  desktop --> proxy
-  proxy --> app
-  app --> db
-  app --> files
-  db -.-> ls -.->|"continuous backup"| s3
-  files -.->|"mirrored"| s3
-  app -.-> idp["OIDC / LDAP"]
-  app -.-> smtp["SMTP"]
-  app -.-> ai["AI provider<br/>Ollama or API"]
-  app -.->|"end-to-end encrypted"| relay["Push relay<br/>push.flowplan.org or self-hosted"]
-  relay -.-> mobile
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/assets/readme/architecture-en-dark.png">
+  <img src=".github/assets/readme/architecture-en-light.png" alt="Architecture: clients reach the Flowplan container through a reverse proxy; SQLite and uploads, optionally backed up to S3; optional OIDC/LDAP, SMTP, AI provider and push relay" width="100%">
+</picture>
 
 Dashed lines are optional. Everything Flowplan stores lives in one data directory (`/app/data`): the SQLite database, uploads and keys. The [push relay](https://github.com/yannicschuller/flowplan-push) only carries notifications to the mobile apps; it sees ciphertext.
 
