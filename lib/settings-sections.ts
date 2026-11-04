@@ -37,6 +37,7 @@ export const SETTINGS_GROUPS: GroupMeta[] = [
   { id: "personal", area: "settings", title: { de: "Persönlich", en: "Personal" } },
   { id: "connections", area: "settings", title: { de: "Verbindungen", en: "Connections" } },
   { id: "workspace", area: "settings", title: { de: "Arbeitsbereich", en: "Workspace" } },
+  { id: "help", area: "settings", title: { de: "Hilfe & Info", en: "Help & info" } },
   { id: "people", area: "admin", title: { de: "Personen", en: "People" } },
   { id: "data", area: "admin", title: { de: "Daten", en: "Data" } },
   { id: "services", area: "admin", title: { de: "Dienste", en: "Services" } },
@@ -294,6 +295,25 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     title: { de: "Zeiten", en: "Time" },
     description: { de: "Erfasste Zeiten aller Datenbanken auswerten, abrechnen und exportieren.", en: "Report, bill and export the time tracked in all databases." },
     keywords: { de: "zeiterfassung stunden abrechnung bericht", en: "time tracking hours billing report" },
+  },
+  // -------------------------------------------------------------------- help
+  {
+    id: "about",
+    area: "settings",
+    group: "help",
+    icon: "Info",
+    title: { de: "Über Flowplan", en: "About Flowplan" },
+    description: { de: "Version, Lizenz und Quellcode, Links zu Hilfe und Community.", en: "Version, licence and source code, links to help and community." },
+    keywords: {
+      de: "über info version build commit beta release lizenz agpl quellcode source github website dokumentation hilfe discord community fehler melden bug unterstützen sponsor spenden",
+      en: "about info version build commit beta release licence license agpl source code github website documentation help discord community report bug support sponsor donate",
+    },
+    entries: [
+      { title: { de: "Version", en: "Version" }, keywords: { de: "build commit beta release update", en: "build commit beta release update" }, anchor: "version" },
+      { title: { de: "Lizenz & Quellcode", en: "Licence & source code" }, keywords: { de: "lizenz agpl quellcode source github", en: "licence license agpl source code github" }, anchor: "licence" },
+      { title: { de: "Fehler melden", en: "Report a bug" }, keywords: { de: "bug issue github", en: "bug issue github" }, anchor: "bug" },
+      { title: { de: "Flowplan unterstützen", en: "Support Flowplan" }, keywords: { de: "unterstützen sponsor spenden github sponsors", en: "support sponsor donate github sponsors" }, anchor: "support" },
+    ],
   },
   // ------------------------------------------------------------------ admin
   {

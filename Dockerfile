@@ -20,6 +20,8 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # our workflow passes GIT_COMMIT, Coolify passes SOURCE_COMMIT.
 ARG GIT_COMMIT=""
 ARG SOURCE_COMMIT=""
+# "beta" or "release", shown in Settings → Über Flowplan (docker.yml).
+ARG FLOWPLAN_CHANNEL=""
 # The type check already runs in CI; image builds there skip it.
 ARG FLOWPLAN_SKIP_TYPECHECK=""
 # Next's build cache survives between builds as well.
@@ -55,6 +57,10 @@ COPY --from=build --chown=node:node /app/.next/static ./.next/static
 COPY --from=build --chown=node:node /app/public ./public
 # Emergency decryption of encrypted backups and objects (docs: storage).
 COPY --chmod=644 scripts/decrypt.mjs /app/decrypt.mjs
+# Instance move without the web interface (docs: Instanz umziehen):
+# node /app/move.mjs --from <old instance> --token <move token>.
+COPY --chmod=644 scripts/move.mjs /app/move.mjs
+COPY --chmod=644 lib/instance-move-pull.ts /app/instance-move-pull.ts
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \

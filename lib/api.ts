@@ -10,6 +10,8 @@ import { aiStatus } from "./ai/resolve";
 import { markdownSource } from "./markdown";
 import { markdownToHtml } from "./markdown-import";
 import { legalLinks } from "./legal-links";
+import { aboutInfo } from "./about";
+import { knownUpdate } from "./update-check";
 import { deleteAccount, deleteOwnAccount, deletionPlan, ownDeletionPlan, setUserDisabled } from "./account-deletion";
 import { mergeAccounts, mergePreview } from "./account-merge";
 import { confirmAddress } from "./local-auth";
@@ -270,7 +272,9 @@ export function publicRows(pid: string): Row[] {
     .filter((r) => r.access !== "private")
     .map((r) => ({ ...r, cells: stripCells(r.cells, hidden) }));
 }
-export function bootstrap(user: Identity, wid?: string) {
+// `agent`: the request's user agent – the mobile apps get no sponsor link
+// (lib/about.ts).
+export function bootstrap(user: Identity, wid?: string, agent?: string | null) {
   if (!user.demo && !user.apiScope) acceptPendingInvites(user.id);
   const workspaces = all<{
     id: string;
@@ -348,6 +352,8 @@ export function bootstrap(user: Identity, wid?: string) {
       transcription: transcriptionEnabled() && !user.demo,
       mail: !!mailConfig(),
       legal: legalLinks(),
+      // Settings → Über Flowplan; a newer release for administrators.
+      about: { ...aboutInfo(agent), ...(user.isAdmin ? { update: knownUpdate() } : {}) },
     },
     // What applies to me: limits with my usage, and my fixed language.
     myLimits: user.isAdmin

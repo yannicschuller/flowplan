@@ -75,6 +75,7 @@ Settings (`#settings/…`):
 | Persönlich | `account` Konto & Sicherheit · `appearance` Darstellung & Sprache · `notifications` Benachrichtigungen · `ai` KI · `devices` Offline & Geräte |
 | Verbindungen | `api` API & KI-Assistenten · `webhooks` Webhooks (one page per webhook: `#settings/webhooks/<id>`, `#settings/webhooks/new`) · `connections` Kalender & Issues · `clipper` Web-Clipper |
 | Arbeitsbereich „…“ | `workspace` Allgemein · `members` Mitglieder · `groups` Gruppen & Rechte · `spaces` Bereiche · `extensions` Block-Erweiterungen · `data` Import & Export · `time` Zeiten |
+| Hilfe & Info | `about` Über Flowplan (version, licence and source – `FLOWPLAN_SOURCE_URL` –, links, the sponsor link unless `FLOWPLAN_HIDE_SPONSOR` or the mobile apps; lib/about.ts) |
 
 Administration (`#admin/…`):
 

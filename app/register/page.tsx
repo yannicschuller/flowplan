@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { legalLinks } from "@/lib/legal-links";
+import { sourceUrl } from "@/lib/about";
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
 import Login from "@/components/login";
@@ -26,6 +27,7 @@ export default async function RegisterPage() {
       {...options}
       mode={options.signupOpen ? "register" : "signin"}
       instanceName={instanceSettings().name}
+      sourceUrl={sourceUrl()}
     />
   );
 }

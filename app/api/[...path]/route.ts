@@ -347,7 +347,7 @@ async function handleGET(
     }
     if (path[0] === "bootstrap")
       return NextResponse.json(
-        bootstrap(user, url.searchParams.get("workspace") || undefined),
+        bootstrap(user, url.searchParams.get("workspace") || undefined, req.headers.get("user-agent")),
       );
     // Offline copies on a device: readable pages and what changed since.
     if (path.length === 2 && path[0] === "offline" && path[1] === "changes") {

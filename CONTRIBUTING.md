@@ -1,6 +1,6 @@
 # Contributing to Flowplan
 
-Thanks for your interest! Bug reports, ideas and pull requests are welcome.
+Thanks for your interest! Bug reports, ideas and pull requests are welcome. Everyone taking part follows the [code of conduct](CODE_OF_CONDUCT.md).
 
 ## Before you start
 
@@ -26,7 +26,7 @@ Node.js 22.13 or newer. Without OIDC settings the development server offers a lo
 - Add or update tests: core logic in `tests/*.test.ts`, user-facing behaviour in `tests/browser/*.spec.ts` (desktop and mobile).
 - Run `npm run typecheck`, `npm test` and, for UI changes, the relevant browser tests. Never point tests at a data directory you care about – browser tests need a server with its own `FLOWPLAN_DATA_DIR`.
 - Update the documentation ([flowplan-docs](https://github.com/yannicschuller/flowplan-docs)) when behaviour changes.
-- New UI strings are written in German and English side by side (`t("Anmelden", "Sign in")`). Run `npm run i18n` afterwards: it adds them to the catalogues in `locales/`, where further languages (French so far) translate the English text; missing translations show in English.
+- New UI strings are written in German and English side by side (`t("Anmelden", "Sign in")`). Run `npm run i18n` afterwards: it adds them to the catalogues in `locales/`, where further languages (French and Simplified Chinese so far) translate the English text; missing translations show in English.
 
 ## Translations
 

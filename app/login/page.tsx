@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { legalLinks } from "@/lib/legal-links";
+import { sourceUrl } from "@/lib/about";
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
 import Login from "@/components/login";
@@ -28,6 +29,7 @@ export default async function LoginPage({
       {...loginOptions()}
       error={(await searchParams).authError}
       instanceName={instanceSettings().name}
+      sourceUrl={sourceUrl()}
     />
   );
 }

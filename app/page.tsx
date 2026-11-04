@@ -9,6 +9,11 @@ import { rememberLocale } from "@/lib/user-locale";
 import { requestLocale } from "@/lib/i18n-server";
 import WorkspaceApp from "@/components/workspace-app";
 import { MaintenanceBanner } from "@/components/maintenance-banner";
+import { MoveBanner } from "@/components/move-banner";
+import { readOnlyState } from "@/lib/instance-read-only";
+import { redirect } from "next/navigation";
+import { headers } from "next/headers";
+import { sourceUrl } from "@/lib/about";
 import { maintenanceNotice } from "@/lib/admin-ops";
 import { instanceSettings } from "@/lib/instance-settings";
 import Login from "@/components/login";
@@ -20,17 +25,25 @@ export default async function Home({
 }: {
   searchParams: Promise<{ authError?: string; useTemplate?: string; invite?: string; confirmed?: string }>;
 }) {
+  // An instance that has moved (lib/instance-move.ts) may send the browser
+  // to its new address; otherwise a banner says where it went.
+  const move = readOnlyState();
+  if (move.redirect && move.movedTo) redirect(move.movedTo);
   const user = await currentUser();
   // Visitors sign in.
   if (!user)
     return (
-      <Login
-        legal={legalLinks()}
-        {...loginOptions()}
-        error={(await searchParams).authError}
-        notice={(await searchParams).confirmed ? "confirmed" : undefined}
-        instanceName={instanceSettings().name}
-      />
+      <>
+        <MoveBanner initial={move} poll={false} />
+        <Login
+          legal={legalLinks()}
+          {...loginOptions()}
+          error={(await searchParams).authError}
+          notice={(await searchParams).confirmed ? "confirmed" : undefined}
+          instanceName={instanceSettings().name}
+          sourceUrl={sourceUrl()}
+        />
+      </>
     );
   // The instance requires a second factor this account does not have yet.
   if (user.twoFactorSetup) return <TwoFactorRequired name={user.name} instanceName={instanceSettings().name} />;
@@ -44,9 +57,10 @@ export default async function Home({
   return (
     <>
       {/* A scheduled maintenance announced in Administration → Operations. */}
+      <MoveBanner initial={move} poll />
       <MaintenanceBanner initial={maintenanceNotice()} />
       <WorkspaceApp
-        initial={bootstrap(user, invited || undefined) as never}
+        initial={bootstrap(user, invited || undefined, (await headers()).get("user-agent")) as never}
         inviteResult={invite ? (invited ? "accepted" : "invalid") : undefined}
         useTemplate={
           useTemplate && (/^[0-9a-f-]{36}$/i.test(useTemplate) || /^starter:[A-Za-z]{1,40}$/.test(useTemplate))

@@ -15,6 +15,7 @@ import { useAdminData, type AdminData } from "../admin-context";
 import { AdminLoading } from "../shell";
 import { AdminStatus, FixLink, InstanceNumber, InstanceSwitch, useDocs, type StatusItem } from "./parts";
 import { ago } from "./format";
+import { InstanceMove } from "./instance-move";
 
 export default function StorageSection() {
   const t = useT();
@@ -80,6 +81,7 @@ export default function StorageSection() {
       <StorageUsage storage={storage} />
       <InstanceBackup />
       {storage.data && <StorageCounts data={storage.data} />}
+      <InstanceMove onChange={load} onError={onError} />
       <Restore pending={data.restorePending} onChange={load} onError={onError} />
     </>
   );

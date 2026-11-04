@@ -8,13 +8,25 @@ DB="$DATA/flowplan.sqlite"
 mkdir -p "$DATA"
 
 # Same swap as lib/instance-restore-apply.ts, but before Litestream opens the
-# database. The previous state stays in pre-restore-<time>.
+# database. The previous state stays in pre-restore-<time>, after an
+# instance move (Administration → Instanz umziehen, or /app/move.mjs) in
+# pre-move-<time>; a move also brings the Web Push keys and secrets.key.
 if [ -f "$DATA/restore-pending/READY" ]; then
-  previous="$DATA/pre-restore-$(date -u +%Y-%m-%dT%H-%M-%S)"
+  kind=pre-restore
+  if [ -f "$DATA/restore-pending/MOVE" ]; then kind=pre-move; fi
+  previous="$DATA/$kind-$(date -u +%Y-%m-%dT%H-%M-%S)"
   mkdir -p "$previous"
   for name in flowplan.sqlite flowplan.sqlite-wal flowplan.sqlite-shm .flowplan.sqlite-litestream uploads; do
     if [ -e "$DATA/$name" ]; then mv "$DATA/$name" "$previous/$name"; fi
   done
+  if [ "$kind" = pre-move ]; then
+    for name in web-push-keys.json secrets.key; do
+      if [ -e "$DATA/restore-pending/$name" ]; then
+        if [ -e "$DATA/$name" ]; then mv "$DATA/$name" "$previous/$name"; fi
+        mv "$DATA/restore-pending/$name" "$DATA/$name"
+      fi
+    done
+  fi
   mv "$DATA/restore-pending/flowplan.sqlite" "$DB"
   if [ -d "$DATA/restore-pending/uploads" ]; then
     mv "$DATA/restore-pending/uploads" "$DATA/uploads"
@@ -25,6 +37,7 @@ if [ -f "$DATA/restore-pending/READY" ]; then
   # The file storage uploads every restored file again.
   touch "$DATA/storage-resync"
   echo "Instanz wiederhergestellt; vorheriger Stand in $previous"
+  rm -rf "$DATA/move-incoming"
 fi
 
 if [ -n "${S3_BUCKET:-}" ] && [ "${FLOWPLAN_LITESTREAM:-on}" != "off" ]; then

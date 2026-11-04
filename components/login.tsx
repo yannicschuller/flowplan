@@ -13,6 +13,7 @@ import { LanguageSwitch, useLocale, useT } from "./i18n";
 import type { LoginOptions } from "@/lib/local-auth";
 import type { LegalLinks } from "@/lib/legal-links";
 import { LegalFooter } from "./legal-footer";
+import { GITHUB_URL, LICENSE_URL } from "@/lib/about";
 import { AppProfilesLink } from "./app-profiles-link";
 
 // "confirm": registered, waiting for the link from the e-mail.
@@ -26,6 +27,8 @@ type Props = Partial<LoginOptions> & {
   mode?: Mode;
   // Legal notice and privacy policy of the instance (when set).
   legal?: LegalLinks;
+  // The source of the running code (FLOWPLAN_SOURCE_URL, lib/about.ts).
+  sourceUrl?: string;
 };
 
 async function post(path: string, body?: unknown) {
@@ -54,6 +57,7 @@ export default function Login({
   instanceName = "",
   mode: initialMode,
   legal,
+  sourceUrl = GITHUB_URL,
 }: Props) {
   const t = useT();
   // The password form: accounts with e-mail and password, or the LDAP directory.
@@ -444,6 +448,15 @@ export default function Login({
         </span>
         <div className="login-footer-links">
           {legal && <LegalFooter links={legal} locale={useLocale()} />}
+          {/* AGPL-3.0: the licence and the source of what runs here. */}
+          <nav className="legal-footer" aria-label={t("Lizenz und Quellcode", "Licence and source code")}>
+            <a href={LICENSE_URL} rel="noopener license">
+              AGPL-3.0
+            </a>
+            <a href={sourceUrl} rel="noopener">
+              {t("Quellcode", "Source code")}
+            </a>
+          </nav>
           <LanguageSwitch className="language-switch" />
         </div>
       </footer>

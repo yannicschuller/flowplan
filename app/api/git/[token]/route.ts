@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { HttpError } from "@/lib/auth";
+import { HttpError, refuseWhileReadOnly } from "@/lib/auth";
 import { transaction } from "@/lib/db";
 import { receiveGitWebhook } from "@/lib/git-integration";
 
@@ -7,6 +7,8 @@ import { receiveGitWebhook } from "@/lib/git-integration";
 // the address finds the database, the signature proves the sender).
 export async function POST(req: Request, { params }: { params: Promise<{ token: string }> }) {
   try {
+    // Not during an instance move (lib/instance-read-only.ts): the sender retries.
+    refuseWhileReadOnly(req);
     const { token } = await params;
     const length = Number(req.headers.get("content-length") || 0);
     if (length > 5_000_000) throw new HttpError(413, "Anfrage zu groß.");

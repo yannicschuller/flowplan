@@ -80,6 +80,7 @@ jobs:
           build-args: |
             FLOWPLAN_SKIP_TYPECHECK=1
             GIT_COMMIT=${{ github.sha }}
+            FLOWPLAN_CHANNEL=${{ (inputs.version || github.ref_type == 'tag') && 'release' || 'beta' }}
           # GitHub's Actions cache, one scope per platform, kept between runs.
           cache-from: type=gha,scope=image-${{ steps.platform.outputs.pair }}
           cache-to: type=gha,scope=image-${{ steps.platform.outputs.pair }},mode=max
