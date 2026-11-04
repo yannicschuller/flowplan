@@ -317,6 +317,8 @@ export type Bootstrap = {
     allowWorkspaceCreation: boolean;
     // Voice notes can be turned into text (WHISPER_URL is set).
     transcription?: boolean;
+    // The draw.io editor (DRAWIO_URL); null when the address is unusable.
+    drawio?: import("./drawio").DrawioConfig | null;
     mail?: boolean;
     // Legal notice and privacy policy of the operator (IMPRINT_URL, PRIVACY_URL).
     legal?: { imprint?: string; privacy?: string };

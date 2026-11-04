@@ -35,7 +35,7 @@ export function buildDeck(html: string, title: string): Deck {
   const blocks = elements.map((el) => ({
     tag: el.tagName,
     callout: el.getAttribute("data-callout"),
-    empty: el.tagName === "P" && !el.textContent?.trim() && !el.querySelector("img, video, iframe, [data-math], [data-mermaid]"),
+    empty: el.tagName === "P" && !el.textContent?.trim() && !el.querySelector("img, video, iframe, [data-math], [data-mermaid], [data-drawio]"),
   }));
   const slides = planSlides(blocks).map((plan) => ({
     html: plan.blocks.map((i) => elements[i].outerHTML).join(""),

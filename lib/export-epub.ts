@@ -3,6 +3,7 @@
 // with the page tree and a small stylesheet. The container is a ZIP whose
 // first entry is the uncompressed mimetype, as the standard demands.
 import { Readable } from "node:stream";
+import { createHash } from "node:crypto";
 import { ZipFile } from "yazl";
 import { audit } from "./db";
 import { HttpError } from "./auth";
@@ -194,6 +195,12 @@ export function epubChapters(content: ExportContent) {
       body += documentXhtml(entry.html, {
         url,
         image: (raw) => picture(raw) || (/^https:\/\//.test(raw) ? raw : null),
+        // draw.io diagrams: their picture as a file of the book.
+        svg: (svg) => {
+          const path = `images/drawio-${createHash("sha256").update(svg).digest("hex").slice(0, 16)}.svg`;
+          if (!resources.has(path)) resources.set(path, { mime: "image/svg+xml", bytes: Buffer.from(svg) });
+          return path;
+        },
         prefix: `c${index + 1}`,
         captionNumbers: !!entry.page.caption_numbers,
         whiteboard: (pageId) => {

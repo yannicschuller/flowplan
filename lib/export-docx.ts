@@ -451,6 +451,8 @@ export async function buildDocx(options: DocxOptions): Promise<Buffer> {
         return codeParagraph(String(node.attrs.source || ""), block);
       case "functionPlot":
         return paragraph(run({ text: ct("Funktionsgraph (nur in Flowplan)", "Function plot (only in Flowplan)"), props: { i: true } }), paragraphProps(null, block));
+      case "drawioBlock":
+        return paragraph(run({ text: ct("draw.io-Diagramm (in Word nicht als Bild enthalten)", "draw.io diagram (not included as a picture in Word)"), props: { i: true } }), paragraphProps(null, block));
       case "metricBlock":
         return paragraph(run({ text: ct("Kennzahl (nur in Flowplan)", "Metric (only in Flowplan)"), props: { i: true } }), paragraphProps(null, block));
       case "bibliography": {

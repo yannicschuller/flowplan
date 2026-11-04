@@ -3,6 +3,9 @@ import { visibleRows } from "./row-access";
 import { hiddenFileIds } from "./row-files";
 import { fileUrls } from "./file-cells";
 import { readFileSync, statSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { sanitizeDrawioSvg } from "./drawio-svg";
+import { drawioSvgFile } from "./drawio";
 import { resolve, posix } from "node:path";
 import { all, one, transaction, audit } from "./db";
 import { HttpError, appUrl } from "./auth";
@@ -252,6 +255,18 @@ function collect(user: Identity, options: MarkdownExportOptions) {
     }
     return { image, text: picture.text };
   };
+  // draw.io diagrams (ZIP): a .drawio.svg next to the attachments – the
+  // picture with the diagram inside, which draw.io opens again.
+  const drawioImage = (from: string, owner: string, title: string, attrs: Record<string, unknown>) => {
+    const svg = sanitizeDrawioSvg(String(attrs.svg || ""));
+    if (!zip || !svg) return null;
+    const file = drawioSvgFile(svg, String(attrs.xml || ""));
+    if (!file) return null;
+    const hash = createHash("sha256").update(file).digest("hex").slice(0, 12);
+    const path = `${prefixOfPath(from)}assets/${exportName(title)}-${owner}-${hash}.drawio.svg`;
+    add(path, Buffer.from(file), true);
+    return relative(from, path);
+  };
   // Blocks other texts link to keep their id as a marker ("^id", #88).
   let linkedBlocks: ReturnType<typeof linkedBlockIds> | null = null;
   const linked = (owner: string, blockId: string) => !!(linkedBlocks ??= linkedBlockIds(workspaceId)).get(owner)?.has(blockId);
@@ -259,6 +274,7 @@ function collect(user: Identity, options: MarkdownExportOptions) {
     const owner = record || page?.id;
     return {
       ...(page ? { ink: (attrs: Record<string, unknown>) => inkImage(page, from, attrs) } : {}),
+      ...(owner ? { drawio: (attrs: Record<string, unknown>) => drawioImage(from, owner, page?.title || recordWord(), attrs) } : {}),
       ...(owner ? { blockIds: (blockId: string) => linked(owner, blockId) } : {}),
       url(raw) {
         let url: URL;

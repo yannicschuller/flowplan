@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { WhiteboardEmbedView } from "./whiteboard/embed";
 import { revealSpoiler } from "./link-preview";
 import { mountDiagram } from "@/lib/mermaid-render";
+import { mountDrawioPreview } from "@/lib/drawio-preview";
 import { renderMath } from "@/lib/math-render";
 import { enhanceCodeBlock } from "./code-block-static";
 import { citedWorks, parseItemAttribute, referenceText } from "@/lib/citations";
@@ -49,6 +50,9 @@ export function ReadOnlyDocument({
     const diagrams = Array.from(
       root.querySelectorAll<HTMLElement>("[data-mermaid]"),
     ).map((element) => mountDiagram(element, element.dataset.mermaid || ""));
+    // draw.io diagrams: their stored picture (draw.io is not loaded).
+    for (const element of root.querySelectorAll<HTMLElement>("[data-drawio]"))
+      mountDrawioPreview(element, element.dataset.drawioSvg || "", !!element.dataset.drawio);
     for (const element of root.querySelectorAll<HTMLElement>("[data-math]")) {
       element.innerHTML = renderMath(
         element.dataset.math || "",
