@@ -146,8 +146,10 @@ export default function Login({
       });
     else if (mode === "register")
       void run("register", async () => {
-        const invite = new URLSearchParams(location.search).get("invite") || undefined;
-        const result = await post("register", { name: field(form, "name"), email: field(form, "email"), password: field(form, "password"), invite });
+        const query = new URLSearchParams(location.search);
+        const invite = query.get("invite") || undefined,
+          setup = query.get("setup") || undefined;
+        const result = await post("register", { name: field(form, "name"), email: field(form, "email"), password: field(form, "password"), invite, setup });
         // The instance sends e-mail: the account waits for the link.
         if (result?.pending) {
           setBusy("");

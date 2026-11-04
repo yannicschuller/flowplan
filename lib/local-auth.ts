@@ -94,8 +94,24 @@ export function firstAccount() {
 function invited(email: string) {
   return !!one("SELECT 1 FROM invites WHERE lower(email)=lower(?)", email);
 }
-export function signupOpen() {
-  return localLoginEnabled() && (firstAccount() || instanceSettings().allowSignup);
+// FLOWPLAN_SETUP_TOKEN: on an instance reachable from the internet the
+// first account is created only with /register?setup=<token>, so no stranger
+// can sign up first and administer it. Unset, the first sign-up sets the
+// instance up as before. Administrators who come through SSO or LDAP (their
+// admin group) are not affected; later sign-ups follow the instance settings.
+export function setupToken() {
+  return process.env.FLOWPLAN_SETUP_TOKEN?.trim() || "";
+}
+export function setupAllowed(given: unknown) {
+  const token = setupToken();
+  if (!token) return true;
+  if (typeof given !== "string" || !given) return false;
+  const a = Buffer.from(hash(given)),
+    b = Buffer.from(hash(token));
+  return timingSafeEqual(a, b);
+}
+export function signupOpen(setup?: string) {
+  return localLoginEnabled() && ((firstAccount() && setupAllowed(setup)) || instanceSettings().allowSignup);
 }
 // The groups a local account signs in with (administrators).
 export function localGroups(userId: string) {
@@ -111,6 +127,8 @@ const registerSchema = z.object({
   password: z.string(),
   // The invitation link the person came with (?invite=…).
   invite: z.string().max(80).optional(),
+  // The setup link of the first account (?setup=…, FLOWPLAN_SETUP_TOKEN).
+  setup: z.string().max(200).optional(),
 });
 export async function register(input: unknown, locale: Locale, address = "") {
   const t = tr(locale);
@@ -123,6 +141,10 @@ export async function register(input: unknown, locale: Locale, address = "") {
   const password = passwordSchema(t).safeParse(parsed.data.password);
   if (!password.success) throw new HttpError(400, password.error.issues[0].message);
   const first = firstAccount();
+  if (first && !setupAllowed(parsed.data.setup)) {
+    securityEvent("login.refused", { address, detail: "first account without setup token" });
+    throw new HttpError(403, t("Diese Instanz wird mit einem Einrichtungslink eingerichtet. Frag die Person, die sie betreibt.", "This instance is set up with a setup link. Ask the person who runs it."));
+  }
   const linked = !!parsed.data.invite && !!one("SELECT 1 FROM invites WHERE token=?", parsed.data.invite);
   if (!first && !instanceSettings().allowSignup && !invited(email) && !linked)
     throw new HttpError(403, t("Neue Konten legen hier nur Admins an – oder du wirst eingeladen.", "Only administrators create new accounts here – or you get invited."));
@@ -555,12 +577,12 @@ export async function passkeyConfirm(userId: string, token: string | undefined, 
 }
 
 // What the sign-in page offers on this instance.
-export function loginOptions() {
+export function loginOptions(setup?: string) {
   return {
     configured: !!process.env.OIDC_ISSUER,
     localLogin: localLoginEnabled(),
-    signupOpen: signupOpen(),
-    firstAccount: localLoginEnabled() && firstAccount(),
+    signupOpen: signupOpen(setup),
+    firstAccount: localLoginEnabled() && firstAccount() && setupAllowed(setup),
     mail: !!mailConfig(),
     demo: process.env.NODE_ENV !== "production",
     // "Stay signed in on this device" (SESSION_REMEMBER=true).

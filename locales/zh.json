@@ -8084,6 +8084,7 @@
   "This instance is older than the source (schema {0} instead of {1}). Update this instance to the same or a newer version first.": "此实例比源实例旧（schema {0} 而非 {1}）。请先将此实例更新到相同或更新的版本。",
   "This instance is read-only because it is moving. Changes are possible again on the new instance.": "此实例正在迁移，因此为只读。可以在新实例上重新进行更改。",
   "This instance is read-only. Reading still works; changes are possible again on the new instance.": "此实例为只读。仍可阅读；可以在新实例上重新进行更改。",
+  "This instance is set up with a setup link. Ask the person who runs it.": "此实例需通过设置链接完成初始化。请联系其运营者。",
   "This instance runs {0}.": "此实例运行 {0}。",
   "This instance runs without HTTPS.": "此实例在没有 HTTPS 的情况下运行。",
   "This instance sends no e-mail: afterwards copy the link under “Pending invitations” and send it to the person. Whoever opens it signed in (or signs up through it) takes the invitation.": "此实例不会发送电子邮件：之后在“待处理邀请”下复制链接并发送给该人。谁打开它并登录（或通过它注册）就使用该邀请。",

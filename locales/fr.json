@@ -8084,6 +8084,7 @@
   "This instance is older than the source (schema {0} instead of {1}). Update this instance to the same or a newer version first.": "Cette instance est plus ancienne que la source (schéma {0} au lieu de {1}). Mettez d’abord cette instance à la même version ou à une version plus récente.",
   "This instance is read-only because it is moving. Changes are possible again on the new instance.": "Cette instance est en lecture seule, car elle déménage. Les modifications seront de nouveau possibles sur la nouvelle instance.",
   "This instance is read-only. Reading still works; changes are possible again on the new instance.": "Cette instance est en lecture seule. La lecture reste possible ; les modifications seront de nouveau possibles sur la nouvelle instance.",
+  "This instance is set up with a setup link. Ask the person who runs it.": "Cette instance se configure avec un lien de configuration. Demandez à la personne qui l’administre.",
   "This instance runs {0}.": "Cette instance utilise la version {0}.",
   "This instance runs without HTTPS.": "Cette instance fonctionne sans HTTPS.",
   "This instance sends no e-mail: afterwards copy the link under “Pending invitations” and send it to the person. Whoever opens it signed in (or signs up through it) takes the invitation.": "Cette instance n’envoie pas d’e-mails : copiez ensuite le lien sous « Invitations en attente » et envoyez-le à la personne. Quiconque l’ouvre en étant connecté (ou s’inscrit par ce lien) accepte l’invitation.",

@@ -23,7 +23,7 @@ export const dynamic = "force-dynamic";
 export default async function Home({
   searchParams,
 }: {
-  searchParams: Promise<{ authError?: string; useTemplate?: string; invite?: string; confirmed?: string }>;
+  searchParams: Promise<{ authError?: string; useTemplate?: string; invite?: string; confirmed?: string; setup?: string }>;
 }) {
   // An instance that has moved (lib/instance-move.ts) may send the browser
   // to its new address; otherwise a banner says where it went.
@@ -37,7 +37,7 @@ export default async function Home({
         <MoveBanner initial={move} poll={false} />
         <Login
           legal={legalLinks()}
-          {...loginOptions()}
+          {...loginOptions((await searchParams).setup)}
           error={(await searchParams).authError}
           notice={(await searchParams).confirmed ? "confirmed" : undefined}
           instanceName={instanceSettings().name}

@@ -18,9 +18,9 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 // Creating an account; where sign-ups are closed the page offers signing in.
-export default async function RegisterPage() {
+export default async function RegisterPage({ searchParams }: { searchParams: Promise<{ setup?: string }> }) {
   if (await currentUser()) redirect("/");
-  const options = loginOptions();
+  const options = loginOptions((await searchParams).setup);
   return (
     <Login
         legal={legalLinks()}

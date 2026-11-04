@@ -20,10 +20,12 @@ export function adminGroup() {
 // the session), else the flag of a local or directory account. Accounts
 // without a session since then keep the last state they signed in with.
 export function adminUserIds(): string[] {
-  const needle = `%${JSON.stringify(adminGroup())}%`;
+  // The group as a JSON string inside the list; % and _ in its name are
+  // literal characters, not LIKE wildcards.
+  const needle = `%${JSON.stringify(adminGroup()).replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
   return all<{ id: string }>(
     `SELECT u.id FROM users u WHERE u.disabled=0 AND (
-       (SELECT s.groups_json FROM sessions s WHERE s.user_id=u.id ORDER BY COALESCE(s.created_at,0) DESC, s.expires DESC LIMIT 1) LIKE ?
+       (SELECT s.groups_json FROM sessions s WHERE s.user_id=u.id ORDER BY COALESCE(s.created_at,0) DESC, s.expires DESC LIMIT 1) LIKE ? ESCAPE '\\'
        OR EXISTS (SELECT 1 FROM local_accounts a WHERE a.user_id=u.id AND a.is_admin=1)
        OR EXISTS (SELECT 1 FROM ldap_accounts l WHERE l.user_id=u.id AND l.is_admin=1))`,
     needle,
