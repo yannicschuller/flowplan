@@ -19,6 +19,8 @@ type Template = {
   deleted_at: string | null;
   can_manage: boolean;
   shared?: boolean;
+  // An emoji (imported templates).
+  icon?: string;
 };
 const visibilityLabels = {
   private: tr("Nur für mich", "Only me"),
@@ -183,7 +185,7 @@ export default function SavedTemplates({
       ) : (
         shown.map((template) => (
           <div className="utility-row saved-template-row" key={template.id}>
-            <PageIcon name={template.kind === "database" ? "table" : "file"} />
+            <PageIcon name={template.icon || (template.kind === "database" ? "table" : "file")} />
             <div className="saved-template-name">
               <strong>{template.name}</strong>
               <small>

@@ -7,7 +7,7 @@ import { mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { all, id, one, onTransactionRollback, run, transaction } from "../db";
 import { HttpError } from "../auth";
-import { pageRole, requireMember, spaceRole } from "../permissions";
+import { isGuest, memberRole, pageRole, requireMember, spaceRole } from "../permissions";
 import { createPage } from "../seed";
 import { dayTitle } from "../journal";
 import { journalLocked } from "../journal-extras";
@@ -24,7 +24,9 @@ import { applyPortableMeta, canManageTaxonomy, frontmatterMeta, memberByName } f
 import { ct } from "../content-locale";
 import { requirePlaintextSpace } from "../e2ee-server";
 import { esc, isImage, pageRef } from "./html";
-import { MAX_IMPORT_ROWS, importFileData, importFileSize, maxImportPages, tooManyPages, tooManyRecords, type ImportPage, type ImportTree } from "./types";
+import { MAX_IMPORT_ROWS, importFileData, importFileSize, maxImportPages, tooManyPages, tooManyRecords, type ImportPage, type ImportTemplate, type ImportTree } from "./types";
+import { savedDatabaseTemplateSchema } from "../page-templates";
+import { quotaCheckpoint } from "../instance-ops";
 import { pageIconSchema } from "../page-appearance";
 import { documentAnchors, findAnchor, type DocumentAnchors } from "../import-anchors";
 import type { Field, Identity, Page, Space } from "../types";
@@ -49,6 +51,9 @@ export type ImportPreview = {
   icons?: number;
   // Documents that become the content of a database record (AFFiNE, #82).
   rowDocuments?: number;
+  // Templates of the source saved as templates (AFFiNE, #116), and for whom.
+  templates?: number;
+  templateVisibility?: "workspace" | "private";
   // The title of the page everything lands below, when there is one.
   wrapper?: string;
   // More pages (records) than one import may bring: the import is refused.
@@ -83,6 +88,30 @@ function referencedFiles(tree: ImportTree, mode: ImportMode = "pages") {
   }
   return used;
 }
+// The files only templates refer to (#116): stored with the template, not
+// as uploads of a page.
+const templateHtml = (template: ImportTemplate) => [template.html, ...(template.database?.rows.map((r) => r.html) || [])];
+function templateFiles(tree: ImportTree, used: Map<string, string>) {
+  const keys = new Set<string>();
+  for (const template of tree.templates || [])
+    for (const html of templateHtml(template))
+      for (const match of html.matchAll(PLACEHOLDER))
+        if (match[1] === "file") {
+          const key = decodeKey(match[2]);
+          if (tree.files.has(key) && !used.has(key)) keys.add(key);
+        }
+  return keys;
+}
+// Who sees imported templates: the workspace, as a template saved in the
+// app (template.save, /api/templates/import) for whoever may edit the
+// workspace – else only the person importing.
+export function importTemplateVisibility(user: Identity, workspaceId: string): "workspace" | "private" {
+  const role = memberRole(user, workspaceId);
+  return (role === "editor" || role === "owner") && !isGuest(user, workspaceId) && user.apiScope !== "read" ? "workspace" : "private";
+}
+// Limits of a saved template (lib/template-files.ts captureTemplateFiles).
+const TEMPLATE_FILES = 200;
+const TEMPLATE_FILE_BYTES = 10 * 1024 * 1024;
 // The journal days of an import go to: the writable journal in the target
 // space, else one elsewhere in the workspace, else a new one.
 function importJournal(user: Identity, workspaceId: string, spaceId: string) {
@@ -106,9 +135,14 @@ export function requireSpace(user: Identity, workspaceId: string, spaceId: strin
 export function previewImport(user: Identity, workspaceId: string, spaceId: string, tree: ImportTree, mode: ImportMode = "pages"): ImportPreview {
   requireSpace(user, workspaceId, spaceId);
   const used = referencedFiles(tree, mode);
-  const bytes = [...used.keys()].reduce((sum, key) => sum + importFileSize(tree.files.get(key)!), 0);
+  const forTemplates = templateFiles(tree, used);
+  const bytes = [...used.keys(), ...forTemplates].reduce((sum, key) => sum + importFileSize(tree.files.get(key)!), 0);
   const warnings = [...tree.warnings];
-  const unused = tree.files.size - used.size;
+  const unused = tree.files.size - used.size - forTemplates.size;
+  const templates = tree.templates?.length || 0;
+  const templateVisibility = templates ? importTemplateVisibility(user, workspaceId) : undefined;
+  if (templateVisibility === "private")
+    warnings.push("Die Vorlagen werden nur für dich gespeichert („Nur für mich“): Vorlagen für den Arbeitsbereich legt an, wer ihn bearbeiten darf.");
   if (unused > 0) warnings.push(`${unused} Dateien werden von keiner Seite verwendet und nicht übernommen.`);
   const pages = pagesFor(tree, mode);
   const boards = tree.pages.filter((p) => p.kind === "whiteboard").length;
@@ -139,7 +173,7 @@ export function previewImport(user: Identity, workspaceId: string, spaceId: stri
     pages: mode === "pages" ? pages.filter((p) => !p.folder && !special(p) && !p.journalDate).length : notes,
     // Folders of the source; the page holding everything is named apart.
     folders: tree.pages.filter((p) => p.folder && p.key !== tree.wrapper).length,
-    files: used.size,
+    files: used.size + forTemplates.size,
     bytes,
     tags: new Set(pages.flatMap((p) => p.tags || [])).size,
     warnings,
@@ -150,6 +184,7 @@ export function previewImport(user: Identity, workspaceId: string, spaceId: stri
     ...(properties && mode === "pages" ? { properties } : {}),
     ...(icons && mode === "pages" ? { icons } : {}),
     ...(rowDocuments ? { rowDocuments } : {}),
+    ...(templates ? { templates, templateVisibility } : {}),
     ...(tooMany ? { tooMany } : {}),
     ...(tree.wrapper && mode === "pages" && tree.pages.some((p) => p.key === tree.wrapper)
       ? { wrapper: tree.pages.find((p) => p.key === tree.wrapper)!.title }
@@ -162,7 +197,7 @@ const day = (iso?: string) => (iso ? iso.slice(0, 10) : null);
 
 export function writeImport(user: Identity, workspaceId: string, spaceId: string, tree: ImportTree, mode: ImportMode = "pages"): ImportResult {
   const preview = previewImport(user, workspaceId, spaceId, tree, mode);
-  if (!tree.pages.length) throw new HttpError(400, "In der Datei wurden keine Seiten gefunden.");
+  if (!tree.pages.length && !tree.templates?.length) throw new HttpError(400, "In der Datei wurden keine Seiten gefunden.");
   if (preview.tooMany)
     throw new HttpError(413, mode === "database" ? tooManyRecords(preview.pages) : tooManyPages(pagesFor(tree, mode).length));
   enforceQuota(workspaceId, preview.bytes);
@@ -188,6 +223,7 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
   const appends: { pageId: string; html: string }[] = [];
 
   const result = transaction(() => {
+    const quota = tree.templates?.length ? quotaCheckpoint(workspaceId) : () => {};
     const dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads");
     const pageIds = new Map<string, string>();
     const rowIds = new Map<string, string>();
@@ -281,7 +317,7 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
       return record ? `/#page=${record.pageId}&row=${record.rowId}` : null;
     };
     // Embedded databases and whiteboards name their page by id.
-    const resolveHtml = (html: string) =>
+    const resolveHtml = (html: string, files = fileUrls) =>
       cleanHtml(
         html
           .replace(/(data-linked-source|data-whiteboard)="fp-import:\/\/page\/([^"]*)"/g, (_, name: string, key: string) =>
@@ -289,7 +325,7 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
           )
           // Images of files that are no pictures become links.
           .replace(/<img\b[^>]*?\bsrc="fp-import:\/\/file\/([^"]*)"[^>]*>/g, (tag: string, key: string) => {
-            const file = fileUrls.get(decodeKey(key));
+            const file = files.get(decodeKey(key));
             if (!file) return "";
             // The image keeps its block id (#88).
             const block = /\bdata-block-id="([\w-]{1,64})"/.exec(tag)?.[1];
@@ -297,12 +333,12 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
           })
           // Attachments become the block an upload in the editor creates (#82).
           .replace(/<div data-import-file="fp-import:\/\/file\/([^"]*)" data-title="([^"]*)"><\/div>/g, (_, key: string, title: string) =>
-            attachmentHtml(fileUrls.get(decodeKey(key)), title),
+            attachmentHtml(files.get(decodeKey(key)), title),
           )
           .replace(/<img\b[^>]*?\bsrc="fp-import:\/\/page\/[^"]*"[^>]*>/g, "")
           .replace(/(href|src)="fp-import:\/\/(file|page)\/([^"]*)"/g, (_, name: string, kind: string, ref: string) => {
             const [key, anchor] = ref.split("#", 2);
-            let target = kind === "file" ? fileUrls.get(decodeKey(key))?.url : pageUrl(decodeKey(key));
+            let target = kind === "file" ? files.get(decodeKey(key))?.url : pageUrl(decodeKey(key));
             const blockId = target && kind === "page" && anchor && sources.has(decodeKey(key)) ? findAnchor(prepared(decodeKey(key)).anchors, decodeKey(anchor)) : null;
             if (blockId) target += `&block=${blockId}`;
             return target ? `${name}="${esc(target)}"` : "";
@@ -426,10 +462,34 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
         else run("UPDATE documents SET html=?,state=? WHERE page_id=?", body, htmlState(body), pid);
       }
     }
+    // Templates (#116): saved templates of the workspace, category "other";
+    // their files go with them (template_files), as when saving one.
+    const templateWarnings = writeTemplates(user, workspaceId, tree, preview.templateVisibility || "private", (template) => {
+      const own = new Map<string, { url: string; name: string; mime: string }>();
+      const stored: { original: string; name: string; mime: string; data: Buffer }[] = [];
+      let skipped = 0;
+      for (const html of templateHtml(template))
+        for (const match of html.matchAll(PLACEHOLDER)) {
+          const key = decodeKey(match[2]);
+          const file = match[1] === "file" ? tree.files.get(key) : undefined;
+          if (!file || own.has(key)) continue;
+          if (stored.length >= TEMPLATE_FILES || importFileSize(file) > TEMPLATE_FILE_BYTES) {
+            skipped++;
+            continue;
+          }
+          const data = importFileData(file);
+          const entry = { original: id(), name: sanitizeFileName(file.name, "datei"), mime: verifiedMime(file.mime, data), data };
+          stored.push(entry);
+          own.set(key, { url: `/api/files/${entry.original}`, name: entry.name, mime: entry.mime });
+        }
+      // Fresh block ids, as the pages get (#88).
+      return { resolve: (html: string) => (html ? resolveHtml(documentAnchors(html, "", true).html, own) : ""), files: stored, skipped };
+    });
+    quota();
     const rootIds = databaseId
       ? [databaseId]
       : [...new Set(ordered.filter(({ page }) => !page.parent || !pageIds.has(page.parent)).map(({ page }) => pageIds.get(page.key)!))];
-    return { ...preview, rootIds, rows, ...(databaseId ? { databaseId } : {}) };
+    return { ...preview, warnings: [...preview.warnings, ...templateWarnings], rootIds, rows, ...(databaseId ? { databaseId } : {}) };
   }, user);
   for (const append of appends)
     try {
@@ -439,6 +499,66 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
       result.warnings.push(`Ein Journaltag konnte nicht ergänzt werden: ${error.message}`);
     }
   return result;
+}
+
+// The templates of an import (#116), each as the template a person saves
+// from a page: a document's HTML, or a database's fields, views and
+// records; tags as the template's meta, the emoji as its icon.
+function writeTemplates(
+  user: Identity,
+  workspaceId: string,
+  tree: ImportTree,
+  visibility: "workspace" | "private",
+  prepare: (template: ImportTemplate) => { resolve: (html: string) => string; files: { original: string; name: string; mime: string; data: Buffer }[]; skipped: number },
+) {
+  const warnings: string[] = [];
+  let skipped = 0;
+  for (const template of tree.templates || []) {
+    const files = prepare(template);
+    skipped += files.skipped;
+    const icon = importIcon(template.icon);
+    const meta = template.tags?.length ? { meta: { tags: template.tags.map((name) => ({ name, ...(tree.tagColors?.[name] ? { color: tree.tagColors[name] } : {}) })) } } : {};
+    let payload: string;
+    if (template.kind === "database" && template.database) {
+      const parsed = savedDatabaseTemplateSchema.safeParse({
+        database: { fields: template.database.fields, views: template.database.views },
+        rows: template.database.rows.slice(0, MAX_IMPORT_ROWS).map((row, i) => ({ id: id(), cells: row.cells, content: files.resolve(row.html), position: i })),
+      });
+      if (!parsed.success) {
+        warnings.push(`Vorlage „${template.name}“ konnte nicht übernommen werden.`);
+        continue;
+      }
+      payload = JSON.stringify({ ...parsed.data, ...(icon ? { icon } : {}), ...meta });
+    } else payload = JSON.stringify({ html: files.resolve(template.html), ...(icon ? { icon } : {}), ...meta });
+    if (payload.length > 20_000_000) {
+      warnings.push(`Vorlage „${template.name}“ konnte nicht übernommen werden.`);
+      continue;
+    }
+    const templateId = id();
+    run(
+      "INSERT INTO templates(id,workspace_id,name,kind,payload,created_by,visibility,category) VALUES(?,?,?,?,?,?,?,?)",
+      templateId,
+      workspaceId,
+      template.name.slice(0, 500) || ct("Ohne Titel", "Untitled"),
+      template.kind,
+      payload,
+      user.id,
+      visibility,
+      "other",
+    );
+    for (const file of files.files)
+      run(
+        "INSERT INTO template_files(id,template_id,original_id,name,mime,data) VALUES(?,?,?,?,?,?)",
+        id(),
+        templateId,
+        file.original,
+        file.name,
+        file.mime,
+        file.data,
+      );
+  }
+  if (skipped) warnings.push(`${skipped} Anhänge von Vorlagen über 10 MB oder über 200 je Vorlage werden nicht übernommen.`);
+  return warnings;
 }
 
 // An attachment of an import as the editor inserts an upload

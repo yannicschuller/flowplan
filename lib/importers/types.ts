@@ -53,6 +53,19 @@ export type ImportPage = {
   // other page (AFFiNE, #82).
   inRecord?: boolean;
 };
+// A document the source marks as a template (AFFiNE, #116): saved as a
+// template of the workspace (lib/page-templates.ts) instead of a page. Its
+// HTML (and a database template's records) refer to files and pages of the
+// import like a page's; links to it from pages are plain text.
+export type ImportTemplate = {
+  key: string;
+  name: string;
+  kind: "document" | "database";
+  html: string;
+  database?: ImportDatabase;
+  icon?: string;
+  tags?: string[];
+};
 // A file: in memory, or (large AFFiNE workspaces) read from the source when
 // it is written, so only one is in memory at a time.
 export type ImportFile = { key: string; name: string; mime: string } & ({ data: Buffer } | { size: number; read: () => Buffer });
@@ -68,6 +81,8 @@ export type ImportTree = {
   tagColors?: Record<string, string>;
   // Collections and similar pages the source adds (counted in the preview).
   collections?: number;
+  // Templates of the source (AFFiNE, #116), written as saved templates.
+  templates?: ImportTemplate[];
   // The page holding everything (AFFiNE: the workspace) when the import
   // has one; it is not counted as a folder in the preview.
   wrapper?: string;

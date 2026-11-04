@@ -42,8 +42,9 @@
 // - workspace database (AFFiNE's ORM on Yjs, one document per table):
 //   "db$folders" (folders and the links in them: {id, parentId, type:
 //   folder|doc|tag|collection, data: name or target id, index}),
-//   "db$docProperties" ({id, journal: "YYYY-MM-DD", primaryMode, …,
-//   "custom:<property id>": value as text}), "db$docCustomPropertyInfo"
+//   "db$docProperties" ({id, journal: "YYYY-MM-DD", primaryMode,
+//   isTemplate: boolean (a template, #116), …, "custom:<property id>": value
+//   as text}), "db$docCustomPropertyInfo"
 //   (the properties: {id, name, type: text|number|checkbox|date|…,
 //   isDeleted}), "db$explorerIcon" ({id: "doc|folder|collection|tag:<id>",
 //   icon: {type: "emoji", unicode} | {type: "affine-icon", name, color}});
@@ -768,6 +769,9 @@ export function readSnapshotZip(entries: Map<string, Buffer>, fallbackName: stri
       ? "Ordner, Sammlungen, Journale, Eigenschaften und Symbole von Dokumenten enthält nur die Arbeitsbereichsdatei (.affine)."
       : "Tags, Ordner, Sammlungen, Journale, Eigenschaften und Symbole von Dokumenten enthält nur die Arbeitsbereichsdatei (.affine); AFFiNE schreibt sie nicht in Snapshots.",
   );
+  // Nor whether a document is a template (#116): the snapshot's meta is
+  // {id, title, createDate, tags} only.
+  warnings.push("Ob ein Dokument eine Vorlage ist, steht nur in der Arbeitsbereichsdatei (.affine); aus einem Snapshot werden Vorlagen gewöhnliche Seiten.");
   return {
     format: "snapshot",
     name: fallbackName,

@@ -28,6 +28,8 @@ type Preview = {
   icons?: number;
   // Documents that become the content of a database record (AFFiNE).
   rowDocuments?: number;
+  // Templates saved as templates (AFFiNE).
+  templates?: number;
   // More pages than one import may bring: importing is refused.
   tooMany?: boolean;
   // The page everything lands below (an AFFiNE workspace with structure).
@@ -242,6 +244,7 @@ export function ImportSources({
             {mode === "pages" && !!preview.rowDocuments && (
               <li>{t(`${preview.rowDocuments} Dokumente als Inhalt von Datenbankeinträgen`, `${preview.rowDocuments} documents as content of database records`)}</li>
             )}
+            {!!preview.templates && <li>{t(`${preview.templates} Vorlagen`, `${preview.templates} templates`)}</li>}
           </ul>
           {preview.warnings.length > 0 && (
             <ul className="import-sources-warnings">
@@ -262,7 +265,7 @@ export function ImportSources({
             >
               {t("Abbrechen", "Cancel")}
             </button>
-            <button type="button" className="button primary" onClick={() => void start()} disabled={!canWrite || preview.tooMany || (!preview.pages && !preview.folders)}>
+            <button type="button" className="button primary" onClick={() => void start()} disabled={!canWrite || preview.tooMany || (!preview.pages && !preview.folders && !preview.templates)}>
               {t("Importieren", "Import")}
             </button>
           </div>
