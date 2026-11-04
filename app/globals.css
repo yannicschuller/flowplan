@@ -17346,6 +17346,24 @@ h3 .block-reactions {
   font-weight: 600;
   color: var(--blue);
 }
+/* In the apps: the sign-in in the system browser, for password managers. */
+.login-card .login-browser {
+  margin: 0 0 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.login-browser a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+  color: var(--blue);
+  text-decoration: none;
+}
+.login-browser a:hover {
+  text-decoration: underline;
+}
 /* Legal notice and privacy policy of the operator (IMPRINT_URL, PRIVACY_URL). */
 .legal-footer {
   display: flex;

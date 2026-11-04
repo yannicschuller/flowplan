@@ -374,6 +374,25 @@ export default function Login({
             </button>
           </form>
         )}
+        {/* In the app, password managers offer nothing: iOS AutoFill only
+            matches the app's own domains, never a self-hosted instance
+            (flowplan-app#5). The system browser's sign-in sheet shows this
+            page with password and code, where they fill in both. */}
+        {passwordForm && (mode === "signin" || mode === "totp") && desktopApp && (
+          <p className="login-browser">
+            {t("Passwort-Manager füllt nichts aus?", "Password manager not filling in?")}{" "}
+            <a
+              href="/api/auth/desktop"
+              title={t(
+                "Öffnet die Anmeldung im Browser – dort füllt dein Passwort-Manager Passwort und Code aus",
+                "Opens the sign-in in your browser, where your password manager fills in the password and code",
+              )}
+            >
+              {t("Im Browser anmelden", "Sign in in the browser")}
+              <ArrowSquareOut size={14} />
+            </a>
+          </p>
+        )}
         {localLogin && mode === "signin" && desktopApp && (
           <a className="button wide" href="/api/auth/desktop" title={t("Öffnet die Anmeldung im Browser", "Opens the sign-in in your browser")}>
             <Fingerprint size={19} />
