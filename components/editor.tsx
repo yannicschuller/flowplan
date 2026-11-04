@@ -78,8 +78,12 @@ import { DocumentBlockControls } from "./document-block-controls";
 import {
   BlockShortcuts,
   PlainNewLine,
+  applyBlockChange,
   moveSelectedBlock,
 } from "@/lib/block-shortcuts";
+import { useCanCreatePages } from "./create-rights";
+import { readTable, tableTitle } from "@/lib/table-read";
+import { TABLE_DATABASE_LIMITS } from "@/lib/table-database";
 import { registerDocumentFlush } from "@/lib/document-flush";
 import { HeadingFolds } from "@/lib/heading-folds-plugin";
 import { collaborationCursors } from "@/lib/collaboration-cursors";
@@ -422,6 +426,107 @@ export default function DocumentEditor({
       .insertContent({ type: "whiteboardEmbed", attrs: { pageId: id } })
       .run();
     setBoardPicker(false);
+  }
+  // "In Datenbank umwandeln" (#118): the table around the cursor becomes a
+  // database below this document (the server creates it with its records);
+  // an embedded view of it takes the table's place in one step, so undo
+  // brings the table back – the database stays.
+  const canCreatePages = useCanCreatePages();
+  const [convertingTable, setConvertingTable] = useState(false);
+  async function convertTableToDatabase() {
+    if (!editor || convertingTable) return;
+    const { $from } = editor.state.selection;
+    let depth = $from.depth;
+    while (depth > 0 && $from.node(depth).type.name !== "table") depth--;
+    if (!depth) return;
+    const table = $from.node(depth),
+      pos = $from.before(depth);
+    const rows = readTable(table);
+    if (rows.length > TABLE_DATABASE_LIMITS.rows + 1 || (rows[0]?.length || 0) > TABLE_DATABASE_LIMITS.columns) {
+      onError(
+        t(
+          `Die Tabelle ist zu groß für eine Datenbank (höchstens ${TABLE_DATABASE_LIMITS.columns} Spalten und ${TABLE_DATABASE_LIMITS.rows} Zeilen).`,
+          `The table is too large for a database (at most ${TABLE_DATABASE_LIMITS.columns} columns and ${TABLE_DATABASE_LIMITS.rows} rows).`,
+        ),
+      );
+      return;
+    }
+    setConvertingTable(true);
+    try {
+      const created = await api<{ id: string; view: import("@/lib/types").View }>("/api/command", {
+        action: "table.toDatabase",
+        pageId,
+        ...(rowId ? { rowId } : {}),
+        title: tableTitle(editor.state.doc, pos),
+        rows,
+      });
+      window.dispatchEvent(new Event("flowplan:pages-changed"));
+      const open = () => {
+        window.location.hash = `page=${created.id}`;
+      };
+      // The table again – it may have moved while the database was made.
+      const doc = editor.state.doc;
+      let at = doc.nodeAt(pos) === table ? pos : -1;
+      if (at < 0)
+        doc.descendants((node, p) => {
+          if (at >= 0) return false;
+          if (node === table || (node.type.name === "table" && node.eq(table))) {
+            at = p;
+            return false;
+          }
+          return true;
+        });
+      if (at < 0) {
+        showToast({
+          text: t("Die Tabelle wurde inzwischen geändert.", "The table has changed in the meantime."),
+          detail: t("Die Datenbank liegt als Unterseite bereit.", "The database is ready as a sub-page."),
+          action: { label: t("Datenbank öffnen", "Open database"), run: open },
+        });
+        return;
+      }
+      const embed = editor.schema.nodes.linkedDatabase.create({
+        id: crypto.randomUUID(),
+        source: created.id,
+        version: "1",
+        views: JSON.stringify([{ ...created.view, id: crypto.randomUUID() }]),
+        // The table's block id: links to the block keep working, and no
+        // later id step stands between the conversion and its undo.
+        blockId: validBlockId(table.attrs.blockId) || newBlockId(),
+      });
+      const tr = editor.state.tr.replaceWith(at, at + table.nodeSize, embed);
+      // The blocks next to it get their ids in this step too (BlockIds
+      // would name them a moment later – a second undo step).
+      const seen = new Set<string>();
+      for (const { node, pos: blockPos } of linkableBlocks(tr.doc)) {
+        const own = validBlockId(node.attrs.blockId);
+        if (own && !seen.has(own)) {
+          seen.add(own);
+          continue;
+        }
+        if (blockPos > at + embed.nodeSize || blockPos + node.nodeSize < at) continue;
+        let fresh = newBlockId();
+        while (seen.has(fresh)) fresh = newBlockId();
+        seen.add(fresh);
+        tr.setNodeAttribute(blockPos, "blockId", fresh);
+      }
+      tr.setSelection(NodeSelection.create(tr.doc, at));
+      applyBlockChange(editor, tr.scrollIntoView());
+      editor.commands.focus();
+      await sync();
+      showToast({
+        text: t("Tabelle in Datenbank umgewandelt", "Table converted to database"),
+        detail: t(
+          "Rückgängig machen holt die Tabelle zurück; die Datenbank bleibt als Unterseite erhalten.",
+          "Undo brings the table back; the database stays as a sub-page.",
+        ),
+        duration: 10000,
+        action: { label: t("Datenbank öffnen", "Open database"), run: open },
+      });
+    } catch (error) {
+      onError((error as Error).message);
+    } finally {
+      setConvertingTable(false);
+    }
   }
   const linkedContext = useRef<LinkedEditorContext>(null!);
   linkedContext.current = {
@@ -2509,7 +2614,16 @@ export default function DocumentEditor({
             </DocumentBlockControls>
           )}
         </div>
-        {editor?.isActive("table") && editable && <TableTools editor={editor} />}
+        {editor?.isActive("table") && editable && (
+          <TableTools
+            editor={editor}
+            convert={
+              canCreatePages && !embedded && !draft
+                ? { run: () => void convertTableToDatabase(), busy: convertingTable }
+                : undefined
+            }
+          />
+        )}
       </div>
       {!embedded && (
       <InlineComments

@@ -818,6 +818,7 @@ const exact: Record<string, string> = {
   "Anhänge überschreiten 100 MB.": "Attachments exceed 100 MB.",
   "E-Book überschreitet 100 MB.": "The e-book exceeds 100 MB.",
   "Tabelle zu groß (höchstens 200 Spalten und 5.000 Zeilen).": "Table too large (at most 200 columns and 5,000 rows).",
+  "Die Tabelle ist zu groß für eine Datenbank (höchstens 80 Spalten und 5.000 Zeilen).": "The table is too large for a database (at most 80 columns and 5,000 rows).",
   // Page owners and reviews, scheduled rules, repeating records
   "Besitzer muss Mitglied des Arbeitsbereichs sein.": "The owner must be a member of the workspace.",
   "Der Besitzer hat keinen Zugriff auf diese Seite.": "The owner has no access to this page.",

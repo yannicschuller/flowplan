@@ -235,6 +235,7 @@ import type {
   Database,
   Row,
   Field,
+  View,
 } from "./types";
 const str = z.string().min(1).max(500),
   uuid = z.string().uuid();
@@ -1385,6 +1386,68 @@ export function command(
             sid,
           );
         result = { id: sid };
+        break;
+      }
+      case "table.toDatabase": {
+        // "In Datenbank umwandeln" (#118): a table of a document (or of a
+        // record's content) becomes a new database with its records; the
+        // browser then puts an embedded view of it in the table's place.
+        const limits = TABLE_DATABASE_LIMITS;
+        const cell = z.object({
+          text: z.string().max(limits.text),
+          href: z.string().max(limits.href).optional(),
+        });
+        const table = z
+          .array(z.array(cell).max(limits.columns + 1))
+          .min(1)
+          .max(limits.rows + 1)
+          .parse(b.rows);
+        if (table.length > limits.rows + 1 || table.some((row) => row.length > limits.columns))
+          throw new HttpError(413, "Die Tabelle ist zu groß für eine Datenbank (höchstens 80 Spalten und 5.000 Zeilen).");
+        // The host: written to (the embed replaces the table) – a document,
+        // or a record whose database the person may change.
+        const rowId = b.rowId ? uuid.parse(b.rowId) : undefined;
+        const host = rowId ? requireRow(user, pid(), rowId, true).page : write();
+        if (!rowId && host.kind !== "document") throw new HttpError(400, "Kein Dokument.");
+        // Created like any page (rights in the space, encrypted spaces …):
+        // below the document, or for a record at the top of its space.
+        const title = z.string().trim().max(200).optional().parse(b.title) || ct("Tabelle", "Table");
+        const created = (
+          command(
+            user,
+            {
+              action: "page.create",
+              workspaceId: host.workspace_id,
+              spaceId: host.space_id,
+              ...(rowId || host.journal_date ? {} : { parentId: host.id }),
+              title,
+              kind: "database",
+              databaseKind: "empty",
+            },
+            true,
+          ) as { id: string }
+        ).id;
+        const converted = tableToDatabase(table, (n) => ct(`Spalte ${n}`, `Column ${n}`));
+        const view: View = { id: id(), name: ct("Tabelle", "Table"), type: "table", filters: [], sorts: [] };
+        run(
+          "UPDATE databases SET fields=?,views=?,version=version+1 WHERE page_id=?",
+          JSON.stringify(converted.fields),
+          JSON.stringify([view]),
+          created,
+        );
+        const now = Date.now();
+        converted.rows.forEach((cells, i) =>
+          run(
+            "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by) VALUES(?,?,?,?,?,?)",
+            id(),
+            created,
+            JSON.stringify(cells),
+            now + i,
+            user.id,
+            user.id,
+          ),
+        );
+        result = { id: created, view, fields: converted.fields.length, rows: converted.rows.length };
         break;
       }
       case "mention.link": {
@@ -3422,4 +3485,5 @@ import { quotaCheckpoint, setWorkspaceQuota } from "./instance-ops";
 import { rowChanged, rowCreated } from "./automations";
 import { applyDatabaseProposal, forgetAiFields, prepareAiFields } from "./ai/database-fields";
 import { ct } from "./content-locale";
+import { TABLE_DATABASE_LIMITS, tableToDatabase } from "./table-database";
 import { ensureBlockIds, linkedBlockIds } from "./block-links";
