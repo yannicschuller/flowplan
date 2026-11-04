@@ -488,7 +488,7 @@ Sichere das Volume `/app/data` – oder lass Flowplan das erledigen: geplante Si
 <details>
 <summary><b>Wie ziehe ich auf einen anderen Server um?</b></summary>
 
-Starte auf dem neuen Server eine frische Installation und nutze **Administration → Speicher & Sicherung → Instanz umziehen**: Die alte Instanz gibt einen einmaligen Umzugs-Token aus, die neue holt Datenbank, Uploads und Schlüsseldateien direkt von Server zu Server; die Ausfallzeit ist nur die Schlusssynchronisierung, meist wenige Minuten. Alternativ kopierst du das Datenvolume auf den neuen Host und startest dort dasselbe Image – oder startest mit denselben `S3_*`-Variablen und leerem Volume; Litestream stellt die Datenbank wieder her. Siehe [Wiederherstellen](https://docs.flowplan.org/de/storage-and-backups#wiederherstellen).
+Starte auf dem neuen Server eine frische Installation und nutze **Administration → Speicher & Sicherung → Instanz umziehen**: Die alte Instanz gibt einen einmaligen Umzugs-Token aus, die neue holt Datenbank, Uploads und Schlüsseldateien direkt von Server zu Server; die Ausfallzeit ist nur die Schlusssynchronisierung, meist wenige Minuten. Alternativ kopierst du das Datenvolume auf den neuen Host und startest dort dasselbe Image – oder startest mit denselben `S3_*`-Variablen und leerem Volume; Litestream stellt die Datenbank wieder her. Siehe [Instanz umziehen](https://docs.flowplan.org/de/move-instance) und [Wiederherstellen](https://docs.flowplan.org/de/storage-and-backups#wiederherstellen).
 
 </details>
 

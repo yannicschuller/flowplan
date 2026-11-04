@@ -486,7 +486,7 @@ Back up the `/app/data` volume, or let Flowplan do it: scheduled backups and Mar
 <details>
 <summary><b>How do I move to another server?</b></summary>
 
-Start a fresh installation on the new server and use **Administration → Storage & backup → Move instance**: the old instance hands out a one-time move token, the new one pulls the database, uploads and key files server to server, and the downtime is only the final sync, usually minutes. Without that, copy the data volume to the new host and start the same image there, or – with S3 – start with the same `S3_*` variables and an empty volume; Litestream restores the database. See [Restore](https://docs.flowplan.org/en/storage-and-backups#restore).
+Start a fresh installation on the new server and use **Administration → Storage & backup → Move instance**: the old instance hands out a one-time move token, the new one pulls the database, uploads and key files server to server, and the downtime is only the final sync, usually minutes. Without that, copy the data volume to the new host and start the same image there, or – with S3 – start with the same `S3_*` variables and an empty volume; Litestream restores the database. See [Moving an instance](https://docs.flowplan.org/en/move-instance) and [Restore](https://docs.flowplan.org/en/storage-and-backups#restore).
 
 </details>
 
