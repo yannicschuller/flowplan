@@ -6,6 +6,7 @@
 // the visible area – above the keyboard and the docked formatting toolbar
 // on phones. Inside a dialog (a record) it lives in the dialog, so clicks
 // reach it. Tab in the last cell adds a row (the table extension does it).
+// "In Datenbank umwandeln" (#118) shows where the editor offers it.
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Editor } from "@tiptap/react";
@@ -36,7 +37,14 @@ function tableAt(editor: Editor): HTMLElement | null {
   }
 }
 
-export function TableTools({ editor }: { editor: Editor }) {
+export function TableTools({
+  editor,
+  convert,
+}: {
+  editor: Editor;
+  // Turns the table into a database (#118); left out where that is not possible.
+  convert?: { run: () => void; busy: boolean };
+}) {
   const t = useT();
   const bar = useRef<HTMLDivElement>(null);
   const [place, setPlace] = useState<Place | null>(null);
@@ -181,6 +189,15 @@ export function TableTools({ editor }: { editor: Editor }) {
             >
               {t("Kopfzeile ein/aus", "Header row on/off")}
             </Dropdown.Item>
+            {convert && (
+              <Dropdown.Item
+                className="dropdown-item"
+                disabled={convert.busy}
+                onSelect={() => convert.run()}
+              >
+                {t("In Datenbank umwandeln", "Convert to database")}
+              </Dropdown.Item>
+            )}
             <Dropdown.Separator className="dropdown-separator" />
             <Dropdown.Item
               className="dropdown-item"

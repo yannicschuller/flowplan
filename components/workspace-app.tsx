@@ -1,4 +1,5 @@
 "use client";
+import { setCanCreatePages } from "./create-rights";
 import { safeCollisionPadding } from "./safe-area";
 import { applyTheme, setThemeChoice, themeChoice, watchTheme, type ThemeChoice } from "@/lib/theme";
 import { readModeIds, toggleReadMode } from "@/lib/read-mode";
@@ -1733,6 +1734,15 @@ export default function WorkspaceApp({
   // Links in documents show the icons of these pages (#96) and follow
   // their changes like titles do (components/page-link-icons.tsx).
   useEffect(() => setLinkTargetPages(activePages), [activePages]);
+  // Editors deep below read whether pages may be created here (#118).
+  useEffect(() => setCanCreatePages(canCreate), [canCreate]);
+  // A page created from inside a document (a table turned into a database,
+  // #118) shows in the sidebar at once instead of on the next poll.
+  useEffect(() => {
+    const changed = () => void refresh().catch(() => {});
+    window.addEventListener("flowplan:pages-changed", changed);
+    return () => window.removeEventListener("flowplan:pages-changed", changed);
+  }, [refresh]);
   // The order of the spaces (issue #48, lib/space-order.ts): workspace
   // owners drag a space by its header or use "Nach oben"/"Nach unten" in its
   // "…" menu. Only the spaces shown here are sent; the others keep their place.

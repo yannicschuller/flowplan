@@ -58,7 +58,7 @@ export const commandActionNames = [
   "page.create", "page.update", "page.delete", "page.restore", "page.duplicate", "page.move", "page.import",
   "pages.bulk", "page.follow", "page.collapseProperties", "sidebar.state", "page.snapshot", "page.publish", "page.share", "page.shareUpdate", "page.fromShare",
   "page.toRecord", "record.toPage", "page.owner", "page.review", "page.aliases",
-  "page.properties", "pages.tag", "tag.save", "tag.delete", "tag.merge", "tag.reorder", "property.save", "property.delete", "property.reorder", "favorite", "favorite.row", "task.update", "synced.create", "mention.link",
+  "page.properties", "pages.tag", "tag.save", "tag.delete", "tag.merge", "tag.reorder", "property.save", "property.delete", "property.reorder", "favorite", "favorite.row", "task.update", "synced.create", "table.toDatabase", "mention.link",
   "journal.settings", "journal.lock", "journal.unlock", "journal.relock", "journal.entry", "journal.roll", "journal.link", "journal.removeEmpty", "journal.summary", "block.ids",
   "linked.command", "document.sync", "document.markdown", "document.markdown.apply",
   "snapshot.restoreBlock", "snapshot.restore",
