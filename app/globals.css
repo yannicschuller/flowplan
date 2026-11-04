@@ -6569,6 +6569,11 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
 .page-layout:has(> .comments-panel) .editor-wrapper.with-outline {
   padding-right: 236px;
 }
+/* "Volle Breite": the text has no margin to the right any more, so it makes
+   room for the open list at every width. */
+.page-content.full-width .editor-wrapper.with-outline {
+  padding-right: 236px;
+}
 /* A narrow text column: the button stays inside the page's edge. */
 @container main (max-width: 767px) {
   .outline-toggle {
