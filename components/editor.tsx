@@ -2,7 +2,7 @@
 import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { safeCollisionPadding } from "./safe-area";
 import { matchedAlias, pageAliases } from "@/lib/aliases";
-import { DocumentOutline, OutlineToggle, useOutlineOpen } from "./document-outline";
+import { DocumentOutline, OutlineToggle, useOutline } from "./document-outline";
 import { chatTextToHtml, looksLikeChatText, mathFromPastedHtml } from "@/lib/chat-paste";
 import { serverMessage } from "@/lib/i18n-errors";
 import { reveal } from "@/lib/motion";
@@ -357,7 +357,9 @@ export default function DocumentEditor({
     [footnote, setFootnote] = useState<{ pos: number | null; note: string; at: number; original: string } | null>(null),
     [toggleTitle, setToggleTitle] = useState("");
   const uploadRef = useRef<HTMLInputElement>(null);
-  const [outline, setOutline] = useOutlineOpen();
+  // The table of contents: beside the text, or a popover where the text
+  // column is too narrow for both (components/document-outline.tsx).
+  const outline = useOutline();
   const [, setTick] = useState(0);
   const [references, setReferences] = useState(false),
     [referenceQuery, setReferenceQuery] = useState(""),
@@ -2101,7 +2103,7 @@ export default function DocumentEditor({
     editor.chain().focus().insertContentAt(at, { type: "text", text: label, marks: [{ type: "link", attrs: { href } }] }).run();
   };
   return (
-    <div className={`editor-wrapper${embedded ? " embedded" : ""}${!embedded && outline ? " with-outline" : ""}`}>
+    <div ref={embedded ? undefined : outline.anchorRef} className={`editor-wrapper${embedded ? " embedded" : ""}${!embedded && outline.docked ? " with-outline" : ""}`}>
       <div className={`document-writing-surface${suggesting && editable ? " suggesting" : ""}`}>
         {editable && !embedded && !source && (
           <div
@@ -2353,7 +2355,8 @@ export default function DocumentEditor({
             </button>
             <button
               title={t("Inhaltsverzeichnis", "Table of contents")}
-              onClick={() => setOutline(!outline)}
+              data-outline-toggle
+              onClick={outline.toggle}
             >
               <ListBullets />
             </button>
@@ -2475,10 +2478,18 @@ export default function DocumentEditor({
             </p>
           </aside>
         )}
-        {!embedded && !source && (outline || headings.length > 0) && (
-          <OutlineToggle open={outline} count={headings.length} onToggle={() => setOutline(!outline)} />
+        {!embedded && !source && (outline.shown || headings.length > 0) && (
+          <OutlineToggle open={outline.shown} count={headings.length} onToggle={outline.toggle} popover={outline.narrow} buttonRef={outline.buttonRef} />
         )}
-        {!embedded && outline && <DocumentOutline editor={editor} headings={headings} onClose={() => setOutline(false)} onCopyLink={(pos) => void copyBlockLink.current(pos)} />}
+        {!embedded && outline.shown && (
+          <DocumentOutline
+            editor={editor}
+            headings={headings}
+            onClose={outline.close}
+            onCopyLink={(pos) => void copyBlockLink.current(pos)}
+            popover={outline.narrow ? { button: outline.button } : undefined}
+          />
+        )}
         {source && !embedded && editor && (
           <MarkdownSourceView
             editor={editor}

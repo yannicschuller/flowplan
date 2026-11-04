@@ -3,7 +3,11 @@
 // writing, follows the reading position and jumps to a heading on click.
 // Open or closed is remembered in this browser for all documents. Shared and
 // published pages have it too (PublicOutline), from the rendered headings.
-import { useEffect, useState } from "react";
+// When the text column is too narrow for text and list side by side (a
+// narrow window, "KI fragen" docked beside the page, comments open, phones)
+// the list gives way: its button opens it as a popover that closes again
+// on a heading, Escape or a click elsewhere (useOutline).
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import { ArrowsInLineVertical, ArrowsOutLineVertical, Link as LinkIcon, ListBullets, X } from "@phosphor-icons/react";
 import { setAllFolded } from "@/lib/heading-folds-plugin";
@@ -29,6 +33,89 @@ export function useOutlineOpen(): [boolean, (open: boolean) => void] {
       } catch {}
     },
   ];
+}
+
+// Text and list fit side by side from this width of the page's text column
+// (.page-content in the main area: up to 820 px, less beside comments or a
+// docked panel); the list takes 236 px of it. Without such a column (a
+// record dialog, a shared page) the window decides, from 901 px.
+export const OUTLINE_SIDE_MIN = 768;
+export const OUTLINE_WINDOW_MIN = 901;
+export const outlineFits = (column: number) => column >= OUTLINE_SIDE_MIN;
+
+// Whether the list must give way (a popover instead of a list beside the
+// text), for the page of the element `anchor` is in. False until measured.
+export function useOutlineNarrow(anchor: HTMLElement | null) {
+  const [narrow, setNarrow] = useState(false);
+  useLayoutEffect(() => {
+    if (!anchor) return;
+    const column = anchor.closest(".main") ? anchor.closest<HTMLElement>(".page-content") : null;
+    if (column && typeof ResizeObserver !== "undefined") {
+      const measure = () => setNarrow(!outlineFits(column.getBoundingClientRect().width));
+      measure();
+      const observer = new ResizeObserver(measure);
+      observer.observe(column);
+      return () => observer.disconnect();
+    }
+    const media = matchMedia(`(max-width: ${OUTLINE_WINDOW_MIN - 1}px)`);
+    const update = () => setNarrow(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, [anchor]);
+  return narrow;
+}
+
+// Open beside the text (remembered) or, where it gives way, as a popover
+// (not remembered: it closes after a jump). The anchor is any element in
+// the page – the editor's wrapper –, the button the toggle the popover
+// hangs on.
+export function useOutline() {
+  const [open, setOpen] = useOutlineOpen();
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const [button, setButton] = useState<HTMLButtonElement | null>(null);
+  const narrow = useOutlineNarrow(anchor);
+  const [popover, setPopover] = useState(false);
+  useEffect(() => {
+    if (!narrow) setPopover(false);
+  }, [narrow]);
+  return {
+    anchorRef: setAnchor,
+    buttonRef: setButton,
+    button,
+    narrow,
+    // The list beside the text (the page makes room for it).
+    docked: open && !narrow,
+    shown: narrow ? popover : open,
+    toggle: () => (narrow ? setPopover((p) => !p) : setOpen(!open)),
+    close: () => (narrow ? setPopover(false) : setOpen(false)),
+  };
+}
+
+// The popover's place: below its button, right-aligned with it (window
+// coordinates for the fixed list; CSS keeps phones at the bottom edge).
+function usePopoverPlace(nav: HTMLElement | null, button: HTMLElement | null | undefined) {
+  useLayoutEffect(() => {
+    if (!nav || !button) return;
+    let frame = 0;
+    const set = () => {
+      const box = button.getBoundingClientRect();
+      nav.style.setProperty("--outline-top", `${Math.round(box.bottom + 6)}px`);
+      nav.style.setProperty("--outline-right", `${Math.max(8, Math.round(document.documentElement.clientWidth - box.right))}px`);
+    };
+    const place = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(set);
+    };
+    set();
+    document.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    return () => {
+      cancelAnimationFrame(frame);
+      document.removeEventListener("scroll", place, true);
+      window.removeEventListener("resize", place);
+    };
+  }, [nav, button]);
 }
 
 const headingElement = (editor: Editor, pos: number) => {
@@ -71,10 +158,14 @@ export function DocumentOutline({
   onClose,
   locate,
   onCopyLink,
+  popover,
 }: {
   editor: Editor | null;
   headings: OutlineHeading[];
   onClose: () => void;
+  // A popover hanging on this button (the list gives way to the text):
+  // focus moves into it, Escape and a click elsewhere close it.
+  popover?: { button: HTMLButtonElement | null };
   // Copies the link to a heading (#88); only in the app's editor.
   onCopyLink?: (pos: number) => void;
   // Without an editor: the element of a heading (a read-only document).
@@ -82,6 +173,47 @@ export function DocumentOutline({
 }) {
   const t = useT();
   const [active, setActive] = useState<number | null>(null);
+  const [nav, setNav] = useState<HTMLElement | null>(null);
+  const navRef = useCallback((node: HTMLElement | null) => {
+    setNav(node);
+    return followDialog(node);
+  }, []);
+  const button = popover?.button;
+  usePopoverPlace(popover ? nav : null, button);
+  // The popover: focus on the current heading (else the first entry),
+  // Escape closes and goes back to the button, a click elsewhere closes.
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  const isPopover = !!popover;
+  useEffect(() => {
+    if (!isPopover || !nav) return;
+    // Two frames: the current heading is marked in the first one.
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() =>
+        (nav.querySelector<HTMLElement>('li button[aria-current="location"]') || nav.querySelector<HTMLElement>("li > button") || nav.querySelector<HTMLElement>("button"))?.focus({ preventScroll: true }),
+      );
+    });
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      e.preventDefault();
+      e.stopPropagation();
+      closeRef.current();
+      button?.focus({ preventScroll: true });
+    };
+    const down = (e: PointerEvent) => {
+      const target = e.target as Node;
+      // Its own buttons (the toggle, the toolbar's) toggle it themselves.
+      if (nav.contains(target) || button?.contains(target) || (target instanceof Element && target.closest("[data-outline-toggle]"))) return;
+      closeRef.current();
+    };
+    document.addEventListener("keydown", key, true);
+    document.addEventListener("pointerdown", down, true);
+    return () => {
+      cancelAnimationFrame(frame);
+      document.removeEventListener("keydown", key, true);
+      document.removeEventListener("pointerdown", down, true);
+    };
+  }, [isPopover, nav, button]);
   const top = Math.min(...headings.map((h) => h.level), 3);
   // The heading the reader is in: the last one above the upper fifth of the window.
   const key = headings.map((h) => h.pos).join(",");
@@ -114,7 +246,12 @@ export function DocumentOutline({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, key]);
   return (
-    <nav ref={followDialog} className="document-outline" aria-label={t("Inhaltsverzeichnis", "Table of contents")}>
+    <nav
+      ref={navRef}
+      id={popover ? OUTLINE_POPOVER_ID : undefined}
+      className={`document-outline${popover ? " outline-popover" : ""}`}
+      aria-label={t("Inhaltsverzeichnis", "Table of contents")}
+    >
       <div className="document-outline-head">
         <strong>
           <ListBullets aria-hidden /> {t("Inhalt", "Contents")}
@@ -158,8 +295,8 @@ export function DocumentOutline({
                   setActive(h.pos);
                   // The caret goes to the heading, so typing continues there.
                   editor?.commands.setTextSelection(h.pos + 1 + h.text.length);
-                  // Small screens: the list covers the text, so it closes.
-                  if (window.innerWidth < 1100) onClose();
+                  // The popover (the list gave way to the text) closes.
+                  if (popover) onClose();
                 }}
               >
                 {h.text || t("Überschrift", "Heading")}
@@ -185,14 +322,30 @@ export function DocumentOutline({
   );
 }
 
-// The button that opens the table of contents (also without a toolbar).
-export function OutlineToggle({ open, count, onToggle }: { open: boolean; count: number; onToggle: () => void }) {
+const OUTLINE_POPOVER_ID = "document-outline-popover";
+
+// The button that opens the table of contents (also without a toolbar);
+// for the popover it says whether that is open (aria-expanded).
+export function OutlineToggle({
+  open,
+  count,
+  onToggle,
+  popover = false,
+  buttonRef,
+}: {
+  open: boolean;
+  count: number;
+  onToggle: () => void;
+  popover?: boolean;
+  buttonRef?: (node: HTMLButtonElement | null) => void;
+}) {
   const t = useT();
   return (
     <button
+      ref={buttonRef}
       type="button"
       className={`outline-toggle${open ? " active" : ""}`}
-      aria-pressed={open}
+      {...(popover ? { "aria-expanded": open, "aria-controls": open ? OUTLINE_POPOVER_ID : undefined } : { "aria-pressed": open })}
       title={t("Inhaltsverzeichnis", "Table of contents")}
       // The visible count is part of the name (WCAG 2.5.3).
       aria-label={
@@ -214,7 +367,7 @@ export function OutlineToggle({ open, count, onToggle }: { open: boolean; count:
 // page (its rendered headings), with the same toggle and list as in the
 // editor. Headings in embedded pages and comments do not count.
 export function PublicOutline() {
-  const [open, setOpen] = useOutlineOpen();
+  const outline = useOutline();
   const [headings, setHeadings] = useState<OutlineHeading[]>([]);
   const [elements, setElements] = useState<HTMLElement[]>([]);
   useEffect(() => {
@@ -226,14 +379,26 @@ export function PublicOutline() {
     setElements(found);
     setHeadings(found.map((el, i) => ({ text: (el.textContent || "").trim(), pos: i, level: Number(el.tagName[1]) })));
   }, []);
+  const { anchorRef } = outline;
   useEffect(() => {
-    document.querySelector(".public-page")?.classList.toggle("with-outline", open && headings.length > 0);
-  }, [open, headings.length]);
+    anchorRef(document.querySelector<HTMLElement>(".public-page"));
+  }, [anchorRef]);
+  useEffect(() => {
+    document.querySelector(".public-page")?.classList.toggle("with-outline", outline.docked && headings.length > 0);
+  }, [outline.docked, headings.length]);
   if (!headings.length) return null;
   return (
     <>
-      <OutlineToggle open={open} count={headings.length} onToggle={() => setOpen(!open)} />
-      {open && <DocumentOutline editor={null} headings={headings} locate={(pos) => elements[pos] || null} onClose={() => setOpen(false)} />}
+      <OutlineToggle open={outline.shown} count={headings.length} onToggle={outline.toggle} popover={outline.narrow} buttonRef={outline.buttonRef} />
+      {outline.shown && (
+        <DocumentOutline
+          editor={null}
+          headings={headings}
+          locate={(pos) => elements[pos] || null}
+          onClose={outline.close}
+          popover={outline.narrow ? { button: outline.button } : undefined}
+        />
+      )}
     </>
   );
 }

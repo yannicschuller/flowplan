@@ -169,6 +169,7 @@ test("Ask AI is a side panel: the page stays usable while the answer streams", a
     // Focus mode hides the panel; it comes back afterwards.
     await page.keyboard.press("Control+Alt+KeyZ");
     await expect(panel).toBeHidden();
+    await page.waitForTimeout(300);
     await page.keyboard.press("Control+Alt+KeyZ");
     await expect(panel).toBeVisible();
 

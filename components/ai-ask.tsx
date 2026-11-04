@@ -1,14 +1,16 @@
 "use client";
 // "KI fragen": questions about the workspace, answered with numbered sources
-// (lib/ai/ask.ts). A panel docked on the right of the workspace (from 768 px,
+// (lib/ai/ask.ts). A panel docked on the right of the workspace (from 1100 px,
 // components/workspace-app.tsx puts it into the app shell's grid, so the page
-// narrows instead of being covered) or a bottom sheet on phones that is
-// swiped down to a small pill. It is no dialog: the page stays usable, the
-// answer keeps streaming while the person scrolls, writes or opens other
-// pages, and closing only hides it. The conversation is kept in this browser
+// narrows instead of being covered; the page's layout follows the room it
+// has left, app/globals.css "@container main"), lying over the page on
+// narrower windows until it is pinned ("Anheften", lib/ask-panel.ts), or a
+// bottom sheet on phones that is swiped down to a small pill. It is no
+// dialog: the page stays usable, the answer keeps streaming while the
+// person scrolls, writes or opens other pages, and closing only hides it. The conversation is kept in this browser
 // tab only (sessionStorage) – the server stores none of it.
 import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import { ArrowClockwise, ArrowSquareOut, CaretDown, ChatCircleDots, Check, Copy, Lifebuoy, Lightning, MagnifyingGlass, PaperPlaneRight, Sparkle, Stop, X } from "@phosphor-icons/react";
+import { ArrowClockwise, ArrowSquareOut, CaretDown, ChatCircleDots, Check, Copy, Lifebuoy, Lightning, MagnifyingGlass, PaperPlaneRight, PushPin, PushPinSlash, Sparkle, Stop, X } from "@phosphor-icons/react";
 import { useT } from "./i18n";
 import { PageIcon } from "./ui";
 import { Select } from "./select";
@@ -17,6 +19,7 @@ import { AiMarkdown } from "./ai-markdown";
 import { SidebarResize } from "./sidebar-resize";
 import { SHEET_HANDLE, useSheetDrag } from "./sheet-drag";
 import { addBackCloser } from "@/lib/app-back";
+import { ASK_DEFAULT, ASK_MIN, ASK_OVERLAY_MEDIA, ASK_SHEET_BELOW, askMax, clampAsk } from "@/lib/ask-panel";
 import { askAi, aiProviderLabel, aiUsable, citationParts, helpSourceUrl, type AskScope, type AskSource } from "@/lib/ai/client";
 import type { AiStatus } from "@/lib/ai/features";
 import type { Space } from "@/lib/types";
@@ -26,15 +29,9 @@ type Stored = { messages: Message[]; scope: string; across?: boolean };
 const storageKey = (workspaceId: string) => `flowplan-ask:${workspaceId}`;
 const MAX_TURNS = 20;
 
-// The panel's width on wide screens (dragged at its left edge, kept per
-// browser; null: the default from the stylesheet).
-export const ASK_WIDTH_KEY = "flowplan-ask-width";
-export const ASK_MIN = 300;
-export const ASK_MAX = 640;
-export const clampAsk = (value: number) => Math.round(Math.min(ASK_MAX, Math.max(ASK_MIN, value)));
 // Up to this width the panel is a bottom sheet (the phone layout of
-// app/globals.css).
-export const ASK_SHEET_MEDIA = "(max-width: 767px)";
+// app/globals.css). Its width on wider screens: lib/ask-panel.ts.
+export const ASK_SHEET_MEDIA = `(max-width: ${ASK_SHEET_BELOW - 1}px)`;
 // A request to open: `n` changes with every request, `question` fills the
 // field when it is not empty.
 export type AskRequest = { question: string; n: number };
@@ -53,7 +50,21 @@ function save(workspaceId: string, stored: Stored) {
   } catch {}
 }
 
-function useMedia(query: string) {
+// The window's width (0 before the first measurement), for the panel's
+// limits: at most 45 % of it.
+function useViewportWidth() {
+  // The panel mounts in the browser only (with the first opening).
+  const [width, setWidth] = useState(() => (typeof window === "undefined" ? 0 : document.documentElement.clientWidth || window.innerWidth));
+  useEffect(() => {
+    const update = () => setWidth(document.documentElement.clientWidth || window.innerWidth);
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+  return width;
+}
+
+export function useMedia(query: string) {
   const [matches, setMatches] = useState(false);
   useEffect(() => {
     const media = matchMedia(query);
@@ -77,6 +88,8 @@ export function AskPanel({
   onOpenSource,
   width,
   onWidth,
+  pinned,
+  onPinned,
 }: {
   // Shown: the person opened it and has not closed it.
   open: boolean;
@@ -89,8 +102,13 @@ export function AskPanel({
   spaces: Space[];
   currentPage: { id: string; title: string } | null;
   onOpenSource: (pageId: string, rowId?: string) => void;
+  // The dragged width (null: the default); shown within the limits of the
+  // window (lib/ask-panel.ts).
   width: number | null;
   onWidth: (width: number | null) => void;
+  // Narrow windows: docked beside the page instead of over it.
+  pinned: boolean;
+  onPinned: (pinned: boolean) => void;
 }) {
   const t = useT();
   const headingId = useId();
@@ -107,6 +125,9 @@ export function AskPanel({
   const [minimised, setMinimised] = useState(false);
   const [copied, setCopied] = useState<number | null>(null);
   const sheet = useMedia(ASK_SHEET_MEDIA);
+  // Narrow windows: over the page unless pinned – the pin is offered there.
+  const narrowWindow = useMedia(ASK_OVERLAY_MEDIA);
+  const viewport = useViewportWidth();
   const shown = open && !hidden;
   const visible = shown && !(sheet && minimised);
   const controller = useRef<AbortController | null>(null);
@@ -289,17 +310,33 @@ export function AskPanel({
         <div className={SHEET_HANDLE} aria-hidden />
         <SidebarResize
           edge="start"
-          width={width}
+          width={clampAsk(width, viewport)}
           onWidth={onWidth}
           min={ASK_MIN}
-          max={ASK_MAX}
-          fallback={380}
+          max={askMax(viewport)}
+          fallback={ASK_DEFAULT}
           label={t("Breite von „KI fragen“", "Width of “Ask AI”")}
           hint={t("Ziehen zum Ändern, Doppelklick setzt zurück", "Drag to resize, double-click to reset")}
         />
         <header className="ask-panel-head">
           <Sparkle size={17} aria-hidden="true" className="ask-panel-icon" />
           <h2 id={headingId}>{t("KI fragen", "Ask AI")}</h2>
+          {narrowWindow && (
+            <button
+              type="button"
+              className={`icon-button ask-panel-pin${pinned ? " active" : ""}`}
+              aria-label={t("Anheften", "Pin")}
+              aria-pressed={pinned}
+              title={
+                pinned
+                  ? t("Lösen – wieder über der Seite zeigen", "Unpin – show over the page again")
+                  : t("Anheften – neben der Seite zeigen", "Pin – show beside the page")
+              }
+              onClick={() => onPinned(!pinned)}
+            >
+              {pinned ? <PushPinSlash size={17} /> : <PushPin size={17} />}
+            </button>
+          )}
           {sheet && (
             <button type="button" className="icon-button" aria-label={t("Verkleinern", "Minimise")} title={t("Verkleinern – die Antwort läuft weiter", "Minimise – the answer keeps going")} onClick={() => setMinimised(true)}>
               <CaretDown size={18} />

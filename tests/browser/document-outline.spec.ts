@@ -1,7 +1,9 @@
 import { test, expect } from "@playwright/test";
 
 // The table of contents follows the headings, jumps to them and stays open
-// across documents and reloads.
+// across documents and reloads. Where the text column is too narrow for
+// both (phones) it is a popover that closes after a jump and is not
+// remembered (ai-ask-panel-layout.spec.ts: beside "KI fragen").
 test("table of contents beside a document", async ({ page }, info) => {
   test.setTimeout(120_000);
   const errors: string[] = [];
@@ -24,7 +26,8 @@ test("table of contents beside a document", async ({ page }, info) => {
     await page.keyboard.press("Enter");
   }
   const toggle = page.locator(".outline-toggle");
-  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  const phone = info.project.name === "mobile";
+  await expect(toggle).toHaveAttribute(phone ? "aria-expanded" : "aria-pressed", "false");
   await toggle.click();
   const outline = page.getByRole("navigation", { name: "Inhaltsverzeichnis" });
   await expect(outline.getByRole("button")).toContainText(["Anfang", "Mitte", "Ende"]);
@@ -33,16 +36,29 @@ test("table of contents beside a document", async ({ page }, info) => {
   await page.keyboard.press("End");
   await page.keyboard.press("Enter");
   await page.keyboard.type("## Anhang");
-  await expect(outline.getByRole("button", { name: "Anhang" })).toBeVisible();
+  // (On a phone the tap into the text closed the popover.)
+  if (phone) {
+    await expect(outline).toHaveCount(0);
+    await toggle.click();
+  }
+  await expect(outline.getByRole("button", { name: "Anhang", exact: true })).toBeVisible();
   // Jumping to a heading scrolls it into view and marks it.
-  await outline.getByRole("button", { name: "Anfang" }).click();
+  await outline.getByRole("button", { name: "Anfang", exact: true }).click();
   await expect(editor.locator("h1", { hasText: "Anfang" })).toBeInViewport();
-  if (info.project.name === "mobile") {
+  if (phone) {
     // On a phone the list covers the text, so it closes after the jump.
     await expect(outline).toHaveCount(0);
     await toggle.click();
   }
-  await expect(outline.getByRole("button", { name: "Anfang" })).toHaveAttribute("aria-current", "location");
+  await expect(outline.getByRole("button", { name: "Anfang", exact: true })).toHaveAttribute("aria-current", "location");
+  if (phone) {
+    // Escape closes the popover; it is not remembered.
+    await page.keyboard.press("Escape");
+    await expect(outline).toHaveCount(0);
+    await expect(toggle).toBeFocused();
+    expect(errors).toEqual([]);
+    return;
+  }
   // Open stays open after reloading.
   await page.reload();
   await expect(page.getByRole("navigation", { name: "Inhaltsverzeichnis" })).toBeVisible();
