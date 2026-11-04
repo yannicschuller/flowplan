@@ -1,6 +1,6 @@
 import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { compareVersions, resetUpdateCheck, updateStatus } from "../lib/update-check";
+import { compareVersions, knownUpdate, resetUpdateCheck, updateStatus } from "../lib/update-check";
 
 const release = (body: unknown, status = 200) => {
   const calls: string[] = [];
@@ -78,4 +78,16 @@ test("FLOWPLAN_UPDATE_URL asks a mirror", async () => {
   const { fetcher, calls } = release({ tag_name: "v1.0.0" });
   assert.equal((await updateStatus(fetcher))?.latest, "1.0.0");
   assert.deepEqual(calls, ["https://mirror.example/latest.json"]);
+});
+
+test("knownUpdate repeats the last check without asking (Settings → Über Flowplan)", async () => {
+  assert.equal(knownUpdate(), null);
+  const { fetcher, calls } = release({ tag_name: "v0.4.0", html_url: "https://github.com/yannicschuller/flowplan/releases/tag/v0.4.0" });
+  await updateStatus(fetcher);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(knownUpdate(), { current: "0.3.3", latest: "0.4.0", url: "https://github.com/yannicschuller/flowplan/releases/tag/v0.4.0" });
+  // Updated in the meantime: nothing newer any more.
+  process.env.FLOWPLAN_VERSION = "0.4.0";
+  assert.equal(knownUpdate(), null);
+  assert.equal(calls.length, 1);
 });

@@ -27,6 +27,8 @@ const config: NextConfig = {
     FLOWPLAN_VERSION: pkg.version,
     FLOWPLAN_COMMIT: gitCommit(),
     FLOWPLAN_BUILT_AT: new Date().toISOString(),
+    // "beta" or "release" from the image build (Settings → Über Flowplan).
+    FLOWPLAN_CHANNEL: process.env.FLOWPLAN_CHANNEL || "",
   },
   // A second development server (e.g. for isolated browser tests) needs its
   // own build directory.

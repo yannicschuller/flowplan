@@ -4905,6 +4905,77 @@ mark[data-color] {
     flex-direction: column;
   }
 }
+/* Settings → Über Flowplan (components/settings/user/about.tsx). */
+.about-version {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px 10px;
+}
+.about-version strong {
+  font-weight: 600;
+}
+.about-version code {
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--secondary);
+  font: 12px var(--font-mono);
+}
+.about-version a:hover code {
+  color: var(--blue);
+}
+.about-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 32px;
+  color: var(--blue);
+  font-weight: 500;
+}
+.about-link > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.about-link > svg {
+  flex: none;
+}
+.about-copyright {
+  margin: 0;
+  padding: 12px 22px 14px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.about-update {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin: 0 22px 14px;
+}
+.about-update > svg {
+  flex: none;
+  color: var(--blue);
+}
+.about-update a {
+  margin-left: auto;
+  color: var(--blue);
+  font-weight: 500;
+}
+.about-sponsor > svg {
+  color: #d03a5f;
+}
+[data-theme="dark"] .about-sponsor > svg {
+  color: #ff7d9c;
+}
+@media (max-width: 700px) {
+  .about-version {
+    justify-content: flex-start;
+  }
+}
 .switch {
   position: relative;
   flex: none;
@@ -21873,8 +21944,10 @@ h3 .block-reactions {
 }
 .login-footer-links {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 18px;
+  justify-content: center;
+  gap: 4px 18px;
 }
 .login-footer .legal-footer {
   gap: 18px;

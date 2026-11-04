@@ -1,3 +1,4 @@
+import { aboutInfo } from "../lib/about";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
@@ -72,6 +73,8 @@ test("admins configure the instance; stored values override the environment", ()
     mail: false,
     // No IMPRINT_URL or PRIVACY_URL set.
     legal: {},
+    // Settings → Über Flowplan (no update shown to non-admins).
+    about: aboutInfo(),
   });
   assert.throws(
     () => command(person, { action: "workspace.create", name: "Noch einer" }),

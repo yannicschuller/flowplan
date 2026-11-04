@@ -175,6 +175,7 @@ import {
   MarkdownLogo,
   WarningCircle,
   Question,
+  Info as InfoIcon,
   Keyboard,
   Presentation as PresentIcon,
   SquareSplitHorizontal,
@@ -2581,6 +2582,7 @@ export default function WorkspaceApp({
     { label: t("Papierkorb", "Trash"), keywords: t("trash gelöscht wiederherstellen", "trash gelöscht wiederherstellen papierkorb deleted restore"), icon: Trash, run: () => go("trash") },
     { label: t("Einstellungen", "Settings"), keywords: t("settings konto mitglieder profil sprache", "settings konto mitglieder preferences account members profile language"), icon: GearSix, run: () => go("settings") },
     { label: t("Tastenkürzel", "Keyboard shortcuts"), keywords: t("shortcuts tasten hilfe tastatur", "shortcuts tasten hilfe keyboard keys help hotkeys"), icon: Keyboard, run: () => setShortcuts(true) },
+    { label: t("Über Flowplan", "About Flowplan"), keywords: t("über info version lizenz quellcode hilfe", "über info about version licence license source code help"), icon: InfoIcon, run: () => (location.hash = "settings/about") },
     ...(boot.user.isAdmin
       ? [{ label: t("Administration", "Administration"), keywords: "admin instanz betrieb", icon: ShieldCheck, run: () => go("admin") }]
       : []),
@@ -3312,7 +3314,13 @@ export default function WorkspaceApp({
                     <SignOut />
                     {t("Abmelden", "Sign out")}
                   </Dropdown.Item>
-                  {(boot.instance?.legal?.imprint || boot.instance?.legal?.privacy) && <Dropdown.Separator className="dropdown-separator" />}
+                  <Dropdown.Separator className="dropdown-separator" />
+                  <Dropdown.Item className="dropdown-item" asChild>
+                    <a href="#settings/about">
+                      <InfoIcon />
+                      {t("Über Flowplan", "About Flowplan")}
+                    </a>
+                  </Dropdown.Item>
                   {boot.instance?.legal?.imprint && (
                     <Dropdown.Item className="dropdown-item" asChild>
                       <a href={boot.instance.legal.imprint} target="_blank" rel="noopener">

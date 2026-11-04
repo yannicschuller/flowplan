@@ -20,6 +20,8 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # our workflow passes GIT_COMMIT, Coolify passes SOURCE_COMMIT.
 ARG GIT_COMMIT=""
 ARG SOURCE_COMMIT=""
+# "beta" or "release", shown in Settings → Über Flowplan (docker.yml).
+ARG FLOWPLAN_CHANNEL=""
 # The type check already runs in CI; image builds there skip it.
 ARG FLOWPLAN_SKIP_TYPECHECK=""
 # Next's build cache survives between builds as well.
