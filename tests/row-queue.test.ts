@@ -31,7 +31,7 @@ test("a failed change does not block the next one", async () => {
     throw new Error("no");
   });
   await assert.rejects(failed);
-  assert.equal(await run("a", async (fresh) => fresh), true);
+  assert.equal(await run("a", async () => "ok"), "ok");
 });
 
 test("the newer version of the record wins, never an older one", () => {
