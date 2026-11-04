@@ -16,6 +16,7 @@ import {
   FolderSimple,
   Gauge,
   HardDrives,
+  Info,
   Key,
   ListChecks,
   LockKey,
@@ -55,6 +56,7 @@ import TagsSection from "./user/tags";
 import ExtensionsSection from "./user/extensions";
 import DataSection from "./user/data";
 import TimeSection from "./user/time";
+import AboutSection from "./user/about";
 import UsersSection from "./admin/users";
 import SigninSection from "./admin/signin";
 import WorkspacesSection from "./admin/workspaces";
@@ -86,6 +88,7 @@ export const ICONS: Record<string, Icon> = {
   FolderSimple,
   Gauge,
   HardDrives,
+  Info,
   Key,
   ListChecks,
   LockKey,
@@ -125,6 +128,7 @@ const USER_COMPONENTS: Record<string, ComponentType> = {
   extensions: ExtensionsSection,
   data: DataSection,
   time: TimeSection,
+  about: AboutSection,
 };
 
 const ADMIN_COMPONENTS: Record<string, ComponentType> = {

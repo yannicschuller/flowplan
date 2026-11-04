@@ -76,6 +76,15 @@ export async function updateStatus(fetcher: typeof fetch = fetch): Promise<Updat
   return { current, latest: release.version, url: release.url };
 }
 
+// What the last check found, without asking GitHub (Settings → Über
+// Flowplan shows it to administrators; the administration runs the check).
+export function knownUpdate(): UpdateStatus | null {
+  if (!updateCheckEnabled() || !cached?.release) return null;
+  const current = buildInfo().version;
+  if (!parse(current) || compareVersions(cached.release.version, current) <= 0) return null;
+  return { current, latest: cached.release.version, url: cached.release.url };
+}
+
 export function resetUpdateCheck() {
   cached = null;
 }

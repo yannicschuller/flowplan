@@ -12,6 +12,8 @@ import { MaintenanceBanner } from "@/components/maintenance-banner";
 import { MoveBanner } from "@/components/move-banner";
 import { readOnlyState } from "@/lib/instance-read-only";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
+import { sourceUrl } from "@/lib/about";
 import { maintenanceNotice } from "@/lib/admin-ops";
 import { instanceSettings } from "@/lib/instance-settings";
 import Login from "@/components/login";
@@ -39,6 +41,7 @@ export default async function Home({
           error={(await searchParams).authError}
           notice={(await searchParams).confirmed ? "confirmed" : undefined}
           instanceName={instanceSettings().name}
+          sourceUrl={sourceUrl()}
         />
       </>
     );
@@ -57,7 +60,7 @@ export default async function Home({
       <MoveBanner initial={move} poll />
       <MaintenanceBanner initial={maintenanceNotice()} />
       <WorkspaceApp
-        initial={bootstrap(user, invited || undefined) as never}
+        initial={bootstrap(user, invited || undefined, (await headers()).get("user-agent")) as never}
         inviteResult={invite ? (invited ? "accepted" : "invalid") : undefined}
         useTemplate={
           useTemplate && (/^[0-9a-f-]{36}$/i.test(useTemplate) || /^starter:[A-Za-z]{1,40}$/.test(useTemplate))

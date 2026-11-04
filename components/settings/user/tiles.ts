@@ -51,5 +51,7 @@ export function userTiles(boot: Bootstrap, theme: ThemeChoice, t: T): Record<str
         }
       : { line: t("Keine Bereiche mit Verwaltungsrechten", "No spaces you can manage") },
     data: { line: boot.workspace.role === "viewer" ? t("Export, Papierkorb – Import nur mit Bearbeitungsrechten", "Export, trash – import needs edit rights") : t("Import, Export, Sicherungen, Papierkorb", "Import, export, backups, trash") },
+    // Version and licence (lib/about.ts).
+    about: { line: [boot.instance?.about?.version ? `Flowplan ${boot.instance.about.version}` : "", "AGPL-3.0"].filter(Boolean).join(" · ") },
   };
 }
