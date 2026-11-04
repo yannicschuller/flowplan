@@ -22,8 +22,6 @@ import { resolve } from "node:path";
 import { HttpError } from "./auth";
 import type { Identity } from "./types";
 
-// One request from the browser (short voice notes).
-export const TRANSCRIBE_LIMIT = 25_000_000;
 // Chunks of a long recording.
 export const TRANSCRIBE_CHUNK_BYTES = 5 * 1024 * 1024;
 export const TRANSCRIBE_MAX_SECONDS = 2 * 60 * 60;

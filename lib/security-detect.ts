@@ -7,7 +7,7 @@
 //
 // Thresholds are deliberately simple and conservative; FLOWPLAN_SECURITY_*
 // variables are not needed for normal instances.
-import { all, id, one, run } from "./db";
+import { id, one, run } from "./db";
 import { securityRules, type SecurityRule } from "./security-kinds";
 import { addressHash, type SecurityEvent } from "./security-events";
 
@@ -320,12 +320,3 @@ export function noteRefusal(address: string, status: number, path: string, now =
   record?.(`${entry.count} × 401/403/404, z. B. ${entry.sample}`);
 }
 
-export function openIncidentCount() {
-  return count("SELECT COUNT(*) n FROM security_incidents WHERE resolved_at IS NULL");
-}
-export function incidentsSince(since: number) {
-  return all<{ rule: string; severity: string; n: number }>(
-    "SELECT rule,severity,COUNT(*) n FROM security_incidents WHERE first_at>=? GROUP BY rule,severity",
-    since,
-  );
-}

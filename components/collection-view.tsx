@@ -18,7 +18,6 @@ type Results = { collection: CollectionInfo; items: CollectionItem[]; total: num
 type SortKey = "title" | "type" | "space" | "tags" | "updated" | "creator";
 type T = ReturnType<typeof useT>;
 
-export const collectionOfHash = () => /^#collection\/([0-9a-f-]{36})$/.exec(location.hash)?.[1] ?? null;
 const zone = () => {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";

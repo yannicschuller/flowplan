@@ -82,7 +82,6 @@ export const captureSaveSchema = z.object({
   recognized: z.string().max(MAX_PDF_TEXT).optional(),
   scan: flag.default(false),
 });
-export type CaptureSave = z.input<typeof captureSaveSchema>;
 
 export type Prepared = { id: string; name: string; mime: string; content: Buffer; url: string; pdf: boolean; audio?: boolean };
 const AUDIO = /^audio\/(webm|ogg|mp4|mpeg|aac|wav|x-wav|x-m4a|m4a)$/;

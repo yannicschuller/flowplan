@@ -7,7 +7,7 @@
 // GET /api/domains/allowed?domain= before it requests a certificate.
 import { z } from "zod";
 import { randomBytes } from "node:crypto";
-import { all, audit, one, run } from "./db";
+import { audit, one, run } from "./db";
 import { HttpError, appUrl } from "./auth";
 import { requirePage } from "./permissions";
 import { instanceSettings } from "./instance-settings";
@@ -297,8 +297,4 @@ export function domainRobots(rawHost: string) {
   if (state.status !== "verified") return null;
   const host = rawHost.toLowerCase().replace(/:\d+$/, "");
   return `User-agent: *\nAllow: /\nDisallow: /api/\nSitemap: https://${host}/sitemap.xml\n`;
-}
-// Every verified domain (admin overview).
-export function verifiedDomains() {
-  return all<{ host: string; page_id: string }>("SELECT host,page_id FROM custom_domains WHERE verified_at IS NOT NULL ORDER BY host");
 }

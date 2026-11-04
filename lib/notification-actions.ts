@@ -35,7 +35,6 @@ export const notificationActionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("tomorrow"), notificationId, today: day.optional() }),
   z.object({ action: z.literal("reply"), notificationId, text: z.string().trim().min(1).max(5000) }),
 ]);
-export type NotificationAction = z.infer<typeof notificationActionSchema>["action"];
 
 const writerOf = (user: Identity): Identity => ({ ...user, apiScope: "write" });
 const nowText = () => new Date().toISOString().replace("T", " ").slice(0, 19);

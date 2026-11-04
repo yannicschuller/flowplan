@@ -13,7 +13,6 @@ import {
   sourceLines,
   splitOutside,
   type DiagramEdge,
-  type DiagramGraph,
   type DiagramGroup,
   type DiagramNode,
   type DiagramSkip,

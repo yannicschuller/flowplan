@@ -3,8 +3,6 @@
 // go dismisses it and how long the sheet takes to settle. Distances in CSS
 // pixels, velocities in px/ms (positive: downwards), times in ms.
 
-// A finger has to move this far before the gesture is a drag (or a scroll).
-export const DRAG_SLOP = 6;
 // Letting go dismisses when the sheet has travelled this share of its height
 // (at most DISMISS_MAX px: tall sheets do not need a long pull) …
 export const DISMISS_SHARE = 0.3;

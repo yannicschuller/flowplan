@@ -52,7 +52,6 @@ export function FollowButton({
   onToggle: (follow: boolean) => void;
 }) {
   const t = useT();
-  const locale = useLocale();
   const label = following
     ? t("Du folgst dieser Seite – Änderungen landen im Posteingang", "You follow this page – changes land in your inbox")
     : t("Seite folgen: bei Änderungen benachrichtigen", "Follow page: get notified about changes");

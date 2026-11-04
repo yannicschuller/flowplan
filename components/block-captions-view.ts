@@ -7,7 +7,7 @@
 // block, Escape or ↑ back into it, and an empty caption goes away when the
 // field is left. Read-only editors show the text only.
 import { Extension } from "@tiptap/core";
-import { NodeSelection, Plugin, PluginKey, Selection, TextSelection, type EditorState } from "@tiptap/pm/state";
+import { NodeSelection, Plugin, PluginKey, Selection, type EditorState } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { CAPTION_KINDS, MAX_CAPTION, captionInput, captionLabel, captionText, type CaptionKind } from "@/lib/block-captions";

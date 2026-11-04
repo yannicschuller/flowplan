@@ -10,7 +10,7 @@ import { doneRule, isDone, type Sprint } from "@/lib/database-settings-schema";
 import { ticketId } from "@/lib/ticket-ids";
 import { usePointerDrag, type DragPoint } from "./pointer-drag";
 import { keyboardStep } from "@/lib/pointer-drag";
-import type { Database, Field, Row, User } from "@/lib/types";
+import type { Database, Row, User } from "@/lib/types";
 
 type Charts = {
   sprint: Sprint;

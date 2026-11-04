@@ -44,7 +44,6 @@ export const reportFilterSchema = z.object({
   billable: z.enum(["yes", "no"]).optional(),
   group: z.enum(reportGroups).default("person"),
 });
-export type ReportFilter = z.input<typeof reportFilterSchema>;
 
 const rank: Record<Role, number> = { viewer: 1, editor: 2, owner: 3 };
 const localDay = (ms: number) => {

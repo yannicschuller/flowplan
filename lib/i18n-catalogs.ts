@@ -68,5 +68,3 @@ export function translateCatalog(locale: string, english: string): string {
   cache.set(english, result);
   return result;
 }
-// For `npm run i18n` and tests.
-export const catalogLanguages = () => Object.keys(catalogs);

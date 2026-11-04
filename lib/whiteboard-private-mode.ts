@@ -181,7 +181,6 @@ export function setPrivateRouting(
     return !area || inside(area, anchor(item));
   };
 }
-export const privateClients = (doc: Y.Doc) => new Set(routings.get(doc)?.own || []);
 // A fresh client id that this document has not seen.
 export function newClientId(doc: Y.Doc) {
   const values = new Uint32Array(1);

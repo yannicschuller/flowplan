@@ -96,7 +96,6 @@ export default function PushSection() {
   const signingKey = r.keys.find((k) => k.signing);
   const d = status.deliveries;
   const rows = (["relay", "expo", "web"] as Channel[]).map((c) => ({ channel: c, ...d.totals[c] }));
-  const failed = (c: (typeof rows)[number]) => c.forbidden + c.invalid + c.rate_limited + c.error;
 
   return (
     <>

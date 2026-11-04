@@ -17,7 +17,6 @@ export const percent = (share: number) => `${num(share * 100, share > 0 && share
 export const ms = (n: number | null) => (n === null ? "–" : n >= 1000 ? `${num(n / 1000, 1)} s` : `${num(n)} ms`);
 export const clock = (at: number) => new Date(at).toLocaleTimeString(LOCALE_TAG, { hour: "2-digit", minute: "2-digit" });
 export const weekday = (at: number) => new Date(at).toLocaleDateString(LOCALE_TAG, { weekday: "short" });
-export const dayMonth = (at: number) => new Date(at).toLocaleDateString(LOCALE_TAG, { day: "numeric", month: "numeric" });
 export const dateTime = (at: number) => new Date(at).toLocaleString(LOCALE_TAG, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 // "2026-10-22" (a local day) → a time at its noon.
 export const dayAt = (day: string) => new Date(`${day}T12:00:00`).getTime();

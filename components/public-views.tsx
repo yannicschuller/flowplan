@@ -1,6 +1,5 @@
 import { requestLocale, serverT } from "@/lib/i18n-server";
 import { localeTag } from "@/lib/i18n";
-import type { CSSProperties } from "react";
 import { Temporal } from "@/lib/date-values";
 import { weekdayLabels } from "@/lib/database-calendar";
 import { PublicCalendarGrid } from "./public-calendar-grid";

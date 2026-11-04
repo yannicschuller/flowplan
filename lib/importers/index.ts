@@ -21,7 +21,6 @@ import { previewImport, requireSpace, writeImport, type ImportMode, type ImportP
 import { maxImportEntries, type ImportSource, type ImportTree } from "./types";
 import type { Identity } from "../types";
 
-export const IMPORT_SOURCES: ImportSource[] = ["affine", "confluence", "evernote", "gdocs", "obsidian"];
 const importTitle = (name: string) => posix.basename(name.replaceAll("\\", "/")).replace(/\.(zip|enex|html?|docx|affine)$/i, "") || "Import";
 const isZip = (bytes: Buffer) => bytes[0] === 0x50 && bytes[1] === 0x4b;
 

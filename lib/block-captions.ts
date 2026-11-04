@@ -31,8 +31,6 @@ export function captionLabel(kind: CaptionKind, number: number, t: Translate) {
   const name = kind === "figure" ? t("Abbildung", "Figure") : kind === "table" ? t("Tabelle", "Table") : t("Listing", "Listing");
   return `${name} ${number}`;
 }
-// The caption with its number in front, when the page numbers them.
-export const numberedCaption = (caption: string, label: string | null) => (label ? `${label}: ${caption}` : caption);
 
 // The number of every captioned block, by its position: counted per kind in
 // document order (blocks inside tables or columns included).

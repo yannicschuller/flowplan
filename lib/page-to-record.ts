@@ -18,7 +18,7 @@ import { fillTemplateCells } from "./record-template-apply";
 import { rowCreated } from "./automations";
 import { autoDatabaseSnapshot } from "./database-operations";
 import { captureTargets } from "./capture";
-import type { Field, Identity, Page } from "./types";
+import type { Field, Identity } from "./types";
 import { hiddenFieldsFor, readOnlyFieldIds } from "./field-access";
 import { pageTagNames } from "./page-properties-server";
 import { isTagField } from "./page-properties";

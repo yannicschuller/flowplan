@@ -20,7 +20,6 @@ import {
   commentAnchorSchema,
   type InlineThread,
   type InlineMessage,
-  type CommentAnchor,
 } from "./inline-comment-types";
 import {
   commentRange,

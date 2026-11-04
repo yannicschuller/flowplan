@@ -8,7 +8,7 @@ import { audit } from "./db";
 import { HttpError } from "./auth";
 import { ct, contentLocale } from "./content-locale";
 import { exportName } from "./export-name";
-import { collectExportContent, type ExportContent, type ExportFile } from "./export-content";
+import { collectExportContent, type ExportContent } from "./export-content";
 import { documentXhtml, xml } from "./export-xhtml";
 import { exportUrl } from "./export-docx";
 import type { Identity } from "./types";

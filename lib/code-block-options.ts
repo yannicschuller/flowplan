@@ -124,14 +124,6 @@ export type CodeBlockOptions = {
   collapsed: boolean | null;
   collapsedLines: number | null;
 };
-export const DEFAULT_CODE_OPTIONS: CodeBlockOptions = {
-  view: null,
-  lineNumbers: null,
-  startLine: 1,
-  highlightLines: "",
-  collapsed: null,
-  collapsedLines: null,
-};
 const bool = (value: string | null | undefined) => (value === "true" ? true : value === "false" ? false : null);
 
 // From the data-… attributes of a <pre> (paste, import, stored HTML). A

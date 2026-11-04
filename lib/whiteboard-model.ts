@@ -202,23 +202,6 @@ export function itemText(item: Partial<WhiteboardItem>) {
 }
 export const emptyTable = (rows = 3, cols = 3) =>
   Array.from({ length: rows }, () => Array.from({ length: cols }, () => ""));
-// Bounding box of an item (connectors and pens span their points).
-export function itemBounds(
-  item: WhiteboardItem,
-  items?: Map<string, WhiteboardItem>,
-) {
-  if (item.type === "connector") {
-    const a = connectorPoint(item.from, items),
-      b = connectorPoint(item.to, items);
-    return {
-      x: Math.min(a.x, b.x),
-      y: Math.min(a.y, b.y),
-      w: Math.abs(a.x - b.x),
-      h: Math.abs(a.y - b.y),
-    };
-  }
-  return { x: item.x, y: item.y, w: item.w, h: item.h };
-}
 // Connector ends attached to an item follow its centre, clipped to its edge.
 export function connectorPoint(
   end: ConnectorEnd | undefined,

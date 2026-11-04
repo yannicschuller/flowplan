@@ -337,7 +337,6 @@ export const archiveSchema = z.object({
     )
     .max(MAX_ARCHIVE_FILES),
 });
-export type ContentArchive = z.infer<typeof archiveSchema>;
 function digest(bytes: Buffer) {
   return createHash("sha256").update(bytes).digest("hex");
 }

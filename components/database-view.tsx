@@ -66,7 +66,6 @@ import {
 import CalculationEditor from "./calculation-editor";
 import {
   browserZone,
-  formatDateValue,
   isTimed,
   validDateValue,
 } from "@/lib/date-values";
@@ -149,7 +148,6 @@ import DatabaseForm from "./database-form";
 import type { FormConfig } from "@/lib/form-settings";
 import {
   Plus,
-  DotsThree,
   Sparkle,
   ArrowSquareOut,
   Trash,
@@ -157,11 +155,9 @@ import {
   CaretLeft,
   CaretRight,
   Check,
-  DownloadSimple,
   UploadSimple,
   SlidersHorizontal,
   Link as LinkIcon,
-  Copy,
   DotsSixVertical,
   CaretUp,
   CaretDown,

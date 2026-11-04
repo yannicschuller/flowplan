@@ -201,7 +201,6 @@ export function JournalView({
     const key = day.journal_date.slice(0, 7);
     months.set(key, [...(months.get(key) || []), day]);
   }
-  const dates = useMemo(() => new Set(days.map((d) => d.journal_date)), [days]);
   // Days that count for the streak: something written or tracked.
   const written = useMemo(
     () =>

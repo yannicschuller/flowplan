@@ -11,7 +11,6 @@ import { currentOS } from "@/lib/device-os";
 import { serverMessage } from "@/lib/i18n-errors";
 import { LOCALE_TAG, tr } from "@/lib/locale-tag";
 import { useLocale, useStatusLabel, useT, writeLocaleCookie } from "./i18n";
-import { localeTag, translate, type Locale } from "@/lib/i18n";
 import { BrandMark } from "./brand-mark";
 import { CoverFrame } from "./cover-frame";
 import { clearPlaceholders } from "./image-placeholder";
@@ -67,9 +66,7 @@ import { AiProvider, useAiRoute } from "./ai-context";
 import { AiSummaryPanel, type AiSummaryTarget } from "./ai-summary";
 import { aiUsable } from "@/lib/ai/client";
 import {
-  imageAccept,
   imageFileId,
-  type PageImage,
 } from "@/lib/page-appearance";
 import type { SearchKind, SearchResult } from "@/lib/search-index";
 import { IconImagePicker } from "./icon-image-picker";
@@ -139,7 +136,6 @@ import {
   CloudCheck,
   WifiSlash,
   X,
-  ArrowLeft,
   ArrowRight,
   FileText,
   Table,
@@ -151,13 +147,11 @@ import {
   Lock,
   Copy,
   DownloadSimple,
-  UploadSimple,
   ShieldCheck,
   SignOut,
   Scales,
   Sun,
   Moon,
-  Users,
   ArrowCounterClockwise,
   Globe,
   Link as LinkIcon,
@@ -173,7 +167,6 @@ import {
   Graph,
   Sparkle,
   MarkdownLogo,
-  WarningCircle,
   Question,
   Info as InfoIcon,
   Keyboard,
@@ -191,11 +184,8 @@ import type {
   Bootstrap,
   Page,
   PageKind,
-  Comment,
-  User,
   Role,
   Space,
-  Row,
 } from "@/lib/types";
 import { PageExportDialog } from "./page-export";
 import { queueNotebookImport } from "./notebook/pending-import";
@@ -255,7 +245,6 @@ import { DuplicateHint, RelatedPages } from "./related-pages";
 import {
   FollowButton,
   ReadersButton,
-  ago,
   SinceVisitBanner,
   type Reader,
   type SinceVisit,
@@ -276,7 +265,6 @@ import { CalendarX, LockKey } from "@phosphor-icons/react";
 // Shown while the parts load (they use the reader's language).
 function Loading({ what }: { what: "emoji" | "document" | "whiteboard" }) {
   const t = useT();
-  const locale = useLocale();
   if (what === "emoji") return <p>{t("Emojis werden geladen …", "Loading emojis …")}</p>;
   return (
     <PageSkeleton
@@ -6072,7 +6060,6 @@ function RowTrash({
   onOpen: (pageId: string, rowId: string) => void;
 }) {
   const t = useT();
-  const locale = useLocale();
   const [entries, setEntries] = useState<
     {
       id: string;

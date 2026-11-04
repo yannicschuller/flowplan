@@ -63,8 +63,6 @@ export const WRITE_LANGUAGES = [
   ["zh", "Chinesisch", "Chinese"],
 ] as const;
 export type WriteLanguage = (typeof WRITE_LANGUAGES)[number][0];
-export const isWriteLanguage = (value: unknown): value is WriteLanguage =>
-  typeof value === "string" && WRITE_LANGUAGES.some((l) => l[0] === value);
 const languageName = (code: string) => WRITE_LANGUAGES.find((l) => l[0] === code)?.[2] || "English";
 
 // ---- Which language a text is in ----

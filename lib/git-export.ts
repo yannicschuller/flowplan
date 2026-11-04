@@ -310,7 +310,3 @@ export async function syncGit(
     return { at, commit: last?.commit ?? null, pushed: false, imported: 0, error: String((error as Error).message || error).slice(0, 300) };
   }
 }
-
-export function gitStatusFiles() {
-  return existsSync(dir()) ? readdirSync(dir()).filter((f) => f !== ".git").length : 0;
-}

@@ -61,7 +61,6 @@ export const ACTION_LIMITS = {
 } as const;
 
 export const ACTION_TOOLS = ["create_page", "create_tasks", "append_text", "create_record", "update_record"] as const;
-export type ActionTool = (typeof ACTION_TOOLS)[number];
 
 const ref = z.string().trim().min(1).max(100);
 const cellsSchema = z.record(z.string().max(200), z.unknown());

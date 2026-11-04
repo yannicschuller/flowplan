@@ -295,17 +295,6 @@ const tagRefs = z.array(z.string().min(1).max(200)).max(200);
 const colorSchema = z.enum(PAGE_TAG_COLORS);
 const optionsSchema = z.array(z.string().max(1000)).max(MAX_OPTIONS * 2);
 
-export const PAGE_PROPERTY_ACTIONS = [
-  "page.properties",
-  "pages.tag",
-  "tag.save",
-  "tag.delete",
-  "tag.merge",
-  "tag.reorder",
-  "property.save",
-  "property.delete",
-  "property.reorder",
-] as const;
 
 function cleanOptions(list: string[]) {
   const out: string[] = [];

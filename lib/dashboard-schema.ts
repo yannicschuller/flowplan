@@ -5,8 +5,6 @@ import { z } from "zod";
 
 export const tileSizes = ["small", "medium", "large", "full"] as const;
 export type TileSize = (typeof tileSizes)[number];
-// Columns of the 12-column desktop grid per size.
-export const tileColumns: Record<TileSize, number> = { small: 3, medium: 6, large: 8, full: 12 };
 export const MAX_TILES = 48;
 
 const source = z.string().uuid();

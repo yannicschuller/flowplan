@@ -20,7 +20,6 @@ import { resolveAi } from "./resolve";
 import { cellPlain, recordContent, recordTitle } from "./sources";
 import { isContentReferenceName } from "./content-references";
 
-export type AiFieldConfig = { prompt: string; auto?: boolean; autoBy?: string };
 export const AI_OUTPUT_TYPES = ["text", "select", "multiselect", "number"] as const satisfies readonly FieldType[];
 // Properties "Mit KI ausfüllen" can fill.
 export const AI_FILL_TYPES = ["text", "number", "select", "multiselect", "checkbox", "date", "url", "email", "phone"] as const satisfies readonly FieldType[];
@@ -52,12 +51,6 @@ export const VOLATILE_REFERENCE_TYPES: FieldType[] = ["updated_at", "updated_by"
 export { CONTENT_REFERENCES } from "./content-references";
 export const AI_PROMPT_MAX = 2000;
 export const AI_TEXT_MAX = 4000;
-
-export const aiFieldSchema = z.object({
-  prompt: z.string().trim().min(1).max(AI_PROMPT_MAX),
-  auto: z.boolean().optional(),
-  autoBy: z.string().max(100).optional(),
-});
 
 // The {Name} references of a prompt, in order.
 export const promptReferences = (prompt: string) => [...prompt.matchAll(/\{([^{}\n]{1,100})\}/g)].map((m) => m[1].trim());

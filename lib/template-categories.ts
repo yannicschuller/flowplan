@@ -23,5 +23,3 @@ export const templateCategoryLabels = (t: T): Record<keyof typeof templateCatego
   personal: t("Persönlich", "Personal"),
   other: t("Sonstiges", "Other"),
 });
-export const templateCategoryLabel = (category: string, t: T) =>
-  category in templateCategories ? templateCategoryLabels(t)[category as keyof typeof templateCategories] : "";

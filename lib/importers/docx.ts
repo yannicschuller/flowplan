@@ -3,17 +3,11 @@
 // named "heading n"), bold/italic/underline/strike, links, bulleted and
 // numbered lists (word/numbering.xml), tables and embedded images.
 import { posix } from "node:path";
-import { readZip } from "../archive";
 import { attr, children, esc, fileRef, find, isElement, mimeOf, nestedList, parseXml, text, type Element, type ListItem } from "./html";
 import type { ImportFile } from "./types";
 
 const REL_IMAGE = /\/image$/;
 const REL_LINK = /\/hyperlink$/;
-
-export async function docxToHtml(bytes: Buffer, key: string, budget?: { left: number }) {
-  const entries = await readZip(bytes, { foreign: true, maxEntries: 2000, budget });
-  return docxEntriesToHtml(entries, key);
-}
 
 export function docxEntriesToHtml(entries: Map<string, Buffer>, key: string) {
   const xml = (name: string) => (entries.has(name) ? parseXml(entries.get(name)!.toString("utf8")) : null);

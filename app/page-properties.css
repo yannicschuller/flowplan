@@ -151,7 +151,6 @@ button.page-tag:focus-visible,
   min-width: 0;
 }
 .page-property dd input:not([type="checkbox"]),
-.page-property dd .select-trigger,
 .page-property dd select {
   width: 100%;
   min-height: 30px;
@@ -162,8 +161,7 @@ button.page-tag:focus-visible,
   color: var(--text);
   font: inherit;
 }
-.page-property dd input:not([type="checkbox"]):hover,
-.page-property dd .select-trigger:hover {
+.page-property dd input:not([type="checkbox"]):hover {
   background: var(--hover);
 }
 .page-property dd input:not([type="checkbox"]):focus {
