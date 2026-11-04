@@ -1,4 +1,5 @@
 "use client";
+import { createRowQueue, currentVersion } from "@/lib/row-queue";
 import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { safeCollisionPadding } from "./safe-area";
 import { serverMessage } from "@/lib/i18n-errors";
@@ -1098,16 +1099,33 @@ export default function DatabaseView({
         : undefined;
   // Also properties of contacts the LDAP directory keeps (lib/contacts.ts).
   const fieldLocked = (r: Row, f: Field) => lockedFields.has(f.id) || contactLocked(data.contacts, r.id, f.id);
+  // Changes of one record run one after the other, each with the record's
+  // current version: a quick second edit (title, then the next field) would
+  // otherwise carry the version from before the first save and be refused.
+  const rowsNow = useRef(data.rows);
+  rowsNow.current = data.rows;
+  const rowQueue = useRef(createRowQueue());
   const act = async (b: Record<string, unknown>) => {
-    try {
-      // The action's Idempotency-Key stays with it (lib/idempotency-key.ts).
-      const key = idempotencyKeyOf(b);
-      const body = { pageId: page.id, ...b };
-      return await mutate(key ? keyed(body, key) : body);
-    } catch (e) {
-      onError((e as Error).message);
-      return null;
-    }
+    const rowId = typeof b.rowId === "string" && typeof b.version === "number" ? b.rowId : null;
+    const send = async (fresh: boolean) => {
+      try {
+        let sent = b;
+        if (fresh && rowId) {
+          // The reloaded state arrives with the next render.
+          await new Promise((r) => setTimeout(r, 0));
+          const version = currentVersion(b.version as number, rowsNow.current.find((r) => r.id === rowId)?.version);
+          if (version !== b.version) sent = { ...b, version };
+        }
+        // The action's Idempotency-Key stays with it (lib/idempotency-key.ts).
+        const key = idempotencyKeyOf(sent);
+        const body = { pageId: page.id, ...sent };
+        return await mutate(key ? keyed(body, key) : body);
+      } catch (e) {
+        onError((e as Error).message);
+        return null;
+      }
+    };
+    return rowId ? rowQueue.current(rowId, send) : send(false);
   };
   async function updateSchema(
     nextFields: Field[] = fields,
