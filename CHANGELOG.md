@@ -2,6 +2,34 @@
 
 All releases of Flowplan, newest first. Generated from the commits by the release workflow.
 
+## v0.8.6 – 2026-11-04
+
+- Tests: stable SCIM paging order and a push-status test free of same-millisecond races ([7b9f485](https://github.com/yannicschuller/flowplan/commit/7b9f48582997c8c91045f25669e0a37e8452af14))
+- README: architecture diagram as an image, so it shows in the GitHub app too ([a82237c](https://github.com/yannicschuller/flowplan/commit/a82237c0d57a03e0d80d1246cbea950dfb55a8c0))
+- Scripts to rebuild the website and docs media from a fresh instance ([2742668](https://github.com/yannicschuller/flowplan/commit/2742668b53e70e2c6821e66ba4df04165b5c51af))
+- Housekeeping: remove dead code, styles and dependencies ([a6f9e94](https://github.com/yannicschuller/flowplan/commit/a6f9e94a068e43c22db77b6dc2344e8708b0f94a))
+- Restore next-env.d.ts ([8fe108b](https://github.com/yannicschuller/flowplan/commit/8fe108b0aa3c41b188506fac5bee00493d1b1cf2))
+- Chinese: measure words for counted records and members ([71dbf03](https://github.com/yannicschuller/flowplan/commit/71dbf03acf245303e6fe8891b4380cd40b617df7))
+- README: link the move-instance guide ([1b38074](https://github.com/yannicschuller/flowplan/commit/1b380748557df1db00973c3254c412b1cf8dcb01))
+- Help docs: About Flowplan page and the new variables ([6fd6083](https://github.com/yannicschuller/flowplan/commit/6fd6083a9e8dc3ae7102f2264eaace0cfda00a29))
+- README: About Flowplan page, instance move, FLOWPLAN_SOURCE_URL and FLOWPLAN_HIDE_SPONSOR ([c700e75](https://github.com/yannicschuller/flowplan/commit/c700e75cd282b5ec5f17ccb666e25283c02daf4e))
+- README overhaul: hero GIF, screenshots, comparison, FAQ and sponsor section ([c519821](https://github.com/yannicschuller/flowplan/commit/c5198210c12bfb5d00dd4b7dfacf0d262cc76b83))
+- Settings: About Flowplan with version, licence, source and a sponsor link ([6142992](https://github.com/yannicschuller/flowplan/commit/61429920c579f293e0b27c103dfa1c57ba7caa3e))
+- Chinese: complete the catalogue and polish terms ([55ddc5b](https://github.com/yannicschuller/flowplan/commit/55ddc5bb4deb5851b1192e18004330527c8cc613))
+- Show the GitHub Sponsors button ([9e4206a](https://github.com/yannicschuller/flowplan/commit/9e4206adcb0dade8a3eea7832aeb9331a247ff8e))
+- Add a pull request template and a code of conduct ([db77c3a](https://github.com/yannicschuller/flowplan/commit/db77c3a7bafe4ccc53ffe708126388953792cb27))
+- Accept the Chinese content reference in AI property prompts ([da87388](https://github.com/yannicschuller/flowplan/commit/da87388a22eb0c8690a654a592c35b4a8114651d))
+- Visual baselines: sign-in methods in the account settings (#101) ([7b0197f](https://github.com/yannicschuller/flowplan/commit/7b0197f27b046ffc4377024cce79a5c141cbb149))
+- Administration: move a whole instance to another server ([b214e0e](https://github.com/yannicschuller/flowplan/commit/b214e0e98efb03b852e156b19d60612f419a0489))
+- Help docs: OIDC account linking and account merge (#101) ([30abb16](https://github.com/yannicschuller/flowplan/commit/30abb1600b9fa1ed0b36e920dd3c91e9bff9598f))
+- OIDC account linking: connect SSO to existing accounts, merge duplicates ([df2d8d0](https://github.com/yannicschuller/flowplan/commit/df2d8d0ee7fa7fe2bddb26ddbb065e2cf6b3e567))
+- Phones: the drawer opens over the settings again on iOS ([7df2aba](https://github.com/yannicschuller/flowplan/commit/7df2aba5d1f6087c44c41cc993b34d4138c7921d))
+- Help docs: dragging in databases (#100) ([76c5618](https://github.com/yannicschuller/flowplan/commit/76c5618d1023aab5dc47a429f98ffc8574ae92f6))
+- Database dragging with pointer events: closed hand for the whole drag ([a9c155a](https://github.com/yannicschuller/flowplan/commit/a9c155a17b26b611b360ea6b736697565ca3ca12))
+- Help docs: phone table scrolling (#98) ([a3afe76](https://github.com/yannicschuller/flowplan/commit/a3afe767d061d6f56a566b889c81d705566bb6f9))
+- Let tables scroll sideways on phones under a wide first column ([7755bf5](https://github.com/yannicschuller/flowplan/commit/7755bf55f0b5f7de97a722391c86237ab6464f8b))
+- Whiteboard: closed-hand cursor while dragging the board with the middle mouse button ([c374e0e](https://github.com/yannicschuller/flowplan/commit/c374e0e1ebb1babc9427e371f4acb301e3a22c08))
+
 ## v0.8.5 – 2026-11-03
 
 - Help docs: code block preview, line numbers and collapsing (#92–#95) ([28c0d6c](https://github.com/yannicschuller/flowplan/commit/28c0d6cef9640af573a67bcbe92282b45e717ef8))
