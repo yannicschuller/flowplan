@@ -176,6 +176,7 @@ import {
   PencilSimple,
   ArrowsOutLineHorizontal,
   BookOpen,
+  Copy,
   CopySimple,
   ArrowLeft,
   ArrowRight,
