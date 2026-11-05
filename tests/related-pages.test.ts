@@ -136,3 +136,12 @@ test("duplicate hint: similar titles among readable pages or records of a databa
   const stranger = person("Sam");
   assert.throws(() => similarTitles(stranger, { workspaceId: wid, title: "Projektplan Alpha" }));
 });
+
+test("titles in Chinese relate by their words, two-character ones too", () => {
+  const invoice = createPage(wid, space, admin.id, "上海发票");
+  const summary = createPage(wid, space, admin.id, "发票汇总");
+  const other = createPage(wid, space, admin.id, "会议记录");
+  const reasons = (page: string) => relatedPages(ben, invoice).items.find((i) => i.pageId === page)?.reasons || [];
+  assert.ok(reasons(summary).includes("title"));
+  assert.ok(!reasons(other).length);
+});

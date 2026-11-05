@@ -111,6 +111,26 @@ test("question terms skip stop words and short words; FTS queries are quoted", (
   assert.deepEqual(questionTerms("Wann ist der Betriebsausflug in Hamburg?"), ["betriebsausflug", "hamburg"]);
   assert.deepEqual(questionTerms("What is the budget for Café Müller?"), ["budget", "cafe", "muller"]);
   assert.equal(ftsQuery(['a"b', "hamburg"]), '"a""b" OR "hamburg"');
+  assert.deepEqual(questionTerms("Où est la facture de l'hôtel Élysée?"), ["est", "facture", "hotel", "elysee"]);
+  assert.deepEqual(questionTerms("Where is the invoice for the Berlin office?"), ["invoice", "berlin", "office"]);
+});
+
+test("question terms in Chinese, Japanese, Korean and Thai come from the word segmenter", () => {
+  // One run without spaces: words, without particles and question words;
+  // single characters join their neighbours (浦东/新/区).
+  assert.deepEqual(questionTerms("上海市浦东新区的发票在哪里"), ["上海市", "浦东新区", "发票"]);
+  assert.deepEqual(questionTerms("浦东新区的发票在哪里？"), ["浦东新区", "发票"]);
+  assert.deepEqual(questionTerms("發票在哪裡"), ["發票"]);
+  assert.deepEqual(questionTerms("发票编号4711号"), ["发票", "编号", "4711"]);
+  assert.deepEqual(questionTerms("東京都の請求書はどこですか"), ["東京都", "請求書"]);
+  assert.deepEqual(questionTerms("データベースの使い方を教えて"), ["データベース", "使い方"]);
+  // Korean: the particle at the end of a word goes; Hangul stays composed.
+  assert.deepEqual(questionTerms("서울의 청구서는 어디에 있나요"), ["서울", "청구서"]);
+  // Thai keeps its vowel and tone marks.
+  assert.deepEqual(questionTerms("ใบแจ้งหนี้อยู่ที่ไหน"), ["ใบ", "แจ้ง", "หนี้"]);
+  // Mixed: the other words as before.
+  assert.deepEqual(questionTerms("Wo ist die 上海 Rechnung?"), ["上海", "rechnung"]);
+  assert.deepEqual(questionTerms("的了吗？"), []);
 });
 
 test("passages are ranked by rare terms and picked within the budget", () => {
@@ -256,6 +276,30 @@ test("the prompt stays within the passage budget", async () => {
   const prompt = prepared.messages[prepared.messages.length - 1].content;
   assert.ok(prompt.length < ASK_LIMITS.passageChars + 4000, String(prompt.length));
   assert.ok(prepared.sources.length <= ASK_LIMITS.maxSources);
+});
+
+test("Chinese questions find their documents, also by two-character words", async () => {
+  const invoices = createPage(wid, space, admin.id, "供应商");
+  html(invoices, "<p>发票编号 4711 在上海市浦东新区。</p>");
+  const minutes = createPage(wid, space, admin.id, "会议记录");
+  html(minutes, "<p>明天下午三点开会，讨论新产品。</p>");
+  const prepared = await ask(ben, "浦东新区的发票在哪里");
+  assert.equal(prepared.nothing, false);
+  assert.ok(prepared.sources.some((s) => s.pageId === invoices));
+  assert.ok(!prepared.sources.some((s) => s.pageId === minutes));
+  assert.match(prepared.messages.at(-1)!.content, /发票编号 4711/);
+  // "发票" alone is shorter than a trigram: found by the scan.
+  const short = await ask(ben, "发票在哪里？");
+  assert.equal(short.nothing, false);
+  assert.ok(short.sources.some((s) => s.pageId === invoices));
+  assert.ok(!short.sources.some((s) => s.pageId === minutes));
+  // Readable content only, as for any other language.
+  const hidden = createPage(wid, privateSpace, admin.id, "机密");
+  html(hidden, "<p>发票 机密内容</p>");
+  const forBen = await ask(ben, "发票");
+  assert.ok(!forBen.sources.some((s) => s.pageId === hidden));
+  assert.ok(!forBen.messages.map((m) => m.content).join("\n").includes("机密内容"));
+  assert.ok((await ask(admin, "发票")).sources.some((s) => s.pageId === hidden));
 });
 
 // ---- Semantic search ----
