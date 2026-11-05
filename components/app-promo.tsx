@@ -1,6 +1,6 @@
 "use client";
 // On a phone or tablet in the browser, once per device after signing in: a
-// hint that Flowplan is also an app (TestFlight on iPhone and iPad, the APK
+// hint that Flowplan is also an app (the App Store on iPhone and iPad, the APK
 // on Android). Not inside the apps, and not while the introduction runs;
 // "Not now" and "Get the app" both end it. The links stay in Settings →
 // Offline & devices → Apps.
@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 import {
   ANDROID_APK_URL,
   DOWNLOAD_URL,
-  TESTFLIGHT_URL,
+  APP_STORE_URL,
   phoneSystem,
   type PhoneSystem,
 } from "@/lib/app-links";
@@ -54,8 +54,8 @@ export function AppPromo({ paused }: { paused: boolean }) {
       <p>
         {ios
           ? t(
-              "Für iPhone und iPad gibt es Flowplan als App – mit Widgets, Mitteilungen, Siri und Kurzbefehlen, Teilen aus jeder App und einer Offline-Kopie. Sie ist gerade als Beta über TestFlight zu haben: erst Apples App TestFlight installieren, dann den Link öffnen.",
-              "Flowplan is an app for iPhone and iPad – with widgets, notifications, Siri and Shortcuts, sharing from any app and an offline copy. It is in beta on TestFlight right now: install Apple's TestFlight app first, then open the link.",
+              "Für iPhone und iPad gibt es Flowplan als App – mit Widgets, Mitteilungen, Siri und Kurzbefehlen, Teilen aus jeder App und einer Offline-Kopie. Du bekommst sie im App Store.",
+              "Flowplan is an app for iPhone and iPad – with widgets, notifications, Siri and Shortcuts, sharing from any app and an offline copy. It is available on the App Store.",
             )
           : t(
               "Für Android gibt es Flowplan als App – mit Widgets, Mitteilungen mit Knöpfen, Schnellerfassung als Kachel und Teilen aus jeder App. Du lädst sie direkt von flowplan.org, ohne Play Store; neue Versionen findet sie selbst.",
@@ -92,13 +92,13 @@ export function AppPromo({ paused }: { paused: boolean }) {
         </button>
         <a
           className="button primary"
-          href={ios ? TESTFLIGHT_URL : ANDROID_APK_URL}
+          href={ios ? APP_STORE_URL : ANDROID_APK_URL}
           target="_blank"
           rel="noopener noreferrer"
           onClick={close}
         >
           {ios
-            ? t("Beta testen", "Try the beta")
+            ? t("Im App Store laden", "Download on the App Store")
             : t("App herunterladen", "Download the app")}
         </a>
       </div>

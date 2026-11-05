@@ -148,7 +148,7 @@ More in the documentation: [Installation](https://docs.flowplan.org/en/installat
     <td valign="top">🔄 <b><a href="https://docs.flowplan.org/en/migrate">Import and export</a></b><br>In from Notion, Confluence, AFFiNE, AppFlowy, Obsidian, Evernote and more; out as Markdown, CSV, PDF or Word.</td>
   </tr>
   <tr>
-    <td valign="top">📱 <b><a href="https://docs.flowplan.org/en/offline-and-apps">Apps</a></b><br>An installable web app that works offline, desktop apps, and apps for iPhone, iPad (beta) and Android.</td>
+    <td valign="top">📱 <b><a href="https://docs.flowplan.org/en/offline-and-apps">Apps</a></b><br>An installable web app that works offline, desktop apps, and apps for iPhone, iPad and Android.</td>
     <td valign="top">🔐 <b><a href="https://docs.flowplan.org/en/sign-in">Security</a></b><br>SSO with OIDC, LDAP and SCIM, two-factor sign-in, passkeys and <a href="https://docs.flowplan.org/en/encrypted-spaces">end-to-end encrypted spaces</a>.</td>
     <td valign="top">💾 <b><a href="https://docs.flowplan.org/en/storage-and-backups">Self-hosting and backups</a></b><br>One container with SQLite, continuous backup to S3 with Litestream, scheduled encrypted backups, a Helm chart.</td>
   </tr>
@@ -212,7 +212,7 @@ A fair comparison is hard – every tool here is good at something. This is our 
 | **Journal** | ✅ | ⚠️ templates | ⚠️ templates | ✅ | ⚠️ templates | ⚠️ templates |
 | **End-to-end encryption** | ⚠️ encrypted spaces, documents only⁴ | ❌ | ❌ | ⚠️ local data only, as far as we know | ⚠️ status unclear | ❌ |
 | **Import from others** | ✅ Notion, Confluence, AFFiNE, AppFlowy, Obsidian, Evernote, Google Docs, Jira, Trello | ✅ | ⚠️ a few formats | ✅ Notion, Markdown, HTML | ✅ Notion, Markdown, CSV | ✅ Notion, Confluence, Markdown |
-| **Apps (iOS / Android / desktop)** | ⚠️ desktop; iOS in beta, Android as APK | ✅ | ⚠️ mobile only | ⚠️ desktop; mobile apps newer | ✅ | ⚠️ desktop; mobile via the web |
+| **Apps (iOS / Android / desktop)** | ⚠️ desktop and iOS; Android as APK | ✅ | ⚠️ mobile only | ⚠️ desktop; mobile apps newer | ✅ | ⚠️ desktop; mobile via the web |
 | **Real-time collaboration** | ✅ | ✅ | ✅ | ✅ | ✅ with AppFlowy Cloud | ✅ |
 
 <sub>✅ yes · ⚠️ partly · ❌ no. As of November 2026, corrections welcome – please [open an issue](https://github.com/yannicschuller/flowplan/issues/new/choose).<br>
@@ -355,7 +355,7 @@ Arrange the home page from 20 widgets – tasks to tick off, agenda, journal tod
 
 ## Together, everywhere
 
-Live editing with cursors (Yjs/CRDT), comments and inline threads, mentions, reactions, suggested changes, an inbox, e-mail digests and Web Push. Share a page with one person, with guests through links (optionally with **password and expiry date**), publish it on the web, or turn it into a form. Flowplan installs as an app and works offline; desktop apps for macOS, Windows and Linux are at [flowplan.org/download](https://flowplan.org/download) – with quick capture from any app (shorthand like `morgen 15 Uhr #kunde @anna !hoch`, links, files, screen regions and voice notes, an offline queue; [docs](https://docs.flowplan.org/en/desktop-capture)). For **iPhone and iPad there is a beta app on [TestFlight](https://testflight.apple.com/join/Yjy9aZAE)**, for **Android an app to [download](https://flowplan.org/download/android.apk)** without the Play Store (it updates itself) – with widgets, notification buttons, Siri and Shortcuts, sharing from other apps, the Apple Pencil and windows on the iPad ([Apps](https://docs.flowplan.org/en/offline-and-apps#apps-for-iphone-ipad-and-android)). Their notifications travel through the open-source [Flowplan push relay](https://github.com/yannicschuller/flowplan-push), end-to-end encrypted: they show their text, while the relay, Apple and Google only handle ciphertext.
+Live editing with cursors (Yjs/CRDT), comments and inline threads, mentions, reactions, suggested changes, an inbox, e-mail digests and Web Push. Share a page with one person, with guests through links (optionally with **password and expiry date**), publish it on the web, or turn it into a form. Flowplan installs as an app and works offline; desktop apps for macOS, Windows and Linux are at [flowplan.org/download](https://flowplan.org/download) – with quick capture from any app (shorthand like `morgen 15 Uhr #kunde @anna !hoch`, links, files, screen regions and voice notes, an offline queue; [docs](https://docs.flowplan.org/en/desktop-capture)). For **iPhone and iPad the app is on the [App Store](https://apps.apple.com/app/id6825801344)**, for **Android an app to [download](https://flowplan.org/download/android.apk)** without the Play Store (it updates itself) – with widgets, notification buttons, Siri and Shortcuts, sharing from other apps, the Apple Pencil and windows on the iPad ([Apps](https://docs.flowplan.org/en/offline-and-apps#apps-for-iphone-ipad-and-android)). Their notifications travel through the open-source [Flowplan push relay](https://github.com/yannicschuller/flowplan-push), end-to-end encrypted: they show their text, while the relay, Apple and Google only handle ciphertext.
 
 <p align="center">
   <img src=".github/assets/readme/mobile-board.webp" alt="The board on a phone" width="32%">
@@ -447,7 +447,7 @@ Under **Settings → Import & export → Import**: Notion and Confluence exports
 <details>
 <summary><b>Are there apps?</b></summary>
 
-Flowplan installs from the browser as an app on any device. Desktop apps for macOS, Windows and Linux and the Android app are at [flowplan.org/download](https://flowplan.org/download); the iPhone and iPad app is in beta on [TestFlight](https://testflight.apple.com/join/Yjy9aZAE). They connect to any instance, self-hosted ones included. See [Apps](https://docs.flowplan.org/en/offline-and-apps#apps-for-iphone-ipad-and-android).
+Flowplan installs from the browser as an app on any device. Desktop apps for macOS, Windows and Linux and the Android app are at [flowplan.org/download](https://flowplan.org/download); the iPhone and iPad app is on the [App Store](https://apps.apple.com/app/id6825801344). They connect to any instance, self-hosted ones included. See [Apps](https://docs.flowplan.org/en/offline-and-apps#apps-for-iphone-ipad-and-android).
 
 </details>
 

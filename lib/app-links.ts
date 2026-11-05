@@ -1,6 +1,6 @@
-// Where the apps are: the iPhone and iPad beta on TestFlight, the Android
+// Where the apps are: the iPhone and iPad app in the App Store, the Android
 // APK straight from flowplan.org (it updates itself) and the download page.
-export const TESTFLIGHT_URL = "https://testflight.apple.com/join/Yjy9aZAE";
+export const APP_STORE_URL = "https://apps.apple.com/app/id6825801344";
 export const ANDROID_APK_URL = "https://flowplan.org/download/android.apk";
 export const DOWNLOAD_URL = "https://flowplan.org/download";
 

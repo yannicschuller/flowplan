@@ -143,7 +143,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     keywords: { de: "offline synchronisierung gerät kopie cache", en: "offline sync device copy cache" },
     entries: [
       { title: { de: "Offline-Nutzung", en: "Offline use" }, anchor: "offline" },
-      { title: { de: "Apps für iPhone, iPad, Android und Computer", en: "Apps for iPhone, iPad, Android and computers" }, keywords: { de: "app herunterladen testflight apk android iphone ipad desktop", en: "app download testflight apk android iphone ipad desktop" }, anchor: "apps" },
+      { title: { de: "Apps für iPhone, iPad, Android und Computer", en: "Apps for iPhone, iPad, Android and computers" }, keywords: { de: "app herunterladen app store apk android iphone ipad desktop", en: "app download app store apk android iphone ipad desktop" }, anchor: "apps" },
     ],
   },
   // ------------------------------------------------------------- connections

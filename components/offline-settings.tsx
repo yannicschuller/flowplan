@@ -1,6 +1,6 @@
 "use client";
 import { useLocale, useT } from "./i18n";
-import { ANDROID_APK_URL, DOWNLOAD_URL, TESTFLIGHT_URL } from "@/lib/app-links";
+import { ANDROID_APK_URL, APP_STORE_URL, DOWNLOAD_URL } from "@/lib/app-links";
 import { friendlyError } from "./ui";
 import { useCallback, useEffect, useState } from "react";
 import { ago } from "./page-activity";
@@ -347,17 +347,17 @@ export function OfflineSettings({
           <SettingRow
             label={t("iPhone und iPad", "iPhone and iPad")}
             description={t(
-              "Beta-App über TestFlight: erst die App TestFlight von Apple installieren, dann den Link auf dem Gerät öffnen.",
-              "Beta app on TestFlight: install Apple's TestFlight app first, then open the link on the device.",
+              "Im App Store erhältlich – mit Widgets, Siri und Kurzbefehlen und Teilen aus jeder App.",
+              "Available on the App Store – with widgets, Siri and Shortcuts and sharing from any app.",
             )}
           >
             <a
               className="button"
-              href={TESTFLIGHT_URL}
+              href={APP_STORE_URL}
               target="_blank"
               rel="noopener noreferrer"
             >
-              {t("Beta testen", "Try the beta")}
+              {t("Im App Store laden", "Download on the App Store")}
             </a>
           </SettingRow>
           <SettingRow
