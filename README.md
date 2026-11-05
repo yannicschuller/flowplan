@@ -211,7 +211,7 @@ A fair comparison is hard – every tool here is good at something. This is our 
 | **Whiteboards** | ✅ | ❌ embeds only | ✅ Cloud | ✅ edgeless mode | ⚠️ not built in, as far as we know | ❌ |
 | **Journal** | ✅ | ⚠️ templates | ⚠️ templates | ✅ | ⚠️ templates | ⚠️ templates |
 | **End-to-end encryption** | ⚠️ encrypted spaces, documents only⁴ | ❌ | ❌ | ⚠️ local data only, as far as we know | ⚠️ status unclear | ❌ |
-| **Import from others** | ✅ Notion, Confluence, AFFiNE, AppFlowy, Obsidian, Evernote, Google Docs, Jira, Trello | ✅ | ⚠️ a few formats | ✅ Notion, Markdown, HTML | ✅ Notion, Markdown, CSV | ✅ Notion, Confluence, Markdown |
+| **Import from others** | ✅ Notion, Confluence, AFFiNE, AppFlowy, Obsidian, Evernote, Google Docs, Microsoft Word, Jira, Trello | ✅ | ⚠️ a few formats | ✅ Notion, Markdown, HTML | ✅ Notion, Markdown, CSV | ✅ Notion, Confluence, Markdown |
 | **Apps (iOS / Android / desktop)** | ⚠️ desktop and iOS; Android as APK | ✅ | ⚠️ mobile only | ⚠️ desktop; mobile apps newer | ✅ | ⚠️ desktop; mobile via the web |
 | **Real-time collaboration** | ✅ | ✅ | ✅ | ✅ | ✅ with AppFlowy Cloud | ✅ |
 
@@ -440,7 +440,7 @@ Yes. Documents are always saved in the browser first and synced when the server 
 <details>
 <summary><b>How do I move from Notion, Confluence, AFFiNE or Obsidian?</b></summary>
 
-Under **Settings → Import & export → Import**: Notion and Confluence exports, the AFFiNE workspace file, Obsidian vaults (as pages or as a database), plus AppFlowy, Evernote, Google Docs, Markdown, HTML and CSV. A preview shows what will be imported before anything is created. See [Moving to Flowplan](https://docs.flowplan.org/en/migrate).
+Under **Settings → Import & export → Import**: Notion and Confluence exports, the AFFiNE workspace file, Obsidian vaults (as pages or as a database), plus AppFlowy, Evernote, Google Docs, Microsoft Word (.docx), Markdown, HTML and CSV. A preview shows what will be imported before anything is created. See [Moving to Flowplan](https://docs.flowplan.org/en/migrate).
 
 </details>
 

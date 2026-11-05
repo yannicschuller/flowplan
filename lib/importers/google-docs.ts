@@ -1,5 +1,6 @@
 // Google Docs from Google Takeout (or single downloads): every .html or
-// .docx document becomes a page, Drive folders become parent pages. In the
+// .docx document becomes a page, Drive folders become parent pages (the
+// same tree builder serves the Microsoft Word import, lib/importers/word.ts). In the
 // HTML export, formatting sits in CSS classes and lists are flat per
 // level; both are turned back into marks and nested lists. Google's
 // redirect links point to their target again.
@@ -112,12 +113,15 @@ export function isGoogleTakeout(entries: Map<string, Buffer>) {
   return names.some((n) => /\.(docx|html?)$/i.test(n)) && !names.some((n) => /\.md$/i.test(n));
 }
 
-export function parseGoogleDocs(entries: Map<string, Buffer>, name = "Google Docs"): ImportTree {
-  const warnings = warningList();
-  const files = new Map<string, ImportFile>();
-  // Takeout/Drive/<folders>/<document>
-  const strip = (n: string) => n.replace(/^Takeout\//, "").replace(/^(Drive|Google Drive)\//, "");
-  const docs = [...entries.keys()].filter((n) => /\.(docx|html?)$/i.test(n)).sort((a, b) => strip(a).localeCompare(strip(b)));
+// Documents of an archive as pages, the folders around them as parent
+// pages (Google Docs, Microsoft Word). A .docx gets a marker that
+// resolveDocx replaces with its content; an .html page is converted here.
+export function documentPages(
+  entries: Map<string, Buffer>,
+  docs: string[],
+  strip: (name: string) => string,
+  files: Map<string, ImportFile>,
+) {
   const pages: ImportPage[] = [];
   const folders = new Set<string>();
   const folderPage = (dir: string): string | null => {
@@ -130,20 +134,29 @@ export function parseGoogleDocs(entries: Map<string, Buffer>, name = "Google Doc
     }
     return key;
   };
-  for (const path of docs) {
+  for (const path of [...docs].sort((a, b) => strip(a).localeCompare(strip(b)))) {
     const shown = strip(path);
     const parent = folderPage(posix.dirname(shown));
     const base = posix.basename(shown).replace(/\.(docx|html?)$/i, "");
     if (/\.docx$/i.test(path)) {
-      warnings.add("__docx__");
       pages.push({ key: path, parent, title: base, html: `<!--docx:${encodeURIComponent(path)}-->` });
       continue;
     }
     const { html, title } = googleHtmlToHtml(entries.get(path)!.toString("utf8"), path, entries, files);
     pages.push({ key: path, parent, title: title || base, html });
   }
+  return pages;
+}
+
+export function parseGoogleDocs(entries: Map<string, Buffer>, name = "Google Docs"): ImportTree {
+  const warnings = warningList();
+  const files = new Map<string, ImportFile>();
+  // Takeout/Drive/<folders>/<document>
+  const strip = (n: string) => n.replace(/^Takeout\//, "").replace(/^(Drive|Google Drive)\//, "");
+  const docs = [...entries.keys()].filter((n) => /\.(docx|html?)$/i.test(n));
+  const pages = documentPages(entries, docs, strip, files);
   if (!docs.length) warnings.add("Keine Google-Docs-Dokumente (.html oder .docx) gefunden.");
-  return { source: "gdocs", title: name, pages, files, warnings: warnings.list().filter((w) => !w.startsWith("__docx__")) };
+  return { source: "gdocs", title: name, pages, files, warnings: warnings.list() };
 }
 
 // DOCX documents of a Takeout are ZIPs themselves; they are converted

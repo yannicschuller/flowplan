@@ -50,7 +50,8 @@ test("formats are recognised from the file and its contents", async () => {
   assert.equal(detectSource("space.zip", Buffer.from("PK"), await zipEntries(await zipDir("confluence-xml"))), "confluence");
   assert.equal(detectSource("vault.zip", Buffer.from("PK"), await zipEntries(await zipDir("obsidian"))), "obsidian");
   assert.equal(detectSource("takeout.zip", Buffer.from("PK"), await zipEntries(await zipDir("google-takeout"))), "gdocs");
-  assert.equal(detectSource("Bericht.docx", Buffer.from("PK"), await zipEntries(await zipDir("docx"))), "gdocs");
+  // A single Word file is recognised as Microsoft Word (#122); Google Docs still takes it when chosen.
+  assert.equal(detectSource("Bericht.docx", Buffer.from("PK"), await zipEntries(await zipDir("docx"))), "word");
   await assert.rejects(parseImport("bild.png", Buffer.from("not a known format")), /nicht erkannt/);
 });
 

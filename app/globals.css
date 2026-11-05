@@ -27006,7 +27006,7 @@ html.split-resizing * {
 }
 /* ===== End of end-to-end encrypted spaces. ===== */
 
-/* ===== Imports from Confluence, Evernote, Google Docs and Obsidian (components/import-sources.tsx). ===== */
+/* ===== Imports from Confluence, Evernote, Google Docs, Microsoft Word and Obsidian (components/import-sources.tsx). ===== */
 .import-sources-progress {
   display: flex;
   align-items: center;
@@ -27042,6 +27042,21 @@ html.split-resizing * {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+/* What the chosen source takes (Microsoft Word, #122). */
+.import-sources-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.import-sources-hint svg {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
 }
 /* ===== End of imports from other tools. ===== */
 
