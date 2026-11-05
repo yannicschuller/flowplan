@@ -9,6 +9,9 @@ export const instanceSettingsSchema = z.object({
   announcement: z.string().trim().max(500),
   defaultQuotaMb: z.number().int().min(0).max(10_000_000).nullable(),
   retentionDays: z.number().int().min(0).max(36500).nullable(),
+  // Days in the trash before pages, spaces, records and templates are
+  // deleted for good (0 = never; lib/trash.ts).
+  trashDays: z.number().int().min(0).max(3650).default(30),
   maxUploadMb: z.number().int().min(1).max(1024),
   allowWorkspaceCreation: z.boolean(),
   // Anyone may create an account with e-mail and password (the first
@@ -44,6 +47,7 @@ const defaults: InstanceSettings = {
   announcement: "",
   defaultQuotaMb: null,
   retentionDays: null,
+  trashDays: 30,
   maxUploadMb: 10,
   allowWorkspaceCreation: true,
   allowSignup: false,

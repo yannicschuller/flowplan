@@ -866,6 +866,44 @@ CommandPageRestoreResult = TypedDict("CommandPageRestoreResult", {
     "ok": Required[Literal[True]],
 }, total=False)
 
+# Delete a page from the trash permanently. The page must be in the trash (`page.delete`), and the caller needs edit rights on it – the same right as moving it to the trash. Its sub-pages in the trash that the caller may edit go with it; others stay in the trash on their own. Deleted for good: the page's content, versions, comments, records and database schema, uploads, favorites, publications, share links, notifications and search entries. Cannot be undone. Pages in the trash are also deleted automatically after the instance's trash period (default 30 days, set by admins).
+CommandPagePurge = TypedDict("CommandPagePurge", {
+    "action": Required[Literal["page.purge"]],
+    "pageId": Required[str],
+}, total=False)
+
+CommandPagePurgeResult = TypedDict("CommandPagePurgeResult", {
+    "ok": Required[Literal[True]],
+    "pages": Required[int],  # Pages deleted, the page itself included
+}, total=False)
+
+# Delete a template from the template trash permanently. The template must be in the template trash (`template.delete`). Its creator or a workspace owner may delete it; templates for all workspaces or the public gallery need an administrator. Its stored files go with it. Pages already created from it are kept.
+CommandTemplatePurge = TypedDict("CommandTemplatePurge", {
+    "action": Required[Literal["template.purge"]],
+    "workspaceId": Required[str],
+    "templateId": Required[str],
+    "version": int,  # The template's version, refused when it changed meanwhile
+}, total=False)
+
+CommandTemplatePurgeResult = TypedDict("CommandTemplatePurgeResult", {
+    "ok": Required[Literal[True]],
+}, total=False)
+
+# Empty the trash of a workspace. Deletes for good everything in the workspace's trash the caller may delete: pages they can edit, spaces they manage, and deleted records they can edit. Pages of others' private spaces and read-only items are never touched. With `scope: "templates"` the template trash is emptied instead (templates the caller manages). Needs the editor role. Cannot be undone.
+CommandTrashEmpty = TypedDict("CommandTrashEmpty", {
+    "action": Required[Literal["trash.empty"]],
+    "workspaceId": Required[str],
+    "scope": Literal["workspace", "templates"],  # What to empty (default `workspace`)
+}, total=False)
+
+CommandTrashEmptyResult = TypedDict("CommandTrashEmptyResult", {
+    "ok": Required[Literal[True]],
+    "pages": int,
+    "spaces": int,
+    "records": int,
+    "templates": int,
+}, total=False)
+
 # Duplicate a page with its sub-pages
 CommandPageDuplicate = TypedDict("CommandPageDuplicate", {
     "action": Required[Literal["page.duplicate"]],
@@ -1259,7 +1297,7 @@ CommandHomeSaveResult = TypedDict("CommandHomeSaveResult", {
 }, total=False)
 
 # One action of the interface, as sent by POST /api/command.
-Command = Union["CommandWorkspaceCreate", "CommandSpaceCreate", "CommandSpaceReorder", "CommandPageCreate", "CommandBlockIds", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandSidebarState", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
+Command = Union["CommandWorkspaceCreate", "CommandSpaceCreate", "CommandSpaceReorder", "CommandPageCreate", "CommandBlockIds", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPagePurge", "CommandTemplatePurge", "CommandTrashEmpty", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandSidebarState", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
 
 # ---- Parameters of the operations ----
 
@@ -1356,6 +1394,10 @@ CaptureTargetsQuery = TypedDict("CaptureTargetsQuery", {
 }, total=False)
 
 SyncedBlocksQuery = TypedDict("SyncedBlocksQuery", {
+    "workspace": Required[str],  # Workspace ID
+}, total=False)
+
+TrashSummaryQuery = TypedDict("TrashSummaryQuery", {
     "workspace": Required[str],  # Workspace ID
 }, total=False)
 
@@ -1852,6 +1894,10 @@ class FlowplanClient:
     def synced_blocks(self, query: "SyncedBlocksQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Synced blocks of a workspace (GET /api/synced)"""
         return self._json("GET", "/api/synced", query=dict(query) if query else None, headers=headers)
+
+    def trash_summary(self, query: "TrashSummaryQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """What emptying the trash would delete (GET /api/trash/summary)"""
+        return self._json("GET", "/api/trash/summary", query=dict(query) if query else None, headers=headers)
 
     def row_trash(self, query: "RowTrashQuery", headers: Optional[dict[str, str]] = None) -> list[dict[str, Any]]:
         """Records in the trash (GET /api/trash/rows)"""

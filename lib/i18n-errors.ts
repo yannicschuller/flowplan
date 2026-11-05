@@ -455,6 +455,8 @@ const exact: Record<string, string> = {
   "Der Titel ist zu kurz zum Verlinken.": "The title is too short to link.",
   "Die Erwähnung ist nicht mehr im Text.": "The mention is no longer in the text.",
   "Vorlage fehlt.": "Template missing.",
+  "Die Seite zuerst in den Papierkorb verschieben.": "Move the page to the trash first.",
+  "Die Vorlage zuerst in den Papierkorb verschieben.": "Move the template to the trash first.",
   "Vorlagentyp passt nicht zur Seite.": "Template type does not fit the page.",
   "Doppelte Eigenschaft, Ansicht oder Datensatz-ID in Vorlage.": "Duplicate property, view or record ID in the template.",
   "Datensatz in Vorlage zu groß.": "Record in template too large.",

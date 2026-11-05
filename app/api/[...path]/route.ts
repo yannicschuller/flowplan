@@ -133,6 +133,7 @@ import { wholeMonth } from "@/lib/journal-nav";
 import { visibleRows } from "@/lib/row-access";
 import { readableDatabase } from "@/lib/field-access";
 import { listRowTrash } from "@/lib/row-trash";
+import { trashCounts, trashDays } from "@/lib/trash";
 import { ARCHIVE_LIMIT } from "@/lib/archive";
 import { buildInfo } from "@/lib/build-info";
 import { plainHttpInstance } from "@/lib/instance-https";
@@ -310,6 +311,11 @@ async function handleGET(
         ),
         { headers: { "Cache-Control": "no-store" } },
       );
+    // What "Empty trash" would delete for this person, and the trash period (#123).
+    if (path.length === 2 && path[0] === "trash" && path[1] === "summary") {
+      const wid = z.uuid().parse(url.searchParams.get("workspace"));
+      return NextResponse.json({ ...trashCounts(user, wid), days: trashDays() });
+    }
     if (path[0] === "trash" && path[1] === "rows") {
       const wid = z.uuid().parse(url.searchParams.get("workspace"));
       requireMember(user, wid);

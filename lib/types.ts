@@ -277,6 +277,8 @@ export type Bootstrap = {
   workspace: Workspace;
   spaces: Space[];
   trashedSpaces?: Space[];
+  // Days in the trash before deletion for good (0 = never; lib/trash.ts).
+  trashDays?: number;
   managedSpaces?: Space[];
   pages: Page[];
   // Pages and journal days counted separately ("120 Seiten · 340

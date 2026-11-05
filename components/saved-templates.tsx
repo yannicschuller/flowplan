@@ -32,12 +32,15 @@ export default function SavedTemplates({
   workspaceId,
   canCreate,
   isAdmin = false,
+  trashDays = 30,
   onUse,
   onError,
 }: {
   workspaceId: string;
   canCreate: boolean;
   isAdmin?: boolean;
+  // Days in the template trash before deletion for good (0 = never, #123).
+  trashDays?: number;
   onUse: (t: Template) => Promise<void>;
   onError: (message: string) => void;
 }) {
@@ -47,7 +50,9 @@ export default function SavedTemplates({
     [busy, setBusy] = useState(false),
     [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Template | null>(null),
-    [removing, setRemoving] = useState<Template | null>(null);
+    [removing, setRemoving] = useState<Template | null>(null),
+    [purging, setPurging] = useState<Template | null>(null),
+    [emptying, setEmptying] = useState(false);
   const refresh = useCallback(async () => {
     setItems(await api<Template[]>(`/api/templates?workspace=${workspaceId}`));
     setLoading(false);
@@ -73,6 +78,7 @@ export default function SavedTemplates({
       await refresh();
       setEditing(null);
       setRemoving(null);
+      setPurging(null);
     } catch (e) {
       onError((e as Error).message);
       await refresh().catch(() => {});
@@ -80,6 +86,20 @@ export default function SavedTemplates({
       setBusy(false);
     }
   }
+  // The template trash, emptied: only templates this person manages.
+  async function emptyTemplates() {
+    setBusy(true);
+    try {
+      await api("/api/command", { action: "trash.empty", workspaceId, scope: "templates" });
+      await refresh();
+      setEmptying(false);
+    } catch (e) {
+      onError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  const purgeable = items.filter((item) => item.deleted_at && item.can_manage);
   const [search, setSearch] = useState(""),
     [kind, setKind] = useState<"all" | "document" | "database">("all"),
     [category, setCategory] = useState<"all" | TemplateCategory>("all");
@@ -174,6 +194,20 @@ export default function SavedTemplates({
         />
         {t("Vorlagen-Papierkorb (", "Template trash (")}{items.filter((item) => item.deleted_at).length})
       </label>
+      {deleted && (
+        <div className="trash-toolbar">
+          <p className="muted">
+            {trashDays > 0
+              ? t(`Vorlagen im Papierkorb werden nach ${trashDays} Tagen endgültig gelöscht.`, `Templates in the trash are deleted permanently after ${trashDays} days.`)
+              : t("Vorlagen bleiben im Papierkorb, bis er geleert wird.", "Templates stay in the trash until it is emptied.")}
+          </p>
+          {purgeable.length > 0 && (
+            <button className="button danger compact" disabled={busy} onClick={() => setEmptying(true)}>
+              {t("Vorlagen-Papierkorb leeren", "Empty template trash")}
+            </button>
+          )}
+        </div>
+      )}
       {loading ? (
         <p className="muted">{t("Vorlagen werden geladen …", "Loading templates …")}</p>
       ) : shown.length === 0 ? (
@@ -225,13 +259,23 @@ export default function SavedTemplates({
               )}
               {template.can_manage &&
                 (deleted ? (
-                  <button
-                    className="button compact"
-                    disabled={busy}
-                    onClick={() => change(template, "template.restore")}
-                  >
-                    {t("Wiederherstellen", "Restore")}
-                  </button>
+                  <>
+                    <button
+                      className="button compact"
+                      disabled={busy}
+                      onClick={() => change(template, "template.restore")}
+                    >
+                      {t("Wiederherstellen", "Restore")}
+                    </button>
+                    <button
+                      className="button compact danger"
+                      aria-label={t(`${template.name} endgültig löschen`, `Delete ${template.name} permanently`)}
+                      disabled={busy}
+                      onClick={() => setPurging(template)}
+                    >
+                      {t("Endgültig löschen", "Delete permanently")}
+                    </button>
+                  </>
                 ) : (
                   <>
                     <button
@@ -350,6 +394,47 @@ export default function SavedTemplates({
         >
           {t("In den Papierkorb", "Move to trash")}
         </button>
+      </Modal>
+      <Modal
+        open={!!purging}
+        onClose={() => !busy && setPurging(null)}
+        title={t("Vorlage endgültig löschen", "Delete template permanently")}
+      >
+        <p>
+          „{purging?.name}{t("“ endgültig löschen? Die Vorlage und ihre Dateien werden gelöscht; bereits erstellte Seiten bleiben erhalten. Das kann nicht rückgängig gemacht werden.", "” permanently? The template and its files are deleted; pages already created are kept. This cannot be undone.")}
+        </p>
+        <div className="modal-actions">
+          <button className="button" disabled={busy} onClick={() => setPurging(null)}>
+            {t("Abbrechen", "Cancel")}
+          </button>
+          <button
+            className="button danger"
+            disabled={busy}
+            onClick={() => purging && change(purging, "template.purge")}
+          >
+            {t("Endgültig löschen", "Delete permanently")}
+          </button>
+        </div>
+      </Modal>
+      <Modal
+        open={emptying}
+        onClose={() => !busy && setEmptying(false)}
+        title={t("Vorlagen-Papierkorb leeren", "Empty template trash")}
+      >
+        <p>
+          {purgeable.length === 1
+            ? t("1 Vorlage endgültig löschen?", "Delete 1 template permanently?")
+            : t(`${purgeable.length} Vorlagen endgültig löschen?`, `Delete ${purgeable.length} templates permanently?`)}{" "}
+          {t("Nur Vorlagen, die du verwalten darfst. Das kann nicht rückgängig gemacht werden.", "Only templates you may manage. This cannot be undone.")}
+        </p>
+        <div className="modal-actions">
+          <button className="button" disabled={busy} onClick={() => setEmptying(false)}>
+            {t("Abbrechen", "Cancel")}
+          </button>
+          <button className="button danger" disabled={busy} onClick={() => void emptyTemplates()}>
+            {t("Vorlagen-Papierkorb leeren", "Empty template trash")}
+          </button>
+        </div>
       </Modal>
     </section>
   );

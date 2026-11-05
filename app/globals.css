@@ -9162,6 +9162,45 @@ tr.order-drop-after > td {
   color: var(--danger, #b42318);
   overflow-wrap: anywhere;
 }
+/* Trash (#123, #124): one fixed icon column, so titles line up whether the
+   icon is an emoji, a library icon or an image (an emoji is a <span>, which
+   `.utility-row > span` would otherwise stretch). */
+.utility-row > .page-emoji,
+.utility-row > .page-image-icon {
+  flex: 0 0 auto;
+}
+.trash-row {
+  flex-wrap: wrap;
+}
+.utility-row > .trash-icon {
+  display: inline-flex;
+  flex: 0 0 22px;
+  width: 22px;
+  align-items: center;
+  justify-content: center;
+  color: var(--secondary);
+}
+.trash-row > strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.trash-row > strong small {
+  display: block;
+  font-weight: 400;
+  color: var(--muted);
+}
+.trash-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin-bottom: 8px;
+}
+.trash-toolbar p {
+  margin: 0;
+  font-size: 13px;
+}
 .trash-space {
   flex-wrap: wrap;
 }
@@ -9174,8 +9213,9 @@ tr.order-drop-after > td {
   color: var(--muted);
 }
 @media (max-width: 600px) {
-  .trash-space .lifecycle-buttons {
+  .trash-row .lifecycle-buttons {
     flex-basis: 100%;
+    padding-left: 34px;
   }
 }
 
