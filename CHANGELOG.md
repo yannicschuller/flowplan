@@ -2,6 +2,30 @@
 
 All releases of Flowplan, newest first. Generated from the commits by the release workflow.
 
+## v0.8.8 – 2026-11-05
+
+- Help: convert a table to a database (#118) ([cceb5fb](https://github.com/yannicschuller/flowplan/commit/cceb5fb864028b6be1dfafc7aec9b97d9d1d73ae))
+- Tables: "In Datenbank umwandeln" turns a table into a database (#118) ([1416dbb](https://github.com/yannicschuller/flowplan/commit/1416dbb1a82a30b6b16d216db279c1a60097403b))
+- Help docs: AFFiNE templates and row databases (#116, #117) ([49705ab](https://github.com/yannicschuller/flowplan/commit/49705aba20f563b8418853217cd18c10f0856b76))
+- AFFiNE import: templates become workspace templates; row documents land in their database ([060e0c2](https://github.com/yannicschuller/flowplan/commit/060e0c289d902b0313d1833f71e1a09124b88c24))
+- Table of contents: a full-width page makes room for the open list ([bb74743](https://github.com/yannicschuller/flowplan/commit/bb747434d60640928f58ed863ffb907a1b1c1079))
+- Help docs: Ask AI panel layout ([071cb51](https://github.com/yannicschuller/flowplan/commit/071cb513023db0791e0a95de7a692ea480051c5a))
+- Ask AI panel: the page lays out for the room beside it (#59) ([f89336e](https://github.com/yannicschuller/flowplan/commit/f89336e1a714db01d4e8bb6785845a55a0221cc0))
+- Help docs: My activity widget (#114) ([b7f56f2](https://github.com/yannicschuller/flowplan/commit/b7f56f271adb93b6442c0fe4dfb2ac86ad9dd9c6))
+- Home page: "My activity" widget – own pages created and edited (#114) ([da2d468](https://github.com/yannicschuller/flowplan/commit/da2d46834cf589dfeeab88fa17d49a371ff31451))
+- New page: "From a template" opens the template gallery (#112) ([a6a4713](https://github.com/yannicschuller/flowplan/commit/a6a471362d2cd133bd3c4b60f0dbb764e12c419c))
+- Editor: no page hint over a lone code block (#113) ([0202583](https://github.com/yannicschuller/flowplan/commit/0202583b08e9123265dd6bcf130bef34ebd67950))
+- Admin live figures: response time (p95, 1 h) as the sixth number ([1770203](https://github.com/yannicschuller/flowplan/commit/1770203d40a30301939481defe5769fef9212db4))
+- Help docs: draw.io diagrams (#110) ([46cd561](https://github.com/yannicschuller/flowplan/commit/46cd561d03d04afd20a2f8e08eba7ae075a64fc1))
+- Help docs: sign in in the browser from the apps ([4e4e152](https://github.com/yannicschuller/flowplan/commit/4e4e15232cf12ef5b59a8eac419679f1c98a0bd1))
+- Documents: draw.io diagram block (#110) ([6df3cd5](https://github.com/yannicschuller/flowplan/commit/6df3cd5ba6b46c7c2f592c8fbb747dfad6c52361))
+- Sign-in: "Im Browser anmelden" in the mobile and desktop apps (flowplan-app#5) ([b083873](https://github.com/yannicschuller/flowplan/commit/b083873faef93e257a68d0f82ec3f20a738d4ee7))
+- Add the /issue skill: triage and work through issues and PRs ([e54a2fd](https://github.com/yannicschuller/flowplan/commit/e54a2fdd987253100e00f4083d65ab5aa26c7d12))
+- Racks: cables between facing ports run straight across (#111) ([48d3010](https://github.com/yannicschuller/flowplan/commit/48d3010b18ba37225e893fe49b56a58cae749f96))
+- Help docs: record versions in the API (#104) ([fd5ad32](https://github.com/yannicschuller/flowplan/commit/fd5ad32fdf36b6650aa70a02063c64c8ab144d02))
+- Database: quick edits of a new record no longer fail on a stale version (#104) ([5ee4411](https://github.com/yannicschuller/flowplan/commit/5ee4411f6caa359d9f22ae46e34d27d3e42d164c))
+- Copy images on mobile, no pinch-to-zoom in the apps ([bac55e5](https://github.com/yannicschuller/flowplan/commit/bac55e58993c27d73158958f980af3810c13112c))
+
 ## v0.8.7 – 2026-11-04
 
 - Test: the row queue does not depend on timing after a failure ([24be621](https://github.com/yannicschuller/flowplan/commit/24be6217a61821b0d17bba9172112f32f2245d81))
