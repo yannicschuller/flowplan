@@ -93,34 +93,6 @@ function watchKeyboard() {
       keyboardOpen = open;
       for (const listener of keyboardListeners) listener(open);
     }
-    if (debug) showDebug(height, open, below);
-  };
-  // Diagnosis on a real device (#120): ?kbdebug=1 once in the address shows
-  // the measured numbers at the top; ?kbdebug=0 turns it off again.
-  let debug = false;
-  try {
-    const flag = new URLSearchParams(location.search).get("kbdebug");
-    if (flag !== null) localStorage.setItem("flowplan:kbdebug", flag === "0" ? "" : "1");
-    debug = !!localStorage.getItem("flowplan:kbdebug");
-  } catch {}
-  const showDebug = (height: number, open: boolean, below: number) => {
-    let box = document.getElementById("kb-debug");
-    if (!box) {
-      box = document.createElement("pre");
-      box.id = "kb-debug";
-      box.setAttribute("aria-hidden", "true");
-      Object.assign(box.style, { position: "fixed", top: "0", left: "0", right: "0", zIndex: "2147483647", margin: "0", padding: "4px 6px", font: "11px/1.3 ui-monospace, monospace", background: "rgba(0,0,0,.75)", color: "#fff", pointerEvents: "none", whiteSpace: "pre-wrap" });
-      document.body.appendChild(box);
-    }
-    box.style.top = `${vv ? Math.round(vv.offsetTop) : 0}px`;
-    const bar = document.querySelector(".page-layout .editor-toolbar, .editor-toolbar") as HTMLElement | null;
-    const rect = bar?.getBoundingClientRect();
-    box.textContent = [
-      `inner ${window.innerWidth}x${window.innerHeight} tallest ${Math.round(viewport.tallest)} vv ${Math.round(height)} top ${vv ? Math.round(vv.offsetTop) : "-"} scale ${vv ? vv.scale.toFixed(2) : "-"}`,
-      `scrollY ${Math.round(window.scrollY)} open ${open} typing ${typing()} coarse ${coarse.matches} inset ${below}`,
-      `kbInset-var ${root.style.getPropertyValue("--keyboard-inset") || "-"} active ${(document.activeElement as HTMLElement | null)?.className?.toString().slice(0, 30) || document.activeElement?.tagName}`,
-      `shell.keyboard-open ${!!document.querySelector(".app-shell.keyboard-open")} bar ${rect ? `${Math.round(rect.top)}-${Math.round(rect.bottom)} ${getComputedStyle(bar!).position}` : "none"}`,
-    ].join("\n");
   };
   const update = () => {
     cancelAnimationFrame(frame);
