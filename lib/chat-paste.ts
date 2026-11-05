@@ -4,6 +4,7 @@
 // tab-separated lines become a table, "☐" a checklist, and every line its own
 // paragraph. Copied web pages with rendered KaTeX keep their formulas as LaTeX.
 import { Marked, type Tokens } from "marked";
+import { TASK_LISTS } from "./task-list-html";
 
 const OPEN = "",
   CLOSE = "",
@@ -69,7 +70,7 @@ export function chatTextToHtml(text: string): string {
   marked.use({ renderer: { html: ({ text: raw }: Tokens.HTML | Tokens.Tag) => escapeHtml(raw) } });
   const html = (marked.parse(out.join("\n")) as string)
     // Task lists as the editor has them.
-    .replace(/<ul>\s*((?:<li><input[^>]*type="checkbox"[^>]*>[\s\S]*?<\/li>\s*)+)<\/ul>/g, (_, items: string) =>
+    .replace(TASK_LISTS, (_, items: string) =>
       `<ul data-type="taskList">${items.replace(/<li><input([^>]*)>\s*([\s\S]*?)<\/li>/g, (_m: string, attrs: string, body: string) => `<li data-type="taskItem" data-checked="${/checked/.test(attrs)}"><p>${body.replace(/^<p>|<\/p>$/g, "")}</p></li>`)}</ul>`,
     );
   const tex = (i: string) => escapeHtml(formulas[Number(i)] ?? "");
