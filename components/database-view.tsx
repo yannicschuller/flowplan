@@ -9,6 +9,7 @@ import { pinnedColumnLeft, pinnedColumnWidth, SELECTION_COLUMN, tableWidth } fro
 import { isLinkField } from "@/lib/cell-links";
 import { LinkCellDisplay, LinkValue } from "./link-cell";
 import { CSV_FORMULA } from "@/lib/cell-text";
+import { recordsClipboard } from "@/lib/database-clipboard";
 import { suggestedPrefix } from "@/lib/ticket-ids";
 import { parentField, treeOrder } from "@/lib/subtasks";
 import { LOCALE_TAG } from "@/lib/locale-tag";
@@ -982,6 +983,89 @@ export default function DatabaseView({
   const deeperFields = subField
     ? deeperGroupingFields(fields, view, [groupField, subField])
     : [];
+  // The selected records as the clipboard gets them (issue #119): the
+  // visible properties in view order, the records in the order the table
+  // shows them (groups, subtask tree), with their computed values.
+  function selectionClipboard() {
+    const order = grouped
+      ? groups.flatMap((g) =>
+          subgroups.has(g.key)
+            ? subgroups.get(g.key)!.flatMap((sg) => sg.rows)
+            : g.rows,
+        )
+      : treeParent
+        ? treeOrder(shown, treeParent).map((x) => x.row)
+        : shown;
+    const seen = new Set<string>();
+    const rows = [...order, ...shown].filter(
+      (r) => selection.has(r.id) && !seen.has(r.id) && !!seen.add(r.id),
+    );
+    if (!rows.length) return null;
+    return {
+      count: rows.length,
+      ...recordsClipboard(visibleFields, rows, {
+        members,
+        related,
+        files: data.files,
+        sprints: data.database.settings?.sprints,
+        yes: t("Ja", "Yes"),
+        no: t("Nein", "No"),
+        untitled: t("Ohne Titel", "Untitled"),
+        unavailable: t("Nicht verfügbar", "Not available"),
+      }),
+    };
+  }
+  const copiedMessage = (count: number) =>
+    count === 1 ? t("1 Eintrag kopiert", "1 record copied") : t(`${count} Einträge kopiert`, `${count} records copied`);
+  async function copySelection() {
+    const copy = selectionClipboard();
+    if (!copy) return;
+    try {
+      if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write)
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            "text/plain": new Blob([copy.text], { type: "text/plain" }),
+            "text/html": new Blob([copy.html], { type: "text/html" }),
+          }),
+        ]);
+      else await navigator.clipboard.writeText(copy.text);
+      onError(copiedMessage(copy.count));
+    } catch {
+      onError(t("Die Zwischenablage ist nicht verfügbar.", "The clipboard is not available."));
+    }
+  }
+  // ⌘C / Ctrl+C (and Edit › Copy) with selected records and nothing else to
+  // copy: no text selected, the focus not in a field or editable cell.
+  const selectionCopy = useRef(selectionClipboard);
+  selectionCopy.current = selectionClipboard;
+  const copiedText = useRef(copiedMessage);
+  copiedText.current = copiedMessage;
+  const copyEnabled = editable && view.type === "table" && selection.size > 0;
+  useEffect(() => {
+    if (!copyEnabled) return;
+    const copy = (e: ClipboardEvent) => {
+      if (e.defaultPrevented || !e.clipboardData) return;
+      const active = document.activeElement as HTMLElement | null;
+      // A ticked checkbox keeps the focus: that still copies the records.
+      const textInput =
+        active instanceof HTMLInputElement &&
+        !["checkbox", "radio", "button", "submit", "reset", "range", "color", "file"].includes(active.type);
+      if (
+        textInput ||
+        active?.closest("textarea, select, [contenteditable]:not([contenteditable='false']), [role='dialog']") ||
+        (window.getSelection()?.toString() || "") !== ""
+      )
+        return;
+      const result = selectionCopy.current();
+      if (!result) return;
+      e.preventDefault();
+      e.clipboardData.setData("text/plain", result.text);
+      e.clipboardData.setData("text/html", result.html);
+      onError(copiedText.current(result.count));
+    };
+    document.addEventListener("copy", copy);
+    return () => document.removeEventListener("copy", copy);
+  }, [copyEnabled, onError]);
   const selectableRows = grouped
     ? [
         ...new Map(
@@ -3039,6 +3123,13 @@ export default function DatabaseView({
             onClick={() => bulkAction("duplicate")}
           >
             {t("Duplizieren", "Duplicate")}
+          </button>
+          <button
+            className="button compact"
+            title={t("In die Zwischenablage kopieren – zum Einfügen in Excel, Numbers oder ein Dokument · ⌘C / Strg+C", "Copy to the clipboard – to paste into Excel, Numbers or a document · ⌘C / Ctrl+C")}
+            onClick={() => void copySelection()}
+          >
+            <Copy size={14} /> {t("Kopieren", "Copy")}
           </button>
           {canAi && (
             <button className="button compact" disabled={bulkBusy} onClick={() => setAiFill(true)}>
