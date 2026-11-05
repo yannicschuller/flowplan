@@ -2,6 +2,24 @@
 
 All releases of Flowplan, newest first. Generated from the commits by the release workflow.
 
+## v0.8.9 – 2026-11-05
+
+- Administration → Storage: usage parts in the page's language (#121) ([922f8d6](https://github.com/yannicschuller/flowplan/commit/922f8d667781a6b4b5568c79fe931964aae4a6a0))
+- Chinese: switching profiles is 切换账户, as in the apps ([144e10e](https://github.com/yannicschuller/flowplan/commit/144e10e61fbbebe08d0a62b142e7807e32bd5b95))
+- Add the /ship, /release, /app-release, /security, /deps and /language skills ([4bf3434](https://github.com/yannicschuller/flowplan/commit/4bf34349afa7d77f1ce6f89ae16fe495ec67ebc2))
+- Help docs: Chinese (Simplified) text recognition, desktop spell checking languages ([13477c0](https://github.com/yannicschuller/flowplan/commit/13477c011ee811ea74e9c5fbe68621f7d8ee5489))
+- Simplified Chinese text recognition for scans (opt-in) ([f250dc3](https://github.com/yannicschuller/flowplan/commit/f250dc3512fed99b4b8665c889530395ed154af2))
+- Image: Debian security updates, no npm/corepack at runtime, Litestream 0.5.18 ([9166046](https://github.com/yannicschuller/flowplan/commit/91660469c1bd76ebb8c20c78692dc2a64cf979ea))
+- Make test assertions clearer to CodeQL and cover link schemes in web clips ([ca9f6f7](https://github.com/yannicschuller/flowplan/commit/ca9f6f7182e7b23b26b442ac3d6b6eb38725a11e))
+- Find task lists and SVG roots in linear time ([049d445](https://github.com/yannicschuller/flowplan/commit/049d445b4199a054028205dd2378aeb37299a9ce))
+- Tests: markup taken from untrusted sources goes back into HTML escaped ([2074cea](https://github.com/yannicschuller/flowplan/commit/2074cea4601437fafe163daf9fa632ac4d2771a8))
+- Link the iPhone and iPad app in the App Store instead of TestFlight ([20bfbaf](https://github.com/yannicschuller/flowplan/commit/20bfbaf398f6fba9531ca5b356bbce45f77314bb))
+- SSO: the group refusal and the generic sign-in error follow the page language ([79621fa](https://github.com/yannicschuller/flowplan/commit/79621fa93e86a3f4c0a6211a9bf8666dd8934faa))
+- Help: copy records (#119), hide the keyboard (#120) ([fa55b3b](https://github.com/yannicschuller/flowplan/commit/fa55b3b962ef7b2f835d5638abd1d70cdd8fc9a7))
+- Database view: import the Copy icon after the merge (#119) ([d5ccc2f](https://github.com/yannicschuller/flowplan/commit/d5ccc2f1926c63c2a691264efccc089eab45caef))
+- Copy selected records to the clipboard as a table (#119) ([cc8147b](https://github.com/yannicschuller/flowplan/commit/cc8147b1498d6a20751f69749d26f8a53ab09e8c))
+- Editor: "Hide keyboard" at the end of the docked toolbar on touch phones (#120) ([127a591](https://github.com/yannicschuller/flowplan/commit/127a591e3e75e626de0a7c1931c422b2ab8c6b9b))
+
 ## v0.8.8 – 2026-11-05
 
 - Help: convert a table to a database (#118) ([cceb5fb](https://github.com/yannicschuller/flowplan/commit/cceb5fb864028b6be1dfafc7aec9b97d9d1d73ae))
