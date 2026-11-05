@@ -73,6 +73,10 @@ type FlowplanDesktop = {
   };
   // A page of this instance in a window of its own (desktop 1.1 and newer).
   openWindow?: (url: string) => void;
+  // Back and forward (#125, lib/history-nav.ts): the page reports whether
+  // there is a step (the menu items' state) and runs the app's commands –
+  // the menu items, the trackpad's swipe, the mouse's side buttons.
+  history?: import("./history-nav").DesktopHistory;
 };
 export function desktopApp(): FlowplanDesktop | undefined {
   if (typeof window === "undefined") return undefined;

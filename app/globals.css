@@ -5457,6 +5457,67 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
 .mobile-scrim {
   display: none;
 }
+/* Back and forward at the top left (#125, components/history-buttons.tsx):
+   on wider screens only – phones have the swipe and the back button. */
+.history-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  flex-shrink: 0;
+}
+.history-button {
+  width: 28px;
+  height: 28px;
+  padding: 5px;
+  border-radius: 6px;
+  /* A long press lists the places: no callout or selection on touch. */
+  -webkit-touch-callout: none;
+  user-select: none;
+  touch-action: manipulation;
+}
+/* Inside the button: the breadcrumb clips what sticks out. */
+.history-button:focus-visible {
+  outline-offset: -2px;
+}
+.history-button:disabled {
+  opacity: 0.35;
+  cursor: default;
+  background: none;
+}
+.history-list {
+  min-width: 220px;
+  max-width: min(360px, calc(100vw - 32px));
+}
+.history-item {
+  min-width: 0;
+}
+.history-item-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  width: 16px;
+  justify-content: center;
+}
+.history-item-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.history-item-detail {
+  margin-inline-start: auto;
+  padding-inline-start: 10px;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 45%;
+}
+@media (max-width: 767px) {
+  .history-nav {
+    display: none;
+  }
+}
 .spin {
   animation: spin 1s linear infinite;
 }

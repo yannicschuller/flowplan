@@ -46,6 +46,7 @@ import { visibleViewTabs, viewRecordOpenMode } from "@/lib/view-toolbar";
 import { DatabaseToolbarChips } from "./database-toolbar";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import { parsePageLocation, pageLocationHash } from "@/lib/page-location";
+import { leaveTo } from "@/lib/history-nav";
 import { scheduleFields } from "@/lib/database-timeline";
 import DatabaseTimeline from "./database-timeline";
 import { RECORD_DROP_EVENT, RECORD_OVER_EVENT, usePointerDrag, type DragPoint, type RecordDropDetail } from "./pointer-drag";
@@ -445,7 +446,11 @@ export default function DatabaseView({
         rowId: id || undefined,
       });
       ownHash.current = hash;
-      location.hash = hash;
+      // Closing goes back to the database it was opened from – no step of
+      // its own in the history; opened by a link from elsewhere, the
+      // database is a new step (lib/history-nav.ts).
+      if (id) location.hash = hash;
+      else leaveTo(hash);
     }
   }
   // Board and gallery cards grow into the record and back (a view

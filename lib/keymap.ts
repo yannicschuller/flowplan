@@ -29,6 +29,8 @@ export const SHORTCUT_ACTIONS = [
   "journalToday",
   "foldAll",
   "unfoldAll",
+  "back",
+  "forward",
 ] as const;
 export type ShortcutAction = (typeof SHORTCUT_ACTIONS)[number];
 export type Keymap = Record<ShortcutAction, string[]>;
@@ -62,6 +64,12 @@ export const DEFAULT_KEYMAP: Keymap = {
   // not U/L/W/D: the page source, a locked screen, closing windows, the Dock.
   foldAll: ["Mod+Alt+X"],
   unfoldAll: ["Mod+Alt+O"],
+  // The place before and after (#125, lib/history-nav.ts): ⌘[ / ⌘] as in
+  // Safari and Finder, Alt+← / Alt+→ as in the browsers on Windows and
+  // Linux – each works on every system. Alt with an arrow moves by words
+  // while typing: there it stays with the text (actionForEvent).
+  back: ["Mod+[", "Alt+ArrowLeft"],
+  forward: ["Mod+]", "Alt+ArrowRight"],
 };
 // At most this many combinations per action.
 export const MAX_COMBOS = 3;
@@ -295,6 +303,13 @@ export function needsModifier(text: string): boolean {
   const c = parseCombo(text);
   return !!c && !c.mod && !c.ctrl && !c.meta && !c.alt;
 }
+// Keys that move the cursor or delete: with any modifier they edit the text
+// (Alt+← a word back, ⌘← to the line start), so they never count while typing.
+const EDITING_KEYS = new Set(["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown", "Backspace", "Delete"]);
+export function editsText(text: string): boolean {
+  const c = parseCombo(text);
+  return !!c && EDITING_KEYS.has(c.key);
+}
 
 export function resolveKeymap(overrides?: KeymapOverrides | null): Keymap {
   const map = { ...DEFAULT_KEYMAP };
@@ -361,7 +376,7 @@ export function actionsUsing(map: Keymap, combo: string, mac: boolean, except?: 
 export function actionForEvent(e: KeyLike, map: Keymap, mac: boolean, typing: boolean): ShortcutAction | null {
   for (const action of SHORTCUT_ACTIONS)
     for (const combo of map[action]) {
-      if (typing && needsModifier(combo)) continue;
+      if (typing && (needsModifier(combo) || editsText(combo))) continue;
       if (eventMatches(e, combo, mac)) return action;
     }
   return null;
@@ -405,6 +420,17 @@ export function activeKeymap(): Keymap {
 export function subscribeKeymap(listener: () => void) {
   listeners.add(listener);
   return () => void listeners.delete(listener);
+}
+// The combination to show for an action on this platform: the one the
+// system is used to first (⌘[ on the Mac, Alt+← elsewhere), else the first.
+export function preferredCombo(action: ShortcutAction, mac = isMacPlatform(), map: Keymap = current): string {
+  const combos = map[action];
+  const own = combos.find((text) => {
+    const c = parseCombo(text);
+    return !!c && (mac ? c.mod || c.meta : c.alt && !c.mod && !c.ctrl);
+  });
+  const combo = own ?? combos[0];
+  return combo ? formatCombo(combo, mac) : "";
 }
 // For the global handlers: the action of a key event under the active keymap.
 export function matchAction(e: KeyLike, typing: boolean, mac = isMacPlatform()): ShortcutAction | null {

@@ -19,6 +19,7 @@ import {
   Link,
 } from "@phosphor-icons/react";
 import { parsePageLocation, pageLocationHash } from "@/lib/page-location";
+import { leaveTo } from "@/lib/history-nav";
 import { api, Avatar, Modal } from "./ui";
 import EmojiPicker from "./emoji-picker";
 import { readCommentDrafts, saveCommentDrafts } from "@/lib/comment-drafts";
@@ -202,7 +203,8 @@ export function InlineComments({
       target.threadId
     ) {
       linkedThread.current = null;
-      history.replaceState(null, "", pageLocationHash({ pageId, rowId }));
+      // Back to the entry the thread was opened from, or in place (lib/history-nav.ts).
+      leaveTo(pageLocationHash({ pageId, rowId }), "replace");
     }
   }
   function begin() {
