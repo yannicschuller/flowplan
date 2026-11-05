@@ -291,7 +291,8 @@ test("Copy as Mermaid: a drawn flowchart round-trips", () => {
   assert.ok(back.drafts.some((d) => d.text === "Zeile 1\nZeile 2"));
   assert.equal(boardToMermaid([]), null);
   // Only the selection.
-  assert.doesNotMatch(boardToMermaid(items, new Set(["a"]))!, /-->/);
+  // (No "-->" arrow: a single shape has no connectors.)
+  assert.ok(!boardToMermaid(items, new Set(["a"]))!.includes("-->"));
 });
 
 // ---- prototypes ----

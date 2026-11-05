@@ -34,6 +34,17 @@ test("the article text is taken without navigation, scripts and ads", () => {
   assert.equal(article.words, 9);
 });
 
+test("clipped articles keep only http(s) and mailto links", () => {
+  const article = extractArticle(
+    `<article><p>Links: <a href="javascript:alert(1)">a</a> <a href=" JaVaScRiPt:alert(1)">b</a> <a href="data:text/html,<script>alert(1)</script>">c</a>
+     <a href="vbscript:msgbox(1)">d</a> <a href="mailto:a@example.com">e</a> <a href="/f">f</a></p></article>`,
+    "https://example.com/blog/post",
+  );
+  assert.doesNotMatch(article.html, /javascript|vbscript|data:|script/i);
+  assert.match(article.html, /href="mailto:a@example.com"/);
+  assert.match(article.html, /href="https:\/\/example.com\/f"/);
+});
+
 test("escaped entities in titles are decoded once", () => {
   const article = extractArticle(`<title>Use &amp;lt;b&amp;gt; &amp;amp; more</title><p>Text</p>`, "https://example.com/");
   assert.equal(article.title, "Use &lt;b&gt; &amp; more");
