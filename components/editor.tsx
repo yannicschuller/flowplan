@@ -304,6 +304,10 @@ export default function DocumentEditor({
   // its end closes the keyboard to see what it covered (#120).
   const keyboardOpen = useSoftKeyboard();
   const touchPhone = useTouchPhone();
+  // A record's toolbar docks (and offers the button) only while one writes
+  // in that record (app/globals.css, .row-document … :focus-within); a
+  // document's toolbar is docked anyway.
+  const [focusInside, setFocusInside] = useState(false);
   // The text the page came with shows at once (also a kept copy, see
   // lib/swr-cache.ts); the device's stored changes and the server's newer
   // ones merge into it as they arrive (applying a state twice is harmless).
@@ -2230,7 +2234,18 @@ export default function DocumentEditor({
     editor.chain().focus().insertContentAt(at, { type: "text", text: label, marks: [{ type: "link", attrs: { href } }] }).run();
   };
   return (
-    <div ref={embedded ? undefined : outline.anchorRef} className={`editor-wrapper${embedded ? " embedded" : ""}${!embedded && outline.docked ? " with-outline" : ""}`}>
+    <div
+      ref={embedded ? undefined : outline.anchorRef}
+      className={`editor-wrapper${embedded ? " embedded" : ""}${!embedded && outline.docked ? " with-outline" : ""}`}
+      onFocus={rowId ? () => setFocusInside(true) : undefined}
+      onBlur={
+        rowId
+          ? (event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocusInside(false);
+            }
+          : undefined
+      }
+    >
       <div className={`document-writing-surface${suggesting && editable ? " suggesting" : ""}`}>
         {editable && !embedded && !source && (
           <div
@@ -2504,7 +2519,7 @@ export default function DocumentEditor({
             >
               <Plus />
             </button>
-            {keyboardOpen && touchPhone && (
+            {keyboardOpen && touchPhone && (!rowId || focusInside) && (
               <button
                 type="button"
                 className="editor-hide-keyboard"

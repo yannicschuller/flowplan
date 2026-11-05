@@ -8,7 +8,8 @@ import { useEffect, useState } from "react";
 import { useT } from "./i18n";
 
 const TEXT_INPUT = /^(text|search|email|url|tel|password|number|date|datetime-local|month|time|week)$/;
-function typing() {
+// Whether a text field has the focus (the on-screen keyboard is up for it).
+export function typing() {
   const el = document.activeElement as HTMLElement | null;
   if (!el) return false;
   if (el.isContentEditable || el.tagName === "TEXTAREA") return true;

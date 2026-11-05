@@ -180,3 +180,245 @@ test("app: the toolbar sits above a keyboard that resizes the web view", async (
   await expect(page.locator(".mobile-tab-bar")).toBeVisible();
   await expect(editor).toHaveText("Hello World");
 });
+
+// Every other text field (#120): titles, tags, properties, the new-page
+// dialog … get a round "Tastatur ausblenden" at the right edge right above
+// the keyboard (components/hide-keyboard-button.tsx); a record's content
+// docks its formatting toolbar above the keyboard like a document.
+const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
+async function command(page: Page, data: Record<string, unknown>) {
+  const response = await page.request.post("/api/command", { headers: { origin }, data });
+  expect(response.ok(), await response.text()).toBe(true);
+  return response.json();
+}
+async function dismissWelcome(page: Page) {
+  const welcome = page.getByRole("dialog", { name: "Willkommen bei Flowplan" });
+  await page.waitForTimeout(300);
+  if (await welcome.isVisible()) {
+    await page.keyboard.press("Escape");
+    await expect(welcome).toBeHidden();
+  }
+}
+// A database with one record, opened at its page.
+async function openDatabase(page: Page) {
+  await page.request.post("/api/auth/demo", { headers: { origin } });
+  const boot = await (await page.request.get("/api/bootstrap")).json();
+  const db = await command(page, {
+    action: "page.create",
+    workspaceId: boot.workspace.id,
+    spaceId: boot.spaces[0].id,
+    title: `Aufgaben ${Date.now()}`,
+    kind: "database",
+  });
+  const read = async () => (await page.request.get(`/api/pages/${db.id}`)).json();
+  await command(page, {
+    action: "database.update",
+    pageId: db.id,
+    version: (await read()).database.version,
+    fields: [
+      { id: "title", name: "Name", type: "text" },
+      { id: "note", name: "Notiz", type: "text" },
+    ],
+    views: [{ id: "table", name: "Tabelle", type: "table", filters: [], sorts: [] }],
+  });
+  const row = await command(page, { action: "row.create", pageId: db.id, cells: { title: "Steuer", note: "Belege" } });
+  await page.goto(`/#page=${db.id}`);
+  await expect(page.getByLabel("Seitentitel", { exact: true })).toBeVisible();
+  await dismissWelcome(page);
+  return { db, row };
+}
+const fab = (page: Page) => page.locator(".hide-keyboard-fab");
+const activeIs = (page: Page, selector: string) =>
+  page.evaluate((s) => !!document.activeElement?.closest(s), selector);
+// The floating button sits at the right edge, its lower edge a few pixels
+// above the keyboard.
+async function expectFabAboveKeyboard(page: Page, visibleBottom: number) {
+  await expect(fab(page)).toBeVisible();
+  await expect(fab(page)).toHaveAttribute("aria-label", "Tastatur ausblenden");
+  const box = (await fab(page).boundingBox())!;
+  expect(box.width).toBeGreaterThanOrEqual(44);
+  expect(box.height).toBeGreaterThanOrEqual(44);
+  expect(box.x + box.width).toBeLessThanOrEqual(390);
+  expect(390 - (box.x + box.width)).toBeLessThan(16);
+  expect(box.y + box.height).toBeLessThanOrEqual(visibleBottom);
+  expect(visibleBottom - (box.y + box.height)).toBeLessThan(16);
+}
+
+test("iOS: a record's content docks its toolbar with the hide button above the keyboard", async ({ page }, info) => {
+  test.skip(info.project.name !== "mobile", "The keyboard of a touch phone.");
+  test.setTimeout(120_000);
+  await fakeVisualViewport(page);
+  const { db, row } = await openDatabase(page);
+  await page.evaluate(([p, r]) => (location.hash = `page=${p}&row=${r}`), [db.id, row.id]);
+  const dialog = page.getByRole("dialog", { name: "Eintrag", exact: true });
+  const editor = dialog.getByLabel("Dokumentinhalt", { exact: true });
+  await expect(editor).toBeVisible();
+  const toolbar = dialog.getByRole("toolbar", { name: "Textformatierung" });
+  const hide = dialog.getByRole("button", { name: "Tastatur ausblenden" });
+  // In place and without the button while nobody writes in the record.
+  await expect(hide).toHaveCount(0);
+  await editor.scrollIntoViewIfNeeded();
+  await editor.tap();
+  await page.keyboard.type("Im Eintrag");
+  await keyboard(page, KEYBOARD);
+  const visibleBottom = 844 - KEYBOARD;
+  await expect.poll(() => activeIs(page, ".row-document .ProseMirror")).toBe(true);
+  await expect(hide).toBeVisible();
+  await expect.poll(async () => Math.round((await toolbar.boundingBox())!.y + (await toolbar.boundingBox())!.height)).toBe(visibleBottom);
+  const bar = (await toolbar.boundingBox())!;
+  expect(bar.x).toBeLessThanOrEqual(1);
+  expect(bar.width).toBeGreaterThanOrEqual(388);
+  const button = (await hide.boundingBox())!;
+  expect(button.x + button.width).toBeLessThanOrEqual(390);
+  expect(button.y + button.height).toBeLessThanOrEqual(visibleBottom);
+  // One button only: the floating one stays away.
+  await page.waitForTimeout(500);
+  await expect(fab(page)).toHaveCount(0);
+  // Room below the text, so its end scrolls above the docked toolbar.
+  expect(await dialog.locator(".row-document .editor-wrapper").evaluate((el) => parseFloat(getComputedStyle(el).paddingBottom))).toBeGreaterThanOrEqual(56);
+  if (shots) {
+    await drawKeyboard(page, visibleBottom);
+    await page.screenshot({ path: `${shots}/record-content-toolbar.png` });
+    await page.evaluate(() => document.getElementById("test-keyboard")?.remove());
+  }
+
+  await hide.tap();
+  await expect.poll(() => activeIs(page, ".ProseMirror")).toBe(false);
+  await keyboard(page, 0);
+  await expect(hide).toHaveCount(0);
+  // The dialog stays open, the toolbar goes back into place, the text stays.
+  await expect(dialog).toBeVisible();
+  expect(await toolbar.evaluate((el) => getComputedStyle(el).position)).toBe("static");
+  await expect(editor).toHaveText("Im Eintrag");
+});
+
+test("iOS: titles and other fields get a floating hide button above the keyboard", async ({ page }, info) => {
+  test.skip(info.project.name !== "mobile", "The keyboard of a touch phone.");
+  test.setTimeout(120_000);
+  await fakeVisualViewport(page);
+  const { db, row } = await openDatabase(page);
+  const visibleBottom = 844 - KEYBOARD;
+
+  // The database's title.
+  const title = page.getByLabel("Seitentitel", { exact: true });
+  const before = await title.inputValue();
+  await expect(fab(page)).toHaveCount(0);
+  await title.tap();
+  await expect.poll(() => activeIs(page, "input.page-title")).toBe(true);
+  await keyboard(page, KEYBOARD);
+  await expectFabAboveKeyboard(page, visibleBottom);
+  // Not over the title it ends.
+  const field = (await title.boundingBox())!;
+  const box = (await fab(page).boundingBox())!;
+  expect(box.y).toBeGreaterThan(field.y + field.height);
+  if (shots) {
+    await drawKeyboard(page, visibleBottom);
+    await page.screenshot({ path: `${shots}/page-title-fab.png` });
+    await page.evaluate(() => document.getElementById("test-keyboard")?.remove());
+  }
+  await fab(page).tap();
+  await expect.poll(() => activeIs(page, "input.page-title")).toBe(false);
+  await keyboard(page, 0);
+  await expect(fab(page)).toHaveCount(0);
+  await expect(title).toHaveValue(before);
+
+  // A record's title and a property, in the record dialog: the button sits
+  // above the dialog, and tapping it does not close the dialog.
+  await page.evaluate(([p, r]) => (location.hash = `page=${p}&row=${r}`), [db.id, row.id]);
+  const dialog = page.getByRole("dialog", { name: "Eintrag", exact: true });
+  const recordTitle = dialog.getByLabel("Titel des Eintrags", { exact: true });
+  await expect(recordTitle).toBeVisible();
+  await recordTitle.tap();
+  await expect.poll(() => activeIs(page, ".row-title-input")).toBe(true);
+  await keyboard(page, KEYBOARD);
+  await expectFabAboveKeyboard(page, visibleBottom);
+  // The record's content toolbar keeps its place and its button away.
+  await expect(dialog.getByRole("button", { name: "Tastatur ausblenden" })).toHaveCount(0);
+  if (shots) {
+    await drawKeyboard(page, visibleBottom);
+    await page.screenshot({ path: `${shots}/record-title-fab.png` });
+    await page.evaluate(() => document.getElementById("test-keyboard")?.remove());
+  }
+  await fab(page).tap();
+  await expect.poll(() => activeIs(page, ".row-title-input")).toBe(false);
+  await expect(dialog).toBeVisible();
+  await expect(recordTitle).toHaveValue("Steuer");
+  await keyboard(page, 0);
+
+  const note = dialog.getByLabel("Notiz", { exact: true });
+  await note.tap();
+  await keyboard(page, KEYBOARD);
+  await expectFabAboveKeyboard(page, visibleBottom);
+  await fab(page).tap();
+  await expect.poll(() => page.evaluate(() => document.activeElement?.tagName)).not.toBe("INPUT");
+  await expect(dialog).toBeVisible();
+  await expect(note).toHaveValue("Belege");
+  await keyboard(page, 0);
+  await expect(fab(page)).toHaveCount(0);
+});
+
+test("iOS: the new-page dialog's title over a document gets the floating button, not the toolbar's", async ({ page }, info) => {
+  test.skip(info.project.name !== "mobile", "The keyboard of a touch phone.");
+  test.setTimeout(120_000);
+  await fakeVisualViewport(page);
+  await openNewPage(page);
+  const visibleBottom = 844 - KEYBOARD;
+  await page.locator(".mobile-tab-bar").getByRole("button", { name: "Neue Seite" }).tap();
+  const dialog = page.getByRole("dialog", { name: "Neue Seite", exact: true });
+  const name = dialog.getByLabel("Name", { exact: true });
+  await expect(name).toBeVisible();
+  await name.tap();
+  await page.keyboard.type("Reiseplan");
+  await keyboard(page, KEYBOARD);
+  // The document's docked toolbar lies under the dialog: its button does not
+  // count, the floating one shows.
+  await expectFabAboveKeyboard(page, visibleBottom);
+  await fab(page).tap();
+  await expect.poll(() => activeIs(page, ".modal input")).toBe(false);
+  await expect(dialog).toBeVisible();
+  await expect(name).toHaveValue("Reiseplan");
+  await keyboard(page, 0);
+  await expect(fab(page)).toHaveCount(0);
+});
+
+test("iOS: in a document only the toolbar's hide button shows", async ({ page }, info) => {
+  test.skip(info.project.name !== "mobile", "The keyboard of a touch phone.");
+  test.setTimeout(120_000);
+  await fakeVisualViewport(page);
+  const editor = await openNewPage(page);
+  const hide = page.getByRole("button", { name: "Tastatur ausblenden" });
+  await editor.tap();
+  await page.keyboard.type("Nur eine");
+  await keyboard(page, KEYBOARD);
+  await expect(hide).toHaveCount(1);
+  await expect(page.locator(".page-layout .editor-toolbar .editor-hide-keyboard")).toBeVisible();
+  await page.waitForTimeout(500);
+  await expect(fab(page)).toHaveCount(0);
+  // The page's title: the docked toolbar is there with its button already.
+  await page.getByLabel("Seitentitel", { exact: true }).tap();
+  await expect.poll(() => activeIs(page, "input.page-title")).toBe(true);
+  await page.waitForTimeout(500);
+  await expect(hide).toHaveCount(1);
+  await expect(fab(page)).toHaveCount(0);
+  await hide.tap();
+  await expect.poll(() => activeIs(page, "input.page-title")).toBe(false);
+  await keyboard(page, 0);
+  // No field, no keyboard: nothing.
+  await expect(hide).toHaveCount(0);
+  await expect(fab(page)).toHaveCount(0);
+});
+
+test("there is no floating hide-keyboard button on a desktop", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "Desktop layout.");
+  test.setTimeout(120_000);
+  await fakeVisualViewport(page);
+  await openDatabase(page);
+  const title = page.getByLabel("Seitentitel", { exact: true });
+  await title.click();
+  await expect.poll(() => activeIs(page, "input.page-title")).toBe(true);
+  // Even a viewport that shrinks (a narrow window, a tablet's keyboard).
+  await keyboard(page, KEYBOARD);
+  await page.waitForTimeout(600);
+  await expect(fab(page)).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Tastatur ausblenden" })).toHaveCount(0);
+});
