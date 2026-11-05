@@ -1,7 +1,8 @@
 "use client";
 import { useT } from "./i18n";
 import { Select } from "./select";
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, useEffect, lazy, Suspense, type ReactNode } from "react";
+import { InlineText } from "./inline-text";
 import { ratingMax } from "@/lib/field-format";
 import DateInput from "./date-input";
 import { cellText } from "@/lib/database";
@@ -19,6 +20,9 @@ import { isLinkField } from "@/lib/cell-links";
 import { LinkInput } from "./link-cell";
 import { TagCellInput } from "./tag-cell-input";
 export type CellFile = { url: string; name: string; mime: string };
+// The editor of formatted text (#126) loads with the first text cell that
+// is edited (TipTap is shared with the comment composer's chunk).
+const RichTextEditor = lazy(() => import("./rich-text-editor"));
 // The label around a CellInput – or, for a date, a group that looks the same:
 // a <label> passes taps on the date's buttons ("Datum entfernen", the time
 // switch) to the date input in WebKit, which opens the picker instead.
@@ -41,7 +45,16 @@ export function CellInput({
   links = false,
   editing,
   onCancel,
+  formatted,
+  multiline = false,
 }: {
+  // A formatted text property (#126, lib/inline-markdown.ts) edited with
+  // its formatting. Left out for the title, page properties and forms
+  // (answers are plain text; the server escapes them).
+  formatted?: boolean;
+  // Rich text: Enter makes a line break (the record) instead of ending the
+  // edit (a table cell).
+  multiline?: boolean;
   // Link properties (url, email, phone) as links with a pencil to edit
   // (records, list editors, table cells); forms keep the plain input.
   links?: boolean;
@@ -253,6 +266,22 @@ export function CellInput({
       </div>
     );
   }
+  if (f.type === "text" && formatted)
+    return (
+      <Suspense fallback={<span className="rich-text-input loading"><InlineText value={value} links={false} /></span>}>
+        <RichTextEditor
+          value={typeof value === "string" ? value : cellText(value)}
+          label={f.name}
+          placeholder={placeholder ?? t("Leer", "Empty")}
+          disabled={disabled}
+          commit={commit}
+          multiline={multiline}
+          autoFocus={!!editing}
+          onChange={onChange}
+          onCancel={onCancel}
+        />
+      </Suspense>
+    );
   if (links && isLinkField(f.type))
     return (
       <LinkInput

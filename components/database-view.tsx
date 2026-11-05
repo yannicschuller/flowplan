@@ -182,6 +182,8 @@ import {
   ArrowRight,
 } from "@phosphor-icons/react";
 import Papa from "papaparse";
+import { escapeInline, isFormattedText, toPlain } from "@/lib/inline-markdown";
+import { InlineText } from "./inline-text";
 import { Modal, viewIcons, download, Avatar, api, PageIcon, SHEET_MEDIA } from "./ui";
 import { CoverPicker } from "./cover-picker";
 import { fileLabel, fileUrls } from "@/lib/file-cells";
@@ -1882,8 +1884,14 @@ export default function DatabaseView({
   function chipClass(f: Field | undefined, value: string) {
     return f && isTagField(f) ? `tag tag-from-tags page-tag-${tagByName(tagOptions.tags, value).color}` : `tag tag-${tagColor(value)}`;
   }
-  function display(r: Row, f: Field) {
+  // `place`: a table cell (links open, line breaks as spaces), a card or
+  // list entry (a button: no links inside, line breaks as spaces) or a
+  // block (the feed: line breaks shown).
+  function display(r: Row, f: Field, place: "cell" | "button" | "block" = "cell") {
     const v = r.cells[f.id];
+    // Formatted text (#126).
+    if (isFormattedText(f, fields))
+      return cellText(v).trim() ? <InlineText value={cellText(v)} links={place !== "button"} oneLine={place !== "block"} /> : <span className="muted">—</span>;
     if (f.type === "files") {
       const names = new Map((data.files || []).map((x) => [x.url, x.name]));
       const urls = fileUrls(v);
@@ -2062,7 +2070,7 @@ export default function DatabaseView({
               // The card's date sits in the footer; not twice.
               .filter((f) => r.cells[f.id] && f.id !== dateField?.id)
               .map((f) => (
-                <span key={f.id}>{display(r, f)}</span>
+                <span key={f.id}>{display(r, f, "button")}</span>
               ))}
           </div>
           <span className="card-bottom">
@@ -2791,6 +2799,7 @@ export default function DatabaseView({
                   files={data.files}
                   links
                   editing
+                  formatted={isFormattedText(f, fields)}
                   onCancel={() => setEditingCell(null)}
                 />
               </span>
@@ -2873,7 +2882,7 @@ export default function DatabaseView({
           </span>
           <span>
             {visibleFields.slice(1, 4).map((f) => (
-              <span key={f.id}>{display(r, f)}</span>
+              <span key={f.id}>{display(r, f, "button")}</span>
             ))}
           </span>
         </button>
@@ -3052,7 +3061,8 @@ export default function DatabaseView({
                 Papa.unparse({
                   fields: fields.map((f) => f.name),
                   data: shown.map((r) =>
-                    fields.map((f) => cellText(r.cells[f.id])),
+                    // Formatted text (#126) as plain text.
+                    fields.map((f) => (isFormattedText(f, fields) ? toPlain(cellText(r.cells[f.id])) : cellText(r.cells[f.id]))),
                   ),
                 }, { escapeFormulae: CSV_FORMULA }),
                 "text/csv",
@@ -3799,7 +3809,7 @@ export default function DatabaseView({
           view={view}
           members={members}
           comments={data.comments}
-          display={display}
+          display={(row, field) => display(row, field, "block")}
           onOpen={setRowId}
           orderHandle={(r) => (editable ? orderHandle(r) : null)}
           query={query}
@@ -3809,7 +3819,7 @@ export default function DatabaseView({
               ? (r) => ({
                   property: (f) =>
                     computedTypes.includes(f.type) || fieldLocked(r, f) ? (
-                      <span title={lockedTitle(f, r)}>{display(r, f)}</span>
+                      <span title={lockedTitle(f, r)}>{display(r, f, "block")}</span>
                     ) : (
                       <CellInput
                         field={f}
@@ -3820,6 +3830,8 @@ export default function DatabaseView({
                         upload={uploadFile}
                         files={data.files}
                         links
+                        formatted={isFormattedText(f, fields)}
+                        multiline
                       />
                     ),
                   document: (
@@ -4021,7 +4033,10 @@ export default function DatabaseView({
                             .split(",")
                             .map((s) => s.trim())
                             .filter(Boolean)
-                        : row[f.name] || "",
+                        : // A CSV is plain text: formatted text (#126) keeps "*" and "_" as written.
+                          isFormattedText(f, fields)
+                          ? escapeInline(row[f.name] || "")
+                          : row[f.name] || "",
                 ]),
             ),
           );
@@ -4517,6 +4532,8 @@ export default function DatabaseView({
                   onChange={setBulkValue}
                   upload={editable ? uploadFile : undefined}
                   files={data.files}
+                  formatted={isFormattedText(fields.find((f) => f.id === bulkField), fields)}
+                  commit="change"
                 />
               </FieldLabel>
             )}
@@ -5712,6 +5729,8 @@ export default function DatabaseView({
                             related={related}
                             disabled={!selectedEditable || fieldLocked(selected, f)}
                             links
+                            formatted={isFormattedText(f, fields)}
+                            multiline
                             onChange={(v) => updateCell(selected, f, v)}
                             upload={selectedEditable && !fieldLocked(selected, f) ? uploadFile : undefined}
                             files={data.files}

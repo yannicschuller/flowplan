@@ -8,13 +8,14 @@ import { flushRelationChanges } from "./relation-sync";
 import type { Identity } from "./types";
 import { notificationDefaults, notificationOn } from "./notification-kinds";
 import { emojiPresentation } from "./emoji-presentation";
+import { migrateFormattedText } from "./formatted-text";
 const globalDb = globalThis as unknown as {
   flowplanDb?: DatabaseSync;
   flowplanSchema?: number;
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 89) return;
+  if (globalDb.flowplanSchema === 90) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -1133,7 +1134,11 @@ function migrate(d: DatabaseSync) {
     CREATE INDEX IF NOT EXISTS snapshots_author ON snapshots(created_by,created_at);
     CREATE INDEX IF NOT EXISTS audit_actor ON audit(actor_id,created_at);
     CREATE INDEX IF NOT EXISTS page_edits_user ON page_edits(user_id,at);`);
-  globalDb.flowplanSchema = 89;
+  // Schema 90 – formatted text properties (#126, lib/formatted-text.ts):
+  // the existing values of text properties (not titles) are escaped once
+  // so they show as before; data_migrations remembers one-time steps.
+  migrateFormattedText(d);
+  globalDb.flowplanSchema = 90;
 }
 // Schema 88 – sign-in identities of an account (#101, lib/identities.ts):
 // every OpenID Connect identity (issuer and subject) an account signs in

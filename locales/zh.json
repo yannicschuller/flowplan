@@ -5230,6 +5230,7 @@
   "Only for signed-in members.": "仅限已登录的会员使用。",
   "Only for you": "仅限你",
   "only here: {0}": "仅此处有：{0}",
+  "Only http, https and mailto links.": "仅支持 http、https 和 mailto 链接。",
   "Only https addresses are allowed.": "只允许使用 https 地址。",
   "Only https addresses without credentials are allowed.": "只允许没有凭据的 HTTPS 地址。",
   "Only https or webcal addresses.": "只能使用 https 或 webcal 地址。",

@@ -10,6 +10,7 @@ import { formatDuration } from "./durations";
 import { LOCALE_TAG } from "./locale-tag";
 import { percentAggregate } from "./rollups";
 import type { Field, Row } from "./types";
+import { isFormattedText, toPlain } from "./inline-markdown";
 
 export type ClipboardContext = {
   // People by id (person, created_by and updated_by).
@@ -34,7 +35,9 @@ const NON_TEXT: Field["type"][] = ["number", "date", "checkbox", "created_at", "
 const list = (value: unknown) => (Array.isArray(value) ? value : value === null || value === undefined || value === "" ? [] : [value]);
 
 // One cell as text, as the table shows it.
-export function clipboardCell(field: Field, value: unknown, ctx: ClipboardContext): string {
+// `formatted`: a formatted text property (#126) – copied as plain text.
+export function clipboardCell(field: Field, value: unknown, ctx: ClipboardContext, formatted = false): string {
+  if (formatted) return toPlain(cellText(value));
   switch (field.type) {
     case "checkbox":
       return value ? ctx.yes : ctx.no;
@@ -99,7 +102,7 @@ export type ClipboardTable = { header: string[]; rows: string[][]; numeric: bool
 export function clipboardTable(fields: Field[], rows: Pick<Row, "cells">[], ctx: ClipboardContext): ClipboardTable {
   return {
     header: fields.map((f) => f.name),
-    rows: rows.map((r) => fields.map((f) => clipboardCell(f, r.cells[f.id], ctx))),
+    rows: rows.map((r) => fields.map((f) => clipboardCell(f, r.cells[f.id], ctx, isFormattedText(f, fields)))),
     numeric: rows.map((r) =>
       fields.map((f) => NON_TEXT.includes(f.type) || (f.type === "formula" && typeof r.cells[f.id] === "number")),
     ),

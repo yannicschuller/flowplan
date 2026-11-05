@@ -1,4 +1,5 @@
 "use client";
+import { isFormattedText } from "@/lib/inline-markdown";
 import { serverMessage } from "@/lib/i18n-errors";
 import { useT } from "./i18n";
 import { useRef, useState } from "react";
@@ -179,6 +180,8 @@ export function SharedInteractions({
                   }}
                   disabled={busy}
                   commit="change"
+                  formatted={isFormattedText(f, data.fields)}
+                  multiline
                   onChange={(value) => setCells({ ...cells, [f.id]: value })}
                 />
               </FieldLabel>

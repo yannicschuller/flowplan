@@ -1,3 +1,4 @@
+import { escapeInline } from "./inline-markdown";
 import { mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { posix, resolve } from "node:path";
 import Papa from "papaparse";
@@ -141,6 +142,9 @@ function cellValue(field: Field, raw: string) {
   if (field.type === "number") return Number(value.replace(",", "."));
   if (field.type === "checkbox") return /^(yes|ja|true)$/i.test(value);
   if (field.type === "date") return importDate(value);
+  // A CSV is plain text: formatted text properties (#126, every text
+  // property but the title) keep "*" and "_" as written.
+  if (field.type === "text" && field.id !== "title") return escapeInline(value.slice(0, 10000));
   return value.slice(0, 10000);
 }
 // Row pages repeat the properties as "Name: value" lines below the title.

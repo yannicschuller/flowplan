@@ -3,6 +3,7 @@
 // exactly their rights: reads go through requirePage, the journal lock and
 // record access; writes go through command() like an edit in the browser
 // (versions, notifications, webhooks). Read tokens only get read tools.
+import { isFormattedText } from "./inline-markdown";
 import { aliasList } from "./aliases";
 import * as Y from "yjs";
 import { z } from "zod";
@@ -160,10 +161,12 @@ function databaseOf(user: Identity, databaseId: string) {
   // Properties hidden from this person are left out (lib/field-access.ts).
   return { page, schema: readableDatabase(user, page, database(page.id)) };
 }
-const fieldInfo = (f: Field) => ({
+const fieldInfo = (f: Field, _: number, fields: Field[]) => ({
   id: f.id,
   name: f.name,
   type: f.type,
+  // Formatted text (#126): the value is inline Markdown.
+  ...(isFormattedText(f, fields) ? { markdown: true } : {}),
   ...(f.options?.length ? { options: f.options } : {}),
   // The workspace's tags are the options; a new name creates a tag (#79).
   ...(f.tagOptions ? { tagOptions: true } : {}),
@@ -585,7 +588,7 @@ const tools: Tool[] = [
     name: "create_record",
     title: "Create a database record",
     description:
-      "Adds a record to a database. Properties by name (or ID): text, number, date (YYYY-MM-DD), select option, list of options (for a property with tagOptions: tag names, a new name creates the tag), true/false, person (e-mail or name), relation (record IDs).",
+      "Adds a record to a database. Properties by name (or ID): text, number, date (YYYY-MM-DD), select option, list of options (for a property with tagOptions: tag names, a new name creates the tag), true/false, person (e-mail or name), relation (record IDs). Text properties with `markdown: true` take inline Markdown (**bold**, _italic_, ~~strike~~, `code`, [label](https://…), \\n for a line break; a backslash keeps * _ ~ ` [ ] \\ literal); the title is plain text.",
     input: z.object({
       databaseId: id("Page ID of the database"),
       properties: z.record(z.string().max(200), z.unknown()).describe("e.g. {\"Name\": \"Call Anna\", \"Status\": \"Open\"}"),
@@ -597,7 +600,7 @@ const tools: Tool[] = [
     name: "update_record",
     title: "Update record properties",
     description:
-      "Changes properties of an existing record; properties not named stay as they are. Pass the version from get_record or query_database to avoid overwriting a newer change.",
+      "Changes properties of an existing record; properties not named stay as they are. Text properties with `markdown: true` take inline Markdown as in create_record. Pass the version from get_record or query_database to avoid overwriting a newer change.",
     input: z.object({
       databaseId: id("Page ID of the database"),
       recordId: id("Record ID"),

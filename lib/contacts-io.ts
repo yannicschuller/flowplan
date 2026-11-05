@@ -2,6 +2,7 @@
 // mentions (issue #64). Permissions as everywhere: reading needs read access
 // to the database and the record, hidden properties stay out (field-level
 // permissions); importing needs edit rights and writable properties.
+import { toPlain } from "./inline-markdown";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { all, audit, id, one, run, transaction } from "./db";
@@ -153,7 +154,8 @@ export function contactCard(user: Identity, pageId: string, rowId: string) {
   if (!isContactsDatabase(page.id)) return null;
   const fields = visibleFields(user, page, fieldsOf(page.id));
   const cells = JSON.parse(row.cells as unknown as string) as Record<string, unknown>;
-  const value = (key: string) => (fields.some((f) => f.id === key) ? cellText(cells[key]).trim() : "");
+  // Formatted text (#126) as plain text.
+  const value = (key: string) => (fields.some((f) => f.id === key) ? toPlain(cellText(cells[key])).trim() : "");
   const link = one<{ missing_at: number | null }>("SELECT missing_at FROM contact_ldap_links WHERE row_id=?", row.id);
   return {
     pageId: page.id,

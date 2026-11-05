@@ -96,7 +96,11 @@ export const tokenRefusedActionPrefixes = ["admin.", "token.", "ai."] as const;
 type ActionDoc = { action: string; summary: string; description?: string; input: z.ZodObject; result?: z.ZodType };
 const okResult = z.object({ ok: z.literal(true) });
 const idResult = z.object({ id: uuid });
-const cells = z.record(z.string(), z.unknown()).describe("Property values by property ID (the first property is the title).");
+const cells = z
+  .record(z.string(), z.unknown())
+  .describe(
+    "Property values by property ID (the first property is the title). Text properties other than the title hold inline Markdown (#126): **bold**, _italic_ (or *italic*), ~~strike~~, `code`, [label](https://…) links (http, https and mailto only) and \\n for a line break – no headings, lists or other blocks. A backslash keeps * _ ~ ` [ ] \\ literal, so plain text is sent escaped. Records are read the same way; the title is plain text.",
+  );
 // Actions with their own schema: the ones integrations use. Everything else
 // is accepted as `{ action, ... }` (CommandOther) and checked by the server.
 export const commandActions: ActionDoc[] = [

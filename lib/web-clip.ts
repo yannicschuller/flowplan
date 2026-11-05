@@ -1,6 +1,7 @@
 // Web clipper: the readable text of an article (loaded server-side through
 // the SSRF-safe fetch), a bookmarks database per space, and importing the
 // bookmarks file browsers export (Netscape format).
+import { escapeInline } from "./inline-markdown";
 import sanitize from "sanitize-html";
 import { z } from "zod";
 import { all, id, one, run } from "./db";
@@ -158,7 +159,8 @@ export function addBookmarks(
         bm_url: item.url.slice(0, 2000),
         ...(host ? { bm_site: host } : {}),
         ...(item.folder ? { bm_folder: item.folder.slice(0, 100) } : {}),
-        ...(item.note ? { bm_note: item.note.slice(0, 2000) } : {}),
+        // The note is plain text; the property is formatted text (#126).
+        ...(item.note ? { bm_note: escapeInline(item.note.slice(0, 2000)) } : {}),
         bm_added: item.added || today,
         bm_read: false,
       }),

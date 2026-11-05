@@ -3,6 +3,7 @@
 // points, parents as subtasks, descriptions as the record's content,
 // comments as comments and attachments as links (the files themselves stay
 // at Jira or Trello, which need a sign-in to download them).
+import { escapeFormattedCells } from "./formatted-text";
 import Papa from "papaparse";
 import { all, id, one, run, transaction } from "./db";
 import { HttpError } from "./auth";
@@ -244,7 +245,9 @@ export function importTracker(user: Identity, workspaceId: string, spaceId: stri
       const rid = id();
       if (r.ref) ids.set(r.ref, rid);
       if (r.key) ids.set(r.key, rid);
-      const cells = Object.fromEntries(Object.entries(r.cells).filter(([k]) => draft.fields.some((f) => f.id === k)));
+      // Jira and Trello values are plain text; formatted text properties
+      // (#126) keep "*" and "_" as written.
+      const cells = escapeFormattedCells(Object.fromEntries(Object.entries(r.cells).filter(([k]) => draft.fields.some((f) => f.id === k))), draft.fields).cells;
       run(
         "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content) VALUES(?,?,?,?,?,?,?)",
         rid,

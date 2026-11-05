@@ -23,6 +23,7 @@
 //   so renamed or moved entries keep their record.
 // - Every search is bounded (entries, buffered bytes, operation timeout of
 //   the client) and runs outside the database transaction.
+import { escapeFormattedCells } from "./formatted-text";
 import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import { resolve } from "node:path";
@@ -264,7 +265,8 @@ export function entryCells(entry: LdapEntry, mapping: Mapping, fields: Field[]) 
   }
   if (has.has(titleField) && !cells[titleField])
     cells[titleField] = [first(entry, "givenName"), first(entry, "sn")].filter(Boolean).join(" ") || first(entry, "cn") || firstRdnValue(entry.dn) || "";
-  return cells;
+  // Directory values are plain text (formatted text properties, #126).
+  return escapeFormattedCells(cells, fields).cells as Record<string, string>;
 }
 // The properties the directory keeps for a database (read-only there).
 export function syncedFieldIds(mapping: Mapping, fields: Field[]) {

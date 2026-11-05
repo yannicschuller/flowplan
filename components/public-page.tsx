@@ -28,6 +28,8 @@ import {
   groupingField,
 } from "@/lib/database-groups";
 import { displayText } from "@/lib/field-format";
+import { isFormattedText } from "@/lib/inline-markdown";
+import { InlineText } from "./inline-text";
 import { PublicationCopy } from "./publication-copy";
 import { HttpError } from "@/lib/auth";
 import type { Field, Row, View } from "@/lib/types";
@@ -45,6 +47,15 @@ import {
   publicLayout,
   publicMonth,
 } from "./public-views";
+
+// A property value on a published page; formatted text (#126) with its
+// formatting (no links inside a card that is itself a link; line breaks
+// only in the record's properties).
+function publicValue(f: Field, value: unknown, fields: Field[], options: { links: boolean; block?: boolean }) {
+  if (!isFormattedText(f, fields)) return displayText(f, value, "UTC");
+  if (typeof value !== "string" || !value.trim()) return "";
+  return <InlineText value={value} links={options.links} oneLine={!options.block} />;
+}
 
 type PublishedPageProps = {
   token: string;
@@ -349,7 +360,7 @@ async function renderPublishedPage({
                     .slice(0, 4)
                     .map((f) => (
                       <span key={f.id}>
-                        {f.name}: {displayText(f, r.cells[f.id], "UTC")}
+                        {f.name}: {publicValue(f, r.cells[f.id], d.fields, { links: true })}
                       </span>
                     ))}
                 </p>
@@ -408,7 +419,7 @@ async function renderPublishedPage({
                     .slice(0, 3)
                     .map((f) => (
                       <span key={f.id}>
-                        {displayText(f, r.cells[f.id], "UTC")}
+                        {publicValue(f, r.cells[f.id], d.fields, { links: false })}
                       </span>
                     ))}
                 </span>
@@ -431,7 +442,7 @@ async function renderPublishedPage({
                   .slice(0, 3)
                   .map((f) => (
                     <span key={f.id}>
-                      {displayText(f, r.cells[f.id], "UTC")}
+                      {publicValue(f, r.cells[f.id], d.fields, { links: false })}
                     </span>
                   ))}
               </span>
@@ -458,7 +469,7 @@ async function renderPublishedPage({
                           {cellText(r.cells[f.id]) || t("Ohne Titel", "Untitled")}
                         </a>
                       ) : (
-                        displayText(f, r.cells[f.id], "UTC")
+                        publicValue(f, r.cells[f.id], d.fields, { links: true })
                       )}
                     </td>
                   ))}
@@ -490,7 +501,7 @@ async function renderPublishedPage({
                           pageId={page.id}
                         />
                       ) : (
-                        displayText(f, record.cells[f.id], "UTC") || "—"
+                        publicValue(f, record.cells[f.id], d.fields, { links: true, block: true }) || "—"
                       )}
                     </dd>
                   </div>
@@ -586,7 +597,7 @@ async function PublicBoard({
                   .slice(0, 3)
                   .map((f) => (
                     <span key={f.id}>
-                      {displayText(f, r.cells[f.id], "UTC")}
+                      {publicValue(f, r.cells[f.id], fields, { links: false })}
                     </span>
                   ))}
               </span>

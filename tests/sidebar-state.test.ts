@@ -41,7 +41,7 @@ const leer = page("Leer");
 
 test("schema 87: the table exists", () => {
   assert.ok(one("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sidebar_state'"));
-  assert.equal((globalThis as { flowplanSchema?: number }).flowplanSchema, 89);
+  assert.equal((globalThis as { flowplanSchema?: number }).flowplanSchema, 90);
 });
 
 test("nothing stored yet: null in the bootstrap", () => {

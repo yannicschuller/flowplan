@@ -2,6 +2,7 @@ import { rowOrderRanks } from "./row-order";
 import { aggregateRollup } from "./rollups";
 import type { Field, Row, View } from "./types";
 import { cellText } from "./cell-text";
+import { isFormattedText, toPlain } from "./inline-markdown";
 export { cellText } from "./cell-text";
 export { matches } from "./database-filters";
 import { effectiveFilterGroup, matchesFilterGroup } from "./database-filters";
@@ -122,7 +123,8 @@ export function computedCellsDetailed(
                   start: 0,
                   end: 0,
                 });
-              return v;
+              // Formatted text (#126) reads as plain text in formulas.
+              return isFormattedText(prop, properties) && typeof v === "string" ? toPlain(v) : v;
             },
           });
         }
@@ -156,6 +158,9 @@ export function queryRows(
 ) {
   const ranks = rowOrderRanks(view.rowOrder),
     filters = effectiveFilterGroup(view);
+  // Search and sorting read formatted text (#126) as plain text.
+  const formatted = new Set(fields.filter((f) => isFormattedText(f, fields)).map((f) => f.id));
+  const textOf = (id: string, v: unknown) => (formatted.has(id) ? toPlain(cellText(v)) : cellText(v));
   return rows
     .map((r) => ({
       ...r,
@@ -166,8 +171,8 @@ export function queryRows(
         matchesFilterGroup(r.cells, filters, fields, now) &&
         (!query ||
           r.preview?.text.toLowerCase().includes(query.toLowerCase()) ||
-          Object.values(r.cells).some((v) =>
-            cellText(v).toLowerCase().includes(query.toLowerCase()),
+          Object.entries(r.cells).some(([id, v]) =>
+            textOf(id, v).toLowerCase().includes(query.toLowerCase()),
           ) ||
           fields.some(
             (f) =>
@@ -189,7 +194,7 @@ export function queryRows(
         const n =
           typeof av === "number" && typeof bv === "number"
             ? av - bv
-            : cellText(av).localeCompare(cellText(bv), "de", { numeric: true });
+            : textOf(s.field, av).localeCompare(textOf(s.field, bv), "de", { numeric: true });
         if (n) return s.direction === "asc" ? n : -n;
       }
       return (

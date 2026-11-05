@@ -12,6 +12,7 @@
 // not entered ("locked") and only a status for end-to-end encrypted spaces,
 // whose content the server cannot read anyway. Titles follow the language
 // of the profile, else the app's (`lang`, Accept-Language).
+import { toPlain } from "./inline-markdown";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { Temporal } from "@js-temporal/polyfill";
@@ -228,6 +229,9 @@ export function valueText(field: Field, value: unknown): string {
       return Array.isArray(value) && value.length ? String(value.length) : "";
     case "date":
       return typeof value === "string" ? value.slice(0, 16).replace("T", " ") : "";
+    // Formatted text (#126; the title never comes here): plain, one line.
+    case "text":
+      return toPlain(cellText(value)).replace(/\s*\n\s*/g, " ");
     default:
       return typeof value === "object" && !Array.isArray(value) ? "" : cellText(value);
   }
