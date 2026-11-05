@@ -7,7 +7,7 @@
 //
 // Depending on the system the key reaches the page as well; an action that
 // both the key event and the app report runs once (`firstRun`).
-import { activeKeymap, isMacPlatform, parseCombo, subscribeKeymap, SHORTCUT_ACTIONS, type Keymap, type ShortcutAction } from "./keymap";
+import { activeKeymap, editsText, isMacPlatform, parseCombo, subscribeKeymap, SHORTCUT_ACTIONS, type Keymap, type ShortcutAction } from "./keymap";
 import { nativeApp } from "./native-app";
 import { noteHardwareKeyboard } from "./keyboard-hints";
 
@@ -40,7 +40,9 @@ const NAMED: Record<string, string> = {
 };
 
 // The key commands of a keymap. Combinations without ⌘, ⌃ or ⌥ ("?") stay
-// with the page: as key commands they would take the key away from typing.
+// with the page: as key commands they would take the key away from typing –
+// as would arrows and the like with ⌥ or ⌘ (⌥← moves a word back, ⌘← to
+// the line start; with ⌃ they are the system's, not the text's).
 export function appKeyCommands(map: Keymap, title: (action: ShortcutAction) => string, mac = true): AppKeyCommand[] {
   const out: AppKeyCommand[] = [];
   for (const action of SHORTCUT_ACTIONS) {
@@ -51,6 +53,7 @@ export function appKeyCommands(map: Keymap, title: (action: ShortcutAction) => s
       const command = c.meta || (c.mod && mac);
       const control = c.ctrl || (c.mod && !mac);
       if (!command && !control && !c.alt) continue;
+      if (editsText(text) && !control) continue;
       const input = NAMED[c.key] ?? (/^F([1-9]|1[0-2])$/.test(c.key) ? c.key.toLowerCase() : c.key.length === 1 ? c.key.toLowerCase() : null);
       if (!input) continue;
       const modifiers: AppKeyCommand["modifiers"] = [];

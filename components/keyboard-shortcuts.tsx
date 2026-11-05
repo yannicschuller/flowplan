@@ -62,6 +62,10 @@ export function actionLabel(action: ShortcutAction, t: T): string {
       return t("Alle Abschnitte einklappen", "Collapse all sections");
     case "unfoldAll":
       return t("Alle Abschnitte ausklappen", "Expand all sections");
+    case "back":
+      return t("Zurück zur vorherigen Seite", "Back to the previous page");
+    case "forward":
+      return t("Vorwärts zur nächsten Seite", "Forward to the next page");
   }
 }
 

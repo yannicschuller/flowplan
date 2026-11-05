@@ -4,7 +4,9 @@ import { safeCollisionPadding } from "./safe-area";
 import { applyTheme, setThemeChoice, themeChoice, watchTheme, type ThemeChoice } from "@/lib/theme";
 import { readModeIds, toggleReadMode } from "@/lib/read-mode";
 import { foldAllSections } from "@/lib/heading-folds";
-import { parseSettingsHash } from "@/lib/settings-sections";
+import { findSection, parseSettingsHash } from "@/lib/settings-sections";
+import { connectDesktop, goBack, goForward, installHistory, installMouseButtons, rememberedTitle } from "@/lib/history-nav";
+import { HistoryButtons, type StepLook } from "./history-buttons";
 import { addBackCloser, installAppBack } from "@/lib/app-back";
 import { firstRun, installAppShortcuts } from "@/lib/app-shortcuts";
 import { desktopApp, desktopPageLink, inDesktopApp, nativeApp, offerDesktopApp, openInWindow } from "@/lib/native-app";
@@ -47,7 +49,7 @@ import { SIDEBAR_WIDTH_KEY, SidebarResize, clampSidebar } from "./sidebar-resize
 import { ActivityPing } from "./activity-ping";
 import { useDrawerSwipe } from "./drawer-swipe";
 import { useKeyboardHints } from "@/lib/keyboard-hints";
-import { activeKeymap, matchAction, setKeymapOverrides, shortcutHint, subscribeKeymap, type KeymapOverrides, type ShortcutAction } from "@/lib/keymap";
+import { activeKeymap, matchAction, preferredCombo, setKeymapOverrides, shortcutHint, subscribeKeymap, type KeymapOverrides, type ShortcutAction } from "@/lib/keymap";
 import { PagePeople } from "./page-people";
 import { PageReview, openPageReview } from "./page-review";
 import { PagePropertyBar } from "./page-properties";
@@ -985,6 +987,22 @@ export default function WorkspaceApp({
   // "Back" in the apps (swipe from the edge, Android's back): closes what is
   // open, then goes up and to the place before (lib/app-back.ts).
   useEffect(() => (nativeApp() ? installAppBack() : undefined), []);
+  // Back and forward (#125, lib/history-nav.ts): the arrows in the top bar
+  // follow the tab's history; the desktop app's menu, swipe and mouse
+  // buttons come through its bridge. Once per command, also when the key
+  // event and the app's menu both report it (firstRun).
+  useEffect(() => {
+    const stop = installHistory();
+    const run = (command: "back" | "forward") => {
+      if (firstRun(command)) shortcutRef.current(command);
+    };
+    connectDesktop(desktopApp()?.history, run);
+    const stopMouse = inDesktopApp() ? installMouseButtons(run) : () => {};
+    return () => {
+      stop();
+      stopMouse();
+    };
+  }, []);
   // The apps' hardware keyboard: the shortcuts as key commands, listed when
   // ⌘ is held on the iPad (lib/app-shortcuts.ts).
   useEffect(
@@ -1685,6 +1703,12 @@ export default function WorkspaceApp({
       case "unfoldAll":
         foldAllSections(action === "foldAll");
         break;
+      case "back":
+        goBack();
+        break;
+      case "forward":
+        goForward();
+        break;
     }
   };
   shortcutRef.current = runShortcut;
@@ -1692,6 +1716,64 @@ export default function WorkspaceApp({
   const hint = (action: ShortcutAction) => {
     const keys = keyHints.visible ? shortcutHint(action, mac) : "";
     return keys ? ` (${keys})` : "";
+  };
+  // How a place of the back and forward lists reads (components/history-
+  // buttons.tsx): pages with their icon and current title, records with
+  // their title (remembered while they were open) and their database,
+  // screens and sections of the settings with their name.
+  const describeStep = (hash: string): StepLook => {
+    const kept = rememberedTitle(hash);
+    const screenLook = (title: string, Icon: typeof House): StepLook => ({ title, icon: <Icon size={16} /> });
+    if (hash.startsWith("page=")) {
+      const target = parsePageLocation(hash);
+      const page = target ? titledPages.find((p) => p.id === target.pageId) : undefined;
+      const pageTitle = page ? page.title || t("Ohne Titel", "Untitled") : "";
+      if (target?.rowId) {
+        const open = document.querySelector<HTMLTextAreaElement>(".modal.record-dialog .row-title-input");
+        const now = parsePageLocation(location.hash);
+        const title = (now?.rowId === target.rowId && open?.value.trim()) || "";
+        return {
+          title: title || kept?.title || t("Eintrag", "Record"),
+          detail: pageTitle || undefined,
+          icon: <PageIcon name={page?.icon || kept?.icon || ""} size={16} />,
+          remember: title ? { title, icon: page?.icon } : undefined,
+        };
+      }
+      const title = pageTitle || kept?.title || t("Seite", "Page");
+      return { title, icon: <PageIcon name={page?.icon || kept?.icon || ""} size={16} />, remember: page ? { title, icon: page.icon } : undefined };
+    }
+    const settings = parseSettingsHash(hash);
+    if (settings) {
+      const area = settings.area === "admin" ? t("Administration", "Administration") : t("Einstellungen", "Settings");
+      const section = findSection(settings.area, settings.section);
+      return {
+        title: section ? t(section.title.de, section.title.en) : area,
+        detail: section ? area : undefined,
+        icon: settings.area === "admin" ? <ShieldCheck size={16} /> : <GearSix size={16} />,
+      };
+    }
+    const [base, id] = hash.split("/");
+    if (base === "collection") {
+      const name = boot.collections?.find((c) => c.id === id)?.name;
+      return { title: name || kept?.title || t("Sammlung", "Collection"), icon: <FolderSimple size={16} />, remember: name ? { title: name } : undefined };
+    }
+    if (base === "tags" && id) return { title: kept?.title || t("Tag", "Tag"), detail: t("Tags", "Tags"), icon: <TagIcon size={16} /> };
+    switch (base) {
+      case "inbox":
+        return screenLook(t("Posteingang", "Inbox"), Bell);
+      case "tasks":
+        return screenLook(t("Meine Aufgaben", "My tasks"), CheckSquare);
+      case "tags":
+        return screenLook(t("Tags", "Tags"), TagIcon);
+      case "graph":
+        return screenLook(t("Graph", "Graph"), Graph);
+      case "media":
+        return screenLook(t("Medien", "Media"), ImageSquare);
+      case "trash":
+        return screenLook(t("Papierkorb", "Trash"), Trash);
+      default:
+        return screenLook(t("Startseite", "Home"), House);
+    }
   };
   // The open page shows in the split view too: the split closes.
   useEffect(() => {
@@ -3433,6 +3515,11 @@ export default function WorkspaceApp({
             >
               <SidebarSimple size={21} />
             </button>
+            <HistoryButtons
+              backHint={keyHints.visible ? preferredCombo("back", mac) : ""}
+              forwardHint={keyHints.visible ? preferredCombo("forward", mac) : ""}
+              describe={describeStep}
+            />
             <span className="breadcrumb-workspace">{boot.workspace.name}</span>
             <span className="breadcrumb-divider">/</span>
             {screen === "page" && data ? (
