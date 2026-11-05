@@ -3,11 +3,12 @@ import { join, resolve } from "node:path";
 import { deflateSync } from "node:zlib";
 
 // Text recognition for scanned PDFs and images. The language data ships
-// with the app and is never downloaded at runtime: German, English and
-// French. FLOWPLAN_OCR_LANGS chooses the languages that are loaded, e.g.
-// "fra,eng"; the first one is the main language. Every extra language costs
-// memory and time per page, so the default stays German and English.
-export const OCR_LANGUAGES = ["deu", "eng", "fra"] as const;
+// with the app and is never downloaded at runtime: German, English, French
+// and Simplified Chinese. FLOWPLAN_OCR_LANGS chooses the languages that are
+// loaded, e.g. "fra,eng" or "chi_sim,eng"; the first one is the main
+// language. Every extra language costs memory and time per page (Chinese
+// most: about 100 MB more), so the default stays German and English.
+export const OCR_LANGUAGES = ["deu", "eng", "fra", "chi_sim"] as const;
 type Language = (typeof OCR_LANGUAGES)[number];
 const DEFAULT_LANGUAGES: Language[] = ["deu", "eng"];
 const isLanguage = (value: string): value is Language =>
@@ -56,13 +57,20 @@ async function worker() {
     const { createWorker } = await import("tesseract.js");
     const languages = ocrLanguages();
     const dir = languageDir(languages);
-    return createWorker(languages, 1, {
+    const ocr = await createWorker(languages, 1, {
       langPath: dir,
       cachePath: dir,
       gzip: true,
       logger: () => undefined,
       errorHandler: () => undefined,
     });
+    // Tesseract treats every Chinese character as a word and puts a space
+    // between them ("发 票 编 号"); with this setting spaces only stand where
+    // the page has a gap. Latin text is unchanged (ocrImage collapses runs
+    // of spaces), but the default languages keep Tesseract's own behaviour.
+    if (languages.includes("chi_sim"))
+      await ocr.setParameters({ preserve_interword_spaces: "1" });
+    return ocr;
   })();
   try {
     return await runtime.flowplanOcr;

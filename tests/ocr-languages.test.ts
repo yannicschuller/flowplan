@@ -19,6 +19,12 @@ test("FLOWPLAN_OCR_LANGS chooses the bundled languages", () => {
   // Unknown codes are dropped: they would name files outside the bundle.
   assert.deepEqual(ocrLanguages("fra,../../etc,ita"), ["fra"]);
   assert.deepEqual(ocrLanguages("xyz"), ["deu", "eng"]);
+  // Simplified Chinese is opt-in, in any position.
+  assert.deepEqual(ocrLanguages("chi_sim,eng"), ["chi_sim", "eng"]);
+  assert.deepEqual(ocrLanguages("deu+CHI_SIM"), ["deu", "chi_sim"]);
+  assert.deepEqual(ocrLanguages("chi_sim"), ["chi_sim"]);
+  // Only the bundled Simplified Chinese: Traditional has no data here.
+  assert.deepEqual(ocrLanguages("chi_tra,chi"), ["deu", "eng"]);
 });
 
 test("French scans are recognised with their accents", async () => {
