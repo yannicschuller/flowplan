@@ -33,6 +33,8 @@ const wid = createWorkspace(anna.id, "Clips");
 run("INSERT INTO members VALUES(?,?,?)", wid, ben.id, "viewer");
 const space = bootstrap(anna, wid).spaces[0].id;
 const html = (pageId: string) => one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", pageId)!.html;
+// Text matched literally inside a regex.
+const literal = (text: string) => text.replace(/[\\^$.*+?()[\]{}|/]/g, "\\$&");
 
 const ARTICLE = `<!doctype html><html><head><title>Fallback</title>
 <meta property="og:title" content="Wie Teams besser planen">
@@ -171,7 +173,7 @@ test("whole page and selection: new page in a space, sub-page, record with tags"
   });
   assert.equal(saved.url, `https://flowplan.example.test/#page=${saved.pageId}`);
   const page = html(saved.pageId);
-  assert.match(page, new RegExp(`<a href="${url.replace(/[./]/g, "\\$&")}"`));
+  assert.match(page, new RegExp(`<a href="${literal(url)}"`));
   assert.match(page, /#planung #teams/);
   assert.match(page, /href="https:\/\/news\.example\/x"/);
   assert.doesNotMatch(page, /<script/);
@@ -226,7 +228,7 @@ test("highlights: quotes with a link to the source, appended to one page", () =>
   assert.equal((page.match(/<blockquote>/g) || []).length, 2);
   assert.match(page, /<strong>Erster<\/strong> Satz/);
   assert.match(page, /Zweiter Satz/);
-  assert.match(page, new RegExp(`— <a [^>]*href="${url.replace(/[./]/g, "\\$&")}"[^>]*>Zitate</a>`));
+  assert.match(page, new RegExp(`— <a [^>]*href="${literal(url)}"[^>]*>Zitate</a>`));
   assert.ok(page.indexOf("Erster") < page.indexOf("Zweiter"));
   assert.throws(() => saveClip(anna, { mode: "highlight", target: { workspaceId: wid, pageId: first.pageId }, url, text: "" }), /Kein Text/);
   assert.equal(all("SELECT id FROM pages WHERE title='Zitate'").length, 1);

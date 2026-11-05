@@ -9,6 +9,7 @@ import { footnoteText } from "./footnotes";
 import { fenceLanguage } from "./code-languages";
 import { importedCodeAttributes, splitInfo } from "./code-block-options";
 import { isDrawioXml } from "./drawio";
+import { TASK_LISTS } from "./task-list-html";
 
 const escaped = (text: string) =>
   text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
@@ -302,7 +303,7 @@ export function markdownToRawHtml(
     // Task list items become editor task items; "📅 2026-05-04" (Obsidian
     // Tasks) at the end of the text becomes the due date.
     .replace(
-      /<ul>\s*((?:<li><input[^>]*type="checkbox"[^>]*>[\s\S]*?<\/li>\s*)+)<\/ul>/g,
+      TASK_LISTS,
       (_, items: string) =>
         `<ul data-type="taskList">${items.replace(
           /<li><input([^>]*)>\s*([\s\S]*?)<\/li>/g,

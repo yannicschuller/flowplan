@@ -15,7 +15,30 @@ export const codeView = (value: unknown): CodeView | null =>
 export type PreviewKind = "html" | "svg" | "markdown" | "mermaid" | "latex" | "typst";
 // An SVG picture (Shiki has no language of its own for it: ```svg fences
 // become "xml").
-const SVG_ROOT = /^\s*(?:<\?xml[^>]*>\s*)?(?:<!--[\s\S]*?-->\s*)*(?:<!DOCTYPE[^>]*>\s*)?(?:<!--[\s\S]*?-->\s*)*<svg[\s>]/i;
+// Whether the text starts like an SVG file: white space, an XML declaration,
+// comments, a doctype and comments, then <svg. Checked step by step rather
+// than with one regex, which backtracked exponentially on '<!--' followed by
+// many '-->&lt;!--' (CodeQL js/redos). It accepts exactly what
+// /^\s*(?:<\?xml[^>]*>\s*)?(?:<!--[\s\S]*?-->\s*)*(?:<!DOCTYPE[^>]*>\s*)?(?:<!--[\s\S]*?-->\s*)*<svg[\s>]/i
+// did; as there, a run of comments counts as one from its "<!--" to any
+// later "-->".
+function isSvgRoot(text: string): boolean {
+  const at = (pattern: RegExp, from: number) => {
+    pattern.lastIndex = from;
+    return pattern.test(text) ? pattern.lastIndex : -1;
+  };
+  const svg = (from: number) => at(/<svg[\s>]/iy, from) !== -1;
+  // Comments from `from` on, then <svg (with or without a doctype between).
+  const commentsThenSvg = (from: number, doctype: boolean) =>
+    text.startsWith("<!--", from) &&
+    (at(/-->\s*<svg[\s>]/gi, from + 4) !== -1 || (doctype && at(/-->\s*<!DOCTYPE[^>]*>\s*<svg[\s>]/gi, from + 4) !== -1));
+  let i = at(/\s*/y, 0);
+  const xml = at(/<\?xml[^>]*>\s*/iy, i);
+  if (xml !== -1) i = xml;
+  const doctype = at(/<!DOCTYPE[^>]*>\s*/iy, i);
+  if (doctype !== -1) return svg(doctype) || commentsThenSvg(doctype, false);
+  return svg(i) || commentsThenSvg(i, true);
+}
 // What a block of this language and text can show as a preview, or null.
 export function previewKind(language: string | null | undefined, text = ""): PreviewKind | null {
   const id = canonicalLanguage(language);
@@ -23,7 +46,7 @@ export function previewKind(language: string | null | undefined, text = ""): Pre
     case "html":
       return "html";
     case "xml":
-      return SVG_ROOT.test(text) ? "svg" : null;
+      return isSvgRoot(text) ? "svg" : null;
     case "markdown":
       return "markdown";
     case "mermaid":
