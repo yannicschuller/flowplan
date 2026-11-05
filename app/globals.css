@@ -1260,6 +1260,32 @@ kbd,
   background: var(--blue-light);
   color: var(--blue);
 }
+/* "Hide keyboard" (touch phones, while the keyboard is up): always at the
+   right end of the toolbar, the row's other buttons scroll under it. */
+.editor-toolbar .editor-hide-keyboard {
+  position: sticky;
+  right: 0;
+  margin-left: auto;
+  flex-shrink: 0;
+  background: var(--bg);
+  box-shadow: -6px 0 6px -2px var(--bg);
+  z-index: 1;
+}
+.editor-hide-keyboard-icon {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 0;
+}
+.editor-toolbar .editor-hide-keyboard-icon svg:first-child {
+  width: 18px;
+  height: 18px;
+}
+.editor-toolbar .editor-hide-keyboard-icon svg:last-child {
+  width: 10px;
+  height: 10px;
+  margin-top: -3px;
+}
 .toolbar-separator {
   height: 18px;
   width: 1px;
@@ -5715,6 +5741,13 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
   }
   .page-layout .editor-toolbar button {
     flex-shrink: 0;
+  }
+  /* The row's padding strip to the right of "Hide keyboard" is covered too,
+     so no scrolled button peeks out behind it. */
+  .page-layout .editor-toolbar .editor-hide-keyboard {
+    box-shadow:
+      -6px 0 6px -2px var(--bg),
+      8px 0 0 var(--bg);
   }
   .page-layout .editor-wrapper {
     padding-bottom: 56px;

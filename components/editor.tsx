@@ -173,7 +173,10 @@ import {
   Note,
   Sparkle,
   PuzzlePiece,
+  Keyboard,
+  CaretDown,
 } from "@phosphor-icons/react";
+import { useSoftKeyboard } from "./mobile-tab-bar";
 import { PluginBlockView, pagePlugins, type PluginInfo } from "./plugin-block";
 import { api, isTransient, Modal, PageIcon, sessionEnded } from "./ui";
 import { calloutDescriptions, calloutLabels } from "@/lib/callout-types";
@@ -217,6 +220,21 @@ import { MarkdownSourceView } from "./markdown-source";
 import { PageLinkIcons } from "./page-link-icons";
 import { shownPageIcon } from "@/lib/page-link-icons";
 import { idempotencyHeaders } from "@/lib/idempotency-key";
+// A touch screen as wide as a phone: where the toolbar docks at the bottom,
+// above the on-screen keyboard (app/globals.css, max-width: 767px).
+const TOUCH_PHONE = "(pointer: coarse) and (max-width: 767px)";
+function useTouchPhone() {
+  const [matches, setMatches] = useState(false);
+  useEffect(() => {
+    const query = window.matchMedia(TOUCH_PHONE);
+    const update = () => setMatches(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+  return matches;
+}
+
 // The symbol a plugin's manifest names for a block type, as a menu icon.
 function emojiIcon(symbol: string) {
   function Icon({ size = 18 }: { size?: number }) {
@@ -282,6 +300,10 @@ export default function DocumentEditor({
   const t = useT();
   const keyHints = useKeyboardHints();
   const locale = useLocale();
+  // On a phone the toolbar docks above the on-screen keyboard; a button at
+  // its end closes the keyboard to see what it covered (#120).
+  const keyboardOpen = useSoftKeyboard();
+  const touchPhone = useTouchPhone();
   // The text the page came with shows at once (also a kept copy, see
   // lib/swr-cache.ts); the device's stored changes and the server's newer
   // ones merge into it as they arrive (applying a state twice is harmless).
@@ -2482,6 +2504,34 @@ export default function DocumentEditor({
             >
               <Plus />
             </button>
+            {keyboardOpen && touchPhone && (
+              <button
+                type="button"
+                className="editor-hide-keyboard"
+                title={t("Tastatur ausblenden", "Hide keyboard")}
+                aria-label={t("Tastatur ausblenden", "Hide keyboard")}
+                // The tap must not move the focus first (that would keep the
+                // keyboard up); the toolbar's mousedown guard does not cover
+                // every touch browser.
+                onPointerDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  // Ending the input closes the keyboard; text and selection
+                  // stay (ProseMirror keeps its selection), a tap into the
+                  // text brings the keyboard back.
+                  const active = document.activeElement as HTMLElement | null;
+                  if (editor && !editor.isDestroyed && editor.view.dom.contains(active)) {
+                    editor.view.dom.blur();
+                    // Safari keeps the caret blinking otherwise.
+                    window.getSelection()?.removeAllRanges();
+                  } else active?.blur();
+                }}
+              >
+                <span className="editor-hide-keyboard-icon" aria-hidden="true">
+                  <Keyboard />
+                  <CaretDown weight="bold" />
+                </span>
+              </button>
+            )}
           </div>
         )}
         {(() => {
