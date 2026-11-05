@@ -27,10 +27,10 @@ import { HttpError } from "../auth";
 import { all, one } from "../db";
 import { contentLocale, ct } from "../content-locale";
 import { pageRole, requirePage, spaceRole } from "../permissions";
-import { processSearchIndex } from "../search-index";
+import { processSearchIndex, termMatches } from "../search-index";
 import type { Identity, Page, Space } from "../types";
 import { aiFilter } from "./access";
-import { chunkPlain, ftsQuery, questionTerms, rankPassages, selectPassages, type Passage } from "./chunks";
+import { chunkPlain, questionTerms, rankPassages, selectPassages, type Passage } from "./chunks";
 import { helpCandidates, helpTitle, helpUrl } from "./help";
 import type { ChatMessage } from "./providers";
 import { requireAi } from "./run";
@@ -149,15 +149,7 @@ export function askWorkspaces(user: Identity, current: string): { id: string; na
 export function textCandidates(workspaceId: string, terms: string[], scope: { pages: Set<string> | null; spaceId?: string }, limit = 400) {
   if (!terms.length) return [];
   for (let i = 0; i < 10 && processSearchIndex(); i++);
-  const rows = all<{ page_id: string; row_id: string }>(
-    `SELECT s.page_id,s.row_id FROM search_index s JOIN pages p ON p.id=s.page_id
-     WHERE search_index MATCH ? AND p.workspace_id=? AND p.deleted_at IS NULL${scope.spaceId ? " AND p.space_id=?" : ""}
-     ORDER BY bm25(search_index,0,0,10,1) LIMIT ${limit}`,
-    ftsQuery(terms),
-    workspaceId,
-    ...(scope.spaceId ? [scope.spaceId] : []),
-  );
-  return rows.filter((r) => !/^[cmf]:/.test(r.row_id) && (!scope.pages || scope.pages.has(r.page_id)));
+  return termMatches(workspaceId, terms, { spaceId: scope.spaceId, limit }).filter((r) => !/^[cmf]:/.test(r.row_id) && (!scope.pages || scope.pages.has(r.page_id)));
 }
 
 // Earlier turns: alternating, starting with a question, shortened.

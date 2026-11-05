@@ -16,6 +16,7 @@ import { parseSearchTokens } from "./page-properties";
 import { taggedRecords } from "./tag-fields";
 import { isClassicQuery, parseQuery, type ItemType } from "./collection-query";
 import { evaluateQuery } from "./collections";
+import { ftsQuery, isShortTerm } from "./ai/chunks";
 
 // Full-text index over page titles, document text, record cells and record
 // documents. Triggers (see db.ts) only mark changed pages/rows as dirty; the
@@ -214,6 +215,51 @@ export function processSearchIndex(limit = BATCH) {
     }
   });
   return dirty.length;
+}
+
+// At most this many short terms per scan: each one is an instr() over the
+// titles and texts of the workspace's index.
+const SHORT_TERMS = 4;
+
+// Index entries (pages, records, comments, files) of a workspace that
+// contain any of the terms (lib/ai/chunks.ts questionTerms), best first.
+// Terms of three characters or more go through the trigram index, ranked by
+// BM25; shorter ones (two-character Chinese, Japanese, Korean or Thai
+// words, which MATCH cannot find) through a scan like the short search
+// above, ranked by how many of them occur (in the title or the text), and follow the index's hits.
+export function termMatches(
+  workspaceId: string,
+  terms: string[],
+  options: { spaceId?: string; limit: number },
+): { page_id: string; row_id: string }[] {
+  const scope = `p.workspace_id=? AND p.deleted_at IS NULL${options.spaceId ? " AND p.space_id=?" : ""}`;
+  const scopeArgs = [workspaceId, ...(options.spaceId ? [options.spaceId] : [])];
+  const long = terms.filter((t) => !isShortTerm(t)),
+    short = terms.filter(isShortTerm).slice(0, SHORT_TERMS);
+  const rows = long.length
+    ? all<{ page_id: string; row_id: string }>(
+        `SELECT s.page_id,s.row_id FROM search_index s JOIN pages p ON p.id=s.page_id
+         WHERE search_index MATCH ? AND ${scope}
+         ORDER BY bm25(search_index,0,0,10,1) LIMIT ${options.limit}`,
+        ftsQuery(long),
+        ...scopeArgs,
+      )
+    : [];
+  if (short.length && rows.length < options.limit) {
+    const seen = new Set(rows.map((r) => `${r.page_id}:${r.row_id}`));
+    // A term in the title counts twice, as in BM25 above.
+    const hits = short.map(() => "(instr(s.title,?)>0)*2+(instr(s.body,?)>0)").join("+");
+    for (const r of all<{ page_id: string; row_id: string }>(
+      `SELECT page_id,row_id FROM (SELECT s.page_id,s.row_id,${hits} n,p.updated_at FROM search_index s JOIN pages p ON p.id=s.page_id WHERE ${scope})
+       WHERE n>0 ORDER BY n DESC,updated_at DESC LIMIT ${options.limit}`,
+      ...short.flatMap((t) => [t, t]),
+      ...scopeArgs,
+    )) {
+      if (rows.length >= options.limit) break;
+      if (!seen.has(`${r.page_id}:${r.row_id}`)) rows.push(r);
+    }
+  }
+  return rows;
 }
 
 export type SearchKind =

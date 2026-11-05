@@ -22,7 +22,7 @@ import { pageRole, requireMember, requirePage } from "./permissions";
 import { hiddenRowIds } from "./row-access";
 import { journalLocked } from "./journal-extras";
 import { requireRow } from "./row-documents";
-import { processSearchIndex } from "./search-index";
+import { processSearchIndex, termMatches } from "./search-index";
 import { ftsQuery, questionTerms } from "./ai/chunks";
 import { aiFilter, aiMayRead } from "./ai/access";
 import { semanticNeighbours } from "./ai/semantic";
@@ -176,13 +176,7 @@ export function relatedPages(user: Identity, pageId: string, rowId: string | nul
   const terms = questionTerms(title || "");
   if (terms.length) {
     indexReady();
-    all<{ page_id: string; row_id: string }>(
-      `SELECT s.page_id,s.row_id FROM search_index s JOIN pages p ON p.id=s.page_id
-       WHERE search_index MATCH ? AND p.workspace_id=? AND p.deleted_at IS NULL
-       ORDER BY bm25(search_index,0,0,10,1) LIMIT 30`,
-      ftsQuery(terms),
-      page.workspace_id,
-    )
+    termMatches(page.workspace_id, terms, { limit: 30 })
       .filter((r) => !/^[cmf]:/.test(r.row_id))
       .forEach((r, rank) => add(r.page_id, r.row_id || null, 2 / (1 + rank * 0.4), "title"));
   }
