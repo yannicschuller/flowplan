@@ -972,7 +972,7 @@ CommandDatabaseUpdateResult = TypedDict("CommandDatabaseUpdateResult", {
 CommandRowCreate = TypedDict("CommandRowCreate", {
     "action": Required[Literal["row.create"]],
     "pageId": Required[str],  # Page ID of the database
-    "cells": dict[str, Any],  # Property values by property ID (the first property is the title).
+    "cells": dict[str, Any],  # Property values by property ID (the first property is the title). Text properties other than the title hold inline Markdown (#126): **bold**, _italic_ (or *italic*), ~~strike~~, `code`, [label](https://…) links (http, https and mailto only) and \n for a line break – no headings, lists or other blocks. A backslash keeps * _ ~ ` [ ] \ literal, so plain text is sent escaped. Records are read the same way; the title is plain text.
     "templateId": str,  # Record template to start from
     "rowId": str,  # Own ID (idempotent: repeating the call is a no-op)
 }, total=False)
@@ -987,7 +987,7 @@ CommandRowUpdate = TypedDict("CommandRowUpdate", {
     "pageId": Required[str],
     "rowId": Required[str],
     "version": Required[int],
-    "cells": dict[str, Any],  # Property values by property ID (the first property is the title).
+    "cells": dict[str, Any],  # Property values by property ID (the first property is the title). Text properties other than the title hold inline Markdown (#126): **bold**, _italic_ (or *italic*), ~~strike~~, `code`, [label](https://…) links (http, https and mailto only) and \n for a line break – no headings, lists or other blocks. A backslash keeps * _ ~ ` [ ] \ literal, so plain text is sent escaped. Records are read the same way; the title is plain text.
     "base": dict[str, Any],  # The values of the changed properties the change was made on
 }, total=False)
 

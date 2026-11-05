@@ -1522,7 +1522,7 @@ export type CommandRowCreate = {
   action: "row.create";
   /** Page ID of the database */
   pageId: string;
-  /** Property values by property ID (the first property is the title). */
+  /** Property values by property ID (the first property is the title). Text properties other than the title hold inline Markdown (#126): **bold**, _italic_ (or *italic*), ~~strike~~, `code`, [label](https://…) links (http, https and mailto only) and \n for a line break – no headings, lists or other blocks. A backslash keeps * _ ~ ` [ ] \ literal, so plain text is sent escaped. Records are read the same way; the title is plain text. */
   cells?: Record<string, unknown>;
   /** Record template to start from */
   templateId?: string;
@@ -1540,7 +1540,7 @@ export type CommandRowUpdate = {
   pageId: string;
   rowId: string;
   version: number;
-  /** Property values by property ID (the first property is the title). */
+  /** Property values by property ID (the first property is the title). Text properties other than the title hold inline Markdown (#126): **bold**, _italic_ (or *italic*), ~~strike~~, `code`, [label](https://…) links (http, https and mailto only) and \n for a line break – no headings, lists or other blocks. A backslash keeps * _ ~ ` [ ] \ literal, so plain text is sent escaped. Records are read the same way; the title is plain text. */
   cells?: Record<string, unknown>;
   /** The values of the changed properties the change was made on */
   base?: Record<string, unknown>;

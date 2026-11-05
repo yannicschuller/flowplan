@@ -1,3 +1,4 @@
+import { inlineToHtml, isFormattedText } from "./inline-markdown";
 import { cleanHtml, escaped } from "./document-server";
 import { cellText, computedCells, queryRows } from "./database";
 import { database, publicRows as rows } from "./api";
@@ -69,7 +70,9 @@ export function withPublicEmbeds(
               .map((f) =>
                 f.id === title?.id
                   ? `<td><a href="${link(r.id)}">${escaped(cellText(r.cells[f.id]) || "Ohne Titel")}</a></td>`
-                  : `<td>${escaped(displayText(f, r.cells[f.id], "UTC"))}</td>`,
+                  : isFormattedText(f, d.fields)
+                    ? `<td>${inlineToHtml(r.cells[f.id])}</td>`
+                    : `<td>${escaped(displayText(f, r.cells[f.id], "UTC"))}</td>`,
               )
               .join("")}</tr>`,
         )

@@ -1,3 +1,4 @@
+import { escapeInline, isFormattedText } from "./inline-markdown";
 import { reconcileTagFields } from "./tag-fields";
 import { copyDashboard, dashboardTiles } from "./dashboard";
 import { importNotebook, notebookArchive, notebookArchiveSchema } from "./notebook";
@@ -185,6 +186,9 @@ function inkBlocksArchive(pageId: string) {
 }
 export const archiveSchema = z.object({
   format: z.literal("flowplan-2"),
+  // Text properties hold inline Markdown (#126). Archives from before carry
+  // plain text, escaped on import so it shows as written.
+  formattedText: z.boolean().optional(),
   relationPairs: z.array(relationPairSchema).max(20000).default([]),
   exportedAt: str,
   // Who exported: their assignments and mentions become the importer's.
@@ -358,6 +362,7 @@ function snapshotFor(user: Identity, wid: string) {
   let bytes = 0;
   const manifest = {
     format: "flowplan-2",
+    formattedText: true,
     relationPairs: relationPairs().filter(
       (p) => pageIds.has(p.left_page) && pageIds.has(p.right_page),
     ),
@@ -1154,6 +1159,8 @@ async function importEntries(
               ];
             if (f?.type === "files")
               return [key, mapFileCell(value, rewriteUrl)];
+            if (!data.formattedText && typeof value === "string" && isFormattedText(f, fields))
+              return [key, escapeInline(value)];
             return [key, value];
           }),
         );

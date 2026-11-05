@@ -5263,6 +5263,7 @@
   "Only for signed-in members.": "Uniquement pour les membres connectés.",
   "Only for you": "Seulement pour vous",
   "only here: {0}": "uniquement ici : {0}",
+  "Only http, https and mailto links.": "Uniquement des liens http, https et mailto.",
   "Only https addresses are allowed.": "Seules les adresses https sont autorisées.",
   "Only https addresses without credentials are allowed.": "Seules les adresses https sans identifiants sont autorisées.",
   "Only https or webcal addresses.": "Uniquement des adresses https ou webcal.",

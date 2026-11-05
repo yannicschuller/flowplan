@@ -6,6 +6,7 @@ import { all, one, run, transaction } from "./db";
 import { pageRole } from "./permissions";
 import { hiddenRowIds } from "./row-access";
 import { ticketId } from "./ticket-ids";
+import { isFormattedText, toPlain } from "./inline-markdown";
 import type { Field, Identity, Page } from "./types";
 import { footnoteTexts } from "./footnotes";
 import { matchedAlias, pageAliases, recordAliases } from "./aliases";
@@ -109,7 +110,8 @@ function indexRow(pageId: string, rowId: string, fields: Field[]) {
   const title = titleField ? cellWords(cells[titleField.id]) : "";
   const values = rest
     .filter((f) => !IGNORED.includes(f.type) && f.type !== "aliases")
-    .map((f) => (f.type === "id" ? ticketId(f, row.number) : cellWords(cells[f.id])))
+    // Formatted text (#126) as the words people read, without "**" or "\\_".
+    .map((f) => (f.type === "id" ? ticketId(f, row.number) : isFormattedText(f, fields) ? toPlain(cells[f.id]) : cellWords(cells[f.id])))
     .filter(Boolean);
   const content = row.html ?? row.content ?? "";
   run(

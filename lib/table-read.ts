@@ -6,6 +6,7 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import { TableMap } from "@tiptap/pm/tables";
 import { captionText } from "./block-captions";
 import type { TableCell } from "./table-database";
+import { escapeInline, safeHref, serializeInline, type InlineRun } from "./inline-markdown";
 
 function leafText(node: PMNode) {
   if (node.type.name === "hardBreak") return "\n";
@@ -28,7 +29,40 @@ export function readCell(cell: PMNode): TableCell {
     else unlinked = true;
   });
   const href = !unlinked && links.size === 1 ? [...links][0] : undefined;
-  return href ? { text, href } : { text };
+  const markdown = cellMarkdown(cell);
+  return { text, ...(href ? { href } : {}), ...(markdown !== escapeInline(text) ? { markdown } : {}) };
+}
+
+// The cell's inline formatting as inline Markdown (#126): bold, italic,
+// strike, code and web links; paragraphs and line breaks as line breaks.
+function cellMarkdown(cell: PMNode): string {
+  const runs: InlineRun[] = [];
+  let blocks = 0;
+  cell.descendants((node) => {
+    if (node.isTextblock) {
+      if (blocks++ > 0) runs.push({ text: "\n" });
+      return true;
+    }
+    if (node.isText && node.text) {
+      const run: InlineRun = { text: node.text };
+      for (const mark of node.marks) {
+        const name = mark.type.name;
+        if (name === "bold") run.bold = true;
+        if (name === "italic") run.italic = true;
+        if (name === "strike") run.strike = true;
+        if (name === "code") run.code = true;
+        if (name === "link" && typeof mark.attrs.href === "string") run.href = safeHref(mark.attrs.href);
+      }
+      runs.push(run);
+    } else if (node.isLeaf) {
+      const text = leafText(node);
+      if (text) runs.push({ text });
+    }
+    return true;
+  });
+  // As in `text`: no space before a line break, none at the ends.
+  const md = serializeInline(runs);
+  return md.replace(/[ \t]+\n/g, "\n").trim();
 }
 
 export function readTable(table: PMNode): TableCell[][] {

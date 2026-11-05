@@ -1,3 +1,4 @@
+import { escapeInline, isFormattedText } from "./inline-markdown";
 import { z } from "zod";
 import { hiddenRowIds, visibleRows } from "./row-access";
 import { fieldWriteMessage, publicWritable } from "./field-access";
@@ -183,11 +184,16 @@ export function saveFormSubmission(
           throw new HttpError(400, `${f.name}: Datei nicht gefunden.`);
   }
   const rid = id();
+  // Answers are plain text: formatted text properties (#126) store them
+  // escaped, so "*" or "_" stay as typed.
+  const stored = { ...result.cells };
+  for (const f of fields)
+    if (isFormattedText(f, fields) && typeof stored[f.id] === "string") stored[f.id] = escapeInline(stored[f.id] as string);
   run(
     "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by) VALUES(?,?,?,?,?,?)",
     rid,
     pageId,
-    JSON.stringify(result.cells),
+    JSON.stringify(stored),
     Date.now(),
     form?.anonymous ? null : user?.id || null,
     form?.anonymous ? null : user?.id || null,
@@ -195,11 +201,11 @@ export function saveFormSubmission(
   run("UPDATE pages SET updated_at=CURRENT_TIMESTAMP WHERE id=?", pageId);
   // Survey answers without a title get a running one ("Antwort 12").
   const titleField = fields[0];
-  let cells = result.cells;
+  let cells = stored;
   if (config.survey?.enabled && titleField?.type === "text" && !result.cells[titleField.id]) {
     const number = one<{ number: number }>("SELECT number FROM rows WHERE id=?", rid)?.number;
     if (number) {
-      cells = { ...result.cells, [titleField.id]: `${ct("Antwort", "Response")} ${number}` };
+      cells = { ...stored, [titleField.id]: `${ct("Antwort", "Response")} ${number}` };
       run("UPDATE rows SET cells=? WHERE id=?", JSON.stringify(cells), rid);
     }
   }
@@ -213,7 +219,7 @@ export function saveFormSubmission(
   rowCreated(user, page, rid, true);
   const workspace = one<{ workspace_id: string }>("SELECT workspace_id FROM pages WHERE id=?", pageId);
   if (workspace) {
-    const payload = { pageId, rowId: rid, cells: result.cells, anonymous: !!form?.anonymous };
+    const payload = { pageId, rowId: rid, cells: stored, anonymous: !!form?.anonymous };
     emitWebhook(workspace.workspace_id, "form.submitted", payload);
     emitWebhook(workspace.workspace_id, "row.created", payload);
   }

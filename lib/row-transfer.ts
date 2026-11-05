@@ -6,6 +6,7 @@
 // records with their content and files; a move keeps the record itself –
 // content, comments, versions, time and Git links travel with it – and
 // gives it a number in the new database.
+import { escapeInline, isFormattedText, toPlain } from "./inline-markdown";
 import { isTagField, syncTagFieldOptions, tagCells } from "./tag-fields";
 import { assertFieldsWritable, hiddenFieldsFor } from "./field-access";
 import { aliasList } from "./aliases";
@@ -52,8 +53,16 @@ function compatible(from: Field["type"], to: Field["type"]) {
   return false;
 }
 // The value for the target property; options missing there are collected.
-function convert(value: unknown, from: Field, to: Field, addOption: (f: Field, o: string) => void): unknown {
+// `formatted`: whether source and target are formatted text (#126) – the
+// text carries over, its formatting only between formatted properties.
+function convert(value: unknown, from: Field, to: Field, addOption: (f: Field, o: string) => void, formatted = { from: false, to: false }): unknown {
   if (value === undefined || value === null || value === "") return undefined;
+  if (formatted.from && formatted.to) return value;
+  if (formatted.from && typeof value === "string") value = toPlain(value);
+  if (formatted.to) {
+    const text = from.type === "checkbox" ? (value ? "✓" : "") : cellText(value);
+    return text ? escapeInline(text) : undefined;
+  }
   const options = (list: string[]) => list.forEach((o) => !to.options?.includes(o) && addOption(to, o));
   switch (to.type) {
     case "select": {
@@ -159,7 +168,7 @@ export function transferRows(user: Identity, sourcePageId: string, raw: unknown)
     const old = JSON.parse(row.cells as unknown as string) as Record<string, unknown>;
     for (const [fid, to] of mapping) {
       const from = sourceFields.find((f) => f.id === fid)!;
-      const value = convert(old[fid], from, to, addOption);
+      const value = convert(old[fid], from, to, addOption, { from: isFormattedText(from, sourceFields), to: isFormattedText(to, targetFields) });
       if (value !== undefined) cells[to.id] = value;
     }
     // Tag-backed properties: missing tags created where allowed (#79).

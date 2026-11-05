@@ -3,6 +3,7 @@
 // by hand (row.template.apply) or by an automation ("apply template").
 // An existing record's text is never overwritten: the template fills an
 // empty document or is appended below it, and fills only empty properties.
+import { escapeInline, isFormattedText, toPlain } from "./inline-markdown";
 import { z } from "zod";
 import { all, audit, id, one, run } from "./db";
 import { HttpError } from "./auth";
@@ -129,7 +130,12 @@ export function placeholderResolver(page: Page, fields: Field[], record: Placeho
     const target = placeholderTarget(key, fields);
     if (!target) return undefined;
     if ("gone" in target) return "";
-    if ("field" in target) return readRestricted(target.field) ? "" : placeholderValue(target.field, values[target.field.id], fmt);
+    // Formatted text (#126) as plain text: documents, titles and messages
+    // take it as text (fillCells escapes it again for formatted text).
+    if ("field" in target)
+      return readRestricted(target.field)
+        ? ""
+        : placeholderValue(target.field, isFormattedText(target.field, fields) ? toPlain(values[target.field.id]) : values[target.field.id], fmt);
     switch (target.builtin) {
       case "title":
         return fields[0] ? placeholderValue(fields[0], values[fields[0].id], fmt) : "";
@@ -152,7 +158,15 @@ function fillCells(cells: Cells, keys: Set<string>, fields: Field[], resolve: (k
   const next = { ...cells };
   for (const f of fields)
     if (keys.has(f.id) && f.type === "text" && typeof next[f.id] === "string")
-      next[f.id] = mapPlaceholders(next[f.id] as string, resolve);
+      next[f.id] = mapPlaceholders(
+        next[f.id] as string,
+        isFormattedText(f, fields)
+          ? (key) => {
+              const value = resolve(key);
+              return value === undefined ? undefined : escapeInline(value);
+            }
+          : resolve,
+      );
   return next;
 }
 

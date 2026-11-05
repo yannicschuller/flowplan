@@ -9,12 +9,15 @@
 // - The first column is the title; every other column is typed by its
 //   values (empty cells do not count): number, date, checkbox, URL, else text.
 import type { Field, FieldType } from "./types";
+import { escapeInline } from "./inline-markdown";
 
 // The limits of the CSV import (lib/zip-import.ts MAX_IMPORT_ROWS and its
 // 80 columns, 200 characters per name, 10,000 per value).
 export const TABLE_DATABASE_LIMITS = { rows: 5000, columns: 80, name: 200, text: 10_000, href: 2000 } as const;
 
-export type TableCell = { text: string; href?: string };
+// `markdown`: the cell's text with its inline formatting (#126) – kept in
+// text properties; the title and other types read `text`.
+export type TableCell = { text: string; href?: string; markdown?: string };
 export type TableDatabase = { fields: Field[]; rows: Record<string, unknown>[] };
 
 // Numbers in German or English writing: 12, -3, 1,5, 1.5, .5, 1.234,56,
@@ -106,8 +109,13 @@ export function headerNames(first: TableCell[], columns: number, label = (n: num
   return names;
 }
 
-export function cellValue(type: FieldType, cell: TableCell): unknown {
+export function cellValue(type: FieldType, cell: TableCell, formatted = false): unknown {
   const text = cell.text.trim();
+  if (formatted && type === "text") {
+    if (!text) return null;
+    const markdown = cell.markdown?.trim() ? cell.markdown.trim() : escapeInline(text);
+    return markdown.slice(0, TABLE_DATABASE_LIMITS.text);
+  }
   if (type === "checkbox") return text ? parseCheckbox(text) === true : false;
   if (!text) return null;
   if (type === "number") return parseNumber(text);
@@ -131,7 +139,7 @@ export function tableToDatabase(table: TableCell[][], label?: (n: number) => str
   const rows = records.map((row) =>
     Object.fromEntries(
       fields.flatMap((field, i) => {
-        const value = cellValue(field.type, row[i] || { text: "" });
+        const value = cellValue(field.type, row[i] || { text: "" }, i > 0);
         return value === null ? [] : [[field.id, value]];
       }),
     ),

@@ -14,6 +14,8 @@
 //   view "Geburtstage" shows it every year.
 // - Records that came from the LDAP directory (lib/contacts-ldap.ts) keep
 //   the directory's values: those properties are read-only here.
+import { escapeInline, toPlain } from "./inline-markdown";
+import { escapeFormattedCells } from "./formatted-text";
 import { all, one, run } from "./db";
 import { HttpError } from "./auth";
 import { ct } from "./content-locale";
@@ -110,7 +112,9 @@ export function requireContactsDatabase(pageId: string) {
 }
 
 type Cells = Record<string, unknown>;
-const text = (cells: Cells, key: string) => cellText(cells[key]).trim();
+// Names, company and the like are formatted text (#126): read as plain
+// text; the title is plain already.
+const text = (cells: Cells, key: string) => (key === F.title ? cellText(cells[key]) : toPlain(cellText(cells[key]))).trim();
 export const contactName = (cells: Cells) => [text(cells, F.firstName), text(cells, F.lastName)].filter(Boolean).join(" ");
 
 // The title and name properties after a change (also for new records: before
@@ -134,9 +138,9 @@ export function deriveContactCells(fields: Field[], before: Cells, after: Cells,
     // A name typed into the title of a contact without names fills them.
     const words = newTitle.split(/\s+/);
     if (words.length > 1) {
-      next[F.lastName] = words.pop()!;
-      next[F.firstName] = words.join(" ");
-    } else next[F.lastName] = newTitle;
+      next[F.lastName] = escapeInline(words.pop()!);
+      next[F.firstName] = escapeInline(words.join(" "));
+    } else next[F.lastName] = escapeInline(newTitle);
   } else if (!Object.keys(before).length && newName && (!newTitle || NEW_CONTACT_TITLES.includes(newTitle))) {
     next[titleField] = newName;
   }
@@ -210,7 +214,8 @@ export function contactToCells(contact: VCardContact, fields: Field[]): Cells {
   // Without a year a date property has no value: the birthday is left out.
   if (/^\d{4}-\d{2}-\d{2}$/.test(contact.birthday)) set(F.birthday, contact.birthday);
   set(F.tags, contact.categories);
-  return cells;
+  // vCards are plain text (formatted text properties, #126).
+  return escapeFormattedCells(cells, fields).cells;
 }
 export function cellsToContact(rowId: string, cells: Cells, fields: Field[], note = ""): VCardContact {
   const c = emptyContact();

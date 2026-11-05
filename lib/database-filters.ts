@@ -7,6 +7,7 @@ import {
 } from "./relative-dates";
 import { z } from "zod";
 import { cellText } from "./cell-text";
+import { isFormattedText, toPlain } from "./inline-markdown";
 import { isEmptyValue } from "./empty-value";
 import type { Field, Filter, FilterGroup, FilterNode, View } from "./types";
 export const filterOperators = [
@@ -194,9 +195,11 @@ export function matches(
   f: Filter,
   field?: Field,
   now: Date = new Date(),
+  // A formatted text property (#126): compared as plain text.
+  formatted = false,
 ) {
   const raw = cells[f.field],
-    s = cellText(raw).toLowerCase(),
+    s = (formatted ? toPlain(cellText(raw)) : cellText(raw)).toLowerCase(),
     v = f.value.toLowerCase();
   if (
     field &&
@@ -336,7 +339,7 @@ export function matchesFilterGroup(
     if (rule.kind === "group")
       return matchesFilterGroup(cells, rule, fields, now);
     const field = fields?.find((f) => f.id === rule.field);
-    return (!fields || !!field) && matches(cells, rule, field, now);
+    return (!fields || !!field) && matches(cells, rule, field, now, !!fields && isFormattedText(field, fields));
   };
   return group.join === "and" ? rules.every(match) : rules.some(match);
 }

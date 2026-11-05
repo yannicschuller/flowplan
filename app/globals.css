@@ -6802,6 +6802,82 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
 .inline-cell .multi-options {
   min-width: 220px;
 }
+/* Formatted text properties (#126): the editor (components/rich-text-editor.tsx)
+   looks like an input; values render with components/inline-text.tsx. */
+.rich-text-field {
+  position: relative;
+  min-width: 0;
+  width: 100%;
+}
+.rich-text-input {
+  display: block;
+  min-height: 38px;
+  padding: 8px 11px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  outline: none;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  cursor: text;
+}
+.rich-text-input:focus,
+.rich-text-input.ProseMirror-focused {
+  border-color: #8ab4f4;
+  box-shadow: 0 0 0 3px #3b3fd81a;
+}
+.rich-text-input.loading {
+  color: var(--secondary);
+}
+.rich-text-input p {
+  margin: 0;
+}
+.rich-text-input[data-placeholder]:has(> p:only-child > .ProseMirror-trailingBreak:only-child)::before {
+  content: attr(data-placeholder);
+  position: absolute;
+  color: var(--muted);
+  pointer-events: none;
+}
+.inline-cell .rich-text-input {
+  min-height: 0;
+  padding: 4px 6px;
+  font-size: 13px;
+  max-width: 350px;
+  white-space: pre-wrap;
+}
+.rich-text-input a,
+.inline-link {
+  color: var(--blue);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.rich-text-input code,
+.inline-text code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--hover);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.9em;
+}
+.rich-text-bar .rich-text-link {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  max-width: 340px;
+}
+.rich-text-bar .rich-text-link input {
+  flex: 1;
+  min-width: 200px;
+  padding: 5px 8px;
+  font-size: 13px;
+}
+.rich-text-link-error {
+  flex-basis: 100%;
+  color: #bd4e56;
+  font-size: 12px;
+}
 .relation-picker {
   border: 1px solid var(--border);
   border-radius: 6px;

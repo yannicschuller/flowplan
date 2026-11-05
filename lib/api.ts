@@ -205,7 +205,8 @@ import {
 import { applyTemplate, fillNewRecord, prepareManualApply, rawTemplate, storeTemplateNames } from "./record-template-apply";
 import { z } from "zod";
 import * as Y from "yjs";
-import { all, one, run, id, transaction, audit } from "./db";
+import { all, one, run, id, transaction, audit, db } from "./db";
+import { convertFormattedValues } from "./formatted-text";
 import { securityEvent } from "./security-events";
 import { noteDangerousHtml } from "./security-events";
 import { HttpError, acceptPendingInvites, inviteToken } from "./auth";
@@ -1399,6 +1400,8 @@ export function command(
         const cell = z.object({
           text: z.string().max(limits.text),
           href: z.string().max(limits.href).optional(),
+          // The cell's inline formatting (#126) for text properties.
+          markdown: z.string().max(limits.text * 2).optional(),
         });
         const table = z
           .array(z.array(cell).max(limits.columns + 1))
@@ -2084,6 +2087,9 @@ export function command(
             pid(),
           );
         }
+        // Formatted text (#126): a property that becomes or stops being
+        // formatted text keeps its values' text.
+        convertFormattedValues(db(), pid(), d.fields, fields);
         run(
           "UPDATE databases SET fields=?,views=?,version=version+1 WHERE page_id=?",
           JSON.stringify(fields),

@@ -109,9 +109,20 @@ test("the first row names the properties, the first column is the title", () => 
   );
   // The empty row is left out; empty cells stay empty, checkboxes false.
   assert.deepEqual(converted.rows, [
-    { title: "42", f1: 1.5, f2: "2026-11-04", f3: true, f4: "https://spec.test", f5: "Erst **lesen**" },
+    // Formatted text (#126): plain text keeps its stars.
+    { title: "42", f1: 1.5, f2: "2026-11-04", f3: true, f4: "https://spec.test", f5: "Erst \\*\\*lesen\\*\\*" },
     { title: "Zweite", f2: "2026-12-01", f3: false, f4: "https://two.test" },
   ]);
+  // A cell's formatting from the editor stays in text properties; the
+  // title takes the plain text.
+  const formatted = tableToDatabase([
+    cells("Name", "Notiz"),
+    [
+      { text: "Alpha fett", markdown: "Alpha **fett**" },
+      { text: "Erst lesen", markdown: "Erst **lesen**" },
+    ],
+  ]);
+  assert.deepEqual(formatted.rows, [{ title: "Alpha fett", f1: "Erst **lesen**" }]);
   // Only a header (or nothing): properties without records.
   assert.deepEqual(tableToDatabase([cells("A", "B")]).rows, []);
   assert.equal(tableToDatabase([[]]).fields[0].name, "Spalte 1");
@@ -159,10 +170,11 @@ test("reading an editor table: plain text, merged cells, links of whole cells, t
     if (node.type.name === "table") tablePos = offset;
   });
   const rows = readTable(doc.nodeAt(tablePos)!);
+  // With the cell's inline formatting (#126) where it has any.
   assert.deepEqual(rows, [
-    [{ text: "Name" }, { text: "Wert" }, { text: "Web" }],
-    [{ text: "Alpha fett\nzwei" }, { text: "3,5" }, { text: "" }],
-    [{ text: "Beta" }, { text: "4" }, { text: "Seite", href: "https://beta.test" }],
+    [{ text: "Name", markdown: "**Name**" }, { text: "Wert" }, { text: "Web" }],
+    [{ text: "Alpha fett\nzwei", markdown: "Alpha **fett**\nzwei" }, { text: "3,5" }, { text: "" }],
+    [{ text: "Beta" }, { text: "4" }, { text: "Seite", href: "https://beta.test", markdown: "[Seite](https://beta.test)" }],
   ]);
   assert.equal(tableTitle(doc, tablePos), "Projekte");
   const converted = tableToDatabase(rows);

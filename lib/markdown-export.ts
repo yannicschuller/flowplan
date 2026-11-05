@@ -1,3 +1,4 @@
+import { isFormattedText, toPlain } from "./inline-markdown";
 import { readableDatabase } from "./field-access";
 import { visibleRows } from "./row-access";
 import { hiddenFileIds } from "./row-files";
@@ -480,6 +481,12 @@ function collect(user: Identity, options: MarkdownExportOptions) {
         md: entries.map((e) => e.md).join(", "),
         numeric: false,
       };
+    }
+    // Formatted text (#126) is inline Markdown already; the CSV gets plain text.
+    if (isFormattedText(field, data.schema.fields)) {
+      const md = cellText(value);
+      // "|" would end the table cell.
+      return { plain: toPlain(md), md: md.replace(/\|/g, "\\|"), numeric: false };
     }
     const plain =
       field.type === "checkbox"

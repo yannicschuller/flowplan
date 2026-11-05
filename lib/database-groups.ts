@@ -1,4 +1,5 @@
 import { cellText } from "./database";
+import { toPlain } from "./inline-markdown";
 import { tr } from "./locale-tag";
 import { orderedGroupRows } from "./row-order";
 import type { Field, Row, View, User } from "./types";
@@ -35,7 +36,11 @@ export function databaseGroups(
               ? value
                 ? t("Abgehakt", "Checked")
                 : t("Nicht abgehakt", "Not checked")
-              : cellText(value);
+              : // Formatted text (#126) as plain text; titles (usually the
+                // id "title", never grouped in practice) stay as they are.
+                field?.type === "text" && field.id !== "title"
+                ? toPlain(cellText(value))
+                : cellText(value);
       groups.set(key, { key, label, value: empty ? null : value, rows: [] });
     }
     if (row) groups.get(key)!.rows.push(row);

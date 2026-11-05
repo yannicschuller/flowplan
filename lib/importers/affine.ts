@@ -38,6 +38,7 @@
 // All text is escaped; links keep http, https and mailto only. Documents
 // are read one at a time (ADoc.load); a workspace with more pages than one
 // import may bring is only counted (#82).
+import { annotatedToInline, escapeInline } from "../inline-markdown";
 import { randomUUID } from "node:crypto";
 import { ct } from "../content-locale";
 import { calloutIcon } from "../callout-types";
@@ -194,6 +195,27 @@ function plainOf(text: unknown, ctx: Pick<Ctx, "title">): string {
       return typeof op.insert === "string" ? op.insert : "";
     })
     .join("");
+}
+// A text as inline Markdown (formatted text properties, #126): marks and
+// web links kept, references as their title.
+function markdownOf(text: unknown, ctx: Pick<Ctx, "title">): string {
+  if (typeof text === "string") return escapeInline(text);
+  if (!(text instanceof AText)) return "";
+  return annotatedToInline(
+    text.delta.map((op) => {
+      const a = op.attributes || {};
+      const ref = a.reference as { pageId?: unknown; title?: unknown } | undefined;
+      if (ref && typeof ref.pageId === "string") return { text: typeof ref.title === "string" && ref.title.trim() ? ref.title : ctx.title(ref.pageId) };
+      return {
+        text: typeof op.insert === "string" ? op.insert : "",
+        bold: !!a.bold,
+        italic: !!a.italic,
+        strike: !!a.strike,
+        code: !!a.code,
+        link: typeof a.link === "string" ? a.link : null,
+      };
+    }),
+  );
 }
 export function blocksPlain(blocks: ABlock[], ctx: Pick<Ctx, "title">, depth = 0): string {
   if (depth > 40) return "";
@@ -467,8 +489,9 @@ function convertDatabase(block: ABlock, ctx: Ctx) {
       default:
         if (column.type !== "rich-text") ctx.warn(`Datenbank-Spalte vom Typ „${column.type.slice(0, 40)}“ als Text übernommen.`);
         fields.push({ id: fid, name, type: "text" });
+        // Formatted text (#126): bold, italic, strike, code and links stay.
         convert.set(column.id, (v) => {
-          const text = v instanceof AText || typeof v === "string" ? plainOf(v, ctx) : typeof v === "number" || typeof v === "boolean" ? String(v) : "";
+          const text = v instanceof AText || typeof v === "string" ? markdownOf(v, ctx) : typeof v === "number" || typeof v === "boolean" ? String(v) : "";
           return text ? text.slice(0, 10000) : null;
         });
     }
