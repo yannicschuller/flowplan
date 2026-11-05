@@ -316,7 +316,7 @@ async function handleGET(
         const me = linkFlowOwner(f, jar.get(cookieName)?.value);
         if (!me) return back(translate(locale)("Die Verbindung ist abgelaufen. Bitte noch einmal „SSO verbinden“ wählen.", "The connection has expired. Please choose “Connect SSO” again."));
         // An identity that may not sign in here is not connected either.
-        if (process.env.OIDC_ALLOWED_GROUP && !groups.includes(process.env.OIDC_ALLOWED_GROUP)) return back("Zugriff für diese Gruppe nicht erlaubt.");
+        if (process.env.OIDC_ALLOWED_GROUP && !groups.includes(process.env.OIDC_ALLOWED_GROUP)) return back(translate(locale)("Zugriff für diese Gruppe nicht erlaubt.", "Access not allowed for this group."));
         try {
           linkFromSettings(me, sso, locale);
         } catch (e) {
@@ -329,7 +329,7 @@ async function handleGET(
         process.env.OIDC_ALLOWED_GROUP &&
         !groups.includes(process.env.OIDC_ALLOWED_GROUP)
       )
-        throw new HttpError(403, "Zugriff für diese Gruppe nicht erlaubt.");
+        throw new HttpError(403, translate(locale)("Zugriff für diese Gruppe nicht erlaubt.", "Access not allowed for this group."));
       const found = resolveOidcSignIn(sso, locale);
       // The address belongs to an existing account: it is connected only
       // after the person proves it (app/link-account).
@@ -346,7 +346,7 @@ async function handleGET(
     console.error("OIDC sign-in failed:", oidcFailure(e));
     return NextResponse.redirect(
       new URL(
-        `/?authError=${encodeURIComponent(e instanceof HttpError ? e.message : "Anmeldung fehlgeschlagen. Bitte erneut versuchen.")}${new URL(returnTo, appUrl()).hash}`,
+        `/?authError=${encodeURIComponent(e instanceof HttpError ? e.message : translate(await requestLocale().catch(() => "de" as const))("Anmeldung fehlgeschlagen. Bitte erneut versuchen.", "Sign-in failed. Please try again."))}${new URL(returnTo, appUrl()).hash}`,
         appUrl(),
       ),
     );
