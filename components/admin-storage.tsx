@@ -46,11 +46,34 @@ export function useStorageOverview(onError: (message: string) => void) {
   return { data, busy, load };
 }
 
+// The server names the parts in German (lib/storage-overview.ts); they are
+// shown in the page's language here (#121).
+function partLabel(t: ReturnType<typeof useT>, label: string): string {
+  switch (label) {
+    case "Dokumente": return t("Dokumente", "Documents");
+    case "Datenbanken und Einträge": return t("Datenbanken und Einträge", "Databases and records");
+    case "Whiteboards": return t("Whiteboards", "Whiteboards");
+    case "Versionen": return t("Versionen", "Versions");
+    case "Kommentare": return t("Kommentare", "Comments");
+    case "Suchindex und Texterkennung": return t("Suchindex und Texterkennung", "Search index and text recognition");
+    case "Vorlagen": return t("Vorlagen", "Templates");
+    case "Profilbilder": return t("Profilbilder", "Profile pictures");
+    case "Protokoll und Benachrichtigungen": return t("Protokoll und Benachrichtigungen", "Log and notifications");
+    case "Konten, Rechte und Verwaltung": return t("Konten, Rechte und Verwaltung", "Accounts, permissions and administration");
+    case "Bilder": return t("Bilder", "Images");
+    case "Videos": return t("Videos", "Videos");
+    case "Audio": return t("Audio", "Audio");
+    case "Dokumente (PDF, Office, Text)": return t("Dokumente (PDF, Office, Text)", "Documents (PDF, Office, text)");
+    case "Sonstige Dateien": return t("Sonstige Dateien", "Other files");
+    default: return label;
+  }
+}
+
 // A stacked bar with its legend: shares of a total.
 function Breakdown({ parts, label }: { parts: { key: string; label: string; bytes: number; files?: number }[]; label: string }) {
   const t = useT();
   const total = parts.reduce((sum, p) => sum + p.bytes, 0);
-  const shown = parts.filter((p) => p.bytes > 0);
+  const shown = parts.filter((p) => p.bytes > 0).map((p) => ({ ...p, label: partLabel(t, p.label) }));
   return (
     <div className="storage-breakdown">
       <div className="storage-bar" role="img" aria-label={`${label}: ${shown.map((p) => `${p.label} ${bytes(p.bytes)}`).join(", ") || t("leer", "empty")}`}>
