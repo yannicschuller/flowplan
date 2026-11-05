@@ -192,6 +192,7 @@ import type {
 import { PageExportDialog } from "./page-export";
 import { queueNotebookImport } from "./notebook/pending-import";
 import { MobileTabBar, guardChromeTouches, useShellDocument, useSoftKeyboard } from "./mobile-tab-bar";
+import { HideKeyboardButton } from "./hide-keyboard-button";
 import {
   Modal,
   PageIcon,
@@ -6028,6 +6029,8 @@ export default function WorkspaceApp({
           }}
         />
       )}
+      {/* "Hide keyboard" for text fields outside the editors, dialogs included. */}
+      <HideKeyboardButton />
       <MobileTabBar
         active={mobile ? null : screen === "home" ? "home" : screen === "inbox" ? "inbox" : null}
         unread={boot.notifications.filter((n) => !n.read_at).length}

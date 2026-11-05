@@ -25849,6 +25849,86 @@ tr:hover .row-open-mark,
     bottom: auto;
     transform: translateY(-100%);
   }
+  /* A record's content (the record dialog, which lives outside the shell,
+     and records written inline in a feed) keeps its toolbar in place – until
+     one writes in it with the keyboard open: then the toolbar docks above
+     the keyboard like a document's, placed from the top for the same reason
+     (#120). The dialog stays fixed-children friendly (no transform, #75). */
+  html.keyboard-docked .row-document .editor-wrapper:focus-within .editor-toolbar {
+    position: fixed;
+    top: var(--keyboard-visible-end);
+    bottom: auto;
+    transform: translateY(-100%);
+    left: var(--safe-left, 0px);
+    right: var(--safe-right, 0px);
+    z-index: 30;
+    width: auto;
+    margin: 0;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    border-radius: 0;
+    border-width: 1px 0 0;
+    padding: 4px 8px;
+    scrollbar-width: none;
+  }
+  html.keyboard-docked .row-document .editor-wrapper:focus-within .editor-toolbar::-webkit-scrollbar {
+    display: none;
+  }
+  html.keyboard-docked .row-document .editor-wrapper:focus-within .editor-toolbar button {
+    flex-shrink: 0;
+  }
+  html.keyboard-docked .row-document .editor-wrapper:focus-within .editor-toolbar .editor-hide-keyboard {
+    box-shadow:
+      -6px 0 6px -2px var(--bg),
+      8px 0 0 var(--bg);
+  }
+  /* Room for the docked toolbar – and for a keyboard that only covers the
+     page – so the end of the record's text still scrolls into view. */
+  html.keyboard-docked .row-document .editor-wrapper:focus-within {
+    padding-bottom: calc(56px + var(--keyboard-inset, 0px));
+  }
+  /* "Hide keyboard" for every other text field (components/
+     hide-keyboard-button.tsx): a round button at the right edge, right
+     above the keyboard – placed from the top, like the docked toolbar. Above
+     dialogs and menus. */
+  html.keyboard-docked .hide-keyboard-fab {
+    display: inline-flex;
+  }
+}
+.hide-keyboard-fab {
+  display: none;
+  position: fixed;
+  z-index: 1100;
+  top: calc(var(--keyboard-visible-end, 0px) - 44px - 8px);
+  right: calc(8px + var(--safe-right, 0px));
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  /* An open dialog turns pointer events off on <body>. */
+  pointer-events: auto;
+}
+.hide-keyboard-fab:active {
+  background: var(--hover);
+}
+.hide-keyboard-fab .editor-hide-keyboard-icon svg:first-child {
+  width: 20px;
+  height: 20px;
+}
+.hide-keyboard-fab .editor-hide-keyboard-icon svg:last-child {
+  width: 11px;
+  height: 11px;
+  margin-top: -3px;
+}
+@media (max-width: 767px) {
   .toast {
     bottom: calc(12px + var(--tab-bar-space));
   }
