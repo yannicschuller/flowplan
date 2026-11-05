@@ -50,6 +50,7 @@ function watchKeyboard() {
   }
   let frame = 0;
   let inset = -1;
+  let visibleEnd = -1;
   const measure = () => {
     const height = vv?.height ?? window.innerHeight;
     // A rotation or a resized window starts over.
@@ -68,6 +69,25 @@ function watchKeyboard() {
       inset = next;
       if (next) root.style.setProperty("--keyboard-inset", `${next}px`);
       else root.style.removeProperty("--keyboard-inset");
+    }
+    // Where the visible area ends, measured from the top. iOS 26 (Safari and
+    // the app's web view) resolves bottom: for position: fixed against the
+    // full height from before the keyboard while top: follows the visible
+    // area – measured on an iPhone (#120): innerHeight 528, visual viewport
+    // 384 at 186, a toolbar at bottom: 0 ended up 144 px under the keyboard.
+    // So the docked toolbar is placed from the top (app/globals.css,
+    // html.keyboard-docked); where both agree (Android, desktop browsers) it
+    // lands at the same spot.
+    const end = vv && open && vv.scale < 1.01 ? Math.round(vv.offsetTop + vv.height) : 0;
+    if (end !== visibleEnd) {
+      visibleEnd = end;
+      if (end) {
+        root.style.setProperty("--keyboard-visible-end", `${end}px`);
+        root.classList.add("keyboard-docked");
+      } else {
+        root.style.removeProperty("--keyboard-visible-end");
+        root.classList.remove("keyboard-docked");
+      }
     }
     if (open !== keyboardOpen) {
       keyboardOpen = open;
@@ -133,6 +153,8 @@ function watchKeyboard() {
     document.removeEventListener("focusin", settle);
     document.removeEventListener("focusout", settle);
     root.style.removeProperty("--keyboard-inset");
+    root.style.removeProperty("--keyboard-visible-end");
+    root.classList.remove("keyboard-docked");
     keyboardOpen = false;
   };
 }

@@ -25841,6 +25841,14 @@ tr:hover .row-open-mark,
     bottom: var(--tab-bar-space);
     padding-bottom: 4px;
   }
+  /* With the keyboard open, placed from the top: the visible area's end
+     minus the toolbar (components/mobile-tab-bar.tsx, #120). iOS 26 places
+     bottom: against the height from before the keyboard, top: right. */
+  html.keyboard-docked .app-shell.keyboard-open .page-layout .editor-toolbar {
+    top: var(--keyboard-visible-end);
+    bottom: auto;
+    transform: translateY(-100%);
+  }
   .toast {
     bottom: calc(12px + var(--tab-bar-space));
   }
