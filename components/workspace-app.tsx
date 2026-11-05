@@ -154,7 +154,6 @@ import {
   Scales,
   Sun,
   Moon,
-  ArrowCounterClockwise,
   Globe,
   Link as LinkIcon,
   SquaresFour,
@@ -230,6 +229,7 @@ import {
 import { MyTasks } from "./my-tasks";
 import HomeScreen from "./home/home";
 import { relativeTime } from "./home/format";
+import TrashView from "./trash-view";
 import { FocusBar } from "./focus-bar";
 import { PageGraph } from "./page-graph";
 import { QuickCapture } from "./quick-capture";
@@ -4267,75 +4267,14 @@ export default function WorkspaceApp({
             )
           )}
           {screen === "trash" && (
-            <div className="utility-content">
-              <div className="utility-title">
-                <Trash size={30} />
-                <h1>{t("Papierkorb", "Trash")}</h1>
-                <p>{t("Gelöschte Seiten und Bereiche kannst du wiederherstellen.", "You can restore deleted pages and spaces.")}</p>
-              </div>
-              {(boot.trashedSpaces || []).map((space) => (
-                <div className="utility-row trash-space" key={space.id}>
-                  <SpaceIcon icon={space.icon} color={space.icon_color} />
-                  <strong>
-                    {space.name}
-                    <small>{t("Bereich mit Seiten", "Space with pages")}</small>
-                  </strong>
-                  <div className="lifecycle-buttons">
-                    <button
-                      className="button compact"
-                      onClick={() =>
-                        act({
-                          action: "space.restore",
-                          spaceId: space.id,
-                          version: space.version,
-                        })
-                      }
-                    >
-                      {t("Bereich wiederherstellen", "Restore space")}
-                    </button>
-                    <button
-                      className="button danger compact"
-                      onClick={() => setSpaceManager({ space, purge: true })}
-                    >
-                      {t("Endgültig löschen", "Delete permanently")}
-                    </button>
-                  </div>
-                </div>
-              ))}
-              {boot.pages
-                .filter((p) => p.deleted_at)
-                .map((p) => (
-                  <div className="utility-row" key={p.id}>
-                    <PageIcon name={p.icon} />
-                    <strong>{p.title}</strong>
-                    <span>{relativeTime(p.deleted_at!, clock, locale)}</span>
-                    <button
-                      className="button compact"
-                      onClick={() =>
-                        act({ action: "page.restore", pageId: p.id })
-                      }
-                    >
-                      <ArrowCounterClockwise />
-                      {t("Wiederherstellen", "Restore")}
-                    </button>
-                  </div>
-                ))}
-              <RowTrash
-                workspaceId={boot.workspace.id}
-                act={act}
-                onOpen={(pageId, rowId) =>
-                  void openPage(pageId, { pageId, rowId })
-                }
-              />
-              {!boot.pages.some((p) => p.deleted_at) &&
-                !boot.trashedSpaces?.length && (
-                  <div className="empty-state">
-                    <Trash size={38} />
-                    <h3>{t("Alles aufgeräumt", "All tidy")}</h3>
-                    <p>{t("Dein Papierkorb ist leer.", "Your trash is empty.")}</p>
-                  </div>
-                )}
-            </div>
+            <TrashView
+              boot={boot}
+              act={act}
+              clock={clock}
+              locale={locale}
+              onOpenRecord={(pageId, rowId) => void openPage(pageId, { pageId, rowId })}
+              onPurgeSpace={(space) => setSpaceManager({ space, purge: true })}
+            />
           )}
           {screen === "media" && (
             <MediaLibrary
@@ -5756,6 +5695,7 @@ export default function WorkspaceApp({
           workspaceId={boot.workspace.id}
           canCreate={canCreate}
           isAdmin={!!boot.user.isAdmin}
+          trashDays={boot.trashDays}
           onError={notifyError}
           onUse={async (t) => {
             const r = await act({
@@ -6117,74 +6057,6 @@ function SearchSnippet({ text }: { text: string }) {
         );
       })}
     </>
-  );
-}
-// Deleted records of the workspace with restore and purge actions.
-function RowTrash({
-  workspaceId,
-  act,
-  onOpen,
-}: {
-  workspaceId: string;
-  act: (b: Record<string, unknown>) => Promise<unknown>;
-  onOpen: (pageId: string, rowId: string) => void;
-}) {
-  const t = useT();
-  const [entries, setEntries] = useState<
-    {
-      id: string;
-      title: string;
-      pageId: string;
-      pageTitle: string;
-      deletedAt: string;
-    }[]
-  >([]);
-  const load = useCallback(() => {
-    api<typeof entries>(`/api/trash/rows?workspace=${workspaceId}`)
-      .then(setEntries)
-      .catch(() => setEntries([]));
-  }, [workspaceId]);
-  useEffect(load, [load]);
-  if (!entries.length) return null;
-  return (
-    <section className="row-trash" aria-label={t("Gelöschte Einträge", "Deleted records")}>
-      <h2>{t("Gelöschte Einträge", "Deleted records")}</h2>
-      <p className="muted">
-        {t("Einträge bleiben 30 Tage im Papierkorb und werden danach endgültig gelöscht.", "Records stay in the trash for 30 days and are then deleted permanently.")}
-      </p>
-      {entries.map((e) => (
-        <div className="utility-row" key={e.id}>
-          <PageIcon name="file" />
-          <strong>
-            {e.title}
-            <small>{t("aus", "from")}{" "}{e.pageTitle}</small>
-          </strong>
-          <div className="lifecycle-buttons">
-            <button
-              className="button compact"
-              onClick={async () => {
-                if (await act({ action: "row.trash.restore", trashId: e.id })) {
-                  load();
-                  onOpen(e.pageId, e.id);
-                }
-              }}
-            >
-              <ArrowCounterClockwise />
-              {t("Wiederherstellen", "Restore")}
-            </button>
-            <button
-              className="button danger compact"
-              onClick={async () => {
-                if (await act({ action: "row.trash.purge", trashId: e.id }))
-                  load();
-              }}
-            >
-              {t("Endgültig löschen", "Delete permanently")}
-            </button>
-          </div>
-        </div>
-      ))}
-    </section>
   );
 }
 

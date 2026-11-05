@@ -6,7 +6,7 @@ import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import { requireUnlocked } from "./journal-extras";
 import { ensureRowDocument, requireRow } from "./row-documents";
-import { expireRowTrash } from "./row-trash";
+import { expireTrash } from "./trash";
 import {
   compareDocuments,
   htmlBlocks,
@@ -236,7 +236,8 @@ export function startRetentionWorker() {
   const tick = () => {
     try {
       pruneSnapshots();
-      expireRowTrash();
+      // Pages, spaces, records and templates after the trash period (#123).
+      expireTrash();
     } catch (error) {
       console.error("Snapshot retention failed", error);
     }

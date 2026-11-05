@@ -106,6 +106,7 @@ const ALLOWED = new Set([
   "page.update",
   "page.delete",
   "page.restore",
+  "page.purge",
   "page.move",
   "pages.bulk",
   "favorite",

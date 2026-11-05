@@ -317,6 +317,8 @@ export function bootstrap(user: Identity, wid?: string, agent?: string | null) {
       `SELECT * FROM spaces WHERE workspace_id=? AND deleted_at IS NOT NULL ORDER BY ${SPACE_ORDER}`,
       workspace.id,
     ).filter((s) => canManageSpace(user, s)),
+    // Days pages stay in the trash (0 = until emptied; lib/trash.ts).
+    trashDays: trashDays(),
     managedSpaces: all<Space>(
       `SELECT * FROM spaces WHERE workspace_id=? AND deleted_at IS NULL ORDER BY ${SPACE_ORDER}`,
       workspace.id,
@@ -637,6 +639,7 @@ const GIT_EXPORT_ENDS = new Set([
   "space.gitExport",
   "space.delete",
   "space.purge",
+  "trash.empty",
   "workspace.delete",
   "workspace.leave",
   "member.role",
@@ -1610,6 +1613,12 @@ export function command(
           run("UPDATE pages SET deleted_at=NULL WHERE id=?", child);
         break;
       }
+      case "page.purge":
+        result = purgeTrashedPage(user, b);
+        break;
+      case "trash.empty":
+        result = emptyTrash(user, b);
+        break;
       case "page.duplicate": {
         result = duplicatePageTree(user, write());
         break;
@@ -3037,6 +3046,9 @@ export function command(
         result = { id: templateId };
         break;
       }
+      case "template.purge":
+        result = purgeTemplate(user, b);
+        break;
       case "template.update":
       case "template.delete":
       case "template.restore":
@@ -3479,6 +3491,7 @@ import { frontmatterAliases, storedAliases } from "./aliases";
 import { aliasField, aliasList } from "./aliases";
 import { copyPublication } from "./publication-copy";
 import { purgeTrashedRow, restoreTrashedRow, trashRow } from "./row-trash";
+import { emptyTrash, purgeTemplate, purgeTrashedPage, trashDays } from "./trash";
 import { dashboardData, saveDashboard } from "./dashboard";
 import { notebookArchive, notebookCommand, notebookData } from "./notebook";
 import { quotaCheckpoint, setWorkspaceQuota } from "./instance-ops";

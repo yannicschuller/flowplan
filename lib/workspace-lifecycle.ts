@@ -97,7 +97,35 @@ export function purgePages(workspaceId: string, pages: Page[]) {
       workspaceId,
     );
   }
+  // What does not go with the page by itself (no foreign key): search and AI
+  // entries, reminders, rules and logs naming the page or its records.
+  for (const page of pages) {
+    for (const table of ["automation_runs", "ticket_messages", "calendar_sync_items"])
+      run(`DELETE FROM ${table} WHERE row_id IN (SELECT id FROM rows WHERE page_id=?)`, page.id);
+    for (const table of ["task_reminders", "ai_auto_dirty", "ai_embeddings", "offline_changes", "webhooks"])
+      run(`DELETE FROM ${table} WHERE page_id=?`, page.id);
+    run("DELETE FROM ai_access_rules WHERE target_id=? AND kind='page'", page.id);
+    run("DELETE FROM ai_blocks WHERE target_id=? AND kind='page'", page.id);
+    run("DELETE FROM invite_grants WHERE resource_id=?", page.id);
+    run("DELETE FROM time_rates WHERE kind='project' AND target_id=?", page.id);
+    run("UPDATE inbound_messages SET page_id=NULL,row_id=NULL WHERE page_id=?", page.id);
+  }
+  // The full-text index in one pass per batch (a scan, page_id is not indexed).
+  const list = [...ids];
+  for (let i = 0; i < list.length; i += 500) {
+    const batch = list.slice(i, i + 500);
+    run(`DELETE FROM search_index WHERE page_id IN (${batch.map(() => "?").join(",")})`, ...batch);
+  }
   for (const page of pages) run("DELETE FROM pages WHERE id=?", page.id);
+}
+// A space in the trash with all its pages, for good. Inside a transaction.
+export function purgeSpace(space: Space) {
+  purgePages(
+    space.workspace_id,
+    all<Page>("SELECT * FROM pages WHERE space_id=?", space.id),
+  );
+  run("DELETE FROM grants WHERE resource_id=?", space.id);
+  run("DELETE FROM spaces WHERE id=?", space.id);
 }
 // Removes a workspace with everything in it. Inside a transaction.
 export function purgeWorkspace(wid: string) {
@@ -171,12 +199,7 @@ export function manageSpace(user: Identity, input: Record<string, unknown>) {
         "Den Bereich zuerst in den Papierkorb verschieben.",
       );
     confirmName(input.confirmName, space.name);
-    purgePages(
-      space.workspace_id,
-      all<Page>("SELECT * FROM pages WHERE space_id=?", space.id),
-    );
-    run("DELETE FROM grants WHERE resource_id=?", space.id);
-    run("DELETE FROM spaces WHERE id=?", space.id);
+    purgeSpace(space);
   } else throw new HttpError(400, "Unbekannte Bereichsaktion.");
   return { ok: true };
 }

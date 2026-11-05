@@ -31,6 +31,10 @@ export default function LimitsSection() {
             tone: data.metrics.retentionDays ? "info" : "off",
             label: data.metrics.retentionDays ? t(`Versionen ${data.metrics.retentionDays} Tage`, `Versions ${data.metrics.retentionDays} days`) : t("Versionen für immer", "Versions forever"),
           },
+          {
+            tone: (s.trashDays ?? 30) > 0 ? "info" : "off",
+            label: (s.trashDays ?? 30) > 0 ? t(`Papierkorb ${s.trashDays ?? 30} Tage`, `Trash ${s.trashDays ?? 30} days`) : t("Papierkorb ohne Frist", "Trash kept until emptied"),
+          },
         ]}
       >
         {t("Standardwerte für alle. 0 = unbegrenzt; für Admins gelten keine Grenzen.", "Defaults for everyone. 0 = unlimited; admins are not limited.")}
@@ -97,6 +101,18 @@ export default function LimitsSection() {
           unit={t("Tage", "days")}
           max={36500}
           placeholder={data.metrics.retentionDays ? String(data.metrics.retentionDays) : "∞"}
+        />
+        <InstanceNumber
+          field="trashDays"
+          label={t("Papierkorb leeren nach", "Empty the trash after")}
+          description={t(
+            "Gelöschte Seiten, Bereiche, Datenbankeinträge und Vorlagen werden nach so vielen Tagen im Papierkorb endgültig gelöscht – mit ihren Dateien. 0 = nie automatisch.",
+            "Deleted pages, spaces, database records and templates are deleted permanently after this many days in the trash – with their files. 0 = never automatically.",
+          )}
+          unit={t("Tage", "days")}
+          max={3650}
+          fallback={30}
+          placeholder="30"
         />
       </SettingGroup>
     </>

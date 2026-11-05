@@ -55,7 +55,7 @@ export const commandActionNames = [
   "home.save", "home.reset", "home.note", "home.config", "home.default",
   "account.deletePlan", "account.delete",
   "space.create", "space.update", "space.delete", "space.restore", "space.purge", "space.duplicate", "space.gitExport", "space.reorder",
-  "page.create", "page.update", "page.delete", "page.restore", "page.duplicate", "page.move", "page.import",
+  "page.create", "page.update", "page.delete", "page.restore", "page.purge", "trash.empty", "page.duplicate", "page.move", "page.import",
   "pages.bulk", "page.follow", "page.collapseProperties", "sidebar.state", "page.snapshot", "page.publish", "page.share", "page.shareUpdate", "page.fromShare",
   "page.toRecord", "record.toPage", "page.owner", "page.review", "page.aliases",
   "page.properties", "pages.tag", "tag.save", "tag.delete", "tag.merge", "tag.reorder", "property.save", "property.delete", "property.reorder", "favorite", "favorite.row", "task.update", "synced.create", "table.toDatabase", "mention.link",
@@ -81,7 +81,7 @@ export const commandActionNames = [
   "time.start", "time.stop", "time.add", "time.delete", "ticket.reply",
   "member.invite", "invite.cancel", "invite.resend", "member.role", "member.guest",
   "sso.mapping.add", "sso.mapping.delete", "grant.set", "group.create", "group.member",
-  "template.save", "template.update", "template.delete", "template.restore", "template.apply",
+  "template.save", "template.update", "template.delete", "template.restore", "template.purge", "template.apply",
   "capture.record", "capture.target", "bookmarks.import",
   "calendar.feed", "calendar.feed.revoke", "calendar.caldav", "calendar.caldav.revoke",
   "webhook.delete", "inbound.save", "inbound.rotate", "inbound.delete",
@@ -371,6 +371,45 @@ export const commandActions: ActionDoc[] = [
     summary: "Restore a page from the trash",
     input: z.object({ action: z.literal("page.restore"), pageId: uuid }),
     result: okResult,
+  },
+  {
+    action: "page.purge",
+    summary: "Delete a page from the trash permanently",
+    description:
+      "The page must be in the trash (`page.delete`), and the caller needs edit rights on it – the same right as moving it to the trash. Its sub-pages in the trash that the caller may edit go with it; others stay in the trash on their own. Deleted for good: the page's content, versions, comments, records and database schema, uploads, favorites, publications, share links, notifications and search entries. Cannot be undone. Pages in the trash are also deleted automatically after the instance's trash period (default 30 days, set by admins).",
+    input: z.object({ action: z.literal("page.purge"), pageId: uuid }),
+    result: z.object({ ok: z.literal(true), pages: z.number().int().describe("Pages deleted, the page itself included") }),
+  },
+  {
+    action: "template.purge",
+    summary: "Delete a template from the template trash permanently",
+    description:
+      "The template must be in the template trash (`template.delete`). Its creator or a workspace owner may delete it; templates for all workspaces or the public gallery need an administrator. Its stored files go with it. Pages already created from it are kept.",
+    input: z.object({
+      action: z.literal("template.purge"),
+      workspaceId: uuid,
+      templateId: uuid,
+      version: z.number().int().optional().describe("The template's version, refused when it changed meanwhile"),
+    }),
+    result: okResult,
+  },
+  {
+    action: "trash.empty",
+    summary: "Empty the trash of a workspace",
+    description:
+      "Deletes for good everything in the workspace's trash the caller may delete: pages they can edit, spaces they manage, and deleted records they can edit. Pages of others' private spaces and read-only items are never touched. With `scope: \"templates\"` the template trash is emptied instead (templates the caller manages). Needs the editor role. Cannot be undone.",
+    input: z.object({
+      action: z.literal("trash.empty"),
+      workspaceId: uuid,
+      scope: z.enum(["workspace", "templates"]).optional().describe("What to empty (default `workspace`)"),
+    }),
+    result: z.object({
+      ok: z.literal(true),
+      pages: z.number().int().optional(),
+      spaces: z.number().int().optional(),
+      records: z.number().int().optional(),
+      templates: z.number().int().optional(),
+    }),
   },
   {
     action: "page.duplicate",
@@ -1232,6 +1271,7 @@ const operations: { path: string; method: "get" | "post"; op: Op }[] = [
   { path: "/api/capture/save", method: "post", op: { id: "captureSave", tag: "Workspace", summary: "Save a quick capture", description: "JSON, or multipart/form-data with the fields and up to 10 `file` parts (images, PDFs, Markdown or text files – their text –, a voice note with `transcribe`). The shorthand is read again (`parse`, `literal`) with the capturing computer's `today` and `timeZone`. Into a database as a record (properties from the shorthand, `templateId` for a record template, accepted AI values in `cells`), appended to a page, or to today's journal entry (a journal's id). Send an `Idempotency-Key`: a retry saves nothing twice.", write: true, body: { content: "application/json", schema: { type: "object", properties: { targetId: { type: "string" }, text: { type: "string", maxLength: 20000 }, parse: { type: "boolean" }, literal: { type: "array", items: { type: "string" } }, task: { type: "boolean" }, today: { type: "string", format: "date" }, timeZone: { type: "string" }, locale: { type: "string", enum: ["de", "en", "fr"] }, url: { type: "string", maxLength: 2000 }, linkTitle: { type: "string" }, linkDescription: { type: "string" }, linkProvider: { type: "string" }, linkImage: { type: "string" }, templateId: { type: "string" }, transcribe: { type: "boolean" }, cells: { type: "object", additionalProperties: true } }, required: ["today"], additionalProperties: false }, required: true }, ok: { schema: { type: "object", properties: { ok: { type: "boolean" }, kind: { type: "string", enum: ["record", "append"] }, pageId: { type: "string" }, rowId: { type: "string" }, url: { type: "string" }, title: { type: "string" }, undo: { type: "object" }, files: { type: "array", items: { type: "string" } } }, required: ["ok", "kind", "pageId", "url"], additionalProperties: true }, description: "Where it was saved" }, errors: [400, 401, 403, 404, 409, 413, 422, 423] } },
   { path: "/api/capture/undo", method: "post", op: { id: "captureUndo", tag: "Workspace", summary: "Take a quick capture back", description: "A captured record goes to the trash (your own only); appended blocks are removed while they are still the last ones, unchanged (`undo` from the save's answer).", write: true, body: { content: "application/json", schema: { type: "object", properties: { kind: { type: "string", enum: ["record", "append"] }, pageId: { type: "string", format: "uuid" }, rowId: { type: "string", format: "uuid" }, blocks: { type: "integer" }, digest: { type: "string" } }, required: ["kind", "pageId"] }, required: true }, ok: { schema: { type: "object", properties: { undone: { type: "boolean" }, reason: { type: "string" } }, required: ["undone"] }, description: "Whether it was taken back" }, errors: [400, 401, 403, 404, 409] } },
   { path: "/api/synced", method: "get", op: { id: "syncedBlocks", tag: "Workspace", summary: "Synced blocks of a workspace", params: [workspace], ok: { schema: { type: "object", properties: { blocks: { type: "array", items: { type: "object", additionalProperties: true } } }, required: ["blocks"] }, description: "Blocks" }, errors: [400, 401, 403] } },
+  { path: "/api/trash/summary", method: "get", op: { id: "trashSummary", tag: "Workspace", summary: "What emptying the trash would delete", params: [workspace], ok: { schema: { type: "object", properties: { pages: { type: "integer" }, spaces: { type: "integer" }, records: { type: "integer" }, days: { type: "integer", description: "Days items stay in the trash before they are deleted permanently (0 = never)" } }, required: ["pages", "spaces", "records", "days"] }, description: "Counts of pages, spaces and records the caller may delete permanently (`trash.empty`)" }, errors: [400, 401, 403] } },
   { path: "/api/trash/rows", method: "get", op: { id: "rowTrash", tag: "Workspace", summary: "Records in the trash", params: [workspace], ok: { schema: { type: "array", items: { type: "object", additionalProperties: true } }, description: "Trashed records with their databases" }, errors: [400, 401, 403] } },
   { path: "/api/settings", method: "get", op: { id: "workspaceSettings", tag: "Workspace", summary: "Invitations, groups and grants of a workspace", description: "Owners only.", params: [workspace], ok: { schema: { type: "object", additionalProperties: true }, description: "Settings" }, errors: [401, 403] } },
   { path: "/api/command", method: "post", op: { id: "command", tag: "Workspace", summary: "Change something", description: "The same actions the interface sends: one JSON object with `action` and its fields. Write tokens only; `admin.*`, `token.*` and `ai.*` are refused for every token. Bodies up to 10 MB. Actions that send mail (`member.invite`, `page.share`) are limited to 40 per hour per person (429).", write: true, body: { content: "application/json", schema: ref("Command"), required: true }, ok: { schema: ref("CommandResult"), description: "The result of the action" }, errors: [400, 401, 403, 404, 409, 413, 429] } },
