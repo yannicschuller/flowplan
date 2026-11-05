@@ -5720,7 +5720,10 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
   .page-layout .editor-toolbar {
     position: fixed;
     top: auto;
-    bottom: 0;
+    /* Right above the on-screen keyboard where it only covers the page
+       (iOS: Safari and the app's web view), see useSoftKeyboard
+       (components/mobile-tab-bar.tsx); 0 where the page ends at it. */
+    bottom: var(--keyboard-inset, 0px);
     /* Clear of the side insets: on a closed iPhone Duo the status bar and
        camera sit in a column along the side (the row scrolls, so padding
        would not keep its buttons out of it). */
@@ -5733,7 +5736,8 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
     overflow-x: auto;
     border-radius: 0;
     border-width: 1px 0 0;
-    padding: 4px 8px calc(4px + var(--safe-bottom, 0px));
+    /* Over the keyboard the home indicator's room is not needed. */
+    padding: 4px 8px max(4px, calc(4px + var(--safe-bottom, 0px) - var(--keyboard-inset, 0px)));
     scrollbar-width: none;
   }
   .page-layout .editor-toolbar::-webkit-scrollbar {
@@ -5749,8 +5753,10 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
       -6px 0 6px -2px var(--bg),
       8px 0 0 var(--bg);
   }
+  /* Room for the toolbar – and for a keyboard that only covers the page –
+     so the end of the text still scrolls into view. */
   .page-layout .editor-wrapper {
-    padding-bottom: 56px;
+    padding-bottom: calc(56px + var(--keyboard-inset, 0px));
   }
   .mobile-menu {
     display: flex;

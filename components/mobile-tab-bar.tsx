@@ -22,44 +22,94 @@ const viewport =
   typeof window === "undefined"
     ? { width: 0, tallest: 0 }
     : { width: window.innerWidth, tallest: window.visualViewport?.height ?? window.innerHeight };
+
 // Whether the on-screen keyboard is (very likely) open: the visual viewport
 // got clearly shorter than it was at this width, or – on touch screens, where
 // browsers do not always resize – a text field has the focus.
+//
+// While it is open, --keyboard-inset on <html> says how far the keyboard
+// reaches into the layout viewport, so what docks at the bottom (the
+// formatting toolbar, app/globals.css) sits right above it. Two ways a
+// keyboard shows (#120):
+// - Safari and the iOS app's WKWebView keep the layout viewport – the box
+//   position: fixed refers to – at full height and only shrink the visual
+//   viewport: bottom: 0 lies behind the keyboard, the inset lifts it out.
+// - A web view the app resizes itself (Android) or a browser that resizes
+//   the page: the layout viewport ends at the keyboard, the inset is 0.
+// One shared listener for every component that asks.
+let keyboardOpen = false;
+const keyboardListeners = new Set<(open: boolean) => void>();
+let stopKeyboardWatch: (() => void) | null = null;
+function watchKeyboard() {
+  const vv = window.visualViewport;
+  const root = document.documentElement;
+  const coarse = window.matchMedia("(pointer: coarse)");
+  if (viewport.width !== window.innerWidth) {
+    viewport.width = window.innerWidth;
+    viewport.tallest = vv?.height ?? window.innerHeight;
+  }
+  let frame = 0;
+  let inset = -1;
+  const measure = () => {
+    const height = vv?.height ?? window.innerHeight;
+    // A rotation or a resized window starts over.
+    if (window.innerWidth !== viewport.width) {
+      viewport.width = window.innerWidth;
+      viewport.tallest = height;
+    }
+    viewport.tallest = Math.max(viewport.tallest, height);
+    const shrunk = height < viewport.tallest * 0.8 && viewport.tallest - height > 120;
+    const open = shrunk || (coarse.matches && typing());
+    // What of the layout viewport lies below the visible area. Zoomed in,
+    // the two do not line up with the keyboard; the toolbar stays put.
+    const below = vv && open && vv.scale < 1.01 ? Math.round(window.innerHeight - vv.offsetTop - vv.height) : 0;
+    const next = below > 0 ? below : 0;
+    if (next !== inset) {
+      inset = next;
+      if (next) root.style.setProperty("--keyboard-inset", `${next}px`);
+      else root.style.removeProperty("--keyboard-inset");
+    }
+    if (open !== keyboardOpen) {
+      keyboardOpen = open;
+      for (const listener of keyboardListeners) listener(open);
+    }
+  };
+  const update = () => {
+    cancelAnimationFrame(frame);
+    frame = requestAnimationFrame(measure);
+  };
+  vv?.addEventListener("resize", update);
+  // iOS moves the visible area over the page to show the caret.
+  vv?.addEventListener("scroll", update);
+  window.addEventListener("resize", update);
+  window.addEventListener("orientationchange", update);
+  document.addEventListener("focusin", update);
+  document.addEventListener("focusout", update);
+  measure();
+  return () => {
+    cancelAnimationFrame(frame);
+    vv?.removeEventListener("resize", update);
+    vv?.removeEventListener("scroll", update);
+    window.removeEventListener("resize", update);
+    window.removeEventListener("orientationchange", update);
+    document.removeEventListener("focusin", update);
+    document.removeEventListener("focusout", update);
+    root.style.removeProperty("--keyboard-inset");
+    keyboardOpen = false;
+  };
+}
 export function useSoftKeyboard() {
   const [open, setOpen] = useState(false);
   useEffect(() => {
-    const vv = window.visualViewport;
-    const coarse = window.matchMedia("(pointer: coarse)");
-    if (viewport.width !== window.innerWidth) {
-      viewport.width = window.innerWidth;
-      viewport.tallest = vv?.height ?? window.innerHeight;
-    }
-    let frame = 0;
-    const update = () => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        const height = vv?.height ?? window.innerHeight;
-        // A rotation or a resized window starts over.
-        if (window.innerWidth !== viewport.width) {
-          viewport.width = window.innerWidth;
-          viewport.tallest = height;
-        }
-        viewport.tallest = Math.max(viewport.tallest, height);
-        const shrunk = height < viewport.tallest * 0.8 && viewport.tallest - height > 120;
-        setOpen(shrunk || (coarse.matches && typing()));
-      });
-    };
-    vv?.addEventListener("resize", update);
-    window.addEventListener("resize", update);
-    document.addEventListener("focusin", update);
-    document.addEventListener("focusout", update);
-    update();
+    keyboardListeners.add(setOpen);
+    if (!stopKeyboardWatch) stopKeyboardWatch = watchKeyboard();
+    setOpen(keyboardOpen);
     return () => {
-      cancelAnimationFrame(frame);
-      vv?.removeEventListener("resize", update);
-      window.removeEventListener("resize", update);
-      document.removeEventListener("focusin", update);
-      document.removeEventListener("focusout", update);
+      keyboardListeners.delete(setOpen);
+      if (!keyboardListeners.size && stopKeyboardWatch) {
+        stopKeyboardWatch();
+        stopKeyboardWatch = null;
+      }
     };
   }, []);
   return open;
