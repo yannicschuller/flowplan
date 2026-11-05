@@ -2,6 +2,15 @@
 
 All releases of Flowplan, newest first. Generated from the commits by the release workflow.
 
+## v0.8.10 – 2026-11-05
+
+- Docked toolbar placed from the top while the keyboard is open (#120) ([2fb2904](https://github.com/yannicschuller/flowplan/commit/2fb2904a05b73730c9305a88cba05799a02379e2))
+- Keyboard (#120): measure again for a second after focus; diagnosis stays in view ([ce69d10](https://github.com/yannicschuller/flowplan/commit/ce69d104fcf8b1344fc8f24123ab06a674b9cf46))
+- Keyboard diagnosis on a real device (#120) ([ee2f4ea](https://github.com/yannicschuller/flowplan/commit/ee2f4ea7816f77f96569be673542e479670a8596))
+- Help: questions in Chinese, Japanese, Korean and Thai ([e073f22](https://github.com/yannicschuller/flowplan/commit/e073f22064606ca69606a6c3ff298691ac04890a))
+- Phones: the formatting toolbar docks above the iOS keyboard (#120) ([52087bb](https://github.com/yannicschuller/flowplan/commit/52087bb3d47941d80376940fc031c0b5a306af8e))
+- Ask AI: Chinese, Japanese, Korean and Thai questions find their documents ([d83aa94](https://github.com/yannicschuller/flowplan/commit/d83aa94e4ed10ea7e23867ea2bde634fb2be6cc1))
+
 ## v0.8.9 – 2026-11-05
 
 - Administration → Storage: usage parts in the page's language (#121) ([922f8d6](https://github.com/yannicschuller/flowplan/commit/922f8d667781a6b4b5568c79fe931964aae4a6a0))
