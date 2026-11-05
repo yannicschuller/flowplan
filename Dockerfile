@@ -33,7 +33,7 @@ ARG TARGETARCH
 COPY --from=build /app/.next/standalone /out
 COPY scripts/standalone-arch.mjs /tmp/standalone-arch.mjs
 RUN --mount=type=cache,target=/root/.npm node /tmp/standalone-arch.mjs /out "$TARGETARCH"
-FROM litestream/litestream:0.5.17 AS litestream
+FROM litestream/litestream:0.5.18 AS litestream
 FROM node:26-bookworm-slim AS runtime
 LABEL org.opencontainers.image.title="Flowplan" \
   org.opencontainers.image.description="Documents, databases, whiteboards and a daily journal for teams – self-hosted." \
@@ -44,8 +44,15 @@ LABEL org.opencontainers.image.title="Flowplan" \
 WORKDIR /app
 # Certificates for HTTPS to the S3 endpoint (Litestream is a static binary);
 # curl for Coolify's HTTP healthcheck, which runs inside the container.
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
-  && rm -rf /var/lib/apt/lists/*
+# The base image's Debian packages get their security updates (apt and others
+# fixed after the base image was built). npm, npx and corepack are only needed
+# to build; the image runs node alone, and their bundled packages (undici,
+# brace-expansion …) would otherwise be scanned as part of the image.
+RUN apt-get update && apt-get upgrade -y --no-install-recommends \
+  && apt-get install -y --no-install-recommends ca-certificates curl \
+  && rm -rf /var/lib/apt/lists/* \
+  && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+    /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
 COPY --from=litestream /usr/local/bin/litestream /usr/local/bin/litestream
 # Explicit modes: the checkout may be private (umask 077); the app runs as node.
 COPY --chmod=644 docker/litestream.yml /etc/litestream.yml
