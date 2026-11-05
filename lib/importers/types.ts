@@ -7,7 +7,7 @@ import type { ImportedBoard } from "../whiteboard-import";
 import type { Field, View } from "../types";
 import type { FrontmatterValue } from "../frontmatter";
 
-export type ImportSource = "affine" | "confluence" | "evernote" | "gdocs" | "obsidian";
+export type ImportSource = "affine" | "confluence" | "evernote" | "gdocs" | "obsidian" | "word";
 
 export type ImportDatabase = {
   fields: Field[];

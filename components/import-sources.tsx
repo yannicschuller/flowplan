@@ -1,10 +1,10 @@
 "use client";
-// Import from AFFiNE, Confluence, Evernote, Google Docs and Obsidian
-// (lib/importers): the file is uploaded once – as the raw request body,
+// Import from AFFiNE, Confluence, Evernote, Google Docs, Microsoft Word and
+// Obsidian (lib/importers): the file is uploaded once – as the raw request body,
 // streamed to disk on the server (#76) – for a preview (counts and
 // warnings); the import then names that upload instead of sending it again.
 import { useState } from "react";
-import { UploadSimple } from "@phosphor-icons/react";
+import { FileDoc, UploadSimple } from "@phosphor-icons/react";
 import { serverMessage } from "@/lib/i18n-errors";
 import { useT } from "./i18n";
 import { Select } from "./select";
@@ -94,6 +94,7 @@ export function ImportSources({
     confluence: "Confluence",
     evernote: "Evernote",
     gdocs: "Google Docs",
+    word: "Microsoft Word",
     obsidian: "Obsidian",
   };
   const request = async (chosen: File, dryRun: boolean, upload?: string) => {
@@ -154,11 +155,11 @@ export function ImportSources({
   return (
     <div className="setting-row wide import-sources" id="import-tools">
       <div className="setting-text">
-        <span className="setting-label">{t("AFFiNE, Confluence, Evernote, Google Docs oder Obsidian", "AFFiNE, Confluence, Evernote, Google Docs or Obsidian")}</span>
+        <span className="setting-label">{t("AFFiNE, Confluence, Evernote, Google Docs, Microsoft Word oder Obsidian", "AFFiNE, Confluence, Evernote, Google Docs, Microsoft Word or Obsidian")}</span>
         <small>
           {t(
-            "AFFiNE: die Arbeitsbereichsdatei (.affine) mit Ordnern, Sammlungen, Datenbanken, Whiteboards und Journal oder ein Snapshot-Export (ZIP). Confluence: Bereichsexport als HTML oder XML (ZIP). Evernote: Notizbuch als ENEX-Datei (mehrere als ZIP). Google Docs: Google-Takeout-ZIP oder einzelne Dokumente als HTML oder Word. Obsidian: der Tresor als ZIP. Seitenbaum, Bilder, Anhänge, Links zwischen Seiten, Hinweisboxen, Aufgaben und Tags werden übernommen. Vor dem Import siehst du, was übernommen wird.",
-            "AFFiNE: the workspace file (.affine) with folders, collections, databases, whiteboards and journal, or a snapshot export (ZIP). Confluence: space export as HTML or XML (ZIP). Evernote: notebook as an ENEX file (several as a ZIP). Google Docs: a Google Takeout ZIP or single documents as HTML or Word. Obsidian: the vault as a ZIP. The page tree, images, attachments, links between pages, callouts, tasks and tags come along. Before the import you see what will be imported.",
+            "AFFiNE: die Arbeitsbereichsdatei (.affine) mit Ordnern, Sammlungen, Datenbanken, Whiteboards und Journal oder ein Snapshot-Export (ZIP). Confluence: Bereichsexport als HTML oder XML (ZIP). Evernote: Notizbuch als ENEX-Datei (mehrere als ZIP). Google Docs: Google-Takeout-ZIP oder einzelne Dokumente als HTML oder Word. Microsoft Word: ein Dokument (.docx) oder mehrere als ZIP, Ordner werden zu Seiten. Obsidian: der Tresor als ZIP. Seitenbaum, Bilder, Anhänge, Links zwischen Seiten, Hinweisboxen, Aufgaben und Tags werden übernommen. Vor dem Import siehst du, was übernommen wird.",
+            "AFFiNE: the workspace file (.affine) with folders, collections, databases, whiteboards and journal, or a snapshot export (ZIP). Confluence: space export as HTML or XML (ZIP). Evernote: notebook as an ENEX file (several as a ZIP). Google Docs: a Google Takeout ZIP or single documents as HTML or Word. Microsoft Word: one document (.docx) or several as a ZIP, folders become pages. Obsidian: the vault as a ZIP. The page tree, images, attachments, links between pages, callouts, tasks and tags come along. Before the import you see what will be imported.",
           )}
         </small>
       </div>
@@ -199,7 +200,7 @@ export function ImportSources({
             {t("Datei auswählen und prüfen", "Choose and check file")}
             <input
               type="file"
-              accept=".zip,.affine,.enex,.html,.htm,.docx,application/zip"
+              accept=".zip,.affine,.enex,.html,.htm,.docx,.doc,.one,.onetoc2,.onepkg,application/zip"
               hidden
               disabled={!canWrite || busy}
               aria-label={t("Datei für den Import", "File to import")}
@@ -212,6 +213,17 @@ export function ImportSources({
           </label>
         </div>
       </div>
+      {source === "word" && (
+        <p className="import-sources-hint">
+          <FileDoc aria-hidden />
+          <span>
+            {t(
+              "Ein Word-Dokument (.docx) wird eine Seite mit dem Dateinamen als Titel; ein ZIP mit mehreren .docx-Dateien wird ein Seitenbaum, Ordner werden zu übergeordneten Seiten. Ältere Word-Dateien (.doc) bitte vorher als .docx speichern. OneNote: Seite oder Abschnitt in OneNote als Word-Dokument (.docx) exportieren.",
+              "A Word document (.docx) becomes a page titled by its file name; a ZIP with several .docx files becomes a page tree, folders become parent pages. Please save older Word files (.doc) as .docx first. OneNote: export the page or section from OneNote as a Word document (.docx).",
+            )}
+          </span>
+        </p>
+      )}
       {progress && (
         <div className="import-sources-progress" role="status">
           <progress max={1} value={progress.phase === "upload" ? progress.share : undefined} />

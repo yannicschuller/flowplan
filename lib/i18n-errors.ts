@@ -1006,6 +1006,13 @@ const exact: Record<string, string> = {
   "Keine Google-Docs-Dokumente (.html oder .docx) gefunden.": "No Google Docs documents (.html or .docx) found.",
   "Eingebettete Notizen werden als Link übernommen.": "Embedded notes are imported as links.",
   "Bild ohne Datei im Tresor übersprungen.": "Image without a file in the vault skipped.",
+  // Microsoft Word and what Flowplan cannot read (lib/importers/word.ts, #122).
+  "Keine Word-Dokumente (.docx) gefunden.": "No Word documents (.docx) found.",
+  "Bitte eine Word-Datei (.docx) oder ein ZIP mit Word-Dateien hochladen.": "Please upload a Word file (.docx) or a ZIP with Word files.",
+  "Ältere Word-Dateien (.doc) kann Flowplan nicht lesen. Öffne die Datei in Word, LibreOffice oder Pages und speichere sie als .docx.":
+    "Flowplan cannot read older Word files (.doc). Open the file in Word, LibreOffice or Pages and save it as .docx.",
+  "OneNote-Dateien (.one, .onetoc2, .onepkg) kann Flowplan nicht lesen. Exportiere in OneNote die Seite oder den Abschnitt als Word-Dokument (.docx) – unter Windows über Datei → Exportieren – und importiere es über „Microsoft Word“. Bietet deine OneNote-Version nur PDF an, lade das PDF als Datei hoch.":
+    "Flowplan cannot read OneNote files (.one, .onetoc2, .onepkg). In OneNote, export the page or section as a Word document (.docx) – on Windows via File → Export – and import it with “Microsoft Word”. If your version of OneNote only offers PDF, upload the PDF as a file.",
   "Keine Notizen (.md) gefunden.": "No notes (.md) found.",
   // AFFiNE workspaces (lib/importers/affine*.ts).
   "Die AFFiNE-Datei kann nicht gelesen werden.": "The AFFiNE file cannot be read.",
@@ -1180,6 +1187,8 @@ const patterns: [RegExp, string][] = [
   [/^Makro „(.+)“ wird nicht übernommen\.$/, "Macro “$1” is not imported."],
   [/^(.+): keine Notizen gefunden\.$/, "$1: no notes found."],
   [/^(.+): Word-Datei konnte nicht gelesen werden\.$/, "$1: the Word file could not be read."],
+  [/^(.+): ältere Word-Datei \(\.doc\) übersprungen – bitte in Word, LibreOffice oder Pages als \.docx speichern\.$/, "$1: older Word file (.doc) skipped – please save it as .docx in Word, LibreOffice or Pages."],
+  [/^(.+): OneNote-Datei übersprungen – bitte in OneNote als Word-Dokument \(\.docx\) exportieren\.$/, "$1: OneNote file skipped – please export it from OneNote as a Word document (.docx)."],
   [/^Block „(.+)“ wird nicht übernommen\.$/, "Block “$1” is not imported."],
   [/^Datenbank-Spalte vom Typ „(.+)“ als Text übernommen\.$/, "Database column of type “$1” imported as text."],
   [/^(\d+) Dokumente im Papierkorb werden nicht übernommen\.$/, "$1 documents in the trash are not imported."],

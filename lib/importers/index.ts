@@ -1,6 +1,8 @@
 // Imports from other tools: AFFiNE (workspace file .affine or snapshot ZIP),
 // Confluence (space export), Evernote (.enex), Google Docs (Takeout with
-// .html or .docx) and Obsidian vaults. The file is
+// .html or .docx), Microsoft Word (.docx, several in a ZIP) and Obsidian
+// vaults. Older Word files (.doc) and OneNote are refused with what to do
+// instead (lib/importers/word.ts). The file is
 // read with the ZIP reader's limits, recognised (or taken as the source the
 // person chose), turned into an import tree and then previewed or written.
 // A large upload arrives as a file on disk (lib/importers/upload.ts): an
@@ -17,6 +19,7 @@ import { isSnapshotZip, isSqlite, readAffineFile, readSnapshotZip } from "./affi
 import { parseEnex } from "./evernote";
 import { isGoogleTakeout, parseGoogleDocs, resolveDocx } from "./google-docs";
 import { isObsidianVault, parseObsidian } from "./obsidian";
+import { isWordArchive, parseWord, refuseLegacyOffice } from "./word";
 import { previewImport, requireSpace, writeImport, type ImportMode, type ImportPreview, type ImportResult } from "./write";
 import { maxImportEntries, type ImportSource, type ImportTree } from "./types";
 import type { Identity } from "../types";
@@ -39,13 +42,14 @@ export async function zipEntries(bytes: Buffer, budget = { left: 512 * 1024 * 10
 export function detectSource(name: string, bytes: Buffer, entries?: Map<string, Buffer>): ImportSource | null {
   if (isSqlite(bytes)) return /\.(affine|db)$/i.test(name) || !entries ? "affine" : null;
   if (/\.enex$/i.test(name) || (!isZip(bytes) && /<en-export[\s>]/.test(bytes.subarray(0, 4096).toString("utf8")))) return "evernote";
-  if (!entries) return /\.(docx|html?)$/i.test(name) ? "gdocs" : null;
+  if (!entries) return /\.docx$/i.test(name) ? "word" : /\.html?$/i.test(name) ? "gdocs" : null;
   const names = [...entries.keys()];
   if (names.length && names.every((n) => /\.enex$/i.test(n))) return "evernote";
-  if (names.includes("word/document.xml")) return "gdocs";
+  if (names.includes("word/document.xml")) return "word";
   if (isSnapshotZip(entries)) return "affine";
   if (isConfluence(entries)) return "confluence";
   if (isObsidianVault(entries)) return "obsidian";
+  if (isWordArchive(entries)) return "word";
   if (isGoogleTakeout(entries)) return "gdocs";
   return null;
 }
@@ -66,6 +70,7 @@ export const MEMORY_IMPORT_LIMIT = ARCHIVE_LIMIT;
 export async function parseImport(name: string, input: Buffer | { path: string }, chosen?: ImportSource | "auto"): Promise<ImportTree> {
   if (!Buffer.isBuffer(input)) {
     const head = fileHead(input.path);
+    refuseLegacyOffice(name, head);
     // The workspace file stays on disk, however large it is.
     if (isSqlite(head) && (!chosen || chosen === "auto" || chosen === "affine")) {
       const ws = readAffineFile(input.path, importTitle(name));
@@ -81,6 +86,7 @@ export async function parseImport(name: string, input: Buffer | { path: string }
     input = readFileSync(input.path);
   }
   const bytes = input;
+  refuseLegacyOffice(name, bytes);
   const budget = { left: 512 * 1024 * 1024 };
   const zipped = isZip(bytes);
   const entries = zipped ? await zipEntries(bytes, budget) : undefined;
@@ -111,6 +117,14 @@ export async function parseImport(name: string, input: Buffer | { path: string }
       const docEntries =
         entries && !entries.has("word/document.xml") ? entries : new Map([[posix.basename(name) || "dokument.docx", bytes]]);
       return resolveDocx(parseGoogleDocs(docEntries, title), docEntries, budget);
+    }
+    case "word": {
+      // A single document or a ZIP of them (folders become parent pages);
+      // a .docx is a ZIP itself.
+      if (!entries) throw new HttpError(400, "Bitte eine Word-Datei (.docx) oder ein ZIP mit Word-Dateien hochladen.");
+      const single = posix.basename(name.replaceAll("\\", "/")).replace(/\.docx$/i, "") || "dokument";
+      const docEntries = entries.has("word/document.xml") ? new Map([[`${single}.docx`, bytes]]) : entries;
+      return resolveDocx(parseWord(docEntries, title), docEntries, budget);
     }
   }
 }
