@@ -89,14 +89,16 @@ function watchKeyboard() {
       box = document.createElement("pre");
       box.id = "kb-debug";
       box.setAttribute("aria-hidden", "true");
-      Object.assign(box.style, { position: "fixed", top: "env(safe-area-inset-top)", left: "0", right: "0", zIndex: "2147483647", margin: "0", padding: "4px 6px", font: "11px/1.3 ui-monospace, monospace", background: "rgba(0,0,0,.75)", color: "#fff", pointerEvents: "none", whiteSpace: "pre-wrap" });
+      Object.assign(box.style, { position: "fixed", top: "0", left: "0", right: "0", zIndex: "2147483647", margin: "0", padding: "4px 6px", font: "11px/1.3 ui-monospace, monospace", background: "rgba(0,0,0,.75)", color: "#fff", pointerEvents: "none", whiteSpace: "pre-wrap" });
       document.body.appendChild(box);
     }
-    const bar = document.querySelector(".editor-toolbar, .format-toolbar, [data-docked-toolbar]") as HTMLElement | null;
+    box.style.top = `${vv ? Math.round(vv.offsetTop) : 0}px`;
+    const bar = document.querySelector(".page-layout .editor-toolbar, .editor-toolbar") as HTMLElement | null;
     const rect = bar?.getBoundingClientRect();
     box.textContent = [
       `inner ${window.innerWidth}x${window.innerHeight} tallest ${Math.round(viewport.tallest)} vv ${Math.round(height)} top ${vv ? Math.round(vv.offsetTop) : "-"} scale ${vv ? vv.scale.toFixed(2) : "-"}`,
       `scrollY ${Math.round(window.scrollY)} open ${open} typing ${typing()} coarse ${coarse.matches} inset ${below}`,
+      `kbInset-var ${root.style.getPropertyValue("--keyboard-inset") || "-"} active ${(document.activeElement as HTMLElement | null)?.className?.toString().slice(0, 30) || document.activeElement?.tagName}`,
       `shell.keyboard-open ${!!document.querySelector(".app-shell.keyboard-open")} bar ${rect ? `${Math.round(rect.top)}-${Math.round(rect.bottom)} ${getComputedStyle(bar!).position}` : "none"}`,
     ].join("\n");
   };
@@ -104,22 +106,32 @@ function watchKeyboard() {
     cancelAnimationFrame(frame);
     frame = requestAnimationFrame(measure);
   };
-  vv?.addEventListener("resize", update);
+  // iOS reports the keyboard's size late, sometimes only once the animation
+  // is over, sometimes not at all after moving the visible area: measure
+  // again for about a second after focus and viewport changes.
+  let followUps: ReturnType<typeof setTimeout>[] = [];
+  const settle = () => {
+    update();
+    for (const t of followUps) clearTimeout(t);
+    followUps = [80, 200, 400, 700, 1100].map((ms) => setTimeout(update, ms));
+  };
+  vv?.addEventListener("resize", settle);
   // iOS moves the visible area over the page to show the caret.
-  vv?.addEventListener("scroll", update);
+  vv?.addEventListener("scroll", settle);
   window.addEventListener("resize", update);
   window.addEventListener("orientationchange", update);
-  document.addEventListener("focusin", update);
-  document.addEventListener("focusout", update);
+  document.addEventListener("focusin", settle);
+  document.addEventListener("focusout", settle);
   measure();
   return () => {
     cancelAnimationFrame(frame);
-    vv?.removeEventListener("resize", update);
-    vv?.removeEventListener("scroll", update);
+    for (const t of followUps) clearTimeout(t);
+    vv?.removeEventListener("resize", settle);
+    vv?.removeEventListener("scroll", settle);
     window.removeEventListener("resize", update);
     window.removeEventListener("orientationchange", update);
-    document.removeEventListener("focusin", update);
-    document.removeEventListener("focusout", update);
+    document.removeEventListener("focusin", settle);
+    document.removeEventListener("focusout", settle);
     root.style.removeProperty("--keyboard-inset");
     keyboardOpen = false;
   };
