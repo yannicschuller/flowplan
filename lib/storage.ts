@@ -140,6 +140,13 @@ export function setupStorage(d: DatabaseSync) {
   setImmediate(() => void hydrate());
 }
 
+// The database is closed and opened again (lib/db.ts, reopenDatabase).
+export function stopStorage() {
+  const s = state.flowplanStorage;
+  if (s?.timer) clearInterval(s.timer);
+  state.flowplanStorage = undefined;
+}
+
 export function kickStorage() {
   const s = state.flowplanStorage;
   if (!s) return;

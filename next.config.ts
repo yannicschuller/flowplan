@@ -38,7 +38,9 @@ const config: NextConfig = {
   turbopack: { root: process.cwd() },
   // CalDAV collections end in "/"; proxy.ts redirects pages itself.
   skipTrailingSlashRedirect: true,
-  serverExternalPackages: ["node:sqlite", "pdfjs-dist", "tesseract.js"],
+  // ssh2 (SFTP backups, lib/sftp.ts) loads its optional native helpers at
+  // runtime and falls back to JavaScript when they are missing.
+  serverExternalPackages: ["node:sqlite", "pdfjs-dist", "tesseract.js", "ssh2"],
   // The PDF text worker loads pdf.js and its worker module at runtime.
   outputFileTracingIncludes: {
     "/*": [

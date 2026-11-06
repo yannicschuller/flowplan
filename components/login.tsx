@@ -15,6 +15,7 @@ import type { LegalLinks } from "@/lib/legal-links";
 import { LegalFooter } from "./legal-footer";
 import { GITHUB_URL, LICENSE_URL } from "@/lib/about";
 import { AppProfilesLink } from "./app-profiles-link";
+import { SetupRestore } from "./setup-restore";
 
 // "confirm": registered, waiting for the link from the e-mail.
 // "totp": the password was right, a code from the authenticator app follows.
@@ -63,6 +64,8 @@ export default function Login({
   // The password form: accounts with e-mail and password, or the LDAP directory.
   const passwordForm = localLogin || ldap;
   const [mode, setMode] = useState<Mode>(initialMode || (firstAccount ? "register" : "signin"));
+  // The first start: restore an existing instance from a backup instead (#128).
+  const [restoring, setRestoring] = useState(false);
   const [busy, setBusy] = useState(""),
     [message, setMessage] = useState(error || ""),
     [notice, setNotice] = useState(
@@ -200,8 +203,9 @@ export default function Login({
     setMessage("");
     setNotice("");
   };
-  const title =
-    mode === "register"
+  const title = restoring
+    ? [t("Aus einer Sicherung", "Restore from"), t("wiederherstellen.", "a backup.")]
+    : mode === "register"
       ? firstAccount
         ? [t("Willkommen bei", "Welcome to"), t("deinem Flowplan.", "your Flowplan.")]
         : [t("Konto", "Create your"), t("erstellen.", "account.")]
@@ -228,7 +232,9 @@ export default function Login({
           <br />
           {title[1]}
         </h1>
-        {mode === "register" && firstAccount ? (
+        {restoring ? (
+          <SetupRestore onCancel={() => setRestoring(false)} />
+        ) : mode === "register" && firstAccount ? (
           <p>
             {t(
               "Lege das erste Konto an. Es verwaltet die Instanz und kann weitere Personen einladen.",
@@ -322,7 +328,7 @@ export default function Login({
             </div>
           </form>
         )}
-        {passwordForm && mode !== "confirm" && mode !== "totp" && (
+        {passwordForm && mode !== "confirm" && mode !== "totp" && !restoring && (
           <form method="post" action="/api/auth/no-script" className="login-form" onSubmit={submit}>
             {mode === "register" && (
               <label>
@@ -436,7 +442,15 @@ export default function Login({
             {t("Lokalen Arbeitsbereich öffnen", "Open local workspace")}
           </button>
         )}
-        {localLogin && (
+        {mode === "register" && firstAccount && !restoring && (
+          <p className="login-switch">
+            {t("Umzug oder Neuinstallation?", "Moving or reinstalling?")}{" "}
+            <button type="button" className="text-button" onClick={() => setRestoring(true)}>
+              {t("Aus Sicherung wiederherstellen", "Restore from a backup")}
+            </button>
+          </p>
+        )}
+        {localLogin && !restoring && (
           <p className="login-switch">
             {mode === "signin" ? (
               signupOpen && (

@@ -14,7 +14,7 @@ import { Readable } from "node:stream";
 import { DatabaseSync } from "node:sqlite";
 import { open as openZip, type Entry } from "yauzl";
 import { ZipFile } from "yazl";
-import { id, run } from "./db";
+import { SCHEMA_VERSION, id, run } from "./db";
 import { HttpError } from "./auth";
 
 // Whole-instance backups for admins: a consistent SQLite copy, all uploads
@@ -58,12 +58,44 @@ export function instanceBackupStream() {
   return stream;
 }
 
-type Summary = {
+// The database of a backup must be intact, look like a Flowplan database
+// and not come from a newer version (PRAGMA user_version, SCHEMA_VERSION in
+// lib/db.ts); an older one is brought up to date when it opens.
+export function checkBackupDatabase(path: string) {
+  let db: DatabaseSync;
+  try {
+    db = new DatabaseSync(path, { readOnly: true });
+  } catch {
+    throw new HttpError(400, "Die Sicherung enthält keine gültige Flowplan-Datenbank.");
+  }
+  try {
+    const check = db.prepare("PRAGMA integrity_check").get() as Record<string, string>;
+    if (Object.values(check)[0] !== "ok") throw new HttpError(400, "Die Datenbank der Sicherung ist beschädigt.");
+    const version = Number((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version);
+    if (version > SCHEMA_VERSION)
+      throw new HttpError(400, "Die Sicherung stammt aus einer neueren Flowplan-Version. Bitte zuerst Flowplan auf diese Version aktualisieren.");
+    const count = (table: string) => Number((db.prepare(`SELECT count(*) n FROM ${table}`).get() as { n: number }).n);
+    return {
+      users: count("users"),
+      workspaces: count("workspaces"),
+      pages: count("pages"),
+      schema: version,
+    };
+  } catch (e) {
+    if (e instanceof HttpError) throw e;
+    throw new HttpError(400, "Die Sicherung enthält keine gültige Flowplan-Datenbank.");
+  } finally {
+    db.close();
+  }
+}
+
+export type Summary = {
   createdAt: string;
   users: number;
   workspaces: number;
   pages: number;
   files: number;
+  schema?: number;
 };
 export function pendingRestore(): Summary | null {
   const file = resolve(dataDir(), "restore-pending", "READY");
@@ -109,6 +141,7 @@ export async function stageInstanceRestore(zipPath: string): Promise<Summary> {
             );
           };
           const seen = new Set<string>();
+          let unpacked = 0;
           zip.on("error", fail);
           zip.on("end", () => !failed && done());
           zip.on("entry", (entry: Entry) => {
@@ -129,6 +162,12 @@ export async function stageInstanceRestore(zipPath: string): Promise<Summary> {
                 ),
               );
             seen.add(name);
+            // Unpacked, too, at most as large as an archive may be (a ZIP
+            // bomb does not fill the disk; validateEntrySizes holds entries
+            // to their stated size).
+            unpacked += entry.uncompressedSize;
+            if (unpacked > INSTANCE_ARCHIVE_LIMIT)
+              return fail(new HttpError(413, "Sicherung ist zu groß."));
             zip.openReadStream(entry, (err, stream) => {
               if (err) return fail(err);
               stream.on("error", fail);
@@ -167,39 +206,11 @@ export async function stageInstanceRestore(zipPath: string): Promise<Summary> {
     );
     if (manifest.format !== INSTANCE_FORMAT || !database)
       throw new HttpError(400, "Keine Flowplan-Instanzsicherung.");
-    // The database must be intact and look like a Flowplan database.
-    const db = new DatabaseSync(resolve(staging, "flowplan.sqlite"), {
-      readOnly: true,
-    });
-    let summary: Summary;
-    try {
-      const check = db.prepare("PRAGMA integrity_check").get() as Record<
-        string,
-        string
-      >;
-      if (Object.values(check)[0] !== "ok")
-        throw new HttpError(400, "Die Datenbank der Sicherung ist beschädigt.");
-      const count = (table: string) =>
-        Number(
-          (db.prepare(`SELECT count(*) n FROM ${table}`).get() as { n: number })
-            .n,
-        );
-      summary = {
-        createdAt: String(manifest.createdAt || ""),
-        users: count("users"),
-        workspaces: count("workspaces"),
-        pages: count("pages"),
-        files: uploads,
-      };
-    } catch (e) {
-      if (e instanceof HttpError) throw e;
-      throw new HttpError(
-        400,
-        "Die Sicherung enthält keine gültige Flowplan-Datenbank.",
-      );
-    } finally {
-      db.close();
-    }
+    const summary: Summary = {
+      createdAt: String(manifest.createdAt || ""),
+      ...checkBackupDatabase(resolve(staging, "flowplan.sqlite")),
+      files: uploads,
+    };
     writeFileSync(resolve(staging, "READY"), JSON.stringify(summary));
     cancelRestore();
     renameSync(staging, resolve(dir, "restore-pending"));
