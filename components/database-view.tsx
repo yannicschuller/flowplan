@@ -71,6 +71,7 @@ import CalculationEditor from "./calculation-editor";
 import {
   browserZone,
   isTimed,
+  sqlTimestampToIso,
   validDateValue,
 } from "@/lib/date-values";
 import { defaultGallery, galleryImage } from "@/lib/database-gallery";
@@ -199,6 +200,8 @@ import {
 import {
   dateFormats,
   formatFieldDate,
+  formatTimestamp,
+  isTimestampType,
   formatNumber,
   numberFormats,
   ratingMax,
@@ -2019,6 +2022,15 @@ export default function DatabaseView({
         </span>
       );
     }
+    // Created and edited time in the viewer's time zone, like a date with time.
+    if (isTimestampType(f.type) && v) {
+      return (
+        <span className="date-cell">
+          <CalendarBlank size={14} />
+          {formatTimestamp(v, f)}
+        </span>
+      );
+    }
     if (f.type === "number" && v !== undefined) {
       if (v === null || v === "") return <span className="muted">—</span>;
       if (f.rollupDisplay && f.rollupDisplay !== "number")
@@ -3068,7 +3080,8 @@ export default function DatabaseView({
                   fields: fields.map((f) => f.name),
                   data: shown.map((r) =>
                     // Formatted text (#126) as plain text.
-                    fields.map((f) => (isFormattedText(f, fields) ? toPlain(cellText(r.cells[f.id])) : cellText(r.cells[f.id]))),
+                    // Created and edited time as ISO 8601 instants, like dates with time.
+                    fields.map((f) => (isFormattedText(f, fields) ? toPlain(cellText(r.cells[f.id])) : isTimestampType(f.type) ? cellText(sqlTimestampToIso(r.cells[f.id])) : cellText(r.cells[f.id]))),
                   ),
                 }, { escapeFormulae: CSV_FORMULA }),
                 "text/csv",

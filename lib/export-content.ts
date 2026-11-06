@@ -17,6 +17,7 @@ import { database, rows } from "./api";
 import { relatedData } from "./related-data";
 import { computedCells } from "./database";
 import { cellText } from "./cell-text";
+import { sqlTimestampToIso } from "./date-values";
 import { visibleRows } from "./row-access";
 import { hiddenFileIds } from "./row-files";
 import { fileUrls } from "./file-cells";
@@ -352,6 +353,8 @@ function propertyText(
       })
       .join(", ");
   if (field.type === "checkbox") return value ? ct("Ja", "Yes") : ct("Nein", "No");
+  // Created and edited time as ISO 8601 instants, like dates with time.
+  if (field.type === "created_at" || field.type === "updated_at") return cellText(sqlTimestampToIso(value));
   if (field.type === "checklist")
     return (values as { text?: string; done?: boolean }[]).map((item) => `${item?.done ? "☑" : "☐"} ${item?.text || ""}`).join("\n");
   if (value === "#ACCESS") return unavailable();

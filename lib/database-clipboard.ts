@@ -4,7 +4,7 @@
 // written as people read them in the table – names instead of ids, formatted
 // numbers and dates. Client-safe and pure.
 import { CSV_FORMULA, cellText } from "./cell-text";
-import { formatFieldDate, formatNumber } from "./field-format";
+import { formatFieldDate, formatNumber, formatTimestamp } from "./field-format";
 import { fileLabel, fileUrls } from "./file-cells";
 import { formatDuration } from "./durations";
 import { LOCALE_TAG } from "./locale-tag";
@@ -45,9 +45,10 @@ export function clipboardCell(field: Field, value: unknown, ctx: ClipboardContex
       if (typeof value !== "number") return cellText(value);
       return formatNumber(value, field.format, field.decimals);
     case "date":
+      return value ? formatFieldDate(value, field, ctx.zone) : "";
     case "created_at":
     case "updated_at":
-      return value ? formatFieldDate(value, field, ctx.zone) : "";
+      return formatTimestamp(value, field, ctx.zone);
     case "person":
     case "created_by":
     case "updated_by":

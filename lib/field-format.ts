@@ -1,5 +1,5 @@
 import { LOCALE_TAG } from "./locale-tag";
-import { formatDateValue } from "./date-values";
+import { formatDateValue, sqlTimestampToIso } from "./date-values";
 import { cellText } from "./cell-text";
 import type { Field } from "./types";
 
@@ -115,6 +115,17 @@ export function formatFieldDate(
     time: field?.timeFormat || "24",
   });
 }
+// "Created time" and "Edited time": SQLite CURRENT_TIMESTAMP text in UTC
+// ("2026-11-05 17:39:02"), shown like a date property with time – in the
+// viewer's time zone and the field's date format.
+export const isTimestampType = (type: Field["type"]) => type === "created_at" || type === "updated_at";
+export function formatTimestamp(
+  value: unknown,
+  field?: Pick<Field, "format" | "timeFormat">,
+  zone?: string,
+) {
+  return value ? formatFieldDate(sqlTimestampToIso(value), field, zone) : "";
+}
 // Plain text of a cell as people see it (public pages, previews).
 export function displayText(
   field: Pick<Field, "type" | "format" | "timeFormat" | "decimals">,
@@ -125,6 +136,8 @@ export function displayText(
     return formatNumber(value, field.format, field.decimals);
   if (field.type === "date" && typeof value === "string" && value)
     return formatFieldDate(value, field, zone);
+  if (isTimestampType(field.type) && typeof value === "string")
+    return formatTimestamp(value, field, zone);
   return cellText(value);
 }
 

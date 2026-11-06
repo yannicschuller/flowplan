@@ -17,6 +17,9 @@ import { database, rows } from "./api";
 import { relatedData } from "./related-data";
 import { computedCells } from "./database";
 import { cellText } from "./cell-text";
+import { sqlTimestampToIso } from "./date-values";
+// Created and edited time (SQLite text, UTC) export as ISO 8601 instants.
+const timestampTypes = new Set<string>(["created_at", "updated_at"]);
 import { writeZip } from "./archive";
 import {
   htmlToMarkdown,
@@ -495,7 +498,8 @@ function collect(user: Identity, options: MarkdownExportOptions) {
           : ct("Nein", "No")
         : value === "#ACCESS"
           ? unavailable()
-          : cellText(value);
+          : // Created and edited time as ISO 8601 instants, like dates with time.
+            cellText(timestampTypes.has(field.type) ? sqlTimestampToIso(value) : value);
     const url =
       field.type === "url" && plain
         ? ctx.url(plain)
@@ -602,7 +606,7 @@ function collect(user: Identity, options: MarkdownExportOptions) {
         const names = list.map((uid) => members.get(String(uid)) || unavailable());
         out = names.length === 1 ? names[0] : names;
       } else if (field.type === "files") out = fileUrls(value).map((raw) => context(from).url(raw) || "").filter(Boolean);
-      else out = cellText(value) || null;
+      else out = cellText(timestampTypes.has(field.type) ? sqlTimestampToIso(value) : value) || null;
       if (out === null || (Array.isArray(out) && !out.length)) continue;
       if (computedTypes.includes(field.type)) flowplan[field.name] = out;
       else result[field.name in result ? `${field.name} (${field.id})` : field.name] = out;
