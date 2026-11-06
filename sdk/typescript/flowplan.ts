@@ -905,6 +905,26 @@ export type CommandPageCreate = {
   databaseKind?: "tasks" | "documents" | "contacts" | "empty";
   /** A saved page template of the workspace */
   templateId?: string;
+  /** With a template of another space: what to do with its space's tags and properties (see template.dependencies); default `auto` */
+  meta?: "auto" | "copy" | "remove" | {
+    tags?: Record<string, {
+      action: "map";
+      to: string;
+    } | {
+      action: "copy";
+    } | {
+      action: "remove";
+    }>;
+    properties?: Record<string, {
+      action: "map";
+      to: string;
+    } | {
+      action: "copy";
+    } | {
+      action: "remove";
+    }>;
+    default?: "auto" | "copy" | "remove";
+  };
   /** A built-in starter template key */
   starterTemplate?: string;
 };
@@ -1034,11 +1054,13 @@ export type CommandPagesTagResult = {
   pages: number;
 };
 
-/** Create or change a tag. Without `tagId` a new tag (members with edit rights); with `tagId` rename or recolour it (workspace owners). Names are unique in the workspace ignoring case (409). Colours: gray, blue, green, red, yellow, orange, purple, pink, teal. Owners also send tag.delete {workspaceId, tagId}, tag.merge {workspaceId, tagId, into} and tag.reorder {workspaceId, order}. Renaming, merging and deleting also change the values of database properties with the tags as options (`tagOptions`). */
+/** Create or change a tag. Without `tagId` a new tag: with `spaceId` one of that space (members who may write there), without it (or `spaceId: null`) one of the whole workspace (workspace owners). With `tagId` rename or recolour it (workspace owners; space owners for their space's tags). A space's tags are used only by pages of that space; names are unique within a space together with the workspace's tags, ignoring case (409) – two spaces may each have a tag of the same name. Colours: gray, blue, green, red, yellow, orange, purple, pink, teal. Also tag.delete {workspaceId, tagId}, tag.merge {workspaceId, tagId, into} (into a workspace tag or one of the same space) and tag.reorder {workspaceId, order}. Renaming, merging and deleting also change the values of database properties with the tags as options (`tagOptions`) where the tag is known. Tags in GET /api/tags carry `spaceId` (null: whole workspace). */
 export type CommandTagSave = {
   action: "tag.save";
   workspaceId: string;
   tagId?: string;
+  /** New tags: the space it belongs to; null or missing: the whole workspace */
+  spaceId?: string | null;
   name: string;
   color?: "gray" | "blue" | "green" | "red" | "yellow" | "orange" | "purple" | "pink" | "teal";
 };
@@ -1078,7 +1100,7 @@ export type CommandCollectionUpdateResult = {
   query: string;
 };
 
-/** Create or change a page property. Workspace owners. A property every page of the workspace can have a value for. Types: text, number, date, select, multiselect, checkbox, person, url, email, phone, created_at, updated_at, created_by, updated_by (the last four are read from the page). `options` for select and multiselect. Changing the type or removing options converts the values where possible and removes the others. Also property.delete {workspaceId, propertyId} and property.reorder {workspaceId, order}. */
+/** Create or change a page property. Workspace owners; for a space's own properties (`spaceId` on creation) also that space's owner. A property every page of the workspace – or of that space – can have a value for; names are unique within a space together with the workspace's properties. Types: text, number, date, select, multiselect, checkbox, person, url, email, phone, created_at, updated_at, created_by, updated_by (the last four are read from the page). `options` for select and multiselect. Changing the type or removing options converts the values where possible and removes the others. Also property.delete {workspaceId, propertyId} and property.reorder {workspaceId, order}. */
 export type CommandPropertySave = {
   action: "property.save";
   workspaceId: string;
@@ -1086,10 +1108,137 @@ export type CommandPropertySave = {
   name: string;
   type?: "text" | "number" | "date" | "select" | "multiselect" | "checkbox" | "person" | "url" | "email" | "phone" | "created_at" | "updated_at" | "created_by" | "updated_by";
   options?: string[];
+  /** New properties: the space it belongs to; null or missing: the whole workspace */
+  spaceId?: string | null;
 };
 
 export type CommandPropertySaveResult = {
   id: string;
+};
+
+/** Change the scope of a tag (whole workspace or one space). Workspace owners. `spaceId: null` makes a space's tag one of the whole workspace (same-named tags of other spaces are refused with 409 unless `mergeSameName` folds them into it). A space's id limits it to that space: pages and database records outside it that carry the tag are refused with 409 (`resolve: "block"`, the default), get a tag of the same name in their own space (`resolve: "copy"`) or lose it (`resolve: "remove"`). See where it is used first with meta.usage. property.scope {workspaceId, propertyId, spaceId, resolve?, mergeSameName?} does the same for page properties (merging needs the same type). */
+export type CommandTagScope = {
+  action: "tag.scope";
+  workspaceId: string;
+  tagId: string;
+  spaceId: string | null;
+  resolve?: "block" | "copy" | "remove";
+  mergeSameName?: boolean;
+};
+
+export type CommandTagScopeResult = {
+  id: string;
+  ok: true;
+};
+
+/** Change the scope of a page property (whole workspace or one space). As tag.scope, for page properties. */
+export type CommandPropertyScope = {
+  action: "property.scope";
+  workspaceId: string;
+  propertyId: string;
+  spaceId: string | null;
+  resolve?: "block" | "copy" | "remove";
+  mergeSameName?: boolean;
+};
+
+export type CommandPropertyScopeResult = {
+  id: string;
+  ok: true;
+};
+
+/** Where a tag or property is used outside a space. Workspace owners. Before tag.scope/property.scope: per other space the pages and records using it (`usage`), and same-named ones it would meet (`clashes`). Changes nothing. */
+export type CommandMetaUsage = {
+  action: "meta.usage";
+  workspaceId: string;
+  kind: "tag" | "property";
+  id: string;
+  spaceId: string | null;
+};
+
+export type CommandMetaUsageResult = {
+  usage: {
+    spaceId: string;
+    spaceName: string;
+    pages: number;
+    records: number;
+    titles: string[];
+  }[];
+  clashes: ({
+    id: string;
+    spaceId: string | null;
+    spaceName: string;
+    [key: string]: unknown;
+  })[];
+};
+
+/** What a move would bring that its destination lacks. Same input as page.move. Lists the tags and properties of the source space (into another workspace: all) that the page, its sub-pages and their databases' records carry and that the destination does not use (`foreign`: kind, id, name, pages, records, `sameName` – the same-named one there – and `candidates` to map to). Changes nothing. */
+export type CommandPageMoveCheck = {
+  action: "page.moveCheck";
+  pageId: string;
+  targetId?: string;
+  placement?: "before" | "after" | "inside";
+  parentId?: string;
+  spaceId?: string;
+};
+
+export type CommandPageMoveCheckResult = {
+  foreign: {
+    [key: string]: unknown;
+  }[];
+  target: {
+    workspaceId: string;
+    spaceId: string;
+    spaceName: string;
+  };
+};
+
+/** Copy a saved template into another space or the whole workspace. Needs write access to the target space; for the whole workspace (`spaceId: null`, not private) workspace owners, and only with the workspace's tags and properties (409, or `spaceMeta: "remove"` leaves the space's out). Into another space its space's tags and properties are mapped, copied (created there now) or removed per `meta` (see template.dependencies; default `auto`). template.update takes `spaceId`, `spaceMeta` and `meta` the same way to change a template's own scope. */
+export type CommandTemplateCopy = {
+  action: "template.copy";
+  workspaceId: string;
+  templateId: string;
+  spaceId: string | null;
+  name?: string;
+  private?: boolean;
+  meta?: "auto" | "copy" | "remove" | {
+    tags?: Record<string, {
+      action: "map";
+      to: string;
+    } | {
+      action: "copy";
+    } | {
+      action: "remove";
+    }>;
+    properties?: Record<string, {
+      action: "map";
+      to: string;
+    } | {
+      action: "copy";
+    } | {
+      action: "remove";
+    }>;
+    default?: "auto" | "copy" | "remove";
+  };
+  spaceMeta?: "remove";
+};
+
+export type CommandTemplateCopyResult = {
+  id: string;
+  ok: true;
+};
+
+/** What a template of another space brings into a space. The tags and properties of the template's own space (and names the target lacks) when it is used in `spaceId`: each with `sameName` (the same-named one there) and `candidates`. Their ids (`tag:<name>`, `property:<name>`) are the keys of `meta` in page.create, template.apply and template.copy. Empty for templates of the whole workspace or of that space. Changes nothing. */
+export type CommandTemplateDependencies = {
+  action: "template.dependencies";
+  workspaceId: string;
+  templateId: string;
+  spaceId: string;
+};
+
+export type CommandTemplateDependenciesResult = {
+  items: {
+    [key: string]: unknown;
+  }[];
 };
 
 /** Make a record repeat when it is done. Needs editor rights on the record. When the record becomes done (the database's done rule), a copy is created with `field` (a date property) moved to the next occurrence and other dates moved by as many days. Monthly and yearly rules keep the day of the month (`day`, default: the current date's day); `weekdays` (1 = Monday) picks days of a weekly rule. `repeat: null` removes the rule. */
@@ -1207,6 +1356,26 @@ export type CommandPageMove = {
   parentId?: string;
   /** Move into another space */
   spaceId?: string;
+  /** Into another space or workspace: what to do with the source space's tags and properties the pages carry (page.moveCheck lists them, by id): map to one of the destination, copy there, or remove. Without it such a move is refused with 409 – nothing is dropped silently. */
+  meta?: "auto" | "copy" | "remove" | {
+    tags?: Record<string, {
+      action: "map";
+      to: string;
+    } | {
+      action: "copy";
+    } | {
+      action: "remove";
+    }>;
+    properties?: Record<string, {
+      action: "map";
+      to: string;
+    } | {
+      action: "copy";
+    } | {
+      action: "remove";
+    }>;
+    default?: "auto" | "copy" | "remove";
+  };
 };
 
 export type CommandPageMoveResult = {
@@ -2137,10 +2306,10 @@ export type CommandHomeSaveResult = {
 };
 
 /** One action of the interface, as sent by POST /api/command. */
-export type Command = CommandWorkspaceCreate | CommandSpaceCreate | CommandSpaceReorder | CommandPageCreate | CommandBlockIds | CommandPageUpdate | CommandE2eeAppend | CommandPageOwner | CommandPageReview | CommandPageAliases | CommandPageProperties | CommandPagesTag | CommandTagSave | CommandCollectionCreate | CommandCollectionUpdate | CommandPropertySave | CommandRowRepeat | CommandDatabaseSettings | CommandPageMove | CommandPageDelete | CommandPageRestore | CommandPagePurge | CommandTemplatePurge | CommandTrashEmpty | CommandPageDuplicate | CommandPageFollow | CommandPageCollapseProperties | CommandSidebarState | CommandFavorite | CommandDatabaseUpdate | CommandRowCreate | CommandRowUpdate | CommandRowDelete | CommandWhiteboardToRecords | CommandRowsImport | CommandCommentCreate | CommandCommentResolve | CommandMemberInvite | CommandCalendarFeed | CommandCalendarFeedRevoke | CommandDashboardSave | CommandNotebookSheetAdd | CommandWebhookDelete | CommandInboundSave | CommandInboundRotate | CommandInboundDelete | CommandIssueSyncConnect | CommandIssueSyncDisconnect | CommandIssueSyncMap | CommandIssueSyncUnmap | CommandCalendarSyncMap | CommandCalendarSyncUnmap | CommandCalendarSyncDisconnect | CommandMeetingNote | CommandNotificationWeekly | CommandShortcutsSave | CommandHomeSave | CommandOther;
+export type Command = CommandWorkspaceCreate | CommandSpaceCreate | CommandSpaceReorder | CommandPageCreate | CommandBlockIds | CommandPageUpdate | CommandE2eeAppend | CommandPageOwner | CommandPageReview | CommandPageAliases | CommandPageProperties | CommandPagesTag | CommandTagSave | CommandCollectionCreate | CommandCollectionUpdate | CommandPropertySave | CommandTagScope | CommandPropertyScope | CommandMetaUsage | CommandPageMoveCheck | CommandTemplateCopy | CommandTemplateDependencies | CommandRowRepeat | CommandDatabaseSettings | CommandPageMove | CommandPageDelete | CommandPageRestore | CommandPagePurge | CommandTemplatePurge | CommandTrashEmpty | CommandPageDuplicate | CommandPageFollow | CommandPageCollapseProperties | CommandSidebarState | CommandFavorite | CommandDatabaseUpdate | CommandRowCreate | CommandRowUpdate | CommandRowDelete | CommandWhiteboardToRecords | CommandRowsImport | CommandCommentCreate | CommandCommentResolve | CommandMemberInvite | CommandCalendarFeed | CommandCalendarFeedRevoke | CommandDashboardSave | CommandNotebookSheetAdd | CommandWebhookDelete | CommandInboundSave | CommandInboundRotate | CommandInboundDelete | CommandIssueSyncConnect | CommandIssueSyncDisconnect | CommandIssueSyncMap | CommandIssueSyncUnmap | CommandCalendarSyncMap | CommandCalendarSyncUnmap | CommandCalendarSyncDisconnect | CommandMeetingNote | CommandNotificationWeekly | CommandShortcutsSave | CommandHomeSave | CommandOther;
 
 /** The result of a command action, by the action sent. */
-export type CommandResultOf<A extends Command> = A extends { action: "workspace.create" } ? CommandWorkspaceCreateResult : A extends { action: "space.create" } ? CommandSpaceCreateResult : A extends { action: "space.reorder" } ? CommandSpaceReorderResult : A extends { action: "page.create" } ? CommandPageCreateResult : A extends { action: "block.ids" } ? CommandBlockIdsResult : A extends { action: "page.update" } ? CommandPageUpdateResult : A extends { action: "e2ee.append" } ? CommandE2eeAppendResult : A extends { action: "page.owner" } ? CommandPageOwnerResult : A extends { action: "page.review" } ? CommandPageReviewResult : A extends { action: "page.aliases" } ? CommandPageAliasesResult : A extends { action: "page.properties" } ? CommandPagePropertiesResult : A extends { action: "pages.tag" } ? CommandPagesTagResult : A extends { action: "tag.save" } ? CommandTagSaveResult : A extends { action: "collection.create" } ? CommandCollectionCreateResult : A extends { action: "collection.update" } ? CommandCollectionUpdateResult : A extends { action: "property.save" } ? CommandPropertySaveResult : A extends { action: "row.repeat" } ? CommandRowRepeatResult : A extends { action: "page.move" } ? CommandPageMoveResult : A extends { action: "page.delete" } ? CommandPageDeleteResult : A extends { action: "page.restore" } ? CommandPageRestoreResult : A extends { action: "page.purge" } ? CommandPagePurgeResult : A extends { action: "template.purge" } ? CommandTemplatePurgeResult : A extends { action: "trash.empty" } ? CommandTrashEmptyResult : A extends { action: "page.follow" } ? CommandPageFollowResult : A extends { action: "page.collapseProperties" } ? CommandPageCollapsePropertiesResult : A extends { action: "sidebar.state" } ? CommandSidebarStateResult : A extends { action: "favorite" } ? CommandFavoriteResult : A extends { action: "database.update" } ? CommandDatabaseUpdateResult : A extends { action: "row.create" } ? CommandRowCreateResult : A extends { action: "row.update" } ? CommandRowUpdateResult : A extends { action: "row.delete" } ? CommandRowDeleteResult : A extends { action: "whiteboard.toRecords" } ? CommandWhiteboardToRecordsResult : A extends { action: "rows.import" } ? CommandRowsImportResult : A extends { action: "comment.create" } ? CommandCommentCreateResult : A extends { action: "comment.resolve" } ? CommandCommentResolveResult : A extends { action: "calendar.feed.revoke" } ? CommandCalendarFeedRevokeResult : A extends { action: "dashboard.save" } ? CommandDashboardSaveResult : A extends { action: "notebook.sheet.add" } ? CommandNotebookSheetAddResult : A extends { action: "webhook.delete" } ? CommandWebhookDeleteResult : A extends { action: "inbound.save" } ? CommandInboundSaveResult : A extends { action: "inbound.rotate" } ? CommandInboundRotateResult : A extends { action: "inbound.delete" } ? CommandInboundDeleteResult : A extends { action: "issueSync.connect" } ? CommandIssueSyncConnectResult : A extends { action: "issueSync.disconnect" } ? CommandIssueSyncDisconnectResult : A extends { action: "issueSync.map" } ? CommandIssueSyncMapResult : A extends { action: "issueSync.unmap" } ? CommandIssueSyncUnmapResult : A extends { action: "calendarSync.map" } ? CommandCalendarSyncMapResult : A extends { action: "calendarSync.unmap" } ? CommandCalendarSyncUnmapResult : A extends { action: "calendarSync.disconnect" } ? CommandCalendarSyncDisconnectResult : A extends { action: "meeting.note" } ? CommandMeetingNoteResult : A extends { action: "notification.weekly" } ? CommandNotificationWeeklyResult : A extends { action: "shortcuts.save" } ? CommandShortcutsSaveResult : A extends { action: "home.save" } ? CommandHomeSaveResult : CommandResult;
+export type CommandResultOf<A extends Command> = A extends { action: "workspace.create" } ? CommandWorkspaceCreateResult : A extends { action: "space.create" } ? CommandSpaceCreateResult : A extends { action: "space.reorder" } ? CommandSpaceReorderResult : A extends { action: "page.create" } ? CommandPageCreateResult : A extends { action: "block.ids" } ? CommandBlockIdsResult : A extends { action: "page.update" } ? CommandPageUpdateResult : A extends { action: "e2ee.append" } ? CommandE2eeAppendResult : A extends { action: "page.owner" } ? CommandPageOwnerResult : A extends { action: "page.review" } ? CommandPageReviewResult : A extends { action: "page.aliases" } ? CommandPageAliasesResult : A extends { action: "page.properties" } ? CommandPagePropertiesResult : A extends { action: "pages.tag" } ? CommandPagesTagResult : A extends { action: "tag.save" } ? CommandTagSaveResult : A extends { action: "collection.create" } ? CommandCollectionCreateResult : A extends { action: "collection.update" } ? CommandCollectionUpdateResult : A extends { action: "property.save" } ? CommandPropertySaveResult : A extends { action: "tag.scope" } ? CommandTagScopeResult : A extends { action: "property.scope" } ? CommandPropertyScopeResult : A extends { action: "meta.usage" } ? CommandMetaUsageResult : A extends { action: "page.moveCheck" } ? CommandPageMoveCheckResult : A extends { action: "template.copy" } ? CommandTemplateCopyResult : A extends { action: "template.dependencies" } ? CommandTemplateDependenciesResult : A extends { action: "row.repeat" } ? CommandRowRepeatResult : A extends { action: "page.move" } ? CommandPageMoveResult : A extends { action: "page.delete" } ? CommandPageDeleteResult : A extends { action: "page.restore" } ? CommandPageRestoreResult : A extends { action: "page.purge" } ? CommandPagePurgeResult : A extends { action: "template.purge" } ? CommandTemplatePurgeResult : A extends { action: "trash.empty" } ? CommandTrashEmptyResult : A extends { action: "page.follow" } ? CommandPageFollowResult : A extends { action: "page.collapseProperties" } ? CommandPageCollapsePropertiesResult : A extends { action: "sidebar.state" } ? CommandSidebarStateResult : A extends { action: "favorite" } ? CommandFavoriteResult : A extends { action: "database.update" } ? CommandDatabaseUpdateResult : A extends { action: "row.create" } ? CommandRowCreateResult : A extends { action: "row.update" } ? CommandRowUpdateResult : A extends { action: "row.delete" } ? CommandRowDeleteResult : A extends { action: "whiteboard.toRecords" } ? CommandWhiteboardToRecordsResult : A extends { action: "rows.import" } ? CommandRowsImportResult : A extends { action: "comment.create" } ? CommandCommentCreateResult : A extends { action: "comment.resolve" } ? CommandCommentResolveResult : A extends { action: "calendar.feed.revoke" } ? CommandCalendarFeedRevokeResult : A extends { action: "dashboard.save" } ? CommandDashboardSaveResult : A extends { action: "notebook.sheet.add" } ? CommandNotebookSheetAddResult : A extends { action: "webhook.delete" } ? CommandWebhookDeleteResult : A extends { action: "inbound.save" } ? CommandInboundSaveResult : A extends { action: "inbound.rotate" } ? CommandInboundRotateResult : A extends { action: "inbound.delete" } ? CommandInboundDeleteResult : A extends { action: "issueSync.connect" } ? CommandIssueSyncConnectResult : A extends { action: "issueSync.disconnect" } ? CommandIssueSyncDisconnectResult : A extends { action: "issueSync.map" } ? CommandIssueSyncMapResult : A extends { action: "issueSync.unmap" } ? CommandIssueSyncUnmapResult : A extends { action: "calendarSync.map" } ? CommandCalendarSyncMapResult : A extends { action: "calendarSync.unmap" } ? CommandCalendarSyncUnmapResult : A extends { action: "calendarSync.disconnect" } ? CommandCalendarSyncDisconnectResult : A extends { action: "meeting.note" } ? CommandMeetingNoteResult : A extends { action: "notification.weekly" } ? CommandNotificationWeeklyResult : A extends { action: "shortcuts.save" } ? CommandShortcutsSaveResult : A extends { action: "home.save" } ? CommandHomeSaveResult : CommandResult;
 
 // ---- Client ----
 
@@ -2401,7 +2570,7 @@ export class FlowplanClient {
     return this.json<Record<string, unknown>>("GET", `/api/graph`, { query }, options);
   }
 
-  /** Tags and page properties of a workspace — The tags (`id`, `name`, `color`, `position`, `pages`: how many readable pages carry it, `records`: how many readable database records carry it in a property with the tags as options) and the property definitions (`id`, `name`, `type`, `options`). Guests see only the tags and properties of pages and records shared with them. A page's own tags and values come with GET /api/pages/{id} as `properties` (`tags`: tag IDs, `values`: by property ID, `info`: created and changed at and by). Answered with `Cache-Control: no-store`. (GET /api/tags) */
+  /** Tags and page properties of a workspace — The tags (`id`, `name`, `color`, `position`, `spaceId` – null for the whole workspace, else the space it belongs to –, `pages`: how many readable pages carry it, `records`: how many readable database records carry it in a property with the tags as options) and the property definitions (`id`, `name`, `type`, `options`, `spaceId`). A space's own tags and properties are listed for those who may open that space (or see a page carrying them) and for workspace owners. Guests see only the tags and properties of pages and records shared with them. A page's own tags and values come with GET /api/pages/{id} as `properties` (`tags`: tag IDs, `values`: by property ID, `info`: created and changed at and by). Answered with `Cache-Control: no-store`. (GET /api/tags) */
   async tags(query: { workspace: string }, options?: RequestOptions): Promise<Record<string, unknown>> {
     return this.json<Record<string, unknown>>("GET", `/api/tags`, { query }, options);
   }
@@ -2421,8 +2590,8 @@ export class FlowplanClient {
     return this.json<Record<string, unknown>>("GET", `/api/collections/preview`, { query }, options);
   }
 
-  /** Pages and records with a tag — Like /api/tags, plus `pages`: the readable pages with this tag, and `records`: the readable database records carrying it in a property with the tags as options, latest change first. Answered with `Cache-Control: no-store`. (GET /api/tags/{id}) */
-  async tagPages(id: string, query: { workspace: string }, options?: RequestOptions): Promise<Record<string, unknown>> {
+  /** Pages and records with a tag — Like /api/tags, plus `pages`: the readable pages with this tag, and `records`: the readable database records carrying it in a property with the tags as options, latest change first. A tag is one id; with `sameName=1` also the tags of the same name in other spaces. Answered with `Cache-Control: no-store`. (GET /api/tags/{id}) */
+  async tagPages(id: string, query: { workspace: string; sameName?: "0" | "1" }, options?: RequestOptions): Promise<Record<string, unknown>> {
     return this.json<Record<string, unknown>>("GET", `/api/tags/${encodeURIComponent(id)}`, { query }, options);
   }
 
