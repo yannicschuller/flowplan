@@ -1,4 +1,5 @@
 "use client";
+import { useEffect, useRef } from "react";
 import { useT } from "./i18n";
 import type { View } from "@/lib/types";
 
@@ -24,6 +25,35 @@ export function BoardWipSettings({
     else delete all[key];
     onChange(Object.keys(all).length ? all : undefined);
   };
+  // Typed limits not saved yet. Enter and leaving the field save them; when
+  // the panel closes while a field still has focus (it unmounts without a
+  // blur), the pending values are saved on unmount (#131).
+  const drafts = useRef(new Map<string, string>());
+  const latest = useRef({ wip, onChange });
+  useEffect(() => {
+    latest.current = { wip, onChange };
+  });
+  const commit = useRef((only?: string) => {
+    const { wip, onChange } = latest.current;
+    const all = { ...wip };
+    let changed = false;
+    for (const [key, value] of drafts.current) {
+      if (only !== undefined && key !== only) continue;
+      drafts.current.delete(key);
+      const max = Math.round(Number(value));
+      if (!value.trim()) {
+        if (all[key]) {
+          delete all[key];
+          changed = true;
+        }
+      } else if (max >= 1 && max <= 999 && max !== all[key]?.max) {
+        all[key] = { max, lock: all[key]?.lock };
+        changed = true;
+      }
+    }
+    if (changed) onChange(Object.keys(all).length ? all : undefined);
+  }).current;
+  useEffect(() => () => commit(), [commit]);
   return (
     <fieldset className="board-wip">
       <legend>{t("WIP-Limits", "WIP limits")}</legend>
@@ -39,12 +69,13 @@ export function BoardWipSettings({
             aria-label={t(`Limit für ${c.label}`, `Limit for ${c.label}`)}
             disabled={disabled}
             defaultValue={wip[c.key]?.max ?? ""}
-            onBlur={(e) => {
-              const max = Math.round(Number(e.target.value));
-              if (!e.target.value) {
-                if (wip[c.key]) set(c.key, null);
-              } else if (max >= 1 && max <= 999 && max !== wip[c.key]?.max) set(c.key, { max, lock: wip[c.key]?.lock });
+            onChange={(e) => drafts.current.set(c.key, e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter") return;
+              e.preventDefault();
+              commit(c.key);
             }}
+            onBlur={() => commit(c.key)}
           />
           <label className="checkbox-label">
             <input
