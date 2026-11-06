@@ -117,7 +117,7 @@ import type { Editor as TiptapEditor } from "@tiptap/core";
 import { SlashMenu, type SlashItem } from "./slash-menu";
 import { readSlashRecents, rememberSlashCommand, slashSections, type SlashSection } from "@/lib/slash-commands";
 import type { SaveStatus } from "@/lib/save-status";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ComponentProps, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import * as Y from "yjs";
 import { IndexeddbPersistence } from "y-indexeddb";
 import {
@@ -393,6 +393,8 @@ export default function DocumentEditor({
   const [, setTick] = useState(0);
   const [references, setReferences] = useState(false),
     [referenceQuery, setReferenceQuery] = useState(""),
+    // The highlighted hit of the mention dialog by its key; null is the first.
+    [referenceActive, setReferenceActive] = useState<string | null>(null),
     [embed, setEmbed] = useState(false),
     [embedUrl, setEmbedUrl] = useState("");
   const [boardPicker, setBoardPicker] = useState(false),
@@ -2198,6 +2200,128 @@ export default function DocumentEditor({
       onError(serverMessage((e as Error).message) || t("Der Link konnte nicht kopiert werden.", "The link could not be copied."));
     }
   };
+  // The mention dialog's hits in the order they are shown; mouse and
+  // keyboard pick through the same list.
+  const referenceBlockHits = useBlockReferences(workspaceId, references ? referenceQuery : "", pageId);
+  const referenceRecordHits = useRecordReferences(
+    pages.find((p) => p.id === pageId)?.workspace_id,
+    references ? referenceQuery : "",
+    rowId,
+  );
+  const referenceBlocks = [
+    ...ownHeadingReferences(rowId ? [] : headings, referenceQuery, pageId, pages.find((p) => p.id === pageId)?.title || ""),
+    ...referenceBlockHits,
+  ];
+  const pickBlock = async (hit: BlockHit) => {
+    try {
+      let blockId = hit.blockId;
+      // This page's heading: its id here (a new one if needed).
+      if (hit.pos !== undefined) blockId = (await blockIdAt(hit.pos))?.id || null;
+      else if (!blockId) {
+        const result = await api<{ blockId: string | null }>("/api/command", {
+          action: "block.ids",
+          pageId: hit.pageId,
+          index: hit.index,
+          text: hit.text,
+        });
+        blockId = result.blockId;
+      }
+      if (!blockId) throw new Error(t("Dieser Block lässt sich nicht verlinken.", "This block cannot be linked."));
+      editor
+        ?.chain()
+        .focus()
+        .insertContent({
+          type: "text",
+          text: blockLinkLabel(hit.pageTitle || t("Ohne Titel", "Untitled"), hit.text),
+          marks: [{ type: "link", attrs: { href: blockLinkHref({ pageId: hit.pageId, blockId }) } }],
+        })
+        .run();
+      setReferences(false);
+      setReferenceQuery("");
+    } catch (e) {
+      onError(serverMessage((e as Error).message) || t("Der Link konnte nicht eingefügt werden.", "The link could not be inserted."));
+    }
+  };
+  // A day without a journal entry (other than today) cannot be linked.
+  const referenceDayOpen = !!referenceDay && (referenceDay.date === todayLocal() || journalDays.has(referenceDay.date));
+  const referenceItems: { key: string; pick: () => void }[] = [
+    ...(referenceDay && referenceDayOpen ? [{ key: "day", pick: () => void insertDayLink(referenceDay.date) }] : []),
+    ...referencePages.map(({ page: p, alias }) => ({
+      key: `page:${p.id}`,
+      pick: () => {
+        editor
+          ?.chain()
+          .focus()
+          .insertContent({
+            type: "text",
+            // Found by an alias: the alias is the link text.
+            text: alias || p.title,
+            marks: [{ type: "link", attrs: { href: `/#page=${p.id}` } }],
+          })
+          .run();
+        setReferences(false);
+        setReferenceQuery("");
+      },
+    })),
+    ...referenceBlocks.map((hit) => ({ key: blockReferenceKey(hit), pick: () => void pickBlock(hit) })),
+    ...referenceRecordHits.map((record) => ({
+      key: `record:${record.rowId}`,
+      pick: () => {
+        editor
+          ?.chain()
+          .focus()
+          .insertContent({
+            type: "text",
+            text: record.alias || record.title,
+            marks: [{ type: "link", attrs: { href: `/${pageLocationHash({ pageId: record.id, rowId: record.rowId })}` } }],
+          })
+          .run();
+        setReferences(false);
+        setReferenceQuery("");
+      },
+    })),
+    ...referenceMembers.map((u) => ({
+      key: `member:${u.id}`,
+      pick: () => {
+        editor?.chain().focus().insertContent({ type: "mention", attrs: { userId: u.id, label: u.name } }).run();
+        setReferences(false);
+        setReferenceQuery("");
+      },
+    })),
+  ];
+  // The highlight follows its hit, not its place: records and blocks that
+  // arrive later from the server do not move it. It starts at the first hit
+  // when the dialog opens or the search changes, and goes back there when
+  // its hit is gone. It stays in view; the field names it
+  // (aria-activedescendant).
+  const referenceListId = useId();
+  const referenceFound = referenceItems.findIndex((item) => item.key === referenceActive);
+  const referenceIndex = Math.max(0, referenceFound);
+  const referenceOptionId = (index: number) => `${referenceListId}-option-${index}`;
+  useEffect(() => {
+    setReferenceActive(null);
+  }, [references, referenceQuery]);
+  const referenceGone = referenceActive !== null && referenceFound < 0;
+  useEffect(() => {
+    if (referenceGone) setReferenceActive(null);
+  }, [referenceGone]);
+  useEffect(() => {
+    if (references) document.getElementById(referenceOptionId(referenceIndex))?.scrollIntoView({ block: "nearest" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [references, referenceIndex]);
+  const referenceIndexes = new Map(referenceItems.map((item, i) => [item.key, i]));
+  const referenceOption = (key: string): ReferenceOptionProps => {
+    const index = referenceIndexes.get(key) ?? -1;
+    return {
+      type: "button",
+      role: "option",
+      id: referenceOptionId(index),
+      "aria-selected": index === referenceIndex,
+      "data-active": index === referenceIndex,
+      onMouseMove: () => index !== referenceIndex && setReferenceActive(key),
+      onClick: () => referenceItems[index]?.pick(),
+    };
+  };
   // A pasted block link: "Page › start of the block" as a page link. The
   // server answers only with what this person may read.
   pasteBlockLink.current = async (target: BlockTarget) => {
@@ -3054,138 +3178,84 @@ export default function DocumentEditor({
           <input
             className="input"
             autoFocus
+            role="combobox"
+            aria-expanded="true"
+            aria-controls={`${referenceListId}-list`}
+            aria-autocomplete="list"
+            aria-activedescendant={referenceItems.length ? referenceOptionId(referenceIndex) : undefined}
             value={referenceQuery}
             onChange={(e) => setReferenceQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.nativeEvent.isComposing) return;
+              // The arrows move the highlight while the focus stays here.
+              if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                e.preventDefault();
+                const count = referenceItems.length;
+                if (count) setReferenceActive(referenceItems[(referenceIndex + (e.key === "ArrowDown" ? 1 : count - 1)) % count].key);
+              } else if (e.key === "Enter") {
+                e.preventDefault();
+                referenceItems[referenceIndex]?.pick();
+              }
+            }}
             placeholder={t("Suchen …", "Search …")}
             aria-label={t("Seiten, Einträge und Personen suchen", "Search pages, records and people")}
           />
-          {referenceDay && (
-            <>
-              <h3>{t("Journal", "Journal")}</h3>
-              <button
-                className="reference-day"
-                disabled={referenceDay.date !== todayLocal() && !journalDays.has(referenceDay.date)}
-                onClick={() => void insertDayLink(referenceDay.date)}
-              >
-                <CalendarBlank />
-                <span>
-                  {referenceDay.label === "today"
-                    ? t("Heute", "Today")
-                    : referenceDay.label === "yesterday"
-                      ? t("Gestern", "Yesterday")
-                      : referenceDay.date}
-                  <small className="muted"> · {dayLabel(referenceDay.date)}</small>
-                  {referenceDay.date !== todayLocal() && !journalDays.has(referenceDay.date) && (
-                    <small className="muted"> · {t("kein Eintrag", "no entry")}</small>
-                  )}
-                </span>
-              </button>
-            </>
-          )}
-          {referencePages.length > 0 && <h3>{t("Seiten", "Pages")}</h3>}
-          {referencePages.map(({ page: p, alias }) => (
-              <button
-                key={p.id}
-                onClick={() => {
-                  editor
-                    ?.chain()
-                    .focus()
-                    .insertContent({
-                      type: "text",
-                      // Found by an alias: the alias is the link text.
-                      text: alias || p.title,
-                      marks: [
-                        { type: "link", attrs: { href: `/#page=${p.id}` } },
-                      ],
-                    })
-                    .run();
-                  setReferences(false);
-                }}
-              >
-                <PageIcon name={shownPageIcon(p.icon, p.kind)} />
-                {p.title}
-                {alias && <span className="alias-hit"> · {alias}</span>}
-              </button>
-            ))}
-          <BlockReferences
-            workspaceId={workspaceId}
-            query={referenceQuery}
-            pageId={pageId}
-            pageTitle={pages.find((p) => p.id === pageId)?.title || ""}
-            headings={rowId ? [] : headings}
-            onPick={async (hit) => {
-              try {
-                let blockId = hit.blockId;
-                // This page's heading: its id here (a new one if needed).
-                if (hit.pos !== undefined) blockId = (await blockIdAt(hit.pos))?.id || null;
-                else if (!blockId) {
-                  const result = await api<{ blockId: string | null }>("/api/command", {
-                    action: "block.ids",
-                    pageId: hit.pageId,
-                    index: hit.index,
-                    text: hit.text,
-                  });
-                  blockId = result.blockId;
-                }
-                if (!blockId) throw new Error(t("Dieser Block lässt sich nicht verlinken.", "This block cannot be linked."));
-                editor
-                  ?.chain()
-                  .focus()
-                  .insertContent({
-                    type: "text",
-                    text: blockLinkLabel(hit.pageTitle || t("Ohne Titel", "Untitled"), hit.text),
-                    marks: [{ type: "link", attrs: { href: blockLinkHref({ pageId: hit.pageId, blockId }) } }],
-                  })
-                  .run();
-                setReferences(false);
-                setReferenceQuery("");
-              } catch (e) {
-                onError(serverMessage((e as Error).message) || t("Der Link konnte nicht eingefügt werden.", "The link could not be inserted."));
-              }
-            }}
-          />
-          <RecordReferences
-            workspaceId={pages.find((p) => p.id === pageId)?.workspace_id}
-            query={referenceQuery}
-            exclude={rowId}
-            onPick={(record) => {
-              editor
-                ?.chain()
-                .focus()
-                .insertContent({
-                  type: "text",
-                  text: record.alias || record.title,
-                  marks: [
-                    {
-                      type: "link",
-                      attrs: { href: `/${pageLocationHash({ pageId: record.id, rowId: record.rowId })}` },
-                    },
-                  ],
-                })
-                .run();
-              setReferences(false);
-              setReferenceQuery("");
-            }}
-          />
-          {referenceMembers.length > 0 && <h3>{t("Personen", "People")}</h3>}
-          {referenceMembers.map((u) => (
-            <button
-              key={u.id}
-              onClick={() => {
-                editor
-                  ?.chain()
-                  .focus()
-                  .insertContent({
-                    type: "mention",
-                    attrs: { userId: u.id, label: u.name },
-                  })
-                  .run();
-                setReferences(false);
-              }}
-            >
-              @{u.name}
-            </button>
-          ))}
+          <div
+            id={`${referenceListId}-list`}
+            role="listbox"
+            aria-label={t("Seite, Eintrag oder Person erwähnen", "Mention a page, record or person")}
+          >
+            {referenceDay && (
+              <div role="group" aria-labelledby={`${referenceListId}-day`}>
+                <h3 id={`${referenceListId}-day`} role="presentation">{t("Journal", "Journal")}</h3>
+                <button
+                  className="reference-day"
+                  disabled={!referenceDayOpen}
+                  {...(referenceDayOpen ? referenceOption("day") : { role: "option", "aria-selected": false, "aria-disabled": true })}
+                >
+                  <CalendarBlank />
+                  <span>
+                    {referenceDay.label === "today"
+                      ? t("Heute", "Today")
+                      : referenceDay.label === "yesterday"
+                        ? t("Gestern", "Yesterday")
+                        : referenceDay.date}
+                    <small className="muted"> · {dayLabel(referenceDay.date)}</small>
+                    {!referenceDayOpen && <small className="muted"> · {t("kein Eintrag", "no entry")}</small>}
+                  </span>
+                </button>
+              </div>
+            )}
+            {referencePages.length > 0 && (
+              <div role="group" aria-labelledby={`${referenceListId}-pages`}>
+                <h3 id={`${referenceListId}-pages`} role="presentation">{t("Seiten", "Pages")}</h3>
+                {referencePages.map(({ page: p, alias }) => (
+                  <button key={p.id} {...referenceOption(`page:${p.id}`)}>
+                    <PageIcon name={shownPageIcon(p.icon, p.kind)} />
+                    {p.title}
+                    {alias && <span className="alias-hit"> · {alias}</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+            <BlockReferences hits={referenceBlocks} labelId={`${referenceListId}-blocks`} option={referenceOption} />
+            <RecordReferences
+              hits={referenceRecordHits}
+              query={referenceQuery}
+              labelId={`${referenceListId}-records`}
+              option={referenceOption}
+            />
+            {referenceMembers.length > 0 && (
+              <div role="group" aria-labelledby={`${referenceListId}-people`}>
+                <h3 id={`${referenceListId}-people`} role="presentation">{t("Personen", "People")}</h3>
+                {referenceMembers.map((u) => (
+                  <button key={u.id} {...referenceOption(`member:${u.id}`)}>
+                    @{u.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </Modal>
       <Modal
@@ -3366,20 +3436,11 @@ const dayFormat = new Intl.DateTimeFormat(LOCALE_TAG, { weekday: "long", day: "n
 const dayLabel = (date: string) => dayFormat.format(new Date(`${date}T00:00:00Z`));
 
 type RecordHit = { id: string; rowId: string; title: string; pageTitle?: string; alias?: string; icon?: string };
+// One hit of the mention dialog: an option of its list (see referenceOption).
+type ReferenceOptionProps = ComponentProps<"button"> & { "data-active": boolean };
 // Records for the mention dialog: the workspace search (kind "row") finds
 // them and leaves out what the person may not read.
-function RecordReferences({
-  workspaceId,
-  query,
-  exclude,
-  onPick,
-}: {
-  workspaceId?: string;
-  query: string;
-  exclude?: string;
-  onPick: (record: RecordHit) => void;
-}) {
-  const t = useT();
+function useRecordReferences(workspaceId: string | undefined, query: string, exclude?: string) {
   const [hits, setHits] = useState<RecordHit[]>([]);
   const term = query.trim();
   useEffect(() => {
@@ -3410,12 +3471,26 @@ function RecordReferences({
       clearTimeout(timer);
     };
   }, [workspaceId, term, exclude]);
+  return hits;
+}
+function RecordReferences({
+  hits,
+  query,
+  labelId,
+  option,
+}: {
+  hits: RecordHit[];
+  query: string;
+  labelId: string;
+  option: (key: string) => ReferenceOptionProps;
+}) {
+  const t = useT();
   return (
-    <>
-      <h3>{t("Einträge", "Records")}</h3>
-      {!term && <p className="muted reference-hint">{t("Tippe, um Einträge aus Datenbanken zu finden.", "Type to find records in databases.")}</p>}
+    <div role="group" aria-labelledby={labelId}>
+      <h3 id={labelId} role="presentation">{t("Einträge", "Records")}</h3>
+      {!query.trim() && <p className="muted reference-hint">{t("Tippe, um Einträge aus Datenbanken zu finden.", "Type to find records in databases.")}</p>}
       {hits.map((hit) => (
-        <button key={hit.rowId} onClick={() => onPick(hit)}>
+        <button key={hit.rowId} {...option(`record:${hit.rowId}`)}>
           <PageIcon name={shownPageIcon(hit.icon, "record")} />
           <span>
             {hit.title || t("Ohne Titel", "Untitled")}
@@ -3424,7 +3499,7 @@ function RecordReferences({
           </span>
         </button>
       ))}
-    </>
+    </div>
   );
 }
 
@@ -3441,22 +3516,22 @@ type BlockHit = {
   // A heading of this page: its position here.
   pos?: number;
 };
-function BlockReferences({
-  workspaceId,
-  query,
-  pageId,
-  pageTitle,
-  headings,
-  onPick,
-}: {
-  workspaceId: string;
-  query: string;
-  pageId: string;
-  pageTitle: string;
-  headings: { text: string; pos: number; level: number }[];
-  onPick: (hit: BlockHit) => void;
-}) {
-  const t = useT();
+const blockReferenceKey = (hit: BlockHit) => `block:${hit.pageId}-${hit.pos ?? ""}-${hit.blockId || hit.index}`;
+function ownHeadingReferences(
+  headings: { text: string; pos: number; level: number }[],
+  query: string,
+  pageId: string,
+  pageTitle: string,
+): BlockHit[] {
+  const term = query.trim().toLowerCase();
+  return term
+    ? headings
+        .filter((h) => h.text.trim() && h.text.toLowerCase().includes(term))
+        .slice(0, 8)
+        .map((h) => ({ pageId, pageTitle, blockId: null, index: -1, text: h.text.trim(), level: h.level, pos: h.pos }))
+    : [];
+}
+function useBlockReferences(workspaceId: string, query: string, pageId: string) {
   const [hits, setHits] = useState<BlockHit[]>([]);
   const term = query.trim();
   useEffect(() => {
@@ -3475,20 +3550,24 @@ function BlockReferences({
       clearTimeout(timer);
     };
   }, [workspaceId, term, pageId]);
-  const lower = term.toLowerCase();
-  const own: BlockHit[] = term
-    ? headings
-        .filter((h) => h.text.trim() && h.text.toLowerCase().includes(lower))
-        .slice(0, 8)
-        .map((h) => ({ pageId, pageTitle, blockId: null, index: -1, text: h.text.trim(), level: h.level, pos: h.pos }))
-    : [];
-  const all = [...own, ...hits];
-  if (!all.length) return null;
+  return hits;
+}
+function BlockReferences({
+  hits,
+  labelId,
+  option,
+}: {
+  hits: BlockHit[];
+  labelId: string;
+  option: (key: string) => ReferenceOptionProps;
+}) {
+  const t = useT();
+  if (!hits.length) return null;
   return (
-    <>
-      <h3>{t("Überschriften und Blöcke", "Headings and blocks")}</h3>
-      {all.map((hit) => (
-        <button key={`${hit.pageId}-${hit.pos ?? ""}-${hit.blockId || hit.index}`} onClick={() => onPick(hit)}>
+    <div role="group" aria-labelledby={labelId}>
+      <h3 id={labelId} role="presentation">{t("Überschriften und Blöcke", "Headings and blocks")}</h3>
+      {hits.map((hit) => (
+        <button key={blockReferenceKey(hit)} {...option(blockReferenceKey(hit))}>
           {hit.level ? <TextHTwo /> : <Rows />}
           <span>
             <small className="muted">{hit.pos !== undefined ? t("Diese Seite", "This page") : hit.pageTitle || t("Ohne Titel", "Untitled")} › </small>
@@ -3496,6 +3575,6 @@ function BlockReferences({
           </span>
         </button>
       ))}
-    </>
+    </div>
   );
 }

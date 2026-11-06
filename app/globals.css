@@ -21685,6 +21685,9 @@ h3 .block-reactions {
 .reference-list button small {
   font-size: 12px;
 }
+.reference-list button[data-active="true"] {
+  background: var(--hover);
+}
 
 /* Safe areas: status bar, notch and home indicator on phones and tablets –
    in the iOS app, the home screen web app and landscape Safari. The page
