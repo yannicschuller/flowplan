@@ -506,6 +506,9 @@ export default function DatabaseView({
     fieldId: string;
     groupKey?: string;
   } | null>(null);
+  // A click opened the cell being edited: further clicks of the same
+  // double-click land on its editor and are ignored (see tableRow).
+  const cellOpenedByClick = useRef(false);
   const [selection, setSelection] = useState<Map<string, number>>(new Map());
   // Right-click on records, and copying or moving them elsewhere.
   const [recordMenu, setRecordMenu] = useState<{ x: number; y: number; rowIds: string[] } | null>(null);
@@ -2797,7 +2800,10 @@ export default function DatabaseView({
                 setRowId(r.id);
               else if (f.type === "checkbox")
                 void updateCell(r, f, !r.cells[f.id]);
-              else setEditingCell({ rowId: r.id, fieldId: f.id, groupKey });
+              else {
+                cellOpenedByClick.current = true;
+                setEditingCell({ rowId: r.id, fieldId: f.id, groupKey });
+              }
             }}
           >
             {editingCell?.rowId === r.id &&
@@ -2805,6 +2811,15 @@ export default function DatabaseView({
             editingCell?.groupKey === groupKey ? (
               <span
                 className="inline-cell"
+                // The first click of a double-click opens the cell; the
+                // second one lands on the editor that is now under the
+                // pointer (an option of a multi-select) and must not pick it.
+                onClickCapture={(e) => {
+                  if (cellOpenedByClick.current && e.detail > 1) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  } else cellOpenedByClick.current = false;
+                }}
                 onClick={(e) => e.stopPropagation()}
               >
                 <CellInput
@@ -6177,8 +6192,10 @@ function tagColor(s: string) {
 }
 // Files cells contain several controls; a <label> would forward every click
 // to the first one (the file chooser).
-// Title of a record, edited in place. Enter or leaving the field saves;
-// Escape restores the stored title.
+// Title of a record, edited in place. Enter, leaving the field and closing
+// the record save. Escape closes the record (the dialog hears it before the
+// field) and unmounts the field without a blur, so what was typed is saved
+// when the field goes – like the record's text.
 function RowTitle({
   value,
   focus,
@@ -6191,7 +6208,23 @@ function RowTitle({
   const t = useT();
   const [draft, setDraft] = useState(value);
   const input = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => setDraft(value), [value]);
+  // Typed and not saved yet.
+  const typed = useRef<string | null>(null);
+  const latest = useRef({ value, onSave });
+  useEffect(() => {
+    latest.current = { value, onSave };
+  });
+  const save = useRef(() => {
+    if (typed.current === null) return;
+    const title = typed.current.replace(/\s+/g, " ").trim();
+    typed.current = null;
+    if (title !== latest.current.value) void latest.current.onSave(title);
+  }).current;
+  useEffect(() => () => save(), [save]);
+  useEffect(() => {
+    setDraft(value);
+    typed.current = null;
+  }, [value]);
   useEffect(() => {
     if (!focus) return;
     input.current?.focus();
@@ -6211,10 +6244,6 @@ function RowTitle({
     observer.observe(el);
     return () => observer.disconnect();
   }, [draft]);
-  const save = () => {
-    const title = draft.replace(/\s+/g, " ").trim();
-    if (title !== value) void onSave(title);
-  };
   return (
     <textarea
       ref={input}
@@ -6223,17 +6252,16 @@ function RowTitle({
       placeholder={t("Ohne Titel", "Untitled")}
       rows={1}
       value={draft}
-      onChange={(e) => setDraft(e.target.value.replace(/\n/g, ""))}
+      onChange={(e) => {
+        typed.current = e.target.value.replace(/\n/g, "");
+        setDraft(typed.current);
+      }}
       onBlur={save}
       onKeyDown={(e) => {
         if (e.key === "Enter") {
           e.preventDefault();
           e.currentTarget.blur();
-        } else if (e.key === "Escape") {
-          e.stopPropagation();
-          setDraft(value);
-          requestAnimationFrame(() => input.current?.blur());
-        }
+        } else if (e.key === "Escape") e.stopPropagation();
       }}
     />
   );

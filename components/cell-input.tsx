@@ -1,7 +1,7 @@
 "use client";
 import { useT } from "./i18n";
 import { Select } from "./select";
-import { useState, useEffect, lazy, Suspense, type ReactNode } from "react";
+import { useState, useEffect, useRef, lazy, Suspense, type KeyboardEvent, type ReactNode } from "react";
 import { InlineText } from "./inline-text";
 import { ratingMax } from "@/lib/field-format";
 import DateInput from "./date-input";
@@ -78,7 +78,36 @@ export function CellInput({
   const t = useT();
   const sprints = useSprints();
   const [draft, setDraft] = useState(cellText(value));
-  useEffect(() => setDraft(cellText(value)), [value]);
+  // What was typed into a plain field (commit "blur") and not saved yet.
+  const unsaved = useRef<{ value: unknown } | null>(null);
+  useEffect(() => {
+    setDraft(cellText(value));
+    unsaved.current = null;
+  }, [value]);
+  // Plain fields saved on blur: Enter saves too and, without a change, ends
+  // the edit (a table cell closes) – as in the other cell editors.
+  const enterSaves = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== "Enter" || commit !== "blur" || e.nativeEvent.isComposing) return;
+    e.preventDefault();
+    e.currentTarget.blur();
+    if (draft === cellText(value)) onCancel?.();
+  };
+  // They also save when they unmount: a record closed with Escape or a
+  // click outside removes the field without a blur.
+  const latestChange = useRef(onChange);
+  useEffect(() => {
+    latestChange.current = onChange;
+  });
+  useEffect(
+    () => () => {
+      if (unsaved.current) void latestChange.current(unsaved.current.value);
+    },
+    [],
+  );
+  const blurred = (v: unknown) => {
+    unsaved.current = null;
+    if (commit === "blur") onChange(v);
+  };
   if (f.type === "date")
     return (
       <DateInput
@@ -220,8 +249,10 @@ export function CellInput({
         onChange={(e) => {
           setDraft(e.target.value);
           if (commit === "change") onChange(aliasList(e.target.value));
+          else unsaved.current = { value: aliasList(e.target.value) };
         }}
-        onBlur={() => commit === "blur" && onChange(aliasList(draft))}
+        onKeyDown={enterSaves}
+        onBlur={() => blurred(aliasList(draft))}
       />
     );
   if (f.type === "checklist") {
@@ -315,18 +346,18 @@ export function CellInput({
       placeholder={placeholder ?? t("Leer", "Empty")}
       onChange={(e) => {
         setDraft(e.target.value);
-        if (commit === "change")
-          onChange(
-            f.type === "number"
-              ? e.target.value === ""
-                ? null
-                : Number(e.target.value)
-              : e.target.value,
-          );
+        const next =
+          f.type === "number"
+            ? e.target.value === ""
+              ? null
+              : Number(e.target.value)
+            : e.target.value;
+        if (commit === "change") onChange(next);
+        else unsaved.current = { value: next };
       }}
+      onKeyDown={enterSaves}
       onBlur={() =>
-        commit === "blur" &&
-        onChange(
+        blurred(
           f.type === "number" ? (draft === "" ? null : Number(draft)) : draft,
         )
       }
