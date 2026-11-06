@@ -1,9 +1,11 @@
 // Restore from a backup on the setup screen of a new instance (#128): an
 // uploaded scheduled backup or instance download, or the newest backup on
-// an SFTP server – into a fresh data folder, while no account exists.
+// an SFTP server or in a bucket – into a fresh data folder, while no account
+// exists.
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { copyFileSync, createWriteStream, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, createWriteStream, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pipeline } from "node:stream/promises";
@@ -18,6 +20,7 @@ const { SCHEMA_VERSION, id, one, reopenDatabase, run } = await import("../lib/db
 const { createWorkspace } = await import("../lib/seed");
 const { command, bootstrap } = await import("../lib/api");
 const { runScheduledBackup } = await import("../lib/scheduled-backup");
+const { databaseCopy } = await import("../lib/backup-copy");
 const { instanceBackupStream } = await import("../lib/instance-backup");
 const { sealStream } = await import("../lib/encryption");
 const sftpBackup = await import("../lib/sftp-backup");
@@ -189,6 +192,71 @@ test("the newest backup from an SFTP server, with its files, encrypted", async (
   } finally {
     await server.close();
     delete process.env.FLOWPLAN_ENCRYPTION_KEY;
+  }
+  backOnOld();
+});
+
+test("an older SFTP backup finds a file deleted since then in .deleted/", async () => {
+  const remote = mkdtempSync(join(tmpdir(), "flowplan-setup-restore-sftp-deleted-"));
+  const server = await startSftpServer(remote, { user: "backup", password: "geheim-genug" });
+  try {
+    const target = { host: "127.0.0.1", port: server.port, username: "backup", password: "geheim-genug", directory: "flowplan" };
+    sftpBackup.saveSftpBackup(uid, { ...target, enabled: true, auth: "password", keep: 5, uploads: true });
+    sftpBackup.trustSftpHostKey(uid, (await sftpBackup.testSftpBackup()).fingerprint);
+    assert.equal((await sftpBackup.runSftpBackup(Date.UTC(2026, 10, 7, 3, 0))).error, null);
+    // Deleted here after the 03:00 backup: moved aside by the next one.
+    const content = readFileSync(join(old, "uploads", fid));
+    rmSync(join(old, "uploads", fid));
+    const next = await sftpBackup.runSftpBackup(Date.UTC(2026, 10, 7, 4, 0));
+    writeFileSync(join(old, "uploads", fid), content);
+    assert.deepEqual([next.error, next.removed], [null, 1]);
+    assert.ok(!existsSync(join(remote, "flowplan/uploads", fid)));
+    assert.equal(readdirSync(join(remote, "flowplan/.deleted/uploads")).length, 1);
+    // The 03:00 backup is the one restored (the newer one set aside).
+    rmSync(join(remote, "flowplan/flowplan-2026-11-07-04-00.sqlite"));
+    const dir = freshInstance();
+    restore.startRemoteRestore("sftp", { ...target, fingerprint: server.hostKey }, "");
+    const done = await restore.setupRestoreSettled();
+    assert.equal(done?.error, null);
+    assert.equal(done?.result?.createdAt, "2026-11-07T03:00:00.000Z");
+    assert.deepEqual([done?.result?.files, done?.result?.missingFiles], [1, 0]);
+    assert.equal(restoredPage(dir), "Anhang der alten Instanz");
+  } finally {
+    await server.close();
+  }
+  backOnOld();
+});
+
+test("from S3: a file deleted after the backup comes from .deleted/", async () => {
+  // A minimal S3 stand-in: objects in memory, with listing.
+  const objects = new Map<string, Buffer>();
+  const s3 = createServer((req, res) => {
+    const url = new URL(req.url || "", "http://x");
+    if (url.searchParams.get("list-type") === "2") {
+      const prefix = `/bucket/${url.searchParams.get("prefix") || ""}`;
+      const keys = [...objects.keys()].filter((k) => k.startsWith(prefix)).map((k) => `<Contents><Key>${k.slice("/bucket/".length)}</Key></Contents>`);
+      return void res.writeHead(200).end(`<ListBucketResult><IsTruncated>false</IsTruncated>${keys.join("")}</ListBucketResult>`);
+    }
+    const body = objects.get(decodeURIComponent(url.pathname));
+    return void (body ? res.writeHead(200, { "content-length": body.length }).end(body) : res.writeHead(404).end());
+  });
+  await new Promise<void>((done) => s3.listen(0, "127.0.0.1", done));
+  try {
+    const copy = join(old, "tmp", "s3-copy.sqlite");
+    const made = databaseCopy(Date.UTC(2026, 10, 8, 3, 0), copy);
+    objects.set(`/bucket/flowplan/backups/${made.name}`, readFileSync(copy));
+    rmSync(copy);
+    // Deleted after that backup: lib/storage.ts moved it aside.
+    objects.set(`/bucket/flowplan/.deleted/uploads/${fid}.${Date.UTC(2026, 10, 8, 9, 0)}`, readFileSync(join(old, "uploads", fid)));
+    const dir = freshInstance();
+    const input = { endpoint: `http://127.0.0.1:${(s3.address() as { port: number }).port}`, bucket: "bucket", accessKeyId: "a", secretAccessKey: "b" };
+    restore.startRemoteRestore("s3", input, "");
+    const done = await restore.setupRestoreSettled();
+    assert.equal(done?.error, null);
+    assert.deepEqual([done?.result?.files, done?.result?.missingFiles], [1, 0]);
+    assert.equal(restoredPage(dir), "Anhang der alten Instanz");
+  } finally {
+    s3.close();
   }
   backOnOld();
 });

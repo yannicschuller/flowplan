@@ -6,7 +6,7 @@
 //     [.enc], database and files), or
 //   - the newest scheduled backup from an S3 bucket or SFTP server entered
 //     there, with the files mirrored next to it (S3: <prefix>/uploads/, SFTP:
-//     <folder>/uploads/).
+//     <folder>/uploads/; files deleted since then from .deleted/uploads/).
 // Encrypted backups need the old instance's FLOWPLAN_ENCRYPTION_KEY (entered
 // in the form, or configured here). The database is checked (integrity,
 // a Flowplan database, schema not newer than this version; older ones are
@@ -30,6 +30,7 @@ import { firstAccount, localLoginEnabled, setupAllowed, setupToken } from "./loc
 import { encryptionEnabled, fileIsEncrypted, fileKeyKnown, isEncrypted, parseKey, unseal, unsealFile, type Key } from "./encryption";
 import { INSTANCE_ARCHIVE_LIMIT, cancelRestore, checkBackupDatabase, stageInstanceRestore, type Summary } from "./instance-backup";
 import { BACKUP_FILE } from "./backup-copy";
+import { DELETED_UPLOADS, newestDeleted, parseDeleted, type DeletedCopy } from "./deleted-uploads";
 import { HostKeyError, connectSftp, remoteDirectory, remotePath, sftpDownload, sftpHost, sftpList, type SftpLogin, type SftpSession } from "./sftp";
 
 const dataDir = () => resolve(/* turbopackIgnore: true */ process.env.FLOWPLAN_DATA_DIR || "./data");
@@ -295,6 +296,21 @@ async function saveBody(response: Response, target: string, progress: RestorePro
   await pipeline(Readable.fromWeb(response.body as never), count, createWriteStream(target, { flags: "wx" }));
 }
 
+// All keys under a prefix, page by page.
+async function listS3(aws: AwsClient, base: string, prefix: string) {
+  const keys: string[] = [];
+  let token = "";
+  for (let page = 0; page < 1000; page++) {
+    const response = await aws.fetch(`${base}?list-type=2&prefix=${encodeURIComponent(prefix)}${token ? `&continuation-token=${encodeURIComponent(token)}` : ""}`);
+    if (!response.ok) throw new HttpError(502, `Liste: HTTP ${response.status}`);
+    const xml = await response.text();
+    keys.push(...[...xml.matchAll(/<Key>([^<]+)<\/Key>/g)].map((m) => m[1]));
+    token = /<IsTruncated>true<\/IsTruncated>/.test(xml) ? (/<NextContinuationToken>([^<]+)<\/NextContinuationToken>/.exec(xml)?.[1] ?? "") : "";
+    if (!token) break;
+  }
+  return keys;
+}
+
 async function fromS3(input: unknown, keys: Key[], progress: RestoreProgress) {
   const { aws, base, key } = s3Target(input);
   progress.phase = "connect";
@@ -318,9 +334,25 @@ async function fromS3(input: unknown, keys: Key[], progress: RestoreProgress) {
     progress.bytesTotal = Number(response.headers.get("content-length")) || 0;
     await saveBody(response, file, progress);
     const fetchFiles: Fetcher = async (ids, folder) => {
+      // Files deleted after the backup was made wait in .deleted/uploads/
+      // (lib/deleted-uploads.ts).
+      let deleted: Map<string, DeletedCopy> | null = null;
+      const deletedCopy = async (name: string) => {
+        deleted ??= newestDeleted(
+          (await listS3(aws, base, key(`${DELETED_UPLOADS}/`)).catch(() => []))
+            .map((k) => parseDeleted(k.slice(key(`${DELETED_UPLOADS}/`).length)))
+            .filter((c): c is DeletedCopy => !!c),
+        );
+        return deleted.get(name);
+      };
+      const get = (path: string) => aws.fetch(`${base}/${key(path).split("/").map(encodeURIComponent).join("/")}`).catch(() => null);
       let missing = 0;
       for (const name of ids) {
-        const object = await aws.fetch(`${base}/${key(`uploads/${name}`).split("/").map(encodeURIComponent).join("/")}`).catch(() => null);
+        let object = await get(`uploads/${name}`);
+        if (!object?.ok) {
+          const copy = await deletedCopy(name);
+          if (copy) object = await get(`${DELETED_UPLOADS}/${copy.name}`);
+        }
         if (!object?.ok) {
           missing++;
           continue;
@@ -372,15 +404,23 @@ async function fromSftp(input: unknown, keys: Key[], progress: RestoreProgress) 
       const there = new Set(
         (await sftpList(session.sftp, remotePath(directory, "uploads")).catch(() => [])).map((e) => e.filename).filter((n) => UPLOAD.test(n)),
       );
+      // Files deleted after the backup was made wait in .deleted/uploads/
+      // (lib/deleted-uploads.ts).
+      const deleted = newestDeleted(
+        (await sftpList(session.sftp, remotePath(directory, DELETED_UPLOADS)).catch(() => []))
+          .map((e) => parseDeleted(e.filename))
+          .filter((c): c is DeletedCopy => !!c),
+      );
       let missing = 0;
       for (const name of ids) {
-        if (!there.has(name)) {
+        const copy = there.has(name) ? null : deleted.get(name);
+        if (!there.has(name) && !copy) {
           missing++;
           continue;
         }
         const target = resolve(folder, name);
         const download = `${target}.download`;
-        await sftpDownload(session.sftp, remotePath(directory, `uploads/${name}`), download);
+        await sftpDownload(session.sftp, remotePath(directory, copy ? `${DELETED_UPLOADS}/${copy.name}` : `uploads/${name}`), download);
         if (fileIsEncrypted(download)) {
           if (!fileKeyKnown(download, keys)) throw new KeyRequired(keys.length > 0);
           await unsealFile(download, target, keys);

@@ -29,7 +29,7 @@ type Settings = {
   uploads: boolean;
   hostKey: string | null;
 };
-type Run = { at: number; name: string; bytes: number; files: number; removed: number; error: string | null };
+type Run = { at: number; name: string; bytes: number; files: number; removed: number; purged?: number; error: string | null };
 type Test = { state: "ok" | "unknown" | "changed"; fingerprint: string; expected: string | null; backups: number };
 type State = { settings: Settings; status: { enabled: boolean; hostKey: string | null; last: Run | null }; test?: Test; run?: Run };
 
@@ -159,7 +159,7 @@ export function SftpBackup({ onError }: { onError: (message: string) => void }) 
             last
               ? last.error
                 ? `${new Date(last.at).toLocaleString(LOCALE_TAG)}: ${last.error}`
-                : `${new Date(last.at).toLocaleString(LOCALE_TAG)} (${ago(last.at, t)}) · ${last.name} (${bytes(last.bytes)})${state.settings.uploads ? ` · ${t(`${last.files} Dateien neu, ${last.removed} entfernt`, `${last.files} files new, ${last.removed} removed`)}` : ""}`
+                : `${new Date(last.at).toLocaleString(LOCALE_TAG)} (${ago(last.at, t)}) · ${last.name} (${bytes(last.bytes)})${state.settings.uploads ? ` · ${t(`${last.files} Dateien neu, ${last.removed} nach .deleted/ verschoben`, `${last.files} files new, ${last.removed} moved to .deleted/`)}` : ""}`
               : t("Noch keine.", "None yet.")
           }
         >
@@ -304,13 +304,18 @@ export function SftpBackup({ onError }: { onError: (message: string) => void }) 
         </small>
         <SwitchRow
           label={t("Dateien mitsichern", "Include files")}
-          description={t(
-            "Spiegelt die hochgeladenen Dateien nach uploads/ im Ordner; hier gelöschte Dateien verschwinden dort auch.",
-            "Mirrors the uploaded files to uploads/ in the folder; files deleted here disappear there as well.",
-          )}
+          description={t("Spiegelt die hochgeladenen Dateien nach uploads/ im Ordner.", "Mirrors the uploaded files to uploads/ in the folder.")}
           checked={form.uploads}
           onChange={(on) => set({ uploads: on })}
         />
+        {form.uploads && (
+          <small>
+            {t(
+              "Hier gelöschte Dateien wandern dort nach .deleted/ und werden erst entfernt, wenn keine aufbewahrte Sicherung sie mehr braucht – so bleibt jede Sicherung vollständig wiederherstellbar.",
+              "Files deleted here move to .deleted/ there and are removed only once no kept backup needs them – so every backup stays fully restorable.",
+            )}
+          </small>
+        )}
         <SwitchRow
           label={t("SFTP-Ziel aktiv", "SFTP target active")}
           description={t("Mit jeder geplanten Sicherung übertragen.", "Transfer with every scheduled backup.")}

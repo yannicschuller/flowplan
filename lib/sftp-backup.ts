@@ -3,9 +3,10 @@
 // database – encrypted with FLOWPLAN_ENCRYPTION_KEY like the copies in S3
 // and the data folder – goes to <folder>/flowplan-….sqlite[.enc]; the
 // newest N are kept. With "files" on, <folder>/uploads/ mirrors the uploads
-// (each encrypted on its own with the key; files deleted here are removed
-// there as well), so database and files can be restored on a new instance
-// (lib/setup-restore.ts).
+// (each encrypted on its own with the key). Files deleted here are moved to
+// <folder>/.deleted/uploads/ and removed only once no kept backup refers to
+// them any more (lib/deleted-uploads.ts), so database and files of every kept
+// backup can be restored on a new instance (lib/setup-restore.ts).
 //
 // Stored in instance_settings under "sftpBackup"; password, private key
 // and passphrase sealed with the key for stored secrets (lib/secret-box.ts),
@@ -21,6 +22,7 @@ import { HttpError } from "./auth";
 import { openSecret, sealSecret } from "./secret-box";
 import { encryptionEnabled, sealStream } from "./encryption";
 import { BACKUP_FILE, beyondKeep, copyPath, databaseCopy } from "./backup-copy";
+import { DELETED_UPLOADS, deletedName, newestDeleted, oldestBackup, parseDeleted, purgeable, type DeletedCopy } from "./deleted-uploads";
 import {
   HostKeyError,
   connectSftp,
@@ -56,7 +58,8 @@ type Stored = {
   uploads: boolean;
   hostKey: string | null;
 };
-export type SftpRun = { at: number; name: string; bytes: number; files: number; removed: number; error: string | null };
+// removed: moved to .deleted/uploads/; purged: removed from there for good.
+export type SftpRun = { at: number; name: string; bytes: number; files: number; removed: number; purged?: number; error: string | null };
 
 function readJson<T>(table: "instance_settings" | "instance_state", key: string): T | null {
   const row = one<{ value: string }>(`SELECT value FROM ${table} WHERE key=?`, key);
@@ -221,11 +224,15 @@ export function trustSftpHostKey(actor: string, fingerprint: unknown) {
   return sftpBackupSettings();
 }
 
-// Uploads missing files to <folder>/uploads/ and removes what is gone here.
-async function mirrorUploads(session: SftpSession, folder: string) {
+// Uploads missing files to <folder>/uploads/. What is gone here is moved to
+// <folder>/.deleted/uploads/ (lib/deleted-uploads.ts) and removed from there
+// only once it was moved before the oldest kept backup (`oldest`); a file
+// that comes back here is moved back instead of uploaded again.
+async function mirrorUploads(session: SftpSession, folder: string, now: number, oldest: number | null) {
   const local = resolve(dataDir(), "uploads");
   const mine = existsSync(local) ? readdirSync(local).filter((n) => UPLOAD.test(n)) : [];
   const remoteDir = remotePath(folder, "uploads");
+  const trashDir = remotePath(folder, DELETED_UPLOADS);
   await sftpMkdirs(session.sftp, remoteDir);
   const theirs = new Set<string>();
   for (const entry of await sftpList(session.sftp, remoteDir)) {
@@ -233,24 +240,51 @@ async function mirrorUploads(session: SftpSession, folder: string) {
     // Left over from an interrupted run.
     else if (/^[A-Za-z0-9_-]{1,100}\.part$/.test(entry.filename)) await sftpUnlink(session.sftp, remotePath(remoteDir, entry.filename)).catch(() => {});
   }
+  // No .deleted folder yet: nothing was deleted so far.
+  const trash = (await sftpList(session.sftp, trashDir).catch(() => []))
+    .map((e) => parseDeleted(e.filename))
+    .filter((c): c is DeletedCopy => !!c);
+  const back = newestDeleted(trash);
   const encrypted = encryptionEnabled();
   let files = 0,
-    removed = 0;
+    removed = 0,
+    purged = 0;
+  const gone = new Set<string>();
   for (const name of mine) {
     if (theirs.delete(name)) continue;
     const path = resolve(local, name);
     if (!statSync(path).isFile()) continue;
+    // Deleted here before and back now (e.g. restored): moved back.
+    const copy = back.get(name);
+    if (copy) {
+      const moved = await sftpReplace(session.sftp, remotePath(trashDir, copy.name), remotePath(remoteDir, name)).then(
+        () => true,
+        () => false,
+      );
+      if (moved) {
+        gone.add(copy.name);
+        continue;
+      }
+    }
     const part = remotePath(remoteDir, `${name}.part`);
     if (encrypted) await pipeline(createReadStream(path), sealStream(), session.sftp.createWriteStream(part));
     else await sftpUpload(session.sftp, path, part);
     await sftpReplace(session.sftp, part, remotePath(remoteDir, name));
     files++;
   }
+  if (theirs.size) await sftpMkdirs(session.sftp, trashDir);
   for (const name of theirs) {
-    await sftpUnlink(session.sftp, remotePath(remoteDir, name));
+    await sftpReplace(session.sftp, remotePath(remoteDir, name), remotePath(trashDir, deletedName(name, now)));
     removed++;
   }
-  return { files, removed };
+  // Deleted copies no kept backup needs, and those of files that are back.
+  const here = new Set(mine);
+  for (const copy of trash) {
+    if (gone.has(copy.name) || !(here.has(copy.file) || purgeable(copy, oldest))) continue;
+    await sftpUnlink(session.sftp, remotePath(trashDir, copy.name));
+    purged++;
+  }
+  return { files, removed, purged };
 }
 
 // Sends a finished copy (lib/scheduled-backup.ts makes one for all targets)
@@ -267,13 +301,15 @@ export async function sendToSftp(copy: { copy: string; name: string; bytes: numb
     const part = remotePath(s.directory, `${copy.name}.part`);
     await sftpUpload(session.sftp, copy.copy, part);
     await sftpReplace(session.sftp, part, remotePath(s.directory, copy.name));
-    const names = (await sftpList(session.sftp, s.directory)).map((e) => e.filename);
-    for (const old of beyondKeep(names.filter((n) => BACKUP_FILE.test(n)), s.keep)) await sftpUnlink(session.sftp, remotePath(s.directory, old));
-    const mirrored = s.uploads ? await mirrorUploads(session, s.directory) : { files: 0, removed: 0 };
+    const names = (await sftpList(session.sftp, s.directory)).map((e) => e.filename).filter((n) => BACKUP_FILE.test(n));
+    const old = beyondKeep(names, s.keep);
+    for (const name of old) await sftpUnlink(session.sftp, remotePath(s.directory, name));
+    const oldest = oldestBackup(names.filter((n) => !old.includes(n)));
+    const mirrored = s.uploads ? await mirrorUploads(session, s.directory, now, oldest) : { files: 0, removed: 0, purged: 0 };
     result = { at: now, name: copy.name, bytes: copy.bytes, ...mirrored, error: null };
   } catch (error) {
     const message = error instanceof HttpError ? error.message : `SFTP: ${String((error as Error)?.message || error)}`;
-    result = { at: now, name: copy.name, bytes: 0, files: 0, removed: 0, error: message.slice(0, 300) };
+    result = { at: now, name: copy.name, bytes: 0, files: 0, removed: 0, purged: 0, error: message.slice(0, 300) };
   } finally {
     session?.end();
   }

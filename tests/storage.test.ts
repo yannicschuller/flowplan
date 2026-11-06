@@ -20,6 +20,20 @@ const server = createServer((req, res) => {
       res.writeHead(500).end();
       return;
     }
+    const url = new URL(req.url || "", "http://x");
+    if (req.method === "GET" && url.searchParams.get("list-type") === "2") {
+      const prefix = `/bucket/${url.searchParams.get("prefix") || ""}`;
+      const keys = [...objects.keys()].filter((k) => k.startsWith(prefix)).map((k) => `<Contents><Key>${k.slice("/bucket/".length)}</Key></Contents>`);
+      return void res.writeHead(200).end(`<ListBucketResult><IsTruncated>false</IsTruncated>${keys.join("")}</ListBucketResult>`);
+    }
+    // CopyObject.
+    const source = req.headers["x-amz-copy-source"];
+    if (req.method === "PUT" && typeof source === "string") {
+      const body = objects.get(decodeURIComponent(source));
+      if (!body) return void res.writeHead(404).end();
+      objects.set(path, body);
+      return void res.writeHead(200).end("<CopyObjectResult/>");
+    }
     if (req.method === "PUT") objects.set(path, Buffer.concat(chunks));
     if (req.method === "DELETE") objects.delete(path);
     if (req.method === "GET") {
@@ -95,6 +109,10 @@ test("new files are uploaded, deleted files removed, rolled back files never sen
 
   run("DELETE FROM files WHERE id=?", fid);
   await until(() => !objects.has(object(fid)), "delete");
+  // Moved aside, not lost: the scheduled backups may still refer to it.
+  const moved = [...objects.keys()].filter((k) => k.startsWith(`/bucket/flowplan/.deleted/uploads/${fid}.`));
+  assert.equal(moved.length, 1);
+  assert.equal(objects.get(moved[0])!.toString(), "hallo");
   await new Promise((r) => setTimeout(r, 100));
   assert.ok(!requests.some((r) => r.includes(ghost)), "rolled back file stays local");
 });
@@ -124,4 +142,34 @@ test("failed uploads are retried with backoff instead of lost", async () => {
   kickStorage();
   await until(() => objects.has(object(fid)), "retried upload");
   assert.ok(existsSync(join(uploads, fid)));
+});
+
+test("deleted files leave the bucket once no kept backup refers to them", async () => {
+  const { runScheduledBackup } = await import("../lib/scheduled-backup");
+  const now = Date.now();
+  const trash = (fid: string, at: number) => `/bucket/flowplan/.deleted/uploads/${fid}.${at}`;
+  // Moved before the oldest kept backup: goes.
+  const longAgo = trash(id(), now - 30 * 86_400_000);
+  // Moved since: a kept backup may refer to it.
+  const recent = trash(id(), now - 3 * 86_400_000);
+  // Moved before, but the instance has it again: goes.
+  const back = addFile("wieder da");
+  await until(() => objects.has(object(back)), "upload");
+  await until(() => !one("SELECT 1 FROM storage_queue WHERE key=?", back), "queue empty");
+  const again = trash(back, now - 60_000);
+  for (const key of [longAgo, recent, again]) objects.set(key, Buffer.from("alt"));
+  // The oldest kept backup is from 5 days ago.
+  objects.set(`/bucket/flowplan/backups/flowplan-${new Date(now - 5 * 86_400_000).toISOString().slice(0, 16).replace(/[:T]/g, "-")}.sqlite`, Buffer.from("x"));
+  const result = await runScheduledBackup(now);
+  assert.equal(result.error, null);
+  assert.ok(!objects.has(longAgo));
+  assert.ok(objects.has(recent), "a kept backup may still need it");
+  assert.ok(!objects.has(again), "the file is in uploads/ again");
+
+  // Without scheduled backups nothing would remove it: deleted right away.
+  run("INSERT INTO instance_settings(key,value) VALUES('backupSchedule','false') ON CONFLICT(key) DO UPDATE SET value=excluded.value");
+  run("DELETE FROM files WHERE id=?", back);
+  await until(() => !objects.has(object(back)), "delete");
+  assert.equal([...objects.keys()].filter((k) => k.includes(`/.deleted/uploads/${back}.`)).length, 0);
+  run("DELETE FROM instance_settings WHERE key='backupSchedule'");
 });

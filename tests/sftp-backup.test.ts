@@ -2,7 +2,7 @@
 // in this process (tests/helpers/sftp-server.ts).
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ssh2 from "ssh2";
@@ -32,6 +32,12 @@ const settings = (extra: Record<string, unknown> = {}) => ({
   ...extra,
 });
 const remoteFiles = () => readdirSync(join(remote, "sicherungen/flowplan")).filter((n) => n.startsWith("flowplan-")).sort();
+const deletedFiles = () => {
+  const trash = join(remote, "sicherungen/flowplan/.deleted/uploads");
+  return existsSync(trash) ? readdirSync(trash).sort() : [];
+};
+const HOUR = 3_600_000;
+let deletedLater = "";
 
 test("the password is stored sealed and never shown again", () => {
   backup.saveSftpBackup(admin, settings());
@@ -78,18 +84,47 @@ test("backups go to the SFTP server, with the files, keeping the newest N", asyn
   assert.equal(scheduledBackupStatus().sftp.last?.error, null);
   assert.deepEqual(remoteFiles(), ["flowplan-2026-11-06-03-00.sqlite"]);
   assert.equal(readFileSync(join(remote, "sicherungen/flowplan/uploads", kept), "utf8"), "Anhang");
-  // A file deleted here goes there as well.
-  (await import("node:fs")).rmSync(join(dir, "uploads", gone));
-  const second = await backup.runSftpBackup(start + 3_600_000);
+  // A file deleted here leaves uploads/ there, into .deleted/uploads/.
+  rmSync(join(dir, "uploads", gone));
+  const second = await backup.runSftpBackup(start + HOUR);
   assert.equal(second.error, null);
   assert.equal(second.removed, 1);
   assert.equal(second.files, 0, "files already there are not sent again");
-  await backup.runSftpBackup(start + 7_200_000);
+  await backup.runSftpBackup(start + 2 * HOUR);
   // keep: 2 – the oldest went.
   assert.deepEqual(remoteFiles(), ["flowplan-2026-11-06-04-00.sqlite", "flowplan-2026-11-06-05-00.sqlite"]);
   assert.deepEqual(readdirSync(join(remote, "sicherungen/flowplan/uploads")), [kept]);
   // The copy is a working SQLite database.
   assert.equal(readFileSync(join(remote, "sicherungen/flowplan", remoteFiles()[1])).subarray(0, 15).toString(), "SQLite format 3");
+  // The backup of 04:00 still refers to it: kept, with the time of the move.
+  assert.deepEqual(deletedFiles(), [`${gone}.${start + HOUR}`]);
+  assert.equal(readFileSync(join(remote, "sicherungen/flowplan/.deleted/uploads", `${gone}.${start + HOUR}`), "utf8"), "später gelöscht");
+  deletedLater = gone;
+});
+
+test("deleted files wait in .deleted/ until no kept backup refers to them", async () => {
+  const start = Date.UTC(2026, 10, 6, 3, 0);
+  const gone = deletedLater;
+  // Back here (e.g. restored from a backup): moved back, not sent again.
+  writeFileSync(join(dir, "uploads", gone), "später gelöscht");
+  const back = await backup.runSftpBackup(start + 3 * HOUR);
+  assert.deepEqual([back.error, back.files, back.removed], [null, 0, 0]);
+  assert.equal(readFileSync(join(remote, "sicherungen/flowplan/uploads", gone), "utf8"), "später gelöscht");
+  assert.deepEqual(deletedFiles(), []);
+  // Deleted again at 07:00: kept while the backups of 06:00 and 07:00 stay.
+  rmSync(join(dir, "uploads", gone));
+  assert.equal((await backup.runSftpBackup(start + 4 * HOUR)).removed, 1);
+  assert.deepEqual(deletedFiles(), [`${gone}.${start + 4 * HOUR}`]);
+  // 07:00 and 08:00 kept: the oldest one still has the file.
+  const kept = await backup.runSftpBackup(start + 5 * HOUR);
+  assert.deepEqual([kept.error, kept.purged], [null, 0]);
+  assert.deepEqual(remoteFiles(), ["flowplan-2026-11-06-07-00.sqlite", "flowplan-2026-11-06-08-00.sqlite"]);
+  assert.deepEqual(deletedFiles(), [`${gone}.${start + 4 * HOUR}`]);
+  // 08:00 and 09:00 kept: both were made after the move – it goes for good.
+  const purged = await backup.runSftpBackup(start + 6 * HOUR);
+  assert.deepEqual([purged.error, purged.purged], [null, 1]);
+  assert.deepEqual(deletedFiles(), []);
+  assert.ok(!readdirSync(join(remote, "sicherungen/flowplan/uploads")).includes(gone));
 });
 
 test("a changed host key stops the backups until it is confirmed again", async () => {

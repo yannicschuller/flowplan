@@ -2,8 +2,10 @@
 // The local uploads folder stays the working copy, so all file code keeps
 // its synchronous, transactional behaviour. Triggers on the files table queue
 // every new and deleted file in the same transaction; a background worker
-// then uploads or deletes the object. A container started without the local
-// files (new host, lost volume) fetches them back from the bucket.
+// then uploads the object, or moves it to .deleted/uploads/ (removed there
+// once no kept scheduled backup refers to it, lib/deleted-uploads.ts). A
+// container started without the local files (new host, lost volume) fetches
+// them back from the bucket.
 // With FLOWPLAN_ENCRYPTION_KEY the objects are encrypted before they leave
 // (lib/encryption.ts); the local copy stays plain. storage_sealed records
 // with which key each object went up, so the Admin page can count what is
@@ -13,6 +15,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import { resolve } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { currentKeyId, isEncrypted, seal, unseal } from "./encryption";
+import { DELETED_UPLOADS, deletedName } from "./deleted-uploads";
 
 export type StorageConfig = {
   endpoint: string;
@@ -42,10 +45,15 @@ const uploadsDir = () =>
 const localPath = (key: string) => resolve(uploadsDir(), key);
 const validKey = (key: string) => /^[A-Za-z0-9_-]{1,100}$/.test(key);
 // Path-style URLs work with MinIO, Garage and AWS alike.
-function objectUrl(config: StorageConfig, key: string) {
-  const path = [config.prefix, "uploads", key].filter(Boolean).join("/");
+function objectUrl(config: StorageConfig, key: string, folder = "uploads") {
+  const path = [config.prefix, folder, key].filter(Boolean).join("/");
   return `${config.endpoint}/${encodeURIComponent(config.bucket)}/${path}`;
 }
+// CopyObject's source: /<bucket>/<key>, URL-encoded.
+const copySource = (config: StorageConfig, key: string) =>
+  `/${encodeURIComponent(config.bucket)}/${[config.prefix, "uploads", key].filter(Boolean).map(encodeURIComponent).join("/")}`;
+const scheduledBackupsOn = (d: DatabaseSync) =>
+  (d.prepare("SELECT value FROM instance_settings WHERE key='backupSchedule'").get() as { value: string } | undefined)?.value !== "false";
 let client: { key: string; aws: AwsClient } | undefined;
 function aws(config: StorageConfig) {
   const key = `${config.accessKeyId}:${config.region}`;
@@ -206,6 +214,19 @@ async function drain() {
               )
               .run(job.key, keyId);
           } else {
+            // Delayed deletion (lib/deleted-uploads.ts): the object moves to
+            // .deleted/uploads/ first, so the scheduled backups in the bucket
+            // that still refer to it keep their file; lib/scheduled-backup.ts
+            // removes it once no kept backup does. Without scheduled backups
+            // nothing would ever remove it: then it goes right away.
+            if (scheduledBackupsOn(s.db)) {
+              const copy = await aws(config).fetch(objectUrl(config, deletedName(job.key, Date.now()), DELETED_UPLOADS), {
+                method: "PUT",
+                headers: { "x-amz-copy-source": copySource(config, job.key) },
+              });
+              // 404: never uploaded, nothing to keep.
+              if (!copy.ok && copy.status !== 404) throw new Error(`COPY ${copy.status}`);
+            }
             const response = await aws(config).fetch(objectUrl(config, job.key), {
               method: "DELETE",
             });
