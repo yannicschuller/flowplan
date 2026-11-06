@@ -90,6 +90,8 @@ type Positioned = DocumentBlock & {
   // the box's border); the box's handle moves it with everything inside.
   boxed: boolean;
 };
+// The glide a handle plays with its block, by handle.
+const replays = new WeakMap<Element, { source: Animation; replay: Animation }>();
 const BOXES = ["callout", "blockquote", "toggle"];
 // Handles sit on the middle of a block's first text line, so they stay
 // aligned with large headings and indented list text alike.
@@ -602,13 +604,27 @@ export function DocumentBlockControls({
       const handle = layer.querySelector(`[data-block-pos="${block.pos}"]`);
       const effect = animation.effect as KeyframeEffect | null;
       if (!(handle instanceof HTMLElement) || !effect) continue;
+      // One replay per handle and glide (a new measurement during the
+      // glide must not stack another one).
+      const previous = replays.get(handle);
+      if (previous?.source === animation && previous.replay.playState !== "finished") continue;
+      previous?.replay.cancel();
       const replay = handle.animate(
         effect
           .getKeyframes()
           .map(({ transform, offset, easing }) => ({ transform, offset, easing })),
         effect.getTiming(),
       );
+      replays.set(handle, { source: animation, replay });
+      // The same start time on the same timeline: the handle is in the same
+      // frame of the glide as its block in every frame. A copied current
+      // time could be a frame off when the page is busy (pending starts).
+      const sync = () => {
+        if (animation.startTime !== null && replay.playState !== "finished") replay.startTime = animation.startTime;
+      };
       replay.currentTime = animation.currentTime;
+      sync();
+      if (animation.startTime === null) void animation.ready.then(sync, () => {});
     }
   }, [blocks]);
   const all = editor ? documentBlocks(editor.state.doc) : [];
