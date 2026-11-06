@@ -506,6 +506,9 @@ export default function DatabaseView({
     fieldId: string;
     groupKey?: string;
   } | null>(null);
+  // A click opened the cell being edited: further clicks of the same
+  // double-click land on its editor and are ignored (see tableRow).
+  const cellOpenedByClick = useRef(false);
   const [selection, setSelection] = useState<Map<string, number>>(new Map());
   // Right-click on records, and copying or moving them elsewhere.
   const [recordMenu, setRecordMenu] = useState<{ x: number; y: number; rowIds: string[] } | null>(null);
@@ -2797,7 +2800,10 @@ export default function DatabaseView({
                 setRowId(r.id);
               else if (f.type === "checkbox")
                 void updateCell(r, f, !r.cells[f.id]);
-              else setEditingCell({ rowId: r.id, fieldId: f.id, groupKey });
+              else {
+                cellOpenedByClick.current = true;
+                setEditingCell({ rowId: r.id, fieldId: f.id, groupKey });
+              }
             }}
           >
             {editingCell?.rowId === r.id &&
@@ -2805,6 +2811,15 @@ export default function DatabaseView({
             editingCell?.groupKey === groupKey ? (
               <span
                 className="inline-cell"
+                // The first click of a double-click opens the cell; the
+                // second one lands on the editor that is now under the
+                // pointer (an option of a multi-select) and must not pick it.
+                onClickCapture={(e) => {
+                  if (cellOpenedByClick.current && e.detail > 1) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  } else cellOpenedByClick.current = false;
+                }}
                 onClick={(e) => e.stopPropagation()}
               >
                 <CellInput

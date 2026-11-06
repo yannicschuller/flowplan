@@ -1,7 +1,9 @@
 import { test, expect, type Page } from "@playwright/test";
 
 // What was typed stays: Escape in a record's title or a property closes the
-// dialog and keeps the text, and Enter in a number cell saves it.
+// dialog and keeps the text, Enter in a number cell saves it, and a
+// double-click on an empty multi-select cell opens it without ticking an
+// option.
 const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
 
 async function setup(page: Page, name: string) {
@@ -90,4 +92,29 @@ test("Enter saves a number cell of the table", async ({ page }, info) => {
   await expect(amount).toBeHidden();
   await expect.poll(async () => (await rows())[0].cells.amount, { timeout: 10000 }).toBe(7);
   await expect(row.locator("td").nth(2)).toHaveText("7");
+});
+
+test("a double-click on an empty multi-select cell ticks nothing", async ({ page }, info) => {
+  // On phones the sticky title column covers the start of the cell, where
+  // the options open; a double-click is a pointer gesture of wide screens.
+  test.skip(info.project.name === "mobile", "Double-clicks on table cells are tested on wide screens.");
+  const { db, command, rows } = await setup(page, `Auswahl ${info.project.name}`);
+  await command({ action: "row.create", pageId: db.id, cells: { title: "Birnen" } });
+  await page.goto(`/#page=${db.id}`);
+  const row = page.locator(".data-table tbody tr[data-row-id]").first();
+  await expect(row).toBeVisible();
+
+  // The first click opens the options in the cell, under the pointer.
+  const cell = row.locator("td").nth(3);
+  await cell.dblclick({ position: { x: 16, y: 12 } });
+  const red = cell.getByRole("checkbox", { name: "Rot" });
+  await expect(red).toBeVisible();
+  await expect(red).not.toBeChecked();
+  await expect(cell.getByRole("checkbox", { name: "Grün" })).not.toBeChecked();
+  await page.waitForTimeout(500);
+  expect((await rows())[0].cells.tags ?? []).toEqual([]);
+
+  // A click of its own still ticks an option.
+  await red.click();
+  await expect.poll(async () => (await rows())[0].cells.tags, { timeout: 10000 }).toEqual(["Rot"]);
 });
