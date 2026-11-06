@@ -4,6 +4,7 @@ import type { Field } from "@/lib/types";
 import { cellText } from "@/lib/database";
 import { percentAggregate } from "@/lib/rollups";
 import { formatNumber, ratingMax } from "@/lib/field-format";
+import { formatDateValue, hasOffset, isTimed, validDateValue } from "@/lib/date-values";
 const errors: Record<string, string> = {
   "#ACCESS": tr("Kein Zugriff auf die verknüpfte Datenbank", "No access to the linked database"),
   "#PROPERTY": tr("Verknüpfte Eigenschaft fehlt", "Linked property missing"),
@@ -27,6 +28,10 @@ export function RollupValue({
     );
   if (value === null || value === undefined)
     return <span className="muted">—</span>;
+  // Earliest/latest Created or Edited time (#129) and other instants read
+  // in the viewer's time zone.
+  if (typeof value === "string" && validDateValue(value) && isTimed(value) && hasOffset(value))
+    return <span>{formatDateValue(value)}</span>;
   if (typeof value !== "number") return <span>{cellText(value) || "—"}</span>;
   // Number properties use the same bar/ring display with their own format.
   const percent = field.type === "rollup" && percentAggregate(field.aggregate);

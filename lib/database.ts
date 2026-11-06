@@ -16,6 +16,11 @@ import {
 export { formula } from "./formula";
 import { ticketId } from "./ticket-ids";
 import { subtaskProgress } from "./subtasks";
+import { sqlTimestampToIso } from "./date-values";
+// Created and edited time as ISO instants for formulas and rollups (#129).
+const timestampTypes = new Set<Field["type"]>(["created_at", "updated_at"]);
+const asInstant = (field: Field, value: unknown) =>
+  timestampTypes.has(field.type) ? sqlTimestampToIso(value) : value;
 export function computedCells(
   row: Row,
   fields: Field[],
@@ -88,7 +93,7 @@ export function computedCellsDetailed(
         else {
           const values = linked.map((r) =>
             target && targetFields
-              ? resolve(r, targetFields, target, next)
+              ? asInstant(target, resolve(r, targetFields, target, next))
               : r.cells[field.rollupField || ""],
           );
           const error = values.find(
@@ -112,7 +117,7 @@ export function computedCellsDetailed(
             configurable: true,
             enumerable: true,
             get: () => {
-              const v = resolve(record, properties, prop, next);
+              const v = asInstant(prop, resolve(record, properties, prop, next));
               if (
                 ["formula", "rollup"].includes(prop.type) &&
                 isFormulaError(v)

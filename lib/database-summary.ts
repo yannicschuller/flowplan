@@ -19,6 +19,7 @@ import {
   isTimed,
   hasOffset,
   formatDateValue,
+  sqlTimestampToIso,
 } from "./date-values";
 
 export const columnCalculations = rollupAggregates.filter(
@@ -178,7 +179,7 @@ export function columnSummary(
         ["created_at", "updated_at"].includes(field.type) &&
         typeof value === "string"
       )
-        value = value.replace(" ", "T");
+        value = sqlTimestampToIso(value);
       if (!validDateValue(value)) {
         errors++;
         continue;
