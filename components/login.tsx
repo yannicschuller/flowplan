@@ -56,6 +56,7 @@ export default function Login({
   localLogin = false,
   signupOpen = false,
   firstAccount = false,
+  invitedEmail = "",
   mail = false,
   remember: rememberAvailable = false,
   ldap = false,
@@ -125,10 +126,14 @@ export default function Login({
     window.addEventListener("hashchange", update);
     return () => window.removeEventListener("hashchange", update);
   }, []);
-  // Signed in: back to where the visitor wanted to go.
-  const done = () => {
+  // Signed in: back to where the visitor wanted to go. A new account keeps
+  // the invitation link it came with: signed in, the page takes the
+  // invitation over (app/page.tsx), as the address is not confirmed yet.
+  const done = (registered = false) => {
     if (desktopRequest) return void location.assign(desktopRequest);
-    history.replaceState(null, "", loginReturnPath(`/${location.hash}`));
+    const path = loginReturnPath(`/${location.hash}`);
+    const invite = registered && new URLSearchParams(location.search).get("invite");
+    history.replaceState(null, "", invite ? `/?invite=${encodeURIComponent(invite)}${path.slice(1)}` : path);
     location.reload();
   };
   const run = async (key: string, action: () => Promise<void>) => {
@@ -174,7 +179,7 @@ export default function Login({
           setMode("confirm");
           return;
         }
-        done();
+        done(true);
       });
     else
       void run("forgot", async () => {
@@ -373,13 +378,19 @@ export default function Login({
             )}
             <label>
               {ldap && mode === "signin" ? t("E-Mail-Adresse oder Benutzername", "E-mail address or user name") : t("E-Mail-Adresse", "E-mail address")}
+              {/* An invitation link: the new account is created for the
+                  address it is for (the invitation is taken over with it). */}
               <input
+                key={mode === "register" && invitedEmail ? "invited" : "email"}
                 name="email"
                 type={ldap && mode === "signin" ? "text" : "email"}
                 autoComplete={mode === "signin" ? "username webauthn" : "email"}
+                defaultValue={mode === "register" && invitedEmail ? invitedEmail : undefined}
+                readOnly={mode === "register" && !!invitedEmail}
                 required
                 maxLength={200}
               />
+              {mode === "register" && invitedEmail && <small>{t("Die Einladung gilt für diese Adresse.", "The invitation is for this address.")}</small>}
             </label>
             {mode !== "forgot" && (
               <label>

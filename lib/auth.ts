@@ -311,8 +311,9 @@ function acceptInvite(user: User, inv: Invite) {
 // the invitation over, whatever their address – the link is the proof. This
 // is the way in on instances without e-mail, where an address cannot be
 // confirmed. Returns the workspace, or null for an unknown or used link.
+export const inviteTokenShape = /^[A-Za-z0-9_-]{20,64}$/;
 export function acceptInviteToken(user: User, token: string) {
-  if (!/^[A-Za-z0-9_-]{20,64}$/.test(token)) return null;
+  if (!inviteTokenShape.test(token)) return null;
   const inv = one<Invite>("SELECT * FROM invites WHERE token=?", token);
   if (!inv) return null;
   acceptInvite(user, inv);

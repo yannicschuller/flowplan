@@ -7966,6 +7966,7 @@
   "The instance's": "Celui de l’instance",
   "The instance's bot": "Le bot de l’instance",
   "The instance's bot (@{0})": "Le bot de l’instance (@{0})",
+  "The invitation is for this address.": "L’invitation est destinée à cette adresse.",
   "The journal is not locked.": "Le journal n’est pas verrouillé.",
   "The journal is protected with a PIN.": "Le journal est protégé par un code PIN.",
   "The journal shows no days in the sidebar.": "Le journal n’affiche aucun jour dans la barre latérale.",

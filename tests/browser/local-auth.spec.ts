@@ -85,6 +85,88 @@ test("create an account, sign out, sign in with the password and change it", asy
   }
 });
 
+// An invitation (Settings → Members → copy link) while sign-ups are closed:
+// the link offers creating the account for the invited address, and the
+// new account lands in the workspace.
+test("an invitation link creates the account while sign-ups are closed", async ({ browser }, info) => {
+  test.skip(!process.env.FLOWPLAN_DATA_DIR, "Needs the test server data directory.");
+  const stamp = `${Date.now()}-${info.project.name}`;
+  // The account setSignup puts in place invites to its workspace.
+  const owner = "00000000-0000-4000-8000-0000000000aa",
+    workspace = "00000000-0000-4000-8000-0000000000ab";
+  const invite = (email: string, token: string) => {
+    const db = new DatabaseSync(join(process.env.FLOWPLAN_DATA_DIR!, "flowplan.sqlite"));
+    db.exec("PRAGMA busy_timeout=5000;");
+    db.prepare("INSERT OR IGNORE INTO workspaces(id,name,created_by) VALUES(?,?,?)").run(workspace, "Eingeladen", owner);
+    db.prepare("INSERT INTO invites(id,workspace_id,email,role,created_by,guest,created_at,token) VALUES(?,?,?,?,?,0,?,?)").run(
+      crypto.randomUUID(),
+      workspace,
+      email,
+      "editor",
+      owner,
+      Date.now(),
+      token,
+    );
+    db.close();
+  };
+  const member = (email: string) => {
+    const db = new DatabaseSync(join(process.env.FLOWPLAN_DATA_DIR!, "flowplan.sqlite"));
+    const row = db
+      .prepare("SELECT 1 FROM members m JOIN local_accounts a ON a.user_id=m.user_id WHERE a.email=? AND m.workspace_id=?")
+      .get(email, workspace);
+    db.close();
+    return !!row;
+  };
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const email = `invited-${stamp}@example.test`,
+    token = `einladung-${stamp}`;
+  try {
+    setSignup(false);
+    invite(email, token);
+    // The copied link: signing in, or creating the account for the address.
+    await page.goto(`/?invite=${token}`);
+    await page.getByRole("button", { name: "Konto erstellen" }).click();
+    const address = page.getByLabel("E-Mail-Adresse");
+    await expect(address).toHaveValue(email);
+    await expect(address).toHaveJSProperty("readOnly", true);
+    await expect(page.getByText("Die Einladung gilt für diese Adresse.")).toBeVisible();
+    await page.getByLabel("Name").fill("Eingeladene Person");
+    await page.locator("input[name=password]").fill("ein-langes-passwort");
+    await page.getByRole("button", { name: "Konto erstellen" }).click();
+    await expect(page.getByLabel("Dokumentinhalt", { exact: true }).or(page.locator(".sidebar"))).toBeVisible({ timeout: 20_000 });
+    // Signed in, the link takes the invitation over.
+    await expect(page.getByText("Einladung angenommen")).toBeVisible();
+    expect(member(email)).toBe(true);
+
+    // A used or unknown link offers signing in only.
+    await context.clearCookies();
+    for (const path of [`/?invite=${token}`, `/register?invite=${token}`, "/register?invite=unbekannt-0123456789abcdef"]) {
+      await page.goto(path);
+      await expect(page.getByRole("button", { name: "Anmelden", exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Konto erstellen" })).toHaveCount(0);
+      await expect(page.getByLabel("Name")).toHaveCount(0);
+    }
+    // /register with a valid link opens the form for the invited address.
+    const second = `zweite-${stamp}@example.test`;
+    invite(second, `einladung-zwei-${stamp}`);
+    await page.goto(`/register?invite=einladung-zwei-${stamp}`);
+    await expect(page.getByLabel("Name")).toBeVisible();
+    await expect(page.getByLabel("E-Mail-Adresse")).toHaveValue(second);
+    expect(errors).toEqual([]);
+  } finally {
+    // The open second invitation goes; the first one was used.
+    const db = new DatabaseSync(join(process.env.FLOWPLAN_DATA_DIR!, "flowplan.sqlite"));
+    db.exec("PRAGMA busy_timeout=5000;");
+    db.prepare("DELETE FROM invites WHERE workspace_id=?").run(workspace);
+    db.close();
+    setSignup(false);
+    await context.close();
+  }
+});
+
 // WebAuthn needs a host name (not an IP address): run against a server on
 // http://localhost (PASSKEY_BASE_URL) with Chrome's virtual authenticator.
 test("add a passkey and sign in with it", async ({ browser }, info) => {

@@ -20,7 +20,7 @@ import {
   type RegistrationResponseJSON,
 } from "@simplewebauthn/server";
 import { all, id, one, run } from "./db";
-import { HttpError, acceptInvites, adminGroup, appUrl, hash, rememberPolicy } from "./auth";
+import { HttpError, acceptInvites, adminGroup, appUrl, hash, inviteTokenShape, rememberPolicy } from "./auth";
 import { instanceSettings } from "./instance-settings";
 import { plainHttpInstance } from "./instance-https";
 import { mailConfig, queueLinkMail } from "./mail";
@@ -110,8 +110,19 @@ export function setupAllowed(given: unknown) {
     b = Buffer.from(hash(token));
   return timingSafeEqual(a, b);
 }
-export function signupOpen(setup?: string) {
-  return localLoginEnabled() && ((firstAccount() && setupAllowed(setup)) || instanceSettings().allowSignup);
+// The address an invitation link (?invite=…) creates an account for, as
+// register() accepts it while sign-ups are closed. Null for an unknown or
+// used link, without password sign-in (SSO only) and before the instance is
+// set up (the setup link decides there).
+export function invitedEmail(token?: string) {
+  if (!token || !inviteTokenShape.test(token) || !localLoginEnabled() || firstAccount()) return null;
+  return one<{ email: string }>("SELECT email FROM invites WHERE token=?", token)?.email ?? null;
+}
+export function signupOpen(setup?: string, invite?: string) {
+  return (
+    localLoginEnabled() &&
+    ((firstAccount() && setupAllowed(setup)) || instanceSettings().allowSignup || invitedEmail(invite) !== null)
+  );
 }
 // The groups a local account signs in with (administrators).
 export function localGroups(userId: string) {
@@ -577,11 +588,13 @@ export async function passkeyConfirm(userId: string, token: string | undefined, 
 }
 
 // What the sign-in page offers on this instance.
-export function loginOptions(setup?: string) {
+export function loginOptions(setup?: string, invite?: string) {
   return {
     configured: !!process.env.OIDC_ISSUER,
     localLogin: localLoginEnabled(),
-    signupOpen: signupOpen(setup),
+    signupOpen: signupOpen(setup, invite),
+    // Opened through an invitation link: the account is created for its address.
+    invitedEmail: invitedEmail(invite) || "",
     firstAccount: localLoginEnabled() && firstAccount() && setupAllowed(setup),
     mail: !!mailConfig(),
     demo: process.env.NODE_ENV !== "production",

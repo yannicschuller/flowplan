@@ -18162,6 +18162,11 @@ h3 .block-reactions {
   outline-offset: 1px;
   border-color: transparent;
 }
+/* The address of an invitation: shown, not edited. */
+.login-form input[readonly] {
+  background: var(--hover);
+  color: var(--secondary);
+}
 .login-form label small {
   margin: 0;
   font-size: 12px;
