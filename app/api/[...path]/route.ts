@@ -97,6 +97,7 @@ import { captureUndo, capturePreview, desktopCaptureSave, desktopCaptureTargets 
 import { MAX_CAPTURE_FILES } from "@/lib/mobile-capture";
 import { listInboundAddresses } from "@/lib/inbound-mail";
 import { endMySessions, mySessions } from "@/lib/my-sessions";
+import { sessionSettings } from "@/lib/session-policy";
 import { mySecurity } from "@/lib/my-security";
 import { pageToRecordPlan } from "@/lib/page-to-record";
 import { recordToPagePlan } from "@/lib/record-to-page";
@@ -998,6 +999,8 @@ async function handleGET(
         metrics: instanceMetrics(),
         usage: workspaceUsage(),
         settings: instanceSettings(),
+        // How long sessions last, and what the environment would give (#133).
+        sessionPolicy: sessionSettings(),
         localAccounts: localAccountInfo(),
         // Connected SSO identities of every account (#101).
         identities: all<{ user_id: string; id: string; issuer: string; email: string; created_at: number; last_used_at: number | null }>(

@@ -1,6 +1,7 @@
 "use client";
 // Administration → Anmeldung & SSO: who gets an account (registration,
-// creating workspaces, inactive accounts), the two-factor policy, single
+// creating workspaces, inactive accounts), the two-factor policy, how long
+// sessions last (browser and apps, lib/session-policy.ts), single
 // sign-on, the SSO groups mapped centrally, and the directories (SCIM,
 // LDAP) – each as a card with its state.
 import { useT } from "../../i18n";
@@ -9,6 +10,7 @@ import { AdminDirectory, useDirectory } from "../../admin-directory";
 import { SettingGroup, SettingRow, StatusBadge } from "../../settings-ui";
 import { useAdminData } from "../admin-context";
 import { AdminLoading } from "../shell";
+import { APP_DAY_CHOICES, REMEMBER_DAY_CHOICES, SESSION_HOUR_CHOICES } from "@/lib/session-choices";
 import { AdminStatus, FixLink, InstanceNumber, InstanceSelect, InstanceSwitch, useDocs, type StatusItem } from "./parts";
 
 export default function SigninSection() {
@@ -23,6 +25,7 @@ export default function SigninSection() {
   const dir = directory.data;
   const ldapFailed = !!dir && dir.ldap.configured && !!dir.ldap.lastSync && !dir.ldap.lastSync.ok;
   const twoFactor = s.twoFactor || "off";
+  const sessions = data.sessionPolicy;
   const items: StatusItem[] = [
     data.oidcConfigured ? { tone: "ok", label: t("SSO an", "SSO on") } : { tone: "off", label: t("SSO aus", "SSO off") },
     dir?.scim.tokens.length ? { tone: "ok", label: t("SCIM an", "SCIM on") } : { tone: "off", label: t("SCIM aus", "SCIM off") },
@@ -154,6 +157,80 @@ export default function SigninSection() {
           >
             <StatusBadge tone={secured === local.length ? "ok" : "warn"}>{t(`${secured} von ${local.length}`, `${secured} of ${local.length}`)}</StatusBadge>
           </SettingRow>
+        </SettingGroup>
+      )}
+
+      {sessions && (
+        <SettingGroup
+          id="sessions"
+          title={t("Sitzungen", "Sessions")}
+          description={t(
+            "Wie lange man angemeldet bleibt. „Standard“ folgt der Umgebung (SESSION_HOURS, SESSION_REMEMBER, SESSION_IDLE_HOURS, SESSION_APP_REMEMBER, SESSION_APP_DAYS). Kürzere Zeiten gelten ab der nächsten Anmeldung; längere verlängern Sitzungen, die angemeldet bleiben, bei ihrer nächsten Nutzung.",
+            "How long people stay signed in. “Default” follows the environment (SESSION_HOURS, SESSION_REMEMBER, SESSION_IDLE_HOURS, SESSION_APP_REMEMBER, SESSION_APP_DAYS). Shorter times apply from the next sign-in; longer ones extend sessions that stay signed in the next time they are used.",
+          )}
+        >
+          <InstanceSelect
+            field="sessionHours"
+            label={t("Browser ohne „Angemeldet bleiben“", "Browser without “Stay signed in”")}
+            description={t(
+              "Die Sitzung endet so viele Stunden nach der Anmeldung – auch wenn Flowplan dabei offen ist.",
+              "The session ends this many hours after signing in – even while Flowplan is open.",
+            )}
+            standard={t(`Standard (${sessions.env.hours} Std.)`, `Default (${sessions.env.hours} h)`)}
+            parse={Number}
+            options={SESSION_HOUR_CHOICES.map((h) => ({ value: String(h), label: h === 1 ? t("1 Stunde", "1 hour") : t(`${h} Stunden`, `${h} hours`) }))}
+          />
+          <InstanceSelect
+            field="sessionRemember"
+            label={t("„Angemeldet bleiben“ im Browser anbieten", "Offer “Stay signed in” in the browser")}
+            description={t(
+              "Ein Kästchen auf der Anmeldeseite – für Passwort, Passkey und SSO. Gedacht für eigene Geräte: Die Anmeldung bleibt bestehen, solange sie genutzt wird.",
+              "A box on the sign-in page – for password, passkey and SSO. Meant for one's own devices: the sign-in lasts while it is used.",
+            )}
+            standard={sessions.env.browserRemember ? t("Standard (an)", "Default (on)") : t("Standard (aus)", "Default (off)")}
+            parse={(value) => value === "true"}
+            options={[
+              { value: "true", label: t("An", "On") },
+              { value: "false", label: t("Aus", "Off") },
+            ]}
+          />
+          <InstanceSelect
+            field="rememberDays"
+            label={t("Browser mit „Angemeldet bleiben“", "Browser with “Stay signed in”")}
+            description={t(
+              "Die Sitzung endet nach so vielen Tagen ohne Nutzung. Wer Flowplan nutzt, bleibt angemeldet.",
+              "The session ends after this many days without use. Whoever uses Flowplan stays signed in.",
+            )}
+            standard={t(`Standard (${sessions.env.rememberDays} Tage)`, `Default (${sessions.env.rememberDays} days)`)}
+            parse={Number}
+            options={REMEMBER_DAY_CHOICES.map((d) => ({ value: String(d), label: t(`${d} Tage`, `${d} days`) }))}
+          />
+          <InstanceSelect
+            field="appSessions"
+            label={t("Desktop- und Mobil-Apps", "Desktop and mobile apps")}
+            description={t(
+              "Die Apps laufen auf persönlichen Geräten und bleiben angemeldet, solange sie genutzt werden – auch über die Widgets. Zusätzlich schützt die App-Sperre (Face ID, Fingerabdruck oder Code) in den Einstellungen der App.",
+              "The apps run on personal devices and stay signed in while they are used – the widgets included. The app lock (Face ID, fingerprint or passcode) in the app's settings protects them further.",
+            )}
+            standard={sessions.env.appRemember ? t("Standard (an)", "Default (on)") : t("Standard (aus)", "Default (off)")}
+            options={[
+              { value: "remember", label: t("Angemeldet bleiben", "Stay signed in") },
+              { value: "off", label: t("Wie im Browser ohne „Angemeldet bleiben“", "As in the browser without “Stay signed in”") },
+            ]}
+          />
+          {sessions.appRemember && (
+            <InstanceSelect
+              field="appDays"
+              label={t("Apps: Ende ohne Nutzung", "Apps: end without use")}
+              description={t(
+                "Die App-Sitzung endet nach so vielen Tagen, in denen weder die App noch ihre Widgets genutzt wurden.",
+                "The app's session ends after this many days in which neither the app nor its widgets were used.",
+              )}
+              standard={t(`Standard (${sessions.env.appDays} Tage)`, `Default (${sessions.env.appDays} days)`)}
+              parse={Number}
+              options={APP_DAY_CHOICES.map((d) => ({ value: String(d), label: t(`${d} Tage`, `${d} days`) }))}
+            />
+          )}
         </SettingGroup>
       )}
 

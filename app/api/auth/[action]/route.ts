@@ -441,7 +441,9 @@ async function handlePOST(
       if (!handoff)
         throw new HttpError(400, translate(locale)("Der Anmeldecode ist ungültig oder abgelaufen. Bitte erneut anmelden.", "The sign-in code is invalid or has expired. Please sign in again."));
       // The desktop and mobile apps are a device of their own: they stay
-      // signed in when the instance allows it.
+      // signed in unless the instance says otherwise (lib/session-policy.ts
+      // recognises them by their user agent, here and for the password form
+      // inside the app).
       await signIn(handoff.userId, handoff.groups, true);
       return NextResponse.json({ ok: true });
     }

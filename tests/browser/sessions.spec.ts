@@ -1,4 +1,13 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+
+// The welcome dialog of a fresh instance covers the page.
+async function skipIntro(page: Page) {
+  const skip = page.getByRole("button", { name: "Überspringen" });
+  await skip.waitFor({ state: "visible", timeout: 15_000 }).then(
+    () => skip.click(),
+    () => {},
+  );
+}
 
 // Issue #30: "Stay signed in on this device" (only with SESSION_REMEMBER=true
 // on the server) and the list of one's own signed-in devices.
@@ -13,6 +22,7 @@ test("signed-in devices are listed and signed out one by one", async ({ page, br
   await page.request.post("/api/auth/demo", { headers: { origin } });
 
   await page.goto("/#settings/account");
+  await skipIntro(page);
   const devices = page.locator(".my-sessions");
   await expect(devices.locator("li").filter({ hasText: "dieses Gerät" })).toHaveCount(1);
   const phone = devices.locator("li").filter({ hasText: "Safari auf iPhone" }).first();
@@ -37,5 +47,33 @@ test("signed-in devices are listed and signed out one by one", async ({ page, br
     await login.screenshot({ path: "test-results/login-remember.png" });
   }
   await visitor.close();
+  expect(errors).toEqual([]);
+});
+
+// Issue #133: the administration sets how long sessions last; "Stay signed
+// in" appears on the sign-in page once it is offered there.
+test("session lifetimes in Administration → Sign-in & SSO → Sessions", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "One run covers it.");
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
+  await page.request.post("/api/auth/demo", { headers: { origin } });
+  await page.goto("/#admin/signin");
+  await skipIntro(page);
+  const group = page.locator("#sessions");
+  await expect(group.getByText("Desktop- und Mobil-Apps")).toBeVisible();
+  const offer = group.getByLabel("„Angemeldet bleiben“ im Browser anbieten");
+  const apps = group.getByLabel("Apps: Ende ohne Nutzung");
+  await offer.selectOption("true");
+  await apps.selectOption("365");
+  await expect.poll(async () => ((await (await page.request.get("/api/admin")).json()) as { settings: { sessionRemember: boolean | null; appDays: number | null } }).settings).toMatchObject({ sessionRemember: true, appDays: 365 });
+  await group.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: "test-results/admin-sessions.png" });
+  // The sign-in page now offers "Stay signed in" (the same flag as its form).
+  expect(((await (await page.request.get("/api/sessions")).json()) as { rememberAvailable: boolean }).rememberAvailable).toBe(true);
+  // Back to the defaults (the environment).
+  await offer.selectOption("");
+  await apps.selectOption("");
+  await expect.poll(async () => ((await (await page.request.get("/api/admin")).json()) as { settings: { sessionRemember: boolean | null } }).settings.sessionRemember).toBe(null);
   expect(errors).toEqual([]);
 });

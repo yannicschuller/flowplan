@@ -107,26 +107,35 @@ export function InstanceSelect<K extends keyof InstanceSettings>({
   label,
   description,
   options,
+  standard,
+  parse = (value) => value,
 }: {
   field: K;
   label: string;
   description?: ReactNode;
   options: { value: string; label: string }[];
+  // A first choice that clears the stored value: the environment's default
+  // (null in lib/instance-settings.ts), labelled with what that is.
+  standard?: string;
+  // The stored value of a choice (numbers, true/false).
+  parse?: (value: string) => unknown;
 }) {
   const id = useId();
   const { settings, save } = useInstanceSettings();
   const [status, run] = useSaveState();
+  const stored = settings?.[field];
+  const choices = standard === undefined ? options : [{ value: "", label: standard }, ...options];
   return (
     <SettingRow id={id} label={label} description={description}>
       <SaveState status={status} />
       <Select
         id={id}
         className="control-md"
-        value={String(settings?.[field] ?? options[0].value)}
+        value={stored === null || stored === undefined ? (standard === undefined ? options[0].value : "") : String(stored)}
         disabled={status.state === "saving"}
-        onChange={(e) => void run(() => save({ [field]: e.target.value } as Partial<InstanceSettings>))}
+        onChange={(e) => void run(() => save({ [field]: e.target.value === "" && standard !== undefined ? null : parse(e.target.value) } as Partial<InstanceSettings>))}
       >
-        {options.map((o) => (
+        {choices.map((o) => (
           <option key={o.value} value={o.value}>
             {o.label}
           </option>

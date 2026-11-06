@@ -437,6 +437,13 @@ function migrate(d: DatabaseSync) {
     ["agent", "TEXT NOT NULL DEFAULT ''"],
   ])
     if (!sessionColumns.includes(name)) d.exec(`ALTER TABLE sessions ADD COLUMN ${name} ${type}`);
+  // Sessions of the desktop and mobile apps (#133): they stay signed in by
+  // the app's own rules (lib/session-policy.ts). Sessions the apps signed in
+  // with before are recognised by their user agent.
+  if (!sessionColumns.includes("app")) {
+    d.exec("ALTER TABLE sessions ADD COLUMN app INTEGER NOT NULL DEFAULT 0");
+    d.exec("UPDATE sessions SET app=1,remember=1 WHERE agent LIKE '%FlowplanMobile/%' OR agent LIKE '%FlowplanDesktop/%'");
+  }
   if (
     !(
       d.prepare("PRAGMA table_info(inline_messages)").all() as {

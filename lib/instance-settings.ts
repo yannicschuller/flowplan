@@ -40,6 +40,20 @@ export const instanceSettingsSchema = z.object({
   pluginsAnyOrigin: z.boolean().default(false),
   // Owners may serve publications under their own domain (lib/custom-domains.ts).
   customDomains: z.boolean().default(false),
+  // How long sessions last (lib/session-policy.ts). null follows the
+  // environment (SESSION_HOURS, SESSION_REMEMBER, SESSION_IDLE_HOURS,
+  // SESSION_APP_REMEMBER, SESSION_APP_DAYS) and its defaults.
+  // Hours after signing in for a session without "Stay signed in".
+  sessionHours: z.number().int().min(1).max(24).nullable().default(null),
+  // Browsers offer "Stay signed in".
+  sessionRemember: z.boolean().nullable().default(null),
+  // Days without use until a remembered browser session ends.
+  rememberDays: z.number().int().min(1).max(365).nullable().default(null),
+  // The desktop and mobile apps stay signed in ("remember"), or their
+  // sessions end like a browser's without "Stay signed in" ("off").
+  appSessions: z.enum(["remember", "off"]).nullable().default(null),
+  // Days without use until an app's session ends.
+  appDays: z.number().int().min(1).max(365).nullable().default(null),
 });
 export type InstanceSettings = z.infer<typeof instanceSettingsSchema>;
 const defaults: InstanceSettings = {
@@ -62,6 +76,11 @@ const defaults: InstanceSettings = {
   twoFactor: "off",
   pluginsAnyOrigin: false,
   customDomains: false,
+  sessionHours: null,
+  sessionRemember: null,
+  rememberDays: null,
+  appSessions: null,
+  appDays: null,
 };
 // Read on every use: route handlers and pages run as separate module
 // instances, so an in-memory cache would go stale.
