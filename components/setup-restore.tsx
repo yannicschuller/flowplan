@@ -148,10 +148,15 @@ export function SetupRestore({ onCancel }: { onCancel: () => void }) {
         </p>
         {result.missingFiles > 0 && (
           <p className="callout">
-            {t(
-              `${result.missingFiles} Dateien fehlten am Ziel. Mit denselben S3_*-Variablen holt Flowplan sie aus dem Bucket nach.`,
-              `${result.missingFiles} files were missing at the target. With the same S3_* variables, Flowplan fetches them from the bucket later.`,
-            )}
+            {source === "file"
+              ? t(
+                  `${result.missingFiles} Dateien sind weder in der Sicherung noch im Dateispeicher, diese Anhänge fehlen. Lagen die Dateien der alten Instanz in S3 oder auf einem SFTP-Server, stelle von dort wieder her.`,
+                  `${result.missingFiles} files are neither in the backup nor in the file storage, so those attachments are missing. If the old instance kept its files in S3 or on an SFTP server, restore from there.`,
+                )
+              : t(
+                  `${result.missingFiles} Dateien wurden an der Quelle nicht gefunden, diese Anhänge fehlen.`,
+                  `${result.missingFiles} files were not found at the source, so those attachments are missing.`,
+                )}
           </p>
         )}
         {result.restart && (

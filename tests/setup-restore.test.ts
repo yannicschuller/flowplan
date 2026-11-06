@@ -26,6 +26,7 @@ const { sealStream } = await import("../lib/encryption");
 const sftpBackup = await import("../lib/sftp-backup");
 const restore = await import("../lib/setup-restore");
 const { firstAccount } = await import("../lib/local-auth");
+const { ensureLocal } = await import("../lib/storage");
 
 // The old instance: an account, a page and a file.
 const uid = id();
@@ -73,8 +74,10 @@ test("round trip: scheduled backup → fresh instance → restore → data prese
   assert.equal(restored.restart, false);
   assert.equal(restored.createdAt, "2026-11-06T03:00:00.000Z");
   assert.ok(restored.users >= 1 && restored.pages >= 1);
-  // A database-only backup brings no files (they come from S3 or SFTP).
+  // A database-only backup brings no files (they come from S3 or SFTP): the
+  // setup screen says how many are missing.
   assert.equal(restoredPage(dir), null);
+  assert.deepEqual([restored.files, restored.missingFiles], [0, 1]);
   assert.ok(readdirSync(dir).some((n) => n.startsWith("pre-restore-")), "the empty start is kept");
   // Now that an account exists, nobody may restore here any more.
   assert.equal(restore.setupRestoreOpen(), false);
@@ -258,6 +261,45 @@ test("from S3: a file deleted after the backup comes from .deleted/", async () =
     assert.deepEqual([done?.result?.files, done?.result?.missingFiles], [1, 0]);
     assert.equal(restoredPage(dir), "Anhang der alten Instanz");
   } finally {
+    s3.close();
+  }
+  backOnOld();
+});
+
+test("an uploaded database-only backup counts the files this instance's own bucket has", async () => {
+  const objects = new Map<string, Buffer>();
+  const s3 = createServer((req, res) => {
+    const url = new URL(req.url || "", "http://x");
+    if (url.searchParams.get("list-type") === "2") {
+      const prefix = `/bucket/${url.searchParams.get("prefix") || ""}`;
+      const keys = [...objects.keys()].filter((k) => k.startsWith(prefix)).map((k) => `<Contents><Key>${k.slice("/bucket/".length)}</Key></Contents>`);
+      return void res.writeHead(200).end(`<ListBucketResult><IsTruncated>false</IsTruncated>${keys.join("")}</ListBucketResult>`);
+    }
+    if (req.method !== "GET") return void req.resume().on("end", () => res.writeHead(200).end());
+    const body = objects.get(decodeURIComponent(url.pathname));
+    return void (body ? res.writeHead(200, { "content-length": body.length }).end(body) : res.writeHead(404).end());
+  });
+  await new Promise<void>((done) => s3.listen(0, "127.0.0.1", done));
+  const result = await runScheduledBackup(Date.UTC(2026, 10, 9, 3, 0));
+  const file = join(keep, result.name);
+  copyFileSync(join(old, "backups", result.name), file);
+  const bucket = { S3_ENDPOINT: `http://127.0.0.1:${(s3.address() as { port: number }).port}`, S3_BUCKET: "bucket", S3_ACCESS_KEY_ID: "a", S3_SECRET_ACCESS_KEY: "b" };
+  try {
+    // The old instance mirrored its files to the bucket this one uses too.
+    objects.set(`/bucket/flowplan/uploads/${fid}`, readFileSync(join(old, "uploads", fid)));
+    Object.assign(process.env, bucket);
+    const dir = freshInstance();
+    const restored = await restore.restoreUpload(file, "", result.name);
+    assert.deepEqual([restored.files, restored.missingFiles], [0, 0]);
+    // It comes from there when it is needed.
+    assert.equal(await ensureLocal(fid), true);
+    assert.equal(restoredPage(dir), "Anhang der alten Instanz");
+    // Not in the bucket: missing.
+    objects.clear();
+    freshInstance();
+    assert.equal((await restore.restoreUpload(file, "", result.name)).missingFiles, 1);
+  } finally {
+    for (const name of Object.keys(bucket)) delete process.env[name];
     s3.close();
   }
   backOnOld();
