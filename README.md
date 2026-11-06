@@ -24,6 +24,7 @@
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-3b3fd8.svg)](LICENSE)
 [![Discord](https://img.shields.io/badge/Discord-community-5865F2?logo=discord&logoColor=white)](https://discord.gg/bCEdB6MPrR)
 [![Sponsor](https://img.shields.io/github/sponsors/yannicschuller?logo=githubsponsors&label=sponsor&color=ea4aaa)](https://github.com/sponsors/yannicschuller)
+[![As seen on Open Source Alternatives](https://www.opensourcealternatives.to/badge-osa.svg)](https://www.opensourcealternatives.to)
 
 <br>
 
