@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   calendarDays,
   calendarSchema,
+  calendarWeekStart,
   isWeekend,
   weekdayLabels,
 } from "../lib/database-calendar";
@@ -42,6 +43,14 @@ test("weeks start on Monday or Sunday and weekends can be hidden", () => {
   // In the reader's language.
   assert.deepEqual(weekdayLabels({}, "en"), ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]);
   assert.deepEqual(weekdayLabels({ weekStart: "sunday", showWeekends: false }, "en"), ["Mon", "Tue", "Wed", "Thu", "Fri"]);
+  // Without a choice in the view, weeks start on the reader's first day:
+  // Sunday in US English, Monday elsewhere; a choice in the view wins.
+  assert.deepEqual(weekdayLabels({}, "en-US"), ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]);
+  assert.deepEqual(weekdayLabels({ weekStart: "monday" }, "en-US"), ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]);
+  assert.equal(calendarWeekStart({}, "en-US"), "sunday");
+  assert.equal(calendarWeekStart({}, "en"), "monday");
+  assert.equal(calendarWeekStart({}, "de"), "monday");
+  assert.equal(calendarWeekStart({ weekStart: "sunday" }, "de"), "sunday");
   assert.equal(isWeekend("2026-09-26"), true);
   assert.equal(isWeekend("2026-09-25"), false);
   assert.throws(() =>

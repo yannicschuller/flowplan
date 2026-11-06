@@ -12,6 +12,7 @@ import { api } from "./ui";
 import { Select } from "./select";
 import { EmptyState, SaveBar, SaveState, SettingGroup, SettingRow, Switch, SwitchRow, useSaveState } from "./settings-ui";
 import { AdminStatus, FixLink, type StatusItem } from "./settings/admin/parts";
+import { textLocale } from "@/lib/i18n";
 import { serverMessage } from "@/lib/i18n-errors";
 import {
   AI_DEFAULTS,
@@ -711,7 +712,7 @@ function DeviceAiSettings({
   readOnly?: boolean;
 }) {
   const t = useT();
-  const locale = useLocale();
+  const locale = textLocale(useLocale());
   const state = useDeviceAi(view.instance.device);
   const reason = view.instance.device ? deviceReason(state, locale === "en" || locale === "fr" ? locale : "de") : null;
   const [lineDe, lineEn] = DEVICE_REASON_TEXT[reason || "available"];

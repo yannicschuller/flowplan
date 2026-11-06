@@ -170,6 +170,13 @@ test("month helpers", () => {
   assert.deepEqual(grid[0], [null, null, null, "2026-10-01", "2026-10-02", "2026-10-03", "2026-10-04"]);
   assert.ok(grid.every((week) => week.length === 7));
   assert.equal(grid.flat().filter(Boolean).length, 31);
+  // Sunday first (US English): four gaps before Thursday.
+  const sunday = monthGrid("2026-10", "sunday");
+  assert.deepEqual(sunday[0], [null, null, null, null, "2026-10-01", "2026-10-02", "2026-10-03"]);
+  assert.ok(sunday.every((week) => week.length === 7));
+  assert.equal(sunday.flat().filter(Boolean).length, 31);
+  // A month that begins on a Sunday has no gap then.
+  assert.equal(monthGrid("2026-11", "sunday")[0][0], "2026-11-01");
   assert.equal(shiftMonth("2026-01", -1), "2025-12");
   assert.equal(shiftMonth("2026-12", 1), "2027-01");
   assert.equal(wholeMonth("2026-02-01", "2026-02-28"), "2026-02");

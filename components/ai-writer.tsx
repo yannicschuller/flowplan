@@ -18,6 +18,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import { DOMParser as ProseMirrorDOMParser, type Schema } from "@tiptap/pm/model";
 import { ArrowBendDownLeft, ArrowClockwise, ArrowsClockwise, Check, Link as LinkIcon, PaperPlaneRight, Sparkle, Stop, X } from "@phosphor-icons/react";
+import { textLocale } from "@/lib/i18n";
 import { streamAiFrom } from "@/lib/ai/client";
 import { aiInsertTransaction, aiMarkdownToHtml, selectionText, type AiInsertMode } from "@/lib/ai/insert";
 import { decodeLinkTargets, linkedTargets, LINKS_HEADER, LINKS_STORAGE_KEY, type LinkTarget } from "@/lib/ai/links";
@@ -87,7 +88,7 @@ export function AiWriter({
   encrypted?: boolean;
 }) {
   const t = useT();
-  const locale = useLocale();
+  const locale = textLocale(useLocale());
   const box = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   const controller = useRef<AbortController | null>(null);

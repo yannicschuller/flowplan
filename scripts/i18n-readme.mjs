@@ -36,7 +36,7 @@ function table(locale) {
     : ["Language", "Code", "Translated", "Coverage"];
   const lines = [`| ${head.join(" | ")} |`, "| --- | --- | ---: | --- |"];
   for (const l of languages) {
-    const sourceLang = l.code === "de" || l.code === "en";
+    const sourceLang = /^(de|en)(-|$)/.test(l.code);
     const done = sourceLang ? total : coverage.get(l.code) ?? 0;
     const pct = Math.floor((done / total) * 100);
     const note = sourceLang ? (de ? " (im Code)" : " (in the code)") : l.draft ? (de ? " (noch nicht in der App)" : " (not in the app yet)") : "";

@@ -259,7 +259,7 @@ const plain = (title: string) => title.normalize("NFKC").replace(/\s+/g, " ").tr
 function automaticTitle(title: string, date: string) {
   const own = plain(title);
   if (!own) return true;
-  return (["de", "en", "fr"] as const).some((locale) => plain(localDayTitle(date, locale)) === own);
+  return (["de", "en", "en-US", "fr"] as const).some((locale) => plain(localDayTitle(date, locale)) === own);
 }
 const like = (value: string) => `%${value.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 // A day nobody wrote in, as conservatively as possible: nothing beyond the

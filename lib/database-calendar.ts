@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { localeTag, type Locale } from "./i18n";
+import { localeTag, textLocale, weekStart, type Locale } from "./i18n";
 import {
   Temporal,
   validZone,
@@ -15,7 +15,8 @@ import type { Field, Row, View } from "./types";
 export const calendarSchema = z.object({
   mode: z.enum(["month", "week", "day"]),
   timeZone: z.string().max(100).refine(validZone, "Ungültige Zeitzone."),
-  // First column of weeks (default Monday) and whether Sat/Sun are shown.
+  // First column of weeks (default: the reader's, Sunday in the US, else
+  // Monday) and whether Sat/Sun are shown.
   weekStart: z.enum(["monday", "sunday"]).optional(),
   showWeekends: z.boolean().optional(),
 });
@@ -30,15 +31,18 @@ export function weekdayLabels(
   const labels =
     locale === "de"
       ? ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
-      : locale === "en"
+      : textLocale(locale) === "en"
         ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
         : Array.from({ length: 7 }, (_, d) =>
             new Intl.DateTimeFormat(localeTag(locale), { weekday: "short", timeZone: "UTC" }).format(Date.UTC(2026, 0, 5 + d)),
           );
-  const days = config.weekStart === "sunday" ? [6, 0, 1, 2, 3, 4, 5] : [0, 1, 2, 3, 4, 5, 6];
+  const days = calendarWeekStart(config, locale) === "sunday" ? [6, 0, 1, 2, 3, 4, 5] : [0, 1, 2, 3, 4, 5, 6];
   return days.filter((d) => config.showWeekends !== false || d < 5).map((d) => labels[d]);
 }
 export type CalendarConfig = z.infer<typeof calendarSchema>;
+// The view's first day of the week, or the reader's when the view has none.
+export const calendarWeekStart = (config: Pick<CalendarConfig, "weekStart">, locale: Locale = "de") =>
+  config.weekStart ?? weekStart(locale);
 export const calendarChangeSchema = z.discriminatedUnion("operation", [
   z.object({
     operation: z.literal("set-range"),

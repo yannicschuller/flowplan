@@ -14,6 +14,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type * as Y from "yjs";
 import { ArrowSquareOut, Database, FileText, Info, Sparkle, Stop, TreeStructure, UsersFour, Warning } from "@phosphor-icons/react";
+import { textLocale } from "@/lib/i18n";
 import { aiPageReadable, aiUsable } from "@/lib/ai/client";
 import { serverMessage } from "@/lib/i18n-errors";
 import {
@@ -76,7 +77,7 @@ async function post<T>(url: string, body: unknown, signal?: AbortSignal): Promis
 
 export function useBoardAi(ctl: BoardAiControl) {
   const t = useT();
-  const locale = useLocale();
+  const locale = textLocale(useLocale());
   const { status } = useAi();
   const blockedHint = useAiBlockedHint();
   const aiOn = ctl.editable && aiUsable(status, "whiteboard");
@@ -544,7 +545,7 @@ function RecordsForm({
   apply: (fn: () => void, message: string) => void;
 }) {
   const t = useT();
-  const locale = useLocale();
+  const locale = textLocale(useLocale());
   const [targets, setTargets] = useState<{ id: string; title: string; icon: string }[] | null>(null);
   const [target, setTarget] = useState("");
   const [query, setQuery] = useState("");

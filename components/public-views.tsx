@@ -1,7 +1,7 @@
 import { requestLocale, serverT } from "@/lib/i18n-server";
 import { localeTag } from "@/lib/i18n";
 import { Temporal } from "@/lib/date-values";
-import { weekdayLabels } from "@/lib/database-calendar";
+import { calendarWeekStart, weekdayLabels } from "@/lib/database-calendar";
 import { PublicCalendarGrid } from "./public-calendar-grid";
 import { cellText } from "@/lib/database";
 import {
@@ -166,7 +166,8 @@ export async function PublicCalendar({
   const schedule = scheduleFields(fields, view);
   const first = Temporal.PlainDate.from(`${month}-01`);
   const config = view.calendar || { mode: "month", timeZone: "UTC" };
-  const sunday = config.weekStart === "sunday",
+  const locale = await requestLocale();
+  const sunday = calendarWeekStart(config, locale) === "sunday",
     weekends = config.showWeekends !== false;
   const offset = (d: Temporal.PlainDate) =>
     sunday ? d.dayOfWeek % 7 : d.dayOfWeek - 1;
@@ -187,7 +188,7 @@ export async function PublicCalendar({
       <PublicCalendarGrid
         days={days}
         month={month}
-        labels={weekdayLabels(config, await requestLocale())}
+        labels={weekdayLabels(config, locale)}
         weekends={weekends}
         editable={editable}
         token={token}

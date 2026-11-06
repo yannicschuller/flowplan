@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { facts, factsJson } from "../lib/facts";
-import { LOCALES } from "../lib/i18n";
+import { LOCALES, textLocale } from "../lib/i18n";
 
 const root = new URL("..", import.meta.url);
 
@@ -32,9 +32,11 @@ test("every language has a catalogue and every catalogue a language", () => {
   const f = facts();
   assert.deepEqual(Object.keys(f.names.languages), LOCALES);
   // German is written in the code; the others are catalogues in locales/.
+  // Regional variants ("en-US") use the catalogue of their language.
   const catalogues = readdirSync(new URL("locales", root))
     .filter((name) => name.endsWith(".json"))
     .map((name) => name.replace(/\.json$/, ""))
     .sort();
-  assert.deepEqual(catalogues, LOCALES.filter((code) => code !== "de").sort());
+  assert.deepEqual(catalogues, LOCALES.filter((code) => code !== "de" && textLocale(code) === code).sort());
+  for (const code of LOCALES) assert.ok(code === "de" || catalogues.includes(textLocale(code)), code);
 });

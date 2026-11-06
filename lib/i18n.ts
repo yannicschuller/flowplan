@@ -9,14 +9,21 @@ import { translateCatalog } from "./i18n-catalogs";
 
 // To add a language: its catalogue in locales/, an entry here and one in
 // lib/i18n-catalogs-server.ts. `tag` formats dates and numbers; `flag` stands for
-// the language in the language menus (the country of `tag`).
+// the language in the language menus (the country of `tag`). A regional
+// variant ("en-US") needs no catalogue: it shows the texts of its language
+// (textLocale) and differs only in `tag` – dates, numbers, the first day of
+// the week.
 export const LANGUAGES = {
   de: { name: "Deutsch", tag: "de-DE", flag: "🇩🇪" },
   en: { name: "English", tag: "en-GB", flag: "🇬🇧" },
+  "en-US": { name: "English (US)", tag: "en-US", flag: "🇺🇸" },
   fr: { name: "Français", tag: "fr-FR", flag: "🇫🇷" },
   zh: { name: "简体中文", tag: "zh-CN", flag: "🇨🇳" },
 } as const;
 export type Locale = keyof typeof LANGUAGES;
+// The language of the texts: "en-US" → "en".
+export type TextLocale = Exclude<Locale, `${string}-${string}`>;
+export const textLocale = (locale: Locale) => locale.split("-")[0] as TextLocale;
 export const LOCALES = Object.keys(LANGUAGES) as Locale[];
 export const LOCALE_COOKIE = "flowplan-lang";
 
@@ -26,8 +33,11 @@ export function isLocale(value: unknown): value is Locale {
 export const localeTag = (locale: Locale) => LANGUAGES[locale].tag;
 // Numbers with a decimal comma (2,5) rather than a point (2.5).
 export const decimalComma = (locale: Locale) => (1.5).toLocaleString(localeTag(locale)).includes(",");
+// The first column of calendars: Sunday in the US, Monday elsewhere (ISO 8601).
+export const weekStart = (locale: Locale): "monday" | "sunday" => (localeTag(locale) === "en-US" ? "sunday" : "monday");
 
-// The first supported language of an Accept-Language header, by weight.
+// The first supported language of an Accept-Language header, by weight: a
+// regional variant for its own region ("en-US"), else the language ("en-AU" → "en").
 export function pickLocale(cookie?: string | null, acceptLanguage?: string | null): Locale {
   if (isLocale(cookie)) return cookie;
   const wanted = (acceptLanguage || "")
@@ -35,11 +45,16 @@ export function pickLocale(cookie?: string | null, acceptLanguage?: string | nul
     .map((part, index) => {
       const [tag, ...params] = part.trim().split(";");
       const q = Number(params.find((p) => p.trim().startsWith("q="))?.split("=")[1] ?? 1);
-      return { lang: tag.trim().toLowerCase().slice(0, 2), q: Number.isFinite(q) ? q : 0, index };
+      return { tag: tag.trim().toLowerCase(), q: Number.isFinite(q) ? q : 0, index };
     })
-    .filter((x) => x.lang && x.q > 0)
+    .filter((x) => x.tag && x.q > 0)
     .sort((a, b) => b.q - a.q || a.index - b.index);
-  for (const { lang } of wanted) if (isLocale(lang)) return lang;
+  for (const { tag } of wanted) {
+    const variant = LOCALES.find((l) => l.includes("-") && l.toLowerCase() === tag.replace("_", "-"));
+    if (variant) return variant;
+    const lang = tag.slice(0, 2);
+    if (isLocale(lang)) return lang;
+  }
   return "en";
 }
 
@@ -52,5 +67,7 @@ export const englishText = (en: string) => {
   return at < 0 ? en : en.slice(0, at);
 };
 
-export const translate = (locale: Locale) => (de: string, en: string) =>
-  locale === "de" ? de : englishText(locale === "en" ? en : translateCatalog(locale, en));
+export const translate = (locale: Locale) => {
+  const lang = textLocale(locale);
+  return (de: string, en: string) => (lang === "de" ? de : englishText(lang === "en" ? en : translateCatalog(lang, en)));
+};

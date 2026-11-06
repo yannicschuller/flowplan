@@ -10,6 +10,7 @@
 // { device: true } appear there even without the server's AI.
 import { createContext, useContext, useEffect, useSyncExternalStore, type ReactNode } from "react";
 import { Cloud, DeviceMobile, HardDrives } from "@phosphor-icons/react";
+import { textLocale } from "@/lib/i18n";
 import { AI_PROVIDER_NAMES, AI_PROVIDER_NAMES_EN, type AiFeature, type AiStatus } from "@/lib/ai/features";
 import { aiPageReadable, aiUsable } from "@/lib/ai/client";
 import { aiRoute, checkDeviceAi, deviceAiState, subscribeDeviceAi, type AiRoute, type DeviceAiState } from "@/lib/ai/device";
@@ -61,7 +62,7 @@ export function useAiRoute(
   options: { encrypted?: boolean; status?: AiStatus | null; enabled?: boolean } = {},
 ): AiRoute {
   const context = useAi();
-  const locale = useLocale();
+  const locale = textLocale(useLocale());
   const status = options.status === undefined ? context.status : options.status;
   const wanted = options.enabled !== false && !!status?.device?.features[feature];
   const device = useDeviceAi(wanted);

@@ -8,7 +8,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNod
 import { CalendarBlank, CaretDown, CaretLeft, CaretRight, CalendarCheck } from "@phosphor-icons/react";
 import { useT } from "./i18n";
 import { Collapse } from "./motion";
-import { LOCALE_TAG } from "@/lib/locale-tag";
+import { LOCALE_TAG, WEEK_START } from "@/lib/locale-tag";
 import { monthGrid, neighbourDays, shiftDate, shiftMonth, type DayLike } from "@/lib/journal-nav";
 
 export const monthLabel = new Intl.DateTimeFormat(LOCALE_TAG, { month: "long", year: "numeric", timeZone: "UTC" });
@@ -219,7 +219,7 @@ function MonthPicker({
   const byDate = useMemo(() => new Map(days.filter((d) => d.journal_date).map((d) => [d.journal_date!, d])), [days]);
   const [focus, setFocus] = useState(date);
   const month = focus.slice(0, 7);
-  const grid = monthGrid(month);
+  const grid = monthGrid(month, WEEK_START);
   const count = grid.flat().filter((d) => d && byDate.has(d)).length;
   const root = useRef<HTMLDivElement>(null);
   const moved = useRef(false);
@@ -253,7 +253,8 @@ function MonthPicker({
     e.preventDefault();
     e.stopPropagation();
   };
-  const weekdays = t("Mo Di Mi Do Fr Sa So", "Mo Tu We Th Fr Sa Su").split(" ");
+  const names = t("Mo Di Mi Do Fr Sa So", "Mo Tu We Th Fr Sa Su").split(" ");
+  const weekdays = WEEK_START === "sunday" ? [names[6], ...names.slice(0, 6)] : names;
   return (
     <div
       ref={root}

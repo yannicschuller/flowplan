@@ -153,12 +153,12 @@ export function neighbourDays<D extends DayLike>(days: D[], date: string): { pre
 }
 
 // The weeks of a month for a picker: dates (YYYY-MM-DD) or null for the
-// gaps before the first and after the last day; Monday first.
-export function monthGrid(month: string): (string | null)[][] {
+// gaps before the first and after the last day; Monday first, or Sunday.
+export function monthGrid(month: string, weekStart: "monday" | "sunday" = "monday"): (string | null)[][] {
   const [y, m] = month.split("-").map(Number);
   const first = new Date(Date.UTC(y, m - 1, 1));
   const length = new Date(Date.UTC(y, m, 0)).getUTCDate();
-  const offset = (first.getUTCDay() + 6) % 7;
+  const offset = weekStart === "sunday" ? first.getUTCDay() : (first.getUTCDay() + 6) % 7;
   const cells: (string | null)[] = [
     ...Array.from({ length: offset }, () => null),
     ...Array.from({ length }, (_, i) => `${month}-${String(i + 1).padStart(2, "0")}`),
