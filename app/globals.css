@@ -23855,6 +23855,66 @@ h3 .block-reactions {
 .ai-ask-answer-tools .ai-ask-actions {
   margin-top: 0;
 }
+/* "Diese Seite" (#135): the open page goes along with the question. */
+.ai-ask-context {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin-bottom: -4px;
+}
+.ai-ask-page-chip {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px dashed var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.ai-ask-page-chip:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--hover);
+}
+.ai-ask-page-chip.active {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--accent-strong) 45%, transparent);
+  background: color-mix(in srgb, var(--accent-strong) 10%, transparent);
+  color: var(--accent-strong);
+}
+.ai-ask-context-title {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.ai-ask-page-note {
+  margin: 6px 0 0;
+  font-size: 12px;
+}
+.ai-ask-suggest-result {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.ai-ask-suggest-result > svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--accent-strong);
+}
+.ai-ask-suggest-result.error > svg {
+  color: var(--signal);
+}
 /* The handle on the panel's left edge (components/sidebar-resize.tsx). */
 .sidebar-resize.sidebar-resize-start {
   right: auto;

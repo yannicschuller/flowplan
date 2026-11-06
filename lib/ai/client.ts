@@ -3,6 +3,7 @@
 import { serverMessage } from "../i18n-errors";
 import { AI_REASON_TEXT, type AiFeature, type AiReason, type AiStatus } from "./features";
 import type { DatabaseNote } from "./database-note";
+import type { ResolvedTitle } from "./title-links";
 
 export { aiProviderLabel, AI_FEATURES, type AiFeature, type AiStatus } from "./features";
 
@@ -112,6 +113,8 @@ export type AskOptions = {
   // Earlier turns of the conversation (the server keeps none).
   history: { role: "user" | "assistant"; content: string }[];
   scope: AskScope;
+  // "Diese Seite": the open page goes along in full (#135).
+  page?: { pageId: string };
   signal?: AbortSignal;
   // The numbered sources, as soon as they are known (before the answer).
   onSources?: (sources: AskSource[], semantic: boolean) => void;
@@ -127,17 +130,36 @@ function decodeSources(header: string | null): AskSource[] {
     return [];
   }
 }
-export async function askAi({ signal, onText, onSources, ...body }: AskOptions): Promise<{ text: string; sources: AskSource[] }> {
+// `page`: whether the open page went along in full or cut to fit the model.
+export async function askAi({ signal, onText, onSources, ...body }: AskOptions): Promise<{ text: string; sources: AskSource[]; page: "full" | "truncated" | null }> {
   let sources: AskSource[] = [];
+  let page: "full" | "truncated" | null = null;
   const text = await streamAiFrom("/api/ai/ask", body, {
     signal,
     onText,
     onResponse: (response) => {
       sources = decodeSources(response.headers.get("X-Flowplan-Sources"));
+      const included = response.headers.get("X-Flowplan-Page");
+      page = included === "full" || included === "truncated" ? included : null;
       onSources?.(sources, response.headers.get("X-Flowplan-Semantic") === "1");
     },
   });
-  return { text, sources };
+  return { text, sources, page };
+}
+
+// The conversation about the open page as suggested changes in it (#135,
+// POST /api/ai/ask/suggest): how many the model proposed, how many are in
+// the page now and how many could not be applied.
+export type PageSuggestResult = { proposed: number; applied: number; failed: number; reasons: string[] };
+export async function suggestPageChanges(body: { workspaceId: string; pageId: string; history: { role: "user" | "assistant"; content: string }[] }, signal?: AbortSignal) {
+  return postJson<PageSuggestResult>("/api/ai/ask/suggest", body, signal);
+}
+
+// Plain page titles of an answer → the pages they name (#134,
+// lib/ai/title-links.ts).
+export async function resolveTitleLinks(pageId: string, titles: string[], signal?: AbortSignal): Promise<ResolvedTitle[]> {
+  if (!titles.length) return [];
+  return (await postJson<{ resolved: ResolvedTitle[] }>("/api/ai/links/resolve", { pageId, titles }, signal)).resolved || [];
 }
 
 // An answer split into text and citations: "… [1][2]" → parts with numbers

@@ -10,7 +10,10 @@
 // With "Mit bestehenden Seiten verlinken" (on unless switched off, remembered
 // in this browser) the server offers the model relevant existing pages and
 // the answer links them (lib/ai/links.ts): visible in the preview, listed
-// under it ("Verlinkt: …") and inserted as real page links.
+// under it ("Verlinkt: …") and inserted as real page links. List items that
+// name a page by its exact title stay no plain text either: once the answer
+// is complete they are resolved against the pages the person may read
+// (lib/ai/title-links.ts, #134).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import { DOMParser as ProseMirrorDOMParser, type Schema } from "@tiptap/pm/model";
@@ -25,7 +28,8 @@ import { AiProviderFooter, DeviceAiChip, useAi, useAiRoute } from "./ai-context"
 import { DatabaseNotes } from "./ai-database-notes";
 import { DATABASES_HEADER, decodeDatabaseNotes, type DatabaseNote } from "@/lib/ai/database-note";
 import { AiActionsPanel, type AiActionsRequest } from "./ai-actions";
-import { aiPageReadable, aiUsable } from "@/lib/ai/client";
+import { aiPageReadable, aiUsable, resolveTitleLinks } from "@/lib/ai/client";
+import { applyTitleLinks, listTitleCandidates } from "@/lib/ai/title-links";
 import { DeviceAiError, deviceErrorText, deviceSummary, deviceSummaryFits, runOnDevice, runRouted } from "@/lib/ai/device";
 import { DEVICE_LIMITS, deviceWriteFits, deviceWritePrompt } from "@/lib/ai/device-prompts";
 import type { WriteRequest } from "@/lib/ai/prompts";
@@ -178,6 +182,9 @@ export function AiWriter({
       const onText = (all: string) => {
         if (controller.current === abort) setAnswer(all);
       };
+      // The pages the server offered (only on the server route).
+      let offered: LinkTarget[] = [];
+      let onServer = false;
       try {
         const route = next.device.kind === "summary" ? routes.current.summary : routes.current.write;
         const { result: text } = await runRouted(route, {
@@ -198,6 +205,7 @@ export function AiWriter({
             return String(await runOnDevice(deviceWritePrompt(work.request), { signal: abort.signal, onText }));
           },
           server: () => {
+            onServer = true;
             setRanOn("server");
             setAnswer("");
             return streamAiFrom(next.url, next.body, {
@@ -206,15 +214,30 @@ export function AiWriter({
               // The pages offered to the model, by handle (only those become links).
               onResponse: (response) => {
                 if (controller.current !== abort) return;
-                setTargets(decodeLinkTargets(response.headers.get(LINKS_HEADER)));
+                offered = decodeLinkTargets(response.headers.get(LINKS_HEADER));
+                setTargets(offered);
                 setDatabases(decodeDatabaseNotes(response.headers.get(DATABASES_HEADER)));
               },
             });
           },
         });
         if (controller.current !== abort) return;
-        setAnswer(text);
-        setPhase(text.trim() ? "done" : "error");
+        let final = text;
+        // Titles in list items that stayed plain text: linked when exactly
+        // one page the person may read has that title.
+        const titles = onServer && next.body.links ? listTitleCandidates(text) : [];
+        if (titles.length)
+          try {
+            const linked = applyTitleLinks(text, await resolveTitleLinks(pageId, titles, abort.signal), offered);
+            if (controller.current !== abort) return;
+            final = linked.markdown;
+            setTargets(linked.targets);
+          } catch {
+            // Linking is extra: the answer stays as it is.
+            if (controller.current !== abort) return;
+          }
+        setAnswer(final);
+        setPhase(final.trim() ? "done" : "error");
         if (!text.trim()) setError(t("Die KI hat nichts geantwortet.", "The AI did not answer anything."));
       } catch (e) {
         if (controller.current !== abort) return;
@@ -223,7 +246,7 @@ export function AiWriter({
         setPhase("error");
       }
     },
-    [t, locale],
+    [t, locale, pageId],
   );
   // The page as context of the free prompt on the device: from the open
   // editor, cut to what the model takes.

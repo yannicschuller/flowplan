@@ -125,12 +125,12 @@ test("a page the person cannot read is never offered, even when its title is nam
 
 test("the switches: off for the instance, off for the person, nothing without terms", async () => {
   setAi({ features: { links: false } });
-  assert.deepEqual(await candidates(ben), { prompt: [], targets: [] });
+  assert.deepEqual(await candidates(ben), { prompt: [], targets: [], index: [] });
   setAi({ features: { links: true } });
   command(ben, { action: "ai.settings", features: { links: false } });
-  assert.deepEqual(await candidates(ben), { prompt: [], targets: [] });
+  assert.deepEqual(await candidates(ben), { prompt: [], targets: [], index: [] });
   command(ben, { action: "ai.settings", features: { links: true } });
-  assert.deepEqual(await candidates(ben, "Was ist das?"), { prompt: [], targets: [] });
+  assert.deepEqual(await candidates(ben, "Was ist das?"), { prompt: [], targets: [], index: [] });
   assert.ok((await candidates(ben)).targets.length > 0);
 });
 

@@ -9,8 +9,13 @@
 // dialog: the page stays usable, the answer keeps streaming while the
 // person scrolls, writes or opens other pages, and closing only hides it. The conversation is kept in this browser
 // tab only (sessionStorage) – the server stores none of it.
+// "Diese Seite" (#135): with a page open, the chip above the question is on
+// and the page goes along in full (the server checks that the person and the
+// AI may read it). Under such an answer, people who may edit the page can
+// put it in as suggested changes ("Als Änderungsvorschlag einfügen",
+// lib/ai/page-edit.ts) – accepted or rejected one by one in the document.
 import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import { ArrowClockwise, ArrowSquareOut, CaretDown, ChatCircleDots, Check, Copy, Lifebuoy, Lightning, MagnifyingGlass, PaperPlaneRight, PushPin, PushPinSlash, Sparkle, Stop, X } from "@phosphor-icons/react";
+import { ArrowClockwise, ArrowSquareOut, CaretDown, ChatCircleDots, Check, Copy, FileText, Lifebuoy, Lightning, MagnifyingGlass, PaperPlaneRight, PencilLine, PushPin, PushPinSlash, Sparkle, Stop, X } from "@phosphor-icons/react";
 import { useT } from "./i18n";
 import { PageIcon } from "./ui";
 import { Select } from "./select";
@@ -20,11 +25,23 @@ import { SidebarResize } from "./sidebar-resize";
 import { SHEET_HANDLE, useSheetDrag } from "./sheet-drag";
 import { addBackCloser } from "@/lib/app-back";
 import { ASK_DEFAULT, ASK_MIN, ASK_OVERLAY_MEDIA, ASK_SHEET_BELOW, askMax, clampAsk } from "@/lib/ask-panel";
-import { askAi, aiProviderLabel, aiUsable, citationParts, helpSourceUrl, type AskScope, type AskSource } from "@/lib/ai/client";
+import { askAi, aiPageReadable, aiProviderLabel, aiUsable, citationParts, helpSourceUrl, suggestPageChanges, type AskScope, type AskSource } from "@/lib/ai/client";
 import type { AiStatus } from "@/lib/ai/features";
 import type { Space } from "@/lib/types";
 
-type Message = { role: "user" | "assistant"; content: string; sources?: AskSource[]; error?: boolean; streaming?: boolean };
+type Message = {
+  role: "user" | "assistant";
+  content: string;
+  sources?: AskSource[];
+  error?: boolean;
+  streaming?: boolean;
+  // "Diese Seite": the page that went along with the question (cut to fit: truncated).
+  page?: { id: string; title: string; truncated?: boolean };
+  // "Als Änderungsvorschlag einfügen": running, or what came of it.
+  suggest?: { busy?: boolean; text?: string; error?: boolean };
+};
+// The open page as the panel knows it.
+export type AskCurrentPage = { id: string; title: string; kind?: string; editable?: boolean; encrypted?: boolean };
 type Stored = { messages: Message[]; scope: string; across?: boolean };
 const storageKey = (workspaceId: string) => `flowplan-ask:${workspaceId}`;
 const MAX_TURNS = 20;
@@ -100,7 +117,7 @@ export function AskPanel({
   workspaceId: string;
   ai: AiStatus | undefined;
   spaces: Space[];
-  currentPage: { id: string; title: string } | null;
+  currentPage: AskCurrentPage | null;
   onOpenSource: (pageId: string, rowId?: string) => void;
   // The dragged width (null: the default); shown within the limits of the
   // window (lib/ask-panel.ts).
@@ -124,6 +141,9 @@ export function AskPanel({
   // Phones: the sheet swiped down to a pill; the answer goes on.
   const [minimised, setMinimised] = useState(false);
   const [copied, setCopied] = useState<number | null>(null);
+  // "Diese Seite": on whenever a page is opened.
+  const [withPage, setWithPage] = useState(true);
+  useEffect(() => setWithPage(true), [currentPage?.id]);
   const sheet = useMedia(ASK_SHEET_MEDIA);
   // Narrow windows: over the page unless pinned – the pin is offered there.
   const narrowWindow = useMedia(ASK_OVERLAY_MEDIA);
@@ -231,9 +251,16 @@ export function AskPanel({
         ? { kind: "help" }
         : scope.startsWith("page:") ? { kind: "page", pageId: scope.slice(5) } : scope.startsWith("space:") ? { kind: "space", spaceId: scope.slice(6) } : { kind: "workspace" };
 
+  // The open page can go along: a document or database the AI may read,
+  // not in an end-to-end encrypted space, not for help-only or every workspace.
+  const pageOffered =
+    !!currentPage && !currentPage.encrypted && ["document", "database", undefined].includes(currentPage.kind) && aiPageReadable(ai, currentPage.id) && !across && scope !== "help";
+  const attached = pageOffered && withPage ? currentPage : null;
+
   // `before`: the conversation to continue (a retry leaves out the failed turn).
   async function send(text = question.trim(), before = messages) {
     if (!text || busy) return;
+    const page = attached ? { id: attached.id, title: attached.title } : undefined;
     const history = before.filter((m) => !m.error && !m.streaming).map((m) => ({ role: m.role, content: m.content }));
     if (text === question.trim()) setQuestion("");
     setBusy(true);
@@ -241,7 +268,7 @@ export function AskPanel({
     const abort = new AbortController();
     controller.current = abort;
     const mine = generation.current;
-    setMessages([...before.slice(-(MAX_TURNS * 2 - 2)), { role: "user", content: text }, { role: "assistant", content: "", streaming: true }]);
+    setMessages([...before.slice(-(MAX_TURNS * 2 - 2)), { role: "user", content: text }, { role: "assistant", content: "", streaming: true, ...(page ? { page } : {}) }]);
     const update = (patch: Partial<Message>) => {
       if (generation.current !== mine) return;
       setMessages((list) => {
@@ -256,11 +283,12 @@ export function AskPanel({
         question: text,
         history,
         scope: scopeValue(),
+        ...(page ? { page: { pageId: page.id } } : {}),
         signal: abort.signal,
         onSources: (sources) => update({ sources }),
         onText: (_piece, all) => update({ content: all }),
       });
-      update({ content: result.text, sources: result.sources, streaming: false });
+      update({ content: result.text, sources: result.sources, streaming: false, ...(page ? { page: { ...page, truncated: result.page === "truncated" } } : {}) });
     } catch (error) {
       if ((error as Error).name === "AbortError") update({ streaming: false, content: t("Abgebrochen.", "Stopped."), error: true });
       else update({ streaming: false, content: (error as Error).message, error: true });
@@ -269,6 +297,38 @@ export function AskPanel({
         setBusy(false);
         controller.current = null;
       }
+    }
+  }
+  // The conversation up to answer `i` as suggested changes in its page.
+  async function suggest(i: number) {
+    const answer = messages[i];
+    if (!answer?.page || answer.suggest?.busy) return;
+    const patch = (value: Message["suggest"]) => setMessages((list) => list.map((m, j) => (j === i ? { ...m, suggest: value } : m)));
+    patch({ busy: true });
+    try {
+      const history = messages
+        .slice(0, i + 1)
+        .filter((m) => !m.error && !m.streaming && m.content.trim())
+        .map((m) => ({ role: m.role, content: m.content }));
+      const result = await suggestPageChanges({ workspaceId, pageId: answer.page.id, history });
+      const notApplied = result.failed
+        ? result.failed === 1
+          ? t(" 1 Änderung ließ sich nicht anwenden.", " 1 change could not be applied.")
+          : t(` ${result.failed} Änderungen ließen sich nicht anwenden.`, ` ${result.failed} changes could not be applied.`)
+        : "";
+      const text = !result.proposed
+        ? t("Die KI hat keine Änderung an dieser Seite vorgeschlagen.", "The AI did not propose any change to this page.")
+        : !result.applied
+          ? t(
+              "Die Änderungen ließen sich nicht anwenden – die Seite hat sich inzwischen geändert oder die Stellen gibt es nicht mehr. Bitte erneut versuchen.",
+              "The changes could not be applied – the page has changed in the meantime or those parts no longer exist. Please try again.",
+            )
+          : (result.applied === 1
+              ? t("1 Änderungsvorschlag ist in der Seite – dort annehmen oder ablehnen.", "1 suggested change is in the page – accept or reject it there.")
+              : t(`${result.applied} Änderungsvorschläge sind in der Seite – dort einzeln annehmen oder ablehnen.`, `${result.applied} suggested changes are in the page – accept or reject each there.`)) + notApplied;
+      patch({ text, error: !result.applied });
+    } catch (error) {
+      patch({ text: (error as Error).message, error: true });
     }
   }
   // The last question once more, without the failed answer.
@@ -428,11 +488,17 @@ export function AskPanel({
                           {s.pageTitle && <small>{s.pageTitle}</small>}
                           {s.workspaceName && s.workspaceId !== workspaceId && <small className="ai-source-workspace">{s.workspaceName}</small>}
                           {s.kind === "help" && <small className="ai-source-workspace">{t("Flowplan-Hilfe", "Flowplan help")}</small>}
+                          {s.kind === "page" && <small className="ai-source-workspace">{t("Diese Seite", "This page")}</small>}
                           <ArrowSquareOut size={13} />
                         </button>
                       </li>
                     ))}
                   </ol>
+                )}
+                {!m.streaming && !m.error && m.page?.truncated && (
+                  <p className="muted ai-ask-page-note">
+                    {t(`„${m.page.title}“ war zu lang für die KI – nur der Anfang ging mit.`, `“${m.page.title}” was too long for the AI – only its beginning went along.`)}
+                  </p>
                 )}
                 {!m.streaming && (
                   <div className="ai-ask-answer-tools">
@@ -471,12 +537,49 @@ export function AskPanel({
                         <Lightning size={14} /> {t("Aktionen vorschlagen", "Propose actions")}
                       </button>
                     )}
+                    {!m.error && m.content && m.page && currentPage?.id === m.page.id && currentPage.editable && (
+                      <button
+                        type="button"
+                        className="button compact ai-ask-suggest"
+                        disabled={!!m.suggest?.busy}
+                        title={t("Die Antwort als Änderungsvorschläge in die Seite einfügen – nichts wird überschrieben.", "Put the answer into the page as suggested changes – nothing is overwritten.")}
+                        onClick={() => void suggest(i)}
+                      >
+                        <PencilLine size={14} aria-hidden="true" /> {m.suggest?.busy ? t("Schlägt vor …", "Suggesting …") : t("Als Änderungsvorschlag einfügen", "Suggest as changes")}
+                      </button>
+                    )}
                   </div>
+                )}
+                {m.suggest?.text && (
+                  <p className={`ai-ask-suggest-result${m.suggest.error ? " error" : ""}`} role="status">
+                    {m.suggest.error ? <X size={13} aria-hidden="true" /> : <Check size={13} aria-hidden="true" />} {m.suggest.text}
+                  </p>
                 )}
               </div>
             ),
           )}
         </div>
+        {pageOffered && currentPage && (
+          <div className="ai-ask-context">
+            <button
+              type="button"
+              className={`ai-ask-page-chip${withPage ? " active" : ""}`}
+              aria-pressed={withPage}
+              disabled={busy}
+              title={
+                withPage
+                  ? t(`„${currentPage.title}“ geht vollständig mit an die KI. Klicken, um die Seite nicht mitzuschicken.`, `“${currentPage.title}” goes to the AI in full. Click to leave the page out.`)
+                  : t(`„${currentPage.title}“ mitschicken`, `Include “${currentPage.title}”`)
+              }
+              onClick={() => setWithPage((on) => !on)}
+            >
+              <FileText size={14} aria-hidden="true" />
+              <span>{t("Diese Seite", "This page")}</span>
+              {withPage && <Check size={12} weight="bold" aria-hidden="true" />}
+            </button>
+            {withPage && <small className="muted ai-ask-context-title">{currentPage.title}</small>}
+          </div>
+        )}
         <form
           className="ai-ask-composer"
           onSubmit={(e) => {

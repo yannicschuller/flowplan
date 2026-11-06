@@ -19,6 +19,9 @@ const option = (key: keyof CodeBlockOptions) => ({
   rendered: false,
 });
 export const FlowCodeBlock = CodeBlock.extend({
+  // Code takes no formatting – but suggested changes (lib/suggestions.ts):
+  // while suggesting, and the AI's proposals for a code block (#135).
+  marks: "suggestion",
   addAttributes() {
     const parent = this.parent?.() || {};
     return {

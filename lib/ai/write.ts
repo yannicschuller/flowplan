@@ -6,7 +6,10 @@
 // With "links" asked for (and the feature usable), relevant existing pages
 // are offered to the model under handles (lib/ai/link-candidates.ts); the
 // handles and their pages go to the browser in X-Flowplan-Links, which turns
-// them into page links (lib/ai/links.ts).
+// them into page links (lib/ai/links.ts). A request for a list of pages also
+// sends the titles of further matching pages; list items naming a page
+// exactly are linked afterwards (lib/ai/title-links.ts, POST
+// /api/ai/links/resolve).
 import { z } from "zod";
 import { HttpError } from "../auth";
 import { one } from "../db";
@@ -16,7 +19,7 @@ import type { Identity } from "../types";
 import { aiPageMarkdown } from "./content";
 import { databaseContext, databaseNotes } from "./database-context";
 import { DATABASES_HEADER, encodeDatabaseNotes } from "./database-note";
-import { encodeLinkTargets, findLinkCandidates } from "./link-candidates";
+import { asksForPageList, encodeLinkTargets, findLinkCandidates } from "./link-candidates";
 import { LINKS_HEADER } from "./links";
 import { WRITE_ACTION_IDS, WRITE_LANGUAGES, WRITE_TONES, writePrompt, type WriteAction } from "./prompts";
 import { isLocalProvider } from "./resolve";
@@ -83,6 +86,8 @@ export async function aiWriteResponse(user: Identity, raw: unknown, signal: Abor
         pageId: page.id,
         query: [b.instruction, b.text, page.title].filter(Boolean).join("\n"),
         local,
+        // "Liste alle Seiten zu …": titles of further pages go along (#134).
+        list: (b.action === "prompt" || b.action === "custom") && asksForPageList(b.instruction || ""),
         semantic: resolved.source === "instance",
         signal,
       })
@@ -99,6 +104,7 @@ export async function aiWriteResponse(user: Identity, raw: unknown, signal: Abor
       page: context,
       locale: b.locale,
       links: links?.prompt,
+      index: links?.index,
       databases: data.length ? data.map((d) => d.block).join("\n\n") : null,
     }),
     options,

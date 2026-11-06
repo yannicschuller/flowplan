@@ -720,6 +720,8 @@ const exact: Record<string, string> = {
   "Der Text für die KI ist zu lang.": "The text for the AI is too long.",
   "Die KI-Anfrage ist fehlgeschlagen.": "The AI request failed.",
   "Diese Seite ist für die KI gesperrt.": "This page is closed to the AI.",
+  "Änderungsvorschläge gibt es nur für Dokumente.": "Suggested changes are only available for documents.",
+  "Die Seite ist gesperrt.": "The page is locked.",
   "Bitte zuerst Text auswählen.": "Please select some text first.",
   "Bitte beschreiben, was die KI tun soll.": "Please describe what the AI should do.",
   "Hier steht noch nichts, das sich zusammenfassen ließe.": "There is nothing here to summarise yet.",

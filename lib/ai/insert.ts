@@ -27,8 +27,10 @@ function safeHref(href: string) {
 // handles become internal page links – "/#page=<id>", as the editor makes
 // them – and only those: unknown handles and page addresses the model wrote
 // itself stay text.
-export function aiMarkdownToHtml(markdown: string, links?: readonly LinkTarget[] | null) {
-  const text = cleanAnswer(markdown);
+// `raw`: the Markdown as it is – blocks of a proposed page change
+// (lib/ai/page-edits.ts) are content, not an answer to clean up.
+export function aiMarkdownToHtml(markdown: string, links?: readonly LinkTarget[] | null, options: { raw?: boolean } = {}) {
+  const text = options.raw ? markdown.replace(/\r\n?/g, "\n") : cleanAnswer(markdown);
   return markdownToRawHtml(links ? expandLinkHandles(text, links) : text, (href, kind) => {
     if (kind === "image") return null;
     if (links) {
