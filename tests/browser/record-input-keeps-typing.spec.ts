@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 
 // What was typed stays: Escape in a record's title or a property closes the
-// dialog and keeps the text.
+// dialog and keeps the text, and Enter in a number cell saves it.
 const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
 
 async function setup(page: Page, name: string) {
@@ -73,4 +73,21 @@ test("Escape on a record's title keeps what was typed", async ({ page }, info) =
   await expect.poll(async () => (await rows())[0].cells.amount, { timeout: 10000 }).toBe(3);
   await page.reload();
   await expect(page.getByRole("button", { name: "Eintrag öffnen: Einkauf morgen" }).first()).toBeVisible();
+});
+
+test("Enter saves a number cell of the table", async ({ page }, info) => {
+  const { db, command, rows } = await setup(page, `Zahl ${info.project.name}`);
+  await command({ action: "row.create", pageId: db.id, cells: { title: "Äpfel" } });
+  await page.goto(`/#page=${db.id}`);
+  const row = page.locator(".data-table tbody tr[data-row-id]").first();
+  await expect(row).toBeVisible();
+
+  await row.locator("td").nth(2).click();
+  const amount = row.getByRole("spinbutton", { name: "Menge" });
+  await amount.click();
+  await page.keyboard.type("7");
+  await page.keyboard.press("Enter");
+  await expect(amount).toBeHidden();
+  await expect.poll(async () => (await rows())[0].cells.amount, { timeout: 10000 }).toBe(7);
+  await expect(row.locator("td").nth(2)).toHaveText("7");
 });

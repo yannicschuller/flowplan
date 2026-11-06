@@ -1,7 +1,7 @@
 "use client";
 import { useT } from "./i18n";
 import { Select } from "./select";
-import { useState, useEffect, useRef, lazy, Suspense, type ReactNode } from "react";
+import { useState, useEffect, useRef, lazy, Suspense, type KeyboardEvent, type ReactNode } from "react";
 import { InlineText } from "./inline-text";
 import { ratingMax } from "@/lib/field-format";
 import DateInput from "./date-input";
@@ -84,8 +84,16 @@ export function CellInput({
     setDraft(cellText(value));
     unsaved.current = null;
   }, [value]);
-  // Plain fields saved on blur also save when they unmount: a record closed
-  // with Escape or a click outside removes the field without a blur.
+  // Plain fields saved on blur: Enter saves too and, without a change, ends
+  // the edit (a table cell closes) – as in the other cell editors.
+  const enterSaves = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== "Enter" || commit !== "blur" || e.nativeEvent.isComposing) return;
+    e.preventDefault();
+    e.currentTarget.blur();
+    if (draft === cellText(value)) onCancel?.();
+  };
+  // They also save when they unmount: a record closed with Escape or a
+  // click outside removes the field without a blur.
   const latestChange = useRef(onChange);
   useEffect(() => {
     latestChange.current = onChange;
@@ -243,6 +251,7 @@ export function CellInput({
           if (commit === "change") onChange(aliasList(e.target.value));
           else unsaved.current = { value: aliasList(e.target.value) };
         }}
+        onKeyDown={enterSaves}
         onBlur={() => blurred(aliasList(draft))}
       />
     );
@@ -346,6 +355,7 @@ export function CellInput({
         if (commit === "change") onChange(next);
         else unsaved.current = { value: next };
       }}
+      onKeyDown={enterSaves}
       onBlur={() =>
         blurred(
           f.type === "number" ? (draft === "" ? null : Number(draft)) : draft,
