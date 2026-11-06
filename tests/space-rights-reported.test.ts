@@ -12,6 +12,8 @@ process.env.FLOWPLAN_DATA_DIR = mkdtempSync(join(tmpdir(), "flowplan-space-right
 const { run, id, one } = await import("../lib/db");
 const { createWorkspace } = await import("../lib/seed");
 const { command } = await import("../lib/api");
+const { exportArchive } = await import("../lib/archive");
+const { readExportZip } = await import("./helpers/read-export-zip");
 
 function account(name: string) {
   const uid = id();
@@ -80,4 +82,16 @@ test("bookmarks.import creates nothing in a space the person may not write in", 
 test("tag.save does not reveal a private space's tag names through a name clash", () => {
   assert.equal(status(() => act({ action: "tag.save", workspaceId: wid, name: "Übernahme", spaceId: secret }, member)), 403);
   assert.equal(status(() => act({ action: "tag.save", workspaceId: wid, name: "Etwas anderes", spaceId: secret }, member)), 403);
+});
+
+test("the workspace archive leaves out a private space's templates, tags and definitions", async () => {
+  const source = act({ action: "page.create", workspaceId: wid, spaceId: secret, title: "Vorlagenquelle", kind: "document" }).id;
+  act({ action: "template.save", pageId: source, name: "Geheime Vorlage", visibility: "workspace" });
+  act({ action: "property.save", workspaceId: wid, name: "Budget intern", type: "text", options: [], spaceId: secret });
+  const text = async (as: Identity) => [...(await readExportZip(await exportArchive(as, wid))).values()].map((b) => b.toString("utf8")).join("\n");
+  const outsider = await text(member);
+  for (const secretText of ["Geheime Vorlage", "Übernahme", "Budget intern"]) assert.ok(!outsider.includes(secretText), secretText);
+  // The space's owner still gets everything.
+  const own = await text(owner);
+  for (const secretText of ["Geheime Vorlage", "Übernahme", "Budget intern"]) assert.ok(own.includes(secretText), secretText);
 });

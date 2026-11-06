@@ -365,6 +365,18 @@ function snapshotFor(user: Identity, wid: string) {
   const spaceIds = new Set(pages.map((p) => p.space_id));
   const binaries = new Map<string, ArchiveEntry>();
   let bytes = 0;
+  // Space-scoped tags, definitions and templates (#136) only of spaces the
+  // person may open – as in the tag picker and the template gallery.
+  const owner = canManageTaxonomy(user, wid);
+  const spaceVisible = new Map<string, boolean>();
+  const canOpenSpace = (spaceId: string | null | undefined) => {
+    if (!spaceId || owner) return true;
+    if (!spaceVisible.has(spaceId)) {
+      const space = one<Space>("SELECT * FROM spaces WHERE id=?", spaceId);
+      spaceVisible.set(spaceId, !!space && !space.deleted_at && !!spaceRole(user, space));
+    }
+    return spaceVisible.get(spaceId)!;
+  };
   const manifest = {
     format: "flowplan-2",
     formattedText: true,
@@ -379,8 +391,8 @@ function snapshotFor(user: Identity, wid: string) {
       ? {}
       : {
           pageTaxonomy: {
-            tags: workspaceTags(wid).map((t) => ({ name: t.name, color: t.color, ...(t.spaceId ? { spaceId: t.spaceId } : {}) })),
-            properties: workspaceProperties(wid).map((d) => ({ name: d.name, type: d.type, ...(d.options.length ? { options: d.options } : {}), ...(d.spaceId ? { spaceId: d.spaceId } : {}) })),
+            tags: workspaceTags(wid).filter((t) => canOpenSpace(t.spaceId)).map((t) => ({ name: t.name, color: t.color, ...(t.spaceId ? { spaceId: t.spaceId } : {}) })),
+            properties: workspaceProperties(wid).filter((d) => canOpenSpace(d.spaceId)).map((d) => ({ name: d.name, type: d.type, ...(d.options.length ? { options: d.options } : {}), ...(d.spaceId ? { spaceId: d.spaceId } : {}) })),
           },
         }),
     ...exportHomeLayout(user.id, wid),
@@ -396,13 +408,18 @@ function snapshotFor(user: Identity, wid: string) {
       kind: string;
       payload: string;
       deleted_at: string | null;
+      space_id: string | null;
+      created_by: string | null;
     }>(
       // Templates of kinds an archive carries (not whiteboards or dashboards).
-      "SELECT id,name,kind,payload,deleted_at FROM templates WHERE workspace_id=? AND kind IN ('document','database','notebook') AND ((visibility='workspace' AND ?=0) OR created_by=?)",
+      "SELECT id,name,kind,payload,deleted_at,space_id,created_by FROM templates WHERE workspace_id=? AND kind IN ('document','database','notebook') AND ((visibility='workspace' AND ?=0) OR created_by=?)",
       wid,
       isGuest(user, wid) ? 1 : 0,
       user.id,
-    ).map((t) => ({
+    )
+      // A space's templates only for who may open the space (as listPageTemplates).
+      .filter((t) => t.created_by === user.id || canOpenSpace(t.space_id))
+      .map(({ space_id: _space, created_by: _by, ...t }) => ({
       ...t,
       files: all<{
         id: string;
