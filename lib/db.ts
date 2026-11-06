@@ -1142,14 +1142,18 @@ function migrate(d: DatabaseSync) {
 // Schema 91 – scopes of tags, property definitions and saved templates
 // (#136, lib/meta-scope-server.ts): `space_id` NULL means the whole
 // workspace (everything that existed before keeps that scope), otherwise
-// the space ("Bereich") it belongs to; gone with the space. Names are
+// the space ("Bereich") it belongs to. Names are
 // unique per scope (the workspace, or one space) ignoring case – the rule
 // across scopes (a space's names differ from the workspace's) is checked by
 // the commands. The unique indexes of schema 82 (per workspace) give way.
 export function migrateMetaScopes(d: DatabaseSync) {
   for (const table of ["page_tags", "page_property_defs", "templates"])
     if (!(d.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === "space_id"))
-      d.exec(`ALTER TABLE ${table} ADD COLUMN space_id TEXT REFERENCES spaces(id) ON DELETE CASCADE`);
+      // A deleted space takes its tags and definitions along (its pages are
+      // gone); its templates stay as their creators' private ones
+      // (keepSpaceTemplates in lib/workspace-lifecycle.ts, SET NULL as the
+      // fallback).
+      d.exec(`ALTER TABLE ${table} ADD COLUMN space_id TEXT REFERENCES spaces(id) ON DELETE ${table === "templates" ? "SET NULL" : "CASCADE"}`);
   d.exec(`DROP INDEX IF EXISTS page_tags_name;
     DROP INDEX IF EXISTS page_property_defs_name;
     CREATE UNIQUE INDEX IF NOT EXISTS page_tags_scope_name ON page_tags(workspace_id,ifnull(space_id,''),name COLLATE NOCASE);

@@ -344,3 +344,13 @@ test("the API lists the scope actions", () => {
   for (const action of ["tag.scope", "property.scope", "meta.usage", "page.moveCheck", "template.copy", "template.dependencies"])
     assert.ok((commandActionNames as readonly string[]).includes(action), action);
 });
+
+test("a space deleted for good leaves its templates to their creators, privately", () => {
+  const gone = act({ action: "space.create", workspaceId: wid, name: "Weg" }).id;
+  const source = page("Vorlagenquelle", gone);
+  const kept = act({ action: "template.save", pageId: source, name: "Bleibt" }, editor).id;
+  const version = () => one<{ version: number }>("SELECT version FROM spaces WHERE id=?", gone)!.version;
+  act({ action: "space.delete", spaceId: gone, version: version(), confirmName: "Weg" });
+  act({ action: "space.purge", spaceId: gone, version: version(), confirmName: "Weg" });
+  assert.deepEqual(one("SELECT space_id,visibility,created_by FROM templates WHERE id=?", kept), { space_id: null, visibility: "private", created_by: editor.id });
+});

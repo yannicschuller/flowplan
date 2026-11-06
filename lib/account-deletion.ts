@@ -9,7 +9,7 @@ import { all, audit, one, run } from "./db";
 import { HttpError } from "./auth";
 import { localLoginEnabled } from "./local-auth";
 import { ssoOnlyAccount } from "./identities";
-import { purgePages, purgeWorkspace } from "./workspace-lifecycle";
+import { keepSpaceTemplates, purgePages, purgeWorkspace } from "./workspace-lifecycle";
 import type { Identity, Page } from "./types";
 
 type Plan = {
@@ -249,6 +249,7 @@ function removeAccount(userId: string, removed: { id: string }[], successors: Re
   for (const space of all<{ id: string; workspace_id: string }>("SELECT id,workspace_id FROM spaces WHERE owner_id=? AND visibility='private'", userId)) {
     purgePages(space.workspace_id, all<Page>("SELECT * FROM pages WHERE space_id=?", space.id));
     run("DELETE FROM grants WHERE resource_id=?", space.id);
+    keepSpaceTemplates(space.id);
     run("DELETE FROM spaces WHERE id=?", space.id);
   }
   for (const table of PERSONAL)

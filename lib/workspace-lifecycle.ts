@@ -125,7 +125,17 @@ export function purgeSpace(space: Space) {
     all<Page>("SELECT * FROM pages WHERE space_id=?", space.id),
   );
   run("DELETE FROM grants WHERE resource_id=?", space.id);
+  keepSpaceTemplates(space.id);
   run("DELETE FROM spaces WHERE id=?", space.id);
+}
+// The templates of a space deleted for good (#136) are not lost: they
+// become private templates of their creators (nobody else could see the
+// space's content before either).
+export function keepSpaceTemplates(spaceId: string) {
+  run(
+    "UPDATE templates SET space_id=NULL,visibility=CASE WHEN visibility IN ('instance','public') THEN visibility ELSE 'private' END,version=version+1 WHERE space_id=?",
+    spaceId,
+  );
 }
 // Removes a workspace with everything in it. Inside a transaction.
 export function purgeWorkspace(wid: string) {
