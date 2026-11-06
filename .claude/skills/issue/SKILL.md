@@ -29,6 +29,8 @@ Use the GitHub MCP tools (`mcp__github__*`, load via ToolSearch), never `gh`.
 Every issue/PR always carries exactly one `status:` label plus one type label. When switching, **remove the old `status:` label** (pass the full label list). Mirror the labels on PRs that belong to an issue.
 
 - Type: `bug`, `enhancement`, `documentation`, `question` (create the label in a repo where it is missing).
+  - **Categorise every item that has no type label yet** – by what it really is, not the reporter's template: something that worked or is documented and fails → `bug`; a new capability or a change of behaviour → `enhancement`; missing, wrong or unclear docs → `documentation`; a how-to, setup or configuration question → `question`. If the reporter picked the wrong one, correct it (e.g. a "bug" that is a feature request → `enhancement`) and say so in one line in the reply.
+  - Several types in one issue: the main one; the rest goes into the reply or a separate issue only if Yannic wants it.
 - `status: triage` – new, not looked at yet
 - `status: needs maintainer input` – waiting for Yannic's decision
 - `status: needs reporter info` – waiting for the reporter (keep the issue open)
@@ -53,7 +55,7 @@ For each item decide, in a few words:
 
 Then ask Yannic **one** `AskUserQuestion` round (max 4 questions, recommended option first with "(Recommended)", each question self-contained with the issue number and the cause you found). Small, clear bugs with an obvious fix need no question – just say you'll fix them. Never ask about `wontfix` silently: propose it as an option.
 
-Set labels now: being worked → `status: in progress`; question to Yannic still open → `status: needs maintainer input`; needs info from reporter → `status: needs reporter info` and post an English question to the reporter.
+Set labels now – the type label (categorise if missing, see Labels) plus the status: being worked → `status: in progress`; question to Yannic still open → `status: needs maintainer input`; needs info from reporter → `status: needs reporter info` and post an English question to the reporter.
 
 ## Step 3 – Implement
 

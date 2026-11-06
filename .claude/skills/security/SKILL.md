@@ -29,3 +29,7 @@ Real and cheap hardening: minimal fix + regression test that fails without it (u
 ## 4. Report (German)
 
 A table per group: `#` · verdict · one-line reason. Then: what was fixed (commit), test/run results, and **the dismiss list** for GitHub – per alert the reason category ("False positive", "Used in tests", "Won't fix") and a one-line English justification to paste. Alerts that close by themselves after the next CodeQL run (fixed code) are named separately. A secret-scanning alert is always critical: tell Yannic to rotate the secret first, before anything else.
+
+## Full audits
+
+A full or end-to-end security audit / pen test of a repository (not triage of given findings) → use the `security-audit` skill (Cloudflare's methodology, `.claude/skills/security-audit/`), then fix what it confirms the way this skill does.
