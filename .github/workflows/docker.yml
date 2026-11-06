@@ -229,7 +229,7 @@ jobs:
         run: |
           image="ghcr.io/${GITHUB_REPOSITORY,,}:sha-${GITHUB_SHA::7}"
           echo "Scanning $image"
-          docker run --rm -e TRIVY_USERNAME -e TRIVY_PASSWORD aquasec/trivy:0.56.2 image \
+          docker run --rm -e TRIVY_USERNAME -e TRIVY_PASSWORD aquasec/trivy:0.76.1 image \
             --severity HIGH,CRITICAL --ignore-unfixed --scanners vuln --exit-code 0 --format table \
             --timeout 15m "$image" | tee "$RUNNER_TEMP/trivy.txt"
           {
