@@ -2,6 +2,12 @@
 
 All releases of Flowplan, newest first. Generated from the commits by the release workflow.
 
+## v0.8.12 – 2026-11-06
+
+- Dependencies: TipTap 3.32.2, shiki 4.6.0, Trivy 0.76.1 ([5932217](https://github.com/yannicschuller/flowplan/commit/5932217db70fb0e5dd18ccb81ab889298ff93036))
+- Table toolbar sits below the caption and its Add caption button ([d82127e](https://github.com/yannicschuller/flowplan/commit/d82127efc8a2524afa38b267f333fff4d478f0ae))
+- Dialogs keep their heading at the top while the content scrolls (#139) ([cc316d5](https://github.com/yannicschuller/flowplan/commit/cc316d58df5208f1c097856752f40081bfbf059e))
+
 ## v0.8.11 – 2026-11-06
 
 - Help docs: regenerated (delayed deletion, session binding) ([8cb47a5](https://github.com/yannicschuller/flowplan/commit/8cb47a50378e55a6922ddb1d1317ce687c574f18))
