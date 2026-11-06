@@ -20,6 +20,7 @@ import { backupName, beyondKeep, copyPath, databaseCopy } from "./backup-copy";
 import { DELETED_UPLOADS, oldestBackup, parseDeleted, purgeable } from "./deleted-uploads";
 import { sendToSftp, sftpBackupActive, sftpBackupStatus } from "./sftp-backup";
 import { runDueSpaceGitExports } from "./space-git-export";
+import { firstAccount } from "./local-auth";
 
 const dataDir = () => resolve(process.env.FLOWPLAN_DATA_DIR || "./data");
 const DAY_MS = 86400_000;
@@ -151,6 +152,11 @@ export function startBackupWorker() {
   const backupDue = () => {
     const status = scheduledBackupStatus();
     if (!status.enabled) return false;
+    // Not before the first account: a new instance pointed at the bucket of
+    // an old one would put its empty copy next to the old backups – as the
+    // newest, the one the setup restore picks – and push one of them out of
+    // the kept ones.
+    if (firstAccount()) return false;
     if (status.last && Date.now() - status.last.at < (status.hourly ? HOUR_MS - 5 * 60_000 : DAY_MS) && !status.last.error) return false;
     return !(status.last?.error && Date.now() - status.last.at < 3600_000);
   };

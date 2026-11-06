@@ -19,7 +19,7 @@ process.env.FLOWPLAN_DATA_DIR = old;
 const { SCHEMA_VERSION, id, one, reopenDatabase, run } = await import("../lib/db");
 const { createWorkspace } = await import("../lib/seed");
 const { command, bootstrap } = await import("../lib/api");
-const { runScheduledBackup } = await import("../lib/scheduled-backup");
+const { runScheduledBackup, startBackupWorker } = await import("../lib/scheduled-backup");
 const { databaseCopy } = await import("../lib/backup-copy");
 const { instanceBackupStream } = await import("../lib/instance-backup");
 const { sealStream } = await import("../lib/encryption");
@@ -302,5 +302,23 @@ test("an uploaded database-only backup counts the files this instance's own buck
     for (const name of Object.keys(bucket)) delete process.env[name];
     s3.close();
   }
+  backOnOld();
+});
+
+test("a new instance makes no scheduled backup before its first account", async (t) => {
+  const dir = freshInstance();
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
+  startBackupWorker();
+  // The first check a minute after the start: nothing to back up yet – an
+  // empty copy would become the newest backup next to an old instance's.
+  t.mock.timers.tick(60_000);
+  for (let i = 0; i < 50; i++) await new Promise((done) => setImmediate(done));
+  assert.equal(existsSync(join(dir, "backups")), false);
+  // Set up: the next check makes the backup.
+  const user = id();
+  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", user, `local:${user}`, "Neu", "neu@example.test");
+  t.mock.timers.tick(10 * 60_000);
+  for (let i = 0; i < 500 && !existsSync(join(dir, "backups")); i++) await new Promise((done) => setImmediate(done));
+  assert.equal(readdirSync(join(dir, "backups")).length, 1);
   backOnOld();
 });
