@@ -66,9 +66,22 @@ export function TableTools({
     );
     if (docked && getComputedStyle(docked).position === "fixed")
       bottom = Math.min(bottom, docked.getBoundingClientRect().top - 8);
+    // The table's caption (or its "Add caption" button) sits right under
+    // the table – the bar goes below it instead of covering it.
+    let below = rect.bottom;
+    for (let el: Element | null = table; el && !el.classList.contains("ProseMirror"); el = el.parentElement) {
+      const next = el.nextElementSibling;
+      if (next?.classList.contains("block-caption")) {
+        const state = (next as HTMLElement).dataset.state;
+        const add = next.querySelector(".block-caption-add");
+        if (state === "add" && add) below = Math.max(below, add.getBoundingClientRect().bottom);
+        else if (state && state !== "none") below = Math.max(below, next.getBoundingClientRect().bottom);
+        break;
+      }
+    }
     const top = Math.max(
       rect.top + 4,
-      Math.min(rect.bottom + 6, bottom - height),
+      Math.min(below + 6, bottom - height),
     );
     const left = Math.max(
       safe.left + 8,
