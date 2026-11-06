@@ -474,11 +474,16 @@ test("handles stay centred on large headings after a move and tasks adapt when d
     return Math.abs(g.y + g.height / 2 - (h.y + h.height / 2));
   };
   await expect.poll(centred).toBeLessThan(4);
+  // The glide at a quarter of its speed (all animations of the page, on one
+  // timeline): enough frames to sample even on a busy machine.
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Animation.enable");
+  await cdp.send("Animation.setPlaybackRate", { playbackRate: 0.25 });
   // Sample every frame around the drop: the handle travels with the heading.
   await page.evaluate(() => {
     const w = window as unknown as { glide: number[] };
     w.glide = [];
-    const until = performance.now() + 4000;
+    const until = performance.now() + 6000;
     const tick = () => {
       const h = [...document.querySelectorAll("h1")].find((e) =>
           e.textContent?.includes("Große Überschrift"),
@@ -499,7 +504,12 @@ test("handles stay centred on large headings after a move and tasks adapt when d
   await expect(
     editor.locator(":scope > *").filter({ hasText: /\S/ }).first(),
   ).toHaveText("Alpha");
-  await page.waitForTimeout(700);
+  // Until the glide is over.
+  await expect
+    .poll(() => heading.evaluate((h) => h.getAnimations().length), { timeout: 10_000 })
+    .toBe(0);
+  await cdp.send("Animation.setPlaybackRate", { playbackRate: 1 });
+  await cdp.detach();
   expect(await centred()).toBeLessThan(4);
   const glide = await page.evaluate(
     () => (window as unknown as { glide: number[] }).glide,

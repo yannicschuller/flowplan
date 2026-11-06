@@ -71,6 +71,7 @@ import CalculationEditor from "./calculation-editor";
 import {
   browserZone,
   isTimed,
+  sqlTimestampToIso,
   validDateValue,
 } from "@/lib/date-values";
 import { defaultGallery, galleryImage } from "@/lib/database-gallery";
@@ -199,12 +200,15 @@ import {
 import {
   dateFormats,
   formatFieldDate,
+  formatTimestamp,
+  isTimestampType,
   formatNumber,
   numberFormats,
   ratingMax,
   timeFormats,
 } from "@/lib/field-format";
 import { IconImagePicker } from "./icon-image-picker";
+import { DraftInput } from "./draft-input";
 import dynamic from "next/dynamic";
 import { loadView } from "@/components/view-fallback";
 import { rememberViewShape } from "./skeleton";
@@ -2019,6 +2023,15 @@ export default function DatabaseView({
         </span>
       );
     }
+    // Created and edited time in the viewer's time zone, like a date with time.
+    if (isTimestampType(f.type) && v) {
+      return (
+        <span className="date-cell">
+          <CalendarBlank size={14} />
+          {formatTimestamp(v, f)}
+        </span>
+      );
+    }
     if (f.type === "number" && v !== undefined) {
       if (v === null || v === "") return <span className="muted">—</span>;
       if (f.rollupDisplay && f.rollupDisplay !== "number")
@@ -3068,7 +3081,8 @@ export default function DatabaseView({
                   fields: fields.map((f) => f.name),
                   data: shown.map((r) =>
                     // Formatted text (#126) as plain text.
-                    fields.map((f) => (isFormattedText(f, fields) ? toPlain(cellText(r.cells[f.id])) : cellText(r.cells[f.id]))),
+                    // Created and edited time as ISO 8601 instants, like dates with time.
+                    fields.map((f) => (isFormattedText(f, fields) ? toPlain(cellText(r.cells[f.id])) : isTimestampType(f.type) ? cellText(sqlTimestampToIso(r.cells[f.id])) : cellText(r.cells[f.id]))),
                   ),
                 }, { escapeFormulae: CSV_FORMULA }),
                 "text/csv",
@@ -4112,14 +4126,16 @@ export default function DatabaseView({
         >
           <label>
             {t("Name", "Name")}
-            <input
-              defaultValue={view.name}
+            {/* Saved on Enter, on leaving the field and when the panel
+                closes while it has focus (like the WIP limits, #131). */}
+            <DraftInput
+              key={view.id}
+              value={view.name}
               disabled={!viewEditable}
-              onBlur={(e) =>
-                e.target.value &&
-                e.target.value !== view.name &&
-                updateView({ name: e.target.value })
-              }
+              onCommit={(name) => {
+                const next = name.trim();
+                if (next && next !== view.name) void updateView({ name: next });
+              }}
             />
           </label>
           <p className="muted view-type-line">
@@ -4441,17 +4457,17 @@ export default function DatabaseView({
                   ↓
                 </button>
                 {view.type === "table" && (
-                  <input
+                  <DraftInput
                     type="number"
                     className="column-width-input"
                     aria-label={t(`${f.name} Breite in Pixeln`, `${f.name} width in pixels`)}
                     min={80}
                     max={800}
                     disabled={!viewEditable}
-                    key={`${f.id}-${view.columnWidths?.[f.id]}`}
-                    defaultValue={columnWidth(f)}
-                    onBlur={(e) => {
-                      const width = Number(e.target.value);
+                    key={`${view.id}-${f.id}-${view.columnWidths?.[f.id]}`}
+                    value={columnWidth(f)}
+                    onCommit={(text) => {
+                      const width = Number(text);
                       if (
                         width >= 80 &&
                         width <= 800 &&

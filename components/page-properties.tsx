@@ -35,7 +35,7 @@ import { LinkValue } from "./link-cell";
 import { Modal, api } from "./ui";
 import { Select } from "./select";
 import { safeCollisionPadding } from "./safe-area";
-import { formatDateValue } from "@/lib/date-values";
+import { formatDateValue, sqlTimestampToIso } from "@/lib/date-values";
 import { appCache, pageKey } from "@/lib/swr-cache";
 import { isLinkField } from "@/lib/cell-links";
 import { ScopeBadge, ScopeChoice } from "./meta-scope";
@@ -119,12 +119,9 @@ export function TagChip({ tag, onOpen, onRemove }: { tag: Pick<PageTag, "name" |
   );
 }
 
-// The SQLite time of a page ("2026-11-01 09:30:00", UTC) for people.
-const sqlTime = (value: string | null) => {
-  if (!value) return "";
-  const date = new Date(/[zZ]|[+-]\d\d:\d\d$/.test(value) ? value : `${value.replace(" ", "T")}Z`);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
-};
+// The SQLite time of a page ("2026-11-01 09:30:00", UTC) for people: in
+// their time zone, like a date property with time.
+const sqlTime = (value: string | null) => formatDateValue(sqlTimestampToIso(value || ""));
 
 // Choices made in this tab, ahead of page data that may still be cached
 // from before (switching pages back and forth, offline).

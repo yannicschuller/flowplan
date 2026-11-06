@@ -44,6 +44,13 @@ export function blockIdTransaction(state: EditorState, ranges: Range[]): Transac
   return change.setMeta(blockIdsKey, true);
 }
 
+// Script animations (Web Animations, not CSS) running in the editor: the
+// glide of moved blocks and their neighbours.
+const gliding = (dom: HTMLElement | undefined) =>
+  (dom?.getAnimations?.({ subtree: true }) ?? []).some(
+    (a) => a.playState === "running" && !("animationName" in a) && !("transitionProperty" in a),
+  );
+
 // Collects where local changes happened and names the blocks there right
 // after the change, in a transaction of its own: appended to the typing
 // itself, the Yjs binding could not follow it (its position tracking
@@ -65,12 +72,20 @@ export function blockIdsPlugin() {
     view: () => ({
       update(view) {
         if (!ranges.length || timer) return;
+        const since = Date.now();
         const run = () => {
           timer = null;
           if (view.isDestroyed) return;
           // Not in the middle of a composition (IME, dictation).
           if (view.composing) {
             timer = setTimeout(run, 200);
+            return;
+          }
+          // Not while moved blocks glide into place (lib/block-shortcuts.ts):
+          // a new id redraws the block, which ends its glide – the block
+          // would jump while its handle still glides. At most two seconds.
+          if (Date.now() - since < 2000 && gliding(view.dom)) {
+            timer = setTimeout(run, 50);
             return;
           }
           const change = blockIdTransaction(view.state, ranges);
