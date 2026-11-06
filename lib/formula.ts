@@ -592,6 +592,12 @@ export function evaluateFormula(
       );
     return value;
   }
+  // An empty date (an unset property) gives an empty result instead of an
+  // error, so formulas over optional dates stay blank. Callers still check
+  // their other arguments, and any non-empty date, first.
+  function blank(value: unknown) {
+    return value === null || value === undefined || value === "";
+  }
   function date(value: unknown, node: Span): string {
     if (!validDateValue(value))
       fail(
@@ -930,13 +936,22 @@ export function evaluateFormula(
           .toString();
         break;
       case "parsedate": {
+        if (blank(a)) {
+          value = "";
+          break;
+        }
         const parsed = date(a, node);
         value = isTimed(parsed) ? instant(parsed, node).toString() : parsed;
         break;
       }
       case "formatdate": {
-        const z = zoned(a, args[2], node),
-          pattern = b === undefined ? "YYYY-MM-DD" : str(1);
+        const pattern = b === undefined ? "YYYY-MM-DD" : str(1);
+        if (blank(a)) {
+          zone(args[2], node);
+          value = "";
+          break;
+        }
+        const z = zoned(a, args[2], node);
         const parts: Record<string, string> = {
           YYYY: String(z.year).padStart(4, "0"),
           MM: String(z.month).padStart(2, "0"),
@@ -953,9 +968,15 @@ export function evaluateFormula(
       }
       case "dateadd":
       case "datesubtract": {
-        const original = date(a, node),
-          amount = integer(b, node) * (node.name === "datesubtract" ? -1 : 1),
+        const amount =
+            integer(b, node) * (node.name === "datesubtract" ? -1 : 1),
           u = unit(c, node);
+        if (blank(a)) {
+          zone(args[3], node);
+          value = "";
+          break;
+        }
+        const original = date(a, node);
         if (
           !isTimed(original) &&
           ["years", "months", "weeks", "days"].includes(u)
@@ -977,12 +998,19 @@ export function evaluateFormula(
         break;
       }
       case "datebetween": {
+        // Check the unit and every non-empty date before an empty one makes
+        // the result empty: dateBetween("", "soon") is still an error.
+        const u = c === undefined ? undefined : unit(c, node);
+        for (const arg of [a, b]) if (!blank(arg)) date(arg, node);
+        if (blank(a) || blank(b)) {
+          value = "";
+          break;
+        }
         const end = instant(a, node),
           start = instant(b, node),
           delta = end.epochMilliseconds - start.epochMilliseconds;
-        if (c === undefined) value = Math.round(delta / 86400000);
+        if (u === undefined) value = Math.round(delta / 86400000);
         else {
-          const u = unit(c, node);
           if (u === "years" || u === "months")
             value = Math.trunc(
               start
@@ -1012,10 +1040,13 @@ export function evaluateFormula(
       case "day":
       case "hour":
       case "minute":
-        value = zoned(a, b, node)[node.name];
+        if (blank(a)) {
+          zone(b, node);
+          value = "";
+        } else value = zoned(a, b, node)[node.name];
         break;
       case "timestamp":
-        value = instant(a, node).epochMilliseconds;
+        value = blank(a) ? "" : instant(a, node).epochMilliseconds;
         break;
       case "fromtimestamp":
         value = Temporal.Instant.fromEpochMilliseconds(

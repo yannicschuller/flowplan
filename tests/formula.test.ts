@@ -286,6 +286,159 @@ test("date functions use explicit zones, calendar arithmetic, real elapsed time 
   ])
     assert.equal(formula(source, {}, fixed), "#ERROR", source);
 });
+test("date functions give an empty result for an empty date and keep real errors", () => {
+  for (const due of ["", null, undefined])
+    for (const source of [
+      'dateBetween(prop("Due"), now(), "days")',
+      'dateBetween(now(), prop("Due"))',
+      'dateAdd(prop("Due"), 1, "days")',
+      'dateSubtract(prop("Due"), 2, "months", "Europe/Berlin")',
+      'formatDate(prop("Due"), "DD.MM.YYYY")',
+      'parseDate(prop("Due"))',
+      'year(prop("Due")) + ""',
+      'month(prop("Due"))',
+      'day(prop("Due"))',
+      'hour(prop("Due"), "Europe/Berlin")',
+      'minute(prop("Due"))',
+      'timestamp(prop("Due"))',
+    ])
+      assert.equal(formula(source, { Due: due }, fixed), "", source);
+  assert.equal(
+    formula('empty(dateBetween(prop("Due"), today()))', { Due: "" }, fixed),
+    true,
+  );
+  assert.equal(
+    formula('coalesce(formatDate(prop("Due")), "–")', { Due: "" }, fixed),
+    "–",
+  );
+  for (const [source, cells] of [
+    ['dateBetween(prop("Due"), now())', { Due: "soon" }],
+    ['dateBetween(prop("Due"), now())', { Due: 5 }],
+    ['formatDate(prop("Due"))', { Due: ["2026-09-23"] }],
+    ['dateAdd(prop("Due"), 1, "unknown")', { Due: "" }],
+    ['dateAdd(prop("Due"), "x", "days")', { Due: "" }],
+    ['dateBetween(prop("Due"), now(), "unknown")', { Due: "" }],
+    ['formatDate(prop("Due"), "YYYY", "Mars/Olympus")', { Due: "" }],
+    ['day(prop("Due"), "Mars/Olympus")', { Due: "" }],
+    ['dateBetween(prop("Due"), "garbage")', { Due: "" }],
+    ['dateBetween("garbage", prop("Due"))', { Due: "" }],
+    ['dateBetween(prop("Due"), 5, "days")', { Due: "" }],
+    ['dateBetween(prop("Due"), prop("Start"))', { Due: "", Start: "soon" }],
+    [
+      'dateBetween(prop("Due"), prop("Start"), "unknown")',
+      { Due: "", Start: "" },
+    ],
+  ] as [string, Record<string, unknown>][])
+    assert.equal(formula(source, cells, fixed), "#ERROR", source);
+  assert.equal(
+    formula('dateBetween(prop("Due"), prop("Start"))', { Due: "", Start: "" }),
+    "",
+  );
+});
+test("an empty date result compares and adds like an empty number", () => {
+  // Pins current behaviour: <, >, <= and >= and arithmetic read an empty value
+  // as 0 (`+` joins it as text, `==` stays strict), for an empty Number
+  // property and an empty date result alike. Guard optional dates with
+  // empty() to keep them blank.
+  const soon =
+    'if(dateBetween(prop("Due"), now(), "days") < 3, "due soon", "ok")';
+  assert.equal(formula(soon, { Due: "" }, fixed), "due soon");
+  assert.equal(formula('if(prop("N") < 3, "low", "ok")', { N: "" }), "low");
+  assert.equal(formula(soon, { Due: "2026-10-30" }, fixed), "ok");
+  assert.equal(
+    formula('dateBetween(prop("Due"), now()) == 0', { Due: "" }, fixed),
+    false,
+  );
+  assert.equal(
+    formula('dateBetween(prop("Due"), now()) + 1', { Due: "" }, fixed),
+    formula('prop("N") + 1', { N: "" }),
+  );
+  assert.equal(
+    formula(`if(empty(prop("Due")), "", ${soon})`, { Due: "" }, fixed),
+    "",
+  );
+});
+test("formulas over empty dates and empty date rollups stay blank in views", () => {
+  const fields: Field[] = [
+    { id: "due", name: "Due", type: "date" },
+    {
+      id: "left",
+      name: "Days left",
+      type: "formula",
+      formula: 'dateBetween(prop("Due"), now(), "days")',
+    },
+    {
+      id: "relation",
+      name: "Relation",
+      type: "relation",
+      relationPage: "tasks",
+    },
+    {
+      id: "latest",
+      name: "Latest",
+      type: "rollup",
+      relationField: "relation",
+      rollupField: "due",
+      aggregate: "latest_date",
+    },
+    {
+      id: "since",
+      name: "Since",
+      type: "formula",
+      formula: 'formatDate(prop("Latest"), "DD.MM.YYYY")',
+    },
+  ];
+  const related = { tasks: [] },
+    schemas = { tasks: [{ id: "due", name: "Due", type: "date" } as Field] };
+  const view: View = {
+    id: "table",
+    name: "Table",
+    type: "table",
+    filters: [],
+    sorts: [{ field: "left", direction: "asc" }],
+  };
+  const data = ["2026-09-30", undefined, "2026-09-20"].map((due, i) => ({
+    ...row(due ? { due } : {}),
+    id: String(i),
+  }));
+  const result = queryRows(data, fields, view, "", related, schemas, fixed.now);
+  assert.deepEqual(
+    result.map((r) => r.cells.left),
+    ["", -3, 6],
+  );
+  assert.equal(result[0].cells.since, "");
+  const overdue = queryRows(
+    data,
+    fields,
+    { ...view, filters: [{ field: "left", op: "lt", value: "0" }] },
+    "",
+    related,
+    schemas,
+    fixed.now,
+  );
+  assert.deepEqual(
+    overdue.map((r) => r.id),
+    ["2"],
+  );
+  const empty = queryRows(
+    data,
+    fields,
+    { ...view, filters: [{ field: "left", op: "empty", value: "" }] },
+    "",
+    related,
+    schemas,
+    fixed.now,
+  );
+  assert.deepEqual(
+    empty.map((r) => r.id),
+    ["1"],
+  );
+  assert.deepEqual(numericSummary(fields[1], result), {
+    sum: 3,
+    count: 2,
+    errors: 0,
+  });
+});
 test("expression, recursion, collection and output limits reject oversized work", () => {
   assert.equal(formula("x".repeat(2001), {}), "#LIMIT");
   assert.equal(formula("(".repeat(60) + "1" + ")".repeat(60), {}), "#LIMIT");

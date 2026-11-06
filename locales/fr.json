@@ -2503,7 +2503,7 @@
   "Diamond": "Losange",
   "Diamond (aggregation)": "Losange (agrégation)",
   "Didn't start this? Just close this window.": "Vous n’êtes pas à l’origine de cette demande ? Fermez simplement cette fenêtre.",
-  "Difference. Without a unit, rounded days as before; with a unit, whole units, month and year differences in UTC.": "Différence. Sans unité, jours arrondis comme avant ; avec une unité, unités entières, différences de mois et d’années en UTC.",
+  "Difference. Without a unit, rounded days as before; with a unit, whole units, month and year differences in UTC. If a date is empty, the result is empty – with <, >, <= and >= it counts as 0, like an empty number.": "Différence. Sans unité, jours arrondis comme avant ; avec une unité, unités entières, différences de mois et d’années en UTC. Si une date est vide, le résultat est vide – avec <, >, <= et >=, il compte comme 0, comme un nombre vide.",
   "Different address: {0} → {1}. Passkeys are bound to the domain and must be created again; change the OIDC redirect address at the provider; CalDAV and CardDAV accounts, the server address in the apps, incoming webhooks (Git, tickets, e-mail) and share links still point to the old address. Better keep the domain.": "Adresse différente : {0} → {1}. Les clés d’accès sont liées au domaine et doivent être recréées ; modifiez l’adresse de redirection OIDC chez le fournisseur ; les comptes CalDAV et CardDAV, l’adresse du serveur dans les apps, les webhooks entrants (Git, tickets, e-mail) et les liens de partage pointent encore vers l’ancienne adresse. Mieux vaut garder le domaine.",
   "different people since midnight": "personnes différentes depuis minuit",
   "different value: {0}": "valeur différente : {0}",
