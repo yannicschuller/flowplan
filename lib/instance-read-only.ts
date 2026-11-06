@@ -24,7 +24,7 @@ export function readOnlyState(): ReadOnlyState {
 // Requests that still work while the instance is read-only: signing in and
 // out, the move itself, and reads that are sent with a body.
 const ALLOWED = [
-  /^\/api\/auth\/(login|logout|callback|passkey|passkey-options|password|totp-login|totp-after-passkey|totp-recovery|desktop|desktop-redeem|no-script)$/,
+  /^\/api\/auth\/(login|logout|callback|passkey|passkey-options|password|totp-login|totp-after-passkey|totp-recovery|desktop|desktop-redeem|no-script|app-sign-in-report)$/,
   /^\/api\/admin\/instance-move$/,
   /^\/api\/move\//,
   /^\/api\/(home\/data|presence|activity|capture\/preview|clip)$/,

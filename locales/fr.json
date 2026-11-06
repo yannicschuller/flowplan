@@ -7606,6 +7606,8 @@
   "The answer from NetBox is not JSON.": "La réponse de NetBox n’est pas du JSON.",
   "The API address needs http(s):// and no credentials or parameters.": "L’adresse de l’API doit commencer par http(s):// et ne contenir ni identifiants ni paramètres.",
   "The API token is invalid or has expired.": "Le jeton d’API est invalide ou a expiré.",
+  "The app could not open the sign-in": "L’app n’a pas pu ouvrir la connexion",
+  "The app did not open the sign-in. Update the Flowplan app and try again. If it happens again, please report it – the instance's log has the details.": "L’app n’a pas ouvert la connexion. Mettez à jour l’app Flowplan et réessayez. Si cela se reproduit, signalez-le – le journal de l’instance contient les détails.",
   "The app is stored for offline use (version {0})": "L’application est enregistrée pour une utilisation hors ligne (version {0})",
   "The app's files are stored with the next update.": "Les fichiers de l’application seront enregistrés à la prochaine mise à jour.",
   "The app's session ends after this many days in which neither the app nor its widgets were used.": "La session de l’app se termine après ce nombre de jours sans que l’app ni ses widgets aient été utilisés.",

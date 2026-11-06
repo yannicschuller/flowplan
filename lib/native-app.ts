@@ -42,6 +42,10 @@ type FlowplanApp = {
   // iPhone and iPad: handwriting recognition on the device; answers with
   // the event "flowplan:ink-recognized" (contract: lib/ink/recognition.ts).
   recognizeInk?: (request: import("./ink/recognition").InkRecognitionRequest) => void;
+  // Sign-in with passkeys ("passkey" is null) or SSO through the system's
+  // sheet, answered with the event "flowplan:sign-in" (lib/app-sign-in.ts;
+  // apps newer than 1.0.5, #109).
+  signIn?: (via: "sso" | null) => void;
 };
 
 export function nativeApp(): FlowplanApp | undefined {

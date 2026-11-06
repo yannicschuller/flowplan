@@ -45,6 +45,7 @@ import {
   startPendingLink,
   type OidcProfile,
 } from "@/lib/oidc-link";
+import { appSignInReportLine } from "@/lib/app-sign-in-report";
 import { refuseSsoOnly, removeIdentity, removePassword, signInOverview } from "@/lib/identities";
 import { confirmStep, sessionStartedAt, stepUpMethods } from "@/lib/step-up";
 export const runtime = "nodejs";
@@ -225,6 +226,9 @@ async function handleGET(
           title: say("Link ungültig", "Invalid link"),
           text: say("Starte die Anmeldung noch einmal in der Flowplan-App.", "Start signing in again from the Flowplan app."),
         });
+      // The sheet of the app reached the instance (#109: tells a sign-in the
+      // app never opened from one that failed later).
+      console.info(`App sign-in: the browser opened the hand-off${params.get("via") === "sso" ? " (SSO)" : ""}.`);
       const user = await currentUser();
       if (!user || user.demo) {
         // "Mit SSO anmelden" in the app goes straight to the provider.
@@ -376,6 +380,13 @@ async function handlePOST(
       return new Response(response.body, { status: 400, headers: response.headers });
     }
     checkOrigin(req);
+    // The app's sign-in page: a hand-off to the app that failed or went
+    // unanswered (lib/app-sign-in.ts, #109) – a line for whoever runs it.
+    if (action === "app-sign-in-report") {
+      const line = appSignInReportLine(await req.json().catch(() => null));
+      if (line) console.warn(line);
+      return new Response(null, { status: 204 });
+    }
     if (action === "demo") {
       if (process.env.NODE_ENV === "production")
         throw new HttpError(
