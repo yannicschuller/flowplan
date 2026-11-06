@@ -74,6 +74,7 @@ import {
   validDateValue,
 } from "@/lib/date-values";
 import { defaultGallery, galleryImage } from "@/lib/database-gallery";
+import { cardFields } from "@/lib/card-fields";
 import { GalleryCover } from "./gallery-cover";
 import { CoverFrame } from "./cover-frame";
 import { primePlaceholder } from "./image-placeholder";
@@ -2070,10 +2071,9 @@ export default function DatabaseView({
             {cellText(r.cells[fields[0].id]) || t("Ohne Titel", "Untitled")}
           </strong>
           <div className="card-properties">
-            {visibleFields
-              .slice(1, 4)
-              // The card's date sits in the footer; not twice.
-              .filter((f) => r.cells[f.id] && f.id !== dateField?.id)
+            {/* Every visible property with a value; the card's date sits
+                in the footer, not twice (#130). */}
+            {cardFields(visibleFields, r.cells, [fields[0].id, dateField?.id])
               .map((f) => (
                 <span key={f.id}>{display(r, f, "button")}</span>
               ))}
@@ -2886,7 +2886,8 @@ export default function DatabaseView({
             {cellText(r.cells[fields[0].id]) || t("Ohne Titel", "Untitled")}
           </span>
           <span>
-            {visibleFields.slice(1, 4).map((f) => (
+            {/* Compact: up to three properties with a value (#130). */}
+            {cardFields(visibleFields, r.cells, [fields[0].id], 3).map((f) => (
               <span key={f.id}>{display(r, f, "button")}</span>
             ))}
           </span>

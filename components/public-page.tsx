@@ -39,6 +39,7 @@ import {
   publicFieldsOf,
 } from "@/lib/shared-content";
 import { fileIdOf, fileUrls } from "@/lib/file-cells";
+import { cardFields } from "@/lib/card-fields";
 import { SharedInteractions } from "./shared-interactions";
 import {
   PublicCalendar,
@@ -409,14 +410,7 @@ async function renderPublishedPage({
                   {cellText(r.cells[d.fields[0]?.id]) || t("Ohne Titel", "Untitled")}
                 </strong>
                 <span className="card-properties">
-                  {(visible || [])
-                    .filter(
-                      (f) =>
-                        f.id !== d.fields[0]?.id &&
-                        r.cells[f.id] != null &&
-                        r.cells[f.id] !== "",
-                    )
-                    .slice(0, 3)
+                  {cardFields(visible || [], r.cells, [d.fields[0]?.id])
                     .map((f) => (
                       <span key={f.id}>
                         {publicValue(f, r.cells[f.id], d.fields, { links: false })}
@@ -591,10 +585,7 @@ async function PublicBoard({
                 {cellText(r.cells[fields[0]?.id]) || t("Ohne Titel", "Untitled")}
               </strong>
               <span className="card-properties">
-                {visible
-                  .filter((f) => f.id !== fields[0]?.id && f.id !== field?.id)
-                  .filter((f) => r.cells[f.id] != null && r.cells[f.id] !== "")
-                  .slice(0, 3)
+                {cardFields(visible, r.cells, [fields[0]?.id, field?.id])
                   .map((f) => (
                     <span key={f.id}>
                       {publicValue(f, r.cells[f.id], fields, { links: false })}
