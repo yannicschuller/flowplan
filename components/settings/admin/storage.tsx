@@ -1,7 +1,8 @@
 "use client";
 // Administration → Speicher & Sicherung: the one home of everything about
 // backups – what is stored where (local, S3), the S3 mirror and Litestream,
-// the scheduled backup with its settings and a run right now, the download
+// the scheduled backup with its settings and a run right now, its SFTP
+// target (#128), the download
 // of the whole instance, and the restore at the end.
 import { useState } from "react";
 import { DownloadSimple, UploadSimple } from "@phosphor-icons/react";
@@ -16,6 +17,7 @@ import { AdminLoading } from "../shell";
 import { AdminStatus, FixLink, InstanceNumber, InstanceSwitch, useDocs, type StatusItem } from "./parts";
 import { ago } from "./format";
 import { InstanceMove } from "./instance-move";
+import { SftpBackup } from "./sftp-backup";
 
 export default function StorageSection() {
   const t = useT();
@@ -56,6 +58,12 @@ export default function StorageSection() {
             }
           : { tone: "warn", label: t("Noch keine Sicherung", "No backup yet") },
   );
+  if (backup.sftp?.enabled)
+    items.push(
+      backup.sftp.last?.error || !backup.sftp.hostKey
+        ? { tone: "error", label: t("SFTP-Sicherung fehlgeschlagen", "SFTP backup failed") }
+        : { tone: backup.sftp.last ? "ok" : "warn", label: backup.sftp.last ? t("SFTP verbunden", "SFTP connected") : t("SFTP wartet auf erste Sicherung", "SFTP waits for the first backup") },
+    );
   if (data.restorePending)
     items.push({
       tone: "warn",
@@ -66,7 +74,9 @@ export default function StorageSection() {
       <AdminStatus
         items={items}
         action={
-          !backup.enabled || backup.last?.error ? (
+          backup.sftp?.enabled && (backup.sftp.last?.error || !backup.sftp.hostKey) ? (
+            <FixLink href="#admin/storage/sftp-backup">{t("Zum SFTP-Ziel", "To the SFTP target")}</FixLink>
+          ) : !backup.enabled || backup.last?.error ? (
             <FixLink href="#admin/storage/backup">{t("Zur Sicherung", "To the backup")}</FixLink>
           ) : s3 && !s3.enabled ? (
             <FixLink
@@ -78,6 +88,7 @@ export default function StorageSection() {
         }
       />
       <Backups data={data} storage={storage} onChange={load} />
+      <SftpBackup onError={onError} />
       <StorageUsage storage={storage} />
       <InstanceBackup />
       {storage.data && <StorageCounts data={storage.data} />}

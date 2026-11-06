@@ -366,9 +366,10 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     icon: "HardDrives",
     title: { de: "Speicher & Sicherung", en: "Storage & backup" },
     description: { de: "Belegung, S3, Litestream, geplante Sicherung und die Sicherung der gesamten Instanz.", en: "Usage, S3, Litestream, scheduled backup and the backup of the whole instance." },
-    keywords: { de: "speicher s3 bucket litestream sicherung backup stündlich aufbewahren wiederherstellen restore herunterladen", en: "storage s3 bucket litestream backup hourly keep restore download" },
+    keywords: { de: "speicher s3 bucket litestream sicherung backup stündlich aufbewahren wiederherstellen restore herunterladen sftp", en: "storage s3 bucket litestream backup hourly keep restore download sftp" },
     entries: [
       { title: { de: "Geplante Sicherung", en: "Scheduled backup" }, keywords: { de: "täglich stündlich jetzt sichern", en: "daily hourly back up now" }, anchor: "backup" },
+      { title: { de: "SFTP-Ziel", en: "SFTP target" }, keywords: { de: "sftp ssh server hostschlüssel nas smb nfs", en: "sftp ssh server host key nas smb nfs" }, anchor: "sftp-backup" },
       { title: { de: "Sicherung der gesamten Instanz", en: "Backup of the whole instance" }, anchor: "instance-backup" },
       { title: { de: "Aus Sicherung wiederherstellen", en: "Restore from backup" }, anchor: "restore" },
     ],

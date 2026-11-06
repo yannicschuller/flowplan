@@ -24,11 +24,11 @@ const ID_BYTES = 8,
 export const HEADER_BYTES = MAGIC.length + ID_BYTES + IV_BYTES;
 export const OVERHEAD = HEADER_BYTES + TAG_BYTES;
 
-type Key = { id: Buffer; secret: Buffer };
+export type Key = { id: Buffer; secret: Buffer };
 const keyId = (secret: Buffer) => createHash("sha256").update("flowplan-encryption-key-id\0").update(secret).digest().subarray(0, ID_BYTES);
 const hex = (id: Buffer) => id.toString("hex");
 
-function parseKey(text: string, name: string): Key {
+export function parseKey(text: string, name: string): Key {
   const value = text.trim();
   const secret = /^[0-9a-f]{64}$/i.test(value) ? Buffer.from(value, "hex") : Buffer.from(value, "base64");
   if (secret.length !== 32 || (!/^[0-9a-f]{64}$/i.test(value) && !/^[A-Za-z0-9+/_-]{43}=?$/.test(value)))
@@ -64,9 +64,11 @@ export const isEncrypted = (data: Uint8Array) => data.length >= OVERHEAD && Buff
 function header(key: Key) {
   return Buffer.concat([MAGIC, key.id, randomBytes(IV_BYTES)]);
 }
-function decipherFor(head: Buffer) {
+// extra: keys given for this one file (the key entered when restoring a
+// backup on a new instance, lib/setup-restore.ts), besides the configured ones.
+function decipherFor(head: Buffer, extra: Key[] = []) {
   const id = head.subarray(MAGIC.length, MAGIC.length + ID_BYTES);
-  const key = encryptionKeys().all.find((k) => k.id.equals(id));
+  const key = [...extra, ...encryptionKeys().all].find((k) => k.id.equals(id));
   if (!key) throw new Error(`Verschlüsselt mit dem Schlüssel ${hex(id)}, der hier nicht eingerichtet ist.`);
   const decipher = createDecipheriv("aes-256-gcm", key.secret, head.subarray(MAGIC.length + ID_BYTES));
   decipher.setAAD(head.subarray(0, MAGIC.length + ID_BYTES));
@@ -85,10 +87,10 @@ export function seal(data: Uint8Array): Buffer {
 }
 
 // Plain data comes back as it is; encrypted data with any configured key.
-export function unseal(data: Uint8Array): Buffer {
+export function unseal(data: Uint8Array, extra: Key[] = []): Buffer {
   const buffer = Buffer.from(data);
   if (!isEncrypted(buffer)) return buffer;
-  const decipher = decipherFor(buffer.subarray(0, HEADER_BYTES));
+  const decipher = decipherFor(buffer.subarray(0, HEADER_BYTES), extra);
   decipher.setAuthTag(buffer.subarray(buffer.length - TAG_BYTES));
   try {
     return Buffer.concat([decipher.update(buffer.subarray(HEADER_BYTES, buffer.length - TAG_BYTES)), decipher.final()]);
@@ -123,7 +125,7 @@ export function sealStream(): Transform {
 
 // Decrypts a file into another. The output is only complete (and only to be
 // used) when the promise resolves: GCM checks the tag at the very end.
-export async function unsealFile(source: string, target: string) {
+export async function unsealFile(source: string, target: string, extra: Key[] = []) {
   const size = statSync(source).size;
   const head = Buffer.alloc(HEADER_BYTES),
     tag = Buffer.alloc(TAG_BYTES);
@@ -135,7 +137,7 @@ export async function unsealFile(source: string, target: string) {
     closeSync(fd);
   }
   if (size < OVERHEAD || !isEncrypted(Buffer.concat([head, tag]))) throw new Error("Keine verschlüsselte Flowplan-Datei.");
-  const decipher = decipherFor(head);
+  const decipher = decipherFor(head, extra);
   decipher.setAuthTag(tag);
   try {
     const body = size > OVERHEAD ? createReadStream(source, { start: HEADER_BYTES, end: size - TAG_BYTES - 1 }) : Readable.from([]);
@@ -154,6 +156,19 @@ export function fileIsEncrypted(path: string) {
   } finally {
     closeSync(fd);
   }
+}
+
+// Whether one of the configured keys (or one given) opens an encrypted file.
+export function fileKeyKnown(path: string, extra: Key[] = []) {
+  const head = Buffer.alloc(HEADER_BYTES);
+  const fd = openSync(path, "r");
+  try {
+    readSync(fd, head, 0, HEADER_BYTES, 0);
+  } finally {
+    closeSync(fd);
+  }
+  const id = head.subarray(MAGIC.length, MAGIC.length + ID_BYTES);
+  return [...extra, ...encryptionKeys().all].some((k) => k.id.equals(id));
 }
 
 // For the Admin page: which key, which earlier ones, or what is wrong.

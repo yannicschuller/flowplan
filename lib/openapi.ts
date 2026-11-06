@@ -1388,6 +1388,8 @@ export const routesOutsideSpec: Record<string, string> = {
   "app/api/issue-sync/hook/[token]/route.ts": "GitHub/GitLab issue webhooks, verified by their own token and signature",
   "app/api/admin/instance-backup/route.ts": "Administration only; tokens never administer",
   "app/api/admin/instance-move/route.ts": "Administration only; tokens never administer",
+  "app/api/admin/sftp-backup/route.ts": "Administration only; tokens never administer",
+  "app/api/setup/restore/route.ts": "Restore on a new instance before its first account, only with the setup link; never API tokens",
   "app/api/move/[...path]/route.ts": "Instance move between two servers: only the one-time move token of the old instance (fpmove_…), never API tokens",
   "app/api/admin/directory/route.ts": "Administration only; tokens never administer",
   "app/api/admin/operations/route.ts": "Administration only; tokens never administer",

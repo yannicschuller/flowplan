@@ -1,4 +1,4 @@
-import { setupStorage } from "./storage";
+import { setupStorage, stopStorage } from "./storage";
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync, unlinkSync } from "node:fs";
 import { applyPendingRestore } from "./instance-restore-apply";
@@ -14,8 +14,13 @@ const globalDb = globalThis as unknown as {
   flowplanSchema?: number;
   flowplanRollback?: (() => void)[];
 };
+// The schema this version of Flowplan writes, kept in the database file as
+// PRAGMA user_version: a restore refuses a backup from a newer version
+// (lib/setup-restore.ts); older ones are brought up to date by migrate().
+// Raise it together with the "Schema NN" step at the end of migrate().
+export const SCHEMA_VERSION = 90;
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 90) return;
+  if (globalDb.flowplanSchema === SCHEMA_VERSION) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -1145,7 +1150,10 @@ function migrate(d: DatabaseSync) {
   // the existing values of text properties (not titles) are escaped once
   // so they show as before; data_migrations remembers one-time steps.
   migrateFormattedText(d);
-  globalDb.flowplanSchema = 90;
+  // A database from a newer version keeps its number.
+  if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
+    d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
+  globalDb.flowplanSchema = SCHEMA_VERSION;
 }
 // Schema 88 – sign-in identities of an account (#101, lib/identities.ts):
 // every OpenID Connect identity (issuer and subject) an account signs in
@@ -1296,6 +1304,19 @@ export function db() {
   cleanDeletedFiles(d);
   setupStorage(d);
   return d;
+}
+// Closes the database and opens it again; a staged restore
+// (<data>/restore-pending) is swapped in between. Only for the restore while
+// the instance has no accounts yet (lib/setup-restore.ts): nothing else holds
+// the old handle then.
+export function reopenDatabase() {
+  stopStorage();
+  try {
+    globalDb.flowplanDb?.close();
+  } catch {}
+  globalDb.flowplanDb = undefined;
+  globalDb.flowplanSchema = undefined;
+  return db();
 }
 export function one<T = Record<string, unknown>>(
   sql: string,

@@ -79,6 +79,8 @@ export type AdminData = {
     keep: number;
     target: "s3" | "local";
     last: { at: number; target: string; name: string; bytes: number; error: string | null } | null;
+    // The additional SFTP target (lib/sftp-backup.ts).
+    sftp?: { enabled: boolean; hostKey: string | null; last: { at: number; error: string | null } | null };
   };
   // Who may use AI when only selected people may (lib/ai/settings.ts).
   aiPolicy?: { access: "everyone" | "selected"; enabled: boolean; allowed: string[] };

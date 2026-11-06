@@ -1,0 +1,191 @@
+/* Backups via SFTP and the restore on the setup screen (#128):
+   components/settings/admin/sftp-backup.tsx and components/setup-restore.tsx. */
+.sftp-form textarea,
+.sftp-form select,
+.sftp-form input:not([type="checkbox"]) {
+  width: 100%;
+  max-width: 480px;
+  min-width: 0;
+}
+.sftp-form label {
+  display: grid;
+  gap: 4px;
+}
+.sftp-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 110px;
+  gap: 8px 12px;
+  max-width: 480px;
+}
+.sftp-key {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  resize: vertical;
+}
+.sftp-form code,
+.sftp-hostkey code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.sftp-hostkey {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+}
+.sftp-hostkey > div {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.sftp-hostkey p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--secondary);
+}
+.sftp-hostkey.changed {
+  border-color: #e3b4b5;
+  background: #fcf1f1;
+}
+[data-theme="dark"] .sftp-hostkey.changed {
+  border-color: #6b3436;
+  background: #2c1a1b;
+}
+
+/* The setup screen. */
+.setup-restore {
+  display: grid;
+  gap: 14px;
+  text-align: left;
+}
+.login-card .setup-restore p {
+  margin: 0;
+}
+.setup-restore .login-switch {
+  text-align: center;
+}
+.setup-restore-done {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: var(--text) !important;
+}
+.setup-restore-done svg {
+  color: #1a7f37;
+}
+.setup-restore-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.setup-restore-tabs button {
+  flex: 1;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--secondary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.setup-restore-tabs button.active {
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: 0 1px 3px #1d1a1414;
+}
+.setup-restore-key {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--secondary);
+}
+.setup-restore-key input,
+.setup-restore-form textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+}
+.setup-restore-form textarea {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.setup-restore-key.asked input {
+  border-color: var(--signal);
+}
+.setup-restore-form {
+  margin-bottom: 0;
+}
+.setup-restore-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+}
+.setup-restore-row:has(.setup-restore-port) {
+  grid-template-columns: minmax(0, 1fr) 96px;
+}
+.setup-restore-form details {
+  display: grid;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--secondary);
+}
+.setup-restore-form details label {
+  margin-top: 10px;
+}
+.setup-restore-hostkey {
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+}
+.setup-restore-hostkey > div {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.login-card .setup-restore-hostkey small {
+  margin: 0;
+  font-size: 12px;
+}
+.setup-restore-hostkey code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.login-form .setup-restore-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.login-form .setup-restore-confirm input {
+  width: auto;
+}
+.login-card .setup-restore > small {
+  margin-top: 0;
+  font-size: 11px;
+  line-height: 1.6;
+}
+@media (max-width: 480px) {
+  .setup-restore-row,
+  .sftp-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -1,0 +1,194 @@
+// Restore from a backup on the setup screen of a new instance (#128): an
+// uploaded scheduled backup or instance download, or the newest backup on
+// an SFTP server – into a fresh data folder, while no account exists.
+import { test, after } from "node:test";
+import assert from "node:assert/strict";
+import { copyFileSync, createWriteStream, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pipeline } from "node:stream/promises";
+import { randomBytes } from "node:crypto";
+import { DatabaseSync } from "node:sqlite";
+import type { Identity } from "../lib/types";
+import { startSftpServer } from "./helpers/sftp-server";
+
+const old = mkdtempSync(join(tmpdir(), "flowplan-setup-restore-old-"));
+process.env.FLOWPLAN_DATA_DIR = old;
+const { SCHEMA_VERSION, id, one, reopenDatabase, run } = await import("../lib/db");
+const { createWorkspace } = await import("../lib/seed");
+const { command, bootstrap } = await import("../lib/api");
+const { runScheduledBackup } = await import("../lib/scheduled-backup");
+const { instanceBackupStream } = await import("../lib/instance-backup");
+const { sealStream } = await import("../lib/encryption");
+const sftpBackup = await import("../lib/sftp-backup");
+const restore = await import("../lib/setup-restore");
+const { firstAccount } = await import("../lib/local-auth");
+
+// The old instance: an account, a page and a file.
+const uid = id();
+run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, `local:${uid}`, "Ana", "ana@example.test");
+const owner = { id: uid, name: "Ana", email: "ana@example.test", groups: [], isAdmin: true, disabled: 0, created_at: "" } as Identity;
+const wid = createWorkspace(owner.id, "Alt");
+const page = (command(owner, { action: "page.create", workspaceId: wid, spaceId: bootstrap(owner, wid).spaces[0].id, title: "Aus der Sicherung" }) as { id: string }).id;
+const fid = id();
+mkdirSync(join(old, "uploads"), { recursive: true });
+writeFileSync(join(old, "uploads", fid), "Anhang der alten Instanz");
+run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fid, page, "anhang.txt", "text/plain", 24, uid);
+const keep = mkdtempSync(join(tmpdir(), "flowplan-setup-restore-files-"));
+after(() => (process.env.FLOWPLAN_DATA_DIR = old));
+
+// Every scenario starts on a fresh, empty instance.
+function freshInstance() {
+  delete process.env.FLOWPLAN_ENCRYPTION_KEY;
+  const dir = mkdtempSync(join(tmpdir(), "flowplan-setup-restore-new-"));
+  process.env.FLOWPLAN_DATA_DIR = dir;
+  reopenDatabase();
+  assert.equal(firstAccount(), true);
+  return dir;
+}
+function backOnOld() {
+  process.env.FLOWPLAN_DATA_DIR = old;
+  reopenDatabase();
+}
+function restoredPage(dir: string) {
+  assert.equal(firstAccount(), false, "the accounts came back");
+  assert.equal(one<{ title: string }>("SELECT title FROM pages WHERE id=?", page)?.title, "Aus der Sicherung");
+  return existsSync(join(dir, "uploads", fid)) ? readFileSync(join(dir, "uploads", fid), "utf8") : null;
+}
+
+test("round trip: scheduled backup → fresh instance → restore → data present", async () => {
+  const result = await runScheduledBackup(Date.UTC(2026, 10, 6, 3, 0));
+  assert.equal(result.error, null);
+  const file = join(keep, result.name);
+  copyFileSync(join(old, "backups", result.name), file);
+  // The schema version travels with the copy.
+  const copy = new DatabaseSync(file, { readOnly: true });
+  assert.equal((copy.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, SCHEMA_VERSION);
+  copy.close();
+  const dir = freshInstance();
+  const restored = await restore.restoreUpload(file, "", result.name);
+  assert.equal(restored.restart, false);
+  assert.equal(restored.createdAt, "2026-11-06T03:00:00.000Z");
+  assert.ok(restored.users >= 1 && restored.pages >= 1);
+  // A database-only backup brings no files (they come from S3 or SFTP).
+  assert.equal(restoredPage(dir), null);
+  assert.ok(readdirSync(dir).some((n) => n.startsWith("pre-restore-")), "the empty start is kept");
+  // Now that an account exists, nobody may restore here any more.
+  assert.equal(restore.setupRestoreOpen(), false);
+  assert.throws(() => restore.requireSetupRestore(""), /schon eingerichtet/);
+  backOnOld();
+});
+
+test("an encrypted instance download needs the key and brings the files", async () => {
+  const key = randomBytes(32).toString("base64");
+  process.env.FLOWPLAN_ENCRYPTION_KEY = key;
+  const file = join(keep, "flowplan-instanz.zip.enc");
+  await pipeline(instanceBackupStream().pipe(sealStream()), createWriteStream(file));
+  const dir = freshInstance();
+  await assert.rejects(restore.restoreUpload(file, ""), (e: Error & { needsKey?: boolean }) => e.needsKey === true && /verschlüsselt/.test(e.message));
+  await assert.rejects(restore.restoreUpload(file, randomBytes(32).toString("base64")), /Schlüssel passt nicht/);
+  await assert.rejects(restore.restoreUpload(file, "zu-kurz"), /32 Bytes/);
+  assert.equal(firstAccount(), true, "nothing was replaced");
+  const restored = await restore.restoreUpload(file, key);
+  assert.equal(restored.files, 1);
+  // The key was entered, not configured: a hint to set it.
+  assert.equal(restored.keyHint, true);
+  assert.equal(restoredPage(dir), "Anhang der alten Instanz");
+  backOnOld();
+});
+
+test("refuses while an account exists, and backups from a newer version", async () => {
+  const result = await runScheduledBackup(Date.UTC(2026, 10, 6, 4, 0));
+  const file = join(keep, result.name);
+  copyFileSync(join(old, "backups", result.name), file);
+  // On the old instance (it has accounts) the setup restore is closed.
+  assert.equal(restore.setupRestoreOpen(), false);
+  await assert.rejects(restore.restoreUpload(file, ""), /schon eingerichtet/);
+  // A database from a newer Flowplan.
+  const newer = join(keep, "flowplan-2099-01-01-00-00.sqlite");
+  copyFileSync(file, newer);
+  const db = new DatabaseSync(newer);
+  db.exec(`PRAGMA user_version=${SCHEMA_VERSION + 1}`);
+  db.close();
+  freshInstance();
+  await assert.rejects(restore.restoreUpload(newer, ""), /neueren Flowplan-Version/);
+  // Neither SQLite nor ZIP.
+  const junk = join(keep, "junk.bin");
+  writeFileSync(junk, "kein Backup");
+  await assert.rejects(restore.restoreUpload(junk, ""), /keine Flowplan-Sicherung/);
+  assert.equal(firstAccount(), true);
+  backOnOld();
+});
+
+test("with FLOWPLAN_SETUP_TOKEN only with the token", () => {
+  const dir = freshInstance();
+  process.env.FLOWPLAN_SETUP_TOKEN = "einrichten";
+  try {
+    assert.equal(restore.setupRestoreOpen(""), false);
+    assert.throws(() => restore.requireSetupRestore("falsch"), /Einrichtungslink/);
+    assert.equal(restore.setupRestoreOpen("einrichten"), true);
+  } finally {
+    delete process.env.FLOWPLAN_SETUP_TOKEN;
+  }
+  assert.ok(dir);
+  backOnOld();
+});
+
+test("an archive with an entry outside its folders is refused", async () => {
+  const { ZipFile } = await import("yazl");
+  const zip = new ZipFile();
+  zip.addBuffer(Buffer.from(JSON.stringify({ format: "flowplan-instance-1" })), "manifest.json");
+  // yazl refuses such a name: written with a placeholder of the same
+  // length, swapped in the finished bytes (local header and directory).
+  const evil = "uploads/a/../../../evil",
+    placeholder = "uploads/aXXXXXXXXXXevil";
+  zip.addBuffer(Buffer.from("x"), placeholder);
+  zip.end();
+  const file = join(keep, "evil.zip");
+  await pipeline(zip.outputStream, createWriteStream(file));
+  writeFileSync(file, Buffer.from(readFileSync(file).toString("latin1").replaceAll(placeholder, evil), "latin1"));
+  const dir = freshInstance();
+  await assert.rejects(restore.restoreUpload(file, ""), /unbekannte Einträge|Ungültige ZIP|Beschädigte Sicherung/);
+  assert.ok(!existsSync(join(dir, "..", "evil")));
+  assert.equal(firstAccount(), true);
+  backOnOld();
+});
+
+test("the newest backup from an SFTP server, with its files, encrypted", async () => {
+  const key = randomBytes(32).toString("base64");
+  process.env.FLOWPLAN_ENCRYPTION_KEY = key;
+  const remote = mkdtempSync(join(tmpdir(), "flowplan-setup-restore-sftp-"));
+  const server = await startSftpServer(remote, { user: "backup", password: "geheim-genug" });
+  try {
+    const target = { host: "127.0.0.1", port: server.port, username: "backup", password: "geheim-genug", directory: "flowplan" };
+    sftpBackup.saveSftpBackup(uid, { ...target, enabled: true, auth: "password", keep: 5, uploads: true });
+    sftpBackup.trustSftpHostKey(uid, (await sftpBackup.testSftpBackup()).fingerprint);
+    assert.equal((await sftpBackup.runSftpBackup(Date.UTC(2026, 10, 6, 5, 0))).error, null);
+    assert.equal((await sftpBackup.runSftpBackup(Date.UTC(2026, 10, 6, 6, 0))).error, null);
+    // On the server everything is encrypted.
+    assert.equal(readFileSync(join(remote, "flowplan/uploads", fid)).subarray(0, 4).toString(), "FPE1");
+    const dir = freshInstance();
+    // The host key is looked at first, without the password.
+    const before = server.logins;
+    const { fingerprint } = await restore.probeSftp(target);
+    assert.equal(fingerprint, server.hostKey);
+    assert.equal(server.logins, before);
+    assert.throws(() => restore.startRemoteRestore("sftp", target, key), /Hostschlüssel/);
+    // Without the key: asked for.
+    restore.startRemoteRestore("sftp", { ...target, fingerprint }, "");
+    const missing = await restore.setupRestoreSettled();
+    assert.equal(missing?.phase, "error");
+    assert.equal(missing?.needsKey, true);
+    restore.startRemoteRestore("sftp", { ...target, fingerprint }, key);
+    const done = await restore.setupRestoreSettled();
+    assert.equal(done?.error, null);
+    assert.equal(done?.phase, "done");
+    assert.equal(done?.result?.createdAt, "2026-11-06T06:00:00.000Z");
+    assert.deepEqual([done?.result?.files, done?.result?.missingFiles], [1, 0]);
+    assert.equal(restoredPage(dir), "Anhang der alten Instanz");
+  } finally {
+    await server.close();
+    delete process.env.FLOWPLAN_ENCRYPTION_KEY;
+  }
+  backOnOld();
+});

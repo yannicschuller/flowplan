@@ -6,13 +6,16 @@
 // With FLOWPLAN_ENCRYPTION_KEY the copy is encrypted (flowplan-….sqlite.enc,
 // lib/encryption.ts), in the bucket and in the data folder alike. Daily, or
 // hourly when Litestream is off and the encrypted copies replace it.
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+// An SFTP server (lib/sftp-backup.ts, #128) receives the same copy as well.
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
-import { id, one, run } from "./db";
+import { one, run } from "./db";
 import { instanceSettings } from "./instance-settings";
 import { bucketFetch, storageConfig } from "./storage";
 import { lastMarkdownExport, runMarkdownExports } from "./scheduled-markdown-export";
-import { encryptionEnabled, seal } from "./encryption";
+import { encryptionEnabled } from "./encryption";
+import { backupName, beyondKeep, copyPath, databaseCopy } from "./backup-copy";
+import { sendToSftp, sftpBackupActive, sftpBackupStatus } from "./sftp-backup";
 import { runDueSpaceGitExports } from "./space-git-export";
 
 const dataDir = () => resolve(process.env.FLOWPLAN_DATA_DIR || "./data");
@@ -43,19 +46,15 @@ async function listBucket(prefix: string) {
 
 export async function runScheduledBackup(now = Date.now()): Promise<BackupRun> {
   const keep = Math.max(1, instanceSettings().backupKeep ?? 14);
-  let name = `flowplan-${new Date(now).toISOString().slice(0, 16).replace(/[:T]/g, "-")}.sqlite`;
-  const tmp = resolve(dataDir(), "tmp");
-  mkdirSync(tmp, { recursive: true });
-  const copy = resolve(tmp, `backup-${id()}.sqlite`);
+  let name = backupName(now, false);
+  const copy = copyPath();
   const config = storageConfig();
   let result: BackupRun;
+  let made: ReturnType<typeof databaseCopy> | null = null;
   try {
-    // Fails before anything is written when the key is wrong.
-    const encrypted = encryptionEnabled();
-    if (encrypted) name += ".enc";
-    run(`VACUUM INTO '${copy.replaceAll("'", "''")}'`);
-    if (encrypted) writeFileSync(copy, seal(readFileSync(copy)));
-    const bytes = statSync(copy).size;
+    made = databaseCopy(now, copy);
+    name = made.name;
+    const { encrypted, bytes } = made;
     if (config) {
       const response = await bucketFetch(`backups/${name}`, {
         method: "PUT",
@@ -64,28 +63,29 @@ export async function runScheduledBackup(now = Date.now()): Promise<BackupRun> {
       });
       if (!response.ok) throw new Error(`Hochladen: HTTP ${response.status}`);
       const keys = (await listBucket(`${config.prefix ? `${config.prefix}/` : ""}backups/`))
-        .filter((k) => BACKUP_NAME.test(k))
-        .sort();
-      for (const key of keys.slice(0, Math.max(0, keys.length - keep)))
+        .filter((k) => BACKUP_NAME.test(k));
+      for (const key of beyondKeep(keys, keep))
         await bucketFetch(key.slice((config.prefix ? `${config.prefix}/` : "").length), { method: "DELETE" });
       result = { at: now, target: "s3", name, bytes, error: null };
     } else {
       const folder = resolve(dataDir(), "backups");
       mkdirSync(folder, { recursive: true });
-      const { renameSync } = await import("node:fs");
-      renameSync(copy, resolve(folder, name));
-      const files = readdirSync(folder)
-        .filter((f) => BACKUP_NAME.test(f))
-        .sort();
-      for (const file of files.slice(0, Math.max(0, files.length - keep))) rmSync(resolve(folder, file));
+      // A copy, not a move, when the SFTP target below still sends this one.
+      (sftpBackupActive() ? copyFileSync : renameSync)(copy, resolve(folder, name));
+      for (const file of beyondKeep(readdirSync(folder).filter((f) => BACKUP_NAME.test(f)), keep)) rmSync(resolve(folder, file));
       result = { at: now, target: "local", name, bytes, error: null };
     }
   } catch (error) {
     result = { at: now, target: config ? "s3" : "local", name, bytes: 0, error: String((error as Error).message || error).slice(0, 300) };
+  }
+  try {
+    remember(result);
+    // The same copy also goes to the SFTP server when one is set up; its
+    // outcome is recorded on its own (lib/sftp-backup.ts).
+    if (made && existsSync(copy) && sftpBackupActive()) await sendToSftp(made, now);
   } finally {
     if (existsSync(copy)) rmSync(copy);
   }
-  remember(result);
   return result;
 }
 
@@ -104,6 +104,8 @@ export function scheduledBackupStatus() {
     keep: settings.backupKeep ?? 14,
     target: storageConfig() ? ("s3" as const) : ("local" as const),
     last: lastRun(),
+    // The additional SFTP target (lib/sftp-backup.ts).
+    sftp: sftpBackupStatus(),
   };
 }
 

@@ -5,6 +5,48 @@ import { PAGE_LOCALE } from "./locale-tag";
 import { securityRules } from "./security-kinds";
 
 const exact: Record<string, string> = {
+  // Backups via SFTP and the restore while setting up (lib/sftp.ts, lib/sftp-backup.ts, lib/setup-restore.ts, #128).
+  "Der Hostschlüssel des SFTP-Servers hat sich geändert. Erst nach einer Bestätigung in der Administration wird wieder gesichert.": "The SFTP server's host key has changed. Backups resume only after it is confirmed in the administration.",
+  "Der Hostschlüssel des SFTP-Servers ist noch nicht bestätigt.": "The SFTP server's host key is not confirmed yet.",
+  "Ungültiger SFTP-Server.": "Invalid SFTP server.",
+  "Ungültiger Ordner auf dem SFTP-Server.": "Invalid folder on the SFTP server.",
+  "Anmeldung am SFTP-Server fehlgeschlagen: Benutzer, Passwort oder Schlüssel stimmen nicht.": "Sign-in to the SFTP server failed: user, password or key is wrong.",
+  "Zeitüberschreitung beim Verbinden mit dem SFTP-Server.": "Connecting to the SFTP server timed out.",
+  "Den SFTP-Server gibt es unter diesem Namen nicht.": "There is no SFTP server under this name.",
+  "Der SFTP-Server ist nicht erreichbar.": "The SFTP server cannot be reached.",
+  "Der private Schlüssel kann nicht gelesen werden (Format oder Passphrase).": "The private key cannot be read (format or passphrase).",
+  "Verbindung zum SFTP-Server fehlgeschlagen.": "Connecting to the SFTP server failed.",
+  "Der SFTP-Server hat die Verbindung beendet.": "The SFTP server closed the connection.",
+  "Auf dem SFTP-Server liegt eine Datei, wo der Ordner hin soll.": "On the SFTP server there is a file where the folder should be.",
+  "Die gespeicherten SFTP-Zugangsdaten lassen sich nicht entschlüsseln – bitte neu eingeben.": "The stored SFTP credentials cannot be decrypted – please enter them again.",
+  "Bitte Server, Benutzer und Anmeldung des SFTP-Ziels angeben.": "Please enter server, user and sign-in of the SFTP target.",
+  "Bitte das Passwort für den SFTP-Server angeben.": "Please enter the password for the SFTP server.",
+  "Bitte den privaten Schlüssel für den SFTP-Server angeben.": "Please enter the private key for the SFTP server.",
+  "Zuerst das SFTP-Ziel speichern.": "Save the SFTP target first.",
+  "Der Ordner auf dem SFTP-Server ist nicht beschreibbar.": "The folder on the SFTP server is not writable.",
+  "Bitte zuerst die Verbindung testen und dann den angezeigten Hostschlüssel bestätigen.": "Please test the connection first and then confirm the host key shown.",
+  "Kein SFTP-Ziel eingerichtet.": "No SFTP target set up.",
+  "Die Sicherung stammt aus einer neueren Flowplan-Version. Bitte zuerst Flowplan auf diese Version aktualisieren.": "The backup comes from a newer Flowplan version. Please update Flowplan to that version first.",
+  "Der Schlüssel passt nicht zu dieser Sicherung.": "The key does not fit this backup.",
+  "Die Sicherung ist verschlüsselt. Bitte den Schlüssel der alten Instanz (FLOWPLAN_ENCRYPTION_KEY) eingeben.": "The backup is encrypted. Please enter the old instance's key (FLOWPLAN_ENCRYPTION_KEY).",
+  "Diese Instanz ist schon eingerichtet. Wiederherstellen geht hier nur über die Administration.": "This instance is already set up. Restoring is only possible in the administration here.",
+  "Diese Instanz wird mit einem Einrichtungslink eingerichtet. Frag die Person, die sie betreibt.": "This instance is set up with a setup link. Ask the person who runs it.",
+  "Der Schlüssel muss 32 Bytes lang sein (base64 oder 64 Hex-Zeichen).": "The key must be 32 bytes long (base64 or 64 hex characters).",
+  "Das ist keine Flowplan-Sicherung (weder Datenbank noch Instanzsicherung).": "This is not a Flowplan backup (neither a database nor an instance backup).",
+  "Es läuft schon eine Wiederherstellung.": "A restore is already running.",
+  "Wiederherstellung fehlgeschlagen.": "Restore failed.",
+  "Bitte Adresse, Bucket und Zugangsschlüssel des S3-Speichers angeben.": "Please enter the address, bucket and access keys of the S3 storage.",
+  "Die Adresse des S3-Speichers muss mit https:// oder http:// beginnen.": "The address of the S3 storage must start with https:// or http://.",
+  "Ungültiger Ordner im Bucket.": "Invalid folder in the bucket.",
+  "Leere Antwort des Speichers.": "Empty answer from the storage.",
+  "Der S3-Speicher ist nicht erreichbar.": "The S3 storage cannot be reached.",
+  "Der S3-Speicher lehnt die Zugangsschlüssel ab.": "The S3 storage refuses the access keys.",
+  "Im Bucket liegt keine geplante Sicherung (Ordner backups/).": "There is no scheduled backup in the bucket (folder backups/).",
+  "Eine Datei im Bucket ist beschädigt.": "A file in the bucket is damaged.",
+  "Den Ordner gibt es auf dem SFTP-Server nicht.": "The folder does not exist on the SFTP server.",
+  "Im Ordner auf dem SFTP-Server liegt keine Sicherung.": "There is no backup in the folder on the SFTP server.",
+  "Der Hostschlüssel des SFTP-Servers stimmt nicht mit dem bestätigten überein.": "The SFTP server's host key does not match the confirmed one.",
+  "Bitte zuerst den Hostschlüssel des SFTP-Servers prüfen und bestätigen.": "Please check and confirm the SFTP server's host key first.",
   // Instance move (lib/instance-move.ts, lib/instance-move-pull.ts, lib/instance-read-only.ts).
   "Diese Instanz ist wegen eines Umzugs schreibgeschützt. Änderungen sind erst auf der neuen Instanz wieder möglich.": "This instance is read-only because it is moving. Changes are possible again on the new instance.",
   "Ungültige Adresse der Quelle.": "Invalid address of the source.",
@@ -1091,6 +1133,9 @@ const exact: Record<string, string> = {
   "Seiten verschlüsselter Bereiche haben keine Tags und Eigenschaften.": "Pages of encrypted spaces have no tags or properties.",
 };
 const patterns: [RegExp, string][] = [
+  // Scheduled backups and the restore while setting up (lib/scheduled-backup.ts, lib/setup-restore.ts).
+  [/^Liste der Sicherungen: HTTP (\d+)$/, "List of backups: HTTP $1"],
+  [/^Herunterladen: HTTP (\d+)$/, "Download: HTTP $1"],
   // Instance move (lib/instance-read-only.ts, lib/instance-move-pull.ts).
   [/^Diese Instanz ist umgezogen nach (.+)\. Änderungen sind nur noch dort möglich\.$/, "This instance has moved to $1. Changes are only possible there."],
   [/^Die Quelle ist nicht erreichbar: (.+)$/s, "The source cannot be reached: $1"],
