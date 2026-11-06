@@ -332,7 +332,12 @@ async function handleGET(
     // lists the readable pages with that tag.
     if (path[0] === "tags" && path.length <= 2)
       return NextResponse.json(
-        tagListing(user, z.uuid().parse(url.searchParams.get("workspace")), path[1] ? z.uuid().parse(path[1]) : undefined),
+        tagListing(
+          user,
+          z.uuid().parse(url.searchParams.get("workspace")),
+          path[1] ? z.uuid().parse(path[1]) : undefined,
+          url.searchParams.get("sameName") === "1",
+        ),
         { headers: { "Cache-Control": "no-store" } },
       );
     // Collections (#86, lib/collections.ts): the list, a collection's
@@ -1390,6 +1395,8 @@ async function handlePOST(
           z.uuid().parse(data.get("workspaceId")),
           Buffer.from(await file.arrayBuffer()),
           data.get("private") === "true" ? "private" : "workspace",
+          // The space the template belongs to (#136); without it the workspace.
+          data.get("spaceId") ? z.uuid().parse(data.get("spaceId")) : null,
         ),
       );
     }

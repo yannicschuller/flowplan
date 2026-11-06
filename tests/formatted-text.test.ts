@@ -79,7 +79,7 @@ test("schema 90: existing text values are escaped once, titles and other types s
   run("DELETE FROM data_migrations WHERE name=?", FORMATTED_TEXT_MIGRATION);
   (globalThis as { flowplanSchema?: number }).flowplanSchema = undefined;
   db();
-  assert.equal((globalThis as { flowplanSchema?: number }).flowplanSchema, 90);
+  assert.ok(((globalThis as { flowplanSchema?: number }).flowplanSchema ?? 0) >= 90);
   const [first, second] = cellsOf(pageId);
   assert.equal(first.title, "*Titel* bleibt", "titles stay plain text");
   assert.equal(first.notes, "\\*stars\\* and snake\\_case \\[x\\](https://x.test) \\\\ back");

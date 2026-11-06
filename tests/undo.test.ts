@@ -41,11 +41,11 @@ test("a page to the trash comes back with page.restore and reopens", () => {
 });
 
 test("a moved page goes back next to its old neighbour", () => {
-  assert.deepEqual(placeOf(pages, "b"), { action: "page.move", pageId: "b", targetId: "a", placement: "after" });
-  assert.deepEqual(placeOf(pages, "a"), { action: "page.move", pageId: "a", targetId: "b", placement: "before" });
-  assert.deepEqual(placeOf([page("x", "p")], "x"), { action: "page.move", pageId: "x", parentId: "p", spaceId: "s" });
-  const plan = undoFor({ action: "page.move", pageId: "a2", targetId: "c", placement: "after" }, state())!;
-  assert.deepEqual(plan.commands(state()), [{ action: "page.move", pageId: "a2", targetId: "a1", placement: "after" }]);
+  assert.deepEqual(placeOf(pages, "b"), { action: "page.move", pageId: "b", targetId: "a", placement: "after", meta: "auto" });
+  assert.deepEqual(placeOf(pages, "a"), { action: "page.move", pageId: "a", targetId: "b", placement: "before", meta: "auto" });
+  assert.deepEqual(placeOf([page("x", "p")], "x"), { action: "page.move", pageId: "x", parentId: "p", spaceId: "s", meta: "auto" });
+  const plan = undoFor({ action: "page.move", pageId: "a2", targetId: "c", placement: "after", meta: "auto" }, state())!;
+  assert.deepEqual(plan.commands(state()), [{ action: "page.move", pageId: "a2", targetId: "a1", placement: "after", meta: "auto" }]);
   // Into another workspace (a space of another workspace): no undo here.
   assert.equal(undoFor({ action: "page.move", pageId: "a", spaceId: "elsewhere", workspaceId: "w" }, state()), null);
   assert.equal(undoFor({ action: "pages.bulk", operation: "move", pageIds: ["b", "c"], parentId: "a" }, state())!.commands(state()).length, 2);

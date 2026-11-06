@@ -643,6 +643,7 @@ CommandPageCreate = TypedDict("CommandPageCreate", {
     "parentId": str,  # Parent page in the same space
     "databaseKind": Literal["tasks", "documents", "contacts", "empty"],
     "templateId": str,  # A saved page template of the workspace
+    "meta": Union[Literal["auto", "copy", "remove"], dict[str, Any]],  # With a template of another space: what to do with its space's tags and properties (see template.dependencies); default `auto`
     "starterTemplate": str,  # A built-in starter template key
 }, total=False)
 
@@ -755,11 +756,12 @@ CommandPagesTagResult = TypedDict("CommandPagesTagResult", {
     "pages": Required[int],
 }, total=False)
 
-# Create or change a tag. Without `tagId` a new tag (members with edit rights); with `tagId` rename or recolour it (workspace owners). Names are unique in the workspace ignoring case (409). Colours: gray, blue, green, red, yellow, orange, purple, pink, teal. Owners also send tag.delete {workspaceId, tagId}, tag.merge {workspaceId, tagId, into} and tag.reorder {workspaceId, order}. Renaming, merging and deleting also change the values of database properties with the tags as options (`tagOptions`).
+# Create or change a tag. Without `tagId` a new tag: with `spaceId` one of that space (members who may write there), without it (or `spaceId: null`) one of the whole workspace (workspace owners). With `tagId` rename or recolour it (workspace owners; space owners for their space's tags). A space's tags are used only by pages of that space; names are unique within a space together with the workspace's tags, ignoring case (409) – two spaces may each have a tag of the same name. Colours: gray, blue, green, red, yellow, orange, purple, pink, teal. Also tag.delete {workspaceId, tagId}, tag.merge {workspaceId, tagId, into} (into a workspace tag or one of the same space) and tag.reorder {workspaceId, order}. Renaming, merging and deleting also change the values of database properties with the tags as options (`tagOptions`) where the tag is known. Tags in GET /api/tags carry `spaceId` (null: whole workspace).
 CommandTagSave = TypedDict("CommandTagSave", {
     "action": Required[Literal["tag.save"]],
     "workspaceId": Required[str],
     "tagId": str,
+    "spaceId": Optional[str],  # New tags: the space it belongs to; null or missing: the whole workspace
     "name": Required[str],
     "color": Literal["gray", "blue", "green", "red", "yellow", "orange", "purple", "pink", "teal"],
 }, total=False)
@@ -798,7 +800,7 @@ CommandCollectionUpdateResult = TypedDict("CommandCollectionUpdateResult", {
     "query": Required[str],
 }, total=False)
 
-# Create or change a page property. Workspace owners. A property every page of the workspace can have a value for. Types: text, number, date, select, multiselect, checkbox, person, url, email, phone, created_at, updated_at, created_by, updated_by (the last four are read from the page). `options` for select and multiselect. Changing the type or removing options converts the values where possible and removes the others. Also property.delete {workspaceId, propertyId} and property.reorder {workspaceId, order}.
+# Create or change a page property. Workspace owners; for a space's own properties (`spaceId` on creation) also that space's owner. A property every page of the workspace – or of that space – can have a value for; names are unique within a space together with the workspace's properties. Types: text, number, date, select, multiselect, checkbox, person, url, email, phone, created_at, updated_at, created_by, updated_by (the last four are read from the page). `options` for select and multiselect. Changing the type or removing options converts the values where possible and removes the others. Also property.delete {workspaceId, propertyId} and property.reorder {workspaceId, order}.
 CommandPropertySave = TypedDict("CommandPropertySave", {
     "action": Required[Literal["property.save"]],
     "workspaceId": Required[str],
@@ -806,10 +808,99 @@ CommandPropertySave = TypedDict("CommandPropertySave", {
     "name": Required[str],
     "type": Literal["text", "number", "date", "select", "multiselect", "checkbox", "person", "url", "email", "phone", "created_at", "updated_at", "created_by", "updated_by"],
     "options": list[str],
+    "spaceId": Optional[str],  # New properties: the space it belongs to; null or missing: the whole workspace
 }, total=False)
 
 CommandPropertySaveResult = TypedDict("CommandPropertySaveResult", {
     "id": Required[str],
+}, total=False)
+
+# Change the scope of a tag (whole workspace or one space). Workspace owners. `spaceId: null` makes a space's tag one of the whole workspace (same-named tags of other spaces are refused with 409 unless `mergeSameName` folds them into it). A space's id limits it to that space: pages and database records outside it that carry the tag are refused with 409 (`resolve: "block"`, the default), get a tag of the same name in their own space (`resolve: "copy"`) or lose it (`resolve: "remove"`). See where it is used first with meta.usage. property.scope {workspaceId, propertyId, spaceId, resolve?, mergeSameName?} does the same for page properties (merging needs the same type).
+CommandTagScope = TypedDict("CommandTagScope", {
+    "action": Required[Literal["tag.scope"]],
+    "workspaceId": Required[str],
+    "tagId": Required[str],
+    "spaceId": Required[Optional[str]],
+    "resolve": Literal["block", "copy", "remove"],
+    "mergeSameName": bool,
+}, total=False)
+
+CommandTagScopeResult = TypedDict("CommandTagScopeResult", {
+    "id": Required[str],
+    "ok": Required[Literal[True]],
+}, total=False)
+
+# Change the scope of a page property (whole workspace or one space). As tag.scope, for page properties.
+CommandPropertyScope = TypedDict("CommandPropertyScope", {
+    "action": Required[Literal["property.scope"]],
+    "workspaceId": Required[str],
+    "propertyId": Required[str],
+    "spaceId": Required[Optional[str]],
+    "resolve": Literal["block", "copy", "remove"],
+    "mergeSameName": bool,
+}, total=False)
+
+CommandPropertyScopeResult = TypedDict("CommandPropertyScopeResult", {
+    "id": Required[str],
+    "ok": Required[Literal[True]],
+}, total=False)
+
+# Where a tag or property is used outside a space. Workspace owners. Before tag.scope/property.scope: per other space the pages and records using it (`usage`), and same-named ones it would meet (`clashes`). Changes nothing.
+CommandMetaUsage = TypedDict("CommandMetaUsage", {
+    "action": Required[Literal["meta.usage"]],
+    "workspaceId": Required[str],
+    "kind": Required[Literal["tag", "property"]],
+    "id": Required[str],
+    "spaceId": Required[Optional[str]],
+}, total=False)
+
+CommandMetaUsageResult = TypedDict("CommandMetaUsageResult", {
+    "usage": Required[list[dict[str, Any]]],
+    "clashes": Required[list[dict[str, Any]]],
+}, total=False)
+
+# What a move would bring that its destination lacks. Same input as page.move. Lists the tags and properties of the source space (into another workspace: all) that the page, its sub-pages and their databases' records carry and that the destination does not use (`foreign`: kind, id, name, pages, records, `sameName` – the same-named one there – and `candidates` to map to). Changes nothing.
+CommandPageMoveCheck = TypedDict("CommandPageMoveCheck", {
+    "action": Required[Literal["page.moveCheck"]],
+    "pageId": Required[str],
+    "targetId": str,
+    "placement": Literal["before", "after", "inside"],
+    "parentId": str,
+    "spaceId": str,
+}, total=False)
+
+CommandPageMoveCheckResult = TypedDict("CommandPageMoveCheckResult", {
+    "foreign": Required[list[dict[str, Any]]],
+    "target": Required[dict[str, Any]],
+}, total=False)
+
+# Copy a saved template into another space or the whole workspace. Needs write access to the target space; for the whole workspace (`spaceId: null`, not private) workspace owners, and only with the workspace's tags and properties (409, or `spaceMeta: "remove"` leaves the space's out). Into another space its space's tags and properties are mapped, copied (created there now) or removed per `meta` (see template.dependencies; default `auto`). template.update takes `spaceId`, `spaceMeta` and `meta` the same way to change a template's own scope.
+CommandTemplateCopy = TypedDict("CommandTemplateCopy", {
+    "action": Required[Literal["template.copy"]],
+    "workspaceId": Required[str],
+    "templateId": Required[str],
+    "spaceId": Required[Optional[str]],
+    "name": str,
+    "private": bool,
+    "meta": Union[Literal["auto", "copy", "remove"], dict[str, Any]],
+    "spaceMeta": Literal["remove"],
+}, total=False)
+
+CommandTemplateCopyResult = TypedDict("CommandTemplateCopyResult", {
+    "id": Required[str],
+    "ok": Required[Literal[True]],
+}, total=False)
+
+# What a template of another space brings into a space. The tags and properties of the template's own space (and names the target lacks) when it is used in `spaceId`: each with `sameName` (the same-named one there) and `candidates`. Their ids (`tag:<name>`, `property:<name>`) are the keys of `meta` in page.create, template.apply and template.copy. Empty for templates of the whole workspace or of that space. Changes nothing.
+CommandTemplateDependencies = TypedDict("CommandTemplateDependencies", {
+    "action": Required[Literal["template.dependencies"]],
+    "workspaceId": Required[str],
+    "templateId": Required[str],
+    "spaceId": Required[str],
+}, total=False)
+
+CommandTemplateDependenciesResult = TypedDict("CommandTemplateDependenciesResult", {
+    "items": Required[list[dict[str, Any]]],
 }, total=False)
 
 # Make a record repeat when it is done. Needs editor rights on the record. When the record becomes done (the database's done rule), a copy is created with `field` (a date property) moved to the next occurrence and other dates moved by as many days. Monthly and yearly rules keep the day of the month (`day`, default: the current date's day); `weekdays` (1 = Monday) picks days of a weekly rule. `repeat: null` removes the rule.
@@ -840,6 +931,7 @@ CommandPageMove = TypedDict("CommandPageMove", {
     "placement": Literal["before", "after", "inside"],  # Default: inside
     "parentId": str,  # New parent when there is no target
     "spaceId": str,  # Move into another space
+    "meta": Union[Literal["auto", "copy", "remove"], dict[str, Any]],  # Into another space or workspace: what to do with the source space's tags and properties the pages carry (page.moveCheck lists them, by id): map to one of the destination, copy there, or remove. Without it such a move is refused with 409 – nothing is dropped silently.
 }, total=False)
 
 CommandPageMoveResult = TypedDict("CommandPageMoveResult", {
@@ -1297,7 +1389,7 @@ CommandHomeSaveResult = TypedDict("CommandHomeSaveResult", {
 }, total=False)
 
 # One action of the interface, as sent by POST /api/command.
-Command = Union["CommandWorkspaceCreate", "CommandSpaceCreate", "CommandSpaceReorder", "CommandPageCreate", "CommandBlockIds", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPagePurge", "CommandTemplatePurge", "CommandTrashEmpty", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandSidebarState", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
+Command = Union["CommandWorkspaceCreate", "CommandSpaceCreate", "CommandSpaceReorder", "CommandPageCreate", "CommandBlockIds", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandTagScope", "CommandPropertyScope", "CommandMetaUsage", "CommandPageMoveCheck", "CommandTemplateCopy", "CommandTemplateDependencies", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPagePurge", "CommandTemplatePurge", "CommandTrashEmpty", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandSidebarState", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
 
 # ---- Parameters of the operations ----
 
@@ -1362,6 +1454,7 @@ PreviewCollectionQuery = TypedDict("PreviewCollectionQuery", {
 
 TagPagesQuery = TypedDict("TagPagesQuery", {
     "workspace": Required[str],  # Workspace ID
+    "sameName": Literal["0", "1"],  # 1: also the same-named tags of other spaces
 }, total=False)
 
 RelatedQuery = TypedDict("RelatedQuery", {
@@ -1836,7 +1929,7 @@ class FlowplanClient:
         return self._json("GET", "/api/graph", query=dict(query) if query else None, headers=headers)
 
     def tags(self, query: "TagsQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
-        """Tags and page properties of a workspace — The tags (`id`, `name`, `color`, `position`, `pages`: how many readable pages carry it, `records`: how many readable database records carry it in a property with the tags as options) and the property definitions (`id`, `name`, `type`, `options`). Guests see only the tags and properties of pages and records shared with them. A page's own tags and values come with GET /api/pages/{id} as `properties` (`tags`: tag IDs, `values`: by property ID, `info`: created and changed at and by). Answered with `Cache-Control: no-store`. (GET /api/tags)"""
+        """Tags and page properties of a workspace — The tags (`id`, `name`, `color`, `position`, `spaceId` – null for the whole workspace, else the space it belongs to –, `pages`: how many readable pages carry it, `records`: how many readable database records carry it in a property with the tags as options) and the property definitions (`id`, `name`, `type`, `options`, `spaceId`). A space's own tags and properties are listed for those who may open that space (or see a page carrying them) and for workspace owners. Guests see only the tags and properties of pages and records shared with them. A page's own tags and values come with GET /api/pages/{id} as `properties` (`tags`: tag IDs, `values`: by property ID, `info`: created and changed at and by). Answered with `Cache-Control: no-store`. (GET /api/tags)"""
         return self._json("GET", "/api/tags", query=dict(query) if query else None, headers=headers)
 
     def collections(self, query: "CollectionsQuery", headers: Optional[dict[str, str]] = None) -> list[dict[str, Any]]:
@@ -1852,7 +1945,7 @@ class FlowplanClient:
         return self._json("GET", "/api/collections/preview", query=dict(query) if query else None, headers=headers)
 
     def tag_pages(self, id: str, query: "TagPagesQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
-        """Pages and records with a tag — Like /api/tags, plus `pages`: the readable pages with this tag, and `records`: the readable database records carrying it in a property with the tags as options, latest change first. Answered with `Cache-Control: no-store`. (GET /api/tags/{id})"""
+        """Pages and records with a tag — Like /api/tags, plus `pages`: the readable pages with this tag, and `records`: the readable database records carrying it in a property with the tags as options, latest change first. A tag is one id; with `sameName=1` also the tags of the same name in other spaces. Answered with `Cache-Control: no-store`. (GET /api/tags/{id})"""
         return self._json("GET", "/api/tags/" + _p(id), query=dict(query) if query else None, headers=headers)
 
     def related(self, query: Optional["RelatedQuery"] = None, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:

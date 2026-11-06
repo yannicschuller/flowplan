@@ -42,8 +42,11 @@ export const MAX_TAG_NAME = 60,
   MAX_OPTION_LENGTH = 100,
   MAX_TEXT_VALUE = 2000;
 
-export type PageTag = { id: string; name: string; color: PageTagColor; position: number };
-export type PagePropertyDef = { id: string; name: string; type: PagePropertyType; options: string[]; position: number };
+// `spaceId` is the scope (#136): null for the whole workspace, else the
+// space ("Bereich") the tag or definition belongs to – only pages of that
+// space use it. Optional for values built in the browser.
+export type PageTag = { id: string; name: string; color: PageTagColor; position: number; spaceId?: string | null };
+export type PagePropertyDef = { id: string; name: string; type: PagePropertyType; options: string[]; position: number; spaceId?: string | null };
 // Who made the page and who changed it last (the read-only types).
 export type PageInfo = { createdAt: string | null; createdBy: string | null; updatedAt: string | null; updatedBy: string | null };
 // What a page carries (in pageData as `properties`).
@@ -58,14 +61,32 @@ export type WorkspaceTaxonomy = {
   manage: boolean;
   // May create new tags while tagging a page.
   createTags: boolean;
+  // Spaces whose own tags and definitions this person manages (space
+  // managers, #136); workspace owners (`manage`) manage every scope.
+  manageSpaces?: string[];
 };
 
 // Tags and properties by name, as templates, copies between workspaces,
 // archives and imports carry them (the ids differ between workspaces).
+// `space: true` marks what belonged to a space (#136): where it is put on a
+// page, a missing one is created for that page's space, never for the whole
+// workspace.
 export type PortableMeta = {
-  tags?: { name: string; color?: string }[];
-  properties?: { name: string; type: PagePropertyType; options?: string[]; value: unknown }[];
+  tags?: { name: string; color?: string; space?: boolean }[];
+  properties?: { name: string; type: PagePropertyType; options?: string[]; value: unknown; space?: boolean }[];
 };
+
+// ---- Scopes (#136) ----
+//
+// A tag or property definition belongs to the whole workspace (spaceId
+// null) or to one space. A page uses those of the workspace and of its own
+// space – its "context". Within one context names are unique (case and
+// surrounding space ignored): two spaces may each have a tag "Urgent", but a
+// space tag cannot be named like a workspace tag. (Tag-backed database
+// properties and the search name tags, so one name means one tag wherever
+// a page is.)
+export const inScope = (item: { spaceId?: string | null }, spaceId: string | null | undefined) => !item.spaceId || item.spaceId === spaceId;
+export const contextOf = <T extends { spaceId?: string | null }>(items: readonly T[], spaceId: string | null | undefined): T[] => items.filter((item) => inScope(item, spaceId));
 
 // A multi-select property of a database whose options are the workspace's
 // tags (issue #79, lib/tag-fields.ts).
@@ -129,8 +150,12 @@ export const isEmptyValue = (value: unknown) =>
 // by name or "me". `name:*` means set, `name:-` empty. Tokens that name no
 // tag or property stay search words.
 
-export type TagFilter = { tagId: string; exclude: boolean };
-export type PropertyFilter = { propertyId: string; op: "has" | "empty" | "eq" | "contains" | "gt" | "lt" | "gte" | "lte" | "between"; value: string; to?: string };
+// `tagIds`: every tag of that name the search knows (one per space, #136):
+// a #name token is a name and finds them all; `tagId` is the first.
+export type TagFilter = { tagId: string; tagIds?: string[]; exclude: boolean };
+export const tagFilterIds = (f: TagFilter) => (f.tagIds?.length ? f.tagIds : [f.tagId]);
+// `also`: the same token for properties of that name in other spaces (#136).
+export type PropertyFilter = { propertyId: string; op: "has" | "empty" | "eq" | "contains" | "gt" | "lt" | "gte" | "lte" | "between"; value: string; to?: string; also?: PropertyFilter[] };
 export type ParsedQuery = { text: string; tags: TagFilter[]; properties: PropertyFilter[]; tokens: string[] };
 
 const TOKEN = /(^|\s)(-?)#(?:"([^"]{1,200})"|([^\s"#][^\s#]*))|(^|\s)(?:"([^"]{1,200})"|([\p{L}\p{N}_][\p{L}\p{N}_.-]*)):(?:"([^"]*)"|(\S*))/gu;
@@ -142,24 +167,26 @@ export function parseSearchTokens(
   const tags: TagFilter[] = [],
     properties: PropertyFilter[] = [],
     tokens: string[] = [];
-  const tagByName = new Map(taxonomy.tags.map((t) => [foldName(t.name), t.id]));
-  const propByName = new Map(taxonomy.properties.map((p) => [foldName(p.name), p]));
+  const tagByName = new Map<string, string[]>();
+  for (const t of taxonomy.tags) tagByName.set(foldName(t.name), [...(tagByName.get(foldName(t.name)) ?? []), t.id]);
+  const propByName = new Map<string, Pick<PagePropertyDef, "id" | "name" | "type">[]>();
+  for (const p of taxonomy.properties) propByName.set(foldName(p.name), [...(propByName.get(foldName(p.name)) ?? []), p]);
   const text = query.replace(TOKEN, (match, lead1: string | undefined, minus, quotedTag, plainTag, lead2: string | undefined, quotedName, plainName, quotedValue, plainValue) => {
     if (quotedTag !== undefined || plainTag !== undefined) {
       // A trailing comma or full stop belongs to the sentence, not the tag.
       const name = quotedTag ?? String(plainTag).replace(/[.,;:!?)]+$/, "");
-      const tagId = tagByName.get(foldName(name));
-      if (!tagId) return match;
-      tags.push({ tagId, exclude: minus === "-" });
+      const tagIds = tagByName.get(foldName(name));
+      if (!tagIds) return match;
+      tags.push({ tagId: tagIds[0], ...(tagIds.length > 1 ? { tagIds } : {}), exclude: minus === "-" });
       tokens.push(match.trim());
       return lead1 || " ";
     }
-    const def = propByName.get(foldName(quotedName ?? plainName ?? ""));
-    if (!def) return match;
+    const defs = propByName.get(foldName(quotedName ?? plainName ?? ""));
+    if (!defs) return match;
     const raw = String(quotedValue ?? plainValue ?? "").trim();
-    const filter = propertyFilter(def.id, def.type, raw, quotedValue !== undefined);
+    const [filter, ...also] = defs.flatMap((def) => propertyFilter(def.id, def.type, raw, quotedValue !== undefined) ?? []);
     if (!filter) return match;
-    properties.push(filter);
+    properties.push(also.length ? { ...filter, also } : filter);
     tokens.push(match.trim());
     return lead2 || " ";
   });

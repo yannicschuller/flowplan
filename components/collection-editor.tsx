@@ -345,7 +345,8 @@ function ValueEditor({ boot, cond, onChange, t }: { boot: Bootstrap; cond: Cond;
   const withCurrent = (list: string[]) => (cond.value && !list.includes(cond.value) ? [cond.value, ...list] : list);
   switch (cond.type) {
     case "tag": {
-      const names = withCurrent((boot.taxonomy?.tags ?? []).map((x) => x.name));
+      // A name stands for the tag of that name in every space (#136): once.
+      const names = withCurrent([...new Set((boot.taxonomy?.tags ?? []).map((x) => x.name))]);
       return (
         <Select aria-label={t("Tag", "Tag")} value={cond.value} onChange={(e) => value(e.target.value)}>
           {!names.length && <option value="">{t("Keine Tags", "No tags")}</option>}
@@ -531,7 +532,7 @@ function PropEditor({ boot, cond, onChange, t }: { boot: Bootstrap; cond: Cond; 
     set: t("ist gesetzt", "is set"),
     empty: t("ist leer", "is empty"),
   };
-  const names = def || !cond.name ? defs.map((d) => d.name) : [cond.name, ...defs.map((d) => d.name)];
+  const names = [...new Set(def || !cond.name ? defs.map((d) => d.name) : [cond.name, ...defs.map((d) => d.name)])];
   const input = (v: string, onValue: (v: string) => void, aria: string) => {
     if (kind === "select" || kind === "multiselect")
       return (

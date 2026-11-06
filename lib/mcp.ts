@@ -458,7 +458,7 @@ const tools: Tool[] = [
     name: "search",
     title: "Search",
     description:
-      "Full-text search across pages, database records, comments and file contents in a workspace. Returns page and record IDs with a snippet. Understands #tag, -#tag, Property:value, OR, NOT/-, parentheses, created_by:/updated_by: (name or me), created:/updated: (-7d, this-week, 2026-03, >2026-01-01), type:document|database|whiteboard|record, in:\"Space\" and title:.",
+      "Full-text search across pages, database records, comments and file contents in a workspace. Returns page and record IDs with a snippet. Understands #tag, -#tag, Property:value, OR, NOT/-, parentheses, created_by:/updated_by: (name or me), created:/updated: (-7d, this-week, 2026-03, >2026-01-01), type:document|database|whiteboard|record, in:\"Space\" and title:. Tags and page properties may belong to one space (#tag names every tag of that name you may see, one per space).",
     input: z.object({
       workspaceId: id("Workspace ID"),
       query: z.string().min(1).max(500).describe("Search words and filters"),

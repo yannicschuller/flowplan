@@ -6,7 +6,7 @@ import { all, id, run, transaction } from "./db";
 import { HttpError } from "./auth";
 import { requireMember } from "./permissions";
 import { readZip, writeZip } from "./archive";
-import { requireTemplate, savedDatabaseTemplateSchema } from "./page-templates";
+import { requireTemplate, requireTemplateSpace, savedDatabaseTemplateSchema } from "./page-templates";
 import { mapTemplateFiles } from "./template-files";
 import { appearanceSchema } from "./page-appearance";
 import type { Identity } from "./types";
@@ -79,8 +79,10 @@ export async function importTemplate(
   workspaceId: string,
   bytes: Buffer,
   visibility: "private" | "workspace",
+  spaceId: string | null = null,
 ) {
   requireMember(user, workspaceId, "editor");
+  if (spaceId) requireTemplateSpace(user, workspaceId, spaceId);
   const entries = await readZip(bytes, { foreign: true, maxEntries: 202 });
   const raw = entries.get("template.json");
   if (!raw) throw new HttpError(400, "template.json fehlt.");
@@ -127,9 +129,10 @@ export async function importTemplate(
     const quota = quotaCheckpoint(workspaceId);
     const templateId = id();
     run(
-      "INSERT INTO templates(id,workspace_id,name,kind,payload,created_by,visibility,category) VALUES(?,?,?,?,?,?,?,?)",
+      "INSERT INTO templates(id,workspace_id,space_id,name,kind,payload,created_by,visibility,category) VALUES(?,?,?,?,?,?,?,?,?)",
       templateId,
       workspaceId,
+      spaceId,
       manifest.name,
       manifest.kind,
       manifest.payload,

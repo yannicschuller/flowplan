@@ -27,6 +27,8 @@ const title = (page?: Pick<Page, "title">) => page?.title?.trim() || tr("Ohne Ti
 const str = (value: unknown) => (typeof value === "string" ? value : undefined);
 
 // Where a page sits in the tree, as a page.move that puts it back there.
+// Tags and properties a move into another space mapped or copied go back
+// to the same-named ones of the space it returns to (#136, "auto").
 export function placeOf(pages: Page[], pageId: string): Command | null {
   const page = pages.find((p) => p.id === pageId);
   if (!page) return null;
@@ -36,9 +38,9 @@ export function placeOf(pages: Page[], pageId: string): Command | null {
   const at = siblings.findIndex((p) => p.id === pageId);
   const before = siblings[at - 1],
     after = siblings[at + 1];
-  if (before) return { action: "page.move", pageId, targetId: before.id, placement: "after" };
-  if (after) return { action: "page.move", pageId, targetId: after.id, placement: "before" };
-  return { action: "page.move", pageId, parentId: page.parent_id ?? null, spaceId: page.space_id };
+  if (before) return { action: "page.move", pageId, targetId: before.id, placement: "after", meta: "auto" };
+  if (after) return { action: "page.move", pageId, targetId: after.id, placement: "before", meta: "auto" };
+  return { action: "page.move", pageId, parentId: page.parent_id ?? null, spaceId: page.space_id, meta: "auto" };
 }
 
 // The selected pages without those inside another selected one (restoring

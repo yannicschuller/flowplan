@@ -79,7 +79,7 @@ test("tags: editors tag pages and create tags, owners manage them, viewers and g
   // Removing a tag from a page, then deleting a tag.
   act({ action: "page.properties", pageId: protokoll, removeTags: ["Angebot"] });
   assert.deepEqual(meta(protokoll)!.tags, [kunde]);
-  const temp = act({ action: "tag.save", workspaceId: wid, name: "Temp" }, editor).id;
+  const temp = act({ action: "tag.save", workspaceId: wid, name: "Temp", spaceId: team }, editor).id;
   act({ action: "page.properties", pageId: protokoll, addTags: [temp] });
   act({ action: "tag.delete", workspaceId: wid, tagId: temp });
   assert.deepEqual(meta(protokoll)!.tags, [kunde]);

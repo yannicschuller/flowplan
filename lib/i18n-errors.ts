@@ -1131,11 +1131,34 @@ const exact: Record<string, string> = {
   "Diesen Tag gibt es schon.": "This tag already exists.",
   "Eine Eigenschaft mit diesem Namen gibt es schon.": "A property with this name already exists.",
   "Seiten verschlüsselter Bereiche haben keine Tags und Eigenschaften.": "Pages of encrypted spaces have no tags or properties.",
+  // Scopes of tags, properties and templates (#136, lib/meta-scope-server.ts).
+  "Dieser Tag gehört zu einem anderen Bereich.": "This tag belongs to another space.",
+  "Tags für den ganzen Arbeitsbereich legen nur Eigentümer an.": "Only owners create tags for the whole workspace.",
+  "Keine Schreibrechte in diesem Bereich.": "No write access in this space.",
+  "Tags und Eigenschaften eines Bereichs verwalten nur Eigentümer des Arbeitsbereichs und des Bereichs.": "Only owners of the workspace and of the space manage a space's tags and properties.",
+  "Nur in einen Tag des ganzen Arbeitsbereichs oder desselben Bereichs zusammenführen.": "Merge only into a tag of the whole workspace or of the same space.",
+  "Den Geltungsbereich ändern nur Eigentümer des Arbeitsbereichs.": "Only workspace owners change the scope.",
+  "Gleichnamige Eigenschaften eines anderen Typs lassen sich nicht zusammenführen.": "Properties of the same name but another type cannot be merged.",
+  "Kein freier Name für die Kopie.": "No free name for the copy.",
+  "Vorlagen für den ganzen Arbeitsbereich speichern nur Eigentümer. Speichere sie für diesen Bereich.": "Only owners save templates for the whole workspace. Save it for this space.",
+  "Vorlage eines anderen Bereichs.": "Template of another space.",
+  "Eine Vorlage gehört zum Bereich ihrer Seite oder zum ganzen Arbeitsbereich.": "A template belongs to its page's space or to the whole workspace.",
 };
 const patterns: [RegExp, string][] = [
   // Scheduled backups and the restore while setting up (lib/scheduled-backup.ts, lib/setup-restore.ts).
   [/^Liste der Sicherungen: HTTP (\d+)$/, "List of backups: HTTP $1"],
   [/^Herunterladen: HTTP (\d+)$/, "Download: HTTP $1"],
+  // Scopes (#136).
+  [/^Diesen Tag gibt es schon im Bereich „(.+)“\.$/, "This tag already exists in the space “$1”."],
+  [/^Diesen Tag gibt es schon im Bereich „(.+)“\. Zum Zusammenführen „Zusammenführen“ wählen\.$/, "This tag already exists in the space “$1”. To combine them, choose “Merge”."],
+  [/^Eine Eigenschaft mit diesem Namen gibt es schon im Bereich „(.+)“\.$/, "A property with this name already exists in the space “$1”."],
+  [/^Gleichnamige gibt es schon \((.+)\)\. Wähle „Gleichnamige zusammenführen“ oder benenne sie um\.$/, "Items of the same name exist already ($1). Choose “Merge same-named” or rename them."],
+  [/^„(.+)“ wird außerhalb des Zielbereichs verwendet \((.+)\)\. Wähle „Für andere Bereiche kopieren“ oder „Dort entfernen“\.$/, "“$1” is used outside the target space ($2). Choose “Copy for other spaces” or “Remove there”."],
+  [/^Die Seiten verwenden Tags oder Eigenschaften, die es am Ziel nicht gibt \((.+)\)\. Wähle für jede: zuordnen, kopieren oder entfernen\.$/, "The pages use tags or properties the destination does not have ($1). Choose for each: map, copy or remove."],
+  [/^„(.+)“: Dieses Ziel gibt es dort nicht\.$/, "“$1”: this target does not exist there."],
+  [/^„(.+)“: Wähle eine Eigenschaft desselben Typs am Ziel\.$/, "“$1”: choose a property of the same type at the destination."],
+  [/^„(.+)“: Ein Wert passt nicht zu „(.+)“\. Wähle eine Eigenschaft desselben Typs oder „Kopieren“\.$/, "“$1”: a value does not fit “$2”. Choose a property of the same type or “Copy”."],
+  [/^Eine Vorlage für den ganzen Arbeitsbereich verwendet nur Tags und Eigenschaften des ganzen Arbeitsbereichs\. Diese gehören zu einem Bereich: (.+)\. Nimm sie heraus \(„spaceMeta: remove“\) oder mache sie zuerst arbeitsbereichsweit\.$/, "A template for the whole workspace uses only tags and properties of the whole workspace. These belong to a space: $1. Leave them out (“spaceMeta: remove”) or make them workspace-wide first."],
   // Instance move (lib/instance-read-only.ts, lib/instance-move-pull.ts).
   [/^Diese Instanz ist umgezogen nach (.+)\. Änderungen sind nur noch dort möglich\.$/, "This instance has moved to $1. Changes are only possible there."],
   [/^Die Quelle ist nicht erreichbar: (.+)$/s, "The source cannot be reached: $1"],

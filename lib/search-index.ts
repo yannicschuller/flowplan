@@ -12,8 +12,8 @@ import { footnoteTexts } from "./footnotes";
 import { matchedAlias, pageAliases, recordAliases } from "./aliases";
 import { pageInkSearchText } from "./page-ink-store";
 import { parseRecognizedMap } from "./ink/recognized";
-import { filteredPageIds, pageMetaSearchText, workspaceProperties, workspaceTags } from "./page-properties-server";
-import { parseSearchTokens } from "./page-properties";
+import { filteredPageIds, pageMetaSearchText, visibleScopes, workspaceProperties, workspaceTags } from "./page-properties-server";
+import { parseSearchTokens, tagFilterIds } from "./page-properties";
 import { taggedRecords } from "./tag-fields";
 import { isClassicQuery, parseQuery, type ItemType } from "./collection-query";
 import { evaluateQuery } from "./collections";
@@ -302,9 +302,12 @@ export function searchWorkspace(
   if (!isClassicQuery(parsed.node)) return queryResults(user, workspaceId, parsed.node, options);
   // `#tag`, `-#tag` and `name:value` keep the pages with these tags and
   // values (lib/page-properties.ts); the rest is searched as text.
+  // A #name names the tags of that name the person may know, one per
+  // space (#136).
+  const visibleScope = visibleScopes(user, workspaceId);
   const tokens = parseSearchTokens(rawQuery.replace(/[\u0000-\u001f]/g, " ").slice(0, 400), {
-    tags: workspaceTags(workspaceId),
-    properties: workspaceProperties(workspaceId),
+    tags: workspaceTags(workspaceId).filter((t) => visibleScope(t.spaceId)),
+    properties: workspaceProperties(workspaceId).filter((p) => visibleScope(p.spaceId)),
   });
   const only = filteredPageIds(user, workspaceId, tokens);
   // Records carry the tags of their tag-backed properties (#79) and those
@@ -322,7 +325,7 @@ export function searchWorkspace(
     if (!only) return true;
     if (tokens.properties.length && !only.has(pageId)) return false;
     const own = recordTags.get(`${pageId}:${rowId}`) ?? [];
-    return tokens.tags.every((f) => (own.includes(f.tagId) || !!pageTags.get(pageId)?.has(f.tagId)) !== f.exclude);
+    return tokens.tags.every((f) => tagFilterIds(f).some((tagId) => own.includes(tagId) || !!pageTags.get(pageId)?.has(tagId)) !== f.exclude);
   };
   const isRecordKey = (key: string) => !!key && !/^[cmf]:/.test(key);
   const tagged = records.filter((r) => recordPasses(r.pageId, r.rowId));

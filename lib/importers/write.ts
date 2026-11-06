@@ -20,7 +20,7 @@ import { enforceQuota } from "../instance-ops";
 import { enforceUserStorage } from "../user-limits";
 import { sanitizeFileName, verifiedMime } from "../upload-safety";
 import { storedAliases } from "../aliases";
-import { applyPortableMeta, canManageTaxonomy, frontmatterMeta, memberByName } from "../page-properties-server";
+import { applyPortableMeta, canManageScope, frontmatterMeta, memberByName } from "../page-properties-server";
 import { ct } from "../content-locale";
 import { requirePlaintextSpace } from "../e2ee-server";
 import { esc, isImage, pageRef } from "./html";
@@ -588,8 +588,8 @@ export function importIcon(value: unknown): string | null {
 function importPageMeta(user: Identity, workspaceId: string, pageId: string, page: ImportPage, colors: Record<string, string> = {}) {
   const space = one<{ space_id: string }>("SELECT space_id FROM pages WHERE id=?", pageId);
   if (!space) return;
-  const manage = canManageTaxonomy(user, workspaceId);
-  const fromFront = page.properties ? frontmatterMeta(page.properties, workspaceId, memberByName(workspaceId), { createDefinitions: manage }).meta : {};
+  const manage = canManageScope(user, workspaceId, space.space_id);
+  const fromFront = page.properties ? frontmatterMeta(page.properties, workspaceId, memberByName(workspaceId), { createDefinitions: manage, spaceId: space.space_id }).meta : {};
   applyPortableMeta(
     user,
     { id: pageId, workspace_id: workspaceId, space_id: space.space_id },
