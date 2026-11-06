@@ -4,6 +4,16 @@ All releases of Flowplan, newest first. Generated from the commits by the releas
 
 ## v0.8.13 – 2026-11-06
 
+**Security**
+
+- Space permissions were not enforced in a few actions:
+  - Members without access to a private space could create pages or bookmarks there via "Share to Flowplan" and bookmark import.
+  - `page.moveCheck` and `template.dependencies` revealed another space's name and its tag and property names.
+  - `tag.save` revealed through a name clash whether a tag name exists in a private space.
+- All of these now require the same space rights as the corresponding write actions. Low to medium severity; anyone affected needed a workspace account and, for the information leaks, the space's ID.
+
+**Changes**
+
 - Space rights: share, bookmarks import, move check, template dependencies, tag clash ([f7b26bb](https://github.com/yannicschuller/flowplan/commit/f7b26bbed197fd16d93f697963f5e04b9ed24269))
 
 ## v0.8.12 – 2026-11-06
