@@ -684,6 +684,10 @@ export default function WorkspaceApp({
   const [privateTemplate, setPrivateTemplate] = useState(false);
   const [starterTemplate, setStarterTemplate] = useState<string | null>(null);
   const [galleryCategory, setGalleryCategory] = useState("all");
+  // Saved templates of this workspace (and personal ones): their own
+  // category in the gallery, hidden while there are none (#132).
+  const [savedTemplateCount, setSavedTemplateCount] = useState(0);
+  const shownCategory = galleryCategory === "mine" && !savedTemplateCount ? "all" : galleryCategory;
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searchKind, setSearchKind] = useState<SearchKind>("all");
   const [iconTab, setIconTab] = useState<"emoji" | "image" | "library">(
@@ -5736,54 +5740,61 @@ export default function WorkspaceApp({
           {t("Starte mit einer Struktur oder verwende deine gespeicherten Vorlagen.", "Start with a structure or use your saved templates.")}
         </p>
         <nav className="template-categories" aria-label={t("Kategorien", "Categories")}>
-          {[["all", t("Alle", "All")], ...Object.entries(templateCategories)].map(([id, label]) => (
+          {[
+            ["all", t("Alle", "All")],
+            ...(savedTemplateCount ? [["mine", t("Eigene Vorlagen", "My templates")]] : []),
+            ...Object.entries(templateCategories).map(([id, label]) => [id, t(label)]),
+          ].map(([id, label]) => (
             <button
               key={id}
               type="button"
-              className={galleryCategory === id ? "selected" : ""}
-              aria-pressed={galleryCategory === id}
+              className={shownCategory === id ? "selected" : ""}
+              aria-pressed={shownCategory === id}
               onClick={() => setGalleryCategory(id)}
             >
-              {id === "all" ? label : t(label)}
+              {label}
             </button>
           ))}
         </nav>
-        <div className="template-grid">
-          {Object.entries(catalogFor(LOCALE_TAG === "de-DE" ? "de" : "en"))
-            .filter(([, template]) => galleryCategory === "all" || template.category === galleryCategory)
-            .map(([templateKey, template]) => (
-              <button
-                key={templateKey}
-                onClick={() => {
-                  setTemplates(false);
-                  setNewTitle(template.name);
-                  setStarterTemplate(templateKey);
-                  setNewKind(template.kind as PageKind);
-                  // From the "New page" dialog the page keeps its place.
-                  if (templatesFor) setSpaceId(templatesFor.spaceId);
-                  setParent(templatesFor?.parent ?? null);
-                  setTemplatesFor(null);
-                  setCreate(true);
-                }}
-              >
-                <span className="template-emoji" aria-hidden="true">
-                  {template.icon}
-                </span>
-                <strong>{template.name}</strong>
-                <small>{template.description}</small>
-                <small className="template-meta">
-                  {template.kind === "database" ? t("Datenbank", "Database") : t("Dokument", "Document")} ·{" "}
-                  {t(templateCategories[template.category])}
-                </small>
-              </button>
-            ))}
-        </div>
+        {shownCategory !== "mine" && (
+          <div className="template-grid">
+            {Object.entries(catalogFor(LOCALE_TAG === "de-DE" ? "de" : "en"))
+              .filter(([, template]) => shownCategory === "all" || template.category === shownCategory)
+              .map(([templateKey, template]) => (
+                <button
+                  key={templateKey}
+                  onClick={() => {
+                    setTemplates(false);
+                    setNewTitle(template.name);
+                    setStarterTemplate(templateKey);
+                    setNewKind(template.kind as PageKind);
+                    // From the "New page" dialog the page keeps its place.
+                    if (templatesFor) setSpaceId(templatesFor.spaceId);
+                    setParent(templatesFor?.parent ?? null);
+                    setTemplatesFor(null);
+                    setCreate(true);
+                  }}
+                >
+                  <span className="template-emoji" aria-hidden="true">
+                    {template.icon}
+                  </span>
+                  <strong>{template.name}</strong>
+                  <small>{template.description}</small>
+                  <small className="template-meta">
+                    {template.kind === "database" ? t("Datenbank", "Database") : t("Dokument", "Document")} ·{" "}
+                    {t(templateCategories[template.category])}
+                  </small>
+                </button>
+              ))}
+          </div>
+        )}
         <SavedTemplates
           workspaceId={boot.workspace.id}
           canCreate={canCreate}
           isAdmin={!!boot.user.isAdmin}
           trashDays={boot.trashDays}
           onError={notifyError}
+          onCount={setSavedTemplateCount}
           onUse={async (t) => {
             const r = await act({
               action: "page.create",
