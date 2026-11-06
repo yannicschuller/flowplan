@@ -37,4 +37,4 @@ Independent repos → one subagent per repo in a worktree (brief: language, vari
 
 ## 5. Report (German, short)
 
-Per repo what is translated and what deliberately isn't (with the reason), coverage numbers, fallbacks, and the manual steps (App Store Connect availability, Play Console listing).
+Per repo what is translated and what deliberately isn't (with the reason), coverage numbers, fallbacks, and the manual steps (App Store Connect availability).

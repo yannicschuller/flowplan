@@ -74,7 +74,7 @@ Commit messages end with the trailers from CLAUDE.md (`Co-Authored-By: Yannic Sc
 
 1. Per repo: `git push -q origin HEAD:main`, then force-push the session's designated branch (`git push -q -f origin HEAD:<session-branch>`). Do this in **every** repo you changed, docs included.
 2. Server changes → dispatch `docker.yml` in `flowplan` without a version (**one beta build at the end**, not per issue).
-3. App changes → ask Yannic before `build.yml` with upload (TestFlight / Play internal; raise the build number). Desktop changes → mention, release only on request.
+3. App changes → ask Yannic before building. iOS testers: `build.yml` with upload (TestFlight; raise the build number). **Android users only get fixes through the APK on flowplan.org/download, i.e. a new GitHub release via `release.yml`** (`/app-release`) – Google Play is not used. Desktop changes → mention, release only on request.
 4. Wait for **CI, Visual and Docker** to be green (watch the runs; don't poll with sleep loops – use Monitor or check back). Red → root-cause and fix before answering anyone.
 5. Never create PRs, merge PRs, or publish releases without Yannic's explicit OK.
 
@@ -96,7 +96,7 @@ Then labels → `status: done` and close (completed). Issues waiting on a device
 
 - Per item: number, title, one line what was done or why not, status label.
 - New comments found and how they were handled.
-- Builds/runs and their result; anything he must do himself (release a build in the Play Console, set an env var in Coolify, approve a PR, answer a question).
+- Builds/runs and their result; anything he must do himself (set an env var in Coolify, approve a PR, answer a question).
 - Open decisions.
 
 Keep it short: no file dumps, no process narration.
