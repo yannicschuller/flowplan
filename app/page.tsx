@@ -37,7 +37,7 @@ export default async function Home({
         <MoveBanner initial={move} poll={false} />
         <Login
           legal={legalLinks()}
-          {...loginOptions((await searchParams).setup)}
+          {...loginOptions((await searchParams).setup, (await searchParams).invite)}
           error={(await searchParams).authError}
           notice={(await searchParams).confirmed ? "confirmed" : undefined}
           instanceName={instanceSettings().name}

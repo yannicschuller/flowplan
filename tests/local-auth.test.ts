@@ -9,7 +9,7 @@ const { one, run, id } = await import("../lib/db");
 const auth = await import("../lib/local-auth");
 const mail = await import("../lib/mail");
 const { saveInstanceSettings, instanceSettings } = await import("../lib/instance-settings");
-const { adminGroup } = await import("../lib/auth");
+const { adminGroup, acceptInviteToken } = await import("../lib/auth");
 
 const sent: { to: string; subject: string; text: string }[] = [];
 mail.setMailSender(async (m) => void sent.push(m));
@@ -36,6 +36,42 @@ test("the first account sets the instance up and administers it", async () => {
   // Sign-ups are now closed until the administration opens them.
   assert.equal(auth.signupOpen(), false);
   await assert.rejects(auth.register({ name: "Ben", email: "ben@example.test", password: "ein-langes-passwort" }, "en"), /Only administrators/);
+});
+
+test("an invitation link offers creating the account while sign-ups are closed", async () => {
+  const ana = one<{ user_id: string }>("SELECT user_id FROM local_accounts WHERE email='ana@example.test'")!.user_id;
+  const wid = id(),
+    token = "einladung-eva-0123456789";
+  run("INSERT INTO workspaces(id,name,created_by) VALUES(?,?,?)", wid, "Eingeladen", ana);
+  run("INSERT INTO invites(id,workspace_id,email,role,created_by,guest,token) VALUES(?,?,?,?,?,0,?)", id(), wid, "eva@example.test", "editor", ana, token);
+  // The sign-in page offers the account for the invited address.
+  assert.equal(auth.signupOpen(), false);
+  assert.equal(auth.signupOpen(undefined, token), true);
+  assert.equal(auth.loginOptions(undefined, token).invitedEmail, "eva@example.test");
+  // Unknown or malformed links change nothing.
+  for (const other of ["einladung-unbekannt-0123", "kurz", "x".repeat(65)]) {
+    assert.equal(auth.signupOpen(undefined, other), false);
+    assert.equal(auth.loginOptions(undefined, other).invitedEmail, "");
+  }
+  // Without password sign-in (SSO only) the link offers no account either.
+  process.env.FLOWPLAN_LOCAL_LOGIN = "false";
+  try {
+    assert.equal(auth.signupOpen(undefined, token), false);
+    assert.equal(auth.loginOptions(undefined, token).invitedEmail, "");
+  } finally {
+    delete process.env.FLOWPLAN_LOCAL_LOGIN;
+  }
+  const { user } = await auth.register({ name: "Eva", email: "eva@example.test", password: "ein-langes-passwort", invite: token }, "de");
+  // Without e-mail the address is not confirmed: the link (app/page.tsx) takes the invitation over.
+  assert.equal(acceptInviteToken(user, token), wid);
+  assert.ok(one("SELECT 1 FROM members WHERE user_id=? AND workspace_id=?", user.id, wid));
+  // A used link no longer opens sign-ups, and the server refuses it.
+  assert.equal(auth.signupOpen(undefined, token), false);
+  assert.equal(auth.loginOptions(undefined, token).invitedEmail, "");
+  await assert.rejects(
+    auth.register({ name: "Fritz", email: "fritz@example.test", password: "ein-langes-passwort", invite: token }, "de"),
+    /nur Admins/,
+  );
 });
 
 test("signing in with e-mail and password; failed attempts are limited", async () => {

@@ -17,10 +17,12 @@ export async function generateMetadata(): Promise<Metadata> {
     robots: { index: true, follow: true },
   };
 }
-// Creating an account; where sign-ups are closed the page offers signing in.
-export default async function RegisterPage({ searchParams }: { searchParams: Promise<{ setup?: string }> }) {
+// Creating an account; where sign-ups are closed (and no invitation link
+// came along) the page offers signing in.
+export default async function RegisterPage({ searchParams }: { searchParams: Promise<{ setup?: string; invite?: string }> }) {
   if (await currentUser()) redirect("/");
-  const options = loginOptions((await searchParams).setup);
+  const { setup, invite } = await searchParams;
+  const options = loginOptions(setup, invite);
   return (
     <Login
         legal={legalLinks()}
