@@ -181,6 +181,35 @@ export function Modal({
   useEffect(() => {
     if (alert) alertRef.current?.scrollIntoView?.({ block: "nearest" });
   }, [alert]);
+  // The heading sticks to the dialog's top edge (app/globals.css,
+  // .modal-heading, #139): a line below it once the content has scrolled
+  // (the sentinel at the very top left the dialog's view), and its lower
+  // edge as --modal-heading-bottom for sticky parts of the content.
+  const [stuck, setStuck] = useState(false);
+  useEffect(() => {
+    if (!element) return;
+    const heading = element.querySelector<HTMLElement>(":scope > .modal-heading");
+    const sentinel = element.querySelector<HTMLElement>(":scope > .modal-scroll-sentinel");
+    const observers: { disconnect: () => void }[] = [];
+    if (sentinel && typeof IntersectionObserver !== "undefined") {
+      const io = new IntersectionObserver(([entry]) => setStuck(!entry.isIntersecting), { root: element });
+      io.observe(sentinel);
+      observers.push(io);
+    }
+    if (heading && typeof ResizeObserver !== "undefined") {
+      const measure = () => {
+        const top = parseFloat(getComputedStyle(heading).top) || 0;
+        element.style.setProperty("--modal-heading-bottom", `${Math.round(top + heading.offsetHeight)}px`);
+      };
+      const ro = new ResizeObserver(measure);
+      ro.observe(heading);
+      observers.push(ro);
+    }
+    return () => {
+      observers.forEach((o) => o.disconnect());
+      setStuck(false);
+    };
+  }, [element]);
   return (
     <DialogErrorContext.Provider value={setAlert}>
     <Dialog.Root open={open} onOpenChange={(v) => !v && onClose()}>
@@ -196,8 +225,9 @@ export function Modal({
           onOpenAutoFocus={onOpenAutoFocus}
           ref={contentRef}
         >
+          <div className="modal-scroll-sentinel" aria-hidden />
           {sheet && <div className={SHEET_HANDLE} aria-hidden />}
-          <div className="modal-heading">
+          <div className="modal-heading" data-stuck={stuck || undefined}>
             <Dialog.Title>{title}</Dialog.Title>
             <Dialog.Close className="icon-button" aria-label={t("Schließen", "Close")}>
               <X size={20} />
