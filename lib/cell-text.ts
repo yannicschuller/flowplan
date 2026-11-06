@@ -1,3 +1,5 @@
+import { foldName } from "./page-properties";
+
 export function cellText(value: unknown): string {
   if (value === null || value === undefined) return "";
   if (Array.isArray(value)) return value.map(cellText).join(", ");
@@ -7,4 +9,35 @@ export function cellText(value: unknown): string {
 
 // CSV exports: values that a spreadsheet would run as a formula (=, +, @, a
 // "-" that is not a number) get a leading apostrophe; negative numbers stay.
-export const CSV_FORMULA = /^[=+@\t\r]|^-(?!\d[\d.,]*$)/;
+// So do such values that already start with apostrophes ("'=x"), so that the
+// import can take exactly one away.
+export const CSV_FORMULA = /^'*(?:[=+@\t\r]|-(?!\d[\d.,]*$))/;
+
+// The CSV import undoes that: a leading apostrophe goes only where the export
+// put it, so "'hello" and "it's" stay as written.
+export function csvImportText(value: string) {
+  return value.startsWith("'") && CSV_FORMULA.test(value.slice(1)) ? value.slice(1) : value;
+}
+
+// A multi-select cell of the CSV import. The export joins the values with
+// ", " (cellText), so a value that contains a comma itself ("Night, Weekend")
+// comes back whole when it names one of the property's options or tags; the
+// longest match wins. Anything else is split at every comma, as typed in a
+// spreadsheet.
+export function csvListValues(text: string, options: string[] = []) {
+  const known = new Map(options.map((o) => [foldName(o), o]));
+  const parts = text.split(",");
+  const values: string[] = [];
+  for (let i = 0; i < parts.length; ) {
+    let end = i + 1;
+    for (let j = parts.length; j > end; j--)
+      if (known.has(foldName(parts.slice(i, j).join(",")))) {
+        end = j;
+        break;
+      }
+    const value = parts.slice(i, end).join(",").trim();
+    if (value) values.push(known.get(foldName(value)) ?? value);
+    i = end;
+  }
+  return values;
+}
