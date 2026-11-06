@@ -3355,7 +3355,7 @@ export default function DatabaseView({
                         className="column-resizer"
                         role="separator"
                         aria-orientation="vertical"
-                        aria-label={`${f.name}: Spaltenbreite`}
+                        aria-label={t(`${f.name}: Spaltenbreite`, `${f.name}: column width`)}
                         aria-valuenow={columnWidth(f)}
                         aria-valuemin={80}
                         aria-valuemax={800}

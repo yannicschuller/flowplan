@@ -1,4 +1,4 @@
-import { LOCALE_TAG } from "./locale-tag";
+import { LOCALE_TAG, tr } from "./locale-tag";
 import { Temporal } from "@js-temporal/polyfill";
 
 const shape =
@@ -126,7 +126,7 @@ export function formatDateValue(
     return `${date}, ${time} (UTC${offset})`;
   } catch {
     // Old imports can contain a floating, ambiguous or nonexistent wall time.
-    return `${date}, ${time} (Zeitzone prüfen)`;
+    return `${date}, ${time} (${tr("Zeitzone prüfen", "check time zone")})`;
   }
 }
 export function dateInZone(zone: string) {
