@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { pickLocale, translate } from "../lib/i18n";
+import { localeTag, pickLocale, textLocale, translate, weekStart } from "../lib/i18n";
 
 test("the language: the reader's choice first, then the browser, English otherwise", () => {
   assert.equal(pickLocale("en", "de-DE,de;q=0.9"), "en");
@@ -13,6 +13,29 @@ test("the language: the reader's choice first, then the browser, English otherwi
   assert.equal(pickLocale(undefined, "en;q=0.5,de;q=0.9"), "de");
   assert.equal(pickLocale("xx", null), "en");
   assert.equal(translate("en")("Anmelden", "Sign in"), "Sign in");
+});
+
+test("US English: chosen for US browsers, English texts with US dates and Sunday first", () => {
+  // Automatic: only a US browser gets it; other English stays British.
+  assert.equal(pickLocale(undefined, "en-US,en;q=0.9"), "en-US");
+  assert.equal(pickLocale(undefined, "en-us"), "en-US");
+  assert.equal(pickLocale(undefined, "de-DE,de;q=0.9,en-US;q=0.8"), "de");
+  for (const header of ["en-GB,en;q=0.9", "en-AU", "en-CA,en;q=0.9", "en", "en-IN"]) assert.equal(pickLocale(undefined, header), "en", header);
+  // A choice made before (cookie or profile "en") keeps British English.
+  assert.equal(pickLocale("en", "en-US,en;q=0.9"), "en");
+  assert.equal(pickLocale("en-US", "de-DE"), "en-US");
+  // The texts are the English ones, with or without a context.
+  assert.equal(textLocale("en-US"), "en");
+  assert.equal(textLocale("fr"), "fr");
+  assert.equal(translate("en-US")("Anmelden", "Sign in"), "Sign in");
+  assert.equal(translate("en-US")("Offen", "Open||status"), "Open");
+  // Dates: 6 November 2026.
+  const day = new Date(Date.UTC(2026, 10, 6, 12));
+  const short = (locale: "en" | "en-US") => day.toLocaleDateString(localeTag(locale), { timeZone: "UTC" });
+  assert.equal(short("en-US"), "11/6/2026");
+  assert.equal(short("en"), "06/11/2026");
+  assert.equal(weekStart("en-US"), "sunday");
+  for (const locale of ["de", "en", "fr", "zh"] as const) assert.equal(weekStart(locale), "monday", locale);
 });
 
 test("server messages have an English version, with values kept", async () => {

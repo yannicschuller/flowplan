@@ -30,6 +30,7 @@ import { cellText } from "@/lib/database";
 import {
   calendarDays,
   calendarRange,
+  calendarWeekStart,
   rangeOnDay,
   daySegments,
   type CalendarConfig,
@@ -116,12 +117,13 @@ export default function DatabaseCalendar({
     { start, end, invalidEnd } = scheduleFields(fields, view),
     canEdit = editable && !!start && !invalidEnd,
     weekends = config.showWeekends !== false,
+    firstDay = calendarWeekStart(config, locale),
     days = useMemo(
       () =>
-        calendarDays(anchor, config.mode, zone, config.weekStart).filter(
+        calendarDays(anchor, config.mode, zone, firstDay).filter(
           (day) => weekends || config.mode === "day" || !isWeekend(day.date),
         ),
-      [anchor, config.mode, zone, config.weekStart, weekends],
+      [anchor, config.mode, zone, firstDay, weekends],
     );
   // Repeating entries appear as read-only occurrences within the shown days.
   const rows = useMemo(() => {
@@ -553,7 +555,7 @@ export default function DatabaseCalendar({
         <Select
           aria-label={t("Kalender: Wochenbeginn", "Calendar: week start")}
           disabled={busy}
-          value={config.weekStart || "monday"}
+          value={firstDay}
           onChange={(e) =>
             void configure({
               ...config,

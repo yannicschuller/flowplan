@@ -46,6 +46,7 @@ test("the language of a request: cookie first, then the browser", () => {
 test("journal days keep their automatic title in both languages", () => {
   assert.equal(dayTitle("2026-10-03", "de"), "Samstag, 3. Oktober 2026");
   assert.ok(isAutoDayTitle(dayTitle("2026-10-03", "en"), "2026-10-03"));
+  assert.ok(isAutoDayTitle(dayTitle("2026-10-03", "en-US"), "2026-10-03"));
   assert.ok(!isAutoDayTitle("Urlaub", "2026-10-03"));
 });
 

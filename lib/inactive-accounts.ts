@@ -19,7 +19,7 @@ import {
 } from "./mail";
 import { deleteInactiveAccount } from "./account-deletion";
 import { userLocale } from "./user-locale";
-import type { Locale } from "./i18n";
+import { localeTag, type Locale } from "./i18n";
 
 export function disableInactiveAccounts(now = Date.now()) {
   const days = instanceSettings().inactiveDays;
@@ -151,7 +151,8 @@ function deletionMail(
   const locale: Locale = userLocale(p.id);
   const de = locale === "de";
   const instance = instanceSettings().name || "Flowplan";
-  const date = new Date(due).toLocaleDateString(de ? "de-DE" : "en-GB", {
+  // The text is German or English; the date also in US English for "en-US".
+  const date = new Date(due).toLocaleDateString(de || locale === "en-US" ? localeTag(locale) : "en-GB", {
     day: "numeric",
     month: "long",
     year: "numeric",

@@ -154,7 +154,7 @@ export default function FormulaEditor({
           ref={input}
           aria-label={t("Formel", "Formula")}
           value={source}
-          placeholder={'prop("Aufwand") * 2'}
+          placeholder={t('prop("Aufwand") * 2', 'prop("Effort") * 2')}
           spellCheck={false}
           autoCapitalize="off"
           autoCorrect="off"

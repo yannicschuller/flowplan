@@ -1,7 +1,7 @@
 "use client";
 import { useT } from "./i18n";
 import { isAutoDayTitle } from "@/lib/journal-title";
-import { LOCALE_TAG, tr } from "@/lib/locale-tag";
+import { LOCALE_TAG, WEEK_START, tr } from "@/lib/locale-tag";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
@@ -591,8 +591,10 @@ function JournalCalendar({
   const [month, setMonth] = useState(today.slice(0, 7));
   const byDate = new Map(days.map((d) => [d.journal_date, d]));
   const first = `${month}-01`;
-  const offset = (utc(first).getUTCDay() + 6) % 7;
+  const offset = WEEK_START === "sunday" ? utc(first).getUTCDay() : (utc(first).getUTCDay() + 6) % 7;
   const length = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).getUTCDate();
+  const names = t("Mo Di Mi Do Fr Sa So", "Mo Tu We Th Fr Sa Su").split(" ");
+  const weekdays = WEEK_START === "sunday" ? [names[6], ...names.slice(0, 6)] : names;
   const cells = [
     ...Array.from({ length: offset }, () => null),
     ...Array.from({ length }, (_, i) => `${month}-${String(i + 1).padStart(2, "0")}`),
@@ -610,7 +612,7 @@ function JournalCalendar({
         </button>
       </header>
       <div className="journal-calendar-grid">
-        {(t("Mo Di Mi Do Fr Sa So", "Mo Tu We Th Fr Sa Su")).split(" ").map((d) => (
+        {weekdays.map((d) => (
           <span key={d} className="journal-calendar-head">{d}</span>
         ))}
         {cells.map((date, i) => {

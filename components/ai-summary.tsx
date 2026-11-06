@@ -10,6 +10,7 @@
 // end-to-end encrypted spaces only on the device.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowClockwise, CheckSquare, Copy, Info, Sparkle, Stop, X } from "@phosphor-icons/react";
+import { textLocale } from "@/lib/i18n";
 import { streamAiFrom } from "@/lib/ai/client";
 import { aiMarkdownToHtml } from "@/lib/ai/insert";
 import { cleanAnswer, parseSummary } from "@/lib/ai/prompts";
@@ -45,7 +46,7 @@ export const summaryChecklist = (answer: string) =>
 
 function AiSummaryBody({ target }: { target: AiSummaryTarget }) {
   const t = useT();
-  const locale = useLocale();
+  const locale = textLocale(useLocale());
   const controller = useRef<AbortController | null>(null);
   const [answer, setAnswer] = useState("");
   const [phase, setPhase] = useState<"running" | "done" | "error">("running");
