@@ -1751,6 +1751,81 @@ aside[data-callout][data-callout-color="red"] { --callout: #e03131; }
 .document-editor details > div {
   padding: 10px 0 0 19px;
 }
+/* The editor's toggle (lib/toggle-view.ts, #137): an arrow of its own that
+   opens and closes, the title edited in place. */
+.document-editor summary.toggle-summary {
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+  list-style: none;
+  cursor: default;
+}
+.document-editor summary.toggle-summary::-webkit-details-marker {
+  display: none;
+}
+.toggle-arrow {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 1lh;
+  margin: 0 0 0 -3px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.toggle-arrow:hover {
+  color: var(--text);
+  background: var(--surface);
+}
+.toggle-arrow:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+.toggle-arrow svg {
+  transition: transform 0.15s var(--ease-out);
+}
+.toggle-block[open] > summary > .toggle-arrow svg {
+  transform: rotate(90deg);
+}
+.toggle-block[dir="rtl"]:not([open]) > summary > .toggle-arrow svg {
+  transform: scaleX(-1);
+}
+.toggle-title {
+  flex: 1;
+  min-width: 0;
+  cursor: text;
+  outline: none;
+  overflow-wrap: anywhere;
+}
+/* Reading mode: the whole line opens and closes. */
+.document-editor[contenteditable="false"] summary.toggle-summary,
+.document-editor[contenteditable="false"] .toggle-title {
+  cursor: pointer;
+}
+.toggle-title:empty::before {
+  content: attr(data-placeholder);
+  color: var(--muted);
+  font-weight: 400;
+}
+/* Touch: an arrow large enough to tap (44 px). */
+@media (pointer: coarse) {
+  .toggle-arrow::before {
+    content: "";
+    position: absolute;
+    inset: -12px -8px -12px -14px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toggle-arrow svg {
+    transition: none;
+  }
+}
 .math-block {
   font-family: Georgia, serif;
   font-style: italic;
@@ -9024,10 +9099,22 @@ tr.order-drop-after > td {
   font-size: 19px;
   color: var(--muted);
   cursor: grab;
-  opacity: 0.25;
+  opacity: 0;
   border-radius: 4px;
   z-index: 2;
   user-select: none;
+  transition: opacity 0.12s ease;
+}
+/* Only where it is wanted (#138): the block under the mouse, the block with
+   the caret – or every block (Settings › Appearance › Editor, "Always show
+   block handles"). A handle reached by keyboard always shows, with a ring. */
+.always-handles .document-block-handle {
+  opacity: 0.25;
+  transition: none;
+}
+.document-block-handle.hovered,
+.document-block-handle.active {
+  opacity: 0.45;
 }
 .document-block-handle:hover,
 .document-block-handle:focus-visible,
@@ -9035,6 +9122,10 @@ tr.order-drop-after > td {
   opacity: 1;
   background: var(--surface);
   color: var(--blue);
+}
+.document-block-handle:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
 }
 .document-block-handle:active {
   cursor: grabbing;
@@ -9270,10 +9361,30 @@ tr.order-drop-after > td {
   color: var(--muted);
   font-size: 12px;
 }
+/* Touch: only the block with the caret has a handle (no hover), large
+   enough to tap – 44 × 44 px, reaching out into the margin. */
 @media (pointer: coarse) {
   .document-block-handle {
+    height: 44px;
+    margin-top: -8px;
+  }
+  .document-block-handle::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 0 -20px;
+  }
+  .block-handle-layer:not(.always-handles) .document-block-handle:not(.active, .selected, :focus-visible) {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .document-block-handle.active,
+  .always-handles .document-block-handle {
     opacity: 0.65;
-    min-height: 32px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .document-block-handle {
+    transition: none;
   }
 }
 

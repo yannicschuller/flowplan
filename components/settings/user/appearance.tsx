@@ -1,6 +1,7 @@
 "use client";
 // Settings → Darstellung & Sprache: language (profile, all devices),
-// light or dark (this device), the editor's code blocks and draw.io's theme
+// light or dark (this device), the editor's block handles and code blocks
+// and draw.io's theme
 // and interface (this device),
 // keyboard shortcuts and the introduction.
 import { useKeyboardHints } from "@/lib/keyboard-hints";
@@ -10,6 +11,7 @@ import { clearLocale, setLocale, useT } from "../../i18n";
 import { Select } from "../../select";
 import { CONTROL, SaveState, SettingGroup, SettingRow, SwitchRow, useSaveState } from "../../settings-ui";
 import { setLineNumbersByDefault, useLineNumbersByDefault } from "@/lib/code-block-prefs";
+import { setBlockHandlesAlways, useBlockHandlesAlways } from "@/lib/block-handle-prefs";
 import { useUserSettings } from "../user-context";
 import { setDrawioPref, useDrawioPrefs } from "@/lib/drawio-prefs";
 import { DRAWIO_UIS, type DrawioUi } from "@/lib/drawio";
@@ -20,6 +22,7 @@ export default function AppearanceSection() {
   const { boot, mutate, theme, setTheme } = useUserSettings();
   const [status, run] = useSaveState();
   const lineNumbers = useLineNumbersByDefault();
+  const handlesAlways = useBlockHandlesAlways();
   const drawio = useDrawioPrefs();
   return (
     <>
@@ -67,6 +70,15 @@ export default function AppearanceSection() {
         </SettingRow>
       </SettingGroup>
       <SettingGroup id="editor" title={t("Editor", "Editor")}>
+        <SwitchRow
+          label={t("Griffe immer anzeigen", "Always show block handles")}
+          description={t(
+            "Den Griff ⠿ neben jedem Block zeigen, nicht nur am Block unter dem Mauszeiger und am Block mit dem Cursor. Nur auf diesem Gerät.",
+            "Show the ⠿ handle next to every block, not only at the block under the pointer and the block with the caret. On this device only.",
+          )}
+          checked={handlesAlways}
+          onChange={setBlockHandlesAlways}
+        />
         <SwitchRow
           label={t("Zeilennummern standardmäßig anzeigen", "Show line numbers by default")}
           description={t(

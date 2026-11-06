@@ -45,7 +45,14 @@ test("link cards show previews and videos take a chosen width", async ({
   await expect(card).toHaveAttribute("href", "https://example.org/bericht");
   await expect(card).toContainText("Quartalsbericht");
   await expect(card).toContainText("Beispiel AG");
-  // Selecting the video offers its width.
+  // Selecting the video offers its width. Phones show the handle of the
+  // block with the caret only (#138): from the line below, up onto the video.
+  if (test.info().project.name === "mobile") {
+    await editor.locator("p", { hasText: "Ende" }).tap();
+    await page.keyboard.press("Home");
+    await page.keyboard.press("ArrowUp");
+    await expect(page.locator(".document-block-handle.active")).toHaveAttribute("aria-label", /^Blockaktionen: Medium/);
+  }
   await page
     .getByRole("button", { name: /^Blockaktionen: Medium/ })
     .first()

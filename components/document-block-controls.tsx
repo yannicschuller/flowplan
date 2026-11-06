@@ -42,7 +42,7 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 import type { Editor } from "@tiptap/core";
-import type { Transaction } from "@tiptap/pm/state";
+import { NodeSelection, type Transaction } from "@tiptap/pm/state";
 import {
   BLOCK_SELECTION_META,
   BLOCK_MOVE_META,
@@ -75,6 +75,7 @@ import { TEXT_DIRECTION_TYPES, setBlockDirection, textDirection, type BlockDirec
 import { BlockMenu, type BlockMenuItem, type BlockMenuView } from "./block-menu";
 import { CAPTION_KINDS, captionText } from "@/lib/block-captions";
 import { editCaption } from "./block-captions-view";
+import { useBlockHandlesAlways } from "@/lib/block-handle-prefs";
 type Positioned = DocumentBlock & {
   left: number;
   top: number;
@@ -92,7 +93,13 @@ type Positioned = DocumentBlock & {
 const BOXES = ["callout", "blockquote", "toggle"];
 // Handles sit on the middle of a block's first text line, so they stay
 // aligned with large headings and indented list text alike.
-function firstLineCenter(editor: Editor, block: DocumentBlock, rect: DOMRect) {
+function firstLineCenter(editor: Editor, block: DocumentBlock, rect: DOMRect, dom: HTMLElement) {
+  // A toggle: the line of its title (its content may be closed).
+  const summary = block.node.type.name === "toggle" ? dom.querySelector(":scope > summary") : null;
+  if (summary) {
+    const line = summary.getBoundingClientRect();
+    if (line.height) return line.top + Math.min(line.height, 28) / 2;
+  }
   let text = block.node.isTextblock ? block.pos : -1;
   if (text < 0 && !block.node.isAtom)
     block.node.descendants((node, offset) => {
@@ -159,6 +166,23 @@ export function DocumentBlockControls({
   const [symbolFor, setSymbolFor] = useState<number | null>(null),
     [ownSymbol, setOwnSymbol] = useState("");
   const [pointerActive, setPointerActive] = useState(false);
+  // Handles show only where they are wanted (#138): at the block under the
+  // mouse, the block with the caret, a chosen block and a handle with
+  // keyboard focus – or everywhere (Settings › Appearance › Editor).
+  const handlesAlways = useBlockHandlesAlways();
+  const [hovered, setHovered] = useState<number | null>(null);
+  // The caret counts once the document has been in use (focused): a page
+  // just opened shows no handle at its first block.
+  const [engaged, setEngaged] = useState(false);
+  useEffect(() => {
+    if (!editor) return;
+    if (editor.isFocused) setEngaged(true);
+    const focus = () => setEngaged(true);
+    editor.on("focus", focus);
+    return () => {
+      editor.off("focus", focus);
+    };
+  }, [editor]);
   const [drop, setDrop] = useState<{
     top: number;
     left: number;
@@ -228,7 +252,7 @@ export function DocumentBlockControls({
             width: rect.width,
             rtl,
             height: rect.height,
-            handleTop: firstLineCenter(editor, b, rect) - origin.top - 14 - dy,
+            handleTop: firstLineCenter(editor, b, rect, dom) - origin.top - 14 - dy,
             glide: glide?.animation,
             boxed: (() => {
               const $pos = editor.state.doc.resolve(b.pos);
@@ -968,6 +992,43 @@ export function DocumentBlockControls({
   const visible = blocks.filter(
     (block) => !listContainers.includes(block.node.type.name) && !block.boxed,
   );
+  // The block with the caret: the innermost one with a handle around it (a
+  // selected block itself).
+  // While a block is dragged the caret's handle stays where it was: the
+  // dragged handle must not change under the finger.
+  const caretBefore = useRef<number | null>(null);
+  const caret = (() => {
+    if (pointerActive) return caretBefore.current;
+    if (!editor || !engaged) return null;
+    const handled = new Set(visible.map((b) => b.pos));
+    const selection = editor.state.selection;
+    if (selection instanceof NodeSelection && handled.has(selection.from)) return selection.from;
+    const { $from } = selection;
+    for (let d = $from.depth; d > 0; d--) {
+      const pos = $from.before(d);
+      if (handled.has(pos)) return pos;
+    }
+    return null;
+  })();
+  caretBefore.current = caret;
+  const isEmptyParagraph = (block: Positioned) => block.node.type.name === "paragraph" && block.node.childCount === 0;
+  // An empty paragraph has a handle only while it has the caret (or is
+  // chosen).
+  const handles = handlesAlways
+    ? visible
+    : visible.filter((block) => !isEmptyParagraph(block) || block.pos === caret || selected.current.includes(block.pos));
+  // The block under the mouse: the innermost one with a handle at the
+  // pointer's height (a gap between blocks keeps the one before).
+  function hover(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.pointerType === "touch" || handlesAlways || picking) return;
+    const host = surface.current;
+    if (!host) return;
+    const y = event.clientY - host.getBoundingClientRect().top;
+    const under = geometry.current
+      .filter((b) => !listContainers.includes(b.node.type.name) && !b.boxed && y >= b.top && y <= b.top + b.height)
+      .sort((a, b) => b.depth - a.depth)[0];
+    if (under && under.pos !== hovered) setHovered(under.pos);
+  }
   const count = selected.current.length;
   const picked = picking
     ? blocks.filter((b) => selected.current.includes(b.pos))
@@ -977,10 +1038,12 @@ export function DocumentBlockControls({
       <div
         ref={surface}
         className={`block-editor-surface ${editor?.isEditable ? "with-block-handles" : ""}${picking ? " picking-blocks" : ""}${blocks.some((block) => block.rtl) ? " with-rtl-blocks" : ""}`}
+        onPointerMove={hover}
+        onPointerLeave={() => setHovered(null)}
       >
         {children}
         {editor?.isEditable && (
-          <div className="block-handle-layer" aria-label={t("Blockgriffe", "Block handles")}>
+          <div className={`block-handle-layer${handlesAlways ? " always-handles" : ""}`} aria-label={t("Blockgriffe", "Block handles")}>
             {picked.map((block) => (
               <div
                 key={`picked-${block.pos}`}
@@ -1011,12 +1074,15 @@ export function DocumentBlockControls({
                     </button>
                   );
                 })
-              : visible.map((block) => (
+              : handles.map((block) => (
               <button
                 key={block.pos}
                 type="button"
                 data-block-pos={block.pos}
-                className={`document-block-handle ${selected.current.includes(block.pos) ? "selected" : ""}`}
+                // Near the left edge on phones: dragging a block is not the
+                // swipe that opens the sidebar (components/drawer-swipe.ts).
+                data-no-edge-swipe=""
+                className={`document-block-handle${selected.current.includes(block.pos) ? " selected" : ""}${block.pos === caret ? " active" : ""}${block.pos === hovered ? " hovered" : ""}`}
                 style={{
                   left: block.rtl ? block.right + 2 : Math.max(0, block.left - 25),
                   top: block.handleTop,
