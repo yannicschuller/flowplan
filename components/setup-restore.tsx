@@ -262,7 +262,7 @@ export function SetupRestore({ onCancel }: { onCancel: () => void }) {
           />
         </label>
       ) : (
-        <form className="login-form setup-restore-form" onSubmit={remote} key={source}>
+        <form method="post" action="/api/auth/no-script" className="login-form setup-restore-form" onSubmit={remote} key={source}>
           {source === "s3" ? (
             <>
               <label>
