@@ -92,10 +92,11 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     icon: "Palette",
     title: { de: "Darstellung & Sprache", en: "Appearance & language" },
     description: { de: "Sprache, Hell oder Dunkel, Zeilennummern im Code, Tastenkürzel und die Einführung.", en: "Language, light or dark, line numbers in code, keyboard shortcuts and the introduction." },
-    keywords: { de: "sprache deutsch englisch französisch design hell dunkel theme editor code zeilennummern tastenkürzel shortcuts einführung tour", en: "language german english french theme light dark appearance editor code line numbers keyboard shortcuts introduction tour" },
+    keywords: { de: "sprache deutsch englisch französisch design hell dunkel theme editor griffe blockgriffe code zeilennummern tastenkürzel shortcuts einführung tour", en: "language german english french theme light dark appearance editor handles block handles code line numbers keyboard shortcuts introduction tour" },
     entries: [
       { title: { de: "Sprache", en: "Language" } },
       { title: { de: "Erscheinungsbild", en: "Appearance" }, keywords: { de: "hell dunkel", en: "light dark" } },
+      { title: { de: "Griffe immer anzeigen", en: "Always show block handles" }, keywords: { de: "blockgriff griff ziehen editor blöcke", en: "block handle drag editor blocks grip" } },
       { title: { de: "Zeilennummern standardmäßig anzeigen", en: "Show line numbers by default" }, keywords: { de: "code codeblock editor", en: "code block editor" } },
       { title: { de: "Tastenkürzel", en: "Keyboard shortcuts" } },
       { title: { de: "Einführung ansehen", en: "Show introduction" } },

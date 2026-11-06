@@ -221,13 +221,24 @@ export function writeFolds(storage: StorageLike | null, key: string, ids: Iterab
 // Asks the editor to unfold the section an element is hidden in (find on
 // the page, jumps to a block). True when it was hidden.
 export const FOLD_UNFOLD_EVENT = "flowplan-unfold";
+// Closed toggles around it open as well (#137; in the editor the toggle's
+// node view follows its element).
 export function unfoldElement(el: Element | null | undefined): boolean {
+  const toggles = closedToggles(el);
+  for (const details of toggles) details.open = true;
   const hidden = el?.closest?.(".fold-hidden");
-  if (!hidden) return false;
+  if (!hidden) return toggles.length > 0;
   hidden.dispatchEvent(new CustomEvent(FOLD_UNFOLD_EVENT, { bubbles: true }));
   return true;
 }
-export const isFolded = (el: Element | null | undefined) => !!el?.closest?.(".fold-hidden");
+// The closed toggles (<details>) whose content holds an element.
+function closedToggles(el: Element | null | undefined): HTMLDetailsElement[] {
+  const out: HTMLDetailsElement[] = [];
+  for (let d = el?.closest?.("details"); d; d = d.parentElement?.closest("details"))
+    if (d instanceof HTMLDetailsElement && !d.open && !d.querySelector(":scope > summary")?.contains(el!)) out.push(d);
+  return out;
+}
+export const isFolded = (el: Element | null | undefined) => !!el?.closest?.(".fold-hidden") || closedToggles(el).length > 0;
 
 // "Alle Abschnitte einklappen / ausklappen": the open document's editor
 // (the record's in an open dialog) folds or unfolds everything.

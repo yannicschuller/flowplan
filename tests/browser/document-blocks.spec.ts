@@ -31,12 +31,26 @@ async function fixture(page: Page, title: string, kind = "document") {
   };
   return { host, origin, command, read, seed };
 }
+// Touch screens show a handle only at the block with the caret (#138): a
+// tap into the block first.
+async function caretIn(block: import("@playwright/test").Locator, mobile: boolean) {
+  if (!mobile) return;
+  const text = (await block.innerText()).trim();
+  // Again if the tap landed elsewhere (a sheet still sliding in).
+  await expect(async () => {
+    await block.tap();
+    await expect
+      .poll(() => block.page().evaluate(() => [...document.querySelectorAll(".document-block-handle.active")].map((h) => h.getAttribute("aria-label") || "")), { timeout: 3000 })
+      .toContainEqual(expect.stringContaining(text));
+  }).toPass();
+}
 async function dragBlock(
   page: Page,
   from: import("@playwright/test").Locator,
   to: import("@playwright/test").Locator,
   mobile: boolean,
 ) {
+  await from.scrollIntoViewIfNeeded();
   const start = (await from.boundingBox())!,
     end = (await to.boundingBox())!;
   const a = {
@@ -94,6 +108,8 @@ test("block handles drag with mouse or touch, bulk actions preserve content and 
   await expect(
     editor.locator(":scope > p").filter({ hasText: /\S/ }),
   ).toHaveText(["Alpha", "Bravo", "Charlie"]);
+  const mobile = info.project.name === "mobile";
+  await caretIn(editor.locator(":scope > p", { hasText: "Alpha" }), mobile);
   await dragBlock(
     page,
     page.getByRole("button", {
@@ -107,6 +123,7 @@ test("block handles drag with mouse or touch, bulk actions preserve content and 
     editor.locator(":scope > p").filter({ hasText: /\S/ }),
   ).toHaveText(["Bravo", "Charlie", "Alpha"]);
   // The selection mode: Bravo from its menu, Charlie by its circle.
+  await caretIn(editor.locator(":scope > p", { hasText: "Bravo" }), mobile);
   await page
     .getByRole("button", { name: "Blockaktionen: Absatz · Bravo", exact: true })
     .click();
@@ -137,6 +154,7 @@ test("block handles drag with mouse or touch, bulk actions preserve content and 
     editor.locator(":scope > p").filter({ hasText: /\S/ }),
   ).toHaveText(["Bravo", "Charlie", "Alpha"]);
   // Into the callout: dropped below its first paragraph.
+  await caretIn(editor.locator(":scope > p", { hasText: "Alpha" }), mobile);
   await dragBlock(
     page,
     page.getByRole("button", {
@@ -161,7 +179,8 @@ test("block handles drag with mouse or touch, bulk actions preserve content and 
   ]);
   await expect
     .poll(async () => (await f.read()).html)
-    .toContain("<p>Alpha</p><p>Inside one</p>");
+    // Moved blocks carry their ids (#88): attributes on the paragraphs.
+    .toMatch(/<p[^>]*>Alpha<\/p><p[^>]*>Inside one<\/p>/);
   expect((await f.read()).html).not.toMatch(
     /document-block-handle|Blockaktionen/,
   );
@@ -229,6 +248,7 @@ test("record and guest editors reorder blocks while guest duplication preserves 
   await page.goto(`/#page=${f.host.id}`);
   await page.getByText("Block example", { exact: true }).dblclick();
   const entry = page.getByRole("dialog", { name: "Eintrag", exact: true });
+  await caretIn(entry.locator("p", { hasText: "First" }), info.project.name === "mobile");
   await entry
     .getByRole("button", { name: "Blockaktionen: Absatz · First", exact: true })
     .click();
@@ -236,7 +256,7 @@ test("record and guest editors reorder blocks while guest duplication preserves 
   await entry.getByRole("button", { name: "Schließen", exact: true }).click();
   await expect
     .poll(async () => (await readRow()).html)
-    .toContain("<p>Second</p><p>First</p>");
+    .toMatch(/<p[^>]*>Second<\/p><p[^>]*>First<\/p>/);
   const link = await f.command({
     action: "share.create",
     pageId: f.host.id,
@@ -258,6 +278,16 @@ test("record and guest editors reorder blocks while guest duplication preserves 
     await guest
       .getByRole("button", { name: "Inhalt bearbeiten", exact: true })
       .click();
+    // A phone shows the handle of the block with the caret only (#138).
+    const caret = async (block: import("@playwright/test").Locator) => {
+      if (info.project.name !== "mobile") return;
+      await expect(async () => {
+        await block.click();
+        await expect(guest.locator(".document-block-handle.active")).toHaveCount(1, { timeout: 3000 });
+      }).toPass();
+    };
+    const guestFirst = () => guest.locator("[contenteditable=true] p", { hasText: /^First$/ }).first();
+    await caret(guestFirst());
     await guest
       .getByRole("button", {
         name: "Blockaktionen: Absatz · First",
@@ -269,9 +299,11 @@ test("record and guest editors reorder blocks while guest duplication preserves 
       exact: true,
     });
     await guest.getByRole("menuitem", { name: "Nach oben", exact: true }).click();
+    await caret(guestFirst());
     await firstHandle.first().click();
     await guest.getByRole("menuitem", { name: "Duplizieren", exact: true }).click();
     // Linked databases are not duplicated through guest links.
+    await caret(guest.locator("[contenteditable=true] [data-linked-database]").first());
     await guest
       .getByRole("button", {
         name: "Blockaktionen: Verknüpfte Datenbank",
@@ -288,7 +320,8 @@ test("record and guest editors reorder blocks while guest duplication preserves 
     await expect(
       guest.getByText("Änderungen gespeichert", { exact: true }),
     ).toBeVisible();
-    expect((await readRow()).html).toContain("<p>First</p><p>First</p>");
+    // Moved blocks carry their ids (#88): attributes on the paragraphs.
+    expect((await readRow()).html).toMatch(/<p[^>]*>First<\/p><p[^>]*>First<\/p>/);
     expect((await readRow()).html).toContain(
       `data-linked-source="${f.host.id}"`,
     );
@@ -340,6 +373,8 @@ test("block selections track remote edits and a remote transaction cancels an ac
     });
     doc.destroy();
   };
+  const mobile = info.project.name === "mobile";
+  await caretIn(editor.locator(":scope > p", { hasText: "Bravo" }), mobile);
   await page
     .getByRole("button", { name: "Blockaktionen: Absatz · Bravo", exact: true })
     .click();
@@ -366,6 +401,7 @@ test("block selections track remote edits and a remote transaction cancels an ac
       async () => ((await f.read()).html.match(/Updated Bravo/g) || []).length,
     )
     .toBe(2);
+  await caretIn(editor.locator(":scope > p", { hasText: "Remote Alpha" }), mobile);
   const handle = page.getByRole("button", {
     name: "Blockaktionen: Absatz · Remote Alpha",
     exact: true,
@@ -393,6 +429,7 @@ test("block selections track remote edits and a remote transaction cancels an ac
     "Updated Bravo",
     "Charlie",
   ]);
+  await caretIn(editor.locator(":scope > p", { hasText: "Updated Bravo" }).first(), mobile);
   await page
     .getByRole("button", {
       name: "Blockaktionen: Absatz · Updated Bravo",

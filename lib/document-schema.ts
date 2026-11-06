@@ -2,7 +2,8 @@ import { DrawBlock } from "./draw-block-node";
 import { Suggestion } from "./suggestions";
 import { BlockReactionAttribute } from "./block-reactions";
 import { BlockIdAttribute } from "./block-ids";
-import { Extension, Mark, Node, mergeAttributes, getSchema, getMarkRange } from "@tiptap/core";
+import { focusToggleTitle, titleAbove, toggleBlocksPlugin, toggleNodeView, toggleOpen, togglesAround } from "./toggle-view";
+import { Extension, Mark, Node, mergeAttributes, getSchema, getMarkRange, getAttributesFromExtensions, getRenderedAttributes } from "@tiptap/core";
 import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import type { DOMOutputSpec } from "@tiptap/pm/model";
@@ -143,12 +144,44 @@ export const Toggle = Node.create({
     };
   },
   parseHTML: () => [{ tag: "details", contentElement: "div" }],
+  // Stored, exported and read: always open. In the editor a node view of
+  // its own opens and closes it (lib/toggle-view.ts, #137) – the state is
+  // not part of the document.
   renderHTML: ({ node, HTMLAttributes }) => [
     "details",
     mergeAttributes(HTMLAttributes, { open: true }),
     ["summary", node.attrs.title],
     ["div", 0],
   ],
+  addNodeView() {
+    return (props) => {
+      const attributes = getAttributesFromExtensions(props.editor.extensionManager.extensions);
+      return toggleNodeView({ ...props, attributesOf: (node) => getRenderedAttributes(node, attributes) });
+    };
+  },
+  addProseMirrorPlugins() {
+    return [toggleBlocksPlugin()];
+  },
+  // ⌘⌥↵ / Ctrl+Alt+Enter inside a toggle closes it (the caret goes to its
+  // title, where the same keys open it again); ↑ or ← at the very start of
+  // its content go to the title.
+  addKeyboardShortcuts() {
+    const toTitle = () => {
+      const pos = titleAbove(this.editor.state);
+      return pos !== null && focusToggleTitle(this.editor.view, pos);
+    };
+    return {
+      "Mod-Alt-Enter": ({ editor }) => {
+        const around = togglesAround(editor.state.doc, editor.state.selection.from);
+        const inner = around[around.length - 1];
+        if (!inner) return false;
+        toggleOpen(editor.view, inner.pos, true);
+        return true;
+      },
+      ArrowUp: toTitle,
+      ArrowLeft: toTitle,
+    };
+  },
 });
 export const MathBlock = Node.create({
   name: "mathBlock",

@@ -94,7 +94,7 @@ const editorLabels: Record<string, [string, string]> = {
   italic: ["Kursiv", "Italic"],
   center: ["Text zentrieren", "Centre the text"],
   ai: ["KI-Schreibassistent", "AI writing assistant"],
-  foldSection: ["Abschnitt ein- oder ausklappen (in der Überschrift)", "Collapse or expand the section (in the heading)"],
+  foldSection: ["Abschnitt (in der Überschrift) oder aufklappbaren Block ein- oder ausklappen", "Collapse or expand the section (in the heading) or the toggle"],
   blockLink: ["Link zum Block kopieren", "Copy link to block"],
 };
 function conflictText(conflict: Conflict, t: T) {
@@ -140,7 +140,7 @@ export function fixedShortcutGroups(t: T, ai: boolean, mac: boolean): ShortcutGr
         { label: t("Fußnote", "Footnote"), keys: [k("Mod+Alt+F")] },
         { label: t("Textkommentar", "Text comment"), keys: [k("Mod+Alt+M")] },
         { label: t("Block verschieben", "Move the block"), keys: [k("Mod+Shift+ArrowUp"), k("Mod+Shift+ArrowDown")] },
-        { label: t("Abschnitt ein- oder ausklappen (in der Überschrift)", "Collapse or expand the section (in the heading)"), keys: [k("Mod+Alt+Enter")] },
+        { label: t("Abschnitt (in der Überschrift) oder aufklappbaren Block ein- oder ausklappen", "Collapse or expand the section (in the heading) or the toggle"), keys: [k("Mod+Alt+Enter")] },
         { label: t("Rückgängig / Wiederholen", "Undo / redo"), keys: [k("Mod+Z"), k("Mod+Shift+Z")] },
         { label: t("Seitenlink in geteilter Ansicht öffnen", "Open a page link in split view"), keys: [mac ? t("⌘ + Klick", "⌘ + click") : t("Ctrl + Klick", "Ctrl + click")] },
         ...(ai ? [{ label: t("KI-Schreibassistent", "AI writing assistant"), keys: [k("Mod+J")] }] : []),
