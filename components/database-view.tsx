@@ -8,7 +8,7 @@ import { readModeIds, toggleReadMode } from "@/lib/read-mode";
 import { pinnedColumnLeft, pinnedColumnWidth, SELECTION_COLUMN, tableWidth } from "@/lib/pinned-column";
 import { isLinkField } from "@/lib/cell-links";
 import { LinkCellDisplay, LinkValue } from "./link-cell";
-import { CSV_FORMULA } from "@/lib/cell-text";
+import { CSV_FORMULA, csvImportText, csvListValues } from "@/lib/cell-text";
 import { recordsClipboard } from "@/lib/database-clipboard";
 import { suggestedPrefix } from "@/lib/ticket-ids";
 import { parentField, treeOrder } from "@/lib/subtasks";
@@ -4031,6 +4031,10 @@ export default function DatabaseView({
           const result = Papa.parse<Record<string, string>>(await f.text(), {
             header: true,
             skipEmptyLines: true,
+            // The apostrophes the CSV export puts before formula-like text
+            // (in names and values) come off again.
+            transformHeader: csvImportText,
+            transform: csvImportText,
           });
           if (result.errors.length) {
             onError(t("CSV konnte nicht gelesen werden.", "The CSV could not be read."));
@@ -4049,10 +4053,7 @@ export default function DatabaseView({
                           (row[f.name] || "").toLowerCase(),
                         )
                       : f.type === "multiselect" || f.type === "aliases"
-                        ? (row[f.name] || "")
-                            .split(",")
-                            .map((s) => s.trim())
-                            .filter(Boolean)
+                        ? csvListValues(row[f.name] || "", f.type === "multiselect" ? f.options : [])
                         : // A CSV is plain text: formatted text (#126) keeps "*" and "_" as written.
                           isFormattedText(f, fields)
                           ? escapeInline(row[f.name] || "")
