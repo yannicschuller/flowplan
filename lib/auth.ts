@@ -8,6 +8,7 @@ import { recordOpsEvent } from "./ops-events";
 import { blockedRequest, securityEvent } from "./security-events";
 import { noteActive } from "./metrics";
 import { readOnlyRefusal } from "./instance-read-only";
+import { rememberPolicy, rememberedEnd, sessionTerms } from "./session-policy";
 export const cookieName = "flowplan_session";
 export const appUrl = () => process.env.APP_URL || "http://localhost:3000";
 export const hash = (value: string) =>
@@ -45,34 +46,10 @@ export function extractGroups(claims: Record<string, unknown>): string[] {
     ? val.filter((g): g is string => typeof g === "string")
     : [];
 }
-// How long sessions last. A normal session ends SESSION_HOURS after signing
-// in (default 8, at most 24). With SESSION_REMEMBER=true people can choose
-// "Stay signed in on this device" (the apps always ask for it): the session
-// then lives on while it is used (SESSION_IDLE_HOURS after the last request,
-// default 7 days), never beyond SESSION_MAX_DAYS after signing in (default
-// 30) – for SSO the same as for passwords and passkeys. Only an instance
-// that sets SESSION_GROUPS_HOURS ends SSO sessions earlier, so group changes
-// at the provider take effect at the next sign-in; without it they follow
-// through SCIM, the LDAP sync or the next sign-in.
-const bounded = (raw: string | undefined, fallback: number, min: number, max: number) => {
-  const value = Number(raw);
-  return Math.min(max, Math.max(min, Number.isFinite(value) && value > 0 ? value : fallback));
-};
-export const sessionHours = () => bounded(process.env.SESSION_HOURS, 8, 1, 24);
-export function rememberPolicy() {
-  if (process.env.SESSION_REMEMBER !== "true") return null;
-  const maxHours = bounded(process.env.SESSION_MAX_DAYS, 30, 1, 365) * 24;
-  return {
-    idleHours: Math.min(maxHours, bounded(process.env.SESSION_IDLE_HOURS, 168, 1, 24 * 90)),
-    maxHours,
-    groupsHours: process.env.SESSION_GROUPS_HOURS ? Math.min(maxHours, bounded(process.env.SESSION_GROUPS_HOURS, 168, 1, 24 * 365)) : null,
-  };
-}
-// The latest end of a remembered session, from when it began.
-function rememberedEnd(created: number, sso: boolean, policy: NonNullable<ReturnType<typeof rememberPolicy>>) {
-  return created + (sso && policy.groupsHours ? policy.groupsHours : policy.maxHours) * 3_600_000;
-}
-type SessionUse = { token: string; expires: number; created_at: number | null; remember: number; sso: number; last_seen: number | null; demo_until?: number | null };
+// How long sessions last: lib/session-policy.ts (Administration → Anmeldung
+// & SSO → Sitzungen, else SESSION_* in the environment).
+export { rememberPolicy, sessionHours, isAppAgent } from "./session-policy";
+type SessionUse = { token: string; expires: number; created_at: number | null; remember: number; sso: number; app?: number; last_seen: number | null; demo_until?: number | null };
 // A session in use: a remembered one lives on (written at most every few
 // minutes; turning the option off on the instance ends the sliding), every
 // other one notes when it was last used. Called for the cookie and for the
@@ -80,9 +57,9 @@ type SessionUse = { token: string; expires: number; created_at: number | null; r
 // background keep the session of their app alive like the app itself.
 export function touchSession(s: SessionUse, now = Date.now()) {
   if (s.demo_until) return;
-  const policy = rememberPolicy();
+  const policy = s.remember ? rememberPolicy(s.app ? "app" : "browser") : null;
   const stale = now - (s.last_seen || 0) > 5 * 60_000;
-  if (s.remember && policy && s.created_at) {
+  if (policy && s.created_at) {
     const next = Math.min(now + policy.idleHours * 3_600_000, rememberedEnd(s.created_at, !!s.sso, policy));
     if (next - s.expires > 5 * 60_000) return run("UPDATE sessions SET expires=?,last_seen=? WHERE token=?", next, now, s.token);
   }
@@ -90,14 +67,14 @@ export function touchSession(s: SessionUse, now = Date.now()) {
 }
 export function identityFromToken(token: string): Identity | null {
   const now = Date.now();
-  const s = one<User & { groups_json: string; expires: number; created_at_s: number | null; remember: number; sso: number; last_seen: number | null }>(
-    "SELECT u.*,s.groups_json,s.expires,s.created_at created_at_s,s.remember,s.sso,s.last_seen FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=? AND s.expires>? AND u.disabled=0",
+  const s = one<User & { groups_json: string; expires: number; created_at_s: number | null; remember: number; sso: number; app: number; last_seen: number | null }>(
+    "SELECT u.*,s.groups_json,s.expires,s.created_at created_at_s,s.remember,s.sso,s.app,s.last_seen FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=? AND s.expires>? AND u.disabled=0",
     hash(token),
     now,
   );
   if (!s) return null;
   const groups = JSON.parse(s.groups_json) as string[];
-  touchSession({ token: hash(token), expires: s.expires, created_at: s.created_at_s, remember: s.remember, sso: s.sso, last_seen: s.last_seen, demo_until: s.demo_until }, now);
+  touchSession({ token: hash(token), expires: s.expires, created_at: s.created_at_s, remember: s.remember, sso: s.sso, app: s.app, last_seen: s.last_seen, demo_until: s.demo_until }, now);
   // Active people per hour (lib/metrics.ts): counted in memory, never stored.
   if (!s.demo_until) noteActive(s.id, now);
   // Demo sessions live on while used: 45 minutes after the last request,
@@ -176,8 +153,8 @@ export async function issueSession(
   groups: string[],
   // Demo sessions: their own end (the cookie lasts until the demo's end).
   demo?: { expires: number; until: number },
-  // "Stay signed in on this device" (only when the instance allows it), and
-  // whether the groups came from an SSO provider.
+  // "Stay signed in on this device" (only when the instance allows it; the
+  // apps always ask), and whether the groups came from an SSO provider.
   options: { remember?: boolean; sso?: boolean } = {},
 ) {
   const token = randomBytes(32).toString("base64url");
@@ -187,15 +164,12 @@ export async function issueSession(
     // Counted for the sign-in chart of the monitoring (lib/admin-ops.ts).
     recordOpsEvent("login_success", now);
   }
-  const hours = sessionHours();
-  const policy = !demo && options.remember ? rememberPolicy() : null;
-  const expires = demo
-    ? demo.expires
-    : policy
-      ? Math.min(now + policy.idleHours * 3_600_000, rememberedEnd(now, !!options.sso, policy))
-      : now + hours * 3_600_000;
   const requestHeaders = await headers();
   const agent = (requestHeaders.get("user-agent") || "").slice(0, 300);
+  // How long it lasts (lib/session-policy.ts): the desktop and mobile apps
+  // stay signed in unless the instance says otherwise.
+  const terms = demo ? null : sessionTerms({ agent, remember: options.remember, sso: options.sso }, now);
+  const expires = terms ? terms.expires : demo!.expires;
   // A security event (lib/security-events.ts): the detection compares it
   // with earlier sign-ins and failures of the same account.
   if (!demo) {
@@ -209,14 +183,15 @@ export async function issueSession(
       securityEvent(admin ? "admin.granted" : "admin.revoked", { actorId: userId, headers: requestHeaders, detail: `${options.sso ? "SSO" : "directory"} group at sign-in` });
   }
   run(
-    "INSERT INTO sessions(token,user_id,groups_json,expires,created_at,remember,sso,last_seen,agent) VALUES(?,?,?,?,?,?,?,?,?)",
+    "INSERT INTO sessions(token,user_id,groups_json,expires,created_at,remember,sso,app,last_seen,agent) VALUES(?,?,?,?,?,?,?,?,?,?)",
     hash(token),
     userId,
     JSON.stringify(groups),
     expires,
     now,
-    policy ? 1 : 0,
+    terms?.remember ? 1 : 0,
     options.sso ? 1 : 0,
+    terms?.app ? 1 : 0,
     now,
     agent,
   );
@@ -232,11 +207,7 @@ export async function issueSession(
     path: "/",
     // A remembered session keeps its cookie until its latest possible end;
     // the server decides earlier whether it is still alive.
-    maxAge: demo
-      ? Math.max(60, Math.round((demo.until - now) / 1000))
-      : policy
-        ? Math.round((rememberedEnd(now, !!options.sso, policy) - now) / 1000)
-        : hours * 3600,
+    maxAge: terms ? terms.maxAge : Math.max(60, Math.round((demo!.until - now) / 1000)),
   });
 }
 // The session a device signed in with before is replaced by a new one of the

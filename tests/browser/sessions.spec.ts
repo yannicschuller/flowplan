@@ -39,3 +39,35 @@ test("signed-in devices are listed and signed out one by one", async ({ page, br
   await visitor.close();
   expect(errors).toEqual([]);
 });
+
+// Issue #133: the administration sets how long sessions last; "Stay signed
+// in" appears on the sign-in page once it is offered there.
+test("session lifetimes in Administration → Sign-in & SSO → Sessions", async ({ page, browser }, info) => {
+  test.skip(info.project.name !== "desktop", "One run covers it.");
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
+  await page.request.post("/api/auth/demo", { headers: { origin } });
+  await page.goto("/#admin/signin");
+  const group = page.locator("#sessions");
+  await expect(group.getByText("Desktop- und Mobil-Apps")).toBeVisible();
+  const offer = group.getByLabel("„Angemeldet bleiben“ im Browser anbieten");
+  const apps = group.getByLabel("Apps: Ende ohne Nutzung");
+  await expect(apps).toHaveValue("");
+  await offer.selectOption("true");
+  await apps.selectOption("365");
+  await expect.poll(async () => ((await (await page.request.get("/api/admin")).json()) as { settings: { sessionRemember: boolean | null; appDays: number | null } }).settings).toMatchObject({ sessionRemember: true, appDays: 365 });
+  await group.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: "test-results/admin-sessions.png" });
+  const visitor = await browser.newContext({ locale: "de-DE" });
+  const login = await visitor.newPage();
+  await login.goto(`${origin}/login`);
+  if (await login.getByText("Schon ein Konto?").isVisible()) await login.getByRole("button", { name: "Anmelden", exact: true }).click();
+  await expect(login.getByRole("checkbox", { name: /Angemeldet bleiben/ })).toBeVisible();
+  await visitor.close();
+  // Back to the defaults (the environment).
+  await offer.selectOption("");
+  await apps.selectOption("");
+  await expect.poll(async () => ((await (await page.request.get("/api/admin")).json()) as { settings: { sessionRemember: boolean | null } }).settings.sessionRemember).toBe(null);
+  expect(errors).toEqual([]);
+});

@@ -7,6 +7,8 @@ import type { BuildInfo } from "@/lib/build-info";
 import type { UpdateStatus } from "@/lib/update-check";
 import type { User } from "@/lib/types";
 import type { InstanceSettings } from "@/lib/instance-settings";
+import type { sessionSettings } from "@/lib/session-policy";
+type SessionSettings = ReturnType<typeof sessionSettings>;
 import type { MarkdownExportStatus, SpaceGitOverview } from "../markdown-export-settings";
 import type { EncryptionStatus } from "../encryption-settings";
 import type { SsoMappingRow } from "../sso-mappings";
@@ -57,6 +59,8 @@ export type AdminData = {
   };
   usage: { id: string; bytes: number; quotaMb: number | null; effectiveQuotaMb: number }[];
   settings: InstanceSettings;
+  // Effective session lifetimes (lib/session-policy.ts).
+  sessionPolicy?: SessionSettings;
   localLogin?: boolean;
   localAccounts?: Record<string, { admin: boolean; verified: boolean; passkeys: number; totp?: boolean; password?: boolean }>;
   // Connected SSO identities (#101) and the accounts that sign in with LDAP.

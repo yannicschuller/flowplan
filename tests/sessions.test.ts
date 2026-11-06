@@ -10,13 +10,14 @@ const { registerMobileDevice, identityFromDeviceToken } = await import("../lib/m
 const { disableInactiveAccounts } = await import("../lib/inactive-accounts");
 const { saveInstanceSettings } = await import("../lib/instance-settings");
 const { mySessions, endMySessions, deviceName } = await import("../lib/my-sessions");
+const { sessionTerms, sessionSettings } = await import("../lib/session-policy");
 
 const uid = id();
 run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, "Mara", "mara@example.test");
 const HOUR = 3_600_000;
-function session(token: string, values: { created: number; expires: number; remember?: boolean; sso?: boolean; agent?: string }) {
+function session(token: string, values: { created: number; expires: number; remember?: boolean; sso?: boolean; app?: boolean; agent?: string }) {
   run(
-    "INSERT INTO sessions(token,user_id,groups_json,expires,created_at,remember,sso,last_seen,agent) VALUES(?,?,?,?,?,?,?,?,?)",
+    "INSERT INTO sessions(token,user_id,groups_json,expires,created_at,remember,sso,app,last_seen,agent) VALUES(?,?,?,?,?,?,?,?,?,?)",
     hash(token),
     uid,
     "[]",
@@ -24,6 +25,7 @@ function session(token: string, values: { created: number; expires: number; reme
     values.created,
     values.remember ? 1 : 0,
     values.sso ? 1 : 0,
+    values.app ? 1 : 0,
     values.created,
     values.agent || "",
   );
@@ -162,4 +164,97 @@ test("own sessions are listed and signed out per device", () => {
   const result = endMySessions(me, "laptop", { others: true });
   assert.equal(result.current, false);
   assert.deepEqual(mySessions(me, "laptop").map((s) => s.current), [true]);
+});
+
+// Issue #133: "after about 30 minutes of inactivity the session is gone" on
+// Android and the desktop. A session is created the way issueSession does
+// (sessionTerms), left alone for 31 minutes, then used again.
+const ANDROID = "Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 Chrome/131.0 Mobile Safari/537.36 FlowplanMobile/1.9.0";
+const DESKTOP = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Electron/33.0 Safari/537.36 FlowplanDesktop/1.4.0";
+const BROWSER = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0 Safari/537.36";
+const MIN = 60_000;
+const DAY = 24 * HOUR;
+function signedIn(token: string, input: { agent: string; remember?: boolean; sso?: boolean }, at: number) {
+  const terms = sessionTerms(input, at);
+  session(token, { created: at, expires: terms.expires, remember: terms.remember, sso: input.sso, app: terms.app, agent: input.agent });
+  return terms;
+}
+function clearSessionEnv() {
+  for (const name of ["SESSION_HOURS", "SESSION_REMEMBER", "SESSION_IDLE_HOURS", "SESSION_MAX_DAYS", "SESSION_GROUPS_HOURS", "SESSION_APP_REMEMBER", "SESSION_APP_DAYS"]) delete process.env[name];
+  saveInstanceSettings({ sessionHours: null, sessionRemember: null, rememberDays: null, appSessions: null, appDays: null });
+}
+
+test("#133: no session of any sign-in ends after 31 minutes idle; the apps stay signed in", () => {
+  clearSessionEnv();
+  const now = Date.now();
+  const before = now - 31 * MIN;
+  const cases = [
+    // The apps' browser hand-off (passkey or SSO) redeems with remember on …
+    { token: "android-handoff-sso", agent: ANDROID, remember: true, sso: true },
+    { token: "desktop-handoff-passkey", agent: DESKTOP, remember: true },
+    // … the password form inside the app sends none.
+    { token: "android-password", agent: ANDROID, remember: false },
+    { token: "desktop-password-sso-account", agent: DESKTOP, remember: false, sso: true },
+    // Browsers: SSO and passkey, with and without "Stay signed in".
+    { token: "browser-sso", agent: BROWSER, remember: false, sso: true },
+    { token: "browser-sso-remember", agent: BROWSER, remember: true, sso: true },
+    { token: "browser-passkey", agent: BROWSER, remember: false },
+    { token: "browser-passkey-remember", agent: BROWSER, remember: true },
+  ];
+  for (const c of cases) signedIn(c.token, c, before);
+  for (const c of cases) assert.ok(identityFromToken(c.token), `${c.token} still signed in after 31 minutes`);
+  // The apps: remembered by default, 90 days after the last use.
+  for (const token of ["android-handoff-sso", "desktop-handoff-passkey", "android-password", "desktop-password-sso-account"]) {
+    const row = one<{ remember: number; app: number }>("SELECT remember,app FROM sessions WHERE token=?", hash(token))!;
+    assert.deepEqual([row.remember, row.app], [1, 1], token);
+    assert.ok(Math.abs(expires(token) - (now + 90 * DAY)) < 5000, `${token} slides to 90 days`);
+  }
+  // Browsers keep today's posture: 8 hours after signing in, "Stay signed in"
+  // only where the instance offers it (not by default).
+  for (const token of ["browser-sso", "browser-sso-remember", "browser-passkey", "browser-passkey-remember"])
+    assert.equal(expires(token), before + 8 * HOUR, token);
+  // The app after a weekend away: still signed in; a browser session is not.
+  signedIn("android-weekend", { agent: ANDROID }, now - 3 * DAY);
+  run("UPDATE sessions SET expires=? WHERE token=?", now - 3 * DAY + 90 * DAY, hash("android-weekend"));
+  assert.ok(identityFromToken("android-weekend"));
+  signedIn("browser-yesterday", { agent: BROWSER }, now - 9 * HOUR);
+  assert.equal(identityFromToken("browser-yesterday"), null);
+});
+
+test("#133: the administration sets the session lifetimes; the environment stays the default", () => {
+  clearSessionEnv();
+  const now = Date.now();
+  // Environment equivalents.
+  process.env.SESSION_REMEMBER = "true";
+  process.env.SESSION_APP_DAYS = "30";
+  assert.equal(sessionSettings().browserRemember, true);
+  assert.equal(sessionTerms({ agent: BROWSER, remember: true, sso: true }, now).expires, now + 7 * DAY, "SSO honours Stay signed in");
+  assert.equal(sessionTerms({ agent: ANDROID }, now).expires, now + 30 * DAY);
+  // Stored values win over the environment.
+  saveInstanceSettings({ sessionRemember: false, sessionHours: 4, appDays: 365, rememberDays: 90 });
+  assert.deepEqual(sessionTerms({ agent: BROWSER, remember: true }, now), { app: false, remember: false, expires: now + 4 * HOUR, maxAge: 4 * 3600 });
+  const app = sessionTerms({ agent: DESKTOP }, now);
+  assert.equal(app.expires, now + 365 * DAY);
+  assert.equal(app.maxAge, 365 * 24 * 3600, "the cookie lasts as long as the session may");
+  saveInstanceSettings({ sessionRemember: true });
+  // 90 days without use; the latest end follows (never shorter than that).
+  const browser = sessionTerms({ agent: BROWSER, remember: true }, now);
+  assert.equal(browser.expires, now + 90 * DAY);
+  assert.equal(browser.maxAge, 90 * 24 * 3600);
+  // An instance that does not want it: the apps end like a browser session.
+  saveInstanceSettings({ appSessions: "off" });
+  assert.deepEqual(sessionTerms({ agent: ANDROID, remember: true }, now), { app: true, remember: false, expires: now + 4 * HOUR, maxAge: 4 * 3600 });
+  // A remembered app session stops sliding once the instance turns it off.
+  session("app-before-off", { created: now - DAY, expires: now + HOUR, remember: true, app: true, agent: ANDROID });
+  run("UPDATE sessions SET last_seen=? WHERE token=?", now - HOUR, hash("app-before-off"));
+  assert.ok(identityFromToken("app-before-off"));
+  assert.equal(expires("app-before-off"), now + HOUR);
+  saveInstanceSettings({ appSessions: "remember" });
+  identityFromToken("app-before-off");
+  // Never beyond 365 days after signing in (the day before).
+  assert.ok(Math.abs(expires("app-before-off") - (now - DAY + 365 * DAY)) < 5000);
+  // Out of range values are refused.
+  assert.throws(() => saveInstanceSettings({ sessionHours: 48 }));
+  assert.throws(() => saveInstanceSettings({ appSessions: "forever" }));
+  clearSessionEnv();
 });

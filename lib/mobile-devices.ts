@@ -309,8 +309,8 @@ export function identityFromDeviceToken(header: string | null): Identity | null 
   const match = header?.match(/^Bearer\s+(fpd_[A-Za-z0-9_-]{20,80})$/);
   if (!match) return null;
   const now = Date.now();
-  const row = one<User & { device_id: string; last_seen_at: number; groups_json: string; session_token: string; expires: number; session_created: number | null; remember: number; sso: number; last_seen: number | null }>(
-    `SELECT u.*,d.id device_id,d.last_seen_at,d.session_token,s.groups_json,s.expires,s.created_at session_created,s.remember,s.sso,s.last_seen FROM mobile_devices d
+  const row = one<User & { device_id: string; last_seen_at: number; groups_json: string; session_token: string; expires: number; session_created: number | null; remember: number; sso: number; app: number; last_seen: number | null }>(
+    `SELECT u.*,d.id device_id,d.last_seen_at,d.session_token,s.groups_json,s.expires,s.created_at session_created,s.remember,s.sso,s.app,s.last_seen FROM mobile_devices d
        JOIN users u ON u.id=d.user_id JOIN sessions s ON s.token=d.session_token
      WHERE d.token_hash=? AND s.expires>? AND u.disabled=0`,
     hashToken(match[1]),
@@ -322,7 +322,7 @@ export function identityFromDeviceToken(header: string | null): Identity | null 
   // like the app's web view does (a remembered session slides, never beyond
   // its maximum).
   touchSession(
-    { token: row.session_token, expires: row.expires, created_at: row.session_created, remember: row.remember, sso: row.sso, last_seen: row.last_seen, demo_until: row.demo_until },
+    { token: row.session_token, expires: row.expires, created_at: row.session_created, remember: row.remember, sso: row.sso, app: row.app, last_seen: row.last_seen, demo_until: row.demo_until },
     now,
   );
   let groups: string[] = [];
