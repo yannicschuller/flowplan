@@ -35,6 +35,7 @@ export default function SavedTemplates({
   trashDays = 30,
   onUse,
   onError,
+  onCount,
 }: {
   workspaceId: string;
   canCreate: boolean;
@@ -43,6 +44,9 @@ export default function SavedTemplates({
   trashDays?: number;
   onUse: (t: Template) => Promise<void>;
   onError: (message: string) => void;
+  // How many saved templates (not in the trash) there are, for the
+  // gallery's "My templates" category (#132).
+  onCount?: (count: number) => void;
 }) {
   const t = useT();
   const [items, setItems] = useState<Template[]>([]),
@@ -99,6 +103,10 @@ export default function SavedTemplates({
       setBusy(false);
     }
   }
+  const available = items.filter((item) => !item.deleted_at).length;
+  useEffect(() => {
+    if (!loading) onCount?.(available);
+  }, [available, loading, onCount]);
   const purgeable = items.filter((item) => item.deleted_at && item.can_manage);
   const [search, setSearch] = useState(""),
     [kind, setKind] = useState<"all" | "document" | "database">("all"),
