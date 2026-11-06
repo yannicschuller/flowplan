@@ -212,7 +212,7 @@ import { DraftInput } from "./draft-input";
 import dynamic from "next/dynamic";
 import { loadView } from "@/components/view-fallback";
 import { rememberViewShape } from "./skeleton";
-import { toastSerial, undoShownSince } from "./toast";
+import { showToast, toastSerial, undoShownSince } from "./toast";
 const EmojiPicker = dynamic(() => loadView(() => import("./emoji-picker")), { ssr: false });
 import { cellText, computedCells, queryRows } from "@/lib/database";
 import type {
@@ -380,6 +380,7 @@ export default function DatabaseView({
   allowFieldChanges?: boolean;
   routeNavigation?: boolean;
   mutate: (b: Record<string, unknown>) => Promise<unknown>;
+  // Failures only; confirmations go to showToast().
   onError: (s: string) => void;
 }) {
   const t = useT();
@@ -538,11 +539,11 @@ export default function DatabaseView({
   const aiQueued = (queued: number, skipped = 0) => {
     setAiWatch(true);
     aiStatus.watch();
-    onError(
-      skipped
+    showToast({
+      text: skipped
         ? t(`${queued} Werte werden von der KI berechnet, ${skipped} übersprungen (schon ausgefüllt, schreibgeschützt oder für die KI gesperrt).`, `${queued} values are being computed by the AI, ${skipped} skipped (already filled, read-only or closed to the AI).`)
         : t(`${queued} Werte werden von der KI berechnet.`, `${queued} values are being computed by the AI.`),
-    );
+    });
   };
   const [resize, setResize] = useState<{
     id: string;
@@ -710,11 +711,12 @@ export default function DatabaseView({
       setSelection(new Map());
       // The workspace offers "Rückgängig" for the deletion itself.
       if ((list.length > 1 || operation === "delete") && !undoShownSince(since))
-        onError(
-          operation === "delete"
-            ? t(`${list.length} ${list.length === 1 ? "Eintrag" : "Einträge"} in den Papierkorb gelegt.`, `${list.length} ${list.length === 1 ? "record" : "records"} moved to the trash.`)
-            : t(`${list.length} Einträge dupliziert.`, `${list.length} records duplicated.`),
-        );
+        showToast({
+          text:
+            operation === "delete"
+              ? t(`${list.length} ${list.length === 1 ? "Eintrag" : "Einträge"} in den Papierkorb gelegt.`, `${list.length} ${list.length === 1 ? "record" : "records"} moved to the trash.`)
+              : t(`${list.length} Einträge dupliziert.`, `${list.length} records duplicated.`),
+        });
     }
   }
   async function bulkAction(operation: "update" | "duplicate" | "delete") {
@@ -734,9 +736,9 @@ export default function DatabaseView({
       setSelection(new Map());
       setBulk(null);
       if (!undoShownSince(since))
-        onError(
-        t(`${selectionRows.length} Einträge ${operation === "update" ? "aktualisiert" : operation === "duplicate" ? "dupliziert" : "gelöscht"}. Vorheriger Stand im Versionsverlauf gesichert.`, `${selectionRows.length} records ${operation === "update" ? "updated" : operation === "duplicate" ? "duplicated" : "deleted"}. The previous state was saved in the version history.`),
-      );
+        showToast({
+          text: t(`${selectionRows.length} Einträge ${operation === "update" ? "aktualisiert" : operation === "duplicate" ? "dupliziert" : "gelöscht"}. Vorheriger Stand im Versionsverlauf gesichert.`, `${selectionRows.length} records ${operation === "update" ? "updated" : operation === "duplicate" ? "duplicated" : "deleted"}. The previous state was saved in the version history.`),
+        });
     }
   }
   useEffect(() => {
@@ -861,7 +863,7 @@ export default function DatabaseView({
               await navigator.clipboard.writeText(
                 `${location.origin}${location.pathname}${pageLocationHash({ pageId: page.id, rowId: row.id })}`,
               );
-              onError(t("Link kopiert", "Link copied"));
+              showToast({ text: t("Link kopiert", "Link copied") });
             } catch {
               onError(t("Link konnte nicht kopiert werden.", "The link could not be copied."));
             }
@@ -1042,7 +1044,7 @@ export default function DatabaseView({
           }),
         ]);
       else await navigator.clipboard.writeText(copy.text);
-      onError(copiedMessage(copy.count));
+      showToast({ text: copiedMessage(copy.count) });
     } catch {
       onError(t("Die Zwischenablage ist nicht verfügbar.", "The clipboard is not available."));
     }
@@ -1074,11 +1076,11 @@ export default function DatabaseView({
       e.preventDefault();
       e.clipboardData.setData("text/plain", result.text);
       e.clipboardData.setData("text/html", result.html);
-      onError(copiedText.current(result.count));
+      showToast({ text: copiedText.current(result.count) });
     };
     document.addEventListener("copy", copy);
     return () => document.removeEventListener("copy", copy);
-  }, [copyEnabled, onError]);
+  }, [copyEnabled]);
   const selectableRows = grouped
     ? [
         ...new Map(
@@ -4073,13 +4075,13 @@ export default function DatabaseView({
           onDone={async (created, updated) => {
             setMarkdownFiles(null);
             await onRefresh();
-            onError(
-              updated
+            showToast({
+              text: updated
                 ? t(`${created} Einträge importiert, ${updated} aktualisiert.`, `${created} records imported, ${updated} updated.`)
                 : created === 1
                   ? t("1 Eintrag importiert.", "1 record imported.")
                   : t(`${created} Einträge importiert.`, `${created} records imported.`),
-            );
+            });
           }}
         />
       )}
@@ -6098,7 +6100,7 @@ export default function DatabaseView({
           onMoved={(created) => {
             setToPage(null);
             if (rowId === toPage) setLocalRowId(null);
-            onError(t("In eine Seite umgewandelt.", "Turned into a page."));
+            showToast({ text: t("In eine Seite umgewandelt.", "Turned into a page.") });
             void onRefresh().catch(() => {});
             location.hash = pageLocationHash({ pageId: created });
           }}
@@ -6116,7 +6118,7 @@ export default function DatabaseView({
             setTransfer(null);
             setSelection(new Map());
             if (transfer.rowIds.includes(rowId || "")) setRowId(null);
-            onError(message);
+            showToast({ text: message });
           }}
         />
       )}
