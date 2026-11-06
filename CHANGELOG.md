@@ -2,6 +2,45 @@
 
 All releases of Flowplan, newest first. Generated from the commits by the release workflow.
 
+## v0.8.11 – 2026-11-06
+
+- Help docs: regenerated (delayed deletion, session binding) ([8cb47a5](https://github.com/yannicschuller/flowplan/commit/8cb47a50378e55a6922ddb1d1317ce687c574f18))
+- Moved blocks glide to the end; their handles stay in step ([94f9033](https://github.com/yannicschuller/flowplan/commit/94f9033b559c53ce43d13733b1b684d5f45991fa))
+- Sessions: the app lifetime needs a sign-in the app proves (#133) ([c5039ed](https://github.com/yannicschuller/flowplan/commit/c5039edb9c1908f4e606dda50e666b8e3881f675))
+- Configure view: name and column widths save on Enter and when the panel closes ([f480620](https://github.com/yannicschuller/flowplan/commit/f4806202ae30f9137599d326c150084ead18284d))
+- Created and edited time in the viewer's time zone; ISO 8601 in exports ([d4e47d3](https://github.com/yannicschuller/flowplan/commit/d4e47d3c0da97e8390f40d5e651485fb6a8333a3))
+- Backups: delayed deletion of mirrored files on SFTP and S3 ([c3c7a7f](https://github.com/yannicschuller/flowplan/commit/c3c7a7fc090a15edbcbd9c2a1403d6af5b0526dc))
+- Skills: Android ships as the APK on flowplan.org/download, not via Google Play ([d587a35](https://github.com/yannicschuller/flowplan/commit/d587a352cbf034b096212dd73a5e5f321a62f603))
+- README: Open Source Alternatives badge ([f54e14f](https://github.com/yannicschuller/flowplan/commit/f54e14ff347297aa94da58b3552af9499075f251))
+- Help docs: regenerated with toggles and block handles ([41cf6be](https://github.com/yannicschuller/flowplan/commit/41cf6be22e46171591651b9975596e39daa0174a))
+- Toggles collapse in edit mode; block handles only where wanted (#137, #138) ([700a63d](https://github.com/yannicschuller/flowplan/commit/700a63d31c6940bf26195504e7f4535cbab79f61))
+- Setup restore form posts without script; French backup texts use vous ([d9be9bd](https://github.com/yannicschuller/flowplan/commit/d9be9bd05edf954feecf68b05729c78414eb6748))
+- Help docs: regenerated after merging #128–#136 ([718b628](https://github.com/yannicschuller/flowplan/commit/718b6280d80fd630efe3ae3bf981111a6c855a26))
+- A space deleted for good keeps its templates as their creators' private ones (#136) ([c0f6c86](https://github.com/yannicschuller/flowplan/commit/c0f6c865d92090335b7bf416c5bb0e39fe0dea82))
+- Sessions (#133): shorter default label for the apps; browser spec for the setting ([b26ec67](https://github.com/yannicschuller/flowplan/commit/b26ec67d5e375b181621bd1c5d247f01f47de883))
+- AI: "This page" in Ask AI with suggested changes; links and no chatter in AI lists (#134, #135) ([50723fe](https://github.com/yannicschuller/flowplan/commit/50723fe15c98072469b60495c0126b506aab71c8))
+- Help docs: scopes of tags, properties and templates (#136) ([7eeab01](https://github.com/yannicschuller/flowplan/commit/7eeab01c9b45ac71f899dbb19460482ae71429db))
+- Scopes in the interface: badges, scope choice, move step, templates (#136) ([f0e4597](https://github.com/yannicschuller/flowplan/commit/f0e4597d6f276841994f2b63377bc07c13d2f0ea))
+- Help docs: session lifetimes and the apps staying signed in (#133) ([87ff428](https://github.com/yannicschuller/flowplan/commit/87ff428b1c1aec838739109def636a76d155d478))
+- Sessions: the apps stay signed in; session lifetimes in the administration (#133) ([e13b619](https://github.com/yannicschuller/flowplan/commit/e13b6194ff4a79cd169c0d2849f46d8f599c54e8))
+- App sign-in: hand over through the bridge, and never fail in silence (#109) ([23285fe](https://github.com/yannicschuller/flowplan/commit/23285fe9a9d68f00dcb420591820ba53b3ac7399))
+- Backups via SFTP and restore on the setup screen (#128) ([df18e7b](https://github.com/yannicschuller/flowplan/commit/df18e7b6bff07332cafa275a3d49cb100b40e1ac))
+- SDKs: scope fields and the new scope actions (#136) ([724bdb3](https://github.com/yannicschuller/flowplan/commit/724bdb3c40578a2e1fa6165c0b6c61da741adfdf))
+- Teamspace-scoped tags, properties and templates: schema and server (#136) ([1b43053](https://github.com/yannicschuller/flowplan/commit/1b4305379a4cbb9db54229bf882dabd50ca30a3a))
+- Help docs: created/edited time, card properties, My templates ([35c7f32](https://github.com/yannicschuller/flowplan/commit/35c7f32837d666e25cf6b73f640f2e9a21782f0d))
+- Template gallery: "My templates" category for saved templates (#132) ([3c20fa7](https://github.com/yannicschuller/flowplan/commit/3c20fa762e3640ca8761cf3c3c30d3f2ab808cc2))
+- Board WIP limits save on Enter and when the panel closes (#131) ([f1c34c9](https://github.com/yannicschuller/flowplan/commit/f1c34c94ec69f396685bdcfa55db038d83b20f6d))
+- Board and gallery cards show every filled property (#130) ([868c2bc](https://github.com/yannicschuller/flowplan/commit/868c2bc524b8d4fb66b654767213a37bed63c7fe))
+- Formulas and rollups read Created/Edited time as ISO instants (#129) ([b035d97](https://github.com/yannicschuller/flowplan/commit/b035d973a15136bfa8135469a58e45c934f86987))
+- Formatted text in database text properties (#126) ([e44e493](https://github.com/yannicschuller/flowplan/commit/e44e49380b103ef830411569386aadcee34865f3))
+- Back and forward in the interface (#125) ([e2fb5ff](https://github.com/yannicschuller/flowplan/commit/e2fb5ff0350788df50765a9dd9c7fd0e6871fc19))
+- Translations: two trash messages in French and Chinese ([c98145b](https://github.com/yannicschuller/flowplan/commit/c98145b0da226aaf55039136369fb1772bf00d4f))
+- Help docs: trash, permanent deletion and retention period (#123) ([915b02d](https://github.com/yannicschuller/flowplan/commit/915b02d8f9f0f759bbea71a385d032e4e2346132))
+- Trash: delete permanently, empty trash, retention period; aligned icons (#123, #124) ([09a853d](https://github.com/yannicschuller/flowplan/commit/09a853dbc9e5d509cc66fe8222297d96e3421d26))
+- Import from Microsoft Word; refuse .doc and OneNote with what to do (#122) ([bf1a02e](https://github.com/yannicschuller/flowplan/commit/bf1a02ed3619c19083a20ab33420523f4e73d5a6))
+- Hide keyboard on phones for records and every other text field (#120) ([bcb20aa](https://github.com/yannicschuller/flowplan/commit/bcb20aaa6bb548582afa9dca063e01558b72c2c8))
+- Keyboard (#120): remove the ?kbdebug diagnosis again ([791fa71](https://github.com/yannicschuller/flowplan/commit/791fa71da6c6d164271d586524353d2018f75727))
+
 ## v0.8.10 – 2026-11-05
 
 - Docked toolbar placed from the top while the keyboard is open (#120) ([2fb2904](https://github.com/yannicschuller/flowplan/commit/2fb2904a05b73730c9305a88cba05799a02379e2))
