@@ -55,10 +55,10 @@ export const commandActionNames = [
   "home.save", "home.reset", "home.note", "home.config", "home.default",
   "account.deletePlan", "account.delete",
   "space.create", "space.update", "space.delete", "space.restore", "space.purge", "space.duplicate", "space.gitExport", "space.reorder",
-  "page.create", "page.update", "page.delete", "page.restore", "page.purge", "trash.empty", "page.duplicate", "page.move", "page.import",
+  "page.create", "page.update", "page.delete", "page.restore", "page.purge", "trash.empty", "page.duplicate", "page.move", "page.moveCheck", "page.import",
   "pages.bulk", "page.follow", "page.collapseProperties", "sidebar.state", "page.snapshot", "page.publish", "page.share", "page.shareUpdate", "page.fromShare",
   "page.toRecord", "record.toPage", "page.owner", "page.review", "page.aliases",
-  "page.properties", "pages.tag", "tag.save", "tag.delete", "tag.merge", "tag.reorder", "property.save", "property.delete", "property.reorder", "favorite", "favorite.row", "task.update", "synced.create", "table.toDatabase", "mention.link",
+  "page.properties", "pages.tag", "tag.save", "tag.delete", "tag.merge", "tag.reorder", "tag.scope", "property.save", "property.delete", "property.reorder", "property.scope", "meta.usage", "favorite", "favorite.row", "task.update", "synced.create", "table.toDatabase", "mention.link",
   "journal.settings", "journal.lock", "journal.unlock", "journal.relock", "journal.entry", "journal.roll", "journal.link", "journal.removeEmpty", "journal.summary", "block.ids",
   "linked.command", "document.sync", "document.markdown", "document.markdown.apply",
   "snapshot.restoreBlock", "snapshot.restore",
@@ -81,7 +81,7 @@ export const commandActionNames = [
   "time.start", "time.stop", "time.add", "time.delete", "ticket.reply",
   "member.invite", "invite.cancel", "invite.resend", "member.role", "member.guest",
   "sso.mapping.add", "sso.mapping.delete", "grant.set", "group.create", "group.member",
-  "template.save", "template.update", "template.delete", "template.restore", "template.purge", "template.apply",
+  "template.save", "template.update", "template.delete", "template.restore", "template.purge", "template.apply", "template.copy", "template.dependencies",
   "capture.record", "capture.target", "bookmarks.import",
   "calendar.feed", "calendar.feed.revoke", "calendar.caldav", "calendar.caldav.revoke",
   "webhook.delete", "inbound.save", "inbound.rotate", "inbound.delete",
@@ -93,6 +93,21 @@ export const commandActionNames = [
 // Prefixes command() refuses for every API token.
 export const tokenRefusedActionPrefixes = ["admin.", "token.", "ai."] as const;
 
+// A choice per tag or property (by id, or `tag:<name>` for templates), or
+// one word for all: auto (the same-named one there, else a copy), copy, remove.
+const metaChoiceInput = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("map"), to: z.string() }),
+  z.object({ action: z.literal("copy") }),
+  z.object({ action: z.literal("remove") }),
+]);
+const metaPlanInput = z.union([
+  z.enum(["auto", "copy", "remove"]),
+  z.object({
+    tags: z.record(z.string(), metaChoiceInput).optional(),
+    properties: z.record(z.string(), metaChoiceInput).optional(),
+    default: z.enum(["auto", "copy", "remove"]).optional(),
+  }),
+]);
 type ActionDoc = { action: string; summary: string; description?: string; input: z.ZodObject; result?: z.ZodType };
 const okResult = z.object({ ok: z.literal(true) });
 const idResult = z.object({ id: uuid });
@@ -148,6 +163,7 @@ export const commandActions: ActionDoc[] = [
       parentId: uuid.optional().describe("Parent page in the same space"),
       databaseKind: z.enum(["tasks", "documents", "contacts", "empty"]).optional(),
       templateId: z.string().max(100).optional().describe("A saved page template of the workspace"),
+      meta: metaPlanInput.optional().describe("With a template of another space: what to do with its space's tags and properties (see template.dependencies); default `auto`"),
       starterTemplate: z.string().max(100).optional().describe("A built-in starter template key"),
     }),
     result: idResult,
@@ -265,11 +281,12 @@ export const commandActions: ActionDoc[] = [
     action: "tag.save",
     summary: "Create or change a tag",
     description:
-      "Without `tagId` a new tag (members with edit rights); with `tagId` rename or recolour it (workspace owners). Names are unique in the workspace ignoring case (409). Colours: gray, blue, green, red, yellow, orange, purple, pink, teal. Owners also send tag.delete {workspaceId, tagId}, tag.merge {workspaceId, tagId, into} and tag.reorder {workspaceId, order}. Renaming, merging and deleting also change the values of database properties with the tags as options (`tagOptions`).",
+      "Without `tagId` a new tag: with `spaceId` one of that space (members who may write there), without it (or `spaceId: null`) one of the whole workspace (workspace owners). With `tagId` rename or recolour it (workspace owners; space owners for their space's tags). A space's tags are used only by pages of that space; names are unique within a space together with the workspace's tags, ignoring case (409) – two spaces may each have a tag of the same name. Colours: gray, blue, green, red, yellow, orange, purple, pink, teal. Also tag.delete {workspaceId, tagId}, tag.merge {workspaceId, tagId, into} (into a workspace tag or one of the same space) and tag.reorder {workspaceId, order}. Renaming, merging and deleting also change the values of database properties with the tags as options (`tagOptions`) where the tag is known. Tags in GET /api/tags carry `spaceId` (null: whole workspace).",
     input: z.object({
       action: z.literal("tag.save"),
       workspaceId: uuid,
       tagId: uuid.optional(),
+      spaceId: uuid.nullable().optional().describe("New tags: the space it belongs to; null or missing: the whole workspace"),
       name: z.string().max(60),
       color: z.enum(["gray", "blue", "green", "red", "yellow", "orange", "purple", "pink", "teal"]).optional(),
     }),
@@ -309,7 +326,7 @@ export const commandActions: ActionDoc[] = [
     action: "property.save",
     summary: "Create or change a page property",
     description:
-      "Workspace owners. A property every page of the workspace can have a value for. Types: text, number, date, select, multiselect, checkbox, person, url, email, phone, created_at, updated_at, created_by, updated_by (the last four are read from the page). `options` for select and multiselect. Changing the type or removing options converts the values where possible and removes the others. Also property.delete {workspaceId, propertyId} and property.reorder {workspaceId, order}.",
+      "Workspace owners; for a space's own properties (`spaceId` on creation) also that space's owner. A property every page of the workspace – or of that space – can have a value for; names are unique within a space together with the workspace's properties. Types: text, number, date, select, multiselect, checkbox, person, url, email, phone, created_at, updated_at, created_by, updated_by (the last four are read from the page). `options` for select and multiselect. Changing the type or removing options converts the values where possible and removes the others. Also property.delete {workspaceId, propertyId} and property.reorder {workspaceId, order}.",
     input: z.object({
       action: z.literal("property.save"),
       workspaceId: uuid,
@@ -317,8 +334,88 @@ export const commandActions: ActionDoc[] = [
       name: z.string().max(80),
       type: z.enum(["text", "number", "date", "select", "multiselect", "checkbox", "person", "url", "email", "phone", "created_at", "updated_at", "created_by", "updated_by"]).optional(),
       options: z.array(z.string().max(100)).max(100).optional(),
+      spaceId: uuid.nullable().optional().describe("New properties: the space it belongs to; null or missing: the whole workspace"),
     }),
     result: idResult,
+  },
+  {
+    action: "tag.scope",
+    summary: "Change the scope of a tag (whole workspace or one space)",
+    description:
+      "Workspace owners. `spaceId: null` makes a space's tag one of the whole workspace (same-named tags of other spaces are refused with 409 unless `mergeSameName` folds them into it). A space's id limits it to that space: pages and database records outside it that carry the tag are refused with 409 (`resolve: \"block\"`, the default), get a tag of the same name in their own space (`resolve: \"copy\"`) or lose it (`resolve: \"remove\"`). See where it is used first with meta.usage. property.scope {workspaceId, propertyId, spaceId, resolve?, mergeSameName?} does the same for page properties (merging needs the same type).",
+    input: z.object({
+      action: z.literal("tag.scope"),
+      workspaceId: uuid,
+      tagId: uuid,
+      spaceId: uuid.nullable(),
+      resolve: z.enum(["block", "copy", "remove"]).optional(),
+      mergeSameName: z.boolean().optional(),
+    }),
+    result: idResult.extend({ ok: z.literal(true) }),
+  },
+  {
+    action: "property.scope",
+    summary: "Change the scope of a page property (whole workspace or one space)",
+    description: "As tag.scope, for page properties.",
+    input: z.object({
+      action: z.literal("property.scope"),
+      workspaceId: uuid,
+      propertyId: uuid,
+      spaceId: uuid.nullable(),
+      resolve: z.enum(["block", "copy", "remove"]).optional(),
+      mergeSameName: z.boolean().optional(),
+    }),
+    result: idResult.extend({ ok: z.literal(true) }),
+  },
+  {
+    action: "meta.usage",
+    summary: "Where a tag or property is used outside a space",
+    description: "Workspace owners. Before tag.scope/property.scope: per other space the pages and records using it (`usage`), and same-named ones it would meet (`clashes`). Changes nothing.",
+    input: z.object({ action: z.literal("meta.usage"), workspaceId: uuid, kind: z.enum(["tag", "property"]), id: uuid, spaceId: uuid.nullable() }),
+    result: z.object({
+      usage: z.array(z.object({ spaceId: uuid, spaceName: z.string(), pages: z.number().int(), records: z.number().int(), titles: z.array(z.string()) })),
+      clashes: z.array(z.object({ id: uuid, spaceId: uuid.nullable(), spaceName: z.string() }).passthrough()),
+    }),
+  },
+  {
+    action: "page.moveCheck",
+    summary: "What a move would bring that its destination lacks",
+    description:
+      "Same input as page.move. Lists the tags and properties of the source space (into another workspace: all) that the page, its sub-pages and their databases' records carry and that the destination does not use (`foreign`: kind, id, name, pages, records, `sameName` – the same-named one there – and `candidates` to map to). Changes nothing.",
+    input: z.object({
+      action: z.literal("page.moveCheck"),
+      pageId: uuid,
+      targetId: uuid.optional(),
+      placement: z.enum(["before", "after", "inside"]).optional(),
+      parentId: uuid.optional(),
+      spaceId: uuid.optional(),
+    }),
+    result: z.object({ foreign: z.array(z.object({}).passthrough()), target: z.object({ workspaceId: uuid, spaceId: uuid, spaceName: z.string() }) }),
+  },
+  {
+    action: "template.copy",
+    summary: "Copy a saved template into another space or the whole workspace",
+    description:
+      "Needs write access to the target space; for the whole workspace (`spaceId: null`, not private) workspace owners, and only with the workspace's tags and properties (409, or `spaceMeta: \"remove\"` leaves the space's out). Into another space its space's tags and properties are mapped, copied (created there now) or removed per `meta` (see template.dependencies; default `auto`). template.update takes `spaceId`, `spaceMeta` and `meta` the same way to change a template's own scope.",
+    input: z.object({
+      action: z.literal("template.copy"),
+      workspaceId: uuid,
+      templateId: uuid,
+      spaceId: uuid.nullable(),
+      name: z.string().max(500).optional(),
+      private: z.boolean().optional(),
+      meta: metaPlanInput.optional(),
+      spaceMeta: z.literal("remove").optional(),
+    }),
+    result: idResult.extend({ ok: z.literal(true) }),
+  },
+  {
+    action: "template.dependencies",
+    summary: "What a template of another space brings into a space",
+    description:
+      "The tags and properties of the template's own space (and names the target lacks) when it is used in `spaceId`: each with `sameName` (the same-named one there) and `candidates`. Their ids (`tag:<name>`, `property:<name>`) are the keys of `meta` in page.create, template.apply and template.copy. Empty for templates of the whole workspace or of that space. Changes nothing.",
+    input: z.object({ action: z.literal("template.dependencies"), workspaceId: uuid, templateId: uuid, spaceId: uuid }),
+    result: z.object({ items: z.array(z.object({}).passthrough()) }),
   },
   {
     action: "row.repeat",
@@ -361,6 +458,11 @@ export const commandActions: ActionDoc[] = [
       placement: z.enum(["before", "after", "inside"]).optional().describe("Default: inside"),
       parentId: uuid.optional().describe("New parent when there is no target"),
       spaceId: uuid.optional().describe("Move into another space"),
+      meta: metaPlanInput
+        .optional()
+        .describe(
+          "Into another space or workspace: what to do with the source space's tags and properties the pages carry (page.moveCheck lists them, by id): map to one of the destination, copy there, or remove. Without it such a move is refused with 409 – nothing is dropped silently.",
+        ),
     }),
     result: okResult,
   },
@@ -1260,11 +1362,11 @@ const operations: { path: string; method: "get" | "post"; op: Op }[] = [
   { path: "/api/offline/changes", method: "get", op: { id: "offlineChanges", tag: "Workspace", summary: "What changed for an offline copy", description: "Every page you may read now (outside the trash, no journal behind a PIN) and, since `since`, the pages and visible records whose content changed. Without `since` (or one older than the change log) `full` is true and every page counts as changed. Pass `now` as the next `since`.", params: [workspace, q("since", "Server time of the previous answer (ISO 8601 or milliseconds)")], ok: { schema: { type: "object", properties: { now: { type: "string", format: "date-time" }, full: { type: "boolean" }, pages: { type: "array", items: { type: "string", format: "uuid" } }, changed: { type: "array", items: { type: "string", format: "uuid" } }, rows: { type: "object", additionalProperties: { type: "array", items: { type: "string", format: "uuid" } } } }, required: ["now", "full", "pages", "changed", "rows"] }, description: "Readable and changed pages" }, errors: [400, 401, 403] } },
   { path: "/api/offline/assets", method: "get", op: { id: "offlineAssets", tag: "Workspace", summary: "The app's files for an offline copy", description: "Every file of the running client build under `/_next/static` (scripts, styles, fonts, workers) with its size, followed by the fonts (`/fonts.css`, `/fonts/*.woff2`) and icons the app's page loads from `public`, the build id and the version. A device that keeps an offline copy stores them in a cache named after the build, so parts of the app never opened online load offline as well – also in the iPhone and iPad app, which has no service worker to catch the fonts as they load.", ok: { schema: { type: "object", properties: { build: { type: "string" }, version: { type: "string" }, bytes: { type: "integer" }, files: { type: "array", items: { type: "object", properties: { path: { type: "string" }, size: { type: "integer" } }, required: ["path", "size"] } } }, required: ["build", "version", "bytes", "files"] }, description: "Files of the client build" }, errors: [401] } },
   { path: "/api/graph", method: "get", op: { id: "graph", tag: "Workspace", summary: "Links between pages as a graph", params: [workspace, q("days", "Journal days: left out, one node per journal and month, or each day", { type: "string", enum: ["hide", "month", "show"], default: "hide" })], ok: { schema: { type: "object", additionalProperties: true }, description: "Nodes and edges" }, errors: [400, 401, 403] } },
-  { path: "/api/tags", method: "get", op: { id: "tags", tag: "Workspace", summary: "Tags and page properties of a workspace", description: `The tags (\`id\`, \`name\`, \`color\`, \`position\`, \`pages\`: how many readable pages carry it, \`records\`: how many readable database records carry it in a property with the tags as options) and the property definitions (\`id\`, \`name\`, \`type\`, \`options\`). Guests see only the tags and properties of pages and records shared with them. A page's own tags and values come with GET /api/pages/{id} as \`properties\` (\`tags\`: tag IDs, \`values\`: by property ID, \`info\`: created and changed at and by). ${noStore}`, params: [workspace], ok: { schema: { type: "object", additionalProperties: true }, description: "Tags and properties" }, errors: [400, 401, 403] } },
+  { path: "/api/tags", method: "get", op: { id: "tags", tag: "Workspace", summary: "Tags and page properties of a workspace", description: `The tags (\`id\`, \`name\`, \`color\`, \`position\`, \`spaceId\` – null for the whole workspace, else the space it belongs to –, \`pages\`: how many readable pages carry it, \`records\`: how many readable database records carry it in a property with the tags as options) and the property definitions (\`id\`, \`name\`, \`type\`, \`options\`, \`spaceId\`). A space's own tags and properties are listed for those who may open that space (or see a page carrying them) and for workspace owners. Guests see only the tags and properties of pages and records shared with them. A page's own tags and values come with GET /api/pages/{id} as \`properties\` (\`tags\`: tag IDs, \`values\`: by property ID, \`info\`: created and changed at and by). ${noStore}`, params: [workspace], ok: { schema: { type: "object", additionalProperties: true }, description: "Tags and properties" }, errors: [400, 401, 403] } },
   { path: "/api/collections", method: "get", op: { id: "collections", tag: "Workspace", summary: "Collections of a workspace", description: `The person's own collections and those shared with the workspace (not for guests), in their order: \`id\`, \`name\`, \`icon\`, \`query\`, \`shared\`, \`mine\`, \`canEdit\`, \`ownerName\`. Change them with the command actions collection.*. ${noStore}`, params: [workspace], ok: { schema: { type: "array", items: { type: "object", additionalProperties: true } }, description: "Collections" }, errors: [400, 401, 403] } },
   { path: "/api/collections/{id}", method: "get", op: { id: "runCollection", tag: "Workspace", summary: "Run a collection", description: `The collection and its current results: \`items\` (pages and database records with \`pageId\`, \`rowId\`, \`type\`, \`title\`, \`icon\`, \`spaceId\`, \`database\`, \`tags\`, \`createdAt\`, \`updatedAt\`, \`createdBy\`, \`creatorName\`; latest change first, at most 500), \`total\`, \`truncated\` and \`encryptedLeftOut\` (end-to-end encrypted spaces the reader may read are not searched). Results follow the reader's own permissions, also for collections shared by others. ${noStore}`, params: [p("id", "Collection ID"), q("tz", "IANA time zone for relative dates (default UTC)")], ok: { schema: { type: "object", additionalProperties: true }, description: "The collection with its results" }, errors: [400, 401, 403, 404] } },
   { path: "/api/collections/preview", method: "get", op: { id: "previewCollection", tag: "Workspace", summary: "Results of a query", description: `Like GET /api/collections/{id} for a query that is not saved: \`query\` (its canonical form) and the first 50 results. ${noStore}`, params: [workspace, q("q", "The query", { type: "string" }, true), q("tz", "IANA time zone for relative dates (default UTC)")], ok: { schema: { type: "object", additionalProperties: true }, description: "Canonical query and results" }, errors: [400, 401, 403] } },
-  { path: "/api/tags/{id}", method: "get", op: { id: "tagPages", tag: "Workspace", summary: "Pages and records with a tag", description: `Like /api/tags, plus \`pages\`: the readable pages with this tag, and \`records\`: the readable database records carrying it in a property with the tags as options, latest change first. ${noStore}`, params: [p("id", "Tag ID"), workspace], ok: { schema: { type: "object", additionalProperties: true }, description: "Tags, properties and pages" }, errors: [400, 401, 403, 404] } },
+  { path: "/api/tags/{id}", method: "get", op: { id: "tagPages", tag: "Workspace", summary: "Pages and records with a tag", description: `Like /api/tags, plus \`pages\`: the readable pages with this tag, and \`records\`: the readable database records carrying it in a property with the tags as options, latest change first. A tag is one id; with \`sameName=1\` also the tags of the same name in other spaces. ${noStore}`, params: [p("id", "Tag ID"), workspace, q("sameName", "1: also the same-named tags of other spaces", { type: "string", enum: ["0", "1"] })], ok: { schema: { type: "object", additionalProperties: true }, description: "Tags, properties and pages" }, errors: [400, 401, 403, 404] } },
   { path: "/api/related", method: "get", op: { id: "related", tag: "Workspace", summary: "Related pages, or pages with a similar title", description: `With \`page\` (and \`row\`): related pages and records (\`items\` with their \`reasons\`) – by meaning when semantic search is on for you, else by links, backlinks, shared links, tags and title. With \`workspace\` and \`title\`: existing pages, or records of \`database\`, with a similar title (duplicate hint). Only what you may read. ${noStore}`, params: [q("page", "Page or database ID", { type: "string", format: "uuid" }), q("row", "Record ID", { type: "string", format: "uuid" }), q("workspace", "Workspace ID (with title)", { type: "string", format: "uuid" }), q("title", "Title to compare"), q("database", "Only records of this database (with title)", { type: "string", format: "uuid" }), q("exclude", "Page to leave out (with title)", { type: "string", format: "uuid" }), q("excludeRow", "Record to leave out (with title)", { type: "string", format: "uuid" })], ok: { schema: { type: "object", additionalProperties: true }, description: "Items" }, errors: [400, 401, 403, 404] } },
   { path: "/api/templates", method: "get", op: { id: "templates", tag: "Workspace", summary: "Saved page templates of a workspace", params: [workspace], ok: { schema: { type: "array", items: { type: "object", additionalProperties: true } }, description: "Templates" }, errors: [401, 403] } },
   { path: "/api/media", method: "get", op: { id: "media", tag: "Workspace", summary: "Media library", description: "Files of the pages you may read, 60 per call.", params: [workspace, q("kind", "Only this kind", { type: "string", enum: ["all", "image", "video", "audio", "pdf", "other"], default: "all" }), q("q", "Name contains"), q("offset", "Paging offset", { type: "integer", minimum: 0 })], ok: { schema: { type: "object", additionalProperties: true }, description: "Files with their pages" }, errors: [401, 403] } },

@@ -199,8 +199,13 @@ export const archiveSchema = z.object({
   // exported page uses.
   pageTaxonomy: z
     .object({
-      tags: z.array(z.object({ name: z.string().max(1000), color: z.string().max(100).optional() })).max(2000).default([]),
-      properties: z.array(z.object({ name: z.string().max(1000), type: z.enum(PAGE_PROPERTY_TYPES), options: z.array(z.string().max(1000)).max(500).optional() })).max(500).default([]),
+      // `spaceId`: the exported space a space's own tag or definition
+      // belongs to (#136); without it the whole workspace's.
+      tags: z.array(z.object({ name: z.string().max(1000), color: z.string().max(100).optional(), spaceId: uid.optional() })).max(2000).default([]),
+      properties: z
+        .array(z.object({ name: z.string().max(1000), type: z.enum(PAGE_PROPERTY_TYPES), options: z.array(z.string().max(1000)).max(500).optional(), spaceId: uid.optional() }))
+        .max(500)
+        .default([]),
     })
     .optional(),
   // The exporter's start page of the workspace (lib/home-layout-schema.ts).
@@ -374,8 +379,8 @@ function snapshotFor(user: Identity, wid: string) {
       ? {}
       : {
           pageTaxonomy: {
-            tags: workspaceTags(wid).map((t) => ({ name: t.name, color: t.color })),
-            properties: workspaceProperties(wid).map((d) => ({ name: d.name, type: d.type, ...(d.options.length ? { options: d.options } : {}) })),
+            tags: workspaceTags(wid).map((t) => ({ name: t.name, color: t.color, ...(t.spaceId ? { spaceId: t.spaceId } : {}) })),
+            properties: workspaceProperties(wid).map((d) => ({ name: d.name, type: d.type, ...(d.options.length ? { options: d.options } : {}), ...(d.spaceId ? { spaceId: d.spaceId } : {}) })),
           },
         }),
     ...exportHomeLayout(user.id, wid),
@@ -1214,13 +1219,13 @@ async function importEntries(
       // Tags and property definitions (#70): definitions only by workspace
       // owners, tags by members who may create them.
       const manageTaxonomy = canManageTaxonomy(user, wid);
-      importTaxonomy(user, wid, data.pageTaxonomy, manageTaxonomy);
+      importTaxonomy(user, wid, data.pageTaxonomy, manageTaxonomy, spaceMap);
       for (const p of data.pages) {
         const pid = pageMap.get(p.id)!;
         if (p.review_at || p.review_every_days)
           run("UPDATE pages SET review_at=?,review_every_days=? WHERE id=?", p.review_at ?? null, p.review_every_days ?? null, pid);
         if (p.aliases?.length) run("UPDATE pages SET aliases=? WHERE id=?", storedAliases(aliasList(p.aliases)), pid);
-        applyPortableMeta(user, { id: pid, workspace_id: wid, space_id: spaceMap.get(p.space_id)! }, p.meta, { createDefinitions: manageTaxonomy });
+        applyPortableMeta(user, { id: pid, workspace_id: wid, space_id: spaceMap.get(p.space_id)! }, p.meta, { createDefinitions: manageTaxonomy, definitionsScope: "marked" });
         if (p.form && p.kind === "database")
           run(
             "INSERT INTO forms(page_id,token,enabled,internal,anonymous,config) VALUES(?,?,0,?,?,?)",

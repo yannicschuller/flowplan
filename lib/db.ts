@@ -15,7 +15,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 90) return;
+  if (globalDb.flowplanSchema === 91) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -1075,11 +1075,9 @@ function migrate(d: DatabaseSync) {
   // from before read their first version or last change, without rewriting
   // every page here) and search entries that follow tags and values.
   d.exec(`CREATE TABLE IF NOT EXISTS page_tags(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,name TEXT NOT NULL,color TEXT NOT NULL DEFAULT 'gray',position REAL NOT NULL DEFAULT 0,created_by TEXT,created_at INTEGER NOT NULL);
-    CREATE UNIQUE INDEX IF NOT EXISTS page_tags_name ON page_tags(workspace_id,name COLLATE NOCASE);
     CREATE TABLE IF NOT EXISTS page_tag_links(page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,tag_id TEXT NOT NULL REFERENCES page_tags(id) ON DELETE CASCADE,position INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(page_id,tag_id));
     CREATE INDEX IF NOT EXISTS page_tag_links_tag ON page_tag_links(tag_id);
     CREATE TABLE IF NOT EXISTS page_property_defs(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,name TEXT NOT NULL,type TEXT NOT NULL,options TEXT NOT NULL DEFAULT '[]',position REAL NOT NULL DEFAULT 0,created_by TEXT,created_at INTEGER NOT NULL);
-    CREATE UNIQUE INDEX IF NOT EXISTS page_property_defs_name ON page_property_defs(workspace_id,name COLLATE NOCASE);
     CREATE TABLE IF NOT EXISTS page_property_values(page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,property_id TEXT NOT NULL REFERENCES page_property_defs(id) ON DELETE CASCADE,value TEXT NOT NULL,PRIMARY KEY(page_id,property_id));
     CREATE INDEX IF NOT EXISTS page_property_values_property ON page_property_values(property_id);
     CREATE TRIGGER IF NOT EXISTS search_page_tag_add AFTER INSERT ON page_tag_links BEGIN INSERT INTO search_dirty SELECT NEW.page_id,'' WHERE NOT EXISTS(SELECT 1 FROM search_dirty WHERE page_id=NEW.page_id AND row_id=''); END;
@@ -1138,7 +1136,27 @@ function migrate(d: DatabaseSync) {
   // the existing values of text properties (not titles) are escaped once
   // so they show as before; data_migrations remembers one-time steps.
   migrateFormattedText(d);
-  globalDb.flowplanSchema = 90;
+  migrateMetaScopes(d);
+  globalDb.flowplanSchema = 91;
+}
+// Schema 91 – scopes of tags, property definitions and saved templates
+// (#136, lib/meta-scope-server.ts): `space_id` NULL means the whole
+// workspace (everything that existed before keeps that scope), otherwise
+// the space ("Bereich") it belongs to; gone with the space. Names are
+// unique per scope (the workspace, or one space) ignoring case – the rule
+// across scopes (a space's names differ from the workspace's) is checked by
+// the commands. The unique indexes of schema 82 (per workspace) give way.
+export function migrateMetaScopes(d: DatabaseSync) {
+  for (const table of ["page_tags", "page_property_defs", "templates"])
+    if (!(d.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === "space_id"))
+      d.exec(`ALTER TABLE ${table} ADD COLUMN space_id TEXT REFERENCES spaces(id) ON DELETE CASCADE`);
+  d.exec(`DROP INDEX IF EXISTS page_tags_name;
+    DROP INDEX IF EXISTS page_property_defs_name;
+    CREATE UNIQUE INDEX IF NOT EXISTS page_tags_scope_name ON page_tags(workspace_id,ifnull(space_id,''),name COLLATE NOCASE);
+    CREATE UNIQUE INDEX IF NOT EXISTS page_property_defs_scope_name ON page_property_defs(workspace_id,ifnull(space_id,''),name COLLATE NOCASE);
+    CREATE INDEX IF NOT EXISTS page_tags_space ON page_tags(space_id);
+    CREATE INDEX IF NOT EXISTS page_property_defs_space ON page_property_defs(space_id);
+    CREATE INDEX IF NOT EXISTS templates_space ON templates(space_id);`);
 }
 // Schema 88 – sign-in identities of an account (#101, lib/identities.ts):
 // every OpenID Connect identity (issuer and subject) an account signs in

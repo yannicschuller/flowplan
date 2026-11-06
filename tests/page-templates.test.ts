@@ -82,6 +82,9 @@ function fixture() {
     action: "template.save",
     pageId: page.id,
     name: `Reusable ${id()}`,
+    // For the whole workspace (#136: by default a template belongs to its
+    // page's space – here a private one).
+    spaceId: null,
   }) as { id: string };
   return { page, fid, template };
 }

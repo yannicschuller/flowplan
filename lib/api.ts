@@ -171,6 +171,12 @@ import {
   applyPageTemplate,
   databaseTemplateExtras,
   managePageTemplate,
+  copyPageTemplate,
+  pageTemplateDependencies,
+  requireTemplateScope,
+  spaceRefsMessage,
+  stripSpaceRefs,
+  templateSpaceRefs,
 } from "./page-templates";
 import { formSettings, saveFormSubmission } from "./forms";
 import { formConfigSchema } from "./form-settings";
@@ -615,6 +621,31 @@ function pageContent(user: Identity, pid: string, options: { presence?: boolean 
     generation: doc?.generation || "1",
   };
 }
+// Where page.move (and page.moveCheck) puts a page.
+function moveDestination(user: Identity, p: Page, b: Record<string, unknown>) {
+  const placement = z
+    .enum(["before", "after", "inside"])
+    .parse(b.placement || "inside");
+  const target = b.targetId
+    ? requirePage(user, uuid.parse(b.targetId), true)
+    : null;
+  const parent = target
+    ? placement === "inside"
+      ? target.id
+      : target.parent_id
+    : b.parentId
+      ? uuid.parse(b.parentId)
+      : null;
+  const destinationParent = parent
+    ? requirePage(user, parent, true)
+    : null;
+  const sid: string =
+    destinationParent?.space_id ||
+    target?.space_id ||
+    (b.spaceId ? uuid.parse(b.spaceId) : p.space_id);
+  const destination = one<Space>("SELECT * FROM spaces WHERE id=?", sid);
+  return { placement, target, parent, destinationParent, sid, destination };
+}
 function descendants(pid: string): string[] {
   return all<{ id: string }>(
     "WITH RECURSIVE tree(id) AS (SELECT id FROM pages WHERE id=? UNION ALL SELECT p.id FROM pages p JOIN tree t ON p.parent_id=t.id) SELECT id FROM tree",
@@ -850,7 +881,7 @@ export function command(
         // frontmatter with nothing else is not repeated in the text.
         const front = b.format === "markdown" ? splitFrontmatter(content) : null;
         const frontMeta = front
-          ? frontmatterMeta(front.data, wid(), memberByName(wid()), { createDefinitions: canManageTaxonomy(user, wid()) })
+          ? frontmatterMeta(front.data, wid(), memberByName(wid()), { createDefinitions: canManageScope(user, wid(), sid), spaceId: sid })
           : null;
         const frontTaken =
           !!front &&
@@ -864,7 +895,7 @@ export function command(
               : `<p>${escaped(content).replaceAll("\n", "</p><p>")}</p>`;
         const np = createPage(wid(), sid, user.id, str.parse(b.title));
         if (front && frontMeta) {
-          applyPortableMeta(user, { id: np, workspace_id: wid(), space_id: sid }, frontMeta.meta, { createDefinitions: canManageTaxonomy(user, wid()) });
+          applyPortableMeta(user, { id: np, workspace_id: wid(), space_id: sid }, frontMeta.meta, { createDefinitions: canManageScope(user, wid(), sid) });
           const aliases = frontmatterAliases(front.data);
           if (aliases.length) run("UPDATE pages SET aliases=? WHERE id=?", storedAliases(aliases), np);
         }
@@ -1160,6 +1191,8 @@ export function command(
             requirePage(user, created, true),
             savedTemplate,
             false,
+            // Tags and definitions of the template's space (#136).
+            parseMetaPlan(b.meta),
           );
         // A database proposed by the AI and reviewed by the person: checked
         // again here like any input (lib/ai/database-fields.ts).
@@ -1278,6 +1311,7 @@ export function command(
                     pageId: p.id,
                     targetId: previous,
                     placement: "after",
+                    ...(b.meta !== undefined ? { meta: b.meta } : {}),
                   }
                 : {
                     action: "page.move",
@@ -1285,6 +1319,7 @@ export function command(
                     ...(b.parentId
                       ? { targetId: b.parentId, placement: "inside" }
                       : { spaceId: b.spaceId, parentId: null }),
+                    ...(b.meta !== undefined ? { meta: b.meta } : {}),
                   },
               true,
             );
@@ -1294,30 +1329,22 @@ export function command(
         result = { ok: true, count: roots.length, created };
         break;
       }
+      // What a move would bring that its destination lacks (#136): the
+      // source space's tags and definitions, to map, copy or remove first.
+      case "page.moveCheck": {
+        const p = write();
+        const { sid, destination } = moveDestination(user, p, b);
+        if (!destination || destination.deleted_at) throw new HttpError(400, "Ungültiges Verschieben.");
+        result = {
+          foreign: destination.id === p.space_id ? [] : moveForeignMeta(descendants(p.id), { workspaceId: destination.workspace_id, spaceId: sid }),
+          target: { workspaceId: destination.workspace_id, spaceId: sid, spaceName: destination.name },
+        };
+        break;
+      }
       case "page.move": {
         const p = write(),
           subtree = descendants(p.id);
-        const placement = z
-          .enum(["before", "after", "inside"])
-          .parse(b.placement || "inside");
-        const target = b.targetId
-          ? requirePage(user, uuid.parse(b.targetId), true)
-          : null;
-        const parent = target
-          ? placement === "inside"
-            ? target.id
-            : target.parent_id
-          : b.parentId
-            ? uuid.parse(b.parentId)
-            : null;
-        const destinationParent = parent
-          ? requirePage(user, parent, true)
-          : null;
-        const sid =
-          destinationParent?.space_id ||
-          target?.space_id ||
-          (b.spaceId ? uuid.parse(b.spaceId) : p.space_id);
-        const destination = one<Space>("SELECT * FROM spaces WHERE id=?", sid);
+        const { placement, target, parent, destinationParent, sid, destination } = moveDestination(user, p, b);
         if (
           !destination ||
           destination.deleted_at ||
@@ -1333,6 +1360,13 @@ export function command(
         )
           throw new HttpError(403, "Keine Schreibrechte im Zielbereich.");
         subtree.forEach((child) => requirePage(user, child, true, true));
+        // Tags and definitions of the source space (or workspace) the
+        // pages carry: mapped, copied or removed as chosen (`meta`), never
+        // dropped silently (#136, lib/meta-scope-server.ts).
+        const foreignMeta =
+          sid === p.space_id ? [] : moveForeignMeta(subtree, { workspaceId: destination.workspace_id, spaceId: sid });
+        const metaPlan = parseMetaPlan(b.meta);
+        if (foreignMeta.some((item) => !choiceFor(item, metaPlan))) throw new HttpError(409, needsPlanMessage(foreignMeta));
         // Into another workspace: rights, favourites and quota follow it.
         // Only full members take pages out; a guest edits what was shared
         // with them but cannot carry it off into a workspace of their own.
@@ -1342,6 +1376,7 @@ export function command(
         }
         for (const child of subtree)
           run("UPDATE pages SET space_id=? WHERE id=?", sid, child);
+        applyMovePlan(user, subtree, foreignMeta, metaPlan, { workspaceId: destination.workspace_id, spaceId: sid });
         run(
           "UPDATE pages SET parent_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
           parent,
@@ -2591,6 +2626,14 @@ export function command(
       case "property.reorder":
         result = pagePropertiesCommand(user, action, b, write);
         break;
+      // Scopes (#136, lib/meta-scope-server.ts).
+      case "tag.scope":
+      case "property.scope":
+        result = changeScope(user, action === "tag.scope" ? "tag" : "property", b);
+        break;
+      case "meta.usage":
+        result = metaUsage(user, b);
+        break;
       case "row.detachOccurrence":
         result = detachOccurrence(user, b);
         break;
@@ -3031,13 +3074,27 @@ export function command(
         const templateId = id();
         if (payload.length > 20_000_000)
           throw new HttpError(413, "Vorlage zu groß.");
+        // The scope (#136): the page's space by default, `spaceId: null` the
+        // whole workspace – then only with the workspace's tags and
+        // definitions (refused, or without the space's: `spaceMeta: "remove"`).
+        const templateSpace = b.spaceId === null ? null : b.spaceId === undefined ? p.space_id : uuid.parse(b.spaceId);
+        if (templateSpace && templateSpace !== p.space_id)
+          throw new HttpError(400, "Eine Vorlage gehört zum Bereich ihrer Seite oder zum ganzen Arbeitsbereich.");
+        requireTemplateScope(user, p.workspace_id, templateSpace, b.private ? "private" : "workspace");
+        let storedPayload = payload;
+        if (!templateSpace) {
+          const refs = templateSpaceRefs(payload, p.workspace_id, p.space_id);
+          if (refs.length && b.spaceMeta !== "remove") throw new HttpError(409, spaceRefsMessage(refs));
+          if (refs.length) storedPayload = stripSpaceRefs(payload, refs);
+        }
         run(
-          "INSERT INTO templates(id,workspace_id,name,kind,payload,created_by,visibility,category) VALUES(?,?,?,?,?,?,?,?)",
+          "INSERT INTO templates(id,workspace_id,space_id,name,kind,payload,created_by,visibility,category) VALUES(?,?,?,?,?,?,?,?,?)",
           templateId,
           p.workspace_id,
+          templateSpace,
           str.parse(b.name),
           p.kind,
-          payload,
+          storedPayload,
           user.id,
           b.private ? "private" : "workspace",
           z
@@ -3047,11 +3104,17 @@ export function command(
             .parse(b.category ?? ""),
         );
         const quota = quotaCheckpoint(p.workspace_id);
-        captureTemplateFiles(user, templateId, payload);
+        captureTemplateFiles(user, templateId, storedPayload);
         quota();
         result = { id: templateId };
         break;
       }
+      case "template.copy":
+        result = copyPageTemplate(user, b);
+        break;
+      case "template.dependencies":
+        result = pageTemplateDependencies(user, b);
+        break;
       case "template.purge":
         result = purgeTemplate(user, b);
         break;
@@ -3068,7 +3131,7 @@ export function command(
             409,
             "Die Datenbank wurde zwischenzeitlich geändert. Bitte neu laden.",
           );
-        result = applyPageTemplate(user, p, template);
+        result = applyPageTemplate(user, p, template, true, parseMetaPlan(b.meta));
         break;
       }
       case "page.fromShare": {
@@ -3483,7 +3546,7 @@ import { reviewsDue, setPageOwner, setPageReview } from "./page-review";
 import { parseAliases, setPageAliases } from "./page-aliases";
 import {
   applyPortableMeta,
-  canManageTaxonomy,
+  canManageScope,
   frontmatterMeta,
   memberByName,
   pageMetaFor,
@@ -3492,6 +3555,8 @@ import {
   workspaceTaxonomy,
 } from "./page-properties-server";
 import { prepareTagFields, reconcileTagFields, tagCells } from "./tag-fields";
+import { applyMovePlan, changeScope, metaUsage, moveForeignMeta, needsPlanMessage, parseMetaPlan } from "./meta-scope-server";
+import { choiceFor } from "./meta-scope";
 import { splitFrontmatter } from "./frontmatter";
 import { frontmatterAliases, storedAliases } from "./aliases";
 import { aliasField, aliasList } from "./aliases";

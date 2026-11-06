@@ -26,7 +26,7 @@ import { hiddenFieldsFor } from "./field-access";
 import { databaseSnapshot } from "./database-operations";
 import { groupKey } from "./database-groups";
 import { cellText } from "./cell-text";
-import { canCreateTags, resolveTag, workspaceTags } from "./page-properties-server";
+import { canCreateTags, contextTags, resolveTag, scopeOf, workspaceTags } from "./page-properties-server";
 import { cleanTagName, foldName, isTagField, MAX_OPTIONS } from "./page-properties";
 import type { Field, FilterGroup, FilterNode, Identity, Page, View } from "./types";
 
@@ -49,12 +49,17 @@ function tagDatabases(workspaceId: string): TagDatabase[] {
   });
 }
 
-const tagNames = (workspaceId: string) => workspaceTags(workspaceId).map((t) => t.name);
+// The tags a database of `spaceId` offers: the workspace's and its space's
+// (#136).
+const tagNames = (workspaceId: string, spaceId: string | null) => contextTags(workspaceId, spaceId).map((t) => t.name);
 
-// The options of every tag-backed property follow the workspace's tags.
+// The options of every tag-backed property follow the tags of its
+// database's context.
 export function syncTagFieldOptions(workspaceId: string) {
-  const names = tagNames(workspaceId);
+  const bySpace = new Map<string, string[]>();
   for (const db of tagDatabases(workspaceId)) {
+    const names = bySpace.get(db.page.space_id) ?? tagNames(workspaceId, db.page.space_id);
+    bySpace.set(db.page.space_id, names);
     let changed = false;
     const fields = db.fields.map((f) => {
       if (!isTagField(f) || JSON.stringify(f.options || []) === JSON.stringify(names)) return f;
@@ -74,15 +79,17 @@ export function syncTagFieldOptions(workspaceId: string) {
 // may not be created; otherwise it is left out.
 export function tagValues(
   user: Identity | null,
-  workspaceId: string,
+  page: Pick<Page, "workspace_id" | "space_id">,
   values: unknown,
   options: { strict: boolean; known?: Set<string> },
 ): string[] {
+  const workspaceId = page.workspace_id;
   const list = (Array.isArray(values) ? values : values === null || values === undefined || values === "" ? [] : [values]).filter(
     (v): v is string | number => typeof v === "string" || typeof v === "number",
   );
-  const tags = new Map(workspaceTags(workspaceId).map((t) => [foldName(t.name), t.name]));
-  const mayCreate = (user ? canCreateTags(user, workspaceId) && !isGuest(user, workspaceId) : true) && !options.known;
+  // The tags of the database's context; new ones belong to its space (#136).
+  const tags = new Map(contextTags(workspaceId, page.space_id).map((t) => [foldName(t.name), t.name]));
+  const mayCreate = (user ? canCreateTags(user, workspaceId, page.space_id) && !isGuest(user, workspaceId) : true) && !options.known;
   const out: string[] = [];
   let created = false;
   for (const raw of list) {
@@ -97,7 +104,7 @@ export function tagValues(
         continue;
       }
       try {
-        resolveTag(null, workspaceId, name);
+        resolveTag(null, scopeOf(page), name);
       } catch (error) {
         if (options.strict) throw error;
         continue;
@@ -132,7 +139,7 @@ function guestKnownTags(user: Identity, page: Page, field: Field) {
 // A cell of a tag-backed property as stored (validateCellPatch).
 export function tagCell(user: Identity, page: Page, field: Field, value: unknown): string[] {
   const known = isGuest(user, page.workspace_id) ? guestKnownTags(user, page, field) : undefined;
-  return tagValues(user, page.workspace_id, value, { strict: true, known });
+  return tagValues(user, page, value, { strict: true, known });
 }
 
 // The tag-backed cells of new records (row.create, rows.import, imports).
@@ -147,7 +154,7 @@ export function tagCells<T extends Record<string, unknown>>(
   for (const f of fields) {
     if (!isTagField(f) || cells[f.id] === undefined) continue;
     const known = user && isGuest(user, page.workspace_id) ? guestKnownTags(user, page, f) : undefined;
-    out = { ...out, [f.id]: tagValues(user, page.workspace_id, cells[f.id], { strict, known }) };
+    out = { ...out, [f.id]: tagValues(user, page, cells[f.id], { strict, known }) };
   }
   return out;
 }
@@ -274,11 +281,15 @@ function rewriteViews(views: View[], fields: Field[], map: (name: string) => str
 }
 
 // A tag renamed (`from` → `to`), merged (the source's name → the target's)
-// or deleted (`to` null): every tag-backed cell of the workspace follows.
-export function rewriteTagValues(user: Identity, workspaceId: string, from: string, to: string | null) {
+// or deleted (`to` null): every tag-backed cell where the tag is known
+// follows – in the whole workspace, or for a space's tag (#136) in that
+// space; `only` limits it to some databases (pages moved, lib/meta-scope-server.ts).
+export function rewriteTagValues(user: Identity, workspaceId: string, from: string, to: string | null, spaceId: string | null = null, only?: Set<string>) {
   const gone = foldName(from);
   const map = (name: string) => (foldName(name) === gone ? to : undefined);
   for (const db of tagDatabases(workspaceId)) {
+    if (spaceId && db.page.space_id !== spaceId) continue;
+    if (only && !only.has(db.page.id)) continue;
     let kept = false,
       touched = false;
     for (const row of all<{ id: string; cells: string }>("SELECT id,cells FROM rows WHERE page_id=?", db.page.id)) {
@@ -336,14 +347,14 @@ export function prepareTagFields(user: Identity, page: Page, fields: Field[], be
     const old = before.find((b) => b.id === f.id);
     // Existing options become tags (with the permission to create them).
     const wanted = [...(old?.options || []), ...(f.options || [])].filter((o) => !!cleanTagName(o));
-    tagValues(user, page.workspace_id, wanted.slice(0, 1000), { strict: true });
+    tagValues(user, page, wanted.slice(0, 1000), { strict: true });
     // Values of the records: under the tags' names (new ones created).
     if (old)
       for (const row of all<{ id: string; cells: string }>("SELECT id,cells FROM rows WHERE page_id=?", page.id)) {
         const cells = JSON.parse(row.cells) as Record<string, unknown>;
         const value = cells[f.id];
         if (value === undefined || value === null || value === "") continue;
-        const next = tagValues(user, page.workspace_id, value, { strict: true });
+        const next = tagValues(user, page, value, { strict: true });
         if (JSON.stringify(next) === JSON.stringify(value)) continue;
         cells[f.id] = next;
         run(
@@ -354,7 +365,7 @@ export function prepareTagFields(user: Identity, page: Page, fields: Field[], be
         );
       }
   }
-  const names = tagNames(page.workspace_id);
+  const names = tagNames(page.workspace_id, page.space_id);
   for (const f of fields) {
     const old = before.find((b) => b.id === f.id);
     if (isTagField(f)) f.options = names;
@@ -384,8 +395,8 @@ export function reconcileTagFields(user: Identity | null, pageId: string) {
     run("UPDATE databases SET fields=? WHERE page_id=?", JSON.stringify(fields.map(({ tagOptions: _drop, ...f }) => f)), pageId);
     return;
   }
-  const mayCreate = !user || (canCreateTags(user, page.workspace_id) && !isGuest(user, page.workspace_id));
-  const tags = new Map(workspaceTags(page.workspace_id).map((t) => [foldName(t.name), t.name]));
+  const mayCreate = !user || (canCreateTags(user, page.workspace_id, page.space_id) && !isGuest(user, page.workspace_id));
+  const tags = new Map(contextTags(page.workspace_id, page.space_id).map((t) => [foldName(t.name), t.name]));
   for (const row of all<{ id: string; cells: string }>("SELECT id,cells FROM rows WHERE page_id=?", pageId)) {
     const cells = JSON.parse(row.cells) as Record<string, unknown>;
     let changed = false;
@@ -399,7 +410,7 @@ export function reconcileTagFields(user: Identity | null, pageId: string) {
         const name = cleanTagName(v);
         if (!mayCreate || !name) return [v];
         try {
-          resolveTag(null, page.workspace_id, name);
+          resolveTag(null, scopeOf(page), name);
           tags.set(foldName(name), name);
           return [name];
         } catch {
@@ -437,7 +448,8 @@ export function taggedRecords(user: Identity, workspaceId: string): TaggedRecord
   const databases = tagDatabases(workspaceId).filter((db) => !db.page.deleted_at && !db.page.synced);
   if (!databases.length) return [];
   const tags = workspaceTags(workspaceId);
-  const byName = new Map(tags.map((t) => [foldName(t.name), t.id]));
+  // A name means the tag of the database's context (#136).
+  const byName = (spaceId: string, name: string) => tags.find((t) => (!t.spaceId || t.spaceId === spaceId) && foldName(t.name) === name)?.id;
   const locked = lockedPageIds(user, workspaceId);
   const out: TaggedRecord[] = [];
   for (const db of databases) {
@@ -459,7 +471,7 @@ export function taggedRecords(user: Identity, workspaceId: string): TaggedRecord
         const value = cells[f.id];
         if (Array.isArray(value))
           for (const v of value) {
-            const tagId = typeof v === "string" ? byName.get(foldName(v)) : undefined;
+            const tagId = typeof v === "string" ? byName(db.page.space_id, foldName(v)) : undefined;
             if (tagId) ids.add(tagId);
           }
       }

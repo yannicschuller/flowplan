@@ -43,6 +43,7 @@ import {
 } from "./collection-query";
 import { foldName, isComputedProperty, isTagField, matchesPropertyFilter, propertyFilter, type PagePropertyDef, type PagePropertyType } from "./page-properties";
 import { workspaceProperties, workspaceTags } from "./page-properties-server";
+import { inScope } from "./page-properties";
 import type { Field, Identity, Page, Space } from "./types";
 
 export const MAX_COLLECTIONS = 100,
@@ -331,10 +332,15 @@ export function evaluateQuery(user: Identity, workspaceId: string, input: string
   // Keep the index current for this request (as the search does).
   for (let i = 0; i < 10 && processSearchIndex(); i++);
   const conds = conditions(node);
+  // Names mean the tag or definition of a page's context: the workspace's
+  // or its space's (#136); one name may stand for one per space.
   const tags = workspaceTags(workspaceId);
-  const tagByName = new Map(tags.map((t) => [foldName(t.name), t.id]));
+  const tagsByName = new Map<string, string[]>();
+  for (const t of tags) tagsByName.set(foldName(t.name), [...(tagsByName.get(foldName(t.name)) ?? []), t.id]);
+  const tagIn = (spaceId: string, name: string) => tags.find((t) => inScope(t, spaceId) && foldName(t.name) === name)?.id;
   const defs = workspaceProperties(workspaceId);
   const defByName = new Map(defs.map((d) => [foldName(d.name), d]));
+  const defIn = (spaceId: string, name: string) => defs.find((d) => inScope(d, spaceId) && foldName(d.name) === name);
   const members = new Map(
     all<{ id: string; name: string }>("SELECT u.id,u.name FROM users u WHERE u.id IN (SELECT user_id FROM members WHERE workspace_id=?) OR u.id IN (SELECT created_by FROM pages WHERE workspace_id=?)", workspaceId, workspaceId).map(
       (u) => [u.id, u.name],
@@ -427,7 +433,7 @@ export function evaluateQuery(user: Identity, workspaceId: string, input: string
           const value = cells[f.id];
           if (Array.isArray(value))
             for (const v of value) {
-              const tagId = typeof v === "string" ? tagByName.get(foldName(v)) : undefined;
+              const tagId = typeof v === "string" ? tagIn(p.space_id, foldName(v)) : undefined;
               if (tagId) own.add(tagId);
             }
         }
@@ -496,8 +502,8 @@ export function evaluateQuery(user: Identity, workspaceId: string, input: string
         type === "created_at" ? item.createdAt : type === "updated_at" ? item.updatedAt : type === "created_by" ? item.createdBy : type === "updated_by" ? item.updatedBy : item.cells[field.id];
       return valueMatches({ type: (type as PagePropertyType) ?? "text" }, value, c);
     }
-    const def = defByName.get(name);
-    if (!def) return null;
+    const def = defIn((item.page as Page).space_id, name);
+    if (!def) return defByName.has(name) ? false : null;
     let value: unknown;
     if (isComputedProperty(def.type)) {
       // A record has its database's (as before #86).
@@ -534,14 +540,14 @@ export function evaluateQuery(user: Identity, workspaceId: string, input: string
           result = fold(item.title).includes(fold(n.value.trim()));
           break;
         case "tag": {
-          const tagId = tagByName.get(foldName(n.value));
-          if (!tagId) {
+          const tagIds = tagsByName.get(foldName(n.value));
+          if (!tagIds) {
             // An unknown tag is searched as a word, as before.
             result = textMatchesNow(`#${n.value}`, item.key);
             break;
           }
           // Records also carry their database's tags (#79).
-          result = item.tags.includes(tagId) || (!!item.rowId && !!pageTags.get(item.pageId)?.includes(tagId));
+          result = tagIds.some((tagId) => item.tags.includes(tagId) || (!!item.rowId && !!pageTags.get(item.pageId)?.includes(tagId)));
           break;
         }
         case "prop": {

@@ -12,7 +12,7 @@ import { markdownToHtml } from "./markdown-import";
 import { splitFrontmatter } from "./frontmatter";
 import { frontmatterAliases, storedAliases } from "./aliases";
 import { numberedInFrontmatter } from "./block-captions";
-import { applyPortableMeta, canManageTaxonomy, frontmatterMeta, memberByName } from "./page-properties-server";
+import { applyPortableMeta, canManageScope, frontmatterMeta, memberByName } from "./page-properties-server";
 import { enforceQuota } from "./instance-ops";
 import { enforceUserStorage } from "./user-limits";
 import { boardState, storeBoardImages } from "./whiteboard-import-server";
@@ -351,7 +351,7 @@ export async function importZip(
         uploaded.set(target, url);
         return url;
       };
-    const manageProperties = canManageTaxonomy(user, workspaceId),
+    const manageProperties = canManageScope(user, workspaceId, spaceId),
       people = memberByName(workspaceId);
     let rowCount = 0,
       boardImages = 0;
@@ -378,7 +378,7 @@ export async function importZip(
         if (numberedInFrontmatter(data)) run("UPDATE pages SET caption_numbers=1 WHERE id=?", pid);
         // Tags and properties (#70): known properties by name; other keys
         // become properties when the person manages them.
-        const { meta, consumed } = frontmatterMeta(data, workspaceId, people, { createDefinitions: manageProperties });
+        const { meta, consumed } = frontmatterMeta(data, workspaceId, people, { createDefinitions: manageProperties, spaceId });
         applyPortableMeta(user, { id: pid, workspace_id: workspaceId, space_id: spaceId }, meta, { createDefinitions: manageProperties });
         // Flowplan's own keys (a journal day's id and date) go too.
         const taken = new Set(consumed.map((key) => key.trim().toLowerCase()));
