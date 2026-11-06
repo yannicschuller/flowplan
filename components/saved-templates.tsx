@@ -4,7 +4,9 @@ import { tr } from "@/lib/locale-tag";
 import { useT } from "./i18n";
 import { Select } from "./select";
 import { useEffect, useState, useCallback } from "react";
-import { api, Modal, PageIcon } from "./ui";
+import { api, ApiError, Modal, PageIcon } from "./ui";
+import { MetaResolveDialog, ScopeBadge } from "./meta-scope";
+import type { ForeignMeta, MetaPlan } from "@/lib/meta-scope";
 import {
   templateCategories,
   type TemplateCategory,
@@ -21,6 +23,9 @@ type Template = {
   shared?: boolean;
   // An emoji (imported templates).
   icon?: string;
+  // The space it belongs to (#136); null: the whole workspace.
+  space_id?: string | null;
+  space_name?: string;
 };
 const visibilityLabels = {
   private: tr("Nur für mich", "Only me"),
@@ -28,6 +33,10 @@ const visibilityLabels = {
   instance: tr("Alle Arbeitsbereiche", "All workspaces"),
   public: tr("Öffentliche Galerie", "Public gallery"),
 };
+// Templates belong to a space or to the whole workspace (#136): the list
+// shows those of `spaceId` (where a new page would go) and the workspace's,
+// or all one may see; a template of another space brings its space's tags
+// and properties, resolved before it is used or copied.
 export default function SavedTemplates({
   workspaceId,
   canCreate,
@@ -35,20 +44,45 @@ export default function SavedTemplates({
   trashDays = 30,
   onUse,
   onError,
+  spaceId,
+  spaces = [],
+  manageWorkspace = false,
 }: {
   workspaceId: string;
   canCreate: boolean;
   isAdmin?: boolean;
   // Days in the template trash before deletion for good (0 = never, #123).
   trashDays?: number;
-  onUse: (t: Template) => Promise<void>;
+  onUse: (t: Template, meta?: MetaPlan) => Promise<void>;
   onError: (message: string) => void;
+  spaceId?: string;
+  spaces?: { id: string; name: string }[];
+  manageWorkspace?: boolean;
 }) {
   const t = useT();
   const [items, setItems] = useState<Template[]>([]),
     [deleted, setDeleted] = useState(false),
     [busy, setBusy] = useState(false),
     [loading, setLoading] = useState(true);
+  const [scopeFilter, setScopeFilter] = useState<"here" | "all">("here"),
+    // A template of another space waiting for its tags and properties.
+    [resolving, setResolving] = useState<{ items: ForeignMeta[]; target: string; run: (meta: MetaPlan) => Promise<unknown> } | null>(null),
+    [copying, setCopying] = useState<Template | null>(null),
+    [copyTo, setCopyTo] = useState<string>(""),
+    // The server's answer when a template for the whole workspace would
+    // carry a space's tags: save without them on confirming.
+    [spaceRefs, setSpaceRefs] = useState("");
+  const spaceName = (id: string | null | undefined) => spaces.find((sp) => sp.id === id)?.name ?? "";
+  // What a template of another space brings into `target`; `run` gets the
+  // choices (none needed: at once).
+  async function withDependencies(template: Template, target: string | null | undefined, run: (meta?: MetaPlan) => Promise<unknown>) {
+    if (!target || !template.space_id || template.space_id === target || template.shared) return run();
+    const deps = await api<{ items: ForeignMeta[] }>("/api/command", { action: "template.dependencies", workspaceId, templateId: template.id, spaceId: target }).catch(() => ({
+      items: [] as ForeignMeta[],
+    }));
+    if (!deps.items.length) return run();
+    setResolving({ items: deps.items, target: spaceName(target), run });
+  }
   const [editing, setEditing] = useState<Template | null>(null),
     [removing, setRemoving] = useState<Template | null>(null),
     [purging, setPurging] = useState<Template | null>(null),
@@ -63,7 +97,7 @@ export default function SavedTemplates({
       onError((e as Error).message);
     });
   }, [refresh, onError]);
-  async function change(t: Template, action: string) {
+  async function change(t: Template, action: string, extra: Record<string, unknown> = {}) {
     setBusy(true);
     try {
       await api("/api/command", {
@@ -74,17 +108,38 @@ export default function SavedTemplates({
         name: t.name,
         visibility: t.visibility,
         category: t.category || "",
+        ...extra,
       });
       await refresh();
       setEditing(null);
       setRemoving(null);
       setPurging(null);
+      setCopying(null);
+      setSpaceRefs("");
     } catch (e) {
-      onError((e as Error).message);
+      // For the whole workspace without the space's tags: confirm first.
+      if (e instanceof ApiError && e.status === 409 && /spaceMeta/.test(e.message) && !extra.spaceMeta) setSpaceRefs(e.message);
+      else onError((e as Error).message);
       await refresh().catch(() => {});
     } finally {
       setBusy(false);
     }
+  }
+  // Saving the edit dialog: a new scope is sent along, a template moving to
+  // another space resolves its space's tags there first.
+  function saveEdit(t: Template) {
+    const before = items.find((x) => x.id === t.id);
+    const next = t.space_id ?? null;
+    if ((before?.space_id ?? null) === next) return change(t, "template.update");
+    const extra = { spaceId: next, ...(spaceRefs ? { spaceMeta: "remove" } : {}) };
+    if (!next) return change(t, "template.update", extra);
+    return withDependencies({ ...t, space_id: before?.space_id ?? null }, next, (meta) => change(t, "template.update", { ...extra, ...(meta ? { meta } : {}) }));
+  }
+  function copyTemplate(t: Template) {
+    const target = copyTo || null;
+    const extra = { spaceId: target, ...(spaceRefs ? { spaceMeta: "remove" } : {}) };
+    if (!target) return change(t, "template.copy", extra);
+    return withDependencies(t, target, (meta) => change(t, "template.copy", { ...extra, ...(meta ? { meta } : {}) }));
   }
   // The template trash, emptied: only templates this person manages.
   async function emptyTemplates() {
@@ -106,6 +161,7 @@ export default function SavedTemplates({
   const shown = items.filter(
     (t) =>
       !!t.deleted_at === deleted &&
+      (scopeFilter === "all" || !spaceId || !t.space_id || t.space_id === spaceId) &&
       (kind === "all" || t.kind === kind) &&
       (category === "all" || (t.category || "") === category) &&
       t.name.toLocaleLowerCase("de").includes(search.toLocaleLowerCase("de")),
@@ -155,6 +211,12 @@ export default function SavedTemplates({
           <option value="document">{t("Dokumente", "Documents")}</option>
           <option value="database">{t("Datenbanken", "Databases")}</option>
         </Select>
+        {spaceId && (
+          <Select aria-label={t("Vorlagen welcher Bereiche", "Templates of which spaces")} value={scopeFilter} onChange={(e) => setScopeFilter(e.target.value as typeof scopeFilter)}>
+            <option value="here">{t(`„${spaceName(spaceId)}“ und Arbeitsbereich`, `“${spaceName(spaceId)}” and workspace`)}</option>
+            <option value="all">{t("Alle Bereiche", "All spaces")}</option>
+          </Select>
+        )}
         <Select
           aria-label={t("Vorlagenkategorie", "Template category")}
           value={category}
@@ -229,6 +291,7 @@ export default function SavedTemplates({
                     visibilityLabels.workspace}
                 {template.category && ` · ${t(templateCategories[template.category])}`}
               </small>
+              {!template.shared && <ScopeBadge spaceId={template.space_id} spaces={spaces} />}
             </div>
             <div className="saved-template-actions">
               {!deleted && (
@@ -238,7 +301,7 @@ export default function SavedTemplates({
                   onClick={async () => {
                     setBusy(true);
                     try {
-                      await onUse(template);
+                      await withDependencies(template, spaceId, (meta) => onUse(template, meta));
                     } finally {
                       setBusy(false);
                     }
@@ -280,9 +343,24 @@ export default function SavedTemplates({
                   <>
                     <button
                       className="button compact"
+                      aria-label={t(`${template.name} in einen Bereich kopieren`, `Copy ${template.name} to a space`)}
+                      disabled={busy}
+                      onClick={() => {
+                        setSpaceRefs("");
+                        setCopyTo(spaceId && spaceId !== template.space_id ? spaceId : "");
+                        setCopying(template);
+                      }}
+                    >
+                      {t("Kopieren", "Copy")}
+                    </button>
+                    <button
+                      className="button compact"
                       aria-label={t(`${template.name} bearbeiten`, `Edit ${template.name}`)}
                       disabled={busy}
-                      onClick={() => setEditing({ ...template })}
+                      onClick={() => {
+                        setSpaceRefs("");
+                        setEditing({ ...template });
+                      }}
                     >
                       {t("Bearbeiten", "Edit")}
                     </button>
@@ -309,7 +387,7 @@ export default function SavedTemplates({
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              void change(editing, "template.update");
+              void saveEdit(editing);
             }}
           >
             <label>
@@ -367,6 +445,32 @@ export default function SavedTemplates({
                 )}
               </Select>
             </label>
+            {!["instance", "public"].includes(editing.visibility) && (
+              <label>
+                {t("Gilt", "Applies")}
+                <Select
+                  value={editing.space_id ?? ""}
+                  onChange={(e) => {
+                    setSpaceRefs("");
+                    setEditing({ ...editing, space_id: e.target.value || null });
+                  }}
+                >
+                  <option value="" disabled={editing.visibility === "workspace" && !manageWorkspace && !!editing.space_id}>
+                    {t("Im ganzen Arbeitsbereich", "In the whole workspace")}
+                  </option>
+                  {spaces.map((sp) => (
+                    <option key={sp.id} value={sp.id}>
+                      {t(`Nur im Bereich „${sp.name}“`, `Only in the space “${sp.name}”`)}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+            )}
+            {spaceRefs && (
+              <p className="callout" role="alert">
+                {spaceRefs} {t("Beim Speichern werden sie aus der Vorlage genommen.", "Saving takes them out of the template.")}
+              </p>
+            )}
             <p className="muted">
               {t("Gespeicherte Inhalte und Anhänge bleiben erhalten. Bereits erstellte Seiten werden nicht verändert.", "Saved content and attachments are kept. Pages already created are not changed.")}
             </p>
@@ -379,6 +483,72 @@ export default function SavedTemplates({
           </form>
         )}
       </Modal>
+      <Modal open={!!copying} onClose={() => !busy && setCopying(null)} title={t("Vorlage kopieren", "Copy template")}>
+        {copying && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void copyTemplate(copying);
+            }}
+          >
+            <label>
+              {t("Kopie gilt", "The copy applies")}
+              <Select
+                value={copyTo}
+                onChange={(e) => {
+                  setSpaceRefs("");
+                  setCopyTo(e.target.value);
+                }}
+              >
+                {manageWorkspace && <option value="">{t("Im ganzen Arbeitsbereich", "In the whole workspace")}</option>}
+                {spaces.map((sp) => (
+                  <option key={sp.id} value={sp.id}>
+                    {t(`Nur im Bereich „${sp.name}“`, `Only in the space “${sp.name}”`)}
+                  </option>
+                ))}
+              </Select>
+            </label>
+            <p className="muted">
+              {t(
+                "Tags und Eigenschaften des Bereichs der Vorlage werden im Zielbereich zugeordnet oder kopiert – du wählst gleich, wie.",
+                "Tags and properties of the template's space are mapped or copied in the target space – you choose how next.",
+              )}
+            </p>
+            {spaceRefs && (
+              <p className="callout" role="alert">
+                {spaceRefs} {t("Beim Kopieren werden sie aus der Vorlage genommen.", "Copying takes them out of the template.")}
+              </p>
+            )}
+            <button className="button primary" disabled={busy || (!copyTo && !manageWorkspace)}>
+              {t("Kopieren", "Copy")}
+            </button>
+          </form>
+        )}
+      </Modal>
+      {resolving && (
+        <MetaResolveDialog
+          open
+          title={t("Tags und Eigenschaften der Vorlage", "The template's tags and properties")}
+          intro={t(
+            `Die Vorlage stammt aus einem anderen Bereich und bringt Tags und Eigenschaften mit, die in „${resolving.target}“ nicht gelten. Wähle, was daraus wird.`,
+            `The template comes from another space and brings tags and properties that do not apply in “${resolving.target}”. Choose what they become.`,
+          )}
+          items={resolving.items}
+          target={resolving.target}
+          confirm={t("Weiter", "Continue")}
+          onClose={() => setResolving(null)}
+          onConfirm={async (plan) => {
+            const run = resolving.run;
+            setResolving(null);
+            setBusy(true);
+            try {
+              await run(plan);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        />
+      )}
       <Modal
         open={!!removing}
         onClose={() => !busy && setRemoving(null)}

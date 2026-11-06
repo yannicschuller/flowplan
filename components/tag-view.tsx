@@ -11,6 +11,7 @@ import { useT } from "./i18n";
 import { api, PageIcon } from "./ui";
 import { pageLocationHash } from "@/lib/page-location";
 import { TagChip } from "./page-properties";
+import { ScopeBadge } from "./meta-scope";
 import { foldName, type PageTag } from "@/lib/page-properties";
 import type { Bootstrap, Page } from "@/lib/types";
 
@@ -24,7 +25,10 @@ export function TagView({ boot, pages, onOpen }: { boot: Bootstrap; pages: Page[
   const taxonomy = boot.taxonomy;
   const [selected, setSelected] = useState<string | null>(null),
     [also, setAlso] = useState<string[]>([]),
-    [filter, setFilter] = useState("");
+    [filter, setFilter] = useState(""),
+    // A tag is one id (#136); on request also the same-named tags of the
+    // other spaces.
+    [sameName, setSameName] = useState(false);
   useEffect(() => {
     const follow = () => {
       setSelected(tagOfHash());
@@ -40,13 +44,13 @@ export function TagView({ boot, pages, onOpen }: { boot: Bootstrap; pages: Page[
   useEffect(() => {
     let live = true;
     const path = selected ? `/api/tags/${selected}` : "/api/tags";
-    api<Listing>(`${path}?workspace=${boot.workspace.id}`)
+    api<Listing>(`${path}?workspace=${boot.workspace.id}${selected && sameName ? "&sameName=1" : ""}`)
       .then((result) => live && setListing(result))
       .catch(() => live && setListing(null));
     return () => {
       live = false;
     };
-  }, [selected, boot.workspace.id, taxonomy]);
+  }, [selected, boot.workspace.id, taxonomy, sameName]);
   const recordCounts = useMemo(() => new Map((listing?.tags ?? []).map((x) => [x.id, x.records ?? 0])), [listing]);
   const counts = useMemo(() => {
     const live = new Set(pages.map((p) => p.id));
@@ -56,16 +60,20 @@ export function TagView({ boot, pages, onOpen }: { boot: Bootstrap; pages: Page[
   }, [links, pages]);
   const tags = taxonomy?.tags ?? [];
   const tag = tags.find((x) => x.id === selected);
+  const namesakes = tag ? tags.filter((x) => x.id !== tag.id && foldName(x.name) === foldName(tag.name)) : [];
+  const tagIds = useMemo(
+    () => (tag ? [tag.id, ...(sameName ? tags.filter((x) => x.id !== tag.id && foldName(x.name) === foldName(tag.name)).map((x) => x.id) : [])] : []),
+    [tag, tags, sameName],
+  );
   const spaceName = (id: string) => boot.spaces.find((s) => s.id === id)?.name ?? "";
   const tagged = useMemo(() => {
     if (!tag) return [];
-    const wanted = [tag.id, ...also];
     const words = foldName(filter);
     return pages
-      .filter((p) => wanted.every((id) => links[p.id]?.includes(id)))
+      .filter((p) => tagIds.some((id) => links[p.id]?.includes(id)) && also.every((id) => links[p.id]?.includes(id)))
       .filter((p) => !words || foldName(p.title).includes(words))
       .sort((a, b) => (b.updated_at || "").localeCompare(a.updated_at || ""));
-  }, [tag, also, filter, pages, links]);
+  }, [tag, tagIds, also, filter, pages, links]);
   const records = useMemo(() => {
     if (!tag || !listing?.records) return [];
     const words = foldName(filter);
@@ -86,7 +94,10 @@ export function TagView({ boot, pages, onOpen }: { boot: Bootstrap; pages: Page[
     <div className="utility-content tag-view">
       <div className="utility-title">
         <TagIcon size={30} />
-        <h1>{tag ? `#${tag.name}` : t("Tags", "Tags")}</h1>
+        <h1>
+          {tag ? `#${tag.name}` : t("Tags", "Tags")}
+          {tag && <ScopeBadge spaceId={tag.spaceId} spaces={boot.spaces} />}
+        </h1>
         <p>
           {tag
             ? (tagged.length === 1
@@ -115,13 +126,15 @@ export function TagView({ boot, pages, onOpen }: { boot: Bootstrap; pages: Page[
               className={`page-tag page-tag-${x.color} tag-view-chip`}
               aria-current={x.id === selected ? "page" : undefined}
               onClick={() => open(x.id === selected ? null : x.id)}
+              title={x.spaceId ? t(`Nur im Bereich „${spaceName(x.spaceId)}“`, `Only in the space “${spaceName(x.spaceId)}”`) : undefined}
             >
               <span className="page-tag-name">{x.name}</span>
+              {x.spaceId && <span className="tag-view-space">{spaceName(x.spaceId)}</span>}
               <span className="tag-view-count">{(counts.get(x.id) || 0) + (recordCounts.get(x.id) || 0)}</span>
             </button>
           </span>
         ))}
-        {taxonomy?.manage && (
+        {(taxonomy?.manage || !!taxonomy?.manageSpaces?.length) && (
           <a className="text-button tag-view-manage" href="#settings/tags">
             <GearSix size={14} aria-hidden /> {t("Tags verwalten", "Manage tags")}
           </a>
@@ -145,6 +158,14 @@ export function TagView({ boot, pages, onOpen }: { boot: Bootstrap; pages: Page[
               <MagnifyingGlass size={15} aria-hidden />
               <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder={t("Filtern", "Filter")} aria-label={t("Seiten und Einträge filtern", "Filter pages and records")} />
             </label>
+            {namesakes.length > 0 && (
+              <label className="checkbox-label tag-view-same-name">
+                <input type="checkbox" checked={sameName} onChange={(e) => setSameName(e.target.checked)} />
+                {namesakes.length === 1
+                  ? t("Auch den gleichnamigen Tag eines anderen Bereichs", "Also the tag of the same name in another space")
+                  : t(`Auch ${namesakes.length} gleichnamige Tags anderer Bereiche`, `Also ${namesakes.length} tags of the same name in other spaces`)}
+              </label>
+            )}
             {related.length > 0 && (
               <span className="tag-view-related">
                 <span className="muted">{t("Und:", "And:")}</span>

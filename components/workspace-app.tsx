@@ -59,7 +59,7 @@ import { CollectionsNav } from "./collections-nav";
 import type { CollectionDraft } from "./collection-editor";
 import type { CollectionInfo } from "@/lib/collections";
 import { TagOptionsContext } from "./tag-options-context";
-import { parseSearchTokens, tagToken } from "@/lib/page-properties";
+import { contextOf, parseSearchTokens, tagToken } from "@/lib/page-properties";
 import { Tag as TagIcon } from "@phosphor-icons/react";
 import { openPageAliases, AliasIcon } from "./page-aliases";
 import { AiBlockToggle } from "./ai-settings";
@@ -217,6 +217,8 @@ import { ShareLinks } from "./share-links";
 import { PublicationDomain } from "./publication-domain";
 import { LinkProtection, ProtectionChips } from "./link-protection";
 import { MovePageDialog } from "./move-page-dialog";
+import { MetaResolveDialog, moveIntro, ScopeChoice } from "./meta-scope";
+import type { ForeignMeta, MetaPlan } from "@/lib/meta-scope";
 import { JournalView, localDay, type JournalDay } from "./journal-view";
 import { JournalDayNav, JournalTreeItem, monthLabel } from "./journal-nav";
 import {
@@ -673,7 +675,10 @@ export default function WorkspaceApp({
     [selecting, setSelecting] = useState(false),
     [bulkDialog, setBulkDialog] = useState<"move" | "delete" | null>(null),
     [bulkTarget, setBulkTarget] = useState(""),
-    [bulkBusy, setBulkBusy] = useState(false);
+    [bulkBusy, setBulkBusy] = useState(false),
+    // A move into another space that brings tags or properties of the
+    // source space: the step that resolves them (#136).
+    [metaMove, setMetaMove] = useState<{ items: ForeignMeta[]; target: string; run: (meta: MetaPlan) => Promise<unknown> } | null>(null);
   const lastSelected = useRef<string | null>(null),
     touchDrag = useRef<{ source: string; pointer: number } | null>(null),
     touchHoverRef = useRef((_x: number, _y: number) => {}),
@@ -682,6 +687,11 @@ export default function WorkspaceApp({
       edgeScroller((x, y) => touchHoverRef.current(x, y)),
     );
   const [privateTemplate, setPrivateTemplate] = useState(false);
+  // The scope of a template being saved (#136): the page's space (null:
+  // the whole workspace); `templateSpaceRefs` holds the server's answer when
+  // the page uses tags of its space a workspace template may not carry.
+  const [templateScope, setTemplateScope] = useState<"space" | "workspace">("space"),
+    [templateSpaceRefs, setTemplateSpaceRefs] = useState("");
   const [starterTemplate, setStarterTemplate] = useState<string | null>(null);
   const [galleryCategory, setGalleryCategory] = useState("all");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
@@ -814,10 +824,13 @@ export default function WorkspaceApp({
   );
   const navigationVersion = useRef(0);
   const navigationPending = useRef(false);
-  // The tags for multi-selects with the workspace's tags as options (#79).
+  // The tags for multi-selects with the workspace's tags as options (#79):
+  // those of the open database's context – the workspace's and its space's
+  // (#136).
+  const openPageSpace = data?.page.space_id;
   const tagOptions = useMemo(
-    () => ({ tags: boot.taxonomy?.tags ?? [], createTags: !!boot.taxonomy?.createTags }),
-    [boot.taxonomy],
+    () => ({ tags: contextOf(boot.taxonomy?.tags ?? [], openPageSpace), createTags: !!boot.taxonomy?.createTags }),
+    [boot.taxonomy, openPageSpace],
   );
   // Reloads overlap (after each change, every 10 s, …) and their answers
   // may come in another order: one that started earlier and answers later
@@ -1996,10 +2009,41 @@ export default function WorkspaceApp({
     setSelecting(false);
     lastSelected.current = null;
   }
+  // Moves by drag and drop and of several pages: into another space, the
+  // tags and properties of the source space they use are resolved first
+  // (page.moveCheck); `run` then moves with the choices.
+  async function movingChecked(pageIds: string[], destination: { spaceId?: string; pageId?: string }, run: (meta?: MetaPlan) => Promise<unknown>): Promise<unknown> {
+    const spaceOf = (id: string) => boot.pages.find((p) => p.id === id)?.space_id;
+    const target = destination.spaceId ?? (destination.pageId ? spaceOf(destination.pageId) : undefined);
+    const leaving = pageIds.filter((id) => spaceOf(id) && spaceOf(id) !== target);
+    if (!target || !leaving.length) return run();
+    const found = new Map<string, ForeignMeta>();
+    for (const pageId of leaving) {
+      const check = await api<{ foreign: ForeignMeta[] }>("/api/command", { action: "page.moveCheck", workspaceId: boot.workspace.id, pageId, spaceId: target }).catch(
+        () => ({ foreign: [] as ForeignMeta[] }),
+      );
+      for (const item of check.foreign) {
+        const key = `${item.kind}:${item.id}`;
+        const seen = found.get(key);
+        found.set(key, seen ? { ...seen, pages: seen.pages + item.pages, records: seen.records + item.records } : item);
+      }
+    }
+    if (!found.size) return run();
+    setMetaMove({ items: [...found.values()], target: boot.spaces.find((sp) => sp.id === target)?.name ?? "", run });
+  }
   async function bulkPages(
     operation: "delete" | "duplicate" | "move",
     destination?: string,
-  ) {
+    meta?: MetaPlan,
+  ): Promise<unknown> {
+    if (operation === "move" && destination && meta === undefined) {
+      const ids = selectedPages;
+      return movingChecked(
+        ids,
+        destination.startsWith("page:") ? { pageId: destination.slice(5) } : { spaceId: destination.slice(6) },
+        (plan) => bulkPages("move", destination, plan ?? ({} as MetaPlan)),
+      );
+    }
     setBulkBusy(true);
     const since = toastSerial();
     try {
@@ -2008,6 +2052,7 @@ export default function WorkspaceApp({
         workspaceId: boot.workspace.id,
         operation,
         pageIds: selectedPages,
+        ...(meta && Object.keys(meta).length ? { meta } : {}),
         ...(destination?.startsWith("page:")
           ? { parentId: destination.slice(5) }
           : destination?.startsWith("space:")
@@ -2475,12 +2520,16 @@ export default function WorkspaceApp({
                   "application/x-flowplan-page",
                 );
                 if (source && source !== p.id) {
-                  markTreeMove();
-                  void act({
-                    action: "page.move",
-                    pageId: source,
-                    targetId: p.id,
-                    placement: treeDrop?.placement || "inside",
+                  const placement = treeDrop?.placement || "inside";
+                  void movingChecked([source], { pageId: p.id }, (meta) => {
+                    markTreeMove();
+                    return act({
+                      action: "page.move",
+                      pageId: source,
+                      targetId: p.id,
+                      placement,
+                      ...(meta ? { meta } : {}),
+                    });
                   });
                 }
                 setTreeDrop(null);
@@ -2570,13 +2619,16 @@ export default function WorkspaceApp({
                     if (drag?.pointer !== e.pointerId) return;
                     const target = touchTarget(e.clientX, e.clientY);
                     setTreeDrop(null);
-                    if (target && target.id !== drag.source) markTreeMove();
                     if (target && target.id !== drag.source)
-                      void act({
-                        action: "page.move",
-                        pageId: drag.source,
-                        targetId: target.id,
-                        placement: target.placement,
+                      void movingChecked([drag.source], { pageId: target.id }, (meta) => {
+                        markTreeMove();
+                        return act({
+                          action: "page.move",
+                          pageId: drag.source,
+                          targetId: target.id,
+                          placement: target.placement,
+                          ...(meta ? { meta } : {}),
+                        });
                       });
                   }}
                   onPointerCancel={() => {
@@ -4070,7 +4122,7 @@ export default function WorkspaceApp({
                     <>
                       <PageReview page={data.page} members={boot.members} editable={editable} act={act} />
                       {/* Tags and properties (#70). */}
-                      <PagePropertyBar page={data.page} taxonomy={boot.taxonomy} meta={data.properties} collapsedChoice={data.propertiesCollapsed} members={boot.members} editable={editable} act={act} />
+                      <PagePropertyBar page={data.page} taxonomy={boot.taxonomy} meta={data.properties} collapsedChoice={data.propertiesCollapsed} members={boot.members} editable={editable} act={act} spaces={boot.spaces} />
                     </>
                   )}
                   {since?.pageId === data.page.id && since.value && (
@@ -4843,9 +4895,12 @@ export default function WorkspaceApp({
               }}
             >
               <option value="">{t("Tag …", "Tag …")}</option>
-              {boot.taxonomy.tags.map((tag) => (
+              {/* With a space chosen: its tags and the workspace's; for all
+                  spaces every tag, a space's with its name as a hint (#136). */}
+              {(searchSpace ? contextOf(boot.taxonomy.tags, searchSpace) : boot.taxonomy.tags).map((tag) => (
                 <option key={tag.id} value={tag.id}>
                   #{tag.name}
+                  {!searchSpace && tag.spaceId ? ` · ${boot.spaces.find((sp) => sp.id === tag.spaceId)?.name ?? ""}` : ""}
                 </option>
               ))}
             </Select>
@@ -5784,7 +5839,12 @@ export default function WorkspaceApp({
           isAdmin={!!boot.user.isAdmin}
           trashDays={boot.trashDays}
           onError={notifyError}
-          onUse={async (t) => {
+          // The space a new page goes to: its templates and the workspace's
+          // first; others bring their space's tags along (#136).
+          spaceId={templatesFor?.spaceId ?? boot.spaces[0]?.id}
+          spaces={boot.spaces.filter((sp) => !sp.deleted_at)}
+          manageWorkspace={!!boot.taxonomy?.manage}
+          onUse={async (t, meta) => {
             const r = await act({
               action: "page.create",
               workspaceId: boot.workspace.id,
@@ -5793,6 +5853,7 @@ export default function WorkspaceApp({
               title: t.name,
               kind: t.kind,
               templateId: t.id,
+              ...(meta ? { meta } : {}),
             });
             if (r?.id) {
               setTemplatesFor(null);
@@ -5810,14 +5871,29 @@ export default function WorkspaceApp({
         <form
           onSubmit={async (e) => {
             e.preventDefault();
-            const r = await act({
+            const body = {
               action: "template.save",
               pageId,
               name: templateTitle || data?.page.title,
               private: privateTemplate,
-            });
+              ...(templateScope === "workspace" ? { spaceId: null, ...(templateSpaceRefs ? { spaceMeta: "remove" } : {}) } : {}),
+            };
+            let r: unknown = null;
+            try {
+              r = await mutate(body);
+            } catch (error) {
+              // A workspace template with tags of this space: say which, and
+              // offer to save it without them.
+              const message = (error as Error).message;
+              if (templateScope === "workspace" && !templateSpaceRefs && (error as { status?: number }).status === 409 && /spaceMeta/.test(message)) {
+                setTemplateSpaceRefs(message);
+                return;
+              }
+              notifyError(error);
+            }
             if (r) {
               setTemplateName(false);
+              setTemplateSpaceRefs("");
               notify(t("Vorlage gespeichert", "Template saved"));
             }
           }}
@@ -5839,6 +5915,24 @@ export default function WorkspaceApp({
             />
             {t("Nur für mich sichtbar", "Only visible to me")}
           </label>
+          {data?.page && (
+            <ScopeChoice
+              value={templateScope === "workspace" ? null : data.page.space_id}
+              spaceId={data.page.space_id}
+              spaceName={boot.spaces.find((sp) => sp.id === data.page.space_id)?.name}
+              workspaceAllowed={privateTemplate || !!boot.taxonomy?.manage}
+              onChange={(next) => {
+                setTemplateScope(next ? "space" : "workspace");
+                setTemplateSpaceRefs("");
+              }}
+            />
+          )}
+          {templateSpaceRefs && (
+            <p className="callout" role="alert">
+              {templateSpaceRefs}{" "}
+              {t("„Speichern“ speichert die Vorlage ohne sie.", "“Save” saves the template without them.")}
+            </p>
+          )}
           <button className="button primary">{t("Speichern", "Save")}</button>
         </form>
       </Modal>
@@ -6007,6 +6101,22 @@ export default function WorkspaceApp({
           </Dropdown.Portal>
         </Dropdown.Root>
       )}
+      {metaMove && (
+        <MetaResolveDialog
+          open
+          title={t("Tags und Eigenschaften mitnehmen", "Bring tags and properties along")}
+          intro={moveIntro(t, metaMove.target)}
+          items={metaMove.items}
+          target={metaMove.target}
+          confirm={t("Verschieben", "Move")}
+          onClose={() => setMetaMove(null)}
+          onConfirm={async (plan) => {
+            const run = metaMove.run;
+            setMetaMove(null);
+            await run(plan);
+          }}
+        />
+      )}
       <MovePageDialog
         open={move}
         onClose={() => setMove(false)}
@@ -6014,7 +6124,7 @@ export default function WorkspaceApp({
         workspaces={boot.workspaces}
         currentWorkspace={boot.workspace.id}
         current={{ spaces: boot.spaces, pages: activePages }}
-        onMove={async ({ spaceId: target, parentId, workspaceId }) => {
+        onMove={async ({ spaceId: target, parentId, workspaceId, meta }) => {
           const moved = pageId;
           const r = await act({
             action: "page.move",
@@ -6022,6 +6132,8 @@ export default function WorkspaceApp({
             pageId: moved,
             parentId,
             spaceId: target,
+            // Tags and properties of the source space, as chosen (#136).
+            ...(meta ? { meta } : {}),
           });
           if (!r) return false;
           // Follow the page into the other workspace.

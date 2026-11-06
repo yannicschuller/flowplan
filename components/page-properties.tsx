@@ -38,7 +38,9 @@ import { safeCollisionPadding } from "./safe-area";
 import { formatDateValue } from "@/lib/date-values";
 import { appCache, pageKey } from "@/lib/swr-cache";
 import { isLinkField } from "@/lib/cell-links";
+import { ScopeBadge, ScopeChoice } from "./meta-scope";
 import {
+  contextOf,
   foldName,
   isBarCollapsed,
   isComputedProperty,
@@ -144,14 +146,17 @@ function useNarrow() {
 
 export function PagePropertyBar({
   page,
-  taxonomy,
+  taxonomy: everything,
   meta,
   collapsedChoice,
   members,
   editable,
   act,
+  spaces = [],
 }: {
   page: Page;
+  // The spaces, for the scope badges (#136).
+  spaces?: { id: string; name: string }[];
   taxonomy: WorkspaceTaxonomy | undefined;
   meta: PageMeta | undefined;
   // The person's stored choice (#83); null: none, the default applies.
@@ -177,6 +182,13 @@ export function PagePropertyBar({
     collapsed: null,
     moved: false,
   });
+  // The page uses the workspace's tags and definitions and its space's (#136).
+  const taxonomy = useMemo(
+    () => (everything ? { ...everything, tags: contextOf(everything.tags, page.space_id), properties: contextOf(everything.properties, page.space_id) } : undefined),
+    [everything, page.space_id],
+  );
+  const manageHere = !!everything?.manage || !!everything?.manageSpaces?.includes(page.space_id);
+  const spaceName = spaces.find((sp) => sp.id === page.space_id)?.name;
   const summaryRef = useRef<HTMLButtonElement>(null);
   const chevronRef = useRef<HTMLButtonElement>(null);
   const focusAfter = useRef<"summary" | "chevron" | null>(null);
@@ -196,11 +208,17 @@ export function PagePropertyBar({
   else if (ready && (fold.collapsed === null || (!fold.moved && fold.choice !== stored)))
     setFold({ ...fold, collapsed: isBarCollapsed(stored, visibleCount), choice: stored });
   if (!taxonomy || !meta) return null;
-  const tags = meta.tags.map((tid) => taxonomy.tags.find((x) => x.id === tid)).filter((x): x is PageTag => !!x);
+  const tags = meta.tags.map((tid) => everything!.tags.find((x) => x.id === tid)).filter((x): x is PageTag => !!x);
   const shown = taxonomy.properties.filter((p) => isComputedProperty(p.type) || !isEmptyValue(meta.values[p.id]) || added.includes(p.id));
   const addable = taxonomy.properties.filter((p) => !shown.includes(p));
   if (!editable && !tags.length && !shown.length) return null;
-  const addTag = (ref: string) => act({ action: "page.properties", pageId: page.id, addTags: [ref] });
+  // A new tag belongs to the page's space unless chosen for the whole
+  // workspace (owners).
+  const addTag = async (ref: string, scope?: "workspace") => {
+    if (scope !== "workspace") return act({ action: "page.properties", pageId: page.id, addTags: [ref] });
+    const made = (await act({ action: "tag.save", workspaceId: page.workspace_id, name: ref, spaceId: null })) as { id?: string } | null;
+    return made?.id ? act({ action: "page.properties", pageId: page.id, addTags: [made.id] }) : null;
+  };
   const removeTag = (tagId: string) => act({ action: "page.properties", pageId: page.id, removeTags: [tagId] });
   const setValue = (def: PagePropertyDef, value: unknown) => act({ action: "page.properties", pageId: page.id, values: { [def.id]: value } });
   const openTag = (tagId: string) => {
@@ -300,13 +318,15 @@ export function PagePropertyBar({
                         exclude={meta.tags}
                         onPick={addTag}
                         onClose={() => setTagging(false)}
+                        spaces={spaces}
+                        createScopes={{ spaceName, workspace: !!taxonomy.manage }}
                       />
                     ) : (
                       <button type="button" className="page-properties-add" onClick={() => setTagging(true)}>
                         <Plus size={13} aria-hidden /> {t("Tag", "Tag")}
                       </button>
                     ))}
-                  {editable && (addable.length > 0 || taxonomy.manage) && (
+                  {editable && (addable.length > 0 || manageHere) && (
                     <Dropdown.Root modal={false}>
                       <Dropdown.Trigger asChild>
                         <button type="button" className="page-properties-add">
@@ -321,11 +341,12 @@ export function PagePropertyBar({
                               <Dropdown.Item key={def.id} className="dropdown-item" onSelect={() => setAdded((list) => [...list, def.id])}>
                                 <TypeIcon size={15} aria-hidden />
                                 {def.name}
+                                {def.spaceId && <ScopeBadge spaceId={def.spaceId} spaces={spaces} compact />}
                               </Dropdown.Item>
                             );
                           })}
-                          {addable.length > 0 && taxonomy.manage && <Dropdown.Separator className="dropdown-separator" />}
-                          {taxonomy.manage && (
+                          {addable.length > 0 && manageHere && <Dropdown.Separator className="dropdown-separator" />}
+                          {manageHere && (
                             <Dropdown.Item className="dropdown-item" onSelect={() => setCreating(true)}>
                               <Plus size={15} aria-hidden />
                               {t("Neue Eigenschaft …", "New property …")}
@@ -366,6 +387,7 @@ export function PagePropertyBar({
           act={act}
           onClose={() => setCreating(false)}
           onSaved={(propertyId) => setAdded((list) => [...list, propertyId])}
+          scope={{ spaceId: page.space_id, spaceName, space: manageHere, workspace: !!taxonomy.manage }}
         />
       )}
     </section>
@@ -457,16 +479,22 @@ function PropertyValue({ def, value, members }: { def: PagePropertyDef; value: u
 
 // "+ Tag": an input that suggests the workspace's tags as one types; Enter
 // picks the highlighted one or creates the typed tag (when allowed).
+// With `createScopes` (pages, #136) a typed name is offered for this space
+// and – for owners – for the whole workspace.
 export function TagPicker({
   taxonomy,
   exclude,
   onPick,
   onClose,
+  createScopes,
+  spaces = [],
 }: {
   taxonomy: Pick<WorkspaceTaxonomy, "tags" | "createTags">;
   exclude: string[];
-  onPick: (ref: string) => Promise<unknown> | unknown;
+  onPick: (ref: string, scope?: "workspace") => Promise<unknown> | unknown;
   onClose: () => void;
+  createScopes?: { spaceName?: string; workspace: boolean };
+  spaces?: { id: string; name: string }[];
 }) {
   const t = useT();
   const listId = useId();
@@ -480,14 +508,27 @@ export function TagPicker({
     [taxonomy.tags, exclude, typed],
   );
   const exact = taxonomy.tags.some((tag) => foldName(tag.name) === foldName(typed));
-  const options: { key: string; label: string; ref: string; tag?: PageTag }[] = [
+  const options: { key: string; label: string; ref: string; tag?: PageTag; scope?: "workspace" }[] = [
     ...matches.map((tag) => ({ key: tag.id, label: tag.name, ref: tag.id, tag })),
-    ...(typed && !exact && taxonomy.createTags ? [{ key: "new", label: t(`„${typed}“ anlegen`, `Create “${typed}”`), ref: typed }] : []),
+    ...(typed && !exact && taxonomy.createTags
+      ? [
+          {
+            key: "new",
+            label: createScopes
+              ? t(`„${typed}“ in diesem Bereich anlegen`, `Create “${typed}” in this space`)
+              : t(`„${typed}“ anlegen`, `Create “${typed}”`),
+            ref: typed,
+          },
+        ]
+      : []),
+    ...(typed && !exact && createScopes?.workspace
+      ? [{ key: "new-workspace", label: t(`„${typed}“ im ganzen Arbeitsbereich anlegen`, `Create “${typed}” for the whole workspace`), ref: typed, scope: "workspace" as const }]
+      : []),
   ];
-  const pick = async (ref: string) => {
+  const pick = async (ref: string, scope?: "workspace") => {
     setQuery("");
     setActive(0);
-    await onPick(ref);
+    await onPick(ref, scope);
     input.current?.focus();
   };
   const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -500,7 +541,7 @@ export function TagPicker({
     } else if (e.key === "Enter") {
       e.preventDefault();
       const option = options[active];
-      if (option) void pick(option.ref);
+      if (option) void pick(option.ref, option.scope);
       else if (!typed) onClose();
     } else if (e.key === "Escape") {
       e.preventDefault();
@@ -542,9 +583,18 @@ export function TagPicker({
               className={i === active ? "active" : ""}
               onMouseDown={(e) => e.preventDefault()}
               onMouseEnter={() => setActive(i)}
-              onClick={() => void pick(option.ref)}
+              onClick={() => void pick(option.ref, option.scope)}
             >
-              {option.tag ? <TagChip tag={option.tag} /> : <span className="tag-picker-new"><Plus size={13} aria-hidden /> {option.label}</span>}
+              {option.tag ? (
+                <>
+                  <TagChip tag={option.tag} />
+                  {createScopes && option.tag.spaceId && <ScopeBadge spaceId={option.tag.spaceId} spaces={spaces} compact />}
+                </>
+              ) : (
+                <span className="tag-picker-new">
+                  <Plus size={13} aria-hidden /> {option.label}
+                </span>
+              )}
             </li>
           ))}
         </ul>
@@ -554,20 +604,28 @@ export function TagPicker({
 }
 
 // A new or changed property definition (workspace owners).
+// `scope`: where a new one may go (#136) – this space (the default when
+// allowed) or the whole workspace; `spaces` lists the spaces to choose from
+// instead (settings).
 export function PropertyDialog({
   workspaceId,
   def,
   act,
   onClose,
   onSaved,
+  scope,
+  spaces,
 }: {
   workspaceId: string;
   def?: PagePropertyDef;
   act: Act;
   onClose: () => void;
   onSaved?: (propertyId: string) => void;
+  scope?: { spaceId: string | null; spaceName?: string; space: boolean; workspace: boolean };
+  spaces?: { id: string; name: string }[];
 }) {
   const t = useT();
+  const [spaceId, setSpaceId] = useState<string | null>(def ? (def.spaceId ?? null) : scope?.space ? scope.spaceId : spaces?.length && !scope?.workspace ? spaces[0].id : null);
   const [name, setName] = useState(def?.name ?? ""),
     [type, setType] = useState<PagePropertyType>(def?.type ?? "text"),
     [options, setOptions] = useState((def?.options ?? []).join("\n")),
@@ -579,7 +637,7 @@ export function PropertyDialog({
       const result = (await act({
         action: "property.save",
         workspaceId,
-        ...(def ? { propertyId: def.id } : {}),
+        ...(def ? { propertyId: def.id } : { spaceId }),
         name,
         type,
         ...(choices ? { options: options.split(/\n|,/).map((o) => o.trim()).filter(Boolean) } : {}),
@@ -603,10 +661,33 @@ export function PropertyDialog({
       >
         <p className="muted">
           {t(
-            "Eigenschaften gelten für den ganzen Arbeitsbereich: Jede Seite kann einen Wert dafür haben.",
-            "Properties apply to the whole workspace: every page can have a value for them.",
+            "Jede Seite, für die eine Eigenschaft gilt, kann einen Wert dafür haben – im ganzen Arbeitsbereich oder nur in einem Bereich.",
+            "Every page a property applies to can have a value for it – in the whole workspace or only in one space.",
           )}
         </p>
+        {!def && scope && !spaces && (
+          <ScopeChoice
+            value={spaceId}
+            spaceId={scope.spaceId}
+            spaceName={scope.spaceName}
+            spaceAllowed={scope.space}
+            workspaceAllowed={scope.workspace}
+            onChange={setSpaceId}
+          />
+        )}
+        {!def && spaces && (
+          <label>
+            <span>{t("Gilt", "Applies")}</span>
+            <Select aria-label={t("Geltungsbereich", "Scope")} value={spaceId ?? ""} onChange={(e) => setSpaceId(e.target.value || null)}>
+              {scope?.workspace && <option value="">{t("Im ganzen Arbeitsbereich", "In the whole workspace")}</option>}
+              {spaces.map((sp) => (
+                <option key={sp.id} value={sp.id}>
+                  {t(`Nur im Bereich „${sp.name}“`, `Only in the space “${sp.name}”`)}
+                </option>
+              ))}
+            </Select>
+          </label>
+        )}
         <label>
           <span>{t("Name", "Name")}</span>
           <input value={name} maxLength={80} required autoFocus onChange={(e) => setName(e.target.value)} />
