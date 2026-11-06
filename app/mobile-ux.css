@@ -19,6 +19,7 @@
     max-height: min(92dvh, calc(100dvh - var(--safe-top) - 12px));
     border-bottom-width: 0;
     border-radius: 16px 16px 0 0;
+    --modal-pad-top: 0px;
     padding: 0 calc(20px + var(--safe-right)) calc(20px + var(--safe-bottom)) calc(20px + var(--safe-left));
     overscroll-behavior-y: contain;
     /* Backwards only: a held translate would capture fixed children (#75). */
@@ -47,8 +48,10 @@
     background: var(--muted);
     opacity: 0.45;
   }
-  /* Room for the close button's focus ring below the handle. */
+  /* Room for the close button's focus ring below the handle; the heading
+     stays right below the handle while the content scrolls (#139). */
   .modal.modal-sheet > .sheet-handle + .modal-heading {
+    top: 18px;
     padding-top: 4px;
   }
   .modal.modal-sheet[data-sheet-dragging] > .sheet-handle {

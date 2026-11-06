@@ -3351,8 +3351,12 @@ tr:hover .row-open,
    containing block of its position: fixed children – the "/" menu, the text
    menu and the outline in a record would then be placed against the
    dialog's scrolled content instead of the window (#75). The variants
-   (side panel, full page, bottom sheets) reset inset and margin. */
+   (side panel, full page, bottom sheets) reset inset and margin.
+   --modal-pad-top follows the top padding of each variant: the sticky
+   heading reaches up through it (#139). */
 .modal {
+  --modal-pad-top: 23px;
+  --modal-bg: var(--bg);
   position: fixed;
   z-index: 51;
   inset: 0;
@@ -3362,9 +3366,10 @@ tr:hover .row-open,
   max-height: 85dvh;
   overflow: auto;
   border-radius: 12px;
-  background: var(--bg);
+  background: var(--modal-bg);
   border: 1px solid var(--border);
   padding: 23px;
+  padding-top: var(--modal-pad-top);
   box-shadow: var(--shadow);
   animation: fade-in 0.12s ease;
   outline: none;
@@ -3378,6 +3383,64 @@ tr:hover .row-open,
   justify-content: space-between;
   margin-bottom: 22px;
   gap: 10px;
+}
+/* Title, actions and close button stay at the dialog's top edge while the
+   content scrolls (#139). The heading reaches up through the dialog's top
+   padding and covers it in the dialog's colour, so nothing shows through
+   above or beside it (the side shadows cover the side padding without
+   widening the scroll area). Its own bottom padding plus margin keep the
+   old gap to the content. A thin line below appears once the content has
+   scrolled (data-stuck, components/ui.tsx). Menus, popovers and the outline
+   in a dialog have higher z-indices and stay above it. */
+.modal-heading {
+  --modal-heading-cover: -80px 0 0 var(--modal-bg), 80px 0 0 var(--modal-bg);
+  position: sticky;
+  /* Sticky offsets count from the dialog's content edge, below its top
+     padding: the heading's own top padding stays covering it. */
+  top: calc(-1 * var(--modal-pad-top));
+  z-index: 20;
+  margin-top: calc(-1 * var(--modal-pad-top));
+  padding-top: var(--modal-pad-top);
+  padding-bottom: 8px;
+  margin-bottom: 14px;
+  background: var(--modal-bg);
+  box-shadow:
+    var(--modal-heading-cover),
+    0 1px 0 transparent,
+    -80px 1px 0 transparent,
+    80px 1px 0 transparent;
+  transition: box-shadow 0.15s ease;
+}
+.modal-heading[data-stuck] {
+  box-shadow:
+    var(--modal-heading-cover),
+    0 1px 0 var(--border),
+    -80px 1px 0 var(--border),
+    80px 1px 0 var(--border);
+}
+@media (prefers-reduced-motion: reduce) {
+  .modal-heading {
+    transition: none;
+  }
+}
+/* Leaves the dialog's view as soon as the content scrolls. */
+.modal-scroll-sentinel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+/* Sticky parts of the content stop below the heading (phones place the
+   outline button at the bottom edge instead). */
+@media (min-width: 768px) {
+  .modal .outline-toggle {
+    top: calc(var(--modal-heading-bottom, 0px) + 12px);
+  }
+}
+.modal .row-columns.properties-side .row-properties {
+  top: var(--modal-heading-bottom, 0px);
 }
 .modal-heading h2 {
   font-size: 18px;
@@ -6156,12 +6219,14 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
     font-size: 12px;
   }
   .modal {
+    --modal-pad-top: 20px;
     padding: 20px;
+    padding-top: var(--modal-pad-top);
     max-height: 90dvh;
     width: calc(100% - 24px);
   }
   .modal-heading {
-    margin-bottom: 20px;
+    margin-bottom: 12px;
   }
   .modal-heading h2 {
     font-size: 18px;
@@ -9030,6 +9095,7 @@ tr.order-drop-after > td {
   font-size: 13px;
 }
 .drawio-dialog.modal {
+  --modal-pad-top: 16px;
   width: min(1400px, calc(100% - 32px));
   height: min(92dvh, 1000px);
   max-height: none;
@@ -9038,6 +9104,7 @@ tr.order-drop-after > td {
   padding: 16px;
 }
 .drawio-dialog .modal-heading {
+  padding-bottom: 0;
   margin-bottom: 10px;
 }
 .drawio-privacy {
@@ -9060,6 +9127,7 @@ tr.order-drop-after > td {
 }
 @media (max-width: 600px) {
   .drawio-dialog.modal {
+    --modal-pad-top: 8px;
     width: 100%;
     height: 100dvh;
     border-radius: 0;
@@ -21785,7 +21853,8 @@ h3 .block-reactions {
 }
 .modal.modal-full,
 .modal.modal-side {
-  padding-top: calc(23px + var(--safe-top));
+  --modal-pad-top: calc(23px + var(--safe-top));
+  padding-top: var(--modal-pad-top);
   padding-bottom: calc(23px + var(--safe-bottom));
   padding-right: calc(23px + var(--safe-right));
 }
@@ -21796,7 +21865,8 @@ h3 .block-reactions {
 @media (max-width: 767px) {
   .modal.modal-full,
   .modal.modal-side {
-    padding: calc(20px + var(--safe-top)) calc(20px + var(--safe-right)) calc(20px + var(--safe-bottom))
+    --modal-pad-top: calc(20px + var(--safe-top));
+    padding: var(--modal-pad-top) calc(20px + var(--safe-right)) calc(20px + var(--safe-bottom))
       calc(20px + var(--safe-left));
   }
 }
@@ -27818,13 +27888,14 @@ html.split-resizing * {
 }
 /* One account in a side sheet (full screen on phones). */
 .modal.admin-user-sheet {
+  --modal-bg: var(--surface);
   display: grid;
   align-content: start;
   gap: 16px;
-  background: var(--surface);
 }
+/* The grid gap keeps the distance; the heading's bottom padding sits in it. */
 .modal.admin-user-sheet .modal-heading {
-  margin-bottom: 0;
+  margin-bottom: -8px;
 }
 .modal.admin-user-sheet .setting-group {
   margin: 0;
