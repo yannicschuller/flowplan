@@ -1,6 +1,6 @@
 ---
 name: issue
-description: Triage and work through new GitHub issues, pull requests and new comments across all Flowplan repositories – ask the maintainer design questions first, judge feasibility and sense, implement with subagents in worktrees, test, document (DE + EN), push, build the beta image, answer the reporter in English, set the status labels and report back in one short German message. Use when the user types /issue or asks to "work through the issues like always".
+description: Triage and work through new GitHub issues, pull requests and new comments across all Flowplan repositories – ask the maintainer design questions first, judge feasibility and sense, implement with subagents in worktrees, test, document (DE + EN), push, build the beta image only on request, answer the reporter in English, set the status labels and report back in one short German message. Use when the user types /issue or asks to "work through the issues like always".
 ---
 
 # /issue – Flowplan issues and PRs, the usual way
@@ -75,15 +75,15 @@ Commit messages end with the trailers from CLAUDE.md (`Co-Authored-By: Yannic Sc
 ## Step 5 – Push and build
 
 1. Per repo: `git push -q origin HEAD:main`, then force-push the session's designated branch (`git push -q -f origin HEAD:<session-branch>`). Do this in **every** repo you changed, docs included.
-2. Server changes → dispatch `docker.yml` in `flowplan` without a version (**one beta build at the end**, not per issue).
+2. Server changes: **no beta build unless Yannic asks for one** (or starts `docker.yml` himself). When he does: dispatch `docker.yml` in `flowplan` without a version, one build at the end. Otherwise ask him once in the report whether to build the beta.
 3. App changes → ask Yannic before building. iOS testers: `build.yml` with upload (TestFlight; raise the build number). **Android users only get fixes through the APK on flowplan.org/download, i.e. a new GitHub release via `release.yml`** (`/app-release`) – Google Play is not used. Desktop changes → mention, release only on request.
-4. Wait for **CI, Visual and Docker** to be green (watch the runs; don't poll with sleep loops – use Monitor or check back). Red → root-cause and fix before answering anyone.
+4. Wait for **CI and Visual** (and Docker, if built) to be green (watch the runs; don't poll with sleep loops – use Monitor or check back). Red → root-cause and fix before answering anyone.
 5. Never create PRs, merge PRs, or publish releases without Yannic's explicit OK.
 
 ## Step 6 – Answer and label
 
 For each finished item, an **English** comment to the reporter:
-- thank them (with @mention), what the cause was, what changed (short bullets), how it was tested, link to the docs page (`https://docs.flowplan.org/en/...`), "It's in the `:beta` image now and will be in the next release." (app: which build/track).
+- thank them (with @mention), what the cause was, what changed (short bullets), how it was tested, link to the docs page (`https://docs.flowplan.org/en/...`), "It's on `main` now and will be in the next release." ("…in the `:beta` image now…" only once a beta with it has been built) (app: which build/track).
 - End with the footer, exactly:
 
 ```
@@ -108,4 +108,5 @@ Keep it short: no file dumps, no process narration.
 - Tokens, passwords and secrets are never written in chat or code; Yannic enters them himself.
 - Never `pkill -f`; kill only by exact PID.
 - awesome-selfhosted and similar lists: Yannic submits personally (no LLM submissions).
+- No `:beta` build on our own: only when Yannic asks for it or starts it himself.
 - The scheduled triage task `trig_01W6FU6RnkGpH9vrXmwJWxLg` is disabled on purpose – don't re-enable it.

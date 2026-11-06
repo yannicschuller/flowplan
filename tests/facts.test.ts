@@ -21,7 +21,8 @@ test("the counted lists are complete and free of duplicates", () => {
   assert.equal(f.views, f.names.views.length);
   assert.equal(f.fieldTypes, f.names.fieldTypes.length);
   assert.equal(f.questionTypes, f.names.questionTypes.length);
-  assert.equal(f.languages, Object.keys(f.names.languages).length);
+  // Text languages: English (US) shares the English texts (#151).
+  assert.equal(f.languages, new Set(Object.keys(f.names.languages).map((code) => code.split("-")[0])).size);
   assert.equal(f.calloutTypes, f.names.calloutTypes.length);
   assert.equal(f.exportFormats, f.names.exportFormats.length);
   assert.equal(f.templateCategories, f.names.templateCategories.length);

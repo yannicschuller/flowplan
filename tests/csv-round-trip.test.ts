@@ -74,3 +74,11 @@ test("a multi-select cell starting like a formula round-trips", () => {
   assert.match(csv, /"'=Kosten, Day"/);
   assert.deepEqual(csvListValues(imported(csv)[0].Tags, ["=Kosten", "Day"]), ["=Kosten", "Day"]);
 });
+
+test("a cell with thousands of comma-separated values splits in linear time", () => {
+  const cell = Array.from({ length: 2000 }, (_, i) => `v${i}`).join(",");
+  const started = performance.now();
+  const values = csvListValues(cell, ["Früh, Spät", "Nacht"]);
+  assert.equal(values.length, 2000);
+  assert.ok(performance.now() - started < 200, `took ${performance.now() - started} ms`);
+});

@@ -61,7 +61,12 @@ test("an invitation link offers creating the account while sign-ups are closed",
   } finally {
     delete process.env.FLOWPLAN_LOCAL_LOGIN;
   }
-  const { user } = await auth.register({ name: "Eva", email: "eva@example.test", password: "ein-langes-passwort", invite: token }, "de");
+  // The link creates an account only for the invited address (not one per
+  // made-up address), and without e-mail the address alone is no proof.
+  for (const email of ["mallory@example.test", "mallory2@example.test"])
+    await assert.rejects(auth.register({ name: "Mallory", email, password: "ein-langes-passwort", invite: token }, "de"), /nur Admins/);
+  await assert.rejects(auth.register({ name: "Eva?", email: "eva@example.test", password: "ein-langes-passwort" }, "de"), /nur Admins/);
+  const { user } = await auth.register({ name: "Eva", email: "EVA@example.test", password: "ein-langes-passwort", invite: token }, "de");
   // Without e-mail the address is not confirmed: the link (app/page.tsx) takes the invitation over.
   assert.equal(acceptInviteToken(user, token), wid);
   assert.ok(one("SELECT 1 FROM members WHERE user_id=? AND workspace_id=?", user.id, wid));

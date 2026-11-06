@@ -1,6 +1,6 @@
 ---
 name: ship
-description: Ship finished work in the Flowplan repositories – run the repo's checks, commit with the right trailers, push main and the session branch in every changed repo, build the :beta image when the server changed, wait until CI, Visual regression, Docker and CodeQL are green, root-cause anything red, and report in one short German message. Use when the user types /ship or says "push das", "bau die Beta", "schick das raus".
+description: Ship finished work in the Flowplan repositories – run the repo's checks, commit with the right trailers, push main and the session branch in every changed repo, build the :beta image only when the maintainer asks for it, wait until CI, Visual regression (and Docker/CodeQL when built) are green, root-cause anything red, and report in one short German message. Use when the user types /ship or says "push das", "bau die Beta", "schick das raus".
 ---
 
 # /ship – checks, push, beta, green
@@ -38,13 +38,13 @@ git push -q origin HEAD:main && git push -q -f origin HEAD:<session-branch>
 
 ## 4. Build
 
-- `flowplan` changed → dispatch `docker.yml` on `main` **without** a version (→ `:beta`, deployed to Coolify by the workflow). One build at the end, not per commit.
+- **The `:beta` image is built only when Yannic explicitly asks for it** ("bau die Beta", "/ship mit Beta") **or starts `docker.yml` himself.** A push to `main` never builds or deploys it on its own (`docker.yml` runs on release tags and manual dispatch only – keep it that way). When asked: dispatch `docker.yml` on `main` **without** a version (→ `:beta`, deployed to Coolify by the workflow), one build at the end. Otherwise say in the report that server changes are on `main` and the beta can be built on request.
 - `flowplan-website` and `flowplan-docs` build their images on push by themselves.
 - `flowplan-app` / `flowplan-desktop`: no build here – that is `/app-release` or the desktop release (only on request).
 
 ## 5. Wait for green
 
-Watch the runs of the pushed commit (`/repos/<owner>/<repo>/actions/runs?head_sha=<sha>`) with **Monitor** (one line per finished run, exit when CI, Visual regression and Docker image are done) – never `sleep` loops in the foreground. Red → read the failing job's log (`mcp__github__get_job_logs`), root-cause, fix, push again. A failure that is red on `main` before your change too: say so, don't hide it. Visual tests that changed on purpose: `visual.yml` with `update=true`, then fast-forward `origin/visual-baselines` into main.
+Watch the runs of the pushed commit (`/repos/<owner>/<repo>/actions/runs?head_sha=<sha>`) with **Monitor** (one line per finished run, exit when CI and Visual regression – and the Docker image, if one was built – are done) – never `sleep` loops in the foreground. Red → read the failing job's log (`mcp__github__get_job_logs`), root-cause, fix, push again. A failure that is red on `main` before your change too: say so, don't hide it. Visual tests that changed on purpose: `visual.yml` with `update=true`, then fast-forward `origin/visual-baselines` into main.
 
 The Docker run's `scan` job prints Trivy (HIGH/CRITICAL with a fix). New findings → `/security`.
 

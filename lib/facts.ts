@@ -6,7 +6,7 @@
 // tests/facts.test.ts fails when it is out of date.
 import { field, view } from "./database-schema";
 import { surveyTypes } from "./survey";
-import { LANGUAGES } from "./i18n";
+import { LANGUAGES, textLocale } from "./i18n";
 import { CALLOUT_TYPES } from "./document-schema";
 import { templateKeys } from "./template-catalog";
 import { templateCategoryIds } from "./template-categories";
@@ -43,7 +43,8 @@ export function facts() {
     views: viewTypes.length,
     fieldTypes: fieldTypes.length,
     questionTypes: surveyTypes.length,
-    languages: languages.length,
+    // Text languages: English (US) shares the English texts (#151).
+    languages: new Set(languages.map((code) => textLocale(code))).size,
     calloutTypes: CALLOUT_TYPES.length,
     exportFormats: exportFormats.length,
     templates: templateKeys.length,

@@ -156,8 +156,12 @@ export async function register(input: unknown, locale: Locale, address = "") {
     securityEvent("login.refused", { address, detail: "first account without setup token" });
     throw new HttpError(403, t("Diese Instanz wird mit einem Einrichtungslink eingerichtet. Frag die Person, die sie betreibt.", "This instance is set up with a setup link. Ask the person who runs it."));
   }
-  const linked = !!parsed.data.invite && !!one("SELECT 1 FROM invites WHERE token=?", parsed.data.invite);
-  if (!first && !instanceSettings().allowSignup && !invited(email) && !linked)
+  // An invitation link opens sign-up only for the address it was made for –
+  // one link is not a pass for any number of accounts with any address.
+  // Without e-mail, an address alone (no link) is no proof of owning it.
+  const linked = !!parsed.data.invite && invitedEmail(parsed.data.invite)?.toLowerCase() === email.toLowerCase();
+  const byAddress = invited(email) && !!mailConfig();
+  if (!first && !instanceSettings().allowSignup && !byAddress && !linked)
     throw new HttpError(403, t("Neue Konten legen hier nur Admins an – oder du wirst eingeladen.", "Only administrators create new accounts here – or you get invited."));
   const passwordHash = await hashPassword(password.data);
   if (accountByEmail(email) || one("SELECT 1 FROM users WHERE lower(email)=lower(?) AND subject LIKE 'local:%'", email)) {

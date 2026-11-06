@@ -28,9 +28,12 @@ export function csvListValues(text: string, options: string[] = []) {
   const known = new Map(options.map((o) => [foldName(o), o]));
   const parts = text.split(",");
   const values: string[] = [];
+  // A run never spans more parts than the longest option has: linear in the
+  // number of commas instead of cubic (a 1,000-value cell froze the tab).
+  const span = Math.max(1, ...options.map((o) => o.split(",").length));
   for (let i = 0; i < parts.length; ) {
     let end = i + 1;
-    for (let j = parts.length; j > end; j--)
+    for (let j = Math.min(parts.length, i + span); j > end; j--)
       if (known.has(foldName(parts.slice(i, j).join(",")))) {
         end = j;
         break;
