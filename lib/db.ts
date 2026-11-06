@@ -542,6 +542,10 @@ function migrate(d: DatabaseSync) {
   // only reads the widget summary; push goes through push_subscriptions with
   // an "expo:" endpoint (lib/mobile-devices.ts).
   d.exec(`CREATE TABLE IF NOT EXISTS mobile_devices(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,installation_id TEXT NOT NULL,session_token TEXT NOT NULL REFERENCES sessions(token) ON DELETE CASCADE,platform TEXT NOT NULL,name TEXT NOT NULL DEFAULT '',app_version TEXT NOT NULL DEFAULT '',token_hash TEXT NOT NULL UNIQUE,push_subscription_id TEXT REFERENCES push_subscriptions(id) ON DELETE SET NULL,created_at INTEGER NOT NULL,last_seen_at INTEGER NOT NULL,UNIQUE(user_id,installation_id));`);
+  // The device keys of the desktop and mobile apps (lib/app-devices.ts): a
+  // password sign-in in the app lasts as long as the app's only with the key
+  // its device registered at the first one (only the hash is kept).
+  d.exec(`CREATE TABLE IF NOT EXISTS app_devices(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,device_id TEXT NOT NULL,secret_hash BLOB NOT NULL,created_at INTEGER NOT NULL,last_used_at INTEGER NOT NULL,PRIMARY KEY(user_id,device_id));`);
   // AI (lib/ai): settings of the instance and of each person, who may use
   // it, what the AI may read. API keys only sealed (lib/ai/secrets.ts).
   d.exec(`CREATE TABLE IF NOT EXISTS ai_instance(id INTEGER PRIMARY KEY CHECK(id=1),config TEXT NOT NULL DEFAULT '{}',key_cipher TEXT,key_hint TEXT NOT NULL DEFAULT '',updated_at INTEGER);

@@ -46,7 +46,14 @@ type FlowplanApp = {
   // sheet, answered with the event "flowplan:sign-in" (lib/app-sign-in.ts;
   // apps newer than 1.0.5, #109).
   signIn?: (via: "sso" | null) => void;
+  // This device's key for this instance (apps newer than 1.0.5): the
+  // password form sends it, so the sign-in lasts as long as the app's
+  // (lib/app-devices.ts).
+  deviceKey?: AppDeviceKey;
 };
+// Made by the app per instance on first launch, kept in the system's key
+// store: a public id and its secret.
+export type AppDeviceKey = { id: string; secret: string };
 
 export function nativeApp(): FlowplanApp | undefined {
   if (typeof window === "undefined") return undefined;
@@ -81,10 +88,26 @@ type FlowplanDesktop = {
   // there is a step (the menu items' state) and runs the app's commands –
   // the menu items, the trackpad's swipe, the mouse's side buttons.
   history?: import("./history-nav").DesktopHistory;
+  // This computer's key for this instance (desktop newer than 1.3.0),
+  // like FlowplanApp.deviceKey.
+  deviceKey?: AppDeviceKey;
 };
 export function desktopApp(): FlowplanDesktop | undefined {
   if (typeof window === "undefined") return undefined;
   return (window as unknown as { FlowplanDesktop?: FlowplanDesktop }).FlowplanDesktop;
+}
+// The device key of the app the page runs in, if it has one (checked; the
+// server checks again). Without one – a browser, or an older app – a
+// password sign-in lasts like a browser's.
+export function appDeviceKey(
+  app: { deviceKey?: unknown } | undefined = nativeApp() ?? desktopApp(),
+): AppDeviceKey | null {
+  const key = app?.deviceKey as Partial<AppDeviceKey> | undefined;
+  if (!key || typeof key !== "object") return null;
+  const { id, secret } = key;
+  return typeof id === "string" && typeof secret === "string" && /^[A-Za-z0-9_-]{16,64}$/.test(id) && /^[A-Za-z0-9_-]{32,128}$/.test(secret)
+    ? { id, secret }
+    : null;
 }
 export const inDesktopApp = () => typeof navigator !== "undefined" && /FlowplanDesktop\//.test(navigator.userAgent);
 

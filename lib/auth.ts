@@ -153,9 +153,10 @@ export async function issueSession(
   groups: string[],
   // Demo sessions: their own end (the cookie lasts until the demo's end).
   demo?: { expires: number; until: number },
-  // "Stay signed in on this device" (only when the instance allows it; the
-  // apps always ask), and whether the groups came from an SSO provider.
-  options: { remember?: boolean; sso?: boolean } = {},
+  // "Stay signed in on this device" (only when the instance allows it),
+  // whether the groups came from an SSO provider, and whether the app proved
+  // this sign-in its own (lib/app-devices.ts: the hand-off or its device key).
+  options: { remember?: boolean; sso?: boolean; app?: boolean } = {},
 ) {
   const token = randomBytes(32).toString("base64url");
   const now = Date.now();
@@ -167,8 +168,9 @@ export async function issueSession(
   const requestHeaders = await headers();
   const agent = (requestHeaders.get("user-agent") || "").slice(0, 300);
   // How long it lasts (lib/session-policy.ts): the desktop and mobile apps
-  // stay signed in unless the instance says otherwise.
-  const terms = demo ? null : sessionTerms({ agent, remember: options.remember, sso: options.sso }, now);
+  // stay signed in unless the instance says otherwise – when they proved the
+  // sign-in theirs; the user agent alone does not.
+  const terms = demo ? null : sessionTerms({ app: !!options.app, remember: options.remember, sso: options.sso }, now);
   const expires = terms ? terms.expires : demo!.expires;
   // A security event (lib/security-events.ts): the detection compares it
   // with earlier sign-ins and failures of the same account.
