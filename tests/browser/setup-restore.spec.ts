@@ -5,6 +5,44 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
+// A restore from S3 runs on the server and the page polls its progress. The
+// endpoint is stubbed (nothing is restored); only the wording is checked:
+// files missing at the source are no reason to "restore from S3" again.
+test("a restore from S3 reports missing files without suggesting S3 again", async ({ browser }, info) => {
+  test.skip(!process.env.FLOWPLAN_DATA_DIR, "Needs the test server data directory.");
+  test.skip(info.project.name !== "desktop", "Restores are instance-wide.");
+  const check = new DatabaseSync(join(process.env.FLOWPLAN_DATA_DIR!, "flowplan.sqlite"), { readOnly: true });
+  const used = check.prepare("SELECT 1 FROM users WHERE demo_until IS NULL AND subject<>'local-development' LIMIT 1").get();
+  check.close();
+  test.skip(!!used, "Needs a fresh instance without accounts.");
+  const progress = (phase: string, result: unknown = null) => ({
+    progress: { source: "s3", phase, bytesDone: 0, bytesTotal: 0, filesDone: 0, filesTotal: 2, startedAt: Date.now(), error: null, needsKey: false, result },
+  });
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  await page.route("**/api/setup/restore", (route) =>
+    route.request().method() === "POST"
+      ? route.fulfill({ json: progress("connect") })
+      : route.fulfill({ json: progress("done", { users: 1, workspaces: 1, pages: 3, files: 3, missingFiles: 2, restart: false, keyHint: false, createdAt: null }) }),
+  );
+  try {
+    await page.goto("/register");
+    await page.getByRole("button", { name: "Aus Sicherung wiederherstellen" }).click();
+    await page.getByRole("tab", { name: "S3" }).click();
+    await page.getByLabel("Adresse (Endpoint)").fill("https://s3.example.test");
+    await page.getByLabel("Bucket").fill("backups");
+    await page.getByLabel("Zugangsschlüssel (Access Key ID)").fill("key");
+    await page.getByLabel("Geheimer Schlüssel").fill("secret");
+    await page.locator(".setup-restore-form button.primary").click();
+    await expect(page.getByText("Wiederhergestellt.")).toBeVisible({ timeout: 10_000 });
+    const callout = page.getByText(/^2 Dateien wurden an der Quelle nicht gefunden/);
+    await expect(callout).toBeVisible();
+    await expect(callout).not.toContainText("stelle von dort wieder her");
+  } finally {
+    await context.close();
+  }
+});
+
 // "Restore from a backup" on the setup screen of a new instance (#128): an
 // encrypted scheduled backup is uploaded, the key is asked for, and the
 // account of the backup signs in. Needs a fresh test server (no account
@@ -29,9 +67,11 @@ test("a new instance restores an encrypted backup on the setup screen", async ({
     password = "aus-der-sicherung-1";
   const salt = randomBytes(16);
   const hash = `scrypt$32768$8$1$${salt.toString("base64url")}$${scryptSync(password, salt, 64, { N: 1 << 15, r: 8, p: 1, maxmem: 64 * 1024 * 1024 }).toString("base64url")}`;
-  const db = new DatabaseSync(plain);
+  const db = new DatabaseSync(plain, { enableForeignKeyConstraints: false });
   db.prepare("INSERT INTO users(id,subject,name,email,onboarded_at) VALUES(?,?,?,?,?)").run(uid, `local:${uid}`, "Aus der Sicherung", email, Date.now());
   db.prepare("INSERT INTO local_accounts(user_id,email,password_hash,is_admin,email_verified,created_at) VALUES(?,?,?,1,1,?)").run(uid, email, hash, Date.now());
+  // A file the database refers to: a scheduled backup does not bring it.
+  db.prepare("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)").run(randomUUID(), randomUUID(), "anhang.txt", "text/plain", 6, uid);
   db.close();
   // Encrypted like a scheduled backup with FLOWPLAN_ENCRYPTION_KEY (lib/encryption.ts, "FPE1").
   const secret = randomBytes(32);
@@ -59,6 +99,9 @@ test("a new instance restores an encrypted backup on the setup screen", async ({
     await page.getByLabel("Sicherung hochladen").setInputFiles(file);
     await expect(page.getByText("Wiederhergestellt.")).toBeVisible({ timeout: 30_000 });
     await expect(page.locator(".setup-restore[role=status]")).toContainText("1 Konten");
+    // Its file is neither in the backup nor in a bucket: the page says so and
+    // (an upload has no source of its own) suggests restoring from S3 or SFTP.
+    await expect(page.getByText(/^1 Dateien sind weder in der Sicherung noch im Dateispeicher.*stelle von dort wieder her/)).toBeVisible();
     // The key was entered, not configured: a hint to set it.
     await expect(page.getByText(/als FLOWPLAN_ENCRYPTION_KEY ein, damit neue Sicherungen/)).toBeVisible();
     await page.getByRole("link", { name: "Mit einem Konto der Sicherung anmelden" }).click();

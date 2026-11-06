@@ -32,6 +32,7 @@ import { INSTANCE_ARCHIVE_LIMIT, cancelRestore, checkBackupDatabase, stageInstan
 import { BACKUP_FILE } from "./backup-copy";
 import { DELETED_UPLOADS, newestDeleted, parseDeleted, type DeletedCopy } from "./deleted-uploads";
 import { HostKeyError, connectSftp, remoteDirectory, remotePath, sftpDownload, sftpHost, sftpList, type SftpLogin, type SftpSession } from "./sftp";
+import { storageConfig } from "./storage";
 
 const dataDir = () => resolve(/* turbopackIgnore: true */ process.env.FLOWPLAN_DATA_DIR || "./data");
 const UPLOAD = /^[A-Za-z0-9_-]{1,100}$/;
@@ -155,18 +156,26 @@ export async function restoreBackupFile(path: string, keys: Key[], progress: Res
       if (file === plain) renameSync(plain, database);
       else copyFileSync(file, database);
       const checked = checkBackupDatabase(database);
+      const reader = new DatabaseSync(database, { readOnly: true });
+      let ids: string[];
+      try {
+        ids = (reader.prepare("SELECT id FROM files").all() as { id: string }[]).map((r) => String(r.id)).filter((n) => UPLOAD.test(n));
+      } finally {
+        reader.close();
+      }
       if (fetchFiles) {
-        const reader = new DatabaseSync(database, { readOnly: true });
-        let ids: string[];
-        try {
-          ids = (reader.prepare("SELECT id FROM files").all() as { id: string }[]).map((r) => String(r.id)).filter((n) => UPLOAD.test(n));
-        } finally {
-          reader.close();
-        }
         progress.phase = "files";
         progress.filesTotal = ids.length;
         progress.filesDone = 0;
         missingFiles = await fetchFiles(ids, resolve(staging, "uploads"), progress);
+      } else if (ids.length) {
+        // An uploaded database-only backup brings no files: what this
+        // instance's own bucket (S3_*) does not have is missing.
+        const there = await bucketUploads().catch((error) => {
+          console.error("Wiederherstellung beim Einrichten: Bucket nicht lesbar", (error as Error)?.message);
+          return new Set<string>();
+        });
+        missingFiles = ids.filter((name) => !there.has(name)).length;
       }
       summary = { createdAt, ...checked, files: progress.filesDone };
       writeFileSync(resolve(staging, "READY"), JSON.stringify(summary));
@@ -188,6 +197,17 @@ export async function restoreBackupFile(path: string, keys: Key[], progress: Res
     rmSync(plain, { force: true });
     rmSync(staging, { recursive: true, force: true });
   }
+}
+
+// The uploads in the bucket this instance is configured with (S3_*): they
+// are fetched from there when needed (lib/storage.ts, ensureLocal).
+async function bucketUploads() {
+  const config = storageConfig();
+  if (!config) return new Set<string>();
+  const { accessKeyId, secretAccessKey, region } = config;
+  const aws = new AwsClient({ accessKeyId, secretAccessKey, service: "s3", region, retries: 1 });
+  const folder = [config.prefix, "uploads/"].filter(Boolean).join("/");
+  return new Set((await listS3(aws, `${config.endpoint}/${encodeURIComponent(config.bucket)}`, folder)).map((k) => k.slice(folder.length)));
 }
 
 // An uploaded file (the request streams it to disk first).

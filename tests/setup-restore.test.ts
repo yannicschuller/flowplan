@@ -19,13 +19,14 @@ process.env.FLOWPLAN_DATA_DIR = old;
 const { SCHEMA_VERSION, id, one, reopenDatabase, run } = await import("../lib/db");
 const { createWorkspace } = await import("../lib/seed");
 const { command, bootstrap } = await import("../lib/api");
-const { runScheduledBackup } = await import("../lib/scheduled-backup");
+const { runScheduledBackup, startBackupWorker } = await import("../lib/scheduled-backup");
 const { databaseCopy } = await import("../lib/backup-copy");
 const { instanceBackupStream } = await import("../lib/instance-backup");
 const { sealStream } = await import("../lib/encryption");
 const sftpBackup = await import("../lib/sftp-backup");
 const restore = await import("../lib/setup-restore");
 const { firstAccount } = await import("../lib/local-auth");
+const { ensureLocal } = await import("../lib/storage");
 
 // The old instance: an account, a page and a file.
 const uid = id();
@@ -73,8 +74,10 @@ test("round trip: scheduled backup → fresh instance → restore → data prese
   assert.equal(restored.restart, false);
   assert.equal(restored.createdAt, "2026-11-06T03:00:00.000Z");
   assert.ok(restored.users >= 1 && restored.pages >= 1);
-  // A database-only backup brings no files (they come from S3 or SFTP).
+  // A database-only backup brings no files (they come from S3 or SFTP): the
+  // setup screen says how many are missing.
   assert.equal(restoredPage(dir), null);
+  assert.deepEqual([restored.files, restored.missingFiles], [0, 1]);
   assert.ok(readdirSync(dir).some((n) => n.startsWith("pre-restore-")), "the empty start is kept");
   // Now that an account exists, nobody may restore here any more.
   assert.equal(restore.setupRestoreOpen(), false);
@@ -206,9 +209,11 @@ test("an older SFTP backup finds a file deleted since then in .deleted/", async 
     assert.equal((await sftpBackup.runSftpBackup(Date.UTC(2026, 10, 7, 3, 0))).error, null);
     // Deleted here after the 03:00 backup: moved aside by the next one.
     const content = readFileSync(join(old, "uploads", fid));
+    run("DELETE FROM files WHERE id=?", fid);
     rmSync(join(old, "uploads", fid));
     const next = await sftpBackup.runSftpBackup(Date.UTC(2026, 10, 7, 4, 0));
     writeFileSync(join(old, "uploads", fid), content);
+    run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fid, page, "anhang.txt", "text/plain", 24, uid);
     assert.deepEqual([next.error, next.removed], [null, 1]);
     assert.ok(!existsSync(join(remote, "flowplan/uploads", fid)));
     assert.equal(readdirSync(join(remote, "flowplan/.deleted/uploads")).length, 1);
@@ -258,5 +263,62 @@ test("from S3: a file deleted after the backup comes from .deleted/", async () =
   } finally {
     s3.close();
   }
+  backOnOld();
+});
+
+test("an uploaded database-only backup counts the files this instance's own bucket has", async () => {
+  const objects = new Map<string, Buffer>();
+  const s3 = createServer((req, res) => {
+    const url = new URL(req.url || "", "http://x");
+    if (url.searchParams.get("list-type") === "2") {
+      const prefix = `/bucket/${url.searchParams.get("prefix") || ""}`;
+      const keys = [...objects.keys()].filter((k) => k.startsWith(prefix)).map((k) => `<Contents><Key>${k.slice("/bucket/".length)}</Key></Contents>`);
+      return void res.writeHead(200).end(`<ListBucketResult><IsTruncated>false</IsTruncated>${keys.join("")}</ListBucketResult>`);
+    }
+    if (req.method !== "GET") return void req.resume().on("end", () => res.writeHead(200).end());
+    const body = objects.get(decodeURIComponent(url.pathname));
+    return void (body ? res.writeHead(200, { "content-length": body.length }).end(body) : res.writeHead(404).end());
+  });
+  await new Promise<void>((done) => s3.listen(0, "127.0.0.1", done));
+  const result = await runScheduledBackup(Date.UTC(2026, 10, 9, 3, 0));
+  const file = join(keep, result.name);
+  copyFileSync(join(old, "backups", result.name), file);
+  const bucket = { S3_ENDPOINT: `http://127.0.0.1:${(s3.address() as { port: number }).port}`, S3_BUCKET: "bucket", S3_ACCESS_KEY_ID: "a", S3_SECRET_ACCESS_KEY: "b" };
+  try {
+    // The old instance mirrored its files to the bucket this one uses too.
+    objects.set(`/bucket/flowplan/uploads/${fid}`, readFileSync(join(old, "uploads", fid)));
+    Object.assign(process.env, bucket);
+    const dir = freshInstance();
+    const restored = await restore.restoreUpload(file, "", result.name);
+    assert.deepEqual([restored.files, restored.missingFiles], [0, 0]);
+    // It comes from there when it is needed.
+    assert.equal(await ensureLocal(fid), true);
+    assert.equal(restoredPage(dir), "Anhang der alten Instanz");
+    // Not in the bucket: missing.
+    objects.clear();
+    freshInstance();
+    assert.equal((await restore.restoreUpload(file, "", result.name)).missingFiles, 1);
+  } finally {
+    for (const name of Object.keys(bucket)) delete process.env[name];
+    s3.close();
+  }
+  backOnOld();
+});
+
+test("a new instance makes no scheduled backup before its first account", async (t) => {
+  const dir = freshInstance();
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
+  startBackupWorker();
+  // The first check a minute after the start: nothing to back up yet – an
+  // empty copy would become the newest backup next to an old instance's.
+  t.mock.timers.tick(60_000);
+  for (let i = 0; i < 50; i++) await new Promise((done) => setImmediate(done));
+  assert.equal(existsSync(join(dir, "backups")), false);
+  // Set up: the next check makes the backup.
+  const user = id();
+  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", user, `local:${user}`, "Neu", "neu@example.test");
+  t.mock.timers.tick(10 * 60_000);
+  for (let i = 0; i < 500 && !existsSync(join(dir, "backups")); i++) await new Promise((done) => setImmediate(done));
+  assert.equal(readdirSync(join(dir, "backups")).length, 1);
   backOnOld();
 });

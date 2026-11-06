@@ -26,6 +26,7 @@ const exact: Record<string, string> = {
   "Der Ordner auf dem SFTP-Server ist nicht beschreibbar.": "The folder on the SFTP server is not writable.",
   "Bitte zuerst die Verbindung testen und dann den angezeigten Hostschlüssel bestätigen.": "Please test the connection first and then confirm the host key shown.",
   "Kein SFTP-Ziel eingerichtet.": "No SFTP target set up.",
+  "Dateien nicht gespiegelt: Der Ordner uploads fehlt oder ist leer, obwohl die Datenbank Dateien verzeichnet.": "Files not mirrored: the uploads folder is missing or empty although the database lists files.",
   "Die Sicherung stammt aus einer neueren Flowplan-Version. Bitte zuerst Flowplan auf diese Version aktualisieren.": "The backup comes from a newer Flowplan version. Please update Flowplan to that version first.",
   "Der Schlüssel passt nicht zu dieser Sicherung.": "The key does not fit this backup.",
   "Die Sicherung ist verschlüsselt. Bitte den Schlüssel der alten Instanz (FLOWPLAN_ENCRYPTION_KEY) eingeben.": "The backup is encrypted. Please enter the old instance's key (FLOWPLAN_ENCRYPTION_KEY).",

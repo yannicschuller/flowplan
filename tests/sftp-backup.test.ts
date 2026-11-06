@@ -2,7 +2,7 @@
 // in this process (tests/helpers/sftp-server.ts).
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ssh2 from "ssh2";
@@ -125,6 +125,52 @@ test("deleted files wait in .deleted/ until no kept backup refers to them", asyn
   assert.deepEqual([purged.error, purged.purged], [null, 1]);
   assert.deepEqual(deletedFiles(), []);
   assert.ok(!readdirSync(join(remote, "sicherungen/flowplan/uploads")).includes(gone));
+});
+
+test("files the database still lists stay on the server when they are missing here", async () => {
+  const start = Date.UTC(2026, 10, 6, 10, 0);
+  const { createWorkspace, createPage } = await import("../lib/seed");
+  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", admin, admin, "Admin", "admin@example.test");
+  const workspace = createWorkspace(admin, "W");
+  const page = createPage(workspace, one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", workspace)!.id, admin, "P");
+  const listed = id();
+  writeFileSync(join(dir, "uploads", listed), "noch verzeichnet");
+  run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", listed, page, "a.txt", "text/plain", 16, admin);
+  assert.equal((await backup.runSftpBackup(start)).files, 1);
+  const mirrored = () => readdirSync(join(remote, "sicherungen/flowplan/uploads")).sort();
+  const before = mirrored();
+  assert.ok(before.includes(listed));
+  // The uploads folder is not there (a volume not mounted): the database copy
+  // goes up, the mirror is left alone and the run reports it – through as
+  // many runs as it takes for deleted copies to be purged.
+  renameSync(join(dir, "uploads"), join(dir, "uploads-offline"));
+  try {
+    for (let hour = 1; hour <= 4; hour++) {
+      const result = await backup.runSftpBackup(start + hour * HOUR);
+      assert.match(result.error!, /Ordner uploads fehlt/);
+      assert.ok(result.bytes > 0, "the database copy was sent");
+      assert.deepEqual([result.removed, result.purged], [0, 0]);
+    }
+  } finally {
+    renameSync(join(dir, "uploads-offline"), join(dir, "uploads"));
+  }
+  assert.deepEqual(mirrored(), before);
+  assert.deepEqual(deletedFiles(), []);
+  // Only this one file is missing here: its copy there stays as well.
+  rmSync(join(dir, "uploads", listed));
+  const partial = await backup.runSftpBackup(start + 5 * HOUR);
+  assert.deepEqual([partial.error, partial.removed], [null, 0]);
+  assert.ok(mirrored().includes(listed));
+  // Deleted for real (the row is gone): moved to .deleted/ as before.
+  run("DELETE FROM files WHERE id=?", listed);
+  assert.equal((await backup.runSftpBackup(start + 6 * HOUR)).removed, 1);
+  assert.deepEqual(deletedFiles(), [`${listed}.${start + 6 * HOUR}`]);
+  // Listed again (a database restored without its files): the copy there
+  // is not purged, however old the kept backups make it.
+  run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", listed, page, "a.txt", "text/plain", 16, admin);
+  for (let hour = 7; hour <= 9; hour++) assert.equal((await backup.runSftpBackup(start + hour * HOUR)).purged, 0);
+  assert.deepEqual(deletedFiles(), [`${listed}.${start + 6 * HOUR}`]);
+  run("DELETE FROM files WHERE id=?", listed);
 });
 
 test("a changed host key stops the backups until it is confirmed again", async () => {
