@@ -2506,7 +2506,7 @@
   "Diamond": "Diamond",
   "Diamond (aggregation)": "Diamond (aggregation)",
   "Didn't start this? Just close this window.": "Didn't start this? Just close this window.",
-  "Difference. Without a unit, rounded days as before; with a unit, whole units, month and year differences in UTC.": "Difference. Without a unit, rounded days as before; with a unit, whole units, month and year differences in UTC.",
+  "Difference. Without a unit, rounded days as before; with a unit, whole units, month and year differences in UTC. If a date is empty, the result is empty – with <, >, <= and >= it counts as 0, like an empty number.": "Difference. Without a unit, rounded days as before; with a unit, whole units, month and year differences in UTC. If a date is empty, the result is empty – with <, >, <= and >= it counts as 0, like an empty number.",
   "Different address: {0} → {1}. Passkeys are bound to the domain and must be created again; change the OIDC redirect address at the provider; CalDAV and CardDAV accounts, the server address in the apps, incoming webhooks (Git, tickets, e-mail) and share links still point to the old address. Better keep the domain.": "Different address: {0} → {1}. Passkeys are bound to the domain and must be created again; change the OIDC redirect address at the provider; CalDAV and CardDAV accounts, the server address in the apps, incoming webhooks (Git, tickets, e-mail) and share links still point to the old address. Better keep the domain.",
   "different people since midnight": "different people since midnight",
   "different value: {0}": "different value: {0}",

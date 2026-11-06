@@ -415,7 +415,7 @@ const groups: [string, [string, string, string, string, number, number][]][] = [
       [
         "dateBetween",
         "dateBetween(Ende, Beginn, Einheit?)",
-        "Differenz. Ohne Einheit gerundete Tage wie bisher; mit Einheit vollständige Einheiten, Monats-/Jahresdifferenzen in UTC.",
+        "Differenz. Ohne Einheit gerundete Tage wie bisher; mit Einheit vollständige Einheiten, Monats-/Jahresdifferenzen in UTC. Ist ein Datum leer, ist das Ergebnis leer – bei <, >, <= und >= zählt es wie eine leere Zahl als 0.",
         'dateBetween("2026-09-25", "2026-09-23", "days")',
         2,
         3,
@@ -533,7 +533,7 @@ const english: Record<string, [string, string, string?]> = {
   formatDate: ["formatDate(date, format?, time zone?)", "Formats YYYY, MM, DD, HH, mm and ss. Default: YYYY-MM-DD and UTC."],
   dateAdd: ["dateAdd(date, amount, unit, time zone?)", "Adds years, months, weeks, days, hours, minutes or seconds. Calendar units respect the time zone; default UTC."],
   dateSubtract: ["dateSubtract(date, amount, unit, time zone?)", "Subtracts date units; default time zone UTC."],
-  dateBetween: ["dateBetween(end, start, unit?)", "Difference. Without a unit, rounded days as before; with a unit, whole units, month and year differences in UTC."],
+  dateBetween: ["dateBetween(end, start, unit?)", "Difference. Without a unit, rounded days as before; with a unit, whole units, month and year differences in UTC. If a date is empty, the result is empty – with <, >, <= and >= it counts as 0, like an empty number."],
   year: ["year(date, time zone?)", "Year, in UTC by default."],
   month: ["month(date, time zone?)", "Month from 1 to 12, in UTC by default."],
   day: ["day(date, time zone?)", "Day of the month, in UTC by default."],

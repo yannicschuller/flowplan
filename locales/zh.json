@@ -2506,7 +2506,7 @@
   "Diamond": "菱形",
   "Diamond (aggregation)": "菱形（聚合）",
   "Didn't start this? Just close this window.": "没开始这个？那就关闭这个窗口。",
-  "Difference. Without a unit, rounded days as before; with a unit, whole units, month and year differences in UTC.": "差异。没有单位时，如之前一样取整天数；有单位时，按完整单位计算，月份和年份差异以 UTC 为准。",
+  "Difference. Without a unit, rounded days as before; with a unit, whole units, month and year differences in UTC. If a date is empty, the result is empty – with <, >, <= and >= it counts as 0, like an empty number.": "差异。没有单位时，如之前一样取整天数；有单位时，按完整单位计算，月份和年份差异以 UTC 为准。如果某个日期为空，结果也为空——在 <、>、<= 和 >= 比较中它与空数字一样按 0 计算。",
   "Different address: {0} → {1}. Passkeys are bound to the domain and must be created again; change the OIDC redirect address at the provider; CalDAV and CardDAV accounts, the server address in the apps, incoming webhooks (Git, tickets, e-mail) and share links still point to the old address. Better keep the domain.": "地址不同：{0} → {1}。通行密钥与域名绑定，必须重新创建；请在提供者处更改 OIDC 重定向地址；CalDAV 和 CardDAV 账户、应用中的服务器地址、传入的 Webhook（Git、工单、电子邮件）以及分享链接仍指向旧地址。最好保留原域名。",
   "different people since midnight": "自午夜以来不同的人",
   "different value: {0}": "值不同：{0}",
