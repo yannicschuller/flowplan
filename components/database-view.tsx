@@ -6177,8 +6177,10 @@ function tagColor(s: string) {
 }
 // Files cells contain several controls; a <label> would forward every click
 // to the first one (the file chooser).
-// Title of a record, edited in place. Enter or leaving the field saves;
-// Escape restores the stored title.
+// Title of a record, edited in place. Enter, leaving the field and closing
+// the record save. Escape closes the record (the dialog hears it before the
+// field) and unmounts the field without a blur, so what was typed is saved
+// when the field goes – like the record's text.
 function RowTitle({
   value,
   focus,
@@ -6191,7 +6193,23 @@ function RowTitle({
   const t = useT();
   const [draft, setDraft] = useState(value);
   const input = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => setDraft(value), [value]);
+  // Typed and not saved yet.
+  const typed = useRef<string | null>(null);
+  const latest = useRef({ value, onSave });
+  useEffect(() => {
+    latest.current = { value, onSave };
+  });
+  const save = useRef(() => {
+    if (typed.current === null) return;
+    const title = typed.current.replace(/\s+/g, " ").trim();
+    typed.current = null;
+    if (title !== latest.current.value) void latest.current.onSave(title);
+  }).current;
+  useEffect(() => () => save(), [save]);
+  useEffect(() => {
+    setDraft(value);
+    typed.current = null;
+  }, [value]);
   useEffect(() => {
     if (!focus) return;
     input.current?.focus();
@@ -6211,10 +6229,6 @@ function RowTitle({
     observer.observe(el);
     return () => observer.disconnect();
   }, [draft]);
-  const save = () => {
-    const title = draft.replace(/\s+/g, " ").trim();
-    if (title !== value) void onSave(title);
-  };
   return (
     <textarea
       ref={input}
@@ -6223,17 +6237,16 @@ function RowTitle({
       placeholder={t("Ohne Titel", "Untitled")}
       rows={1}
       value={draft}
-      onChange={(e) => setDraft(e.target.value.replace(/\n/g, ""))}
+      onChange={(e) => {
+        typed.current = e.target.value.replace(/\n/g, "");
+        setDraft(typed.current);
+      }}
       onBlur={save}
       onKeyDown={(e) => {
         if (e.key === "Enter") {
           e.preventDefault();
           e.currentTarget.blur();
-        } else if (e.key === "Escape") {
-          e.stopPropagation();
-          setDraft(value);
-          requestAnimationFrame(() => input.current?.blur());
-        }
+        } else if (e.key === "Escape") e.stopPropagation();
       }}
     />
   );
