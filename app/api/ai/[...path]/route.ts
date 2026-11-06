@@ -7,7 +7,7 @@ import { z } from "zod";
 import { checkOrigin, HttpError, requireUser } from "@/lib/auth";
 import { withRequestLocale } from "@/lib/content-locale";
 import { limitAiSetup } from "@/lib/action-limits";
-import { requireAdmin, requireMember } from "@/lib/permissions";
+import { requireAdmin, requireMember, requirePage } from "@/lib/permissions";
 import type { Identity } from "@/lib/types";
 import { AI_FEATURE_IDS, AI_REASON_TEXT } from "@/lib/ai/features";
 import { aiBlockInfo, aiPageAccess, aiRules } from "@/lib/ai/access";
@@ -17,6 +17,9 @@ import { listModels, pullModel, testConnection } from "@/lib/ai/providers";
 import { adminAiView, assertSettingsCaller, instanceAiSettings, userAiSettings, userKeyInfo } from "@/lib/ai/settings";
 import { redactSecrets } from "@/lib/ai/redact";
 import { askInput, prepareAsk, NOTHING_FOUND } from "@/lib/ai/ask";
+import { suggestPageEdits } from "@/lib/ai/page-edit";
+import { resolveLinkTitles } from "@/lib/ai/link-candidates";
+import { TITLE_LINK_LIMITS } from "@/lib/ai/title-links";
 import { semanticStats } from "@/lib/ai/semantic";
 import { aiDatabaseStatus, proposeDatabase, queueAiCells, runAiCell } from "@/lib/ai/database";
 import { ct } from "@/lib/content-locale";
@@ -164,7 +167,25 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ path: st
       );
       response.headers.set("X-Flowplan-Sources", sources);
       if (prepared.semantic) response.headers.set("X-Flowplan-Semantic", "1");
+      // "Diese Seite" went along – in full, or cut to fit the model.
+      if (prepared.page) response.headers.set("X-Flowplan-Page", prepared.page.truncated ? "truncated" : "full");
       return response;
+    }
+    // The conversation about the open page as suggested changes in it
+    // (#135, lib/ai/page-edit.ts): only with edit rights.
+    if (path.length === 2 && path[0] === "ask" && path[1] === "suggest") {
+      const b = await body(req, 400_000);
+      requireMember(user, z.object({ workspaceId: z.uuid() }).parse(b).workspaceId);
+      return NextResponse.json(await suggestPageEdits(user, b, req.signal), noStore);
+    }
+    // Page titles an answer of the writing assistant names as plain list
+    // items → the pages they name (#134, lib/ai/title-links.ts).
+    if (path.length === 2 && path[0] === "links" && path[1] === "resolve") {
+      const b = z
+        .object({ pageId: z.uuid(), titles: z.array(z.string().max(TITLE_LINK_LIMITS.titleChars * 2)).max(TITLE_LINK_LIMITS.titles) })
+        .parse(await body(req, 100_000));
+      const page = requirePage(user, b.pageId);
+      return NextResponse.json({ resolved: resolveLinkTitles(user, { workspaceId: page.workspace_id, pageId: page.id, titles: b.titles }) }, noStore);
     }
     // AI actions: a checked preview of what the model proposes, then the
     // confirmed actions run as the person (lib/ai/actions.ts).

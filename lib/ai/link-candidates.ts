@@ -16,6 +16,7 @@ import { aiFilter } from "./access";
 import { textCandidates } from "./ask";
 import { fold, questionTerms } from "./chunks";
 import { linkHandle, type LinkTarget, type PromptLink } from "./links";
+import { compactTitle, normalizeTitle, TITLE_LINK_LIMITS, type ResolvedTitle } from "./title-links";
 import { resolveAi } from "./resolve";
 import { semanticCandidates } from "./semantic";
 import { nameLookup, sourceText } from "./sources";
@@ -34,10 +35,27 @@ export const LINK_LIMITS = {
   titlePages: 5_000,
   // Titles shorter than this are too unspecific to match literally.
   minTitleChars: 4,
+  // "List all pages about …" (#134): further matching pages by title only.
+  index: { remote: 120, local: 30 },
+  // Pages whose titles plain list items are resolved against.
+  resolvePages: 20_000,
 } as const;
 
-export type LinkCandidates = { prompt: PromptLink[]; targets: LinkTarget[] };
-const NONE: LinkCandidates = { prompt: [], targets: [] };
+// `index`: titles of further pages that fit, for answers that list pages
+// ("alle Seiten zu …"); the model writes them as plain titles, which the
+// browser resolves afterwards (lib/ai/title-links.ts).
+export type LinkCandidates = { prompt: PromptLink[]; targets: LinkTarget[]; index: string[] };
+const NONE: LinkCandidates = { prompt: [], targets: [], index: [] };
+
+// Asks for a list or overview of pages: "Liste alle Docker-Compose-Seiten
+// mit Links", "all pages about …", "Übersicht der Seiten zu …".
+const LIST_WORDS = /(?:^|[^\p{L}])(?:alle[nmrs]?|s[äa]mtliche[nmrs]?|jede[nmrs]?|liste|listet?|auflisten|übersicht|verzeichnis|all|every|list|overview|index|tou(?:te)?s|toutes|liste[rz])(?![\p{L}])|所有|全部|列出/iu;
+const PAGE_WORDS = /seiten?|pages?|links?|verlink|verknüpf|einträge|dokumente|notizen|页面|链接/iu;
+export const asksForPageList = (text: string) => LIST_WORDS.test(text) && PAGE_WORDS.test(text);
+// Words of such a request that are no search terms themselves.
+const LIST_TERMS = new Set(
+  "alle allen aller alles samtliche jede jeder jedes liste listet auflisten ubersicht verzeichnis seite seiten link links verlinkt verlinke verlinken verlinkung page pages list every all overview index mit bitte".split(" "),
+);
 
 // The terms of a longer text: those that occur most often, then in order.
 export function linkTerms(text: string, max: number = LINK_LIMITS.terms): string[] {
@@ -91,6 +109,8 @@ export type LinkCandidateInput = {
   query: string;
   // A model on the own server: fewer, shorter candidates.
   local?: boolean;
+  // The answer lists pages: titles of further matching pages go along.
+  list?: boolean;
   // Semantic search may embed the query (the answer goes to the instance's
   // provider as well – the query then reaches no one new).
   semantic?: boolean;
@@ -116,7 +136,11 @@ export async function findLinkCandidates(user: Identity, input: LinkCandidateInp
       seen.add(id);
     }
   };
-  const terms = linkTerms(query);
+  const list = !!input.list;
+  // A list request: "Docker-Compose-Seiten" searches for docker and compose.
+  const terms = [
+    ...new Set(linkTerms(query).flatMap((term) => (list && term.includes("-") ? [term, ...term.split("-").filter((part) => part.length >= 3)] : [term]))),
+  ].filter((term) => !list || !LIST_TERMS.has(term));
   const scope = { pages: null };
   const pagesOf = (rows: { page_id: string; row_id: string }[]) => rows.filter((r) => !r.row_id).map((r) => r.page_id);
   addList(pagesOf(textCandidates(input.workspaceId, terms, scope, 200)));
@@ -136,23 +160,84 @@ export async function findLinkCandidates(user: Identity, input: LinkCandidateInp
 
   // What the AI may read – before any text of a candidate is loaded.
   const ranked = [...fused].sort((a, b) => b[1] - a[1]).map(([pageId]) => ({ pageId }));
-  const readable = aiFilter(user, ranked.slice(0, max * 6));
+  const indexMax = list ? (input.local ? LINK_LIMITS.index.local : LINK_LIMITS.index.remote) : 0;
+  const readable = aiFilter(user, ranked.slice(0, max * 6 + indexMax * 2));
   const names = nameLookup();
   const prompt: PromptLink[] = [];
   const targets: LinkTarget[] = [];
+  const index: string[] = [];
   for (const { pageId } of readable) {
-    if (targets.length >= max) break;
+    if (targets.length >= max && index.length >= indexMax) break;
     const page = one<{ title: string; synced: number | null; workspace_id: string }>("SELECT title,synced,workspace_id FROM pages WHERE id=?", pageId);
     // Synced blocks live inside other pages; untitled pages make poor links.
     if (!page || page.synced || page.workspace_id !== input.workspaceId || !page.title.trim()) continue;
+    const title = page.title.replace(/\s+/g, " ").trim();
+    if (targets.length >= max) {
+      // Only the title: the model names the page, the browser links it.
+      const short = title.slice(0, LINK_LIMITS.titleChars);
+      if (!index.includes(short)) index.push(short);
+      continue;
+    }
     const source = sourceText(pageId, null, names);
     if (!source) continue;
     const handle = linkHandle(targets.length + 1);
-    const title = page.title.replace(/\s+/g, " ").trim();
     prompt.push({ handle, title: title.slice(0, LINK_LIMITS.titleChars), excerpt: excerptOf(source.chunks, title, excerptChars) });
     targets.push({ handle, pageId, title });
   }
-  return { prompt, targets };
+  return { prompt, targets, index };
+}
+
+// Plain titles of an answer → pages (#134). A text names a page when its
+// normalised title is the same (lib/ai/title-links.ts) – or, failing that,
+// the same without spaces – and exactly one page the AI may read for the
+// person has it: two pages called "Notes" link neither. Never the page
+// being written, never synced blocks or pages of another workspace.
+export function resolveLinkTitles(user: Identity, input: { workspaceId: string; pageId: string; titles: string[] }): ResolvedTitle[] {
+  if (!resolveAi(user, "links", { workspaceId: input.workspaceId }).ok) return [];
+  const texts = [...new Set(input.titles.map((t) => String(t).slice(0, TITLE_LINK_LIMITS.titleChars)))].slice(0, TITLE_LINK_LIMITS.titles);
+  const wanted = new Map<string, string[]>();
+  const wantedCompact = new Map<string, string[]>();
+  for (const text of texts) {
+    const exact = normalizeTitle(text);
+    if ([...exact].length < 2) continue;
+    wanted.set(exact, [...(wanted.get(exact) || []), text]);
+    const compact = compactTitle(text);
+    wantedCompact.set(compact, [...(wantedCompact.get(compact) || []), text]);
+  }
+  if (!wanted.size) return [];
+  const byExact = new Map<string, string[]>();
+  const byCompact = new Map<string, string[]>();
+  const titles = new Map<string, string>();
+  for (const page of all<{ id: string; title: string }>(
+    "SELECT id,title FROM pages WHERE workspace_id=? AND deleted_at IS NULL AND COALESCE(synced,0)=0 AND title<>'' AND id<>? ORDER BY updated_at DESC LIMIT ?",
+    input.workspaceId,
+    input.pageId,
+    LINK_LIMITS.resolvePages,
+  )) {
+    const exact = normalizeTitle(page.title);
+    const compact = compactTitle(page.title);
+    if (!wanted.has(exact) && !wantedCompact.has(compact)) continue;
+    titles.set(page.id, page.title.replace(/\s+/g, " ").trim());
+    if (wanted.has(exact)) byExact.set(exact, [...(byExact.get(exact) || []), page.id]);
+    if (wantedCompact.has(compact)) byCompact.set(compact, [...(byCompact.get(compact) || []), page.id]);
+  }
+  if (!titles.size) return [];
+  // What the AI may read – titles of other pages never become links.
+  const readable = new Set(aiFilter(user, [...titles.keys()].map((pageId) => ({ pageId }))).map((p) => p.pageId));
+  const only = (ids: string[] | undefined) => {
+    const left = [...new Set(ids || [])].filter((id) => readable.has(id));
+    return left.length === 1 ? left[0] : null;
+  };
+  const out: ResolvedTitle[] = [];
+  for (const text of texts) {
+    const exact = normalizeTitle(text);
+    if (!wanted.has(exact)) continue;
+    // An exact match decides; several exact matches are never guessed between.
+    const exactIds = (byExact.get(exact) || []).filter((id) => readable.has(id));
+    const pageId = exactIds.length ? only(exactIds) : only(byCompact.get(compactTitle(text)));
+    if (pageId) out.push({ text, pageId, title: titles.get(pageId)! });
+  }
+  return out;
 }
 
 // The targets for the browser's header (base64 of UTF-8 JSON, like the

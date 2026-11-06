@@ -26,7 +26,9 @@ export const LINKS_HEADER = "X-Flowplan-Links";
 export const LINKS_STORAGE_KEY = "flowplan.ai.links";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const HANDLE = /^P[1-9]\d?$/;
+// Up to P999: the pages resolved from plain titles (lib/ai/title-links.ts)
+// follow the offered ones.
+const HANDLE = /^P[1-9]\d{0,2}$/;
 export const linkHandle = (n: number) => `P${n}`;
 const pageHref = (pageId: string) => `/#page=${pageId}`;
 
@@ -50,9 +52,9 @@ const find = (targets: readonly LinkTarget[], handle: string) => targets.find((t
 // Link text in Markdown: the title's punctuation stays literal.
 const markdownText = (text: string) => text.replace(/\s+/g, " ").trim().replace(/[\\`*_[\]<>~|!#]/g, "\\$&");
 
-const WIKI = /\[\[\s*(P\d{1,2})\s*(?:\|([^\]\n]{1,200}))?\]\]/gi;
-const ADDRESS = /^\s*flowplan:\/{0,2}(P\d{1,2})\/?\s*$/i;
-const MARKDOWN = /\]\(\s*flowplan:\/{0,2}(P\d{1,2})\/?\s*\)/gi;
+const WIKI = /\[\[\s*(P\d{1,3})\s*(?:\|([^\]\n]{1,200}))?\]\]/gi;
+const ADDRESS = /^\s*flowplan:\/{0,2}(P\d{1,3})\/?\s*$/i;
+const MARKDOWN = /\]\(\s*flowplan:\/{0,2}(P\d{1,3})\/?\s*\)/gi;
 
 // [[P3]] and [[P3|words]] as Markdown links with the handle as address;
 // unknown handles: their words, or nothing.

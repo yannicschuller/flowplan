@@ -20,6 +20,12 @@
 // using Flowplan get their answer from the documentation that comes with
 // the app; those sources link to docs.flowplan.org.
 //
+// "Diese Seite" (#135): the page open beside the panel goes along in full
+// (as Markdown, within a budget for the model, cut with a note), after the
+// same checks – the person may read it and the AI may read it. It is source
+// 1; the search adds its passages as usual. Changes to the page the
+// conversation asks for go in as suggested changes (lib/ai/page-edit.ts).
+//
 // Conversations live in the browser (session storage); the server keeps
 // nothing but the usual rate-limit counters.
 import { z } from "zod";
@@ -34,7 +40,8 @@ import { chunkPlain, questionTerms, rankPassages, selectPassages, type Passage }
 import { helpCandidates, helpTitle, helpUrl } from "./help";
 import type { ChatMessage } from "./providers";
 import { requireAi } from "./run";
-import { resolveAi } from "./resolve";
+import { isLocalProvider, resolveAi } from "./resolve";
+import { aiPageMarkdown } from "./content";
 import { semanticCandidates, semanticQueryVector } from "./semantic";
 import { nameLookup, pageSubtree, sourceText } from "./sources";
 import { databaseContext, type DatabaseData } from "./database-context";
@@ -49,6 +56,8 @@ export const ASK_LIMITS = {
   maxSources: 8,
   // Sources whose text is read and ranked.
   candidates: 24,
+  // "Diese Seite": the open page in full, smaller for models on the own server.
+  pageChars: { local: 12_000, remote: 60_000 },
 } as const;
 
 export const askInput = z.object({
@@ -69,6 +78,8 @@ export const askInput = z.object({
       z.object({ kind: z.literal("help") }),
     ])
     .default({ kind: "workspace" }),
+  // "Diese Seite": the open page goes along in full.
+  page: z.object({ pageId: z.uuid() }).optional(),
 });
 export type AskInput = z.input<typeof askInput>;
 
@@ -102,6 +113,8 @@ Regeln:
 - Quellen mit einem Datum (datum="JJJJ-MM-TT") sind Tage eines Journals oder Einträge mit diesem Datum. Fragt jemand nach dem Letzten, Neuesten oder Aktuellsten, nimm die passende Quelle mit dem jüngsten Datum und nenne das Datum.
 - Quellen mit art="hilfe" stammen aus der offiziellen Flowplan-Hilfe: Nutze sie für Fragen, wie Flowplan funktioniert und wo man etwas einstellt – sie sind kein Inhalt des Arbeitsbereichs. Nenne dabei die Wege durch die Oberfläche genau so, wie sie dort stehen.
 - Formatiere mit Markdown: **fett** für Wichtiges, Listen mit „- “, keine Überschriften für kurze Antworten.
+- Eine Quelle mit art="aktuelle-seite" ist die Seite, die die Person gerade geöffnet hat, vollständig als Markdown. Fragen nach „dieser Seite“, „hier“, „dem Text“ oder „dem Code“ beziehen sich auf sie. Steht gekürzt="ja" daran, fehlt ihr Ende: sage das, wenn es für die Antwort zählt.
+- Bittet die Person, diese Seite zu ändern, zu ergänzen oder zu korrigieren, zeige die neue Fassung der betroffenen Stellen vollständig (Code als vollständigen Codeblock) und sage nicht, du hättest die Seite geändert – die Person kann deine Antwort danach als Änderungsvorschlag in die Seite übernehmen.
 - Quellen mit art="datenbank" enthalten die Einträge einer Datenbank als Daten (eine Zeile je Eintrag, Eigenschaften als „Name: Wert“). Nutze ihre echten Werte; wird nach allen Einträgen, einer Liste, Tabelle oder Dokumentation gefragt, darf die Antwort länger sein und eine Markdown-Tabelle mit den tatsächlichen Werten enthalten. Schreibe nie Platzhalter statt vorhandener Werte. Steht dort „… weitere Einträge“, sage, dass nicht alle Einträge berücksichtigt sind.`;
 // The prompt for one question: the rules above and today's date (for
 // "last", "yesterday", "this week").
@@ -168,13 +181,24 @@ function history(messages: ChatMessage[]): ChatMessage[] {
 
 const escapeAttr = (text: string) => text.replace(/["<>\n]/g, " ").slice(0, 200);
 
-export type PreparedAsk = { sources: AskSource[]; system: string; messages: ChatMessage[]; nothing: boolean; semantic: boolean; maxTokens: number };
+// `page`: the open page that went along ("Diese Seite"), and whether it was cut.
+export type PreparedAsk = { sources: AskSource[]; system: string; messages: ChatMessage[]; nothing: boolean; semantic: boolean; maxTokens: number; page?: { pageId: string; truncated: boolean } };
 const ANSWER_TOKENS = { plain: 1500, data: 4000 } as const;
 
 // Everything for the answer; the prompt contains only what aiFilter let through.
 export async function prepareAsk(user: Identity, raw: AskInput, signal?: AbortSignal): Promise<PreparedAsk> {
   const input = askInput.parse(raw);
-  requireAi(user, "ask", { workspaceId: input.workspaceId });
+  const resolved = requireAi(user, "ask", { workspaceId: input.workspaceId });
+  // "Diese Seite": read rights and the AI's rules checked like everywhere.
+  let current: { page: Page; markdown: string; truncated: boolean } | null = null;
+  if (input.page) {
+    const page = requirePage(user, input.page.pageId);
+    if (page.workspace_id !== input.workspaceId) throw new HttpError(404, "Seite nicht gefunden.");
+    const limit = resolved.config.kind === "ollama" || isLocalProvider(resolved.config) ? ASK_LIMITS.pageChars.local : ASK_LIMITS.pageChars.remote;
+    const markdown = await aiPageMarkdown(user, page);
+    const truncated = markdown.length > limit;
+    current = { page, markdown: truncated ? markdown.slice(0, limit).replace(/\n[^\n]*$/, "") : markdown, truncated };
+  }
   const across = input.scope.kind === "all";
   const onlyHelp = input.scope.kind === "help";
   const withHelp = onlyHelp || across || input.scope.kind === "workspace";
@@ -246,7 +270,8 @@ export async function prepareAsk(user: Identity, raw: AskInput, signal?: AbortSi
   const ranked = [...candidates.values()].sort((a, b) => b.fused - a.fused);
   const readable = aiFilter(
     user,
-    ranked.map((c) => ({ ...c, rowId: c.rowId || null })),
+    // The open page is there in full already.
+    ranked.filter((c) => !(current && c.pageId === current.page.id && !c.rowId)).map((c) => ({ ...c, rowId: c.rowId || null })),
   ).slice(0, ASK_LIMITS.candidates);
 
   // Dates of journal days: in the source label, and for "the last …" the
@@ -327,11 +352,17 @@ export async function prepareAsk(user: Identity, raw: AskInput, signal?: AbortSi
           ...useful.filter((p) => !help.has(p.key) && meta.get(p.key)?.kind === "database" && !meta.get(p.key)?.rowId).map((p) => meta.get(p.key)!.pageId),
         ],
       });
-  if (!useful.length && !data.length) return { sources: [], system: askSystem(), messages: [], nothing: true, semantic, maxTokens: ANSWER_TOKENS.plain };
+  if (!useful.length && !data.length && !current) return { sources: [], system: askSystem(), messages: [], nothing: true, semantic, maxTokens: ANSWER_TOKENS.plain };
 
   // Numbered in the order of their best passage; passages of a source in
   // document order. Databases with records not found as a source come last.
+  // The open page ("Diese Seite") is always the first.
   const order: string[] = [];
+  const CURRENT = "current:";
+  if (current) {
+    order.push(CURRENT);
+    meta.set(CURRENT, { pageId: current.page.id, title: current.page.title || ct("Ohne Titel", "Untitled"), kind: "page" });
+  }
   for (const p of useful) if (!order.includes(p.key)) order.push(p.key);
   const records = new Map<string, DatabaseData>();
   for (const d of data) {
@@ -343,6 +374,8 @@ export async function prepareAsk(user: Identity, raw: AskInput, signal?: AbortSi
   const sources: AskSource[] = order.map((k, i) => ({ n: i + 1, ...meta.get(k)! }));
   const blocks = order.map((k, i) => {
     const s = sources[i];
+    if (k === CURRENT && current)
+      return `<quelle nr="${s.n}" art="aktuelle-seite" titel="${escapeAttr(s.title)}"${current.truncated ? ' gekürzt="ja"' : ""}>\n${current.markdown || "(leer)"}${current.truncated ? "\n\n[… Die Seite ist länger; der Rest fehlt hier.]" : ""}\n</quelle>`;
     const table = records.get(k);
     if (table) return `<quelle nr="${s.n}" art="datenbank" titel="${escapeAttr(s.title)}" einträge="${table.total}">\n${table.body}\n</quelle>`;
     const parts = useful
@@ -356,7 +389,16 @@ export async function prepareAsk(user: Identity, raw: AskInput, signal?: AbortSi
     return `<quelle nr="${s.n}" titel="${escapeAttr(label)}"${date ? ` datum="${date}"` : ""}>\n${parts.join("\n…\n")}\n</quelle>`;
   });
   const prompt = `Quellen:\n${blocks.join("\n\n")}\n\nFrage: ${input.question}`;
-  return { sources, system: askSystem(), messages: [...previous, { role: "user", content: prompt }], nothing: false, semantic, maxTokens: data.length ? ANSWER_TOKENS.data : ANSWER_TOKENS.plain };
+  return {
+    sources,
+    system: askSystem(),
+    messages: [...previous, { role: "user", content: prompt }],
+    nothing: false,
+    semantic,
+    // A page in full: room for a rewritten section or code block.
+    maxTokens: data.length || current ? ANSWER_TOKENS.data : ANSWER_TOKENS.plain,
+    ...(current ? { page: { pageId: current.page.id, truncated: current.truncated } } : {}),
+  };
 }
 
 // Citations in an answer that point to existing sources: [1], [2][3], [1, 2].

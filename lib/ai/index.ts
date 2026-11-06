@@ -80,6 +80,15 @@
 //     candidate through aiFilter, passages chunked and ranked
 //     (lib/ai/chunks.ts), numbered sources in the X-Flowplan-Sources header.
 //     Client: askAi, citationParts. Conversations stay in the browser.
+//     With { page: { pageId } } ("Diese Seite", #135) the open page goes
+//     along in full as source 1 (X-Flowplan-Page: full | truncated).
+//   POST /api/ai/ask/suggest { workspaceId, pageId, history } – the
+//     conversation as suggested changes in the open page (lib/ai/page-edit.ts,
+//     lib/ai/page-edits.ts): numbered blocks in, edit tags out, applied as
+//     suggestion marks; edit rights required → { proposed, applied, failed }.
+//   POST /api/ai/links/resolve { pageId, titles } – plain titles of a
+//     writing-assistant answer → the one readable page each names (#134,
+//     lib/ai/title-links.ts).
 //   semantic index (lib/ai/semantic.ts): the only background use of a
 //     provider – the INSTANCE provider's embedding model, only when an
 //     administrator switched on semantic search. Never embeds PIN journals,

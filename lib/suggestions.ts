@@ -83,15 +83,54 @@ function ranges(doc: PMNode, test: (a: SuggestionAttrs) => boolean) {
   });
   return out.sort((a, b) => b.from - a.from);
 }
-// Accepting keeps insertions and removes deleted text; rejecting the reverse.
+const WRAPPERS = new Set(["bulletList", "orderedList", "taskList", "listItem", "taskItem", "blockquote"]);
+// A text block that lost all its text goes as well – with the list item or
+// quote that held only it – unless it is the document's last block or its
+// parent needs it (a table cell keeps its paragraph).
+function removeEmptied(tr: Transaction, pos: number) {
+  const node = tr.doc.nodeAt(pos);
+  if (!node?.isTextblock || node.content.size) return;
+  const $pos = tr.doc.resolve(pos);
+  let from = pos,
+    to = pos + node.nodeSize,
+    depth = $pos.depth;
+  while (depth > 0 && WRAPPERS.has($pos.node(depth).type.name) && $pos.node(depth).childCount === 1) {
+    from = $pos.before(depth);
+    to = $pos.after(depth);
+    depth--;
+  }
+  const parent = $pos.node(depth);
+  if (depth === 0 && parent.childCount <= 1) return;
+  const index = $pos.index(depth);
+  if (!parent.canReplace(index, index + 1)) return;
+  tr.delete(from, to);
+}
+// Accepting keeps insertions and removes deleted text; rejecting the
+// reverse. A block whose whole text goes (a suggested new paragraph
+// rejected, a suggested deletion of a paragraph accepted) goes with it.
 export function resolveSuggestions(state: EditorState, accept: boolean, test: (a: SuggestionAttrs) => boolean) {
   const tr = state.tr;
-  for (const r of ranges(state.doc, test)) {
+  const list = ranges(state.doc, test);
+  const removed = (r: { mark: PMMark }) => {
     const a = r.mark.attrs as SuggestionAttrs;
-    const keep = accept ? a.kind === "insert" : a.kind === "delete";
-    if (keep) tr.removeMark(r.from, r.to, r.mark);
-    else tr.delete(r.from, r.to);
+    return accept ? a.kind !== "insert" : a.kind !== "delete";
+  };
+  const emptied: number[] = [];
+  state.doc.descendants((node, pos) => {
+    if (!node.isTextblock) return true;
+    let all = node.childCount > 0;
+    node.forEach((child, offset) => {
+      const from = pos + 1 + offset;
+      if (!child.isText || !list.some((r) => removed(r) && r.from <= from && r.to >= from + child.nodeSize)) all = false;
+    });
+    if (all) emptied.push(pos);
+    return false;
+  });
+  for (const r of list) {
+    if (removed(r)) tr.delete(r.from, r.to);
+    else tr.removeMark(r.from, r.to, r.mark);
   }
+  for (const pos of emptied.sort((a, b) => b - a)) removeEmptied(tr, tr.mapping.map(pos));
   return tr.setMeta(SUGGESTION_SKIP, true);
 }
 

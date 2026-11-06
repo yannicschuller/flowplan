@@ -4989,7 +4989,18 @@ export default function WorkspaceApp({
           workspaceId={boot.workspace.id}
           ai={boot.ai}
           spaces={boot.spaces}
-          currentPage={screen === "page" && data ? { id: data.page.id, title: data.page.title || t("Ohne Titel", "Untitled") } : null}
+          currentPage={
+            screen === "page" && data
+              ? {
+                  id: data.page.id,
+                  title: data.page.title || t("Ohne Titel", "Untitled"),
+                  kind: data.page.kind,
+                  // Suggested changes need edit rights (checked again on the server).
+                  editable: mayEdit && data.page.kind === "document",
+                  encrypted: !!data.encrypted,
+                }
+              : null
+          }
           onOpenSource={(pid, rowId) => {
             // The panel stays open beside the page (#59).
             void openPage(pid, rowId ? { pageId: pid, rowId } : undefined);
