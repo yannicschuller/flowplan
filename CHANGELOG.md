@@ -2,6 +2,10 @@
 
 All releases of Flowplan, newest first. Generated from the commits by the release workflow.
 
+## v0.8.13 – 2026-11-06
+
+- Space rights: share, bookmarks import, move check, template dependencies, tag clash ([f7b26bb](https://github.com/yannicschuller/flowplan/commit/f7b26bbed197fd16d93f697963f5e04b9ed24269))
+
 ## v0.8.12 – 2026-11-06
 
 - Dependencies: TipTap 3.32.2, shiki 4.6.0, Trivy 0.76.1 ([5932217](https://github.com/yannicschuller/flowplan/commit/5932217db70fb0e5dd18ccb81ab889298ff93036))
