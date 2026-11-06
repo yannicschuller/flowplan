@@ -7,6 +7,8 @@
 // lib/encryption.ts), in the bucket and in the data folder alike. Daily, or
 // hourly when Litestream is off and the encrypted copies replace it.
 // An SFTP server (lib/sftp-backup.ts, #128) receives the same copy as well.
+// Files deleted here stay in the bucket under .deleted/uploads/ as long as a
+// kept backup may refer to them (lib/deleted-uploads.ts).
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 import { one, run } from "./db";
@@ -15,6 +17,7 @@ import { bucketFetch, storageConfig } from "./storage";
 import { lastMarkdownExport, runMarkdownExports } from "./scheduled-markdown-export";
 import { encryptionEnabled } from "./encryption";
 import { backupName, beyondKeep, copyPath, databaseCopy } from "./backup-copy";
+import { DELETED_UPLOADS, oldestBackup, parseDeleted, purgeable } from "./deleted-uploads";
 import { sendToSftp, sftpBackupActive, sftpBackupStatus } from "./sftp-backup";
 import { runDueSpaceGitExports } from "./space-git-export";
 
@@ -37,11 +40,39 @@ function remember(result: BackupRun) {
   );
 }
 
+// All keys under a prefix (1000 per page).
 async function listBucket(prefix: string) {
-  const response = await bucketFetch(`?list-type=2&prefix=${encodeURIComponent(prefix)}`, { method: "GET" });
-  if (!response.ok) throw new Error(`Liste der Sicherungen: HTTP ${response.status}`);
-  const xml = await response.text();
-  return [...xml.matchAll(/<Key>([^<]+)<\/Key>/g)].map((m) => m[1]);
+  const keys: string[] = [];
+  let token = "";
+  for (let page = 0; page < 1000; page++) {
+    const response = await bucketFetch(
+      `?list-type=2&prefix=${encodeURIComponent(prefix)}${token ? `&continuation-token=${encodeURIComponent(token)}` : ""}`,
+      { method: "GET" },
+    );
+    if (!response.ok) throw new Error(`Liste der Sicherungen: HTTP ${response.status}`);
+    const xml = await response.text();
+    keys.push(...[...xml.matchAll(/<Key>([^<]+)<\/Key>/g)].map((m) => m[1]));
+    token = /<IsTruncated>true<\/IsTruncated>/.test(xml) ? (/<NextContinuationToken>([^<]+)<\/NextContinuationToken>/.exec(xml)?.[1] ?? "") : "";
+    if (!token) break;
+  }
+  return keys;
+}
+
+// Delayed deletion in the bucket (lib/deleted-uploads.ts, lib/storage.ts
+// moves deleted files to .deleted/uploads/): removes the copies moved before
+// the oldest kept backup – and at least a day ago, Litestream's history in
+// the same bucket reaches that far back – and those of files that are back.
+async function purgeDeleted(prefix: string, oldest: number | null, now: number) {
+  let purged = 0;
+  for (const key of await listBucket(`${prefix}${DELETED_UPLOADS}/`)) {
+    const copy = parseDeleted(key.slice(`${prefix}${DELETED_UPLOADS}/`.length));
+    if (!copy) continue;
+    const back = !!one("SELECT 1 FROM files WHERE id=?", copy.file) && !one("SELECT 1 FROM storage_queue WHERE key=?", copy.file);
+    if (!back && !(purgeable(copy, oldest) && copy.at < now - DAY_MS)) continue;
+    const response = await bucketFetch(key.slice(prefix.length), { method: "DELETE" });
+    if (response.ok || response.status === 404) purged++;
+  }
+  return purged;
 }
 
 export async function runScheduledBackup(now = Date.now()): Promise<BackupRun> {
@@ -62,10 +93,14 @@ export async function runScheduledBackup(now = Date.now()): Promise<BackupRun> {
         headers: { "Content-Type": encrypted ? "application/octet-stream" : "application/vnd.sqlite3" },
       });
       if (!response.ok) throw new Error(`Hochladen: HTTP ${response.status}`);
-      const keys = (await listBucket(`${config.prefix ? `${config.prefix}/` : ""}backups/`))
-        .filter((k) => BACKUP_NAME.test(k));
-      for (const key of beyondKeep(keys, keep))
-        await bucketFetch(key.slice((config.prefix ? `${config.prefix}/` : "").length), { method: "DELETE" });
+      const prefix = config.prefix ? `${config.prefix}/` : "";
+      const keys = (await listBucket(`${prefix}backups/`)).filter((k) => BACKUP_NAME.test(k));
+      const old = beyondKeep(keys, keep);
+      for (const key of old) await bucketFetch(key.slice(prefix.length), { method: "DELETE" });
+      // Not a failed backup when this does not work; the next run tries again.
+      await purgeDeleted(prefix, oldestBackup(keys.filter((k) => !old.includes(k))), now).catch((error) =>
+        console.error("Gelöschte Dateien im Bucket aufräumen fehlgeschlagen", (error as Error)?.message),
+      );
       result = { at: now, target: "s3", name, bytes, error: null };
     } else {
       const folder = resolve(dataDir(), "backups");
