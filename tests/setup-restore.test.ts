@@ -206,9 +206,11 @@ test("an older SFTP backup finds a file deleted since then in .deleted/", async 
     assert.equal((await sftpBackup.runSftpBackup(Date.UTC(2026, 10, 7, 3, 0))).error, null);
     // Deleted here after the 03:00 backup: moved aside by the next one.
     const content = readFileSync(join(old, "uploads", fid));
+    run("DELETE FROM files WHERE id=?", fid);
     rmSync(join(old, "uploads", fid));
     const next = await sftpBackup.runSftpBackup(Date.UTC(2026, 10, 7, 4, 0));
     writeFileSync(join(old, "uploads", fid), content);
+    run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fid, page, "anhang.txt", "text/plain", 24, uid);
     assert.deepEqual([next.error, next.removed], [null, 1]);
     assert.ok(!existsSync(join(remote, "flowplan/uploads", fid)));
     assert.equal(readdirSync(join(remote, "flowplan/.deleted/uploads")).length, 1);

@@ -3101,6 +3101,7 @@
   "Files in the bucket": "Files in the bucket",
   "Files in the bucket by kind": "Files in the bucket by kind",
   "Files in the bucket, scheduled backups, Markdown exports and the downloaded instance backup are encrypted with AES-256-GCM before they leave the server. Without the key they cannot be read – keep it apart from the backups.": "Files in the bucket, scheduled backups, Markdown exports and the downloaded instance backup are encrypted with AES-256-GCM before they leave the server. Without the key they cannot be read – keep it apart from the backups.",
+  "Files not mirrored: the uploads folder is missing or empty although the database lists files.": "Files not mirrored: the uploads folder is missing or empty although the database lists files.",
   "files, at most 10 MB each.": "files, at most 10 MB each.",
   "files.": "files.",
   "Fill {0}": "Fill {0}",
