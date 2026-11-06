@@ -28,8 +28,8 @@ test("records are linked from the text, copied as link and list their backlinks"
   await editor.click();
   await page.keyboard.press("@");
   const dialog = page.getByRole("dialog", { name: "Seite, Eintrag oder Person erwähnen" });
-  await dialog.getByRole("textbox").fill(`Heizung Wartung ${tag}`);
-  await dialog.getByRole("button", { name: new RegExp(`Heizung Wartung ${tag}.*Notizen ${tag}`) }).click();
+  await dialog.getByRole("combobox").fill(`Heizung Wartung ${tag}`);
+  await dialog.getByRole("option", { name: new RegExp(`Heizung Wartung ${tag}.*Notizen ${tag}`) }).click();
   const inserted = editor.getByRole("link", { name: `Heizung Wartung ${tag}` });
   await expect(inserted).toHaveAttribute("href", `/#page=${notes}&row=${heating}`);
   // Stored on the server before going on.
