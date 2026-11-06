@@ -55,6 +55,8 @@ export const USER_REFERENCES: Record<string, MergeStrategy> = {
   "auth_challenges.user_id": "drop",
   "idempotency_keys.user_id": "drop",
   "mobile_devices.user_id": "drop",
+  // Device keys of the apps (lib/app-devices.ts): registered again at the next sign-in.
+  "app_devices.user_id": "drop",
   "push_subscriptions.user_id": "drop",
   "push_tests.user_id": "drop",
   "presence.user_id": "drop",

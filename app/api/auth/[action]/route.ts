@@ -46,6 +46,7 @@ import {
   type OidcProfile,
 } from "@/lib/oidc-link";
 import { appSignInReportLine } from "@/lib/app-sign-in-report";
+import { provesApp } from "@/lib/app-devices";
 import { refuseSsoOnly, removeIdentity, removePassword, signInOverview } from "@/lib/identities";
 import { confirmStep, sessionStartedAt, stepUpMethods } from "@/lib/step-up";
 export const runtime = "nodejs";
@@ -124,7 +125,9 @@ async function rememberPending(token: string) {
     maxAge: PENDING_MAX_AGE,
   });
 }
-async function signIn(userId: string, groups: string[], remember = false) {
+// app: the desktop or mobile app proved this sign-in its own
+// (lib/app-devices.ts) – it then lasts as long as the app's.
+async function signIn(userId: string, groups: string[], remember = false, app = false) {
   const user = one<{ disabled: number }>("SELECT disabled FROM users WHERE id=?", userId);
   if (!user || user.disabled) throw new HttpError(403, "Dieses Konto ist deaktiviert.");
   acceptPendingInvites(userId);
@@ -133,7 +136,7 @@ async function signIn(userId: string, groups: string[], remember = false) {
   ensureWorkspace(userId);
   // Groups from an SSO provider (e.g. the desktop app of an SSO account) are
   // checked again after SESSION_GROUPS_HOURS.
-  await issueSession(userId, groups, undefined, { remember, sso: !isLocalAccount(userId) });
+  await issueSession(userId, groups, undefined, { remember, sso: !isLocalAccount(userId), app });
 }
 // The end of every SSO sign-in (also after connecting an existing account).
 async function finishSsoSignIn(userId: string, sso: OidcProfile, remember: boolean) {
@@ -452,18 +455,20 @@ async function handlePOST(
       if (!handoff)
         throw new HttpError(400, translate(locale)("Der Anmeldecode ist ungültig oder abgelaufen. Bitte erneut anmelden.", "The sign-in code is invalid or has expired. Please sign in again."));
       // The desktop and mobile apps are a device of their own: they stay
-      // signed in unless the instance says otherwise (lib/session-policy.ts
-      // recognises them by their user agent, here and for the password form
-      // inside the app).
-      await signIn(handoff.userId, handoff.groups, true);
+      // signed in unless the instance says otherwise. Only the app holding
+      // the verifier gets here – the hand-off is its proof
+      // (lib/app-devices.ts), for every app version.
+      await signIn(handoff.userId, handoff.groups, true, provesApp({ via: "handoff" }));
       return NextResponse.json({ ok: true });
     }
     const body = () => req.json().catch(() => ({}));
+    const agent = req.headers.get("user-agent");
     // ---- E-mail and password ----
     if (action === "register") {
       let registered: Awaited<ReturnType<typeof register>>;
+      const input = await body();
       try {
-        registered = await register(await body(), locale, clientAddress(req.headers));
+        registered = await register(input, locale, clientAddress(req.headers));
       } catch (e) {
         if (e instanceof AccountExists && e.noted) return NextResponse.json({ ok: true, pending: true, email: e.email });
         throw e;
@@ -476,7 +481,7 @@ async function handlePOST(
         (await cookies()).set("flowplan_verify", user.id, { httpOnly: true, secure: appUrl().startsWith("https:"), sameSite: "lax", path: "/api/auth", maxAge: 7 * 86400 });
         return NextResponse.json({ ok: true, pending: true, email: user.email });
       }
-      await signIn(user.id, groups);
+      await signIn(user.id, groups, false, provesApp({ via: "form", userId: user.id, input, agent }));
       return NextResponse.json({ ok: true });
     }
     if (action === "verify-resend") {
@@ -495,15 +500,18 @@ async function handlePOST(
         await rememberPending(next.pending);
         return NextResponse.json({ ok: true, twoFactor: true });
       }
-      await signIn(userId, groups, wantsRemember(input));
+      // In the app with its device key: as long as the app's (lib/app-devices.ts).
+      await signIn(userId, groups, wantsRemember(input), provesApp({ via: "form", userId, input, agent }));
       return NextResponse.json({ ok: true });
     }
     if (action === "totp-login") {
       const jar = await cookies();
-      const result = completeSignIn(jar.get(PENDING_COOKIE)?.value, await body(), clientAddress(req.headers), locale);
+      const input = await body();
+      const result = completeSignIn(jar.get(PENDING_COOKIE)?.value, input, clientAddress(req.headers), locale);
       jar.delete(PENDING_COOKIE);
       refuseSsoOnly(result.userId, locale);
-      await signIn(result.userId, result.groups, result.remember);
+      // The device key is checked (and registered) only now, after the code.
+      await signIn(result.userId, result.groups, result.remember, provesApp({ via: "form", userId: result.userId, input, agent }));
       return NextResponse.json({ ok: true });
     }
     if (action === "reset-request") {
@@ -530,7 +538,7 @@ async function handlePOST(
         await rememberPending(next.pending);
         return NextResponse.json({ ok: true, twoFactor: true });
       }
-      await signIn(userId, groups, wantsRemember(input));
+      await signIn(userId, groups, wantsRemember(input), provesApp({ via: "form", userId, input, agent }));
       return NextResponse.json({ ok: true });
     }
     // ---- A first SSO sign-in that waits to be connected (#101,

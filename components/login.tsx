@@ -16,6 +16,7 @@ import { LegalFooter } from "./legal-footer";
 import { GITHUB_URL, LICENSE_URL } from "@/lib/about";
 import { AppProfilesLink } from "./app-profiles-link";
 import { startAppSignIn } from "@/lib/app-sign-in";
+import { appDeviceKey } from "@/lib/native-app";
 import { SetupRestore } from "./setup-restore";
 
 // "confirm": registered, waiting for the link from the e-mail.
@@ -33,11 +34,16 @@ type Props = Partial<LoginOptions> & {
   sourceUrl?: string;
 };
 
+// Sign-ins in the desktop or mobile app carry its device key: they then
+// last as long as the app's (lib/app-devices.ts).
+const DEVICE_PATHS = new Set(["password", "totp-login", "register", "passkey"]);
 async function post(path: string, body?: unknown) {
+  const device = DEVICE_PATHS.has(path) ? appDeviceKey() : null;
+  const payload = device && body && typeof body === "object" ? { ...body, device } : body;
   const response = await fetch(`/api/auth/${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: payload === undefined ? undefined : JSON.stringify(payload),
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(serverMessage((data as { error?: string }).error) || response.statusText);
@@ -84,11 +90,15 @@ export default function Login({
   // browser (lib/desktop-sign-in.ts): in the app these buttons hand over to
   // it, in the browser ?desktop= carries the app's request through the sign-in.
   const [desktopApp, setDesktopApp] = useState(false);
+  // In the apps the hand-off (passkey, SSO) and a password sign-in with
+  // the app's device key stay signed in anyway; an older app without a key
+  // signs in with the password like a browser and gets the box for it.
+  const [appKey, setAppKey] = useState(false);
   const [desktopRequest, setDesktopRequest] = useState("");
   // The app's sign-in being handed over (#109): its button shows a spinner.
   const [handingOff, setHandingOff] = useState<"" | "sso" | "passkey" | "browser">("");
   // One line: "Stay signed in" on the left, "Forgot password?" on the right.
-  const rememberBox = rememberAvailable && !desktopApp && (
+  const rememberBox = rememberAvailable && (!desktopApp || (passwordForm && !appKey)) && (
     <label className="login-remember" title={t("Nur auf eigenen Geräten. Die Anmeldung bleibt bestehen, solange du Flowplan nutzt.", "Only on your own devices. You stay signed in while you use Flowplan.")}>
       <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
       {t("Angemeldet bleiben", "Stay signed in")}
@@ -107,6 +117,7 @@ export default function Login({
     const desktopReturn = /^[A-Za-z0-9_-]{43}$/.test(request) ? `/api/auth/desktop?challenge=${request}` : "";
     setDesktopRequest(desktopReturn);
     setDesktopApp(/Flowplan(Desktop|Mobile)\//.test(navigator.userAgent));
+    setAppKey(/Flowplan(Desktop|Mobile)\//.test(navigator.userAgent) && !!appDeviceKey());
     const update = () =>
       setLoginUrl(`/api/auth/login?returnTo=${encodeURIComponent(desktopReturn || loginReturnPath(`/${location.hash}`))}`);
     update();

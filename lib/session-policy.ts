@@ -10,7 +10,9 @@
 // - The desktop and mobile apps are a personal device of their own: they
 //   always stay signed in (appSessions "remember", SESSION_APP_REMEMBER,
 //   default on) and end appDays without use (SESSION_APP_DAYS, default 90).
-//   "off" treats them like a browser without "Stay signed in".
+//   "off" treats them like a browser without "Stay signed in". Which
+//   sign-in is the app's is decided by lib/app-devices.ts – the browser
+//   hand-off, or the app's device key – never by the user agent alone.
 // - A remembered session never lasts beyond SESSION_MAX_DAYS after signing
 //   in (default 30 days in the browser, 365 in the apps, and never less than
 //   the inactivity limit). SESSION_GROUPS_HOURS ends SSO sessions earlier, so
@@ -28,7 +30,9 @@ const bounded = (raw: string | undefined, fallback: number, min: number, max: nu
 // The apps name themselves in the user agent (FlowplanMobile/…, the iOS and
 // Android app's web view; FlowplanDesktop/…, the desktop app). Their sign-in
 // sheets (ASWebAuthenticationSession, Custom Tab, the system browser) do not:
-// those are browser sessions.
+// those are browser sessions. Any browser can claim it, so it only decides
+// what the sign-in page shows – the app lifetime needs more
+// (lib/app-devices.ts).
 export const isAppAgent = (agent: string | null | undefined) => /\bFlowplan(Mobile|Desktop)\//.test(agent || "");
 
 // The effective values, and where each comes from (for the administration).
@@ -78,11 +82,12 @@ export function rememberedEnd(created: number, sso: boolean, policy: RememberPol
 // A new session: when it ends, whether it slides, whether it is an app's,
 // and how long its cookie lasts (a remembered one until its latest possible
 // end; the server decides earlier whether it is still alive). The apps stay
-// signed in whichever way they signed in – the password form in the app, or
-// the browser hand-off with a passkey or SSO; a browser only with "Stay
-// signed in", for password, passkey and SSO alike.
-export function sessionTerms(input: { agent: string; remember?: boolean; sso?: boolean }, now = Date.now()) {
-  const app = isAppAgent(input.agent);
+// signed in whichever way they proved to be the app (lib/app-devices.ts: the
+// browser hand-off with a passkey or SSO, or the password form in the app
+// with its device key); a browser – and an app that proves nothing – only
+// with "Stay signed in", for password, passkey and SSO alike.
+export function sessionTerms(input: { app: boolean; remember?: boolean; sso?: boolean }, now = Date.now()) {
+  const app = input.app;
   const policy = app ? rememberPolicy("app") : input.remember ? rememberPolicy("browser") : null;
   if (!policy) {
     const hours = sessionHours();

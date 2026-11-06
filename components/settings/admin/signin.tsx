@@ -209,8 +209,8 @@ export default function SigninSection() {
             field="appSessions"
             label={t("Desktop- und Mobil-Apps", "Desktop and mobile apps")}
             description={t(
-              "Die Apps laufen auf persönlichen Geräten und bleiben angemeldet, solange sie genutzt werden – auch über die Widgets. Zusätzlich schützt die App-Sperre (Face ID, Fingerabdruck oder Code) in den Einstellungen der App.",
-              "The apps run on personal devices and stay signed in while they are used – the widgets included. The app lock (Face ID, fingerprint or passcode) in the app's settings protects them further.",
+              "Die Apps laufen auf persönlichen Geräten und bleiben angemeldet, solange sie genutzt werden – auch über die Widgets. Das gilt für Anmeldungen, die die App belegt: über den Browser (Passkey, SSO) oder mit Passwort und dem Geräteschlüssel der App. Ältere App-Versionen ohne Geräteschlüssel bleiben nach einer Anmeldung mit Passwort so lange angemeldet wie ein Browser. Zusätzlich schützt die App-Sperre (Face ID, Fingerabdruck oder Code) in den Einstellungen der App.",
+              "The apps run on personal devices and stay signed in while they are used – the widgets included. This applies to sign-ins the app proves: through the browser (passkey, SSO) or with the password and the app's device key. Older app versions without a device key stay signed in only as long as a browser after a password sign-in. The app lock (Face ID, fingerprint or passcode) in the app's settings protects them further.",
             )}
             standard={sessions.env.appRemember ? t("Standard (an)", "Default (on)") : t("Standard (aus)", "Default (off)")}
             options={[

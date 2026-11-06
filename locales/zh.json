@@ -7764,7 +7764,7 @@
   "The app's files are stored with the next update.": "应用程序的文件会在下一次更新时保存。",
   "The app's session ends after this many days in which neither the app nor its widgets were used.": "在应用及其小组件都未使用达到此天数后，应用的会话结束。",
   "The apps only get notifications through Expo when they have an Expo token (older app versions).": "只有在应用拥有 Expo 令牌时（较旧的应用版本），应用才通过 Expo 接收通知。",
-  "The apps run on personal devices and stay signed in while they are used – the widgets included. The app lock (Face ID, fingerprint or passcode) in the app's settings protects them further.": "应用运行在个人设备上，只要在使用（包括小组件）就会保持登录。应用设置中的应用锁（面容 ID、指纹或密码）可提供额外保护。",
+  "The apps run on personal devices and stay signed in while they are used – the widgets included. This applies to sign-ins the app proves: through the browser (passkey, SSO) or with the password and the app's device key. Older app versions without a device key stay signed in only as long as a browser after a password sign-in. The app lock (Face ID, fingerprint or passcode) in the app's settings protects them further.": "应用运行在个人设备上，只要在使用（包括小组件）就会保持登录。这适用于应用能够证明的登录：通过浏览器（通行密钥、SSO）或使用密码加应用的设备密钥。没有设备密钥的旧版应用在使用密码登录后，保持登录的时长与浏览器相同。应用设置中的应用锁（面容 ID、指纹或密码）可提供额外保护。",
   "The authenticator app is taken over; please create new recovery codes.": "身份验证器应用已转移；请创建新的恢复码。",
   "The authenticator app of {0} goes; the one of {1} stays.": "{0} 的身份验证器应用将被移除；保留 {1} 的。",
   "The backup comes from a newer Flowplan version. Please update Flowplan to that version first.": "该备份来自更新的 Flowplan 版本。请先将 Flowplan 更新到该版本。",
