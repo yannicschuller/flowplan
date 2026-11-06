@@ -5,7 +5,7 @@ import { serverMessage } from "@/lib/i18n-errors";
 // account sets the instance up) and asking for a password reset link.
 import { BrandMark } from "./brand-mark";
 import { loginReturnPath } from "@/lib/page-location";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent, type MouseEvent } from "react";
 import { ArrowRight, ArrowSquareOut, EnvelopeSimple, Fingerprint, ShieldCheck, SpinnerGap } from "@phosphor-icons/react";
 import { PlainHttpNote } from "./plain-http-note";
 import { browserSupportsWebAuthn, startAuthentication } from "@simplewebauthn/browser";
@@ -15,6 +15,7 @@ import type { LegalLinks } from "@/lib/legal-links";
 import { LegalFooter } from "./legal-footer";
 import { GITHUB_URL, LICENSE_URL } from "@/lib/about";
 import { AppProfilesLink } from "./app-profiles-link";
+import { startAppSignIn } from "@/lib/app-sign-in";
 
 // "confirm": registered, waiting for the link from the e-mail.
 // "totp": the password was right, a code from the authenticator app follows.
@@ -81,6 +82,8 @@ export default function Login({
   // it, in the browser ?desktop= carries the app's request through the sign-in.
   const [desktopApp, setDesktopApp] = useState(false);
   const [desktopRequest, setDesktopRequest] = useState("");
+  // The app's sign-in being handed over (#109): its button shows a spinner.
+  const [handingOff, setHandingOff] = useState<"" | "sso" | "passkey" | "browser">("");
   // One line: "Stay signed in" on the left, "Forgot password?" on the right.
   const rememberBox = rememberAvailable && !desktopApp && (
     <label className="login-remember" title={t("Nur auf eigenen Geräten. Die Anmeldung bleibt bestehen, solange du Flowplan nutzt.", "Only on your own devices. You stay signed in while you use Flowplan.")}>
@@ -195,6 +198,27 @@ export default function Login({
       await post("demo");
       done();
     });
+  // In the apps: the bridge where the app has one, else the link the app
+  // catches. A hand-off that fails or goes unanswered is said here and
+  // reported to the instance's log (lib/app-sign-in.ts).
+  const handOff = (kind: "sso" | "passkey" | "browser") => (event: MouseEvent<HTMLAnchorElement>) => {
+    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    setMessage("");
+    setHandingOff(kind);
+    const how = startAppSignIn(kind === "sso" ? "sso" : null, (failure) => {
+      setHandingOff("");
+      if (!failure) return;
+      setMessage(
+        failure.reason === "failed"
+          ? `${t("Die App konnte die Anmeldung nicht öffnen", "The app could not open the sign-in")} (${failure.error || failure.stage}).`
+          : t(
+              "Die App hat die Anmeldung nicht geöffnet. Aktualisiere die Flowplan-App und versuche es noch einmal. Passiert es wieder, melde es bitte – das Protokoll der Instanz enthält die Einzelheiten.",
+              "The app did not open the sign-in. Update the Flowplan app and try again. If it happens again, please report it – the instance's log has the details.",
+            ),
+      );
+    });
+    if (how === "bridge") event.preventDefault();
+  };
   const switchTo = (next: Mode) => {
     setMode(next);
     setMessage("");
@@ -383,19 +407,27 @@ export default function Login({
             {t("Passwort-Manager füllt nichts aus?", "Password manager not filling in?")}{" "}
             <a
               href="/api/auth/desktop"
+              onClick={handOff("browser")}
+              aria-busy={handingOff === "browser" || undefined}
               title={t(
                 "Öffnet die Anmeldung im Browser – dort füllt dein Passwort-Manager Passwort und Code aus",
                 "Opens the sign-in in your browser, where your password manager fills in the password and code",
               )}
             >
               {t("Im Browser anmelden", "Sign in in the browser")}
-              <ArrowSquareOut size={14} />
+              {handingOff === "browser" ? <SpinnerGap size={14} className="spin" /> : <ArrowSquareOut size={14} />}
             </a>
           </p>
         )}
         {localLogin && mode === "signin" && desktopApp && (
-          <a className="button wide" href="/api/auth/desktop" title={t("Öffnet die Anmeldung im Browser", "Opens the sign-in in your browser")}>
-            <Fingerprint size={19} />
+          <a
+            className="button wide"
+            href="/api/auth/desktop"
+            onClick={handOff("passkey")}
+            aria-busy={handingOff === "passkey" || undefined}
+            title={t("Öffnet die Anmeldung im Browser", "Opens the sign-in in your browser")}
+          >
+            {handingOff === "passkey" ? <SpinnerGap size={19} className="spin" /> : <Fingerprint size={19} />}
             {t("Mit Passkey anmelden", "Sign in with a passkey")}
             <ArrowSquareOut size={16} />
           </a>
@@ -414,8 +446,10 @@ export default function Login({
               className={`button wide${passwordForm ? "" : " primary"}`}
               href={desktopApp ? "/api/auth/desktop?via=sso" : stay ? `${loginUrl}&remember=1` : loginUrl}
               title={desktopApp ? t("Öffnet die Anmeldung im Browser", "Opens the sign-in in your browser") : undefined}
+              onClick={desktopApp ? handOff("sso") : undefined}
+              aria-busy={handingOff === "sso" || undefined}
             >
-              <ShieldCheck size={19} />
+              {handingOff === "sso" ? <SpinnerGap size={19} className="spin" /> : <ShieldCheck size={19} />}
               {t("Mit SSO anmelden", "Sign in with SSO")}
               {desktopApp ? <ArrowSquareOut size={16} /> : <ArrowRight size={18} />}
             </a>

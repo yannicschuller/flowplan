@@ -7591,6 +7591,8 @@
   "The answer from NetBox is not JSON.": "NetBox 的响应不是 JSON。",
   "The API address needs http(s):// and no credentials or parameters.": "API 地址需要 http(s)://，且不需要凭证或参数。",
   "The API token is invalid or has expired.": "API 令牌无效或已过期。",
+  "The app could not open the sign-in": "应用无法打开登录",
+  "The app did not open the sign-in. Update the Flowplan app and try again. If it happens again, please report it – the instance's log has the details.": "应用没有打开登录。请更新 Flowplan 应用后重试。如果再次发生，请报告此问题——实例的日志中有详细信息。",
   "The app is stored for offline use (version {0})": "该应用已存储以供离线使用（版本 {0}）",
   "The app's files are stored with the next update.": "应用程序的文件会在下一次更新时保存。",
   "The apps only get notifications through Expo when they have an Expo token (older app versions).": "只有在应用拥有 Expo 令牌时（较旧的应用版本），应用才通过 Expo 接收通知。",
