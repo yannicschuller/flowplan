@@ -505,6 +505,10 @@ export function pagePropertiesCommand(user: Identity, action: string, input: Rec
       if (!b.tagId) {
         const spaceId = b.spaceId ?? null;
         if (spaceId) scopeSpace(b.workspaceId, spaceId);
+        // A space's rights before the name check: a clash must not tell
+        // outsiders which tags a space has (workspace tags every member
+        // sees anyway, so there the clash still comes first).
+        if (spaceId && !canCreateTags(user, b.workspaceId, spaceId)) throw new HttpError(403, "Keine Schreibrechte in diesem Bereich.");
         const clash = scopeClash("page_tags", b.workspaceId, spaceId, name);
         if (clash) throw new HttpError(409, clashMessage("page_tags", clash));
         if (!canCreateTags(user, b.workspaceId, spaceId))

@@ -591,7 +591,8 @@ export function pageTemplateDependencies(user: Identity, input: Record<string, u
   const workspaceId = z.string().uuid().parse(input.workspaceId);
   const template = requireTemplate(user, input.templateId, workspaceId);
   const spaceId = z.string().uuid().parse(input.spaceId);
-  const space = one<Space>("SELECT * FROM spaces WHERE id=? AND workspace_id=?", spaceId, workspaceId);
-  if (!space || space.deleted_at) throw new HttpError(404, "Bereich nicht gefunden.");
+  // Only a space the person may use the template in – nothing about the
+  // tags of a space they cannot open.
+  requireTemplateSpace(user, workspaceId, spaceId);
   return { items: template.workspace_id === workspaceId ? templateDependencies(template, { workspaceId, spaceId }) : [] };
 }

@@ -1333,8 +1333,12 @@ export function command(
       // source space's tags and definitions, to map, copy or remove first.
       case "page.moveCheck": {
         const p = write();
-        const { sid, destination } = moveDestination(user, p, b);
+        const { sid, destination, destinationParent } = moveDestination(user, p, b);
         if (!destination || destination.deleted_at) throw new HttpError(400, "Ungültiges Verschieben.");
+        // The same destination rights as page.move: nothing about a space
+        // the person may not write in (its name, tags, workspace).
+        if (!destinationParent && !["editor", "owner"].includes(spaceRole(user, destination) || ""))
+          throw new HttpError(403, "Keine Schreibrechte im Zielbereich.");
         result = {
           foreign: destination.id === p.space_id ? [] : moveForeignMeta(descendants(p.id), { workspaceId: destination.workspace_id, spaceId: sid }),
           target: { workspaceId: destination.workspace_id, spaceId: sid, spaceName: destination.name },
@@ -3138,8 +3142,13 @@ export function command(
         // "Teilen an Flowplan": text and link from another app as a page.
         requireMember(user, wid(), "editor");
         const sid = uuid.parse(b.spaceId);
-        if (!one("SELECT 1 FROM spaces WHERE id=? AND workspace_id=? AND deleted_at IS NULL", sid, wid()))
-          throw new HttpError(404, "Bereich nicht gefunden.");
+        const shareSpace = one<Space>("SELECT * FROM spaces WHERE id=? AND workspace_id=? AND deleted_at IS NULL", sid, wid());
+        if (!shareSpace) throw new HttpError(404, "Bereich nicht gefunden.");
+        // A page (or bookmark) lands in the space: only for those who may
+        // write there, as with page.create. A record goes into its database,
+        // whose rights requirePage checks below.
+        if (b.as !== "record" && !["editor", "owner"].includes(spaceRole(user, shareSpace) || ""))
+          throw new HttpError(403, "Kein Zugriff auf Bereich.");
         const shared = z
           .object({
             title: z.string().max(300).optional(),
@@ -3214,8 +3223,11 @@ export function command(
       case "bookmarks.import": {
         requireMember(user, wid(), "editor");
         const sid = uuid.parse(b.spaceId);
-        if (!one("SELECT 1 FROM spaces WHERE id=? AND workspace_id=? AND deleted_at IS NULL", sid, wid()))
-          throw new HttpError(404, "Bereich nicht gefunden.");
+        const importSpace = one<Space>("SELECT * FROM spaces WHERE id=? AND workspace_id=? AND deleted_at IS NULL", sid, wid());
+        if (!importSpace) throw new HttpError(404, "Bereich nicht gefunden.");
+        // The bookmarks database is created in the space – rights first.
+        if (!["editor", "owner"].includes(spaceRole(user, importSpace) || ""))
+          throw new HttpError(403, "Kein Zugriff auf Bereich.");
         const items = parseBookmarksHtml(z.string().max(20_000_000).parse(b.html));
         if (!items.length) throw new HttpError(400, "In der Datei wurden keine Lesezeichen gefunden.");
         const db = bookmarksDatabase(wid(), sid, user.id);
