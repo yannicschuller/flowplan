@@ -212,7 +212,7 @@ export default function SigninSection() {
               "Die Apps laufen auf persönlichen Geräten und bleiben angemeldet, solange sie genutzt werden – auch über die Widgets. Zusätzlich schützt die App-Sperre (Face ID, Fingerabdruck oder Code) in den Einstellungen der App.",
               "The apps run on personal devices and stay signed in while they are used – the widgets included. The app lock (Face ID, fingerprint or passcode) in the app's settings protects them further.",
             )}
-            standard={sessions.env.appRemember ? t("Standard (angemeldet bleiben)", "Default (stay signed in)") : t("Standard (wie im Browser)", "Default (as in the browser)")}
+            standard={sessions.env.appRemember ? t("Standard (an)", "Default (on)") : t("Standard (aus)", "Default (off)")}
             options={[
               { value: "remember", label: t("Angemeldet bleiben", "Stay signed in") },
               { value: "off", label: t("Wie im Browser ohne „Angemeldet bleiben“", "As in the browser without “Stay signed in”") },
