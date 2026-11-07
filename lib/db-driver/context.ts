@@ -15,7 +15,20 @@ export type TxScope = {
   // inside it (timers, microtasks) keep its scope, so they check this.
   ended?: boolean;
   // afterTransaction() callbacks, run once it has ended.
-  after?: (() => void)[];
+  after?: (() => void | Promise<void>)[];
+  // onTransactionRollback() callbacks (lib/db.ts), run when it rolls back.
+  rollback?: (() => void)[];
+};
+// What lib/db.ts adds to every transaction of both drivers (registered
+// there, so the drivers need not import the features): the relation sync
+// before the commit, the upload cleanup after it, and what the first use
+// of a PostgreSQL database does (a staged restore, the object storage
+// queue).
+export type DbHooks = {
+  beforeCommit?: (actor: unknown) => Promise<void>;
+  afterCommit?: () => Promise<void>;
+  afterRollback?: () => void;
+  openPostgres?: () => Promise<void>;
 };
 type State = {
   als: AsyncLocalStorage<TxScope>;
@@ -23,13 +36,16 @@ type State = {
   // a promise that settles when it ends (others wait for it).
   sqliteActive: TxScope | null;
   sqliteDone: Promise<void> | null;
+  hooks: DbHooks;
 };
 const holder = globalThis as unknown as { flowplanDbContext?: State };
 export const dbContext: State = (holder.flowplanDbContext ??= {
   als: new AsyncLocalStorage<TxScope>(),
   sqliteActive: null,
   sqliteDone: null,
+  hooks: {},
 });
+dbContext.hooks ??= {};
 // The transaction the caller runs in, if it is still open.
 export const currentTx = () => {
   const scope = dbContext.als.getStore();
@@ -42,26 +58,30 @@ export const currentTx = () => {
 // counters): before the asynchronous database they relied on "transactions
 // never span an await" and a microtask; inside an asynchronous transaction
 // a microtask would still run inside it.
-export function afterTransaction(fn: () => void) {
+export function afterTransaction(fn: () => void | Promise<void>) {
   const scope = currentTx();
   if (scope) (scope.root.after ??= []).push(fn);
   // Another flow's asynchronous transaction holds the one SQLite
   // connection (this callback interleaved between its awaits): after it.
   else if (dbContext.sqliteActive && dbContext.sqliteDone) void dbContext.sqliteDone.then(() => afterTransaction(fn));
-  else if (dbContext.als.getStore()) dbContext.als.exit(fn);
-  else fn();
+  else if (dbContext.als.getStore()) dbContext.als.exit(() => settle(fn));
+  else settle(fn);
+}
+// Runs a callback whose failure must not disturb the caller (a rejected
+// promise of an asynchronous one is logged, not left unhandled).
+function settle(fn: () => void | Promise<void>) {
+  try {
+    const result = fn();
+    if (result && typeof (result as Promise<void>).catch === "function")
+      (result as Promise<void>).catch((error) => console.error("After-transaction callback failed", error));
+  } catch (error) {
+    console.error("After-transaction callback failed", error);
+  }
 }
 // Called by the drivers when a transaction has ended.
 export function endScope(root: TxScope) {
   root.ended = true;
-  for (const fn of root.after ?? [])
-    dbContext.als.exit(() => {
-      try {
-        fn();
-      } catch (error) {
-        console.error("After-transaction callback failed", error);
-      }
-    });
+  for (const fn of root.after ?? []) dbContext.als.exit(() => settle(fn));
   root.after = undefined;
 }
 

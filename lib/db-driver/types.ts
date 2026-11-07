@@ -16,6 +16,9 @@ export type TxOptions = {
   // transaction-scoped advisory lock, since READ COMMITTED alone would let
   // two "is this the first account?" checks both pass.
   lock?: string;
+  // Who changes the data (lib/types.ts Identity): passed to the relation
+  // sync that runs before the commit (lib/db.ts transaction()).
+  actor?: unknown;
 };
 
 export interface Db {

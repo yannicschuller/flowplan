@@ -11,9 +11,9 @@ import { notificationDefaults, notificationOn } from "./notification-kinds";
 import { emojiPresentation } from "./emoji-presentation";
 import { migrateFormattedText } from "./formatted-text";
 import { migrateSealedSecrets } from "./sealed-values";
-import { noteStatement, noteTransaction, runtimeMetricsOn } from "./runtime-metrics";
-import { dbContext, postgresSchema, postgresUrl } from "./db-driver/context";
-import { legacyPostgres, type LegacyPostgres } from "./db-driver/pg-sync";
+import { noteStatement, noteTransaction as noteTransactionMetric, runtimeMetricsOn } from "./runtime-metrics";
+import { currentTx, dbContext, postgresUrl } from "./db-driver/context";
+import { closeDatabase, database } from "./db-driver";
 // SQL that differs between SQLite and PostgreSQL (lib/db-driver/dialect.ts):
 // `sql` is the dialect of this process, `nowText()` the CURRENT_TIMESTAMP text.
 export { sql, nowText, daysAgoText } from "./db-driver/dialect";
@@ -22,27 +22,7 @@ const globalDb = globalThis as unknown as {
   flowplanSchema?: number;
   flowplanRollback?: (() => void)[];
   flowplanWrites?: number;
-  flowplanLegacyPg?: LegacyPostgres | null;
 };
-// With DATABASE_URL=postgres://… the synchronous helpers below go to
-// PostgreSQL through a blocking bridge (lib/db-driver/pg-sync.ts) – a
-// transitional path until their callers use the asynchronous `db` of
-// lib/db-driver. Without it (the default) nothing changes: SQLite.
-function legacyPg() {
-  if (globalDb.flowplanLegacyPg === undefined) {
-    globalDb.flowplanLegacyPg = postgresUrl() ? legacyPostgres() : null;
-    // What db() does when SQLite opens: a staged restore, the object
-    // storage queue.
-    if (globalDb.flowplanLegacyPg)
-      try {
-        restorePendingIntoPostgres();
-        setupStorage();
-      } catch (error) {
-        console.error("Dateispeicher: Einrichtung fehlgeschlagen", error);
-      }
-  }
-  return globalDb.flowplanLegacyPg;
-}
 // While an asynchronous transaction (lib/db-driver/sqlite.ts) holds the one
 // SQLite connection, synchronous writes from elsewhere would land in it
 // (and be rolled back with it): they are refused. Reads are allowed.
@@ -1378,10 +1358,10 @@ export function migrateSavedSearches(d: DatabaseSync) {
   }
 }
 // Through one/all/run: the same on SQLite and on PostgreSQL.
-function cleanDeletedFiles() {
+async function cleanDeletedFiles() {
   let cursor = "";
   while (true) {
-    const batch = all<{ id: string }>(
+    const batch = await all<{ id: string }>(
       "SELECT id FROM pending_file_deletions WHERE id>? ORDER BY id LIMIT 1000",
       cursor,
     );
@@ -1391,7 +1371,7 @@ function cleanDeletedFiles() {
       cursor = fileId;
       if (
         !/^[a-f0-9-]{36}$/i.test(fileId) ||
-        one("SELECT 1 FROM files WHERE id=?", fileId)
+        (await one("SELECT 1 FROM files WHERE id=?", fileId))
       )
         continue;
       try {
@@ -1401,10 +1381,21 @@ function cleanDeletedFiles() {
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "ENOENT") continue;
       }
-      run("DELETE FROM pending_file_deletions WHERE id=?", fileId);
+      await run("DELETE FROM pending_file_deletions WHERE id=?", fileId);
     }
   }
 }
+
+// What every transaction of both drivers does besides its own statements
+// (lib/db-driver/context.ts): the relation sync before the commit, the
+// upload cleanup after it; on PostgreSQL's first use what opening the
+// SQLite file does.
+dbContext.hooks.beforeCommit = (actor) => flushRelationChanges(actor as Identity | undefined);
+dbContext.hooks.afterCommit = () => cleanDeletedFiles();
+dbContext.hooks.openPostgres = async () => {
+  await restorePendingIntoPostgres();
+  await setupStorage();
+};
 
 export function db() {
   if (globalDb.flowplanDb) {
@@ -1453,20 +1444,17 @@ export function db() {
  `);
   globalDb.flowplanDb = d;
   migrate(d);
-  cleanDeletedFiles();
-  setupStorage(d);
+  // After the open, through the asynchronous helpers (also on PostgreSQL,
+  // dbContext.hooks.openPostgres below): uploads whose deletion was queued,
+  // the object storage queue.
+  void (async () => {
+    await cleanDeletedFiles();
+    await setupStorage(d);
+  })().catch((error) => console.error("Dateispeicher: Einrichtung fehlgeschlagen", error));
   return d;
 }
 // The migrations on another SQLite file (a restored backup that is loaded
 // into PostgreSQL, lib/db-restore.ts).
-// Ends the asynchronous database of lib/db-driver (its Postgres pool), so
-// the next use connects anew (to another schema).
-async function closeAsyncDatabase() {
-  const holder = globalThis as unknown as { flowplanAsyncDb?: { close(): Promise<void> } };
-  const current = holder.flowplanAsyncDb;
-  holder.flowplanAsyncDb = undefined;
-  await current?.close().catch(() => {});
-}
 export function migrateFile(d: DatabaseSync) {
   const saved = globalDb.flowplanSchema;
   globalDb.flowplanSchema = undefined;
@@ -1480,23 +1468,14 @@ export function migrateFile(d: DatabaseSync) {
 // (<data>/restore-pending) is swapped in between. Only for the restore while
 // the instance has no accounts yet (lib/setup-restore.ts): nothing else holds
 // the old handle then.
-export function reopenDatabase() {
-  stopStorage();
-  // PostgreSQL: the staged restore is loaded into it (lib/db-restore.ts).
-  // Another FLOWPLAN_PG_SCHEMA (tests: another instance) gets connections
-  // of its own.
-  if (legacyPg()) {
-    if (globalDb.flowplanLegacyPg!.schema !== postgresSchema()) {
-      globalDb.flowplanLegacyPg!.close();
-      globalDb.flowplanLegacyPg = undefined;
-      void closeAsyncDatabase();
-      legacyPg();
-      noteWrite();
-      return null;
-    }
-    restorePendingIntoPostgres();
+export async function reopenDatabase() {
+  await stopStorage();
+  // PostgreSQL: the next use connects anew – to the schema configured now
+  // (tests: another instance) – and loads a staged restore
+  // (dbContext.hooks.openPostgres, lib/db-restore.ts).
+  if (postgresUrl()) {
+    await closeDatabase();
     noteWrite();
-    setupStorage();
     return null;
   }
   if (globalDb.flowplanDb) forgetStatements(globalDb.flowplanDb);
@@ -1508,8 +1487,8 @@ export function reopenDatabase() {
   noteWrite();
   return db();
 }
-// Prepared statements of one/all/run, per connection, least recently used
-// first. Preparing is a good part of a short query's cost; the SQL texts
+// Prepared statements of the SQLite helpers, per connection, least recently
+// used first. Preparing is a good part of a short query's cost; the SQL texts
 // are a fixed set (values go in as parameters), so a few hundred cover
 // them. Keyed by the connection: a reopened database (restore, tests)
 // starts with an empty cache, and the closed one's statements go with it.
@@ -1544,14 +1523,14 @@ function statement(sql: string): Cached {
 function forgetStatements(d: DatabaseSync) {
   statementCaches().delete(d);
 }
-// Moves with every write through this module (run(), statements that are
-// not plain reads, a rolled back transaction, a reopened database): what
-// was read before may be outdated (lib/read-memo.ts).
+// Moves with every write (run(), statements that are not plain reads, a
+// rolled back transaction, a reopened database): what was read before may
+// be outdated (lib/read-memo.ts).
 export function writeGeneration() {
   return globalDb.flowplanWrites ?? 0;
 }
-// For the Postgres paths (bridge and lib/db-driver/postgres.ts): what they
-// write outdates memoized reads (lib/read-memo.ts) as SQLite writes do.
+// For the Postgres driver: what it writes outdates memoized reads
+// (lib/read-memo.ts) as SQLite writes do.
 export function noteWriteOf(sql: string) {
   if (!READ_ONLY.test(sql)) noteWrite();
 }
@@ -1560,15 +1539,11 @@ function noteWrite() {
 }
 // Schema changes through run() (tests, one-time steps) outdate cached statements.
 const SCHEMA_CHANGE = /^\s*(ALTER|DROP|CREATE)\s/i;
-export function one<T = Record<string, unknown>>(
-  sql: string,
-  ...params: (string | number | null | Uint8Array)[]
-): T | undefined {
-  const pg = legacyPg();
-  if (pg) {
-    noteWriteOf(sql);
-    return pg.one<T>(sql, params);
-  }
+
+// The synchronous SQLite statements behind the asynchronous SQLite driver
+// (lib/db-driver/sqlite.ts) – only for it and SQLite-only code (the
+// migrations, the file checks). Everything else uses one/all/run below.
+export function sqliteOne<T = Record<string, unknown>>(sql: string, ...params: Param[]): T | undefined {
   const start = runtimeMetricsOn ? performance.now() : 0;
   const cached = statement(sql);
   if (dbContext.sqliteActive) outsideAsyncTransaction(!cached.reads);
@@ -1577,34 +1552,16 @@ export function one<T = Record<string, unknown>>(
   if (runtimeMetricsOn) noteStatement(start);
   return row ? ({ ...row } as T) : undefined;
 }
-export function all<T = Record<string, unknown>>(
-  sql: string,
-  ...params: (string | number | null | Uint8Array)[]
-): T[] {
-  const pg = legacyPg();
-  if (pg) {
-    noteWriteOf(sql);
-    return pg.all<T>(sql, params);
-  }
+export function sqliteAll<T = Record<string, unknown>>(sql: string, ...params: Param[]): T[] {
   const start = runtimeMetricsOn ? performance.now() : 0;
   const cached = statement(sql);
   if (dbContext.sqliteActive) outsideAsyncTransaction(!cached.reads);
-  const rows = cached.statement
-    .all(...params)
-    .map((row) => ({ ...row })) as T[];
+  const rows = cached.statement.all(...params).map((row) => ({ ...row })) as T[];
   if (!cached.reads) noteWrite();
   if (runtimeMetricsOn) noteStatement(start);
   return rows;
 }
-export function run(
-  sql: string,
-  ...params: (string | number | null | Uint8Array)[]
-) {
-  const pg = legacyPg();
-  if (pg) {
-    noteWrite();
-    return pg.run(sql, params);
-  }
+export function sqliteRun(sql: string, ...params: Param[]) {
   const start = runtimeMetricsOn ? performance.now() : 0;
   if (dbContext.sqliteActive) outsideAsyncTransaction(true);
   let result;
@@ -1617,53 +1574,75 @@ export function run(
   if (runtimeMetricsOn) noteStatement(start);
   return result;
 }
+
+// The database of this instance (lib/db-driver): SQLite, or PostgreSQL with
+// DATABASE_URL=postgres://…. The first row, or undefined.
+export function one<T = Record<string, unknown>>(sql: string, ...params: Param[]): Promise<T | undefined> {
+  return database().one<T>(sql, ...params);
+}
+export function all<T = Record<string, unknown>>(sql: string, ...params: Param[]): Promise<T[]> {
+  return database().all<T>(sql, ...params);
+}
+// A write; `changes` is the number of rows it touched.
+export function run(sql: string, ...params: Param[]): Promise<{ changes: number }> {
+  return database().run(sql, ...params);
+}
+const isPostgres = () => database().backend === "postgres";
 // The schema as it is, read the same way on both databases (SQLite:
 // sqlite_master and PRAGMA; PostgreSQL: the catalogue of the current schema).
-export function tableNames(): string[] {
-  if (legacyPg())
-    return all<{ name: string }>(
-      "SELECT table_name AS name FROM information_schema.tables WHERE table_schema=current_schema() AND table_type='BASE TABLE' AND table_name<>'flowplan_meta' ORDER BY table_name",
+export async function tableNames(): Promise<string[]> {
+  if (isPostgres())
+    return (
+      await all<{ name: string }>(
+        "SELECT table_name AS name FROM information_schema.tables WHERE table_schema=current_schema() AND table_type='BASE TABLE' AND table_name<>'flowplan_meta' ORDER BY table_name",
+      )
     ).map((t) => t.name);
-  return all<{ name: string }>(
-    // sqlite-only
-    "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND sql NOT LIKE 'CREATE VIRTUAL%' ORDER BY name",
+  return (
+    await all<{ name: string }>(
+      // sqlite-only
+      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND sql NOT LIKE 'CREATE VIRTUAL%' ORDER BY name",
+    )
   )
     .map((t) => t.name)
     .filter((name) => !/^search_index_/.test(name));
 }
-export function tableColumns(table: string): string[] {
+export async function tableColumns(table: string): Promise<string[]> {
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(table)) throw new Error(`Not a table name: ${table}`);
-  if (legacyPg())
-    return all<{ name: string }>(
-      "SELECT column_name AS name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name=? ORDER BY ordinal_position",
-      table,
+  if (isPostgres())
+    return (
+      await all<{ name: string }>(
+        "SELECT column_name AS name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name=? ORDER BY ordinal_position",
+        table,
+      )
     ).map((c) => c.name);
-  return all<{ name: string }>(`PRAGMA table_info("${table}")`).map((c) => c.name); // sqlite-only
+  return (await all<{ name: string }>(`PRAGMA table_info("${table}")`)).map((c) => c.name); // sqlite-only
 }
 // The columns of `table` with a foreign key to `target`.
-export function foreignKeyColumns(table: string, target: string): string[] {
+export async function foreignKeyColumns(table: string, target: string): Promise<string[]> {
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(table)) throw new Error(`Not a table name: ${table}`);
-  if (legacyPg())
-    return all<{ name: string }>(
-      `SELECT a.attname AS name FROM pg_constraint c JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=ANY(c.conkey)
+  if (isPostgres())
+    return (
+      await all<{ name: string }>(
+        `SELECT a.attname AS name FROM pg_constraint c JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=ANY(c.conkey)
        WHERE c.contype='f' AND c.conrelid=to_regclass(?) AND c.confrelid=to_regclass(?)`,
-      table,
-      target,
+        table,
+        target,
+      )
     ).map((c) => c.name);
-  return all<{ table: string; from: string }>(`PRAGMA foreign_key_list("${table}")`) // sqlite-only
+  return (await all<{ table: string; from: string }>(`PRAGMA foreign_key_list("${table}")`)) // sqlite-only
     .filter((f) => f.table === target)
     .map((f) => f.from);
 }
 // The bytes each table takes, indexes included (SQLite: dbstat, when the
 // build has it; PostgreSQL: pg_total_relation_size).
-export function tableSizes(): { table: string; bytes: number }[] {
-  if (legacyPg())
+export async function tableSizes(): Promise<{ table: string; bytes: number }[]> {
+  if (isPostgres())
     return all<{ table: string; bytes: number }>(
       `SELECT c.relname AS "table",pg_total_relation_size(c.oid) AS bytes FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
        WHERE n.nspname=current_schema() AND c.relkind='r'`,
     );
   try {
-    return all<{ table: string; bytes: number }>(
+    return await all<{ table: string; bytes: number }>(
       // sqlite-only
       `SELECT s.tbl_name AS "table", SUM(d.pgsize) AS bytes
        FROM dbstat d JOIN sqlite_schema s ON s.name=d.name
@@ -1676,8 +1655,8 @@ export function tableSizes(): { table: string; bytes: number }[] {
 }
 // The size of the database (SQLite: the file and its write-ahead log;
 // PostgreSQL: the tables of this instance's schema).
-export function databaseBytes(): number {
-  if (legacyPg()) return tableSizes().reduce((n, t) => n + Number(t.bytes), 0);
+export async function databaseBytes(): Promise<number> {
+  if (isPostgres()) return (await tableSizes()).reduce((n, t) => n + Number(t.bytes), 0);
   const dir = resolve(/* turbopackIgnore: true */ process.env.FLOWPLAN_DATA_DIR || "./data");
   let bytes = 0;
   for (const name of ["flowplan.sqlite", "flowplan.sqlite-wal"])
@@ -1687,15 +1666,17 @@ export function databaseBytes(): number {
   return bytes;
 }
 // The primary key's columns of a table (none: []).
-export function tableKey(table: string): string[] {
+export async function tableKey(table: string): Promise<string[]> {
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(table)) throw new Error(`Not a table name: ${table}`);
-  if (legacyPg())
-    return all<{ name: string }>(
-      `SELECT a.attname AS name FROM pg_index i JOIN pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=ANY(i.indkey)
+  if (isPostgres())
+    return (
+      await all<{ name: string }>(
+        `SELECT a.attname AS name FROM pg_index i JOIN pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=ANY(i.indkey)
        WHERE i.indrelid=to_regclass(?) AND i.indisprimary ORDER BY array_position(i.indkey::int2[],a.attnum)`,
-      table,
+        table,
+      )
     ).map((c) => c.name);
-  return all<{ name: string; pk: number }>(`PRAGMA table_info("${table}")`) // sqlite-only
+  return (await all<{ name: string; pk: number }>(`PRAGMA table_info("${table}")`)) // sqlite-only
     .filter((c) => c.pk)
     .sort((a, b) => a.pk - b.pk)
     .map((c) => c.name);
@@ -1704,45 +1685,29 @@ export function tableKey(table: string): string[] {
 // key until the transaction ends (docs/architecture/database.md,
 // "Isolation"): SQLite has one writer at a time anyway; PostgreSQL runs
 // READ COMMITTED and takes a transaction-scoped advisory lock. Keys name
-// what is checked, e.g. `tags:<workspace>`.
-export function lockFor(key: string) {
-  if (legacyPg() && inTransactionSync()) one("SELECT pg_advisory_xact_lock(hashtextextended(?,0))", key);
+// what is checked, e.g. `tags:<workspace>`. The same as tx(fn, { lock }).
+export async function lockFor(key: string) {
+  if (isPostgres() && inTransaction()) await one("SELECT pg_advisory_xact_lock(hashtextextended(?,0))", key);
 }
 // The schema version of the database in use: SQLite's migrations (as run
 // in this process), on PostgreSQL the version its schema was made for
 // (flowplan_meta, written by ensurePostgresSchema). 0 when unknown.
-export function schemaVersion(): number {
-  if (legacyPg()) return Number(one<{ value: string }>("SELECT value FROM flowplan_meta WHERE key='sqlite_schema'")?.value || 0);
+export async function schemaVersion(): Promise<number> {
+  if (isPostgres()) return Number((await one<{ value: string }>("SELECT value FROM flowplan_meta WHERE key='sqlite_schema'"))?.value || 0);
+  db();
   return Number(globalDb.flowplanSchema || 0);
 }
-// Whether a synchronous transaction() is open.
-export function inTransactionSync() {
-  const pg = legacyPg();
-  return pg ? pg.inTransaction() : !!globalDb.flowplanDb?.isTransaction;
+// Whether the caller runs inside a transaction.
+export function inTransaction() {
+  return !!currentTx();
 }
 // Runs `fn` in a savepoint of the current transaction (both databases:
 // a failed statement on PostgreSQL spoils the transaction unless it ran in
 // one); a throw rolls back to it and is passed on. Outside a transaction
 // `fn` just runs. For writes whose failure is caught and ignored.
-// Names by depth: a fixed handful of statements (the statement cache).
-let savepointDepth = 0;
-export function inSavepoint<T>(fn: () => T): T {
-  if (!inTransactionSync()) return fn();
-  const name = `fp_sp_${++savepointDepth}`;
-  try {
-    run(`SAVEPOINT ${name}`);
-    try {
-      const value = fn();
-      run(`RELEASE SAVEPOINT ${name}`);
-      return value;
-    } catch (error) {
-      run(`ROLLBACK TO SAVEPOINT ${name}`);
-      run(`RELEASE SAVEPOINT ${name}`);
-      throw error;
-    }
-  } finally {
-    savepointDepth--;
-  }
+export async function inSavepoint<T>(fn: () => T | Promise<T>): Promise<T> {
+  if (!inTransaction()) return fn();
+  return database().tx(async () => fn());
 }
 const isUniqueViolation = (e: unknown) => {
   const error = e as { code?: string; message?: string } | null;
@@ -1752,20 +1717,23 @@ const isUniqueViolation = (e: unknown) => {
 // key refuses as they are – what SQLite's UPDATE OR IGNORE does, on both
 // databases: all rows at once, and only if that collides, row by row.
 // Inside a transaction.
-export function updateIgnoringConflicts(table: string, set: string, where: string, setParams: Param[], whereParams: Param[]) {
+export async function updateIgnoringConflicts(table: string, set: string, where: string, setParams: Param[], whereParams: Param[]) {
   try {
-    return Number(inSavepoint(() => run(`UPDATE "${table}" SET ${set} WHERE ${where}`, ...setParams, ...whereParams)).changes);
+    return Number((await inSavepoint(() => run(`UPDATE "${table}" SET ${set} WHERE ${where}`, ...setParams, ...whereParams))).changes);
   } catch (error) {
     if (!isUniqueViolation(error)) throw error;
   }
-  const key = tableKey(table).length ? tableKey(table) : tableColumns(table);
+  const primary = await tableKey(table);
+  const key = primary.length ? primary : await tableColumns(table);
   const list = key.map((k) => `"${k}"`).join(",");
   let changed = 0;
-  for (const row of all<Record<string, Param>>(`SELECT ${list} FROM "${table}" WHERE ${where}`, ...whereParams))
+  for (const row of await all<Record<string, Param>>(`SELECT ${list} FROM "${table}" WHERE ${where}`, ...whereParams))
     try {
       changed += Number(
-        inSavepoint(() =>
-          run(`UPDATE "${table}" SET ${set} WHERE ${key.map((k) => `"${k}" IS NOT DISTINCT FROM ?`).join(" AND ")}`, ...setParams, ...key.map((k) => row[k])),
+        (
+          await inSavepoint(() =>
+            run(`UPDATE "${table}" SET ${set} WHERE ${key.map((k) => `"${k}" IS NOT DISTINCT FROM ?`).join(" AND ")}`, ...setParams, ...key.map((k) => row[k])),
+          )
         ).changes,
       );
     } catch (error) {
@@ -1787,13 +1755,13 @@ export function auditListeners() {
 export function onAudit(listener: AuditListener) {
   auditListeners().add(listener);
 }
-export function audit(
+export async function audit(
   actor: string,
   action: string,
   resource: string,
   detail = "",
 ) {
-  run(
+  await run(
     "INSERT INTO audit(id,actor_id,action,resource_id,detail) VALUES(?,?,?,?,?)",
     id(),
     actor,
@@ -1806,107 +1774,35 @@ export function audit(
       listener(actor, action, resource, detail);
     } catch {}
 }
-export function transaction<T>(fn: () => T, actor?: Identity): T {
-  const pg = legacyPg();
-  if (pg) {
-    // The same steps as on SQLite: relation sync before the commit,
-    // rollback hooks, the upload cleanup after it.
-    const start = runtimeMetricsOn ? performance.now() : 0;
-    const outer = !globalDb.flowplanRollback;
-    if (outer) globalDb.flowplanRollback = [];
-    try {
-      const value = pg.transaction(() => {
-        const result = fn();
-        if (outer) flushRelationChanges(actor);
-        return result;
-      });
-      if (outer)
-        try {
-          cleanDeletedFiles();
-        } catch (error) {
-          console.error("Upload cleanup failed", error);
-        }
-      return value;
-    } catch (e) {
-      // Rolled back: memoized reads of it are outdated (lib/read-memo.ts).
-      noteWrite();
-      if (outer)
-        for (const cleanup of globalDb.flowplanRollback || [])
-          try {
-            cleanup();
-          } catch {
-            /* preserve the original failure */
-          }
-      throw e;
-    } finally {
-      if (outer) endTransaction(start);
-    }
-  }
-  // Inside an asynchronous transaction (lib/db-driver/sqlite.ts) on the
-  // same connection: a savepoint of it.
-  const scope = dbContext.als.getStore();
-  if (scope?.backend === "sqlite") return savepoint(scope.root, fn);
-  if (dbContext.sqliteActive) outsideAsyncTransaction(true);
-  const start = runtimeMetricsOn ? performance.now() : 0;
-  beginTransaction();
-  try {
-    const value = fn();
-    commitTransaction(actor);
-    return value;
-  } catch (e) {
-    rollbackTransaction();
-    throw e;
-  } finally {
-    endTransaction(start);
-  }
+// Runs `fn` in a transaction of the database (lib/db-driver: BEGIN
+// IMMEDIATE on SQLite, READ COMMITTED on PostgreSQL); inside another one a
+// savepoint. Every call made inside – also in helpers – takes part in it.
+// The relation sync runs before the commit (with `actor`), the upload
+// cleanup after it, onTransactionRollback() callbacks after a rollback.
+export function transaction<T>(fn: () => T | Promise<T>, actor?: Identity): Promise<T> {
+  return database().tx(async () => fn(), { actor });
 }
-// The steps of transaction(), also taken by the asynchronous SQLite driver
-// (lib/db-driver/sqlite.ts) so both behave the same.
-export function beginTransaction() {
-  db().exec("BEGIN IMMEDIATE");
-  globalDb.flowplanRollback = [];
-}
-export function commitTransaction(actor?: Identity) {
-  flushRelationChanges(actor);
-  db().exec("COMMIT");
-  // SQL remains authoritative even if an upload cannot be unlinked yet.
-  // The durable queue retries on the next commit or process start.
-  try {
-    cleanDeletedFiles();
-  } catch (error) {
-    console.error("Upload cleanup failed", error);
-  }
-}
-export function rollbackTransaction() {
-  db().exec("ROLLBACK");
+// The bookkeeping of the drivers (lib/db-driver): a rollback outdates
+// memoized reads and runs the rollback callbacks of the transaction; a
+// transaction's time goes to the runtime metrics.
+export function noteRollback(root?: { rollback?: (() => void)[] }) {
   noteWrite();
-  for (const cleanup of globalDb.flowplanRollback || []) {
+  if (!root) return;
+  for (const cleanup of root.rollback ?? [])
     try {
       cleanup();
     } catch {
       /* preserve the original failure */
     }
-  }
+  root.rollback = undefined;
 }
-export function endTransaction(start: number) {
-  globalDb.flowplanRollback = undefined;
-  if (runtimeMetricsOn) noteTransaction(start);
+export function noteTransaction(start: number) {
+  if (runtimeMetricsOn) noteTransactionMetric(start);
 }
-export function savepoint<T>(root: { savepoints: number }, fn: () => T): T {
-  const name = `sp_${++root.savepoints}`;
-  db().exec(`SAVEPOINT ${name}`);
-  try {
-    const value = fn();
-    db().exec(`RELEASE ${name}`);
-    return value;
-  } catch (e) {
-    db().exec(`ROLLBACK TO ${name}`);
-    db().exec(`RELEASE ${name}`);
-    noteWrite();
-    throw e;
-  }
-}
+// Undoes something outside the database (a written upload) when the
+// current transaction rolls back.
 export function onTransactionRollback(cleanup: () => void) {
-  if (!globalDb.flowplanRollback) throw new Error("No active transaction");
-  globalDb.flowplanRollback.push(cleanup);
+  const scope = currentTx();
+  if (!scope) throw new Error("No active transaction");
+  (scope.root.rollback ??= []).push(cleanup);
 }

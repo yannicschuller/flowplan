@@ -10,7 +10,8 @@ import { currentTx, dbContext, endScope, type TxScope } from "./context";
 import { numberPlaceholders, postgresDialect, sqliteOnly } from "./dialect";
 import { configureTypes } from "./pg-types.mjs";
 import type { Db, Param, TxOptions } from "./types";
-import { noteWriteOf } from "../db";
+import { noteRollback, noteTransaction, noteWriteOf } from "../db";
+import { afterCommit } from "./sqlite";
 
 configureTypes(pg);
 
@@ -75,25 +76,31 @@ export function createPostgresDb(url: string, options: PostgresOptions = {}): Db
       const connection = await pool.connect();
       const root = { depth: 0, backend: "postgres", client: connection, savepoints: 0 } as TxScope;
       root.root = root;
+      const start = performance.now();
+      let committed = false;
       try {
         await connection.query("BEGIN");
         if (txOptions.lock) await connection.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [txOptions.lock]);
         const result = await dbContext.als.run(root, fn);
+        await dbContext.als.run(root, async () => dbContext.hooks.beforeCommit?.(txOptions.actor));
         await connection.query("COMMIT");
+        committed = true;
         return result;
       } catch (error) {
         await connection.query("ROLLBACK").catch(() => {});
-        noteWriteOf("ROLLBACK");
+        noteRollback(root);
         throw error;
       } finally {
         connection.release();
+        noteTransaction(start);
         endScope(root);
+        if (committed) await afterCommit();
       }
     },
     inTransaction: () => currentTx()?.backend === "postgres",
     async columns(table: string) {
       const rows = (
-        await pool.query<{ column_name: string }>(
+        await client().query<{ column_name: string }>(
           "SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name=$1 ORDER BY ordinal_position",
           [table],
         )
@@ -117,6 +124,7 @@ async function nested<T>(scope: TxScope, fn: () => Promise<T>, options: TxOption
     return result;
   } catch (error) {
     await connection.query(`ROLLBACK TO SAVEPOINT ${name}`).catch(() => {});
+    noteRollback();
     throw error;
   }
 }

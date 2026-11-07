@@ -6,7 +6,8 @@
 //
 // SQLite unless DATABASE_URL=postgres://… is set. The synchronous helpers of
 // lib/db.ts keep working next to it during the transition.
-import { postgresSchema, postgresUrl } from "./context";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { currentTx, dbContext, postgresSchema, postgresUrl } from "./context";
 import { createPostgresDb } from "./postgres";
 import { createSqliteDb } from "./sqlite";
 import type { Db, Param, Row } from "./types";
@@ -19,7 +20,47 @@ const holder = globalThis as unknown as { flowplanAsyncDb?: Db };
 export function database(): Db {
   if (holder.flowplanAsyncDb) return holder.flowplanAsyncDb;
   const url = postgresUrl();
-  return (holder.flowplanAsyncDb = url ? createPostgresDb(url, { schema: postgresSchema() }) : createSqliteDb());
+  return (holder.flowplanAsyncDb = url ? opened(createPostgresDb(url, { schema: postgresSchema(), max: poolSize() })) : createSqliteDb());
+}
+const poolSize = () => Math.max(1, Number(process.env.FLOWPLAN_PG_POOL) || 10);
+
+// A PostgreSQL database does on its first use what opening the SQLite file
+// does (lib/db.ts db()): a staged restore is loaded, the object storage
+// queue set up (dbContext.hooks.openPostgres). Every call waits for that;
+// the calls it makes itself do not.
+function opened(inner: Db): Db {
+  const opening = new AsyncLocalStorage<boolean>();
+  let ready: Promise<void> | null = null;
+  let done = false;
+  const wait = (): Promise<void> | null => {
+    if (done || opening.getStore() || currentTx()) return null;
+    return (ready ??= opening.run(true, async () => {
+      try {
+        await dbContext.hooks.openPostgres?.();
+      } catch (error) {
+        console.error("Database: opening steps failed", error);
+      } finally {
+        done = true;
+      }
+    }));
+  };
+  const gate = <T>(fn: () => Promise<T>): Promise<T> => {
+    const pending = wait();
+    return pending ? pending.then(fn) : fn();
+  };
+  return {
+    ...inner,
+    backend: inner.backend,
+    dialect: inner.dialect,
+    one: (sql, ...params) => gate(() => inner.one(sql, ...params)),
+    all: (sql, ...params) => gate(() => inner.all(sql, ...params)),
+    run: (sql, ...params) => gate(() => inner.run(sql, ...params)),
+    exec: (sql) => gate(() => inner.exec(sql)),
+    tx: (fn, options) => gate(() => inner.tx(fn, options)),
+    columns: (table) => gate(() => inner.columns(table)),
+    inTransaction: () => inner.inTransaction(),
+    close: () => inner.close(),
+  } as Db;
 }
 // Ends the Postgres pool (scripts, tests); SQLite stays open.
 export async function closeDatabase() {
