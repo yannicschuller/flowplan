@@ -2015,6 +2015,7 @@
   "Contains all records, properties and record documents regardless of view filters. The ZIP also contains a CSV table.": "Contains all records, properties and record documents regardless of view filters. The ZIP also contains a CSV table.",
   "contains any of": "contains any of",
   "Contains confidential data – keep it safe.": "Contains confidential data – keep it safe.",
+  "Contains links to:": "Contains links to:",
   "contains none of": "contains none of",
   "contains the text": "contains the text",
   "contains(value, search)": "contains(value, search)",

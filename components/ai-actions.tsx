@@ -24,6 +24,11 @@ export type AiActionsRequest = {
   mode?: "general" | "transcript";
 };
 
+// Hosts of the web addresses a proposed text names (shown before running).
+function linkHosts(markdown: string) {
+  return [...new Set([...markdown.matchAll(/https?:\/\/([^\s/?#)>\]"'<]+)/gi)].map((m) => m[1].toLowerCase()))].slice(0, 10);
+}
+
 const ICONS = { create_page: FilePlus, create_tasks: ListChecks, append_text: TextAlignLeft, create_record: Table, update_record: PencilSimple } as const;
 
 export function AiActionsPanel({
@@ -187,7 +192,13 @@ export function AiActionsPanel({
                       ))}
                     </dl>
                   )}
-                  {p.view.markdown && <pre className="ai-action-text">{p.view.markdown.length > 1200 ? `${p.view.markdown.slice(0, 1200)} …` : p.view.markdown}</pre>}
+                  {/* The whole text (scrolls), and the addresses its links lead to – images are never kept (lib/ai/actions.ts). */}
+                  {p.view.markdown && <pre className="ai-action-text">{p.view.markdown}</pre>}
+                  {p.view.markdown && linkHosts(p.view.markdown).length > 0 && (
+                    <p className="ai-action-links">
+                      {t("Enthält Links zu:", "Contains links to:")} {linkHosts(p.view.markdown).join(", ")}
+                    </p>
+                  )}
                 </li>
               );
             })}

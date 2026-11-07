@@ -2015,6 +2015,7 @@
   "Contains all records, properties and record documents regardless of view filters. The ZIP also contains a CSV table.": "包含所有记录、属性和记录文档，无论视图筛选器如何。ZIP 文件还包含一个 CSV 表格。",
   "contains any of": "包含任何",
   "Contains confidential data – keep it safe.": "包含机密数据——请妥善保管。",
+  "Contains links to:": "包含指向以下位置的链接：",
   "contains none of": "不包含任何",
   "contains the text": "包含文本",
   "contains(value, search)": "contains(值, 搜索)",

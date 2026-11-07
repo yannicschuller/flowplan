@@ -36,6 +36,7 @@ import { requireRow } from "../row-documents";
 import { readableDatabase, readOnlyFieldIds } from "../field-access";
 import { validateCellPatch } from "../database-operations";
 import { markdownToHtml } from "../markdown-import";
+import { aiAnswerHref } from "./insert";
 import { cleanHtml, htmlState } from "../document-server";
 import { documentExtensions, documentSchema } from "../document-schema";
 import type { Field, Identity, Page, Space } from "../types";
@@ -513,7 +514,7 @@ export function runActions(user: Identity, raw: unknown): { results: ActionResul
             title: action.title,
             kind: "document",
           }) as { id: string };
-          if (action.markdown.trim()) appendHtml(user, id, markdownToHtml(action.markdown));
+          if (action.markdown.trim()) appendHtml(user, id, markdownToHtml(action.markdown, aiAnswerHref));
           audit(user.id, "ai.action", id, "create_page");
           return { index, tool, ok: true, pageId: id, title: action.title, undo: { action: "page.delete", pageId: id } };
         }
@@ -523,7 +524,7 @@ export function runActions(user: Identity, raw: unknown): { results: ActionResul
           return { index, tool, ok: true, pageId: action.pageId };
         }
         case "append_text": {
-          appendHtml(user, action.pageId, markdownToHtml(action.markdown));
+          appendHtml(user, action.pageId, markdownToHtml(action.markdown, aiAnswerHref));
           audit(user.id, "ai.action", action.pageId, "append_text");
           return { index, tool, ok: true, pageId: action.pageId };
         }

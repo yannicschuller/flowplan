@@ -2015,6 +2015,7 @@
   "Contains all records, properties and record documents regardless of view filters. The ZIP also contains a CSV table.": "Contient tous les enregistrements, propriétés et documents d’enregistrement, indépendamment des filtres de vue. Le ZIP contient aussi un tableau CSV.",
   "contains any of": "contient l’un de",
   "Contains confidential data – keep it safe.": "Contient des données confidentielles – à conserver en lieu sûr.",
+  "Contains links to:": "Contient des liens vers :",
   "contains none of": "ne contient aucun de",
   "contains the text": "contient le texte",
   "contains(value, search)": "contains(valeur, recherche)",
