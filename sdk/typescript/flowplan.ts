@@ -3394,12 +3394,12 @@ export class FlowplanClient {
     return this.json<Record<string, unknown>>("GET", `/api/plugins/${encodeURIComponent(pluginId)}/query`, { query }, options);
   }
 
-  /** Custom domain and look of a publication — The domain with its verification record (TXT `_flowplan-verify.<host>`) and file, and the publication's theme. Set with `domain.add`, `domain.remove` and `publication.theme` via POST /api/command. (GET /api/domains) */
+  /** Custom domain and look of a publication — The domain with its verification record (TXT `_flowplan-verify.<host>`) and the publication's theme. Set with `domain.add`, `domain.remove` and `publication.theme` via POST /api/command. (GET /api/domains) */
   async publicationDomain(query: { page: string }, options?: RequestOptions): Promise<Record<string, unknown>> {
     return this.json<Record<string, unknown>>("GET", `/api/domains`, { query }, options);
   }
 
-  /** Verify a publication's custom domain — Checks the TXT record `_flowplan-verify.<host>`, then `https://<host>/.well-known/flowplan-verify.txt`. Needs edit rights on the page. (POST /api/domains/verify) */
+  /** Verify a publication's custom domain — Checks the DNS TXT record `_flowplan-verify.<host>`, the only accepted proof. Needs edit rights on the page. (POST /api/domains/verify) */
   async verifyPublicationDomain(body: {
     pageId: string;
   }, options?: RequestOptions): Promise<Record<string, unknown>> {

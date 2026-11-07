@@ -208,7 +208,6 @@ async function customHostResponse(request: NextRequest, state: HostState, host: 
       }),
     );
   if (route.kind === "notFound") return plain("Not found", 404);
-  if (route.kind === "text") return plain(route.body);
   if (route.kind === "redirect") {
     const url = request.nextUrl.clone();
     url.pathname = route.path;

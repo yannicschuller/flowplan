@@ -2359,11 +2359,11 @@ class FlowplanClient:
         return self._json("GET", "/api/plugins/" + _p(plugin_id) + "/query", query=dict(query) if query else None, headers=headers)
 
     def publication_domain(self, query: "PublicationDomainQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
-        """Custom domain and look of a publication — The domain with its verification record (TXT `_flowplan-verify.<host>`) and file, and the publication's theme. Set with `domain.add`, `domain.remove` and `publication.theme` via POST /api/command. (GET /api/domains)"""
+        """Custom domain and look of a publication — The domain with its verification record (TXT `_flowplan-verify.<host>`) and the publication's theme. Set with `domain.add`, `domain.remove` and `publication.theme` via POST /api/command. (GET /api/domains)"""
         return self._json("GET", "/api/domains", query=dict(query) if query else None, headers=headers)
 
     def verify_publication_domain(self, body: dict[str, Any], headers: Optional[dict[str, str]] = None, idempotency_key: Optional[str] = None) -> dict[str, Any]:
-        """Verify a publication's custom domain — Checks the TXT record `_flowplan-verify.<host>`, then `https://<host>/.well-known/flowplan-verify.txt`. Needs edit rights on the page. (POST /api/domains/verify)"""
+        """Verify a publication's custom domain — Checks the DNS TXT record `_flowplan-verify.<host>`, the only accepted proof. Needs edit rights on the page. (POST /api/domains/verify)"""
         return self._json("POST", "/api/domains/verify", json_body=body, headers=headers, idempotent=True, idempotency_key=idempotency_key)
 
     def custom_domain_allowed(self, query: "CustomDomainAllowedQuery", headers: Optional[dict[str, str]] = None) -> bytes:

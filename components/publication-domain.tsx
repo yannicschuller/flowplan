@@ -1,8 +1,8 @@
 "use client";
 // The custom domain and look of a publication (lib/custom-domains.ts): the
-// owner enters a host name, sets the TXT record shown here (or serves the
-// verification file), verifies, and picks logo, accent colour, favicon and
-// footer text.
+// owner enters a host name, sets the TXT record shown here (the only proof
+// accepted), verifies, and picks logo, accent colour, favicon and footer
+// text.
 import { useT } from "./i18n";
 import { useCallback, useEffect, useState } from "react";
 import { Copy } from "@phosphor-icons/react";
@@ -17,7 +17,6 @@ type DomainState = {
     checkedAt: number | null;
     lastError: string | null;
     record: { type: string; name: string; value: string };
-    file: { url: string; content: string };
   } | null;
   theme: Theme;
 };
@@ -120,8 +119,8 @@ export function PublicationDomain({
                 <>
                   <p className="muted">
                     {t(
-                      "Lege diesen TXT-Eintrag bei deinem DNS-Anbieter an (oder liefere die Prüfdatei unter der Domain aus) und richte die Domain per CNAME oder A-Eintrag auf diese Instanz. Das Zertifikat besorgt der Reverse Proxy.",
-                      "Create this TXT record at your DNS provider (or serve the verification file under the domain) and point the domain to this instance with a CNAME or A record. The reverse proxy obtains the certificate.",
+                      "Lege diesen TXT-Eintrag bei deinem DNS-Anbieter an und richte die Domain per CNAME oder A-Eintrag auf diese Instanz. Bestätigt wird die Domain nur über den TXT-Eintrag. Das Zertifikat besorgt der Reverse Proxy.",
+                      "Create this TXT record at your DNS provider and point the domain to this instance with a CNAME or A record. Only the TXT record verifies the domain. The reverse proxy obtains the certificate.",
                     )}
                   </p>
                   <div className="domain-record">
@@ -132,9 +131,6 @@ export function PublicationDomain({
                       <Copy size={14} />
                     </button>
                   </div>
-                  <p className="muted">
-                    {t("Oder als Datei:", "Or as a file:")} <code>{state.domain.file.url}</code>
-                  </p>
                   {state.domain.lastError && <p className="form-error">{state.domain.lastError}</p>}
                 </>
               )}

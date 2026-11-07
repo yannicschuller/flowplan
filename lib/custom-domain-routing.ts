@@ -3,21 +3,21 @@
 // the files the pages need and the build's static assets – never the app,
 // the rest of the API or sign-in. Pure, so tests check it without a server.
 export const CUSTOM_HOST_HEADER = "x-flowplan-custom-host";
-export const VERIFY_PATH = "/.well-known/flowplan-verify.txt";
 
 export type HostState =
   | { status: "none" }
-  // Added, not verified yet: only the verification file is served.
-  | { status: "pending"; verifyToken: string }
+  // Added, not verified yet (only a DNS TXT record verifies): nothing is
+  // served – least of all the verification token, which would let whoever
+  // added the host prove control over it to themselves.
+  | { status: "pending" }
   // Verified, but the publication ended (or has a password).
-  | { status: "gone"; verifyToken: string }
-  | { status: "verified"; verifyToken: string; token: string };
+  | { status: "gone" }
+  | { status: "verified"; token: string };
 
 export type HostRoute =
   | { kind: "rewrite"; path: string }
   | { kind: "redirect"; path: string }
   | { kind: "next" }
-  | { kind: "text"; body: string }
   | { kind: "notFound" };
 
 const ID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
@@ -27,7 +27,6 @@ const ASSET = /^\/(_next\/static\/|_next\/image$|fonts\/|icons\/|pdfjs\/|typst\/
 export function customHostRoute(state: HostState, pathname: string, method: string): HostRoute {
   if (state.status === "none") return { kind: "next" };
   const read = method === "GET" || method === "HEAD";
-  if (pathname === VERIFY_PATH && read) return { kind: "text", body: state.verifyToken };
   if (state.status !== "verified" || !read) return { kind: "notFound" };
   const token = state.token.replace(/[^\w-]/g, "");
   if (!token) return { kind: "notFound" };
