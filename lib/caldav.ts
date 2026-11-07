@@ -32,6 +32,8 @@ const BASE = "/api/caldav";
 /* ---------- Accesses ---------- */
 
 export function createCalDavAccess(user: Identity, pageId: string, viewId: string) {
+  // A credential of its own would outlive the API token (as for CardDAV).
+  if (user.apiScope) throw new HttpError(403, "Mit einem API-Token nicht erlaubt.");
   const page = requirePage(user, pageId);
   const view = viewOf(page.id, viewId);
   if (!view) throw new HttpError(404, "Kalenderansicht nicht gefunden.");

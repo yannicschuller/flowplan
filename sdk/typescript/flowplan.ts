@@ -1808,7 +1808,7 @@ export type CommandMemberInvite = {
   role: "editor" | "viewer";
 };
 
-/** Create the iCalendar link of a calendar view */
+/** Create the iCalendar link of a calendar view. Only signed in in the browser or the app: refused with 403 for personal API tokens, since the link would outlive the token. */
 export type CommandCalendarFeed = {
   action: "calendar.feed";
   pageId: string;

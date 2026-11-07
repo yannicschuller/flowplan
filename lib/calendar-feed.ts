@@ -33,6 +33,8 @@ function calendarView(pageId: string, viewId: string) {
 
 // A new secret link for this person and view; an older one stops working.
 export function createCalendarFeed(user: Identity, pageId: string, viewId: string) {
+  // A credential of its own would outlive the API token (as for CardDAV).
+  if (user.apiScope) throw new HttpError(403, "Mit einem API-Token nicht erlaubt.");
   const page = requirePage(user, pageId);
   calendarView(page.id, viewId);
   const token = randomBytes(24).toString("base64url");
