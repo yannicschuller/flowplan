@@ -547,6 +547,8 @@ adds about a microsecond on SQLite (two promise layers) – a request with
 
 ## 8. What Redis/cluster mode needs from this layer
 
+(Written before phase 3a; what was built: §13.)
+
 - **Commit hooks:** `afterTransaction` is where Yjs updates, presence and
   invalidations get published (Redis pub/sub) – only after the data is
   committed. For delivery guarantees: write an outbox row in the transaction,
@@ -819,7 +821,7 @@ the transaction: the caller sees it).
 - **No `statement_timeout`/`lock_timeout`** on the pool's connections yet
   (the bridge had `lock_timeout=10s`); a stuck lock waits. Set them per
   connection (pool `options`) with cluster mode, together with
-  `idle_in_transaction_session_timeout`.
+  `idle_in_transaction_session_timeout`. *(Done in phase 3a, §13.)*
 - **Sequential awaits** are the default everywhere (`mapAsync`, permission
   checks page by page): fine on SQLite, ~100 µs per round trip on Postgres
   (§7). Hot paths to batch or parallelise first: the sidebar/bootstrap
@@ -840,7 +842,8 @@ the transaction: the caller sees it).
 - **Named prepared statements** need PgBouncer ≥ 1.21 with
   `max_prepared_statements`, or `prepare: false` (§8).
 - **Search** still uses the plain-table stop-gap (§5a) and its triggers;
-  the object storage queue still polls every 0.5 s on Postgres.
+  the object storage queue still polls every 0.5 s on Postgres. *(The
+  queue: LISTEN/NOTIFY since phase 3a, §13.)*
 - `scripts/check-promises.mjs` is a tool, not yet a CI gate (the
   deliberate handles it reports would need an allow-list); run it after
   larger changes, or turn it into a lint rule (`no-misused-promises`).
@@ -1028,7 +1031,32 @@ shared queues (files due/in flight, mail, push, webhooks, chat apps).
 
 ### Results
 
-RESULTS_PLACEHOLDER
+- **`npx tsc --noEmit -p .`** clean; `node scripts/db-dialect-scan.mjs`
+  zero on every SQLite-only pattern (`LIKE` 76, as in phase 2).
+- **SQLite** (`npm test`): SQLITE_RESULT.
+- **PostgreSQL 16** (`DATABASE_URL=…`, `FLOWPLAN_TEST_REDIS_URL` with a real
+  Redis 7): PG_RESULT. The cluster tests also ran against the in-process
+  Redis double.
+- **`next build`** passes; `npm run check:standalone` (SQLite) and
+  `scripts/check-standalone-postgres.mjs` pass. The standalone build ran
+  in cluster mode (two instances, Redis, an S3 stand-in) for the load test
+  below.
+- **Deployment:** `docker compose config` of `deploy/compose/cluster`
+  valid; `helm lint --strict` and `helm template` of the chart valid with
+  and without `cluster.enabled` (Helm 3.16).
+- **Found by the load test and fixed:** the 18 offline change log triggers
+  deleted and re-inserted the page's row (SQLite's `INSERT OR REPLACE`
+  pattern) – two concurrent writes to one page (a comment and a save)
+  failed with a unique violation on PostgreSQL, in single-container mode
+  too. The trigger translator now makes those inserts upserts
+  (`pg-triggers.ts` `UPSERTS`; test: eight comments on one page at once).
+  `flowplan_meta.schema_hash` makes such a changed translation reach
+  existing databases at the same schema version.
+- **Seen, not fixed (search):** deadlocks between the search indexer and
+  request-time index writes (`DELETE FROM search_index/search_dirty`) under
+  load – the search queue and store are being replaced by the `tsvector`
+  work (branch `db-search`), which should take row locks in a fixed order or
+  claim the queue with `SKIP LOCKED`.
 
 ### What is left (open risks)
 
@@ -1072,3 +1100,77 @@ RESULTS_PLACEHOLDER
   supported by the small client (one endpoint; a managed Redis with a
   stable address works).
 - `scripts/check-promises.mjs` is still a tool, not a CI gate.
+
+## 14. Sizing (load test of cluster mode)
+
+`scripts/load-test-cluster.mjs` (with `scripts/loadtest/`, see its
+README): a fresh schema per run (`scripts/db-schema.mjs`), N instances of
+the standalone build in cluster mode, a round-robin balancer in front
+(`scripts/loadtest/balancer.mjs`, each request to the next instance – so
+saves, live streams and cursors of one person land on different instances
+and the fan-out goes through Redis), an in-memory S3 stand-in, the seeder
+writing accounts straight into PostgreSQL (`seed.mjs --database`), then
+`run.mjs` ramping virtual users (VUs): 200 accounts, 120 documents, a
+database with 2,000 records; every 7th VU an editor typing with live
+co-editors, the others the read/write mix of the SQLite load test (think
+time 1.5 s ± 50 %). The knee is the first step with read p95 > 500 ms,
+write p95 > 1 s or errors > 1 % (as for SQLite); "serves" is the step
+before it.
+
+```sh
+npm run build
+DATABASE_URL=postgres://… REDIS_URL=redis://… taskset -c 2,3 \
+  node scripts/load-test-cluster.mjs --pin 0,1 --instances 1,2 \
+  --steps 10,15,20,25,30,40,50,60 --duration 40 --out /tmp/lt-cluster.json
+```
+
+Machine: 4 vCPU Intel Xeon @ 2.10 GHz, 16 GB, PostgreSQL 16 and Redis 7
+on the same host, Node 22. **The host was shared** with another test
+suite during the runs (load average 4–15 on 4 cores): the numbers are a
+lower bound and show the trend, not a calibrated capacity.
+
+**Pinned (each instance one core of its own, `--pin 0,1`; generator and
+balancer on cores 2–3; PostgreSQL unpinned):**
+
+| VUs | 1 instance: req/s | read p95 | write p95 | errors | 2 instances: req/s | read p95 | write p95 | errors |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 10 | 10.3 | 304 | 116 | 0 | 11.2 | 178 | 64 | 0 |
+| 15 | 18.9 | 304 | 119 | 0 | 19.5 | 242 | 78 | 0 |
+| 20 | 21.0 | 371 | 161 | 0 | 22.0 | 274 | 84 | 0 |
+| 25 | 29.4 | 433 | 164 | 0 | 31.2 | 298 | 105 | 0 |
+| 30 | 34.4 | **1,204** | 247 | 0 | 37.7 | 264 | 99 | 0 |
+| 40 | 40.1 | 3,905 | 321 | 0 | 48.9 | 476 | 146 | 0 |
+| 50 | 42.8 | 5,862 | 443 | 1.5 % | 61.4 | **650** | 157 | 0 |
+| 60 | 42.3 | 7,638 | 459 | 3.3 % | 54.8 | 4,120 | 434 | 0.1 % |
+
+- **1 instance serves 25 VUs** (knee at 30); **2 instances serve 40**
+  (knee at 50, just over the line: read p95 650 ms) – 1.6× for the second
+  instance, throughput 42 → 61 req/s. The second instance moves the limit;
+  PostgreSQL (unpinned, on the shared cores) and the balancer take part of
+  the gain.
+- **What saturates first:** reads that issue many sequential queries –
+  `bootstrap` (sidebar, permissions page by page) and `db.open` (all
+  records) – then `search` (the stop-gap of §5a). Writes and live editing
+  stay fast long after: at 50 VUs on 2 instances `doc.sync` p95 170 ms
+  and the cross-instance fan-out (one editor's save arriving at another's
+  stream through Redis) p95 175 ms.
+- **Unpinned** (instances float over the shared 4 cores): both setups had
+  their knee at 30 VUs (1 instance: read p95 1,038 ms; 2 instances: 915 ms),
+  but 2 instances carried more – 0 % errors up to 60 VUs (1 instance:
+  6 % at 60, timeouts) and up to 62 req/s (1 instance: 41). On one small
+  host the machine, not the instance count, is the limit.
+- **Compared with SQLite** (one process, the earlier load test: knee at
+  ~20 active VUs): one PostgreSQL instance on one core serves ~25 here,
+  on a busier machine. The expected 35–40 per instance is not reached on
+  this host; the hot paths above are what to batch first (§12: sequential
+  awaits; `bootstrap`'s permission checks, `filterAsync(pages, pageRole)`).
+- **For the sizing guide** (a VU is a busy person – one request every
+  1.5 s or typing continuously; real people are far less active, see the
+  SQLite load test's notes on translating VUs into people): plan
+  **~20–25 active VUs per instance with one dedicated core**, add
+  instances linearly as long as PostgreSQL has headroom (it was not the
+  bottleneck here: write p95 stayed under 500 ms everywhere), give each
+  instance `FLOWPLAN_PG_POOL` 10–20 and PostgreSQL
+  `max_connections ≥ instances × (pool + 2) + reserve`. Re-measure on the
+  target hardware with the command above; a dedicated host (nothing else
+  running) will give higher numbers.
