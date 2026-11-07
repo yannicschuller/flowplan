@@ -3,6 +3,14 @@ export async function register() {
     process.env.NEXT_RUNTIME === "nodejs" &&
     process.env.NEXT_PHASE !== "phase-production-build"
   ) {
+    // Cluster mode (FLOWPLAN_CLUSTER=1): PostgreSQL, Redis and S3 are
+    // checked first – the process exits naming what is missing – then the
+    // bus, the leader election and the heartbeat start (lib/cluster). Both
+    // modes: a graceful shutdown on SIGTERM/SIGINT.
+    const { startInstance } = await import("./lib/cluster/runtime");
+    const { poolStats } = await import("./lib/db-driver");
+    const { buildInfo } = await import("./lib/build-info");
+    await startInstance({ pool: poolStats, version: buildInfo().version || null });
     // A new instance on a public address without FLOWPLAN_SETUP_TOKEN: the
     // first visitor could create the administrator (lib/local-auth.ts).
     try {

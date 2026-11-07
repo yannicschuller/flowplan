@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { HttpError } from "@/lib/auth";
 import { watchPrefix } from "@/lib/document-live";
+import { onShutdown } from "@/lib/cluster/runtime";
 import { shareAccess } from "@/lib/share-presence";
 import { shareCookieOf, withShareCookie } from "@/lib/share-access";
 export const runtime = "nodejs";
@@ -28,6 +29,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
       start(controller) {
         const send = (chunk: string) => controller.enqueue(encoder.encode(chunk));
         const unwatch = watchPrefix(pageId, rowId, clientId, send);
+        // The instance stops: the browser reconnects to another one.
+        const forget = onShutdown(() => stop());
         const ping = setInterval(async () => {
           try {
             await check();
@@ -42,6 +45,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
         stop = () => {
           clearInterval(ping);
           unwatch();
+          forget();
           try {
             controller.close();
           } catch {}

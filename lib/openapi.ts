@@ -1488,6 +1488,9 @@ const operations: { path: string; method: "get" | "post"; op: Op }[] = [
 // they are not for API tokens. tests/openapi.test.ts checks that every
 // other route file has at least one path here.
 export const routesOutsideSpec: Record<string, string> = {
+  "app/api/health/live/route.ts": "Liveness probe for orchestrators (Kubernetes, load balancers); /api/health is the documented check",
+  "app/api/health/ready/route.ts": "Readiness probe for orchestrators (database, and in cluster mode Redis and object storage); /api/health is the documented check",
+  "app/api/admin/system/route.ts": "Administration only; tokens never administer",
   "app/api/issue-sync/hook/[token]/route.ts": "GitHub/GitLab issue webhooks, verified by their own token and signature",
   "app/api/admin/instance-backup/route.ts": "Administration only; tokens never administer",
   "app/api/admin/instance-move/route.ts": "Administration only; tokens never administer",

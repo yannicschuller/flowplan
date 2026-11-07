@@ -148,6 +148,7 @@ import {
   workspaceUsage,
 } from "@/lib/instance-ops";
 import { filterAsync, mapAsync } from "../../../lib/each-async";
+import { onShutdown } from "@/lib/cluster/runtime";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 function error(e: unknown) {
@@ -878,6 +879,8 @@ async function handleGET(
         start(controller) {
           const send = (chunk: string) => controller.enqueue(encoder.encode(chunk));
           const unwatch = watchDocument(documentKey(pageId, rowId, generation), clientId, send);
+          // The instance stops: the browser reconnects to another one.
+          const forget = onShutdown(() => stop());
           // Every keepalive checks session and read access again: whoever
           // loses access stops receiving changes within 15 seconds.
           const ping = setInterval(async () => {
@@ -894,6 +897,7 @@ async function handleGET(
           stop = () => {
             clearInterval(ping);
             unwatch();
+            forget();
             try {
               controller.close();
             } catch {}
@@ -931,6 +935,8 @@ async function handleGET(
         start(controller) {
           const send = (chunk: string) => controller.enqueue(encoder.encode(chunk));
           const unwatch = watchBoard(page.id, user.id, send);
+          // The instance stops: the browser reconnects to another one.
+          const forget = onShutdown(() => stop());
           const ping = setInterval(async () => {
             try {
               if (!(await boardAllowed())) return stop();
@@ -942,6 +948,7 @@ async function handleGET(
           stop = () => {
             clearInterval(ping);
             unwatch();
+            forget();
             try {
               controller.close();
             } catch {}

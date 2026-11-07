@@ -96,3 +96,12 @@ export const db: Db = {
   columns: (table) => database().columns(table),
   close: () => closeDatabase(),
 };
+
+// The Postgres pool of this process, for the system view and the heartbeat
+// (null on SQLite or before the first use).
+export function poolStats(): { size: number; total: number; idle: number; waiting: number } | null {
+  const current = holder.flowplanAsyncDb as (Db & { pool?: { totalCount: number; idleCount: number; waitingCount: number } }) | undefined;
+  const pool = current?.pool;
+  if (!pool) return null;
+  return { size: poolSize(), total: pool.totalCount, idle: pool.idleCount, waiting: pool.waitingCount };
+}

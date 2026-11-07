@@ -7,7 +7,7 @@
 // (/api/admin/operations) and the switch of the usage statistics. The
 // maintenance notice has its own section (#admin/maintenance).
 // Anchors: #admin/monitoring/<health|traffic|people|signins|refused|storage|
-// deliveries|ai|queues|events|actions|workers|instance|alerts|metrics>.
+// deliveries|ai|queues|events|actions|system|workers|instance|alerts|metrics>.
 import { useEffect, useState, type ReactNode } from "react";
 import {
   ArrowClockwise,
@@ -29,6 +29,7 @@ import {
   type Icon,
 } from "@phosphor-icons/react";
 import type { MonitoringEvent, MonitoringOverview } from "@/lib/admin-monitoring";
+import type { SystemOverview } from "@/lib/cluster/system";
 import type { OpsOverview, WorkerStatus } from "@/lib/admin-ops";
 import { AI_FEATURES } from "@/lib/ai/features";
 import { settingsHash } from "@/lib/settings-sections";
@@ -103,6 +104,7 @@ export default function MonitoringSection() {
           </div>
         </>
       )}
+      {d && <System s={d.system} />}
       <Workers ops={ops.data} />
       <InstanceNumbers />
       {ops.data && <AlertsForm id="alerts" alerts={ops.data.alerts} busy={ops.busy} note={ops.note} send={ops.send} />}
@@ -790,6 +792,152 @@ function Workers({ ops }: { ops: OpsOverview | null }) {
               </ul>
             </div>
           )}
+        </div>
+      )}
+    </SettingGroup>
+  );
+}
+
+/* ---------- System (single container or cluster) ---------- */
+
+// How the installation runs (lib/cluster/system.ts): mode, database, Redis,
+// object storage, the instances alive and the leader, the shared queues.
+function System({ s }: { s: SystemOverview }) {
+  const t = useT();
+  const state = (check: { ok: boolean; ms: number; error?: string } | null, off: string) =>
+    !check ? (
+      <StatusBadge tone="off">{off}</StatusBadge>
+    ) : check.ok ? (
+      <StatusBadge tone="ok">{t(`erreichbar · ${ms(check.ms)}`, `reachable · ${ms(check.ms)}`)}</StatusBadge>
+    ) : (
+      <StatusBadge tone="error" title={check.error}>
+        {t("nicht erreichbar", "not reachable")}
+      </StatusBadge>
+    );
+  const db = s.database;
+  const pool = db.pool;
+  const q = s.queues;
+  const rows: [string, ReactNode][] = [
+    [
+      t("Betriebsart", "Mode"),
+      s.mode === "cluster"
+        ? t(`Cluster · ${num(s.instances.length)} Instanzen`, `Cluster · ${num(s.instances.length)} instances`)
+        : t("Einzelner Container", "Single container"),
+    ],
+    [
+      t("Datenbank", "Database"),
+      <>
+        {db.kind === "postgres" ? "PostgreSQL" : "SQLite"}
+        {db.version ? ` ${db.version}` : ""} {state(db.check, "")}
+      </>,
+    ],
+  ];
+  if (pool)
+    rows.push([
+      t("Verbindungen dieser Instanz", "Connections of this instance"),
+      t(
+        `${num(pool.total)} von ${num(pool.size)} offen · ${num(pool.idle)} frei · ${num(pool.waiting)} wartend`,
+        `${num(pool.total)} of ${num(pool.size)} open · ${num(pool.idle)} idle · ${num(pool.waiting)} waiting`,
+      ),
+    ]);
+  if (db.timeouts)
+    rows.push([
+      t("Zeitlimits", "Timeouts"),
+      t(
+        `Anweisung ${ms(db.timeouts.statementMs)} · Sperre ${ms(db.timeouts.lockMs)} · offene Transaktion ${ms(db.timeouts.idleInTransactionMs)}`,
+        `statement ${ms(db.timeouts.statementMs)} · lock ${ms(db.timeouts.lockMs)} · idle transaction ${ms(db.timeouts.idleInTransactionMs)}`,
+      ),
+    ]);
+  rows.push([
+    "Redis",
+    s.redis ? (
+      <>
+        {s.redis.host}
+        {s.redis.version ? ` · ${s.redis.version}` : ""} {state(s.redis.check, "")}
+        <small className="muted">
+          {" "}
+          {t(`${num(s.redis.published)} gesendet · ${num(s.redis.received)} empfangen`, `${num(s.redis.published)} sent · ${num(s.redis.received)} received`)}
+          {s.redis.failed ? t(` · ${num(s.redis.failed)} fehlgeschlagen`, ` · ${num(s.redis.failed)} failed`) : ""}
+        </small>
+      </>
+    ) : (
+      <StatusBadge tone="off">{t("nicht verwendet", "not used")}</StatusBadge>
+    ),
+  ]);
+  rows.push([
+    t("Objektspeicher", "Object storage"),
+    s.objectStorage.configured ? (
+      <>
+        {s.objectStorage.host} · {s.objectStorage.bucket} {s.objectStorage.check && state(s.objectStorage.check, "")}
+        {s.objectStorage.retrying && <StatusBadge tone="warn">{t("Wiederholung", "retrying")}</StatusBadge>}
+      </>
+    ) : (
+      <StatusBadge tone="off">{t("nicht eingerichtet", "not set up")}</StatusBadge>
+    ),
+  ]);
+  rows.push([
+    t("Leitende Instanz", "Leader"),
+    s.mode === "single" ? (
+      t("diese (einzige) Instanz", "this (only) instance")
+    ) : s.leader.id ? (
+      <>
+        {s.leader.id} {s.leader.self && <StatusBadge tone="ok">{t("diese Instanz", "this instance")}</StatusBadge>}
+        {s.leader.since ? <small className="muted"> {t(`seit ${dateTime(s.leader.since)}`, `since ${dateTime(s.leader.since)}`)}</small> : null}
+      </>
+    ) : (
+      <StatusBadge tone="warn" title={s.leader.error || undefined}>
+        {t("wird gewählt", "being elected")}
+      </StatusBadge>
+    ),
+  ]);
+  rows.push([
+    t("Gemeinsame Warteschlangen", "Shared queues"),
+    t(
+      `Dateien ${num(q.storageDue)} fällig, ${num(q.storageInFlight)} in Arbeit · E-Mail ${num(q.mailDue)} · Push ${num(q.pushDue)} · Webhooks ${num(q.webhooksDue)} · Chat-Apps ${num(q.messengersDue)}`,
+      `files ${num(q.storageDue)} due, ${num(q.storageInFlight)} in progress · mail ${num(q.mailDue)} · push ${num(q.pushDue)} · webhooks ${num(q.webhooksDue)} · chat apps ${num(q.messengersDue)}`,
+    ),
+  ]);
+  return (
+    <SettingGroup
+      id="system"
+      title={t("System", "System")}
+      description={t(
+        "Wie diese Installation läuft: ein Container oder mehrere Instanzen (Cluster) mit gemeinsamer Datenbank, Redis und Objektspeicher.",
+        "How this installation runs: one container, or several instances (cluster) sharing the database, Redis and object storage.",
+      )}
+    >
+      {rows.map(([label, value]) => (
+        <SettingRow key={label} label={label}>
+          <span className="mon-value">{value}</span>
+        </SettingRow>
+      ))}
+      {s.mode === "cluster" && (
+        <div className="mon-table">
+          {s.instancesError && <p className="mon-error">{s.instancesError}</p>}
+          <ResponsiveTable<SystemOverview["instances"][number]>
+            label={t("Instanzen", "Instances")}
+            rows={s.instances}
+            rowKey={(i) => i.id}
+            columns={[
+              { key: "id", header: t("Instanz", "Instance"), primary: true, render: (i) => (i.id === s.instance ? t(`${i.id} (diese)`, `${i.id} (this one)`) : i.id) },
+              {
+                key: "state",
+                header: t("Status", "Status"),
+                render: (i) => (
+                  <StatusBadge tone={i.ready ? "ok" : "warn"}>
+                    {i.leader ? t("leitend", "leader") : i.ready ? t("bereit", "ready") : t("fährt herunter", "stopping")}
+                  </StatusBadge>
+                ),
+              },
+              {
+                key: "pool",
+                header: t("Verbindungen", "Connections"),
+                render: (i) => (i.pool ? t(`${num(i.pool.total - i.pool.idle)} belegt · ${num(i.pool.waiting)} wartend`, `${num(i.pool.total - i.pool.idle)} busy · ${num(i.pool.waiting)} waiting`) : "–"),
+              },
+              { key: "memory", header: t("Speicher", "Memory"), hideOnPhone: true, render: (i) => (i.rssMb ? `${num(i.rssMb)} MB` : "–") },
+              { key: "seen", header: t("Zuletzt gemeldet", "Last heartbeat"), render: (i) => ago(i.seenAt, t) },
+            ]}
+          />
         </div>
       )}
     </SettingGroup>

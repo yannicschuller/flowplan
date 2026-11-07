@@ -42,6 +42,7 @@ import {
 import { pushSummary } from "./push-status";
 import type { UpdateStatus } from "./update-check";
 import type { Identity } from "./types";
+import { systemOverview } from "./cluster/system";
 
 const MINUTE = 60_000,
   HOUR = 3_600_000,
@@ -344,6 +345,9 @@ export async function monitoringOverview(now = Date.now(), range: RequestRange =
     ai: await aiUsage(now, 14),
     queues: await queues(),
     events: await monitoringEvents(now, update),
+    // Single container or cluster, database, Redis, object storage,
+    // instances and leader (lib/cluster/system.ts).
+    system: await systemOverview(now),
   };
 }
 export type MonitoringOverview = Awaited<ReturnType<typeof monitoringOverview>>;
