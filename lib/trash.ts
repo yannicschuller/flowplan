@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { all, audit, one, run, transaction } from "./db";
+import { all, audit, one, run, transaction, daysAgoText } from "./db";
 import { HttpError } from "./auth";
 import { instanceSettings } from "./instance-settings";
 import { pageRole, requireMember } from "./permissions";
@@ -149,9 +149,9 @@ export function purgeTemplate(user: Identity, input: Record<string, unknown>) {
 export function expireTrash(days = trashDays()) {
   const result = { pages: 0, spaces: 0, records: 0, templates: 0 };
   if (!(days > 0)) return result;
-  const cutoff = `-${days} days`;
+  const cutoff = daysAgoText(days);
   for (const space of all<Space>(
-    "SELECT * FROM spaces WHERE deleted_at IS NOT NULL AND deleted_at<datetime('now',?)",
+    "SELECT * FROM spaces WHERE deleted_at IS NOT NULL AND deleted_at<?",
     cutoff,
   ))
     transaction(() => {
@@ -161,7 +161,7 @@ export function expireTrash(days = trashDays()) {
     });
   const expired = all<Page>(
     `SELECT p.* FROM pages p JOIN spaces s ON s.id=p.space_id
-     WHERE p.deleted_at IS NOT NULL AND p.deleted_at<datetime('now',?) AND s.deleted_at IS NULL`,
+     WHERE p.deleted_at IS NOT NULL AND p.deleted_at<? AND s.deleted_at IS NULL`,
     cutoff,
   );
   const byWorkspace = new Map<string, Page[]>();
@@ -175,11 +175,11 @@ export function expireTrash(days = trashDays()) {
     });
   transaction(() => {
     result.records = Number(
-      run("DELETE FROM row_trash WHERE deleted_at<datetime('now',?)", cutoff).changes,
+      run("DELETE FROM row_trash WHERE deleted_at<?", cutoff).changes,
     );
     result.templates = Number(
       run(
-        "DELETE FROM templates WHERE deleted_at IS NOT NULL AND deleted_at<datetime('now',?)",
+        "DELETE FROM templates WHERE deleted_at IS NOT NULL AND deleted_at<?",
         cutoff,
       ).changes,
     );

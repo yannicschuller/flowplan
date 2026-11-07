@@ -60,6 +60,16 @@ function pieces(node, sf) {
   }
   return null;
 }
+// datetime('now'[,'±N unit']) → the nowText() argument computing it.
+const TIME = /datetime\('now'(?:,'[^']*')?\)/;
+const UNIT = { second: 1000, minute: 60_000, hour: 3_600_000, day: 86_400_000 };
+function timeArg(text) {
+  const m = /^datetime\('now'(?:,'([+-])(\d+) (second|minute|hour|day)s?')?\)$/.exec(text);
+  if (!m) return null;
+  if (!m[1]) return "nowText()";
+  const ms = Number(m[2]) * UNIT[m[3]];
+  return `nowText(Date.now() ${m[1]} ${ms.toLocaleString("en-US").replace(/,/g, "_")})`;
+}
 // A substitution that could add `?` placeholders.
 const mayAddPlaceholders = (expr, sf) => /\?|placeholder|\.map\(|join\(|marks|holes|params|args/i.test(expr.getText(sf));
 
@@ -76,7 +86,7 @@ for (const file of files) {
       const full = p.texts.map((t) => t.text).join("${}");
       if (SQLISH.test(full)) {
         if (doIgnore && /\bINSERT\s+OR\s+IGNORE\s+INTO\b/i.test(full)) ignoreEdit(node, p, full);
-        if (doNow && /\bCURRENT_TIMESTAMP\b/.test(full)) nowEdit(node, p);
+        if (doNow && (/\bCURRENT_TIMESTAMP\b/.test(full) || TIME.test(full))) nowEdit(node, p);
       }
     }
     ts.forEachChild(node, visit);
@@ -144,11 +154,19 @@ for (const file of files) {
     let unsafeFrom = Infinity;
     p.texts.forEach((t, index) => {
       if (index > 0 && mayAddPlaceholders(p.subs[index - 1], sf)) unsafeFrom = Math.min(unsafeFrom, index);
-      const re = /\?|\bCURRENT_TIMESTAMP\b|'(?:[^']|'')*'/g;
+      const re = /\?|\bCURRENT_TIMESTAMP\b|datetime\('now'(?:,'[^']*')?\)|'(?:[^']|'')*'/g;
       let m;
       while ((m = re.exec(t.raw))) {
         if (m[0] === "?") placeholders++;
-        else if (m[0] === "CURRENT_TIMESTAMP") found.push({ piece: index, offset: t.start + m.index, before: placeholders });
+        else if (m[0] === "CURRENT_TIMESTAMP") found.push({ piece: index, offset: t.start + m.index, length: m[0].length, before: placeholders, arg: "nowText()" });
+        else if (m[0].startsWith("datetime(")) {
+          const arg = timeArg(m[0]);
+          if (!arg) {
+            manual.push(`${where(node)}  ${m[0]} (modifier)`);
+            continue;
+          }
+          found.push({ piece: index, offset: t.start + m.index, length: m[0].length, before: placeholders, arg });
+        }
       }
     });
     if (found.some((f) => f.piece >= unsafeFrom)) {
@@ -162,10 +180,10 @@ for (const file of files) {
         return;
       }
     for (const f of found) {
-      edits.push({ start: f.offset, end: f.offset + "CURRENT_TIMESTAMP".length, text: "?" });
+      edits.push({ start: f.offset, end: f.offset + f.length, text: "?" });
       // Insert the argument: after argument #before (0 = after the SQL).
       const after = callArgs[f.before];
-      edits.push({ start: after.getEnd(), end: after.getEnd(), text: ", nowText()", order: f.before });
+      edits.push({ start: after.getEnd(), end: after.getEnd(), text: `, ${f.arg}`, order: f.before });
     }
     needsNow = true;
     edited++;

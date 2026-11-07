@@ -8,6 +8,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Identity } from "../lib/types";
+import { daysAgoText } from "../lib/db-driver/dialect";
 process.env.FLOWPLAN_DATA_DIR = mkdtempSync(join(tmpdir(), "flowplan-comment-recipients-"));
 const { one, all, run, id } = await import("../lib/db");
 const { createWorkspace } = await import("../lib/seed");
@@ -110,11 +111,11 @@ test("old notifications are pruned: read after 90 days, unread after a year, bey
   run("DELETE FROM notifications");
   const add = (userId: string, age: number, read: boolean) =>
     run(
-      "INSERT INTO notifications(id,user_id,body,kind,created_at,read_at) VALUES(?,?,?,'comment',datetime('now',?),?)",
+      "INSERT INTO notifications(id,user_id,body,kind,created_at,read_at) VALUES(?,?,?,'comment',?,?)",
       id(),
       userId,
       "x",
-      `-${age} days`,
+      daysAgoText(age),
       read ? "2026-01-01 00:00:00" : null,
     );
   add(follower.id, 100, true); // read, old: goes

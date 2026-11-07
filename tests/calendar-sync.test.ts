@@ -1,3 +1,4 @@
+import { nowText } from "../lib/db-driver/dialect";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
@@ -247,7 +248,7 @@ test("Google: records go out, events come in, changes and deletions both ways", 
 
   // Both sides changed: the later change wins, with an audit line.
   act({ action: "row.update", pageId, rowId: planning, version: version(planning), cells: { title: "Hier geändert" } });
-  run("UPDATE rows SET updated_at=datetime('now','-1 hour') WHERE id=?", planning);
+  run("UPDATE rows SET updated_at=? WHERE id=?", nowText(Date.now() - 3_600_000), planning);
   google.touch({ ...google.events.get(pushed.id)!, summary: "Dort geändert" });
   result = await sync.syncCalendarMapping(mapping);
   assert.equal(result.conflicts, 1);

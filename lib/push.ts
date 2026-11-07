@@ -4,7 +4,7 @@ import { createECDH } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { z } from "zod";
-import { all, one, run, id } from "./db";
+import { all, one, run, id, nowText } from "./db";
 import { HttpError } from "./auth";
 import { pageRole } from "./permissions";
 import type { Identity, Page } from "./types";
@@ -236,7 +236,7 @@ export async function flushPushQueue(
     now,
   );
   run(
-    "DELETE FROM push_deliveries WHERE notification_id IN (SELECT id FROM notifications WHERE created_at<datetime('now','-7 days'))",
+    "DELETE FROM push_deliveries WHERE notification_id IN (SELECT id FROM notifications WHERE created_at<?)", nowText(Date.now() - 604_800_000),
   );
   const jobs = all<{
     id: number;

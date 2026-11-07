@@ -1,3 +1,4 @@
+import { nowText } from "../lib/db-driver/dialect";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
@@ -141,7 +142,7 @@ test("bulk deletes, purging and expiry", () => {
     () => act({ action: "row.trash.restore", trashId: ids[0] }),
     /nicht im Papierkorb/,
   );
-  run("UPDATE row_trash SET deleted_at=datetime('now','-40 days')");
+  run("UPDATE row_trash SET deleted_at=?", nowText(Date.now() - 3_456_000_000));
   assert.equal(expireRowTrash(), 1);
   assert.deepEqual(listRowTrash(owner, wid), []);
 });

@@ -7,7 +7,7 @@
 // – uses it; a nested tx() is a SAVEPOINT.
 import pg from "pg";
 import { currentTx, dbContext, endScope, type TxScope } from "./context";
-import { numberPlaceholders, postgresDialect, sqliteOnly, withoutRowid } from "./dialect";
+import { numberPlaceholders, postgresDialect, sqliteOnly } from "./dialect";
 import { configureTypes } from "./pg-types.mjs";
 import type { Db, Param, TxOptions } from "./types";
 import { noteWriteOf } from "../db";
@@ -58,10 +58,10 @@ export function createPostgresDb(url: string, options: PostgresOptions = {}): Db
     dialect: postgresDialect,
     pool,
     async one<T>(sql: string, ...params: Param[]) {
-      return withoutRowid(sql, (await query(sql, params)).rows)[0] as T | undefined;
+      return (await query(sql, params)).rows[0] as T | undefined;
     },
     async all<T>(sql: string, ...params: Param[]) {
-      return withoutRowid(sql, (await query(sql, params)).rows) as T[];
+      return (await query(sql, params)).rows as T[];
     },
     async run(sql: string, ...params: Param[]) {
       return { changes: (await query(sql, params)).rowCount ?? 0 };

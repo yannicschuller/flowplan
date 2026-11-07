@@ -132,12 +132,12 @@ export function validateCellPatch(
 // edit after 10 quiet minutes keeps the previous state.
 export function autoDatabaseSnapshot(user: Identity, page: Page) {
   const recent = one(
-    `SELECT 1 WHERE EXISTS(SELECT 1 FROM snapshots WHERE page_id=? AND created_at>datetime('now','-10 minutes'))
-       OR EXISTS(SELECT 1 FROM pages WHERE id=? AND updated_at>datetime('now','-10 minutes'))
-       OR EXISTS(SELECT 1 FROM rows WHERE page_id=? AND updated_at>datetime('now','-10 minutes'))`,
-    page.id,
-    page.id,
-    page.id,
+    `SELECT 1 WHERE EXISTS(SELECT 1 FROM snapshots WHERE page_id=? AND created_at>?)
+       OR EXISTS(SELECT 1 FROM pages WHERE id=? AND updated_at>?)
+       OR EXISTS(SELECT 1 FROM rows WHERE page_id=? AND updated_at>?)`,
+    page.id, nowText(Date.now() - 600_000),
+    page.id, nowText(Date.now() - 600_000),
+    page.id, nowText(Date.now() - 600_000),
   );
   if (!recent) databaseSnapshot(user, page);
 }

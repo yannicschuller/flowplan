@@ -100,7 +100,11 @@ function requireHookPage(user: Identity, workspaceId: string, pageId: string | n
 function hookReader(hook: { workspace_id: string; created_by: string | null }): Identity | null {
   const userId =
     hook.created_by ??
-    one<{ user_id: string }>("SELECT user_id FROM members WHERE workspace_id=? AND role='owner' ORDER BY rowid LIMIT 1", hook.workspace_id)?.user_id;
+    // (The one who created the workspace, if still an owner.)
+    one<{ user_id: string }>(
+      "SELECT m.user_id FROM members m JOIN workspaces w ON w.id=m.workspace_id WHERE m.workspace_id=? AND m.role='owner' ORDER BY CASE WHEN m.user_id=w.created_by THEN 0 ELSE 1 END,m.user_id LIMIT 1",
+      hook.workspace_id,
+    )?.user_id;
   const user = userId ? one<User>("SELECT * FROM users WHERE id=? AND disabled=0", userId) : undefined;
   return user ? ({ ...user, groups: [], isAdmin: false } as Identity) : null;
 }

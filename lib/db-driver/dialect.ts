@@ -144,20 +144,6 @@ export const nowText = (ms: number = Date.now()) => new Date(ms).toISOString().s
 // The same text `days` days ago (SQLite: datetime('now','-N days')).
 export const daysAgoText = (days: number) => nowText(Date.now() - days * 86_400_000);
 
-// Rows from Postgres without the emulated rowid column (pg-schema.ts),
-// unless the statement asked for it – SQLite's SELECT * never has it.
-const mentionsRowid = new Map<string, boolean>();
-export function withoutRowid<T>(sql: string, rows: T[]): T[] {
-  let mentions = mentionsRowid.get(sql);
-  if (mentions === undefined) {
-    mentions = /\browid\b/i.test(sql);
-    if (mentionsRowid.size < 5000) mentionsRowid.set(sql, mentions);
-  }
-  if (mentions || !rows.length || !Object.prototype.hasOwnProperty.call(rows[0], "rowid")) return rows;
-  for (const row of rows) delete (row as Record<string, unknown>).rowid;
-  return rows;
-}
-
 // A write refused by a unique key (SQLite: "UNIQUE constraint failed";
 // Postgres: SQLSTATE 23505). Under SQLite a check-then-insert never races
 // (one writer at a time); under Postgres the key is the last word.
@@ -218,6 +204,7 @@ const SQLITE_ONLY: [RegExp, string][] = [
   [/\brandomblob\s*\(/i, "randomblob → d.randomHex()"],
   [/\binstr\s*\(/i, "instr → d.instr()"],
   [/\blast_insert_rowid\s*\(/i, "last_insert_rowid → RETURNING"],
+  [/\browid\b/i, "rowid → seq (schema 93) or a key"],
   [/\bPRAGMA\b/i, "PRAGMA → db.columns() / information_schema"],
   [/\bsqlite_(master|schema)\b/i, "sqlite_master → information_schema"],
   [/\bIS\s+NOT\s+\?/i, "IS NOT ? → d.isNot()"],

@@ -52,7 +52,7 @@ const fieldsOf = (pageId: string) => JSON.parse(one<{ fields: string }>("SELECT 
 // The inbox: the person's capture database (the first one they set, like
 // the capture widget without a target), while they may still add to it.
 export function inboxTarget(user: Identity) {
-  for (const { page_id } of all<{ page_id: string }>("SELECT page_id FROM capture_targets WHERE user_id=? ORDER BY rowid", user.id)) {
+  for (const { page_id } of all<{ page_id: string }>("SELECT page_id FROM capture_targets WHERE user_id=? ORDER BY seq", user.id)) {
     const access = pageAccess(user, page_id);
     if (!access || access.locked || access.encrypted || access.page.locked || access.page.kind !== "database" || rank[access.role] < 2) continue;
     return { id: access.page.id, name: access.page.title || ct("Ohne Titel", "Untitled"), icon: access.page.icon, kind: access.page.kind };

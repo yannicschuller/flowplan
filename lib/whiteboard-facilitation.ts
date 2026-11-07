@@ -188,7 +188,7 @@ function applyToBoard(page: Page, user: Identity, updates: Uint8Array[]) {
     if (Y.encodeStateAsUpdate(doc, before).length <= 2) return;
     const items = whiteboardItems(doc);
     if (items.length > 5000) throw new HttpError(413, "Zu viele Elemente auf dem Whiteboard.");
-    if (!one("SELECT id FROM snapshots WHERE page_id=? AND created_at>datetime('now','-5 minutes')", page.id))
+    if (!one("SELECT id FROM snapshots WHERE page_id=? AND created_at>?", page.id, nowText(Date.now() - 300_000)))
       run(
         "INSERT INTO snapshots(id,page_id,state,html,title,created_by) VALUES(?,?,?,?,?,?)",
         id(),

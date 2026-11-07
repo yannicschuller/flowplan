@@ -2,6 +2,7 @@ import { duplicatePages } from "./page-tree";
 import { placeAfter } from "./space-order";
 import { z } from "zod";
 import { all, one, run, id, nowText } from "./db";
+import { removePages } from "./search-store";
 import { HttpError } from "./auth";
 import { memberRole, requireMember, spaceRole } from "./permissions";
 import type { Field, Identity, Page, Space } from "./types";
@@ -111,11 +112,7 @@ export function purgePages(workspaceId: string, pages: Page[]) {
     run("UPDATE inbound_messages SET page_id=NULL,row_id=NULL WHERE page_id=?", page.id);
   }
   // The full-text index in one pass per batch (a scan, page_id is not indexed).
-  const list = [...ids];
-  for (let i = 0; i < list.length; i += 500) {
-    const batch = list.slice(i, i + 500);
-    run(`DELETE FROM search_index WHERE page_id IN (${batch.map(() => "?").join(",")})`, ...batch);
-  }
+  removePages([...ids]);
   for (const page of pages) run("DELETE FROM pages WHERE id=?", page.id);
 }
 // A space in the trash with all its pages, for good. Inside a transaction.

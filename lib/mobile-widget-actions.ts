@@ -26,7 +26,6 @@ import { sanitizeFileName, stripLocation, verifiedMime } from "./upload-safety";
 import { enforceUserStorage, maxUploadMbFor } from "./user-limits";
 import { visibleFields } from "./field-access";
 import {
-  ensureWidgetTables,
   finishFocus,
   focusRow,
   focusState,
@@ -339,13 +338,11 @@ function stopTimer(user: Identity) {
   );
   if (running) command(writerOf(user), { action: "time.stop", pageId: running.page_id, rowId: running.row_id, fieldId: running.field_id });
   // A focus session ends with its timer.
-  ensureWidgetTables();
   if (run("DELETE FROM widget_focus WHERE user_id=?", user.id).changes) markLiveActivity(user.id, "focus");
   return { timer: null };
 }
 
 function startFocus(user: Identity, input: z.infer<(typeof actionSchemas)["focus.start"]>, now = Date.now()) {
-  ensureWidgetTables();
   finishFocus(user, now);
   const target = input.pageId && input.rowId && input.fieldId ? { pageId: input.pageId, rowId: input.rowId, fieldId: input.fieldId } : null;
   if ((input.pageId || input.rowId || input.fieldId) && !target) throw new HttpError(400, ct("Ungültige Anfrage.", "Invalid request."));

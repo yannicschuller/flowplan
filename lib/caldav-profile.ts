@@ -13,7 +13,7 @@
 // the hash of its own token.
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
-import { all, id, one, run, db } from "./db";
+import { all, id, one, run} from "./db";
 import { HttpError } from "./auth";
 import { pageRole, requirePage } from "./permissions";
 import { translate } from "./i18n";
@@ -25,15 +25,6 @@ const MAX_CALENDARS = 20;
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 const appUrl = () => (process.env.APP_URL || "http://localhost:3000").replace(/\/$/, "");
 
-const prepared = new WeakSet<object>();
-function ensureTable() {
-  const d = db();
-  if (prepared.has(d)) return;
-  d.exec(
-    "CREATE TABLE IF NOT EXISTS caldav_profile_links(token_hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,calendars TEXT NOT NULL,expires INTEGER NOT NULL)",
-  );
-  prepared.add(d);
-}
 
 const calendarViews = (pageId: string) =>
   (JSON.parse(one<{ views: string }>("SELECT views FROM databases WHERE page_id=?", pageId)?.views || "[]") as View[]).filter((v) => v.type === "calendar");
@@ -83,7 +74,6 @@ export function createProfileLink(user: Identity, input: unknown, now = Date.now
     const page = requirePage(user, calendar.pageId);
     if (!calendarViews(page.id).some((v) => v.id === calendar.viewId)) throw new HttpError(404, "Kalenderansicht nicht gefunden.");
   }
-  ensureTable();
   run("DELETE FROM caldav_profile_links WHERE expires<=?", now);
   const token = randomBytes(24).toString("base64url");
   run("INSERT INTO caldav_profile_links(token_hash,user_id,calendars,expires) VALUES(?,?,?,?)", hash(token), user.id, JSON.stringify(calendars), now + LINK_MS);
@@ -98,7 +88,6 @@ const entry = (key: string, value: string | number | boolean) =>
 // used up by this call.
 export function redeemProfileLink(token: string, now = Date.now()) {
   if (!/^[A-Za-z0-9_-]{32}$/.test(token)) return null;
-  ensureTable();
   const link = one<{ token_hash: string; user_id: string; calendars: string; expires: number }>("SELECT * FROM caldav_profile_links WHERE token_hash=?", hash(token));
   if (!link || !run("DELETE FROM caldav_profile_links WHERE token_hash=?", link.token_hash).changes || link.expires <= now) return null;
   const account = one<Identity & { demo_until: string | null }>("SELECT * FROM users WHERE id=? AND disabled=0", link.user_id);

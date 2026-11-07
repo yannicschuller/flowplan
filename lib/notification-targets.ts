@@ -5,7 +5,7 @@
 // reminders (lib/doc-tasks.ts, lib/date-reminders.ts) and the push queue
 // (lib/push.ts) only need the database.
 import { z } from "zod";
-import { db, one, run } from "./db";
+import { one, run } from "./db";
 import { doneRule } from "./database-settings-schema";
 import type { Field } from "./types";
 
@@ -28,24 +28,13 @@ const targetSchema = z.discriminatedUnion("type", [
 ]);
 export type TaskTarget = z.infer<typeof targetSchema>;
 
-const prepared = new WeakSet<object>();
-function ensureTable() {
-  const d = db();
-  if (prepared.has(d)) return;
-  d.exec(
-    "CREATE TABLE IF NOT EXISTS notification_targets(notification_id TEXT PRIMARY KEY REFERENCES notifications(id) ON DELETE CASCADE,target TEXT NOT NULL)",
-  );
-  prepared.add(d);
-}
 
 // Right after the reminder's notification was written.
 export function rememberTaskTarget(notificationId: string, target: TaskTarget) {
-  ensureTable();
   run("INSERT OR REPLACE INTO notification_targets(notification_id,target) VALUES(?,?)", notificationId, JSON.stringify(targetSchema.parse(target)));
 }
 
 export function taskTarget(notificationId: string): TaskTarget | null {
-  ensureTable();
   const raw = one<{ target: string }>("SELECT target FROM notification_targets WHERE notification_id=?", notificationId)?.target;
   if (!raw) return null;
   try {

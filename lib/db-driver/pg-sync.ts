@@ -13,7 +13,7 @@
 // anything else SQLite-only is refused with a hint (dialect.ts).
 import { MessageChannel, receiveMessageOnPort, Worker } from "node:worker_threads";
 import { currentTx, postgresSchema, postgresUrl } from "./context";
-import { numberPlaceholders, postgresDialect, sqliteOnly, withoutRowid } from "./dialect";
+import { numberPlaceholders, postgresDialect, sqliteOnly } from "./dialect";
 
 type Params = (string | number | null | Uint8Array)[];
 export type LegacyPostgres = {
@@ -79,8 +79,8 @@ export function legacyPostgres(): LegacyPostgres {
   }
   const query = (kind: string, sql: string, params: Params) => call({ kind, sql: legacyToPostgres(sql), params });
   return {
-    one: <T>(sql: string, params: Params) => withoutRowid(sql, query("one", sql, params).rows ?? [])[0] as T | undefined,
-    all: <T>(sql: string, params: Params) => withoutRowid(sql, query("all", sql, params).rows ?? []) as T[],
+    one: <T>(sql: string, params: Params) => (query("one", sql, params).rows ?? [])[0] as T | undefined,
+    all: <T>(sql: string, params: Params) => (query("all", sql, params).rows ?? []) as T[],
     run: (sql: string, params: Params) => ({ changes: query("run", sql, params).changes ?? 0, lastInsertRowid: 0 }),
     transaction<T>(fn: () => T): T {
       // Not nested (lib/db.ts never nests transaction()); a nested call is a savepoint.

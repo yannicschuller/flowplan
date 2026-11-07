@@ -1694,7 +1694,7 @@ function runCommand(
       case "favorite":
         requirePage(user, pid());
         if (b.value)
-          run("INSERT INTO favorites VALUES(?,?) ON CONFLICT DO NOTHING", user.id, pid());
+          run("INSERT INTO favorites(user_id,page_id) VALUES(?,?) ON CONFLICT DO NOTHING", user.id, pid());
         else
           run(
             "DELETE FROM favorites WHERE user_id=? AND page_id=?",
@@ -1723,8 +1723,8 @@ function runCommand(
         if (
           existing?.state &&
           !one(
-            "SELECT id FROM snapshots WHERE page_id=? AND created_at>datetime('now','-5 minutes')",
-            p.id,
+            "SELECT id FROM snapshots WHERE page_id=? AND created_at>?",
+            p.id, nowText(Date.now() - 300_000),
           )
         ) {
           run(

@@ -11,6 +11,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { Db } from "./types";
 import { postgresDialect } from "./dialect";
+import { translateTrigger, type PgTrigger } from "./pg-triggers";
 
 export type PgColumn = { name: string; type: string; notNull: boolean; default: string | null; identity: boolean };
 export type PgForeignKey = { name: string; columns: string[]; table: string; to: string[]; onDelete: string; onUpdate: string };
@@ -24,6 +25,9 @@ export type PgSchema = {
   sqliteVersion: number;
   tables: PgTable[];
   indexes: PgIndex[];
+  // The SQLite triggers in PL/pgSQL (pg-triggers.ts), created after the
+  // tables (and, by the migration tool, after the data).
+  triggers: PgTrigger[];
   skipped: { kind: string; name: string; reason: string }[];
   sqlite: SqliteObject[];
 };
@@ -82,6 +86,21 @@ function checks(sql: string): string[] {
   return out;
 }
 
+// Postgres' search index (lib/search-store.ts): the entries of SQLite's
+// FTS5 table plus their text folded for matching (lower case, without
+// diacritics), as the trigram tokenizer with remove_diacritics compares.
+const SEARCH_INDEX: PgTable = {
+  name: "search_index",
+  columns: [
+    { name: "id", type: "bigint", notNull: true, default: null, identity: true },
+    ...["page_id", "row_id", "title", "body", "title_folded", "body_folded"].map((name) => ({ name, type: "text", notNull: true, default: "''", identity: false })),
+  ],
+  primaryKey: ["id"],
+  uniques: [],
+  checks: [],
+  foreignKeys: [],
+};
+
 type Info = { cid: number; name: string; type: string; notnull: number; dflt_value: string | null; pk: number };
 export function translateSqliteSchema(d: DatabaseSync): PgSchema {
   const objects = d.prepare("SELECT type,name,tbl_name,sql FROM sqlite_master ORDER BY rowid").all() as { type: string; name: string; tbl_name: string; sql: string | null }[];
@@ -90,11 +109,17 @@ export function translateSqliteSchema(d: DatabaseSync): PgSchema {
   const shadow = (name: string) => [...virtual].some((v) => name.startsWith(`${v}_`));
   const tables: PgTable[] = [];
   const nocaseIndexes: PgIndex[] = [];
+  const triggers: PgTrigger[] = [];
   for (const o of objects) {
-    if (o.type === "trigger") skipped.push({ kind: "trigger", name: o.name, reason: "triggers are ported by hand (plpgsql) or replaced" });
+    if (o.type === "trigger") {
+      // `<table>_seq` fills SQLite's insertion order; Postgres has an identity.
+      if (/_seq$/.test(o.name) && /SET seq=NEW\.rowid/.test(o.sql || ""))
+        skipped.push({ kind: "trigger", name: o.name, reason: "seq is an identity column in Postgres" });
+      else triggers.push(translateTrigger(o.sql!));
+    }
     if (o.type !== "table") continue;
     if (virtual.has(o.name)) {
-      skipped.push({ kind: "table", name: o.name, reason: "FTS5 virtual table: Postgres search uses tsvector" });
+      skipped.push({ kind: "table", name: o.name, reason: "FTS5 virtual table: a plain table in Postgres (lib/search-store.ts)" });
       continue;
     }
     if (shadow(o.name) || o.name.startsWith("sqlite_")) continue;
@@ -105,7 +130,8 @@ export function translateSqliteSchema(d: DatabaseSync): PgSchema {
     const columns: PgColumn[] = info.map((c) => {
       const integerKey = pk.length === 1 && pk[0].name === c.name && c.type.toUpperCase() === "INTEGER";
       const type = pgType(c.type, integerKey);
-      const identity = integerKey && autoincrement;
+      // `seq` (schema 93): the insertion order SQLite takes from the rowid.
+      const identity = (integerKey && autoincrement) || (c.name === "seq" && type === "bigint");
       return { name: c.name, type, notNull: !!c.notnull, default: identity ? null : defaultValue(c.dflt_value, type), identity };
     });
     // Unique constraints (not the primary key), with their collation: a
@@ -130,12 +156,6 @@ export function translateSqliteSchema(d: DatabaseSync): PgSchema {
       entry.columns.push(fk.from);
       if (fk.to) entry.to.push(fk.to);
     }
-    // SQLite's implicit rowid: 32 queries order by it (insertion order as a
-    // tiebreaker) and a few delete by it. Postgres gets it as a real column,
-    // last, so INSERT … VALUES without a column list still fits; the
-    // drivers leave it out of results unless the SQL names it.
-    if (!columns.some((c) => c.name === "rowid") && !/WITHOUT ROWID/i.test(sql))
-      columns.push({ name: "rowid", type: "bigint", notNull: true, default: null, identity: true });
     tables.push({ name: o.name, columns, primaryKey: pk.map((c) => c.name), uniques, checks: checks(sql), foreignKeys: foreignKeys.filter(Boolean) });
   }
   // Foreign keys need a key on the other side (SQLite checks that only when
@@ -165,11 +185,14 @@ export function translateSqliteSchema(d: DatabaseSync): PgSchema {
   const sqlite = objects
     .filter((o) => o.sql && !o.name.startsWith("sqlite_") && !shadow(o.name))
     .map((o) => ({ type: o.type, name: o.name, table: o.tbl_name, sql: o.sql! }));
-  return { sqliteVersion: version, tables, indexes, skipped, sqlite };
+  // The FTS5 search index: a plain table in Postgres (lib/search-store.ts).
+  tables.push(SEARCH_INDEX);
+  indexes.push({ name: "search_index_key", table: "search_index", sql: "CREATE INDEX IF NOT EXISTS search_index_key ON search_index(page_id,row_id)" });
+  return { sqliteVersion: version, tables, indexes, triggers, skipped, sqlite };
 }
 
 // Brings the Postgres schema up to `schema`: adds what is missing. `only`
 // limits it to some tables (and their indexes and foreign keys among them).
-export async function ensurePostgresSchema(db: Db, schema: PgSchema, only?: string[]): Promise<void> {
-  await ensure(db, schema, only);
+export async function ensurePostgresSchema(db: Db, schema: PgSchema, only?: string[], options: { triggers?: boolean } = {}): Promise<void> {
+  await ensure(db, schema, only, options);
 }

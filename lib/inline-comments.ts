@@ -106,7 +106,7 @@ export function inlineThreads(
     complete: !summaries || t.id === detailId,
     canResolve: canEdit || t.author_id === user.id,
     messages: all<StoredMessage & { name: string; imported_reactions: string }>(
-      `SELECT m.*,COALESCE(u.name,m.author_name) name FROM inline_messages m LEFT JOIN users u ON u.id=m.author_id WHERE thread_id=? ORDER BY m.created_at,m.rowid ${summaries && t.id !== detailId ? "LIMIT 1" : ""}`,
+      `SELECT m.*,COALESCE(u.name,m.author_name) name FROM inline_messages m LEFT JOIN users u ON u.id=m.author_id WHERE thread_id=? ORDER BY m.created_at,m.seq ${summaries && t.id !== detailId ? "LIMIT 1" : ""}`,
       t.id,
     ).map((m) => {
       const reactions =

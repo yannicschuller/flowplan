@@ -39,8 +39,8 @@ test("a page moves with its sub pages; rights and favourites of the old workspac
   run("INSERT INTO grants(resource_id,user_id,group_id,role) VALUES(?,?,?,?)", top, null, group, "editor");
   run("INSERT INTO grants(resource_id,user_id,group_id,role) VALUES(?,?,?,?)", top, stranger.id, null, "viewer");
   run("INSERT INTO grants(resource_id,user_id,group_id,role) VALUES(?,?,?,?)", top, colleague.id, null, "viewer");
-  run("INSERT INTO favorites VALUES(?,?)", stranger.id, child);
-  run("INSERT INTO favorites VALUES(?,?)", colleague.id, child);
+  run("INSERT INTO favorites(user_id,page_id) VALUES(?,?)", stranger.id, child);
+  run("INSERT INTO favorites(user_id,page_id) VALUES(?,?)", colleague.id, child);
   command(owner, { action: "page.move", workspaceId: from, pageId: top, spaceId: toSpace, parentId: null });
   for (const pid of [top, child]) {
     assert.equal(page(pid).workspace_id, to);

@@ -16,7 +16,7 @@ const { translateSqliteSchema } = await import("../lib/db-driver/pg-schema.ts");
 // One table, index or skipped object per line: readable diffs.
 const schema = translateSqliteSchema(db());
 const list = (items) => `[\n${items.map((i) => `  ${JSON.stringify(i)}`).join(",\n")}\n ]`;
-const text = `{\n "sqliteVersion": ${schema.sqliteVersion},\n "tables": ${list(schema.tables)},\n "indexes": ${list(schema.indexes)},\n "skipped": ${list(schema.skipped)},\n "sqlite": ${list(schema.sqlite)}\n}\n`;
+const text = `{\n "sqliteVersion": ${schema.sqliteVersion},\n "tables": ${list(schema.tables)},\n "indexes": ${list(schema.indexes)},\n "triggers": ${list(schema.triggers)},\n "skipped": ${list(schema.skipped)},\n "sqlite": ${list(schema.sqlite)}\n}\n`;
 rmSync(dir, { recursive: true, force: true });
 if (process.argv.includes("--check")) {
   let current = "";

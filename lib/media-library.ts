@@ -60,7 +60,7 @@ export function mediaLibrary(
      WHERE p.workspace_id=? AND p.deleted_at IS NULL
      ${kind === "all" ? "" : `AND ${kindSql[kind]}`}
      ${query ? "AND instr(lower(f.name),lower(?))>0" : ""}
-     ORDER BY f.created_at DESC,f.rowid DESC LIMIT 5000`,
+     ORDER BY f.created_at DESC,f.seq DESC LIMIT 5000`,
     workspaceId,
     ...(query ? [query] : []),
   );

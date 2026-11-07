@@ -107,8 +107,8 @@ export function syncWhiteboard(user: Identity, raw: unknown) {
           throw new HttpError(413, "Zu viele Elemente auf dem Whiteboard.");
         if (
           !one(
-            "SELECT id FROM snapshots WHERE page_id=? AND created_at>datetime('now','-5 minutes')",
-            page.id,
+            "SELECT id FROM snapshots WHERE page_id=? AND created_at>?",
+            page.id, nowText(Date.now() - 300_000),
           )
         )
           run(

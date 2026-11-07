@@ -19,7 +19,8 @@
 // person's order in the sidebar).
 import { z } from "zod";
 import { HttpError } from "./auth";
-import { all, audit, id, one, run } from "./db";
+import { all, audit, id, one, run, sql } from "./db";
+import { textMatch } from "./search-store";
 import { refreshSearchIndex } from "./search-index";
 import { isEncryptedPage } from "./e2ee-server";
 import { hiddenFieldsFor } from "./field-access";
@@ -126,7 +127,7 @@ export function listCollections(user: Identity, workspaceId: string): Collection
     `SELECT c.*,u.name owner_name FROM collections c LEFT JOIN users u ON u.id=c.owner_id
      LEFT JOIN collection_order o ON o.collection_id=c.id AND o.user_id=?
      WHERE c.workspace_id=? AND c.deleted_at IS NULL AND (c.owner_id=?${guest ? "" : " OR c.shared=1"})
-     ORDER BY o.position IS NULL,o.position,c.created_at,c.rowid`,
+     ORDER BY o.position IS NULL,o.position,c.created_at,c.seq`,
     user.id,
     workspaceId,
     user.id,
@@ -306,19 +307,22 @@ function textMatches(workspaceId: string, phrase: string): Set<string> {
   const rows = short
     ? all<{ page_id: string; row_id: string }>(
         `SELECT s.page_id,s.row_id FROM search_index s JOIN pages p ON p.id=s.page_id
-         WHERE p.workspace_id=? AND (s.title LIKE ? ESCAPE '\\' OR s.body LIKE ? ESCAPE '\\') LIMIT 50000`,
+         WHERE p.workspace_id=? AND (${sql.ilike("s.title")} ESCAPE '\\' OR ${sql.ilike("s.body")} ESCAPE '\\') LIMIT 50000`,
         workspaceId,
         ...(() => {
           const like = `%${query.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
           return [like, like];
         })(),
       )
-    : all<{ page_id: string; row_id: string }>(
-        `SELECT s.page_id,s.row_id FROM search_index s JOIN pages p ON p.id=s.page_id
-         WHERE search_index MATCH ? AND p.workspace_id=? LIMIT 50000`,
-        `"${query.replace(/"/g, '""')}"`,
-        workspaceId,
-      );
+    : (() => {
+        const match = textMatch([query]);
+        return all<{ page_id: string; row_id: string }>(
+          `SELECT s.page_id,s.row_id FROM search_index s JOIN pages p ON p.id=s.page_id
+         WHERE ${match.where} AND p.workspace_id=? LIMIT 50000`,
+          ...match.whereArgs,
+          workspaceId,
+        );
+      })();
   return new Set(rows.filter((r) => !/^[cmf]:/.test(r.row_id)).map((r) => (r.row_id ? `${r.page_id}:${r.row_id}` : r.page_id)));
 }
 

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { all, id, one, run, nowText } from "./db";
+import { all, id, one, run, nowText, daysAgoText } from "./db";
 import { HttpError } from "./auth";
 import { pageRole, requirePage } from "./permissions";
 import { lockedPageIds, requireUnlocked } from "./journal-extras";
@@ -199,8 +199,8 @@ export function purgeTrashedRow(user: Identity, raw: unknown) {
 export function expireRowTrash(days = ROW_TRASH_DAYS) {
   return Number(
     run(
-      "DELETE FROM row_trash WHERE deleted_at<datetime('now',?)",
-      `-${days} days`,
+      "DELETE FROM row_trash WHERE deleted_at<?",
+      daysAgoText(days),
     ).changes,
   );
 }

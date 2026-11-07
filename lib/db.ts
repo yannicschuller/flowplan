@@ -47,7 +47,23 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 92;
+export const SCHEMA_VERSION = 93;
+// Tables with an explicit insertion order (schema 93): `ORDER BY …,seq`.
+export const SEQ_TABLES = [
+  "snapshots",
+  "row_snapshots",
+  "notifications",
+  "favorites",
+  "row_favorites",
+  "capture_targets",
+  "inline_messages",
+  "files",
+  "collections",
+  "scim_users",
+  "scim_groups",
+  "mail_queue",
+  "webhook_deliveries",
+] as const;
 function migrate(d: DatabaseSync) {
   if (globalDb.flowplanSchema === SCHEMA_VERSION) return;
   // Columns change below: cached `SELECT *` statements would keep the old ones.
@@ -1209,6 +1225,27 @@ function migrate(d: DatabaseSync) {
   // and the inbox reads one person's newest.
   d.exec(`CREATE INDEX IF NOT EXISTS messenger_deliveries_notification ON messenger_deliveries(notification_id);
     CREATE INDEX IF NOT EXISTS notifications_user_created ON notifications(user_id,created_at);`);
+  // Tables that features used to create on first use: in the migrations,
+  // so the PostgreSQL schema (translated from this one) has them too.
+  d.exec(`CREATE TABLE IF NOT EXISTS caldav_profile_links(token_hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,calendars TEXT NOT NULL,expires INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS mobile_focus(device_id TEXT PRIMARY KEY REFERENCES mobile_devices(id) ON DELETE CASCADE,workspace_id TEXT,until INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS background_jobs(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,kind TEXT NOT NULL,label TEXT NOT NULL DEFAULT '',progress REAL,status TEXT NOT NULL CHECK(status IN ('running','done','failed')),error TEXT,boot TEXT NOT NULL,started_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,finished_at INTEGER);
+    CREATE INDEX IF NOT EXISTS background_jobs_user ON background_jobs(user_id,started_at);
+    CREATE TABLE IF NOT EXISTS widget_counter_days(key TEXT NOT NULL,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,day TEXT NOT NULL,value REAL,at INTEGER NOT NULL,PRIMARY KEY(key,day));
+    CREATE INDEX IF NOT EXISTS widget_counter_days_at ON widget_counter_days(at);
+    CREATE TABLE IF NOT EXISTS widget_focus(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,started_at INTEGER NOT NULL,focus_ms INTEGER NOT NULL,break_ms INTEGER NOT NULL,page_id TEXT,row_id TEXT,field_id TEXT,timer INTEGER NOT NULL DEFAULT 0,stopped_at INTEGER);
+    CREATE TABLE IF NOT EXISTS notification_targets(notification_id TEXT PRIMARY KEY REFERENCES notifications(id) ON DELETE CASCADE,target TEXT NOT NULL);`);
+  // Schema 93 – PostgreSQL support (#127, docs/architecture/database.md):
+  // queries no longer order by SQLite's implicit rowid. Where the order of
+  // insertion matters (newest notification, version or message first,
+  // favourites in the order they were added, a queue), the table has an
+  // explicit `seq`: SQLite fills it with the rowid (existing rows once, new
+  // ones by a trigger), PostgreSQL makes it an identity column.
+  for (const table of SEQ_TABLES)
+    if (!(d.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === "seq"))
+      d.exec(`ALTER TABLE ${table} ADD COLUMN seq INTEGER; UPDATE ${table} SET seq=rowid;`);
+  for (const table of SEQ_TABLES)
+    d.exec(`CREATE TRIGGER IF NOT EXISTS ${table}_seq AFTER INSERT ON ${table} WHEN NEW.seq IS NULL BEGIN UPDATE ${table} SET seq=NEW.rowid WHERE rowid=NEW.rowid; END;`);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);

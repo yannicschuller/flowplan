@@ -702,8 +702,8 @@ function liveSync(
             if (s.row) {
               if (
                 !one(
-                  "SELECT id FROM row_snapshots WHERE row_id=? AND created_at>datetime('now','-5 minutes')",
-                  s.row.id,
+                  "SELECT id FROM row_snapshots WHERE row_id=? AND created_at>?",
+                  s.row.id, nowText(Date.now() - 300_000),
                 )
               )
                 run(
@@ -728,8 +728,8 @@ function liveSync(
             } else {
               if (
                 !one(
-                  "SELECT id FROM snapshots WHERE page_id=? AND created_at>datetime('now','-5 minutes')",
-                  s.page.id,
+                  "SELECT id FROM snapshots WHERE page_id=? AND created_at>?",
+                  s.page.id, nowText(Date.now() - 300_000),
                 )
               )
                 run(

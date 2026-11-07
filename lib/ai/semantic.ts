@@ -19,7 +19,7 @@
 // text; 1536 dimensions: about 6 KB per chunk).
 import { createHash } from "node:crypto";
 import { limitAi } from "../action-limits";
-import { all, db, one, run, transaction } from "../db";
+import { all, one, run, transaction } from "../db";
 import type { Identity } from "../types";
 import { featureAllowed, instanceAiSettings, normalizeUrl } from "./settings";
 import { instanceProviderConfig, resolveAi } from "./resolve";
@@ -281,19 +281,22 @@ async function nearestChunks(
 ): Promise<SemanticHit[]> {
   const best: SemanticHit[] = [];
   let worst = -Infinity;
-  const statement = db().prepare(
-    "SELECT rowid AS n,page_id,row_id,chunk,vector FROM ai_embeddings WHERE workspace_id=? AND model=? AND rowid>? ORDER BY rowid LIMIT ?",
-  );
-  let after = -1,
+  // In key order, slice after slice (keyset: the last key of a slice).
+  let after: [string, string, number] = ["", "", -1],
     scanned = 0;
   while (scanned < MAX_SCANNED) {
-    const rows = statement.all(workspaceId, model, after, Math.min(SCAN_SLICE, MAX_SCANNED - scanned)) as {
-      n: number;
+    const rows = all<{
       page_id: string;
       row_id: string;
       chunk: number;
       vector: Uint8Array;
-    }[];
+    }>(
+      "SELECT page_id,row_id,chunk,vector FROM ai_embeddings WHERE workspace_id=? AND model=? AND (page_id,row_id,chunk)>(?,?,?) ORDER BY page_id,row_id,chunk LIMIT ?",
+      workspaceId,
+      model,
+      ...after,
+      Math.min(SCAN_SLICE, MAX_SCANNED - scanned),
+    );
     for (const row of rows) {
       if (!keep(row)) continue;
       const vector = fromVector(row.vector);
@@ -308,7 +311,8 @@ async function nearestChunks(
     }
     scanned += rows.length;
     if (rows.length < SCAN_SLICE) break;
-    after = Number(rows[rows.length - 1].n);
+    const last = rows[rows.length - 1];
+    after = [last.page_id, last.row_id, Number(last.chunk)];
     await nextTurn();
     if (signal?.aborted) break;
   }

@@ -1,3 +1,4 @@
+import { nowText } from "../lib/db-driver/dialect";
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
@@ -337,7 +338,7 @@ test("automatic values never take 'Zuletzt geändert' as input: refused when sav
   assert.equal(asked().length, 1);
   assert.match(asked()[0].prompt, /Stand \d{4}-\d{2}-\d{2}/, "the prompt itself carries the timestamp");
   assert.ok(one("SELECT 1 FROM ai_auto_dirty WHERE row_id=?", r), "marked dirty by its own write");
-  run("UPDATE rows SET cells=cells,updated_at=datetime('now','+2 minutes') WHERE id=?", r);
+  run("UPDATE rows SET cells=cells,updated_at=? WHERE id=?", nowText(Date.now() + 120_000), r);
   assert.equal(settle(), 0, "a later minute is no new input");
   await work();
   assert.equal(asked().length, 1);

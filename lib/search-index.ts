@@ -2,7 +2,8 @@ import { isEncryptedPage } from "./e2ee-server";
 import { lockedPageIds } from "./journal-extras";
 import { publicHiddenFieldIds } from "./field-access";
 import { hiddenFileIds } from "./row-files";
-import { all, one, run, transaction } from "./db";
+import { all, one, run, sql, transaction } from "./db";
+import { addEntry, clearIndex, removeEntry, snippet, textMatch } from "./search-store";
 import { pageRole } from "./permissions";
 import { hiddenRowIds } from "./row-access";
 import { ticketId } from "./ticket-ids";
@@ -17,7 +18,7 @@ import { parseSearchTokens, tagFilterIds } from "./page-properties";
 import { taggedRecords } from "./tag-fields";
 import { isClassicQuery, parseQuery, type ItemType } from "./collection-query";
 import { evaluateQuery } from "./collections";
-import { ftsQuery, isShortTerm } from "./ai/chunks";
+import { isShortTerm } from "./ai/chunks";
 
 // Full-text index over page titles, document text, record cells and record
 // documents. Triggers (see db.ts) only mark changed pages/rows as dirty; the
@@ -80,13 +81,6 @@ function cellWords(value: unknown): string {
   return value === true ? "" : String(value);
 }
 
-// The entry of a page (key "") or of a record, comment, message or file.
-// Through the content table (c0 = page_id, c1 = row_id) and its index
-// (lib/db.ts) instead of `WHERE page_id=? AND row_id=?` on the index
-// itself, which reads every entry.
-function removeEntry(pageId: string, key: string) {
-  run("DELETE FROM search_index WHERE rowid IN (SELECT id FROM search_index_content WHERE c0=? AND c1=?)", pageId, key);
-}
 function indexPage(pageId: string) {
   removeEntry(pageId, "");
   const page = one<{ title: string; aliases: string | null; html: string | null; deleted_at: string; kind: string }>(
@@ -96,8 +90,7 @@ function indexPage(pageId: string) {
   if (!page || page.deleted_at) return;
   // End-to-end encrypted pages stay out of the index (lib/e2ee-server.ts).
   if (isEncryptedPage(one<{ space_id: string }>("SELECT space_id FROM pages WHERE id=?", pageId))) return;
-  run(
-    "INSERT INTO search_index(page_id,row_id,title,body) VALUES(?,?,?,?)",
+  addEntry(
     pageId,
     "",
     titleColumn(page.title, pageAliases(page)),
@@ -127,8 +120,7 @@ function indexRow(pageId: string, rowId: string, fields: Field[]) {
     .map((f) => (f.type === "id" ? ticketId(f, row.number) : isFormattedText(f, fields) ? toPlain(cells[f.id]) : cellWords(cells[f.id])))
     .filter(Boolean);
   const content = row.html ?? row.content ?? "";
-  run(
-    "INSERT INTO search_index(page_id,row_id,title,body) VALUES(?,?,?,?)",
+  addEntry(
     pageId,
     rowId,
     titleColumn(title || "Ohne Titel", recordAliases(fields, cells)),
@@ -166,8 +158,7 @@ function indexExtra(pageId: string, key: string) {
   // Handwriting on a PDF the device recognised (JSON: page → text).
   const recognized =
     prefix === "f" ? Object.values(parseRecognizedMap(one<{ recognized: string }>("SELECT recognized FROM file_ink WHERE file_id=?", id)?.recognized)).join("\n") : "";
-  run(
-    "INSERT INTO search_index(page_id,row_id,title,body) VALUES(?,?,?,?)",
+  addEntry(
     pageId,
     key,
     entry.title.slice(0, 300),
@@ -191,7 +182,7 @@ export function ensureSearchIndex() {
   }
   if (!one("SELECT 1 FROM search_state WHERE id=1")) {
     transaction(() => {
-      run("DELETE FROM search_index");
+      clearIndex();
       run("INSERT INTO search_dirty SELECT id,'' FROM pages WHERE true ON CONFLICT DO NOTHING");
       run("INSERT INTO search_dirty SELECT page_id,id FROM rows WHERE true ON CONFLICT DO NOTHING");
       run("INSERT INTO search_state(id,built) VALUES(1,?)", Date.now());
@@ -251,19 +242,21 @@ export function termMatches(
   const scopeArgs = [workspaceId, ...(options.spaceId ? [options.spaceId] : [])];
   const long = terms.filter((t) => !isShortTerm(t)),
     short = terms.filter(isShortTerm).slice(0, SHORT_TERMS);
+  const match = textMatch(long);
   const rows = long.length
     ? all<{ page_id: string; row_id: string }>(
         `SELECT s.page_id,s.row_id FROM search_index s JOIN pages p ON p.id=s.page_id
-         WHERE search_index MATCH ? AND ${scope}
-         ORDER BY bm25(search_index,0,0,10,1) LIMIT ${options.limit}`,
-        ftsQuery(long),
+         WHERE ${match.where} AND ${scope}
+         ORDER BY ${match.rank} LIMIT ${options.limit}`,
+        ...match.whereArgs,
         ...scopeArgs,
+        ...match.rankArgs,
       )
     : [];
   if (short.length && rows.length < options.limit) {
     const seen = new Set(rows.map((r) => `${r.page_id}:${r.row_id}`));
     // A term in the title counts twice, as in BM25 above.
-    const hits = short.map(() => "(instr(s.title,?)>0)*2+(instr(s.body,?)>0)").join("+");
+    const hits = short.map(() => `(CASE WHEN ${sql.instr("s.title", "?")}>0 THEN 2 ELSE 0 END)+(CASE WHEN ${sql.instr("s.body", "?")}>0 THEN 1 ELSE 0 END)`).join("+");
     for (const r of all<{ page_id: string; row_id: string }>(
       `SELECT page_id,row_id FROM (SELECT s.page_id,s.row_id,${hits} n,p.updated_at FROM search_index s JOIN pages p ON p.id=s.page_id WHERE ${scope})
        WHERE n>0 ORDER BY n DESC,updated_at DESC LIMIT ${options.limit}`,
@@ -438,7 +431,7 @@ export function searchWorkspace(
   const scope =
     "p.workspace_id=? AND p.deleted_at IS NULL" +
     (options.spaceId ? " AND p.space_id=?" : "") +
-    (scoped ? " AND p.id IN (SELECT value FROM json_each(?))" : "");
+    (scoped ? ` AND p.id IN ${sql.jsonValues()}` : "");
   const scopeArgs = [workspaceId, ...(options.spaceId ? [options.spaceId] : []), ...(scoped ? [JSON.stringify([...scoped])] : [])];
   if (!query) {
     if (!["all", "document", "database", ...(only ? ["whiteboard", "row"] : [])].includes(kind)) return [];
@@ -467,24 +460,27 @@ export function searchWorkspace(
   // Trigram matching finds parts of compound words and ignores case and
   // diacritics; shorter queries fall back to a title/body scan.
   const short = [...query].length < 3;
+  const match = textMatch([query]);
+  const snip = snippet([query], MARK_START, MARK_END);
+  const titleLike = sql.ilike("s.title", "?");
   const candidates = all<
     Page & { row_id: string; hit_title: string; snippet: string }
   >(
     short
       ? `SELECT p.*,s.row_id,s.title hit_title,'' snippet FROM search_index s JOIN pages p ON p.id=s.page_id
-         WHERE ${scope} AND (s.title LIKE ? ESCAPE '\\' OR s.body LIKE ? ESCAPE '\\')
-         ORDER BY (s.title LIKE ? ESCAPE '\\') DESC,p.updated_at DESC LIMIT 1000`
-      : `SELECT p.*,s.row_id,s.title hit_title,snippet(search_index,3,?,?,'…',40) snippet
+         WHERE ${scope} AND (${titleLike} ESCAPE '\\' OR ${sql.ilike("s.body", "?")} ESCAPE '\\')
+         ORDER BY (CASE WHEN ${titleLike} ESCAPE '\\' THEN 1 ELSE 0 END) DESC,p.updated_at DESC LIMIT 1000`
+      : `SELECT p.*,s.row_id,s.title hit_title,${snip.sql} snippet
          FROM search_index s JOIN pages p ON p.id=s.page_id
-         WHERE search_index MATCH ? AND ${scope}
-         ORDER BY bm25(search_index,0,0,10,1),p.updated_at DESC LIMIT 1000`,
+         WHERE ${match.where} AND ${scope}
+         ORDER BY ${match.rank},p.updated_at DESC LIMIT 1000`,
     ...(short
       ? (() => {
           const like = `%${query.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
           return [...scopeArgs, like, like, like];
         })()
-      : [MARK_START, MARK_END, `"${query.replace(/"/g, '""')}"`, ...scopeArgs]),
-  );
+      : [...snip.args, ...match.whereArgs, ...scopeArgs, ...match.rankArgs]),
+  ).map((hit) => (short ? hit : { ...hit, snippet: snip.finish(hit.snippet) }));
   for (const hit of candidates) {
     if (!matchesKind(hit, hit.row_id) || !allowed(hit)) continue;
     push(

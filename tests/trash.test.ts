@@ -1,3 +1,4 @@
+import { nowText } from "../lib/db-driver/dialect";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync } from "node:fs";
@@ -182,10 +183,10 @@ test("the trash is emptied automatically after the set days; 0 keeps everything"
   const area = (command(f.owner, { action: "space.create", workspaceId: f.wid, name: "Old area" }) as { id: string }).id;
   const inArea = f.page("In area", undefined, "document", f.owner, area);
   command(f.owner, { action: "space.delete", spaceId: area, version: one<{ version: number }>("SELECT version FROM spaces WHERE id=?", area)!.version, confirmName: "Old area" });
-  run("UPDATE pages SET deleted_at=datetime('now','-40 days') WHERE id IN (?,?,?)", old, oldChild, inArea);
-  run("UPDATE pages SET deleted_at=datetime('now','-10 days') WHERE id=?", recent);
-  run("UPDATE spaces SET deleted_at=datetime('now','-40 days') WHERE id=?", area);
-  run("UPDATE row_trash SET deleted_at=datetime('now','-40 days') WHERE id=?", row.id);
+  run("UPDATE pages SET deleted_at=? WHERE id IN (?,?,?)", nowText(Date.now() - 3_456_000_000), old, oldChild, inArea);
+  run("UPDATE pages SET deleted_at=? WHERE id=?", nowText(Date.now() - 864_000_000), recent);
+  run("UPDATE spaces SET deleted_at=? WHERE id=?", nowText(Date.now() - 3_456_000_000), area);
+  run("UPDATE row_trash SET deleted_at=? WHERE id=?", nowText(Date.now() - 3_456_000_000), row.id);
 
   saveInstanceSettings({ trashDays: 0 });
   assert.equal(trashDays(), 0);
@@ -231,14 +232,14 @@ test("templates: deleted for good one by one, by emptying the template trash, an
   assert.equal(one("SELECT 1 FROM templates WHERE id=?", a), undefined);
   assert.equal(count("SELECT * FROM template_files WHERE template_id=?", a), 0);
   // Emptying the template trash as the editor: only their own.
-  run("UPDATE templates SET deleted_at=datetime('now','-1 days') WHERE id=?", old);
+  run("UPDATE templates SET deleted_at=? WHERE id=?", nowText(Date.now() - 86_400_000), old);
   const emptied = command(f.editor, { action: "trash.empty", workspaceId: f.wid, scope: "templates" }) as { templates: number };
   assert.equal(emptied.templates, 2);
   assert.equal(one("SELECT 1 FROM templates WHERE id=?", c), undefined);
   assert.ok(one("SELECT 1 FROM templates WHERE id=?", b));
   assert.ok(one("SELECT 1 FROM templates WHERE id=?", hidden));
   // After the trash period.
-  run("UPDATE templates SET deleted_at=datetime('now','-31 days') WHERE id=?", b);
+  run("UPDATE templates SET deleted_at=? WHERE id=?", nowText(Date.now() - 2_678_400_000), b);
   expireTrash(30);
   assert.equal(one("SELECT 1 FROM templates WHERE id=?", b), undefined);
   assert.ok(one("SELECT 1 FROM templates WHERE id=?", hidden));

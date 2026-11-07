@@ -12,7 +12,7 @@
 // interrupted; finished ones are kept for a day and then removed.
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
-import { all, db, run } from "./db";
+import { all, run } from "./db";
 import type { Identity } from "./types";
 
 export const jobKinds = ["import", "export", "archive", "git"] as const;
@@ -21,30 +21,10 @@ export type JobKind = (typeof jobKinds)[number];
 const KEEP_MS = 24 * 3_600_000;
 // A process id: jobs of an earlier run of the server cannot finish any more.
 const BOOT = randomUUID();
-const prepared = new WeakSet<object>();
-function ensure() {
-  const d = db();
-  if (prepared.has(d)) return;
-  d.exec(`CREATE TABLE IF NOT EXISTS background_jobs(
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    kind TEXT NOT NULL,
-    label TEXT NOT NULL DEFAULT '',
-    progress REAL,
-    status TEXT NOT NULL CHECK(status IN ('running','done','failed')),
-    error TEXT,
-    boot TEXT NOT NULL,
-    started_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL,
-    finished_at INTEGER);
-    CREATE INDEX IF NOT EXISTS background_jobs_user ON background_jobs(user_id,started_at)`);
-  prepared.add(d);
-}
 
 const current = new AsyncLocalStorage<{ id: string; reported: number }>();
 
 export function startJob(user: Pick<Identity, "id">, kind: JobKind, label: string) {
-  ensure();
   const jobId = randomUUID(),
     now = Date.now();
   run(
@@ -62,7 +42,6 @@ export function startJob(user: Pick<Identity, "id">, kind: JobKind, label: strin
 }
 
 export function finishJob(jobId: string, error?: unknown) {
-  ensure();
   const now = Date.now();
   run(
     "UPDATE background_jobs SET status=?,progress=CASE WHEN ?='done' THEN 1 ELSE progress END,error=?,updated_at=?,finished_at=? WHERE id=? AND status='running'",
@@ -145,7 +124,6 @@ export type JobView = {
 
 // The person's running jobs and those that ended in the last `recentMs`.
 export function personJobs(user: Pick<Identity, "id">, recentMs = 10 * 60_000, now = Date.now()): JobView[] {
-  ensure();
   return all<{
     id: string;
     kind: JobKind;

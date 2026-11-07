@@ -1,3 +1,4 @@
+import { nowText } from "../lib/db-driver/dialect";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
@@ -15,11 +16,11 @@ const { activityState, ONLINE_MS } = await import("../lib/user-activity-state");
 const person = (isAdmin = false): Identity => {
   const userId = id();
   run(
-    "INSERT INTO users(id,subject,email,name,created_at) VALUES(?,?,?,?,datetime('now'))",
+    "INSERT INTO users(id,subject,email,name,created_at) VALUES(?,?,?,?,?)",
     userId,
     `s-${userId}`,
     `${userId}@example.test`,
-    "Mia",
+    "Mia", nowText(),
   );
   return {
     id: userId,

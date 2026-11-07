@@ -109,8 +109,8 @@ export function syncRowDocument(
     if (
       html !== previous.html &&
       !one(
-        "SELECT id FROM row_snapshots WHERE row_id=? AND created_at>datetime('now','-5 minutes')",
-        row.id,
+        "SELECT id FROM row_snapshots WHERE row_id=? AND created_at>?",
+        row.id, nowText(Date.now() - 300_000),
       )
     )
       snapshotRow(user, pageId, rowId);

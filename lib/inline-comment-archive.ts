@@ -105,7 +105,7 @@ export function exportInlineComments(pageId: string): ArchivedThreads {
         edited_at: string | null;
         imported_reactions: string;
       }>(
-        "SELECT m.*,COALESCE(u.name,m.author_name) name FROM inline_messages m LEFT JOIN users u ON u.id=m.author_id WHERE thread_id=? ORDER BY m.created_at,m.rowid",
+        "SELECT m.*,COALESCE(u.name,m.author_name) name FROM inline_messages m LEFT JOIN users u ON u.id=m.author_id WHERE thread_id=? ORDER BY m.created_at,m.seq",
         t.id,
       ).map((m) => {
         const live = all<{ emoji: string; name: string }>(

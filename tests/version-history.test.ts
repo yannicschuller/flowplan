@@ -1,3 +1,4 @@
+import { nowText, daysAgoText } from "../lib/db-driver/dialect";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
@@ -124,9 +125,9 @@ test("databases snapshot automatically at the start of an editing session and su
   // A fresh database has no automatic version yet.
   assert.equal(snapshots().length, 0);
   // After ten quiet minutes the next edit keeps the previous state.
-  run("UPDATE pages SET updated_at=datetime('now','-1 hour') WHERE id=?", page);
+  run("UPDATE pages SET updated_at=? WHERE id=?", nowText(Date.now() - 3_600_000), page);
   run(
-    "UPDATE rows SET updated_at=datetime('now','-1 hour') WHERE page_id=?",
+    "UPDATE rows SET updated_at=? WHERE page_id=?", nowText(Date.now() - 3_600_000),
     page,
   );
   command(owner, {
@@ -160,13 +161,13 @@ test("retention thins and expires automatic versions but keeps manual ones", () 
   const page = create("Aufbewahrung");
   const insert = (age: string, kind: string, hour = 0) =>
     run(
-      "INSERT INTO snapshots(id,page_id,html,title,created_at,kind) VALUES(?,?,?,?,datetime('now',?,'start of day',?),?)",
+      "INSERT INTO snapshots(id,page_id,html,title,created_at,kind) VALUES(?,?,?,?,?,?)",
       id(),
       page,
       "",
       "x",
-      age,
-      `+${hour} hours`,
+      // datetime('now',age,'start of day',+hour)
+      nowText(Date.parse(`${daysAgoText(-Number(age.split(" ")[0])).slice(0, 10)}T00:00:00Z`) + hour * 3_600_000),
       kind,
     );
   // Anchored at the start of a day so hours never cross midnight.

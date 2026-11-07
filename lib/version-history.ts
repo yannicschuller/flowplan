@@ -1,6 +1,6 @@
 import { rowRoleResolver } from "./row-access";
 import { hiddenFieldsFor, stripCells } from "./field-access";
-import { all, one, run, transaction } from "./db";
+import { all, one, run, transaction, nowText, daysAgoText } from "./db";
 import { instanceSettings } from "./instance-settings";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
@@ -213,16 +213,16 @@ export function pruneSnapshots(days = retentionDays()) {
     ] as const) {
       removed += Number(
         run(
-          `DELETE FROM ${table} WHERE kind='auto' AND created_at<datetime('now','-7 days') AND rowid NOT IN (
-             SELECT max(rowid) FROM ${table} WHERE kind='auto' AND created_at<datetime('now','-7 days')
-             GROUP BY ${owner}, date(created_at))`,
+          `DELETE FROM ${table} WHERE kind='auto' AND created_at<? AND seq NOT IN (
+             SELECT max(seq) FROM ${table} WHERE kind='auto' AND created_at<?
+             GROUP BY ${owner}, substr(created_at,1,10))`, nowText(Date.now() - 604_800_000), nowText(Date.now() - 604_800_000),
         ).changes,
       );
       if (days > 0)
         removed += Number(
           run(
-            `DELETE FROM ${table} WHERE kind='auto' AND created_at<datetime('now',?)`,
-            `-${days} days`,
+            `DELETE FROM ${table} WHERE kind='auto' AND created_at<?`,
+            daysAgoText(days),
           ).changes,
         );
     }

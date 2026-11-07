@@ -190,7 +190,7 @@ export function bookmarksDatabase(workspaceId: string, spaceId: string, userId: 
   const existing = one<{ id: string }>(
     `SELECT p.id FROM pages p JOIN databases d ON d.page_id=p.id
      WHERE p.workspace_id=? AND p.space_id=? AND p.deleted_at IS NULL AND d.fields LIKE '%"id":"bm_url"%'
-     ORDER BY p.rowid LIMIT 1`,
+     ORDER BY p.created_at,p.id LIMIT 1`,
     workspaceId,
     spaceId,
   );

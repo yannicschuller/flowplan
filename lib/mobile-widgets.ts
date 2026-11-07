@@ -16,7 +16,7 @@ import { toPlain } from "./inline-markdown";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { Temporal } from "@js-temporal/polyfill";
-import { all, db, one, run } from "./db";
+import { all, one, run } from "./db";
 import { adminGroup, HttpError } from "./auth";
 import { allow } from "./action-limits";
 import { cellText } from "./cell-text";
@@ -293,7 +293,7 @@ export function captureTargetList(user: Identity) {
 function captureData(ctx: Context, config: WidgetConfig<"capture">) {
   const targetId =
     config.targetId ||
-    one<{ page_id: string }>("SELECT page_id FROM capture_targets WHERE user_id=? ORDER BY rowid LIMIT 1", ctx.user.id)?.page_id;
+    one<{ page_id: string }>("SELECT page_id FROM capture_targets WHERE user_id=? ORDER BY seq LIMIT 1", ctx.user.id)?.page_id;
   const access = pageAccess(ctx.user, targetId);
   const usable = !!access && !access.locked && !access.encrypted && !access.page.locked && rank[access.role] >= 2;
   const space = access && spaceInfo(access.page.space_id);
@@ -617,7 +617,7 @@ function pinnedData(ctx: Context, config: WidgetConfig<"pinned">) {
   const { user } = ctx;
   if (config.mode === "favorites") {
     const items: Record<string, unknown>[] = [];
-    for (const f of all<{ page_id: string }>("SELECT page_id FROM favorites WHERE user_id=? ORDER BY rowid", user.id)) {
+    for (const f of all<{ page_id: string }>("SELECT page_id FROM favorites WHERE user_id=? ORDER BY seq", user.id)) {
       const access = pageAccess(user, f.page_id);
       if (!access) continue;
       items.push(
@@ -627,7 +627,7 @@ function pinnedData(ctx: Context, config: WidgetConfig<"pinned">) {
       );
       if (items.length >= MAX_ITEMS * 2) break;
     }
-    for (const f of all<{ page_id: string; row_id: string }>("SELECT page_id,row_id FROM row_favorites WHERE user_id=? ORDER BY rowid", user.id)) {
+    for (const f of all<{ page_id: string; row_id: string }>("SELECT page_id,row_id FROM row_favorites WHERE user_id=? ORDER BY seq", user.id)) {
       const access = pageAccess(user, f.page_id);
       if (!access || access.locked || access.encrypted || hiddenRowIds(user, access.page).has(f.row_id)) continue;
       const fields = parse<Field[]>(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", access.page.id)?.fields, []);
@@ -695,21 +695,6 @@ function pinnedData(ctx: Context, config: WidgetConfig<"pinned">) {
 // so days before the first snapshot are estimated from the records shown
 // now and their creation date ("estimated": true) – exact from then on.
 const HISTORY_DAYS = 14;
-const prepared = new WeakSet<object>();
-function ensureTables() {
-  const d = db();
-  if (prepared.has(d)) return;
-  d.exec(`CREATE TABLE IF NOT EXISTS widget_counter_days(
-      key TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      day TEXT NOT NULL, value REAL, at INTEGER NOT NULL, PRIMARY KEY(key,day));
-    CREATE INDEX IF NOT EXISTS widget_counter_days_at ON widget_counter_days(at);
-    CREATE TABLE IF NOT EXISTS widget_focus(
-      user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-      started_at INTEGER NOT NULL, focus_ms INTEGER NOT NULL, break_ms INTEGER NOT NULL,
-      page_id TEXT, row_id TEXT, field_id TEXT, timer INTEGER NOT NULL DEFAULT 0, stopped_at INTEGER)`);
-  prepared.add(d);
-}
-export { ensureTables as ensureWidgetTables };
 
 function aggregate(values: number[], how: "count" | "sum" | "average", rows: number) {
   if (how === "count") return rows;
@@ -746,7 +731,6 @@ function counterData(ctx: Context, config: WidgetConfig<"counter">) {
         : v.toLocaleString(localeTag(contentLocale()), { maximumFractionDigits: 2 });
   let history: { day: string; value: number | null; estimated?: true }[] | undefined;
   if (config.history) {
-    ensureTables();
     const key = createHash("sha256")
       .update(JSON.stringify([ctx.user.id, config.pageId, config.viewId || "", config.aggregate, config.fieldId || "", config.groupFieldId || "", config.groupValue ?? null]))
       .digest("hex");
@@ -963,7 +947,7 @@ function mentionsData(ctx: Context, config: WidgetConfig<"mentions">) {
   const { user } = ctx;
   const rows = all<{ id: string; body: string | null; page_id: string | null; row_id: string | null; thread_id: string | null; read_at: string | null; created_at: string }>(
     `SELECT id,body,page_id,row_id,thread_id,read_at,created_at FROM notifications
-     WHERE user_id=? AND kind='mention' ${config.unreadOnly ? "AND read_at IS NULL" : ""} ORDER BY created_at DESC, rowid DESC LIMIT 100`,
+     WHERE user_id=? AND kind='mention' ${config.unreadOnly ? "AND read_at IS NULL" : ""} ORDER BY created_at DESC, seq DESC LIMIT 100`,
     user.id,
   );
   const unread = all<{ body: string | null }>("SELECT body FROM notifications WHERE user_id=? AND kind='mention' AND read_at IS NULL LIMIT 1000", user.id);
@@ -1022,7 +1006,7 @@ function formsData(ctx: Context, config: WidgetConfig<"forms">) {
   const rows = visibleRows(
     ctx.user,
     access.page,
-    all<Row & { cells: string }>("SELECT * FROM rows WHERE page_id=? ORDER BY created_at DESC, rowid DESC LIMIT 2000", access.page.id),
+    all<Row & { cells: string }>("SELECT * FROM rows WHERE page_id=? ORDER BY created_at DESC, number DESC LIMIT 2000", access.page.id),
   );
   const fresh = rows.filter((r) => String(r.created_at) >= sinceSql);
   return {
@@ -1048,7 +1032,6 @@ function formsData(ctx: Context, config: WidgetConfig<"forms">) {
 
 type FocusRow = { user_id: string; started_at: number; focus_ms: number; break_ms: number; page_id: string | null; row_id: string | null; field_id: string | null; timer: number; stopped_at: number | null };
 export function focusRow(user: Identity) {
-  ensureTables();
   return one<FocusRow>("SELECT * FROM widget_focus WHERE user_id=?", user.id) || null;
 }
 // A focus session whose focus time is over stops its timer at that moment,

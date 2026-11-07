@@ -23,7 +23,8 @@ import { hiddenRowIds } from "./row-access";
 import { journalLocked } from "./journal-extras";
 import { requireRow } from "./row-documents";
 import { refreshSearchIndex, termMatches } from "./search-index";
-import { ftsQuery, questionTerms } from "./ai/chunks";
+import { questionTerms } from "./ai/chunks";
+import { textMatch } from "./search-store";
 import { aiFilter, aiMayRead } from "./ai/access";
 import { semanticNeighbours } from "./ai/semantic";
 import { allow } from "./action-limits";
@@ -260,14 +261,16 @@ export function similarTitles(
     if (database.kind !== "database" || database.workspace_id !== input.workspaceId) return [];
   }
   indexReady();
+  const match = textMatch(terms, { titleOnly: true });
   const rows = all<{ page_id: string; row_id: string; title: string }>(
     `SELECT s.page_id,s.row_id,s.title FROM search_index s JOIN pages p ON p.id=s.page_id
-     WHERE search_index MATCH ? AND p.workspace_id=? AND p.deleted_at IS NULL AND COALESCE(p.synced,0)=0
+     WHERE ${match.where} AND p.workspace_id=? AND p.deleted_at IS NULL AND COALESCE(p.synced,0)=0
        ${input.databaseId ? "AND s.page_id=? AND s.row_id<>''" : "AND s.row_id=''"}
-     ORDER BY bm25(search_index,0,0,10,1) LIMIT 60`,
-    `title : (${ftsQuery(terms)})`,
+     ORDER BY ${match.rank} LIMIT 60`,
+    ...match.whereArgs,
     input.workspaceId,
     ...(input.databaseId ? [input.databaseId] : []),
+    ...match.rankArgs,
   ).filter((r) => !/^[cmf]:/.test(r.row_id) && !(r.row_id ? r.row_id === input.excludeRowId : r.page_id === input.excludePageId));
   const seen = visibility(user);
   return rows

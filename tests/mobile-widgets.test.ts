@@ -552,7 +552,7 @@ test("journals behind a PIN show 'locked'; encrypted spaces only a status", () =
     run("INSERT INTO spaces(id,workspace_id,name,owner_id,visibility) VALUES(?,?,?,?,?)", encryptedSpace, wid, "Vault", owner.user.id, "private");
     const secretPage = createPage(wid, encryptedSpace, owner.user.id, "Merger plans", "document");
     run("UPDATE spaces SET encrypted=1,encrypt_titles=1 WHERE id=?", encryptedSpace);
-    run("INSERT INTO favorites VALUES(?,?)", O.id, secretPage);
+    run("INSERT INTO favorites(user_id,page_id) VALUES(?,?)", O.id, secretPage);
     const result = widgets(O, [
       { kind: "pinned", config: { mode: "favorites" } },
       { kind: "pinned", config: { mode: "page", pageId: secretPage } },
@@ -800,7 +800,7 @@ test("guests see only what is shared with them; rate limits per person", async (
   assert.deepEqual(one_(G, "pinned").items, []);
   assert.deepEqual((W.widgetOptions(G, "pinned") as { pages: unknown[] }).pages, []);
   run("INSERT INTO grants(resource_id,user_id,group_id,role) VALUES(?,?,?,?)", plan, G.id, "", "viewer");
-  run("INSERT INTO favorites VALUES(?,?)", G.id, plan);
+  run("INSERT INTO favorites(user_id,page_id) VALUES(?,?)", G.id, plan);
   assert.deepEqual(one_(G, "pinned").items.map((i: { id: string }) => i.id), [plan]);
   const shared = (W.widgetOptions(G, "pinned") as { pages: { id: string }[] }).pages.map((p) => p.id);
   assert.ok(shared.includes(plan) && !shared.includes(tasksDb));
