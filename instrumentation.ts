@@ -59,5 +59,8 @@ export async function register() {
     // (lib/metrics.ts; FLOWPLAN_METRICS=off switches them off).
     const { startMetricsWorker } = await import("./lib/metrics-worker");
     startMetricsWorker();
+    // Event-loop delay and SQLite time for load tests (FLOWPLAN_METRICS_LOOP=1).
+    const { startRuntimeMetrics } = await import("./lib/runtime-metrics");
+    startRuntimeMetrics();
   }
 }
