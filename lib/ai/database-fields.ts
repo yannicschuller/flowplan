@@ -11,9 +11,10 @@ import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
 import { HttpError } from "../auth";
 import { all, id as uuid, one, run } from "../db";
-import { isGuest } from "../permissions";
+import { isGuest, pageRole } from "../permissions";
+import { readableFieldIds, type FieldViewer } from "../field-access";
 import { validDateValue } from "../date-values";
-import type { Field, FieldType, Identity, Page, View } from "../types";
+import type { Field, FieldType, Identity, Page, User, View } from "../types";
 import { aiFilter } from "./access";
 import { AI_REASON_TEXT } from "./features";
 import { resolveAi } from "./resolve";
@@ -153,6 +154,79 @@ export function relationTitlesFor(user: Identity) {
   };
 }
 export const contentOf = (rowId: string) => () => recordContent(rowId);
+
+// ---- "Mit KI ausfüllen": only inputs at least as visible as the target ----
+//
+// A filled value is written into the target property and read by everyone
+// who may read that property. So the prompt may only contain what each of
+// them may read as well – never a value of a property with a narrower read
+// rule (lib/field-access.ts), nor the title of a related record some of
+// them cannot see. (AI properties are covered by the field rules already:
+// one that reads a hidden property is hidden itself.)
+
+// Properties every reader of `target` may read. Readers are told apart only
+// by their page role and their groups; a reader of the target with several
+// groups reads it through one of them, and more groups never hide a
+// property, so one viewer per role and group named in a rule is enough.
+// Rollups count as hidden: what they read lies in another database.
+export function fillInputFieldIds(fields: Field[], target: Field): Set<string> {
+  const groups = new Set<string>();
+  for (const f of fields) {
+    const rule = f.access?.read;
+    if (rule && typeof rule === "object") for (const g of rule.groups) groups.add(g);
+  }
+  let common = null as Set<string> | null;
+  for (const role of ["viewer", "editor", "owner"] as const)
+    for (const group of [null, ...groups]) {
+      const viewer: FieldViewer = { role, groups: new Set(group ? [group] : []) };
+      const readable = readableFieldIds(viewer, fields, () => false);
+      if (!readable.has(target.id)) continue;
+      const before: Set<string> | null = common;
+      common = before ? new Set([...before].filter((id) => readable.has(id))) : readable;
+    }
+  return common || new Set();
+}
+
+// Whether every member of the workspace who may open `pageId` may also open
+// `relatedPageId` – checked once per pair for half a minute.
+const coverage = new Map<string, { at: number; covered: boolean }>();
+function relatedPageCovers(page: Page, relatedPageId: string) {
+  if (relatedPageId === page.id) return true;
+  const key = `${page.id}|${relatedPageId}`;
+  const cached = coverage.get(key);
+  if (cached && cached.at > Date.now() - 30_000) return cached.covered;
+  const related = one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", relatedPageId);
+  let covered = !!related;
+  if (related)
+    for (const member of all<User>("SELECT u.* FROM members m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=?", page.workspace_id)) {
+      const person: Identity = { ...member, groups: [], isAdmin: false };
+      if (pageRole(person, page) && !pageRole(person, related)) {
+        covered = false;
+        break;
+      }
+    }
+  if (coverage.size > 1000) coverage.clear();
+  coverage.set(key, { at: Date.now(), covered });
+  return covered;
+}
+
+// Related records' titles for a filled value: of those the AI may read for
+// this person, only records everyone who reads the database also sees –
+// not private records, and only from databases open to all of them.
+export function fillRelationTitlesFor(user: Identity, page: Page) {
+  const titles = relationTitlesFor(user);
+  return (field: Field, ids: string[]) => {
+    if (!field.relationPage || !ids.length || !relatedPageCovers(page, field.relationPage)) return [];
+    const open = new Set(
+      all<{ id: string }>(
+        `SELECT id FROM rows WHERE page_id=? AND access!='private' AND id IN (${ids.slice(0, 100).map(() => "?").join(",")})`,
+        field.relationPage,
+        ...ids.slice(0, 100),
+      ).map((r) => r.id),
+    );
+    return titles(field, ids.filter((id) => open.has(id)));
+  };
+}
 
 // The prompt with every {Name} replaced by the record's value. `empty`:
 // the prompt refers to properties and all of them are empty. `input`: the
