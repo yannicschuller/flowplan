@@ -91,10 +91,24 @@ type FlowplanDesktop = {
   // This computer's key for this instance (desktop newer than 1.3.0),
   // like FlowplanApp.deviceKey.
   deviceKey?: AppDeviceKey;
+  // Where passkeys sign in (#165, desktop newer than 1.3.1): "window" – the
+  // page's own WebAuthn, Windows Hello over the app (Windows) – or
+  // "browser", the hand-off to the system browser (macOS, Linux).
+  passkeys?: "window" | "browser";
 };
 export function desktopApp(): FlowplanDesktop | undefined {
   if (typeof window === "undefined") return undefined;
   return (window as unknown as { FlowplanDesktop?: FlowplanDesktop }).FlowplanDesktop;
+}
+// Passkeys right here in the desktop app's window (#165): only where the app
+// says so – on Windows, where Chromium hands WebAuthn to Windows Hello.
+// Older apps and the app on macOS and Linux hand passkeys to the browser
+// (lib/desktop-sign-in.ts).
+export function desktopPasskeysInWindow(
+  app: { passkeys?: unknown } | undefined = desktopApp(),
+  agent: string = typeof navigator === "undefined" ? "" : navigator.userAgent,
+): boolean {
+  return /FlowplanDesktop\//.test(agent) && app?.passkeys === "window";
 }
 // The device key of the app the page runs in, if it has one (checked; the
 // server checks again). Without one – a browser, or an older app – a
