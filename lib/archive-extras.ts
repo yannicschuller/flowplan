@@ -34,8 +34,10 @@ export const statusEntrySchema = z.object({
 export const databaseExtrasShape = {
   // Checked again on import (settingsSchema); Git secrets never leave.
   settings: z.unknown().optional(),
-  timeEntries: z.array(timeEntrySchema).max(50000).optional(),
-  statusLog: z.array(statusEntrySchema).max(50000).optional(),
+  // Grow with the records (lib/archive.ts MAX_ARCHIVE_ROWS); flowplan.json's
+  // size limit bounds them.
+  timeEntries: z.array(timeEntrySchema).max(500_000).optional(),
+  statusLog: z.array(statusEntrySchema).max(500_000).optional(),
 };
 const entryValues = z.record(z.string().regex(/^[a-z0-9-]{1,40}$/), z.union([z.number().min(-1e6).max(1e6), z.boolean()]));
 export const pageExtrasShape = {

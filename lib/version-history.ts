@@ -7,6 +7,7 @@ import { requirePage } from "./permissions";
 import { requireUnlocked } from "./journal-extras";
 import { ensureRowDocument, requireRow } from "./row-documents";
 import { expireTrash } from "./trash";
+import { pruneNotifications } from "./notification-retention";
 import {
   compareDocuments,
   htmlBlocks,
@@ -238,6 +239,8 @@ export function startRetentionWorker() {
       pruneSnapshots();
       // Pages, spaces, records and templates after the trash period (#123).
       expireTrash();
+      // Old notifications (lib/notification-retention.ts).
+      pruneNotifications();
     } catch (error) {
       console.error("Snapshot retention failed", error);
     }

@@ -141,6 +141,8 @@ test("notifications reach the app through Expo, with the badge and without conte
   const page = bootstrap(owner.user, wid).pages[0];
   const token = pushToken();
   registerMobileDevice(reader.user, reader.token, { installationId: randomUUID(), platform: "ios", pushToken: token });
+  // Comments reach the page's followers (lib/comment-recipients.ts).
+  command(reader.user, { action: "page.follow", pageId: page.id, follow: true });
   command(owner.user, { action: "comment.create", pageId: page.id, body: "Confidential document text" });
   const sent: { to: string; body: string; badge: number; data: { url: string } }[] = [];
   await flushPushQueue(

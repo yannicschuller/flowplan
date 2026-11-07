@@ -99,6 +99,8 @@ test("comments enqueue encrypted web push once, omit private content and recheck
   const page = bootstrap(owner.user, wid).pages[0];
   const sub = subscription();
   subscribePush(recipient.user, recipient.token, sub);
+  // Comments reach the page's followers (lib/comment-recipients.ts).
+  command(recipient.user, { action: "page.follow", pageId: page.id, follow: true });
   command(owner.user, {
     action: "comment.create",
     pageId: page.id,
@@ -191,6 +193,7 @@ test("push opens exact row threads and drops deleted or mismatched destinations"
     pageId: page.id,
     cells: { title: "Secret entry" },
   }) as { id: string };
+  command(recipient.user, { action: "page.follow", pageId: page.id, follow: true });
   const { rowDocumentData } = await import("../lib/row-documents");
   const { htmlState } = await import("../lib/document-server");
   const { withCommentDocument } = await import("../lib/inline-comments");

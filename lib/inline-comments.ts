@@ -1,4 +1,5 @@
 import { hiddenRowIds } from "./row-access";
+import { commentRecipients, mayHear } from "./comment-recipients";
 import {
   richCommentSchema,
   commentText,
@@ -237,25 +238,19 @@ function notify(
     "SELECT row_id FROM inline_threads WHERE id=?",
     threadId,
   );
+  const rowId = target?.row_id || null;
+  // A new thread: who the page or record concerns (lib/comment-recipients.ts),
+  // never the whole workspace. A reply: the thread's participants.
   const recipients = onlyMentions
     ? []
     : first
-      ? all<{ user_id: string }>(
-          "SELECT user_id FROM members WHERE workspace_id=?",
-          page.workspace_id,
-        ).map((m) => m.user_id)
+      ? commentRecipients(user, page, rowId)
       : all<{ author_id: string }>(
           "SELECT DISTINCT author_id FROM inline_messages WHERE thread_id=? AND author_id IS NOT NULL",
           threadId,
         ).map((m) => m.author_id);
   for (const uid of new Set([...recipients, ...mentions]))
-    if (
-      uid !== user.id &&
-      one("SELECT id FROM users WHERE id=? AND disabled=0", uid) &&
-      pageRole({ ...user, id: uid }, page) &&
-      (!target?.row_id ||
-        !hiddenRowIds({ ...user, id: uid }, page).has(target.row_id))
-    )
+    if (uid !== user.id && mayHear(uid, page, rowId))
       run(
         "INSERT INTO notifications(id,user_id,body,page_id,row_id,thread_id,kind) VALUES(?,?,?,?,?,?,?)",
         id(),

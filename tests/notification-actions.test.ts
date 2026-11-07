@@ -169,6 +169,8 @@ test("a record's date reminder: done sets the done state, tomorrow keeps the tim
 });
 
 test("“Reply” answers the comment thread or comments on the page", async () => {
+  // Ben follows the page: comments reach followers (lib/comment-recipients.ts).
+  command(ben.user, { action: "page.follow", pageId: docId, follow: true });
   command(anna.user, { action: "comment.create", pageId: docId, body: "Kannst du das prüfen?" });
   const [comment] = (await withContent(pushes)).filter((m) => m.categoryId === NOTIFICATION_CATEGORIES.comment);
   assert.ok(comment, "comments get the reply buttons");

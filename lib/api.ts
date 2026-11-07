@@ -43,6 +43,8 @@ import {
 import { journalDate, rollJournal, rollJournals } from "./journal";
 import { journalDayLink, pageCounts, removeEmptyJournalDays } from "./journal-days";
 import { recentVisits, recordPageEdit, setFollowing } from "./page-activity";
+import { commentRecipients } from "./comment-recipients";
+import { MAX_ARCHIVE_ROWS } from "./archive-limits";
 import { propertiesCollapsed, setPropertiesCollapsed } from "./page-view-prefs";
 import { saveSidebarState, sidebarState } from "./sidebar-state";
 import { changeDocTask, dueTaskCount, indexPageTasks, reindexRowTasks, syncDocTasks } from "./doc-tasks";
@@ -963,7 +965,7 @@ export function command(
               .object({
                 rows: z
                   .array(z.object({ id: z.string().optional() }))
-                  .max(5000),
+                  .max(MAX_ARCHIVE_ROWS),
               })
               .parse(page.data);
             for (const [index, row] of rows.entries()) {
@@ -1048,7 +1050,7 @@ export function command(
                       content: z.string().optional(),
                     }),
                   )
-                  .max(5000),
+                  .max(MAX_ARCHIVE_ROWS),
               })
               .parse(p.data);
             const fields = d.database.fields.map((f) => ({
@@ -2586,25 +2588,17 @@ export function command(
         );
         emitWebhook(p.workspace_id, "comment.created", { pageId: p.id, rowId: b.rowId ? uuid.parse(b.rowId) : null, text: body }, user.name);
         if (b.rowId) queueIssuePush(p.id, uuid.parse(b.rowId));
-        for (const m of all<{ user_id: string }>(
-          "SELECT user_id FROM members WHERE workspace_id=? AND user_id!=?",
-          p.workspace_id,
-          user.id,
-        )) {
-          const other = { ...user, id: m.user_id };
-          if (
-            pageRole(other, p) &&
-            (!b.rowId || !hiddenRowIds(other, p).has(uuid.parse(b.rowId)))
-          )
-            run(
-              "INSERT INTO notifications(id,user_id,body,page_id,row_id,kind) VALUES(?,?,?,?,?,'comment')",
-              id(),
-              m.user_id,
-              `${user.name} kommentiert „${p.title}“`,
-              p.id,
-              b.rowId ? uuid.parse(b.rowId) : null,
-            );
-        }
+        // Followers, the owner, the record's people and earlier commenters –
+        // not the whole workspace (lib/comment-recipients.ts).
+        for (const recipient of commentRecipients(user, p, b.rowId ? uuid.parse(b.rowId) : null))
+          run(
+            "INSERT INTO notifications(id,user_id,body,page_id,row_id,kind) VALUES(?,?,?,?,?,'comment')",
+            id(),
+            recipient,
+            `${user.name} kommentiert „${p.title}“`,
+            p.id,
+            b.rowId ? uuid.parse(b.rowId) : null,
+          );
         break;
       }
       case "comment.resolve":

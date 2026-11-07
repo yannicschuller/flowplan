@@ -88,6 +88,7 @@ import { HttpError } from "./auth";
 import { field, view } from "./database-schema";
 import { cleanHtml, htmlState } from "./document-server";
 import type { Identity, Page, Field, Space } from "./types";
+import { MAX_ARCHIVE_ROWS } from "./archive-limits";
 
 export const ARCHIVE_LIMIT = 100 * 1024 * 1024;
 const MANIFEST_LIMIT = 30 * 1024 * 1024;
@@ -95,6 +96,12 @@ const MANIFEST_LIMIT = 30 * 1024 * 1024;
 export const LARGE_ARCHIVE_LIMIT = 2 * 1024 * 1024 * 1024;
 const EXPANDED_LIMIT = 4 * 1024 * 1024 * 1024,
   MAX_ARCHIVE_FILES = 20000;
+// Records per database (lib/archive-limits.ts), pages per archive and
+// comments per page (a database's record comments belong to its page): far
+// beyond real workspaces. What bounds an archive is its size – MANIFEST_LIMIT
+// for flowplan.json, EXPANDED_LIMIT for all of it.
+export { MAX_ARCHIVE_ROWS };
+const MAX_ARCHIVE_PAGES = 50_000;
 // A file inside an archive: in memory, or on disk with its checksum.
 export type Spooled = { path: string; size: number; sha256: string };
 export type ArchiveEntry = Buffer | Spooled;
@@ -125,7 +132,8 @@ const str = z.string().max(500),
 const cells = z.record(z.string().max(500), z.unknown());
 const snapshot = z.object({
   appearance: appearanceSchema.nullable().optional(),
-  html: z.string().max(20_000_000),
+  // Database versions hold all records; flowplan.json's size bounds them.
+  html: z.string().max(MANIFEST_LIMIT),
   title: z.string().max(500).default(""),
   created_at: str,
 });
@@ -160,7 +168,7 @@ const databaseSchema = z.object({
   fields: z.array(field).min(1).max(80),
   views: z.array(view).min(1).max(30),
   recordLayout: recordLayoutSchema.optional(),
-  rows: z.array(rowSchema).max(5000),
+  rows: z.array(rowSchema).max(MAX_ARCHIVE_ROWS),
   templates: z
     .array(
       z.object({
@@ -323,11 +331,11 @@ export const archiveSchema = z.object({
               created_at: str,
             }),
           )
-          .max(10000)
+          .max(MAX_ARCHIVE_ROWS)
           .default([]),
       }),
     )
-    .max(500),
+    .max(MAX_ARCHIVE_PAGES),
   files: z
     .array(
       z.object({
@@ -347,6 +355,39 @@ export const archiveSchema = z.object({
     )
     .max(MAX_ARCHIVE_FILES),
 });
+type StoredVersion = { html: string; title: string | null; created_at: string; appearance: string | null };
+type ArchivedVersion = { html: string; title: string; created_at: string; appearance: unknown };
+type VersionSize = { id: string; page_id: string; bytes: number; created_at: string };
+const archivedVersion = (s: StoredVersion): ArchivedVersion => ({
+  ...s,
+  title: s.title || "",
+  appearance: s.appearance ? JSON.parse(String(s.appearance)) : null,
+});
+// Each version of a database holds all its records – a database with tens of
+// thousands of records and months of daily versions would not fit any
+// archive. Versions go in newest first (across all databases) while
+// flowplan.json stays within MANIFEST_LIMIT; older ones stay behind, the
+// current records always go. Only the chosen versions are read.
+function addDatabaseVersions(
+  manifest: { pages: { id: string; snapshots: ArchivedVersion[] }[] },
+  versions: VersionSize[],
+) {
+  if (!versions.length) return;
+  const byId = new Map(manifest.pages.map((p) => [p.id, p]));
+  // Room left in flowplan.json, with a margin.
+  let room = MANIFEST_LIMIT - Buffer.byteLength(JSON.stringify(manifest)) - 1024 * 1024;
+  for (const v of [...versions].sort((a, b) => b.created_at.localeCompare(a.created_at))) {
+    if (v.bytes + 1024 > room) continue;
+    const stored = one<StoredVersion>("SELECT html,title,created_at,appearance FROM snapshots WHERE id=?", v.id);
+    if (!stored) continue;
+    const version = archivedVersion(stored);
+    const cost = Buffer.byteLength(JSON.stringify(version)) + 16;
+    if (cost > room) continue;
+    room -= cost;
+    byId.get(v.page_id)!.snapshots.push(version);
+  }
+  for (const p of manifest.pages) p.snapshots.sort((a, b) => a.created_at.localeCompare(b.created_at));
+}
 function digest(bytes: Buffer) {
   return createHash("sha256").update(bytes).digest("hex");
 }
@@ -377,6 +418,14 @@ function snapshotFor(user: Identity, wid: string) {
       spaceVisible.set(spaceId, !!space && !space.deleted_at && !!spaceRole(user, space));
     }
     return spaceVisible.get(spaceId)!;
+  };
+  const databaseVersions: VersionSize[] = [];
+  const laterVersions = (p: Page): ArchivedVersion[] => {
+    if (pageRole(user, p) === "owner")
+      databaseVersions.push(
+        ...all<VersionSize>("SELECT id,page_id,length(CAST(html AS BLOB)) bytes,created_at FROM snapshots WHERE page_id=?", p.id),
+      );
+    return [];
   };
   const manifest = {
     format: "flowplan-2",
@@ -567,18 +616,13 @@ function snapshotFor(user: Identity, wid: string) {
               ...(p.kind === "document" || p.kind === "journal" ? inkBlocksArchive(p.id) : {}),
             }),
         // Versions of a database hold all its records: only for those who
-        // see every record anyway.
-        snapshots: (p.kind === "database" && pageRole(user, p) !== "owner"
-          ? []
-          : all<{ html: string; title: string | null; created_at: string; appearance: string | null }>(
+        // see every record anyway, and added below as far as they fit.
+        snapshots: p.kind === "database"
+          ? laterVersions(p)
+          : all<StoredVersion>(
               "SELECT html,title,created_at,appearance FROM snapshots WHERE page_id=? ORDER BY created_at",
               p.id,
-            )
-        ).map((s) => ({
-          ...s,
-          title: s.title || "",
-          appearance: s.appearance ? JSON.parse(String(s.appearance)) : null,
-        })),
+            ).map(archivedVersion),
         inlineThreads: exportInlineComments(p.id).filter((t) => shown(p.id, t.row_id)),
         comments: all<{ row_id: string | null }>(
           `SELECT c.row_id,COALESCE(u.name,'Unbekannt') author,c.body,c.resolved,c.created_at FROM comments c LEFT JOIN users u ON u.id=c.author_id WHERE c.page_id=?
@@ -628,6 +672,7 @@ function snapshotFor(user: Identity, wid: string) {
   };
   if (binaries.size > MAX_ARCHIVE_FILES)
     throw new HttpError(413, "Höchstens 20.000 Dateien pro Inhaltsarchiv.");
+  addDatabaseVersions(manifest, databaseVersions);
   const validated = archiveSchema.parse(manifest);
   const encoded = Buffer.from(JSON.stringify(validated));
   if (
@@ -1103,7 +1148,7 @@ async function importEntries(
                         content: html.optional(),
                       }),
                     )
-                    .max(5000),
+                    .max(MAX_ARCHIVE_ROWS),
                 })
                 .parse(JSON.parse(snapshot.html));
             } catch {
@@ -1271,6 +1316,13 @@ async function importEntries(
             ),
             JSON.stringify(d.recordLayout || {}),
           );
+          // A record's editable document (row_documents) is made from its
+          // content when it is first opened (lib/row-documents.ts), as for
+          // records created in the app. Only records with text comments need
+          // it now, for their anchors: converting HTML to a Yjs state takes
+          // milliseconds and memory per record, too much for a database with
+          // many thousand records in one transaction.
+          const threadRows = new Set(p.inlineThreads.map((t) => t.row_id));
           for (const r of d.rows) {
             const rid = rowMap.get(r.id)!,
               content = rewriteHtml(r.content);
@@ -1291,13 +1343,14 @@ async function importEntries(
               r.repeat,
               r.access,
             );
-            run(
-              "INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?)",
-              rid,
-              htmlState(content),
-              content,
-              id(),
-            );
+            if (threadRows.has(r.id))
+              run(
+                "INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?)",
+                rid,
+                htmlState(content),
+                content,
+                id(),
+              );
             for (const snap of r.snapshots) {
               const html = rewriteHtml(snap.html);
               run(

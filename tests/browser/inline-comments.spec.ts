@@ -74,6 +74,10 @@ async function fixture(page: Page, browser: Browser) {
     uid,
     "viewer",
   );
+  // The reader follows both pages: new comments reach followers, not the
+  // whole workspace (lib/comment-recipients.ts).
+  for (const followed of [doc.id, database.id])
+    db.prepare("INSERT INTO page_follows(user_id,page_id,created_at) VALUES(?,?,?)").run(uid, followed, Date.now());
   db.prepare("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)").run(
     createHash("sha256").update(token).digest("hex"),
     uid,
