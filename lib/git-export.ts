@@ -33,6 +33,7 @@ import { frontmatterAliases, pageAliases, storedAliases } from "./aliases";
 import { syncMetaFromFrontmatter } from "./page-properties-server";
 import { importMarkdownRecords } from "./markdown-records";
 import type { Identity } from "./types";
+import { MAX_MARKDOWN_EXPORT_ENTRIES } from "./markdown-export";
 
 export type GitConfig = { url: string; branch: string; username: string; token: string; importChanges: boolean };
 export function gitConfig(): GitConfig | null {
@@ -295,7 +296,7 @@ export async function syncGit(
       // The previous copy of this page, also under an older title.
       for (const old of readdirSync(dir()))
         if (old !== ".git" && old.endsWith(`-${item.pageId.slice(0, 8)}`)) rmSync(resolve(dir(), old), { recursive: true, force: true });
-      for (const [name, data] of await readZip(item.bytes, { foreign: true, maxEntries: 20000 })) {
+      for (const [name, data] of await readZip(item.bytes, { foreign: true, maxEntries: MAX_MARKDOWN_EXPORT_ENTRIES })) {
         const path = resolve(target, name);
         if (!path.startsWith(target + "/")) continue;
         mkdirSync(dirname(path), { recursive: true });
