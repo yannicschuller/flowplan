@@ -68,6 +68,7 @@
     "aws4fetch": "^1.0.20",
     "dompurify": "^3.4.17",
     "emojibase-data": "^18.0.0",
+    "happy-dom": "^20.14.6",
     "htmlparser2": "^12.0.0",
     "isomorphic-git": "1.44.6",
     "katex": "^0.19.1",

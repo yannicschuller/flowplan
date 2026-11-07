@@ -1414,6 +1414,51 @@ export type CommandPagePurgeResult = {
   pages: number;
 };
 
+/** Move files to the trash. Files of pages the caller may edit (full members only, not guests; not on a locked page). All or none. A file in the trash is no longer served (`/api/files/<id>` answers 404), listed, searched, copied or exported; documents that still show it get a missing-image placeholder. Restore it with `file.restore`; it is deleted for good with `file.purge`, `trash.empty` or after the trash period. Removing an image from a document never deletes the file. */
+export type CommandFileDelete = {
+  action: "file.delete";
+  fileIds: string[];
+};
+
+export type CommandFileDeleteResult = {
+  ok: true;
+  files: number;
+};
+
+/** Move all unused files to the trash. Every file of the media library (`GET /api/media`, same `kind` and `query` filter) that no current content of the workspace refers to – documents, records, whiteboards, comments, page icons and covers – and that the caller may delete. Version history does not count: restoring a version whose file was deleted for good shows the image as missing. */
+export type CommandFilesDeleteUnused = {
+  action: "files.deleteUnused";
+  workspaceId: string;
+  kind?: "all" | "image" | "video" | "audio" | "pdf" | "other";
+  query?: string;
+};
+
+export type CommandFilesDeleteUnusedResult = {
+  ok: true;
+  /** Files moved to the trash */
+  files: number;
+};
+
+/** Restore a file from the trash */
+export type CommandFileRestore = {
+  action: "file.restore";
+  fileId: string;
+};
+
+export type CommandFileRestoreResult = {
+  ok: true;
+};
+
+/** Delete a file from the trash permanently. The file must be in the trash (`file.delete`); the same right as moving it there. Deleted for good: the upload on disk and in object storage, its extracted text, handwriting, placeholder and search entries. Cannot be undone. */
+export type CommandFilePurge = {
+  action: "file.purge";
+  fileId: string;
+};
+
+export type CommandFilePurgeResult = {
+  ok: true;
+};
+
 /** Delete a template from the template trash permanently. The template must be in the template trash (`template.delete`). Its creator or a workspace owner may delete it; templates for all workspaces or the public gallery need an administrator. Its stored files go with it. Pages already created from it are kept. */
 export type CommandTemplatePurge = {
   action: "template.purge";
@@ -2306,10 +2351,10 @@ export type CommandHomeSaveResult = {
 };
 
 /** One action of the interface, as sent by POST /api/command. */
-export type Command = CommandWorkspaceCreate | CommandSpaceCreate | CommandSpaceReorder | CommandPageCreate | CommandBlockIds | CommandPageUpdate | CommandE2eeAppend | CommandPageOwner | CommandPageReview | CommandPageAliases | CommandPageProperties | CommandPagesTag | CommandTagSave | CommandCollectionCreate | CommandCollectionUpdate | CommandPropertySave | CommandTagScope | CommandPropertyScope | CommandMetaUsage | CommandPageMoveCheck | CommandTemplateCopy | CommandTemplateDependencies | CommandRowRepeat | CommandDatabaseSettings | CommandPageMove | CommandPageDelete | CommandPageRestore | CommandPagePurge | CommandTemplatePurge | CommandTrashEmpty | CommandPageDuplicate | CommandPageFollow | CommandPageCollapseProperties | CommandSidebarState | CommandFavorite | CommandDatabaseUpdate | CommandRowCreate | CommandRowUpdate | CommandRowDelete | CommandWhiteboardToRecords | CommandRowsImport | CommandCommentCreate | CommandCommentResolve | CommandMemberInvite | CommandCalendarFeed | CommandCalendarFeedRevoke | CommandDashboardSave | CommandNotebookSheetAdd | CommandWebhookDelete | CommandInboundSave | CommandInboundRotate | CommandInboundDelete | CommandIssueSyncConnect | CommandIssueSyncDisconnect | CommandIssueSyncMap | CommandIssueSyncUnmap | CommandCalendarSyncMap | CommandCalendarSyncUnmap | CommandCalendarSyncDisconnect | CommandMeetingNote | CommandNotificationWeekly | CommandShortcutsSave | CommandHomeSave | CommandOther;
+export type Command = CommandWorkspaceCreate | CommandSpaceCreate | CommandSpaceReorder | CommandPageCreate | CommandBlockIds | CommandPageUpdate | CommandE2eeAppend | CommandPageOwner | CommandPageReview | CommandPageAliases | CommandPageProperties | CommandPagesTag | CommandTagSave | CommandCollectionCreate | CommandCollectionUpdate | CommandPropertySave | CommandTagScope | CommandPropertyScope | CommandMetaUsage | CommandPageMoveCheck | CommandTemplateCopy | CommandTemplateDependencies | CommandRowRepeat | CommandDatabaseSettings | CommandPageMove | CommandPageDelete | CommandPageRestore | CommandPagePurge | CommandFileDelete | CommandFilesDeleteUnused | CommandFileRestore | CommandFilePurge | CommandTemplatePurge | CommandTrashEmpty | CommandPageDuplicate | CommandPageFollow | CommandPageCollapseProperties | CommandSidebarState | CommandFavorite | CommandDatabaseUpdate | CommandRowCreate | CommandRowUpdate | CommandRowDelete | CommandWhiteboardToRecords | CommandRowsImport | CommandCommentCreate | CommandCommentResolve | CommandMemberInvite | CommandCalendarFeed | CommandCalendarFeedRevoke | CommandDashboardSave | CommandNotebookSheetAdd | CommandWebhookDelete | CommandInboundSave | CommandInboundRotate | CommandInboundDelete | CommandIssueSyncConnect | CommandIssueSyncDisconnect | CommandIssueSyncMap | CommandIssueSyncUnmap | CommandCalendarSyncMap | CommandCalendarSyncUnmap | CommandCalendarSyncDisconnect | CommandMeetingNote | CommandNotificationWeekly | CommandShortcutsSave | CommandHomeSave | CommandOther;
 
 /** The result of a command action, by the action sent. */
-export type CommandResultOf<A extends Command> = A extends { action: "workspace.create" } ? CommandWorkspaceCreateResult : A extends { action: "space.create" } ? CommandSpaceCreateResult : A extends { action: "space.reorder" } ? CommandSpaceReorderResult : A extends { action: "page.create" } ? CommandPageCreateResult : A extends { action: "block.ids" } ? CommandBlockIdsResult : A extends { action: "page.update" } ? CommandPageUpdateResult : A extends { action: "e2ee.append" } ? CommandE2eeAppendResult : A extends { action: "page.owner" } ? CommandPageOwnerResult : A extends { action: "page.review" } ? CommandPageReviewResult : A extends { action: "page.aliases" } ? CommandPageAliasesResult : A extends { action: "page.properties" } ? CommandPagePropertiesResult : A extends { action: "pages.tag" } ? CommandPagesTagResult : A extends { action: "tag.save" } ? CommandTagSaveResult : A extends { action: "collection.create" } ? CommandCollectionCreateResult : A extends { action: "collection.update" } ? CommandCollectionUpdateResult : A extends { action: "property.save" } ? CommandPropertySaveResult : A extends { action: "tag.scope" } ? CommandTagScopeResult : A extends { action: "property.scope" } ? CommandPropertyScopeResult : A extends { action: "meta.usage" } ? CommandMetaUsageResult : A extends { action: "page.moveCheck" } ? CommandPageMoveCheckResult : A extends { action: "template.copy" } ? CommandTemplateCopyResult : A extends { action: "template.dependencies" } ? CommandTemplateDependenciesResult : A extends { action: "row.repeat" } ? CommandRowRepeatResult : A extends { action: "page.move" } ? CommandPageMoveResult : A extends { action: "page.delete" } ? CommandPageDeleteResult : A extends { action: "page.restore" } ? CommandPageRestoreResult : A extends { action: "page.purge" } ? CommandPagePurgeResult : A extends { action: "template.purge" } ? CommandTemplatePurgeResult : A extends { action: "trash.empty" } ? CommandTrashEmptyResult : A extends { action: "page.follow" } ? CommandPageFollowResult : A extends { action: "page.collapseProperties" } ? CommandPageCollapsePropertiesResult : A extends { action: "sidebar.state" } ? CommandSidebarStateResult : A extends { action: "favorite" } ? CommandFavoriteResult : A extends { action: "database.update" } ? CommandDatabaseUpdateResult : A extends { action: "row.create" } ? CommandRowCreateResult : A extends { action: "row.update" } ? CommandRowUpdateResult : A extends { action: "row.delete" } ? CommandRowDeleteResult : A extends { action: "whiteboard.toRecords" } ? CommandWhiteboardToRecordsResult : A extends { action: "rows.import" } ? CommandRowsImportResult : A extends { action: "comment.create" } ? CommandCommentCreateResult : A extends { action: "comment.resolve" } ? CommandCommentResolveResult : A extends { action: "calendar.feed.revoke" } ? CommandCalendarFeedRevokeResult : A extends { action: "dashboard.save" } ? CommandDashboardSaveResult : A extends { action: "notebook.sheet.add" } ? CommandNotebookSheetAddResult : A extends { action: "webhook.delete" } ? CommandWebhookDeleteResult : A extends { action: "inbound.save" } ? CommandInboundSaveResult : A extends { action: "inbound.rotate" } ? CommandInboundRotateResult : A extends { action: "inbound.delete" } ? CommandInboundDeleteResult : A extends { action: "issueSync.connect" } ? CommandIssueSyncConnectResult : A extends { action: "issueSync.disconnect" } ? CommandIssueSyncDisconnectResult : A extends { action: "issueSync.map" } ? CommandIssueSyncMapResult : A extends { action: "issueSync.unmap" } ? CommandIssueSyncUnmapResult : A extends { action: "calendarSync.map" } ? CommandCalendarSyncMapResult : A extends { action: "calendarSync.unmap" } ? CommandCalendarSyncUnmapResult : A extends { action: "calendarSync.disconnect" } ? CommandCalendarSyncDisconnectResult : A extends { action: "meeting.note" } ? CommandMeetingNoteResult : A extends { action: "notification.weekly" } ? CommandNotificationWeeklyResult : A extends { action: "shortcuts.save" } ? CommandShortcutsSaveResult : A extends { action: "home.save" } ? CommandHomeSaveResult : CommandResult;
+export type CommandResultOf<A extends Command> = A extends { action: "workspace.create" } ? CommandWorkspaceCreateResult : A extends { action: "space.create" } ? CommandSpaceCreateResult : A extends { action: "space.reorder" } ? CommandSpaceReorderResult : A extends { action: "page.create" } ? CommandPageCreateResult : A extends { action: "block.ids" } ? CommandBlockIdsResult : A extends { action: "page.update" } ? CommandPageUpdateResult : A extends { action: "e2ee.append" } ? CommandE2eeAppendResult : A extends { action: "page.owner" } ? CommandPageOwnerResult : A extends { action: "page.review" } ? CommandPageReviewResult : A extends { action: "page.aliases" } ? CommandPageAliasesResult : A extends { action: "page.properties" } ? CommandPagePropertiesResult : A extends { action: "pages.tag" } ? CommandPagesTagResult : A extends { action: "tag.save" } ? CommandTagSaveResult : A extends { action: "collection.create" } ? CommandCollectionCreateResult : A extends { action: "collection.update" } ? CommandCollectionUpdateResult : A extends { action: "property.save" } ? CommandPropertySaveResult : A extends { action: "tag.scope" } ? CommandTagScopeResult : A extends { action: "property.scope" } ? CommandPropertyScopeResult : A extends { action: "meta.usage" } ? CommandMetaUsageResult : A extends { action: "page.moveCheck" } ? CommandPageMoveCheckResult : A extends { action: "template.copy" } ? CommandTemplateCopyResult : A extends { action: "template.dependencies" } ? CommandTemplateDependenciesResult : A extends { action: "row.repeat" } ? CommandRowRepeatResult : A extends { action: "page.move" } ? CommandPageMoveResult : A extends { action: "page.delete" } ? CommandPageDeleteResult : A extends { action: "page.restore" } ? CommandPageRestoreResult : A extends { action: "page.purge" } ? CommandPagePurgeResult : A extends { action: "file.delete" } ? CommandFileDeleteResult : A extends { action: "files.deleteUnused" } ? CommandFilesDeleteUnusedResult : A extends { action: "file.restore" } ? CommandFileRestoreResult : A extends { action: "file.purge" } ? CommandFilePurgeResult : A extends { action: "template.purge" } ? CommandTemplatePurgeResult : A extends { action: "trash.empty" } ? CommandTrashEmptyResult : A extends { action: "page.follow" } ? CommandPageFollowResult : A extends { action: "page.collapseProperties" } ? CommandPageCollapsePropertiesResult : A extends { action: "sidebar.state" } ? CommandSidebarStateResult : A extends { action: "favorite" } ? CommandFavoriteResult : A extends { action: "database.update" } ? CommandDatabaseUpdateResult : A extends { action: "row.create" } ? CommandRowCreateResult : A extends { action: "row.update" } ? CommandRowUpdateResult : A extends { action: "row.delete" } ? CommandRowDeleteResult : A extends { action: "whiteboard.toRecords" } ? CommandWhiteboardToRecordsResult : A extends { action: "rows.import" } ? CommandRowsImportResult : A extends { action: "comment.create" } ? CommandCommentCreateResult : A extends { action: "comment.resolve" } ? CommandCommentResolveResult : A extends { action: "calendar.feed.revoke" } ? CommandCalendarFeedRevokeResult : A extends { action: "dashboard.save" } ? CommandDashboardSaveResult : A extends { action: "notebook.sheet.add" } ? CommandNotebookSheetAddResult : A extends { action: "webhook.delete" } ? CommandWebhookDeleteResult : A extends { action: "inbound.save" } ? CommandInboundSaveResult : A extends { action: "inbound.rotate" } ? CommandInboundRotateResult : A extends { action: "inbound.delete" } ? CommandInboundDeleteResult : A extends { action: "issueSync.connect" } ? CommandIssueSyncConnectResult : A extends { action: "issueSync.disconnect" } ? CommandIssueSyncDisconnectResult : A extends { action: "issueSync.map" } ? CommandIssueSyncMapResult : A extends { action: "issueSync.unmap" } ? CommandIssueSyncUnmapResult : A extends { action: "calendarSync.map" } ? CommandCalendarSyncMapResult : A extends { action: "calendarSync.unmap" } ? CommandCalendarSyncUnmapResult : A extends { action: "calendarSync.disconnect" } ? CommandCalendarSyncDisconnectResult : A extends { action: "meeting.note" } ? CommandMeetingNoteResult : A extends { action: "notification.weekly" } ? CommandNotificationWeeklyResult : A extends { action: "shortcuts.save" } ? CommandShortcutsSaveResult : A extends { action: "home.save" } ? CommandHomeSaveResult : CommandResult;
 
 // ---- Client ----
 
@@ -2606,7 +2651,7 @@ export class FlowplanClient {
   }
 
   /** Media library — Files of the pages you may read, 60 per call. (GET /api/media) */
-  async media(query: { workspace: string; kind?: "all" | "image" | "video" | "audio" | "pdf" | "other"; q?: string; offset?: number }, options?: RequestOptions): Promise<Record<string, unknown>> {
+  async media(query: { workspace: string; kind?: "all" | "image" | "video" | "audio" | "pdf" | "other"; q?: string; offset?: number; usage?: "all" | "unused" }, options?: RequestOptions): Promise<Record<string, unknown>> {
     return this.json<Record<string, unknown>>("GET", `/api/media`, { query }, options);
   }
 
@@ -2742,6 +2787,7 @@ export class FlowplanClient {
     pages: number;
     spaces: number;
     records: number;
+    files?: number;
     /** Days items stay in the trash before they are deleted permanently (0 = never) */
     days: number;
   }> {
@@ -2749,9 +2795,15 @@ export class FlowplanClient {
     pages: number;
     spaces: number;
     records: number;
+    files?: number;
     /** Days items stay in the trash before they are deleted permanently (0 = never) */
     days: number;
   }>("GET", `/api/trash/summary`, { query }, options);
+  }
+
+  /** Files in the trash — Files the caller may restore (`file.restore`) or delete permanently (`file.purge`). (GET /api/trash/files) */
+  async fileTrash(query: { workspace: string }, options?: RequestOptions): Promise<Record<string, unknown>[]> {
+    return this.json<Record<string, unknown>[]>("GET", `/api/trash/files`, { query }, options);
   }
 
   /** Records in the trash (GET /api/trash/rows) */
@@ -3141,7 +3193,7 @@ export class FlowplanClient {
     return this.json<Record<string, unknown>>("POST", `/api/import/zip`, { form, idempotent: true }, options);
   }
 
-  /** Import from AFFiNE, Confluence, Evernote, Google Docs, Microsoft Word or Obsidian — AFFiNE workspace file (`.affine`) or snapshot ZIP, Confluence space export (HTML or XML ZIP), Evernote `.enex` (several in a ZIP), Google Takeout ZIP or a single `.html`/`.docx`, Microsoft Word `.docx` (several in a ZIP, folders become parent pages), Obsidian vault ZIP. Older Word files (`.doc`) and OneNote files (`.one`, `.onetoc2`, `.onepkg`) are refused with 400 and what to do instead (save as `.docx`; export from OneNote as a Word document); inside a ZIP they are skipped and listed in `warnings`. `source` defaults to `auto` (recognised from the file). `mode=database` creates one new database (tags, dates, folder, source as properties) instead of a page tree. `dryRun=1` only answers with the preview (counts and warnings). As a form the file may be up to 100 MB. Larger AFFiNE workspace files (up to the import limit: the person's largest upload, at least 100 MB, or `FLOWPLAN_IMPORT_MAX_MB`) go as the raw request body (`Content-Type: application/octet-stream` with `Content-Length`) with the fields and `name` (the file name) as query parameters; the server streams it to disk. A raw dry run answers with `upload` (an id): the import then passes `upload=<id>` without a body instead of sending the file again, `upload=<id>&discard=1` drops it (otherwise it is deleted after six hours). ZIP-based exports stay within 100 MB. (POST /api/import/source) */
+  /** Import from AFFiNE, Confluence, Evernote, Google Docs, Microsoft Word or Obsidian — AFFiNE workspace file (`.affine`) or snapshot ZIP, Confluence space export (HTML or XML ZIP), Evernote `.enex` (several in a ZIP), Google Takeout ZIP or a single `.html`/`.docx`, Microsoft Word `.docx` (several in a ZIP, folders become parent pages), Obsidian vault ZIP. Older Word files (`.doc`) and OneNote files (`.one`, `.onetoc2`, `.onepkg`) are refused with 400 and what to do instead (save as `.docx`; export from OneNote as a Word document); inside a ZIP they are skipped and listed in `warnings`. `source` defaults to `auto` (recognised from the file). `mode=database` creates one new database (tags, dates, folder, source as properties) instead of a page tree. `dryRun=1` only answers with the preview (counts and warnings). As a form the file may be up to 100 MB. Larger AFFiNE workspace files (up to the import limit: the person's largest upload, at least 100 MB, or `FLOWPLAN_IMPORT_MAX_MB`) go as the raw request body (`Content-Type: application/octet-stream` with `Content-Length`) with the fields and `name` (the file name) as query parameters; the server streams it to disk. A raw dry run answers with `upload` (an id): the import then passes `upload=<id>` without a body instead of sending the file again, `upload=<id>&discard=1` drops it (otherwise it is deleted after six hours). ZIP-based exports stay within 100 MB. `background=1` answers at once with 202 and `job` (an id) and runs the preview or import afterwards, so a large file does not outlast a reverse proxy's timeout; `GET /api/import/source/job?id=<job>` then reports it. Only one such import per person runs at a time (409). (POST /api/import/source) */
   async importSource(form: {
     workspaceId: string;
     spaceId: string;
@@ -3149,8 +3201,14 @@ export class FlowplanClient {
     source?: "auto" | "affine" | "confluence" | "evernote" | "gdocs" | "obsidian" | "word";
     mode?: "pages" | "database";
     dryRun?: "0" | "1";
+    background?: "0" | "1";
   }, options?: RequestOptions): Promise<Record<string, unknown>> {
     return this.json<Record<string, unknown>>("POST", `/api/import/source`, { form, idempotent: true }, options);
+  }
+
+  /** State of an import started with background=1 — `status` is `running` (with `progress`, 0–1 or null), `done` (with `result`: the preview or the result the import would have answered) or `failed` (with `error` and `code`, the status the import would have answered). 410 when the job is unknown: started by someone else, interrupted by a restart of the server, or finished more than an hour ago. (GET /api/import/source/job) */
+  async importSourceJob(query: { id: string }, options?: RequestOptions): Promise<Record<string, unknown>> {
+    return this.json<Record<string, unknown>>("GET", `/api/import/source/job`, { query }, options);
   }
 
   /** Jira (CSV) or Trello (JSON) into a new database (POST /api/import/tracker) */

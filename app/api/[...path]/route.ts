@@ -136,6 +136,7 @@ import { visibleRows } from "@/lib/row-access";
 import { readableDatabase } from "@/lib/field-access";
 import { listRowTrash } from "@/lib/row-trash";
 import { trashCounts, trashDays } from "@/lib/trash";
+import { listFileTrash } from "@/lib/file-trash";
 import { ARCHIVE_LIMIT } from "@/lib/archive";
 import { buildInfo } from "@/lib/build-info";
 import { plainHttpInstance } from "@/lib/instance-https";
@@ -219,6 +220,19 @@ async function handleGET(
     const user = await requireUser();
     if (path.length === 1 && path[0] === "tokens")
       return NextResponse.json(await listApiTokens(user));
+    // An import started with background=1 (#163): running with its
+    // progress, done with the preview or result, failed with the error as the
+    // import would have answered it.
+    if (path.length === 3 && path[0] === "import" && path[1] === "source" && path[2] === "job") {
+      const { jobOutcome } = await import("@/lib/background-jobs");
+      const outcome = await jobOutcome(user, z.uuid().parse(url.searchParams.get("id")));
+      if (!outcome) throw new HttpError(410, "Der Import wurde unterbrochen, zum Beispiel durch einen Neustart des Servers. Bitte starte ihn erneut.");
+      const headers = { "Cache-Control": "no-store" };
+      if (outcome.status === "running") return NextResponse.json(outcome, { headers });
+      if (outcome.status === "done") return NextResponse.json({ status: "done", result: outcome.value }, { headers });
+      const failed = error(outcome.error);
+      return NextResponse.json({ status: "failed", code: failed.status, ...(await failed.json()) }, { headers });
+    }
     // Choices for the start page's widget settings (lib/home-widgets.ts).
     if (path.length === 2 && path[0] === "home" && path[1] === "options")
       return NextResponse.json(
@@ -319,6 +333,11 @@ async function handleGET(
     if (path.length === 2 && path[0] === "trash" && path[1] === "summary") {
       const wid = z.uuid().parse(url.searchParams.get("workspace"));
       return NextResponse.json({ ...(await trashCounts(user, wid)), days: await trashDays() });
+    }
+    // Files in the trash this person may restore or delete (#164).
+    if (path.length === 2 && path[0] === "trash" && path[1] === "files") {
+      const wid = z.uuid().parse(url.searchParams.get("workspace"));
+      return NextResponse.json(await listFileTrash(user, wid), { headers: { "Cache-Control": "no-store" } });
     }
     if (path[0] === "trash" && path[1] === "rows") {
       const wid = z.uuid().parse(url.searchParams.get("workspace"));
@@ -816,6 +835,7 @@ async function handleGET(
             .parse(url.searchParams.get("kind") || "all"),
           query: url.searchParams.get("q") || "",
           offset: Number(url.searchParams.get("offset") || 0) || 0,
+          usage: z.enum(["all", "unused"]).catch("all").parse(url.searchParams.get("usage") || "all"),
         }),
         { headers: { "Cache-Control": "no-store" } },
       );
@@ -1506,6 +1526,35 @@ async function handlePOST(
             dryRun,
           },
         );
+      // background=1 (the import page, #163): a large file takes longer than
+      // a reverse proxy waits (504). The answer is the job's id at once; the
+      // work runs after it, the page asks GET /api/import/source/job for
+      // progress and outcome.
+      if (fields.get("background") === "1") {
+        const { launchJob, runningJob } = await import("@/lib/background-jobs");
+        if (runningJob(user, "import")) {
+          if (kept && !fields.get("upload")) upload.discardImportUpload(user.id, kept);
+          throw new HttpError(409, "Es läuft schon ein Import. Bitte warte, bis er fertig ist.");
+        }
+        const keptId = kept;
+        const job = await launchJob(
+          user,
+          "import",
+          file.name,
+          async () => {
+            let keep = false;
+            try {
+              const result = await imported();
+              keep = dryRun && !!keptId;
+              return keep ? { ...result, upload: keptId } : result;
+            } finally {
+              if (keptId && !keep) upload.discardImportUpload(user.id, keptId);
+            }
+          },
+          (task) => after(task),
+        );
+        return NextResponse.json({ job }, { status: 202 });
+      }
       let keep = false;
       try {
         const result = dryRun ? await imported() : await trackJob(user, "import", file.name, imported);

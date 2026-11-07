@@ -1,9 +1,10 @@
-import { generateJSON, generateHTML } from "@tiptap/html/server";
+import { Window } from "happy-dom";
+import { DOMParser as SchemaParser, DOMSerializer, Node as PMNode, type Schema } from "@tiptap/pm/model";
 import { embedHosts, embedProvider } from "./embed-providers";
 import { prosemirrorJSONToYDoc, yDocToProsemirrorJSON } from "y-prosemirror";
 import * as Y from "yjs";
 import sanitize from "sanitize-html";
-import { documentExtensions, documentSchema } from "./document-schema";
+import { documentSchema } from "./document-schema";
 import { calloutColor, calloutIcon } from "./callout-types";
 import { fenceLanguage } from "./code-languages";
 import { importedCodeAttributes } from "./code-block-options";
@@ -194,17 +195,71 @@ function drawioAttributes(result: sanitize.Tag): sanitize.Tag {
     },
   };
 }
+// HTML ⇄ the editor's Yjs state on the server, as @tiptap/html/server's
+// generateJSON/generateHTML do – but with one DOM (happy-dom) for the whole
+// process instead of a new window per call (#163). A window let go is only
+// torn down once the event loop turns; an import writes thousands of pages
+// in one transaction, and every page's window (with its parsed
+// document) stayed in memory until the end – the heap ran out.
+let shared: { window: Window; schema: Schema } | null = null;
+function serverDom() {
+  shared ??= {
+    window: new Window({
+      settings: {
+        disableJavaScriptEvaluation: true,
+        disableJavaScriptFileLoading: true,
+        disableCSSFileLoading: true,
+        disableIframePageLoading: true,
+        disableComputedStyleRendering: true,
+      },
+    }),
+    schema: documentSchema(),
+  };
+  return shared;
+}
+// What @tiptap/html/server's generateJSON(html, documentExtensions) gives.
+// The parsed nodes are taken apart afterwards: happy-dom keeps query results
+// (querySelector, as parse rules of figures and details use it) in WeakRefs,
+// and V8 keeps every WeakRef's target until the running task ends – in a
+// synchronous import that would again be every page's whole DOM.
+export function htmlJson(html: string): Record<string, unknown> {
+  const { window, schema } = serverDom();
+  const body = window.document.createElement("body");
+  body.innerHTML = html;
+  try {
+    return SchemaParser.fromSchema(schema).parse(body as unknown as globalThis.Node).toJSON();
+  } finally {
+    const stack: { lastChild: unknown; removeChild: (child: never) => unknown }[] = [body];
+    while (stack.length) {
+      const node = stack.pop()!;
+      for (let child = node.lastChild; child; child = node.lastChild) {
+        node.removeChild(child as never);
+        stack.push(child as (typeof stack)[number]);
+      }
+    }
+  }
+}
+// What generateHTML(json, documentExtensions) gives.
+export function jsonHtml(json: Record<string, unknown>) {
+  const { window, schema } = serverDom();
+  const wrap = window.document.createElement("div");
+  DOMSerializer.fromSchema(schema).serializeFragment(
+    PMNode.fromJSON(schema, json).content,
+    { document: window.document as unknown as Document },
+    wrap as unknown as HTMLElement,
+  );
+  const html = wrap.innerHTML;
+  wrap.innerHTML = "";
+  return html;
+}
 export function htmlState(html: string) {
-  const json = generateJSON(cleanHtml(html) || "<p></p>", documentExtensions);
-  const doc = prosemirrorJSONToYDoc(documentSchema(), json, "default");
+  const doc = prosemirrorJSONToYDoc(serverDom().schema, htmlJson(cleanHtml(html) || "<p></p>"), "default");
   const state = Y.encodeStateAsUpdate(doc);
   doc.destroy();
   return state;
 }
 export function stateHtml(doc: Y.Doc) {
-  return cleanHtml(
-    generateHTML(yDocToProsemirrorJSON(doc, "default"), documentExtensions),
-  );
+  return cleanHtml(jsonHtml(yDocToProsemirrorJSON(doc, "default")));
 }
 export function escaped(text: string) {
   return text

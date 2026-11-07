@@ -4,13 +4,14 @@ import { HttpError } from "./auth";
 import { instanceSettings } from "./instance-settings";
 import { pageRole, requireMember } from "./permissions";
 import { listRowTrash, purgeTrashedRow, ROW_TRASH_DAYS } from "./row-trash";
+import { expireTrashedFiles, listFileTrash, purgeFiles } from "./file-trash";
 import { canManageSpace, purgePages, purgeSpace } from "./workspace-lifecycle";
 import type { Identity, Page, Space } from "./types";
 import { filterAsync } from "./each-async";
 
-// The trash (#123): pages, spaces, records (lib/row-trash.ts) and saved
-// templates stay there for `trashDays()` days and are then deleted for good;
-// before that, people delete single entries permanently or empty it.
+// The trash (#123): pages, spaces, records (lib/row-trash.ts), files
+// (lib/file-trash.ts, #164) and saved templates stay there for `trashDays()`
+// days and are then deleted for good; before that, people delete single entries permanently or empty it.
 // Admins set the days in Administration → Grenzen & Aufbewahrung (0 = never).
 export async function trashDays() {
   const days = (await instanceSettings()).trashDays;
@@ -53,7 +54,7 @@ export async function purgeTrashedPage(user: Identity, input: Record<string, unk
 }
 
 // trash.empty: everything in the workspace's trash this person may delete –
-// pages, spaces they manage and records; or, with scope "templates", the
+// pages, spaces they manage, records and files; or, with scope "templates", the
 // template trash. Nothing of others' private spaces or pages is touched.
 export async function emptyTrash(user: Identity, input: Record<string, unknown>) {
   const workspaceId = uuid.parse(input.workspaceId);
@@ -75,6 +76,8 @@ export async function emptyTrash(user: Identity, input: Record<string, unknown>)
     workspaceId,
   ), async (p) => await purgeable(user, p));
   await purgePages(workspaceId, pages);
+  const files = await listFileTrash(user, workspaceId);
+  await purgeFiles(files.map((f) => ({ id: f.id, page_id: f.pageId })));
   let records = 0;
   for (const entry of await listRowTrash(user, workspaceId))
     try {
@@ -88,9 +91,9 @@ export async function emptyTrash(user: Identity, input: Record<string, unknown>)
     user.id,
     "trash.emptied",
     workspaceId,
-    `${pages.length} pages, ${spaces.length} spaces, ${records} records`,
+    `${pages.length} pages, ${spaces.length} spaces, ${records} records, ${files.length} files`,
   );
-  return { ok: true, pages: pages.length, spaces: spaces.length, records };
+  return { ok: true, pages: pages.length, spaces: spaces.length, records, files: files.length };
 }
 
 // What the trash holds for this person, for the confirmation of "Empty trash".
@@ -104,7 +107,12 @@ export async function trashCounts(user: Identity, workspaceId: string) {
     "SELECT * FROM spaces WHERE workspace_id=? AND deleted_at IS NOT NULL",
     workspaceId,
   ), async (s) => await canManageSpace(user, s))).length;
-  return { pages, spaces, records: (await listRowTrash(user, workspaceId)).length };
+  return {
+    pages,
+    spaces,
+    records: (await listRowTrash(user, workspaceId)).length,
+    files: (await listFileTrash(user, workspaceId)).length,
+  };
 }
 
 // Templates: the same rights as moving one to the template trash
@@ -145,11 +153,11 @@ export async function purgeTemplate(user: Identity, input: Record<string, unknow
 }
 
 // Retention: run by the retention worker (lib/version-history.ts). Spaces,
-// pages, records and templates longer than `days` in the trash go for good.
+// pages, records, files and templates longer than `days` in the trash go for good.
 // Each workspace in a transaction of its own.
 export async function expireTrash(days?: number) {
   if (days === undefined) days = await trashDays();
-  const result = { pages: 0, spaces: 0, records: 0, templates: 0 };
+  const result = { pages: 0, spaces: 0, records: 0, templates: 0, files: 0 };
   if (!(days > 0)) return result;
   const cutoff = daysAgoText(days);
   for (const space of await all<Space>(
@@ -176,6 +184,8 @@ export async function expireTrash(days?: number) {
       result.pages += pages.length;
     });
   await transaction(async () => {
+    result.files = await expireTrashedFiles(cutoff);
+    if (result.files) await audit("", "files.expired", "", `${result.files} files older than ${days} days`);
     result.records = Number(
       (await run("DELETE FROM row_trash WHERE deleted_at<?", cutoff)).changes,
     );

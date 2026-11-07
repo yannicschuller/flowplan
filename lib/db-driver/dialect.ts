@@ -228,7 +228,7 @@ const SQLITE_ONLY: [RegExp, string][] = [
   [/\brandomblob\s*\(/i, "randomblob → d.randomHex()"],
   [/\binstr\s*\(/i, "instr → d.instr()"],
   [/\blast_insert_rowid\s*\(/i, "last_insert_rowid → RETURNING"],
-  [/\browid\b/i, "rowid → seq (schema 93) or a key"],
+  [/\browid\b/i, "rowid → seq (schema 94) or a key"],
   [/\bPRAGMA\b/i, "PRAGMA → db.columns() / information_schema"],
   [/\bsqlite_(master|schema)\b/i, "sqlite_master → information_schema"],
   [/\bIS\s+NOT\s+\?/i, "IS NOT ? → d.isNot()"],

@@ -66,10 +66,12 @@ export async function captureTemplateFiles(
   let total = 0;
   for (const fid of references) {
     const file = await one<{ page_id: string; name: string; mime: string }>(
-      "SELECT * FROM files WHERE id=?",
+      "SELECT * FROM files WHERE id=? AND deleted_at IS NULL",
       fid,
     );
-    if (!file) throw new HttpError(409, "Ein Vorlagenanhang fehlt.");
+    // Deleted (in the trash or for good, #164): the reference stays and
+    // shows as a missing file, like in the page itself.
+    if (!file) continue;
     await requirePage(user, file.page_id);
     let bytes: Buffer;
     try {

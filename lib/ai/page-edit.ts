@@ -12,11 +12,9 @@ import { z } from "zod";
 import * as Y from "yjs";
 import { yDocToProsemirrorJSON } from "y-prosemirror";
 import { Node as PMNode } from "@tiptap/pm/model";
-import { generateJSON } from "@tiptap/html/server";
 import { HttpError } from "../auth";
 import { one } from "../db";
-import { cleanHtml, htmlState } from "../document-server";
-import { documentExtensions } from "../document-schema";
+import { cleanHtml, htmlState, htmlJson } from "../document-server";
 import { rewriteDocument, rewriteSchema } from "../document-rewrite";
 import { ct } from "../content-locale";
 import { requirePage } from "../permissions";
@@ -108,7 +106,7 @@ async function storedDocument(pageId: string) {
 }
 // Markdown of an edit → blocks of the document schema.
 const parseMarkdown = (markdown: string) =>
-  PMNode.fromJSON(rewriteSchema(), generateJSON(cleanHtml(aiMarkdownToHtml(markdown, null, { raw: true })) || "<p></p>", documentExtensions)).content;
+  PMNode.fromJSON(rewriteSchema(), htmlJson(cleanHtml(aiMarkdownToHtml(markdown, null, { raw: true })) || "<p></p>")).content;
 
 export type PageEditResult = {
   // Edits the model proposed / put into the page as suggestions / that could not be applied.

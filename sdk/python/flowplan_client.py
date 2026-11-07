@@ -969,6 +969,50 @@ CommandPagePurgeResult = TypedDict("CommandPagePurgeResult", {
     "pages": Required[int],  # Pages deleted, the page itself included
 }, total=False)
 
+# Move files to the trash. Files of pages the caller may edit (full members only, not guests; not on a locked page). All or none. A file in the trash is no longer served (`/api/files/<id>` answers 404), listed, searched, copied or exported; documents that still show it get a missing-image placeholder. Restore it with `file.restore`; it is deleted for good with `file.purge`, `trash.empty` or after the trash period. Removing an image from a document never deletes the file.
+CommandFileDelete = TypedDict("CommandFileDelete", {
+    "action": Required[Literal["file.delete"]],
+    "fileIds": Required[list[str]],
+}, total=False)
+
+CommandFileDeleteResult = TypedDict("CommandFileDeleteResult", {
+    "ok": Required[Literal[True]],
+    "files": Required[int],
+}, total=False)
+
+# Move all unused files to the trash. Every file of the media library (`GET /api/media`, same `kind` and `query` filter) that no current content of the workspace refers to – documents, records, whiteboards, comments, page icons and covers – and that the caller may delete. Version history does not count: restoring a version whose file was deleted for good shows the image as missing.
+CommandFilesDeleteUnused = TypedDict("CommandFilesDeleteUnused", {
+    "action": Required[Literal["files.deleteUnused"]],
+    "workspaceId": Required[str],
+    "kind": Literal["all", "image", "video", "audio", "pdf", "other"],
+    "query": str,
+}, total=False)
+
+CommandFilesDeleteUnusedResult = TypedDict("CommandFilesDeleteUnusedResult", {
+    "ok": Required[Literal[True]],
+    "files": Required[int],  # Files moved to the trash
+}, total=False)
+
+# Restore a file from the trash
+CommandFileRestore = TypedDict("CommandFileRestore", {
+    "action": Required[Literal["file.restore"]],
+    "fileId": Required[str],
+}, total=False)
+
+CommandFileRestoreResult = TypedDict("CommandFileRestoreResult", {
+    "ok": Required[Literal[True]],
+}, total=False)
+
+# Delete a file from the trash permanently. The file must be in the trash (`file.delete`); the same right as moving it there. Deleted for good: the upload on disk and in object storage, its extracted text, handwriting, placeholder and search entries. Cannot be undone.
+CommandFilePurge = TypedDict("CommandFilePurge", {
+    "action": Required[Literal["file.purge"]],
+    "fileId": Required[str],
+}, total=False)
+
+CommandFilePurgeResult = TypedDict("CommandFilePurgeResult", {
+    "ok": Required[Literal[True]],
+}, total=False)
+
 # Delete a template from the template trash permanently. The template must be in the template trash (`template.delete`). Its creator or a workspace owner may delete it; templates for all workspaces or the public gallery need an administrator. Its stored files go with it. Pages already created from it are kept.
 CommandTemplatePurge = TypedDict("CommandTemplatePurge", {
     "action": Required[Literal["template.purge"]],
@@ -1389,7 +1433,7 @@ CommandHomeSaveResult = TypedDict("CommandHomeSaveResult", {
 }, total=False)
 
 # One action of the interface, as sent by POST /api/command.
-Command = Union["CommandWorkspaceCreate", "CommandSpaceCreate", "CommandSpaceReorder", "CommandPageCreate", "CommandBlockIds", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandTagScope", "CommandPropertyScope", "CommandMetaUsage", "CommandPageMoveCheck", "CommandTemplateCopy", "CommandTemplateDependencies", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPagePurge", "CommandTemplatePurge", "CommandTrashEmpty", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandSidebarState", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
+Command = Union["CommandWorkspaceCreate", "CommandSpaceCreate", "CommandSpaceReorder", "CommandPageCreate", "CommandBlockIds", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandTagScope", "CommandPropertyScope", "CommandMetaUsage", "CommandPageMoveCheck", "CommandTemplateCopy", "CommandTemplateDependencies", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPagePurge", "CommandFileDelete", "CommandFilesDeleteUnused", "CommandFileRestore", "CommandFilePurge", "CommandTemplatePurge", "CommandTrashEmpty", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandSidebarState", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
 
 # ---- Parameters of the operations ----
 
@@ -1476,6 +1520,7 @@ MediaQuery = TypedDict("MediaQuery", {
     "kind": Literal["all", "image", "video", "audio", "pdf", "other"],  # Only this kind
     "q": str,  # Name contains
     "offset": int,  # Paging offset
+    "usage": Literal["all", "unused"],  # `unused`: only files no current content refers to
 }, total=False)
 
 CitationsQuery = TypedDict("CitationsQuery", {
@@ -1491,6 +1536,10 @@ SyncedBlocksQuery = TypedDict("SyncedBlocksQuery", {
 }, total=False)
 
 TrashSummaryQuery = TypedDict("TrashSummaryQuery", {
+    "workspace": Required[str],  # Workspace ID
+}, total=False)
+
+FileTrashQuery = TypedDict("FileTrashQuery", {
     "workspace": Required[str],  # Workspace ID
 }, total=False)
 
@@ -1676,6 +1725,11 @@ ImportSourceForm = TypedDict("ImportSourceForm", {
     "source": Literal["auto", "affine", "confluence", "evernote", "gdocs", "obsidian", "word"],
     "mode": Literal["pages", "database"],
     "dryRun": Literal["0", "1"],
+    "background": Literal["0", "1"],
+}, total=False)
+
+ImportSourceJobQuery = TypedDict("ImportSourceJobQuery", {
+    "id": Required[str],  # The `job` of the import
 }, total=False)
 
 ImportTrackerForm = TypedDict("ImportTrackerForm", {
@@ -1992,6 +2046,10 @@ class FlowplanClient:
         """What emptying the trash would delete (GET /api/trash/summary)"""
         return self._json("GET", "/api/trash/summary", query=dict(query) if query else None, headers=headers)
 
+    def file_trash(self, query: "FileTrashQuery", headers: Optional[dict[str, str]] = None) -> list[dict[str, Any]]:
+        """Files in the trash — Files the caller may restore (`file.restore`) or delete permanently (`file.purge`). (GET /api/trash/files)"""
+        return self._json("GET", "/api/trash/files", query=dict(query) if query else None, headers=headers)
+
     def row_trash(self, query: "RowTrashQuery", headers: Optional[dict[str, str]] = None) -> list[dict[str, Any]]:
         """Records in the trash (GET /api/trash/rows)"""
         return self._json("GET", "/api/trash/rows", query=dict(query) if query else None, headers=headers)
@@ -2201,8 +2259,12 @@ class FlowplanClient:
         return self._json("POST", "/api/import/zip", form=dict(form), headers=headers, idempotent=True, idempotency_key=idempotency_key)
 
     def import_source(self, form: "ImportSourceForm", headers: Optional[dict[str, str]] = None, idempotency_key: Optional[str] = None) -> dict[str, Any]:
-        """Import from AFFiNE, Confluence, Evernote, Google Docs, Microsoft Word or Obsidian — AFFiNE workspace file (`.affine`) or snapshot ZIP, Confluence space export (HTML or XML ZIP), Evernote `.enex` (several in a ZIP), Google Takeout ZIP or a single `.html`/`.docx`, Microsoft Word `.docx` (several in a ZIP, folders become parent pages), Obsidian vault ZIP. Older Word files (`.doc`) and OneNote files (`.one`, `.onetoc2`, `.onepkg`) are refused with 400 and what to do instead (save as `.docx`; export from OneNote as a Word document); inside a ZIP they are skipped and listed in `warnings`. `source` defaults to `auto` (recognised from the file). `mode=database` creates one new database (tags, dates, folder, source as properties) instead of a page tree. `dryRun=1` only answers with the preview (counts and warnings). As a form the file may be up to 100 MB. Larger AFFiNE workspace files (up to the import limit: the person's largest upload, at least 100 MB, or `FLOWPLAN_IMPORT_MAX_MB`) go as the raw request body (`Content-Type: application/octet-stream` with `Content-Length`) with the fields and `name` (the file name) as query parameters; the server streams it to disk. A raw dry run answers with `upload` (an id): the import then passes `upload=<id>` without a body instead of sending the file again, `upload=<id>&discard=1` drops it (otherwise it is deleted after six hours). ZIP-based exports stay within 100 MB. (POST /api/import/source)"""
+        """Import from AFFiNE, Confluence, Evernote, Google Docs, Microsoft Word or Obsidian — AFFiNE workspace file (`.affine`) or snapshot ZIP, Confluence space export (HTML or XML ZIP), Evernote `.enex` (several in a ZIP), Google Takeout ZIP or a single `.html`/`.docx`, Microsoft Word `.docx` (several in a ZIP, folders become parent pages), Obsidian vault ZIP. Older Word files (`.doc`) and OneNote files (`.one`, `.onetoc2`, `.onepkg`) are refused with 400 and what to do instead (save as `.docx`; export from OneNote as a Word document); inside a ZIP they are skipped and listed in `warnings`. `source` defaults to `auto` (recognised from the file). `mode=database` creates one new database (tags, dates, folder, source as properties) instead of a page tree. `dryRun=1` only answers with the preview (counts and warnings). As a form the file may be up to 100 MB. Larger AFFiNE workspace files (up to the import limit: the person's largest upload, at least 100 MB, or `FLOWPLAN_IMPORT_MAX_MB`) go as the raw request body (`Content-Type: application/octet-stream` with `Content-Length`) with the fields and `name` (the file name) as query parameters; the server streams it to disk. A raw dry run answers with `upload` (an id): the import then passes `upload=<id>` without a body instead of sending the file again, `upload=<id>&discard=1` drops it (otherwise it is deleted after six hours). ZIP-based exports stay within 100 MB. `background=1` answers at once with 202 and `job` (an id) and runs the preview or import afterwards, so a large file does not outlast a reverse proxy's timeout; `GET /api/import/source/job?id=<job>` then reports it. Only one such import per person runs at a time (409). (POST /api/import/source)"""
         return self._json("POST", "/api/import/source", form=dict(form), headers=headers, idempotent=True, idempotency_key=idempotency_key)
+
+    def import_source_job(self, query: "ImportSourceJobQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """State of an import started with background=1 — `status` is `running` (with `progress`, 0–1 or null), `done` (with `result`: the preview or the result the import would have answered) or `failed` (with `error` and `code`, the status the import would have answered). 410 when the job is unknown: started by someone else, interrupted by a restart of the server, or finished more than an hour ago. (GET /api/import/source/job)"""
+        return self._json("GET", "/api/import/source/job", query=dict(query) if query else None, headers=headers)
 
     def import_tracker(self, form: "ImportTrackerForm", headers: Optional[dict[str, str]] = None, idempotency_key: Optional[str] = None) -> dict[str, Any]:
         """Jira (CSV) or Trello (JSON) into a new database (POST /api/import/tracker)"""

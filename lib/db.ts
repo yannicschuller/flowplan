@@ -39,8 +39,8 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 93;
-// Tables with an explicit insertion order (schema 93): `ORDER BY …,seq`
+export const SCHEMA_VERSION = 94;
+// Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 export const SEQ_TABLES = [
   "snapshots",
@@ -1206,6 +1206,11 @@ function migrate(d: DatabaseSync) {
   // signing secrets and addresses and the Git connections of databases are
   // sealed once. An older version cannot read them, hence the new number.
   // Sealed in a data step (lib/data-steps.ts).
+  // Schema 93 – files in the trash (#164, lib/file-trash.ts): a file deleted
+  // in the media library keeps its row, upload and derived data with
+  // deleted_at set; it is no longer served and goes for good with the trash.
+  // An older version would serve such files again, hence the new number.
+  migrateFileTrash(d);
   // Notification retention (lib/notification-retention.ts) deletes old
   // notifications: their chat app deliveries go with them by notification,
   // and the inbox reads one person's newest.
@@ -1224,7 +1229,7 @@ function migrate(d: DatabaseSync) {
     CREATE TABLE IF NOT EXISTS storage_queue(key TEXT PRIMARY KEY,op TEXT NOT NULL,attempts INTEGER NOT NULL DEFAULT 0,next_at INTEGER NOT NULL DEFAULT 0);
     CREATE TABLE IF NOT EXISTS storage_state(name TEXT PRIMARY KEY,value TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS storage_sealed(key TEXT PRIMARY KEY,key_id TEXT NOT NULL);`);
-  // Schema 93 – PostgreSQL support (#127, docs/architecture/database.md):
+  // Schema 94 – PostgreSQL support (#127, docs/architecture/database.md):
   // queries no longer order by SQLite's implicit rowid. Where the order of
   // insertion matters (newest notification, version or message first,
   // favourites in the order they were added, a queue), the table has an
@@ -1250,6 +1255,13 @@ function migrate(d: DatabaseSync) {
   forgetStatements(d);
   globalDb.flowplanSchema = SCHEMA_VERSION;
 }
+export function migrateFileTrash(d: DatabaseSync) {
+  const columns = (d.prepare("PRAGMA table_info(files)").all() as { name: string }[]).map((c) => c.name);
+  if (!columns.includes("deleted_at")) d.exec("ALTER TABLE files ADD COLUMN deleted_at TEXT");
+  if (!columns.includes("deleted_by")) d.exec("ALTER TABLE files ADD COLUMN deleted_by TEXT");
+  d.exec(`CREATE INDEX IF NOT EXISTS files_trashed ON files(page_id) WHERE deleted_at IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS files_trashed_at ON files(deleted_at) WHERE deleted_at IS NOT NULL;`);
+}
 // Schema 91 – scopes of tags, property definitions and saved templates
 // (#136, lib/meta-scope-server.ts): `space_id` NULL means the whole
 // workspace (everything that existed before keeps that scope), otherwise
@@ -1265,7 +1277,7 @@ export function migrateMetaScopes(d: DatabaseSync) {
       // (keepSpaceTemplates in lib/workspace-lifecycle.ts, SET NULL as the
       // fallback).
       d.exec(`ALTER TABLE ${table} ADD COLUMN space_id TEXT REFERENCES spaces(id) ON DELETE ${table === "templates" ? "SET NULL" : "CASCADE"}`);
-  // Schema 93: lower(name) instead of `name COLLATE NOCASE` (the same for
+  // Schema 94: lower(name) instead of `name COLLATE NOCASE` (the same for
   // SQLite, which folds ASCII in both; PostgreSQL has no NOCASE): queries
   // compare `lower(name)=lower(?)` and use the index.
   for (const index of ["page_tags_scope_name", "page_property_defs_scope_name"])

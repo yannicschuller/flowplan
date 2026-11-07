@@ -8,7 +8,6 @@ import { hiddenFieldsFor } from "./field-access";
 import { recordAliases, storedAliases } from "./aliases";
 import { copyFileSync, existsSync, mkdirSync, unlinkSync } from "node:fs";
 import { resolve } from "node:path";
-import { generateJSON } from "@tiptap/html/server";
 import { Fragment, Node as PMNode } from "@tiptap/pm/model";
 import { all, id, one, onTransactionRollback, run, nowText, sql, updateIgnoringConflicts } from "./db";
 import { SPACE_ORDER } from "./space-order";
@@ -21,8 +20,7 @@ import { hiddenRowIds } from "./row-access";
 import { trashRow } from "./row-trash";
 import { maintainRowOrders } from "./row-order-server";
 import { autoDatabaseSnapshot } from "./database-operations";
-import { cleanHtml, escaped, htmlState } from "./document-server";
-import { documentExtensions } from "./document-schema";
+import { cleanHtml, escaped, htmlState, htmlJson } from "./document-server";
 import { rewriteDocument, rewriteReferences, rewriteSchema, rewriteStoredDocument } from "./document-rewrite";
 import { relinkDocument } from "./page-to-record";
 import { createPage } from "./seed";
@@ -167,7 +165,7 @@ export async function recordToPagePlan(user: Identity, databaseId: string, rowId
 // The properties as a list at the top of the document.
 function withProperties(doc: PMNode, properties: Property[]) {
   const html = `<ul>${properties.map((p) => `<li><p><strong>${escaped(p.name)}:</strong> ${p.html}</p></li>`).join("")}</ul>`;
-  const list = PMNode.fromJSON(rewriteSchema(), generateJSON(cleanHtml(html), documentExtensions));
+  const list = PMNode.fromJSON(rewriteSchema(), htmlJson(cleanHtml(html)));
   // An empty record keeps no empty paragraph below the list.
   const rest = doc.childCount === 1 && doc.firstChild?.type.name === "paragraph" && !doc.firstChild.content.size ? Fragment.empty : doc.content;
   return doc.type.create(doc.attrs, list.content.append(rest));

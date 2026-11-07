@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useState, useSyncExternalStore, type CSSProperties, type SyntheticEvent } from "react";
 import { thumbHashFromBase64, thumbHashToDataURL } from "@/lib/thumbhash";
 import { prefersReducedMotion } from "@/lib/motion";
+import { tr } from "@/lib/locale-tag";
 
 export type PlaceholderInfo = { w: number; h: number; hash?: string };
 type Entry = PlaceholderInfo & { url?: string };
@@ -214,6 +215,17 @@ export function attachPlaceholder(img: HTMLImageElement, frame: HTMLElement): ()
     );
   };
   img.addEventListener("load", onLoad);
+  // The file is gone (deleted for good, #164): a placeholder that says so
+  // instead of an empty space; the document itself is not changed.
+  const onError = () => {
+    settled = true;
+    clear();
+    img.classList.add("is-missing");
+    frame.classList.add("fp-image-missing");
+    frame.setAttribute("data-missing", tr("Datei fehlt", "File missing"));
+  };
+  img.addEventListener("error", onError);
+  if (img.complete && !loaded && img.getAttribute("src")) onError();
   const unsubscribe = subscribe(key, apply);
   if (!loaded) {
     if (known.has(key)) apply();
@@ -222,6 +234,10 @@ export function attachPlaceholder(img: HTMLImageElement, frame: HTMLElement): ()
   return () => {
     clearTimeout(timer);
     img.removeEventListener("load", onLoad);
+    img.removeEventListener("error", onError);
+    img.classList.remove("is-missing");
+    frame.classList.remove("fp-image-missing");
+    frame.removeAttribute("data-missing");
     unsubscribe();
     clear();
   };

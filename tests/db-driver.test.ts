@@ -224,3 +224,33 @@ test("the Postgres schema file matches the SQLite schema of this version", { ski
   const { seed: _file, ...file } = committed;
   assert.deepEqual(live, file, "run: node --import tsx scripts/db-pg-schema.mjs");
 });
+
+test("a SQLite database at main's schema 93 (files in the trash, no seq) upgrades to 94", { skip: backend !== "sqlite" }, async () => {
+  const { DatabaseSync } = await import("node:sqlite");
+  const file = join(mkdtempSync(join(tmpdir(), "flowplan-schema93-")), "old.sqlite");
+  legacy.db().exec(`VACUUM INTO '${file.replace(/'/g, "''")}'`); // sqlite-only
+  // Back to main's 93: without the insertion order of #127 (seq columns, their triggers).
+  const old = new DatabaseSync(file);
+  for (const table of [...legacy.SEQ_TABLES, "pages"]) {
+    old.exec(`DROP TRIGGER IF EXISTS ${table}_seq`);
+    if (table === "pages") old.exec("DROP TRIGGER IF EXISTS pages_created_at");
+    old.exec(`ALTER TABLE ${table} DROP COLUMN seq`);
+  }
+  old.exec("CREATE TRIGGER pages_created_at AFTER INSERT ON pages WHEN NEW.created_at IS NULL BEGIN UPDATE pages SET created_at=CURRENT_TIMESTAMP WHERE rowid=NEW.rowid; END");
+  old.exec("INSERT INTO spaces(id,name) VALUES('s93','Alt')");
+  old.exec("PRAGMA user_version=93");
+  legacy.migrateFile(old);
+  const version = (old.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
+  assert.equal(version, 94);
+  assert.equal(legacy.SCHEMA_VERSION, 94);
+  for (const table of [...legacy.SEQ_TABLES, "pages"])
+    assert.ok((old.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === "seq"), table);
+  // Existing rows get their order, new ones one from the trigger.
+  assert.ok((old.prepare("SELECT seq FROM spaces WHERE id='s93'").get() as { seq: number }).seq > 0);
+  old.exec("INSERT INTO spaces(id,name) VALUES('s94','Neu')");
+  const [a, b] = ["s93", "s94"].map((sid) => (old.prepare("SELECT seq FROM spaces WHERE id=?").get(sid) as { seq: number }).seq);
+  assert.ok(b > a);
+  // #164's columns are kept.
+  assert.ok((old.prepare("PRAGMA table_info(files)").all() as { name: string }[]).some((c) => c.name === "deleted_at"));
+  old.close();
+});

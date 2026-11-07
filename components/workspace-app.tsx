@@ -4423,7 +4423,9 @@ export default function WorkspaceApp({
           {screen === "media" && (
             <MediaLibrary
               workspaceId={boot.workspace.id}
+              act={act}
               onOpen={(id) => void openPage(id)}
+              onOpenTrash={() => go("trash")}
             />
           )}
           {screen === "collection" && collectionId && (

@@ -67,6 +67,8 @@
 // one document and one file at a time, plus the converted pages.
 import { mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { getHeapStatistics, setFlagsFromString } from "node:v8";
+import { runInNewContext } from "node:vm";
 import { join, posix } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import * as Y from "yjs";
@@ -99,6 +101,40 @@ export function affineLimitsFor(fileBytes: number) {
     totalDocBytes: Math.max(AFFINE_LIMITS.totalDocBytes, Math.min(fileBytes, 1024 * MB)),
     blobBytes: Math.max(AFFINE_LIMITS.blobBytes, fileBytes),
   };
+}
+// Memory (#163): the converted pages of a workspace stay in memory until
+// they are written – about three times the bytes of its documents (measured
+// with a synthetic workspace of 1,500 documents: 56 MB of documents, about
+// 170 MB more live heap at the peak). A workspace that would not fit into
+// the heap still free is refused with what helps, instead of the process
+// running out of memory and taking the server down. The heap in use counts
+// garbage not collected yet: before refusing, it is collected once.
+export const AFFINE_MEMORY_FACTOR = 3;
+type HeapStats = { heap_size_limit: number; used_heap_size: number };
+let gc: (() => void) | null = null;
+function collectGarbage() {
+  try {
+    if (!gc) {
+      setFlagsFromString("--expose-gc");
+      gc = runInNewContext("gc") as () => void;
+    }
+    gc();
+  } catch {
+    /* not available: decide on the numbers as they are */
+  }
+}
+export function requireAffineMemory(docBytes: number, heap: () => HeapStats = getHeapStatistics, collect = collectGarbage) {
+  const need = docBytes * AFFINE_MEMORY_FACTOR;
+  const freeNow = () => Math.max(0, heap().heap_size_limit - heap().used_heap_size);
+  let free = freeNow();
+  if (need <= free * 0.9) return;
+  collect();
+  free = freeNow();
+  if (need > free * 0.9)
+    throw new HttpError(
+      413,
+      `Für diesen AFFiNE-Arbeitsbereich reicht der Arbeitsspeicher des Servers nicht: der Import braucht etwa ${Math.ceil(need / MB)} MB, frei sind ${Math.floor(free / MB)} MB. Mehr Arbeitsspeicher für Flowplan (NODE_OPTIONS=--max-old-space-size=…) hilft, oder den Arbeitsbereich in AFFiNE aufteilen.`,
+    );
 }
 const TEXT_ID = "$blocksuite:internal:text$";
 const NATIVE_ID = "$blocksuite:internal:native$";
@@ -433,6 +469,8 @@ type Sqlite = {
   updates: (key: string) => Uint8Array[] | null;
   blobs: Map<string, ABlob>;
   skippedBlobs: number;
+  // Bytes of all documents read (their Yjs updates).
+  docBytes: number;
   close: () => void;
 };
 // The workspace file: a path (opened in place, documents and files read
@@ -562,6 +600,7 @@ function readSqlite(input: Buffer | string): Sqlite {
       updates: (key) => (loaded ? (loaded.get(key) ?? null) : readDoc(key)),
       blobs,
       skippedBlobs,
+      docBytes: total,
       close,
     };
   } catch (error) {
@@ -581,6 +620,12 @@ function yDoc(updates: Uint8Array[]) {
 // a path, call close() on the result once the import is written.
 export function readAffineFile(input: Buffer | string, fallbackName: string): AWorkspace {
   const sqlite = readSqlite(input);
+  try {
+    requireAffineMemory(sqlite.docBytes);
+  } catch (error) {
+    sqlite.close();
+    throw error;
+  }
   let done = false;
   const warnings: string[] = [];
   if (sqlite.skippedBlobs) warnings.push(tooManyFiles(sqlite.skippedBlobs));

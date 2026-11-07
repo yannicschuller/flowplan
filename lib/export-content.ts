@@ -8,7 +8,6 @@ import { withLookups, type Awaitable } from "./resolve-ahead";
 import { readableDatabase } from "./field-access";
 import { readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
-import { generateJSON } from "@tiptap/html/server";
 import { all, one, transaction } from "./db";
 import { HttpError, appUrl } from "./auth";
 import { requirePage, pageRole, spaceRole } from "./permissions";
@@ -22,8 +21,8 @@ import { sqlTimestampToIso } from "./date-values";
 import { visibleRows } from "./row-access";
 import { hiddenFileIds } from "./row-files";
 import { fileUrls } from "./file-cells";
-import { cleanHtml, escaped } from "./document-server";
-import { documentExtensions, documentSchema } from "./document-schema";
+import { cleanHtml, escaped, htmlJson } from "./document-server";
+import { documentSchema } from "./document-schema";
 import { whiteboardSnapshotItems } from "./whiteboard";
 import { whiteboardSvg, type WhiteboardSvgContext } from "./whiteboard-svg";
 import { ct } from "./content-locale";
@@ -109,7 +108,7 @@ export const fileId = (raw: string) => {
 
 // The sanitised HTML as a ProseMirror document, for the format walkers.
 export function documentNode(html: string) {
-  return documentSchema().nodeFromJSON(generateJSON(cleanHtml(html) || "<p></p>", documentExtensions));
+  return documentSchema().nodeFromJSON(htmlJson(cleanHtml(html) || "<p></p>"));
 }
 
 export async function collectExportContent(user: Identity, options: ExportSelection): Promise<CollectedExport> {

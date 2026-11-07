@@ -4282,6 +4282,121 @@ td:hover .link-cell-edit,
 .media-page {
   color: var(--blue);
   padding: 0;
+  min-width: 0;
+}
+/* Unused files, selection and deleting (#164). */
+.media-usage {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: -8px 0 16px;
+}
+.media-usage [role="radiogroup"] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.media-usage .chip {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 12px;
+  color: var(--secondary);
+}
+.media-usage .chip.active {
+  background: var(--blue-light);
+  color: var(--blue);
+  border-color: transparent;
+}
+.media-notice {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--secondary);
+}
+.media-notice .text-button {
+  padding: 0;
+  color: var(--blue);
+}
+.media-selection-bar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin: 0 0 12px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 2px 8px #14244414;
+  font-size: 13px;
+}
+.media-selection-bar > span {
+  font-weight: 600;
+  margin-right: auto;
+}
+.media-item {
+  position: relative;
+}
+.media-item.is-selected .media-thumb {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+.media-select {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 6px;
+  background: var(--bg);
+  box-shadow: 0 1px 3px #14244426;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.media-item:hover .media-select,
+.media-item:focus-within .media-select,
+.media-item.is-selected .media-select,
+.media-library:has(.media-selection-bar) .media-select {
+  opacity: 1;
+}
+@media (hover: none) {
+  .media-select {
+    opacity: 1;
+  }
+}
+.media-select input {
+  margin: 0;
+}
+.media-unused {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--bg);
+  box-shadow: 0 1px 3px #14244426;
+  color: var(--secondary);
+  font-size: 11px;
+  font-weight: 600;
+  pointer-events: none;
+}
+.media-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  min-width: 0;
+}
+.media-delete {
+  flex: 0 0 auto;
+  color: var(--secondary);
+}
+.media-delete:hover {
+  color: var(--red);
 }
 @container main (max-width: 640px) {
   .media-grid {
@@ -10931,6 +11046,34 @@ textarea {
 }
 .document-editor [data-resize-wrapper] {
   border-radius: 7px;
+}
+/* An uploaded image whose file is gone (deleted for good, #164): a quiet
+   box with a broken-image mark instead of nothing. */
+.fp-fade.is-missing {
+  /* Holds the box's size; the browser's broken-image mark stays hidden. */
+  opacity: 0;
+  min-width: 160px;
+  min-height: 96px;
+}
+.fp-image-missing {
+  position: relative;
+  border: 1px dashed var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+}
+.fp-image-missing::after {
+  content: attr(data-missing);
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--muted);
+  text-align: center;
+  pointer-events: none;
 }
 /* Images of read-only documents sit in a frame for the placeholder. */
 .fp-image-frame {

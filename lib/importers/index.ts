@@ -148,6 +148,10 @@ export async function importFromSource(
   try {
     // Reading is about half of the work (Live Activity, lib/background-jobs.ts).
     await jobProgress(0.5);
+    // A turn of the event loop between reading and writing (#163): the page
+    // that waits for a background import sees the progress, and what the
+    // reading held only for its own task can go.
+    await new Promise((resolve) => setImmediate(resolve));
     return options.dryRun
       ? (await previewImport(user, workspaceId, spaceId, tree, options.mode))
       : (await writeImport(user, workspaceId, spaceId, tree, options.mode));

@@ -16,7 +16,7 @@
 // must be this one: PRAGMA user_version / flowplan_meta). Into Postgres the
 // target tables must be empty; into SQLite the file must not exist yet.
 // Each table is copied in batches in the order of its primary key (seq
-// columns – the order of insertion, schema 93 – keep their values), foreign
+// columns – the order of insertion, schema 94 – keep their values), foreign
 // keys are checked after the copy, triggers created after it (they would
 // fire for every copied row), identity sequences moved on, and every table
 // is compared by row count and an order-independent checksum of its

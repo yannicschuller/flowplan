@@ -133,7 +133,7 @@ export function translateSqliteSchema(d: DatabaseSync): PgSchema {
     const columns: PgColumn[] = info.map((c) => {
       const integerKey = pk.length === 1 && pk[0].name === c.name && c.type.toUpperCase() === "INTEGER";
       const type = pgType(c.type, integerKey);
-      // `seq` (schema 93): the insertion order SQLite takes from the rowid.
+      // `seq` (schema 94): the insertion order SQLite takes from the rowid.
       const identity = (integerKey && autoincrement) || (c.name === "seq" && type === "bigint");
       return { name: c.name, type, notNull: !!c.notnull, default: identity ? null : defaultValue(c.dflt_value, type), identity };
     });

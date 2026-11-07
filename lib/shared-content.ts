@@ -191,7 +191,7 @@ export async function sharedContent(token: string, pageId?: string, rowId?: stri
         }));
       }
   const files = await flatMapAsync(await all<{ id: string; name: string; mime: string }>(
-    "SELECT id,name,mime FROM files WHERE page_id=?",
+    "SELECT id,name,mime FROM files WHERE page_id=? AND deleted_at IS NULL",
     s.page.id,
   ), async (f) => {
     const url = await shareFileUrl(token, `/api/files/${f.id}`);
