@@ -1166,6 +1166,11 @@ function migrate(d: DatabaseSync) {
   // signing secrets and addresses and the Git connections of databases are
   // sealed once. An older version cannot read them, hence the new number.
   migrateSealedSecrets(d);
+  // Notification retention (lib/notification-retention.ts) deletes old
+  // notifications: their chat app deliveries go with them by notification,
+  // and the inbox reads one person's newest.
+  d.exec(`CREATE INDEX IF NOT EXISTS messenger_deliveries_notification ON messenger_deliveries(notification_id);
+    CREATE INDEX IF NOT EXISTS notifications_user_created ON notifications(user_id,created_at);`);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);

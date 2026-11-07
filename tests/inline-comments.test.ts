@@ -56,6 +56,9 @@ function fixture() {
     spaceId: sid,
     title: "Thread source",
   }).id;
+  // The reader follows the page: new comments reach followers, not the
+  // whole workspace (lib/comment-recipients.ts).
+  act({ action: "page.follow", pageId, follow: true }, viewer);
   const html =
     "<p>Alpha Bravo Charlie</p><ul><li><p>Nested words</p></li></ul>";
   run(
@@ -658,6 +661,7 @@ test("thread notifications preserve scoped row and thread destinations for initi
     pageId: database,
     cells: { title: "Row" },
   }).id;
+  f.act({ action: "page.follow", pageId: database, follow: true }, f.viewer);
   rowDocumentData(f.owner, database, row);
   run(
     "UPDATE row_documents SET state=?,html=? WHERE row_id=?",
