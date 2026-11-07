@@ -443,7 +443,7 @@ export default function DatabaseCalendar({
     // The row and versions as they were when the drag began.
     const schemaVersion = version;
     startDrag(event, {
-      touch: event.currentTarget.classList.contains("calendar-drag") ? "move" : "none",
+      touch: event.currentTarget.classList.contains("calendar-drag") ? "hold" : "none",
       preview: chip,
       source: chip,
       onMove: (point) => setTouchTarget(dayAt(point.x, point.y)),

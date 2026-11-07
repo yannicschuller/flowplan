@@ -1509,6 +1509,9 @@ async function handlePOST(
             source: z.enum(["auto", "affine", "confluence", "evernote", "gdocs", "obsidian", "word"]).catch("auto").parse(fields.get("source") || "auto"),
             mode: fields.get("mode") === "database" ? "database" : "pages",
             dryRun,
+            // AFFiNE (#167): "0" keeps documents linked from one other
+            // document at the top.
+            nestLinked: fields.get("nestLinked") !== "0",
           },
         );
       // background=1 (the import page, #163): a large file takes longer than

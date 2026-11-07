@@ -698,7 +698,16 @@ function docProperties(ws: AWorkspace, docId: string): Record<string, Frontmatte
   return Object.keys(out).length ? out : undefined;
 }
 
-export function parseAffine(ws: AWorkspace, fallbackTitle: string): ImportTree {
+export type AffineOptions = {
+  /**
+   * #167: a document AFFiNE places nowhere (no folder) that exactly one
+   * other document links to goes below that document (see
+   * placeSingleBacklinks). On unless switched off in the import preview.
+   */
+  nestLinked?: boolean;
+};
+
+export function parseAffine(ws: AWorkspace, fallbackTitle: string, options: AffineOptions = {}): ImportTree {
   const warnings = warningList();
   const live = ws.docs.filter((d) => !d.trash);
   const trashed = ws.docs.length - live.length;
@@ -777,6 +786,9 @@ export function parseAffine(ws: AWorkspace, fallbackTitle: string): ImportTree {
   for (const node of ws.folders) byParent.set(node.parentId, [...(byParent.get(node.parentId) || []), node]);
   for (const list of byParent.values()) list.sort((a, b) => (a.index < b.index ? -1 : a.index > b.index ? 1 : 0));
   const seenFolders = new Set<string>();
+  // Documents the person put at the top of AFFiNE's "Organize" tree: they
+  // stay at the top (#167).
+  const placedAtTop = new Set<string>();
   // Folders nested deeper than MAX_IMPORT_DEPTH hold their content at the
   // deepest level.
   let tooDeep = false;
@@ -795,7 +807,10 @@ export function parseAffine(ws: AWorkspace, fallbackTitle: string): ImportTree {
         walk(node.id, key, depth + 1);
         continue;
       }
-      if (parentId === null) continue;
+      if (parentId === null) {
+        if (node.type === "doc" && byId.has(node.data)) placedAtTop.add(docKey(node.data));
+        continue;
+      }
       const add = (target: string, href: string | null, shown: string) => {
         if (!placeOf.has(target) && href) placeOf.set(target, parentKey);
         else extraLinks.set(parentKey, [...(extraLinks.get(parentKey) || []), `<li>${href ? `<a href="${esc(href)}">${esc(shown)}</a>` : esc(shown)}</li>`]);
@@ -820,6 +835,9 @@ export function parseAffine(ws: AWorkspace, fallbackTitle: string): ImportTree {
   // The documents each document links to (#117: AFFiNE's sidebar shows them
   // below it), links to templates (text) and the templates themselves.
   const linksFrom = new Map<string, Set<string>>();
+  // …of them those in the document's own text (not in its databases or on
+  // its whiteboard): only these make it the parent of a document (#167).
+  const textLinksFrom = new Map<string, Set<string>>();
   let templateLinks = 0,
     canvasDatabases = 0;
   const templates: ImportTemplate[] = [];
@@ -835,15 +853,24 @@ export function parseAffine(ws: AWorkspace, fallbackTitle: string): ImportTree {
     const properties = docProperties(ws, doc.id);
     const parent = journalDate ? null : placeOf.get(key) || ROOT;
     const subpages: ImportPage[] = [];
-    const links = new Set<string>();
-    if (!template) linksFrom.set(doc.id, links);
+    const links = new Set<string>(),
+      textLinks = new Set<string>();
+    if (!template) {
+      linksFrom.set(doc.id, links);
+      textLinksFrom.set(doc.id, textLinks);
+    }
+    // Whether links come from the document's text right now.
+    let inText = true;
     const ownLink = (id: string) => {
       if (templateIds.has(id)) {
         templateLinks++;
         return null;
       }
       const href = docLink(id);
-      if (href && id !== doc.id) links.add(id);
+      if (href && id !== doc.id) {
+        links.add(id);
+        if (inText) textLinks.add(id);
+      }
       return href;
     };
     // A template that is only a database becomes a database template; other
@@ -865,7 +892,13 @@ export function parseAffine(ws: AWorkspace, fallbackTitle: string): ImportTree {
           else warnings.add("Datenbanken in Vorlagen werden nicht übernommen.");
           return "";
         }
-        const db = convertDatabase(block, ctx);
+        inText = false;
+        let db: ReturnType<typeof convertDatabase>;
+        try {
+          db = convertDatabase(block, ctx);
+        } finally {
+          inText = true;
+        }
         const dbKey = `db:${doc.id}:${block.id}`;
         db.refs.forEach((ref, i) => ref && claims.push({ ref, row: db.rows[i], fields: db.fields, owner: doc.id, db: dbKey }));
         // Below its document; for a journal day (which may live in another
@@ -905,12 +938,14 @@ export function parseAffine(ws: AWorkspace, fallbackTitle: string): ImportTree {
       continue;
     }
     if (boardFor.has(doc.id) && docRoot) {
+      inText = false;
       const board = affineBoard(doc.id, docRoot, {
         blobs: ws.blobs,
         pageRef: ownLink,
         docTitle: titleOf,
         plainText: (blocks) => blocksPlain(blocks, { title: titleOf }),
       });
+      inText = true;
       dropped += board.replaced;
       const name = `${title} – Whiteboard`.slice(0, 200);
       html = `<p>${esc(ct("Whiteboard", "Whiteboard"))}: <a href="${esc(pageRef(boardKey(doc.id)))}">${esc(name)}</a></p>${html}`;
@@ -971,8 +1006,15 @@ export function parseAffine(ws: AWorkspace, fallbackTitle: string): ImportTree {
   // The reader's warnings, also those of documents read meanwhile.
   for (const w of ws.warnings) warnings.add(w);
   // The workspace page only when it carries structure (#77); otherwise its
-  // children go straight into the target.
+  // children go straight into the target. Decided before documents go
+  // below the one linking to them, so the switch for that (#167) does not
+  // change it.
   const wrap = keepWorkspacePage(ws.format, pages);
+  const nested = placeSingleBacklinks(pages, { linksFrom, textLinksFrom, placedAtTop });
+  if (options.nestLinked !== false) {
+    const byKey = new Map(pages.map((p) => [p.key, p]));
+    for (const [key, parent] of nested.moves) byKey.get(key)!.parent = parent;
+  }
   if (!wrap) {
     pages.splice(pages.indexOf(root), 1);
     for (const page of pages) if (page.parent === ROOT) page.parent = null;
@@ -984,6 +1026,7 @@ export function parseAffine(ws: AWorkspace, fallbackTitle: string): ImportTree {
     files,
     warnings: warnings.list(),
     collections: ws.collections.length,
+    ...(nested.documents ? { linkedBelow: nested.documents } : {}),
     ...(templates.length ? { templates } : {}),
     ...(wrap ? { wrapper: ROOT } : {}),
     ...(ws.close ? { close: ws.close } : {}),
@@ -1118,6 +1161,90 @@ function placeLinkedDocs(pages: ImportPage[], homes: Map<string, string>, linksF
     }
   }
   return placed;
+}
+
+// #167: after an import most documents sat at the top of the workspace
+// page – AFFiNE only places what is in a folder. A document that sits at the
+// top (no folder, not placed at the top of AFFiNE's "Organize" tree, no
+// journal day, not a record's content) and that exactly one other document
+// links to goes below that document:
+// - counted are the distinct documents linking to it from anywhere (text,
+//   databases, whiteboard); links to itself do not count;
+// - the one linking to it becomes its parent only when the link is in its
+//   text (a link from a database or a whiteboard is no place for a page) and
+//   it is a page of its own (not a journal day, not a record's content);
+// - chains follow (C below B below A), in the order of the import; a move
+//   that would put a document below itself (A ↔ B) is skipped, so the first
+//   of a cycle goes below the other and the other stays where it was;
+// - nothing goes deeper than an import can write (MAX_IMPORT_DEPTH);
+// - a document's whiteboard, at the top next to it, comes along.
+// Links stay as they are. Returns the moves (page key → new parent) and how
+// many documents they place; the caller applies them when the switch is on.
+function placeSingleBacklinks(
+  pages: ImportPage[],
+  links: { linksFrom: Map<string, Set<string>>; textLinksFrom: Map<string, Set<string>>; placedAtTop: Set<string> },
+) {
+  const byKey = new Map(pages.map((p) => [p.key, p]));
+  const parentOf = new Map(pages.map((p) => [p.key, p.parent]));
+  const children = new Map<string, Set<string>>();
+  const childrenOf = (key: string) => {
+    let set = children.get(key);
+    if (!set) children.set(key, (set = new Set()));
+    return set;
+  };
+  for (const p of pages) if (p.parent) childrenOf(p.parent).add(p.key);
+  const linkers = new Map<string, string[]>();
+  for (const [from, targets] of links.linksFrom)
+    for (const target of targets) {
+      if (target === from) continue;
+      const list = linkers.get(target);
+      if (list) list.push(from);
+      else linkers.set(target, [from]);
+    }
+  const depth = (key: string) => {
+    let d = 0;
+    for (let at = parentOf.get(key); at && d <= MAX_IMPORT_DEPTH; at = parentOf.get(at)) d++;
+    return d;
+  };
+  const height = (key: string, seen = new Set<string>()): number => {
+    if (seen.has(key) || seen.size > 20000) return 0;
+    seen.add(key);
+    let h = 0;
+    for (const child of children.get(key) || []) h = Math.max(h, 1 + height(child, seen));
+    return h;
+  };
+  const isBelow = (key: string, ancestor: string) => {
+    for (let at: string | null | undefined = key, n = 0; at && n <= MAX_IMPORT_DEPTH + 1; at = parentOf.get(at), n++) if (at === ancestor) return true;
+    return false;
+  };
+  const move = (key: string, parent: string) => {
+    const before = parentOf.get(key);
+    if (before) children.get(before)?.delete(key);
+    parentOf.set(key, parent);
+    childrenOf(parent).add(key);
+    moves.set(key, parent);
+  };
+  const moves = new Map<string, string>();
+  let documents = 0;
+  for (const page of pages) {
+    if (!page.key.startsWith("doc:") || page.parent !== ROOT || page.inRecord || page.journalDate || page.kind) continue;
+    if (links.placedAtTop.has(page.key)) continue;
+    const target = page.key.slice("doc:".length);
+    const from = linkers.get(target) || [];
+    if (from.length !== 1) continue;
+    const parentKey = docKey(from[0]);
+    const parent = byKey.get(parentKey);
+    if (!parent || parent.inRecord || parent.journalDate || parent.kind) continue;
+    if (!links.textLinksFrom.get(from[0])?.has(target)) continue;
+    // No cycles, and no deeper than an import writes.
+    if (isBelow(parentKey, page.key)) continue;
+    if (depth(parentKey) + 1 + height(page.key) > MAX_IMPORT_DEPTH - 1) continue;
+    move(page.key, parentKey);
+    documents++;
+    const board = byKey.get(boardKey(target));
+    if (board && parentOf.get(board.key) === ROOT) move(board.key, parentKey);
+  }
+  return { moves, documents };
 }
 
 // Whether the import keeps the page named after the workspace: only for the
