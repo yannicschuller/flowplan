@@ -116,7 +116,7 @@ helm install flowplan deploy/helm/flowplan -n flowplan \
 ```
 
 - **Schema:** a Job (`pre-install`/`pre-upgrade` hook) runs
-  `node /app/db-schema.mjs` before the pods of a new version start – it
+  `node /app/scripts/db-schema.mjs` before the pods of a new version start – it
   adds what the version needs and never drops anything. Without it
   (`cluster.migration.enabled=false`) the pods apply it at their first
   start, one after the other.

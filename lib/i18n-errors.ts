@@ -459,6 +459,7 @@ const exact: Record<string, string> = {
   "Keine Flowplan-Instanzsicherung.": "Not a Flowplan instance backup.",
   "Die Datenbank der Sicherung ist beschädigt.": "The backup's database is damaged.",
   "Die Sicherung enthält keine gültige Flowplan-Datenbank.": "The backup contains no valid Flowplan database.",
+  "Diese Sicherung ist ein PostgreSQL-Dump (pg_dump) und lässt sich nur in einer Instanz mit PostgreSQL wiederherstellen. Für einen Wechsel zu SQLite: die Sicherung der gesamten Instanz (.zip) oder der Instanzumzug.": "This backup is a PostgreSQL dump (pg_dump) and can only be restored in an instance with PostgreSQL. To switch to SQLite: the backup of the whole instance (.zip) or the instance move.",
   "Arbeitsbereich nicht gefunden.": "Workspace not found.",
   "Die Vorlage ist zu lang.": "The template is too long.",
   "Tag nicht gefunden.": "Day not found.",

@@ -7,7 +7,7 @@
 // that fails loudly. Takes the same advisory lock as the app.
 //
 //   DATABASE_URL=postgres://… node scripts/db-schema.mjs          (from the repository)
-//   DATABASE_URL=postgres://… node /app/db-schema.mjs             (in the image)
+//   DATABASE_URL=postgres://… node /app/scripts/db-schema.mjs     (in the image)
 //
 // FLOWPLAN_PG_SCHEMA picks the schema (namespace; default public).
 import { existsSync, readFileSync } from "node:fs";

@@ -1,5 +1,5 @@
 // Load test of cluster mode for the sizing guide (docs/architecture/
-// database.md §14): how many concurrent active people 1 and 2 instances
+// database.md §15): how many concurrent active people 1 and 2 instances
 // serve against one PostgreSQL, with Redis between them. For each instance
 // count it starts a fresh schema, the instances (the standalone build,
 // FLOWPLAN_CLUSTER=1), a round-robin balancer in front

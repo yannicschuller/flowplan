@@ -101,7 +101,7 @@ cluster:
   # Size limit of the per-pod file cache (emptyDir).
   cacheSizeLimit: 5Gi
   # The schema step before each install/upgrade (a Job running
-  # node /app/db-schema.mjs; adds, never drops). Off: the pods apply it at
+  # node /app/scripts/db-schema.mjs; adds, never drops). Off: the pods apply it at
   # their first start themselves (under a lock).
   migration:
     enabled: true

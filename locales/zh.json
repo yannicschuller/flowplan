@@ -7810,6 +7810,7 @@
   "The authenticator app of {0} goes; the one of {1} stays.": "{0} 的身份验证器应用将被移除；保留 {1} 的。",
   "The backup comes from a newer Flowplan version. Please update Flowplan to that version first.": "该备份来自更新的 Flowplan 版本。请先将 Flowplan 更新到该版本。",
   "The backup contains no valid Flowplan database.": "备份不包含有效的 Flowplan 数据库。",
+  "This backup is a PostgreSQL dump (pg_dump) and can only be restored in an instance with PostgreSQL. To switch to SQLite: the backup of the whole instance (.zip) or the instance move.": "此备份是 PostgreSQL 转储（pg_dump），只能在使用 PostgreSQL 的实例中恢复。要切换到 SQLite：请使用整个实例的备份（.zip）或实例迁移。",
   "The backup contains unknown entries.": "备份包含未知条目。",
   "The backup is encrypted. Please enter the old instance's key (FLOWPLAN_ENCRYPTION_KEY).": "该备份已加密。请输入旧实例的密钥（FLOWPLAN_ENCRYPTION_KEY）。",
   "The backup's database is damaged.": "备份的数据库已损坏。",

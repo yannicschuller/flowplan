@@ -1,4 +1,4 @@
-// Cluster mode (lib/cluster, docs/architecture/database.md §13): the
+// Cluster mode (lib/cluster, docs/architecture/database.md §14): the
 // configuration check, the Redis client, and – with PostgreSQL – several
 // instances as child processes on one database and one Redis: leader
 // election and failover, heartbeats, live document updates between

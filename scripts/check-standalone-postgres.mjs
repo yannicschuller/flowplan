@@ -97,6 +97,19 @@ try {
   const cookie = register.headers.get("set-cookie")?.split(";")[0] || "";
   const boot = await fetch(`${origin}/api/bootstrap`, { headers: { cookie } });
   check("bootstrap for the new account", boot.ok, String(boot.status));
+  // The search on PostgreSQL (lib/search-store.ts): its trigram indexes,
+  // made when the database opened, and a search through the bundle.
+  const trigram = (await client.query("SELECT count(*)::int n FROM pg_indexes WHERE schemaname=$1 AND indexname LIKE 'search_index_%_trgm'", [schemaName])).rows[0].n;
+  check("the search's trigram indexes", trigram === 2, String(trigram));
+  const workspace = (await boot.json().catch(() => ({})))?.workspace?.id || (await client.query("SELECT id FROM workspaces LIMIT 1")).rows[0]?.id;
+  const search = await fetch(`${origin}/api/search?workspace=${encodeURIComponent(workspace || "")}&q=${encodeURIComponent("Willkommen")}`, { headers: { cookie } });
+  check("a search", search.ok && Array.isArray(await search.json()), String(search.status));
+  // "Back up now": a pg_dump archive when the client tools are there
+  // (lib/pg-backup.ts), else the portable SQLite copy.
+  const backup = await fetch(`${origin}/api/admin/backup-run`, { method: "POST", headers: { cookie, origin, "content-type": "application/json" }, body: "{}" });
+  const made = backup.ok ? await backup.json() : null;
+  check("a backup", !!made && made.error === null && /^flowplan-[\d-]+\.(dump|sqlite)$/.test(made.name), `${backup.status} ${JSON.stringify(made)}`);
+  if (made?.name) console.log(`     (${made.name}, ${made.bytes} bytes)`);
 } finally {
   server.kill();
   await client.query(`DROP SCHEMA ${quoteIdent(schemaName)} CASCADE`);

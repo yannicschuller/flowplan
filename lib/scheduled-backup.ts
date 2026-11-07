@@ -1,5 +1,5 @@
 // Scheduled backups: once a day a consistent copy of the database (VACUUM
-// INTO). With S3 it goes to <prefix>/backups/ in the bucket, where the
+// INTO; on PostgreSQL pg_dump, lib/backup-copy.ts). With S3 it goes to <prefix>/backups/ in the bucket, where the
 // uploads are mirrored anyway; without S3 to backups/ in the data folder.
 // The newest N copies are kept. Complements Litestream (continuous but
 // only for the database) and the manual instance backup.
@@ -27,8 +27,9 @@ import { isLeader } from "./cluster/leader";
 const dataDir = () => resolve(process.env.FLOWPLAN_DATA_DIR || "./data");
 const DAY_MS = 86400_000;
 const HOUR_MS = 3600_000;
-// Plain and encrypted copies count alike when old ones are removed.
-const BACKUP_NAME = /flowplan-[\d-]+\.sqlite(\.enc)?$/;
+// Plain and encrypted copies count alike when old ones are removed, SQLite
+// copies and pg_dump archives as well (they sort by time all the same).
+const BACKUP_NAME = /flowplan-[\d-]+\.(sqlite|dump)(\.enc)?$/;
 
 export type BackupRun = { at: number; target: "s3" | "local"; name: string; bytes: number; error: string | null };
 
@@ -93,7 +94,7 @@ export async function runScheduledBackup(now = Date.now()): Promise<BackupRun> {
       const response = await bucketFetch(`backups/${name}`, {
         method: "PUT",
         body: new Uint8Array(readFileSync(copy)),
-        headers: { "Content-Type": encrypted ? "application/octet-stream" : "application/vnd.sqlite3" },
+        headers: { "Content-Type": encrypted || made.format === "pg_dump" ? "application/octet-stream" : "application/vnd.sqlite3" },
       });
       if (!response.ok) throw new Error(`Hochladen: HTTP ${response.status}`);
       const prefix = config.prefix ? `${config.prefix}/` : "";

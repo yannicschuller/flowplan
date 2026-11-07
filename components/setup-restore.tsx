@@ -255,7 +255,7 @@ export function SetupRestore({ onCancel }: { onCancel: () => void }) {
           {busy ? t("Läuft …", "Working …") : t("Sicherung auswählen", "Choose backup")}
           <input
             type="file"
-            accept=".sqlite,.enc,.zip,application/zip,application/octet-stream"
+            accept=".sqlite,.dump,.enc,.zip,application/zip,application/octet-stream"
             hidden
             aria-label={t("Sicherung hochladen", "Upload backup")}
             disabled={busy}

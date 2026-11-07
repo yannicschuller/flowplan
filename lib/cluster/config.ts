@@ -1,5 +1,5 @@
 // Cluster mode: several Flowplan instances against one PostgreSQL database
-// (docs/architecture/database.md §13). Switched on with FLOWPLAN_CLUSTER=1
+// (docs/architecture/database.md §14). Switched on with FLOWPLAN_CLUSTER=1
 // (or FLOWPLAN_MODE=cluster); then PostgreSQL (DATABASE_URL), Redis
 // (REDIS_URL) and S3 object storage (S3_BUCKET …) are all required – an
 // instance refuses to start without one of them. Without it Flowplan is the

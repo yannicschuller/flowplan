@@ -9,7 +9,7 @@
 #   open http://localhost:8080  # (APP_URL)
 #
 # More instances: copy the flowplan-2 service (and add it to the Caddyfile).
-# Sizing and the design: docs/architecture/database.md (§13, §14).
+# Sizing and the design: docs/architecture/database.md (§14, §15).
 name: flowplan-cluster
 
 x-flowplan: &flowplan
@@ -111,7 +111,7 @@ services:
   # instance starts (scripts/db-schema.mjs; adds, never drops).
   schema:
     <<: *flowplan
-    command: ["node", "/app/db-schema.mjs"]
+    command: ["node", "/app/scripts/db-schema.mjs"]
     entrypoint: []
     restart: "no"
     healthcheck:

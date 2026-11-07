@@ -7810,6 +7810,7 @@
   "The authenticator app of {0} goes; the one of {1} stays.": "L’application d’authentification de {0} est supprimée ; celle de {1} est conservée.",
   "The backup comes from a newer Flowplan version. Please update Flowplan to that version first.": "La sauvegarde provient d’une version plus récente de Flowplan. Mets d’abord Flowplan à jour vers cette version.",
   "The backup contains no valid Flowplan database.": "La sauvegarde ne contient aucune base de données Flowplan valide.",
+  "This backup is a PostgreSQL dump (pg_dump) and can only be restored in an instance with PostgreSQL. To switch to SQLite: the backup of the whole instance (.zip) or the instance move.": "Cette sauvegarde est un dump PostgreSQL (pg_dump) et ne peut être restaurée que dans une instance avec PostgreSQL. Pour passer à SQLite : la sauvegarde de toute l’instance (.zip) ou le déménagement de l’instance.",
   "The backup contains unknown entries.": "La sauvegarde contient des entrées inconnues.",
   "The backup is encrypted. Please enter the old instance's key (FLOWPLAN_ENCRYPTION_KEY).": "La sauvegarde est chiffrée. Saisis la clé de l’ancienne instance (FLOWPLAN_ENCRYPTION_KEY).",
   "The backup's database is damaged.": "La base de données de la sauvegarde est endommagée.",

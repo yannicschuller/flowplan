@@ -15,9 +15,18 @@ const MOVE_EXTRAS = ["web-push-keys.json", "secrets.key"];
 // Swaps a validated instance restore into place before the database opens.
 // The previous state moves to pre-restore-<time> (pre-move-<time> after an
 // instance move, lib/instance-move.ts) and can be recovered.
-export function applyPendingRestore(dir: string) {
+// A pg_dump archive (flowplan.dump, a scheduled backup of a PostgreSQL
+// instance) is staged only on PostgreSQL; it lands in the data folder as
+// flowplan.dump for lib/db-restore.ts. SQLite (`dumps: false`) leaves such
+// a restore where it is.
+export function applyPendingRestore(dir: string, options: { dumps?: boolean } = {}) {
   const pending = resolve(dir, "restore-pending");
   if (!existsSync(resolve(pending, "READY"))) return null;
+  const dump = existsSync(resolve(pending, "flowplan.dump"));
+  if (dump && options.dumps === false) {
+    console.error("Wiederherstellung übersprungen: ein PostgreSQL-Dump lässt sich nur mit PostgreSQL wiederherstellen (DATABASE_URL).");
+    return null;
+  }
   const move = existsSync(resolve(pending, "MOVE"));
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const previous = resolve(dir, `${move ? "pre-move" : "pre-restore"}-${stamp}`);
@@ -36,10 +45,12 @@ export function applyPendingRestore(dir: string) {
       if (existsSync(resolve(dir, name))) renameSync(resolve(dir, name), resolve(previous, name));
       renameSync(resolve(pending, name), resolve(dir, name));
     }
-  renameSync(
-    resolve(pending, "flowplan.sqlite"),
-    resolve(dir, "flowplan.sqlite"),
-  );
+  if (dump) renameSync(resolve(pending, "flowplan.dump"), resolve(dir, "flowplan.dump"));
+  else
+    renameSync(
+      resolve(pending, "flowplan.sqlite"),
+      resolve(dir, "flowplan.sqlite"),
+    );
   if (existsSync(resolve(pending, "uploads")))
     renameSync(resolve(pending, "uploads"), resolve(dir, "uploads"));
   else mkdirSync(resolve(dir, "uploads"), { recursive: true });

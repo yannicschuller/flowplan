@@ -73,10 +73,16 @@ test("round trip: scheduled backup → fresh instance → restore → data prese
   assert.equal(result.error, null);
   const file = join(keep, result.name);
   copyFileSync(join(old, "backups", result.name), file);
-  // The schema version travels with the copy.
-  const copy = new DatabaseSync(file, { readOnly: true });
-  assert.equal((copy.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, SCHEMA_VERSION);
-  copy.close();
+  // The schema version travels with the copy (PostgreSQL: a pg_dump archive,
+  // lib/pg-backup.ts, restored into a schema of another name here).
+  if (onPostgres) {
+    assert.match(result.name, /\.dump$/);
+    assert.equal((await (await import("../lib/pg-backup")).dumpSummary(file)).version, SCHEMA_VERSION);
+  } else {
+    const copy = new DatabaseSync(file, { readOnly: true });
+    assert.equal((copy.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, SCHEMA_VERSION);
+    copy.close();
+  }
   const dir = await freshInstance();
   const restored = await restore.restoreUpload(file, "", result.name);
   assert.equal(restored.restart, false);
@@ -112,7 +118,10 @@ test("an encrypted instance download needs the key and brings the files", async 
 });
 
 test("refuses while an account exists, and backups from a newer version", async () => {
-  const result = await runScheduledBackup(Date.UTC(2026, 10, 6, 4, 0));
+  // The portable SQLite copy (on PostgreSQL too: FLOWPLAN_BACKUP_FORMAT=sqlite),
+  // which this test can change.
+  process.env.FLOWPLAN_BACKUP_FORMAT = "sqlite";
+  const result = await runScheduledBackup(Date.UTC(2026, 10, 6, 4, 0)).finally(() => delete process.env.FLOWPLAN_BACKUP_FORMAT);
   const file = join(keep, result.name);
   copyFileSync(join(old, "backups", result.name), file);
   // On the old instance (it has accounts) the setup restore is closed.
@@ -226,7 +235,7 @@ test("an older SFTP backup finds a file deleted since then in .deleted/", async 
     assert.ok(!existsSync(join(remote, "flowplan/uploads", fid)));
     assert.equal(readdirSync(join(remote, "flowplan/.deleted/uploads")).length, 1);
     // The 03:00 backup is the one restored (the newer one set aside).
-    rmSync(join(remote, "flowplan/flowplan-2026-11-07-04-00.sqlite"));
+    rmSync(join(remote, `flowplan/flowplan-2026-11-07-04-00.${onPostgres ? "dump" : "sqlite"}`));
     const dir = await freshInstance();
     restore.startRemoteRestore("sftp", { ...target, fingerprint: server.hostKey }, "");
     const done = await restore.setupRestoreSettled();

@@ -11,7 +11,13 @@ mkdir -p "$DATA"
 # database. The previous state stays in pre-restore-<time>, after an
 # instance move (Administration → Instanz umziehen, or /app/move.mjs) in
 # pre-move-<time>; a move also brings the Web Push keys and secrets.key.
-if [ -f "$DATA/restore-pending/READY" ]; then
+# With PostgreSQL (DATABASE_URL=postgres://…) the app loads a pending restore
+# into the database itself when it opens it (lib/db-restore.ts).
+case "${DATABASE_URL:-}" in
+  postgres://* | postgresql://*) POSTGRES=1 ;;
+  *) POSTGRES= ;;
+esac
+if [ -z "$POSTGRES" ] && [ -f "$DATA/restore-pending/READY" ] && [ ! -f "$DATA/restore-pending/flowplan.dump" ]; then
   kind=pre-restore
   if [ -f "$DATA/restore-pending/MOVE" ]; then kind=pre-move; fi
   previous="$DATA/$kind-$(date -u +%Y-%m-%dT%H-%M-%S)"
@@ -42,9 +48,7 @@ fi
 
 # Litestream replicates the SQLite file: not with PostgreSQL (single
 # container or cluster mode), whose backups are the database's own.
-case "${DATABASE_URL:-}" in
-  postgres://*|postgresql://*) FLOWPLAN_LITESTREAM=off ;;
-esac
+if [ -n "$POSTGRES" ]; then FLOWPLAN_LITESTREAM=off; fi
 
 if [ -n "${S3_BUCKET:-}" ] && [ "${FLOWPLAN_LITESTREAM:-on}" != "off" ]; then
   S3_REGION="${S3_REGION:-us-east-1}"

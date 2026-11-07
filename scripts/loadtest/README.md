@@ -98,7 +98,7 @@ one Redis: a fresh schema per run, a round-robin balancer in front
 (`balancer.mjs`), an S3 stand-in, `seed.mjs --database postgres://… --schema …`
 (accounts written into PostgreSQL instead of the SQLite file). `--pin 0,1`
 gives each instance a core of its own. Results and how to read them:
-docs/architecture/database.md §14.
+docs/architecture/database.md §15.
 
 ```sh
 npm run build

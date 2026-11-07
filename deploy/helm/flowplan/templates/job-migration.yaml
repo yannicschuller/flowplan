@@ -39,7 +39,7 @@ spec:
         - name: schema
           image: {{ include "flowplan.image" . | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          command: ["node", "/app/db-schema.mjs"]
+          command: ["node", "/app/scripts/db-schema.mjs"]
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
           env:

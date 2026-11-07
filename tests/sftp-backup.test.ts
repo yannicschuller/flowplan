@@ -10,6 +10,9 @@ import { startSftpServer } from "./helpers/sftp-server";
 
 const dir = mkdtempSync(join(tmpdir(), "flowplan-sftp-backup-"));
 process.env.FLOWPLAN_DATA_DIR = dir;
+// The scheduled backups here are the portable SQLite copy on PostgreSQL too
+// (the pg_dump archives: tests/pg-backup.test.ts).
+process.env.FLOWPLAN_BACKUP_FORMAT = "sqlite";
 const remote = mkdtempSync(join(tmpdir(), "flowplan-sftp-remote-"));
 const { one, run, id } = await import("../lib/db");
 const backup = await import("../lib/sftp-backup");

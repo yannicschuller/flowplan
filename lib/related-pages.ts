@@ -24,7 +24,7 @@ import { journalLocked } from "./journal-extras";
 import { requireRow } from "./row-documents";
 import { refreshSearchIndex, termMatches } from "./search-index";
 import { questionTerms } from "./ai/chunks";
-import { textMatch } from "./search-store";
+import { entryOrder, textMatch } from "./search-store";
 import { aiFilter, aiMayRead } from "./ai/access";
 import { semanticNeighbours } from "./ai/semantic";
 import { allow } from "./action-limits";
@@ -267,7 +267,7 @@ export async function similarTitles(
     `SELECT s.page_id,s.row_id,s.title FROM search_index s JOIN pages p ON p.id=s.page_id
      WHERE ${match.where} AND p.workspace_id=? AND p.deleted_at IS NULL AND COALESCE(p.synced,0)=0
        ${input.databaseId ? "AND s.page_id=? AND s.row_id<>''" : "AND s.row_id=''"}
-     ORDER BY ${match.rank} LIMIT 60`,
+     ORDER BY ${match.rank}${entryOrder()} LIMIT 60`,
     ...match.whereArgs,
     input.workspaceId,
     ...(input.databaseId ? [input.databaseId] : []),

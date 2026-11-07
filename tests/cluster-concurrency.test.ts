@@ -1,5 +1,5 @@
 // Check-then-write under real concurrency (docs/architecture/database.md
-// §13): on PostgreSQL transactions run in parallel under READ COMMITTED –
+// §14): on PostgreSQL transactions run in parallel under READ COMMITTED –
 // within one instance as across several – so each of these runs two or more
 // clients at the same moment and checks that the result is the one a
 // serial order would give. On SQLite they pass as well (one writer at a

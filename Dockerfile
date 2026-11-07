@@ -44,12 +44,24 @@ LABEL org.opencontainers.image.title="Flowplan" \
 WORKDIR /app
 # Certificates for HTTPS to the S3 endpoint (Litestream is a static binary);
 # curl for Coolify's HTTP healthcheck, which runs inside the container.
+# The PostgreSQL client tools (pg_dump, pg_restore, psql) for the backups of
+# an instance on PostgreSQL (lib/pg-backup.ts): from the PostgreSQL project's
+# own repository (Debian's are version 15), the newest major version – a
+# client dumps servers up to its own version, never newer ones.
 # The base image's Debian packages get their security updates (apt and others
 # fixed after the base image was built). npm, npx and corepack are only needed
 # to build; the image runs node alone, and their bundled packages (undici,
 # brace-expansion …) would otherwise be scanned as part of the image.
+ARG PG_CLIENT_MAJOR=18
 RUN apt-get update && apt-get upgrade -y --no-install-recommends \
   && apt-get install -y --no-install-recommends ca-certificates curl \
+  && install -d /usr/share/postgresql-common/pgdg \
+  && curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+  && . /etc/os-release \
+  && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+  && apt-get update \
+  && apt-get install -y --no-install-recommends "postgresql-client-${PG_CLIENT_MAJOR}" \
+  && /usr/lib/postgresql/${PG_CLIENT_MAJOR}/bin/pg_dump --version \
   && rm -rf /var/lib/apt/lists/* \
   && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
     /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
@@ -68,10 +80,13 @@ COPY --chmod=644 scripts/decrypt.mjs /app/decrypt.mjs
 # node /app/move.mjs --from <old instance> --token <move token>.
 COPY --chmod=644 scripts/move.mjs /app/move.mjs
 COPY --chmod=644 lib/instance-move-pull.ts /app/instance-move-pull.ts
-# PostgreSQL schema step of a deployment (cluster mode, the Helm chart's
-# migration Job): node /app/db-schema.mjs with DATABASE_URL.
-COPY --chmod=644 scripts/db-schema.mjs /app/db-schema.mjs
-COPY --chmod=644 lib/db-driver/pg-ddl.mjs lib/db-driver/postgres-schema.json /app/db-driver/
+# Database tools (docs: Datenbank wechseln): the migration between SQLite and
+# PostgreSQL, node /app/scripts/db-migrate.mjs, with the schema it reads, the
+# rebuild of the search index, node /app/scripts/db-search-rebuild.mjs, and
+# the schema step of a deployment (cluster mode, the Helm chart's migration
+# Job), node /app/scripts/db-schema.mjs.
+COPY --chmod=644 scripts/db-migrate.mjs scripts/db-search-rebuild.mjs scripts/db-schema.mjs /app/scripts/
+COPY --chmod=644 lib/db-driver/pg-ddl.mjs lib/db-driver/postgres-schema.json /app/lib/db-driver/
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \

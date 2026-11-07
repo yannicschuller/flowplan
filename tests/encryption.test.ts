@@ -40,6 +40,9 @@ server.unref();
 
 const dir = mkdtempSync(join(tmpdir(), "flowplan-encryption-"));
 process.env.FLOWPLAN_DATA_DIR = dir;
+// The scheduled backups here are the portable SQLite copy on PostgreSQL too
+// (the pg_dump archives: tests/pg-backup.test.ts).
+process.env.FLOWPLAN_BACKUP_FORMAT = "sqlite";
 process.env.S3_ENDPOINT = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
 process.env.S3_BUCKET = "bucket";
 process.env.S3_ACCESS_KEY_ID = "key";

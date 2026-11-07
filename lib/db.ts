@@ -4,6 +4,8 @@ import { mkdirSync, statSync, unlinkSync } from "node:fs";
 import { applyPendingRestore } from "./instance-restore-apply";
 import { restorePendingIntoPostgres } from "./db-restore";
 import { ensureCurrentPostgresSchema } from "./db-driver/pg-current";
+import { clusterMode } from "./cluster/config";
+import { deferRestoreToLeader } from "./cluster/duties";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { flushRelationChanges } from "./relation-sync";
@@ -1342,8 +1344,17 @@ dbContext.hooks.open = async (backend) => {
   if (backend === "postgres") {
     // A new or older database gets this version's schema first.
     await ensureCurrentPostgresSchema(database());
-    await restorePendingIntoPostgres();
+    // A failed restore leaves the previous state (lib/db-restore.ts) and
+    // must not keep the remaining steps from running. Cluster mode: only
+    // the leader restores (lib/cluster/duties.ts) – later, once elected.
+    if (clusterMode()) deferRestoreToLeader();
+    else await restorePendingIntoPostgres().catch((error) => console.error("Wiederherstellung fehlgeschlagen", error));
     await setupStorage();
+    // The search's trigram indexes and the vector index (when the server has
+    // pg_trgm and pgvector): what the translated schema leaves to them.
+    // Neither stops the opening: the search works without them, slower.
+    await (await import("./search-store")).ensureSearchStore().catch((error) => console.error("Search: indexes not made", error));
+    await (await import("./ai/vector-store")).ensureVectorStore().catch((error) => console.error("pgvector: not used", error));
   }
   // Loaded here, not at the top: the steps' modules import this one.
   await (await import("./data-steps")).runDataSteps();
@@ -1358,7 +1369,7 @@ export function db() {
     /* turbopackIgnore: true */ process.env.FLOWPLAN_DATA_DIR || "./data",
   );
   mkdirSync(dir, { recursive: true });
-  const restored = applyPendingRestore(dir);
+  const restored = applyPendingRestore(dir, { dumps: false });
   if (restored)
     console.log(`Instanz wiederhergestellt; vorheriger Stand in ${restored}`);
   const d = new DatabaseSync(resolve(dir, "flowplan.sqlite"));

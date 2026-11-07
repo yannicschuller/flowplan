@@ -1,6 +1,6 @@
 // The Helm chart (deploy/helm/flowplan): deploys the current release and
 // never runs two pods on one SQLite database – several pods only in cluster
-// mode (PostgreSQL, Redis, S3; docs/architecture/database.md §13).
+// mode (PostgreSQL, Redis, S3; docs/architecture/database.md §14).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -43,7 +43,7 @@ test("cluster mode: connection strings only as Secret references, refused withou
   const job = readFileSync("deploy/helm/flowplan/templates/job-migration.yaml", "utf8");
   assert.match(job, /"helm.sh\/hook": pre-install,pre-upgrade/);
   assert.match(job, /command: \["node", "\/app\/db-schema.mjs"\]/);
-  assert.match(readFileSync("Dockerfile", "utf8"), /COPY --chmod=644 scripts\/db-schema.mjs \/app\/db-schema.mjs/);
+  assert.match(readFileSync("Dockerfile", "utf8"), /COPY --chmod=644 scripts\/db-migrate.mjs scripts\/db-search-rebuild.mjs scripts\/db-schema.mjs \/app\/scripts\//);
 });
 
 test("the chart sets FLOWPLAN_SETUP_TOKEN: given, kept from the Secret or generated", () => {

@@ -301,6 +301,13 @@ export async function flushRelationChanges(actor?: Identity) {
           throw new HttpError(400, "Maximal 500 Verknüpfungen pro Eintrag.");
       }
   }
+  // Nothing to write: no write either. (Every transaction comes here before
+  // its commit; toggling the control row each time would make all of them
+  // write the same row – on PostgreSQL a REPEATABLE READ snapshot
+  // (lib/db-snapshot.ts) then fails with a serialization error whenever
+  // another transaction committed meanwhile, and concurrent transactions
+  // queue on that row.)
+  if (!patches.size && !changes.length && !invalid.size && !initializations.size) return;
   await run("UPDATE relation_sync_control SET syncing=1 WHERE id=1");
   try {
     for (const row of patches.values()) {
