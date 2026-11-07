@@ -10,7 +10,7 @@ import { afterTransaction } from "./db-driver/context";
 export const opsEventKinds = ["login_failure", "rate_limited", "anonymous_refused", "login_success"] as const;
 export type OpsEventKind = (typeof opsEventKinds)[number];
 
-const state = globalThis as unknown as { flowplanOpsPending?: { kind: OpsEventKind; at: number }[]; flowplanOpsFlush?: boolean; flowplanOpsWorkers?: Map<string, number> };
+const state = globalThis as unknown as { flowplanOpsPending?: { kind: OpsEventKind; at: number }[]; flowplanOpsFlush?: boolean; flowplanOpsWriting?: Promise<void>; flowplanOpsWorkers?: Map<string, number> };
 
 export function recordOpsEvent(kind: OpsEventKind, at = Date.now()) {
   // Successful sign-ins are usage statistics: not kept while they are
@@ -52,8 +52,17 @@ export async function noteWorkerRun(name: string, error?: unknown, at = Date.now
   }
 }
 
-export async function flushOpsEvents() {
+// Writes the recorded events; resolves once they, and those of a flush
+// already under way, are stored. A reader (lib/admin-ops.ts) flushes first:
+// while the scheduled flush is still inserting what it took, the reader's
+// own flush finds nothing left and must wait for it, or it counts too few.
+export function flushOpsEvents(): Promise<void> {
   state.flowplanOpsFlush = false;
+  const writing = (state.flowplanOpsWriting ?? Promise.resolve()).then(writeOpsEvents);
+  state.flowplanOpsWriting = writing;
+  return writing;
+}
+async function writeOpsEvents() {
   const pending = state.flowplanOpsPending?.splice(0) || [];
   for (const event of pending)
     try {

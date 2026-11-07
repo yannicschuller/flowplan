@@ -126,7 +126,16 @@ export function requestContext(h: Headers): Context {
 // write waits until it has ended (afterTransaction).
 // Writes under way (their database round trips), for securityWritesSettled().
 const writing = ((globalThis as { flowplanSecurityWrites?: Set<Promise<unknown>> }).flowplanSecurityWrites ??= new Set());
-function tracked(work: Promise<unknown>) {
+// One write after the other in a process: the detection of an event
+// (lib/security-detect.ts) counts the events before it and opens or counts
+// an incident (select, then insert or update). Written concurrently, as on
+// Postgres where every write waits for the network, an event's detection
+// saw later events too (the tenth failure counted twice) and two writes
+// could both open the same incident.
+const queue = ((globalThis as { flowplanSecurityQueue?: { tail: Promise<unknown> } }).flowplanSecurityQueue ??= { tail: Promise.resolve() });
+function tracked(start: () => Promise<unknown>) {
+  const work = queue.tail.then(start, start);
+  queue.tail = work.catch(() => {});
   writing.add(work);
   void work.finally(() => writing.delete(work)).catch(() => {});
   return work;
@@ -139,7 +148,7 @@ export async function securityWritesSettled() {
 }
 export function securityEvent(kind: SecurityKind, input: SecurityInput = {}) {
   const at = input.at ?? Date.now();
-  const later = (context: Context) => queueMicrotask(() => afterTransaction(() => tracked(write(kind, { ...input, at }, context))));
+  const later = (context: Context) => queueMicrotask(() => afterTransaction(() => tracked(() => write(kind, { ...input, at }, context))));
   if (input.headers) return later({ ...requestContext(input.headers), ...(input.address !== undefined ? { address: input.address } : {}) });
   if (input.address !== undefined) return later({ ...NONE, address: input.address });
   // Inside a request: its address and device; elsewhere (workers, tests) none.
@@ -149,8 +158,8 @@ export function securityEvent(kind: SecurityKind, input: SecurityInput = {}) {
   } catch {}
   if (!pending) return later(NONE);
   pending.then(
-    (h) => afterTransaction(() => tracked(write(kind, { ...input, at }, requestContext(h)))),
-    () => afterTransaction(() => tracked(write(kind, { ...input, at }, NONE))),
+    (h) => afterTransaction(() => tracked(() => write(kind, { ...input, at }, requestContext(h)))),
+    () => afterTransaction(() => tracked(() => write(kind, { ...input, at }, NONE))),
   );
 }
 

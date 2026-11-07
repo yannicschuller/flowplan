@@ -134,6 +134,7 @@ became `?` with `nowText()` (`'YYYY-MM-DD HH:MM:SS'`, UTC – the same text);
 | `INSERT OR IGNORE INTO …` | `INSERT INTO … ON CONFLICT DO NOTHING` (`… SELECT … WHERE true ON CONFLICT …`: SQLite's parsing rule) | – |
 | `INSERT OR REPLACE` | `ON CONFLICT(key) DO UPDATE SET` every other column `=excluded.…` (defaults included, as the replaced row had them); one case stays delete + insert because a trigger reacts to the insert (`file_texts`) | – |
 | `UPDATE OR IGNORE` | `updateIgnoringConflicts()` (lib/db.ts: all rows in a savepoint, on a unique violation row by row) | – |
+| `key>='<p>|' AND key<'<p>}'` (prefix as a range of text) | `substr(key,1,n)='<p>|'`: a range of text holds only in a byte-wise collation; Postgres' linguistic ones (`en_US.utf8`, ICU – the `postgres` image's default) ignore punctuation at first (`clearFailures`, lib/local-auth.ts) | – |
 | `a IS ?`, `a IS NOT ?`, `a IS b` | `IS NOT DISTINCT FROM`, `IS DISTINCT FROM` | – |
 | `CURRENT_TIMESTAMP`, `datetime('now',…)` in queries | parameter `nowText(…)` / `daysAgoText(n)` | – |
 | `date(c,?)`, `date(ms/1000,'unixepoch',?)` | `sql.dayOf(c)`, `sql.dayOfMs(c)` | `to_char(c::timestamp+?::interval,'YYYY-MM-DD')` |
@@ -506,7 +507,9 @@ Pitfalls the spike hit (all caught by tests or `tsc`, except the first):
 
 ```sh
 # a throwaway Postgres 16 (as the postgres user)
-initdb -D /tmp/fp-pg/data -U postgres --auth=trust
+# with a linguistic collation like CI's postgres image (en_US.utf8); the
+# C locale hides comparisons that only hold byte-wise
+initdb -D /tmp/fp-pg/data -U postgres --auth=trust --locale-provider=icu --icu-locale=en-US --locale=C.utf8
 pg_ctl -D /tmp/fp-pg/data -o "-p 55433 -k /tmp/fp-pg -c max_connections=400 -c max_locks_per_transaction=256 -c fsync=off" start
 createdb -h localhost -p 55433 -U postgres flowplan_test
 DATABASE_URL=postgres://postgres@localhost:55433/flowplan_test npm test

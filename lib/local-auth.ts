@@ -307,8 +307,12 @@ export async function failed(keys: string[]) {
   for (const { key } of counters(keys)) await run("INSERT INTO login_failures(key,at) VALUES(?,?)", key, now);
 }
 // A successful sign-in clears the failures of the name, from every address.
+// The pairs are found by their prefix ("<key>|"), compared as text: a range
+// `key>='<key>|' AND key<'<key>}'` holds only in a byte-wise collation, not
+// in Postgres' linguistic ones (en_US.utf8, ICU ignore "|" and "}" at first).
 export async function clearFailures(key: string) {
-  await run("DELETE FROM login_failures WHERE key=? OR (key>=? AND key<?)", key, `${key}|`, `${key}}`);
+  const prefix = `${key}|`;
+  await run("DELETE FROM login_failures WHERE key=? OR substr(key,1,?)=?", key, [...prefix].length, prefix);
 }
 // The wait before checking a password for a name that collected many
 // failures in the last 15 minutes (from any address): 250 ms more for each
