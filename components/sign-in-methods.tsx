@@ -16,8 +16,8 @@ import { useT } from "./i18n";
 import { Modal } from "./ui";
 import { CONTROL, SettingGroup, SettingRow, StatusBadge } from "./settings-ui";
 
-type Overview = SignInOverview & { confirm: StepUpMethods };
-async function post<T = Overview>(path: string, body?: unknown): Promise<T> {
+export type Overview = SignInOverview & { confirm: StepUpMethods };
+export async function post<T = Overview>(path: string, body?: unknown): Promise<T> {
   const response = await fetch(`/api/auth/${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -27,9 +27,9 @@ async function post<T = Overview>(path: string, body?: unknown): Promise<T> {
   if (!response.ok) throw new Error(serverMessage((data as { error?: string }).error) || response.statusText);
   return data as T;
 }
-type Confirm = { password?: string; code?: string; passkey?: unknown };
+export type Confirm = { password?: string; code?: string; passkey?: unknown };
 // What a confirmed step does, with the confirmation it got.
-type Pending = { title: string; text: string; danger?: boolean; link?: boolean; button: string; newPassword?: boolean; run: (confirm: Confirm, extra: { next?: string }) => Promise<string | void> };
+export type Pending = { title: string; text: string; danger?: boolean; link?: boolean; button: string; newPassword?: boolean; run: (confirm: Confirm, extra: { next?: string }) => Promise<string | void> };
 
 export function SignInMethods({ onChanged }: { onChanged?: () => unknown }) {
   const t = useT();
@@ -213,7 +213,7 @@ export function SignInMethods({ onChanged }: { onChanged?: () => unknown }) {
 }
 
 // Confirms one step: the password, a code from the app or a passkey.
-function StepUpDialog({ pending, methods, onClose, onDone }: { pending: Pending; methods: StepUpMethods; onClose: () => void; onDone: (text: string) => void }) {
+export function StepUpDialog({ pending, methods, onClose, onDone }: { pending: Pending; methods: StepUpMethods; onClose: () => void; onDone: (text: string) => void }) {
   const t = useT();
   const [busy, setBusy] = useState(""),
     [error, setError] = useState(""),

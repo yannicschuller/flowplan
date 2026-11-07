@@ -7,10 +7,12 @@
 //     properties name,
 //   - who already commented on the same page or record (page comments and
 //     text comments) – the conversation's participants.
-// Mentions are added by the caller. The author, disabled accounts and
-// anyone who may not read the page or the record are left out.
+// Mentions are added by the caller (text comments: the mention nodes;
+// page and record comments: "@Name" in the text, commentTextMentions). The
+// author, disabled accounts and anyone who may not read the page or the
+// record are left out.
 import { all, one } from "./db";
-import { pageRole } from "./permissions";
+import { isGuest, pageRole } from "./permissions";
 import { hiddenRowIds } from "./row-access";
 import type { Field, Identity, Page } from "./types";
 
@@ -58,4 +60,35 @@ export function commentRecipients(author: Identity, page: Page, rowId: string | 
   ]);
   candidates.delete(author.id);
   return [...candidates].filter((uid) => mayHear(uid, page, rowId));
+}
+
+// People named with "@Name" in the plain text of a page or record comment:
+// members of the workspace, matched by their full name (or e-mail address),
+// case-insensitive, the longest name at each "@" – "@Anna Berg" is Anna
+// Berg, not Anna. An "@" inside a word (an e-mail address in the text) is
+// no mention. Guests see nobody of the workspace, so their "@" names nobody.
+// Who may not read the page or record is filtered by commentRecipients.
+export function commentTextMentions(author: Identity, page: Page, body: string) {
+  if (!body.includes("@") || isGuest(author, page.workspace_id)) return [];
+  const members = all<{ id: string; name: string; email: string }>(
+    "SELECT u.id,u.name,COALESCE(u.email,'') email FROM users u JOIN members m ON m.user_id=u.id WHERE m.workspace_id=? AND u.disabled=0",
+    page.workspace_id,
+  ).flatMap((m) =>
+    [m.name, m.email]
+      .map((n) => n.trim().toLocaleLowerCase())
+      .filter((n) => n.length > 0)
+      .map((n) => ({ id: m.id, n })),
+  );
+  const text = body.toLocaleLowerCase();
+  const found = new Set<string>();
+  for (let at = text.indexOf("@"); at >= 0; at = text.indexOf("@", at + 1)) {
+    if (at > 0 && /[\p{L}\p{N}_.+-]/u.test(text[at - 1])) continue;
+    const rest = text.slice(at + 1);
+    let best: { id: string; n: string } | null = null;
+    for (const m of members)
+      if ((!best || m.n.length > best.n.length) && rest.startsWith(m.n) && !/^[\p{L}\p{N}_]/u.test(rest.slice(m.n.length)))
+        best = m;
+    if (best) found.add(best.id);
+  }
+  return [...found];
 }

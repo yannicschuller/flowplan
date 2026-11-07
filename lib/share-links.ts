@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { all, one, run, id } from "./db";
 import { requirePage } from "./permissions";
-import { lockedPageIds, requireUnlocked } from "./journal-extras";
+import { inPinJournal, lockedPageIds, pinJournalPageIds, PIN_JOURNAL_NOT_SHARED, requireUnlocked } from "./journal-extras";
 import { HttpError } from "./auth";
 import { protectionChanges } from "./share-access";
 import type { Identity, Page } from "./types";
@@ -54,6 +54,9 @@ export function manageShareLink(
       run("UPDATE share_links SET expires_at=? WHERE token=?", changes.expires_at, token);
     return { ok: true };
   }
+  // A journal with a PIN is never shared by link (setting the PIN revoked
+  // its links, lib/journal-extras.ts).
+  if (inPinJournal(root)) throw new HttpError(423, PIN_JOURNAL_NOT_SHARED);
   const protection = protectionChanges({ password: input.password, expiresAt: input.expiresAt });
   const role = z.enum(["viewer", "commenter", "editor"]).parse(input.role);
   const name = z.string().trim().min(1).max(100).parse(input.name);
@@ -65,6 +68,8 @@ export function manageShareLink(
     )?.n || 0) >= 50
   )
     throw new HttpError(400, "Maximal 50 aktive Links pro Seite.");
+  // With sub-pages: a journal with a PIN below stays out, with all its days.
+  const pinned = includeChildren ? pinJournalPageIds(root.workspace_id) : new Set<string>();
   const pages = includeChildren
     ? all<Page>(
         `WITH RECURSIVE tree AS (
@@ -72,7 +77,7 @@ export function manageShareLink(
     SELECT p.* FROM pages p JOIN tree t ON p.parent_id=t.id WHERE p.deleted_at IS NULL
   ) SELECT * FROM tree`,
         pageId,
-      )
+      ).filter((page) => !pinned.has(page.id))
     : [root];
   const locked = lockedPageIds(user, root.workspace_id);
   for (const page of pages) {

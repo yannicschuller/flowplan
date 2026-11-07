@@ -44,7 +44,7 @@ import {
 import { journalDate, rollJournal, rollJournals } from "./journal";
 import { journalDayLink, pageCounts, removeEmptyJournalDays } from "./journal-days";
 import { recentVisits, recordPageEdit, setFollowing } from "./page-activity";
-import { commentRecipients } from "./comment-recipients";
+import { commentRecipients, commentTextMentions } from "./comment-recipients";
 import { MAX_ARCHIVE_ROWS } from "./archive-limits";
 import { propertiesCollapsed, setPropertiesCollapsed } from "./page-view-prefs";
 import { saveSidebarState, sidebarState } from "./sidebar-state";
@@ -63,6 +63,8 @@ import { transcriptionEnabled } from "./transcribe";
 import { drawioConfig } from "./drawio";
 import {
   dayEntry,
+  inPinJournal,
+  PIN_JOURNAL_NOT_SHARED,
   journalDayDetails,
   journalLocked,
   lockingJournal,
@@ -1568,7 +1570,9 @@ function runCommand(
         if (journal.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
         if (journal.kind !== "journal")
           throw new HttpError(400, "Diese Seite ist kein Journal.");
-        setJournalLock(
+        // Setting a PIN revokes the journal's links and publications; the
+        // answer says how many.
+        result = setJournalLock(
           user,
           journal,
           b.pin === null ? null : pinSchema.parse(b.pin),
@@ -2598,17 +2602,25 @@ function runCommand(
         );
         emitWebhook(p.workspace_id, "comment.created", { pageId: p.id, rowId: b.rowId ? uuid.parse(b.rowId) : null, text: body }, user.name);
         if (b.rowId) queueIssuePush(p.id, uuid.parse(b.rowId));
-        // Followers, the owner, the record's people and earlier commenters –
-        // not the whole workspace (lib/comment-recipients.ts).
-        for (const recipient of commentRecipients(user, p, b.rowId ? uuid.parse(b.rowId) : null))
+        // Followers, the owner, the record's people, earlier commenters and
+        // whoever "@Name" names – not the whole workspace, and only who may
+        // read the page and the record (lib/comment-recipients.ts). A
+        // mentioned person hears of it once, as a mention.
+        const commentRow = b.rowId ? uuid.parse(b.rowId) : null;
+        const mentioned = commentTextMentions(user, p, body);
+        for (const recipient of commentRecipients(user, p, commentRow, mentioned)) {
+          const mention = mentioned.includes(recipient);
           run(
-            "INSERT INTO notifications(id,user_id,body,page_id,row_id,kind) VALUES(?,?,?,?,?,'comment')",
+            "INSERT INTO notifications(id,user_id,body,page_id,row_id,kind) VALUES(?,?,?,?,?,?)",
             id(),
             recipient,
-            `${user.name} kommentiert „${p.title}“`,
+            mention ? `${user.name} hat dich in einem Kommentar in „${p.title}“ erwähnt` : `${user.name} kommentiert „${p.title}“`,
             p.id,
-            b.rowId ? uuid.parse(b.rowId) : null,
+            commentRow,
+            mention ? "mention" : "comment",
           );
+          if (mention) mentionWebhook(p.workspace_id, p.id, commentRow, recipient, user.name);
+        }
         break;
       }
       case "comment.resolve":
@@ -2751,16 +2763,16 @@ function runCommand(
             b.config === undefined
               ? previous?.config || formConfigSchema.parse({})
               : formConfigSchema.parse(b.config);
+        const enabled = b.enabled === undefined ? previous?.enabled || 0 : b.enabled ? 1 : 0,
+          internal = b.internal === undefined ? (previous?.internal ?? 1) : b.internal ? 1 : 0;
+        // No public form in a journal with a PIN (lib/journal-extras.ts).
+        if (enabled && !internal && inPinJournal({ id: pid() })) throw new HttpError(423, PIN_JOURNAL_NOT_SHARED);
         run(
           "INSERT INTO forms(page_id,token,enabled,internal,anonymous,config) VALUES(?,?,?,?,?,?) ON CONFLICT(page_id) DO UPDATE SET enabled=excluded.enabled,internal=excluded.internal,anonymous=excluded.anonymous,config=excluded.config",
           pid(),
           id(),
-          b.enabled === undefined ? previous?.enabled || 0 : b.enabled ? 1 : 0,
-          b.internal === undefined
-            ? (previous?.internal ?? 1)
-            : b.internal
-              ? 1
-              : 0,
+          enabled,
+          internal,
           b.anonymous === undefined
             ? previous?.anonymous || 0
             : b.anonymous

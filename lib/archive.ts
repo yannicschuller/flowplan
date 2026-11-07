@@ -88,10 +88,9 @@ import { HttpError } from "./auth";
 import { field, view } from "./database-schema";
 import { cleanHtml, htmlState } from "./document-server";
 import type { Identity, Page, Field, Space } from "./types";
-import { MAX_ARCHIVE_ROWS } from "./archive-limits";
+import { MANIFEST_LIMIT, MANIFEST_TOO_LARGE, MAX_ARCHIVE_ROWS } from "./archive-limits";
 
 export const ARCHIVE_LIMIT = 100 * 1024 * 1024;
-const MANIFEST_LIMIT = 30 * 1024 * 1024;
 // Workspace archives stream files from and to disk, so they may be large.
 export const LARGE_ARCHIVE_LIMIT = 2 * 1024 * 1024 * 1024;
 const EXPANDED_LIMIT = 4 * 1024 * 1024 * 1024,
@@ -99,7 +98,8 @@ const EXPANDED_LIMIT = 4 * 1024 * 1024 * 1024,
 // Records per database (lib/archive-limits.ts), pages per archive and
 // comments per page (a database's record comments belong to its page): far
 // beyond real workspaces. What bounds an archive is its size – MANIFEST_LIMIT
-// for flowplan.json, EXPANDED_LIMIT for all of it.
+// (lib/archive-limits.ts, 64 MB) for flowplan.json, EXPANDED_LIMIT for all
+// of it.
 export { MAX_ARCHIVE_ROWS };
 const MAX_ARCHIVE_PAGES = 50_000;
 // A file inside an archive: in memory, or on disk with its checksum.
@@ -675,10 +675,8 @@ function snapshotFor(user: Identity, wid: string) {
   addDatabaseVersions(manifest, databaseVersions);
   const validated = archiveSchema.parse(manifest);
   const encoded = Buffer.from(JSON.stringify(validated));
-  if (
-    encoded.length > MANIFEST_LIMIT ||
-    encoded.length + bytes > EXPANDED_LIMIT
-  )
+  if (encoded.length > MANIFEST_LIMIT) throw new HttpError(413, MANIFEST_TOO_LARGE);
+  if (encoded.length + bytes > EXPANDED_LIMIT)
     throw new HttpError(413, "Inhaltsarchiv zu groß.");
   binaries.set("flowplan.json", encoded);
   return binaries;
@@ -798,6 +796,10 @@ export async function readZip(
             entry.fileName === "flowplan.json"
               ? MANIFEST_LIMIT
               : 10 * 1024 * 1024;
+          if (!options.foreign && entry.fileName === "flowplan.json" && entry.uncompressedSize > MANIFEST_LIMIT) {
+            fail(new HttpError(413, MANIFEST_TOO_LARGE));
+            return;
+          }
           if (
             entry.uncompressedSize > max ||
             total + entry.uncompressedSize > EXPANDED_LIMIT ||
@@ -913,6 +915,7 @@ export async function readArchiveFile(
           }
           const manifest = entry.fileName === "flowplan.json";
           const max = manifest ? MANIFEST_LIMIT : perFile;
+          if (manifest && entry.uncompressedSize > MANIFEST_LIMIT) return fail(new HttpError(413, MANIFEST_TOO_LARGE));
           if (
             entry.uncompressedSize > max ||
             total + entry.uncompressedSize > EXPANDED_LIMIT

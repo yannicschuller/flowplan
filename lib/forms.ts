@@ -5,7 +5,7 @@ import { fieldWriteMessage, publicWritable } from "./field-access";
 import { all, one, run, id, nowText } from "./db";
 import { HttpError } from "./auth";
 import { isGuest, pageRole, requireMember, requirePage } from "./permissions";
-import { journalLocked } from "./journal-extras";
+import { inPinJournal, journalLocked } from "./journal-extras";
 import { cellText } from "./cell-text";
 import {
   formConfigSchema,
@@ -45,7 +45,8 @@ export function getForm(token: string, user: Identity | null) {
     "SELECT f.*,p.title,p.workspace_id FROM forms f JOIN pages p ON p.id=f.page_id WHERE f.token=? AND f.enabled=1 AND p.deleted_at IS NULL",
     token,
   );
-  if (!f) throw new HttpError(404, "Formular nicht gefunden.");
+  // A public form of a database in a journal with a PIN stays closed.
+  if (!f || (!f.internal && inPinJournal({ id: f.page_id }))) throw new HttpError(404, "Formular nicht gefunden.");
   if (f.internal) {
     if (!user)
       throw new HttpError(

@@ -491,6 +491,10 @@ export function setJournalLock(user: Identity, journal: Page, pin: string | null
   const reset = !!row?.lock_hash && pin === null && !current && mayResetJournalLock(user, journal);
   if (row?.lock_hash && !reset && !checkPin(row.lock_hash, current || ""))
     throw new HttpError(403, "Die bisherige PIN stimmt nicht.");
+  // Removing a PIN one does not know opens the journal to everyone with
+  // access: the owner confirms it once more, like other sensitive steps
+  // (lib/step-up.ts; POST /api/auth/journal-pin-reset sets stepUp).
+  if (reset && !user.stepUp) throw new HttpError(403, JOURNAL_RESET_STEP_UP);
   if (reset) {
     audit(user.id, "journal.lock.reset", journal.id, (journal.title || "").slice(0, 200));
     if (journal.created_by && journal.created_by !== user.id && one("SELECT 1 FROM users WHERE id=? AND disabled=0", journal.created_by))
@@ -509,7 +513,66 @@ export function setJournalLock(user: Identity, journal: Page, pin: string | null
   );
   run("DELETE FROM journal_unlocks WHERE page_id=?", journal.id);
   if (pin) unlockUntil(user, journal);
+  return { revoked: pin ? revokePublicAccess(user, journal) : 0 };
 }
+export const JOURNAL_RESET_STEP_UP = "Bitte bestätige das Zurücksetzen der PIN zur Sicherheit noch einmal.";
+
+// The journal, its days and every page below it – trashed ones too, which
+// could be restored with their links.
+const JOURNAL_TREE = `WITH RECURSIVE tree(id) AS (SELECT ? UNION SELECT p.id FROM pages p JOIN tree t ON p.parent_id=t.id)`;
+// A PIN keeps a journal private: setting one ends every public way in –
+// share links and publications of the journal or a page below, the
+// journal's pages in links and publications of pages above it, and public
+// forms of its databases. Returns how many were revoked; the security log
+// records it (lib/security-events.ts, "share.revoked").
+function revokePublicAccess(user: Identity, journal: Page) {
+  const links = all<{ token: string }>(`${JOURNAL_TREE} SELECT token FROM share_links WHERE root_id IN (SELECT id FROM tree)`, journal.id);
+  for (const link of links) run("DELETE FROM share_links WHERE token=?", link.token);
+  const widerLinks = all<{ token: string }>(`${JOURNAL_TREE} SELECT DISTINCT token FROM share_link_pages WHERE page_id IN (SELECT id FROM tree)`, journal.id);
+  run(`${JOURNAL_TREE} DELETE FROM share_link_pages WHERE page_id IN (SELECT id FROM tree)`, journal.id);
+  const published = all<{ id: string }>(
+    `${JOURNAL_TREE} SELECT p.id FROM pages p WHERE p.id IN (SELECT id FROM tree) AND (p.public_token IS NOT NULL OR EXISTS(SELECT 1 FROM publications u WHERE u.page_id=p.id))`,
+    journal.id,
+  );
+  for (const page of published) {
+    run("DELETE FROM publication_pages WHERE root_id=?", page.id);
+    run("DELETE FROM publications WHERE page_id=?", page.id);
+    run("UPDATE pages SET public_token=NULL WHERE id=?", page.id);
+  }
+  const widerPublications = all<{ root_id: string }>(
+    `${JOURNAL_TREE} SELECT DISTINCT root_id FROM publication_pages WHERE page_id IN (SELECT id FROM tree)`,
+    journal.id,
+  );
+  run(`${JOURNAL_TREE} DELETE FROM publication_pages WHERE page_id IN (SELECT id FROM tree)`, journal.id);
+  const forms = run(`${JOURNAL_TREE} UPDATE forms SET enabled=0 WHERE enabled=1 AND internal=0 AND page_id IN (SELECT id FROM tree)`, journal.id).changes;
+  const revoked = links.length + widerLinks.length + published.length + widerPublications.length + Number(forms);
+  if (revoked)
+    audit(
+      user.id,
+      "journal.lock.revoke",
+      journal.id,
+      `${revoked}: ${links.length + widerLinks.length} links, ${published.length + widerPublications.length} publications, ${forms} forms`,
+    );
+  return revoked;
+}
+// Whether the page is a journal with a PIN, one of its days or a page
+// below it. Such pages are not shared or published (lib/share-links.ts,
+// lib/publication.ts) – whether or not the person has entered the PIN.
+export function inPinJournal(page: Pick<Page, "id">) {
+  return enclosingJournals(page as Page).some((journal) => !!settingsRow(journal.id)?.lock_hash);
+}
+// Ids of every page in a journal with a PIN in the workspace.
+export function pinJournalPageIds(workspaceId: string) {
+  const journals = all<{ id: string }>(
+    "SELECT p.id FROM pages p JOIN journal_settings s ON s.page_id=p.id WHERE p.workspace_id=? AND s.lock_hash IS NOT NULL",
+    workspaceId,
+  );
+  const ids = new Set<string>();
+  for (const journal of journals)
+    for (const page of all<{ id: string }>(`${JOURNAL_TREE} SELECT id FROM tree`, journal.id)) ids.add(page.id);
+  return ids;
+}
+export const PIN_JOURNAL_NOT_SHARED = "Ein Journal mit PIN lässt sich nicht freigeben oder veröffentlichen.";
 function checkPin(stored: string, pin: string) {
   const [salt, expected] = stored.split(":");
   if (!salt || !expected) return false;

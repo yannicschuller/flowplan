@@ -3,7 +3,8 @@ import { withRequestLocale } from "@/lib/content-locale";
 import { DEMO_MAX_MS, demoSessionExpiry, endDemo, startDemo } from "@/lib/demo";
 import { syncAvatar } from "@/lib/avatars";
 import { loginReturnPath } from "@/lib/page-location";
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
+import { dispatchPush } from "@/lib/push";
 import { cookies } from "next/headers";
 import * as oidc from "openid-client";
 import { randomBytes } from "node:crypto";
@@ -599,7 +600,7 @@ async function handlePOST(
     // ---- Sign-in methods of the signed-in person (#101): SSO identities,
     // removing or setting the password; sensitive steps are confirmed
     // again (lib/step-up.ts) ----
-    if (["sign-in-methods", "confirm-passkey-options", "sso-link-start", "sso-unlink", "password-remove", "password-set"].includes(action)) {
+    if (["sign-in-methods", "confirm-passkey-options", "sso-link-start", "sso-unlink", "password-remove", "password-set", "journal-pin-reset"].includes(action)) {
       const user = await currentUser();
       if (!user || user.demo || user.twoFactorSetup) throw new HttpError(401, translate(locale)("Bitte melde dich an.", "Please sign in."));
       if (user.apiScope) throw new HttpError(403, translate(locale)("Mit einem API-Token nicht möglich.", "Not possible with an API token."));
@@ -647,6 +648,15 @@ async function handlePOST(
           prompt: "login",
         });
         return NextResponse.json({ ok: true, url: url.href });
+      }
+      // A workspace owner removes a journal PIN nobody knows any more
+      // (lib/journal-extras.ts): only after confirming once more.
+      if (action === "journal-pin-reset") {
+        const { pageId } = z.object({ pageId: z.uuid() }).passthrough().parse(input);
+        await confirm();
+        const result = command({ ...user, stepUp: true }, { action: "journal.lock", pageId, pin: null });
+        after(dispatchPush);
+        return NextResponse.json({ ok: true, ...(result && typeof result === "object" ? result : {}) });
       }
       if (action === "sso-unlink") {
         const { identityId } = z.object({ identityId: z.string().max(80) }).passthrough().parse(input);

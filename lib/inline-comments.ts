@@ -1,5 +1,6 @@
 import { hiddenRowIds } from "./row-access";
 import { commentRecipients, mayHear } from "./comment-recipients";
+import { mentionWebhook } from "./webhooks";
 import {
   richCommentSchema,
   commentText,
@@ -239,6 +240,9 @@ function notify(
     threadId,
   );
   const rowId = target?.row_id || null;
+  // Guests see nobody of the workspace (inlineMentionCandidates): their
+  // mentions notify nobody, like "@Name" in their page comments.
+  if (isGuest(user, page.workspace_id)) mentions = [];
   // A new thread: who the page or record concerns (lib/comment-recipients.ts),
   // never the whole workspace. A reply: the thread's participants.
   const recipients = onlyMentions
@@ -250,7 +254,8 @@ function notify(
           threadId,
         ).map((m) => m.author_id);
   for (const uid of new Set([...recipients, ...mentions]))
-    if (uid !== user.id && mayHear(uid, page, rowId))
+    if (uid !== user.id && mayHear(uid, page, rowId)) {
+      if (mentions.includes(uid)) mentionWebhook(page.workspace_id, page.id, rowId, uid, user.name);
       run(
         "INSERT INTO notifications(id,user_id,body,page_id,row_id,thread_id,kind) VALUES(?,?,?,?,?,?,?)",
         id(),
@@ -263,6 +268,7 @@ function notify(
         threadId,
         mentions.includes(uid) ? "mention" : "comment",
       );
+    }
 }
 export function inlineCommentCommand(
   user: Identity,

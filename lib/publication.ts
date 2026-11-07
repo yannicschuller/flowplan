@@ -5,7 +5,7 @@ import { imageFileId } from "./page-appearance";
 import { all, one, run, id, nowText } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
-import { lockedPageIds } from "./journal-extras";
+import { inPinJournal, lockedPageIds, pinJournalPageIds, PIN_JOURNAL_NOT_SHARED } from "./journal-extras";
 import { cleanHtml } from "./document-server";
 import { checkShareProtection } from "./share-access";
 import type { Identity, Page } from "./types";
@@ -41,11 +41,16 @@ export function publishPage(
   includeChildren: boolean,
   allowCopy = true,
 ) {
+  // A journal with a PIN is never published (setting the PIN ended its
+  // publications, lib/journal-extras.ts); below a published page it stays
+  // out with all its days.
+  if (enabled && inPinJournal(page)) throw new HttpError(423, PIN_JOURNAL_NOT_SHARED);
+  const pinned = enabled && includeChildren ? pinJournalPageIds(page.workspace_id) : new Set<string>();
   const pages = includeChildren
     ? all<Page>(
         `WITH RECURSIVE tree AS (SELECT * FROM pages WHERE id=? AND deleted_at IS NULL UNION ALL SELECT p.* FROM pages p JOIN tree t ON p.parent_id=t.id WHERE p.deleted_at IS NULL) SELECT * FROM tree`,
         page.id,
-      )
+      ).filter((p) => !pinned.has(p.id))
     : [page];
   if (enabled) {
     // Like share links: nothing below a journal whose PIN the person has not entered.
@@ -101,7 +106,9 @@ export function publicTree(token: string) {
         "SELECT * FROM pages WHERE public_token=? AND deleted_at IS NULL",
         token,
       );
-  if (!root) throw new HttpError(404, "Veröffentlichung nicht gefunden.");
+  // Nothing of a journal with a PIN goes out through a link or a
+  // publication – also when a shared page was moved into one later.
+  if (!root || inPinJournal(root)) throw new HttpError(404, "Veröffentlichung nicht gefunden.");
   // End date and password (lib/share-access.ts) hold for everything served
   // through the link: pages, records, files, live updates and guest edits.
   checkShareProtection(
@@ -126,6 +133,7 @@ export function publicTree(token: string) {
     ).map((p) => p.page_id),
   );
   selected.add(root.id); // Existing single-page links remain valid after migration.
+  for (const id of pinJournalPageIds(root.workspace_id)) selected.delete(id);
   const accessible = new Set([root.id]);
   let changed = true;
   while (changed) {
