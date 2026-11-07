@@ -22,12 +22,14 @@ const OVERRIDES: Record<string, string> = {
   spaces_position_insert: `UPDATE spaces SET position=COALESCE((SELECT MAX(position) FROM spaces WHERE workspace_id IS NOT DISTINCT FROM NEW.workspace_id AND id<>NEW.id),0)+1 WHERE id=NEW.id;`,
 };
 
+// unixepoch()*1000 counts whole seconds; julianday('now') milliseconds.
 const NOW_MS = postgresDialect.nowMs();
+const NOW_EXACT_MS = "(extract(epoch from statement_timestamp())*1000)::bigint";
 // A SQLite expression or statement of a trigger body in PostgreSQL.
 export function triggerSql(sql: string): string {
   return (
     sql
-      .replace(/CAST\(\s*\(\s*julianday\('now'\)\s*-\s*2440587\.5\s*\)\s*\*\s*86400000\s+AS\s+INTEGER\s*\)/gi, NOW_MS)
+      .replace(/CAST\(\s*\(\s*julianday\('now'\)\s*-\s*2440587\.5\s*\)\s*\*\s*86400000\s+AS\s+INTEGER\s*\)/gi, NOW_EXACT_MS)
       .replace(/\bunixepoch\(\)\s*\*\s*1000/gi, NOW_MS)
       .replace(/\binstr\s*\(/gi, "strpos(")
       .replace(/\bifnull\s*\(/gi, "coalesce(")

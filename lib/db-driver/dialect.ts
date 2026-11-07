@@ -115,7 +115,8 @@ export const postgresDialect: Dialect = {
   jsonText: (c, path) => `(${c}::jsonb #>> '{${jsonPath(path).slice(2).replace(/\./g, ",")}}')`,
   nowText: () => `to_char(statement_timestamp() AT TIME ZONE 'UTC',${PG_TEXT_TIME})`,
   nowTextPlus: (m) => `to_char(statement_timestamp() AT TIME ZONE 'UTC' + interval '${modifier(m)}',${PG_TEXT_TIME})`,
-  nowMs: () => "(extract(epoch from clock_timestamp())*1000)::bigint",
+  // unixepoch()*1000: whole seconds, as SQLite's unixepoch() gives them.
+  nowMs: () => "(floor(extract(epoch from statement_timestamp()))*1000)::bigint",
   textMs: (c) => `(extract(epoch from (${c})::timestamp)*1000)::bigint`,
   greatest: (...v) => `greatest(${v.join(",")})`,
   least: (...v) => `least(${v.join(",")})`,
