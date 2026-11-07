@@ -183,3 +183,24 @@ test("invalid arguments are tool errors, not crashes", async () => {
   assert.match(answer.text, /Invalid arguments/);
   assert.equal((await rpc(benWrite, "tools/call", { name: "drop_everything", arguments: {} })).error!.code, -32602);
 });
+
+test("list_pages names no page of a journal behind a PIN until it is entered", async () => {
+  const journal = ((await command(ana, { action: "page.create", workspaceId: wid, spaceId: teamSpace, title: "Tagebuch", kind: "journal" })) as { id: string }).id;
+  const day = ((await command(ana, { action: "page.create", workspaceId: wid, spaceId: teamSpace, title: "Streit mit dem Chef", parentId: journal })) as { id: string }).id;
+  await command(ana, { action: "favorite", pageId: day, value: true });
+  await command(ana, { action: "journal.lock", pageId: journal, pin: "471108" });
+  await command(ana, { action: "journal.relock", pageId: journal });
+  const listed = await call(anaWrite, "list_pages", { workspaceId: wid });
+  assert.equal(listed.error, false);
+  assert.ok(listed.text.includes(notes));
+  assert.equal(listed.text.includes(day), false);
+  assert.equal(listed.text.includes("Streit mit dem Chef"), false);
+  // The same as the favourites in resources/list.
+  const resources = JSON.stringify((await rpc(anaWrite, "resources/list")).result);
+  assert.equal(resources.includes("Streit mit dem Chef"), false);
+  // With the PIN entered the day is listed again.
+  await command(ana, { action: "journal.unlock", pageId: journal, pin: "471108" });
+  assert.ok((await call(anaWrite, "list_pages", { workspaceId: wid })).text.includes("Streit mit dem Chef"));
+  assert.ok(JSON.stringify((await rpc(anaWrite, "resources/list")).result).includes("Streit mit dem Chef"));
+  await command(ana, { action: "journal.lock", pageId: journal, pin: null, current: "471108" });
+});

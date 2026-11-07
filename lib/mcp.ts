@@ -95,8 +95,12 @@ async function listPages(
   args: { workspaceId: string; spaceId?: string; parentId?: string },
 ) {
   await requireMember(user, args.workspaceId);
+  // Like resources/list: no titles from a journal behind a PIN (or an
+  // encrypted space) until it is unlocked.
+  const locked = await lockedPageIds(user, args.workspaceId);
   const pages = (await readablePages(user, args.workspaceId)).filter(
     (p) =>
+      !locked.has(p.id) &&
       (!args.spaceId || p.space_id === args.spaceId) &&
       (args.parentId === undefined || p.parent_id === args.parentId),
   );
