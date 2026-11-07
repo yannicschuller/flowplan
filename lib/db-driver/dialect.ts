@@ -177,7 +177,10 @@ export function numberPlaceholders(sql: string): string {
       const stop = end < 0 ? sql.length - 1 : end + 1;
       out += sql.slice(i, stop + 1);
       i = stop;
-    } else if (c === "?") out += `$${++n}`;
+    } else if (c === "?")
+      // `? IS NULL` alone gives Postgres no type for the parameter: text
+      // (any value is sent as text anyway; only its null-ness counts here).
+      out += /^\s+IS\s+(NOT\s+)?NULL\b/i.test(sql.slice(i + 1, i + 20)) ? `$${++n}::text` : `$${++n}`;
     else out += c;
   }
   return out;

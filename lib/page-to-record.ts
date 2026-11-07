@@ -158,7 +158,7 @@ export function pageToRecord(user: Identity, pageId: string, databaseId: string)
       run(
         `INSERT INTO grants(resource_id,user_id,group_id,role)
          SELECT ?,g.user_id,g.group_id,g.role FROM grants g WHERE g.resource_id=?
-         AND NOT EXISTS (SELECT 1 FROM grants c WHERE c.resource_id=? AND c.user_id IS g.user_id AND c.group_id IS g.group_id)`,
+         AND NOT EXISTS (SELECT 1 FROM grants c WHERE c.resource_id=? AND c.user_id IS NOT DISTINCT FROM g.user_id AND c.group_id IS NOT DISTINCT FROM g.group_id)`,
         child.id,
         page.id,
         child.id,

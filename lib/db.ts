@@ -1635,6 +1635,67 @@ export function databaseBytes(): number {
     } catch {}
   return bytes;
 }
+// The primary key's columns of a table (none: []).
+export function tableKey(table: string): string[] {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(table)) throw new Error(`Not a table name: ${table}`);
+  if (legacyPg())
+    return all<{ name: string }>(
+      `SELECT a.attname AS name FROM pg_index i JOIN pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=ANY(i.indkey)
+       WHERE i.indrelid=to_regclass(?) AND i.indisprimary ORDER BY array_position(i.indkey::int2[],a.attnum)`,
+      table,
+    ).map((c) => c.name);
+  return all<{ name: string; pk: number }>(`PRAGMA table_info("${table}")`) // sqlite-only
+    .filter((c) => c.pk)
+    .sort((a, b) => a.pk - b.pk)
+    .map((c) => c.name);
+}
+// Runs `fn` in a savepoint of the current transaction (both databases:
+// a failed statement on PostgreSQL spoils the transaction unless it ran in
+// one); a throw rolls back to it and is passed on.
+let savepoints = 0;
+export function inSavepoint<T>(fn: () => T): T {
+  const name = `fp_sp_${++savepoints}`;
+  run(`SAVEPOINT ${name}`);
+  try {
+    const value = fn();
+    run(`RELEASE SAVEPOINT ${name}`);
+    return value;
+  } catch (error) {
+    run(`ROLLBACK TO SAVEPOINT ${name}`);
+    run(`RELEASE SAVEPOINT ${name}`);
+    throw error;
+  }
+}
+const isUniqueViolation = (e: unknown) => {
+  const error = e as { code?: string; message?: string } | null;
+  return !!error && (error.code === "23505" || /UNIQUE constraint failed/.test(error.message || ""));
+};
+// `UPDATE <table> SET <set> WHERE <where>` that leaves the rows a unique
+// key refuses as they are – what SQLite's UPDATE OR IGNORE does, on both
+// databases: all rows at once, and only if that collides, row by row.
+// Inside a transaction.
+export function updateIgnoringConflicts(table: string, set: string, where: string, setParams: Param[], whereParams: Param[]) {
+  try {
+    return Number(inSavepoint(() => run(`UPDATE "${table}" SET ${set} WHERE ${where}`, ...setParams, ...whereParams)).changes);
+  } catch (error) {
+    if (!isUniqueViolation(error)) throw error;
+  }
+  const key = tableKey(table).length ? tableKey(table) : tableColumns(table);
+  const list = key.map((k) => `"${k}"`).join(",");
+  let changed = 0;
+  for (const row of all<Record<string, Param>>(`SELECT ${list} FROM "${table}" WHERE ${where}`, ...whereParams))
+    try {
+      changed += Number(
+        inSavepoint(() =>
+          run(`UPDATE "${table}" SET ${set} WHERE ${key.map((k) => `"${k}" IS NOT DISTINCT FROM ?`).join(" AND ")}`, ...setParams, ...key.map((k) => row[k])),
+        ).changes,
+      );
+    } catch (error) {
+      if (!isUniqueViolation(error)) throw error;
+    }
+  return changed;
+}
+type Param = string | number | null | Uint8Array;
 export const id = () => randomUUID();
 // Listeners of the activity log (lib/security-events.ts turns the
 // security-relevant entries into security events); a listener never

@@ -91,7 +91,7 @@ export function processPageReviews(now = Date.now()) {
   const due = all<Due>(
     `SELECT id,title,review_at,owner_id,review_notified FROM pages
      WHERE review_at IS NOT NULL AND review_at<=? AND owner_id IS NOT NULL AND deleted_at IS NULL
-       AND review_notified IS NOT review_at`,
+       AND review_notified IS DISTINCT FROM review_at`,
     today(now),
   );
   for (const p of due) {

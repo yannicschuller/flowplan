@@ -218,7 +218,7 @@ export function securityIncident(incidentId: string) {
       ...args,
     );
   const successes = all<{ subject: string; name: string | null; email: string | null; n: number }>(
-    `SELECT e.subject,u.name,u.email,COUNT(*) n FROM security_events e LEFT JOIN users u ON u.id=e.actor_id WHERE ${where} AND e.kind='login.success' GROUP BY e.actor_id ORDER BY n DESC LIMIT 20`,
+    `SELECT MAX(e.subject) subject,MAX(u.name) name,MAX(u.email) email,COUNT(*) n FROM security_events e LEFT JOIN users u ON u.id=e.actor_id WHERE ${where} AND e.kind='login.success' GROUP BY e.actor_id ORDER BY n DESC LIMIT 20`,
     ...args,
   );
   const blocked = all<{ kind: string; label: string; until: number | null }>(
@@ -286,8 +286,8 @@ export function securityIncident(incidentId: string) {
 function topAddresses(now: number) {
   const blocked = blockList(now);
   return all<{ network: string; address_key: string; failures: number; accounts: number; last_at: number; refused: number }>(
-    `SELECT network,address_key,SUM(kind='login.failure') failures,COUNT(DISTINCT CASE WHEN kind='login.failure' THEN subject_key END) accounts,
-       SUM(kind IN ('login.refused','request.probing','security.blocked_request')) refused,MAX(at) last_at
+    `SELECT MAX(network) network,address_key,SUM(CASE WHEN kind='login.failure' THEN 1 ELSE 0 END) failures,COUNT(DISTINCT CASE WHEN kind='login.failure' THEN subject_key END) accounts,
+       SUM(CASE WHEN kind IN ('login.refused','request.probing','security.blocked_request') THEN 1 ELSE 0 END) refused,MAX(at) last_at
      FROM security_events WHERE at>=? AND address_key<>'' AND kind IN ('login.failure','login.refused','request.probing','security.blocked_request')
      GROUP BY address_key ORDER BY failures DESC, refused DESC LIMIT 10`,
     now - DAY,

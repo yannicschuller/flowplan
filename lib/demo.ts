@@ -102,7 +102,7 @@ export function startDemo(address: string) {
     throw new HttpError(503, "Gerade laufen zu viele Demos. Bitte in ein paar Minuten erneut versuchen.");
   run("INSERT INTO demo_starts(address,at) VALUES(?,?)", key, now);
   run(
-    "INSERT INTO counters(name,value) VALUES('demos_started',1) ON CONFLICT(name) DO UPDATE SET value=value+1",
+    "INSERT INTO counters(name,value) VALUES('demos_started',1) ON CONFLICT(name) DO UPDATE SET value=counters.value+1",
   );
   const uid = randomUUID();
   run(

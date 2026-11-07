@@ -428,6 +428,13 @@
   {"name":"search_page_value_remove","table":"page_property_values","sql":"CREATE OR REPLACE FUNCTION trg_search_page_value_remove() RETURNS trigger LANGUAGE plpgsql AS $fn$\nBEGIN\n  INSERT INTO search_dirty SELECT OLD.page_id,'' WHERE EXISTS(SELECT 1 FROM pages WHERE id=OLD.page_id) AND NOT EXISTS(SELECT 1 FROM search_dirty WHERE page_id=OLD.page_id AND row_id='') ON CONFLICT DO NOTHING;\n  RETURN NULL;\nEND\n$fn$;\nCREATE OR REPLACE TRIGGER search_page_value_remove AFTER DELETE ON page_property_values FOR EACH ROW EXECUTE FUNCTION trg_search_page_value_remove();"},
   {"name":"pages_created_at","table":"pages","sql":"CREATE OR REPLACE FUNCTION trg_pages_created_at() RETURNS trigger LANGUAGE plpgsql AS $fn$\nBEGIN\n  IF NEW.created_at IS NULL OR NEW.seq IS NULL THEN\n    IF NEW.created_at IS NULL THEN UPDATE pages SET created_at=to_char(statement_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS') WHERE id=NEW.id; END IF;\n  END IF;\n  RETURN NULL;\nEND\n$fn$;\nCREATE OR REPLACE TRIGGER pages_created_at AFTER INSERT ON pages FOR EACH ROW EXECUTE FUNCTION trg_pages_created_at();"}
  ],
+ "seed": [
+  {"table":"relation_sync_control","rows":[{"id":1,"syncing":0}]},
+  {"table":"notification_defaults","rows":[{"kind":"mention","inbox":1,"push":1,"email":1,"messenger":1},{"kind":"share","inbox":1,"push":1,"email":1,"messenger":1},{"kind":"comment","inbox":1,"push":1,"email":1,"messenger":1},{"kind":"reminder","inbox":1,"push":1,"email":1,"messenger":1},{"kind":"guest","inbox":1,"push":1,"email":0,"messenger":0},{"kind":"change","inbox":1,"push":0,"email":0,"messenger":0},{"kind":"automation","inbox":1,"push":0,"email":0,"messenger":0},{"kind":"security","inbox":1,"push":1,"email":1,"messenger":1},{"kind":"incident","inbox":1,"push":1,"email":1,"messenger":1}]},
+  {"table":"counters","rows":[{"name":"demos_started","value":0}]},
+  {"table":"offline_log","rows":[{"id":1,"started":"now"}]},
+  {"table":"data_migrations","rows":[{"name":"formatted-text-126","at":"now"},{"name":"sealed-secrets-92","at":"now"}]}
+ ],
  "skipped": [
   {"kind":"table","name":"search_index","reason":"FTS5 virtual table: a plain table in Postgres (lib/search-store.ts)"},
   {"kind":"trigger","name":"snapshots_seq","reason":"seq is an identity column in Postgres"},

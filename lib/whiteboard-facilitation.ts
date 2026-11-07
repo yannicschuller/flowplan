@@ -420,7 +420,7 @@ function privateSync(user: Identity, page: Page, body: Extract<FacilitationActio
         if (items > PRIVATE_LIMITS.items) throw new HttpError(413, "Zu viele private Inhalte.");
         run(
           `INSERT INTO whiteboard_private_parts(session_id,user_id,state,items,rev) VALUES(?,?,?,?,1)
-           ON CONFLICT(session_id,user_id) DO UPDATE SET state=excluded.state,items=excluded.items,rev=rev+1`,
+           ON CONFLICT(session_id,user_id) DO UPDATE SET state=excluded.state,items=excluded.items,rev=whiteboard_private_parts.rev+1`,
           session.id,
           user.id,
           merged,

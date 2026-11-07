@@ -194,7 +194,7 @@ async function sqliteToPostgres(file, url) {
   const readSqlite = (t) => sqliteBatches(d, t);
   const readPg = (t) => pgBatches(p, t);
   if (!verifyOnly) {
-    await ensurePostgresSchema(p, schema, wanted, { triggers: false });
+    await ensurePostgresSchema(p, schema, wanted, { triggers: false, seed: false });
     for (const t of tables) {
       const { rows } = await p.client.query(`SELECT 1 FROM ${quoteIdent(t.name)} LIMIT 1`);
       if (rows.length) throw new Error(`${t.name} in Postgres is not empty: migrate into an empty database or schema.`);
@@ -231,7 +231,7 @@ async function sqliteToPostgres(file, url) {
       await p.client.query("COMMIT");
       console.log(`${t.name.padEnd(26)} ${String(copied).padStart(8)} rows`);
     }
-    await ensurePostgresSchema(p, schema, wanted, { triggers: false });
+    await ensurePostgresSchema(p, schema, wanted, { triggers: false, seed: false });
     // Triggers last: they would have fired for every copied row.
     await ensurePostgresTriggers(p, schema, wanted);
     // The search index is built anew from the data.

@@ -2,6 +2,7 @@
 // "incident", lib/notification-kinds.ts): only administrators get them, each
 // through the channels and from the severity they chose; the notification
 // leads to the incident's page; earlier choices for "security" carry over.
+import { sqliteOnly } from "./helpers/backend";
 import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
@@ -192,7 +193,7 @@ test("at most 30 reports an hour", async () => {
   assert.equal(incidentsOf(root).length, 30);
 });
 
-test("upgrading: a channel switched off for security notices stays off for incidents", async () => {
+test("upgrading: a channel switched off for security notices stays off for incidents", { skip: sqliteOnly }, async () => {
   // As before schema 81: Root turned push off for "security", Vera e-mail.
   run("INSERT INTO notification_prefs(user_id,kind,inbox,push,email,messenger) VALUES(?,?,?,?,?,?)", root.id, "security", 1, 0, 1, 1);
   run("INSERT INTO notification_prefs(user_id,kind,inbox,push,email,messenger) VALUES(?,?,?,?,?,?)", vera.id, "security", 1, 1, 0, null);
@@ -200,7 +201,7 @@ test("upgrading: a channel switched off for security notices stays off for incid
   (globalThis as { flowplanSchema?: number }).flowplanSchema = undefined;
   assert.deepEqual(bootstrap(root, wid).notificationPrefs!.incident, { inbox: true, push: false, email: true, messenger: true });
   assert.deepEqual(bootstrap(vera, wid).notificationPrefs!.incident, { inbox: true, push: true, email: false, messenger: true });
-  assert.ok(one("SELECT 1 FROM pragma_table_info('notification_prefs') WHERE name='min_severity'"));
+  assert.ok(one("SELECT 1 FROM pragma_table_info('notification_prefs') WHERE name='min_severity'")); // sqlite-only
   // Only once: a later change of "security" does not touch incidents.
   as(root)({ action: "notification.prefs", kind: "security", inbox: true, push: true, email: true, messenger: true });
   (globalThis as { flowplanSchema?: number }).flowplanSchema = undefined;

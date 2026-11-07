@@ -589,7 +589,7 @@ function saveMapping(user: Identity, raw: unknown) {
   }
   const fresh = !existing || existing.repo !== repo || existing.connection_id !== connection.id;
   run(
-    "INSERT INTO issue_sync_maps(page_id,connection_id,repo,config,state,created_by,created_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(page_id) DO UPDATE SET connection_id=excluded.connection_id,repo=excluded.repo,config=excluded.config,state=CASE WHEN ? THEN excluded.state ELSE state END,created_by=excluded.created_by,created_at=CASE WHEN ? THEN excluded.created_at ELSE created_at END",
+    "INSERT INTO issue_sync_maps(page_id,connection_id,repo,config,state,created_by,created_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(page_id) DO UPDATE SET connection_id=excluded.connection_id,repo=excluded.repo,config=excluded.config,state=CASE WHEN ? THEN excluded.state ELSE issue_sync_maps.state END,created_by=excluded.created_by,created_at=CASE WHEN ? THEN excluded.created_at ELSE issue_sync_maps.created_at END",
     page.id,
     connection.id,
     repo,

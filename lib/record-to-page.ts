@@ -10,7 +10,7 @@ import { copyFileSync, existsSync, mkdirSync, unlinkSync } from "node:fs";
 import { resolve } from "node:path";
 import { generateJSON } from "@tiptap/html/server";
 import { Fragment, Node as PMNode } from "@tiptap/pm/model";
-import { all, id, one, onTransactionRollback, run, nowText, sql } from "./db";
+import { all, id, one, onTransactionRollback, run, nowText, sql, updateIgnoringConflicts } from "./db";
 import { SPACE_ORDER } from "./space-order";
 import { HttpError } from "./auth";
 import { quotaCheckpoint } from "./instance-ops";
@@ -271,7 +271,7 @@ export function recordToPage(
   for (const table of ["comments", "inline_threads", "shared_comments", "notifications"])
     run(`UPDATE ${table} SET page_id=?,row_id=NULL WHERE page_id=? AND row_id=?`, pageId, database.id, row.id);
   for (const table of ["doc_tasks", "document_authors"])
-    run(`UPDATE OR IGNORE ${table} SET page_id=?,row_id='' WHERE page_id=? AND row_id=?`, pageId, database.id, row.id);
+    updateIgnoringConflicts(table, "page_id=?,row_id=''", "page_id=? AND row_id=?", [pageId], [database.id, row.id]);
   // The record's versions become versions of the page (referring to the page's files).
   for (const snapshot of all<{ state: Uint8Array; html: string; created_by: string | null; created_at: string; kind: string }>(
     "SELECT state,html,created_by,created_at,kind FROM row_snapshots WHERE row_id=? ORDER BY created_at",

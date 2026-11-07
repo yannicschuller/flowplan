@@ -299,7 +299,7 @@ export function monitoringEvents(now = Date.now(), update: UpdateStatus | null =
     ["rate_limited", "rate_limit_spike"],
   ] as const)
     for (const h of all<{ hour: number; n: number }>(
-      "SELECT (at/3600000)*3600000 hour,COUNT(*) n FROM ops_events WHERE kind=? AND at>=? GROUP BY hour HAVING n>=? ORDER BY hour DESC LIMIT 5",
+      "SELECT (at/3600000)*3600000 AS hour,COUNT(*) n FROM ops_events WHERE kind=? AND at>=? GROUP BY (at/3600000)*3600000 HAVING COUNT(*)>=? ORDER BY hour DESC LIMIT 5",
       kind,
       since,
       spike,

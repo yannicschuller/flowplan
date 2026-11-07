@@ -264,7 +264,7 @@ function flushAi() {
     const [day, feature] = key.split("|");
     try {
       run(
-        "INSERT INTO metrics_ai(day,feature,requests,tokens_in,tokens_out) VALUES(?,?,?,?,?) ON CONFLICT(day,feature) DO UPDATE SET requests=requests+excluded.requests,tokens_in=tokens_in+excluded.tokens_in,tokens_out=tokens_out+excluded.tokens_out",
+        "INSERT INTO metrics_ai(day,feature,requests,tokens_in,tokens_out) VALUES(?,?,?,?,?) ON CONFLICT(day,feature) DO UPDATE SET requests=metrics_ai.requests+excluded.requests,tokens_in=metrics_ai.tokens_in+excluded.tokens_in,tokens_out=metrics_ai.tokens_out+excluded.tokens_out",
         day,
         feature,
         c.requests,
@@ -608,7 +608,7 @@ function flushPush() {
     const [at, channel, result] = key.split("|");
     try {
       run(
-        "INSERT INTO metrics_push(at,channel,result,count) VALUES(?,?,?,?) ON CONFLICT(at,channel,result) DO UPDATE SET count=count+excluded.count",
+        "INSERT INTO metrics_push(at,channel,result,count) VALUES(?,?,?,?) ON CONFLICT(at,channel,result) DO UPDATE SET count=metrics_push.count+excluded.count",
         Number(at),
         channel,
         result,

@@ -23,7 +23,7 @@
 // - none: not an account (a Git author's name).
 // User ids inside content – person properties of records, mentions in
 // comments and documents, filters of views – are replaced as well.
-import { all, audit, foreignKeyColumns, one, run, tableColumns, tableNames } from "./db";
+import { all, audit, foreignKeyColumns, one, run, tableColumns, tableNames, updateIgnoringConflicts } from "./db";
 import { HttpError } from "./auth";
 import { securityEvent } from "./security-events";
 import { openSecret, sealSecret } from "./secret-box";
@@ -57,6 +57,10 @@ export const USER_REFERENCES: Record<string, MergeStrategy> = {
   "mobile_devices.user_id": "drop",
   // Device keys of the apps (lib/app-devices.ts): registered again at the next sign-in.
   "app_devices.user_id": "drop",
+  // Progress of the source's background jobs, its widget history and focus timer.
+  "background_jobs.user_id": "drop",
+  "widget_counter_days.user_id": "drop",
+  "widget_focus.user_id": "drop",
   "push_subscriptions.user_id": "drop",
   "push_tests.user_id": "drop",
   "presence.user_id": "drop",
@@ -146,6 +150,7 @@ export const USER_REFERENCES: Record<string, MergeStrategy> = {
   "calendar_sync_mappings.user_id": "move",
   "calendar_feeds.user_id": "move",
   "caldav_accesses.user_id": "move",
+  "caldav_profile_links.user_id": "move",
   "carddav_accesses.user_id": "move",
   "contact_ldap_sources.created_by": "move",
   "space_git_exports.user_id": "move",
@@ -275,7 +280,7 @@ const higher = (a: string, b: string) => ((RANK[a] || 0) >= (RANK[b] || 0) ? a :
 
 // Moves the rows of one column; rows the target already has stay its own.
 function move(table: string, column: string, from: string, to: string) {
-  run(`UPDATE OR IGNORE "${table}" SET "${column}"=? WHERE "${column}"=?`, to, from);
+  updateIgnoringConflicts(table, `"${column}"=?`, `"${column}"=?`, [to], [from]);
   run(`DELETE FROM "${table}" WHERE "${column}"=?`, from);
 }
 

@@ -28,6 +28,9 @@ export type PgSchema = {
   // The SQLite triggers in PL/pgSQL (pg-triggers.ts), created after the
   // tables (and, by the migration tool, after the data).
   triggers: PgTrigger[];
+  // Rows the SQLite migrations write into an empty database (defaults,
+  // control rows); a timestamp of the moment of creation as "now".
+  seed: { table: string; rows: Record<string, string | number | null>[] }[];
   skipped: { kind: string; name: string; reason: string }[];
   sqlite: SqliteObject[];
 };
@@ -188,11 +191,22 @@ export function translateSqliteSchema(d: DatabaseSync): PgSchema {
   // The FTS5 search index: a plain table in Postgres (lib/search-store.ts).
   tables.push(SEARCH_INDEX);
   indexes.push({ name: "search_index_key", table: "search_index", sql: "CREATE INDEX IF NOT EXISTS search_index_key ON search_index(page_id,row_id)" });
-  return { sqliteVersion: version, tables, indexes, triggers, skipped, sqlite };
+  const seed: PgSchema["seed"] = [];
+  const now = Date.now();
+  for (const t of tables) {
+    if (t.name === "search_index") continue;
+    const rows = d.prepare(`SELECT * FROM "${t.name}"`).all() as Record<string, string | number | null>[];
+    if (rows.length)
+      seed.push({
+        table: t.name,
+        rows: rows.map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, typeof v === "number" && Math.abs(v - now) < 86_400_000 ? "now" : v]))),
+      });
+  }
+  return { sqliteVersion: version, tables, indexes, triggers, seed, skipped, sqlite };
 }
 
 // Brings the Postgres schema up to `schema`: adds what is missing. `only`
 // limits it to some tables (and their indexes and foreign keys among them).
-export async function ensurePostgresSchema(db: Db, schema: PgSchema, only?: string[], options: { triggers?: boolean } = {}): Promise<void> {
+export async function ensurePostgresSchema(db: Db, schema: PgSchema, only?: string[], options: { triggers?: boolean; seed?: boolean } = {}): Promise<void> {
   await ensure(db, schema, only, options);
 }
