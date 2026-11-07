@@ -28,7 +28,16 @@ const globalDb = globalThis as unknown as {
 // transitional path until their callers use the asynchronous `db` of
 // lib/db-driver. Without it (the default) nothing changes: SQLite.
 function legacyPg() {
-  if (globalDb.flowplanLegacyPg === undefined) globalDb.flowplanLegacyPg = postgresUrl() ? legacyPostgres() : null;
+  if (globalDb.flowplanLegacyPg === undefined) {
+    globalDb.flowplanLegacyPg = postgresUrl() ? legacyPostgres() : null;
+    // What db() does when SQLite opens: the object storage queue.
+    if (globalDb.flowplanLegacyPg)
+      try {
+        setupStorage();
+      } catch (error) {
+        console.error("Dateispeicher: Einrichtung fehlgeschlagen", error);
+      }
+  }
   return globalDb.flowplanLegacyPg;
 }
 // While an asynchronous transaction (lib/db-driver/sqlite.ts) holds the one
@@ -1236,7 +1245,10 @@ function migrate(d: DatabaseSync) {
     CREATE TABLE IF NOT EXISTS widget_counter_days(key TEXT NOT NULL,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,day TEXT NOT NULL,value REAL,at INTEGER NOT NULL,PRIMARY KEY(key,day));
     CREATE INDEX IF NOT EXISTS widget_counter_days_at ON widget_counter_days(at);
     CREATE TABLE IF NOT EXISTS widget_focus(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,started_at INTEGER NOT NULL,focus_ms INTEGER NOT NULL,break_ms INTEGER NOT NULL,page_id TEXT,row_id TEXT,field_id TEXT,timer INTEGER NOT NULL DEFAULT 0,stopped_at INTEGER);
-    CREATE TABLE IF NOT EXISTS notification_targets(notification_id TEXT PRIMARY KEY REFERENCES notifications(id) ON DELETE CASCADE,target TEXT NOT NULL);`);
+    CREATE TABLE IF NOT EXISTS notification_targets(notification_id TEXT PRIMARY KEY REFERENCES notifications(id) ON DELETE CASCADE,target TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS storage_queue(key TEXT PRIMARY KEY,op TEXT NOT NULL,attempts INTEGER NOT NULL DEFAULT 0,next_at INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS storage_state(name TEXT PRIMARY KEY,value TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS storage_sealed(key TEXT PRIMARY KEY,key_id TEXT NOT NULL);`);
   // Schema 93 – PostgreSQL support (#127, docs/architecture/database.md):
   // queries no longer order by SQLite's implicit rowid. Where the order of
   // insertion matters (newest notification, version or message first,

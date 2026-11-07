@@ -867,6 +867,9 @@
   {"type":"index","name":"widget_counter_days_at","table":"widget_counter_days","sql":"CREATE INDEX widget_counter_days_at ON widget_counter_days(at)"},
   {"type":"table","name":"widget_focus","table":"widget_focus","sql":"CREATE TABLE widget_focus(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,started_at INTEGER NOT NULL,focus_ms INTEGER NOT NULL,break_ms INTEGER NOT NULL,page_id TEXT,row_id TEXT,field_id TEXT,timer INTEGER NOT NULL DEFAULT 0,stopped_at INTEGER)"},
   {"type":"table","name":"notification_targets","table":"notification_targets","sql":"CREATE TABLE notification_targets(notification_id TEXT PRIMARY KEY REFERENCES notifications(id) ON DELETE CASCADE,target TEXT NOT NULL)"},
+  {"type":"table","name":"storage_queue","table":"storage_queue","sql":"CREATE TABLE storage_queue(key TEXT PRIMARY KEY,op TEXT NOT NULL,attempts INTEGER NOT NULL DEFAULT 0,next_at INTEGER NOT NULL DEFAULT 0)"},
+  {"type":"table","name":"storage_state","table":"storage_state","sql":"CREATE TABLE storage_state(name TEXT PRIMARY KEY,value TEXT NOT NULL)"},
+  {"type":"table","name":"storage_sealed","table":"storage_sealed","sql":"CREATE TABLE storage_sealed(key TEXT PRIMARY KEY,key_id TEXT NOT NULL)"},
   {"type":"trigger","name":"snapshots_seq","table":"snapshots","sql":"CREATE TRIGGER snapshots_seq AFTER INSERT ON snapshots WHEN NEW.seq IS NULL BEGIN UPDATE snapshots SET seq=NEW.rowid WHERE rowid=NEW.rowid; END"},
   {"type":"trigger","name":"row_snapshots_seq","table":"row_snapshots","sql":"CREATE TRIGGER row_snapshots_seq AFTER INSERT ON row_snapshots WHEN NEW.seq IS NULL BEGIN UPDATE row_snapshots SET seq=NEW.rowid WHERE rowid=NEW.rowid; END"},
   {"type":"trigger","name":"notifications_seq","table":"notifications","sql":"CREATE TRIGGER notifications_seq AFTER INSERT ON notifications WHEN NEW.seq IS NULL BEGIN UPDATE notifications SET seq=NEW.rowid WHERE rowid=NEW.rowid; END"},
@@ -881,9 +884,6 @@
   {"type":"trigger","name":"mail_queue_seq","table":"mail_queue","sql":"CREATE TRIGGER mail_queue_seq AFTER INSERT ON mail_queue WHEN NEW.seq IS NULL BEGIN UPDATE mail_queue SET seq=NEW.rowid WHERE rowid=NEW.rowid; END"},
   {"type":"trigger","name":"webhook_deliveries_seq","table":"webhook_deliveries","sql":"CREATE TRIGGER webhook_deliveries_seq AFTER INSERT ON webhook_deliveries WHEN NEW.seq IS NULL BEGIN UPDATE webhook_deliveries SET seq=NEW.rowid WHERE rowid=NEW.rowid; END"},
   {"type":"trigger","name":"spaces_seq","table":"spaces","sql":"CREATE TRIGGER spaces_seq AFTER INSERT ON spaces WHEN NEW.seq IS NULL BEGIN UPDATE spaces SET seq=NEW.rowid WHERE rowid=NEW.rowid; END"},
-  {"type":"trigger","name":"pages_created_at","table":"pages","sql":"CREATE TRIGGER pages_created_at AFTER INSERT ON pages WHEN NEW.created_at IS NULL OR NEW.seq IS NULL BEGIN\n        UPDATE pages SET created_at=COALESCE(NEW.created_at,CURRENT_TIMESTAMP),seq=COALESCE(NEW.seq,NEW.rowid) WHERE rowid=NEW.rowid;\n      END"},
-  {"type":"table","name":"storage_queue","table":"storage_queue","sql":"CREATE TABLE storage_queue(key TEXT PRIMARY KEY,op TEXT NOT NULL,attempts INTEGER NOT NULL DEFAULT 0,next_at INTEGER NOT NULL DEFAULT 0)"},
-  {"type":"table","name":"storage_state","table":"storage_state","sql":"CREATE TABLE storage_state(name TEXT PRIMARY KEY,value TEXT NOT NULL)"},
-  {"type":"table","name":"storage_sealed","table":"storage_sealed","sql":"CREATE TABLE storage_sealed(key TEXT PRIMARY KEY,key_id TEXT NOT NULL)"}
+  {"type":"trigger","name":"pages_created_at","table":"pages","sql":"CREATE TRIGGER pages_created_at AFTER INSERT ON pages WHEN NEW.created_at IS NULL OR NEW.seq IS NULL BEGIN\n        UPDATE pages SET created_at=COALESCE(NEW.created_at,CURRENT_TIMESTAMP),seq=COALESCE(NEW.seq,NEW.rowid) WHERE rowid=NEW.rowid;\n      END"}
  ]
 }

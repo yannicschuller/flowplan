@@ -15,7 +15,7 @@
 // permissions, nothing of end-to-end encrypted spaces (titles included),
 // journals behind a PIN only by name, as in the sidebar.
 import { z } from "zod";
-import { all } from "./db";
+import { all, sql } from "./db";
 import { ct } from "./content-locale";
 import { lockedPageIds } from "./journal-extras";
 import { pageLocationHash } from "./page-location";
@@ -108,8 +108,8 @@ export function intentPages(user: Identity, input: unknown) {
   const like = `%${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
   const prefix = `${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
   const candidates = all<Candidate>(
-    `${CANDIDATE} AND p.title LIKE ? ESCAPE '\\'
-     ORDER BY (p.title LIKE ? ESCAPE '\\') DESC,p.updated_at DESC LIMIT 500`,
+    `${CANDIDATE} AND ${sql.ilike("p.title")} ESCAPE '\\'
+     ORDER BY (CASE WHEN ${sql.ilike("p.title")} ESCAPE '\\' THEN 1 ELSE 0 END) DESC,p.updated_at DESC LIMIT 500`,
     user.id,
     ...KINDS,
     like,
