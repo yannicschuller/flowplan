@@ -1977,16 +1977,17 @@ export type CommandInboundDeleteResult = {
   ok: true;
 };
 
-/** Connect GitHub or GitLab for issue sync. Workspace owners and administrators. Without `id` a new connection (token required); with `id` an update (the token stays unless given). The token is stored encrypted. Self-hosted servers only when listed in ISSUE_SYNC_ALLOWED_HOSTS. Check the token first with POST /api/issue-sync `{ op: "test" }`. */
+/** Connect GitHub, GitLab or Forgejo/Gitea for issue sync. Workspace owners and administrators. Without `id` a new connection (token required); with `id` an update (the token stays unless given). The token is stored encrypted. Self-hosted servers – and every Forgejo/Gitea server (`forgejo`, also codeberg.org) – only when listed in ISSUE_SYNC_ALLOWED_HOSTS. Check the token first with POST /api/issue-sync `{ op: "test" }`. */
 export type CommandIssueSyncConnect = {
   action: "issueSync.connect";
   workspaceId: string;
   /** Existing connection to update */
   id?: string;
-  provider: "github" | "gitlab";
-  /** Self-hosted server, e.g. https://gitlab.example.org; empty for github.com or gitlab.com */
+  /** `forgejo` for Forgejo and Gitea (the same API) */
+  provider: "github" | "gitlab" | "forgejo";
+  /** Self-hosted server, e.g. https://gitlab.example.org; empty for github.com or gitlab.com; required for Forgejo/Gitea */
   baseUrl?: string;
-  /** Default repository: `owner/name` (GitHub) or `group/project` (GitLab) */
+  /** Default repository: `owner/name` (GitHub, Forgejo/Gitea) or `group/project` (GitLab) */
   repo?: string;
   token?: string;
   /** Login ↔ e-mail of a member, for assignees */
@@ -2000,7 +2001,7 @@ export type CommandIssueSyncConnectResult = {
   id: string;
 };
 
-/** Remove a GitHub or GitLab connection. Workspace owners and administrators. Ends the sync of every database using it; records stay. */
+/** Remove a GitHub, GitLab or Forgejo/Gitea connection. Workspace owners and administrators. Ends the sync of every database using it; records stay. */
 export type CommandIssueSyncDisconnect = {
   action: "issueSync.disconnect";
   workspaceId: string;
@@ -3321,12 +3322,12 @@ export class FlowplanClient {
     return this.json<Record<string, unknown>>("POST", `/api/inbound-mail/${encodeURIComponent(token)}`, { json: body }, options);
   }
 
-  /** GitHub/GitLab issue sync: connections, a database's mapping or a record's issue — `workspace` lists the connections (owners and administrators); `page` the mapping and status of a database; `page` with `row` the linked issue or null. (GET /api/issue-sync) */
+  /** GitHub/GitLab/Forgejo issue sync: connections, a database's mapping or a record's issue — `workspace` lists the connections (owners and administrators); `page` the mapping and status of a database; `page` with `row` the linked issue or null. (GET /api/issue-sync) */
   async issueSync(query?: { workspace?: string; page?: string; row?: string }, options?: RequestOptions): Promise<Record<string, unknown>> {
     return this.json<Record<string, unknown>>("GET", `/api/issue-sync`, { query }, options);
   }
 
-  /** Test a GitHub/GitLab connection or sync a database now — `{ op: "test", workspaceId, provider, baseUrl, repo, token | id }` makes one API call with the token; `{ op: "run", pageId }` pulls and pushes now. Rate limits of the provider (403/429) pause the connection until `Retry-After`. (POST /api/issue-sync) */
+  /** Test a GitHub/GitLab/Forgejo connection or sync a database now — `{ op: "test", workspaceId, provider, baseUrl, repo, token | id }` makes one API call with the token; `{ op: "run", pageId }` pulls and pushes now. Rate limits of the provider (403/429) pause the connection until `Retry-After`. (POST /api/issue-sync) */
   async issueSyncAction(body: {
     op: "test" | "run";
     pageId?: string;

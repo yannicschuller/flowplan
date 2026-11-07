@@ -5,7 +5,7 @@ import { receiveIssueWebhook, syncIssues } from "@/lib/issue-sync";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Issue and comment webhooks from GitHub or GitLab (no session: the token in
+// Issue and comment webhooks from GitHub, GitLab or Forgejo/Gitea (no session: the token in
 // the address finds the connection, the signature or secret proves the
 // sender). The pull runs after the answer, so the provider is not kept
 // waiting.

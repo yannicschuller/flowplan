@@ -1294,14 +1294,14 @@ CommandInboundDeleteResult = TypedDict("CommandInboundDeleteResult", {
     "ok": Required[Literal[True]],
 }, total=False)
 
-# Connect GitHub or GitLab for issue sync. Workspace owners and administrators. Without `id` a new connection (token required); with `id` an update (the token stays unless given). The token is stored encrypted. Self-hosted servers only when listed in ISSUE_SYNC_ALLOWED_HOSTS. Check the token first with POST /api/issue-sync `{ op: "test" }`.
+# Connect GitHub, GitLab or Forgejo/Gitea for issue sync. Workspace owners and administrators. Without `id` a new connection (token required); with `id` an update (the token stays unless given). The token is stored encrypted. Self-hosted servers – and every Forgejo/Gitea server (`forgejo`, also codeberg.org) – only when listed in ISSUE_SYNC_ALLOWED_HOSTS. Check the token first with POST /api/issue-sync `{ op: "test" }`.
 CommandIssueSyncConnect = TypedDict("CommandIssueSyncConnect", {
     "action": Required[Literal["issueSync.connect"]],
     "workspaceId": Required[str],
     "id": str,  # Existing connection to update
-    "provider": Required[Literal["github", "gitlab"]],
-    "baseUrl": str,  # Self-hosted server, e.g. https://gitlab.example.org; empty for github.com or gitlab.com
-    "repo": str,  # Default repository: `owner/name` (GitHub) or `group/project` (GitLab)
+    "provider": Required[Literal["github", "gitlab", "forgejo"]],  # `forgejo` for Forgejo and Gitea (the same API)
+    "baseUrl": str,  # Self-hosted server, e.g. https://gitlab.example.org; empty for github.com or gitlab.com; required for Forgejo/Gitea
+    "repo": str,  # Default repository: `owner/name` (GitHub, Forgejo/Gitea) or `group/project` (GitLab)
     "token": str,
     "people": list[dict[str, Any]],  # Login ↔ e-mail of a member, for assignees
 }, total=False)
@@ -1310,7 +1310,7 @@ CommandIssueSyncConnectResult = TypedDict("CommandIssueSyncConnectResult", {
     "id": Required[str],
 }, total=False)
 
-# Remove a GitHub or GitLab connection. Workspace owners and administrators. Ends the sync of every database using it; records stay.
+# Remove a GitHub, GitLab or Forgejo/Gitea connection. Workspace owners and administrators. Ends the sync of every database using it; records stay.
 CommandIssueSyncDisconnect = TypedDict("CommandIssueSyncDisconnect", {
     "action": Required[Literal["issueSync.disconnect"]],
     "workspaceId": Required[str],
@@ -2323,11 +2323,11 @@ class FlowplanClient:
         return self._json("POST", "/api/inbound-mail/" + _p(token), json_body=body, headers=headers)
 
     def issue_sync(self, query: Optional["IssueSyncQuery"] = None, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
-        """GitHub/GitLab issue sync: connections, a database's mapping or a record's issue — `workspace` lists the connections (owners and administrators); `page` the mapping and status of a database; `page` with `row` the linked issue or null. (GET /api/issue-sync)"""
+        """GitHub/GitLab/Forgejo issue sync: connections, a database's mapping or a record's issue — `workspace` lists the connections (owners and administrators); `page` the mapping and status of a database; `page` with `row` the linked issue or null. (GET /api/issue-sync)"""
         return self._json("GET", "/api/issue-sync", query=dict(query) if query else None, headers=headers)
 
     def issue_sync_action(self, body: dict[str, Any], headers: Optional[dict[str, str]] = None, idempotency_key: Optional[str] = None) -> dict[str, Any]:
-        """Test a GitHub/GitLab connection or sync a database now — `{ op: "test", workspaceId, provider, baseUrl, repo, token | id }` makes one API call with the token; `{ op: "run", pageId }` pulls and pushes now. Rate limits of the provider (403/429) pause the connection until `Retry-After`. (POST /api/issue-sync)"""
+        """Test a GitHub/GitLab/Forgejo connection or sync a database now — `{ op: "test", workspaceId, provider, baseUrl, repo, token | id }` makes one API call with the token; `{ op: "run", pageId }` pulls and pushes now. Rate limits of the provider (403/429) pause the connection until `Retry-After`. (POST /api/issue-sync)"""
         return self._json("POST", "/api/issue-sync", json_body=body, headers=headers, idempotent=True, idempotency_key=idempotency_key)
 
     def update_webhook(self, body: "WebhookUpdate", headers: Optional[dict[str, str]] = None, idempotency_key: Optional[str] = None) -> dict[str, Any]:

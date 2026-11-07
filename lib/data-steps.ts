@@ -10,6 +10,7 @@
 // migrate(): they must run on both databases.
 import { randomUUID } from "node:crypto";
 import { all, lockFor, one, run, sql, tableColumns, transaction, untimed, updateIgnoringConflicts } from "./db";
+import { database } from "./db-driver";
 import { emojiPresentation } from "./emoji-presentation";
 import { escapeFormattedCells, FORMATTED_TEXT_MIGRATION } from "./formatted-text";
 import { isFormattedText } from "./inline-markdown";
@@ -22,6 +23,7 @@ export type DataStep = { name: string; run: () => Promise<void> };
 export const SAVED_SEARCHES_STEP = "saved-searches-85";
 export const IDENTITIES_STEP = "identities-88";
 export const REACTION_EMOJI_STEP = "reaction-emoji-fe0f";
+export const ISSUE_PROVIDERS_STEP = "issue-providers-95";
 
 // In the order the schema versions introduced them. A function: the
 // modules of the steps import lib/db.ts, which may still be loading.
@@ -31,6 +33,7 @@ export const dataSteps = (): DataStep[] => [
   { name: FORMATTED_TEXT_MIGRATION, run: escapeFormattedText },
   { name: SEALED_SECRETS_MIGRATION, run: sealSecrets },
   { name: REACTION_EMOJI_STEP, run: reactionEmojiPresentation },
+  { name: ISSUE_PROVIDERS_STEP, run: issueProvidersCheck },
 ];
 
 // Runs the steps not done yet (`only`: just these). Several instances on
@@ -231,4 +234,18 @@ async function reactionEmojiPresentation() {
     await updateIgnoringConflicts("inline_reactions", "emoji=?", "message_id=? AND user_id=? AND emoji=?", [emoji], key);
     await run("DELETE FROM inline_reactions WHERE message_id=? AND user_id=? AND emoji=?", ...key);
   }
+}
+
+// Schema 95 – Forgejo/Gitea in the issue sync (#162): issue_connections
+// allows provider 'forgejo'. SQLite copies the table in migrate()
+// (migrateIssueProviders); the translated PostgreSQL schema only adds what
+// is missing, so an existing table gets the wider CHECK here (a new one has
+// it already: replacing it changes nothing).
+async function issueProvidersCheck() {
+  if (database().backend !== "postgres") return;
+  const checks = await all<{ name: string }>(
+    "SELECT conname AS name FROM pg_constraint WHERE conrelid=to_regclass('issue_connections') AND contype='c' AND strpos(pg_get_constraintdef(oid),'provider')>0",
+  );
+  for (const c of checks) await run(`ALTER TABLE issue_connections DROP CONSTRAINT "${c.name.replace(/"/g, '""')}"`);
+  await run("ALTER TABLE issue_connections ADD CONSTRAINT issue_connections_provider_check CHECK(provider IN ('github','gitlab','forgejo'))");
 }
