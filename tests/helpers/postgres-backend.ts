@@ -14,6 +14,7 @@ import { createPostgresDb } from "../../lib/db-driver/postgres";
 import { ensurePostgresSchema, type PgSchema } from "../../lib/db-driver/pg-schema";
 
 const SCHEMA_PREFIX = "flowplan_test_";
+const created: string[] = [];
 
 export async function preparePostgres(url: string) {
   const schema = `${SCHEMA_PREFIX}${process.pid}_${randomBytes(3).toString("hex")}`;
@@ -26,18 +27,22 @@ export async function preparePostgres(url: string) {
   const setup = createPostgresDb(url, { schema, max: 1 });
   await ensurePostgresSchema(setup, tables);
   await setup.close();
-  let dropped = false;
-  process.on("beforeExit", async () => {
-    if (dropped) return;
-    dropped = true;
-    const client = new pg.Client({ connectionString: url });
-    try {
-      await client.connect();
-      await client.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
-    } finally {
-      await client.end().catch(() => {});
-    }
-  });
+  // Dropped at exit, one after the other: a process that made several
+  // (tests/setup-restore.test.ts) would otherwise take the locks of all
+  // their tables at once (each DROP SCHEMA … CASCADE locks every object).
+  created.push(schema);
+  if (created.length === 1)
+    process.on("beforeExit", async () => {
+      // (beforeExit comes again once this has finished: nothing left then.)
+      if (!created.length) return;
+      const client = new pg.Client({ connectionString: url });
+      try {
+        await client.connect();
+        while (created.length) await client.query(`DROP SCHEMA IF EXISTS ${created.shift()} CASCADE`);
+      } finally {
+        await client.end().catch(() => {});
+      }
+    });
   return schema;
 }
 

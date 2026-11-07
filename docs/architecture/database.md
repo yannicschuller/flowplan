@@ -454,10 +454,15 @@ Pitfalls the spike hit (all caught by tests or `tsc`, except the first):
 ```sh
 # a throwaway Postgres 16 (as the postgres user)
 initdb -D /tmp/fp-pg/data -U postgres --auth=trust
-pg_ctl -D /tmp/fp-pg/data -o "-p 55433 -k /tmp/fp-pg -c max_connections=400 -c fsync=off" start
+pg_ctl -D /tmp/fp-pg/data -o "-p 55433 -k /tmp/fp-pg -c max_connections=400 -c max_locks_per_transaction=256 -c fsync=off" start
 createdb -h localhost -p 55433 -U postgres flowplan_test
 DATABASE_URL=postgres://postgres@localhost:55433/flowplan_test npm test
 ```
+
+Each test schema has ~1,000 objects; dropping one locks them all, and a
+snapshot or restore reads every table in one transaction: with the default
+`max_locks_per_transaction=64` parallel test processes can run out of lock
+slots ("out of shared memory"), hence 256 above.
 
 ## 5a. Search on Postgres (until `tsvector`)
 
