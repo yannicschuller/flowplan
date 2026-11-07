@@ -37,9 +37,18 @@ const WAIT_MS = 400;
 /** At most this many per request. */
 export const MAX_PLACEHOLDER_IDS = 100;
 
+/** Decoding needs memory (inflated pixel data up to 64 MB, a JPEG's
+ *  coefficients): one image at a time, however many uploads arrive at once. */
+const decoding = globalThis as typeof globalThis & { flowplanImageDecode?: Promise<unknown> };
+function oneAtATime<T>(work: () => Promise<T>): Promise<T> {
+  const result = (decoding.flowplanImageDecode ?? Promise.resolve()).then(work);
+  decoding.flowplanImageDecode = result.catch(() => {});
+  return result;
+}
+
 /** Size and hash of an image's bytes (null when it is not an image we read). */
 export async function computePlaceholder(data: Uint8Array): Promise<Placeholder | null> {
-  const decoded = await decodeImageInSlices(data);
+  const decoded = await oneAtATime(() => decodeImageInSlices(data));
   if (!decoded) return null;
   const small = decoded.small;
   const hash = small ? thumbHashToBase64(rgbaToThumbHash(small.width, small.height, small.rgba)) : null;
