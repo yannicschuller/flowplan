@@ -42,12 +42,21 @@ async function propertiesOf(user: Identity, page: Page) {
   const { captureProperties } = await import("../desktop-capture");
   return captureProperties(user, page);
 }
-async function candidates(user: Identity, max: number, only?: string[]): Promise<Candidate[]> {
+// Databases of workspaces where this AI may run for the person: the switch
+// "no AI for guests" (and every other workspace rule) is checked for each
+// candidate's workspace, not only the first one's.
+async function candidates(user: Identity, max: number, via: "server" | "device", only?: string[]): Promise<Candidate[]> {
   const list: Candidate[] = [];
+  const gate = new Map<string, boolean>();
+  const allowed = (workspaceId: string) => {
+    if (!gate.has(workspaceId))
+      gate.set(workspaceId, via === "server" ? resolveAi(user, "actions", { workspaceId }).ok : !deviceGate(user, "write", { workspaceId }));
+    return gate.get(workspaceId)!;
+  };
   for (const t of captureTargetList(user)) {
     if (t.kind !== "database" || (only && !only.includes(t.id)) || !aiMayRead(user, t.id)) continue;
     const page = one<Page>("SELECT * FROM pages WHERE id=?", t.id);
-    if (!page) continue;
+    if (!page || !allowed(page.workspace_id)) continue;
     const properties = (await propertiesOf(user, page)).filter((p) => p.type !== "files").slice(0, SUGGEST_LIMITS.properties);
     list.push({ id: t.id, name: t.name, workspaceId: page.workspace_id, properties: properties.map((p) => ({ ...p, options: p.options?.slice(0, SUGGEST_LIMITS.options) })) });
     if (list.length >= max) break;
@@ -120,7 +129,7 @@ export async function suggestCapture(user: Identity, raw: unknown, signal?: Abor
   if (!mode) throw new HttpError(403, ct("KI ist ausgeschaltet.", "AI is switched off."));
   if (input.device) {
     if (!mode.device) throw new HttpError(403, ct("KI auf dem Gerät ist ausgeschaltet.", "On-device AI is switched off."));
-    const list = await candidates(user, SUGGEST_LIMITS.deviceDatabases, input.targets);
+    const list = await candidates(user, SUGGEST_LIMITS.deviceDatabases, "device", input.targets);
     if (!list.length) throw new HttpError(409, ct("Keine Datenbank, in die erfasst werden kann.", "No database to capture into."));
     return {
       device: {
@@ -141,7 +150,7 @@ export async function suggestCapture(user: Identity, raw: unknown, signal?: Abor
     };
   }
   if (!mode.server) throw new HttpError(403, ct("KI ist ausgeschaltet.", "AI is switched off."));
-  const list = await candidates(user, SUGGEST_LIMITS.databases, input.targets);
+  const list = await candidates(user, SUGGEST_LIMITS.databases, "server", input.targets);
   if (!list.length) throw new HttpError(409, ct("Keine Datenbank, in die erfasst werden kann.", "No database to capture into."));
   requireAi(user, "actions", { workspaceId: list[0].workspaceId });
   const answer = await aiJson(user, "actions", { system: SYSTEM, messages: [{ role: "user", content: catalogPrompt(list, input.text, input.today) }], maxTokens: 600 }, answerSchema, {
@@ -156,6 +165,6 @@ export async function checkDeviceSuggestion(user: Identity, raw: unknown) {
   const input = z.object({ answer: z.unknown(), targets: z.array(z.uuid()).max(50).optional() }).parse(raw);
   const mode = captureSuggestMode(user);
   if (!mode?.device) throw new HttpError(403, ct("KI auf dem Gerät ist ausgeschaltet.", "On-device AI is switched off."));
-  const list = await candidates(user, SUGGEST_LIMITS.deviceDatabases, input.targets);
+  const list = await candidates(user, SUGGEST_LIMITS.deviceDatabases, "device", input.targets);
   return checkSuggestion(list, membersOf, input.answer);
 }

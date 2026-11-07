@@ -34,6 +34,9 @@ export type AiRunOptions = {
   pageId?: string;
   rowId?: string | null;
   signal?: AbortSignal;
+  // The request took its slot of the AI rate limit before its preparation
+  // (lib/ai/ask.ts prepareAsk): not counted a second time.
+  charged?: boolean;
 };
 const inputSchema = z.object({
   system: z.string().max(AI_LIMITS.maxPromptChars).optional(),
@@ -61,7 +64,7 @@ export async function* aiStream(user: Identity, feature: AiFeature, raw: AiRunIn
   const input = inputSchema.parse(raw);
   const size = (input.system?.length || 0) + input.messages.reduce((sum, m) => sum + m.content.length, 0);
   if (size > AI_LIMITS.maxPromptChars) throw new HttpError(413, "Der Text für die KI ist zu lang.");
-  limitAi(user.id);
+  if (!options.charged) limitAi(user.id);
   const count = running.get(user.id) || 0;
   if (count >= AI_LIMITS.concurrent) throw new HttpError(429, "Zu viele KI-Anfragen in kurzer Zeit. Bitte später erneut versuchen.");
   running.set(user.id, count + 1);

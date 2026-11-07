@@ -17,6 +17,7 @@ import { clientAddress } from "@/lib/client-address";
 import { contentLocale, withRequestLocale } from "@/lib/content-locale";
 import { createTicket, mailTicketLink } from "@/lib/service-desk";
 import { surveyClosed } from "@/lib/survey";
+import { readTextLimited } from "@/lib/request-body";
 
 async function handlePOST(
   req: Request,
@@ -55,7 +56,7 @@ async function handlePOST(
       if (total > FORM_TOTAL_BYTES)
         throw new HttpError(413, "Maximal 25 MB Dateien je Antwort.");
       if (total) enforceQuota(form.workspace_id, total);
-    } else raw = await req.text();
+    } else raw = await readTextLimited(req, 400_000, "Antwort zu groß.");
     if (raw.length > 100_000) throw new HttpError(413, "Antwort zu groß.");
     const input = z
       .object({ cells: z.record(z.string(), z.unknown()) })
@@ -197,7 +198,7 @@ function draftHandler(kind: "get" | "put" | "delete") {
       if (kind === "get") return NextResponse.json({ draft: formDraft(token, user) });
       if (kind === "delete") return NextResponse.json(deleteFormDraft(token, user));
       requireBodySize(req, 110_000, "Entwurf zu groß.");
-      const raw = await req.text();
+      const raw = await readTextLimited(req, 110_000, "Entwurf zu groß.");
       if (raw.length > 110_000) throw new HttpError(413, "Entwurf zu groß.");
       return NextResponse.json(saveFormDraft(token, user, JSON.parse(raw)));
     } catch (e) {

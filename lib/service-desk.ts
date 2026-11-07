@@ -94,6 +94,10 @@ function ticketRecord(token: string) {
   if (!config.portal) throw new HttpError(404, "Anfrage nicht gefunden.");
   return { ticket, config };
 }
+// The link checked on its own – before a reply's body is read.
+export function requireTicketLink(token: string) {
+  ticketRecord(token);
+}
 const messages = (rowId: string) =>
   all<Message>("SELECT id,author_id,author_name,body,created_at FROM ticket_messages WHERE row_id=? ORDER BY created_at,id", rowId);
 

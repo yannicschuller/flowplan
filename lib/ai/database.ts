@@ -37,6 +37,8 @@ import {
   proposalSchema,
   recordContext,
   relationTitlesFor,
+  fillInputFieldIds,
+  fillRelationTitlesFor,
   renderAiPrompt,
   valueInstruction,
   valueSchema,
@@ -148,8 +150,12 @@ export async function runAiCell(user: Identity, pageId: string, fieldId: string,
   let system: string, content: string, hash: string;
   let value: unknown;
   if (mode === "fill") {
+    // Only what every reader of the target property may read as well:
+    // the value is written there (lib/ai/database-fields.ts).
+    const inputs = fillInputFieldIds(fields, field);
+    const fillContext: PromptContext = { ...context, relationTitles: fillRelationTitlesFor(user, page) };
     system = SYSTEM(field, `Du füllst die Eigenschaft „${field.name}“ eines Eintrags der Datenbank „${page.title}“ passend zu seinen übrigen Angaben aus. Lässt sich nichts Passendes ableiten, ist "value" null.`);
-    content = `Eintrag:\n${recordContext(fields, field, cells, row, context)}\n\nGesucht: ${field.name}`;
+    content = `Eintrag:\n${recordContext(fields.filter((f) => inputs.has(f.id)), field, cells, row, fillContext)}\n\nGesucht: ${field.name}`;
     hash = aiInputHash(field, content);
   } else {
     const rendered = renderAiPrompt(field.ai!.prompt, fields, cells, row, context);

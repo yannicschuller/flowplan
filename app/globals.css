@@ -24600,6 +24600,12 @@ h3 .block-reactions {
   font-size: 13px;
   white-space: pre-wrap;
 }
+.ai-action-links {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
 .ai-action-buttons {
   display: flex;
   flex-wrap: wrap;

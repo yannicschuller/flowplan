@@ -6,7 +6,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { checkOrigin, HttpError, requireUser } from "@/lib/auth";
 import { withRequestLocale } from "@/lib/content-locale";
-import { limitAiSetup } from "@/lib/action-limits";
+import { readTextLimited } from "@/lib/request-body";
+import { limitAiLookup, limitAiSetup } from "@/lib/action-limits";
 import { requireAdmin, requireMember, requirePage } from "@/lib/permissions";
 import type { Identity } from "@/lib/types";
 import { AI_FEATURE_IDS, AI_REASON_TEXT } from "@/lib/ai/features";
@@ -50,9 +51,8 @@ async function signedIn() {
 }
 // A small JSON body, read with a limit.
 async function body(req: Request, limit: number) {
-  if (Number(req.headers.get("content-length") || 0) > limit) throw new HttpError(413, "Anfrage zu groß.");
-  const text = await req.text();
-  if (text.length > limit) throw new HttpError(413, "Anfrage zu groß.");
+  // Counted while streaming: a body without Content-Length stops at the limit too.
+  const text = await readTextLimited(req, limit);
   try {
     return JSON.parse(text || "{}") as unknown;
   } catch {
@@ -137,7 +137,11 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ path: st
     checkOrigin(req);
     const { path } = await params;
     const user = await signedIn();
-    // A prompt for a feature, answered as a text stream.
+    // A prompt for a feature, answered as a text stream. The text is the
+    // caller's own: the server loads nothing here. With pageId (and rowId)
+    // the page's read rights and the AI's rules are checked (lib/ai/run.ts
+    // requireAi); without it there is no page whose rules could apply – a
+    // client that sends page content names the page.
     if (path.length === 1 && path[0] === "run") {
       const b = runInput.parse(await body(req, AI_LIMITS.maxPromptChars * 4 + 100_000));
       requireMember(user, b.workspaceId);
@@ -163,7 +167,7 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ path: st
         user,
         "ask",
         { system: prepared.system, messages: prepared.messages, maxTokens: prepared.maxTokens, temperature: 0.2 },
-        { workspaceId: b.workspaceId, signal: req.signal },
+        { workspaceId: b.workspaceId, signal: req.signal, charged: true },
       );
       response.headers.set("X-Flowplan-Sources", sources);
       if (prepared.semantic) response.headers.set("X-Flowplan-Semantic", "1");
@@ -185,6 +189,7 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ path: st
         .object({ pageId: z.uuid(), titles: z.array(z.string().max(TITLE_LINK_LIMITS.titleChars * 2)).max(TITLE_LINK_LIMITS.titles) })
         .parse(await body(req, 100_000));
       const page = requirePage(user, b.pageId);
+      limitAiLookup(user.id);
       return NextResponse.json({ resolved: resolveLinkTitles(user, { workspaceId: page.workspace_id, pageId: page.id, titles: b.titles }) }, noStore);
     }
     // AI actions: a checked preview of what the model proposes, then the

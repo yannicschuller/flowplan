@@ -30,6 +30,7 @@
 // nothing but the usual rate-limit counters.
 import { z } from "zod";
 import { HttpError } from "../auth";
+import { limitAi } from "../action-limits";
 import { all, one } from "../db";
 import { contentLocale, ct } from "../content-locale";
 import { pageRole, requirePage, spaceRole } from "../permissions";
@@ -189,6 +190,10 @@ const ANSWER_TOKENS = { plain: 1500, data: 4000 } as const;
 export async function prepareAsk(user: Identity, raw: AskInput, signal?: AbortSignal): Promise<PreparedAsk> {
   const input = askInput.parse(raw);
   const resolved = requireAi(user, "ask", { workspaceId: input.workspaceId });
+  // The question takes its slot of the AI rate limit before any work – the
+  // embedding call, the vector scan and the full-text search – also when
+  // nothing is found. The answer does not count again (charged: true).
+  limitAi(user.id);
   // "Diese Seite": read rights and the AI's rules checked like everywhere.
   let current: { page: Page; markdown: string; truncated: boolean } | null = null;
   if (input.page) {
@@ -243,8 +248,8 @@ export async function prepareAsk(user: Identity, raw: AskInput, signal?: AbortSi
   }
   let semantic = false;
   try {
-    // One question takes one slot of the AI rate limit: the answer's
-    // (lib/ai/run.ts), so the embedding of the question is not counted.
+    // One question takes one slot of the AI rate limit, taken above, so
+    // the embedding of the question is not counted.
     // Across workspaces the question is embedded once: the instance's
     // embedding model is the same for all of them.
     let vector: Float32Array | null = null;

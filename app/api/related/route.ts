@@ -32,7 +32,7 @@ export const GET = withRequestLocale(async (req: Request) => {
       return NextResponse.json({ items }, noStore);
     }
     const row = url.searchParams.get("row");
-    return NextResponse.json(relatedPages(user, uuid.parse(url.searchParams.get("page")), row ? uuid.parse(row) : null), noStore);
+    return NextResponse.json(await relatedPages(user, uuid.parse(url.searchParams.get("page")), row ? uuid.parse(row) : null), noStore);
   } catch (e) {
     if (e instanceof z.ZodError) return NextResponse.json({ error: "Ungültige Eingabe." }, { status: 400 });
     if (!(e instanceof HttpError)) console.error(e);

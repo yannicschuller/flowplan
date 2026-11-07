@@ -12,12 +12,16 @@ import { expandLinkHandles, pageLinkHref, type LinkTarget } from "./links";
 import { cleanAnswer } from "./prompts";
 
 // Links only to web, mail and in-app addresses.
-function safeHref(href: string) {
+export function safeHref(href: string) {
   const value = href.trim();
   if (/^(https?:|mailto:)/i.test(value)) return value;
   if (/^(#|\/(?!\/))/.test(value)) return value;
   return null;
 }
+
+// Links as safeHref, images left out (see below) – for AI text written on
+// the server (lib/ai/actions.ts).
+export const aiAnswerHref = (href: string, kind: "link" | "image") => (kind === "image" ? null : safeHref(href));
 
 // The answer as editor HTML. Images are left out (their alt text stays): an
 // answer must not make the browser load addresses it names – text injected

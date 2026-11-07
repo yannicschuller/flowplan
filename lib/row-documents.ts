@@ -1,3 +1,4 @@
+import { requireDocumentSize } from "./document-size";
 import * as Y from "yjs";
 import { z } from "zod";
 import { all, one, run, id } from "./db";
@@ -96,9 +97,11 @@ export function syncRowDocument(
     Y.applyUpdate(doc, previous.state);
     const before = Y.encodeStateVector(doc);
     Y.applyUpdate(doc, Buffer.from(encoded, "base64"));
+    const state = Y.encodeStateAsUpdate(doc);
+    // Refused above the size cap (lib/document-size.ts) before anything is written.
+    requireDocumentSize(state, previous.state.byteLength);
     recordDocumentAuthors(pageId, rowId, previous.generation, user.id, before, Y.encodeStateVector(doc));
-    const html = stateHtml(doc),
-      state = Y.encodeStateAsUpdate(doc);
+    const html = stateHtml(doc);
     if (
       html !== previous.html &&
       !one(

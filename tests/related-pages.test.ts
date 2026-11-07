@@ -61,8 +61,8 @@ const mock = await startOllamaMock();
 after(() => mock.close());
 const setAi = (settings: Record<string, unknown>) => command(admin, { action: "admin.ai", settings });
 
-test("without AI: links, backlinks, shared links and titles – only what the person may read", () => {
-  const { items, semantic } = relatedPages(ben, open);
+test("without AI: links, backlinks, shared links and titles – only what the person may read", async () => {
+  const { items, semantic } = await relatedPages(ben, open);
   assert.equal(semantic, false);
   const ids = items.map((i) => i.pageId);
   const reasons = (page: string) => items.find((i) => i.pageId === page)?.reasons || [];
@@ -77,18 +77,18 @@ test("without AI: links, backlinks, shared links and titles – only what the pe
   // Strong links come first.
   assert.ok(ids.indexOf(target) < ids.indexOf(similar));
   // The owner sees the private backlink.
-  assert.ok(relatedPages(admin, open).items.some((i) => i.pageId === secret));
+  assert.ok((await relatedPages(admin, open)).items.some((i) => i.pageId === secret));
 });
 
-test("records: same tags, hidden records stay hidden", () => {
-  const { items } = relatedPages(ben, db, r1);
+test("records: same tags, hidden records stay hidden", async () => {
+  const { items } = await relatedPages(ben, db, r1);
   const ids = items.map((i) => i.rowId);
   assert.ok(ids.includes(r2), "shares a tag");
   assert.ok(!ids.includes(r3));
   assert.equal(items.find((i) => i.rowId === r2)!.pageTitle, "Aufgaben");
   assert.ok(!items.some((i) => !i.rowId && i.pageId === db), "not its own database");
   run("UPDATE rows SET access='private' WHERE id=?", r2);
-  assert.ok(!relatedPages(ben, db, r1).items.some((i) => i.rowId === r2));
+  assert.ok(!(await relatedPages(ben, db, r1)).items.some((i) => i.rowId === r2));
   run("UPDATE rows SET access='' WHERE id=?", r2);
 });
 
@@ -103,7 +103,7 @@ test("with meaning search: neighbours by meaning, only what the AI may read", as
   setAi({ enabled: true, semanticSearch: true, provider: { kind: "ollama", baseUrl: mock.base, model: "chat", embeddingModel: "embed" } });
   for (let i = 0; i < 20; i++) if (!(await processEmbeddings(500)).pending) break;
   const calls = mock.embeds.length;
-  const { items, semantic } = relatedPages(ben, open);
+  const { items, semantic } = await relatedPages(ben, open);
   assert.equal(semantic, true);
   assert.equal(mock.embeds.length, calls, "no provider call: stored vectors only");
   const byMeaning = items.filter((i) => i.reasons.includes("meaning")).map((i) => i.pageId);
@@ -112,10 +112,10 @@ test("with meaning search: neighbours by meaning, only what the AI may read", as
   assert.ok(!items.some((i) => i.pageId === blockedPlan), "closed to the AI");
   // The person's own rule excludes the page from meaning search.
   command(ben, { action: "ai.rule", targetId: roadmap, mode: "exclude" });
-  assert.ok(!relatedPages(ben, open).items.some((i) => i.pageId === roadmap));
+  assert.ok(!(await relatedPages(ben, open)).items.some((i) => i.pageId === roadmap));
   // AI off: back to links and titles.
   setAi({ enabled: false });
-  assert.equal(relatedPages(ben, open).semantic, false);
+  assert.equal((await relatedPages(ben, open)).semantic, false);
 });
 
 test("duplicate hint: similar titles among readable pages or records of a database", () => {
@@ -137,11 +137,12 @@ test("duplicate hint: similar titles among readable pages or records of a databa
   assert.throws(() => similarTitles(stranger, { workspaceId: wid, title: "Projektplan Alpha" }));
 });
 
-test("titles in Chinese relate by their words, two-character ones too", () => {
+test("titles in Chinese relate by their words, two-character ones too", async () => {
   const invoice = createPage(wid, space, admin.id, "上海发票");
   const summary = createPage(wid, space, admin.id, "发票汇总");
   const other = createPage(wid, space, admin.id, "会议记录");
-  const reasons = (page: string) => relatedPages(ben, invoice).items.find((i) => i.pageId === page)?.reasons || [];
+  const related = await relatedPages(ben, invoice);
+  const reasons = (page: string) => related.items.find((i) => i.pageId === page)?.reasons || [];
   assert.ok(reasons(summary).includes("title"));
   assert.ok(!reasons(other).length);
 });
