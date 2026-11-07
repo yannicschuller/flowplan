@@ -85,6 +85,20 @@ SQLite. `pg` is a plain dependency (added by the spike, no ORM); it is in
   (rolled back with it on SQLite, refused on Postgres). Both now go through
   `afterTransaction`. It is also the hook for cluster mode (publish to Redis
   after commit).
+- **Limits on secrets.** Counting wrong attempts, checking the secret and then
+  writing the failure is a check-then-write across awaits: on Postgres
+  parallel requests all passed the count (300 wrong codes at once, none
+  refused). Sign-in passwords, codes, passkeys, step-up confirmations and
+  share passwords reserve the attempt first (`reserveAttempt`/`beginAttempt`
+  in `lib/local-auth.ts`: a row `<key>#<nonce>` written outside any
+  transaction, then counted with every running attempt), so no more than the
+  limit get checked. Checks inside a command (journal PINs) cannot write
+  outside its transaction, and a throw would roll the count back: they refuse
+  with `refuseKeeping(error, writes)`, and the command runs in
+  `transactionKeepingRefusals` (savepoint undone, the writes committed under
+  the check's advisory lock, then the error) – `KEEPS_REFUSALS` in
+  `lib/api.ts`. Tests: `tests/attempt-limits-parallel.test.ts`,
+  `tests/journal-pin-limits.test.ts` (run them with `DATABASE_URL`).
 - **One SQLite connection.** An async transaction holds it from `BEGIN` to
   `COMMIT`, also while it awaits. Calls from outside wait for it (taken
   without an await between check and `BEGIN`; the spike found and fixed

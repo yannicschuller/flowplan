@@ -17,7 +17,7 @@ import { one, run } from "./db";
 import { securityEvent } from "./security-events";
 import { HttpError, appUrl } from "./auth";
 import { addressKey } from "./client-address";
-import { failed, limited, localGroups, verifyPassword } from "./local-auth";
+import { checkAttempt, localGroups, verifyPassword } from "./local-auth";
 import { ldapGroups, verifyLdapPassword } from "./ldap-auth";
 import { openSecret, sealSecret, signValue, validSignature } from "./secret-box";
 import { matchTotp, newTotpSecret, otpauthUri } from "./totp";
@@ -163,11 +163,12 @@ export async function useSecondFactor(userId: string, code: string, now = Date.n
 // With the limits for failed attempts (per account and per address).
 async function checkSecondFactor(userId: string, code: string, address: string, t: Tr, now = Date.now()) {
   const keys = [...addressKey("ip", address), `totp:${userId}`];
-  if (await limited(keys)) throw new HttpError(429, t("Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.", "Too many attempts. Please try again in 15 minutes."));
-  if (!(await useSecondFactor(userId, code, now))) {
-    await failed(keys);
-    throw new HttpError(401, t("Der Code stimmt nicht oder wurde schon benutzt.", "The code is wrong or was used already."));
-  }
+  await checkAttempt(
+    keys,
+    async () => await useSecondFactor(userId, code, now),
+    t("Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.", "Too many attempts. Please try again in 15 minutes."),
+    t("Der Code stimmt nicht oder wurde schon benutzt.", "The code is wrong or was used already."),
+  );
 }
 // A code from the app (or a recovery code) to confirm a sensitive step
 // (lib/step-up.ts), with the same limits as at sign-in.
@@ -181,11 +182,12 @@ async function confirmWithPasswordOrCode(userId: string, input: unknown, address
   const local = await requireLocal(userId, t);
   if (code) return await checkSecondFactor(userId, code, address, t);
   const keys = [...addressKey("ip", address), `totp:${userId}`];
-  if (await limited(keys)) throw new HttpError(429, t("Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.", "Too many attempts. Please try again in 15 minutes."));
-  if (!password || !(await passwordMatches(userId, password, local))) {
-    await failed(keys);
-    throw new HttpError(401, t("Bitte das aktuelle Passwort oder einen Code aus der App eingeben.", "Please enter the current password or a code from the app."));
-  }
+  await checkAttempt(
+    keys,
+    async () => !!password && (await passwordMatches(userId, password, local)),
+    t("Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.", "Too many attempts. Please try again in 15 minutes."),
+    t("Bitte das aktuelle Passwort oder einen Code aus der App eingeben.", "Please enter the current password or a code from the app."),
+  );
 }
 
 export async function disableTotp(userId: string, input: unknown, address: string, locale: Locale) {
@@ -255,7 +257,11 @@ async function readPending(token: string | undefined, now = Date.now()) {
   if (!local || fingerprint(local.password_hash) !== print) return null;
   return { userId, remember: remember === "1" };
 }
-// The second step: the pending token and a code.
+// The second step: the pending token and a code. The token stays valid for
+// several tries (typos), so it can be sent many times at once; what bounds
+// the guesses is the limit per account (totp:<user id>), which reserves each
+// attempt before the code is checked (lib/local-auth.ts reserveAttempt):
+// parallel requests count against each other on both databases.
 export async function completeSignIn(token: string | undefined, input: unknown, address: string, locale: Locale, now = Date.now()) {
   const t = tr(locale);
   const pending = await readPending(token, now);

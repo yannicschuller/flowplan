@@ -20,7 +20,7 @@ import {
   type AuthenticationResponseJSON,
   type RegistrationResponseJSON,
 } from "@simplewebauthn/server";
-import { all, id, one, run } from "./db";
+import { all, id, inTransaction, one, run } from "./db";
 import { db } from "./db-driver";
 import { HttpError, acceptInvites, adminGroup, appUrl, hash, inviteTokenShape, rememberPolicy } from "./auth";
 import { instanceSettings } from "./instance-settings";
@@ -285,19 +285,23 @@ function counters(keys: string[]): { key: string; limit: number }[] {
   });
 }
 const failuresOf = async (key: string, since: number) => Number((await one<{ n: number }>("SELECT COUNT(*) n FROM login_failures WHERE key=? AND at>=?", key, since))?.n || 0);
-// Whether one of the keys had too many failures in the last 15 minutes.
-export async function limited(keys: string[]) {
+// An address or network the administrators blocked (Administration →
+// Sicherheit) does not get to try at all.
+async function blockedAttempt(keys: string[]) {
   const attempt = failureOf(keys);
-  // An address or network the administrators blocked (Administration →
-  // Sicherheit) does not get to try at all.
-  if (attempt.address && await blockedAddress(attempt.address)) {
-    securityEvent("login.refused", { ...attempt, detail: `blocked ${attempt.detail}` });
-    return true;
-  }
+  if (!attempt.address || !(await blockedAddress(attempt.address))) return false;
+  securityEvent("login.refused", { ...attempt, detail: `blocked ${attempt.detail}` });
+  return true;
+}
+// Whether one of the keys had too many failures in the last 15 minutes.
+// Only a look: a check of a secret goes through beginAttempt, which also
+// holds its place against parallel attempts.
+export async function limited(keys: string[]) {
+  if (await blockedAttempt(keys)) return true;
   const since = Date.now() - WINDOW;
   await pruneLoginFailures(since);
   const over = await someAsync(counters(keys), async ({ key, limit }) => (await failuresOf(key, since)) >= limit);
-  if (over) securityEvent("login.refused", { ...attempt, detail: `limit ${attempt.detail}` });
+  if (over) securityEvent("login.refused", { ...failureOf(keys), detail: `limit ${failureOf(keys).detail}` });
   return over;
 }
 export async function failed(keys: string[]) {
@@ -305,6 +309,98 @@ export async function failed(keys: string[]) {
   securityEvent("login.failure", failureOf(keys));
   const now = Date.now();
   for (const { key } of counters(keys)) await run("INSERT INTO login_failures(key,at) VALUES(?,?)", key, now);
+}
+
+// ---- Attempts: reserved before the secret is checked ----
+//
+// Checking the count, then the secret, then writing the failure leaves a
+// gap: on PostgreSQL parallel requests all read the same count before any
+// of them writes, and each gets its guess (300 wrong codes at once, none
+// refused). So an attempt first writes its row – under "<key>#<nonce>", so
+// it can be told apart – and then counts, its own row and every attempt
+// still running included; over the limit, it takes the row back and is
+// refused. Of the parallel attempts, the one written last sees all the
+// others, so no more than the limit get through. A wrong secret turns the
+// row into an ordinary failure under <key>; anything else (right secret,
+// another error) takes it away again. Rows are written on their own, never
+// inside a transaction, so they count for everybody at once; a process that
+// dies in between leaves a row that counts as a failure until it is pruned.
+// SQLite behaves as before: the same limits, the same rows afterwards.
+export type AttemptCounter = { key: string; limit: number; windowMs: number };
+export type Attempt = {
+  // The secret was wrong: the attempt counts as a failure.
+  failed(): Promise<void>;
+  // Done (in a finally): without failed(), the attempt leaves no trace.
+  end(): Promise<void>;
+};
+const RESERVED = "#";
+// Failures and running attempts under a key since `since`.
+async function attemptsSince(key: string, since: number) {
+  const prefix = `${key}${RESERVED}`;
+  return Number(
+    (await one<{ n: number }>("SELECT COUNT(*) n FROM login_failures WHERE (key=? OR substr(key,1,?)=?) AND at>=?", key, [...prefix].length, prefix, since))?.n || 0,
+  );
+}
+// Reserves one attempt under every counter's key; null when one of them
+// already had `limit` failures (or running attempts) within its window.
+export async function reserveAttempt(list: AttemptCounter[], now = Date.now()): Promise<Attempt | null> {
+  if (inTransaction()) throw new Error("reserveAttempt runs outside transactions: its rows must count for parallel requests at once.");
+  const nonce = id();
+  const reserved = new Map([...new Set(list.map((c) => c.key))].map((key) => [key, `${key}${RESERVED}${nonce}`]));
+  for (const row of reserved.values()) await run("INSERT INTO login_failures(key,at) VALUES(?,?)", row, now);
+  let open = true;
+  const end = async () => {
+    if (!open) return;
+    open = false;
+    await run(`DELETE FROM login_failures WHERE key IN (${[...reserved.values()].map(() => "?").join(",")})`, ...reserved.values());
+  };
+  for (const { key, limit, windowMs } of list)
+    if ((await attemptsSince(key, now - windowMs)) > limit) {
+      await end();
+      return null;
+    }
+  return {
+    async failed() {
+      if (!open) return;
+      open = false;
+      for (const [key, row] of reserved) await run("UPDATE login_failures SET key=? WHERE key=?", key, row);
+    },
+    end,
+  };
+}
+// One attempt at a sign-in secret (password, code, passkey) under the
+// limits of `keys`; null when refused (blocked address, too many failures).
+export async function beginAttempt(keys: string[]): Promise<Attempt | null> {
+  if (await blockedAttempt(keys)) return null;
+  const now = Date.now();
+  await pruneLoginFailures(now - WINDOW, now);
+  const reserved = await reserveAttempt(counters(keys).map((c) => ({ ...c, windowMs: WINDOW })), now);
+  if (!reserved) {
+    const attempt = failureOf(keys);
+    securityEvent("login.refused", { ...attempt, detail: `limit ${attempt.detail}` });
+    return null;
+  }
+  return {
+    async failed() {
+      recordOpsEvent("login_failure");
+      securityEvent("login.failure", failureOf(keys));
+      await reserved.failed();
+    },
+    end: reserved.end,
+  };
+}
+// Checks a secret as one attempt under the limits of `keys`: 429 with
+// `tooMany` when refused, 401 with `wrong` (a failure) when `check` says no.
+export async function checkAttempt(keys: string[], check: () => Promise<boolean>, tooMany: string, wrong: string) {
+  const attempt = await beginAttempt(keys);
+  if (!attempt) throw new HttpError(429, tooMany);
+  try {
+    if (await check()) return;
+    await attempt.failed();
+    throw new HttpError(401, wrong);
+  } finally {
+    await attempt.end();
+  }
 }
 // A successful sign-in clears the failures of the name, from every address.
 // The pairs are found by their prefix ("<key>|"), compared as text: a range
@@ -348,14 +444,20 @@ export async function passwordLogin(input: unknown, address: string, locale: Loc
     .object({ email: z.string().trim().max(200), password: z.string().max(200) })
     .parse(input);
   const keys = [...addressKey("ip", address), `email:${email.toLowerCase()}`];
-  if (await limited(keys)) throw new HttpError(429, t("Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.", "Too many attempts. Please try again in 15 minutes."));
-  await slowDown(keys);
-  const account = await accountByEmail(email);
-  // The same work and the same answer whether the account exists or not.
-  const ok = await verifyPassword(password, account?.password_hash || DUMMY_HASH);
-  if (!account || !ok) {
-    await failed(keys);
-    throw new HttpError(401, t("E-Mail-Adresse oder Passwort stimmt nicht.", "E-mail address or password is wrong."));
+  const attempt = await beginAttempt(keys);
+  if (!attempt) throw new HttpError(429, t("Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.", "Too many attempts. Please try again in 15 minutes."));
+  let account: Awaited<ReturnType<typeof accountByEmail>>;
+  try {
+    await slowDown(keys);
+    account = await accountByEmail(email);
+    // The same work and the same answer whether the account exists or not.
+    const ok = await verifyPassword(password, account?.password_hash || DUMMY_HASH);
+    if (!account || !ok) {
+      await attempt.failed();
+      throw new HttpError(401, t("E-Mail-Adresse oder Passwort stimmt nicht.", "E-mail address or password is wrong."));
+    }
+  } finally {
+    await attempt.end();
   }
   if (account.disabled) throw new HttpError(403, t("Dieses Konto ist deaktiviert.", "This account is disabled."));
   if (awaitsConfirmation(account)) {
@@ -378,8 +480,18 @@ export async function changePassword(userId: string, input: unknown, locale: Loc
   const account = await accountOf(userId);
   if (!account) throw new HttpError(400, t("Dieses Konto meldet sich über SSO an.", "This account signs in with SSO."));
   const { current, next } = z.object({ current: z.string().max(200), next: z.string() }).parse(input);
-  if (!(await verifyPassword(current, account.password_hash)))
-    throw new HttpError(401, t("Das bisherige Passwort stimmt nicht.", "The current password is wrong."));
+  // With the limits of the account's other confirmations: a session left
+  // open somewhere must not try passwords without end.
+  const attempt = await beginAttempt([`totp:${userId}`]);
+  if (!attempt) throw new HttpError(429, t("Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.", "Too many attempts. Please try again in 15 minutes."));
+  try {
+    if (!(await verifyPassword(current, account.password_hash))) {
+      await attempt.failed();
+      throw new HttpError(401, t("Das bisherige Passwort stimmt nicht.", "The current password is wrong."));
+    }
+  } finally {
+    await attempt.end();
+  }
   const password = passwordSchema(t).safeParse(next);
   if (!password.success) throw new HttpError(400, password.error.issues[0].message);
   await run("UPDATE local_accounts SET password_hash=? WHERE user_id=?", await hashPassword(password.data), userId);
@@ -643,14 +755,20 @@ async function verifyAssertion(challenge: string, response: AuthenticationRespon
 export async function passkeyLogin(token: string | undefined, input: unknown, address: string, locale: Locale) {
   const t = tr(locale);
   const keys = addressKey("ip", address);
-  if (await limited(keys)) throw new HttpError(429, t("Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.", "Too many attempts. Please try again in 15 minutes."));
-  const response = z.object({ id: z.string().max(1000) }).passthrough().parse(input) as unknown as AuthenticationResponseJSON;
-  const challenge = await takeChallenge(token, "login");
-  if (!challenge) throw new HttpError(400, t("Die Anfrage ist abgelaufen. Bitte erneut versuchen.", "The request has expired. Please try again."));
-  const passkey = await verifyAssertion(challenge.challenge, response);
-  if (!passkey) {
-    await failed(keys);
-    throw new HttpError(401, t("Dieser Passkey ist hier nicht bekannt.", "This passkey is not known here."));
+  const attempt = await beginAttempt(keys);
+  if (!attempt) throw new HttpError(429, t("Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.", "Too many attempts. Please try again in 15 minutes."));
+  let passkey: StoredPasskey | null;
+  try {
+    const response = z.object({ id: z.string().max(1000) }).passthrough().parse(input) as unknown as AuthenticationResponseJSON;
+    const challenge = await takeChallenge(token, "login");
+    if (!challenge) throw new HttpError(400, t("Die Anfrage ist abgelaufen. Bitte erneut versuchen.", "The request has expired. Please try again."));
+    passkey = await verifyAssertion(challenge.challenge, response);
+    if (!passkey) {
+      await attempt.failed();
+      throw new HttpError(401, t("Dieser Passkey ist hier nicht bekannt.", "This passkey is not known here."));
+    }
+  } finally {
+    await attempt.end();
   }
   const account = await one<{ disabled: number }>("SELECT disabled FROM users WHERE id=?", passkey.user_id);
   if (!account || account.disabled) throw new HttpError(403, t("Dieses Konto ist deaktiviert.", "This account is disabled."));
