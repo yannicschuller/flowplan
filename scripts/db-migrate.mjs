@@ -14,15 +14,17 @@
 // lib/db-driver/postgres-schema.json (the version that wrote the source
 // must be this one: PRAGMA user_version / flowplan_meta). Into Postgres the
 // target tables must be empty; into SQLite the file must not exist yet.
-// Each table is copied in batches ordered by rowid (kept on both sides),
-// foreign keys are checked after the copy, identity sequences moved on,
-// and every table is compared by row count and an order-independent
-// checksum of its canonical values.
+// Each table is copied in batches in the order of its primary key (seq
+// columns – the order of insertion, schema 93 – keep their values), foreign
+// keys are checked after the copy, triggers created after it (they would
+// fire for every copied row), identity sequences moved on, and every table
+// is compared by row count and an order-independent checksum of its
+// canonical values. The search index is not copied: Flowplan rebuilds it.
 import { DatabaseSync } from "node:sqlite";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import pg from "pg";
-import { ensurePostgresSchema, quoteIdent } from "../lib/db-driver/pg-ddl.mjs";
+import { ensurePostgresSchema, ensurePostgresTriggers, quoteIdent } from "../lib/db-driver/pg-ddl.mjs";
 
 const SLICE = ["users", "sessions", "local_accounts", "api_tokens", "auth_tokens", "login_failures", "passkeys", "workspaces", "spaces", "members", "page_tags"];
 
@@ -42,7 +44,8 @@ const pgSchemaName = option("schema", "public");
 const verifyOnly = args.includes("--verify-only");
 const schema = JSON.parse(readFileSync(new URL("../lib/db-driver/postgres-schema.json", import.meta.url), "utf8"));
 const tablesOption = option("tables", "slice");
-const wanted = tablesOption === "all" ? schema.tables.map((t) => t.name) : tablesOption === "slice" ? SLICE : tablesOption.split(",");
+// The search index (FTS5 in SQLite, a plain table in Postgres) is rebuilt.
+const wanted = (tablesOption === "all" ? schema.tables.map((t) => t.name) : tablesOption === "slice" ? SLICE : tablesOption.split(",")).filter((n) => n !== "search_index");
 const tables = schema.tables.filter((t) => wanted.includes(t.name));
 for (const name of wanted) if (!tables.some((t) => t.name === name)) throw new Error(`unknown table ${name}`);
 
@@ -118,36 +121,46 @@ function checksumOf(rows, columns) {
   }
   return sum.toString(16).padStart(16, "0");
 }
-// The emulated rowid is part of the comparison, except where SQLite's rowid
-// is the INTEGER PRIMARY KEY itself.
-const rowidIsKey = (t) => t.primaryKey.length === 1 && t.columns.find((c) => c.name === t.primaryKey[0])?.type === "bigint";
-const dataColumns = (t) => t.columns.filter((c) => c.name !== "rowid");
+const dataColumns = (t) => t.columns;
 
-// ---- Reading in batches, ordered by rowid ----
+// ---- Reading in batches, in key order ----
 
+// Keyset pagination by the primary key; a table without one (a few small
+// link tables) in pages by offset over all its columns.
+function pageQuery(t, quote, placeholder) {
+  const cols = dataColumns(t).map((c) => quote(c.name));
+  const key = (t.primaryKey.length ? t.primaryKey : dataColumns(t).map((c) => c.name)).map(quote);
+  const order = key.join(",");
+  return (after, offset) =>
+    t.primaryKey.length
+      ? `SELECT ${cols.join(",")} FROM ${quote(t.name)}${after ? ` WHERE (${order})>(${key.map((_, i) => placeholder(i + 1)).join(",")})` : ""} ORDER BY ${order} LIMIT ${batchSize}`
+      : `SELECT ${cols.join(",")} FROM ${quote(t.name)} ORDER BY ${order} LIMIT ${batchSize} OFFSET ${offset}`;
+}
+const lastKey = (t, rows) => (t.primaryKey.length ? t.primaryKey.map((k) => rows[rows.length - 1][k]) : null);
 async function* sqliteBatches(d, t) {
-  const cols = dataColumns(t);
-  const select = d.prepare(`SELECT rowid AS "__rowid",${cols.map((c) => `"${c.name}"`).join(",")} FROM "${t.name}" WHERE rowid>? ORDER BY rowid LIMIT ?`);
-  select.setReadBigInts(true);
-  let last = -(2n ** 63n);
-  for (;;) {
-    const rows = select.all(last, batchSize);
+  const query = pageQuery(t, (n) => `"${n}"`, () => "?");
+  let after = null;
+  for (let offset = 0; ; ) {
+    const select = d.prepare(query(after, offset));
+    select.setReadBigInts(true);
+    const rows = select.all(...(after ?? []));
     if (!rows.length) return;
-    last = rows[rows.length - 1].__rowid;
-    yield rows.map((r) => ({ ...r, rowid: r.__rowid }));
+    yield rows;
+    if (rows.length < batchSize) return;
+    after = lastKey(t, rows);
+    offset += rows.length;
   }
 }
 async function* pgBatches(p, t) {
-  const cols = dataColumns(t);
-  let last = -(2n ** 63n);
-  for (;;) {
-    const { rows } = await p.client.query(
-      `SELECT rowid AS "__rowid",${cols.map((c) => quoteIdent(c.name)).join(",")} FROM ${quoteIdent(t.name)} WHERE rowid>$1 ORDER BY rowid LIMIT $2`,
-      [last.toString(), batchSize],
-    );
+  const query = pageQuery(t, quoteIdent, (i) => `$${i}`);
+  let after = null;
+  for (let offset = 0; ; ) {
+    const { rows } = await p.client.query(query(after, offset), (after ?? []).map((v) => (typeof v === "bigint" ? v.toString() : v)));
     if (!rows.length) return;
-    last = rows[rows.length - 1].__rowid;
-    yield rows.map((r) => ({ ...r, rowid: r.__rowid }));
+    yield rows;
+    if (rows.length < batchSize) return;
+    after = lastKey(t, rows);
+    offset += rows.length;
   }
 }
 async function collect(batches) {
@@ -159,7 +172,7 @@ async function compare(readSource, readTarget) {
   let ok = true;
   console.log(`\n${"table".padEnd(26)} ${"rows".padStart(8)} ${"source checksum".padStart(17)} ${"target checksum".padStart(17)}`);
   for (const t of tables) {
-    const cols = [...dataColumns(t), ...(rowidIsKey(t) ? [] : [{ name: "rowid", type: "bigint" }])];
+    const cols = dataColumns(t);
     const [a, b] = [await collect(readSource(t)), await collect(readTarget(t))];
     const [ca, cb] = [checksumOf(a, cols), checksumOf(b, cols)];
     const same = a.length === b.length && ca === cb;
@@ -181,7 +194,7 @@ async function sqliteToPostgres(file, url) {
   const readSqlite = (t) => sqliteBatches(d, t);
   const readPg = (t) => pgBatches(p, t);
   if (!verifyOnly) {
-    await ensurePostgresSchema(p, schema, wanted);
+    await ensurePostgresSchema(p, schema, wanted, { triggers: false });
     for (const t of tables) {
       const { rows } = await p.client.query(`SELECT 1 FROM ${quoteIdent(t.name)} LIMIT 1`);
       if (rows.length) throw new Error(`${t.name} in Postgres is not empty: migrate into an empty database or schema.`);
@@ -197,7 +210,7 @@ async function sqliteToPostgres(file, url) {
     for (const fk of fks) await p.client.query(`ALTER TABLE ${fk.tbl} DROP CONSTRAINT ${quoteIdent(fk.conname)}`);
     const started = Date.now();
     for (const t of tables) {
-      const cols = [...dataColumns(t), ...(rowidIsKey(t) ? [] : [{ name: "rowid", type: "bigint" }])];
+      const cols = dataColumns(t);
       const perBatch = Math.max(1, Math.min(batchSize, Math.floor(60_000 / cols.length)));
       let copied = 0;
       await p.client.query("BEGIN");
@@ -205,7 +218,7 @@ async function sqliteToPostgres(file, url) {
         for (let i = 0; i < rows.length; i += perBatch) {
           const part = rows.slice(i, i + perBatch);
           const values = [];
-          const tuples = part.map((row, r) => `(${cols.map((c, k) => (values.push(toPg(row[c.name], c.type, `${t.name} rowid ${row.rowid}, ${c.name}`)), `$${r * cols.length + k + 1}`)).join(",")})`);
+          const tuples = part.map((row, r) => `(${cols.map((c, k) => (values.push(toPg(row[c.name], c.type, `${t.name} ${JSON.stringify(t.primaryKey.map((k) => String(row[k])))}, ${c.name}`)), `$${r * cols.length + k + 1}`)).join(",")})`);
           await p.client.query(`INSERT INTO ${quoteIdent(t.name)}(${cols.map((c) => quoteIdent(c.name)).join(",")}) VALUES ${tuples.join(",")}`, values);
           copied += part.length;
         }
@@ -218,7 +231,11 @@ async function sqliteToPostgres(file, url) {
       await p.client.query("COMMIT");
       console.log(`${t.name.padEnd(26)} ${String(copied).padStart(8)} rows`);
     }
-    await ensurePostgresSchema(p, schema, wanted);
+    await ensurePostgresSchema(p, schema, wanted, { triggers: false });
+    // Triggers last: they would have fired for every copied row.
+    await ensurePostgresTriggers(p, schema, wanted);
+    // The search index is built anew from the data.
+    if (wanted.includes("search_state")) await p.client.query("DELETE FROM search_state");
     await p.client.query("INSERT INTO flowplan_meta(key,value) VALUES('migrated_from',$1) ON CONFLICT(key) DO UPDATE SET value=excluded.value", [
       JSON.stringify({ from: "sqlite", at: new Date().toISOString(), tables: wanted.length }),
     ]);
@@ -248,7 +265,7 @@ async function postgresToSqlite(url, file) {
     for (const o of schema.sqlite.filter((x) => x.type === "table")) d.exec(o.sql);
     const started = Date.now();
     for (const t of tables) {
-      const cols = [...(rowidIsKey(t) ? [] : [{ name: "rowid", type: "bigint" }]), ...dataColumns(t)];
+      const cols = dataColumns(t);
       const insert = d.prepare(`INSERT INTO "${t.name}"(${cols.map((c) => `"${c.name}"`).join(",")}) VALUES(${cols.map(() => "?").join(",")})`);
       let copied = 0;
       for await (const rows of readPg(t)) {
