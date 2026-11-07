@@ -124,9 +124,22 @@ export function requestContext(h: Headers): Context {
 // inside a transaction that is rolled back, and the event must stay. An
 // asynchronous transaction (lib/db-driver) may still be open then: the
 // write waits until it has ended (afterTransaction).
+// Writes under way (their database round trips), for securityWritesSettled().
+const writing = ((globalThis as { flowplanSecurityWrites?: Set<Promise<unknown>> }).flowplanSecurityWrites ??= new Set());
+function tracked(work: Promise<unknown>) {
+  writing.add(work);
+  void work.finally(() => writing.delete(work)).catch(() => {});
+  return work;
+}
+// Resolves once the security events recorded so far are written (tests,
+// shutdown): those queued for after a transaction start a turn later.
+export async function securityWritesSettled() {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  while (writing.size) await Promise.allSettled([...writing]);
+}
 export function securityEvent(kind: SecurityKind, input: SecurityInput = {}) {
   const at = input.at ?? Date.now();
-  const later = (context: Context) => queueMicrotask(() => afterTransaction(async () => await write(kind, { ...input, at }, context)));
+  const later = (context: Context) => queueMicrotask(() => afterTransaction(() => tracked(write(kind, { ...input, at }, context))));
   if (input.headers) return later({ ...requestContext(input.headers), ...(input.address !== undefined ? { address: input.address } : {}) });
   if (input.address !== undefined) return later({ ...NONE, address: input.address });
   // Inside a request: its address and device; elsewhere (workers, tests) none.
@@ -136,8 +149,8 @@ export function securityEvent(kind: SecurityKind, input: SecurityInput = {}) {
   } catch {}
   if (!pending) return later(NONE);
   pending.then(
-    (h) => afterTransaction(async () => await write(kind, { ...input, at }, requestContext(h))),
-    () => afterTransaction(async () => await write(kind, { ...input, at }, NONE)),
+    (h) => afterTransaction(() => tracked(write(kind, { ...input, at }, requestContext(h)))),
+    () => afterTransaction(() => tracked(write(kind, { ...input, at }, NONE))),
   );
 }
 

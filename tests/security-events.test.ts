@@ -13,7 +13,11 @@ const { securityAction, securityOverview, securityExport, securityIncident } = a
 const { failed, limited } = await import("../lib/local-auth");
 
 // Events are written right after the current synchronous work.
-const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+// The events are written after the current work; on Postgres over the network.
+const settle = async () => {
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  await events.securityWritesSettled();
+};
 const reset = async () => {
   await run("DELETE FROM security_events");
   await run("DELETE FROM security_incidents");
