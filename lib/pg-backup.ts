@@ -266,11 +266,13 @@ async function emptySchema(client: pg.Client, schema: string) {
 
 // Replaces the instance's data with a dump: refuses a dump of a newer
 // Flowplan version; empties the instance's schema and restores the dump
-// into it in one transaction. A dump of a schema of the same name goes in
-// with pg_restore --single-transaction; one of another name (an instance
-// with FLOWPLAN_PG_SCHEMA restoring a backup of one in `public`, or the
-// other way round) through psql, pg_restore's SQL with the schema's name
-// replaced outside the data (sameSchema below). On a failure the
+// into it in one transaction: pg_restore's SQL through psql
+// --single-transaction, the schema's name replaced outside the data when
+// it differs (an instance with FLOWPLAN_PG_SCHEMA restoring a backup of one
+// in `public`, or the other way round; sameSchema below). Not pg_restore
+// straight into the database: pg_restore 17 and newer set
+// transaction_timeout, which a PostgreSQL 16 server refuses – the image's
+// client tools are 18 – and only the script can leave that out. On a failure the
 // schema is left empty: the caller restores the state it saved before
 // (restorePendingIntoPostgres keeps it as a dump, as SQLite keeps the old
 // file). Afterwards the caller brings the schema to this version and
@@ -294,46 +296,66 @@ export async function restoreDump(path: string, options: { newestVersion: number
   const listFile = `${path}.list`;
   writeFileSync(listFile, `${list.join("\n")}\n`);
   try {
-    const psql = source === target ? null : await requireTool("psql");
+    const psql = await requireTool("psql");
     await withClient(async (client) => await emptySchema(client, target));
     const { dbname, env } = libpqConnection();
-    if (!psql) {
-      const { code, stderr } = await run(tool, ["--no-owner", "--no-privileges", "--single-transaction", "--exit-on-error", `--use-list=${listFile}`, `--dbname=${dbname}`, path], {
-        env,
-      });
-      if (code !== 0) throw new Error(`pg_restore: ${stderr.trim().split("\n").slice(-3).join(" ").slice(0, 400) || `exit ${code}`}`);
-    } else await restoreRenamed(tool, psql, path, listFile, source, target, dbname, env);
+    await restoreScript(tool, psql, path, listFile, source, target, dbname, env);
   } finally {
     rmSync(listFile, { force: true });
   }
 }
 // pg_restore's SQL (names schema-qualified, search_path empty) into psql,
-// the schema's name replaced in every statement but not in COPY data.
-async function restoreRenamed(pgRestore: string, psql: string, path: string, listFile: string, source: string, target: string, dbname: string, env: NodeJS.ProcessEnv) {
-  const rename = sameSchema(source, target);
+// the schema's name replaced in every statement but not in COPY data
+// (when it differs).
+// Written for pg_restore's own version: a newer client than the server
+// (the image brings 18, the server may be 16) sets parameters the server
+// does not know (transaction_timeout, from 17) – those lines are left out.
+// If psql stops (an error, ON_ERROR_STOP), pg_restore is stopped too and
+// the error reported: waiting for psql to read on would wait forever.
+async function restoreScript(pgRestore: string, psql: string, path: string, listFile: string, source: string, target: string, dbname: string, env: NodeJS.ProcessEnv) {
+  const rename = source === target ? (line: string) => line : sameSchema(source, target);
+  const unknown = unknownSettings(await serverMajor());
   const reader = spawn(pgRestore, ["--no-owner", "--no-privileges", `--use-list=${listFile}`, "--file=-", path], { stdio: ["ignore", "pipe", "pipe"] });
   const writer = spawn(psql, ["--no-psqlrc", "--quiet", "--single-transaction", "--set=ON_ERROR_STOP=1", `--dbname=${dbname}`], { env, stdio: ["pipe", "ignore", "pipe"] });
   let errors = "";
   reader.stderr.on("data", (c: Buffer) => (errors = (errors + c.toString("utf8")).slice(-4000)));
   writer.stderr.on("data", (c: Buffer) => (errors = (errors + c.toString("utf8")).slice(-4000)));
+  const readerClosed = new Promise<number>((done) => (reader.exitCode !== null ? done(reader.exitCode) : reader.once("close", (c) => done(c ?? 1))));
+  let writerDone = false;
+  const writerClosed = new Promise<number>((done) =>
+    writer.once("close", (c) => {
+      writerDone = true;
+      done(c ?? 1);
+    }),
+  );
   const lines = createInterface({ input: reader.stdout, crlfDelay: Infinity });
   let copying = false;
   writer.stdin.on("error", () => {});
-  for await (const line of lines) {
-    let out = line;
-    if (copying) copying = line !== "\\.";
-    else {
-      out = rename(line);
-      copying = /^COPY\s.*\sFROM stdin;$/.test(line);
+  try {
+    for await (const line of lines) {
+      if (writerDone) break;
+      let out = line;
+      if (copying) copying = line !== "\\.";
+      else {
+        if (unknown.test(line)) continue;
+        out = rename(line);
+        copying = /^COPY\s.*\sFROM stdin;$/.test(line);
+      }
+      if (!writer.stdin.write(`${out}\n`)) await Promise.race([new Promise((done) => writer.stdin.once("drain", done)), writerClosed]);
     }
-    if (!writer.stdin.write(`${out}\n`)) await new Promise((done) => writer.stdin.once("drain", done));
+  } finally {
+    lines.close();
+    if (writerDone && reader.exitCode === null) reader.kill();
   }
   writer.stdin.end();
-  const [readCode, writeCode] = await Promise.all([
-    new Promise<number>((done) => (reader.exitCode !== null ? done(reader.exitCode) : reader.once("close", (c) => done(c ?? 1)))),
-    new Promise<number>((done) => writer.once("close", (c) => done(c ?? 1))),
-  ]);
+  const [readCode, writeCode] = await Promise.all([readerClosed, writerClosed]);
   if (readCode !== 0 || writeCode !== 0) throw new Error(`pg_restore/psql: ${errors.trim().split("\n").slice(-3).join(" ").slice(0, 400) || `exit ${readCode}/${writeCode}`}`);
+}
+// SET lines of pg_restore's script for parameters a server of this major
+// version does not have.
+export function unknownSettings(serverMajor: number) {
+  const newer = [{ name: "transaction_timeout", since: 17 }].filter((p) => serverMajor < p.since).map((p) => p.name);
+  return newer.length ? new RegExp(`^SET (${newer.join("|")}) = `) : /(?!)/;
 }
 // Replaces the schema in qualified names (source. or "source".; also in
 // 'source.seq' literals of setval) – a name that is a part of another one

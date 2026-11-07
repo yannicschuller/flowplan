@@ -174,3 +174,12 @@ test("on SQLite a pg_dump backup is refused before anything is staged", { skip: 
   await assert.rejects(stageDumpRestore(file), /nur in einer Instanz mit PostgreSQL/);
   assert.equal(pendingRestore(), null);
 });
+
+test("newer client tools than the server: settings the server does not know are left out of the script", () => {
+  // pg_restore 17+ writes SET transaction_timeout, which PostgreSQL 16 refuses
+  // (the image's client tools are 18; CI's runner has 18 against a 16 server).
+  assert.equal(backup.unknownSettings(16).test("SET transaction_timeout = 0;"), true);
+  assert.equal(backup.unknownSettings(16).test("SET statement_timeout = 0;"), false);
+  assert.equal(backup.unknownSettings(17).test("SET transaction_timeout = 0;"), false);
+  assert.equal(backup.unknownSettings(18).test("COPY x FROM stdin;"), false);
+});

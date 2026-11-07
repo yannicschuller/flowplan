@@ -26,12 +26,13 @@ const ROWS_PER_INSERT = 200;
 export async function restorePendingIntoPostgres() {
   const dir = resolve(/* turbopackIgnore: true */ process.env.FLOWPLAN_DATA_DIR || "./data");
   if (!existsSync(resolve(dir, "restore-pending", "READY"))) return null;
-  // A dump needs pg_dump and pg_restore: without them it stays staged (and
-  // is tried again at the next start) instead of being swapped in unused.
+  // A dump needs pg_dump, pg_restore and psql: without them it stays staged
+  // (and is tried again at the next start) instead of being swapped in unused.
   if (existsSync(resolve(dir, "restore-pending", "flowplan.dump")))
     try {
       await requireTool("pg_restore");
       await requireTool("pg_dump");
+      await requireTool("psql");
     } catch (error) {
       console.error("Wiederherstellung wartet:", (error as Error).message);
       return null;
