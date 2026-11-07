@@ -1060,7 +1060,11 @@ export function startMessengerWorker() {
   runtime.flowplanMessengerTimer = setInterval(async () => {
     void dispatchMessengers();
     // A code may have been made by another process (several replicas).
-    if (await pendingLinks()) ensureTelegramPolling();
+    try {
+      if (await pendingLinks()) ensureTelegramPolling();
+    } catch (error) {
+      console.error("Chat-App-Verknüpfungen nicht lesbar", error);
+    }
   }, 15_000);
   runtime.flowplanMessengerTimer.unref?.();
   void dispatchMessengers();

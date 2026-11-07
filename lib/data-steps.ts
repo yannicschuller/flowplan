@@ -23,8 +23,9 @@ export const SAVED_SEARCHES_STEP = "saved-searches-85";
 export const IDENTITIES_STEP = "identities-88";
 export const REACTION_EMOJI_STEP = "reaction-emoji-fe0f";
 
-// In the order the schema versions introduced them.
-export const DATA_STEPS: DataStep[] = [
+// In the order the schema versions introduced them. A function: the
+// modules of the steps import lib/db.ts, which may still be loading.
+export const dataSteps = (): DataStep[] => [
   { name: SAVED_SEARCHES_STEP, run: savedSearchesToCollections },
   { name: IDENTITIES_STEP, run: identitiesFromSubjects },
   { name: FORMATTED_TEXT_MIGRATION, run: escapeFormattedText },
@@ -36,7 +37,7 @@ export const DATA_STEPS: DataStep[] = [
 // one PostgreSQL database take turns (advisory lock) and skip what another
 // has done meanwhile.
 export async function runDataSteps(only?: string[]) {
-  for (const step of DATA_STEPS) {
+  for (const step of dataSteps()) {
     if (only && !only.includes(step.name)) continue;
     if (await one("SELECT 1 FROM data_migrations WHERE name=?", step.name)) continue;
     try {

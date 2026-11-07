@@ -8,7 +8,6 @@ import { randomUUID } from "node:crypto";
 import { flushRelationChanges } from "./relation-sync";
 import type { Identity } from "./types";
 import { notificationDefaults, notificationOn } from "./notification-kinds";
-import { runDataSteps } from "./data-steps";
 import { noteStatement, noteTransaction as noteTransactionMetric, runtimeMetricsOn } from "./runtime-metrics";
 import { currentTx, dbContext, postgresUrl } from "./db-driver/context";
 import { closeDatabase, database } from "./db-driver";
@@ -1343,7 +1342,8 @@ dbContext.hooks.open = async (backend) => {
     await restorePendingIntoPostgres();
     await setupStorage();
   }
-  await runDataSteps();
+  // Loaded here, not at the top: the steps' modules import this one.
+  await (await import("./data-steps")).runDataSteps();
 };
 
 export function db() {
