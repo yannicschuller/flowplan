@@ -9,6 +9,10 @@ import { securityEvent } from "./security-events";
 // without reaching internal services: every hop is resolved, private and
 // special addresses are refused, and the connection uses exactly the
 // checked address. `allowPrivate` exists only for local test setups.
+// No request reuses a kept-alive connection (`agent: false`): the address
+// check runs in the lookup, i.e. only for new connections, and a socket
+// that a trusted call opened to an internal host must not carry an
+// untrusted one.
 const MAX_REDIRECTS = 3;
 function ipv4Private(ip: string) {
   const [a, b] = ip.split(".").map(Number);
@@ -60,6 +64,9 @@ export function privateAddress(ip: string) {
   return (
     (g[0] & 0xfe00) === 0xfc00 || // unique local
     (g[0] & 0xffc0) === 0xfe80 || // link local
+    (g[0] & 0xffc0) === 0xfec0 || // site local (deprecated)
+    (g[0] === 0x100 && g[1] === 0 && g[2] === 0 && g[3] === 0) || // discard
+    (g[0] === 0x2001 && ((g[1] & 0xfff0) === 0x10 || (g[1] & 0xfff0) === 0x20)) || // ORCHID
     (g[0] & 0xff00) === 0xff00 || // multicast
     (g[0] === 0x64 && g[1] === 0xff9b) || // NAT64
     (g[0] === 0x2001 && g[1] === 0xdb8) || // documentation
@@ -110,10 +117,16 @@ export function safeSend(
   return new Promise<{ status: number; body: string; headers: Record<string, string> }>((resolve, reject) => {
     const url = new URL(raw);
     if (url.protocol !== "https:" && !(allowPrivate && url.protocol === "http:")) return reject(new Error("Nur https-Adressen sind erlaubt."));
+    // IP addresses skip the lookup and its check.
+    const host = url.hostname.replace(/^\[|\]$/g, "");
+    if (!allowPrivate && isIP(host) && privateAddress(host)) {
+      securityEvent("blocked.ssrf", { detail: host });
+      return reject(new Error("Interne Adressen sind nicht erlaubt."));
+    }
     const request = url.protocol === "http:" ? httpRequest : httpsRequest;
     const req = request(
       url,
-      { method, timeout, headers: { ...headers, "content-length": String(Buffer.byteLength(body)) }, lookup: pinnedLookup(allowPrivate) as never },
+      { method, timeout, headers: { ...headers, "content-length": String(Buffer.byteLength(body)) }, lookup: pinnedLookup(allowPrivate) as never, agent: false },
       (res) => {
         const status = res.statusCode || 0;
         const headers = flatHeaders(res.headers);
@@ -151,8 +164,10 @@ function once(url: URL, maxBytes: number, timeout: number, accept: string, allow
           ...extra.headers,
           ...(extra.body !== undefined ? { "content-length": String(Buffer.byteLength(extra.body)) } : {}),
         },
-        // Resolve, check and pin the address that is used.
+        // Resolve, check and pin the address that is used, on a connection
+        // of its own.
         lookup: pinnedLookup(allowPrivate),
+        agent: false,
       },
       (res) => {
         const status = res.statusCode || 0;

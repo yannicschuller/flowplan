@@ -130,6 +130,8 @@ export function safeGitHttp(gitUrl: string, allowPrivate = privateAllowedFor(new
             headers: { ...headers, ...(body ? { "content-length": String(payload.length) } : {}) },
             timeout: 60_000,
             lookup: pinnedLookup(allowPrivate) as never,
+            // A connection of its own: the lookup checks new connections only.
+            agent: false,
           },
           (res) =>
             done({

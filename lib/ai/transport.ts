@@ -82,6 +82,8 @@ export function aiFetch(raw: string, options: Options): Promise<AiResponse> {
           ...options.headers,
         },
         lookup: pinnedLookup(options.trusted) as never,
+        // A connection of its own: the lookup checks new connections only.
+        agent: false,
       },
       (res) => {
         clearTimeout(headersTimer);

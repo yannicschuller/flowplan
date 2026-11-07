@@ -38,6 +38,10 @@ test("previews never reach internal addresses", async () => {
     "::",
     "fc00::1",
     "ff02::1",
+    "fec0::1",
+    "100::1",
+    "2001:20::1",
+    "2001:10::1",
     "not-an-address",
   ])
     assert.equal(privateAddress(ip), true, ip);

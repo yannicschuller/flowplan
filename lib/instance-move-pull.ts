@@ -98,7 +98,8 @@ function send(source: MoveSource, path: string, init: { method?: string; body?: 
           ...(init.range ? { range: `bytes=${init.range}-` } : {}),
           ...(init.body !== undefined ? { "content-type": "application/json", "content-length": String(Buffer.byteLength(init.body)) } : {}),
         },
-        ...(source.lookup ? { lookup: source.lookup as never } : {}),
+        // A connection of its own: the lookup checks new connections only.
+        ...(source.lookup ? { lookup: source.lookup as never, agent: false } : {}),
       },
       (res) => done(res),
     );
