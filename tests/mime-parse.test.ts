@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { addresses, decodeQuotedPrintable, decodeWords, parseMime, parseParams } from "../lib/mime-parse";
+import { addresses, decodeQuotedPrintable, decodeWords, parseDate, parseMime, parseParams } from "../lib/mime-parse";
 
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/mail/${name}`, import.meta.url));
 
@@ -70,4 +70,21 @@ test("deep nesting and part floods stop instead of exhausting memory", () => {
   const many = ["Content-Type: multipart/mixed; boundary=x", "", ...Array.from({ length: 1000 }, () => "--x\r\nContent-Type: text/plain\r\n\r\nhi"), "--x--"].join("\r\n");
   const mail = parseMime(many);
   assert.ok(mail.text.split("hi").length - 1 <= 300);
+});
+
+test("crafted headers are parsed in linear time (no ReDoS)", () => {
+  const timed = (run: () => void) => {
+    const start = performance.now();
+    run();
+    return performance.now() - start;
+  };
+  for (const value of ["(".repeat(100_000), "a".repeat(100_000), '"\\"'.repeat(33_000), "<".repeat(100_000), "<a@".repeat(33_000)]) {
+    assert.ok(timed(() => addresses(value)) < 100, value.slice(0, 5));
+    const mail = `From: ${value}\r\nTo: ${value}\r\nDate: Mon (${value}\r\nSubject: x\r\n\r\nText`;
+    let parsed: ReturnType<typeof parseMime> | undefined;
+    assert.ok(timed(() => (parsed = parseMime(mail))) < 100, value.slice(0, 5));
+    assert.ok(parsed!.headers.get("to")![0].length <= 8192);
+  }
+  assert.equal(parseDate("Mon, 1 Jan 2024 10:00:00 +0100 (CET)")?.toISOString(), "2024-01-01T09:00:00.000Z");
+  assert.equal(parseDate("Mon (".repeat(20_000)), null);
 });

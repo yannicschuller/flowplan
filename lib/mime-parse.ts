@@ -29,6 +29,10 @@ export type ParsedMail = {
 // Nesting deeper than this is not mail anyone writes; it stops parse bombs.
 const MAX_DEPTH = 12;
 const MAX_PARTS = 300;
+// Longer header values are cut (no header anyone writes is this long), and
+// address lists further below; both keep the parsing of crafted mail short.
+const MAX_HEADER = 8192;
+const MAX_ADDRESS_LIST = 65_536;
 
 /* ---------- Charsets and transfer encodings ---------- */
 
@@ -92,8 +96,8 @@ export function parseHeaders(block: string): MimeHeaders {
   for (const line of unfolded.split(/\r?\n/)) {
     const colon = line.indexOf(":");
     if (colon <= 0) continue;
-    const name = line.slice(0, colon).trim().toLowerCase();
-    const value = line.slice(colon + 1).trim();
+    const name = line.slice(0, Math.min(colon, 200)).trim().toLowerCase();
+    const value = line.slice(colon + 1, colon + 1 + MAX_HEADER).trim();
     const list = headers.get(name) || [];
     list.push(value);
     headers.set(name, list);
@@ -159,17 +163,56 @@ export function parseParams(value: string) {
   return { value: main, params };
 }
 
+// Quoted strings ("Doe, Jane"), then comments ((Bob)) left out, each in one
+// pass. Once one is not closed, no later one can be: the rest stays.
+function withoutPairs(value: string, open: string, close: (from: number) => number) {
+  let out = "";
+  let from = 0;
+  for (let i = value.indexOf(open); i !== -1; i = value.indexOf(open, from)) {
+    const end = close(i + 1);
+    if (end === -1) break;
+    out += value.slice(from, i);
+    from = end + 1;
+  }
+  return out + value.slice(from);
+}
+function withoutQuotesAndComments(value: string) {
+  const unquoted = withoutPairs(value, '"', (j) => {
+    while (j < value.length && value[j] !== '"') j += value[j] === "\\" ? 2 : 1;
+    return j < value.length ? j : -1;
+  });
+  return withoutPairs(unquoted, "(", (j) => unquoted.indexOf(")", j));
+}
+// The first <local@domain> of a part (no spaces or angle brackets inside).
+function angleAddress(part: string) {
+  let open = part.indexOf("<");
+  while (open !== -1) {
+    const close = part.indexOf(">", open + 1);
+    if (close === -1) return "";
+    const inner = part.slice(open + 1, close);
+    const nested = inner.lastIndexOf("<");
+    if (nested !== -1) {
+      open += 1 + nested;
+      continue;
+    }
+    if (!/\s/.test(inner) && inner.slice(1, -1).includes("@")) return inner;
+    open = part.indexOf("<", close + 1);
+  }
+  return "";
+}
+// The first run of characters other than spaces, <, > and " with an @
+// inside.
+function bareAddress(part: string) {
+  for (const run of part.split(/[\s<>"]+/)) if (run.slice(1, -1).includes("@")) return run;
+  return "";
+}
 // "Ada <ada@example.org>, bob@example.org" → the bare addresses, lower case.
+// Linear in the length (no backtracking regular expressions).
 export function addresses(value: string): string[] {
   const out: string[] = [];
-  const decoded = decodeWords(value)
-    // Quoted display names may contain commas and angle brackets.
-    .replace(/"(?:[^"\\]|\\.)*"/g, "")
-    .replace(/\([^)]*\)/g, "");
+  const decoded = withoutQuotesAndComments(decodeWords(value.slice(0, MAX_ADDRESS_LIST)));
   for (const part of decoded.split(/[,;]/)) {
-    const angle = part.match(/<([^<>\s]+@[^<>\s]+)>/);
-    const bare = part.match(/[^\s<>"]+@[^\s<>",]+/);
-    const address = (angle?.[1] || bare?.[0] || "").trim().toLowerCase();
+    const address = (angleAddress(part) || bareAddress(part)).trim().toLowerCase();
     if (address) out.push(address);
   }
   return out;
@@ -260,9 +303,15 @@ function walk(data: Buffer, out: Collected, depth: number, inheritedType = "text
   });
 }
 
-export function parseDate(value: string) {
-  if (!value) return null;
-  const date = new Date(value.replace(/\s*\([^)]*\)\s*$/, ""));
+export function parseDate(raw: string) {
+  if (!raw) return null;
+  // Without a trailing comment: "… +0100 (CET)".
+  let value = raw.slice(0, 1000).trimEnd();
+  if (value.endsWith(")")) {
+    const open = value.indexOf("(", value.lastIndexOf(")", value.length - 2) + 1);
+    if (open !== -1 && open < value.length - 1) value = value.slice(0, open).trimEnd();
+  }
+  const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
