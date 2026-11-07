@@ -1341,6 +1341,11 @@ dbContext.hooks.open = async (backend) => {
   if (backend === "postgres") {
     await restorePendingIntoPostgres();
     await setupStorage();
+    // The search's trigram indexes and the vector index (when the server has
+    // pg_trgm and pgvector): what the translated schema leaves to them.
+    // Neither stops the opening: the search works without them, slower.
+    await (await import("./search-store")).ensureSearchStore().catch((error) => console.error("Search: indexes not made", error));
+    await (await import("./ai/vector-store")).ensureVectorStore().catch((error) => console.error("pgvector: not used", error));
   }
   // Loaded here, not at the top: the steps' modules import this one.
   await (await import("./data-steps")).runDataSteps();

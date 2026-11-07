@@ -3,7 +3,7 @@ import { lockedPageIds } from "./journal-extras";
 import { publicHiddenFieldIds } from "./field-access";
 import { hiddenFileIds } from "./row-files";
 import { all, one, run, sql, transaction } from "./db";
-import { addEntry, clearIndex, removeEntry, snippet, textMatch } from "./search-store";
+import { addEntry, clearIndex, refreshSearchStats, removeEntry, snippet, textMatch } from "./search-store";
 import { pageRole } from "./permissions";
 import { hiddenRowIds } from "./row-access";
 import { ticketId } from "./ticket-ids";
@@ -192,6 +192,8 @@ export async function ensureSearchIndex() {
 // Returns the number of processed entries; call repeatedly until 0.
 export async function processSearchIndex(limit = BATCH) {
   await ensureSearchIndex();
+  // PostgreSQL's BM25 statistics, every few minutes (lib/search-store.ts).
+  await refreshSearchStats();
   const dirty = await all<{ page_id: string; row_id: string }>(
     "SELECT page_id,row_id FROM search_dirty LIMIT ?",
     limit,
