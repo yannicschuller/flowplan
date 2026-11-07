@@ -36,3 +36,17 @@ test("without a forwarded address nobody shares a bucket, and 0 trusts no header
   assert.equal(clientAddress(h("203.0.113.9", "198.51.100.7")), "");
   delete process.env.FLOWPLAN_TRUSTED_PROXIES;
 });
+
+test("X-Real-IP counts only behind exactly one trusted proxy", () => {
+  // One proxy (nginx with proxy_set_header X-Real-IP $remote_addr): its value.
+  process.env.FLOWPLAN_TRUSTED_PROXIES = "1";
+  assert.equal(clientAddress(h(undefined, "198.51.100.7")), "198.51.100.7");
+  // Two proxies: the inner one would name the outer one at best, or pass on
+  // what the client sent – so a client cannot pick its address this way.
+  process.env.FLOWPLAN_TRUSTED_PROXIES = "2";
+  assert.equal(clientAddress(h(undefined, "198.51.100.7")), "");
+  assert.equal(clientAddress(h("203.0.113.9, 198.51.100.4", "1.2.3.4")), "203.0.113.9", "X-Forwarded-For wins");
+  process.env.FLOWPLAN_TRUSTED_PROXIES = "0";
+  assert.equal(clientAddress(h(undefined, "198.51.100.7")), "");
+  delete process.env.FLOWPLAN_TRUSTED_PROXIES;
+});
