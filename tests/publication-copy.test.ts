@@ -220,3 +220,23 @@ test("copying requires a publication that allows it and write access to the targ
     /nicht kopiert/,
   );
 });
+
+// The notice under a published page's title (components/public-page.tsx):
+// the date, and copying offered only when allowed and without a password.
+// The query combined the integer allow_copy with AND – an error on
+// PostgreSQL, where every published page then failed to render.
+test("the publication notice offers copying only when allowed and not behind a password", async () => {
+  const { publicationNotice } = await import("../lib/publication");
+  const page = await create("Notiz");
+  assert.equal(await publicationNotice(page), undefined);
+  await act({ action: "page.publish", pageId: page, enabled: true, allowCopy: true });
+  const open = (await publicationNotice(page))!;
+  assert.equal(open.allow_copy, 1);
+  assert.match(String(open.published_at), /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/);
+  await act({ action: "publication.protect", pageId: page, password: "ein-langes-passwort" });
+  assert.equal((await publicationNotice(page))!.allow_copy, 0);
+  await act({ action: "publication.protect", pageId: page, password: null });
+  assert.equal((await publicationNotice(page))!.allow_copy, 1);
+  await act({ action: "page.publish", pageId: page, enabled: true, allowCopy: false });
+  assert.equal((await publicationNotice(page))!.allow_copy, 0);
+});

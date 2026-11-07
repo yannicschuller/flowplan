@@ -408,7 +408,7 @@ export function auditToSecurity(actor: string, action: string, resource: string,
   if (ADMIN_SETTINGS.test(action)) return ["admin.settings", { actorId: actor || null, detail: `${action}${detail ? ` ${detail}` : ""}` }];
   return null;
 }
-onAudit((actor, action, resource, detail) => {
+onAudit("security-events", (actor, action, resource, detail) => {
   const mapped = auditToSecurity(actor, action, resource, detail);
   if (mapped) securityEvent(mapped[0], mapped[1]);
 });

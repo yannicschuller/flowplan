@@ -1768,12 +1768,16 @@ export const id = () => randomUUID();
 // disturbs the write.
 type AuditListener = (actor: string, action: string, resource: string, detail: string) => void;
 // A function, not a constant: modules may register while this one is
-// still being evaluated (import cycles).
+// still being evaluated (import cycles). Keyed by name: the production
+// build evaluates a module once per route bundle that includes it, and each
+// copy registers again – the last one replaces the others, so an entry is
+// handled once (not once per bundle: duplicated security events).
 export function auditListeners() {
-  return ((globalThis as { flowplanAuditListeners?: Set<AuditListener> }).flowplanAuditListeners ??= new Set());
+  const holder = globalThis as { flowplanAuditHandlers?: Map<string, AuditListener> };
+  return (holder.flowplanAuditHandlers ??= new Map());
 }
-export function onAudit(listener: AuditListener) {
-  auditListeners().add(listener);
+export function onAudit(name: string, listener: AuditListener) {
+  auditListeners().set(name, listener);
 }
 export async function audit(
   actor: string,
@@ -1789,7 +1793,7 @@ export async function audit(
     resource,
     detail,
   );
-  for (const listener of auditListeners())
+  for (const listener of auditListeners().values())
     try {
       listener(actor, action, resource, detail);
     } catch {}

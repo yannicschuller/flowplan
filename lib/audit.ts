@@ -7,7 +7,7 @@ import { db } from "./db-driver";
 
 export async function auditAsync(actor: string, action: string, resource: string, detail = "") {
   await db.run("INSERT INTO audit(id,actor_id,action,resource_id,detail) VALUES(?,?,?,?,?)", id(), actor, action, resource, detail);
-  for (const listener of auditListeners())
+  for (const listener of auditListeners().values())
     try {
       listener(actor, action, resource, detail);
     } catch {}

@@ -272,7 +272,7 @@ export async function recordToPage(
     await updateIgnoringConflicts(table, "page_id=?,row_id=''", "page_id=? AND row_id=?", [pageId], [database.id, row.id]);
   // The record's versions become versions of the page (referring to the page's files).
   for (const snapshot of await all<{ state: Uint8Array; html: string; created_by: string | null; created_at: string; kind: string }>(
-    "SELECT state,html,created_by,created_at,kind FROM row_snapshots WHERE row_id=? ORDER BY created_at",
+    "SELECT state,html,created_by,created_at,kind FROM row_snapshots WHERE row_id=? ORDER BY created_at,seq",
     row.id,
   )) {
     const rewritten =

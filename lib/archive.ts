@@ -582,7 +582,7 @@ async function snapshotFor(user: Identity, wid: string) {
                     ...r,
                     cells: JSON.parse(r.cells),
                     snapshots: await all(
-                      "SELECT html,created_at FROM row_snapshots WHERE row_id=? ORDER BY created_at",
+                      "SELECT html,created_at FROM row_snapshots WHERE row_id=? ORDER BY created_at,seq",
                       r.id,
                     ),
                   }),
@@ -617,7 +617,7 @@ async function snapshotFor(user: Identity, wid: string) {
         snapshots: p.kind === "database"
           ? (await laterVersions(p))
           : (await all<StoredVersion>(
-              "SELECT html,title,created_at,appearance FROM snapshots WHERE page_id=? ORDER BY created_at",
+              "SELECT html,title,created_at,appearance FROM snapshots WHERE page_id=? ORDER BY created_at,seq",
               p.id,
             )).map(archivedVersion),
         inlineThreads: (await exportInlineComments(p.id)).filter((t) => shown(p.id, t.row_id)),

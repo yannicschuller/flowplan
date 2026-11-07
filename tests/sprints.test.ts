@@ -62,3 +62,28 @@ test("setup, planning, completing and charts", async () => {
   assert.deepEqual([closed.state, closed.completed, closed.committed], ["closed", 3, 8]);
   assert.deepEqual((await sprintCharts(owner, pageId, second.id)).velocity, [{ name: first.name, completed: 3, committed: 8 }]);
 });
+
+test("a sprint is renamed and rescheduled; deleting it moves its records back to the backlog", async () => {
+  const field = (await database(pageId)).fields.find((f) => f.type === "sprint")!;
+  const sprint = await act({ action: "sprint.create", pageId });
+  const updated = await act({ action: "sprint.update", pageId, sprintId: sprint.id, name: "Release 2", start: "2027-01-04", end: "2027-01-15", goal: "Ship it" });
+  assert.deepEqual([updated.name, updated.start, updated.end, updated.goal], ["Release 2", "2027-01-04", "2027-01-15", "Ship it"]);
+  await assert.rejects(async () => await act({ action: "sprint.update", pageId, sprintId: sprint.id, name: "Backwards", start: "2027-01-15", end: "2027-01-04" }), /Ende liegt vor dem Start/);
+  await assert.rejects(async () => await act({ action: "sprint.update", pageId, sprintId: sprint.id, name: "", start: "2027-01-04", end: "2027-01-15" }));
+  const stored = (await database(pageId)).settings!.sprints!.find((s) => s.id === sprint.id)!;
+  assert.equal(stored.name, "Release 2");
+  const planned = (await act({ action: "row.create", pageId, cells: { title: "Planned", [field.id]: sprint.id } })).id;
+  const other = (await act({ action: "row.create", pageId, cells: { title: "Elsewhere" } })).id;
+  const before = await version(planned);
+  await act({ action: "sprint.delete", pageId, sprintId: sprint.id });
+  assert.equal((await database(pageId)).settings!.sprints!.some((s) => s.id === sprint.id), false);
+  assert.equal((await cells(planned))[field.id], "");
+  assert.equal(await version(planned), before + 1);
+  assert.equal((await cells(other)).title, "Elsewhere");
+  await assert.rejects(async () => await act({ action: "sprint.delete", pageId, sprintId: sprint.id }));
+  // Viewers change no sprints.
+  const viewer = await user("viewer");
+  await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
+  const next = await act({ action: "sprint.create", pageId });
+  await assert.rejects(async () => await command(viewer, { action: "sprint.delete", pageId, sprintId: next.id }), (e: { status?: number }) => e.status === 403);
+});

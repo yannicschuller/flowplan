@@ -215,7 +215,8 @@ export async function manageWorkspace(
   input: Record<string, unknown>,
 ) {
   const wid = uuid.parse(input.workspaceId);
-  // Two owners leaving at once must not both count the other as staying.
+  // Leaving checks that another owner remains, then removes: owners leaving
+  // (or demoting each other) at once take turns (PostgreSQL).
   await lockMembership(wid);
   const role = await requireMember(user, wid);
   const workspace = (await one<{ name: string }>(

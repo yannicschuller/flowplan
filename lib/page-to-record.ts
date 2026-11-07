@@ -136,7 +136,7 @@ export async function pageToRecord(user: Identity, pageId: string, databaseId: s
       await run(`UPDATE ${table} SET page_id=?,row_id=? WHERE page_id=? AND row_id IS NULL`, database.id, rid, page.id);
     // The page's versions become versions of the record.
     for (const snapshot of await all<{ state: Uint8Array; html: string; created_by: string | null; created_at: string; kind: string }>(
-      "SELECT state,html,created_by,created_at,kind FROM snapshots WHERE page_id=? ORDER BY created_at",
+      "SELECT state,html,created_by,created_at,kind FROM snapshots WHERE page_id=? ORDER BY created_at,seq",
       page.id,
     ))
       await run(

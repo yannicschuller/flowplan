@@ -417,7 +417,7 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
     ),
     // Behind a journal PIN not entered: only that the journal is locked.
     notifications: await mapAsync(await all<Record<string, unknown> & { page_id: string | null; kind: string | null; body: string | null }>(
-      "SELECT * FROM notifications WHERE user_id=? ORDER BY created_at DESC LIMIT 100",
+      "SELECT * FROM notifications WHERE user_id=? ORDER BY created_at DESC,seq DESC LIMIT 100",
       user.id,
     ), async (n) => ((await lockedInbox(n, user.id)) ? { ...n, body: LOCKED_NOTICE } : n)),
     // Which AI features work here, with which provider, and which pages the
@@ -471,7 +471,7 @@ async function pageContent(user: Identity, pid: string, options: { presence?: bo
   ))
     .filter((c) => !c.row_id || !hidden.has(c.row_id)), async (c) => ({ ...c, reactions: await commentReactions(user, c.id) }));
   const snapshots = await all(
-    "SELECT id,title,created_at,kind FROM snapshots WHERE page_id=? ORDER BY created_at DESC LIMIT 50",
+    "SELECT id,title,created_at,kind FROM snapshots WHERE page_id=? ORDER BY created_at DESC,seq DESC LIMIT 50",
     pid,
   );
   const present = await all(
@@ -2925,6 +2925,8 @@ async function runCommand(
         break;
       }
       case "member.role": {
+        // "The last owner stays" is read, then written: two owners demoting
+        // each other at once would both pass on PostgreSQL – one at a time.
         await lockMembership(wid());
         await requireMember(user, wid(), "owner");
         const target = uuid.parse(b.userId),

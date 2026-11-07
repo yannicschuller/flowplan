@@ -40,3 +40,19 @@ test("single paragraphs come back from an older version", async () => {
   assert.match(await html(), /<p>Keep <strong>this<\/strong> one<\/p><p>Middle text<\/p><p>End<\/p>/);
   await assert.rejects(async () => await act({ action: "snapshot.restoreBlock", pageId, snapshotId, text: "Never there" }), /nicht in dieser Version/);
 });
+
+// created_at has whole seconds: versions saved within one second came in
+// table order (oldest first on SQLite, any order on PostgreSQL), so "the
+// newest version" in the history could be an older one. seq breaks the tie.
+test("versions saved within one second are listed newest first", async () => {
+  const page = (await act({ action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, kind: "document", title: "Quick saves" })).id as string;
+  const made: string[] = [];
+  for (const text of ["one", "two", "three"]) {
+    await run("UPDATE documents SET html=?,state=? WHERE page_id=?", `<p>${text}</p>`, htmlState(`<p>${text}</p>`), page);
+    made.push((await act({ action: "page.snapshot", pageId: page })).id);
+  }
+  await run("UPDATE snapshots SET created_at='2026-11-07 12:00:00' WHERE page_id=?", page);
+  const { pageData } = await import("../lib/api");
+  const listed = ((await pageData(owner, page)) as { snapshots: { id: string }[] }).snapshots.map((s) => s.id);
+  assert.deepEqual(listed, [...made].reverse());
+});

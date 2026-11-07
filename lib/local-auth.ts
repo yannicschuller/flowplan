@@ -20,7 +20,7 @@ import {
   type AuthenticationResponseJSON,
   type RegistrationResponseJSON,
 } from "@simplewebauthn/server";
-import { all, id, inTransaction, one, run } from "./db";
+import { all, id, inTransaction, lockFor, one, run } from "./db";
 import { db } from "./db-driver";
 import { HttpError, acceptInvites, adminGroup, appUrl, hash, inviteTokenShape, rememberPolicy } from "./auth";
 import { instanceSettings } from "./instance-settings";
@@ -631,8 +631,15 @@ export async function resetPassword(input: unknown, locale: Locale) {
 
 // ---- Administration ----
 
+// Changes to who administers the instance take turns (PostgreSQL, several
+// instances): the check that one admin remains, then the write.
+export const ADMINS_LOCK = "flowplan:local-admins";
+
 export async function setLocalAdmin(userId: string, admin: boolean) {
   if (!(await accountOf(userId))) throw new HttpError(400, "Dieses Konto meldet sich über SSO an; Admin ist, wer in der Admin-Gruppe ist.");
+  // "One always remains" is read, then written: two admins taking each
+  // other's right at once would both pass on PostgreSQL (READ COMMITTED).
+  await lockFor(ADMINS_LOCK);
   if (!admin && Number((await one<{ n: number }>("SELECT COUNT(*) n FROM local_accounts WHERE is_admin=1 AND user_id<>?", userId))?.n || 0) === 0 && !process.env.OIDC_ISSUER)
     throw new HttpError(409, "Es muss mindestens eine Person die Instanz verwalten.");
   await run("UPDATE local_accounts SET is_admin=? WHERE user_id=?", admin ? 1 : 0, userId);

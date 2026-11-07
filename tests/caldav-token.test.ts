@@ -51,3 +51,16 @@ test("a write API token cannot create a CalDAV access or a calendar feed", async
   assert.ok(((await command(owner, { action: "calendar.caldav", pageId, viewId: "cal" })) as { password: string }).password);
   assert.match(((await command(owner, { action: "calendar.feed", pageId, viewId: "cal" })) as { url: string }).url, /\/api\/calendar\/.+\.ics$/);
 });
+
+test("a new feed link replaces the old one; revoking ends it", async () => {
+  const { calendarFeed } = await import("../lib/calendar-feed");
+  const token = (url: string) => decodeURIComponent(url.split("/").pop()!.replace(/\.ics$/, ""));
+  const first = token(((await command(owner, { action: "calendar.feed", pageId, viewId: "cal" })) as { url: string }).url);
+  assert.ok(await calendarFeed(first));
+  const second = token(((await command(owner, { action: "calendar.feed", pageId, viewId: "cal" })) as { url: string }).url);
+  await assert.rejects(calendarFeed(first), (e: { status?: number }) => e.status === 404);
+  assert.ok(await calendarFeed(second));
+  await command(owner, { action: "calendar.feed.revoke", pageId, viewId: "cal" });
+  await assert.rejects(calendarFeed(second), (e: { status?: number }) => e.status === 404);
+  assert.equal(await one("SELECT 1 x FROM calendar_feeds WHERE page_id=?", pageId), undefined);
+});

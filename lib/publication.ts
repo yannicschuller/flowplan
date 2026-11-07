@@ -35,6 +35,17 @@ export async function publicationSettings(pageId: string) {
       ))?.count || 0,
   };
 }
+// What a published page shows under its title: when it was published, and
+// whether it is offered for copying – never behind a password. allow_copy is
+// an integer, combined here and not with AND in SQL (PostgreSQL refuses
+// integers as booleans).
+export async function publicationNotice(pageId: string) {
+  const row = await one<{ published_at: string | null; allow_copy: number; password: number }>(
+    "SELECT published_at,allow_copy,password_hash IS NOT NULL password FROM publications WHERE page_id=?",
+    pageId,
+  );
+  return row ? { published_at: row.published_at, allow_copy: row.allow_copy && !row.password ? 1 : 0 } : undefined;
+}
 export async function publishPage(
   user: Identity,
   page: Page,

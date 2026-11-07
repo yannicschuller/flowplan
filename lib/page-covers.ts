@@ -9,7 +9,7 @@ import {
 } from "./page-appearance";
 export async function pageImages(pageId: string): Promise<PageImage[]> {
   return (await all<{ id: string; name: string; mime: string }>(
-    "SELECT id,name,mime FROM files WHERE page_id=? AND deleted_at IS NULL ORDER BY created_at DESC",
+    "SELECT id,name,mime FROM files WHERE page_id=? AND deleted_at IS NULL ORDER BY created_at DESC,seq DESC",
     pageId,
   ))
     .filter((file) =>
@@ -25,7 +25,7 @@ export type PageFile = PageImage & { mime: string; size: number };
 // All attachments of a page, e.g. for names and previews in files cells.
 export async function pageFiles(pageId: string, hidden: Set<string> = new Set()): Promise<PageFile[]> {
   return (await all<{ id: string; name: string; mime: string; size: number }>(
-    "SELECT id,name,mime,size FROM files WHERE page_id=? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 5000",
+    "SELECT id,name,mime,size FROM files WHERE page_id=? AND deleted_at IS NULL ORDER BY created_at DESC,seq DESC LIMIT 5000",
     pageId,
   ))
     .filter((file) => !hidden.has(file.id))

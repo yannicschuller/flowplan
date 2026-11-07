@@ -60,3 +60,32 @@ test("saved views are personal", async () => {
   assert.deepEqual((await recordViews(me, wid)).map((v) => [v.name, v.filter.due]), [["Overdue", "overdue"]]);
   assert.equal((await recordViews(other, wid)).length, 0);
 });
+
+test("a saved view is deleted by its owner only", async () => {
+  const { id: viewId } = await act({ action: "recordView.save", workspaceId: wid, name: "Mine", filter: { mine: true } });
+  // Someone else's delete changes nothing (and tells nothing).
+  await command(other, { action: "recordView.delete", viewId });
+  assert.ok((await recordViews(me, wid)).some((v) => v.id === viewId));
+  await act({ action: "recordView.delete", viewId });
+  assert.equal((await recordViews(me, wid)).some((v) => v.id === viewId), false);
+  await assert.rejects(async () => await act({ action: "recordView.delete", viewId: "nope" }));
+});
+
+test("the record layout keeps the title visible and drops unknown properties; viewers cannot change it", async () => {
+  const layout = await act({
+    action: "database.recordLayout",
+    pageId: web,
+    layout: { open: "side", properties: "side", hideEmpty: true, hidden: ["title", "due", "due", "gone"] },
+  });
+  assert.deepEqual(layout.hidden, ["due"]);
+  const stored = (await database(web)).recordLayout!;
+  assert.deepEqual([stored.open, stored.properties, stored.hideEmpty, stored.hidden], ["side", "side", true, ["due"]]);
+  await assert.rejects(async () => await act({ action: "database.recordLayout", pageId: web, layout: { open: "sideways" } }));
+  const viewer = await user("viewer");
+  await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
+  await assert.rejects(
+    async () => await command(viewer, { action: "database.recordLayout", pageId: web, layout: { hidden: [] } }),
+    (e: { status?: number }) => e.status === 403,
+  );
+  assert.deepEqual((await database(web)).recordLayout!.hidden, ["due"]);
+});

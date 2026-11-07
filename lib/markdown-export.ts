@@ -559,7 +559,7 @@ async function collect(user: Identity, options: MarkdownExportOptions) {
       } catch {}
       text += `## ${ct("Zur Textstelle", "On the passage")}${thread.resolved ? ` · ${ct("erledigt", "resolved")}` : ""}\n\n${quote ? `> ${markdownText(quote).replace(/\n/g, "\n> ")}\n\n` : ""}`;
       for (const m of await all<{ author_name: string; body: string; created_at: string }>(
-        "SELECT author_name,body,created_at FROM inline_messages WHERE thread_id=? AND deleted=0 ORDER BY created_at",
+        "SELECT author_name,body,created_at FROM inline_messages WHERE thread_id=? AND deleted=0 ORDER BY created_at,seq",
         thread.id,
       ))
         text += `- **${markdownText(m.author_name)}** · ${when(m.created_at)}: ${markdownText(commentBody(m.body)).replace(/\n/g, " ")}\n`;
@@ -568,11 +568,11 @@ async function collect(user: Identity, options: MarkdownExportOptions) {
     if (text) add(`${base}.comments.md`, Buffer.from(`# ${ct("Kommentare", "Comments")} – ${markdownText(title)}\n\n${text.trimEnd()}\n`), true);
     const versions = rowId
       ? (await all<{ id: string; html: string; created_at: string }>(
-          "SELECT id,html,created_at FROM row_snapshots WHERE row_id=? ORDER BY created_at DESC LIMIT 50",
+          "SELECT id,html,created_at FROM row_snapshots WHERE row_id=? ORDER BY created_at DESC,seq DESC LIMIT 50",
           rowId,
         ))
       : (await all<{ id: string; html: string; created_at: string }>(
-          "SELECT id,html,created_at FROM snapshots WHERE page_id=? AND html IS NOT NULL AND html!='' ORDER BY created_at DESC LIMIT 50",
+          "SELECT id,html,created_at FROM snapshots WHERE page_id=? AND html IS NOT NULL AND html!='' ORDER BY created_at DESC,seq DESC LIMIT 50",
           pageId,
         ));
     for (const version of versions) {
