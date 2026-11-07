@@ -22,7 +22,7 @@ export function snapshotDatabase(path: string) {
   const schema = schemaJson as unknown as PgSchema;
   const file = new DatabaseSync(path);
   try {
-    file.exec("PRAGMA journal_mode=DELETE; PRAGMA foreign_keys=OFF;");
+    file.exec("PRAGMA journal_mode=DELETE; PRAGMA foreign_keys=OFF;"); // sqlite-only: the file
     for (const o of schema.sqlite.filter((x) => x.type === "table")) file.exec(o.sql);
     const sqliteTables = new Set(schema.sqlite.filter((x) => x.type === "table").map((x) => x.name));
     transaction(() => {
@@ -56,7 +56,7 @@ export function snapshotDatabase(path: string) {
       }
     });
     for (const o of schema.sqlite.filter((x) => x.type !== "table")) file.exec(o.sql);
-    file.exec(`DELETE FROM search_state; PRAGMA user_version=${schema.sqliteVersion}`);
+    file.exec(`DELETE FROM search_state; PRAGMA user_version=${schema.sqliteVersion}`); // sqlite-only: the file
   } finally {
     file.close();
   }

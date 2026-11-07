@@ -1,11 +1,12 @@
 # Database layer: SQLite by default, PostgreSQL as an option
 
-Status: **spike** (branch `pg-spike`). It proves the pattern on one vertical
-slice – accounts and sessions (`lib/auth.ts`), sign-up and sign-in
-(`lib/local-auth.ts`), personal API tokens (`lib/api-tokens.ts`) and tags
-(`lib/page-properties-server.ts`) – on both databases, and measures what the
-full refactor costs. Nothing changes for SQLite users: without
-`DATABASE_URL` every statement takes the same path as before.
+Status: **phase 1 done – every statement runs on both databases**
+(issue #127). The spike (branch `pg-spike`) proved the pattern on one
+vertical slice and measured the cost; phase 1 made all SQL of the code base
+dialect-neutral, still synchronous, with the behaviour on SQLite unchanged
+(§11). Phase 2 is the asynchronous sweep (§4). Nothing changes for SQLite
+users: without `DATABASE_URL` every statement takes the same path as
+before.
 
 Roadmap this serves (decided): SQLite stays the default (one container).
 PostgreSQL is optional (`DATABASE_URL=postgres://…`); later multi-instance
@@ -91,8 +92,11 @@ With `DATABASE_URL` set, the **synchronous** helpers of `lib/db.ts`
 (`one/all/run/transaction`) go to Postgres through a blocking bridge
 (`lib/db-driver/pg-sync.ts`): a worker thread owns one connection; the caller
 posts the statement and waits on `Atomics.wait` until the answer is there.
-It translates the mechanical SQLite-isms (`INSERT OR IGNORE`, `IS NOT ?`,
-`ifnull`, `CURRENT_TIMESTAMP`, `LIMIT -1`) and refuses the rest with a hint.
+Since phase 1 it no longer rewrites anything: the SQL is written for both
+databases, the bridge only numbers the placeholders and refuses SQLite-only
+SQL with a hint (`sqliteOnly()`, the same check as the asynchronous driver).
+`transaction()` takes the same steps on both (relation sync before the
+commit, rollback hooks, the upload cleanup after it).
 
 This is what lets the refactor proceed on **two independent axes**:
 
@@ -111,83 +115,121 @@ and for cluster mode. Rules while both exist:
   transaction's row locks while the event loop is blocked).
 - Each bridge connection has `lock_timeout=10s` as a safety net.
 - Not for production load: it is a development and CI aid while porting
-  (open question 1).
+  (decided: not shipped as a product mode).
 
 ## 2. Dialect
 
-`lib/db-driver/dialect.ts` – fragments, never values:
+**Rule since phase 1: SQL is written once, for both databases.** Where the
+two need different text, the fragment comes from the dialect;
+everything else is plain SQL both accept (SQLite ≥ 3.39 reads
+`IS [NOT] DISTINCT FROM`, `ON CONFLICT … DO NOTHING`, row values).
 
-| SQLite | helper | Postgres |
+- Asynchronous code: `db.dialect` (lib/db-driver).
+- Synchronous code (`one/all/run`): `sql` from `lib/db.ts` – the dialect of
+  this process (`sql.instr("d.html", "?")`), and `nowText()`/`daysAgoText()`.
+
+Values that SQLite computed in SQL are now computed in JavaScript and
+passed as parameters where that is simple: `CURRENT_TIMESTAMP` in a query
+became `?` with `nowText()` (`'YYYY-MM-DD HH:MM:SS'`, UTC – the same text);
+`datetime('now','-5 minutes')` became `nowText(Date.now() - 300_000)`,
+`datetime('now',?)` with `-N days` `daysAgoText(N)`.
+
+| SQLite | now (both) | Postgres side of a helper |
 |---|---|---|
-| `col=? COLLATE NOCASE` | `ieq(col)` | `lower(col)=lower(?)` |
-| `ORDER BY name COLLATE NOCASE` | `nocase(expr)` | `lower(expr)` |
-| `INSERT OR IGNORE INTO …` | `insertIgnore(rest)` | `INSERT INTO … ON CONFLICT DO NOTHING` |
-| `INSERT OR REPLACE` | `upsert(t, cols, keys)` | `ON CONFLICT(keys) DO UPDATE` (note: REPLACE deletes the row – cascades! – the upsert does not; use the upsert on both) |
-| `id IS NOT ?` | `isNot(col)` | `IS DISTINCT FROM` |
-| `(SELECT value FROM json_each(?))` | `jsonValues()` | `(SELECT json_array_elements_text(?::json))` |
-| `json_extract(c,'$.a.b')` | `jsonText(c, path)` | `(c::jsonb #>> '{a,b}')` |
-| `CURRENT_TIMESTAMP` (text) | `nowText()` | `to_char(now() AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS')` |
-| `datetime('now','-7 days')` | `nowTextPlus('-7 days')` | `to_char(… + interval '-7 days', …)` |
-| `unixepoch()*1000` | `nowMs()` | `(extract(epoch from clock_timestamp())*1000)::bigint` |
-| `CAST(strftime('%s',c) AS INTEGER)*1000` | `textMs(c)` | `(extract(epoch from c::timestamp)*1000)::bigint` |
-| `max(a,b,…)` / `min(a,b,…)` | `greatest(…)` / `least(…)` | `greatest` / `least` |
-| `instr(h,n)` | `instr(h,n)` | `strpos(h,n)` |
-| `LIKE` (ASCII case-insensitive) | `ilike(col)` | `ILIKE` |
-| `lower(hex(randomblob(16)))` | `randomHex()` | `replace(gen_random_uuid()::text,'-','')` |
-| `rowid` | – (emulated column, see Schema) | `rowid` |
-| `last_insert_rowid()` / `.lastInsertRowid` | – | `RETURNING` (2 places) |
-| `PRAGMA table_info` | `db.columns(t)` | `information_schema.columns` |
+| `x=? COLLATE NOCASE`, `ORDER BY x COLLATE NOCASE` | `lower(x)=lower(?)`, `ORDER BY lower(x)` (also what `ieq`/`nocase` give on SQLite now) | – |
+| `INSERT OR IGNORE INTO …` | `INSERT INTO … ON CONFLICT DO NOTHING` (`… SELECT … WHERE true ON CONFLICT …`: SQLite's parsing rule) | – |
+| `INSERT OR REPLACE` | `ON CONFLICT(key) DO UPDATE SET` every other column `=excluded.…` (defaults included, as the replaced row had them); one case stays delete + insert because a trigger reacts to the insert (`file_texts`) | – |
+| `UPDATE OR IGNORE` | `updateIgnoringConflicts()` (lib/db.ts: all rows in a savepoint, on a unique violation row by row) | – |
+| `a IS ?`, `a IS NOT ?`, `a IS b` | `IS NOT DISTINCT FROM`, `IS DISTINCT FROM` | – |
+| `CURRENT_TIMESTAMP`, `datetime('now',…)` in queries | parameter `nowText(…)` / `daysAgoText(n)` | – |
+| `date(c,?)`, `date(ms/1000,'unixepoch',?)` | `sql.dayOf(c)`, `sql.dayOfMs(c)` | `to_char(c::timestamp+?::interval,'YYYY-MM-DD')` |
+| `(SELECT value FROM json_each(?))` | `sql.jsonValues()` | `(SELECT json_array_elements_text(?::json))` |
+| `json_extract(c,'$.a')`, `json_extract(c,?)` | `sql.jsonText(c,'$.a')`, `sql.jsonKey(c)` (the key as parameter) | `c::jsonb #>> '{a}'`, `c::jsonb->>?` |
+| `json_group_array`, `json_object` | `sql.jsonGroupArray`, `sql.jsonObject` | `json_agg`/`json_build_object` |
+| `GROUP_CONCAT` | `sql.groupConcat` (the one use was unused: dropped) | `string_agg` |
+| `instr(h,n)` | `sql.instr(h,n)` | `strpos` |
+| scalar `MAX(a,b)` | `sql.greatest(a,b)` | `greatest` |
+| `length(CAST(x AS BLOB))` | `sql.byteLength(x)` | `octet_length` |
+| `LIKE` meant case-insensitive | `sql.ilike(col)` (the title search of the app intents, the search's short queries) | `ILIKE` |
+| `GLOB '*.docx'` on `lower(name)` | `LIKE '%.docx'` | – |
+| `… LIMIT -1 OFFSET ?` | `NOT IN (… LIMIT ?)` | – |
+| `char(10)` | `'\n'` literal | – |
+| `SUM(a=b)`, `(x>0)*2` | `SUM(CASE WHEN a=b THEN 1 ELSE 0 END)` | – |
+| bare columns of `GROUP BY` | `MAX(col)` | – |
+| `HAVING n>=?` on an alias, `x day` | the expression; `AS day` (keywords need `AS`) | – |
+| `SET n=n+1` in `ON CONFLICT … DO UPDATE` | `SET n=t.n+1` (ambiguous on Postgres) | – |
+| `AS userId` | `AS "userId"` (Postgres folds unquoted names) | – |
+| `?1` numbered parameters | one `?` per value | – |
+| `.lastInsertRowid` | `INSERT … RETURNING id` (2 places) | – |
+| `PRAGMA table_info` / `foreign_key_list`, `sqlite_master`, `dbstat` | `tableNames()`, `tableColumns()`, `tableKey()`, `foreignKeyColumns()`, `tableSizes()`, `databaseBytes()` (lib/db.ts) | `information_schema`, `pg_constraint`, `pg_total_relation_size` |
+| `VACUUM INTO` | `snapshotDatabase()` (lib/db-snapshot.ts, §3) | – |
+| `rowid` | `seq` or a key (§3) | – |
+| `time_entries.end` | `"end"` | – |
+| `? IS NULL` | as written; the Postgres driver casts such a parameter (`$1::text IS NULL`) – no type otherwise | – |
 
-The Postgres driver (and the bridge) **refuses SQLite-only SQL** with the
-helper to use (`sqliteOnly()`; strings are ignored), so an unported statement
-fails loudly at its first run in CI instead of as a syntax error deep in a
-request.
+The Postgres driver and the bridge **refuse SQLite-only SQL** with the
+helper to use (`sqliteOnly()`; strings are ignored): `INSERT/UPDATE OR …`,
+`REPLACE INTO`, `COLLATE NOCASE`, `json_*`, `group_concat`, date
+functions, `ifnull`, `instr`, `randomblob`, `last_insert_rowid`, `rowid`,
+`PRAGMA`, `sqlite_master`, `IS NOT ?`, `GLOB`, `BEGIN IMMEDIATE`,
+`VACUUM INTO`, `?NNN`.
 
-Kept deliberately: booleans as `INTEGER 0/1` (the type parser turns
-Postgres' `true/false` from `EXISTS(…)` and comparisons into 1/0), timestamps
-as the same `TEXT`/`INTEGER` columns as in SQLite. Both keep the code and the
-migration tool simple (open question 5).
+Kept deliberately (decided): booleans as `INTEGER 0/1` (the type parser
+turns Postgres' `true/false` from `EXISTS(…)` and comparisons into 1/0),
+timestamps as the same `TEXT` (`'YYYY-MM-DD HH:MM:SS'`, UTC) and `INTEGER`
+(ms) columns as in SQLite. Case-insensitive names: `lower()` on both sides,
+no `citext` (Postgres' `lower()` folds every letter, SQLite's ASCII only –
+a small widening).
 
-### Counts (whole code base, before the spike)
+**Writes whose failure is caught** inside a transaction (a delete of rows
+of a table that may not have the column, an account row still referenced)
+run in `inSavepoint()` (lib/db.ts): on Postgres a failed statement spoils
+the whole transaction otherwise. Outside a transaction it just runs.
 
-`app lib components scripts instrumentation.ts proxy.ts`, plus tests where
-noted. "SQL lines" counts only lines that contain SQL keywords.
+### Counts
 
-| Pattern | Occurrences | Files | Notes |
-|---|---:|---:|---|
-| `one(` | 1,150 | 208 | + 1,133 in tests |
-| `all(` | 552 | 161 | + 218 in tests |
-| `run(` | 1,538 | 228 | + 1,343 in tests |
-| `transaction(` | 103 | 54 | + 29 in tests |
-| `db()` direct / `.prepare(` | 15 / 157 | 8 / 16 | mostly migrations in `lib/db.ts` |
-| `INSERT OR IGNORE` | 63 | 34 | mechanical (`insertIgnore`, bridge rewrites it) |
-| `INSERT OR REPLACE` / `REPLACE INTO` | 11 | 10 | semantic review (delete+insert vs update) |
-| `ON CONFLICT … DO` | 118 | 67 | portable as written (`excluded.` works) |
-| `COLLATE NOCASE` | 33 | 17 | `ieq`/`nocase`; NOCASE folds ASCII only, `lower()` all letters |
-| `json_each(` | 13 | 4 | `jsonValues` |
-| `json_extract(` | 6 | 4 | `jsonText` |
-| other `json_*(` | 4 | 2 | `json_object` in a trigger |
-| `datetime(` | 48 | 16 | 22 outside `lib/db.ts` |
-| `strftime(` | 2 | 1 | `textMs` |
-| `unixepoch(`/`julianday(` | 25 | 1 | triggers in `lib/db.ts` |
-| `CURRENT_TIMESTAMP` | 139 | 54 | 117 outside `lib/db.ts` (mostly `SET updated_at=CURRENT_TIMESTAMP`) |
-| `last_insert_rowid` / `.lastInsertRowid` | 2 | 2 | `RETURNING` |
-| `rowid` (SQL lines) | 32 | 11 | emulated column |
-| `PRAGMA` | 79 | 9 | 18 outside `lib/db.ts` (account merge, importers, backup, move) |
-| `sqlite_master` | 6 | 4 | |
-| `ifnull(` / `instr(` / `group_concat(` | 2 / 23 / 1 | 1 / 10 / 1 | |
-| `IS NOT ?` / `IS ?` | 15 | 11 | `isNot` |
-| `LIKE` (SQL lines) | 79 | 37 | case semantics differ: review each |
-| `GLOB` | 6 | 1 | |
-| scalar `max(a,b)`/`min(a,b)` (SQL lines) | 7 | 5 | `greatest`/`least` |
-| `LIMIT -1` / `randomblob` | 1 / 2 | 1 / 2 | |
-| `BEGIN IMMEDIATE` / `SAVEPOINT` | 7 | 5 | `db.tx` |
-| FTS5 (`MATCH`, `bm25`, `search_index`) | 4 + 24 refs | 3 + 5 | redesign: `tsvector` |
-| `CREATE TRIGGER` | 95 triggers | `lib/db.ts` | search queue ~30, notifications, relation sync, row numbers, snapshots |
-| `COUNT(*)` (bigint in Postgres) | 201 | 53 | handled by the type parser |
-| `EXISTS(` as a value | 93 | 20 | handled by the type parser (1/0) |
-| `SELECT *` / `t.*` | 459 | 128 | fine; `t.*` inside `UNION` with explicit columns breaks with the emulated rowid (1 place, fixed) |
-| `INSERT INTO t VALUES` (no column list) | 45 | 11 | works (rowid is the last column) |
+`node scripts/db-dialect-scan.mjs [--list] [--tests]` reads the string and
+template literals of `app lib components scripts integrations
+instrumentation.ts proxy.ts`, keeps the SQL ones and counts the patterns
+that do not run on Postgres as written. Not counted: `lib/db.ts`'s
+migrations (the SQLite schema, translated), `lib/db-driver`, the
+substitutions themselves (`${sql.instr(…)}`), lines marked `// sqlite-only`
+(code that only touches SQLite files: backup checks, the SQLite branch of a
+helper) and files marked `db-dialect-scan: sqlite-only file` (the AFFiNE
+importer reads AFFiNE's own SQLite files; scripts that seed a SQLite
+instance).
+
+| Pattern | Before phase 1 | After |
+|---|---:|---:|
+| `INSERT OR IGNORE` | 54 (32 files) | 0 |
+| `INSERT OR REPLACE` / `REPLACE INTO` | 11 (10) | 0 |
+| `COLLATE NOCASE` | 17 (14) | 0 |
+| `json_each`/`json_extract`/`json_*` | 19 (8) | 0 |
+| `datetime()`/`date()`/`strftime()`/`julianday()`/`unixepoch()` | 25 (12) | 0 |
+| `CURRENT_TIMESTAMP` in queries | 108 (48) | 0 |
+| `rowid` | 35 (17) | 0 |
+| `PRAGMA` | 14 (8) | 0 |
+| `sqlite_master` / `sqlite_schema` | 3 (3) | 0 |
+| `instr()` | 14 (6) | 0 |
+| `group_concat()` | 1 | 0 |
+| `IS ?` / `IS NOT ?` | 14 (10) | 0 |
+| `GLOB` | 6 (1) | 0 |
+| `LIMIT -1` | 1 | 0 |
+| `BEGIN IMMEDIATE` | 2 (2) | 0 |
+| scalar `MAX(a,b)` | 8 (6) | 0 |
+| `char()` | 2 (1) | 0 |
+| mixed-case alias without quotes | 1 | 0 |
+| `?NNN` parameters | 2 (1) | 0 |
+| `CAST(… AS BLOB)` | 1 | 0 |
+| not visible to the scan (found by the Postgres run): `.lastInsertRowid` 2, `VACUUM INTO` 3, `UPDATE OR IGNORE` 2, `SUM(bool)`/bare `GROUP BY` columns 4, `SET n=n+1` in upserts 6, `x IS y` 2, `end` unquoted 13 | 32 | 0 |
+| `LIKE` – reviewed, not SQLite-only | 74 (37) | 71 |
+
+The 71 `LIKE`s left compare ids, fixed lower-case markers (`'%"git"%'`,
+`'deleted:%'`) or links, where case does not matter; the ones that match
+what people type use `sql.ilike` or `lower()` on both sides. With
+`--tests`: the remaining hits are SQLite files the tests build themselves
+(the AFFiNE fixture, an old schema for a migration test) and tests skipped
+on Postgres (below).
 
 ## 3. Schema
 
@@ -198,41 +240,92 @@ migrations (`scripts/db-pg-schema.mjs` builds an empty database with
 `foreign_key_list`, `index_list`/`index_xinfo` (including the collation of
 unique keys) and the `CREATE INDEX` texts – and writes
 `lib/db-driver/postgres-schema.json`. `ensurePostgresSchema()` adds what is
-missing (tables, columns, indexes, foreign keys; never drops). A test checks
-that the JSON matches the current migrations.
+missing (tables, columns, indexes, foreign keys, triggers, the seed rows;
+never drops). A test checks that the JSON matches the current migrations.
 
-Why this is less work for ~all tables:
+- **Coverage:** 224 tables, 244 foreign keys, 103 indexes, 109 triggers (95
+  translated, the 14 `seq` triggers of SQLite skipped – see below), the rows the
+  migrations write into a new database (`seed`: relation sync control,
+  notification defaults, counters, offline log start; a creation time is
+  stored as `"now"`).
+- **The SQLite schema stays as it is** – no risk for existing instances.
+  New migrations stay one place: a column added in `lib/db.ts` shows up in
+  the JSON and `ensurePostgresSchema` adds it.
+- Tables that features used to create on first use (`background_jobs`,
+  `caldav_profile_links`, `mobile_focus`, `widget_counter_days`,
+  `widget_focus`, `notification_targets`, the storage queue) moved into the
+  migrations, so the translated schema has them.
+- Mapping: `INTEGER` → `bigint` (ms timestamps), `REAL` → `double
+  precision`, `BLOB` → `bytea`, `TEXT`/untyped → `text`; `INTEGER PRIMARY
+  KEY AUTOINCREMENT` and `seq` → identity; `DEFAULT CURRENT_TIMESTAMP` on
+  text → the same text (the statement's time, as SQLite); reserved words
+  quoted (`time_entries."end"`, also in queries); a `UNIQUE … COLLATE
+  NOCASE` key → unique index on `lower()`; index expressions `ifnull` →
+  `coalesce`, `x COLLATE NOCASE` → `lower(x)`.
+- **No `rowid` any more (schema 93).** The spike gave every Postgres table
+  an emulated `rowid`. Now no query uses SQLite's rowid: where insertion
+  order matters (newest notification, version or message first, favourites
+  in the order added, queues, spaces and pages as tie-breakers) the table
+  has an explicit `seq` column – `snapshots`, `row_snapshots`,
+  `notifications`, `favorites`, `row_favorites`, `capture_targets`,
+  `inline_messages`, `files`, `collections`, `scim_users`, `scim_groups`,
+  `mail_queue`, `webhook_deliveries`, `spaces`, `pages`. SQLite fills it
+  with the rowid (existing rows once, new ones by a `<table>_seq` trigger;
+  pages in the trigger that already sets `created_at`, so no extra
+  statement); Postgres makes it an identity. Elsewhere a key or another
+  column does: the embedding scan pages by its primary key, notification
+  pruning by id, records by `number`, the first owner of a workspace is its
+  creator. The unique scope-name indexes of tags and property definitions
+  are on `lower(name)` on both databases now.
+- **Search index.** FTS5 stays on SQLite. On Postgres `search_index` is a
+  plain table (`page_id,row_id,title,body` plus `title_folded`,
+  `body_folded`: lower case without diacritics), see §5a.
 
-- **It already covers all of them.** 217 tables, 238 foreign keys, 100
-  indexes, 22 CHECK constraints apply cleanly to Postgres 16 in ~1.4 s,
-  idempotently. Left out on purpose: 95 triggers and the FTS5 table.
-- **The SQLite schema stays exactly as it is** – no risk for existing
-  instances. A DSL would mean rewriting 92 schema versions' worth of
-  `CREATE`/`ALTER` (and their data steps) for both backends, re-deriving
-  SQLite's own schema from it, and proving it identical.
-- **New migrations stay one place.** A column added in `lib/db.ts` shows up
-  in the JSON (`npm`-script / test reminds) and `ensurePostgresSchema` adds it.
-  Data steps of migrations (backfills) must be written once against `Db` with
-  dialect helpers (rule for the refactor).
-- Mapping: `INTEGER` → `bigint` (ms timestamps), `REAL` → `double precision`,
-  `BLOB` → `bytea`, `TEXT`/untyped → `text`; `INTEGER PRIMARY KEY
-  AUTOINCREMENT` → identity; `DEFAULT CURRENT_TIMESTAMP` on text → the same
-  text format; reserved words quoted (`time_entries.end` must be quoted in
-  queries too); a `UNIQUE … COLLATE NOCASE` key → unique index on `lower()`;
-  index expressions `ifnull` → `coalesce`, `x COLLATE NOCASE` → `lower(x)`;
-  foreign keys to non-key columns (allowed by SQLite until a row is written)
-  are reported and left out (none today).
-- **`rowid`.** 32 queries order by SQLite's implicit `rowid` (insertion
-  order as tiebreaker), a few delete by it. Each Postgres table gets a real
-  `rowid bigint` identity column, last; the drivers drop it from results
-  unless the statement names it. Cost found: `t.*` in a `UNION` with explicit
-  columns (1 place). The migration tool keeps rowid values both ways.
+### Triggers (decided per group)
 
-Not covered by the translator, by design: triggers (port the ~15 that carry
-logic to plpgsql or into the code – open question 10 – and replace the ~30
-search-queue triggers with the Postgres search design), FTS5 (`tsvector` per
-language), sqlite-specific maintenance (`PRAGMA optimize`, `VACUUM`,
-Litestream).
+All SQLite triggers are inventoried in the translated schema: the 95 of
+before phase 1 plus the 14 `seq` triggers of schema 93. **Decision:
+translate them to PL/pgSQL** (lib/db-driver/pg-triggers.ts) rather than
+port them into application code: the writes they react to are spread over
+hundreds of statements (21 places insert notifications, every write of
+`rows`, `pages`, `documents` …), so code would have to repeat them at each
+place – nothing there is "simple and centralised". One implementation per
+database, generated from the same SQLite text, keeps them identical. The
+translator moves the `WHEN` into the function (Postgres' `WHEN` takes no
+subqueries), turns `RAISE(IGNORE)` into `RETURN NULL` (row skipped, as in
+SQLite), `RAISE(ABORT,'…')` into an exception with the same message,
+`IS`/`IS NOT` into `IS [NOT] DISTINCT FROM`, `json_object` into
+`jsonb_build_object`, `instr` into `strpos`, `unixepoch()*1000` into whole
+seconds and `julianday('now')` arithmetic into milliseconds (as SQLite has
+them), and adds `ON CONFLICT DO NOTHING` to queue inserts guarded by `NOT
+EXISTS` (READ COMMITTED lets two transactions pass the guard).
+
+| Group | Triggers | Decision |
+|---|---:|---|
+| Search queue (`search_*` → `search_dirty`) | 31 | PL/pgSQL; replaced together with the queue when search moves to `tsvector` (later phase) |
+| Offline change log (`offline_*` → `offline_changes`) | 18 | PL/pgSQL |
+| End-to-end encryption guards (`e2ee_*`: refuse plaintext, drop keys of removed members) | 17 | PL/pgSQL (a guard must hold for every write path) |
+| AI queues (`ai_embed_*`, `ai_auto_*`) | 12 | PL/pgSQL |
+| Insertion order (`<table>_seq`, schema 93) | 14 | SQLite only: `seq` is an identity on Postgres |
+| Relation sync (`relation_row_*` → `relation_changes`) | 3 | PL/pgSQL (flushed by `transaction()` on both) |
+| Notifications (`notification_inbox_pref` skips, `queue_notification_push`/`_messenger` queue) | 3 | PL/pgSQL |
+| Space Git exports (`space_git_*` end exports on owner/trash/member changes) | 4 | PL/pgSQL |
+| Record numbers (`rows_number_counter`: counter row update, serialises per database) | 1 | PL/pgSQL |
+| Snapshot appearance, page `created_at` (+ `seq` on SQLite), space position, home layouts, document tasks | 6 | PL/pgSQL; `spaces_position_insert` and `pages_created_at` hand-written (no rowid) |
+| Object storage queue (`storage_file_*`, only with S3) | 2 | SQLite: calls a JS function; Postgres: a PL/pgSQL trigger fills the queue, the worker polls it every 0.5 s (lib/storage.ts) |
+
+### Backups, restores, instance moves
+
+Backups stay **SQLite files on both databases**. `snapshotDatabase(path)`
+(lib/db-snapshot.ts) is `VACUUM INTO` on SQLite; on Postgres it writes the
+same file from the translated schema and the data (one `REPEATABLE READ`
+transaction, key order). A restore or move on Postgres (lib/db-restore.ts)
+keeps the current state as such a file (as SQLite keeps the swapped-out
+file), brings the backup up to this schema with the SQLite migrations and
+refills every table in one transaction (foreign keys dropped and re-added,
+user triggers disabled meanwhile, identities moved on); the search index is
+rebuilt. So a backup made on either database restores on either.
+`pg_dump` remains the tool for Postgres-side backups in production.
 
 ## 4. Porting, and how async spreads
 
@@ -302,12 +395,10 @@ impossible: 2 constructors and 1 module top level (`lib/ai/access.ts`).
    `DATABASE_URL` (one Postgres service, a schema per test file –
    `tests/helpers/postgres-backend.ts` does that already), the JSON schema
    check, the SQLite-only refusal.
-2. **Dialect pass, file by file, synchronous** – no callers change. Order by
-   dependency: `lib/db.ts` data steps of migrations → `permissions.ts`,
-   `read-memo` → `api.ts` (command, bootstrap, pageData) → features. Each file
-   is "done" when its tests pass on Postgres through the bridge. Triggers and
-   search redesign run in parallel. Result: Postgres works (single instance,
-   bridge), SQLite unchanged.
+2. **Dialect pass, synchronous – done (phase 1, §11).** All SQL runs on
+   both databases; the whole suite passes on SQLite and on Postgres through
+   the bridge. Search keeps a dialect seam (`lib/search-store.ts`) until its
+   `tsvector` design.
 3. **Async sweep** with `scripts/codemod-await.mjs`: it wraps calls of the
    given functions in `await`, marks the enclosing functions `async` (return
    types `Promise<…>`), follows file-local helpers to a fixpoint, turns
@@ -344,24 +435,43 @@ Pitfalls the spike hit (all caught by tests or `tsc`, except the first):
 ## 5. Tests
 
 - Without `DATABASE_URL`: unchanged, SQLite.
-- With `DATABASE_URL=postgres://…`, `tests/helpers/cleanup.mjs` (already
-  preloaded for every test file) calls `preparePostgres()`
+- With `DATABASE_URL=postgres://…`, `tests/helpers/cleanup.mjs` (preloaded
+  for every test file) calls `preparePostgres()`
   (`tests/helpers/postgres-backend.ts`): a schema of its own per test
-  process, created from the JSON, dropped at exit (`--drop-all` cleans up
-  after aborted runs). Synchronous test helpers (`run("INSERT …")`) reach it
-  through the bridge.
+  process, created from the JSON (tables, triggers, seed rows), dropped at
+  exit (`--drop-all` cleans up after aborted runs). Synchronous test helpers
+  (`run("INSERT …")`) reach it through the bridge. A test that switches to a
+  fresh instance (`tests/setup-restore.test.ts`) gets a fresh schema, as it
+  gets a fresh data folder on SQLite: `reopenDatabase()` connects anew when
+  `FLOWPLAN_PG_SCHEMA` changed.
+- `tests/helpers/backend.ts`: `onPostgres`, and `sqliteOnly` as a `skip`
+  reason for the tests that check SQLite itself (see below).
 - `tests/db-driver.test.ts`: the layer (placeholders, types, commit,
   rollback, savepoints, `afterTransaction`, locks, the refusal rules) and the
   slice end to end, on whichever backend is configured.
-- Results of the spike, Postgres 16:
-  `sessions` 9/9, `app-devices` 7/7, `local-auth` 10/10, `first-account` 2/2
-  (three simultaneous sign-ups, one admin), `db-driver` 10/10 (+1 SQLite-only),
-  `read-memo` 15/16 (the 16th opens the SQLite file directly).
-  `page-properties`, `meta-scope`, `tag-fields` do **not** pass on Postgres
-  yet, for reasons outside the slice that show the next work: the FTS5
-  `search_index`, `datetime()` in snapshots, `COLLATE NOCASE` in
-  `meta-scope-server.ts`, and two tests that check SQLite migrations with
-  `PRAGMA`/`sqlite_master`.
+- Results: §11.
+
+```sh
+# a throwaway Postgres 16 (as the postgres user)
+initdb -D /tmp/fp-pg/data -U postgres --auth=trust
+pg_ctl -D /tmp/fp-pg/data -o "-p 55433 -k /tmp/fp-pg -c max_connections=400 -c fsync=off" start
+createdb -h localhost -p 55433 -U postgres flowplan_test
+DATABASE_URL=postgres://postgres@localhost:55433/flowplan_test npm test
+```
+
+## 5a. Search on Postgres (until `tsvector`)
+
+`lib/search-store.ts` is the one place that stores and matches search
+entries (lib/search-index.ts decides what goes in, lib/collections.ts and
+lib/related-pages.ts query it). SQLite: FTS5 with the trigram tokenizer,
+BM25 with the title ten times the text – unchanged. Postgres: the entries in
+a plain table with their title and text folded (lower case, without
+diacritics, in JavaScript); a phrase matches where the folded text contains
+it – what the trigram index finds – ranked by where the phrases occur
+(title 10, text 1); snippets are cut in JavaScript around the first hit
+with the same markers. Good enough for correctness and the tests; the
+`tsvector` design (per language, `pg_trgm` for substrings) replaces it and
+the search queue triggers in a later phase.
 
 ## 6. Migration tool
 
@@ -372,12 +482,14 @@ Pitfalls the spike hit (all caught by tests or `tsc`, except the first):
 - Refuses a source whose schema version differs from this version's
   (`PRAGMA user_version` / `flowplan_meta`), a non-empty target table, an
   existing target file.
-- Copies table by table in batches ordered by `rowid` (kept on both sides),
+- Copies table by table in batches in primary-key order (`seq` values kept
+  on both sides; the search index is not copied but rebuilt),
   values converted by the Postgres column type (refuses with the row when a
   value does not fit – SQLite keeps any value in any column; NUL in text).
 - Into Postgres: foreign keys dropped for the copy and re-added afterwards
-  (validated; no superuser needed), identity sequences continue after the
-  copied values, `ANALYZE`.
+  (validated; no superuser needed), triggers created after the copy (and
+  no seed rows: the copy brings its own), identity sequences continue after
+  the copied values, `ANALYZE`.
 - Into SQLite: the schema exactly as SQLite had it (tables, then after the
   copy indexes, triggers and the FTS table from the JSON), `PRAGMA
   foreign_key_check`, `user_version`, the search index rebuilt by Flowplan on
@@ -469,34 +581,89 @@ spike; ranges reflect the review effort the codemod cannot remove.
 | pgvector (when available) | | 3–5 |
 | Cluster mode (Redis pub/sub, rate limits, presence, S3 mandatory, queue + leader) | §8 | 15–25 |
 
-## 10. Open questions for the maintainer
+## 10. Decisions (questions of the spike, answered)
 
-1. **The bridge:** a development/CI aid only (Postgres unsupported until the
-   async sweep is done), or ship "Postgres, single instance, experimental"
-   on top of it earlier?
-2. **Order:** dialect pass first (Postgres usable early, refactor risk later)
-   or async sweep first (one big mechanical change, then dialect)?
-3. **Sweep shape:** a short code freeze with a few large codemod PRs, or
-   long-lived twins for big cones? The measured cones favour the freeze.
-4. **Case-insensitive names:** `lower()` (no extension, folds every letter –
-   Ä = ä, slightly wider than SQLite's ASCII NOCASE) or `citext` (extension
-   needed; managed Postgres usually has it)?
-5. **Types:** keep SQLite's `TEXT` timestamps and `INTEGER` booleans on
-   Postgres (as the spike does: least change, simple migration tool) or move
-   to `timestamptz`/`boolean` later?
-6. **`rowid`:** keep the emulated column, or rewrite the 32 queries to order
-   by explicit columns (`created_at, id`) and drop it?
-7. **Schema source:** SQLite migrations + translator (proposed), with the
-   rule that data steps are written against `Db`?
-8. **Isolation:** `READ COMMITTED` + explicit locks per critical section
-   (proposed) or `SERIALIZABLE` with automatic retries?
-9. **Async SQLite transactions** hold the only connection across their
-   awaits; synchronous writes from other requests are refused meanwhile.
-   Acceptable during the transition with the rule "bodies await database
-   calls only" (warned in development), or should async transactions on
-   SQLite be deferred until the sweep is complete?
-10. **Triggers:** port to plpgsql (parity) or move their logic into the code
-    (one implementation for both)?
-11. **Bundling:** the bridge worker (`new Worker(new URL(…))`) and `pg` in
-    the standalone build are configured but not verified with `next build`
-    in the spike.
+1. **The bridge** is a development and CI aid only, not a product mode.
+2. **Order:** dialect pass first (phase 1, done), then the asynchronous
+   sweep by codemod (phase 2).
+3. **Sweep shape:** a short freeze with a few large codemod PRs.
+4. **Case-insensitive names:** `lower()` on both sides, with indexes on
+   `lower(col)` where an index existed; no `citext`.
+5. **Types:** `TEXT` timestamps (`'YYYY-MM-DD HH:MM:SS'`, UTC) and `INTEGER`
+   0/1 booleans on Postgres too.
+6. **`rowid`:** gone; explicit `seq` columns where insertion order matters
+   (§3).
+7. **Schema source:** the SQLite migrations plus the translator; data steps
+   must work on both (see §11, phase 2).
+8. **Isolation:** `READ COMMITTED` plus explicit locks at critical sections
+   (`tx(fn,{lock})`, `lockFor(key)`, `FOR UPDATE`).
+9. **Async SQLite transactions** keep the one connection across awaits
+   during the transition (rule: bodies await database calls only).
+10. **Triggers:** per group, §3 – all translated to PL/pgSQL, as the writes
+    they react to are not centralised.
+11. **Bundling:** verified with `next build`, §11.
+
+## 11. Phase 1: the dialect pass (done)
+
+What changed, beyond the rules of §2 and §3:
+
+- **Codemods and scans.** `scripts/codemod-dialect.mjs` rewrote the
+  mechanical cases (`CURRENT_TIMESTAMP`/`datetime('now',…)` → a `nowText()`
+  parameter at the right position, `INSERT OR IGNORE` → `ON CONFLICT DO
+  NOTHING`): about 190 literals in `lib`, `app` and tests. Everything else by
+  hand, file group by file group, driven by the Postgres test run.
+  `scripts/db-dialect-scan.mjs` counts what is left (§2).
+- **Driver.** The bridge no longer rewrites SQL; `? IS NULL` parameters get
+  a type on Postgres; `transaction()` takes SQLite's steps on Postgres too;
+  `inSavepoint`, `updateIgnoringConflicts`, `lockFor` and the schema
+  helpers in `lib/db.ts` work on both.
+- **Things that wrote into the SQLite file in Postgres mode** – the object
+  storage queue (lib/storage.ts), the conversion of formatted text values,
+  the upload cleanup – go through `one/all/run` now.
+- **Isolation.** Postgres runs `READ COMMITTED`. The synchronous path has
+  one bridge connection per process, so its transactions are serialised as
+  SQLite's are; the explicit locks matter once phase 2 makes them
+  concurrent and for cluster mode. In place: the first account
+  (`tx(…,{lock})`, spike), `lockFor()` (advisory, transaction-scoped) before
+  tag and property creation (names, limit, position), issue connections,
+  SSO mappings and rack templates (limits), the row positions of a
+  transfer, the collection order; record numbers serialise on their counter
+  row; unique names have unique indexes (`lower(name)`) as the last word.
+- **Schema 93** (SQLite): `seq` columns, the lazily created tables, the
+  scope-name indexes on `lower(name)`.
+
+### Results
+
+RESULTS
+
+### What phase 2 (the asynchronous sweep) must know
+
+- Write new SQL for both databases (`sql.*`/`db.dialect.*`); run the suite
+  with `DATABASE_URL` in CI – the refusal list catches most slips, the rest
+  shows as Postgres errors (`GROUP BY` bare columns, `x=x+1` in upserts,
+  mixed-case aliases, `? IS NULL` without the driver's cast in hand-written
+  `$n` SQL).
+- `sql` (lib/db.ts) picks the dialect per call from `DATABASE_URL`; in
+  async code use `db.dialect`. `nowText()` is the timestamp parameter on
+  both.
+- Caught failures inside transactions need a savepoint (`inSavepoint` now,
+  a nested `db.tx` later); the async driver has no `updateIgnoringConflicts`
+  or `lockFor` twin yet – port them with the code that uses them
+  (`tx(fn,{lock})` covers `lockFor`).
+- The data steps of the SQLite migrations (`migrateFormattedText`,
+  `migrateSealedSecrets`, `migrateIdentities`, `migrateSavedSearches`, the
+  emoji normalisation) still take the SQLite connection: a Postgres
+  database is created at the current version from the JSON (seed rows
+  included), so they have nothing to do there today; the first data step
+  after phase 1 must be written against `one/all/run` (or `Db`) and run on
+  both, with a version marker in `flowplan_meta`.
+- `lib/db-restore.ts` and `lib/db-snapshot.ts` use the bridge (sync,
+  whole tables per batch); make them async and streaming for large
+  instances. The Postgres search store is a stop-gap (§5a).
+- `storage.ts` polls the queue every 0.5 s on Postgres (no JS trigger);
+  replace with a `LISTEN/NOTIFY` connection or the job queue of cluster
+  mode.
+- Tests skipped on Postgres (they test SQLite itself): the migrations of
+  schemas 89, 90, 92, saved searches → collections, the incident
+  channel upgrade, the reaction emoji normalisation, FTS5's content table,
+  the read memo against a second SQLite connection.
