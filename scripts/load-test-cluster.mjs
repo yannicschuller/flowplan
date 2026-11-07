@@ -37,6 +37,10 @@ const { values: opt } = parseArgs({
     out: { type: "string", default: "load-test-cluster.json" },
     work: { type: "string", default: join(tmpdir(), "flowplan-lt-cluster") },
     "keep-going": { type: "boolean", default: false },
+    // CPUs to pin the instances to, one per instance (taskset), e.g. "0,1":
+    // each instance gets one core of its own, so the instance count is what
+    // changes – not how much of a shared machine the instances happen to get.
+    pin: { type: "string", default: "" },
   },
 });
 const databaseUrl = process.env.DATABASE_URL || "";
@@ -146,7 +150,8 @@ async function measure(count, s3) {
   const servers = [];
   for (let i = 1; i <= count; i++) {
     const dir = app(join(work, `app-${i}`));
-    const child = spawn(process.execPath, ["server.js"], {
+    const cpu = opt.pin ? opt.pin.split(",")[(i - 1) % opt.pin.split(",").length] : null;
+    const child = spawn(cpu !== null ? "taskset" : process.execPath, cpu !== null ? ["-c", cpu, process.execPath, "server.js"] : ["server.js"], {
       cwd: dir,
       env: { ...process.env, ...env, PORT: String(port + i), FLOWPLAN_DATA_DIR: join(work, `data-${count}-${i}`), FLOWPLAN_INSTANCE_ID: `lt-${i}` },
       stdio: ["ignore", "ignore", "inherit"],
