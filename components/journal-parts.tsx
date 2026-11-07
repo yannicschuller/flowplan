@@ -22,6 +22,8 @@ import {
   Trash,
 } from "@phosphor-icons/react";
 import { api, Modal } from "./ui";
+import { post, StepUpDialog, type Pending } from "./sign-in-methods";
+import type { StepUpMethods } from "@/lib/step-up";
 import { DEFAULT_SIDEBAR_MODE, SIDEBAR_MODES, type SidebarMode } from "@/lib/journal-nav";
 
 export const moodFaces = ["😞", "🙁", "😐", "🙂", "😄"];
@@ -185,7 +187,7 @@ export function JournalSettingsDialog({
     if (next !== null && next !== pinAgain) return onError(t("Die PINs stimmen nicht überein.", "The PINs do not match."));
     setBusy(true);
     try {
-      await api("/api/command", {
+      const result = await api<{ revoked?: number } | null>("/api/command", {
         action: "journal.lock",
         pageId,
         pin: next,
@@ -196,7 +198,18 @@ export function JournalSettingsDialog({
       setPinAgain("");
       setOldPin("");
       await onChanged();
-      onError(next === null ? t("Sperre entfernt.", "Lock removed.") : t("Journal ist mit PIN geschützt.", "Journal is protected with a PIN."));
+      // Setting the PIN ended the journal's share links, publications and
+      // public forms (lib/journal-extras.ts).
+      const revoked = result?.revoked || 0;
+      onError(
+        next === null
+          ? t("Sperre entfernt.", "Lock removed.")
+          : revoked === 1
+            ? t("Journal ist mit PIN geschützt. 1 Freigabe (Link, Veröffentlichung oder öffentliches Formular) wurde widerrufen.", "Journal is protected with a PIN. 1 share (link, publication or public form) was revoked.")
+            : revoked > 1
+              ? t(`Journal ist mit PIN geschützt. ${revoked} Freigaben (Links, Veröffentlichungen oder öffentliche Formulare) wurden widerrufen.`, `Journal is protected with a PIN. ${revoked} shares (links, publications or public forms) were revoked.`)
+              : t("Journal ist mit PIN geschützt.", "Journal is protected with a PIN."),
+      );
     } catch (e) {
       onError(message(e));
     } finally {
@@ -462,6 +475,9 @@ export function JournalSettingsDialog({
           </p>
           <p className="js-intro">
             {t("Mit PIN zeigt das Journal seine Tage erst nach Eingabe – für alle, die es öffnen dürfen. Nach 15 Minuten sperrt es sich wieder. Nach fünf falschen Versuchen folgt eine Pause, und du bekommst eine Benachrichtigung, wenn jemand anderes rät. Das schützt vor Blicken, ist aber keine Verschlüsselung.", "With a PIN the journal shows its days only after entering it – for everyone allowed to open it. After 15 minutes it locks again. Five wrong attempts cause a pause, and you get a notification when someone else keeps guessing. This protects against prying eyes but is not encryption.")}
+          </p>
+          <p className="js-intro">
+            {t("Eine PIN macht das Journal privat: Beim Sperren werden seine Freigabelinks, Veröffentlichungen und öffentlichen Formulare widerrufen, und neue lassen sich nicht anlegen.", "A PIN makes the journal private: locking it revokes its share links, publications and public forms, and no new ones can be created.")}
           </p>
           <div className="js-pin">
             {current.locked && (
@@ -1029,7 +1045,38 @@ export function JournalLockScreen({
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  // The reset is confirmed once more (lib/step-up.ts), in the same dialog as
+  // the sign-in methods: password, code from the app, passkey or a fresh
+  // sign-in.
+  const [stepUp, setStepUp] = useState<{ pending: Pending; methods: StepUpMethods } | null>(null);
+  const reset = async () => {
+    if (!window.confirm(t("PIN entfernen? Das Journal ist dann für alle mit Zugriff wieder offen. Wer es angelegt hat, wird benachrichtigt.", "Remove the PIN? The journal is then open again to everyone with access. Whoever created it is notified.")))
+      return;
+    setBusy(true);
+    setError("");
+    try {
+      const { confirm: methods } = await post("sign-in-methods");
+      setStepUp({
+        methods,
+        pending: {
+          title: t("PIN zurücksetzen", "Reset PIN"),
+          text: t("Bestätige zur Sicherheit, dass du die PIN dieses Journals entfernen möchtest.", "For security, confirm that you want to remove this journal's PIN."),
+          danger: true,
+          button: t("PIN zurücksetzen", "Reset PIN"),
+          run: async (confirm) => {
+            await post("journal-pin-reset", { pageId: journalId, confirm });
+            return t("PIN entfernt.", "PIN removed.");
+          },
+        },
+      });
+    } catch (err) {
+      setError(message(err));
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
+    <>
     <form
       method="post"
       action="/api/auth/no-script"
@@ -1070,24 +1117,23 @@ export function JournalLockScreen({
           type="button"
           className="button compact"
           disabled={busy}
-          onClick={async () => {
-            if (!window.confirm(t("PIN entfernen? Das Journal ist dann für alle mit Zugriff wieder offen. Wer es angelegt hat, wird benachrichtigt.", "Remove the PIN? The journal is then open again to everyone with access. Whoever created it is notified.")))
-              return;
-            setBusy(true);
-            setError("");
-            try {
-              await api("/api/command", { action: "journal.lock", pageId: journalId, pin: null });
-              await onUnlocked();
-            } catch (err) {
-              setError(message(err));
-            } finally {
-              setBusy(false);
-            }
-          }}
+          onClick={() => void reset()}
         >
           {t("PIN zurücksetzen", "Reset PIN")}
         </button>
       )}
     </form>
+    {stepUp && (
+      <StepUpDialog
+        pending={stepUp.pending}
+        methods={stepUp.methods}
+        onClose={() => setStepUp(null)}
+        onDone={() => {
+          setStepUp(null);
+          void onUnlocked();
+        }}
+      />
+    )}
+    </>
   );
 }

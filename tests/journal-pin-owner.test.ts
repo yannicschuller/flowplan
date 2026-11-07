@@ -62,7 +62,10 @@ test("a workspace owner resets a PIN nobody knows, and the creator hears of it",
   assert.equal(locked(owner, journal)?.canReset, true);
   // Setting a new PIN over a lock still needs the old one.
   assert.equal(status(() => act({ action: "journal.lock", pageId: journal, pin: "111111" })), 403);
-  assert.equal(status(() => act({ action: "journal.lock", pageId: journal, pin: null })), 200);
+  // The reset is confirmed once more first (lib/step-up.ts; the route
+  // POST /api/auth/journal-pin-reset sets stepUp).
+  assert.equal(status(() => act({ action: "journal.lock", pageId: journal, pin: null })), 403);
+  assert.equal(status(() => act({ action: "journal.lock", pageId: journal, pin: null }, { ...owner, stepUp: true })), 200);
   assert.equal(locked(owner, journal), undefined);
   assert.equal(locked(writer, journal), undefined);
   assert.ok(one("SELECT 1 FROM notifications WHERE user_id=? AND page_id=? AND kind='security'", writer.id, journal));

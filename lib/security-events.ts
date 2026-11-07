@@ -377,6 +377,8 @@ export function auditToSecurity(actor: string, action: string, resource: string,
   // Instance move (lib/instance-move.ts): token created or revoked, source
   // read-only, move started, applied or called off.
   if (action.startsWith("instance.move.")) return ["instance.move", { actorId: actor || null, detail: `${action.slice(14)}${detail ? ` ${detail}` : ""}` }];
+  // A journal PIN ended its share links, publications and public forms.
+  if (action === "journal.lock.revoke") return ["share.revoked", { actorId: actor, detail: `journal ${resource} ${detail}`.trim() }];
   if (action === "share.create") return ["share.created", { actorId: actor, detail: `${resource} ${detail}`.trim() }];
   if (EXPORTS.test(action)) return ["data.export", { actorId: actor, detail: `${action} ${resource}`.trim() }];
   if (ADMIN_SETTINGS.test(action)) return ["admin.settings", { actorId: actor || null, detail: `${action}${detail ? ` ${detail}` : ""}` }];

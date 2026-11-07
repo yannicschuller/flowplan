@@ -30,6 +30,9 @@ export type Identity = User & {
   // Signed in, but the instance requires a second factor this account has
   // not set up yet: only setting it up is possible (lib/two-factor-policy.ts).
   twoFactorSetup?: boolean;
+  // This request confirmed the account once more (lib/step-up.ts); set
+  // only by the server after confirmStep, never from the request body.
+  stepUp?: boolean;
 };
 export type Workspace = {
   id: string;

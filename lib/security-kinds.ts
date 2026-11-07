@@ -36,6 +36,7 @@ export const securityKinds = {
   "invite.created": { severity: "info", de: "Einladung verschickt", en: "Invitation sent" },
   "share.created": { severity: "info", de: "Freigabelink erstellt", en: "Share link created" },
   "share.public": { severity: "warn", de: "Seite öffentlich gemacht", en: "Page made public" },
+  "share.revoked": { severity: "info", de: "Freigaben widerrufen", en: "Shares revoked" },
   "data.export": { severity: "info", de: "Export", en: "Export" },
   "request.origin": { severity: "warn", de: "Anfrage von fremder Herkunft", en: "Request from a foreign origin" },
   "request.probing": { severity: "warn", de: "Viele abgewiesene Anfragen", en: "Many refused requests" },

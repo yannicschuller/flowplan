@@ -219,9 +219,11 @@ test("without the PIN nothing below the journal comes through these ways", async
   });
   // The inbox says why instead.
   assert.ok(api.bootstrap(member, wid).notifications.some((n) => n.body === "Dieses Journal ist gesperrt."));
-  // Publishing the parent with its sub-pages would publish the journal.
-  assert.equal(status(() => act({ action: "page.publish", pageId: parent, enabled: true, includeChildren: true }, member)), 423);
-  assert.equal(one("SELECT 1 FROM publications WHERE page_id=?", parent), undefined);
+  // Publishing the parent with its sub-pages leaves a journal with a PIN
+  // out, with all its days (lib/publication.ts).
+  assert.equal(status(() => act({ action: "page.publish", pageId: parent, enabled: true, includeChildren: true }, member)), 200);
+  assert.deepEqual(all<{ page_id: string }>("SELECT page_id FROM publication_pages WHERE root_id=?", parent).map((p) => p.page_id), [parent]);
+  act({ action: "page.publish", pageId: parent, enabled: false }, member);
   // Calendar and issue sync stay closed, setting them up as well.
   assert.equal(status(() => saveCalendarMapping(member, { connectionId: connection, pageId: db, viewId: d.views[0].id, calendarId: "other" })), 423);
   assert.equal(await statusAsync(() => syncCalendarMapping(mapping)), 423);
