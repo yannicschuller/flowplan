@@ -62,6 +62,7 @@ import {
   journalDayDetails,
   journalLocked,
   lockingJournal,
+  mayResetJournalLock,
   journalOf,
   journalSettings,
   journalSidebarModes,
@@ -434,7 +435,8 @@ function pageContent(user: Identity, pid: string, options: { presence?: boolean 
     return {
       page: p,
       role,
-      locked: { journalId: lockedBy },
+      // Owners of the workspace may reset the PIN from the lock screen.
+      locked: { journalId: lockedBy, canReset: mayResetJournalLock(user, one<Page>("SELECT * FROM pages WHERE id=?", lockedBy)!) },
       comments: [],
       snapshots: [],
       present: [],
@@ -1543,7 +1545,10 @@ export function command(
         break;
       }
       case "journal.lock": {
-        const journal = write();
+        // Not write(): its own PIN is checked by setJournalLock (the
+        // current one, or a reset by a workspace owner).
+        const journal = requirePage(user, pid(), true);
+        if (journal.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
         if (journal.kind !== "journal")
           throw new HttpError(400, "Diese Seite ist kein Journal.");
         setJournalLock(
