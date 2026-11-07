@@ -12,7 +12,7 @@
 // audit trail and dropped. Each address takes at most 60 mails per hour,
 // attachments count against the workspace quota and a daily budget per
 // address, and a Message-ID is stored once.
-import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import sanitize from "sanitize-html";
@@ -29,6 +29,7 @@ import { enforceQuota } from "./instance-ops";
 import { takeAnonymousBudget } from "./anonymous-budget";
 import { sanitizeFileName, stripLocation, verifiedMime } from "./upload-safety";
 import { openSecret, sealSecret } from "./secret-box";
+import { claimOnce } from "./replay-guard";
 import { ct } from "./content-locale";
 import { addresses, parseHeaders, parseMime, parseDate, type MimeAttachment } from "./mime-parse";
 import { ImapClient, type ImapOptions } from "./imap";
@@ -237,7 +238,8 @@ const sameHex = (expected: string, actual: string) => {
 export type SignatureFields = { timestamp: string; token: string; signature: string };
 // With a signing key, a delivery needs either X-Flowplan-Signature
 // (sha256=HMAC of the raw body, like Flowplan's own webhooks) or Mailgun's
-// signature fields (HMAC of timestamp + token, at most 15 minutes old).
+// signature fields (HMAC of timestamp + token, at most 15 minutes old, each
+// token once – lib/replay-guard.ts).
 export function verifyInboundSignature(
   address: Pick<AddressRow, "id" | "secret">,
   body: Buffer,
@@ -255,7 +257,14 @@ export function verifyInboundSignature(
   const sent = (header || "").replace(/^sha256=/i, "");
   if (sent && sameHex(createHmac("sha256", key).update(body).digest("hex"), sent)) return;
   if (fields?.signature && /^\d+$/.test(fields.timestamp) && Math.abs(now / 1000 - Number(fields.timestamp)) < 900) {
-    if (sameHex(createHmac("sha256", key).update(fields.timestamp + fields.token).digest("hex"), fields.signature)) return;
+    if (sameHex(createHmac("sha256", key).update(fields.timestamp + fields.token).digest("hex"), fields.signature)) {
+      // Mailgun signs timestamp and token, not the mail: a token is good
+      // once, for as long as its signature is valid. Mailgun's own retry
+      // carries the same mail and passes.
+      const fingerprint = createHash("sha256").update(body).digest("hex");
+      const ttl = Math.max(900_000, Number(fields.timestamp) * 1000 + 900_000 - now);
+      if (claimOnce(`mailgun:${address.id}:${fields.token}`, fingerprint, ttl, now) !== "other") return;
+    }
   }
   throw new HttpError(401, "Signatur ungültig.");
 }

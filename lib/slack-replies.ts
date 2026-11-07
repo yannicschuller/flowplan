@@ -9,6 +9,7 @@ import { HttpError } from "./auth";
 import { command } from "./api";
 import { openSecret } from "./ai/secrets";
 import { quietly } from "./webhooks";
+import { claimOnce } from "./replay-guard";
 import type { Identity } from "./types";
 
 // Slack's signature: v0=HMAC-SHA256("v0:<timestamp>:<body>"), at most five
@@ -50,11 +51,19 @@ export function receiveSlackEvent(hookId: string, headers: Headers, body: string
   const payload = JSON.parse(body) as {
     type?: string;
     challenge?: string;
+    event_id?: string;
     event?: { type?: string; subtype?: string; bot_id?: string; text?: string; ts?: string; thread_ts?: string };
   };
   if (payload.type === "url_verification") return { challenge: String(payload.challenge || "") };
   // Slack retries when the first answer was slow; the comment exists already.
   if (headers.get("x-slack-retry-num")) return { ok: true, ignored: "retry" };
+  // A signature is accepted five minutes either side of its timestamp: in
+  // that window each event counts once, whoever sends it again
+  // (lib/replay-guard.ts).
+  if (payload.type === "event_callback") {
+    if (typeof payload.event_id !== "string" || !payload.event_id) return { ok: true, ignored: "event" };
+    if (claimOnce(`slack:${hook.id}:${payload.event_id.slice(0, 100)}`, "", 10 * 60_000) !== "new") return { ok: true, ignored: "retry" };
+  }
   const event = payload.event;
   if (payload.type !== "event_callback" || event?.type !== "message" || event.subtype || event.bot_id) return { ok: true, ignored: "event" };
   if (!event.thread_ts || event.thread_ts === event.ts || typeof event.text !== "string") return { ok: true, ignored: "not a reply" };

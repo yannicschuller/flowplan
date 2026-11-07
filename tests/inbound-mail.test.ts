@@ -419,6 +419,30 @@ test("POST /api/inbound-mail/<token>: stores, checks the signing key, refuses un
   );
   assert.equal(signed.status, 200);
   assert.equal((await signed.json()).provider, "mailgun");
+  // Mailgun signs timestamp and token, not the mail: the same token with
+  // another mail is a replay and refused; Mailgun's own retry (the same
+  // mail) still passes (and is a duplicate).
+  const forged = new FormData();
+  for (const [key, value] of form) forged.set(key, value);
+  forged.set("subject", "Untergeschoben");
+  forged.set("body-plain", "Bitte überweisen");
+  const forgedBody = await encode(forged);
+  const replay = await POST(
+    new Request(`https://flowplan.example.test/api/inbound-mail/${token}`, { method: "POST", headers: { "content-type": forgedBody.type }, body: forgedBody.body }),
+    { params: Promise.resolve({ token }) },
+  );
+  assert.equal(replay.status, 401);
+  assert.equal(one("SELECT 1 x FROM pages WHERE title=?", "Untergeschoben"), undefined);
+  const retried = await POST(
+    new Request(`https://flowplan.example.test/api/inbound-mail/${token}`, { method: "POST", headers: { "content-type": encoded.type }, body: encoded.body }),
+    { params: Promise.resolve({ token }) },
+  );
+  assert.equal(retried.status, 200);
+  const stored = one<{ id: string; secret: string }>("SELECT id,secret FROM inbound_addresses WHERE id=?", addressId)!;
+  assert.throws(
+    () => inbound.verifyInboundSignature(stored, Buffer.from("other"), null, { timestamp: ts, token: "tok123", signature: form.get("signature") as string }),
+    (e: { status?: number }) => e.status === 401,
+  );
   assert.equal((await post({}, body, "a".repeat(32))).status, 404);
   assert.equal((await post({ "content-length": String(inbound.INBOUND_REQUEST_BYTES + 1) })).status, 413);
   // Removing the key: no signature needed any more.

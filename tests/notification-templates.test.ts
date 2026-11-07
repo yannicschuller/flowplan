@@ -356,6 +356,7 @@ test("Slack thread replies become comments when the signature is valid", async (
 
   const reply = JSON.stringify({
     type: "event_callback",
+    event_id: "Ev0123456789",
     event: { type: "message", text: "Erledigt, siehe <https://x.test|Ticket> &amp; <@U123>", ts: "1700000001.000200", thread_ts: "1700000000.000100" },
   });
   const before = all("SELECT 1 FROM webhook_deliveries WHERE webhook_id=?", hookId).length;
@@ -370,6 +371,11 @@ test("Slack thread replies become comments when the signature is valid", async (
   const retry = signed(reply);
   retry.set("x-slack-retry-num", "1");
   assert.equal((transaction(() => receiveSlackEvent(hookId, retry, reply)) as { ignored?: string }).ignored, "retry");
+  // The same signed event sent again without the retry header (a replay
+  // within the signature's five minutes) counts once as well.
+  assert.equal((transaction(() => receiveSlackEvent(hookId, signed(reply), reply)) as { ignored?: string }).ignored, "retry");
+  const noId = JSON.stringify({ type: "event_callback", event: { type: "message", text: "x", ts: "3", thread_ts: "1700000000.000100" } });
+  assert.equal((transaction(() => receiveSlackEvent(hookId, signed(noId), noId)) as { ignored?: string }).ignored, "event");
   assert.equal(all("SELECT 1 FROM comments WHERE row_id=?", row).length, 1);
 });
 
