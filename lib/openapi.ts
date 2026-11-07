@@ -765,7 +765,7 @@ export const commandActions: ActionDoc[] = [
     action: "issueSync.connect",
     summary: "Connect GitHub, GitLab or Forgejo/Gitea for issue sync",
     description:
-      "Workspace owners and administrators. Without `id` a new connection (token required); with `id` an update (the token stays unless given). The token is stored encrypted. Self-hosted servers – and every Forgejo/Gitea server (`forgejo`, also codeberg.org) – only when listed in ISSUE_SYNC_ALLOWED_HOSTS. Check the token first with POST /api/issue-sync `{ op: \"test\" }`.",
+      "Workspace owners and administrators. Without `id` a new connection (token required); with `id` an update (the token stays unless given). The token is stored encrypted. Self-hosted servers only when listed in ISSUE_SYNC_ALLOWED_HOSTS; Forgejo/Gitea (`forgejo`) always needs `baseUrl`, codeberg.org without a listing. Check the token first with POST /api/issue-sync `{ op: \"test\" }`.",
     input: z.object({
       action: z.literal("issueSync.connect"),
       workspaceId: uuid,

@@ -19,9 +19,10 @@
 // comments) start a pull at once; a worker polls every 10 minutes. 403/429
 // answers with Retry-After or an exhausted rate limit pause the connection.
 //
-// Hosts: github.com and gitlab.com always; a self-hosted GitHub Enterprise
-// or GitLab, and every Forgejo/Gitea server (codeberg.org too – there is no
-// public default), only when its host is listed in ISSUE_SYNC_ALLOWED_HOSTS
+// Hosts: github.com, gitlab.com and codeberg.org (Forgejo; its address is
+// still entered – there is no default) always; a self-hosted GitHub
+// Enterprise or GitLab and any other Forgejo/Gitea server only when its host
+// is listed in ISSUE_SYNC_ALLOWED_HOSTS
 // (and with ISSUE_SYNC_ALLOW_PRIVATE=true it may have an internal address). All
 // requests go through lib/safe-fetch.ts (resolved and pinned addresses, no
 // redirects with credentials).
@@ -150,10 +151,12 @@ export const issueSyncHosts = () =>
     .filter(Boolean);
 const PUBLIC_HOST: Partial<Record<IssueProvider, string>> = { github: "github.com", gitlab: "gitlab.com" };
 const API_PATH = { github: "/api/v3", gitlab: "/api/v4", forgejo: "/api/v1" } as const;
+const CODEBERG = "codeberg.org";
 
-// The web and API address of a provider. github.com and gitlab.com are
-// always allowed; any other server only when the administrator listed it.
-// Forgejo/Gitea has no public default: its address is always needed.
+// The web and API address of a provider. github.com, gitlab.com and (for
+// Forgejo) codeberg.org are always allowed; any other server only when the
+// administrator listed it. Forgejo/Gitea has no default: its address is
+// always needed.
 export function issueEndpoint(provider: IssueProvider, raw: string) {
   const text = raw.trim().replace(/\/+$/, "");
   const fallback = PUBLIC_HOST[provider];
@@ -177,6 +180,10 @@ export function issueEndpoint(provider: IssueProvider, raw: string) {
       selfHosted: false,
     };
   }
+  // codeberg.org, the public Forgejo, like github.com and gitlab.com. Its
+  // address is stored all the same (`selfHosted`): Forgejo has no default.
+  if (provider === "forgejo" && url.host.toLowerCase() === CODEBERG)
+    return { web: `https://${CODEBERG}`, api: `https://${CODEBERG}/api/v1`, allowPrivate: false, selfHosted: true };
   const hosts = issueSyncHosts();
   if (!hosts.includes(host) && !hosts.includes(url.host.toLowerCase()))
     throw new HttpError(400, "Dieser Git-Server ist für die Issue-Synchronisierung nicht freigegeben (ISSUE_SYNC_ALLOWED_HOSTS).");

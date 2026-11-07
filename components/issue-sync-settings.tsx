@@ -228,7 +228,7 @@ export function IssueSyncSettings({ workspaceId, onError }: { workspaceId: strin
               type="url"
               value={draft.baseUrl}
               onChange={(e) => setDraft({ ...draft, baseUrl: e.target.value })}
-              placeholder={forgejo ? "https://git.example.org" : "https://gitlab.example.org"}
+              placeholder={forgejo ? "https://codeberg.org" : "https://gitlab.example.org"}
               maxLength={500}
               disabled={busy}
               required={forgejo}

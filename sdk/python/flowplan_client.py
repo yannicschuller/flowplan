@@ -1294,7 +1294,7 @@ CommandInboundDeleteResult = TypedDict("CommandInboundDeleteResult", {
     "ok": Required[Literal[True]],
 }, total=False)
 
-# Connect GitHub, GitLab or Forgejo/Gitea for issue sync. Workspace owners and administrators. Without `id` a new connection (token required); with `id` an update (the token stays unless given). The token is stored encrypted. Self-hosted servers – and every Forgejo/Gitea server (`forgejo`, also codeberg.org) – only when listed in ISSUE_SYNC_ALLOWED_HOSTS. Check the token first with POST /api/issue-sync `{ op: "test" }`.
+# Connect GitHub, GitLab or Forgejo/Gitea for issue sync. Workspace owners and administrators. Without `id` a new connection (token required); with `id` an update (the token stays unless given). The token is stored encrypted. Self-hosted servers only when listed in ISSUE_SYNC_ALLOWED_HOSTS; Forgejo/Gitea (`forgejo`) always needs `baseUrl`, codeberg.org without a listing. Check the token first with POST /api/issue-sync `{ op: "test" }`.
 CommandIssueSyncConnect = TypedDict("CommandIssueSyncConnect", {
     "action": Required[Literal["issueSync.connect"]],
     "workspaceId": Required[str],

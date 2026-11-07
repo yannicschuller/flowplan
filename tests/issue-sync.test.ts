@@ -644,15 +644,17 @@ let forgePage = "";
 
 test("Forgejo/Gitea: the server address is required and must be allowed", () => {
   assert.throws(() => issueEndpoint("forgejo", ""), /Adresse des Servers/);
-  assert.throws(() => issueEndpoint("forgejo", "https://codeberg.org"), /nicht freigegeben/);
+  assert.throws(() => issueEndpoint("forgejo", `https://${FORGE_HOST}`), /nicht freigegeben/);
+  // codeberg.org, the public Forgejo, needs no listing (its address is stored).
+  assert.deepEqual(issueEndpoint("forgejo", "https://Codeberg.org/"), { web: "https://codeberg.org", api: "https://codeberg.org/api/v1", allowPrivate: false, selfHosted: true });
+  assert.throws(() => issueEndpoint("forgejo", "https://codeberg.org:8443"), /nicht freigegeben/);
+  assert.throws(() => issueEndpoint("gitlab", "https://codeberg.org"), /nicht freigegeben/);
   assert.throws(() => issueEndpoint("forgejo", `http://${FORGE_HOST}`), /https/);
   assert.throws(() => issueEndpoint("forgejo", `https://token:x@${FORGE_HOST}`), /Zugangsdaten/);
-  process.env.ISSUE_SYNC_ALLOWED_HOSTS = `${FORGE_HOST},codeberg.org,192.168.1.20`;
+  process.env.ISSUE_SYNC_ALLOWED_HOSTS = `${FORGE_HOST},192.168.1.20`;
   try {
     assert.deepEqual(issueEndpoint("forgejo", `https://${FORGE_HOST}/`), { web: `https://${FORGE_HOST}`, api: `https://${FORGE_HOST}/api/v1`, allowPrivate: false, selfHosted: true });
     assert.equal(issueEndpoint("forgejo", `https://${FORGE_HOST}/git/`).api, `https://${FORGE_HOST}/git/api/v1`);
-    // codeberg.org is an ordinary Forgejo server: listed, it works.
-    assert.equal(issueEndpoint("forgejo", "https://codeberg.org").api, "https://codeberg.org/api/v1");
     assert.throws(() => issueEndpoint("forgejo", "https://192.168.1.20"), /Interne Adressen/);
     process.env.ISSUE_SYNC_ALLOW_PRIVATE = "true";
     assert.equal(issueEndpoint("forgejo", "https://192.168.1.20").allowPrivate, true);
@@ -662,6 +664,27 @@ test("Forgejo/Gitea: the server address is required and must be allowed", () => 
   }
   assert.throws(() => sync.checkedRepo("forgejo", "group/sub/project"), /besitzer\/name/);
   assert.equal(sync.checkedRepo("forgejo", "/team/forge.git"), "team/forge");
+});
+
+test("Forgejo/Gitea: codeberg.org connects without ISSUE_SYNC_ALLOWED_HOSTS", async () => {
+  const codeberg = new FakeForgejo("team/cb", "https://codeberg.org");
+  setIssueSyncTransport(codeberg.handle);
+  try {
+    assert.equal(process.env.ISSUE_SYNC_ALLOWED_HOSTS, undefined);
+    const cid = (await act({ action: "issueSync.connect", workspaceId: wid, provider: "forgejo", baseUrl: "https://codeberg.org", repo: "team/cb", token: "fj_secret" })).id;
+    assert.equal((await one<{ base_url: string }>("SELECT base_url FROM issue_connections WHERE id=?", cid))!.base_url, "https://codeberg.org");
+    assert.equal((await testIssueConnection(owner, { workspaceId: wid, id: cid, provider: "forgejo", baseUrl: "https://codeberg.org", repo: "team/cb" })).repo, "team/cb");
+    assert.equal(codeberg.requests[0].url, "https://codeberg.org/api/v1/repos/team/cb");
+    assert.equal(codeberg.requests[0].allowPrivate, false);
+    codeberg.add({ title: "From Codeberg" });
+    const dbId = await makeDatabase("Codeberg");
+    await act({ action: "issueSync.map", pageId: dbId, connectionId: cid, config: config({ comments: { pull: false, push: false } }) });
+    const result = await syncIssues(dbId);
+    assert.equal(result.pulled, 1, String(result.error));
+    await act({ action: "issueSync.disconnect", workspaceId: wid, id: cid });
+  } finally {
+    setIssueSyncTransport(github.handle);
+  }
 });
 
 test("Forgejo/Gitea: connect, test with the token, import issues without pull requests", async () =>
