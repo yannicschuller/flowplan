@@ -10,6 +10,7 @@ import { whiteboardData, writeWhiteboard } from "./whiteboard";
 import { parseRecordLayout, recordLayoutSchema } from "./record-layout";
 import { hiddenRowIds, visibleRows } from "./row-access";
 import { visibleFields } from "./field-access";
+import { readableTemplateCells } from "./row-documents";
 import { hiddenFileIds } from "./row-files";
 import { lockedPageIds } from "./journal-extras";
 import { parseRecurrence, parseRepeat } from "./recurrence";
@@ -549,7 +550,8 @@ function snapshotFor(user: Identity, wid: string) {
                 }>(
                   "SELECT id,name,cells,html,is_default FROM row_templates WHERE page_id=?",
                   p.id,
-                ).map((t) => ({ ...t, cells: JSON.parse(t.cells) })),
+                  // Without the values of properties hidden from this person.
+                ).map((t) => ({ ...t, cells: readableTemplateCells(user, p, t.cells) })),
                 ...exportDatabaseExtras(p.id, new Set(visibleRows(user, p, all<{ id: string; access: string; created_by: string }>("SELECT id,access,created_by FROM rows WHERE page_id=?", p.id)).map((r) => r.id))),
               },
             }

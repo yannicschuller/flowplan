@@ -18,7 +18,7 @@ import { isGuest, requireMember, requirePage, spaceRole } from "./permissions";
 import { cleanHtml, htmlState } from "./document-server";
 import { field, view } from "./database-schema";
 import { databaseSnapshot } from "./database-operations";
-import { replaceRowDocument } from "./row-documents";
+import { readableTemplateCells, replaceRowDocument } from "./row-documents";
 import {
   relationPairSchema,
   relationPairs,
@@ -403,7 +403,8 @@ export function applyPageTemplate(
   return { ok: true, snapshotId };
 }
 
-export function databaseTemplateExtras(pageId: string) {
+export function databaseTemplateExtras(user: Identity, page: Page) {
+  const pageId = page.id;
   return {
     relationPairs: relationPairs(pageId).filter(
       (p) => p.left_page === pageId && p.right_page === pageId,
@@ -416,7 +417,8 @@ export function databaseTemplateExtras(pageId: string) {
     }>(
       "SELECT name,cells,html,is_default FROM row_templates WHERE page_id=?",
       pageId,
-    ).map((t) => ({ ...t, cells: JSON.parse(t.cells) })),
+      // Without the values of properties hidden from the person saving.
+    ).map((t) => ({ ...t, cells: readableTemplateCells(user, page, t.cells) })),
     formConfig: formConfigSchema.parse(
       JSON.parse(
         String(

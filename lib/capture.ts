@@ -13,6 +13,7 @@ import { fillNewRecord } from "./record-template-apply";
 import { rowCreated } from "./automations";
 import { indexRowTasks } from "./doc-tasks";
 import { autoDatabaseSnapshot } from "./database-operations";
+import { stripCells, unwritableFieldIds } from "./field-access";
 import { ct } from "./content-locale";
 import type { Field, Identity, Page } from "./types";
 
@@ -90,7 +91,8 @@ export function captureRecord(user: Identity, raw: unknown) {
   }
   const fields = JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", page.id)!.fields) as Field[];
   const template = selectedRowTemplate(page.id, input.templateId);
-  const cells: Record<string, unknown> = template ? JSON.parse(template.cells) : {};
+  // Only properties this person may change (lib/field-access.ts).
+  const cells: Record<string, unknown> = template ? stripCells(JSON.parse(template.cells), unwritableFieldIds(user, page, fields)) : {};
   const link = /^https?:\/\/\S+$/i.test(input.url?.trim() || "") ? input.url!.trim() : input.text?.match(/https?:\/\/\S+/)?.[0] || "";
   const text = (input.text || "").replace(link, "").trim();
   const title =

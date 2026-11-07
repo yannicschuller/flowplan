@@ -4,9 +4,10 @@ import { all, one, run, id } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import { assertRowAccess } from "./row-access";
+import { hiddenFieldsFor, stripCells, unwritableFieldIds } from "./field-access";
 import { requireUnlocked } from "./journal-extras";
 import { cleanHtml, escaped, htmlState, stateHtml } from "./document-server";
-import type { Identity, Row, Field } from "./types";
+import type { Identity, Page, Row, Field } from "./types";
 import { documentChanged } from "./document-live";
 import { recordDocumentAuthors } from "./document-authors";
 import { mentionWebhook } from "./webhooks";
@@ -226,6 +227,11 @@ export function selectedRowTemplate(
     throw new HttpError(404, "Datensatzvorlage nicht gefunden.");
   return template;
 }
+// A stored template's cells without the properties hidden from a reader
+// (archives, page templates, copies).
+export function readableTemplateCells(user: Identity, page: Page, cells: string, hidden = hiddenFieldsFor(user, page)) {
+  return stripCells(JSON.parse(cells) as Record<string, unknown>, hidden);
+}
 export function saveRowTemplate(
   user: Identity,
   pageId: string,
@@ -233,7 +239,7 @@ export function saveRowTemplate(
   name: unknown,
   replaceId?: unknown,
 ) {
-  const { row } = requireRow(user, pageId, rowId, true),
+  const { page, row } = requireRow(user, pageId, rowId, true),
     d = ensureRowDocument(row);
   const raw = one<{ fields: string }>(
     "SELECT fields FROM databases WHERE page_id=?",
@@ -256,6 +262,11 @@ export function saveRowTemplate(
       ].includes(f.type)
     )
       delete cells[f.id];
+  // Only values this person may read and change go into the template: a
+  // template must not carry a hidden value out of someone's record
+  // (lib/field-access.ts).
+  const unwritable = unwritableFieldIds(user, page, fields);
+  for (const key of unwritable) delete cells[key];
   // Placeholders name properties by id from now on, so renaming a
   // property keeps the template working (lib/record-placeholders.ts).
   const store = (key: string) => storeKey(key, fields);
@@ -267,6 +278,9 @@ export function saveRowTemplate(
   if (replaceId) {
     const old = selectedRowTemplate(pageId, replaceId);
     if (!old) throw new HttpError(404, "Datensatzvorlage nicht gefunden.");
+    // Values of the old template this person may not change stay as they were.
+    const previous = JSON.parse(old.cells) as Record<string, unknown>;
+    for (const key of unwritable) if (key in previous) stored[key] = previous[key];
     run(
       "UPDATE row_templates SET name=?,cells=?,html=? WHERE id=?",
       title,

@@ -229,6 +229,14 @@ export function readOnlyFieldIds(user: Identity, page: Page, fields: Field[]) {
   const readable = readableFieldIds(viewer, fields, remoteResolver(user, fields));
   return fields.filter((f) => readable.has(f.id) && !canWriteField(viewer, f, readable)).map((f) => f.id);
 }
+// Properties a person may not change: hidden or read-only for them (record
+// templates carry only the others, lib/row-documents.ts).
+export function unwritableFieldIds(user: Identity, page: Page, fields: Field[]) {
+  if (!fields.some((f) => writeRestricted(f) || readRestricted(f)) && !needsCheck(fields)) return new Set<string>();
+  const viewer = fieldViewer(user, page);
+  const readable = readableFieldIds(viewer, fields, remoteResolver(user, fields));
+  return new Set(fields.filter((f) => !canWriteField(viewer, f, readable)).map((f) => f.id));
+}
 export function fieldWriteMessage(field: Pick<Field, "name">) {
   return `„${field.name}“ ist nur für bestimmte Personen bearbeitbar.`;
 }

@@ -100,6 +100,7 @@ import {
   publicHiddenFieldIds,
   readOnlyFieldIds,
   stripCells,
+  unwritableFieldIds,
   validateFieldAccess,
   visibleFields,
 } from "./field-access";
@@ -2185,8 +2186,13 @@ export function command(
         // Tag-backed properties: tag names, new ones only where allowed (#79).
         Object.assign(given, tagCells(user, write(), database(pid()).fields, given, true));
         // Contacts: the display name from the names (lib/contacts.ts).
+        // A template fills only properties this person may change, like
+        // row.template.apply (lib/field-access.ts).
+        const fromTemplate = template
+          ? stripCells(JSON.parse(template.cells) as Record<string, unknown>, unwritableFieldIds(user, write(), database(pid()).fields))
+          : {};
         const cells = contactCellsFor(pid(), database(pid()).fields, {}, {
-          ...(template ? JSON.parse(template.cells) : {}),
+          ...fromTemplate,
           ...given,
         }, Object.keys(given));
         // Aliases follow their limits (lib/aliases.ts).
@@ -3063,7 +3069,7 @@ export function command(
                 database: database(p.id),
                 // Only the records this person sees go into the template.
                 rows: visibleRows(user, p, rows(p.id)),
-                ...databaseTemplateExtras(p.id),
+                ...databaseTemplateExtras(user, p),
                 // Tags and property values (lib/page-properties-server.ts).
                 meta: portableMeta(p.id),
               })
