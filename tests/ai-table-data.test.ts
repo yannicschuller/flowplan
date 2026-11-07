@@ -91,6 +91,15 @@ test("database titles are found in an instruction: whole words first, quotes, se
   assert.deepEqual(namedDatabases("Liste aus der Servertabelle", list).map((d) => d.id), ["1"], "a title at the start of a word when no whole word matches");
   assert.deepEqual(namedDatabases("Die Kunden der Servertabelle", list).map((d) => d.id), ["3"], "whole words beat prefixes");
   assert.deepEqual(namedDatabases("Bitte mit Wit und Witz", list), []);
+  // Many databases and titles with pattern characters: only titles the text
+  // contains are compared, special characters are literal.
+  const many = Array.from({ length: 20_000 }, (_, i) => ({ id: `m${i}`, title: `Tabelle (${i}) [a+b]*` }));
+  many.push({ id: "x", title: "C++ (Notizen)" }, { id: "long", title: "a".repeat(300) });
+  const started = performance.now();
+  assert.deepEqual(namedDatabases("Fasse c++ (notizen) zusammen", many).map((d) => d.id), ["x"]);
+  assert.deepEqual(namedDatabases("Tabelle (17) [a+b]* bitte", many).map((d) => d.id), ["m17"]);
+  assert.deepEqual(namedDatabases("a".repeat(400), many), [], "overlong titles are skipped");
+  assert.ok(performance.now() - started < 2000);
   const uuid = "0b7f6c1e-1d2a-4c3b-9a8b-1234567890ab";
   assert.deepEqual(linkedPageIds(`[Server](https://x.test/#page=${uuid}) und [Eintrag](/#page=${uuid.replace("0b", "1c")}&amp;row=${uuid})`), [uuid]);
   assert.deepEqual(linkedPageIds(`<div data-linked-source="${uuid}"></div>`), [uuid]);

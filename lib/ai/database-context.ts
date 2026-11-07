@@ -83,11 +83,15 @@ const LETTER = "[\\p{L}\\p{N}]";
 // on its own there.
 export function namedDatabases<T extends { id: string; title: string }>(text: string, candidates: T[]): T[] {
   type Hit = { item: T; start: number; end: number };
+  const folded = text.toLowerCase();
   const find = (prefix: boolean) => {
     const hits: Hit[] = [];
     for (const item of candidates) {
       const title = item.title.trim();
-      if (title.length < (prefix ? 4 : 2)) continue;
+      if (title.length < (prefix ? 4 : 2) || title.length > 200) continue;
+      // Only titles the text contains get a pattern: a workspace with
+      // thousands of databases does not compile thousands of expressions.
+      if (!folded.includes(title.toLowerCase())) continue;
       const pattern = new RegExp(`(?<!${LETTER})${escapeRegex(title)}${prefix ? "" : `(?!${LETTER})`}`, "giu");
       for (const match of text.matchAll(pattern)) hits.push({ item, start: match.index!, end: match.index! + match[0].length });
     }
@@ -108,7 +112,7 @@ export function namedDatabases<T extends { id: string; title: string }>(text: st
 // for the AI.
 export function referencedDatabases(user: Identity, input: DatabaseRefInput, limit: number = DATABASE_CONTEXT_LIMITS.databases): string[] {
   const candidates = all<{ id: string; title: string }>(
-    "SELECT id,title FROM pages WHERE workspace_id=? AND kind='database' AND deleted_at IS NULL ORDER BY updated_at DESC",
+    "SELECT id,title FROM pages WHERE workspace_id=? AND kind='database' AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT 5000",
     input.workspaceId,
   );
   const known = new Set(candidates.map((c) => c.id));

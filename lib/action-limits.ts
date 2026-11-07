@@ -30,6 +30,12 @@ export function limitAi(userId: string) {
   if (!allow(`ai:${userId}`, 30, 60_000) || !allow(`ai-hour:${userId}`, aiPerHour(), HOUR))
     throw new HttpError(429, "Zu viele KI-Anfragen in kurzer Zeit. Bitte später erneut versuchen.");
 }
+// AI lookups without a provider call (page titles in an answer → links):
+// no slot of the AI limit, but a ceiling against a client in a loop.
+export function limitAiLookup(userId: string) {
+  if (!allow(`ai-lookup:${userId}`, 120, 60_000))
+    throw new HttpError(429, "Zu viele KI-Anfragen in kurzer Zeit. Bitte später erneut versuchen.");
+}
 // Connection tests, model lists and downloads in the settings.
 export function limitAiSetup(userId: string) {
   if (!allow(`ai-setup:${userId}`, 20, 10 * 60_000))
