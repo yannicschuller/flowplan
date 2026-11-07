@@ -639,7 +639,20 @@ What changed, beyond the rules of §2 and §3:
 
 ### Results
 
-RESULTS
+- **SQLite** (`npm test`): 2,045 of 2,045 pass (about 6 minutes on 4 cores).
+- **PostgreSQL 16 through the bridge** (`DATABASE_URL=…`, a schema per test
+  process): PGRESULT
+- 9 tests are skipped on Postgres, all of them about SQLite itself (§11,
+  phase 2 notes); with the spike's `db-driver` SQLite-only test that is 9.
+- Migration tool: SQLite → Postgres → SQLite of an instance with five
+  workspaces, every table verified by count and checksum both ways.
+- **`next build`** with `pg` and the bridge: the standalone output has `pg`
+  in `node_modules` and the worker (`lib/db-driver/pg-sync-worker.mjs` with
+  `pg-types.mjs`, traced by `outputFileTracingIncludes`; Turbopack also
+  emits a hashed copy as an asset). `scripts/check-standalone-postgres.mjs`
+  starts it against a fresh schema: health through the bridge, the first
+  sign-up through the pool and the bridge, bootstrap – all ok; the SQLite
+  check (`npm run check:standalone`) passes as before.
 
 ### What phase 2 (the asynchronous sweep) must know
 
