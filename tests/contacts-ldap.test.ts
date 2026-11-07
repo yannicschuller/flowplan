@@ -40,7 +40,7 @@ ou(`ou=dev,${PEOPLE}`, "Development");
 ou(`ou=big,${PEOPLE}`, "Big");
 person(`uid=alice,ou=sales,${PEOPLE}`, "Alice", "Adler", { title: ["Vertrieb"], o: ["Example AG"], telephoneNumber: ["+49 30 1"], l: ["Berlin"], birthDate: ["1985-03-14"], jpegPhoto: [jpeg] });
 person(`uid=bob,ou=sales,${PEOPLE}`, "Bob", "Brandt", { objectClass: ["top", "user"], entryUUID: [], objectGUID: [guid], displayName: ["Bob B. Brandt"] });
-person(`uid=carol,ou=dev,${PEOPLE}`, "Carol", "Clausen");
+person(`uid=carol,ou=dev,${PEOPLE}`, "Carol", "Clausen", { homePhone: ["+49 30 999 privat"], employeeNumber: ["E-4711"] });
 person(`uid=dave,${PEOPLE}`, "Dave", "Dorn", { mobile: ["+49 171 4"], street: ["Weg 1"], postalCode: ["10115"], c: ["DE"] });
 entries.set(`cn=pc01,ou=dev,${PEOPLE}`, { attrs: { objectClass: ["top", "user", "computer"], cn: ["pc01"] } });
 for (let i = 0; i < 505; i++) person(`uid=p${i},ou=big,${PEOPLE}`, `P${i}`, "Big");
@@ -66,6 +66,11 @@ async function user(name: string, isAdmin = false): Promise<Identity> {
 const owner = await user("owner"),
   viewer = await user("viewer"),
   admin = await user("admin", true);
+// The owner signs in with LDAP: only people of the organisation reach the
+// directory (directoryAccess); the last tests cover everybody else.
+const ldapAccount = async (who: Identity) =>
+  await run("INSERT INTO ldap_accounts(user_id,dn,username,created_at) VALUES(?,?,?,?)", who.id, `uid=${who.name},${PEOPLE}`, who.name, Date.now());
+await ldapAccount(owner);
 const wid = await createWorkspace(owner.id, "Team"),
   boot = await bootstrap(owner, wid);
 await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
@@ -276,4 +281,116 @@ test("administration: base DN and filter, recorded as security events; switched 
   assert.equal((await contactsLdapStatus()).available, false);
   await assert.rejects(browseUnits(owner, pageId), /kein LDAP-Verzeichnis/);
   await saveContactsLdapSettings(admin, { enabled: true, filter: "" });
+});
+
+/* ---------- Who may reach the directory ---------- */
+
+const { directoryAccess } = ldapContacts;
+const refused = /nur für Mitglieder der Organisation/;
+// A workspace of the person's own with a contacts database.
+async function ownContacts(who: Identity) {
+  const ws = (await command(who, { action: "workspace.create", name: `${who.name}s Bereich` })) as { id: string };
+  const sid = (await bootstrap(who, ws.id)).spaces[0].id;
+  const db = (await command(who, { action: "page.create", workspaceId: ws.id, spaceId: sid, kind: "database", databaseKind: "contacts", title: "Kontakte" })) as { id: string };
+  return { workspace: ws.id, page: db.id };
+}
+async function refusedEverywhere(who: Identity, page: string) {
+  for (const call of [
+    () => browseUnits(who, page),
+    () => listPeople(who, page, `ou=dev,${PEOPLE}`),
+    () => listPeople(who, page, undefined, "carol"),
+    () => importContacts(who, page, { entries: [`uid=carol,ou=dev,${PEOPLE}`] }),
+    () => importContacts(who, page, { units: [`ou=dev,${PEOPLE}`], mapping: { phone: ["homePhone"] } }),
+    () => syncContactsNow(who, page),
+    () => unsubscribeUnit(who, page, `ou=dev,${PEOPLE}`),
+  ])
+    await assert.rejects(call(), (e: { status?: number; message?: string }) => e.status === 403 && refused.test(e.message || ""));
+  assert.equal(await one("SELECT 1 FROM contact_ldap_sources WHERE page_id=?", page), undefined);
+  assert.equal((await contactsSourceStatus(page, who)).allowed, false);
+}
+
+test("a guest of a company workspace does not reach the directory through a workspace of their own", async () => {
+  const guest = await user("guest");
+  await run("INSERT INTO members VALUES(?,?,?)", wid, guest.id, "viewer");
+  await run("INSERT INTO workspace_guests(workspace_id,user_id) VALUES(?,?)", wid, guest.id);
+  const own = await ownContacts(guest);
+  const before = fake.searches.length;
+  await refusedEverywhere(guest, own.page);
+  assert.equal(fake.searches.length, before, "not a single directory search");
+});
+
+test("an account with only workspaces of its own does not reach the directory", async () => {
+  const loner = await user("loner");
+  const own = await ownContacts(loner);
+  await refusedEverywhere(loner, own.page);
+});
+
+test("a full member invited to a workspace reaches it – but never as a guest of the database's workspace", async () => {
+  const member = await user("member");
+  await run("INSERT INTO members VALUES(?,?,?)", wid, member.id, "editor");
+  // In the inviting workspace …
+  assert.equal((await browseUnits(member, pageId)).base, PEOPLE);
+  assert.ok((await listPeople(member, pageId, `ou=dev,${PEOPLE}`)).people.some((p) => p.name === "Carol Clausen"));
+  assert.equal((await contactsSourceStatus(pageId, member)).allowed, true);
+  // … and in a workspace of their own.
+  const own = await ownContacts(member);
+  assert.equal((await importContacts(member, own.page, { entries: [`uid=carol,ou=dev,${PEOPLE}`] })).created, 1);
+  // A guest with edit rights on a contacts database of another workspace
+  // stays out there, member elsewhere or not.
+  const stranger = await user("stranger");
+  const theirs = await ownContacts(stranger);
+  await run("INSERT INTO members VALUES(?,?,?)", theirs.workspace, member.id, "editor");
+  await run("INSERT INTO workspace_guests(workspace_id,user_id) VALUES(?,?)", theirs.workspace, member.id);
+  await run("INSERT INTO grants VALUES(?,?,?,?)", theirs.page, member.id, "", "editor");
+  await refusedEverywhere(member, theirs.page);
+  // Being a guest in a workspace somebody else created does not count either.
+  assert.equal(await directoryAccess(await user("guest-only"), theirs.workspace), false);
+});
+
+test("accounts that sign in with LDAP and administrators reach the directory", async () => {
+  const directoryPerson = await user("directory-person");
+  await ldapAccount(directoryPerson);
+  const mine = await ownContacts(directoryPerson);
+  assert.equal((await browseUnits(directoryPerson, mine.page)).base, PEOPLE);
+  const theirs = await ownContacts(admin);
+  assert.ok((await listPeople(admin, theirs.page, `ou=dev,${PEOPLE}`)).people.length > 0);
+  assert.equal((await importContacts(admin, theirs.page, { entries: [`uid=carol,ou=dev,${PEOPLE}`] })).created, 1);
+  // API tokens never do.
+  assert.equal(await directoryAccess({ ...admin, apiScope: "write" }, theirs.workspace), false);
+});
+
+test("attributes: only those of the allow-list, which administrators extend", async () => {
+  const page = (await act({ action: "page.create", spaceId: boot.spaces[0].id, kind: "database", databaseKind: "contacts", title: "Erlaubt" })).id as string;
+  const status = await contactsSourceStatus(page, owner);
+  assert.ok(status.allowedAttributes.includes("telephoneNumber") && !status.allowedAttributes.includes("homePhone"));
+  await assert.rejects(
+    importContacts(owner, page, { entries: [`uid=carol,ou=dev,${PEOPLE}`], mapping: { title: ["cn"], phone: ["homePhone"] } }),
+    (e: { status?: number; message?: string }) => e.status === 400 && /nicht freigegeben/.test(e.message || ""),
+  );
+  await assert.rejects(importContacts(owner, page, { entries: [`uid=carol,ou=dev,${PEOPLE}`], mapping: { company: ["EmployeeNumber"] } }), /nicht freigegeben/);
+  assert.equal(await one("SELECT 1 FROM contact_ldap_sources WHERE page_id=?", page), undefined);
+  // Attribute names ignore case.
+  assert.equal((await importContacts(owner, page, { entries: [`uid=dave,${PEOPLE}`], mapping: { title: ["CN"], phone: ["TelephoneNumber"] } })).ok, true);
+  // An administrator allows more: from the environment and in the administration.
+  process.env.LDAP_CONTACTS_ATTRIBUTES = "employeeNumber, b@d!";
+  try {
+    assert.deepEqual((await contactsLdapStatus()).envAttributes, ["employeeNumber"]);
+    await assert.rejects(async () => await saveContactsLdapSettings(owner, { attributes: ["homePhone"] }), /Administrator/);
+    const saved = await saveContactsLdapSettings(admin, { attributes: ["homePhone", "HOMEPHONE"] });
+    assert.deepEqual(saved.attributes, ["homePhone"]);
+    assert.ok(saved.allowedAttributes.includes("homePhone") && saved.allowedAttributes.includes("employeeNumber"));
+    const result = await importContacts(owner, page, { entries: [`uid=carol,ou=dev,${PEOPLE}`], mapping: { title: ["cn"], phone: ["homePhone"], company: ["employeeNumber"] } });
+    assert.equal(result.ok, true, result.error || "");
+    const carol = await cellsOf((await one<{ row_id: string }>("SELECT row_id FROM contact_ldap_links WHERE page_id=? AND lower(dn)=lower(?)", page, `uid=carol,ou=dev,${PEOPLE}`))!.row_id);
+    assert.equal(carol.phone, "+49 30 999 privat");
+    assert.equal(carol.company, "E-4711");
+  } finally {
+    delete process.env.LDAP_CONTACTS_ATTRIBUTES;
+  }
+  // Taken off the list again: stored mappings stop reading the attribute.
+  await saveContactsLdapSettings(admin, { attributes: [] });
+  assert.deepEqual((await contactsSourceStatus(page)).mapping, { title: ["cn"] });
+  const before = fake.searches.length;
+  assert.equal((await syncContactsNow(owner, page)).ok, true);
+  assert.ok(fake.searches.slice(before).every((s) => !s.attributes.some((a) => /homePhone|employeeNumber/i.test(a))));
 });

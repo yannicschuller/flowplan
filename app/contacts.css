@@ -373,6 +373,9 @@
     max-height: 30vh;
   }
 }
+.ldap-allowed code {
+  overflow-wrap: anywhere;
+}
 .contacts-menu .dropdown-hint {
   display: block;
   max-width: 260px;

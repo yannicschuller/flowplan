@@ -61,7 +61,7 @@ async function handleGET(req: Request) {
       case "status": {
         const page = await requirePage(user, pageId);
         await requireContactsDatabase(page.id);
-        return NextResponse.json({ ...(await contactsSourceStatus(page.id)), carddav: await hasCardDavAccess(user, page.id) }, { headers });
+        return NextResponse.json({ ...(await contactsSourceStatus(page.id, user)), carddav: await hasCardDavAccess(user, page.id) }, { headers });
       }
       case "units":
         return NextResponse.json(await browseUnits(user, pageId, params.get("parent") || undefined), { headers });
