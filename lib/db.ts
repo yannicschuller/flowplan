@@ -8,9 +8,7 @@ import { randomUUID } from "node:crypto";
 import { flushRelationChanges } from "./relation-sync";
 import type { Identity } from "./types";
 import { notificationDefaults, notificationOn } from "./notification-kinds";
-import { emojiPresentation } from "./emoji-presentation";
-import { migrateFormattedText } from "./formatted-text";
-import { migrateSealedSecrets } from "./sealed-values";
+import { runDataSteps } from "./data-steps";
 import { noteStatement, noteTransaction as noteTransactionMetric, runtimeMetricsOn } from "./runtime-metrics";
 import { currentTx, dbContext, postgresUrl } from "./db-driver/context";
 import { closeDatabase, database } from "./db-driver";
@@ -62,6 +60,8 @@ function migrate(d: DatabaseSync) {
   if (globalDb.flowplanSchema === SCHEMA_VERSION) return;
   // Columns change below: cached `SELECT *` statements would keep the old ones.
   forgetStatements(d);
+  // One-time data steps done (lib/data-steps.ts).
+  d.exec("CREATE TABLE IF NOT EXISTS data_migrations(name TEXT PRIMARY KEY,at INTEGER NOT NULL)");
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -889,17 +889,7 @@ function migrate(d: DatabaseSync) {
     CREATE TABLE IF NOT EXISTS metrics_hour(at INTEGER PRIMARY KEY,requests INTEGER NOT NULL DEFAULT 0,errors INTEGER NOT NULL DEFAULT 0,hist TEXT NOT NULL DEFAULT '',active INTEGER NOT NULL DEFAULT 0);
     CREATE TABLE IF NOT EXISTS metrics_day(day TEXT PRIMARY KEY,database_bytes INTEGER NOT NULL,upload_bytes INTEGER NOT NULL,files INTEGER NOT NULL,disk_total INTEGER,disk_free INTEGER,at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS metrics_ai(day TEXT NOT NULL,feature TEXT NOT NULL,requests INTEGER NOT NULL DEFAULT 0,tokens_in INTEGER NOT NULL DEFAULT 0,tokens_out INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(day,feature));`);
-  // Comment reactions picked from emojibase-data 17 may end in a redundant
-  // U+FE0F (👍️); version 18 offers 👍, so they move to that form (see
-  // emoji-presentation.ts). A duplicate of the same person is dropped.
-  for (const r of d
-    .prepare("SELECT rowid,emoji FROM inline_reactions WHERE emoji LIKE '%'||char(65039)")
-    .all() as { rowid: number; emoji: string }[]) {
-    const emoji = emojiPresentation(r.emoji);
-    if (emoji === r.emoji) continue;
-    d.prepare("UPDATE OR IGNORE inline_reactions SET emoji=? WHERE rowid=?").run(emoji, r.rowid);
-    d.prepare("DELETE FROM inline_reactions WHERE rowid=? AND emoji=?").run(r.rowid, r.emoji);
-  }
+  // Comment reactions with a redundant U+FE0F: a data step (lib/data-steps.ts).
   // Ink on PDFs (lib/ink-store.ts, lib/ink/README.md): the markings of a file
   // next to the untouched original, with the text typed on it (search) and
   // every saved state as a version. Never for pages of encrypted spaces.
@@ -1178,7 +1168,7 @@ function migrate(d: DatabaseSync) {
     CREATE INDEX IF NOT EXISTS collections_workspace ON collections(workspace_id,owner_id);
     CREATE TABLE IF NOT EXISTS collection_order(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,collection_id TEXT NOT NULL REFERENCES collections(id) ON DELETE CASCADE,position REAL NOT NULL,PRIMARY KEY(user_id,collection_id));
     CREATE INDEX IF NOT EXISTS collection_order_collection ON collection_order(collection_id);`);
-  migrateSavedSearches(d);
+  // The saved searches become collections in a data step (lib/data-steps.ts).
   // Schema 86 – rack planning on whiteboards (#90,
   // lib/whiteboard-rack-server.ts): own devices of a workspace for the
   // device library (the device as JSON, its colour). Racks, devices and
@@ -1204,7 +1194,7 @@ function migrate(d: DatabaseSync) {
   // Schema 90 – formatted text properties (#126, lib/formatted-text.ts):
   // the existing values of text properties (not titles) are escaped once
   // so they show as before; data_migrations remembers one-time steps.
-  migrateFormattedText(d);
+  // Their values are escaped in a data step (lib/data-steps.ts).
   migrateMetaScopes(d);
   // Used one-time values of signed deliveries (Mailgun's token, Slack's
   // event_id), kept a short while against replays (lib/replay-guard.ts).
@@ -1213,7 +1203,7 @@ function migrate(d: DatabaseSync) {
   // Schema 92 – integration secrets at rest (lib/sealed-values.ts): webhook
   // signing secrets and addresses and the Git connections of databases are
   // sealed once. An older version cannot read them, hence the new number.
-  migrateSealedSecrets(d);
+  // Sealed in a data step (lib/data-steps.ts).
   // Notification retention (lib/notification-retention.ts) deletes old
   // notifications: their chat app deliveries go with them by notification,
   // and the inbox reads one person's newest.
@@ -1305,56 +1295,12 @@ export function migrateIdentities(d: DatabaseSync) {
   const flows = (d.prepare("PRAGMA table_info(oidc_flows)").all() as { name: string }[]).map((c) => c.name);
   if (!flows.includes("link_user_id")) d.exec("ALTER TABLE oidc_flows ADD COLUMN link_user_id TEXT REFERENCES users(id) ON DELETE CASCADE");
   if (!flows.includes("link_session")) d.exec("ALTER TABLE oidc_flows ADD COLUMN link_session TEXT");
-  if (!fresh) return;
-  // "<issuer>|<subject>": the issuer is a URL without "|", the subject may
-  // contain one (e.g. "auth0|abc"), so the first "|" separates them.
-  const now = Date.now();
-  const insert = d.prepare("INSERT OR IGNORE INTO user_identities(id,user_id,provider,issuer,subject,email,created_at,last_used_at) VALUES(?,?,'oidc',?,?,?,?,?)");
-  for (const u of d
-    .prepare(
-      "SELECT id,subject,email,last_login_at FROM users WHERE instr(subject,'|')>1 AND subject NOT LIKE 'local:%' AND subject NOT LIKE 'ldap:%' AND subject NOT LIKE 'scim:%' AND subject NOT LIKE 'deleted:%'",
-    )
-    .all() as { id: string; subject: string; email: string; last_login_at: number | null }[]) {
-    const cut = u.subject.indexOf("|");
-    insert.run(randomUUID(), u.id, u.subject.slice(0, cut), u.subject.slice(cut + 1), u.email || "", now, u.last_login_at ?? null);
-  }
-}
-// Saved searches (before #86) → collections, keeping their id and order.
-export function migrateSavedSearches(d: DatabaseSync) {
-  const saved = d
-    .prepare(
-      "SELECT s.id,s.user_id,s.workspace_id,s.name,s.query,s.kind,s.created_at,sp.name space_name FROM saved_searches s LEFT JOIN spaces sp ON sp.id=s.space_id AND sp.deleted_at IS NULL ORDER BY s.created_at,s.rowid",
-    )
-    .all() as { id: string; user_id: string; workspace_id: string; name: string; query: string; kind: string; created_at: string; space_name: string | null }[];
-  if (!saved.length) return;
-  const kinds: Record<string, string> = { document: "document", database: "database", whiteboard: "whiteboard", row: "record" };
-  const positions = new Map<string, number>();
-  d.exec("BEGIN IMMEDIATE");
-  try {
-    for (const s of saved) {
-      const at = Date.parse(`${s.created_at.replace(" ", "T")}Z`) || Date.now();
-      let query = s.query;
-      if (kinds[s.kind]) query += ` type:${kinds[s.kind]}`;
-      if (s.space_name) query += ` in:"${s.space_name.replace(/"/g, "")}"`;
-      d.prepare("INSERT OR IGNORE INTO collections(id,workspace_id,owner_id,name,icon,query,shared,created_at,updated_at) VALUES(?,?,?,?,'',?,0,?,?)").run(
-        s.id,
-        s.workspace_id,
-        s.user_id,
-        s.name,
-        query,
-        at,
-        at,
-      );
-      const key = `${s.user_id}:${s.workspace_id}`;
-      const position = (positions.get(key) ?? 0) + 1;
-      positions.set(key, position);
-      d.prepare("INSERT OR IGNORE INTO collection_order(user_id,collection_id,position) VALUES(?,?,?)").run(s.user_id, s.id, position);
-      d.prepare("DELETE FROM saved_searches WHERE id=?").run(s.id);
-    }
-    d.exec("COMMIT");
-  } catch (error) {
-    d.exec("ROLLBACK");
-    throw error;
+  // Existing SSO accounts get their identity in a data step
+  // (lib/data-steps.ts) – only where the table is new: a disconnected
+  // identity of an older database must not come back.
+  if (!fresh) {
+    d.exec("CREATE TABLE IF NOT EXISTS data_migrations(name TEXT PRIMARY KEY,at INTEGER NOT NULL)");
+    d.prepare("INSERT OR IGNORE INTO data_migrations(name,at) VALUES('identities-88',?)").run(Date.now());
   }
 }
 // Through one/all/run: the same on SQLite and on PostgreSQL.
@@ -1392,9 +1338,12 @@ async function cleanDeletedFiles() {
 // SQLite file does.
 dbContext.hooks.beforeCommit = (actor) => flushRelationChanges(actor as Identity | undefined);
 dbContext.hooks.afterCommit = () => cleanDeletedFiles();
-dbContext.hooks.openPostgres = async () => {
-  await restorePendingIntoPostgres();
-  await setupStorage();
+dbContext.hooks.open = async (backend) => {
+  if (backend === "postgres") {
+    await restorePendingIntoPostgres();
+    await setupStorage();
+  }
+  await runDataSteps();
 };
 
 export function db() {
@@ -1478,6 +1427,8 @@ export async function reopenDatabase() {
     noteWrite();
     return null;
   }
+  // The data steps run again for the file opened next (dbContext.hooks.open).
+  await closeDatabase();
   if (globalDb.flowplanDb) forgetStatements(globalDb.flowplanDb);
   try {
     globalDb.flowplanDb?.close();

@@ -1,5 +1,4 @@
 import { test } from "node:test";
-import { sqliteOnly } from "./helpers/backend";
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -15,6 +14,7 @@ process.env.FLOWPLAN_DATA_DIR = mkdtempSync(
   join(tmpdir(), "flowplan-inline-comments-"),
 );
 const { one, all, run, id } = await import("../lib/db");
+const { runDataSteps, REACTION_EMOJI_STEP } = await import("../lib/data-steps");
 const { command } = await import("../lib/api");
 const { createWorkspace } = await import("../lib/seed");
 const { htmlState } = await import("../lib/document-server");
@@ -239,7 +239,7 @@ test("emoji reactions are distinct per member and reject arbitrary text; summari
   );
 });
 // The stored reactions move by a SQLite migration step (lib/db.ts).
-test("reactions with a redundant U+FE0F (emojibase-data 17) are read and stored as the picker's form", { skip: sqliteOnly }, async () => {
+test("reactions with a redundant U+FE0F (emojibase-data 17) are read and stored as the picker's form", async () => {
   const f = await fixture(),
     c = await f.create(f.owner),
     base = {
@@ -253,7 +253,9 @@ test("reactions with a redundant U+FE0F (emojibase-data 17) are read and stored 
   await run("INSERT INTO inline_reactions VALUES(?,?,?)", c.messageId, f.viewer.id, "👍️");
   await run("INSERT INTO inline_reactions VALUES(?,?,?)", c.messageId, f.owner.id, "⌚️");
   await run("INSERT INTO inline_reactions VALUES(?,?,?)", c.messageId, f.owner.id, "⌚");
-  (globalThis as { flowplanSchema?: number }).flowplanSchema = undefined;
+  // The data step (lib/data-steps.ts) as on a server that has not had it yet.
+  await run("DELETE FROM data_migrations WHERE name=?", REACTION_EMOJI_STEP);
+  await runDataSteps([REACTION_EMOJI_STEP]);
   // An older client still sends 👍️; the heart keeps its FE0F.
   await f.act({ ...base, emoji: "👍️" });
   await f.act({ ...base, emoji: "❤️" });

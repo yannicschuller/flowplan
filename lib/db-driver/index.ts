@@ -20,14 +20,15 @@ const holder = globalThis as unknown as { flowplanAsyncDb?: Db };
 export function database(): Db {
   if (holder.flowplanAsyncDb) return holder.flowplanAsyncDb;
   const url = postgresUrl();
-  return (holder.flowplanAsyncDb = url ? opened(createPostgresDb(url, { schema: postgresSchema(), max: poolSize() })) : createSqliteDb());
+  return (holder.flowplanAsyncDb = opened(url ? createPostgresDb(url, { schema: postgresSchema(), max: poolSize() }) : createSqliteDb()));
 }
 const poolSize = () => Math.max(1, Number(process.env.FLOWPLAN_PG_POOL) || 10);
 
-// A PostgreSQL database does on its first use what opening the SQLite file
-// does (lib/db.ts db()): a staged restore is loaded, the object storage
-// queue set up (dbContext.hooks.openPostgres). Every call waits for that;
-// the calls it makes itself do not.
+// The first use of the database runs its opening steps (dbContext.hooks.open,
+// lib/db.ts): on PostgreSQL what opening the SQLite file does (a staged
+// restore is loaded, the object storage queue set up), on both the data
+// steps (lib/data-steps.ts). Every call waits for that; the calls they
+// make themselves do not.
 function opened(inner: Db): Db {
   const opening = new AsyncLocalStorage<boolean>();
   let ready: Promise<void> | null = null;
@@ -36,7 +37,7 @@ function opened(inner: Db): Db {
     if (done || opening.getStore() || currentTx()) return null;
     return (ready ??= opening.run(true, async () => {
       try {
-        await dbContext.hooks.openPostgres?.();
+        await dbContext.hooks.open?.(inner.backend);
       } catch (error) {
         console.error("Database: opening steps failed", error);
       } finally {

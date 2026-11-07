@@ -3,7 +3,6 @@
 // sorting, groups and formulas read plain text, plain sources (CSV, forms,
 // old archives) are escaped, AFFiNE keeps its formatting, the API writes
 // and reads inline Markdown, and a type change keeps the text.
-import { sqliteOnly } from "./helpers/backend";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
@@ -11,7 +10,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Field, Identity, Row, View } from "../lib/types";
 process.env.FLOWPLAN_DATA_DIR = mkdtempSync(join(tmpdir(), "flowplan-formatted-"));
-const { all, one, run, id, db } = await import("../lib/db");
+const { all, one, run, id } = await import("../lib/db");
+const { runDataSteps } = await import("../lib/data-steps");
 const { createWorkspace } = await import("../lib/seed");
 const { bootstrap, command, database, rows } = await import("../lib/api");
 const { queryRows, computedCells } = await import("../lib/database");
@@ -50,7 +50,7 @@ async function newDatabase(title: string, fields: Field[] = FIELDS) {
 }
 const cellsOf = async (pageId: string) => (await all<{ cells: string }>("SELECT cells FROM rows WHERE page_id=? ORDER BY position", pageId)).map((r) => JSON.parse(r.cells));
 
-test("schema 90: existing text values are escaped once, titles and other types stay", { skip: sqliteOnly }, async () => {
+test("schema 90: existing text values are escaped once, titles and other types stay", async () => {
   const pageId = await newDatabase("Alt");
   // Values as they were stored before #126 (plain strings).
   const insert = async (cells: Record<string, unknown>, position: number) => {
@@ -78,9 +78,7 @@ test("schema 90: existing text values are escaped once, titles and other types s
   );
   // The migration runs again as on a server that has not had it yet.
   await run("DELETE FROM data_migrations WHERE name=?", FORMATTED_TEXT_MIGRATION);
-  (globalThis as { flowplanSchema?: number }).flowplanSchema = undefined;
-  db();
-  assert.ok(((globalThis as { flowplanSchema?: number }).flowplanSchema ?? 0) >= 90);
+  await runDataSteps();
   const [first, second] = await cellsOf(pageId);
   assert.equal(first.title, "*Titel* bleibt", "titles stay plain text");
   assert.equal(first.notes, "\\*stars\\* and snake\\_case \\[x\\](https://x.test) \\\\ back");
@@ -96,8 +94,7 @@ test("schema 90: existing text values are escaped once, titles and other types s
   const row = (await rows(pageId))[0];
   assert.equal(computedCells(row, FIELDS).f, "*stars* and snake_case [x](https://x.test) \\ back!", "formulas read plain text");
   // Only once: a second start changes nothing.
-  (globalThis as { flowplanSchema?: number }).flowplanSchema = undefined;
-  db();
+  await runDataSteps();
   assert.equal((await cellsOf(pageId))[0].notes, first.notes);
 });
 

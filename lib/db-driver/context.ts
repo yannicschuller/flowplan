@@ -22,13 +22,13 @@ export type TxScope = {
 // What lib/db.ts adds to every transaction of both drivers (registered
 // there, so the drivers need not import the features): the relation sync
 // before the commit, the upload cleanup after it, and what the first use
-// of a PostgreSQL database does (a staged restore, the object storage
-// queue).
+// of the database does (PostgreSQL: a staged restore, the object storage
+// queue; both: the data steps of lib/data-steps.ts).
 export type DbHooks = {
   beforeCommit?: (actor: unknown) => Promise<void>;
   afterCommit?: () => Promise<void>;
   afterRollback?: () => void;
-  openPostgres?: () => Promise<void>;
+  open?: (backend: "sqlite" | "postgres") => Promise<void>;
 };
 type State = {
   als: AsyncLocalStorage<TxScope>;

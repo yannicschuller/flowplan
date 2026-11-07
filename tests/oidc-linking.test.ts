@@ -13,6 +13,8 @@ delete process.env.SMTP_HOST;
 delete process.env.OIDC_LINKED_SSO_ONLY;
 delete process.env.OIDC_NEW_ACCOUNTS;
 const { one, all, run, id, migrateIdentities } = await import("../lib/db");
+const { runDataSteps, IDENTITIES_STEP } = await import("../lib/data-steps");
+const { sqliteOnly } = await import("./helpers/backend");
 const auth = await import("../lib/local-auth");
 const { hash, adminGroup } = await import("../lib/auth");
 const ids = await import("../lib/identities");
@@ -54,33 +56,55 @@ const admin = async (userId: string): Promise<Identity> => {
 };
 const events = async (kind: string) => await all<{ actor_id: string; detail: string }>("SELECT actor_id,detail FROM security_events WHERE kind=?", kind);
 
-test("migration: existing SSO subjects become identities, once", () => {
+test("migration: existing SSO subjects become identities, once", async () => {
+  const users: [string, string, string, number | null][] = [
+    ["https://idp.example.test|plain", "A", "a@example.test", 123],
+    ["https://tenant.auth0.example|auth0|abc", "B", "b@example.test", null],
+    ["local:c", "C", "c@example.test", null],
+    ["ldap:cn=d,dc=example", "D", "d@example.test", null],
+    ["scim:ext-e", "E", "e@example.test", null],
+    ["deleted:f", "", "", null],
+    ["local-development", "G", "g@example.test", null],
+  ];
+  const uids = users.map(() => id());
+  for (const [i, [subject, name, email, last]] of users.entries())
+    await run("INSERT INTO users(id,subject,name,email,last_login_at) VALUES(?,?,?,?,?)", uids[i], subject, name, email, last);
+  // The data step (lib/data-steps.ts) as on a database that just got
+  // user_identities (schema 88), on both databases.
+  await run("DELETE FROM data_migrations WHERE name=?", IDENTITIES_STEP);
+  await runDataSteps([IDENTITIES_STEP]);
+  const mine = async () =>
+    (
+      await all<Record<string, unknown>>(
+        `SELECT user_id,issuer,subject,email,last_used_at FROM user_identities WHERE user_id IN (${uids.map(() => "?").join(",")})`,
+        ...uids,
+      )
+    )
+      .map((r) => ({ ...r, user_id: (uids as string[]).indexOf(String(r.user_id)), last_used_at: r.last_used_at === null ? null : Number(r.last_used_at) }))
+      .sort((x, y) => x.user_id - y.user_id);
+  assert.deepEqual(await mine(), [
+    { user_id: 0, issuer: "https://idp.example.test", subject: "plain", email: "a@example.test", last_used_at: 123 },
+    // The first "|" separates issuer and subject: Auth0 subjects keep theirs.
+    { user_id: 1, issuer: "https://tenant.auth0.example", subject: "auth0|abc", email: "b@example.test", last_used_at: null },
+  ]);
+  // Once: a disconnected identity does not come back.
+  await run("DELETE FROM user_identities WHERE user_id=?", uids[0]);
+  await runDataSteps();
+  assert.equal((await mine()).length, 1);
+});
+
+test("schema 88 on an older SQLite file: the new columns, and no identities copied where the table existed", { skip: sqliteOnly }, () => {
   const d = new DatabaseSync(":memory:");
   d.exec(`CREATE TABLE users(id TEXT PRIMARY KEY,subject TEXT UNIQUE NOT NULL,name TEXT NOT NULL,email TEXT NOT NULL,last_login_at INTEGER);
-    CREATE TABLE oidc_flows(id TEXT PRIMARY KEY,state TEXT,verifier TEXT,nonce TEXT,expires INTEGER);
-    INSERT INTO users VALUES('a','https://idp.example.test|plain','A','a@example.test',123);
-    INSERT INTO users VALUES('b','https://tenant.auth0.example|auth0|abc','B','b@example.test',NULL);
-    INSERT INTO users VALUES('c','local:c','C','c@example.test',NULL);
-    INSERT INTO users VALUES('d','ldap:cn=d,dc=example','D','d@example.test',NULL);
-    INSERT INTO users VALUES('e','scim:ext-e','E','e@example.test',NULL);
-    INSERT INTO users VALUES('f','deleted:f','','',NULL);
-    INSERT INTO users VALUES('g','local-development','G','g@example.test',NULL);`);
+    CREATE TABLE oidc_flows(id TEXT PRIMARY KEY,state TEXT,verifier TEXT,nonce TEXT,expires INTEGER);`);
   migrateIdentities(d);
-  const rows = d.prepare("SELECT user_id,issuer,subject,email,last_used_at FROM user_identities ORDER BY user_id").all() as Record<string, unknown>[];
-  assert.deepEqual(
-    rows.map((r) => ({ ...r })),
-    [
-      { user_id: "a", issuer: "https://idp.example.test", subject: "plain", email: "a@example.test", last_used_at: 123 },
-      // The first "|" separates issuer and subject: Auth0 subjects keep theirs.
-      { user_id: "b", issuer: "https://tenant.auth0.example", subject: "auth0|abc", email: "b@example.test", last_used_at: null },
-    ],
-  );
   const flows = (d.prepare("PRAGMA table_info(oidc_flows)").all() as { name: string }[]).map((c) => c.name);
   assert.ok(flows.includes("link_user_id") && flows.includes("link_session"));
-  // Runs on every start: a disconnected identity does not come back.
-  d.exec("DELETE FROM user_identities WHERE user_id='a'");
+  // A new table: the data step copies the identities (above).
+  assert.equal(d.prepare("SELECT 1 FROM sqlite_master WHERE name='data_migrations'").get(), undefined);
+  // Every later start: the table was there, the step counts as done.
   migrateIdentities(d);
-  assert.equal((d.prepare("SELECT COUNT(*) n FROM user_identities").get() as { n: number }).n, 1);
+  assert.ok(d.prepare("SELECT 1 FROM data_migrations WHERE name=?").get(IDENTITIES_STEP));
   d.close();
 });
 

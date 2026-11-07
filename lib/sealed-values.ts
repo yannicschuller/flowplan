@@ -2,11 +2,10 @@
 // secret and address of a webhook (chat webhook addresses of Slack, Discord
 // or Teams are the credential themselves), and the token and secret of a
 // database's Git connection. Values stored before they were sealed are read
-// as they are until the one-time step migrateSealedSecrets (schema 92) or
-// the next change seals them. No database access here: lib/db.ts runs the
-// migration with its own connection.
+// as they are until the one-time data step sealed-secrets-92 (schema 92,
+// lib/data-steps.ts) or
+// the next change seals them. No database access here.
 import { createHash } from "node:crypto";
-import type { DatabaseSync } from "node:sqlite";
 import { openSecret, sealSecret } from "./secret-box";
 
 const PREFIX = "fps1:";
@@ -53,40 +52,6 @@ export function openGit(pageId: string, git: StoredGit | undefined) {
 
 // Schema 92: seals the values stored in plain text before, once
 // (data_migrations). A value that cannot be sealed now (no key can be
-// written) stays readable and is sealed at the next start.
+// written) stays readable and is sealed at the next start. The step
+// itself: lib/data-steps.ts.
 export const SEALED_SECRETS_MIGRATION = "sealed-secrets-92";
-export function migrateSealedSecrets(d: DatabaseSync) {
-  d.exec("CREATE TABLE IF NOT EXISTS data_migrations(name TEXT PRIMARY KEY,at INTEGER NOT NULL)");
-  if (d.prepare("SELECT 1 FROM data_migrations WHERE name=?").get(SEALED_SECRETS_MIGRATION)) return;
-  d.exec("SAVEPOINT sealed_secrets");
-  try {
-    const hooks = d.prepare("SELECT id,url,secret FROM webhooks").all() as { id: string; url: string; secret: string }[];
-    const updateHook = d.prepare("UPDATE webhooks SET url=?,secret=? WHERE id=?");
-    for (const hook of hooks)
-      if (!isSealed(hook.url) || !isSealed(hook.secret))
-        updateHook.run(
-          isSealed(hook.url) ? hook.url : sealWebhookUrl(hook.id, hook.url),
-          isSealed(hook.secret) ? hook.secret : sealWebhookSecret(hook.id, hook.secret),
-          hook.id,
-        );
-    const databases = d.prepare(`SELECT page_id,settings FROM databases WHERE settings LIKE '%"git"%'`).all() as { page_id: string; settings: string }[];
-    const updateSettings = d.prepare("UPDATE databases SET settings=? WHERE page_id=?");
-    for (const row of databases) {
-      let settings: { git?: StoredGit } & Record<string, unknown>;
-      try {
-        settings = JSON.parse(row.settings || "{}");
-      } catch {
-        continue;
-      }
-      const git = settings.git;
-      if (!git || git.sealed || !git.token || !git.secret) continue;
-      updateSettings.run(JSON.stringify({ ...settings, git: sealGit(row.page_id, git) }), row.page_id);
-    }
-    d.prepare("INSERT INTO data_migrations(name,at) VALUES(?,?)").run(SEALED_SECRETS_MIGRATION, Date.now());
-    d.exec("RELEASE sealed_secrets");
-  } catch (error) {
-    d.exec("ROLLBACK TO sealed_secrets");
-    d.exec("RELEASE sealed_secrets");
-    console.error("Gespeicherte Geheimnisse konnten nicht versiegelt werden", error);
-  }
-}

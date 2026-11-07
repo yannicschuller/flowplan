@@ -3,7 +3,6 @@
 // due records), a webhook for one page needs a page its owner may read, and
 // its signing secret and address are sealed at rest (older plain values
 // are read and sealed once by schema 92).
-import { sqliteOnly } from "./helpers/backend";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash, createHmac, randomBytes } from "node:crypto";
@@ -15,12 +14,13 @@ process.env.FLOWPLAN_DATA_DIR = mkdtempSync(join(tmpdir(), "flowplan-webhook-acc
 process.env.APP_URL = "https://flowplan.example.test";
 // Only so a 127.0.0.1 dummy target is accepted; nothing listens there.
 process.env.FLOWPLAN_WEBHOOK_ALLOW_PRIVATE = "true";
-const { run, one, all, id, db: database } = await import("../lib/db");
+const { run, one, all, id } = await import("../lib/db");
 const { createWorkspace, createPage } = await import("../lib/seed");
 const { identityFromToken } = await import("../lib/auth");
 const { command, database: databaseOf } = await import("../lib/api");
 const { createWebhook, updateWebhook, listWebhooks, processDigests } = await import("../lib/webhooks");
-const { migrateSealedSecrets, SEALED_SECRETS_MIGRATION } = await import("../lib/sealed-values");
+const { SEALED_SECRETS_MIGRATION } = await import("../lib/sealed-values");
+const { runDataSteps } = await import("../lib/data-steps");
 const { receiveGitWebhook, gitConfig } = await import("../lib/git-integration");
 
 async function person(name: string) {
@@ -116,7 +116,7 @@ test("signing secret and address are sealed at rest and still sign deliveries", 
   assert.equal((await listWebhooks(owner, wid)).find((h) => h.id === hook.id)!.url, "http://127.0.0.1:9/services/T000/B000/XXXXSECRET");
 });
 
-test("schema 92 seals plain secrets from before once; until then they are read as they are", { skip: sqliteOnly }, async () => {
+test("schema 92 seals plain secrets from before once; until then they are read as they are", async () => {
   // A webhook and a Git connection as an older version stored them.
   const hookId = id();
   await run(
@@ -131,7 +131,7 @@ test("schema 92 seals plain secrets from before once; until then they are read a
   assert.equal((await gitConfig(owner, teamDb))!.secret, gitSecret);
 
   await run("DELETE FROM data_migrations WHERE name=?", SEALED_SECRETS_MIGRATION);
-  migrateSealedSecrets(database());
+  await runDataSteps([SEALED_SECRETS_MIGRATION]);
   assert.ok(await one("SELECT 1 x FROM data_migrations WHERE name=?", SEALED_SECRETS_MIGRATION));
   const hook = (await one<{ url: string; secret: string }>("SELECT url,secret FROM webhooks WHERE id=?", hookId))!;
   assert.ok(hook.url.startsWith("fps1:") && hook.secret.startsWith("fps1:"));

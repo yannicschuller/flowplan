@@ -1,16 +1,15 @@
 // Collections (#86): storage, sharing and edit rights, guests, limits, the
 // results with each reader's own permissions, the migration of saved
 // searches and the extended search syntax in the search.
-import { sqliteOnly } from "./helpers/backend";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import type { Identity } from "../lib/types";
 process.env.FLOWPLAN_DATA_DIR = mkdtempSync(join(tmpdir(), "flowplan-collections-"));
-const { one, run, id, db: database, migrateSavedSearches } = await import("../lib/db");
+const { one, run, id } = await import("../lib/db");
+const { runDataSteps, SAVED_SEARCHES_STEP } = await import("../lib/data-steps");
 const { createWorkspace } = await import("../lib/seed");
 const { command, bootstrap, database: schemaOf } = await import("../lib/api");
 const { searchWorkspace } = await import("../lib/search-index");
@@ -212,7 +211,7 @@ test("search.save and search.delete keep working on collections", async () => {
   assert.ok(!(await bootstrap(owner, wid)).collections!.some((x) => x.id === saved.id));
 });
 
-test("saved searches from before #86 become collections once", { skip: sqliteOnly }, async () => {
+test("saved searches from before #86 become collections once", async () => {
   const user = await account("Alt");
   await run("INSERT INTO members VALUES(?,?,?)", wid, user.id, "editor");
   const spaceName = (await bootstrap(owner, wid)).spaces.find((s) => s.id === team)!.name;
@@ -222,8 +221,10 @@ test("saved searches from before #86 become collections once", { skip: sqliteOnl
   await run("INSERT INTO saved_searches(id,user_id,workspace_id,name,query,kind,space_id,created_at) VALUES(?,?,?,?,?,?,?,?)", a, user.id, wid, "Erste", "Müller", "all", null, "2026-01-01 10:00:00");
   await run("INSERT INTO saved_searches(id,user_id,workspace_id,name,query,kind,space_id,created_at) VALUES(?,?,?,?,?,?,?,?)", b, user.id, wid, "Zweite", "#Kunde", "row", team, "2026-01-02 10:00:00");
   await run("INSERT INTO saved_searches(id,user_id,workspace_id,name,query,kind,space_id,created_at) VALUES(?,?,?,?,?,?,?,?)", c, user.id, wid, "Dritte", "x", "comment", id(), "2026-01-03 10:00:00");
-  migrateSavedSearches(database() as DatabaseSync);
-  assert.equal((await one<{ n: number }>("SELECT COUNT(*) n FROM saved_searches"))!.n, 0);
+  // The step runs again as on a server that has not had it yet.
+  await run("DELETE FROM data_migrations WHERE name=?", SAVED_SEARCHES_STEP);
+  await runDataSteps([SAVED_SEARCHES_STEP]);
+  assert.equal(Number((await one<{ n: number }>("SELECT COUNT(*) n FROM saved_searches"))!.n), 0);
   assert.deepEqual(
     (await bootstrap(user, wid)).collections!.filter((x) => x.mine).map((x) => [x.id, x.name, x.query, x.shared]),
     [
@@ -234,6 +235,7 @@ test("saved searches from before #86 become collections once", { skip: sqliteOnl
   );
   assert.deepEqual(titles((await runCollection(user, b)).items), ["row:Kunde anrufen"]);
   // Running it again changes nothing.
-  migrateSavedSearches(database() as DatabaseSync);
+  await run("DELETE FROM data_migrations WHERE name=?", SAVED_SEARCHES_STEP);
+  await runDataSteps([SAVED_SEARCHES_STEP]);
   assert.equal((await bootstrap(user, wid)).collections!.filter((x) => x.mine).length, 3);
 });
