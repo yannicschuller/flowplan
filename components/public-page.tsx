@@ -15,7 +15,7 @@ import { SHARE_COOKIE, shareState, withShareCookie } from "@/lib/share-access";
 import { SharePasswordForm } from "./share-password-form";
 import { one } from "@/lib/db";
 import { database, publicRows as rows } from "@/lib/api";
-import { publicPage, publishedHtml, publicFile, publishedLinkPages } from "@/lib/publication";
+import { publicPage, publishedHtml, publicFile, publishedLinkPages, publicationNotice } from "@/lib/publication";
 import { renderedTheme } from "@/lib/custom-domains";
 import { publicPluginIds } from "@/lib/plugins";
 import { cleanHtml } from "@/lib/document-server";
@@ -193,11 +193,7 @@ async function renderPublishedPage({
   // Only real publications (not private share links) show metadata and copying.
   const publication =
     root.public_token === token
-      ? (await one<{ published_at: string | null; allow_copy: number }>(
-          // Behind a password, a publication is not offered for copying.
-          "SELECT published_at,allow_copy AND password_hash IS NULL allow_copy FROM publications WHERE page_id=?",
-          root.id,
-        ))
+      ? await publicationNotice(root.id)
       : undefined;
   const tag = localeTag(await requestLocale());
   const date = (value: string | null | undefined) =>
