@@ -80,11 +80,14 @@ test("the vector scan yields to the event loop between slices and still finds th
   turns = 0;
   ticking = true;
   setImmediate(tick);
-  assert.deepEqual(await semanticNeighbours(ben, wid, pages[0], "", 10), hits);
+  const again = await semanticNeighbours(ben, wid, pages[0], "", 10);
   ticking = false;
-  // SQLite answers within the turn; Postgres over the network (the
-  // permission checks), still far fewer turns than a scan.
-  assert.ok(turns <= 1 || (onPostgres && turns < scanTurns / 2), `${turns} turns`);
+  // The cached answer is the very same list, not a new scan.
+  assert.equal(again, hits);
+  // SQLite answers within the turn. On Postgres the permission checks go
+  // over the network, so the count of turns depends on the load and says
+  // nothing about the cache (with pgvector the scan itself is one query).
+  if (!onPostgres) assert.ok(turns <= 1, `${turns} turns (scan: ${scanTurns})`);
 });
 
 test("the meaning part of related pages is limited per person", async () => {
