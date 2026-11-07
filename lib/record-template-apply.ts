@@ -15,7 +15,7 @@ import { localeTag } from "./i18n";
 import { browserZone, Temporal, validZone } from "./date-values";
 import { cellText } from "./cell-text";
 import { isEmptyValue } from "./empty-value";
-import { readRestricted } from "./field-access";
+import { publicHiddenFieldIds } from "./field-access";
 import { ensureRowDocument, replaceRowDocument, requireRow, type RowTemplate } from "./row-documents";
 import {
   mapHtmlPlaceholders,
@@ -118,13 +118,15 @@ export type PlaceholderRecord = Pick<Row, "id" | "page_id" | "created_by" | "cre
 };
 
 // The text each placeholder becomes for one record. Properties only some
-// people may read stay empty: the text is seen by everyone who sees the
-// record.
+// people may read stay empty – and so do formulas, rollups and other
+// derived properties that read one of them: the text is seen by everyone
+// who sees the record.
 export function placeholderResolver(page: Page, fields: Field[], record: PlaceholderRecord, actor: Identity | null, zone?: string) {
   const tz = zone && validZone(zone) ? zone : browserZone();
   const fmt = formatFor(actor, tz);
   const row = { ...record, number: record.number ?? null } as Row;
   const values = computedCells(row, fields);
+  const blank = publicHiddenFieldIds(fields);
   const now = Temporal.Now.plainDateTimeISO(tz);
   return (key: string): string | undefined => {
     const target = placeholderTarget(key, fields);
@@ -133,7 +135,7 @@ export function placeholderResolver(page: Page, fields: Field[], record: Placeho
     // Formatted text (#126) as plain text: documents, titles and messages
     // take it as text (fillCells escapes it again for formatted text).
     if ("field" in target)
-      return readRestricted(target.field)
+      return blank.has(target.field.id)
         ? ""
         : placeholderValue(target.field, isFormattedText(target.field, fields) ? toPlain(values[target.field.id]) : values[target.field.id], fmt);
     switch (target.builtin) {
