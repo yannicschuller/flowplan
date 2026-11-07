@@ -46,6 +46,7 @@ import { whiteboardSvg } from "./whiteboard-svg";
 import { racksMarkdown } from "./whiteboard-rack";
 import type { Identity, Page, Row, Field, Space } from "./types";
 import { linkedBlockIds } from "./block-links";
+import { MAX_ARCHIVE_ROWS } from "./archive-limits";
 export type MarkdownExportOptions = {
   // One page (with its sub-pages) or a whole space: every top-level page
   // in a folder of its own, named like the scheduled export
@@ -67,8 +68,17 @@ const unavailable = () => ct("Nicht verfügbar", "Not available"),
   recordWord = () => ct("Eintrag", "Record");
 // Values the database computes; exported, but not read back on import.
 export const computedTypes = ["formula", "rollup", "created_at", "updated_at", "created_by", "updated_by", "id", "progress", "time"];
+// What bounds a Markdown export is its size, not a count a large database
+// reaches: the scheduled backup export (lib/scheduled-markdown-export.ts)
+// takes whole databases, and it used to fail above 5,000 records. The text
+// cap stays below the content cap, and both below what the ZIP (100 MB,
+// lib/archive.ts) holds once Markdown is compressed.
 const MAX_BYTES = 250 * 1024 * 1024,
-  MAX_TEXT = 30 * 1024 * 1024;
+  MAX_TEXT = 200 * 1024 * 1024;
+export const MAX_MARKDOWN_EXPORT_RECORDS = MAX_ARCHIVE_ROWS,
+  // Every record brings its file and, with the history, its comments and
+  // versions; the Git export reads the same ZIP back (lib/git-export.ts).
+  MAX_MARKDOWN_EXPORT_ENTRIES = 1_000_000;
 // The folder of a top-level page in a space export and in the scheduled
 // export (lib/scheduled-markdown-export.ts).
 export const exportFolder = (page: { id: string; title: string }) => `${exportName(page.title).slice(0, 60)}-${page.id.slice(0, 8)}`;
@@ -168,10 +178,10 @@ function collect(user: Identity, options: MarkdownExportOptions) {
     if (entries.has(path)) return;
     total += data.length;
     if (text) textBytes += data.length;
-    if (total > MAX_BYTES || textBytes > MAX_TEXT || entries.size >= 12000)
+    if (total > MAX_BYTES || textBytes > MAX_TEXT || entries.size >= MAX_MARKDOWN_EXPORT_ENTRIES)
       throw new HttpError(
         413,
-        "Markdown-Export zu groß (maximal 250 MB, davon 30 MB Text).",
+        "Markdown-Export zu groß (maximal 250 MB, davon 200 MB Text).",
       );
     entries.set(path, data);
   };
@@ -210,10 +220,10 @@ function collect(user: Identity, options: MarkdownExportOptions) {
   const rowPaths = new Map<string, string>();
   for (const [pageId, data] of dbs)
     for (const row of data.rows) {
-      if (++rowCount > 5000)
+      if (++rowCount > MAX_MARKDOWN_EXPORT_RECORDS)
         throw new HttpError(
           413,
-          "Bitte höchstens 5.000 Datensätze je Markdown-Export auswählen.",
+          `Bitte höchstens ${MAX_MARKDOWN_EXPORT_RECORDS.toLocaleString("de-DE")} Datensätze je Markdown-Export auswählen.`,
         );
       rowPaths.set(
         row.id,
@@ -850,7 +860,7 @@ export async function exportMarkdown(
     for (const item of pending) {
       const bytes = Buffer.from(await item.build());
       const size = [...entries.values()].reduce((sum, b) => sum + b.length, 0);
-      if (size + bytes.length > MAX_BYTES) throw new HttpError(413, "Markdown-Export zu groß (maximal 250 MB, davon 30 MB Text).");
+      if (size + bytes.length > MAX_BYTES) throw new HttpError(413, "Markdown-Export zu groß (maximal 250 MB, davon 200 MB Text).");
       entries.set(item.path, bytes);
     }
   if (options.format === "markdown")

@@ -391,3 +391,28 @@ test("callout kinds round-trip as GitHub alerts", async () => {
   // A plain quote stays a quote.
   assert.match(markdownToHtml("> Just a quote"), /^<blockquote>/);
 });
+
+// A database above the old cap of 5,000 records exports in full – the
+// scheduled backup export takes whole databases with their history and
+// failed there.
+test("databases above 5,000 records export in full, with history", async () => {
+  const table = page("Large table", "database");
+  const schema = database(table) as { fields: { id: string }[] };
+  const title = schema.fields[0].id;
+  const insert = (n: number) =>
+    run(
+      "INSERT INTO rows(id,page_id,cells,position,created_by) VALUES(?,?,?,?,?)",
+      id(),
+      table,
+      JSON.stringify({ [title]: `Record ${n}` }),
+      n,
+      owner.id,
+    );
+  for (let n = 0; n < 6001; n++) insert(n);
+  const started = Date.now();
+  const { bytes } = await exportMarkdown(owner, { pageId: table, format: "zip", includeSubpages: true, history: true });
+  const files = await readZip(bytes as Buffer);
+  const records = [...files.keys()].filter((path) => /^records\/[^/]+\/[^/]+\.md$/.test(path));
+  assert.equal(records.length, 6001);
+  assert.ok(Date.now() - started < 60_000, "export takes under a minute");
+});
