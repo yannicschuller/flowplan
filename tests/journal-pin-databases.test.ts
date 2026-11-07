@@ -109,3 +109,17 @@ test("after journal.unlock the same ways work again", () => {
   assert.equal(status(() => act({ action: "rows.transfer", pageId: db, rowIds: [rid], targetPageId: mine, mode: "copy" }, member)), 200);
   assert.equal(api.rows(mine).length, 1);
 });
+
+test("hover previews count only the records the person sees", async () => {
+  const { pagePreview } = await import("../lib/page-preview");
+  const open = act({ action: "page.create", workspaceId: wid, spaceId: team, title: "Offen", kind: "database", databaseKind: "empty" }).id;
+  const f = api.database(open).fields[0].id;
+  act({ action: "row.create", pageId: open, cells: { [f]: "Sichtbar" } });
+  const hidden = act({ action: "row.create", pageId: open, cells: { [f]: "Privat" } }).id;
+  run("UPDATE rows SET access='private' WHERE id=?", hidden);
+  assert.equal(pagePreview(member, open).rows, 1);
+  assert.equal(pagePreview(owner, open).rows, 2);
+  // Below a journal whose PIN the person has not entered: none.
+  act({ action: "journal.relock", pageId: journal }, member);
+  assert.equal(pagePreview(member, db).rows, 0);
+});

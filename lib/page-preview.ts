@@ -1,6 +1,7 @@
 import { journalLocked } from "./journal-extras";
 import { one } from "./db";
 import { requirePage } from "./permissions";
+import { hiddenRowIds } from "./row-access";
 import { htmlText } from "./search-index";
 
 // Small summary for hover cards; the full page is loaded only on click.
@@ -20,13 +21,17 @@ export function pagePreview(
           page.id,
         )?.html || ""
       : "";
+  // Only the records this person sees count (none behind a journal PIN).
   const rows =
-    page.kind === "database"
-      ? Number(
-          one<{ n: number }>(
-            "SELECT COUNT(*) n FROM rows WHERE page_id=?",
-            page.id,
-          )?.n || 0,
+    page.kind === "database" && !journalLocked(user, page)
+      ? Math.max(
+          0,
+          Number(
+            one<{ n: number }>(
+              "SELECT COUNT(*) n FROM rows WHERE page_id=?",
+              page.id,
+            )?.n || 0,
+          ) - hiddenRowIds(user, page).size,
         )
       : 0;
   const text = htmlText(html);
