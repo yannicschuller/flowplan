@@ -7,7 +7,8 @@
 //   address with a pending invitation (the invitation is accepted once the
 //   address is confirmed by e-mail).
 // - Passwords are hashed with scrypt; failed attempts are limited per
-//   address and per e-mail.
+//   address, per pair of e-mail and address, and (higher, with a growing
+//   delay) per e-mail.
 import { promisify } from "node:util";
 import { randomBytes, scrypt as scryptCb, scryptSync, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
@@ -19,10 +20,10 @@ import {
   type AuthenticationResponseJSON,
   type RegistrationResponseJSON,
 } from "@simplewebauthn/server";
-import { all, id, one, run } from "./db";
+import { all, id, one, run, transaction } from "./db";
 import { HttpError, acceptInvites, adminGroup, appUrl, hash, inviteTokenShape, rememberPolicy } from "./auth";
 import { instanceSettings } from "./instance-settings";
-import { plainHttpInstance } from "./instance-https";
+import { loopbackHost, plainHttpInstance } from "./instance-https";
 import { mailConfig, queueLinkMail } from "./mail";
 import type { User } from "./types";
 import { allow } from "./action-limits";
@@ -102,6 +103,23 @@ function invited(email: string) {
 export function setupToken() {
   return process.env.FLOWPLAN_SETUP_TOKEN?.trim() || "";
 }
+// No setup token while the instance's address (APP_URL) is not this machine:
+// until the first account exists, whoever reaches the address first can
+// create the administrator or restore a backup of their own. A warning at
+// start (instrumentation.ts) and a note on the setup screen recommend
+// FLOWPLAN_SETUP_TOKEN.
+export function unprotectedSetup() {
+  if (setupToken() || !localLoginEnabled()) return false;
+  try {
+    return !loopbackHost(new URL(appUrl()).hostname);
+  } catch {
+    return false;
+  }
+}
+export function setupWarning() {
+  if (!unprotectedSetup() || !firstAccount()) return "";
+  return `Flowplan: no FLOWPLAN_SETUP_TOKEN is set and ${appUrl()} is not a local address. Until the first account exists, anyone who reaches this address can create the administrator or restore a backup. Set FLOWPLAN_SETUP_TOKEN and create the first account via ${appUrl().replace(/\/$/, "")}/register?setup=<token> (https://docs.flowplan.org/en/configuration).`;
+}
 export function setupAllowed(given: unknown) {
   const token = setupToken();
   if (!token) return true;
@@ -174,17 +192,26 @@ export async function register(input: unknown, locale: Locale, address = "") {
   // With e-mail set up, the address is confirmed before the first sign-in;
   // the account that sets the instance up starts right away.
   const confirm = !first && !!mailConfig();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, `local:${uid}`, name, email);
-  run(
-    "INSERT INTO local_accounts(user_id,email,password_hash,is_admin,email_verified,verify_required,created_at) VALUES(?,?,?,?,?,?,?)",
-    uid,
-    email,
-    passwordHash,
-    first ? 1 : 0,
-    confirm ? 0 : 1,
-    confirm ? 1 : 0,
-    Date.now(),
-  );
+  // Checked again in one transaction with the insert: hashing the password
+  // takes a while, and two sign-ups at the same moment must not both become
+  // the instance's administrator.
+  transaction(() => {
+    if (first && !firstAccount()) {
+      securityEvent("login.refused", { address, detail: "first account already created" });
+      throw new HttpError(409, t("Diese Instanz wurde gerade eingerichtet. Bitte melde dich an oder lass dich einladen.", "This instance was just set up. Please sign in or ask for an invitation."));
+    }
+    run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, `local:${uid}`, name, email);
+    run(
+      "INSERT INTO local_accounts(user_id,email,password_hash,is_admin,email_verified,verify_required,created_at) VALUES(?,?,?,?,?,?,?)",
+      uid,
+      email,
+      passwordHash,
+      first ? 1 : 0,
+      confirm ? 0 : 1,
+      confirm ? 1 : 0,
+      Date.now(),
+    );
+  });
   const user = one<User>("SELECT * FROM users WHERE id=?", uid)!;
   if (confirm) sendVerification(user, locale);
   return { user, groups: first ? [adminGroup()] : [], pending: confirm };
@@ -221,10 +248,32 @@ function noteExistingAccount(email: string, locale: Locale) {
 // ---- Failed attempts ----
 
 const WINDOW = 15 * 60_000;
-// Whether one of the keys had too many failures in the last 15 minutes:
-// 30 per address ("ip:…"), 8 for everything else (an account, a code). An
-// unknown address (lib/client-address.ts) has no key, so that everyone
-// does not share one bucket.
+// Limits per 15 minutes. A sign-in name ("email:…", "ldap:…") counts per
+// pair of name and client address, so that someone elsewhere who knows the
+// name cannot lock its owner out with wrong passwords; a much higher ceiling
+// per name, with a growing delay before each check (slowDown), still slows
+// credential stuffing from many addresses. With an unknown address
+// (lib/client-address.ts) the name alone counts with the pair limit, as
+// before. Codes and confirmations ("totp:<user id>") follow a password the
+// person already knew, so they stay strict per account.
+export const LIMITS = { address: 30, nameAddress: 8, name: 100, other: 8, slowFrom: 10, slowStepMs: 250, slowMaxMs: 5000 } as const;
+const nameKey = (key: string) => key.startsWith("email:") || key.startsWith("ldap:");
+const pairKey = (key: string, address: string) => `${key}|ip:${address}`;
+// The rows an attempt counts under, each with its limit.
+function counters(keys: string[]): { key: string; limit: number }[] {
+  const address = keys.find((k) => k.startsWith("ip:"))?.slice(3) ?? "";
+  return keys.flatMap((key): { key: string; limit: number }[] => {
+    if (key.startsWith("ip:")) return [{ key, limit: LIMITS.address }];
+    if (!nameKey(key)) return [{ key, limit: LIMITS.other }];
+    if (!address) return [{ key, limit: LIMITS.nameAddress }];
+    return [
+      { key, limit: LIMITS.name },
+      { key: pairKey(key, address), limit: LIMITS.nameAddress },
+    ];
+  });
+}
+const failuresOf = (key: string, since: number) => Number(one<{ n: number }>("SELECT COUNT(*) n FROM login_failures WHERE key=? AND at>=?", key, since)?.n || 0);
+// Whether one of the keys had too many failures in the last 15 minutes.
 export function limited(keys: string[]) {
   const attempt = failureOf(keys);
   // An address or network the administrators blocked (Administration →
@@ -235,17 +284,31 @@ export function limited(keys: string[]) {
   }
   const since = Date.now() - WINDOW;
   run("DELETE FROM login_failures WHERE at<?", since);
-  const over = keys.some((key) => {
-    const limit = key.startsWith("ip:") ? 30 : 8;
-    return Number(one<{ n: number }>("SELECT COUNT(*) n FROM login_failures WHERE key=? AND at>=?", key, since)?.n || 0) >= limit;
-  });
+  const over = counters(keys).some(({ key, limit }) => failuresOf(key, since) >= limit);
   if (over) securityEvent("login.refused", { ...attempt, detail: `limit ${attempt.detail}` });
   return over;
 }
 export function failed(keys: string[]) {
   recordOpsEvent("login_failure");
   securityEvent("login.failure", failureOf(keys));
-  for (const key of keys) run("INSERT INTO login_failures(key,at) VALUES(?,?)", key, Date.now());
+  const now = Date.now();
+  for (const { key } of counters(keys)) run("INSERT INTO login_failures(key,at) VALUES(?,?)", key, now);
+}
+// A successful sign-in clears the failures of the name, from every address.
+export function clearFailures(key: string) {
+  run("DELETE FROM login_failures WHERE key=? OR (key>=? AND key<?)", key, `${key}|`, `${key}}`);
+}
+// The wait before checking a password for a name that collected many
+// failures in the last 15 minutes (from any address): 250 ms more for each
+// one beyond 10, at most five seconds. Everyone waits, also with the right
+// password, so the delay does not tell a hit from a miss.
+export function failureDelay(keys: string[], now = Date.now()) {
+  const n = Math.max(0, ...keys.filter(nameKey).map((key) => failuresOf(key, now - WINDOW)));
+  return n <= LIMITS.slowFrom ? 0 : Math.min(LIMITS.slowMaxMs, (n - LIMITS.slowFrom) * LIMITS.slowStepMs);
+}
+export async function slowDown(keys: string[]) {
+  const ms = failureDelay(keys);
+  if (ms) await new Promise((resolve) => setTimeout(resolve, ms));
 }
 // The address and the account of an attempt, from its limit keys
 // ("ip:…", "email:…", "ldap:…", "totp:<user id>").
@@ -270,6 +333,7 @@ export async function passwordLogin(input: unknown, address: string, locale: Loc
     .parse(input);
   const keys = [...addressKey("ip", address), `email:${email.toLowerCase()}`];
   if (limited(keys)) throw new HttpError(429, t("Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.", "Too many attempts. Please try again in 15 minutes."));
+  await slowDown(keys);
   const account = accountByEmail(email);
   // The same work and the same answer whether the account exists or not.
   const ok = await verifyPassword(password, account?.password_hash || DUMMY_HASH);
@@ -289,7 +353,7 @@ export async function passwordLogin(input: unknown, address: string, locale: Loc
       ),
     );
   }
-  run("DELETE FROM login_failures WHERE key=?", `email:${email.toLowerCase()}`);
+  clearFailures(`email:${email.toLowerCase()}`);
   return { userId: account.user_id, groups: account.is_admin ? [adminGroup()] : [] };
 }
 
@@ -526,8 +590,11 @@ export async function finishPasskeyRegistration(user: User, token: string | unde
   securityEvent("account.passkey_added", { actorId: user.id, detail: name || "" });
   return credential.id;
 }
+// Whether a passkey was removed (the route then ends the other sessions).
 export function deletePasskey(userId: string, passkeyId: string) {
-  if (run("DELETE FROM passkeys WHERE id=? AND user_id=?", passkeyId, userId).changes) securityEvent("account.passkey_removed", { actorId: userId });
+  if (!run("DELETE FROM passkeys WHERE id=? AND user_id=?", passkeyId, userId).changes) return false;
+  securityEvent("account.passkey_removed", { actorId: userId });
+  return true;
 }
 export async function passkeyLoginOptions() {
   if (!localLoginEnabled()) throw new HttpError(403, "Passkeys sind ausgeschaltet.");
@@ -600,6 +667,9 @@ export function loginOptions(setup?: string, invite?: string) {
     // Opened through an invitation link: the account is created for its address.
     invitedEmail: invitedEmail(invite) || "",
     firstAccount: localLoginEnabled() && firstAccount() && setupAllowed(setup),
+    // The first account can be created without a setup link although the
+    // address is not this machine: a note recommends FLOWPLAN_SETUP_TOKEN.
+    unprotectedSetup: localLoginEnabled() && firstAccount() && unprotectedSetup(),
     mail: !!mailConfig(),
     demo: process.env.NODE_ENV !== "production",
     // "Stay signed in on this device" (SESSION_REMEMBER=true).

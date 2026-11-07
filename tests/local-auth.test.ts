@@ -85,9 +85,19 @@ test("signing in with e-mail and password; failed attempts are limited", async (
   await assert.rejects(auth.passwordLogin({ email: "ana@example.test", password: "falsch" }, "10.0.0.1", "de"), /stimmt nicht/);
   // Unknown addresses get the same answer.
   await assert.rejects(auth.passwordLogin({ email: "niemand@example.test", password: "egal-egal-egal" }, "10.0.0.2", "en"), /is wrong/);
+  // 8 wrong passwords for one account from one address: that address waits,
+  // the account's owner elsewhere does not (no lockout by a stranger).
   for (let i = 0; i < 8; i++)
-    await auth.passwordLogin({ email: "ziel@example.test", password: `versuch-${i}` }, `10.0.1.${i}`, "de").catch(() => {});
-  await assert.rejects(auth.passwordLogin({ email: "ziel@example.test", password: "noch-einer" }, "10.0.2.1", "de"), /Zu viele Versuche/);
+    await auth.passwordLogin({ email: "ana@example.test", password: `versuch-${i}` }, "10.0.1.1", "de").catch(() => {});
+  await assert.rejects(auth.passwordLogin({ email: "ana@example.test", password: "ein-langes-passwort" }, "10.0.1.1", "de"), /Zu viele Versuche/);
+  assert.ok(await auth.passwordLogin({ email: "ana@example.test", password: "ein-langes-passwort" }, "10.0.2.1", "de"));
+  // The success cleared the account's failures, also those of the other address.
+  assert.ok(await auth.passwordLogin({ email: "ana@example.test", password: "ein-langes-passwort" }, "10.0.1.1", "de"));
+  // Spread over many addresses, the account's ceiling still applies.
+  const now = Date.now();
+  for (let i = 0; i < auth.LIMITS.name; i++) run("INSERT INTO login_failures(key,at) VALUES(?,?)", "email:ziel@example.test", now);
+  await assert.rejects(auth.passwordLogin({ email: "ziel@example.test", password: "noch-einer" }, "10.0.2.9", "de"), /Zu viele Versuche/);
+  run("DELETE FROM login_failures WHERE key LIKE 'email:ziel@%'");
   // Without a proxy address (""), failures count per account only: 30 wrong
   // passwords for one address do not lock everyone else out.
   for (let i = 0; i < 31; i++)
@@ -191,4 +201,30 @@ test("FLOWPLAN_LOCAL_LOGIN=false leaves only single sign-on", async () => {
   assert.equal(auth.signupOpen(), false);
   await assert.rejects(auth.passwordLogin({ email: "ana@example.test", password: "ein-langes-passwort" }, "10.0.6.1", "de"), /ausgeschaltet/);
   delete process.env.FLOWPLAN_LOCAL_LOGIN;
+});
+
+test("failed sign-ins: per account and address, a ceiling per account, a growing delay", () => {
+  run("DELETE FROM login_failures");
+  const keys = (address: string) => [...(address ? [`ip:${address}`] : []), "email:opfer@example.test"];
+  for (let i = 0; i < auth.LIMITS.nameAddress; i++) auth.failed(keys("10.9.0.1"));
+  assert.equal(auth.limited(keys("10.9.0.1")), true, "the attacking address waits");
+  assert.equal(auth.limited(keys("10.9.0.2")), false, "the owner elsewhere does not");
+  // An unknown address (no proxy header) counts the account alone, strictly.
+  assert.equal(auth.limited(keys("")), true);
+  // The delay grows with the account's failures from every address.
+  assert.equal(auth.failureDelay(keys("10.9.0.2")), 0);
+  for (let i = 0; i < 6; i++) auth.failed(keys(`10.9.1.${i}`));
+  assert.equal(auth.failureDelay(keys("10.9.0.2")), (14 - auth.LIMITS.slowFrom) * auth.LIMITS.slowStepMs);
+  const now = Date.now();
+  for (let i = 0; i < 200; i++) run("INSERT INTO login_failures(key,at) VALUES(?,?)", "email:opfer@example.test", now);
+  assert.equal(auth.failureDelay(keys("10.9.0.2")), auth.LIMITS.slowMaxMs);
+  assert.equal(auth.limited(keys("10.9.0.2")), true, "the ceiling per account");
+  // A success clears the account's failures from every address.
+  auth.clearFailures("email:opfer@example.test");
+  assert.equal(one("SELECT 1 FROM login_failures WHERE key LIKE 'email:opfer@%'"), undefined);
+  assert.equal(auth.limited(keys("10.9.0.1")), false);
+  // Codes stay strict per account, whatever the address.
+  for (let i = 0; i < auth.LIMITS.other; i++) auth.failed([`ip:10.9.2.${i}`, "totp:someone"]);
+  assert.equal(auth.limited(["ip:10.9.3.1", "totp:someone"]), true);
+  run("DELETE FROM login_failures");
 });

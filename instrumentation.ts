@@ -3,6 +3,15 @@ export async function register() {
     process.env.NEXT_RUNTIME === "nodejs" &&
     process.env.NEXT_PHASE !== "phase-production-build"
   ) {
+    // A new instance on a public address without FLOWPLAN_SETUP_TOKEN: the
+    // first visitor could create the administrator (lib/local-auth.ts).
+    try {
+      const { setupWarning } = await import("./lib/local-auth");
+      const warning = setupWarning();
+      if (warning) console.warn(warning);
+    } catch (e) {
+      console.error("Setup check failed:", (e as Error)?.message);
+    }
     // Catalogues of further languages for server-side texts (lib/i18n-catalogs.ts).
     await import("./lib/i18n-catalogs-server");
     const { startPushWorker, dispatchPush } = await import("./lib/push");

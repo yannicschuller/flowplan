@@ -3,7 +3,7 @@
 // host other than this machine, lib/instance-https.ts): fine for trying it
 // out, not for real use (#62). On the sign-in page and in Administration →
 // Instanz.
-import { LockSimpleOpen } from "@phosphor-icons/react";
+import { LockSimpleOpen, ShieldWarning } from "@phosphor-icons/react";
 import { useLocale, useT } from "./i18n";
 
 // The installation guide's section on running without HTTPS.
@@ -30,6 +30,32 @@ export function PlainHttpNote() {
         <strong>{t("Diese Instanz läuft ohne HTTPS.", "This instance runs without HTTPS.")}</strong> {text}{" "}
         <a href={httpsDocsUrl(locale)} target="_blank" rel="noreferrer">
           {t("So richtest du HTTPS ein", "How to set up HTTPS")}
+        </a>
+      </span>
+    </p>
+  );
+}
+
+// The setup screen of an instance whose address is not this machine, without
+// FLOWPLAN_SETUP_TOKEN (lib/local-auth.ts unprotectedSetup): whoever opens
+// the address first could create the administrator or restore a backup.
+export function setupTokenDocsUrl(locale: string) {
+  return locale === "de" ? "https://docs.flowplan.org/de/sign-in#e-mail-und-passwort" : "https://docs.flowplan.org/en/sign-in#e-mail-and-password";
+}
+export function SetupTokenNote() {
+  const t = useT();
+  const locale = useLocale();
+  return (
+    <p className="login-http-note" role="note">
+      <ShieldWarning size={16} aria-hidden />
+      <span>
+        <strong>{t("Ohne Einrichtungslink.", "No setup link.")}</strong>{" "}
+        {t(
+          "Bis das erste Konto existiert, kann jede Person, die diese Adresse erreicht, die Instanz übernehmen oder eine eigene Sicherung einspielen. Empfohlen: FLOWPLAN_SETUP_TOKEN setzen und das erste Konto über /register?setup=<token> anlegen.",
+          "Until the first account exists, anyone who reaches this address can take over the instance or restore a backup of their own. Recommended: set FLOWPLAN_SETUP_TOKEN and create the first account via /register?setup=<token>.",
+        )}{" "}
+        <a href={setupTokenDocsUrl(locale)} target="_blank" rel="noreferrer">
+          {t("Mehr dazu", "Learn more")}
         </a>
       </span>
     </p>

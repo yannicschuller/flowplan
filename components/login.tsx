@@ -7,7 +7,7 @@ import { BrandMark } from "./brand-mark";
 import { loginReturnPath } from "@/lib/page-location";
 import { useEffect, useState, type FormEvent, type MouseEvent } from "react";
 import { ArrowRight, ArrowSquareOut, EnvelopeSimple, Fingerprint, ShieldCheck, SpinnerGap } from "@phosphor-icons/react";
-import { PlainHttpNote } from "./plain-http-note";
+import { PlainHttpNote, SetupTokenNote } from "./plain-http-note";
 import { browserSupportsWebAuthn, startAuthentication } from "@simplewebauthn/browser";
 import { LanguageSwitch, useLocale, useT } from "./i18n";
 import type { LoginOptions } from "@/lib/local-auth";
@@ -61,6 +61,7 @@ export default function Login({
   remember: rememberAvailable = false,
   ldap = false,
   plainHttp = false,
+  unprotectedSetup = false,
   error,
   notice: initialNotice,
   instanceName = "",
@@ -527,6 +528,7 @@ export default function Login({
             ) : null}
           </p>
         )}
+        {firstAccount && unprotectedSetup && <SetupTokenNote />}
         {plainHttp && <PlainHttpNote />}
         {/* In the mobile app: back to its profiles (another instance, #69). */}
         <AppProfilesLink />

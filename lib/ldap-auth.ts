@@ -22,7 +22,7 @@ import { z } from "zod";
 import { all, audit, id, one, run, transaction } from "./db";
 import { HttpError, adminGroup } from "./auth";
 import { addressKey } from "./client-address";
-import { failed, limited, localLoginEnabled, passwordLogin } from "./local-auth";
+import { clearFailures, failed, limited, localLoginEnabled, passwordLogin, slowDown } from "./local-auth";
 import { reapplySsoUser } from "./sso-mappings";
 import { setUserDisabled } from "./account-deletion";
 import { translate, type Locale } from "./i18n";
@@ -138,6 +138,7 @@ export async function ldapPasswordLogin(identifier: string, password: string, ad
   const name = identifier.trim();
   const keys = [...addressKey("ip", address), `ldap:${name.toLowerCase()}`];
   if (limited(keys)) throw new HttpError(429, t("Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.", "Too many attempts. Please try again in 15 minutes."));
+  await slowDown(keys);
   const wrong = () => {
     failed(keys);
     return new HttpError(401, t("E-Mail-Adresse oder Passwort stimmt nicht.", "E-mail address or password is wrong."));
@@ -154,7 +155,7 @@ export async function ldapPasswordLogin(identifier: string, password: string, ad
   if (entryLocked(entry)) throw new HttpError(403, t("Dieses Konto ist deaktiviert.", "This account is disabled."));
   const groups = groupNames(entry, config.groupAttribute);
   const userId = transaction(() => linkAccount(entry, name, groups, t));
-  run("DELETE FROM login_failures WHERE key=?", `ldap:${name.toLowerCase()}`);
+  clearFailures(`ldap:${name.toLowerCase()}`);
   return { userId, groups };
 }
 

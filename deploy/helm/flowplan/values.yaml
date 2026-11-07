@@ -20,6 +20,17 @@ appUrl: ""
 # E-mail + password and passkeys. false leaves only single sign-on.
 localLogin: true
 
+# FLOWPLAN_SETUP_TOKEN: the first account (and the restore on the setup
+# screen) only works via <appUrl>/register?setup=<token>, so nobody who
+# reaches the address first can take over the instance. Empty: the chart
+# generates a random token (kept across upgrades) while localLogin is on.
+# Read it with
+#   kubectl -n <namespace> get secret <the chart's Secret, e.g. flowplan> \
+#     -o jsonpath='{.data.FLOWPLAN_SETUP_TOKEN}' | base64 -d
+# A FLOWPLAN_SETUP_TOKEN in existingSecret wins. No effect once the first
+# account exists.
+setupToken: ""
+
 # Single sign-on with OpenID Connect. Redirect URI at the provider:
 # <appUrl>/api/auth/callback
 oidc:

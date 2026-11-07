@@ -307,6 +307,8 @@ test("disabled in the directory: no sign-in; an admin's disable stays", async ()
 test("too many wrong passwords are limited", async () => {
   for (let i = 0; i < 8; i++) await assert.rejects(ldapPasswordLogin("eve", `wrong-${i}`, "198.51.100.1", "de"));
   await assert.rejects(ldapPasswordLogin("eve", "secret-pw", "198.51.100.1", "de"), /Zu viele/);
+  // Wrong passwords from one address do not lock eve out elsewhere.
+  assert.ok((await ldapPasswordLogin("eve", "secret-pw", "198.51.100.2", "de")).userId);
 });
 
 test("the hourly sync updates groups, disables and enables again", async () => {
