@@ -7833,6 +7833,7 @@
   "The authenticator app is taken over; please create new recovery codes.": "L’application d’authentification est reprise ; veuillez créer de nouveaux codes de récupération.",
   "The authenticator app of {0} goes; the one of {1} stays.": "L’application d’authentification de {0} est supprimée ; celle de {1} est conservée.",
   "The backup comes from a newer Flowplan version. Please update Flowplan to that version first.": "La sauvegarde provient d’une version plus récente de Flowplan. Mets d’abord Flowplan à jour vers cette version.",
+  "The backup contains database objects Flowplan does not create itself (such as functions or triggers), so it is not restored.": "La sauvegarde contient des objets de base de données que Flowplan ne crée pas lui-même (par exemple des fonctions ou des déclencheurs) ; elle n’est donc pas restaurée.",
   "The backup contains no valid Flowplan database.": "La sauvegarde ne contient aucune base de données Flowplan valide.",
   "The backup contains unknown entries.": "La sauvegarde contient des entrées inconnues.",
   "The backup is encrypted. Please enter the old instance's key (FLOWPLAN_ENCRYPTION_KEY).": "La sauvegarde est chiffrée. Saisis la clé de l’ancienne instance (FLOWPLAN_ENCRYPTION_KEY).",

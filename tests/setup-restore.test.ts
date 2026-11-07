@@ -143,6 +143,24 @@ test("refuses while an account exists, and backups from a newer version", async 
   await backOnOld();
 });
 
+test("a pg_dump with a function Flowplan does not make is refused, nothing is staged", { skip: !onPostgres && "PostgreSQL only" }, async () => {
+  // A trigger on users calling a function of the archive: on a restore it
+  // would run as Flowplan's database role (lib/pg-backup.ts restoreDump).
+  await run("CREATE FUNCTION fremd() RETURNS trigger LANGUAGE plpgsql AS $f$ BEGIN RETURN NULL; END $f$");
+  await run("CREATE TRIGGER fremd_users AFTER INSERT ON users FOR EACH ROW EXECUTE FUNCTION fremd()");
+  const result = await runScheduledBackup(Date.UTC(2026, 10, 6, 5, 0)).finally(async () => {
+    await run("DROP TRIGGER fremd_users ON users");
+    await run("DROP FUNCTION fremd()");
+  });
+  const file = join(keep, result.name);
+  copyFileSync(join(old, "backups", result.name), file);
+  const dir = await freshInstance();
+  await assert.rejects(restore.restoreUpload(file, ""), /Datenbankobjekte, die Flowplan nicht selbst anlegt/);
+  assert.equal(await firstAccount(), true, "nothing was replaced");
+  assert.ok(!existsSync(join(dir, "restore-pending")));
+  await backOnOld();
+});
+
 test("with FLOWPLAN_SETUP_TOKEN only with the token", async () => {
   const dir = await freshInstance();
   process.env.FLOWPLAN_SETUP_TOKEN = "einrichten";

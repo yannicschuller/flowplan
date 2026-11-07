@@ -53,11 +53,14 @@ export async function restorePendingIntoPostgres() {
   return previous;
 }
 
-// pg_restore of a dump into the instance's schema (lib/pg-backup.ts). The
-// state before is kept as a dump in `previous` and put back should the
-// restore fail. Then the schema is brought to this version (a dump of an
-// older Flowplan lacks newer tables and columns; the data steps follow at
-// the opening) and the search index is rebuilt.
+// A dump's rows into the instance's schema, made anew from this version's
+// schema in the same transaction (lib/pg-backup.ts restoreDump: nothing
+// but the rows of the dump is run). The state before is kept as a dump in
+// `previous` and put back should the restore fail – loaded the same way,
+// without the check for objects Flowplan does not make (it is this
+// instance's own state). Then the schema gets this version's rows (seed,
+// version; the data steps follow at the opening) and the search index is
+// rebuilt.
 export async function restorePgDump(path: string, previous: string) {
   const before = resolve(previous, "flowplan.dump");
   if (!existsSync(before)) await dumpDatabase(before);
@@ -65,7 +68,7 @@ export async function restorePgDump(path: string, previous: string) {
     await restoreDump(path, { newestVersion: SCHEMA_VERSION });
   } catch (error) {
     console.error("Wiederherstellung fehlgeschlagen, der vorherige Stand wird zurückgeholt:", (error as Error)?.message);
-    await restoreDump(before, { newestVersion: Number.MAX_SAFE_INTEGER });
+    await restoreDump(before, { newestVersion: Number.MAX_SAFE_INTEGER, strict: false });
     await afterDumpRestore();
     throw error;
   }

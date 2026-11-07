@@ -7833,6 +7833,7 @@
   "The authenticator app is taken over; please create new recovery codes.": "The authenticator app is taken over; please create new recovery codes.",
   "The authenticator app of {0} goes; the one of {1} stays.": "The authenticator app of {0} goes; the one of {1} stays.",
   "The backup comes from a newer Flowplan version. Please update Flowplan to that version first.": "The backup comes from a newer Flowplan version. Please update Flowplan to that version first.",
+  "The backup contains database objects Flowplan does not create itself (such as functions or triggers), so it is not restored.": "The backup contains database objects Flowplan does not create itself (such as functions or triggers), so it is not restored.",
   "The backup contains no valid Flowplan database.": "The backup contains no valid Flowplan database.",
   "The backup contains unknown entries.": "The backup contains unknown entries.",
   "The backup is encrypted. Please enter the old instance's key (FLOWPLAN_ENCRYPTION_KEY).": "The backup is encrypted. Please enter the old instance's key (FLOWPLAN_ENCRYPTION_KEY).",

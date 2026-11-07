@@ -80,7 +80,8 @@ encryptionKey: ""
 #   kubectl create secret generic flowplan-cluster \
 #     --from-literal=DATABASE_URL='postgres://flowplan:…@postgres:5432/flowplan' \
 #     --from-literal=REDIS_URL='redis://:…@redis:6379/0'
-# and the keys every pod must share (cluster.keys):
+# (the role in DATABASE_URL owning the database, but no superuser: README,
+# "Database role"), and the keys every pod must share (cluster.keys):
 #   npx web-push generate-vapid-keys      # the two push keys
 #   kubectl create secret generic flowplan-keys \
 #     --from-literal=FLOWPLAN_ENCRYPTION_KEY="$(openssl rand -base64 32)" \

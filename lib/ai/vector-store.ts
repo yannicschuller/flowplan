@@ -39,6 +39,9 @@ export const vectorStoreActive = () => !!state.ext && !disabled();
 // out (lib/pg-backup.ts) and ensureVectorStore makes them anew.
 export const VECTOR_TABLE = "ai_embedding_vectors";
 export const VECTOR_TRIGGER = "ai_embeddings_vector_sync";
+// Its functions, as pg_restore --list names them (a dump may hold them;
+// a restore never runs them from there).
+export const VECTOR_FUNCTIONS = ["flowplan_floats(bytea)", "flowplan_vector_sync()"];
 
 // IEEE 754 single precision, little endian (lib/ai/semantic.ts toVector)
 // → real[]; infinities and NaN (never in a normalised vector) as 0.
