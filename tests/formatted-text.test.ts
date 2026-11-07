@@ -3,6 +3,7 @@
 // sorting, groups and formulas read plain text, plain sources (CSV, forms,
 // old archives) are escaped, AFFiNE keeps its formatting, the API writes
 // and reads inline Markdown, and a type change keeps the text.
+import { sqliteOnly } from "./helpers/backend";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
@@ -49,7 +50,7 @@ function newDatabase(title: string, fields: Field[] = FIELDS) {
 }
 const cellsOf = (pageId: string) => all<{ cells: string }>("SELECT cells FROM rows WHERE page_id=? ORDER BY position", pageId).map((r) => JSON.parse(r.cells));
 
-test("schema 90: existing text values are escaped once, titles and other types stay", () => {
+test("schema 90: existing text values are escaped once, titles and other types stay", { skip: sqliteOnly }, () => {
   const pageId = newDatabase("Alt");
   // Values as they were stored before #126 (plain strings).
   const insert = (cells: Record<string, unknown>, position: number) => {

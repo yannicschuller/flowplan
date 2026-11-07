@@ -2,6 +2,7 @@ import { setupStorage, stopStorage } from "./storage";
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 import { mkdirSync, statSync, unlinkSync } from "node:fs";
 import { applyPendingRestore } from "./instance-restore-apply";
+import { restorePendingIntoPostgres } from "./db-restore";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { flushRelationChanges } from "./relation-sync";
@@ -30,9 +31,11 @@ const globalDb = globalThis as unknown as {
 function legacyPg() {
   if (globalDb.flowplanLegacyPg === undefined) {
     globalDb.flowplanLegacyPg = postgresUrl() ? legacyPostgres() : null;
-    // What db() does when SQLite opens: the object storage queue.
+    // What db() does when SQLite opens: a staged restore, the object
+    // storage queue.
     if (globalDb.flowplanLegacyPg)
       try {
+        restorePendingIntoPostgres();
         setupStorage();
       } catch (error) {
         console.error("Dateispeicher: Einrichtung fehlgeschlagen", error);
@@ -1454,12 +1457,30 @@ export function db() {
   setupStorage(d);
   return d;
 }
+// The migrations on another SQLite file (a restored backup that is loaded
+// into PostgreSQL, lib/db-restore.ts).
+export function migrateFile(d: DatabaseSync) {
+  const saved = globalDb.flowplanSchema;
+  globalDb.flowplanSchema = undefined;
+  try {
+    migrate(d);
+  } finally {
+    globalDb.flowplanSchema = saved;
+  }
+}
 // Closes the database and opens it again; a staged restore
 // (<data>/restore-pending) is swapped in between. Only for the restore while
 // the instance has no accounts yet (lib/setup-restore.ts): nothing else holds
 // the old handle then.
 export function reopenDatabase() {
   stopStorage();
+  // PostgreSQL: the staged restore is loaded into it (lib/db-restore.ts).
+  if (legacyPg()) {
+    restorePendingIntoPostgres();
+    noteWrite();
+    setupStorage();
+    return null;
+  }
   if (globalDb.flowplanDb) forgetStatements(globalDb.flowplanDb);
   try {
     globalDb.flowplanDb?.close();

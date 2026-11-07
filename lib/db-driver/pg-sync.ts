@@ -8,12 +8,12 @@
 // the code is ported file by file to the asynchronous `db`
 // (lib/db-driver/index.ts), not for cluster mode.
 //
-// SQL arrives in the SQLite dialect. A few mechanical rewrites make the
-// common cases run (INSERT OR IGNORE, IS NOT ?, ifnull, CURRENT_TIMESTAMP);
-// anything else SQLite-only is refused with a hint (dialect.ts).
+// SQL arrives written for both databases (the dialect pass of #127); it is
+// not rewritten, only its placeholders numbered. SQLite-only SQL is
+// refused with a hint (dialect.ts).
 import { MessageChannel, receiveMessageOnPort, Worker } from "node:worker_threads";
 import { currentTx, postgresSchema, postgresUrl } from "./context";
-import { numberPlaceholders, postgresDialect, sqliteOnly } from "./dialect";
+import { numberPlaceholders, sqliteOnly } from "./dialect";
 
 type Params = (string | number | null | Uint8Array)[];
 export type LegacyPostgres = {
@@ -26,22 +26,15 @@ type Reply = { rows?: Record<string, unknown>[]; changes?: number; error?: { mes
 
 const READ_ONLY = /^\s*(SELECT\b|WITH\b(?![\s\S]*\b(INSERT|UPDATE|DELETE)\b))/i;
 const translations = new Map<string, string>();
-// SQLite SQL → Postgres SQL, for the mechanical cases only.
+// The SQL as it is (written for both databases, docs/architecture/
+// database.md "Dialect"), its `?` numbered; SQLite-only SQL is refused with
+// the helper to use.
 export function legacyToPostgres(sql: string): string {
   let text = translations.get(sql);
   if (text !== undefined) return text;
-  let out = sql;
-  const ignore = /^\s*INSERT\s+OR\s+IGNORE\s+INTO\s+/i;
-  if (ignore.test(out) && !/\bON\s+CONFLICT\b/i.test(out) && !/\bRETURNING\b/i.test(out))
-    out = `${out.replace(ignore, "INSERT INTO ").replace(/;\s*$/, "")} ON CONFLICT DO NOTHING`;
-  out = out
-    .replace(/\bIS\s+NOT\s+\?/gi, "IS DISTINCT FROM ?")
-    .replace(/\bifnull\s*\(/gi, "coalesce(")
-    .replace(/\bLIMIT\s+-1\b/gi, "LIMIT ALL")
-    .replace(/\bCURRENT_TIMESTAMP\b/g, postgresDialect.nowText());
-  const hint = sqliteOnly(out);
+  const hint = sqliteOnly(sql);
   if (hint) throw new Error(`SQLite-only SQL reached Postgres (${hint}): ${sql.slice(0, 200)}`);
-  text = numberPlaceholders(out);
+  text = numberPlaceholders(sql);
   if (translations.size < 5000) translations.set(sql, text);
   return text;
 }

@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import { sqliteOnly } from "./helpers/backend";
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -78,7 +79,7 @@ test("a rolled back change of rights is forgotten too", () => {
   });
 });
 
-test("scopes do not share what they remember", async () => {
+test("scopes do not share what they remember", { skip: sqliteOnly }, async () => {
   // Another connection (a script on the same file) takes the membership away
   // while a scope has looked it up: the next request sees the change.
   const other = new DatabaseSync(join(process.env.FLOWPLAN_DATA_DIR!, "flowplan.sqlite"));

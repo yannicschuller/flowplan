@@ -3,6 +3,7 @@
 // due records), a webhook for one page needs a page its owner may read, and
 // its signing secret and address are sealed at rest (older plain values
 // are read and sealed once by schema 92).
+import { sqliteOnly } from "./helpers/backend";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash, createHmac, randomBytes } from "node:crypto";
@@ -115,7 +116,7 @@ test("signing secret and address are sealed at rest and still sign deliveries", 
   assert.equal(listWebhooks(owner, wid).find((h) => h.id === hook.id)!.url, "http://127.0.0.1:9/services/T000/B000/XXXXSECRET");
 });
 
-test("schema 92 seals plain secrets from before once; until then they are read as they are", async () => {
+test("schema 92 seals plain secrets from before once; until then they are read as they are", { skip: sqliteOnly }, async () => {
   // A webhook and a Git connection as an older version stored them.
   const hookId = id();
   run(

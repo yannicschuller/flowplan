@@ -1,6 +1,7 @@
 // Collections (#86): storage, sharing and edit rights, guests, limits, the
 // results with each reader's own permissions, the migration of saved
 // searches and the extended search syntax in the search.
+import { sqliteOnly } from "./helpers/backend";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
@@ -211,7 +212,7 @@ test("search.save and search.delete keep working on collections", () => {
   assert.ok(!bootstrap(owner, wid).collections!.some((x) => x.id === saved.id));
 });
 
-test("saved searches from before #86 become collections once", () => {
+test("saved searches from before #86 become collections once", { skip: sqliteOnly }, () => {
   const user = account("Alt");
   run("INSERT INTO members VALUES(?,?,?)", wid, user.id, "editor");
   const spaceName = bootstrap(owner, wid).spaces.find((s) => s.id === team)!.name;

@@ -215,6 +215,11 @@ const SQLITE_ONLY: [RegExp, string][] = [
   [/\bsqlite_(master|schema)\b/i, "sqlite_master → information_schema"],
   [/\bIS\s+NOT\s+\?/i, "IS NOT ? → d.isNot()"],
   [/\bBEGIN\s+IMMEDIATE\b/i, "BEGIN IMMEDIATE → db.tx()"],
+  [/\bUPDATE\s+OR\s+(IGNORE|REPLACE)\b/i, "UPDATE OR … → updateIgnoringConflicts() (lib/db.ts)"],
+  [/\bjson_(group_array|object|set|array)\s*\(/i, "json_* → d.jsonGroupArray()/d.jsonObject()"],
+  [/\bgroup_concat\s*\(/i, "group_concat → d.groupConcat()"],
+  [/\bGLOB\b/, "GLOB → LIKE on lower()"],
+  [/\bVACUUM\s+INTO\b/i, "VACUUM INTO → snapshotDatabase() (lib/db-snapshot.ts)"],
 ];
 export function sqliteOnly(sql: string): string | null {
   const code = sql.replace(/'(?:[^']|'')*'/g, "''");
