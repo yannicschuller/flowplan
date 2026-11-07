@@ -20,7 +20,7 @@
 import { z } from "zod";
 import { HttpError } from "../auth";
 import { all, audit, one, run } from "../db";
-import { memberRole, pageRole, requirePage } from "../permissions";
+import { memberRole, pageRole, requirePage, spaceRole } from "../permissions";
 import { canSharePage } from "../page-share";
 import { rowRoleResolver } from "../row-access";
 import { canManageSpace } from "../workspace-lifecycle";
@@ -217,7 +217,9 @@ export function setAiRule(user: Identity, raw: unknown) {
     kind = "workspace";
     workspaceId = b.targetId;
   } else if (space) {
-    if (!memberRole(user, space.workspace_id) || space.deleted_at) throw new HttpError(403, "Keine Berechtigung für diesen Bereich.");
+    // Only spaces the person can open; others (private ones) do not exist
+    // for them – not even by name in the answer.
+    if (space.deleted_at || !spaceRole(user, space)) throw new HttpError(404, "Bereich nicht gefunden.");
     kind = "space";
     workspaceId = space.workspace_id;
   } else {
@@ -239,7 +241,20 @@ export function setAiRule(user: Identity, raw: unknown) {
   return { rules: aiRules(user) };
 }
 
-// The person's rules with names, for the settings.
+// The person's rules with names, for the settings – a name only where the
+// person can still open the target (left a private space: no name).
+function ruleTitle(user: Identity, kind: "workspace" | "space" | "page", targetId: string) {
+  if (kind === "workspace") {
+    if (!memberRole(user, targetId)) return "";
+    return one<{ name: string }>("SELECT name FROM workspaces WHERE id=?", targetId)?.name || "";
+  }
+  if (kind === "space") {
+    const space = one<Space>("SELECT * FROM spaces WHERE id=?", targetId);
+    return space && spaceRole(user, space) ? space.name : "";
+  }
+  const page = one<Page>("SELECT * FROM pages WHERE id=?", targetId);
+  return page && pageRole(user, page) ? page.title : "";
+}
 export function aiRules(user: Identity, workspaceId?: string) {
   return all<{ target_id: string; kind: "workspace" | "space" | "page"; workspace_id: string; mode: "include" | "exclude" }>(
     `SELECT target_id,kind,workspace_id,mode FROM ai_access_rules WHERE user_id=?${workspaceId ? " AND workspace_id=?" : ""} ORDER BY kind,target_id`,
@@ -249,12 +264,7 @@ export function aiRules(user: Identity, workspaceId?: string) {
     kind: r.kind,
     workspaceId: r.workspace_id,
     mode: r.mode,
-    title:
-      r.kind === "workspace"
-        ? one<{ name: string }>("SELECT name FROM workspaces WHERE id=?", r.target_id)?.name || ""
-        : r.kind === "space"
-          ? one<{ name: string }>("SELECT name FROM spaces WHERE id=?", r.target_id)?.name || ""
-          : one<{ title: string }>("SELECT title FROM pages WHERE id=?", r.target_id)?.title || "",
+    title: ruleTitle(user, r.kind, r.target_id),
   }));
 }
 
