@@ -8,10 +8,13 @@ import { requireAdmin } from "@/lib/permissions";
 import { audit } from "@/lib/db";
 import {
   INSTANCE_ARCHIVE_LIMIT,
+  PGDUMP_MAGIC,
   cancelRestore,
   instanceBackupStream,
+  stageDumpRestore,
   stageInstanceRestore,
 } from "@/lib/instance-backup";
+import { dateFromName, head } from "@/lib/setup-restore";
 import { encryptionEnabled, fileIsEncrypted, sealStream, unsealFile } from "@/lib/encryption";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -51,8 +54,11 @@ export async function GET() {
   }
 }
 // Upload of a backup; it is checked now and applied on the next restart.
-// An encrypted one (.zip.enc) is decrypted first, with the current or an
-// earlier key.
+// An encrypted one (.zip.enc, .dump.enc) is decrypted first, with the
+// current or an earlier key. The whole instance (.zip), or on PostgreSQL a
+// scheduled backup (flowplan-….dump, pg_dump): only the database, the
+// files stay (lib/instance-backup.ts, stageDumpRestore). The file name
+// comes as ?name= (the date of a scheduled backup is in it).
 export async function POST(req: Request) {
   const dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "tmp");
   const file = resolve(dir, `instance-upload-${randomUUID()}.zip`);
@@ -85,7 +91,9 @@ export async function POST(req: Request) {
       }
       zip = plain;
     }
-    const summary = await stageInstanceRestore(zip);
+    const summary = head(zip, 5).equals(PGDUMP_MAGIC)
+      ? await stageDumpRestore(zip, dateFromName(new URL(req.url).searchParams.get("name")))
+      : await stageInstanceRestore(zip);
     await audit(user.id, "instance.restore.staged", "", JSON.stringify(summary));
     return Response.json(summary);
   } catch (e) {

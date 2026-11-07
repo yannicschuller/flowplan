@@ -28,6 +28,9 @@ export function applyPendingRestore(dir: string, options: { dumps?: boolean } = 
     return null;
   }
   const move = existsSync(resolve(pending, "MOVE"));
+  // A dump without files (Administration's restore of a scheduled backup,
+  // lib/instance-backup.ts stageDumpRestore) keeps the files there are.
+  const keepUploads = dump && !existsSync(resolve(pending, "uploads"));
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const previous = resolve(dir, `${move ? "pre-move" : "pre-restore"}-${stamp}`);
   mkdirSync(previous, { recursive: true });
@@ -35,7 +38,7 @@ export function applyPendingRestore(dir: string, options: { dumps?: boolean } = 
     "flowplan.sqlite",
     "flowplan.sqlite-wal",
     "flowplan.sqlite-shm",
-    "uploads",
+    ...(keepUploads ? [] : ["uploads"]),
   ])
     if (existsSync(resolve(dir, name)))
       renameSync(resolve(dir, name), resolve(previous, name));
@@ -53,7 +56,7 @@ export function applyPendingRestore(dir: string, options: { dumps?: boolean } = 
     );
   if (existsSync(resolve(pending, "uploads")))
     renameSync(resolve(pending, "uploads"), resolve(dir, "uploads"));
-  else mkdirSync(resolve(dir, "uploads"), { recursive: true });
+  else mkdirSync(resolve(dir, "uploads"), { recursive: true }); // kept, or a new empty one
   rmSync(pending, { recursive: true, force: true });
   // With object storage configured, every restored file is uploaded again.
   writeFileSync(resolve(dir, "storage-resync"), "");

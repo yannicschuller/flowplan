@@ -25,12 +25,11 @@ import { pipeline } from "node:stream/promises";
 import { DatabaseSync } from "node:sqlite";
 import { AwsClient } from "aws4fetch";
 import { z } from "zod";
-import { SCHEMA_VERSION, audit, id, reopenDatabase, sql } from "./db";
-import { dumpSummary } from "./pg-backup";
+import { audit, id, reopenDatabase, sql } from "./db";
 import { HttpError } from "./auth";
 import { firstAccount, localLoginEnabled, setupAllowed, setupToken } from "./local-auth";
 import { encryptionEnabled, fileIsEncrypted, fileKeyKnown, isEncrypted, parseKey, unseal, unsealFile, type Key } from "./encryption";
-import { INSTANCE_ARCHIVE_LIMIT, cancelRestore, checkBackupDatabase, stageInstanceRestore, type Summary } from "./instance-backup";
+import { INSTANCE_ARCHIVE_LIMIT, PGDUMP_MAGIC, cancelRestore, checkBackupDatabase, checkDumpBackup, stageInstanceRestore, type Summary } from "./instance-backup";
 import { BACKUP_FILE } from "./backup-copy";
 import { DELETED_UPLOADS, newestDeleted, parseDeleted, type DeletedCopy } from "./deleted-uploads";
 import { HostKeyError, connectSftp, remoteDirectory, remotePath, sftpDownload, sftpHost, sftpList, type SftpLogin, type SftpSession } from "./sftp";
@@ -107,7 +106,7 @@ export function keysFrom(text: unknown): Key[] {
     throw new HttpError(400, "Der Schlüssel muss 32 Bytes lang sein (base64 oder 64 Hex-Zeichen).");
   }
 }
-function head(path: string, length: number) {
+export function head(path: string, length: number) {
   const buffer = Buffer.alloc(length);
   const fd = openSync(path, "r");
   try {
@@ -117,8 +116,6 @@ function head(path: string, length: number) {
   }
 }
 const SQLITE = Buffer.from("SQLite format 3\0");
-// pg_dump's custom format (a scheduled backup of a PostgreSQL instance).
-const PGDUMP_MAGIC = Buffer.from("PGDMP");
 const ZIP = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
 
 // flowplan-2026-11-06-03-00.sqlite → when the scheduled backup was made.
@@ -173,24 +170,12 @@ export async function restoreBackupFile(path: string, keys: Key[], progress: Res
         // A scheduled backup of a PostgreSQL instance (pg_dump,
         // lib/pg-backup.ts): restored with pg_restore, so only into
         // PostgreSQL. lib/db-restore.ts loads it when the database opens.
-        if (sql.name !== "postgres")
-          throw new HttpError(
-            400,
-            "Diese Sicherung ist ein PostgreSQL-Dump (pg_dump) und lässt sich nur in einer Instanz mit PostgreSQL wiederherstellen. Für einen Wechsel zu SQLite: die Sicherung der gesamten Instanz (.zip) oder der Instanzumzug.",
-          );
+        if (sql.name !== "postgres") await checkDumpBackup(file);
         const dump = resolve(staging, "flowplan.dump");
         if (file === plain) renameSync(plain, dump);
         else copyFileSync(file, dump);
-        let found: Awaited<ReturnType<typeof dumpSummary>>;
-        try {
-          found = await dumpSummary(dump);
-        } catch (error) {
-          console.error("Wiederherstellung beim Einrichten: Dump nicht lesbar", (error as Error)?.message);
-          throw new HttpError(400, "Die Sicherung enthält keine gültige Flowplan-Datenbank.");
-        }
-        if (found.version > SCHEMA_VERSION)
-          throw new HttpError(400, "Die Sicherung stammt aus einer neueren Flowplan-Version. Bitte zuerst Flowplan auf diese Version aktualisieren.");
-        checked = { users: found.users, workspaces: found.workspaces, pages: found.pages, schema: found.version };
+        const found = await checkDumpBackup(dump);
+        checked = found.checked;
         ids = found.fileIds.filter((n) => UPLOAD.test(n));
       }
       if (fetchFiles) {

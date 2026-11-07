@@ -15,8 +15,9 @@ import { Readable } from "node:stream";
 import { DatabaseSync } from "node:sqlite";
 import { open as openZip, type Entry } from "yauzl";
 import { ZipFile } from "yazl";
-import { SCHEMA_VERSION, id, run } from "./db";
+import { SCHEMA_VERSION, id, run, sql } from "./db";
 import { HttpError } from "./auth";
+import { dumpSummary } from "./pg-backup";
 
 // Whole-instance backups for admins: a consistent SQLite copy, all uploads
 // and a manifest, streamed as ZIP. Restores are validated and applied on
@@ -214,6 +215,54 @@ export async function stageInstanceRestore(zipPath: string): Promise<Summary> {
       ...checkBackupDatabase(resolve(staging, "flowplan.sqlite")),
       files: uploads,
     };
+    writeFileSync(resolve(staging, "READY"), JSON.stringify(summary));
+    cancelRestore();
+    renameSync(staging, resolve(dir, "restore-pending"));
+    return summary;
+  } finally {
+    rmSync(staging, { recursive: true, force: true });
+  }
+}
+
+// pg_dump's custom format: a scheduled backup of a PostgreSQL instance.
+export const PGDUMP_MAGIC = Buffer.from("PGDMP");
+// Checks a pg_dump backup (lib/pg-backup.ts): only into PostgreSQL, a
+// Flowplan database, not from a newer version. Its counts and the files it
+// refers to.
+export async function checkDumpBackup(dump: string) {
+  if (sql.name !== "postgres")
+    throw new HttpError(
+      400,
+      "Diese Sicherung ist ein PostgreSQL-Dump (pg_dump) und lässt sich nur in einer Instanz mit PostgreSQL wiederherstellen. Für einen Wechsel zu SQLite: die Sicherung der gesamten Instanz (.zip) oder der Instanzumzug.",
+    );
+  let found: Awaited<ReturnType<typeof dumpSummary>>;
+  try {
+    found = await dumpSummary(dump);
+  } catch (error) {
+    console.error("Wiederherstellung: Dump nicht lesbar", (error as Error)?.message);
+    throw new HttpError(400, "Die Sicherung enthält keine gültige Flowplan-Datenbank.");
+  }
+  if (found.version > SCHEMA_VERSION)
+    throw new HttpError(400, "Die Sicherung stammt aus einer neueren Flowplan-Version. Bitte zuerst Flowplan auf diese Version aktualisieren.");
+  return { checked: { users: found.users, workspaces: found.workspaces, pages: found.pages, schema: found.version }, fileIds: found.fileIds };
+}
+// Stages a scheduled backup of a PostgreSQL instance (flowplan-….dump,
+// moved here from `dumpPath`) for Administration → Aus Sicherung
+// wiederherstellen. Only the database: the files stay as they are (the
+// dump refers to them by id; the bucket has them in cluster mode). It is
+// applied like the instance backup – at the next start, in cluster mode by
+// the leader (lib/cluster/duties.ts) – by lib/db-restore.ts: the state
+// before is kept as a dump in pre-restore-…, and put back if the restore
+// fails.
+export async function stageDumpRestore(dumpPath: string, createdAt = ""): Promise<Summary> {
+  const dir = dataDir(),
+    staging = resolve(dir, `restore-staging-${id()}`);
+  mkdirSync(staging, { recursive: true });
+  try {
+    const dump = resolve(staging, "flowplan.dump");
+    renameSync(dumpPath, dump);
+    const { checked } = await checkDumpBackup(dump);
+    const summary: Summary = { createdAt, ...checked, files: 0 };
     writeFileSync(resolve(staging, "READY"), JSON.stringify(summary));
     cancelRestore();
     renameSync(staging, resolve(dir, "restore-pending"));

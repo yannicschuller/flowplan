@@ -135,8 +135,42 @@ test("restore: the state of the dump comes back, the state before is kept", { sk
   assert.ok(!existsSync(join(dir, "flowplan.dump")) && !existsSync(join(dir, "restore-pending")));
 });
 
+test("Administration's restore takes a scheduled backup (.dump): only the database, the files stay", { skip }, async () => {
+  const { stageDumpRestore, pendingRestore } = await import("../lib/instance-backup");
+  await run("UPDATE pages SET title='Umbenannt' WHERE id=?", kept);
+  mkdirSync(join(dir, "uploads"), { recursive: true });
+  writeFileSync(join(dir, "uploads", "datei-bleibt"), "Inhalt");
+  // The upload is moved into the staging (as the route does with its temporary file).
+  const upload = join(dir, "upload.dump");
+  copyFileSync(dump, upload);
+  const summary = await stageDumpRestore(upload, "2026-11-07T03:00:00.000Z");
+  assert.equal(summary.createdAt, "2026-11-07T03:00:00.000Z");
+  assert.ok(summary.pages >= 1 && summary.users >= 1);
+  assert.equal(summary.files, 0);
+  assert.ok(!existsSync(upload));
+  assert.deepEqual(pendingRestore(), summary);
+  assert.ok(!existsSync(join(dir, "restore-pending", "uploads")), "no files staged");
+  await reopenDatabase();
+  assert.equal((await one<{ title: string }>("SELECT title FROM pages WHERE id=?", kept))?.title, "Jahresplanung");
+  assert.equal(readFileSync(join(dir, "uploads", "datei-bleibt"), "utf8"), "Inhalt", "the files stay");
+  assert.equal(pendingRestore(), null);
+  // Not a Flowplan dump: refused, nothing staged.
+  const other = join(dir, "other.dump");
+  writeFileSync(other, "PGDMP kaputt");
+  await assert.rejects(stageDumpRestore(other), /keine gültige Flowplan-Datenbank/);
+  assert.equal(pendingRestore(), null);
+});
+
 test("a dump of a newer Flowplan version is refused, the data stays", { skip }, async () => {
   const { SCHEMA_VERSION } = await import("../lib/db");
   await assert.rejects(backup.restoreDump(dump, { newestVersion: SCHEMA_VERSION - 1 }), /newer Flowplan version/);
   assert.equal((await one<{ title: string }>("SELECT title FROM pages WHERE id=?", kept))?.title, "Jahresplanung");
+});
+
+test("on SQLite a pg_dump backup is refused before anything is staged", { skip: onPostgres && "SQLite only" }, async () => {
+  const { stageDumpRestore, pendingRestore } = await import("../lib/instance-backup");
+  const file = join(dir, "geplant.dump");
+  writeFileSync(file, "PGDMP");
+  await assert.rejects(stageDumpRestore(file), /nur in einer Instanz mit PostgreSQL/);
+  assert.equal(pendingRestore(), null);
 });

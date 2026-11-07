@@ -308,14 +308,17 @@ function Restore({ pending, onChange, onError }: { pending: AdminData["restorePe
       ) : (
         <SettingRow
           label={t("Sicherung hochladen", "Upload backup")}
-          description={t("Eine ZIP-Datei aus „Herunterladen“ (oder .enc, verschlüsselt).", "A ZIP file from “Download” (or .enc, encrypted).")}
+          description={t(
+            "Eine ZIP-Datei aus „Herunterladen“ (oder .enc, verschlüsselt). Mit PostgreSQL auch eine geplante Sicherung (flowplan-….dump): nur die Datenbank, die Dateien bleiben.",
+            "A ZIP file from “Download” (or .enc, encrypted). With PostgreSQL also a scheduled backup (flowplan-….dump): only the database, the files stay.",
+          )}
         >
           <label className={`button danger file-label${busy ? " disabled" : ""}`}>
             <UploadSimple size={16} aria-hidden />
             {busy ? t("Sicherung wird geprüft …", "Checking backup …") : t("Sicherung auswählen", "Choose backup")}
             <input
               type="file"
-              accept=".zip,.enc"
+              accept=".zip,.dump,.enc"
               hidden
               aria-label={t("Instanzsicherung hochladen", "Upload instance backup")}
               disabled={busy}
@@ -325,9 +328,9 @@ function Restore({ pending, onChange, onError }: { pending: AdminData["restorePe
                 if (!file) return;
                 setBusy(true);
                 try {
-                  const r = await fetch("/api/admin/instance-backup", {
+                  const r = await fetch(`/api/admin/instance-backup?name=${encodeURIComponent(file.name)}`, {
                     method: "POST",
-                    headers: { "Content-Type": "application/zip" },
+                    headers: { "Content-Type": "application/octet-stream" },
                     body: file,
                   });
                   if (!r.ok) throw new Error(serverMessage((await r.json()).error));
