@@ -11,7 +11,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { all, migrateFile, run, transaction, untimed } from "./db";
+import { all, lockFor, migrateFile, run, transaction, untimed } from "./db";
 import { snapshotDatabase } from "./db-snapshot";
 import { applyPendingRestore } from "./instance-restore-apply";
 import schemaJson from "./db-driver/postgres-schema.json";
@@ -42,6 +42,8 @@ export async function loadSqliteFile(path: string) {
     const names = tables.map((t) => quoteIdent(t.name));
     await transaction(async () => {
       await untimed();
+      // Cluster mode: one restore at a time, whichever instance staged it.
+      await lockFor("flowplan:restore");
       // Foreign keys go while the tables are refilled (parents and children
       // in any order) and come back checked; triggers would fire per row.
       const fks = await all<{ tbl: string; conname: string }>(

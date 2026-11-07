@@ -32,6 +32,7 @@ import {
 } from "./whiteboard-estimation";
 import { command } from "./api";
 import type { Field, Identity, Page } from "./types";
+import { onBus } from "./cluster/bus";
 
 const uuid = z.string().uuid();
 const coordinate = z.number().finite().min(-1e7).max(1e7);
@@ -97,8 +98,17 @@ export type FacilitationState = {
 };
 
 const GATHER_MS = 60_000;
-const hub = globalThis as unknown as { flowplanGathers?: Map<string, Gather> };
+const hub = globalThis as unknown as { flowplanGathers?: Map<string, Gather>; flowplanGatherBus?: boolean };
 const gathers = (hub.flowplanGathers ??= new Map());
+// Cluster mode: a gather started on another instance arrives as its board
+// signal (lib/whiteboard-presence.ts); late joiners here see it too.
+if (!hub.flowplanGatherBus) {
+  hub.flowplanGatherBus = true;
+  onBus("board", (payload) => {
+    const message = payload as { k?: string; pageId?: string; payload?: Gather };
+    if (message.k === "signal" && message.payload?.type === "gather" && typeof message.pageId === "string") gathers.set(message.pageId, message.payload);
+  });
+}
 
 type Session = { id: string; page_id: string; frame_id: string | null; started_by: string | null; started_name: string; started_at: number; revealed_at: number | null; revealed_count: number | null };
 const activeSession = async (pageId: string) =>

@@ -24,6 +24,9 @@ const { values: opt } = parseArgs({
   options: {
     url: { type: "string", default: "http://127.0.0.1:3497" },
     data: { type: "string" },
+    // PostgreSQL instead of the SQLite file (cluster mode, scripts/load-test-cluster.mjs).
+    database: { type: "string" },
+    schema: { type: "string", default: "public" },
     users: { type: "string", default: "400" },
     docs: { type: "string", default: "300" },
     records: { type: "string", default: "3000" },
@@ -31,8 +34,8 @@ const { values: opt } = parseArgs({
     out: { type: "string", default: "loadtest-seed.json" },
   },
 });
-if (!opt.data) {
-  console.error("--data <FLOWPLAN_DATA_DIR of the instance> is required (accounts and sessions are written into its SQLite file).");
+if (!opt.data && !opt.database) {
+  console.error("--data <FLOWPLAN_DATA_DIR of the instance> (or --database postgres://… --schema …) is required (accounts and sessions are written straight into the database).");
   process.exit(2);
 }
 const origin = new URL(opt.url).origin;
@@ -190,37 +193,50 @@ await pool(
 );
 console.log(`${N_DOCS} documents (${Date.now() - t0} ms)`);
 
-// --- Accounts, sessions, tokens (straight into SQLite) -----------------------
-const sqlite = new DatabaseSync(resolve(opt.data, "flowplan.sqlite"));
-sqlite.exec("PRAGMA busy_timeout=10000");
+// --- Accounts, sessions, tokens (straight into the database) -----------------
+// SQLite: the instance's file; PostgreSQL (--database): its schema.
+const store = await (async () => {
+  if (opt.database) {
+    const { default: pg } = await import("pg");
+    const client = new pg.Client({ connectionString: opt.database, options: `-c search_path=${opt.schema}` });
+    await client.connect();
+    const numbered = (sql) => {
+      let n = 0;
+      return sql.replace(/\?/g, () => `$${++n}`);
+    };
+    return { exec: (sql) => client.query(sql === "BEGIN IMMEDIATE" ? "BEGIN" : sql), run: (sql, ...p) => client.query(numbered(sql), p), close: () => client.end() };
+  }
+  const sqlite = new DatabaseSync(resolve(opt.data, "flowplan.sqlite"));
+  sqlite.exec("PRAGMA busy_timeout=10000");
+  return { exec: async (sql) => sqlite.exec(sql), run: async (sql, ...p) => sqlite.prepare(sql).run(...p), close: async () => sqlite.close() };
+})();
 const users = [];
 const now = Date.now();
-sqlite.exec("BEGIN IMMEDIATE");
+await store.exec("BEGIN IMMEDIATE");
 try {
-  const insertUser = sqlite.prepare("INSERT INTO users(id,subject,name,email,onboarded_at) VALUES(?,?,?,?,?)");
-  const insertMember = sqlite.prepare("INSERT INTO members(workspace_id,user_id,role) VALUES(?,?,'editor')");
-  const insertSession = sqlite.prepare(
-    "INSERT INTO sessions(token,user_id,groups_json,expires,created_at,remember,sso,app,last_seen,agent) VALUES(?,?,'[]',?,?,0,0,0,?,'flowplan-loadtest')",
-  );
-  const insertToken = sqlite.prepare(
-    "INSERT INTO api_tokens(id,user_id,name,scope,token_hash,prefix,created_at) VALUES(?,?,'loadtest','read',?,?,?)",
-  );
   for (let i = 0; i < N_USERS; i++) {
     const uid = randomUUID();
-    insertUser.run(uid, `loadtest:${uid}`, `Testperson ${i}`, `loadtest-${i}-${uid.slice(0, 8)}@example.test`, now);
-    insertMember.run(workspaceId, uid);
+    await store.run("INSERT INTO users(id,subject,name,email,onboarded_at) VALUES(?,?,?,?,?)", uid, `loadtest:${uid}`, `Testperson ${i}`, `loadtest-${i}-${uid.slice(0, 8)}@example.test`, now);
+    await store.run("INSERT INTO members(workspace_id,user_id,role) VALUES(?,?,'editor')", workspaceId, uid);
     const session = randomBytes(32).toString("base64url");
-    insertSession.run(sha256(session), uid, now + 7 * 86400_000, now, now);
+    await store.run(
+      "INSERT INTO sessions(token,user_id,groups_json,expires,created_at,remember,sso,app,last_seen,agent) VALUES(?,?,'[]',?,?,0,0,0,?,'flowplan-loadtest')",
+      sha256(session),
+      uid,
+      now + 7 * 86400_000,
+      now,
+      now,
+    );
     const token = `fp_${randomBytes(30).toString("base64url")}`;
-    insertToken.run(randomUUID(), uid, sha256(token), token.slice(0, 10), now);
+    await store.run("INSERT INTO api_tokens(id,user_id,name,scope,token_hash,prefix,created_at) VALUES(?,?,'loadtest','read',?,?,?)", randomUUID(), uid, sha256(token), token.slice(0, 10), now);
     users.push({ id: uid, cookie: `flowplan_session=${session}`, token });
   }
-  sqlite.exec("COMMIT");
+  await store.exec("COMMIT");
 } catch (e) {
-  sqlite.exec("ROLLBACK");
+  await store.exec("ROLLBACK");
   throw e;
 }
-sqlite.close();
+await store.close();
 console.log(`${N_USERS} accounts with sessions and API tokens (${Date.now() - t0} ms)`);
 
 // One check that a seeded session works.
