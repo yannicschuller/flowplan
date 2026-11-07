@@ -5,6 +5,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { escapeInline, isFormattedText, toPlain } from "./inline-markdown";
 import type { Field } from "./types";
+import { all, run } from "./db";
 
 type Cells = Record<string, unknown>;
 const SPECIAL = /[\\*_~`[\]]/;
@@ -59,13 +60,13 @@ export function convertCells(cells: Cells, change: { escape: string[]; plain: st
 
 // database.update: the records and record templates of the database follow
 // a change of their properties (inside the caller's transaction).
-export function convertFormattedValues(d: DatabaseSync, pageId: string, before: Field[], after: Field[]) {
+export function convertFormattedValues(pageId: string, before: Field[], after: Field[]) {
   const change = formattedChanges(before, after);
   if (!change.escape.length && !change.plain.length) return;
   for (const table of ["rows", "row_templates"] as const)
-    for (const row of d.prepare(`SELECT id,cells FROM ${table} WHERE page_id=?`).all(pageId) as { id: string; cells: string }[]) {
+    for (const row of all<{ id: string; cells: string }>(`SELECT id,cells FROM ${table} WHERE page_id=?`, pageId)) {
       const next = convertCells(JSON.parse(row.cells), change);
-      if (next.changed) d.prepare(`UPDATE ${table} SET cells=? WHERE id=?`).run(JSON.stringify(next.cells), row.id);
+      if (next.changed) run(`UPDATE ${table} SET cells=? WHERE id=?`, JSON.stringify(next.cells), row.id);
     }
 }
 

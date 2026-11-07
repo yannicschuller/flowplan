@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import { onPostgres } from "./helpers/backend";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -265,7 +266,7 @@ test("no plaintext key in the instance backup, workspace export or Markdown expo
     assert.ok(!bytes.includes(ADMIN_KEY), name);
     assert.ok(!bytes.includes(USER_KEY), name);
   }
-  assert.ok(!readFileSync(join(dataDir, "flowplan.sqlite")).includes(USER_KEY));
+  if (!onPostgres) assert.ok(!readFileSync(join(dataDir, "flowplan.sqlite")).includes(USER_KEY));
   const archive = await readExportZip(await exportArchive(admin, wid));
   for (const [name, bytes] of archive) assert.ok(!bytes.includes(ADMIN_KEY) && !bytes.includes(USER_KEY) && !bytes.includes("fps1:"), name);
   const markdown = await exportMarkdown(admin, { pageId: page, format: "zip", includeSubpages: true, history: true });

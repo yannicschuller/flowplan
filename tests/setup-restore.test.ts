@@ -2,6 +2,7 @@
 // uploaded scheduled backup or instance download, or the newest backup on
 // an SFTP server or in a bucket – into a fresh data folder, while no account
 // exists.
+import { onPostgres } from "./helpers/backend";
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { copyFileSync, createWriteStream, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -39,19 +40,26 @@ mkdirSync(join(old, "uploads"), { recursive: true });
 writeFileSync(join(old, "uploads", fid), "Anhang der alten Instanz");
 run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fid, page, "anhang.txt", "text/plain", 24, uid);
 const keep = mkdtempSync(join(tmpdir(), "flowplan-setup-restore-files-"));
-after(() => (process.env.FLOWPLAN_DATA_DIR = old));
+// On PostgreSQL an instance is a schema of its own (as a data folder is on SQLite).
+const oldSchema = process.env.FLOWPLAN_PG_SCHEMA;
+after(() => {
+  process.env.FLOWPLAN_DATA_DIR = old;
+  if (onPostgres) process.env.FLOWPLAN_PG_SCHEMA = oldSchema;
+});
 
 // Every scenario starts on a fresh, empty instance.
 async function freshInstance() {
   delete process.env.FLOWPLAN_ENCRYPTION_KEY;
   const dir = mkdtempSync(join(tmpdir(), "flowplan-setup-restore-new-"));
   process.env.FLOWPLAN_DATA_DIR = dir;
+  if (onPostgres) await (await import("./helpers/postgres-backend")).preparePostgres(process.env.DATABASE_URL!);
   reopenDatabase();
   assert.equal(await firstAccount(), true);
   return dir;
 }
 function backOnOld() {
   process.env.FLOWPLAN_DATA_DIR = old;
+  if (onPostgres) process.env.FLOWPLAN_PG_SCHEMA = oldSchema;
   reopenDatabase();
 }
 async function restoredPage(dir: string) {
@@ -318,7 +326,8 @@ test("a new instance makes no scheduled backup before its first account", async 
   const user = id();
   run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", user, `local:${user}`, "Neu", "neu@example.test");
   t.mock.timers.tick(10 * 60_000);
-  for (let i = 0; i < 500 && !existsSync(join(dir, "backups")); i++) await new Promise((done) => setImmediate(done));
+  // (Postgres answers over the network: by time, not by turns.)
+  for (const until = Date.now() + 10_000; Date.now() < until && !existsSync(join(dir, "backups")); ) await new Promise((done) => setImmediate(done));
   assert.equal(readdirSync(join(dir, "backups")).length, 1);
   backOnOld();
 });

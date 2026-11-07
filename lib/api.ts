@@ -2157,7 +2157,7 @@ function runCommand(
         }
         // Formatted text (#126): a property that becomes or stops being
         // formatted text keeps its values' text.
-        convertFormattedValues(db(), pid(), d.fields, fields);
+        convertFormattedValues(pid(), d.fields, fields);
         run(
           "UPDATE databases SET fields=?,views=?,version=version+1 WHERE page_id=?",
           JSON.stringify(fields),

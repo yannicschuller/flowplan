@@ -93,7 +93,7 @@ export type WeeklyDigest = {
 export function buildWeeklyDigest(user: Identity, now = Date.now(), today = localTime(now, weeklyDigestPrefs(user).timeZone).date): WeeklyDigest {
   const since = now - 7 * 86_400_000;
   const pages = all<Page & { at: number; workspace: string }>(
-    `SELECT p.*,MAX(e.at) at,w.name workspace FROM page_follows f
+    `SELECT p.*,MAX(e.at) at,MAX(w.name) workspace FROM page_follows f
      JOIN pages p ON p.id=f.page_id JOIN page_edits e ON e.page_id=p.id JOIN workspaces w ON w.id=p.workspace_id
      JOIN members m ON m.workspace_id=p.workspace_id AND m.user_id=f.user_id
      WHERE f.user_id=? AND e.user_id<>? AND e.at>? AND p.deleted_at IS NULL

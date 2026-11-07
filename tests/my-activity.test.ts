@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import { sqliteOnly } from "./helpers/backend";
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -188,7 +189,8 @@ test("the widget on the start page and its period, kept in its settings", () => 
   assert.equal((S.parseLayout({ version: 1, widgets: [{ id: "m", kind: "myActivity", size: "m", config: { period: "year" } }] }).widgets[0].config as { period?: string }).period, "year");
 });
 
-test("schema 89: one person's rows are found by index, not by scanning", () => {
+// SQLite's query planner (Postgres decides by statistics).
+test("schema 89: one person's rows are found by index, not by scanning", { skip: sqliteOnly }, () => {
   for (const [table, where] of [
     ["pages", "created_by=? AND created_at>=? AND created_at<?"],
     ["snapshots", "created_by=? AND created_at>=? AND created_at<?"],

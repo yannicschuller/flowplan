@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import { onPostgres } from "./helpers/backend";
 import assert from "node:assert/strict";
 import {
   createWriteStream,
@@ -73,7 +74,9 @@ test("instance backups restore database and uploads on the next start", async ()
   );
   assert.deepEqual(pendingRestore(), summary);
   const previous = applyPendingRestore(dir)!;
-  assert.ok(existsSync(join(previous, "flowplan.sqlite")));
+  // (On Postgres there is no database file to put aside here; lib/db-restore.ts
+  // writes the state before as one when it loads the backup.)
+  if (!onPostgres) assert.ok(existsSync(join(previous, "flowplan.sqlite")));
   const restored = new DatabaseSync(join(dir, "flowplan.sqlite"), {
     readOnly: true,
   });
