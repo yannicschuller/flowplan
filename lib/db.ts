@@ -11,12 +11,33 @@ import { emojiPresentation } from "./emoji-presentation";
 import { migrateFormattedText } from "./formatted-text";
 import { migrateSealedSecrets } from "./sealed-values";
 import { noteStatement, noteTransaction, runtimeMetricsOn } from "./runtime-metrics";
+import { dbContext, postgresUrl } from "./db-driver/context";
+import { legacyPostgres, type LegacyPostgres } from "./db-driver/pg-sync";
 const globalDb = globalThis as unknown as {
   flowplanDb?: DatabaseSync;
   flowplanSchema?: number;
   flowplanRollback?: (() => void)[];
   flowplanWrites?: number;
+  flowplanLegacyPg?: LegacyPostgres | null;
 };
+// With DATABASE_URL=postgres://… the synchronous helpers below go to
+// PostgreSQL through a blocking bridge (lib/db-driver/pg-sync.ts) – a
+// transitional path until their callers use the asynchronous `db` of
+// lib/db-driver. Without it (the default) nothing changes: SQLite.
+function legacyPg() {
+  if (globalDb.flowplanLegacyPg === undefined) globalDb.flowplanLegacyPg = postgresUrl() ? legacyPostgres() : null;
+  return globalDb.flowplanLegacyPg;
+}
+// While an asynchronous transaction (lib/db-driver/sqlite.ts) holds the one
+// SQLite connection, synchronous writes from elsewhere would land in it
+// (and be rolled back with it): they are refused. Reads are allowed.
+function outsideAsyncTransaction(write: boolean) {
+  const active = dbContext.sqliteActive;
+  if (!active || !write || dbContext.als.getStore()?.root === active) return;
+  throw new Error(
+    "A synchronous database write ran while an asynchronous transaction holds the database. Use the asynchronous db (lib/db-driver) or keep the write out of the transaction.",
+  );
+}
 // The schema this version of Flowplan writes, kept in the database file as
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
@@ -1428,8 +1449,11 @@ export function one<T = Record<string, unknown>>(
   sql: string,
   ...params: (string | number | null | Uint8Array)[]
 ): T | undefined {
+  const pg = legacyPg();
+  if (pg) return pg.one<T>(sql, params);
   const start = runtimeMetricsOn ? performance.now() : 0;
   const cached = statement(sql);
+  if (dbContext.sqliteActive) outsideAsyncTransaction(!cached.reads);
   const row = cached.statement.get(...params);
   if (!cached.reads) noteWrite();
   if (runtimeMetricsOn) noteStatement(start);
@@ -1439,8 +1463,11 @@ export function all<T = Record<string, unknown>>(
   sql: string,
   ...params: (string | number | null | Uint8Array)[]
 ): T[] {
+  const pg = legacyPg();
+  if (pg) return pg.all<T>(sql, params);
   const start = runtimeMetricsOn ? performance.now() : 0;
   const cached = statement(sql);
+  if (dbContext.sqliteActive) outsideAsyncTransaction(!cached.reads);
   const rows = cached.statement
     .all(...params)
     .map((row) => ({ ...row })) as T[];
@@ -1452,7 +1479,10 @@ export function run(
   sql: string,
   ...params: (string | number | null | Uint8Array)[]
 ) {
+  const pg = legacyPg();
+  if (pg) return pg.run(sql, params);
   const start = runtimeMetricsOn ? performance.now() : 0;
+  if (dbContext.sqliteActive) outsideAsyncTransaction(true);
   let result;
   try {
     result = statement(sql).statement.run(...params);
@@ -1496,35 +1526,70 @@ export function audit(
     } catch {}
 }
 export function transaction<T>(fn: () => T, actor?: Identity): T {
+  const pg = legacyPg();
+  if (pg) return pg.transaction(fn);
+  // Inside an asynchronous transaction (lib/db-driver/sqlite.ts) on the
+  // same connection: a savepoint of it.
+  const scope = dbContext.als.getStore();
+  if (scope?.backend === "sqlite") return savepoint(scope.root, fn);
+  if (dbContext.sqliteActive) outsideAsyncTransaction(true);
   const start = runtimeMetricsOn ? performance.now() : 0;
-  db().exec("BEGIN IMMEDIATE");
-  globalDb.flowplanRollback = [];
+  beginTransaction();
   try {
     const value = fn();
-    flushRelationChanges(actor);
-    db().exec("COMMIT");
-    // SQL remains authoritative even if an upload cannot be unlinked yet.
-    // The durable queue retries on the next commit or process start.
-    try {
-      cleanDeletedFiles(db());
-    } catch (error) {
-      console.error("Upload cleanup failed", error);
-    }
+    commitTransaction(actor);
     return value;
   } catch (e) {
-    db().exec("ROLLBACK");
-    noteWrite();
-    for (const cleanup of globalDb.flowplanRollback || []) {
-      try {
-        cleanup();
-      } catch {
-        /* preserve the original failure */
-      }
-    }
+    rollbackTransaction();
     throw e;
   } finally {
-    globalDb.flowplanRollback = undefined;
-    if (runtimeMetricsOn) noteTransaction(start);
+    endTransaction(start);
+  }
+}
+// The steps of transaction(), also taken by the asynchronous SQLite driver
+// (lib/db-driver/sqlite.ts) so both behave the same.
+export function beginTransaction() {
+  db().exec("BEGIN IMMEDIATE");
+  globalDb.flowplanRollback = [];
+}
+export function commitTransaction(actor?: Identity) {
+  flushRelationChanges(actor);
+  db().exec("COMMIT");
+  // SQL remains authoritative even if an upload cannot be unlinked yet.
+  // The durable queue retries on the next commit or process start.
+  try {
+    cleanDeletedFiles(db());
+  } catch (error) {
+    console.error("Upload cleanup failed", error);
+  }
+}
+export function rollbackTransaction() {
+  db().exec("ROLLBACK");
+  noteWrite();
+  for (const cleanup of globalDb.flowplanRollback || []) {
+    try {
+      cleanup();
+    } catch {
+      /* preserve the original failure */
+    }
+  }
+}
+export function endTransaction(start: number) {
+  globalDb.flowplanRollback = undefined;
+  if (runtimeMetricsOn) noteTransaction(start);
+}
+export function savepoint<T>(root: { savepoints: number }, fn: () => T): T {
+  const name = `sp_${++root.savepoints}`;
+  db().exec(`SAVEPOINT ${name}`);
+  try {
+    const value = fn();
+    db().exec(`RELEASE ${name}`);
+    return value;
+  } catch (e) {
+    db().exec(`ROLLBACK TO ${name}`);
+    db().exec(`RELEASE ${name}`);
+    noteWrite();
+    throw e;
   }
 }
 export function onTransactionRollback(cleanup: () => void) {

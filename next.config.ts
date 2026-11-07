@@ -40,10 +40,15 @@ const config: NextConfig = {
   skipTrailingSlashRedirect: true,
   // ssh2 (SFTP backups, lib/sftp.ts) loads its optional native helpers at
   // runtime and falls back to JavaScript when they are missing.
-  serverExternalPackages: ["node:sqlite", "pdfjs-dist", "tesseract.js", "ssh2"],
+  // pg (DATABASE_URL=postgres://…, lib/db-driver) loads its optional native
+  // binding at runtime and falls back to JavaScript.
+  serverExternalPackages: ["node:sqlite", "pdfjs-dist", "tesseract.js", "ssh2", "pg"],
   // The PDF text worker loads pdf.js and its worker module at runtime.
   outputFileTracingIncludes: {
     "/*": [
+      // The worker of the transitional Postgres bridge (lib/db-driver/pg-sync.ts).
+      "./lib/db-driver/pg-sync-worker.mjs",
+      "./lib/db-driver/pg-types.mjs",
       "./node_modules/pdfjs-dist/legacy/build/*.mjs",
       // OCR: worker script, WebAssembly core and bundled language data.
       "./node_modules/tesseract.js/src/**/*",
