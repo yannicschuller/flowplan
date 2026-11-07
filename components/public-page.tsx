@@ -369,7 +369,7 @@ async function renderPublishedPage({
                 {body.trim() && (
                   <ReadOnlyDocument
                     linkPages={linkPages}
-                    html={withPublicEmbeds(publishedHtml(body, token, pages), body, token, pages)}
+                    html={await withPublicEmbeds(await publishedHtml(body, token, pages), body, token, pages)}
                   />
                 )}
               </article>
@@ -510,11 +510,11 @@ async function renderPublishedPage({
             shareToken={token}
             linkPages={linkPages}
             title={page.title}
-            html={(record ? (value: string) => value : (value: string) => withInkPictures(value, page))(
+            html={await (record ? async (value: string) => value : (value: string) => withInkPictures(value, page))(
               shortLinks(
                 withPlugins(
-                  withPublicEmbeds(
-                    publishedHtml(html, token, pages),
+                  await withPublicEmbeds(
+                    await publishedHtml(html, token, pages),
                     html,
                     token,
                     pages,

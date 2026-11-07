@@ -10,6 +10,29 @@ import { importedCodeAttributes } from "./code-block-options";
 import { sanitizeDrawioSvg } from "./drawio-svg";
 import { MAX_DRAWIO_XML } from "./drawio";
 const dir = { name: "dir", multiple: false, values: ["ltr", "rtl", "auto"] };
+// cleanHtml with a transform that awaits (database lookups, #127): the
+// tags are collected in a first pass, transformed one after the other, and
+// the results applied in a second pass over the same HTML – sanitize-html
+// calls its transforms synchronously, in document order, the same order
+// both times. The transform must keep the tag name.
+export async function cleanHtmlAsync(
+  html: string,
+  transform: (tagName: string, attribs: sanitize.Attributes) => Promise<{ tagName: string; attribs: sanitize.Attributes }> | { tagName: string; attribs: sanitize.Attributes },
+) {
+  const tags: [string, sanitize.Attributes][] = [];
+  cleanHtml(html, (tagName, attribs) => {
+    tags.push([tagName, { ...attribs }]);
+    return { tagName, attribs };
+  });
+  const results: { tagName: string; attribs: sanitize.Attributes }[] = [];
+  for (const [tagName, attribs] of tags) results.push(await transform(tagName, attribs));
+  let next = 0;
+  return cleanHtml(html, (tagName, attribs) => {
+    const result = results[next++];
+    if (!result || tags[next - 1][0] !== tagName) throw new Error("cleanHtmlAsync: the second pass met other tags");
+    return result;
+  });
+}
 export function cleanHtml(html: string, transform?: sanitize.Transformer) {
   return sanitize(html, {
     allowedTags: [
@@ -122,8 +145,8 @@ export function cleanHtml(html: string, transform?: sanitize.Transformer) {
     transformTags: {
       // A draw.io block's picture is cleaned as SVG (lib/drawio-svg.ts),
       // its diagram kept only within the limit.
-      "*": async (tagName, attribs) => {
-        const result = transform ? (await transform(tagName, attribs)) : { tagName, attribs };
+      "*": (tagName, attribs) => {
+        const result = transform ? transform(tagName, attribs) : { tagName, attribs };
         return "data-drawio" in result.attribs || "data-drawio-svg" in result.attribs ? drawioAttributes(result) : result;
       },
       // Only the known providers' player URLs survive, not any page on

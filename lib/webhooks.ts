@@ -324,11 +324,11 @@ export async function quietly<T>(hookId: string, fn: () => T): Promise<T> {
   }
 }
 
-async function queueDelivery(hook: { id: string; format: string }, workspaceId: string, event: WebhookEvent | "test", data: Record<string, unknown>, notice: () => Notice) {
+async function queueDelivery(hook: { id: string; format: string }, workspaceId: string, event: WebhookEvent | "test", data: Record<string, unknown>, notice: () => Notice | Promise<Notice>) {
   const envelope: Record<string, unknown> = { event, id: id(), createdAt: new Date().toISOString(), workspaceId, data };
   // Chat formats render at delivery time (current template); the notice
   // holds what is needed, taken now from the database.
-  if (hook.format !== "json") envelope.notice = notice();
+  if (hook.format !== "json") envelope.notice = await notice();
   const deliveryId = id();
   await run(
     "INSERT INTO webhook_deliveries(id,webhook_id,body,next_at,created_at) VALUES(?,?,?,?,?)",

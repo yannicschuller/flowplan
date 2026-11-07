@@ -374,10 +374,10 @@ type Checked = { action: AiAction; view: ActionPreview["view"] };
 // Checks one action as the person; throws the reason it cannot run.
 async function checkAction(user: Identity, workspaceId: string, action: AiAction): Promise<Checked> {
   const names = nameLookup();
-  const display = (fields: Field[], cells: Record<string, unknown>) =>
-    Object.entries(cells).map(([fid, value]) => {
+  const display = async (fields: Field[], cells: Record<string, unknown>) =>
+    await mapAsync(Object.entries(cells), async ([fid, value]) => {
       const field = fields.find((f) => f.id === fid)!;
-      return { name: field.name, value: cellPlain(field, value, {}, names) };
+      return { name: field.name, value: await cellPlain(field, value, {}, names) };
     });
   switch (action.tool) {
     case "create_page": {
@@ -420,7 +420,7 @@ async function checkAction(user: Identity, workspaceId: string, action: AiAction
     case "create_record": {
       const page = await databaseTarget(user, workspaceId, action.databaseId);
       const { cells, fields } = await cellPatch(user, page, action.cells);
-      return { action: { ...action, cells }, view: { target: page.title, title: recordTitle(fields, cells), cells: display(fields, cells) } };
+      return { action: { ...action, cells }, view: { target: page.title, title: recordTitle(fields, cells), cells: await display(fields, cells) } };
     }
     case "update_record": {
       const page = await databaseTarget(user, workspaceId, action.databaseId);
@@ -429,7 +429,7 @@ async function checkAction(user: Identity, workspaceId: string, action: AiAction
       const { cells, fields } = await cellPatch(user, page, action.cells);
       return {
         action: { ...action, cells },
-        view: { target: `${page.title} / ${recordTitle(fields, storedCells(row.cells))}`, cells: display(fields, cells) },
+        view: { target: `${page.title} / ${recordTitle(fields, storedCells(row.cells))}`, cells: await display(fields, cells) },
       };
     }
   }
@@ -453,9 +453,9 @@ export async function previewAction(user: Identity, workspaceId: string, raw: un
 // ---- Running ----
 
 const escapeHtml = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-export function tasksHtml(tasks: { text: string; assignee?: string | null; due?: string | null }[], names: (id: string) => string) {
-  const items = tasks.map((task) => {
-    const mention = task.assignee ? ` <span data-mention="${escapeHtml(task.assignee)}">@${escapeHtml(names(task.assignee))}</span>` : "";
+export async function tasksHtml(tasks: { text: string; assignee?: string | null; due?: string | null }[], names: (id: string) => (string) | Promise<string>) {
+  const items = await mapAsync(tasks, async (task) => {
+    const mention = task.assignee ? ` <span data-mention="${escapeHtml(task.assignee)}">@${escapeHtml(await names(task.assignee))}</span>` : "";
     return `<li data-type="taskItem" data-checked="false"${task.due ? ` data-due="${task.due}"` : ""}><p>${escapeHtml(task.text)}${mention}</p></li>`;
   });
   return `<ul data-type="taskList">${items.join("")}</ul>`;
@@ -517,7 +517,7 @@ export async function runActions(user: Identity, raw: unknown): Promise<{ result
           return { index, tool, ok: true, pageId: id, title: action.title, undo: { action: "page.delete", pageId: id } };
         }
         case "create_tasks": {
-          await appendHtml(user, action.pageId, tasksHtml(action.tasks, names));
+          await appendHtml(user, action.pageId, await tasksHtml(action.tasks, names));
           await audit(user.id, "ai.action", action.pageId, `create_tasks:${action.tasks.length}`);
           return { index, tool, ok: true, pageId: action.pageId };
         }

@@ -126,7 +126,7 @@ export function suggestKey(item: Omit<CslItem, "id"> & { id?: string }) {
   ).toLowerCase();
   return (who + year + word).slice(0, 60) || "ref";
 }
-export async function uniqueKey(key: string, taken: (key: string) => boolean) {
+export async function uniqueKey(key: string, taken: (key: string) => boolean | Promise<boolean>) {
   if (!(await taken(key))) return key;
   for (let i = 0; i < 26 * 26; i++) {
     const suffix = i < 26 ? String.fromCharCode(97 + i) : String(i);

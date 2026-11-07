@@ -63,7 +63,7 @@ export async function enforceUserStorage(user: Pick<Identity, "id" | "isAdmin">,
 // For commands that copy files: measured before, checked after, inside the
 // transaction – only growth beyond the limit is refused.
 export async function userStorageCheckpoint(user: Pick<Identity, "id" | "isAdmin">) {
-  if (!limited(user)) return () => {};
+  if (!limited(user)) return async () => {};
   const before = await userBytes(user.id);
   return async () => {
     const { storageMb } = await effectiveUserLimits(user.id);

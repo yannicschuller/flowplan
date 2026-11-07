@@ -36,7 +36,8 @@ const bounded = (raw: string | undefined, fallback: number, min: number, max: nu
 export const isAppAgent = (agent: string | null | undefined) => /\bFlowplan(Mobile|Desktop)\//.test(agent || "");
 
 // The effective values, and where each comes from (for the administration).
-export async function sessionSettings(settings: InstanceSettings = (await instanceSettings())) {
+export async function sessionSettings(settings?: InstanceSettings) {
+  if (settings === undefined) settings = await instanceSettings();
   const env = process.env;
   const maxDays = env.SESSION_MAX_DAYS ? bounded(env.SESSION_MAX_DAYS, 30, 1, 365) : null;
   return {

@@ -234,7 +234,8 @@ export async function selectedRowTemplate(
 }
 // A stored template's cells without the properties hidden from a reader
 // (archives, page templates, copies).
-export async function readableTemplateCells(user: Identity, page: Page, cells: string, hidden = (await hiddenFieldsFor(user, page))) {
+export async function readableTemplateCells(user: Identity, page: Page, cells: string, hidden?: Awaited<ReturnType<typeof hiddenFieldsFor>>) {
+  if (hidden === undefined) hidden = await hiddenFieldsFor(user, page);
   return stripCells(JSON.parse(cells) as Record<string, unknown>, hidden);
 }
 export async function saveRowTemplate(

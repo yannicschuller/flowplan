@@ -96,7 +96,8 @@ type Row = { id: string; workspace_id: string; owner_id: string; name: string; i
 // ---- Reading ----
 
 // `owner`: the reader is an owner of the workspace (not a guest).
-async function canEditRow(user: Identity, c: Row, owner = (await memberRole(user, c.workspace_id)) === "owner" && !(await isGuest(user, c.workspace_id))) {
+async function canEditRow(user: Identity, c: Row, owner?: boolean) {
+  if (owner === undefined) owner = (await memberRole(user, c.workspace_id)) === "owner" && !(await isGuest(user, c.workspace_id));
   if (user.apiScope === "read") return false;
   if (c.owner_id === user.id) return true;
   return !!c.shared && owner;
@@ -315,7 +316,7 @@ async function textMatches(workspaceId: string, phrase: string): Promise<Set<str
           return [like, like];
         })(),
       ))
-    : (async () => {
+    : await (async () => {
         const match = textMatch([query]);
         return await all<{ page_id: string; row_id: string }>(
           `SELECT s.page_id,s.row_id FROM search_index s JOIN pages p ON p.id=s.page_id

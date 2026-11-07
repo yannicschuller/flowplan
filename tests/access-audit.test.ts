@@ -43,8 +43,8 @@ await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
 const team = (await bootstrap(owner, wid)).spaces[0].id;
 const newPage = async (u: Identity, title: string, kind = "document", parentId?: string, spaceId = team) =>
   ((await command(u, { action: "page.create", workspaceId: wid, spaceId, title, kind, parentId })) as { id: string }).id;
-const schema = async (u: Identity, page: string, fields: unknown[], views = (await database(page)).views) =>
-  await command(u, { action: "database.update", pageId: page, version: (await database(page)).version, fields, views });
+const schema = async (u: Identity, page: string, fields: unknown[], views?: unknown) =>
+  await command(u, { action: "database.update", pageId: page, version: (await database(page)).version, fields, views: views ?? (await database(page)).views });
 async function backupText(u: Identity) {
   const zip = await readExportZip(await exportArchive(u, wid));
   return [...zip.values()].map((b) => b.toString("utf8")).join("\n");

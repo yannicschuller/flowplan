@@ -190,7 +190,7 @@ export async function boardText(user: Identity, items: WhiteboardItem[], limit: 
     const votes = Object.values(item.votes || {}).filter(Boolean).length;
     const tags = [
       item.type === "sticky" ? "note" : item.type === "connector" ? "arrow label" : item.type,
-      item.author ? `by ${names(item.author) || "someone"}` : "",
+      item.author ? `by ${await names(item.author) || "someone"}` : "",
       votes ? `${votes} vote${votes === 1 ? "" : "s"}` : "",
       item.type === "comment" && item.resolved ? "resolved" : "",
     ].filter(Boolean);
@@ -237,7 +237,7 @@ const list = (items: string[]) => (items.length ? `<ul>${items.map((i) => `<li><
 
 // The document: link back to the board, summary, themes, decisions, open
 // questions and action items (tasks with assignee and due date, or a list).
-export function summaryHtml(
+export async function summaryHtml(
   summary: BoardSummary,
   board: { id: string; title: string },
   options: { locale: Locale; tasks: boolean; members: { id: string; name: string; email: string }[]; note?: string },
@@ -262,7 +262,7 @@ export function summaryHtml(
       return wanted ? options.members.find((m) => m.name.toLocaleLowerCase() === wanted || m.email.toLocaleLowerCase() === wanted) : undefined;
     };
     html.push(
-      tasksHtml(
+      await tasksHtml(
         summary.actions.map((a) => {
           const person = byName(a.owner);
           return { text: person || !a.owner ? a.text : `${a.text} (${a.owner})`, assignee: person?.id || null, due: validDay(a.due) };
@@ -338,7 +338,7 @@ export async function summarizeBoard(user: Identity, raw: unknown, signal?: Abor
       : reduced.truncated
         ? `${w.left}: …`
         : "";
-  await appendHtml(user, id, summaryHtml(summary, { id: page.id, title: page.title }, { locale: b.locale, tasks: b.tasks, members, note: leftOut }));
+  await appendHtml(user, id, await summaryHtml(summary, { id: page.id, title: page.title }, { locale: b.locale, tasks: b.tasks, members, note: leftOut }));
   await audit(user.id, "ai.whiteboard", page.id, `summarize:${id}`);
   return {
     pageId: id,
@@ -477,9 +477,9 @@ export async function splitNotes(user: Identity, raw: unknown, signal?: AbortSig
     delete cells[titleId || ""];
     records[notes[index].id] = {
       cells,
-      view: Object.entries(cells).map(([fid, value]) => {
+      view: await mapAsync(Object.entries(cells), async ([fid, value]) => {
         const field = allFields.find((f) => f.id === fid);
-        return { name: field?.name || fid, value: field ? cellPlain(field, value, {}, names) : String(value) };
+        return { name: field?.name || fid, value: field ? (await cellPlain(field, value, {}, names)) : String(value) };
       }),
       ...(problems.length ? { problem: problems.slice(0, 3).join(" ") } : {}),
     };

@@ -175,7 +175,7 @@ export async function applyPageTemplate(
     template.id,
     template.payload,
   );
-  quota();
+  await quota();
   const scope = { workspaceId: page.workspace_id, spaceId: page.space_id };
   const resolved = await resolveTemplatePayload(instantiated, await templateDependencies(template, scope), plan, scope);
   const payload = resolved.payload;

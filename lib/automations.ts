@@ -56,7 +56,7 @@ export async function checkWorkflow(user: Identity | null | "system", page: Page
 /* ---------- Subtasks ---------- */
 
 // A record cannot sit below itself, directly or further down.
-function checkParent(page: Page, rowId: string, fields: Field[], before: Cells, after: Cells) {
+async function checkParent(page: Page, rowId: string, fields: Field[], before: Cells, after: Cells) {
   const field = parentField(fields);
   if (!field) return;
   const next = Array.isArray(after[field.id]) ? (after[field.id] as string[])[0] : undefined;
@@ -66,7 +66,7 @@ function checkParent(page: Page, rowId: string, fields: Field[], before: Cells, 
     const v = r ? JSON.parse(r.cells)[field.id] : null;
     return Array.isArray(v) && typeof v[0] === "string" ? v[0] : null;
   };
-  if (next === rowId || createsCycle(rowId, next, parentOf))
+  if (next === rowId || await createsCycle(rowId, next, parentOf))
     throw new HttpError(400, "Ein Eintrag kann nicht unter sich selbst oder seinen Unteraufgaben stehen.");
 }
 
@@ -235,7 +235,7 @@ export async function rowChanged(user: Identity | null | "system", page: Page, r
   const props = fields || (JSON.parse((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", page.id))!.fields) as Field[]);
   // Properties an LDAP directory keeps stay as it says (lib/contacts.ts).
   if (user !== "system") await assertContactWritable(page.id, rowId, before, after);
-  checkParent(page, rowId, props, before, after);
+  await checkParent(page, rowId, props, before, after);
   await checkWipLimits(page, props, before, after);
   await checkWorkflow(user, page, props, settings, before, after);
   await recordStatusChange(page.id, rowId, props, settings, before, after);

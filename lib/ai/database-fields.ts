@@ -20,7 +20,7 @@ import { AI_REASON_TEXT } from "./features";
 import { resolveAi } from "./resolve";
 import { cellPlain, recordContent, recordTitle } from "./sources";
 import { isContentReferenceName } from "./content-references";
-import { forEachAsync, mapAsync } from "../each-async";
+import { forEachAsync, mapAsync, replaceAsync } from "../each-async";
 
 export const AI_OUTPUT_TYPES = ["text", "select", "multiselect", "number"] as const satisfies readonly FieldType[];
 // Properties "Mit KI ausfüllen" can fill.
@@ -129,10 +129,10 @@ export async function forgetAiFields(pageId: string, fieldIds: string[]) {
 
 type RowLike = { id: string; number?: number | null; created_at?: string; updated_at?: string; created_by?: string | null; updated_by?: string | null };
 export type PromptContext = {
-  names: (id: string) => string;
+  names: (id: string) => string | Promise<string>;
   // Titles of related records – only those the AI may read for this person.
-  relationTitles: (field: Field, ids: string[]) => string[];
-  content: () => string;
+  relationTitles: (field: Field, ids: string[]) => string[] | Promise<string[]>;
+  content: () => string | Promise<string>;
 };
 // Related records' titles, filtered with aiFilter for the person.
 export function relationTitlesFor(user: Identity) {
@@ -225,7 +225,7 @@ export function fillRelationTitlesFor(user: Identity, page: Page) {
         ...ids.slice(0, 100),
       )).map((r) => r.id),
     );
-    return titles(field, ids.filter((id) => open.has(id)));
+    return await titles(field, ids.filter((id) => open.has(id)));
   };
 }
 
@@ -234,11 +234,11 @@ export function fillRelationTitlesFor(user: Identity, page: Page) {
 // same text with the volatile values ({Zuletzt geändert} …) left as their
 // references – what the input hash is made of, so that a value's own write
 // does not count as a changed input.
-export function renderAiPrompt(prompt: string, fields: Field[], cells: Record<string, unknown>, row: RowLike, context: PromptContext) {
+export async function renderAiPrompt(prompt: string, fields: Field[], cells: Record<string, unknown>, row: RowLike, context: PromptContext) {
   let references = 0,
     filled = 0;
   const render = (volatile: boolean) =>
-    prompt.replace(/\{([^{}\n]{1,100})\}/g, (whole, raw: string) => {
+    replaceAsync(prompt, /\{([^{}\n]{1,100})\}/g, async (whole, raw: string) => {
       const name = raw.trim();
       const field = referencedField(name, fields);
       let value: string;
@@ -247,9 +247,9 @@ export function renderAiPrompt(prompt: string, fields: Field[], cells: Record<st
         if (!volatile && VOLATILE_REFERENCE_TYPES.includes(field.type)) return whole;
         value =
           field.type === "relation"
-            ? context.relationTitles(field, (Array.isArray(cells[field.id]) ? (cells[field.id] as unknown[]) : []).map(String)).filter(Boolean).join(", ")
-            : cellPlain(field, cells[field.id], row, context.names);
-      } else if (isContentReference(name, fields)) value = context.content();
+            ? (await context.relationTitles(field, (Array.isArray(cells[field.id]) ? (cells[field.id] as unknown[]) : []).map(String))).filter(Boolean).join(", ")
+            : await cellPlain(field, cells[field.id], row, context.names);
+      } else if (isContentReference(name, fields)) value = await context.content();
       else return whole;
       if (volatile) {
         references++;
@@ -257,8 +257,8 @@ export function renderAiPrompt(prompt: string, fields: Field[], cells: Record<st
       }
       return value.slice(0, 8000);
     });
-  const text = render(true);
-  return { text, input: render(false), empty: references > 0 && filled === 0 };
+  const text = await render(true);
+  return { text, input: await render(false), empty: references > 0 && filled === 0 };
 }
 export const aiInputHash = (field: Field, rendered: string) =>
   createHash("sha256")
@@ -396,18 +396,20 @@ export function valueSchema(field: Field) {
 }
 
 // The properties of a record as context for "Mit KI ausfüllen".
-export function recordContext(fields: Field[], target: Field, cells: Record<string, unknown>, row: RowLike, context: PromptContext) {
-  const lines = fields
-    .filter((f) => f.id !== target.id && AI_REFERENCE_TYPES.includes(f.type))
-    .map((f) => {
-      const value =
-        f.type === "relation"
-          ? context.relationTitles(f, (Array.isArray(cells[f.id]) ? (cells[f.id] as unknown[]) : []).map(String)).join(", ")
-          : cellPlain(f, cells[f.id], row, context.names);
-      return value ? `${f.name}: ${value.slice(0, 2000)}` : "";
-    })
-    .filter(Boolean);
-  const content = context.content();
+export async function recordContext(fields: Field[], target: Field, cells: Record<string, unknown>, row: RowLike, context: PromptContext) {
+  const lines = (
+    await mapAsync(
+      fields.filter((f) => f.id !== target.id && AI_REFERENCE_TYPES.includes(f.type)),
+      async (f) => {
+        const value =
+          f.type === "relation"
+            ? (await context.relationTitles(f, (Array.isArray(cells[f.id]) ? (cells[f.id] as unknown[]) : []).map(String))).join(", ")
+            : await cellPlain(f, cells[f.id], row, context.names);
+        return value ? `${f.name}: ${value.slice(0, 2000)}` : "";
+      },
+    )
+  ).filter(Boolean);
+  const content = await context.content();
   return `${lines.join("\n")}${content ? `\n\nInhalt des Eintrags:\n${content}` : ""}`;
 }
 

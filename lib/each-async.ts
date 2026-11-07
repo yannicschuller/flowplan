@@ -64,3 +64,22 @@ export async function reduceAsync<T, U>(items: Items<T>, fn: (acc: U, item: T, i
   for (let i = 0; i < array.length; i++) acc = await fn(acc, array[i], i, array);
   return acc;
 }
+// String.prototype.replace with a replacer that awaits: the matches are
+// replaced one after the other, in order. Only for global regular
+// expressions (every match) – as the callers use replace with /g.
+export async function replaceAsync(
+  text: string,
+  pattern: RegExp,
+  // The match and its groups (an unmatched group is undefined).
+  fn: (match: string, ...groups: string[]) => string | Promise<string>,
+): Promise<string> {
+  if (!pattern.global) throw new Error("replaceAsync needs a global regular expression");
+  const parts: string[] = [];
+  let last = 0;
+  for (const m of text.matchAll(pattern)) {
+    parts.push(text.slice(last, m.index), await fn(m[0], ...(m.slice(1) as string[])));
+    last = m.index + m[0].length;
+  }
+  parts.push(text.slice(last));
+  return parts.join("");
+}

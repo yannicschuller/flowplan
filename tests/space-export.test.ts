@@ -25,15 +25,15 @@ const wid = await createWorkspace(ada.id, "Familie");
 await run("INSERT INTO members VALUES(?,?,?)", wid, ben.id, "editor");
 const as = (user: Identity) => async (b: Record<string, unknown>) => (await command(user, { workspaceId: wid, ...b })) as Record<string, unknown>;
 const shared = (await bootstrap(ada, wid)).spaces[0].id;
-const benSpace = String(as(ben)({ action: "space.create", name: "Ben privat", private: true }).id);
+const benSpace = String((await as(ben)({ action: "space.create", name: "Ben privat", private: true })).id);
 const write = async (pageId: string, html: string) => await run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), pageId);
 
-const house = String(as(ada)({ action: "page.create", spaceId: shared, title: "Haus", kind: "document" }).id);
-const car = String(as(ada)({ action: "page.create", spaceId: shared, title: "Auto", kind: "document" }).id);
-const heating = String(as(ada)({ action: "page.create", spaceId: shared, title: "Heizung", kind: "document", parentId: house }).id);
+const house = String((await as(ada)({ action: "page.create", spaceId: shared, title: "Haus", kind: "document" })).id);
+const car = String((await as(ada)({ action: "page.create", spaceId: shared, title: "Auto", kind: "document" })).id);
+const heating = String((await as(ada)({ action: "page.create", spaceId: shared, title: "Heizung", kind: "document", parentId: house })).id);
 await write(heating, `<p>Siehe <a href="/#page=${car}">Auto</a> und <a href="https://flowplan.example.test/#page=${house}">Haus</a>.</p>`);
-as(ada)({ action: "comment.create", pageId: car, body: "TÜV im März" });
-const diary = String(as(ben)({ action: "page.create", spaceId: benSpace, title: "Tagebuch", kind: "document" }).id);
+await as(ada)({ action: "comment.create", pageId: car, body: "TÜV im März" });
+const diary = String((await as(ben)({ action: "page.create", spaceId: benSpace, title: "Tagebuch", kind: "document" })).id);
 await write(diary, "<p>Nur für mich.</p>");
 
 test("a space becomes one ZIP: a folder per top-level page, relative links, an index", async () => {

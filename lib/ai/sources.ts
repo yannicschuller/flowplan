@@ -1,6 +1,7 @@
 // What a page or a record says, as text chunks for the AI ("ask" and the
 // semantic index). This module only reads; whether the AI may read a source
 // is decided elsewhere (lib/ai/access.ts) – callers check before using it.
+import { mapAsync } from "../each-async";
 import { pageMetaSearchText } from "../page-properties-server";
 import { notebookText } from "../notebook";
 import { all, one } from "../db";
@@ -29,7 +30,12 @@ export const SKIPPED: Field["type"][] = ["relation", "rollup", "formula", "files
 
 const checkboxText = (v: unknown) => (v === true ? "ja" : "nein");
 // A property value as people read it (persons by name).
-export function cellPlain(field: Field, value: unknown, row: { number?: number | null; created_at?: string; updated_at?: string; created_by?: string | null; updated_by?: string | null }, names: (id: string) => string): string {
+export async function cellPlain(
+  field: Field,
+  value: unknown,
+  row: { number?: number | null; created_at?: string; updated_at?: string; created_by?: string | null; updated_by?: string | null },
+  names: (id: string) => string | Promise<string>,
+): Promise<string> {
   switch (field.type) {
     case "id":
       return ticketId(field, row.number);
@@ -38,13 +44,13 @@ export function cellPlain(field: Field, value: unknown, row: { number?: number |
     case "updated_at":
       return String(row.updated_at || "").slice(0, 16);
     case "created_by":
-      return row.created_by ? names(row.created_by) : "";
+      return row.created_by ? (await names(row.created_by)) : "";
     case "updated_by":
-      return row.updated_by ? names(row.updated_by) : "";
+      return row.updated_by ? (await names(row.updated_by)) : "";
     case "checkbox":
       return value === undefined || value === null ? "" : checkboxText(value);
     case "person":
-      return (Array.isArray(value) ? value : value ? [value] : []).map((v) => names(String(v))).filter(Boolean).join(", ");
+      return (await mapAsync(Array.isArray(value) ? value : value ? [value] : [], async (v) => await names(String(v)))).filter(Boolean).join(", ");
     case "checklist":
       return Array.isArray(value)
         ? value
@@ -70,14 +76,13 @@ export function nameLookup() {
 type RowData = { id: string; page_id: string; cells: string; content: string | null; number: number | null; created_at: string; updated_at: string; created_by: string | null; updated_by: string | null; html: string | null };
 
 // The properties of a record as "Name: value" lines.
-export function recordLines(fields: Field[], cells: Record<string, unknown>, row: Omit<RowData, "cells" | "html" | "content" | "id" | "page_id">, names = nameLookup()) {
-  return fields
+export async function recordLines(fields: Field[], cells: Record<string, unknown>, row: Omit<RowData, "cells" | "html" | "content" | "id" | "page_id">, names = nameLookup()) {
+  return (await mapAsync(fields
     .slice(1)
-    .filter((f) => !SKIPPED.includes(f.type))
-    .map((f) => {
-      const text = cellPlain(f, cells[f.id], row, names);
+    .filter((f) => !SKIPPED.includes(f.type)), async (f) => {
+      const text = await cellPlain(f, cells[f.id], row, names);
       return text ? `${f.name}: ${text.slice(0, 2000)}` : "";
-    })
+    }))
     .filter(Boolean);
 }
 
@@ -141,7 +146,7 @@ export async function sourceText(pageId: string, rowId?: string | null, names = 
   try {
     cells = JSON.parse(row.cells);
   } catch {}
-  const lines = recordLines(fields, cells, row, names);
+  const lines = await recordLines(fields, cells, row, names);
   const content = row.html ?? row.content ?? "";
   const body = content.startsWith("<") ? chunkHtml(content) : chunkPlain(content);
   return {

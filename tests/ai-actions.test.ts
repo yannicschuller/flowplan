@@ -153,8 +153,8 @@ test("running checks everything again: tampered or forbidden actions fail", asyn
   assert.equal((await previewAction(vic, wid, { tool: "create_page", spaceId: space, title: "x" }, 0)).ok, false);
 });
 
-test("task HTML escapes text and carries assignee and due date", () => {
-  const html = tasksHtml([{ text: "<b>A</b> & B", assignee: ben.id, due: "2026-01-02" }], () => "Ben");
+test("task HTML escapes text and carries assignee and due date", async () => {
+  const html = await tasksHtml([{ text: "<b>A</b> & B", assignee: ben.id, due: "2026-01-02" }], () => "Ben");
   assert.equal(html, `<ul data-type="taskList"><li data-type="taskItem" data-checked="false" data-due="2026-01-02"><p>&lt;b&gt;A&lt;/b&gt; &amp; B <span data-mention="${ben.id}">@Ben</span></p></li></ul>`);
 });
 

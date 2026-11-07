@@ -91,7 +91,8 @@ export type WeeklyDigest = {
 };
 
 // What the digest lists for this person (only what they may read).
-export async function buildWeeklyDigest(user: Identity, now = Date.now(), today = localTime(now, (await weeklyDigestPrefs(user)).timeZone).date): Promise<WeeklyDigest> {
+export async function buildWeeklyDigest(user: Identity, now = Date.now(), today?: string): Promise<WeeklyDigest> {
+  if (today === undefined) today = localTime(now, (await weeklyDigestPrefs(user)).timeZone).date;
   const since = now - 7 * 86_400_000;
   const pages = await filterAsync(await all<Page & { at: number; workspace: string }>(
     `SELECT p.*,MAX(e.at) at,MAX(w.name) workspace FROM page_follows f
@@ -163,7 +164,7 @@ export async function digestSummary(user: Identity, digest: WeeklyDigest, locale
 }
 
 // The mail: subject, text and HTML.
-export function weeklyDigestMail(name: string, digest: WeeklyDigest, summary: string | null, locale: Locale) {
+export async function weeklyDigestMail(name: string, digest: WeeklyDigest, summary: string | null, locale: Locale) {
   const t = translate(locale);
   const url = mailAppUrl();
   const link = (pageId: string) => `${url}/#page=${pageId}`;
@@ -197,7 +198,7 @@ export function weeklyDigestMail(name: string, digest: WeeklyDigest, summary: st
   );
   const subject = t("Deine Woche in Flowplan", "Your week in Flowplan");
   const text = `${t("Hallo", "Hello")} ${name},\n\n${textSections.join("\n\n")}\n\n${t("Wöchentliche Zusammenfassung abbestellen: Einstellungen → Benachrichtigungen", "Unsubscribe from the weekly digest: Settings → Notifications")}\n`;
-  const html = mailLayout(subject, htmlSections, { label: t("Flowplan öffnen", "Open Flowplan"), url }, locale);
+  const html = await mailLayout(subject, htmlSections, { label: t("Flowplan öffnen", "Open Flowplan"), url }, locale);
   return { subject, text, html };
 }
 
@@ -223,7 +224,7 @@ export function queueWeeklyDigests(now = Date.now()): Promise<number> {
       const digest = await buildWeeklyDigest(user, now, week);
       if (!digest.changed.length && !digest.open.length && !digest.overdue.length) continue;
       const summary = person.ai_summary && digest.changed.length ? await digestSummary(user, digest, locale) : null;
-      const mail = weeklyDigestMail(person.name, digest, summary, locale);
+      const mail = await weeklyDigestMail(person.name, digest, summary, locale);
       if (await queueMail(person.email, mail.subject, mail.text, mail.html)) queued++;
     }
     return queued;

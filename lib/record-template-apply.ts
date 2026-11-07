@@ -1,3 +1,4 @@
+import { withLookups, type Awaitable } from "./resolve-ahead";
 // Applying a record template with its placeholders (lib/record-placeholders.ts):
 // to a new record (row.create, capture, scheduled rules), to an existing one
 // by hand (row.template.apply) or by an automation ("apply template").
@@ -80,7 +81,7 @@ const names = async (ids: string[]) =>
       )
     : new Map<string, string>();
 
-function formatFor(actor: Identity | null, zone: string): PlaceholderFormat {
+function formatFor(actor: Identity | null, zone: string): Awaitable<PlaceholderFormat> {
   const people = new Map<string, string>();
   return {
     tag: localeTag(contentLocale()),
@@ -121,9 +122,20 @@ export type PlaceholderRecord = Pick<Row, "id" | "page_id" | "created_by" | "cre
 // people may read stay empty – and so do formulas, rollups and other
 // derived properties that read one of them: the text is seen by everyone
 // who sees the record.
-export function placeholderResolver(page: Page, fields: Field[], record: PlaceholderRecord, actor: Identity | null, zone?: string) {
+// `render` gets the resolver; the names, titles and files it asks for are
+// read from the database ahead (lib/resolve-ahead.ts).
+export function withPlaceholders<T>(
+  page: Page,
+  fields: Field[],
+  record: PlaceholderRecord,
+  actor: Identity | null,
+  zone: string | undefined,
+  render: (resolve: (key: string) => string | undefined) => T,
+): Promise<T> {
   const tz = zone && validZone(zone) ? zone : browserZone();
-  const fmt = formatFor(actor, tz);
+  return withLookups<PlaceholderFormat, T>(formatFor(actor, tz), (fmt) => render(placeholderResolver(page, fields, record, actor, tz, fmt)));
+}
+function placeholderResolver(page: Page, fields: Field[], record: PlaceholderRecord, actor: Identity | null, tz: string, fmt: PlaceholderFormat) {
   const row = { ...record, number: record.number ?? null } as Row;
   const values = computedCells(row, fields);
   const blank = publicHiddenFieldIds(fields);
@@ -185,10 +197,10 @@ export async function fillNewRecord(input: { page: Page; rowId: string; template
   const fromTemplate = JSON.parse(input.template.cells) as Cells;
   const keys = new Set(Object.keys(fromTemplate).filter((k) => cells[k] === fromTemplate[k]));
   const record = { ...raw, cells };
-  const filled = fillCells(cells, keys, fields, placeholderResolver(input.page, fields, record, input.actor, input.zone));
+  const filled = await withPlaceholders(input.page, fields, record, input.actor, input.zone, (resolve) => fillCells(cells, keys, fields, resolve));
   if (JSON.stringify(filled) !== JSON.stringify(cells))
     await run("UPDATE rows SET cells=? WHERE id=?", JSON.stringify(filled), input.rowId);
-  return mapHtmlPlaceholders(input.template.html, placeholderResolver(input.page, fields, { ...record, cells: filled }, input.actor, input.zone));
+  return withPlaceholders(input.page, fields, { ...record, cells: filled }, input.actor, input.zone, (resolve) => mapHtmlPlaceholders(input.template.html, resolve));
 }
 
 // The template's cells for a record that is not stored yet (pages turned
@@ -204,7 +216,7 @@ export async function fillTemplateCells(page: Page, cells: Cells, keys: Iterable
     updated_at: new Date().toISOString().slice(0, 19).replace("T", " "),
     cells,
   };
-  return fillCells(cells, new Set(keys), fields, placeholderResolver(page, fields, record, actor));
+  return withPlaceholders(page, fields, record, actor, undefined, (resolve) => fillCells(cells, new Set(keys), fields, resolve));
 }
 
 /* ---------- An existing record ---------- */
@@ -253,7 +265,8 @@ export async function applyTemplate(input: {
     if (kept !== undefined) patch[key] = kept;
   }
   const record = { ...row, cells: { ...current, ...patch } };
-  patch = fillCells(patch, new Set(Object.keys(patch)), fields, placeholderResolver(page, fields, record, input.actor, input.zone));
+  const unfilled = patch;
+  patch = await withPlaceholders(page, fields, record, input.actor, input.zone, (resolve) => fillCells(unfilled, new Set(Object.keys(unfilled)), fields, resolve));
   const d = await ensureRowDocument(row);
   const empty = emptyDocument(d.html);
   if (!empty && input.mode === "empty") {
@@ -261,9 +274,8 @@ export async function applyTemplate(input: {
       throw new HttpError(409, "Der Eintrag hat schon Inhalt. Wähle „Unten anhängen“, um die Vorlage darunter einzufügen.");
     return { document: "skipped", cells: patch };
   }
-  const text = mapHtmlPlaceholders(
-    template.html,
-    placeholderResolver(page, fields, { ...record, cells: { ...current, ...patch } }, input.actor, input.zone),
+  const text = await withPlaceholders(page, fields, { ...record, cells: { ...current, ...patch } }, input.actor, input.zone, (resolve) =>
+    mapHtmlPlaceholders(template.html, resolve),
   );
   if (input.snapshotId || !empty)
     await run(

@@ -25,8 +25,8 @@ async function user(name: string): Promise<Identity> {
   return { id: uid, name, email: `${name}@example.com`, groups: [], isAdmin: false, disabled: 0, created_at: "" };
 }
 const act = async (who: Identity, input: Record<string, unknown>) => (await command(who, input)) as Record<string, unknown>;
-const refuses = (fn: () => unknown, pattern: RegExp = /verschlüsselte Seiten nicht verfügbar|plaintext refused/) =>
-  assert.throws(fn, (e: Error) => pattern.test(e.message));
+const refuses = async (fn: () => unknown, pattern: RegExp = /verschlüsselte Seiten nicht verfügbar|plaintext refused/) =>
+  assert.rejects(async () => fn(), (e: Error) => pattern.test(e.message));
 
 // Person with a key pair: the passphrase never reaches the server.
 async function setUp(who: Identity, passphrase: string) {
@@ -180,20 +180,20 @@ test("an encrypted space: ciphertext only, members, rotation and refused plainte
   assert.equal((data.page as { title: string }).title, ENCRYPTED_TITLE);
 
   // Plaintext paths are refused.
-  refuses(async () => await act(alice, { action: "document.sync", pageId, generation: "1", update: Buffer.from(Y.encodeStateAsUpdate(docA)).toString("base64") }));
-  refuses(async () => await act(alice, { action: "document.markdown", pageId, html: `<p>${MARKER}</p>` }));
-  refuses(async () => await act(alice, { action: "document.markdown.apply", pageId, markdown: MARKER }));
-  refuses(async () => await act(alice, { action: "page.snapshot", pageId }));
-  refuses(async () => await act(alice, { action: "page.duplicate", pageId }));
-  refuses(async () => await act(alice, { action: "share.create", pageId, role: "viewer", name: "x" }));
-  refuses(async () => await act(alice, { action: "page.publish", pageId, enabled: true }));
-  refuses(async () => await act(alice, { action: "comment.create", pageId, body: MARKER }));
-  refuses(async () => await act(alice, { action: "thread.create", pageId, body: MARKER, anchor: {} }));
-  refuses(async () => await act(alice, { action: "page.aliases", pageId, aliases: [MARKER] }));
-  refuses(async () => await act(alice, { action: "template.save", pageId, name: MARKER }));
-  refuses(async () => await act(alice, { action: "page.import", workspaceId: wid, spaceId: sid, title: "Import", content: MARKER, format: "markdown" }));
-  refuses(async () => await act(alice, { action: "grant.set", resourceId: sid, userId: carol.id, role: "editor" }));
-  refuses(async () => await act(alice, { action: "space.duplicate", spaceId: sid }));
+  await refuses(async () => await act(alice, { action: "document.sync", pageId, generation: "1", update: Buffer.from(Y.encodeStateAsUpdate(docA)).toString("base64") }));
+  await refuses(async () => await act(alice, { action: "document.markdown", pageId, html: `<p>${MARKER}</p>` }));
+  await refuses(async () => await act(alice, { action: "document.markdown.apply", pageId, markdown: MARKER }));
+  await refuses(async () => await act(alice, { action: "page.snapshot", pageId }));
+  await refuses(async () => await act(alice, { action: "page.duplicate", pageId }));
+  await refuses(async () => await act(alice, { action: "share.create", pageId, role: "viewer", name: "x" }));
+  await refuses(async () => await act(alice, { action: "page.publish", pageId, enabled: true }));
+  await refuses(async () => await act(alice, { action: "comment.create", pageId, body: MARKER }));
+  await refuses(async () => await act(alice, { action: "thread.create", pageId, body: MARKER, anchor: {} }));
+  await refuses(async () => await act(alice, { action: "page.aliases", pageId, aliases: [MARKER] }));
+  await refuses(async () => await act(alice, { action: "template.save", pageId, name: MARKER }));
+  await refuses(async () => await act(alice, { action: "page.import", workspaceId: wid, spaceId: sid, title: "Import", content: MARKER, format: "markdown" }));
+  await refuses(async () => await act(alice, { action: "grant.set", resourceId: sid, userId: carol.id, role: "editor" }));
+  await refuses(async () => await act(alice, { action: "space.duplicate", spaceId: sid }));
   await assert.rejects(async () => await act(alice, { action: "space.update", spaceId: sid, name: "Offen", private: false }), /bleibt privat/);
   // In or out of the space: refused both ways.
   const plainPage = String((await act(alice, { action: "page.create", workspaceId: wid, spaceId: plainSpace, title: "Offen" })).id);

@@ -8,7 +8,7 @@ import { requireMember, spaceRole } from "./permissions";
 import { readZip } from "./archive";
 import { createPage } from "./seed";
 import { htmlState } from "./document-server";
-import { markdownToHtml } from "./markdown-import";
+import { markdownToHtml, markdownToHtmlAsync } from "./markdown-import";
 import { splitFrontmatter } from "./frontmatter";
 import { frontmatterAliases, storedAliases } from "./aliases";
 import { numberedInFrontmatter } from "./block-captions";
@@ -391,7 +391,7 @@ export async function importZip(
         // A journal lists its days below; they are its days again.
         if (journals.has(node.key)) body = body.replace(/\n+## (Unterseiten|Sub-pages)\n[\s\S]*$/, "\n");
         // Stored once all documents are read (block links, #88).
-        const converted = documentAnchors(markdownToHtml(body, resolver(node.path, pid, pid)), node.title, false);
+        const converted = documentAnchors(await markdownToHtmlAsync(body, resolver(node.path, pid, pid)), node.title, false);
         anchors.set(pid, converted.anchors);
         documents.push({ pid, html: converted.html });
         continue;
@@ -436,7 +436,7 @@ export async function importZip(
         const pageKey = pagesByTitle.get(title)?.shift();
         const markdown = pageKey ? rowBody(text(`${pageKey}.md`)) : "";
         const html = markdown
-          ? markdownToHtml(markdown, resolver(`${pageKey}.md`, pid))
+          ? await markdownToHtmlAsync(markdown, resolver(`${pageKey}.md`, pid))
           : "";
         const rid = id();
         await run(

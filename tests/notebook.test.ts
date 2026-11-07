@@ -471,7 +471,7 @@ test("exports: a notebook as PDF next to a Markdown stub; drawing blocks as pict
   const printed = typeof print === "string" ? print : JSON.stringify(print);
   assert.match(printed, /data:image\/svg\+xml;base64/);
   assert.match(printed, /Skizzentext/);
-  const published = withInkPictures(cleanHtml(html), { id: doc, kind: "document", title: "Mit Skizze" });
+  const published = await withInkPictures(cleanHtml(html), { id: doc, kind: "document", title: "Mit Skizze" });
   assert.match(published, /<svg class="ink-block-picture"/);
   assert.match(published, /ink-block-static/);
   const md = await exportMarkdown(owner, { pageId: doc, format: "zip", includeSubpages: false });

@@ -147,7 +147,8 @@ export async function purgeTemplate(user: Identity, input: Record<string, unknow
 // Retention: run by the retention worker (lib/version-history.ts). Spaces,
 // pages, records and templates longer than `days` in the trash go for good.
 // Each workspace in a transaction of its own.
-export async function expireTrash(days = (await trashDays())) {
+export async function expireTrash(days?: number) {
+  if (days === undefined) days = await trashDays();
   const result = { pages: 0, spaces: 0, records: 0, templates: 0 };
   if (!(days > 0)) return result;
   const cutoff = daysAgoText(days);

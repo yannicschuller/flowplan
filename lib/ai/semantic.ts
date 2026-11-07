@@ -150,7 +150,7 @@ export async function processEmbeddings(maxTexts = 64, signal?: AbortSignal): Pr
     // Taken off the list first: a change while embedding marks it again.
     await run("DELETE FROM ai_embed_dirty WHERE page_id=? AND row_id=?", entry.page_id, entry.row_id);
     const page = await one<{ workspace_id: string; synced: number | null }>("SELECT workspace_id,synced FROM pages WHERE id=?", entry.page_id);
-    if (!page || page.synced || !embeddable(entry.page_id)) {
+    if (!page || page.synced || !(await embeddable(entry.page_id))) {
       // Not embeddable: neither the page nor any of its records.
       result.removed += Number((entry.row_id ? (await clear()) : (await run("DELETE FROM ai_embeddings WHERE page_id=?", entry.page_id))).changes);
       continue;

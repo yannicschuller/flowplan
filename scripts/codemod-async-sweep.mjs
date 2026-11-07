@@ -110,6 +110,12 @@ function functionOfSymbol(symbol) {
   if ((ts.isVariableDeclaration(decl) || ts.isPropertyAssignment(decl) || ts.isPropertyDeclaration(decl)) && decl.initializer) {
     const init = unwrapParens(decl.initializer);
     if (ts.isArrowFunction(init) || ts.isFunctionExpression(init)) return init;
+    // export const mailLayout = layout;
+    if (ts.isIdentifier(init)) {
+      let aliased = checker.getSymbolAtLocation(init);
+      if (aliased && aliased.flags & ts.SymbolFlags.Alias) aliased = checker.getAliasedSymbol(aliased);
+      if (aliased && aliased !== symbol) return functionOfSymbol(aliased);
+    }
   }
   // const { f } = await import("…") / = module: the property it names.
   if (ts.isBindingElement(decl) && ts.isObjectBindingPattern(decl.parent)) {
@@ -316,7 +322,7 @@ function awaitCall(call) {
     } else note("topLevel", call, call.getText().slice(0, 60));
     return;
   }
-  if (ts.isConstructorDeclaration(fn) || ts.isGetAccessor(fn) || ts.isSetAccessor(fn) || fn.asteriskToken) {
+  if (ts.isConstructorDeclaration(fn) || ts.isGetAccessor(fn) || ts.isSetAccessor(fn) || (fn.asteriskToken && !isAsync(fn))) {
     note("blocked", call, `${ts.SyntaxKind[fn.kind]}${fn.asteriskToken ? " (generator)" : ""}: ${call.getText().slice(0, 60)}`);
     return;
   }
@@ -328,6 +334,14 @@ function awaitCall(call) {
 
 function functionBecomesAsync(fn) {
   if (isAsync(fn) || madeAsync.has(key(fn))) return;
+  // (() => { … })(): the call itself yields a promise now.
+  let outer = fn.parent;
+  while (outer && ts.isParenthesizedExpression(outer)) outer = outer.parent;
+  if ((ts.isArrowFunction(fn) || ts.isFunctionExpression(fn)) && outer && ts.isCallExpression(outer) && unwrapParens(outer.expression) === fn) {
+    makeAsync(fn);
+    awaitCall(outer);
+    return;
+  }
   const parent = fn.parent;
   // A callback handed to a call: what the receiver does with a promise decides.
   if ((ts.isArrowFunction(fn) || ts.isFunctionExpression(fn)) && parent && (ts.isCallExpression(parent) || ts.isNewExpression(parent)) && parent.arguments?.includes(fn)) {
@@ -381,25 +395,7 @@ function callbackBecameAsync(host, fn) {
   }
   // A function of this project that calls the callback it gets: that call
   // is awaited now, the function becomes async, and so its call here.
-  if (decl && decl.body && editable(decl.getSourceFile().fileName)) {
-    const index = host.arguments.indexOf(fn);
-    const param = decl.parameters[Math.min(index, decl.parameters.length - 1)];
-    if (param && ts.isIdentifier(param.name)) {
-      const symbol = checker.getSymbolAtLocation(param.name);
-      const calls = [];
-      const visit = (n) => {
-        if (ts.isCallExpression(n) && ts.isIdentifier(n.expression) && checker.getSymbolAtLocation(n.expression) === symbol) calls.push(n);
-        ts.forEachChild(n, visit);
-      };
-      visit(decl.body);
-      if (calls.length) {
-        (report.wrappers[nameOf(decl)] ||= []).push(where(host));
-        for (const call of calls) awaitCall(call);
-        if (!handledCalls.has(key(host)) && (isAsync(decl) || madeAsync.has(key(decl)))) awaitCall(host);
-        return;
-      }
-    }
-  }
+  if (decl && decl.body && editable(decl.getSourceFile().fileName) && awaitParameterCalls(decl, host.arguments.indexOf(fn), host)) return;
   // A generic wrapper whose result is the callback's: its result is a promise now.
   if (resultFlowsFromCallback(host, fn)) {
     const name = callee.getText().slice(-50);
@@ -408,6 +404,53 @@ function callbackBecameAsync(host, fn) {
     return;
   }
   note("fireAndForget", host, callee.getText().slice(-50));
+}
+
+// The calls of parameter `index` of `decl` are awaited (its type allows a
+// promise now), also where it is handed on to another function of the
+// project. True when there were any.
+const awaitedParameters = new Set();
+function awaitParameterCalls(decl, index, host) {
+  const param = decl.parameters[Math.min(index, decl.parameters.length - 1)];
+  if (!param || !ts.isIdentifier(param.name)) return false;
+  const k = `${key(decl)}#${index}`;
+  if (awaitedParameters.has(k)) return true;
+  const symbol = checker.getSymbolAtLocation(param.name);
+  const calls = [];
+  const handedOn = [];
+  const visit = (n) => {
+    if (ts.isCallExpression(n) && ts.isIdentifier(n.expression) && checker.getSymbolAtLocation(n.expression) === symbol) calls.push(n);
+    else if (ts.isIdentifier(n) && n.parent && ts.isCallExpression(n.parent) && n.parent.arguments.includes(n) && checker.getSymbolAtLocation(n) === symbol) handedOn.push(n);
+    ts.forEachChild(n, visit);
+  };
+  visit(decl.body);
+  const inner = handedOn
+    .map((ref) => ({ ref, callee: declarationOf(ref.parent.expression) }))
+    .filter(({ callee }) => callee && callee.body && editable(callee.getSourceFile().fileName));
+  if (!calls.length && !inner.length) return false;
+  awaitedParameters.add(k);
+  (report.wrappers[nameOf(decl)] ||= []).push(where(host));
+  widenToPromise(param);
+  for (const call of calls) awaitCall(call);
+  for (const { ref, callee } of inner) {
+    awaitParameterCalls(callee, ref.parent.arguments.indexOf(ref), ref.parent);
+    if (isAsync(callee) || madeAsync.has(key(callee))) awaitCall(ref.parent);
+  }
+  if (!handledCalls.has(key(host)) && (isAsync(decl) || madeAsync.has(key(decl)))) awaitCall(host);
+  return true;
+}
+// `(x: A) => R` → `(x: A) => R | Promise<R>` for a parameter that may be async now.
+function widenToPromise(param) {
+  let type = param.type;
+  while (type && ts.isParenthesizedTypeNode(type)) type = type.type;
+  if (type && ts.isUnionTypeNode(type)) type = type.types.find((t) => ts.isFunctionTypeNode(t) || (ts.isParenthesizedTypeNode(t) && ts.isFunctionTypeNode(t.type)));
+  while (type && ts.isParenthesizedTypeNode(type)) type = type.type;
+  if (!type || !ts.isFunctionTypeNode(type)) return;
+  const r = type.type;
+  const sf = param.getSourceFile();
+  const text = r.getText(sf);
+  if (/^Promise</.test(text) || /\bPromise</.test(text) || text === "unknown" || text === "any") return;
+  replace(sf, r.getStart(sf), r.end, text === "void" ? "void | Promise<void>" : `(${text}) | Promise<${text}>`);
 }
 
 function resultFlowsFromCallback(host, fn) {
@@ -424,15 +467,102 @@ function resultFlowsFromCallback(host, fn) {
   return names.some((n) => new RegExp(`=>\\s*(Promise<)?${n}\\b`).test(paramText) && new RegExp(`\\b${n}\\b`).test(returnText));
 }
 
+// Seeds written by hand may still lack their `async` (and Promise<…>).
+for (const fn of [...queue]) makeAsync(fn);
+// --factory <file>:<name>: functions that return an async function (now)
+// whose callers keep it in a variable.
+for (const spec of opt("--factory")) {
+  const [file, names] = spec.split(":");
+  const sf = program.getSourceFile(resolve(root, file));
+  for (const name of names.split(",")) {
+    let found = null;
+    const visit = (n) => {
+      if (!found && isFunction(n) && nameOf(n) === name) found = n;
+      ts.forEachChild(n, visit);
+    };
+    visit(sf);
+    if (!found) throw new Error(`no function ${name} in ${file}`);
+    const returned = [];
+    const look = (n) => {
+      if (ts.isReturnStatement(n) && n.expression && enclosing(n) === found) {
+        const e = unwrapParens(n.expression);
+        if (ts.isArrowFunction(e) || ts.isFunctionExpression(e)) returned.push(e);
+      }
+      if (n !== found && isFunction(n)) return;
+      ts.forEachChild(n, look);
+    };
+    look(found);
+    if (ts.isArrowFunction(found) && (ts.isArrowFunction(unwrapParens(found.body)) || ts.isFunctionExpression(unwrapParens(found.body)))) returned.push(unwrapParens(found.body));
+    if (!returned.length) throw new Error(`${name} in ${file} returns no function`);
+    for (const fn of returned) {
+      makeAsync(fn);
+      closureUses(fn);
+    }
+  }
+}
+// A function that returns this one (`const names = nameLookup(); names(id)`):
+// the calls of the variable that holds it.
+function factoryOf(fn) {
+  if (!(ts.isArrowFunction(fn) || ts.isFunctionExpression(fn))) return null;
+  let p = fn.parent;
+  while (p && ts.isParenthesizedExpression(p)) p = p.parent;
+  if (p && ts.isReturnStatement(p)) return enclosing(p);
+  if (p && ts.isArrowFunction(p) && unwrapParens(p.body) === fn) return p;
+  return null;
+}
+function closureUses(fn) {
+  const factory = factoryOf(fn);
+  if (!factory) return;
+  for (const call of callers.get(key(factory)) || []) {
+    let p = call.parent;
+    while (p && ts.isParenthesizedExpression(p)) p = p.parent;
+    if (p && ts.isAwaitExpression(p)) {
+      p = p.parent;
+      while (p && ts.isParenthesizedExpression(p)) p = p.parent;
+    }
+    if (p && ts.isCallExpression(p) && p.expression.pos <= call.pos && call.end <= p.expression.end) {
+      awaitCall(p);
+      continue;
+    }
+    if (!p || !ts.isVariableDeclaration(p) || !ts.isIdentifier(p.name)) {
+      note("passedAsValue", call, `closure of ${nameOf(factory)} kept in ${call.parent.getText().slice(0, 50)}`);
+      continue;
+    }
+    const symbol = checker.getSymbolAtLocation(p.name);
+    let scope = p.parent;
+    while (scope && !ts.isBlock(scope) && !ts.isSourceFile(scope) && !isFunction(scope)) scope = scope.parent;
+    const visit = (n) => {
+      if (ts.isCallExpression(n) && ts.isIdentifier(n.expression) && checker.getSymbolAtLocation(n.expression) === symbol) awaitCall(n);
+      else if (ts.isIdentifier(n) && n !== p.name && checker.getSymbolAtLocation(n) === symbol && n.parent && ts.isCallExpression(n.parent) && n.parent.arguments.includes(n)) {
+        const host = n.parent;
+        if (ts.isPropertyAccessExpression(host.expression) && ARRAY_HELPERS[host.expression.name.text] && isArrayLike(host.expression.expression)) callbackBecameAsync(host, n);
+        else {
+          const callee = declarationOf(host.expression);
+          if (!(callee && callee.body && editable(callee.getSourceFile().fileName) && awaitParameterCalls(callee, host.arguments.indexOf(n), host)))
+            note("passedAsValue", n, `closure of ${nameOf(factory)} in ${host.getText().slice(0, 50)}`);
+        }
+      }
+      ts.forEachChild(n, visit);
+    };
+    if (scope) visit(scope);
+  }
+}
+
 while (queue.length) {
   const fn = queue.shift();
   for (const call of callers.get(key(fn)) || []) awaitCall(call);
+  closureUses(fn);
   for (const ref of references.get(key(fn)) || []) {
     // xs.map(f) with f async now: the same as a callback.
     const host = ref.parent;
     if (ts.isCallExpression(host) && host.arguments.includes(ref) && ts.isPropertyAccessExpression(host.expression) && ARRAY_HELPERS[host.expression.name.text] && isArrayLike(host.expression.expression)) {
       callbackBecameAsync(host, ref);
       continue;
+    }
+    // f(…, g) with g async now and f of this project: f awaits it.
+    if (ts.isCallExpression(host) && host.arguments.includes(ref)) {
+      const callee = declarationOf(host.expression);
+      if (callee && callee.body && editable(callee.getSourceFile().fileName) && awaitParameterCalls(callee, host.arguments.indexOf(ref), host)) continue;
     }
     note("passedAsValue", ref, `${nameOf(fn)} in ${ref.parent.getText().slice(0, 60)}`);
   }

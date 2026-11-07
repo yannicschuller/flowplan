@@ -9,7 +9,7 @@ import { audit } from "./db";
 import { ct, contentLocale } from "./content-locale";
 import { localeTag } from "./i18n";
 import { exportName } from "./export-name";
-import { collectExportContent, type ExportContent } from "./export-content";
+import { collectExportContent, withExportLookups, type ExportContent } from "./export-content";
 import { documentXhtml, xml } from "./export-xhtml";
 import { exportUrl } from "./export-docx";
 import type { Identity } from "./types";
@@ -154,7 +154,7 @@ export function printHtml(content: ExportContent, author: string) {
 
 export async function exportPrintHtml(user: Identity, options: { pageId?: string; spaceId?: string; children?: boolean }) {
   const content = await collectExportContent(user, { ...options, maxPages: PDF_MAX_PAGES, format: "PDF" });
-  const html = printHtml(content, user.name);
+  const html = await withExportLookups(content, (c) => printHtml(c, user.name));
   if (content.space) await audit(user.id, "space.pdf.export", content.space.id);
   else await audit(user.id, "page.pdf.export", content.root!.id);
   return { html, name: `${exportName(content.name)}.html` };

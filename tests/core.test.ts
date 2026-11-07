@@ -649,7 +649,7 @@ test("publications require edit access to the full tree, publish only selected d
   );
   assert.equal((await publicFile(token, file)).id, file);
   await assert.rejects(async () => await publicFile(token, unused), /nicht veröffentlicht/);
-  const published = publishedHtml(
+  const published = await publishedHtml(
     String((await one("SELECT html FROM documents WHERE page_id=?", child.id))!.html),
     token,
     (await publicTree(token)).pages,

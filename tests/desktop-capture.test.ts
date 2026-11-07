@@ -201,7 +201,7 @@ test("a record template of the database (quick actions) and accepted AI values",
 test("the AI suggestion is checked against the targets: known databases, real options, members", async () => {
   const list = [{ id: inbox, name: "Inbox", workspaceId: wid, properties: await D.captureProperties(O, (await one("SELECT * FROM pages WHERE id=?", inbox))!) }];
   const members = () => [{ id: anna.user.id, name: "Anna Schmidt", email: "anna@example.test" }];
-  const checked = S.checkSuggestion(list, members, {
+  const checked = await S.checkSuggestion(list, members, {
     targetId: inbox,
     title: "  Angebot   schreiben ",
     fields: { Tags: ["kunde", "Erfunden"], Priority: "Urgent", Due: "2026-02-30", Assignee: "Anna", Link: "javascript:alert(1)" },
@@ -215,9 +215,9 @@ test("the AI suggestion is checked against the targets: known databases, real op
       ["Assignee", anna.user.id],
     ],
   );
-  assert.equal(S.checkSuggestion(list, members, { targetId: secret, title: "x" }).suggestion.targetId, null, "an unknown target is dropped");
+  assert.equal((await S.checkSuggestion(list, members, { targetId: secret, title: "x" })).suggestion.targetId, null, "an unknown target is dropped");
   // The device model's list form.
-  assert.deepEqual(S.checkSuggestion(list, members, { targetId: inbox, title: "x", fields: [{ name: "Priority", value: "medium" }] }).suggestion.fields.map((f) => f.value), ["Medium"]);
+  assert.deepEqual((await S.checkSuggestion(list, members, { targetId: inbox, title: "x", fields: [{ name: "Priority", value: "medium" }] })).suggestion.fields.map((f) => f.value), ["Medium"]);
   assert.equal((await S.captureSuggestMode(O))?.server ?? false, false, "the server's AI is off without a provider");
 });
 

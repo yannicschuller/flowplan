@@ -318,7 +318,7 @@ export async function sweepMetrics(now = Date.now()) {
 // Writes what is finished: minutes, their hours, the people of the last
 // and the running hour, AI tokens; refreshes today's storage row hourly
 // (`sizes` measures it) and sweeps daily.
-export async function flushMetrics(now = Date.now(), sizes?: () => Sizes) {
+export async function flushMetrics(now = Date.now(), sizes?: () => (Sizes) | Promise<Sizes>) {
   const s = state();
   await savePushLast();
   if (!s.enabled) return;
@@ -349,7 +349,7 @@ export async function flushMetrics(now = Date.now(), sizes?: () => Sizes) {
   await flushPush();
   if (sizes && now - (s.snapshotAt ?? 0) >= HOUR) {
     try {
-      await snapshotStorage(sizes(), now);
+      await snapshotStorage(await sizes(), now);
       s.snapshotAt = now;
     } catch {}
   }

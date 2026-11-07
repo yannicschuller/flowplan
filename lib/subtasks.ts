@@ -68,11 +68,11 @@ export function treeOrder(rows: Row[], parent: Field, collapsed: Set<string> = n
 }
 
 // Would setting `parentId` as the parent of `rowId` create a loop?
-export function createsCycle(rowId: string, parentId: string, parentOf: (id: string) => string | null) {
+export async function createsCycle(rowId: string, parentId: string, parentOf: (id: string) => (string | null) | Promise<string | null>) {
   let current: string | null = parentId;
   for (let i = 0; current && i < 200; i++) {
     if (current === rowId) return true;
-    current = parentOf(current);
+    current = await parentOf(current);
   }
   return false;
 }

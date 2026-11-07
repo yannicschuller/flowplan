@@ -12,7 +12,7 @@ import { pageRole, requirePage } from "./permissions";
 import { requireUnlocked } from "./journal-extras";
 import { readZip } from "./archive";
 import { htmlState } from "./document-server";
-import { markdownToHtml } from "./markdown-import";
+import { markdownToHtmlAsync } from "./markdown-import";
 import { enforceQuota } from "./instance-ops";
 import { enforceUserStorage } from "./user-limits";
 import { cellText } from "./cell-text";
@@ -332,7 +332,7 @@ export async function importMarkdownRecords(
     let updated = 0;
     await forEachAsync(rows, async ({ file, cells }, i) => {
       const rid = rowIds.get(file.path)!;
-      const html = file.body ? markdownToHtml(file.body, resolver(file.path)) : "";
+      const html = file.body ? await markdownToHtmlAsync(file.body, resolver(file.path)) : "";
       // Round trip: the exported record gets the file's values and text.
       if (update(file)) {
         const before = JSON.parse((await one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", rid))!.cells) as Record<string, unknown>;

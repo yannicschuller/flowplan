@@ -161,8 +161,8 @@ export async function databaseRecords(user: Identity, pageId: string, limits: { 
   let size = header.length;
   for (const row of readable) {
     if (lines.length >= limits.maxRecords) break;
-    const title = titleField ? oneLine(cellPlain(titleField, row.cells[titleField.id], row, names)) || "–" : "–";
-    const values = recordLines(fields, row.cells, { ...row, number: row.number ?? null }, names).map(oneLine);
+    const title = titleField ? oneLine(await cellPlain(titleField, row.cells[titleField.id], row, names)) || "–" : "–";
+    const values = (await recordLines(fields, row.cells, { ...row, number: row.number ?? null }, names)).map(oneLine);
     const line = `- ${[`${titleField?.name || "Titel"}: ${title}`, ...values].join(" | ")}`;
     if (size + line.length + 1 > limits.maxChars) break;
     lines.push(line);

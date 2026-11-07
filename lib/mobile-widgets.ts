@@ -829,7 +829,7 @@ async function journalData(ctx: Context, config: WidgetConfig<"journal">) {
       const trackers =
         access.encrypted || !todayPage
           ? []
-          : (async () => {
+          : await (async () => {
               const values = (await dayEntry(todayPage.id)).values;
               return (await journalSettings(chosen.id))
                 .trackers.slice(0, 6)
@@ -1117,7 +1117,7 @@ async function incidentData(ctx: Context) {
 
 // ---- Data of many widgets at once ----
 
-const builders: { [K in WidgetKind]: (ctx: Context, config: WidgetConfig<K>) => Record<string, unknown> } = {
+const builders: { [K in WidgetKind]: (ctx: Context, config: WidgetConfig<K>) => Promise<Record<string, unknown>> } = {
   capture: captureData,
   tasks: tasksData,
   calendar: calendarData,
@@ -1132,14 +1132,14 @@ const builders: { [K in WidgetKind]: (ctx: Context, config: WidgetConfig<K>) => 
   jobs: jobsData,
   incident: incidentData,
 };
-export function widgetData<K extends WidgetKind>(ctx: Context, kind: K, config: unknown, limit = MAX_WIDGET_BYTES) {
+export async function widgetData<K extends WidgetKind>(ctx: Context, kind: K, config: unknown, limit = MAX_WIDGET_BYTES) {
   const parsed = widgetConfigs[kind].parse(config ?? {}) as WidgetConfig<K>;
-  return capped(builders[kind](ctx, parsed), limit);
+  return capped(await builders[kind](ctx, parsed), limit);
 }
 
 // Each widget answers on its own: one that fails (a page gone, no access)
 // does not take the others with it.
-export function widgetsData(user: Identity, input: unknown, now = Date.now()) {
+export async function widgetsData(user: Identity, input: unknown, now = Date.now()) {
   const request = dataRequestSchema.parse(input);
   const ctx = widgetContext(user, request.today, request.zone, now);
   const locale = contentLocale();
@@ -1147,9 +1147,9 @@ export function widgetsData(user: Identity, input: unknown, now = Date.now()) {
     at: now,
     today: ctx.today,
     zone: ctx.zone,
-    widgets: request.widgets.map((w) => {
+    widgets: await mapAsync(request.widgets, async (w) => {
       try {
-        return { id: w.id ?? null, kind: w.kind, ok: true as const, data: widgetData(ctx, w.kind, w.config) };
+        return { id: w.id ?? null, kind: w.kind, ok: true as const, data: await widgetData(ctx, w.kind, w.config) };
       } catch (error) {
         const status = error instanceof HttpError ? error.status : error instanceof z.ZodError ? 400 : 500;
         if (status === 500) console.error("Widget", w.kind, error);
@@ -1215,7 +1215,7 @@ export async function widgetOptions(user: Identity, kind: WidgetKind, query: { p
         ],
         max: MAX_ITEMS,
         databases: (await readablePages(user, ["database"])).filter((p) => !p.pinLocked && !p.encrypted).map(listedPage),
-        pages: (async () => {
+        pages: await (async () => {
           const ids = new Set(
             (await all<{ page_id: string }>(
               "SELECT DISTINCT page_id FROM doc_tasks WHERE checked=0 AND workspace_id IN (SELECT workspace_id FROM members WHERE user_id=?) LIMIT 2000",

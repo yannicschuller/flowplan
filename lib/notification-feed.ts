@@ -66,7 +66,7 @@ export async function notificationFeed(user: Identity, since: number | null) {
     notifications: await mapAsync(rows, async (n) => {
       const page = n.page_id ? (await pageOf(n.page_id)) : null;
       // Behind a journal PIN not entered: neither its text nor the record.
-      const secret = !!page && locked(n, user.id);
+      const secret = !!page && await locked(n, user.id);
       // Like push (lib/push.ts): nothing for a page that is gone or no
       // longer readable, and nothing about a record hidden from the reader.
       const hidden = !!n.row_id && !!page && (await hiddenRowIds(user, page)).has(n.row_id);

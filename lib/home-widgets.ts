@@ -44,7 +44,7 @@ import {
 import { widgetAction } from "./mobile-widget-actions";
 import { MAX_HOME_WIDGETS, serverWidgetKinds, widgetConfigs, type ServerWidgetKind, type WidgetConfig } from "./home-layout-schema";
 import type { Field, Identity, Page } from "./types";
-import { filterAsync, findAsync } from "./each-async";
+import { filterAsync, findAsync, mapAsync } from "./each-async";
 
 // Bytes per widget answer (the phone's widgets get 2 KB).
 export const HOME_WIDGET_BYTES = 12_000;
@@ -66,7 +66,7 @@ function limit(user: Pick<Identity, "id">, what: "data" | "action" | "options") 
 
 // Pages of this workspace only: a layout shared across workspaces may name
 // pages of another one, which then simply do not show here.
-type Scope = { user: Identity; workspaceId: string; inside: (pageId: string | null | undefined) => boolean; need: (pageId: string | null | undefined) => string };
+type Scope = { user: Identity; workspaceId: string; inside: (pageId: string | null | undefined) => Promise<boolean>; need: (pageId: string | null | undefined) => Promise<string> };
 function scopeOf(user: Identity, workspaceId: string): Scope {
   const cache = new Map<string, string | null>();
   const inside = async (pageId: string | null | undefined) => {
@@ -94,7 +94,7 @@ function editableIn(user: Identity) {
 
 // ---- Builders ----
 
-type Builder<K extends ServerWidgetKind> = (ctx: Context, scope: Scope, config: WidgetConfig<K>) => Record<string, unknown>;
+type Builder<K extends ServerWidgetKind> = (ctx: Context, scope: Scope, config: WidgetConfig<K>) => Record<string, unknown> | Promise<Record<string, unknown>>;
 
 const tasks: Builder<"tasks"> = async (ctx, scope, config) => {
   const { today } = ctx;
@@ -102,9 +102,9 @@ const tasks: Builder<"tasks"> = async (ctx, scope, config) => {
     config.filter === "open" ? true : config.filter === "today" ? due === today : config.filter === "overdue" ? !!due && due < today : !!due && due <= today;
   if (config.source === "view") {
     if (!config.pageId) return { unconfigured: true, items: [], total: 0 };
-    scope.need(config.pageId);
+    await scope.need(config.pageId);
     // The phone's filters know "today", "overdue" and "open"; "due" is both.
-    const data = widgetData(ctx, "tasks", { source: "view", pageId: config.pageId, viewId: config.viewId, filter: config.filter === "due" ? "open" : config.filter, max: 10 }, HOME_WIDGET_BYTES);
+    const data = await widgetData(ctx, "tasks", { source: "view", pageId: config.pageId, viewId: config.viewId, filter: config.filter === "due" ? "open" : config.filter, max: 10 }, HOME_WIDGET_BYTES);
     const items = ((data.items as WidgetTask[] | undefined) || []).filter((t) => keep(t.due));
     return { ...data, items: items.slice(0, config.max), total: config.filter === "due" ? items.length : data.total };
   }
@@ -117,7 +117,7 @@ const tasks: Builder<"tasks"> = async (ctx, scope, config) => {
   return {
     title: ct("Meine Aufgaben", "My tasks"),
     total: sorted.length,
-    items: sorted.slice(0, config.max).map(({ task: t }) => ({
+    items: await mapAsync(sorted.slice(0, config.max), async ({ task: t }) => ({
       source: "doc",
       pageId: t.pageId,
       rowId: t.rowId,
@@ -128,21 +128,20 @@ const tasks: Builder<"tasks"> = async (ctx, scope, config) => {
       done: false,
       page: clip(t.title || untitled(), 80),
       icon: t.icon,
-      canEdit: canEdit(t.pageId),
+      canEdit: await canEdit(t.pageId),
     })),
   };
 };
 
 const calendar: Builder<"calendar"> = async (ctx, scope, config) => {
-  const sources = (config.sources.length ? config.sources : (await calendarSourceList(ctx.user, 60)))
-    .filter((s) => scope.inside(s.pageId))
+  const sources = (await filterAsync(config.sources.length ? config.sources : await calendarSourceList(ctx.user, 60), (s) => scope.inside(s.pageId)))
     .slice(0, 10)
     .map((s) => ({ pageId: s.pageId, ...(s.viewId ? { viewId: s.viewId } : {}) }));
   const length = config.range === "today" ? 1 : config.range === "3days" ? 3 : 7;
   const last = Temporal.PlainDate.from(ctx.today).add({ days: length - 1 }).toString();
   // No calendar here: an empty source list would mean "all workspaces".
   const data = sources.length
-    ? widgetData(ctx, "calendar", { sources, range: config.range, tasks: false, max: 10 }, HOME_WIDGET_BYTES)
+    ? (await widgetData(ctx, "calendar", { sources, range: config.range, tasks: false, max: 10 }, HOME_WIDGET_BYTES))
     : { from: ctx.today, to: last, items: [] as Record<string, unknown>[], total: 0 };
   const items = [...((data.items as Record<string, unknown>[]) || [])];
   if (config.tasks)
@@ -159,8 +158,8 @@ async function defaultJournal(user: Identity, workspaceId: string) {
 const journal: Builder<"journal"> = async (ctx, scope, config) => {
   const journalId = config.journalId ?? await defaultJournal(ctx.user, scope.workspaceId);
   if (!journalId) return { journal: null };
-  scope.need(journalId);
-  const data = widgetData(ctx, "journal", { journalId }, HOME_WIDGET_BYTES) as { journal: Record<string, unknown> | null };
+  await scope.need(journalId);
+  const data = (await widgetData(ctx, "journal", { journalId }, HOME_WIDGET_BYTES)) as { journal: Record<string, unknown> | null };
   const entry = data.journal;
   let excerpt = "";
   if (entry && !entry.locked && !entry.encrypted) {
@@ -170,22 +169,22 @@ const journal: Builder<"journal"> = async (ctx, scope, config) => {
   return { journal: entry ? { ...entry, excerpt } : null };
 };
 
-const database: Builder<"database"> = (ctx, scope, config) => {
+const database: Builder<"database"> = async (ctx, scope, config) => {
   if (!config.pageId) return { unconfigured: true, items: [], total: 0 };
-  scope.need(config.pageId);
-  return widgetData(ctx, "pinned", { mode: "page", pageId: config.pageId, viewId: config.viewId, properties: config.properties, max: config.max }, HOME_WIDGET_BYTES);
+  await scope.need(config.pageId);
+  return await widgetData(ctx, "pinned", { mode: "page", pageId: config.pageId, viewId: config.viewId, properties: config.properties, max: config.max }, HOME_WIDGET_BYTES);
 };
 
 const pinned: Builder<"pinned"> = async (ctx, scope, config) => {
   if (!config.pageId) return { unconfigured: true };
-  scope.need(config.pageId);
+  await scope.need(config.pageId);
   const access = await pageAccess(ctx.user, config.pageId);
   if (!access) throw new HttpError(404, ct("Seite nicht gefunden.", "Page not found."));
   const base = { id: access.page.id, kind: access.page.kind };
   // Behind a PIN or end-to-end encrypted: no content, the title comes from
   // the sidebar (decrypted in the browser).
   if (access.locked || access.encrypted) return { ...base, ...(access.encrypted ? { encrypted: true } : { locked: true }) };
-  const children = config.preview ? widgetData(ctx, "pinned", { mode: "page", pageId: access.page.id, max: 5 }, HOME_WIDGET_BYTES) : null;
+  const children = config.preview ? (await widgetData(ctx, "pinned", { mode: "page", pageId: access.page.id, max: 5 }, HOME_WIDGET_BYTES)) : null;
   const preview = config.preview && access.page.kind === "document" ? (await pagePreview(ctx.user, access.page.id)) : null;
   return {
     ...base,
@@ -198,24 +197,24 @@ const pinned: Builder<"pinned"> = async (ctx, scope, config) => {
   };
 };
 
-const focus: Builder<"focus"> = (ctx) => {
-  const state = widgetData(ctx, "focus", {}, HOME_WIDGET_BYTES);
-  const time = widgetData(ctx, "time", {}, HOME_WIDGET_BYTES);
+const focus: Builder<"focus"> = async (ctx) => {
+  const state = await widgetData(ctx, "focus", {}, HOME_WIDGET_BYTES);
+  const time = await widgetData(ctx, "time", {}, HOME_WIDGET_BYTES);
   return { ...state, timer: time.timer, today: time.today, week: time.week, recent: time.recent };
 };
 
 const habits: Builder<"habits"> = async (ctx, scope, config) => {
-  const pageId = config.pageId ?? (await habitDatabases(ctx.user)).find((d) => scope.inside(d.id))?.id;
+  const pageId = config.pageId ?? (await findAsync(await habitDatabases(ctx.user), (d) => scope.inside(d.id)))?.id;
   if (!pageId) return { habits: null };
-  scope.need(pageId);
+  await scope.need(pageId);
   // The journal part is not needed; any readable journal keeps it cheap.
-  return { habits: (widgetData(ctx, "journal", { habitsId: pageId }, HOME_WIDGET_BYTES) as { habits: unknown }).habits };
+  return { habits: ((await widgetData(ctx, "journal", { habitsId: pageId }, HOME_WIDGET_BYTES)) as { habits: unknown }).habits };
 };
 
-const counter: Builder<"counter"> = (ctx, scope, config) => {
+const counter: Builder<"counter"> = async (ctx, scope, config) => {
   if (!config.pageId) return { unconfigured: true };
-  scope.need(config.pageId);
-  return widgetData(ctx, "counter", { ...config, pageId: config.pageId }, HOME_WIDGET_BYTES);
+  await scope.need(config.pageId);
+  return await widgetData(ctx, "counter", { ...config, pageId: config.pageId }, HOME_WIDGET_BYTES);
 };
 
 // Who changed what lately: page edits (lib/page-activity.ts) and records,
@@ -307,7 +306,7 @@ const stats: Builder<"stats"> = async (ctx, scope) => {
     from,
   ), async (l) => await canRead(l.page_id));
   const open = await myTasks(user, workspaceId);
-  const time = widgetData(ctx, "time", {}, HOME_WIDGET_BYTES) as { week?: number };
+  const time = (await widgetData(ctx, "time", {}, HOME_WIDGET_BYTES)) as { week?: number };
   return {
     from: monday.toString(),
     pagesEdited: new Set(edits.map((e) => e.page_id)).size,
@@ -319,7 +318,7 @@ const stats: Builder<"stats"> = async (ctx, scope) => {
   };
 };
 
-const instance: Builder<"instance"> = (ctx) => widgetData(ctx, "incident", {}, HOME_WIDGET_BYTES);
+const instance: Builder<"instance"> = async (ctx) => await widgetData(ctx, "incident", {}, HOME_WIDGET_BYTES);
 
 // The person's own pages created and edited (lib/my-activity.ts): only
 // their numbers, never anyone else's.
@@ -347,10 +346,10 @@ export async function homeData(user: Identity, input: unknown, now = Date.now())
   return {
     at: now,
     today: ctx.today,
-    widgets: request.widgets.map((w) => {
+    widgets: await mapAsync(request.widgets, async (w) => {
       try {
         const config = widgetConfigs[w.kind].parse(w.config);
-        return { id: w.id, kind: w.kind, ok: true as const, data: (builders[w.kind] as Builder<typeof w.kind>)(ctx, scope, config as never) };
+        return { id: w.id, kind: w.kind, ok: true as const, data: await (builders[w.kind] as Builder<typeof w.kind>)(ctx, scope, config as never) };
       } catch (error) {
         const status = error instanceof HttpError ? error.status : error instanceof z.ZodError ? 400 : 500;
         if (status === 500) console.error("Home widget", w.kind, error);
@@ -421,12 +420,12 @@ export async function homeOptions(user: Identity, query: { workspaceId: string |
   const scope = scopeOf(user, workspaceId);
   switch (query.kind) {
     case "calendar":
-      return { calendars: (await calendarSourceList(user, 60)).filter((c) => scope.inside(c.pageId)) };
+      return { calendars: await filterAsync(await calendarSourceList(user, 60), (c) => scope.inside(c.pageId)) };
     case "habits":
-      return { habits: (await habitDatabases(user)).filter((d) => scope.inside(d.id)) };
+      return { habits: await filterAsync(await habitDatabases(user), (d) => scope.inside(d.id)) };
     case "database": {
       // Views and properties of one database.
-      const pageId = scope.need(uuid.parse(query.pageId));
+      const pageId = await scope.need(uuid.parse(query.pageId));
       return { database: ((await widgetOptions(user, "pinned", { pageId })) as { database: unknown }).database };
     }
     default:

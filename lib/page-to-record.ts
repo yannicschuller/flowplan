@@ -84,7 +84,7 @@ export async function pageToRecord(user: Identity, pageId: string, databaseId: s
   // Runs inside the command's transaction; the updates for open editors go
   // out once it is stored.
   const publish: (() => void)[] = [];
-  const rowId = (async () => {
+  const rowId = await (async () => {
     await autoDatabaseSnapshot(user, database);
     const fields = JSON.parse((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", database.id))!.fields) as Field[];
     const template = await selectedRowTemplate(database.id, undefined);

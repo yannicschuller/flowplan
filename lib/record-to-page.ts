@@ -320,6 +320,6 @@ export async function recordToPage(
     const result = await rewriteDocument(source.page_id, source.row_id, user.id, relink);
     if (result) publish.push(result.publish);
   }
-  quota();
+  await quota();
   return { result: { id: pageId }, publish };
 }

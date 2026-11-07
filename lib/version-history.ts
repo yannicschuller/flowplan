@@ -204,7 +204,8 @@ export async function retentionDays() {
   const value = raw === undefined || raw === "" ? 180 : Number(raw);
   return Number.isFinite(value) && value >= 0 ? Math.floor(value) : 180;
 }
-export async function pruneSnapshots(days = (await retentionDays())) {
+export async function pruneSnapshots(days?: number) {
+  if (days === undefined) days = await retentionDays();
   let removed = 0;
   await transaction(async () => {
     for (const [table, owner] of [

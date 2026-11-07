@@ -25,7 +25,7 @@ await run("INSERT INTO members VALUES(?,?,?)", wid, ben.id, "editor");
 const as = (user: Identity) => async (b: Record<string, unknown>) => (await command(user, { workspaceId: wid, ...b })) as Record<string, unknown>;
 const space = (await bootstrap(ada, wid)).spaces[0].id;
 // Ada creates the page and so follows it.
-const page = String(as(ada)({ action: "page.create", spaceId: space, title: "Einkauf", kind: "document" }).id);
+const page = String((await as(ada)({ action: "page.create", spaceId: space, title: "Einkauf", kind: "document" })).id);
 const later = (minutes: number) => Date.now() + minutes * 60_000;
 
 test("by default, changes on followed pages reach the inbox only", async () => {
@@ -37,24 +37,24 @@ test("by default, changes on followed pages reach the inbox only", async () => {
   await queueNotificationDigests(later(30));
   assert.equal((await all("SELECT 1 FROM mail_queue WHERE recipient=?", ada.email)).length, 0, "no e-mail for a small edit");
   // Someone who wants them turns them on.
-  as(ada)({ action: "notification.prefs", kind: "change", inbox: true, push: true, email: true });
+  await as(ada)({ action: "notification.prefs", kind: "change", inbox: true, push: true, email: true });
   await run("UPDATE notifications SET emailed_at=NULL WHERE user_id=?", ada.id);
   await queueNotificationDigests(later(30));
   assert.equal((await all("SELECT 1 FROM mail_queue WHERE recipient=?", ada.email)).length, 1);
   // Back to the defaults.
-  const reset = as(ada)({ action: "notification.reset" }) as Record<string, { email: boolean }>;
+  const reset = (await as(ada)({ action: "notification.reset" })) as Record<string, { email: boolean }>;
   assert.equal(reset.change.email, false);
   assert.equal(await one("SELECT 1 FROM notification_prefs WHERE user_id=?", ada.id), undefined);
 });
 
 test("a kind turned off in the inbox does not arrive at all", async () => {
-  as(ben)({ action: "notification.prefs", kind: "change", inbox: false, push: false, email: false });
+  await as(ben)({ action: "notification.prefs", kind: "change", inbox: false, push: false, email: false });
   await recordPageEdit(ada, page);
   assert.equal(await one("SELECT 1 FROM notifications WHERE user_id=? AND kind='change'", ben.id), undefined);
 });
 
-test("the introduction's e-mail switch keeps edits out of the e-mail", () => {
-  const prefs = as(ben)({ action: "notification.email", email: true }) as Record<string, { email: boolean }>;
+test("the introduction's e-mail switch keeps edits out of the e-mail", async () => {
+  const prefs = (await as(ben)({ action: "notification.email", email: true })) as Record<string, { email: boolean }>;
   assert.equal(prefs.mention.email, true);
   assert.equal(prefs.change.email, false);
   assert.equal(prefs.automation.email, false);

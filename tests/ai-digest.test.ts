@@ -150,8 +150,8 @@ test("weekly digest: followed pages, overdue tasks, AI summary only when opted i
   assert.equal((await all("SELECT 1 FROM mail_queue")).length, 2);
 });
 
-test("the digest mail in English", () => {
-  const mail = weeklyDigestMail("Ben", { changed: [], open: [{ text: "Call", due: null, pageId: p1, title: "T" }], overdue: [] }, null, "en");
+test("the digest mail in English", async () => {
+  const mail = await weeklyDigestMail("Ben", { changed: [], open: [{ text: "Call", due: null, pageId: p1, title: "T" }], overdue: [] }, null, "en");
   assert.equal(mail.subject, "Your week in Flowplan");
   assert.match(mail.text, /Open tasks\n• Call/);
 });

@@ -451,7 +451,7 @@ const metaAnswer = async (pageId: string) => {
 };
 
 // `write` is the command's page check (editor rights, journal PIN, lock).
-export async function pagePropertiesCommand(user: Identity, action: string, input: Record<string, unknown>, write: () => Page): Promise<unknown> {
+export async function pagePropertiesCommand(user: Identity, action: string, input: Record<string, unknown>, write: () => (Page) | Promise<Page>): Promise<unknown> {
   switch (action) {
     // { pageId, tags?: [id or name], addTags?, removeTags?, values?: { id or name: value | null } }
     case "page.properties": {
@@ -464,7 +464,7 @@ export async function pagePropertiesCommand(user: Identity, action: string, inpu
           values: z.record(z.string().max(200), z.unknown()).optional(),
         })
         .parse(input);
-      const page = write();
+      const page = await write();
       if (await isEncryptedPage(page)) throw new HttpError(409, "Seiten verschlüsselter Bereiche haben keine Tags und Eigenschaften.");
       if (b.tags || b.addTags || b.removeTags) {
         const ids = await setPageTags(user, page, [...(b.tags ?? (await pageMeta(page.id)).tags), ...(b.addTags || [])]);

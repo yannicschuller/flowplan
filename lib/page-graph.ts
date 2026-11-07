@@ -26,7 +26,7 @@ const reference =
 
 type RecordSource = { id: string; page_id: string; html: string; cells: string; access: string; created_by: string | null };
 // The records of the workspace this person may read, with their text.
-async function readableRecords(user: Identity, workspaceId: string, readable: (page: Page) => boolean) {
+async function readableRecords(user: Identity, workspaceId: string, readable: (page: Page) => (boolean) | Promise<boolean>) {
   const databases = new Map<string, { page: Page; fields: Field[]; visible: Awaited<ReturnType<typeof rowRoleResolver>> } | null>();
   const records = new Map<string, RecordSource & { title: string; database: Page }>();
   for (const row of await all<RecordSource>(
@@ -38,7 +38,7 @@ async function readableRecords(user: Identity, workspaceId: string, readable: (p
     if (!databases.has(row.page_id)) {
       const page = (await one<Page>("SELECT * FROM pages WHERE id=?", row.page_id))!;
       const fields = JSON.parse((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", page.id))?.fields || "[]") as Field[];
-      databases.set(page.id, readable(page) ? { page, fields, visible: await rowRoleResolver(user, page) } : null);
+      databases.set(page.id, (await readable(page)) ? { page, fields, visible: await rowRoleResolver(user, page) } : null);
     }
     const database = databases.get(row.page_id);
     if (!database || !database.visible(row)) continue;

@@ -95,7 +95,7 @@ export async function adminSummary(now = Date.now(), update: UpdateStatus | null
       domainsVerified: await count("SELECT COUNT(*) n FROM custom_domains WHERE verified_at IS NOT NULL"),
       domainsFailing: await count("SELECT COUNT(*) n FROM custom_domains WHERE last_error IS NOT NULL"),
     },
-    maintenance: (async () => {
+    maintenance: await (async () => {
       const notice = await storedMaintenance();
       return {
         state: !notice || notice.end <= now ? null : notice.start <= now ? ("active" as const) : ("scheduled" as const),

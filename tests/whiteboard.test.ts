@@ -39,8 +39,8 @@ const owner = await user("owner"),
   boot = await bootstrap(owner, wid);
 await run("INSERT INTO members VALUES(?,?,?)", wid, reader.id, "viewer");
 const b64 = (u: Uint8Array) => Buffer.from(u).toString("base64");
-const fails = (fn: () => unknown, status: number) =>
-  assert.throws(fn, (e: any) => e.status === status);
+const fails = async (fn: () => unknown, status: number) =>
+  assert.rejects(async () => fn(), (e: any) => e.status === status);
 const create = async (title: string, kind = "whiteboard") =>
   (
     (await command(owner, {
@@ -121,10 +121,10 @@ test("whiteboards merge edits of several people and are searchable", async () =>
   // Readers see the board but cannot change it; stale generations are refused.
   const r = await client(board, reader);
   r.add({ type: "text", x: 0, y: 0, w: 10, h: 10, z: 3, text: "Nein" });
-  fails(async () => await r.sync(), 403);
+  await fails(async () => await r.sync(), 403);
   const stale = await client(board);
   stale.generation = "old";
-  fails(async () => await stale.sync(), 409);
+  await fails(async () => await stale.sync(), 409);
 });
 
 test("whiteboards are copied, archived and restored with their items", async () => {

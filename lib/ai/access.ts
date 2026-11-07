@@ -37,21 +37,23 @@ export const AI_BLOCKED_MESSAGE = "Diese Seite ist für die KI gesperrt.";
 class AccessContext {
   private pages = new Map<string, PageLite | null>();
   private workspaces = new Map<string, { spaces: Map<string, { deleted: boolean; encrypted: boolean }>; pinned: Set<string> }>();
-  private rules: Map<string, "include" | "exclude">;
-  // Every block by its target, whatever workspace the row names: a block
-  // follows a page that moves to another workspace.
-  private blocks = allAiBlocks();
-  private scope: "all" | "selected";
   private roles = new Map<string, boolean>();
-  constructor(
+  private constructor(
     private user: Identity,
     // On-device AI: end-to-end encrypted spaces are readable.
-    private device = false,
-  ) {
-    this.rules = new Map(
-      all<{ target_id: string; mode: "include" | "exclude" }>("SELECT target_id,mode FROM ai_access_rules WHERE user_id=?", user.id).map((r) => [r.target_id, r.mode]),
+    private device: boolean,
+    private rules: Map<string, "include" | "exclude">,
+    // Every block by its target, whatever workspace the row names: a block
+    // follows a page that moves to another workspace.
+    private blocks: Awaited<ReturnType<typeof allAiBlocks>>,
+    private scope: "all" | "selected",
+  ) {}
+  // Read from the database once (a constructor cannot await).
+  static async create(user: Identity, device = false) {
+    const rules = new Map(
+      (await all<{ target_id: string; mode: "include" | "exclude" }>("SELECT target_id,mode FROM ai_access_rules WHERE user_id=?", user.id)).map((r) => [r.target_id, r.mode]),
     );
-    this.scope = userAiSettings(user.id).scope;
+    return new AccessContext(user, device, rules, await allAiBlocks(), (await userAiSettings(user.id)).scope);
   }
   private async workspace(id: string) {
     let entry = this.workspaces.get(id);
@@ -149,7 +151,7 @@ export async function aiMayRead(user: Identity, pageId: string, rowId?: string |
 // The items the AI may read, in their order (many pages and records at once).
 export async function aiFilter<T extends AiTarget>(user: Identity, items: T[]): Promise<T[]> {
   if (!items.length) return [];
-  const context = new AccessContext(user);
+  const context = await AccessContext.create(user);
   const rowsByPage = new Map<string, string[]>();
   for (const item of items) if (item.rowId) rowsByPage.set(item.pageId, [...(rowsByPage.get(item.pageId) || []), item.rowId]);
   const readableRows = new Map<string, Set<string>>();
@@ -176,7 +178,7 @@ export async function requireAiRead(user: Identity, pageId: string, rowId?: stri
 // the interface shows "KI hat keinen Zugriff" and disables AI buttons).
 export async function aiExcludedPages(user: Identity, visiblePages: { id: string }[]): Promise<string[]> {
   if (!visiblePages.length) return [];
-  const context = new AccessContext(user);
+  const context = await AccessContext.create(user);
   context.markVisible(visiblePages.map((p) => p.id));
   return (await filterAsync(visiblePages, async (p) => (await context.pageVerdict(p.id)) !== null)).map((p) => p.id);
 }
@@ -186,7 +188,7 @@ export async function aiExcludedPages(user: Identity, visiblePages: { id: string
 // server's AI may not read (device ⊆ server).
 export async function aiDeviceExcludedPages(user: Identity, serverExcluded: string[]): Promise<string[]> {
   if (!serverExcluded.length) return [];
-  const context = new AccessContext(user, true);
+  const context = await AccessContext.create(user, true);
   context.markVisible(serverExcluded);
   return await filterAsync(serverExcluded, async (id) => (await context.pageVerdict(id)) !== null);
 }
@@ -194,7 +196,7 @@ export async function aiDeviceExcludedPages(user: Identity, serverExcluded: stri
 // Why the AI cannot read a page – for a hint in the interface.
 export async function aiPageAccess(user: Identity, pageId: string, rowId?: string | null) {
   await requirePage(user, pageId);
-  const verdict = await new AccessContext(user).pageVerdict(pageId);
+  const verdict = await (await AccessContext.create(user)).pageVerdict(pageId);
   if (verdict) return { readable: false, reason: verdict };
   if (rowId && !(await aiMayRead(user, pageId, rowId))) return { readable: false, reason: "hidden" as const };
   return { readable: true, reason: null };

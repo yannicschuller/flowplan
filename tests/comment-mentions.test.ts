@@ -107,7 +107,7 @@ test("a mention in a journal behind a PIN shows only the locked notice", async (
   assert.deepEqual((await of(journal, bob)).map((n) => n.kind), ["mention"]);
   // Bob has not entered the PIN: inbox, push, mail and chat apps show only
   // the locked notice instead of the text (lib/journal-extras.ts).
-  assert.equal((await lockedNotification())({ user_id: bob.id, page_id: journal, kind: "mention" }), true);
+  assert.equal(await (await lockedNotification())({ user_id: bob.id, page_id: journal, kind: "mention" }), true);
   assert.ok(LOCKED_NOTICE);
 });
 

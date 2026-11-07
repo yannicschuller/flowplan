@@ -199,7 +199,7 @@ async function deletionMail(
     p.email,
     subject,
     text,
-    mailLayout(title, lines.map(mailEscape), action, locale),
+    await mailLayout(title, lines.map(mailEscape), action, locale),
   );
 }
 

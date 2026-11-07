@@ -71,7 +71,7 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ action: 
   return withDevice(req, query.get("lang"), async (user) => {
     if (action === "data") {
       limitWidgets(user, "data");
-      return NextResponse.json(widgetsData(user, await jsonBody(req)), { headers });
+      return NextResponse.json(await widgetsData(user, await jsonBody(req)), { headers });
     }
     if (action !== "action") throw new HttpError(404, "Nicht gefunden");
     limitWidgets(user, "action");

@@ -15,7 +15,7 @@ import { all, one, run, id, transaction, audit, nowText } from "./db";
 import { noteDangerousHtml } from "./security-events";
 import { HttpError } from "./auth";
 import { publicPage, publicFile, publishedHtml } from "./publication";
-import { cleanHtml, htmlState, stateHtml } from "./document-server";
+import { cleanHtml, cleanHtmlAsync, htmlState, stateHtml } from "./document-server";
 import { ensureRowDocument } from "./row-documents";
 import type { Field, Row } from "./types";
 import { formulaReferences } from "./formula";
@@ -208,7 +208,7 @@ export async function sharedContent(token: string, pageId?: string, rowId?: stri
     locked: !!s.page.locked,
     title: s.page.title,
     // Editors get placeholders for what they cannot see, so saving keeps it.
-    html: publishedHtml(
+    html: await publishedHtml(
       s.doc?.html || "",
       token,
       s.pages,
@@ -343,7 +343,7 @@ async function validatedCells(
   }
   return cells;
 }
-function writableHtml(
+async function writableHtml(
   html: string,
   token: string,
   pages: { id: string }[],
@@ -361,9 +361,9 @@ function writableHtml(
   noteDangerousHtml(html, { detail: `share link ${token.slice(0, 6)}…` });
   // Placeholders for links and files the guest cannot see map back.
   const hidden = new Map<string, string>();
-  publishedHtml(original, token, pages, hidden);
+  await publishedHtml(original, token, pages, hidden);
   const seen = new Set<string>();
-  return cleanHtml(html, async (tagName, attribs) => {
+  return cleanHtmlAsync(html, async (tagName, attribs) => {
     let attrs = { ...attribs };
     if (attrs["data-linked-database"]) {
       const id = attrs["data-linked-database"];
@@ -559,7 +559,7 @@ export async function mutateSharedContent(token: string, input: unknown) {
         b.html !== undefined &&
         (s.page.kind === "document" || s.row)
       ) {
-        const html = writableHtml(
+        const html = await writableHtml(
           z.string().max(2_000_000).parse(b.html),
           token,
           [s.root, ...s.pages.filter((p) => p.id !== s.root.id)],
@@ -665,18 +665,18 @@ async function liveSync(
       })();
   const key = liveKey(token, s.page.id, s.row?.id);
   const stored = await loadLive(key);
-  const projected = () => publishedHtml(member.html, token, s.pages, new Map());
+  const projected = async () => await publishedHtml(member.html, token, s.pages, new Map());
   let doc: Y.Doc, pgen: string;
   // A projection that has grown fat with the history of guest edits (Yjs
   // keeps what was deleted) starts afresh; guests simply resynchronise.
   if (!stored || stored.generation !== member.generation || stored.state.byteLength > MAX_LIVE_STATE) {
-    ({ doc, pgen } = newProjection(projected()));
+    ({ doc, pgen } = newProjection(await projected()));
   } else {
     doc = new Y.Doc();
     Y.applyUpdate(doc, stored.state);
     pgen = stored.pgen;
     // Member changes since the last exchange flow into the projection.
-    if (stored.source_html !== member.html) applyHtml(doc, projected());
+    if (stored.source_html !== member.html) applyHtml(doc, await projected());
   }
   let sourceHtml = member.html;
   try {
@@ -691,7 +691,7 @@ async function liveSync(
         if (after.length > MAX_GUEST_DOCUMENT && after.length > before.length)
           throw new HttpError(413, "Das Dokument ist für die Bearbeitung über einen Link zu groß geworden.");
         await takeAnonymousBudget(`live:${token}`, Math.ceil((b.update.length * 3) / 4), GUEST_LIVE_MB);
-        const safe = writableHtml(after, token, pages, member.html);
+        const safe = await writableHtml(after, token, pages, member.html);
         const real = new Y.Doc();
         try {
           Y.applyUpdate(real, member.state);

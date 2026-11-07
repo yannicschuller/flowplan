@@ -150,7 +150,7 @@ export async function importTemplate(
         file.mime,
         entries.get(`files/${file.id}`)!,
       );
-    quota();
+    await quota();
     return { id: templateId };
   }, user);
 }

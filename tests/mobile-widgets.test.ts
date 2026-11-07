@@ -41,11 +41,11 @@ async function phone(acc: { user: Identity; token: string }) {
   return { deviceToken, device: (await W.widgetUser(`Bearer ${deviceToken}`))! };
 }
 type Result = { id: string | null; kind: string; ok: boolean; status?: number; error?: string; data?: Record<string, any> };
-function widgets(user: Identity, list: { kind: string; config?: Record<string, unknown>; id?: string }[], now = NOW) {
-  return withContentLocale("en", () => W.widgetsData(user, { today: TODAY, zone: "UTC", widgets: list }, now)).widgets as Result[];
+async function widgets(user: Identity, list: { kind: string; config?: Record<string, unknown>; id?: string }[], now = NOW) {
+  return (await withContentLocale("en", async () => await W.widgetsData(user, { today: TODAY, zone: "UTC", widgets: list }, now))).widgets as Result[];
 }
-const one_ = (user: Identity, kind: string, config: Record<string, unknown> = {}, now = NOW) => {
-  const [result] = widgets(user, [{ kind, config }], now);
+const one_ = async (user: Identity, kind: string, config: Record<string, unknown> = {}, now = NOW) => {
+  const [result] = await widgets(user, [{ kind, config }], now);
   assert.equal(result.ok, true, `${kind}: ${result.error}`);
   return result.data!;
 };
@@ -210,10 +210,10 @@ test("quick capture: notes, tasks, photos and voice memos land where the person 
   await assert.rejects(act(G, { action: "capture.task", targetId: plan, title: "No" }), (e: { status: number }) => e.status === 404);
   assert.deepEqual(((await W.widgetOptions(V, "capture")) as { targets: unknown[] }).targets, []);
   assert.deepEqual(((await W.widgetOptions(G, "capture")) as { targets: unknown[] }).targets, []);
-  const data = one_(O, "capture", { targetId: tasksDb });
+  const data = await one_(O, "capture", { targetId: tasksDb });
   assert.equal(data.target.id, tasksDb);
   assert.equal(data.voice, false);
-  assert.equal(one_(V, "capture", { targetId: tasksDb }).target, null);
+  assert.equal((await one_(V, "capture", { targetId: tasksDb })).target, null);
 });
 
 test("share from another app: text, a link, photos and PDFs in one capture", async () => {
@@ -286,9 +286,9 @@ test("interactive tasks: my tasks, a view and a page, completed with the web app
   const doc = ((await command(owner.user, { action: "page.create", workspaceId: wid, spaceId: sid, title: "Sprint", kind: "document" })) as { id: string }).id;
   await writeDocument(owner.user, wid, doc, `<ul data-type="taskList">${taskItem("Late", day(-2))}${taskItem("Now", TODAY)}${taskItem("Later", day(5))}</ul>`);
   const texts = (data: Record<string, any>) => data.items.map((t: { text: string }) => t.text);
-  assert.deepEqual(texts(one_(O, "tasks", { filter: "today" })).filter((t: string) => ["Late", "Now", "Later"].includes(t)), ["Now"]);
-  assert.deepEqual(texts(one_(O, "tasks", { filter: "overdue" })).filter((t: string) => ["Late", "Now", "Later"].includes(t)), ["Late"]);
-  const page = one_(O, "tasks", { source: "page", pageId: doc, max: 2 });
+  assert.deepEqual(texts(await one_(O, "tasks", { filter: "today" })).filter((t: string) => ["Late", "Now", "Later"].includes(t)), ["Now"]);
+  assert.deepEqual(texts(await one_(O, "tasks", { filter: "overdue" })).filter((t: string) => ["Late", "Now", "Later"].includes(t)), ["Late"]);
+  const page = await one_(O, "tasks", { source: "page", pageId: doc, max: 2 });
   assert.deepEqual(texts(page), ["Late", "Now"]);
   assert.equal(page.total, 3);
 
@@ -313,11 +313,11 @@ test("interactive tasks: my tasks, a view and a page, completed with the web app
   await addRow(owner.user, db, { title: "Beta", due: TODAY, done: true });
   const c = await addRow(owner.user, db, { title: "Private gamma", due: TODAY });
   await run("UPDATE rows SET access='private' WHERE id=?", c);
-  assert.deepEqual(texts(one_(O, "tasks", { source: "view", pageId: db })).sort(), ["Alpha", "Private gamma"]);
-  const mine = one_(E, "tasks", { source: "view", pageId: db, filter: "today" });
+  assert.deepEqual(texts(await one_(O, "tasks", { source: "view", pageId: db })).sort(), ["Alpha", "Private gamma"]);
+  const mine = await one_(E, "tasks", { source: "view", pageId: db, filter: "today" });
   assert.deepEqual(texts(mine), ["Alpha"]);
   assert.equal(mine.items[0].canEdit, true);
-  assert.doesNotMatch(JSON.stringify(widgets(E, [{ kind: "tasks", config: { source: "view", pageId: db } }])), /gamma/);
+  assert.doesNotMatch(JSON.stringify(await widgets(E, [{ kind: "tasks", config: { source: "view", pageId: db } }])), /gamma/);
   const version = (await one<{ version: number }>("SELECT version FROM rows WHERE id=?", a))!.version;
   await act(E, { action: "task.complete", source: "row", pageId: db, rowId: a, done: true });
   const after = (await one<{ cells: string; version: number; updated_by: string }>("SELECT cells,version,updated_by FROM rows WHERE id=?", a))!;
@@ -325,13 +325,13 @@ test("interactive tasks: my tasks, a view and a page, completed with the web app
   assert.equal(after.version, version + 1);
   assert.equal(after.updated_by, E.id);
   assert.ok(await one("SELECT 1 FROM audit WHERE actor_id=? AND action='row.update' AND resource_id=?", E.id, db));
-  assert.deepEqual(texts(one_(E, "tasks", { source: "view", pageId: db })), []);
+  assert.deepEqual(texts(await one_(E, "tasks", { source: "view", pageId: db })), []);
   await act(E, { action: "task.complete", source: "row", pageId: db, rowId: a, done: false });
   assert.equal(JSON.parse((await one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", a))!.cells).done, false);
   await assert.rejects(act(E, { action: "task.complete", source: "row", pageId: db, rowId: c, done: true }), (e: { status: number }) => e.status === 404);
   await assert.rejects(act(V, { action: "task.complete", source: "row", pageId: db, rowId: a, done: true }), (e: { status: number }) => e.status === 403);
   // Strangers get an error for that widget, not the data.
-  const [denied] = widgets(S, [{ kind: "tasks", config: { source: "view", pageId: db } }]);
+  const [denied] = await widgets(S, [{ kind: "tasks", config: { source: "view", pageId: db } }]);
   assert.equal(denied.ok, false);
   assert.equal(denied.status, 404);
 });
@@ -456,19 +456,19 @@ test("pinned views and counters show only what the person may read", async () =>
   await run("UPDATE rows SET access='private' WHERE id=?", ids[2]);
   await run("UPDATE rows SET created_at=? WHERE id=?", `${day(-5)} 08:00:00`, ids[0]);
 
-  const pinned = (user: Identity) => one_(user, "pinned", { mode: "page", pageId: db, properties: ["stage", "secret", "amount"] });
-  const own = pinned(O);
+  const pinned = async (user: Identity) => await one_(user, "pinned", { mode: "page", pageId: db, properties: ["stage", "secret", "amount"] });
+  const own = await pinned(O);
   assert.deepEqual(own.properties, ["Stage", "Salary", "Amount"]);
   assert.equal(own.items.length, 3);
-  const theirs = pinned(E);
+  const theirs = await pinned(E);
   assert.deepEqual(theirs.properties, ["Stage", "Amount"]);
   assert.deepEqual(theirs.items.map((i: { title: string }) => i.title), ["Won deal", "Lost deal"]);
   assert.doesNotMatch(JSON.stringify(theirs), /S-\d00|Hidden deal|Salary/);
 
-  const count = one_(E, "counter", { pageId: db });
+  const count = await one_(E, "counter", { pageId: db });
   assert.equal(count.value, 2);
-  assert.equal(one_(O, "counter", { pageId: db, history: false }).value, 3);
-  const sum = one_(O, "counter", { pageId: db, aggregate: "sum", fieldId: "amount", groupFieldId: "stage", groupValue: "won" });
+  assert.equal((await one_(O, "counter", { pageId: db, history: false })).value, 3);
+  const sum = await one_(O, "counter", { pageId: db, aggregate: "sum", fieldId: "amount", groupFieldId: "stage", groupValue: "won" });
   assert.equal(sum.value, 40);
   assert.equal(sum.records, 2);
   assert.equal(sum.history.length, 14);
@@ -479,10 +479,10 @@ test("pinned views and counters show only what the person may read", async () =>
   // One snapshot per configuration and day, updated on every refresh.
   const amountCells = JSON.parse((await one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", ids[0]))!.cells);
   await run("UPDATE rows SET cells=? WHERE id=?", JSON.stringify({ ...amountCells, amount: 50 }), ids[0]);
-  assert.equal(one_(O, "counter", { pageId: db, aggregate: "sum", fieldId: "amount", groupFieldId: "stage", groupValue: "won" }).history[13].value, 80);
+  assert.equal((await one_(O, "counter", { pageId: db, aggregate: "sum", fieldId: "amount", groupFieldId: "stage", groupValue: "won" })).history[13].value, 80);
   assert.equal((await one<{ n: number }>("SELECT COUNT(*) n FROM widget_counter_days WHERE user_id=?", O.id))!.n, 1);
   // Average over a property the editor cannot read: refused.
-  const [hidden] = widgets(E, [{ kind: "counter", config: { pageId: db, aggregate: "sum", fieldId: "secret" } }]);
+  const [hidden] = await widgets(E, [{ kind: "counter", config: { pageId: db, aggregate: "sum", fieldId: "secret" } }]);
   assert.equal(hidden.status, 400);
 });
 
@@ -500,11 +500,11 @@ test("recently opened pages (Android app shortcuts): newest first, only what the
   await visit(gone, 4);
   await visit(elsewhere, 5);
   await run("UPDATE pages SET deleted_at=? WHERE id=?", nowText(), gone);
-  const recent = one_(R, "pinned", { mode: "recent", max: 5 });
+  const recent = await one_(R, "pinned", { mode: "recent", max: 5 });
   assert.equal(recent.title, "Recently opened");
   assert.deepEqual(recent.items.map((i: { title: string }) => i.title), ["Second", "First"]);
   assert.equal(recent.items[0].url, `/#page=${second}`);
-  assert.deepEqual(one_(R, "pinned", { mode: "recent", max: 1 }).items.map((i: { id: string }) => i.id), [second]);
+  assert.deepEqual((await one_(R, "pinned", { mode: "recent", max: 1 })).items.map((i: { id: string }) => i.id), [second]);
 });
 
 test("journals behind a PIN show 'locked'; encrypted spaces only a status", async () => {
@@ -513,11 +513,11 @@ test("journals behind a PIN show 'locked'; encrypted spaces only a status", asyn
   const write = async (pageId: string, html: string) => await run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), pageId);
   await write(yesterday, "<p>Dear diary, yesterday</p>");
   const today = ((await command(owner.user, { action: "journal.roll", pageId: journal, date: TODAY })) as { dayId: string }).dayId;
-  const before = one_(O, "journal", { journalId: journal });
+  const before = await one_(O, "journal", { journalId: journal });
   assert.equal(before.journal.written, false);
   assert.equal(before.journal.streak, 1);
   await write(today, "<p>Dear diary, the secret of today</p>");
-  const open = one_(O, "journal", { journalId: journal });
+  const open = await one_(O, "journal", { journalId: journal });
   assert.equal(open.journal.written, true);
   assert.equal(open.journal.streak, 2);
   assert.deepEqual(open.journal.trackers.map((t: { id: string }) => t.id), ["mood"]);
@@ -525,12 +525,12 @@ test("journals behind a PIN show 'locked'; encrypted spaces only a status", asyn
 
   // Mood via a widget: the day's entry, like the journal bar.
   return act(O, { action: "journal.track", journalId: journal, today: TODAY, trackerId: "mood", value: 4 }).then(async () => {
-    assert.equal(one_(O, "journal", { journalId: journal }).journal.trackers[0].value, 4);
+    assert.equal((await one_(O, "journal", { journalId: journal })).journal.trackers[0].value, 4);
     await command(owner.user, { action: "favorite", pageId: today, value: true });
     await run("INSERT INTO notifications(id,user_id,body,page_id,kind) VALUES(?,?,?,?,'mention')", id(), O.id, "Ben hat dich in „Dear diary secret“ erwähnt", today);
     await command(owner.user, { action: "journal.lock", pageId: journal, pin: "482915" });
     await run("DELETE FROM journal_unlocks WHERE page_id=?", journal);
-    const locked = widgets(O, [
+    const locked = await widgets(O, [
       { kind: "journal", config: { journalId: journal } },
       { kind: "pinned", config: { mode: "page", pageId: journal } },
       { kind: "pinned", config: { mode: "favorites" } },
@@ -555,7 +555,7 @@ test("journals behind a PIN show 'locked'; encrypted spaces only a status", asyn
     const secretPage = await createPage(wid, encryptedSpace, owner.user.id, "Merger plans", "document");
     await run("UPDATE spaces SET encrypted=1,encrypt_titles=1 WHERE id=?", encryptedSpace);
     await run("INSERT INTO favorites(user_id,page_id) VALUES(?,?)", O.id, secretPage);
-    const result = widgets(O, [
+    const result = await widgets(O, [
       { kind: "pinned", config: { mode: "favorites" } },
       { kind: "pinned", config: { mode: "page", pageId: secretPage } },
     ]);
@@ -577,12 +577,12 @@ test("habits: today's record is created once and ticked off", async () => {
     { id: "read", name: "Read", type: "checkbox" },
   ]);
   assert.ok(((await W.widgetOptions(O, "journal")) as { habits: { id: string }[] }).habits.some((h) => h.id === habits));
-  const before = one_(O, "journal", { habitsId: habits }).habits;
+  const before = (await one_(O, "journal", { habitsId: habits })).habits;
   assert.equal(before.total, 2);
   assert.equal(before.done, 0);
   await act(O, { action: "habit.check", pageId: habits, fieldId: "sport", done: true, today: TODAY });
   await act(O, { action: "habit.check", pageId: habits, fieldId: "read", done: true, today: TODAY });
-  const after = one_(O, "journal", { habitsId: habits }).habits;
+  const after = (await one_(O, "journal", { habitsId: habits })).habits;
   assert.equal(after.done, 2);
   assert.equal((await one<{ n: number }>("SELECT COUNT(*) n FROM rows WHERE page_id=?", habits))!.n, 1);
   await assert.rejects(act(V, { action: "habit.check", pageId: habits, fieldId: "read", done: false, today: TODAY }), (e: { status: number }) => e.status === 403);
@@ -613,14 +613,14 @@ test("calendar and meeting now: events of the chosen views, the meeting note on 
   const options = (await W.widgetOptions(E, "calendar")) as { calendars: { pageId: string; viewId: string }[] };
   assert.ok(options.calendars.some((c) => c.pageId === cal && c.viewId === "cal"));
   const sources = [{ pageId: cal, viewId: "cal" }];
-  const titles = one_(E, "calendar", { sources, range: "3days", tasks: false }).items.map((i: { title: string }) => i.title);
+  const titles = (await one_(E, "calendar", { sources, range: "3days", tasks: false })).items.map((i: { title: string }) => i.title);
   assert.ok(["Standup", "Review", "Offsite"].every((t) => titles.includes(t)), titles.join());
   assert.ok(!titles.includes("Next month"));
-  assert.ok(one_(E, "calendar", { range: "week" }).items.some((i: { title: string }) => i.title === "Offsite"));
-  assert.deepEqual(one_(S, "calendar", { sources }).items, []);
+  assert.ok((await one_(E, "calendar", { range: "week" })).items.some((i: { title: string }) => i.title === "Offsite"));
+  assert.deepEqual((await one_(S, "calendar", { sources })).items, []);
 
   const worklog = ((await command(owner.user, { action: "page.create", workspaceId: wid, spaceId: sid, title: "Work log", kind: "journal" })) as { id: string }).id;
-  const meeting = one_(O, "meeting", { sources, journalId: worklog });
+  const meeting = await one_(O, "meeting", { sources, journalId: worklog });
   assert.equal(meeting.now.title, "Standup");
   assert.equal(meeting.next.title, "Review");
   assert.equal(meeting.now.note, null);
@@ -640,7 +640,7 @@ test("calendar and meeting now: events of the chosen views, the meeting note on 
   const notePage = (await one<{ title: string; parent_id: string }>("SELECT title,parent_id FROM pages WHERE id=?", note.noteId as string))!;
   assert.match(notePage.title, /^Standup/);
   assert.equal(notePage.parent_id, worklog);
-  assert.equal(one_(O, "meeting", { sources }).now.note.id, note.noteId);
+  assert.equal((await one_(O, "meeting", { sources })).now.note.id, note.noteId);
   const again = await act(O, { action: "meeting.note", pageId: cal, rowId: meeting.now.rowId, date: meeting.now.date, start: meeting.now.start, timed: true, journalId: worklog });
   assert.equal(again.existing, true);
   // A viewer cannot create one.
@@ -654,7 +654,7 @@ test("time this week, the timer and a focus session that records its time", asyn
   ]);
   const offer = await addRow(owner.user, work, { title: "Write offer" });
   await run(`INSERT INTO time_entries(id,page_id,row_id,field_id,user_id,start,"end") VALUES(?,?,?,?,?,?,?)`, id(), work, offer, "spent", O.id, NOW - 3_600_000, NOW);
-  const time = one_(O, "time");
+  const time = await one_(O, "time");
   const hours = Math.min(3_600_000, NOW - WEEK_START) / 3_600_000;
   assert.ok(Math.abs(time.week - hours) <= 0.01, String(time.week));
   assert.equal(time.days.length, 7);
@@ -662,9 +662,9 @@ test("time this week, the timer and a focus session that records its time", asyn
   assert.equal(time.recent[0].title, "Write offer");
 
   await act(O, { action: "timer.start", pageId: work, rowId: offer, fieldId: "spent" });
-  assert.equal(one_(O, "time").timer.title, "Write offer");
+  assert.equal((await one_(O, "time")).timer.title, "Write offer");
   await act(O, { action: "timer.stop" });
-  assert.equal(one_(O, "time").timer, null);
+  assert.equal((await one_(O, "time")).timer, null);
   await assert.rejects(act(V, { action: "timer.start", pageId: work, rowId: offer, fieldId: "spent" }), (e: { status: number }) => e.status === 403);
 
   const started = await act(O, { action: "focus.start", minutes: 25, breakMinutes: 5, pageId: work, rowId: offer, fieldId: "spent" });
@@ -674,11 +674,11 @@ test("time this week, the timer and a focus session that records its time", asyn
   assert.equal(focus.focusEndsAt - focus.startedAt, 25 * 60_000);
   assert.ok(await one(`SELECT 1 FROM time_entries WHERE user_id=? AND "end" IS NULL`, O.id));
   // After the focus time the timer stops at its end, not when asked.
-  const brk = one_(O, "focus", {}, focus.startedAt + 27 * 60_000);
+  const brk = await one_(O, "focus", {}, focus.startedAt + 27 * 60_000);
   assert.equal(brk.phase, "break");
   const entry = (await one<{ start: number; end: number }>(`SELECT start,"end" FROM time_entries WHERE user_id=? ORDER BY start DESC LIMIT 1`, O.id))!;
   assert.equal(entry.end, focus.focusEndsAt);
-  assert.equal(one_(O, "focus", {}, focus.startedAt + 31 * 60_000).phase, "idle");
+  assert.equal((await one_(O, "focus", {}, focus.startedAt + 31 * 60_000)).phase, "idle");
   // Stopping early stops the timer at once.
   await act(O, { action: "focus.start", minutes: 50, breakMinutes: 10, pageId: work, rowId: offer, fieldId: "spent" });
   const stopped = await act(O, { action: "focus.stop" });
@@ -698,14 +698,14 @@ test("mentions and assignments only, marked read from the widget", async () => {
   const mention = await note("mention", "Ben hat dich in „Plan“ erwähnt");
   await note("mention", "Ben hat dir eine Aufgabe in „Plan“ gegeben: Prepare slides");
   const comment = await note("comment", "Ben hat „Plan“ kommentiert");
-  const all_ = one_(E, "mentions");
+  const all_ = await one_(E, "mentions");
   assert.deepEqual(all_.items.map((i: { type: string }) => i.type), ["assignment", "mention"]);
   assert.deepEqual(all_.unread, { mentions: 1, assignments: 1 });
   assert.equal(all_.items[1].text, "Ben mentioned you in “Plan”");
-  assert.deepEqual(one_(E, "mentions", { show: "assignments" }).items.map((i: { type: string }) => i.type), ["assignment"]);
+  assert.deepEqual((await one_(E, "mentions", { show: "assignments" })).items.map((i: { type: string }) => i.type), ["assignment"]);
   await act(E, { action: "mention.read", notificationId: mention });
-  assert.deepEqual(one_(E, "mentions", { show: "mentions" }).items, []);
-  assert.equal(one_(E, "mentions", { show: "mentions", unreadOnly: false }).items[0].read, true);
+  assert.deepEqual((await one_(E, "mentions", { show: "mentions" })).items, []);
+  assert.equal((await one_(E, "mentions", { show: "mentions", unreadOnly: false })).items[0].read, true);
   await assert.rejects(act(E, { action: "mention.read", notificationId: comment }), (e: { status: number }) => e.status === 404);
   await assert.rejects(act(V, { action: "mention.read", notificationId: mention }), (e: { status: number }) => e.status === 404);
   assert.equal((await act(E, { action: "mention.readAll" })).changed, 1);
@@ -722,54 +722,54 @@ test("form responses: new ones since the last look, the latest few", async () =>
   await run("UPDATE rows SET created_at=? WHERE id=?", `${day(-3)} 09:00:00`, old);
   await addRow(owner.user, form, { title: "Fresh answer" });
   assert.ok((await W.formList(E)).some((f) => f.id === form));
-  const data = one_(E, "forms", { pageId: form });
+  const data = await one_(E, "forms", { pageId: form });
   assert.equal(data.total, 2);
   assert.equal(data.new, 1);
   assert.deepEqual(data.items.map((i: { title: string; new: boolean }) => [i.title, i.new]), [["Fresh answer", true], ["Old answer", false]]);
-  assert.equal(one_(E, "forms", { pageId: form, since: NOW - 10 * 86_400_000 }).new, 2);
-  assert.equal(widgets(S, [{ kind: "forms", config: { pageId: form } }])[0].status, 404);
+  assert.equal((await one_(E, "forms", { pageId: form, since: NOW - 10 * 86_400_000 })).new, 2);
+  assert.equal((await widgets(S, [{ kind: "forms", config: { pageId: form } }]))[0].status, 404);
 });
 
 test("long-running jobs: progress for the Live Activity, only the person's own", async () => {
   const seen = await trackJob(owner.user, "import", "notion-export.zip", async () => {
     await jobProgress(0.5);
-    const running = one_(O, "jobs");
+    const running = await one_(O, "jobs");
     assert.equal(running.running, 1);
     assert.equal(running.items[0].status, "running");
     assert.equal(running.items[0].progress, 50);
     assert.equal(running.items[0].label, "notion-export.zip");
     return running.items[0].id;
   });
-  const done = one_(O, "jobs").items.find((j: { id: string }) => j.id === seen);
+  const done = (await one_(O, "jobs")).items.find((j: { id: string }) => j.id === seen);
   assert.equal(done.status, "done");
   assert.equal(done.progress, 100);
   await assert.rejects(trackJob(owner.user, "export", "Markdown", () => Promise.reject(new Error("disk full"))), /disk full/);
-  assert.equal(one_(O, "jobs").items[0].status, "failed");
-  assert.deepEqual(one_(E, "jobs").items, []);
+  assert.equal((await one_(O, "jobs")).items[0].status, "failed");
+  assert.deepEqual((await one_(E, "jobs")).items, []);
   // Entries of an earlier server process count as interrupted.
   await run("UPDATE background_jobs SET status='running',boot='old',finished_at=NULL WHERE id=?", seen);
-  assert.equal(one_(O, "jobs").items.find((j: { id: string }) => j.id === seen).status, "interrupted");
+  assert.equal((await one_(O, "jobs")).items.find((j: { id: string }) => j.id === seen).status, "interrupted");
 });
 
 test("admin incident: administrators only, checked again on every request", async () => {
   const admin = await account("widget-admin", ["flowplan-admins"]);
   const { deviceToken } = await phone(admin);
   const device = async () => (await W.widgetUser(`Bearer ${deviceToken}`))!;
-  const incident = widgets(await device(), [{ kind: "incident" }])[0];
+  const incident = (await widgets(await device(), [{ kind: "incident" }]))[0];
   assert.equal(incident.ok, true);
   assert.ok(["ok", "warning", "critical"].includes(incident.data!.level));
   assert.ok(Array.isArray(incident.data!.issues));
   assert.equal((await device()).isAdmin, false, "the device identity itself never administers");
-  assert.equal(widgets(E, [{ kind: "incident" }])[0].status, 403);
+  assert.equal((await widgets(E, [{ kind: "incident" }]))[0].status, 403);
   assert.equal(((await W.widgetOptions(E, "incident")) as { available: boolean }).available, false);
   // A local account that lost its admin right.
   await run("INSERT INTO local_accounts(user_id,email,password_hash,is_admin,created_at) VALUES(?,?,?,?,?)", admin.user.id, "widget-admin@example.test", "x", 0, Date.now());
-  assert.equal(widgets(await device(), [{ kind: "incident" }])[0].status, 403);
+  assert.equal((await widgets(await device(), [{ kind: "incident" }]))[0].status, 403);
   await run("UPDATE local_accounts SET is_admin=1 WHERE user_id=?", admin.user.id);
-  assert.equal(widgets(await device(), [{ kind: "incident" }])[0].ok, true);
+  assert.equal((await widgets(await device(), [{ kind: "incident" }]))[0].ok, true);
   // Groups of the session change (SSO sign-in without the admin group).
   await run("UPDATE sessions SET groups_json='[]' WHERE token=?", admin.token);
-  assert.equal(widgets(await device(), [{ kind: "incident" }])[0].status, 403);
+  assert.equal((await widgets(await device(), [{ kind: "incident" }]))[0].status, 403);
 });
 
 test("answers stay small: at most 10 items and 2 KB per widget, 16 widgets per request", async () => {
@@ -778,19 +778,19 @@ test("answers stay small: at most 10 items and 2 KB per widget, 16 widgets per r
     { id: "notes", name: "Notes", type: "text" },
   ]);
   for (let i = 0; i < 30; i++) await addRow(owner.user, big, { title: `${i} ${"long title ".repeat(30)}`, notes: "n".repeat(500) });
-  const pinned = one_(O, "pinned", { mode: "page", pageId: big, properties: ["notes"], max: 10 });
+  const pinned = await one_(O, "pinned", { mode: "page", pageId: big, properties: ["notes"], max: 10 });
   assert.ok(pinned.items.length <= 10);
   assert.ok(bytes(pinned) <= W.MAX_WIDGET_BYTES, String(bytes(pinned)));
   assert.equal(pinned.total, 30);
-  assert.throws(() => W.widgetsData(O, { widgets: Array.from({ length: 17 }, () => ({ kind: "time" })) }));
-  const tooMany = W.widgetsData(O, { widgets: [{ kind: "tasks", config: { max: 50 } }] }).widgets[0];
+  await assert.rejects(async () => await W.widgetsData(O, { widgets: Array.from({ length: 17 }, () => ({ kind: "time" })) }));
+  const tooMany = (await W.widgetsData(O, { widgets: [{ kind: "tasks", config: { max: 50 } }] })).widgets[0];
   assert.equal(tooMany.ok, false);
   assert.equal((tooMany as { status: number }).status, 400);
   const capped = W.capped({ title: "x", items: Array.from({ length: 200 }, (_, i) => ({ title: `item ${i} ${"y".repeat(100)}` })) });
   assert.ok(bytes(capped) <= W.MAX_WIDGET_BYTES);
   assert.equal(capped.truncated, true);
   // Every kind answers within the limit for this busy account.
-  const all_ = widgets(O, W.widgetKinds.filter((k) => k !== "incident" && k !== "counter" && k !== "forms").map((kind) => ({ kind, config: {} })));
+  const all_ = await widgets(O, W.widgetKinds.filter((k) => k !== "incident" && k !== "counter" && k !== "forms").map((kind) => ({ kind, config: {} })));
   for (const w of all_) {
     assert.equal(w.ok, true, `${w.kind}: ${w.error}`);
     assert.ok(bytes(w.data) <= W.MAX_WIDGET_BYTES, `${w.kind}: ${bytes(w.data)}`);
@@ -799,11 +799,11 @@ test("answers stay small: at most 10 items and 2 KB per widget, 16 widgets per r
 });
 
 test("guests see only what is shared with them; rate limits per person", async () => {
-  assert.deepEqual(one_(G, "pinned").items, []);
+  assert.deepEqual((await one_(G, "pinned")).items, []);
   assert.deepEqual(((await W.widgetOptions(G, "pinned")) as { pages: unknown[] }).pages, []);
   await run("INSERT INTO grants(resource_id,user_id,group_id,role) VALUES(?,?,?,?)", plan, G.id, "", "viewer");
   await run("INSERT INTO favorites(user_id,page_id) VALUES(?,?)", G.id, plan);
-  assert.deepEqual(one_(G, "pinned").items.map((i: { id: string }) => i.id), [plan]);
+  assert.deepEqual((await one_(G, "pinned")).items.map((i: { id: string }) => i.id), [plan]);
   const shared = ((await W.widgetOptions(G, "pinned")) as { pages: { id: string }[] }).pages.map((p) => p.id);
   assert.ok(shared.includes(plan) && !shared.includes(tasksDb));
   // Only the shared page and what lies below it.
@@ -839,7 +839,7 @@ test("tasks in a sensible order: overdue, today, upcoming, undated – the same 
   await writeDocument(owner.user, wid, alpha, `<ul data-type="taskList">${open("A1")}${dated("Tomorrow", day(1))}${dated("Long overdue", day(-9))}${open("A2")}${dated("Overdue", day(-1))}</ul>`);
   const expected = ["Long overdue", "Overdue", "Today", "Tomorrow", "Upcoming", "A1", "A2", "Z1", "Z2"];
   const strip = (text: string) => text.replace(/^@widget-order /, "");
-  const suite = one_(device, "tasks", { source: "mine", filter: "open", max: 10 });
+  const suite = await one_(device, "tasks", { source: "mine", filter: "open", max: 10 });
   // As many as fit into the widget's 2 KB, in that order.
   assert.ok(suite.items.length >= 5);
   assert.deepEqual(suite.items.map((t: { text: string }) => strip(t.text)), expected.slice(0, suite.items.length));
@@ -850,7 +850,7 @@ test("tasks in a sensible order: overdue, today, upcoming, undated – the same 
   assert.equal(summary.tasks.due, 3);
   assert.equal(summary.tasks.overdue, 2);
   // One page: by date, then the position in the document.
-  const page = one_(device, "tasks", { source: "page", pageId: alpha, max: 10 });
+  const page = await one_(device, "tasks", { source: "page", pageId: alpha, max: 10 });
   assert.deepEqual(page.items.map((t: { text: string }) => strip(t.text)), ["Long overdue", "Overdue", "Tomorrow", "A1", "A2"]);
 
   // A database view: equal dates by priority (high first), then the view's order.
@@ -864,7 +864,7 @@ test("tasks in a sensible order: overdue, today, upcoming, undated – the same 
   await addRow(owner.user, db, { title: "Today none", due: TODAY });
   await addRow(owner.user, db, { title: "Today high", due: TODAY, prio: "High" });
   await addRow(owner.user, db, { title: "Late medium", due: day(-1), prio: "Medium" });
-  const view = one_(device, "tasks", { source: "view", pageId: db, max: 10 });
+  const view = await one_(device, "tasks", { source: "view", pageId: db, max: 10 });
   assert.deepEqual(
     view.items.map((t: { text: string }) => t.text),
     ["Late medium", "Today high", "Today low", "Today none", "Undated high"],

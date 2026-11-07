@@ -1,3 +1,4 @@
+import { replaceAsync } from "./each-async";
 import { inlineToHtml, isFormattedText } from "./inline-markdown";
 import { cleanHtml, escaped } from "./document-server";
 import { cellText, computedCells, queryRows } from "./database";
@@ -28,7 +29,7 @@ export function withPublicEmbeds(
   });
   if (!blocks.size) return published;
   const published_ = new Map(pages.map((p) => [p.id, p]));
-  return published.replace(BLOCK, async (match, blockId: string) => {
+  return replaceAsync(published, BLOCK, async (match, blockId: string) => {
     const attrs = blocks.get(blockId);
     if (!attrs) return match;
     try {

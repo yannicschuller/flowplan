@@ -66,8 +66,9 @@ const stored = async (host: string) =>
 async function block(
   source: string,
   blockId: string,
-  views = (await database(source)).views.slice(0, 1),
+  views?: unknown,
 ) {
+  views ??= (await database(source)).views.slice(0, 1);
   return `<div data-linked-database="${blockId}" data-linked-source="${source}" data-linked-version="1" data-linked-views="${escaped(JSON.stringify(views))}">Verknüpfte Datenbank · Zugriff im Arbeitsbereich erforderlich</div>`;
 }
 async function seed(host: string, html: string) {

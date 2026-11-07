@@ -22,8 +22,9 @@ const lower = (a: Role, b: Role) => (rank[a] < rank[b] ? a : b);
 export async function rowRoleResolver(
   user: Identity,
   page: Page,
-  role = (await pageRole(user, page)),
+  role?: Awaited<ReturnType<typeof pageRole>>,
 ) {
+  if (role === undefined) role = await pageRole(user, page);
   const restricted = new Map<string, RowGrant[]>();
   for (const g of await all<RowGrant & { row_id: string }>(
     `SELECT g.row_id,g.user_id,g.group_id,g.role FROM row_grants g JOIN rows r ON r.id=g.row_id

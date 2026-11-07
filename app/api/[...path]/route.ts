@@ -657,7 +657,7 @@ async function handleGET(
       await requireMember(user, wid, "owner");
       return NextResponse.json({
         // With who invited, when, the pages waiting for them and the link.
-        invites: (async () => {
+        invites: await (async () => {
           type Invite = { id: string; email: string; role: string; guest: number; created_at: number | null; token: string; inviter: string | null; pages: string | null };
           for (const open of await all<{ id: string }>("SELECT id FROM invites WHERE workspace_id=? AND token IS NULL", wid))
             await run("UPDATE invites SET token=? WHERE id=?", inviteToken(), open.id);
@@ -880,9 +880,9 @@ async function handleGET(
           const unwatch = watchDocument(documentKey(pageId, rowId, generation), clientId, send);
           // Every keepalive checks session and read access again: whoever
           // loses access stops receiving changes within 15 seconds.
-          const ping = setInterval(() => {
+          const ping = setInterval(async () => {
             try {
-              if (!allowed()) {
+              if (!(await allowed())) {
                 send(`data: ${JSON.stringify({ type: "revoked" })}\n\n`);
                 return stop();
               }
@@ -931,9 +931,9 @@ async function handleGET(
         start(controller) {
           const send = (chunk: string) => controller.enqueue(encoder.encode(chunk));
           const unwatch = watchBoard(page.id, user.id, send);
-          const ping = setInterval(() => {
+          const ping = setInterval(async () => {
             try {
-              if (!boardAllowed()) return stop();
+              if (!(await boardAllowed())) return stop();
               send(": ping\n\n");
             } catch {
               stop();

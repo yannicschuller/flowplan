@@ -1,7 +1,8 @@
+import { withLookups, type Awaitable } from "./resolve-ahead";
 import { parseDocument, DomUtils } from "htmlparser2";
 import type { ChildNode, Element } from "domhandler";
 import { cleanHtml } from "./document-server";
-import { markdownToRawHtml } from "./markdown-html";
+import { markdownToRawHtml, type MarkdownImportOptions } from "./markdown-html";
 
 export type { MarkdownImportOptions } from "./markdown-html";
 
@@ -10,6 +11,17 @@ export type { MarkdownImportOptions } from "./markdown-html";
 // inside an export) and may drop them by returning null.
 export function markdownToHtml(...args: Parameters<typeof markdownToRawHtml>) {
   return cleanHtml(blockMarkers(markdownToRawHtml(...args)));
+}
+// The same with a link resolver and whiteboard lookup that read the
+// database (#127): answered ahead (lib/resolve-ahead.ts), the conversion
+// itself is synchronous.
+export function markdownToHtmlAsync(
+  markdown: string,
+  resolve: (href: string, kind: "link" | "image") => string | null | Promise<string | null>,
+  options: Awaitable<MarkdownImportOptions> = {},
+) {
+  type Lookups = { resolve: (href: string, kind: "link" | "image") => string | null } & MarkdownImportOptions;
+  return withLookups<Lookups, string>({ ...options, resolve } as Awaitable<Lookups>, ({ resolve: sync, ...rest }) => markdownToHtml(markdown, sync, rest));
 }
 
 // Block ids from markers (#88), as Obsidian writes them and Flowplan's

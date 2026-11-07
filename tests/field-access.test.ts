@@ -32,8 +32,8 @@ async function person(name: string): Promise<Identity> {
   );
   return (await identityFromToken(token))!;
 }
-const fails = (fn: () => unknown, status: number, message?: RegExp) =>
-  assert.throws(fn, (e: { status?: number; message?: string }) => e.status === status && (!message || message.test(e.message || "")));
+const fails = async (fn: () => unknown, status: number, message?: RegExp) =>
+  assert.rejects(async () => fn(), (e: { status?: number; message?: string }) => e.status === status && (!message || message.test(e.message || "")));
 
 // Ana owns the workspace; Ben and Dora are editors, Cara reads. Dora is in
 // the HR group.
@@ -123,18 +123,18 @@ test("group rules: members of the group read and write", async () => {
   // Removed from the group, Dora loses both.
   await run("DELETE FROM group_members WHERE group_id=? AND user_id=?", hr, dora.id);
   assert.equal((await view(dora)).cells.salary, undefined);
-  fails(async () => await update(dora, { salary: 2000 }), 403, /Gehalt/);
+  await fails(async () => await update(dora, { salary: 2000 }), 403, /Gehalt/);
   await run("INSERT INTO group_members(group_id,user_id) VALUES(?,?)", hr, dora.id);
   await update(ana, { salary: 987654 });
 });
 
 test("write paths refuse properties the person may not change", async () => {
-  fails(async () => await update(ben, { salary: 1 }), 403);
-  fails(async () => await update(ben, { note: "neu" }), 403, /Interne Notiz/);
+  await fails(async () => await update(ben, { salary: 1 }), 403);
+  await fails(async () => await update(ben, { note: "neu" }), 403, /Interne Notiz/);
   await update(ben, { role: "Leitung" });
-  fails(async () => await command(ben, { action: "row.create", pageId: pid, cells: { title: "X", salary: 5 } }), 403);
+  await fails(async () => await command(ben, { action: "row.create", pageId: pid, cells: { title: "X", salary: 5 } }), 403);
   // Bulk changes and imports.
-  fails(
+  await fails(
     async () =>
       await command(ben, {
         action: "rows.bulk",
@@ -145,7 +145,7 @@ test("write paths refuse properties the person may not change", async () => {
       }),
     403,
   );
-  fails(async () => await command(ben, { action: "rows.import", pageId: pid, rows: [{ title: "Import", salary: 3 }] }), 403);
+  await fails(async () => await command(ben, { action: "rows.import", pageId: pid, rows: [{ title: "Import", salary: 3 }] }), 403);
   const before = Number((await one<{ n: number }>("SELECT count(*) n FROM rows WHERE page_id=?", pid))!.n);
   await command(ben, { action: "rows.import", pageId: pid, rows: [{ title: "Import", role: "Gast" }] });
   assert.equal(Number((await one<{ n: number }>("SELECT count(*) n FROM rows WHERE page_id=?", pid))!.n), before + 1);
@@ -164,10 +164,10 @@ test("schema changes keep hidden properties; only owners set rules", async () =>
   assert.equal(stored.find((f) => f.id === "role")!.name, "Funktion");
   assert.deepEqual(stored.find((f) => f.id === "salary")!.access, fields[1].access);
   // Rules are the owners' business, and so is deleting what Ben cannot write.
-  fails(async () => await schema(ben, seen.map((f) => (f.id === "role" ? { ...f, access: { read: "owners" } } : f))), 403);
-  fails(async () => await schema(ben, seen.filter((f) => f.id !== "note")), 403);
-  fails(async () => await schema(ana, [{ ...stored[0], access: { read: "owners" } }, ...stored.slice(1)]), 400);
-  fails(async () => await schema(ana, stored.map((f) => (f.id === "role" ? { ...f, access: { read: { groups: [id()] } } } : f))), 400);
+  await fails(async () => await schema(ben, seen.map((f) => (f.id === "role" ? { ...f, access: { read: "owners" } } : f))), 403);
+  await fails(async () => await schema(ben, seen.filter((f) => f.id !== "note")), 403);
+  await fails(async () => await schema(ana, [{ ...stored[0], access: { read: "owners" } }, ...stored.slice(1)]), 400);
+  await fails(async () => await schema(ana, stored.map((f) => (f.id === "role" ? { ...f, access: { read: { groups: [id()] } } } : f))), 400);
   await schema(ana, stored.map((f) => (f.id === "role" ? { ...f, name: "Rolle" } : f)));
 });
 
@@ -239,11 +239,11 @@ test("share links and publications never show restricted properties", async () =
   assert.ok(!shared.fields.some((f) => ["salary", "note", "double"].includes(f.id)));
   assert.equal(JSON.stringify(shared).includes("987654"), false);
   assert.ok((await publicRows(pid)).every((r) => r.cells.salary === undefined && r.cells.note === undefined));
-  fails(
+  await fails(
     async () => await mutateSharedContent(token, { action: "cells", pageId: pid, rowId, version: shared.version, cells: { salary: 1 } }),
     403,
   );
-  fails(async () => await mutateSharedContent(token, { action: "create", pageId: pid, cells: { title: "Gast", note: "x" } }), 403);
+  await fails(async () => await mutateSharedContent(token, { action: "create", pageId: pid, cells: { title: "Gast", note: "x" } }), 403);
 });
 
 test("forms never ask for restricted properties", async () => {
@@ -251,7 +251,7 @@ test("forms never ask for restricted properties", async () => {
   const form = await getForm((await formSettings(pid))!.token, null);
   assert.ok(form.fields.some((f) => f.id === "role"));
   assert.ok(!form.fields.some((f) => ["salary", "note"].includes(f.id)));
-  fails(async () => await saveFormSubmission(pid, null, { title: "Bewerbung", salary: 5 }), 403);
+  await fails(async () => await saveFormSubmission(pid, null, { title: "Bewerbung", salary: 5 }), 403);
   await saveFormSubmission(pid, null, { title: "Bewerbung", role: "Praktikum" });
 });
 

@@ -151,12 +151,12 @@ test("rules are versioned record edits and survive copies and archives", async (
   const version = async () =>
     (await one<{ version: number }>("SELECT version FROM rows WHERE id=?", row))!
       .version;
-  const set = async (recurrence: unknown, as = owner, v = (await version())) =>
+  const set = async (recurrence: unknown, as = owner, v?: number) =>
     await command(as, {
       action: "row.recurrence",
       pageId: page,
       rowId: row,
-      version: v,
+      version: v ?? (await version()),
       recurrence,
     });
   const rule = { freq: "weekly", interval: 1 };
@@ -318,12 +318,12 @@ test("a single occurrence can be detached into its own record", async () => {
     "<p>Agenda</p>",
     id(),
   );
-  const detach = async (date: string, as = owner, v = (await version())) =>
+  const detach = async (date: string, as = owner, v?: number) =>
     (await command(as, {
       action: "row.detachOccurrence",
       pageId: page,
       rowId: row,
-      version: v,
+      version: v ?? (await version()),
       date,
       startField: "start",
       endField: "end",

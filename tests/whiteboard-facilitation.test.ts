@@ -35,8 +35,8 @@ const mara = await user("Mara"),
 await run("INSERT INTO members VALUES(?,?,?)", wid, ben.id, "editor");
 await run("INSERT INTO members VALUES(?,?,?)", wid, vera.id, "viewer");
 const b64 = (u: Uint8Array) => Buffer.from(u).toString("base64");
-const fails = (fn: () => unknown, status: number) =>
-  assert.throws(fn, (e: { status?: number; name?: string }) => e.status === status || (status === 400 && e.name === "ZodError"));
+const fails = async (fn: () => unknown, status: number) =>
+  assert.rejects(async () => fn(), (e: { status?: number; name?: string }) => e.status === status || (status === 400 && e.name === "ZodError"));
 const create = async (title: string, kind = "whiteboard") =>
   ((await command(mara, { action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, title, kind })) as { id: string }).id;
 
@@ -97,10 +97,10 @@ test("private mode: others' private notes reach no other person by any path unti
   await b.sync();
 
   // Viewers cannot start it; editors can, once.
-  fails(async () => await facilitate(vera, board, { action: "private.start" }), 403);
-  fails(async () => await facilitate(ben, board, { action: "private.start", frame: "keiner" }), 400);
+  await fails(async () => await facilitate(vera, board, { action: "private.start" }), 403);
+  await fails(async () => await facilitate(ben, board, { action: "private.start", frame: "keiner" }), 400);
   const { id: session } = (await facilitate(mara, board, { action: "private.start", frame })) as { id: string };
-  fails(async () => await facilitate(ben, board, { action: "private.start" }), 409);
+  await fails(async () => await facilitate(ben, board, { action: "private.start" }), 409);
   assert.equal((await facilitationState(ben, board)).private?.frame, frame);
 
   // Ben brainstorms in the frame.
@@ -140,18 +140,18 @@ test("private mode: others' private notes reach no other person by any path unti
       for (const value of Object.values(row)) assert.doesNotMatch(Buffer.from(value instanceof Uint8Array ? value : String(value ?? "")).toString("latin1"), /Kündigung/, table);
 
   // Nobody else may write or read under Ben's private writer.
-  fails(async () => await facilitate(mara, board, { action: "private.sync", session, client: answer.clients[0] }), 409);
+  await fails(async () => await facilitate(mara, board, { action: "private.sync", session, client: answer.clients[0] }), 409);
   const foreign = new Y.Doc();
   foreign.clientID = answer.clients[0];
   foreign.getMap("items").set("x", new Y.Map());
   const maraClient = newClientId(a.doc);
-  fails(async () => await facilitate(mara, board, { action: "private.sync", session, client: maraClient, update: b64(Y.encodeStateAsUpdate(foreign)) }), 403);
+  await fails(async () => await facilitate(mara, board, { action: "private.sync", session, client: maraClient, update: b64(Y.encodeStateAsUpdate(foreign)) }), 403);
   // A shared change built on Ben's private note is refused, not stored.
   const piggy = new Y.Doc();
   Y.applyUpdate(piggy, Y.encodeStateAsUpdate(b.doc));
   const before = Y.encodeStateVector(piggy);
   piggy.getMap<Y.Map<unknown>>("items").get(idea)!.set("text", "Huckepack");
-  fails(
+  await fails(
     async () =>
       await command(ben, {
         action: "whiteboard.sync",
@@ -163,7 +163,7 @@ test("private mode: others' private notes reach no other person by any path unti
   );
 
   // Reveal: everybody gets it, the search too; a viewer cannot reveal.
-  fails(async () => await facilitate(vera, board, { action: "private.reveal", session }), 403);
+  await fails(async () => await facilitate(vera, board, { action: "private.reveal", session }), 403);
   assert.deepEqual(await facilitate(mara, board, { action: "private.reveal", session }), { count: 1 });
   await a.sync();
   assert.equal(a.items.get(idea)?.get("text"), `${SECRET}!`);
@@ -178,7 +178,7 @@ test("private mode: others' private notes reach no other person by any path unti
   await a.sync();
   assert.equal(a.items.get(idea)?.get("fill"), "#ffc9c9");
   // A new writer cannot join a finished session.
-  fails(async () => await facilitate(ben, board, { action: "private.sync", session, client: newClientId(b.doc) }), 409);
+  await fails(async () => await facilitate(ben, board, { action: "private.sync", session, client: newClientId(b.doc) }), 409);
 });
 
 test("private mode: reloads get their own notes back, the facilitator leaving changes nothing", async () => {
@@ -221,13 +221,13 @@ test("planning poker: cards stay hidden until the reveal, the result goes onto t
   const shape = a.add({ type: "shape", x: 400, y: 0, w: 100, h: 100, z: 3 });
   await a.sync();
 
-  fails(async () => await facilitate(mara, board, { action: "estimate.start", items: [shape], deck: { kind: "fibonacci", values: ["1", "2"] } }), 400);
-  fails(async () => await facilitate(mara, board, { action: "estimate.start", items: [sticky], deck: { kind: "custom", values: ["1"] } }), 400);
+  await fails(async () => await facilitate(mara, board, { action: "estimate.start", items: [shape], deck: { kind: "fibonacci", values: ["1", "2"] } }), 400);
+  await fails(async () => await facilitate(mara, board, { action: "estimate.start", items: [sticky], deck: { kind: "custom", values: ["1"] } }), 400);
   const started = (await facilitate(mara, board, { action: "estimate.start", items: [shape, sticky, card], deck: { kind: "fibonacci", values: ["1", "2", "3", "5", "8", "13", "21", "?", "☕"] } })) as { items: string[]; round: string };
   assert.deepEqual(started.items, [sticky, card]);
   const round = started.round;
-  fails(async () => await facilitate(vera, board, { action: "estimate.vote", round, value: "3" }), 403);
-  fails(async () => await facilitate(ben, board, { action: "estimate.vote", round, value: "4" }), 400);
+  await fails(async () => await facilitate(vera, board, { action: "estimate.vote", round, value: "3" }), 403);
+  await fails(async () => await facilitate(ben, board, { action: "estimate.vote", round, value: "4" }), 400);
   await facilitate(mara, board, { action: "estimate.vote", round, value: "5" });
   await facilitate(ben, board, { action: "estimate.vote", round, value: "8" });
   await facilitate(ben, board, { action: "estimate.vote", round, value: "13" });
@@ -240,13 +240,13 @@ test("planning poker: cards stay hidden until the reveal, the result goes onto t
   const forVera = (await facilitationState(vera, board)).estimation!;
   assert.equal(forVera.mine, null);
   assert.doesNotMatch(raw(forVera.votes), /value|"5"|"13"/);
-  fails(async () => await facilitate(ben, board, { action: "estimate.reveal", round: crypto.randomUUID() }), 409);
+  await fails(async () => await facilitate(ben, board, { action: "estimate.reveal", round: crypto.randomUUID() }), 409);
   await facilitate(ben, board, { action: "estimate.reveal", round });
   const open = (await facilitationState(vera, board)).estimation!;
   assert.deepEqual(open.votes.map((v) => v.value).sort(), ["13", "5"]);
   assert.equal(open.stats?.average, 9);
   assert.equal(open.stats?.consensus, false);
-  fails(async () => await facilitate(mara, board, { action: "estimate.vote", round, value: "3" }), 409);
+  await fails(async () => await facilitate(mara, board, { action: "estimate.vote", round, value: "3" }), 409);
   await facilitate(mara, board, { action: "estimate.result", item: sticky, value: "8" });
   // Next item: a new round without votes.
   await facilitate(mara, board, { action: "estimate.next", round });
@@ -257,10 +257,10 @@ test("planning poker: cards stay hidden until the reveal, the result goes onto t
   assert.equal((await one<{ n: number }>("SELECT COUNT(*) n FROM whiteboard_estimate_votes WHERE page_id=?", board))?.n, 0);
   // Into the record: a number property; a value missing from a select is refused; viewers cannot.
   const record = { pageId: db, rowId: row.id, fieldId: "pts" };
-  fails(async () => await facilitate(vera, board, { action: "estimate.result", item: card, value: "5", record }), 403);
-  fails(async () => await facilitate(mara, board, { action: "estimate.result", item: card, value: "5", record: { ...record, fieldId: "size" } }), 400);
-  fails(async () => await facilitate(mara, board, { action: "estimate.result", item: card, value: "?", record }), 400);
-  fails(async () => await facilitate(mara, board, { action: "estimate.result", item: card, value: "5", record: { ...record, rowId: crypto.randomUUID() } }), 400);
+  await fails(async () => await facilitate(vera, board, { action: "estimate.result", item: card, value: "5", record }), 403);
+  await fails(async () => await facilitate(mara, board, { action: "estimate.result", item: card, value: "5", record: { ...record, fieldId: "size" } }), 400);
+  await fails(async () => await facilitate(mara, board, { action: "estimate.result", item: card, value: "?", record }), 400);
+  await fails(async () => await facilitate(mara, board, { action: "estimate.result", item: card, value: "5", record: { ...record, rowId: crypto.randomUUID() } }), 400);
   await facilitate(mara, board, { action: "estimate.result", item: card, value: "5", record });
   assert.equal(JSON.parse((await one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", row.id))!.cells).pts, 5);
   // Again, then done.
@@ -275,9 +275,9 @@ test("Alle zu mir holen: everyone else gets one jump, late joiners see it a minu
   const got = new Map<string, string[]>();
   const listen = (who: Identity) => watchBoard(board, who.id, (event) => got.set(who.id, [...(got.get(who.id) || []), event]));
   const stops = [listen(mara), listen(ben)];
-  fails(async () => await facilitate(vera, board, { action: "gather", view: { x: 0, y: 0, w: 800, h: 600 } }), 403);
-  fails(async () => await facilitate(mara, board, { action: "gather", view: { x: 0, y: 0, w: 0, h: 600 } }), 400);
-  fails(async () => await facilitate(mara, board, { action: "gather", view: { x: Infinity, y: 0, w: 10, h: 10 } }), 400);
+  await fails(async () => await facilitate(vera, board, { action: "gather", view: { x: 0, y: 0, w: 800, h: 600 } }), 403);
+  await fails(async () => await facilitate(mara, board, { action: "gather", view: { x: 0, y: 0, w: 0, h: 600 } }), 400);
+  await fails(async () => await facilitate(mara, board, { action: "gather", view: { x: Infinity, y: 0, w: 10, h: 10 } }), 400);
   const gather = (await facilitate(mara, board, { action: "gather", view: { x: 100, y: 50, w: 1200, h: 800 } })) as { id: string; name: string };
   const events = (who: Identity) => (got.get(who.id) || []).map((e) => JSON.parse(e.replace(/^data: /, ""))).filter((e) => e.type === "gather");
   assert.deepEqual(events(ben).map((e) => [e.id, e.name, e.view.w]), [[gather.id, "Mara", 1200]]);

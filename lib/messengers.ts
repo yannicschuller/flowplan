@@ -616,7 +616,7 @@ async function handle(job: Job, bot: Bot | null, services: Record<MessengerServi
       { body: job.n_body, kind: job.n_kind, page_id: job.n_page_id, row_id: job.n_row_id, thread_id: job.n_thread_id, link: job.n_link },
       locale,
       // Behind a journal PIN not entered: only the hint, like encrypted pages.
-      { preview, encrypted: !!page && (await isEncryptedPage(page) || (await lockedNotification())({ page_id: job.n_page_id, kind: job.n_kind }, job.user_id)) },
+      { preview, encrypted: !!page && (await isEncryptedPage(page) || await (await lockedNotification())({ page_id: job.n_page_id, kind: job.n_kind }, job.user_id)) },
     );
   } else {
     const say = translate(locale);

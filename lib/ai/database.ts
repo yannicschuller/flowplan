@@ -155,10 +155,10 @@ export async function runAiCell(user: Identity, pageId: string, fieldId: string,
     const inputs = fillInputFieldIds(fields, field);
     const fillContext: PromptContext = { ...context, relationTitles: fillRelationTitlesFor(user, page) };
     system = SYSTEM(field, `Du füllst die Eigenschaft „${field.name}“ eines Eintrags der Datenbank „${page.title}“ passend zu seinen übrigen Angaben aus. Lässt sich nichts Passendes ableiten, ist "value" null.`);
-    content = `Eintrag:\n${recordContext(fields.filter((f) => inputs.has(f.id)), field, cells, row, fillContext)}\n\nGesucht: ${field.name}`;
+    content = `Eintrag:\n${await recordContext(fields.filter((f) => inputs.has(f.id)), field, cells, row, fillContext)}\n\nGesucht: ${field.name}`;
     hash = aiInputHash(field, content);
   } else {
-    const rendered = renderAiPrompt(field.ai!.prompt, fields, cells, row, context);
+    const rendered = await renderAiPrompt(field.ai!.prompt, fields, cells, row, context);
     hash = aiInputHash(field, rendered.input);
     if (mode === "auto" && (await one<{ input_hash: string }>("SELECT input_hash FROM ai_cell_meta WHERE row_id=? AND field_id=?", rowId, fieldId))?.input_hash === hash)
       return { status: "unchanged" };
@@ -309,7 +309,7 @@ export async function processAutoDirty(debounceMs = 8000, now = Date.now()) {
         );
         if (!row) continue;
         const cells = JSON.parse(row.cells) as Record<string, unknown>;
-        const rendered = renderAiPrompt(field.ai!.prompt, fields, cells, row, { ...context, content: contentOf(row.id) });
+        const rendered = await renderAiPrompt(field.ai!.prompt, fields, cells, row, { ...context, content: contentOf(row.id) });
         const hash = aiInputHash(field, rendered.input);
         const meta = await one<{ input_hash: string }>("SELECT input_hash FROM ai_cell_meta WHERE row_id=? AND field_id=?", row.id, field.id);
         if (meta?.input_hash === hash) continue;

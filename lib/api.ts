@@ -415,10 +415,10 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
       (m) => !(workspace as { guest?: number }).guest || m.id === user.id,
     ),
     // Behind a journal PIN not entered: only that the journal is locked.
-    notifications: (await all<Record<string, unknown> & { page_id: string | null; kind: string | null; body: string | null }>(
+    notifications: await mapAsync(await all<Record<string, unknown> & { page_id: string | null; kind: string | null; body: string | null }>(
       "SELECT * FROM notifications WHERE user_id=? ORDER BY created_at DESC LIMIT 100",
       user.id,
-    )).map((n) => (lockedInbox(n, user.id) ? { ...n, body: LOCKED_NOTICE } : n)),
+    ), async (n) => ((await lockedInbox(n, user.id)) ? { ...n, body: LOCKED_NOTICE } : n)),
     // Which AI features work here, with which provider, and which pages the
     // AI may not read (lib/ai). Never keys or addresses beyond the host.
     ai: await aiStatus(user, workspace.id, pages),
@@ -667,15 +667,15 @@ async function descendants(pid: string): Promise<string[]> {
   )).map((p) => p.id);
 }
 // Snapshot images whose file was removed meanwhile are dropped, not restored.
-function restorableImage(
+async function restorableImage(
   pageId: string,
   value: unknown,
-  validate: (pageId: string, value: string) => void,
+  validate: (pageId: string, value: string) => void | Promise<void>,
 ) {
   const parsed = pageIconSchema.safeParse(value);
   if (!parsed.success || !parsed.data) return "";
   try {
-    validate(pageId, parsed.data);
+    await validate(pageId, parsed.data);
     return parsed.data;
   } catch {
     return "";
@@ -986,8 +986,8 @@ async function runCommand(
             }
           }
         const rewriteHtml = (html: string) =>
-          cleanHtml(html, async (tagName, attribs) => {
-            const attrs = await remapLinkedAttributes(
+          cleanHtml(html, (tagName, attribs) => {
+            const attrs = remapLinkedAttributes(
               { ...attribs },
               mapped,
               rowIds,
@@ -1945,8 +1945,8 @@ async function runCommand(
               user.id,
               user.id,
               r.content || "",
-              restorableImage(p.id, r.icon, validateIcon),
-              restorableImage(p.id, r.cover, validateCover),
+              await restorableImage(p.id, r.icon, validateIcon),
+              await restorableImage(p.id, r.cover, validateCover),
               typeof r.recurrence === "string" ? r.recurrence : "",
               ["readonly", "private"].includes(r.access) ? r.access : "inherit",
               typeof r.repeat === "string" && parseRepeat(r.repeat) ? r.repeat : "",
@@ -3145,7 +3145,7 @@ async function runCommand(
         );
         const quota = await quotaCheckpoint(p.workspace_id);
         await captureTemplateFiles(user, templateId, storedPayload);
-        quota();
+        await quota();
         result = { id: templateId };
         break;
       }
@@ -3405,7 +3405,7 @@ async function runCommand(
   const checked = async () => {
     const check = await userStorageCheckpoint(user);
     const value = await execute();
-    check();
+    await check();
     return value;
   };
   // Commands that may end the Git export of a space: its working copy goes

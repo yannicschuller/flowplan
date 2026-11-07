@@ -12,7 +12,7 @@ import { ct } from "./content-locale";
 import { escaped } from "./document-server";
 import { publicFile } from "./publication";
 import type { Page } from "./types";
-import { mapAsync } from "./each-async";
+import { mapAsync, replaceAsync } from "./each-async";
 
 export type InkPicture = { svg: string | null; text: string; width: number; height: number };
 
@@ -54,7 +54,7 @@ export async function notebookExportHtml(page: Pick<Page, "id">) {
 // (generated here from parsed ink: numbers, checked colours, escaped text).
 export function withInkPictures(html: string, page: Pick<Page, "id" | "kind" | "title">) {
   if (!html.includes("data-ink-block")) return html;
-  return html.replace(/<div([^>]*\bdata-ink-block="([\w-]{1,40})"[^>]*)>([\s\S]*?)<\/div>/g, async (match, attrs: string, blockId: string) => {
+  return replaceAsync(html, /<div([^>]*\bdata-ink-block="([\w-]{1,40})"[^>]*)>([\s\S]*?)<\/div>/g, async (match, attrs: string, blockId: string) => {
     const attr = (name: string) => new RegExp(`\\b${name}="([^"]*)"`).exec(attrs)?.[1];
     const picture = await inkPicture(page, { id: blockId, height: attr("data-ink-height"), paper: attr("data-ink-paper") });
     if (!picture) return match;

@@ -72,7 +72,7 @@ const page = await createPage(workspace, space, uid, "Unterlagen");
 const uploads = join(dir, "uploads");
 mkdirSync(uploads, { recursive: true });
 const object = (key: string) => `/bucket/flowplan/uploads/${key}`;
-const until = async (check: () => boolean, label: string) => {
+const until = async (check: () => boolean | Promise<boolean>, label: string) => {
   for (let i = 0; i < 250; i++) {
     if (await check()) return;
     await new Promise((r) => setTimeout(r, 20));

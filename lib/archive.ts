@@ -534,7 +534,7 @@ async function snapshotFor(user: Identity, wid: string) {
         full_width: p.full_width,
         ...(p.caption_numbers ? { caption_numbers: 1 } : {}),
         font: p.font,
-        form: (async () => {
+        form: await (async () => {
           const form = await one<{
             internal: number;
             anonymous: number;
@@ -1183,8 +1183,8 @@ async function importEntries(
             rowMap.has(rid) ? prefix + rowMap.get(rid) : match,
           );
       const rewriteHtml = (value: string) =>
-        cleanHtml(value, async (tagName, attribs) => {
-          const attrs = await remapLinkedAttributes(
+        cleanHtml(value, (tagName, attribs) => {
+          const attrs = remapLinkedAttributes(
             { ...attribs },
             pageMap,
             rowMap,
@@ -1677,7 +1677,7 @@ async function importEntries(
         wid,
         `${data.pages.length} Seiten, ${data.files.length} Dateien`,
       );
-      quota();
+      await quota();
       return {
         pages: data.pages.length,
         files: data.files.length,

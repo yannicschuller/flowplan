@@ -8,7 +8,7 @@ import { HttpError } from "./auth";
 import { requireMember, spaceRole } from "./permissions";
 import { publicFile, publicTree } from "./publication";
 import { publicField } from "./shared-content";
-import { cleanHtml, htmlState } from "./document-server";
+import { cleanHtml, cleanHtmlAsync, htmlState } from "./document-server";
 import { ensureRowDocument } from "./row-documents";
 import { createPage } from "./seed";
 import { imageFileId } from "./page-appearance";
@@ -84,7 +84,7 @@ export async function copyPublication(user: Identity, input: unknown) {
     return `/api/files/${nid}`;
   };
   const rewriteHtml = (html: string) =>
-    cleanHtml(html, async (tagName, attribs) => {
+    cleanHtmlAsync(html, async (tagName, attribs) => {
       const attrs = { ...attribs };
       // Linked database blocks point at sources the visitor cannot read.
       if (attrs["data-linked-database"]) {
@@ -147,7 +147,7 @@ export async function copyPublication(user: Identity, input: unknown) {
       copy,
     );
     if (p.kind === "document") {
-      const html = rewriteHtml(
+      const html = await rewriteHtml(
         (await one<{ html: string }>(
           "SELECT html FROM documents WHERE page_id=?",
           p.id,
@@ -193,7 +193,7 @@ export async function copyPublication(user: Identity, input: unknown) {
           ([key]) => kept.has(key),
         ),
       );
-      const content = rewriteHtml(
+      const content = await rewriteHtml(
         (await ensureRowDocument({ ...row, cells: JSON.parse(row.cells) })).html,
       );
       const rid = id();
@@ -218,6 +218,6 @@ export async function copyPublication(user: Identity, input: unknown) {
       );
     }
   }
-  quota();
+  await quota();
   return { id: pageIds.get(root.id)!, pages: ordered.length };
 }

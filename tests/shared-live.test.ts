@@ -38,8 +38,8 @@ const owner = await user("owner"),
   wid = await createWorkspace(owner.id, "Live"),
   boot = await bootstrap(owner, wid);
 const b64 = (u: Uint8Array) => Buffer.from(u).toString("base64");
-const fails = (fn: () => unknown, status: number) =>
-  assert.throws(fn, (e: any) => e.status === status);
+const fails = async (fn: () => unknown, status: number) =>
+  assert.rejects(async () => fn(), (e: any) => e.status === status);
 
 async function setup(html: string) {
   const pid = (
@@ -168,7 +168,7 @@ test("live guest edits keep hidden links and mentions and refuse unshared refere
     g.doc,
     g.html() + `<p><a href="/share/${token}/${secret}">x</a></p>`,
   );
-  fails(async () => await g.sync(), 403);
+  await fails(async () => await g.sync(), 403);
   assert.equal(await memberHtml(pid), html);
 });
 
@@ -185,7 +185,7 @@ test("a link may not grow a document without bound: size cap, daily byte budget,
   };
   // A paste that would push the canonical HTML past the cap is refused …
   type("x".repeat(MAX_GUEST_DOCUMENT + 10));
-  fails(async () => await g.sync(), 413);
+  await fails(async () => await g.sync(), 413);
   // … while members' larger documents stay editable (the check is on growth).
   const reset = guest(token, pid);
   await reset.sync();
@@ -205,7 +205,7 @@ test("a link may not grow a document without bound: size cap, daily byte budget,
   const p2 = new Y.XmlElement("paragraph");
   p2.insert(0, [new Y.XmlText("Noch mehr")]);
   frag.insert(frag.length, [p2]);
-  fails(async () => await g2.sync(), 413);
+  await fails(async () => await g2.sync(), 413);
   await run("DELETE FROM anonymous_uploads WHERE scope=?", `live:${token}`);
   // A stored projection past 8 MB is rebuilt: guests get a reset.
   const key = (await import("../lib/shared-live")).liveKey(token, pid);
@@ -226,7 +226,7 @@ test("readers cannot edit live and a restored version resets guest projections",
       name: "Lesen",
     })) as { token: string }
   ).token;
-  fails(
+  await fails(
     async () => await mutateSharedContent(reader, { action: "live", pageId: pid }),
     403,
   );

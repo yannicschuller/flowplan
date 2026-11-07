@@ -21,6 +21,7 @@ import { hiddenFieldsFor, readOnlyFieldIds } from "./field-access";
 import { cellText, CSV_FORMULA } from "./cell-text";
 import { hours } from "./durations";
 import type { Field, Identity, Page, Role } from "./types";
+import { mapAsync } from "./each-async";
 
 export const billingStates = ["open", "billed", "unbillable"] as const;
 export type BillingState = (typeof billingStates)[number];
@@ -173,7 +174,7 @@ function projectTitles(user: Identity) {
   return async (rowId: string) => {
     if (cache.has(rowId)) return cache.get(rowId)!;
     const row = await one<{ id: string; page_id: string; cells: string }>("SELECT id,page_id,cells FROM rows WHERE id=?", rowId);
-    const context = row ? pages(row.page_id) : null;
+    const context = row ? (await pages(row.page_id)) : null;
     const result =
       row && context?.role && !context.hiddenRows.has(row.id)
         ? { id: row.id, title: cellText(JSON.parse(row.cells)[context.fields[0]?.id || "title"]) || ct("Ohne Titel", "Untitled") }
@@ -251,7 +252,7 @@ async function evaluate(user: Identity, workspaceId: string, raw: RawEntry[], no
   const amounts = await seeAmounts(user, workspaceId);
   const result: ReportEntry[] = [];
   for (const e of raw) {
-    const context = pages(e.page_id);
+    const context = await pages(e.page_id);
     if (!context) continue;
     const mine = e.user_id === user.id;
     const readable = !!context.role && !context.hiddenRows.has(e.row_id) && !!e.cells;
@@ -260,7 +261,7 @@ async function evaluate(user: Identity, workspaceId: string, raw: RawEntry[], no
     const cells = readable ? (JSON.parse(e.cells!) as Record<string, unknown>) : {};
     const projectField = context.project && !context.hiddenFields.has(context.project.id) ? context.project : undefined;
     const ids = projectField && Array.isArray(cells[projectField.id]) ? (cells[projectField.id] as unknown[]).filter((v): v is string => typeof v === "string") : [];
-    const projects = ids.map(titles).filter((p): p is { id: string; title: string } => !!p);
+    const projects = (await mapAsync(ids, titles)).filter((p): p is { id: string; title: string } => !!p);
     if (project && (project === "none" ? projects.length : !projects.some((p) => p.id === project))) continue;
     const seconds = Math.max(0, Math.round(((e.end ?? now) - e.start) / 1000));
     const hourly = (projects.length ? rate.project.get(projects[0].id) : undefined) ?? rate.person.get(e.user_id) ?? null;

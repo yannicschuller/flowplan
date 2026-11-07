@@ -95,7 +95,7 @@ function catalogPrompt(list: Candidate[], text: string, today: string) {
 
 // The model's answer as checked chips: a known database, a title, and only
 // values that fit the property (an option it has, a real day, a member).
-export function checkSuggestion(list: Candidate[], members: (workspaceId: string) => CaptureMember[], raw: unknown) {
+export async function checkSuggestion(list: Candidate[], members: (workspaceId: string) => (CaptureMember[]) | Promise<CaptureMember[]>, raw: unknown) {
   const answer = answerSchema.parse(raw);
   const target = list.find((c) => c.id === answer.targetId) || null;
   const title = answer.title.replace(/\s+/g, " ").trim().slice(0, 120);
@@ -113,7 +113,7 @@ export function checkSuggestion(list: Candidate[], members: (workspaceId: string
         const values = (Array.isArray(value) ? value : String(value).split(",")).map(option).filter((v): v is string => !!v);
         if (values.length) fields.push({ id: p.id, name: p.name, value: [...new Set(values)], label: [...new Set(values)].join(", ") });
       } else if (p.type === "person") {
-        const member = findMember(members(target.workspaceId), String(value));
+        const member = findMember(await members(target.workspaceId), String(value));
         if (member) fields.push({ id: p.id, name: p.name, value: member.id, label: member.name || member.email });
       } else if (p.type === "url" && typeof value === "string" && /^https?:\/\/\S+$/i.test(value.trim())) fields.push({ id: p.id, name: p.name, value: value.trim(), label: value.trim() });
     }
@@ -157,7 +157,7 @@ export async function suggestCapture(user: Identity, raw: unknown, signal?: Abor
     workspaceId: list[0].workspaceId,
     signal,
   });
-  return checkSuggestion(list, membersOf, answer);
+  return await checkSuggestion(list, membersOf, answer);
 }
 
 // The Mac's answer to the device prompt, checked like the server's.
@@ -166,5 +166,5 @@ export async function checkDeviceSuggestion(user: Identity, raw: unknown) {
   const mode = await captureSuggestMode(user);
   if (!mode?.device) throw new HttpError(403, ct("KI auf dem Gerät ist ausgeschaltet.", "On-device AI is switched off."));
   const list = await candidates(user, SUGGEST_LIMITS.deviceDatabases, "device", input.targets);
-  return checkSuggestion(list, membersOf, input.answer);
+  return await checkSuggestion(list, membersOf, input.answer);
 }

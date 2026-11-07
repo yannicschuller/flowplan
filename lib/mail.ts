@@ -13,6 +13,7 @@ import { userLocale } from "./user-locale";
 import { notificationOn } from "./notification-kinds";
 import { notificationUrl } from "./page-location";
 import { LOCKED_NOTICE, lockedNotification } from "./journal-extras";
+import { mapAsync } from "./each-async";
 
 export type MailConfig = {
   host: string;
@@ -302,7 +303,7 @@ export async function queueNotificationDigests(now = Date.now()) {
       const first = items[0];
       const locale = await userLocale(first.user_id);
       const t = translate(locale);
-      const body = (n: (typeof items)[number]) => localizedMessage(locked(n) ? LOCKED_NOTICE : n.body, locale);
+      const body = async (n: (typeof items)[number]) => localizedMessage((await locked(n)) ? LOCKED_NOTICE : n.body, locale);
       const link = (n: (typeof items)[number]) =>
         n.page_id
           ? `${url}/#page=${n.page_id}${n.row_id ? `&row=${n.row_id}` : ""}${n.thread_id ? `&thread=${n.thread_id}` : ""}`
@@ -312,17 +313,16 @@ export async function queueNotificationDigests(now = Date.now()) {
       const andMore = t(`… und ${more} weitere`, `… and ${more} more`);
       const subject =
         items.length === 1
-          ? body(first)
+          ? (await body(first))
           : t(`${items.length} neue Benachrichtigungen in ${await instanceName()}`, `${items.length} new notifications in ${await instanceName()}`);
-      const text = `${t("Hallo", "Hello")} ${first.name},\n\n${shown.map((n) => `• ${body(n)}\n  ${link(n)}`).join("\n")}${more > 0 ? `\n${andMore}` : ""}\n\n${t("Posteingang", "Inbox")}: ${url}/#inbox\n`;
+      const text = `${t("Hallo", "Hello")} ${first.name},\n\n${(await mapAsync(shown, async (n) => `• ${await body(n)}\n  ${link(n)}`)).join("\n")}${more > 0 ? `\n${andMore}` : ""}\n\n${t("Posteingang", "Inbox")}: ${url}/#inbox\n`;
       const html = await layout(
         items.length === 1
           ? t("Neue Benachrichtigung", "New notification")
           : t(`${items.length} neue Benachrichtigungen`, `${items.length} new notifications`),
         [
           t(`Hallo ${escape(first.name)}, das ist in Flowplan passiert:`, `Hello ${escape(first.name)}, this happened in Flowplan:`),
-          `<ul style="padding-left:18px;margin:0">${shown
-            .map((n) => `<li style="margin:0 0 8px"><a href="${escape(link(n))}" style="color:#3b3fd8">${escape(body(n))}</a></li>`)
+          `<ul style="padding-left:18px;margin:0">${(await mapAsync(shown, async (n) => `<li style="margin:0 0 8px"><a href="${escape(link(n))}" style="color:#3b3fd8">${escape(await body(n))}</a></li>`))
             .join("")}${more > 0 ? `<li>${andMore}</li>` : ""}</ul>`,
         ],
         { label: t("Posteingang öffnen", "Open inbox"), url: `${url}/#inbox` },

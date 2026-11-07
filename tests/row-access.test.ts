@@ -40,8 +40,8 @@ const owner = await user("owner"),
   boot = await bootstrap(owner, wid);
 await run("INSERT INTO members VALUES(?,?,?)", wid, alice.id, "editor");
 await run("INSERT INTO members VALUES(?,?,?)", wid, bob.id, "editor");
-const fails = (fn: () => unknown, status: number) =>
-  assert.throws(fn, (e: any) => e.status === status);
+const fails = async (fn: () => unknown, status: number) =>
+  assert.rejects(async () => fn(), (e: any) => e.status === status);
 const pid = (
   (await command(owner, {
     action: "page.create",
@@ -77,7 +77,7 @@ test("records can be read-only or private with grants for people and groups", as
     fixed = await row(owner, "Richtlinie"),
     open = await row(owner, "Offen");
   // Only managers (database owners and the creator) change permissions.
-  fails(
+  await fails(
     async () =>
       await command(bob, {
         action: "row.access",
@@ -113,17 +113,17 @@ test("records can be read-only or private with grants for people and groups", as
   );
   assert.equal(roles[fixed], "viewer");
   assert.equal(roles[open], "editor");
-  fails(async () => await rowDocumentData(bob, pid, secret), 404);
-  fails(async () => await update(bob, secret, "x"), 404);
-  fails(async () => await update(bob, fixed, "x"), 403);
-  fails(
+  await fails(async () => await rowDocumentData(bob, pid, secret), 404);
+  await fails(async () => await update(bob, secret, "x"), 404);
+  await fails(async () => await update(bob, fixed, "x"), 403);
+  await fails(
     async () => await command(bob, { action: "row.delete", pageId: pid, rowId: fixed }),
     403,
   );
   await update(bob, open, "Offen 2");
   await update(owner, fixed, "Richtlinie 2");
   // Bulk changes stop at read-only records.
-  fails(
+  await fails(
     async () =>
       await command(bob, {
         action: "rows.bulk",
@@ -160,7 +160,7 @@ test("records can be read-only or private with grants for people and groups", as
     grants: [{ groupId: gid, role: "viewer" }],
   });
   assert.ok((await titles(bob)).includes("Gehalt Alice"));
-  fails(async () => await update(bob, secret, "x"), 403);
+  await fails(async () => await update(bob, secret, "x"), 403);
   await command(alice, {
     action: "row.access",
     pageId: pid,
@@ -211,7 +211,7 @@ test("private records stay hidden in copies, trash, versions and public pages", 
   const token = String(
     (await one("SELECT public_token FROM pages WHERE id=?", pid))?.public_token,
   );
-  fails(async () => await sharedContent(token, pid, hidden), 404);
+  await fails(async () => await sharedContent(token, pid, hidden), 404);
   // Trash keeps the permissions.
   await command(alice, { action: "row.delete", pageId: pid, rowId: hidden });
   assert.ok(!(await listRowTrash(bob, wid)).some((t) => t.id === hidden));
@@ -233,7 +233,7 @@ test("private records stay hidden in copies, trash, versions and public pages", 
   const { databaseSnapshot } = await import("../lib/database-operations");
   const page = await one<any>("SELECT * FROM pages WHERE id=?", pid);
   const snapshot = await databaseSnapshot(owner, page);
-  fails(
+  await fails(
     async () =>
       await command(bob, {
         action: "snapshot.restore",

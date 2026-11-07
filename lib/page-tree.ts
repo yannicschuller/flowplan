@@ -59,6 +59,7 @@ export async function duplicatePages(
     string,
     (Omit<Row, "cells"> & { cells: string })[]
   >();
+  const sourceFields = new Map<string, Field[]>();
   for (const p of tree) {
     pageIds.set(
       p.id,
@@ -90,6 +91,10 @@ export async function duplicatePages(
       );
       sourceRows.set(p.id, rs);
       for (const r of rs) rowIds.set(r.id, id());
+      // For linked views of it in the copied documents (read ahead: the
+      // HTML is rewritten synchronously below).
+      const d = await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", p.id);
+      if (d) sourceFields.set(p.id, JSON.parse(d.fields));
     }
     for (const f of await all<{ id: string }>(
       "SELECT id FROM files WHERE page_id=?",
@@ -118,22 +123,14 @@ export async function duplicatePages(
       ),
     );
   const rewriteHtml = (value: string) =>
-    cleanHtml(value, async (tagName, attributes) => {
-      const attribs = await remapLinkedAttributes(
+    cleanHtml(value, (tagName, attributes) => {
+      const attribs = remapLinkedAttributes(
         { ...attributes },
         pageIds,
         rowIds,
-        async (source) => {
-          const d = await one<{ fields: string }>(
-            "SELECT fields FROM databases WHERE page_id=?",
-            source,
-          );
-          return d
-            ? {
-                fields: JSON.parse(d.fields),
-                rows: sourceRows.get(source) || [],
-              }
-            : undefined;
+        (source) => {
+          const fields = sourceFields.get(source);
+          return fields ? { fields, rows: sourceRows.get(source) || [] } : undefined;
         },
       );
       for (const key of ["href", "src"])
@@ -314,7 +311,7 @@ export async function duplicatePages(
         };
         await insertRelationPair(copied);
       }
-    quota();
+    await quota();
     return { pageIds, pages: tree.length };
   } catch (error) {
     for (const path of createdFiles) {

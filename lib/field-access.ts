@@ -47,8 +47,9 @@ export const publicViewer: FieldViewer = {
 export async function fieldViewer(
   user: Identity,
   page: Page,
-  role: Role | null = (await pageRole(user, page)),
+  role?: Role | null,
 ): Promise<FieldViewer> {
+  if (role === undefined) role = await pageRole(user, page);
   return {
     role,
     groups: new Set([
@@ -149,25 +150,34 @@ const storedFields = async (pageId: string): Promise<Field[]> =>
   );
 // Rollups read a property of another database: visible when the person may
 // read that page and that property there (nested rollups a few levels deep).
-function remoteResolver(user: Identity, fields: Field[], depth = 0) {
+// Resolved ahead for every rollup of `fields` (readableFieldIds is
+// synchronous): the answer per field.
+async function remoteResolver(user: Identity, fields: Field[], depth = 0): Promise<(field: Field) => boolean> {
   const cache = new Map<string, Set<string> | null>();
-  return async (field: Field) => {
+  const answers = new Map<string, boolean>();
+  for (const field of fields) {
+    if (field.type !== "rollup" || !field.rollupField) continue;
     const pageId = fields.find((r) => r.id === field.relationField)?.relationPage;
-    if (!pageId || !field.rollupField) return true;
-    if (depth > 3) return false;
+    if (!pageId) {
+      answers.set(field.id, true);
+      continue;
+    }
+    if (depth > 3) {
+      answers.set(field.id, false);
+      continue;
+    }
     if (!cache.has(pageId)) {
       const page = await one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", pageId);
-      const role = page ? (await pageRole(user, page)) : null;
-      const target = page ? (await storedFields(pageId)) : [];
+      const role = page ? await pageRole(user, page) : null;
+      const target = page ? await storedFields(pageId) : [];
       cache.set(
         pageId,
-        page && role
-          ? readableFieldIds(await fieldViewer(user, page, role), target, remoteResolver(user, target, depth + 1))
-          : null,
+        page && role ? readableFieldIds(await fieldViewer(user, page, role), target, await remoteResolver(user, target, depth + 1)) : null,
       );
     }
-    return !!cache.get(pageId)?.has(field.rollupField);
-  };
+    answers.set(field.id, !!cache.get(pageId)?.has(field.rollupField));
+  }
+  return (field: Field) => answers.get(field.id) ?? true;
 }
 const needsCheck = (fields: Field[]) =>
   fields.some((f) => readRestricted(f) || (f.type === "rollup" && !!f.rollupField));
@@ -176,14 +186,15 @@ const needsCheck = (fields: Field[]) =>
 export async function hiddenFieldsFor(
   user: Identity,
   page: Page,
-  fields: Field[] = (await storedFields(page.id)),
+  fields?: Field[],
   role?: Role | null,
 ): Promise<Set<string>> {
+  if (fields === undefined) fields = await storedFields(page.id);
   if (!needsCheck(fields)) return new Set();
   return hiddenFieldIds(
     await fieldViewer(user, page, role === undefined ? (await pageRole(user, page)) : role),
     fields,
-    remoteResolver(user, fields),
+    await remoteResolver(user, fields),
   );
 }
 // The properties a person sees, in order.
@@ -226,7 +237,7 @@ export function publicHiddenFieldIds(fields: Field[]) {
 export async function readOnlyFieldIds(user: Identity, page: Page, fields: Field[]) {
   if (!fields.some((f) => writeRestricted(f) || readRestricted(f))) return [];
   const viewer = await fieldViewer(user, page);
-  const readable = readableFieldIds(viewer, fields, remoteResolver(user, fields));
+  const readable = readableFieldIds(viewer, fields, await remoteResolver(user, fields));
   return fields.filter((f) => readable.has(f.id) && !canWriteField(viewer, f, readable)).map((f) => f.id);
 }
 // Properties a person may not change: hidden or read-only for them (record
@@ -234,7 +245,7 @@ export async function readOnlyFieldIds(user: Identity, page: Page, fields: Field
 export async function unwritableFieldIds(user: Identity, page: Page, fields: Field[]) {
   if (!fields.some((f) => writeRestricted(f) || readRestricted(f)) && !needsCheck(fields)) return new Set<string>();
   const viewer = await fieldViewer(user, page);
-  const readable = readableFieldIds(viewer, fields, remoteResolver(user, fields));
+  const readable = readableFieldIds(viewer, fields, await remoteResolver(user, fields));
   return new Set(fields.filter((f) => !canWriteField(viewer, f, readable)).map((f) => f.id));
 }
 export function fieldWriteMessage(field: Pick<Field, "name">) {
@@ -246,13 +257,14 @@ export async function assertFieldsWritable(
   page: Page,
   fields: Field[],
   keys: Iterable<string>,
-  viewer: FieldViewer = (await fieldViewer(user, page)),
+  viewer?: FieldViewer,
 ) {
+  if (viewer === undefined) viewer = await fieldViewer(user, page);
   const list = [...keys];
   if (!list.length) return;
   const touched = fields.filter((f) => list.includes(f.id));
   if (!touched.some((f) => readRestricted(f) || writeRestricted(f)) && !needsCheck(fields)) return;
-  const readable = readableFieldIds(viewer, fields, remoteResolver(user, fields));
+  const readable = readableFieldIds(viewer, fields, await remoteResolver(user, fields));
   for (const f of touched)
     if (!canWriteField(viewer, f, readable)) throw new HttpError(403, fieldWriteMessage(f));
 }
@@ -274,7 +286,7 @@ export async function validateFieldAccess(
   const owner = (await pageRole(user, page)) === "owner";
   if (!owner) {
     const viewer = await fieldViewer(user, page);
-    const readable = readableFieldIds(viewer, previous, remoteResolver(user, previous));
+    const readable = readableFieldIds(viewer, previous, await remoteResolver(user, previous));
     for (const old of previous)
       if (!next.some((f) => f.id === old.id) && readable.has(old.id) && !canWriteField(viewer, old, readable))
         throw new HttpError(403, fieldWriteMessage(old));

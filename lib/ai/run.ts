@@ -60,7 +60,7 @@ export async function requireAi(user: Identity, feature: AiFeature, options: AiR
 
 // The answer as it arrives. Every check happens before the first request.
 export async function* aiStream(user: Identity, feature: AiFeature, raw: AiRunInput, options: AiRunOptions = {}): AsyncGenerator<string> {
-  const resolved = requireAi(user, feature, options);
+  const resolved = await requireAi(user, feature, options);
   const input = inputSchema.parse(raw);
   const size = (input.system?.length || 0) + input.messages.reduce((sum, m) => sum + m.content.length, 0);
   if (size > AI_LIMITS.maxPromptChars) throw new HttpError(413, "Der Text für die KI ist zu lang.");

@@ -181,7 +181,7 @@ export async function mapCommentMentions(
   map: (
     id: string | null,
     label: string,
-  ) => { userId: string | null; label: string },
+  ) => { userId: string | null; label: string } | Promise<{ userId: string | null; label: string }>,
 ): Promise<CommentNode> {
   return {
     ...content,

@@ -1,3 +1,4 @@
+import { withLookups, type Awaitable } from "./resolve-ahead";
 import { isFormattedText, toPlain } from "./inline-markdown";
 import { readableDatabase } from "./field-access";
 import { visibleRows } from "./row-access";
@@ -29,6 +30,9 @@ import {
   type MarkdownContext,
 } from "./markdown";
 import { exportName } from "./export-name";
+// The lookups of the Markdown conversion as this export answers them:
+// from the database, so they may return a promise (withLookups in render()).
+type AsyncMarkdownContext = Awaitable<MarkdownContext>;
 import { contentLocale, ct } from "./content-locale";
 import { dayTitle as localDayTitle, isAutoDayTitle } from "./journal-title";
 import { dashboardSummary } from "./dashboard";
@@ -42,7 +46,7 @@ import { toFrontmatter, type Frontmatter, type FrontmatterValue } from "./frontm
 import { aliasList, pageAliases } from "./aliases";
 import { metaFrontmatter } from "./page-properties-server";
 import { whiteboardSnapshotItems } from "./whiteboard";
-import { whiteboardSvg } from "./whiteboard-svg";
+import { whiteboardSvg, type WhiteboardSvgContext } from "./whiteboard-svg";
 import { racksMarkdown } from "./whiteboard-rack";
 import type { Identity, Page, Row, Field, Space } from "./types";
 import { linkedBlockIds } from "./block-links";
@@ -284,7 +288,7 @@ async function collect(user: Identity, options: MarkdownExportOptions) {
   // Blocks other texts link to keep their id as a marker ("^id", #88).
   let linkedBlocks: Awaited<ReturnType<typeof linkedBlockIds>> | null = null;
   const linked = async (owner: string, blockId: string) => !!(linkedBlocks ??= (await linkedBlockIds(workspaceId))).get(owner)?.has(blockId);
-  function context(from: string, page?: Page, record?: string): MarkdownContext {
+  function context(from: string, page?: Page, record?: string): AsyncMarkdownContext {
     const owner = record || page?.id;
     return {
       ...(page ? { ink: async (attrs: Record<string, unknown>) => await inkImage(page, from, attrs) } : {}),
@@ -393,8 +397,8 @@ async function collect(user: Identity, options: MarkdownExportOptions) {
     const path = `${folder}assets/${exportName(page.title)}-${page.id}.svg`;
     if (boards.has(path)) return boards.get(path)!;
     const images = context(path);
-    const svg = whiteboardSvg(
-      await whiteboardSnapshotItems(page),
+    const items = await whiteboardSnapshotItems(page);
+    const svg = await withLookups<WhiteboardSvgContext, ReturnType<typeof whiteboardSvg>>(
       {
         image: (src) => images.url(src),
         page: async (id) => {
@@ -411,15 +415,16 @@ async function collect(user: Identity, options: MarkdownExportOptions) {
         },
         label: ct,
       },
-      page.title,
+      (lookups) => whiteboardSvg(items, lookups, page.title),
     );
     boards.set(path, svg ? path : null);
     if (svg) add(path, Buffer.from(svg), true);
     return svg ? path : null;
   }
-  function render(html: string, ctx: MarkdownContext) {
+  // The context's lookups await the database; the conversion is synchronous.
+  async function render(html: string, ctx: AsyncMarkdownContext) {
     try {
-      return htmlToMarkdown(html, ctx);
+      return await withLookups<MarkdownContext, string>(ctx, (lookups) => htmlToMarkdown(html, lookups));
     } catch (error) {
       if (
         error instanceof Error &&
@@ -481,7 +486,7 @@ async function collect(user: Identity, options: MarkdownExportOptions) {
     }
     if (field.type === "files") {
       const entries = await mapAsync(fileUrls(value), async (raw) => {
-        const url = ctx.url(raw),
+        const url = await ctx.url(raw),
           id = /\/api\/files\/([a-f0-9-]{36})/i.exec(raw)?.[1],
           name = id ? (await fileInfo(id))?.name || ct("Datei nicht verfügbar", "File not available") : ct("Datei", "File");
         return {
@@ -512,9 +517,9 @@ async function collect(user: Identity, options: MarkdownExportOptions) {
             cellText(timestampTypes.has(field.type) ? sqlTimestampToIso(value) : value);
     const url =
       field.type === "url" && plain
-        ? ctx.url(plain)
+        ? await ctx.url(plain)
         : field.type === "email" && plain
-          ? ctx.url(`mailto:${plain}`)
+          ? await ctx.url(`mailto:${plain}`)
           : null;
     return {
       plain,
@@ -572,19 +577,19 @@ async function collect(user: Identity, options: MarkdownExportOptions) {
         ));
     for (const version of versions) {
       const versionPath = `${base}.versions/${version.created_at.replace(/[: T]/g, "-").slice(0, 19)}-${version.id.slice(0, 8)}.md`;
-      add(versionPath, Buffer.from(`# ${markdownText(title)} (${when(version.created_at)})\n\n${render(version.html, context(versionPath))}`), true);
+      add(versionPath, Buffer.from(`# ${markdownText(title)} (${when(version.created_at)})\n\n${await render(version.html, context(versionPath))}`), true);
     }
   }
   // Record properties as YAML frontmatter, readable by Obsidian and other
   // tools. Computed values (formulas, rollups, timestamps …) go below
   // "flowplan:" so an import does not take them for properties.
-  function frontmatter(
+  async function frontmatter(
     row: Row,
     computed: Record<string, unknown>,
     fields: Field[],
     data: NonNullable<Awaited<ReturnType<typeof dbs.get>>>,
     from: string,
-  ): Frontmatter {
+  ): Promise<Frontmatter> {
     const result: Frontmatter = { title: cellText(computed[fields[0].id]) || recordWord() };
     const flowplan: Frontmatter = { id: row.id };
     for (const field of fields.slice(1)) {
@@ -615,7 +620,7 @@ async function collect(user: Identity, options: MarkdownExportOptions) {
       } else if (field.type === "person") {
         const names = list.map((uid) => members.get(String(uid)) || unavailable());
         out = names.length === 1 ? names[0] : names;
-      } else if (field.type === "files") out = fileUrls(value).map((raw) => context(from).url(raw) || "").filter(Boolean);
+      } else if (field.type === "files") out = (await mapAsync(fileUrls(value), async (raw) => await context(from).url(raw) || "")).filter(Boolean);
       else out = cellText(timestampTypes.has(field.type) ? sqlTimestampToIso(value) : value) || null;
       if (out === null || (Array.isArray(out) && !out.length)) continue;
       if (computedTypes.includes(field.type)) flowplan[field.name] = out;
@@ -646,7 +651,7 @@ async function collect(user: Identity, options: MarkdownExportOptions) {
     const heading = day && isAutoDayTitle(page.title, day) ? localDayTitle(day, contentLocale()) : page.title;
     let markdown = (Object.keys(front).length ? toFrontmatter(front) + "\n" : "") + `# ${markdownText(heading)}\n\n`;
     if (page.cover.startsWith("/api/files/")) {
-      const cover = ctx.url(page.cover);
+      const cover = await ctx.url(page.cover);
       if (cover) markdown += `![Cover](<${markdownUrl(cover)}>)\n\n`;
     }
     if (page.kind === "document") await history(path, page.id, null, page.title);
@@ -704,13 +709,13 @@ async function collect(user: Identity, options: MarkdownExportOptions) {
         else markdown += `*${markdownText(tile.source ? `${tile.kind} · ${tile.source}` : tile.kind)}*\n\n`;
       }
     } else if (page.kind === "document" || page.kind === "journal")
-      markdown += render(
+      markdown += (await render(
         (await one<{ html: string }>(
           "SELECT html FROM documents WHERE page_id=?",
           page.id,
         ))?.html || "",
         ctx,
-      );
+      ));
     else {
       const data = dbs.get(page.id)!,
         fields = data.schema.fields;
@@ -780,18 +785,18 @@ async function collect(user: Identity, options: MarkdownExportOptions) {
           add(
             "index.md",
             Buffer.from(
-              toFrontmatter(frontmatter(row, computed, fields, data, recordPath)) +
+              toFrontmatter(await frontmatter(row, computed, fields, data, recordPath)) +
                 "\n# " +
                 markdownText(title) +
                 "\n\n" +
-                (content.trimStart().startsWith("<") ? render(content, recordContext) : markdownText(content) + "\n"),
+                (content.trimStart().startsWith("<") ? (await render(content, recordContext)) : markdownText(content) + "\n"),
             ),
             true,
           );
           continue;
         }
         let document = zip
-          ? toFrontmatter(frontmatter(row, computed, fields, data, recordPath)) + "\n# " + markdownText(title) + "\n\n"
+          ? toFrontmatter(await frontmatter(row, computed, fields, data, recordPath)) + "\n# " + markdownText(title) + "\n\n"
           : `<a id="record-${row.id}"></a>\n\n## ` + markdownText(title) + "\n\n";
         // In one Markdown file the records follow each other, with a table.
         if (!zip)
@@ -811,7 +816,7 @@ async function collect(user: Identity, options: MarkdownExportOptions) {
           row.content ??
           "";
         document += content.trimStart().startsWith("<")
-          ? render(content, recordContext)
+          ? (await render(content, recordContext))
           : markdownText(content) + "\n";
         if (zip) {
           add(recordPath, Buffer.from(document), true);

@@ -345,7 +345,7 @@ export async function flushPushQueue(
           await sendExpo({
             to: job.endpoint.slice(EXPO_ENDPOINT.length),
             title: "Flowplan",
-            body: content && job.body && !(await lockedNotification())(job) ? localizedMessage(job.body, locale).slice(0, 300) : (await inboxNotice(job.user_id)),
+            body: content && job.body && !(await (await lockedNotification())(job)) ? localizedMessage(job.body, locale).slice(0, 300) : (await inboxNotice(job.user_id)),
             data: { url: notificationUrl(job), notificationId: job.notification_id },
             categoryId: await notificationCategory({ ...job, id: job.notification_id }, content),
             sound: "default",
@@ -440,7 +440,7 @@ async function relayAlert(job: RelayJob, instance: string): Promise<RelayMessage
   const plaintext = plaintextJson({
     title: "Flowplan",
     // Behind a journal PIN not entered: only the general notice.
-    body: content && job.body && !(await lockedNotification())(job) ? localizedMessage(job.body, locale).slice(0, 300) : (await inboxNotice(job.user_id)),
+    body: content && job.body && !(await (await lockedNotification())(job)) ? localizedMessage(job.body, locale).slice(0, 300) : (await inboxNotice(job.user_id)),
     url: new URL(notificationUrl(job), `${instance}/`).toString(),
     id: job.notification_id,
     category,

@@ -26,7 +26,7 @@ import { requirePage } from "./permissions";
 import { requireUnlocked } from "./journal-extras";
 import { htmlState } from "./document-server";
 import { documentChanged } from "./document-live";
-import { markdownToHtml } from "./markdown-import";
+import { markdownToHtmlAsync } from "./markdown-import";
 import { splitFrontmatter } from "./frontmatter";
 import { numberedInFrontmatter } from "./block-captions";
 import { frontmatterAliases, pageAliases, storedAliases } from "./aliases";
@@ -201,7 +201,7 @@ async function updateDocument(user: Identity, pageId: string, markdown: string, 
   }
   const body = text.replace(/^\s*#\s+[^\n]*\n+/, "")
     .replace(/\n+## (Unterseiten|Sub-pages)\n[\s\S]*$/, "");
-  const html = markdownToHtml(
+  const html = await markdownToHtmlAsync(
     body.replace(/^!\[Cover\]\([^)]*\)\n+/, ""),
     (href, kind) => (kind === "image" ? (/^(https?:|mailto:|\/#page=)/i.test(href) ? href : null) : link(href)),
     // Embedded boards come back as embeds when this person may read them.

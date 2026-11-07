@@ -29,7 +29,7 @@ const page = async (extra = {}) =>
   ((await command(owner, { action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, title: "Shared", ...extra })) as { id: string }).id;
 const link = async (pageId: string, extra: Record<string, unknown> = {}) =>
   ((await command(owner, { action: "share.create", pageId, role: "editor", name: "Kunde", ...extra })) as { token: string }).token;
-const status = (fn: () => unknown, code: number) => assert.throws(fn, (e: { status?: number }) => e.status === code);
+const status = async (fn: () => unknown, code: number) => assert.rejects(async () => fn(), (e: { status?: number }) => e.status === code);
 // A page with a file that its document links.
 async function withFile(pid: string) {
   const fid = id();
@@ -49,11 +49,11 @@ test("a link with a password needs it for pages, records, files, live updates an
   assert.ok(!JSON.stringify(await listShareLinks(owner, pid)).includes("scrypt"), "the hash never leaves the server");
   assert.equal((await listShareLinks(owner, pid))[0].password, true);
   // Without the cookie: nothing.
-  status(async () => await sharedContent(token, pid), 401);
-  status(async () => await publicPage(token), 401);
-  status(async () => await publicFile(token, fid), 401);
-  status(async () => await shareAccess(token, pid), 401);
-  status(async () => await mutateSharedContent(token, { action: "comment", pageId: pid, name: "Gast", body: "Hallo" }), 401);
+  await status(async () => await sharedContent(token, pid), 401);
+  await status(async () => await publicPage(token), 401);
+  await status(async () => await publicFile(token, fid), 401);
+  await status(async () => await shareAccess(token, pid), 401);
+  await status(async () => await mutateSharedContent(token, { action: "comment", pageId: pid, name: "Gast", body: "Hallo" }), 401);
   await assert.rejects(guestUpload(token, pid, new File(["x"], "x.txt", { type: "text/plain" })), (e: { status?: number }) => e.status === 401);
   assert.equal(await access.shareState(token, undefined), "password");
   // Wrong password: refused.
@@ -77,8 +77,8 @@ test("a link with a password needs it for pages, records, files, live updates an
   const req = new Request("https://flowplan.example.test/api/share/x", { headers: { cookie: `other=1; ${access.SHARE_COOKIE}=${encodeURIComponent(value)}` } });
   assert.equal(await access.withShareRequest(req, async () => (await publicPage(token)).page.id), pid);
   // A made-up or altered value does not open it.
-  status(async () => await access.withShareCookie(`${Date.now() + 60_000}.abc`, async () => await publicPage(token)), 401);
-  status(async () => await access.withShareCookie(value.replace(/^\d+/, String(Date.now() + 10 * 86400_000)), async () => await publicPage(token)), 401);
+  await status(async () => await access.withShareCookie(`${Date.now() + 60_000}.abc`, async () => await publicPage(token)), 401);
+  await status(async () => await access.withShareCookie(value.replace(/^\d+/, String(Date.now() + 10 * 86400_000)), async () => await publicPage(token)), 401);
 });
 
 test("the unlock is scoped to its link and ends with a new password", async () => {
@@ -89,18 +89,18 @@ test("the unlock is scoped to its link and ends with a new password", async () =
     otherOnA = await link(a, { password: "passwort-a", name: "Zweiter" });
   const value = await unlock(tokenA, "passwort-a");
   // Same password, other link: the cookie of A opens neither B nor A's second link.
-  status(async () => await access.withShareCookie(value, async () => await publicPage(tokenB)), 401);
-  status(async () => await access.withShareCookie(value, async () => await publicPage(otherOnA)), 401);
+  await status(async () => await access.withShareCookie(value, async () => await publicPage(tokenB)), 401);
+  await status(async () => await access.withShareCookie(value, async () => await publicPage(otherOnA)), 401);
   assert.equal((await access.withShareCookie(value, async () => await publicPage(tokenA))).page.id, a);
   // A new password ends every unlock of the old one.
   await command(owner, { action: "share.protect", pageId: a, token: tokenA, password: "passwort-neu" });
-  status(async () => await access.withShareCookie(value, async () => await publicPage(tokenA)), 401);
+  await status(async () => await access.withShareCookie(value, async () => await publicPage(tokenA)), 401);
   assert.equal((await access.withShareCookie(await unlock(tokenA, "passwort-neu"), async () => await publicPage(tokenA))).page.id, a);
   // Too short, and only owners of the page set it.
-  status(async () => await command(owner, { action: "share.protect", pageId: a, token: tokenA, password: "kurz" }), 400);
+  await status(async () => await command(owner, { action: "share.protect", pageId: a, token: tokenA, password: "kurz" }), 400);
   const viewer = await user("viewer");
   await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
-  status(async () => await command(viewer, { action: "share.protect", pageId: a, token: tokenA, password: null }), 403);
+  await status(async () => await command(viewer, { action: "share.protect", pageId: a, token: tokenA, password: null }), 403);
 });
 
 test("wrong passwords are limited per link and address", async () => {
@@ -117,7 +117,7 @@ test("wrong passwords are limited per link and address", async () => {
 test("after its end date a link shows nothing, files included", async () => {
   const pid = await page(),
     fid = await withFile(pid);
-  status(async () => await link(pid, { expiresAt: Date.now() - 1000 }), 400);
+  await status(async () => await link(pid, { expiresAt: Date.now() - 1000 }), 400);
   const token = await link(pid, { expiresAt: Date.now() + 3_600_000 });
   assert.equal((await publicPage(token)).page.id, pid);
   assert.equal((await publicFile(token, fid)).id, fid);
@@ -126,10 +126,10 @@ test("after its end date a link shows nothing, files included", async () => {
   // The end passes.
   await run("UPDATE share_links SET expires_at=? WHERE token=?", Date.now() - 1, token);
   assert.equal(await access.shareState(token, undefined), "expired");
-  status(async () => await publicPage(token), 410);
-  status(async () => await publicFile(token, fid), 410);
-  status(async () => await sharedContent(token, pid), 410);
-  status(async () => await shareAccess(token, pid), 410);
+  await status(async () => await publicPage(token), 410);
+  await status(async () => await publicFile(token, fid), 410);
+  await status(async () => await sharedContent(token, pid), 410);
+  await status(async () => await shareAccess(token, pid), 410);
   await assert.rejects(access.unlockShare(token, "egal-egal", "10.0.0.2"), (e: { status?: number }) => e.status === 410);
   // Owners extend it or remove the end.
   await command(owner, { action: "share.protect", pageId: pid, token, expiresAt: Date.now() + 86_400_000 });
@@ -145,7 +145,7 @@ test("after its end date a link shows nothing, files included", async () => {
 test("removing the password opens the link again", async () => {
   const pid = await page(),
     token = await link(pid, { password: "geheim-789" });
-  status(async () => await sharedContent(token, pid), 401);
+  await status(async () => await sharedContent(token, pid), 401);
   await command(owner, { action: "share.protect", pageId: pid, token, password: null });
   assert.equal((await one<{ password_hash: string | null }>("SELECT password_hash FROM share_links WHERE token=?", token))!.password_hash, null);
   assert.equal((await sharedContent(token, pid)).title, "Shared");
@@ -162,25 +162,25 @@ test("publications take a password and an end date too, kept when published agai
   const token = (await one<{ public_token: string }>("SELECT public_token FROM pages WHERE id=?", pid))!.public_token;
   assert.equal((await publicPage(token)).page.id, pid);
   await command(owner, { action: "publication.protect", pageId: pid, password: "oeffentlich-1" });
-  status(async () => await publicPage(token), 401);
-  status(async () => await publicFile(token, fid), 401);
+  await status(async () => await publicPage(token), 401);
+  await status(async () => await publicFile(token, fid), 401);
   // Changing the publication's options keeps the password.
   await command(owner, { action: "page.publish", pageId: pid, enabled: true, includeChildren: true, allowCopy: true });
-  status(async () => await publicPage(token), 401);
+  await status(async () => await publicPage(token), 401);
   const value = await unlock(token, "oeffentlich-1");
   assert.equal((await access.withShareCookie(value, async () => await publicFile(token, fid))).id, fid);
   // Behind a password, a publication is not copied away.
   const visitor = await user("visitor"),
     own = await createWorkspace(visitor.id, "Eigener"),
     ownBoot = await bootstrap(visitor, own);
-  status(async () => await copyPublication(visitor, { token, workspaceId: own, spaceId: ownBoot.spaces[0].id }), 403);
+  await status(async () => await copyPublication(visitor, { token, workspaceId: own, spaceId: ownBoot.spaces[0].id }), 403);
   await command(owner, { action: "publication.protect", pageId: pid, expiresAt: Date.now() + 60_000 });
   await run("UPDATE publications SET expires_at=? WHERE page_id=?", Date.now() - 1, pid);
-  status(async () => await access.withShareCookie(value, async () => await publicPage(token)), 410);
+  await status(async () => await access.withShareCookie(value, async () => await publicPage(token)), 410);
   // Unpublished and published again: a fresh start.
   await command(owner, { action: "page.publish", pageId: pid, enabled: false });
   await command(owner, { action: "page.publish", pageId: pid, enabled: true });
   const again = (await one<{ public_token: string }>("SELECT public_token FROM pages WHERE id=?", pid))!.public_token;
   assert.equal((await publicPage(again)).page.id, pid);
-  status(async () => await command(owner, { action: "publication.protect", pageId: await page(), password: "egal-egal" }), 400);
+  await status(async () => await command(owner, { action: "publication.protect", pageId: await page(), password: "egal-egal" }), 400);
 });

@@ -16,7 +16,7 @@ import { localeTag } from "./i18n";
 import { footnoteText } from "./footnotes";
 import { exportName } from "./export-name";
 import { CAPTION_KINDS, captionCounter, captionText, type CaptionKind } from "./block-captions";
-import { collectExportContent, documentNode, imageExtension, type ExportFile } from "./export-content";
+import { collectExportContent, withExportLookups, documentNode, imageExtension, type ExportFile } from "./export-content";
 import type { Identity } from "./types";
 
 export type DocxSection = {
@@ -670,9 +670,10 @@ export async function buildDocx(options: DocxOptions): Promise<Buffer> {
 export const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 // A page, or one record of a database, as a Word file for the person.
 export async function exportDocx(user: Identity, options: { pageId: string; rowId?: string }) {
-  const content = await collectExportContent(user, { pageId: options.pageId, rowId: options.rowId, children: false, maxPages: 1, format: "Word" });
-  const page = content.pages[0];
-  const bytes = await buildDocx({
+  const collected = await collectExportContent(user, { pageId: options.pageId, rowId: options.rowId, children: false, maxPages: 1, format: "Word" });
+  const page = collected.pages[0];
+  // buildDocx asks its lookups before its first await (withExportLookups).
+  const bytes = await withExportLookups(collected, (content) => buildDocx({
     title: content.name,
     creator: user.name,
     sections: [{ title: page.title, html: page.html, svg: page.svg, cover: page.cover, ink: (attrs) => content.ink(page.page.id, attrs), captionNumbers: !!page.page.caption_numbers }],
@@ -686,9 +687,9 @@ export async function exportDocx(user: Identity, options: { pageId: string; rowI
       const db = content.readable(source);
       return db && db.kind === "database" ? { title: db.title, url: content.pageUrl(db.id) } : null;
     },
-  });
+  }));
   await audit(user.id, options.rowId ? "record.docx.export" : "page.docx.export", options.pageId);
-  return { bytes, name: `${exportName(content.name)}.docx`, mime: DOCX_MIME };
+  return { bytes, name: `${exportName(collected.name)}.docx`, mime: DOCX_MIME };
 }
 
 // Links an export keeps: web addresses, mail, and pages of Flowplan the

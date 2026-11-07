@@ -124,7 +124,7 @@ test("by default inbox, push, e-mail and chat apps; each channel follows the per
   const prefs = (await bootstrap(root, wid)).notificationPrefs!;
   assert.deepEqual(prefs.incident, { inbox: true, push: true, email: true, messenger: true });
   // Vera does not want e-mail and chat apps for incidents.
-  as(vera)({ action: "notification.prefs", kind: "incident", inbox: true, push: true, email: false, messenger: false });
+  await as(vera)({ action: "notification.prefs", kind: "incident", inbox: true, push: true, email: false, messenger: false });
   await incident("brute_force_account");
   const [r] = await incidentsOf(root),
     [v] = await incidentsOf(vera);
@@ -142,7 +142,7 @@ test("by default inbox, push, e-mail and chat apps; each channel follows the per
   assert.match(message.title, /Sicherheitsvorfall$/);
   assert.match(message.url, /\/#admin\/threats\/incident\//);
   // Inbox off: nothing at all.
-  as(vera)({ action: "notification.prefs", kind: "incident", inbox: false, push: true, email: true, messenger: true });
+  await as(vera)({ action: "notification.prefs", kind: "incident", inbox: false, push: true, email: true, messenger: true });
   await incident("brute_force_account");
   assert.equal((await incidentsOf(vera)).length, 1);
   assert.equal((await incidentsOf(root)).length, 2);
@@ -153,7 +153,7 @@ test("by default inbox, push, e-mail and chat apps; each channel follows the per
 test("the severity threshold: all by default, critical only filters every channel", async () => {
   assert.equal((await bootstrap(root, wid)).incidentThreshold, "all");
   assert.equal("incidentThreshold" in (await bootstrap(ada, wid)), false, "not for others");
-  as(root)({ action: "notification.prefs", kind: "incident", inbox: true, push: true, email: true, messenger: true, threshold: "critical" });
+  await as(root)({ action: "notification.prefs", kind: "incident", inbox: true, push: true, email: true, messenger: true, threshold: "critical" });
   assert.equal((await bootstrap(root, wid)).incidentThreshold, "critical");
   await incident("brute_force_account");
   assert.equal((await incidentsOf(root)).length, 0, "a warning does not reach Root");
@@ -161,7 +161,7 @@ test("the severity threshold: all by default, critical only filters every channe
   await incident("credential_stuffing");
   assert.equal((await incidentsOf(root)).length, 1, "a critical one does");
   // Switching channels keeps the threshold.
-  as(root)({ action: "notification.prefs", kind: "incident", inbox: true, push: false, email: true, messenger: true });
+  await as(root)({ action: "notification.prefs", kind: "incident", inbox: true, push: false, email: true, messenger: true });
   assert.equal((await bootstrap(root, wid)).incidentThreshold, "critical");
   // The security page says how the administrator is notified.
   const alerts = (await securityOverview(Date.now(), root)).alerts!;
@@ -170,19 +170,19 @@ test("the severity threshold: all by default, critical only filters every channe
   assert.equal(alerts.reach.messenger, true);
   assert.equal((await securityOverview()).alerts, null);
   // Back to the defaults: all again.
-  as(root)({ action: "notification.reset" });
+  await as(root)({ action: "notification.reset" });
   assert.equal((await bootstrap(root, wid)).incidentThreshold, "all");
   // Only incidents have a threshold.
-  assert.throws(() => as(root)({ action: "notification.prefs", kind: "mention", inbox: true, push: true, threshold: "critical" }), /Schwelle/);
+  await assert.rejects(async () => await as(root)({ action: "notification.prefs", kind: "mention", inbox: true, push: true, threshold: "critical" }), /Schwelle/);
 });
 
 test("people who are not administrators cannot set incidents", async () => {
-  assert.throws(
-    () => as(ada)({ action: "notification.prefs", kind: "incident", inbox: false, push: false }),
+  await assert.rejects(
+    async () => await as(ada)({ action: "notification.prefs", kind: "incident", inbox: false, push: false }),
     (e: { status?: number }) => e.status === 403,
   );
   // The e-mail switch of the introduction covers incidents for admins.
-  as(root)({ action: "notification.email", email: false });
+  await as(root)({ action: "notification.email", email: false });
   assert.ok(await one("SELECT 1 FROM notification_prefs WHERE user_id=? AND kind='incident' AND email=0", root.id));
 });
 
@@ -203,7 +203,7 @@ test("upgrading: a channel switched off for security notices stays off for incid
   assert.deepEqual((await bootstrap(vera, wid)).notificationPrefs!.incident, { inbox: true, push: true, email: false, messenger: true });
   assert.ok(await one("SELECT 1 FROM pragma_table_info('notification_prefs') WHERE name='min_severity'")); // sqlite-only
   // Only once: a later change of "security" does not touch incidents.
-  as(root)({ action: "notification.prefs", kind: "security", inbox: true, push: true, email: true, messenger: true });
+  await as(root)({ action: "notification.prefs", kind: "security", inbox: true, push: true, email: true, messenger: true });
   (globalThis as { flowplanSchema?: number }).flowplanSchema = undefined;
   assert.equal((await bootstrap(root, wid)).notificationPrefs!.incident.push, false);
   await incident("brute_force_account");

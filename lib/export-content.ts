@@ -4,6 +4,7 @@
 // /api/files/<id> – with the same rights as the Markdown export
 // (lib/markdown-export.ts): readable pages only, PIN-locked journals and
 // hidden records stay out.
+import { withLookups, type Awaitable } from "./resolve-ahead";
 import { readableDatabase } from "./field-access";
 import { readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
@@ -24,7 +25,7 @@ import { fileUrls } from "./file-cells";
 import { cleanHtml, escaped } from "./document-server";
 import { documentExtensions, documentSchema } from "./document-schema";
 import { whiteboardSnapshotItems } from "./whiteboard";
-import { whiteboardSvg } from "./whiteboard-svg";
+import { whiteboardSvg, type WhiteboardSvgContext } from "./whiteboard-svg";
 import { ct } from "./content-locale";
 import { dashboardSummary } from "./dashboard";
 import { inkPicture, notebookExportHtml, type InkPicture } from "./ink-export";
@@ -77,6 +78,15 @@ export type ExportContent = {
   // A drawing block of a document or a sheet of a notebook (lib/ink-export.ts).
   ink: (pageId: string, attrs: { id?: unknown; height?: unknown; paper?: unknown }) => InkPicture | null;
 };
+// The lookups of an export as collectExportContent() answers them: from the
+// database, so they may return a promise. The renderers (EPUB, PDF, Word)
+// are synchronous: withExportLookups() gives them the answers.
+type ExportLookups = Pick<ExportContent, "fileInfo" | "file" | "readable" | "pageUrl" | "boardSvg" | "ink">;
+export type CollectedExport = Omit<ExportContent, keyof ExportLookups> & Awaitable<ExportLookups>;
+export function withExportLookups<T>(content: CollectedExport, render: (content: ExportContent) => T): Promise<T> {
+  const { fileInfo, file, readable, pageUrl, boardSvg, ink, ...data } = content;
+  return withLookups<ExportLookups, T>({ fileInfo, file, readable, pageUrl, boardSvg, ink }, (lookups) => render({ ...data, ...lookups }));
+}
 const MAX_FILE_BYTES = 25 * 1024 * 1024,
   MAX_TOTAL_BYTES = 100 * 1024 * 1024,
   MAX_ROWS = 5000;
@@ -102,11 +112,11 @@ export function documentNode(html: string) {
   return documentSchema().nodeFromJSON(generateJSON(cleanHtml(html) || "<p></p>", documentExtensions));
 }
 
-export async function collectExportContent(user: Identity, options: ExportSelection): Promise<ExportContent> {
+export async function collectExportContent(user: Identity, options: ExportSelection): Promise<CollectedExport> {
   return await transaction(async () => await collect(user, options));
 }
 
-async function collect(user: Identity, options: ExportSelection): Promise<ExportContent> {
+async function collect(user: Identity, options: ExportSelection): Promise<CollectedExport> {
   let space: Space | null = null,
     root: Page | null = null;
   if (options.spaceId) {
@@ -222,11 +232,11 @@ async function collect(user: Identity, options: ExportSelection): Promise<Export
   const boardSvg = async (pageId: string) => {
     const page = await readable(pageId);
     if (!page || page.kind !== "whiteboard") return null;
-    if (!boards.has(page.id))
+    if (!boards.has(page.id)) {
+      const items = await whiteboardSnapshotItems(page);
       boards.set(
         page.id,
-        whiteboardSvg(
-          await whiteboardSnapshotItems(page),
+        await withLookups<WhiteboardSvgContext, ReturnType<typeof whiteboardSvg>>(
           {
             // Pictures on the board go along as data: the SVG is one file.
             image: async (src) => {
@@ -251,9 +261,10 @@ async function collect(user: Identity, options: ExportSelection): Promise<Export
             },
             label: ct,
           },
-          page.title,
+          (lookups) => whiteboardSvg(items, lookups, page.title),
         ),
       );
+    }
     return boards.get(page.id)!;
   };
   const members = new Map(

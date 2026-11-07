@@ -78,11 +78,11 @@ test("prompt templates: the content reference in every UI language", async () =>
   // A Chinese prompt as the editor's chip writes it.
   assert.deepEqual(promptReferences("用一句话总结{内容}和{ 标题 }"), ["内容", "标题"]);
   assert.equal(isContentReferenceName("内容"), true);
-  assert.equal(renderAiPrompt("用一句话总结：{内容}", base, {}, { id: "r" }, context).text, "用一句话总结：Inhalt des Eintrags");
-  assert.equal(renderAiPrompt("{ CONTENU } {content}", base, {}, { id: "r" }, context).text, "Inhalt des Eintrags Inhalt des Eintrags");
+  assert.equal((await renderAiPrompt("用一句话总结：{内容}", base, {}, { id: "r" }, context)).text, "用一句话总结：Inhalt des Eintrags");
+  assert.equal((await renderAiPrompt("{ CONTENU } {content}", base, {}, { id: "r" }, context)).text, "Inhalt des Eintrags Inhalt des Eintrags");
   // A property with that name wins over the page content.
   const named: Field[] = [...base, { id: "nf", name: "内容", type: "text" }];
-  assert.equal(renderAiPrompt("{内容}", named, { nf: "属性" }, { id: "r" }, context).text, "属性");
+  assert.equal((await renderAiPrompt("{内容}", named, { nf: "属性" }, { id: "r" }, context)).text, "属性");
   // Every catalogue's word for "Content" is understood; an unknown one falls back.
   const { readFileSync, readdirSync } = await import("node:fs");
   for (const file of readdirSync(join(process.cwd(), "locales")).filter((f) => f.endsWith(".json"))) {
@@ -94,15 +94,15 @@ test("prompt templates: the content reference in every UI language", async () =>
   assert.equal(contentReferenceFor("Contenido"), "Content");
 });
 
-test("prompt templates: values by property name, content, emptiness", () => {
+test("prompt templates: values by property name, content, emptiness", async () => {
   const fields: Field[] = [...base, { id: "summary", name: "Kurz", type: "text", ai: { prompt: "x" } }];
   assert.deepEqual(promptReferences("Fasse {Beschreibung} und { Autor } zusammen"), ["Beschreibung", "Autor"]);
-  const rendered = renderAiPrompt("Fasse {Beschreibung} von {autor} in einem Satz zusammen. {Unbekannt} {Inhalt}", fields, { desc: "Ein Wal.", author: "Melville" }, { id: "r" }, context);
+  const rendered = await renderAiPrompt("Fasse {Beschreibung} von {autor} in einem Satz zusammen. {Unbekannt} {Inhalt}", fields, { desc: "Ein Wal.", author: "Melville" }, { id: "r" }, context);
   assert.equal(rendered.text, "Fasse Ein Wal. von Melville in einem Satz zusammen. {Unbekannt} Inhalt des Eintrags");
   assert.equal(rendered.empty, false);
-  assert.equal(renderAiPrompt("Kategorie aus {Titel}", fields, {}, { id: "r" }, context).empty, true);
-  assert.equal(renderAiPrompt("Erfinde einen Namen", fields, {}, { id: "r" }, context).empty, false);
-  assert.equal(renderAiPrompt("{Genre}/{Tags}/{Seiten}", fields, { genre: "Roman", tags: ["Lang", "Spannend"], pages: 635 }, { id: "r" }, context).text, "Roman/Lang, Spannend/635");
+  assert.equal((await renderAiPrompt("Kategorie aus {Titel}", fields, {}, { id: "r" }, context)).empty, true);
+  assert.equal((await renderAiPrompt("Erfinde einen Namen", fields, {}, { id: "r" }, context)).empty, false);
+  assert.equal((await renderAiPrompt("{Genre}/{Tags}/{Seiten}", fields, { genre: "Roman", tags: ["Lang", "Spannend"], pages: 635 }, { id: "r" }, context)).text, "Roman/Lang, Spannend/635");
   // The hash changes with inputs and with the prompt.
   const f = fields[fields.length - 1];
   assert.notEqual(aiInputHash(f, "a"), aiInputHash(f, "b"));

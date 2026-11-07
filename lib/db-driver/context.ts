@@ -15,7 +15,7 @@ export type TxScope = {
   // inside it (timers, microtasks) keep its scope, so they check this.
   ended?: boolean;
   // afterTransaction() callbacks, run once it has ended.
-  after?: (() => void | Promise<void>)[];
+  after?: (() => unknown)[];
   // onTransactionRollback() callbacks (lib/db.ts), run when it rolls back.
   rollback?: (() => void)[];
 };
@@ -58,7 +58,7 @@ export const currentTx = () => {
 // counters): before the asynchronous database they relied on "transactions
 // never span an await" and a microtask; inside an asynchronous transaction
 // a microtask would still run inside it.
-export function afterTransaction(fn: () => void | Promise<void>) {
+export function afterTransaction(fn: () => unknown) {
   const scope = currentTx();
   if (scope) (scope.root.after ??= []).push(fn);
   // Another flow's asynchronous transaction holds the one SQLite
@@ -69,7 +69,7 @@ export function afterTransaction(fn: () => void | Promise<void>) {
 }
 // Runs a callback whose failure must not disturb the caller (a rejected
 // promise of an asynchronous one is logged, not left unhandled).
-function settle(fn: () => void | Promise<void>) {
+function settle(fn: () => unknown) {
   try {
     const result = fn();
     if (result && typeof (result as Promise<void>).catch === "function")

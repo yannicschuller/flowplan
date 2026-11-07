@@ -26,9 +26,9 @@ const wid = await createWorkspace(ada.id, "Familie");
 await run("INSERT INTO members VALUES(?,?,?)", wid, cleo.id, "editor");
 const as = (user: Identity) => async (b: Record<string, unknown>) => (await command(user, { workspaceId: wid, ...b })) as Record<string, unknown>;
 const team = (await bootstrap(ada, wid)).spaces[0].id;
-const insurance = String(as(ada)({ action: "page.create", spaceId: team, title: "Versicherungen", kind: "database" }).id);
-const policy = String(as(ada)({ action: "page.create", spaceId: team, title: "Police", kind: "document", parentId: insurance }).id);
-const secret = String(as(ada)({ action: "page.create", spaceId: team, title: "Geheim", kind: "document" }).id);
+const insurance = String((await as(ada)({ action: "page.create", spaceId: team, title: "Versicherungen", kind: "database" })).id);
+const policy = String((await as(ada)({ action: "page.create", spaceId: team, title: "Police", kind: "document", parentId: insurance })).id);
+const secret = String((await as(ada)({ action: "page.create", spaceId: team, title: "Geheim", kind: "document" })).id);
 const canRead = async (user: Identity, pageId: string) => {
   try {
     await requirePage(user, pageId);
@@ -39,7 +39,7 @@ const canRead = async (user: Identity, pageId: string) => {
 };
 
 test("an existing account gets exactly one page, as a guest of the workspace", async () => {
-  const result = as(ada)({ action: "page.share", pageId: insurance, email: "BEN@example.test", role: "viewer" });
+  const result = await as(ada)({ action: "page.share", pageId: insurance, email: "BEN@example.test", role: "viewer" });
   assert.equal(result.status, "added");
   assert.equal(result.name, "Ben");
   assert.ok(await one("SELECT 1 FROM workspace_guests WHERE workspace_id=? AND user_id=?", wid, ben.id));
@@ -54,24 +54,24 @@ test("an existing account gets exactly one page, as a guest of the workspace", a
   // Viewing only: no editing.
   await assert.rejects(async () => await requirePage(ben, insurance, true), /Keine Berechtigung/);
   // Editing raises the guest's cap.
-  as(ada)({ action: "page.shareUpdate", pageId: insurance, userId: ben.id, role: "editor" });
+  await as(ada)({ action: "page.shareUpdate", pageId: insurance, userId: ben.id, role: "editor" });
   assert.ok(await requirePage(ben, insurance, true));
   assert.equal((await pageShares(ada, insurance)).people[0].role, "editor");
 });
 
 test("only owners of the workspace or of the space share", async () => {
-  assert.throws(() => as(cleo)({ action: "page.share", pageId: secret, email: "ben@example.test", role: "viewer" }), /Nur Eigentümer/);
-  const own = String(as(cleo)({ action: "space.create", name: "Cleo", private: true }).id);
-  const notes = String(as(cleo)({ action: "page.create", spaceId: own, title: "Notizen", kind: "document" }).id);
-  assert.equal(as(cleo)({ action: "page.share", pageId: notes, email: "ben@example.test", role: "editor" }).status, "added");
+  await assert.rejects(async () => await as(cleo)({ action: "page.share", pageId: secret, email: "ben@example.test", role: "viewer" }), /Nur Eigentümer/);
+  const own = String((await as(cleo)({ action: "space.create", name: "Cleo", private: true })).id);
+  const notes = String((await as(cleo)({ action: "page.create", spaceId: own, title: "Notizen", kind: "document" })).id);
+  assert.equal((await as(cleo)({ action: "page.share", pageId: notes, email: "ben@example.test", role: "editor" })).status, "added");
   assert.ok(await requirePage(ben, notes, true));
   assert.equal((await pageShares(ben, notes)).manage, false);
-  assert.throws(() => as(ben)({ action: "page.share", pageId: insurance, email: "x@example.test", role: "viewer" }), /Nur Eigentümer/);
-  assert.throws(() => as(ada)({ action: "page.share", pageId: insurance, email: "ada@example.test", role: "viewer" }), /bereits Zugriff/);
+  await assert.rejects(async () => await as(ben)({ action: "page.share", pageId: insurance, email: "x@example.test", role: "viewer" }), /Nur Eigentümer/);
+  await assert.rejects(async () => await as(ada)({ action: "page.share", pageId: insurance, email: "ada@example.test", role: "viewer" }), /bereits Zugriff/);
 });
 
 test("without an account: an invitation, the page is there after signing in", async () => {
-  const result = as(ada)({ action: "page.share", pageId: policy, email: "dora@example.test", role: "editor" });
+  const result = await as(ada)({ action: "page.share", pageId: policy, email: "dora@example.test", role: "editor" });
   assert.equal(result.status, "invited");
   assert.deepEqual((await pageShares(ada, policy)).pending, [{ email: "dora@example.test", role: "editor" }]);
   const dora = await person("Dora");
@@ -83,15 +83,15 @@ test("without an account: an invitation, the page is there after signing in", as
 });
 
 test("a cancelled invitation and a removed guest leave nothing behind", async () => {
-  as(ada)({ action: "page.share", pageId: secret, email: "eve@example.test", role: "viewer" });
-  as(ada)({ action: "page.shareUpdate", pageId: secret, email: "eve@example.test", role: "remove" });
+  await as(ada)({ action: "page.share", pageId: secret, email: "eve@example.test", role: "viewer" });
+  await as(ada)({ action: "page.shareUpdate", pageId: secret, email: "eve@example.test", role: "remove" });
   assert.equal(await one("SELECT 1 FROM invites WHERE email='eve@example.test'"), undefined);
   // Dora had only the policy: removing it removes her from the workspace.
   const dora = (await one<{ id: string }>("SELECT id FROM users WHERE email='dora@example.test'"))!;
-  as(ada)({ action: "page.shareUpdate", pageId: policy, userId: dora.id, role: "remove" });
+  await as(ada)({ action: "page.shareUpdate", pageId: policy, userId: dora.id, role: "remove" });
   assert.equal(await one("SELECT 1 FROM members WHERE workspace_id=? AND user_id=?", wid, dora.id), undefined);
   // Ben still has Cleo's page, so he stays.
-  as(ada)({ action: "page.shareUpdate", pageId: insurance, userId: ben.id, role: "remove" });
+  await as(ada)({ action: "page.shareUpdate", pageId: insurance, userId: ben.id, role: "remove" });
   assert.ok(await one("SELECT 1 FROM members WHERE workspace_id=? AND user_id=?", wid, ben.id));
   assert.ok(!(await canRead(ben, insurance)));
 });
@@ -101,7 +101,7 @@ test("an existing account takes over a later invitation when the app loads", asy
   // A confirmed local account (e-mail and password).
   await run("INSERT INTO local_accounts(user_id,email,password_hash,is_admin,email_verified,verify_required,created_at) VALUES(?,?,?,?,?,?,?)", fritz.id, fritz.email, "x", 0, 1, 0, Date.now());
   const own = await createWorkspace(fritz.id, "Fritz");
-  as(ada)({ action: "member.invite", email: fritz.email, role: "editor" });
+  await as(ada)({ action: "member.invite", email: fritz.email, role: "editor" });
   // Before, the invitation only counted when confirming the address.
   const boot = await bootstrap(fritz, own);
   assert.ok(boot.workspaces.some((w) => w.id === wid));
@@ -110,7 +110,7 @@ test("an existing account takes over a later invitation when the app loads", asy
   // Unconfirmed addresses wait.
   const gina = await person("Gina", false);
   await run("INSERT INTO local_accounts(user_id,email,password_hash,is_admin,email_verified,verify_required,created_at) VALUES(?,?,?,?,?,?,?)", gina.id, gina.email, "x", 0, 0, 1, Date.now());
-  as(ada)({ action: "member.invite", email: gina.email, role: "viewer" });
+  await as(ada)({ action: "member.invite", email: gina.email, role: "viewer" });
   await bootstrap(gina, await createWorkspace(gina.id, "Gina"));
   assert.ok(await one("SELECT 1 FROM invites WHERE email=?", gina.email));
 });
@@ -120,8 +120,8 @@ test("an existing account gets an e-mail right away, unless they turned it off",
   process.env.SMTP_FROM = "flowplan@example.test";
   try {
     const hanna = await person("Hanna");
-    const doc = String(as(ada)({ action: "page.create", spaceId: team, title: "Garten", kind: "document" }).id);
-    const result = as(ada)({ action: "page.share", pageId: doc, email: hanna.email, role: "viewer" });
+    const doc = String((await as(ada)({ action: "page.create", spaceId: team, title: "Garten", kind: "document" })).id);
+    const result = await as(ada)({ action: "page.share", pageId: doc, email: hanna.email, role: "viewer" });
     assert.equal(result.mailed, true);
     const mail = (await one<{ subject: string; text: string }>("SELECT subject,text FROM mail_queue WHERE recipient=?", hanna.email))!;
     assert.match(mail.subject, /Ada hat „Garten“ mit dir geteilt/);
@@ -131,7 +131,7 @@ test("an existing account gets an e-mail right away, unless they turned it off",
     // Turned off: inbox only.
     const ida = await person("Ida");
     await run("INSERT INTO notification_prefs(user_id,kind,inbox,push,email) VALUES(?,'share',1,1,0)", ida.id);
-    assert.equal(as(ada)({ action: "page.share", pageId: doc, email: ida.email, role: "viewer" }).mailed, false);
+    assert.equal((await as(ada)({ action: "page.share", pageId: doc, email: ida.email, role: "viewer" })).mailed, false);
     assert.equal(await one("SELECT 1 FROM mail_queue WHERE recipient=?", ida.email), undefined);
   } finally {
     delete process.env.SMTP_HOST;
@@ -140,12 +140,12 @@ test("an existing account gets an e-mail right away, unless they turned it off",
 });
 
 test("open invitations can be withdrawn with their pages, or sent again", async () => {
-  as(ada)({ action: "page.share", pageId: secret, email: "jan@example.test", role: "viewer" });
+  await as(ada)({ action: "page.share", pageId: secret, email: "jan@example.test", role: "viewer" });
   const invite = (await one<{ id: string; created_at: number }>("SELECT id,created_at FROM invites WHERE email='jan@example.test'"))!;
   assert.ok(invite.created_at > 0);
-  as(ada)({ action: "invite.resend", inviteId: invite.id });
-  assert.throws(() => as(cleo)({ action: "invite.cancel", inviteId: invite.id }), /Keine Berechtigung/);
-  as(ada)({ action: "invite.cancel", inviteId: invite.id });
+  await as(ada)({ action: "invite.resend", inviteId: invite.id });
+  await assert.rejects(async () => await as(cleo)({ action: "invite.cancel", inviteId: invite.id }), /Keine Berechtigung/);
+  await as(ada)({ action: "invite.cancel", inviteId: invite.id });
   assert.equal(await one("SELECT 1 FROM invites WHERE email='jan@example.test'"), undefined);
   assert.equal(await one("SELECT 1 FROM invite_grants WHERE email='jan@example.test'"), undefined);
 });
@@ -154,8 +154,8 @@ test("an unproven address gets an invitation link, not the page", async () => {
   // Anyone can sign up with any address where mail is not set up: such an
   // account does not take over pages shared with that address.
   const kim = await person("Kim", false);
-  const doc = String(as(ada)({ action: "page.create", spaceId: team, title: "Steuer", kind: "document" }).id);
-  assert.equal(as(ada)({ action: "page.share", pageId: doc, email: kim.email, role: "viewer" }).status, "invited");
+  const doc = String((await as(ada)({ action: "page.create", spaceId: team, title: "Steuer", kind: "document" })).id);
+  assert.equal((await as(ada)({ action: "page.share", pageId: doc, email: kim.email, role: "viewer" })).status, "invited");
   await bootstrap(kim, await createWorkspace(kim.id, "Kim"));
   assert.ok(!(await canRead(kim, doc)));
   // The link from the invitation proves it.
@@ -168,8 +168,8 @@ test("an unproven address gets an invitation link, not the page", async () => {
 });
 
 test("guests keep shared pages where they are and see no one's addresses", async () => {
-  const doc = String(as(ada)({ action: "page.create", spaceId: team, title: "Urlaub", kind: "document" }).id);
-  as(ada)({ action: "page.share", pageId: doc, email: ben.email, role: "editor" });
+  const doc = String((await as(ada)({ action: "page.create", spaceId: team, title: "Urlaub", kind: "document" })).id);
+  await as(ada)({ action: "page.share", pageId: doc, email: ben.email, role: "editor" });
   const own = await createWorkspace(ben.id, "Ben");
   const ownSpace = (await bootstrap(ben, own)).spaces[0].id;
   await assert.rejects(async () => await command(ben, { action: "page.move", workspaceId: wid, pageId: doc, spaceId: ownSpace }), /Gäste/);
@@ -190,7 +190,7 @@ test("removing a member leaves no rights or traces behind", async () => {
   await run("INSERT INTO members VALUES(?,?,?)", wid, lou.id, "editor");
   await run("INSERT INTO grants(resource_id,user_id,role) VALUES(?,?,?)", secret, lou.id, "editor");
   await run("INSERT INTO favorites(user_id,page_id) VALUES(?,?)", lou.id, secret);
-  as(ada)({ action: "member.role", userId: lou.id, role: "remove" });
+  await as(ada)({ action: "member.role", userId: lou.id, role: "remove" });
   assert.equal(await one("SELECT 1 FROM members WHERE user_id=?", lou.id), undefined);
   assert.equal(await one("SELECT 1 FROM grants WHERE user_id=?", lou.id), undefined, "a later invitation does not bring old rights back");
   assert.equal(await one("SELECT 1 FROM favorites WHERE user_id=?", lou.id), undefined);

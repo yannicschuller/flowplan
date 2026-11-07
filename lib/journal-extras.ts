@@ -186,7 +186,8 @@ export function templateNodesOf(
 }
 // Texts of the template's tasks: they come back every day by themselves and
 // are not carried over as well.
-export async function templateTaskTexts(journalId: string, nodes = (await templateNodes(journalId))) {
+export async function templateTaskTexts(journalId: string, nodes?: Awaited<ReturnType<typeof templateNodes>>) {
+  if (nodes === undefined) nodes = await templateNodes(journalId);
   const texts = new Set<string>();
   for (const node of nodes)
     node.descendants((child) => {
@@ -201,8 +202,9 @@ export async function onlyTemplate(
   journalId: string,
   doc: PMNode,
   date: string,
-  nodes: PMNode[] = (await templateNodes(journalId)),
+  nodes?: PMNode[],
 ) {
+  if (nodes === undefined) nodes = await templateNodes(journalId);
   if (!nodes.length) return false;
   const tasks = await templateTaskTexts(journalId, nodes);
   const strip = (node: PMNode): unknown => {
@@ -658,7 +660,7 @@ export async function requireUnlocked(user: Identity, page: Page) {
 export const LOCKED_NOTICE = "Dieses Journal ist gesperrt.";
 export async function lockedNotification() {
   // Without any PIN on the instance nothing is checked.
-  if (!(await one("SELECT 1 FROM journal_settings WHERE lock_hash IS NOT NULL LIMIT 1"))) return () => false;
+  if (!(await one("SELECT 1 FROM journal_settings WHERE lock_hash IS NOT NULL LIMIT 1"))) return async () => false;
   const known = new Map<string, boolean>();
   return async (n: { user_id?: string; page_id: string | null; kind: string | null }, userId = n.user_id || "") => {
     if (!n.page_id || n.kind === "security" || n.kind === "incident") return false;

@@ -27,7 +27,8 @@ async function user(name: string): Promise<Identity> {
 const creator = await user("Creator"),
   wid = await createWorkspace(creator.id, "Fifty"),
   space = (await one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid))!.id;
-const members = await Array.from({ length: 49 }, async (_, i) => await user(`Member ${i}`));
+const members: Identity[] = [];
+for (let i = 0; i < 49; i++) members.push(await user(`Member ${i}`));
 for (const m of members) await run("INSERT INTO members VALUES(?,?,?)", wid, m.id, "editor");
 const [follower, pageOwner, earlier, author, recordCreator, assignee, mentioned, outsider] = members;
 const recipients = async (where: string, ...params: string[]) =>

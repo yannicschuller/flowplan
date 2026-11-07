@@ -6,7 +6,7 @@ import { all, one, run, id, nowText } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import { inPinJournal, lockedPageIds, pinJournalPageIds, PIN_JOURNAL_NOT_SHARED } from "./journal-extras";
-import { cleanHtml } from "./document-server";
+import { cleanHtml, cleanHtmlAsync } from "./document-server";
 import { checkShareProtection } from "./share-access";
 import type { Identity, Page } from "./types";
 import { mapAsync } from "./each-async";
@@ -284,7 +284,7 @@ export function publishedHtml(
       attrs[attr] = placeholder;
     } else delete attrs[attr];
   };
-  return cleanHtml(html, async (tagName, attribs) => {
+  return cleanHtmlAsync(html, async (tagName, attribs) => {
     const attrs = { ...attribs };
     if (attrs["data-linked-database"]) {
       delete attrs["data-linked-source"];

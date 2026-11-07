@@ -199,7 +199,8 @@ export async function setUserAiPolicy(user: Identity, raw: unknown) {
   return { ok: true, allowed: await aiAllowedUsers() };
 }
 export const aiAllowedUsers = async () => (await all<{ user_id: string }>("SELECT user_id FROM ai_user_policy WHERE allowed=1")).map((r) => r.user_id);
-export async function userAllowedByPolicy(userId: string, settings = (await instanceAiSettings())) {
+export async function userAllowedByPolicy(userId: string, settings?: Awaited<ReturnType<typeof instanceAiSettings>>) {
+  if (settings === undefined) settings = await instanceAiSettings();
   if (settings.access === "everyone") return true;
   return !!(await one("SELECT 1 FROM ai_user_policy WHERE user_id=? AND allowed=1", userId));
 }

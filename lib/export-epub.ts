@@ -9,7 +9,7 @@ import { audit } from "./db";
 import { HttpError } from "./auth";
 import { ct, contentLocale } from "./content-locale";
 import { exportName } from "./export-name";
-import { collectExportContent, type ExportContent } from "./export-content";
+import { collectExportContent, withExportLookups, type ExportContent } from "./export-content";
 import { documentXhtml, xml } from "./export-xhtml";
 import { exportUrl } from "./export-docx";
 import type { Identity } from "./types";
@@ -231,7 +231,7 @@ export function epubChapters(content: ExportContent) {
 export const EPUB_MAX_PAGES = 200;
 export async function exportEpub(user: Identity, options: { pageId?: string; spaceId?: string; children?: boolean }) {
   const content = await collectExportContent(user, { ...options, maxPages: EPUB_MAX_PAGES, format: "EPUB" });
-  const { chapters, resources } = epubChapters(content);
+  const { chapters, resources } = await withExportLookups(content, epubChapters);
   const bytes = await buildEpub({
     identifier: `urn:uuid:${content.space ? content.space.id : content.root!.id}`,
     title: content.name || ct("Ohne Titel", "Untitled"),

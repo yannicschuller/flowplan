@@ -845,8 +845,8 @@ test("dragging a bar onto another links them; successors can move along", async 
     b = await row("B", "2026-03-05", "2026-03-06"),
     c = await row("C", "2026-03-07", "2026-03-09"),
     other = await row("Andere", "2026-03-01", "2026-03-02");
-  const link = async (from: string, to: string, version = (await database(pid)).version) =>
-    (await command(owner, { action: "timeline.link", pageId: pid, viewId: "t", version, from, to })) as { added: boolean };
+  const link = async (from: string, to: string, version?: number) =>
+    (await command(owner, { action: "timeline.link", pageId: pid, viewId: "t", version: version ?? (await database(pid)).version, from, to })) as { added: boolean };
   assert.equal((await link(a, b)).added, true);
   assert.equal((await link(a, b)).added, false);
   assert.equal((await link(b, c)).added, true);

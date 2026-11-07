@@ -76,8 +76,8 @@ async function save(
     ...extra,
   });
 }
-function fails(fn: () => unknown, status: number) {
-  assert.throws(fn, (e: any) => e.status === status);
+async function fails(fn: () => unknown, status: number) {
+  await assert.rejects(async () => fn(), (e: any) => e.status === status);
 }
 
 test("independent links enforce read, comment and edit rights, hide tokens and revoke immediately", async () => {
@@ -88,8 +88,8 @@ test("independent links enforce read, comment and edit rights, hide tokens and r
   assert.equal(new Set([read, comment, edit]).size, 3);
   assert.equal((await listShareLinks(owner, pid)).length, 3);
   assert.deepEqual((await pageData(viewer, pid)).shareLinks, []);
-  fails(async () => await listShareLinks(viewer, pid), 403);
-  fails(
+  await fails(async () => await listShareLinks(viewer, pid), 403);
+  await fails(
     async () =>
       await command(viewer, {
         action: "share.create",
@@ -99,9 +99,9 @@ test("independent links enforce read, comment and edit rights, hide tokens and r
       }),
     403,
   );
-  fails(async () => await save(read, pid), 403);
-  fails(async () => await save(comment, pid), 403);
-  fails(
+  await fails(async () => await save(read, pid), 403);
+  await fails(async () => await save(comment, pid), 403);
+  await fails(
     async () =>
       await mutateSharedContent(read, {
         action: "comment",
@@ -139,8 +139,8 @@ test("independent links enforce read, comment and edit rights, hide tokens and r
   assert.doesNotMatch((await sharedContent(read, pid)).html, /<script/);
   assert.equal((await all("SELECT * FROM snapshots WHERE page_id=?", pid)).length, 1);
   await command(owner, { action: "share.revoke", pageId: pid, token: edit });
-  fails(async () => await sharedContent(edit, pid), 404);
-  fails(async () => await save(edit, pid), 404);
+  await fails(async () => await sharedContent(edit, pid), 404);
+  await fails(async () => await save(edit, pid), 404);
   assert.equal((await sharedContent(read, pid)).role, "viewer");
   await mutateSharedContent(comment, {
     action: "comment",
@@ -157,7 +157,7 @@ test("guest edits enforce version, locks, selected subtree and file boundaries",
     token = await link(pid, "editor", true);
   const fresh = await sharedContent(token, pid);
   await save(token, pid);
-  fails(
+  await fails(
     async () =>
       await mutateSharedContent(token, {
         action: "save",
@@ -170,10 +170,10 @@ test("guest edits enforce version, locks, selected subtree and file boundaries",
   );
   assert.equal((await publicPage(token, child)).page.id, child);
   const later = await page({ parentId: pid });
-  fails(async () => await publicPage(token, later), 404);
-  fails(async () => await save(token, other), 404);
+  await fails(async () => await publicPage(token, later), 404);
+  await fails(async () => await save(token, other), 404);
   await run("UPDATE pages SET locked=1 WHERE id=?", pid);
-  fails(async () => await save(token, pid), 409);
+  await fails(async () => await save(token, pid), 409);
   await run("UPDATE pages SET locked=0 WHERE id=?", pid);
   const fid = id(),
     hidden = id();
@@ -193,7 +193,7 @@ test("guest edits enforce version, locks, selected subtree and file boundaries",
     pid,
   );
   assert.equal((await publicFile(token, fid)).id, fid);
-  fails(async () => await publicFile(token, hidden), 404);
+  await fails(async () => await publicFile(token, hidden), 404);
   await save(
     token,
     pid,
@@ -203,7 +203,7 @@ test("guest edits enforce version, locks, selected subtree and file boundaries",
     String((await one("SELECT html FROM documents WHERE page_id=?", pid))?.html),
     new RegExp(`/api/files/${fid}`),
   );
-  fails(
+  await fails(
     async () =>
       await save(
         token,
@@ -212,7 +212,7 @@ test("guest edits enforce version, locks, selected subtree and file boundaries",
       ),
     403,
   );
-  fails(
+  await fails(
     async () =>
       await save(
         token,
@@ -222,11 +222,11 @@ test("guest edits enforce version, locks, selected subtree and file boundaries",
     404,
   );
   await run("UPDATE pages SET parent_id=NULL WHERE id=?", child);
-  fails(async () => await publicPage(token, child), 404);
+  await fails(async () => await publicPage(token, child), 404);
   await command(owner, { action: "page.delete", pageId: pid });
-  fails(async () => await publicPage(token), 404);
+  await fails(async () => await publicPage(token), 404);
   await command(owner, { action: "page.restore", pageId: pid });
-  fails(async () => await publicPage(token), 404);
+  await fails(async () => await publicPage(token), 404);
 });
 
 test("database guest edits preserve private fields and reject unauthorized row and field access", async () => {
@@ -273,7 +273,7 @@ test("database guest edits preserve private fields and reject unauthorized row a
     html: "<p>New details</p>",
     cells: { title: "After", done: true },
   };
-  fails(
+  await fails(
     async () =>
       await mutateSharedContent(token, { ...mutation, cells: { secret: viewer.id } }),
     403,
@@ -294,7 +294,7 @@ test("database guest edits preserve private fields and reject unauthorized row a
     (await all("SELECT * FROM row_snapshots WHERE row_id=?", rowId)).length,
     1,
   );
-  fails(async () => await sharedContent(token, pid, otherRow), 404);
+  await fails(async () => await sharedContent(token, pid, otherRow), 404);
 });
 
 test("guests with edit links add records with public properties only", async () => {
@@ -315,8 +315,8 @@ test("guests with edit links add records with public properties only", async () 
     (await mutateSharedContent(token, { action: "create", pageId: pid, cells })) as {
       createdRowId?: string;
     };
-  fails(async () => await create(commenter, { title: "Nein" }), 403);
-  fails(async () => await create(editor, { owner: owner.id }), 403);
+  await fails(async () => await create(commenter, { title: "Nein" }), 403);
+  await fails(async () => await create(editor, { owner: owner.id }), 403);
   const rid = (await create(editor, { title: "Gastidee", done: true })).createdRowId!;
   const row = (await one<{ cells: string; created_by: string | null }>(
     "SELECT cells,created_by FROM rows WHERE id=? AND page_id=?",
@@ -328,7 +328,7 @@ test("guests with edit links add records with public properties only", async () 
   // The new record can be edited through the same link.
   assert.equal((await sharedContent(editor, pid, rid)).cells.title, "Gastidee");
   await run("UPDATE pages SET locked=1 WHERE id=?", pid);
-  fails(async () => await create(editor, { title: "Gesperrt" }), 409);
+  await fails(async () => await create(editor, { title: "Gesperrt" }), 409);
 });
 
 test("guest uploads are checked, readable only through their link until used, and cleaned up", async () => {
@@ -371,7 +371,7 @@ test("guest uploads are checked, readable only through their link until used, an
   assert.equal(uploaded.url, `/api/share/${editor}/files/${fid}`);
   // Only the uploading link reads the unused file.
   assert.equal((await publicFile(editor, fid)).id, fid);
-  fails(async () => await publicFile(reader, fid), 404);
+  await fails(async () => await publicFile(reader, fid), 404);
   await save(editor, pid, `<p><img src="${uploaded.url}" alt="bild.png"></p>`);
   assert.match(
     String((await one("SELECT html FROM documents WHERE page_id=?", pid))?.html),
@@ -453,8 +453,8 @@ test("public pages render linked views of published databases with public proper
     host,
   ))!.public_token;
   const { pages } = await publicPage(token);
-  const rendered = withPublicEmbeds(
-    publishedHtml(html, token, pages),
+  const rendered = await withPublicEmbeds(
+    await publishedHtml(html, token, pages),
     html,
     token,
     pages,
@@ -530,12 +530,12 @@ test("guests edit relations into shared databases, files and single properties",
       version: (await sharedContent(editor, tasks, task)).version,
       cells: patch,
     });
-  fails(async () => await cells({ due: "2026-09-02" }, reader), 403);
-  fails(async () => await cells({ secret: [] }), 403);
-  fails(async () => await cells({ who: [foreign] }), 400);
+  await fails(async () => await cells({ due: "2026-09-02" }, reader), 403);
+  await fails(async () => await cells({ secret: [] }), 403);
+  await fails(async () => await cells({ who: [foreign] }), 400);
   await cells({ who: [ada], due: "2026-09-03" });
   // Stale versions are rejected.
-  fails(
+  await fails(
     async () =>
       await mutateSharedContent(editor, {
         action: "cells",
@@ -553,7 +553,7 @@ test("guests edit relations into shared databases, files and single properties",
     new File(["Protokoll"], "notiz.txt", { type: "text/plain" }),
   );
   const fid = upload.url.split("/").pop()!;
-  fails(async () => await cells({ docs: ["/api/files/" + id()] }), 400);
+  await fails(async () => await cells({ docs: ["/api/files/" + id()] }), 400);
   await cells({ docs: [upload.url, "https://example.com/plan.pdf"] });
   const row = JSON.parse(
     String((await one("SELECT cells FROM rows WHERE id=?", task))?.cells),
