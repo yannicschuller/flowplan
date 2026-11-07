@@ -59,8 +59,7 @@ import { exportablePages, markdownExportStatus, runMarkdownExports, setMarkdownE
 import { runSpaceGitExport, spaceGitOverview, spaceGitStatus } from "@/lib/space-git-export";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { mkdir, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { storeUpload } from "@/lib/page-upload";
 import {
   requireUser,
   checkOrigin,
@@ -1318,23 +1317,9 @@ async function handlePOST(
       await requirePlaintext(p);
       const maxUpload = await maxUploadMbFor(user);
       const image = await downloadImage(body.url, Math.min(maxUpload * 1024 * 1024, body.gif ? GIF_MAX_BYTES : 15 * 1024 * 1024));
-      await enforceQuota(p.workspace_id, image.data.length);
-      await enforceUserStorage(user, image.data.length);
-      const fid = id(),
-        dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads");
-      await mkdir(dir, { recursive: true });
-      await writeFile(resolve(dir, fid), image.data);
+      const fid = id();
       const name = `${(body.credit || "Bild").replace(/[\\/:*?"<>|]+/g, " ").slice(0, 80)}.${image.ext}`;
-      await run(
-        "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
-        fid,
-        p.id,
-        name,
-        image.type,
-        image.data.length,
-        user.id,
-      );
-      await audit(user.id, "file.upload", p.id, name);
+      await storeUpload(user, p, { id: fid, name, mime: image.type, content: image.data });
       const placeholder = await placeholderForUpload(fid, image.type, p.id, image.data);
       return NextResponse.json({ id: fid, url: `/api/files/${fid}`, name, mime: image.type, ...(placeholder ? { placeholder } : {}) });
     }
@@ -1643,26 +1628,15 @@ async function handlePOST(
           400,
           "Bitte PNG, JPEG, GIF, WebP oder AVIF verwenden.",
         );
-      const fid = id(),
-        dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads");
+      const fid = id();
       // The type must match the content; photos lose their location.
       const raw = Buffer.from(await file.arrayBuffer());
       if (encrypted && raw.subarray(0, 4).toString("latin1") !== "FPX1") throw new HttpError(400, "Ungültige Eingabe.");
       const mime = encrypted ? "application/octet-stream" : verifiedMime(file.type, raw);
       const content = encrypted ? raw : stripLocation(raw, mime);
       const name = encrypted ? "encrypted.bin" : sanitizeFileName(file.name);
-      await mkdir(dir, { recursive: true });
-      await writeFile(resolve(dir, fid), content);
-      await run(
-        "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
-        fid,
-        pageId,
-        name,
-        mime,
-        content.length,
-        user.id,
-      );
-      await audit(user.id, "file.upload", pageId, name);
+      // Checked again with the insert (parallel uploads, lib/page-upload.ts).
+      await storeUpload(user, p, { id: fid, name, mime, content });
       // The size and blurred picture shown while the image loads; encrypted
       // files are never looked into.
       let placeholder = null;

@@ -19,7 +19,7 @@
 // (lib/ldap-auth.ts) are added to the groups of every sign-in and of every
 // re-application, so one set of mappings serves OIDC, SCIM and LDAP.
 import { z } from "zod";
-import { all, id, one, run, transaction, lockFor } from "./db";
+import { all, id, one, run, transaction, lockFor, lockMembership } from "./db";
 import { HttpError } from "./auth";
 import { removeFromWorkspace } from "./workspace-lifecycle";
 import type { Role } from "./types";
@@ -55,6 +55,8 @@ async function setSources(workspaceId: string, userId: string, target: string, g
 }
 
 async function applyWorkspace(userId: string, workspaceId: string, matched: SsoMapping[]) {
+  // The last-owner checks below hold only while nobody else changes members.
+  await lockMembership(workspaceId);
   // Workspace membership with the highest mapped role.
   const roleMappings = matched.filter((m): m is SsoMapping & { role: Role } => !!m.role);
   const member = await one<{ role: Role }>("SELECT role FROM members WHERE workspace_id=? AND user_id=?", workspaceId, userId);
@@ -143,7 +145,9 @@ export async function applySsoGroups(userId: string, ssoGroups: string[], worksp
   const workspaces = new Set(mappings.map((m) => m.workspace_id));
   for (const s of await all<{ workspace_id: string }>("SELECT DISTINCT workspace_id FROM sso_sources WHERE user_id=?", userId))
     if (!workspaceId || s.workspace_id === workspaceId) workspaces.add(s.workspace_id);
-  for (const ws of workspaces)
+  // In a fixed order: each workspace's membership lock (applyWorkspace) is
+  // taken the same way by parallel sign-ins.
+  for (const ws of [...workspaces].sort())
     await applyWorkspace(
       userId,
       ws,

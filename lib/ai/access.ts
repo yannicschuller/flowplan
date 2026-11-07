@@ -19,7 +19,7 @@
 // it – the decrypted text never leaves the device.
 import { z } from "zod";
 import { HttpError } from "../auth";
-import { all, audit, one, run } from "../db";
+import { all, audit, lockFor, one, run } from "../db";
 import { memberRole, pageRole, requirePage, spaceRole } from "../permissions";
 import { canSharePage } from "../page-share";
 import { rowRoleResolver } from "../row-access";
@@ -230,6 +230,8 @@ export async function setAiRule(user: Identity, raw: unknown) {
     kind = "page";
     workspaceId = page.workspace_id;
   }
+  // In the command's transaction: a person's rules are counted one at a time.
+  await lockFor(`ai-access-rules:${user.id}`);
   const count = Number((await one<{ n: number }>("SELECT COUNT(*) n FROM ai_access_rules WHERE user_id=?", user.id))?.n || 0);
   if (count >= MAX_RULES && !(await one("SELECT 1 FROM ai_access_rules WHERE user_id=? AND target_id=?", user.id, b.targetId)))
     throw new HttpError(400, "Höchstens 500 Regeln für den KI-Zugriff.");

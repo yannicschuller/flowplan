@@ -23,7 +23,7 @@
 // - Accounts with e-mail and password can be linked (and deactivated), but
 //   mappings never change their memberships, as for SSO.
 import { createHash, randomBytes } from "node:crypto";
-import { all, audit, id, one, run, transaction } from "./db";
+import { all, audit, id, lockFor, one, run, transaction } from "./db";
 import { appUrl } from "./auth";
 import { readOnlyRefusal } from "./instance-read-only";
 import { lastAdmin, setUserDisabled } from "./account-deletion";
@@ -79,21 +79,25 @@ export const scimBase = () => `${appUrl().replace(/\/$/, "")}/api/scim/v2`;
 const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
 export async function createScimToken(createdBy: string, name: unknown) {
   const label = typeof name === "string" && name.trim() ? name.trim().slice(0, 80) : "SCIM";
-  if (Number((await one<{ n: number }>("SELECT COUNT(*) n FROM scim_tokens"))?.n || 0) >= MAX_TOKENS)
-    throw new ScimError(409, `At most ${MAX_TOKENS} SCIM tokens.`);
   const token = `fpscim_${randomBytes(32).toString("base64url")}`;
   const tokenId = id();
-  await run(
-    "INSERT INTO scim_tokens(id,name,scope,token_hash,prefix,created_by,created_at) VALUES(?,?,?,?,?,?,?)",
-    tokenId,
-    label,
-    "scim",
-    hashToken(token),
-    token.slice(0, 12),
-    createdBy,
-    Date.now(),
-  );
-  await audit(createdBy, "scim.token.create", tokenId, label);
+  // Counted and written in one go: parallel requests cannot pass the limit.
+  await transaction(async () => {
+    await lockFor("scim-tokens");
+    if (Number((await one<{ n: number }>("SELECT COUNT(*) n FROM scim_tokens"))?.n || 0) >= MAX_TOKENS)
+      throw new ScimError(409, `At most ${MAX_TOKENS} SCIM tokens.`);
+    await run(
+      "INSERT INTO scim_tokens(id,name,scope,token_hash,prefix,created_by,created_at) VALUES(?,?,?,?,?,?,?)",
+      tokenId,
+      label,
+      "scim",
+      hashToken(token),
+      token.slice(0, 12),
+      createdBy,
+      Date.now(),
+    );
+    await audit(createdBy, "scim.token.create", tokenId, label);
+  });
   return { id: tokenId, token };
 }
 export async function revokeScimToken(actor: string, tokenId: unknown) {

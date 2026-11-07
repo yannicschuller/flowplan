@@ -7,7 +7,7 @@
 // share links, publications, webhooks with content, MCP). The triggers in
 // lib/db.ts catch what a forgotten code path might still try.
 import { z } from "zod";
-import { all, audit, one, run, nowText } from "./db";
+import { all, audit, one, run, nowText, lockMembership } from "./db";
 import { HttpError } from "./auth";
 import { memberRole, pageRole, requirePage, spaceRole } from "./permissions";
 import { canManageSpace } from "./workspace-lifecycle";
@@ -382,6 +382,8 @@ export async function e2eeCommand(user: Identity, action: string, b: Record<stri
         })
         .parse(b);
       const space = await requireEncryptedSpace(user, data.spaceId);
+      // The grant is only for a member: not while they are being removed.
+      await lockMembership(space.workspace_id);
       if (!(await canManageSpace(user, space))) throw new HttpError(403, "Nur Bereichs- oder Arbeitsbereichseigentümer dürfen Mitglieder hinzufügen.");
       await requireHolder(user, space);
       if (!(await memberRole({ ...user, id: data.userId }, space.workspace_id))) throw new HttpError(400, "Mitglied fehlt.");

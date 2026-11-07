@@ -7,7 +7,7 @@
 // granted. Addresses must be HTTPS and on the instance's allow-list
 // (PLUGIN_ALLOWED_ORIGINS) unless an admin allows any origin.
 import { z } from "zod";
-import { all, audit, id, one, run } from "./db";
+import { all, audit, id, lockFor, one, run, transaction } from "./db";
 import { HttpError } from "./auth";
 import { requireMember, requirePage } from "./permissions";
 import { safeFetch } from "./safe-fetch";
@@ -165,42 +165,47 @@ export async function registerPlugin(user: Identity, input: unknown) {
   if (user.demo) throw new HttpError(403, "In der Demo nicht verfügbar. Registriere dich, um das zu nutzen.");
   await requireMember(user, b.workspaceId, "owner");
   const fetched = await fetchManifest(b.url);
-  // Rights may have changed while the manifest loaded.
-  await requireMember(user, b.workspaceId, "owner");
-  const permissions = await grantPermissions(user, b.workspaceId, fetched.manifest, b.databases?.map((d) => d.toLowerCase()));
-  const existing = await one<PluginRow>("SELECT * FROM plugins WHERE workspace_id=? AND url=?", b.workspaceId, fetched.url);
-  const now = Date.now();
-  const settings = validatePluginSettings(fetched.manifest, existing ? settingsOf(existing) : {});
-  if (existing)
-    await run(
-      "UPDATE plugins SET manifest=?,permissions=?,settings=?,origin=?,updated_at=? WHERE id=?",
-      JSON.stringify(fetched.manifest),
-      JSON.stringify(permissions),
-      JSON.stringify(settings),
-      fetched.origin,
-      now,
-      existing.id,
-    );
-  else {
-    if (((await one<{ n: number }>("SELECT count(*) n FROM plugins WHERE workspace_id=?", b.workspaceId))?.n || 0) >= 50)
-      throw new HttpError(409, "Höchstens 50 Block-Erweiterungen je Arbeitsbereich.");
-    await run(
-      "INSERT INTO plugins(id,workspace_id,url,origin,manifest,permissions,settings,enabled,public,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,1,0,?,?,?)",
-      id(),
-      b.workspaceId,
-      fetched.url,
-      fetched.origin,
-      JSON.stringify(fetched.manifest),
-      JSON.stringify(permissions),
-      JSON.stringify(settings),
-      user.id,
-      now,
-      now,
-    );
-  }
-  const row = (await one<PluginRow>("SELECT * FROM plugins WHERE workspace_id=? AND url=?", b.workspaceId, fetched.url))!;
-  await audit(user.id, "plugin.register", row.id, `${fetched.manifest.name} ${fetched.manifest.version} ${fetched.url}`);
-  return pluginView(row);
+  // Checked and written in one go: registrations of one workspace take
+  // turns, so parallel ones cannot all pass the count (PostgreSQL).
+  return await transaction(async () => {
+    await lockFor(`plugins:${b.workspaceId}`);
+    // Rights may have changed while the manifest loaded.
+    await requireMember(user, b.workspaceId, "owner");
+    const permissions = await grantPermissions(user, b.workspaceId, fetched.manifest, b.databases?.map((d) => d.toLowerCase()));
+    const existing = await one<PluginRow>("SELECT * FROM plugins WHERE workspace_id=? AND url=?", b.workspaceId, fetched.url);
+    const now = Date.now();
+    const settings = validatePluginSettings(fetched.manifest, existing ? settingsOf(existing) : {});
+    if (existing)
+      await run(
+        "UPDATE plugins SET manifest=?,permissions=?,settings=?,origin=?,updated_at=? WHERE id=?",
+        JSON.stringify(fetched.manifest),
+        JSON.stringify(permissions),
+        JSON.stringify(settings),
+        fetched.origin,
+        now,
+        existing.id,
+      );
+    else {
+      if (((await one<{ n: number }>("SELECT count(*) n FROM plugins WHERE workspace_id=?", b.workspaceId))?.n || 0) >= 50)
+        throw new HttpError(409, "Höchstens 50 Block-Erweiterungen je Arbeitsbereich.");
+      await run(
+        "INSERT INTO plugins(id,workspace_id,url,origin,manifest,permissions,settings,enabled,public,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,1,0,?,?,?)",
+        id(),
+        b.workspaceId,
+        fetched.url,
+        fetched.origin,
+        JSON.stringify(fetched.manifest),
+        JSON.stringify(permissions),
+        JSON.stringify(settings),
+        user.id,
+        now,
+        now,
+      );
+    }
+    const row = (await one<PluginRow>("SELECT * FROM plugins WHERE workspace_id=? AND url=?", b.workspaceId, fetched.url))!;
+    await audit(user.id, "plugin.register", row.id, `${fetched.manifest.name} ${fetched.manifest.version} ${fetched.url}`);
+    return pluginView(row);
+  }, user);
 }
 
 // Every member sees the enabled plugins (to render their blocks); owners

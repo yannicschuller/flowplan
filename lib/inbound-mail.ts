@@ -17,7 +17,7 @@ import { mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import sanitize from "sanitize-html";
 import { z } from "zod";
-import { all, audit, id, one, onTransactionRollback, run, transaction, nowText } from "./db";
+import { all, audit, id, lockFor, one, onTransactionRollback, run, transaction, nowText } from "./db";
 import { appUrl, hash, HttpError } from "./auth";
 import { pageRole } from "./permissions";
 import { createPage } from "./seed";
@@ -156,6 +156,8 @@ export async function saveInboundAddress(user: Identity, raw: unknown) {
     await audit(user.id, "inbound.update", existing.id);
     return { id: existing.id };
   }
+  // In the command's transaction: one workspace's new addresses are counted one at a time.
+  await lockFor(`inbound-addresses:${input.workspaceId}`);
   if (Number((await one<{ n: number }>("SELECT COUNT(*) n FROM inbound_addresses WHERE workspace_id=?", input.workspaceId))?.n) >= MAX_ADDRESSES)
     throw new HttpError(409, "Höchstens 50 E-Mail-Eingänge pro Arbeitsbereich.");
   const addressId = id();

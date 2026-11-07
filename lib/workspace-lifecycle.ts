@@ -1,7 +1,7 @@
 import { duplicatePages } from "./page-tree";
 import { placeAfter } from "./space-order";
 import { z } from "zod";
-import { all, one, run, id, nowText } from "./db";
+import { all, one, run, id, nowText, lockMembership } from "./db";
 import { removePages } from "./search-store";
 import { HttpError } from "./auth";
 import { memberRole, requireMember, spaceRole } from "./permissions";
@@ -214,8 +214,10 @@ export async function manageWorkspace(
   user: Identity,
   input: Record<string, unknown>,
 ) {
-  const wid = uuid.parse(input.workspaceId),
-    role = await requireMember(user, wid);
+  const wid = uuid.parse(input.workspaceId);
+  // Two owners leaving at once must not both count the other as staying.
+  await lockMembership(wid);
+  const role = await requireMember(user, wid);
   const workspace = (await one<{ name: string }>(
     "SELECT name FROM workspaces WHERE id=?",
     wid,
@@ -278,6 +280,7 @@ export async function manageWorkspace(
 // Spaces they own go to `spacesTo` (or stay, when none is given and they
 // own none).
 export async function removeFromWorkspace(userId: string, wid: string, spacesTo?: string) {
+  await lockMembership(wid);
   if (spacesTo)
     await run("UPDATE spaces SET owner_id=?,version=version+1 WHERE workspace_id=? AND owner_id=?", spacesTo, wid, userId);
   await run(
