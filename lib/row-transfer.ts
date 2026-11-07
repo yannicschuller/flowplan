@@ -13,7 +13,7 @@ import { aliasList } from "./aliases";
 import { copyFileSync, existsSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { z } from "zod";
-import { all, id, one, run, nowText } from "./db";
+import { all, id, one, run, nowText, lockFor } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import { assertRowAccess } from "./row-access";
@@ -166,6 +166,7 @@ export function transferRows(user: Identity, sourcePageId: string, raw: unknown)
     return row;
   });
   const results: string[] = [];
+  lockFor(`row-positions:${target.id}`);
   let position = (one<{ p: number }>("SELECT COALESCE(MAX(position),0) p FROM rows WHERE page_id=?", target.id)?.p || 0) + 1;
   for (const row of rows) {
     let cells: Record<string, unknown> = {};

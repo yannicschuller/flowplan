@@ -1700,6 +1700,14 @@ export function tableKey(table: string): string[] {
     .sort((a, b) => a.pk - b.pk)
     .map((c) => c.name);
 }
+// Serialises a check-then-write section with every other one of the same
+// key until the transaction ends (docs/architecture/database.md,
+// "Isolation"): SQLite has one writer at a time anyway; PostgreSQL runs
+// READ COMMITTED and takes a transaction-scoped advisory lock. Keys name
+// what is checked, e.g. `tags:<workspace>`.
+export function lockFor(key: string) {
+  if (legacyPg() && inTransactionSync()) one("SELECT pg_advisory_xact_lock(hashtextextended(?,0))", key);
+}
 // Whether a synchronous transaction() is open.
 export function inTransactionSync() {
   const pg = legacyPg();

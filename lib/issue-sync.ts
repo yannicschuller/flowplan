@@ -25,7 +25,7 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { isIP } from "node:net";
 import { z } from "zod";
-import { all, audit, id, one, run, transaction, nowText } from "./db";
+import { all, audit, id, one, run, transaction, nowText, lockFor } from "./db";
 import { appUrl, HttpError } from "./auth";
 import { isGuest, memberRole, pageRole, requirePage } from "./permissions";
 import { hiddenRowIds } from "./row-access";
@@ -480,6 +480,7 @@ function saveConnection(user: Identity, workspaceId: string, raw: unknown) {
     return { id: row.id };
   }
   if (!input.token) throw new HttpError(400, "Bitte ein Zugangstoken eingeben.");
+  lockFor(`issue-connections:${workspaceId}`);
   if ((one<{ n: number }>("SELECT COUNT(*) n FROM issue_connections WHERE workspace_id=?", workspaceId)?.n || 0) >= 20)
     throw new HttpError(400, "Höchstens 20 Verbindungen je Arbeitsbereich.");
   const cid = id();

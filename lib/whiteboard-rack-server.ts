@@ -6,7 +6,7 @@
 //   are neither stored nor logged. NETBOX_ALLOW_PRIVATE=true lets an
 //   administrator allow NetBox on internal addresses and plain http.
 import { z } from "zod";
-import { all, audit, id, one, run } from "./db";
+import { all, audit, id, one, run, lockFor } from "./db";
 import { HttpError } from "./auth";
 import { isGuest, requireMember, requirePage } from "./permissions";
 import { safeFetch } from "./safe-fetch";
@@ -58,6 +58,7 @@ export function saveRackTemplate(user: Identity, pageId: unknown, raw: unknown) 
   const input = saveInput.parse(raw);
   const device = cleanDevice(input.device);
   if (!device) throw new HttpError(400, "Ungültiges Gerät.");
+  lockFor(`rack-templates:${page.workspace_id}`);
   if ((one<{ n: number }>("SELECT COUNT(*) n FROM rack_device_templates WHERE workspace_id=?", page.workspace_id)?.n || 0) >= 500)
     throw new HttpError(409, "Dieser Arbeitsbereich hat schon 500 eigene Geräte.");
   const templateId = id();

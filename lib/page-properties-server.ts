@@ -13,7 +13,7 @@
 // them): the commands are refused there (lib/e2ee-server.ts).
 import { z } from "zod";
 import { HttpError } from "./auth";
-import { all, audit, id, one, run, nowText } from "./db";
+import { all, audit, id, one, run, nowText, lockFor } from "./db";
 import { db, uniqueViolation, type Dialect } from "./db-driver";
 import { auditAsync } from "./audit";
 
@@ -364,6 +364,8 @@ export function resolveTag(user: Identity | null, scope: MetaScope, ref: string,
       403,
       spaceId ? "Neue Tags legen nur Mitglieder mit Bearbeitungsrechten an." : "Tags für den ganzen Arbeitsbereich legen nur Eigentümer an.",
     );
+  // Names, the limit and the position: one creation at a time per workspace.
+  lockFor(`tags:${workspaceId}`);
   const clash = scopeClash("page_tags", workspaceId, spaceId, name);
   if (clash) throw new HttpError(409, clashMessage("page_tags", clash));
   if ((one<{ n: number }>("SELECT COUNT(*) n FROM page_tags WHERE workspace_id=?", workspaceId)?.n ?? 0) >= MAX_TAGS)
@@ -609,6 +611,7 @@ export function pagePropertiesCommand(user: Identity, action: string, input: Rec
       const spaceId = stored ? stored.space_id : (b.spaceId ?? null);
       if (!stored && spaceId) scopeSpace(b.workspaceId, spaceId);
       requireManage(user, b.workspaceId, spaceId);
+      lockFor(`properties:${b.workspaceId}`);
       const clash = scopeClash("page_property_defs", b.workspaceId, spaceId, name, b.propertyId);
       if (clash) throw new HttpError(409, clashMessage("page_property_defs", clash));
       if (!stored) {
@@ -834,6 +837,7 @@ export function applyPortableMeta(
     );
     const copy = options.createProperties?.has(foldName(name));
     if (!stored && (options.createDefinitions || copy)) {
+      lockFor(`properties:${page.workspace_id}`);
       if ((one<{ n: number }>("SELECT COUNT(*) n FROM page_property_defs WHERE workspace_id=?", page.workspace_id)?.n ?? 0) >= MAX_PROPERTIES) continue;
       const spaceId = property.space || copy || options.definitionsScope !== "marked" ? scope.spaceId : null;
       if (scopeClash("page_property_defs", page.workspace_id, spaceId, name)) continue;

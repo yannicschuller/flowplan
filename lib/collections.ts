@@ -19,7 +19,7 @@
 // person's order in the sidebar).
 import { z } from "zod";
 import { HttpError } from "./auth";
-import { all, audit, id, one, run, sql } from "./db";
+import { all, audit, id, one, run, sql, lockFor } from "./db";
 import { textMatch } from "./search-store";
 import { refreshSearchIndex } from "./search-index";
 import { isEncryptedPage } from "./e2ee-server";
@@ -169,6 +169,7 @@ function checkLimits(user: Identity, workspaceId: string, shared: boolean, excep
   if (sharedCount >= MAX_SHARED_COLLECTIONS) throw new HttpError(409, `Höchstens ${MAX_SHARED_COLLECTIONS} geteilte Sammlungen je Arbeitsbereich.`);
 }
 function append(userId: string, collectionId: string, workspaceId: string) {
+  lockFor(`collection-order:${userId}`);
   const last = one<{ p: number | null }>(
     "SELECT MAX(o.position) p FROM collection_order o JOIN collections c ON c.id=o.collection_id WHERE o.user_id=? AND c.workspace_id=?",
     userId,

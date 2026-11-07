@@ -19,7 +19,7 @@
 // (lib/ldap-auth.ts) are added to the groups of every sign-in and of every
 // re-application, so one set of mappings serves OIDC, SCIM and LDAP.
 import { z } from "zod";
-import { all, id, one, run, transaction } from "./db";
+import { all, id, one, run, transaction, lockFor } from "./db";
 import { HttpError } from "./auth";
 import { removeFromWorkspace } from "./workspace-lifecycle";
 import type { Role } from "./types";
@@ -233,6 +233,7 @@ export function addSsoMapping(workspaceId: string, input: unknown) {
   if (!one("SELECT 1 FROM workspaces WHERE id=?", workspaceId)) throw new HttpError(404, "Arbeitsbereich nicht gefunden.");
   if (b.groupId && !one("SELECT 1 FROM groups WHERE id=? AND workspace_id=?", b.groupId, workspaceId))
     throw new HttpError(400, "Gruppe fehlt.");
+  lockFor(`sso-mappings:${workspaceId}`);
   if (Number(one<{ n: number }>("SELECT COUNT(*) n FROM sso_mappings WHERE workspace_id=?", workspaceId)?.n) >= MAX_MAPPINGS)
     throw new HttpError(409, "Höchstens 100 SSO-Zuordnungen pro Arbeitsbereich.");
   if (
