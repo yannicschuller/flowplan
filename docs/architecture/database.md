@@ -1343,13 +1343,14 @@ shared queues (files due/in flight, mail, push, webhooks, chat apps).
 
 - **`npx tsc --noEmit -p .`** clean; `node scripts/db-dialect-scan.mjs`
   zero on every SQLite-only pattern (`LIKE` 76, as in phase 2).
-- **SQLite** (`npm test`): 2,078 tests – 2,077 pass, 1 skipped (the
-  multi-instance test needs PostgreSQL); one time-bucket test of
-  `tests/metrics.test.ts` failed once under load and passes on its own
-  (3 of 3).
+- **SQLite** (`npm test`, after merging phase 3's search): 2,094 tests –
+  2,084 pass, 0 fail, 10 skipped (the multi-instance test needs PostgreSQL;
+  phase 3's PostgreSQL-only tests). Before the merge one time-bucket test of
+  `tests/metrics.test.ts` failed once under load and passed on its own.
 - **PostgreSQL 16** (`DATABASE_URL=…`, `FLOWPLAN_TEST_REDIS_URL` with a real
-  Redis 7): 2,078 tests – 2,071 pass, 6 skipped (SQLite's own, as in
-  phase 2), 1 flaky: `tests/admin-ops.test.ts` "refusals are counted"
+  Redis 7, after the merge): 2,094 tests – 2,088 pass, 0 fail, 6 skipped
+  (SQLite's own; the one failure of the run, the Helm chart test's image
+  path, fixed and re-run). Before the merge (2,078 tests) one flaky test: `tests/admin-ops.test.ts` "refusals are counted"
   fails in about half of the runs on a loaded host – on the unchanged
   `db-refactor` branch as well (a counter written after the transaction,
   awaited with one `setImmediate`); not caused by this phase. The cluster tests also ran against the in-process
@@ -1369,11 +1370,10 @@ shared queues (files due/in flight, mail, push, webhooks, chat apps).
   (`pg-triggers.ts` `UPSERTS`; test: eight comments on one page at once).
   `flowplan_meta.schema_hash` makes such a changed translation reach
   existing databases at the same schema version.
-- **Seen, not fixed (search):** deadlocks between the search indexer and
-  request-time index writes (`DELETE FROM search_index/search_dirty`) under
-  load – the search queue and store are being replaced by the `tsvector`
-  work (branch `db-search`), which should take row locks in a fixed order or
-  claim the queue with `SKIP LOCKED`.
+- **Search deadlocks** between the indexer and request-time index writes
+  (`DELETE FROM search_index/search_dirty`) showed in run B, before the
+  phase 3 search was merged; the run on the merged branch (§15, run A) had
+  no server errors.
 
 ### What is left (open risks)
 
@@ -1442,49 +1442,50 @@ DATABASE_URL=postgres://… REDIS_URL=redis://… taskset -c 2,3 \
 ```
 
 Machine: 4 vCPU Intel Xeon @ 2.10 GHz, 16 GB, PostgreSQL 16 and Redis 7
-on the same host, Node 22. **The host was shared** with another test
-suite during the runs (load average 4–15 on 4 cores): the numbers are a
-lower bound and show the trend, not a calibrated capacity.
+on the same host, Node 22.
 
-**Pinned (each instance one core of its own, `--pin 0,1`; generator and
-balancer on cores 2–3; PostgreSQL unpinned):**
+**Run A – merged branch (search of phase 3 included), quiet host (load
+average 1–4), pinned** (each instance one core of its own, `--pin 0,1`;
+generator and balancer on cores 2–3; PostgreSQL unpinned). The numbers
+for the sizing guide:
 
-| VUs | 1 instance: req/s | read p95 | write p95 | errors | 2 instances: req/s | read p95 | write p95 | errors |
+| VUs | 1 instance: req/s | read p95 ms | write p95 ms | errors | 2 instances: req/s | read p95 ms | write p95 ms | errors |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 10 | 10.3 | 304 | 116 | 0 | 11.2 | 178 | 64 | 0 |
-| 15 | 18.9 | 304 | 119 | 0 | 19.5 | 242 | 78 | 0 |
-| 20 | 21.0 | 371 | 161 | 0 | 22.0 | 274 | 84 | 0 |
-| 25 | 29.4 | 433 | 164 | 0 | 31.2 | 298 | 105 | 0 |
-| 30 | 34.4 | **1,204** | 247 | 0 | 37.7 | 264 | 99 | 0 |
-| 40 | 40.1 | 3,905 | 321 | 0 | 48.9 | 476 | 146 | 0 |
-| 50 | 42.8 | 5,862 | 443 | 1.5 % | 61.4 | **650** | 157 | 0 |
-| 60 | 42.3 | 7,638 | 459 | 3.3 % | 54.8 | 4,120 | 434 | 0.1 % |
+| 10 | 11.4 | 153 | 59 | 0 | 11.3 | 110 | 36 | 0 |
+| 20 | 21.2 | 234 | 88 | 0 | 21.8 | 134 | 46 | 0 |
+| 30 | 38.4 | 340 | 107 | 0 | 39.2 | 229 | 71 | 0 |
+| 40 | 45.9 | **1,847** | 253 | 0 | 48.5 | 249 | 68 | 0 |
+| 50 | 53.7 | 5,341 | 269 | 0 | 65.4 | **595** | 113 | 0 |
+| 60 | 50.2 | 8,750 | 304 | 1.3 % | 72.0 | 922 | 170 | 0 |
+| 80 | 47.8 | 7,642 | 694 | 4.8 % | 82.6 | 7,920 | 263 | 0.4 % |
 
-- **1 instance serves 25 VUs** (knee at 30); **2 instances serve 40**
-  (knee at 50, just over the line: read p95 650 ms) – 1.6× for the second
-  instance, throughput 42 → 61 req/s. The second instance moves the limit;
-  PostgreSQL (unpinned, on the shared cores) and the balancer take part of
-  the gain.
-- **What saturates first:** reads that issue many sequential queries –
-  `bootstrap` (sidebar, permissions page by page) and `db.open` (all
-  records) – then `search` (the stop-gap of §5a). Writes and live editing
-  stay fast long after: at 50 VUs on 2 instances `doc.sync` p95 170 ms
-  and the cross-instance fan-out (one editor's save arriving at another's
-  stream through Redis) p95 175 ms.
-- **Unpinned** (instances float over the shared 4 cores): both setups had
-  their knee at 30 VUs (1 instance: read p95 1,038 ms; 2 instances: 915 ms),
-  but 2 instances carried more – 0 % errors up to 60 VUs (1 instance:
-  6 % at 60, timeouts) and up to 62 req/s (1 instance: 41). On one small
-  host the machine, not the instance count, is the limit.
+- **1 instance serves 30 VUs** (knee at 40); **2 instances serve 40**
+  (knee at 50, read p95 595 ms – just over the line; 60 VUs still without
+  errors at 922 ms). Throughput 54 → 83 req/s (1.5×). PostgreSQL, on the
+  shared cores, takes part of the second core's gain.
+- **What saturates first:** `bootstrap` (sidebar, permissions page by page:
+  many sequential queries), then `db.open` (all records) and `search`.
+  Writes and live editing stay fast long after: at 60 VUs on 2 instances
+  `doc.sync` p95 182 ms, and the cross-instance fan-out (an editor's save
+  arriving at another editor's stream on the other instance, through Redis)
+  p95 195 ms. No server errors in this run.
+
+**Run B – before the merge, host shared with another test suite** (load
+average 4–15), same setup: 1 instance served 25 VUs (knee 30), 2 served 40
+(knee 50); unpinned, both setups had their knee at 30 VUs, but 2 instances
+carried 62 req/s without errors up to 60 VUs where 1 instance had 6 %
+timeouts. This run found the offline change log race (§14) and search
+deadlocks (gone after the merge).
+
 - **Compared with SQLite** (one process, the earlier load test: knee at
-  ~20 active VUs): one PostgreSQL instance on one core serves ~25 here,
-  on a busier machine. The expected 35–40 per instance is not reached on
-  this host; the hot paths above are what to batch first (§12: sequential
-  awaits; `bootstrap`'s permission checks, `filterAsync(pages, pageRole)`).
+  ~20 active VUs): one PostgreSQL instance on one core serves ~30, two
+  ~40–50. The expected 35–40 per instance is not reached yet; batching the
+  hot read paths (§12: sequential awaits; `bootstrap`'s permission checks,
+  `filterAsync(pages, pageRole)`) is what moves it.
 - **For the sizing guide** (a VU is a busy person – one request every
   1.5 s or typing continuously; real people are far less active, see the
   SQLite load test's notes on translating VUs into people): plan
-  **~20–25 active VUs per instance with one dedicated core**, add
+  **~25–30 active VUs per instance with one dedicated core**, add
   instances linearly as long as PostgreSQL has headroom (it was not the
   bottleneck here: write p95 stayed under 500 ms everywhere), give each
   instance `FLOWPLAN_PG_POOL` 10–20 and PostgreSQL
