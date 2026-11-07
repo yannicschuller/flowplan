@@ -2,10 +2,9 @@ import { createHash } from "node:crypto";
 import * as Y from "yjs";
 import { Node } from "prosemirror-model";
 import { updateYFragment } from "y-prosemirror";
-import { generateJSON } from "@tiptap/html/server";
 import { one, run, id } from "./db";
-import { cleanHtml, htmlState, stateHtml } from "./document-server";
-import { documentExtensions, documentSchema } from "./document-schema";
+import { cleanHtml, htmlState, stateHtml, htmlJson } from "./document-server";
+import { documentSchema } from "./document-schema";
 
 // Live editing for guests. Each share link works on its own projection of
 // the document (a Yjs document with only what the link may see). Guests
@@ -47,7 +46,7 @@ export function saveLive(key: string, entry: LiveEntry) {
 export function applyHtml(doc: Y.Doc, html: string) {
   const node = Node.fromJSON(
     documentSchema(),
-    generateJSON(cleanHtml(html) || "<p></p>", documentExtensions),
+    htmlJson(cleanHtml(html) || "<p></p>"),
   );
   doc.transact(() =>
     updateYFragment(doc, doc.getXmlFragment("default"), node, {

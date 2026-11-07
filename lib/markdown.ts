@@ -1,8 +1,7 @@
-import { generateHTML, generateJSON } from "@tiptap/html/server";
 import type { DOMOutputSpec, Mark, Node } from "@tiptap/pm/model";
-import { calloutType, documentExtensions, documentSchema } from "./document-schema";
+import { calloutType, documentSchema } from "./document-schema";
 import { calloutColor, calloutIcon } from "./callout-types";
-import { cleanHtml } from "./document-server";
+import { cleanHtml, htmlJson, jsonHtml } from "./document-server";
 import { citedWorks, formatReference, pandocCitation } from "./citations";
 import { ct } from "./content-locale";
 import { URL_PATTERN, footnoteText } from "./footnotes";
@@ -201,7 +200,7 @@ export function htmlToMarkdown(
   options: { source?: MarkdownSource } = {},
 ): string {
   const doc = documentSchema().nodeFromJSON(
-    generateJSON(cleanHtml(html), documentExtensions),
+    htmlJson(cleanHtml(html)),
   );
   // Citations as Pandoc "[@key]"; the bibliography lists every cited work.
   const cited: { key: string; item: string }[] = [];
@@ -243,7 +242,7 @@ export function htmlToMarkdown(
     const index = source.blocks.length;
     const label = (blockLabels[node.type.name]?.() || node.type.name).replace(/-{2,}|>/g, " ");
     source.blocks.push({
-      html: generateHTML({ type: "doc", content: [node.toJSON()] }, documentExtensions),
+      html: jsonHtml({ type: "doc", content: [node.toJSON()] }),
       label,
     });
     return `<!-- flowplan:block ${index} ${label} -->`;

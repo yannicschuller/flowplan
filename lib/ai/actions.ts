@@ -25,7 +25,6 @@
 import * as Y from "yjs";
 import { z } from "zod";
 import { Node as PMNode } from "@tiptap/pm/model";
-import { generateJSON } from "@tiptap/html/server";
 import { updateYFragment, yDocToProsemirrorJSON } from "y-prosemirror";
 import { HttpError } from "../auth";
 import { all, audit, one } from "../db";
@@ -37,8 +36,8 @@ import { readableDatabase, readOnlyFieldIds } from "../field-access";
 import { validateCellPatch } from "../database-operations";
 import { markdownToHtml } from "../markdown-import";
 import { aiAnswerHref } from "./insert";
-import { cleanHtml, htmlState } from "../document-server";
-import { documentExtensions, documentSchema } from "../document-schema";
+import { cleanHtml, htmlState, htmlJson } from "../document-server";
+import { documentSchema } from "../document-schema";
 import type { Field, Identity, Page, Space } from "../types";
 import { AI_BLOCKED_MESSAGE, aiFilter, aiMayRead } from "./access";
 import { aiJson } from "./json";
@@ -470,7 +469,7 @@ export function appendHtml(user: Identity, pageId: string, html: string) {
   const stored = one<{ state: Uint8Array | null; html: string; generation: string }>("SELECT state,html,generation FROM documents WHERE page_id=?", pageId);
   if (!stored) throw new HttpError(404, "Dokument nicht gefunden.");
   const schema = documentSchema();
-  const added = PMNode.fromJSON(schema, generateJSON(cleanHtml(html) || "<p></p>", documentExtensions));
+  const added = PMNode.fromJSON(schema, htmlJson(cleanHtml(html) || "<p></p>"));
   const ydoc = new Y.Doc();
   try {
     Y.applyUpdate(ydoc, stored.state || htmlState(stored.html));

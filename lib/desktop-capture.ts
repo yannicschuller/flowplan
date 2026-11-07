@@ -23,14 +23,12 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { Fragment, type Node as PMNode } from "@tiptap/pm/model";
-import { generateJSON } from "@tiptap/html/server";
 import { all, one, transaction } from "./db";
 import { HttpError } from "./auth";
 import { command, database } from "./api";
 import { ct } from "./content-locale";
-import { cleanHtml, escaped } from "./document-server";
+import { cleanHtml, escaped, htmlJson } from "./document-server";
 import { rewriteDocument, rewriteSchema } from "./document-rewrite";
-import { documentExtensions } from "./document-schema";
 import { readableDatabase, readOnlyFieldIds, visibleFields } from "./field-access";
 import { enforceQuota } from "./instance-ops";
 import { localToInstant, validZone } from "./date-values";
@@ -368,7 +366,7 @@ export async function desktopCaptureSave(user: Identity, raw: unknown, files: Up
 // Sanitized HTML as top-level nodes of the document schema.
 function htmlNodes(html: string, schema: ReturnType<typeof rewriteSchema>): PMNode[] {
   if (!html) return [];
-  const json = generateJSON(html, documentExtensions) as { content?: Record<string, unknown>[] };
+  const json = htmlJson(html) as { content?: Record<string, unknown>[] };
   return (json.content || []).map((node) => schema.nodeFromJSON(node));
 }
 

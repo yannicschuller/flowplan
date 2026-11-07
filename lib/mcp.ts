@@ -8,7 +8,6 @@ import { aliasList } from "./aliases";
 import * as Y from "yjs";
 import { z } from "zod";
 import { Node as PMNode } from "@tiptap/pm/model";
-import { generateJSON } from "@tiptap/html/server";
 import { updateYFragment, yDocToProsemirrorJSON } from "y-prosemirror";
 import { all, one } from "./db";
 import { HttpError, appUrl } from "./auth";
@@ -21,8 +20,8 @@ import { cellText } from "./cell-text";
 import { exportMarkdown } from "./markdown-export";
 import { htmlToMarkdown, type MarkdownContext } from "./markdown";
 import { markdownToHtml } from "./markdown-import";
-import { cleanHtml, htmlState } from "./document-server";
-import { documentExtensions, documentSchema } from "./document-schema";
+import { cleanHtml, htmlState, htmlJson } from "./document-server";
+import { documentSchema } from "./document-schema";
 import { searchWorkspace, MARK_START, MARK_END } from "./search-index";
 import { listCollections, runCollection } from "./collections";
 import { myTasks } from "./doc-tasks";
@@ -335,7 +334,7 @@ export function appendHtmlToPage(user: Identity, args: { pageId: string; html: s
   const schema = documentSchema();
   const added = PMNode.fromJSON(
     schema,
-    generateJSON(cleanHtml(args.html) || "<p></p>", documentExtensions),
+    htmlJson(cleanHtml(args.html) || "<p></p>"),
   );
   const ydoc = new Y.Doc();
   try {
