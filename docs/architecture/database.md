@@ -641,9 +641,11 @@ What changed, beyond the rules of §2 and §3:
 
 - **SQLite** (`npm test`): 2,045 of 2,045 pass (about 6 minutes on 4 cores).
 - **PostgreSQL 16 through the bridge** (`DATABASE_URL=…`, a schema per test
-  process): PGRESULT
-- 9 tests are skipped on Postgres, all of them about SQLite itself (§11,
-  phase 2 notes); with the spike's `db-driver` SQLite-only test that is 9.
+  process): 2,036 pass, 0 fail, 9 skipped of 2,045 (about 11½ minutes).
+  Before phase 1 the same run counted 1,232 pass and 541 fail of 1,774
+  (some files did not load, one hung).
+- The 9 skipped tests are about SQLite itself: 8 listed in the phase 2
+  notes below and the spike's SQLite-only driver test.
 - Migration tool: SQLite → Postgres → SQLite of an instance with five
   workspaces, every table verified by count and checksum both ways.
 - **`next build`** with `pg` and the bridge: the standalone output has `pg`
