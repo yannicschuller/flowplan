@@ -11,6 +11,7 @@ import { FileDoc, UploadSimple } from "@phosphor-icons/react";
 import { serverMessage } from "@/lib/i18n-errors";
 import { useT } from "./i18n";
 import { Select } from "./select";
+import { Switch } from "./settings-ui";
 
 type Preview = {
   source: string;
@@ -31,6 +32,9 @@ type Preview = {
   icons?: number;
   // Documents that become the content of a database record (AFFiNE).
   rowDocuments?: number;
+  // Documents with exactly one other document linking to them, placed
+  // below it unless switched off (AFFiNE, #167).
+  linkedBelow?: number;
   // Templates saved as templates (AFFiNE).
   templates?: number;
   // More pages than one import may bring: importing is refused.
@@ -119,6 +123,9 @@ export function ImportSources({
   const [ownSpace, setSpace] = useState(spaces[0]?.id || "");
   const space = spaceId ?? ownSpace;
   const [mode, setMode] = useState<"pages" | "database">("pages");
+  // AFFiNE (#167): documents with exactly one link to them go below the
+  // document linking to them – on unless switched off in the preview.
+  const [nestLinked, setNestLinked] = useState(true);
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   // Uploading (share of the file sent) or the server's work (its share
@@ -136,6 +143,7 @@ export function ImportSources({
   const request = async (chosen: File, dryRun: boolean, upload?: string) => {
     const query = new URLSearchParams({ workspaceId, spaceId: space || spaces[0]?.id || "", source, mode, name: chosen.name });
     if (dryRun) query.set("dryRun", "1");
+    else if (!nestLinked) query.set("nestLinked", "0");
     // The import uses the upload of the preview.
     if (upload) query.set("upload", upload);
     query.set("background", "1");
@@ -157,6 +165,7 @@ export function ImportSources({
     setFile(chosen);
     setPreview(null);
     setDone("");
+    setNestLinked(true);
     try {
       setPreview((await request(chosen, true)) as Preview);
     } catch (error) {
@@ -299,6 +308,29 @@ export function ImportSources({
             )}
             {!!preview.templates && <li>{t(`${preview.templates} Vorlagen`, `${preview.templates} templates`)}</li>}
           </ul>
+          {mode === "pages" && !!preview.linkedBelow && (
+            <div className="import-sources-option">
+              <span className="import-sources-option-text">
+                <span id="import-nest-linked">{t("Dokumente mit genau einem Verweis darunter einordnen", "Place documents with a single backlink below the linking document")}</span>
+                <small>
+                  {nestLinked
+                    ? t(
+                        `${preview.linkedBelow} Dokumente, auf die genau ein anderes Dokument verweist, kommen unter dieses Dokument statt auf die oberste Ebene.`,
+                        `${preview.linkedBelow} documents that exactly one other document links to go below that document instead of the top level.`,
+                      )
+                    : t(
+                        `${preview.linkedBelow} Dokumente, auf die genau ein anderes Dokument verweist, bleiben auf der obersten Ebene.`,
+                        `${preview.linkedBelow} documents that exactly one other document links to stay at the top level.`,
+                      )}
+                </small>
+              </span>
+              <Switch
+                checked={nestLinked}
+                onChange={setNestLinked}
+                label={t("Dokumente mit genau einem Verweis darunter einordnen", "Place documents with a single backlink below the linking document")}
+              />
+            </div>
+          )}
           {preview.warnings.length > 0 && (
             <ul className="import-sources-warnings">
               {preview.warnings.map((warning) => (

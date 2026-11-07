@@ -83,6 +83,9 @@ export type ImportTree = {
   collections?: number;
   // Templates of the source (AFFiNE, #116), written as saved templates.
   templates?: ImportTemplate[];
+  // Documents that go below the one document linking to them (AFFiNE,
+  // #167) – counted also when that is switched off, for the preview.
+  linkedBelow?: number;
   // The page holding everything (AFFiNE: the workspace) when the import
   // has one; it is not counted as a folder in the preview.
   wrapper?: string;

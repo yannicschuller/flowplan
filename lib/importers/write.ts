@@ -52,6 +52,9 @@ export type ImportPreview = {
   icons?: number;
   // Documents that become the content of a database record (AFFiNE, #82).
   rowDocuments?: number;
+  // Documents placed below the one document linking to them (AFFiNE, #167),
+  // counted whether or not that is switched on.
+  linkedBelow?: number;
   // Templates of the source saved as templates (AFFiNE, #116), and for whom.
   templates?: number;
   templateVisibility?: "workspace" | "private";
@@ -185,6 +188,7 @@ export async function previewImport(user: Identity, workspaceId: string, spaceId
     ...(properties && mode === "pages" ? { properties } : {}),
     ...(icons && mode === "pages" ? { icons } : {}),
     ...(rowDocuments ? { rowDocuments } : {}),
+    ...(tree.linkedBelow && mode === "pages" ? { linkedBelow: tree.linkedBelow } : {}),
     ...(templates ? { templates, templateVisibility } : {}),
     ...(tooMany ? { tooMany } : {}),
     ...(tree.wrapper && mode === "pages" && tree.pages.some((p) => p.key === tree.wrapper)
