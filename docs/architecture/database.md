@@ -1080,7 +1080,34 @@ What changed (details in §3, §5a, §5b, §6):
 
 ### Results
 
-RESULTS_PLACEHOLDER
+- **`npx tsc --noEmit -p .`** clean; `node scripts/db-dialect-scan.mjs`:
+  zero on every SQLite-only pattern (`LIKE` 77, reviewed: the one new is
+  the IDF count's match on the folded text).
+- **SQLite** (`npm test`): 2,080 tests, 2,071 pass, 0 fail, 9 skipped (the
+  new PostgreSQL-only tests: pgvector 4, pg_dump 4, the migration 1).
+- **PostgreSQL 16 with pgvector 0.6** (`DATABASE_URL=…`): 2,080 tests,
+  2,074 pass, 0 fail, 6 skipped (the SQLite-only tests of §12) – about 15
+  minutes on 4 cores alongside another suite.
+- **Without pgvector** (its control file removed, a fresh database): the
+  search, semantic search, Ask, related pages, migration and pg_dump tests
+  pass (52), the pgvector tests skip.
+- **Search parity**: tests/search-parity.test.ts (7 tests, the same
+  expectations on both) and tests/db-migrate.test.ts (13 queries × 2
+  workspaces, the multi-term match and semantic search identical on SQLite,
+  PostgreSQL and SQLite again, snippets included).
+- **`next build`** passes; `npm run check:standalone` (SQLite) passes;
+  `scripts/check-standalone-postgres.mjs` passes and now also checks the
+  trigram indexes, a search and "Back up now" (a 0.5 MB pg_dump archive).
+- **Dockerfile**: not built here (no Docker daemon, and the sandbox may not
+  reach apt.postgresql.org); the shell of the changed `RUN` step parses.
+- **CI**: the `postgres` job uses `pgvector/pgvector:0.8.0-pg16` and checks
+  that the runner's pg_dump is 16 or newer.
+- **Found and fixed besides**: the relation sync wrote its control row in
+  every transaction before the commit, even with nothing to sync – on
+  PostgreSQL every transaction wrote that one row (a queue under
+  concurrency, and the snapshot of an instance backup failed with a
+  serialization error when another transaction committed meanwhile); now
+  it writes only when there is something to sync.
 
 ### Open risks and what is left
 
