@@ -6,7 +6,7 @@ import { join } from "node:path";
 import * as Y from "yjs";
 import type { Identity } from "../lib/types";
 process.env.FLOWPLAN_DATA_DIR = mkdtempSync(join(tmpdir(), "flowplan-e2ee-"));
-const { id, run, one, all, db } = await import("../lib/db");
+const { id, run, one, all, db, sql } = await import("../lib/db");
 const { command, pageData, bootstrap } = await import("../lib/api");
 const { createWorkspace } = await import("../lib/seed");
 const { exportMarkdown } = await import("../lib/markdown-export");
@@ -299,8 +299,9 @@ test("an encrypted space: ciphertext only, members, rotation and refused plainte
   assert.ok(archive.identity?.wrappedPrivate);
 
   // Nothing readable anywhere in the database file.
-  db().exec("PRAGMA wal_checkpoint(TRUNCATE)");
-  for (const name of readdirSync(process.env.FLOWPLAN_DATA_DIR!)) {
+  // (SQLite: its files; on Postgres there is no file here to read.)
+  if (sql.name === "sqlite") db().exec("PRAGMA wal_checkpoint(TRUNCATE)");
+  for (const name of sql.name === "sqlite" ? readdirSync(process.env.FLOWPLAN_DATA_DIR!) : []) {
     if (!name.startsWith("flowplan.sqlite")) continue;
     const bytes = readFileSync(join(process.env.FLOWPLAN_DATA_DIR!, name));
     assert.equal(bytes.includes(MARKER), false, `${name} contains plaintext`);

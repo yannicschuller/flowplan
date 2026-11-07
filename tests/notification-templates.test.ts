@@ -205,7 +205,7 @@ const settle = async () => {
   }
 };
 const lastBody = (hookId: string) =>
-  JSON.parse(one<{ body: string }>("SELECT body FROM webhook_deliveries WHERE webhook_id=? ORDER BY rowid DESC LIMIT 1", hookId)!.body);
+  JSON.parse(one<{ body: string }>("SELECT body FROM webhook_deliveries WHERE webhook_id=? ORDER BY seq DESC LIMIT 1", hookId)!.body);
 
 test("chat webhooks render at delivery; record done, comments and the test message", async () => {
   const slack = await createWebhook(ana, {

@@ -87,7 +87,7 @@ test("schema 90: existing text values are escaped once, titles and other types s
   assert.equal(first.n, 3);
   assert.equal(second.notes, "nothing special");
   assert.equal(JSON.parse(one<{ cells: string }>("SELECT cells FROM row_templates WHERE page_id=?", pageId)!.cells).notes, "\\*\\*fett?\\*\\*");
-  const snapshot = JSON.parse(one<{ html: string }>("SELECT html FROM snapshots WHERE page_id=? ORDER BY rowid DESC", pageId)!.html);
+  const snapshot = JSON.parse(one<{ html: string }>("SELECT html FROM snapshots WHERE page_id=? ORDER BY seq DESC", pageId)!.html);
   assert.deepEqual(snapshot.rows[0].cells, { title: "*t*", notes: "\\_v\\_" });
   const trashed = JSON.parse(one<{ payload: string }>("SELECT payload FROM row_trash WHERE page_id=?", pageId)!.payload);
   assert.deepEqual(JSON.parse(trashed.row.cells), { title: "*weg*", notes: "\\~\\~nicht\\~\\~" });

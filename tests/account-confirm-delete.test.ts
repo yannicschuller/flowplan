@@ -11,7 +11,7 @@ const { saveInstanceSettings, instanceSettings } = await import("../lib/instance
 const { command } = await import("../lib/api");
 const { deletionPlan, ownDeletionPlan, deleteOwnAccount } = await import("../lib/account-deletion");
 
-const mails = () => all<{ recipient: string; text: string }>("SELECT recipient,text FROM mail_queue ORDER BY rowid");
+const mails = () => all<{ recipient: string; text: string }>("SELECT recipient,text FROM mail_queue ORDER BY seq");
 const linkIn = (text: string) => /verify\?token=([A-Za-z0-9_-]+)/.exec(text)?.[1] || "";
 const identity = (id: string, isAdmin = false) => ({ id, name: "x", email: "x", groups: [], isAdmin }) as never as Parameters<typeof command>[0];
 

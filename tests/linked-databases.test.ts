@@ -437,7 +437,7 @@ test("copies, templates and document snapshots keep independent linked settings;
   configure(host, a, configured);
   act({ action: "page.snapshot", pageId: host });
   const snapshot = one<{ id: string }>(
-    "SELECT id FROM snapshots WHERE page_id=? ORDER BY rowid DESC",
+    "SELECT id FROM snapshots WHERE page_id=? ORDER BY seq DESC",
     host,
   )!.id;
   const copy = act({ action: "page.duplicate", pageId: host }).id;

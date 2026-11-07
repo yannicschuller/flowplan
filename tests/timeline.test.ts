@@ -389,7 +389,7 @@ test("timeline configuration survives page and space copies, templates, snapshot
   );
   act({ action: "page.snapshot", pageId: pid });
   const snapshot = one<{ id: string }>(
-    "SELECT id FROM snapshots WHERE page_id=? ORDER BY rowid DESC",
+    "SELECT id FROM snapshots WHERE page_id=? ORDER BY seq DESC",
     pid,
   )!.id;
   const d = database(pid);
@@ -919,6 +919,7 @@ test("dragging a bar onto another links them; successors can move along", async 
   assert.deepEqual([period(b), period(c)], [["2026-03-09", "2026-03-11"], ["2026-03-12", "2026-03-14"]]);
   timeline({ moveSuccessors: true });
   // Circular data (written elsewhere) is refused instead of moved forever.
-  run("UPDATE rows SET cells=json_set(cells,'$.after',json_array(?)) WHERE id=?", c, a);
+  const cyclic = JSON.parse(one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", a)!.cells);
+  run("UPDATE rows SET cells=? WHERE id=?", JSON.stringify({ ...cyclic, after: [c] }), a);
   assert.throws(() => schedule(a, 1), /Zyklische/);
 });

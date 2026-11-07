@@ -763,7 +763,7 @@ test("formula expressions and stable references survive copies, templates, snaps
   );
   act({ action: "page.snapshot", pageId: pid });
   const snapshot = one<{ id: string }>(
-    "SELECT id FROM snapshots WHERE page_id=? ORDER BY rowid DESC",
+    "SELECT id FROM snapshots WHERE page_id=? ORDER BY seq DESC",
     pid,
   )!.id;
   act({

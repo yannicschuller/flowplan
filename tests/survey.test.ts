@@ -168,7 +168,7 @@ test("form follow-ups: confirmation e-mail, team notification, hidden answers dr
         notifyMembers: [member.id, stranger.id],
       },
     });
-    const mails = () => rowsOf<{ recipient: string; subject: string; text: string }>("SELECT recipient,subject,text FROM mail_queue ORDER BY rowid");
+    const mails = () => rowsOf<{ recipient: string; subject: string; text: string }>("SELECT recipient,subject,text FROM mail_queue ORDER BY seq");
     const before = mails().length;
     // "Lob": the required "Schritte" is hidden, so not required, and its
     // answer is dropped; internal fields never reach the record or the mail.

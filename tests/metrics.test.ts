@@ -11,7 +11,7 @@ import type { Identity } from "../lib/types";
 
 process.env.FLOWPLAN_DATA_DIR = mkdtempSync(join(tmpdir(), "flowplan-metrics-"));
 delete process.env.FLOWPLAN_METRICS;
-const { run, id, one, all } = await import("../lib/db");
+const { run, id, one, all, tableNames, tableColumns } = await import("../lib/db");
 const metrics = await import("../lib/metrics");
 const { startRequestMetrics, countedPath } = await import("../lib/request-metrics");
 const { recordOpsEvent, flushOpsEvents } = await import("../lib/ops-events");
@@ -104,7 +104,10 @@ test("active people per hour: each person once, never stored by name", () => {
   metrics.flushMetrics(base + HOUR + 2);
   assert.equal(one<{ active: number }>("SELECT active FROM metrics_hour WHERE at=?", base)?.active, 2);
   assert.equal(one<{ active: number }>("SELECT active FROM metrics_hour WHERE at=?", base + HOUR)?.active, 1);
-  const tables = all<{ sql: string }>("SELECT sql FROM sqlite_master WHERE name LIKE 'metrics_%' AND type='table'").map((r) => r.sql).join(" ");
+  const tables = tableNames()
+    .filter((name) => name.startsWith("metrics_"))
+    .map((name) => `${name}(${tableColumns(name).join(",")})`)
+    .join(" ");
   assert.doesNotMatch(tables, /user|ip|path|agent/i);
   const series = metrics.activeSeries(base + HOUR + 10, 24);
   assert.equal(series.length, 24);
@@ -165,12 +168,12 @@ test("storage per day and disk usage", () => {
 
 test("retention: minutes 48 hours, hours 35 days, days 400", () => {
   const now = Date.now();
-  run("INSERT OR REPLACE INTO metrics_minute(at,requests,errors,hist) VALUES(?,1,0,'')", now - 49 * HOUR);
-  run("INSERT OR REPLACE INTO metrics_minute(at,requests,errors,hist) VALUES(?,1,0,'')", now - 47 * HOUR);
-  run("INSERT OR REPLACE INTO metrics_hour(at,requests) VALUES(?,1)", now - 36 * DAY);
-  run("INSERT OR REPLACE INTO metrics_hour(at,requests) VALUES(?,1)", now - 34 * DAY);
-  run("INSERT OR REPLACE INTO metrics_day(day,database_bytes,upload_bytes,files,at) VALUES('2000-01-01',1,1,1,0)");
-  run("INSERT OR REPLACE INTO metrics_ai(day,feature,requests) VALUES('2000-01-01','write',1)");
+  run("INSERT INTO metrics_minute(at,requests,errors,hist) VALUES(?,1,0,'') ON CONFLICT DO NOTHING", now - 49 * HOUR);
+  run("INSERT INTO metrics_minute(at,requests,errors,hist) VALUES(?,1,0,'') ON CONFLICT DO NOTHING", now - 47 * HOUR);
+  run("INSERT INTO metrics_hour(at,requests) VALUES(?,1) ON CONFLICT DO NOTHING", now - 36 * DAY);
+  run("INSERT INTO metrics_hour(at,requests) VALUES(?,1) ON CONFLICT DO NOTHING", now - 34 * DAY);
+  run("INSERT INTO metrics_day(day,database_bytes,upload_bytes,files,at) VALUES('2000-01-01',1,1,1,0) ON CONFLICT DO NOTHING");
+  run("INSERT INTO metrics_ai(day,feature,requests) VALUES('2000-01-01','write',1) ON CONFLICT DO NOTHING");
   metrics.sweepMetrics(now);
   assert.equal(one("SELECT 1 FROM metrics_minute WHERE at=?", now - 49 * HOUR), undefined);
   assert.ok(one("SELECT 1 FROM metrics_minute WHERE at=?", now - 47 * HOUR));

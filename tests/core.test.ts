@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as Y from "yjs";
 process.env.FLOWPLAN_DATA_DIR = mkdtempSync(join(tmpdir(), "flowplan-tests-"));
-const { one, run, id } = await import("../lib/db");
+const { one, run, id, sql } = await import("../lib/db");
 const { createWorkspace } = await import("../lib/seed");
 const { command, bootstrap, pageData } = await import("../lib/api");
 const { requirePage, requireAdmin } = await import("../lib/permissions");
@@ -787,12 +787,12 @@ test("legacy JSON import remaps page links and row relations without changing li
     result.pageIds[oldDatabase],
   );
   const firstRow = one<{ id: string; content: string }>(
-    "SELECT id,content FROM rows WHERE page_id=? AND json_extract(cells,'$.title')=?",
+    `SELECT id,content FROM rows WHERE page_id=? AND ${sql.jsonText("cells", "$.title")}=?`,
     result.pageIds[oldDatabase],
     "First",
   )!;
   const secondRow = one<{ cells: string }>(
-    "SELECT cells FROM rows WHERE page_id=? AND json_extract(cells,'$.title')=?",
+    `SELECT cells FROM rows WHERE page_id=? AND ${sql.jsonText("cells", "$.title")}=?`,
     result.pageIds[oldDatabase],
     first,
   )!;

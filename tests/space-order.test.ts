@@ -24,7 +24,7 @@ function user(name = "Order Tester"): Identity {
 const act = (actor: Identity, input: Record<string, unknown>): any => command(actor, input);
 // Names of the workspace's spaces in their stored order (all of them).
 const stored = (wid: string) =>
-  all<{ name: string }>("SELECT name FROM spaces WHERE workspace_id=? ORDER BY position,rowid", wid).map((s) => s.name);
+  all<{ name: string }>("SELECT name FROM spaces WHERE workspace_id=? ORDER BY position,seq", wid).map((s) => s.name);
 const sidebar = (actor: Identity, wid: string) => (bootstrap(actor, wid) as unknown as Bootstrap).spaces.map((s) => s.name);
 const spaceId = (wid: string, name: string) => one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=? AND name=?", wid, name)!.id;
 const positionOf = (sid: string) => one<{ position: number }>("SELECT position FROM spaces WHERE id=?", sid)!.position;
@@ -222,9 +222,9 @@ test("the migration fills positions in creation order", () => {
   // on insert, so clear them afterwards).
   for (const name of ["X", "Y"]) run("INSERT INTO spaces(id,workspace_id,name) VALUES(?,?,?)", id(), wid, name);
   run("UPDATE spaces SET position=NULL WHERE workspace_id=?", wid);
-  run("UPDATE spaces SET position=(SELECT COUNT(*) FROM spaces o WHERE o.workspace_id IS spaces.workspace_id AND o.rowid<spaces.rowid)+1 WHERE workspace_id=?", wid);
+  run("UPDATE spaces SET position=(SELECT COUNT(*) FROM spaces o WHERE o.workspace_id IS NOT DISTINCT FROM spaces.workspace_id AND o.seq<spaces.seq)+1 WHERE workspace_id=?", wid);
   assert.deepEqual(stored(wid), ["Teamspace", "X", "Y"]);
-  assert.deepEqual(all<{ position: number }>("SELECT position FROM spaces WHERE workspace_id=? ORDER BY rowid", wid).map((s) => s.position), [1, 2, 3]);
+  assert.deepEqual(all<{ position: number }>("SELECT position FROM spaces WHERE workspace_id=? ORDER BY seq", wid).map((s) => s.position), [1, 2, 3]);
   // Ties (data from elsewhere) are spread out before a reorder.
   run("UPDATE spaces SET position=1 WHERE workspace_id=?", wid);
   const owner = one<{ user_id: string }>("SELECT user_id FROM members WHERE workspace_id=?", wid)!.user_id;

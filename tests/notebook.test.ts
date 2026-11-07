@@ -11,7 +11,7 @@ import { PDFDocument } from "pdf-lib";
 import type { Identity } from "../lib/types";
 import { samplePdf } from "./helpers/pdf";
 process.env.FLOWPLAN_DATA_DIR = mkdtempSync(join(tmpdir(), "flowplan-notebook-"));
-const { run, id, one, all } = await import("../lib/db");
+const { run, id, one, all, tableNames, tableColumns } = await import("../lib/db");
 const { createWorkspace } = await import("../lib/seed");
 const { command, bootstrap, pageData } = await import("../lib/api");
 const paper = await import("../lib/notebook-paper");
@@ -137,8 +137,8 @@ test("sheet order: insert after, move, same set", () => {
 
 test("schema: notebook tables and the recognised text of PDF ink exist", () => {
   for (const table of ["notebooks", "notebook_sheets", "page_ink", "page_ink_versions"])
-    assert.ok(one("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", table), table);
-  const columns = all<{ name: string }>("PRAGMA table_info(file_ink)").map((c) => c.name);
+    assert.ok(tableNames().includes(table), table);
+  const columns = tableColumns("file_ink");
   assert.ok(columns.includes("recognized"));
 });
 

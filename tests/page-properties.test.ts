@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Identity, Page } from "../lib/types";
 process.env.FLOWPLAN_DATA_DIR = mkdtempSync(join(tmpdir(), "flowplan-page-properties-"));
-const { db, one, all, run, id } = await import("../lib/db");
+const { db, one, all, run, id, tableNames } = await import("../lib/db");
 const { createWorkspace } = await import("../lib/seed");
 const { command, bootstrap, pageData } = await import("../lib/api");
 const { searchWorkspace } = await import("../lib/search-index");
@@ -47,7 +47,7 @@ const board = page("Moodboard", "whiteboard");
 
 test("schema 82: tables, created_at on pages", () => {
   for (const table of ["page_tags", "page_tag_links", "page_property_defs", "page_property_values"])
-    assert.ok(one("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", table), table);
+    assert.ok(tableNames().includes(table), table);
   const created = one<{ created_at: string | null }>("SELECT created_at FROM pages WHERE id=?", angebot)!;
   assert.match(String(created.created_at), /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
   // Migrating again changes nothing (idempotent).

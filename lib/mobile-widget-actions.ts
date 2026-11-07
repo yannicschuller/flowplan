@@ -333,7 +333,7 @@ function startTimer(user: Identity, input: z.infer<(typeof actionSchemas)["timer
 }
 function stopTimer(user: Identity) {
   const running = one<{ page_id: string; row_id: string; field_id: string }>(
-    "SELECT page_id,row_id,field_id FROM time_entries WHERE user_id=? AND end IS NULL ORDER BY start DESC LIMIT 1",
+    `SELECT page_id,row_id,field_id FROM time_entries WHERE user_id=? AND "end" IS NULL ORDER BY start DESC LIMIT 1`,
     user.id,
   );
   if (running) command(writerOf(user), { action: "time.stop", pageId: running.page_id, rowId: running.row_id, fieldId: running.field_id });
@@ -371,7 +371,7 @@ function stopFocus(user: Identity, now = Date.now()) {
   finishFocus(user, now);
   const focus = focusRow(user);
   if (focus && !focus.stopped_at) {
-    const running = one<{ row_id: string }>("SELECT row_id FROM time_entries WHERE user_id=? AND end IS NULL", user.id);
+    const running = one<{ row_id: string }>(`SELECT row_id FROM time_entries WHERE user_id=? AND "end" IS NULL`, user.id);
     if (focus.timer && running && running.row_id === focus.row_id)
       command(writerOf(user), { action: "time.stop", pageId: focus.page_id, rowId: focus.row_id, fieldId: focus.field_id });
   }

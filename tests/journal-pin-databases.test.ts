@@ -56,7 +56,7 @@ const rid = act({ action: "row.create", pageId: db, cells: { [title]: "SECRET-RO
 const trashed = act({ action: "row.create", pageId: db, cells: { [title]: "SECRET-TRASHED" } }).id;
 act({ action: "row.delete", pageId: db, rowId: trashed });
 run(
-  "INSERT OR REPLACE INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?)",
+  "INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?) ON CONFLICT(row_id) DO UPDATE SET state=excluded.state,html=excluded.html,generation=excluded.generation",
   rid,
   htmlState("<p>SECRET-ROW-BODY</p>"),
   "<p>SECRET-ROW-BODY</p>",

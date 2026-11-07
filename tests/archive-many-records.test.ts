@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Identity } from "../lib/types";
 process.env.FLOWPLAN_DATA_DIR = mkdtempSync(join(tmpdir(), "flowplan-archive-large-"));
-const { one, all, run, id } = await import("../lib/db");
+const { one, all, run, id, sql } = await import("../lib/db");
 const { createWorkspace } = await import("../lib/seed");
 const { command, database } = await import("../lib/api");
 const { exportArchive, importArchive, readZip, MAX_ARCHIVE_ROWS } = await import("../lib/archive");
@@ -83,7 +83,7 @@ test(`a database with ${RECORDS} records round-trips through the content archive
   const importMs = performance.now() - t;
   const restored = one<{ id: string }>("SELECT id FROM pages WHERE workspace_id=? AND kind='database' AND title='Tasks'", target)!.id;
   assert.equal(Number(one<{ n: number }>("SELECT COUNT(*) n FROM rows WHERE page_id=?", restored)!.n), RECORDS);
-  const cells = JSON.parse(one<{ cells: string }>("SELECT cells FROM rows WHERE page_id=? AND json_extract(cells,'$.title')='Task 11999'", restored)!.cells);
+  const cells = JSON.parse(one<{ cells: string }>(`SELECT cells FROM rows WHERE page_id=? AND ${sql.jsonText("cells", "$.title")}='Task 11999'`, restored)!.cells);
   assert.equal(cells.title, "Task 11999");
   assert.equal(cells.memo, "Note for record 11999 with a little text");
   assert.equal(Number(one<{ n: number }>("SELECT COUNT(*) n FROM comments WHERE page_id=?", restored)!.n), sample.length);

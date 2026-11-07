@@ -128,7 +128,7 @@ test("the commands: reading for readers, applying for editors, a version first, 
   assert.deepEqual(done.missing, []);
   assert.match(done.html, new RegExp(`^<h1>Hallo</h1>\\n?<div data-synced-block="${synced}"`));
   assert.equal(versions(), count + 1);
-  assert.equal(one<{ html: string }>("SELECT html FROM snapshots WHERE page_id=? ORDER BY created_at DESC, rowid DESC", pageId)?.html, html);
+  assert.equal(one<{ html: string }>("SELECT html FROM snapshots WHERE page_id=? ORDER BY created_at DESC, seq DESC", pageId)?.html, html);
   // A copied marker does not copy the block.
   const twice = command(owner, { action: "document.markdown.apply", pageId, markdown: "<!-- flowplan:block 0 -->\n\n<!-- flowplan:block 0 -->", blocks, check: true }) as { html: string };
   assert.equal((twice.html.match(/data-synced-block/g) || []).length, 1);

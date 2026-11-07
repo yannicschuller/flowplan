@@ -45,7 +45,7 @@ test("timers: one per person, totals in the property", () => {
   // Starting on another record stops the first timer.
   const second = act({ action: "time.start", pageId, rowId: b, fieldId: "spent" });
   assert.ok(second.running);
-  assert.equal(one<{ n: number }>("SELECT count(*) n FROM time_entries WHERE end IS NULL")!.n, 1);
+  assert.equal(one<{ n: number }>(`SELECT count(*) n FROM time_entries WHERE "end" IS NULL`)!.n, 1);
   act({ action: "time.stop", pageId, rowId: b, fieldId: "spent" });
   const added = act({ action: "time.add", pageId, rowId: a, fieldId: "spent", minutes: 90, date: today, note: "Review" }, editor);
   assert.ok(added.total >= 5400);

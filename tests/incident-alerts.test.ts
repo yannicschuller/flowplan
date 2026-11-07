@@ -84,7 +84,7 @@ async function incident(rule: "brute_force_account" | "credential_stuffing") {
 }
 const incidentsOf = (user: Identity) =>
   all<{ id: string; body: string; link: string | null; page_id: string | null }>(
-    "SELECT id,body,link,page_id FROM notifications WHERE user_id=? AND kind='incident' ORDER BY created_at,rowid",
+    "SELECT id,body,link,page_id FROM notifications WHERE user_id=? AND kind='incident' ORDER BY created_at,seq",
     user.id,
   );
 const pushQueued = (notificationId: string) => all("SELECT 1 FROM push_deliveries WHERE notification_id=?", notificationId).length;

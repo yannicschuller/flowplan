@@ -119,7 +119,7 @@ test("databases snapshot automatically at the start of an editing session and su
   ).id;
   const snapshots = () =>
     all<{ id: string; kind: string }>(
-      "SELECT id,kind FROM snapshots WHERE page_id=? ORDER BY rowid",
+      "SELECT id,kind FROM snapshots WHERE page_id=? ORDER BY seq",
       page,
     );
   // A fresh database has no automatic version yet.

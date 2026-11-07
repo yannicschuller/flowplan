@@ -103,7 +103,7 @@ test("weekly digest: followed pages, overdue tasks, AI summary only when opted i
   setWeeklyDigest(ben, { enabled: true, aiSummary: true, timeZone: "Europe/Berlin" });
   for (const page of [p1, blocked]) {
     run("INSERT INTO page_follows(user_id,page_id,created_at) VALUES(?,?,?)", ben.id, page, MONDAY - 20 * 86_400_000);
-    run("INSERT OR REPLACE INTO page_edits(page_id,user_id,at) VALUES(?,?,?)", page, admin.id, MONDAY - 86_400_000);
+    run("INSERT INTO page_edits(page_id,user_id,at) VALUES(?,?,?) ON CONFLICT(page_id,user_id) DO UPDATE SET at=excluded.at", page, admin.id, MONDAY - 86_400_000);
   }
   command(admin, { action: "ai.block", targetId: blocked, kind: "page", blocked: true });
   run(
@@ -140,11 +140,11 @@ test("weekly digest: followed pages, overdue tasks, AI summary only when opted i
 
   // Next Monday with AI switched off: the plain list, no provider call.
   setAi({ enabled: false });
-  run("INSERT OR REPLACE INTO page_edits(page_id,user_id,at) VALUES(?,?,?)", p1, admin.id, MONDAY + 6 * 86_400_000);
+  run("INSERT INTO page_edits(page_id,user_id,at) VALUES(?,?,?) ON CONFLICT(page_id,user_id) DO UPDATE SET at=excluded.at", p1, admin.id, MONDAY + 6 * 86_400_000);
   const calls = mock.chats.length;
   assert.equal(await queueWeeklyDigests(MONDAY + 7 * 86_400_000), 1);
   assert.equal(mock.chats.length, calls);
-  const plain = one<{ text: string }>("SELECT text FROM mail_queue ORDER BY next_at DESC, rowid DESC LIMIT 1")!.text;
+  const plain = one<{ text: string }>("SELECT text FROM mail_queue ORDER BY next_at DESC, seq DESC LIMIT 1")!.text;
   assert.ok(!plain.includes("(KI)"));
   assert.match(plain, /Quartalsbericht Team/);
   assert.equal(all("SELECT 1 FROM mail_queue").length, 2);

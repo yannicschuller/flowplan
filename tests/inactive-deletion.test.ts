@@ -35,7 +35,7 @@ function account(
 }
 const mails = () =>
   all<{ recipient: string; subject: string; text: string }>(
-    "SELECT recipient,subject,text FROM mail_queue ORDER BY rowid",
+    "SELECT recipient,subject,text FROM mail_queue ORDER BY seq",
   );
 const exists = (userId: string) =>
   !!one("SELECT 1 FROM users WHERE id=?", userId);

@@ -476,7 +476,8 @@ test("pinned views and counters show only what the person may read", () => {
   assert.deepEqual(sum.history[0], { day: day(-13), value: null, estimated: true });
   assert.deepEqual(sum.history.find((p: { day: string }) => p.day === day(-5)), { day: day(-5), value: 10, estimated: true });
   // One snapshot per configuration and day, updated on every refresh.
-  run("UPDATE rows SET cells=json_set(cells,'$.amount',50) WHERE id=?", ids[0]);
+  const amountCells = JSON.parse(one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", ids[0])!.cells);
+  run("UPDATE rows SET cells=? WHERE id=?", JSON.stringify({ ...amountCells, amount: 50 }), ids[0]);
   assert.equal(one_(O, "counter", { pageId: db, aggregate: "sum", fieldId: "amount", groupFieldId: "stage", groupValue: "won" }).history[13].value, 80);
   assert.equal(one<{ n: number }>("SELECT COUNT(*) n FROM widget_counter_days WHERE user_id=?", O.id)!.n, 1);
   // Average over a property the editor cannot read: refused.
@@ -651,7 +652,7 @@ test("time this week, the timer and a focus session that records its time", asyn
     { id: "spent", name: "Time", type: "time" },
   ]);
   const offer = addRow(owner.user, work, { title: "Write offer" });
-  run("INSERT INTO time_entries(id,page_id,row_id,field_id,user_id,start,end) VALUES(?,?,?,?,?,?,?)", id(), work, offer, "spent", O.id, NOW - 3_600_000, NOW);
+  run(`INSERT INTO time_entries(id,page_id,row_id,field_id,user_id,start,"end") VALUES(?,?,?,?,?,?,?)`, id(), work, offer, "spent", O.id, NOW - 3_600_000, NOW);
   const time = one_(O, "time");
   const hours = Math.min(3_600_000, NOW - WEEK_START) / 3_600_000;
   assert.ok(Math.abs(time.week - hours) <= 0.01, String(time.week));
@@ -670,18 +671,18 @@ test("time this week, the timer and a focus session that records its time", asyn
   assert.equal(focus.phase, "focus");
   assert.equal(focus.task.title, "Write offer");
   assert.equal(focus.focusEndsAt - focus.startedAt, 25 * 60_000);
-  assert.ok(one("SELECT 1 FROM time_entries WHERE user_id=? AND end IS NULL", O.id));
+  assert.ok(one(`SELECT 1 FROM time_entries WHERE user_id=? AND "end" IS NULL`, O.id));
   // After the focus time the timer stops at its end, not when asked.
   const brk = one_(O, "focus", {}, focus.startedAt + 27 * 60_000);
   assert.equal(brk.phase, "break");
-  const entry = one<{ start: number; end: number }>("SELECT start,end FROM time_entries WHERE user_id=? ORDER BY start DESC LIMIT 1", O.id)!;
+  const entry = one<{ start: number; end: number }>(`SELECT start,"end" FROM time_entries WHERE user_id=? ORDER BY start DESC LIMIT 1`, O.id)!;
   assert.equal(entry.end, focus.focusEndsAt);
   assert.equal(one_(O, "focus", {}, focus.startedAt + 31 * 60_000).phase, "idle");
   // Stopping early stops the timer at once.
   await act(O, { action: "focus.start", minutes: 50, breakMinutes: 10, pageId: work, rowId: offer, fieldId: "spent" });
   const stopped = await act(O, { action: "focus.stop" });
   assert.equal((stopped.focus as { phase: string }).phase, "idle");
-  assert.equal(one("SELECT 1 FROM time_entries WHERE user_id=? AND end IS NULL", O.id), undefined);
+  assert.equal(one(`SELECT 1 FROM time_entries WHERE user_id=? AND "end" IS NULL`, O.id), undefined);
   // Without a task: a plain focus session.
   assert.equal(((await act(E, { action: "focus.start", minutes: 15, breakMinutes: 0 })).focus as { phase: string }).phase, "focus");
   await assert.rejects(act(E, { action: "focus.start", minutes: 15, pageId: work }), (e: { status: number }) => e.status === 400);

@@ -6,6 +6,7 @@ import { join } from "node:path";
 import type { Identity } from "../lib/types";
 process.env.FLOWPLAN_DATA_DIR = mkdtempSync(join(tmpdir(), "flowplan-search-drain-"));
 const { all, one, run, id } = await import("../lib/db");
+const onPostgres = /^postgres(ql)?:/i.test(process.env.DATABASE_URL || "");
 const { createWorkspace } = await import("../lib/seed");
 const { command, bootstrap, database } = await import("../lib/api");
 const { searchWorkspace, refreshSearchIndex, drainSearchIndex } = await import("../lib/search-index");
@@ -32,7 +33,8 @@ command(owner, {
 const backlog = () => Number(one<{ n: number }>("SELECT count(*) n FROM search_dirty")?.n);
 const entries = (rowId: string) => Number(one<{ n: number }>("SELECT count(*) n FROM search_index WHERE row_id=?", rowId)?.n);
 
-test("the index finds its entries by page and key through the content table", () => {
+// SQLite's FTS5 content table; Postgres keeps the index as a plain table.
+test("the index finds its entries by page and key through the content table", { skip: onPostgres && "SQLite only" }, () => {
   assert.ok(one("SELECT 1 FROM sqlite_master WHERE type='index' AND name='search_index_key'"));
   const plan = all<{ detail: string }>(
     "EXPLAIN QUERY PLAN SELECT id FROM search_index_content WHERE c0=? AND c1=?",

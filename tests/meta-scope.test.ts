@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { Field, Identity } from "../lib/types";
 process.env.FLOWPLAN_DATA_DIR = mkdtempSync(join(tmpdir(), "flowplan-meta-scope-"));
-const { one, all, run, id, migrateMetaScopes } = await import("../lib/db");
+const { one, all, run, id, migrateMetaScopes, tableColumns } = await import("../lib/db");
 const { createWorkspace } = await import("../lib/seed");
 const { command, bootstrap, pageData, database } = await import("../lib/api");
 const { searchWorkspace } = await import("../lib/search-index");
@@ -68,7 +68,7 @@ test("schema 91: existing tags, definitions and templates stay workspace-wide; p
   assert.throws(() => old.exec("INSERT INTO page_tags(id,workspace_id,space_id,name,created_at) VALUES('t4','w','a','urgent',1)"), /UNIQUE/);
   assert.throws(() => old.exec("INSERT INTO page_tags(id,workspace_id,name,created_at) VALUES('t5','w','KUNDE',1)"), /UNIQUE/);
   // The live database is on 91.
-  assert.ok((all<{ name: string }>("PRAGMA table_info(page_tags)")).some((c) => c.name === "space_id"));
+  assert.ok(tableColumns("page_tags").includes("space_id"));
 });
 
 test("scoping rules: context of a space, plans and their defaults", () => {

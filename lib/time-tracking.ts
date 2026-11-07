@@ -29,7 +29,7 @@ const seconds = (e: Pick<Entry, "start" | "end">, now = Date.now()) => Math.max(
 
 // The property's value: all finished entries of the record.
 function refreshTotal(pageId: string, rowId: string, fieldId: string) {
-  const total = all<Entry>("SELECT * FROM time_entries WHERE row_id=? AND field_id=? AND end IS NOT NULL", rowId, fieldId).reduce(
+  const total = all<Entry>(`SELECT * FROM time_entries WHERE row_id=? AND field_id=? AND "end" IS NOT NULL`, rowId, fieldId).reduce(
     (sum, e) => sum + seconds(e),
     0,
   );
@@ -43,9 +43,9 @@ function refreshTotal(pageId: string, rowId: string, fieldId: string) {
 // Also for focus sessions of the mobile app, which end at a set time
 // (lib/mobile-widgets.ts).
 export function stopRunning(userId: string, now = Date.now()) {
-  const running = all<Entry>("SELECT * FROM time_entries WHERE user_id=? AND end IS NULL", userId);
+  const running = all<Entry>(`SELECT * FROM time_entries WHERE user_id=? AND "end" IS NULL`, userId);
   for (const e of running) {
-    run("UPDATE time_entries SET end=? WHERE id=?", Math.max(now, e.start), e.id);
+    run(`UPDATE time_entries SET "end"=? WHERE id=?`, Math.max(now, e.start), e.id);
     refreshTotal(e.page_id, e.row_id, e.field_id);
   }
   // The timer's Live Activity on the person's phones (lib/live-activity-push.ts).
@@ -91,7 +91,7 @@ export function timeCommand(user: Identity, page: Page, action: string, input: R
     const start = new Date(`${b.date}T09:00:00`).getTime();
     if (!Number.isFinite(start)) throw new HttpError(400, "Ungültiges Datum.");
     run(
-      "INSERT INTO time_entries(id,page_id,row_id,field_id,user_id,start,end,note) VALUES(?,?,?,?,?,?,?,?)",
+      `INSERT INTO time_entries(id,page_id,row_id,field_id,user_id,start,"end",note) VALUES(?,?,?,?,?,?,?,?)`,
       id(),
       page.id,
       b.rowId,

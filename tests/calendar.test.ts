@@ -464,7 +464,7 @@ test("calendar preferences and timed values survive copies, templates, snapshots
   );
   act({ action: "page.snapshot", pageId: f.pid });
   const snap = one<{ id: string }>(
-    "SELECT id FROM snapshots WHERE page_id=? ORDER BY rowid DESC",
+    "SELECT id FROM snapshots WHERE page_id=? ORDER BY seq DESC",
     f.pid,
   )!.id;
   f.schedule({ operation: "move-time", at: "2026-09-23T12:00Z" });

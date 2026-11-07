@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Identity } from "../lib/types";
 process.env.FLOWPLAN_DATA_DIR = mkdtempSync(join(tmpdir(), "flowplan-collapse-"));
-const { one, run, id } = await import("../lib/db");
+const { one, run, id, tableNames } = await import("../lib/db");
 const { createWorkspace } = await import("../lib/seed");
 const { command, bootstrap, pageData } = await import("../lib/api");
 const { commandActionNames, commandActions } = await import("../lib/openapi");
@@ -34,7 +34,7 @@ const angebot = page("Angebot");
 const protokoll = page("Protokoll");
 
 test("schema 83: the table exists", () => {
-  assert.ok(one("SELECT 1 FROM sqlite_master WHERE type='table' AND name='page_view_prefs'"));
+  assert.ok(tableNames().includes("page_view_prefs"));
 });
 
 test("stored per person and per page, in the account", () => {

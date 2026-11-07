@@ -70,7 +70,7 @@ export function exportDatabaseExtras(pageId: string, visibleRows: Set<string>) {
     settings = Object.keys(parsed).length ? parsed : undefined;
   } catch {}
   const timeEntries = all<z.infer<typeof timeEntrySchema>>(
-    "SELECT row_id,field_id,start,end,note FROM time_entries WHERE page_id=? AND end IS NOT NULL ORDER BY start",
+    `SELECT row_id,field_id,start,"end",note FROM time_entries WHERE page_id=? AND "end" IS NOT NULL ORDER BY start`,
     pageId,
   ).filter((e) => visibleRows.has(e.row_id));
   const statusLog = all<z.infer<typeof statusEntrySchema>>("SELECT row_id,done,at FROM row_status_log WHERE page_id=? ORDER BY at", pageId).filter((e) =>
@@ -186,7 +186,7 @@ export function importDatabaseHistory(
   for (const e of data.timeEntries || [])
     if (ctx.rows.has(e.row_id) && timeFields.has(e.field_id) && e.end >= e.start)
       run(
-        "INSERT INTO time_entries(id,page_id,row_id,field_id,user_id,start,end,note) VALUES(?,?,?,?,?,?,?,?)",
+        `INSERT INTO time_entries(id,page_id,row_id,field_id,user_id,start,"end",note) VALUES(?,?,?,?,?,?,?,?)`,
         id(),
         pageId,
         ctx.rows.get(e.row_id)!,

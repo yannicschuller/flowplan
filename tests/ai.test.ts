@@ -13,7 +13,7 @@ process.env.FLOWPLAN_DATA_DIR = dataDir;
 process.env.APP_URL = "https://flowplan.example.test";
 delete process.env.FLOWPLAN_ENCRYPTION_KEY;
 delete process.env.FLOWPLAN_AI;
-const { run, one, id } = await import("../lib/db");
+const { run, one, id, sql } = await import("../lib/db");
 const { createWorkspace, createPage } = await import("../lib/seed");
 const { identityFromToken } = await import("../lib/auth");
 const { command, bootstrap } = await import("../lib/api");
@@ -106,7 +106,7 @@ test("the admin sets up a provider; the key is sealed and never returned", () =>
     assert.equal(boot.ai?.provider?.local, true);
     assert.equal(boot.ai?.features.write.ok, true);
   }
-  assert.ok(!one<{ detail: string }>("SELECT group_concat(detail) detail FROM audit")!.detail.includes(ADMIN_KEY));
+  assert.ok(!one<{ detail: string }>(`SELECT ${sql.groupConcat("detail")} detail FROM audit`)!.detail.includes(ADMIN_KEY));
 });
 
 test("ciphertext only opens for its owner and purpose", () => {

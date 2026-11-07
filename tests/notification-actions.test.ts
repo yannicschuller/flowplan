@@ -60,7 +60,7 @@ const withContent = async <T>(fn: () => Promise<T>) => {
   }
 };
 const latest = (user: Identity, kind: string) =>
-  one<{ id: string; read_at: string | null }>("SELECT id,read_at FROM notifications WHERE user_id=? AND kind=? ORDER BY rowid DESC LIMIT 1", user.id, kind)!;
+  one<{ id: string; read_at: string | null }>("SELECT id,read_at FROM notifications WHERE user_id=? AND kind=? ORDER BY seq DESC LIMIT 1", user.id, kind)!;
 
 // A document with a task for Ben, due today.
 const docId = (command(anna.user, { action: "page.create", workspaceId: wid, spaceId: space, title: "Sprint", kind: "document" }) as { id: string }).id;
@@ -176,7 +176,7 @@ test("“Reply” answers the comment thread or comments on the page", async () 
   assert.ok(comment, "comments get the reply buttons");
   const before = Number(one<{ n: number }>("SELECT COUNT(*) n FROM comments WHERE page_id=?", docId)!.n);
   await notificationAction(phone, { action: "reply", notificationId: comment.data.notificationId!, text: "Mache ich morgen." });
-  const reply = one<{ author_id: string; body: string }>("SELECT author_id,body FROM comments WHERE page_id=? ORDER BY rowid DESC LIMIT 1", docId)!;
+  const reply = one<{ author_id: string; body: string }>("SELECT author_id,body FROM comments WHERE page_id=? AND body=?", docId, "Mache ich morgen.")!;
   assert.equal(Number(one<{ n: number }>("SELECT COUNT(*) n FROM comments WHERE page_id=?", docId)!.n), before + 1);
   assert.equal(reply.author_id, ben.user.id);
   assert.equal(reply.body, "Mache ich morgen.");
@@ -193,7 +193,7 @@ test("“Reply” answers the comment thread or comments on the page", async () 
   assert.equal(mention.categoryId, NOTIFICATION_CATEGORIES.comment);
   const result = await notificationAction(phone, { action: "reply", notificationId: threadNote, text: "Ja." });
   assert.equal(result.action, "reply");
-  const messages = all<{ body: string; author_id: string }>("SELECT body,author_id FROM inline_messages WHERE thread_id=? ORDER BY created_at,rowid", threadId);
+  const messages = all<{ body: string; author_id: string }>("SELECT body,author_id FROM inline_messages WHERE thread_id=? ORDER BY created_at,seq", threadId);
   assert.deepEqual(messages.map((m) => m.body), ["Passt das?", "Ja."]);
   assert.equal(messages[1].author_id, ben.user.id);
   assert.ok(one<{ read_at: string | null }>("SELECT read_at FROM notifications WHERE id=?", threadNote)!.read_at);

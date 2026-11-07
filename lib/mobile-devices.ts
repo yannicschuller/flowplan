@@ -395,7 +395,7 @@ export function mobileSummary(user: Identity, todayInput?: unknown) {
 // The person's running timer (time tracking), if they may still see it.
 function runningTimer(user: Identity) {
   const entry = one<{ page_id: string; row_id: string; start: number }>(
-    "SELECT page_id,row_id,start FROM time_entries WHERE user_id=? AND end IS NULL ORDER BY start DESC LIMIT 1",
+    `SELECT page_id,row_id,start FROM time_entries WHERE user_id=? AND "end" IS NULL ORDER BY start DESC LIMIT 1`,
     user.id,
   );
   if (!entry) return null;

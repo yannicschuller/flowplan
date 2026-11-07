@@ -125,7 +125,7 @@ run(
   Date.now(),
   Date.now(),
 );
-run("INSERT INTO time_entries(id,page_id,row_id,field_id,user_id,start,end,note) VALUES(?,?,?,?,?,?,?,?)", id(), db, rid, "spent", owner.id, Date.now() - 3600_000, Date.now() - 1800_000, "");
+run(`INSERT INTO time_entries(id,page_id,row_id,field_id,user_id,start,"end",note) VALUES(?,?,?,?,?,?,?,?)`, id(), db, rid, "spent", owner.id, Date.now() - 3600_000, Date.now() - 1800_000, "");
 // The member's calendar connection, and one mapping of the owner's issue sync.
 const connection = id();
 run("INSERT INTO calendar_connections(id,user_id,provider,account,refresh_token,created_at) VALUES(?,?,?,?,?,?)", connection, member.id, "google", "max@example.test", "x", Date.now());

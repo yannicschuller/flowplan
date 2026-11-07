@@ -54,7 +54,7 @@ const clip = (headers: Record<string, string> = {}) =>
     }),
     { params: Promise.resolve({ action: "save" }) },
   );
-const freeze = () => run("INSERT OR REPLACE INTO instance_settings(key,value) VALUES(?,?)", MOVE_KEY, JSON.stringify({ id: "m", hash: "x", readOnlyAt: Date.now() }));
+const freeze = () => run("INSERT INTO instance_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", MOVE_KEY, JSON.stringify({ id: "m", hash: "x", readOnlyAt: Date.now() }));
 const thaw = () => run("DELETE FROM instance_settings WHERE key=?", MOVE_KEY);
 
 test("while the instance moves: MCP write tools, the extension and SCIM answer 423 and change nothing", async () => {

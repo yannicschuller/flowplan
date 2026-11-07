@@ -901,7 +901,7 @@ function timerView(user: Identity, pageId: string, rowId: string, fieldId: strin
 }
 export function runningTimer(user: Identity) {
   const entry = one<{ page_id: string; row_id: string; field_id: string; start: number }>(
-    "SELECT page_id,row_id,field_id,start FROM time_entries WHERE user_id=? AND end IS NULL ORDER BY start DESC LIMIT 1",
+    `SELECT page_id,row_id,field_id,start FROM time_entries WHERE user_id=? AND "end" IS NULL ORDER BY start DESC LIMIT 1`,
     user.id,
   );
   if (!entry) return null;
@@ -915,7 +915,7 @@ function timeData(ctx: Context) {
   const days = Array.from({ length: 7 }, (_, i) => monday.add({ days: i }).toString());
   const from = monday.toZonedDateTime({ timeZone: ctx.zone }).epochMilliseconds;
   const seconds = new Map(days.map((d) => [d, 0]));
-  for (const e of all<{ start: number; end: number | null }>("SELECT start,end FROM time_entries WHERE user_id=? AND (end IS NULL OR end>=?) AND start<?", ctx.user.id, from, ctx.now + 1)) {
+  for (const e of all<{ start: number; end: number | null }>(`SELECT start,"end" FROM time_entries WHERE user_id=? AND ("end" IS NULL OR "end">=?) AND start<?`, ctx.user.id, from, ctx.now + 1)) {
     // Split at midnight, so a late session counts for both days.
     let at = Math.max(e.start, from);
     const end = Math.min(e.end ?? ctx.now, ctx.now);
@@ -1041,7 +1041,7 @@ export function finishFocus(user: Identity, now = Date.now()) {
   if (!focus || !focus.timer || focus.stopped_at) return;
   const end = focus.started_at + focus.focus_ms;
   if (now < end) return;
-  const running = one<{ row_id: string; start: number }>("SELECT row_id,start FROM time_entries WHERE user_id=? AND end IS NULL", user.id);
+  const running = one<{ row_id: string; start: number }>(`SELECT row_id,start FROM time_entries WHERE user_id=? AND "end" IS NULL`, user.id);
   if (running && running.row_id === focus.row_id && running.start >= focus.started_at - 5000) stopRunning(user.id, end);
   run("UPDATE widget_focus SET stopped_at=? WHERE user_id=?", end, user.id);
 }

@@ -152,7 +152,7 @@ test("scheduled rules create records from a template, once per date, as their cr
   // before midnight UTC that minute would already be the next day's slot.)
   assert.equal(transaction(() => processScheduledAutomations(tomorrow)), 0);
   const created = one<{ cells: string; created_by: string; content: string }>(
-    "SELECT cells,created_by,content FROM rows WHERE page_id=? ORDER BY rowid DESC LIMIT 1",
+    "SELECT cells,created_by,content FROM rows WHERE page_id=? ORDER BY number DESC LIMIT 1",
     pageId,
   )!;
   const day = new Date(tomorrow).toISOString().slice(0, 10);

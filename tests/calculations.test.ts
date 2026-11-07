@@ -474,7 +474,7 @@ test("calculation preferences survive independent view copies, templates, snapsh
   );
   act({ action: "page.snapshot", pageId: pid });
   const snapshotId = one<{ id: string }>(
-    "SELECT id FROM snapshots WHERE page_id=? ORDER BY rowid DESC",
+    "SELECT id FROM snapshots WHERE page_id=? ORDER BY seq DESC",
     pid,
   )!.id;
   act({
