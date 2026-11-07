@@ -109,7 +109,9 @@ export function dragCursor(on: boolean) {
 }
 
 // The click the browser sends after a drag ends (to the handle, the card or
-// whatever is under the pointer) is not a click.
+// whatever is under the pointer) is not a click. When the browser sends
+// none (the press and the release on different elements), the next press
+// starts a gesture of its own: its click is a click, however soon it comes.
 function swallowClick() {
   const swallow = (event: Event) => {
     event.preventDefault();
@@ -118,9 +120,11 @@ function swallowClick() {
   };
   const done = () => {
     window.removeEventListener("click", swallow, true);
+    window.removeEventListener("pointerdown", done, true);
     window.clearTimeout(timer);
   };
   window.addEventListener("click", swallow, true);
+  window.addEventListener("pointerdown", done, true);
   const timer = window.setTimeout(done, 400);
 }
 
