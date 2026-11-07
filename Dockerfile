@@ -68,6 +68,10 @@ COPY --chmod=644 scripts/decrypt.mjs /app/decrypt.mjs
 # node /app/move.mjs --from <old instance> --token <move token>.
 COPY --chmod=644 scripts/move.mjs /app/move.mjs
 COPY --chmod=644 lib/instance-move-pull.ts /app/instance-move-pull.ts
+# PostgreSQL schema step of a deployment (cluster mode, the Helm chart's
+# migration Job): node /app/db-schema.mjs with DATABASE_URL.
+COPY --chmod=644 scripts/db-schema.mjs /app/db-schema.mjs
+COPY --chmod=644 lib/db-driver/pg-ddl.mjs lib/db-driver/postgres-schema.json /app/db-driver/
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \

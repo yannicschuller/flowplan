@@ -3,6 +3,7 @@ import { DatabaseSync, type StatementSync } from "node:sqlite";
 import { mkdirSync, statSync, unlinkSync } from "node:fs";
 import { applyPendingRestore } from "./instance-restore-apply";
 import { restorePendingIntoPostgres } from "./db-restore";
+import { ensureCurrentPostgresSchema } from "./db-driver/pg-current";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { flushRelationChanges } from "./relation-sync";
@@ -1339,6 +1340,8 @@ dbContext.hooks.beforeCommit = (actor) => flushRelationChanges(actor as Identity
 dbContext.hooks.afterCommit = () => cleanDeletedFiles();
 dbContext.hooks.open = async (backend) => {
   if (backend === "postgres") {
+    // A new or older database gets this version's schema first.
+    await ensureCurrentPostgresSchema(database());
     await restorePendingIntoPostgres();
     await setupStorage();
   }
