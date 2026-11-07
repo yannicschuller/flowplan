@@ -1789,6 +1789,52 @@ export function noteRollback(root?: { rollback?: (() => void)[] }) {
 export function noteTransaction(start: number) {
   if (runtimeMetricsOn) noteTransactionMetric(start);
 }
+// ---- Refusals that keep their bookkeeping ----
+//
+// A wrong PIN checked inside a command throws, and the throw rolls the
+// command's transaction back – with the row that counted the failure and
+// the alert to the owner, so the limit never filled up. Such a check throws
+// refuseKeeping(error, writes) instead: inside transactionKeepingRefusals
+// the work done so far is undone (a savepoint), the writes are made and
+// committed, and then the error is passed on. The check's own lock goes
+// with the savepoint (PostgreSQL releases locks of a rolled back
+// subtransaction), so the caller names it in `locks`: taken before the
+// savepoint, held until the writes are committed, parallel attempts see
+// them. Outside a transaction the writes are made
+// right away; inside another one they take part in it (and go with a
+// rollback, as before).
+type KeptWrite = [sql: string, ...params: Param[]];
+const keptWrites = new WeakMap<object, KeptWrite[]>();
+const keepingRoots = new WeakSet<object>();
+export async function refuseKeeping(error: Error, ...writes: KeptWrite[]): Promise<never> {
+  const scope = currentTx();
+  if (scope && keepingRoots.has(scope.root)) {
+    keptWrites.set(error, [...(keptWrites.get(error) ?? []), ...writes]);
+    throw error;
+  }
+  for (const [statement, ...params] of writes) await run(statement, ...params);
+  throw error;
+}
+export async function transactionKeepingRefusals<T>(fn: () => T | Promise<T>, actor?: Identity, locks: string[] = []): Promise<T> {
+  let refusal: { error: unknown } | null = null;
+  const value = await transaction(async () => {
+    const scope = currentTx();
+    // Only the outermost transaction can commit the writes.
+    if (scope && scope.depth === 0) keepingRoots.add(scope.root);
+    for (const key of locks) await lockFor(key);
+    try {
+      return await database().tx(async () => fn());
+    } catch (error) {
+      const writes = error && typeof error === "object" ? keptWrites.get(error) : undefined;
+      if (!writes) throw error;
+      for (const [statement, ...params] of writes) await run(statement, ...params);
+      refusal = { error };
+      return undefined as T;
+    }
+  }, actor);
+  if (refusal) throw (refusal as { error: unknown }).error;
+  return value;
+}
 // Undoes something outside the database (a written upload) when the
 // current transaction rolls back.
 export function onTransactionRollback(cleanup: () => void) {

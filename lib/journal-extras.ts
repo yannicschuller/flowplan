@@ -6,7 +6,7 @@ import { Node as PMNode } from "@tiptap/pm/model";
 import { prosemirrorJSONToYDoc, yDocToProsemirrorJSON } from "y-prosemirror";
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
-import { all, audit, id, one, run, nowText, sql } from "./db";
+import { all, audit, id, lockFor, one, refuseKeeping, run, nowText, sql } from "./db";
 import { documentSchema } from "./document-schema";
 import { failuresSince } from "./local-auth";
 import { htmlState, stateHtml } from "./document-server";
@@ -492,8 +492,9 @@ export async function setJournalLock(user: Identity, journal: Page, pin: string 
   // Changing or removing an existing lock needs the PIN – except for an
   // owner removing it without one.
   const reset = !!row?.lock_hash && pin === null && !current && await mayResetJournalLock(user, journal);
-  if (row?.lock_hash && !reset && !checkPin(row.lock_hash, current || ""))
-    throw new HttpError(403, "Die bisherige PIN stimmt nicht.");
+  // The current PIN counts like one entered to open the journal: the same
+  // limits, the same alert to whoever created it.
+  if (row?.lock_hash && !reset) await checkPinAttempt(user, journal, row.lock_hash, current || "", "Die bisherige PIN stimmt nicht.");
   // Removing a PIN one does not know opens the journal to everyone with
   // access: the owner confirms it once more, like other sensitive steps
   // (lib/step-up.ts; POST /api/auth/journal-pin-reset sets stepUp).
@@ -593,32 +594,49 @@ async function unlockUntil(user: Identity, journal: Page) {
 export async function unlockJournal(user: Identity, journal: Page, pin: string, now = Date.now()) {
   const row = await settingsRow(journal.id);
   if (!row?.lock_hash) return;
-  const key = `pin:${user.id}:${journal.id}`;
+  await checkPinAttempt(user, journal, row.lock_hash, pin, "Die PIN stimmt nicht.", now);
+  await unlockUntil(user, journal);
+}
+// A PIN entered for a journal, under the limits. Runs inside the command's
+// transaction: parallel attempts of the same person take turns (lockFor),
+// and a wrong PIN is refused with refuseKeeping, so its failure row and
+// the alert stay although the command rolls back (lib/db.ts).
+// The counter of a person's attempts at a journal's PIN; also the lock the
+// command takes for them (lib/api.ts KEEPS_REFUSALS).
+export const pinAttemptKey = (user: Pick<Identity, "id">, journalId: string) => `pin:${user.id}:${journalId}`;
+async function checkPinAttempt(user: Identity, journal: Page, stored: string, pin: string, wrong: string, now = Date.now()) {
+  const key = pinAttemptKey(user, journal.id);
+  await lockFor(key);
   await run("DELETE FROM login_failures WHERE key=? AND at<?", key, now - DAY_MS);
   if ((await failuresSince(key, DAY_MS, now)) >= PIN_PER_DAY)
     throw new HttpError(429, "Zu viele Versuche für heute. Bitte morgen erneut versuchen.");
-  if ((await failuresSince(key, PIN_BURST_MS, now)) >= PIN_BURST)
-    throw new HttpError(429, "Zu viele Versuche. Warte ein paar Minuten.");
-  if (!checkPin(row.lock_hash, pin)) {
-    await run("INSERT INTO login_failures(key,at) VALUES(?,?)", key, now);
-    if ((await failuresSince(key, PIN_BURST_MS, now)) === PIN_BURST) await notifyOwnerOfPinAttempts(user, journal);
-    throw new HttpError(403, "Die PIN stimmt nicht.");
+  const burst = await failuresSince(key, PIN_BURST_MS, now);
+  if (burst >= PIN_BURST) throw new HttpError(429, "Zu viele Versuche. Warte ein paar Minuten.");
+  if (checkPin(stored, pin)) {
+    await run("DELETE FROM login_failures WHERE key=?", key);
+    return;
   }
-  await run("DELETE FROM login_failures WHERE key=?", key);
-  await unlockUntil(user, journal);
+  await refuseKeeping(
+    new HttpError(403, wrong),
+    ["INSERT INTO login_failures(key,at) VALUES(?,?)", key, now],
+    ...(burst + 1 === PIN_BURST ? await pinAttemptsAlert(user, journal) : []),
+  );
 }
 // The person who created the journal learns when somebody else keeps
-// guessing its PIN (once per burst; their own typos stay quiet).
-async function notifyOwnerOfPinAttempts(user: Identity, journal: Page) {
-  if (!journal.created_by || journal.created_by === user.id) return;
-  if (!(await one("SELECT 1 FROM users WHERE id=? AND disabled=0", journal.created_by))) return;
-  await run(
-    "INSERT INTO notifications(id,user_id,body,page_id,kind) VALUES(?,?,?,?,'security')",
-    id(),
-    journal.created_by,
-    `${user.name} hat mehrmals eine falsche PIN für „${journal.title || "Ohne Titel"}“ eingegeben`,
-    journal.id,
-  );
+// guessing its PIN (once per burst; their own typos stay quiet): the
+// notification to write.
+async function pinAttemptsAlert(user: Identity, journal: Page): Promise<[string, ...string[]][]> {
+  if (!journal.created_by || journal.created_by === user.id) return [];
+  if (!(await one("SELECT 1 FROM users WHERE id=? AND disabled=0", journal.created_by))) return [];
+  return [
+    [
+      "INSERT INTO notifications(id,user_id,body,page_id,kind) VALUES(?,?,?,?,'security')",
+      id(),
+      journal.created_by,
+      `${user.name} hat mehrmals eine falsche PIN für „${journal.title || "Ohne Titel"}“ eingegeben`,
+      journal.id,
+    ],
+  ];
 }
 export async function lockJournalNow(user: Identity, journal: Page) {
   await run("DELETE FROM journal_unlocks WHERE user_id=? AND page_id=?", user.id, journal.id);

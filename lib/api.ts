@@ -75,6 +75,7 @@ import {
   journalSettings,
   journalSidebarModes,
   lockJournalNow,
+  pinAttemptKey,
   pinSchema,
   requireUnlocked,
   saveDayEntry,
@@ -222,7 +223,7 @@ import {
 import { applyTemplate, fillNewRecord, prepareManualApply, rawTemplate, storeTemplateNames } from "./record-template-apply";
 import { z } from "zod";
 import * as Y from "yjs";
-import { all, one, run, id, transaction, audit, db, nowText, sql } from "./db";
+import { all, one, run, id, transaction, transactionKeepingRefusals, audit, db, nowText, sql } from "./db";
 import { convertFormattedValues } from "./formatted-text";
 import { securityEvent } from "./security-events";
 import { noteDangerousHtml } from "./security-events";
@@ -3434,7 +3435,14 @@ async function runCommand(
     await keyed?.end(value, action);
     return value;
   };
-  const result = withinTransaction ? (await applied()) : (await transaction(applied, user));
+  // Commands that check a secret (a journal PIN) keep the count of wrong
+  // ones although they refuse (lib/db.ts refuseKeeping).
+  const keeps = KEEPS_REFUSALS.get(action);
+  const result = withinTransaction
+    ? await applied()
+    : keeps
+      ? await transactionKeepingRefusals(applied, user, keeps(user, b))
+      : await transaction(applied, user);
   try {
     await commandWebhooks(action, b, result, user.name);
   } catch (error) {
@@ -3468,6 +3476,14 @@ export async function commentReactions(user: Identity, commentId: string) {
   }
   return [...byEmoji.values()];
 }
+// Commands whose refusals keep their bookkeeping (wrong PINs counted,
+// lib/journal-extras.ts): run in transactionKeepingRefusals, with the locks
+// their checks take (held until the count is committed).
+const pinLocks = (user: Identity, b: Record<string, unknown>) => (typeof b.pageId === "string" ? [pinAttemptKey(user, b.pageId)] : []);
+const KEEPS_REFUSALS = new Map<string, (user: Identity, b: Record<string, unknown>) => string[]>([
+  ["journal.unlock", pinLocks],
+  ["journal.lock", pinLocks],
+]);
 // Commands that change one record (`rowId`) under its version.
 const rowVersionActions = new Set([
   "row.update",

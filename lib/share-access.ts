@@ -12,10 +12,10 @@
 //
 // Route handlers and the public page run their work inside
 // withShareCookie(), which hands the request's cookie to the check.
-import { pruneLoginFailures } from "./local-auth";
+import { pruneLoginFailures, reserveAttempt } from "./local-auth";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { z } from "zod";
-import { one, run } from "./db";
+import { one } from "./db";
 import { HttpError, appUrl } from "./auth";
 import { DUMMY_HASH, hashPasswordSync, verifyPassword } from "./local-auth";
 import { signValue, validSignature } from "./secret-box";
@@ -84,21 +84,27 @@ export function checkShareProtection(token: string, p: Protection, now = Date.no
 export async function unlockShare(token: string, password: unknown, address: string, now = Date.now()) {
   const key = `share:${token}:${address}`.slice(0, 300);
   await pruneLoginFailures(now - FAILURE_WINDOW, now);
-  const failures = Number((await one<{ n: number }>("SELECT COUNT(*) n FROM login_failures WHERE key=? AND at>=?", key, now - FAILURE_WINDOW))?.n || 0);
-  if (failures >= MAX_FAILURES) throw new HttpError(429, "Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.");
-  const p = await shareProtection(token);
-  const text = typeof password === "string" ? password.slice(0, 200) : "";
-  // The same work whether the link exists and has a password or not.
-  const ok = await verifyPassword(text, p?.password_hash || DUMMY_HASH);
-  if (!p) throw new HttpError(404, "Link nicht gefunden.");
-  if (isExpired(p, now)) throw new HttpError(410, "Dieser Link ist abgelaufen.");
-  if (!p.password_hash) return { value: "", maxAge: 0 };
-  if (!ok) {
-    await run("INSERT INTO login_failures(key,at) VALUES(?,?)", key, now);
-    throw new HttpError(401, "Das Passwort stimmt nicht.");
+  // Reserved before the password is checked, so that parallel guesses
+  // count against each other (lib/local-auth.ts reserveAttempt).
+  const attempt = await reserveAttempt([{ key, limit: MAX_FAILURES, windowMs: FAILURE_WINDOW }], now);
+  if (!attempt) throw new HttpError(429, "Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.");
+  try {
+    const p = await shareProtection(token);
+    const text = typeof password === "string" ? password.slice(0, 200) : "";
+    // The same work whether the link exists and has a password or not.
+    const ok = await verifyPassword(text, p?.password_hash || DUMMY_HASH);
+    if (!p) throw new HttpError(404, "Link nicht gefunden.");
+    if (isExpired(p, now)) throw new HttpError(410, "Dieser Link ist abgelaufen.");
+    if (!p.password_hash) return { value: "", maxAge: 0 };
+    if (!ok) {
+      await attempt.failed();
+      throw new HttpError(401, "Das Passwort stimmt nicht.");
+    }
+    const seconds = Math.max(60, Math.min(UNLOCK_SECONDS, p.expires_at ? Math.floor((p.expires_at - now) / 1000) : UNLOCK_SECONDS));
+    return { value: unlockValue(token, p.password_hash, now + seconds * 1000), maxAge: seconds };
+  } finally {
+    await attempt.end();
   }
-  const seconds = Math.max(60, Math.min(UNLOCK_SECONDS, p.expires_at ? Math.floor((p.expires_at - now) / 1000) : UNLOCK_SECONDS));
-  return { value: unlockValue(token, p.password_hash, now + seconds * 1000), maxAge: seconds };
 }
 // Set-Cookie headers for both paths of the link: its pages and its API.
 export function unlockCookies(token: string, value: string, maxAge: number) {
