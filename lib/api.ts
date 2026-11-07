@@ -222,7 +222,7 @@ import {
 import { applyTemplate, fillNewRecord, prepareManualApply, rawTemplate, storeTemplateNames } from "./record-template-apply";
 import { z } from "zod";
 import * as Y from "yjs";
-import { all, one, run, id, transaction, audit, db, nowText, sql } from "./db";
+import { all, one, run, id, transaction, audit, db, nowText, sql, lockMembership } from "./db";
 import { convertFormattedValues } from "./formatted-text";
 import { securityEvent } from "./security-events";
 import { noteDangerousHtml } from "./security-events";
@@ -2917,6 +2917,9 @@ async function runCommand(
         break;
       }
       case "member.role": {
+        // "The last owner stays" is read, then written: two owners demoting
+        // each other at once would both pass on PostgreSQL – one at a time.
+        await lockMembership(wid());
         await requireMember(user, wid(), "owner");
         const target = uuid.parse(b.userId),
           role = z.enum(["owner", "editor", "viewer", "remove"]).parse(b.role);

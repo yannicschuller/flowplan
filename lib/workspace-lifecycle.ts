@@ -1,7 +1,7 @@
 import { duplicatePages } from "./page-tree";
 import { placeAfter } from "./space-order";
 import { z } from "zod";
-import { all, one, run, id, nowText } from "./db";
+import { all, one, run, id, lockMembership, nowText } from "./db";
 import { removePages } from "./search-store";
 import { HttpError } from "./auth";
 import { memberRole, requireMember, spaceRole } from "./permissions";
@@ -214,8 +214,11 @@ export async function manageWorkspace(
   user: Identity,
   input: Record<string, unknown>,
 ) {
-  const wid = uuid.parse(input.workspaceId),
-    role = await requireMember(user, wid);
+  const wid = uuid.parse(input.workspaceId);
+  // Leaving checks that another owner remains, then removes: owners leaving
+  // (or demoting each other) at once take turns (PostgreSQL).
+  await lockMembership(wid);
+  const role = await requireMember(user, wid);
   const workspace = (await one<{ name: string }>(
     "SELECT name FROM workspaces WHERE id=?",
     wid,

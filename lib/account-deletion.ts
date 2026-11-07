@@ -5,9 +5,9 @@
 // contributed to shared workspaces stays, under "Deleted account"; personal
 // data – name, e-mail, password, passkeys, sessions, settings – is removed.
 import { z } from "zod";
-import { all, audit, one, run, inSavepoint } from "./db";
+import { all, audit, lockFor, one, run, inSavepoint } from "./db";
 import { HttpError } from "./auth";
-import { localLoginEnabled } from "./local-auth";
+import { ADMINS_LOCK, localLoginEnabled } from "./local-auth";
 import { ssoOnlyAccount } from "./identities";
 import { keepSpaceTemplates, purgePages, purgeWorkspace } from "./workspace-lifecycle";
 import type { Identity, Page } from "./types";
@@ -149,6 +149,8 @@ export async function deleteInactiveAccount(userId: string) {
 
 // The last enabled administrator with e-mail and password.
 export async function lastAdmin(userId: string) {
+  // Checked before a deletion writes: one at a time (lib/local-auth.ts).
+  await lockFor(ADMINS_LOCK);
   return (
     !!(await one("SELECT 1 FROM local_accounts WHERE user_id=? AND is_admin=1", userId)) &&
     !(await one("SELECT 1 FROM local_accounts a JOIN users u ON u.id=a.user_id WHERE a.is_admin=1 AND a.user_id<>? AND u.disabled=0", userId))

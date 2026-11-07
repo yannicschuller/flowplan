@@ -148,3 +148,52 @@ test("comments written to one page at the same moment all land (the offline chan
   assert.equal(Number((await one<{ n: number }>("SELECT COUNT(*) n FROM comments WHERE page_id=?", page))!.n), 8);
   assert.equal(Number((await one<{ n: number }>("SELECT COUNT(*) n FROM offline_changes WHERE page_id=? AND row_id=''", page))!.n), 1);
 });
+
+test("two owners demoting each other at the same moment: one owner remains", async () => {
+  const a = await person("OwnerA");
+  const b = await person("OwnerB");
+  const w = await createWorkspace(a.id, "Two owners");
+  await run("INSERT INTO members VALUES(?,?,?)", w, b.id, "owner");
+  const results = await Promise.allSettled([
+    command(a, { action: "member.role", workspaceId: w, userId: b.id, role: "editor" }),
+    command(b, { action: "member.role", workspaceId: w, userId: a.id, role: "editor" }),
+  ]);
+  assert.equal(results.filter((r) => r.status === "fulfilled").length, 1);
+  assert.equal(Number((await one<{ n: number }>("SELECT COUNT(*) n FROM members WHERE workspace_id=? AND role='owner'", w))!.n), 1);
+});
+
+test("two owners leaving at the same moment: one has to stay", async () => {
+  const a = await person("LeaverA");
+  const b = await person("LeaverB");
+  await createWorkspace(a.id, "Elsewhere A");
+  await createWorkspace(b.id, "Elsewhere B");
+  const w = await createWorkspace(a.id, "Left behind");
+  await run("INSERT INTO members VALUES(?,?,?)", w, b.id, "owner");
+  // A owns the first space: it goes to B.
+  const results = await Promise.allSettled([
+    command(a, { action: "workspace.leave", workspaceId: w, confirmName: "Left behind", transferTo: b.id }),
+    command(b, { action: "workspace.leave", workspaceId: w, confirmName: "Left behind" }),
+  ]);
+  assert.equal(results.filter((r) => r.status === "fulfilled").length, 1, results.map((r) => (r.status === "rejected" ? String(r.reason) : "ok")).join("; "));
+  assert.equal(Number((await one<{ n: number }>("SELECT COUNT(*) n FROM members WHERE workspace_id=? AND role='owner'", w))!.n), 1);
+});
+
+test("two admins taking each other's admin right at the same moment: one admin remains", async () => {
+  delete process.env.OIDC_ISSUER;
+  await run("UPDATE local_accounts SET is_admin=0");
+  const admins = [await person("AdminA"), await person("AdminB")].map((p) => ({ ...p, isAdmin: true }));
+  for (const p of admins)
+    await run(
+      "INSERT INTO local_accounts(user_id,email,password_hash,is_admin,email_verified,verify_required,created_at) VALUES(?,?,?,1,1,0,?)",
+      p.id,
+      p.email,
+      "",
+      Date.now(),
+    );
+  const results = await Promise.allSettled([
+    command(admins[0], { action: "admin.localAdmin", userId: admins[1].id, admin: false }),
+    command(admins[1], { action: "admin.localAdmin", userId: admins[0].id, admin: false }),
+  ]);
+  assert.equal(results.filter((r) => r.status === "fulfilled").length, 1);
+  assert.equal(Number((await one<{ n: number }>("SELECT COUNT(*) n FROM local_accounts WHERE is_admin=1"))!.n), 1);
+});
