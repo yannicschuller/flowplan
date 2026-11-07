@@ -11,7 +11,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { all, migrateFile, run, transaction } from "./db";
+import { all, migrateFile, one, run, transaction } from "./db";
 import { snapshotDatabase } from "./db-snapshot";
 import { applyPendingRestore } from "./instance-restore-apply";
 import schemaJson from "./db-driver/postgres-schema.json";
@@ -78,9 +78,11 @@ export async function loadSqliteFile(path: string) {
       }
       for (const name of names) await run(`ALTER TABLE ${name} ENABLE TRIGGER USER`);
       for (const t of tables) for (const fk of t.foreignKeys) await run(foreignKeySql(t, fk));
-      // Built again from the restored data.
+      // Built again from the restored data: the search index, pgvector's
+      // table (lib/ai/vector-store.ts, filled in at the next opening).
       await run("DELETE FROM search_index");
       await run("DELETE FROM search_state");
+      if (await one("SELECT to_regclass('ai_embedding_vectors') t WHERE to_regclass('ai_embedding_vectors') IS NOT NULL")) await run("TRUNCATE ai_embedding_vectors");
     });
   } finally {
     file.close();
