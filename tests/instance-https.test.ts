@@ -67,3 +67,14 @@ test("the proxy follows APP_URL and X-Forwarded-Proto", async () => {
     delete process.env.APP_URL;
   }
 });
+
+test("browser prefetches of a page get the policy; only the router's RSC prefetches skip it", async () => {
+  const policy = async (headers: Record<string, string>) => {
+    const response = await proxy(new NextRequest("https://flowplan.example.com/login", { headers: { host: "flowplan.example.com", ...headers } }));
+    return response.headers.get("Content-Security-Policy") || "";
+  };
+  assert.match(await policy({ purpose: "prefetch" }), /script-src/);
+  assert.match(await policy({ "sec-purpose": "prefetch" }), /script-src/);
+  assert.match(await policy({ "next-router-prefetch": "1" }), /script-src/);
+  assert.equal(await policy({ "next-router-prefetch": "1", rsc: "1" }), "");
+});

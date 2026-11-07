@@ -106,8 +106,11 @@ const POLICY_EXCLUDED =
   /^\/(api\/|_next\/static|_next\/image|fonts\/|icons\/|sw\.js$|fonts\.css$|manifest\.webmanifest$|icon\.svg$|favicon\.ico$)/;
 const servedOverHttps = (request: NextRequest) =>
   upgradeInsecureRequests({ forwardedProto: request.headers.get("x-forwarded-proto"), requestProtocol: request.nextUrl.protocol });
-const prefetch = (request: NextRequest) =>
-  request.headers.has("next-router-prefetch") || request.headers.get("purpose") === "prefetch";
+// Only the router's prefetches (RSC payloads, never a document): a browser
+// prefetch ("Purpose: prefetch", <link rel=prefetch>, speculation rules)
+// fetches the HTML page that a later navigation shows, so it gets the
+// policy like any page.
+const prefetch = (request: NextRequest) => request.headers.has("next-router-prefetch") && request.headers.has("rsc");
 
 // The running build (Next's BUILD_ID, lib/offline-assets-server.ts) in
 // every answer that passes here, pages and API alike: stored copies of the
