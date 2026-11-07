@@ -162,6 +162,7 @@ const exact: Record<string, string> = {
   "Unter dieser Adresse antwortet keine NetBox-API.": "No NetBox API answers at this address.",
   "Die Antwort von NetBox ist kein JSON.": "The answer from NetBox is not JSON.",
   "In NetBox wurden keine passenden Racks gefunden.": "No matching racks were found in NetBox.",
+  "Die NetBox-Daten sind zu umfangreich. Bitte weniger Racks auf einmal übernehmen.": "The NetBox data is too large. Please import fewer racks at a time.",
   "Kein Profilbild.": "No profile picture.",
   "Datei fehlt.": "File missing.",
   "Anfrage zu groß.": "Request too large.",

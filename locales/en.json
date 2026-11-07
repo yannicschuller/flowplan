@@ -8013,6 +8013,7 @@
   "The message could not be sent.": "The message could not be sent.",
   "The model is not in the provider's list.": "The model is not in the provider's list.",
   "The name no longer matches. Please reload and confirm the current name.": "The name no longer matches. Please reload and confirm the current name.",
+  "The NetBox data is too large. Please import fewer racks at a time.": "The NetBox data is too large. Please import fewer racks at a time.",
   "The new key is published at /.well-known/flowplan-push at once and signs after a little more than an hour – so the relay knows it in time. The current one stays listed for 7 days.": "The new key is published at /.well-known/flowplan-push at once and signs after a little more than an hour – so the relay knows it in time. The current one stays listed for 7 days.",
   "The next days from calendar views and connected calendars.": "The next days from calendar views and connected calendars.",
   "The number is outside the supported range.": "The number is outside the supported range.",
