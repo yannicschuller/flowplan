@@ -206,6 +206,10 @@ export async function register(input: unknown, locale: Locale, address = "") {
         securityEvent("login.refused", { address, detail: "first account already created" });
         throw new HttpError(409, t("Diese Instanz wurde gerade eingerichtet. Bitte melde dich an oder lass dich einladen.", "This instance was just set up. Please sign in or ask for an invitation."));
       }
+      // Two sign-ups with one address at the same moment (PostgreSQL, or
+      // two instances): the lock serialises them, the second sees the first.
+      if (await accountByEmail(email))
+        throw new AccountExists(t("Für diese E-Mail-Adresse gibt es schon ein Konto.", "There already is an account for this e-mail address."), email, !!mailConfig());
       await db.run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, `local:${uid}`, name, email);
       await db.run(
         "INSERT INTO local_accounts(user_id,email,password_hash,is_admin,email_verified,verify_required,created_at) VALUES(?,?,?,?,?,?,?)",

@@ -5,7 +5,7 @@
 // (and a notification); for anyone else an invitation is sent and the grant
 // waits in invite_grants until they sign in (lib/auth.ts acceptInvites).
 import { z } from "zod";
-import { all, id, one, run } from "./db";
+import { all, id, lockMembership, one, run } from "./db";
 import { securityEvent } from "./security-events";
 import { HttpError, inviteToken } from "./auth";
 import { memberRole, requirePage } from "./permissions";
@@ -59,6 +59,9 @@ export async function sharePage(user: Identity, raw: unknown) {
   const b = input.parse(raw);
   const page = await requireSharer(user, b.pageId);
   limitInviter(user.id);
+  // Membership, guest state and grants are read and then written: changes
+  // to one workspace's people take turns (PostgreSQL, several instances).
+  await lockMembership(page.workspace_id);
   const email = b.email.trim().toLowerCase();
   // Only an account whose address is confirmed counts as this person; for
   // any other the invitation path applies (link or confirmed address).
@@ -137,6 +140,7 @@ export async function updatePageShare(user: Identity, raw: unknown) {
     .object({ pageId: z.uuid(), userId: z.uuid().optional(), email: z.email().optional(), role: z.enum(["editor", "viewer", "remove"]) })
     .parse(raw);
   const page = await requireSharer(user, b.pageId);
+  await lockMembership(page.workspace_id);
   if (b.email) {
     const email = b.email.toLowerCase();
     if (b.role === "remove") {

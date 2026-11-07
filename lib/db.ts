@@ -1640,6 +1640,10 @@ export async function tableKey(table: string): Promise<string[]> {
 export async function lockFor(key: string) {
   if (isPostgres() && inTransaction()) await one("SELECT pg_advisory_xact_lock(hashtextextended(?,0))", key);
 }
+// Changes to who belongs to a workspace (members, guests, grants, accepted
+// invitations) read and then write: they take turns per workspace. Inside a
+// transaction; nothing to do on SQLite.
+export const lockMembership = (workspaceId: string) => lockFor(`membership:${workspaceId}`);
 // Lifts the per-connection limits (statement_timeout, lock_timeout,
 // lib/db-driver/postgres.ts) for the rest of the current transaction: for
 // work that is long by nature – data steps, snapshots, restores. Nothing

@@ -3,7 +3,7 @@ import { storageStatus } from "./storage";
 import { timingSafeEqual } from "node:crypto";
 import { statSync } from "node:fs";
 import { resolve } from "node:path";
-import { all, databaseBytes, one, run } from "./db";
+import { all, databaseBytes, lockFor, one, run } from "./db";
 import { HttpError } from "./auth";
 import { retentionDays } from "./version-history";
 import { instanceSettings } from "./instance-settings";
@@ -44,9 +44,14 @@ export async function workspaceQuotaMb(workspaceId: string) {
   return own ?? await defaultQuotaMb();
 }
 // Throws before a write that would exceed the workspace quota.
+// Inside a transaction, writes into one workspace with a quota take turns
+// until the commit (PostgreSQL, several instances): two uploads cannot
+// both pass the check against the same "used". Outside one, the check
+// stands alone (as before; at most the concurrent uploads overshoot).
 export async function enforceQuota(workspaceId: string, addBytes: number) {
   const quota = await workspaceQuotaMb(workspaceId);
   if (!quota) return;
+  await lockFor(`quota:${workspaceId}`);
   const used = await workspaceBytes(workspaceId);
   if (used + addBytes > quota * 1024 * 1024)
     throw new HttpError(
@@ -57,6 +62,7 @@ export async function enforceQuota(workspaceId: string, addBytes: number) {
 // For copies and imports: call before writing, run the returned check after
 // writing. Only growth beyond the quota is refused, inside the transaction.
 export async function quotaCheckpoint(workspaceId: string) {
+  if (await workspaceQuotaMb(workspaceId)) await lockFor(`quota:${workspaceId}`);
   const before = await workspaceBytes(workspaceId);
   return async () => {
     const quota = await workspaceQuotaMb(workspaceId);
