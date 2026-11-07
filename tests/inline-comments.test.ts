@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import { sqliteOnly } from "./helpers/backend";
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -237,7 +238,8 @@ test("emoji reactions are distinct per member and reject arbitrary text; summari
     300,
   );
 });
-test("reactions with a redundant U+FE0F (emojibase-data 17) are read and stored as the picker's form", () => {
+// The stored reactions move by a SQLite migration step (lib/db.ts).
+test("reactions with a redundant U+FE0F (emojibase-data 17) are read and stored as the picker's form", { skip: sqliteOnly }, () => {
   const f = fixture(),
     c = f.create(f.owner),
     base = {

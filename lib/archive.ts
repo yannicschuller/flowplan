@@ -79,7 +79,7 @@ import {
 } from "node:fs";
 import { resolve } from "node:path";
 import { z } from "zod";
-import { all, one, run, id, transaction, audit } from "./db";
+import { all, one, run, id, transaction, audit, sql } from "./db";
 import { SPACE_ORDER } from "./space-order";
 import { requireMember, pageRole, spaceRole, isGuest } from "./permissions";
 import { applyPortableMeta, canManageTaxonomy, importTaxonomy, portableMeta, portableMetaSchema, workspaceProperties, workspaceTags } from "./page-properties-server";
@@ -423,7 +423,7 @@ function snapshotFor(user: Identity, wid: string) {
   const laterVersions = (p: Page): ArchivedVersion[] => {
     if (pageRole(user, p) === "owner")
       databaseVersions.push(
-        ...all<VersionSize>("SELECT id,page_id,length(CAST(html AS BLOB)) bytes,created_at FROM snapshots WHERE page_id=?", p.id),
+        ...all<VersionSize>(`SELECT id,page_id,${sql.byteLength("html")} bytes,created_at FROM snapshots WHERE page_id=?`, p.id),
       );
     return [];
   };

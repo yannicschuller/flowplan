@@ -12,7 +12,7 @@ import { emojiPresentation } from "./emoji-presentation";
 import { migrateFormattedText } from "./formatted-text";
 import { migrateSealedSecrets } from "./sealed-values";
 import { noteStatement, noteTransaction, runtimeMetricsOn } from "./runtime-metrics";
-import { dbContext, postgresUrl } from "./db-driver/context";
+import { dbContext, postgresSchema, postgresUrl } from "./db-driver/context";
 import { legacyPostgres, type LegacyPostgres } from "./db-driver/pg-sync";
 // SQL that differs between SQLite and PostgreSQL (lib/db-driver/dialect.ts):
 // `sql` is the dialect of this process, `nowText()` the CURRENT_TIMESTAMP text.
@@ -1459,6 +1459,14 @@ export function db() {
 }
 // The migrations on another SQLite file (a restored backup that is loaded
 // into PostgreSQL, lib/db-restore.ts).
+// Ends the asynchronous database of lib/db-driver (its Postgres pool), so
+// the next use connects anew (to another schema).
+async function closeAsyncDatabase() {
+  const holder = globalThis as unknown as { flowplanAsyncDb?: { close(): Promise<void> } };
+  const current = holder.flowplanAsyncDb;
+  holder.flowplanAsyncDb = undefined;
+  await current?.close().catch(() => {});
+}
 export function migrateFile(d: DatabaseSync) {
   const saved = globalDb.flowplanSchema;
   globalDb.flowplanSchema = undefined;
@@ -1475,7 +1483,17 @@ export function migrateFile(d: DatabaseSync) {
 export function reopenDatabase() {
   stopStorage();
   // PostgreSQL: the staged restore is loaded into it (lib/db-restore.ts).
+  // Another FLOWPLAN_PG_SCHEMA (tests: another instance) gets connections
+  // of its own.
   if (legacyPg()) {
+    if (globalDb.flowplanLegacyPg!.schema !== postgresSchema()) {
+      globalDb.flowplanLegacyPg!.close();
+      globalDb.flowplanLegacyPg = undefined;
+      void closeAsyncDatabase();
+      legacyPg();
+      noteWrite();
+      return null;
+    }
     restorePendingIntoPostgres();
     noteWrite();
     setupStorage();

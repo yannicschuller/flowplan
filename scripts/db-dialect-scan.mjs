@@ -51,6 +51,9 @@ const PATTERNS = [
   ["LIKE (case semantics: lower() or d.ilike)", /\bLIKE\b/g, true],
   ["typeof()", /\btypeof\s*\(/g, true],
   ["char() (Postgres: chr)", /\bchar\s*\(\d/gi, true],
+  // Postgres folds unquoted names to lower case: `AS "userId"`.
+  ["mixed-case alias without quotes", /(\bAS\s+|[\w)]\s+)(?!(?:[A-Z]+|[a-z]+)\b)[a-z]+[A-Z][A-Za-z0-9]*\b(?=\s*(,|\bFROM\b|$))/g, true],
+  ["CAST(… AS BLOB)", /\bAS\s+BLOB\b/gi, true],
   ["VACUUM / ATTACH", /\b(VACUUM|ATTACH\s+DATABASE)\b/g, true],
   ["printf()/format()", /\bprintf\s*\(/gi, true],
 ];

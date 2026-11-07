@@ -21,6 +21,9 @@ export type LegacyPostgres = {
   all<T>(sql: string, params: Params): T[];
   run(sql: string, params: Params): { changes: number; lastInsertRowid: number };
   transaction<T>(fn: () => T): T;
+  // The schema it works in; close() ends its connection.
+  schema: string;
+  close(): void;
 };
 type Reply = { rows?: Record<string, unknown>[]; changes?: number; error?: { message: string; code?: string } };
 
@@ -71,7 +74,10 @@ export function legacyPostgres(): LegacyPostgres {
     }
   }
   const query = (kind: string, sql: string, params: Params) => call({ kind, sql: legacyToPostgres(sql), params });
+  const schema = postgresSchema();
   return {
+    schema,
+    close: () => void worker.terminate(),
     one: <T>(sql: string, params: Params) => (query("one", sql, params).rows ?? [])[0] as T | undefined,
     all: <T>(sql: string, params: Params) => (query("all", sql, params).rows ?? []) as T[],
     run: (sql: string, params: Params) => ({ changes: query("run", sql, params).changes ?? 0, lastInsertRowid: 0 }),

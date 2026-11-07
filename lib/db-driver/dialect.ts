@@ -58,6 +58,8 @@ export type Dialect = {
   dayOf(column: string, modifier?: string): string;
   // The same for milliseconds since 1970.
   dayOfMs(column: string, modifier?: string): string;
+  // The length of a text in bytes (UTF-8).
+  byteLength(expr: string): string;
 };
 
 const modifier = (m: string) => {
@@ -101,6 +103,7 @@ export const sqliteDialect: Dialect = {
   groupConcat: (e, distinct) => `GROUP_CONCAT(${distinct ? "DISTINCT " : ""}${e})`,
   dayOf: (c, m = "?") => `date(${c},${m})`,
   dayOfMs: (c, m = "?") => `date(${c}/1000,'unixepoch',${m})`,
+  byteLength: (e) => `length(CAST(${e} AS BLOB))`,
 };
 
 const PG_TEXT_TIME = "'YYYY-MM-DD HH24:MI:SS'";
@@ -129,6 +132,7 @@ export const postgresDialect: Dialect = {
   groupConcat: (e, distinct) => `string_agg(${distinct ? "DISTINCT " : ""}(${e})::text,',')`,
   dayOf: (c, m = "?") => `to_char((${c})::timestamp+(${m})::interval,'YYYY-MM-DD')`,
   dayOfMs: (c, m = "?") => `to_char(to_timestamp((${c})/1000.0) AT TIME ZONE 'UTC'+(${m})::interval,'YYYY-MM-DD')`,
+  byteLength: (e) => `octet_length(${e})`,
 };
 
 // The dialect of the database this process uses, for code that builds SQL

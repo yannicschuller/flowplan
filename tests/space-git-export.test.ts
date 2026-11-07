@@ -1,4 +1,5 @@
 import { test, after } from "node:test";
+import { onPostgres } from "./helpers/backend";
 import assert from "node:assert/strict";
 import { cpSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -353,13 +354,17 @@ test("an export whose owner lost the space ends at the next run", async () => {
   const eveSpace = String(as(eve)({ action: "space.create", name: "Eve" }).id);
   configured(eve, eveSpace);
   // Changed behind Flowplan's back, without the trigger's column.
-  run("DROP TRIGGER space_git_owner");
+  if (onPostgres) run("ALTER TABLE spaces DISABLE TRIGGER space_git_owner");
+  else run("DROP TRIGGER space_git_owner"); // sqlite-only
   try {
     run("UPDATE spaces SET owner_id=? WHERE id=?", ada.id, eveSpace);
   } finally {
-    run(
-      "CREATE TRIGGER space_git_owner AFTER UPDATE OF owner_id ON spaces WHEN OLD.owner_id IS NOT NEW.owner_id BEGIN DELETE FROM space_git_exports WHERE space_id=NEW.id; END",
-    );
+    if (onPostgres) run("ALTER TABLE spaces ENABLE TRIGGER space_git_owner");
+    else
+      run(
+        // sqlite-only
+        "CREATE TRIGGER space_git_owner AFTER UPDATE OF owner_id ON spaces WHEN OLD.owner_id IS NOT NEW.owner_id BEGIN DELETE FROM space_git_exports WHERE space_id=NEW.id; END",
+      );
   }
   assert.ok(one("SELECT 1 FROM space_git_exports WHERE space_id=?", eveSpace));
   await runDueSpaceGitExports();
