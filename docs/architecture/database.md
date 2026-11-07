@@ -1,12 +1,12 @@
 # Database layer: SQLite by default, PostgreSQL as an option
 
-Status: **phase 1 done – every statement runs on both databases**
-(issue #127). The spike (branch `pg-spike`) proved the pattern on one
-vertical slice and measured the cost; phase 1 made all SQL of the code base
-dialect-neutral, still synchronous, with the behaviour on SQLite unchanged
-(§11). Phase 2 is the asynchronous sweep (§4). Nothing changes for SQLite
-users: without `DATABASE_URL` every statement takes the same path as
-before.
+Status: **phase 2 done – all data access is asynchronous; PostgreSQL runs
+through the `pg` pool alone** (issue #127). The spike (branch `pg-spike`)
+proved the pattern on one vertical slice and measured the cost; phase 1
+made all SQL of the code base dialect-neutral, still synchronous (§11);
+phase 2 converted every caller to the asynchronous API and removed the
+blocking bridge (§12). SQLite stays the default and behaves as before: the
+same statements on the same connection, wrapped in promises.
 
 Roadmap this serves (decided): SQLite stays the default (one container).
 PostgreSQL is optional (`DATABASE_URL=postgres://…`); later multi-instance
@@ -22,6 +22,11 @@ only in SQLite mode.
 `lib/db-driver/index.ts` exports `db` (and `database()`), one object for the
 whole process:
 
+The helpers of `lib/db.ts` – `one`, `all`, `run`, `transaction(fn, actor)`,
+`inSavepoint`, `lockFor`, `updateIgnoringConflicts`, `tableNames` … – are
+the same calls, asynchronous since phase 2, and what most code uses
+(`await one(…)`); `db` is the interface underneath:
+
 ```ts
 import { db } from "./db-driver";
 
@@ -35,8 +40,9 @@ db.inTransaction(); await db.columns("users"); db.backend; // "sqlite" | "postgr
 
 | Method | SQLite (`lib/db-driver/sqlite.ts`) | Postgres (`lib/db-driver/postgres.ts`) |
 |---|---|---|
-| `one/all/run` | the existing synchronous helpers of `lib/db.ts` (statement cache, write generation for `read-memo`, runtime metrics), result wrapped in a promise | `pg` pool; `?` numbered to `$1…`; each distinct SQL text a named prepared statement per connection |
-| `tx(fn)` | `BEGIN IMMEDIATE` … `COMMIT` through the same steps as `transaction()` (relation sync, upload cleanup, rollback hooks) | `BEGIN` on one pooled connection … `COMMIT` |
+| `one/all/run` | the synchronous SQLite statements of `lib/db.ts` (`sqliteOne/sqliteAll/sqliteRun`: statement cache, write generation for `read-memo`, runtime metrics), run when called, result wrapped in a promise | `pg` pool; `?` numbered to `$1…`; each distinct SQL text a named prepared statement per connection (prepared anew after DDL) |
+| `tx(fn)` | `BEGIN IMMEDIATE` … `COMMIT` | `BEGIN` on one pooled connection … `COMMIT` |
+| both | relation sync before the commit (with the actor), upload cleanup after it, `onTransactionRollback` callbacks per transaction (`dbContext.hooks`, registered by `lib/db.ts`) | |
 | nested `tx` | `SAVEPOINT` | `SAVEPOINT` |
 | `tx(fn, { lock })` | nothing to do (one writer at a time) | `pg_advisory_xact_lock(hashtextextended(key))` |
 | values | as today | `bigint`/`numeric` → number (exact to 2^53, as node:sqlite), `boolean` → 1/0, `bytea` → Buffer |
@@ -76,46 +82,30 @@ SQLite. `pg` is a plain dependency (added by the spike, no ORM); it is in
   `afterTransaction`. It is also the hook for cluster mode (publish to Redis
   after commit).
 - **One SQLite connection.** An async transaction holds it from `BEGIN` to
-  `COMMIT`, also while it awaits. Async calls from outside wait for it
-  (taken without an await between check and `BEGIN`; the spike found and
-  fixed that race). Synchronous *writes* from outside are refused with a clear
-  error (they would otherwise land in, and be rolled back with, someone else's
-  transaction); synchronous reads are allowed. `afterTransaction` callbacks of
-  other flows wait for the open transaction. Development builds warn when an
-  async SQLite transaction spans I/O (a `setImmediate` fires while it is
-  open): bodies of SQLite transactions should await database calls only,
-  which resolve in microtasks.
+  `COMMIT`, also while it awaits. Calls from outside wait for it (taken
+  without an await between check and `BEGIN`; the spike found and fixed
+  that race); the synchronous SQLite statements are refused from outside.
+  `afterTransaction` callbacks of other flows wait for the open
+  transaction. Development builds warn when an async SQLite transaction
+  spans I/O (a `setImmediate` fires while it is open): bodies of SQLite
+  transactions should await database calls only, which resolve in
+  microtasks. A statement outside a transaction runs at once (not after an
+  await), so on SQLite a chain of `await one(…)` without other I/O still
+  runs within one turn of the event loop, as the synchronous code did.
+- **Opening.** The first call waits for the opening steps
+  (`dbContext.hooks.open`): on Postgres a staged restore and the object
+  storage queue (what opening the SQLite file does), on both the data steps
+  (`lib/data-steps.ts`, §12).
 
-### The transitional bridge
+### The transitional bridge (phase 1, removed in phase 2)
 
-With `DATABASE_URL` set, the **synchronous** helpers of `lib/db.ts`
-(`one/all/run/transaction`) go to Postgres through a blocking bridge
-(`lib/db-driver/pg-sync.ts`): a worker thread owns one connection; the caller
-posts the statement and waits on `Atomics.wait` until the answer is there.
-Since phase 1 it no longer rewrites anything: the SQL is written for both
-databases, the bridge only numbers the placeholders and refuses SQLite-only
-SQL with a hint (`sqliteOnly()`, the same check as the asynchronous driver).
-`transaction()` takes the same steps on both (relation sync before the
-commit, rollback hooks, the upload cleanup after it).
-
-This is what lets the refactor proceed on **two independent axes**:
-
-1. **Dialect** – SQL that runs on both (helpers below). Can be done for any
-   file, synchronously, without touching callers. On SQLite the helpers emit
-   byte-identical SQL.
-2. **Async** – `one(` → `await db.one(` and the `async` that spreads upwards.
-
-With the bridge, axis 1 alone makes a code path work on Postgres. Axis 2 is
-needed for throughput (the bridge blocks the event loop for every round trip)
-and for cluster mode. Rules while both exist:
-
-- Inside an async Postgres transaction, synchronous reads are allowed (they
-  see what was committed before – fine for permission checks), synchronous
-  writes are refused (the bridge's own connection could wait forever for the
-  transaction's row locks while the event loop is blocked).
-- Each bridge connection has `lock_timeout=10s` as a safety net.
-- Not for production load: it is a development and CI aid while porting
-  (decided: not shipped as a product mode).
+Phase 1 ran the then synchronous helpers on Postgres through a blocking
+bridge (a worker thread with one connection, `Atomics.wait` for the
+answer). Phase 2 converted every caller; the bridge is deleted and
+`tests/no-sync-database.test.ts` fails if it, or any `Atomics.wait` round
+trip, comes back into the server code. The synchronous SQLite statements
+(`sqliteOne/sqliteAll/sqliteRun`) are for the SQLite driver and SQLite-only
+code (the migrations) alone – the same test checks that.
 
 ## 2. Dialect
 
@@ -124,9 +114,9 @@ two need different text, the fragment comes from the dialect;
 everything else is plain SQL both accept (SQLite ≥ 3.39 reads
 `IS [NOT] DISTINCT FROM`, `ON CONFLICT … DO NOTHING`, row values).
 
-- Asynchronous code: `db.dialect` (lib/db-driver).
-- Synchronous code (`one/all/run`): `sql` from `lib/db.ts` – the dialect of
-  this process (`sql.instr("d.html", "?")`), and `nowText()`/`daysAgoText()`.
+- `sql` from `lib/db.ts` – the dialect of this process
+  (`sql.instr("d.html", "?")`) – or `db.dialect` (lib/db-driver); and
+  `nowText()`/`daysAgoText()`.
 
 Values that SQLite computed in SQL are now computed in JavaScript and
 passed as parameters where that is simple: `CURRENT_TIMESTAMP` in a query
@@ -319,12 +309,14 @@ EXISTS` (READ COMMITTED lets two transactions pass the guard).
 Backups stay **SQLite files on both databases**. `snapshotDatabase(path)`
 (lib/db-snapshot.ts) is `VACUUM INTO` on SQLite; on Postgres it writes the
 same file from the translated schema and the data (one `REPEATABLE READ`
-transaction, key order). A restore or move on Postgres (lib/db-restore.ts)
+transaction, a cursor per table in key order, 500 rows per round trip:
+bounded memory). A restore or move on Postgres (lib/db-restore.ts)
 keeps the current state as such a file (as SQLite keeps the swapped-out
 file), brings the backup up to this schema with the SQLite migrations and
-refills every table in one transaction (foreign keys dropped and re-added,
-user triggers disabled meanwhile, identities moved on); the search index is
-rebuilt. So a backup made on either database restores on either.
+refills every table in one transaction (the file's rows iterated, 200 per
+INSERT; foreign keys dropped and re-added, user triggers disabled
+meanwhile, identities moved on); the search index is rebuilt and the data
+steps run. So a backup made on either database restores on either.
 `pg_dump` remains the tool for Postgres-side backups in production.
 
 ## 4. Porting, and how async spreads
@@ -393,13 +385,16 @@ impossible: 2 constructors and 1 module top level (`lib/ai/access.ts`).
 
 1. **Foundation** (this spike, hardened): CI job running the whole suite with
    `DATABASE_URL` (one Postgres service, a schema per test file –
-   `tests/helpers/postgres-backend.ts` does that already), the JSON schema
-   check, the SQLite-only refusal.
+   `tests/helpers/postgres-backend.ts`; the job `postgres` of
+   `.github/workflows/ci.yml` since phase 2), the JSON schema check, the
+   SQLite-only refusal.
 2. **Dialect pass, synchronous – done (phase 1, §11).** All SQL runs on
    both databases; the whole suite passes on SQLite and on Postgres through
    the bridge. Search keeps a dialect seam (`lib/search-store.ts`) until its
    `tsvector` design.
-3. **Async sweep** with `scripts/codemod-await.mjs`: it wraps calls of the
+3. **Async sweep – done (phase 2, §12)** with `scripts/codemod-async-sweep.mjs`
+   (whole program, one run; the plan below was the spike's, with
+   `scripts/codemod-await.mjs`): it wraps calls of the
    given functions in `await`, marks the enclosing functions `async` (return
    types `Promise<…>`), follows file-local helpers to a fixpoint, turns
    `assert.throws` into `assert.rejects`, and removes redundant parentheses.
@@ -410,12 +405,13 @@ impossible: 2 constructors and 1 module top level (`lib/ai/access.ts`).
    overlap so much (`pageRole` touches 196 files), the realistic shape is a
    short freeze with a few large, mechanical PRs (permissions+api, then
    features, then workers/integrations), not hundreds of small ones.
-4. **Callbacks by hand**: `map` → `Promise.all(map(async …))` only where
+4. **Callbacks – done (§12)**, mostly by the codemod (`lib/each-async.ts`): `map` → `Promise.all(map(async …))` only where
    order and concurrency do not matter (inside a transaction: a `for` loop –
    statements of one connection run one after another anyway); `filter`,
    `sort` comparators, `some/every/find` → loops.
-5. **Delete the bridge and the sync helpers**; `lib/db.ts` keeps the SQLite
-   connection and migrations only.
+5. **Bridge deleted (§12).** `lib/db.ts` keeps the SQLite connection, its
+   synchronous statements for the driver, the migrations, and the
+   asynchronous helpers everything else calls.
 
 Pitfalls the spike hit (all caught by tests or `tsc`, except the first):
 
@@ -439,8 +435,8 @@ Pitfalls the spike hit (all caught by tests or `tsc`, except the first):
   for every test file) calls `preparePostgres()`
   (`tests/helpers/postgres-backend.ts`): a schema of its own per test
   process, created from the JSON (tables, triggers, seed rows), dropped at
-  exit (`--drop-all` cleans up after aborted runs). Synchronous test helpers
-  (`run("INSERT …")`) reach it through the bridge. A test that switches to a
+  exit (`--drop-all` cleans up after aborted runs). Tests use the same
+  asynchronous helpers as the code (`await run("INSERT …")`). A test that switches to a
   fresh instance (`tests/setup-restore.test.ts`) gets a fresh schema, as it
   gets a fresh data folder on SQLite: `reopenDatabase()` connects anew when
   `FLOWPLAN_PG_SCHEMA` changed.
@@ -449,7 +445,11 @@ Pitfalls the spike hit (all caught by tests or `tsc`, except the first):
 - `tests/db-driver.test.ts`: the layer (placeholders, types, commit,
   rollback, savepoints, `afterTransaction`, locks, the refusal rules) and the
   slice end to end, on whichever backend is configured.
-- Results: §11.
+- `tests/no-sync-database.test.ts`: no bridge, no `Atomics.wait`, the
+  synchronous SQLite statements only in the SQLite driver.
+- CI: the job `postgres` runs the suite, `next build` and
+  `scripts/check-standalone-postgres.mjs` against a `postgres:16` service.
+- Results: §11 (phase 1), §12 (phase 2).
 
 ```sh
 # a throwaway Postgres 16 (as the postgres user)
@@ -517,18 +517,20 @@ the search queue triggers in a later phase.
 (user by primary key, `SELECT *`, 10,000 users), median of 3, one Node
 process, Postgres 16 on the same machine over TCP:
 
-Two runs (µs per query; run-to-run noise is about ±15 %):
+µs per query; runs 1 and 2 from the spike, run 3 after phase 2
+(run-to-run noise is about ±15 %):
 
-| Path | run 1 | run 2 |
-|---|---:|---:|
-| SQLite, synchronous `one()` (today) | 10.8 | 11.7 |
-| SQLite, async `db.one()` awaited one by one | 12.3 | 9.7 |
-| SQLite, async `db.one()` inside one `db.tx()` | 10.1 | 10.8 |
-| Postgres, async, one by one | 91.8 | 89.5 |
-| Postgres, async, 16 in flight | 54.0 | 51.2 |
-| Postgres, async, inside one `db.tx()` | 84.9 | 88.1 |
-| Postgres, async, unnamed statements | 145.0 | 132.1 |
-| Postgres, synchronous bridge | 185.2 | 173.9 |
+| Path | run 1 | run 2 | run 3 |
+|---|---:|---:|---:|
+| SQLite, synchronous `one()` (spike) / `sqliteOne()` (phase 2) | 10.8 | 11.7 | 11.6 |
+| SQLite, `await one()` of `lib/db.ts` (phase 2: what the code calls) | – | – | 12.9 |
+| SQLite, async `db.one()` awaited one by one | 12.3 | 9.7 | 12.0 |
+| SQLite, async `db.one()` inside one `db.tx()` | 10.1 | 10.8 | 10.6 |
+| Postgres, async, one by one | 91.8 | 89.5 | 104.0 |
+| Postgres, async, 16 in flight | 54.0 | 51.2 | 55.0 |
+| Postgres, async, inside one `db.tx()` | 84.9 | 88.1 | 83.9 |
+| Postgres, async, unnamed statements | 145.0 | 132.1 | 136.8 |
+| Postgres, synchronous bridge (removed in phase 2) | 185.2 | 173.9 | – |
 
 Reading: the async wrapper's cost on SQLite is below the noise of this
 benchmark (at most ~1.5 µs per statement, i.e. well under 0.1 ms for a
@@ -537,9 +539,10 @@ request with 50 statements). Postgres is ~8× slower per round trip locally
 queries/s from one Node process with 16 in flight. Requests that issue many
 small sequential queries (permission checks per page) will feel it, which
 argues for batching those lookups (`read-memo` already helps) before cluster
-mode. Named prepared statements are worth 1.5×. The bridge costs 2× the
-async driver and blocks the event loop – acceptable for development, not for
-load.
+mode. Named prepared statements are worth 1.5×. The bridge cost 2× the
+async driver and blocked the event loop; it is gone. `one()` of `lib/db.ts`
+adds about a microsecond on SQLite (two promise layers) – a request with
+50 statements pays well under 0.1 ms.
 
 ## 8. What Redis/cluster mode needs from this layer
 
@@ -563,8 +566,8 @@ load.
 - **Connections:** pool size × instances ≤ `max_connections` (or PgBouncer;
   named statements need PgBouncer ≥ 1.21 with `max_prepared_statements`, or
   `prepare: false`); `statement_timeout`/`lock_timeout` per connection.
-- **No synchronous paths:** the bridge and every remaining synchronous helper
-  must be gone – cluster mode starts after step 5 above.
+- **No synchronous paths:** done in phase 2 – the bridge is gone and every
+  database call is asynchronous (§12).
 
 ## 9. Effort estimate
 
@@ -588,7 +591,8 @@ spike; ranges reflect the review effort the codemod cannot remove.
 
 ## 10. Decisions (questions of the spike, answered)
 
-1. **The bridge** is a development and CI aid only, not a product mode.
+1. **The bridge** was a development and CI aid only, not a product mode;
+   removed in phase 2.
 2. **Order:** dialect pass first (phase 1, done), then the asynchronous
    sweep by codemod (phase 2).
 3. **Sweep shape:** a short freeze with a few large codemod PRs.
@@ -658,6 +662,8 @@ What changed, beyond the rules of §2 and §3:
 
 ### What phase 2 (the asynchronous sweep) must know
 
+(Kept as written; what became of each point: §12.)
+
 - Write new SQL for both databases (`sql.*`/`db.dialect.*`); run the suite
   with `DATABASE_URL` in CI – the refusal list catches most slips, the rest
   shows as Postgres errors (`GROUP BY` bare columns, `x=x+1` in upserts,
@@ -687,3 +693,158 @@ What changed, beyond the rules of §2 and §3:
   schemas 89, 90, 92, saved searches → collections, the incident
   channel upgrade, the reaction emoji normalisation, FTS5's content table,
   the read memo against a second SQLite connection.
+
+## 12. Phase 2: the asynchronous sweep (done)
+
+All data access is asynchronous. `one/all/run/transaction` and the other
+helpers of `lib/db.ts` return promises and go through the driver of
+`lib/db-driver` on both databases; on PostgreSQL that is the `pg` pool, with
+no blocking bridge left (deleted; `tests/no-sync-database.test.ts` keeps it
+out). SQLite runs the same statements on the same connection as before.
+
+### How it was done
+
+1. **Driver and helpers by hand** (`lib/db.ts`, `lib/db-driver`): the
+   helpers became asynchronous; the transaction steps both drivers take
+   (relation sync before the commit with the actor, upload cleanup after
+   it, rollback callbacks per transaction instead of a process-wide list,
+   the opening steps) moved into `dbContext.hooks`. `inSavepoint` is a
+   nested `db.tx`, `lockFor(key)` the advisory lock of the current
+   transaction (the same as `tx(fn, { lock })`), `updateIgnoringConflicts`
+   runs on both through them.
+2. **Codemod** (`scripts/codemod-async-sweep.mjs`, TypeScript 5 compiler
+   API with the checker): from the helpers it follows every caller through
+   the whole program – imports, re-exports, destructured dynamic imports
+   (`const { run } = await import("../lib/db")`), methods, object members,
+   function aliases, IIFEs, parameters handed on – to a fixpoint, wraps
+   each call in `await`, marks the functions `async` (`T` → `Promise<T>`),
+   rewrites array callbacks to `lib/each-async.ts` (sequential `mapAsync`,
+   `filterAsync`, `someAsync` …: order and side effects as before, one
+   connection's statements one after another anyway), awaits generic
+   wrappers whose result is the callback's (`withRequestLocale`,
+   `withReadMemo`, `memoized` …) and makes the project's own functions
+   that call a callback await it (types widened to `T | Promise<T>`),
+   follows closures returned by factories (`--factory`: `nameLookup()`,
+   `quotaCheckpoint()`, `streamGuard()` …), turns `assert.throws` around
+   them into `assert.rejects`, and lists what it must not change.
+   One run: 4,575 functions became async, 22,453 awaits in 558 files
+   (tests included), array callbacks in 105 files; later passes with hand
+   seeds added a few hundred more. `ReturnType<typeof f>` →
+   `Awaited<ReturnType<typeof f>>` (perl).
+3. **By hand** (what the codemod listed, then `tsc`): ~60 places.
+   Synchronous renderers whose lookups now read the database get the
+   answers ahead – `lib/resolve-ahead.ts` `withLookups` renders once noting
+   the questions, resolves them, renders again (whiteboard SVG, Markdown
+   export, EPUB/PDF/Word through `withExportLookups`, record placeholders
+   through `withPlaceholders`, Markdown import through
+   `markdownToHtmlAsync`); sanitize-html transforms that read the database
+   use `cleanHtmlAsync` (two passes in the same tag order) or read ahead
+   and stay synchronous; string replacers use `replaceAsync`; rollup field
+   access is resolved ahead for all rollups of a schema; the AI access
+   context has a static async factory instead of a constructor; defaults
+   that awaited inside parameter lists moved into the body (`=== undefined`,
+   so `null` keeps its meaning).
+4. **What tsc does not see** – a promise where any value goes.
+   `scripts/check-promises.mjs` (TypeScript 5 with types) reports promises
+   as statements, conditions, `!p`, in `+` and templates, compared, given
+   to `any`/`unknown` parameters or inside literals given there, async
+   callbacks of `filter/some/every/find/sort/forEach`, and async functions
+   where a function returning `void`/`unknown` is expected. What it still
+   reports (about 40, mostly client code) are deliberate promise handles
+   (`pending ??= …; if (!pending)`). The test runs found the rest: the
+   idempotency reservation of `command()` and its after-commit tasks typed
+   `=> void`, a template's `keep` callback typed `=> unknown`, a stream's
+   keepalive that checked `!allowed()` on a promise (access was never
+   revoked) – all awaited now.
+
+### Data steps on both databases
+
+`lib/data-steps.ts`: what migrations did to the *data* (saved searches →
+collections, schema 85; identities from SSO subjects, 88; formatted text
+escaped, 90; secrets sealed, 92; reaction emoji without a redundant
+U+FE0F) is written once against the asynchronous helpers and runs at the
+first use of the database on both (after a staged restore), each step in
+a transaction with an advisory lock (several instances), marked in
+`data_migrations` with the old names (done steps stay done), retried at the
+next start after a failure. `migrate()` keeps the schema only. **New data
+steps go there, never into `migrate()`.** The translated schema no longer
+seeds markers. Their tests run on both databases now.
+
+### Snapshots and restores
+
+Asynchronous and with bounded memory: the snapshot reads each table
+through a cursor of its `REPEATABLE READ` transaction (`FETCH 500`), the
+restore iterates the backup file and inserts 200 rows per statement
+(`tests/db-snapshot.test.ts`: a table larger than a batch, out and in).
+
+### Prepared statements
+
+Named prepared statements are per connection. DDL through the driver
+forgets them (names are never reused); one prepared before a schema change
+made elsewhere fails with "cached plan must not change result type" and
+is retried unnamed outside a transaction (inside, the failure has spoilt
+the transaction: the caller sees it).
+
+### Results
+
+- **`npx tsc --noEmit -p .`** clean; `node scripts/db-dialect-scan.mjs`: zero
+  on every SQLite-only pattern (`LIKE` 76, reviewed: the data steps' fixed
+  markers moved out of the migrations).
+- **SQLite** (`npm test`): 2,064 of 2,064 pass.
+- **PostgreSQL 16 without the bridge** (`DATABASE_URL=…`): 2,058 pass, 0 fail, 6 skipped of 2,064 – no bridge, the `pg` pool only.
+- **`next build`** passes; `npm run check:standalone` (SQLite) and
+  `scripts/check-standalone-postgres.mjs` (health, first sign-up,
+  bootstrap through the pool; no bridge in the output) pass.
+- **CI:** the job `postgres` runs the suite, the build and the standalone
+  check against a `postgres:16` service.
+- **Performance** (§7, run 3): the asynchronous `one()` costs about a
+  microsecond more than the synchronous statement on SQLite; the whole
+  suite takes about as long as before (about 6 minutes on SQLite, about 10½ minutes on
+  Postgres, 4 cores – the bridge run took about 11½ minutes). Postgres now
+  serves requests concurrently instead of blocking the event loop per
+  round trip.
+
+### What phase 3 (cluster mode, Redis, `tsvector`, pgvector, `pg_dump`) must know
+
+- **Concurrency is real on Postgres now.** Transactions run in parallel
+  (pool of `FLOWPLAN_PG_POOL`, default 10, connections per process) under
+  `READ COMMITTED`. The known check-then-write places have advisory locks
+  (`lockFor`/`tx(fn, { lock })`), unique keys or counter rows (§1, §11).
+  Not yet reviewed one by one: the ~500 `transaction()` bodies for
+  read-then-write without a lock (quotas, positions, Yjs merges by
+  generation check – `FOR UPDATE` on the document row is the plan), and
+  sequences outside transactions that relied on running in one turn of the
+  event loop (on SQLite they still do; on Postgres they interleave).
+- **No `statement_timeout`/`lock_timeout`** on the pool's connections yet
+  (the bridge had `lock_timeout=10s`); a stuck lock waits. Set them per
+  connection (pool `options`) with cluster mode, together with
+  `idle_in_transaction_session_timeout`.
+- **Sequential awaits** are the default everywhere (`mapAsync`, permission
+  checks page by page): fine on SQLite, ~100 µs per round trip on Postgres
+  (§7). Hot paths to batch or parallelise first: the sidebar/bootstrap
+  permission checks, `filterAsync(pages, pageRole)` in search and
+  collections, the exports' per-page lookups.
+- **SQLite transactions hold the one connection across awaits**; their
+  bodies must await database calls only (development warns). Code that
+  awaits I/O inside `transaction()` (fetch, crypto, files) would stall
+  every other request on SQLite.
+- **Fire-and-forget callbacks** (timers, event handlers, `afterTransaction`)
+  may now be async: a rejection is an unhandled rejection where a throw
+  used to be an uncaught exception – same severity; the workers catch
+  their own errors. `afterTransaction` logs failures of async callbacks.
+- **Opening steps** (`dbContext.hooks.open`) run once per process; with
+  several instances each runs them, the data steps serialise on their
+  advisory locks. A staged restore on Postgres must be coordinated by the
+  leader in cluster mode.
+- **Named prepared statements** need PgBouncer ≥ 1.21 with
+  `max_prepared_statements`, or `prepare: false` (§8).
+- **Search** still uses the plain-table stop-gap (§5a) and its triggers;
+  the object storage queue still polls every 0.5 s on Postgres.
+- `scripts/check-promises.mjs` is a tool, not yet a CI gate (the
+  deliberate handles it reports would need an allow-list); run it after
+  larger changes, or turn it into a lint rule (`no-misused-promises`).
+- Tests skipped on Postgres (they test SQLite itself): the Postgres schema file check (it builds the
+  SQLite schema), schema 88 on an older SQLite file, schema 89's indexes,
+  the incident channel upgrade, FTS5's content table, the read memo against
+  a second SQLite connection – 6 (phase 1: 9; the formatted text, sealed
+  secrets, saved searches and reaction emoji steps run on both now)..
