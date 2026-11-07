@@ -18,6 +18,7 @@
 // checked before it is drawn, counted or exported; wrong values are dropped.
 // Client-safe: no server imports.
 import type { ConnectorEnd, Point, WhiteboardItem } from "./whiteboard-model";
+import { CSV_FORMULA } from "./cell-text";
 
 // ---- sizes on the board (px) ----
 
@@ -791,7 +792,7 @@ export function portRows(items: WhiteboardItem[], t: T): PortRow[] {
 // formula gets a leading apostrophe.
 export const csvCell = (value: unknown) => {
   let text = value === null || value === undefined ? "" : String(value);
-  if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
+  if (CSV_FORMULA.test(text)) text = `'${text}`;
   return /[",;\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 };
 export function cablesCsv(rows: CableRow[], t: T) {

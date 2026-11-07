@@ -3,6 +3,7 @@
 // administrator does about them – block an address or network, end
 // sessions, disable an account, revoke tokens and links.
 import { z } from "zod";
+import { CSV_FORMULA } from "./cell-text";
 import { all, id, one, run } from "./db";
 import { HttpError, adminUserIds } from "./auth";
 import { clientAddress } from "./client-address";
@@ -578,7 +579,10 @@ export function securityExport(format: "csv" | "json", now = Date.now()) {
   }));
   const name = `flowplan-security-${new Date(now).toISOString().slice(0, 10)}`;
   if (format === "json") return { name: `${name}.json`, type: "application/json", body: JSON.stringify(records, null, 1) };
-  const cell = (v: string) => (/[",\n;]/.test(v) || /^[=+\-@]/.test(v) ? `"${(/^[=+\-@]/.test(v) ? `'${v}` : v).replace(/"/g, '""')}"` : v);
+  const cell = (v: string) => {
+    const text = CSV_FORMULA.test(v) ? `'${v}` : v;
+    return /[",\r\n;]/.test(text) || text !== v ? `"${text.replace(/"/g, '""')}"` : text;
+  };
   const head = Object.keys(records[0] || { time: "", event: "", severity: "", user: "", subject: "", network: "", address: "", country: "", device: "", detail: "" });
   const csv = [head.join(","), ...records.map((r) => head.map((k) => cell(String(r[k as keyof typeof r] ?? ""))).join(","))].join("\r\n");
   return { name: `${name}.csv`, type: "text/csv; charset=utf-8", body: "﻿" + csv };

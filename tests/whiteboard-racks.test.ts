@@ -238,7 +238,12 @@ test("power and weight: totals per rack and per PDU, warnings, UPS chains", () =
 test("CSV: cable list and ports, quoted cells, formulas defused", () => {
   assert.equal(csvCell('a "b", c'), '"a ""b"", c"');
   assert.equal(csvCell("=HYPERLINK(1)"), "'=HYPERLINK(1)");
-  assert.equal(csvCell("-1"), "'-1");
+  // The guard of every CSV export (CSV_FORMULA): numbers stay numbers.
+  assert.equal(csvCell("-1"), "-1");
+  assert.equal(csvCell("-cmd"), "'-cmd");
+  assert.equal(csvCell("  =1+1"), "'  =1+1");
+  assert.equal(csvCell("\tx"), "'\tx");
+  assert.equal(csvCell("'=x"), "''=x");
   assert.equal(csvCell(null), "");
   const csv = cablesCsv([{ id: "c", label: "L-1", type: "om4", color: "#ae3ec9", length: 2.5, from: "a · 1", to: "b · 2", vlan: "", notes: "line\nbreak" }], en);
   const lines = csv.split("\r\n");

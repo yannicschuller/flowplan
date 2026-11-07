@@ -9,6 +9,7 @@ import { createHmac, randomBytes } from "node:crypto";
 import { z } from "zod";
 import { all, audit, one, run } from "./db";
 import { HttpError } from "./auth";
+import { CSV_FORMULA } from "./cell-text";
 import { ct } from "./content-locale";
 import { flushOpsEvents, opsEventKinds, type OpsEventKind } from "./ops-events";
 import { sweepIdempotencyKeys } from "./idempotency";
@@ -237,7 +238,7 @@ export function auditExport(input: unknown) {
   const cell = (v: unknown) => {
     const text = String(v ?? "");
     // Spreadsheet programs must not run formulas from the log.
-    const safe = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
+    const safe = CSV_FORMULA.test(text) ? `'${text}` : text;
     return `"${safe.replace(/"/g, '""')}"`;
   };
   const csv = [
