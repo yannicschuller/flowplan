@@ -46,7 +46,7 @@ import {
   type OidcProfile,
 } from "@/lib/oidc-link";
 import { appSignInReportLine } from "@/lib/app-sign-in-report";
-import { readJsonLimited } from "@/lib/request-body";
+import { readJsonLimited, readTextLimited } from "@/lib/request-body";
 import { provesApp } from "@/lib/app-devices";
 import { refuseSsoOnly, removeIdentity, removePassword, signInOverview } from "@/lib/identities";
 import { confirmStep, sessionStartedAt, stepUpMethods } from "@/lib/step-up";
@@ -431,7 +431,8 @@ async function handlePOST(
     if (action === "desktop") {
       const say = translate(locale),
         user = await currentUser(),
-        challenge = (await req.formData().catch(() => null))?.get("challenge");
+        // A small form (the challenge only): read with a limit before anything else.
+        challenge = new URLSearchParams(await readTextLimited(req, 4_000).catch(() => "")).get("challenge");
       // Only a browser session hands a sign-in to the app – never an API
       // token (it would mint a full session that outlives the token).
       if (!user || user.demo || user.apiScope || user.twoFactorSetup || !isDesktopChallenge(challenge))
@@ -454,7 +455,7 @@ async function handlePOST(
       });
     }
     if (action === "desktop-redeem") {
-      const { code, verifier } = (await req.json().catch(() => ({}))) as { code?: unknown; verifier?: unknown };
+      const { code, verifier } = ((await readJsonLimited(req, 16_000).catch(() => null)) ?? {}) as { code?: unknown; verifier?: unknown };
       const handoff = redeemDesktopCode(code, verifier);
       if (!handoff)
         throw new HttpError(400, translate(locale)("Der Anmeldecode ist ungültig oder abgelaufen. Bitte erneut anmelden.", "The sign-in code is invalid or has expired. Please sign in again."));
