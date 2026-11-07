@@ -4,12 +4,13 @@ import { HttpError } from "./auth";
 import { instanceSettings } from "./instance-settings";
 import { pageRole, requireMember } from "./permissions";
 import { listRowTrash, purgeTrashedRow, ROW_TRASH_DAYS } from "./row-trash";
+import { expireTrashedFiles, listFileTrash, purgeFiles } from "./file-trash";
 import { canManageSpace, purgePages, purgeSpace } from "./workspace-lifecycle";
 import type { Identity, Page, Space } from "./types";
 
-// The trash (#123): pages, spaces, records (lib/row-trash.ts) and saved
-// templates stay there for `trashDays()` days and are then deleted for good;
-// before that, people delete single entries permanently or empty it.
+// The trash (#123): pages, spaces, records (lib/row-trash.ts), files
+// (lib/file-trash.ts, #164) and saved templates stay there for `trashDays()`
+// days and are then deleted for good; before that, people delete single entries permanently or empty it.
 // Admins set the days in Administration → Grenzen & Aufbewahrung (0 = never).
 export function trashDays() {
   const days = instanceSettings().trashDays;
@@ -52,7 +53,7 @@ export function purgeTrashedPage(user: Identity, input: Record<string, unknown>)
 }
 
 // trash.empty: everything in the workspace's trash this person may delete –
-// pages, spaces they manage and records; or, with scope "templates", the
+// pages, spaces they manage, records and files; or, with scope "templates", the
 // template trash. Nothing of others' private spaces or pages is touched.
 export function emptyTrash(user: Identity, input: Record<string, unknown>) {
   const workspaceId = uuid.parse(input.workspaceId);
@@ -74,6 +75,8 @@ export function emptyTrash(user: Identity, input: Record<string, unknown>) {
     workspaceId,
   ).filter((p) => purgeable(user, p));
   purgePages(workspaceId, pages);
+  const files = listFileTrash(user, workspaceId);
+  purgeFiles(files.map((f) => ({ id: f.id, page_id: f.pageId })));
   let records = 0;
   for (const entry of listRowTrash(user, workspaceId))
     try {
@@ -87,9 +90,9 @@ export function emptyTrash(user: Identity, input: Record<string, unknown>) {
     user.id,
     "trash.emptied",
     workspaceId,
-    `${pages.length} pages, ${spaces.length} spaces, ${records} records`,
+    `${pages.length} pages, ${spaces.length} spaces, ${records} records, ${files.length} files`,
   );
-  return { ok: true, pages: pages.length, spaces: spaces.length, records };
+  return { ok: true, pages: pages.length, spaces: spaces.length, records, files: files.length };
 }
 
 // What the trash holds for this person, for the confirmation of "Empty trash".
@@ -103,7 +106,12 @@ export function trashCounts(user: Identity, workspaceId: string) {
     "SELECT * FROM spaces WHERE workspace_id=? AND deleted_at IS NOT NULL",
     workspaceId,
   ).filter((s) => canManageSpace(user, s)).length;
-  return { pages, spaces, records: listRowTrash(user, workspaceId).length };
+  return {
+    pages,
+    spaces,
+    records: listRowTrash(user, workspaceId).length,
+    files: listFileTrash(user, workspaceId).length,
+  };
 }
 
 // Templates: the same rights as moving one to the template trash
@@ -144,10 +152,10 @@ export function purgeTemplate(user: Identity, input: Record<string, unknown>) {
 }
 
 // Retention: run by the retention worker (lib/version-history.ts). Spaces,
-// pages, records and templates longer than `days` in the trash go for good.
+// pages, records, files and templates longer than `days` in the trash go for good.
 // Each workspace in a transaction of its own.
 export function expireTrash(days = trashDays()) {
-  const result = { pages: 0, spaces: 0, records: 0, templates: 0 };
+  const result = { pages: 0, spaces: 0, records: 0, templates: 0, files: 0 };
   if (!(days > 0)) return result;
   const cutoff = `-${days} days`;
   for (const space of all<Space>(
@@ -174,6 +182,8 @@ export function expireTrash(days = trashDays()) {
       result.pages += pages.length;
     });
   transaction(() => {
+    result.files = expireTrashedFiles(cutoff);
+    if (result.files) audit("", "files.expired", "", `${result.files} files older than ${days} days`);
     result.records = Number(
       run("DELETE FROM row_trash WHERE deleted_at<datetime('now',?)", cutoff).changes,
     );

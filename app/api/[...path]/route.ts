@@ -136,6 +136,7 @@ import { visibleRows } from "@/lib/row-access";
 import { readableDatabase } from "@/lib/field-access";
 import { listRowTrash } from "@/lib/row-trash";
 import { trashCounts, trashDays } from "@/lib/trash";
+import { listFileTrash } from "@/lib/file-trash";
 import { ARCHIVE_LIMIT } from "@/lib/archive";
 import { buildInfo } from "@/lib/build-info";
 import { plainHttpInstance } from "@/lib/instance-https";
@@ -317,6 +318,11 @@ async function handleGET(
     if (path.length === 2 && path[0] === "trash" && path[1] === "summary") {
       const wid = z.uuid().parse(url.searchParams.get("workspace"));
       return NextResponse.json({ ...trashCounts(user, wid), days: trashDays() });
+    }
+    // Files in the trash this person may restore or delete (#164).
+    if (path.length === 2 && path[0] === "trash" && path[1] === "files") {
+      const wid = z.uuid().parse(url.searchParams.get("workspace"));
+      return NextResponse.json(listFileTrash(user, wid), { headers: { "Cache-Control": "no-store" } });
     }
     if (path[0] === "trash" && path[1] === "rows") {
       const wid = z.uuid().parse(url.searchParams.get("workspace"));
@@ -814,6 +820,7 @@ async function handleGET(
             .parse(url.searchParams.get("kind") || "all"),
           query: url.searchParams.get("q") || "",
           offset: Number(url.searchParams.get("offset") || 0) || 0,
+          usage: z.enum(["all", "unused"]).catch("all").parse(url.searchParams.get("usage") || "all"),
         }),
         { headers: { "Cache-Control": "no-store" } },
       );

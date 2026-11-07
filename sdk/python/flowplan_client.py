@@ -969,6 +969,50 @@ CommandPagePurgeResult = TypedDict("CommandPagePurgeResult", {
     "pages": Required[int],  # Pages deleted, the page itself included
 }, total=False)
 
+# Move files to the trash. Files of pages the caller may edit (full members only, not guests; not on a locked page). All or none. A file in the trash is no longer served (`/api/files/<id>` answers 404), listed, searched, copied or exported; documents that still show it get a missing-image placeholder. Restore it with `file.restore`; it is deleted for good with `file.purge`, `trash.empty` or after the trash period. Removing an image from a document never deletes the file.
+CommandFileDelete = TypedDict("CommandFileDelete", {
+    "action": Required[Literal["file.delete"]],
+    "fileIds": Required[list[str]],
+}, total=False)
+
+CommandFileDeleteResult = TypedDict("CommandFileDeleteResult", {
+    "ok": Required[Literal[True]],
+    "files": Required[int],
+}, total=False)
+
+# Move all unused files to the trash. Every file of the media library (`GET /api/media`, same `kind` and `query` filter) that no current content of the workspace refers to – documents, records, whiteboards, comments, page icons and covers – and that the caller may delete. Version history does not count: restoring a version whose file was deleted for good shows the image as missing.
+CommandFilesDeleteUnused = TypedDict("CommandFilesDeleteUnused", {
+    "action": Required[Literal["files.deleteUnused"]],
+    "workspaceId": Required[str],
+    "kind": Literal["all", "image", "video", "audio", "pdf", "other"],
+    "query": str,
+}, total=False)
+
+CommandFilesDeleteUnusedResult = TypedDict("CommandFilesDeleteUnusedResult", {
+    "ok": Required[Literal[True]],
+    "files": Required[int],  # Files moved to the trash
+}, total=False)
+
+# Restore a file from the trash
+CommandFileRestore = TypedDict("CommandFileRestore", {
+    "action": Required[Literal["file.restore"]],
+    "fileId": Required[str],
+}, total=False)
+
+CommandFileRestoreResult = TypedDict("CommandFileRestoreResult", {
+    "ok": Required[Literal[True]],
+}, total=False)
+
+# Delete a file from the trash permanently. The file must be in the trash (`file.delete`); the same right as moving it there. Deleted for good: the upload on disk and in object storage, its extracted text, handwriting, placeholder and search entries. Cannot be undone.
+CommandFilePurge = TypedDict("CommandFilePurge", {
+    "action": Required[Literal["file.purge"]],
+    "fileId": Required[str],
+}, total=False)
+
+CommandFilePurgeResult = TypedDict("CommandFilePurgeResult", {
+    "ok": Required[Literal[True]],
+}, total=False)
+
 # Delete a template from the template trash permanently. The template must be in the template trash (`template.delete`). Its creator or a workspace owner may delete it; templates for all workspaces or the public gallery need an administrator. Its stored files go with it. Pages already created from it are kept.
 CommandTemplatePurge = TypedDict("CommandTemplatePurge", {
     "action": Required[Literal["template.purge"]],
@@ -1389,7 +1433,7 @@ CommandHomeSaveResult = TypedDict("CommandHomeSaveResult", {
 }, total=False)
 
 # One action of the interface, as sent by POST /api/command.
-Command = Union["CommandWorkspaceCreate", "CommandSpaceCreate", "CommandSpaceReorder", "CommandPageCreate", "CommandBlockIds", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandTagScope", "CommandPropertyScope", "CommandMetaUsage", "CommandPageMoveCheck", "CommandTemplateCopy", "CommandTemplateDependencies", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPagePurge", "CommandTemplatePurge", "CommandTrashEmpty", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandSidebarState", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
+Command = Union["CommandWorkspaceCreate", "CommandSpaceCreate", "CommandSpaceReorder", "CommandPageCreate", "CommandBlockIds", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandTagScope", "CommandPropertyScope", "CommandMetaUsage", "CommandPageMoveCheck", "CommandTemplateCopy", "CommandTemplateDependencies", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPagePurge", "CommandFileDelete", "CommandFilesDeleteUnused", "CommandFileRestore", "CommandFilePurge", "CommandTemplatePurge", "CommandTrashEmpty", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandSidebarState", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
 
 # ---- Parameters of the operations ----
 
@@ -1476,6 +1520,7 @@ MediaQuery = TypedDict("MediaQuery", {
     "kind": Literal["all", "image", "video", "audio", "pdf", "other"],  # Only this kind
     "q": str,  # Name contains
     "offset": int,  # Paging offset
+    "usage": Literal["all", "unused"],  # `unused`: only files no current content refers to
 }, total=False)
 
 CitationsQuery = TypedDict("CitationsQuery", {
@@ -1491,6 +1536,10 @@ SyncedBlocksQuery = TypedDict("SyncedBlocksQuery", {
 }, total=False)
 
 TrashSummaryQuery = TypedDict("TrashSummaryQuery", {
+    "workspace": Required[str],  # Workspace ID
+}, total=False)
+
+FileTrashQuery = TypedDict("FileTrashQuery", {
     "workspace": Required[str],  # Workspace ID
 }, total=False)
 
@@ -1991,6 +2040,10 @@ class FlowplanClient:
     def trash_summary(self, query: "TrashSummaryQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """What emptying the trash would delete (GET /api/trash/summary)"""
         return self._json("GET", "/api/trash/summary", query=dict(query) if query else None, headers=headers)
+
+    def file_trash(self, query: "FileTrashQuery", headers: Optional[dict[str, str]] = None) -> list[dict[str, Any]]:
+        """Files in the trash — Files the caller may restore (`file.restore`) or delete permanently (`file.purge`). (GET /api/trash/files)"""
+        return self._json("GET", "/api/trash/files", query=dict(query) if query else None, headers=headers)
 
     def row_trash(self, query: "RowTrashQuery", headers: Optional[dict[str, str]] = None) -> list[dict[str, Any]]:
         """Records in the trash (GET /api/trash/rows)"""

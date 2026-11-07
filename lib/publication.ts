@@ -164,9 +164,10 @@ export function publicPage(token: string, pageId?: string) {
 export function publicFile(token: string, fileId: string) {
   const { pages } = publicTree(token);
   const file = one<{ id: string; page_id: string; name: string; mime: string }>(
-    "SELECT * FROM files WHERE id=?",
+    "SELECT * FROM files WHERE id=? AND deleted_at IS NULL",
     fileId,
   );
+  // Files in the trash (lib/file-trash.ts) are not served.
   if (!file || !pages.some((p) => p.id === file.page_id))
     throw new HttpError(404, "Datei nicht veröffentlicht.");
   // Fresh guest uploads are readable through the link that uploaded them.

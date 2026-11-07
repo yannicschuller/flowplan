@@ -190,7 +190,7 @@ export function sharedContent(token: string, pageId?: string, rowId?: string) {
         }));
       }
   const files = all<{ id: string; name: string; mime: string }>(
-    "SELECT id,name,mime FROM files WHERE page_id=?",
+    "SELECT id,name,mime FROM files WHERE page_id=? AND deleted_at IS NULL",
     s.page.id,
   ).flatMap((f) => {
     const url = shareFileUrl(token, `/api/files/${f.id}`);

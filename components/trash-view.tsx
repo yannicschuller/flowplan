@@ -1,9 +1,9 @@
 "use client";
-// The trash (#123): spaces, pages and records with "Wiederherstellen" and
+// The trash (#123): spaces, pages, records and files (#164) with "Wiederherstellen" and
 // "Endgültig löschen", "Papierkorb leeren" for everything this person may
 // delete, and how long things stay (Administration → Aufbewahrung, lib/trash.ts).
 import { useCallback, useEffect, useState } from "react";
-import { ArrowCounterClockwise, Trash } from "@phosphor-icons/react";
+import { ArrowCounterClockwise, File as FileIcon, FileAudio, FileImage, FilePdf, FileVideo, Trash } from "@phosphor-icons/react";
 import type { Bootstrap, Page, Space } from "@/lib/types";
 import type { Locale } from "@/lib/i18n";
 import { useT } from "./i18n";
@@ -13,7 +13,8 @@ import { relativeTime } from "./home/format";
 
 type Act = (b: Record<string, unknown>) => Promise<unknown>;
 type RowEntry = { id: string; title: string; pageId: string; pageTitle: string; deletedAt: string };
-type Summary = { pages: number; spaces: number; records: number; days: number };
+type FileEntry = { id: string; name: string; mime: string; size: number; pageId: string; pageTitle: string; deletedAt: string };
+type Summary = { pages: number; spaces: number; records: number; files?: number; days: number };
 
 const DAY = 86_400_000;
 const sqlTime = (value: string) =>
@@ -23,7 +24,8 @@ export function daysLeft(deletedAt: string, days: number, now: number) {
   if (!(days > 0)) return null;
   const at = sqlTime(deletedAt);
   if (!Number.isFinite(at)) return null;
-  return Math.max(0, Math.ceil((at + days * DAY - now) / DAY));
+  // Never more than the period (the clock may lag behind a fresh deletion).
+  return Math.min(days, Math.max(0, Math.ceil((at + days * DAY - now) / DAY)));
 }
 
 function useLeft(days: number, clock: number | null) {
@@ -58,7 +60,8 @@ export default function TrashView({
   const left = useLeft(days, clock);
   const trashed = boot.pages.filter((p) => p.deleted_at);
   const [rowsVersion, setRowsVersion] = useState(0),
-    [rowCount, setRowCount] = useState(0);
+    [rowCount, setRowCount] = useState(0),
+    [fileCount, setFileCount] = useState(0);
   const [purging, setPurging] = useState<Page | null>(null),
     [emptying, setEmptying] = useState<Summary | null>(null),
     [busy, setBusy] = useState(false);
@@ -76,12 +79,12 @@ export default function TrashView({
     }
     return below.size - 1;
   };
-  const empty = !trashed.length && !boot.trashedSpaces?.length && !rowCount;
+  const empty = !trashed.length && !boot.trashedSpaces?.length && !rowCount && !fileCount;
   async function openEmpty() {
     try {
       setEmptying(await api<Summary>(`/api/trash/summary?workspace=${boot.workspace.id}`));
     } catch {
-      setEmptying({ pages: trashed.length, spaces: boot.trashedSpaces?.length || 0, records: rowCount, days });
+      setEmptying({ pages: trashed.length, spaces: boot.trashedSpaces?.length || 0, records: rowCount, files: fileCount, days });
     }
   }
   async function confirmEmpty() {
@@ -109,6 +112,7 @@ export default function TrashView({
       s.pages && (s.pages === 1 ? t("1 Seite", "1 page") : t(`${s.pages} Seiten`, `${s.pages} pages`)),
       s.spaces && (s.spaces === 1 ? t("1 Bereich", "1 space") : t(`${s.spaces} Bereiche`, `${s.spaces} spaces`)),
       s.records && (s.records === 1 ? t("1 Eintrag", "1 record") : t(`${s.records} Einträge`, `${s.records} records`)),
+      s.files && (s.files === 1 ? t("1 Datei", "1 file") : t(`${s.files} Dateien`, `${s.files} files`)),
     ].filter(Boolean) as string[];
   const purgeCount = purging ? subpages(purging) : 0;
   return (
@@ -116,7 +120,7 @@ export default function TrashView({
       <div className="utility-title">
         <Trash size={30} />
         <h1>{t("Papierkorb", "Trash")}</h1>
-        <p>{t("Gelöschte Seiten und Bereiche kannst du wiederherstellen.", "You can restore deleted pages and spaces.")}</p>
+        <p>{t("Gelöschte Seiten, Bereiche, Einträge und Dateien kannst du wiederherstellen.", "You can restore deleted pages, spaces, records and files.")}</p>
       </div>
       <div className="trash-toolbar">
         <p className="muted trash-retention">
@@ -193,6 +197,7 @@ export default function TrashView({
         onCount={setRowCount}
         onOpen={onOpenRecord}
       />
+      <FileTrash key={`files-${rowsVersion}`} workspaceId={boot.workspace.id} act={act} left={left} onCount={setFileCount} />
       {empty && (
         <div className="empty-state">
           <Trash size={38} />
@@ -320,6 +325,113 @@ function RowTrash({
           </div>
         </div>
       ))}
+    </section>
+  );
+}
+
+const fileIcon = (mime: string) =>
+  mime.startsWith("image/")
+    ? FileImage
+    : mime.startsWith("video/")
+      ? FileVideo
+      : mime.startsWith("audio/")
+        ? FileAudio
+        : mime === "application/pdf"
+          ? FilePdf
+          : FileIcon;
+
+// Files deleted in the media library (#164, lib/file-trash.ts): not served
+// while here, so no preview – name, type, page and how long they stay.
+function FileTrash({
+  workspaceId,
+  act,
+  left,
+  onCount,
+}: {
+  workspaceId: string;
+  act: Act;
+  left: (deletedAt: string) => string | null;
+  onCount: (count: number) => void;
+}) {
+  const t = useT();
+  const [entries, setEntries] = useState<FileEntry[]>([]),
+    [purging, setPurging] = useState<FileEntry | null>(null),
+    [busy, setBusy] = useState(false);
+  const load = useCallback(() => {
+    api<FileEntry[]>(`/api/trash/files?workspace=${workspaceId}`)
+      .then(setEntries)
+      .catch(() => setEntries([]));
+  }, [workspaceId]);
+  useEffect(load, [load]);
+  useEffect(() => onCount(entries.length), [entries.length, onCount]);
+  async function confirmPurge() {
+    if (!purging) return;
+    setBusy(true);
+    try {
+      if (await act({ action: "file.purge", fileId: purging.id })) {
+        setPurging(null);
+        load();
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+  if (!entries.length) return null;
+  return (
+    <section className="row-trash file-trash" aria-label={t("Gelöschte Dateien", "Deleted files")}>
+      <h2>{t("Gelöschte Dateien", "Deleted files")}</h2>
+      {entries.map((e) => {
+        const Icon = fileIcon(e.mime);
+        return (
+          <div className="utility-row trash-row" key={e.id} data-file-id={e.id}>
+            <span className="trash-icon">
+              <Icon size={18} />
+            </span>
+            <strong className="trash-title">
+              {e.name}
+              <small>
+                {t("aus", "from")} {e.pageTitle}
+                {left(e.deletedAt) && ` · ${left(e.deletedAt)}`}
+              </small>
+            </strong>
+            <div className="lifecycle-buttons">
+              <button
+                className="button compact"
+                onClick={async () => {
+                  if (await act({ action: "file.restore", fileId: e.id })) load();
+                }}
+              >
+                <ArrowCounterClockwise />
+                {t("Wiederherstellen", "Restore")}
+              </button>
+              <button
+                className="button danger compact"
+                aria-label={t(`„${e.name}“ endgültig löschen`, `Delete “${e.name}” permanently`)}
+                onClick={() => setPurging(e)}
+              >
+                {t("Endgültig löschen", "Delete permanently")}
+              </button>
+            </div>
+          </div>
+        );
+      })}
+      <Modal open={!!purging} onClose={() => !busy && setPurging(null)} title={t("Endgültig löschen", "Delete permanently")}>
+        <p>
+          {t(`„${purging?.name}“ endgültig löschen?`, `Delete “${purging?.name}” permanently?`)}{" "}
+          {t(
+            "Die Datei wird auch aus dem Speicher gelöscht. Seiten und ältere Versionen, die sie noch zeigen, zeigen dann einen Platzhalter. Das kann nicht rückgängig gemacht werden.",
+            "The file is also removed from storage. Pages and older versions that still show it then show a placeholder. This cannot be undone.",
+          )}
+        </p>
+        <div className="modal-actions">
+          <button className="button" disabled={busy} onClick={() => setPurging(null)}>
+            {t("Abbrechen", "Cancel")}
+          </button>
+          <button className="button danger" disabled={busy} onClick={() => void confirmPurge()}>
+            {t("Endgültig löschen", "Delete permanently")}
+          </button>
+        </div>
+      </Modal>
     </section>
   );
 }

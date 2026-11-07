@@ -116,6 +116,7 @@ export const USER_REFERENCES: Record<string, MergeStrategy> = {
   "document_authors.user_id": "move",
   "snapshots.created_by": "move",
   "files.created_by": "move",
+  "files.deleted_by": "move",
   "file_ink.updated_by": "move",
   "file_ink_versions.created_by": "move",
   "templates.created_by": "move",

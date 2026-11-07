@@ -40,7 +40,7 @@ export function imagePlaceholderView(render: NodeViewRenderer | null): NodeViewR
       view.ignoreMutation = (mutation) =>
         (mutation.type === "attributes" &&
           (mutation.target === img || mutation.target === frame) &&
-          (mutation.attributeName === "style" || mutation.attributeName === "class")) ||
+          (mutation.attributeName === "style" || mutation.attributeName === "class" || mutation.attributeName === "data-missing")) ||
         (ignore ? ignore(mutation) : false);
       return view;
     }

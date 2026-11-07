@@ -21,7 +21,7 @@ const globalDb = globalThis as unknown as {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 92;
+export const SCHEMA_VERSION = 93;
 function migrate(d: DatabaseSync) {
   if (globalDb.flowplanSchema === SCHEMA_VERSION) return;
   // Columns change below: cached `SELECT *` statements would keep the old ones.
@@ -1178,6 +1178,11 @@ function migrate(d: DatabaseSync) {
   // signing secrets and addresses and the Git connections of databases are
   // sealed once. An older version cannot read them, hence the new number.
   migrateSealedSecrets(d);
+  // Schema 93 – files in the trash (#164, lib/file-trash.ts): a file deleted
+  // in the media library keeps its row, upload and derived data with
+  // deleted_at set; it is no longer served and goes for good with the trash.
+  // An older version would serve such files again, hence the new number.
+  migrateFileTrash(d);
   // Notification retention (lib/notification-retention.ts) deletes old
   // notifications: their chat app deliveries go with them by notification,
   // and the inbox reads one person's newest.
@@ -1188,6 +1193,13 @@ function migrate(d: DatabaseSync) {
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
   forgetStatements(d);
   globalDb.flowplanSchema = SCHEMA_VERSION;
+}
+export function migrateFileTrash(d: DatabaseSync) {
+  const columns = (d.prepare("PRAGMA table_info(files)").all() as { name: string }[]).map((c) => c.name);
+  if (!columns.includes("deleted_at")) d.exec("ALTER TABLE files ADD COLUMN deleted_at TEXT");
+  if (!columns.includes("deleted_by")) d.exec("ALTER TABLE files ADD COLUMN deleted_by TEXT");
+  d.exec(`CREATE INDEX IF NOT EXISTS files_trashed ON files(page_id) WHERE deleted_at IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS files_trashed_at ON files(deleted_at) WHERE deleted_at IS NOT NULL;`);
 }
 // Schema 91 – scopes of tags, property definitions and saved templates
 // (#136, lib/meta-scope-server.ts): `space_id` NULL means the whole

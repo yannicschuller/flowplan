@@ -151,7 +151,7 @@ test("trash.empty deletes only what this person may delete, records included", (
   for (const [actor, sid, name] of [[f.editor, editorSpace, "Editor area"], [f.owner, ownerSpace, "Owner area"]] as const)
     command(actor, { action: "space.delete", spaceId: sid, version: one<{ version: number }>("SELECT version FROM spaces WHERE id=?", sid)!.version, confirmName: name });
 
-  assert.deepEqual(trashCounts(f.editor, f.wid), { pages: 1, spaces: 1, records: 1 });
+  assert.deepEqual(trashCounts(f.editor, f.wid), { pages: 1, spaces: 1, records: 1, files: 0 });
   assert.throws(() => command(f.viewer, { action: "trash.empty", workspaceId: f.wid }), { status: 403 });
   const result = command(f.editor, { action: "trash.empty", workspaceId: f.wid }) as Record<string, number>;
   assert.deepEqual({ pages: result.pages, spaces: result.spaces, records: result.records }, { pages: 1, spaces: 1, records: 1 });
@@ -189,7 +189,7 @@ test("the trash is emptied automatically after the set days; 0 keeps everything"
 
   saveInstanceSettings({ trashDays: 0 });
   assert.equal(trashDays(), 0);
-  assert.deepEqual(expireTrash(), { pages: 0, spaces: 0, records: 0, templates: 0 });
+  assert.deepEqual(expireTrash(), { pages: 0, spaces: 0, records: 0, templates: 0, files: 0 });
   assert.ok(exists(old));
 
   saveInstanceSettings({ trashDays: 30 });

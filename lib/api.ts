@@ -1691,6 +1691,20 @@ function runCommand(
       case "trash.empty":
         result = emptyTrash(user, b);
         break;
+      // Files in the trash (#164, lib/file-trash.ts): from the media
+      // library into the trash, back, or deleted for good.
+      case "file.delete":
+        result = trashFiles(user, b);
+        break;
+      case "files.deleteUnused":
+        result = trashUnusedFiles(user, b);
+        break;
+      case "file.restore":
+        result = restoreFile(user, b);
+        break;
+      case "file.purge":
+        result = purgeTrashedFile(user, b);
+        break;
       case "page.duplicate": {
         result = duplicatePageTree(user, write());
         break;
@@ -3612,6 +3626,7 @@ import { frontmatterAliases, storedAliases } from "./aliases";
 import { aliasField, aliasList } from "./aliases";
 import { copyPublication } from "./publication-copy";
 import { purgeTrashedRow, restoreTrashedRow, trashRow } from "./row-trash";
+import { purgeTrashedFile, restoreFile, trashFiles, trashUnusedFiles } from "./file-trash";
 import { emptyTrash, purgeTemplate, purgeTrashedPage, trashDays } from "./trash";
 import { dashboardData, saveDashboard } from "./dashboard";
 import { notebookArchive, notebookCommand, notebookData } from "./notebook";

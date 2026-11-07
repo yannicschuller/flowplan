@@ -77,7 +77,7 @@ async function extract(file: { id: string; name: string; mime: string }) {
 export async function extractPendingFileTexts(limit = 5) {
   const pending = all<{ id: string; name: string; mime: string }>(
     `SELECT f.id,f.name,f.mime FROM files f LEFT JOIN file_texts t ON t.file_id=f.id
-     WHERE t.file_id IS NULL AND (f.mime IN (${["application/pdf", ...IMAGE_TYPES, ...officeMimes].map(() => "?").join(",")})
+     WHERE t.file_id IS NULL AND f.deleted_at IS NULL AND (f.mime IN (${["application/pdf", ...IMAGE_TYPES, ...officeMimes].map(() => "?").join(",")})
        OR lower(f.name) GLOB '*.docx' OR lower(f.name) GLOB '*.xlsx' OR lower(f.name) GLOB '*.pptx'
        OR lower(f.name) GLOB '*.odt' OR lower(f.name) GLOB '*.ods' OR lower(f.name) GLOB '*.odp')
      LIMIT ?`,
