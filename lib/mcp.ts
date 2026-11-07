@@ -200,7 +200,8 @@ function queryDatabase(
     : ({ id: "", name: "", type: "table", filters: [], sorts: [] } as unknown as View);
   const { related, relatedSchemas } = relatedData(user, page);
   const found = queryRows(
-    visibleRows(user, page, rows(page.id)),
+    // The database's own records, as relatedData read them for relations to itself.
+    related[page.id] ?? visibleRows(user, page, rows(page.id)),
     schema.fields,
     view,
     (args.query || "").slice(0, 200),

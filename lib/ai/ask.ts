@@ -34,7 +34,7 @@ import { limitAi } from "../action-limits";
 import { all, one } from "../db";
 import { contentLocale, ct } from "../content-locale";
 import { pageRole, requirePage, spaceRole } from "../permissions";
-import { processSearchIndex, termMatches } from "../search-index";
+import { refreshSearchIndex, termMatches } from "../search-index";
 import type { Identity, Page, Space } from "../types";
 import { aiFilter } from "./access";
 import { chunkPlain, questionTerms, rankPassages, selectPassages, type Passage } from "./chunks";
@@ -162,7 +162,7 @@ export function askWorkspaces(user: Identity, current: string): { id: string; na
 // contain any of the terms, best first (also lib/ai/link-candidates.ts).
 export function textCandidates(workspaceId: string, terms: string[], scope: { pages: Set<string> | null; spaceId?: string }, limit = 400) {
   if (!terms.length) return [];
-  for (let i = 0; i < 10 && processSearchIndex(); i++);
+  refreshSearchIndex();
   return termMatches(workspaceId, terms, { spaceId: scope.spaceId, limit }).filter((r) => !/^[cmf]:/.test(r.row_id) && (!scope.pages || scope.pages.has(r.page_id)));
 }
 

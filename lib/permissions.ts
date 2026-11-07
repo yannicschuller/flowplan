@@ -1,23 +1,34 @@
 import { all, one } from "./db";
 import { HttpError } from "./auth";
+import { memoized } from "./read-memo";
 import type { Identity, Page, Role, Space } from "./types";
 const rank: Record<Role, number> = { viewer: 1, editor: 2, owner: 3 };
+// The lookups below are remembered within a request or command until the
+// next write (lib/read-memo.ts): checking many pages asks once per
+// workspace, space, grant target and parent page.
 export function memberRole(user: Identity, workspace: string): Role | null {
-  return (
+  return memoized(`member:${workspace}:${user.id}`, () =>
     one<{ role: Role }>(
       "SELECT role FROM members WHERE workspace_id=? AND user_id=?",
       workspace,
       user.id,
-    )?.role || null
+    )?.role || null,
   );
 }
 export function isGuest(user: Pick<Identity, "id">, workspace: string) {
-  return !!one(
-    "SELECT 1 FROM workspace_guests WHERE workspace_id=? AND user_id=?",
-    workspace,
-    user.id,
+  return memoized(`guest:${workspace}:${user.id}`, () =>
+    !!one(
+      "SELECT 1 FROM workspace_guests WHERE workspace_id=? AND user_id=?",
+      workspace,
+      user.id,
+    ),
   );
 }
+// Stored rows, shared by the checks: never handed out or changed.
+const spaceRow = (id: string) =>
+  memoized(`space:${id}`, () => one<Space>("SELECT * FROM spaces WHERE id=?", id));
+const pageRow = (id: string) =>
+  memoized(`page:${id}`, () => one<Page>("SELECT * FROM pages WHERE id=?", id));
 // Guests act only on what is shared with them; workspace-wide actions need
 // full membership. Their stored role caps what page grants allow.
 export function requireMember(
@@ -39,13 +50,15 @@ export function requireMember(
   return role;
 }
 function grantRole(user: Identity, resource: string): Role | null {
-  const grants = all<{ role: Role }>(
-    "SELECT role FROM grants WHERE resource_id=? AND (user_id=? OR group_id IN (SELECT group_id FROM group_members WHERE user_id=?))",
-    resource,
-    user.id,
-    user.id,
-  );
-  return grants.sort((a, b) => rank[b.role] - rank[a.role])[0]?.role || null;
+  return memoized(`grant:${resource}:${user.id}`, () => {
+    const grants = all<{ role: Role }>(
+      "SELECT role FROM grants WHERE resource_id=? AND (user_id=? OR group_id IN (SELECT group_id FROM group_members WHERE user_id=?))",
+      resource,
+      user.id,
+      user.id,
+    );
+    return grants.sort((a, b) => rank[b.role] - rank[a.role])[0]?.role || null;
+  });
 }
 export function spaceRole(user: Identity, space: Space): Role | null {
   if (space.deleted_at) return null;
@@ -59,7 +72,7 @@ export function spaceRole(user: Identity, space: Space): Role | null {
     : null;
 }
 export function pageRole(user: Identity, page: Page): Role | null {
-  const space = one<Space>("SELECT * FROM spaces WHERE id=?", page.space_id);
+  const space = spaceRow(page.space_id as string);
   if (!space || space.deleted_at) return null;
   const membership = memberRole(user, page.workspace_id);
   if (!membership) return null;
@@ -70,7 +83,7 @@ export function pageRole(user: Identity, page: Page): Role | null {
   while (current?.parent_id) {
     if (seen.has(current.id)) return null;
     seen.add(current.id);
-    current = one<Page>("SELECT * FROM pages WHERE id=?", current.parent_id);
+    current = pageRow(current.parent_id);
     if (current) {
       const inherited = grantRole(user, current.id);
       if (inherited)
@@ -85,7 +98,9 @@ export function requirePage(
   write = false,
   allowDeleted = false,
 ): Page {
-  const page = one<Page>("SELECT * FROM pages WHERE id=?", pageId);
+  const stored = pageRow(pageId);
+  // A copy: callers may change the page they get.
+  const page = stored && { ...stored };
   if (!page || (!allowDeleted && page.deleted_at))
     throw new HttpError(404, "Seite nicht gefunden.");
   const role = pageRole(user, page);

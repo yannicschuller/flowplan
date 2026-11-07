@@ -20,7 +20,7 @@
 import { z } from "zod";
 import { HttpError } from "./auth";
 import { all, audit, id, one, run } from "./db";
-import { processSearchIndex } from "./search-index";
+import { refreshSearchIndex } from "./search-index";
 import { isEncryptedPage } from "./e2ee-server";
 import { hiddenFieldsFor } from "./field-access";
 import { lockedPageIds } from "./journal-extras";
@@ -330,7 +330,7 @@ export function evaluateQuery(user: Identity, workspaceId: string, input: string
   const now = options.now ?? new Date();
   const limit = options.limit ?? COLLECTION_RESULTS;
   // Keep the index current for this request (as the search does).
-  for (let i = 0; i < 10 && processSearchIndex(); i++);
+  refreshSearchIndex();
   const conds = conditions(node);
   // Names mean the tag or definition of a page's context: the workspace's
   // or its space's (#136); one name may stand for one per space.

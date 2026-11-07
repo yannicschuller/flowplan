@@ -24,7 +24,13 @@ import { ftsQuery, isShortTerm } from "./ai/chunks";
 // index is refreshed lazily before each search and by a background worker, so
 // no write path needs to know about searching.
 export const SEARCH_LIMIT = 50;
-const BATCH = 2000;
+// Entries per transaction. The background drain yields to the event loop
+// between batches, so a large backlog (an import of thousands of records)
+// never holds up requests for more than one batch.
+const BATCH = 100;
+// What a search (or another reader of the index) refreshes itself before
+// it runs; the rest is left to the background drain it starts.
+const INLINE_LIMIT = 1000;
 const IGNORED: Field["type"][] = [
   "relation",
   "person",
@@ -74,8 +80,15 @@ function cellWords(value: unknown): string {
   return value === true ? "" : String(value);
 }
 
+// The entry of a page (key "") or of a record, comment, message or file.
+// Through the content table (c0 = page_id, c1 = row_id) and its index
+// (lib/db.ts) instead of `WHERE page_id=? AND row_id=?` on the index
+// itself, which reads every entry.
+function removeEntry(pageId: string, key: string) {
+  run("DELETE FROM search_index WHERE rowid IN (SELECT id FROM search_index_content WHERE c0=? AND c1=?)", pageId, key);
+}
 function indexPage(pageId: string) {
-  run("DELETE FROM search_index WHERE page_id=? AND row_id=''", pageId);
+  removeEntry(pageId, "");
   const page = one<{ title: string; aliases: string | null; html: string | null; deleted_at: string; kind: string }>(
     "SELECT p.title,p.aliases,p.deleted_at,p.kind,d.html FROM pages p LEFT JOIN documents d ON d.page_id=p.id WHERE p.id=?",
     pageId,
@@ -95,7 +108,7 @@ function indexPage(pageId: string) {
   );
 }
 function indexRow(pageId: string, rowId: string, fields: Field[]) {
-  run("DELETE FROM search_index WHERE page_id=? AND row_id=?", pageId, rowId);
+  removeEntry(pageId, rowId);
   const row = one<{ cells: string; content: string; html: string | null; number: number | null }>(
     "SELECT r.cells,r.content,r.number,d.html FROM rows r LEFT JOIN row_documents d ON d.row_id=r.id WHERE r.id=? AND r.page_id=?",
     rowId,
@@ -128,7 +141,7 @@ function indexRow(pageId: string, rowId: string, fields: Field[]) {
 // Comments, text comment messages and attachments are indexed under
 // prefixed keys (c:, m:, f:) next to pages and records.
 function indexExtra(pageId: string, key: string) {
-  run("DELETE FROM search_index WHERE page_id=? AND row_id=?", pageId, key);
+  removeEntry(pageId, key);
   if (isEncryptedPage(one<{ space_id: string }>("SELECT space_id FROM pages WHERE id=?", pageId))) return;
   const [prefix, id] = [key.slice(0, 1), key.slice(2)];
   const entry =
@@ -293,7 +306,7 @@ export function searchWorkspace(
 ): SearchResult[] {
   // Keep the index current for this request; a large backlog is also
   // drained by the background worker.
-  for (let i = 0; i < 10 && processSearchIndex(); i++);
+  refreshSearchIndex();
   // OR, NOT, parentheses, created_by:, created:, type:, in:, title: (#86,
   // lib/collection-query.ts): the pages and records that match, as a
   // collection finds them, latest change first. Queries the search knew
@@ -515,16 +528,41 @@ function queryResults(
 
 const runtime = globalThis as typeof globalThis & {
   flowplanSearchTimer?: ReturnType<typeof setInterval>;
+  flowplanSearchDrain?: Promise<void>;
 };
-export function startSearchWorker() {
-  if (runtime.flowplanSearchTimer) return;
-  const tick = () => {
+// Works through the whole backlog in batches, letting other work run in
+// between. One drain at a time; a call during a drain joins it.
+const nextTurn = () => new Promise((resolve) => setImmediate(resolve));
+export function drainSearchIndex(): Promise<void> {
+  if (runtime.flowplanSearchDrain) return runtime.flowplanSearchDrain;
+  const drain = (async () => {
+    await nextTurn();
     try {
-      processSearchIndex();
+      while (processSearchIndex()) await nextTurn();
     } catch (error) {
       console.error("Search indexing failed", error);
     }
-  };
+  })().finally(() => {
+    runtime.flowplanSearchDrain = undefined;
+  });
+  runtime.flowplanSearchDrain = drain;
+  return drain;
+}
+// Brings the index up to date before it is read: right away for what a
+// few edits leave behind, a large backlog only in part (INLINE_LIMIT) – the
+// background drain takes over the rest instead of one request stalling the
+// server for seconds.
+export function refreshSearchIndex() {
+  for (let done = 0; done < INLINE_LIMIT; ) {
+    const n = processSearchIndex(Math.min(BATCH, INLINE_LIMIT - done));
+    if (!n) return;
+    done += n;
+  }
+  void drainSearchIndex();
+}
+export function startSearchWorker() {
+  if (runtime.flowplanSearchTimer) return;
+  const tick = () => void drainSearchIndex();
   runtime.flowplanSearchTimer = setInterval(tick, 5000);
   runtime.flowplanSearchTimer.unref();
   tick();

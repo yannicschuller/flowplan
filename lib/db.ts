@@ -1,5 +1,5 @@
 import { setupStorage, stopStorage } from "./storage";
-import { DatabaseSync } from "node:sqlite";
+import { DatabaseSync, type StatementSync } from "node:sqlite";
 import { mkdirSync, unlinkSync } from "node:fs";
 import { applyPendingRestore } from "./instance-restore-apply";
 import { resolve } from "node:path";
@@ -15,6 +15,7 @@ const globalDb = globalThis as unknown as {
   flowplanDb?: DatabaseSync;
   flowplanSchema?: number;
   flowplanRollback?: (() => void)[];
+  flowplanWrites?: number;
 };
 // The schema this version of Flowplan writes, kept in the database file as
 // PRAGMA user_version: a restore refuses a backup from a newer version
@@ -23,6 +24,8 @@ const globalDb = globalThis as unknown as {
 export const SCHEMA_VERSION = 92;
 function migrate(d: DatabaseSync) {
   if (globalDb.flowplanSchema === SCHEMA_VERSION) return;
+  // Columns change below: cached `SELECT *` statements would keep the old ones.
+  forgetStatements(d);
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -172,6 +175,15 @@ function migrate(d: DatabaseSync) {
     CREATE TRIGGER IF NOT EXISTS search_message_update AFTER UPDATE OF body,deleted ON inline_messages BEGIN INSERT INTO search_dirty SELECT t.page_id,'m:'||NEW.id FROM inline_threads t WHERE t.id=NEW.thread_id AND NOT EXISTS(SELECT 1 FROM search_dirty WHERE page_id=t.page_id AND row_id='m:'||NEW.id); END;
     CREATE TRIGGER IF NOT EXISTS search_file_insert AFTER INSERT ON files BEGIN INSERT INTO search_dirty SELECT NEW.page_id,'f:'||NEW.id WHERE NOT EXISTS(SELECT 1 FROM search_dirty WHERE page_id=NEW.page_id AND row_id='f:'||NEW.id); END;
     CREATE TRIGGER IF NOT EXISTS search_file_delete AFTER DELETE ON files BEGIN INSERT INTO search_dirty SELECT OLD.page_id,'f:'||OLD.id WHERE NOT EXISTS(SELECT 1 FROM search_dirty WHERE page_id=OLD.page_id AND row_id='f:'||OLD.id); END;`);
+  // The index finds an entry by page and key only by reading every entry
+  // (both columns are UNINDEXED), which made refreshing N entries cost N
+  // full scans. An index on its content table (c0 = page_id, c1 = row_id)
+  // finds them directly; SQLite keeps it current with every change of the
+  // index, also by older versions. Optional: a connection that forbids
+  // changes to shadow tables (SQLITE_DBCONFIG_DEFENSIVE) falls back to the scan.
+  try {
+    d.exec("CREATE INDEX IF NOT EXISTS search_index_key ON search_index_content(c0,c1)");
+  } catch {}
   // Personal reminders on date cells. The cell value stays untouched; the
   // worker re-arms a reminder whenever the observed date value changes.
   d.exec(`CREATE TABLE IF NOT EXISTS date_reminders(
@@ -1174,6 +1186,7 @@ function migrate(d: DatabaseSync) {
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
+  forgetStatements(d);
   globalDb.flowplanSchema = SCHEMA_VERSION;
 }
 // Schema 91 – scopes of tags, property definitions and saved templates
@@ -1355,21 +1368,70 @@ export function db() {
 // the old handle then.
 export function reopenDatabase() {
   stopStorage();
+  if (globalDb.flowplanDb) forgetStatements(globalDb.flowplanDb);
   try {
     globalDb.flowplanDb?.close();
   } catch {}
   globalDb.flowplanDb = undefined;
   globalDb.flowplanSchema = undefined;
+  noteWrite();
   return db();
 }
+// Prepared statements of one/all/run, per connection, least recently used
+// first. Preparing is a good part of a short query's cost; the SQL texts
+// are a fixed set (values go in as parameters), so a few hundred cover
+// them. Keyed by the connection: a reopened database (restore, tests)
+// starts with an empty cache, and the closed one's statements go with it.
+// On globalThis because bundles may hold this module more than once.
+const STATEMENT_CACHE_SIZE = 500;
+type Cached = { statement: StatementSync; reads: boolean };
+function statementCaches() {
+  return ((globalThis as { flowplanStatements?: WeakMap<DatabaseSync, Map<string, Cached>> }).flowplanStatements ??= new WeakMap());
+}
+// Only reads: a SELECT, or a WITH … SELECT without INSERT/UPDATE/DELETE.
+const READ_ONLY = /^\s*(SELECT\b|WITH\b(?![\s\S]*\b(INSERT|UPDATE|DELETE|REPLACE)\b))/i;
+function statement(sql: string): Cached {
+  const d = db();
+  const caches = statementCaches();
+  let cache = caches.get(d);
+  if (!cache) caches.set(d, (cache = new Map()));
+  let cached = cache.get(sql);
+  if (cached) {
+    // Most recently used last, so the first key is the one to drop.
+    cache.delete(sql);
+    cache.set(sql, cached);
+    return cached;
+  }
+  cached = { statement: d.prepare(sql), reads: READ_ONLY.test(sql) };
+  cache.set(sql, cached);
+  if (cache.size > STATEMENT_CACHE_SIZE) cache.delete(cache.keys().next().value!);
+  return cached;
+}
+// Forgets the cached statements of a connection: before it is closed, and
+// after the schema changed (a cached `SELECT *` keeps the columns it was
+// prepared with, see migrate()).
+function forgetStatements(d: DatabaseSync) {
+  statementCaches().delete(d);
+}
+// Moves with every write through this module (run(), statements that are
+// not plain reads, a rolled back transaction, a reopened database): what
+// was read before may be outdated (lib/read-memo.ts).
+export function writeGeneration() {
+  return globalDb.flowplanWrites ?? 0;
+}
+function noteWrite() {
+  globalDb.flowplanWrites = (globalDb.flowplanWrites ?? 0) + 1;
+}
+// Schema changes through run() (tests, one-time steps) outdate cached statements.
+const SCHEMA_CHANGE = /^\s*(ALTER|DROP|CREATE)\s/i;
 export function one<T = Record<string, unknown>>(
   sql: string,
   ...params: (string | number | null | Uint8Array)[]
 ): T | undefined {
   const start = runtimeMetricsOn ? performance.now() : 0;
-  const row = db()
-    .prepare(sql)
-    .get(...params);
+  const cached = statement(sql);
+  const row = cached.statement.get(...params);
+  if (!cached.reads) noteWrite();
   if (runtimeMetricsOn) noteStatement(start);
   return row ? ({ ...row } as T) : undefined;
 }
@@ -1378,10 +1440,11 @@ export function all<T = Record<string, unknown>>(
   ...params: (string | number | null | Uint8Array)[]
 ): T[] {
   const start = runtimeMetricsOn ? performance.now() : 0;
-  const rows = db()
-    .prepare(sql)
+  const cached = statement(sql);
+  const rows = cached.statement
     .all(...params)
     .map((row) => ({ ...row })) as T[];
+  if (!cached.reads) noteWrite();
   if (runtimeMetricsOn) noteStatement(start);
   return rows;
 }
@@ -1390,9 +1453,13 @@ export function run(
   ...params: (string | number | null | Uint8Array)[]
 ) {
   const start = runtimeMetricsOn ? performance.now() : 0;
-  const result = db()
-    .prepare(sql)
-    .run(...params);
+  let result;
+  try {
+    result = statement(sql).statement.run(...params);
+  } finally {
+    noteWrite();
+  }
+  if (SCHEMA_CHANGE.test(sql)) forgetStatements(db());
   if (runtimeMetricsOn) noteStatement(start);
   return result;
 }
@@ -1446,6 +1513,7 @@ export function transaction<T>(fn: () => T, actor?: Identity): T {
     return value;
   } catch (e) {
     db().exec("ROLLBACK");
+    noteWrite();
     for (const cleanup of globalDb.flowplanRollback || []) {
       try {
         cleanup();

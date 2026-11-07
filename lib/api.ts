@@ -1,3 +1,4 @@
+import { withReadMemo } from "./read-memo";
 import { requireDocumentSize } from "./document-size";
 import { patchStillApplies } from "./row-patch";
 import { bannersFor } from "./instance-banners";
@@ -486,8 +487,8 @@ function pageContent(user: Identity, pid: string, options: { presence?: boolean 
     );
   if (p.kind === "database") {
     const data = database(pid);
-    const relations = relatedData(user, p);
     // This database's own rows are already in rows (the client adds them).
+    const relations = relatedData(user, p, { rootRows: false });
     relations.related[pid] = [];
     const documentHtml = new Map(
       all<{ row_id: string; html: string }>(
@@ -700,6 +701,15 @@ export function command(
   // An Idempotency-Key, reserved and answered in the action's transaction
   // (lib/idempotency.ts idempotencyHook).
   keyed?: TransactionHook,
+): unknown {
+  // Permission lookups are remembered until the next write (lib/read-memo.ts).
+  return withReadMemo(() => runCommand(user, input, withinTransaction, keyed));
+}
+function runCommand(
+  user: Identity,
+  input: unknown,
+  withinTransaction: boolean,
+  keyed: TransactionHook | undefined,
 ): unknown {
   const base = z.object({ action: str }).passthrough().parse(input);
   const action = base.action;
