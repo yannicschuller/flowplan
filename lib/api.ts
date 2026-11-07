@@ -481,8 +481,8 @@ function pageContent(user: Identity, pid: string, options: { presence?: boolean 
     );
   if (p.kind === "database") {
     const data = database(pid);
-    const relations = relatedData(user, p);
     // This database's own rows are already in rows (the client adds them).
+    const relations = relatedData(user, p, { rootRows: false });
     relations.related[pid] = [];
     const documentHtml = new Map(
       all<{ row_id: string; html: string }>(

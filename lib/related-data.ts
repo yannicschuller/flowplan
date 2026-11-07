@@ -8,7 +8,9 @@ import { allowedAggregates } from "./rollups";
 import type { Field, Identity, Page, Row } from "./types";
 
 // Load only databases this user can read. No server-computed value may bypass that graph.
-export function relatedData(user: Identity, root: Page) {
+// `rootRows: false`: the caller has the root database's own records already
+// (they come back as an empty list instead of being read a second time).
+export function relatedData(user: Identity, root: Page, options: { rootRows?: boolean } = {}) {
   const related: Record<string, Row[]> = {},
     relatedSchemas: Record<string, Field[]> = {};
   const pending = [root.id],
@@ -33,14 +35,19 @@ export function relatedData(user: Identity, root: Page) {
     if (!raw) continue;
     const fields: Field[] = JSON.parse(raw.fields);
     relatedSchemas[pageId] = visibleFields(user, page, fields);
-    related[pageId] = visibleRows(
-      user,
-      page,
-      all<Row & { cells: string }>(
-        "SELECT * FROM rows WHERE page_id=? ORDER BY position",
-        pageId,
-      ),
-    ).map((r) => ({ ...r, cells: JSON.parse(r.cells) }));
+    // Cells parsed before the hidden ones are left out (stripCells would
+    // otherwise parse and serialise each record once more).
+    related[pageId] =
+      pageId === root.id && options.rootRows === false
+        ? []
+        : visibleRows(
+            user,
+            page,
+            all<Row & { cells: string }>(
+              "SELECT * FROM rows WHERE page_id=? ORDER BY position",
+              pageId,
+            ).map((r) => ({ ...r, cells: JSON.parse(r.cells) as Row["cells"] })),
+          );
     for (const field of fields)
       if (field.type === "relation" && field.relationPage)
         pending.push(field.relationPage);
