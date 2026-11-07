@@ -16,6 +16,7 @@ import { LibraryIcon } from "./library-icons";
 import { ViewShapeBody, type ViewShape } from "./skeleton";
 import { SHEET_HANDLE, useSheetDrag } from "./sheet-drag";
 import { useImagePlaceholder } from "./image-placeholder";
+import { showToast } from "./toast";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
   X,
@@ -41,6 +42,7 @@ import {
   Article,
   ClipboardText,
   WarningCircle,
+  Info,
   Rows,
 } from "@phosphor-icons/react";
 import {
@@ -156,11 +158,18 @@ export function Modal({
 }) {
   const t = useT();
   // Failures while the dialog is open show at its top instead of as a toast
-  // behind it (see showError below).
+  // behind it (see showError below); confirmations likewise, as a neutral
+  // notice (showNotice).
   const [alert, setAlert] = useState<ShownError | null>(null),
+    [notice, setNotice] = useState<string | null>(null),
     content = useRef<HTMLDivElement>(null),
     alertRef = useRef<HTMLDivElement>(null),
     overlay = useRef<HTMLDivElement>(null);
+  // One message at a time: the newer one replaces the other.
+  const showAlert = useCallback((e: ShownError | null) => {
+    setAlert(e);
+    if (e) setNotice(null);
+  }, []);
   // The content element as state too: the drag attaches once it is there.
   const [element, setElement] = useState<HTMLDivElement | null>(null);
   const contentRef = useCallback((node: HTMLDivElement | null) => {
@@ -170,17 +179,25 @@ export function Modal({
   useSheetDrag(element, sheet && open, { onDismiss: onClose, media: SHEET_MEDIA, backdrop: () => overlay.current });
   useEffect(() => {
     if (!open) return;
-    const sink: DialogSink = { el: () => content.current, show: setAlert };
+    const sink: DialogSink = {
+      el: () => content.current,
+      show: showAlert,
+      notice: (text) => {
+        setAlert(null);
+        setNotice(text);
+      },
+    };
     dialogSinks.push(sink);
     return () => {
       const i = dialogSinks.indexOf(sink);
       if (i >= 0) dialogSinks.splice(i, 1);
       setAlert(null);
+      setNotice(null);
     };
-  }, [open]);
+  }, [open, showAlert]);
   useEffect(() => {
-    if (alert) alertRef.current?.scrollIntoView?.({ block: "nearest" });
-  }, [alert]);
+    if (alert || notice) alertRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [alert, notice]);
   // The heading sticks to the dialog's top edge (app/globals.css,
   // .modal-heading, #139): a line below it once the content has scrolled
   // (the sentinel at the very top left the dialog's view), and its lower
@@ -211,7 +228,7 @@ export function Modal({
     };
   }, [element]);
   return (
-    <DialogErrorContext.Provider value={setAlert}>
+    <DialogErrorContext.Provider value={showAlert}>
     <Dialog.Root open={open} onOpenChange={(v) => !v && onClose()}>
       <Dialog.Portal>
         <Dialog.Overlay className="modal-overlay" ref={overlay} />
@@ -236,9 +253,8 @@ export function Modal({
                 one as before; CSS puts the actions in front of it. */}
             {actions && <div className="modal-heading-actions">{actions}</div>}
           </div>
-          {alert && (
-            <ErrorAlert ref={alertRef} error={alert} onDismiss={() => setAlert(null)} />
-          )}
+          {alert && <ErrorAlert ref={alertRef} error={alert} onDismiss={() => setAlert(null)} />}
+          {notice && <DialogNotice ref={alertRef} text={notice} onDismiss={() => setNotice(null)} />}
           {children}
         </Dialog.Content>
       </Dialog.Portal>
@@ -252,8 +268,11 @@ export function Modal({
 //   reportError(error, { retry })       – anything thrown (ApiError, TypeError, message)
 // While the reader works in an open dialog (focus inside it) the message is an
 // inline alert at the dialog's top; otherwise an error toast of the shell.
+//   showNotice(text)                    – a confirmation, the same way: a neutral
+//                                         notice in the dialog, else an info toast
+// (a toast above a modal takes no clicks: they would reach the dialog).
 export type ShownError = ErrorText & { kind: ErrorKind; retry?: () => void };
-type DialogSink = { el: () => HTMLElement | null; show: (e: ShownError) => void };
+type DialogSink = { el: () => HTMLElement | null; show: (e: ShownError) => void; notice: (text: string) => void };
 const dialogSinks: DialogSink[] = [];
 const DialogErrorContext = createContext<((e: ShownError | null) => void) | null>(null);
 let toaster: ((e: ShownError) => void) | null = null;
@@ -286,6 +305,26 @@ export function showError(kind: ErrorKind, detail?: string, options: ErrorOption
 export function reportError(error: unknown, options: ErrorOptions = {}) {
   const { kind, detail } = classifyError(error);
   showError(kind, detail, options);
+}
+// Stays in the dialog until dismissed or the dialog closes.
+export function showNotice(text: string) {
+  const dialog = activeDialog();
+  if (dialog) dialog.notice(text);
+  else showToast({ text });
+}
+function DialogNotice({ text, onDismiss, ref }: { text: string; onDismiss: () => void; ref?: Ref<HTMLDivElement> }) {
+  const t = useT();
+  return (
+    <div className="error-alert dialog-notice" role="status" ref={ref}>
+      <Info size={18} weight="fill" aria-hidden="true" />
+      <div className="error-alert-text">
+        <span>{text}</span>
+      </div>
+      <button type="button" className="icon-button" aria-label={t("Meldung schließen", "Dismiss message")} onClick={onDismiss}>
+        <X size={16} />
+      </button>
+    </div>
+  );
 }
 export function ErrorAlert({
   error,

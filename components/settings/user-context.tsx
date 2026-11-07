@@ -22,6 +22,7 @@ export type WorkspaceSettingsData = {
 export type UserSettingsProps = {
   boot: Bootstrap;
   mutate: (b: Record<string, unknown>) => Promise<unknown>;
+  // Failures only; confirmations go to showToast().
   onError: (s: string) => void;
   onRefresh: () => Promise<unknown>;
   onWorkspaceExit: (id: string | null) => Promise<unknown> | void;

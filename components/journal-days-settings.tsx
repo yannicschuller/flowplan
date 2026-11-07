@@ -6,7 +6,7 @@ import { useState } from "react";
 import { Broom, Trash } from "@phosphor-icons/react";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useT } from "./i18n";
-import { api } from "./ui";
+import { api, showNotice } from "./ui";
 
 // The person's own date (a new day starts at local midnight).
 function localDay(date = new Date()) {
@@ -28,7 +28,7 @@ export function JournalDaysPanel({
   busy: boolean;
   onMode: (mode: "auto" | "write") => void;
   onChanged: () => Promise<unknown> | void;
-  // Errors and confirmations (the dialog shows both as a toast).
+  // Failures only; confirmations go to showNotice().
   onError: (message: string) => void;
 }) {
   const t = useT();
@@ -56,7 +56,7 @@ export function JournalDaysPanel({
         dayIds: [...chosen],
         today: localDay(),
       });
-      onError(
+      showNotice(
         removed === 1
           ? t("1 leerer Tag liegt jetzt im Papierkorb.", "1 empty day is now in the trash.")
           : t(`${removed} leere Tage liegen jetzt im Papierkorb.`, `${removed} empty days are now in the trash.`),

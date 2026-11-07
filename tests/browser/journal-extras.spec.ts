@@ -102,8 +102,10 @@ test("journal: statistics, memories, trackers, template, review and PIN", async 
   await settings.getByRole("tab", { name: "Tracker" }).click();
   await settings.getByRole("button", { name: "Sport" }).click();
   await settings.getByRole("button", { name: "Tracker speichern" }).click();
-  // The notice shows in the dialog; nothing is left unsaved.
-  await expect(settings.getByRole("alert").filter({ hasText: "Tracker gespeichert" })).toBeVisible();
+  // The confirmation is a neutral notice in the dialog, not an alert; nothing
+  // is left unsaved.
+  await expect(settings.getByRole("status").filter({ hasText: "Tracker gespeichert" })).toBeVisible();
+  await expect(settings.getByRole("alert")).toHaveCount(0);
   await expect(settings.getByText("Nicht gespeichert", { exact: true })).toHaveCount(0);
   // The place can be switched off for the whole journal.
   await settings.getByRole("tab", { name: "Tagesleiste" }).click();

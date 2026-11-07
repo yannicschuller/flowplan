@@ -8,6 +8,7 @@ import { LOCALE_TAG } from "@/lib/locale-tag";
 import type { Bootstrap } from "@/lib/types";
 import { useT } from "../../i18n";
 import { Avatar, Modal } from "../../ui";
+import { showToast } from "../../toast";
 import { Select } from "../../select";
 import { EmptyState, SaveState, SettingGroup, StatusBadge, useSaveState } from "../../settings-ui";
 import { useUserSettings, type WorkspaceSettingsData } from "../user-context";
@@ -73,7 +74,7 @@ function MemberItem({ member: m }: { member: Member }) {
                 return;
               }
               const changed = await save({ action: "member.role", userId: m.id, role });
-              if (changed && role !== "remove" && via) onError(ssoNotice);
+              if (changed && role !== "remove" && via) showToast({ text: ssoNotice });
             }}
           >
             <option value="owner">{t("Eigentümer", "Owner")}</option>
@@ -130,7 +131,7 @@ function InviteItem({ invite: i }: { invite: Invite }) {
             type="button"
             className="button"
             onClick={async () => {
-              if (await act({ action: "invite.resend", inviteId: i.id })) onError(t(`Einladung an ${i.email} erneut gesendet.`, `Invitation sent to ${i.email} again.`));
+              if (await act({ action: "invite.resend", inviteId: i.id })) showToast({ text: t(`Einladung an ${i.email} erneut gesendet.`, `Invitation sent to ${i.email} again.`) });
             }}
           >
             {t("Erneut senden", "Send again")}
@@ -144,7 +145,7 @@ function InviteItem({ invite: i }: { invite: Invite }) {
             onClick={async () => {
               try {
                 await navigator.clipboard.writeText(`${location.origin}/?invite=${i.token}`);
-                onError(t("Einladungslink kopiert.", "Invitation link copied."));
+                showToast({ text: t("Einladungslink kopiert.", "Invitation link copied.") });
               } catch {
                 onError(`${location.origin}/?invite=${i.token}`);
               }
