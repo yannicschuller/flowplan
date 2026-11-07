@@ -222,7 +222,7 @@ import {
 import { applyTemplate, fillNewRecord, prepareManualApply, rawTemplate, storeTemplateNames } from "./record-template-apply";
 import { z } from "zod";
 import * as Y from "yjs";
-import { all, one, run, id, transaction, audit, db, nowText } from "./db";
+import { all, one, run, id, transaction, audit, db, nowText, sql } from "./db";
 import { convertFormattedValues } from "./formatted-text";
 import { securityEvent } from "./security-events";
 import { noteDangerousHtml } from "./security-events";
@@ -1712,11 +1712,14 @@ async function runCommand(
         if (p.kind !== "document") throw new HttpError(400, "Kein Dokument.");
         const update = z.string().max(8_000_000).parse(b.update);
         const d = new Y.Doc();
+        // Locked until the commit (PostgreSQL): a second save of the same
+        // document – another tab, another instance – waits and then merges
+        // into this result instead of overwriting it from an older base.
         const existing = await one<{
           state: Uint8Array | null;
           html: string;
           generation: string;
-        }>("SELECT * FROM documents WHERE page_id=?", p.id);
+        }>(`SELECT * FROM documents WHERE page_id=?${sql.forUpdate()}`, p.id);
         if (b.generation !== existing?.generation)
           throw new HttpError(
             409,

@@ -1,7 +1,7 @@
 import { requireDocumentSize } from "./document-size";
 import * as Y from "yjs";
 import { z } from "zod";
-import { all, one, run, id, nowText, inSavepoint } from "./db";
+import { all, one, run, id, nowText, inSavepoint, sql } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import { assertRowAccess } from "./row-access";
@@ -43,9 +43,12 @@ export async function requireRow(
   await assertRowAccess(user, page, row, write);
   return { page, row };
 }
-export async function ensureRowDocument(row: Row): Promise<StoredDocument> {
+// `forUpdate`: the row stays locked until the commit (PostgreSQL), for a
+// merge that writes the state back (syncRowDocument).
+export async function ensureRowDocument(row: Row, forUpdate = false): Promise<StoredDocument> {
+  const lock = forUpdate ? sql.forUpdate() : "";
   let d = await one<StoredDocument>(
-    "SELECT * FROM row_documents WHERE row_id=?",
+    `SELECT * FROM row_documents WHERE row_id=?${lock}`,
     row.id,
   );
   if (!d) {
@@ -62,7 +65,7 @@ export async function ensureRowDocument(row: Row): Promise<StoredDocument> {
       d.generation,
     );
     d = (await one<StoredDocument>(
-      "SELECT * FROM row_documents WHERE row_id=?",
+      `SELECT * FROM row_documents WHERE row_id=?${lock}`,
       row.id,
     ))!;
   }
@@ -89,7 +92,7 @@ export async function syncRowDocument(
   update: unknown,
 ) {
   const { row, page } = await requireRow(user, pageId, rowId, true);
-  const previous = await ensureRowDocument(row);
+  const previous = await ensureRowDocument(row, true);
   if (previous.generation !== generation)
     throw new HttpError(
       409,

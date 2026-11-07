@@ -1,6 +1,7 @@
 // Cursors between members and guests of share links, as text addresses
 // (lib/text-anchors.ts), kept in memory for a few seconds per document.
 import { CURSOR_LEASE_MS, type CursorPeer, type TextCursorValue } from "./cursor-protocol";
+import { onBus, publish } from "./cluster/bus";
 
 type Entry = {
   id: string;
@@ -23,12 +24,29 @@ function sweep(prefix: string, now: number) {
   return documents.get(prefix);
 }
 
+// Cluster mode: every instance keeps the cursors of every instance (they
+// live seconds; lib/cluster/bus.ts carries each change).
+const bus = globalThis as unknown as { flowplanTextPresenceBus?: boolean };
+if (!bus.flowplanTextPresenceBus) {
+  bus.flowplanTextPresenceBus = true;
+  onBus("text-presence", (payload) => {
+    const { prefix, entry } = payload as { prefix: string; entry: Omit<Entry, "at"> | { id: string; text: null } };
+    if (typeof prefix === "string" && entry && typeof entry.id === "string") store(prefix, entry, Date.now());
+  });
+}
+
 // Stores or removes one cursor; true when the others should hear about it.
 export function setTextPresence(
   prefix: string,
   entry: Omit<Entry, "at"> | { id: string; text: null },
   now = Date.now(),
 ) {
+  const changed = store(prefix, entry, now);
+  // Also unchanged ones: the other instances renew the lease with it.
+  if (changed || entry.text) publish("text-presence", { prefix, entry });
+  return changed;
+}
+function store(prefix: string, entry: Omit<Entry, "at"> | { id: string; text: null }, now: number) {
   const entries = sweep(prefix, now) || new Map<string, Entry>();
   const before = entries.get(entry.id);
   if (!entry.text) {

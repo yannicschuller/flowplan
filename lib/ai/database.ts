@@ -46,6 +46,7 @@ import {
   type PromptContext,
 } from "./database-fields";
 import { nameLookup } from "./sources";
+import { isLeader } from "../cluster/leader";
 
 export type AiCellMode = "compute" | "fill" | "auto";
 export const AI_QUEUE_LIMITS = { perRequest: 1000, perPerson: 5000, attempts: 3 } as const;
@@ -431,7 +432,8 @@ const runtime = globalThis as typeof globalThis & { flowplanAiTimer?: ReturnType
 export function startAiWorker() {
   if (runtime.flowplanAiTimer) return;
   const tick = async () => {
-    if (runtime.flowplanAiBusy) return;
+    // Cluster mode: the leader only (lib/cluster/leader.ts).
+    if (runtime.flowplanAiBusy || !isLeader()) return;
     runtime.flowplanAiBusy = true;
     try {
       await processAutoDirty();

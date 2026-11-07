@@ -1,8 +1,11 @@
 // Live channel for documents and record contents: changes and cursor moves
 // are pushed to everyone who has the same document open (server-sent
 // events), instead of waiting for their next poll. The database stays the
-// source of truth; this only shortens the way. Flowplan runs as a single
-// process, so one hub reaches every open editor.
+// source of truth; this only shortens the way. One hub per process reaches
+// the editors connected to it; in cluster mode every signal also goes to
+// the other instances (lib/cluster/bus.ts), whose hubs deliver it to theirs.
+import { onBus, publish } from "./cluster/bus";
+
 type Listener = { clientId: string; send: (event: string) => void };
 
 const hub = globalThis as unknown as {
@@ -39,26 +42,63 @@ function broadcast(key: string, payload: { type: string; [key: string]: unknown 
   if (listeners) send(listeners, payload, except);
 }
 
+// What the other instances may ask this hub to deliver (cluster mode).
+type Signal =
+  | { k: "update"; key: string; update: string; from?: string }
+  | { k: "e2ee"; key: string; update: { seq: number; version: number; data: string }; from?: string }
+  | { k: "presence"; key: string; from?: string }
+  | { k: "changed"; pageId: string; rowId?: string | null; except?: string }
+  | { k: "presenceFor"; pageId: string; rowId?: string | null; from?: string };
+const bus = globalThis as unknown as { flowplanDocumentBus?: boolean };
+if (!bus.flowplanDocumentBus) {
+  bus.flowplanDocumentBus = true;
+  onBus("document", (payload) => deliver(payload as Signal));
+}
+function deliver(signal: Signal) {
+  switch (signal.k) {
+    case "update":
+      return broadcast(signal.key, { type: "update", update: signal.update }, signal.from);
+    case "e2ee": {
+      const listeners = documents.get(signal.key);
+      if (listeners) send(listeners, { type: "e2ee", ...signal.update }, signal.from);
+      return;
+    }
+    case "presence":
+      return broadcast(signal.key, { type: "presence" }, signal.from);
+    case "changed":
+      return changedHere(signal.pageId, signal.rowId, signal.except);
+    case "presenceFor":
+      return presenceHere(signal.pageId, signal.rowId, signal.from);
+  }
+}
+// Here, then on the other instances.
+function signal(message: Signal) {
+  deliver(message);
+  publish("document", message);
+}
+
 // A Yjs update (base64) that was just stored; the sender already has it.
 export function publishDocumentUpdate(key: string, update: string, from?: string) {
-  broadcast(key, { type: "update", update }, from);
+  signal({ k: "update", key, update, from });
 }
 
 // An encrypted document update was appended (lib/e2ee-server.ts): the
 // ciphertext with its sequence number; only members with the key read it.
 export function publishEncryptedUpdate(key: string, update: { seq: number; version: number; data: string }, from?: string) {
-  const listeners = documents.get(key);
-  if (listeners) send(listeners, { type: "e2ee", ...update }, from);
+  signal({ k: "e2ee", key, update, from });
 }
 
 // Someone moved their cursor: the others ask for the current cursors.
 export function publishPresence(key: string, from?: string) {
-  broadcast(key, { type: "presence" }, from);
+  signal({ k: "presence", key, from });
 }
 
 // Stored some other way (guest link, journal, version restore, linked
 // database): open editors fetch the current state right away.
 export function documentChanged(pageId: string, rowId?: string | null, except?: string) {
+  signal({ k: "changed", pageId, rowId, except });
+}
+function changedHere(pageId: string, rowId?: string | null, except?: string) {
   const prefix = `${pageId}:${rowId || ""}:`;
   const guests = prefixes.get(`${pageId}:${rowId || ""}`);
   if (guests) send(guests, { type: "check" }, except);
@@ -89,6 +129,9 @@ export function watchPrefix(pageId: string, rowId: string | null | undefined, cl
 
 // A guest moved their cursor: members and other guests ask again.
 export function publishPresenceFor(pageId: string, rowId: string | null | undefined, from?: string) {
+  signal({ k: "presenceFor", pageId, rowId, from });
+}
+function presenceHere(pageId: string, rowId: string | null | undefined, from?: string) {
   const prefix = `${pageId}:${rowId || ""}`;
   const guests = prefixes.get(prefix);
   if (guests) send(guests, { type: "presence" }, from);

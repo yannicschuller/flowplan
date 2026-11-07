@@ -23,6 +23,7 @@ import { replaceRowDocument, type RowTemplate } from "./row-documents";
 import { applyTemplate, auditApply, fillNewRecord } from "./record-template-apply";
 import { emitWebhook } from "./webhooks";
 import { queueIssuePush } from "./issue-sync-queue";
+import { isLeader } from "./cluster/leader";
 
 type Cells = Record<string, unknown>;
 type Event = "created" | "form" | "updated" | "overdue";
@@ -354,6 +355,8 @@ const runtime = globalThis as typeof globalThis & { flowplanAutomationTimer?: Re
 export function startAutomationWorker(onFired: () => void) {
   if (runtime.flowplanAutomationTimer) return;
   const tick = async () => {
+    // Cluster mode: the leader only (lib/cluster/leader.ts).
+    if (!isLeader()) return;
     try {
       if (await transactionalOverdue()) onFired();
       if (await transaction(async () => await processScheduledAutomations())) onFired();

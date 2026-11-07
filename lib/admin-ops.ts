@@ -30,6 +30,7 @@ import { sweepSecurityEvents } from "./security-events";
 import { opsMessengerAdmins, queueOpsAlert } from "./messengers";
 import { openWebhookUrl } from "./sealed-values";
 import { mapAsync } from "./each-async";
+import { isLeader } from "./cluster/leader";
 
 const DAY = 86_400_000;
 
@@ -478,7 +479,10 @@ export function startOpsWorker() {
   const tick = async () => {
     const now = Date.now();
     try {
+      // Every instance writes its own counters; the sweeps and the alerts
+      // are the leader's (cluster mode, lib/cluster/leader.ts).
       await flushOpsEvents();
+      if (!isLeader()) return;
       // Idempotency keys live 24 hours (lib/idempotency.ts).
       await sweepIdempotencyKeys(now);
       if (now - (runtime.flowplanOpsSwept ?? 0) >= DAY) {

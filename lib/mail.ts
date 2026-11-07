@@ -14,6 +14,7 @@ import { notificationOn } from "./notification-kinds";
 import { notificationUrl } from "./page-location";
 import { LOCKED_NOTICE, lockedNotification } from "./journal-extras";
 import { mapAsync } from "./each-async";
+import { isLeader } from "./cluster/leader";
 
 export type MailConfig = {
   host: string;
@@ -380,16 +381,20 @@ export function dispatchMail() {
 export function startMailWorker() {
   if (runtime.flowplanMailTimer || !mailConfig()) return;
   runtime.flowplanMailTimer = setInterval(async () => {
-    try {
-      await queueNotificationDigests();
-    } catch (error) {
-      console.error("E-Mail-Zusammenfassung fehlgeschlagen", error);
+    // Digests are put together by the leader (cluster mode); every instance
+    // sends from the queue (each message is claimed before it goes).
+    if (isLeader()) {
+      try {
+        await queueNotificationDigests();
+      } catch (error) {
+        console.error("E-Mail-Zusammenfassung fehlgeschlagen", error);
+      }
+      // The weekly digest (Monday 07:00 in each person's time zone) goes into
+      // the same queue; loaded lazily, it imports this module.
+      void import("./weekly-digest")
+        .then((digest) => digest.queueWeeklyDigests())
+        .catch((error) => console.error("Wöchentliche Zusammenfassung fehlgeschlagen", error));
     }
-    // The weekly digest (Monday 07:00 in each person's time zone) goes into
-    // the same queue; loaded lazily, it imports this module.
-    void import("./weekly-digest")
-      .then((digest) => digest.queueWeeklyDigests())
-      .catch((error) => console.error("Wöchentliche Zusammenfassung fehlgeschlagen", error));
     void dispatchMail();
   }, 60_000);
   runtime.flowplanMailTimer.unref?.();

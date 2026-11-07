@@ -15,17 +15,57 @@ import { afterCommit } from "./sqlite";
 
 configureTypes(pg);
 
-export type PostgresOptions = { schema?: string; max?: number; prepare?: boolean };
+export type PostgresOptions = {
+  schema?: string;
+  max?: number;
+  prepare?: boolean;
+  // Per connection, in ms (0 = none): see postgresTimeouts().
+  statementTimeout?: number;
+  lockTimeout?: number;
+  idleInTransactionTimeout?: number;
+  // How long a caller waits for a free pooled connection before failing.
+  connectTimeout?: number;
+  applicationName?: string;
+};
+
+// Limits every pooled connection gets (env, ms; 0 switches one off). A stuck
+// lock or a runaway query fails instead of holding a connection (and with
+// it, in cluster mode, other instances) forever. The bridge of phase 1 had
+// lock_timeout=10s; long-running work (data steps, snapshots, restores)
+// lifts them for its own transaction with untimed() (lib/db.ts).
+export function postgresTimeouts(env: Record<string, string | undefined> = process.env) {
+  const ms = (name: string, fallback: number) => {
+    const raw = env[name]?.trim();
+    if (!raw) return fallback;
+    const value = Number(raw);
+    if (!Number.isFinite(value) || value < 0) throw new Error(`${name} must be a number of milliseconds (0 = off): ${raw}`);
+    return Math.round(value);
+  };
+  return {
+    statementTimeout: ms("FLOWPLAN_PG_STATEMENT_TIMEOUT", 120_000),
+    lockTimeout: ms("FLOWPLAN_PG_LOCK_TIMEOUT", 10_000),
+    idleInTransactionTimeout: ms("FLOWPLAN_PG_IDLE_TX_TIMEOUT", 60_000),
+    connectTimeout: ms("FLOWPLAN_PG_CONNECT_TIMEOUT", 30_000),
+  };
+}
 type Prepared = { text: string; name?: string };
 const MAX_PREPARED = 2000;
 const SCHEMA_CHANGE = /^\s*(ALTER|DROP|CREATE)\s/i;
 
 export function createPostgresDb(url: string, options: PostgresOptions = {}): Db & { pool: pg.Pool } {
   const schema = options.schema || "public";
+  const settings = [
+    `-c search_path=${schema}`,
+    `-c statement_timeout=${options.statementTimeout ?? 0}`,
+    `-c lock_timeout=${options.lockTimeout ?? 0}`,
+    `-c idle_in_transaction_session_timeout=${options.idleInTransactionTimeout ?? 0}`,
+  ];
   const pool = new pg.Pool({
     connectionString: url,
     max: options.max ?? 10,
-    options: `-c search_path=${schema}`,
+    options: settings.join(" "),
+    connectionTimeoutMillis: options.connectTimeout ?? 0,
+    application_name: (options.applicationName || "flowplan").slice(0, 63),
     // Idle connections do not keep scripts and tests alive.
     allowExitOnIdle: true,
   });

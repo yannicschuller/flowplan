@@ -5,7 +5,7 @@ import * as Y from "yjs";
 import { Node as PMNode } from "@tiptap/pm/model";
 import { Transform } from "@tiptap/pm/transform";
 import { updateYFragment, yDocToProsemirrorJSON } from "y-prosemirror";
-import { one, run, nowText } from "./db";
+import { one, run, nowText, sql } from "./db";
 import { documentSchema } from "./document-schema";
 import { htmlState, stateHtml } from "./document-server";
 import { documentKey, documentChanged, publishDocumentUpdate } from "./document-live";
@@ -79,11 +79,11 @@ export async function rewriteDocument(
 ) {
   const stored = rowId
     ? (await one<{ state: Uint8Array | null; html: string; generation: string }>(
-        "SELECT state,html,generation FROM row_documents WHERE row_id=?",
+        `SELECT state,html,generation FROM row_documents WHERE row_id=?${sql.forUpdate()}`,
         rowId,
       ))
     : (await one<{ state: Uint8Array | null; html: string; generation: string }>(
-        "SELECT state,html,generation FROM documents WHERE page_id=?",
+        `SELECT state,html,generation FROM documents WHERE page_id=?${sql.forUpdate()}`,
         pageId,
       ));
   if (!stored) throw new HttpError(404, "Dokument nicht gefunden.");

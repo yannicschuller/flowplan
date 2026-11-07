@@ -35,6 +35,7 @@ import { addresses, parseHeaders, parseMime, parseDate, type MimeAttachment } fr
 import { ImapClient, type ImapOptions } from "./imap";
 import type { Field, Identity, Page } from "./types";
 import { mapAsync } from "./each-async";
+import { isLeader } from "./cluster/leader";
 
 export const INBOUND_MAILS_PER_HOUR = 60;
 export const INBOUND_FILE_BYTES = 10 * 1024 * 1024;
@@ -732,7 +733,8 @@ const runtime = globalThis as unknown as { flowplanInboundTimer?: ReturnType<typ
 export function startInboundMailWorker() {
   if (runtime.flowplanInboundTimer || !imapOptionsFromEnv()) return;
   const tick = async () => {
-    if (runtime.flowplanInboundBusy) return;
+    // Cluster mode: the leader only (lib/cluster/leader.ts).
+    if (runtime.flowplanInboundBusy || !isLeader()) return;
     runtime.flowplanInboundBusy = true;
     try {
       await pollInboundMailbox();

@@ -17,6 +17,8 @@ import type { DatabaseSync } from "node:sqlite";
 import { all, one, run, sql } from "./db";
 import { currentKeyId, isEncrypted, seal, unseal } from "./encryption";
 import { DELETED_UPLOADS, deletedName } from "./deleted-uploads";
+import { clusterMode } from "./cluster/config";
+import { channelName, listen } from "./cluster/pg-session";
 
 export type StorageConfig = {
   endpoint: string;
@@ -91,8 +93,11 @@ const state = globalThis as unknown as {
     draining: boolean;
     again: boolean;
     timer?: ReturnType<typeof setInterval>;
+    unlisten?: () => void;
   };
 };
+// The NOTIFY channel of the queue trigger on PostgreSQL (per schema).
+const QUEUE_CHANNEL = "flowplan_storage";
 
 // Called once when the database opens: with the SQLite connection
 // (lib/db.ts, db()), or without one on PostgreSQL (the first use of the
@@ -129,14 +134,19 @@ export async function setupStorage(d?: DatabaseSync) {
         SELECT storage_kick();
       END;`);
   } else if (postgres) {
-    // The same queue; the worker looks at it often instead of being kicked
-    // by the trigger (a function of this process cannot run in Postgres).
+    // The same queue; the trigger cannot call this process, so it sends a
+    // NOTIFY (delivered at the commit) to every instance listening on the
+    // queue's channel, with the file's key: an instance that has the file
+    // uploads it right away. A slow poll catches what a lost connection
+    // missed.
     await run(`CREATE OR REPLACE FUNCTION storage_queue_file() RETURNS trigger LANGUAGE plpgsql AS $fn$
       BEGIN
         IF TG_OP='DELETE' THEN
           INSERT INTO storage_queue(key,op) VALUES(OLD.id,'delete') ON CONFLICT(key) DO UPDATE SET op='delete',attempts=0,next_at=0;
+          PERFORM pg_notify('${QUEUE_CHANNEL}_' || current_schema(), 'delete:' || OLD.id);
         ELSE
           INSERT INTO storage_queue(key,op) VALUES(NEW.id,'put') ON CONFLICT(key) DO UPDATE SET op='put',attempts=0,next_at=0;
+          PERFORM pg_notify('${QUEUE_CHANNEL}_' || current_schema(), 'put:' || NEW.id);
         END IF;
         RETURN NULL;
       END $fn$`);
@@ -153,19 +163,35 @@ export async function setupStorage(d?: DatabaseSync) {
     await run("INSERT INTO storage_state(name,value) VALUES('target',?) ON CONFLICT(name) DO UPDATE SET value=excluded.value", target(config));
     rmSync(marker, { force: true });
   }
-  state.flowplanStorage = { draining: false, again: false };
-  // Retries and files written outside a transaction (Postgres: also what
-  // the trigger queued, see above).
-  state.flowplanStorage.timer = setInterval(kickStorage, postgres ? 500 : 15_000);
-  state.flowplanStorage.timer.unref?.();
+  const current = (state.flowplanStorage = { draining: false, again: false } as NonNullable<typeof state.flowplanStorage>);
+  // Retries and files written outside a transaction; on PostgreSQL also
+  // what a lost LISTEN connection missed (it used to poll every 0.5 s).
+  current.timer = setInterval(kickStorage, 15_000);
+  current.timer.unref?.();
+  if (postgres)
+    void listen(channelName(QUEUE_CHANNEL), (payload) => {
+      // In cluster mode only the instance that wrote the file can upload
+      // it: the others leave a "put" to it (a deletion anyone can do).
+      const [op, key] = [payload.slice(0, payload.indexOf(":")), payload.slice(payload.indexOf(":") + 1)];
+      if (clusterMode() && op === "put" && !(validKey(key) && existsSync(localPath(key)))) return;
+      kickStorage();
+    })
+      .then((unlisten) => {
+        if (state.flowplanStorage === current) current.unlisten = unlisten;
+        else unlisten();
+      })
+      .catch((error) => console.error("Dateispeicher: LISTEN fehlgeschlagen, nur die Abfrage alle 15 s", (error as Error).message));
   setImmediate(kickStorage);
-  setImmediate(() => void hydrate());
+  // In cluster mode the local folder is a cache of the bucket: files come
+  // when a request needs them (ensureLocal), not all at every start.
+  if (!clusterMode()) setImmediate(() => void hydrate());
 }
 
 // The database is closed and opened again (lib/db.ts, reopenDatabase).
 export function stopStorage() {
   const s = state.flowplanStorage;
   if (s?.timer) clearInterval(s.timer);
+  s?.unlisten?.();
   state.flowplanStorage = undefined;
 }
 
@@ -189,15 +215,28 @@ export function kickStorage() {
 }
 
 const MAX_ATTEMPTS = 12;
+// How long a claimed job stays with its worker before another may take it
+// (the worker died): longer than an upload takes.
+const LEASE_MS = 10 * 60_000;
+// Takes up to 16 due jobs: their next_at moves past the lease, so another
+// worker (instance) does not take them; on PostgreSQL rows another worker
+// is claiming right now are skipped (FOR UPDATE SKIP LOCKED) rather than
+// waited for. A job is done when its row is deleted; a failure sets its
+// next attempt.
+export async function claimStorageJobs(now = Date.now(), limit = 16) {
+  return await all<{ key: string; op: string; attempts: number }>(
+    `UPDATE storage_queue SET next_at=? WHERE key IN (SELECT key FROM storage_queue WHERE next_at<=? ORDER BY next_at,key LIMIT ${Math.max(1, Math.floor(limit))}${sql.skipLocked()}) RETURNING key,op,attempts`,
+    now + LEASE_MS,
+    now,
+  );
+}
 async function drain() {
   const s = state.flowplanStorage,
     config = storageConfig();
   if (!s || !config) return;
   for (;;) {
-    const jobs = await all<{ key: string; op: string; attempts: number }>(
-      "SELECT key,op,attempts FROM storage_queue WHERE next_at<=? ORDER BY next_at,key LIMIT 16",
-      Date.now(),
-    );
+    if (state.flowplanStorage !== s) return;
+    const jobs = await claimStorageJobs();
     if (!jobs.length) return;
     await Promise.all(
       jobs.map(async (job) => {
@@ -210,7 +249,9 @@ async function drain() {
             if (!existsSync(path)) {
               if (!(await one("SELECT 1 FROM files WHERE id=?", job.key)))
                 return await finish();
-              throw new Error("Lokale Datei fehlt noch.");
+              // Cluster mode: written on another instance, which uploads it
+              // (it hears the NOTIFY); back to the queue soon, as a retry.
+              throw new Error(clusterMode() ? "Datei liegt auf einer anderen Instanz." : "Lokale Datei fehlt noch.");
             }
             const keyId = currentKeyId();
             const response = await aws(config).fetch(objectUrl(config, job.key), {
@@ -267,7 +308,14 @@ export async function ensureLocal(key: string) {
   const config = storageConfig();
   if (!config) return false;
   try {
-    const response = await aws(config).fetch(objectUrl(config, key));
+    let response = await aws(config).fetch(objectUrl(config, key));
+    // Cluster mode: written moments ago on another instance, whose upload
+    // is still under way – wait for it a little (up to 5 s).
+    for (let waited = 0; response.status === 404 && clusterMode() && waited < 5000; waited += 250) {
+      if (!(await one("SELECT 1 FROM storage_queue WHERE key=? AND op='put'", key))) break;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      response = await aws(config).fetch(objectUrl(config, key));
+    }
     if (!response.ok) return false;
     // Plain objects (from before encryption) come back as they are – but one
     // that went up encrypted must still be: a plain object in its place was

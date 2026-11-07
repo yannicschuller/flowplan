@@ -40,6 +40,12 @@ if [ -f "$DATA/restore-pending/READY" ]; then
   rm -rf "$DATA/move-incoming"
 fi
 
+# Litestream replicates the SQLite file: not with PostgreSQL (single
+# container or cluster mode), whose backups are the database's own.
+case "${DATABASE_URL:-}" in
+  postgres://*|postgresql://*) FLOWPLAN_LITESTREAM=off ;;
+esac
+
 if [ -n "${S3_BUCKET:-}" ] && [ "${FLOWPLAN_LITESTREAM:-on}" != "off" ]; then
   S3_REGION="${S3_REGION:-us-east-1}"
   S3_ENDPOINT="${S3_ENDPOINT:-https://s3.$S3_REGION.amazonaws.com}"

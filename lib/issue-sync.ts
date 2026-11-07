@@ -42,6 +42,7 @@ import { onIssueQueued, quietly } from "./issue-sync-queue";
 import { noteWorkerRun } from "./ops-events";
 import type { Field, Identity, Page, User } from "./types";
 import { mapAsync } from "./each-async";
+import { isLeader } from "./cluster/leader";
 
 export type IssueProvider = "github" | "gitlab";
 const MINUTE = 60_000;
@@ -1255,9 +1256,12 @@ async function pollAll() {
 // Every 10 minutes; a queued record is pushed a few seconds after the change.
 export function startIssueSyncWorker() {
   if (runtime.flowplanIssueTimer) return;
-  runtime.flowplanIssueTimer = setInterval(() => void pollAll(), POLL_EVERY);
+  // Cluster mode: the poll on the leader only (lib/cluster/leader.ts); the
+  // quick pushes below on the instance where the change was made.
+  const poll = () => void (isLeader() && pollAll());
+  runtime.flowplanIssueTimer = setInterval(poll, POLL_EVERY);
   runtime.flowplanIssueTimer.unref();
-  setTimeout(() => void pollAll(), 90_000).unref();
+  setTimeout(poll, 90_000).unref();
   const timers = (runtime.flowplanIssuePushTimers ??= new Map());
   onIssueQueued((pageId) => {
     clearTimeout(timers.get(pageId));

@@ -1640,6 +1640,15 @@ export async function tableKey(table: string): Promise<string[]> {
 export async function lockFor(key: string) {
   if (isPostgres() && inTransaction()) await one("SELECT pg_advisory_xact_lock(hashtextextended(?,0))", key);
 }
+// Lifts the per-connection limits (statement_timeout, lock_timeout,
+// lib/db-driver/postgres.ts) for the rest of the current transaction: for
+// work that is long by nature – data steps, snapshots, restores. Nothing
+// to do on SQLite or outside a transaction.
+export async function untimed() {
+  if (!isPostgres() || !inTransaction()) return;
+  await run("SET LOCAL statement_timeout=0");
+  await run("SET LOCAL lock_timeout=0");
+}
 // The schema version of the database in use: SQLite's migrations (as run
 // in this process), on PostgreSQL the version its schema was made for
 // (flowplan_meta, written by ensurePostgresSchema). 0 when unknown.

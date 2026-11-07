@@ -60,6 +60,15 @@ export type Dialect = {
   dayOfMs(column: string, modifier?: string): string;
   // The length of a text in bytes (UTF-8).
   byteLength(expr: string): string;
+  // Appended to a SELECT inside a transaction that reads a row in order to
+  // write it back (Yjs merges, counters): Postgres locks the rows read
+  // until the commit, so concurrent writers wait instead of overwriting
+  // each other. Nothing on SQLite (one writer at a time).
+  forUpdate(): string;
+  // A queue claim: the rows read are locked and rows locked by another
+  // transaction are skipped, so several workers (instances) take different
+  // jobs. Nothing on SQLite (one process claims).
+  skipLocked(): string;
 };
 
 const modifier = (m: string) => {
@@ -104,6 +113,8 @@ export const sqliteDialect: Dialect = {
   dayOf: (c, m = "?") => `date(${c},${m})`,
   dayOfMs: (c, m = "?") => `date(${c}/1000,'unixepoch',${m})`,
   byteLength: (e) => `length(CAST(${e} AS BLOB))`,
+  forUpdate: () => "",
+  skipLocked: () => "",
 };
 
 const PG_TEXT_TIME = "'YYYY-MM-DD HH24:MI:SS'";
@@ -133,6 +144,8 @@ export const postgresDialect: Dialect = {
   dayOf: (c, m = "?") => `to_char((${c})::timestamp+(${m})::interval,'YYYY-MM-DD')`,
   dayOfMs: (c, m = "?") => `to_char(to_timestamp((${c})/1000.0) AT TIME ZONE 'UTC'+(${m})::interval,'YYYY-MM-DD')`,
   byteLength: (e) => `octet_length(${e})`,
+  forUpdate: () => " FOR UPDATE",
+  skipLocked: () => " FOR UPDATE SKIP LOCKED",
 };
 
 // The dialect of the database this process uses, for code that builds SQL

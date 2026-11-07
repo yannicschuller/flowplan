@@ -9,6 +9,7 @@ import { HttpError } from "./auth";
 import { pageRole, requirePage } from "./permissions";
 import { Temporal } from "./date-values";
 import type { Identity, Page } from "./types";
+import { isLeader } from "./cluster/leader";
 
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((v) => {
   try {
@@ -117,6 +118,8 @@ const runtime = globalThis as typeof globalThis & { flowplanReviewTimer?: Return
 export function startReviewWorker(onSent: () => void) {
   if (runtime.flowplanReviewTimer) return;
   const tick = async () => {
+    // Cluster mode: the leader only (lib/cluster/leader.ts).
+    if (!isLeader()) return;
     try {
       if (await processPageReviews()) onSent();
     } catch (error) {

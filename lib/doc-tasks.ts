@@ -19,6 +19,7 @@ import { notificationOn } from "./notification-kinds";
 import { rememberTaskTarget } from "./notification-targets";
 import type { Identity, Page, Row } from "./types";
 import { filterAsync } from "./each-async";
+import { isLeader } from "./cluster/leader";
 
 
 type JsonNode = {
@@ -418,6 +419,8 @@ export async function startTaskWorker(onFired: () => void) {
     console.error("Aufgaben konnten nicht erfasst werden", error);
   }
   const tick = async () => {
+    // Cluster mode: the leader only (lib/cluster/leader.ts).
+    if (!isLeader()) return;
     try {
       // From 8 o'clock on (server time), so reminders do not come at night.
       if (new Date().getHours() >= 8 && await processDueTasks()) onFired();

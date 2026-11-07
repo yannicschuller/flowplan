@@ -8,7 +8,7 @@
 // lib/db.ts keep working next to it during the transition.
 import { AsyncLocalStorage } from "node:async_hooks";
 import { currentTx, dbContext, postgresSchema, postgresUrl } from "./context";
-import { createPostgresDb } from "./postgres";
+import { createPostgresDb, postgresTimeouts } from "./postgres";
 import { createSqliteDb } from "./sqlite";
 import type { Db, Param, Row } from "./types";
 
@@ -20,9 +20,18 @@ const holder = globalThis as unknown as { flowplanAsyncDb?: Db };
 export function database(): Db {
   if (holder.flowplanAsyncDb) return holder.flowplanAsyncDb;
   const url = postgresUrl();
-  return (holder.flowplanAsyncDb = opened(url ? createPostgresDb(url, { schema: postgresSchema(), max: poolSize() }) : createSqliteDb()));
+  return (holder.flowplanAsyncDb = opened(
+    url
+      ? createPostgresDb(url, { schema: postgresSchema(), max: poolSize(), ...postgresTimeouts(), applicationName: applicationName() })
+      : createSqliteDb(),
+  ));
 }
-const poolSize = () => Math.max(1, Number(process.env.FLOWPLAN_PG_POOL) || 10);
+// Connections per process (FLOWPLAN_PG_POOL, default 10). With several
+// instances: instances × pool (+1 each for the leader election in cluster
+// mode) must stay below the server's max_connections.
+export const poolSize = () => Math.max(1, Math.min(500, Number(process.env.FLOWPLAN_PG_POOL) || 10));
+// Shown in pg_stat_activity: which instance holds a connection.
+const applicationName = () => `flowplan${process.env.FLOWPLAN_INSTANCE_ID ? `:${process.env.FLOWPLAN_INSTANCE_ID}` : ""}`;
 
 // The first use of the database runs its opening steps (dbContext.hooks.open,
 // lib/db.ts): on PostgreSQL what opening the SQLite file does (a staged

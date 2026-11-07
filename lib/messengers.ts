@@ -71,6 +71,7 @@ import {
   type SendOutcome,
 } from "./messenger-send";
 import { filterAsync } from "./each-async";
+import { isLeader } from "./cluster/leader";
 
 export const MAX_ATTEMPTS = 6;
 export const DISABLE_AFTER = 3;
@@ -1060,6 +1061,8 @@ export function startMessengerWorker() {
   runtime.flowplanMessengerTimer = setInterval(async () => {
     void dispatchMessengers();
     // A code may have been made by another process (several replicas).
+    // Telegram's long poll runs on the leader only (one getUpdates at a time).
+    if (!isLeader()) return;
     try {
       if (await pendingLinks()) ensureTelegramPolling();
     } catch (error) {

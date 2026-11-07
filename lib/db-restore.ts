@@ -11,7 +11,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { all, migrateFile, run, transaction } from "./db";
+import { all, migrateFile, run, transaction, untimed } from "./db";
 import { snapshotDatabase } from "./db-snapshot";
 import { applyPendingRestore } from "./instance-restore-apply";
 import schemaJson from "./db-driver/postgres-schema.json";
@@ -41,6 +41,7 @@ export async function loadSqliteFile(path: string) {
     const tables = schema.tables.filter((t) => t.name !== "search_index");
     const names = tables.map((t) => quoteIdent(t.name));
     await transaction(async () => {
+      await untimed();
       // Foreign keys go while the tables are refilled (parents and children
       // in any order) and come back checked; triggers would fire per row.
       const fks = await all<{ tbl: string; conname: string }>(

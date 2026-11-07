@@ -1,6 +1,10 @@
 // Live cursors on whiteboards: positions go through memory and are pushed to
 // everyone on the same board (server-sent events), no database round trip.
-// Flowplan runs as a single process, so one hub reaches every viewer.
+// One hub per process; in cluster mode cursor moves and board signals also
+// go to the other instances (lib/cluster/bus.ts), whose hubs keep the same
+// cursors and deliver them to their viewers.
+import { onBus, publish } from "./cluster/bus";
+
 export type BoardView = { x: number; y: number; w: number; h: number };
 export type BoardCursor = {
   userId: string;
@@ -48,12 +52,25 @@ function sweep(pageId: string, b: Board) {
   if (!b.cursors.size && !b.listeners.size) boards.delete(pageId);
 }
 
+type Point = { x: number; y: number; laser?: boolean; view?: BoardView };
+const bus = globalThis as unknown as { flowplanBoardBus?: boolean };
+if (!bus.flowplanBoardBus) {
+  bus.flowplanBoardBus = true;
+  onBus("board", (payload) => {
+    const message = payload as
+      | { k: "move"; pageId: string; user: { id: string; name: string }; point: Point | null }
+      | { k: "signal"; pageId: string; payload: { type: string } & Record<string, unknown>; except?: string };
+    if (message.k === "move") moveHere(message.pageId, message.user, message.point);
+    else if (message.k === "signal") signalHere(message.pageId, message.payload, message.except);
+  });
+}
+
 // A cursor position in board coordinates, or null when the pointer left.
-export function moveCursor(
-  pageId: string,
-  user: { id: string; name: string },
-  point: { x: number; y: number; laser?: boolean; view?: BoardView } | null,
-) {
+export function moveCursor(pageId: string, user: { id: string; name: string }, point: Point | null) {
+  moveHere(pageId, user, point);
+  publish("board", { k: "move", pageId, user: { id: user.id, name: user.name }, point });
+}
+function moveHere(pageId: string, user: { id: string; name: string }, point: Point | null) {
   const b = board(pageId);
   if (!point) {
     if (b.cursors.delete(user.id))
@@ -103,8 +120,10 @@ export function watchBoard(
   return () => {
     b.listeners.delete(listener);
     // The last tab of this person closed: their cursor goes too.
-    if (![...b.listeners].some((l) => l.userId === userId) && b.cursors.delete(userId))
+    if (![...b.listeners].some((l) => l.userId === userId) && b.cursors.delete(userId)) {
       broadcast(b, { type: "leave", userId });
+      publish("board", { k: "move", pageId, user: { id: userId, name: "" }, point: null });
+    }
     sweep(pageId, b);
   };
 }
@@ -112,6 +131,10 @@ export function watchBoard(
 // everyone on the board (or everyone but one person). It never carries
 // private content: who reads the new state asks for their own view of it.
 export function signalBoard(pageId: string, payload: { type: string } & Record<string, unknown>, except?: string) {
+  signalHere(pageId, payload, except);
+  publish("board", { k: "signal", pageId, payload, except });
+}
+function signalHere(pageId: string, payload: { type: string } & Record<string, unknown>, except?: string) {
   const b = boards.get(pageId);
   if (b) broadcast(b, payload, except);
 }

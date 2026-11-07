@@ -41,6 +41,7 @@ import { ct } from "./content-locale";
 import { validZone } from "./date-values";
 import type { Field, Identity, Page, Row, View } from "./types";
 import { flatMapAsync } from "./each-async";
+import { isLeader } from "./cluster/leader";
 
 export const calendarProviders = ["google", "microsoft"] as const;
 export type CalendarProvider = (typeof calendarProviders)[number];
@@ -1136,7 +1137,8 @@ export async function syncDueCalendars(now = Date.now()) {
 export function startCalendarSyncWorker() {
   if (runtime.flowplanCalendarTimer) return;
   runtime.flowplanCalendarTimer = setInterval(() => {
-    if (!calendarProviders.some(providerConfigured)) return;
+    // Cluster mode: the leader only (lib/cluster/leader.ts).
+    if (!isLeader() || !calendarProviders.some(providerConfigured)) return;
     void syncDueCalendars().catch((error) => console.error("Calendar sync worker", error));
   }, 60_000);
   runtime.flowplanCalendarTimer.unref?.();

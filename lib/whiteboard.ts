@@ -1,6 +1,6 @@
 import * as Y from "yjs";
 import { z } from "zod";
-import { all, id, one, run, nowText } from "./db";
+import { all, id, one, run, nowText, sql } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import { requireUnlocked } from "./journal-extras";
@@ -34,9 +34,11 @@ export function whiteboardSummary(items: WhiteboardItem[]) {
     .join("")
     .slice(0, 400000);
 }
-async function stored(page: Page): Promise<Stored> {
+// `forUpdate`: locked until the commit (PostgreSQL), for a merge.
+async function stored(page: Page, forUpdate = false): Promise<Stored> {
+  const lock = forUpdate ? sql.forUpdate() : "";
   let row = await one<Stored>(
-    "SELECT state,generation FROM whiteboards WHERE page_id=?",
+    `SELECT state,generation FROM whiteboards WHERE page_id=?${lock}`,
     page.id,
   );
   if (!row) {
@@ -50,7 +52,7 @@ async function stored(page: Page): Promise<Stored> {
     );
     doc.destroy();
     row = (await one<Stored>(
-      "SELECT state,generation FROM whiteboards WHERE page_id=?",
+      `SELECT state,generation FROM whiteboards WHERE page_id=?${lock}`,
       page.id,
     ))!;
   }
@@ -86,7 +88,7 @@ export async function syncWhiteboard(user: Identity, raw: unknown) {
   const page = await requirePage(user, b.pageId, !!b.update);
   if (page.kind !== "whiteboard") throw new HttpError(400, "Kein Whiteboard.");
   await requireUnlocked(user, page);
-  const s = await stored(page);
+  const s = await stored(page, !!b.update);
   if (b.generation !== s.generation)
     throw new HttpError(
       409,

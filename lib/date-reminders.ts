@@ -20,6 +20,7 @@ import {
 } from "./date-reminder-options";
 import { rememberTaskTarget } from "./notification-targets";
 import type { Field, Identity, Page } from "./types";
+import { isLeader } from "./cluster/leader";
 
 export const MAX_REMINDERS_PER_USER = 1000;
 export {
@@ -292,6 +293,8 @@ const runtime = globalThis as typeof globalThis & {
 export async function startReminderWorker(onFired: () => void) {
   if (runtime.flowplanReminderTimer) return;
   const tick = async () => {
+    // Cluster mode: the leader only (lib/cluster/leader.ts).
+    if (!isLeader()) return;
     try {
       if (await processDateReminders()) onFired();
     } catch (error) {

@@ -9,7 +9,7 @@
 // So a backup taken on PostgreSQL restores on SQLite and vice versa
 // (scripts/db-migrate.mjs does the same for whole instances).
 import { DatabaseSync } from "node:sqlite";
-import { all, run, sql, transaction } from "./db";
+import { all, run, sql, transaction, untimed } from "./db";
 import { db } from "./db-driver";
 import schemaJson from "./db-driver/postgres-schema.json";
 import type { PgSchema } from "./db-driver/pg-schema";
@@ -30,6 +30,7 @@ export async function snapshotDatabase(path: string) {
     const sqliteTables = new Set(schema.sqlite.filter((x) => x.type === "table").map((x) => x.name));
     await transaction(async () => {
       await run("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
+      await untimed();
       for (const t of schema.tables) {
         // The search index is rebuilt from the data (search_state below).
         if (t.name === "search_index" || !sqliteTables.has(t.name)) continue;

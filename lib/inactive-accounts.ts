@@ -21,6 +21,7 @@ import { deleteInactiveAccount } from "./account-deletion";
 import { userLocale } from "./user-locale";
 import { db } from "./db-driver";
 import { localeTag, type Locale } from "./i18n";
+import { isLeader } from "./cluster/leader";
 
 export async function disableInactiveAccounts(now = Date.now()) {
   const days = (await instanceSettings()).inactiveDays;
@@ -209,6 +210,8 @@ const runtime = globalThis as unknown as {
 export function startInactiveWorker() {
   if (runtime.flowplanInactiveTimer) return;
   runtime.flowplanInactiveTimer = setInterval(async () => {
+    // Cluster mode: the leader only (lib/cluster/leader.ts).
+    if (!isLeader()) return;
     try {
       await disableInactiveAccounts();
       await deleteInactiveAccounts();

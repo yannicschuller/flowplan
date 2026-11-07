@@ -5,6 +5,7 @@ import { all, run } from "./db";
 import { MAX_PDF_TEXT, pdfScanImages, pdfText } from "./pdf-text";
 import { OFFICE_TYPES, officeKind, officeText } from "./office-text";
 import { ocrImage } from "./ocr";
+import { isLeader } from "./cluster/leader";
 
 const MAX_PDF_BYTES = 50 * 1024 * 1024,
   TIMEOUT = 30000;
@@ -112,7 +113,8 @@ export async function extractPendingFileTexts(limit = 5) {
 export function startFileTextWorker() {
   if (runtime.flowplanFileTextTimer) return;
   const tick = async () => {
-    if (runtime.flowplanFileTextBusy) return;
+    // Cluster mode: the leader only (lib/cluster/leader.ts).
+    if (runtime.flowplanFileTextBusy || !isLeader()) return;
     runtime.flowplanFileTextBusy = true;
     try {
       while (await extractPendingFileTexts()) {}

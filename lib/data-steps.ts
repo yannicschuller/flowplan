@@ -9,7 +9,7 @@
 // tried again at the next start. New data steps go here, never into
 // migrate(): they must run on both databases.
 import { randomUUID } from "node:crypto";
-import { all, lockFor, one, run, sql, tableColumns, transaction, updateIgnoringConflicts } from "./db";
+import { all, lockFor, one, run, sql, tableColumns, transaction, untimed, updateIgnoringConflicts } from "./db";
 import { emojiPresentation } from "./emoji-presentation";
 import { escapeFormattedCells, FORMATTED_TEXT_MIGRATION } from "./formatted-text";
 import { isFormattedText } from "./inline-markdown";
@@ -42,6 +42,8 @@ export async function runDataSteps(only?: string[]) {
     if (await one("SELECT 1 FROM data_migrations WHERE name=?", step.name)) continue;
     try {
       await transaction(async () => {
+        // A long step on another instance is waited for, not timed out.
+        await untimed();
         await lockFor(`data-step:${step.name}`);
         if (await one("SELECT 1 FROM data_migrations WHERE name=?", step.name)) return;
         await step.run();

@@ -50,6 +50,7 @@ import {
 } from "./ldap";
 import { CONTACT_FIELDS, MISSING_TAGS, ensureOptions, requireContactsDatabase, syncBirthdaySeries, type ContactKey } from "./contacts";
 import type { Field, Identity } from "./types";
+import { isLeader } from "./cluster/leader";
 
 export const DEFAULT_PERSON_FILTER = "(&(|(objectClass=inetOrgPerson)(objectClass=user)(objectClass=contact))(!(objectClass=computer)))";
 const OU_FILTER = "(|(objectClass=organizationalUnit)(objectClass=container)(objectClass=organization)(objectClass=domain))";
@@ -675,6 +676,8 @@ export function startContactsSyncWorker() {
   // Checked every 15 minutes; each run waits for the configured interval.
   let last = 0;
   const due = async () => {
+    // Cluster mode: the leader only (lib/cluster/leader.ts).
+    if (!isLeader()) return;
     const minutes = (await contactsLdapSettings()).intervalMinutes;
     if (Date.now() - last < minutes * 60_000 - 30_000) return;
     last = Date.now();

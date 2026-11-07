@@ -16,7 +16,7 @@
 // Überwachung → Statistik).
 import { statfsSync } from "node:fs";
 import { resolve } from "node:path";
-import { all, one, run, sql } from "./db";
+import { all, lockFor, one, run, sql, transaction } from "./db";
 
 const MINUTE = 60_000,
   HOUR = 3_600_000,
@@ -214,15 +214,21 @@ export function percentile(hist: number[], q: number): number | null {
 
 /* ---------- Writing ---------- */
 
+// Adds to what other processes wrote for the same minute (cluster mode:
+// every instance flushes its own counts; the lock keeps two flushes of one
+// minute from overwriting each other).
 async function writeMinute(m: Minute) {
-  const existing = await one<{ requests: number; errors: number; hist: string }>("SELECT requests,errors,hist FROM metrics_minute WHERE at=?", m.at);
-  await run(
-    "INSERT INTO metrics_minute(at,requests,errors,hist) VALUES(?,?,?,?) ON CONFLICT(at) DO UPDATE SET requests=excluded.requests,errors=excluded.errors,hist=excluded.hist",
-    m.at,
-    m.requests + (existing?.requests || 0),
-    m.errors + (existing?.errors || 0),
-    encodeHist(existing ? addHist(decodeHist(existing.hist), m.hist) : m.hist),
-  );
+  await transaction(async () => {
+    await lockFor(`metrics-minute:${m.at}`);
+    const existing = await one<{ requests: number; errors: number; hist: string }>("SELECT requests,errors,hist FROM metrics_minute WHERE at=?", m.at);
+    await run(
+      "INSERT INTO metrics_minute(at,requests,errors,hist) VALUES(?,?,?,?) ON CONFLICT(at) DO UPDATE SET requests=excluded.requests,errors=excluded.errors,hist=excluded.hist",
+      m.at,
+      m.requests + (existing?.requests || 0),
+      m.errors + (existing?.errors || 0),
+      encodeHist(existing ? addHist(decodeHist(existing.hist), m.hist) : m.hist),
+    );
+  });
 }
 // The hour row from its minutes (exact: histograms add up).
 export async function rollupHour(at: number) {
