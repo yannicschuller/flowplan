@@ -8,6 +8,7 @@ import { HttpError } from "./auth";
 import { pageRole, requirePage } from "./permissions";
 import { hiddenRowIds } from "./row-access";
 import { requireRow } from "./row-documents";
+import { assertFieldsWritable, hiddenFieldsFor } from "./field-access";
 import { cellText } from "./cell-text";
 import type { Field, Identity, Page } from "./types";
 import { markLiveActivity } from "./live-activity-queue";
@@ -51,12 +52,19 @@ export function stopRunning(userId: string, now = Date.now()) {
 }
 
 const target = z.object({ rowId: z.uuid(), fieldId: z.string().min(1).max(500) });
+// A time property can carry its own read and write rule (and is hidden
+// with the estimate it reads, lib/field-access.ts): its entries and total
+// only for people who may read it, its timer only for those who may write it.
+function assertTimeWritable(user: Identity, page: Page, fieldId: string) {
+  assertFieldsWritable(user, page, fieldsOf(page.id), [fieldId]);
+}
 
 export function timeCommand(user: Identity, page: Page, action: string, input: Record<string, unknown>) {
   if (action === "time.start") {
     const { rowId, fieldId } = target.parse(input);
     requireRow(user, page.id, rowId, true);
     timeField(page.id, fieldId);
+    assertTimeWritable(user, page, fieldId);
     stopRunning(user.id);
     run("INSERT INTO time_entries(id,page_id,row_id,field_id,user_id,start) VALUES(?,?,?,?,?,?)", id(), page.id, rowId, fieldId, user.id, Date.now());
     markLiveActivity(user.id, "timer");
@@ -78,6 +86,7 @@ export function timeCommand(user: Identity, page: Page, action: string, input: R
       .parse(input);
     requireRow(user, page.id, b.rowId, true);
     timeField(page.id, b.fieldId);
+    assertTimeWritable(user, page, b.fieldId);
     const start = new Date(`${b.date}T09:00:00`).getTime();
     if (!Number.isFinite(start)) throw new HttpError(400, "Ungültiges Datum.");
     run(
@@ -99,6 +108,7 @@ export function timeCommand(user: Identity, page: Page, action: string, input: R
     const entry = one<Entry>("SELECT * FROM time_entries WHERE id=? AND page_id=?", entryId, page.id);
     if (!entry) throw new HttpError(404, "Zeiteintrag nicht gefunden.");
     requireRow(user, page.id, entry.row_id, true);
+    assertTimeWritable(user, page, entry.field_id);
     // Own entries; owners of the database may correct everyone's.
     if (entry.user_id !== user.id && pageRole(user, page) !== "owner")
       throw new HttpError(403, "Nur eigene Zeiteinträge löschen.");
@@ -112,6 +122,7 @@ export function timeCommand(user: Identity, page: Page, action: string, input: R
 // Entries of one record, newest first, and whether my timer runs here.
 export function recordTime(user: Identity, page: Page, rowId: string, fieldId: string) {
   requireRow(user, page.id, rowId);
+  if (hiddenFieldsFor(user, page).has(fieldId)) throw new HttpError(404, "Eigenschaft fehlt.");
   const entries = all<Entry & { name: string }>(
     "SELECT e.*,u.name FROM time_entries e LEFT JOIN users u ON u.id=e.user_id WHERE e.row_id=? AND e.field_id=? ORDER BY e.start DESC LIMIT 200",
     rowId,
@@ -138,6 +149,8 @@ export function recordTime(user: Identity, page: Page, rowId: string, fieldId: s
 export function timeReport(user: Identity, pageId: string, weeks = 8) {
   const page = requirePage(user, pageId);
   const hidden = hiddenRowIds(user, page);
+  // Time properties hidden from this person count for nobody here.
+  const hiddenFields = hiddenFieldsFor(user, page);
   const monday = (ms: number) => {
     const d = new Date(ms);
     d.setHours(0, 0, 0, 0);
@@ -150,7 +163,7 @@ export function timeReport(user: Identity, pageId: string, weeks = 8) {
     "SELECT e.*,u.name,r.cells FROM time_entries e JOIN rows r ON r.id=e.row_id LEFT JOIN users u ON u.id=e.user_id WHERE e.page_id=? AND e.start>=?",
     pageId,
     first.getTime(),
-  ).filter((e) => !hidden.has(e.row_id));
+  ).filter((e) => !hidden.has(e.row_id) && !hiddenFields.has(e.field_id));
   const fields = fieldsOf(pageId);
   const title = fields[0];
   const weekKeys = Array.from({ length: weeks }, (_, i) => {
