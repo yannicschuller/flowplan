@@ -51,6 +51,17 @@ export async function checkBucket(now = Date.now()): Promise<Check> {
   return check;
 }
 
+// Which checks decide readiness (FLOWPLAN_READY_REQUIRE, a comma list;
+// default all of them). Redis and the bucket are shared by every instance:
+// when one is away, all instances turn unready together and the balancer
+// has nothing left – leaving them out keeps the instances serving (editing
+// works without Redis; live updates between instances and shared limits
+// pause) while the checks still show the failure.
+export function readinessRequires(env: Record<string, string | undefined> = process.env): Set<string> {
+  const raw = env.FLOWPLAN_READY_REQUIRE?.trim();
+  return new Set(raw ? raw.split(",").map((s) => s.trim()).filter(Boolean) : ["database", "redis", "objectStorage"]);
+}
+
 export async function readiness() {
   const checks: Record<string, Check> = { database: await checkDatabase() };
   if (clusterMode()) {
@@ -59,5 +70,8 @@ export async function readiness() {
     checks.objectStorage = bucket;
   }
   const stopping = shuttingDown();
-  return { ready: !stopping && Object.values(checks).every((c) => c.ok), stopping, checks };
+  const required = readinessRequires();
+  // The database always counts.
+  const ready = !stopping && Object.entries(checks).every(([name, c]) => c.ok || (name !== "database" && !required.has(name)));
+  return { ready, stopping, checks };
 }

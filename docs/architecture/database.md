@@ -1,7 +1,8 @@
 # Database layer: SQLite by default, PostgreSQL as an option
 
-Status: **phase 2 done – all data access is asynchronous; PostgreSQL runs
-through the `pg` pool alone** (issue #127). The spike (branch `pg-spike`)
+Status: **phase 3a done – cluster mode: several instances against one
+PostgreSQL, with Redis and S3** (§13, sizing §14); phase 2 made all data
+access asynchronous with PostgreSQL through the `pg` pool alone (issue #127). The spike (branch `pg-spike`)
 proved the pattern on one vertical slice and measured the cost; phase 1
 made all SQL of the code base dialect-neutral, still synchronous (§11);
 phase 2 converted every caller to the asynchronous API and removed the
@@ -848,3 +849,226 @@ the transaction: the caller sees it).
   the incident channel upgrade, FTS5's content table, the read memo against
   a second SQLite connection – 6 (phase 1: 9; the formatted text, sealed
   secrets, saved searches and reaction emoji steps run on both now)..
+
+## 13. Phase 3a: cluster mode (done)
+
+Several Flowplan instances serve one installation: one PostgreSQL database,
+one Redis, one S3 bucket, any number of app instances behind a load
+balancer. The single container stays exactly as it was – SQLite (or
+PostgreSQL), no Redis, S3 optional; none of the cluster code does anything
+there (`clusterMode()` is false, `isLeader()` true, `publish()` a no-op).
+
+### Switching it on, and what it requires
+
+`FLOWPLAN_CLUSTER=1` (or `FLOWPLAN_MODE=cluster`). Then `DATABASE_URL`
+must be PostgreSQL, `REDIS_URL` (`redis://` or `rediss://`) and `S3_BUCKET`
+(with endpoint and keys) must be set; an instance missing one exits at
+start with every problem listed (`lib/cluster/config.ts`,
+`requireClusterConfig()` in `instrumentation.ts`). `REDIS_URL` without
+cluster mode is ignored with a warning. `FLOWPLAN_INSTANCE_ID` names the
+instance (default: host name and a random suffix; the Helm chart uses the
+pod name).
+
+### The pieces (`lib/cluster/`)
+
+| File | What |
+|---|---|
+| `config.ts` | the switch, the requirement check, instance id, Redis key prefix (`FLOWPLAN_REDIS_PREFIX`) |
+| `redis.ts` | a small RESP2 client (commands, `EVAL`, pub/sub, reconnect with back-off, TLS, AUTH/SELECT from the URL) – written here, not a dependency, as `lib/storage.ts` signs its own S3 requests; it keeps the process alive only while it connects or waits for a reply |
+| `bus.ts` | pub/sub between instances: one Redis channel, messages `{origin, topic, payload}`, own messages ignored |
+| `pg-session.ts` | one dedicated PostgreSQL connection per process outside the pool: `LISTEN` and the leader's session lock; reconnects and listens again |
+| `leader.ts` | leader election: `pg_try_advisory_lock` on that connection every `FLOWPLAN_LEADER_INTERVAL` (5 s); the lock dies with the connection, so a crashed leader is replaced within a round; `resignLeadership()` on shutdown |
+| `instances.ts` | heartbeats in a Redis hash every 10 s (id, host, version, leader, ready, pool, RSS); stale after 30 s |
+| `runtime.ts` | start (check, bus, election, heartbeat) and graceful stop (both modes) |
+| `health.ts` | liveness/readiness checks (database; cluster: Redis, bucket – cached 10 s) |
+| `system.ts` | the administration's system view |
+
+### Live updates, presence, rate limits (Redis)
+
+The in-process hubs stay the delivery to the instance's own server-sent
+event streams; each signal is delivered locally first and then published,
+the other instances deliver what they receive to their listeners:
+`lib/document-live.ts` (Yjs updates, encrypted updates, presence, "check"),
+`lib/text-presence.ts` (cursors between members and guests, lease renewals
+included), `lib/whiteboard-presence.ts` (cursors, leaves, board signals)
+and the gathers of `lib/whiteboard-facilitation.ts`. Messages are signals,
+PostgreSQL stays the source of truth: a lost message is caught up by the
+clients' next "check". No sticky sessions are needed.
+
+Rate limits (`lib/action-limits.ts`) keep their synchronous signature (the
+AI code calls them; no caller changed): the decision is local, each
+allowed action is also added to a sliding window in Redis (one Lua
+script), and when the shared count is over the limit the instance refuses
+the key until the window has room and tells the others (bus). Across N
+instances a key gets its limit plus at most about one action per instance
+in flight (tested: limit 6, two instances, ≤ 7). Redis down: each instance
+counts alone, logged. Limits kept in PostgreSQL (sign-in failures, demo
+starts, MCP) were already shared.
+
+### Workers: leader duties and claimed queues
+
+- **Leader only** (a guard at the start of each round, `isLeader()`): date
+  reminders, task reminders, automations, page reviews, the search
+  indexer, file text extraction, retention/trash/notification pruning,
+  digests (not the sending), Telegram's long poll, the issue-sync poll,
+  scheduled backups and Markdown exports, inactive accounts, LDAP account
+  and contact sync, the AI worker, IMAP capture, calendar sync, the ops
+  sweeps and health alerts. A staged restore takes `lockFor("flowplan:restore")`
+  and data steps their per-step advisory locks, wherever they start.
+- **Every instance, claiming:** mail, push, webhooks and chat-app
+  deliveries already claimed each job with a conditional `UPDATE … WHERE
+  next_at<=?` (compare and set) – cluster-safe as they were. The object
+  storage queue now claims with `UPDATE … WHERE key IN (SELECT … FOR UPDATE
+  SKIP LOCKED) RETURNING` and a lease (`next_at` + 10 min: a dead worker's
+  jobs come back), `sql.skipLocked()` (nothing on SQLite).
+- **Per instance:** ops counters and usage metrics (flushed into shared
+  rows; the minute row is now added to under a lock instead of read and
+  overwritten), runtime metrics.
+- **Storage queue without polling:** the PostgreSQL trigger sends
+  `pg_notify('flowplan_storage_<schema>', 'put:<key>')`; every instance
+  listens on its session connection and – in cluster mode only the one that
+  has the file locally – drains right away. The 0.5 s poll is now a 15 s
+  fallback. In cluster mode the local uploads folder is a cache: files are
+  fetched on demand (`ensureLocal`, which waits up to 5 s for an upload
+  still under way on another instance), not all at start.
+
+### Pool hardening
+
+Every pooled connection gets `statement_timeout` (`FLOWPLAN_PG_STATEMENT_TIMEOUT`,
+default 120 s), `lock_timeout` (`FLOWPLAN_PG_LOCK_TIMEOUT`, 10 s as the
+bridge had), `idle_in_transaction_session_timeout`
+(`FLOWPLAN_PG_IDLE_TX_TIMEOUT`, 60 s), a wait limit for a free connection
+(`FLOWPLAN_PG_CONNECT_TIMEOUT`, 30 s) and `application_name`
+`flowplan:<instance>`; `FLOWPLAN_PG_POOL` (default 10, max 500). `untimed()`
+(lib/db.ts) lifts the two limits for the rest of a transaction that is long
+by nature: data steps, snapshots, restores, the schema step.
+
+### Schema on PostgreSQL
+
+A new or older PostgreSQL database gets this version's schema at the first
+use of the database (`lib/db-driver/pg-current.ts`: `ensureSchemaVersion()`
+of `pg-ddl.mjs` – adds, never drops – under an advisory lock, limits
+lifted); a current or newer one is left alone, so old and new instances run
+side by side during a rolling update. `scripts/db-schema.mjs` (in the image
+as `/app/db-schema.mjs`) does the same as a separate deployment step (the
+Helm chart's Job, the compose example's `schema` service);
+`FLOWPLAN_PG_SCHEMA_AUTO=off` leaves it to that step. (Before, nothing in
+the app created the PostgreSQL schema – only tests and the migration tool
+did.) The image no longer starts Litestream when `DATABASE_URL` is
+PostgreSQL.
+
+### Races reviewed (READ COMMITTED, several instances)
+
+| Place | Before | Now | Test (`tests/cluster-concurrency.test.ts`, both databases) |
+|---|---|---|---|
+| Yjs merges: document, record document, whiteboard, server-side rewrites | read state, merge, write back – a parallel save from the same base lost the other's edits | the read is `SELECT … FOR UPDATE` (`sql.forUpdate()`), the second save waits and merges into the first's result | four saves from one base at once: all four paragraphs in the state and the HTML |
+| Sign-up with one address | both passed the check; the second hit the unique index (500) | the check is repeated inside the sign-up lock: 409 `AccountExists` | three sign-ups at once: one account, two `AccountExists` |
+| Sharing a page, accepting invitations | membership/guest/grant read then written; duplicates hit keys (500) | `lockMembership(workspace)` (advisory, per workspace) in `sharePage`, `updatePageShare`, `acceptInvite` (now in a transaction, skips an invitation another sign-in took) | three shares to one person at once: one membership, one grant |
+| Quotas | two uploads both passed `used + size ≤ quota` | `enforceQuota`/`quotaCheckpoint` lock the workspace until the commit when it has a quota | three uploads that fit only once: one passes |
+| Record numbers | counter row trigger | unchanged (the counter row's lock serialises) | twelve records at once: 1…12 |
+| Queue claims | storage queue read then deleted | `SKIP LOCKED` claim with lease | five workers, 40 jobs: each taken once; leased jobs return after the lease |
+| Usage metrics minute | read, add, overwrite | under `lockFor` | – |
+| Tags/properties, first account, issue connections, SSO mappings, rack templates, collection order | locked in phase 1 | unchanged | phase 1 tests |
+
+Without the fixes the same tests fail on PostgreSQL (checked by disabling
+`forUpdate`/`skipLocked`/`lockFor`: 5 of 6 fail; record numbers pass on the
+trigger alone). Positions computed as `MAX(position)+1` outside the locked
+paths (row transfer, shared-content records) can still tie; ties sort by
+`seq`/id, so the effect is cosmetic.
+
+### Health, shutdown
+
+`/api/health/live` (the process answers – no database: restarting would
+not fix it), `/api/health/ready` (database; cluster: Redis and bucket –
+which of them count: `FLOWPLAN_READY_REQUIRE`, default all; 503 while
+stopping; details with the metrics token). `/api/health` stays the
+combined check of the image's `HEALTHCHECK` and the apps. On SIGTERM/SIGINT
+(alongside Next.js, which closes the server and waits for open requests):
+readiness turns 503, the server-sent event streams are closed (browsers
+reconnect through the balancer – otherwise Next.js would wait for them
+until the platform kills the process), the leader unlocks, the heartbeat
+entry goes, then Redis and the session connection close.
+
+### Administration
+
+Administration → Monitoring → **System** (`components/settings/admin/monitoring.tsx`,
+data in the monitoring overview): mode, database kind/version/check, the
+pool of this instance and the time limits, Redis (host, version, messages
+sent/received/failed), object storage (host, bucket, check), the leader,
+the instances with heartbeat, state, connections and memory, and the
+shared queues (files due/in flight, mail, push, webhooks, chat apps).
+
+### Deployment examples
+
+- `deploy/compose/cluster/`: PostgreSQL 16, Redis 7 (password, no
+  persistence), MinIO with a bucket job, the `schema` step, two instances
+  (cache volumes), Caddy as load balancer (round robin, health checks on
+  `/api/health/ready`, streams unbuffered). `docker compose config` valid.
+- `deploy/helm/flowplan`: `cluster.enabled` – replicas with rolling
+  updates (`maxUnavailable: 0`), `DATABASE_URL`/`REDIS_URL` only as Secret
+  references, schema Job as pre-install/pre-upgrade hook, live/ready probes,
+  `preStop` pause, PodDisruptionBudget, spread over nodes, `emptyDir` cache
+  instead of the PVC; refuses to render without database, Redis and bucket.
+  The single-pod default renders as before (apart from the chart version).
+  `helm lint --strict` and `helm template` pass for both.
+
+### Tests
+
+- `tests/cluster.test.ts`: the requirement check, pool limits, the RESP
+  parser (every cut of a reply), the client (commands, pub/sub, reconnect
+  after the connections drop), and on PostgreSQL **two and three instances
+  as child processes** (`tests/helpers/cluster-instance.ts`) on one schema
+  and one Redis: exactly one leader, heartbeats of both, a document update
+  published on one arriving at an editor stream of the other, a shared
+  rate limit, graceful handover (< 5 s, measured ~0.3 s) and failover after
+  `SIGKILL` of the leader. Real Redis with `FLOWPLAN_TEST_REDIS_URL` (CI's
+  `postgres` job now has a `redis:7` service), else an in-process double
+  (`tests/helpers/fake-redis.ts`).
+- `tests/cluster-concurrency.test.ts`: the races above.
+
+### Results
+
+RESULTS_PLACEHOLDER
+
+### What is left (open risks)
+
+- **Files written on one instance** are uploaded by that instance (NOTIFY,
+  then the queue). Until then (normally well under a second) other
+  instances wait up to 5 s in `ensureLocal`; paths that read the uploads
+  folder directly (exports, archives, some importers, publication copies)
+  do not fetch from the bucket yet and can miss a file another instance
+  wrote. A write-through upload (or reading through `ensureLocal`
+  everywhere) closes this. If an instance dies before uploading, its files
+  are lost (the queue gives up after its retries).
+- **Leader duties during a handover:** a round already running on an old
+  leader that lost its connection can overlap with the new leader's first
+  round. The duties are idempotent or claim their rows, but none is
+  checked against that.
+- **Process-local state that is still per instance:** the setup restore
+  and instance move progress (`lib/setup-restore.ts`, `lib/instance-move.ts`),
+  their staged files in the local data folder (an `emptyDir` in Kubernetes:
+  lost on a restart – run a restore with one instance), the in-memory
+  "people active this hour" count (the hour row takes the maximum of the
+  instances and of the sessions table), the search indexer's backlog
+  numbers per process.
+- **Restores on PostgreSQL** truncate and refill every table in one
+  transaction: other instances' queries wait on the locks and fail after
+  `lock_timeout`. Scale to one instance (or use maintenance mode) for a
+  restore.
+- **Sequential awaits** per request (§12) cost ~0.1 ms per round trip on
+  PostgreSQL; the sidebar/bootstrap permission checks and `filterAsync`
+  over pages are the hot spots in the load test (§14).
+- **PgBouncer:** named prepared statements need ≥ 1.21 with
+  `max_prepared_statements`; `LISTEN` and the leader's session lock need a
+  session-pooled connection (`pg-session.ts` connects with `DATABASE_URL`:
+  point it at the server or a session-mode pool).
+- **Redis** is a single point for live updates and shared limits: when it is
+  away, editing and saving keep working (PostgreSQL), live updates between
+  instances stop (clients catch up on their next check), rate limits count
+  per instance, and readiness turns 503 on every instance at once – the
+  balancer has nothing left. `FLOWPLAN_READY_REQUIRE=database` (or
+  `database,objectStorage`) keeps instances ready without Redis; the
+  default requires all three, as decided. Redis Sentinel/Cluster are not
+  supported by the small client (one endpoint; a managed Redis with a
+  stable address works).
+- `scripts/check-promises.mjs` is still a tool, not a CI gate.

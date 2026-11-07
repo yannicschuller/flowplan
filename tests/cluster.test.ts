@@ -45,6 +45,27 @@ test("pool limits come from the environment, with the bridge's 10 s lock timeout
   assert.throws(() => postgresTimeouts({ FLOWPLAN_PG_STATEMENT_TIMEOUT: "soon" }), /milliseconds/);
 });
 
+test("liveness answers without the database; readiness checks it and turns 503 while stopping; FLOWPLAN_READY_REQUIRE", async () => {
+  const { readinessRequires } = await import("../lib/cluster/health");
+  assert.deepEqual([...readinessRequires({})].sort(), ["database", "objectStorage", "redis"]);
+  assert.deepEqual([...readinessRequires({ FLOWPLAN_READY_REQUIRE: "database, objectStorage" })], ["database", "objectStorage"]);
+  const live = await (await import("../app/api/health/live/route")).GET();
+  assert.equal(live.status, 200);
+  const { GET: ready } = await import("../app/api/health/ready/route");
+  const answer = await ready(new Request("http://localhost/api/health/ready"));
+  assert.equal(answer.status, 200);
+  assert.deepEqual(await answer.json(), { service: "flowplan", status: "ok", checks: { database: "ok" } });
+  // Stopping: open live streams are closed, readiness says so.
+  const { onShutdown, stopInstance } = await import("../lib/cluster/runtime");
+  let closed = 0;
+  onShutdown(() => closed++);
+  await stopInstance("test");
+  assert.equal(closed, 1);
+  const stopping = await ready(new Request("http://localhost/api/health/ready"));
+  assert.equal(stopping.status, 503);
+  assert.equal((await stopping.json()).status, "stopping");
+});
+
 test("the Redis protocol: commands out, replies in – also split across packets", () => {
   assert.equal(encodeCommand(["SET", "k", "vä"]).toString(), "*3\r\n$3\r\nSET\r\n$1\r\nk\r\n$3\r\nvä\r\n");
   const reply = Buffer.from("*4\r\n+OK\r\n:42\r\n$-1\r\n$5\r\nhällo\r\n".replace("$5", `$${Buffer.byteLength("hällo")}`));
