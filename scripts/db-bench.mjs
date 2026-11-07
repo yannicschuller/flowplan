@@ -1,10 +1,12 @@
 // Micro-benchmark of the database layer (docs/architecture/database.md):
 // 20,000 point queries (a user by primary key) through
-//   - the synchronous helper one() of lib/db.ts (SQLite, statement cache),
+//   - the synchronous SQLite statement behind the driver (sqliteOne of
+//     lib/db.ts: statement cache) – what one() was before the sweep,
+//   - one() of lib/db.ts (asynchronous since #127, phase 2) on SQLite,
 //   - the asynchronous Db on SQLite (lib/db-driver/sqlite.ts),
 //   - the asynchronous Db on Postgres, one query at a time and 16 at once,
-//     with and without named prepared statements,
-//   - the transitional blocking bridge to Postgres (lib/db-driver/pg-sync.ts).
+//     with and without named prepared statements.
+// (The blocking bridge of phase 1 is gone.)
 //
 //   node --import tsx scripts/db-bench.mjs [postgres://…/db] [--n 20000]
 import { mkdtempSync, rmSync } from "node:fs";
@@ -25,8 +27,8 @@ const legacy = await import("../lib/db.ts");
 const { createSqliteDb } = await import("../lib/db-driver/sqlite.ts");
 
 const ids = Array.from({ length: USERS }, () => randomUUID());
-legacy.transaction(() => {
-  for (const id of ids) legacy.run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", id, `bench:${id}`, "Bench", "bench@example.test");
+await legacy.transaction(async () => {
+  for (const id of ids) await legacy.run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", id, `bench:${id}`, "Bench", "bench@example.test");
 });
 const SQL = "SELECT * FROM users WHERE id=?";
 const pick = (i) => ids[(i * 7919) % USERS];
@@ -49,8 +51,13 @@ async function measure(name, fn) {
 console.log(`${N} point queries (median of ${ROUNDS}), ${USERS} users, Node ${process.version}`);
 const results = [];
 results.push(
-  await measure("SQLite sync one() (today)", (n) => {
-    for (let i = 0; i < n; i++) if (!legacy.one(SQL, pick(i))) throw new Error("missing");
+  await measure("SQLite sync sqliteOne() (one() before)", (n) => {
+    for (let i = 0; i < n; i++) if (!legacy.sqliteOne(SQL, pick(i))) throw new Error("missing");
+  }),
+);
+results.push(
+  await measure("SQLite one() of lib/db.ts, awaited", async (n) => {
+    for (let i = 0; i < n; i++) if (!(await legacy.one(SQL, pick(i)))) throw new Error("missing");
   }),
 );
 const sqlite = createSqliteDb();
@@ -115,15 +122,6 @@ if (url) {
   results.push(
     await measure("Postgres async, unnamed statements, one by one", async (n) => {
       for (let i = 0; i < n; i++) if (!(await unprepared.one(SQL, pick(i)))) throw new Error("missing");
-    }),
-  );
-  process.env.DATABASE_URL = url;
-  process.env.FLOWPLAN_PG_SCHEMA = schemaName;
-  const { legacyPostgres } = await import("../lib/db-driver/pg-sync.ts");
-  const bridge = legacyPostgres();
-  results.push(
-    await measure("Postgres sync bridge (blocking), one by one", (n) => {
-      for (let i = 0; i < n; i++) if (!bridge.one(SQL, [pick(i)])) throw new Error("missing");
     }),
   );
   await unprepared.close();

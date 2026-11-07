@@ -1,8 +1,8 @@
 // The standalone build on PostgreSQL: starts .next/standalone/server.js
 // against a fresh schema (created from lib/db-driver/postgres-schema.json)
-// and checks that both database paths work in the bundle – the synchronous
-// bridge (its worker thread, lib/db-driver/pg-sync-worker.mjs) and the
-// asynchronous pool (pg) – then drops the schema.
+// and checks that the bundle works on the asynchronous pool (pg) alone –
+// health, the first sign-up, bootstrap – with no trace of the blocking
+// bridge of phase 1 (#127) in the output, then drops the schema.
 //
 //   npm run build && DATABASE_URL=postgres://… node scripts/check-standalone-postgres.mjs
 import { spawn } from "node:child_process";
@@ -83,10 +83,9 @@ try {
     }
   }
   check("the server starts", up, output.slice(-2000));
-  // Synchronous helpers → the bridge's worker thread.
   const health = await (await fetch(`${origin}/api/health`, { headers: { authorization: `Bearer ${metricsToken}` } })).json();
-  check("health through the bridge", health.status === "ok", JSON.stringify(health));
-  // Sign-up: the asynchronous pool (lib/local-auth.ts) and the bridge.
+  check("health", health.status === "ok", JSON.stringify(health));
+  // Sign-up: the first account, through the pool.
   const register = await fetch(`${origin}/api/auth/register`, {
     method: "POST",
     headers: { "content-type": "application/json", origin },
@@ -104,7 +103,11 @@ try {
   await client.end();
   rmSync(work, { recursive: true, force: true });
 }
-if (/SQLite-only SQL|Postgres bridge|Cannot find module|pg-sync-worker/.test(output)) {
+// The blocking bridge is gone: neither its worker in the bundle nor
+// SQLite-only SQL at runtime.
+for (const file of ["lib/db-driver/pg-sync-worker.mjs", "lib/db-driver/pg-sync.ts"])
+  check(`no ${file} in the standalone output`, !existsSync(join(root, ".next/standalone", file)));
+if (/SQLite-only SQL|Postgres bridge|Cannot find module|pg-sync|Atomics\.wait/.test(output)) {
   console.log(output.slice(-3000));
   failures++;
 }

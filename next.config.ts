@@ -46,9 +46,6 @@ const config: NextConfig = {
   // The PDF text worker loads pdf.js and its worker module at runtime.
   outputFileTracingIncludes: {
     "/*": [
-      // The worker of the transitional Postgres bridge (lib/db-driver/pg-sync.ts).
-      "./lib/db-driver/pg-sync-worker.mjs",
-      "./lib/db-driver/pg-types.mjs",
       "./node_modules/pdfjs-dist/legacy/build/*.mjs",
       // OCR: worker script, WebAssembly core and bundled language data.
       "./node_modules/tesseract.js/src/**/*",
