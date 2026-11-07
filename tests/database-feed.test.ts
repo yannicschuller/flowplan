@@ -240,3 +240,13 @@ test("feed preferences, rich previews, property visibility and contents survive 
   act({ action: "snapshot.restore", pageId: restored, snapshotId: snapshot });
   check(restored);
 });
+
+test("previews come from a cache keyed by the source and are copies", () => {
+  const first = documentPreview("<p>Gleich</p>");
+  (first as { text: string }).text = "verändert";
+  assert.equal(documentPreview("<p>Gleich</p>").text, "Gleich");
+  assert.notEqual(documentPreview(""), documentPreview(""));
+  assert.deepEqual(documentPreview(""), documentPreview(""));
+  const long = `<p>${"x".repeat(5000)}</p>`;
+  assert.equal(documentPreview(long).text.length, 5000);
+});
