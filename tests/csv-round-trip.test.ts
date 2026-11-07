@@ -82,3 +82,11 @@ test("a cell with thousands of comma-separated values splits in linear time", ()
   assert.equal(values.length, 2000);
   assert.ok(performance.now() - started < 200, `took ${performance.now() - started} ms`);
 });
+
+test("formulas after leading spaces are defused and come back as written", () => {
+  for (const value of ["  =SUM(1,2)", " +1", "\n@x", " -x"]) {
+    assert.ok(CSV_FORMULA.test(value), JSON.stringify(value));
+    assert.equal(csvImportText(`'${value}`), value);
+  }
+  for (const value of [" -5", "  text", "-1.5"]) assert.ok(!CSV_FORMULA.test(value), JSON.stringify(value));
+});

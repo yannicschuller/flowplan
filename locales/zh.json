@@ -8018,6 +8018,7 @@
   "The message could not be sent.": "消息无法发送。",
   "The model is not in the provider's list.": "该模型不在提供商的列表中。",
   "The name no longer matches. Please reload and confirm the current name.": "名称不再匹配。请重新加载并确认当前名称。",
+  "The NetBox data is too large. Please import fewer racks at a time.": "NetBox 数据过多。请一次导入较少的机柜。",
   "The new key is published at /.well-known/flowplan-push at once and signs after a little more than an hour – so the relay knows it in time. The current one stays listed for 7 days.": "新的密钥会立即发布在 /.well-known/flowplan-push，并在大约一小时后进行签名——这样中继就能及时知道。当前的密钥会保留在列表中7天。",
   "The next days from calendar views and connected calendars.": "从日历视图和已连接的日历中的接下来的几天。",
   "The number is outside the supported range.": "该数字超出支持的范围。",

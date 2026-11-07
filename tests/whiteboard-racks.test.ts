@@ -238,7 +238,12 @@ test("power and weight: totals per rack and per PDU, warnings, UPS chains", () =
 test("CSV: cable list and ports, quoted cells, formulas defused", () => {
   assert.equal(csvCell('a "b", c'), '"a ""b"", c"');
   assert.equal(csvCell("=HYPERLINK(1)"), "'=HYPERLINK(1)");
-  assert.equal(csvCell("-1"), "'-1");
+  // The guard of every CSV export (CSV_FORMULA): numbers stay numbers.
+  assert.equal(csvCell("-1"), "-1");
+  assert.equal(csvCell("-cmd"), "'-cmd");
+  assert.equal(csvCell("  =1+1"), "'  =1+1");
+  assert.equal(csvCell("\tx"), "'\tx");
+  assert.equal(csvCell("'=x"), "''=x");
   assert.equal(csvCell(null), "");
   const csv = cablesCsv([{ id: "c", label: "L-1", type: "om4", color: "#ae3ec9", length: 2.5, from: "a · 1", to: "b · 2", vlan: "", notes: "line\nbreak" }], en);
   const lines = csv.split("\r\n");
@@ -512,6 +517,37 @@ test("NetBox: the API address, token header, paging and errors", async () => {
     return { status: 200, body: JSON.stringify(url.includes("racks") ? { results: [{ id: 1 }], next: "https://evil.example/api/dcim/racks/" } : pages.empty) };
   });
   assert.ok(hosts.every((h) => h === "nb.example"));
+});
+
+test("NetBox: one import has a budget of requests, bytes and devices", async () => {
+  const input = { url: "https://netbox.example.org", token: "0123456789abcdef" };
+  // Endless paging with distinct device ids (the audit's stub).
+  const run = async (devicesPerPage: number, body = (results: unknown[], next: string) => JSON.stringify({ results, next })) => {
+    let calls = 0;
+    let bytes = 0;
+    const error = await fetchNetbox(input, async (url) => {
+      calls++;
+      const u = new URL(url);
+      const results = u.pathname.endsWith("dcim/racks/")
+        ? Array.from({ length: 20 }, (_, i) => ({ id: i + 1, name: `r${i}` }))
+        : u.pathname.endsWith("dcim/devices/")
+          ? Array.from({ length: devicesPerPage }, (_, i) => ({ id: calls * 1000 + i, device_type: { id: 1 } }))
+          : [{ id: calls }];
+      const text = body(results, `${u.origin}${u.pathname}?page=${calls}`);
+      bytes += text.length;
+      return { status: 200, body: text };
+    }).catch((e: Error) => e);
+    return { error, calls, bytes };
+  };
+  const many = await run(100);
+  assert.match(String(many.error), /zu umfangreich/);
+  assert.ok(many.calls <= 25, `too many devices stop early (${many.calls})`);
+  const paging = await run(50);
+  assert.match(String(paging.error), /zu umfangreich/);
+  assert.ok(paging.calls <= 200, `request budget (${paging.calls})`);
+  const big = await run(1, (results, next) => JSON.stringify({ results, next, pad: "x".repeat(5_000_000) }));
+  assert.match(String(big.error), /zu umfangreich/);
+  assert.ok(big.bytes <= 60_000_000, `byte budget (${big.bytes})`);
 });
 
 test("cables between stacked devices run straight across the gap (#111)", () => {

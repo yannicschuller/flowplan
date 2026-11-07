@@ -1,3 +1,4 @@
+import { CSV_FORMULA } from "@/lib/cell-text";
 import { linkTargets } from "@/lib/link-targets";
 import { withRequestLocale } from "@/lib/content-locale";
 import { listPlugins, pluginsForPage, publicPlugin, queryPluginDatabase, registerPlugin } from "@/lib/plugins";
@@ -265,7 +266,7 @@ async function handleGET(
       const cell = (v: unknown) => {
         const text = String(v ?? "");
         // Spreadsheet programs must not run formulas from the log.
-        const safe = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
+        const safe = CSV_FORMULA.test(text) ? `'${text}` : text;
         return `"${safe.replace(/"/g, '""')}"`;
       };
       const rowsCsv = all<Record<string, unknown>>(

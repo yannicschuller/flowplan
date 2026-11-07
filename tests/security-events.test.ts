@@ -242,6 +242,15 @@ test("the overview sums up; incidents are resolved; the export holds no addresse
   assert.ok(!csv.body.includes("192.0.2.7"));
 });
 
+test("the CSV export defuses formulas and keeps line breaks inside a cell", () => {
+  reset();
+  run("INSERT INTO security_events(at,kind,severity,detail) VALUES(?,?,?,?)", Date.now(), "login.failure", "warn", "\t=cmd|' /C calc'!A0\rnext");
+  run("INSERT INTO security_events(at,kind,severity,detail) VALUES(?,?,?,?)", Date.now() - 1, "login.failure", "warn", " @SUM(1)");
+  const body = securityExport("csv").body;
+  assert.ok(body.includes(`"'\t=cmd|' /C calc'!A0\rnext"`), body);
+  assert.ok(body.includes(`"' @SUM(1)"`), body);
+});
+
 test("old events go after the retention", () => {
   reset();
   run("INSERT INTO security_events(at,kind,severity) VALUES(?,?,?)", Date.now() - 100 * 86_400_000, "login.failure", "warn");

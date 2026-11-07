@@ -148,6 +148,9 @@ const ADAM7 = [
   [0, 1, 1, 2],
 ] as const;
 
+// Inflated PNG pixel data beyond this is not decoded (an 8-bit RGBA image
+// of 4096 × 4096 still is).
+const MAX_PNG_RAW = 64 * 1024 * 1024;
 function* decodePng(data: Uint8Array): Steps<SmallImage | null> {
   let at = 8,
     width = 0,
@@ -178,9 +181,21 @@ function* decodePng(data: Uint8Array): Steps<SmallImage | null> {
   const channels = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 }[type];
   if (!channels || ![1, 2, 4, 8, 16].includes(depth) || !width || !height || width * height > MAX_DECODE_PIXELS) return null;
   if (type === 3 && !palette) return null;
-  const raw = inflateSync(Buffer.concat(parts), { maxOutputLength: 512 * 1024 * 1024 });
   const bitsPerPixel = channels * depth,
     bpp = Math.max(1, bitsPerPixel >> 3);
+  // The pixel data has exactly this size (a filter byte and the samples per
+  // line, per pass when interlaced): more is never inflated, and an image
+  // that needs more than MAX_PNG_RAW gets no small copy.
+  const lineBytes = (w: number) => 1 + Math.ceil((w * bitsPerPixel) / 8);
+  const expected = interlace
+    ? ADAM7.reduce((sum, [x0, y0, dx, dy]) => {
+        const pw = Math.ceil((width - x0) / dx),
+          ph = Math.ceil((height - y0) / dy);
+        return pw > 0 && ph > 0 ? sum + ph * lineBytes(pw) : sum;
+      }, 0)
+    : height * lineBytes(width);
+  if (expected > MAX_PNG_RAW) return null;
+  const raw = inflateSync(Buffer.concat(parts), { maxOutputLength: expected + 1024 });
   const out = new Downsampler(width, height);
   const max = (1 << depth) - 1;
   // The colour key of grey and RGB images (tRNS).

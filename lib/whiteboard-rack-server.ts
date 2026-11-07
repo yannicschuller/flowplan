@@ -94,6 +94,12 @@ const netboxInput = z.object({
   racks: z.string().trim().max(1000).optional(),
 });
 const MAX_RACKS = 20;
+// One import asks NetBox at most this often and reads at most this much
+// (pages of up to 1,000 entries, ids in batches of 100).
+const MAX_DEVICES = 1000;
+const MAX_REQUESTS = 200;
+const MAX_TOTAL_BYTES = 50_000_000;
+const TOO_LARGE = "Die NetBox-Daten sind zu umfangreich. Bitte weniger Racks auf einmal übernehmen.";
 type Page<T> = { results?: T[]; next?: string | null };
 export type NetboxFetch = (url: string, headers: Record<string, string>) => Promise<{ status: number; body: string }>;
 const defaultFetch: NetboxFetch = async (url, headers) => {
@@ -118,13 +124,17 @@ export async function fetchNetbox(raw: unknown, fetcher: NetboxFetch = defaultFe
   const base = netboxBase(input.url);
   // NetBox 4.5 tokens ("nbt_…") are bearer tokens, older ones "Token …".
   const headers = { Authorization: input.token.startsWith("nbt_") ? `Bearer ${input.token}` : `Token ${input.token}`, Accept: "application/json" };
-  const list = async <T>(path: string, params: [string, string][]): Promise<T[]> => {
+  let requests = 0;
+  let bytes = 0;
+  // Paging stops once `enough` entries have arrived.
+  const list = async <T>(path: string, params: [string, string][], enough = Infinity): Promise<T[]> => {
     const query = new URLSearchParams([...params, ["limit", "1000"]]);
     let next: string | null = `${base}/${path}/?${query}`;
     const out: T[] = [];
-    for (let pageNo = 0; next && pageNo < 20; pageNo++) {
+    for (let pageNo = 0; next && pageNo < 20 && out.length < enough; pageNo++) {
       // Follow-up pages only on the same server.
       if (!next.startsWith(`${new URL(base).origin}/`)) break;
+      if (++requests > MAX_REQUESTS) throw new HttpError(400, TOO_LARGE);
       let answer;
       try {
         answer = await fetcher(next, headers);
@@ -137,6 +147,8 @@ export async function fetchNetbox(raw: unknown, fetcher: NetboxFetch = defaultFe
       if (answer.status === 401 || answer.status === 403) throw new HttpError(400, "NetBox hat den Token abgelehnt.");
       if (answer.status === 404) throw new HttpError(400, "Unter dieser Adresse antwortet keine NetBox-API.");
       if (answer.status < 200 || answer.status >= 300) throw new HttpError(502, `NetBox antwortet mit Fehler ${answer.status}.`);
+      bytes += answer.body.length;
+      if (bytes > MAX_TOTAL_BYTES) throw new HttpError(400, TOO_LARGE);
       let data: Page<T>;
       try {
         data = JSON.parse(answer.body);
@@ -149,9 +161,10 @@ export async function fetchNetbox(raw: unknown, fetcher: NetboxFetch = defaultFe
     return out;
   };
   // Many ids per request, in batches.
-  const byIds = async <T>(path: string, key: string, ids: number[]) => {
+  const byIds = async <T>(path: string, key: string, ids: number[], enough = Infinity) => {
     const out: T[] = [];
-    for (let i = 0; i < ids.length; i += 50) out.push(...(await list<T>(path, ids.slice(i, i + 50).map((n) => [key, String(n)]))));
+    for (let i = 0; i < ids.length && out.length < enough; i += 100)
+      out.push(...(await list<T>(path, ids.slice(i, i + 100).map((n) => [key, String(n)]), enough - out.length)));
     return out;
   };
   const rackParams: [string, string][] = [];
@@ -162,10 +175,11 @@ export async function fetchNetbox(raw: unknown, fetcher: NetboxFetch = defaultFe
     .filter(Boolean)
     .slice(0, MAX_RACKS);
   for (const name of names) rackParams.push(["name", name]);
-  const racks = (await list<NetboxData["racks"][number]>("dcim/racks", rackParams)).slice(0, MAX_RACKS);
+  const racks = (await list<NetboxData["racks"][number]>("dcim/racks", rackParams, MAX_RACKS)).slice(0, MAX_RACKS);
   if (!racks.length) throw new HttpError(404, "In NetBox wurden keine passenden Racks gefunden.");
-  const devices = await byIds<NetboxData["devices"][number]>("dcim/devices", "rack_id", racks.map((r) => r.id));
-  const deviceIds = devices.map((d) => d.id).slice(0, 2000);
+  const devices = await byIds<NetboxData["devices"][number]>("dcim/devices", "rack_id", racks.map((r) => r.id), MAX_DEVICES + 1);
+  if (devices.length > MAX_DEVICES) throw new HttpError(400, TOO_LARGE);
+  const deviceIds = devices.map((d) => d.id);
   const typeIds = [...new Set(devices.map((d) => (d.device_type as { id?: number } | undefined)?.id).filter((n): n is number => typeof n === "number"))];
   const [deviceTypes, interfaces, frontPorts, rearPorts, consolePorts, powerPorts, powerOutlets, cables] = await Promise.all([
     byIds<NetboxData["deviceTypes"][number]>("dcim/device-types", "id", typeIds),

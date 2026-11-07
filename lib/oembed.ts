@@ -1,6 +1,7 @@
 import { HttpError } from "./auth";
 import { embedFromUrl, embedProvider } from "./embed-providers";
 import { safeFetch } from "./safe-fetch";
+import { scanHtml } from "./html-tokens";
 
 export type ResolvedEmbed =
   | { kind: "player"; src: string; provider: string }
@@ -19,18 +20,56 @@ const decode = (value: string) =>
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&amp;/g, "&");
-function attribute(tag: string, name: string) {
-  const m = new RegExp(`\\b${name}\\s*=\\s*("([^"]*)"|'([^']*)')`, "i").exec(
-    tag,
-  );
-  return m ? decode(m[2] ?? m[3] ?? "") : "";
+// Pages and oEmbed HTML are read up to here (see scanHtml: one pass, no
+// regular expressions over the whole page).
+const HEAD_LIMIT = 64_000;
+// The src of the first <iframe> in oEmbed's HTML.
+function iframeSrc(html: string) {
+  let src = "";
+  scanHtml(html.slice(0, HEAD_LIMIT), {
+    open: ({ name, attrs }) => {
+      if (name !== "iframe") return;
+      src = decode(attrs.get("src") || "");
+      return false;
+    },
+  });
+  return src;
 }
-function meta(html: string, key: string) {
-  for (const tag of html.match(/<meta\b[^>]*>/gi) || []) {
-    const name = attribute(tag, "property") || attribute(tag, "name");
-    if (name.toLowerCase() === key) return attribute(tag, "content");
-  }
-  return "";
+// What a link card needs from a page: its title, the meta tags (the first
+// of each name) and the oEmbed address, up to the end of <head>.
+type PageHead = { title: string; meta: Map<string, string>; oembed: string };
+function readHead(html: string): PageHead {
+  const head: PageHead = { title: "", meta: new Map(), oembed: "" };
+  let title: string | undefined;
+  let inTitle = false;
+  scanHtml(html.slice(0, HEAD_LIMIT), {
+    open: ({ name, attrs }) => {
+      if (name === "body") return false;
+      if (name === "meta") {
+        const key = (attrs.get("property") || attrs.get("name") || "").toLowerCase();
+        if (key && !head.meta.has(key)) head.meta.set(key, decode(attrs.get("content") || ""));
+      } else if (
+        name === "link" &&
+        !head.oembed &&
+        /json\+oembed/i.test(attrs.get("type") || "") &&
+        /alternate/i.test(attrs.get("rel") || "")
+      )
+        head.oembed = decode(attrs.get("href") || "");
+      else if (name === "title" && title === undefined) {
+        title = "";
+        inTitle = true;
+      }
+    },
+    close: (name) => {
+      if (name === "title") inTitle = false;
+      if (name === "head") return false;
+    },
+    text: (raw) => {
+      if (inTitle) title += raw;
+    },
+  });
+  head.title = decode(title || "");
+  return head;
 }
 const httpsUrl = (value: string, base: string) => {
   try {
@@ -54,14 +93,9 @@ export async function resolveEmbed(raw: string): Promise<ResolvedEmbed> {
   const page = await safeFetch(raw, { maxBytes: 1_500_000 });
   if (page.status >= 400)
     throw new HttpError(502, "Die Seite antwortet mit einem Fehler.");
-  const html = page.type.includes("html") ? page.body.slice(0, 400_000) : "";
+  const head = readHead(page.type.includes("html") ? page.body : "");
   let oembed: Record<string, unknown> = {};
-  const link = (html.match(/<link\b[^>]*>/gi) || []).find(
-    (tag) =>
-      /json\+oembed/i.test(attribute(tag, "type")) &&
-      /alternate/i.test(attribute(tag, "rel")),
-  );
-  const endpoint = link ? httpsUrl(attribute(link, "href"), page.url) : "";
+  const endpoint = head.oembed ? httpsUrl(head.oembed, page.url) : "";
   if (endpoint) {
     try {
       const response = await safeFetch(endpoint, { maxBytes: 300_000 });
@@ -69,8 +103,7 @@ export async function resolveEmbed(raw: string): Promise<ResolvedEmbed> {
     } catch {}
   }
   // A player the app knows, announced through oEmbed.
-  const iframe = /<iframe\b[^>]*>/i.exec(String(oembed.html || ""))?.[0];
-  const player = iframe ? attribute(iframe, "src") : "";
+  const player = iframeSrc(String(oembed.html || ""));
   if (player) {
     const direct = embedProvider(player) ? player : embedFromUrl(player)?.src;
     if (direct)
@@ -80,18 +113,20 @@ export async function resolveEmbed(raw: string): Promise<ResolvedEmbed> {
         provider: embedProvider(direct)!.name,
       };
   }
-  return previewCard(html, page.url, oembed);
+  return previewCard(head, page.url, oembed);
 }
 // Link card from oEmbed data and Open Graph tags of a fetched page.
 export function previewCard(
-  html: string,
+  page: string | PageHead,
   pageUrl: string,
   oembed: Record<string, unknown> = {},
 ): ResolvedEmbed {
+  const head = typeof page === "string" ? readHead(page) : page;
+  const meta = (key: string) => head.meta.get(key) || "";
   const title =
     clip(oembed.title, 300) ||
-    clip(meta(html, "og:title"), 300) ||
-    clip(decode(/<title[^>]*>([^<]*)<\/title>/i.exec(html)?.[1] || ""), 300);
+    clip(meta("og:title"), 300) ||
+    clip(head.title, 300);
   if (!title && !Object.keys(oembed).length)
     throw new HttpError(422, "Für diese Seite gibt es keine Vorschau.");
   return {
@@ -100,13 +135,13 @@ export function previewCard(
     title: title || new URL(pageUrl).hostname,
     provider:
       clip(oembed.provider_name, 100) ||
-      clip(meta(html, "og:site_name"), 100) ||
+      clip(meta("og:site_name"), 100) ||
       new URL(pageUrl).hostname,
     description:
-      clip(meta(html, "og:description"), 300) ||
-      clip(meta(html, "description"), 300),
+      clip(meta("og:description"), 300) ||
+      clip(meta("description"), 300),
     image: httpsUrl(
-      String(oembed.thumbnail_url || meta(html, "og:image") || ""),
+      String(oembed.thumbnail_url || meta("og:image") || ""),
       pageUrl,
     ),
   };

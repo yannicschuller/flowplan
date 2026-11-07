@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { crc32, createDeflate } from "node:zlib";
 import type { Identity } from "../lib/types";
 
 const dir = mkdtempSync(join(tmpdir(), "flowplan-placeholders-"));
@@ -120,6 +121,48 @@ test("broken and hostile files give no picture, never an exception", async () =>
   huge.writeUInt32BE(30000, 16);
   huge.writeUInt32BE(30000, 20);
   assert.deepEqual(await decodeImageInSlices(huge), { width: 30000, height: 30000, small: null });
+});
+
+test("a PNG that inflates far beyond its declared size is refused quickly", async () => {
+  // ~400 KB of IDAT that inflate to 400 MB of zeros (made in a stream).
+  const deflate = createDeflate({ level: 9 });
+  const chunks: Buffer[] = [];
+  deflate.on("data", (chunk: Buffer) => chunks.push(chunk));
+  const zeros = Buffer.alloc(1024 * 1024);
+  for (let i = 0; i < 400; i++) if (!deflate.write(zeros)) await new Promise((done) => deflate.once("drain", done));
+  await new Promise((done) => deflate.end(done));
+  const idat = Buffer.concat(chunks);
+  assert.ok(idat.length < 500_000, String(idat.length));
+  const chunk = (kind: string, body: Buffer) => {
+    const head = Buffer.alloc(8);
+    head.writeUInt32BE(body.length, 0);
+    head.write(kind, 4, "latin1");
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(Buffer.concat([head.subarray(4), body])), 0);
+    return Buffer.concat([head, body, crc]);
+  };
+  const png = (width: number, height: number, type: number) => {
+    const ihdr = Buffer.alloc(13);
+    ihdr.writeUInt32BE(width, 0);
+    ihdr.writeUInt32BE(height, 4);
+    ihdr[8] = 8;
+    ihdr[9] = type;
+    return Buffer.concat([Buffer.from("89504e470d0a1a0a", "hex"), chunk("IHDR", ihdr), chunk("IDAT", idat), chunk("IEND", Buffer.alloc(0))]);
+  };
+  // Small declared size: inflating stops at the size the pixels need.
+  // Within the pixel limit, but 196 MB of RGBA: not inflated at all.
+  for (const [width, height, type] of [[100, 100, 0], [7000, 7000, 6]]) {
+    const before = process.memoryUsage().rss;
+    const start = performance.now();
+    assert.deepEqual(await decodeImageInSlices(png(width, height, type)), { width, height, small: null });
+    assert.ok(performance.now() - start < 500, `${width}: ${performance.now() - start} ms`);
+    assert.ok(process.memoryUsage().rss - before < 100 * 1024 * 1024, `${width}: memory`);
+  }
+});
+
+test("placeholders are computed one image at a time", async () => {
+  const results = await Promise.all(["photo.png", "photo.jpg", "palette.gif", "photo.png"].map((name) => P.computePlaceholder(fixture(name))));
+  assert.ok(results.every((r) => r && r.width > 0 && r.hash));
 });
 
 // ---- ThumbHash ----

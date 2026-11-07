@@ -8,10 +8,11 @@ export function cellText(value: unknown): string {
 }
 
 // CSV exports: values that a spreadsheet would run as a formula (=, +, @, a
-// "-" that is not a number) get a leading apostrophe; negative numbers stay.
-// So do such values that already start with apostrophes ("'=x"), so that the
-// import can take exactly one away.
-export const CSV_FORMULA = /^'*(?:[=+@\t\r]|-(?!\d[\d.,]*$))/;
+// "-" that is not a number, also after leading spaces; a leading tab or
+// carriage return) get a leading apostrophe; negative numbers stay. So do
+// such values that already start with apostrophes ("'=x"), so that the
+// import can take exactly one away. Every CSV export uses this guard.
+export const CSV_FORMULA = /^'*(?:[\t\r]|\s*(?:[=+@]|-(?!\d[\d.,]*$)))/;
 
 // The CSV import undoes that: a leading apostrophe goes only where the export
 // put it, so "'hello" and "it's" stay as written.
