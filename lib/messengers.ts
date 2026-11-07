@@ -43,6 +43,7 @@ import { privateAddress } from "./safe-fetch";
 import { securityEvent } from "./security-events";
 import { notificationUrl } from "./page-location";
 import { pageRole } from "./permissions";
+import { lockedNotification } from "./journal-extras";
 import { isEncryptedPage } from "./e2ee-server";
 import { instanceSettings } from "./instance-settings";
 import type { NotificationKind } from "./notification-kinds";
@@ -613,7 +614,8 @@ async function handle(job: Job, bot: Bot | null, services: Record<MessengerServi
     message = notificationMessage(
       { body: job.n_body, kind: job.n_kind, page_id: job.n_page_id, row_id: job.n_row_id, thread_id: job.n_thread_id, link: job.n_link },
       locale,
-      { preview, encrypted: !!page && isEncryptedPage(page) },
+      // Behind a journal PIN not entered: only the hint, like encrypted pages.
+      { preview, encrypted: !!page && (isEncryptedPage(page) || lockedNotification()({ page_id: job.n_page_id, kind: job.n_kind }, job.user_id)) },
     );
   } else {
     const say = translate(locale);

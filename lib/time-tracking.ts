@@ -8,6 +8,7 @@ import { HttpError } from "./auth";
 import { pageRole, requirePage } from "./permissions";
 import { hiddenRowIds } from "./row-access";
 import { requireRow } from "./row-documents";
+import { requireUnlocked } from "./journal-extras";
 import { assertFieldsWritable, hiddenFieldsFor } from "./field-access";
 import { cellText } from "./cell-text";
 import type { Field, Identity, Page } from "./types";
@@ -148,6 +149,7 @@ export function recordTime(user: Identity, page: Page, rowId: string, fieldId: s
 // Hours per person and week (Monday) over the last weeks, for a database.
 export function timeReport(user: Identity, pageId: string, weeks = 8) {
   const page = requirePage(user, pageId);
+  requireUnlocked(user, page);
   const hidden = hiddenRowIds(user, page);
   // Time properties hidden from this person count for nobody here.
   const hiddenFields = hiddenFieldsFor(user, page);

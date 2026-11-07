@@ -3,6 +3,7 @@
 import { all, one } from "./db";
 import { pageRole } from "./permissions";
 import { htmlParagraphs } from "./version-history";
+import { lockedPageIds } from "./journal-extras";
 import type { Identity, Page } from "./types";
 
 export function syncedUsage(user: Identity, page: Page) {
@@ -27,12 +28,14 @@ export function syncedUsage(user: Identity, page: Page) {
   };
 }
 export function listSyncedBlocks(user: Identity, workspaceId: string) {
+  // Blocks made in a journal behind a PIN not entered: not offered.
+  const locked = lockedPageIds(user, workspaceId);
   return all<Page & { html: string }>(
     `SELECT p.*,d.html FROM pages p JOIN documents d ON d.page_id=p.id
      WHERE p.workspace_id=? AND p.synced=1 AND p.deleted_at IS NULL ORDER BY p.updated_at DESC LIMIT 200`,
     workspaceId,
   )
-    .filter((page) => pageRole(user, page))
+    .filter((page) => !locked.has(page.id) && pageRole(user, page))
     .map((page) => {
       const origin = page.parent_id ? one<Page>("SELECT title FROM pages WHERE id=?", page.parent_id) : undefined;
       return {

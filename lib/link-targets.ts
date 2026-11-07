@@ -11,6 +11,7 @@
 import { all, one } from "./db";
 import { pageRole } from "./permissions";
 import { rowRoleResolver } from "./row-access";
+import { journalLocked } from "./journal-extras";
 import type { Identity, Page } from "./types";
 
 export const LINK_TARGETS_LIMIT = 100;
@@ -31,7 +32,7 @@ export function linkTargets(user: Identity, keys: readonly string[]): Record<str
   const readable = (pageId: string) => {
     if (!pages.has(pageId)) {
       const page = one<Page>("SELECT * FROM pages WHERE id=?", pageId) || null;
-      pages.set(pageId, page && !page.deleted_at && !page.synced && pageRole(user, page) ? page : null);
+      pages.set(pageId, page && !page.deleted_at && !page.synced && pageRole(user, page) && !journalLocked(user, page) ? page : null);
     }
     return pages.get(pageId) || null;
   };

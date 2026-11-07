@@ -15,6 +15,7 @@ import { pageData, database, command } from "./api";
 import { moveRow, validateViewRowOrders } from "./row-order-server";
 import { transformFilterGroup } from "./database-filters";
 import { ensureRowDocument, requireRow } from "./row-documents";
+import { requireUnlocked } from "./journal-extras";
 import type { Identity, Filter, View } from "./types";
 import { documentChanged } from "./document-live";
 // The host is a page document or, with `rowId`, a record document.
@@ -29,6 +30,7 @@ function hostDocument(
     return { host: page, rowId: row.id, stored: ensureRowDocument(row) };
   }
   const host = requirePage(user, hostId, write);
+  requireUnlocked(user, host);
   if (host.kind !== "document")
     throw new HttpError(400, "Einbettung benötigt ein Dokument.");
   if (write && host.locked)
@@ -75,6 +77,8 @@ function open(
     const source = requirePage(user, attrs.source);
     if (source.kind !== "database" || source.workspace_id !== host.workspace_id)
       throw new HttpError(403, "Datenquelle nicht verfügbar.");
+    // A source below a journal behind a PIN stays closed here as well.
+    requireUnlocked(user, source);
     return {
       host,
       rowId,

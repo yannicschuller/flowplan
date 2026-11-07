@@ -12,6 +12,7 @@ import { localizedMessage } from "./i18n-errors";
 import { userLocale } from "./user-locale";
 import { notificationOn } from "./notification-kinds";
 import { notificationUrl } from "./page-location";
+import { LOCKED_NOTICE, lockedNotification } from "./journal-extras";
 
 export type MailConfig = {
   host: string;
@@ -294,12 +295,14 @@ export function queueNotificationDigests(now = Date.now()) {
   for (const n of pending) byUser.set(n.user_id, [...(byUser.get(n.user_id) || []), n]);
   const url = appUrl();
   let queued = 0;
+  // Behind a journal PIN not entered: only that the journal is locked.
+  const locked = lockedNotification();
   transaction(() => {
     for (const items of byUser.values()) {
       const first = items[0];
       const locale = userLocale(first.user_id);
       const t = translate(locale);
-      const body = (n: (typeof items)[number]) => localizedMessage(n.body, locale);
+      const body = (n: (typeof items)[number]) => localizedMessage(locked(n) ? LOCKED_NOTICE : n.body, locale);
       const link = (n: (typeof items)[number]) =>
         n.page_id
           ? `${url}/#page=${n.page_id}${n.row_id ? `&row=${n.row_id}` : ""}${n.thread_id ? `&thread=${n.thread_id}` : ""}`

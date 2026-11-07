@@ -12,6 +12,7 @@ import { userLocale } from "./user-locale";
 import { localizedMessage } from "./i18n-errors";
 import { translate } from "./i18n";
 import { focusSilences } from "./mobile-focus";
+import { lockedNotification } from "./journal-extras";
 import { openSecret } from "./secret-box";
 import { notePushResult, type PushResult } from "./metrics";
 import { NOTIFICATION_CATEGORIES, notificationCategory, type NotificationCategory } from "./notification-targets";
@@ -343,7 +344,7 @@ export async function flushPushQueue(
           await sendExpo({
             to: job.endpoint.slice(EXPO_ENDPOINT.length),
             title: "Flowplan",
-            body: content && job.body ? localizedMessage(job.body, locale).slice(0, 300) : inboxNotice(job.user_id),
+            body: content && job.body && !lockedNotification()(job) ? localizedMessage(job.body, locale).slice(0, 300) : inboxNotice(job.user_id),
             data: { url: notificationUrl(job), notificationId: job.notification_id },
             categoryId: notificationCategory({ ...job, id: job.notification_id }, content),
             sound: "default",
@@ -437,7 +438,8 @@ function relayAlert(job: RelayJob, instance: string): RelayMessage {
   const token = openSecret(job.relay_token!, relayTokenAad(job.device_id!));
   const plaintext = plaintextJson({
     title: "Flowplan",
-    body: content && job.body ? localizedMessage(job.body, locale).slice(0, 300) : inboxNotice(job.user_id),
+    // Behind a journal PIN not entered: only the general notice.
+    body: content && job.body && !lockedNotification()(job) ? localizedMessage(job.body, locale).slice(0, 300) : inboxNotice(job.user_id),
     url: new URL(notificationUrl(job), `${instance}/`).toString(),
     id: job.notification_id,
     category,

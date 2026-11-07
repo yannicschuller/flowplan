@@ -2,6 +2,7 @@ import { all, one, run } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import { requireRow } from "./row-documents";
+import { requireUnlocked } from "./journal-extras";
 import { changedClients } from "./authorship";
 import type { Identity } from "./types";
 
@@ -52,6 +53,7 @@ export function documentAuthors(user: Identity, pageId: string, rowId?: string |
   } else {
     const page = requirePage(user, pageId);
     if (page.kind !== "document") throw new HttpError(400, "Kein Dokument.");
+    requireUnlocked(user, page);
     generation = one<{ generation: string }>("SELECT generation FROM documents WHERE page_id=?", pageId)?.generation || "";
   }
   const entries = all<{ client_id: number; user_id: string; name: string }>(

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { all, id, one, run } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
+import { requireUnlocked } from "./journal-extras";
 import { escaped } from "./document-server";
 import { itemText, type WhiteboardItem } from "./whiteboard-model";
 import { applyRackLayout } from "./whiteboard-rack";
@@ -84,6 +85,7 @@ export function syncWhiteboard(user: Identity, raw: unknown) {
   const b = syncInput.parse(raw);
   const page = requirePage(user, b.pageId, !!b.update);
   if (page.kind !== "whiteboard") throw new HttpError(400, "Kein Whiteboard.");
+  requireUnlocked(user, page);
   const s = stored(page);
   if (b.generation !== s.generation)
     throw new HttpError(

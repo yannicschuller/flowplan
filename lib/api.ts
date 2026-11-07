@@ -63,6 +63,8 @@ import {
   journalDayDetails,
   journalLocked,
   lockingJournal,
+  LOCKED_NOTICE,
+  lockedNotification,
   mayResetJournalLock,
   journalOf,
   journalSettings,
@@ -305,6 +307,7 @@ export function bootstrap(user: Identity, wid?: string, agent?: string | null) {
     workspace.id,
   ).filter((p) => pageRole(user, p));
   const visibleSpaceIds = new Set(pages.map((p) => p.space_id));
+  const lockedInbox = lockedNotification();
   return {
     user,
     // Signs in with e-mail and password (and passkeys) rather than SSO.
@@ -407,10 +410,11 @@ export function bootstrap(user: Identity, wid?: string, agent?: string | null) {
     ).filter(
       (m) => !(workspace as { guest?: number }).guest || m.id === user.id,
     ),
-    notifications: all(
+    // Behind a journal PIN not entered: only that the journal is locked.
+    notifications: all<Record<string, unknown> & { page_id: string | null; kind: string | null; body: string | null }>(
       "SELECT * FROM notifications WHERE user_id=? ORDER BY created_at DESC LIMIT 100",
       user.id,
-    ),
+    ).map((n) => (lockedInbox(n, user.id) ? { ...n, body: LOCKED_NOTICE } : n)),
     // Which AI features work here, with which provider, and which pages the
     // AI may not read (lib/ai). Never keys or addresses beyond the host.
     ai: aiStatus(user, workspace.id, pages),

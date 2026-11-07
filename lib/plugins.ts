@@ -14,6 +14,7 @@ import { safeFetch } from "./safe-fetch";
 import { instanceSettings } from "./instance-settings";
 import { envPluginOrigins } from "./plugin-origins";
 import { visibleRows } from "./row-access";
+import { requireUnlocked } from "./journal-extras";
 import { visibleFields } from "./field-access";
 import { publicTree } from "./publication";
 import {
@@ -288,6 +289,8 @@ export function queryPluginDatabase(user: Identity, input: Record<string, unknow
   const source = requirePage(user, b.databaseId);
   if (source.kind !== "database" || source.workspace_id !== row.workspace_id)
     throw new HttpError(404, "Datenbank nicht gefunden.");
+  // Below a journal behind a PIN: closed until the reader enters it.
+  requireUnlocked(user, source);
   const stored = JSON.parse(String(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", source.id)?.fields || "[]")) as Field[];
   const fields = visibleFields(user, source, stored);
   const shown = new Set(fields.map((f) => f.id));

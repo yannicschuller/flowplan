@@ -13,6 +13,7 @@ import { notificationOn } from "./notification-kinds";
 import { notificationUrl } from "./page-location";
 import { pageRole } from "./permissions";
 import { hiddenRowIds } from "./row-access";
+import { LOCKED_NOTICE, lockedNotification } from "./journal-extras";
 import type { Field, Identity, Page } from "./types";
 
 const LIMIT = 50;
@@ -57,17 +58,20 @@ export function notificationFeed(user: Identity, since: number | null) {
     }
     return pages.get(pid)!;
   };
+  const locked = lockedNotification();
   return {
     now: new Date().toISOString(),
     unread,
     notifications: rows.map((n) => {
       const page = n.page_id ? pageOf(n.page_id) : null;
+      // Behind a journal PIN not entered: neither its text nor the record.
+      const secret = !!page && locked(n, user.id);
       // Like push (lib/push.ts): nothing for a page that is gone or no
       // longer readable, and nothing about a record hidden from the reader.
       const hidden = !!n.row_id && !!page && hiddenRowIds(user, page).has(n.row_id);
       const gone = (!!n.page_id && !page) || hidden;
       let detail = "";
-      if (page && n.row_id && !hidden) {
+      if (page && n.row_id && !hidden && !secret) {
         const fields = JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", page.id)?.fields || "[]") as Field[];
         const cells = one<{ cells: string }>("SELECT cells FROM rows WHERE id=? AND page_id=?", n.row_id, page.id);
         if (cells) detail = cellText((JSON.parse(cells.cells) as Record<string, unknown>)[fields[0]?.id || "title"]).trim();
@@ -75,7 +79,7 @@ export function notificationFeed(user: Identity, since: number | null) {
       return {
         id: n.id,
         kind: n.kind,
-        text: localizedMessage(n.body || "", locale).slice(0, 300),
+        text: localizedMessage(secret ? LOCKED_NOTICE : n.body || "", locale).slice(0, 300),
         detail: detail.slice(0, 120),
         url: gone ? "/#inbox" : notificationUrl(n),
         createdAt: toIso(n.created_at),

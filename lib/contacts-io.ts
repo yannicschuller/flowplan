@@ -10,6 +10,7 @@ import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import { visibleRows } from "./row-access";
 import { requireRow, replaceRowDocument } from "./row-documents";
+import { requireUnlocked } from "./journal-extras";
 import { assertFieldsWritable, visibleFields } from "./field-access";
 import { cellText } from "./cell-text";
 import { rowCreated } from "./automations";
@@ -71,6 +72,7 @@ export function readableContactRows(user: Identity, page: Page, rowIds?: string[
 // One contact, a selection or the whole database as a .vcf text.
 export function exportVCards(user: Identity, pageId: string, rowIds?: string[], version: "3.0" | "4.0" = "3.0") {
   const page = requirePage(user, pageId);
+  requireUnlocked(user, page);
   requireContactsDatabase(page.id);
   if (rowIds && rowIds.length > 5000) throw new HttpError(400, "Zu viele Einträge ausgewählt.");
   const rows = readableContactRows(user, page, rowIds);

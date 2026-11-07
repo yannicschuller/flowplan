@@ -587,6 +587,25 @@ export function requireUnlocked(user: Identity, page: Page) {
   if (journalLocked(user, page))
     throw new HttpError(423, "Dieses Journal ist gesperrt.");
 }
+// A notification about a page behind a PIN its recipient has not entered
+// shows only this instead of its text (inbox, desktop feed, push, e-mail,
+// chat apps): its text may quote a record or a task from there. Security
+// notices (wrong PINs, a reset PIN) keep their text.
+export const LOCKED_NOTICE = "Dieses Journal ist gesperrt.";
+export function lockedNotification() {
+  // Without any PIN on the instance nothing is checked.
+  if (!one("SELECT 1 FROM journal_settings WHERE lock_hash IS NOT NULL LIMIT 1")) return () => false;
+  const known = new Map<string, boolean>();
+  return (n: { user_id?: string; page_id: string | null; kind: string | null }, userId = n.user_id || "") => {
+    if (!n.page_id || n.kind === "security" || n.kind === "incident") return false;
+    const key = `${userId}:${n.page_id}`;
+    if (!known.has(key)) {
+      const page = one<Page>("SELECT * FROM pages WHERE id=?", n.page_id);
+      known.set(key, !!page && journalLocked({ id: userId } as Identity, page));
+    }
+    return known.get(key)!;
+  };
+}
 // Ids of all pages behind a PIN the person has not entered (for search).
 export function lockedPageIds(user: Identity, workspaceId: string) {
   const locked = all<{ id: string }>(

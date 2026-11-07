@@ -5,6 +5,7 @@ import { all, one } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import { hiddenRowIds } from "./row-access";
+import { journalLocked } from "./journal-extras";
 import { cellText } from "./cell-text";
 import { ticketId } from "./ticket-ids";
 import type { Field, Identity, Page } from "./types";
@@ -35,8 +36,7 @@ export function readablePrefixes(user: Identity, workspaceId: string) {
   return prefixes(workspaceId)
     .filter((p) => {
       try {
-        requirePage(user, p.pageId);
-        return true;
+        return !journalLocked(user, requirePage(user, p.pageId));
       } catch {
         return false;
       }
@@ -63,7 +63,7 @@ export function resolveTicket(user: Identity | null, workspaceId: string, key: s
     } catch {
       return null;
     }
-    if (hiddenRowIds(user, page).has(row.id)) return null;
+    if (journalLocked(user, page) || hiddenRowIds(user, page).has(row.id)) return null;
   } else page = one<Page>("SELECT * FROM pages WHERE id=?", target.pageId)!;
   const fields = JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", page.id)!.fields) as Field[];
   const cells = JSON.parse(row.cells) as Record<string, unknown>;

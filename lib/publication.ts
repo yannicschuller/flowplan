@@ -5,6 +5,7 @@ import { imageFileId } from "./page-appearance";
 import { all, one, run, id } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
+import { lockedPageIds } from "./journal-extras";
 import { cleanHtml } from "./document-server";
 import { checkShareProtection } from "./share-access";
 import type { Identity, Page } from "./types";
@@ -46,7 +47,14 @@ export function publishPage(
         page.id,
       )
     : [page];
-  if (enabled) for (const p of pages) requirePage(user, p.id, true);
+  if (enabled) {
+    // Like share links: nothing below a journal whose PIN the person has not entered.
+    const locked = lockedPageIds(user, page.workspace_id);
+    for (const p of pages) {
+      requirePage(user, p.id, true);
+      if (locked.has(p.id)) throw new HttpError(423, "Dieses Journal ist gesperrt.");
+    }
+  }
   // Password and end date stay while the page remains published.
   const kept = one<{ password_hash: string | null; expires_at: number | null }>(
     "SELECT password_hash,expires_at FROM publications WHERE page_id=?",

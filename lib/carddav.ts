@@ -17,6 +17,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { id, one, run } from "./db";
 import { HttpError } from "./auth";
 import { pageRole, requirePage } from "./permissions";
+import { journalLocked, requireUnlocked } from "./journal-extras";
 import { isContactsDatabase, requireContactsDatabase } from "./contacts";
 import { contactsAsVCards, readableContactRows } from "./contacts-io";
 import { serializeVCard } from "./vcard";
@@ -45,6 +46,7 @@ function newAccess(userId: string, pageId: string) {
 export function createCardDavAccess(user: Identity, pageId: string) {
   refuse(user);
   const page = requirePage(user, pageId);
+  requireUnlocked(user, page);
   requireContactsDatabase(page.id);
   run("DELETE FROM carddav_accesses WHERE user_id=? AND page_id=?", user.id, page.id);
   const { access, password } = newAccess(user.id, page.id);
@@ -86,7 +88,7 @@ export function redeemCardDavProfileLink(token: string, now = Date.now()) {
   if (!account || account.demo_until) return null;
   const user = { ...account, groups: [], isAdmin: false } as Identity;
   const page = one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", link.page_id);
-  if (!page || !pageRole(user, page) || !isContactsDatabase(page.id)) return null;
+  if (!page || !pageRole(user, page) || journalLocked(user, page) || !isContactsDatabase(page.id)) return null;
   const say = translate(userLocale(user.id));
   const base = new URL(appUrl());
   const ssl = base.protocol === "https:";
@@ -141,7 +143,8 @@ function authenticate(request: Request): Context | null {
   const user = { ...account, groups: [], isAdmin: false } as Identity;
   const page = one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", access.page_id);
   // Access may have ended since: the page, the person's rights, the kind.
-  if (!page || page.kind !== "database" || !pageRole(user, page) || !isContactsDatabase(page.id)) return null;
+  // Behind a journal PIN the address book stays closed like any other way in.
+  if (!page || page.kind !== "database" || !pageRole(user, page) || journalLocked(user, page) || !isContactsDatabase(page.id)) return null;
   return { access: access.id, user, page };
 }
 const contacts = (ctx: Context) => readableContactRows(ctx.user, ctx.page);

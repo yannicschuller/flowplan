@@ -914,9 +914,10 @@ async function handleGET(
     if (path.length === 3 && path[0] === "whiteboards" && path[2] === "cursors") {
       const page = requirePage(user, z.uuid().parse(path[1]));
       if (page.kind !== "whiteboard") throw new HttpError(400, "Kein Whiteboard.");
+      requireUnlocked(user, page);
       const boardAllowed = streamGuard(
         hash((await cookies()).get(cookieName)?.value || ""),
-        () => requirePage(user, page.id),
+        () => requireUnlocked(user, requirePage(user, page.id)),
       );
       if (!(req.headers.get("accept") || "").includes("text/event-stream"))
         return NextResponse.json(boardCursors(page.id, user.id), {

@@ -4,6 +4,7 @@ import { all, one } from "./db";
 import { pageRole, requirePage } from "./permissions";
 import { cellText } from "./cell-text";
 import { textBacklinks } from "./text-backlinks";
+import { journalLocked, requireUnlocked } from "./journal-extras";
 import type { Field, Identity, Page } from "./types";
 
 export type Backlink = {
@@ -23,6 +24,7 @@ export function relationBacklinks(
   limit = 100,
 ): Backlink[] {
   const page = requirePage(user, pageId);
+  requireUnlocked(user, page);
   const target = one<{ id: string; access: string; created_by: string }>(
     "SELECT id,access,created_by FROM rows WHERE id=? AND page_id=?",
     rowId,
@@ -37,7 +39,8 @@ export function relationBacklinks(
   );
   const links: Backlink[] = [];
   for (const source of sources) {
-    if (!pageRole(user, source)) continue;
+    // Records below a journal behind a PIN not entered stay unnamed.
+    if (!pageRole(user, source) || journalLocked(user, source)) continue;
     const hidden = hiddenFieldsFor(user, source, JSON.parse(source.fields));
     const fields = (JSON.parse(source.fields) as Field[]).filter(
       (f) =>
