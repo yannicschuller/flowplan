@@ -86,7 +86,7 @@ export function createPostgresDb(url: string, options: PostgresOptions = {}): Db
       return { changes: (await query(sql, params)).rowCount ?? 0 };
     },
     async exec(sql: string) {
-      prepared.clear();
+      if (/\b(ALTER|CREATE|DROP)\b/i.test(sql)) prepared.clear();
       await client().query(sql);
     },
     async tx<T>(fn: () => Promise<T>, txOptions: TxOptions = {}): Promise<T> {

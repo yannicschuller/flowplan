@@ -53,14 +53,22 @@ export async function loadSqliteFile(path: string) {
         const have = new Set((file.prepare(`PRAGMA table_info("${t.name}")`).all() as { name: string }[]).map((c) => c.name)); // sqlite-only
         const cols = t.columns.filter((c) => have.has(c.name));
         if (!cols.length) continue;
-        const rows = file.prepare(`SELECT ${cols.map((c) => `"${c.name}"`).join(",")} FROM "${t.name}"`).all() as Record<string, Param>[];
-        for (let i = 0; i < rows.length; i += ROWS_PER_INSERT) {
-          const part = rows.slice(i, i + ROWS_PER_INSERT);
-          await run(
+        // Row by row from the file, a few hundred per INSERT: memory stays
+        // bounded however large the backup is.
+        const insert = (part: Record<string, Param>[]) =>
+          run(
             `INSERT INTO ${quoteIdent(t.name)}(${cols.map((c) => quoteIdent(c.name)).join(",")}) OVERRIDING SYSTEM VALUE VALUES ${part.map(() => `(${cols.map(() => "?").join(",")})`).join(",")}`,
             ...part.flatMap((row) => cols.map((c) => row[c.name] ?? null)),
           );
+        let part: Record<string, Param>[] = [];
+        for (const row of file.prepare(`SELECT ${cols.map((c) => `"${c.name}"`).join(",")} FROM "${t.name}"`).iterate() as Iterable<Record<string, Param>>) {
+          part.push(row);
+          if (part.length === ROWS_PER_INSERT) {
+            await insert(part);
+            part = [];
+          }
         }
+        if (part.length) await insert(part);
         for (const c of t.columns.filter((x) => x.identity))
           await run(
             `SELECT setval(pg_get_serial_sequence(?,?), COALESCE((SELECT max(${quoteIdent(c.name)}) FROM ${quoteIdent(t.name)}),0)+1, false)`,

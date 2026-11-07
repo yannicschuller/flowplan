@@ -3,17 +3,20 @@
 // VACUUM INTO. On PostgreSQL the same file is written from the data: the
 // SQLite schema of this version (from the translated schema,
 // lib/db-driver/postgres-schema.json), every table copied in key order in
-// one REPEATABLE READ transaction, then indexes and triggers, the schema
+// one REPEATABLE READ transaction (a cursor per table, batches of rows:
+// memory stays bounded for large instances), then indexes and triggers, the schema
 // version; the search index is rebuilt by the instance that opens the file.
 // So a backup taken on PostgreSQL restores on SQLite and vice versa
 // (scripts/db-migrate.mjs does the same for whole instances).
 import { DatabaseSync } from "node:sqlite";
 import { all, run, sql, transaction } from "./db";
+import { db } from "./db-driver";
 import schemaJson from "./db-driver/postgres-schema.json";
 import type { PgSchema } from "./db-driver/pg-schema";
 import { quoteIdent } from "./db-driver/pg-ddl.mjs";
 
-const BATCH = 2000;
+// Rows per round trip (documents can be large: a few hundred at a time).
+const BATCH = 500;
 export async function snapshotDatabase(path: string) {
   if (sql.name === "sqlite") {
     await run(`VACUUM INTO '${path.replaceAll("'", "''")}'`); // sqlite-only
@@ -33,26 +36,18 @@ export async function snapshotDatabase(path: string) {
         const cols = t.columns.map((c) => c.name);
         const insert = file.prepare(`INSERT INTO "${t.name}"(${cols.map((c) => `"${c}"`).join(",")}) VALUES(${cols.map(() => "?").join(",")})`);
         const key = t.primaryKey.length ? t.primaryKey : cols;
-        const list = cols.map(quoteIdent).join(",");
-        const order = key.map(quoteIdent).join(",");
-        let after: unknown[] | null = null;
-        let offset = 0;
+        // A cursor of the snapshot transaction: the rows come in batches,
+        // whatever the size of the table (bounded memory), in key order.
+        await db.exec(`DECLARE fp_snapshot NO SCROLL CURSOR FOR SELECT ${cols.map(quoteIdent).join(",")} FROM ${quoteIdent(t.name)} ORDER BY ${key.map(quoteIdent).join(",")}`);
         for (;;) {
-          // Keyset by the primary key; tables without one by offset (small ones).
-          const rows: Record<string, unknown>[] = t.primaryKey.length
-            ? (await all(
-                `SELECT ${list} FROM ${quoteIdent(t.name)}${after ? ` WHERE (${order})>(${key.map(() => "?").join(",")})` : ""} ORDER BY ${order} LIMIT ${BATCH}`,
-                ...((after ?? []) as (string | number | null)[]),
-              ))
-            : (await all(`SELECT ${list} FROM ${quoteIdent(t.name)} ORDER BY ${order} LIMIT ${BATCH} OFFSET ${offset}`));
+          const rows = await all(`FETCH ${BATCH} FROM fp_snapshot`);
           if (!rows.length) break;
           file.exec("BEGIN");
           for (const row of rows) insert.run(...cols.map((c) => value(row[c])));
           file.exec("COMMIT");
           if (rows.length < BATCH) break;
-          after = key.map((k) => rows[rows.length - 1][k]);
-          offset += rows.length;
         }
+        await db.exec("CLOSE fp_snapshot");
       }
     });
     for (const o of schema.sqlite.filter((x) => x.type !== "table")) file.exec(o.sql);
