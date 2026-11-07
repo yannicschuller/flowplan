@@ -282,9 +282,17 @@ test("local accounts keep their password; others go to the directory", async () 
   directory.delete(`uid=admin2,ou=people,${BASE}`);
 });
 
-test("an existing SSO account with the same address is linked", async () => {
+test("an existing SSO account with the same, confirmed address is linked – an unconfirmed one is not", async () => {
+  // Audit F2: an address the provider did not vouch for is no proof – someone
+  // else could have registered it to catch the directory sign-in.
+  const unconfirmed = id();
+  run("INSERT INTO users(id,subject,name,email,email_verified) VALUES(?,?,?,?,0)", unconfirmed, `https://idp|${unconfirmed}`, "Eve?", "eve@example.org");
+  const first = (await ldapPasswordLogin("eve", "secret-pw", "203.0.113.7", "de")).userId;
+  assert.notEqual(first, unconfirmed);
+  run("DELETE FROM ldap_accounts WHERE user_id=?", first);
+  run("DELETE FROM users WHERE id IN (?,?)", first, unconfirmed);
   const sso = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", sso, `https://idp|${sso}`, "Eve", "eve@example.org");
+  run("INSERT INTO users(id,subject,name,email,email_verified) VALUES(?,?,?,?,1)", sso, `https://idp|${sso}`, "Eve", "eve@example.org");
   assert.equal((await ldapPasswordLogin("eve", "secret-pw", "203.0.113.7", "de")).userId, sso);
 });
 

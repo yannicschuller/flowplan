@@ -156,7 +156,7 @@ export async function issueSession(
   // "Stay signed in on this device" (only when the instance allows it),
   // whether the groups came from an SSO provider, and whether the app proved
   // this sign-in its own (lib/app-devices.ts: the hand-off or its device key).
-  options: { remember?: boolean; sso?: boolean; app?: boolean } = {},
+  options: { remember?: boolean; sso?: boolean; app?: boolean; authenticatedAt?: number | null } = {},
 ) {
   const token = randomBytes(32).toString("base64url");
   const now = Date.now();
@@ -185,7 +185,7 @@ export async function issueSession(
       securityEvent(admin ? "admin.granted" : "admin.revoked", { actorId: userId, headers: requestHeaders, detail: `${options.sso ? "SSO" : "directory"} group at sign-in` });
   }
   run(
-    "INSERT INTO sessions(token,user_id,groups_json,expires,created_at,remember,sso,app,last_seen,agent) VALUES(?,?,?,?,?,?,?,?,?,?)",
+    "INSERT INTO sessions(token,user_id,groups_json,expires,created_at,remember,sso,app,last_seen,agent,authenticated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
     hash(token),
     userId,
     JSON.stringify(groups),
@@ -196,6 +196,9 @@ export async function issueSession(
     terms?.app ? 1 : 0,
     now,
     agent,
+    // A sign-in proves the person now; a hand-off from an older browser
+    // session does not (#audit F3).
+    options.authenticatedAt === undefined ? now : options.authenticatedAt,
   );
   const jar = await cookies();
   // Signing in again on the same device (the session ran out, or the app

@@ -104,7 +104,7 @@ function linkAccount(entry: LdapEntry, signInName: string, groups: string[], t: 
       one<{ id: string }>("SELECT id FROM users WHERE subject=?", subject)?.id ||
       (profile.email
         ? one<{ id: string }>(
-            `SELECT u.id FROM users u WHERE lower(u.email)=lower(?) AND u.email<>'' AND u.demo_until IS NULL AND u.subject NOT LIKE 'deleted:%' AND u.subject<>'local-development'
+            `SELECT u.id FROM users u WHERE lower(u.email)=lower(?) AND u.email<>'' AND u.email_verified=1 AND u.demo_until IS NULL AND u.subject NOT LIKE 'deleted:%' AND u.subject<>'local-development'
                AND NOT EXISTS(SELECT 1 FROM local_accounts a WHERE a.user_id=u.id) AND NOT EXISTS(SELECT 1 FROM ldap_accounts l WHERE l.user_id=u.id)
              ORDER BY u.created_at LIMIT 1`,
             profile.email,

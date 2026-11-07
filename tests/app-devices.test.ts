@@ -35,7 +35,7 @@ test("the hand-off is the app's: only the holder of the verifier redeems the cod
   const code = createDesktopCode(uid, [], challenge);
   assert.equal(redeemDesktopCode(code, "someone-else"), null, "a wrong verifier redeems nothing (and uses the code up)");
   const again = createDesktopCode(uid, [], challenge);
-  assert.deepEqual(redeemDesktopCode(again, verifier), { userId: uid, groups: [] });
+  assert.deepEqual(redeemDesktopCode(again, verifier), { userId: uid, groups: [], authenticatedAt: null });
   const now = Date.now();
   assert.equal(provesApp({ via: "handoff" }), true);
   assert.equal(lifetime(provesApp({ via: "handoff" }), now), 90 * DAY, "90 days without use by default");

@@ -18,7 +18,7 @@ const { parseFilter, matches } = await import("../lib/scim-filter");
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 const admin = id();
 run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", admin, `local:${admin}`, "Admin", "admin@example.com");
-run("INSERT INTO local_accounts(user_id,email,password_hash,is_admin,created_at) VALUES(?,?,?,1,?)", admin, "admin@example.com", "x", Date.now());
+run("INSERT INTO local_accounts(user_id,email,password_hash,is_admin,email_verified,created_at) VALUES(?,?,?,1,1,?)", admin, "admin@example.com", "x", Date.now());
 const { token } = createScimToken(admin, "Okta");
 
 function scim(method: string, path: string, body?: unknown, auth = `Bearer ${token}`) {
@@ -118,9 +118,18 @@ test("Okta creates a user; it is found by filter and paginated", () => {
   assert.equal(scim("GET", `/Users?filter=${encodeURIComponent("userName eq")}`).body.scimType, "invalidFilter");
 });
 
+test("an existing account with an unconfirmed address is not taken over", () => {
+  // Audit F2: provisioning must not land in an account whose address nobody vouched for.
+  const squatter = id();
+  run("INSERT INTO users(id,subject,name,email,email_verified) VALUES(?,?,?,?,0)", squatter, `https://idp|${squatter}`, "Dave?", "dave@example.com");
+  const created = scim("POST", "/Users", okta("dave@example.com", { externalId: "dave" }));
+  assert.equal(created.status, 201);
+  assert.notEqual(userIdOf(created.body.id), squatter);
+});
+
 test("an existing account with the same address is linked, not duplicated", () => {
   const existing = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", existing, `https://idp|${existing}`, "Mia", "mia@example.com");
+  run("INSERT INTO users(id,subject,name,email,email_verified) VALUES(?,?,?,?,1)", existing, `https://idp|${existing}`, "Mia", "mia@example.com");
   const created = scim("POST", "/Users", okta("mia@example.com", { externalId: "mia" }));
   assert.equal(created.status, 201);
   assert.equal(userIdOf(created.body.id), existing);

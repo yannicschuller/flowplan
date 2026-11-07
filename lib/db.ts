@@ -440,6 +440,9 @@ function migrate(d: DatabaseSync) {
     ["sso", "INTEGER NOT NULL DEFAULT 0"],
     ["last_seen", "INTEGER"],
     ["agent", "TEXT NOT NULL DEFAULT ''"],
+    // When the person last proved who they are for this session (step-up,
+    // lib/step-up.ts); an app hand-off carries the browser session's time.
+    ["authenticated_at", "INTEGER"],
   ])
     if (!sessionColumns.includes(name)) d.exec(`ALTER TABLE sessions ADD COLUMN ${name} ${type}`);
   // Sessions of the desktop and mobile apps (#133): they stay signed in by

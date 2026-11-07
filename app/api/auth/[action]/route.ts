@@ -127,7 +127,7 @@ async function rememberPending(token: string) {
 }
 // app: the desktop or mobile app proved this sign-in its own
 // (lib/app-devices.ts) – it then lasts as long as the app's.
-async function signIn(userId: string, groups: string[], remember = false, app = false) {
+async function signIn(userId: string, groups: string[], remember = false, app = false, authenticatedAt?: number | null) {
   const user = one<{ disabled: number }>("SELECT disabled FROM users WHERE id=?", userId);
   if (!user || user.disabled) throw new HttpError(403, "Dieses Konto ist deaktiviert.");
   acceptPendingInvites(userId);
@@ -136,7 +136,7 @@ async function signIn(userId: string, groups: string[], remember = false, app = 
   ensureWorkspace(userId);
   // Groups from an SSO provider (e.g. the desktop app of an SSO account) are
   // checked again after SESSION_GROUPS_HOURS.
-  await issueSession(userId, groups, undefined, { remember, sso: !isLocalAccount(userId), app });
+  await issueSession(userId, groups, undefined, { remember, sso: !isLocalAccount(userId), app, authenticatedAt });
 }
 // The end of every SSO sign-in (also after connecting an existing account).
 async function finishSsoSignIn(userId: string, sso: OidcProfile, remember: boolean) {
@@ -233,7 +233,8 @@ async function handleGET(
       // app never opened from one that failed later).
       console.info(`App sign-in: the browser opened the hand-off${params.get("via") === "sso" ? " (SSO)" : ""}.`);
       const user = await currentUser();
-      if (!user || user.demo) {
+      // An API token is no browser sign-in: the person signs in first.
+      if (!user || user.demo || user.apiScope) {
         // "Mit SSO anmelden" in the app goes straight to the provider.
         if (params.get("via") === "sso" && (await config().then(() => true, () => false)))
           return NextResponse.redirect(new URL(`/api/auth/login?returnTo=${encodeURIComponent(desktopReturnPath(challenge))}`, appUrl()));
@@ -430,12 +431,14 @@ async function handlePOST(
       const say = translate(locale),
         user = await currentUser(),
         challenge = (await req.formData().catch(() => null))?.get("challenge");
-      if (!user || user.demo || user.twoFactorSetup || !isDesktopChallenge(challenge))
+      // Only a browser session hands a sign-in to the app – never an API
+      // token (it would mint a full session that outlives the token).
+      if (!user || user.demo || user.apiScope || user.twoFactorSetup || !isDesktopChallenge(challenge))
         return desktopPage(locale, {
           title: say("Anmeldung abgelaufen", "Sign-in expired"),
           text: say("Starte die Anmeldung noch einmal in der Flowplan-App.", "Start signing in again from the Flowplan app."),
         });
-      const code = createDesktopCode(user.id, user.groups, challenge);
+      const code = createDesktopCode(user.id, user.groups, challenge, sessionStartedAt((await cookies()).get(cookieName)?.value));
       const link = `flowplan://sign-in?${new URLSearchParams({ server: new URL(appUrl()).origin, challenge, code })}`;
       return desktopPage(locale, {
         title: say("Zurück zur App", "Back to the app"),
@@ -458,7 +461,7 @@ async function handlePOST(
       // signed in unless the instance says otherwise. Only the app holding
       // the verifier gets here – the hand-off is its proof
       // (lib/app-devices.ts), for every app version.
-      await signIn(handoff.userId, handoff.groups, true, provesApp({ via: "handoff" }));
+      await signIn(handoff.userId, handoff.groups, true, provesApp({ via: "handoff" }), handoff.authenticatedAt);
       return NextResponse.json({ ok: true });
     }
     const body = () => req.json().catch(() => ({}));

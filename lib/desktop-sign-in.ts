@@ -21,14 +21,14 @@ export const isDesktopChallenge = (value: unknown): value is string =>
 export const desktopReturnPath = (challenge: string) =>
   `/api/auth/desktop?challenge=${challenge}`;
 
-export function createDesktopCode(userId: string, groups: string[], challenge: string) {
+export function createDesktopCode(userId: string, groups: string[], challenge: string, authenticatedAt: number | null = null) {
   if (!isDesktopChallenge(challenge)) throw new Error("invalid challenge");
   const code = randomBytes(32).toString("base64url");
   run("DELETE FROM auth_challenges WHERE expires<?", Date.now());
   run(
     "INSERT INTO auth_challenges(id,challenge,user_id,kind,expires) VALUES(?,?,?,?,?)",
     hash(code),
-    JSON.stringify({ challenge, groups }),
+    JSON.stringify({ challenge, groups, authenticatedAt }),
     userId,
     "desktop",
     Date.now() + LIFETIME_MS,
@@ -46,11 +46,11 @@ export function redeemDesktopCode(code: unknown, verifier: unknown) {
   // Single use, whatever the outcome.
   run("DELETE FROM auth_challenges WHERE id=?", hash(code));
   if (row.expires < Date.now()) return null;
-  const { challenge, groups } = JSON.parse(row.challenge) as { challenge: string; groups: string[] };
+  const { challenge, groups, authenticatedAt } = JSON.parse(row.challenge) as { challenge: string; groups: string[]; authenticatedAt?: number | null };
   const expected = Buffer.from(challenge);
   const actual = Buffer.from(createHash("sha256").update(verifier).digest("base64url"));
   if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) return null;
-  return { userId: row.user_id, groups };
+  return { userId: row.user_id, groups, authenticatedAt: authenticatedAt ?? null };
 }
 
 const escape = (value: string) =>

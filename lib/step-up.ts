@@ -22,7 +22,9 @@ export const RECENT_SIGN_IN_MS = 10 * 60_000;
 // When the session of this cookie began (null without one).
 export function sessionStartedAt(token: string | undefined) {
   if (!token) return null;
-  return one<{ created_at: number | null }>("SELECT created_at FROM sessions WHERE token=?", hash(token))?.created_at ?? null;
+  return (
+    one<{ at: number | null }>("SELECT COALESCE(authenticated_at,created_at) at FROM sessions WHERE token=?", hash(token))?.at ?? null
+  );
 }
 
 // What the account can confirm with, for the dialogs.

@@ -421,7 +421,7 @@ function createUser(body: unknown) {
       one<{ id: string }>("SELECT id FROM users WHERE subject=?", subject)?.id ||
       (input.email
         ? one<{ id: string }>(
-            `SELECT id FROM users WHERE lower(email)=lower(?) AND email<>'' AND demo_until IS NULL AND subject NOT LIKE 'deleted:%' AND subject<>'local-development'
+            `SELECT id FROM users WHERE lower(email)=lower(?) AND email<>'' AND (email_verified=1 OR id IN (SELECT user_id FROM local_accounts WHERE email_verified=1)) AND demo_until IS NULL AND subject NOT LIKE 'deleted:%' AND subject<>'local-development'
                AND id NOT IN (SELECT user_id FROM scim_users) ORDER BY created_at LIMIT 1`,
             input.email,
           )?.id
