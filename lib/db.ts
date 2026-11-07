@@ -1717,19 +1717,24 @@ export function inTransactionSync() {
 // a failed statement on PostgreSQL spoils the transaction unless it ran in
 // one); a throw rolls back to it and is passed on. Outside a transaction
 // `fn` just runs. For writes whose failure is caught and ignored.
-let savepoints = 0;
+// Names by depth: a fixed handful of statements (the statement cache).
+let savepointDepth = 0;
 export function inSavepoint<T>(fn: () => T): T {
   if (!inTransactionSync()) return fn();
-  const name = `fp_sp_${++savepoints}`;
-  run(`SAVEPOINT ${name}`);
+  const name = `fp_sp_${++savepointDepth}`;
   try {
-    const value = fn();
-    run(`RELEASE SAVEPOINT ${name}`);
-    return value;
-  } catch (error) {
-    run(`ROLLBACK TO SAVEPOINT ${name}`);
-    run(`RELEASE SAVEPOINT ${name}`);
-    throw error;
+    run(`SAVEPOINT ${name}`);
+    try {
+      const value = fn();
+      run(`RELEASE SAVEPOINT ${name}`);
+      return value;
+    } catch (error) {
+      run(`ROLLBACK TO SAVEPOINT ${name}`);
+      run(`RELEASE SAVEPOINT ${name}`);
+      throw error;
+    }
+  } finally {
+    savepointDepth--;
   }
 }
 const isUniqueViolation = (e: unknown) => {
