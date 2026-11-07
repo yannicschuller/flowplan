@@ -1,4 +1,5 @@
-# Every push and pull request: typecheck, tests, production build, a check
+# Every push and pull request: typecheck, tests (on SQLite and, in a job of
+# its own, on PostgreSQL 16), production build, a check
 # of the standalone server (health, security defaults, persistence) and the
 # accessibility and performance budgets.
 name: CI
@@ -48,3 +49,51 @@ jobs:
         run: npm run quality
         env:
           QUALITY_OPTIONAL: ${{ runner.environment == 'github-hosted' && '0' || '1' }}
+
+  postgres:
+    # The whole suite once more on PostgreSQL 16 (DATABASE_URL; each test
+    # process gets a schema of its own, tests/helpers/postgres-backend.ts),
+    # then the production build against it (docs/architecture/database.md).
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: flowplan_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/flowplan_test
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      # Each test schema has about 1,000 objects; parallel test processes
+      # dropping or copying them need more lock slots than the default 64.
+      # A service container takes no server options: set them and restart.
+      - name: Configure Postgres
+        run: |
+          psql "$DATABASE_URL" -c "ALTER SYSTEM SET max_locks_per_transaction = 256" -c "ALTER SYSTEM SET max_connections = 400" -c "ALTER SYSTEM SET fsync = off" -c "ALTER SYSTEM SET synchronous_commit = off"
+          docker restart ${{ job.services.postgres.id }}
+          for i in $(seq 1 60); do pg_isready -h localhost -p 5432 -U postgres && break; sleep 1; done
+          psql "$DATABASE_URL" -tAc "SHOW max_locks_per_transaction" | grep -qx 256
+      - run: npm test
+      - run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+      - run: node scripts/check-standalone-postgres.mjs
+      - name: Leftover test schemas
+        if: always()
+        run: node --import tsx tests/helpers/postgres-backend.ts --drop-all
