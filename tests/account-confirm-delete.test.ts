@@ -33,7 +33,7 @@ test("with e-mail set up, a new account confirms its address before signing in",
   assert.equal(sent.length, 1);
   await assert.rejects(passwordLogin({ email: "lena@example.test", password: "a-long-password" }, "1.1.1.2", "de"), /bestätige zuerst/);
   // No second mail within five minutes, neither by signing in nor by asking again.
-  resendVerification({ email: "lena@example.test" }, "de");
+  await resendVerification({ email: "lena@example.test" }, "de");
   assert.equal(mails().filter((m) => m.recipient === "lena@example.test").length, 1);
   assert.equal(verifyEmail("wrong-token"), null);
   assert.equal(verifyEmail(linkIn(sent[0].text)), result.user.id);

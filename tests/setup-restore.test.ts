@@ -42,20 +42,20 @@ const keep = mkdtempSync(join(tmpdir(), "flowplan-setup-restore-files-"));
 after(() => (process.env.FLOWPLAN_DATA_DIR = old));
 
 // Every scenario starts on a fresh, empty instance.
-function freshInstance() {
+async function freshInstance() {
   delete process.env.FLOWPLAN_ENCRYPTION_KEY;
   const dir = mkdtempSync(join(tmpdir(), "flowplan-setup-restore-new-"));
   process.env.FLOWPLAN_DATA_DIR = dir;
   reopenDatabase();
-  assert.equal(firstAccount(), true);
+  assert.equal(await firstAccount(), true);
   return dir;
 }
 function backOnOld() {
   process.env.FLOWPLAN_DATA_DIR = old;
   reopenDatabase();
 }
-function restoredPage(dir: string) {
-  assert.equal(firstAccount(), false, "the accounts came back");
+async function restoredPage(dir: string) {
+  assert.equal(await firstAccount(), false, "the accounts came back");
   assert.equal(one<{ title: string }>("SELECT title FROM pages WHERE id=?", page)?.title, "Aus der Sicherung");
   return existsSync(join(dir, "uploads", fid)) ? readFileSync(join(dir, "uploads", fid), "utf8") : null;
 }
@@ -69,19 +69,19 @@ test("round trip: scheduled backup → fresh instance → restore → data prese
   const copy = new DatabaseSync(file, { readOnly: true });
   assert.equal((copy.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, SCHEMA_VERSION);
   copy.close();
-  const dir = freshInstance();
+  const dir = await freshInstance();
   const restored = await restore.restoreUpload(file, "", result.name);
   assert.equal(restored.restart, false);
   assert.equal(restored.createdAt, "2026-11-06T03:00:00.000Z");
   assert.ok(restored.users >= 1 && restored.pages >= 1);
   // A database-only backup brings no files (they come from S3 or SFTP): the
   // setup screen says how many are missing.
-  assert.equal(restoredPage(dir), null);
+  assert.equal(await restoredPage(dir), null);
   assert.deepEqual([restored.files, restored.missingFiles], [0, 1]);
   assert.ok(readdirSync(dir).some((n) => n.startsWith("pre-restore-")), "the empty start is kept");
   // Now that an account exists, nobody may restore here any more.
-  assert.equal(restore.setupRestoreOpen(), false);
-  assert.throws(() => restore.requireSetupRestore(""), /schon eingerichtet/);
+  assert.equal(await restore.setupRestoreOpen(), false);
+  await assert.rejects(async () => restore.requireSetupRestore(""), /schon eingerichtet/);
   backOnOld();
 });
 
@@ -90,16 +90,16 @@ test("an encrypted instance download needs the key and brings the files", async 
   process.env.FLOWPLAN_ENCRYPTION_KEY = key;
   const file = join(keep, "flowplan-instanz.zip.enc");
   await pipeline(instanceBackupStream().pipe(sealStream()), createWriteStream(file));
-  const dir = freshInstance();
+  const dir = await freshInstance();
   await assert.rejects(restore.restoreUpload(file, ""), (e: Error & { needsKey?: boolean }) => e.needsKey === true && /verschlüsselt/.test(e.message));
   await assert.rejects(restore.restoreUpload(file, randomBytes(32).toString("base64")), /Schlüssel passt nicht/);
   await assert.rejects(restore.restoreUpload(file, "zu-kurz"), /32 Bytes/);
-  assert.equal(firstAccount(), true, "nothing was replaced");
+  assert.equal(await firstAccount(), true, "nothing was replaced");
   const restored = await restore.restoreUpload(file, key);
   assert.equal(restored.files, 1);
   // The key was entered, not configured: a hint to set it.
   assert.equal(restored.keyHint, true);
-  assert.equal(restoredPage(dir), "Anhang der alten Instanz");
+  assert.equal(await restoredPage(dir), "Anhang der alten Instanz");
   backOnOld();
 });
 
@@ -108,7 +108,7 @@ test("refuses while an account exists, and backups from a newer version", async 
   const file = join(keep, result.name);
   copyFileSync(join(old, "backups", result.name), file);
   // On the old instance (it has accounts) the setup restore is closed.
-  assert.equal(restore.setupRestoreOpen(), false);
+  assert.equal(await restore.setupRestoreOpen(), false);
   await assert.rejects(restore.restoreUpload(file, ""), /schon eingerichtet/);
   // A database from a newer Flowplan.
   const newer = join(keep, "flowplan-2099-01-01-00-00.sqlite");
@@ -116,23 +116,23 @@ test("refuses while an account exists, and backups from a newer version", async 
   const db = new DatabaseSync(newer);
   db.exec(`PRAGMA user_version=${SCHEMA_VERSION + 1}`);
   db.close();
-  freshInstance();
+  await freshInstance();
   await assert.rejects(restore.restoreUpload(newer, ""), /neueren Flowplan-Version/);
   // Neither SQLite nor ZIP.
   const junk = join(keep, "junk.bin");
   writeFileSync(junk, "kein Backup");
   await assert.rejects(restore.restoreUpload(junk, ""), /keine Flowplan-Sicherung/);
-  assert.equal(firstAccount(), true);
+  assert.equal(await firstAccount(), true);
   backOnOld();
 });
 
-test("with FLOWPLAN_SETUP_TOKEN only with the token", () => {
-  const dir = freshInstance();
+test("with FLOWPLAN_SETUP_TOKEN only with the token", async () => {
+  const dir = await freshInstance();
   process.env.FLOWPLAN_SETUP_TOKEN = "einrichten";
   try {
-    assert.equal(restore.setupRestoreOpen(""), false);
-    assert.throws(() => restore.requireSetupRestore("falsch"), /Einrichtungslink/);
-    assert.equal(restore.setupRestoreOpen("einrichten"), true);
+    assert.equal(await restore.setupRestoreOpen(""), false);
+    await assert.rejects(async () => restore.requireSetupRestore("falsch"), /Einrichtungslink/);
+    assert.equal(await restore.setupRestoreOpen("einrichten"), true);
   } finally {
     delete process.env.FLOWPLAN_SETUP_TOKEN;
   }
@@ -153,10 +153,10 @@ test("an archive with an entry outside its folders is refused", async () => {
   const file = join(keep, "evil.zip");
   await pipeline(zip.outputStream, createWriteStream(file));
   writeFileSync(file, Buffer.from(readFileSync(file).toString("latin1").replaceAll(placeholder, evil), "latin1"));
-  const dir = freshInstance();
+  const dir = await freshInstance();
   await assert.rejects(restore.restoreUpload(file, ""), /unbekannte Einträge|Ungültige ZIP|Beschädigte Sicherung/);
   assert.ok(!existsSync(join(dir, "..", "evil")));
-  assert.equal(firstAccount(), true);
+  assert.equal(await firstAccount(), true);
   backOnOld();
 });
 
@@ -173,7 +173,7 @@ test("the newest backup from an SFTP server, with its files, encrypted", async (
     assert.equal((await sftpBackup.runSftpBackup(Date.UTC(2026, 10, 6, 6, 0))).error, null);
     // On the server everything is encrypted.
     assert.equal(readFileSync(join(remote, "flowplan/uploads", fid)).subarray(0, 4).toString(), "FPE1");
-    const dir = freshInstance();
+    const dir = await freshInstance();
     // The host key is looked at first, without the password.
     const before = server.logins;
     const { fingerprint } = await restore.probeSftp(target);
@@ -191,7 +191,7 @@ test("the newest backup from an SFTP server, with its files, encrypted", async (
     assert.equal(done?.phase, "done");
     assert.equal(done?.result?.createdAt, "2026-11-06T06:00:00.000Z");
     assert.deepEqual([done?.result?.files, done?.result?.missingFiles], [1, 0]);
-    assert.equal(restoredPage(dir), "Anhang der alten Instanz");
+    assert.equal(await restoredPage(dir), "Anhang der alten Instanz");
   } finally {
     await server.close();
     delete process.env.FLOWPLAN_ENCRYPTION_KEY;
@@ -219,13 +219,13 @@ test("an older SFTP backup finds a file deleted since then in .deleted/", async 
     assert.equal(readdirSync(join(remote, "flowplan/.deleted/uploads")).length, 1);
     // The 03:00 backup is the one restored (the newer one set aside).
     rmSync(join(remote, "flowplan/flowplan-2026-11-07-04-00.sqlite"));
-    const dir = freshInstance();
+    const dir = await freshInstance();
     restore.startRemoteRestore("sftp", { ...target, fingerprint: server.hostKey }, "");
     const done = await restore.setupRestoreSettled();
     assert.equal(done?.error, null);
     assert.equal(done?.result?.createdAt, "2026-11-07T03:00:00.000Z");
     assert.deepEqual([done?.result?.files, done?.result?.missingFiles], [1, 0]);
-    assert.equal(restoredPage(dir), "Anhang der alten Instanz");
+    assert.equal(await restoredPage(dir), "Anhang der alten Instanz");
   } finally {
     await server.close();
   }
@@ -253,13 +253,13 @@ test("from S3: a file deleted after the backup comes from .deleted/", async () =
     rmSync(copy);
     // Deleted after that backup: lib/storage.ts moved it aside.
     objects.set(`/bucket/flowplan/.deleted/uploads/${fid}.${Date.UTC(2026, 10, 8, 9, 0)}`, readFileSync(join(old, "uploads", fid)));
-    const dir = freshInstance();
+    const dir = await freshInstance();
     const input = { endpoint: `http://127.0.0.1:${(s3.address() as { port: number }).port}`, bucket: "bucket", accessKeyId: "a", secretAccessKey: "b" };
     restore.startRemoteRestore("s3", input, "");
     const done = await restore.setupRestoreSettled();
     assert.equal(done?.error, null);
     assert.deepEqual([done?.result?.files, done?.result?.missingFiles], [1, 0]);
-    assert.equal(restoredPage(dir), "Anhang der alten Instanz");
+    assert.equal(await restoredPage(dir), "Anhang der alten Instanz");
   } finally {
     s3.close();
   }
@@ -288,15 +288,15 @@ test("an uploaded database-only backup counts the files this instance's own buck
     // The old instance mirrored its files to the bucket this one uses too.
     objects.set(`/bucket/flowplan/uploads/${fid}`, readFileSync(join(old, "uploads", fid)));
     Object.assign(process.env, bucket);
-    const dir = freshInstance();
+    const dir = await freshInstance();
     const restored = await restore.restoreUpload(file, "", result.name);
     assert.deepEqual([restored.files, restored.missingFiles], [0, 0]);
     // It comes from there when it is needed.
     assert.equal(await ensureLocal(fid), true);
-    assert.equal(restoredPage(dir), "Anhang der alten Instanz");
+    assert.equal(await restoredPage(dir), "Anhang der alten Instanz");
     // Not in the bucket: missing.
     objects.clear();
-    freshInstance();
+    await freshInstance();
     assert.equal((await restore.restoreUpload(file, "", result.name)).missingFiles, 1);
   } finally {
     for (const name of Object.keys(bucket)) delete process.env[name];
@@ -306,7 +306,7 @@ test("an uploaded database-only backup counts the files this instance's own buck
 });
 
 test("a new instance makes no scheduled backup before its first account", async (t) => {
-  const dir = freshInstance();
+  const dir = await freshInstance();
   t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
   startBackupWorker();
   // The first check a minute after the start: nothing to back up yet – an

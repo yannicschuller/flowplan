@@ -14,6 +14,13 @@
 import { z } from "zod";
 import { HttpError } from "./auth";
 import { all, audit, id, one, run } from "./db";
+import { db, uniqueViolation, type Dialect } from "./db-driver";
+import { auditAsync } from "./audit";
+
+// The SQL dialect of this instance (lib/db-driver/dialect.ts): the
+// synchronous functions below run on SQLite and, through the transitional
+// bridge of lib/db.ts, on Postgres.
+const d = () => db.dialect;
 import { isEncryptedPage } from "./e2ee-server";
 import { isGuest, memberRole, pageRole, requireMember, requirePage, spaceRole } from "./permissions";
 import { lockedPageIds } from "./journal-extras";
@@ -50,7 +57,7 @@ import {
   inScope,
 } from "./page-properties";
 import type { Identity, Page, Space } from "./types";
-import { rewriteTagValues, syncTagFieldOptions, taggedRecords } from "./tag-fields";
+import { rewriteTagValues, syncTagFieldOptions, syncTagFieldOptionsAsync, taggedRecords } from "./tag-fields";
 
 export type TagRow = { id: string; workspace_id: string; space_id: string | null; name: string; color: string; position: number };
 export type DefRow = { id: string; workspace_id: string; space_id: string | null; name: string; type: string; options: string; position: number };
@@ -80,23 +87,23 @@ export const asDef = (d: DefRow): PagePropertyDef => ({
 
 // Every tag or definition of the workspace, of all scopes.
 export function workspaceTags(workspaceId: string): PageTag[] {
-  return all<TagRow>("SELECT * FROM page_tags WHERE workspace_id=? ORDER BY position,name COLLATE NOCASE", workspaceId).map(asTag);
+  return all<TagRow>(`SELECT * FROM page_tags WHERE workspace_id=? ORDER BY position,${d().nocase("name")}`, workspaceId).map(asTag);
 }
 export function workspaceProperties(workspaceId: string): PagePropertyDef[] {
-  return all<DefRow>("SELECT * FROM page_property_defs WHERE workspace_id=? ORDER BY position,name COLLATE NOCASE", workspaceId).map(asDef);
+  return all<DefRow>(`SELECT * FROM page_property_defs WHERE workspace_id=? ORDER BY position,${d().nocase("name")}`, workspaceId).map(asDef);
 }
 // Those a page of `spaceId` uses: the workspace's and its space's (#136).
 // null: only the workspace's.
 export function contextTags(workspaceId: string, spaceId: string | null): PageTag[] {
   return all<TagRow>(
-    "SELECT * FROM page_tags WHERE workspace_id=? AND (space_id IS NULL OR space_id=?) ORDER BY position,name COLLATE NOCASE",
+    `SELECT * FROM page_tags WHERE workspace_id=? AND (space_id IS NULL OR space_id=?) ORDER BY position,${d().nocase("name")}`,
     workspaceId,
     spaceId,
   ).map(asTag);
 }
 export function contextProperties(workspaceId: string, spaceId: string | null): PagePropertyDef[] {
   return all<DefRow>(
-    "SELECT * FROM page_property_defs WHERE workspace_id=? AND (space_id IS NULL OR space_id=?) ORDER BY position,name COLLATE NOCASE",
+    `SELECT * FROM page_property_defs WHERE workspace_id=? AND (space_id IS NULL OR space_id=?) ORDER BY position,${d().nocase("name")}`,
     workspaceId,
     spaceId,
   ).map(asDef);
@@ -107,7 +114,7 @@ export type MetaTable = "page_tags" | "page_property_defs";
 // space's, a workspace item with every scope (it is in every context).
 export function scopeClash(table: MetaTable, workspaceId: string, spaceId: string | null, name: string, exceptId?: string) {
   return one<{ id: string; space_id: string | null; name: string }>(
-    `SELECT id,space_id,name FROM ${table} WHERE workspace_id=? AND name=? COLLATE NOCASE AND id IS NOT ?${spaceId ? " AND (space_id IS NULL OR space_id=?)" : ""} ORDER BY space_id IS NOT NULL LIMIT 1`,
+    `SELECT id,space_id,name FROM ${table} WHERE workspace_id=? AND ${d().ieq("name")} AND ${d().isNot("id")}${spaceId ? " AND (space_id IS NULL OR space_id=?)" : ""} ORDER BY space_id IS NOT NULL LIMIT 1`,
     workspaceId,
     name,
     exceptId ?? null,
@@ -326,7 +333,7 @@ const OTHER_SPACE_TAG = "Dieser Tag gehört zu einem anderen Bereich.";
 // An existing tag of the context by id or name.
 function findTag(scope: MetaScope, ref: string): string | undefined {
   return one<{ id: string }>(
-    "SELECT id FROM page_tags WHERE workspace_id=? AND (space_id IS NULL OR space_id=?) AND (id=? OR name=? COLLATE NOCASE)",
+    `SELECT id FROM page_tags WHERE workspace_id=? AND (space_id IS NULL OR space_id=?) AND (id=? OR ${d().ieq("name")})`,
     scope.workspaceId,
     scope.spaceId,
     ref,
@@ -346,7 +353,7 @@ export function resolveTag(user: Identity | null, scope: MetaScope, ref: string,
   const name = cleanTagName(ref);
   if (!name) return null;
   const byName = one<{ id: string }>(
-    "SELECT id FROM page_tags WHERE workspace_id=? AND (space_id IS NULL OR space_id=?) AND name=? COLLATE NOCASE ORDER BY space_id IS NOT NULL",
+    `SELECT id FROM page_tags WHERE workspace_id=? AND (space_id IS NULL OR space_id=?) AND ${d().ieq("name")} ORDER BY space_id IS NOT NULL`,
     workspaceId,
     spaceId,
     name,
@@ -391,7 +398,7 @@ function setPageTags(user: Identity | null, page: Pick<Page, "id" | "workspace_i
     if (tagId && !ids.includes(tagId)) ids.push(tagId);
   }
   if (ids.length > MAX_TAGS_PER_PAGE) throw new HttpError(400, "Höchstens 50 Tags je Seite.");
-  run(`DELETE FROM page_tag_links WHERE page_id=? AND tag_id NOT IN (SELECT value FROM json_each(?))`, page.id, JSON.stringify(ids));
+  run(`DELETE FROM page_tag_links WHERE page_id=? AND tag_id NOT IN ${d().jsonValues()}`, page.id, JSON.stringify(ids));
   ids.forEach((tagId, i) =>
     run("INSERT INTO page_tag_links(page_id,tag_id,position) VALUES(?,?,?) ON CONFLICT(page_id,tag_id) DO UPDATE SET position=excluded.position", page.id, tagId, i),
   );
@@ -572,7 +579,7 @@ export function pagePropertiesCommand(user: Identity, action: string, input: Rec
       const table = action === "tag.reorder" ? "page_tags" : "page_property_defs";
       // Space managers order their space's own ones (#136).
       const scopes = new Set(
-        all<{ space_id: string | null }>(`SELECT space_id FROM ${table} WHERE workspace_id=? AND id IN (SELECT value FROM json_each(?))`, b.workspaceId, JSON.stringify(b.order)).map(
+        all<{ space_id: string | null }>(`SELECT space_id FROM ${table} WHERE workspace_id=? AND id IN ${d().jsonValues()}`, b.workspaceId, JSON.stringify(b.order)).map(
           (r) => r.space_id,
         ),
       );
@@ -703,7 +710,7 @@ export function filteredPageIds(user: Identity, workspaceId: string, parsed: Pic
   };
   for (const filter of parsed.tags) {
     const tagged = new Set(
-      all<{ page_id: string }>("SELECT page_id FROM page_tag_links WHERE tag_id IN (SELECT value FROM json_each(?))", JSON.stringify(tagFilterIds(filter))).map((l) => l.page_id),
+      all<{ page_id: string }>(`SELECT page_id FROM page_tag_links WHERE tag_id IN ${d().jsonValues()}`, JSON.stringify(tagFilterIds(filter))).map((l) => l.page_id),
     );
     ids = new Set([...ids].filter((pid) => tagged.has(pid) !== filter.exclude));
   }
@@ -801,7 +808,7 @@ export function applyPortableMeta(
     if (!name) continue;
     let tagId =
       one<{ id: string }>(
-        "SELECT id FROM page_tags WHERE workspace_id=? AND (space_id IS NULL OR space_id=?) AND name=? COLLATE NOCASE ORDER BY space_id IS NOT NULL",
+        `SELECT id FROM page_tags WHERE workspace_id=? AND (space_id IS NULL OR space_id=?) AND ${d().ieq("name")} ORDER BY space_id IS NOT NULL`,
         scope.workspaceId,
         scope.spaceId,
         name,
@@ -820,7 +827,7 @@ export function applyPortableMeta(
     const name = cleanName(property.name, MAX_PROPERTY_NAME);
     if (!name) continue;
     let stored = one<DefRow>(
-      "SELECT * FROM page_property_defs WHERE workspace_id=? AND (space_id IS NULL OR space_id=?) AND name=? COLLATE NOCASE ORDER BY space_id IS NOT NULL",
+      `SELECT * FROM page_property_defs WHERE workspace_id=? AND (space_id IS NULL OR space_id=?) AND ${d().ieq("name")} ORDER BY space_id IS NOT NULL`,
       page.workspace_id,
       scope.spaceId,
       name,
@@ -877,13 +884,13 @@ export function copyPageMeta(user: Identity, fromPageId: string, to: Pick<Page, 
   if (!from || isEncryptedPage(from) || isEncryptedPage(to)) return;
   if (from.workspace_id === to.workspace_id) {
     run(
-      "INSERT OR IGNORE INTO page_tag_links(page_id,tag_id,position) SELECT ?,l.tag_id,l.position FROM page_tag_links l JOIN page_tags t ON t.id=l.tag_id WHERE l.page_id=? AND (t.space_id IS NULL OR t.space_id=?)",
+      d().insertIgnore("page_tag_links(page_id,tag_id,position) SELECT ?,l.tag_id,l.position FROM page_tag_links l JOIN page_tags t ON t.id=l.tag_id WHERE l.page_id=? AND (t.space_id IS NULL OR t.space_id=?)"),
       to.id,
       from.id,
       to.space_id,
     );
     run(
-      "INSERT OR IGNORE INTO page_property_values(page_id,property_id,value) SELECT ?,v.property_id,v.value FROM page_property_values v JOIN page_property_defs d ON d.id=v.property_id WHERE v.page_id=? AND (d.space_id IS NULL OR d.space_id=?)",
+      d().insertIgnore("page_property_values(page_id,property_id,value) SELECT ?,v.property_id,v.value FROM page_property_values v JOIN page_property_defs d ON d.id=v.property_id WHERE v.page_id=? AND (d.space_id IS NULL OR d.space_id=?)"),
       to.id,
       from.id,
       to.space_id,
@@ -1124,4 +1131,105 @@ export function importTaxonomy(
       Date.now(),
     );
   }
+}
+
+// ---- On the asynchronous database (lib/db-driver) ----
+//
+// The tag list and tag.save on `db`: the shape this module takes once its
+// callers are asynchronous (docs/architecture/database.md). Until then the
+// synchronous functions above stay for them – workspaceTags/contextTags
+// alone reach 121 functions (scripts/db-async-impact.mjs) and tag.save runs
+// inside command() (lib/api.ts), which is synchronous. The permission
+// checks (lib/permissions.ts) stay synchronous reads: inside db.tx() on
+// Postgres they read what was committed before the transaction, which is
+// what they need.
+
+const tagOrder = (d: Dialect) => `ORDER BY position,${d.nocase("name")}`;
+// The tags of a workspace (spaceId undefined: every scope), or of a page's
+// context (the workspace's and those of `spaceId`; null: the workspace's).
+export async function listTags(workspaceId: string, spaceId?: string | null): Promise<PageTag[]> {
+  const rows =
+    spaceId === undefined
+      ? await db.all<TagRow>(`SELECT * FROM page_tags WHERE workspace_id=? ${tagOrder(db.dialect)}`, workspaceId)
+      : await db.all<TagRow>(`SELECT * FROM page_tags WHERE workspace_id=? AND (space_id IS NULL OR space_id=?) ${tagOrder(db.dialect)}`, workspaceId, spaceId);
+  return rows.map(asTag);
+}
+async function tagClash(workspaceId: string, spaceId: string | null, name: string, exceptId?: string) {
+  const d = db.dialect;
+  return db.one<{ id: string; space_id: string | null; name: string }>(
+    `SELECT id,space_id,name FROM page_tags WHERE workspace_id=? AND ${d.ieq("name")} AND ${d.isNot("id")}${spaceId ? " AND (space_id IS NULL OR space_id=?)" : ""} ORDER BY space_id IS NOT NULL LIMIT 1`,
+    workspaceId,
+    name,
+    exceptId ?? null,
+    ...(spaceId ? [spaceId] : []),
+  );
+}
+// A new tag `name` in the scope (checks done by the caller), or the one
+// that won a race for the same name (Postgres: two requests at once).
+async function createTag(user: Identity, workspaceId: string, spaceId: string | null, name: string, color?: PageTagColor) {
+  const count = (await db.one<{ n: number }>("SELECT COUNT(*) n FROM page_tags WHERE workspace_id=?", workspaceId))?.n ?? 0;
+  if (count >= MAX_TAGS) throw new HttpError(400, "Höchstens 1000 Tags je Arbeitsbereich.");
+  // New tags take the colours in turn, so neighbours differ.
+  const palette = PAGE_TAG_COLORS.filter((c) => c !== "gray");
+  const tagId = id();
+  try {
+    // A savepoint: on Postgres a failed statement spoils the whole
+    // transaction unless it ran in one – catching the error and going on
+    // needs it there (SQLite does not care).
+    await db.tx(() =>
+      db.run(
+        "INSERT INTO page_tags(id,workspace_id,space_id,name,color,position,created_by,created_at) VALUES(?,?,?,?,?,(SELECT COALESCE(MAX(position),0)+1 FROM page_tags WHERE workspace_id=?),?,?)",
+        tagId,
+        workspaceId,
+        spaceId,
+        name,
+        color ?? palette[count % palette.length],
+        workspaceId,
+        user.id,
+        Date.now(),
+      ),
+    );
+  } catch (error) {
+    if (!uniqueViolation(error)) throw error;
+    const clash = await tagClash(workspaceId, spaceId, name);
+    throw new HttpError(409, clash ? clashMessage("page_tags", clash) : "Diesen Tag gibt es schon.");
+  }
+  return tagId;
+}
+// tag.save: { workspaceId, tagId?, name, color?, spaceId? } – the same
+// rules as the command (pagePropertiesCommand) in one transaction.
+export async function saveTag(user: Identity, input: unknown): Promise<{ ok: true; id: string }> {
+  const b = z
+    .object({ workspaceId: uuid, tagId: uuid.optional(), name: z.string().max(1000), color: colorSchema.optional(), spaceId: uuid.nullable().optional() })
+    .parse(input);
+  return db.tx(async () => {
+    requireMember(user, b.workspaceId, "editor");
+    const name = cleanTagName(b.name);
+    if (!name) throw new HttpError(400, "Bitte einen Namen angeben.");
+    if (!b.tagId) {
+      const spaceId = b.spaceId ?? null;
+      if (spaceId) scopeSpace(b.workspaceId, spaceId);
+      if (spaceId && !canCreateTags(user, b.workspaceId, spaceId)) throw new HttpError(403, "Keine Schreibrechte in diesem Bereich.");
+      const clash = await tagClash(b.workspaceId, spaceId, name);
+      if (clash) throw new HttpError(409, clashMessage("page_tags", clash));
+      if (!canCreateTags(user, b.workspaceId, spaceId))
+        throw new HttpError(403, spaceId ? "Keine Schreibrechte in diesem Bereich." : "Tags für den ganzen Arbeitsbereich legen nur Eigentümer an.");
+      const tagId = await createTag(user, b.workspaceId, spaceId, name, b.color);
+      await syncTagFieldOptionsAsync(b.workspaceId);
+      await auditAsync(user.id, "tag.create", tagId, `${name}${spaceId ? ` (${spaceId})` : ""}`);
+      return { ok: true as const, id: tagId };
+    }
+    const before = await db.one<TagRow>("SELECT * FROM page_tags WHERE id=? AND workspace_id=?", b.tagId, b.workspaceId);
+    if (!before) throw new HttpError(404, "Schlagwort (Tag) nicht gefunden.");
+    requireManage(user, b.workspaceId, before.space_id);
+    const clash = await tagClash(b.workspaceId, before.space_id, name, b.tagId);
+    if (clash) throw new HttpError(409, `${clashMessage("page_tags", clash)} Zum Zusammenführen „Zusammenführen“ wählen.`);
+    await db.run("UPDATE page_tags SET name=?,color=COALESCE(?,color) WHERE id=?", name, b.color ?? null, b.tagId);
+    // Still synchronous (records of tag-backed properties): on Postgres it
+    // refuses inside this transaction once it has records to rewrite.
+    if (before.name !== name) rewriteTagValues(user, b.workspaceId, before.name, name, before.space_id);
+    await syncTagFieldOptionsAsync(b.workspaceId);
+    await auditAsync(user.id, "tag.save", b.tagId, name);
+    return { ok: true as const, id: b.tagId };
+  });
 }

@@ -151,14 +151,14 @@ const runtime = globalThis as unknown as { flowplanBackupTimer?: ReturnType<type
 // Checks every 10 minutes whether the next backup is due.
 export function startBackupWorker() {
   if (runtime.flowplanBackupTimer) return;
-  const backupDue = () => {
+  const backupDue = async () => {
     const status = scheduledBackupStatus();
     if (!status.enabled) return false;
     // Not before the first account: a new instance pointed at the bucket of
     // an old one would put its empty copy next to the old backups – as the
     // newest, the one the setup restore picks – and push one of them out of
     // the kept ones.
-    if (firstAccount()) return false;
+    if (await firstAccount()) return false;
     if (status.last && Date.now() - status.last.at < (status.hourly ? HOUR_MS - 5 * 60_000 : DAY_MS) && !status.last.error) return false;
     return !(status.last?.error && Date.now() - status.last.at < 3600_000);
   };
@@ -166,7 +166,7 @@ export function startBackupWorker() {
     if (runtime.flowplanBackupBusy) return;
     runtime.flowplanBackupBusy = true;
     try {
-      if (backupDue()) {
+      if (await backupDue()) {
         await runScheduledBackup();
         // The readable copy (Markdown, optionally into Git) comes along, once
         // a day also with hourly backups.

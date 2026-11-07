@@ -19,39 +19,41 @@ import {
   rollbackTransaction,
   run as runSync,
 } from "../db";
-import { currentTx, dbContext, type TxScope } from "./context";
+import { currentTx, dbContext, endScope, type TxScope } from "./context";
 import { sqliteDialect } from "./dialect";
 import type { Db, Param } from "./types";
 
-// Outside the active transaction: wait until it has ended.
-async function turn() {
-  while (dbContext.sqliteActive && currentTx()?.root !== dbContext.sqliteActive) await dbContext.sqliteDone;
-}
+// Whether another asynchronous transaction holds the connection. Callers
+// wait in a loop *right before* their synchronous statement – a helper
+// that awaited for them would add a microtask between the check and the
+// statement, in which another transaction could begin.
+const held = () => !!dbContext.sqliteActive && currentTx()?.root !== dbContext.sqliteActive;
 
 export function createSqliteDb(): Db {
   return {
     backend: "sqlite",
     dialect: sqliteDialect,
     async one<T>(sql: string, ...params: Param[]) {
-      if (dbContext.sqliteActive) await turn();
+      while (held()) await dbContext.sqliteDone;
       return oneSync<T>(sql, ...params);
     },
     async all<T>(sql: string, ...params: Param[]) {
-      if (dbContext.sqliteActive) await turn();
+      while (held()) await dbContext.sqliteDone;
       return allSync<T>(sql, ...params);
     },
     async run(sql: string, ...params: Param[]) {
-      if (dbContext.sqliteActive) await turn();
+      while (held()) await dbContext.sqliteDone;
       return { changes: Number(runSync(sql, ...params).changes) };
     },
     async exec(sql: string) {
-      if (dbContext.sqliteActive) await turn();
+      while (held()) await dbContext.sqliteDone;
       connection().exec(sql);
     },
     async tx<T>(fn: () => Promise<T>): Promise<T> {
       const scope = currentTx();
       if (scope?.backend === "sqlite") return nested(scope, fn);
-      await turn();
+      while (held()) await dbContext.sqliteDone;
+      // From here to BEGIN without an await: nobody can take it in between.
       const root = { depth: 0, backend: "sqlite", savepoints: 0 } as TxScope;
       root.root = root;
       let release!: () => void;
@@ -74,6 +76,7 @@ export function createSqliteDb(): Db {
         dbContext.sqliteActive = null;
         dbContext.sqliteDone = null;
         release();
+        endScope(root);
       }
     },
     inTransaction: () => currentTx()?.backend === "sqlite",

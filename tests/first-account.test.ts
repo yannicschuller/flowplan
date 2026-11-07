@@ -9,23 +9,23 @@ delete process.env.FLOWPLAN_SETUP_TOKEN;
 const { all } = await import("../lib/db");
 const auth = await import("../lib/local-auth");
 
-test("without a setup token on a public address the setup is flagged", () => {
-  assert.equal(auth.firstAccount(), true);
+test("without a setup token on a public address the setup is flagged", async () => {
+  assert.equal(await auth.firstAccount(), true);
   assert.equal(auth.unprotectedSetup(), true);
-  assert.match(auth.setupWarning(), /FLOWPLAN_SETUP_TOKEN/);
-  assert.equal(auth.loginOptions().unprotectedSetup, true);
+  assert.match(await auth.setupWarning(), /FLOWPLAN_SETUP_TOKEN/);
+  assert.equal((await auth.loginOptions()).unprotectedSetup, true);
   const before = process.env.APP_URL;
   try {
     // A local address is a test on this machine, not worth a warning.
     for (const url of ["http://localhost:3000", "http://127.0.0.1:3000", "http://[::1]:3000"]) {
       process.env.APP_URL = url;
       assert.equal(auth.unprotectedSetup(), false, url);
-      assert.equal(auth.setupWarning(), "", url);
+      assert.equal(await auth.setupWarning(), "", url);
     }
     process.env.APP_URL = before;
     process.env.FLOWPLAN_SETUP_TOKEN = "einrichten";
     assert.equal(auth.unprotectedSetup(), false);
-    assert.equal(auth.loginOptions("einrichten").unprotectedSetup, false);
+    assert.equal((await auth.loginOptions("einrichten")).unprotectedSetup, false);
   } finally {
     process.env.APP_URL = before;
     delete process.env.FLOWPLAN_SETUP_TOKEN;
@@ -49,6 +49,6 @@ test("two sign-ups at the same moment: only one becomes the administrator", asyn
   );
   assert.equal(all("SELECT id FROM users WHERE subject LIKE 'local:%'").length, 1);
   // Set up: no warning and no note any more.
-  assert.equal(auth.setupWarning(), "");
-  assert.equal(auth.loginOptions().unprotectedSetup, false);
+  assert.equal(await auth.setupWarning(), "");
+  assert.equal((await auth.loginOptions()).unprotectedSetup, false);
 });

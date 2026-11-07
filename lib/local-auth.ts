@@ -20,7 +20,8 @@ import {
   type AuthenticationResponseJSON,
   type RegistrationResponseJSON,
 } from "@simplewebauthn/server";
-import { all, id, one, run, transaction } from "./db";
+import { all, id, one, run } from "./db";
+import { db } from "./db-driver";
 import { HttpError, acceptInvites, adminGroup, appUrl, hash, inviteTokenShape, rememberPolicy } from "./auth";
 import { instanceSettings } from "./instance-settings";
 import { loopbackHost, plainHttpInstance } from "./instance-https";
@@ -82,18 +83,20 @@ const tr = (locale: Locale): Tr => translate(locale);
 
 type Account = { user_id: string; email: string; password_hash: string; is_admin: number; email_verified: number; verify_required: number };
 const accountOf = (userId: string) => one<Account>("SELECT * FROM local_accounts WHERE user_id=?", userId);
+// The address ignoring case (SQLite: COLLATE NOCASE as the column's
+// unique key; Postgres: lower() on both sides, a unique index on lower(email)).
 const accountByEmail = (email: string) =>
-  one<Account & { disabled: number }>(
-    "SELECT a.*,u.disabled FROM local_accounts a JOIN users u ON u.id=a.user_id WHERE a.email=? COLLATE NOCASE",
+  db.one<Account & { disabled: number }>(
+    `SELECT a.*,u.disabled FROM local_accounts a JOIN users u ON u.id=a.user_id WHERE ${db.dialect.ieq("a.email")}`,
     email.trim(),
   );
 
 // No real account yet: the next one sets the instance up.
-export function firstAccount() {
-  return !one("SELECT 1 FROM users WHERE demo_until IS NULL AND subject<>'local-development' LIMIT 1");
+export async function firstAccount() {
+  return !(await db.one("SELECT 1 FROM users WHERE demo_until IS NULL AND subject<>'local-development' LIMIT 1"));
 }
-function invited(email: string) {
-  return !!one("SELECT 1 FROM invites WHERE lower(email)=lower(?)", email);
+async function invited(email: string) {
+  return !!(await db.one("SELECT 1 FROM invites WHERE lower(email)=lower(?)", email));
 }
 // FLOWPLAN_SETUP_TOKEN: on an instance reachable from the internet the
 // first account is created only with /register?setup=<token>, so no stranger
@@ -116,8 +119,8 @@ export function unprotectedSetup() {
     return false;
   }
 }
-export function setupWarning() {
-  if (!unprotectedSetup() || !firstAccount()) return "";
+export async function setupWarning() {
+  if (!unprotectedSetup() || !(await firstAccount())) return "";
   return `Flowplan: no FLOWPLAN_SETUP_TOKEN is set and ${appUrl()} is not a local address. Until the first account exists, anyone who reaches this address can create the administrator or restore a backup. Set FLOWPLAN_SETUP_TOKEN and create the first account via ${appUrl().replace(/\/$/, "")}/register?setup=<token> (https://docs.flowplan.org/en/configuration).`;
 }
 export function setupAllowed(given: unknown) {
@@ -132,14 +135,14 @@ export function setupAllowed(given: unknown) {
 // register() accepts it while sign-ups are closed. Null for an unknown or
 // used link, without password sign-in (SSO only) and before the instance is
 // set up (the setup link decides there).
-export function invitedEmail(token?: string) {
-  if (!token || !inviteTokenShape.test(token) || !localLoginEnabled() || firstAccount()) return null;
-  return one<{ email: string }>("SELECT email FROM invites WHERE token=?", token)?.email ?? null;
+export async function invitedEmail(token?: string) {
+  if (!token || !inviteTokenShape.test(token) || !localLoginEnabled() || await firstAccount()) return null;
+  return (await db.one<{ email: string }>("SELECT email FROM invites WHERE token=?", token))?.email ?? null;
 }
-export function signupOpen(setup?: string, invite?: string) {
+export async function signupOpen(setup?: string, invite?: string) {
   return (
     localLoginEnabled() &&
-    ((firstAccount() && setupAllowed(setup)) || instanceSettings().allowSignup || invitedEmail(invite) !== null)
+    ((await firstAccount() && setupAllowed(setup)) || instanceSettings().allowSignup || (await invitedEmail(invite)) !== null)
   );
 }
 // The groups a local account signs in with (administrators).
@@ -169,7 +172,7 @@ export async function register(input: unknown, locale: Locale, address = "") {
   const { name, email } = parsed.data;
   const password = passwordSchema(t).safeParse(parsed.data.password);
   if (!password.success) throw new HttpError(400, password.error.issues[0].message);
-  const first = firstAccount();
+  const first = await firstAccount();
   if (first && !setupAllowed(parsed.data.setup)) {
     securityEvent("login.refused", { address, detail: "first account without setup token" });
     throw new HttpError(403, t("Diese Instanz wird mit einem Einrichtungslink eingerichtet. Frag die Person, die sie betreibt.", "This instance is set up with a setup link. Ask the person who runs it."));
@@ -177,12 +180,12 @@ export async function register(input: unknown, locale: Locale, address = "") {
   // An invitation link opens sign-up only for the address it was made for –
   // one link is not a pass for any number of accounts with any address.
   // Without e-mail, an address alone (no link) is no proof of owning it.
-  const linked = !!parsed.data.invite && invitedEmail(parsed.data.invite)?.toLowerCase() === email.toLowerCase();
-  const byAddress = invited(email) && !!mailConfig();
+  const linked = !!parsed.data.invite && (await invitedEmail(parsed.data.invite))?.toLowerCase() === email.toLowerCase();
+  const byAddress = await invited(email) && !!mailConfig();
   if (!first && !instanceSettings().allowSignup && !byAddress && !linked)
     throw new HttpError(403, t("Neue Konten legen hier nur Admins an – oder du wirst eingeladen.", "Only administrators create new accounts here – or you get invited."));
   const passwordHash = await hashPassword(password.data);
-  if (accountByEmail(email) || one("SELECT 1 FROM users WHERE lower(email)=lower(?) AND subject LIKE 'local:%'", email)) {
+  if (await accountByEmail(email) || await db.one("SELECT 1 FROM users WHERE lower(email)=lower(?) AND subject LIKE 'local:%'", email)) {
     // With e-mail set up, the answer does not tell whether the address has an
     // account: its owner gets a note instead of a confirmation link.
     if (mailConfig()) noteExistingAccount(email, locale);
@@ -194,25 +197,29 @@ export async function register(input: unknown, locale: Locale, address = "") {
   const confirm = !first && !!mailConfig();
   // Checked again in one transaction with the insert: hashing the password
   // takes a while, and two sign-ups at the same moment must not both become
-  // the instance's administrator.
-  transaction(() => {
-    if (first && !firstAccount()) {
-      securityEvent("login.refused", { address, detail: "first account already created" });
-      throw new HttpError(409, t("Diese Instanz wurde gerade eingerichtet. Bitte melde dich an oder lass dich einladen.", "This instance was just set up. Please sign in or ask for an invitation."));
-    }
-    run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, `local:${uid}`, name, email);
-    run(
-      "INSERT INTO local_accounts(user_id,email,password_hash,is_admin,email_verified,verify_required,created_at) VALUES(?,?,?,?,?,?,?)",
+  // the instance's administrator. SQLite's BEGIN IMMEDIATE already lets one
+  // writer in at a time; Postgres (READ COMMITTED) needs the lock for that.
+  await db.tx(
+    async () => {
+      if (first && !(await firstAccount())) {
+        securityEvent("login.refused", { address, detail: "first account already created" });
+        throw new HttpError(409, t("Diese Instanz wurde gerade eingerichtet. Bitte melde dich an oder lass dich einladen.", "This instance was just set up. Please sign in or ask for an invitation."));
+      }
+      await db.run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, `local:${uid}`, name, email);
+      await db.run(
+        "INSERT INTO local_accounts(user_id,email,password_hash,is_admin,email_verified,verify_required,created_at) VALUES(?,?,?,?,?,?,?)",
       uid,
       email,
       passwordHash,
       first ? 1 : 0,
       confirm ? 0 : 1,
-      confirm ? 1 : 0,
-      Date.now(),
-    );
-  });
-  const user = one<User>("SELECT * FROM users WHERE id=?", uid)!;
+        confirm ? 1 : 0,
+        Date.now(),
+      );
+    },
+    { lock: "flowplan:first-account" },
+  );
+  const user = (await db.one<User>("SELECT * FROM users WHERE id=?", uid))!;
   if (confirm) sendVerification(user, locale);
   return { user, groups: first ? [adminGroup()] : [], pending: confirm };
 }
@@ -334,7 +341,7 @@ export async function passwordLogin(input: unknown, address: string, locale: Loc
   const keys = [...addressKey("ip", address), `email:${email.toLowerCase()}`];
   if (limited(keys)) throw new HttpError(429, t("Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.", "Too many attempts. Please try again in 15 minutes."));
   await slowDown(keys);
-  const account = accountByEmail(email);
+  const account = await accountByEmail(email);
   // The same work and the same answer whether the account exists or not.
   const ok = await verifyPassword(password, account?.password_hash || DUMMY_HASH);
   if (!account || !ok) {
@@ -343,7 +350,7 @@ export async function passwordLogin(input: unknown, address: string, locale: Loc
   }
   if (account.disabled) throw new HttpError(403, t("Dieses Konto ist deaktiviert.", "This account is disabled."));
   if (awaitsConfirmation(account)) {
-    const user = one<User>("SELECT * FROM users WHERE id=?", account.user_id);
+    const user = await db.one<User>("SELECT * FROM users WHERE id=?", account.user_id);
     if (user && !recentlySent(account.user_id)) sendVerification(user, locale);
     throw new HttpError(
       403,
@@ -447,22 +454,22 @@ export function verifyEmail(token: string) {
   return userId;
 }
 // The link once more, for "Link erneut senden" (same answer for every address).
-export function resendVerification(input: unknown, locale: Locale) {
+export async function resendVerification(input: unknown, locale: Locale) {
   const parsed = z.object({ email: z.string().trim().max(200) }).safeParse(input);
-  const account = parsed.success ? accountByEmail(parsed.data.email) : undefined;
+  const account = parsed.success ? await accountByEmail(parsed.data.email) : undefined;
   if (account && awaitsConfirmation(account) && !recentlySent(account.user_id)) {
-    const user = one<User>("SELECT * FROM users WHERE id=?", account.user_id);
+    const user = await db.one<User>("SELECT * FROM users WHERE id=?", account.user_id);
     if (user) sendVerification(user, locale);
   }
 }
 // Always the same answer, so it does not tell which addresses have accounts.
-export function requestPasswordReset(input: unknown, locale: Locale, address = "") {
+export async function requestPasswordReset(input: unknown, locale: Locale, address = "") {
   const t = tr(locale);
   const { email } = z.object({ email: z.string().trim().max(200) }).parse(input);
   if (!mailConfig()) throw new HttpError(400, t("Diese Instanz versendet keine E-Mails. Bitte wende dich an die Administration.", "This instance does not send e-mails. Please contact the administrators."));
   if (address && !allow(`reset-ip:${address}`, 20, 3_600_000))
     throw new HttpError(429, t("Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.", "Too many attempts. Please try again in 15 minutes."));
-  const account = accountByEmail(email);
+  const account = await accountByEmail(email);
   // One link per address every few minutes: more would flood the inbox and
   // keep replacing the link. The answer stays the same either way.
   if (account && !account.disabled && allow(`reset:${email.toLowerCase()}`, 1, 5 * 60_000)) {
@@ -659,17 +666,18 @@ export async function passkeyConfirm(userId: string, token: string | undefined, 
 }
 
 // What the sign-in page offers on this instance.
-export function loginOptions(setup?: string, invite?: string) {
+export async function loginOptions(setup?: string, invite?: string) {
+  const first = await firstAccount();
   return {
     configured: !!process.env.OIDC_ISSUER,
     localLogin: localLoginEnabled(),
-    signupOpen: signupOpen(setup, invite),
+    signupOpen: await signupOpen(setup, invite),
     // Opened through an invitation link: the account is created for its address.
-    invitedEmail: invitedEmail(invite) || "",
-    firstAccount: localLoginEnabled() && firstAccount() && setupAllowed(setup),
+    invitedEmail: await invitedEmail(invite) || "",
+    firstAccount: localLoginEnabled() && first && setupAllowed(setup),
     // The first account can be created without a setup link although the
     // address is not this machine: a note recommends FLOWPLAN_SETUP_TOKEN.
-    unprotectedSetup: localLoginEnabled() && firstAccount() && unprotectedSetup(),
+    unprotectedSetup: localLoginEnabled() && first && unprotectedSetup(),
     mail: !!mailConfig(),
     demo: process.env.NODE_ENV !== "production",
     // "Stay signed in on this device" (SESSION_REMEMBER=true).
@@ -680,7 +688,7 @@ export function loginOptions(setup?: string, invite?: string) {
     plainHttp: plainHttpInstance(appUrl()),
   };
 }
-export type LoginOptions = ReturnType<typeof loginOptions>;
+export type LoginOptions = Awaited<ReturnType<typeof loginOptions>>;
 
 // Old failures go – but journal PIN counters (pin:…, lib/journal-extras.ts)
 // count over a whole day, so they keep a day.

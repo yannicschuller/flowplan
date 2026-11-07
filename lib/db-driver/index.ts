@@ -13,6 +13,7 @@ import type { Db, Param, Row } from "./types";
 
 export type { Db, Param, Row, RunResult, TxOptions, Backend } from "./types";
 export type { Dialect } from "./dialect";
+export { uniqueViolation } from "./dialect";
 
 const holder = globalThis as unknown as { flowplanAsyncDb?: Db };
 export function database(): Db {

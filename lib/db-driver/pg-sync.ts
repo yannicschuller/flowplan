@@ -13,7 +13,7 @@
 // anything else SQLite-only is refused with a hint (dialect.ts).
 import { MessageChannel, receiveMessageOnPort, Worker } from "node:worker_threads";
 import { currentTx, postgresSchema, postgresUrl } from "./context";
-import { numberPlaceholders, postgresDialect, sqliteOnly } from "./dialect";
+import { numberPlaceholders, postgresDialect, sqliteOnly, withoutRowid } from "./dialect";
 
 type Params = (string | number | null | Uint8Array)[];
 export type LegacyPostgres = {
@@ -24,6 +24,7 @@ export type LegacyPostgres = {
 };
 type Reply = { rows?: Record<string, unknown>[]; changes?: number; error?: { message: string; code?: string } };
 
+const READ_ONLY = /^\s*(SELECT\b|WITH\b(?![\s\S]*\b(INSERT|UPDATE|DELETE)\b))/i;
 const translations = new Map<string, string>();
 // SQLite SQL → Postgres SQL, for the mechanical cases only.
 export function legacyToPostgres(sql: string): string {
@@ -36,6 +37,7 @@ export function legacyToPostgres(sql: string): string {
   out = out
     .replace(/\bIS\s+NOT\s+\?/gi, "IS DISTINCT FROM ?")
     .replace(/\bifnull\s*\(/gi, "coalesce(")
+    .replace(/\bLIMIT\s+-1\b/gi, "LIMIT ALL")
     .replace(/\bCURRENT_TIMESTAMP\b/g, postgresDialect.nowText());
   const hint = sqliteOnly(out);
   if (hint) throw new Error(`SQLite-only SQL reached Postgres (${hint}): ${sql.slice(0, 200)}`);
@@ -55,10 +57,13 @@ export function legacyPostgres(): LegacyPostgres {
   port1.unref();
   let depth = 0;
   function call(message: { kind: string; sql: string; params?: Params }): Reply {
-    // The transaction's own connection is busy waiting for this thread: a
-    // blocking call here could wait for its locks forever.
-    if (currentTx()?.backend === "postgres")
-      throw new Error("Synchronous database call inside an asynchronous Postgres transaction: port the helper to the asynchronous db (lib/db-driver).");
+    // Inside an asynchronous transaction its connection waits for this
+    // thread: a blocking write could wait for that transaction's row locks
+    // forever, so it is refused. Reads never wait for row locks in
+    // Postgres; they see what was committed before (not the transaction's
+    // own changes).
+    if (currentTx()?.backend === "postgres" && (message.kind === "run" || message.kind === "exec" || !READ_ONLY.test(message.sql)))
+      throw new Error("Synchronous database write inside an asynchronous Postgres transaction: port the helper to the asynchronous db (lib/db-driver).");
     Atomics.store(signal, 0, 0);
     port1.postMessage(message);
     for (;;) {
@@ -74,8 +79,8 @@ export function legacyPostgres(): LegacyPostgres {
   }
   const query = (kind: string, sql: string, params: Params) => call({ kind, sql: legacyToPostgres(sql), params });
   return {
-    one: <T>(sql: string, params: Params) => query("one", sql, params).rows?.[0] as T | undefined,
-    all: <T>(sql: string, params: Params) => (query("all", sql, params).rows ?? []) as T[],
+    one: <T>(sql: string, params: Params) => withoutRowid(sql, query("one", sql, params).rows ?? [])[0] as T | undefined,
+    all: <T>(sql: string, params: Params) => withoutRowid(sql, query("all", sql, params).rows ?? []) as T[],
     run: (sql: string, params: Params) => ({ changes: query("run", sql, params).changes ?? 0, lastInsertRowid: 0 }),
     transaction<T>(fn: () => T): T {
       // Not nested (lib/db.ts never nests transaction()); a nested call is a savepoint.

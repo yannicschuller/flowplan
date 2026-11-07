@@ -237,7 +237,7 @@ async function handleGET(
       // An API token is no browser sign-in: the person signs in first.
       if (!user || user.demo || user.apiScope) {
         // "Mit SSO anmelden" in the app goes straight to the provider.
-        if (params.get("via") === "sso" && (await config().then(() => true, () => false)))
+        if (params.get("via") === "sso" && await config().then(() => true, () => false))
           return NextResponse.redirect(new URL(`/api/auth/login?returnTo=${encodeURIComponent(desktopReturnPath(challenge))}`, appUrl()));
         return NextResponse.redirect(new URL(`/?desktop=${challenge}`, appUrl()));
       }
@@ -465,7 +465,7 @@ async function handlePOST(
       });
     }
     if (action === "desktop-redeem") {
-      const { code, verifier } = ((await readJsonLimited(req, 16_000).catch(() => null)) ?? {}) as { code?: unknown; verifier?: unknown };
+      const { code, verifier } = (await readJsonLimited(req, 16_000).catch(() => null) ?? {}) as { code?: unknown; verifier?: unknown };
       const handoff = redeemDesktopCode(code, verifier);
       if (!handoff)
         throw new HttpError(400, translate(locale)("Der Anmeldecode ist ungültig oder abgelaufen. Bitte erneut anmelden.", "The sign-in code is invalid or has expired. Please sign in again."));
@@ -506,7 +506,7 @@ async function handlePOST(
       return NextResponse.json({ ok: true });
     }
     if (action === "verify-resend") {
-      resendVerification(await body(), locale);
+      await resendVerification(await body(), locale);
       return NextResponse.json({ ok: true });
     }
     if (action === "password") {
@@ -536,7 +536,7 @@ async function handlePOST(
       return NextResponse.json({ ok: true });
     }
     if (action === "reset-request") {
-      requestPasswordReset(await body(), locale, clientAddress(req.headers));
+      await requestPasswordReset(await body(), locale, clientAddress(req.headers));
       return NextResponse.json({ ok: true });
     }
     if (action === "reset") {

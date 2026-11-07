@@ -17,6 +17,7 @@
 // - Guests learn only the tags used in records shared with them.
 // - End-to-end encrypted spaces have no tags: the option is refused there.
 import { all, one, run } from "./db";
+import { db } from "./db-driver";
 import { HttpError } from "./auth";
 import { isEncryptedPage } from "./e2ee-server";
 import { isGuest, pageRole } from "./permissions";
@@ -26,7 +27,7 @@ import { hiddenFieldsFor } from "./field-access";
 import { databaseSnapshot } from "./database-operations";
 import { groupKey } from "./database-groups";
 import { cellText } from "./cell-text";
-import { canCreateTags, contextTags, resolveTag, scopeOf, workspaceTags } from "./page-properties-server";
+import { canCreateTags, contextTags, listTags, resolveTag, scopeOf, workspaceTags } from "./page-properties-server";
 import { cleanTagName, foldName, isTagField, MAX_OPTIONS } from "./page-properties";
 import type { Field, FilterGroup, FilterNode, Identity, Page, View } from "./types";
 
@@ -41,7 +42,7 @@ type TagDatabase = { page: Page; fields: Field[]; views: View[] };
 function tagDatabases(workspaceId: string): TagDatabase[] {
   return all<Page & { db_fields: string; db_views: string }>(
     `SELECT p.*,d.fields db_fields,d.views db_views FROM databases d JOIN pages p ON p.id=d.page_id
-     WHERE p.workspace_id=? AND instr(d.fields,'"tagOptions":true')>0`,
+     WHERE p.workspace_id=? AND ${db.dialect.instr("d.fields", `'"tagOptions":true'`)}>0`,
     workspaceId,
   ).flatMap(({ db_fields, db_views, ...page }) => {
     const fields = JSON.parse(db_fields) as Field[];
@@ -67,6 +68,31 @@ export function syncTagFieldOptions(workspaceId: string) {
       return { ...f, options: names };
     });
     if (changed) run("UPDATE databases SET fields=? WHERE page_id=?", JSON.stringify(fields), db.page.id);
+  }
+}
+
+// The same on the asynchronous database (lib/db-driver), for tag.save
+// there (saveTag in lib/page-properties-server.ts). One statement per
+// changed database, inside the caller's transaction.
+export async function syncTagFieldOptionsAsync(workspaceId: string) {
+  const bySpace = new Map<string, string[]>();
+  const databases = await db.all<Page & { db_fields: string }>(
+    `SELECT p.*,d.fields db_fields FROM databases d JOIN pages p ON p.id=d.page_id
+     WHERE p.workspace_id=? AND ${db.dialect.instr("d.fields", "'\"tagOptions\":true'")}>0`,
+    workspaceId,
+  );
+  for (const { db_fields, ...page } of databases) {
+    const fields = JSON.parse(db_fields) as Field[];
+    if (!fields.some(isTagField)) continue;
+    const names = bySpace.get(page.space_id) ?? (await listTags(workspaceId, page.space_id ?? null)).map((t) => t.name);
+    bySpace.set(page.space_id, names);
+    let changed = false;
+    const next = fields.map((f) => {
+      if (!isTagField(f) || JSON.stringify(f.options || []) === JSON.stringify(names)) return f;
+      changed = true;
+      return { ...f, options: names };
+    });
+    if (changed) await db.run("UPDATE databases SET fields=? WHERE page_id=?", JSON.stringify(next), page.id);
   }
 }
 

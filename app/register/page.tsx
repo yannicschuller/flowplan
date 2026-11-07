@@ -22,7 +22,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function RegisterPage({ searchParams }: { searchParams: Promise<{ setup?: string; invite?: string }> }) {
   if (await currentUser()) redirect("/");
   const { setup, invite } = await searchParams;
-  const options = loginOptions(setup, invite);
+  const options = await loginOptions(setup, invite);
   return (
     <Login
         legal={legalLinks()}

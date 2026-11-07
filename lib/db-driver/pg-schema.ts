@@ -125,6 +125,12 @@ export function translateSqliteSchema(d: DatabaseSync): PgSchema {
       entry.columns.push(fk.from);
       if (fk.to) entry.to.push(fk.to);
     }
+    // SQLite's implicit rowid: 32 queries order by it (insertion order as a
+    // tiebreaker) and a few delete by it. Postgres gets it as a real column,
+    // last, so INSERT … VALUES without a column list still fits; the
+    // drivers leave it out of results unless the SQL names it.
+    if (!columns.some((c) => c.name === "rowid") && !/WITHOUT ROWID/i.test(sql))
+      columns.push({ name: "rowid", type: "bigint", notNull: true, default: null, identity: true });
     tables.push({ name: o.name, columns, primaryKey: pk.map((c) => c.name), uniques, checks: checks(sql), foreignKeys: foreignKeys.filter(Boolean) });
   }
   // Foreign keys need a key on the other side (SQLite checks that only when

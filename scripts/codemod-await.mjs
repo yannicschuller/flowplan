@@ -120,7 +120,9 @@ for (const file of files) {
         ts.isReturnStatement(p) ||
         (ts.isArrayLiteralExpression(p)) ||
         (ts.isPropertyAssignment(p) && p.initializer === n) ||
-        (ts.isArrowFunction(p) && p.body === n);
+        (ts.isArrowFunction(p) && p.body === n) ||
+        (ts.isIfStatement(p) && p.expression === n) ||
+        (ts.isBinaryExpression(p) && [ts.SyntaxKind.AmpersandAmpersandToken, ts.SyntaxKind.BarBarToken, ts.SyntaxKind.QuestionQuestionToken].includes(p.operatorToken.kind));
       if (safe) cuts.push(n.getStart(sf), n.getEnd() - 1);
     }
     ts.forEachChild(n, visit);

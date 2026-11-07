@@ -42,18 +42,18 @@ const failure = (e: unknown) => {
 
 // Who may: the instance has no account yet and the setup token fits. Wrong
 // tokens count against the address like sign-up attempts.
-function guard(req: Request) {
+async function guard(req: Request) {
   if (req.headers.get("authorization")) throw new HttpError(403, "Mit einem API-Token nicht erlaubt.");
   const address = clientAddress(req.headers);
   if (!allow(`setup-restore:${address}`, 60, 3_600_000)) throw new HttpError(429, "Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.");
   const token = req.headers.get("x-flowplan-setup") || "";
   if (!setupAllowed(token)) securityEvent("login.refused", { headers: req.headers, detail: "setup restore without setup token" });
-  requireSetupRestore(token);
+  await requireSetupRestore(token);
 }
 
 export async function GET(req: Request) {
   try {
-    guard(req);
+    await guard(req);
     return Response.json(setupRestoreStatus(), { headers });
   } catch (e) {
     return failure(e);
@@ -64,7 +64,7 @@ export async function POST(req: Request) {
   let upload = "";
   try {
     checkOrigin(req);
-    guard(req);
+    await guard(req);
     if ((req.headers.get("content-type") || "").startsWith("application/json")) {
       const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
       const action = z.enum(["probe-sftp", "s3", "sftp"]).parse(body.action);

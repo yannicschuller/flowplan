@@ -15,6 +15,7 @@ import { createHmac, randomBytes } from "node:crypto";
 import { isIP } from "node:net";
 import { headers as requestHeaders } from "next/headers";
 import { all, one, onAudit, run } from "./db";
+import { afterTransaction } from "./db-driver/context";
 import { clientAddress } from "./client-address";
 import { deviceLabel } from "./device-name";
 import { securityKinds, type SecurityKind, type SecuritySeverity } from "./security-kinds";
@@ -120,11 +121,12 @@ export function requestContext(h: Headers): Context {
 /* ---------- Recording ---------- */
 
 // Written right after the current synchronous work: refusals usually happen
-// inside a transaction that is rolled back, and the event must stay
-// (transactions here never span an await).
+// inside a transaction that is rolled back, and the event must stay. An
+// asynchronous transaction (lib/db-driver) may still be open then: the
+// write waits until it has ended (afterTransaction).
 export function securityEvent(kind: SecurityKind, input: SecurityInput = {}) {
   const at = input.at ?? Date.now();
-  const later = (context: Context) => queueMicrotask(() => write(kind, { ...input, at }, context));
+  const later = (context: Context) => queueMicrotask(() => afterTransaction(() => write(kind, { ...input, at }, context)));
   if (input.headers) return later({ ...requestContext(input.headers), ...(input.address !== undefined ? { address: input.address } : {}) });
   if (input.address !== undefined) return later({ ...NONE, address: input.address });
   // Inside a request: its address and device; elsewhere (workers, tests) none.
@@ -134,8 +136,8 @@ export function securityEvent(kind: SecurityKind, input: SecurityInput = {}) {
   } catch {}
   if (!pending) return later(NONE);
   pending.then(
-    (h) => write(kind, { ...input, at }, requestContext(h)),
-    () => write(kind, { ...input, at }, NONE),
+    (h) => afterTransaction(() => write(kind, { ...input, at }, requestContext(h))),
+    () => afterTransaction(() => write(kind, { ...input, at }, NONE)),
   );
 }
 

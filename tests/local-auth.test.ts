@@ -25,16 +25,16 @@ test("passwords are hashed with scrypt and checked in constant time", async () =
 });
 
 test("the first account sets the instance up and administers it", async () => {
-  assert.equal(auth.firstAccount(), true);
-  assert.equal(auth.signupOpen(), true);
+  assert.equal(await auth.firstAccount(), true);
+  assert.equal(await auth.signupOpen(), true);
   await assert.rejects(auth.register({ name: "Ana", email: "ana@example.test", password: "kurz" }, "de"), /mindestens 10 Zeichen/);
   const { user, groups } = await auth.register({ name: "Ana", email: "Ana@Example.test", password: "ein-langes-passwort" }, "de");
   assert.deepEqual(groups, [adminGroup()]);
   assert.equal(user.email, "ana@example.test");
   assert.deepEqual(auth.localGroups(user.id), [adminGroup()]);
-  assert.equal(auth.firstAccount(), false);
+  assert.equal(await auth.firstAccount(), false);
   // Sign-ups are now closed until the administration opens them.
-  assert.equal(auth.signupOpen(), false);
+  assert.equal(await auth.signupOpen(), false);
   await assert.rejects(auth.register({ name: "Ben", email: "ben@example.test", password: "ein-langes-passwort" }, "en"), /Only administrators/);
 });
 
@@ -45,19 +45,19 @@ test("an invitation link offers creating the account while sign-ups are closed",
   run("INSERT INTO workspaces(id,name,created_by) VALUES(?,?,?)", wid, "Eingeladen", ana);
   run("INSERT INTO invites(id,workspace_id,email,role,created_by,guest,token) VALUES(?,?,?,?,?,0,?)", id(), wid, "eva@example.test", "editor", ana, token);
   // The sign-in page offers the account for the invited address.
-  assert.equal(auth.signupOpen(), false);
-  assert.equal(auth.signupOpen(undefined, token), true);
-  assert.equal(auth.loginOptions(undefined, token).invitedEmail, "eva@example.test");
+  assert.equal(await auth.signupOpen(), false);
+  assert.equal(await auth.signupOpen(undefined, token), true);
+  assert.equal((await auth.loginOptions(undefined, token)).invitedEmail, "eva@example.test");
   // Unknown or malformed links change nothing.
   for (const other of ["einladung-unbekannt-0123", "kurz", "x".repeat(65)]) {
-    assert.equal(auth.signupOpen(undefined, other), false);
-    assert.equal(auth.loginOptions(undefined, other).invitedEmail, "");
+    assert.equal(await auth.signupOpen(undefined, other), false);
+    assert.equal((await auth.loginOptions(undefined, other)).invitedEmail, "");
   }
   // Without password sign-in (SSO only) the link offers no account either.
   process.env.FLOWPLAN_LOCAL_LOGIN = "false";
   try {
-    assert.equal(auth.signupOpen(undefined, token), false);
-    assert.equal(auth.loginOptions(undefined, token).invitedEmail, "");
+    assert.equal(await auth.signupOpen(undefined, token), false);
+    assert.equal((await auth.loginOptions(undefined, token)).invitedEmail, "");
   } finally {
     delete process.env.FLOWPLAN_LOCAL_LOGIN;
   }
@@ -71,8 +71,8 @@ test("an invitation link offers creating the account while sign-ups are closed",
   assert.equal(acceptInviteToken(user, token), wid);
   assert.ok(one("SELECT 1 FROM members WHERE user_id=? AND workspace_id=?", user.id, wid));
   // A used link no longer opens sign-ups, and the server refuses it.
-  assert.equal(auth.signupOpen(undefined, token), false);
-  assert.equal(auth.loginOptions(undefined, token).invitedEmail, "");
+  assert.equal(await auth.signupOpen(undefined, token), false);
+  assert.equal((await auth.loginOptions(undefined, token)).invitedEmail, "");
   await assert.rejects(
     auth.register({ name: "Fritz", email: "fritz@example.test", password: "ein-langes-passwort", invite: token }, "de"),
     /nur Admins/,
@@ -137,15 +137,15 @@ test("open sign-ups, confirmation by e-mail accepts invitations", async () => {
   assert.ok(one("SELECT 1 FROM members WHERE user_id=? AND workspace_id=?", user.id, wid));
   // With sign-ups open, anyone may register; a second account per address not.
   saveInstanceSettings({ ...instanceSettings(), allowSignup: true });
-  assert.equal(auth.signupOpen(), true);
+  assert.equal(await auth.signupOpen(), true);
   await auth.register({ name: "Dana", email: "dana@example.test", password: "ein-langes-passwort" }, "de");
   await assert.rejects(auth.register({ name: "Dana 2", email: "DANA@example.test", password: "ein-langes-passwort" }, "de"), /schon ein Konto/);
 });
 
 test("password reset by e-mail and by an administrator's link", async () => {
   sent.length = 0;
-  auth.requestPasswordReset({ email: "dana@example.test" }, "de");
-  auth.requestPasswordReset({ email: "unbekannt@example.test" }, "de");
+  await auth.requestPasswordReset({ email: "dana@example.test" }, "de");
+  await auth.requestPasswordReset({ email: "unbekannt@example.test" }, "de");
   await mail.flushMailQueue();
   const resets = sent.filter((m) => /zurücksetzen/.test(m.subject));
   assert.deepEqual(resets.map((m) => m.to), ["dana@example.test"], "only existing accounts get a mail");
@@ -197,8 +197,8 @@ test("passkeys: options for local accounts, unknown passkeys are refused", async
 
 test("FLOWPLAN_LOCAL_LOGIN=false leaves only single sign-on", async () => {
   process.env.FLOWPLAN_LOCAL_LOGIN = "false";
-  assert.equal(auth.loginOptions().localLogin, false);
-  assert.equal(auth.signupOpen(), false);
+  assert.equal((await auth.loginOptions()).localLogin, false);
+  assert.equal(await auth.signupOpen(), false);
   await assert.rejects(auth.passwordLogin({ email: "ana@example.test", password: "ein-langes-passwort" }, "10.0.6.1", "de"), /ausgeschaltet/);
   delete process.env.FLOWPLAN_LOCAL_LOGIN;
 });

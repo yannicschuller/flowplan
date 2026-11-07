@@ -13,32 +13,32 @@ const { adminGroup, adminUserIds } = await import("../lib/auth");
 const ana = { name: "Ana", email: "ana@example.test", password: "ein-langes-passwort" };
 
 test("FLOWPLAN_SETUP_TOKEN: the first account needs the setup link", async () => {
-  assert.equal(auth.firstAccount(), true);
+  assert.equal(await auth.firstAccount(), true);
   // Without or with a wrong token the instance offers no sign-up.
-  assert.equal(auth.signupOpen(), false);
-  assert.equal(auth.signupOpen("falsch"), false);
-  assert.equal(auth.loginOptions().firstAccount, false);
+  assert.equal(await auth.signupOpen(), false);
+  assert.equal(await auth.signupOpen("falsch"), false);
+  assert.equal((await auth.loginOptions()).firstAccount, false);
   // An invitation (from a demo workspace) does not replace the setup link.
   const demo = id(),
     wid = id();
   run("INSERT INTO users(id,subject,name,email,demo_until) VALUES(?,?,?,?,?)", demo, `demo:${demo}`, "Demo", "demo@example.test", Date.now() + 60_000);
   run("INSERT INTO workspaces(id,name,created_by) VALUES(?,?,?)", wid, "Demo", demo);
   run("INSERT INTO invites(id,workspace_id,email,role,created_by,guest,token) VALUES(?,?,?,?,?,0,?)", id(), wid, ana.email, "editor", demo, "einladung-vor-dem-setup");
-  assert.equal(auth.signupOpen(undefined, "einladung-vor-dem-setup"), false);
-  assert.equal(auth.loginOptions(undefined, "einladung-vor-dem-setup").invitedEmail, "");
+  assert.equal(await auth.signupOpen(undefined, "einladung-vor-dem-setup"), false);
+  assert.equal((await auth.loginOptions(undefined, "einladung-vor-dem-setup")).invitedEmail, "");
   await assert.rejects(auth.register({ ...ana, invite: "einladung-vor-dem-setup" }, "en"), /setup link/);
   run("DELETE FROM invites");
   await assert.rejects(auth.register(ana, "en"), /setup link/);
   await assert.rejects(auth.register({ ...ana, setup: "falsch" }, "de"), /Einrichtungslink/);
-  assert.equal(auth.firstAccount(), true, "nothing was created");
+  assert.equal(await auth.firstAccount(), true, "nothing was created");
   // The token from the environment, without the surrounding spaces.
-  assert.equal(auth.signupOpen("einrichten-2026"), true);
-  assert.equal(auth.loginOptions("einrichten-2026").firstAccount, true);
+  assert.equal(await auth.signupOpen("einrichten-2026"), true);
+  assert.equal((await auth.loginOptions("einrichten-2026")).firstAccount, true);
   const { user, groups } = await auth.register({ ...ana, setup: "einrichten-2026" }, "de");
   assert.deepEqual(groups, [adminGroup()]);
   assert.deepEqual(auth.localGroups(user.id), [adminGroup()]);
   // Afterwards the token opens nothing: sign-ups follow the instance settings.
-  assert.equal(auth.signupOpen("einrichten-2026"), false);
+  assert.equal(await auth.signupOpen("einrichten-2026"), false);
   await assert.rejects(auth.register({ name: "Ben", email: "ben@example.test", password: "ein-langes-passwort", setup: "einrichten-2026" }, "en"), /Only administrators/);
 });
 

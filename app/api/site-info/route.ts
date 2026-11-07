@@ -7,8 +7,8 @@ import { readOnlyState } from "@/lib/instance-read-only";
 // (administration), and its new address after an instance move (the apps
 // can point there). Without personal data.
 export const dynamic = "force-dynamic";
-export function GET() {
-  const options = loginOptions();
+export async function GET() {
+  const options = await loginOptions();
   return NextResponse.json(
     { signupOpen: options.signupOpen || (!options.localLogin && options.configured), demo: demoEnabled(), sso: options.configured, movedTo: readOnlyState().movedTo, readOnly: readOnlyState().readOnly },
     { headers: { "Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=60" } },

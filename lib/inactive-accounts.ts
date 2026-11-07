@@ -19,6 +19,7 @@ import {
 } from "./mail";
 import { deleteInactiveAccount } from "./account-deletion";
 import { userLocale } from "./user-locale";
+import { db } from "./db-driver";
 import { localeTag, type Locale } from "./i18n";
 
 export function disableInactiveAccounts(now = Date.now()) {
@@ -29,7 +30,7 @@ export function disableInactiveAccounts(now = Date.now()) {
   // counts as activity too, in the browser and through the apps' widgets.
   const stale = all<{ id: string }>(
     `SELECT id FROM users u WHERE disabled=0 AND demo_until IS NULL
-       AND COALESCE(last_login_at, CAST(strftime('%s', created_at) AS INTEGER) * 1000) < ?
+       AND COALESCE(last_login_at, ${db.dialect.textMs("created_at")}) < ?
        AND NOT EXISTS (SELECT 1 FROM sessions s WHERE s.user_id=u.id AND s.last_seen>=?)
        AND NOT EXISTS (SELECT 1 FROM mobile_devices d WHERE d.user_id=u.id AND d.last_seen_at>=?)`,
     cutoff,
@@ -40,7 +41,7 @@ export function disableInactiveAccounts(now = Date.now()) {
     run("UPDATE users SET disabled=1 WHERE id=?", u.id);
     run("DELETE FROM sessions WHERE user_id=?", u.id);
     run(
-      "INSERT INTO audit(id,actor_id,action,resource_id,detail) VALUES(lower(hex(randomblob(16))),NULL,'user.inactive',?,?)",
+      `INSERT INTO audit(id,actor_id,action,resource_id,detail) VALUES(${db.dialect.randomHex()},NULL,'user.inactive',?,?)`,
       u.id,
       `${days} Tage ohne Anmeldung`,
     );
@@ -54,10 +55,15 @@ export const DELETION_REMINDER_DAYS = 3;
 
 // The last sign of use: a sign-in, a session, the apps, the open app (or
 // the account's creation).
-const LAST_USE = `MAX(COALESCE(u.last_login_at,0),COALESCE(u.last_active_at,0),
-  COALESCE((SELECT max(s.last_seen) FROM sessions s WHERE s.user_id=u.id),0),
-  COALESCE((SELECT max(d.last_seen_at) FROM mobile_devices d WHERE d.user_id=u.id),0),
-  CAST(strftime('%s', u.created_at) AS INTEGER) * 1000)`;
+// (A function: the dialect is known once the database is chosen.)
+const LAST_USE = () =>
+  db.dialect.greatest(
+    "COALESCE(u.last_login_at,0)",
+    "COALESCE(u.last_active_at,0)",
+    "\n  COALESCE((SELECT max(s.last_seen) FROM sessions s WHERE s.user_id=u.id),0)",
+    "\n  COALESCE((SELECT max(d.last_seen_at) FROM mobile_devices d WHERE d.user_id=u.id),0)",
+    `\n  ${db.dialect.textMs("u.created_at")}`,
+  );
 
 type Candidate = {
   id: string;
@@ -89,7 +95,7 @@ export function deleteInactiveAccounts(now = Date.now()) {
   // Nobody is deleted without being told first.
   if (!mailConfig()) return done;
   const people = all<Candidate>(
-    `SELECT u.id,u.name,u.email,u.disabled,${LAST_USE} last,u.deletion_notice_at notice,u.deletion_reminder_at reminder,u.deletion_due_at due,
+    `SELECT u.id,u.name,u.email,u.disabled,${LAST_USE()} last,u.deletion_notice_at notice,u.deletion_reminder_at reminder,u.deletion_due_at due,
        EXISTS (SELECT 1 FROM local_accounts a WHERE a.user_id=u.id AND a.is_admin=1) admin
      FROM users u WHERE u.demo_until IS NULL AND u.subject NOT LIKE 'deleted:%'`,
   );
@@ -123,7 +129,7 @@ export function deleteInactiveAccounts(now = Date.now()) {
       transaction(() => {
         const plan = deleteInactiveAccount(p.id);
         run(
-          "INSERT INTO audit(id,actor_id,action,resource_id,detail) VALUES(lower(hex(randomblob(16))),NULL,'user.inactiveDeleted',?,?)",
+          `INSERT INTO audit(id,actor_id,action,resource_id,detail) VALUES(${db.dialect.randomHex()},NULL,'user.inactiveDeleted',?,?)`,
           p.id,
           `${plan.name} · ${days} Tage ohne Nutzung`,
         );

@@ -5,6 +5,7 @@
 // transaction that is rolled back, so the events are written right after
 // the current synchronous work (transactions here never span an await).
 import { run } from "./db";
+import { afterTransaction } from "./db-driver/context";
 
 export const opsEventKinds = ["login_failure", "rate_limited", "anonymous_refused", "login_success"] as const;
 export type OpsEventKind = (typeof opsEventKinds)[number];
@@ -20,7 +21,8 @@ export function recordOpsEvent(kind: OpsEventKind, at = Date.now()) {
   if (pending.length < 10_000) pending.push({ kind, at });
   if (state.flowplanOpsFlush) return;
   state.flowplanOpsFlush = true;
-  setImmediate(flushOpsEvents);
+  // After an asynchronous transaction that is still open (lib/db-driver).
+  setImmediate(() => afterTransaction(flushOpsEvents));
 }
 
 // The last run of a background worker and its last error (kept until a

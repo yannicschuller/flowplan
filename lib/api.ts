@@ -462,7 +462,7 @@ function pageContent(user: Identity, pid: string, options: { presence?: boolean 
   const backlinks = textBacklinks(user, p);
   const hidden = p.kind === "database" ? hiddenRowIds(user, p) : new Set();
   const comments = all<{ id: string; row_id: string | null }>(
-    `SELECT c.*,u.name FROM comments c JOIN users u ON u.id=c.author_id WHERE page_id=?
+    `SELECT c.id,c.page_id,c.row_id,c.author_id,c.body,c.resolved,c.created_at,u.name FROM comments c JOIN users u ON u.id=c.author_id WHERE page_id=?
      UNION ALL SELECT id,page_id,row_id,NULL author_id,body,resolved,created_at,name || ' (Gast)' name FROM shared_comments WHERE page_id=? ORDER BY created_at`,
     pid,
     pid,

@@ -7,7 +7,7 @@ export async function register() {
     // first visitor could create the administrator (lib/local-auth.ts).
     try {
       const { setupWarning } = await import("./lib/local-auth");
-      const warning = setupWarning();
+      const warning = await setupWarning();
       if (warning) console.warn(warning);
     } catch (e) {
       console.error("Setup check failed:", (e as Error)?.message);

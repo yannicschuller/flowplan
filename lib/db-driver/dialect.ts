@@ -29,9 +29,14 @@ export type Dialect = {
   nowTextPlus(modifier: string): string;
   // Milliseconds since 1970 (unixepoch()*1000).
   nowMs(): string;
-  // Scalar two-argument max/min.
-  greatest(a: string, b: string): string;
-  least(a: string, b: string): string;
+  // Milliseconds since 1970 of a 'YYYY-MM-DD HH:MM:SS' text column (UTC).
+  // An unreadable text gives NULL on SQLite and an error on Postgres.
+  textMs(column: string): string;
+  // Scalar max/min of several values (SQLite's multi-argument max()).
+  greatest(...values: string[]): string;
+  least(...values: string[]): string;
+  // 32 random hex digits (SQLite: lower(hex(randomblob(16)))).
+  randomHex(): string;
   // LIKE ignoring ASCII case (SQLite's LIKE does, Postgres' does not).
   ilike(column: string, param?: string): string;
   // A string literal's position in another (instr).
@@ -64,8 +69,10 @@ export const sqliteDialect: Dialect = {
   nowText: () => "CURRENT_TIMESTAMP",
   nowTextPlus: (m) => `datetime('now','${modifier(m)}')`,
   nowMs: () => "(unixepoch()*1000)",
-  greatest: (a, b) => `max(${a},${b})`,
-  least: (a, b) => `min(${a},${b})`,
+  textMs: (c) => `CAST(strftime('%s', ${c}) AS INTEGER) * 1000`,
+  greatest: (...v) => `MAX(${v.join(",")})`,
+  least: (...v) => `MIN(${v.join(",")})`,
+  randomHex: () => "lower(hex(randomblob(16)))",
   ilike: (c, p = "?") => `${c} LIKE ${p}`,
   instr: (h, n) => `instr(${h},${n})`,
 };
@@ -83,11 +90,35 @@ export const postgresDialect: Dialect = {
   nowText: () => `to_char(now() AT TIME ZONE 'UTC',${PG_TEXT_TIME})`,
   nowTextPlus: (m) => `to_char(now() AT TIME ZONE 'UTC' + interval '${modifier(m)}',${PG_TEXT_TIME})`,
   nowMs: () => "(extract(epoch from clock_timestamp())*1000)::bigint",
-  greatest: (a, b) => `greatest(${a},${b})`,
-  least: (a, b) => `least(${a},${b})`,
+  textMs: (c) => `(extract(epoch from (${c})::timestamp)*1000)::bigint`,
+  greatest: (...v) => `greatest(${v.join(",")})`,
+  least: (...v) => `least(${v.join(",")})`,
+  randomHex: () => "replace(gen_random_uuid()::text,'-','')",
   ilike: (c, p = "?") => `${c} ILIKE ${p}`,
   instr: (h, n) => `strpos(${h},${n})`,
 };
+
+// Rows from Postgres without the emulated rowid column (pg-schema.ts),
+// unless the statement asked for it – SQLite's SELECT * never has it.
+const mentionsRowid = new Map<string, boolean>();
+export function withoutRowid<T>(sql: string, rows: T[]): T[] {
+  let mentions = mentionsRowid.get(sql);
+  if (mentions === undefined) {
+    mentions = /\browid\b/i.test(sql);
+    if (mentionsRowid.size < 5000) mentionsRowid.set(sql, mentions);
+  }
+  if (mentions || !rows.length || !Object.prototype.hasOwnProperty.call(rows[0], "rowid")) return rows;
+  for (const row of rows) delete (row as Record<string, unknown>).rowid;
+  return rows;
+}
+
+// A write refused by a unique key (SQLite: "UNIQUE constraint failed";
+// Postgres: SQLSTATE 23505). Under SQLite a check-then-insert never races
+// (one writer at a time); under Postgres the key is the last word.
+export function uniqueViolation(error: unknown): boolean {
+  const e = error as { code?: string; errcode?: number; message?: string } | null;
+  return !!e && (e.code === "23505" || (typeof e.message === "string" && /UNIQUE constraint failed/.test(e.message)));
+}
 
 // `?` → `$1, $2, …`, leaving strings, quoted identifiers and comments alone.
 // (Postgres' jsonb operators ? ?| ?& cannot be written then: use
@@ -138,6 +169,7 @@ const SQLITE_ONLY: [RegExp, string][] = [
   [/\bjson_(each|extract)\s*\(/i, "json_each/json_extract → d.jsonValues()/d.jsonText()"],
   [/\b(datetime|strftime|julianday|unixepoch)\s*\(/i, "date functions → d.nowText()/d.nowTextPlus()/d.nowMs()"],
   [/\bifnull\s*\(/i, "ifnull → coalesce"],
+  [/\brandomblob\s*\(/i, "randomblob → d.randomHex()"],
   [/\binstr\s*\(/i, "instr → d.instr()"],
   [/\blast_insert_rowid\s*\(/i, "last_insert_rowid → RETURNING"],
   [/\bPRAGMA\b/i, "PRAGMA → db.columns() / information_schema"],

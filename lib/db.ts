@@ -33,7 +33,9 @@ function legacyPg() {
 // (and be rolled back with it): they are refused. Reads are allowed.
 function outsideAsyncTransaction(write: boolean) {
   const active = dbContext.sqliteActive;
-  if (!active || !write || dbContext.als.getStore()?.root === active) return;
+  if (!active || !write) return;
+  const scope = dbContext.als.getStore();
+  if (scope?.root === active && !scope.root.ended) return;
   throw new Error(
     "A synchronous database write ran while an asynchronous transaction holds the database. Use the asynchronous db (lib/db-driver) or keep the write out of the transaction.",
   );
@@ -1500,7 +1502,7 @@ export const id = () => randomUUID();
 type AuditListener = (actor: string, action: string, resource: string, detail: string) => void;
 // A function, not a constant: modules may register while this one is
 // still being evaluated (import cycles).
-function auditListeners() {
+export function auditListeners() {
   return ((globalThis as { flowplanAuditListeners?: Set<AuditListener> }).flowplanAuditListeners ??= new Set());
 }
 export function onAudit(listener: AuditListener) {

@@ -6,8 +6,8 @@
 // keep it in AsyncLocalStorage, so every call made inside – also in helpers
 // – uses it; a nested tx() is a SAVEPOINT.
 import pg from "pg";
-import { currentTx, dbContext, type TxScope } from "./context";
-import { numberPlaceholders, postgresDialect, sqliteOnly } from "./dialect";
+import { currentTx, dbContext, endScope, type TxScope } from "./context";
+import { numberPlaceholders, postgresDialect, sqliteOnly, withoutRowid } from "./dialect";
 import { configureTypes } from "./pg-types.mjs";
 import type { Db, Param, TxOptions } from "./types";
 
@@ -56,10 +56,10 @@ export function createPostgresDb(url: string, options: PostgresOptions = {}): Db
     dialect: postgresDialect,
     pool,
     async one<T>(sql: string, ...params: Param[]) {
-      return (await query(sql, params)).rows[0] as T | undefined;
+      return withoutRowid(sql, (await query(sql, params)).rows)[0] as T | undefined;
     },
     async all<T>(sql: string, ...params: Param[]) {
-      return (await query(sql, params)).rows as T[];
+      return withoutRowid(sql, (await query(sql, params)).rows) as T[];
     },
     async run(sql: string, ...params: Param[]) {
       return { changes: (await query(sql, params)).rowCount ?? 0 };
@@ -84,6 +84,7 @@ export function createPostgresDb(url: string, options: PostgresOptions = {}): Db
         throw error;
       } finally {
         connection.release();
+        endScope(root);
       }
     },
     inTransaction: () => currentTx()?.backend === "postgres",

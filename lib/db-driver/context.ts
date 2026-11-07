@@ -11,6 +11,11 @@ export type TxScope = {
   // The Postgres connection of the transaction (a pg PoolClient).
   client?: unknown;
   savepoints: number;
+  // Set when the transaction has committed or rolled back. Callbacks queued
+  // inside it (timers, microtasks) keep its scope, so they check this.
+  ended?: boolean;
+  // afterTransaction() callbacks, run once it has ended.
+  after?: (() => void)[];
 };
 type State = {
   als: AsyncLocalStorage<TxScope>;
@@ -25,7 +30,37 @@ export const dbContext: State = (holder.flowplanDbContext ??= {
   sqliteActive: null,
   sqliteDone: null,
 });
-export const currentTx = () => dbContext.als.getStore();
+// The transaction the caller runs in, if it is still open.
+export const currentTx = () => {
+  const scope = dbContext.als.getStore();
+  return scope && !scope.root.ended ? scope : undefined;
+};
+
+// Runs `fn` once the caller's transaction has ended (committed or rolled
+// back), outside of it; without a transaction right away. For writes that
+// must stay when the transaction is rolled back (security events, refusal
+// counters): before the asynchronous database they relied on "transactions
+// never span an await" and a microtask; inside an asynchronous transaction
+// a microtask would still run inside it.
+export function afterTransaction(fn: () => void) {
+  const scope = currentTx();
+  if (scope) (scope.root.after ??= []).push(fn);
+  else if (dbContext.als.getStore()) dbContext.als.exit(fn);
+  else fn();
+}
+// Called by the drivers when a transaction has ended.
+export function endScope(root: TxScope) {
+  root.ended = true;
+  for (const fn of root.after ?? [])
+    dbContext.als.exit(() => {
+      try {
+        fn();
+      } catch (error) {
+        console.error("After-transaction callback failed", error);
+      }
+    });
+  root.after = undefined;
+}
 
 // DATABASE_URL=postgres://… (or postgresql://) selects PostgreSQL; anything
 // else (absent, or a file) keeps SQLite.

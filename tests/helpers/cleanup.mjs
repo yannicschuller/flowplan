@@ -11,6 +11,12 @@ import { isMainThread } from "node:worker_threads";
 // file without the TypeScript loader.
 if (isMainThread) await import("../../lib/i18n-catalogs-server.ts");
 
+// DATABASE_URL=postgres://…: this test file runs against PostgreSQL, in a
+// schema of its own (tests/helpers/postgres-backend.ts); else SQLite.
+const databaseUrl = process.env.DATABASE_URL || "";
+if (isMainThread && /^postgres(ql)?:\/\//i.test(databaseUrl))
+  await (await import("./postgres-backend.ts")).preparePostgres(databaseUrl);
+
 process.on("exit", () => {
   const dir = process.env.FLOWPLAN_DATA_DIR;
   if (!dir) return;

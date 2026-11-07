@@ -72,11 +72,11 @@ export class KeyRequired extends HttpError {
 
 // ---- Who may ----
 
-export function setupRestoreOpen(token?: unknown) {
-  return firstAccount() && (localLoginEnabled() || !!setupToken()) && setupAllowed(token);
+export async function setupRestoreOpen(token?: unknown) {
+  return await firstAccount() && (localLoginEnabled() || !!setupToken()) && setupAllowed(token);
 }
-export function requireSetupRestore(token: unknown) {
-  if (!firstAccount()) throw new HttpError(403, "Diese Instanz ist schon eingerichtet. Wiederherstellen geht hier nur über die Administration.");
+export async function requireSetupRestore(token: unknown) {
+  if (!(await firstAccount())) throw new HttpError(403, "Diese Instanz ist schon eingerichtet. Wiederherstellen geht hier nur über die Administration.");
   if (!setupAllowed(token) || (!localLoginEnabled() && !setupToken()))
     throw new HttpError(403, "Diese Instanz wird mit einem Einrichtungslink eingerichtet. Frag die Person, die sie betreibt.");
 }
@@ -183,7 +183,7 @@ export async function restoreBackupFile(path: string, keys: Key[], progress: Res
       renameSync(staging, resolve(dataDir(), "restore-pending"));
     } else throw new HttpError(400, "Das ist keine Flowplan-Sicherung (weder Datenbank noch Instanzsicherung).");
     // Someone set the instance up in the meantime: nothing is replaced.
-    if (!firstAccount()) {
+    if (!(await firstAccount())) {
       cancelRestore();
       throw new HttpError(403, "Diese Instanz ist schon eingerichtet. Wiederherstellen geht hier nur über die Administration.");
     }
