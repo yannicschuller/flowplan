@@ -50,6 +50,8 @@ const PATTERNS = [
   ["scalar max(a,b)/min(a,b)", /\b(max|min|MAX|MIN)\s*\([^()]*,[^()]*\)/g, true],
   ["LIKE (case semantics: lower() or d.ilike)", /\bLIKE\b/g, true],
   ["typeof()", /\btypeof\s*\(/g, true],
+  ["char() (Postgres: chr)", /\bchar\s*\(\d/gi, true],
+  ["VACUUM / ATTACH", /\b(VACUUM|ATTACH\s+DATABASE)\b/g, true],
   ["printf()/format()", /\bprintf\s*\(/gi, true],
 ];
 const SQLISH = /\b(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|PRAGMA|WHERE|ORDER BY|GROUP BY|JOIN|ON CONFLICT|VALUES|FROM)\b/;

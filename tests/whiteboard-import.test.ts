@@ -236,7 +236,7 @@ test("Excalidraw files inside a ZIP export become whiteboard pages", async () =>
   assert.equal(result.files, 2);
   const page = (title: string) =>
     one<{ id: string; kind: string; parent_id: string | null }>(
-      "SELECT id,kind,parent_id FROM pages WHERE workspace_id=? AND title=? AND deleted_at IS NULL ORDER BY rowid DESC",
+      "SELECT id,kind,parent_id FROM pages WHERE workspace_id=? AND title=? AND deleted_at IS NULL ORDER BY seq DESC",
       wid,
       title,
     )!;

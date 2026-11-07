@@ -15,6 +15,7 @@
 // check against the source; fetches the last state after the source became
 // read-only; and hands everything to the restore on the next start (kept as
 // pre-move-<time>), exactly like a restore from a backup.
+import { snapshotDatabase } from "./db-snapshot";
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { createReadStream, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { Readable } from "node:stream";
@@ -227,7 +228,7 @@ export async function createSnapshot() {
   const id = randomUUID(),
     name = `move-snapshot-${id}.sqlite`,
     path = resolve(snapshotDir(), name);
-  run(`VACUUM INTO '${path.replaceAll("'", "''")}'`);
+  snapshotDatabase(path);
   const copy = new DatabaseSync(path);
   try {
     copy.prepare("DELETE FROM instance_settings WHERE key IN (?,?)").run(MOVE_KEY, INCOMING_KEY);

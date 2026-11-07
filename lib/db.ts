@@ -48,7 +48,8 @@ function outsideAsyncTransaction(write: boolean) {
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
 export const SCHEMA_VERSION = 93;
-// Tables with an explicit insertion order (schema 93): `ORDER BY …,seq`.
+// Tables with an explicit insertion order (schema 93): `ORDER BY …,seq`
+// (pages have one as well, filled by the trigger pages_created_at).
 export const SEQ_TABLES = [
   "snapshots",
   "row_snapshots",
@@ -1247,6 +1248,15 @@ function migrate(d: DatabaseSync) {
       d.exec(`ALTER TABLE ${table} ADD COLUMN seq INTEGER; UPDATE ${table} SET seq=rowid;`);
   for (const table of SEQ_TABLES)
     d.exec(`CREATE TRIGGER IF NOT EXISTS ${table}_seq AFTER INSERT ON ${table} WHEN NEW.seq IS NULL BEGIN UPDATE ${table} SET seq=NEW.rowid WHERE rowid=NEW.rowid; END;`);
+  // Pages too, in the update that already gives a new page its created_at
+  // (one statement per insert, as before).
+  if (!(d.prepare("PRAGMA table_info(pages)").all() as { name: string }[]).some((c) => c.name === "seq"))
+    d.exec("ALTER TABLE pages ADD COLUMN seq INTEGER; UPDATE pages SET seq=rowid;");
+  if (!/seq/.test((d.prepare("SELECT sql FROM sqlite_master WHERE type='trigger' AND name='pages_created_at'").get() as { sql: string } | undefined)?.sql || ""))
+    d.exec(`DROP TRIGGER IF EXISTS pages_created_at;
+      CREATE TRIGGER pages_created_at AFTER INSERT ON pages WHEN NEW.created_at IS NULL OR NEW.seq IS NULL BEGIN
+        UPDATE pages SET created_at=COALESCE(NEW.created_at,CURRENT_TIMESTAMP),seq=COALESCE(NEW.seq,NEW.rowid) WHERE rowid=NEW.rowid;
+      END;`);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);

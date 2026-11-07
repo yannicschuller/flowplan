@@ -36,7 +36,7 @@ const tagsOf = (pageId: string) =>
   all<{ name: string }>("SELECT t.name FROM page_tag_links l JOIN page_tags t ON t.id=l.tag_id WHERE l.page_id=? ORDER BY l.position", pageId).map((t) => t.name);
 const pageByTitle = (title: string) =>
   one<{ id: string; parent_id: string | null; aliases: string | null; updated_at: string }>(
-    "SELECT id,parent_id,aliases,updated_at FROM pages WHERE workspace_id=? AND title=? AND deleted_at IS NULL ORDER BY rowid DESC LIMIT 1",
+    "SELECT id,parent_id,aliases,updated_at FROM pages WHERE workspace_id=? AND title=? AND deleted_at IS NULL ORDER BY seq DESC LIMIT 1",
     wid,
     title,
   )!;

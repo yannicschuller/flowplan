@@ -16,6 +16,8 @@ export type PgTrigger = { name: string; table: string; sql: string };
 
 // Triggers whose body needs more than the mechanical translation.
 const OVERRIDES: Record<string, string> = {
+  // SQLite also fills seq from the rowid here; Postgres' seq is an identity.
+  pages_created_at: `IF NEW.created_at IS NULL THEN UPDATE pages SET created_at=${"to_char(statement_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS')"} WHERE id=NEW.id; END IF;`,
   // SQLite: by rowid (the space just inserted). Postgres has no rowid: by id.
   spaces_position_insert: `UPDATE spaces SET position=COALESCE((SELECT MAX(position) FROM spaces WHERE workspace_id IS NOT DISTINCT FROM NEW.workspace_id AND id<>NEW.id),0)+1 WHERE id=NEW.id;`,
 };

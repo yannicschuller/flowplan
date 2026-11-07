@@ -262,9 +262,9 @@ test("Markdown: markers for linked blocks, block links as file anchors, and back
   assert.match(chapter, /\(<\.\.\/index\.md#\^para1>\)/);
   // …imported again: the link points to the block of the new page.
   const kapitelId = one<{ id: string }>("SELECT id FROM pages WHERE workspace_id=? AND title='Kapitel'", wid)!.id;
-  const before = one<{ n: number }>("SELECT MAX(rowid) n FROM pages")!.n;
+  const before = one<{ n: number }>("SELECT MAX(seq) n FROM pages")!.n;
   await importZip(owner, wid, space, bytes);
-  const imported = all<{ id: string }>("SELECT id FROM pages WHERE workspace_id=? AND rowid>?", wid, before);
+  const imported = all<{ id: string }>("SELECT id FROM pages WHERE workspace_id=? AND seq>?", wid, before);
   const kapitel = imported.find((p) => html(p.id).includes("Siehe"))!;
   const link = /href="\/#page=([0-9a-f-]{36})&amp;block=([\w-]+)"/.exec(html(kapitel.id));
   assert.ok(link, html(kapitel.id));
@@ -309,7 +309,7 @@ test("import anchors: block ids and headings of a converted document", () => {
   );
 });
 
-const pageByTitle = (title: string) => one<{ id: string }>("SELECT id FROM pages WHERE workspace_id=? AND title=? AND deleted_at IS NULL ORDER BY rowid DESC LIMIT 1", wid, title)!.id;
+const pageByTitle = (title: string) => one<{ id: string }>("SELECT id FROM pages WHERE workspace_id=? AND title=? AND deleted_at IS NULL ORDER BY seq DESC LIMIT 1", wid, title)!.id;
 // The block a link of `from` points to, in its target page.
 function linkedBlock(from: string, linkText: RegExp) {
   const source = html(from);

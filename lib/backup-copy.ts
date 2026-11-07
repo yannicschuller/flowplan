@@ -2,6 +2,7 @@
 // data folder, lib/sftp-backup.ts for SFTP): the consistent copy of the
 // database (VACUUM INTO, encrypted with FLOWPLAN_ENCRYPTION_KEY), its name
 // and which old copies go.
+import { snapshotDatabase } from "./db-snapshot";
 import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { id, run } from "./db";
@@ -30,7 +31,7 @@ export function copyPath() {
 export function databaseCopy(now: number, copy: string) {
   // Fails before anything is written when the key is wrong.
   const encrypted = encryptionEnabled();
-  run(`VACUUM INTO '${copy.replaceAll("'", "''")}'`);
+  snapshotDatabase(copy);
   if (encrypted) writeFileSync(copy, seal(readFileSync(copy)));
   return { copy, name: backupName(now, encrypted), encrypted, bytes: statSync(copy).size };
 }

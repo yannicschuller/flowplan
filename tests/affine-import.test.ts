@@ -39,7 +39,7 @@ const wid = createWorkspace(owner.id, "AFFiNE-Import");
 const space = bootstrap(owner, wid).spaces[0].id;
 type PageRow = { id: string; parent_id: string | null; kind: string; title: string; journal_date: string | null };
 const pageByTitle = (title: string) =>
-  one<PageRow>("SELECT id,parent_id,kind,title,journal_date FROM pages WHERE workspace_id=? AND title=? AND deleted_at IS NULL ORDER BY rowid DESC LIMIT 1", wid, title)!;
+  one<PageRow>("SELECT id,parent_id,kind,title,journal_date FROM pages WHERE workspace_id=? AND title=? AND deleted_at IS NULL ORDER BY seq DESC LIMIT 1", wid, title)!;
 const html = (pageId: string) => one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", pageId)!.html;
 const link = (pageId: string) => `/#page=${pageId}`;
 // The names of a page's tags (#70: importers set real tags).
@@ -346,8 +346,8 @@ test("snapshot ZIP: documents, links, tags from info.json and assets", async () 
   const result = await importFromSource(owner, wid, space, { name: "snapshot.zip", bytes: zip });
   assert.equal(result.source, "affine");
   assert.ok(result.warnings.some((w) => /nur die Arbeitsbereichsdatei/.test(w)));
-  const eins = one<{ id: string }>("SELECT id FROM pages WHERE workspace_id=? AND title='Eins' ORDER BY rowid DESC", wid)!;
-  const zwei = one<{ id: string }>("SELECT id FROM pages WHERE workspace_id=? AND title='Zwei' ORDER BY rowid DESC", wid)!;
+  const eins = one<{ id: string }>("SELECT id FROM pages WHERE workspace_id=? AND title='Eins' ORDER BY seq DESC", wid)!;
+  const zwei = one<{ id: string }>("SELECT id FROM pages WHERE workspace_id=? AND title='Zwei' ORDER BY seq DESC", wid)!;
   assert.ok(html(eins.id).includes(link(zwei.id)));
   assert.ok(tagsOf(eins.id).includes("aus-zip"));
   // No empty page named after the file above the documents (#77).
@@ -431,7 +431,7 @@ test("the workspace page only when it carries structure (#77)", async () => {
   assert.equal(sketch.title, "Skizze");
   assert.equal(sketch.parent_id, null, "no empty page above the document");
   assert.equal(all("SELECT id FROM pages WHERE workspace_id=? AND title='Mein Wissen' AND id IN (" + result.rootIds.map(() => "?").join(",") + ")", wid, ...result.rootIds).length, 0);
-  const board = one<PageRow>("SELECT id,parent_id,kind,title,journal_date FROM pages WHERE workspace_id=? AND title='Skizze – Whiteboard' ORDER BY rowid DESC", wid)!;
+  const board = one<PageRow>("SELECT id,parent_id,kind,title,journal_date FROM pages WHERE workspace_id=? AND title='Skizze – Whiteboard' ORDER BY seq DESC", wid)!;
   assert.equal(board.parent_id, null, "the whiteboard sits next to its document");
 
   // Database mode is unchanged by it.

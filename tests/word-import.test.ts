@@ -26,7 +26,7 @@ const walk = (dir: string): string[] =>
   readdirSync(dir).flatMap((name) => (statSync(join(dir, name)).isDirectory() ? walk(join(dir, name)) : [join(dir, name)]));
 const docx = () => writeZip(new Map(walk(fixture).map((f) => [relative(fixture, f), readFileSync(f)] as [string, Buffer])));
 const pageByTitle = (title: string) =>
-  one<{ id: string; parent_id: string | null }>("SELECT id,parent_id FROM pages WHERE workspace_id=? AND title=? AND deleted_at IS NULL ORDER BY rowid DESC LIMIT 1", wid, title);
+  one<{ id: string; parent_id: string | null }>("SELECT id,parent_id FROM pages WHERE workspace_id=? AND title=? AND deleted_at IS NULL ORDER BY seq DESC LIMIT 1", wid, title);
 const pageHtml = (pageId: string) => one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", pageId)!.html;
 
 // Minimal files with the first bytes of each format.

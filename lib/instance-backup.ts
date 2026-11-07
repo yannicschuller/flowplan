@@ -9,6 +9,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
+import { snapshotDatabase } from "./db-snapshot";
 import { resolve } from "node:path";
 import { Readable } from "node:stream";
 import { DatabaseSync } from "node:sqlite";
@@ -30,7 +31,7 @@ export function instanceBackupStream() {
     tmp = resolve(dir, "tmp");
   mkdirSync(tmp, { recursive: true });
   const copy = resolve(tmp, `instance-${id()}.sqlite`);
-  run(`VACUUM INTO '${copy.replaceAll("'", "''")}'`);
+  snapshotDatabase(copy);
   const uploads = resolve(dir, "uploads");
   const files = existsSync(uploads)
     ? readdirSync(uploads).filter((n) => /^[A-Za-z0-9_-]{1,100}$/.test(n))
