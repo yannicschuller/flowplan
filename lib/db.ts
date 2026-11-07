@@ -63,6 +63,7 @@ export const SEQ_TABLES = [
   "scim_groups",
   "mail_queue",
   "webhook_deliveries",
+  "spaces",
 ] as const;
 function migrate(d: DatabaseSync) {
   if (globalDb.flowplanSchema === SCHEMA_VERSION) return;

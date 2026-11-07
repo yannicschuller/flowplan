@@ -36,7 +36,7 @@ const PATTERNS = [
   ["datetime()/date()/strftime()/julianday()/unixepoch()", /\b(datetime|strftime|julianday|unixepoch|date|time)\s*\(/g, true],
   ["CURRENT_TIMESTAMP (in queries)", /\bCURRENT_TIMESTAMP\b/g, true],
   ["last_insert_rowid / lastInsertRowid", /\b(last_insert_rowid\s*\(|lastInsertRowid\b)/g, false],
-  ["rowid", /\browid\b/g, true],
+  ["rowid", /\browid\b/g, false],
   ["PRAGMA", /\bPRAGMA\b/g, true],
   ["sqlite_master / sqlite_schema", /\bsqlite_(master|schema|sequence)\b/g, false],
   ["ifnull()", /\bifnull\s*\(/gi, true],

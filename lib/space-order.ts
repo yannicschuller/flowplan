@@ -17,7 +17,7 @@ import { pageRole, requireMember, spaceRole } from "./permissions";
 import type { Identity, Page, Space } from "./types";
 
 // ORDER BY for every query that lists spaces for people.
-export const SPACE_ORDER = "position,rowid";
+export const SPACE_ORDER = "position,seq";
 
 type Slot = { id: string; position: number | null };
 
