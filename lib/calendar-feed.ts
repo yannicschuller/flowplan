@@ -8,6 +8,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { all, id, one, run } from "./db";
 import { HttpError } from "./auth";
 import { pageRole, requirePage } from "./permissions";
+import { journalLocked } from "./journal-extras";
 import { queryRows } from "./database";
 import { calendarRange, calendarSchema } from "./database-calendar";
 import { visibleRows } from "./row-access";
@@ -98,7 +99,8 @@ export function calendarFeed(token: string) {
   if (!account) throw new HttpError(404, "Unbekannter Kalender.");
   const user = { ...account, groups: [], isAdmin: false } as Identity;
   const page = one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", feed.page_id);
-  if (!page || !pageRole(user, page)) throw new HttpError(404, "Unbekannter Kalender.");
+  // Behind a journal PIN the feed stays closed like any other way in.
+  if (!page || !pageRole(user, page) || journalLocked(user, page)) throw new HttpError(404, "Unbekannter Kalender.");
   const { fields, view } = calendarView(page.id, feed.view_id);
   const zone = calendarSchema.safeParse(view.calendar).success
     ? (view.calendar as { timeZone: string }).timeZone

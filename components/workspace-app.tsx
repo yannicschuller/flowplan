@@ -311,7 +311,7 @@ type PageData = DatabaseData & {
     entry: DayEntry;
   };
   // Behind a journal PIN that was not entered yet.
-  locked?: { journalId: string };
+  locked?: { journalId: string; canReset?: boolean };
   // Today's journal day before it exists (lib/journal-days.ts): created by
   // the first change, until then nothing is stored.
   draft?: { journalId: string; date: string };
@@ -4183,6 +4183,7 @@ export default function WorkspaceApp({
                   ) : data.locked ? (
                     <JournalLockScreen
                       journalId={data.locked.journalId}
+                      canReset={!!data.locked.canReset}
                       onUnlocked={refresh}
                     />
                   ) : data.page.kind === "journal" && data.journal ? (

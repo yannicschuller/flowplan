@@ -6,12 +6,12 @@ import { Node as PMNode } from "@tiptap/pm/model";
 import { prosemirrorJSONToYDoc, yDocToProsemirrorJSON } from "y-prosemirror";
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
-import { all, id, one, run } from "./db";
+import { all, audit, id, one, run } from "./db";
 import { documentSchema } from "./document-schema";
 import { failuresSince } from "./local-auth";
 import { htmlState, stateHtml } from "./document-server";
 import { HttpError } from "./auth";
-import { pageRole } from "./permissions";
+import { isGuest, memberRole, pageRole } from "./permissions";
 import { encryptedPageIds } from "./e2ee-server";
 import { calendarRange } from "./database-calendar";
 import { visibleRows } from "./row-access";
@@ -469,12 +469,39 @@ function pinHash(pin: string, salt = randomBytes(16).toString("hex")) {
 }
 // New PINs have six to eight digits; shorter ones set earlier keep working.
 export const pinSchema = z.string().regex(/^\d{6,8}$/, "Die PIN hat 6 bis 8 Ziffern.");
+// Who sets, changes or removes a journal's PIN: whoever created the journal
+// and the workspace's owners – not every editor, who could otherwise lock
+// everybody else out of a shared journal.
+const workspaceOwner = (user: Identity, workspaceId: string) =>
+  memberRole(user, workspaceId) === "owner" && !isGuest(user, workspaceId);
+export function mayManageJournalLock(user: Identity, journal: Page) {
+  return journal.created_by === user.id || workspaceOwner(user, journal.workspace_id);
+}
+// Owners remove a PIN they do not know (a reset); the creator hears of it.
+export function mayResetJournalLock(user: Identity, journal: Page) {
+  return workspaceOwner(user, journal.workspace_id);
+}
 export function setJournalLock(user: Identity, journal: Page, pin: string | null, current?: string) {
+  if (!mayManageJournalLock(user, journal))
+    throw new HttpError(403, "Die PIN setzen nur, wer das Journal angelegt hat, und Besitzer des Arbeitsbereichs.");
   ensureSettings(journal.id);
   const row = settingsRow(journal.id);
-  // Changing or removing an existing lock needs the PIN.
-  if (row?.lock_hash && !checkPin(row.lock_hash, current || ""))
+  // Changing or removing an existing lock needs the PIN – except for an
+  // owner removing it without one.
+  const reset = !!row?.lock_hash && pin === null && !current && mayResetJournalLock(user, journal);
+  if (row?.lock_hash && !reset && !checkPin(row.lock_hash, current || ""))
     throw new HttpError(403, "Die bisherige PIN stimmt nicht.");
+  if (reset) {
+    audit(user.id, "journal.lock.reset", journal.id, (journal.title || "").slice(0, 200));
+    if (journal.created_by && journal.created_by !== user.id && one("SELECT 1 FROM users WHERE id=? AND disabled=0", journal.created_by))
+      run(
+        "INSERT INTO notifications(id,user_id,body,page_id,kind) VALUES(?,?,?,?,'security')",
+        id(),
+        journal.created_by,
+        `${user.name} hat die PIN von „${journal.title || "Ohne Titel"}“ zurückgesetzt`,
+        journal.id,
+      );
+  }
   run(
     "UPDATE journal_settings SET lock_hash=? WHERE page_id=?",
     pin ? pinHash(pinSchema.parse(pin)) : null,
@@ -541,13 +568,20 @@ function enclosingJournals(page: Page) {
     page.id,
   );
 }
+// The journal whose PIN keeps the page closed for the person (the page
+// itself, a day or any page below a journal), or null.
+export function lockingJournal(user: Identity, page: Page) {
+  return (
+    enclosingJournals(page).find(
+      (journal) =>
+        !!settingsRow(journal.id)?.lock_hash &&
+        !one("SELECT 1 FROM journal_unlocks WHERE user_id=? AND page_id=? AND until>?", user.id, journal.id, Date.now()),
+    )?.id || null
+  );
+}
 // Whether the page is behind a journal PIN the person has not entered.
 export function journalLocked(user: Identity, page: Page) {
-  return enclosingJournals(page).some(
-    (journal) =>
-      !!settingsRow(journal.id)?.lock_hash &&
-      !one("SELECT 1 FROM journal_unlocks WHERE user_id=? AND page_id=? AND until>?", user.id, journal.id, Date.now()),
-  );
+  return !!lockingJournal(user, page);
 }
 export function requireUnlocked(user: Identity, page: Page) {
   if (journalLocked(user, page))

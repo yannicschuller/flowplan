@@ -248,7 +248,8 @@ export function queueAiCells(user: Identity, raw: unknown) {
       now,
     );
   audit(user.id, b.mode === "fill" ? "ai.fill" : "ai.compute", page.id, `${field.id}:${chosen.length}`);
-  return { queued: chosen.length, skipped: rows.length - chosen.length };
+  // Skipped: of the records this person sees – private ones of others do not count.
+  return { queued: chosen.length, skipped: rows.filter((r) => role(r)).length - chosen.length };
 }
 
 // Pending values and when/with what each value was computed.

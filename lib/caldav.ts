@@ -14,6 +14,7 @@ import { all, id, one, run, transaction } from "./db";
 import { readOnlyRefusal } from "./instance-read-only";
 import { HttpError } from "./auth";
 import { pageRole, requirePage } from "./permissions";
+import { journalLocked } from "./journal-extras";
 import { visibleRows, assertRowAccess } from "./row-access";
 import { queryRows } from "./database";
 import { calendarRange, calendarSchema } from "./database-calendar";
@@ -90,7 +91,8 @@ function authenticate(request: Request): Context | null {
   const page = one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", access.page_id);
   const role = page ? pageRole(user, page) : null;
   const view = page ? viewOf(page.id, access.view_id) : undefined;
-  if (!page || !role || !view) return null;
+  // Behind a journal PIN the calendar stays closed like any other way in.
+  if (!page || !role || !view || journalLocked(user, page)) return null;
   const fields = JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", page.id)!.fields) as Field[];
   const zone = calendarSchema.safeParse(view.calendar).success ? (view.calendar as { timeZone: string }).timeZone : "UTC";
   return { access: access.id, user, page, view, fields, zone, canWrite: (role === "owner" || role === "editor") && !page.locked };

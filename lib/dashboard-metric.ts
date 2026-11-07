@@ -7,6 +7,7 @@ import { all, one } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import { visibleRows } from "./row-access";
+import { visibleFields } from "./field-access";
 import { queryRows } from "./database";
 import { relatedData } from "./related-data";
 import { formatNumber } from "./field-format";
@@ -42,7 +43,8 @@ export function computeMetric(user: Identity, query: MetricQuery) {
     related,
     relatedSchemas,
   );
-  const field = fields.find((f) => f.id === query.field);
+  // Only a property this person may read (lib/field-access.ts).
+  const field = visibleFields(user, page, fields).find((f) => f.id === query.field);
   let value: number | null = shown.length;
   if (query.aggregate !== "count") {
     if (!field) throw new HttpError(400, "Eigenschaft fehlt.");
@@ -83,19 +85,19 @@ export function metricSources(user: Identity, workspaceId: string) {
     "SELECT p.id,p.title,d.fields,d.views FROM pages p JOIN databases d ON d.page_id=p.id WHERE p.workspace_id=? AND p.deleted_at IS NULL AND p.kind='database' ORDER BY p.title",
     workspaceId,
   )
-    .filter((p) => {
+    .flatMap((p) => {
       try {
-        requirePage(user, p.id);
-        return true;
+        return [{ ...p, page: requirePage(user, p.id) }];
       } catch {
-        return false;
+        return [];
       }
     })
     .map((p) => ({
       id: p.id,
       title: p.title,
       views: (JSON.parse(p.views) as View[]).filter((v) => v.type !== "form").map((v) => ({ id: v.id, name: v.name })),
-      numbers: (JSON.parse(p.fields) as Field[])
+      // Without properties hidden from this person.
+      numbers: visibleFields(user, p.page, JSON.parse(p.fields) as Field[])
         .filter((f) => ["number", "formula", "rollup"].includes(f.type))
         .map((f) => ({ id: f.id, name: f.name })),
     }));

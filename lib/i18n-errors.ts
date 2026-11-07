@@ -464,6 +464,7 @@ const exact: Record<string, string> = {
   "Der Zeitraum ist ungültig.": "The period is invalid.",
   "Höchstens drei Monate auf einmal.": "At most three months at once.",
   "Die bisherige PIN stimmt nicht.": "The current PIN is wrong.",
+  "Die PIN setzen nur, wer das Journal angelegt hat, und Besitzer des Arbeitsbereichs.": "Only whoever created the journal and the workspace's owners set the PIN.",
   "Die PIN stimmt nicht.": "The PIN is wrong.",
   "Nur https- oder webcal-Adressen.": "Only https or webcal addresses.",
   "Das Datum passt nicht zur Serverzeit.": "The date does not match the server time.",

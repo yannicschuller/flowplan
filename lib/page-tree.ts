@@ -19,6 +19,7 @@ import { copyDashboard, dashboardTiles } from "./dashboard";
 import { copyNotebook } from "./notebook";
 import { copyPageInk } from "./page-ink-store";
 import { copyPageMeta } from "./page-properties-server";
+import { readableTemplateCells } from "./row-documents";
 import type { Identity, Page, Field, Row } from "./types";
 // Called inside the command transaction. Permission-check the complete source
 // tree before copying anything; never silently copy a restricted descendant.
@@ -278,7 +279,8 @@ export function duplicatePages(
             id(),
             target,
             t.name,
-            rewriteCells(t.cells, fields),
+            // Without the values of properties hidden from the copier.
+            rewriteCells(JSON.stringify(readableTemplateCells(user, p, t.cells)), fields),
             rewriteHtml(t.html),
             t.is_default,
             user.id,

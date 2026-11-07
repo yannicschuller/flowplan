@@ -5,6 +5,7 @@ import { z } from "zod";
 import { all, id, one, run } from "./db";
 import { HttpError } from "./auth";
 import { requireMember, requirePage } from "./permissions";
+import { lockedPageIds } from "./journal-extras";
 import { visibleRows } from "./row-access";
 import { cellText } from "./cell-text";
 import { databaseSettings } from "./database-settings";
@@ -45,12 +46,15 @@ export function crossRecords(user: Identity, workspaceId: string, input: unknown
     done: boolean;
   }[] = [];
   const databases: { id: string; title: string }[] = [];
+  // Databases behind a journal PIN the person has not entered stay out.
+  const locked = lockedPageIds(user, workspaceId);
   for (const page of pages) {
     try {
       requirePage(user, page.id);
     } catch {
       continue;
     }
+    if (locked.has(page.id)) continue;
     const raw = one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", page.id);
     if (!raw) continue;
     const fields = JSON.parse(raw.fields) as Field[];

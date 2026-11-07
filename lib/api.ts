@@ -62,6 +62,8 @@ import {
   dayEntry,
   journalDayDetails,
   journalLocked,
+  lockingJournal,
+  mayResetJournalLock,
   journalOf,
   journalSettings,
   journalSidebarModes,
@@ -100,6 +102,7 @@ import {
   publicHiddenFieldIds,
   readOnlyFieldIds,
   stripCells,
+  unwritableFieldIds,
   validateFieldAccess,
   visibleFields,
 } from "./field-access";
@@ -427,11 +430,14 @@ function pageContent(user: Identity, pid: string, options: { presence?: boolean 
   const p = requirePage(user, pid);
   const role = pageRole(user, p);
   // Behind a journal PIN: only what the lock screen needs.
-  if (journalLocked(user, p))
+  // Any page below the journal shows the lock screen of that journal.
+  const lockedBy = lockingJournal(user, p);
+  if (lockedBy)
     return {
       page: p,
       role,
-      locked: { journalId: journalOf(p)!.id },
+      // Owners of the workspace may reset the PIN from the lock screen.
+      locked: { journalId: lockedBy, canReset: mayResetJournalLock(user, one<Page>("SELECT * FROM pages WHERE id=?", lockedBy)!) },
       comments: [],
       snapshots: [],
       present: [],
@@ -1540,7 +1546,10 @@ export function command(
         break;
       }
       case "journal.lock": {
-        const journal = write();
+        // Not write(): its own PIN is checked by setJournalLock (the
+        // current one, or a reset by a workspace owner).
+        const journal = requirePage(user, pid(), true);
+        if (journal.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
         if (journal.kind !== "journal")
           throw new HttpError(400, "Diese Seite ist kein Journal.");
         setJournalLock(
@@ -2186,8 +2195,13 @@ export function command(
         // Tag-backed properties: tag names, new ones only where allowed (#79).
         Object.assign(given, tagCells(user, write(), database(pid()).fields, given, true));
         // Contacts: the display name from the names (lib/contacts.ts).
+        // A template fills only properties this person may change, like
+        // row.template.apply (lib/field-access.ts).
+        const fromTemplate = template
+          ? stripCells(JSON.parse(template.cells) as Record<string, unknown>, unwritableFieldIds(user, write(), database(pid()).fields))
+          : {};
         const cells = contactCellsFor(pid(), database(pid()).fields, {}, {
-          ...(template ? JSON.parse(template.cells) : {}),
+          ...fromTemplate,
           ...given,
         }, Object.keys(given));
         // Aliases follow their limits (lib/aliases.ts).
@@ -3064,7 +3078,7 @@ export function command(
                 database: database(p.id),
                 // Only the records this person sees go into the template.
                 rows: visibleRows(user, p, rows(p.id)),
-                ...databaseTemplateExtras(p.id),
+                ...databaseTemplateExtras(user, p),
                 // Tags and property values (lib/page-properties-server.ts).
                 meta: portableMeta(p.id),
               })

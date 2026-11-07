@@ -4,7 +4,8 @@ import { hiddenRowIds, visibleRows } from "./row-access";
 import { fieldWriteMessage, publicWritable } from "./field-access";
 import { all, one, run, id } from "./db";
 import { HttpError } from "./auth";
-import { pageRole, requireMember, requirePage } from "./permissions";
+import { isGuest, pageRole, requireMember, requirePage } from "./permissions";
+import { journalLocked } from "./journal-extras";
 import { cellText } from "./cell-text";
 import {
   formConfigSchema,
@@ -63,6 +64,7 @@ export function getForm(token: string, user: Identity | null) {
     ),
     config = formConfigSchema.parse(JSON.parse(f.config));
   const internal = !!f.internal && !!user;
+  const guest = internal && isGuest(user!, f.workspace_id);
   // Properties with a read or write rule are never asked in a form
   // (lib/field-access.ts).
   const questions = orderedFormFields(fields, config, internal).filter((q) =>
@@ -73,12 +75,13 @@ export function getForm(token: string, user: Identity | null) {
     config,
     title: config.title || f.title,
     fields: questions,
-    // Choices for people and relations, only for signed-in members.
+    // Choices for people and relations, only for signed-in members; guests
+    // see nobody of the workspace but themselves.
     members: internal
       ? all<{ id: string; name: string }>(
           "SELECT u.id,u.name FROM users u JOIN members m ON m.user_id=u.id WHERE m.workspace_id=? AND u.disabled=0 ORDER BY u.name",
           f.workspace_id,
-        )
+        ).filter((m) => !guest || m.id === user!.id)
       : [],
     related: internal ? relationChoices(user!, questions) : {},
   };
@@ -93,7 +96,7 @@ function relationChoices(user: Identity, fields: Field[]) {
       "SELECT * FROM pages WHERE id=? AND deleted_at IS NULL",
       f.relationPage,
     );
-    if (!target || !pageRole(user, target)) continue;
+    if (!target || !pageRole(user, target) || journalLocked(user, target)) continue;
     const title =
       (
         JSON.parse(

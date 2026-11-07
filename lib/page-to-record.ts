@@ -19,7 +19,7 @@ import { rowCreated } from "./automations";
 import { autoDatabaseSnapshot } from "./database-operations";
 import { captureTargets } from "./capture";
 import type { Field, Identity } from "./types";
-import { hiddenFieldsFor, readOnlyFieldIds } from "./field-access";
+import { hiddenFieldsFor, readOnlyFieldIds, stripCells, unwritableFieldIds } from "./field-access";
 import { pageTagNames } from "./page-properties-server";
 import { isTagField } from "./page-properties";
 
@@ -87,7 +87,8 @@ export function pageToRecord(user: Identity, pageId: string, databaseId: string)
     autoDatabaseSnapshot(user, database);
     const fields = JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", database.id)!.fields) as Field[];
     const template = selectedRowTemplate(database.id, undefined);
-    const fromTemplate: Record<string, unknown> = template ? JSON.parse(template.cells) : {};
+    // Only properties this person may change (lib/field-access.ts).
+    const fromTemplate: Record<string, unknown> = template ? stripCells(JSON.parse(template.cells), unwritableFieldIds(user, database, fields)) : {};
     const titleId = fields[0]?.id || "title";
     fromTemplate[titleId] = page.title;
     // Placeholders in the template's text properties get this record's values.

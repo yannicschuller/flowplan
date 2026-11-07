@@ -1017,9 +1017,12 @@ export function JournalDayBar({
 
 export function JournalLockScreen({
   journalId,
+  canReset = false,
   onUnlocked,
 }: {
   journalId: string;
+  // Owners of the workspace remove a PIN nobody knows any more.
+  canReset?: boolean;
   onUnlocked: () => Promise<unknown> | void;
 }) {
   const t = useT();
@@ -1062,6 +1065,29 @@ export function JournalLockScreen({
       <button type="submit" className="button primary" disabled={busy || pin.length < 4}>
         {t("Entsperren", "Unlock")}
       </button>
+      {canReset && (
+        <button
+          type="button"
+          className="button compact"
+          disabled={busy}
+          onClick={async () => {
+            if (!window.confirm(t("PIN entfernen? Das Journal ist dann für alle mit Zugriff wieder offen. Wer es angelegt hat, wird benachrichtigt.", "Remove the PIN? The journal is then open again to everyone with access. Whoever created it is notified.")))
+              return;
+            setBusy(true);
+            setError("");
+            try {
+              await api("/api/command", { action: "journal.lock", pageId: journalId, pin: null });
+              await onUnlocked();
+            } catch (err) {
+              setError(message(err));
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          {t("PIN zurücksetzen", "Reset PIN")}
+        </button>
+      )}
     </form>
   );
 }
