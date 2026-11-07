@@ -1033,9 +1033,16 @@ shared queues (files due/in flight, mail, push, webhooks, chat apps).
 
 - **`npx tsc --noEmit -p .`** clean; `node scripts/db-dialect-scan.mjs`
   zero on every SQLite-only pattern (`LIKE` 76, as in phase 2).
-- **SQLite** (`npm test`): SQLITE_RESULT.
+- **SQLite** (`npm test`): 2,078 tests – 2,077 pass, 1 skipped (the
+  multi-instance test needs PostgreSQL); one time-bucket test of
+  `tests/metrics.test.ts` failed once under load and passes on its own
+  (3 of 3).
 - **PostgreSQL 16** (`DATABASE_URL=…`, `FLOWPLAN_TEST_REDIS_URL` with a real
-  Redis 7): PG_RESULT. The cluster tests also ran against the in-process
+  Redis 7): 2,078 tests – 2,071 pass, 6 skipped (SQLite's own, as in
+  phase 2), 1 flaky: `tests/admin-ops.test.ts` "refusals are counted"
+  fails in about half of the runs on a loaded host – on the unchanged
+  `db-refactor` branch as well (a counter written after the transaction,
+  awaited with one `setImmediate`); not caused by this phase. The cluster tests also ran against the in-process
   Redis double.
 - **`next build`** passes; `npm run check:standalone` (SQLite) and
   `scripts/check-standalone-postgres.mjs` pass. The standalone build ran
