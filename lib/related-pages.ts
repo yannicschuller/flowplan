@@ -22,7 +22,7 @@ import { pageRole, requireMember, requirePage } from "./permissions";
 import { hiddenRowIds } from "./row-access";
 import { journalLocked } from "./journal-extras";
 import { requireRow } from "./row-documents";
-import { processSearchIndex, termMatches } from "./search-index";
+import { refreshSearchIndex, termMatches } from "./search-index";
 import { ftsQuery, questionTerms } from "./ai/chunks";
 import { aiFilter, aiMayRead } from "./ai/access";
 import { semanticNeighbours } from "./ai/semantic";
@@ -87,7 +87,7 @@ function cellsOf(rowId: string): Record<string, unknown> {
   }
 }
 const indexReady = () => {
-  for (let i = 0; i < 10 && processSearchIndex(); i++);
+  refreshSearchIndex();
 };
 
 // The text of a page or record as stored HTML (for its links).

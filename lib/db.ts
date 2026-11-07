@@ -174,6 +174,15 @@ function migrate(d: DatabaseSync) {
     CREATE TRIGGER IF NOT EXISTS search_message_update AFTER UPDATE OF body,deleted ON inline_messages BEGIN INSERT INTO search_dirty SELECT t.page_id,'m:'||NEW.id FROM inline_threads t WHERE t.id=NEW.thread_id AND NOT EXISTS(SELECT 1 FROM search_dirty WHERE page_id=t.page_id AND row_id='m:'||NEW.id); END;
     CREATE TRIGGER IF NOT EXISTS search_file_insert AFTER INSERT ON files BEGIN INSERT INTO search_dirty SELECT NEW.page_id,'f:'||NEW.id WHERE NOT EXISTS(SELECT 1 FROM search_dirty WHERE page_id=NEW.page_id AND row_id='f:'||NEW.id); END;
     CREATE TRIGGER IF NOT EXISTS search_file_delete AFTER DELETE ON files BEGIN INSERT INTO search_dirty SELECT OLD.page_id,'f:'||OLD.id WHERE NOT EXISTS(SELECT 1 FROM search_dirty WHERE page_id=OLD.page_id AND row_id='f:'||OLD.id); END;`);
+  // The index finds an entry by page and key only by reading every entry
+  // (both columns are UNINDEXED), which made refreshing N entries cost N
+  // full scans. An index on its content table (c0 = page_id, c1 = row_id)
+  // finds them directly; SQLite keeps it current with every change of the
+  // index, also by older versions. Optional: a connection that forbids
+  // changes to shadow tables (SQLITE_DBCONFIG_DEFENSIVE) falls back to the scan.
+  try {
+    d.exec("CREATE INDEX IF NOT EXISTS search_index_key ON search_index_content(c0,c1)");
+  } catch {}
   // Personal reminders on date cells. The cell value stays untouched; the
   // worker re-arms a reminder whenever the observed date value changes.
   d.exec(`CREATE TABLE IF NOT EXISTS date_reminders(
