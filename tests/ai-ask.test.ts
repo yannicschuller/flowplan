@@ -24,17 +24,17 @@ const { startOllamaMock } = await import("./helpers/ai-mock");
 import type { Identity } from "../lib/types";
 import { z } from "zod";
 
-function person(name: string): Identity {
+async function person(name: string): Promise<Identity> {
   const uid = id();
   run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name.toLowerCase()}@example.test`);
   const token = randomBytes(16).toString("hex");
   run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", createHash("sha256").update(token).digest("hex"), uid, "[]", Date.now() + 3600_000);
-  return identityFromToken(token)!;
+  return (await identityFromToken(token))!;
 }
-const admin = { ...person("Ada"), isAdmin: true };
-const ben = person("Ben"),
-  vic = person("Vic"),
-  gus = person("Gus");
+const admin = { ...(await person("Ada")), isAdmin: true };
+const ben = await person("Ben"),
+  vic = await person("Vic"),
+  gus = await person("Gus");
 const wid = createWorkspace(admin.id, "Team");
 run("INSERT INTO members VALUES(?,?,?)", wid, ben.id, "editor");
 run("INSERT INTO members VALUES(?,?,?)", wid, vic.id, "viewer");
@@ -188,7 +188,7 @@ test("ask needs the feature: off, guests, API tokens and the person's switch ref
   setAi({ enabled: true, provider: { kind: "ollama", baseUrl: mock.base, model: "chat", embeddingModel: "" } });
   await assert.rejects(ask(gus, "Betriebsausflug?"), /Gäste/);
   const { token } = command(ben, { action: "token.create", name: "Skript", scope: "read" }) as { token: string };
-  await assert.rejects(ask(identityFromApiToken(`Bearer ${token}`)!, "Betriebsausflug?"), /API-Token/);
+  await assert.rejects(ask((await identityFromApiToken(`Bearer ${token}`))!, "Betriebsausflug?"), /API-Token/);
   setAi({ features: { ask: false } });
   await assert.rejects(ask(ben, "Betriebsausflug?"), /ausgeschaltet/);
   setAi({ features: { ask: true } });
@@ -373,7 +373,7 @@ test("meaning finds passages without shared words – and still respects every r
 test("a question takes one slot of the AI rate limit before any work, not one more for its embedding or answer", async () => {
   const { limitAi } = await import("../lib/action-limits");
   const { aiComplete } = await import("../lib/ai/run");
-  const asker = person("Lim");
+  const asker = await person("Lim");
   run("INSERT INTO members VALUES(?,?,?)", wid, asker.id, "editor");
   // 28 of the 30 requests per minute used up: the question takes the 29th –
   // its embedding takes none.

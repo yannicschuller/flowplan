@@ -14,9 +14,9 @@ export const dynamic = "force-dynamic";
 type Context = { params: Promise<{ id: string }> };
 const noStore = { headers: { "Cache-Control": "no-store" } };
 
-function signedIn(req: Request) {
+async function signedIn(req: Request) {
   if (req.headers.get("authorization")) throw new HttpError(403, "Nur im Browser verfügbar.");
-  const user = sessionIdentityFromRequest(req);
+  const user = await sessionIdentityFromRequest(req);
   if (!user) throw new HttpError(401, "Bitte melde dich an.");
   if (user.twoFactorSetup) throw new HttpError(403, "Bitte richte zuerst die Zwei-Faktor-Anmeldung ein.");
   return user;
@@ -33,7 +33,7 @@ function error(e: unknown) {
 
 export const GET = withRequestLocale(async (req: Request, { params }: Context) => {
   try {
-    const user = signedIn(req);
+    const user = await signedIn(req);
     const pageId = z.uuid().parse((await params).id);
     return NextResponse.json(facilitationState(user, pageId), noStore);
   } catch (e) {
@@ -44,7 +44,7 @@ export const GET = withRequestLocale(async (req: Request, { params }: Context) =
 export const POST = withRequestLocale(async (req: Request, { params }: Context) => {
   try {
     checkOrigin(req);
-    const user = signedIn(req);
+    const user = await signedIn(req);
     const pageId = z.uuid().parse((await params).id);
     const limit = Math.ceil((PRIVATE_LIMITS.update * 4) / 3) + 4096;
     if (Number(req.headers.get("content-length") || 0) > limit) throw new HttpError(413, "Anfrage zu groß.");

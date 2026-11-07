@@ -323,7 +323,7 @@ async function handleGET(
       // and the session that started it.
       if (f.link_user_id) {
         const back = (result: string) => NextResponse.redirect(new URL(`/?ssoLink=${encodeURIComponent(result)}#settings/account/sign-in-methods`, appUrl()));
-        const me = linkFlowOwner(f, jar.get(cookieName)?.value);
+        const me = await linkFlowOwner(f, jar.get(cookieName)?.value);
         if (!me) return back(translate(locale)("Die Verbindung ist abgelaufen. Bitte noch einmal „SSO verbinden“ wählen.", "The connection has expired. Please choose “Connect SSO” again."));
         // An identity that may not sign in here is not connected either.
         if (process.env.OIDC_ALLOWED_GROUP && !groups.includes(process.env.OIDC_ALLOWED_GROUP)) return back(translate(locale)("Zugriff für diese Gruppe nicht erlaubt.", "Access not allowed for this group."));
@@ -399,7 +399,7 @@ async function handlePOST(
           403,
           "Demo-Anmeldung ist in Produktion deaktiviert.",
         );
-      const user = upsertUser(
+      const user = await upsertUser(
         "local-development",
         "Alex Morgan",
         "alex@flowplan.local",

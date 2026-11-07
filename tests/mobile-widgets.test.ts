@@ -34,9 +34,9 @@ function account(name: string, groups: string[] = []) {
   return { user, token };
 }
 // The identity a phone gets from its device token.
-function phone(acc: { user: Identity; token: string }) {
+async function phone(acc: { user: Identity; token: string }) {
   const { deviceToken } = registerMobileDevice(acc.user, acc.token, { installationId: randomUUID(), platform: "ios" });
-  return { deviceToken, device: W.widgetUser(`Bearer ${deviceToken}`)! };
+  return { deviceToken, device: (await W.widgetUser(`Bearer ${deviceToken}`))! };
 }
 type Result = { id: string | null; kind: string; ok: boolean; status?: number; error?: string; data?: Record<string, any> };
 function widgets(user: Identity, list: { kind: string; config?: Record<string, unknown>; id?: string }[], now = NOW) {
@@ -78,11 +78,11 @@ run("INSERT INTO members VALUES(?,?,?)", wid, viewer.user.id, "viewer");
 run("INSERT INTO members VALUES(?,?,?)", wid, guest.user.id, "editor");
 command(owner.user, { action: "member.guest", workspaceId: wid, userId: guest.user.id, guest: true });
 createWorkspace(stranger.user.id, "Elsewhere");
-const O = phone(owner).device,
-  E = phone(editor).device,
-  V = phone(viewer).device,
-  G = phone(guest).device,
-  S = phone(stranger).device;
+const O = (await phone(owner)).device,
+  E = (await phone(editor)).device,
+  V = (await phone(viewer)).device,
+  G = (await phone(guest)).device,
+  S = (await phone(stranger)).device;
 
 const tasksDb = makeDatabase(owner.user, wid, sid, "Inbox", [
   { id: "title", name: "Title", type: "text" },
@@ -96,7 +96,7 @@ const plan = (command(owner.user, { action: "page.create", workspaceId: wid, spa
 test("only a device token opens the widget API; a revoked device gets 401", async () => {
   const acc = account("widget-revoked");
   run("INSERT INTO members VALUES(?,?,?)", wid, acc.user.id, "editor");
-  const { deviceToken } = phone(acc);
+  const { deviceToken } = await phone(acc);
   const ctx = (action: string) => ({ params: Promise.resolve({ action }) });
   const get = (authorization?: string) =>
     route.GET(new Request("http://localhost/api/mobile/widgets/options?kind=capture", { headers: authorization ? { authorization } : {} }), ctx("options"));
@@ -134,13 +134,13 @@ test("only a device token opens the widget API; a revoked device gets 401", asyn
   );
   assert.equal(action.status, 401);
   // Unknown endpoints and kinds.
-  const other = await route.GET(new Request("http://localhost/api/mobile/widgets/options?kind=nope", { headers: { authorization: `Bearer ${phone(owner).deviceToken}` } }), ctx("options"));
+  const other = await route.GET(new Request("http://localhost/api/mobile/widgets/options?kind=nope", { headers: { authorization: `Bearer ${(await phone(owner)).deviceToken}` } }), ctx("options"));
   assert.equal(other.status, 400);
 });
 
 test("titles follow the profile language first, then the app", async () => {
   const acc = account("widget-language");
-  const { deviceToken } = phone(acc);
+  const { deviceToken } = await phone(acc);
   const ask = async (headers: Record<string, string>, query = "") => {
     const response = await route.POST(
       new Request(`http://localhost/api/mobile/widgets/data${query}`, {
@@ -262,7 +262,7 @@ test("share from another app: text, a link, photos and PDFs in one capture", asy
   await assert.rejects(share(V, { targetId: tasksDb, text: "No" }), (e: { status: number }) => e.status === 403);
 
   // Through the endpoint: multipart with several "file" parts.
-  const { deviceToken } = phone(owner);
+  const { deviceToken } = await phone(owner);
   const form = new FormData();
   form.append("action", "capture.share");
   form.append("targetId", tasksDb);
@@ -337,7 +337,7 @@ test("interactive tasks: my tasks, a view and a page, completed with the web app
 test("checking off from the phone: long tasks, mentions with a due date, records – through the route", async () => {
   const acc = account("widget-checker");
   run("INSERT INTO members VALUES(?,?,?)", wid, acc.user.id, "editor");
-  const { deviceToken } = phone(acc);
+  const { deviceToken } = await phone(acc);
   const post = async (action: "data" | "action", body: Record<string, unknown>) => {
     const response = await route.POST(
       new Request(`http://localhost/api/mobile/widgets/${action}?lang=en`, {
@@ -483,10 +483,10 @@ test("pinned views and counters show only what the person may read", () => {
   assert.equal(hidden.status, 400);
 });
 
-test("recently opened pages (Android app shortcuts): newest first, only what the person may read", () => {
+test("recently opened pages (Android app shortcuts): newest first, only what the person may read", async () => {
   const acc = account("widget-recent");
   run("INSERT INTO members VALUES(?,?,?)", wid, acc.user.id, "editor");
-  const R = phone(acc).device;
+  const R = (await phone(acc)).device;
   const page = (title: string) => (command(owner.user, { action: "page.create", workspaceId: wid, spaceId: sid, title, kind: "document" }) as { id: string }).id;
   const [first, second, gone] = [page("First"), page("Second"), page("Gone")];
   const privateWorkspace = createWorkspace(stranger.user.id, "Private");
@@ -748,25 +748,25 @@ test("long-running jobs: progress for the Live Activity, only the person's own",
   assert.equal(one_(O, "jobs").items.find((j: { id: string }) => j.id === seen).status, "interrupted");
 });
 
-test("admin incident: administrators only, checked again on every request", () => {
+test("admin incident: administrators only, checked again on every request", async () => {
   const admin = account("widget-admin", ["flowplan-admins"]);
-  const { deviceToken } = phone(admin);
-  const device = () => W.widgetUser(`Bearer ${deviceToken}`)!;
-  const incident = widgets(device(), [{ kind: "incident" }])[0];
+  const { deviceToken } = await phone(admin);
+  const device = async () => (await W.widgetUser(`Bearer ${deviceToken}`))!;
+  const incident = widgets(await device(), [{ kind: "incident" }])[0];
   assert.equal(incident.ok, true);
   assert.ok(["ok", "warning", "critical"].includes(incident.data!.level));
   assert.ok(Array.isArray(incident.data!.issues));
-  assert.equal(device().isAdmin, false, "the device identity itself never administers");
+  assert.equal((await device()).isAdmin, false, "the device identity itself never administers");
   assert.equal(widgets(E, [{ kind: "incident" }])[0].status, 403);
   assert.equal((W.widgetOptions(E, "incident") as { available: boolean }).available, false);
   // A local account that lost its admin right.
   run("INSERT INTO local_accounts(user_id,email,password_hash,is_admin,created_at) VALUES(?,?,?,?,?)", admin.user.id, "widget-admin@example.test", "x", 0, Date.now());
-  assert.equal(widgets(device(), [{ kind: "incident" }])[0].status, 403);
+  assert.equal(widgets(await device(), [{ kind: "incident" }])[0].status, 403);
   run("UPDATE local_accounts SET is_admin=1 WHERE user_id=?", admin.user.id);
-  assert.equal(widgets(device(), [{ kind: "incident" }])[0].ok, true);
+  assert.equal(widgets(await device(), [{ kind: "incident" }])[0].ok, true);
   // Groups of the session change (SSO sign-in without the admin group).
   run("UPDATE sessions SET groups_json='[]' WHERE token=?", admin.token);
-  assert.equal(widgets(device(), [{ kind: "incident" }])[0].status, 403);
+  assert.equal(widgets(await device(), [{ kind: "incident" }])[0].status, 403);
 });
 
 test("answers stay small: at most 10 items and 2 KB per widget, 16 widgets per request", () => {
@@ -812,7 +812,7 @@ test("guests see only what is shared with them; rate limits per person", async (
   assert.throws(() => W.limitWidgets(busy.user, "action"), (e: { status: number }) => e.status === 429);
   W.limitWidgets(busy.user, "data");
   // Through the route, too.
-  const { deviceToken } = phone(busy);
+  const { deviceToken } = await phone(busy);
   const response = await route.POST(
     new Request("http://localhost/api/mobile/widgets/action", { method: "POST", headers: { authorization: `Bearer ${deviceToken}` }, body: JSON.stringify({ action: "mention.readAll" }) }),
     { params: Promise.resolve({ action: "action" }) },
@@ -821,10 +821,10 @@ test("guests see only what is shared with them; rate limits per person", async (
   assert.equal(all<{ id: string }>("SELECT id FROM notifications WHERE user_id=?", busy.user.id).length, 0);
 });
 
-test("tasks in a sensible order: overdue, today, upcoming, undated – the same in the overview and the Tasks widget", () => {
+test("tasks in a sensible order: overdue, today, upcoming, undated – the same in the overview and the Tasks widget", async () => {
   const acc = account("widget-order");
   run("INSERT INTO members VALUES(?,?,?)", wid, acc.user.id, "editor");
-  const { device } = phone(acc);
+  const { device } = await phone(acc);
   const mention = `<span data-mention="${acc.user.id}" class="mention">@widget-order</span>`;
   const open = (text: string) => `<li data-type="taskItem" data-checked="false"><p>${mention} ${text}</p></li>`;
   const dated = (text: string, due: string) => taskItem(`${mention} ${text}`, due);

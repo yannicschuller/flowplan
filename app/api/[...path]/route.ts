@@ -216,7 +216,7 @@ async function handleGET(
       });
     const user = await requireUser();
     if (path.length === 1 && path[0] === "tokens")
-      return NextResponse.json(listApiTokens(user));
+      return NextResponse.json(await listApiTokens(user));
     // Choices for the start page's widget settings (lib/home-widgets.ts).
     if (path.length === 2 && path[0] === "home" && path[1] === "options")
       return NextResponse.json(

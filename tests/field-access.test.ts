@@ -19,7 +19,7 @@ const { sourceText } = await import("../lib/ai/sources");
 const { exportMarkdown } = await import("../lib/markdown-export");
 const { hiddenFieldsFor, visibleFields, publicHiddenFieldIds } = await import("../lib/field-access");
 
-function person(name: string): Identity {
+async function person(name: string): Promise<Identity> {
   const uid = id();
   run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name.toLowerCase()}@example.test`);
   const token = randomBytes(16).toString("hex");
@@ -30,17 +30,17 @@ function person(name: string): Identity {
     "[]",
     Date.now() + 3600_000,
   );
-  return identityFromToken(token)!;
+  return (await identityFromToken(token))!;
 }
 const fails = (fn: () => unknown, status: number, message?: RegExp) =>
   assert.throws(fn, (e: { status?: number; message?: string }) => e.status === status && (!message || message.test(e.message || "")));
 
 // Ana owns the workspace; Ben and Dora are editors, Cara reads. Dora is in
 // the HR group.
-const ana = person("Ana"),
-  ben = person("Ben"),
-  cara = person("Cara"),
-  dora = person("Dora");
+const ana = await person("Ana"),
+  ben = await person("Ben"),
+  cara = await person("Cara"),
+  dora = await person("Dora");
 const wid = createWorkspace(ana.id, "Firma");
 run("INSERT INTO members VALUES(?,?,?)", wid, ben.id, "editor");
 run("INSERT INTO members VALUES(?,?,?)", wid, cara.id, "viewer");
@@ -256,9 +256,9 @@ test("forms never ask for restricted properties", () => {
 });
 
 test("MCP tools read and write only what the person may", async () => {
-  const tokenFor = (user: Identity) => {
+  const tokenFor = async (user: Identity) => {
     const { token } = command(user, { action: "token.create", name: "MCP", scope: "write" }) as { token: string };
-    return identityFromApiToken(`Bearer ${token}`)!;
+    return (await identityFromApiToken(`Bearer ${token}`))!;
   };
   let seq = 0;
   const call = async (user: Identity, name: string, args: Record<string, unknown>) => {
@@ -267,8 +267,8 @@ test("MCP tools read and write only what the person may", async () => {
     };
     return { error: !!answer.result.isError, text: answer.result.content[0].text };
   };
-  const benToken = tokenFor(ben),
-    anaToken = tokenFor(ana);
+  const benToken = await tokenFor(ben),
+    anaToken = await tokenFor(ana);
   const query = await call(benToken, "query_database", { databaseId: pid });
   assert.equal(query.error, false);
   assert.ok(query.text.includes("Erika"));

@@ -12,8 +12,8 @@ export const dynamic = "force-dynamic";
 // and API tokens, so tools and the SDK generators fetch it with a token.
 // Instances that want it public set FLOWPLAN_PUBLIC_API_DOCS=true; visitors
 // then see the major version only (lib/instance-disclosure.ts).
-export function GET(request: Request) {
-  const identity = identityFromRequest(request);
+export async function GET(request: Request) {
+  const identity = await identityFromRequest(request);
   if (!apiDocsAllowed(identity)) {
     const locale = pickLocale(null, request.headers.get("accept-language"));
     return Response.json(

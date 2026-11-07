@@ -22,15 +22,15 @@ const { resolveAi } = await import("../lib/ai/resolve");
 const { startOllamaMock } = await import("./helpers/ai-mock");
 import type { Identity } from "../lib/types";
 
-function person(name: string): Identity {
+async function person(name: string): Promise<Identity> {
   const uid = id();
   run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name.toLowerCase()}@example.test`);
   const token = randomBytes(16).toString("hex");
   run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", createHash("sha256").update(token).digest("hex"), uid, "[]", Date.now() + 3600_000);
-  return identityFromToken(token)!;
+  return (await identityFromToken(token))!;
 }
-const admin = { ...person("Admin"), isAdmin: true };
-const user = person("User");
+const admin = { ...(await person("Admin")), isAdmin: true };
+const user = await person("User");
 // Own workspace first (sorted by name it comes second), the client's one
 // where the person is a guest.
 const own = createWorkspace(admin.id, "Zeta-own");

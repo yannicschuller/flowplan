@@ -24,16 +24,16 @@ const { aiStatus, deviceGate, resolveAi } = await import("../lib/ai/resolve");
 const { instanceAiSettings, userAiSettings } = await import("../lib/ai/settings");
 import type { Identity } from "../lib/types";
 
-function person(name: string): Identity {
+async function person(name: string): Promise<Identity> {
   const uid = id();
   run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name.toLowerCase()}@example.test`);
   const token = randomBytes(16).toString("hex");
   run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", createHash("sha256").update(token).digest("hex"), uid, "[]", Date.now() + 3600_000);
-  return identityFromToken(token)!;
+  return (await identityFromToken(token))!;
 }
-const admin = { ...person("Ada"), isAdmin: true };
-const ben = person("Ben"),
-  gus = person("Gus");
+const admin = { ...(await person("Ada")), isAdmin: true };
+const ben = await person("Ben"),
+  gus = await person("Gus");
 const wid = createWorkspace(admin.id, "Team");
 run("INSERT INTO members VALUES(?,?,?)", wid, ben.id, "editor");
 run("INSERT INTO members VALUES(?,?,?)", wid, gus.id, "viewer");
@@ -125,11 +125,11 @@ test("each person switches it off, or wants it only without server AI", () => {
   assert.equal(userAiSettings(ben.id).device, "prefer");
 });
 
-test("never with an API token; in the demo with the defaults (nothing reaches the server)", () => {
+test("never with an API token; in the demo with the defaults (nothing reaches the server)", async () => {
   const { token } = command(ben, { action: "token.create", name: "Skript", scope: "write" }) as { token: string };
-  const viaToken = identityFromApiToken(`Bearer ${token}`)!;
+  const viaToken = (await identityFromApiToken(`Bearer ${token}`))!;
   assert.equal(device(viaToken), null);
-  const demo = { ...person("Demo"), demo: true };
+  const demo = { ...(await person("Demo")), demo: true };
   run("INSERT INTO members VALUES(?,?,?)", wid, demo.id, "editor");
   assert.deepEqual(device(demo)?.features, { write: true, summarize: true });
   assert.deepEqual(resolveAi(demo, "write"), { ok: false, reason: "demo" });

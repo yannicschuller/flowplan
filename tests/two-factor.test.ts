@@ -193,16 +193,16 @@ test("required by the administration: setup right after signing in, passkeys cou
     return token;
   };
   const fritzSession = session(fritz.id);
-  assert.equal(identityFromToken(fritzSession)?.twoFactorSetup, undefined);
+  assert.equal((await identityFromToken(fritzSession))?.twoFactorSetup, undefined);
   saveInstanceSettings({ twoFactor: "admins" });
   assert.equal(policy.needsTwoFactorSetup(fritz.id), false);
   assert.equal(policy.needsTwoFactorSetup(admin), !policy.totpEnabled(admin));
   saveInstanceSettings({ twoFactor: "all" });
   // Signed in with the password only: the session works for the setup alone.
   assert.ok("userId" in tf.afterPassword(fritz.id, false, "de"));
-  assert.equal(identityFromToken(fritzSession)?.twoFactorSetup, true);
+  assert.equal((await identityFromToken(fritzSession))?.twoFactorSetup, true);
   const { secret } = enable(fritz.id);
-  assert.equal(identityFromToken(fritzSession)?.twoFactorSetup, undefined);
+  assert.equal((await identityFromToken(fritzSession))?.twoFactorSetup, undefined);
   // Required and on: turning it off needs a passkey first.
   await assert.rejects(tf.disableTotp(fritz.id, { code: totp.totpCode(secret, Date.now()) }, "10.5.0.1", "de"), /vorgeschrieben/);
   // An account with a passkey (and no app) signs in with the passkey.

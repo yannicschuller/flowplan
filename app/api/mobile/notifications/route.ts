@@ -30,7 +30,7 @@ async function handlePOST(req: Request) {
   const query = new URL(req.url).searchParams;
   const fallback = pickLocale(null, req.headers.get("accept-language"));
   // Browsers never send this header by themselves: no origin check needed.
-  const user = identityFromDeviceToken(req.headers.get("authorization"));
+  const user = await identityFromDeviceToken(req.headers.get("authorization"));
   if (!user) return failure(new HttpError(401, "Bitte melde dich an."), fallback);
   const locale = widgetLocale(user, query.get("lang"), req.headers.get("accept-language"));
   return withContentLocale(locale, async () => {

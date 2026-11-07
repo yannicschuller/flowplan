@@ -15,15 +15,15 @@ const { aiMayRead, aiFilter, aiReadablePages, requireAiRead, aiPageAccess } = aw
 const { aiStatus } = await import("../lib/ai/resolve");
 import type { Identity } from "../lib/types";
 
-function person(name: string): Identity {
+async function person(name: string): Promise<Identity> {
   const uid = id();
   run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name.toLowerCase()}@example.test`);
   const token = randomBytes(16).toString("hex");
   run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", createHash("sha256").update(token).digest("hex"), uid, "[]", Date.now() + 3600_000);
-  return identityFromToken(token)!;
+  return (await identityFromToken(token))!;
 }
-const owner = person("Olga"),
-  eve = person("Eve");
+const owner = await person("Olga"),
+  eve = await person("Eve");
 const wid = createWorkspace(owner.id, "Team");
 run("INSERT INTO members VALUES(?,?,?)", wid, eve.id, "editor");
 const space = one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid)!.id;
@@ -43,14 +43,14 @@ const all = [A, B, C, D, E, F];
 const readable = (user: Identity) => all.filter((p) => aiMayRead(user, p));
 const rule = (user: Identity, targetId: string, mode: "include" | "exclude" | null) => command(user, { action: "ai.rule", targetId, mode });
 
-test("by default the AI reads what the person may read – no more", () => {
+test("by default the AI reads what the person may read – no more", async () => {
   assert.deepEqual(readable(eve), all);
   assert.equal(aiMayRead(eve, D, visible.id), true);
   assert.equal(aiMayRead(eve, D, secret.id), false, "another person's private record");
   assert.equal(aiMayRead(owner, D, secret.id), true);
   assert.equal(aiMayRead(eve, D, id()), false, "unknown record");
   assert.equal(aiMayRead(eve, id()), false, "unknown page");
-  const stranger = person("Stranger");
+  const stranger = await person("Stranger");
   assert.deepEqual(readable(stranger), [], "not a member");
 });
 

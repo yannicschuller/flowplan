@@ -44,7 +44,7 @@ const rowCount = () => Number(one<{ n: number }>("SELECT COUNT(*) n FROM rows WH
 const commandRoute = I.withIdempotency(
   async (req: Request) => {
     try {
-      const user = identityFromRequest(req);
+      const user = await identityFromRequest(req);
       if (!user) throw new HttpError(401, "Bitte melde dich an.");
       const text = await req.text();
       return Response.json(command(user, JSON.parse(text), false, I.idempotencyHook()));

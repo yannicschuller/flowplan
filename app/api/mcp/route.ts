@@ -64,7 +64,7 @@ async function handlePOST(req: Request) {
   if (origin && origin !== new URL(appUrl()).origin) return rpcError(403, -32000, "Origin not allowed.");
   // Blocked addresses (Administration → Sicherheit) count as signed out, as
   // on every other route.
-  const user = blockedRequest(req.headers) ? null : identityFromApiToken(req.headers.get("authorization"));
+  const user = blockedRequest(req.headers) ? null : await identityFromApiToken(req.headers.get("authorization"));
   if (!user || user.demo)
     return rpcError(401, -32001, "A personal Flowplan API token is required (Authorization: Bearer fp_…).", {
       "WWW-Authenticate": 'Bearer realm="flowplan"',

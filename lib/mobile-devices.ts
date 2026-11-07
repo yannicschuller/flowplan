@@ -305,7 +305,7 @@ export function unregisterByDeviceToken(header: string | null) {
 }
 
 // The person behind "Authorization: Bearer fpd_…", while their session lasts.
-export function identityFromDeviceToken(header: string | null): Identity | null {
+export async function identityFromDeviceToken(header: string | null): Promise<Identity | null> {
   const match = header?.match(/^Bearer\s+(fpd_[A-Za-z0-9_-]{20,80})$/);
   if (!match) return null;
   const now = Date.now();
@@ -321,7 +321,7 @@ export function identityFromDeviceToken(header: string | null): Identity | null 
   // The widgets are the app in the background: they keep its session alive
   // like the app's web view does (a remembered session slides, never beyond
   // its maximum).
-  touchSession(
+  await touchSession(
     { token: row.session_token, expires: row.expires, created_at: row.session_created, remember: row.remember, sso: row.sso, app: row.app, last_seen: row.last_seen, demo_until: row.demo_until },
     now,
   );

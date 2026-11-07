@@ -15,16 +15,16 @@ const { identityFromApiToken } = await import("../lib/api-tokens");
 const { handleMcpMessage, mcpToolNames } = await import("../lib/mcp");
 import type { Identity } from "../lib/types";
 
-function person(name: string, demoUntil: number | null = null) {
+async function person(name: string, demoUntil: number | null = null) {
   const uid = id();
   run("INSERT INTO users(id,subject,name,email,demo_until) VALUES(?,?,?,?,?)", uid, uid, name, `${name.toLowerCase()}@example.test`, demoUntil);
   const token = randomBytes(16).toString("hex");
   run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", createHash("sha256").update(token).digest("hex"), uid, "[]", Date.now() + 3600_000);
-  return identityFromToken(token)!;
+  return (await identityFromToken(token))!;
 }
-function tokenFor(user: Identity, scope: "read" | "write") {
+async function tokenFor(user: Identity, scope: "read" | "write") {
   const { token } = command(user, { action: "token.create", name: `MCP ${scope}`, scope }) as { token: string };
-  return identityFromApiToken(`Bearer ${token}`)!;
+  return (await identityFromApiToken(`Bearer ${token}`))!;
 }
 let seq = 0;
 async function rpc(user: Identity, method: string, params: Record<string, unknown> = {}) {
@@ -39,8 +39,8 @@ async function call(user: Identity, name: string, args: Record<string, unknown>)
   return { error: !!result.isError, text: result.content[0].text };
 }
 
-const ana = person("Ana"),
-  ben = person("Ben");
+const ana = await person("Ana"),
+  ben = await person("Ben");
 const wid = createWorkspace(ana.id, "Team");
 run("INSERT INTO members VALUES(?,?,?)", wid, ben.id, "editor");
 const teamSpace = one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid)!.id;
@@ -58,9 +58,9 @@ run(
 const secret = createPage(wid, privateSpace, ana.id, "Geheime Notizen");
 const notes = createPage(wid, teamSpace, ana.id, "Team-Notizen");
 const tasksDb = createPage(wid, teamSpace, ana.id, "Aufgaben", "database");
-const anaWrite = tokenFor(ana, "write"),
-  benWrite = tokenFor(ben, "write"),
-  benRead = tokenFor(ben, "read");
+const anaWrite = await tokenFor(ana, "write"),
+  benWrite = await tokenFor(ben, "write"),
+  benRead = await tokenFor(ben, "read");
 
 test("initialize answers with the protocol version and the server", async () => {
   const answer = await rpc(benRead, "initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "1" } });
@@ -73,7 +73,7 @@ test("initialize answers with the protocol version and the server", async () => 
 test("only personal API tokens reach MCP; demo accounts get none", async () => {
   // A browser session (cookie) has no token scope and is refused.
   await assert.rejects(() => handleMcpMessage(ben, { jsonrpc: "2.0", id: 1, method: "tools/list" }), /API token/);
-  const demo = person("Demo", Date.now() + 3600_000);
+  const demo = await person("Demo", Date.now() + 3600_000);
   assert.equal(demo.demo, true);
   assert.throws(() => command(demo, { action: "token.create", name: "x", scope: "write" }), /Demo/);
   // Even a token row written behind the app's back does not sign a demo in.
@@ -88,7 +88,7 @@ test("only personal API tokens reach MCP; demo accounts get none", async () => {
     raw.slice(0, 10),
     Date.now(),
   );
-  assert.equal(identityFromApiToken(`Bearer ${raw}`), null);
+  assert.equal(await identityFromApiToken(`Bearer ${raw}`), null);
   await assert.rejects(() => handleMcpMessage({ ...demo, apiScope: "write" }, { jsonrpc: "2.0", id: 1, method: "tools/list" }), /API token/);
 });
 

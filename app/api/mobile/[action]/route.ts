@@ -43,7 +43,7 @@ async function handleGET(req: Request, { params }: { params: Promise<{ action: s
   try {
     const { action } = await params;
     if (action !== "summary" && action !== "admin-summary") throw new HttpError(404, "Nicht gefunden");
-    const user = identityFromDeviceToken((await headers()).get("authorization"));
+    const user = await identityFromDeviceToken((await headers()).get("authorization"));
     if (!user) throw new HttpError(401, "Bitte melde dich an.");
     if (action === "admin-summary") {
       // Checked on every call: the admin group of the device's session now.

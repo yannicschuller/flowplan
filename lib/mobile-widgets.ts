@@ -67,7 +67,7 @@ const uuid = z.uuid();
 
 // The person behind the device token, with the rights of their session
 // (reading only; actions get writing rights for exactly what they do).
-export function widgetUser(authorization: string | null) {
+export async function widgetUser(authorization: string | null) {
   return identityFromDeviceToken(authorization);
 }
 export const writerOf = (user: Identity): Identity => ({ ...user, apiScope: "write" });

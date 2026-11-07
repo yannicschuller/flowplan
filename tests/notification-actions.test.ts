@@ -35,7 +35,7 @@ const space = bootstrap(anna.user, wid).spaces[0].id;
 const pushToken = `ExponentPushToken[${randomUUID().replaceAll("-", "").slice(0, 22)}]`;
 const { deviceToken } = registerMobileDevice(ben.user, ben.token, { installationId: randomUUID(), platform: "ios", pushToken });
 // What the endpoint works with: the person behind the device token.
-const phone = identityFromDeviceToken(`Bearer ${deviceToken}`)!;
+const phone = (await identityFromDeviceToken(`Bearer ${deviceToken}`))!;
 const today = (() => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;

@@ -107,17 +107,17 @@ test("the server sanitises clipped HTML and makes addresses absolute", () => {
   assert.match(clean, /<a>js<\/a>|>js</);
 });
 
-test("clipper tokens only reach the clipper endpoints", () => {
+test("clipper tokens only reach the clipper endpoints", async () => {
   const clipper = createApiToken(anna, { name: "Browser", scope: "clipper" }).token;
   const write = createApiToken(anna, { name: "Skript", scope: "write" }).token;
   const read = createApiToken(anna, { name: "Lesen", scope: "read" }).token;
-  assert.equal(identityFromApiToken(`Bearer ${clipper}`), null, "everywhere else a clipper token is no token");
-  assert.equal(identityFromApiToken(`Bearer ${clipper}`, { clipper: true })?.apiScope, "clipper");
-  assert.equal(clipperUser(`Bearer ${clipper}`).id, anna.id);
-  assert.equal(clipperUser(`Bearer ${write}`).apiScope, "write");
-  assert.throws(() => clipperUser(`Bearer ${read}`), /nur lesen/);
-  assert.throws(() => clipperUser(null), /API-Token/);
-  assert.throws(() => clipperUser("Bearer fp_unknownunknownunknownunknown"), /ungültig/);
+  assert.equal(await identityFromApiToken(`Bearer ${clipper}`), null, "everywhere else a clipper token is no token");
+  assert.equal((await identityFromApiToken(`Bearer ${clipper}`, { clipper: true }))?.apiScope, "clipper");
+  assert.equal((await clipperUser(`Bearer ${clipper}`)).id, anna.id);
+  assert.equal((await clipperUser(`Bearer ${write}`)).apiScope, "write");
+  await assert.rejects(async () => clipperUser(`Bearer ${read}`), /nur lesen/);
+  await assert.rejects(async () => clipperUser(null), /API-Token/);
+  await assert.rejects(async () => clipperUser("Bearer fp_unknownunknownunknownunknown"), /ungültig/);
   assert.equal(one<{ scope: string }>("SELECT scope FROM api_tokens WHERE prefix=?", clipper.slice(0, 10))!.scope, "clipper");
 });
 

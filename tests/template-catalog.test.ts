@@ -20,14 +20,14 @@ const { computedCells } = await import("../lib/database");
 const { rollJournal } = await import("../lib/journal");
 const { whiteboardItems } = await import("../lib/whiteboard");
 
-function session(uid: string) {
+async function session(uid: string) {
   const token = randomBytes(16).toString("hex");
   run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", createHash("sha256").update(token).digest("hex"), uid, "[]", Date.now() + 3600_000);
-  return identityFromToken(token)!;
+  return (await identityFromToken(token))!;
 }
 const uid = id();
 run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, "Ana", "ana@example.test");
-const ana = session(uid);
+const ana = await session(uid);
 const wid = createWorkspace(uid, "Vorlagen");
 const space = one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid)!.id;
 const html = (pageId: string) => {
@@ -71,7 +71,7 @@ test("every template creates a valid page", () => {
   }
 });
 
-test("the demo workspace shows every part of Flowplan", () => {
+test("the demo workspace shows every part of Flowplan", async () => {
   saveInstanceSettings({ publicDemo: true });
   const demo = startDemo("10.9.9.9");
   const pages = all<{ id: string; title: string; kind: string }>(
@@ -113,7 +113,7 @@ test("the demo workspace shows every part of Flowplan", () => {
   assert.equal(one<{ n: number }>("SELECT COUNT(*) n FROM doc_tasks WHERE page_id=? AND assignee=?", byTitle("Editor-Rundgang").id, demo)!.n, 1);
   const connector = items.find((i) => i.type === "connector")!;
   assert.ok(items.some((i) => i.id === connector.from?.id), "connectors point at shapes");
-  const identity = session(demo);
+  const identity = await session(demo);
   const journal = one("SELECT * FROM pages WHERE id=?", byTitle("Journal").id) as never;
   const today = new Date();
   const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;

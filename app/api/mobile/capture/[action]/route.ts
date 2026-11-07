@@ -35,7 +35,7 @@ function failure(e: unknown, locale: Locale) {
 async function withDevice(req: Request, handle: (user: Identity) => Promise<Response>) {
   const lang = new URL(req.url).searchParams.get("lang");
   const fallback = pickLocale(null, req.headers.get("accept-language"));
-  const user = widgetUser(req.headers.get("authorization"));
+  const user = await widgetUser(req.headers.get("authorization"));
   if (!user) return failure(new HttpError(401, "Bitte melde dich an."), fallback);
   const locale = widgetLocale(user, lang, req.headers.get("accept-language"));
   return withContentLocale(locale, async () => {

@@ -52,7 +52,7 @@ test("visitors only learn the major version", () => {
 });
 
 test("/api/openapi.json needs a session or an API token by default", async () => {
-  const anonymous = openapi();
+  const anonymous = await openapi();
   assert.equal(anonymous.status, 401);
   assert.equal(anonymous.headers.get("WWW-Authenticate"), "Bearer");
   assert.equal(anonymous.headers.get("Access-Control-Allow-Origin"), null);
@@ -60,11 +60,11 @@ test("/api/openapi.json needs a session or an API token by default", async () =>
   assert.deepEqual(Object.keys(body), ["error"]);
   assert.ok(!JSON.stringify(body).includes("0.6"));
   // A cookie that is not a session, and a made-up token, change nothing.
-  assert.equal(openapi({ cookie: `${cookieName}=nope` }).status, 401);
-  assert.equal(openapi({ authorization: "Bearer fp_madeupmadeupmadeupmadeup" }).status, 401);
+  assert.equal((await openapi({ cookie: `${cookieName}=nope` })).status, 401);
+  assert.equal((await openapi({ authorization: "Bearer fp_madeupmadeupmadeupmadeup" })).status, 401);
 
   for (const headers of [{ cookie: member.cookie }, { authorization: `Bearer ${apiToken}` }] as Record<string, string>[]) {
-    const response = openapi(headers);
+    const response = await openapi(headers);
     assert.equal(response.status, 200);
     assert.equal(response.headers.get("Cache-Control"), "private, no-store");
     const doc = (await response.json()) as { openapi: string; info: { version: string }; paths: Record<string, unknown> };
@@ -77,14 +77,14 @@ test("/api/openapi.json needs a session or an API token by default", async () =>
 test("FLOWPLAN_PUBLIC_API_DOCS=true keeps the description public, without the exact version", async () => {
   process.env.FLOWPLAN_PUBLIC_API_DOCS = "true";
   try {
-    const response = openapi();
+    const response = await openapi();
     assert.equal(response.status, 200);
     assert.equal(response.headers.get("Access-Control-Allow-Origin"), "*");
     const text = await response.text();
     assert.equal((JSON.parse(text) as { info: { version: string } }).info.version, "0.x");
     assert.ok(!text.includes("0.6.0"));
     // Signed in, the exact version is still there.
-    const signedIn = (await openapi({ cookie: member.cookie }).json()) as { info: { version: string } };
+    const signedIn = (await (await openapi({ cookie: member.cookie })).json()) as { info: { version: string } };
     assert.equal(signedIn.info.version, "0.6.0");
   } finally {
     delete process.env.FLOWPLAN_PUBLIC_API_DOCS;

@@ -11,10 +11,10 @@ const { saveInstanceSettings, instanceSettings } = await import("../lib/instance
 const { identityFromToken } = await import("../lib/auth");
 const { command, bootstrap } = await import("../lib/api");
 
-function session(userId: string, expires = Date.now() + 60_000) {
+async function session(userId: string, expires = Date.now() + 60_000) {
   const token = randomBytes(16).toString("hex");
   run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", createHash("sha256").update(token).digest("hex"), userId, "[]", expires);
-  return identityFromToken(token)!;
+  return (await identityFromToken(token))!;
 }
 const workspaceOf = (uid: string) =>
   one<{ id: string; quota_mb: number }>(
@@ -28,9 +28,9 @@ test("the demo is off until an admin switches it on", () => {
   saveInstanceSettings({ ...instanceSettings(), publicDemo: true });
 });
 
-test("a demo gets its own example workspace and cannot reach anyone outside it", () => {
+test("a demo gets its own example workspace and cannot reach anyone outside it", async () => {
   const uid = startDemo("10.0.0.1");
-  const me = session(uid);
+  const me = await session(uid);
   assert.equal(me.demo, true);
   assert.equal(me.isAdmin, false);
   const ws = workspaceOf(uid)!;
@@ -53,9 +53,9 @@ test("a demo gets its own example workspace and cannot reach anyone outside it",
   assert.equal(demoAllows("form.update", { config: { enabled: false } }), true);
 });
 
-test("ending a demo deletes account, workspace, pages and its activity", () => {
+test("ending a demo deletes account, workspace, pages and its activity", async () => {
   const uid = startDemo("10.0.0.2");
-  const me = session(uid);
+  const me = await session(uid);
   const ws = workspaceOf(uid)!.id;
   const space = bootstrap(me).spaces[0].id;
   command(me, { action: "page.create", workspaceId: ws, spaceId: space, title: "Notiz", kind: "document" });
@@ -70,14 +70,14 @@ test("ending a demo deletes account, workspace, pages and its activity", () => {
   assert.equal(one<{ n: number }>("SELECT COUNT(*) n FROM audit WHERE actor_id=?", uid)!.n, 0);
 });
 
-test("demos without an active session or past their end are cleaned up; starts are limited", () => {
+test("demos without an active session or past their end are cleaned up; starts are limited", async () => {
   const idle = startDemo("10.0.0.3");
-  session(idle, Date.now() - 1000);
+  await session(idle, Date.now() - 1000);
   const over = startDemo("10.0.0.3");
-  session(over);
+  await session(over);
   run("UPDATE users SET demo_until=? WHERE id=?", Date.now() - 1, over);
   const alive = startDemo("10.0.0.3");
-  session(alive);
+  await session(alive);
   cleanupDemos();
   const left = all<{ id: string }>("SELECT id FROM users WHERE demo_until IS NOT NULL").map((u) => u.id);
   assert.ok(!left.includes(idle));
@@ -92,7 +92,7 @@ test("operations count running demos and every demo ever started", async () => {
   const { instanceMetrics, prometheusMetrics } = await import("../lib/instance-ops");
   const before = instanceMetrics();
   const uid = startDemo("10.0.0.9");
-  session(uid);
+  await session(uid);
   const during = instanceMetrics();
   assert.equal(during.demosActive, before.demosActive + 1);
   assert.equal(during.demosStarted, before.demosStarted + 1);

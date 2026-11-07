@@ -35,7 +35,7 @@ export const GET = withRequestLocale(async (req: Request, { params }: { params: 
   try {
     const { action } = await params;
     if (action !== "targets") throw new HttpError(404, "Nicht gefunden.");
-    return answer(req, 200, clipperTargets(clipperUser(req.headers)));
+    return answer(req, 200, clipperTargets(await clipperUser(req.headers)));
   } catch (e) {
     return failure(req, e);
   }
@@ -46,7 +46,7 @@ export const POST = withRequestLocale(
     try {
       const { action } = await params;
       if (action !== "save") throw new HttpError(404, "Nicht gefunden.");
-      const user = clipperUser(req.headers);
+      const user = await clipperUser(req.headers);
       // Not while the instance moves (lib/instance-read-only.ts).
       refuseWhileReadOnly(req);
       if (Number(req.headers.get("content-length") || 0) > MAX_BODY) throw new HttpError(413, "Anfrage zu groß.");

@@ -96,7 +96,7 @@ test("admin requires exact verified group, never a substring", () => {
     "flowplan-admins",
   ]);
 });
-test("expired and disabled sessions are rejected", () => {
+test("expired and disabled sessions are rejected", async () => {
   const token = "test-secret";
   run(
     "INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)",
@@ -105,16 +105,16 @@ test("expired and disabled sessions are rejected", () => {
     "[]",
     Date.now() + 10000,
   );
-  assert.equal(identityFromToken(token)?.id, owner.id);
+  assert.equal((await identityFromToken(token))?.id, owner.id);
   run("UPDATE users SET disabled=1 WHERE id=?", owner.id);
-  assert.equal(identityFromToken(token), null);
+  assert.equal(await identityFromToken(token), null);
   run("UPDATE users SET disabled=0 WHERE id=?", owner.id);
   run(
     "UPDATE sessions SET expires=? WHERE token=?",
     Date.now() - 1,
     hash(token),
   );
-  assert.equal(identityFromToken(token), null);
+  assert.equal(await identityFromToken(token), null);
 });
 test("last owner cannot be removed and trees cannot become cyclic", () => {
   assert.throws(

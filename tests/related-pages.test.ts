@@ -18,15 +18,15 @@ const { processEmbeddings } = await import("../lib/ai/semantic");
 const { startOllamaMock } = await import("./helpers/ai-mock");
 import type { Identity } from "../lib/types";
 
-function person(name: string): Identity {
+async function person(name: string): Promise<Identity> {
   const uid = id();
   run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name.toLowerCase()}@example.test`);
   const token = randomBytes(16).toString("hex");
   run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", createHash("sha256").update(token).digest("hex"), uid, "[]", Date.now() + 3600_000);
-  return identityFromToken(token)!;
+  return (await identityFromToken(token))!;
 }
-const admin = { ...person("Ada"), isAdmin: true };
-const ben = person("Ben");
+const admin = { ...(await person("Ada")), isAdmin: true };
+const ben = await person("Ben");
 const wid = createWorkspace(admin.id, "Team");
 run("INSERT INTO members VALUES(?,?,?)", wid, ben.id, "editor");
 const space = one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid)!.id;
@@ -118,7 +118,7 @@ test("with meaning search: neighbours by meaning, only what the AI may read", as
   assert.equal((await relatedPages(ben, open)).semantic, false);
 });
 
-test("duplicate hint: similar titles among readable pages or records of a database", () => {
+test("duplicate hint: similar titles among readable pages or records of a database", async () => {
   assert.equal(normalizeTitle("  Café-Plan  2026! "), "cafe plan 2026");
   assert.equal(titleSimilarity("Projektplan Alpha", "projektplan alpha"), 1);
   assert.ok(titleSimilarity("Projektplan Alpha", "Projektplan Alpha 2") > 0.8);
@@ -133,7 +133,7 @@ test("duplicate hint: similar titles among readable pages or records of a databa
     records.map((r) => r.rowId),
     [r1],
   );
-  const stranger = person("Sam");
+  const stranger = await person("Sam");
   assert.throws(() => similarTitles(stranger, { workspaceId: wid, title: "Projektplan Alpha" }));
 });
 

@@ -703,7 +703,7 @@ test("Live Activities: a focus session pushes its start, the break and its end; 
   const { user, token } = account("relay-focus");
   const focusToken = relayToken();
   const registered = registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios", liveActivityRelayTokens: { focus: focusToken }, liveActivityLabels: LABELS });
-  const device = identityFromDeviceToken(`Bearer ${registered.deviceToken}`)!;
+  const device = (await identityFromDeviceToken(`Bearer ${registered.deviceToken}`))!;
   const started = Date.now();
   await widgetAction(device, { action: "focus.start", minutes: 25, breakMinutes: 5 });
   assert.equal(one<{ n: number }>("SELECT COUNT(*) n FROM push_live_queue q JOIN mobile_devices d ON d.id=q.device_id WHERE d.user_id=?", user.id)!.n, 3);

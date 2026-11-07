@@ -236,9 +236,9 @@ export function cancelPending(token: string | undefined) {
 // "Connect SSO" from the account settings: the callback belongs to the flow
 // only in the session that started it, and only while that session is
 // still the same (enabled) account. The account, or null.
-export function linkFlowOwner(flow: { link_user_id: string | null; link_session: string | null }, sessionToken: string | undefined) {
+export async function linkFlowOwner(flow: { link_user_id: string | null; link_session: string | null }, sessionToken: string | undefined) {
   if (!flow.link_user_id || !flow.link_session || !sessionToken || hash(sessionToken) !== flow.link_session) return null;
-  const me = identityFromToken(sessionToken);
+  const me = await identityFromToken(sessionToken);
   return me && !me.demo && me.id === flow.link_user_id ? me.id : null;
 }
 

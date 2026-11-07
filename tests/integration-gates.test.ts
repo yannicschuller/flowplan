@@ -29,7 +29,7 @@ const uid = id();
 run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, "Ana", "ana@example.test");
 const st = randomBytes(16).toString("hex");
 run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", createHash("sha256").update(st).digest("hex"), uid, "[]", Date.now() + 3600_000);
-const ana = identityFromToken(st)!;
+const ana = (await identityFromToken(st))!;
 const wid = createWorkspace(ana.id, "Team");
 const space = one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid)!.id;
 const { token } = command(ana, { action: "token.create", name: "mcp", scope: "write" }) as { token: string };
@@ -71,7 +71,7 @@ test("while the instance moves: MCP write tools, the extension and SCIM answer 4
     assert.match(((await res.json()) as { error: { message: string } }).error.message, /schreibgeschützt/);
     assert.equal(pages(), before, "no page from MCP");
     // Reading tools keep working.
-    const read = (await handleMcpMessage(identityFromApiToken(`Bearer ${token}`)!, { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "list_workspaces", arguments: {} } })) as {
+    const read = (await handleMcpMessage((await identityFromApiToken(`Bearer ${token}`))!, { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "list_workspaces", arguments: {} } })) as {
       result?: { isError?: boolean };
     };
     assert.ok(read.result && !read.result.isError);

@@ -32,16 +32,16 @@ import type { Identity } from "../lib/types";
 const ADMIN_KEY = "sk-admin-0123456789-SECRET-abcd";
 const USER_KEY = "sk-user-9876543210-PRIVATE-wxyz";
 
-function person(name: string): Identity {
+async function person(name: string): Promise<Identity> {
   const uid = id();
   run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name.toLowerCase()}@example.test`);
   const token = randomBytes(16).toString("hex");
   run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", createHash("sha256").update(token).digest("hex"), uid, "[]", Date.now() + 3600_000);
-  return identityFromToken(token)!;
+  return (await identityFromToken(token))!;
 }
-const admin = { ...person("Ada"), isAdmin: true };
-const ben = person("Ben"),
-  gus = person("Gus");
+const admin = { ...(await person("Ada")), isAdmin: true };
+const ben = await person("Ben"),
+  gus = await person("Gus");
 const wid = createWorkspace(admin.id, "Team");
 run("INSERT INTO members VALUES(?,?,?)", wid, ben.id, "editor");
 run("INSERT INTO members VALUES(?,?,?)", wid, gus.id, "viewer");
@@ -170,9 +170,9 @@ test("own providers: only when allowed, only public https, key bound to the pers
   assert.equal(userKeyInfo(ben.id).stored, false, "removing the provider removes the key");
 });
 
-test("API tokens and demo accounts neither change AI settings nor use AI", () => {
+test("API tokens and demo accounts neither change AI settings nor use AI", async () => {
   const { token } = command(ben, { action: "token.create", name: "Skript", scope: "write" }) as { token: string };
-  const viaToken = identityFromApiToken(`Bearer ${token}`)!;
+  const viaToken = (await identityFromApiToken(`Bearer ${token}`))!;
   for (const action of [
     { action: "ai.settings", enabled: false },
     { action: "ai.provider", provider: null },
@@ -183,7 +183,7 @@ test("API tokens and demo accounts neither change AI settings nor use AI", () =>
   assert.throws(() => command({ ...viaToken, isAdmin: true }, { action: "admin.ai", settings: { enabled: false } }), /API-Token/);
   assert.deepEqual(resolveAi(viaToken, "write", { workspaceId: wid }), { ok: false, reason: "api-token" });
   assert.equal(aiStatus(viaToken, wid).enabled, false);
-  const demo = { ...person("Demo"), demo: true };
+  const demo = { ...(await person("Demo")), demo: true };
   assert.throws(() => command(demo, { action: "ai.settings", enabled: false }), /Demo/);
   assert.deepEqual(resolveAi(demo, "write"), { ok: false, reason: "demo" });
   assert.throws(() => command(ben, { action: "admin.ai", settings: { enabled: false } }), /Administrator/);
@@ -273,8 +273,8 @@ test("no plaintext key in the instance backup, workspace export or Markdown expo
   assert.ok(!text.includes(ADMIN_KEY) && !text.includes(USER_KEY));
 });
 
-test("deleting an account removes its AI settings and key", () => {
-  const temp = person("Temp");
+test("deleting an account removes its AI settings and key", async () => {
+  const temp = await person("Temp");
   setAi({ userProviders: true });
   command(temp, { action: "ai.provider", provider: { kind: "gemini", baseUrl: "https://generativelanguage.googleapis.com", model: "gemini-x", embeddingModel: "" }, apiKey: USER_KEY });
   assert.ok(one("SELECT 1 FROM ai_user_settings WHERE user_id=?", temp.id));

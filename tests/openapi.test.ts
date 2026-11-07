@@ -101,11 +101,11 @@ test("every route file under app/api is described or named as outside the token 
 test("GET /api/openapi.json answers with the document when public, 401 for visitors otherwise", async () => {
   const { GET } = await import("../app/api/openapi.json/route");
   const request = () => new Request("https://flowplan.example.test/api/openapi.json");
-  assert.equal(GET(request()).status, 401);
+  assert.equal((await GET(request())).status, 401);
   // Access with a session or token: tests/instance-disclosure.test.ts.
   process.env.FLOWPLAN_PUBLIC_API_DOCS = "true";
   try {
-    const response = GET(request());
+    const response = await GET(request());
     assert.equal(response.status, 200);
     assert.match(response.headers.get("Content-Type") || "", /^application\/json/);
     const body = (await response.json()) as Json;

@@ -6,7 +6,8 @@
 // the token is shown once.
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
-import { all, id, one, run } from "./db";
+import { id, one, run } from "./db";
+import { db } from "./db-driver";
 import { securityEvent } from "./security-events";
 import { HttpError } from "./auth";
 import type { Identity, User } from "./types";
@@ -15,6 +16,9 @@ export type ApiScope = "read" | "write" | "clipper";
 const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
 const MAX_TOKENS = 20;
 
+// Synchronous until command() (lib/api.ts, "token.create"/"token.revoke")
+// is asynchronous: its SQL is plain, so on Postgres it goes through the
+// transitional bridge of lib/db.ts (docs/architecture/database.md).
 export function createApiToken(user: Identity, input: unknown) {
   if (user.demo) throw new HttpError(403, "In der Demo nicht verfügbar.");
   if (user.apiScope) throw new HttpError(403, "API-Tokens können keine weiteren Tokens anlegen.");
@@ -44,8 +48,8 @@ export function createApiToken(user: Identity, input: unknown) {
   return { id: tokenId, token };
 }
 
-export function listApiTokens(user: Identity) {
-  return all<{
+export async function listApiTokens(user: Identity) {
+  return db.all<{
     id: string;
     name: string;
     scope: ApiScope;
@@ -67,10 +71,10 @@ export function revokeApiToken(user: Identity, tokenId: unknown) {
 
 // The identity behind a bearer token, or null. Clipper tokens are only
 // accepted where the caller asks for them (the clipper endpoints).
-export function identityFromApiToken(header: string | null, options: { clipper?: boolean } = {}): Identity | null {
+export async function identityFromApiToken(header: string | null, options: { clipper?: boolean } = {}): Promise<Identity | null> {
   const match = header?.match(/^Bearer\s+(fp_[A-Za-z0-9_-]{20,80})$/);
   if (!match) return null;
-  const row = one<User & { token_id: string; scope: ApiScope; last_used_at: number | null }>(
+  const row = await db.one<User & { token_id: string; scope: ApiScope; last_used_at: number | null }>(
     `SELECT u.*,t.id token_id,t.scope,t.last_used_at FROM api_tokens t JOIN users u ON u.id=t.user_id
      WHERE t.token_hash=? AND (t.expires_at IS NULL OR t.expires_at>?) AND u.disabled=0 AND u.demo_until IS NULL`,
     hashToken(match[1]),
@@ -79,7 +83,7 @@ export function identityFromApiToken(header: string | null, options: { clipper?:
   if (!row || (row.scope === "clipper" && !options.clipper)) return null;
   // Last use for the overview, at most once a minute.
   if (!row.last_used_at || Date.now() - row.last_used_at > 60_000)
-    run("UPDATE api_tokens SET last_used_at=? WHERE id=?", Date.now(), row.token_id);
+    await db.run("UPDATE api_tokens SET last_used_at=? WHERE id=?", Date.now(), row.token_id);
   return {
     id: row.id,
     name: row.name,

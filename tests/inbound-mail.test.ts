@@ -28,15 +28,15 @@ const PNG = Buffer.from(
 );
 const PDF = Buffer.from("%PDF-1.4\n%%EOF\n");
 
-function person(name: string) {
+async function person(name: string) {
   const uid = id();
   run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name.toLowerCase()}@example.test`);
   const token = randomBytes(16).toString("hex");
   run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", createHash("sha256").update(token).digest("hex"), uid, "[]", Date.now() + 3600_000);
-  return identityFromToken(token)!;
+  return (await identityFromToken(token))!;
 }
-const ana = person("Ana"),
-  ben = person("Ben");
+const ana = await person("Ana"),
+  ben = await person("Ben");
 const wid = createWorkspace(ana.id, "Team");
 run("INSERT INTO members VALUES(?,?,?)", wid, ben.id, "editor");
 const space = one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid)!.id;

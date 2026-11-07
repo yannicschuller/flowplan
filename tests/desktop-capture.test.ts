@@ -224,7 +224,7 @@ test("the AI suggestion is checked against the targets: known databases, real op
 test("the offline queue's retries create nothing twice (Idempotency-Key)", async () => {
   const route = I.withIdempotency(async (req: Request) => {
     try {
-      const user = identityFromRequest(req);
+      const user = await identityFromRequest(req);
       if (!user) throw new HttpError(401, "Bitte melde dich an.");
       return Response.json(await save(user, await req.json()));
     } catch (e) {

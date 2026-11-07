@@ -1,6 +1,7 @@
 import { cookies, headers } from "next/headers";
 import { randomBytes, createHash } from "node:crypto";
-import { all, one, run, id } from "./db";
+import { all, id, one, run } from "./db";
+import { db } from "./db-driver";
 import type { Identity, User } from "./types";
 import { identityFromApiToken } from "./api-tokens";
 import { needsTwoFactorSetup } from "./two-factor-policy";
@@ -55,26 +56,29 @@ type SessionUse = { token: string; expires: number; created_at: number | null; r
 // other one notes when it was last used. Called for the cookie and for the
 // apps' device tokens (lib/mobile-devices.ts), so widgets that refresh in the
 // background keep the session of their app alive like the app itself.
-export function touchSession(s: SessionUse, now = Date.now()) {
+export async function touchSession(s: SessionUse, now = Date.now()) {
   if (s.demo_until) return;
   const policy = s.remember ? rememberPolicy(s.app ? "app" : "browser") : null;
   const stale = now - (s.last_seen || 0) > 5 * 60_000;
   if (policy && s.created_at) {
     const next = Math.min(now + policy.idleHours * 3_600_000, rememberedEnd(s.created_at, !!s.sso, policy));
-    if (next - s.expires > 5 * 60_000) return run("UPDATE sessions SET expires=?,last_seen=? WHERE token=?", next, now, s.token);
+    if (next - s.expires > 5 * 60_000) {
+      await db.run("UPDATE sessions SET expires=?,last_seen=? WHERE token=?", next, now, s.token);
+      return;
+    }
   }
-  if (stale) run("UPDATE sessions SET last_seen=? WHERE token=?", now, s.token);
+  if (stale) await db.run("UPDATE sessions SET last_seen=? WHERE token=?", now, s.token);
 }
-export function identityFromToken(token: string): Identity | null {
+export async function identityFromToken(token: string): Promise<Identity | null> {
   const now = Date.now();
-  const s = one<User & { groups_json: string; expires: number; created_at_s: number | null; remember: number; sso: number; app: number; last_seen: number | null }>(
+  const s = await db.one<User & { groups_json: string; expires: number; created_at_s: number | null; remember: number; sso: number; app: number; last_seen: number | null }>(
     "SELECT u.*,s.groups_json,s.expires,s.created_at created_at_s,s.remember,s.sso,s.app,s.last_seen FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=? AND s.expires>? AND u.disabled=0",
     hash(token),
     now,
   );
   if (!s) return null;
   const groups = JSON.parse(s.groups_json) as string[];
-  touchSession({ token: hash(token), expires: s.expires, created_at: s.created_at_s, remember: s.remember, sso: s.sso, app: s.app, last_seen: s.last_seen, demo_until: s.demo_until }, now);
+  await touchSession({ token: hash(token), expires: s.expires, created_at: s.created_at_s, remember: s.remember, sso: s.sso, app: s.app, last_seen: s.last_seen, demo_until: s.demo_until }, now);
   // Active people per hour (lib/metrics.ts): counted in memory, never stored.
   if (!s.demo_until) noteActive(s.id, now);
   // Demo sessions live on while used: 45 minutes after the last request,
@@ -82,7 +86,7 @@ export function identityFromToken(token: string): Identity | null {
   if (s.demo_until) {
     const next = Math.min(Date.now() + 45 * 60_000, s.demo_until);
     if (next - s.expires > 60_000)
-      run("UPDATE sessions SET expires=? WHERE token=?", next, hash(token));
+      await db.run("UPDATE sessions SET expires=? WHERE token=?", next, hash(token));
   }
   return {
     id: s.id,
@@ -112,22 +116,24 @@ export async function currentUser() {
 // The same from a request's own headers (route handlers that also run in
 // tests without a Next.js request around them): a personal API token, or
 // the session cookie.
-export function identityFromRequest(req: Request): Identity | null {
+export async function identityFromRequest(req: Request): Promise<Identity | null> {
   if (blockedRequest(req.headers)) return null;
   const authorization = req.headers.get("authorization");
   if (authorization?.startsWith("Bearer ")) return identityFromApiToken(authorization);
   return sessionIdentityFromRequest(req);
 }
 // Only the session cookie of a request (never an API token).
-export function sessionIdentityFromRequest(req: Request): Identity | null {
+export async function sessionIdentityFromRequest(req: Request): Promise<Identity | null> {
   for (const part of (req.headers.get("cookie") || "").split(";")) {
     const [name, ...value] = part.trim().split("=");
     if (name !== cookieName) continue;
+    let token: string;
     try {
-      return identityFromToken(decodeURIComponent(value.join("=")));
+      token = decodeURIComponent(value.join("="));
     } catch {
       return null;
     }
+    return identityFromToken(token);
   }
   return null;
 }
@@ -140,7 +146,7 @@ export async function activeUser() {
 // Ends the person's other sessions (after a password change), keeping this one.
 export async function endOtherSessions(userId: string) {
   const token = (await cookies()).get(cookieName)?.value;
-  run("DELETE FROM sessions WHERE user_id=? AND token<>?", userId, token ? hash(token) : "");
+  await db.run("DELETE FROM sessions WHERE user_id=? AND token<>?", userId, token ? hash(token) : "");
 }
 export async function requireUser() {
   const u = await currentUser();
@@ -161,7 +167,7 @@ export async function issueSession(
   const token = randomBytes(32).toString("base64url");
   const now = Date.now();
   if (!demo) {
-    run("UPDATE users SET last_login_at=? WHERE id=?", now, userId);
+    await db.run("UPDATE users SET last_login_at=? WHERE id=?", now, userId);
     // Counted for the sign-in chart of the monitoring (lib/admin-ops.ts).
     recordOpsEvent("login_success", now);
   }
@@ -175,16 +181,16 @@ export async function issueSession(
   // A security event (lib/security-events.ts): the detection compares it
   // with earlier sign-ins and failures of the same account.
   if (!demo) {
-    const email = one<{ email: string }>("SELECT email FROM users WHERE id=?", userId)?.email || "";
+    const email = (await db.one<{ email: string }>("SELECT email FROM users WHERE id=?", userId))?.email || "";
     securityEvent("login.success", { actorId: userId, subject: email, headers: requestHeaders, detail: options.sso ? "sso" : "" });
     // Admin rights that came with this sign-in (SSO or directory group) and
     // were not there at the previous one.
-    const previous = one<{ groups_json: string }>("SELECT groups_json FROM sessions WHERE user_id=? ORDER BY COALESCE(created_at,0) DESC LIMIT 1", userId);
+    const previous = await db.one<{ groups_json: string }>("SELECT groups_json FROM sessions WHERE user_id=? ORDER BY COALESCE(created_at,0) DESC LIMIT 1", userId);
     const admin = groups.includes(adminGroup());
     if (previous && admin !== (JSON.parse(previous.groups_json) as string[]).includes(adminGroup()))
       securityEvent(admin ? "admin.granted" : "admin.revoked", { actorId: userId, headers: requestHeaders, detail: `${options.sso ? "SSO" : "directory"} group at sign-in` });
   }
-  run(
+  await db.run(
     "INSERT INTO sessions(token,user_id,groups_json,expires,created_at,remember,sso,app,last_seen,agent,authenticated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
     hash(token),
     userId,
@@ -204,7 +210,7 @@ export async function issueSession(
   // Signing in again on the same device (the session ran out, or the app
   // signs in anew): its app installations move over to the new session.
   const previous = jar.get(cookieName)?.value;
-  if (previous && !demo) carryOverSession(hash(previous), hash(token), userId);
+  if (previous && !demo) await carryOverSession(hash(previous), hash(token), userId);
   jar.set(cookieName, token, {
     httpOnly: true,
     secure: new URL(appUrl()).protocol === "https:",
@@ -221,29 +227,32 @@ export async function issueSession(
 // the new session instead of dying with the old one, and the old session
 // ends. A session of someone else on that device keeps its own (signing out
 // or ending a session still removes them: ON DELETE CASCADE).
-export function carryOverSession(previousHash: string, nextHash: string, userId: string) {
+// One transaction: the devices move and the old session goes together.
+export async function carryOverSession(previousHash: string, nextHash: string, userId: string) {
   if (previousHash === nextHash) return 0;
-  if (!one("SELECT 1 FROM sessions WHERE token=? AND user_id=?", previousHash, userId)) return 0;
-  const moved = run("UPDATE mobile_devices SET session_token=? WHERE session_token=? AND user_id=?", nextHash, previousHash, userId).changes;
-  run("UPDATE push_subscriptions SET session_token=? WHERE session_token=? AND user_id=?", nextHash, previousHash, userId);
-  run("DELETE FROM sessions WHERE token=? AND user_id=?", previousHash, userId);
-  return Number(moved);
+  return db.tx(async () => {
+    if (!(await db.one("SELECT 1 FROM sessions WHERE token=? AND user_id=?", previousHash, userId))) return 0;
+    const moved = (await db.run("UPDATE mobile_devices SET session_token=? WHERE session_token=? AND user_id=?", nextHash, previousHash, userId)).changes;
+    await db.run("UPDATE push_subscriptions SET session_token=? WHERE session_token=? AND user_id=?", nextHash, previousHash, userId);
+    await db.run("DELETE FROM sessions WHERE token=? AND user_id=?", previousHash, userId);
+    return moved;
+  });
 }
-export function upsertUser(subject: string, name: string, email: string) {
-  let user = one<User>("SELECT * FROM users WHERE subject=?", subject);
+export async function upsertUser(subject: string, name: string, email: string) {
+  let user = await db.one<User>("SELECT * FROM users WHERE subject=?", subject);
   if (user?.disabled) throw new HttpError(403, "Dieses Konto ist deaktiviert.");
   if (!user) {
     const uid = id();
-    run(
+    await db.run(
       "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
       uid,
       subject,
       name,
       email,
     );
-    user = one<User>("SELECT * FROM users WHERE id=?", uid)!;
+    user = (await db.one<User>("SELECT * FROM users WHERE id=?", uid))!;
   } else
-    run("UPDATE users SET name=?,email=? WHERE id=?", name, email, user.id);
+    await db.run("UPDATE users SET name=?,email=? WHERE id=?", name, email, user.id);
   return user;
 }
 // Invitations waiting for an account whose address is confirmed: taken

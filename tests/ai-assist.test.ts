@@ -277,16 +277,16 @@ test("map-reduce: short content goes straight through; long content is summarise
 
 // ---- The endpoints ----
 
-function person(name: string): Identity {
+async function person(name: string): Promise<Identity> {
   const uid = id();
   run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name.toLowerCase()}@example.test`);
   const token = randomBytes(16).toString("hex");
   run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", createHash("sha256").update(token).digest("hex"), uid, "[]", Date.now() + 3600_000);
-  return identityFromToken(token)!;
+  return (await identityFromToken(token))!;
 }
-const admin = { ...person("Ada"), isAdmin: true };
-const ben = person("Ben"),
-  stranger = person("Sam");
+const admin = { ...(await person("Ada")), isAdmin: true };
+const ben = await person("Ben"),
+  stranger = await person("Sam");
 const wid = createWorkspace(admin.id, "Team");
 run("INSERT INTO members VALUES(?,?,?)", wid, ben.id, "editor");
 const space = one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid)!.id;
@@ -376,7 +376,7 @@ test("refused: pages excluded for the AI, pages without read permission, API tok
   await assert.rejects(summarize(ben, { pageId: tasks, rowId: rowPrivate }), (e: Error & { status?: number }) => e.status === 403 || e.status === 404);
   // API tokens.
   const { token } = command(ben, { action: "token.create", name: "Skript", scope: "write" }) as { token: string };
-  const viaToken = identityFromApiToken(`Bearer ${token}`)!;
+  const viaToken = (await identityFromApiToken(`Bearer ${token}`))!;
   await assert.rejects(write(viaToken, {}), /API-Token/);
   await assert.rejects(summarize(viaToken, {}), /API-Token/);
   assert.equal(asked.length, 0, "nothing reached the provider");
@@ -415,7 +415,7 @@ test("summaries: a page, a record, a database view – only what the AI may read
 test("summaries of long pages go through map-reduce within the size limits", async () => {
   asked.length = 0;
   // Someone who has not used up the rate limit in the tests before.
-  const lia = person("Lia");
+  const lia = await person("Lia");
   run("INSERT INTO members VALUES(?,?,?)", wid, lia.id, "editor");
   const long = createPage(wid, space, admin.id, "Lang");
   document(long, Array.from({ length: 40 }, (_, i) => `<h2>Teil ${i}</h2><p>${"Wir besprechen die Planung für das nächste Quartal. ".repeat(12)}</p>`).join(""));

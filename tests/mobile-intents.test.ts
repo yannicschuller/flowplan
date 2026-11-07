@@ -28,10 +28,10 @@ function account(name: string) {
   return { user, token };
 }
 let pushCounter = 0;
-function phone(acc: { user: Identity; token: string }, push = false) {
+async function phone(acc: { user: Identity; token: string }, push = false) {
   const pushToken = push ? `ExponentPushToken[intents-${String(++pushCounter).padStart(12, "0")}]` : undefined;
   const { deviceToken } = registerMobileDevice(acc.user, acc.token, { installationId: randomUUID(), platform: "ios", ...(pushToken ? { pushToken } : {}) });
-  return { deviceToken, pushToken, device: widgetUser(`Bearer ${deviceToken}`)! };
+  return { deviceToken, pushToken, device: (await widgetUser(`Bearer ${deviceToken}`))! };
 }
 const en = <T>(fn: () => T) => withContentLocale("en", fn);
 const page = (user: Identity, wid: string, sid: string, title: string, kind = "document") =>
@@ -58,8 +58,8 @@ const clients = page(owner.user, wid, sid, "Clients", "database");
 const secret = page(stranger.user, strangerWid, strangerSid, "Roadmap of the stranger");
 writeDocument(owner.user, wid, roadmap, "<p>The launch of the zeppelin service is in spring.</p>");
 
-const O = phone(owner).device,
-  R = phone(reader).device;
+const O = (await phone(owner)).device,
+  R = (await phone(reader)).device;
 
 test("pages by title, across workspaces, only readable ones; by id; suggested without a query", () => {
   const found = en(() => intentPages(O, { q: "road" })).pages;
@@ -120,7 +120,7 @@ test("a Focus holds back pushes of other workspaces on that device, then ends", 
   const priv = page(acc.user, fo, fos, "Private page");
   run("INSERT INTO members VALUES(?,?,?)", fw, owner.user.id, "editor");
   run("INSERT INTO members VALUES(?,?,?)", fo, owner.user.id, "editor");
-  const { deviceToken, pushToken } = phone(acc, true);
+  const { deviceToken, pushToken } = await phone(acc, true);
   const auth = `Bearer ${deviceToken}`;
   const now = Date.now();
   // Someone else's workspace is refused; another person's device too.
@@ -159,7 +159,7 @@ test("the route: device token only, rate-limited endpoints, focus by POST", asyn
   const acc = account("intent-route");
   const rw = createWorkspace(acc.user.id, "Route");
   page(acc.user, rw, bootstrap(acc.user, rw).spaces[0].id, "Quarterly plan");
-  const { deviceToken } = phone(acc);
+  const { deviceToken } = await phone(acc);
   const get = (path: string, authorization = `Bearer ${deviceToken}`) =>
     route.GET(new Request(`http://localhost/api/mobile/intents/${path}`, { headers: { authorization } }), ctx(path.split("?")[0]));
   const pages = await get("pages?q=quarter");

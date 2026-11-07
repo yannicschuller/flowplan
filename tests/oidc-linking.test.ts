@@ -176,14 +176,14 @@ test("Connect SSO: the flow belongs to the account and session that started it",
   const mine = session(finn.id);
   const theirs = session(other.id);
   const flow = { link_user_id: finn.id, link_session: hash(mine) };
-  assert.equal(link.linkFlowOwner(flow, mine), finn.id);
+  assert.equal(await link.linkFlowOwner(flow, mine), finn.id);
   // Another session (also of another account) cannot complete it.
-  assert.equal(link.linkFlowOwner(flow, theirs), null);
-  assert.equal(link.linkFlowOwner(flow, undefined), null);
-  assert.equal(link.linkFlowOwner({ link_user_id: other.id, link_session: hash(mine) }, mine), null);
+  assert.equal(await link.linkFlowOwner(flow, theirs), null);
+  assert.equal(await link.linkFlowOwner(flow, undefined), null);
+  assert.equal(await link.linkFlowOwner({ link_user_id: other.id, link_session: hash(mine) }, mine), null);
   // The session ended meanwhile.
   run("DELETE FROM sessions WHERE token=?", hash(mine));
-  assert.equal(link.linkFlowOwner(flow, mine), null);
+  assert.equal(await link.linkFlowOwner(flow, mine), null);
   assert.equal(link.linkFromSettings(finn.id, sso("finn-sub", "finn@corp.example"), "de"), true);
   assert.equal(link.linkFromSettings(finn.id, sso("finn-sub", "finn@corp.example"), "de"), false);
   assert.equal(ids.listIdentities(finn.id)[0].email, "finn@corp.example");

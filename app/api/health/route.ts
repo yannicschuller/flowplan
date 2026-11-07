@@ -13,9 +13,9 @@ export const dynamic = "force-dynamic";
 // The details are for monitoring with FLOWPLAN_METRICS_TOKEN (as for
 // /api/metrics) and for signed-in instance administrators; API tokens never
 // administer, so only the session cookie counts here.
-function detailsAllowed(request: Request) {
+async function detailsAllowed(request: Request) {
   if (metricsAuthorized(request.headers.get("authorization")) === true) return true;
-  const user = sessionIdentityFromRequest(request);
+  const user = await sessionIdentityFromRequest(request);
   return !!user?.isAdmin && !user.twoFactorSetup;
 }
 
@@ -60,7 +60,7 @@ export async function GET(request: Request) {
   };
   // Lets clients such as the desktop and mobile apps recognise a Flowplan instance.
   const verdict = { service: "flowplan", status: healthy ? "ok" : "error" } as const;
-  if (!detailsAllowed(request)) return NextResponse.json(verdict, init);
+  if (!(await detailsAllowed(request))) return NextResponse.json(verdict, init);
   const build = buildInfo();
   let mirror: ReturnType<typeof storageStatus> = { enabled: false };
   try {

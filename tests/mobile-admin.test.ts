@@ -28,11 +28,11 @@ function account(name: string, groups: string[]) {
   return { user, token, header: `Bearer ${deviceToken}` };
 }
 
-test("only devices of instance administrators, checked against the session every time", () => {
+test("only devices of instance administrators, checked against the session every time", async () => {
   const admin = account("widget-admin", ["flowplan-admins"]);
   const member = account("widget-member", ["staff"]);
-  const adminIdentity = identityFromDeviceToken(admin.header)!;
-  const memberIdentity = identityFromDeviceToken(member.header)!;
+  const adminIdentity = (await identityFromDeviceToken(admin.header))!;
+  const memberIdentity = (await identityFromDeviceToken(member.header))!;
   // The device token never carries the administration itself.
   assert.equal(adminIdentity.isAdmin, false);
   assert.equal(isInstanceAdmin(adminIdentity), true);
@@ -41,13 +41,13 @@ test("only devices of instance administrators, checked against the session every
   assert.equal(mobileSummary(memberIdentity).admin, false);
   // Leaving the admin group (a new sign-in with other groups) ends it.
   run("UPDATE sessions SET groups_json=? WHERE token=?", JSON.stringify(["staff"]), admin.token);
-  assert.equal(isInstanceAdmin(identityFromDeviceToken(admin.header)!), false);
+  assert.equal(isInstanceAdmin((await identityFromDeviceToken(admin.header))!), false);
   run("UPDATE sessions SET groups_json=? WHERE token=?", JSON.stringify(["flowplan-admins"]), admin.token);
   // A demo is never an administrator.
   assert.equal(isInstanceAdmin({ ...adminIdentity, demo: true }), false);
   // A removed device or an ended session: no identity at all (401).
   run("DELETE FROM mobile_devices WHERE user_id=?", admin.user.id);
-  assert.equal(identityFromDeviceToken(admin.header), null);
+  assert.equal(await identityFromDeviceToken(admin.header), null);
 });
 
 test("the route refuses everyone but administrators' devices", () => {

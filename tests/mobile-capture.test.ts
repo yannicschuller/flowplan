@@ -17,22 +17,22 @@ const W = await import("../lib/mobile-widgets");
 const C = await import("../lib/mobile-capture");
 const route = await import("../app/api/mobile/capture/[action]/route");
 
-function account(name: string) {
+async function account(name: string) {
   const uid = id(),
     token = id();
   run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
   run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", token, uid, "[]", Date.now() + 3600000);
   const user = { id: uid, name, email: `${name}@example.test`, groups: [], isAdmin: false, disabled: 0, created_at: "" } as unknown as Identity;
   const { deviceToken } = registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios" });
-  return { user, deviceToken, device: W.widgetUser(`Bearer ${deviceToken}`)! };
+  return { user, deviceToken, device: (await W.widgetUser(`Bearer ${deviceToken}`))! };
 }
 const save = (user: Identity, body: Record<string, unknown>, files: { name: string; type: string; bytes: Buffer }[] = []) =>
   withContentLocale("en", () => C.saveCapture(user, body, files));
 const ctx = (action: string) => ({ params: Promise.resolve({ action }) });
 
-const owner = account("capture-owner"),
-  viewer = account("capture-viewer"),
-  stranger = account("capture-stranger");
+const owner = await account("capture-owner"),
+  viewer = await account("capture-viewer"),
+  stranger = await account("capture-stranger");
 const wid = createWorkspace(owner.user.id, "Capture");
 const sid = bootstrap(owner.user, wid).spaces[0].id;
 run("INSERT INTO members VALUES(?,?,?)", wid, viewer.user.id, "viewer");

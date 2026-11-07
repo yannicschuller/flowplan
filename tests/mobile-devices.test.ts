@@ -27,7 +27,7 @@ function account(name: string) {
 const pushToken = () => `ExponentPushToken[${randomUUID().replaceAll("-", "").slice(0, 22)}]`;
 const bearer = (token: string) => `Bearer ${token}`;
 
-test("an app registers for its session; its token only lives as long as the sign-in", () => {
+test("an app registers for its session; its token only lives as long as the sign-in", async () => {
   const { user, token } = account("phone-owner");
   const installationId = randomUUID();
   assert.throws(() => registerMobileDevice(user, "no-session", { installationId, platform: "ios" }), /Sitzung/);
@@ -41,27 +41,27 @@ test("an app registers for its session; its token only lives as long as the sign
   const first = registerMobileDevice(user, token, { installationId, platform: "ios", name: "iPhone", pushToken: pushToken() });
   assert.match(first.deviceToken, /^fpd_/);
   assert.equal(first.push, true);
-  assert.equal(identityFromDeviceToken(bearer(first.deviceToken))?.id, user.id);
-  assert.equal(identityFromDeviceToken(bearer(first.deviceToken))?.isAdmin, false);
+  assert.equal((await identityFromDeviceToken(bearer(first.deviceToken)))?.id, user.id);
+  assert.equal((await identityFromDeviceToken(bearer(first.deviceToken)))?.isAdmin, false);
   // API tokens and garbage are no device tokens.
-  assert.equal(identityFromDeviceToken("Bearer fp_abcdefghijklmnopqrstuvwxyz"), null);
-  assert.equal(identityFromDeviceToken(null), null);
+  assert.equal(await identityFromDeviceToken("Bearer fp_abcdefghijklmnopqrstuvwxyz"), null);
+  assert.equal(await identityFromDeviceToken(null), null);
 
   // Registering again replaces the entry and its token; one entry per installation.
   const second = registerMobileDevice(user, token, { installationId, platform: "ios", pushToken: pushToken() });
-  assert.equal(identityFromDeviceToken(bearer(first.deviceToken)), null);
-  assert.equal(identityFromDeviceToken(bearer(second.deviceToken))?.id, user.id);
+  assert.equal(await identityFromDeviceToken(bearer(first.deviceToken)), null);
+  assert.equal((await identityFromDeviceToken(bearer(second.deviceToken)))?.id, user.id);
   assert.equal(one<{ n: number }>("SELECT COUNT(*) n FROM mobile_devices WHERE user_id=?", user.id)!.n, 1);
   assert.equal(one<{ n: number }>("SELECT COUNT(*) n FROM push_subscriptions WHERE user_id=?", user.id)!.n, 1);
 
   // Signing out ends the token and the push subscription.
   run("DELETE FROM sessions WHERE token=?", token);
-  assert.equal(identityFromDeviceToken(bearer(second.deviceToken)), null);
+  assert.equal(await identityFromDeviceToken(bearer(second.deviceToken)), null);
   assert.equal(one("SELECT id FROM mobile_devices WHERE user_id=?", user.id), undefined);
   assert.equal(one("SELECT id FROM push_subscriptions WHERE user_id=?", user.id), undefined);
 });
 
-test("a phone that switches accounts takes its push token along; unregister forgets it", () => {
+test("a phone that switches accounts takes its push token along; unregister forgets it", async () => {
   const anna = account("switch-anna"),
     ben = account("switch-ben");
   const shared = pushToken(),
@@ -77,14 +77,14 @@ test("a phone that switches accounts takes its push token along; unregister forg
   assert.equal(unregisterByDeviceToken("Bearer fp_notadevicetokenatall0000"), false);
   assert.equal(unregisterByDeviceToken(bearer(leaving.deviceToken)), true);
   assert.equal(one("SELECT id FROM push_subscriptions WHERE endpoint=?", `expo:${shared}`), undefined);
-  assert.equal(identityFromDeviceToken(bearer(leaving.deviceToken)), null);
+  assert.equal(await identityFromDeviceToken(bearer(leaving.deviceToken)), null);
   assert.equal(unregisterByDeviceToken(bearer(leaving.deviceToken)), false);
   // Without a push token (permission denied) the widgets still work.
   const quiet = registerMobileDevice(anna.user, anna.token, { installationId: randomUUID(), platform: "ios", pushToken: null });
   assert.equal(quiet.push, false);
 });
 
-test("the summary shows unread notifications, due tasks and the running timer", () => {
+test("the summary shows unread notifications, due tasks and the running timer", async () => {
   const { user, token } = account("summary-owner");
   const wid = createWorkspace(user.id, "Summary"),
     boot = bootstrap(user, wid);
@@ -114,7 +114,7 @@ test("the summary shows unread notifications, due tasks and the running timer", 
   run("INSERT INTO notifications(id,user_id,body) VALUES(?,?,?)", id(), user.id, "Hallo");
 
   const { deviceToken } = registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios" });
-  const device = identityFromDeviceToken(bearer(deviceToken))!;
+  const device = (await identityFromDeviceToken(bearer(deviceToken)))!;
   const summary = mobileSummary(device, "2026-03-04");
   assert.equal(summary.unread, 1);
   assert.equal(summary.tasks.due, 2);

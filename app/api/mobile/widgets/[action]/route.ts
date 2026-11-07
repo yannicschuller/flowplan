@@ -32,7 +32,7 @@ function failure(e: unknown, locale: Locale) {
 // The person behind the device token, in their language.
 async function withDevice(req: Request, lang: string | null, handle: (user: Identity) => Promise<Response>) {
   const fallback = pickLocale(null, req.headers.get("accept-language"));
-  const user = widgetUser(req.headers.get("authorization"));
+  const user = await widgetUser(req.headers.get("authorization"));
   if (!user) return failure(new HttpError(401, "Bitte melde dich an."), fallback);
   const locale = widgetLocale(user, lang, req.headers.get("accept-language"));
   return withContentLocale(locale, async () => {
