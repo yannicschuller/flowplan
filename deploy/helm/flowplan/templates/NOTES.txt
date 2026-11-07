@@ -10,12 +10,19 @@ Without an ingress, try it with a port forward:
 and open http://localhost:3000 (set appUrl to http://localhost:3000 for this).
 {{- end }}
 
+{{- if .Values.cluster.enabled }}
+
+Cluster mode: {{ .Values.cluster.replicas }} pods against PostgreSQL ({{ .Values.cluster.database.existingSecret }}), Redis ({{ .Values.cluster.redis.existingSecret }}) and the bucket {{ .Values.s3.bucket }}.
+Updates roll pod by pod{{ if .Values.cluster.migration.enabled }} after the schema Job{{ end }}. The administration shows the pods, the
+leader and the connections under Monitoring → System.
+{{- else }}
 {{- if not .Values.persistence.enabled }}
 
 WARNING: persistence is disabled – the database and uploads are lost when the pod is replaced.
 {{- end }}
 
 Flowplan runs as a single pod with SQLite (strategy Recreate): updates have a short downtime.
+{{- end }}
 {{- if .Values.localLogin }}
 The first account registered with e-mail and password administers the instance.
 Create it with the setup link (FLOWPLAN_SETUP_TOKEN, generated unless set), printed by:

@@ -1,9 +1,9 @@
 apiVersion: v2
 name: flowplan
-description: Documents, databases, whiteboards and a daily journal for teams – self-hosted. Runs as a single instance with SQLite.
+description: Documents, databases, whiteboards and a daily journal for teams – self-hosted. A single instance with SQLite, or several (cluster mode) with PostgreSQL, Redis and S3.
 type: application
 # Version of the chart itself; raise it with every change to the chart.
-version: 0.1.0
+version: 0.2.0
 # The Flowplan release the chart deploys by default (image tag).
 appVersion: "0.8.13"
 kubeVersion: ">=1.23.0-0"

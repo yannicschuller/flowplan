@@ -1,0 +1,14 @@
+{{- if and .Values.cluster.enabled .Values.cluster.podDisruptionBudget.enabled (gt (int .Values.cluster.replicas) 1) }}
+# Cluster mode: node drains keep at least this many pods serving.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "flowplan.fullname" . }}
+  labels:
+    {{- include "flowplan.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.cluster.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "flowplan.selectorLabels" . | nindent 6 }}
+{{- end }}

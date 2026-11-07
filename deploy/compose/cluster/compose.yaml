@@ -1,0 +1,156 @@
+# Flowplan in cluster mode with Docker Compose: two app instances behind a
+# load balancer (Caddy: HTTP, server-sent events and WebSockets), one
+# PostgreSQL, one Redis, MinIO as S3 object storage. An example to start
+# from and to try cluster mode on one host – for production, run the
+# database, Redis and object storage as managed or replicated services.
+#
+#   cp .env.example .env        # set every value marked "change"
+#   docker compose up -d
+#   open http://localhost:8080  # (APP_URL)
+#
+# More instances: copy the flowplan-2 service (and add it to the Caddyfile).
+# Sizing and the design: docs/architecture/database.md (§13, §14).
+name: flowplan-cluster
+
+x-flowplan: &flowplan
+  image: ghcr.io/yannicschuller/flowplan:${FLOWPLAN_VERSION:-latest}
+  pull_policy: missing
+  restart: unless-stopped
+  env_file: .env
+  environment: &flowplan-env
+    FLOWPLAN_CLUSTER: "1"
+    DATABASE_URL: postgres://flowplan:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/flowplan
+    REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}@redis:6379/0
+    S3_ENDPOINT: http://minio:9000
+    S3_BUCKET: ${S3_BUCKET:-flowplan}
+    S3_REGION: us-east-1
+    S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER in .env}
+    S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+    # The local folder is only a cache of the bucket in cluster mode.
+    FLOWPLAN_DATA_DIR: /app/data
+    # Connections per instance: instances × pool (+1 each) < max_connections.
+    FLOWPLAN_PG_POOL: "20"
+    # The schema is applied by the "schema" service before the instances start.
+    FLOWPLAN_PG_SCHEMA_AUTO: "off"
+  # Time for the instance to close its live streams and hand the leader on.
+  stop_grace_period: 30s
+  healthcheck:
+    test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+    interval: 10s
+    timeout: 5s
+    start_period: 30s
+    retries: 3
+  depends_on:
+    schema:
+      condition: service_completed_successfully
+    redis:
+      condition: service_healthy
+    bucket:
+      condition: service_completed_successfully
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: flowplan
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: flowplan
+    # Room for the instances' pools (2 × 20 + leader/listen connections).
+    command: ["postgres", "-c", "max_connections=200"]
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flowplan -d flowplan"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    # Pub/sub, presence and rate limits only: nothing to persist.
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Creates the bucket once (idempotent).
+  bucket:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+      S3_BUCKET: ${S3_BUCKET:-flowplan}
+    entrypoint: ["/bin/sh", "-c", "mc alias set local http://minio:9000 \"$$MINIO_ROOT_USER\" \"$$MINIO_ROOT_PASSWORD\" && mc mb --ignore-existing \"local/$$S3_BUCKET\""]
+    restart: "no"
+
+  # The migration step: this version's schema in PostgreSQL, before any
+  # instance starts (scripts/db-schema.mjs; adds, never drops).
+  schema:
+    <<: *flowplan
+    command: ["node", "/app/db-schema.mjs"]
+    entrypoint: []
+    restart: "no"
+    healthcheck:
+      disable: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  flowplan-1:
+    <<: *flowplan
+    environment:
+      <<: *flowplan-env
+      FLOWPLAN_INSTANCE_ID: flowplan-1
+    volumes:
+      - cache-1:/app/data
+
+  flowplan-2:
+    <<: *flowplan
+    environment:
+      <<: *flowplan-env
+      FLOWPLAN_INSTANCE_ID: flowplan-2
+    volumes:
+      - cache-2:/app/data
+
+  # The load balancer: round robin over the ready instances (health checks
+  # on /api/health/ready), streams passed through unbuffered.
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "${FLOWPLAN_PORT:-8080}:8080"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - flowplan-1
+      - flowplan-2
+
+volumes:
+  postgres-data:
+  minio-data:
+  cache-1:
+  cache-2:

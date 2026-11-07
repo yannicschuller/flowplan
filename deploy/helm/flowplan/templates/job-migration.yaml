@@ -1,0 +1,55 @@
+{{- if and .Values.cluster.enabled .Values.cluster.migration.enabled }}
+{{- include "flowplan.clusterCheck" . }}
+# Cluster mode: this version's schema in PostgreSQL before the pods of a new
+# version start (scripts/db-schema.mjs in the image; adds, never drops;
+# nothing to do when the database is current). Runs before install and
+# every upgrade; the pods then skip it (FLOWPLAN_PG_SCHEMA_AUTO=off).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "flowplan.fullname" . }}-schema
+  labels:
+    {{- include "flowplan.labels" . | nindent 4 }}
+    app.kubernetes.io/component: schema
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: {{ .Values.cluster.migration.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.cluster.migration.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        {{- include "flowplan.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: schema
+    spec:
+      restartPolicy: Never
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      # The namespace's default account: a pre-install hook runs before the
+      # chart's own ServiceAccount exists. It talks to PostgreSQL only.
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: schema
+          image: {{ include "flowplan.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["node", "/app/db-schema.mjs"]
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.cluster.database.existingSecret }}
+                  key: {{ .Values.cluster.database.key }}
+          {{- with .Values.cluster.migration.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}

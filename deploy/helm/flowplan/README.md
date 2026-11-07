@@ -4,9 +4,10 @@ Runs [Flowplan](https://flowplan.org) on Kubernetes: one pod with the image
 `ghcr.io/yannicschuller/flowplan`, a PersistentVolumeClaim for `/app/data`
 (SQLite database, uploads, keys), a Service and an optional Ingress.
 
-Flowplan keeps its data in SQLite, so the chart always runs **exactly one
-replica** with the update strategy **Recreate**: the old pod stops before the
-new one starts. Updates have a short downtime; scaling out is not possible.
+By default Flowplan keeps its data in SQLite, so the chart runs **exactly
+one replica** with the update strategy **Recreate**: the old pod stops before
+the new one starts. Updates have a short downtime. To scale out, use
+**cluster mode** (below): several pods against PostgreSQL, Redis and S3.
 For backups and moving between nodes, use the S3 settings (files mirrored,
 database replicated with Litestream) and/or the scheduled backups in the
 administration.
@@ -86,6 +87,55 @@ the chart uses the first ingress host (https when TLS is configured) and
 fails otherwise. With single sign-on, register
 `<appUrl>/api/auth/callback` as redirect URI at the identity provider.
 
+## Cluster mode (several pods)
+
+With `cluster.enabled=true` the chart runs `cluster.replicas` pods (rolling
+updates, a PodDisruptionBudget, pods spread over nodes) against
+**PostgreSQL**, **Redis** and **S3 object storage** – all three required;
+a pod refuses to start without one, and the chart refuses to render. The
+chart creates none of them: use managed services or their own charts, and
+pass the connection strings as references to a Secret you create (the
+chart never holds them):
+
+```sh
+kubectl -n flowplan create secret generic flowplan-cluster \
+  --from-literal=DATABASE_URL='postgres://flowplan:…@postgres:5432/flowplan' \
+  --from-literal=REDIS_URL='redis://:…@redis-master:6379/0'
+kubectl -n flowplan create secret generic flowplan-env \
+  --from-literal=S3_ACCESS_KEY_ID=… --from-literal=S3_SECRET_ACCESS_KEY=… \
+  --from-literal=FLOWPLAN_ENCRYPTION_KEY="$(openssl rand -base64 32)"
+
+helm install flowplan deploy/helm/flowplan -n flowplan \
+  --set appUrl=https://flowplan.example.org \
+  --set existingSecret=flowplan-env \
+  --set cluster.enabled=true \
+  --set cluster.replicas=3 \
+  --set cluster.database.existingSecret=flowplan-cluster \
+  --set cluster.redis.existingSecret=flowplan-cluster \
+  --set s3.bucket=flowplan --set s3.endpoint=https://s3.example.org
+```
+
+- **Schema:** a Job (`pre-install`/`pre-upgrade` hook) runs
+  `node /app/db-schema.mjs` before the pods of a new version start – it
+  adds what the version needs and never drops anything. Without it
+  (`cluster.migration.enabled=false`) the pods apply it at their first
+  start, one after the other.
+- **Probes:** liveness on `/api/health/live`, readiness on
+  `/api/health/ready` (database, Redis, bucket; 503 while a pod stops, after
+  which it waits `cluster.preStopSeconds` before Next.js closes).
+- **No volume:** `/app/data` is a per-pod cache (`emptyDir`,
+  `cluster.cacheSizeLimit`); files live in the bucket, backups are
+  PostgreSQL's (no Litestream).
+- **Connections:** each pod opens up to `cluster.poolSize` connections plus
+  two of its own (leader election, notifications); keep
+  `replicas × (poolSize + 2)` below the server's `max_connections`.
+- **Ingress:** live editing keeps server-sent event streams open; with
+  ingress-nginx set `nginx.ingress.kubernetes.io/proxy-buffering: "off"`
+  and `nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"`. No sticky
+  sessions are needed.
+- Administration → Monitoring → System lists the pods, the leader, the
+  pool of each pod and the shared queues.
+
 ## Settings
 
 | Value | Default | Meaning |
@@ -111,6 +161,14 @@ fails otherwise. With single sign-on, register
 | `resources` | 100m / 256Mi, limit 1Gi | Requests and limits |
 | `podSecurityContext`, `securityContext` | uid/gid 1000, no privileges | As in the image (user `node`) |
 | `startupProbe`, `livenessProbe`, `readinessProbe` | on | HTTP checks on `/api/health` |
+| `cluster.enabled` | `false` | Cluster mode (above) instead of one pod with SQLite |
+| `cluster.replicas` | `2` | Pods in cluster mode |
+| `cluster.database.existingSecret`, `.key` | –, `DATABASE_URL` | Secret holding the PostgreSQL URL (required in cluster mode) |
+| `cluster.redis.existingSecret`, `.key` | –, `REDIS_URL` | Secret holding the Redis URL (required in cluster mode) |
+| `cluster.poolSize` | `10` | PostgreSQL connections per pod (`FLOWPLAN_PG_POOL`) |
+| `cluster.migration.enabled` | `true` | Schema Job before install/upgrade |
+| `cluster.podDisruptionBudget.minAvailable` | `1` | PodDisruptionBudget (with 2+ replicas) |
+| `cluster.preStopSeconds` | `5` | Pause before a pod stops (load balancer catches up) |
 
 Secret values given directly (`oidc.clientSecret`, `smtp.password`,
 `s3.accessKeyId`, `s3.secretAccessKey`, `encryptionKey`) end up in a Secret

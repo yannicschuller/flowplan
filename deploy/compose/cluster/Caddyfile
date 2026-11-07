@@ -1,0 +1,24 @@
+# Load balancer of the cluster example (compose.yaml). For HTTPS, replace
+# ":8080" with your host name (Caddy fetches a certificate) and set APP_URL.
+{
+	admin off
+}
+
+:8080 {
+	reverse_proxy flowplan-1:3000 flowplan-2:3000 {
+		lb_policy round_robin
+		# A failing instance gets no requests; one that stops (503 while it
+		# closes its streams) neither.
+		health_uri /api/health/ready
+		health_interval 5s
+		health_timeout 3s
+		fail_duration 10s
+		# Server-sent events (live editing, cursors) and WebSockets pass
+		# straight through.
+		flush_interval -1
+	}
+	# Imports and archives may be up to 100 MB.
+	request_body {
+		max_size 110MB
+	}
+}

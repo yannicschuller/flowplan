@@ -1,5 +1,7 @@
-# Flowplan Helm chart. Flowplan keeps its data in SQLite on a volume, so it
-# always runs as exactly one pod (no replicas, no rolling updates).
+# Flowplan Helm chart. By default Flowplan keeps its data in SQLite on a
+# volume and runs as exactly one pod (no replicas, no rolling updates).
+# With cluster.enabled it runs several pods against PostgreSQL, Redis and
+# S3 object storage instead (see "cluster" below and the README).
 # Full configuration reference: https://docs.flowplan.org/configuration
 
 image:
@@ -69,6 +71,49 @@ s3:
 # FLOWPLAN_ENCRYPTION_KEY. Keep a copy apart from the backups.
 encryptionKey: ""
 
+# Cluster mode: several replicas against one PostgreSQL database, with
+# Redis (live updates, presence, rate limits between the pods) and S3 (the
+# files; s3.bucket above, credentials in existingSecret) – all three
+# required; the pods refuse to start without one. No volume: each pod's
+# /app/data is a cache (emptyDir). The chart takes the connection strings
+# only as references to Secrets you create, e.g.
+#   kubectl create secret generic flowplan-cluster \
+#     --from-literal=DATABASE_URL='postgres://flowplan:…@postgres:5432/flowplan' \
+#     --from-literal=REDIS_URL='redis://:…@redis:6379/0'
+cluster:
+  enabled: false
+  replicas: 2
+  database:
+    # Secret and key holding DATABASE_URL (postgres://…).
+    existingSecret: ""
+    key: DATABASE_URL
+  redis:
+    # Secret and key holding REDIS_URL (redis:// or rediss://).
+    existingSecret: ""
+    key: REDIS_URL
+  # PostgreSQL connections per pod (FLOWPLAN_PG_POOL). replicas × (pool + 2)
+  # must stay below the server's max_connections (or use PgBouncer ≥ 1.21
+  # with max_prepared_statements).
+  poolSize: 10
+  # Before a pod stops, the load balancer gets this long to take it out of
+  # the rotation (readiness turns 503 at the same time).
+  preStopSeconds: 5
+  # Size limit of the per-pod file cache (emptyDir).
+  cacheSizeLimit: 5Gi
+  # The schema step before each install/upgrade (a Job running
+  # node /app/db-schema.mjs; adds, never drops). Off: the pods apply it at
+  # their first start themselves (under a lock).
+  migration:
+    enabled: true
+    backoffLimit: 3
+    activeDeadlineSeconds: 900
+    resources: {}
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+  # Spread the pods over nodes (preferred, not required).
+  spreadOverNodes: true
+
 # An existing Secret whose keys are environment variables, e.g.
 #   kubectl create secret generic flowplan-env \
 #     --from-literal=OIDC_CLIENT_SECRET=… \
@@ -86,6 +131,7 @@ extraEnv: []
 extraEnvFrom: []
 
 persistence:
+  # (Single pod only; cluster mode uses no volume.)
   # SQLite database, uploads and keys in /app/data. Without persistence the
   # data is lost with the pod – only for trying it out.
   enabled: true
@@ -111,6 +157,10 @@ ingress:
   annotations: {}
     # cert-manager.io/cluster-issuer: letsencrypt
     # nginx.ingress.kubernetes.io/proxy-body-size: 110m
+    # Live editing uses long-lived server-sent event streams (kept alive
+    # every 15 s); with ingress-nginx:
+    # nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    # nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
   hosts:
     - host: flowplan.example.org
       paths:
@@ -157,7 +207,10 @@ resources:
     memory: 1Gi
 
 # Probes on /api/health (database and upload directory). The startup probe
-# allows time for a Litestream restore from S3 on the first start.
+# allows time for a Litestream restore from S3 on the first start. In
+# cluster mode: liveness and startup on /api/health/live (the process),
+# readiness on /api/health/ready (database, Redis, bucket; 503 while the
+# pod stops).
 startupProbe:
   enabled: true
   periodSeconds: 5

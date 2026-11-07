@@ -1,3 +1,4 @@
+{{- include "flowplan.clusterCheck" . }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -5,12 +6,24 @@ metadata:
   labels:
     {{- include "flowplan.labels" . | nindent 4 }}
 spec:
+  {{- if .Values.cluster.enabled }}
+  # Cluster mode: several pods; a rolling update keeps the old ones serving
+  # until new ones are ready (schema changes are additive).
+  replicas: {{ .Values.cluster.replicas }}
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  {{- else }}
   # SQLite on a volume: exactly one instance, and the old pod stops before
   # the new one starts (no rolling update with two writers).
   replicas: 1
   revisionHistoryLimit: 3
   strategy:
     type: Recreate
+  {{- end }}
   selector:
     matchLabels:
       {{- include "flowplan.selectorLabels" . | nindent 6 }}
@@ -64,14 +77,30 @@ spec:
             {{- with .Values.extraEnvFrom }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
-          {{- with .Values.extraEnv }}
+          {{- if or .Values.cluster.enabled .Values.extraEnv }}
           env:
+            {{- if .Values.cluster.enabled }}
+            # The pod name: the instance in the administration's system view.
+            - name: FLOWPLAN_INSTANCE_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            {{- include "flowplan.clusterEnv" . | nindent 12 }}
+            {{- end }}
+            {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- end }}
+          {{- if .Values.cluster.enabled }}
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "{{ .Values.cluster.preStopSeconds }}"]
           {{- end }}
           {{- if .Values.startupProbe.enabled }}
           startupProbe:
             httpGet:
-              path: /api/health
+              path: {{ ternary "/api/health/live" "/api/health" .Values.cluster.enabled }}
               port: http
             periodSeconds: {{ .Values.startupProbe.periodSeconds }}
             timeoutSeconds: {{ .Values.startupProbe.timeoutSeconds }}
@@ -80,7 +109,7 @@ spec:
           {{- if .Values.livenessProbe.enabled }}
           livenessProbe:
             httpGet:
-              path: /api/health
+              path: {{ ternary "/api/health/live" "/api/health" .Values.cluster.enabled }}
               port: http
             periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
             timeoutSeconds: {{ .Values.livenessProbe.timeoutSeconds }}
@@ -89,7 +118,7 @@ spec:
           {{- if .Values.readinessProbe.enabled }}
           readinessProbe:
             httpGet:
-              path: /api/health
+              path: {{ ternary "/api/health/ready" "/api/health" .Values.cluster.enabled }}
               port: http
             periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
             timeoutSeconds: {{ .Values.readinessProbe.timeoutSeconds }}
@@ -102,7 +131,11 @@ spec:
               mountPath: /app/data
       volumes:
         - name: data
-          {{- if .Values.persistence.enabled }}
+          {{- if .Values.cluster.enabled }}
+          # A cache of the bucket per pod (cluster mode keeps no state here).
+          emptyDir:
+            sizeLimit: {{ .Values.cluster.cacheSizeLimit }}
+          {{- else if .Values.persistence.enabled }}
           persistentVolumeClaim:
             claimName: {{ include "flowplan.claimName" . }}
           {{- else }}
@@ -115,6 +148,15 @@ spec:
       {{- with .Values.affinity }}
       affinity:
         {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if and .Values.cluster.enabled .Values.cluster.spreadOverNodes }}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              {{- include "flowplan.selectorLabels" . | nindent 14 }}
       {{- end }}
       {{- with .Values.tolerations }}
       tolerations:

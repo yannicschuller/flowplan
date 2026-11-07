@@ -95,6 +95,47 @@ password sign-in (localLogin). */}}
 {{- if or .Values.oidc.clientSecret .Values.smtp.password .Values.s3.accessKeyId .Values.s3.secretAccessKey .Values.encryptionKey .Values.setupToken .Values.localLogin }}true{{- end }}
 {{- end }}
 
+{{/* Cluster mode needs its three services; fails the render with what is
+missing. */}}
+{{- define "flowplan.clusterCheck" -}}
+{{- if .Values.cluster.enabled }}
+{{- if not .Values.cluster.database.existingSecret }}
+{{- fail "cluster.enabled: set cluster.database.existingSecret (a Secret with DATABASE_URL=postgres://…)." }}
+{{- end }}
+{{- if not .Values.cluster.redis.existingSecret }}
+{{- fail "cluster.enabled: set cluster.redis.existingSecret (a Secret with REDIS_URL=redis://…)." }}
+{{- end }}
+{{- if not .Values.s3.bucket }}
+{{- fail "cluster.enabled: set s3.bucket (and S3 credentials, best in existingSecret) – files must live in object storage." }}
+{{- end }}
+{{- if lt (int .Values.cluster.replicas) 1 }}
+{{- fail "cluster.replicas must be at least 1." }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{/* The environment cluster mode adds to the pods (and the migration Job). */}}
+{{- define "flowplan.clusterEnv" -}}
+- name: FLOWPLAN_CLUSTER
+  value: "1"
+- name: DATABASE_URL
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.cluster.database.existingSecret }}
+      key: {{ .Values.cluster.database.key }}
+- name: REDIS_URL
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.cluster.redis.existingSecret }}
+      key: {{ .Values.cluster.redis.key }}
+- name: FLOWPLAN_PG_POOL
+  value: {{ .Values.cluster.poolSize | toString | quote }}
+{{- if .Values.cluster.migration.enabled }}
+- name: FLOWPLAN_PG_SCHEMA_AUTO
+  value: "off"
+{{- end }}
+{{- end }}
+
 {{- define "flowplan.claimName" -}}
 {{- .Values.persistence.existingClaim | default (printf "%s-data" (include "flowplan.fullname" .)) }}
 {{- end }}
