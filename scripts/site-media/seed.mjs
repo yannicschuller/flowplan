@@ -1,3 +1,4 @@
+// db-dialect-scan: sqlite-only file – edits the SQLite file of the media instance.
 // Seeds a fresh dev instance with the demo content for the media of the docs
 // and the website. Order:
 //

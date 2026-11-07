@@ -1,3 +1,4 @@
+// db-dialect-scan: sqlite-only file – edits the SQLite file of the media instance.
 // Short clips for the website (public/demos/ in flowplan-website): raw
 // 25 fps H.264 masters in MEDIA_DIR/raw, then encode.sh makes the WebM, MP4
 // and WebP poster the site serves. Needs seed.mjs and ai-mock.mjs.

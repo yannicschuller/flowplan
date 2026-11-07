@@ -174,7 +174,7 @@ function append(userId: string, collectionId: string, workspaceId: string) {
     userId,
     workspaceId,
   )?.p;
-  run("INSERT OR REPLACE INTO collection_order(user_id,collection_id,position) VALUES(?,?,?)", userId, collectionId, (last ?? 0) + 1);
+  run("INSERT INTO collection_order(user_id,collection_id,position) VALUES(?,?,?) ON CONFLICT(user_id,collection_id) DO UPDATE SET position=excluded.position", userId, collectionId, (last ?? 0) + 1);
 }
 export function createCollection(user: Identity, raw: unknown) {
   const b = z
@@ -249,7 +249,7 @@ export function reorderCollections(user: Identity, raw: unknown) {
   // (command() runs this in its transaction.)
   b.order
     .filter((cid) => visible.has(cid))
-    .forEach((cid, i) => run("INSERT OR REPLACE INTO collection_order(user_id,collection_id,position) VALUES(?,?,?)", user.id, cid, i + 1));
+    .forEach((cid, i) => run("INSERT INTO collection_order(user_id,collection_id,position) VALUES(?,?,?) ON CONFLICT(user_id,collection_id) DO UPDATE SET position=excluded.position", user.id, cid, i + 1));
 }
 // search.save (before #86): the kind and the space become part of the query.
 export function saveSearchAsCollection(user: Identity, raw: unknown) {

@@ -585,7 +585,7 @@ export async function finishPasskeyRegistration(user: User, token: string | unde
   if (!verified || !registrationInfo) throw new HttpError(400, t("Der Passkey konnte nicht geprüft werden.", "The passkey could not be verified."));
   const credential = registrationInfo.credential;
   run(
-    "INSERT OR REPLACE INTO passkeys(id,user_id,public_key,counter,transports,name,created_at) VALUES(?,?,?,?,?,?,?)",
+    "INSERT INTO passkeys(id,user_id,public_key,counter,transports,name,created_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET user_id=excluded.user_id,public_key=excluded.public_key,counter=excluded.counter,transports=excluded.transports,name=excluded.name,created_at=excluded.created_at,last_used_at=excluded.last_used_at",
     credential.id,
     user.id,
     Buffer.from(credential.publicKey),

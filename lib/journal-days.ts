@@ -90,7 +90,7 @@ export function rememberTemplate(journalId: string) {
 }
 export function rememberDay(pageId: string, journalId: string, templateHash: string, baseHash: string) {
   run(
-    "INSERT OR REPLACE INTO journal_day_meta(page_id,journal_id,template_hash,base_hash,created_at) VALUES(?,?,?,?,?)",
+    "INSERT INTO journal_day_meta(page_id,journal_id,template_hash,base_hash,created_at) VALUES(?,?,?,?,?) ON CONFLICT(page_id) DO UPDATE SET journal_id=excluded.journal_id,template_hash=excluded.template_hash,base_hash=excluded.base_hash,created_at=excluded.created_at",
     pageId,
     journalId,
     templateHash,

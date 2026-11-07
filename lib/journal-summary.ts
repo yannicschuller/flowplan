@@ -178,7 +178,7 @@ export function createMonthSummary(user: Identity, journal: Page, input: unknown
   run("UPDATE pages SET icon=? WHERE id=?", "📊", created);
   run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), created);
   run(
-    "INSERT OR REPLACE INTO meeting_notes(journal_id,event_key,page_id,created_by,created_at) VALUES(?,?,?,?,?)",
+    "INSERT INTO meeting_notes(journal_id,event_key,page_id,created_by,created_at) VALUES(?,?,?,?,?) ON CONFLICT(journal_id,event_key) DO UPDATE SET page_id=excluded.page_id,created_by=excluded.created_by,created_at=excluded.created_at",
     journal.id,
     summaryKey(month),
     created,

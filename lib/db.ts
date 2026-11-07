@@ -1,6 +1,6 @@
 import { setupStorage, stopStorage } from "./storage";
 import { DatabaseSync, type StatementSync } from "node:sqlite";
-import { mkdirSync, unlinkSync } from "node:fs";
+import { mkdirSync, statSync, unlinkSync } from "node:fs";
 import { applyPendingRestore } from "./instance-restore-apply";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -1554,6 +1554,75 @@ export function run(
   if (SCHEMA_CHANGE.test(sql)) forgetStatements(db());
   if (runtimeMetricsOn) noteStatement(start);
   return result;
+}
+// The schema as it is, read the same way on both databases (SQLite:
+// sqlite_master and PRAGMA; PostgreSQL: the catalogue of the current schema).
+export function tableNames(): string[] {
+  if (legacyPg())
+    return all<{ name: string }>(
+      "SELECT table_name AS name FROM information_schema.tables WHERE table_schema=current_schema() AND table_type='BASE TABLE' AND table_name<>'flowplan_meta' ORDER BY table_name",
+    ).map((t) => t.name);
+  return all<{ name: string }>(
+    // sqlite-only
+    "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND sql NOT LIKE 'CREATE VIRTUAL%' ORDER BY name",
+  )
+    .map((t) => t.name)
+    .filter((name) => !/^search_index_/.test(name));
+}
+export function tableColumns(table: string): string[] {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(table)) throw new Error(`Not a table name: ${table}`);
+  if (legacyPg())
+    return all<{ name: string }>(
+      "SELECT column_name AS name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name=? ORDER BY ordinal_position",
+      table,
+    ).map((c) => c.name);
+  return all<{ name: string }>(`PRAGMA table_info("${table}")`).map((c) => c.name); // sqlite-only
+}
+// The columns of `table` with a foreign key to `target`.
+export function foreignKeyColumns(table: string, target: string): string[] {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(table)) throw new Error(`Not a table name: ${table}`);
+  if (legacyPg())
+    return all<{ name: string }>(
+      `SELECT a.attname AS name FROM pg_constraint c JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=ANY(c.conkey)
+       WHERE c.contype='f' AND c.conrelid=to_regclass(?) AND c.confrelid=to_regclass(?)`,
+      table,
+      target,
+    ).map((c) => c.name);
+  return all<{ table: string; from: string }>(`PRAGMA foreign_key_list("${table}")`) // sqlite-only
+    .filter((f) => f.table === target)
+    .map((f) => f.from);
+}
+// The bytes each table takes, indexes included (SQLite: dbstat, when the
+// build has it; PostgreSQL: pg_total_relation_size).
+export function tableSizes(): { table: string; bytes: number }[] {
+  if (legacyPg())
+    return all<{ table: string; bytes: number }>(
+      `SELECT c.relname AS "table",pg_total_relation_size(c.oid) AS bytes FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+       WHERE n.nspname=current_schema() AND c.relkind='r'`,
+    );
+  try {
+    return all<{ table: string; bytes: number }>(
+      // sqlite-only
+      `SELECT s.tbl_name AS "table", SUM(d.pgsize) AS bytes
+       FROM dbstat d JOIN sqlite_schema s ON s.name=d.name
+       GROUP BY s.tbl_name`,
+    );
+  } catch {
+    // dbstat missing: no breakdown.
+    return [];
+  }
+}
+// The size of the database (SQLite: the file and its write-ahead log;
+// PostgreSQL: the tables of this instance's schema).
+export function databaseBytes(): number {
+  if (legacyPg()) return tableSizes().reduce((n, t) => n + Number(t.bytes), 0);
+  const dir = resolve(/* turbopackIgnore: true */ process.env.FLOWPLAN_DATA_DIR || "./data");
+  let bytes = 0;
+  for (const name of ["flowplan.sqlite", "flowplan.sqlite-wal"])
+    try {
+      bytes += statSync(resolve(dir, name)).size;
+    } catch {}
+  return bytes;
 }
 export const id = () => randomUUID();
 // Listeners of the activity log (lib/security-events.ts turns the

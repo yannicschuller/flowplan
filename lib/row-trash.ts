@@ -66,7 +66,7 @@ export function trashRow(user: Identity, page: Page, rowId: string) {
     grants: rowGrants(rowId),
   };
   run(
-    "INSERT OR REPLACE INTO row_trash(id,page_id,workspace_id,title,payload,deleted_by) VALUES(?,?,?,?,?,?)",
+    "INSERT INTO row_trash(id,page_id,workspace_id,title,payload,deleted_by) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET page_id=excluded.page_id,workspace_id=excluded.workspace_id,title=excluded.title,payload=excluded.payload,deleted_by=excluded.deleted_by,deleted_at=excluded.deleted_at",
     rowId,
     page.id,
     page.workspace_id,

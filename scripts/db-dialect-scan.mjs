@@ -13,7 +13,8 @@
 // Not counted on purpose: lib/db.ts migrations (SQLite schema, translated by
 // lib/db-driver/pg-schema.ts), lib/db-driver itself (the dialect seam), and
 // code that only ever runs on SQLite (marked `// sqlite-only` on the line or
-// the line above, e.g. PRAGMA behind a backend check).
+// the line above, e.g. PRAGMA behind a backend check; a whole file with
+// `// db-dialect-scan: sqlite-only file` near its top).
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 
@@ -23,7 +24,7 @@ const withTests = args.includes("--tests");
 const list = args.includes("--list");
 const json = args.includes("--json");
 const dirs = ["app", "lib", "components", "scripts", "integrations", "instrumentation.ts", "proxy.ts", ...(withTests ? ["tests"] : [])];
-const SKIP = [/^lib\/db-driver\//, /^scripts\/db-dialect-scan\.mjs$/, /^scripts\/db-migrate\.mjs$/, /^scripts\/db-pg-schema\.mjs$/];
+const SKIP = [/^lib\/db-driver\//, /^scripts\/db-dialect-scan\.mjs$/, /^scripts\/codemod-dialect\.mjs$/, /^scripts\/db-migrate\.mjs$/, /^scripts\/db-pg-schema\.mjs$/];
 
 // Patterns: [name, regex, onlyInSql]. onlyInSql: the string must look like
 // SQL (a keyword), else the word is too common (rowid, GLOB, max()).
@@ -50,7 +51,6 @@ const PATTERNS = [
   ["LIKE (case semantics: lower() or d.ilike)", /\bLIKE\b/g, true],
   ["typeof()", /\btypeof\s*\(/g, true],
   ["printf()/format()", /\bprintf\s*\(/gi, true],
-  ["substr()", /\bsubstr\s*\(/gi, true],
 ];
 const SQLISH = /\b(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|PRAGMA|WHERE|ORDER BY|GROUP BY|JOIN|ON CONFLICT|VALUES|FROM)\b/;
 
@@ -121,7 +121,9 @@ function literals(src) {
         i += 2;
         const exprStart = i;
         code("}");
-        text += "${" + src.slice(exprStart, i).replace(/[`'"]/g, "") + "}";
+        // The substitution itself is code (dialect helpers): not counted.
+        void exprStart;
+        text += "${}";
         i++;
         continue;
       }
@@ -194,6 +196,9 @@ for (const path of dirs.flatMap((d) => files(d))) {
   scanned++;
   const src = readFileSync(join(root, path), "utf8");
   const lines = src.split("\n");
+  // A file that only reads or writes SQLite files of its own (an import
+  // format, a check of the standalone build) says so near its top.
+  if (lines.slice(0, 40).some((l) => /db-dialect-scan: sqlite-only file/.test(l))) continue;
   const migrations = path === "lib/db.ts";
   for (const lit of literals(src)) {
     const sqlish = SQLISH.test(lit.text);

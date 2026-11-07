@@ -1,3 +1,4 @@
+// db-dialect-scan: sqlite-only file – writes into the checked build's SQLite file.
 // Runs the production standalone build like the container does and checks
 // health, security defaults, persistence across restarts and a restore from a
 // file-level backup. Usage: npm run build && npm run check:standalone

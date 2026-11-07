@@ -189,7 +189,10 @@ export function storeCaptureFiles(user: Identity, prepared: Prepared[], ownerId:
     // The scan's text, recognised on the phone: the search finds it at
     // once, and the server's extraction skips the file.
     if (file.pdf && recognized && !textStored) {
-      run("INSERT OR REPLACE INTO file_texts(file_id,text,status) VALUES(?,?,?)", file.id, recognized.slice(0, MAX_PDF_TEXT), "device-ocr");
+      // A replacement, as INSERT OR REPLACE was: the insert queues the file
+      // for the search (trigger search_file_text), an upsert's update would not.
+      run("DELETE FROM file_texts WHERE file_id=?", file.id);
+      run("INSERT INTO file_texts(file_id,text,status) VALUES(?,?,?)", file.id, recognized.slice(0, MAX_PDF_TEXT), "device-ocr");
       textStored = true;
     }
   }

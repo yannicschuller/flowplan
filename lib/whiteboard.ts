@@ -213,7 +213,7 @@ export function writeWhiteboard(
       items.set(item.id, map);
     }
     run(
-      "INSERT OR REPLACE INTO whiteboards(page_id,state,generation) VALUES(?,?,?)",
+      "INSERT INTO whiteboards(page_id,state,generation) VALUES(?,?,?) ON CONFLICT(page_id) DO UPDATE SET state=excluded.state,generation=excluded.generation,updated_at=excluded.updated_at",
       target,
       Y.encodeStateAsUpdate(to),
       id(),

@@ -1,3 +1,4 @@
+// db-dialect-scan: sqlite-only file – metrics of the SQLite connection.
 // Opt-in runtime measurements for load tests (scripts/loadtest):
 // FLOWPLAN_METRICS_LOOP=1 measures the Node event-loop delay and utilisation
 // and the time spent in SQLite (lib/db.ts: transactions and the one/all/run

@@ -1,3 +1,4 @@
+// db-dialect-scan: sqlite-only file – reads AFFiNE's own SQLite files.
 // Reads an AFFiNE workspace export into a plain model (no Yjs types left)
 // that lib/importers/affine.ts turns into pages. Two exports exist:
 //

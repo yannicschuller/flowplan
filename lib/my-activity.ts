@@ -19,7 +19,7 @@
 // (lib/version-history.ts), so far back an edit can be missing when someone
 // else saved the same page later that day.
 import { Temporal } from "@js-temporal/polyfill";
-import { all, one } from "./db";
+import { all, one, sql } from "./db";
 import { editActions } from "./api";
 import { lockedPageIds } from "./journal-extras";
 import { pageRole } from "./permissions";
@@ -110,7 +110,7 @@ export function activityDays(user: Identity, workspaceId: string, from: string, 
       end = sqlTime(span.end);
     created.push(
       ...all<PageDay>(
-        `SELECT id page_id,date(created_at,?) day FROM pages
+        `SELECT id page_id,${sql.dayOf("created_at")} AS day FROM pages
          WHERE created_by=? AND created_at>=? AND created_at<? AND workspace_id=? AND deleted_at IS NULL AND COALESCE(synced,0)=0`,
         span.offset,
         user.id,
@@ -123,9 +123,9 @@ export function activityDays(user: Identity, workspaceId: string, from: string, 
     edited.push(
       ...all<PageDay>(
         `SELECT e.page_id,e.day FROM (
-           SELECT page_id,date(created_at,?) day FROM snapshots WHERE created_by=? AND created_at>=? AND created_at<? AND kind='auto'
-           UNION SELECT resource_id,date(created_at,?) FROM audit WHERE actor_id=? AND created_at>=? AND created_at<? AND action IN (${actions.map(() => "?").join(",")})
-           UNION SELECT page_id,date(at/1000,'unixepoch',?) FROM page_edits WHERE user_id=? AND at>=? AND at<?
+           SELECT page_id,${sql.dayOf("created_at")} AS day FROM snapshots WHERE created_by=? AND created_at>=? AND created_at<? AND kind='auto'
+           UNION SELECT resource_id,${sql.dayOf("created_at")} FROM audit WHERE actor_id=? AND created_at>=? AND created_at<? AND action IN (${actions.map(() => "?").join(",")})
+           UNION SELECT page_id,${sql.dayOfMs("at")} FROM page_edits WHERE user_id=? AND at>=? AND at<?
          ) e JOIN pages p ON p.id=e.page_id
          WHERE p.workspace_id=? AND p.deleted_at IS NULL AND COALESCE(p.synced,0)=0`,
         span.offset,

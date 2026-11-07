@@ -392,6 +392,7 @@ export function checkStagedDatabase(staging: string, manifest: Pick<MoveManifest
   if (!existsSync(path)) throw new MoveError("Die Datenbank der Quelle fehlt noch.");
   const db = new DatabaseSync(path, { readOnly: true });
   try {
+    // sqlite-only: the backup or moved file itself
     const check = db.prepare("PRAGMA integrity_check").get() as Record<string, string>;
     if (Object.values(check)[0] !== "ok") throw new MoveError("Die übertragene Datenbank ist beschädigt.");
     const count = (table: string) => Number((db.prepare(`SELECT count(*) n FROM ${table}`).get() as { n: number }).n);

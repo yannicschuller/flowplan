@@ -31,7 +31,7 @@ export type TaskTarget = z.infer<typeof targetSchema>;
 
 // Right after the reminder's notification was written.
 export function rememberTaskTarget(notificationId: string, target: TaskTarget) {
-  run("INSERT OR REPLACE INTO notification_targets(notification_id,target) VALUES(?,?)", notificationId, JSON.stringify(targetSchema.parse(target)));
+  run("INSERT INTO notification_targets(notification_id,target) VALUES(?,?) ON CONFLICT(notification_id) DO UPDATE SET target=excluded.target", notificationId, JSON.stringify(targetSchema.parse(target)));
 }
 
 export function taskTarget(notificationId: string): TaskTarget | null {

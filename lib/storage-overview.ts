@@ -4,7 +4,7 @@
 import { AwsClient } from "aws4fetch";
 import { statSync } from "node:fs";
 import { resolve } from "node:path";
-import { all, one } from "./db";
+import { all, databaseBytes, one, tableSizes } from "./db";
 import { storageConfig, storageStatus } from "./storage";
 
 const dataDir = () => resolve(process.env.FLOWPLAN_DATA_DIR || "./data");
@@ -49,16 +49,8 @@ const GROUPS: { key: string; label: string; match: (table: string) => boolean }[
 ];
 // Snapshots are stored inside the version tables but are listed separately.
 function databaseBreakdown() {
-  let tables: { table: string; bytes: number }[] = [];
-  try {
-    tables = all<{ table: string; bytes: number }>(
-      `SELECT s.tbl_name AS "table", SUM(d.pgsize) AS bytes
-       FROM dbstat d JOIN sqlite_schema s ON s.name=d.name
-       GROUP BY s.tbl_name`,
-    );
-  } catch {
-    // dbstat missing: the file size stays, without breakdown.
-  }
+  // dbstat missing (SQLite): the file size stays, without breakdown.
+  const tables = tableSizes();
   const groups = GROUPS.map((g) => ({ key: g.key, label: g.label, bytes: 0 }));
   const other = { key: "other", label: "Konten, Rechte und Verwaltung", bytes: 0 };
   for (const row of tables) {
@@ -180,8 +172,7 @@ export async function storageOverview() {
     publications: count("SELECT COUNT(*) n FROM publications"),
     forms: count("SELECT COUNT(*) n FROM forms WHERE enabled=1"),
   };
-  const databaseFile = fileSize(resolve(dir, "flowplan.sqlite")),
-    wal = fileSize(resolve(dir, "flowplan.sqlite-wal"));
+  const wal = fileSize(resolve(dir, "flowplan.sqlite-wal"));
 
   let objectStorage:
     | { enabled: false }
@@ -274,7 +265,7 @@ export async function storageOverview() {
   return {
     checkedAt: new Date().toISOString(),
     local: {
-      databaseBytes: databaseFile + wal,
+      databaseBytes: databaseBytes(),
       walBytes: wal,
       database: databaseBreakdown(),
       uploads: {

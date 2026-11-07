@@ -165,7 +165,7 @@ function auditDays(now: number, days: number) {
   const keys: string[] = [];
   for (let i = days - 1; i >= 0; i--) keys.push(new Date(now - i * DAY).toISOString().slice(0, 10));
   const rows = new Map(
-    all<{ day: string; n: number }>("SELECT substr(created_at,1,10) day,COUNT(*) n FROM audit WHERE created_at>=? GROUP BY day", `${keys[0]} 00:00:00`).map((r) => [r.day, Number(r.n)]),
+    all<{ day: string; n: number }>("SELECT substr(created_at,1,10) AS day,COUNT(*) n FROM audit WHERE created_at>=? GROUP BY day", `${keys[0]} 00:00:00`).map((r) => [r.day, Number(r.n)]),
   );
   return keys.map((k) => rows.get(k) || 0);
 }

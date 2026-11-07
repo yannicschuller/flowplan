@@ -177,7 +177,7 @@ export function createMeetingNote(user: Identity, input: unknown) {
   // Assigned tasks count for "Meine Aufgaben" without waiting for the first edit.
   indexPageTasks(created, false);
   run(
-    "INSERT OR REPLACE INTO meeting_notes(journal_id,event_key,page_id,created_by,created_at) VALUES(?,?,?,?,?)",
+    "INSERT INTO meeting_notes(journal_id,event_key,page_id,created_by,created_at) VALUES(?,?,?,?,?) ON CONFLICT(journal_id,event_key) DO UPDATE SET page_id=excluded.page_id,created_by=excluded.created_by,created_at=excluded.created_at",
     journal.id,
     key,
     created,

@@ -407,7 +407,7 @@ export function backfillDocTasks() {
      WHERE d.html LIKE '%data-type="taskItem"%' AND NOT EXISTS(SELECT 1 FROM doc_tasks t WHERE t.page_id=p.id AND t.row_id=r.id)`,
   ))
     index(doc, doc.row_id, doc.state, doc.html);
-  run("INSERT OR REPLACE INTO instance_state(key,value) VALUES('doc_tasks_indexed','1')");
+  run("INSERT INTO instance_state(key,value) VALUES('doc_tasks_indexed','1') ON CONFLICT(key) DO UPDATE SET value=excluded.value");
 }
 const runtime = globalThis as typeof globalThis & { flowplanTaskTimer?: ReturnType<typeof setInterval> };
 export function startTaskWorker(onFired: () => void) {

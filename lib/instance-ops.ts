@@ -3,7 +3,7 @@ import { storageStatus } from "./storage";
 import { timingSafeEqual } from "node:crypto";
 import { statSync } from "node:fs";
 import { resolve } from "node:path";
-import { all, one, run } from "./db";
+import { all, databaseBytes, one, run } from "./db";
 import { HttpError } from "./auth";
 import { retentionDays } from "./version-history";
 import { instanceSettings } from "./instance-settings";
@@ -84,9 +84,7 @@ export function instanceMetrics() {
     Number(one<{ n: number }>(sql, ...args)?.n || 0);
   const demos = demoCounts();
   return {
-    databaseBytes:
-      fileSize(resolve(dir, "flowplan.sqlite")) +
-      fileSize(resolve(dir, "flowplan.sqlite-wal")),
+    databaseBytes: databaseBytes(),
     uploadBytes:
       count("SELECT COALESCE(SUM(size),0) n FROM files") +
       count("SELECT COALESCE(SUM(length(data)),0) n FROM template_files"),

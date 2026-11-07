@@ -23,7 +23,7 @@
 // - none: not an account (a Git author's name).
 // User ids inside content – person properties of records, mentions in
 // comments and documents, filters of views – are replaced as well.
-import { all, audit, one, run } from "./db";
+import { all, audit, foreignKeyColumns, one, run, tableColumns, tableNames } from "./db";
 import { HttpError } from "./auth";
 import { securityEvent } from "./security-events";
 import { openSecret, sealSecret } from "./secret-box";
@@ -194,17 +194,14 @@ const CONTENT_COLUMNS = [
 const USER_COLUMN = /(^|_)user_id$|_by$|^(owner_id|author_id|author|actor_id|assignee)$/;
 export function userReferenceColumns() {
   const out: { table: string; column: string }[] = [];
-  for (const { name } of all<{ name: string }>(
-    "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name<>'users' AND sql NOT LIKE 'CREATE VIRTUAL%' ORDER BY name",
-  )) {
-    if (/_fts(_|$)/.test(name)) continue;
-    const fks = new Set(all<{ table: string; from: string }>(`PRAGMA foreign_key_list("${name}")`).filter((f) => f.table === "users").map((f) => f.from));
-    for (const c of all<{ name: string }>(`PRAGMA table_info("${name}")`))
-      if (fks.has(c.name) || USER_COLUMN.test(c.name)) out.push({ table: name, column: c.name });
+  for (const name of tableNames()) {
+    if (name === "users" || name === "search_index" || /_fts(_|$)/.test(name)) continue;
+    const fks = new Set(foreignKeyColumns(name, "users"));
+    for (const column of tableColumns(name)) if (fks.has(column) || USER_COLUMN.test(column)) out.push({ table: name, column });
   }
   return out;
 }
-const columnsOf = (table: string) => new Set(all<{ name: string }>(`PRAGMA table_info("${table}")`).map((c) => c.name));
+const columnsOf = (table: string) => new Set(tableColumns(table));
 const split = (key: string) => key.split(".") as [string, string];
 const count = (sql: string, ...params: string[]) => Number(one<{ n: number }>(sql, ...params)?.n || 0);
 const like = (id: string) => `%${id}%`;

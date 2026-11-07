@@ -69,8 +69,10 @@ export function checkBackupDatabase(path: string) {
     throw new HttpError(400, "Die Sicherung enthält keine gültige Flowplan-Datenbank.");
   }
   try {
+    // sqlite-only: the backup or moved file itself
     const check = db.prepare("PRAGMA integrity_check").get() as Record<string, string>;
     if (Object.values(check)[0] !== "ok") throw new HttpError(400, "Die Datenbank der Sicherung ist beschädigt.");
+    // sqlite-only
     const version = Number((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version);
     if (version > SCHEMA_VERSION)
       throw new HttpError(400, "Die Sicherung stammt aus einer neueren Flowplan-Version. Bitte zuerst Flowplan auf diese Version aktualisieren.");

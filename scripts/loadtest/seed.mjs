@@ -1,3 +1,4 @@
+// db-dialect-scan: sqlite-only file – seeds the SQLite file of a test instance.
 // Seeds a Flowplan instance for the load test (scripts/loadtest/README.md).
 //
 // Content goes through the HTTP API as the first account (it becomes the
