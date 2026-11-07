@@ -64,6 +64,8 @@ async function dragBlock(
       type: "touchStart",
       touchPoints: [{ ...a, id: 1 }],
     });
+    // A finger lifts the block once it has held the handle (#166).
+    await page.waitForTimeout(450);
     for (let i = 1; i <= 6; i++)
       await cdp.send("Input.dispatchTouchEvent", {
         type: "touchMove",

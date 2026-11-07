@@ -610,7 +610,8 @@ kbd,
 .page-nav:hover .nav-add {
   opacity: 1;
 }
-/* Touch devices drag pages with this handle; mouse users drag the row. */
+/* Touch devices drag pages with this handle; mouse users drag the row.
+   Held to lift (#166): a swipe over it scrolls, no callout or selection. */
 .group-drag,
 .nav-drag {
   display: none;
@@ -618,7 +619,10 @@ kbd,
   height: 24px;
   flex-shrink: 0;
   color: var(--muted);
-  touch-action: none;
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 @media (pointer: coarse) {
   .group-drag,
@@ -3633,7 +3637,10 @@ tr:hover .row-open,
   padding: 0;
   flex-shrink: 0;
   color: var(--muted);
-  touch-action: none;
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 @media (pointer: coarse) {
   .calendar-drag {
@@ -7646,11 +7653,6 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
 .row-order-handle:active {
   cursor: grabbing;
 }
-@media (pointer: coarse) {
-  .board .row-order-handle {
-    touch-action: none;
-  }
-}
 .row-order-handle:hover,
 .row-order-handle:focus-visible {
   color: var(--blue);
@@ -9273,7 +9275,9 @@ tr.order-drop-after > td {
 .document-block-handle {
   position: absolute;
   pointer-events: auto;
-  touch-action: none;
+  /* By touch held to lift (#166): a swipe over it scrolls the document. */
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
   /* At least 24 × 24 px: a target of its own next to the handle above
      (WCAG 2.5.8). */
   width: 24px;
@@ -14544,6 +14548,43 @@ tr[data-drag-source] > td {
   transition:
     color 0.2s ease 0.1s,
     background-color 0.2s ease 0.1s;
+}
+/* Held long enough by a finger (#166): the handle grows and what it moves
+   lifts off the page until the drag ends. */
+[data-drag-lifted] {
+  transition:
+    transform 0.14s cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 0.14s ease;
+}
+button[data-drag-lifted] {
+  color: var(--blue);
+  background: var(--blue-light);
+  transform: scale(1.2);
+}
+:not(button)[data-drag-lifted] {
+  position: relative;
+  z-index: 3;
+  border-radius: 8px;
+  background-color: var(--bg);
+  box-shadow:
+    0 0 0 1px #1d1a1414,
+    0 8px 20px #1d1a1428;
+  transform: scale(1.02);
+}
+[data-theme="dark"] :not(button)[data-drag-lifted] {
+  background-color: var(--hover);
+  box-shadow:
+    0 0 0 1px #ffffff14,
+    0 8px 20px #0008;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-drag-lifted] {
+    transition: none;
+  }
+  button[data-drag-lifted],
+  :not(button)[data-drag-lifted] {
+    transform: none;
+  }
 }
 /* Lifted with the keyboard (Space on the handle). */
 .row-lifted {
@@ -27609,6 +27650,30 @@ html.split-resizing * {
   margin: 0 0 10px;
   padding-left: 20px;
 }
+/* AFFiNE (#167): documents with one link to them below the linking one. */
+.import-sources-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 10px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.import-sources-option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.import-sources-option-text small {
+  color: var(--muted);
+  font-size: 13px;
+}
+.import-sources-option .switch {
+  flex-shrink: 0;
+}
 .import-sources-warnings {
   color: var(--muted);
   font-size: 13px;
@@ -30138,7 +30203,11 @@ label.ws-search input {
 }
 .home-drag {
   cursor: grab;
-  touch-action: none;
+  /* By touch held to lift (#166): a swipe over it scrolls the page. */
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 .home-add-tile {
   min-height: 110px;

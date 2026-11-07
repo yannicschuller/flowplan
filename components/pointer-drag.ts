@@ -7,13 +7,17 @@
 //
 // A press becomes a drag once the pointer has moved a few pixels, so clicks
 // still open records; by touch once a finger has rested on the handle for a
-// moment (LONG_PRESS_MS), so swipes keep scrolling the table (#98). While it
+// moment (LONG_PRESS_MS), so swipes keep scrolling the table (#98) and a
+// handle brushed while scrolling moves nothing (#166). The handles with
+// drag code of their own (the sidebar's pages, the editor's block handles,
+// the home widgets) wait the same way through touchHold below. While it
 // runs, the cursor is the closed hand everywhere (html.pointer-dragging), a
 // light copy of the dragged element follows the pointer, the container and
 // the window scroll near their edges, and Escape puts everything back. The
 // caller hit-tests the element under the pointer and shows its own drop
 // hints; the arithmetic is in lib/pointer-drag.ts.
 import { useCallback, useEffect, useRef } from "react";
+import { nativeApp } from "@/lib/native-app";
 import {
   autoScrollStep,
   LONG_PRESS_MS,
@@ -52,11 +56,10 @@ export type PointerDragOptions = {
   /** Mouse and pen: pixels before the drag starts. */
   threshold?: number;
   /**
-   * Touch: "hold" waits for a long press (the handle may scroll), "move"
-   * starts on movement (a handle with `touch-action: none`), "none" leaves
-   * touches alone.
+   * Touch: "hold" waits for a long press (a swipe over the handle scrolls),
+   * "none" leaves touches alone.
    */
-  touch?: "hold" | "move" | "none";
+  touch?: "hold" | "none";
   /** The element whose copy follows the pointer; none without. */
   preview?: HTMLElement | null;
   /** Marked with data-drag-source while dragged (faded by CSS). */
@@ -77,6 +80,25 @@ type Press = {
   altKey: boolean;
   currentTarget: EventTarget | null;
 };
+
+/**
+ * A finger has held a handle long enough: the handle (and `lifted`, the
+ * thing it moves) lift a little and the phone ticks – through the app's
+ * haptics in the iPhone/Android app, else navigator.vibrate where there is
+ * one. Returns the function that sets them down again.
+ */
+export function liftFeedback(...lifted: (HTMLElement | null | undefined)[]) {
+  const marked = lifted.filter((el): el is HTMLElement => !!el);
+  for (const el of marked) el.setAttribute("data-drag-lifted", "");
+  try {
+    const app = nativeApp();
+    if (app?.haptic) app.haptic("light");
+    else navigator.vibrate?.(8);
+  } catch {}
+  return () => {
+    for (const el of marked) el.removeAttribute("data-drag-lifted");
+  };
+}
 
 // More than one drag may want the cursor (a timeline bar and its page).
 let cursorHolds = 0;
@@ -268,6 +290,7 @@ export function startPointerDrag(
   let boxes: Awaited<ReturnType<typeof scrollers>> = { x: [], y: [] };
   let timer = 0;
   let roamed = false;
+  let lowered: (() => void) | null = null;
 
   const hit = () => {
     point = { ...point, target: document.elementFromPoint(point.x, point.y) };
@@ -287,6 +310,8 @@ export function startPointerDrag(
     window.removeEventListener("blur", blur);
     window.removeEventListener("scroll", scrolled, true);
     handle?.removeAttribute("data-drag-pressing");
+    lowered?.();
+    lowered = null;
     options.source?.removeAttribute("data-drag-source");
     preview?.remove();
     preview = null;
@@ -343,11 +368,7 @@ export function startPointerDrag(
     if (options.preview) preview = makePreview(options.preview, x0, y0);
     options.source?.setAttribute("data-drag-source", "");
     preview?.place(point.x, point.y);
-    if (touch && mode === "hold") {
-      try {
-        navigator.vibrate?.(8);
-      } catch {}
-    }
+    if (touch && mode === "hold") lowered = liftFeedback(handle);
     boxes = scrollers(options.preview || options.source || handle);
     frame = requestAnimationFrame(autoScroll);
     options.onMove?.(hit());
@@ -432,6 +453,83 @@ export function startPointerDrag(
     handle?.setAttribute("data-drag-pressing", "");
     timer = window.setTimeout(activate, LONG_PRESS_MS);
   }
+  return stop;
+}
+
+/**
+ * For handles with drag code of their own (pointer capture on the handle):
+ * by touch, `begin` runs only once the finger has rested on the handle for
+ * LONG_PRESS_MS without wandering further than TOUCH_SLOP – a finger that
+ * moves earlier scrolls (the handle has `touch-action: manipulation`) and
+ * lifts nothing, one that lets go was a tap. Once lifted, the finger no
+ * longer scrolls the page and brings up no context menu. Mouse and pen
+ * begin at once. Read what `begin` needs from the event before calling:
+ * React empties `currentTarget` after the handler.
+ *
+ * Returns a function that stops waiting (unmount).
+ */
+export function touchHold(
+  event: { pointerType: string; pointerId: number; clientX: number; clientY: number; currentTarget: EventTarget | null },
+  begin: () => void,
+  options: { lift?: HTMLElement | null } = {},
+): () => void {
+  if (event.pointerType === "mouse") {
+    begin();
+    return () => {};
+  }
+  // A pen moves at once; on iPad the Pencil also sends touch events, which
+  // must not scroll the page under it.
+  const pen = event.pointerType !== "touch";
+  const handle = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+  const pointerId = event.pointerId,
+    x0 = event.clientX,
+    y0 = event.clientY;
+  let state: "pending" | "active" | "done" = "pending";
+  let lowered: (() => void) | null = null;
+  const stop = () => {
+    state = "done";
+    window.clearTimeout(timer);
+    window.removeEventListener("pointermove", move, true);
+    window.removeEventListener("pointerup", end, true);
+    window.removeEventListener("pointercancel", end, true);
+    window.removeEventListener("touchmove", touchMove, true);
+    window.removeEventListener("contextmenu", menu, true);
+    window.removeEventListener("blur", stop);
+    handle?.removeAttribute("data-drag-pressing");
+    lowered?.();
+  };
+  const move = (ev: PointerEvent) => {
+    if (ev.pointerId !== pointerId || state !== "pending") return;
+    if (pastThreshold(ev.clientX - x0, ev.clientY - y0, TOUCH_SLOP)) stop();
+  };
+  // The caller's own pointerup on the handle still runs (it comes later).
+  const end = (ev: PointerEvent) => {
+    if (ev.pointerId === pointerId) stop();
+  };
+  const touchMove = (ev: TouchEvent) => {
+    if (state === "active" && ev.cancelable) ev.preventDefault();
+  };
+  const menu = (ev: Event) => ev.preventDefault();
+  const timer = pen
+    ? 0
+    : window.setTimeout(() => {
+        if (state !== "pending") return;
+        state = "active";
+        handle?.removeAttribute("data-drag-pressing");
+        window.getSelection()?.removeAllRanges();
+        lowered = liftFeedback(handle, options.lift);
+        begin();
+      }, LONG_PRESS_MS);
+  window.addEventListener("pointermove", move, { capture: true, passive: true });
+  window.addEventListener("pointerup", end, true);
+  window.addEventListener("pointercancel", end, true);
+  window.addEventListener("touchmove", touchMove, { capture: true, passive: false });
+  window.addEventListener("contextmenu", menu, true);
+  window.addEventListener("blur", stop);
+  if (pen) {
+    state = "active";
+    begin();
+  } else handle?.setAttribute("data-drag-pressing", "");
   return stop;
 }
 

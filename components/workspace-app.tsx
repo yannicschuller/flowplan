@@ -79,7 +79,7 @@ import { iconPixels } from "@/lib/page-appearance";
 import { VersionChanges } from "./version-changes";
 import { LinkPreview } from "./link-preview";
 import { edgeScroller } from "./edge-scroll";
-import { RECORD_DROP_EVENT, RECORD_OVER_EVENT, type RecordDropDetail, type RecordOverDetail } from "./pointer-drag";
+import { RECORD_DROP_EVENT, RECORD_OVER_EVENT, touchHold as holdForTouch, type RecordDropDetail, type RecordOverDetail } from "./pointer-drag";
 import { MediaLibrary } from "./media-library";
 import {
   checkOfflineOwner,
@@ -681,6 +681,7 @@ export default function WorkspaceApp({
     [metaMove, setMetaMove] = useState<{ items: ForeignMeta[]; target: string; run: (meta: MetaPlan) => Promise<unknown> } | null>(null);
   const lastSelected = useRef<string | null>(null),
     touchDrag = useRef<{ source: string; pointer: number } | null>(null),
+    touchHold = useRef<(() => void) | null>(null),
     touchHoverRef = useRef((_x: number, _y: number) => {}),
     // Holding the tree handle near the edge of the page list scrolls it.
     [treeScroll] = useState(() =>
@@ -2603,13 +2604,28 @@ export default function WorkspaceApp({
                 <button
                   className="nav-drag"
                   tabIndex={-1}
+                  // Dragging a page sideways is not the swipe that closes
+                  // the sidebar (components/drawer-swipe.ts).
+                  data-no-edge-swipe=""
                   aria-label={t(`${p.title} ziehen`, `Drag ${p.title}`)}
                   onPointerDown={(e) => {
                     // No native drag of the row: the handle drives the gesture.
                     e.preventDefault();
-                    e.currentTarget.setPointerCapture(e.pointerId);
-                    touchDrag.current = { source: p.id, pointer: e.pointerId };
-                    treeScroll.start(e.currentTarget);
+                    const handle = e.currentTarget,
+                      pointer = e.pointerId;
+                    // By touch only once held: a swipe over the handles
+                    // scrolls the tree and moves nothing (#166).
+                    touchHold.current?.();
+                    touchHold.current = holdForTouch(
+                      e,
+                      () => {
+                        if (!handle.isConnected) return;
+                        handle.setPointerCapture(pointer);
+                        touchDrag.current = { source: p.id, pointer };
+                        treeScroll.start(handle);
+                      },
+                      { lift: handle.closest<HTMLElement>(".page-nav") },
+                    );
                   }}
                   onPointerMove={(e) => {
                     if (touchDrag.current?.pointer !== e.pointerId) return;

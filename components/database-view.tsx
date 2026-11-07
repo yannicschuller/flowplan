@@ -1589,7 +1589,7 @@ export default function DatabaseView({
   latestRows.current = data.rows;
   // A card on a plain board: the board opens a gap where it would land
   // (board-card-drag.ts). With the mouse on the card, by touch on its handle
-  // (which does not scroll, so the finger moves it at once).
+  // once held (a swipe over the handle scrolls the board, #166).
   function beginCardDrag(
     e: React.PointerEvent<HTMLElement>,
     row: Row,
@@ -1604,7 +1604,7 @@ export default function DatabaseView({
     let drag: BoardCardDrag | null = null;
     let over: string | null = null;
     startDrag(e, {
-      touch: "move",
+      touch: "hold",
       source: null,
       onStart: () => {
         if (busyNow.current.order || cardDrag.current) return false;
@@ -2410,13 +2410,13 @@ export default function DatabaseView({
     document
       .elementFromPoint(x, y)
       ?.closest<HTMLElement>(".board-column[data-group-key]")?.dataset.groupKey;
-  // A board column by its header (mouse) or its handle (touch, which does
-  // not scroll); the board scrolls sideways at its edges.
+  // A board column by its header (mouse) or its handle (touch, once held);
+  // the board scrolls sideways at its edges.
   function beginColumnDrag(e: React.PointerEvent<HTMLElement>, group: DatabaseGroup) {
     if (!viewEditable) return;
     const column = e.currentTarget.closest<HTMLElement>(".board-column");
     startDrag(e, {
-      touch: e.currentTarget.classList.contains("group-drag") ? "move" : "none",
+      touch: e.currentTarget.classList.contains("group-drag") ? "hold" : "none",
       preview: column?.querySelector<HTMLElement>(":scope > header") || column,
       source: column,
       onStart: () => !busyNow.current.schema,
