@@ -283,7 +283,7 @@ export function limited(keys: string[]) {
     return true;
   }
   const since = Date.now() - WINDOW;
-  run("DELETE FROM login_failures WHERE at<?", since);
+  pruneLoginFailures(since);
   const over = counters(keys).some(({ key, limit }) => failuresOf(key, since) >= limit);
   if (over) securityEvent("login.refused", { ...attempt, detail: `limit ${attempt.detail}` });
   return over;
@@ -681,3 +681,9 @@ export function loginOptions(setup?: string, invite?: string) {
   };
 }
 export type LoginOptions = ReturnType<typeof loginOptions>;
+
+// Old failures go – but journal PIN counters (pin:…, lib/journal-extras.ts)
+// count over a whole day, so they keep a day.
+export function pruneLoginFailures(before: number, now = Date.now()) {
+  run("DELETE FROM login_failures WHERE (key NOT LIKE 'pin:%' AND at<?) OR at<?", before, now - 24 * 60 * 60 * 1000);
+}

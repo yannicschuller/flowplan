@@ -12,6 +12,7 @@
 //
 // Route handlers and the public page run their work inside
 // withShareCookie(), which hands the request's cookie to the check.
+import { pruneLoginFailures } from "./local-auth";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { z } from "zod";
 import { one, run } from "./db";
@@ -82,7 +83,7 @@ export function checkShareProtection(token: string, p: Protection, now = Date.no
 // (never beyond the link's end).
 export async function unlockShare(token: string, password: unknown, address: string, now = Date.now()) {
   const key = `share:${token}:${address}`.slice(0, 300);
-  run("DELETE FROM login_failures WHERE at<?", now - FAILURE_WINDOW);
+  pruneLoginFailures(now - FAILURE_WINDOW, now);
   const failures = Number(one<{ n: number }>("SELECT COUNT(*) n FROM login_failures WHERE key=? AND at>=?", key, now - FAILURE_WINDOW)?.n || 0);
   if (failures >= MAX_FAILURES) throw new HttpError(429, "Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.");
   const p = shareProtection(token);
