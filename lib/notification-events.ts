@@ -7,7 +7,9 @@ import { cellText } from "./cell-text";
 import { databaseSettings } from "./database-settings";
 import { doneRule, isDone } from "./database-settings-schema";
 import type { Notice, NoticeEvent, NoticeItem } from "./notification-templates";
-import type { Field } from "./types";
+import { pageRole } from "./permissions";
+import { visibleRows } from "./row-access";
+import type { Field, Identity, Page } from "./types";
 
 type Cells = Record<string, unknown>;
 const appUrl = () => (process.env.APP_URL || "http://localhost:3000").replace(/\/$/, "");
@@ -84,20 +86,27 @@ const dueField = (fields: Field[]) =>
 
 // Open records of the workspace (or one database) due on `day` or earlier,
 // soonest first. Private records stay out: the channel is not a person.
-export function dueItems(workspaceId: string, pageId: string | null, day: string, limit = 100) {
+// With a `reader` (the person a webhook speaks for) only databases and
+// records they may read, without properties hidden from them.
+export function dueItems(workspaceId: string, pageId: string | null, day: string, limit = 100, reader?: Identity) {
   const items: (NoticeItem & { pageId: string; rowId: string })[] = [];
-  const pages = all<{ id: string; title: string }>(
-    "SELECT p.id,p.title FROM pages p JOIN databases d ON d.page_id=p.id WHERE p.workspace_id=? AND p.deleted_at IS NULL AND (? IS NULL OR p.id=?)",
+  const pages = all<Page>(
+    "SELECT p.* FROM pages p JOIN databases d ON d.page_id=p.id WHERE p.workspace_id=? AND p.deleted_at IS NULL AND (? IS NULL OR p.id=?)",
     workspaceId,
     pageId,
     pageId,
   );
   for (const page of pages) {
+    if (reader && !pageRole(reader, page)) continue;
     const fields = fieldsOf(page.id);
     const due = dueField(fields);
     if (!due) continue;
     const rule = doneRule(fields, databaseSettings(page.id));
-    for (const row of all<{ id: string; cells: string }>("SELECT id,cells FROM rows WHERE page_id=? AND access!='private'", page.id)) {
+    const stored = all<{ id: string; cells: string; access: string; created_by: string | null }>(
+      "SELECT id,cells,access,created_by FROM rows WHERE page_id=? AND access!='private'",
+      page.id,
+    );
+    for (const row of reader ? visibleRows(reader, page, stored) : stored) {
       const cells = JSON.parse(row.cells) as Cells;
       const value = cells[due.id];
       if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}/.test(value)) continue;

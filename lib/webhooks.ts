@@ -12,6 +12,10 @@
 // the event at delivery time with the webhook's templates
 // (lib/notification-templates.ts). Credentials for the Matrix client API
 // and Slack's chat.postMessage are sealed (lib/ai/secrets.ts).
+//
+// A webhook speaks for the person who set it up: it only receives what
+// they may read (pages, private spaces, private records); properties with
+// a read rule are never sent at all.
 import { publicHiddenFieldIds, stripCells } from "./field-access";
 import { metadataOnly } from "./e2ee-server";
 import { createHmac, randomBytes } from "node:crypto";
@@ -21,6 +25,8 @@ import { z } from "zod";
 import { all, id, one, run, transaction } from "./db";
 import { HttpError } from "./auth";
 import { privateAddress, safeSend } from "./safe-fetch";
+import { pageRole, requirePage } from "./permissions";
+import { rowRoleResolver } from "./row-access";
 import { openSecret, sealSecret } from "./ai/secrets";
 import {
   chatFormats,
@@ -39,7 +45,7 @@ import {
   type Templates,
 } from "./notification-templates";
 import { buildNotice, dueItems, localClock, recordUrl } from "./notification-events";
-import type { Identity } from "./types";
+import type { Identity, Page, User } from "./types";
 
 export const webhookEvents = {
   "row.created": "Neuer Eintrag in einer Datenbank",
@@ -59,6 +65,7 @@ type Credentials = { token?: string; signingSecret?: string };
 type HookRow = {
   id: string;
   workspace_id: string;
+  created_by: string | null;
   url: string;
   secret: string;
   format: ChatFormat;
@@ -75,6 +82,31 @@ function requireOwner(user: Identity, workspaceId: string) {
     user.id,
   );
   if (member?.role !== "owner") throw new HttpError(403, "Nur Eigentümer verwalten Webhooks.");
+}
+// A webhook for one page: only one its owner may read, in this workspace.
+function requireHookPage(user: Identity, workspaceId: string, pageId: string | null | undefined) {
+  if (!pageId) return;
+  if (requirePage(user, pageId).workspace_id !== workspaceId) throw new HttpError(404, "Seite nicht gefunden.");
+}
+
+// The person a webhook speaks for: who set it up (webhooks from before
+// that was kept: the workspace's first owner). None when they are gone.
+function hookReader(hook: { workspace_id: string; created_by: string | null }): Identity | null {
+  const userId =
+    hook.created_by ??
+    one<{ user_id: string }>("SELECT user_id FROM members WHERE workspace_id=? AND role='owner' ORDER BY rowid LIMIT 1", hook.workspace_id)?.user_id;
+  const user = userId ? one<User>("SELECT * FROM users WHERE id=? AND disabled=0", userId) : undefined;
+  return user ? ({ ...user, groups: [], isAdmin: false } as Identity) : null;
+}
+// Whether that person may read the page (and record) an event is about.
+function readerMaySee(reader: Identity | null, pageId: string, rowId: unknown) {
+  if (!reader) return false;
+  const page = one<Page>("SELECT * FROM pages WHERE id=?", pageId);
+  const role = page ? pageRole(reader, page) : null;
+  if (!page || !role) return false;
+  if (typeof rowId !== "string") return true;
+  const row = one<{ id: string; access: string; created_by: string | null }>("SELECT id,access,created_by FROM rows WHERE id=? AND page_id=?", rowId, page.id);
+  return !!row && !!rowRoleResolver(reader, page, role)(row);
 }
 
 async function checkTarget(raw: string) {
@@ -161,6 +193,7 @@ export async function createWebhook(user: Identity, input: unknown) {
   // node registers and removes its own); read tokens may not.
   if (user.apiScope === "read") throw new HttpError(403, "Dieses API-Token darf nur lesen.");
   requireOwner(user, b.workspaceId);
+  requireHookPage(user, b.workspaceId, b.pageId);
   const credentials = storedCredentials(b.format, b.credentials || {});
   const url = await checkTarget(resolveTarget(b.format, b.url, b.config, credentials));
   if (Number(one<{ n: number }>("SELECT COUNT(*) n FROM webhooks WHERE workspace_id=?", b.workspaceId)?.n) >= 20)
@@ -193,6 +226,7 @@ export async function updateWebhook(user: Identity, input: unknown) {
   requireOwner(user, b.workspaceId);
   const hook = one<HookRow>("SELECT * FROM webhooks WHERE id=? AND workspace_id=?", b.id, b.workspaceId);
   if (!hook) throw new HttpError(404, "Unbekannter Webhook.");
+  requireHookPage(user, b.workspaceId, b.pageId);
   const previous = openCredentials(hook);
   const merged = b.credentials === null ? {} : b.credentials ? { ...previous, ...b.credentials } : previous;
   const credentials = storedCredentials(b.format, merged);
@@ -284,17 +318,19 @@ function queueDelivery(hook: { id: string; format: string }, workspaceId: string
   return deliveryId;
 }
 
-// Queues the event for every matching webhook of the workspace. Runs inside
-// the command transaction; delivery happens afterwards in the worker.
-// `actor` is the name of the person who caused it (chat messages show it).
+// Queues the event for every matching webhook of the workspace whose owner
+// may read the page (and record) it is about – a member's private space
+// stays private. Runs inside the command transaction; delivery happens
+// afterwards in the worker. `actor` is the name of the person who caused it
+// (chat messages show it).
 export function emitWebhook(
   workspaceId: string,
   event: WebhookEvent,
   data: Record<string, unknown> & { pageId?: string },
   actor?: string | null,
 ) {
-  const hooks = all<{ id: string; events: string; page_id: string | null; format: string }>(
-    "SELECT id,events,page_id,format FROM webhooks WHERE workspace_id=?",
+  const hooks = all<{ id: string; workspace_id: string; events: string; page_id: string | null; format: string; created_by: string | null }>(
+    "SELECT id,workspace_id,events,page_id,format,created_by FROM webhooks WHERE workspace_id=?",
     workspaceId,
   );
   let queued = 0;
@@ -322,6 +358,7 @@ export function emitWebhook(
     if (hook.id === runtime.flowplanHookQuiet) continue;
     if (!(JSON.parse(hook.events) as string[]).includes(event)) continue;
     if (hook.page_id && hook.page_id !== data.pageId) continue;
+    if (data.pageId && !readerMaySee(hookReader(hook), data.pageId, data.rowId)) continue;
     queueDelivery(hook, workspaceId, event, data, () => (notice ??= buildNotice(event, data, actor)));
     queued++;
   }
@@ -416,7 +453,7 @@ async function deliverAndRecord(delivery: Delivery) {
   return result;
 }
 
-const deliveryColumns = "d.id delivery_id,d.body,d.attempts,w.id,w.workspace_id,w.url,w.secret,w.format,w.config,w.templates,w.credentials";
+const deliveryColumns = "d.id delivery_id,d.body,d.attempts,w.id,w.workspace_id,w.created_by,w.url,w.secret,w.format,w.config,w.templates,w.credentials";
 export async function flushWebhooks(now = Date.now()) {
   const due = all<Delivery>(
     `SELECT ${deliveryColumns} FROM webhook_deliveries d JOIN webhooks w ON w.id=d.webhook_id
@@ -459,15 +496,18 @@ export async function testWebhook(user: Identity, input: unknown) {
 // of due and overdue open records (nothing is sent when there are none).
 export function processDigests(now = Date.now()) {
   let queued = 0;
-  for (const hook of all<{ id: string; workspace_id: string; page_id: string | null; events: string; format: string; config: string; digest_day: string | null }>(
-    "SELECT id,workspace_id,page_id,events,format,config,digest_day FROM webhooks WHERE events LIKE '%digest.due%'",
+  for (const hook of all<{ id: string; workspace_id: string; page_id: string | null; events: string; format: string; config: string; digest_day: string | null; created_by: string | null }>(
+    "SELECT id,workspace_id,page_id,events,format,config,digest_day,created_by FROM webhooks WHERE events LIKE '%digest.due%'",
   )) {
     if (!(JSON.parse(hook.events) as string[]).includes("digest.due")) continue;
     const config = parseConfig(hook.config);
     const clock = localClock(now, config.timeZone);
     if (clock.time < config.digestTime || hook.digest_day === clock.day) continue;
     if (!run("UPDATE webhooks SET digest_day=? WHERE id=? AND digest_day IS NOT ?", clock.day, hook.id, clock.day).changes) continue;
-    const items = dueItems(hook.workspace_id, hook.page_id, clock.day);
+    // Only databases and records the webhook's owner may read.
+    const reader = hookReader(hook);
+    if (!reader) continue;
+    const items = dueItems(hook.workspace_id, hook.page_id, clock.day, 100, reader);
     if (!items.length) continue;
     const data = { date: clock.day, ...(hook.page_id ? { pageId: hook.page_id } : {}), items };
     queueDelivery(hook, hook.workspace_id, "digest.due", data, () => ({
