@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { all, id, one, run, transaction } from "./db";
+import { all, id, lockFor, one, run, transaction } from "./db";
 import { HttpError } from "./auth";
 import { pageRole } from "./permissions";
 import { rowRole } from "./row-access";
@@ -76,6 +76,8 @@ export async function setDateReminder(user: Identity, input: unknown) {
     throw new HttpError(400, "Bitte zuerst ein Datum eintragen.");
   if (!reminderOffsets(value).includes(parsed.offset))
     throw new HttpError(400, "Diese Erinnerung passt nicht zum Datum.");
+  // In the command's transaction: a person's reminders are counted one at a time.
+  await lockFor(`date-reminders:${user.id}`);
   const existing = await one(
     "SELECT 1 FROM date_reminders WHERE user_id=? AND row_id=? AND field_id=?",
     user.id,

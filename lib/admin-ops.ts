@@ -27,6 +27,7 @@ import { requireAdmin } from "./permissions";
 import type { Identity } from "./types";
 import { securityRules, type SecurityRule } from "./security-kinds";
 import { sweepSecurityEvents } from "./security-events";
+import { sweepPendingDomains } from "./custom-domains";
 import { opsMessengerAdmins, queueOpsAlert } from "./messengers";
 import { openWebhookUrl } from "./sealed-values";
 import { mapAsync } from "./each-async";
@@ -485,6 +486,8 @@ export function startOpsWorker() {
       if (!isLeader()) return;
       // Idempotency keys live 24 hours (lib/idempotency.ts).
       await sweepIdempotencyKeys(now);
+      // Custom domains left unverified for a week (lib/custom-domains.ts).
+      await sweepPendingDomains(now);
       if (now - (runtime.flowplanOpsSwept ?? 0) >= DAY) {
         await sweepOpsEvents(now);
         // Security events after their retention (lib/security-events.ts).

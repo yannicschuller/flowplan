@@ -48,6 +48,7 @@ import {
 } from "@/lib/home-layout-schema";
 import { groupNames, widgetIcon, widgetMeta, widgetName, type WidgetGroup } from "./meta";
 import { WidgetBody, WidgetFrame } from "./widgets";
+import { touchHold } from "../pointer-drag";
 import { GRADIENTS, headerStyle } from "./look";
 
 const EmojiPicker = dynamic(() => loadView(() => import("../emoji-picker")), { ssr: false });
@@ -117,12 +118,25 @@ export default function HomeEditor({
   // of the one under the pointer; near the edges the page scrolls.
   const drag = useRef<{ id: string; pointer: number; scroller: HTMLElement | null } | null>(null);
   const grid = useRef<HTMLDivElement>(null);
+  // By touch only once held (#166): a swipe over a handle scrolls the page.
+  const holding = useRef<(() => void) | null>(null);
+  useEffect(() => () => holding.current?.(), []);
   const onPointerDown = (e: React.PointerEvent<HTMLButtonElement>, widget: HomeWidget) => {
     if (e.button !== 0) return;
     e.preventDefault();
-    e.currentTarget.setPointerCapture?.(e.pointerId);
-    drag.current = { id: widget.id, pointer: e.pointerId, scroller: e.currentTarget.closest(".main-scroll") };
-    setDragging(widget.id);
+    const handle = e.currentTarget,
+      pointer = e.pointerId;
+    holding.current?.();
+    holding.current = touchHold(
+      e,
+      () => {
+        if (!handle.isConnected) return;
+        handle.setPointerCapture?.(pointer);
+        drag.current = { id: widget.id, pointer, scroller: handle.closest(".main-scroll") };
+        setDragging(widget.id);
+      },
+      { lift: handle.closest<HTMLElement>("[data-widget-id]") },
+    );
   };
   const onPointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
     const current = drag.current;

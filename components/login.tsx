@@ -16,7 +16,7 @@ import { LegalFooter } from "./legal-footer";
 import { GITHUB_URL, LICENSE_URL } from "@/lib/about";
 import { AppProfilesLink } from "./app-profiles-link";
 import { startAppSignIn } from "@/lib/app-sign-in";
-import { appDeviceKey } from "@/lib/native-app";
+import { appDeviceKey, desktopPasskeysInWindow } from "@/lib/native-app";
 import { SetupRestore } from "./setup-restore";
 
 // "confirm": registered, waiting for the link from the e-mail.
@@ -92,6 +92,13 @@ export default function Login({
   // browser (lib/desktop-sign-in.ts): in the app these buttons hand over to
   // it, in the browser ?desktop= carries the app's request through the sign-in.
   const [desktopApp, setDesktopApp] = useState(false);
+  // Except passkeys in the Windows desktop app (#165): Windows Hello opens
+  // over the app, so the page's own button signs in; when that fails or is
+  // cancelled, "Im Browser anmelden" hands over to the browser after all.
+  const [passkeyInApp, setPasskeyInApp] = useState(false);
+  const [passkeyFallback, setPasskeyFallback] = useState(false);
+  // The app's hand-off for passkeys: everywhere in the apps but there.
+  const passkeyHandOff = desktopApp && !passkeyInApp;
   // In the apps the hand-off (passkey, SSO) and a password sign-in with
   // the app's device key stay signed in anyway; an older app without a key
   // signs in with the password like a browser and gets the box for it.
@@ -124,6 +131,7 @@ export default function Login({
       setLoginUrl(`/api/auth/login?returnTo=${encodeURIComponent(desktopReturn || loginReturnPath(`/${location.hash}`))}`);
     update();
     setPasskeys(browserSupportsWebAuthn());
+    setPasskeyInApp(desktopPasskeysInWindow() && browserSupportsWebAuthn());
     window.addEventListener("hashchange", update);
     return () => window.removeEventListener("hashchange", update);
   }, []);
@@ -194,24 +202,33 @@ export default function Login({
         );
       });
   };
+  const signInWithPasskey = async () => {
+    const options = await post("passkey-options");
+    let response;
+    try {
+      response = await startAuthentication({ optionsJSON: options });
+    } catch {
+      throw new Error(t("Anmeldung mit Passkey abgebrochen.", "Passkey sign-in was cancelled."));
+    }
+    const result = await post("passkey", { ...response, remember: stay });
+    // Only if the person asked for a code after the passkey as well.
+    if (result?.twoFactor) {
+      setBusy("");
+      setRecovery(false);
+      setMode("totp");
+      return;
+    }
+    done();
+  };
   const passkey = () =>
     run("passkey", async () => {
-      const options = await post("passkey-options");
-      let response;
       try {
-        response = await startAuthentication({ optionsJSON: options });
-      } catch {
-        throw new Error(t("Anmeldung mit Passkey abgebrochen.", "Passkey sign-in was cancelled."));
+        await signInWithPasskey();
+      } catch (e) {
+        // In the Windows app: Windows Hello cancelled or failing – the browser is offered.
+        if (passkeyInApp) setPasskeyFallback(true);
+        throw e;
       }
-      const result = await post("passkey", { ...response, remember: stay });
-      // Only if the person asked for a code after the passkey as well.
-      if (result?.twoFactor) {
-        setBusy("");
-        setRecovery(false);
-        setMode("totp");
-        return;
-      }
-      done();
     });
   const devWorkspace = () =>
     run("demo", async () => {
@@ -448,7 +465,7 @@ export default function Login({
             </a>
           </p>
         )}
-        {localLogin && mode === "signin" && desktopApp && (
+        {localLogin && mode === "signin" && passkeyHandOff && (
           <a
             className="button wide"
             href="/api/auth/desktop"
@@ -461,11 +478,28 @@ export default function Login({
             <ArrowSquareOut size={16} />
           </a>
         )}
-        {localLogin && mode === "signin" && passkeys && !desktopApp && (
+        {localLogin && mode === "signin" && passkeys && (!desktopApp || passkeyInApp) && (
           <button className="button wide" onClick={passkey} disabled={!!busy}>
             {busy === "passkey" ? <SpinnerGap className="spin" /> : <Fingerprint size={19} />}
             {t("Mit Passkey anmelden", "Sign in with a passkey")}
           </button>
+        )}
+        {localLogin && mode === "signin" && passkeyInApp && passkeyFallback && (
+          <p className="login-browser" data-passkey-fallback="">
+            {t("Passkey hat nicht geklappt?", "Passkey didn't work?")}{" "}
+            <a
+              href="/api/auth/desktop"
+              onClick={handOff("passkey")}
+              aria-busy={handingOff === "passkey" || undefined}
+              title={t(
+                "Öffnet die Anmeldung im Browser – dort kannst du deinen Passkey verwenden",
+                "Opens the sign-in in your browser, where you can use your passkey",
+              )}
+            >
+              {t("Im Browser anmelden", "Sign in in the browser")}
+              {handingOff === "passkey" ? <SpinnerGap size={14} className="spin" /> : <ArrowSquareOut size={14} />}
+            </a>
+          </p>
         )}
         {configured && mode === "signin" && (
           <>

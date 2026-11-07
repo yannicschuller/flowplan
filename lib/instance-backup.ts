@@ -17,7 +17,7 @@ import { open as openZip, type Entry } from "yauzl";
 import { ZipFile } from "yazl";
 import { SCHEMA_VERSION, id, run, sql } from "./db";
 import { HttpError } from "./auth";
-import { dumpSummary } from "./pg-backup";
+import { ForeignObjectsError, dumpSummary } from "./pg-backup";
 
 // Whole-instance backups for admins: a consistent SQLite copy, all uploads
 // and a manifest, streamed as ZIP. Restores are validated and applied on
@@ -239,6 +239,13 @@ export async function checkDumpBackup(dump: string) {
   try {
     found = await dumpSummary(dump);
   } catch (error) {
+    // Functions, triggers, views … that Flowplan does not make: a restore
+    // would not run them (lib/pg-backup.ts restoreDump), but such a dump
+    // was not made by Flowplan – refused before it is staged.
+    if (error instanceof ForeignObjectsError) {
+      console.error("Wiederherstellung: Dump mit fremden Objekten abgelehnt", error.message);
+      throw new HttpError(400, "Die Sicherung enthält Datenbankobjekte, die Flowplan nicht selbst anlegt (etwa Funktionen oder Trigger), und wird deshalb nicht wiederhergestellt.");
+    }
     console.error("Wiederherstellung: Dump nicht lesbar", (error as Error)?.message);
     throw new HttpError(400, "Die Sicherung enthält keine gültige Flowplan-Datenbank.");
   }

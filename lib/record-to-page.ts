@@ -183,7 +183,7 @@ async function copyFiles(fileIds: string[], database: Page, pageId: string, user
   const copies = new Map<string, string>();
   const dir = uploadsDir();
   for (const fid of fileIds) {
-    const file = await one<{ name: string; mime: string; size: number }>("SELECT name,mime,size FROM files WHERE id=? AND page_id=?", fid, database.id);
+    const file = await one<{ name: string; mime: string; size: number }>("SELECT name,mime,size FROM files WHERE id=? AND page_id=? AND deleted_at IS NULL", fid, database.id);
     const from = resolve(dir, fid);
     if (!file || !existsSync(from)) continue;
     const fresh = id(),

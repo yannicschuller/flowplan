@@ -11,7 +11,7 @@ import { z } from "zod";
 import { one } from "./db";
 import { HttpError, hash } from "./auth";
 import { addressKey } from "./client-address";
-import { failed, limited, passkeyConfirm, verifyPassword } from "./local-auth";
+import { checkAttempt, passkeyConfirm, verifyPassword } from "./local-auth";
 import { verifyLdapPassword } from "./ldap-auth";
 import { confirmSecondFactor } from "./two-factor";
 import { signInMethods, ssoOnlyAccount } from "./identities";
@@ -59,20 +59,25 @@ export async function confirmStep(
   const methods = await stepUpMethods(userId, context.sessionStart);
   const keys = [...addressKey("ip", context.address), `totp:${userId}`];
   if (step.code && methods.code) return await confirmSecondFactor(userId, step.code, context.address, context.locale);
-  if (step.passkey && methods.passkey) {
-    if (await limited(keys)) throw new HttpError(429, t("Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.", "Too many attempts. Please try again in 15 minutes."));
-    if (await passkeyConfirm(userId, context.passkeyToken, step.passkey)) return;
-    await failed(keys);
-    throw new HttpError(401, t("Der Passkey konnte nicht bestätigt werden.", "The passkey could not be confirmed."));
-  }
-  if (step.password !== undefined && methods.password) {
-    if (await limited(keys)) throw new HttpError(429, t("Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.", "Too many attempts. Please try again in 15 minutes."));
-    const local = await one<{ password_hash: string }>("SELECT password_hash FROM local_accounts WHERE user_id=?", userId);
-    const ok = local?.password_hash ? await verifyPassword(step.password, local.password_hash) : await verifyLdapPassword(userId, step.password);
-    if (ok) return;
-    await failed(keys);
-    throw new HttpError(401, t("Das Passwort stimmt nicht.", "The password is wrong."));
-  }
+  const tooMany = t("Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.", "Too many attempts. Please try again in 15 minutes.");
+  if (step.passkey && methods.passkey)
+    return await checkAttempt(
+      keys,
+      async () => await passkeyConfirm(userId, context.passkeyToken, step.passkey),
+      tooMany,
+      t("Der Passkey konnte nicht bestätigt werden.", "The passkey could not be confirmed."),
+    );
+  const password = step.password;
+  if (password !== undefined && methods.password)
+    return await checkAttempt(
+      keys,
+      async () => {
+        const local = await one<{ password_hash: string }>("SELECT password_hash FROM local_accounts WHERE user_id=?", userId);
+        return local?.password_hash ? await verifyPassword(password, local.password_hash) : await verifyLdapPassword(userId, password);
+      },
+      tooMany,
+      t("Das Passwort stimmt nicht.", "The password is wrong."),
+    );
   if (methods.recentOk) return;
   throw new HttpError(
     401,

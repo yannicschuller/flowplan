@@ -41,6 +41,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { flushSync } from "react-dom";
+import { touchHold } from "./pointer-drag";
 import type { Editor } from "@tiptap/core";
 import { NodeSelection, type Transaction } from "@tiptap/pm/state";
 import {
@@ -122,6 +123,9 @@ type Drag = {
   x: number;
   y: number;
   active: boolean;
+  // By touch only once the finger has held the handle (#166): a swipe over
+  // it scrolls the document; mouse and pen at once.
+  held: boolean;
   positions: number[];
   target?: number;
   // Dropping at the left or right edge of a block builds columns.
@@ -154,6 +158,8 @@ export function DocumentBlockControls({
     bookmarks.current = editor ? captureBlockSelection(editor, positions) : [];
   }
   const dragging = useRef<Drag | null>(null);
+  const holding = useRef<(() => void) | null>(null);
+  useEffect(() => () => holding.current?.(), []);
   const geometry = useRef<Positioned[]>([]);
   const [blocks, setBlocks] = useState<Positioned[]>([]),
     [, setTick] = useState(0),
@@ -546,17 +552,28 @@ export function DocumentBlockControls({
       clientX: event.clientX,
       clientY: event.clientY,
       active: false,
+      held: event.pointerType !== "touch",
       // A folded heading takes its hidden section along.
       positions: foldedBlockPositions(editor.state, [...selected.current]),
     };
     setPointerActive(true);
     event.currentTarget.setPointerCapture(event.pointerId);
+    const pointer = event.pointerId;
+    holding.current?.();
+    holding.current =
+      event.pointerType !== "mouse"
+        ? touchHold(event, () => {
+            const drag = dragging.current;
+            if (drag?.pointer === pointer) drag.held = true;
+          })
+        : null;
   }
   function pointerMove(event: ReactPointerEvent<HTMLButtonElement>) {
     const drag = dragging.current;
     if (!drag || drag.pointer !== event.pointerId) return;
     drag.clientX = event.clientX;
     drag.clientY = event.clientY;
+    if (!drag.held) return;
     if (Math.hypot(event.clientX - drag.x, event.clientY - drag.y) > 5)
       drag.active = true;
     if (drag.active) {

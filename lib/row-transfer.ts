@@ -19,6 +19,7 @@ import { requirePage } from "./permissions";
 import { assertRowAccess } from "./row-access";
 import { requireUnlocked } from "./journal-extras";
 import { replaceRowDocument } from "./row-documents";
+import { hiddenFileIds } from "./row-files";
 import { maintainRowOrders } from "./row-order-server";
 import { rowCreated } from "./automations";
 import { cellText } from "./cell-text";
@@ -105,10 +106,19 @@ async function nextNumber(pageId: string) {
   return (await one<{ last: number }>("SELECT last FROM row_counters WHERE page_id=?", pageId))!.last;
 }
 
-// Duplicates a file for the target database (a copy must not depend on the
-// source's permissions); without the local file the reference stays.
-async function copyFile(fileId: string, target: Page, userId: string) {
-  const file = await one<{ id: string; name: string; mime: string; size: number }>("SELECT id,name,mime,size FROM files WHERE id=?", fileId);
+// Duplicates a file of the source database for the target (a copy must not
+// depend on the source's permissions). Only the source's own files that the
+// caller may see and that are not in the trash are copied; any other
+// reference (another database or workspace, a private record, the trash)
+// stays as it is and keeps the original file's permissions. Without the local
+// file the reference stays too.
+async function copyFile(fileId: string, source: Page, hidden: Set<string>, target: Page, userId: string) {
+  if (hidden.has(fileId)) return fileId;
+  const file = await one<{ id: string; name: string; mime: string; size: number }>(
+    "SELECT id,name,mime,size FROM files WHERE id=? AND page_id=? AND deleted_at IS NULL",
+    fileId,
+    source.id,
+  );
   const from = resolve(dataDir(), fileId);
   if (!file || !existsSync(from)) return fileId;
   const fresh = id();
@@ -169,6 +179,7 @@ export async function transferRows(user: Identity, sourcePageId: string, raw: un
   const results: string[] = [];
   await lockFor(`row-positions:${target.id}`);
   let position = ((await one<{ p: number }>("SELECT COALESCE(MAX(position),0) p FROM rows WHERE page_id=?", target.id))?.p || 0) + 1;
+  let hiddenFiles: Set<string> | undefined;
   for (const row of rows) {
     let cells: Record<string, unknown> = {};
     const old = JSON.parse(row.cells as unknown as string) as Record<string, unknown>;
@@ -183,7 +194,7 @@ export async function transferRows(user: Identity, sourcePageId: string, raw: un
     const fileIds = new Set([...JSON.stringify(cells).matchAll(FILE_URL), ...html.matchAll(FILE_URL)].map((m) => m[1].toLowerCase()));
     if (b.mode === "copy") {
       // New files for the copy, and the references changed accordingly.
-      const swap = new Map(await mapAsync([...fileIds], async (f) => [f, await copyFile(f, target, user.id)]));
+      const swap = new Map(await mapAsync([...fileIds], async (f) => [f, await copyFile(f, source, hiddenFiles ??= await hiddenFileIds(user, source), target, user.id)]));
       const rewrite = (text: string) => text.replace(FILE_URL, (all, f: string) => `/api/files/${swap.get(f.toLowerCase()) || f}`);
       const rid = id();
       await run(

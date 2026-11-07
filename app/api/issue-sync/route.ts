@@ -18,7 +18,7 @@ function failure(e: unknown) {
 }
 const noStore = { headers: { "Cache-Control": "no-store" } };
 
-// GitHub/GitLab issue sync (lib/issue-sync.ts):
+// GitHub/GitLab/Forgejo issue sync (lib/issue-sync.ts):
 //   ?workspace=<id>         connections (owners and administrators)
 //   ?page=<id>              mapping and sync status of a database
 //   ?page=<id>&row=<id>     the issue linked to a record

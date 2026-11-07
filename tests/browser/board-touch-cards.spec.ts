@@ -81,6 +81,8 @@ test("touch devices drag board cards into another column", async ({
   const from = (await handle.boundingBox())!;
   const target = done.locator(".record-card-wrap[data-row-id]").first();
   await touch("touchStart", from.x + from.width / 2, from.y + from.height / 2);
+  // Held first: a swipe over the handle scrolls the board (#166).
+  await page.waitForTimeout(450);
   // Move towards the right edge until the target column is on screen.
   const width = page.viewportSize()!.width;
   for (let i = 1; i <= 6; i++)

@@ -1,5 +1,7 @@
-// Two-way sync between a database and the issues of a GitHub or GitLab
-// repository (lib/git-integration.ts only links commits and pull requests).
+// Two-way sync between a database and the issues of a GitHub, GitLab or
+// Forgejo/Gitea repository (lib/git-integration.ts only links commits and
+// pull requests). Forgejo and Gitea share one REST API (/api/v1) and are one
+// provider here ("forgejo").
 //
 // A workspace owner (or an administrator) connects a provider with an
 // access token (sealed with lib/secret-box.ts). Per database, a mapping
@@ -17,9 +19,11 @@
 // comments) start a pull at once; a worker polls every 10 minutes. 403/429
 // answers with Retry-After or an exhausted rate limit pause the connection.
 //
-// Hosts: github.com and gitlab.com always; a self-hosted GitHub Enterprise
-// or GitLab only when its host is listed in ISSUE_SYNC_ALLOWED_HOSTS (and
-// with ISSUE_SYNC_ALLOW_PRIVATE=true it may have an internal address). All
+// Hosts: github.com, gitlab.com and codeberg.org (Forgejo; its address is
+// still entered – there is no default) always; a self-hosted GitHub
+// Enterprise or GitLab and any other Forgejo/Gitea server only when its host
+// is listed in ISSUE_SYNC_ALLOWED_HOSTS
+// (and with ISSUE_SYNC_ALLOW_PRIVATE=true it may have an internal address). All
 // requests go through lib/safe-fetch.ts (resolved and pinned addresses, no
 // redirects with credentials).
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
@@ -44,7 +48,8 @@ import type { Field, Identity, Page, User } from "./types";
 import { mapAsync } from "./each-async";
 import { isLeader } from "./cluster/leader";
 
-export type IssueProvider = "github" | "gitlab";
+export type IssueProvider = "github" | "gitlab" | "forgejo";
+export const ISSUE_PROVIDERS = ["github", "gitlab", "forgejo"] as const;
 const MINUTE = 60_000;
 const POLL_EVERY = 10 * MINUTE;
 const PER_PAGE = 50;
@@ -52,7 +57,11 @@ const MAX_PULL_PAGES = 4;
 const MAX_PUSH = 25;
 const MAX_COMMENTS = 20;
 const MAX_BACKOFF = 60 * MINUTE;
-const providerName = { github: "GitHub", gitlab: "GitLab" } as const;
+// Forgejo/Gitea list issues by creation, not by change: the issues changed
+// since the cursor are fetched completely (a window narrowed with `before`
+// until it fits) and sorted here. Probes narrowing the window, at most.
+const MAX_WINDOW_PROBES = 32;
+const providerName = { github: "GitHub", gitlab: "GitLab", forgejo: "Forgejo/Gitea" } as const;
 
 /* ---------- Configuration ---------- */
 
@@ -140,15 +149,21 @@ export const issueSyncHosts = () =>
     .split(",")
     .map((host) => host.trim().toLowerCase())
     .filter(Boolean);
-const PUBLIC_HOST = { github: "github.com", gitlab: "gitlab.com" } as const;
+const PUBLIC_HOST: Partial<Record<IssueProvider, string>> = { github: "github.com", gitlab: "gitlab.com" };
+const API_PATH = { github: "/api/v3", gitlab: "/api/v4", forgejo: "/api/v1" } as const;
+const CODEBERG = "codeberg.org";
 
-// The web and API address of a provider. github.com and gitlab.com are
-// always allowed; any other server only when the administrator listed it.
+// The web and API address of a provider. github.com, gitlab.com and (for
+// Forgejo) codeberg.org are always allowed; any other server only when the
+// administrator listed it. Forgejo/Gitea has no default: its address is
+// always needed.
 export function issueEndpoint(provider: IssueProvider, raw: string) {
   const text = raw.trim().replace(/\/+$/, "");
+  const fallback = PUBLIC_HOST[provider];
+  if (!text && !fallback) throw new HttpError(400, "Für Forgejo / Gitea bitte die Adresse des Servers angeben.");
   let url: URL;
   try {
-    url = new URL(text || `https://${PUBLIC_HOST[provider]}`);
+    url = new URL(text || `https://${fallback}`);
   } catch {
     throw new HttpError(400, "Ungültige Adresse.");
   }
@@ -157,26 +172,30 @@ export function issueEndpoint(provider: IssueProvider, raw: string) {
     throw new HttpError(400, "Die Adresse darf keine Zugangsdaten enthalten – das Token gehört in sein eigenes Feld.");
   const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
   const path = url.pathname.replace(/\/+$/, "");
-  if (host === PUBLIC_HOST[provider] || (provider === "github" && host === "api.github.com")) {
+  if (fallback && (host === fallback || (provider === "github" && host === "api.github.com"))) {
     return {
-      web: `https://${PUBLIC_HOST[provider]}`,
+      web: `https://${fallback}`,
       api: provider === "github" ? "https://api.github.com" : "https://gitlab.com/api/v4",
       allowPrivate: false,
       selfHosted: false,
     };
   }
+  // codeberg.org, the public Forgejo, like github.com and gitlab.com. Its
+  // address is stored all the same (`selfHosted`): Forgejo has no default.
+  if (provider === "forgejo" && url.host.toLowerCase() === CODEBERG)
+    return { web: `https://${CODEBERG}`, api: `https://${CODEBERG}/api/v1`, allowPrivate: false, selfHosted: true };
   const hosts = issueSyncHosts();
   if (!hosts.includes(host) && !hosts.includes(url.host.toLowerCase()))
     throw new HttpError(400, "Dieser Git-Server ist für die Issue-Synchronisierung nicht freigegeben (ISSUE_SYNC_ALLOWED_HOSTS).");
   const allowPrivate = process.env.ISSUE_SYNC_ALLOW_PRIVATE === "true";
   if (!allowPrivate && isIP(host) && privateAddress(host)) throw new HttpError(400, "Interne Adressen sind nicht erlaubt.");
   const web = `${url.origin}${path}`;
-  return { web, api: provider === "github" ? `${web}/api/v3` : `${web}/api/v4`, allowPrivate, selfHosted: true };
+  return { web, api: `${web}${API_PATH[provider]}`, allowPrivate, selfHosted: true };
 }
 export function checkedRepo(provider: IssueProvider, raw: unknown) {
   const repo = z.string().trim().max(300).parse(raw).replace(/^\/+|\/+$/g, "").replace(/\.git$/, "");
-  const ok = provider === "github" ? /^[\w.-]+\/[\w.-]+$/.test(repo) : /^(\d+|[\w.-]+(\/[\w.-]+)+)$/.test(repo);
-  if (!ok) throw new HttpError(400, provider === "github" ? "Repository bitte als „besitzer/name“ angeben." : "Projekt bitte als „gruppe/projekt“ oder Projekt-ID angeben.");
+  const ok = provider === "gitlab" ? /^(\d+|[\w.-]+(\/[\w.-]+)+)$/.test(repo) : /^[\w.-]+\/[\w.-]+$/.test(repo);
+  if (!ok) throw new HttpError(400, provider === "gitlab" ? "Projekt bitte als „gruppe/projekt“ oder Projekt-ID angeben." : "Repository bitte als „besitzer/name“ angeben.");
   return repo;
 }
 
@@ -235,11 +254,18 @@ type Endpoint = Awaited<ReturnType<typeof issueEndpoint>>;
 type Client = { provider: IssueProvider; endpoint: Endpoint; token: string; repo: string };
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+function authHeaders(client: Client): Record<string, string> {
+  if (client.provider === "github")
+    return { authorization: `Bearer ${client.token}`, accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28", "user-agent": "Flowplan-IssueSync" };
+  if (client.provider === "gitlab") return { "private-token": client.token, accept: "application/json", "user-agent": "Flowplan-IssueSync" };
+  return { authorization: `token ${client.token}`, accept: "application/json", "user-agent": "Flowplan-IssueSync" };
+}
 async function call(client: Client, method: string, path: string, body?: unknown): Promise<any> {
-  const headers: Record<string, string> =
-    client.provider === "github"
-      ? { authorization: `Bearer ${client.token}`, accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28", "user-agent": "Flowplan-IssueSync" }
-      : { "private-token": client.token, accept: "application/json", "user-agent": "Flowplan-IssueSync" };
+  return (await request(client, method, path, body)).data;
+}
+// The answer with its headers (Forgejo/Gitea: X-Total-Count, Link).
+async function request(client: Client, method: string, path: string, body?: unknown): Promise<{ data: any; headers: Record<string, string> }> {
+  const headers = authHeaders(client);
   if (body !== undefined) headers["content-type"] = "application/json";
   const response = await transport()({
     method,
@@ -253,8 +279,9 @@ async function call(client: Client, method: string, path: string, body?: unknown
   if (response.status === 403) throw new HttpError(502, "Dem Token fehlt die Berechtigung für dieses Repository.");
   if (response.status === 404) throw new HttpError(502, "Repository oder Issue nicht gefunden – oder das Token hat keinen Zugriff.");
   if (response.status < 200 || response.status >= 300) throw new HttpError(502, `Der Git-Anbieter antwortet mit HTTP ${response.status}.`);
+  const lower = Object.fromEntries(Object.entries(response.headers).map(([k, v]) => [k.toLowerCase(), v]));
   try {
-    return response.body ? JSON.parse(response.body) : null;
+    return { data: response.body ? JSON.parse(response.body) : null, headers: lower };
   } catch {
     throw new HttpError(502, `Der Git-Anbieter antwortet mit HTTP ${response.status}.`);
   }
@@ -312,11 +339,41 @@ function gitlabIssue(i: any): RemoteIssue {
   };
 }
 
+// Forgejo and Gitea (the same API): pull requests are issues too, marked by
+// `pull_request` (and left out by type=issues).
+function forgejoIssue(i: any): RemoteIssue {
+  return {
+    id: String(i.id),
+    number: Number(i.number),
+    url: str(i.html_url),
+    title: str(i.title),
+    body: str(i.body),
+    state: i.state === "closed" ? "closed" : "open",
+    labels: (Array.isArray(i.labels) ? i.labels : []).map((l: any) => (typeof l === "string" ? l : str(l?.name))).filter(Boolean),
+    assignees: (Array.isArray(i.assignees) ? i.assignees : i.assignee ? [i.assignee] : []).map((a: any) => str(a?.login)).filter(Boolean),
+    milestone: i.milestone ? { id: Number(i.milestone.id), due: str(i.milestone.due_on).slice(0, 10) || null } : null,
+    updatedAt: Date.parse(i.updated_at) || 0,
+    comments: Number(i.comments) || 0,
+    pull: !!i.pull_request,
+  };
+}
+// Whether a Forgejo/Gitea list goes on after `page`: X-Total-Count, else
+// the Link header, else a full page.
+function morePages(headers: Record<string, string>, page: number, got: number, seen: number) {
+  const total = Number(headers["x-total-count"]);
+  if (headers["x-total-count"] !== undefined && Number.isFinite(total)) return got > 0 && seen < total;
+  if (headers.link !== undefined) return /rel="?next"?/.test(headers.link);
+  return got >= PER_PAGE;
+}
+const iso = (ms: number) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, "Z");
+
 // The provider's API, reduced to what the sync needs.
 function issueApi(client: Client) {
   const gh = client.provider === "github";
-  const repo = gh ? `/repos/${client.repo}` : `/projects/${encodeURIComponent(client.repo)}`;
-  const toIssue = gh ? githubIssue : gitlabIssue;
+  const gl = client.provider === "gitlab";
+  const fj = client.provider === "forgejo";
+  const repo = gl ? `/projects/${encodeURIComponent(client.repo)}` : `/repos/${client.repo}`;
+  const toIssue = gh ? githubIssue : gl ? gitlabIssue : forgejoIssue;
   const userIds = new Map<string, number | null>();
   const gitlabBody = async (change: IssueChange) => {
     const body: Record<string, unknown> = {};
@@ -348,50 +405,156 @@ function issueApi(client: Client) {
     if (change.milestone !== undefined) body.milestone = change.milestone;
     return body;
   };
+  // Forgejo/Gitea lists: `limit` per page, as long as X-Total-Count or the
+  // Link header say there is more (a server may allow fewer than asked).
+  const pagedList = async (path: string, pages: number) => {
+    const items: any[] = [];
+    for (let page = 1; page <= pages; page++) {
+      const { data, headers } = await request(client, "GET", `${path}${path.includes("?") ? "&" : "?"}limit=${PER_PAGE}&page=${page}`);
+      const list = Array.isArray(data) ? data : [];
+      items.push(...list);
+      if (!morePages(headers, page, list.length, items.length)) break;
+    }
+    return items;
+  };
+  // Forgejo/Gitea set labels by ID: those of the repository and of its
+  // organisation; a missing one is created – as GitHub and GitLab do.
+  let labelIds: Map<string, number> | null = null;
+  const forgejoLabels = async (names: string[]) => {
+    if (!labelIds) {
+      const known = new Map<string, number>();
+      try {
+        for (const l of await pagedList(`/orgs/${encodeURIComponent(client.repo.split("/")[0])}/labels`, 5)) if (str(l?.name)) known.set(str(l.name), Number(l.id));
+      } catch (error) {
+        // A person's repository has no organisation (404), or the token may not read it.
+        if (error instanceof IssueRateLimit) throw error;
+      }
+      for (const l of await pagedList(`${repo}/labels`, 20)) if (str(l?.name)) known.set(str(l.name), Number(l.id));
+      labelIds = known;
+    }
+    const ids: number[] = [];
+    for (const name of names) {
+      if (!labelIds.has(name)) labelIds.set(name, Number((await call(client, "POST", `${repo}/labels`, { name, color: "#9e9e9e" }))?.id));
+      ids.push(labelIds.get(name)!);
+    }
+    return ids;
+  };
+  const forgejoBody = (change: IssueChange) => {
+    const body: Record<string, unknown> = {};
+    if (change.title !== undefined) body.title = change.title;
+    if (change.body !== undefined) body.body = change.body;
+    if (change.state) body.state = change.state;
+    if (change.assignees) body.assignees = change.assignees;
+    if (change.milestone !== undefined) body.milestone = change.milestone ?? 0;
+    return body;
+  };
+  // Forgejo/Gitea: issues (no pull requests) changed between `since` and
+  // `before` (both inclusive, to the second), and how many there are.
+  const forgejoQuery = (since: number | null, before: number | null) =>
+    `${repo}/issues?state=all&type=issues${since ? `&since=${iso(since)}` : ""}${before ? `&before=${iso(before)}` : ""}`;
+  const forgejoCount = async (since: number | null, before: number | null) => {
+    const { data, headers } = await request(client, "GET", `${forgejoQuery(since, before)}&limit=1&page=1`);
+    const total = Number(headers["x-total-count"]);
+    if (headers["x-total-count"] !== undefined && Number.isFinite(total)) return total;
+    return Array.isArray(data) && data.length ? null : 0;
+  };
+  // The issues changed since the cursor, oldest change first – at most
+  // about one run's share: when more changed, the window ends earlier
+  // (`before`, halved until it fits) and the next run goes on from the
+  // cursor. Forgejo/Gitea sort by creation, so the window is read whole.
+  const forgejoChanged = async (since: number | null) => {
+    const budget = MAX_PULL_PAGES * PER_PAGE;
+    let before: number | null = null;
+    const total = await forgejoCount(since, null);
+    if (total === 0) return [];
+    if (total !== null && total > budget) {
+      let lo = Math.floor((since ?? Date.UTC(2005, 0, 1)) / 1000);
+      let hi = Math.ceil(Date.now() / 1000) + 60;
+      for (let probe = 0; probe < MAX_WINDOW_PROBES && hi - lo > 1; probe++) {
+        const mid = Math.floor((lo + hi) / 2);
+        if (((await forgejoCount(since, mid * 1000)) ?? 0) > budget) hi = mid;
+        else lo = mid;
+      }
+      // More than a run's share within one second (an imported repository):
+      // that second whole.
+      before = Math.max(lo, Math.floor((since ?? 0) / 1000) + 1) * 1000;
+    }
+    const issues = new Map<string, RemoteIssue>();
+    for (const item of await pagedList(forgejoQuery(since, before), 40)) {
+      const issue = forgejoIssue(item);
+      issues.set(issue.id, issue);
+    }
+    return [...issues.values()].sort((a, b) => a.updatedAt - b.updatedAt || a.number - b.number);
+  };
+  const list = async (since: number | null, page: number) => {
+    const params = gh
+      ? `state=all&sort=updated&direction=asc&per_page=${PER_PAGE}&page=${page}${since ? `&since=${new Date(since).toISOString()}` : ""}`
+      : `scope=all&order_by=updated_at&sort=asc&per_page=${PER_PAGE}&page=${page}${since ? `&updated_after=${new Date(since).toISOString()}` : ""}`;
+    const data = await call(client, "GET", `${repo}/issues?${params}`);
+    return (Array.isArray(data) ? data : []).map(toIssue);
+  };
   return {
     async verify() {
       const data = await call(client, "GET", repo);
-      return { name: str(gh ? data?.full_name : data?.path_with_namespace) || client.repo };
+      return { name: str(gl ? data?.path_with_namespace : data?.full_name) || client.repo };
     },
-    async list(since: number | null, page: number) {
-      const params = gh
-        ? `state=all&sort=updated&direction=asc&per_page=${PER_PAGE}&page=${page}${since ? `&since=${new Date(since).toISOString()}` : ""}`
-        : `scope=all&order_by=updated_at&sort=asc&per_page=${PER_PAGE}&page=${page}${since ? `&updated_after=${new Date(since).toISOString()}` : ""}`;
-      const data = await call(client, "GET", `${repo}/issues?${params}`);
-      return (Array.isArray(data) ? data : []).map(toIssue);
+    // Issues updated since the cursor, a page at a time, oldest change first.
+    async *changed(since: number | null): AsyncGenerator<RemoteIssue[]> {
+      if (fj) {
+        const issues = await forgejoChanged(since);
+        for (let i = 0; i < issues.length; i += PER_PAGE) yield issues.slice(i, i + PER_PAGE);
+        return;
+      }
+      for (let page = 1; page <= MAX_PULL_PAGES; page++) {
+        const issues = await list(since, page);
+        yield issues;
+        if (issues.length < PER_PAGE) break;
+      }
     },
     async get(number: number) {
       return toIssue(await call(client, "GET", `${repo}/issues/${number}`));
     },
     async create(change: IssueChange) {
-      const created = toIssue(await call(client, "POST", `${repo}/issues`, gh ? githubBody({ ...change, state: undefined }) : await gitlabBody(change)));
+      const body = gh
+        ? githubBody({ ...change, state: undefined })
+        : gl
+          ? await gitlabBody(change)
+          : { ...forgejoBody({ ...change, state: undefined }), ...(change.labels ? { labels: await forgejoLabels(change.labels) } : {}) };
+      const created = toIssue(await call(client, "POST", `${repo}/issues`, body));
       // New issues start open; a closed status follows in a second step.
       return change.state === "closed" ? this.update(created.number, { state: "closed" }) : created;
     },
     async update(number: number, change: IssueChange) {
       if (gh) return toIssue(await call(client, "PATCH", `${repo}/issues/${number}`, githubBody(change)));
+      if (fj) {
+        // Labels have a call of their own; the edit after it answers with the whole issue.
+        if (change.labels) await call(client, "PUT", `${repo}/issues/${number}/labels`, { labels: await forgejoLabels(change.labels) });
+        return toIssue(await call(client, "PATCH", `${repo}/issues/${number}`, forgejoBody(change)));
+      }
       const body = await gitlabBody(change);
       if (change.state) body.state_event = change.state === "closed" ? "close" : "reopen";
       return toIssue(await call(client, "PUT", `${repo}/issues/${number}`, body));
     },
     async comments(number: number): Promise<RemoteComment[]> {
-      const data = await call(client, "GET", gh ? `${repo}/issues/${number}/comments?per_page=100` : `${repo}/issues/${number}/notes?sort=asc&order_by=created_at&per_page=100`);
+      const data = fj
+        ? await pagedList(`${repo}/issues/${number}/comments`, 2)
+        : await call(client, "GET", gh ? `${repo}/issues/${number}/comments?per_page=100` : `${repo}/issues/${number}/notes?sort=asc&order_by=created_at&per_page=100`);
       return (Array.isArray(data) ? data : [])
-        .filter((c: any) => gh || !c.system)
+        .filter((c: any) => !gl || !c.system)
         .map((c: any) => ({
           id: String(c.id),
-          author: str(gh ? c.user?.login : c.author?.name || c.author?.username),
+          author: str(gl ? c.author?.name || c.author?.username : c.user?.login),
           body: str(c.body),
-          url: gh ? str(c.html_url) : "",
+          url: gl ? "" : str(c.html_url),
         }));
     },
     async comment(number: number, body: string): Promise<RemoteComment> {
-      const c = await call(client, "POST", gh ? `${repo}/issues/${number}/comments` : `${repo}/issues/${number}/notes`, { body });
-      return { id: String(c?.id ?? ""), author: "", body, url: gh ? str(c?.html_url) : "" };
+      const c = await call(client, "POST", gl ? `${repo}/issues/${number}/notes` : `${repo}/issues/${number}/comments`, { body });
+      return { id: String(c?.id ?? ""), author: "", body, url: gl ? "" : str(c?.html_url) };
     },
     async milestones() {
-      const data = await call(client, "GET", `${repo}/milestones?${gh ? "state=all&" : ""}per_page=100`);
-      return (Array.isArray(data) ? data : []).map((m: any) => ({ id: Number(gh ? m.number : m.id), due: str(gh ? m.due_on : m.due_date).slice(0, 10) || null }));
+      const data = fj ? await pagedList(`${repo}/milestones?state=all`, 10) : await call(client, "GET", `${repo}/milestones?${gh ? "state=all&" : ""}per_page=100`);
+      return (Array.isArray(data) ? data : []).map((m: any) => ({ id: Number(gh ? m.number : m.id), due: str(gh || fj ? m.due_on : m.due_date).slice(0, 10) || null }));
     },
   };
 }
@@ -405,7 +568,7 @@ async function requireConnectionManager(user: Identity, workspaceId: string) {
   if (user.demo) throw new HttpError(403, "In der Demo nicht verfügbar. Registriere dich, um das zu nutzen.");
   const role = await memberRole(user, workspaceId);
   if (!role || await isGuest(user, workspaceId) || (role !== "owner" && !user.isAdmin))
-    throw new HttpError(403, "Nur Eigentümer des Arbeitsbereichs und Administratoren verbinden GitHub oder GitLab.");
+    throw new HttpError(403, "Nur Eigentümer des Arbeitsbereichs und Administratoren verbinden GitHub, GitLab oder Forgejo/Gitea.");
 }
 const mayManage = async (user: Identity, workspaceId: string) => {
   try {
@@ -433,7 +596,7 @@ const tokenAad = (connectionId: string) => `issue-sync:${connectionId}`;
 const hookAad = (connectionId: string) => `issue-sync-hook:${connectionId}`;
 const connectionInput = z.object({
   id: z.string().uuid().optional(),
-  provider: z.enum(["github", "gitlab"]),
+  provider: z.enum(ISSUE_PROVIDERS),
   baseUrl: z.string().max(500).default(""),
   repo: z.string().max(300).default(""),
   token: z.string().trim().max(1000).optional(),
@@ -987,8 +1150,7 @@ async function pushComments(ctx: Context, rowId: string, number: number) {
 async function pull(ctx: Context) {
   let cursor = ctx.state.cursor ?? (ctx.config.importExisting ? null : ctx.map.created_at);
   let pulled = 0;
-  for (let page = 1; page <= MAX_PULL_PAGES; page++) {
-    const issues = await ctx.api.list(cursor ?? null, page);
+  for await (const issues of ctx.api.changed(cursor ?? null)) {
     for (const issue of issues) {
       if (issue.pull) continue;
       const link = await linkOfIssue(ctx, issue.id);
@@ -1020,7 +1182,6 @@ async function pull(ctx: Context) {
       if (current && (!link || issue.updatedAt > link.remote_updated)) await pullComments(ctx, current.row_id, issue);
       cursor = Math.max(cursor || 0, issue.updatedAt);
     }
-    if (issues.length < PER_PAGE) break;
   }
   ctx.state.cursor = cursor ?? undefined;
   ctx.state.lastPull = Date.now();
@@ -1197,8 +1358,9 @@ function same(a: string, b: string) {
     y = Buffer.from(b);
   return x.length === y.length && timingSafeEqual(x, y);
 }
-// Checks a webhook of GitHub (X-Hub-Signature-256) or GitLab
-// (X-Gitlab-Token) and names the databases to pull.
+// Checks a webhook of GitHub (X-Hub-Signature-256), GitLab (X-Gitlab-Token)
+// or Forgejo/Gitea (X-Forgejo-Signature or X-Gitea-Signature: the HMAC of
+// the body in hex) and names the databases to pull.
 export async function receiveIssueWebhook(token: string, headers: Headers, body: string) {
   if (!/^[A-Za-z0-9_-]{20,64}$/.test(token)) throw new HttpError(404, "Nicht gefunden.");
   const connection = await one<ConnectionRow>("SELECT * FROM issue_connections WHERE hook_token=?", token);
@@ -1214,12 +1376,21 @@ export async function receiveIssueWebhook(token: string, headers: Headers, body:
     event = headers.get("x-github-event") || "";
     const expected = `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;
     if (!event || !same(headers.get("x-hub-signature-256") || "", expected)) throw new HttpError(401, "Signatur ungültig.");
-  } else {
+  } else if (connection.provider === "gitlab") {
     event = headers.get("x-gitlab-event") || "";
     if (!event || !same(headers.get("x-gitlab-token") || "", secret)) throw new HttpError(401, "Signatur ungültig.");
+  } else {
+    // Forgejo sends both its own headers and Gitea's.
+    event = headers.get("x-forgejo-event") || headers.get("x-gitea-event") || "";
+    const signature = headers.get("x-forgejo-signature") || headers.get("x-gitea-signature") || "";
+    if (!event || !same(signature, createHmac("sha256", secret).update(body).digest("hex"))) throw new HttpError(401, "Signatur ungültig.");
   }
   if (event === "ping") return { ok: true, pages: [] as string[] };
-  if (!["issues", "issue_comment", "Issue Hook", "Note Hook", "Confidential Issue Hook", "Confidential Note Hook"].includes(event))
+  // Forgejo/Gitea name label, assignee and milestone changes "issues" (their
+  // X-Gitea-Event-Type is finer); the finer names are taken as well.
+  if (
+    !["issues", "issue_comment", "issue_label", "issue_assign", "issue_milestone", "Issue Hook", "Note Hook", "Confidential Issue Hook", "Confidential Note Hook"].includes(event)
+  )
     return { ok: true, pages: [] as string[] };
   let payload: { repository?: { full_name?: string }; project?: { path_with_namespace?: string; id?: number } };
   try {

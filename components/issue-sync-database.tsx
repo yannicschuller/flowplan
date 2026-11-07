@@ -1,18 +1,18 @@
 "use client";
 import { useEffect, useState } from "react";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
-import { ArrowsClockwise, GithubLogo, GitlabLogo } from "@phosphor-icons/react";
+import { ArrowsClockwise, GithubLogo } from "@phosphor-icons/react";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useT } from "./i18n";
+import { ISSUE_PROVIDER_NAMES, IssueProviderLogo, type IssueProvider as Provider } from "./issue-provider";
 import { Select } from "./select";
 import { api, Modal } from "./ui";
 import type { Database, Field, Page } from "@/lib/types";
 
-// GitHub/GitLab issue sync of a database (lib/issue-sync.ts): the entry in
-// the "…" menu, the mapping dialog with the sync status, and the
+// GitHub/GitLab/Forgejo issue sync of a database (lib/issue-sync.ts): the
+// entry in the "…" menu, the mapping dialog with the sync status, and the
 // "GitHub #123" chip on records.
 
-type Provider = "github" | "gitlab";
 type StatusEntry = { value: string; state: "open" | "closed"; label: string };
 type Config = {
   direction: "both" | "pull" | "push";
@@ -151,13 +151,13 @@ export function IssueSyncDialog({ page, database, editable }: { page: Page; data
         <div className="git-settings issue-sync-dialog">
           <p className="muted">
             {t(
-              "Einträge dieser Datenbank und die Issues eines GitHub- oder GitLab-Repositorys halten sich gegenseitig aktuell. Ändern sich beide Seiten, gewinnt die spätere Änderung (im Prüfprotokoll vermerkt). Neue Einträge werden zu Issues, sobald die Zuordnung gespeichert ist.",
-              "Records of this database and the issues of a GitHub or GitLab repository keep each other up to date. When both sides change, the later change wins (noted in the audit log). New records become issues once the mapping is saved.",
+              "Einträge dieser Datenbank und die Issues eines Repositorys auf GitHub, GitLab oder Forgejo/Gitea halten sich gegenseitig aktuell. Ändern sich beide Seiten, gewinnt die spätere Änderung (im Prüfprotokoll vermerkt). Neue Einträge werden zu Issues, sobald die Zuordnung gespeichert ist.",
+              "Records of this database and the issues of a repository on GitHub, GitLab or Forgejo/Gitea keep each other up to date. When both sides change, the later change wins (noted in the audit log). New records become issues once the mapping is saved.",
             )}
           </p>
           {status.map && (
             <p className={state?.error ? "error" : "muted"} role="status">
-              {status.map.provider === "github" ? <GithubLogo aria-hidden /> : <GitlabLogo aria-hidden />} {status.map.repo} · {status.map.links}{" "}
+              <IssueProviderLogo provider={status.map.provider} /> {status.map.repo} · {status.map.links}{" "}
               {t("verknüpfte Einträge", "linked records")} · {t("Zuletzt abgerufen", "Last pull")} {when(state?.lastPull)} · {t("Zuletzt übertragen", "Last push")}{" "}
               {when(state?.lastPush)}
               {state?.conflicts ? ` · ${t(`${state.conflicts} Konflikte`, `${state.conflicts} conflicts`)}` : ""}
@@ -169,7 +169,7 @@ export function IssueSyncDialog({ page, database, editable }: { page: Page; data
             !status.map && <p className="muted">{t("Nicht verbunden. Eigentümer des Arbeitsbereichs richten das ein.", "Not connected. Workspace owners set this up.")}</p>
           ) : !status.connections.length ? (
             <p className="callout-inline">
-              {t("Verbinde zuerst GitHub oder GitLab unter Einstellungen → Kalender & Issues.", "First connect GitHub or GitLab under Settings → Calendars & issues.")}
+              {t("Verbinde zuerst GitHub, GitLab oder Forgejo unter Einstellungen → Kalender & Issues.", "First connect GitHub, GitLab or Forgejo under Settings → Calendars & issues.")}
             </p>
           ) : (
             <>
@@ -186,7 +186,7 @@ export function IssueSyncDialog({ page, database, editable }: { page: Page; data
                   >
                     {status.connections.map((c) => (
                       <option key={c.id} value={c.id}>
-                        {c.provider === "github" ? "GitHub" : "GitLab"}
+                        {ISSUE_PROVIDER_NAMES[c.provider]}
                         {c.baseUrl ? ` · ${c.baseUrl}` : ""}
                         {c.repo ? ` · ${c.repo}` : ""}
                       </option>
@@ -330,7 +330,7 @@ export function IssueSyncChip({ pageId, rowId }: { pageId: string; rowId: string
   if (!link) return null;
   return (
     <a className="issue-sync-chip" href={link.url} target="_blank" rel="noreferrer">
-      {link.provider === "github" ? <GithubLogo aria-hidden /> : <GitlabLogo aria-hidden />}
+      <IssueProviderLogo provider={link.provider} />
       {link.label}
     </a>
   );

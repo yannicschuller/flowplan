@@ -120,6 +120,16 @@ helm install flowplan deploy/helm/flowplan -n flowplan \
   --set s3.bucket=flowplan --set s3.endpoint=https://s3.example.org
 ```
 
+- **Database role:** let the role in `DATABASE_URL` own the database (it
+  creates tables, functions and triggers, and installs pg_trgm) but **not
+  be a superuser** – a superuser can run programs on the database host,
+  and so could a flaw in the app. Many Postgres charts and images make
+  their configured user a superuser; create a separate role instead, e.g.
+  as the administrator:
+  `CREATE ROLE flowplan LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD '…';`
+  `CREATE DATABASE flowplan OWNER flowplan;` and in that database
+  `CREATE SCHEMA flowplan_ext AUTHORIZATION flowplan; CREATE EXTENSION pg_trgm SCHEMA flowplan_ext;`
+  (pgvector likewise, where the server has it).
 - **Schema:** a Job (`pre-install`/`pre-upgrade` hook) runs
   `node /app/scripts/db-schema.mjs` before the pods of a new version start – it
   adds what the version needs and never drops anything. Without it

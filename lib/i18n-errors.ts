@@ -90,6 +90,8 @@ const exact: Record<string, string> = {
   "Bitte einen gültigen Basis-DN angeben.": "Please enter a valid base DN.",
   "Der LDAP-Filter ist ungültig.": "The LDAP filter is invalid.",
   "Dieser Eintrag liegt außerhalb des Verzeichnisbereichs für Kontakte.": "This entry lies outside the directory area for contacts.",
+  "Das LDAP-Verzeichnis ist nur für Mitglieder der Organisation da: Administratoren, Konten mit LDAP-Anmeldung und Mitglieder, die in einen Arbeitsbereich eingeladen wurden.": "The LDAP directory is only for members of the organisation: administrators, accounts that sign in with LDAP and members invited to a workspace.",
+  "Dieses LDAP-Attribut ist für Kontakte nicht freigegeben. Administratoren können weitere Attribute freigeben.": "This LDAP attribute is not allowed for contacts. Administrators can allow more attributes.",
   "Für Kontakte ist kein LDAP-Verzeichnis eingerichtet.": "No LDAP directory is set up for contacts.",
   "Bitte Einträge oder eine OU auswählen.": "Please choose entries or an OU.",
   "Höchstens 20 OUs je Datenbank.": "At most 20 OUs per database.",
@@ -459,6 +461,7 @@ const exact: Record<string, string> = {
   "Keine Flowplan-Instanzsicherung.": "Not a Flowplan instance backup.",
   "Die Datenbank der Sicherung ist beschädigt.": "The backup's database is damaged.",
   "Die Sicherung enthält keine gültige Flowplan-Datenbank.": "The backup contains no valid Flowplan database.",
+  "Die Sicherung enthält Datenbankobjekte, die Flowplan nicht selbst anlegt (etwa Funktionen oder Trigger), und wird deshalb nicht wiederhergestellt.": "The backup contains database objects Flowplan does not create itself (such as functions or triggers), so it is not restored.",
   "Diese Sicherung ist ein PostgreSQL-Dump (pg_dump) und lässt sich nur in einer Instanz mit PostgreSQL wiederherstellen. Für einen Wechsel zu SQLite: die Sicherung der gesamten Instanz (.zip) oder der Instanzumzug.": "This backup is a PostgreSQL dump (pg_dump) and can only be restored in an instance with PostgreSQL. To switch to SQLite: the backup of the whole instance (.zip) or the instance move.",
   "Arbeitsbereich nicht gefunden.": "Workspace not found.",
   "Die Vorlage ist zu lang.": "The template is too long.",
@@ -922,7 +925,7 @@ const exact: Record<string, string> = {
   "Unbekannter Webhook.": "Unknown webhook.",
   "Ungültige Signatur.": "Invalid signature.",
   "Webhook konnte nicht verarbeitet werden.": "The webhook could not be processed.",
-  // GitHub/GitLab issue sync
+  // GitHub/GitLab/Forgejo issue sync
   "Dieser Git-Server ist für die Issue-Synchronisierung nicht freigegeben (ISSUE_SYNC_ALLOWED_HOSTS).": "This Git server is not allowed for the issue sync (ISSUE_SYNC_ALLOWED_HOSTS).",
   "Repository bitte als „besitzer/name“ angeben.": "Please give the repository as “owner/name”.",
   "Projekt bitte als „gruppe/projekt“ oder Projekt-ID angeben.": "Please give the project as “group/project” or a project ID.",
@@ -930,7 +933,8 @@ const exact: Record<string, string> = {
   "Der Git-Anbieter lehnt das Token ab.": "The Git provider rejects the token.",
   "Dem Token fehlt die Berechtigung für dieses Repository.": "The token lacks permission for this repository.",
   "Repository oder Issue nicht gefunden – oder das Token hat keinen Zugriff.": "Repository or issue not found – or the token has no access.",
-  "Nur Eigentümer des Arbeitsbereichs und Administratoren verbinden GitHub oder GitLab.": "Only workspace owners and administrators connect GitHub or GitLab.",
+  "Nur Eigentümer des Arbeitsbereichs und Administratoren verbinden GitHub, GitLab oder Forgejo/Gitea.": "Only workspace owners and administrators connect GitHub, GitLab or Forgejo/Gitea.",
+  "Für Forgejo / Gitea bitte die Adresse des Servers angeben.": "For Forgejo / Gitea, please enter the address of the server.",
   "Verbindung nicht gefunden.": "Connection not found.",
   "Für einen anderen Server bitte das Token erneut eingeben.": "For another server, please enter the token again.",
   "Bitte ein Zugangstoken eingeben.": "Please enter an access token.",
@@ -1019,6 +1023,7 @@ const exact: Record<string, string> = {
   "Diese Domain wird bereits verwendet.": "This domain is already in use.",
   "Für diese Veröffentlichung ist keine Domain eingetragen.": "No domain is set for this publication.",
   "Weder TXT-Eintrag noch Prüfdatei gefunden.": "Found neither the TXT record nor the verification file.",
+  "Kein passender TXT-Eintrag gefunden.": "No matching TXT record found.",
   // End-to-end encrypted spaces (lib/e2ee-server.ts)
   "Für verschlüsselte Seiten nicht verfügbar.": "Not available for encrypted pages.",
   "Seiten lassen sich nicht in einen verschlüsselten Bereich hinein oder aus ihm heraus verschieben.": "Pages cannot be moved into or out of an encrypted space.",

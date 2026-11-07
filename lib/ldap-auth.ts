@@ -22,7 +22,7 @@ import { z } from "zod";
 import { all, audit, id, one, run, transaction } from "./db";
 import { HttpError, adminGroup } from "./auth";
 import { addressKey } from "./client-address";
-import { clearFailures, failed, limited, localLoginEnabled, passwordLogin, slowDown } from "./local-auth";
+import { beginAttempt, clearFailures, localLoginEnabled, passwordLogin, slowDown } from "./local-auth";
 import { reapplySsoUser } from "./sso-mappings";
 import { setUserDisabled } from "./account-deletion";
 import { translate, type Locale } from "./i18n";
@@ -138,20 +138,25 @@ export async function ldapPasswordLogin(identifier: string, password: string, ad
   if (!config) throw new HttpError(403, t("Anmeldung mit Passwort ist ausgeschaltet.", "Password sign-in is turned off."));
   const name = identifier.trim();
   const keys = [...addressKey("ip", address), `ldap:${name.toLowerCase()}`];
-  if (await limited(keys)) throw new HttpError(429, t("Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.", "Too many attempts. Please try again in 15 minutes."));
-  await slowDown(keys);
+  const attempt = await beginAttempt(keys);
+  if (!attempt) throw new HttpError(429, t("Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.", "Too many attempts. Please try again in 15 minutes."));
   const wrong = async () => {
-    await failed(keys);
+    await attempt.failed();
     return new HttpError(401, t("E-Mail-Adresse oder Passwort stimmt nicht.", "E-mail address or password is wrong."));
   };
-  if (!name || !password) throw (await wrong());
   let entry: LdapEntry;
   try {
-    entry = await ldapAuthenticate(name, password, config);
-  } catch (e) {
-    if (e instanceof LdapError && e.invalidCredentials) throw (await wrong());
-    console.error("LDAP sign-in failed", e instanceof Error ? e.message : e);
-    throw new HttpError(503, t("Der Verzeichnisdienst (LDAP) ist gerade nicht erreichbar.", "The directory service (LDAP) cannot be reached right now."));
+    await slowDown(keys);
+    if (!name || !password) throw (await wrong());
+    try {
+      entry = await ldapAuthenticate(name, password, config);
+    } catch (e) {
+      if (e instanceof LdapError && e.invalidCredentials) throw (await wrong());
+      console.error("LDAP sign-in failed", e instanceof Error ? e.message : e);
+      throw new HttpError(503, t("Der Verzeichnisdienst (LDAP) ist gerade nicht erreichbar.", "The directory service (LDAP) cannot be reached right now."));
+    }
+  } finally {
+    await attempt.end();
   }
   if (entryLocked(entry)) throw new HttpError(403, t("Dieses Konto ist deaktiviert.", "This account is disabled."));
   const groups = groupNames(entry, config.groupAttribute);

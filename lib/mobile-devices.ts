@@ -18,7 +18,7 @@
 //   notifications, open tasks, the running timer. It opens nothing else.
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
-import { all, id, one, run } from "./db";
+import { all, id, lockFor, one, run, transaction } from "./db";
 import { adminGroup, HttpError, touchSession } from "./auth";
 import { cellText } from "./cell-text";
 import { openTasksEverywhere } from "./doc-tasks";
@@ -140,89 +140,93 @@ async function requireSession(user: Identity, sessionToken: string) {
 // Registers (or renews) this installation for the signed-in session and
 // returns a fresh device token; the previous one stops working.
 export async function registerMobileDevice(user: Identity, sessionToken: string, input: unknown) {
-  await requireSession(user, sessionToken);
-  const b = registration.parse(input);
-  if (b.publicKey && !validDeviceKey(b.publicKey)) throw new HttpError(400, "Ungültiger Push-Schlüssel.");
-  const relay = pushRelayInfo();
-  // The relay part counts only for this instance's relay.
-  const relayMatches = !!relay && (!b.relayUrl || strictOrigin(b.relayUrl) === relay.url);
-  const existing = await one<{ id: string; push_subscription_id: string | null }>(
-    "SELECT id,push_subscription_id FROM mobile_devices WHERE user_id=? AND installation_id=?",
-    user.id,
-    b.installationId,
-  );
-  if (
-    !existing &&
-    Number((await one<{ n: number }>("SELECT COUNT(*) n FROM mobile_devices WHERE user_id=?", user.id))?.n || 0) >= MAX_DEVICES
-  )
-    throw new HttpError(429, "Höchstens 20 Apps pro Konto.");
-  if (existing) {
-    if (existing.push_subscription_id) await run("DELETE FROM push_subscriptions WHERE id=?", existing.push_subscription_id);
-    await run("DELETE FROM mobile_devices WHERE id=?", existing.id);
-  }
-  const deviceId = id();
-  const withRelay = relayMatches && !!b.relayToken && !!b.publicKey;
-  let subscription: string | null = null;
-  if ((b.pushToken || withRelay) && mobilePushEnabled()) {
-    // Expo stays the fallback when the relay refuses the device (lib/push.ts).
-    const endpoint = b.pushToken ? `${EXPO_ENDPOINT}${b.pushToken}` : `${RELAY_ENDPOINT}${deviceId}`;
-    // A phone signed in with another account before: its pushes now go here.
-    await run("DELETE FROM push_subscriptions WHERE endpoint=?", endpoint);
-    subscription = id();
-    await run(
-      "INSERT INTO push_subscriptions(id,user_id,session_token,endpoint,p256dh,auth) VALUES(?,?,?,?,?,?)",
-      subscription,
+  return await transaction(async () => {
+    await requireSession(user, sessionToken);
+    const b = registration.parse(input);
+    if (b.publicKey && !validDeviceKey(b.publicKey)) throw new HttpError(400, "Ungültiger Push-Schlüssel.");
+    const relay = pushRelayInfo();
+    // The relay part counts only for this instance's relay.
+    const relayMatches = !!relay && (!b.relayUrl || strictOrigin(b.relayUrl) === relay.url);
+    // A person's apps are counted and registered one at a time.
+    await lockFor(`mobile-devices:${user.id}`);
+    const existing = await one<{ id: string; push_subscription_id: string | null }>(
+      "SELECT id,push_subscription_id FROM mobile_devices WHERE user_id=? AND installation_id=?",
       user.id,
-      sessionToken,
-      endpoint,
-      "",
-      "",
+      b.installationId,
     );
-  }
-  const token = `fpd_${randomBytes(30).toString("base64url")}`;
-  const now = Date.now();
-  await run(
-    "INSERT INTO mobile_devices(id,user_id,installation_id,session_token,platform,name,app_version,token_hash,push_subscription_id,created_at,last_seen_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-    deviceId,
-    user.id,
-    b.installationId,
-    sessionToken,
-    b.platform,
-    b.name,
-    b.appVersion,
-    hashToken(token),
-    subscription,
-    now,
-    now,
-  );
-  if (withRelay && subscription) {
-    const relayHash = hashToken(b.relayToken!);
-    // A phone signed in with another account before: its pushes now go here.
-    await run("DELETE FROM mobile_push_relay WHERE token_hash=?", relayHash);
+    if (
+      !existing &&
+      Number((await one<{ n: number }>("SELECT COUNT(*) n FROM mobile_devices WHERE user_id=?", user.id))?.n || 0) >= MAX_DEVICES
+    )
+      throw new HttpError(429, "Höchstens 20 Apps pro Konto.");
+    if (existing) {
+      if (existing.push_subscription_id) await run("DELETE FROM push_subscriptions WHERE id=?", existing.push_subscription_id);
+      await run("DELETE FROM mobile_devices WHERE id=?", existing.id);
+    }
+    const deviceId = id();
+    const withRelay = relayMatches && !!b.relayToken && !!b.publicKey;
+    let subscription: string | null = null;
+    if ((b.pushToken || withRelay) && mobilePushEnabled()) {
+      // Expo stays the fallback when the relay refuses the device (lib/push.ts).
+      const endpoint = b.pushToken ? `${EXPO_ENDPOINT}${b.pushToken}` : `${RELAY_ENDPOINT}${deviceId}`;
+      // A phone signed in with another account before: its pushes now go here.
+      await run("DELETE FROM push_subscriptions WHERE endpoint=?", endpoint);
+      subscription = id();
+      await run(
+        "INSERT INTO push_subscriptions(id,user_id,session_token,endpoint,p256dh,auth) VALUES(?,?,?,?,?,?)",
+        subscription,
+        user.id,
+        sessionToken,
+        endpoint,
+        "",
+        "",
+      );
+    }
+    const token = `fpd_${randomBytes(30).toString("base64url")}`;
+    const now = Date.now();
     await run(
-      "INSERT INTO mobile_push_relay(device_id,relay_token,token_hash,public_key,created_at) VALUES(?,?,?,?,?)",
+      "INSERT INTO mobile_devices(id,user_id,installation_id,session_token,platform,name,app_version,token_hash,push_subscription_id,created_at,last_seen_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
       deviceId,
-      sealSecret(b.relayToken!, relayAad(deviceId)),
-      relayHash,
-      b.publicKey!,
+      user.id,
+      b.installationId,
+      sessionToken,
+      b.platform,
+      b.name,
+      b.appVersion,
+      hashToken(token),
+      subscription,
+      now,
       now,
     );
-  }
-  // Live Activities need no notification permission, only the relay.
-  if (relayMatches && b.liveActivityRelayTokens) {
-    const labels = parseLabels(b.liveActivityLabels);
-    for (const kind of LIVE_ACTIVITY_KINDS) {
-      const value = b.liveActivityRelayTokens[kind];
-      if (value) await storeLiveToken(deviceId, kind, value, labels);
+    if (withRelay && subscription) {
+      const relayHash = hashToken(b.relayToken!);
+      // A phone signed in with another account before: its pushes now go here.
+      await run("DELETE FROM mobile_push_relay WHERE token_hash=?", relayHash);
+      await run(
+        "INSERT INTO mobile_push_relay(device_id,relay_token,token_hash,public_key,created_at) VALUES(?,?,?,?,?)",
+        deviceId,
+        sealSecret(b.relayToken!, relayAad(deviceId)),
+        relayHash,
+        b.publicKey!,
+        now,
+      );
     }
-  }
-  return {
-    deviceToken: token,
-    push: !!subscription,
-    // Whether notifications go through the relay, end-to-end encrypted.
-    relay: withRelay && !!subscription,
-    liveActivities: await liveKinds(deviceId),
-  };
+    // Live Activities need no notification permission, only the relay.
+    if (relayMatches && b.liveActivityRelayTokens) {
+      const labels = parseLabels(b.liveActivityLabels);
+      for (const kind of LIVE_ACTIVITY_KINDS) {
+        const value = b.liveActivityRelayTokens[kind];
+        if (value) await storeLiveToken(deviceId, kind, value, labels);
+      }
+    }
+    return {
+      deviceToken: token,
+      push: !!subscription,
+      // Whether notifications go through the relay, end-to-end encrypted.
+      relay: withRelay && !!subscription,
+      liveActivities: await liveKinds(deviceId),
+    };
+  }, user);
 }
 
 // A Live Activity started (or ended) on the phone after the registration:

@@ -237,7 +237,7 @@ test("HTML previews run nothing and load nothing; SVG, LaTeX and Typst helpers",
   assert.equal(typstError([], line), null);
   assert.ok(TYPST_FONTS.includes("NewCMMath-Regular.otf"));
   // A publication on its own domain loads the Typst files too.
-  assert.deepEqual(customHostRoute({ status: "verified", token: "abc", verifyToken: "v" } as never, "/typst/compiler.wasm", "GET"), { kind: "next" });
+  assert.deepEqual(customHostRoute({ status: "verified", token: "abc" }, "/typst/compiler.wasm", "GET"), { kind: "next" });
 });
 
 test("the Typst route serves the compiler, renderer and fonts, nothing else", async () => {

@@ -59,6 +59,50 @@ test("the desktop app signs in through the browser", async ({ browser }, testInf
   await web.close();
 });
 
+// The Windows desktop app (#165): passkeys with Windows Hello right in the
+// app's window – the page's own button – and, when the prompt fails or is
+// cancelled, "Im Browser anmelden" hands over to the browser after all. The
+// app on macOS and Linux (and older apps) keep the hand-off; SSO always
+// goes to the browser.
+test("the Windows desktop app signs in with passkeys in its window", async ({ browser }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "One run covers it.");
+  const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
+  const agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Electron/44.9.3 Safari/537.36 FlowplanDesktop/1.3.2";
+  const app = await browser.newContext({ userAgent: agent });
+  // The app's bridge (flowplan-desktop preload.js); Windows Hello cancelled.
+  await app.addInitScript(() => {
+    Object.defineProperty(window, "FlowplanDesktop", { value: Object.freeze({ platform: "desktop", version: "1.3.2", passkeys: "window" }) });
+    (window as unknown as { asked: number }).asked = 0;
+    navigator.credentials.get = () => {
+      (window as unknown as { asked: number }).asked++;
+      return Promise.reject(new DOMException("The operation either timed out or was not allowed.", "NotAllowedError"));
+    };
+  });
+  const page = await app.newPage();
+  await page.goto(origin + "/");
+  await expect(page.getByRole("button", { name: "Mit Passkey anmelden" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Mit Passkey anmelden" })).toHaveCount(0);
+  await expect(page.locator("[data-passkey-fallback]")).toHaveCount(0);
+  await page.getByRole("button", { name: "Mit Passkey anmelden" }).click();
+  await expect(page.locator(".login-card [role=alert]")).toHaveText("Anmeldung mit Passkey abgebrochen.");
+  expect(await page.evaluate(() => (window as unknown as { asked: number }).asked)).toBe(1);
+  const fallback = page.locator("[data-passkey-fallback] a");
+  await expect(fallback).toHaveText("Im Browser anmelden");
+  await expect(fallback).toHaveAttribute("href", "/api/auth/desktop");
+  await app.close();
+
+  // The app on macOS and Linux: the hand-off, as before.
+  const other = await browser.newContext({ userAgent: agent.replace("Windows NT 10.0; Win64; x64", "Macintosh; Intel Mac OS X 10_15_7") });
+  await other.addInitScript(() => {
+    Object.defineProperty(window, "FlowplanDesktop", { value: Object.freeze({ platform: "desktop", version: "1.3.2", passkeys: "browser" }) });
+  });
+  const mac = await other.newPage();
+  await mac.goto(origin + "/");
+  await expect(mac.getByRole("link", { name: "Mit Passkey anmelden" })).toHaveAttribute("href", "/api/auth/desktop");
+  await expect(mac.getByRole("button", { name: "Mit Passkey anmelden" })).toHaveCount(0);
+  await other.close();
+});
+
 // The iOS and Android apps (FlowplanMobile/) hand over the same way.
 test("the mobile app signs in with passkeys and SSO through the browser", async ({ browser }, testInfo) => {
   test.skip(testInfo.project.name !== "mobile", "One run covers it.");

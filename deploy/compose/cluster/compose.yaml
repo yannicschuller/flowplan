@@ -57,15 +57,24 @@ services:
     image: postgres:16
     restart: unless-stopped
     environment:
-      POSTGRES_USER: flowplan
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
-      POSTGRES_DB: flowplan
+      # The image's superuser: for administration only. Flowplan connects
+      # as its own role `flowplan`, owner of the database `flowplan` but no
+      # superuser (postgres-init.sh) – a superuser could run programs on
+      # this host. (A database made by an older version of this file keeps
+      # its roles: there `flowplan` is the superuser – see
+      # docs/architecture/database.md, "Security", to change that.)
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?set POSTGRES_ADMIN_PASSWORD in .env}
+      FLOWPLAN_DB_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
     # Room for the instances' pools (2 × 20 + leader/listen connections).
     command: ["postgres", "-c", "max_connections=200"]
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - ./postgres-init.sh:/docker-entrypoint-initdb.d/10-flowplan.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U flowplan -d flowplan"]
+      # Over TCP: the server the image runs for postgres-init.sh listens on
+      # its socket only, so this waits for the real one.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U flowplan -d flowplan"]
       interval: 5s
       timeout: 5s
       retries: 20

@@ -221,6 +221,11 @@ export async function saveCapture(user: Identity, raw: unknown, files: UploadFil
   const store = async (ownerId: string) => await storeCaptureFiles(user, prepared, ownerId, recognized);
   let publish: () => void = () => {};
   const result = await transaction(async () => {
+    // Again with the insert: parallel uploads take turns (locks of both).
+    if (size) {
+      await enforceQuota(page.workspace_id, size);
+      await enforceUserStorage(user, size);
+    }
     const append = async (pageId: string, rowId: string | null) => {
       const nodes = contentNodes(text, link, prepared);
       const changed = await rewriteDocument(pageId, rowId, writer.id, (doc) => doc.type.create(doc.attrs, doc.content.append(Fragment.fromArray(nodes)), doc.marks));

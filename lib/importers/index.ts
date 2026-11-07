@@ -14,7 +14,7 @@ import { ARCHIVE_LIMIT, readZip } from "../archive";
 import { HttpError } from "../auth";
 import { jobProgress } from "../background-jobs";
 import { parseConfluence, isConfluence } from "./confluence";
-import { parseAffine } from "./affine";
+import { parseAffine, type AffineOptions } from "./affine";
 import { isSnapshotZip, isSqlite, readAffineFile, readSnapshotZip } from "./affine-read";
 import { parseEnex } from "./evernote";
 import { isGoogleTakeout, parseGoogleDocs, resolveDocx } from "./google-docs";
@@ -67,7 +67,7 @@ function fileHead(path: string) {
 // Files other than the AFFiNE workspace file are read into memory.
 export const MEMORY_IMPORT_LIMIT = ARCHIVE_LIMIT;
 
-export async function parseImport(name: string, input: Buffer | { path: string }, chosen?: ImportSource | "auto"): Promise<ImportTree> {
+export async function parseImport(name: string, input: Buffer | { path: string }, chosen?: ImportSource | "auto", affine: AffineOptions = {}): Promise<ImportTree> {
   if (!Buffer.isBuffer(input)) {
     const head = fileHead(input.path);
     refuseLegacyOffice(name, head);
@@ -75,7 +75,7 @@ export async function parseImport(name: string, input: Buffer | { path: string }
     if (isSqlite(head) && (!chosen || chosen === "auto" || chosen === "affine")) {
       const ws = readAffineFile(input.path, importTitle(name));
       try {
-        return parseAffine(ws, importTitle(name));
+        return parseAffine(ws, importTitle(name), affine);
       } catch (error) {
         ws.close?.();
         throw error;
@@ -96,9 +96,9 @@ export async function parseImport(name: string, input: Buffer | { path: string }
   switch (source) {
     case "affine":
       // The workspace file (SQLite) or a snapshot ZIP ("Export → Snapshot").
-      if (isSqlite(bytes)) return parseAffine(readAffineFile(bytes, title), title);
+      if (isSqlite(bytes)) return parseAffine(readAffineFile(bytes, title), title, affine);
       if (!entries || !isSnapshotZip(entries)) throw new HttpError(400, "Bitte die AFFiNE-Arbeitsbereichsdatei (.affine) oder einen Snapshot-Export (ZIP) hochladen.");
-      return parseAffine(readSnapshotZip(entries, title), title);
+      return parseAffine(readSnapshotZip(entries, title), title, affine);
     case "evernote": {
       const files = entries
         ? [...entries].filter(([n]) => /\.enex$/i.test(n)).map(([n, data]) => ({ name: n, xml: data.toString("utf8") }))
@@ -129,7 +129,14 @@ export async function parseImport(name: string, input: Buffer | { path: string }
   }
 }
 
-type ImportOptions = { source?: ImportSource | "auto"; mode?: ImportMode; dryRun?: boolean };
+type ImportOptions = {
+  source?: ImportSource | "auto";
+  mode?: ImportMode;
+  dryRun?: boolean;
+  // AFFiNE (#167): documents with exactly one document linking to them go
+  // below it; on unless false (pages only – a database has no page tree).
+  nestLinked?: boolean;
+};
 // The upload: its bytes, or (large files) its path on disk.
 type ImportFile = { name: string; bytes: Buffer } | { name: string; path: string };
 export async function importFromSource(user: Identity, workspaceId: string, spaceId: string, file: ImportFile, options: ImportOptions & { dryRun: true }): Promise<ImportPreview>;
@@ -144,7 +151,9 @@ export async function importFromSource(
 ): Promise<ImportPreview | ImportResult> {
   // Rights first: reading a large archive costs time.
   await requireSpace(user, workspaceId, spaceId);
-  const tree = await parseImport(file.name, "bytes" in file ? file.bytes : { path: file.path }, options.source);
+  const tree = await parseImport(file.name, "bytes" in file ? file.bytes : { path: file.path }, options.source, {
+    nestLinked: options.nestLinked !== false && options.mode !== "database",
+  });
   try {
     // Reading is about half of the work (Live Activity, lib/background-jobs.ts).
     await jobProgress(0.5);

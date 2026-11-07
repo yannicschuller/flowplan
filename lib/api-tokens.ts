@@ -6,7 +6,7 @@
 // the token is shown once.
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
-import { id, one, run } from "./db";
+import { id, lockFor, one, run } from "./db";
 import { db } from "./db-driver";
 import { securityEvent } from "./security-events";
 import { HttpError } from "./auth";
@@ -29,6 +29,8 @@ export async function createApiToken(user: Identity, input: unknown) {
       days: z.number().int().min(1).max(3650).nullable().optional(),
     })
     .parse(input);
+  // In the command's transaction: a person's new tokens are counted one at a time.
+  await lockFor(`api-tokens:${user.id}`);
   const count = Number((await one<{ n: number }>("SELECT COUNT(*) n FROM api_tokens WHERE user_id=?", user.id))?.n || 0);
   if (count >= MAX_TOKENS) throw new HttpError(409, `Höchstens ${MAX_TOKENS} Tokens pro Person.`);
   const token = `fp_${randomBytes(30).toString("base64url")}`;

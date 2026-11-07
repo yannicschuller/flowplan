@@ -102,7 +102,9 @@ test("workspace file: folders, links, tags, collections, database, files, whiteb
     sketch = await pageByTitle("Skizze");
   assert.equal(plan.parent_id, projects.id);
   assert.equal(notes.parent_id, archive.id);
-  assert.equal(sketch.parent_id, root.id, "documents outside folders go below the workspace page");
+  // Only "Notizen" links to "Skizze" (an app link): it goes below it (#167);
+  // the board next to it comes along.
+  assert.equal(sketch.parent_id, notes.id, "a document outside folders with one document linking to it goes below that one");
   assert.ok((await html(archive.id)).includes(link(plan.id)), "a second folder links to the document");
   assert.match(await html(archive.id), /#projekt/);
   assert.equal((await all("SELECT id FROM pages WHERE workspace_id=? AND title='Kreis A'", wid)).length, 0, "folders in a cycle (not reachable in AFFiNE) are skipped without hanging");
@@ -343,7 +345,9 @@ test("snapshot ZIP: documents, links, tags from info.json and assets", async () 
       ["assets/pic.png", PNG],
     ]),
   );
-  const result = await importFromSource(owner, wid, space, { name: "snapshot.zip", bytes: zip });
+  // Both at the top with documents linked from one other left in place
+  // (#167, the switch in the preview; tests/affine-backlinks.test.ts).
+  const result = await importFromSource(owner, wid, space, { name: "snapshot.zip", bytes: zip }, { nestLinked: false });
   assert.equal(result.source, "affine");
   assert.ok(result.warnings.some((w) => /nur die Arbeitsbereichsdatei/.test(w)));
   const eins = (await one<{ id: string }>("SELECT id FROM pages WHERE workspace_id=? AND title='Eins' ORDER BY seq DESC", wid))!;

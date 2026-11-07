@@ -1,7 +1,7 @@
 import { duplicatePages } from "./page-tree";
 import { placeAfter } from "./space-order";
 import { z } from "zod";
-import { all, one, run, id, lockMembership, nowText } from "./db";
+import { all, one, run, id, nowText, lockMembership } from "./db";
 import { removePages } from "./search-store";
 import { HttpError } from "./auth";
 import { memberRole, requireMember, spaceRole } from "./permissions";
@@ -281,6 +281,7 @@ export async function manageWorkspace(
 // Spaces they own go to `spacesTo` (or stay, when none is given and they
 // own none).
 export async function removeFromWorkspace(userId: string, wid: string, spacesTo?: string) {
+  await lockMembership(wid);
   if (spacesTo)
     await run("UPDATE spaces SET owner_id=?,version=version+1 WHERE workspace_id=? AND owner_id=?", spacesTo, wid, userId);
   await run(

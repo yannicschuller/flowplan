@@ -1,14 +1,14 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Copy, GithubLogo, GitlabLogo, Plus, Trash } from "@phosphor-icons/react";
+import { Copy, GithubLogo, Plus, Trash } from "@phosphor-icons/react";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { serverMessage } from "@/lib/i18n-errors";
 import { useT } from "./i18n";
+import { ISSUE_PROVIDER_NAMES, IssueProviderLogo, type IssueProvider as Provider } from "./issue-provider";
 import { Select } from "./select";
 import { CONTROL, EmptyState, SettingGroup, SettingRow, StatusBadge } from "./settings-ui";
 import { api } from "./ui";
 
-type Provider = "github" | "gitlab";
 type MapState = { lastPull?: number; lastPush?: number; error?: string | null; pulled?: number; pushed?: number; conflicts?: number };
 type Connection = {
   id: string;
@@ -39,9 +39,9 @@ const parsePeople = (text: string) =>
     .map(([login, email]) => ({ login, email }));
 const when = (at?: number | null) => (at ? new Date(at).toLocaleString(LOCALE_TAG) : "");
 
-// Settings → Kalender & Issues: GitHub/GitLab connections for the issue
-// sync (lib/issue-sync.ts). Owners and administrators only; others see
-// nothing.
+// Settings → Kalender & Issues: GitHub, GitLab and Forgejo/Gitea
+// connections for the issue sync (lib/issue-sync.ts). Owners and
+// administrators only; others see nothing.
 export function IssueSyncSettings({ workspaceId, onError }: { workspaceId: string; onError: (message: string) => void }) {
   const t = useT();
   const [overview, setOverview] = useState<Overview | null>(null);
@@ -102,7 +102,21 @@ export function IssueSyncSettings({ workspaceId, onError }: { workspaceId: strin
     setCopied(what);
     setTimeout(() => setCopied(""), 1500);
   };
-  const Logo = ({ provider }: { provider: Provider }) => (provider === "github" ? <GithubLogo aria-hidden /> : <GitlabLogo aria-hidden />);
+  // Forgejo/Gitea has no public server: its address is needed.
+  const forgejo = draft?.provider === "forgejo";
+  // Where the webhook is set up, per provider.
+  const hookHint = (provider: Provider) =>
+    provider === "github"
+      ? t(
+          "Repository → Settings → Webhooks: Adresse, Content type application/json, Secret, Ereignisse „Issues“ und „Issue comments“.",
+          "Repository → Settings → Webhooks: address, content type application/json, secret, events “Issues” and “Issue comments”.",
+        )
+      : provider === "gitlab"
+        ? t("Projekt → Einstellungen → Webhooks: Adresse, Secret token, Trigger „Issues events“ und „Comments“.", "Project → Settings → Webhooks: address, secret token, triggers “Issues events” and “Comments”.")
+        : t(
+            "Repository → Einstellungen → Webhooks → Webhook hinzufügen → Forgejo (bzw. Gitea): Adresse, POST, Content type application/json, Secret, eigene Ereignisse „Issues“ und „Issue-Kommentare“.",
+            "Repository → Settings → Webhooks → Add webhook → Forgejo (or Gitea): address, POST, content type application/json, secret, custom events “Issues” and “Issue comments”.",
+          );
   const connectButton = (
     <button
       type="button"
@@ -112,7 +126,7 @@ export function IssueSyncSettings({ workspaceId, onError }: { workspaceId: strin
         setDraft({ ...emptyDraft });
       }}
     >
-      <Plus aria-hidden /> {t("GitHub oder GitLab verbinden", "Connect GitHub or GitLab")}
+      <Plus aria-hidden /> {t("GitHub, GitLab oder Forgejo verbinden", "Connect GitHub, GitLab or Forgejo")}
     </button>
   );
   const copyField = (id: string, label: string, value: string, what: string) => (
@@ -128,7 +142,7 @@ export function IssueSyncSettings({ workspaceId, onError }: { workspaceId: strin
   return (
     <SettingGroup
       id="issues"
-      title={t("GitHub- und GitLab-Issues", "GitHub and GitLab issues")}
+      title={t("Issues aus GitHub, GitLab und Forgejo/Gitea", "GitHub, GitLab and Forgejo/Gitea issues")}
       description={t(
         "Verbinde einen Anbieter, um Datenbanken mit den Issues eines Repositorys zu synchronisieren – in beide Richtungen oder nur in eine. Die Zuordnung legst du in der Datenbank fest („…“ → Issues synchronisieren). Die Synchronisierung handelt als die Person, die die Verbindung einrichtet.",
         "Connect a provider to sync databases with the issues of a repository – both ways or only one. The mapping is set in the database (“…” → Sync issues). The sync acts as the person who sets up the connection.",
@@ -147,7 +161,7 @@ export function IssueSyncSettings({ workspaceId, onError }: { workspaceId: strin
         return (
           <div key={c.id} className="issue-sync-connection">
             <SettingRow
-              label={`${c.provider === "github" ? "GitHub" : "GitLab"}${c.baseUrl ? ` · ${c.baseUrl}` : ""}${c.repo ? ` · ${c.repo}` : ""}`}
+              label={`${ISSUE_PROVIDER_NAMES[c.provider]}${c.baseUrl ? ` · ${c.baseUrl}` : ""}${c.repo ? ` · ${c.repo}` : ""}`}
               description={
                 <>
                   {t("Verbunden von", "Connected by")} {c.connectedBy || "?"}
@@ -174,13 +188,16 @@ export function IssueSyncSettings({ workspaceId, onError }: { workspaceId: strin
               </button>
             </SettingRow>
             {copyField(`hook-url-${c.id}`, t("Webhook-Adresse (Ereignisse: Issues, Kommentare)", "Webhook address (events: issues, comments)"), c.hookUrl, `url-${c.id}`)}
-            {c.hookSecret && copyField(`hook-secret-${c.id}`, c.provider === "github" ? t("Secret", "Secret") : t("Secret token", "Secret token"), c.hookSecret, `secret-${c.id}`)}
+            {c.hookSecret && copyField(`hook-secret-${c.id}`, c.provider === "gitlab" ? t("Secret token", "Secret token") : t("Secret", "Secret"), c.hookSecret, `secret-${c.id}`)}
+            <div className="setting-row wide">
+              <small className="muted">{hookHint(c.provider)}</small>
+            </div>
             {c.databases.length > 0 && (
               <div className="setting-row wide">
                 <ul className="issue-sync-databases">
                   {c.databases.map((d) => (
                     <li key={d.pageId}>
-                      <Logo provider={c.provider} /> <strong>{d.title}</strong> ↔ {d.repo}
+                      <IssueProviderLogo provider={c.provider} /> <strong>{d.title}</strong> ↔ {d.repo}
                       <span className={d.state.error ? "error" : "muted"}>
                         {d.state.lastPull ? ` · ${t("Abgerufen", "Pulled")} ${when(d.state.lastPull)}` : ""}
                         {d.state.lastPush ? ` · ${t("Übertragen", "Pushed")} ${when(d.state.lastPush)}` : ""}
@@ -201,11 +218,22 @@ export function IssueSyncSettings({ workspaceId, onError }: { workspaceId: strin
             <Select className={CONTROL.md} value={draft.provider} onChange={(e) => setDraft({ ...draft, provider: e.target.value as Provider })} disabled={busy}>
               <option value="github">GitHub</option>
               <option value="gitlab">GitLab</option>
+              <option value="forgejo">{ISSUE_PROVIDER_NAMES.forgejo}</option>
             </Select>
           </label>
           <label>
-            {t("Server (leer für github.com bzw. gitlab.com)", "Server (empty for github.com or gitlab.com)")}
-            <input className={CONTROL.lg} type="url" value={draft.baseUrl} onChange={(e) => setDraft({ ...draft, baseUrl: e.target.value })} placeholder="https://gitlab.example.org" maxLength={500} disabled={busy} autoComplete="off" />
+            {forgejo ? t("Server (z. B. https://codeberg.org)", "Server (e.g. https://codeberg.org)") : t("Server (leer für github.com bzw. gitlab.com)", "Server (empty for github.com or gitlab.com)")}
+            <input
+              className={CONTROL.lg}
+              type="url"
+              value={draft.baseUrl}
+              onChange={(e) => setDraft({ ...draft, baseUrl: e.target.value })}
+              placeholder={forgejo ? "https://codeberg.org" : "https://gitlab.example.org"}
+              maxLength={500}
+              disabled={busy}
+              required={forgejo}
+              autoComplete="off"
+            />
             <small className="muted">
               {overview.allowedHosts.length
                 ? `${t("Erlaubte eigene Server:", "Allowed own servers:")} ${overview.allowedHosts.join(", ")}`
@@ -213,11 +241,13 @@ export function IssueSyncSettings({ workspaceId, onError }: { workspaceId: strin
             </small>
           </label>
           <label>
-            {draft.provider === "github" ? t("Repository (besitzer/name)", "Repository (owner/name)") : t("Projekt (gruppe/projekt)", "Project (group/project)")}
-            <input className={CONTROL.lg} value={draft.repo} onChange={(e) => setDraft({ ...draft, repo: e.target.value })} placeholder={draft.provider === "github" ? "acme/web" : "team/app"} maxLength={300} disabled={busy} autoComplete="off" />
+            {draft.provider === "gitlab" ? t("Projekt (gruppe/projekt)", "Project (group/project)") : t("Repository (besitzer/name)", "Repository (owner/name)")}
+            <input className={CONTROL.lg} value={draft.repo} onChange={(e) => setDraft({ ...draft, repo: e.target.value })} placeholder={draft.provider === "gitlab" ? "team/app" : "acme/web"} maxLength={300} disabled={busy} autoComplete="off" />
           </label>
           <label>
-            {t("Zugangstoken (Issues lesen und schreiben)", "Access token (read and write issues)")}
+            {forgejo
+              ? t("Zugangstoken (Berechtigungen write:issue und read:repository)", "Access token (permissions write:issue and read:repository)")
+              : t("Zugangstoken (Issues lesen und schreiben)", "Access token (read and write issues)")}
             <input
               className={CONTROL.lg}
               type="password"
@@ -239,10 +269,10 @@ export function IssueSyncSettings({ workspaceId, onError }: { workspaceId: strin
             </p>
           )}
           <div className="account-form-actions">
-            <button type="button" className="button" disabled={busy || !draft.repo.trim() || (!draft.token.trim() && !draft.id)} onClick={() => void test(draft)}>
+            <button type="button" className="button" disabled={busy || !draft.repo.trim() || (!draft.token.trim() && !draft.id) || (forgejo && !draft.baseUrl.trim())} onClick={() => void test(draft)}>
               {t("Verbindung testen", "Test connection")}
             </button>
-            <button type="button" className="button primary" disabled={busy || (!draft.token.trim() && !draft.id)} onClick={() => void save(draft)}>
+            <button type="button" className="button primary" disabled={busy || (!draft.token.trim() && !draft.id) || (forgejo && !draft.baseUrl.trim())} onClick={() => void save(draft)}>
               {t("Speichern", "Save")}
             </button>
             <button type="button" className="button" disabled={busy} onClick={() => setDraft(null)}>

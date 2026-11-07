@@ -225,7 +225,7 @@ test("the Postgres schema file matches the SQLite schema of this version", { ski
   assert.deepEqual(live, file, "run: node --import tsx scripts/db-pg-schema.mjs");
 });
 
-test("a SQLite database at main's schema 93 (files in the trash, no seq) upgrades to 94", { skip: backend !== "sqlite" }, async () => {
+test("a SQLite database at main's schema 93 (files in the trash, no seq) upgrades to the current one",{ skip: backend !== "sqlite" }, async () => {
   const { DatabaseSync } = await import("node:sqlite");
   const file = join(mkdtempSync(join(tmpdir(), "flowplan-schema93-")), "old.sqlite");
   legacy.db().exec(`VACUUM INTO '${file.replace(/'/g, "''")}'`); // sqlite-only
@@ -241,8 +241,8 @@ test("a SQLite database at main's schema 93 (files in the trash, no seq) upgrade
   old.exec("PRAGMA user_version=93");
   legacy.migrateFile(old);
   const version = (old.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
-  assert.equal(version, 94);
-  assert.equal(legacy.SCHEMA_VERSION, 94);
+  assert.equal(version, 95);
+  assert.equal(legacy.SCHEMA_VERSION, 95);
   for (const table of [...legacy.SEQ_TABLES, "pages"])
     assert.ok((old.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === "seq"), table);
   // Existing rows get their order, new ones one from the trigger.
@@ -253,4 +253,67 @@ test("a SQLite database at main's schema 93 (files in the trash, no seq) upgrade
   // #164's columns are kept.
   assert.ok((old.prepare("PRAGMA table_info(files)").all() as { name: string }[]).some((c) => c.name === "deleted_at"));
   old.close();
+});
+
+test("schema 95: issue connections allow Forgejo/Gitea, mappings survive the copy", { skip: backend !== "sqlite" }, async () => {
+  const { DatabaseSync } = await import("node:sqlite");
+  const file = join(mkdtempSync(join(tmpdir(), "flowplan-schema94-")), "old.sqlite");
+  legacy.db().exec(`VACUUM INTO '${file.replace(/'/g, "''")}'`); // sqlite-only
+  const old = new DatabaseSync(file);
+  old.exec("PRAGMA foreign_keys=ON");
+  // Back to 94: the CHECK without 'forgejo'.
+  old.exec(`DROP TABLE issue_sync_maps; DROP TABLE issue_connections;
+    CREATE TABLE issue_connections(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,provider TEXT NOT NULL CHECK(provider IN ('github','gitlab')),base_url TEXT NOT NULL DEFAULT '',repo TEXT NOT NULL DEFAULT '',token TEXT NOT NULL,hook_token TEXT NOT NULL UNIQUE,hook_secret TEXT NOT NULL,people TEXT NOT NULL DEFAULT '[]',state TEXT NOT NULL DEFAULT '{}',created_by TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,created_at INTEGER NOT NULL);
+    CREATE INDEX issue_connections_workspace ON issue_connections(workspace_id);
+    CREATE TABLE issue_sync_maps(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,connection_id TEXT NOT NULL REFERENCES issue_connections(id) ON DELETE CASCADE,repo TEXT NOT NULL,config TEXT NOT NULL,state TEXT NOT NULL DEFAULT '{}',created_by TEXT,created_at INTEGER NOT NULL);
+    CREATE INDEX issue_sync_maps_connection ON issue_sync_maps(connection_id);`);
+  const uid = legacy.id(),
+    wid = legacy.id(),
+    pid = legacy.id();
+  old.prepare("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)").run(uid, uid, "Old", "old@test.invalid");
+  old.prepare("INSERT INTO workspaces(id,name) VALUES(?,?)").run(wid, "Old");
+  old.prepare("INSERT INTO pages(id,workspace_id,title,kind) VALUES(?,?,?,?)").run(pid, wid, "Issues", "database");
+  old.prepare("INSERT INTO issue_connections(id,workspace_id,provider,repo,token,hook_token,hook_secret,created_by,created_at) VALUES('c1',?,'github','a/b','t','h1','s',?,1)").run(wid, uid);
+  old.prepare("INSERT INTO issue_sync_maps(page_id,connection_id,repo,config,created_at) VALUES(?,'c1','a/b','{}',7)").run(pid);
+  const insert = (cid: string, provider: string) =>
+    old
+      .prepare("INSERT INTO issue_connections(id,workspace_id,provider,base_url,token,hook_token,hook_secret,created_by,created_at) VALUES(?,?,?,'https://codeberg.org','t',?,'s',?,1)")
+      .run(cid, wid, provider, `hook-${cid}`, uid);
+  assert.throws(() => insert("c2", "forgejo"), /CHECK/);
+  old.exec("PRAGMA user_version=94");
+  legacy.migrateFile(old);
+  assert.equal((old.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, 95);
+  assert.deepEqual({ ...(old.prepare("SELECT page_id,connection_id,created_at FROM issue_sync_maps").get() as object) }, { page_id: pid, connection_id: "c1", created_at: 7 });
+  insert("c2", "forgejo");
+  assert.throws(() => insert("c3", "bitbucket"), /CHECK/);
+  assert.ok(old.prepare("SELECT 1 FROM sqlite_master WHERE type='index' AND name='issue_connections_workspace'").get());
+  // The mapping still follows its connection.
+  old.exec("DELETE FROM issue_connections WHERE id='c1'");
+  assert.equal((old.prepare("SELECT COUNT(*) n FROM issue_sync_maps").get() as { n: number }).n, 0);
+  old.close();
+});
+
+test("schema 95 on PostgreSQL: the data step widens the CHECK of an existing table", { skip: backend !== "postgres" }, async () => {
+  const { runDataSteps, ISSUE_PROVIDERS_STEP } = await import("../lib/data-steps");
+  const uid = await user("Forge");
+  const wid = await createWorkspace(uid, "Forge");
+  const insert = (cid: string, provider: string) =>
+    db.run(
+      "INSERT INTO issue_connections(id,workspace_id,provider,base_url,token,hook_token,hook_secret,created_by,created_at) VALUES(?,?,?,'https://codeberg.org','t',?,'s',?,1)",
+      cid,
+      wid,
+      provider,
+      `hook-${cid}`,
+      uid,
+    );
+  // As a schema of 94 has it (the translated schema never replaces a CHECK).
+  await db.run("ALTER TABLE issue_connections DROP CONSTRAINT IF EXISTS issue_connections_provider_check");
+  await db.run("ALTER TABLE issue_connections ADD CONSTRAINT issue_connections_provider_check CHECK(provider IN ('github','gitlab'))");
+  await assert.rejects(db.tx(async () => await insert("fj1", "forgejo")), /check constraint/);
+  await db.run("DELETE FROM data_migrations WHERE name=?", ISSUE_PROVIDERS_STEP);
+  await runDataSteps([ISSUE_PROVIDERS_STEP]);
+  assert.ok(await db.one("SELECT 1 FROM data_migrations WHERE name=?", ISSUE_PROVIDERS_STEP));
+  await insert("fj1", "forgejo");
+  await assert.rejects(db.tx(async () => await insert("bb1", "bitbucket")), /check constraint/);
+  await db.run("DELETE FROM issue_connections WHERE id='fj1'");
 });

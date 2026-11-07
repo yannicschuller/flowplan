@@ -39,7 +39,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 94;
+export const SCHEMA_VERSION = 95;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 export const SEQ_TABLES = [
@@ -724,11 +724,11 @@ function migrate(d: DatabaseSync) {
     if (!columns.includes("digest_day")) d.exec("ALTER TABLE webhooks ADD COLUMN digest_day TEXT");
     d.exec(`CREATE TABLE IF NOT EXISTS webhook_messages(webhook_id TEXT NOT NULL REFERENCES webhooks(id) ON DELETE CASCADE,ts TEXT NOT NULL,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,row_id TEXT,created_at INTEGER NOT NULL,PRIMARY KEY(webhook_id,ts));`);
   }
-  // GitHub/GitLab issue sync (lib/issue-sync.ts): connections of a
+  // GitHub/GitLab/Forgejo issue sync (lib/issue-sync.ts): connections of a
   // workspace (token and webhook secret sealed with lib/secret-box.ts), the
   // database ↔ repository mapping, one link per record and issue, pulled or
   // pushed comments and records waiting for a push.
-  d.exec(`CREATE TABLE IF NOT EXISTS issue_connections(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,provider TEXT NOT NULL CHECK(provider IN ('github','gitlab')),base_url TEXT NOT NULL DEFAULT '',repo TEXT NOT NULL DEFAULT '',token TEXT NOT NULL,hook_token TEXT NOT NULL UNIQUE,hook_secret TEXT NOT NULL,people TEXT NOT NULL DEFAULT '[]',state TEXT NOT NULL DEFAULT '{}',created_by TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,created_at INTEGER NOT NULL);
+  d.exec(`CREATE TABLE IF NOT EXISTS issue_connections(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,provider TEXT NOT NULL CHECK(provider IN ('github','gitlab','forgejo')),base_url TEXT NOT NULL DEFAULT '',repo TEXT NOT NULL DEFAULT '',token TEXT NOT NULL,hook_token TEXT NOT NULL UNIQUE,hook_secret TEXT NOT NULL,people TEXT NOT NULL DEFAULT '[]',state TEXT NOT NULL DEFAULT '{}',created_by TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,created_at INTEGER NOT NULL);
     CREATE INDEX IF NOT EXISTS issue_connections_workspace ON issue_connections(workspace_id);
     CREATE TABLE IF NOT EXISTS issue_sync_maps(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,connection_id TEXT NOT NULL REFERENCES issue_connections(id) ON DELETE CASCADE,repo TEXT NOT NULL,config TEXT NOT NULL,state TEXT NOT NULL DEFAULT '{}',created_by TEXT,created_at INTEGER NOT NULL);
     CREATE INDEX IF NOT EXISTS issue_sync_maps_connection ON issue_sync_maps(connection_id);
@@ -736,6 +736,7 @@ function migrate(d: DatabaseSync) {
     CREATE INDEX IF NOT EXISTS issue_links_page ON issue_links(page_id);
     CREATE TABLE IF NOT EXISTS issue_comment_links(comment_id TEXT PRIMARY KEY,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,provider TEXT NOT NULL,repo TEXT NOT NULL,remote_id TEXT NOT NULL,UNIQUE(provider,repo,remote_id));
     CREATE TABLE IF NOT EXISTS issue_sync_queue(row_id TEXT PRIMARY KEY,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,at INTEGER NOT NULL);`);
+  migrateIssueProviders(d);
   // Aliases of pages (lib/aliases.ts): a JSON array of other names, kept in
   // the search index next to the title.
   if (!(d.prepare("PRAGMA table_info(pages)").all() as { name: string }[]).some((c) => c.name === "aliases"))
@@ -1249,11 +1250,40 @@ function migrate(d: DatabaseSync) {
       CREATE TRIGGER pages_created_at AFTER INSERT ON pages WHEN NEW.created_at IS NULL OR NEW.seq IS NULL BEGIN
         UPDATE pages SET created_at=COALESCE(NEW.created_at,CURRENT_TIMESTAMP),seq=COALESCE(NEW.seq,NEW.rowid) WHERE rowid=NEW.rowid;
       END;`);
+  // Schema 95 – Forgejo/Gitea as a third provider of the issue sync (#162):
+  // issue_connections.provider allows 'forgejo' (migrateIssueProviders; on
+  // PostgreSQL the data step "issue-providers-95", lib/data-steps.ts). An
+  // older version could not read such a connection, hence the new number.
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
   forgetStatements(d);
   globalDb.flowplanSchema = SCHEMA_VERSION;
+}
+// Schema 95: the wider CHECK of issue_connections.provider. SQLite changes
+// a CHECK only by copying the table; dropping the old one would delete the
+// mappings that reference it (ON DELETE CASCADE), so they are kept aside
+// and put back.
+export function migrateIssueProviders(d: DatabaseSync) {
+  const table = d.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='issue_connections'").get() as { sql?: string } | undefined;
+  if (!table?.sql || table.sql.includes("'forgejo'")) return;
+  const columns = "id,workspace_id,provider,base_url,repo,token,hook_token,hook_secret,people,state,created_by,created_at";
+  const maps = "page_id,connection_id,repo,config,state,created_by,created_at";
+  d.exec("SAVEPOINT issue_providers");
+  try {
+    d.exec(`CREATE TABLE issue_connections_95(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,provider TEXT NOT NULL CHECK(provider IN ('github','gitlab','forgejo')),base_url TEXT NOT NULL DEFAULT '',repo TEXT NOT NULL DEFAULT '',token TEXT NOT NULL,hook_token TEXT NOT NULL UNIQUE,hook_secret TEXT NOT NULL,people TEXT NOT NULL DEFAULT '[]',state TEXT NOT NULL DEFAULT '{}',created_by TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,created_at INTEGER NOT NULL);
+    INSERT INTO issue_connections_95(${columns}) SELECT ${columns} FROM issue_connections;
+    CREATE TEMP TABLE issue_sync_maps_95 AS SELECT ${maps} FROM issue_sync_maps;
+    DROP TABLE issue_connections;
+    ALTER TABLE issue_connections_95 RENAME TO issue_connections;
+    CREATE INDEX IF NOT EXISTS issue_connections_workspace ON issue_connections(workspace_id);
+    INSERT OR IGNORE INTO issue_sync_maps(${maps}) SELECT ${maps} FROM temp.issue_sync_maps_95;
+    DROP TABLE temp.issue_sync_maps_95;`);
+  } catch (error) {
+    d.exec("ROLLBACK TO issue_providers; RELEASE issue_providers");
+    throw error;
+  }
+  d.exec("RELEASE issue_providers");
 }
 export function migrateFileTrash(d: DatabaseSync) {
   const columns = (d.prepare("PRAGMA table_info(files)").all() as { name: string }[]).map((c) => c.name);
@@ -1792,6 +1822,52 @@ export function noteRollback(root?: { rollback?: (() => void)[] }) {
 }
 export function noteTransaction(start: number) {
   if (runtimeMetricsOn) noteTransactionMetric(start);
+}
+// ---- Refusals that keep their bookkeeping ----
+//
+// A wrong PIN checked inside a command throws, and the throw rolls the
+// command's transaction back – with the row that counted the failure and
+// the alert to the owner, so the limit never filled up. Such a check throws
+// refuseKeeping(error, writes) instead: inside transactionKeepingRefusals
+// the work done so far is undone (a savepoint), the writes are made and
+// committed, and then the error is passed on. The check's own lock goes
+// with the savepoint (PostgreSQL releases locks of a rolled back
+// subtransaction), so the caller names it in `locks`: taken before the
+// savepoint, held until the writes are committed, parallel attempts see
+// them. Outside a transaction the writes are made
+// right away; inside another one they take part in it (and go with a
+// rollback, as before).
+type KeptWrite = [sql: string, ...params: Param[]];
+const keptWrites = new WeakMap<object, KeptWrite[]>();
+const keepingRoots = new WeakSet<object>();
+export async function refuseKeeping(error: Error, ...writes: KeptWrite[]): Promise<never> {
+  const scope = currentTx();
+  if (scope && keepingRoots.has(scope.root)) {
+    keptWrites.set(error, [...(keptWrites.get(error) ?? []), ...writes]);
+    throw error;
+  }
+  for (const [statement, ...params] of writes) await run(statement, ...params);
+  throw error;
+}
+export async function transactionKeepingRefusals<T>(fn: () => T | Promise<T>, actor?: Identity, locks: string[] = []): Promise<T> {
+  let refusal: { error: unknown } | null = null;
+  const value = await transaction(async () => {
+    const scope = currentTx();
+    // Only the outermost transaction can commit the writes.
+    if (scope && scope.depth === 0) keepingRoots.add(scope.root);
+    for (const key of locks) await lockFor(key);
+    try {
+      return await database().tx(async () => fn());
+    } catch (error) {
+      const writes = error && typeof error === "object" ? keptWrites.get(error) : undefined;
+      if (!writes) throw error;
+      for (const [statement, ...params] of writes) await run(statement, ...params);
+      refusal = { error };
+      return undefined as T;
+    }
+  }, actor);
+  if (refusal) throw (refusal as { error: unknown }).error;
+  return value;
 }
 // Undoes something outside the database (a written upload) when the
 // current transaction rolls back.

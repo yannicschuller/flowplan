@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { all, one, run, id } from "./db";
+import { all, one, run, id, lockFor } from "./db";
 import { requirePage } from "./permissions";
 import { inPinJournal, lockedPageIds, pinJournalPageIds, PIN_JOURNAL_NOT_SHARED, requireUnlocked } from "./journal-extras";
 import { HttpError } from "./auth";
@@ -61,6 +61,8 @@ export async function manageShareLink(
   const role = z.enum(["viewer", "commenter", "editor"]).parse(input.role);
   const name = z.string().trim().min(1).max(100).parse(input.name);
   const includeChildren = z.boolean().parse(input.includeChildren ?? false);
+  // Links of one page are created one after the other (count, then insert).
+  await lockFor(`share-links:${pageId}`);
   if (
     ((await one<{ n: number }>(
       "SELECT count(*) n FROM share_links WHERE root_id=?",
