@@ -147,6 +147,20 @@ test("activity log entries that matter become events; admin rights are an incide
   assert.ok(await one("SELECT 1 FROM security_incidents WHERE rule='privilege_change'"));
 });
 
+// The production build evaluates lib/security-events.ts once per route
+// bundle that includes it; every copy registered its listener again, and one
+// deleted account became four "account.deleted" events.
+test("a second copy of the module (another route bundle) does not write each event again", async () => {
+  await reset();
+  const admin = await person("Bundles");
+  await import(`../lib/security-events.ts?bundle=${Date.now()}`);
+  await import(`../lib/security-events.ts?bundle=${Date.now() + 1}`);
+  await audit(admin.id, "account.delete", admin.id);
+  await settle();
+  const kinds = (await all<{ kind: string }>("SELECT kind FROM security_events")).map((e) => e.kind);
+  assert.deepEqual(kinds, ["account.deleted"]);
+});
+
 test("probing: many refused API requests from one address make one event", async () => {
   const recorded: string[] = [];
   for (let i = 0; i < SECURITY_THRESHOLDS.probes + 10; i++) await noteRefusal("192.0.2.99", 404, `/api/pages/${i}`, 1_000_000 + i, (d) => recorded.push(d));
