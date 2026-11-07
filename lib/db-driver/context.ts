@@ -45,6 +45,9 @@ export const currentTx = () => {
 export function afterTransaction(fn: () => void) {
   const scope = currentTx();
   if (scope) (scope.root.after ??= []).push(fn);
+  // Another flow's asynchronous transaction holds the one SQLite
+  // connection (this callback interleaved between its awaits): after it.
+  else if (dbContext.sqliteActive && dbContext.sqliteDone) void dbContext.sqliteDone.then(() => afterTransaction(fn));
   else if (dbContext.als.getStore()) dbContext.als.exit(fn);
   else fn();
 }

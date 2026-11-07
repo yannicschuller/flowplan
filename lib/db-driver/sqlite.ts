@@ -60,6 +60,14 @@ export function createSqliteDb(): Db {
       dbContext.sqliteActive = root;
       dbContext.sqliteDone = new Promise<void>((resolve) => (release = resolve));
       const start = performance.now();
+      // A transaction that awaits more than database calls (fetch, scrypt,
+      // timers) holds the one connection across macrotasks; synchronous
+      // writes of other requests are refused meanwhile. Noticed in
+      // development: the check runs after the current microtasks.
+      const spans =
+        process.env.NODE_ENV === "production"
+          ? null
+          : setImmediate((stack) => dbContext.sqliteActive === root && console.warn("Asynchronous SQLite transaction spans I/O:", stack), new Error().stack);
       try {
         beginTransaction();
         try {
@@ -73,6 +81,7 @@ export function createSqliteDb(): Db {
           endTransaction(start);
         }
       } finally {
+        if (spans) clearImmediate(spans);
         dbContext.sqliteActive = null;
         dbContext.sqliteDone = null;
         release();
