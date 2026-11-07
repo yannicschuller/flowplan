@@ -572,3 +572,39 @@ test("guests edit relations into shared databases, files and single properties",
     "https://example.com/plan.pdf",
   ]);
 });
+
+test("a guest save keeps PDF blocks, also of files the guest cannot see", async () => {
+  const pid = await page(),
+    elsewhere = await page(),
+    token = await link(pid, "editor");
+  const shown = id(),
+    hidden = id();
+  for (const [fid, on] of [[shown, pid], [hidden, elsewhere]])
+    await run(
+      "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
+      fid,
+      on,
+      "plan.pdf",
+      "application/pdf",
+      1,
+      owner.id,
+    );
+  const pdf = (fid: string) => `<div data-pdf="/api/files/${fid}" data-title="Plan" class="pdf-block"><a href="/api/files/${fid}">Plan</a></div>`;
+  await run("UPDATE documents SET html=? WHERE page_id=?", `<p>Text</p>${pdf(shown)}${pdf(hidden)}`, pid);
+  const data = await sharedContent(token, pid);
+  // The guest sees the visible PDF through the link, the other one only as a placeholder.
+  assert.match(data.html, new RegExp(`data-pdf="/api/share/${token}/files/${shown}"`));
+  assert.doesNotMatch(data.html, new RegExp(hidden));
+  assert.match(data.html, new RegExp(`data-pdf="/share/${token}/hidden/[0-9a-f]+"`));
+  await save(token, pid, data.html.replace("<p>Text</p>", "<p>Text, edited</p>"));
+  const stored = String((await one("SELECT html FROM documents WHERE page_id=?", pid))?.html);
+  assert.match(stored, /Text, edited/);
+  assert.match(stored, new RegExp(`data-pdf="/api/files/${shown}"`));
+  assert.match(stored, new RegExp(`data-pdf="/api/files/${hidden}"`));
+  assert.doesNotMatch(stored, /\/hidden\//);
+  assert.doesNotMatch(stored, /\/api\/share\//);
+  // A guest cannot point a PDF block at a file outside the link.
+  const other = id();
+  await run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", other, elsewhere, "x.pdf", "application/pdf", 1, owner.id);
+  await fails(async () => await save(token, pid, `<div data-pdf="/api/files/${other}" class="pdf-block"></div>`), 403);
+});
