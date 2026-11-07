@@ -1023,7 +1023,7 @@ shared queues (files due/in flight, mail, push, webhooks, chat apps).
   as child processes** (`tests/helpers/cluster-instance.ts`) on one schema
   and one Redis: exactly one leader, heartbeats of both, a document update
   published on one arriving at an editor stream of the other, a shared
-  rate limit, graceful handover (< 5 s, measured ~0.3 s) and failover after
+  rate limit, graceful handover (asserted under 5 s) and failover after
   `SIGKILL` of the leader. Real Redis with `FLOWPLAN_TEST_REDIS_URL` (CI's
   `postgres` job now has a `redis:7` service), else an in-process double
   (`tests/helpers/fake-redis.ts`).
