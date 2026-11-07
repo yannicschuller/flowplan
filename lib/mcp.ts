@@ -775,3 +775,11 @@ export async function handleMcpMessage(user: Identity, input: unknown) {
   }
 }
 export const mcpToolNames = (user: Identity) => tools.filter((t) => may(user, t)).map((t) => t.name);
+// Whether a message calls a tool that changes content (refused while the
+// instance moves, lib/instance-read-only.ts).
+export function mcpChanges(input: unknown) {
+  const msg = (input && typeof input === "object" && !Array.isArray(input) ? input : {}) as Message;
+  if (msg.method !== "tools/call") return false;
+  const name = msg.params && typeof msg.params === "object" ? msg.params.name : undefined;
+  return !!tools.find((t) => t.name === name)?.write;
+}

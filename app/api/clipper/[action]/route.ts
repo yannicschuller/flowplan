@@ -3,7 +3,7 @@
 // (scope "clipper" or "write"); CORS answers name browser-extension
 // origins only and never allow credentials.
 import { z } from "zod";
-import { HttpError } from "@/lib/auth";
+import { HttpError, refuseWhileReadOnly } from "@/lib/auth";
 import { clipperCors, clipperTargets, clipperUser, saveClip } from "@/lib/clipper";
 import { localeOfRequest, withRequestLocale } from "@/lib/content-locale";
 import { localizedMessage } from "@/lib/i18n-errors";
@@ -35,7 +35,7 @@ export const GET = withRequestLocale(async (req: Request, { params }: { params: 
   try {
     const { action } = await params;
     if (action !== "targets") throw new HttpError(404, "Nicht gefunden.");
-    return answer(req, 200, clipperTargets(clipperUser(req.headers.get("authorization"))));
+    return answer(req, 200, clipperTargets(clipperUser(req.headers)));
   } catch (e) {
     return failure(req, e);
   }
@@ -46,7 +46,9 @@ export const POST = withRequestLocale(
     try {
       const { action } = await params;
       if (action !== "save") throw new HttpError(404, "Nicht gefunden.");
-      const user = clipperUser(req.headers.get("authorization"));
+      const user = clipperUser(req.headers);
+      // Not while the instance moves (lib/instance-read-only.ts).
+      refuseWhileReadOnly(req);
       if (Number(req.headers.get("content-length") || 0) > MAX_BODY) throw new HttpError(413, "Anfrage zu groß.");
       const text = await req.text();
       if (text.length > MAX_BODY) throw new HttpError(413, "Anfrage zu groß.");
