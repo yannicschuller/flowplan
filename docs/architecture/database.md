@@ -1049,3 +1049,76 @@ the transaction: the caller sees it).
   the incident channel upgrade, FTS5's content table, the read memo against
   a second SQLite connection – 6 (phase 1: 9; the formatted text, sealed
   secrets, saved searches and reaction emoji steps run on both now)..
+
+## 13. Phase 3: search, pgvector, pg_dump, migration (branch `db-search`)
+
+What changed (details in §3, §5a, §5b, §6):
+
+- **Search on PostgreSQL**: pg_trgm GIN indexes on the folded title and
+  text, FTS5's BM25 in SQL, FTS5's snippet window ported – instead of the
+  `tsvector` of the plan, which cannot find parts of words or CJK text
+  (§5a). Same API (`lib/search-store.ts`); SQLite unchanged. The stop-gap
+  table of phase 2 is kept and extended in place (no data migration).
+  `entryOrder()` makes equal ranks deterministic; the indexer drains its
+  queue in key order.
+- **Fixes found on the way**: a rebuilt index (after a restore, a move, a
+  migration) left out comments, messages and files; BM25's statistics
+  stayed at their defaults after a rebuild.
+- **pgvector** (`lib/ai/vector-store.ts`): a trigger-maintained table, one
+  HNSW index per vector size, exact SQL where the index cannot serve, the
+  JavaScript scan without the extension.
+- **pg_dump backups** (`lib/pg-backup.ts`): scheduled backups and "Back up
+  now" on PostgreSQL; restore with pg_restore (psql when the schema name
+  differs); setup restore from upload, S3 and SFTP; the Docker image has
+  `postgresql-client-18`; the container start leaves a pending restore to
+  the app on PostgreSQL.
+- **Migration tool**: all tables by default, streaming verification,
+  progress, the empty search table on the target, `ANALYZE` of its own
+  tables; tested on a realistic instance both ways (§6). Rebuild command
+  `scripts/db-search-rebuild.mjs`. Both scripts are in the image
+  (`/app/scripts/`).
+
+### Results
+
+RESULTS_PLACEHOLDER
+
+### Open risks and what is left
+
+- **pgvector without iterative scans** (0.6 in Ubuntu 24.04, what this was
+  tested with): a workspace that holds
+  few of the instance's vectors gets its hits from the exact query, i.e. a
+  scan of its own vectors in SQL – fine up to some 100,000 per workspace;
+  pgvector ≥ 0.8 (`hnsw.iterative_scan`) would let the index serve them.
+  HNSW is approximate: the nearest chunks can differ slightly from the
+  scan's on large sets (the tests compare exactly on small ones).
+- **Vectors of more than 2,000 dimensions** (e.g. 3072 of
+  text-embedding-3-large) have no index (halfvec would allow 4,000; not
+  done): exact SQL.
+- **pgvector is not trusted** before 0.8: Flowplan cannot install it as an
+  ordinary role; the administrator runs `CREATE EXTENSION vector`.
+- **Locale**: pg_trgm extracts trigrams only from what the database's
+  `LC_CTYPE` calls letters – with the C locale none from CJK text: such
+  queries are answered correctly but by rechecking every row (the official
+  `postgres` image and most managed services use `en_US.utf8`). Worth a
+  line in the installation docs.
+- **Index build at the first start** after the update: the two trigram
+  indexes (and `doc_length`, which rewrites the table) are built under an
+  advisory lock while the instance opens – minutes on a very large index.
+  Could move to a background step (`CREATE INDEX CONCURRENTLY`, outside a
+  transaction).
+- **Ranking detail**: FTS5 counts overlapping occurrences of a phrase,
+  `replace()` does not; IDF counts stop at 10,000 matching entries. No
+  difference in the tested set.
+- **pg_dump restores replace the whole schema** of the instance; the state
+  before is kept as a dump next to the data folder (disk space: one more
+  dump). Restoring into a schema of another name pipes SQL through psql
+  with the name replaced outside COPY data: a function body or default that
+  contains the old schema name followed by a dot would be changed too (none
+  in Flowplan's schema).
+- **Tools in non-Docker installs**: without pg_dump/pg_restore ≥ the
+  server's version the scheduled backup falls back to the SQLite file
+  (logged); a staged dump waits until the tools are there.
+- **Cluster mode** (branch `db-cluster`): the opening steps (search store,
+  vector store, a staged restore) run per instance under advisory locks; a
+  pg_dump restore should be coordinated by the leader, and `syncVectors`
+  could run on the leader only.

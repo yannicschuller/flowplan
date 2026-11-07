@@ -13,7 +13,7 @@ import { existsSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 import { SCHEMA_VERSION, all, migrateFile, one, run, transaction } from "./db";
 import { db } from "./db-driver";
-import { dumpDatabase, restoreDump } from "./pg-backup";
+import { dumpDatabase, requireTool, restoreDump } from "./pg-backup";
 import { snapshotDatabase } from "./db-snapshot";
 import { applyPendingRestore } from "./instance-restore-apply";
 import schemaJson from "./db-driver/postgres-schema.json";
@@ -26,6 +26,16 @@ const ROWS_PER_INSERT = 200;
 export async function restorePendingIntoPostgres() {
   const dir = resolve(/* turbopackIgnore: true */ process.env.FLOWPLAN_DATA_DIR || "./data");
   if (!existsSync(resolve(dir, "restore-pending", "READY"))) return null;
+  // A dump needs pg_dump and pg_restore: without them it stays staged (and
+  // is tried again at the next start) instead of being swapped in unused.
+  if (existsSync(resolve(dir, "restore-pending", "flowplan.dump")))
+    try {
+      await requireTool("pg_restore");
+      await requireTool("pg_dump");
+    } catch (error) {
+      console.error("Wiederherstellung wartet:", (error as Error).message);
+      return null;
+    }
   const previous = applyPendingRestore(dir);
   if (!previous) return null;
   const dump = resolve(dir, "flowplan.dump");
