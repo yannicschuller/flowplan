@@ -24,7 +24,7 @@ import { createHmac, randomBytes } from "node:crypto";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { z } from "zod";
-import { all, id, one, run, transaction } from "./db";
+import { all, id, lockFor, one, run, transaction } from "./db";
 import { HttpError } from "./auth";
 import { privateAddress, safeSend } from "./safe-fetch";
 import { pageRole, requirePage } from "./permissions";
@@ -218,25 +218,29 @@ export async function createWebhook(user: Identity, input: unknown) {
   await requireHookPage(user, b.workspaceId, b.pageId);
   const credentials = storedCredentials(b.format, b.credentials || {});
   const url = await checkTarget(resolveTarget(b.format, b.url, b.config, credentials));
-  if (Number((await one<{ n: number }>("SELECT COUNT(*) n FROM webhooks WHERE workspace_id=?", b.workspaceId))?.n) >= 20)
-    throw new HttpError(409, "Höchstens 20 Webhooks pro Arbeitsbereich.");
+  // Counted and written in one go (one workspace's webhooks take turns).
   const secret = randomBytes(24).toString("base64url");
   const hookId = id();
-  await run(
-    "INSERT INTO webhooks(id,workspace_id,url,events,page_id,secret,created_by,created_at,format,templates,config,credentials) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-    hookId,
-    b.workspaceId,
-    sealWebhookUrl(hookId, url.href),
-    JSON.stringify(b.events),
-    b.pageId || null,
-    sealWebhookSecret(hookId, secret),
-    user.id,
-    Date.now(),
-    b.format,
-    JSON.stringify(b.templates),
-    JSON.stringify(b.config),
-    Object.keys(credentials).length ? sealSecret(JSON.stringify(credentials), sealedFor(hookId)) : null,
-  );
+  await transaction(async () => {
+    await lockFor(`webhooks:${b.workspaceId}`);
+    if (Number((await one<{ n: number }>("SELECT COUNT(*) n FROM webhooks WHERE workspace_id=?", b.workspaceId))?.n) >= 20)
+      throw new HttpError(409, "Höchstens 20 Webhooks pro Arbeitsbereich.");
+    await run(
+      "INSERT INTO webhooks(id,workspace_id,url,events,page_id,secret,created_by,created_at,format,templates,config,credentials) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+      hookId,
+      b.workspaceId,
+      sealWebhookUrl(hookId, url.href),
+      JSON.stringify(b.events),
+      b.pageId || null,
+      sealWebhookSecret(hookId, secret),
+      user.id,
+      Date.now(),
+      b.format,
+      JSON.stringify(b.templates),
+      JSON.stringify(b.config),
+      Object.keys(credentials).length ? sealSecret(JSON.stringify(credentials), sealedFor(hookId)) : null,
+    );
+  }, user);
   return { id: hookId, secret };
 }
 

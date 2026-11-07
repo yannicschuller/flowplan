@@ -143,6 +143,16 @@ export async function renderedTheme(token: string, pageId: string) {
 
 // ---- Domains ----
 
+// How long a domain may stay unverified. Until then nobody else can enter
+// the host; afterwards the claim goes, so whoever entered someone else's
+// domain first cannot keep its rightful owner out for good.
+export const PENDING_DOMAIN_TTL = 7 * 24 * 60 * 60_000;
+// Removes the unverified claims older than that (the leader's operations
+// sweep, lib/admin-ops.ts). Verified domains stay until they are removed.
+export async function sweepPendingDomains(now = Date.now()) {
+  return (await run("DELETE FROM custom_domains WHERE verified_at IS NULL AND created_at<?", now - PENDING_DOMAIN_TTL)).changes;
+}
+
 export async function domainSettings(user: Identity, pageId: string) {
   const page = await requirePage(user, uuid.parse(pageId));
   const row = await one<DomainRow>("SELECT * FROM custom_domains WHERE page_id=?", page.id);
@@ -168,6 +178,9 @@ export async function addDomain(user: Identity, input: Record<string, unknown>) 
   if (user.demo) throw new HttpError(403, "In der Demo nicht verfügbar. Registriere dich, um das zu nutzen.");
   await requirePublished(page.id);
   const host = normalizeHost(input.host);
+  // An unverified claim does not hold a host forever (sweepPendingDomains);
+  // here also before the leader's next sweep.
+  await run("DELETE FROM custom_domains WHERE host=? AND verified_at IS NULL AND created_at<?", host, Date.now() - PENDING_DOMAIN_TTL);
   const taken = await one<{ page_id: string }>("SELECT page_id FROM custom_domains WHERE host=?", host);
   if (taken && taken.page_id !== page.id) throw new HttpError(409, "Diese Domain wird bereits verwendet.");
   const current = await one<DomainRow>("SELECT * FROM custom_domains WHERE page_id=?", page.id);

@@ -164,6 +164,9 @@ async function captureUpload(user: Identity, input: z.infer<(typeof actionSchema
   const fileUrl = `/api/files/${fileId}`;
   const media = input.type === "photo" ? `<p><img src="${fileUrl}" alt="${escaped(name)}"></p>` : `<audio src="${fileUrl}" controls></audio>`;
   const result = await transaction(async () => {
+    // Again with the insert: parallel uploads take turns (locks of both).
+    await enforceQuota(page.workspace_id, content.length);
+    await enforceUserStorage(user, content.length);
     const store = async (ownerId: string) => {
       const path = resolve(dir, fileId);
       writeFileSync(path, content);
@@ -242,6 +245,11 @@ async function captureShare(user: Identity, input: z.infer<(typeof actionSchemas
     )
     .join("");
   const result = await transaction(async () => {
+    // Again with the insert: parallel uploads take turns (locks of both).
+    if (total) {
+      await enforceQuota(page.workspace_id, total);
+      await enforceUserStorage(user, total);
+    }
     const store = async (ownerId: string) => {
       for (const file of stored) {
         const path = resolve(dir, file.id);

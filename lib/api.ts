@@ -223,7 +223,7 @@ import {
 import { applyTemplate, fillNewRecord, prepareManualApply, rawTemplate, storeTemplateNames } from "./record-template-apply";
 import { z } from "zod";
 import * as Y from "yjs";
-import { all, one, run, id, transaction, transactionKeepingRefusals, audit, db, nowText, sql } from "./db";
+import { all, one, run, id, transaction, transactionKeepingRefusals, audit, db, nowText, sql, lockMembership } from "./db";
 import { convertFormattedValues } from "./formatted-text";
 import { securityEvent } from "./security-events";
 import { noteDangerousHtml } from "./security-events";
@@ -1133,6 +1133,8 @@ async function runCommand(
         result = await saveSpaceGitExport(user, b);
         break;
       case "space.create": {
+        // Not while the creator is being removed: no space of a departed member.
+        await lockMembership(wid());
         await requireMember(user, wid(), "editor");
         // An encrypted space comes with its id chosen in the browser: the
         // sealed space key names the space it belongs to.
@@ -2856,7 +2858,11 @@ async function runCommand(
           true,
         );
         break;
+      // Changes to who belongs to a workspace take turns per workspace
+      // (lockMembership): first the lock, then every check – also of the
+      // actor's own role, which a parallel command may be changing.
       case "member.invite": {
+        await lockMembership(wid());
         await requireMember(user, wid(), "owner");
         limitInviter(user.id);
         const email = z.email().parse(b.email).toLowerCase(),
@@ -2888,6 +2894,7 @@ async function runCommand(
       // Open invitations: withdraw (with the pages waiting for them) or send again.
       case "invite.cancel":
       case "invite.resend": {
+        await lockMembership(wid());
         await requireMember(user, wid(), "owner");
         const invite = await one<{ email: string; guest: number }>("SELECT email,guest FROM invites WHERE id=? AND workspace_id=?", uuid.parse(b.inviteId), wid());
         if (!invite) throw new HttpError(404, "Einladung nicht gefunden.");
@@ -2918,6 +2925,7 @@ async function runCommand(
         break;
       }
       case "member.role": {
+        await lockMembership(wid());
         await requireMember(user, wid(), "owner");
         const target = uuid.parse(b.userId),
           role = z.enum(["owner", "editor", "viewer", "remove"]).parse(b.role);
@@ -2980,6 +2988,7 @@ async function runCommand(
         await deleteSsoMapping(wid(), b.id);
         break;
       case "member.guest": {
+        await lockMembership(wid());
         await requireMember(user, wid(), "owner");
         const target = uuid.parse(b.userId),
           guest = z.boolean().parse(b.guest);
@@ -3032,6 +3041,7 @@ async function runCommand(
         const p = await one<Page>("SELECT * FROM pages WHERE id=?", resource),
           s = await one<Space>("SELECT * FROM spaces WHERE id=?", resource);
         if (!p && !s) throw new HttpError(404, "Ressource fehlt.");
+        await lockMembership((p || s)!.workspace_id);
         await requireMember(user, (p || s)!.workspace_id, "owner");
         const uid = b.userId ? uuid.parse(b.userId) : "",
           gid = b.groupId ? uuid.parse(b.groupId) : "";
@@ -3085,6 +3095,7 @@ async function runCommand(
             gid,
           );
         if (!g) throw new HttpError(404, "Gruppe fehlt");
+        await lockMembership(g.workspace_id);
         await requireMember(user, g.workspace_id, "owner");
         const uid = uuid.parse(b.userId);
         if (

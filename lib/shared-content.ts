@@ -381,7 +381,9 @@ async function writableHtml(
     // Guests keep existing mentions but cannot mention anyone new.
     if (attrs["data-mention"] && !mentions.has(attrs["data-mention"]))
       delete attrs["data-mention"];
-    for (const attr of ["href", "src"]) {
+    // The same attributes publishedHtml rewrites: a PDF block (data-pdf)
+    // keeps its file, also one the guest cannot see.
+    for (const attr of ["href", "src", "data-pdf"]) {
       const value = attrs[attr];
       if (!value) continue;
       if (hidden.has(value)) {

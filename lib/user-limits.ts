@@ -3,7 +3,7 @@
 // upload. Each can be set per account; otherwise the instance default applies
 // (0 or empty = unlimited). Admins are not limited.
 import { z } from "zod";
-import { all, one, run } from "./db";
+import { all, lockFor, one, run } from "./db";
 import { HttpError } from "./auth";
 import { instanceSettings } from "./instance-settings";
 import type { Identity } from "./types";
@@ -52,11 +52,16 @@ const limited = (user: Pick<Identity, "id" | "isAdmin">) => !user.isAdmin;
 export async function maxUploadMbFor(user: Pick<Identity, "id" | "isAdmin">) {
   return limited(user) ? (await effectiveUserLimits(user.id)).uploadMb : (await instanceSettings()).maxUploadMb;
 }
-// Throws before a write that would exceed the person's storage.
+// Throws before a write that would exceed the person's storage. Inside a
+// transaction, the person's writes take turns until the commit (like
+// enforceQuota, lib/instance-ops.ts): parallel uploads cannot both pass the
+// check against the same "used". Always after enforceQuota (one lock order).
+const lockStorage = (userId: string) => lockFor(`user-storage:${userId}`);
 export async function enforceUserStorage(user: Pick<Identity, "id" | "isAdmin">, addBytes: number) {
   if (!limited(user)) return;
   const { storageMb } = await effectiveUserLimits(user.id);
   if (!storageMb) return;
+  await lockStorage(user.id);
   const used = await userBytes(user.id);
   if (used + addBytes > storageMb * 1024 * 1024) throw new HttpError(413, `Dein Speicher ist voll (${mb(used)} von ${storageMb} MB belegt).`);
 }
@@ -73,10 +78,14 @@ export async function userStorageCheckpoint(user: Pick<Identity, "id" | "isAdmin
       throw new HttpError(413, `Dein Speicher reicht dafür nicht (${mb(before)} von ${storageMb} MB belegt, benötigt zusätzlich ${mb(after - before)}).`);
   };
 }
+// Inside the command's transaction: creations by one person take turns
+// until the commit (PostgreSQL), so parallel ones cannot all pass the count.
 export async function assertMayCreateWorkspace(user: Pick<Identity, "id" | "isAdmin">) {
   if (!limited(user)) return;
   const { workspaces } = await effectiveUserLimits(user.id);
-  if (workspaces && (await ownedWorkspaces(user.id)) >= workspaces)
+  if (!workspaces) return;
+  await lockFor(`user-workspaces:${user.id}`);
+  if ((await ownedWorkspaces(user.id)) >= workspaces)
     throw new HttpError(403, `Du kannst höchstens ${workspaces} eigene Arbeitsbereiche anlegen.`);
 }
 // For the administration: usage and limits of every account.

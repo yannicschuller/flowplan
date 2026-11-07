@@ -12,7 +12,7 @@
 // The ink of a drawing block lives here, not in the document's Yjs state:
 // a document stays small, a stroke is one request, and concurrent strokes
 // merge by id instead of one whole attribute replacing the other.
-import { all, audit, one, run, transaction, nowText } from "./db";
+import { all, audit, lockFor, one, run, transaction, nowText } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import { requireUnlocked } from "./journal-extras";
@@ -138,6 +138,8 @@ export async function savePageInk(user: Identity, pageId: string, surface: strin
   await requireSurface(page, surface);
   const ours = surfaceDoc(parseInk(body.doc), surface);
   return await transaction(async () => {
+    // Drawings of one page are added one at a time (count, then insert).
+    await lockFor(`page-ink:${page.id}`);
     const current = await stored(page.id, surface);
     if (!current && page.kind !== "notebook") {
       const count = (await one<{ n: number }>("SELECT COUNT(*) n FROM page_ink WHERE page_id=?", page.id))?.n ?? 0;

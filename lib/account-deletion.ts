@@ -5,7 +5,7 @@
 // contributed to shared workspaces stays, under "Deleted account"; personal
 // data – name, e-mail, password, passkeys, sessions, settings – is removed.
 import { z } from "zod";
-import { all, audit, one, run, inSavepoint } from "./db";
+import { all, audit, one, run, inSavepoint, lockMembership } from "./db";
 import { HttpError } from "./auth";
 import { localLoginEnabled } from "./local-auth";
 import { ssoOnlyAccount } from "./identities";
@@ -235,7 +235,9 @@ export async function deleteOwnAccount(user: Identity, input: unknown, passwordC
 // kept for deactivated accounts only passes to one of them.
 async function removeAccount(userId: string, removed: { id: string }[], successors: Record<string, string>) {
   for (const w of removed) await purgeWorkspace(w.id);
-  for (const w of await all<{ id: string }>("SELECT workspace_id id FROM members WHERE user_id=? AND role='owner'", userId)) {
+  for (const w of await all<{ id: string }>("SELECT workspace_id id FROM members WHERE user_id=? AND role='owner' ORDER BY workspace_id", userId)) {
+    // Not counted while another owner leaves or is demoted at the same time.
+    await lockMembership(w.id);
     if (await one("SELECT 1 FROM members m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=? AND m.user_id<>? AND m.role='owner' AND u.disabled=0", w.id, userId)) continue;
     const next =
       successors[w.id] ||
