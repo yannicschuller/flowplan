@@ -225,6 +225,7 @@ import { z } from "zod";
 import * as Y from "yjs";
 import { all, one, run, id, transaction, transactionKeepingRefusals, audit, db, nowText, sql, lockMembership } from "./db";
 import { convertFormattedValues } from "./formatted-text";
+import { applyOptionRenames } from "./option-renames-server";
 import { securityEvent } from "./security-events";
 import { noteDangerousHtml } from "./security-events";
 import { HttpError, acceptPendingInvites, inviteToken } from "./auth";
@@ -2130,6 +2131,9 @@ async function runCommand(
         // when the aliases property changes.
         if (aliasField(fields)?.id !== aliasField(d.fields)?.id)
           await run("INSERT INTO search_dirty SELECT page_id,id FROM rows WHERE page_id=? ON CONFLICT DO NOTHING", pid());
+        // Renamed options: records, views, settings and forms follow
+        // (before the done rule is copied to progress properties).
+        await applyOptionRenames(user, await write(), d.fields, fields, views, b.optionRenames);
         prepareSubtaskFields(await write(), fields, await databaseSettings(pid()));
         // Multi-selects with the workspace's tags as options (#79).
         await prepareTagFields(user, await write(), fields, d.fields);

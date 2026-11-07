@@ -32366,6 +32366,25 @@ label.ws-search input {
 .merge-accounts .modal-actions {
   flex-wrap: wrap;
 }
+/* "Update existing records?" in the property editor (renamed select
+   options), in place of its buttons; the three answers wrap at phone width. */
+.option-rename-confirm {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.option-rename-confirm .settings-heading {
+  margin-top: 0;
+}
+.option-rename-confirm ul {
+  margin: 0 0 8px;
+  padding-left: 20px;
+}
+.option-rename-confirm .modal-actions {
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
 .merge-accounts .admin-search {
   width: 100%;
 }

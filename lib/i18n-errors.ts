@@ -827,6 +827,7 @@ const exact: Record<string, string> = {
   "Zu viel Text für den QR-Code.": "Too much text for the QR code.",
   "Unvollständiger Eintrag.": "Incomplete entry.",
   "Unbekannte Auswahl.": "Unknown option.",
+  "Die umbenannte Option passt nicht zu den Optionen.": "The renamed option does not match the options.",
   "Unbekannte Formatierung.": "Unknown formatting.",
   "Unbekannte Kommentaraktion.": "Unknown comment action.",
   "Zu viele verschiedene Reaktionen.": "Too many different reactions.",

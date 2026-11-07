@@ -33,6 +33,7 @@ import { formatDuration } from "@/lib/durations";
 import { DatabaseSprints } from "./database-sprints";
 import { tagByName, useTagOptions } from "./tag-options-context";
 import { isTagField } from "@/lib/page-properties";
+import { cleanOptions, hasOwnSettings, mergesOf, optionRenames, type OptionRename } from "@/lib/option-renames";
 import { SprintContext } from "./sprint-context";
 import { RecordLayoutEditor } from "./record-layout-editor";
 import {
@@ -565,6 +566,18 @@ export default function DatabaseView({
     version: number;
     choice?: CalculationChoice;
   } | null>(null);
+  // Renamed or merged options waiting for "take the records along?".
+  const [optionConfirm, setOptionConfirm] = useState<OptionRename[] | null>(null);
+  useEffect(() => {
+    if (!newField) setOptionConfirm(null);
+  }, [newField]);
+  const fieldForm = useRef<HTMLFormElement>(null),
+    carryRenames = useRef<boolean | undefined>(undefined);
+  // Saves the property again with the panel's answer.
+  function answerRenames(carry: boolean) {
+    carryRenames.current = carry;
+    fieldForm.current?.requestSubmit();
+  }
   const [fieldVersion, setFieldVersion] = useState(data.database.version),
     [fieldError, setFieldError] = useState("");
   const [relationTarget, setRelationTarget] = useState<{
@@ -1241,6 +1254,7 @@ export default function DatabaseView({
       targetVersion?: number;
     },
     version = data.database.version,
+    optionRenames?: OptionRename[],
   ) {
     setSchemaBusy(true);
     try {
@@ -1250,6 +1264,7 @@ export default function DatabaseView({
         fields: nextFields,
         views: nextViews,
         relation,
+        ...(optionRenames?.length ? { optionRenames } : {}),
       });
     } finally {
       setSchemaBusy(false);
@@ -4768,8 +4783,12 @@ export default function DatabaseView({
         }
       >
         <form
+          ref={fieldForm}
           onSubmit={async (e) => {
             e.preventDefault();
+            // The answer of the "Update existing records?" panel, if any.
+            const carry = carryRenames.current;
+            carryRenames.current = undefined;
             if (
               !editable ||
               !allowFieldChanges ||
@@ -4800,6 +4819,22 @@ export default function DatabaseView({
                 formulaFields,
                 "store",
               );
+            // Options edited as text: a renamed option takes its records
+            // along, an existing name written in its place merges it. That
+            // changes records, so it is confirmed first (`carry`); declining
+            // saves the options alone and the records keep the old names.
+            const stored = fields.find((f) => f.id === fieldDraft.id);
+            let renames: OptionRename[] = [];
+            if (["select", "multiselect"].includes(draft.type) && !draft.tagOptions && draft.options) {
+              if (stored && ["select", "multiselect"].includes(stored.type) && !stored.tagOptions)
+                renames = optionRenames(stored.options || [], draft.options).map((r) => ({ field: draft.id, ...r }));
+              draft.options = cleanOptions(draft.options);
+            }
+            if (renames.length && carry === undefined) {
+              setOptionConfirm(renames);
+              return;
+            }
+            setOptionConfirm(null);
             const next = fields.some((f) => f.id === fieldDraft.id)
               ? fields.map((f) => (f.id === fieldDraft.id ? draft : f))
               : [...fields, draft];
@@ -4817,6 +4852,7 @@ export default function DatabaseView({
                   }
                 : undefined,
               fieldVersion,
+              carry ? renames : undefined,
             );
             if (r) setNewField(false);
             else
@@ -4942,14 +4978,22 @@ export default function DatabaseView({
             <label>
               {t("Optionen, durch Komma getrennt", "Options, separated by commas")}
               <input
+                aria-describedby="option-rename-hint"
                 value={fieldDraft.options?.join(", ") || ""}
-                onChange={(e) =>
+                onChange={(e) => {
+                  setOptionConfirm(null);
                   setFieldDraft((f) => ({
                     ...f,
                     options: e.target.value.split(",").map((s) => s.trim()),
-                  }))
-                }
+                  }));
+                }}
               />
+              <small id="option-rename-hint" className="muted">
+                {t(
+                  "Eine umbenannte Option nimmt ihre Einträge mit. Der Name einer anderen Option an ihrer Stelle führt beide zusammen.",
+                  "A renamed option takes its records along. Writing another option's name in its place merges the two.",
+                )}
+              </small>
             </label>
           )}
           {(fieldDraft.type === "number" || fieldDraft.type === "formula") && (
@@ -5370,7 +5414,57 @@ export default function DatabaseView({
                 : fieldError}
             </p>
           )}
-          {editable && allowFieldChanges && (
+          {optionConfirm && editable && allowFieldChanges && (
+            // Renamed or merged options change existing records: asked
+            // here, in place of the dialog's buttons, before saving.
+            <div className="option-rename-confirm" role="group" aria-labelledby="option-rename-confirm-title">
+              <h3 id="option-rename-confirm-title" className="settings-heading">
+                {t("Vorhandene Einträge anpassen?", "Update existing records?")}
+              </h3>
+              <p>{t("Beim Speichern dieser Optionen ändern sich auch Einträge, Filter und Datenbankregeln:", "Saving these options also changes records, filters and database rules:")}</p>
+              <ul>
+                {(() => {
+                  const merges = new Set(mergesOf(optionConfirm, (id) => fields.find((f) => f.id === id)?.options || []));
+                  return optionConfirm.map((r) => {
+                    const n = data.rows.filter((row) => {
+                      const v = row.cells[r.field];
+                      return v === r.from || (Array.isArray(v) && v.includes(r.from));
+                    }).length;
+                    const { from, to } = r;
+                    return (
+                      <li key={`${r.field}:${from}`}>
+                        {merges.has(r)
+                          ? n === 1
+                            ? t(`„${from}“ mit „${to}“ zusammenführen (1 Eintrag).`, `Merge “${from}” into “${to}” in 1 record.`)
+                            : t(`„${from}“ mit „${to}“ zusammenführen (${n} Einträge).`, `Merge “${from}” into “${to}” in ${n} records.`)
+                          : n === 1
+                            ? t(`„${from}“ in „${to}“ umbenennen (1 Eintrag).`, `Rename “${from}” to “${to}” in 1 record.`)
+                            : t(`„${from}“ in „${to}“ umbenennen (${n} Einträge).`, `Rename “${from}” to “${to}” in ${n} records.`)}
+                        {merges.has(r) &&
+                          hasOwnSettings(data.database.settings, r.field, from) &&
+                          ` ${t(`„${from}“ verliert seine eigenen Einstellungen unter „Workflow und Erledigt“.`, `“${from}” loses its own settings under “Workflow and done”.`)}`}
+                      </li>
+                    );
+                  });
+                })()}
+              </ul>
+              <p className="muted">
+                {t("„Nur Optionen speichern“ lässt Einträge, Filter und Regeln bei den alten Namen.", "“Save options only” leaves records, filters and rules on the old names.")}
+              </p>
+              <div className="modal-actions">
+                <button type="button" className="button" disabled={schemaBusy} onClick={() => setOptionConfirm(null)}>
+                  {t("Abbrechen", "Cancel")}
+                </button>
+                <button type="button" className="button" disabled={schemaBusy} onClick={() => answerRenames(false)}>
+                  {t("Nur Optionen speichern", "Save options only")}
+                </button>
+                <button type="button" className="button primary" autoFocus disabled={schemaBusy} onClick={() => answerRenames(true)}>
+                  {t("Einträge anpassen", "Update records")}
+                </button>
+              </div>
+            </div>
+          )}
+          {editable && allowFieldChanges && !optionConfirm && (
             <div className="modal-actions">
               {fields.some((f) => f.id === fieldDraft.id) &&
                 fields[0].id !== fieldDraft.id && (
