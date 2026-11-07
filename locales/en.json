@@ -7871,6 +7871,7 @@
   "The document is not saved yet.": "The document is not saved yet.",
   "The document is still loading.": "The document is still loading.",
   "The document is still loading. Please wait a moment.": "The document is still loading. Please wait a moment.",
+  "The document is too large (at most {0} MB). Please split the content across several pages.": "The document is too large (at most {0} MB). Please split the content across several pages.",
   "The document version was changed. Please reload.": "The document version was changed. Please reload.",
   "The DOI could not be resolved right now.": "The DOI could not be resolved right now.",
   "The DOI data is incomplete.": "The DOI data is incomplete.",

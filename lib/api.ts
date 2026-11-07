@@ -1,3 +1,4 @@
+import { requireDocumentSize } from "./document-size";
 import { patchStillApplies } from "./row-patch";
 import { bannersFor } from "./instance-banners";
 import type { TransactionHook } from "./idempotency";
@@ -1717,8 +1718,11 @@ export function command(
           Y.applyUpdate(d, Buffer.from(update, "base64"));
           // Who wrote what: the editor sessions in this update are this person's.
           recordDocumentAuthors(p.id, null, existing!.generation, user.id, before, Y.encodeStateVector(d));
-          const merged = Y.encodeStateAsUpdate(d),
-            canonical = stateHtml(d);
+          const merged = Y.encodeStateAsUpdate(d);
+          // Refused above the size cap (lib/document-size.ts) – before the
+          // document is rendered or anything is written.
+          requireDocumentSize(merged, existing?.state?.byteLength || 0);
+          const canonical = stateHtml(d);
           // Tasks: people given a task are told once (not also as mention).
           const assigned = syncDocTasks(user, p, null, d);
           for (const match of canonical.matchAll(/data-mention="([^"]+)"/g)) {
