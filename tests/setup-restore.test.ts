@@ -327,7 +327,7 @@ test("a new instance makes no scheduled backup before its first account", async 
   await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", user, `local:${user}`, "Neu", "neu@example.test");
   t.mock.timers.tick(10 * 60_000);
   // (Postgres answers over the network: by time, not by turns.)
-  for (const until = Date.now() + 60_000; Date.now() < until && !existsSync(join(dir, "backups")); ) await new Promise((done) => setImmediate(done));
+  for (const until = Date.now() + 60_000; Date.now() < until && !(existsSync(join(dir, "backups")) && readdirSync(join(dir, "backups")).length); ) await new Promise((done) => setImmediate(done));
   assert.equal(readdirSync(join(dir, "backups")).length, 1);
   await backOnOld();
 });

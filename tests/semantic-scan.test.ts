@@ -12,6 +12,7 @@ process.env.APP_URL = "https://flowplan.example.test";
 process.env.FLOWPLAN_AI_REQUESTS_PER_HOUR = "100000";
 delete process.env.FLOWPLAN_AI;
 const { run, one, id, transaction } = await import("../lib/db");
+const { onPostgres } = await import("./helpers/backend");
 const { createWorkspace, createPage } = await import("../lib/seed");
 const { identityFromToken } = await import("../lib/auth");
 const { command } = await import("../lib/api");
@@ -71,6 +72,7 @@ test("the vector scan yields to the event loop between slices and still finds th
   const hits = await semanticNeighbours(ben, wid, pages[0], "", 10);
   ticking = false;
   assert.ok(turns >= Math.floor(VECTORS / 2_000) - 1, `other work ran ${turns} times during the scan`);
+  const scanTurns = turns;
   assert.equal(hits.length, 10);
   assert.ok(!hits.some((h) => h.pageId === pages[0]), "not the page itself");
   for (let i = 1; i < hits.length; i++) assert.ok(hits[i - 1].score >= hits[i].score);
@@ -80,7 +82,9 @@ test("the vector scan yields to the event loop between slices and still finds th
   setImmediate(tick);
   assert.deepEqual(await semanticNeighbours(ben, wid, pages[0], "", 10), hits);
   ticking = false;
-  assert.ok(turns <= 1);
+  // SQLite answers within the turn; Postgres over the network (the
+  // permission checks), still far fewer turns than a scan.
+  assert.ok(turns <= 1 || (onPostgres && turns < scanTurns / 2), `${turns} turns`);
 });
 
 test("the meaning part of related pages is limited per person", async () => {

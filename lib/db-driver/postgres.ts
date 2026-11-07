@@ -18,6 +18,7 @@ configureTypes(pg);
 export type PostgresOptions = { schema?: string; max?: number; prepare?: boolean };
 type Prepared = { text: string; name?: string };
 const MAX_PREPARED = 2000;
+const SCHEMA_CHANGE = /^\s*(ALTER|DROP|CREATE)\s/i;
 
 export function createPostgresDb(url: string, options: PostgresOptions = {}): Db & { pool: pg.Pool } {
   const schema = options.schema || "public";
@@ -31,6 +32,9 @@ export function createPostgresDb(url: string, options: PostgresOptions = {}): Db
   pool.on("error", (error) => console.error("Postgres pool error", error));
   const prepared = new Map<string, Prepared>();
   const usePrepared = options.prepare !== false;
+  // Names are never reused: a connection keeps the statements it prepared
+  // under their name (pg), so new SQL after a schema change gets new ones.
+  let names = 0;
 
   function statement(sql: string): Prepared {
     let found = prepared.get(sql);
@@ -39,7 +43,7 @@ export function createPostgresDb(url: string, options: PostgresOptions = {}): Db
     if (hint) throw new Error(`SQLite-only SQL reached Postgres (${hint}): ${sql.slice(0, 200)}`);
     found = { text: numberPlaceholders(sql) };
     if (usePrepared && prepared.size < MAX_PREPARED) {
-      found.name = `fp${prepared.size}`;
+      found.name = `fp${names++}`;
       prepared.set(sql, found);
     }
     return found;
@@ -51,7 +55,21 @@ export function createPostgresDb(url: string, options: PostgresOptions = {}): Db
   async function query(sql: string, params: Param[]) {
     const s = statement(sql);
     noteWriteOf(sql);
-    return client().query({ name: s.name, text: s.text, values: params.map(value) });
+    // A schema change (ALTER/CREATE/DROP) outdates what was prepared before
+    // (`SELECT *` keeps its columns): later statements are prepared anew.
+    if (SCHEMA_CHANGE.test(sql)) prepared.clear();
+    try {
+      return await client().query({ name: s.name, text: s.text, values: params.map(value) });
+    } catch (error) {
+      // Prepared on this connection before a schema change made elsewhere
+      // (another connection, another instance): once more, unnamed – outside
+      // a transaction (inside one the failure has spoilt it).
+      if (s.name && (error as { code?: string }).code === "0A000" && /cached plan/.test(String((error as Error).message))) {
+        prepared.delete(sql);
+        if (!currentTx()) return client().query({ text: s.text, values: params.map(value) });
+      }
+      throw error;
+    }
   }
 
   return {
@@ -68,6 +86,7 @@ export function createPostgresDb(url: string, options: PostgresOptions = {}): Db
       return { changes: (await query(sql, params)).rowCount ?? 0 };
     },
     async exec(sql: string) {
+      prepared.clear();
       await client().query(sql);
     },
     async tx<T>(fn: () => Promise<T>, txOptions: TxOptions = {}): Promise<T> {
