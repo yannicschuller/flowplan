@@ -90,6 +90,22 @@ both above this). Profile the server with `serve.mjs --cpu-prof`; the
 Seeder options: `--users` (400), `--docs` (300), `--records` (3000),
 `--spaces` (6).
 
+## Cluster mode (PostgreSQL, several instances)
+
+`scripts/load-test-cluster.mjs` runs the same ramp against 1, 2, …
+instances of the standalone build in cluster mode on one PostgreSQL and
+one Redis: a fresh schema per run, a round-robin balancer in front
+(`balancer.mjs`), an S3 stand-in, `seed.mjs --database postgres://… --schema …`
+(accounts written into PostgreSQL instead of the SQLite file). `--pin 0,1`
+gives each instance a core of its own. Results and how to read them:
+docs/architecture/database.md §14.
+
+```sh
+npm run build
+DATABASE_URL=postgres://… REDIS_URL=redis://… taskset -c 2,3 \
+  node scripts/load-test-cluster.mjs --pin 0,1 --instances 1,2 --steps 10,20,30,40,50,60 --out /tmp/lt-cluster.json
+```
+
 ## Reading the results
 
 - The **knee** is the first step where read p95 passes ~500 ms, write p95
