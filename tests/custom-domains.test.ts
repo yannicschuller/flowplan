@@ -227,3 +227,37 @@ test("ending the publication or switching the feature off ends the domain", asyn
   assert.equal(await domains.domainAllowed("docs.example.org"), false);
   await saveInstanceSettings({ customDomains: true });
 });
+
+test("an unverified claim expires: a squatter cannot keep the rightful owner out", async () => {
+  const squatter = await person("domain-squatter");
+  const theirs = await createWorkspace(squatter.id, "Squat");
+  const theirSpace = (await one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", theirs))!.id;
+  const squat = ((await command(squatter, { action: "page.create", workspaceId: theirs, spaceId: theirSpace, title: "Squat" })) as { id: string }).id;
+  await command(squatter, { action: "page.publish", pageId: squat, enabled: true });
+  const mine = await create("Firmenseite");
+  await command(owner, { action: "page.publish", pageId: mine, enabled: true });
+  // The squatter enters the host first and never verifies it.
+  await command(squatter, { action: "domain.add", pageId: squat, host: "brand.example.org" });
+  assert.equal(await status(async () => await command(owner, { action: "domain.add", pageId: mine, host: "brand.example.org" })), 409);
+  // Within the week the claim stands, also through the sweep.
+  const week = domains.PENDING_DOMAIN_TTL;
+  await run("UPDATE custom_domains SET created_at=? WHERE host=?", Date.now() - week + 60_000, "brand.example.org");
+  assert.equal(await domains.sweepPendingDomains(), 0);
+  assert.equal((await domains.hostState("brand.example.org")).status, "pending");
+  // A week later the leader's sweep removes it …
+  await run("UPDATE custom_domains SET created_at=? WHERE host=?", Date.now() - week - 60_000, "brand.example.org");
+  assert.equal(await domains.sweepPendingDomains(), 1);
+  assert.equal((await domains.hostState("brand.example.org")).status, "none");
+  assert.equal((await domains.domainSettings(squatter, squat)).domain, null);
+  // … and adding it again takes over an expired claim even before the sweep.
+  await command(squatter, { action: "domain.add", pageId: squat, host: "brand.example.org" });
+  await run("UPDATE custom_domains SET created_at=? WHERE host=?", Date.now() - week - 60_000, "brand.example.org");
+  const added = (await command(owner, { action: "domain.add", pageId: mine, host: "brand.example.org" })) as Awaited<ReturnType<typeof domains.domainSettings>>;
+  assert.equal(added.domain?.host, "brand.example.org");
+  assert.equal(added.domain?.verified, false);
+  assert.equal((await domains.domainSettings(squatter, squat)).domain, null);
+  // Verified domains never expire.
+  await run("UPDATE custom_domains SET created_at=? WHERE host=?", 0, "docs.example.org");
+  await domains.sweepPendingDomains();
+  assert.equal((await domains.domainSettings(owner, root)).domain?.verified, true);
+});
