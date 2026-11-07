@@ -7,6 +7,7 @@ import { all, one, run } from "./db";
 import { HttpError } from "./auth";
 import { pageRole, requirePage } from "./permissions";
 import { visibleRows } from "./row-access";
+import { visibleFields } from "./field-access";
 import { queryRows } from "./database";
 import { relatedData } from "./related-data";
 import { computeMetric } from "./dashboard-metric";
@@ -103,13 +104,17 @@ function tileData(user: Identity, dashboard: Page, tile: Tile, cache: { locked?:
       );
       const { related, relatedSchemas } = relatedData(user, page);
       const shown = queryRows(visibleRows(user, page, rows), db.fields, source, "", related, relatedSchemas);
-      const base = defaultChart(db.fields);
+      // Only the properties this person may read: names, choices and
+      // formulas of hidden ones stay out (lib/field-access.ts).
+      const fields = visibleFields(user, page, db.fields);
+      const readable = (id?: string) => (id && fields.some((f) => f.id === id) ? id : undefined);
+      const base = defaultChart(fields);
       const chart: ChartConfig = {
         ...base,
         kind: tile.kind,
-        xField: tile.xField || base.xField,
+        xField: readable(tile.xField) || base.xField,
         aggregate: tile.aggregate,
-        ...(tile.aggregate !== "count" && tile.yField ? { yField: tile.yField } : {}),
+        ...(tile.aggregate !== "count" && readable(tile.yField) ? { yField: tile.yField } : {}),
         showLegend: tile.kind === "donut",
       };
       // The chart view draws these rows as they are; the database's own
@@ -117,7 +122,7 @@ function tileData(user: Identity, dashboard: Page, tile: Tile, cache: { locked?:
       return {
         available: true,
         title: page.title,
-        fields: db.fields,
+        fields,
         rows: shown,
         related: { ...related, [page.id]: shown },
         view: { ...source, id: tile.id, name: tile.title || source.name, type: "chart", chart } satisfies View,
@@ -184,7 +189,7 @@ export function dashboardSources(user: Identity, dashboard: Page): DashboardSour
             id: p.id,
             title: p.title,
             views: db.views.filter((v) => v.type !== "form").map((v) => ({ id: v.id, name: v.name, type: v.type })),
-            fields: db.fields.map((f) => ({ id: f.id, name: f.name, type: f.type })),
+            fields: visibleFields(user, p, db.fields).map((f) => ({ id: f.id, name: f.name, type: f.type })),
           },
         ];
       }),
