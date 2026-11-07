@@ -24,7 +24,7 @@ import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import nodemailer from "nodemailer";
-import { audit, one, run } from "./db";
+import { audit, one, run, schemaVersion } from "./db";
 import { appUrl, cookieName, hash, HttpError } from "./auth";
 import type { Identity } from "./types";
 import { allow } from "./action-limits";
@@ -402,7 +402,7 @@ export function envReport(token: string, env: Record<string, string | undefined>
   try {
     origin = new URL(env.APP_URL || appUrl()).origin;
   } catch {}
-  return { appUrl: origin, schema: Number((globalThis as { flowplanSchema?: number }).flowplanSchema || 0), encryption, secrets, vars };
+  return { appUrl: origin, schema: schemaVersion(), encryption, secrets, vars };
 }
 
 export type PreflightLevel = "ok" | "warn" | "error";

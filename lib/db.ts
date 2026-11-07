@@ -1708,6 +1708,13 @@ export function tableKey(table: string): string[] {
 export function lockFor(key: string) {
   if (legacyPg() && inTransactionSync()) one("SELECT pg_advisory_xact_lock(hashtextextended(?,0))", key);
 }
+// The schema version of the database in use: SQLite's migrations (as run
+// in this process), on PostgreSQL the version its schema was made for
+// (flowplan_meta, written by ensurePostgresSchema). 0 when unknown.
+export function schemaVersion(): number {
+  if (legacyPg()) return Number(one<{ value: string }>("SELECT value FROM flowplan_meta WHERE key='sqlite_schema'")?.value || 0);
+  return Number(globalDb.flowplanSchema || 0);
+}
 // Whether a synchronous transaction() is open.
 export function inTransactionSync() {
   const pg = legacyPg();
