@@ -47,12 +47,14 @@ const PATTERNS = [
   ["LIMIT -1", /\bLIMIT\s+-1\b/gi, true],
   ["randomblob()/hex()", /\b(randomblob|hex)\s*\(/gi, true],
   ["BEGIN IMMEDIATE", /\bBEGIN\s+IMMEDIATE\b/gi, false],
-  ["scalar max(a,b)/min(a,b)", /\b(max|min|MAX|MIN)\s*\([^()]*,[^()]*\)/g, true],
+  // MAX(a,b): a comma at the top level of the call's parentheses.
+  ["scalar max(a,b)/min(a,b)", /\b(max|min|MAX|MIN)\s*\((?:[^(),]|\((?:[^()]|\([^()]*\))*\))*,/g, true],
   ["LIKE (case semantics: lower() or d.ilike)", /\bLIKE\b/g, true],
   ["typeof()", /\btypeof\s*\(/g, true],
   ["char() (Postgres: chr)", /\bchar\s*\(\d/gi, true],
   // Postgres folds unquoted names to lower case: `AS "userId"`.
   ["mixed-case alias without quotes", /(\bAS\s+|[\w)]\s+)(?!(?:[A-Z]+|[a-z]+)\b)[a-z]+[A-Z][A-Za-z0-9]*\b(?=\s*(,|\bFROM\b|$))/g, true],
+  ["?NNN numbered parameter", /\?\d/g, true],
   ["CAST(… AS BLOB)", /\bAS\s+BLOB\b/gi, true],
   ["VACUUM / ATTACH", /\b(VACUUM|ATTACH\s+DATABASE)\b/g, true],
   ["printf()/format()", /\bprintf\s*\(/gi, true],

@@ -1700,11 +1700,18 @@ export function tableKey(table: string): string[] {
     .sort((a, b) => a.pk - b.pk)
     .map((c) => c.name);
 }
+// Whether a synchronous transaction() is open.
+export function inTransactionSync() {
+  const pg = legacyPg();
+  return pg ? pg.inTransaction() : !!globalDb.flowplanDb?.isTransaction;
+}
 // Runs `fn` in a savepoint of the current transaction (both databases:
 // a failed statement on PostgreSQL spoils the transaction unless it ran in
-// one); a throw rolls back to it and is passed on.
+// one); a throw rolls back to it and is passed on. Outside a transaction
+// `fn` just runs. For writes whose failure is caught and ignored.
 let savepoints = 0;
 export function inSavepoint<T>(fn: () => T): T {
+  if (!inTransactionSync()) return fn();
   const name = `fp_sp_${++savepoints}`;
   run(`SAVEPOINT ${name}`);
   try {

@@ -214,13 +214,17 @@ test("rights, page limit and quota are checked before anything is written", asyn
   } finally {
     delete process.env.FLOWPLAN_IMPORT_MAX_DOCS;
   }
-  run("UPDATE workspaces SET quota_mb=? WHERE id=?", 0.000001, wid);
+  // A full workspace: 1 MB allowed, 1 MB used (quota_mb is an integer column).
+  const filler = id();
+  run("INSERT INTO files(id,page_id,name,mime,size) VALUES(?,?,?,?,?)", filler, one<{ id: string }>("SELECT id FROM pages WHERE workspace_id=? LIMIT 1", wid)!.id, "filler", "application/octet-stream", 1024 * 1024);
+  run("UPDATE workspaces SET quota_mb=? WHERE id=?", 1, wid);
   try {
     const limited = await importFromSource(owner, wid, space, { name: "n.enex", bytes }, { dryRun: true });
     assert.ok(limited.warnings.length > 0);
     await assert.rejects(importFromSource(owner, wid, space, { name: "n.enex", bytes }));
   } finally {
     run("UPDATE workspaces SET quota_mb=NULL WHERE id=?", wid);
+    run("DELETE FROM files WHERE id=?", filler);
   }
   assert.equal(Number(one<{ n: number }>("SELECT COUNT(*) n FROM pages")!.n), pages);
   // End-to-end encrypted spaces take no plaintext.

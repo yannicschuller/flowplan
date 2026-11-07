@@ -8,7 +8,7 @@ import * as Y from "yjs";
 import { Fragment, Node as PMNode } from "@tiptap/pm/model";
 import { updateYFragment, yDocToProsemirrorJSON } from "y-prosemirror";
 import { z } from "zod";
-import { all, one, run, nowText } from "./db";
+import { all, one, run, nowText, inSavepoint } from "./db";
 import { documentSchema } from "./document-schema";
 import { htmlState, stateHtml } from "./document-server";
 import { createPage } from "./seed";
@@ -193,7 +193,7 @@ function removeDay(page: Page) {
   run("DELETE FROM editor_presence WHERE page_id=?", page.id);
   run("DELETE FROM favorites WHERE page_id=?", page.id);
   try {
-    run("DELETE FROM pages WHERE id=?", page.id);
+    inSavepoint(() => run("DELETE FROM pages WHERE id=?", page.id));
   } catch {
     // Still referenced somewhere: move it to the trash instead.
     run(

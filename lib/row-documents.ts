@@ -1,7 +1,7 @@
 import { requireDocumentSize } from "./document-size";
 import * as Y from "yjs";
 import { z } from "zod";
-import { all, one, run, id, nowText } from "./db";
+import { all, one, run, id, nowText, inSavepoint } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import { assertRowAccess } from "./row-access";
@@ -135,13 +135,15 @@ export function syncRowDocument(
       ) {
         try {
           requireRow({ ...user, id: uid }, pageId, rowId);
-          run(
-            "INSERT INTO notifications(id,user_id,body,page_id,row_id,kind) VALUES(?,?,?,?,?,'mention')",
-            id(),
-            uid,
-            `${user.name} hat dich in einem Eintrag von „${page.title}“ erwähnt`,
-            pageId,
-            rowId,
+          inSavepoint(() =>
+            run(
+              "INSERT INTO notifications(id,user_id,body,page_id,row_id,kind) VALUES(?,?,?,?,?,'mention')",
+              id(),
+              uid,
+              `${user.name} hat dich in einem Eintrag von „${page.title}“ erwähnt`,
+              pageId,
+              rowId,
+            ),
           );
           mentionWebhook(page.workspace_id, pageId, rowId, uid, user.name);
         } catch {}

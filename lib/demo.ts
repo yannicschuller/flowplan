@@ -4,7 +4,7 @@
 // files are deleted. Demo accounts cannot publish, share, invite or create
 // further workspaces, and new demos are limited per address and in total.
 import { createHash, randomUUID } from "node:crypto";
-import { all, one, run, transaction } from "./db";
+import { all, one, run, transaction, inSavepoint } from "./db";
 import { HttpError } from "./auth";
 import { createWorkspace } from "./seed";
 import { ct } from "./content-locale";
@@ -144,7 +144,7 @@ export function endDemo(userId: string) {
       purgeWorkspace(w.id);
     for (const table of ["notifications", "favorites", "row_favorites", "push_subscriptions", "saved_searches", "collection_order", "notification_prefs"])
       try {
-        run(`DELETE FROM ${table} WHERE user_id=?`, userId);
+        inSavepoint(() => run(`DELETE FROM ${table} WHERE user_id=?`, userId));
       } catch {}
     run("DELETE FROM collections WHERE owner_id=?", userId);
     // What the demo did is no activity of the instance.

@@ -225,6 +225,7 @@ const SQLITE_ONLY: [RegExp, string][] = [
   [/\bgroup_concat\s*\(/i, "group_concat → d.groupConcat()"],
   [/\bGLOB\b/, "GLOB → LIKE on lower()"],
   [/\bVACUUM\s+INTO\b/i, "VACUUM INTO → snapshotDatabase() (lib/db-snapshot.ts)"],
+  [/\?\d/, "?NNN (numbered parameter) → one ? per value"],
 ];
 export function sqliteOnly(sql: string): string | null {
   const code = sql.replace(/'(?:[^']|'')*'/g, "''");

@@ -23,7 +23,7 @@
 // - none: not an account (a Git author's name).
 // User ids inside content – person properties of records, mentions in
 // comments and documents, filters of views – are replaced as well.
-import { all, audit, foreignKeyColumns, one, run, tableColumns, tableNames, updateIgnoringConflicts } from "./db";
+import { all, audit, foreignKeyColumns, one, run, tableColumns, tableNames, updateIgnoringConflicts, inSavepoint, sql } from "./db";
 import { HttpError } from "./auth";
 import { securityEvent } from "./security-events";
 import { openSecret, sealSecret } from "./secret-box";
@@ -254,7 +254,7 @@ export function mergePreview(admin: Identity, sourceId: string, targetId: string
     source: { id: source.id, name: source.name, email: source.email },
     target: { id: target.id, name: target.name, email: target.email },
     summary: {
-      ownedPages: n("SELECT COUNT(*) n FROM pages WHERE owner_id=?1 OR created_by=?1"),
+      ownedPages: count("SELECT COUNT(*) n FROM pages WHERE owner_id=? OR created_by=?", sourceId, sourceId),
       ownedSpaces: n("SELECT COUNT(*) n FROM spaces WHERE owner_id=?"),
       workspaces: n("SELECT COUNT(*) n FROM members WHERE user_id=?"),
       groups: n("SELECT COUNT(*) n FROM group_members WHERE user_id=?"),
@@ -340,7 +340,7 @@ function mergeSingles(from: string, to: string) {
   if (totp?.enabled && !has("user_totp", to)) {
     try {
       const secret = openSecret(totp.secret, `totp:${from}`);
-      run("UPDATE user_totp SET user_id=?,secret=? WHERE user_id=?", to, sealSecret(secret, `totp:${to}`), from);
+      inSavepoint(() => run("UPDATE user_totp SET user_id=?,secret=? WHERE user_id=?", to, sealSecret(secret, `totp:${to}`), from));
     } catch {}
   }
   run("DELETE FROM user_totp WHERE user_id=?", from);
@@ -416,7 +416,7 @@ export function mergeAccounts(admin: Identity, sourceId: string, targetId: strin
     else if (strategy === "drop") run(`DELETE FROM "${table}" WHERE "${column}"=?`, from);
   }
   // The target is the one that stays: active if either was in use.
-  run("UPDATE users SET last_login_at=MAX(COALESCE(last_login_at,0),COALESCE((SELECT last_login_at FROM users WHERE id=?),0)) WHERE id=?", from, to);
+  run(`UPDATE users SET last_login_at=${sql.greatest("COALESCE(last_login_at,0)", "COALESCE((SELECT last_login_at FROM users WHERE id=?),0)")} WHERE id=?`, from, to);
   // A reference this list does not know makes the delete fail and the whole
   // merge roll back – nothing is lost half-way.
   run("DELETE FROM users WHERE id=?", from);

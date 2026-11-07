@@ -5,7 +5,7 @@
 // contributed to shared workspaces stays, under "Deleted account"; personal
 // data – name, e-mail, password, passkeys, sessions, settings – is removed.
 import { z } from "zod";
-import { all, audit, one, run } from "./db";
+import { all, audit, one, run, inSavepoint } from "./db";
 import { HttpError } from "./auth";
 import { localLoginEnabled } from "./local-auth";
 import { ssoOnlyAccount } from "./identities";
@@ -254,7 +254,7 @@ function removeAccount(userId: string, removed: { id: string }[], successors: Re
   }
   for (const table of PERSONAL)
     try {
-      run(`DELETE FROM ${table} WHERE user_id=?`, userId);
+      inSavepoint(() => run(`DELETE FROM ${table} WHERE user_id=?`, userId));
     } catch {}
   // Own collections (#86), shared ones too: they are queries of this person.
   run("DELETE FROM collections WHERE owner_id=?", userId);
@@ -262,7 +262,7 @@ function removeAccount(userId: string, removed: { id: string }[], successors: Re
   run("DELETE FROM members WHERE user_id=?", userId);
   run("UPDATE spaces SET owner_id=NULL WHERE owner_id=?", userId);
   try {
-    run("DELETE FROM users WHERE id=?", userId);
+    inSavepoint(() => run("DELETE FROM users WHERE id=?", userId));
   } catch {
     // Still named as author somewhere: the account stays as an empty shell.
     run(
