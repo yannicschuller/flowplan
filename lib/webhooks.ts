@@ -29,6 +29,7 @@ import { HttpError } from "./auth";
 import { privateAddress, safeSend } from "./safe-fetch";
 import { pageRole, requirePage } from "./permissions";
 import { rowRoleResolver } from "./row-access";
+import { journalLocked, requireUnlocked } from "./journal-extras";
 import { openWebhookSecret, openWebhookUrl, sealWebhookSecret, sealWebhookUrl } from "./sealed-values";
 import { openSecret, sealSecret } from "./ai/secrets";
 import {
@@ -89,7 +90,9 @@ function requireOwner(user: Identity, workspaceId: string) {
 // A webhook for one page: only one its owner may read, in this workspace.
 function requireHookPage(user: Identity, workspaceId: string, pageId: string | null | undefined) {
   if (!pageId) return;
-  if (requirePage(user, pageId).workspace_id !== workspaceId) throw new HttpError(404, "Seite nicht gefunden.");
+  const page = requirePage(user, pageId);
+  if (page.workspace_id !== workspaceId) throw new HttpError(404, "Seite nicht gefunden.");
+  requireUnlocked(user, page);
 }
 
 // The person a webhook speaks for: who set it up (webhooks from before
@@ -106,7 +109,8 @@ function readerMaySee(reader: Identity | null, pageId: string, rowId: unknown) {
   if (!reader) return false;
   const page = one<Page>("SELECT * FROM pages WHERE id=?", pageId);
   const role = page ? pageRole(reader, page) : null;
-  if (!page || !role) return false;
+  // Below a journal behind a PIN the reader has not entered: nothing goes out.
+  if (!page || !role || journalLocked(reader, page)) return false;
   if (typeof rowId !== "string") return true;
   const row = one<{ id: string; access: string; created_by: string | null }>("SELECT id,access,created_by FROM rows WHERE id=? AND page_id=?", rowId, page.id);
   return !!row && !!rowRoleResolver(reader, page, role)(row);

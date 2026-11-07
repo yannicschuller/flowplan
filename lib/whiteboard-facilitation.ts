@@ -17,6 +17,7 @@ import { z } from "zod";
 import { all, id, one, run, transaction } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
+import { requireUnlocked } from "./journal-extras";
 import { signalBoard } from "./whiteboard-presence";
 import { whiteboardItems, whiteboardSnapshotItems, whiteboardSummary } from "./whiteboard";
 import { PRIVATE_LIMITS, privateItemCount, updateClients } from "./whiteboard-private-mode";
@@ -105,6 +106,7 @@ const activeSession = (pageId: string) =>
 function board(user: Identity, pageId: string, write: boolean) {
   const page = requirePage(user, pageId, write);
   if (page.kind !== "whiteboard") throw new HttpError(400, "Kein Whiteboard.");
+  requireUnlocked(user, page);
   return page;
 }
 const unlocked = (page: Page) => {

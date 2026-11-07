@@ -24,6 +24,7 @@ import { all, audit, id, one, run, transaction } from "./db";
 import { HttpError, appUrl, hash } from "./auth";
 import { pageRole, requirePage } from "./permissions";
 import { visibleRows } from "./row-access";
+import { journalLocked, requireUnlocked } from "./journal-extras";
 import { assertFieldsWritable } from "./field-access";
 import { queryRows } from "./database";
 import { calendarRange, calendarSchema } from "./database-calendar";
@@ -679,6 +680,7 @@ export function saveCalendarMapping(user: Identity, input: unknown) {
   const conn = ownConnection(user, b.connectionId);
   const page = requirePage(user, b.pageId, true);
   if (page.kind !== "database") throw new HttpError(400, "Keine Datenbank.");
+  requireUnlocked(user, page);
   const { fields, views } = viewsOf(page.id);
   const view = views.find((v) => v.id === b.viewId);
   if (!view) throw new HttpError(404, "Ansicht nicht gefunden.");
@@ -824,6 +826,8 @@ function contextOf(mapping: MappingRow): Context {
   const page = one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", mapping.page_id);
   const role = page ? pageRole(user, page) : null;
   if (!page || !role) throw new HttpError(403, "Keine Berechtigung für diese Seite.");
+  // Behind a journal PIN the calendar stays closed, as its feed and CalDAV do.
+  if (journalLocked(user, page)) throw new HttpError(423, "Dieses Journal ist gesperrt.");
   const { fields, views } = viewsOf(page.id);
   const view = views.find((v) => v.id === mapping.view_id);
   if (!view || !scheduleFields(fields, view).start) throw new HttpError(404, "Ansicht nicht gefunden.");

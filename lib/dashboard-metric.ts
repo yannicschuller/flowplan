@@ -7,6 +7,7 @@ import { all, one } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import { visibleRows } from "./row-access";
+import { journalLocked, requireUnlocked } from "./journal-extras";
 import { visibleFields } from "./field-access";
 import { queryRows } from "./database";
 import { relatedData } from "./related-data";
@@ -26,6 +27,7 @@ export type MetricQuery = z.infer<typeof metricSchema>;
 export function computeMetric(user: Identity, query: MetricQuery) {
   const page = requirePage(user, query.source);
   if (page.kind !== "database") throw new HttpError(400, "Keine Datenbank.");
+  requireUnlocked(user, page);
   const raw = one<{ fields: string; views: string }>("SELECT fields,views FROM databases WHERE page_id=?", page.id);
   if (!raw) throw new HttpError(404, "Datenbank nicht gefunden.");
   const fields: Field[] = JSON.parse(raw.fields);
@@ -87,7 +89,9 @@ export function metricSources(user: Identity, workspaceId: string) {
   )
     .flatMap((p) => {
       try {
-        return [{ ...p, page: requirePage(user, p.id) }];
+        const page = requirePage(user, p.id);
+        // Databases below a journal behind a PIN are no source.
+        return journalLocked(user, page) ? [] : [{ ...p, page }];
       } catch {
         return [];
       }

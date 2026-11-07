@@ -7,6 +7,7 @@ import { all, id, one, run } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import { hiddenRowIds } from "./row-access";
+import { requireUnlocked } from "./journal-extras";
 import { databaseSettings, storeSettings } from "./database-settings";
 import { doneRule, isDone, type Sprint } from "./database-settings-schema";
 import type { Field, Identity, Page, View } from "./types";
@@ -141,6 +142,7 @@ export function sprintCommand(user: Identity, page: Page, action: string, b: Rec
 // Burndown of a sprint: work remaining per day, against the ideal line.
 export function sprintCharts(user: Identity, pageId: string, sprintId: string) {
   const page = requirePage(user, pageId);
+  requireUnlocked(user, page);
   const settings = databaseSettings(pageId);
   const sprint = settings.sprints?.find((s) => s.id === sprintId);
   if (!sprint) throw new HttpError(404, "Sprint nicht gefunden.");

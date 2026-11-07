@@ -16,6 +16,7 @@ import { HttpError } from "./auth";
 import { ct } from "./content-locale";
 import { memberRole, isGuest, pageRole, requireMember, requirePage } from "./permissions";
 import { hiddenRowIds, rowRoleResolver } from "./row-access";
+import { journalLocked, requireUnlocked } from "./journal-extras";
 import { hiddenFieldsFor, readOnlyFieldIds } from "./field-access";
 import { cellText, CSV_FORMULA } from "./cell-text";
 import { hours } from "./durations";
@@ -146,7 +147,9 @@ function contexts(user: Identity) {
     let context: PageContext | null = null;
     if (page) {
       const fields = JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId)?.fields || "[]") as Field[];
-      const role = pageRole(user, page);
+      // Below a journal behind a PIN not entered: like a page without access
+      // (one's own entries stay, without the record).
+      const role = journalLocked(user, page) ? null : pageRole(user, page);
       context = {
         page,
         role,
@@ -202,6 +205,7 @@ function scopeOf(user: Identity, filter: z.infer<typeof reportFilterSchema>) {
   if (filter.page) {
     const page = requirePage(user, filter.page);
     if (page.kind !== "database") throw new HttpError(400, "Keine Datenbank.");
+    requireUnlocked(user, page);
     return { workspaceId: page.workspace_id, pageId: page.id };
   }
   if (!filter.workspace) throw new HttpError(400, "Arbeitsbereich oder Datenbank fehlt.");

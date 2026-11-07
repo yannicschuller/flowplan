@@ -29,6 +29,7 @@ import { all, audit, id, one, run, transaction } from "./db";
 import { appUrl, HttpError } from "./auth";
 import { isGuest, memberRole, pageRole, requirePage } from "./permissions";
 import { hiddenRowIds } from "./row-access";
+import { journalLocked, requireUnlocked } from "./journal-extras";
 import { requireRow, replaceRowDocument } from "./row-documents";
 import { rowChanged, rowCreated } from "./automations";
 import { cellText } from "./cell-text";
@@ -565,6 +566,7 @@ function saveMapping(user: Identity, raw: unknown) {
   const input = z.object({ pageId: z.string().uuid(), connectionId: z.string().uuid(), repo: z.string().max(300).optional(), config: z.unknown() }).parse(raw);
   const page = requirePage(user, input.pageId, true);
   if (page.kind !== "database") throw new HttpError(400, "Keine Datenbank.");
+  requireUnlocked(user, page);
   requireConnectionManager(user, page.workspace_id);
   const connection = connectionRow(page.workspace_id, input.connectionId);
   const repo = checkedRepo(connection.provider, input.repo?.trim() || connection.repo);
@@ -1136,6 +1138,8 @@ export async function syncIssues(pageId: string, options: { scan?: boolean; push
     if (!who) return fail("Die Person, die die Verbindung eingerichtet hat, ist nicht mehr Eigentümer des Arbeitsbereichs – bitte neu verbinden.");
     const role = pageRole(who, page);
     if (!role || role === "viewer" || page.locked) return fail("Die verbindende Person darf diese Datenbank nicht bearbeiten.");
+    // Below a journal behind a PIN nothing goes out to the repository.
+    if (journalLocked(who, page)) return fail("Dieses Journal ist gesperrt.");
     const config = parse<IssueSyncConfig>(map.config, issueSyncConfigSchema.parse({ title: "" }));
     const fields = databaseFields(pageId);
     try {
