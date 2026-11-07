@@ -233,7 +233,7 @@ export async function dumpSummary(path: string): Promise<DumpSummary> {
   const summary: DumpSummary = { schema, version: 0, users: 0, workspaces: 0, pages: 0, fileIds: [] };
   await copyRows(path, schema, ["flowplan_meta", "users", "workspaces", "pages", "files"], (table, columns, fields) => {
     if (table === "flowplan_meta") {
-      if (fields[columns.indexOf("key")] === "sqlite_schema") summary.version = Number(fields[columns.indexOf("value")]) || 0;
+      if (/^sqlite_schema$/.test(fields[columns.indexOf("key")] ?? "")) summary.version = Number(fields[columns.indexOf("value")]) || 0;
     } else if (table === "files") {
       const id = fields[columns.indexOf("id")];
       if (id) summary.fileIds.push(id);

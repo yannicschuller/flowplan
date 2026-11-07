@@ -1,7 +1,10 @@
 # Database layer: SQLite by default, PostgreSQL as an option
 
 Status: **phase 2 done – all data access is asynchronous; PostgreSQL runs
-through the `pg` pool alone** (issue #127). The spike (branch `pg-spike`)
+through the `pg` pool alone** (issue #127). Phase 3 (in parts, §13): the
+search on PostgreSQL (trigram indexes, BM25 as FTS5 ranks, §5a), pgvector
+for semantic search (§5b), `pg_dump` backups (§3), the migration procedure
+in both directions (§6). The spike (branch `pg-spike`)
 proved the pattern on one vertical slice and measured the cost; phase 1
 made all SQL of the code base dialect-neutral, still synchronous (§11);
 phase 2 converted every caller to the asynchronous API and removed the
@@ -268,8 +271,10 @@ never drops). A test checks that the JSON matches the current migrations.
   creator. The unique scope-name indexes of tags and property definitions
   are on `lower(name)` on both databases now.
 - **Search index.** FTS5 stays on SQLite. On Postgres `search_index` is a
-  plain table (`page_id,row_id,title,body` plus `title_folded`,
-  `body_folded`: lower case without diacritics), see §5a.
+  table (`page_id,row_id,title,body` plus `title_folded`, `body_folded`:
+  lower case without diacritics, and the generated `doc_length`) with
+  pg_trgm GIN indexes, see §5a. pgvector's `ai_embedding_vectors` (§5b) is
+  not in the translated schema either: both are derived and rebuilt.
 
 ### Triggers (decided per group)
 
@@ -292,7 +297,7 @@ EXISTS` (READ COMMITTED lets two transactions pass the guard).
 
 | Group | Triggers | Decision |
 |---|---:|---|
-| Search queue (`search_*` → `search_dirty`) | 31 | PL/pgSQL; replaced together with the queue when search moves to `tsvector` (later phase) |
+| Search queue (`search_*` → `search_dirty`) | 31 | PL/pgSQL; kept in phase 3 – the queue is how the index learns of changes on both databases, and what goes in is decided in JavaScript once (lib/search-index.ts) |
 | Offline change log (`offline_*` → `offline_changes`) | 18 | PL/pgSQL |
 | End-to-end encryption guards (`e2ee_*`: refuse plaintext, drop keys of removed members) | 17 | PL/pgSQL (a guard must hold for every write path) |
 | AI queues (`ai_embed_*`, `ai_auto_*`) | 12 | PL/pgSQL |
@@ -306,18 +311,65 @@ EXISTS` (READ COMMITTED lets two transactions pass the guard).
 
 ### Backups, restores, instance moves
 
-Backups stay **SQLite files on both databases**. `snapshotDatabase(path)`
-(lib/db-snapshot.ts) is `VACUUM INTO` on SQLite; on Postgres it writes the
-same file from the translated schema and the data (one `REPEATABLE READ`
-transaction, a cursor per table in key order, 500 rows per round trip:
-bounded memory). A restore or move on Postgres (lib/db-restore.ts)
-keeps the current state as such a file (as SQLite keeps the swapped-out
-file), brings the backup up to this schema with the SQLite migrations and
-refills every table in one transaction (the file's rows iterated, 200 per
-INSERT; foreign keys dropped and re-added, user triggers disabled
-meanwhile, identities moved on); the search index is rebuilt and the data
-steps run. So a backup made on either database restores on either.
-`pg_dump` remains the tool for Postgres-side backups in production.
+Two formats (phase 3):
+
+- **The portable SQLite file** – the instance backup (ZIP, Administration),
+  the instance move, and the state kept before a restore of such a file.
+  `snapshotDatabase(path)` (lib/db-snapshot.ts) is `VACUUM INTO` on SQLite;
+  on Postgres it writes the same file from the translated schema and the
+  data (one `REPEATABLE READ` transaction, a cursor per table in key order,
+  500 rows per round trip: bounded memory). A restore or move of such a
+  file on Postgres (lib/db-restore.ts `loadSqliteFile`) keeps the current
+  state as such a file (as SQLite keeps the swapped-out file), brings the
+  backup up to this schema with the SQLite migrations and refills every
+  table in one transaction (the file's rows iterated, 200 per INSERT;
+  foreign keys dropped and re-added, user triggers disabled meanwhile,
+  identities moved on); the search index is rebuilt, pgvector's table
+  filled in, the data steps run. A backup made on either database restores
+  on either – the format for moving between them.
+- **`pg_dump` on Postgres** (lib/pg-backup.ts) – the scheduled backups and
+  "Back up now" (lib/backup-copy.ts): `flowplan-<time>.dump[.enc]` in the
+  custom format of the instance's schema, encrypted with
+  `FLOWPLAN_ENCRYPTION_KEY`, uploaded to S3/SFTP or kept in the data folder
+  and pruned exactly like the SQLite copies (both names count for the
+  retention and the delayed deletion of uploads). Left out: the derived
+  `search_index` and `ai_embedding_vectors` (rebuilt), so a dump is smaller
+  and restores on a server without pg_trgm or pgvector. pg_dump takes its
+  own consistent snapshot and runs outside Node (no event-loop or memory
+  cost; on a large instance far faster than the row-by-row SQLite copy).
+  - **Restore**: the setup screen (and SFTP/S3 setup restore) accepts a
+    `.dump[.enc]` only on Postgres (on SQLite it says to use the ZIP or the
+    move); it reads the dump's schema version, counts and file ids with
+    `pg_restore --data-only` (refuses a newer version), stages it as
+    `restore-pending/flowplan.dump`, and the next opening loads it
+    (`restorePgDump`): the current state is saved as `pre-restore-<time>/flowplan.dump`,
+    the instance's schema is emptied (everything but extension members –
+    the schema, its grants and extensions stay), and the dump goes in in
+    one transaction: `pg_restore --single-transaction` when the dump's
+    schema has the instance's name, else pg_restore's SQL piped into
+    `psql --single-transaction` with the schema's name replaced outside the
+    COPY data (an instance with `FLOWPLAN_PG_SCHEMA=flowplan` restoring a
+    backup of one in `public`; tested between test schemas). Then
+    `ensurePostgresSchema` brings an older dump to this version (adds
+    tables, columns, triggers; the data steps follow), and the search index
+    is rebuilt. A failed restore puts the saved state back.
+  - **Tools**: pg_dump refuses servers newer than itself, so the client must
+    be at least the server's major version. Found in `FLOWPLAN_PG_BIN`, on
+    `PATH` or in `/usr/lib/postgresql/<n>/bin` (the newest that fits); the
+    Docker image installs `postgresql-client-18` from the PostgreSQL
+    project's apt repository (Debian bookworm ships 15). Without fitting
+    tools – or with `FLOWPLAN_BACKUP_FORMAT=sqlite` – the scheduled backup
+    falls back to the portable SQLite file and logs why.
+  - The password goes to the tools through `PGPASSWORD`, never on the
+    command line; only libpq's own URL parameters are passed on (`ssl=true`
+    of node-postgres becomes `sslmode=require`).
+  - The container start (docker/entrypoint.sh) no longer swaps a pending
+    restore on Postgres: it would have moved the staged file aside before
+    the app could load it (a bug of phase 2 for SQLite files as well).
+  - Extensions (pg_trgm, pgvector) are installed into a schema of their own,
+    `flowplan_ext`, unless they exist already (lib/pg-extensions.ts): a
+    restore empties the instance's schema, and a `pg_dump --schema` does not
+    contain extensions.
 
 ## 4. Porting, and how async spreads
 
@@ -464,52 +516,201 @@ snapshot or restore reads every table in one transaction: with the default
 `max_locks_per_transaction=64` parallel test processes can run out of lock
 slots ("out of shared memory"), hence 256 above.
 
-## 5a. Search on Postgres (until `tsvector`)
+## 5a. Search on Postgres (phase 3)
 
 `lib/search-store.ts` is the one place that stores and matches search
 entries (lib/search-index.ts decides what goes in, lib/collections.ts and
 lib/related-pages.ts query it). SQLite: FTS5 with the trigram tokenizer,
-BM25 with the title ten times the text – unchanged. Postgres: the entries in
-a plain table with their title and text folded (lower case, without
-diacritics, in JavaScript); a phrase matches where the folded text contains
-it – what the trigram index finds – ranked by where the phrases occur
-(title 10, text 1); snippets are cut in JavaScript around the first hit
-with the same markers. Good enough for correctness and the tests; the
-`tsvector` design (per language, `pg_trgm` for substrings) replaces it and
-the search queue triggers in a later phase.
+BM25 with the title ten times the text – unchanged.
 
-## 6. Migration tool
+**Decision: trigrams, not `tsvector`.** #127 planned `tsvector` per language
+with pg_trgm where it cannot help. Measured against what the search does
+today, a word-based `tsvector` cannot give the same results at all: FTS5's
+trigram tokenizer finds any part of a word – German compounds ("plan" in
+"Projektplanung", "kühlschrank" in "Kühlschrank-Regale"), Chinese and
+Japanese text without spaces ("第二阶段" inside a sentence) – and users rely on
+that; `to_tsvector('simple', …)` makes one lexeme per run of letters, so
+those queries would find nothing (prefix queries `:*` help only at the start
+of a word, stemming per language would make it worse for mixed content). The
+same semantics in Postgres is exactly pg_trgm's: `LIKE '%…%'` on the folded
+text, served by GIN `gin_trgm_ops` indexes. `unaccent` is not needed: the
+text is folded in JavaScript (lower case, NFD without marks – the same
+function for the stored text, the query and the snippets), which also avoids
+its non-immutable index expressions.
+
+- **Matching**: a phrase (three characters or more) matches where the folded
+  title or text contains it; shorter queries take the scans both databases
+  share (`ILIKE`, `strpos`), as before.
+- **Ranking**: FTS5's `bm25()` in SQL (`textMatch().rank`): per phrase its
+  frequency (occurrences in the title × 10 + in the text, counted with
+  `replace()`), saturated with k1 = 1.2, normalised by the entry's length
+  (`doc_length`, a generated column) against the average (b = 0.75), times
+  the phrase's IDF (log((N − n + 0.5)/(n + 0.5)), at least 1e-6; n counted
+  by an index scan up to 10,000) when there are several phrases. N and the
+  average length come from a count the indexer makes before searches every
+  ten minutes, or sooner when a tenth of the index changed.
+- **Equal ranks** keep the order of the entries in the index (`s.id`,
+  as FTS5 returns its rows), and the indexer works through its queue in key
+  order – so a rebuilt index ranks ties identically on both databases.
+- **Snippets**: SQL selects an 800-character window of the text around the
+  first hit (not the whole text, up to 400,000 characters); JavaScript cuts
+  what FTS5's `snippet(…, 40)` shows – a port of `fts5SnippetFunction`: 40
+  trigram tokens (42 characters), centred on the hits or starting at the
+  sentence before them (bonus 100, 120 at the start), a hit crossing the
+  edge marked up to it.
+- **Structures** (made when the database opens, `ensureSearchStore`, under
+  an advisory lock; also after a restore and for a database migrated by the
+  tool): the table if missing, `doc_length` (filling in the stop-gap rows
+  of phase 2 – no data migration needed: their folded columns are the
+  same), pg_trgm (installed into `flowplan_ext` when the server has it; on
+  every standard PostgreSQL, a "trusted" extension) and the two GIN
+  indexes. Without pg_trgm the same queries scan (correct, slower; logged).
+- **Rebuild**: `node scripts/db-search-rebuild.mjs` (SQLite file or
+  `DATABASE_URL`; in the image `/app/scripts/`) empties `search_state`;
+  the running instance reindexes everything within seconds (comments,
+  messages and files included – a rebuild after a restore or migration
+  missed those before, found by the migration test), on PostgreSQL after a
+  `REINDEX` of the trigram indexes.
+- **Parity** (tests/search-parity.test.ts on both databases, the same
+  expectations; tests/db-migrate.test.ts on identical data): hits, order –
+  BM25 including ties – and snippets are the same for German, French,
+  Chinese and Japanese text, parts of words, diacritics, title vs. text,
+  frequency and length, several phrases (IDF), title-only matches. Known
+  differences: none in the tested set; in principle FTS5 counts overlapping
+  occurrences of a phrase ("aaa" in "aaaa" twice) where `replace()` counts
+  once, and `lower()` of characters outside Latin script may differ from
+  SQLite's `remove_diacritics` in rare letters (both fold the same in
+  JavaScript before storing on Postgres, so only SQLite's own folding is
+  the reference).
+- Performance: the trigram GIN index on large texts is about as large as
+  FTS5's trigram index; a common short phrase (three letters) matches many
+  entries, and BM25 needs all of them before `LIMIT` – as on SQLite. With a
+  C collation, Postgres' pg_trgm treats only ASCII as word characters: CJK
+  queries are then answered correctly but by a recheck of every row the
+  index cannot narrow (the official Docker image uses `en_US.utf8`; see
+  §13).
+
+## 5b. pgvector for semantic search (phase 3)
+
+`lib/ai/vector-store.ts`. With the `vector` extension the nearest chunks are
+found by the database; without it (or `FLOWPLAN_PGVECTOR=off`) the
+JavaScript scan of lib/ai/semantic.ts answers, as on SQLite.
+
+- `ai_embeddings.vector` (4 bytes per dimension) stays what is stored,
+  backed up, moved and restored on both databases. `ai_embedding_vectors`
+  (key, hash, model, `dims`, `embedding vector`) is derived and Postgres'
+  alone.
+- **A trigger** on `ai_embeddings` keeps it current for every write, from
+  whichever code (the bytes decoded in SQL, `flowplan_floats(bytea) →
+  real[]`, about 0.4 ms per 768-dimension vector). What bypassed the
+  trigger (a restore with triggers disabled, the migration tool, a
+  database from before pgvector) is filled in at the next opening in the
+  background, 500 per transaction (`syncVectors`); until then the
+  JavaScript scan answers. A row counts only with the `ai_embeddings` row
+  of the same key, hash and model.
+- **Indexes**: models differ in size (768, 1536 …), and HNSW needs a fixed
+  size: one partial expression index per size,
+  `USING hnsw ((embedding::vector(d)) vector_ip_ops) WHERE dims=d`, made
+  when vectors of a size first appear (up to 2,000 dimensions; larger ones
+  are searched exactly). Inner product on normalised vectors = cosine.
+- **Query**: through the index with `hnsw.ef_search` raised (100–1000), the
+  workspace, model and page filters applied to the candidates; if that
+  leaves fewer hits than wanted (a small workspace among large ones), the
+  exact query (`ORDER BY embedding <#> q` without the cast, every vector of
+  the workspace in SQL). pgvector 0.6 (Ubuntu 24.04) has no iterative index
+  scans; with 0.8 `hnsw.iterative_scan` would make the fallback rare.
+- **Statistics off for the vector column** (`SET STATISTICS 0`): ANALYZE
+  sorts sampled values, and pgvector refuses to compare vectors of
+  different sizes – a database-wide `ANALYZE` (or autovacuum) failed on a
+  table with two models' vectors (found by the migration test).
+- Tests (tests/pgvector.test.ts): the database finds exactly what the scan
+  finds (scores within 1e-5), filters, deletes/updates/moved workspaces
+  follow, the fill-in after a bypass, the switch-off.
+- Not installed by Flowplan where the role may not: pgvector is not a
+  trusted extension before 0.8; an administrator runs `CREATE EXTENSION
+  vector` (in any schema), Flowplan uses it from the next start.
+
+## 6. Migration tool and procedure (both directions)
 
 `node scripts/db-migrate.mjs --from sqlite:<file> --to postgres://…` and
 `--from postgres://… --to sqlite:<file>` (plain Node, no TypeScript loader;
-`--tables slice|all|a,b`, `--batch`, `--schema`, `--verify-only`).
+in the Docker image `/app/scripts/db-migrate.mjs`). Options: `--schema`
+(Postgres schema, default `public`, created if missing), `--tables
+all|slice|a,b` (default all), `--batch` (rows per read, 1000),
+`--verify-only` (compare only), `--quiet`.
+
+What it does:
 
 - Refuses a source whose schema version differs from this version's
   (`PRAGMA user_version` / `flowplan_meta`), a non-empty target table, an
   existing target file.
 - Copies table by table in batches in primary-key order (`seq` values kept
-  on both sides; the search index is not copied but rebuilt),
-  values converted by the Postgres column type (refuses with the row when a
-  value does not fit – SQLite keeps any value in any column; NUL in text).
+  on both sides), values converted by the Postgres column type (refuses
+  with the row when a value does not fit – SQLite keeps any value in any
+  column; NUL in text).
 - Into Postgres: foreign keys dropped for the copy and re-added afterwards
   (validated; no superuser needed), triggers created after the copy (and
   no seed rows: the copy brings its own), identity sequences continue after
-  the copied values, `ANALYZE`.
+  the copied values, the empty search table created, `ANALYZE` of the
+  copied tables.
 - Into SQLite: the schema exactly as SQLite had it (tables, then after the
   copy indexes, triggers and the FTS table from the JSON), `PRAGMA
-  foreign_key_check`, `user_version`, the search index rebuilt by Flowplan on
-  start.
+  foreign_key_check`, `user_version`.
+- Not copied, rebuilt by Flowplan at its first start: the search index
+  (`search_state` emptied: everything is indexed again, comments, messages
+  and files included), pgvector's table (filled in from `ai_embeddings`).
+  Embeddings themselves are copied (bytes), so semantic search needs no
+  provider calls after a move.
 - Verifies every table: row count and an order-independent checksum (sum of
   64-bit SHA-256 prefixes of each row's canonical values, typed by the
-  Postgres column type).
-- Tried on a seeded instance (41 accounts, 123 sessions, 14 tokens, 60 tags,
-  example pages): SQLite → Postgres (all 217 tables, 1.1 s) → SQLite, same
-  checksums everywhere; Flowplan opens the result (integrity and foreign keys
-  OK, sign-in works) and runs on the Postgres copy (sign-in, tags, the next
-  identity value continues).
-- Missing for production: progress for large tables, files/uploads (they stay
-  where they are; S3 in cluster mode), resumability, a maintenance-mode
-  switch, `pg_dump`-based backups in Postgres mode.
+  Postgres column type), batch by batch (bounded memory).
+- Tested (tests/db-migrate.test.ts, with `DATABASE_URL`): a realistic
+  instance – two workspaces with the example pages, documents in German,
+  English, French and Chinese, a database with records, comments, files,
+  160 embeddings of two models and sizes – SQLite → Postgres → SQLite; the
+  tool verifies every table both ways, and each of the three instances
+  answers 13 searches per workspace (hits, order, snippets), a multi-term
+  match and semantic search (pgvector on Postgres) identically.
+
+### Procedure (short downtime)
+
+The same in both directions; the downtime is the copy (about a second per
+few ten thousand rows locally; documents and embeddings dominate) plus the
+first start's index rebuild (searches work meanwhile and fill up).
+
+1. **Same version on both sides.** Update the old instance to the Flowplan
+   version that will run afterwards and start it once (migrations), or the
+   tool refuses the schema version.
+2. **Prepare the target.** Into PostgreSQL: an empty database (or schema)
+   on PostgreSQL 16 or newer, a role that owns it; pg_trgm is installed by
+   Flowplan if the role may create it (otherwise `CREATE EXTENSION pg_trgm`
+   as administrator); pgvector optional (`CREATE EXTENSION vector` as
+   administrator). Into SQLite: a new, empty data folder.
+3. **Make a backup** (Administration → instance backup, or the scheduled
+   backup) and keep it until the new instance runs.
+4. **Stop Flowplan** (the tool reads a consistent state only when nothing
+   writes; with Litestream also stop the replication).
+5. **Copy and verify**, e.g. in the image:
+   `docker run --rm -v flowplan-data:/app/data --entrypoint node <image> /app/scripts/db-migrate.mjs --from sqlite:/app/data/flowplan.sqlite --to postgres://flowplan:…@db:5432/flowplan`
+   – it ends with "verified: every table has the same rows" (exit 0) or
+   lists the tables that differ (exit 1; nothing is used yet: fix and run
+   again into an emptied target).
+   The way back: `--from postgres://… --to sqlite:/app/data-new/flowplan.sqlite`.
+6. **Switch the configuration**: set `DATABASE_URL` (and
+   `FLOWPLAN_PG_SCHEMA` when not `public`) – or remove it for SQLite and
+   point `FLOWPLAN_DATA_DIR` at the folder with the new file. The data
+   folder keeps the uploads, `secrets.key` and the Web Push keys in both
+   modes: keep using the same folder (or the same S3 bucket).
+7. **Start Flowplan** and check: sign in, open a page, search (the index
+   fills within seconds to minutes), Administration → system. With S3,
+   Litestream is only for SQLite; on PostgreSQL the scheduled backups
+   become pg_dump archives (§3).
+8. Keep the old database (file or schema) until the next scheduled backup
+   of the new one has run.
+
+Not covered: progress resumption after an aborted copy (start over into an
+emptied target), a live switch without downtime, uploads (they stay where
+they are).
 
 ## 7. Performance
 
