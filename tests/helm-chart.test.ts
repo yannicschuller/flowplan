@@ -42,7 +42,7 @@ test("cluster mode: connection strings only as Secret references, refused withou
   assert.match(readFileSync("deploy/helm/flowplan/templates/pvc.yaml", "utf8"), /\(not \.Values\.cluster\.enabled\)/);
   const job = readFileSync("deploy/helm/flowplan/templates/job-migration.yaml", "utf8");
   assert.match(job, /"helm.sh\/hook": pre-install,pre-upgrade/);
-  assert.match(job, /command: \["node", "\/app\/db-schema.mjs"\]/);
+  assert.match(job, /command: \["node", "\/app\/scripts\/db-schema.mjs"\]/);
   assert.match(readFileSync("Dockerfile", "utf8"), /COPY --chmod=644 scripts\/db-migrate.mjs scripts\/db-search-rebuild.mjs scripts\/db-schema.mjs \/app\/scripts\//);
 });
 
