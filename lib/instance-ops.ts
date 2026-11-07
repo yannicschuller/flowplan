@@ -9,6 +9,7 @@ import { retentionDays } from "./version-history";
 import { instanceSettings } from "./instance-settings";
 import { demoCounts } from "./demo";
 import { securityCounters } from "./security-events";
+import { runtimeMetricLines } from "./runtime-metrics";
 
 // Storage quota in MB: per-workspace override or FLOWPLAN_WORKSPACE_QUOTA_MB;
 // 0 or unset means unlimited.
@@ -227,7 +228,16 @@ export function prometheusMetrics() {
     "Blocked addresses and networks.",
     Number(one<{ n: number }>("SELECT COUNT(*) n FROM security_blocks WHERE until IS NULL OR until>?", Date.now())?.n || 0),
   );
+  // Event loop, SQLite time and process (FLOWPLAN_METRICS_LOOP=1, lib/runtime-metrics.ts).
+  lines.push(...runtimeMetricLines(walBytes()));
   return lines.join("\n") + "\n";
+}
+function walBytes() {
+  try {
+    return statSync(resolve(/* turbopackIgnore: true */ process.env.FLOWPLAN_DATA_DIR || "./data", "flowplan.sqlite-wal")).size;
+  } catch {
+    return 0;
+  }
 }
 // The metrics endpoint is off unless FLOWPLAN_METRICS_TOKEN is set; scrapers
 // send it as a bearer token.

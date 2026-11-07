@@ -9,6 +9,7 @@ import type { Identity } from "./types";
 import { notificationDefaults, notificationOn } from "./notification-kinds";
 import { emojiPresentation } from "./emoji-presentation";
 import { migrateFormattedText } from "./formatted-text";
+import { noteStatement, noteTransaction, runtimeMetricsOn } from "./runtime-metrics";
 const globalDb = globalThis as unknown as {
   flowplanDb?: DatabaseSync;
   flowplanSchema?: number;
@@ -1348,27 +1349,35 @@ export function one<T = Record<string, unknown>>(
   sql: string,
   ...params: (string | number | null | Uint8Array)[]
 ): T | undefined {
+  const start = runtimeMetricsOn ? performance.now() : 0;
   const row = db()
     .prepare(sql)
     .get(...params);
+  if (runtimeMetricsOn) noteStatement(start);
   return row ? ({ ...row } as T) : undefined;
 }
 export function all<T = Record<string, unknown>>(
   sql: string,
   ...params: (string | number | null | Uint8Array)[]
 ): T[] {
-  return db()
+  const start = runtimeMetricsOn ? performance.now() : 0;
+  const rows = db()
     .prepare(sql)
     .all(...params)
     .map((row) => ({ ...row })) as T[];
+  if (runtimeMetricsOn) noteStatement(start);
+  return rows;
 }
 export function run(
   sql: string,
   ...params: (string | number | null | Uint8Array)[]
 ) {
-  return db()
+  const start = runtimeMetricsOn ? performance.now() : 0;
+  const result = db()
     .prepare(sql)
     .run(...params);
+  if (runtimeMetricsOn) noteStatement(start);
+  return result;
 }
 export const id = () => randomUUID();
 // Listeners of the activity log (lib/security-events.ts turns the
@@ -1403,6 +1412,7 @@ export function audit(
     } catch {}
 }
 export function transaction<T>(fn: () => T, actor?: Identity): T {
+  const start = runtimeMetricsOn ? performance.now() : 0;
   db().exec("BEGIN IMMEDIATE");
   globalDb.flowplanRollback = [];
   try {
@@ -1429,6 +1439,7 @@ export function transaction<T>(fn: () => T, actor?: Identity): T {
     throw e;
   } finally {
     globalDb.flowplanRollback = undefined;
+    if (runtimeMetricsOn) noteTransaction(start);
   }
 }
 export function onTransactionRollback(cleanup: () => void) {
