@@ -420,9 +420,10 @@ export function comparePreflight(source: EnvReport, target: EnvReport): Prefligh
   else if (enc && target.encryption.all.includes(enc)) items.push({ id: "encryption", level: "ok", code: "encryption.previous" });
   else if (enc) items.push({ id: "encryption", level: "error", code: target.encryption.current ? "encryption.differs" : "encryption.missing" });
   else items.push({ id: "encryption", level: "warn", code: "encryption.added" });
-  // Stored secrets (API keys, calendar connections, two-factor secrets,
-  // webhook secrets): sealed with the first key; the generated secrets.key
-  // moves along.
+  // Stored secrets (lib/ai/secrets.ts: AI keys, calendar and issue-sync
+  // connections, two-factor secrets, webhook signing secrets, addresses and
+  // credentials, the Git connections of databases, inbound mail keys, chat
+  // apps): sealed with the first key; the generated secrets.key moves along.
   const needed = source.secrets.current;
   const available = [...target.secrets.env, ...(source.secrets.file ? [source.secrets.file] : [])];
   if (!needed || available.includes(needed)) items.push({ id: "secrets", level: "ok", code: source.secrets.source === "file" && needed === source.secrets.file ? "secrets.file" : "secrets.same" });

@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Identity } from "../lib/types";
 process.env.FLOWPLAN_DATA_DIR = mkdtempSync(join(tmpdir(), "flowplan-sidebar-"));
-const { one, run, id } = await import("../lib/db");
+const { one, run, id, SCHEMA_VERSION } = await import("../lib/db");
 const { createWorkspace } = await import("../lib/seed");
 const { command, bootstrap } = await import("../lib/api");
 const { commandActionNames, commandActions } = await import("../lib/openapi");
@@ -41,7 +41,7 @@ const leer = page("Leer");
 
 test("schema 87: the table exists", () => {
   assert.ok(one("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sidebar_state'"));
-  assert.equal((globalThis as { flowplanSchema?: number }).flowplanSchema, 91);
+  assert.equal((globalThis as { flowplanSchema?: number }).flowplanSchema, SCHEMA_VERSION);
 });
 
 test("nothing stored yet: null in the bootstrap", () => {

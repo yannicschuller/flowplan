@@ -11,7 +11,9 @@
 // (Slack, Matrix, Microsoft Teams, Discord): the message is rendered from
 // the event at delivery time with the webhook's templates
 // (lib/notification-templates.ts). Credentials for the Matrix client API
-// and Slack's chat.postMessage are sealed (lib/ai/secrets.ts).
+// and Slack's chat.postMessage are sealed (lib/ai/secrets.ts), and so are
+// the signing secret and the address (the credential itself for Slack,
+// Discord and Teams incoming webhooks) – lib/sealed-values.ts.
 //
 // A webhook speaks for the person who set it up: it only receives what
 // they may read (pages, private spaces, private records); properties with
@@ -27,6 +29,7 @@ import { HttpError } from "./auth";
 import { privateAddress, safeSend } from "./safe-fetch";
 import { pageRole, requirePage } from "./permissions";
 import { rowRoleResolver } from "./row-access";
+import { openWebhookSecret, openWebhookUrl, sealWebhookSecret, sealWebhookUrl } from "./sealed-values";
 import { openSecret, sealSecret } from "./ai/secrets";
 import {
   chatFormats,
@@ -107,6 +110,16 @@ function readerMaySee(reader: Identity | null, pageId: string, rowId: unknown) {
   if (typeof rowId !== "string") return true;
   const row = one<{ id: string; access: string; created_by: string | null }>("SELECT id,access,created_by FROM rows WHERE id=? AND page_id=?", rowId, page.id);
   return !!row && !!rowRoleResolver(reader, page, role)(row);
+}
+// Address and signing secret; unsealed values from before are read as
+// they are. Throws when they were sealed with a key that is not here.
+const hookUrl = (hook: { id: string; url: string }) => openWebhookUrl(hook);
+function shownUrl(hook: { id: string; url: string }) {
+  try {
+    return hookUrl(hook);
+  } catch {
+    return "";
+  }
 }
 
 async function checkTarget(raw: string) {
@@ -204,10 +217,10 @@ export async function createWebhook(user: Identity, input: unknown) {
     "INSERT INTO webhooks(id,workspace_id,url,events,page_id,secret,created_by,created_at,format,templates,config,credentials) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
     hookId,
     b.workspaceId,
-    url.href,
+    sealWebhookUrl(hookId, url.href),
     JSON.stringify(b.events),
     b.pageId || null,
-    secret,
+    sealWebhookSecret(hookId, secret),
     user.id,
     Date.now(),
     b.format,
@@ -230,11 +243,12 @@ export async function updateWebhook(user: Identity, input: unknown) {
   const previous = openCredentials(hook);
   const merged = b.credentials === null ? {} : b.credentials ? { ...previous, ...b.credentials } : previous;
   const credentials = storedCredentials(b.format, merged);
-  const target = resolveTarget(b.format, b.url ?? hook.url, b.config, credentials);
-  const url = target === hook.url ? hook.url : (await checkTarget(target)).href;
+  const stored = shownUrl(hook);
+  const target = resolveTarget(b.format, b.url ?? stored, b.config, credentials);
+  const url = stored && target === stored ? stored : (await checkTarget(target)).href;
   run(
     "UPDATE webhooks SET url=?,events=?,page_id=?,format=?,templates=?,config=?,credentials=? WHERE id=?",
-    url,
+    sealWebhookUrl(hook.id, url),
     JSON.stringify(b.events),
     b.pageId || null,
     b.format,
@@ -264,7 +278,7 @@ export function listWebhooks(user: Identity, workspaceId: string) {
     const credentials = openCredentials(h);
     return {
       id: h.id,
-      url: h.url,
+      url: shownUrl(h),
       events: JSON.parse(h.events) as WebhookEvent[],
       page_id: h.page_id,
       created_at: h.created_at,
@@ -377,15 +391,17 @@ type Delivery = HookRow & { delivery_id: string; body: string; attempts: number 
 async function deliver(delivery: Delivery): Promise<{ status: number | null; error: string | null }> {
   const envelope = JSON.parse(delivery.body) as { event: string; data: Record<string, unknown>; notice?: Notice };
   const credentials = openCredentials(delivery);
+  const secret = openWebhookSecret(delivery);
   const headers: Record<string, string> = { "Content-Type": "application/json; charset=utf-8", "User-Agent": "Flowplan-Webhook/1.0" };
-  let url = delivery.url,
+  const address = hookUrl(delivery);
+  let url = address,
     body = delivery.body,
     method: "POST" | "PUT" = "POST";
   const config = parseConfig(delivery.config);
   const options = { templates: parseTemplates(delivery.templates), config };
   const format = delivery.format;
   if (format === "json" || !envelope.notice) {
-    headers["X-Flowplan-Signature"] = `sha256=${createHmac("sha256", delivery.secret).update(body).digest("hex")}`;
+    headers["X-Flowplan-Signature"] = `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;
     headers["X-Flowplan-Event"] = envelope.event;
   } else if (format === "slack" && credentials.token && config.slackChannel) {
     url = SLACK_POST_MESSAGE;
@@ -394,14 +410,14 @@ async function deliver(delivery: Delivery): Promise<{ status: number | null; err
   } else if (format === "matrix") {
     const content = renderMatrix(envelope.notice, options);
     if (credentials.token && config.matrixRoom) {
-      url = matrixSendUrl(delivery.url, config.matrixRoom, delivery.delivery_id);
+      url = matrixSendUrl(address, config.matrixRoom, delivery.delivery_id);
       method = "PUT";
       headers.Authorization = `Bearer ${credentials.token}`;
       body = JSON.stringify(content);
     } else body = JSON.stringify(matrixWebhookBody(content));
   } else body = JSON.stringify(renderPayload(format, envelope.notice, options));
   if (!headers.Authorization && format !== "json")
-    headers["X-Flowplan-Signature"] = `sha256=${createHmac("sha256", delivery.secret).update(body).digest("hex")}`;
+    headers["X-Flowplan-Signature"] = `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;
   // The address is checked again: DNS may point elsewhere by now.
   await checkTarget(url);
   // Sent to the address that was checked (pinned DNS, no redirects).

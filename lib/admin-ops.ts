@@ -27,6 +27,7 @@ import type { Identity } from "./types";
 import { securityRules, type SecurityRule } from "./security-kinds";
 import { sweepSecurityEvents } from "./security-events";
 import { opsMessengerAdmins, queueOpsAlert } from "./messengers";
+import { openWebhookUrl } from "./sealed-values";
 
 const DAY = 86_400_000;
 
@@ -158,8 +159,8 @@ export function workerStatuses(now = Date.now()): WorkerStatus[] {
 
 export function webhookFailures() {
   const count = (sql: string) => Number(one<{ n: number }>(sql)?.n || 0);
-  const recent = all<{ url: string; workspace: string | null; error: string | null; status: number | null; attempts: number; at: number }>(
-    `SELECT w.url,ws.name workspace,d.error,d.status,d.attempts,d.next_at at FROM webhook_deliveries d JOIN webhooks w ON w.id=d.webhook_id
+  const recent = all<{ id: string; url: string; workspace: string | null; error: string | null; status: number | null; attempts: number; at: number }>(
+    `SELECT w.id,w.url,ws.name workspace,d.error,d.status,d.attempts,d.next_at at FROM webhook_deliveries d JOIN webhooks w ON w.id=d.webhook_id
      LEFT JOIN workspaces ws ON ws.id=w.workspace_id WHERE d.delivered_at IS NULL AND d.attempts>0 ORDER BY d.next_at DESC LIMIT 8`,
   );
   return {
@@ -169,7 +170,7 @@ export function webhookFailures() {
     recent: recent.map((r) => {
       let host = "";
       try {
-        host = new URL(r.url).host;
+        host = new URL(openWebhookUrl(r)).host;
       } catch {}
       return { host, workspace: r.workspace || "", error: r.error || (r.status ? `HTTP ${r.status}` : ""), attempts: r.attempts, at: r.at };
     }),
