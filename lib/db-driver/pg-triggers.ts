@@ -22,6 +22,14 @@ const OVERRIDES: Record<string, string> = {
   spaces_position_insert: `UPDATE spaces SET position=COALESCE((SELECT MAX(position) FROM spaces WHERE workspace_id IS NOT DISTINCT FROM NEW.workspace_id AND id<>NEW.id),0)+1 WHERE id=NEW.id;`,
 };
 
+// SQLite's "DELETE the key, then INSERT it" in a trigger relies on one
+// writer at a time; under READ COMMITTED two transactions both delete
+// nothing and both insert (a unique violation – found by the cluster load
+// test on the offline change log). These inserts become upserts.
+const UPSERTS: Record<string, string> = {
+  offline_changes: "ON CONFLICT(page_id,row_id) DO UPDATE SET at=GREATEST(offline_changes.at,excluded.at)",
+};
+
 // unixepoch()*1000 counts whole seconds; julianday('now') milliseconds.
 const NOW_MS = postgresDialect.nowMs();
 const NOW_EXACT_MS = "(extract(epoch from statement_timestamp())*1000)::bigint";
@@ -74,7 +82,9 @@ export function translateTrigger(sqliteSql: string): PgTrigger {
     const raise = /^SELECT\s+RAISE\s*\(\s*(IGNORE|ABORT|FAIL|ROLLBACK)\s*(?:,\s*'((?:[^']|'')*)')?\s*\)$/i.exec(s);
     if (raise) return raise[1].toUpperCase() === "IGNORE" ? "RETURN NULL;" : `RAISE EXCEPTION '%', '${raise[2] ?? "constraint failed"}';`;
     let out = triggerSql(s);
-    if (/^INSERT\s+INTO\b/i.test(out) && /\bNOT\s+EXISTS\s*\(/i.test(out) && !/\bON\s+CONFLICT\b/i.test(out)) out += " ON CONFLICT DO NOTHING";
+    const target = /^INSERT\s+INTO\s+(\w+)/i.exec(out)?.[1]?.toLowerCase();
+    if (target && UPSERTS[target] && !/\bON\s+CONFLICT\b/i.test(out)) out += ` ${UPSERTS[target]}`;
+    else if (/^INSERT\s+INTO\b/i.test(out) && /\bNOT\s+EXISTS\s*\(/i.test(out) && !/\bON\s+CONFLICT\b/i.test(out)) out += " ON CONFLICT DO NOTHING";
     return `${out};`;
   });
   const inner = lines.map((l) => `    ${l}`).join("\n");

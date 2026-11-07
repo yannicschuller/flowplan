@@ -138,3 +138,13 @@ test("workers claiming the storage queue at once never take the same job", async
   assert.equal((await claimStorageJobs(now + 11 * 60_000, 100)).length, 40);
   await run("DELETE FROM storage_queue");
 });
+
+test("comments written to one page at the same moment all land (the offline change log's trigger upserts)", async () => {
+  const page = await createPage(wid, space, owner.id, "Discussed");
+  const results = await Promise.allSettled(
+    Array.from({ length: 8 }, (_, i) => command(i % 2 ? editor : owner, { action: "comment.create", pageId: page, body: `remark ${i}` })),
+  );
+  for (const r of results) assert.equal(r.status, "fulfilled", r.status === "rejected" ? String(r.reason) : "");
+  assert.equal(Number((await one<{ n: number }>("SELECT COUNT(*) n FROM comments WHERE page_id=?", page))!.n), 8);
+  assert.equal(Number((await one<{ n: number }>("SELECT COUNT(*) n FROM offline_changes WHERE page_id=? AND row_id=''", page))!.n), 1);
+});
