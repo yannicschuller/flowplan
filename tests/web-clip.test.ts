@@ -45,6 +45,26 @@ test("clipped articles keep only http(s) and mailto links", () => {
   assert.match(article.html, /href="https:\/\/example.com\/f"/);
 });
 
+test("crafted pages are read in linear time (no ReDoS)", () => {
+  const timed = (html: string) => {
+    const start = performance.now();
+    extractArticle(html, "https://example.com/");
+    return performance.now() - start;
+  };
+  assert.ok(timed("<!--".repeat(750_000)) < 500, "unclosed comments");
+  for (const unit of ["<article>", "<script ", "<main>", "<div>", "<blockquote>a", "</x>", "<meta property='og:title' content='x "])
+    assert.ok(timed(unit.repeat(Math.floor(3_000_000 / unit.length))) < 3000, unit);
+});
+
+test("numeric entities beyond Unicode and left-out parts do not break the text", () => {
+  const article = extractArticle(
+    `<title>A &#99999999999; B &#128512;</title><article><p>eins<script>x</script>zwei</p></article>`,
+    "https://example.com/",
+  );
+  assert.equal(article.title, "A &#99999999999; B 😀");
+  assert.match(article.html, /eins zwei/);
+});
+
 test("escaped entities in titles are decoded once", () => {
   const article = extractArticle(`<title>Use &amp;lt;b&amp;gt; &amp;amp; more</title><p>Text</p>`, "https://example.com/");
   assert.equal(article.title, "Use &lt;b&gt; &amp; more");
