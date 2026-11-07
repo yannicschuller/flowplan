@@ -7,6 +7,7 @@ import { MermaidBlock } from "@/lib/mermaid-node";
 import { mountDiagram } from "@/lib/mermaid-render";
 import { MAX_DIAGRAM_LENGTH } from "@/lib/mermaid-source";
 import { Modal } from "./ui";
+import { nodeTargetPosition, openedNode } from "@/lib/node-target";
 export type DiagramTarget = {
   source: string;
   getPos?: () => number | undefined;
@@ -77,6 +78,8 @@ export function DiagramEditorDialog({
   const [source, setSource] = useState(target.source);
   const [validated, setValidated] = useState<string | null>(null);
   const [conflict, setConflict] = useState("");
+  // The diagram as it was when the dialog opened (lib/node-target.ts).
+  const [opened] = useState(() => (editor ? openedNode(editor.state.doc, target) : null));
   const preview = useRef<HTMLDivElement>(null);
   useEffect(() => {
     setValidated(null);
@@ -101,7 +104,7 @@ export function DiagramEditorDialog({
       return;
     }
     if (target.getPos) {
-      const pos = target.getPos();
+      const pos = nodeTargetPosition(editor.state.doc, target, opened);
       const current =
         typeof pos === "number" ? editor.state.doc.nodeAt(pos) : null;
       if (

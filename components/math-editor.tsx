@@ -7,6 +7,7 @@ import type { Editor, Node } from "@tiptap/core";
 import { MathBlock, MathInline } from "@/lib/document-schema";
 import { mathError, renderMath, MAX_MATH_LENGTH } from "@/lib/math-render";
 import { Modal } from "./ui";
+import { nodeTargetPosition, openedNode } from "@/lib/node-target";
 export type MathTarget = {
   type: "mathBlock" | "mathInline";
   expression: string;
@@ -100,6 +101,8 @@ export function MathEditorDialog({
   const t = useT();
   const locale = useLocale();
   const [expression, setExpression] = useState(target.expression);
+  // The formula as it was when the dialog opened (lib/node-target.ts).
+  const [opened] = useState(() => (editor ? openedNode(editor.state.doc, target) : null));
   const input = useRef<HTMLTextAreaElement>(null);
   // Results of the formula (fractions, binomial formulas, equations).
   const [calc, setCalc] = useState<MathAction[]>([]);
@@ -138,7 +141,7 @@ export function MathEditorDialog({
       return;
     }
     if (target.getPos) {
-      const pos = target.getPos();
+      const pos = nodeTargetPosition(editor.state.doc, target, opened);
       const current =
         typeof pos === "number" ? editor.state.doc.nodeAt(pos) : null;
       if (

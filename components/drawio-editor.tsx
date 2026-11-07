@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Editor } from "@tiptap/core";
 import { useT } from "./i18n";
 import { Modal } from "./ui";
+import { nodeTargetPosition, openedNode } from "@/lib/node-target";
 import { onEditableChange } from "./editor-editable";
 import { DrawioBlock } from "@/lib/drawio-node";
 import { mountDrawioPreview, drawioLabel } from "@/lib/drawio-preview";
@@ -150,6 +151,8 @@ export function DrawioEditorDialog({
   const frame = useRef<HTMLIFrameElement>(null);
   const [state, setState] = useState<"loading" | "ready" | "saving">("loading");
   const [problem, setProblem] = useState("");
+  // The diagram as it was when the dialog opened (lib/node-target.ts).
+  const [opened] = useState(() => (editor ? openedNode(editor.state.doc, target) : null));
   const modified = useRef(false);
   const close = useRef(onClose);
   close.current = onClose;
@@ -177,7 +180,7 @@ export function DrawioEditorDialog({
         );
       if (!editor?.isEditable) return fail(t("Das Dokument kann nicht bearbeitet werden.", "The document cannot be edited."));
       if (target.getPos) {
-        const pos = target.getPos();
+        const pos = nodeTargetPosition(editor.state.doc, target, opened);
         const node = typeof pos === "number" ? editor.state.doc.nodeAt(pos) : null;
         if (typeof pos !== "number" || node?.type.name !== "drawioBlock" || node.attrs.xml !== target.xml)
           return fail(
