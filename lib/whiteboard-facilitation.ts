@@ -159,7 +159,7 @@ function estimation(pageId: string): Estimation | null {
   return parsed.success ? parsed.data : null;
 }
 const votesOf = (pageId: string, round: string) =>
-  all<EstimateVote>("SELECT user_id AS "userId",name,value FROM whiteboard_estimate_votes WHERE page_id=? AND round=? ORDER BY at", pageId, round);
+  all<EstimateVote>(`SELECT user_id AS "userId",name,value FROM whiteboard_estimate_votes WHERE page_id=? AND round=? ORDER BY at`, pageId, round);
 function estimationFor(pageId: string, viewer: string) {
   const session = estimation(pageId);
   return session ? estimationView(session, votesOf(pageId, session.round), viewer) : null;
