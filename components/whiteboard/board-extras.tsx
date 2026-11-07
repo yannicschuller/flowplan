@@ -7,7 +7,7 @@
 // the presenter view. whiteboard.tsx calls useBoardExtras() once and puts
 // its pieces where they belong (actions, style bar, world layer, overlays).
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
-import type * as Y from "yjs";
+import * as Y from "yjs";
 import {
   DownloadSimple,
   FrameCorners,
@@ -114,6 +114,14 @@ const store = (key: string, on: boolean) => {
   } catch {}
 };
 const isMod = (e: { metaKey: boolean; ctrlKey: boolean }) => e.metaKey || e.ctrlKey;
+// The board's elements as its document holds them at this moment.
+function boardItemsNow(itemsMap: Y.Map<Y.Map<unknown>>): WhiteboardItem[] {
+  const list: WhiteboardItem[] = [];
+  itemsMap.forEach((value, id) => {
+    if (value instanceof Y.Map) list.push({ ...(value.toJSON() as WhiteboardItem), id });
+  });
+  return list;
+}
 
 export function useBoardExtras(api: BoardApi) {
   const t = useT();
@@ -599,6 +607,15 @@ export function useBoardExtras(api: BoardApi) {
               to,
             );
             api.change(() => places.forEach((slide, id) => api.setProps(id, { slide })));
+          }}
+          onStep={(id, step) => {
+            // The order in the board's document right now: the items drawn
+            // last may lag a change behind (they follow on the next frame).
+            const order = frameSequence(boardItemsNow(api.itemsMap)).map((f) => f.id);
+            const from = order.indexOf(id);
+            if (from < 0 || from + step < 0 || from + step >= order.length) return;
+            const places = moveFrame(order, from, from + step);
+            api.change(() => places.forEach((slide, frame) => api.setProps(frame, { slide })));
           }}
           onNotes={(id, notes) => api.change(() => api.setProps(id, { notes: notes.slice(0, 20000) || undefined }))}
           onCopyLink={copyLink}

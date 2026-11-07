@@ -3420,6 +3420,15 @@ export default function Whiteboard({
       className={`whiteboard${fullscreen ? " wb-fullscreen" : ""}${layout.dock ? " wb-layout-dock" : ""}${layout.menu ? " wb-layout-menu" : ""}${showCables ? "" : " wb-cables-hidden"}`}
       tabIndex={0}
       aria-label={t("Whiteboard", "Whiteboard")}
+      // Each press and each command key begins an undo step of its own:
+      // changes merge (captureTimeout) only within one gesture, a held key
+      // or a stretch of typing. An insert, a drag, a lock or a duplicate
+      // made right after another is still undone alone.
+      onPointerDownCapture={() => undo.stopCapturing()}
+      onKeyDownCapture={(e) => {
+        const target = e.target as HTMLElement;
+        if (!e.repeat && !target.isContentEditable && !/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) undo.stopCapturing();
+      }}
       onKeyDown={onKeyDown}
       onKeyUp={(e) => e.key === " " && setSpace(false)}
       onPaste={onPaste}

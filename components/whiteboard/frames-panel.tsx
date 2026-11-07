@@ -61,6 +61,7 @@ export function FramesPanel({
   onRename,
   onToggleHidden,
   onMove,
+  onStep,
   onNotes,
   onCopyLink,
   onExport,
@@ -78,6 +79,10 @@ export function FramesPanel({
   onRename: (id: string, text: string) => void;
   onToggleHidden: (id: string) => void;
   onMove: (from: number, to: number) => void;
+  // One place up or down from where the frame is now – not from where the
+  // last drawing put it: a key pressed twice before the panel redraws moves
+  // the frame twice.
+  onStep: (id: string, step: -1 | 1) => void;
   onNotes: (id: string, notes: string) => void;
   onCopyLink: (id: string) => void;
   onExport: (id: string) => void;
@@ -164,12 +169,9 @@ export function FramesPanel({
                       onPointerDown={(e) => gripDown(e, index)}
                       onKeyDown={(e) => {
                         if (!e.altKey && !e.metaKey && !e.ctrlKey) return;
-                        if (e.key === "ArrowUp" && index > 0) {
+                        if (e.key === "ArrowUp" || e.key === "ArrowDown") {
                           e.preventDefault();
-                          onMove(index, index - 1);
-                        } else if (e.key === "ArrowDown" && index < frames.length - 1) {
-                          e.preventDefault();
-                          onMove(index, index + 1);
+                          onStep(frame.id, e.key === "ArrowUp" ? -1 : 1);
                         }
                       }}
                     >
