@@ -3,6 +3,7 @@
 // changes, pruned of deleted pages and spaces, and the pure helpers the
 // client uses (reveal, "Alle aufklappen", journal folders, the old copy on
 // the device).
+import { onPostgres } from "./helpers/backend";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
@@ -41,7 +42,8 @@ const leer = page("Leer");
 
 test("schema 87: the table exists", () => {
   assert.ok(tableNames().includes("sidebar_state"));
-  assert.equal((globalThis as { flowplanSchema?: number }).flowplanSchema, SCHEMA_VERSION);
+  // (The SQLite migrations ran; Postgres has the translated schema.)
+  if (!onPostgres) assert.equal((globalThis as { flowplanSchema?: number }).flowplanSchema, SCHEMA_VERSION);
 });
 
 test("nothing stored yet: null in the bootstrap", () => {
