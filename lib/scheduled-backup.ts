@@ -9,7 +9,8 @@
 // An SFTP server (lib/sftp-backup.ts, #128) receives the same copy as well.
 // Files deleted here stay in the bucket under .deleted/uploads/ as long as a
 // kept backup may refer to them (lib/deleted-uploads.ts).
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { moveFile } from "./move-file";
 import { resolve } from "node:path";
 import { one, run } from "./db";
 import { instanceSettings } from "./instance-settings";
@@ -107,7 +108,8 @@ export async function runScheduledBackup(now = Date.now()): Promise<BackupRun> {
       const folder = resolve(dataDir(), "backups");
       mkdirSync(folder, { recursive: true });
       // A copy, not a move, when the SFTP target below still sends this one.
-      (sftpBackupActive() ? copyFileSync : renameSync)(copy, resolve(folder, name));
+      // A move that also works onto a mounted share (#161).
+      (sftpBackupActive() ? copyFileSync : moveFile)(copy, resolve(folder, name));
       for (const file of beyondKeep(readdirSync(folder).filter((f) => BACKUP_NAME.test(f)), keep)) rmSync(resolve(folder, file));
       result = { at: now, target: "local", name, bytes, error: null };
     }
