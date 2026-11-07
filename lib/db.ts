@@ -1442,6 +1442,11 @@ function forgetStatements(d: DatabaseSync) {
 export function writeGeneration() {
   return globalDb.flowplanWrites ?? 0;
 }
+// For the Postgres paths (bridge and lib/db-driver/postgres.ts): what they
+// write outdates memoized reads (lib/read-memo.ts) as SQLite writes do.
+export function noteWriteOf(sql: string) {
+  if (!READ_ONLY.test(sql)) noteWrite();
+}
 function noteWrite() {
   globalDb.flowplanWrites = (globalDb.flowplanWrites ?? 0) + 1;
 }
@@ -1452,7 +1457,10 @@ export function one<T = Record<string, unknown>>(
   ...params: (string | number | null | Uint8Array)[]
 ): T | undefined {
   const pg = legacyPg();
-  if (pg) return pg.one<T>(sql, params);
+  if (pg) {
+    noteWriteOf(sql);
+    return pg.one<T>(sql, params);
+  }
   const start = runtimeMetricsOn ? performance.now() : 0;
   const cached = statement(sql);
   if (dbContext.sqliteActive) outsideAsyncTransaction(!cached.reads);
@@ -1466,7 +1474,10 @@ export function all<T = Record<string, unknown>>(
   ...params: (string | number | null | Uint8Array)[]
 ): T[] {
   const pg = legacyPg();
-  if (pg) return pg.all<T>(sql, params);
+  if (pg) {
+    noteWriteOf(sql);
+    return pg.all<T>(sql, params);
+  }
   const start = runtimeMetricsOn ? performance.now() : 0;
   const cached = statement(sql);
   if (dbContext.sqliteActive) outsideAsyncTransaction(!cached.reads);
@@ -1482,7 +1493,10 @@ export function run(
   ...params: (string | number | null | Uint8Array)[]
 ) {
   const pg = legacyPg();
-  if (pg) return pg.run(sql, params);
+  if (pg) {
+    noteWrite();
+    return pg.run(sql, params);
+  }
   const start = runtimeMetricsOn ? performance.now() : 0;
   if (dbContext.sqliteActive) outsideAsyncTransaction(true);
   let result;
@@ -1529,7 +1543,14 @@ export function audit(
 }
 export function transaction<T>(fn: () => T, actor?: Identity): T {
   const pg = legacyPg();
-  if (pg) return pg.transaction(fn);
+  if (pg)
+    try {
+      return pg.transaction(fn);
+    } catch (e) {
+      // Rolled back: memoized reads of it are outdated (lib/read-memo.ts).
+      noteWrite();
+      throw e;
+    }
   // Inside an asynchronous transaction (lib/db-driver/sqlite.ts) on the
   // same connection: a savepoint of it.
   const scope = dbContext.als.getStore();

@@ -10,6 +10,7 @@ import { currentTx, dbContext, endScope, type TxScope } from "./context";
 import { numberPlaceholders, postgresDialect, sqliteOnly, withoutRowid } from "./dialect";
 import { configureTypes } from "./pg-types.mjs";
 import type { Db, Param, TxOptions } from "./types";
+import { noteWriteOf } from "../db";
 
 configureTypes(pg);
 
@@ -48,6 +49,7 @@ export function createPostgresDb(url: string, options: PostgresOptions = {}): Db
   };
   async function query(sql: string, params: Param[]) {
     const s = statement(sql);
+    noteWriteOf(sql);
     return client().query({ name: s.name, text: s.text, values: params.map(value) });
   }
 
@@ -81,6 +83,7 @@ export function createPostgresDb(url: string, options: PostgresOptions = {}): Db
         return result;
       } catch (error) {
         await connection.query("ROLLBACK").catch(() => {});
+        noteWriteOf("ROLLBACK");
         throw error;
       } finally {
         connection.release();
