@@ -19,7 +19,11 @@ export function clientAddress(headers: Headers) {
     .map((part) => part.trim())
     .filter(Boolean);
   if (chain.length) return chain[Math.max(0, chain.length - trusted)].slice(0, 100);
-  const real = (headers.get("x-real-ip") || "").trim().slice(0, 100);
+  // X-Real-IP is one value, set by the proxy right in front of Flowplan to
+  // the address it saw: the client only with exactly one proxy. Behind two
+  // it names the outer proxy at best (or whatever the client sent, when the
+  // inner one passes it on), so it counts only with FLOWPLAN_TRUSTED_PROXIES=1.
+  const real = trusted === 1 ? (headers.get("x-real-ip") || "").trim().slice(0, 100) : "";
   if (real) return real;
   if (!warned && process.env.NODE_ENV === "production") {
     warned = true;

@@ -644,6 +644,7 @@ export const commandActions: ActionDoc[] = [
   {
     action: "calendar.feed",
     summary: "Create the iCalendar link of a calendar view",
+    description: "Only signed in in the browser or the app: refused with 403 for personal API tokens, since the link would outlive the token.",
     input: z.object({ action: z.literal("calendar.feed"), pageId: uuid, viewId: z.string().max(100) }),
   },
   {

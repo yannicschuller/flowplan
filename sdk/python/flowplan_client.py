@@ -1157,7 +1157,7 @@ CommandMemberInvite = TypedDict("CommandMemberInvite", {
     "role": Required[Literal["editor", "viewer"]],
 }, total=False)
 
-# Create the iCalendar link of a calendar view
+# Create the iCalendar link of a calendar view. Only signed in in the browser or the app: refused with 403 for personal API tokens, since the link would outlive the token.
 CommandCalendarFeed = TypedDict("CommandCalendarFeed", {
     "action": Required[Literal["calendar.feed"]],
     "pageId": Required[str],

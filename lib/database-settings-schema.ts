@@ -101,7 +101,17 @@ export const settingsSchema = z.object({
   sprints: z.array(sprintSchema).max(200).optional(),
   // A number property with story points or hours; empty counts records.
   pointsField: fid.optional(),
-  git: z.object({ token: z.string().max(80), secret: z.string().max(120), createdAt: z.string().max(40) }).optional(),
+  // Sealed (lib/sealed-values.ts): token and secret empty, both in
+  // `sealed`, the token's hash in `tokenHash`; older ones in plain text.
+  git: z
+    .object({
+      token: z.string().max(80),
+      secret: z.string().max(120),
+      createdAt: z.string().max(40),
+      sealed: z.string().max(600).optional(),
+      tokenHash: z.string().max(64).optional(),
+    })
+    .optional(),
 });
 export type DatabaseSettings = z.infer<typeof settingsSchema>;
 

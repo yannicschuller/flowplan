@@ -25,6 +25,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { all, audit, id, one, run, transaction } from "./db";
 import { appUrl } from "./auth";
+import { readOnlyRefusal } from "./instance-read-only";
 import { lastAdmin, setUserDisabled } from "./account-deletion";
 import { reapplySsoUser } from "./sso-mappings";
 import { identityOwner } from "./identities";
@@ -816,6 +817,10 @@ export function handleScim(req: ScimRequest): ScimResult {
     const token = tokenFromHeader(req.authorization);
     if (!token) throw new ScimError(401, "A valid SCIM bearer token is required.");
     tokenId = token.id;
+    // No provisioning while the instance moves (lib/instance-read-only.ts):
+    // the identity provider retries later.
+    const refusal = req.method === "GET" ? null : readOnlyRefusal("/api/scim/v2");
+    if (refusal) throw new ScimError(423, refusal);
     result = route(req);
   } catch (e) {
     const error =

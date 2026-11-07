@@ -9,6 +9,7 @@ import type { Identity } from "./types";
 import { notificationDefaults, notificationOn } from "./notification-kinds";
 import { emojiPresentation } from "./emoji-presentation";
 import { migrateFormattedText } from "./formatted-text";
+import { migrateSealedSecrets } from "./sealed-values";
 const globalDb = globalThis as unknown as {
   flowplanDb?: DatabaseSync;
   flowplanSchema?: number;
@@ -18,7 +19,7 @@ const globalDb = globalThis as unknown as {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 91;
+export const SCHEMA_VERSION = 92;
 function migrate(d: DatabaseSync) {
   if (globalDb.flowplanSchema === SCHEMA_VERSION) return;
   d.exec(`
@@ -1156,6 +1157,14 @@ function migrate(d: DatabaseSync) {
   // so they show as before; data_migrations remembers one-time steps.
   migrateFormattedText(d);
   migrateMetaScopes(d);
+  // Used one-time values of signed deliveries (Mailgun's token, Slack's
+  // event_id), kept a short while against replays (lib/replay-guard.ts).
+  d.exec(`CREATE TABLE IF NOT EXISTS replay_guard(key TEXT PRIMARY KEY,fingerprint TEXT NOT NULL,expires INTEGER NOT NULL);
+    CREATE INDEX IF NOT EXISTS replay_guard_expires ON replay_guard(expires);`);
+  // Schema 92 – integration secrets at rest (lib/sealed-values.ts): webhook
+  // signing secrets and addresses and the Git connections of databases are
+  // sealed once. An older version cannot read them, hence the new number.
+  migrateSealedSecrets(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);

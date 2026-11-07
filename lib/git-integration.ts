@@ -2,7 +2,9 @@
 // /api/git/<token> of a database. Commits and pull/merge requests that
 // mention a ticket number (WEB-123) appear on that record; "closes WEB-123"
 // marks it done once the commit is on the default branch or the request is
-// merged. Every request is checked against the database's secret.
+// merged. Every request is checked against the database's secret. Token
+// and secret are kept sealed (lib/sealed-values.ts); the address is found
+// by a hash of the token.
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { all, id, one, run } from "./db";
 import { HttpError } from "./auth";
@@ -13,6 +15,7 @@ import { doneRule, isDone } from "./database-settings-schema";
 import { resolveTicket } from "./ticket-refs";
 import { rowChanged } from "./automations";
 import { TICKET_REF } from "./ticket-ids";
+import { gitTokenHash, openGit, sealGit } from "./sealed-values";
 import type { Field, Identity, Page } from "./types";
 
 type Item = { kind: "commit" | "pr"; ref: string; title: string; text: string; url: string; author: string; state: string; closes: boolean };
@@ -27,7 +30,7 @@ export function gitSetup(page: Page, action: "git.setup" | "git.disable") {
     return { ok: true };
   }
   const git = { token: randomBytes(24).toString("base64url"), secret: randomBytes(24).toString("base64url"), createdAt: new Date().toISOString() };
-  storeSettings(page.id, { ...settings, git });
+  storeSettings(page.id, { ...settings, git: sealGit(page.id, git) });
   return git;
 }
 
@@ -128,12 +131,19 @@ function closeRecord(pageId: string, rowId: string) {
 
 export function receiveGitWebhook(token: string, headers: Headers, body: string) {
   if (!/^[A-Za-z0-9_-]{20,64}$/.test(token)) throw new HttpError(404, "Nicht gefunden.");
-  const db = all<{ page_id: string; workspace_id: string; settings: string }>(
-    "SELECT d.page_id,p.workspace_id,d.settings FROM databases d JOIN pages p ON p.id=d.page_id WHERE p.deleted_at IS NULL AND d.settings LIKE ?",
+  // Sealed connections by the hash of their token, older ones by the token.
+  const candidates = all<{ page_id: string; workspace_id: string }>(
+    "SELECT d.page_id,p.workspace_id FROM databases d JOIN pages p ON p.id=d.page_id WHERE p.deleted_at IS NULL AND (d.settings LIKE ? OR d.settings LIKE ?)",
+    `%"tokenHash":"${gitTokenHash(token)}"%`,
     `%"token":"${token}"%`,
-  ).find((d) => databaseSettings(d.page_id).git?.token === token);
-  if (!db) throw new HttpError(404, "Nicht gefunden.");
-  const git = databaseSettings(db.page_id).git!;
+  );
+  let db: (typeof candidates)[number] | undefined, git: ReturnType<typeof openGit> = null;
+  for (const candidate of candidates) {
+    const found = openGit(candidate.page_id, databaseSettings(candidate.page_id).git);
+    if (found && same(found.token, token)) [db, git] = [candidate, found];
+    if (db) break;
+  }
+  if (!db || !git) throw new HttpError(404, "Nicht gefunden.");
   const source = verify(headers, body, git.secret);
   if (!source) throw new HttpError(401, "Signatur ungültig.");
   if (source.event === "ping") return { ok: true, linked: 0, closed: 0 };
@@ -177,8 +187,7 @@ export function receiveGitWebhook(token: string, headers: Headers, body: string)
 // change the database (a reader with the secret could close records).
 export function gitConfig(user: Identity, pageId: string) {
   requirePage(user, pageId, true);
-  const git = databaseSettings(pageId).git;
-  return git ? { token: git.token, secret: git.secret, createdAt: git.createdAt } : null;
+  return openGit(pageId, databaseSettings(pageId).git);
 }
 
 export function gitLinks(user: Identity, pageId: string, rowId: string) {

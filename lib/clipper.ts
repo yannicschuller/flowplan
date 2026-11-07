@@ -10,6 +10,7 @@ import { all, audit, one, run, transaction } from "./db";
 import { SPACE_ORDER } from "./space-order";
 import { HttpError, appUrl } from "./auth";
 import { identityFromApiToken } from "./api-tokens";
+import { blockedRequest } from "./security-events";
 import { pageRole, requireMember, requirePage, spaceRole } from "./permissions";
 import { journalLocked, lockedPageIds } from "./journal-extras";
 import { createPage } from "./seed";
@@ -40,7 +41,11 @@ export function clipperCors(origin: string | null): Record<string, string> {
 
 // Only a bearer token counts here; a browser session cookie is ignored, so
 // another site can never use someone's session through these endpoints.
-export function clipperUser(authorization: string | null): Identity {
+// Given the request's headers, a blocked address (Administration →
+// Sicherheit) counts as signed out, as everywhere else.
+export function clipperUser(request: Headers | string | null): Identity {
+  const authorization = request instanceof Headers ? request.get("authorization") : request;
+  if (request instanceof Headers && blockedRequest(request)) throw new HttpError(401, "Das API-Token ist ungültig oder abgelaufen.");
   if (!authorization?.startsWith("Bearer ")) throw new HttpError(401, "Bitte melde dich mit einem API-Token an.");
   const user = identityFromApiToken(authorization, { clipper: true });
   if (!user) throw new HttpError(401, "Das API-Token ist ungültig oder abgelaufen.");

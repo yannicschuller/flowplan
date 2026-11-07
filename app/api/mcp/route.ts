@@ -2,12 +2,13 @@
 // API tokens sign in here, never the browser session: a site the person
 // visits cannot use it, and every call carries the token's own rights.
 import { after } from "next/server";
-import { appUrl, HttpError } from "@/lib/auth";
+import { appUrl, HttpError, refuseWhileReadOnly } from "@/lib/auth";
 import { identityFromApiToken } from "@/lib/api-tokens";
 import { recordOpsEvent } from "@/lib/ops-events";
 import { withRequestLocale } from "@/lib/content-locale";
 import { dispatchPush } from "@/lib/push";
-import { handleMcpMessage } from "@/lib/mcp";
+import { handleMcpMessage, mcpChanges } from "@/lib/mcp";
+import { blockedRequest } from "@/lib/security-events";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -61,7 +62,9 @@ async function handlePOST(req: Request) {
   // Browsers send an Origin; only Flowplan's own is accepted (DNS rebinding).
   const origin = req.headers.get("origin");
   if (origin && origin !== new URL(appUrl()).origin) return rpcError(403, -32000, "Origin not allowed.");
-  const user = identityFromApiToken(req.headers.get("authorization"));
+  // Blocked addresses (Administration → Sicherheit) count as signed out, as
+  // on every other route.
+  const user = blockedRequest(req.headers) ? null : identityFromApiToken(req.headers.get("authorization"));
   if (!user || user.demo)
     return rpcError(401, -32001, "A personal Flowplan API token is required (Authorization: Bearer fp_…).", {
       "WWW-Authenticate": 'Bearer realm="flowplan"',
@@ -80,6 +83,8 @@ async function handlePOST(req: Request) {
   // Batches were removed from the protocol (2025-06-18).
   if (Array.isArray(input)) return rpcError(400, -32600, "Batch requests are not supported.");
   try {
+    // Write tools not while the instance moves (423, like /api/command).
+    if (mcpChanges(input)) refuseWhileReadOnly(req);
     const answer = await handleMcpMessage(user, input);
     after(dispatchPush);
     return answer ? reply(200, answer) : reply(202);
