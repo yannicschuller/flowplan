@@ -48,7 +48,7 @@ import {
 import { appSignInReportLine } from "@/lib/app-sign-in-report";
 import { readJsonLimited, readTextLimited } from "@/lib/request-body";
 import { provesApp } from "@/lib/app-devices";
-import { refuseSsoOnly, removeIdentity, removePassword, signInOverview } from "@/lib/identities";
+import { refuseSsoOnly, removeIdentity, removePassword, signInOverview, ssoOnlyAccount } from "@/lib/identities";
 import { confirmStep, sessionStartedAt, stepUpMethods } from "@/lib/step-up";
 export const runtime = "nodejs";
 import { oidcConfig as config, oidcFailure } from "@/lib/oidc";
@@ -258,8 +258,9 @@ async function handleGET(
       // Confirmed: signed in right away in the browser that signed up;
       // elsewhere the person signs in themselves.
       const jar = await cookies();
-      // An account with an authenticator app always signs in with its code.
-      const here = !!userId && jar.get("flowplan_verify")?.value === userId && !totpEnabled(userId);
+      // An account with an authenticator app always signs in with its code,
+      // and one that signs in through SSO only (OIDC_LINKED_SSO_ONLY) there.
+      const here = !!userId && jar.get("flowplan_verify")?.value === userId && !totpEnabled(userId) && !ssoOnlyAccount(userId);
       if (userId && here) {
         jar.delete("flowplan_verify");
         await signIn(userId, localGroups(userId));
@@ -412,6 +413,15 @@ async function handlePOST(
     if (action === "trial") {
       const address = clientAddress(req.headers);
       const uid = startDemo(address);
+      // Signed in already: that session ends rather than lingering behind
+      // the demo's cookie (a previous demo ends with its data, as at sign-out).
+      const jar = await cookies(),
+        previous = jar.get(cookieName)?.value;
+      if (previous) {
+        const before = await currentUser();
+        if (before?.demo) endDemo(before.id);
+        run("DELETE FROM sessions WHERE token=?", hash(previous));
+      }
       const until = Date.now() + DEMO_MAX_MS;
       await issueSession(uid, [], {
         expires: demoSessionExpiry(until),
@@ -659,8 +669,12 @@ async function handlePOST(
       if (user.apiScope) throw new HttpError(403, translate(locale)("Mit einem API-Token nicht möglich.", "Not possible with an API token."));
       const address = clientAddress(req.headers);
       if (action === "totp-setup") return NextResponse.json(startTotpSetup(user, locale), { headers: { "Cache-Control": "no-store" } });
-      if (action === "totp-confirm")
-        return NextResponse.json({ ...confirmTotpSetup(user.id, await body(), locale), status: twoFactorStatus(user.id) }, { headers: { "Cache-Control": "no-store" } });
+      if (action === "totp-confirm") {
+        const result = confirmTotpSetup(user.id, await body(), locale);
+        // Turned on: sessions elsewhere (perhaps from a known password) end.
+        await endOtherSessions(user.id);
+        return NextResponse.json({ ...result, status: twoFactorStatus(user.id) }, { headers: { "Cache-Control": "no-store" } });
+      }
       if (action === "totp-recovery")
         return NextResponse.json({ ...(await regenerateRecoveryCodes(user.id, await body(), address, locale)), status: twoFactorStatus(user.id) }, { headers: { "Cache-Control": "no-store" } });
       if (action === "totp-after-passkey")
@@ -687,7 +701,8 @@ async function handlePOST(
         await finishPasskeyRegistration(user, await takeChallengeCookie(), await body(), locale);
       else if (action === "passkey-delete") {
         const { id } = (await body()) as { id?: unknown };
-        if (typeof id === "string") deletePasskey(user.id, id);
+        // A removed passkey (perhaps on a lost device) signs nobody in any more.
+        if (typeof id === "string" && deletePasskey(user.id, id)) await endOtherSessions(user.id);
       }
       return NextResponse.json({ ok: true, passkeys: listPasskeys(user.id) });
     }

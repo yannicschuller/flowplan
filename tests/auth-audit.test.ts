@@ -45,3 +45,37 @@ test("a hand-off carries the browser session's sign-in time into the app session
   run("INSERT INTO sessions(token,user_id,groups_json,expires,created_at,authenticated_at) VALUES(?,?,?,?,?,?)", hash(fresh), uid, "[]", Date.now() + 3600_000, Date.now(), Date.now());
   assert.equal(stepUpMethods(uid, sessionStartedAt(fresh)).recentOk, true);
 });
+
+// Security audit hardening: sessions end where a sign-in method changes.
+const authRoute = () => readFileSync(join(import.meta.dirname, "../app/api/auth/[action]/route.ts"), "utf8");
+const block = (source: string, marker: string, length: number) => {
+  const at = source.indexOf(marker);
+  assert.ok(at >= 0, marker);
+  return source.slice(at, at + length);
+};
+
+test("turning on the authenticator app or removing a passkey ends the other sessions", () => {
+  const route = authRoute();
+  assert.match(block(route, 'if (action === "totp-confirm")', 400), /confirmTotpSetup[\s\S]*endOtherSessions\(user\.id\)/);
+  assert.match(block(route, 'else if (action === "passkey-delete")', 400), /deletePasskey\(user\.id, id\)\) await endOtherSessions\(user\.id\)/);
+});
+
+test("deletePasskey tells whether a passkey was removed", async () => {
+  const { deletePasskey } = await import("../lib/local-auth");
+  run("INSERT INTO passkeys(id,user_id,public_key,counter,transports,name,created_at) VALUES(?,?,?,?,?,?,?)", "pk-1", uid, Buffer.from([1]), 0, "[]", "Key", Date.now());
+  assert.equal(deletePasskey(uid, "pk-1"), true);
+  assert.equal(deletePasskey(uid, "pk-1"), false, "gone already");
+  assert.equal(deletePasskey(id(), "pk-1"), false);
+});
+
+test("the e-mail confirmation link signs in only where other sign-ins would (SSO-only accounts)", () => {
+  const verify = block(authRoute(), 'if (action === "verify") {', 900);
+  assert.match(verify, /const here = [^;]*!ssoOnlyAccount\(userId\)/);
+});
+
+test("starting a demo while signed in ends the previous session", () => {
+  const trial = block(authRoute(), 'if (action === "trial") {', 900);
+  const ends = trial.indexOf('run("DELETE FROM sessions WHERE token=?", hash(previous))');
+  assert.ok(ends > 0, "the previous session row is deleted");
+  assert.ok(ends < trial.indexOf("issueSession("), "before the demo session is issued");
+});

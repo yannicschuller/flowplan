@@ -590,8 +590,11 @@ export async function finishPasskeyRegistration(user: User, token: string | unde
   securityEvent("account.passkey_added", { actorId: user.id, detail: name || "" });
   return credential.id;
 }
+// Whether a passkey was removed (the route then ends the other sessions).
 export function deletePasskey(userId: string, passkeyId: string) {
-  if (run("DELETE FROM passkeys WHERE id=? AND user_id=?", passkeyId, userId).changes) securityEvent("account.passkey_removed", { actorId: userId });
+  if (!run("DELETE FROM passkeys WHERE id=? AND user_id=?", passkeyId, userId).changes) return false;
+  securityEvent("account.passkey_removed", { actorId: userId });
+  return true;
 }
 export async function passkeyLoginOptions() {
   if (!localLoginEnabled()) throw new HttpError(403, "Passkeys sind ausgeschaltet.");
