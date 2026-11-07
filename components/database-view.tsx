@@ -8,7 +8,8 @@ import { readModeIds, toggleReadMode } from "@/lib/read-mode";
 import { pinnedColumnLeft, pinnedColumnWidth, SELECTION_COLUMN, tableWidth } from "@/lib/pinned-column";
 import { isLinkField } from "@/lib/cell-links";
 import { LinkCellDisplay, LinkValue } from "./link-cell";
-import { CSV_FORMULA, csvImportText, csvListValues } from "@/lib/cell-text";
+import { csvImportText } from "@/lib/cell-text";
+import { type CsvContext, csvImporter, databaseCsv, viewCsvFields } from "@/lib/database-csv";
 import { recordsClipboard } from "@/lib/database-clipboard";
 import { suggestedPrefix } from "@/lib/ticket-ids";
 import { parentField, treeOrder } from "@/lib/subtasks";
@@ -71,7 +72,6 @@ import CalculationEditor from "./calculation-editor";
 import {
   browserZone,
   isTimed,
-  sqlTimestampToIso,
   validDateValue,
 } from "@/lib/date-values";
 import { defaultGallery, galleryImage } from "@/lib/database-gallery";
@@ -185,7 +185,7 @@ import {
   ArrowRight,
 } from "@phosphor-icons/react";
 import Papa from "papaparse";
-import { escapeInline, isFormattedText, toPlain } from "@/lib/inline-markdown";
+import { isFormattedText } from "@/lib/inline-markdown";
 import { InlineText } from "./inline-text";
 import { Modal, viewIcons, download, Avatar, api, PageIcon, SHEET_MEDIA } from "./ui";
 import { CoverPicker } from "./cover-picker";
@@ -1033,6 +1033,17 @@ export default function DatabaseView({
       }),
     };
   }
+  // Names for the ids in cells, for the CSV export and import.
+  const csvContext = (): CsvContext => ({
+    members,
+    related,
+    // Relations to this database itself find its titles here.
+    relatedSchemas: { ...data.relatedSchemas, [page.id]: fields },
+    files: data.files,
+    sprints: data.database.settings?.sprints,
+    untitled: t("Ohne Titel", "Untitled"),
+    unavailable: t("Nicht verfügbar", "Not available"),
+  });
   const copiedMessage = (count: number) =>
     count === 1 ? t("1 Eintrag kopiert", "1 record copied") : t(`${count} Einträge kopiert`, `${count} records copied`);
   async function copySelection() {
@@ -3094,14 +3105,8 @@ export default function DatabaseView({
             onCsv={() =>
               download(
                 `${page.title}.csv`,
-                Papa.unparse({
-                  fields: fields.map((f) => f.name),
-                  data: shown.map((r) =>
-                    // Formatted text (#126) as plain text.
-                    // Created and edited time as ISO 8601 instants, like dates with time.
-                    fields.map((f) => (isFormattedText(f, fields) ? toPlain(cellText(r.cells[f.id])) : isTimestampType(f.type) ? cellText(sqlTimestampToIso(r.cells[f.id])) : cellText(r.cells[f.id]))),
-                  ),
-                }, { escapeFormulae: CSV_FORMULA }),
+                // The view's columns, people and records by name (lib/database-csv.ts).
+                databaseCsv(viewCsvFields(view, fields, visibleFields), fields, shown, csvContext()),
                 "text/csv",
               )
             }
@@ -4057,25 +4062,13 @@ export default function DatabaseView({
             onError(t("CSV konnte nicht gelesen werden.", "The CSV could not be read."));
             return;
           }
-          const imported = result.data.map((row) =>
-            Object.fromEntries(
-              fields
-                .filter((f) => !computedTypes.includes(f.type))
-                .map((f) => [
-                  f.id,
-                  f.type === "number"
-                    ? Number(row[f.name] || 0)
-                    : f.type === "checkbox"
-                      ? ["true", "1", "ja"].includes(
-                          (row[f.name] || "").toLowerCase(),
-                        )
-                      : f.type === "multiselect" || f.type === "aliases"
-                        ? csvListValues(row[f.name] || "", f.type === "multiselect" ? f.options : [])
-                        : // A CSV is plain text: formatted text (#126) keeps "*" and "_" as written.
-                          isFormattedText(f, fields)
-                          ? escapeInline(row[f.name] || "")
-                          : row[f.name] || "",
-                ]),
+          // Properties with a column in the file; names become ids again.
+          const columns = new Set(result.meta.fields || []);
+          const imported = result.data.map(
+            csvImporter(
+              fields.filter((f) => !computedTypes.includes(f.type) && columns.has(f.name)),
+              fields,
+              csvContext(),
             ),
           );
           await act({ action: "rows.import", rows: imported });
