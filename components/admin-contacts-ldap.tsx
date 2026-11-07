@@ -2,15 +2,20 @@
 // Administration → Anmeldung & SSO → "Kontakte aus LDAP" (issue #64): the
 // directory area contacts databases import from. Server, search account
 // and TLS are those of the LDAP sign-in (environment); here only the base
-// DN, the person filter, the interval and the switch – stored values win
-// over LDAP_CONTACTS_BASE_DN / LDAP_CONTACTS_FILTER. Changes are recorded
-// as security events (lib/contacts-ldap.ts).
+// DN, the person filter, the interval, the switch and the attributes
+// mappings may use beyond the default mapping's – stored values win over
+// LDAP_CONTACTS_BASE_DN / LDAP_CONTACTS_FILTER, attributes add to
+// LDAP_CONTACTS_ATTRIBUTES. Changes are recorded as security events
+// (lib/contacts-ldap.ts).
 import { useEffect, useState } from "react";
 import { Plugs } from "@phosphor-icons/react";
 import { useT } from "./i18n";
 import { SettingGroup, SettingRow, StatusBadge, CONTROL } from "./settings-ui";
 import { when } from "./settings/admin/format";
 import type { ContactsLdapStatus } from "@/lib/contacts-ldap";
+
+// "a, b c" → ["a", "b", "c"]; the server checks each name.
+const attributeNames = (value: string) => [...new Set(value.split(/[\s,;]+/).map((v) => v.trim()).filter(Boolean))];
 
 export function AdminContactsLdap({
   status,
@@ -25,12 +30,14 @@ export function AdminContactsLdap({
   const [baseDn, setBaseDn] = useState(status.baseDnSource === "admin" ? status.baseDn : "");
   const [filter, setFilter] = useState(status.filterSource === "admin" ? status.filter : "");
   const [interval, setInterval_] = useState(status.intervalMinutes);
+  const [attributes, setAttributes] = useState(status.attributes.join(", "));
   const [test, setTest] = useState<{ ok: boolean; ms: number; error: string; at: number } | null>(null);
   useEffect(() => {
     setBaseDn(status.baseDnSource === "admin" ? status.baseDn : "");
     setFilter(status.filterSource === "admin" ? status.filter : "");
     setInterval_(status.intervalMinutes);
-  }, [status.baseDn, status.baseDnSource, status.filter, status.filterSource, status.intervalMinutes]);
+    setAttributes(status.attributes.join(", "));
+  }, [status.baseDn, status.baseDnSource, status.filter, status.filterSource, status.intervalMinutes, status.attributes]);
   const tone = !status.server || !status.enabled ? "off" : status.lastSync && !status.lastSync.ok ? "error" : "ok";
   const source = (s: string) =>
     s === "admin" ? t("hier gesetzt", "set here") : s === "env" ? t("aus der Umgebung", "from the environment") : s === "sign-in" ? t("wie die Anmeldung (LDAP_BASE_DN)", "as for sign-in (LDAP_BASE_DN)") : t("Standard", "default");
@@ -66,6 +73,18 @@ export function AdminContactsLdap({
             <input id="contacts-interval" className={CONTROL.sm} type="number" min={15} max={1440} value={interval} onChange={(e) => setInterval_(Number(e.target.value))} />
           </SettingRow>
           <SettingRow
+            id="contacts-attributes"
+            label={t("Weitere Attribute", "More attributes")}
+            description={
+              t(
+                "Kontakte-Datenbanken dürfen nur freigegebene Attribute zuordnen: die der Standardzuordnung und die hier genannten (durch Kommas getrennt).",
+                "Contacts databases may only map allowed attributes: those of the default mapping and the ones named here (separated by commas).",
+              ) + (status.envAttributes.length ? ` LDAP_CONTACTS_ATTRIBUTES: ${status.envAttributes.join(", ")}` : "")
+            }
+          >
+            <input id="contacts-attributes" className={CONTROL.lg} value={attributes} placeholder="employeeNumber, department" spellCheck={false} onChange={(e) => setAttributes(e.target.value)} />
+          </SettingRow>
+          <SettingRow
             label={t("Übernehmen", "Apply")}
             description={
               test
@@ -80,7 +99,7 @@ export function AdminContactsLdap({
                 type="button"
                 className="button primary"
                 disabled={!!busy}
-                onClick={() => void act("contacts.ldap.save", { settings: { baseDn: baseDn.trim(), filter: filter.trim(), intervalMinutes: Math.min(1440, Math.max(15, Math.round(interval) || 60)) } })}
+                onClick={() => void act("contacts.ldap.save", { settings: { baseDn: baseDn.trim(), filter: filter.trim(), intervalMinutes: Math.min(1440, Math.max(15, Math.round(interval) || 60)), attributes: attributeNames(attributes) } })}
               >
                 {t("Speichern", "Save")}
               </button>

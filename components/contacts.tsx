@@ -37,10 +37,13 @@ import { canInstallProfile } from "./caldav-profile";
 export type ContactsData = { ldapFields: string[]; synced: Record<string, { missing: boolean }>; lastSync: number | null };
 type Status = {
   available: boolean;
+  // Whether this person may use the directory here (lib/contacts-ldap.ts directoryAccess).
+  allowed?: boolean;
   connected: boolean;
   units: string[];
   mapping: Record<string, string[]>;
   defaultMapping: Record<string, string[]>;
+  allowedAttributes: string[];
   records: number;
   missing: number;
   lastSync: { at: number; ok: boolean; created: number; updated: number; missing: number; back: number; error?: string } | null;
@@ -265,6 +268,13 @@ export function ContactsMenu({
       if (file.current) file.current.value = "";
     }
   };
+  // Only people of the organisation reach the directory: the menu says why
+  // the import is not offered to everybody else.
+  const directory = status?.allowed !== false;
+  const directoryHint = t(
+    "Nur für Administratoren, Konten mit LDAP-Anmeldung und Mitglieder, die in einen Arbeitsbereich eingeladen wurden – nicht für Gäste.",
+    "Only for administrators, accounts that sign in with LDAP and members invited to a workspace – not for guests.",
+  );
   const exportAll = (rowIds?: string[]) => void downloadVCards(pageId, title || "Kontakte", rowIds).catch((e) => onError((e as Error).message));
   return (
     <>
@@ -277,13 +287,16 @@ export function ContactsMenu({
         <Dropdown.Portal>
           <Dropdown.Content collisionPadding={safeCollisionPadding()} className="dropdown contacts-menu" align="end" sideOffset={4}>
             {editable && status?.available && (
-              <Dropdown.Item className="dropdown-item" onSelect={() => setDialog("ldap")}>
+              <Dropdown.Item className="dropdown-item" disabled={!directory} onSelect={() => setDialog("ldap")}>
                 <TreeStructure />
-                {t("Aus LDAP importieren …", "Import from LDAP …")}
+                <span>
+                  {t("Aus LDAP importieren …", "Import from LDAP …")}
+                  {!directory && <small className="dropdown-hint">{directoryHint}</small>}
+                </span>
               </Dropdown.Item>
             )}
             {editable && status?.connected && (
-              <Dropdown.Item className="dropdown-item" disabled={busy || !status.available} onSelect={() => void sync()}>
+              <Dropdown.Item className="dropdown-item" disabled={busy || !status.available || !directory} onSelect={() => void sync()}>
                 <ArrowsClockwise />
                 <span>
                   {t("Jetzt abgleichen", "Sync now")}
@@ -326,7 +339,7 @@ export function ContactsMenu({
           if (chosen) void importFile(chosen);
         }}
       />
-      {dialog === "ldap" && status && (
+      {dialog === "ldap" && status && directory && (
         <LdapImportDialog
           pageId={pageId}
           status={status}
@@ -614,6 +627,9 @@ function LdapImportDialog({
       <details className="ldap-mapping">
         <summary>{t("Zuordnung der Attribute", "Attribute mapping")}</summary>
         <p className="muted small">{t("Je Eigenschaft die LDAP-Attribute, das erste mit Wert gilt.", "Per property the LDAP attributes; the first one with a value wins.")}</p>
+        <p className="muted small ldap-allowed">
+          {t("Freigegebene Attribute (weitere geben Administratoren frei):", "Allowed attributes (administrators can allow more):")} <code>{status.allowedAttributes.join(", ")}</code>
+        </p>
         <div className="ldap-mapping-grid">
           {MAPPING_KEYS.map(([key, de, en]) => (
             <label key={key}>

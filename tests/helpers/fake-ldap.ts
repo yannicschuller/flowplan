@@ -10,7 +10,7 @@ export type FakeEntry = { password?: string; attrs: Record<string, (string | Buf
 export type FakeDirectory = {
   entries: Map<string, FakeEntry>;
   url: string;
-  searches: { base: string; scope: number; filter: LdapFilter }[];
+  searches: { base: string; scope: number; filter: LdapFilter; attributes: string[] }[];
   delayMs: number;
   close: () => Promise<void>;
 };
@@ -77,7 +77,7 @@ export async function startFakeLdap(entries = new Map<string, FakeEntry>()): Pro
             scope = readInt(scopeTlv.value),
             sizeLimit = readInt(sizeTlv.value);
           const filter = decodeFilter(filterTlv);
-          directory.searches.push({ base, scope, filter });
+          directory.searches.push({ base, scope, filter, attributes: children(attrList.value).map((a) => a.value.toString()) });
           const answer = () => {
             if (!bound) return send(messageId, result(0x65, 50));
             const b = lower(base);

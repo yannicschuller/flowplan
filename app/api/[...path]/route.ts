@@ -1189,7 +1189,7 @@ async function handlePOST(
     // Block extensions: the manifest is fetched and checked (lib/plugins.ts).
     if (path.length === 1 && path[0] === "plugins")
       return NextResponse.json(await registerPlugin(user, await req.json()));
-    // Custom domains: checks the TXT record or the verification file.
+    // Custom domains: checks the DNS TXT record (the only proof accepted).
     if (path.length === 2 && path[0] === "domains" && path[1] === "verify")
       return NextResponse.json(await verifyDomain(user, await req.json()));
     // Owners register webhooks, also with a write API token (n8n trigger).

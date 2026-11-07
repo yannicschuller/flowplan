@@ -11,7 +11,14 @@
 //   LDAP_CONTACTS=off or the switch there turns the feature off.
 // - Editors of a contacts database browse the OUs below the base (one level
 //   at a time), see the people of an OU and import some of them, or the
-//   whole OU including later arrivals ("ganze OU übernehmen").
+//   whole OU including later arrivals ("ganze OU übernehmen"). Only people
+//   of the organisation reach the directory (directoryAccess): instance
+//   administrators, accounts that sign in with LDAP and full members of a
+//   workspace somebody else created – never with only workspaces of their
+//   own, and never as a guest of the database's workspace.
+// - The attribute mapping only uses allowed attributes: those of the
+//   default mapping plus LDAP_CONTACTS_ATTRIBUTES and the ones an
+//   administrator adds in Administration → Anmeldung & SSO.
 // - The sync (every LDAP_CONTACTS_SYNC_MINUTES, default 60, and "Jetzt
 //   abgleichen") writes the mapped properties: they are read-only in
 //   Flowplan (lib/contacts.ts). The free text and every other property stay
@@ -70,6 +77,8 @@ export const DEFAULT_MAPPING: Partial<Record<ContactKey, string[]>> = {
   country: ["co", "c"],
   birthday: ["birthDate", "dateOfBirth"],
 };
+// The attributes a mapping may always use: those of the default mapping.
+export const DEFAULT_ATTRIBUTES = [...new Set(Object.values(DEFAULT_MAPPING).flat())];
 const UUID_ATTRIBUTES = ["entryUUID", "objectGUID", "nsUniqueId"];
 const PHOTO_ATTRIBUTES = ["thumbnailPhoto", "jpegPhoto"];
 const MAX_PHOTO = 256 * 1024;
@@ -79,11 +88,14 @@ const MAX_LINKS = 2000;
 
 /* ---------- Settings ---------- */
 
+const attributeName = z.string().regex(/^[A-Za-z][A-Za-z0-9-]{0,63}$/);
 const settingsSchema = z.object({
   enabled: z.boolean(),
   baseDn: z.string().trim().max(1000),
   filter: z.string().trim().max(2000),
   intervalMinutes: z.number().int().min(15).max(1440),
+  // Attributes allowed in mappings beyond those of the default mapping.
+  attributes: z.array(attributeName).max(100),
 });
 export type ContactsLdapSettings = z.infer<typeof settingsSchema>;
 const SETTINGS_KEY = "contacts.ldap.settings";
@@ -105,6 +117,8 @@ export async function contactsLdapSettings() {
   const baseDn = stored.baseDn || envBase || signInBase;
   const filter = stored.filter || process.env.LDAP_CONTACTS_FILTER?.trim() || DEFAULT_PERSON_FILTER;
   const envMinutes = Number(process.env.LDAP_CONTACTS_SYNC_MINUTES);
+  const envAttributes = attributeList(process.env.LDAP_CONTACTS_ATTRIBUTES || "");
+  const extraAttributes = stored.attributes || [];
   return {
     server: !!process.env.LDAP_URL?.trim(),
     enabled: stored.enabled ?? process.env.LDAP_CONTACTS?.trim().toLowerCase() !== "off",
@@ -113,7 +127,21 @@ export async function contactsLdapSettings() {
     filter,
     filterSource: stored.filter ? "admin" : process.env.LDAP_CONTACTS_FILTER?.trim() ? "env" : "default",
     intervalMinutes: stored.intervalMinutes || (Number.isFinite(envMinutes) && envMinutes >= 15 ? Math.min(1440, Math.round(envMinutes)) : 60),
+    // Set here (admin) and from LDAP_CONTACTS_ATTRIBUTES (env); the allowed
+    // attributes are those plus the ones of the default mapping.
+    attributes: extraAttributes,
+    envAttributes,
+    allowedAttributes: uniqueAttributes([...DEFAULT_ATTRIBUTES, ...envAttributes, ...extraAttributes]),
   };
+}
+// Attribute names from a list separated by commas or spaces (invalid ones dropped).
+export function attributeList(raw: string) {
+  return uniqueAttributes(raw.split(/[\s,;]+/).filter((name) => attributeName.safeParse(name).success)).slice(0, 100);
+}
+// LDAP attribute names ignore case: the first spelling stays.
+function uniqueAttributes(names: string[]) {
+  const seen = new Set<string>();
+  return names.filter((name) => !seen.has(name.toLowerCase()) && !!seen.add(name.toLowerCase()));
 }
 export async function contactsLdapConfig(): Promise<LdapConfig | null> {
   const settings = await contactsLdapSettings();
@@ -134,6 +162,7 @@ export async function saveContactsLdapSettings(user: Identity, input: unknown) {
   if (!user.isAdmin) throw new HttpError(403, "Administrator-Gruppe erforderlich.");
   const next = settingsSchema.partial().parse(input);
   if (next.baseDn && !/^[^=,]+=[^=]/.test(next.baseDn)) throw new HttpError(400, "Bitte einen gültigen Basis-DN angeben.");
+  if (next.attributes) next.attributes = uniqueAttributes(next.attributes);
   if (next.filter)
     try {
       parseLdapFilter(next.filter);
@@ -231,18 +260,33 @@ function photoOf(entry: LdapEntry) {
   return null;
 }
 export type Mapping = Partial<Record<ContactKey, string[]>>;
-const attributeName = z.string().regex(/^[A-Za-z][A-Za-z0-9-]{0,63}$/);
 // Contact property → attributes; unknown properties are dropped.
 export const mappingSchema = z
   .record(z.string().max(40), z.array(attributeName).max(5))
   .transform((value): Mapping => Object.fromEntries(Object.entries(value).filter(([key]) => key in CONTACT_FIELDS)));
-function parseMapping(raw: string | null | undefined): Mapping {
+// A stored mapping, reduced to the attributes allowed now (a mapping saved
+// before an attribute left the list stops reading it).
+function parseMapping(raw: string | null | undefined, allowed: string[]): Mapping {
   try {
     const parsed = mappingSchema.safeParse(JSON.parse(raw || "{}"));
-    return parsed.success && Object.keys(parsed.data).length ? parsed.data : DEFAULT_MAPPING;
+    if (!parsed.success || !Object.keys(parsed.data).length) return DEFAULT_MAPPING;
+    const ok = new Set(allowed.map((a) => a.toLowerCase()));
+    return Object.fromEntries(
+      Object.entries(parsed.data)
+        .map(([key, names]) => [key, (names || []).filter((name) => ok.has(name.toLowerCase()))])
+        .filter(([, names]) => names.length),
+    ) as Mapping;
   } catch {
     return DEFAULT_MAPPING;
   }
+}
+const allowedAttributes = async () => (await contactsLdapSettings()).allowedAttributes;
+// A mapping from the request: every attribute must be on the allow-list.
+async function requireAllowedMapping(mapping: Mapping) {
+  const ok = new Set((await allowedAttributes()).map((a) => a.toLowerCase()));
+  const refused = [...new Set(Object.values(mapping).flat())].filter((name) => !ok.has(name.toLowerCase()));
+  if (refused.length) throw new HttpError(400, "Dieses LDAP-Attribut ist für Kontakte nicht freigegeben. Administratoren können weitere Attribute freigeben.");
+  return mapping;
 }
 const mappedAttributes = (mapping: Mapping) => [...new Set(Object.values(mapping).flat())];
 const searchAttributes = (mapping: Mapping) => [...mappedAttributes(mapping), "cn", "givenName", "sn", ...UUID_ATTRIBUTES, ...PHOTO_ATTRIBUTES];
@@ -278,10 +322,30 @@ export function syncedFieldIds(mapping: Mapping, fields: Field[]) {
 
 /* ---------- Browsing ---------- */
 
+// Who may read the instance's directory through a contacts database of a
+// workspace: never a guest of that workspace; otherwise administrators,
+// accounts that sign in with LDAP, and full members (not guests) of at
+// least one workspace somebody else created – an account that only has
+// workspaces of its own (anyone may create one) does not.
+export async function directoryAccess(user: Identity, workspaceId: string) {
+  if (user.apiScope) return false;
+  if (await one("SELECT 1 FROM workspace_guests WHERE workspace_id=? AND user_id=?", workspaceId, user.id)) return false;
+  if (user.isAdmin) return true;
+  if (await one("SELECT 1 FROM ldap_accounts WHERE user_id=?", user.id)) return true;
+  return !!(await one(
+    `SELECT 1 FROM members m JOIN workspaces w ON w.id=m.workspace_id
+      WHERE m.user_id=? AND (w.created_by IS NULL OR w.created_by<>?)
+        AND NOT EXISTS(SELECT 1 FROM workspace_guests g WHERE g.workspace_id=m.workspace_id AND g.user_id=m.user_id)`,
+    user.id,
+    user.id,
+  ));
+}
+export const DIRECTORY_REFUSED = "Das LDAP-Verzeichnis ist nur für Mitglieder der Organisation da: Administratoren, Konten mit LDAP-Anmeldung und Mitglieder, die in einen Arbeitsbereich eingeladen wurden.";
 async function directoryContext(user: Identity, pageId: string) {
   if (user.apiScope) throw new HttpError(403, "Mit einem API-Token nicht möglich.");
   const page = await requirePage(user, pageId, true);
   await requireContactsDatabase(page.id);
+  if (!(await directoryAccess(user, page.workspace_id))) throw new HttpError(403, DIRECTORY_REFUSED);
   const config = await contactsLdapConfig();
   if (!config) throw new HttpError(409, "Für Kontakte ist kein LDAP-Verzeichnis eingerichtet.");
   return { page, config };
@@ -331,7 +395,7 @@ export async function listPeople(user: Identity, pageId: string, unit?: string, 
         ],
       }
     : (await personFilter());
-  const mapping = parseMapping((await one<{ mapping: string }>("SELECT mapping FROM contact_ldap_sources WHERE page_id=?", page.id))?.mapping);
+  const mapping = parseMapping((await one<{ mapping: string }>("SELECT mapping FROM contact_ldap_sources WHERE page_id=?", page.id))?.mapping, await allowedAttributes());
   const people = await directory(config, (conn) =>
     conn.search({
       base,
@@ -385,6 +449,7 @@ const importSchema = z.object({
 export async function importContacts(user: Identity, pageId: string, input: unknown) {
   const { page, config } = await directoryContext(user, pageId);
   const b = importSchema.parse(input);
+  if (b.mapping) await requireAllowedMapping(b.mapping);
   const entries = b.entries.map((dn) => requireInBase(dn, config));
   const units = b.units.map((dn) => requireInBase(dn, config));
   if (!entries.length && !units.length) throw new HttpError(400, "Bitte Einträge oder eine OU auswählen.");
@@ -427,7 +492,7 @@ export async function syncContactsNow(user: Identity, pageId: string) {
   if (!(await one("SELECT 1 FROM contact_ldap_sources WHERE page_id=?", page.id))) throw new HttpError(409, "Diese Datenbank hat noch keine Kontakte aus dem Verzeichnis.");
   return syncContactsSource(page.id, { actor: user.id, config });
 }
-export async function contactsSourceStatus(pageId: string) {
+export async function contactsSourceStatus(pageId: string, user?: Identity) {
   const source = await one<{ ous: string; last_sync_at: number | null; last_result: string | null; mapping: string }>(
     "SELECT ous,last_sync_at,last_result,mapping FROM contact_ldap_sources WHERE page_id=?",
     pageId,
@@ -436,12 +501,17 @@ export async function contactsSourceStatus(pageId: string) {
   try {
     last = source?.last_result ? (JSON.parse(source.last_result) as SyncResult) : null;
   } catch {}
+  const allowed = await allowedAttributes();
+  const page = user ? await one<{ workspace_id: string }>("SELECT workspace_id FROM pages WHERE id=?", pageId) : undefined;
   return {
     available: await contactsLdapAvailable(),
+    // Whether this person may use the directory here (directoryAccess).
+    ...(user ? { allowed: !!page && await directoryAccess(user, page.workspace_id) } : {}),
     connected: !!source,
     units: parseOus(source?.ous),
-    mapping: parseMapping(source?.mapping),
+    mapping: parseMapping(source?.mapping, allowed),
     defaultMapping: DEFAULT_MAPPING,
+    allowedAttributes: allowed,
     records: Number((await one<{ n: number }>("SELECT COUNT(*) n FROM contact_ldap_links WHERE page_id=?", pageId))?.n || 0),
     missing: Number((await one<{ n: number }>("SELECT COUNT(*) n FROM contact_ldap_links WHERE page_id=? AND missing_at IS NOT NULL", pageId))?.n || 0),
     lastSync: last,
@@ -467,7 +537,7 @@ export async function syncContactsSource(
   running.add(pageId);
   try {
     if (!config) throw new LdapError("LDAP for contacts is not configured");
-    const mapping = parseMapping(source.mapping);
+    const mapping = parseMapping(source.mapping, await allowedAttributes());
     const units = parseOus(source.ous).filter((u) => withinBase(u, config.baseDn));
     const links = await all<Link>("SELECT row_id,dn,uuid,ou,hash,photo_hash,missing_at FROM contact_ldap_links WHERE page_id=? LIMIT ?", pageId, MAX_LINKS);
     const attributes = searchAttributes(mapping);

@@ -13,7 +13,9 @@ const { command } = await import("../lib/api");
 const { saveInstanceSettings } = await import("../lib/instance-settings");
 const domains = await import("../lib/custom-domains");
 const { setTxtResolver } = await import("../lib/dns-txt");
-const { customHostRoute, customHostPolicy, VERIFY_PATH, CUSTOM_HOST_HEADER } = await import("../lib/custom-domain-routing");
+const { customHostRoute, customHostPolicy, CUSTOM_HOST_HEADER } = await import("../lib/custom-domain-routing");
+// The path of the former verification file (no longer served or checked).
+const VERIFY_PATH = "/.well-known/flowplan-verify.txt";
 const { NextRequest } = await import("next/server");
 const { proxy } = await import("../proxy");
 
@@ -52,8 +54,6 @@ setTxtResolver(async (name) => {
   if (!records) throw Object.assign(new Error("not found"), { code: "ENOTFOUND" });
   return records;
 });
-const files = new Map<string, string>();
-domains.setDomainHttpCheck(async (url) => (files.has(url) ? { status: 200, body: files.get(url)! } : { status: 404, body: "" }));
 
 test("host names: normalised, no IPs, ports, local names or the instance itself", () => {
   assert.equal(domains.normalizeHost("Docs.Example.ORG."), "docs.example.org");
@@ -83,11 +83,12 @@ test("adding a domain: switched on by admins, published pages, editors only", as
   assert.equal((await domains.domainSettings(viewer, root)).domain?.host, "docs.example.org");
 });
 
-test("verification: TXT record (chunked) or the verification file", async () => {
+test("verification: only the TXT record (also chunked)", async () => {
   const value = (await domains.domainSettings(owner, root)).domain!.record.value;
-  // Unverified: only the verification file is served under the host.
-  assert.deepEqual(await domains.hostState("docs.example.org"), { status: "pending", verifyToken: value });
-  assert.deepEqual(customHostRoute(await domains.hostState("docs.example.org"), VERIFY_PATH, "GET"), { kind: "text", body: value });
+  assert.equal("file" in (await domains.domainSettings(owner, root)).domain!, false, "no verification file is offered");
+  // Unverified: nothing is served under the host, least of all the token.
+  assert.deepEqual(await domains.hostState("docs.example.org"), { status: "pending" });
+  assert.deepEqual(customHostRoute(await domains.hostState("docs.example.org"), VERIFY_PATH, "GET"), { kind: "notFound" });
   assert.deepEqual(customHostRoute(await domains.hostState("docs.example.org"), "/", "GET"), { kind: "notFound" });
   assert.equal(await domains.domainAllowed("docs.example.org"), false);
   await rejectsWith(() => domains.verifyDomain(viewer, { pageId: root }), 403);
@@ -105,14 +106,62 @@ test("verification: TXT record (chunked) or the verification file", async () => 
   assert.equal(await domains.domainAllowed("unknown.example.org"), false);
   assert.equal(await domains.domainAllowed("app.example.org"), false);
   assert.equal(await domains.domainAllowed(""), false);
-  // The verification file works as well.
+});
+
+test("a host that already points at the instance cannot verify itself over HTTP", async () => {
   await command(owner, { action: "publication.protect", pageId: other, password: null });
   await command(owner, { action: "domain.add", pageId: other, host: "other.example.org" });
   const otherValue = (await domains.domainSettings(owner, other)).domain!.record.value;
-  files.set(`https://other.example.org${VERIFY_PATH}`, `${otherValue}\n`);
-  assert.equal((await domains.verifyDomain(owner, { pageId: other })).method, "http");
+  // The host's DNS points here: the proxy does not hand out the token …
+  const served = await proxy(new NextRequest(`https://other.example.org${VERIFY_PATH}`, { headers: { host: "other.example.org" } }));
+  assert.equal(served.status, 404);
+  assert.ok(!(await served.text()).includes(otherValue));
+  // … and even a file with the token under the host verifies nothing: no
+  // HTTP request is made at all.
+  const realFetch = globalThis.fetch;
+  let fetched = 0;
+  globalThis.fetch = (async () => {
+    fetched++;
+    return new Response(otherValue, { status: 200, headers: { "Content-Type": "text/plain" } });
+  }) as typeof fetch;
+  try {
+    const result = await domains.verifyDomain(owner, { pageId: other });
+    assert.equal(result.method, null);
+    assert.equal(result.domain?.verified, false);
+    assert.equal(result.domain?.lastError, "Kein passender TXT-Eintrag gefunden.");
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  assert.equal(fetched, 0);
+  assert.equal(await domains.domainAllowed("other.example.org"), false);
+  // The TXT record does it.
+  txt.set("_flowplan-verify.other.example.org", [[otherValue]]);
+  assert.equal((await domains.verifyDomain(owner, { pageId: other })).method, "dns");
+  assert.equal(await domains.domainAllowed("other.example.org"), true);
   await command(owner, { action: "domain.remove", pageId: other });
   assert.equal((await domains.hostState("other.example.org")).status, "none");
+});
+
+test("domains verified earlier (also by the former file check) stay verified", async () => {
+  const legacy = await create("Altes Handbuch");
+  await command(owner, { action: "page.publish", pageId: legacy, enabled: true });
+  await run(
+    "INSERT INTO custom_domains(host,page_id,token,created_by,created_at,verified_at,checked_at) VALUES(?,?,?,?,?,?,?)",
+    "legacy.example.org",
+    legacy,
+    "flowplan-verify-0123456789abcdef0123456789abcdef",
+    owner.id,
+    Date.now() - 86_400_000,
+    Date.now() - 86_400_000,
+    Date.now() - 86_400_000,
+  );
+  assert.equal((await domains.hostState("legacy.example.org")).status, "verified");
+  assert.equal(await domains.domainAllowed("legacy.example.org"), true);
+  assert.equal((await domains.domainSettings(owner, legacy)).domain?.verified, true);
+  // A later check without the record does not take the verification back.
+  await domains.verifyDomain(owner, { pageId: legacy });
+  assert.equal(await domains.domainAllowed("legacy.example.org"), true);
+  await command(owner, { action: "domain.remove", pageId: legacy });
 });
 
 test("routing under a verified domain: the publication and nothing else", async () => {

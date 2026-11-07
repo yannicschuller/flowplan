@@ -90,6 +90,8 @@ const exact: Record<string, string> = {
   "Bitte einen gültigen Basis-DN angeben.": "Please enter a valid base DN.",
   "Der LDAP-Filter ist ungültig.": "The LDAP filter is invalid.",
   "Dieser Eintrag liegt außerhalb des Verzeichnisbereichs für Kontakte.": "This entry lies outside the directory area for contacts.",
+  "Das LDAP-Verzeichnis ist nur für Mitglieder der Organisation da: Administratoren, Konten mit LDAP-Anmeldung und Mitglieder, die in einen Arbeitsbereich eingeladen wurden.": "The LDAP directory is only for members of the organisation: administrators, accounts that sign in with LDAP and members invited to a workspace.",
+  "Dieses LDAP-Attribut ist für Kontakte nicht freigegeben. Administratoren können weitere Attribute freigeben.": "This LDAP attribute is not allowed for contacts. Administrators can allow more attributes.",
   "Für Kontakte ist kein LDAP-Verzeichnis eingerichtet.": "No LDAP directory is set up for contacts.",
   "Bitte Einträge oder eine OU auswählen.": "Please choose entries or an OU.",
   "Höchstens 20 OUs je Datenbank.": "At most 20 OUs per database.",
@@ -1021,6 +1023,7 @@ const exact: Record<string, string> = {
   "Diese Domain wird bereits verwendet.": "This domain is already in use.",
   "Für diese Veröffentlichung ist keine Domain eingetragen.": "No domain is set for this publication.",
   "Weder TXT-Eintrag noch Prüfdatei gefunden.": "Found neither the TXT record nor the verification file.",
+  "Kein passender TXT-Eintrag gefunden.": "No matching TXT record found.",
   // End-to-end encrypted spaces (lib/e2ee-server.ts)
   "Für verschlüsselte Seiten nicht verfügbar.": "Not available for encrypted pages.",
   "Seiten lassen sich nicht in einen verschlüsselten Bereich hinein oder aus ihm heraus verschieben.": "Pages cannot be moved into or out of an encrypted space.",

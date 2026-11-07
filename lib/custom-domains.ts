@@ -1,7 +1,8 @@
 // Custom domains for publications: an owner gives a published page its own
 // host name (docs.example.org), proves control over it with a DNS TXT record
-// (_flowplan-verify.<host>) or a file the domain serves
-// (/.well-known/flowplan-verify.txt), and the proxy (proxy.ts,
+// (_flowplan-verify.<host>) – only DNS: a file served under the host would
+// prove nothing once the host already points at this instance – and the
+// proxy (proxy.ts,
 // lib/custom-domain-routing.ts) then serves that publication – and nothing
 // else – under the host. TLS stays with the reverse proxy; Caddy asks
 // GET /api/domains/allowed?domain= before it requests a certificate.
@@ -12,9 +13,8 @@ import { HttpError, appUrl } from "./auth";
 import { requirePage } from "./permissions";
 import { instanceSettings } from "./instance-settings";
 import { txtRecords } from "./dns-txt";
-import { safeFetch } from "./safe-fetch";
 import { publicFile, publicTree } from "./publication";
-import { VERIFY_PATH, type HostState } from "./custom-domain-routing";
+import type { HostState } from "./custom-domain-routing";
 import type { Identity } from "./types";
 
 export const VERIFY_PREFIX = "_flowplan-verify";
@@ -157,7 +157,6 @@ export async function domainSettings(user: Identity, pageId: string) {
           checkedAt: row.checked_at,
           lastError: row.last_error,
           record: { type: "TXT", name: `${VERIFY_PREFIX}.${row.host}`, value: row.token },
-          file: { url: `https://${row.host}${VERIFY_PATH}`, content: row.token },
         }
       : null,
     theme: await publicationTheme(page.id),
@@ -196,33 +195,20 @@ export async function removeDomain(user: Identity, input: Record<string, unknown
   return await domainSettings(user, page.id);
 }
 
-type HttpCheck = (url: string) => Promise<{ status: number; body: string }>;
-const defaultHttpCheck: HttpCheck = (url) => safeFetch(url, { maxBytes: 2000, timeout: 5000, accept: "text/plain" });
-let httpCheck: HttpCheck = defaultHttpCheck;
-// Tests replace the network.
-export function setDomainHttpCheck(next: HttpCheck | null) {
-  httpCheck = next || defaultHttpCheck;
-}
-// Checks the TXT record, then the verification file. A domain once verified
-// stays verified until it is removed; failed checks only note the reason.
+// Checks the TXT record. A domain once verified stays verified until it is
+// removed; failed checks only note the reason.
 export async function verifyDomain(user: Identity, input: Record<string, unknown>) {
   await requireEnabled();
   const pageId = uuid.parse(input.pageId);
   await requirePage(user, pageId, true);
   const row = await one<DomainRow>("SELECT * FROM custom_domains WHERE page_id=?", pageId);
   if (!row) throw new HttpError(404, "Für diese Veröffentlichung ist keine Domain eingetragen.");
-  let method: "dns" | "http" | null = null;
+  let method: "dns" | null = null;
   let reason = "";
   try {
     if ((await txtRecords(`${VERIFY_PREFIX}.${row.host}`)).some((value) => value.trim() === row.token)) method = "dns";
   } catch (error) {
     reason = `DNS: ${(error as Error).message}`;
-  }
-  if (!method) {
-    try {
-      const response = await httpCheck(`https://${row.host}${VERIFY_PATH}`);
-      if (response.status === 200 && response.body.trim() === row.token) method = "http";
-    } catch {}
   }
   // Rights and the row may have changed while the checks ran.
   await requirePage(user, pageId, true);
@@ -236,7 +222,7 @@ export async function verifyDomain(user: Identity, input: Record<string, unknown
     await run(
       "UPDATE custom_domains SET checked_at=?,last_error=? WHERE host=?",
       now,
-      (reason || "Weder TXT-Eintrag noch Prüfdatei gefunden.").slice(0, 300),
+      (reason || "Kein passender TXT-Eintrag gefunden.").slice(0, 300),
       row.host,
     );
   return { ...(await domainSettings(user, pageId)), method };
@@ -253,9 +239,9 @@ export async function hostState(rawHost: string): Promise<HostState> {
     host,
   );
   if (!row) return { status: "none" };
-  if (!row.verified_at) return { status: "pending", verifyToken: row.token };
-  if (!row.public_token || row.deleted_at || !row.published || row.password) return { status: "gone", verifyToken: row.token };
-  return { status: "verified", verifyToken: row.token, token: row.public_token };
+  if (!row.verified_at) return { status: "pending" };
+  if (!row.public_token || row.deleted_at || !row.published || row.password) return { status: "gone" };
+  return { status: "verified", token: row.public_token };
 }
 // Caddy's on-demand TLS asks before it requests a certificate.
 export async function domainAllowed(rawHost: unknown) {
