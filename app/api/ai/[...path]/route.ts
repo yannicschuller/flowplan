@@ -6,6 +6,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { checkOrigin, HttpError, requireUser } from "@/lib/auth";
 import { withRequestLocale } from "@/lib/content-locale";
+import { readTextLimited } from "@/lib/request-body";
 import { limitAiSetup } from "@/lib/action-limits";
 import { requireAdmin, requireMember, requirePage } from "@/lib/permissions";
 import type { Identity } from "@/lib/types";
@@ -50,9 +51,8 @@ async function signedIn() {
 }
 // A small JSON body, read with a limit.
 async function body(req: Request, limit: number) {
-  if (Number(req.headers.get("content-length") || 0) > limit) throw new HttpError(413, "Anfrage zu groß.");
-  const text = await req.text();
-  if (text.length > limit) throw new HttpError(413, "Anfrage zu groß.");
+  // Counted while streaming: a body without Content-Length stops at the limit too.
+  const text = await readTextLimited(req, limit);
   try {
     return JSON.parse(text || "{}") as unknown;
   } catch {

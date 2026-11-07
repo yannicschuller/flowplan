@@ -46,6 +46,7 @@ import {
   type OidcProfile,
 } from "@/lib/oidc-link";
 import { appSignInReportLine } from "@/lib/app-sign-in-report";
+import { readJsonLimited } from "@/lib/request-body";
 import { provesApp } from "@/lib/app-devices";
 import { refuseSsoOnly, removeIdentity, removePassword, signInOverview } from "@/lib/identities";
 import { confirmStep, sessionStartedAt, stepUpMethods } from "@/lib/step-up";
@@ -386,7 +387,7 @@ async function handlePOST(
     // The app's sign-in page: a hand-off to the app that failed or went
     // unanswered (lib/app-sign-in.ts, #109) – a line for whoever runs it.
     if (action === "app-sign-in-report") {
-      const line = appSignInReportLine(await req.json().catch(() => null));
+      const line = appSignInReportLine(await readJsonLimited(req, 16_000).catch(() => null));
       if (line) console.warn(line);
       return new Response(null, { status: 204 });
     }
@@ -461,7 +462,13 @@ async function handlePOST(
       await signIn(handoff.userId, handoff.groups, true, provesApp({ via: "handoff" }));
       return NextResponse.json({ ok: true });
     }
-    const body = () => req.json().catch(() => ({}));
+    // Read with a limit (lib/request-body.ts): an oversized body is a 413,
+    // anything unreadable an empty input as before.
+    const body = () =>
+      readJsonLimited(req, 64_000).catch((e) => {
+        if (e instanceof HttpError) throw e;
+        return {};
+      });
     const agent = req.headers.get("user-agent");
     // ---- E-mail and password ----
     if (action === "register") {
