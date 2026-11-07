@@ -1,3 +1,4 @@
+import { nowText } from "../lib/db-driver/dialect";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
@@ -119,11 +120,11 @@ test("journals with a PIN, trashed pages and trashed spaces are always excluded"
   assert.equal(aiMayRead(owner, day), false);
   rule(owner, below, null);
   const trashed = createPage(wid, space, owner.id, "Alt", "document", E);
-  run("UPDATE pages SET deleted_at=CURRENT_TIMESTAMP WHERE id=?", E);
+  run("UPDATE pages SET deleted_at=? WHERE id=?", nowText(), E);
   assert.equal(aiMayRead(owner, E), false);
   assert.equal(aiMayRead(owner, trashed), false, "below a trashed page");
   run("UPDATE pages SET deleted_at=NULL WHERE id=?", E);
-  run("UPDATE spaces SET deleted_at=CURRENT_TIMESTAMP WHERE id=?", space2);
+  run("UPDATE spaces SET deleted_at=? WHERE id=?", nowText(), space2);
   assert.equal(aiMayRead(owner, F), false);
   run("UPDATE spaces SET deleted_at=NULL WHERE id=?", space2);
 });

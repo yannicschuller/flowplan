@@ -97,8 +97,8 @@ function blockSignature() {
   return chunkHash([blocks.join(","), pins.join(","), spaces.join(",")].join("|"));
 }
 function markEverything() {
-  run("INSERT OR IGNORE INTO ai_embed_dirty SELECT id,'' FROM pages WHERE deleted_at IS NULL AND COALESCE(synced,0)=0");
-  run("INSERT OR IGNORE INTO ai_embed_dirty SELECT page_id,id FROM rows");
+  run("INSERT INTO ai_embed_dirty SELECT id,'' FROM pages WHERE deleted_at IS NULL AND COALESCE(synced,0)=0 ON CONFLICT DO NOTHING");
+  run("INSERT INTO ai_embed_dirty SELECT page_id,id FROM rows WHERE true ON CONFLICT DO NOTHING");
 }
 
 // Texts per hour for the background job (FLOWPLAN_AI_EMBED_PER_HOUR).
@@ -169,13 +169,13 @@ export async function processEmbeddings(maxTexts = 64, signal?: AbortSignal): Pr
     const missing = texts.map((t, i) => ({ text: t, hash: hashes[i] })).filter((t) => !existing.has(t.hash));
     const unique = [...new Map(missing.map((m) => [m.hash, m])).values()];
     if (unique.length && result.embedded + unique.length > allowance && result.embedded > 0) {
-      run("INSERT OR IGNORE INTO ai_embed_dirty VALUES(?,?)", entry.page_id, entry.row_id);
+      run("INSERT INTO ai_embed_dirty VALUES(?,?) ON CONFLICT DO NOTHING", entry.page_id, entry.row_id);
       break;
     }
     // Larger than what is left: wait for a step with the full allowance (a
     // source larger than a whole step is embedded at once then).
     if (unique.length > allowance && allowance < maxTexts) {
-      run("INSERT OR IGNORE INTO ai_embed_dirty VALUES(?,?)", entry.page_id, entry.row_id);
+      run("INSERT INTO ai_embed_dirty VALUES(?,?) ON CONFLICT DO NOTHING", entry.page_id, entry.row_id);
       break;
     }
     let vectors: number[][] = [];
@@ -186,7 +186,7 @@ export async function processEmbeddings(maxTexts = 64, signal?: AbortSignal): Pr
         vectors.push(...part);
       }
     } catch (error) {
-      run("INSERT OR IGNORE INTO ai_embed_dirty VALUES(?,?)", entry.page_id, entry.row_id);
+      run("INSERT INTO ai_embed_dirty VALUES(?,?) ON CONFLICT DO NOTHING", entry.page_id, entry.row_id);
       runtime.flowplanEmbedRetry = Date.now() + 5 * 60_000;
       console.error("Embeddings fehlgeschlagen:", redactSecrets(String((error as Error)?.message || error), [config.apiKey]));
       break;

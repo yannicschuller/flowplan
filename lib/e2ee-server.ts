@@ -7,7 +7,7 @@
 // share links, publications, webhooks with content, MCP). The triggers in
 // lib/db.ts catch what a forgotten code path might still try.
 import { z } from "zod";
-import { all, audit, one, run } from "./db";
+import { all, audit, one, run, nowText } from "./db";
 import { HttpError } from "./auth";
 import { memberRole, pageRole, requirePage, spaceRole } from "./permissions";
 import { canManageSpace } from "./workspace-lifecycle";
@@ -473,7 +473,7 @@ export function e2eeCommand(user: Identity, action: string, b: Record<string, un
           Date.now(),
         ).lastInsertRowid,
       );
-      run("UPDATE pages SET updated_at=CURRENT_TIMESTAMP WHERE id=?", page.id);
+      run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), page.id);
       const client = typeof b.client === "string" && b.client.length <= 100 ? b.client : undefined;
       const encoded = data.toString("base64");
       afterCommit.push(() => publishEncryptedUpdate(documentKey(page.id, null, E2EE_GENERATION), { seq, version, data: encoded }, client));
@@ -512,7 +512,7 @@ export function e2eeCommand(user: Identity, action: string, b: Record<string, un
       requireHolder(user, space);
       const cipher = titleCipher.parse(b.cipher);
       if (JSON.parse(cipher).v !== space.key_version) throw new HttpError(409, "Der Schlüssel des Bereichs wurde erneuert. Bitte neu laden.");
-      run("UPDATE pages SET title=?,title_cipher=?,updated_at=CURRENT_TIMESTAMP WHERE id=?", ENCRYPTED_TITLE, cipher, page.id);
+      run("UPDATE pages SET title=?,title_cipher=?,updated_at=? WHERE id=?", ENCRYPTED_TITLE, cipher, nowText(), page.id);
       return { ok: true };
     }
   }

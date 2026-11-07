@@ -275,7 +275,7 @@ type Invite = { id: string; workspace_id: string; email: string; role: string; g
 // the pages that waited for it, and a note in the inbox.
 function acceptInvite(user: User, inv: Invite) {
     const added = run(
-      "INSERT OR IGNORE INTO members VALUES(?,?,?)",
+      "INSERT INTO members VALUES(?,?,?) ON CONFLICT DO NOTHING",
       inv.workspace_id,
       user.id,
       inv.role,
@@ -302,7 +302,7 @@ function acceptInvite(user: User, inv: Invite) {
     // An existing membership is never downgraded to guest by an invite.
     if (added && inv.guest)
       run(
-        "INSERT OR IGNORE INTO workspace_guests(workspace_id,user_id) VALUES(?,?)",
+        "INSERT INTO workspace_guests(workspace_id,user_id) VALUES(?,?) ON CONFLICT DO NOTHING",
         inv.workspace_id,
         user.id,
       );

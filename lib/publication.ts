@@ -2,7 +2,7 @@ import { publicHiddenFieldIds, stripCells } from "./field-access";
 import { whiteboardSnapshotItems } from "./whiteboard";
 import { createHash } from "node:crypto";
 import { imageFileId } from "./page-appearance";
-import { all, one, run, id } from "./db";
+import { all, one, run, id, nowText } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import { lockedPageIds } from "./journal-extras";
@@ -69,9 +69,9 @@ export function publishPage(
   );
   if (enabled) {
     run(
-      "INSERT INTO publications(page_id,include_children,published_at,published_by,allow_copy,password_hash,expires_at) VALUES(?,?,CURRENT_TIMESTAMP,?,?,?,?)",
+      "INSERT INTO publications(page_id,include_children,published_at,published_by,allow_copy,password_hash,expires_at) VALUES(?,?,?,?,?,?,?)",
       page.id,
-      includeChildren ? 1 : 0,
+      includeChildren ? 1 : 0, nowText(),
       user.id,
       allowCopy ? 1 : 0,
       kept?.password_hash ?? null,

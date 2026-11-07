@@ -5,7 +5,7 @@
 import { toPlain } from "./inline-markdown";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
-import { all, audit, id, one, run, transaction } from "./db";
+import { all, audit, id, one, run, transaction, nowText } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import { visibleRows } from "./row-access";
@@ -116,7 +116,7 @@ export function importVCards(user: Identity, pageId: string, text: string) {
         const { row } = requireRow(user, page.id, existing.id, true);
         const before = JSON.parse(row.cells as unknown as string);
         const after = deriveContactCells(fields, before, { ...before, ...cells }, Object.keys(cells));
-        run("UPDATE rows SET cells=?,updated_at=CURRENT_TIMESTAMP,updated_by=?,version=version+1 WHERE id=?", JSON.stringify(after), user.id, row.id);
+        run("UPDATE rows SET cells=?,updated_at=?,updated_by=?,version=version+1 WHERE id=?", JSON.stringify(after), nowText(), user.id, row.id);
         if (contact.note && contact.note !== rowNoteText(one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", row.id)?.html ?? row.content ?? ""))
           replaceRowDocument(row.id, noteHtml(contact.note), user.id);
         afterContactWrite(page.id, row.id);
@@ -143,7 +143,7 @@ export function importVCards(user: Identity, pageId: string, text: string) {
       rowCreated(user, page, rid);
       result.created++;
     }
-    run("UPDATE pages SET updated_at=CURRENT_TIMESTAMP WHERE id=?", page.id);
+    run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), page.id);
     audit(user.id, "contacts.vcard.import", page.id, JSON.stringify(result));
     return result;
   }, user);

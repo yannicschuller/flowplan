@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { run } from "./db";
+import { run, nowText } from "./db";
 import { HttpError } from "./auth";
 import { coverSchema, pageIconSchema } from "./page-appearance";
 import { validateCover, validateIcon } from "./page-covers";
@@ -27,10 +27,10 @@ export function setRowAppearance(user: Identity, input: unknown) {
   if (b.icon !== undefined) validateIcon(b.pageId, b.icon);
   if (b.cover !== undefined) validateCover(b.pageId, b.cover);
   run(
-    "UPDATE rows SET icon=COALESCE(?,icon),cover=COALESCE(?,cover),version=version+1,updated_by=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
+    "UPDATE rows SET icon=COALESCE(?,icon),cover=COALESCE(?,cover),version=version+1,updated_by=?,updated_at=? WHERE id=?",
     b.icon ?? null,
     b.cover ?? null,
-    user.id,
+    user.id, nowText(),
     row.id,
   );
   return { ok: true };
@@ -51,9 +51,9 @@ export function setRowRecurrence(user: Identity, input: unknown) {
       "Der Eintrag wurde inzwischen geändert. Bitte erneut versuchen.",
     );
   run(
-    "UPDATE rows SET recurrence=?,version=version+1,updated_by=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
+    "UPDATE rows SET recurrence=?,version=version+1,updated_by=?,updated_at=? WHERE id=?",
     b.recurrence ? JSON.stringify(b.recurrence) : "",
-    user.id,
+    user.id, nowText(),
     row.id,
   );
   return { ok: true };

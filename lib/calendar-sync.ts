@@ -20,7 +20,7 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { Temporal } from "@js-temporal/polyfill";
-import { all, audit, id, one, run, transaction } from "./db";
+import { all, audit, id, one, run, transaction, nowText } from "./db";
 import { HttpError, appUrl, hash } from "./auth";
 import { pageRole, requirePage } from "./permissions";
 import { visibleRows } from "./row-access";
@@ -982,7 +982,7 @@ function applyRemote(ctx: Context, event: RemoteEvent, items: Map<string, Item>,
     const stored = one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", row.id)!;
     const before = JSON.parse(stored.cells),
       after = { ...before, ...patch };
-    run("UPDATE rows SET cells=?,version=version+1,updated_at=CURRENT_TIMESTAMP,updated_by=? WHERE id=?", JSON.stringify(after), ctx.user.id, row.id);
+    run("UPDATE rows SET cells=?,version=version+1,updated_at=?,updated_by=? WHERE id=?", JSON.stringify(after), nowText(), ctx.user.id, row.id);
     rowChanged(ctx.user, ctx.page, row.id, before, after, ctx.fields);
     if (normalizeText(event.description) !== (local ? normalizeText(local.description) : ""))
       replaceRowDocument(row.id, textToHtml(event.description), ctx.user.id);

@@ -2,7 +2,7 @@ import { escapeInline, isFormattedText } from "./inline-markdown";
 import { z } from "zod";
 import { hiddenRowIds, visibleRows } from "./row-access";
 import { fieldWriteMessage, publicWritable } from "./field-access";
-import { all, one, run, id } from "./db";
+import { all, one, run, id, nowText } from "./db";
 import { HttpError } from "./auth";
 import { isGuest, pageRole, requireMember, requirePage } from "./permissions";
 import { journalLocked } from "./journal-extras";
@@ -201,7 +201,7 @@ export function saveFormSubmission(
     form?.anonymous ? null : user?.id || null,
     form?.anonymous ? null : user?.id || null,
   );
-  run("UPDATE pages SET updated_at=CURRENT_TIMESTAMP WHERE id=?", pageId);
+  run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), pageId);
   // Survey answers without a title get a running one ("Antwort 12").
   const titleField = fields[0];
   let cells = stored;

@@ -9,7 +9,7 @@ import { maintainRowOrders } from "./row-order-server";
 import { trashRow } from "./row-trash";
 import { validDateValue } from "./date-values";
 import { z } from "zod";
-import { all, one, run, id } from "./db";
+import { all, one, run, id, nowText } from "./db";
 import { requirePage } from "./permissions";
 import { rowGrants, rowRoleResolver } from "./row-access";
 import { HttpError } from "./auth";
@@ -248,8 +248,8 @@ export function bulkRows(
       if (JSON.stringify(cells).length > 200000)
         throw new HttpError(413, "Datensatz zu groß.");
       run(
-        "UPDATE rows SET cells=?,updated_at=CURRENT_TIMESTAMP,updated_by=?,version=version+1 WHERE id=?",
-        JSON.stringify(cells),
+        "UPDATE rows SET cells=?,updated_at=?,updated_by=?,version=version+1 WHERE id=?",
+        JSON.stringify(cells), nowText(),
         user.id,
         row.id,
       );
@@ -292,7 +292,7 @@ export function bulkRows(
       replaceRowDocument(rid, html, user.id);
     }
   }
-  run("UPDATE pages SET updated_at=CURRENT_TIMESTAMP WHERE id=?", pageId);
+  run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), pageId);
   if (operation !== "update")
     maintainRowOrders(pageId, operation === "duplicate" ? mapping : undefined);
   return {

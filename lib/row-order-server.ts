@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { all, one, run } from "./db";
+import { all, one, run, nowText } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import { assertRowAccess } from "./row-access";
@@ -47,7 +47,7 @@ function save(pageId: string, views: View[]) {
     JSON.stringify(views),
     pageId,
   );
-  run("UPDATE pages SET updated_at=CURRENT_TIMESTAMP WHERE id=?", pageId);
+  run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), pageId);
 }
 export function validateViewRowOrders(pageId: string, views: View[]) {
   const ids = new Set(
@@ -262,9 +262,9 @@ export function moveRow(
       if (JSON.stringify(cells).length > 200000)
         throw new HttpError(413, "Datensatz zu groß.");
       run(
-        "UPDATE rows SET cells=?,version=version+1,updated_by=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
+        "UPDATE rows SET cells=?,version=version+1,updated_by=?,updated_at=? WHERE id=?",
         JSON.stringify(cells),
-        user.id,
+        user.id, nowText(),
         row.id,
       );
       rowChanged(user, page, row.id, row.cells, cells, d.fields);

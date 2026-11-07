@@ -11,7 +11,7 @@ import {
 import { z } from "zod";
 import * as Y from "yjs";
 import { initProseMirrorDoc } from "@tiptap/y-tiptap";
-import { all, one, run, id } from "./db";
+import { all, one, run, id, nowText } from "./db";
 import { isGuest, requirePage, pageRole } from "./permissions";
 import { requireUnlocked } from "./journal-extras";
 import { HttpError } from "./auth";
@@ -454,7 +454,7 @@ export function inlineCommentCommand(
         )
           throw new HttpError(409, "Maximal 50 unterschiedliche Reaktionen.");
         run(
-          "INSERT OR IGNORE INTO inline_reactions VALUES(?,?,?)",
+          "INSERT INTO inline_reactions VALUES(?,?,?) ON CONFLICT DO NOTHING",
           messageId,
           user.id,
           emoji,
@@ -482,10 +482,10 @@ export function inlineCommentCommand(
           ? messageInput(input, page)
           : { body: "", content: null, serialized: null };
       run(
-        "UPDATE inline_messages SET body=?,rich_body=?,deleted=?,version=version+1,edited_at=CURRENT_TIMESTAMP WHERE id=?",
+        "UPDATE inline_messages SET body=?,rich_body=?,deleted=?,version=version+1,edited_at=? WHERE id=?",
         edited.body,
         edited.serialized,
-        action === "thread.edit" ? 0 : 1,
+        action === "thread.edit" ? 0 : 1, nowText(),
         messageId,
       );
       if (action === "thread.edit") {

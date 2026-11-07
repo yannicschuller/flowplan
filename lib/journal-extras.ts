@@ -6,7 +6,7 @@ import { Node as PMNode } from "@tiptap/pm/model";
 import { prosemirrorJSONToYDoc, yDocToProsemirrorJSON } from "y-prosemirror";
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
-import { all, audit, id, one, run } from "./db";
+import { all, audit, id, one, run, nowText } from "./db";
 import { documentSchema } from "./document-schema";
 import { failuresSince } from "./local-auth";
 import { htmlState, stateHtml } from "./document-server";
@@ -93,7 +93,7 @@ export function setJournalOptions(journal: Page, input: unknown) {
 }
 function ensureSettings(journalId: string) {
   run(
-    "INSERT OR IGNORE INTO journal_settings(page_id,trackers) VALUES(?,?)",
+    "INSERT INTO journal_settings(page_id,trackers) VALUES(?,?) ON CONFLICT DO NOTHING",
     journalId,
     JSON.stringify(defaultTrackers),
   );
@@ -328,7 +328,7 @@ export function saveDayEntry(journal: Page, day: Page, input: unknown) {
     next.lon,
     Date.now(),
   );
-  run("UPDATE pages SET updated_at=CURRENT_TIMESTAMP WHERE id=?", day.id);
+  run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), day.id);
   return next;
 }
 

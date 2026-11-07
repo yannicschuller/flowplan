@@ -296,7 +296,7 @@ function mergeMemberships(from: string, to: string) {
   for (const ws of new Set([...fromMember.keys(), ...fromGuest])) {
     const guest = (!fromMember.has(ws) || fromGuest.has(ws)) && (!toMember.has(ws) || toGuest.has(ws));
     run("DELETE FROM workspace_guests WHERE workspace_id=? AND user_id IN (?,?)", ws, from, to);
-    if (guest) run("INSERT OR IGNORE INTO workspace_guests(workspace_id,user_id) VALUES(?,?)", ws, to);
+    if (guest) run("INSERT INTO workspace_guests(workspace_id,user_id) VALUES(?,?) ON CONFLICT DO NOTHING", ws, to);
   }
   run("DELETE FROM workspace_guests WHERE user_id=?", from);
   for (const table of ["grants", "row_grants"]) {

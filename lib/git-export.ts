@@ -20,7 +20,7 @@ import { dirname, posix, resolve } from "node:path";
 import git from "isomorphic-git";
 import http from "isomorphic-git/http/node";
 import type { HttpClient } from "isomorphic-git";
-import { id, one, run, transaction } from "./db";
+import { id, one, run, transaction, nowText } from "./db";
 import { readZip } from "./archive";
 import { requirePage } from "./permissions";
 import { requireUnlocked } from "./journal-extras";
@@ -218,8 +218,8 @@ function updateDocument(user: Identity, pageId: string, markdown: string, link: 
     page.title,
     user.id,
   );
-  run("UPDATE documents SET state=?,html=?,generation=?,updated_at=CURRENT_TIMESTAMP WHERE page_id=?", htmlState(html), html, id(), page.id);
-  run("UPDATE pages SET updated_at=CURRENT_TIMESTAMP WHERE id=?", page.id);
+  run("UPDATE documents SET state=?,html=?,generation=?,updated_at=? WHERE page_id=?", htmlState(html), html, id(), nowText(), page.id);
+  run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), page.id);
   documentChanged(page.id);
   return true;
 }

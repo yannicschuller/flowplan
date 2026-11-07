@@ -5,7 +5,7 @@ import * as Y from "yjs";
 import { Node as PMNode } from "@tiptap/pm/model";
 import { Transform } from "@tiptap/pm/transform";
 import { updateYFragment, yDocToProsemirrorJSON } from "y-prosemirror";
-import { one, run } from "./db";
+import { one, run, nowText } from "./db";
 import { documentSchema } from "./document-schema";
 import { htmlState, stateHtml } from "./document-server";
 import { documentKey, documentChanged, publishDocumentUpdate } from "./document-live";
@@ -105,11 +105,11 @@ export function rewriteDocument(
   const state = Y.encodeStateAsUpdate(ydoc);
   const html = stateHtml(ydoc);
   if (rowId) {
-    run("UPDATE row_documents SET state=?,html=?,updated_at=CURRENT_TIMESTAMP WHERE row_id=?", state, html, rowId);
-    run("UPDATE rows SET content=?,updated_at=CURRENT_TIMESTAMP,updated_by=? WHERE id=?", html, userId, rowId);
+    run("UPDATE row_documents SET state=?,html=?,updated_at=? WHERE row_id=?", state, html, nowText(), rowId);
+    run("UPDATE rows SET content=?,updated_at=?,updated_by=? WHERE id=?", html, nowText(), userId, rowId);
   } else {
-    run("UPDATE documents SET state=?,html=?,updated_at=CURRENT_TIMESTAMP WHERE page_id=?", state, html, pageId);
-    run("UPDATE pages SET updated_at=CURRENT_TIMESTAMP WHERE id=?", pageId);
+    run("UPDATE documents SET state=?,html=?,updated_at=? WHERE page_id=?", state, html, nowText(), pageId);
+    run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), pageId);
   }
   const update = Buffer.from(Y.encodeStateAsUpdate(ydoc, before)).toString("base64");
   const key = documentKey(pageId, rowId, stored.generation);

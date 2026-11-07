@@ -32,7 +32,7 @@ export function recordDocumentAuthors(
   for (const client of clients.slice(0, Math.max(0, Math.min(100, MAX_DOCUMENT_CLIENTS - known))))
     added += Number(
       run(
-        "INSERT OR IGNORE INTO document_authors(page_id,row_id,generation,client_id,user_id,at) VALUES(?,?,?,?,?,?)",
+        "INSERT INTO document_authors(page_id,row_id,generation,client_id,user_id,at) VALUES(?,?,?,?,?,?) ON CONFLICT DO NOTHING",
         pageId,
         row,
         generation,

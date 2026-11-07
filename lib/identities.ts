@@ -42,7 +42,7 @@ export function identityOwner(issuer: string, subject: string): string | null {
   const legacy = one<{ id: string; email: string }>("SELECT id,email FROM users WHERE subject=?", subjectKey(issuer, subject));
   if (!legacy) return null;
   run(
-    "INSERT OR IGNORE INTO user_identities(id,user_id,provider,issuer,subject,email,created_at) VALUES(?,?,'oidc',?,?,?,?)",
+    "INSERT INTO user_identities(id,user_id,provider,issuer,subject,email,created_at) VALUES(?,?,'oidc',?,?,?,?) ON CONFLICT DO NOTHING",
     id(),
     legacy.id,
     issuer,

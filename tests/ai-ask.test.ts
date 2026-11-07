@@ -1,3 +1,4 @@
+import { nowText } from "../lib/db-driver/dialect";
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
@@ -71,7 +72,7 @@ const privateRow = command(admin, { action: "row.create", pageId: db, cells: { t
 run("UPDATE rows SET access='private' WHERE id=?", privateRow.id);
 const trashed = createPage(wid, space, admin.id, "Alt");
 html(trashed, "<p>Betriebsausflug 2019 PAPIERKORBINHALT.</p>");
-run("UPDATE pages SET deleted_at=CURRENT_TIMESTAMP WHERE id=?", trashed);
+run("UPDATE pages SET deleted_at=? WHERE id=?", nowText(), trashed);
 const FORBIDDEN = ["GEHEIMBUDGET", "GESPERRTINHALT", "TAGEBUCHINHALT", "AUSGESCHLOSSENINHALT", "PRIVATEREINTRAG", "PAPIERKORBINHALT"];
 const FORBIDDEN_PAGES = [secretPage, blocked, day, journal, excluded, trashed];
 

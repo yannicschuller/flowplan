@@ -13,7 +13,7 @@ import { aliasList } from "./aliases";
 import { copyFileSync, existsSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { z } from "zod";
-import { all, id, one, run } from "./db";
+import { all, id, one, run, nowText } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import { assertRowAccess } from "./row-access";
@@ -201,12 +201,12 @@ export function transferRows(user: Identity, sourcePageId: string, raw: unknown)
       results.push(rid);
     } else {
       run(
-        "UPDATE rows SET page_id=?,cells=?,position=?,number=?,version=version+1,updated_by=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
+        "UPDATE rows SET page_id=?,cells=?,position=?,number=?,version=version+1,updated_by=?,updated_at=? WHERE id=?",
         target.id,
         JSON.stringify(cells),
         position++,
         nextNumber(target.id),
-        user.id,
+        user.id, nowText(),
         row.id,
       );
       // Everything that belongs to the record moves along.
@@ -222,7 +222,7 @@ export function transferRows(user: Identity, sourcePageId: string, raw: unknown)
   if (created.length || optionsAdded)
     run("UPDATE databases SET fields=?,version=version+1 WHERE page_id=?", JSON.stringify(targetFields), target.id);
   if (targetFields.some(isTagField)) syncTagFieldOptions(target.workspace_id);
-  run("UPDATE pages SET updated_at=CURRENT_TIMESTAMP WHERE id IN (?,?)", source.id, target.id);
+  run("UPDATE pages SET updated_at=? WHERE id IN (?,?)", nowText(), source.id, target.id);
   maintainRowOrders(target.id);
   if (b.mode === "move") maintainRowOrders(source.id);
   for (const rid of results) rowCreated(user, target, rid);

@@ -72,7 +72,7 @@ export function sharePage(user: Identity, raw: unknown) {
     const guest = !!one("SELECT 1 FROM workspace_guests WHERE workspace_id=? AND user_id=?", page.workspace_id, target.id);
     if (!membership) {
       run("INSERT INTO members VALUES(?,?,?)", page.workspace_id, target.id, b.role);
-      run("INSERT OR IGNORE INTO workspace_guests(workspace_id,user_id) VALUES(?,?)", page.workspace_id, target.id);
+      run("INSERT INTO workspace_guests(workspace_id,user_id) VALUES(?,?) ON CONFLICT DO NOTHING", page.workspace_id, target.id);
     } else if (guest && rank[membership.role] < rank[b.role])
       // A guest's role caps their grants: raise it to what this page needs.
       run("UPDATE members SET role=? WHERE workspace_id=? AND user_id=?", b.role, page.workspace_id, target.id);

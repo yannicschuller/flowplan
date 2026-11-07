@@ -2,6 +2,7 @@
 // switching, creating tags from records, rename/merge/delete rewriting
 // cells, the tag view and search with access rules, guests, conversions and
 // end-to-end encrypted spaces.
+import { nowText } from "../lib/db-driver/dialect";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
@@ -140,7 +141,7 @@ test("records with tags appear in the tag view and the search, with access rules
   assert.ok(!hits("#Kunde").includes("row:Alpha"));
   run("DELETE FROM journal_settings WHERE page_id=?", journal);
   run("UPDATE pages SET parent_id=NULL WHERE id=?", db);
-  run("UPDATE pages SET deleted_at=CURRENT_TIMESTAMP WHERE id=?", db);
+  run("UPDATE pages SET deleted_at=? WHERE id=?", nowText(), db);
   assert.equal(taggedRecords(owner, wid).length, 0);
   run("UPDATE pages SET deleted_at=NULL WHERE id=?", db);
   assert.equal(taggedRecords(owner, wid).length, 2);

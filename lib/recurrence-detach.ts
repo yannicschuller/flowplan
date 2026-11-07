@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { all, id, one, run } from "./db";
+import { all, id, one, run, nowText } from "./db";
 import { HttpError } from "./auth";
 import { requireRow, replaceRowDocument } from "./row-documents";
 import { maintainRowOrders } from "./row-order-server";
@@ -150,7 +150,7 @@ export function detachOccurrence(user: Identity, raw: unknown) {
       Date.now(),
     );
   run(
-    "UPDATE rows SET recurrence=?,version=version+1,updated_by=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
+    "UPDATE rows SET recurrence=?,version=version+1,updated_by=?,updated_at=? WHERE id=?",
     b.mode === "following"
       ? head
         ? JSON.stringify(head)
@@ -159,7 +159,7 @@ export function detachOccurrence(user: Identity, raw: unknown) {
           ...rule,
           exclude: [...(rule.exclude || []), b.date].sort(),
         }),
-    user.id,
+    user.id, nowText(),
     row.id,
   );
   maintainRowOrders(b.pageId, new Map([[row.id, rid]]));

@@ -12,7 +12,7 @@ import { canSeeScopedTemplate, createTemplateCopies, parseMetaPlan, resolveTempl
 import { metaKey, type ForeignMeta, type MetaKind, type MetaPlan } from "./meta-scope";
 import { foldName, isTagField, type PortableMeta } from "./page-properties";
 import { z } from "zod";
-import { all, one, run, id } from "./db";
+import { all, one, run, id, nowText } from "./db";
 import { HttpError } from "./auth";
 import { isGuest, requireMember, requirePage, spaceRole } from "./permissions";
 import { cleanHtml, htmlState } from "./document-server";
@@ -389,7 +389,7 @@ export function applyPageTemplate(
       JSON.stringify(source.formConfig || formConfigSchema.parse({})),
     );
   }
-  run("UPDATE pages SET updated_at=CURRENT_TIMESTAMP WHERE id=?", page.id);
+  run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), page.id);
   const appearance = z
     .object({ appearance: appearanceSchema.optional() })
     .parse(JSON.parse(payload)).appearance;
@@ -478,7 +478,7 @@ export function managePageTemplate(
     );
   if (input.action === "template.delete")
     run(
-      "UPDATE templates SET deleted_at=CURRENT_TIMESTAMP,version=version+1 WHERE id=?",
+      "UPDATE templates SET deleted_at=?,version=version+1 WHERE id=?", nowText(),
       template.id,
     );
   else if (input.action === "template.restore")

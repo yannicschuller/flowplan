@@ -65,7 +65,7 @@ function pepper() {
   const read = () => one<{ value: string }>("SELECT value FROM instance_settings WHERE key='securityPepper'")?.value;
   let value = read();
   if (!value) {
-    run("INSERT OR IGNORE INTO instance_settings(key,value) VALUES('securityPepper',?)", JSON.stringify(randomBytes(32).toString("hex")));
+    run("INSERT INTO instance_settings(key,value) VALUES('securityPepper',?) ON CONFLICT DO NOTHING", JSON.stringify(randomBytes(32).toString("hex")));
     value = read();
   }
   return (state.flowplanSecurityPepper = JSON.parse(value || '""') as string);

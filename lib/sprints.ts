@@ -3,7 +3,7 @@
 // backlog). Completing a sprint moves what is not done into the next sprint
 // and keeps the numbers for velocity; the status log gives the burndown.
 import { z } from "zod";
-import { all, id, one, run } from "./db";
+import { all, id, one, run, nowText } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import { hiddenRowIds } from "./row-access";
@@ -110,7 +110,7 @@ export function sprintCommand(user: Identity, page: Page, action: string, b: Rec
           continue;
         }
         r.cells[field.id] = target?.id ?? "";
-        run("UPDATE rows SET cells=?,version=version+1,updated_at=CURRENT_TIMESTAMP,updated_by=? WHERE id=?", JSON.stringify(r.cells), user.id, r.id);
+        run("UPDATE rows SET cells=?,version=version+1,updated_at=?,updated_by=? WHERE id=?", JSON.stringify(r.cells), nowText(), user.id, r.id);
         moved++;
       }
     Object.assign(s, { state: "closed", completed, committed, closedAt: new Date().toISOString() });

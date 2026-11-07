@@ -16,7 +16,7 @@
 //   journal PIN, trash).
 // - Guests learn only the tags used in records shared with them.
 // - End-to-end encrypted spaces have no tags: the option is refused there.
-import { all, one, run } from "./db";
+import { all, one, run, nowText } from "./db";
 import { db } from "./db-driver";
 import { HttpError } from "./auth";
 import { isEncryptedPage } from "./e2ee-server";
@@ -328,8 +328,8 @@ export function rewriteTagValues(user: Identity, workspaceId: string, from: stri
         kept = true;
       }
       run(
-        "UPDATE rows SET cells=?,version=version+1,updated_at=CURRENT_TIMESTAMP,updated_by=? WHERE id=?",
-        JSON.stringify(cells),
+        "UPDATE rows SET cells=?,version=version+1,updated_at=?,updated_by=? WHERE id=?",
+        JSON.stringify(cells), nowText(),
         user.id,
         row.id,
       );
@@ -353,7 +353,7 @@ export function rewriteTagValues(user: Identity, workspaceId: string, from: stri
       run("UPDATE databases SET views=?,version=version+1 WHERE page_id=?", JSON.stringify(views), db.page.id);
       touched = true;
     }
-    if (touched) run("UPDATE pages SET updated_at=CURRENT_TIMESTAMP WHERE id=?", db.page.id);
+    if (touched) run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), db.page.id);
   }
 }
 
@@ -384,8 +384,8 @@ export function prepareTagFields(user: Identity, page: Page, fields: Field[], be
         if (JSON.stringify(next) === JSON.stringify(value)) continue;
         cells[f.id] = next;
         run(
-          "UPDATE rows SET cells=?,version=version+1,updated_at=CURRENT_TIMESTAMP,updated_by=? WHERE id=?",
-          JSON.stringify(cells),
+          "UPDATE rows SET cells=?,version=version+1,updated_at=?,updated_by=? WHERE id=?",
+          JSON.stringify(cells), nowText(),
           user.id,
           row.id,
         );

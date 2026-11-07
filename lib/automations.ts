@@ -4,7 +4,7 @@
 // pass (their own changes do not trigger further automations, so rules
 // cannot loop). Overdue rules are checked by a background tick.
 import { assertContactWritable } from "./contacts";
-import { all, id, one, run, transaction } from "./db";
+import { all, id, one, run, transaction, nowText } from "./db";
 import { HttpError } from "./auth";
 import { pageRole } from "./permissions";
 import { hiddenRowIds } from "./row-access";
@@ -158,8 +158,8 @@ export function runAutomations(input: { page: Page; rowId: string; actor: Identi
   }
   if (Object.keys(patch).length) {
     run(
-      "UPDATE rows SET cells=?,version=version+1,updated_at=CURRENT_TIMESTAMP WHERE id=?",
-      JSON.stringify({ ...row.cells, ...patch }),
+      "UPDATE rows SET cells=?,version=version+1,updated_at=? WHERE id=?",
+      JSON.stringify({ ...row.cells, ...patch }), nowText(),
       row.id,
     );
     recordStatusChange(input.page.id, row.id, fields, settings, row.cells, { ...row.cells, ...patch });
@@ -174,7 +174,7 @@ function applyTemplateOnce(page: Page, rowId: string, rule: Automation, template
   const template = one<RowTemplate>("SELECT * FROM row_templates WHERE id=? AND page_id=?", templateId, page.id);
   if (!template) return;
   const fresh = run(
-    "INSERT OR IGNORE INTO automation_runs(automation_id,row_id,key,at) VALUES(?,?,?,?)",
+    "INSERT INTO automation_runs(automation_id,row_id,key,at) VALUES(?,?,?,?) ON CONFLICT DO NOTHING",
     rule.id,
     rowId,
     `template:${templateId}`,
@@ -187,7 +187,7 @@ function applyTemplateOnce(page: Page, rowId: string, rule: Automation, template
   const applied = applyTemplate({ page, row, template, actor, mode });
   if (Object.keys(applied.cells).length) {
     const next = { ...row.cells, ...applied.cells };
-    run("UPDATE rows SET cells=?,version=version+1,updated_at=CURRENT_TIMESTAMP WHERE id=?", JSON.stringify(next), row.id);
+    run("UPDATE rows SET cells=?,version=version+1,updated_at=? WHERE id=?", JSON.stringify(next), nowText(), row.id);
     recordStatusChange(page.id, row.id, fields, settings, row.cells, next);
   }
   auditApply(actor?.id || "system", row.id, template, `${rule.name || "Automation"} · ${applied.document}`);
@@ -279,7 +279,7 @@ export function processOverdueAutomations() {
         if (typeof due !== "string" || due.slice(0, 10) >= day || isDone(rule, cells)) continue;
         const key = due.slice(0, 10);
         const fresh = run(
-          "INSERT OR IGNORE INTO automation_runs(automation_id,row_id,key,at) VALUES(?,?,?,?)",
+          "INSERT INTO automation_runs(automation_id,row_id,key,at) VALUES(?,?,?,?) ON CONFLICT DO NOTHING",
           a.id,
           raw.id,
           key,
@@ -315,7 +315,7 @@ export function processScheduledAutomations(now = Date.now()) {
       const role = who && pageRole(who, page);
       if (!who || !role || role === "viewer" || page.locked) continue;
       const fresh = run(
-        "INSERT OR IGNORE INTO automation_runs(automation_id,row_id,key,at) VALUES(?,?,?,?)",
+        "INSERT INTO automation_runs(automation_id,row_id,key,at) VALUES(?,?,?,?) ON CONFLICT DO NOTHING",
         a.id,
         "@schedule",
         slot.key,

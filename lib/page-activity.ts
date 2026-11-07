@@ -1,7 +1,7 @@
 // Who looked at a page and when, what changed since one's own last visit,
 // and following pages: followers get one notification per page until they
 // look again (and, with e-mail on, it lands in the e-mail summary).
-import { all, id, one, run } from "./db";
+import { all, id, one, run, nowText } from "./db";
 import { pageRole } from "./permissions";
 import { compareParagraphs, type TextChange } from "./text-diff";
 import { htmlParagraphs } from "./version-history";
@@ -68,7 +68,7 @@ export function visitPage(user: Identity, page: Page, html: string | null): Sinc
   );
   // Looking at the page answers its change notification.
   run(
-    "UPDATE notifications SET read_at=CURRENT_TIMESTAMP WHERE user_id=? AND page_id=? AND kind='change' AND read_at IS NULL",
+    "UPDATE notifications SET read_at=? WHERE user_id=? AND page_id=? AND kind='change' AND read_at IS NULL", nowText(),
     user.id,
     page.id,
   );
@@ -169,7 +169,7 @@ export function isFollowing(user: Identity, pageId: string) {
 export function setFollowing(user: Identity, pageId: string, follow: boolean) {
   if (follow)
     run(
-      "INSERT OR IGNORE INTO page_follows(user_id,page_id,created_at) VALUES(?,?,?)",
+      "INSERT INTO page_follows(user_id,page_id,created_at) VALUES(?,?,?) ON CONFLICT DO NOTHING",
       user.id,
       pageId,
       now(),

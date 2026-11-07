@@ -220,7 +220,7 @@ import {
 import { applyTemplate, fillNewRecord, prepareManualApply, rawTemplate, storeTemplateNames } from "./record-template-apply";
 import { z } from "zod";
 import * as Y from "yjs";
-import { all, one, run, id, transaction, audit, db } from "./db";
+import { all, one, run, id, transaction, audit, db, nowText } from "./db";
 import { convertFormattedValues } from "./formatted-text";
 import { securityEvent } from "./security-events";
 import { noteDangerousHtml } from "./security-events";
@@ -1279,8 +1279,8 @@ function runCommand(
           afterCommit.push(...followRename(user, p.workspace_id, { pageId: p.id }, p.title, data.title));
         for (const [key, val] of Object.entries(data))
           run(
-            `UPDATE pages SET ${key}=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`,
-            typeof val === "boolean" ? Number(val) : val,
+            `UPDATE pages SET ${key}=?,updated_at=? WHERE id=?`,
+            typeof val === "boolean" ? Number(val) : val, nowText(),
             p.id,
           );
         break;
@@ -1405,8 +1405,8 @@ function runCommand(
           run("UPDATE pages SET space_id=? WHERE id=?", sid, child);
         applyMovePlan(user, subtree, foreignMeta, metaPlan, { workspaceId: destination.workspace_id, spaceId: sid });
         run(
-          "UPDATE pages SET parent_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
-          parent,
+          "UPDATE pages SET parent_id=?,updated_at=? WHERE id=?",
+          parent, nowText(),
           p.id,
         );
         const siblings = all<{ id: string }>(
@@ -1664,7 +1664,7 @@ function runCommand(
           run("DELETE FROM share_links WHERE root_id=?", child);
           run("DELETE FROM share_link_pages WHERE page_id=?", child);
           run(
-            "UPDATE pages SET deleted_at=CURRENT_TIMESTAMP,public_token=NULL WHERE id=?",
+            "UPDATE pages SET deleted_at=?,public_token=NULL WHERE id=?", nowText(),
             child,
           );
         }
@@ -1694,7 +1694,7 @@ function runCommand(
       case "favorite":
         requirePage(user, pid());
         if (b.value)
-          run("INSERT OR IGNORE INTO favorites VALUES(?,?)", user.id, pid());
+          run("INSERT INTO favorites VALUES(?,?) ON CONFLICT DO NOTHING", user.id, pid());
         else
           run(
             "DELETE FROM favorites WHERE user_id=? AND page_id=?",
@@ -1769,12 +1769,12 @@ function runCommand(
             }
           }
           run(
-            "UPDATE documents SET state=?,html=?,updated_at=CURRENT_TIMESTAMP WHERE page_id=?",
+            "UPDATE documents SET state=?,html=?,updated_at=? WHERE page_id=?",
             merged,
-            canonical,
+            canonical, nowText(),
             p.id,
           );
-          run("UPDATE pages SET updated_at=CURRENT_TIMESTAMP WHERE id=?", p.id);
+          run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), p.id);
           result = { state: liveState(d, merged, b.vector) };
           const key = documentKey(p.id, null, existing!.generation);
           afterCommit.push(() => publishDocumentUpdate(key, update, liveClient(b.client)));
@@ -1952,7 +1952,7 @@ function runCommand(
           for (const r of data.rows)
             for (const g of Array.isArray(r.grants) ? r.grants : [])
               run(
-                "INSERT OR IGNORE INTO row_grants(row_id,user_id,group_id,role) SELECT ?,?,?,? WHERE ? IN ('viewer','editor')",
+                "INSERT INTO row_grants(row_id,user_id,group_id,role) SELECT ?,?,?,? WHERE ? IN ('viewer','editor') ON CONFLICT DO NOTHING",
                 r.id,
                 String(g.user_id || ""),
                 String(g.group_id || ""),
@@ -2015,8 +2015,8 @@ function runCommand(
           reconcileTagFields(user, p.id);
         }
         run(
-          "UPDATE pages SET title=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
-          s.title,
+          "UPDATE pages SET title=?,updated_at=? WHERE id=?",
+          s.title, nowText(),
           p.id,
         );
         break;
@@ -2107,7 +2107,7 @@ function runCommand(
         // Aliases weigh like the title in the search: index the records again
         // when the aliases property changes.
         if (aliasField(fields)?.id !== aliasField(d.fields)?.id)
-          run("INSERT OR IGNORE INTO search_dirty SELECT page_id,id FROM rows WHERE page_id=?", pid());
+          run("INSERT INTO search_dirty SELECT page_id,id FROM rows WHERE page_id=? ON CONFLICT DO NOTHING", pid());
         prepareSubtaskFields(write(), fields, databaseSettings(pid()));
         // Multi-selects with the workspace's tags as options (#79).
         prepareTagFields(user, write(), fields, d.fields);
@@ -2146,11 +2146,11 @@ function runCommand(
           JSON.stringify(fields.map((f) => [f.id, f.access?.read ?? null]))
         ) {
           run(
-            "INSERT OR IGNORE INTO search_dirty(page_id,row_id) SELECT page_id,id FROM rows WHERE page_id=?",
+            "INSERT INTO search_dirty(page_id,row_id) SELECT page_id,id FROM rows WHERE page_id=? ON CONFLICT DO NOTHING",
             pid(),
           );
           run(
-            "INSERT OR IGNORE INTO ai_embed_dirty(page_id,row_id) SELECT page_id,id FROM rows WHERE page_id=? UNION ALL SELECT ?,''",
+            "INSERT INTO ai_embed_dirty(page_id,row_id) SELECT page_id,id FROM rows WHERE page_id=? UNION ALL SELECT ?,'' WHERE true ON CONFLICT DO NOTHING",
             pid(),
             pid(),
           );
@@ -2328,8 +2328,8 @@ function runCommand(
           const before = JSON.parse(String(row.cells));
           const cells = contactCellsFor(pid(), fieldsNow, before, { ...before, ...applied.cells }, Object.keys(applied.cells));
           run(
-            "UPDATE rows SET cells=?,updated_at=CURRENT_TIMESTAMP,updated_by=?,version=version+1 WHERE id=?",
-            JSON.stringify(cells),
+            "UPDATE rows SET cells=?,updated_at=?,updated_by=?,version=version+1 WHERE id=?",
+            JSON.stringify(cells), nowText(),
             user.id,
             row.id,
           );
@@ -2416,11 +2416,11 @@ function runCommand(
         if (JSON.stringify(cells).length > 200000)
           throw new HttpError(413, "Datensatz zu groß.");
         run(
-          "UPDATE rows SET cells=?,content=COALESCE(?,content),updated_at=CURRENT_TIMESTAMP,updated_by=?,version=version+1 WHERE id=?",
+          "UPDATE rows SET cells=?,content=COALESCE(?,content),updated_at=?,updated_by=?,version=version+1 WHERE id=?",
           JSON.stringify(cells),
           b.content === undefined
             ? null
-            : z.string().max(200000).parse(b.content),
+            : z.string().max(200000).parse(b.content), nowText(),
           user.id,
           rid,
         );
@@ -2469,7 +2469,7 @@ function runCommand(
           JSON.stringify(layout),
           p.id,
         );
-        run("UPDATE pages SET updated_at=CURRENT_TIMESTAMP WHERE id=?", p.id);
+        run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), p.id);
         result = layout;
         break;
       }
@@ -2528,7 +2528,7 @@ function runCommand(
         const { row } = requireRow(user, pid(), uuid.parse(b.rowId));
         if (b.value)
           run(
-            "INSERT OR IGNORE INTO row_favorites(user_id,row_id,page_id) VALUES(?,?,?)",
+            "INSERT INTO row_favorites(user_id,row_id,page_id) VALUES(?,?,?) ON CONFLICT DO NOTHING",
             user.id,
             row.id,
             pid(),
@@ -2574,7 +2574,7 @@ function runCommand(
           )
             throw new HttpError(400, "Zu viele verschiedene Reaktionen.");
           run(
-            "INSERT OR IGNORE INTO comment_reactions(comment_id,user_id,emoji,created_at) VALUES(?,?,?,?)",
+            "INSERT INTO comment_reactions(comment_id,user_id,emoji,created_at) VALUES(?,?,?,?) ON CONFLICT DO NOTHING",
             commentId,
             user.id,
             emoji,
@@ -2675,7 +2675,7 @@ function runCommand(
         break;
       case "notification.read":
         run(
-          "UPDATE notifications SET read_at=CURRENT_TIMESTAMP WHERE user_id=? AND read_at IS NULL",
+          "UPDATE notifications SET read_at=? WHERE user_id=? AND read_at IS NULL", nowText(),
           user.id,
         );
         break;
@@ -2968,7 +2968,7 @@ function runCommand(
           run("UPDATE spaces SET owner_id=?,version=version+1 WHERE workspace_id=? AND owner_id=?", user.id, wid(), target);
         if (guest)
           run(
-            "INSERT OR IGNORE INTO workspace_guests(workspace_id,user_id) VALUES(?,?)",
+            "INSERT INTO workspace_guests(workspace_id,user_id) VALUES(?,?) ON CONFLICT DO NOTHING",
             wid(),
             target,
           );
@@ -3068,7 +3068,7 @@ function runCommand(
         )
           throw new HttpError(400, "Mitglied fehlt");
         if (b.enabled)
-          run("INSERT OR IGNORE INTO group_members VALUES(?,?)", gid, uid);
+          run("INSERT INTO group_members VALUES(?,?) ON CONFLICT DO NOTHING", gid, uid);
         else
           run(
             "DELETE FROM group_members WHERE group_id=? AND user_id=?",

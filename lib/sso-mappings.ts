@@ -51,7 +51,7 @@ function setSources(workspaceId: string, userId: string, target: string, groups:
     if (!keep.includes(s.sso_group))
       run("DELETE FROM sso_sources WHERE workspace_id=? AND user_id=? AND target=? AND sso_group=?", workspaceId, userId, target, s.sso_group);
   for (const group of keep)
-    run("INSERT OR IGNORE INTO sso_sources(workspace_id,user_id,target,sso_group) VALUES(?,?,?,?)", workspaceId, userId, target, group);
+    run("INSERT INTO sso_sources(workspace_id,user_id,target,sso_group) VALUES(?,?,?,?) ON CONFLICT DO NOTHING", workspaceId, userId, target, group);
 }
 
 function applyWorkspace(userId: string, workspaceId: string, matched: SsoMapping[]) {

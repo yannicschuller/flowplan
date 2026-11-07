@@ -5,7 +5,7 @@
 // are stored only when a page refers to them.
 import { mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { all, id, one, onTransactionRollback, run, transaction } from "../db";
+import { all, id, one, onTransactionRollback, run, transaction, nowText } from "../db";
 import { HttpError } from "../auth";
 import { isGuest, memberRole, pageRole, requireMember, spaceRole } from "../permissions";
 import { createPage } from "../seed";
@@ -385,7 +385,7 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
           ...(page.url && /^https?:\/\//i.test(page.url) ? { imp_url: page.url.slice(0, 2000) } : {}),
         };
         run(
-          "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content,created_at,updated_at) VALUES(?,?,?,?,?,?,?,COALESCE(?,CURRENT_TIMESTAMP),COALESCE(?,CURRENT_TIMESTAMP))",
+          "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content,created_at,updated_at) VALUES(?,?,?,?,?,?,?,COALESCE(?,?),COALESCE(?,?))",
           rid,
           databaseId!,
           JSON.stringify(cells),
@@ -393,8 +393,8 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
           user.id,
           user.id,
           html,
-          sqlTime(page.created),
-          sqlTime(page.updated || page.created),
+          sqlTime(page.created), nowText(),
+          sqlTime(page.updated || page.created), nowText(),
         );
         if (html) run("INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?)", rid, htmlState(html), html, id());
         rows++;
@@ -423,7 +423,7 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
             const rid = own?.pageId === pid ? own.rowId : id();
             const html = record.html ? resolveHtml(record.html) : "";
             run(
-              "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content,created_at,icon) VALUES(?,?,?,?,?,?,?,COALESCE(?,CURRENT_TIMESTAMP),?)",
+              "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content,created_at,icon) VALUES(?,?,?,?,?,?,?,COALESCE(?,?),?)",
               rid,
               pid,
               JSON.stringify(record.cells),
@@ -431,7 +431,7 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
               user.id,
               user.id,
               html,
-              sqlTime(record.created),
+              sqlTime(record.created), nowText(),
               importIcon(record.icon) || "",
             );
             if (html) run("INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?)", rid, htmlState(html), html, id());

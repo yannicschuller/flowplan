@@ -438,7 +438,7 @@ async function deliver(delivery: Delivery): Promise<{ status: number | null; err
     const pageId = envelope.data?.pageId;
     if (answer.ts && typeof pageId === "string" && credentials.signingSecret && envelope.event !== "digest.due" && envelope.event !== "test")
       run(
-        "INSERT OR IGNORE INTO webhook_messages(webhook_id,ts,page_id,row_id,created_at) SELECT ?,?,?,?,? WHERE EXISTS(SELECT 1 FROM pages WHERE id=?)",
+        "INSERT INTO webhook_messages(webhook_id,ts,page_id,row_id,created_at) SELECT ?,?,?,?,? WHERE EXISTS(SELECT 1 FROM pages WHERE id=?) ON CONFLICT DO NOTHING",
         delivery.id,
         answer.ts,
         pageId,

@@ -1,3 +1,4 @@
+import { nowText } from "../lib/db-driver/dialect";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
@@ -157,10 +158,10 @@ test("push retries transient failures, removes expired devices and suppresses re
   );
   subscribePush(user, token, subscription());
   run(
-    "INSERT INTO notifications(id,user_id,body,read_at) VALUES(?,?,?,CURRENT_TIMESTAMP)",
+    "INSERT INTO notifications(id,user_id,body,read_at) VALUES(?,?,?,?)",
     id(),
     user.id,
-    "Read already",
+    "Read already", nowText(),
   );
   await flushPushQueue(async () => {
     assert.fail("Read notifications must not be pushed");

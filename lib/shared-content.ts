@@ -11,7 +11,7 @@ import { numberCell } from "./field-format";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import * as Y from "yjs";
-import { all, one, run, id, transaction, audit } from "./db";
+import { all, one, run, id, transaction, audit, nowText } from "./db";
 import { noteDangerousHtml } from "./security-events";
 import { HttpError } from "./auth";
 import { publicPage, publicFile, publishedHtml } from "./publication";
@@ -479,7 +479,7 @@ export function mutateSharedContent(token: string, input: unknown) {
         s.page.id,
       );
       run(
-        "UPDATE pages SET updated_at=CURRENT_TIMESTAMP WHERE id=?",
+        "UPDATE pages SET updated_at=? WHERE id=?", nowText(),
         s.page.id,
       );
       run(
@@ -507,8 +507,8 @@ export function mutateSharedContent(token: string, input: unknown) {
         pageId: s.page.id,
       });
       run(
-        "UPDATE rows SET cells=?,version=version+1,updated_at=CURRENT_TIMESTAMP,updated_by=NULL WHERE id=?",
-        JSON.stringify(cells),
+        "UPDATE rows SET cells=?,version=version+1,updated_at=?,updated_by=NULL WHERE id=?",
+        JSON.stringify(cells), nowText(),
         s.row.id,
       );
       rowChanged(null, s.page, s.row.id, s.cells, cells, s.fields);
@@ -550,8 +550,8 @@ export function mutateSharedContent(token: string, input: unknown) {
           pageId: s.page.id,
         });
         run(
-          "UPDATE rows SET cells=?,version=version+1,updated_at=CURRENT_TIMESTAMP,updated_by=NULL WHERE id=?",
-          JSON.stringify(cells),
+          "UPDATE rows SET cells=?,version=version+1,updated_at=?,updated_by=NULL WHERE id=?",
+          JSON.stringify(cells), nowText(),
           s.row.id,
         );
         rowChanged(null, s.page, s.row.id, s.cells, cells, s.fields);
@@ -589,17 +589,17 @@ export function mutateSharedContent(token: string, input: unknown) {
             "guest",
           );
           run(
-            "UPDATE row_documents SET state=?,html=?,generation=?,updated_at=CURRENT_TIMESTAMP WHERE row_id=?",
+            "UPDATE row_documents SET state=?,html=?,generation=?,updated_at=? WHERE row_id=?",
             state,
             canonical,
-            id(),
+            id(), nowText(),
             s.row.id,
           );
           documentChanged(s.page.id, s.row.id);
           run(
-            "UPDATE rows SET cells=?,content=?,version=version+1,updated_at=CURRENT_TIMESTAMP,updated_by=NULL WHERE id=?",
+            "UPDATE rows SET cells=?,content=?,version=version+1,updated_at=?,updated_by=NULL WHERE id=?",
             JSON.stringify(cells),
-            canonical,
+            canonical, nowText(),
             s.row.id,
           );
           rowChanged(null, s.page, s.row.id, s.cells, cells, s.fields);
@@ -614,18 +614,18 @@ export function mutateSharedContent(token: string, input: unknown) {
             "guest",
           );
           run(
-            "UPDATE documents SET state=?,html=?,generation=?,updated_at=CURRENT_TIMESTAMP WHERE page_id=?",
+            "UPDATE documents SET state=?,html=?,generation=?,updated_at=? WHERE page_id=?",
             state,
             canonical,
-            id(),
+            id(), nowText(),
             s.page.id,
           );
           documentChanged(s.page.id);
         }
       }
       run(
-        "UPDATE pages SET title=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
-        s.row ? s.page.title : title,
+        "UPDATE pages SET title=?,updated_at=? WHERE id=?",
+        s.row ? s.page.title : title, nowText(),
         s.page.id,
       );
       audit("guest", "share.edit", s.page.id);
@@ -715,14 +715,14 @@ function liveSync(
                   "guest",
                 );
               run(
-                "UPDATE row_documents SET state=?,html=?,updated_at=CURRENT_TIMESTAMP WHERE row_id=?",
+                "UPDATE row_documents SET state=?,html=?,updated_at=? WHERE row_id=?",
                 state,
-                html,
+                html, nowText(),
                 s.row.id,
               );
               run(
-                "UPDATE rows SET content=?,updated_at=CURRENT_TIMESTAMP,updated_by=NULL WHERE id=?",
-                html,
+                "UPDATE rows SET content=?,updated_at=?,updated_by=NULL WHERE id=?",
+                html, nowText(),
                 s.row.id,
               );
             } else {
@@ -742,14 +742,14 @@ function liveSync(
                   "guest",
                 );
               run(
-                "UPDATE documents SET state=?,html=?,updated_at=CURRENT_TIMESTAMP WHERE page_id=?",
+                "UPDATE documents SET state=?,html=?,updated_at=? WHERE page_id=?",
                 state,
-                html,
+                html, nowText(),
                 s.page.id,
               );
             }
             run(
-              "UPDATE pages SET updated_at=CURRENT_TIMESTAMP WHERE id=?",
+              "UPDATE pages SET updated_at=? WHERE id=?", nowText(),
               s.page.id,
             );
             // Members with the page open see the guest's change at once.

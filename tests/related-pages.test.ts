@@ -1,3 +1,4 @@
+import { nowText } from "../lib/db-driver/dialect";
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
@@ -49,7 +50,7 @@ const secret = createPage(wid, privateSpace, admin.id, "Projektplan Alpha geheim
 html(secret, `<p>Geheim: ${link(open)}.</p>`);
 const trashed = createPage(wid, space, admin.id, "Projektplan Alpha alt");
 html(trashed, `<p>Alt: ${link(open)}.</p>`);
-run("UPDATE pages SET deleted_at=CURRENT_TIMESTAMP WHERE id=?", trashed);
+run("UPDATE pages SET deleted_at=? WHERE id=?", nowText(), trashed);
 const db = createPage(wid, space, admin.id, "Aufgaben", "database");
 const row = (title: string, tags: string[]) => (command(admin, { action: "row.create", pageId: db, cells: { title, tags } }) as { id: string }).id;
 const r1 = row("Logo entwerfen", ["Design", "Produkt"]);

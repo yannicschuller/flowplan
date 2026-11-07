@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { all, id, one, run } from "./db";
+import { all, id, one, run, nowText } from "./db";
 import { HttpError } from "./auth";
 import { pageRole, requirePage } from "./permissions";
 import { lockedPageIds, requireUnlocked } from "./journal-extras";
@@ -138,12 +138,12 @@ export function restoreTrashedRow(user: Identity, raw: unknown) {
   const r = payload.row;
   run(
     // The ticket number comes back too (unless another record took it).
-    "INSERT INTO rows(id,page_id,cells,position,created_at,updated_at,created_by,updated_by,content,icon,cover,recurrence,access,number,repeat) VALUES(?,?,?,?,?,CURRENT_TIMESTAMP,?,?,?,?,?,?,?,?,?)",
+    "INSERT INTO rows(id,page_id,cells,position,created_at,updated_at,created_by,updated_by,content,icon,cover,recurrence,access,number,repeat) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
     trashId,
     page.id,
     String(r.cells),
     Number(r.position) || 0,
-    String(r.created_at || ""),
+    String(r.created_at || ""), nowText(),
     (r.created_by as string | null) ?? null,
     user.id,
     String(r.content || ""),
@@ -160,7 +160,7 @@ export function restoreTrashedRow(user: Identity, raw: unknown) {
   );
   for (const g of payload.grants || [])
     run(
-      "INSERT OR IGNORE INTO row_grants(row_id,user_id,group_id,role) VALUES(?,?,?,?)",
+      "INSERT INTO row_grants(row_id,user_id,group_id,role) VALUES(?,?,?,?) ON CONFLICT DO NOTHING",
       trashId,
       g.user_id,
       g.group_id,
@@ -176,7 +176,7 @@ export function restoreTrashedRow(user: Identity, raw: unknown) {
     );
   for (const c of payload.comments)
     run(
-      "INSERT OR IGNORE INTO comments(id,page_id,row_id,author_id,body,resolved,created_at) VALUES(?,?,?,?,?,?,?)",
+      "INSERT INTO comments(id,page_id,row_id,author_id,body,resolved,created_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT DO NOTHING",
       String(c.id),
       page.id,
       trashId,

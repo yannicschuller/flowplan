@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { all, one, run } from "./db";
+import { all, one, run, nowText } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import { assertRowAccess, assertRowsWritable } from "./row-access";
@@ -114,8 +114,8 @@ export function scheduleRow(
         const successor = rows.find((r) => r.id === sid)!;
         const next = { ...successor.cells, ...schedulePatch(successor, db.fields, view, { operation: "move", days: shift }) };
         run(
-          "UPDATE rows SET cells=?,version=version+1,updated_at=CURRENT_TIMESTAMP,updated_by=? WHERE id=?",
-          JSON.stringify(next),
+          "UPDATE rows SET cells=?,version=version+1,updated_at=?,updated_by=? WHERE id=?",
+          JSON.stringify(next), nowText(),
           user.id,
           sid,
         );
@@ -125,8 +125,8 @@ export function scheduleRow(
     }
   }
   run(
-    "UPDATE rows SET cells=?,version=version+1,updated_at=CURRENT_TIMESTAMP,updated_by=? WHERE id=?",
-    nextCells,
+    "UPDATE rows SET cells=?,version=version+1,updated_at=?,updated_by=? WHERE id=?",
+    nextCells, nowText(),
     user.id,
     rid,
   );
@@ -175,8 +175,8 @@ export function linkTimeline(
   if (current.length >= 500) throw new HttpError(413, "Zu viele Abhängigkeiten.");
   const next = { ...cells, [field.id]: [...current, from] };
   run(
-    "UPDATE rows SET cells=?,version=version+1,updated_at=CURRENT_TIMESTAMP,updated_by=? WHERE id=?",
-    JSON.stringify(next),
+    "UPDATE rows SET cells=?,version=version+1,updated_at=?,updated_by=? WHERE id=?",
+    JSON.stringify(next), nowText(),
     user.id,
     to,
   );
@@ -237,8 +237,8 @@ export function cascadeTimeline(
     const row = rows.find((r) => r.id === rid)!;
     const next = { ...row.cells, ...schedulePatch(row, fields, view, { operation: "move", days }) };
     run(
-      "UPDATE rows SET cells=?,version=version+1,updated_at=CURRENT_TIMESTAMP,updated_by=? WHERE id=?",
-      JSON.stringify(next),
+      "UPDATE rows SET cells=?,version=version+1,updated_at=?,updated_by=? WHERE id=?",
+      JSON.stringify(next), nowText(),
       user.id,
       rid,
     );

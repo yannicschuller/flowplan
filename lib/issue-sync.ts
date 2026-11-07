@@ -25,7 +25,7 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { isIP } from "node:net";
 import { z } from "zod";
-import { all, audit, id, one, run, transaction } from "./db";
+import { all, audit, id, one, run, transaction, nowText } from "./db";
 import { appUrl, HttpError } from "./auth";
 import { isGuest, memberRole, pageRole, requirePage } from "./permissions";
 import { hiddenRowIds } from "./row-access";
@@ -906,7 +906,7 @@ function applyIssue(ctx: Context, issue: RemoteIssue, link: LinkRow | undefined)
           const before = parse<Cells>(row.cells, {});
           const after = { ...before, ...cellsFromIssue(ctx.config, ctx.fields, ctx.users, issue, before) };
           if (JSON.stringify(after) !== JSON.stringify(before)) {
-            run("UPDATE rows SET cells=?,updated_at=CURRENT_TIMESTAMP,updated_by=?,version=version+1 WHERE id=?", JSON.stringify(after), ctx.who.id, rowId);
+            run("UPDATE rows SET cells=?,updated_at=?,updated_by=?,version=version+1 WHERE id=?", JSON.stringify(after), nowText(), ctx.who.id, rowId);
             rowChanged(ctx.who, ctx.page, rowId, before, after, ctx.fields);
           }
           if (ctx.config.body === "@document" && documentMarkdown(rowId) !== issue.body.trim())
@@ -976,7 +976,7 @@ async function pushComments(ctx: Context, rowId: string, number: number) {
   for (const c of comments) {
     const posted = await ctx.api.comment(number, `**${c.name || "Flowplan"}** (Flowplan):\n\n${c.body}`);
     transaction(() =>
-      run("INSERT OR IGNORE INTO issue_comment_links(comment_id,page_id,provider,repo,remote_id) VALUES(?,?,?,?,?)", c.id, ctx.page.id, ctx.connection.provider, ctx.map.repo, posted.id),
+      run("INSERT INTO issue_comment_links(comment_id,page_id,provider,repo,remote_id) VALUES(?,?,?,?,?) ON CONFLICT DO NOTHING", c.id, ctx.page.id, ctx.connection.provider, ctx.map.repo, posted.id),
     );
   }
 }
@@ -1006,7 +1006,7 @@ async function pull(ctx: Context) {
             if (!apply)
               transaction(() => {
                 run("UPDATE issue_links SET remote=?,remote_updated=? WHERE id=?", JSON.stringify(remoteView(issue)), issue.updatedAt, link.id);
-                run("INSERT OR IGNORE INTO issue_sync_queue(row_id,page_id,at) VALUES(?,?,?)", link.row_id, ctx.page.id, Date.now());
+                run("INSERT INTO issue_sync_queue(row_id,page_id,at) VALUES(?,?,?) ON CONFLICT DO NOTHING", link.row_id, ctx.page.id, Date.now());
               });
           }
         }

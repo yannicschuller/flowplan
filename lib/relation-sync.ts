@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { all, one, run } from "./db";
+import { all, one, run, nowText } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import type { Field, Identity } from "./types";
@@ -308,14 +308,14 @@ export function flushRelationChanges(actor?: Identity) {
       if (cells.length > 200000)
         throw new HttpError(413, "Datensatz mit Rückrelationen ist zu groß.");
       run(
-        "UPDATE rows SET cells=?,version=version+1,updated_at=CURRENT_TIMESTAMP,updated_by=? WHERE id=? AND cells!=?",
-        cells,
+        "UPDATE rows SET cells=?,version=version+1,updated_at=?,updated_by=? WHERE id=? AND cells!=?",
+        cells, nowText(),
         actor?.id || null,
         row.id,
         cells,
       );
       run(
-        "UPDATE pages SET updated_at=CURRENT_TIMESTAMP WHERE id=?",
+        "UPDATE pages SET updated_at=? WHERE id=?", nowText(),
         row.page_id,
       );
     }

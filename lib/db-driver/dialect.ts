@@ -1,3 +1,5 @@
+import { postgresUrl } from "./context";
+
 // What differs between SQLite and PostgreSQL SQL, as small helpers that
 // return SQL fragments. Code that runs on both writes
 //   `SELECT id FROM page_tags WHERE ${d.ieq("name")}`
@@ -41,6 +43,21 @@ export type Dialect = {
   ilike(column: string, param?: string): string;
   // A string literal's position in another (instr).
   instr(haystack: string, needle: string): string;
+  // The text value of a top-level key of a JSON text column, the key a
+  // parameter (`json_extract(c,'$."key"')`).
+  jsonKey(column: string, param?: string): string;
+  // A JSON array text of the values of a group (json_group_array; '[]'
+  // for none).
+  jsonGroupArray(expr: string): string;
+  // A JSON object text from key/value pairs (json_object).
+  jsonObject(...pairs: string[]): string;
+  // The values of a group joined by commas (GROUP_CONCAT).
+  groupConcat(expr: string, distinct?: boolean): string;
+  // The day ('YYYY-MM-DD') of a 'YYYY-MM-DD HH:MM:SS' text, moved by a
+  // modifier parameter ('+3600 seconds').
+  dayOf(column: string, modifier?: string): string;
+  // The same for milliseconds since 1970.
+  dayOfMs(column: string, modifier?: string): string;
 };
 
 const modifier = (m: string) => {
@@ -75,6 +92,12 @@ export const sqliteDialect: Dialect = {
   randomHex: () => "lower(hex(randomblob(16)))",
   ilike: (c, p = "?") => `${c} LIKE ${p}`,
   instr: (h, n) => `instr(${h},${n})`,
+  jsonKey: (c, p = "?") => `json_extract(${c},'$."'||${p}||'"')`,
+  jsonGroupArray: (e) => `json_group_array(${e})`,
+  jsonObject: (...pairs) => `json_object(${pairs.join(",")})`,
+  groupConcat: (e, distinct) => `GROUP_CONCAT(${distinct ? "DISTINCT " : ""}${e})`,
+  dayOf: (c, m = "?") => `date(${c},${m})`,
+  dayOfMs: (c, m = "?") => `date(${c}/1000,'unixepoch',${m})`,
 };
 
 const PG_TEXT_TIME = "'YYYY-MM-DD HH24:MI:SS'";
@@ -96,7 +119,30 @@ export const postgresDialect: Dialect = {
   randomHex: () => "replace(gen_random_uuid()::text,'-','')",
   ilike: (c, p = "?") => `${c} ILIKE ${p}`,
   instr: (h, n) => `strpos(${h},${n})`,
+  jsonKey: (c, p = "?") => `(${c}::jsonb->>${p})`,
+  jsonGroupArray: (e) => `coalesce(json_agg(${e}),'[]'::json)::text`,
+  jsonObject: (...pairs) => `json_build_object(${pairs.join(",")})`,
+  groupConcat: (e, distinct) => `string_agg(${distinct ? "DISTINCT " : ""}(${e})::text,',')`,
+  dayOf: (c, m = "?") => `to_char((${c})::timestamp+(${m})::interval,'YYYY-MM-DD')`,
+  dayOfMs: (c, m = "?") => `to_char(to_timestamp((${c})/1000.0) AT TIME ZONE 'UTC'+(${m})::interval,'YYYY-MM-DD')`,
 };
+
+// The dialect of the database this process uses, for code that builds SQL
+// for the synchronous helpers of lib/db.ts (`one/all/run`): SQLite unless
+// DATABASE_URL=postgres://… is set. `sql.ieq("name")` etc.
+const active = (): Dialect => (postgresUrl() ? postgresDialect : sqliteDialect);
+export const sql = Object.fromEntries(
+  (Object.keys(sqliteDialect) as (keyof Dialect)[]).map((key) => [key, key === "name" ? undefined : (...args: string[]) => (active()[key] as (...a: string[]) => string)(...args)]),
+) as unknown as Dialect;
+Object.defineProperty(sql, "name", { get: () => active().name, enumerable: true });
+
+// SQLite's CURRENT_TIMESTAMP as computed in JavaScript: 'YYYY-MM-DD HH:MM:SS'
+// (UTC) for now or for a moment in milliseconds. Timestamps stay this text
+// on both databases; queries take it as a parameter instead of calling a
+// database function.
+export const nowText = (ms: number = Date.now()) => new Date(ms).toISOString().slice(0, 19).replace("T", " ");
+// The same text `days` days ago (SQLite: datetime('now','-N days')).
+export const daysAgoText = (days: number) => nowText(Date.now() - days * 86_400_000);
 
 // Rows from Postgres without the emulated rowid column (pg-schema.ts),
 // unless the statement asked for it – SQLite's SELECT * never has it.

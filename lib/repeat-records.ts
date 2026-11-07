@@ -4,7 +4,7 @@
 // and the other dates moved by as many days. The rule moves on to the
 // successor, so marking the old record done again creates nothing.
 import { z } from "zod";
-import { id, one, run } from "./db";
+import { id, one, run, nowText } from "./db";
 import { HttpError } from "./auth";
 import { requireRow, replaceRowDocument } from "./row-documents";
 import { nextOccurrence, parseRepeat, repeatSchema, shiftDateValue } from "./recurrence";
@@ -42,9 +42,9 @@ export function setRowRepeat(user: Identity, input: unknown) {
     stored = JSON.stringify(rule);
   }
   run(
-    "UPDATE rows SET repeat=?,version=version+1,updated_by=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
+    "UPDATE rows SET repeat=?,version=version+1,updated_by=?,updated_at=? WHERE id=?",
     stored,
-    user.id,
+    user.id, nowText(),
     row.id,
   );
   return { ok: true };

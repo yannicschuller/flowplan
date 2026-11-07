@@ -6,7 +6,7 @@
 // and secret are kept sealed (lib/sealed-values.ts); the address is found
 // by a hash of the token.
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { all, id, one, run } from "./db";
+import { all, id, one, run, nowText } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import { requireRow } from "./row-documents";
@@ -118,7 +118,7 @@ function closeRecord(pageId: string, rowId: string) {
   const before = JSON.parse(row.cells);
   if (isDone(rule, before)) return false;
   const after = { ...before, [rule.field.id]: rule.field.type === "checkbox" ? true : rule.values[0] };
-  run("UPDATE rows SET cells=?,version=version+1,updated_at=CURRENT_TIMESTAMP WHERE id=?", JSON.stringify(after), rowId);
+  run("UPDATE rows SET cells=?,version=version+1,updated_at=? WHERE id=?", JSON.stringify(after), nowText(), rowId);
   // Workflow and automations as for any change; a refused step stays open.
   try {
     rowChanged("system", page, rowId, before, after, fields);

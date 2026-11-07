@@ -3,7 +3,7 @@
 // source like the source itself does (requirePage, visible records, journal
 // locks); a tile the person may not see yields `{ available: false }` and
 // nothing else – no title, no error text.
-import { all, one, run } from "./db";
+import { all, one, run, nowText } from "./db";
 import { HttpError } from "./auth";
 import { pageRole, requirePage } from "./permissions";
 import { visibleRows } from "./row-access";
@@ -29,9 +29,9 @@ export function saveDashboard(page: Page, input: unknown) {
   if (page.kind !== "dashboard") throw new HttpError(400, "Kein Dashboard.");
   const tiles = tilesSchema.parse(input);
   run(
-    "INSERT INTO dashboards(page_id,tiles,updated_at) VALUES(?,?,CURRENT_TIMESTAMP) ON CONFLICT(page_id) DO UPDATE SET tiles=excluded.tiles,updated_at=excluded.updated_at",
+    "INSERT INTO dashboards(page_id,tiles,updated_at) VALUES(?,?,?) ON CONFLICT(page_id) DO UPDATE SET tiles=excluded.tiles,updated_at=excluded.updated_at",
     page.id,
-    JSON.stringify(tiles),
+    JSON.stringify(tiles), nowText(),
   );
   // Tile titles and texts in the page's document, for search and previews.
   // Nothing from the sources: those depend on who is looking.
@@ -39,11 +39,11 @@ export function saveDashboard(page: Page, input: unknown) {
     .map((t) => (t.title ? `<h2>${escaped(t.title)}</h2>` : "") + (t.type === "text" ? markdownToHtml(t.text) : ""))
     .join("");
   run(
-    "INSERT INTO documents(page_id,html) VALUES(?,?) ON CONFLICT(page_id) DO UPDATE SET html=excluded.html,updated_at=CURRENT_TIMESTAMP",
+    "INSERT INTO documents(page_id,html) VALUES(?,?) ON CONFLICT(page_id) DO UPDATE SET html=excluded.html,updated_at=?",
     page.id,
-    html,
+    html, nowText(),
   );
-  run("UPDATE pages SET updated_at=CURRENT_TIMESTAMP WHERE id=?", page.id);
+  run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), page.id);
   return { tiles };
 }
 

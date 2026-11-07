@@ -115,7 +115,7 @@ function createCopy(kind: MetaKind, source: TagRow | DefRow, workspaceId: string
 function relinkTag(pageIds: string[], from: string, to: string | null) {
   if (to)
     run(
-      "INSERT OR IGNORE INTO page_tag_links(page_id,tag_id,position) SELECT page_id,?,position FROM page_tag_links WHERE tag_id=? AND page_id IN (SELECT value FROM json_each(?))",
+      "INSERT INTO page_tag_links(page_id,tag_id,position) SELECT page_id,?,position FROM page_tag_links WHERE tag_id=? AND page_id IN (SELECT value FROM json_each(?)) ON CONFLICT DO NOTHING",
       to,
       from,
       json(pageIds),

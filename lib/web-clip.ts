@@ -4,7 +4,7 @@
 import { escapeInline } from "./inline-markdown";
 import sanitize from "sanitize-html";
 import { z } from "zod";
-import { all, id, one, run } from "./db";
+import { all, id, one, run, nowText } from "./db";
 import { createPage } from "./seed";
 import { HttpError } from "./auth";
 import { safeFetch } from "./safe-fetch";
@@ -261,7 +261,7 @@ export function addBookmarks(
     added++;
   });
   run("UPDATE databases SET fields=? WHERE page_id=?", JSON.stringify(fields), pageId);
-  run("UPDATE pages SET updated_at=CURRENT_TIMESTAMP WHERE id=?", pageId);
+  run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), pageId);
   return { added, skipped: items.length - added, ids };
 }
 

@@ -28,7 +28,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import { resolve } from "node:path";
 import { z } from "zod";
-import { all, audit, id, one, run, transaction, onTransactionRollback } from "./db";
+import { all, audit, id, one, run, transaction, onTransactionRollback, nowText } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import { ct } from "./content-locale";
@@ -591,7 +591,7 @@ export async function syncContactsSource(
         syncBirthdaySeries(rid);
         result.created++;
       }
-      if (result.created || result.updated || result.missing) run("UPDATE pages SET updated_at=CURRENT_TIMESTAMP WHERE id=?", pageId);
+      if (result.created || result.updated || result.missing) run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), pageId);
     });
   } catch (e) {
     result.ok = false;
@@ -604,7 +604,7 @@ export async function syncContactsSource(
   return result;
 }
 function writeCells(rowId: string, cells: Record<string, unknown>, author: string | null) {
-  run("UPDATE rows SET cells=?,updated_at=CURRENT_TIMESTAMP,updated_by=?,version=version+1 WHERE id=?", JSON.stringify(cells), author, rowId);
+  run("UPDATE rows SET cells=?,updated_at=?,updated_by=?,version=version+1 WHERE id=?", JSON.stringify(cells), nowText(), author, rowId);
 }
 // The directory's photo as the record's symbol – only when it changed and
 // the symbol is empty or the previous photo.
@@ -616,7 +616,7 @@ function storePhoto(page: { id: string; workspace_id: string }, rowId: string, e
   if (icon && !previous) return hash;
   if (previous && previousHash) {
     run("DELETE FROM files WHERE id=? AND page_id=?", previous, page.id);
-    run("INSERT OR IGNORE INTO pending_file_deletions(id) VALUES(?)", previous);
+    run("INSERT INTO pending_file_deletions(id) VALUES(?) ON CONFLICT DO NOTHING", previous);
   }
   if (!photo) {
     if (previous && previousHash) run("UPDATE rows SET icon='' WHERE id=?", rowId);

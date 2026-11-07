@@ -1,6 +1,7 @@
 // Image placeholders: decoding (lib/image-decode.ts, lib/jpeg-decode.ts,
 // lib/webp-decode.ts), ThumbHash (lib/thumbhash.ts), storage, access rules
 // and computing them later (lib/image-placeholders.ts).
+import { nowText } from "../lib/db-driver/dialect";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -286,7 +287,7 @@ test("placeholders follow the access rules of the file", async () => {
   const trashed = newPage("Weg");
   const old = storedFile(trashed, "old.png");
   await P.backfillPlaceholder(old);
-  run("UPDATE pages SET deleted_at=CURRENT_TIMESTAMP WHERE id=?", trashed);
+  run("UPDATE pages SET deleted_at=? WHERE id=?", nowText(), trashed);
   assert.deepEqual(await P.placeholdersFor(owner, [old]), {});
   // Not more than a request may ask for; junk ids are ignored.
   assert.deepEqual(await P.placeholdersFor(owner, ["../../etc/passwd", "", "avatar:x"]), {});

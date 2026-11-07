@@ -1,3 +1,4 @@
+import { nowText } from "../lib/db-driver/dialect";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
@@ -171,7 +172,7 @@ test("the command rolls every journal of the workspace for today", () => {
 test("a deleted day is reported and can be created anew", () => {
   const day = "2026-11-02";
   const first = roll(day).dayId;
-  run("UPDATE pages SET deleted_at=CURRENT_TIMESTAMP WHERE id=?", first);
+  run("UPDATE pages SET deleted_at=? WHERE id=?", nowText(), first);
   const again = rollJournal(user, journal(), day, day) as { dayId: string; changed: boolean; trashed?: boolean };
   assert.equal(again.trashed, true);
   assert.equal(again.dayId, first);

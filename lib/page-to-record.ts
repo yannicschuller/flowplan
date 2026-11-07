@@ -7,7 +7,7 @@
 import { aliasField, pageAliases } from "./aliases";
 import { Transform } from "@tiptap/pm/transform";
 import type { Node as PMNode } from "@tiptap/pm/model";
-import { all, id, one, run } from "./db";
+import { all, id, one, run, nowText } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import { requireUnlocked } from "./journal-extras";
@@ -149,7 +149,7 @@ export function pageToRecord(user: Identity, pageId: string, databaseId: string)
         snapshot.kind,
       );
     // Favourites become record favourites.
-    run("INSERT OR IGNORE INTO row_favorites(user_id,row_id,page_id) SELECT user_id,?,? FROM favorites WHERE page_id=?", rid, database.id, page.id);
+    run("INSERT INTO row_favorites(user_id,row_id,page_id) SELECT user_id,?,? FROM favorites WHERE page_id=? ON CONFLICT DO NOTHING", rid, database.id, page.id);
     run("DELETE FROM favorites WHERE page_id=?", page.id);
     // Sub-pages move up; synced blocks of the text go with it into the database.
     // Sharing set on the page kept applying to them: it stays theirs, so that
@@ -172,7 +172,7 @@ export function pageToRecord(user: Identity, pageId: string, databaseId: string)
     run("DELETE FROM publication_pages WHERE page_id=? OR root_id=?", page.id, page.id);
     run("DELETE FROM publications WHERE page_id=?", page.id);
     run("DELETE FROM page_follows WHERE page_id=?", page.id);
-    run("UPDATE pages SET deleted_at=CURRENT_TIMESTAMP,public_token=NULL WHERE id=?", page.id);
+    run("UPDATE pages SET deleted_at=?,public_token=NULL WHERE id=?", nowText(), page.id);
     // Links to the page in all texts of the workspace point to the record.
     const target = `${database.id}&row=${rid}`;
     for (const source of [

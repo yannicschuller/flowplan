@@ -13,7 +13,7 @@
 // them): the commands are refused there (lib/e2ee-server.ts).
 import { z } from "zod";
 import { HttpError } from "./auth";
-import { all, audit, id, one, run } from "./db";
+import { all, audit, id, one, run, nowText } from "./db";
 import { db, uniqueViolation, type Dialect } from "./db-driver";
 import { auditAsync } from "./audit";
 
@@ -441,7 +441,7 @@ export function cleanOptions(list: string[]) {
   return out;
 }
 function touch(pageId: string) {
-  run("UPDATE pages SET updated_at=CURRENT_TIMESTAMP WHERE id=?", pageId);
+  run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), pageId);
 }
 // The page's tags and values after a change (the command's answer).
 const metaAnswer = (pageId: string) => {

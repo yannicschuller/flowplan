@@ -17,7 +17,7 @@ import { mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import sanitize from "sanitize-html";
 import { z } from "zod";
-import { all, audit, id, one, onTransactionRollback, run, transaction } from "./db";
+import { all, audit, id, one, onTransactionRollback, run, transaction, nowText } from "./db";
 import { appUrl, hash, HttpError } from "./auth";
 import { pageRole } from "./permissions";
 import { createPage } from "./seed";
@@ -639,13 +639,13 @@ function storeMail(address: AddressRow, mail: InboundMail, from: string, message
       user.id,
     );
     replaceRowDocument(rowId, html, user.id);
-    run("UPDATE pages SET updated_at=CURRENT_TIMESTAMP WHERE id=?", target.id);
+    run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), target.id);
     rowCreated(user, target, rowId);
     const payload = { pageId: target.id, rowId, cells, source: "email" };
     emitWebhook(target.workspace_id, "row.created", payload);
   } else {
     const safe = cleanHtml(html);
-    run("UPDATE documents SET html=?,state=?,updated_at=CURRENT_TIMESTAMP WHERE page_id=?", safe, htmlState(safe), owner);
+    run("UPDATE documents SET html=?,state=?,updated_at=? WHERE page_id=?", safe, htmlState(safe), nowText(), owner);
     emitWebhook(target.workspace_id, "page.created", { pageId: owner, title, parentId: target.id, source: "email" });
   }
   run(

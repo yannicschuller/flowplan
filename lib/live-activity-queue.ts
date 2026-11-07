@@ -12,8 +12,8 @@ export type LiveActivityChange = "focus" | "timer";
 export function markLiveActivity(userId: string, kind: LiveActivityChange, at: number[] = [Date.now()]) {
   for (const when of at)
     run(
-      `INSERT OR IGNORE INTO push_live_queue(device_id,kind,available_at,attempts)
-       SELECT l.device_id,l.kind,?,0 FROM mobile_live_activities l JOIN mobile_devices d ON d.id=l.device_id WHERE d.user_id=? AND l.kind=?`,
+      `INSERT INTO push_live_queue(device_id,kind,available_at,attempts)
+       SELECT l.device_id,l.kind,?,0 FROM mobile_live_activities l JOIN mobile_devices d ON d.id=l.device_id WHERE d.user_id=? AND l.kind=? ON CONFLICT DO NOTHING`,
       Math.floor(when),
       userId,
       kind,

@@ -18,7 +18,7 @@ import { createHash } from "node:crypto";
 import * as Y from "yjs";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { prosemirrorToYXmlFragment } from "y-prosemirror";
-import { all, audit, id, one, run } from "./db";
+import { all, audit, id, one, run, nowText } from "./db";
 import { HttpError } from "./auth";
 import { pageRole } from "./permissions";
 import { isEncryptedPage } from "./e2ee-server";
@@ -42,7 +42,7 @@ const sha = (text: string) => createHash("sha256").update(text).digest("hex");
 // The id a day has before it exists; the same for everyone who opens it.
 export function ensureDraft(journalId: string, date: string) {
   run(
-    "INSERT OR IGNORE INTO journal_drafts(id,journal_id,date,created_at) VALUES(?,?,?,?)",
+    "INSERT INTO journal_drafts(id,journal_id,date,created_at) VALUES(?,?,?,?) ON CONFLICT DO NOTHING",
     id(),
     journalId,
     date,
@@ -80,7 +80,7 @@ export function rememberTemplate(journalId: string) {
   if (!html) return "";
   const hash = sha(html).slice(0, 16);
   run(
-    "INSERT OR IGNORE INTO journal_templates(journal_id,hash,html,created_at) VALUES(?,?,?,?)",
+    "INSERT INTO journal_templates(journal_id,hash,html,created_at) VALUES(?,?,?,?) ON CONFLICT DO NOTHING",
     journalId,
     hash,
     html,
@@ -331,7 +331,7 @@ export function removeEmptyJournalDays(user: Identity, journal: Page, ids: strin
   const wanted = new Set(ids);
   const removed = emptyJournalDays(journal, today).filter((day) => wanted.has(day.id));
   for (const day of removed) {
-    run("UPDATE pages SET deleted_at=CURRENT_TIMESTAMP,public_token=NULL WHERE id=?", day.id);
+    run("UPDATE pages SET deleted_at=?,public_token=NULL WHERE id=?", nowText(), day.id);
   }
   if (removed.length) audit(user.id, "journal.removeEmpty", journal.id, String(removed.length));
   return { removed: removed.length, ids: removed.map((day) => day.id) };

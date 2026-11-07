@@ -301,7 +301,7 @@ export function processDueTasks(today = localToday()) {
   );
   for (const task of due) {
     run(
-      "INSERT OR IGNORE INTO task_reminders(user_id,page_id,text,due) VALUES(?,?,?,?)",
+      "INSERT INTO task_reminders(user_id,page_id,text,due) VALUES(?,?,?,?) ON CONFLICT DO NOTHING",
       task.assignee,
       task.page_id,
       task.text,

@@ -2,7 +2,7 @@ import { scheduleRow } from "./row-schedule";
 import { validateCalculations } from "./database-summary";
 import * as Y from "yjs";
 import { z } from "zod";
-import { one, run } from "./db";
+import { one, run, nowText } from "./db";
 import { requirePage, pageRole } from "./permissions";
 import { HttpError } from "./auth";
 import { htmlState, stateHtml } from "./document-server";
@@ -131,25 +131,25 @@ function writeViews(context: ReturnType<typeof open>, views: View[]) {
     html = stateHtml(context.doc);
   if (context.rowId) {
     run(
-      "UPDATE row_documents SET state=?,html=?,updated_at=CURRENT_TIMESTAMP WHERE row_id=?",
+      "UPDATE row_documents SET state=?,html=?,updated_at=? WHERE row_id=?",
       state,
-      html,
+      html, nowText(),
       context.rowId,
     );
     run(
-      "UPDATE rows SET content=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
-      html,
+      "UPDATE rows SET content=?,updated_at=? WHERE id=?",
+      html, nowText(),
       context.rowId,
     );
   } else
     run(
-      "UPDATE documents SET state=?,html=?,updated_at=CURRENT_TIMESTAMP WHERE page_id=?",
+      "UPDATE documents SET state=?,html=?,updated_at=? WHERE page_id=?",
       state,
-      html,
+      html, nowText(),
       context.host.id,
     );
   run(
-    "UPDATE pages SET updated_at=CURRENT_TIMESTAMP WHERE id=?",
+    "UPDATE pages SET updated_at=? WHERE id=?", nowText(),
     context.host.id,
   );
   documentChanged(context.host.id, context.rowId);

@@ -79,7 +79,7 @@ const order = (pageId: string) => notebookSheets(pageId).map((s) => s.id);
 
 // A new notebook with its first sheet (lib/seed.ts createPage).
 export function createNotebook(pageId: string, paper: Partial<Paper> = {}) {
-  run("INSERT OR IGNORE INTO notebooks(page_id,paper,updated_at) VALUES(?,?,?)", pageId, JSON.stringify({ ...DEFAULT_PAPER, ...cleanPaper(paper) }), Date.now());
+  run("INSERT INTO notebooks(page_id,paper,updated_at) VALUES(?,?,?) ON CONFLICT DO NOTHING", pageId, JSON.stringify({ ...DEFAULT_PAPER, ...cleanPaper(paper) }), Date.now());
   if (!one("SELECT 1 FROM notebook_sheets WHERE page_id=?", pageId)) insertSheet(pageId);
 }
 

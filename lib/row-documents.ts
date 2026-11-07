@@ -1,7 +1,7 @@
 import { requireDocumentSize } from "./document-size";
 import * as Y from "yjs";
 import { z } from "zod";
-import { all, one, run, id } from "./db";
+import { all, one, run, id, nowText } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import { assertRowAccess } from "./row-access";
@@ -55,7 +55,7 @@ export function ensureRowDocument(row: Row): StoredDocument {
       : `<p>${escaped(source).replaceAll("\n", "</p><p>")}</p>`;
     d = { state: htmlState(html), html, generation: id() };
     run(
-      "INSERT OR IGNORE INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?)",
+      "INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?) ON CONFLICT DO NOTHING",
       row.id,
       d.state,
       d.html,
@@ -115,18 +115,18 @@ export function syncRowDocument(
     )
       snapshotRow(user, pageId, rowId);
     run(
-      "UPDATE row_documents SET state=?,html=?,updated_at=CURRENT_TIMESTAMP WHERE row_id=?",
+      "UPDATE row_documents SET state=?,html=?,updated_at=? WHERE row_id=?",
       state,
-      html,
+      html, nowText(),
       row.id,
     );
     run(
-      "UPDATE rows SET content=?,updated_at=CURRENT_TIMESTAMP,updated_by=? WHERE id=?",
-      html,
+      "UPDATE rows SET content=?,updated_at=?,updated_by=? WHERE id=?",
+      html, nowText(),
       user.id,
       row.id,
     );
-    run("UPDATE pages SET updated_at=CURRENT_TIMESTAMP WHERE id=?", pageId);
+    run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), pageId);
     for (const match of html.matchAll(/data-mention="([^"]+)"/g)) {
       const uid = match[1];
       if (
@@ -190,15 +190,15 @@ export function replaceRowDocument(
 ) {
   const safe = cleanHtml(html);
   run(
-    "INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?) ON CONFLICT(row_id) DO UPDATE SET state=excluded.state,html=excluded.html,generation=excluded.generation,updated_at=CURRENT_TIMESTAMP",
+    "INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?) ON CONFLICT(row_id) DO UPDATE SET state=excluded.state,html=excluded.html,generation=excluded.generation,updated_at=?",
     rowId,
     htmlState(safe),
     safe,
-    id(),
+    id(), nowText(),
   );
   run(
-    "UPDATE rows SET content=?,updated_at=CURRENT_TIMESTAMP,updated_by=? WHERE id=?",
-    safe,
+    "UPDATE rows SET content=?,updated_at=?,updated_by=? WHERE id=?",
+    safe, nowText(),
     userId,
     rowId,
   );

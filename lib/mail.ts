@@ -3,7 +3,7 @@
 // with retries, so a slow or failing mail server never blocks a request.
 // Without SMTP_HOST nothing is queued or sent.
 import nodemailer, { type Transporter } from "nodemailer";
-import { all, id, one, run, transaction } from "./db";
+import { all, id, one, run, transaction, nowText } from "./db";
 import { HttpError } from "./auth";
 import { instanceSettings } from "./instance-settings";
 import { contentLocale, ct } from "./content-locale";
@@ -330,7 +330,7 @@ export function queueNotificationDigests(now = Date.now()) {
       );
       if (queueMail(first.email, subject, text, html)) queued++;
       for (const n of items)
-        run("UPDATE notifications SET emailed_at=CURRENT_TIMESTAMP WHERE id=?", n.id);
+        run("UPDATE notifications SET emailed_at=? WHERE id=?", nowText(), n.id);
     }
   });
   return queued;

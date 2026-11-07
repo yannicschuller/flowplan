@@ -407,7 +407,7 @@ export async function checkHealthAlerts(now = Date.now()) {
     const toWebhook = !!webhook && webhook.events.includes(alert.event);
     if (!toWebhook && !admins) continue;
     // Claimed before sending, so two runs at once do not both send.
-    if (!run("INSERT OR IGNORE INTO ops_alerts(event,day,sent_at) VALUES(?,?,?)", alert.event, day, now).changes) continue;
+    if (!run("INSERT INTO ops_alerts(event,day,sent_at) VALUES(?,?,?) ON CONFLICT DO NOTHING", alert.event, day, now).changes) continue;
     if (admins) queueOpsAlert(alertTitleIn(alert.event), alert.detail, now);
     if (!toWebhook) continue;
     const result = await deliver(webhook, alert.event, alert.detail, now);

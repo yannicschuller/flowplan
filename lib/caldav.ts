@@ -10,7 +10,7 @@
 import { assertFieldsWritable } from "./field-access";
 import { createHash, randomBytes } from "node:crypto";
 import { Temporal } from "@js-temporal/polyfill";
-import { all, id, one, run, transaction } from "./db";
+import { all, id, one, run, transaction, nowText } from "./db";
 import { readOnlyRefusal } from "./instance-read-only";
 import { HttpError } from "./auth";
 import { pageRole, requirePage } from "./permissions";
@@ -337,7 +337,7 @@ export async function handleCalDav(request: Request): Promise<Response> {
           assertRowAccess(ctx.user, ctx.page, stored, true);
           const before = JSON.parse(stored.cells as unknown as string);
           const after = { ...before, ...patch };
-          run("UPDATE rows SET cells=?,version=version+1,updated_at=CURRENT_TIMESTAMP,updated_by=? WHERE id=?", JSON.stringify(after), ctx.user.id, row.id);
+          run("UPDATE rows SET cells=?,version=version+1,updated_at=?,updated_by=? WHERE id=?", JSON.stringify(after), nowText(), ctx.user.id, row.id);
           rowChanged(ctx.user, ctx.page, row.id, before, after, ctx.fields);
           return row.id;
         }

@@ -8,7 +8,7 @@ import * as Y from "yjs";
 import { Fragment, Node as PMNode } from "@tiptap/pm/model";
 import { updateYFragment, yDocToProsemirrorJSON } from "y-prosemirror";
 import { z } from "zod";
-import { all, one, run } from "./db";
+import { all, one, run, nowText } from "./db";
 import { documentSchema } from "./document-schema";
 import { htmlState, stateHtml } from "./document-server";
 import { createPage } from "./seed";
@@ -154,13 +154,13 @@ function storeDocument(pageId: string, ydoc: Y.Doc, doc: PMNode) {
     }),
   );
   run(
-    "UPDATE documents SET state=?,html=?,updated_at=CURRENT_TIMESTAMP WHERE page_id=?",
+    "UPDATE documents SET state=?,html=?,updated_at=? WHERE page_id=?",
     Y.encodeStateAsUpdate(ydoc),
-    stateHtml(ydoc),
+    stateHtml(ydoc), nowText(),
     pageId,
   );
   documentChanged(pageId);
-  run("UPDATE pages SET updated_at=CURRENT_TIMESTAMP WHERE id=?", pageId);
+  run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), pageId);
 }
 // A page nobody touched: no own text, same title, no icon or cover set, no
 // comments, no sub pages and no files.
@@ -197,7 +197,7 @@ function removeDay(page: Page) {
   } catch {
     // Still referenced somewhere: move it to the trash instead.
     run(
-      "UPDATE pages SET deleted_at=CURRENT_TIMESTAMP,public_token=NULL WHERE id=?",
+      "UPDATE pages SET deleted_at=?,public_token=NULL WHERE id=?", nowText(),
       page.id,
     );
   }

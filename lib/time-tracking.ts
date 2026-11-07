@@ -3,7 +3,7 @@
 // stops the first) or add time by hand; the property holds the total in
 // seconds, the entries keep who worked when (weekly report).
 import { z } from "zod";
-import { all, id, one, run } from "./db";
+import { all, id, one, run, nowText } from "./db";
 import { HttpError } from "./auth";
 import { pageRole, requirePage } from "./permissions";
 import { hiddenRowIds } from "./row-access";
@@ -37,7 +37,7 @@ function refreshTotal(pageId: string, rowId: string, fieldId: string) {
   if (!row) return;
   const cells = JSON.parse(row.cells);
   cells[fieldId] = total;
-  run("UPDATE rows SET cells=?,version=version+1,updated_at=CURRENT_TIMESTAMP WHERE id=?", JSON.stringify(cells), rowId);
+  run("UPDATE rows SET cells=?,version=version+1,updated_at=? WHERE id=?", JSON.stringify(cells), nowText(), rowId);
 }
 
 // Also for focus sessions of the mobile app, which end at a set time

@@ -4,6 +4,7 @@
 // titles, excerpts – no ids), how handles become links (only those offered)
 // and that inserted links are real page links: renamed with their page,
 // exported as Markdown links – against a provider on this machine.
+import { nowText } from "../lib/db-driver/dialect";
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
@@ -77,7 +78,7 @@ html(excluded, "<p>Umzug Büro AUSGESCHLOSSENINHALT.</p>");
 command(ben, { action: "ai.rule", targetId: excluded, mode: "exclude" });
 const trashed = createPage(wid, space, admin.id, "Umzug Archiv");
 html(trashed, "<p>Umzug Büro PAPIERKORBINHALT.</p>");
-run("UPDATE pages SET deleted_at=CURRENT_TIMESTAMP WHERE id=?", trashed);
+run("UPDATE pages SET deleted_at=? WHERE id=?", nowText(), trashed);
 const sealed = createPage(wid, sealedSpace, admin.id, "Umzug Tresor");
 // End-to-end encrypted: the server keeps no plaintext, but the title is named in the text below.
 const FORBIDDEN = ["GEHEIMINHALT", "GESPERRTINHALT", "TAGEBUCHINHALT", "AUSGESCHLOSSENINHALT", "PAPIERKORBINHALT"];

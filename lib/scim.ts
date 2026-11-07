@@ -145,7 +145,7 @@ export function claimProvisionedAccount(subject: string, sub: string, email: str
   if (candidates.length !== 1) return;
   run("UPDATE users SET subject=? WHERE id=?", subject, candidates[0].id);
   run(
-    "INSERT OR IGNORE INTO user_identities(id,user_id,provider,issuer,subject,email,created_at) VALUES(?,?,'oidc',?,?,?,?)",
+    "INSERT INTO user_identities(id,user_id,provider,issuer,subject,email,created_at) VALUES(?,?,'oidc',?,?,?,?) ON CONFLICT DO NOTHING",
     id(),
     candidates[0].id,
     issuer,

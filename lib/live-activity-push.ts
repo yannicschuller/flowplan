@@ -155,7 +155,7 @@ export function liveActivityMessage(kind: LiveActivityKind, user: Identity, labe
 
 function retry(deviceId: string, kind: string, at: number, attempts: number) {
   if (attempts >= MAX_ATTEMPTS) return;
-  run("INSERT OR IGNORE INTO push_live_queue(device_id,kind,available_at,attempts) VALUES(?,?,?,?)", deviceId, kind, Math.floor(at), attempts);
+  run("INSERT INTO push_live_queue(device_id,kind,available_at,attempts) VALUES(?,?,?,?) ON CONFLICT DO NOTHING", deviceId, kind, Math.floor(at), attempts);
 }
 const forget = (deviceId: string, kind: string) => run("DELETE FROM mobile_live_activities WHERE device_id=? AND kind=?", deviceId, kind);
 

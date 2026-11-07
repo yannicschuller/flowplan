@@ -1,3 +1,4 @@
+import { nowText } from "../lib/db-driver/dialect";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
@@ -496,7 +497,7 @@ test("recently opened pages (Android app shortcuts): newest first, only what the
   visit(second, 3);
   visit(gone, 4);
   visit(elsewhere, 5);
-  run("UPDATE pages SET deleted_at=CURRENT_TIMESTAMP WHERE id=?", gone);
+  run("UPDATE pages SET deleted_at=? WHERE id=?", nowText(), gone);
   const recent = one_(R, "pinned", { mode: "recent", max: 5 });
   assert.equal(recent.title, "Recently opened");
   assert.deepEqual(recent.items.map((i: { title: string }) => i.title), ["Second", "First"]);

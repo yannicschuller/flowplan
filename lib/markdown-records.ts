@@ -6,7 +6,7 @@ import { isTagField, syncTagFieldOptions, tagCells } from "./tag-fields";
 import { assertFieldsWritable } from "./field-access";
 import { mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { posix, resolve } from "node:path";
-import { all, id, one, onTransactionRollback, run, transaction } from "./db";
+import { all, id, one, onTransactionRollback, run, transaction, nowText } from "./db";
 import { HttpError } from "./auth";
 import { pageRole, requirePage } from "./permissions";
 import { requireUnlocked } from "./journal-extras";
@@ -337,7 +337,7 @@ export function importMarkdownRecords(
         const before = JSON.parse(one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", rid)!.cells) as Record<string, unknown>;
         const merged = JSON.stringify({ ...before, ...cells });
         if (merged.length > 200000) throw new HttpError(413, `${file.path}: Datensatz zu groß.`);
-        run("UPDATE rows SET cells=?,version=version+1,updated_at=CURRENT_TIMESTAMP,updated_by=? WHERE id=?", merged, user.id, rid);
+        run("UPDATE rows SET cells=?,version=version+1,updated_at=?,updated_by=? WHERE id=?", merged, nowText(), user.id, rid);
         snapshotRow(user, page.id, rid);
         replaceRowDocument(rid, html, user.id);
         updated++;
@@ -358,7 +358,7 @@ export function importMarkdownRecords(
       if (html) run("INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?)", rid, htmlState(html), html, id());
       created.push(rid);
     });
-    run("UPDATE pages SET updated_at=CURRENT_TIMESTAMP WHERE id=?", page.id);
+    run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), page.id);
     for (const rid of created) rowCreated(user, page, rid);
     return {
       ...plan,

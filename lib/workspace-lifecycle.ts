@@ -1,7 +1,7 @@
 import { duplicatePages } from "./page-tree";
 import { placeAfter } from "./space-order";
 import { z } from "zod";
-import { all, one, run, id } from "./db";
+import { all, one, run, id, nowText } from "./db";
 import { HttpError } from "./auth";
 import { memberRole, requireMember, spaceRole } from "./permissions";
 import type { Field, Identity, Page, Space } from "./types";
@@ -74,8 +74,8 @@ export function purgePages(workspaceId: string, pages: Page[]) {
         }
       if (changed)
         run(
-          "UPDATE rows SET cells=?,version=version+1,updated_at=CURRENT_TIMESTAMP WHERE id=?",
-          JSON.stringify(cells),
+          "UPDATE rows SET cells=?,version=version+1,updated_at=? WHERE id=?",
+          JSON.stringify(cells), nowText(),
           row.id,
         );
     }
@@ -83,7 +83,7 @@ export function purgePages(workspaceId: string, pages: Page[]) {
   for (const page of pages) {
     revokePage(page.id);
     run(
-      "INSERT OR IGNORE INTO pending_file_deletions(id) SELECT id FROM files WHERE page_id=?",
+      "INSERT INTO pending_file_deletions(id) SELECT id FROM files WHERE page_id=? ON CONFLICT DO NOTHING",
       page.id,
     );
     run(
@@ -182,11 +182,11 @@ export function manageSpace(user: Identity, input: Record<string, unknown>) {
     ))
       revokePage(page.id);
     run(
-      "UPDATE pages SET deleted_at=CURRENT_TIMESTAMP WHERE space_id=? AND deleted_at IS NULL",
+      "UPDATE pages SET deleted_at=? WHERE space_id=? AND deleted_at IS NULL", nowText(),
       space.id,
     );
     run(
-      "UPDATE spaces SET deleted_at=CURRENT_TIMESTAMP,version=version+1 WHERE id=?",
+      "UPDATE spaces SET deleted_at=?,version=version+1 WHERE id=?", nowText(),
       space.id,
     );
   } else if (input.action === "space.restore") {

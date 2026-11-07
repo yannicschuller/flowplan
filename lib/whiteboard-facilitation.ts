@@ -14,7 +14,7 @@
 // presence.ts) as a bare signal; each browser then asks for its own view.
 import * as Y from "yjs";
 import { z } from "zod";
-import { all, id, one, run, transaction } from "./db";
+import { all, id, one, run, transaction, nowText } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import { requireUnlocked } from "./journal-extras";
@@ -198,9 +198,9 @@ function applyToBoard(page: Page, user: Identity, updates: Uint8Array[]) {
         page.title,
         user.id,
       );
-    run("UPDATE whiteboards SET state=?,updated_at=CURRENT_TIMESTAMP WHERE page_id=?", Y.encodeStateAsUpdate(doc), page.id);
-    run("UPDATE documents SET html=?,updated_at=CURRENT_TIMESTAMP WHERE page_id=?", whiteboardSummary(items), page.id);
-    run("UPDATE pages SET updated_at=CURRENT_TIMESTAMP WHERE id=?", page.id);
+    run("UPDATE whiteboards SET state=?,updated_at=? WHERE page_id=?", Y.encodeStateAsUpdate(doc), nowText(), page.id);
+    run("UPDATE documents SET html=?,updated_at=? WHERE page_id=?", whiteboardSummary(items), nowText(), page.id);
+    run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), page.id);
   } finally {
     doc.destroy();
   }

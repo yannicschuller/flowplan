@@ -10,7 +10,7 @@ import { copyFileSync, existsSync, mkdirSync, unlinkSync } from "node:fs";
 import { resolve } from "node:path";
 import { generateJSON } from "@tiptap/html/server";
 import { Fragment, Node as PMNode } from "@tiptap/pm/model";
-import { all, id, one, onTransactionRollback, run } from "./db";
+import { all, id, one, onTransactionRollback, run, nowText } from "./db";
 import { SPACE_ORDER } from "./space-order";
 import { HttpError } from "./auth";
 import { quotaCheckpoint } from "./instance-ops";
@@ -292,11 +292,11 @@ export function recordToPage(
     );
   }
   // Record favourites become page favourites.
-  run("INSERT OR IGNORE INTO favorites(user_id,page_id) SELECT user_id,? FROM row_favorites WHERE row_id=?", pageId, row.id);
+  run("INSERT INTO favorites(user_id,page_id) SELECT user_id,? FROM row_favorites WHERE row_id=? ON CONFLICT DO NOTHING", pageId, row.id);
   // The record goes to the trash (restorable, under the same id).
   trashRow(user, database, row.id);
   maintainRowOrders(database.id);
-  run("UPDATE pages SET updated_at=CURRENT_TIMESTAMP WHERE id=?", database.id);
+  run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), database.id);
   // Links to the record in all texts of the workspace point to the page.
   const relink = (d: PMNode) =>
     relinkDocument(d, (href) => {

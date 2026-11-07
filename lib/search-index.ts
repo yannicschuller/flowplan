@@ -178,13 +178,13 @@ export function ensureSearchIndex() {
   if (!one("SELECT 1 FROM search_meta WHERE key='extras'")) {
     transaction(() => {
       run(
-        "INSERT OR IGNORE INTO search_dirty SELECT page_id,'c:'||id FROM comments",
+        "INSERT INTO search_dirty SELECT page_id,'c:'||id FROM comments WHERE true ON CONFLICT DO NOTHING",
       );
       run(
-        "INSERT OR IGNORE INTO search_dirty SELECT t.page_id,'m:'||m.id FROM inline_messages m JOIN inline_threads t ON t.id=m.thread_id",
+        "INSERT INTO search_dirty SELECT t.page_id,'m:'||m.id FROM inline_messages m JOIN inline_threads t ON t.id=m.thread_id WHERE true ON CONFLICT DO NOTHING",
       );
       run(
-        "INSERT OR IGNORE INTO search_dirty SELECT page_id,'f:'||id FROM files WHERE page_id IS NOT NULL",
+        "INSERT INTO search_dirty SELECT page_id,'f:'||id FROM files WHERE page_id IS NOT NULL ON CONFLICT DO NOTHING",
       );
       run("INSERT INTO search_meta(key) VALUES('extras')");
     });
@@ -192,8 +192,8 @@ export function ensureSearchIndex() {
   if (!one("SELECT 1 FROM search_state WHERE id=1")) {
     transaction(() => {
       run("DELETE FROM search_index");
-      run("INSERT OR IGNORE INTO search_dirty SELECT id,'' FROM pages");
-      run("INSERT OR IGNORE INTO search_dirty SELECT page_id,id FROM rows");
+      run("INSERT INTO search_dirty SELECT id,'' FROM pages WHERE true ON CONFLICT DO NOTHING");
+      run("INSERT INTO search_dirty SELECT page_id,id FROM rows WHERE true ON CONFLICT DO NOTHING");
       run("INSERT INTO search_state(id,built) VALUES(1,?)", Date.now());
     });
   }

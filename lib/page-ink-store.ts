@@ -12,7 +12,7 @@
 // The ink of a drawing block lives here, not in the document's Yjs state:
 // a document stays small, a stroke is one request, and concurrent strokes
 // merge by id instead of one whole attribute replacing the other.
-import { all, audit, one, run, transaction } from "./db";
+import { all, audit, one, run, transaction, nowText } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import { requireUnlocked } from "./journal-extras";
@@ -186,7 +186,7 @@ export function savePageInk(user: Identity, pageId: string, surface: string, inp
       surface,
       PAGE_INK_VERSIONS_KEPT,
     );
-    run("UPDATE pages SET updated_at=CURRENT_TIMESTAMP WHERE id=?", page.id);
+    run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), page.id);
     audit(user.id, "page.ink", page.id, `${surface} (${inkItemCount(doc)})`);
     recordPageEdit(user, page.id);
     return { version, conflict, ...(merged ? { doc } : {}) };

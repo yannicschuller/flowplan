@@ -1,6 +1,6 @@
 import * as Y from "yjs";
 import { z } from "zod";
-import { all, id, one, run } from "./db";
+import { all, id, one, run, nowText } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import { requireUnlocked } from "./journal-extras";
@@ -43,7 +43,7 @@ function stored(page: Page): Stored {
     const doc = new Y.Doc();
     doc.getMap("items");
     run(
-      "INSERT OR IGNORE INTO whiteboards(page_id,state,generation) VALUES(?,?,?)",
+      "INSERT INTO whiteboards(page_id,state,generation) VALUES(?,?,?) ON CONFLICT DO NOTHING",
       page.id,
       Y.encodeStateAsUpdate(doc),
       id(),
@@ -121,17 +121,17 @@ export function syncWhiteboard(user: Identity, raw: unknown) {
             user.id,
           );
         run(
-          "UPDATE whiteboards SET state=?,updated_at=CURRENT_TIMESTAMP WHERE page_id=?",
-          Y.encodeStateAsUpdate(doc),
+          "UPDATE whiteboards SET state=?,updated_at=? WHERE page_id=?",
+          Y.encodeStateAsUpdate(doc), nowText(),
           page.id,
         );
         run(
-          "UPDATE documents SET html=?,updated_at=CURRENT_TIMESTAMP WHERE page_id=?",
-          whiteboardSummary(items),
+          "UPDATE documents SET html=?,updated_at=? WHERE page_id=?",
+          whiteboardSummary(items), nowText(),
           page.id,
         );
         run(
-          "UPDATE pages SET updated_at=CURRENT_TIMESTAMP WHERE id=?",
+          "UPDATE pages SET updated_at=? WHERE id=?", nowText(),
           page.id,
         );
       }
@@ -231,9 +231,9 @@ export function writeWhiteboard(
 }
 export function restoreWhiteboardSnapshot(page: Page, state: Uint8Array) {
   run(
-    "UPDATE whiteboards SET state=?,generation=?,updated_at=CURRENT_TIMESTAMP WHERE page_id=?",
+    "UPDATE whiteboards SET state=?,generation=?,updated_at=? WHERE page_id=?",
     state,
-    id(),
+    id(), nowText(),
     page.id,
   );
   const doc = new Y.Doc();

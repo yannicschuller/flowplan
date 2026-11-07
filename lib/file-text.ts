@@ -100,7 +100,7 @@ export async function extractPendingFileTexts(limit = 5) {
     }
     // The file may have been deleted meanwhile; then nothing is stored.
     run(
-      "INSERT OR IGNORE INTO file_texts(file_id,text,status) SELECT id,?,? FROM files WHERE id=?",
+      "INSERT INTO file_texts(file_id,text,status) SELECT id,?,? FROM files WHERE id=? ON CONFLICT DO NOTHING",
       text.slice(0, MAX_PDF_TEXT),
       status,
       file.id,

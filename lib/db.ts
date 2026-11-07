@@ -13,6 +13,9 @@ import { migrateSealedSecrets } from "./sealed-values";
 import { noteStatement, noteTransaction, runtimeMetricsOn } from "./runtime-metrics";
 import { dbContext, postgresUrl } from "./db-driver/context";
 import { legacyPostgres, type LegacyPostgres } from "./db-driver/pg-sync";
+// SQL that differs between SQLite and PostgreSQL (lib/db-driver/dialect.ts):
+// `sql` is the dialect of this process, `nowText()` the CURRENT_TIMESTAMP text.
+export { sql, nowText, daysAgoText } from "./db-driver/dialect";
 const globalDb = globalThis as unknown as {
   flowplanDb?: DatabaseSync;
   flowplanSchema?: number;
@@ -1305,21 +1308,21 @@ export function migrateSavedSearches(d: DatabaseSync) {
     throw error;
   }
 }
-function cleanDeletedFiles(d: DatabaseSync) {
+// Through one/all/run: the same on SQLite and on PostgreSQL.
+function cleanDeletedFiles() {
   let cursor = "";
   while (true) {
-    const batch = d
-      .prepare(
-        "SELECT id FROM pending_file_deletions WHERE id>? ORDER BY id LIMIT 1000",
-      )
-      .all(cursor);
+    const batch = all<{ id: string }>(
+      "SELECT id FROM pending_file_deletions WHERE id>? ORDER BY id LIMIT 1000",
+      cursor,
+    );
     if (!batch.length) return;
     for (const row of batch) {
       const fileId = String(row.id);
       cursor = fileId;
       if (
         !/^[a-f0-9-]{36}$/i.test(fileId) ||
-        d.prepare("SELECT 1 FROM files WHERE id=?").get(fileId)
+        one("SELECT 1 FROM files WHERE id=?", fileId)
       )
         continue;
       try {
@@ -1329,7 +1332,7 @@ function cleanDeletedFiles(d: DatabaseSync) {
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "ENOENT") continue;
       }
-      d.prepare("DELETE FROM pending_file_deletions WHERE id=?").run(fileId);
+      run("DELETE FROM pending_file_deletions WHERE id=?", fileId);
     }
   }
 }
@@ -1381,7 +1384,7 @@ export function db() {
  `);
   globalDb.flowplanDb = d;
   migrate(d);
-  cleanDeletedFiles(d);
+  cleanDeletedFiles();
   setupStorage(d);
   return d;
 }
@@ -1543,14 +1546,40 @@ export function audit(
 }
 export function transaction<T>(fn: () => T, actor?: Identity): T {
   const pg = legacyPg();
-  if (pg)
+  if (pg) {
+    // The same steps as on SQLite: relation sync before the commit,
+    // rollback hooks, the upload cleanup after it.
+    const start = runtimeMetricsOn ? performance.now() : 0;
+    const outer = !globalDb.flowplanRollback;
+    if (outer) globalDb.flowplanRollback = [];
     try {
-      return pg.transaction(fn);
+      const value = pg.transaction(() => {
+        const result = fn();
+        if (outer) flushRelationChanges(actor);
+        return result;
+      });
+      if (outer)
+        try {
+          cleanDeletedFiles();
+        } catch (error) {
+          console.error("Upload cleanup failed", error);
+        }
+      return value;
     } catch (e) {
       // Rolled back: memoized reads of it are outdated (lib/read-memo.ts).
       noteWrite();
+      if (outer)
+        for (const cleanup of globalDb.flowplanRollback || [])
+          try {
+            cleanup();
+          } catch {
+            /* preserve the original failure */
+          }
       throw e;
+    } finally {
+      if (outer) endTransaction(start);
     }
+  }
   // Inside an asynchronous transaction (lib/db-driver/sqlite.ts) on the
   // same connection: a savepoint of it.
   const scope = dbContext.als.getStore();
@@ -1581,7 +1610,7 @@ export function commitTransaction(actor?: Identity) {
   // SQL remains authoritative even if an upload cannot be unlinked yet.
   // The durable queue retries on the next commit or process start.
   try {
-    cleanDeletedFiles(db());
+    cleanDeletedFiles();
   } catch (error) {
     console.error("Upload cleanup failed", error);
   }
