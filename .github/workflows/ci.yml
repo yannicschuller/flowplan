@@ -69,8 +69,19 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
+      # Cluster mode's tests (tests/cluster.test.ts) against a real Redis.
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
     env:
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/flowplan_test
+      FLOWPLAN_TEST_REDIS_URL: redis://localhost:6379/0
     steps:
       - uses: actions/checkout@v7
         with:

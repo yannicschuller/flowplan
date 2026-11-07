@@ -149,8 +149,6 @@ export class RedisClient {
     this.socket = socket;
     socket.setNoDelay(true);
     socket.setKeepAlive(true, 30_000);
-    // Neither a subscriber nor an idle client keeps the process alive.
-    socket.unref();
     this.buffer = Buffer.alloc(0);
     socket.once(this.target.tls ? "secureConnect" : "connect", () => void this.handshake(socket));
     socket.on("data", (chunk: Buffer) => this.receive(chunk));
@@ -169,6 +167,9 @@ export class RedisClient {
       if (this.options.name) await this.send(["CLIENT", "SETNAME", this.options.name], true).catch(() => {});
       for (const channel of this.channels.keys()) socket.write(encodeCommand(["SUBSCRIBE", channel]));
       this.ready = true;
+      // Once open, neither a subscriber nor an idle client keeps the process
+      // alive (while connecting, or waiting for a reply, it does).
+      if (!this.pending.length) socket.unref();
       this.attempt = 0;
       this.lastError = null;
       this.connecting = null;
@@ -235,6 +236,7 @@ export class RedisClient {
     }
     const job = this.pending.shift();
     if (!job) return;
+    if (!this.pending.length && this.ready) this.socket?.unref();
     if (job.timer) clearTimeout(job.timer);
     if (value instanceof RedisError) job.reject(value);
     else job.resolve(value);
@@ -254,6 +256,7 @@ export class RedisClient {
       }, timeout);
       job.timer.unref?.();
       this.pending.push(job);
+      this.socket.ref();
       this.socket.write(encodeCommand(args));
     });
   }
@@ -296,6 +299,7 @@ export class RedisClient {
     this.ready = false;
     if (!socket) return;
     await new Promise<void>((resolve) => {
+      socket.ref();
       socket.once("close", () => resolve());
       try {
         socket.end(encodeCommand(["QUIT"]));
