@@ -5,6 +5,7 @@
 // empty title stays empty and the card says "Untitled" in their language.
 import { all, one } from "./db";
 import { pageRole } from "./permissions";
+import { journalLocked } from "./journal-extras";
 import { hiddenRowIds } from "./row-access";
 import { visibleFields } from "./field-access";
 import { cellText } from "./cell-text";
@@ -30,7 +31,7 @@ export function whiteboardRowCards(user: Identity, refs: { pageId: string; rowId
       const page = one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL AND kind='database'", ref.pageId);
       pages.set(
         ref.pageId,
-        page && pageRole(user, page)
+        page && pageRole(user, page) && !journalLocked(user, page)
           ? {
               page,
               // Without properties hidden from this person (lib/field-access.ts).

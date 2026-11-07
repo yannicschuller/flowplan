@@ -2,6 +2,7 @@ import { z } from "zod";
 import { all, id, one, run } from "./db";
 import { HttpError } from "./auth";
 import { pageRole, requirePage } from "./permissions";
+import { lockedPageIds, requireUnlocked } from "./journal-extras";
 import { maintainRowOrders } from "./row-order-server";
 import { reindexRowTasks } from "./doc-tasks";
 import { roleWithGrants, rowGrants, type RowGrant } from "./row-access";
@@ -79,6 +80,8 @@ export function trashRow(user: Identity, page: Page, rowId: string) {
 }
 
 export function listRowTrash(user: Identity, workspaceId: string) {
+  // Not even the titles of records behind a journal PIN.
+  const locked = lockedPageIds(user, workspaceId);
   return all<
     Page & {
       trash_id: string;
@@ -93,7 +96,10 @@ export function listRowTrash(user: Identity, workspaceId: string) {
     workspaceId,
   )
     .filter(
-      (p) => pageRole(user, p) && trashedRole(user, p, JSON.parse(p.payload)),
+      (p) =>
+        pageRole(user, p) &&
+        !locked.has(p.id) &&
+        trashedRole(user, p, JSON.parse(p.payload)),
     )
     .map((p) => ({
       id: p.trash_id,
@@ -114,6 +120,7 @@ function entry(user: Identity, raw: unknown) {
   if (!found) throw new HttpError(404, "Eintrag nicht im Papierkorb.");
   const page = requirePage(user, found.page_id, true);
   if (page.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
+  requireUnlocked(user, page);
   const payload = JSON.parse(found.payload) as Payload;
   const role = trashedRole(user, page, payload);
   if (!role) throw new HttpError(404, "Eintrag nicht im Papierkorb.");

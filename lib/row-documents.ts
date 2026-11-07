@@ -4,6 +4,7 @@ import { all, one, run, id } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import { assertRowAccess } from "./row-access";
+import { requireUnlocked } from "./journal-extras";
 import { cleanHtml, escaped, htmlState, stateHtml } from "./document-server";
 import type { Identity, Row, Field } from "./types";
 import { documentChanged } from "./document-live";
@@ -27,6 +28,8 @@ export function requireRow(
 ) {
   const page = requirePage(user, pageId, write);
   if (page.kind !== "database") throw new HttpError(400, "Keine Datenbank.");
+  // Records of a database below a journal stay behind its PIN.
+  requireUnlocked(user, page);
   if (write && page.locked)
     throw new HttpError(409, "Diese Seite ist gesperrt.");
   const row = one<Row>(

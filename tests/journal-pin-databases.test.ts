@@ -1,0 +1,111 @@
+// Audit (Nov 2026): the records of a database below a PIN-locked journal
+// were readable without the PIN – through a relation from another database,
+// rows.transfer copy, the record document, the calendar feed, whiteboard
+// cards, records across databases and the record trash. With the PIN set
+// none of these returns data; after journal.unlock they do.
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { Identity } from "../lib/types";
+process.env.FLOWPLAN_DATA_DIR = mkdtempSync(join(tmpdir(), "flowplan-journal-pin-db-"));
+const { run, id, one } = await import("../lib/db");
+const { createWorkspace } = await import("../lib/seed");
+const api = await import("../lib/api");
+const { rowDocumentData } = await import("../lib/row-documents");
+const { htmlState } = await import("../lib/document-server");
+const { whiteboardRowCards } = await import("../lib/whiteboard-cards");
+const { crossRecords } = await import("../lib/cross-records");
+const { listRowTrash } = await import("../lib/row-trash");
+const { createCalendarFeed, calendarFeed } = await import("../lib/calendar-feed");
+
+function account(name: string) {
+  const uid = id();
+  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
+  return { id: uid, name, email: `${name}@example.test`, groups: [], isAdmin: false, disabled: 0, created_at: "" } as Identity;
+}
+type Result = { id: string } & Record<string, unknown>;
+const owner = account("Olga"),
+  member = account("Max");
+const wid = createWorkspace(owner.id, "Firma");
+run("INSERT INTO members VALUES(?,?,?)", wid, member.id, "editor");
+const act = (input: Record<string, unknown>, as = owner) => api.command(as, input) as Result;
+const status = (fn: () => unknown) => {
+  try {
+    fn();
+    return 200;
+  } catch (e) {
+    return (e as { status?: number }).status ?? String(e);
+  }
+};
+const team = act({ action: "space.create", workspaceId: wid, name: "Team" }).id;
+const journal = act({ action: "page.create", workspaceId: wid, spaceId: team, title: "Tagebuch", kind: "journal" }).id;
+const db = act({ action: "page.create", workspaceId: wid, spaceId: team, title: "Geheime DB", kind: "database", parentId: journal, databaseKind: "empty" }).id;
+let d = api.database(db);
+act({
+  action: "database.update",
+  pageId: db,
+  version: d.version,
+  views: [...d.views, { id: "cal", name: "Kalender", type: "calendar", dateField: "when", filters: [], sorts: [] }],
+  fields: [...d.fields, { id: "when", name: "Wann", type: "date" }],
+});
+d = api.database(db);
+const title = d.fields[0].id;
+const rid = act({ action: "row.create", pageId: db, cells: { [title]: "SECRET-ROW-TITLE", when: "2026-11-10" } }).id;
+const trashed = act({ action: "row.create", pageId: db, cells: { [title]: "SECRET-TRASHED" } }).id;
+act({ action: "row.delete", pageId: db, rowId: trashed });
+run(
+  "INSERT OR REPLACE INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?)",
+  rid,
+  htmlState("<p>SECRET-ROW-BODY</p>"),
+  "<p>SECRET-ROW-BODY</p>",
+  "g1",
+);
+// The member's own database with a relation to the one below the journal.
+const mine = act({ action: "page.create", workspaceId: wid, spaceId: team, title: "Meine DB", kind: "database", databaseKind: "empty" }, member).id;
+const m = api.database(mine);
+act({ action: "database.update", pageId: mine, version: m.version, views: m.views, fields: [...m.fields, { id: "rel1", name: "Link", type: "relation", relationPage: db }] }, member);
+const token = createCalendarFeed(member, db, "cal").url.split("/").pop()!.replace(/\.ics$/, "");
+
+act({ action: "journal.lock", pageId: journal, pin: "471108" });
+act({ action: "journal.relock", pageId: journal });
+
+const leaks = () => {
+  const data = api.pageData(member, mine) as { related?: Record<string, { cells: Record<string, unknown> }[]> };
+  const cards = whiteboardRowCards(member, [{ pageId: db, rowId: rid }]);
+  const cross = crossRecords(member, wid, { mine: false });
+  const trash = listRowTrash(member, wid);
+  let ics = "";
+  status(() => (ics = calendarFeed(token) as unknown as string));
+  let html = "";
+  const doc = status(() => (html = (rowDocumentData(member, db, rid) as { html: string }).html));
+  return {
+    related: JSON.stringify(data.related?.[db] ?? []).includes("SECRET-ROW-TITLE"),
+    cards: !!cards[rid] || Object.values(cards).some((c) => c.title.includes("SECRET")),
+    cross: JSON.stringify(cross).includes("SECRET-ROW-TITLE"),
+    trash: trash.some((t) => t.title.includes("SECRET-TRASHED")),
+    feed: String(ics).includes("SECRET-ROW-TITLE"),
+    document: doc === 200 && html.includes("SECRET-ROW-BODY"),
+  };
+};
+
+test("records below a locked journal stay closed without the PIN", () => {
+  assert.deepEqual(leaks(), { related: false, cards: false, cross: false, trash: false, feed: false, document: false });
+  // The lock screen of the journal instead of a server error.
+  const data = api.pageData(member, db) as { locked?: { journalId: string } };
+  assert.equal(data.locked?.journalId, journal);
+  assert.equal(status(() => rowDocumentData(member, db, rid)), 423);
+  // Copying records out of the database (or into it) needs the PIN too.
+  assert.equal(status(() => act({ action: "rows.transfer", pageId: db, rowIds: [rid], targetPageId: mine, mode: "copy" }, member)), 423);
+  assert.equal(api.rows(mine).length, 0);
+  const trashId = one<{ id: string }>("SELECT id FROM row_trash WHERE page_id=?", db)!.id;
+  assert.equal(status(() => act({ action: "row.trash.restore", trashId }, member)), 423);
+});
+
+test("after journal.unlock the same ways work again", () => {
+  act({ action: "journal.unlock", pageId: journal, pin: "471108" }, member);
+  assert.deepEqual(leaks(), { related: true, cards: true, cross: true, trash: true, feed: true, document: true });
+  assert.equal(status(() => act({ action: "rows.transfer", pageId: db, rowIds: [rid], targetPageId: mine, mode: "copy" }, member)), 200);
+  assert.equal(api.rows(mine).length, 1);
+});

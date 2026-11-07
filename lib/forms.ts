@@ -5,6 +5,7 @@ import { fieldWriteMessage, publicWritable } from "./field-access";
 import { all, one, run, id } from "./db";
 import { HttpError } from "./auth";
 import { pageRole, requireMember, requirePage } from "./permissions";
+import { journalLocked } from "./journal-extras";
 import { cellText } from "./cell-text";
 import {
   formConfigSchema,
@@ -93,7 +94,7 @@ function relationChoices(user: Identity, fields: Field[]) {
       "SELECT * FROM pages WHERE id=? AND deleted_at IS NULL",
       f.relationPage,
     );
-    if (!target || !pageRole(user, target)) continue;
+    if (!target || !pageRole(user, target) || journalLocked(user, target)) continue;
     const title =
       (
         JSON.parse(

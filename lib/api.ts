@@ -61,6 +61,7 @@ import {
   dayEntry,
   journalDayDetails,
   journalLocked,
+  lockingJournal,
   journalOf,
   journalSettings,
   journalSidebarModes,
@@ -426,11 +427,13 @@ function pageContent(user: Identity, pid: string, options: { presence?: boolean 
   const p = requirePage(user, pid);
   const role = pageRole(user, p);
   // Behind a journal PIN: only what the lock screen needs.
-  if (journalLocked(user, p))
+  // Any page below the journal shows the lock screen of that journal.
+  const lockedBy = lockingJournal(user, p);
+  if (lockedBy)
     return {
       page: p,
       role,
-      locked: { journalId: journalOf(p)!.id },
+      locked: { journalId: lockedBy },
       comments: [],
       snapshots: [],
       present: [],

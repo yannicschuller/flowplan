@@ -2,6 +2,7 @@ import { visibleRows } from "./row-access";
 import { visibleFields } from "./field-access";
 import { all, one } from "./db";
 import { requirePage } from "./permissions";
+import { journalLocked } from "./journal-extras";
 import { HttpError } from "./auth";
 import { allowedAggregates } from "./rollups";
 import type { Field, Identity, Page, Row } from "./types";
@@ -22,7 +23,8 @@ export function relatedData(user: Identity, root: Page) {
     } catch {
       continue;
     }
-    if (page.workspace_id !== root.workspace_id || page.kind !== "database")
+    // Nothing of a database behind a journal PIN the person has not entered.
+    if (page.workspace_id !== root.workspace_id || page.kind !== "database" || journalLocked(user, page))
       continue;
     const raw = one<{ fields: string }>(
       "SELECT fields FROM databases WHERE page_id=?",

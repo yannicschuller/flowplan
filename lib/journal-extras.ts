@@ -541,13 +541,20 @@ function enclosingJournals(page: Page) {
     page.id,
   );
 }
+// The journal whose PIN keeps the page closed for the person (the page
+// itself, a day or any page below a journal), or null.
+export function lockingJournal(user: Identity, page: Page) {
+  return (
+    enclosingJournals(page).find(
+      (journal) =>
+        !!settingsRow(journal.id)?.lock_hash &&
+        !one("SELECT 1 FROM journal_unlocks WHERE user_id=? AND page_id=? AND until>?", user.id, journal.id, Date.now()),
+    )?.id || null
+  );
+}
 // Whether the page is behind a journal PIN the person has not entered.
 export function journalLocked(user: Identity, page: Page) {
-  return enclosingJournals(page).some(
-    (journal) =>
-      !!settingsRow(journal.id)?.lock_hash &&
-      !one("SELECT 1 FROM journal_unlocks WHERE user_id=? AND page_id=? AND until>?", user.id, journal.id, Date.now()),
-  );
+  return !!lockingJournal(user, page);
 }
 export function requireUnlocked(user: Identity, page: Page) {
   if (journalLocked(user, page))

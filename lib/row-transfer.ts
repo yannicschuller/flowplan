@@ -17,6 +17,7 @@ import { all, id, one, run } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import { assertRowAccess } from "./row-access";
+import { requireUnlocked } from "./journal-extras";
 import { replaceRowDocument } from "./row-documents";
 import { maintainRowOrders } from "./row-order-server";
 import { rowCreated } from "./automations";
@@ -123,6 +124,9 @@ export function transferRows(user: Identity, sourcePageId: string, raw: unknown)
   if (source.kind !== "database" || target.kind !== "database") throw new HttpError(400, "Keine Datenbank.");
   if (source.id === target.id) throw new HttpError(400, "Bitte eine andere Datenbank wählen.");
   if (source.workspace_id !== target.workspace_id) throw new HttpError(400, "Nur innerhalb eines Arbeitsbereichs.");
+  // Neither side may be behind a journal PIN the person has not entered.
+  requireUnlocked(user, source);
+  requireUnlocked(user, target);
   if (target.locked || (b.mode === "move" && source.locked)) throw new HttpError(409, "Diese Seite ist gesperrt.");
   const sourceFields = fieldsOf(source.id);
   const targetFields = fieldsOf(target.id);
