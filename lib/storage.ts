@@ -133,26 +133,7 @@ export async function setupStorage(d?: DatabaseSync) {
         INSERT INTO storage_queue(key,op) VALUES(OLD.id,'delete') ON CONFLICT(key) DO UPDATE SET op='delete',attempts=0,next_at=0;
         SELECT storage_kick();
       END;`);
-  } else if (postgres) {
-    // The same queue; the trigger cannot call this process, so it sends a
-    // NOTIFY (delivered at the commit) to every instance listening on the
-    // queue's channel, with the file's key: an instance that has the file
-    // uploads it right away. A slow poll catches what a lost connection
-    // missed.
-    await run(`CREATE OR REPLACE FUNCTION storage_queue_file() RETURNS trigger LANGUAGE plpgsql AS $fn$
-      BEGIN
-        IF TG_OP='DELETE' THEN
-          INSERT INTO storage_queue(key,op) VALUES(OLD.id,'delete') ON CONFLICT(key) DO UPDATE SET op='delete',attempts=0,next_at=0;
-          PERFORM pg_notify('${QUEUE_CHANNEL}_' || current_schema(), 'delete:' || OLD.id);
-        ELSE
-          INSERT INTO storage_queue(key,op) VALUES(NEW.id,'put') ON CONFLICT(key) DO UPDATE SET op='put',attempts=0,next_at=0;
-          PERFORM pg_notify('${QUEUE_CHANNEL}_' || current_schema(), 'put:' || NEW.id);
-        END IF;
-        RETURN NULL;
-      END $fn$`);
-    await run("CREATE OR REPLACE TRIGGER storage_file_insert AFTER INSERT ON files FOR EACH ROW EXECUTE FUNCTION storage_queue_file()");
-    await run("CREATE OR REPLACE TRIGGER storage_file_delete AFTER DELETE ON files FOR EACH ROW EXECUTE FUNCTION storage_queue_file()");
-  }
+  } else if (postgres) await ensureStorageTriggers();
   const marker = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "storage-resync");
   const previous = (await one<{ value: string }>("SELECT value FROM storage_state WHERE name='target'"))?.value;
   // First use of this bucket, or local files replaced by an instance
@@ -185,6 +166,31 @@ export async function setupStorage(d?: DatabaseSync) {
   // In cluster mode the local folder is a cache of the bucket: files come
   // when a request needs them (ensureLocal), not all at every start.
   if (!clusterMode()) setImmediate(() => void hydrate());
+}
+
+// The queue's trigger on PostgreSQL (with a bucket configured): at the
+// opening, and again after a pg_dump restore, which makes the schema anew
+// (lib/cluster/duties.ts; outside cluster mode the opening follows it).
+export async function ensureStorageTriggers() {
+  if (!storageConfig() || sql.name !== "postgres") return;
+  // The same queue; the trigger cannot call this process, so it sends a
+  // NOTIFY (delivered at the commit) to every instance listening on the
+  // queue's channel, with the file's key: an instance that has the file
+  // uploads it right away. A slow poll catches what a lost connection
+  // missed.
+  await run(`CREATE OR REPLACE FUNCTION storage_queue_file() RETURNS trigger LANGUAGE plpgsql AS $fn$
+    BEGIN
+      IF TG_OP='DELETE' THEN
+        INSERT INTO storage_queue(key,op) VALUES(OLD.id,'delete') ON CONFLICT(key) DO UPDATE SET op='delete',attempts=0,next_at=0;
+        PERFORM pg_notify('${QUEUE_CHANNEL}_' || current_schema(), 'delete:' || OLD.id);
+      ELSE
+        INSERT INTO storage_queue(key,op) VALUES(NEW.id,'put') ON CONFLICT(key) DO UPDATE SET op='put',attempts=0,next_at=0;
+        PERFORM pg_notify('${QUEUE_CHANNEL}_' || current_schema(), 'put:' || NEW.id);
+      END IF;
+      RETURN NULL;
+    END $fn$`);
+  await run("CREATE OR REPLACE TRIGGER storage_file_insert AFTER INSERT ON files FOR EACH ROW EXECUTE FUNCTION storage_queue_file()");
+  await run("CREATE OR REPLACE TRIGGER storage_file_delete AFTER DELETE ON files FOR EACH ROW EXECUTE FUNCTION storage_queue_file()");
 }
 
 // The database is closed and opened again (lib/db.ts, reopenDatabase).

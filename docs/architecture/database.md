@@ -339,22 +339,70 @@ Two formats (phase 3):
   and restores on a server without pg_trgm or pgvector. pg_dump takes its
   own consistent snapshot and runs outside Node (no event-loop or memory
   cost; on a large instance far faster than the row-by-row SQLite copy).
-  - **Restore**: the setup screen (and SFTP/S3 setup restore) accepts a
-    `.dump[.enc]` only on Postgres (on SQLite it says to use the ZIP or the
-    move); it reads the dump's schema version, counts and file ids with
-    `pg_restore --data-only` (refuses a newer version), stages it as
-    `restore-pending/flowplan.dump`, and the next opening loads it
-    (`restorePgDump`): the current state is saved as `pre-restore-<time>/flowplan.dump`,
-    the instance's schema is emptied (everything but extension members –
-    the schema, its grants and extensions stay), and the dump goes in in
-    one transaction: `pg_restore --single-transaction` when the dump's
-    schema has the instance's name, else pg_restore's SQL piped into
-    `psql --single-transaction` with the schema's name replaced outside the
-    COPY data (an instance with `FLOWPLAN_PG_SCHEMA=flowplan` restoring a
-    backup of one in `public`; tested between test schemas). Then
-    `ensurePostgresSchema` brings an older dump to this version (adds
-    tables, columns, triggers; the data steps follow), and the search index
-    is rebuilt. A failed restore puts the saved state back.
+  - **Restore**: the setup screen (and SFTP/S3 setup restore) and
+    Administration → "Restore from backup" accept a `.dump[.enc]` only on
+    Postgres (on SQLite it says to use the ZIP or the move). Before staging,
+    `checkDumpBackup` reads the dump's table of contents (`pg_restore
+    --list`) and refuses a dump that is not one Flowplan schema with
+    `flowplan_meta`, that comes from a newer version, or that holds
+    **anything Flowplan does not make itself** (see "Restores run no SQL of
+    the dump" below); it reads the version, counts and file ids with
+    `pg_restore --data-only`, stages it as `restore-pending/flowplan.dump`,
+    and the next opening loads it (`restorePgDump`): the current state is
+    saved as `pre-restore-<time>/flowplan.dump`, then `restoreDump` replaces
+    the schema in **one** psql transaction – the schema emptied (everything
+    but extension members; the schema, its grants and extensions stay),
+    made anew from this version's `postgres-schema.json` (tables, keys,
+    indexes – not from the dump), the rows of the dump loaded, identity
+    sequences set (the dump's value, at least past the highest key),
+    foreign keys added (checked) and the triggers created from this code
+    (none fired while the rows came in). A dump of an older version loads
+    into the current tables (a column it lacks gets its default, a column
+    this version no longer has is left out); the data steps follow at the
+    opening. A dump of another schema's name loads the same way: the COPY
+    statements name the instance's schema (an instance with
+    `FLOWPLAN_PG_SCHEMA=flowplan` restoring a backup of one in `public`;
+    tested between test schemas). Then `ensurePostgresSchema` writes this
+    version's seed rows and version, and the search index is rebuilt. A
+    failed restore changes nothing (one transaction); the saved state is
+    put back all the same (without the object check: it is this instance's
+    own). In cluster mode the leader also re-creates the file queue's
+    trigger and the search's and pgvector's side after a restore
+    (lib/cluster/duties.ts).
+  - **Restores run no SQL of the dump.** A dump is an upload (an instance
+    administrator's, or anyone's on the setup screen without
+    `FLOWPLAN_SETUP_TOKEN`), and pg_restore's script would run with the
+    rights of Flowplan's database role – definitions of functions, triggers,
+    rules, defaults, checks or index expressions are arbitrary SQL, and
+    with a superuser role `COPY … TO PROGRAM` runs commands on the database
+    host. So (lib/pg-backup.ts):
+    - the table of contents may hold only Flowplan's own objects, in the
+      one schema: its tables (with data, constraints, foreign keys, indexes,
+      defaults, identity sequences and their values), the trigger functions
+      `trg_<trigger>()` and triggers of the translated schema, pgvector's
+      (`flowplan_floats`, `flowplan_vector_sync`, `ai_embeddings_vector_sync`)
+      and the file queue's (`storage_queue_file`, `storage_file_insert`/
+      `_delete`), the schema itself, the extensions pg_trgm/vector and their
+      comments. Anything else – another function, trigger, rule, view, event
+      trigger, type, operator, cast, policy, default privilege, a separate
+      CHECK constraint – refuses the dump ("Die Sicherung enthält
+      Datenbankobjekte, die Flowplan nicht selbst anlegt …", translated).
+      Custom objects an operator adds to Flowplan's schema therefore make
+      its dumps unrestorable: keep them in another schema. A table or
+      trigger a later version stops making must stay on these lists for
+      older dumps to restore.
+    - Even the allowed definitions are never run: only `TABLE DATA` and
+      `SEQUENCE SET` entries are passed to `pg_restore --data-only
+      --use-list`, and its output is read line by line. Only a
+      `COPY <schema>.<table> (<columns>) FROM stdin;` into a table of this
+      version (rewritten to the instance's schema and to the table's own
+      columns), the rows up to `\.`, and `setval` numbers are taken; the
+      script's comments and `SET` lines are dropped (psql gets settings of
+      its own). Any other line – also text after a row block's `\.` in a
+      crafted archive, or a COPY statement the archive's TOC rewrote – stops
+      the restore; psql is killed before its input ends, so nothing is
+      committed. psql 18 runs the whole input under `\restrict` (no
+      meta-commands).
   - **Tools**: pg_dump refuses servers newer than itself, so the client must
     be at least the server's major version. Found in `FLOWPLAN_PG_BIN`, on
     `PATH` or in `/usr/lib/postgresql/<n>/bin` (the newest that fits); the
@@ -372,6 +420,37 @@ Two formats (phase 3):
     `flowplan_ext`, unless they exist already (lib/pg-extensions.ts): a
     restore empties the instance's schema, and a `pg_dump --schema` does not
     contain extensions.
+
+### Security: Flowplan's database role
+
+Flowplan needs a role that **owns its database** (or at least its schema:
+it creates and alters tables, functions and triggers, and installs the
+trusted extension pg_trgm) – **not a superuser**. A superuser can read
+files and run programs on the database host (`COPY … TO PROGRAM`,
+untrusted languages), so a flaw in Flowplan, or an instance administrator
+abusing one, would reach the host. The official `postgres` image makes
+`POSTGRES_USER` a superuser; the compose example therefore runs
+`deploy/compose/cluster/postgres-init.sh` at the database's first start:
+the image's superuser (`postgres`, `POSTGRES_ADMIN_PASSWORD`) creates the
+role `flowplan` (`NOSUPERUSER NOCREATEDB NOCREATEROLE`, `POSTGRES_PASSWORD`)
+owning the database `flowplan`, and installs pg_trgm (and pgvector when the
+image has it) into `flowplan_ext`. pgvector is not a trusted extension
+before 0.8: without it installed by an administrator, semantic search
+falls back to the slower path. Tested: the pg_dump and setup-restore tests
+pass with such a role.
+
+An existing database whose `flowplan` role is the superuser (the compose
+example before this change, or `POSTGRES_USER=flowplan` in general) can be
+changed by another superuser:
+
+```sql
+CREATE ROLE admin LOGIN SUPERUSER PASSWORD '…';   -- once, as flowplan
+-- then, connected as admin:
+ALTER ROLE flowplan NOSUPERUSER NOCREATEROLE NOCREATEDB;
+```
+
+(The database and the objects stay owned by `flowplan`; the extensions
+installed so far stay usable.)
 
 ## 4. Porting, and how async spreads
 
@@ -1075,8 +1154,8 @@ What changed (details in §3, §5a, §5b, §6):
   HNSW index per vector size, exact SQL where the index cannot serve, the
   JavaScript scan without the extension.
 - **pg_dump backups** (`lib/pg-backup.ts`): scheduled backups and "Back up
-  now" on PostgreSQL; restore with pg_restore (psql when the schema name
-  differs); setup restore from upload, S3 and SFTP; the Docker image has
+  now" on PostgreSQL; restore of the dump's rows only, through psql, into a
+  schema made from this code (§3, "Restores run no SQL of the dump"); setup restore from upload, S3 and SFTP; the Docker image has
   `postgresql-client-18`; the container start leaves a pending restore to
   the app on PostgreSQL.
 - **Migration tool**: all tables by default, streaming verification,
@@ -1145,10 +1224,10 @@ What changed (details in §3, §5a, §5b, §6):
   difference in the tested set.
 - **pg_dump restores replace the whole schema** of the instance; the state
   before is kept as a dump next to the data folder (disk space: one more
-  dump). Restoring into a schema of another name pipes SQL through psql
-  with the name replaced outside COPY data: a function body or default that
-  contains the old schema name followed by a dot would be changed too (none
-  in Flowplan's schema).
+  dump). The restore drops and recreates every table in one transaction:
+  about twice as many locks as the schema has objects (~2,000) – within
+  the default lock table, but a server with a small
+  `max_locks_per_transaction` and many busy connections may need more.
 - **Tools in non-Docker installs**: without pg_dump/pg_restore ≥ the
   server's version the scheduled backup falls back to the SQLite file
   (logged); a staged dump waits until the tools are there.
@@ -1316,7 +1395,9 @@ shared queues (files due/in flight, mail, push, webhooks, chat apps).
 
 ### Deployment examples
 
-- `deploy/compose/cluster/`: PostgreSQL 16, Redis 7 (password, no
+- `deploy/compose/cluster/`: PostgreSQL 16 (Flowplan's role `flowplan`
+  owns the database but is no superuser: `postgres-init.sh`, §3
+  "Security"), Redis 7 (password, no
   persistence), MinIO with a bucket job, the `schema` step, two instances
   (cache volumes), Caddy as load balancer (round robin, health checks on
   `/api/health/ready`, streams unbuffered). `docker compose config` valid.

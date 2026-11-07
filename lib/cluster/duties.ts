@@ -22,7 +22,15 @@ export function deferRestoreToLeader() {
     running = true;
     try {
       const { restorePendingIntoPostgres } = await import("../db-restore");
-      if (await restorePendingIntoPostgres()) await (await import("../data-steps")).runDataSteps();
+      if (await restorePendingIntoPostgres()) {
+        // What the opening made before the restore and a pg_dump restore
+        // makes anew without (it rebuilds the schema from this code): the
+        // file queue's trigger, the search's and pgvector's side.
+        await (await import("../storage")).ensureStorageTriggers().catch((error) => console.error("Dateispeicher: Trigger nicht angelegt", error));
+        await (await import("../search-store")).ensureSearchStore().catch((error) => console.error("Search: indexes not made", error));
+        await (await import("../ai/vector-store")).ensureVectorStore().catch((error) => console.error("pgvector: not used", error));
+        await (await import("../data-steps")).runDataSteps();
+      }
     } catch (error) {
       console.error("Wiederherstellung fehlgeschlagen", error);
     } finally {
