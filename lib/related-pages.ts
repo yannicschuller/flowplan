@@ -26,6 +26,7 @@ import { processSearchIndex, termMatches } from "./search-index";
 import { ftsQuery, questionTerms } from "./ai/chunks";
 import { aiFilter, aiMayRead } from "./ai/access";
 import { semanticNeighbours } from "./ai/semantic";
+import { allow } from "./action-limits";
 import { recordTitle } from "./ai/sources";
 import type { Field, Identity, Page } from "./types";
 
@@ -115,7 +116,7 @@ function linkingTo(workspaceId: string, needle: string, limit = 40) {
 }
 const linkNeedle = (pageId: string, rowId?: string | null) => (rowId ? `row=${rowId}` : `#page=${pageId}`);
 
-export function relatedPages(user: Identity, pageId: string, rowId: string | null = null, limit = RELATED_LIMIT): { items: RelatedItem[]; semantic: boolean } {
+export async function relatedPages(user: Identity, pageId: string, rowId: string | null = null, limit = RELATED_LIMIT): Promise<{ items: RelatedItem[]; semantic: boolean }> {
   const page = rowId ? requireRow(user, pageId, rowId).page : requirePage(user, pageId);
   if (journalLocked(user, page)) return { items: [], semantic: false };
   const self = key(pageId, rowId);
@@ -131,9 +132,11 @@ export function relatedPages(user: Identity, pageId: string, rowId: string | nul
   };
 
   // Meaning: only when the AI may read the open page; hits through aiFilter.
+  // The vector scan is limited per person (60 a minute, 600 an hour); past
+  // that the panel shows links and tags only.
   let semantic = false;
-  if (aiMayRead(user, pageId, rowId)) {
-    const hits = semanticNeighbours(user, page.workspace_id, pageId, rowId || "");
+  if (aiMayRead(user, pageId, rowId) && allow(`related-semantic:${user.id}`, 60, 60_000) && allow(`related-semantic-hour:${user.id}`, 600, 3_600_000)) {
+    const hits = await semanticNeighbours(user, page.workspace_id, pageId, rowId || "");
     const allowed = new Set(aiFilter(user, hits.map((h) => ({ pageId: h.pageId, rowId: h.rowId || null }))).map((h) => key(h.pageId, h.rowId)));
     for (const hit of hits)
       if (allowed.has(key(hit.pageId, hit.rowId)) && hit.score > 0.2) {

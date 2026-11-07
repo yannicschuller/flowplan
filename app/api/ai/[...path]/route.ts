@@ -163,7 +163,7 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ path: st
         user,
         "ask",
         { system: prepared.system, messages: prepared.messages, maxTokens: prepared.maxTokens, temperature: 0.2 },
-        { workspaceId: b.workspaceId, signal: req.signal },
+        { workspaceId: b.workspaceId, signal: req.signal, charged: true },
       );
       response.headers.set("X-Flowplan-Sources", sources);
       if (prepared.semantic) response.headers.set("X-Flowplan-Semantic", "1");

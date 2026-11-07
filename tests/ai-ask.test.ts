@@ -370,20 +370,27 @@ test("meaning finds passages without shared words – and still respects every r
   for (const page of FORBIDDEN_PAGES) assert.ok(!money.sources.some((s) => s.pageId === page), page);
 });
 
-test("a question takes one slot of the AI rate limit, not one more for its embedding", async () => {
+test("a question takes one slot of the AI rate limit before any work, not one more for its embedding or answer", async () => {
   const { limitAi } = await import("../lib/action-limits");
+  const { aiComplete } = await import("../lib/ai/run");
   const asker = person("Lim");
   run("INSERT INTO members VALUES(?,?,?)", wid, asker.id, "editor");
-  // 29 of the 30 requests per minute used up: the embedding of a question
-  // must not take the last one away from the answer.
-  for (let i = 0; i < 29; i++) limitAi(asker.id);
+  // 28 of the 30 requests per minute used up: the question takes the 29th –
+  // its embedding takes none.
+  for (let i = 0; i < 28; i++) limitAi(asker.id);
   const prepared = await ask(asker, "Reise");
   assert.equal(prepared.semantic, true);
-  assert.doesNotThrow(() => limitAi(asker.id), "the answer still gets its slot");
-  // A standalone semantic search is limited as before; preparing a question
-  // on its own is not (the answer's run is, in lib/ai/run.ts).
+  // The answer runs on the question's slot (charged: true).
+  await aiComplete(asker, "ask", { system: prepared.system, messages: prepared.messages }, { workspaceId: wid, charged: true });
+  assert.doesNotThrow(() => limitAi(asker.id), "the 30th slot is still free");
+  // Limit used up: refused before the embedding call, the vector scan and
+  // the full-text search – also a question that would find nothing.
+  const embeds = mock.embeds.length;
+  await assert.rejects(() => ask(asker, "Reise"), (e: { status?: number }) => e.status === 429);
+  await assert.rejects(() => ask(asker, "zzqqxx wwyyvv"), (e: { status?: number }) => e.status === 429);
+  assert.equal(mock.embeds.length, embeds, "no embedding call once the limit is used up");
+  // A standalone semantic search is limited as before.
   await assert.rejects(() => semanticCandidates(asker, wid, "Reise"), /Zu viele KI-Anfragen/);
-  assert.equal((await ask(asker, "Reise")).semantic, true);
 });
 
 test("people with their own provider do not use the instance's embeddings", () => {

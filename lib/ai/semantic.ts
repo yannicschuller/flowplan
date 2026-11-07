@@ -245,7 +245,7 @@ export async function semanticCandidates(
     if (!values?.length) return [];
     query = fromVector(toVector(values));
   }
-  return nearestChunks(workspaceId, config.embeddingModel, query, options.limit ?? 40, (row) => !options.pages || options.pages.has(row.page_id));
+  return nearestChunks(workspaceId, config.embeddingModel, query, options.limit ?? 40, (row) => !options.pages || options.pages.has(row.page_id), options.signal);
 }
 
 // The question as a normalized vector (one embedding call, rate-limited
@@ -264,29 +264,53 @@ export async function semanticQueryVector(
 }
 
 // The best chunks of a workspace for a vector, scanning at most
-// MAX_SCANNED rows.
-function nearestChunks(
+// MAX_SCANNED rows. The scan reads SCAN_SLICE rows at a time and gives the
+// event loop a turn between slices (setImmediate), so a large workspace
+// (100,000 vectors take ~100 ms) does not hold up every other request. A
+// slice is read in full before the turn: an open statement iterator would
+// keep the database connection busy for everyone else.
+const SCAN_SLICE = 2_000;
+const nextTurn = () => new Promise<void>((resolve) => setImmediate(resolve));
+async function nearestChunks(
   workspaceId: string,
   model: string,
   query: Float32Array,
   limit: number,
   keep: (row: { page_id: string; row_id: string }) => boolean,
-): SemanticHit[] {
+  signal?: AbortSignal,
+): Promise<SemanticHit[]> {
   const best: SemanticHit[] = [];
   let worst = -Infinity;
-  const statement = db().prepare("SELECT page_id,row_id,chunk,vector FROM ai_embeddings WHERE workspace_id=? AND model=? LIMIT ?");
-  for (const raw of statement.iterate(workspaceId, model, MAX_SCANNED)) {
-    const row = raw as { page_id: string; row_id: string; chunk: number; vector: Uint8Array };
-    if (!keep(row)) continue;
-    const vector = fromVector(row.vector);
-    if (vector.length !== query.length) continue;
-    let score = 0;
-    for (let i = 0; i < vector.length; i++) score += vector[i] * query[i];
-    if (best.length >= limit && score <= worst) continue;
-    best.push({ pageId: row.page_id, rowId: row.row_id, chunk: Number(row.chunk), score });
-    best.sort((a, b) => b.score - a.score);
-    if (best.length > limit) best.pop();
-    worst = best[best.length - 1].score;
+  const statement = db().prepare(
+    "SELECT rowid AS n,page_id,row_id,chunk,vector FROM ai_embeddings WHERE workspace_id=? AND model=? AND rowid>? ORDER BY rowid LIMIT ?",
+  );
+  let after = -1,
+    scanned = 0;
+  while (scanned < MAX_SCANNED) {
+    const rows = statement.all(workspaceId, model, after, Math.min(SCAN_SLICE, MAX_SCANNED - scanned)) as {
+      n: number;
+      page_id: string;
+      row_id: string;
+      chunk: number;
+      vector: Uint8Array;
+    }[];
+    for (const row of rows) {
+      if (!keep(row)) continue;
+      const vector = fromVector(row.vector);
+      if (vector.length !== query.length) continue;
+      let score = 0;
+      for (let i = 0; i < vector.length; i++) score += vector[i] * query[i];
+      if (best.length >= limit && score <= worst) continue;
+      best.push({ pageId: row.page_id, rowId: row.row_id, chunk: Number(row.chunk), score });
+      best.sort((a, b) => b.score - a.score);
+      if (best.length > limit) best.pop();
+      worst = best[best.length - 1].score;
+    }
+    scanned += rows.length;
+    if (rows.length < SCAN_SLICE) break;
+    after = Number(rows[rows.length - 1].n);
+    await nextTurn();
+    if (signal?.aborted) break;
   }
   return best;
 }
@@ -295,10 +319,17 @@ function nearestChunks(
 // mean of its stored vectors against the workspace – no provider call, so
 // nothing leaves the server. Unfiltered like semanticCandidates: callers
 // pass the hits through aiFilter. Empty without semantic search for this
-// person or before the source is embedded.
-export function semanticNeighbours(user: Identity, workspaceId: string, pageId: string, rowId: string, limit = 60): SemanticHit[] {
+// person or before the source is embedded. The hits (before aiFilter, so
+// the same for everyone) are kept for a minute: opening the same page again
+// does not scan the workspace again.
+const NEIGHBOUR_TTL = 60_000;
+const neighbourCache = new Map<string, { at: number; hits: SemanticHit[] }>();
+export async function semanticNeighbours(user: Identity, workspaceId: string, pageId: string, rowId: string, limit = 60): Promise<SemanticHit[]> {
   const config = semanticFor(user, workspaceId);
   if (!config) return [];
+  const cacheKey = `${workspaceId}|${config.embeddingModel}|${pageId}|${rowId}|${limit}`;
+  const cached = neighbourCache.get(cacheKey);
+  if (cached && cached.at > Date.now() - NEIGHBOUR_TTL) return cached.hits;
   const own = all<{ vector: Uint8Array }>(
     "SELECT vector FROM ai_embeddings WHERE page_id=? AND row_id=? AND model=? ORDER BY chunk LIMIT 50",
     pageId,
@@ -310,13 +341,17 @@ export function semanticNeighbours(user: Identity, workspaceId: string, pageId: 
   for (const v of own) if (v.length === mean.length) for (let i = 0; i < v.length; i++) mean[i] += v[i];
   const query = fromVector(toVector(mean));
   // Best chunk per source.
-  const hits = nearestChunks(workspaceId, config.embeddingModel, query, limit * 4, (row) => !(row.page_id === pageId && row.row_id === rowId));
+  const hits = await nearestChunks(workspaceId, config.embeddingModel, query, limit * 4, (row) => !(row.page_id === pageId && row.row_id === rowId));
   const bySource = new Map<string, SemanticHit>();
   for (const hit of hits) {
     const k = `${hit.pageId}/${hit.rowId}`;
     if (!bySource.has(k)) bySource.set(k, hit);
   }
-  return [...bySource.values()].slice(0, limit);
+  const result = [...bySource.values()].slice(0, limit);
+  const now = Date.now();
+  if (neighbourCache.size >= 500) for (const [k, v] of neighbourCache) if (v.at <= now - NEIGHBOUR_TTL || neighbourCache.size >= 500) neighbourCache.delete(k);
+  neighbourCache.set(cacheKey, { at: now, hits: result });
+  return result;
 }
 
 // For the administration: how much is stored.
