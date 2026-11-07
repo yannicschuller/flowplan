@@ -177,12 +177,12 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     group: "connections",
     icon: "CalendarBlank",
     title: { de: "Kalender & Issues", en: "Calendars & issues" },
-    description: { de: "Google- und Microsoft-Kalender, Apple Kalender, GitHub- und GitLab-Issues.", en: "Google and Microsoft calendars, Apple Calendar, GitHub and GitLab issues." },
-    keywords: { de: "kalender google outlook microsoft github gitlab issues synchronisierung", en: "calendar google outlook microsoft github gitlab issues sync" },
+    description: { de: "Google- und Microsoft-Kalender, Apple Kalender, Issues aus GitHub, GitLab und Forgejo/Gitea.", en: "Google and Microsoft calendars, Apple Calendar, GitHub, GitLab and Forgejo/Gitea issues." },
+    keywords: { de: "kalender google outlook microsoft github gitlab forgejo gitea codeberg issues synchronisierung", en: "calendar google outlook microsoft github gitlab forgejo gitea codeberg issues sync" },
     entries: [
       { title: { de: "Kalender verbinden", en: "Connect calendar" }, anchor: "calendar" },
       { title: { de: "Kalender auf iPhone, iPad und Mac", en: "Calendars on iPhone, iPad and Mac" }, keywords: { de: "caldav apple kalender profil konfigurationsprofil mobileconfig", en: "caldav apple calendar profile configuration profile mobileconfig" }, anchor: "caldav-profile" },
-      { title: { de: "GitHub oder GitLab verbinden", en: "Connect GitHub or GitLab" }, anchor: "issues" },
+      { title: { de: "GitHub, GitLab oder Forgejo verbinden", en: "Connect GitHub, GitLab or Forgejo" }, keywords: { de: "forgejo gitea codeberg", en: "forgejo gitea codeberg" }, anchor: "issues" },
     ],
   },
   {

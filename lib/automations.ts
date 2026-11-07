@@ -249,7 +249,7 @@ export async function rowChanged(user: Identity | null | "system", page: Page, r
   const actor = user === "system" ? null : user;
   const next = await spawnNextRecord(actor, page.id, rowId, props, settings, before, after);
   if (next) await runAutomations({ page, rowId: next, actor, event: "created" });
-  // GitHub/GitLab issue sync (lib/issue-sync.ts) pushes the change.
+  // The issue sync (lib/issue-sync.ts) pushes the change.
   await queueIssuePush(page.id, rowId);
 }
 export async function rowCreated(user: Identity | null, page: Page, rowId: string, viaForm = false) {

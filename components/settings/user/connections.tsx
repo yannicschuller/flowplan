@@ -1,6 +1,6 @@
 "use client";
 // Settings → Kalender & Issues: Google and Microsoft calendars, Apple
-// Calendar by configuration profile (CalDAV), GitHub and GitLab issues.
+// Calendar by configuration profile (CalDAV), GitHub, GitLab and Forgejo/Gitea issues.
 import { CalendarConnections } from "../../calendar-connections";
 import { CalDavProfile } from "../../caldav-profile";
 import { IssueSyncSettings } from "../../issue-sync-settings";

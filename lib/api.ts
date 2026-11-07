@@ -2827,7 +2827,7 @@ async function runCommand(
       case "git.disable":
         result = await gitSetup(await write(), action);
         break;
-      // GitHub/GitLab issue sync: connections and database mappings.
+      // GitHub/GitLab/Forgejo issue sync: connections and database mappings.
       case "issueSync.connect":
       case "issueSync.disconnect":
       case "issueSync.map":
