@@ -15,6 +15,7 @@ const globalDb = globalThis as unknown as {
   flowplanDb?: DatabaseSync;
   flowplanSchema?: number;
   flowplanRollback?: (() => void)[];
+  flowplanWrites?: number;
 };
 // The schema this version of Flowplan writes, kept in the database file as
 // PRAGMA user_version: a restore refuses a backup from a newer version
@@ -1368,6 +1369,7 @@ export function reopenDatabase() {
   } catch {}
   globalDb.flowplanDb = undefined;
   globalDb.flowplanSchema = undefined;
+  noteWrite();
   return db();
 }
 // Prepared statements of one/all/run, per connection, least recently used
@@ -1377,31 +1379,43 @@ export function reopenDatabase() {
 // starts with an empty cache, and the closed one's statements go with it.
 // On globalThis because bundles may hold this module more than once.
 const STATEMENT_CACHE_SIZE = 500;
+type Cached = { statement: StatementSync; reads: boolean };
 function statementCaches() {
-  return ((globalThis as { flowplanStatements?: WeakMap<DatabaseSync, Map<string, StatementSync>> }).flowplanStatements ??= new WeakMap());
+  return ((globalThis as { flowplanStatements?: WeakMap<DatabaseSync, Map<string, Cached>> }).flowplanStatements ??= new WeakMap());
 }
-function statement(sql: string): StatementSync {
+// Only reads: a SELECT, or a WITH … SELECT without INSERT/UPDATE/DELETE.
+const READ_ONLY = /^\s*(SELECT\b|WITH\b(?![\s\S]*\b(INSERT|UPDATE|DELETE|REPLACE)\b))/i;
+function statement(sql: string): Cached {
   const d = db();
   const caches = statementCaches();
   let cache = caches.get(d);
   if (!cache) caches.set(d, (cache = new Map()));
-  let prepared = cache.get(sql);
-  if (prepared) {
+  let cached = cache.get(sql);
+  if (cached) {
     // Most recently used last, so the first key is the one to drop.
     cache.delete(sql);
-    cache.set(sql, prepared);
-    return prepared;
+    cache.set(sql, cached);
+    return cached;
   }
-  prepared = d.prepare(sql);
-  cache.set(sql, prepared);
+  cached = { statement: d.prepare(sql), reads: READ_ONLY.test(sql) };
+  cache.set(sql, cached);
   if (cache.size > STATEMENT_CACHE_SIZE) cache.delete(cache.keys().next().value!);
-  return prepared;
+  return cached;
 }
 // Forgets the cached statements of a connection: before it is closed, and
 // after the schema changed (a cached `SELECT *` keeps the columns it was
 // prepared with, see migrate()).
 function forgetStatements(d: DatabaseSync) {
   statementCaches().delete(d);
+}
+// Moves with every write through this module (run(), statements that are
+// not plain reads, a rolled back transaction, a reopened database): what
+// was read before may be outdated (lib/read-memo.ts).
+export function writeGeneration() {
+  return globalDb.flowplanWrites ?? 0;
+}
+function noteWrite() {
+  globalDb.flowplanWrites = (globalDb.flowplanWrites ?? 0) + 1;
 }
 // Schema changes through run() (tests, one-time steps) outdate cached statements.
 const SCHEMA_CHANGE = /^\s*(ALTER|DROP|CREATE)\s/i;
@@ -1410,7 +1424,9 @@ export function one<T = Record<string, unknown>>(
   ...params: (string | number | null | Uint8Array)[]
 ): T | undefined {
   const start = runtimeMetricsOn ? performance.now() : 0;
-  const row = statement(sql).get(...params);
+  const cached = statement(sql);
+  const row = cached.statement.get(...params);
+  if (!cached.reads) noteWrite();
   if (runtimeMetricsOn) noteStatement(start);
   return row ? ({ ...row } as T) : undefined;
 }
@@ -1419,9 +1435,11 @@ export function all<T = Record<string, unknown>>(
   ...params: (string | number | null | Uint8Array)[]
 ): T[] {
   const start = runtimeMetricsOn ? performance.now() : 0;
-  const rows = statement(sql)
+  const cached = statement(sql);
+  const rows = cached.statement
     .all(...params)
     .map((row) => ({ ...row })) as T[];
+  if (!cached.reads) noteWrite();
   if (runtimeMetricsOn) noteStatement(start);
   return rows;
 }
@@ -1430,7 +1448,12 @@ export function run(
   ...params: (string | number | null | Uint8Array)[]
 ) {
   const start = runtimeMetricsOn ? performance.now() : 0;
-  const result = statement(sql).run(...params);
+  let result;
+  try {
+    result = statement(sql).statement.run(...params);
+  } finally {
+    noteWrite();
+  }
   if (SCHEMA_CHANGE.test(sql)) forgetStatements(db());
   if (runtimeMetricsOn) noteStatement(start);
   return result;
@@ -1485,6 +1508,7 @@ export function transaction<T>(fn: () => T, actor?: Identity): T {
     return value;
   } catch (e) {
     db().exec("ROLLBACK");
+    noteWrite();
     for (const cleanup of globalDb.flowplanRollback || []) {
       try {
         cleanup();

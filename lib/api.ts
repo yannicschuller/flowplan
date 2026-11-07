@@ -1,3 +1,4 @@
+import { withReadMemo } from "./read-memo";
 import { requireDocumentSize } from "./document-size";
 import { patchStillApplies } from "./row-patch";
 import { bannersFor } from "./instance-banners";
@@ -694,6 +695,15 @@ export function command(
   // An Idempotency-Key, reserved and answered in the action's transaction
   // (lib/idempotency.ts idempotencyHook).
   keyed?: TransactionHook,
+): unknown {
+  // Permission lookups are remembered until the next write (lib/read-memo.ts).
+  return withReadMemo(() => runCommand(user, input, withinTransaction, keyed));
+}
+function runCommand(
+  user: Identity,
+  input: unknown,
+  withinTransaction: boolean,
+  keyed: TransactionHook | undefined,
 ): unknown {
   const base = z.object({ action: str }).passthrough().parse(input);
   const action = base.action;
