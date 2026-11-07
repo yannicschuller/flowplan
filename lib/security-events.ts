@@ -158,8 +158,8 @@ function write(kind: SecurityKind, input: SecurityInput, context: Context) {
   let rowId = 0;
   try {
     rowId = Number(
-      run(
-        "INSERT INTO security_events(at,kind,severity,actor_id,subject,subject_key,network,address_key,country,device,detail) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+      one<{ id: number }>(
+        "INSERT INTO security_events(at,kind,severity,actor_id,subject,subject_key,network,address_key,country,device,detail) VALUES(?,?,?,?,?,?,?,?,?,?,?) RETURNING id",
         event.at,
         event.kind,
         event.severity,
@@ -171,7 +171,7 @@ function write(kind: SecurityKind, input: SecurityInput, context: Context) {
         event.country,
         event.device,
         event.detail,
-      ).lastInsertRowid,
+      )!.id,
     );
   } catch (error) {
     console.error("Security event not stored", error);

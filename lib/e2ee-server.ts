@@ -464,14 +464,14 @@ export function e2eeCommand(user: Identity, action: string, b: Record<string, un
       if (version !== space.key_version) throw new HttpError(409, "Der Schlüssel des Bereichs wurde erneuert. Bitte neu laden.");
       const data = ciphertext(b.data);
       const seq = Number(
-        run(
-          "INSERT INTO e2ee_updates(page_id,key_version,data,created_by,created_at) VALUES(?,?,?,?,?)",
+        one<{ seq: number }>(
+          "INSERT INTO e2ee_updates(page_id,key_version,data,created_by,created_at) VALUES(?,?,?,?,?) RETURNING seq",
           page.id,
           version,
           data,
           user.id,
           Date.now(),
-        ).lastInsertRowid,
+        )!.seq,
       );
       run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), page.id);
       const client = typeof b.client === "string" && b.client.length <= 100 ? b.client : undefined;
