@@ -28,7 +28,8 @@ test("an untrusted request never reuses a connection a trusted one opened to an 
   let connections = 0;
   const server = createServer(tls!, (_req, res) => res.end("internal"));
   server.on("connection", () => connections++);
-  await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+  // All local addresses: "localhost" resolves to ::1 first on some hosts (CI).
+  await new Promise<void>((done) => server.listen(0, done));
   const previous = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
   try {
