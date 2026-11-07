@@ -79,7 +79,7 @@ export async function rowDocumentData(user: Identity, pageId: string, rowId: str
     html: d.html,
     generation: d.generation,
     snapshots: await all<{ id: string; created_at: string }>(
-      "SELECT id,created_at FROM row_snapshots WHERE row_id=? ORDER BY created_at DESC LIMIT 50",
+      "SELECT id,created_at FROM row_snapshots WHERE row_id=? ORDER BY created_at DESC,seq DESC LIMIT 50",
       rowId,
     ),
   };
