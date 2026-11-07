@@ -212,7 +212,7 @@ async function responseText(response: Response): Promise<string | null> {
 }
 
 // The reservation inside an action's transaction (command(…, hook)).
-export type TransactionHook = { begin(action: string): void; end(result: unknown, action: string): void };
+export type TransactionHook = { begin(action: string): Promise<void>; end(result: unknown, action: string): Promise<void> };
 type Context = {
   principal: Principal;
   key: string;

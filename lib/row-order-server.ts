@@ -102,7 +102,7 @@ export async function moveRow(
     fields: Field[];
     views: View[];
     version: number;
-    save: (views: View[]) => void;
+    save: (views: View[]) => void | Promise<void>;
   },
 ) {
   const b = z
@@ -319,7 +319,7 @@ export async function moveRow(
       : v,
   );
   if (JSON.stringify(views) !== JSON.stringify(d.views)) {
-    if (context) context.save(views);
+    if (context) await context.save(views);
     else await save(pageId, views);
   }
   return { ok: true };

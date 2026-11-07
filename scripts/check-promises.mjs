@@ -74,6 +74,17 @@ function handled(e) {
   if (name === "then" && e.arguments.length >= 2) return true;
   return false;
 }
+// Hosts that call an async callback and are fine with the promise they
+// do not wait for: test registration, timers and event emitters (a
+// rejection there is the same as a throw was before), afterTransaction
+// (catches and logs).
+const IGNORED_HOSTS = /(^|\.)(test|it|describe|before|after|beforeEach|afterEach|setTimeout|setInterval|setImmediate|queueMicrotask|on|once|addEventListener|subscribe|afterTransaction|then|catch|finally|\w+Async)$/;
+function contextualMember(method) {
+  const literal = checker.getContextualType(method.parent);
+  if (!literal || !method.name) return undefined;
+  const prop = checker.getPropertyOfType(checker.getNonNullableType(literal), method.name.getText());
+  return prop ? checker.getTypeOfSymbolAtLocation(prop, method) : undefined;
+}
 function returnsPromise(fn) {
   const signature = checker.getSignatureFromDeclaration(fn);
   return signature && isPromise(checker.getReturnTypeOfSignature(signature));
@@ -96,6 +107,17 @@ for (const sf of program.getSourceFiles()) {
       if ([ts.SyntaxKind.PlusToken, ts.SyntaxKind.PlusEqualsToken].includes(k) && (isPromise(typeOf(unwrap(n.left))) || isPromise(typeOf(unwrap(n.right))))) report(n, "promise in + (text)");
       if ([ts.SyntaxKind.EqualsEqualsEqualsToken, ts.SyntaxKind.ExclamationEqualsEqualsToken, ts.SyntaxKind.EqualsEqualsToken, ts.SyntaxKind.ExclamationEqualsToken].includes(k) && (isPromise(typeOf(unwrap(n.left))) || isPromise(typeOf(unwrap(n.right))))) report(n, "promise compared");
     }
+    // An async function where a function returning void is expected:
+    // nobody waits for it (event handlers, hooks typed `=> void`).
+    if ((ts.isArrowFunction(n) || ts.isFunctionExpression(n) || (ts.isMethodDeclaration(n) && ts.isObjectLiteralExpression(n.parent))) && returnsPromise(n)) {
+      const contextual = ts.isMethodDeclaration(n) ? checker.getContextualTypeForObjectLiteralElement?.(n) ?? contextualMember(n) : checker.getContextualType(n);
+      const signatures = contextual ? checker.getNonNullableType(contextual).getCallSignatures() : [];
+      const returns = signatures.map((sig) => checker.getReturnTypeOfSignature(sig));
+      if (returns.length && returns.every((r) => r.flags & (ts.TypeFlags.Void | ts.TypeFlags.Unknown | ts.TypeFlags.Any) || (r.isUnion() && r.types.some((t) => t.flags & ts.TypeFlags.Unknown)))) {
+        const host = n.parent && ts.isCallExpression(n.parent) ? n.parent.expression.getText() : "";
+        if (!IGNORED_HOSTS.test(host)) report(n, `async function where void/unknown is expected${host ? ` (${host.slice(-40)})` : ""}`);
+      }
+    }
     if (ts.isTemplateSpan(n) && isPromise(typeOf(unwrap(n.expression)))) report(n.expression, "promise in a template");
     if (ts.isCallExpression(n)) {
       const callee = n.expression;
@@ -116,6 +138,13 @@ for (const sf of program.getSourceFiles()) {
         const param = signature?.parameters[Math.min(i, (signature?.parameters.length ?? 1) - 1)];
         let paramType = param && checker.getTypeOfSymbolAtLocation(param, n);
         if (paramType && signature?.hasRestParameter && i >= signature.parameters.length - 1) paramType = checker.getIndexTypeOfType(paramType, ts.IndexKind.Number) ?? paramType;
+        // A function returning a promise handed where one returning void goes.
+        if (paramType && !ts.isArrowFunction(e) && !ts.isFunctionExpression(e) && !IGNORED_HOSTS.test(callee.getText())) {
+          const given = typeOf(e).getCallSignatures();
+          const wanted = checker.getNonNullableType(paramType).getCallSignatures();
+          if (given.length && wanted.length && given.every((g) => isPromise(checker.getReturnTypeOfSignature(g))) && wanted.every((w) => checker.getReturnTypeOfSignature(w).flags & ts.TypeFlags.Void))
+            report(arg, `async function given where void is expected (${callee.getText().slice(-40)})`);
+        }
         if (aggregate || !loose(paramType)) return;
         const type = typeOf(e);
         if (isPromise(type)) report(arg, `promise given to ${callee.getText().slice(-40)}`);

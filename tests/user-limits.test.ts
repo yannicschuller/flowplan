@@ -46,7 +46,7 @@ test("storage per person counts files across workspaces and refuses growth beyon
   await assert.rejects(async () => await limits.enforceUserStorage(user, 400 * 1024), /Speicher ist voll/);
   const check = await limits.userStorageCheckpoint(user);
   await file(user.id, 400 * 1024);
-  assert.throws(check, /reicht dafür nicht/);
+  await assert.rejects(check, /reicht dafür nicht/);
   // Admins are not limited.
   const admin = await person(true);
   await limits.setUserLimits(admin.id, { storageMb: 1 });

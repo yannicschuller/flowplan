@@ -261,7 +261,7 @@ export async function applyTemplate(input: {
   for (const [key, value] of Object.entries(fromTemplate)) {
     const field = fields.find((f) => f.id === key);
     if (!field || COMPUTED.has(field.type) || isEmptyValue(value, field.type) || !isEmptyValue(current[key], field.type)) continue;
-    const kept = input.keep ? input.keep(field, value) : value;
+    const kept = input.keep ? await input.keep(field, value) : value;
     if (kept !== undefined) patch[key] = kept;
   }
   const record = { ...row, cells: { ...current, ...patch } };

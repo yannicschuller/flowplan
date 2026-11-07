@@ -70,7 +70,7 @@ test("deletePasskey tells whether a passkey was removed", async () => {
 
 test("the e-mail confirmation link signs in only where other sign-ins would (SSO-only accounts)", () => {
   const verify = block(authRoute(), 'if (action === "verify") {', 900);
-  assert.match(verify, /const here = [^;]*!ssoOnlyAccount\(userId\)/);
+  assert.match(verify, /const here = [^;]*!\(await ssoOnlyAccount\(userId\)\)/);
 });
 
 test("starting a demo while signed in ends the previous session", () => {

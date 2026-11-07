@@ -62,7 +62,7 @@ test("every operation has a unique operationId, a known tag, responses and resol
 test("the command endpoint describes every action a token may send", () => {
   // The names come from the switch in lib/api.ts command().
   const source = readFileSync("lib/api.ts", "utf8");
-  const body = source.slice(source.indexOf("export function command("));
+  const body = source.slice(source.indexOf("export async function command("));
   const inCode = new Set([...body.matchAll(/case "([a-zA-Z0-9.]+)":/g)].map((m) => m[1]).filter((name) => !tokenRefusedActionPrefixes.some((p) => name.startsWith(p))));
   assert.ok(inCode.size > 100);
   assert.deepEqual([...commandActionNames].sort(), [...inCode].sort());

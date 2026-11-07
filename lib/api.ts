@@ -737,7 +737,7 @@ async function runCommand(
     return p;
   };
   // Work that must only happen once the transaction is committed.
-  const afterCommit: (() => void)[] = [];
+  const afterCommit: (() => unknown)[] = [];
   const execute = async () => {
     let result: unknown = { ok: true };
     // Pages of encrypted spaces: only what works without plaintext.
@@ -3412,9 +3412,9 @@ async function runCommand(
   // once the settings are gone.
   if (GIT_EXPORT_ENDS.has(action)) afterCommit.push(sweepSpaceGitCopies);
   const applied = async () => {
-    keyed?.begin(action);
+    await keyed?.begin(action);
     const value = await checked();
-    keyed?.end(value, action);
+    await keyed?.end(value, action);
     return value;
   };
   const result = withinTransaction ? (await applied()) : (await transaction(applied, user));
@@ -3425,7 +3425,7 @@ async function runCommand(
   }
   for (const task of afterCommit)
     try {
-      task();
+      await task();
     } catch (error) {
       console.error("Nachlauf eines Befehls fehlgeschlagen", error);
     }

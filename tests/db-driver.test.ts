@@ -145,7 +145,7 @@ test("a lock serialises transactions with the same key", async () => {
   assert.deepEqual(order.slice(0, 2).map((s) => s.split(":")[1]), ["start", "end"], "no interleaving");
 });
 
-test("synchronous writes from elsewhere are refused while an async transaction is open", async () => {
+test("calls from elsewhere wait while a transaction is open; the helpers of lib/db.ts take part in it", async () => {
   const uid = await user("Sync");
   let release!: () => void;
   const open = db.tx(async () => {
@@ -153,18 +153,33 @@ test("synchronous writes from elsewhere are refused while an async transaction i
     await new Promise<void>((r) => (release = r));
   });
   await new Promise((r) => setTimeout(r, 20));
-  // Reads are fine (SQLite: the open transaction's data; Postgres: committed data).
-  assert.ok(await legacy.one("SELECT 1 FROM users WHERE id=?", uid));
-  if (backend === "sqlite") await assert.rejects(async () => await legacy.run("UPDATE users SET name=? WHERE id=?", "Outside", uid), /asynchronous transaction/);
+  // SQLite: the one connection is held, the read waits for the commit;
+  // Postgres: READ COMMITTED, the read sees what was committed before.
+  let read: string | undefined;
+  const outside = legacy.one<{ name: string }>("SELECT name FROM users WHERE id=?", uid).then((r) => (read = r?.name));
+  await new Promise((r) => setTimeout(r, 20));
+  if (backend === "sqlite") {
+    assert.equal(read, undefined, "waits for the transaction");
+    // The synchronous SQLite statements (the driver's own) are refused from outside.
+    assert.throws(() => legacy.sqliteRun("UPDATE users SET name=? WHERE id=?", "Outside", uid), /asynchronous transaction/);
+  } else assert.equal(read, "Sync");
   release();
   await open;
+  await outside;
+  if (backend === "sqlite") assert.equal(read, "Inside");
   assert.equal((await db.one<{ name: string }>("SELECT name FROM users WHERE id=?", uid))!.name, "Inside");
-  // Inside the transaction, synchronous helpers share it on SQLite and may
-  // only read on Postgres (their bridge has a connection of its own).
-  await db.tx(async () => {
-    if (backend === "sqlite") await legacy.run("UPDATE users SET name=? WHERE id=?", "Sync inside", uid);
-    else await assert.rejects(async () => await legacy.run("UPDATE users SET name=? WHERE id=?", "Sync inside", uid), /inside an asynchronous Postgres transaction/);
-  });
+  // Inside, the helpers of lib/db.ts use the transaction (a nested
+  // transaction() is a savepoint) and a rollback takes their writes along.
+  await assert.rejects(
+    db.tx(async () => {
+      await legacy.run("UPDATE users SET name=? WHERE id=?", "Rolled back", uid);
+      await legacy.transaction(async () => legacy.run("UPDATE users SET email=? WHERE id=?", "x@example.test", uid));
+      assert.equal((await legacy.one<{ name: string }>("SELECT name FROM users WHERE id=?", uid))!.name, "Rolled back");
+      throw new Error("undo");
+    }),
+    /undo/,
+  );
+  assert.equal((await db.one<{ name: string }>("SELECT name FROM users WHERE id=?", uid))!.name, "Inside");
 });
 
 test("slice: API tokens", async () => {
