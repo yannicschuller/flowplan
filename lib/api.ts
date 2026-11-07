@@ -43,6 +43,7 @@ import {
 import { journalDate, rollJournal, rollJournals } from "./journal";
 import { journalDayLink, pageCounts, removeEmptyJournalDays } from "./journal-days";
 import { recentVisits, recordPageEdit, setFollowing } from "./page-activity";
+import { MAX_ARCHIVE_ROWS } from "./archive-limits";
 import { propertiesCollapsed, setPropertiesCollapsed } from "./page-view-prefs";
 import { saveSidebarState, sidebarState } from "./sidebar-state";
 import { changeDocTask, dueTaskCount, indexPageTasks, reindexRowTasks, syncDocTasks } from "./doc-tasks";
@@ -959,7 +960,7 @@ export function command(
               .object({
                 rows: z
                   .array(z.object({ id: z.string().optional() }))
-                  .max(5000),
+                  .max(MAX_ARCHIVE_ROWS),
               })
               .parse(page.data);
             for (const [index, row] of rows.entries()) {
@@ -1044,7 +1045,7 @@ export function command(
                       content: z.string().optional(),
                     }),
                   )
-                  .max(5000),
+                  .max(MAX_ARCHIVE_ROWS),
               })
               .parse(p.data);
             const fields = d.database.fields.map((f) => ({
