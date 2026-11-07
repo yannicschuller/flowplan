@@ -106,3 +106,20 @@ test("link cards and media widths survive storage safely", () => {
   );
   assert.doesNotMatch(odd, /width/);
 });
+
+test("link cards read crafted pages in linear time (no ReDoS)", () => {
+  for (const unit of ["<meta ", "<title>", "<link ", "<meta property='og:title' content='x "]) {
+    const html = "<title>x</title>" + unit.repeat(Math.floor(400_000 / unit.length));
+    const start = performance.now();
+    try {
+      previewCard(html, "https://example.org/");
+    } catch {}
+    assert.ok(performance.now() - start < 200, unit);
+  }
+  // Only the head counts.
+  const card = previewCard(
+    `<head><title>Kopf</title></head><body><meta property="og:title" content="Im Text">`,
+    "https://example.org/",
+  );
+  assert.equal(card.kind === "card" && card.title, "Kopf");
+});
