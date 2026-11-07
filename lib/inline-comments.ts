@@ -11,7 +11,7 @@ import { z } from "zod";
 import * as Y from "yjs";
 import { initProseMirrorDoc } from "@tiptap/y-tiptap";
 import { all, one, run, id } from "./db";
-import { requirePage, pageRole } from "./permissions";
+import { isGuest, requirePage, pageRole } from "./permissions";
 import { requireUnlocked } from "./journal-extras";
 import { HttpError } from "./auth";
 import { requireRow, ensureRowDocument } from "./row-documents";
@@ -171,10 +171,14 @@ export function inlineMentionCandidates(
   const page = scope(user, pageId, rowId),
     search = z.string().max(100).parse(query).trim().toLocaleLowerCase();
   const matches: { id: string; name: string; email: string }[] = [];
+  // Guests see nobody of the workspace but themselves (like bootstrap and
+  // the share dialog), so they get no names or addresses here either.
+  const guest = isGuest(user, page.workspace_id);
   for (const member of all<{ id: string; name: string; email: string }>(
     "SELECT u.id,u.name,COALESCE(u.email,'') email FROM users u JOIN members m ON m.user_id=u.id WHERE m.workspace_id=? AND u.disabled=0 ORDER BY u.name,u.id",
     page.workspace_id,
   )) {
+    if (guest && member.id !== user.id) continue;
     if (
       (member.name.toLocaleLowerCase().includes(search) ||
         member.email.toLocaleLowerCase().includes(search)) &&
