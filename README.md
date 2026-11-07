@@ -79,6 +79,9 @@ services:
       - "127.0.0.1:3000:3000"   # a reverse proxy with HTTPS sits in front
     environment:
       APP_URL: https://flowplan.example.com
+      # Recommended: the first account only via https://flowplan.example.com/register?setup=<token>
+      # (openssl rand -hex 24), so nobody sets the instance up before you
+      # FLOWPLAN_SETUP_TOKEN: ...
       # Optional: mirror files to S3 and back up the database continuously (Litestream)
       # S3_BUCKET: flowplan
       # S3_ENDPOINT: https://s3.example.com

@@ -19,10 +19,10 @@ import {
   type AuthenticationResponseJSON,
   type RegistrationResponseJSON,
 } from "@simplewebauthn/server";
-import { all, id, one, run } from "./db";
+import { all, id, one, run, transaction } from "./db";
 import { HttpError, acceptInvites, adminGroup, appUrl, hash, inviteTokenShape, rememberPolicy } from "./auth";
 import { instanceSettings } from "./instance-settings";
-import { plainHttpInstance } from "./instance-https";
+import { loopbackHost, plainHttpInstance } from "./instance-https";
 import { mailConfig, queueLinkMail } from "./mail";
 import type { User } from "./types";
 import { allow } from "./action-limits";
@@ -102,6 +102,23 @@ function invited(email: string) {
 export function setupToken() {
   return process.env.FLOWPLAN_SETUP_TOKEN?.trim() || "";
 }
+// No setup token while the instance's address (APP_URL) is not this machine:
+// until the first account exists, whoever reaches the address first can
+// create the administrator or restore a backup of their own. A warning at
+// start (instrumentation.ts) and a note on the setup screen recommend
+// FLOWPLAN_SETUP_TOKEN.
+export function unprotectedSetup() {
+  if (setupToken() || !localLoginEnabled()) return false;
+  try {
+    return !loopbackHost(new URL(appUrl()).hostname);
+  } catch {
+    return false;
+  }
+}
+export function setupWarning() {
+  if (!unprotectedSetup() || !firstAccount()) return "";
+  return `Flowplan: no FLOWPLAN_SETUP_TOKEN is set and ${appUrl()} is not a local address. Until the first account exists, anyone who reaches this address can create the administrator or restore a backup. Set FLOWPLAN_SETUP_TOKEN and create the first account via ${appUrl().replace(/\/$/, "")}/register?setup=<token> (https://docs.flowplan.org/en/configuration).`;
+}
 export function setupAllowed(given: unknown) {
   const token = setupToken();
   if (!token) return true;
@@ -174,17 +191,26 @@ export async function register(input: unknown, locale: Locale, address = "") {
   // With e-mail set up, the address is confirmed before the first sign-in;
   // the account that sets the instance up starts right away.
   const confirm = !first && !!mailConfig();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, `local:${uid}`, name, email);
-  run(
-    "INSERT INTO local_accounts(user_id,email,password_hash,is_admin,email_verified,verify_required,created_at) VALUES(?,?,?,?,?,?,?)",
-    uid,
-    email,
-    passwordHash,
-    first ? 1 : 0,
-    confirm ? 0 : 1,
-    confirm ? 1 : 0,
-    Date.now(),
-  );
+  // Checked again in one transaction with the insert: hashing the password
+  // takes a while, and two sign-ups at the same moment must not both become
+  // the instance's administrator.
+  transaction(() => {
+    if (first && !firstAccount()) {
+      securityEvent("login.refused", { address, detail: "first account already created" });
+      throw new HttpError(409, t("Diese Instanz wurde gerade eingerichtet. Bitte melde dich an oder lass dich einladen.", "This instance was just set up. Please sign in or ask for an invitation."));
+    }
+    run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, `local:${uid}`, name, email);
+    run(
+      "INSERT INTO local_accounts(user_id,email,password_hash,is_admin,email_verified,verify_required,created_at) VALUES(?,?,?,?,?,?,?)",
+      uid,
+      email,
+      passwordHash,
+      first ? 1 : 0,
+      confirm ? 0 : 1,
+      confirm ? 1 : 0,
+      Date.now(),
+    );
+  });
   const user = one<User>("SELECT * FROM users WHERE id=?", uid)!;
   if (confirm) sendVerification(user, locale);
   return { user, groups: first ? [adminGroup()] : [], pending: confirm };
@@ -600,6 +626,9 @@ export function loginOptions(setup?: string, invite?: string) {
     // Opened through an invitation link: the account is created for its address.
     invitedEmail: invitedEmail(invite) || "",
     firstAccount: localLoginEnabled() && firstAccount() && setupAllowed(setup),
+    // The first account can be created without a setup link although the
+    // address is not this machine: a note recommends FLOWPLAN_SETUP_TOKEN.
+    unprotectedSetup: localLoginEnabled() && firstAccount() && unprotectedSetup(),
     mail: !!mailConfig(),
     demo: process.env.NODE_ENV !== "production",
     // "Stay signed in on this device" (SESSION_REMEMBER=true).

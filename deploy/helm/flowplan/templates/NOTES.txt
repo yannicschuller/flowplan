@@ -18,5 +18,10 @@ WARNING: persistence is disabled – the database and uploads are lost when the 
 Flowplan runs as a single pod with SQLite (strategy Recreate): updates have a short downtime.
 {{- if .Values.localLogin }}
 The first account registered with e-mail and password administers the instance.
+Create it with the setup link (FLOWPLAN_SETUP_TOKEN, generated unless set), printed by:
+  echo "{{ include "flowplan.appUrl" . }}/register?setup=$(kubectl --namespace {{ .Release.Namespace }} get secret {{ include "flowplan.fullname" . }} -o jsonpath='{.data.FLOWPLAN_SETUP_TOKEN}' | base64 -d)"
+{{- if .Values.existingSecret }}
+(If {{ .Values.existingSecret }} sets FLOWPLAN_SETUP_TOKEN, that one counts.)
+{{- end }}
 {{- end }}
 Check it: helm test {{ .Release.Name }} --namespace {{ .Release.Namespace }}

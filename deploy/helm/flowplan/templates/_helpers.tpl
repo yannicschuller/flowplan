@@ -57,6 +57,23 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 {{- end }}
 
+{{/* FLOWPLAN_SETUP_TOKEN: from the values, else the one the chart's Secret
+already holds (stable across upgrades), else a new random one. Only with
+password sign-in (localLogin). */}}
+{{- define "flowplan.setupToken" -}}
+{{- if .Values.setupToken }}
+{{- .Values.setupToken }}
+{{- else if .Values.localLogin }}
+{{- $existing := lookup "v1" "Secret" .Release.Namespace (include "flowplan.fullname" .) }}
+{{- $data := (get (default dict $existing) "data") | default dict }}
+{{- if hasKey $data "FLOWPLAN_SETUP_TOKEN" }}
+{{- index $data "FLOWPLAN_SETUP_TOKEN" | b64dec }}
+{{- else }}
+{{- randAlphaNum 40 }}
+{{- end }}
+{{- end }}
+{{- end }}
+
 {{/* Secret values given in values.yaml (empty ones are left out). */}}
 {{- define "flowplan.secretEnv" -}}
 {{- $secrets := dict
@@ -65,6 +82,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
   "S3_ACCESS_KEY_ID" .Values.s3.accessKeyId
   "S3_SECRET_ACCESS_KEY" .Values.s3.secretAccessKey
   "FLOWPLAN_ENCRYPTION_KEY" .Values.encryptionKey
+  "FLOWPLAN_SETUP_TOKEN" (include "flowplan.setupToken" .)
 }}
 {{- range $key, $value := $secrets }}
 {{- if $value }}
@@ -74,7 +92,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{- define "flowplan.hasSecretEnv" -}}
-{{- if or .Values.oidc.clientSecret .Values.smtp.password .Values.s3.accessKeyId .Values.s3.secretAccessKey .Values.encryptionKey }}true{{- end }}
+{{- if or .Values.oidc.clientSecret .Values.smtp.password .Values.s3.accessKeyId .Values.s3.secretAccessKey .Values.encryptionKey .Values.setupToken .Values.localLogin }}true{{- end }}
 {{- end }}
 
 {{- define "flowplan.claimName" -}}

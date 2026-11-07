@@ -19,3 +19,14 @@ test("exactly one replica, replaced with Recreate, probes on /api/health", () =>
   assert.equal(deployment.match(/path: \/api\/health/g)?.length, 3);
   assert.match(deployment, /mountPath: \/app\/data/);
 });
+
+test("the chart sets FLOWPLAN_SETUP_TOKEN: given, kept from the Secret or generated", () => {
+  const helpers = readFileSync("deploy/helm/flowplan/templates/_helpers.tpl", "utf8");
+  const values = readFileSync("deploy/helm/flowplan/values.yaml", "utf8");
+  assert.match(values, /^setupToken: ""$/m);
+  assert.match(helpers, /"FLOWPLAN_SETUP_TOKEN" \(include "flowplan.setupToken" \.\)/);
+  // An upgrade keeps the token of the existing Secret instead of a new one.
+  assert.match(helpers, /lookup "v1" "Secret"/);
+  assert.match(helpers, /randAlphaNum 40/);
+  assert.match(helpers, /hasSecretEnv[\s\S]*\.Values\.localLogin/);
+});

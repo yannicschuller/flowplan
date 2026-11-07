@@ -37,6 +37,10 @@ helm install flowplan deploy/helm/flowplan -n flowplan \
   --set 'ingress.tls[0].hosts[0]=flowplan.example.org'
 
 helm test flowplan -n flowplan
+
+# The first account (administrator) is created with the setup link:
+echo "https://flowplan.example.org/register?setup=$(kubectl -n flowplan get secret flowplan \
+  -o jsonpath='{.data.FLOWPLAN_SETUP_TOKEN}' | base64 -d)"
 ```
 
 Or keep the settings in a file (`helm install flowplan deploy/helm/flowplan -f my-values.yaml`):
@@ -94,6 +98,7 @@ fails otherwise. With single sign-on, register
 | `smtp.*` | – | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` |
 | `s3.*` | – | `S3_BUCKET`, `S3_ENDPOINT`, `S3_REGION`, `S3_PREFIX`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` |
 | `encryptionKey` | – | `FLOWPLAN_ENCRYPTION_KEY` |
+| `setupToken` | generated | `FLOWPLAN_SETUP_TOKEN`: the first account only via `<appUrl>/register?setup=<token>`. Empty: a random token, kept across upgrades (with `localLogin`) |
 | `existingSecret` | – | Secret whose keys are environment variables; wins over the values above |
 | `env` | `{}` | Further settings from [.env.example](../../../.env.example) as `NAME: value` |
 | `extraEnv`, `extraEnvFrom` | `[]` | Environment entries in Kubernetes form |

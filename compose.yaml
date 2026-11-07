@@ -3,6 +3,11 @@
 #   cp .env.example .env      # then set APP_URL (OIDC and SMTP optional)
 #   docker compose up -d
 #
+# Reachable from the internet? Set FLOWPLAN_SETUP_TOKEN in .env before the
+# first start (openssl rand -hex 24) and create the first account via
+# <APP_URL>/register?setup=<token> – otherwise whoever opens the address first
+# becomes the administrator.
+#
 # Uses the prebuilt image from GitHub. To build from this checkout instead:
 #   docker compose up -d --build
 # Put a reverse proxy with HTTPS in front (Caddy, Traefik, nginx, Coolify …):
