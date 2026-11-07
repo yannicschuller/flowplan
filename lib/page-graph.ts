@@ -4,7 +4,7 @@
 // into a link with one click.
 import { Transform } from "@tiptap/pm/transform";
 import type { Node as PMNode } from "@tiptap/pm/model";
-import { all, one } from "./db";
+import { all, one, sql } from "./db";
 import { pageRole, requirePage } from "./permissions";
 import { journalLocked, lockedPageIds } from "./journal-extras";
 import { htmlParagraphs } from "./version-history";
@@ -221,7 +221,7 @@ export function unlinkedMentions(user: Identity, page: Page, rowId?: string) {
     for (const doc of all<Page & { html: string }>(
       `SELECT p.*,d.html FROM pages p JOIN documents d ON d.page_id=p.id
        WHERE p.workspace_id=? AND p.deleted_at IS NULL AND p.id!=? AND p.kind='document'
-       AND instr(lower(d.html), lower(?))>0 AND instr(d.html, ?)=0 LIMIT 200`,
+       AND ${sql.instr("lower(d.html)", "lower(?)")}>0 AND ${sql.instr("d.html", "?")}=0 LIMIT 200`,
       page.workspace_id,
       page.id,
       name.text,
@@ -246,7 +246,7 @@ export function unlinkedMentions(user: Identity, page: Page, rowId?: string) {
       `SELECT r.id,r.page_id,r.cells,r.access,r.created_by,d.html,p.title db_title,p.icon db_icon
        FROM row_documents d JOIN rows r ON r.id=d.row_id JOIN pages p ON p.id=r.page_id
        WHERE p.workspace_id=? AND p.deleted_at IS NULL AND r.id!=?
-       AND instr(lower(d.html), lower(?))>0 AND instr(d.html, ?)=0 LIMIT 200`,
+       AND ${sql.instr("lower(d.html)", "lower(?)")}>0 AND ${sql.instr("d.html", "?")}=0 LIMIT 200`,
       page.workspace_id,
       targetId,
       name.text,

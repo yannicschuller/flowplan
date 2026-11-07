@@ -89,9 +89,9 @@ function storeEntry(userId: string, entry: LdapEntry, groups: string[], now: num
 function linkAccount(entry: LdapEntry, signInName: string, groups: string[], t: (de: string, en: string) => string) {
   const now = Date.now();
   const profile = entryProfile(entry, signInName);
-  let row = one<LdapAccount>("SELECT * FROM ldap_accounts WHERE dn=?", entry.dn);
+  let row = one<LdapAccount>("SELECT * FROM ldap_accounts WHERE lower(dn)=lower(?)", entry.dn);
   if (!row) {
-    if (profile.email && one("SELECT 1 FROM local_accounts WHERE email=? COLLATE NOCASE", profile.email))
+    if (profile.email && one("SELECT 1 FROM local_accounts WHERE lower(email)=lower(?)", profile.email))
       throw new HttpError(
         409,
         t(
@@ -163,7 +163,7 @@ export async function ldapPasswordLogin(identifier: string, password: string, ad
 export async function directoryPasswordLogin(input: unknown, address: string, locale: Locale) {
   if (!ldapConfigured()) return passwordLogin(input, address, locale);
   const { email, password } = z.object({ email: z.string().trim().max(256), password: z.string().max(200) }).parse(input);
-  if (localLoginEnabled() && one("SELECT 1 FROM local_accounts WHERE email=? COLLATE NOCASE", email)) return passwordLogin(input, address, locale);
+  if (localLoginEnabled() && one("SELECT 1 FROM local_accounts WHERE lower(email)=lower(?)", email)) return passwordLogin(input, address, locale);
   return ldapPasswordLogin(email, password, address, locale);
 }
 

@@ -261,7 +261,7 @@ export function processDateReminders(now = Date.now()) {
     transaction(() => {
       if (
         !run(
-          "UPDATE date_reminders SET fired_value=? WHERE user_id=? AND row_id=? AND field_id=? AND observed_value=? AND fired_value IS NOT ?",
+          "UPDATE date_reminders SET fired_value=? WHERE user_id=? AND row_id=? AND field_id=? AND observed_value=? AND fired_value IS DISTINCT FROM ?",
           occurrence,
           ...key,
           value,

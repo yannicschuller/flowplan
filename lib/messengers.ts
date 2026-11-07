@@ -32,7 +32,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { z } from "zod";
-import { all, audit, id, one, run } from "./db";
+import { all, audit, id, one, run, sql } from "./db";
 import { adminUserIds, HttpError } from "./auth";
 import { ct } from "./content-locale";
 import { translate, type Locale } from "./i18n";
@@ -599,7 +599,7 @@ async function handle(job: Job, bot: Bot | null, services: Record<MessengerServi
   if (!job.enabled || job.disabled_user || !services[job.service]) return drop();
   // Per target at most RATE_PER_MINUTE a minute: the rest waits, no attempt lost.
   if (sentLastMinute(job.id, now) >= RATE_PER_MINUTE) {
-    run("UPDATE messenger_deliveries SET available_at=?,attempts=MAX(0,attempts-1) WHERE id=?", now + 30_000, job.delivery_id);
+    run(`UPDATE messenger_deliveries SET available_at=?,attempts=${sql.greatest("0", "attempts-1")} WHERE id=?`, now + 30_000, job.delivery_id);
     return;
   }
   const locale = userLocale(job.user_id);
@@ -635,7 +635,7 @@ async function handle(job: Job, bot: Bot | null, services: Record<MessengerServi
     case "rate_limited":
       // Not a failed attempt: again once the service allows it.
       run(
-        "UPDATE messenger_deliveries SET available_at=?,attempts=MAX(0,attempts-1),last_error=? WHERE id=?",
+        `UPDATE messenger_deliveries SET available_at=?,attempts=${sql.greatest("0", "attempts-1")},last_error=? WHERE id=?`,
         Date.now() + (outcome.retryAfter ?? 60) * 1000,
         code,
         job.delivery_id,

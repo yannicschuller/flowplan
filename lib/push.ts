@@ -4,7 +4,7 @@ import { createECDH } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { z } from "zod";
-import { all, one, run, id, nowText } from "./db";
+import { all, one, run, id, nowText, sql } from "./db";
 import { HttpError } from "./auth";
 import { pageRole } from "./permissions";
 import type { Identity, Page } from "./types";
@@ -297,7 +297,7 @@ export async function flushPushQueue(
           )) ||
         (job.thread_id &&
           !one(
-            "SELECT id FROM inline_threads WHERE id=? AND page_id=? AND row_id IS ?",
+            "SELECT id FROM inline_threads WHERE id=? AND page_id=? AND row_id IS NOT DISTINCT FROM ?",
             job.thread_id,
             job.page_id,
             job.row_id,
@@ -464,7 +464,7 @@ function relayAlert(job: RelayJob, instance: string): RelayMessage {
 // again through Expo right away, otherwise the subscription goes.
 function dropRelay(job: RelayJob, status = "unreadable") {
   if (dropRelayPart(job, status))
-    run("UPDATE push_deliveries SET available_at=?,attempts=MAX(0,attempts-1) WHERE id=?", Date.now(), job.id);
+    run(`UPDATE push_deliveries SET available_at=?,attempts=${sql.greatest("0", "attempts-1")} WHERE id=?`, Date.now(), job.id);
 }
 // The relay part of an installation goes; true when an Expo token remains.
 function dropRelayPart(job: { device_id: string | null; endpoint: string; subscription_id: string }, status: string) {
@@ -489,7 +489,7 @@ function relayOutcome(job: RelayJob, result: RelayResult) {
     case "rate_limited":
       // Not a failed attempt: again once the relay allows it.
       run(
-        "UPDATE push_deliveries SET available_at=?,attempts=MAX(0,attempts-1),last_error=? WHERE id=?",
+        `UPDATE push_deliveries SET available_at=?,attempts=${sql.greatest("0", "attempts-1")},last_error=? WHERE id=?`,
         Date.now() + (result.retryAfter ?? 60) * 1000,
         "Relay: rate_limited",
         job.id,

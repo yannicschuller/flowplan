@@ -6,7 +6,7 @@ import { Node as PMNode } from "@tiptap/pm/model";
 import { prosemirrorJSONToYDoc, yDocToProsemirrorJSON } from "y-prosemirror";
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
-import { all, audit, id, one, run, nowText } from "./db";
+import { all, audit, id, one, run, nowText, sql } from "./db";
 import { documentSchema } from "./document-schema";
 import { failuresSince } from "./local-auth";
 import { htmlState, stateHtml } from "./document-server";
@@ -685,13 +685,13 @@ export function databaseEvents(user: Identity, workspaceId: string, date: string
       : fields.find((f) => f.type === "date");
     if (!start) continue;
     const end = view.endDateField ? fields.find((f) => f.id === view.endDateField) : undefined;
-    const path = (id: string) => `$."${id.replace(/"/g, "")}"`;
+    const path = (id: string) => id.replace(/"/g, "");
     // A generous prefilter in SQL; the exact check follows below.
     const candidates = all<Row & { cells: string; recurrence: string | null }>(
       `SELECT * FROM rows WHERE page_id=? AND (
         (recurrence IS NOT NULL AND recurrence!='') OR
-        substr(json_extract(cells,?),1,10) BETWEEN ? AND ? OR
-        (? != '' AND substr(json_extract(cells,?),1,10) <= ? AND substr(json_extract(cells,?),1,10) >= ?)
+        substr(${sql.jsonKey("cells")},1,10) BETWEEN ? AND ? OR
+        (? != '' AND substr(${sql.jsonKey("cells")},1,10) <= ? AND substr(${sql.jsonKey("cells")},1,10) >= ?)
       ) LIMIT 2000`,
       page.id,
       path(start.id),

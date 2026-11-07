@@ -102,7 +102,7 @@ export function listBoardTemplates(user: Identity, pageId: unknown) {
   const guest = isGuest(user, page.workspace_id);
   const names = new Map(all<{ id: string; name: string }>("SELECT id,name FROM users").map((u) => [u.id, u.name]));
   return all<Row>(
-    `SELECT * FROM whiteboard_templates WHERE workspace_id=? AND (created_by=? OR (visibility='workspace' AND ?=0)) ORDER BY name COLLATE NOCASE`,
+    `SELECT * FROM whiteboard_templates WHERE workspace_id=? AND (created_by=? OR (visibility='workspace' AND ?=0)) ORDER BY lower(name)`,
     page.workspace_id,
     user.id,
     guest ? 1 : 0,

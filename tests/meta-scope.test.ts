@@ -39,7 +39,7 @@ const spaceP = act({ action: "space.create", workspaceId: wid, name: "Geheim", p
 const page = (title: string, spaceId: string, kind = "document", as = owner) => act({ action: "page.create", workspaceId: wid, spaceId, title, kind }, as).id;
 const meta = (pageId: string) => (pageData(owner, pageId) as { properties?: { tags: string[]; values: Record<string, unknown> } }).properties!;
 const tagRow = (tagId: string) => one<{ name: string; space_id: string | null }>("SELECT name,space_id FROM page_tags WHERE id=?", tagId);
-const tagsNamed = (name: string) => all<{ id: string; space_id: string | null }>("SELECT id,space_id FROM page_tags WHERE workspace_id=? AND name=? COLLATE NOCASE", wid, name);
+const tagsNamed = (name: string) => all<{ id: string; space_id: string | null }>("SELECT id,space_id FROM page_tags WHERE workspace_id=? AND lower(name)=lower(?)", wid, name);
 const tag = (name: string, spaceId: string | null, as = owner) => act({ action: "tag.save", workspaceId: wid, name, spaceId }, as).id;
 const property = (name: string, type: string, spaceId: string | null, options: string[] = [], as = owner) =>
   act({ action: "property.save", workspaceId: wid, name, type, options, spaceId }, as).id;

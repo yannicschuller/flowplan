@@ -98,7 +98,7 @@ export function editorPresence(
   }>(
     `SELECT p.id,s.user_id,u.name,p.cursor,p.seen FROM editor_presence p
      JOIN sessions s ON s.token=p.session_token JOIN users u ON u.id=s.user_id
-     WHERE p.page_id=? AND p.row_id IS ? AND p.generation=? AND p.cursor IS NOT NULL AND p.seen>?
+     WHERE p.page_id=? AND p.row_id IS NOT DISTINCT FROM ? AND p.generation=? AND p.cursor IS NOT NULL AND p.seen>?
        AND s.expires>? AND u.disabled=0 AND NOT(p.session_token=? AND p.client_id=?)
      ORDER BY p.seen DESC LIMIT 200`,
     page.id,

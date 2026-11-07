@@ -1267,10 +1267,16 @@ export function migrateMetaScopes(d: DatabaseSync) {
       // (keepSpaceTemplates in lib/workspace-lifecycle.ts, SET NULL as the
       // fallback).
       d.exec(`ALTER TABLE ${table} ADD COLUMN space_id TEXT REFERENCES spaces(id) ON DELETE ${table === "templates" ? "SET NULL" : "CASCADE"}`);
+  // Schema 93: lower(name) instead of `name COLLATE NOCASE` (the same for
+  // SQLite, which folds ASCII in both; PostgreSQL has no NOCASE): queries
+  // compare `lower(name)=lower(?)` and use the index.
+  for (const index of ["page_tags_scope_name", "page_property_defs_scope_name"])
+    if (/NOCASE/i.test((d.prepare("SELECT sql FROM sqlite_master WHERE type='index' AND name=?").get(index) as { sql: string } | undefined)?.sql || ""))
+      d.exec(`DROP INDEX ${index}`);
   d.exec(`DROP INDEX IF EXISTS page_tags_name;
     DROP INDEX IF EXISTS page_property_defs_name;
-    CREATE UNIQUE INDEX IF NOT EXISTS page_tags_scope_name ON page_tags(workspace_id,ifnull(space_id,''),name COLLATE NOCASE);
-    CREATE UNIQUE INDEX IF NOT EXISTS page_property_defs_scope_name ON page_property_defs(workspace_id,ifnull(space_id,''),name COLLATE NOCASE);
+    CREATE UNIQUE INDEX IF NOT EXISTS page_tags_scope_name ON page_tags(workspace_id,ifnull(space_id,''),lower(name));
+    CREATE UNIQUE INDEX IF NOT EXISTS page_property_defs_scope_name ON page_property_defs(workspace_id,ifnull(space_id,''),lower(name));
     CREATE INDEX IF NOT EXISTS page_tags_space ON page_tags(space_id);
     CREATE INDEX IF NOT EXISTS page_property_defs_space ON page_property_defs(space_id);
     CREATE INDEX IF NOT EXISTS templates_space ON templates(space_id);`);

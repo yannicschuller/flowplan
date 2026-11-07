@@ -16,7 +16,7 @@ import { toPlain } from "./inline-markdown";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { Temporal } from "@js-temporal/polyfill";
-import { all, one, run } from "./db";
+import { all, one, run, sql } from "./db";
 import { adminGroup, HttpError } from "./auth";
 import { allow } from "./action-limits";
 import { cellText } from "./cell-text";
@@ -151,7 +151,7 @@ function readablePages(user: Identity, kinds: Page["kind"][], limit = 300) {
          JOIN spaces s ON s.id=p.space_id JOIN workspaces w ON w.id=p.workspace_id
        WHERE p.workspace_id=? AND p.deleted_at IS NULL AND s.deleted_at IS NULL AND COALESCE(p.synced,0)=0
          AND p.kind IN (${kinds.map(() => "?").join(",")})
-       ORDER BY p.title COLLATE NOCASE LIMIT 2000`,
+       ORDER BY lower(p.title) LIMIT 2000`,
       wid,
       ...kinds,
     );
@@ -791,9 +791,9 @@ export function habitDay(user: Identity, page: Page, date: string) {
   const checks = shown.filter((f) => f.type === "checkbox").slice(0, 8);
   if (!dateField) return { fields, shown, dateField, checks, row: null as (Row & { role?: string }) | null };
   const candidates = all<Row & { cells: string }>(
-    `SELECT * FROM rows WHERE page_id=? AND substr(json_extract(cells,?),1,10)=? ORDER BY created_at LIMIT 20`,
+    `SELECT * FROM rows WHERE page_id=? AND substr(${sql.jsonKey("cells")},1,10)=? ORDER BY created_at LIMIT 20`,
     page.id,
-    `$."${dateField.id.replace(/"/g, "")}"`,
+    dateField.id.replace(/"/g, ""),
     date,
   ).map((r) => ({ ...r, cells: parse<Record<string, unknown>>(r.cells as unknown as string, {}) }) as Row);
   const row = visibleRows(user, page, candidates)[0] || null;

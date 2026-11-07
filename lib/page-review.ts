@@ -63,7 +63,7 @@ export function setPageReview(user: Identity, input: unknown) {
     at = every ? addDays(today(), every) : null;
   } else if (!at && every) at = addDays(today(), every);
   run(
-    "UPDATE pages SET review_at=?,review_every_days=?,review_notified=CASE WHEN review_at IS ? THEN review_notified ELSE NULL END WHERE id=?",
+    "UPDATE pages SET review_at=?,review_every_days=?,review_notified=CASE WHEN review_at IS NOT DISTINCT FROM ? THEN review_notified ELSE NULL END WHERE id=?",
     at,
     every,
     at,
@@ -99,7 +99,7 @@ export function processPageReviews(now = Date.now()) {
     const page = one<Page>("SELECT * FROM pages WHERE id=?", p.id);
     if (!owner || !page || !pageRole({ ...owner, groups: [], isAdmin: false }, page)) continue;
     transaction(() => {
-      if (!run("UPDATE pages SET review_notified=? WHERE id=? AND review_notified IS NOT ?", p.review_at, p.id, p.review_at).changes) return;
+      if (!run("UPDATE pages SET review_notified=? WHERE id=? AND review_notified IS DISTINCT FROM ?", p.review_at, p.id, p.review_at).changes) return;
       run(
         "INSERT INTO notifications(id,user_id,body,page_id,kind) VALUES(?,?,?,?,'reminder')",
         id(),

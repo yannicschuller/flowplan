@@ -19,7 +19,7 @@
 //   and definitions are mapped, copied or removed the same way.
 import { z } from "zod";
 import { HttpError } from "./auth";
-import { all, audit, id, one, run } from "./db";
+import { all, audit, id, one, run, sql } from "./db";
 import { isEncryptedPage } from "./e2ee-server";
 import { requireMember, spaceRole } from "./permissions";
 import {
@@ -115,18 +115,18 @@ function createCopy(kind: MetaKind, source: TagRow | DefRow, workspaceId: string
 function relinkTag(pageIds: string[], from: string, to: string | null) {
   if (to)
     run(
-      "INSERT INTO page_tag_links(page_id,tag_id,position) SELECT page_id,?,position FROM page_tag_links WHERE tag_id=? AND page_id IN (SELECT value FROM json_each(?)) ON CONFLICT DO NOTHING",
+      `INSERT INTO page_tag_links(page_id,tag_id,position) SELECT page_id,?,position FROM page_tag_links WHERE tag_id=? AND page_id IN ${sql.jsonValues()} ON CONFLICT DO NOTHING`,
       to,
       from,
       json(pageIds),
     );
-  run("DELETE FROM page_tag_links WHERE tag_id=? AND page_id IN (SELECT value FROM json_each(?))", from, json(pageIds));
+  run(`DELETE FROM page_tag_links WHERE tag_id=? AND page_id IN ${sql.jsonValues()}`, from, json(pageIds));
 }
 // The pages' values of a definition → another (converted; options a value
 // needs are added to a select there, so nothing is lost) or none.
 function relinkValues(pageIds: string[], from: DefRow, to: DefRow | null) {
   const values = all<{ page_id: string; value: string }>(
-    "SELECT page_id,value FROM page_property_values WHERE property_id=? AND page_id IN (SELECT value FROM json_each(?))",
+    `SELECT page_id,value FROM page_property_values WHERE property_id=? AND page_id IN ${sql.jsonValues()}`,
     from.id,
     json(pageIds),
   );
@@ -156,7 +156,7 @@ function relinkValues(pageIds: string[], from: DefRow, to: DefRow | null) {
       setPageValue(v.page_id, target.id, value);
     }
   }
-  run("DELETE FROM page_property_values WHERE property_id=? AND page_id IN (SELECT value FROM json_each(?))", from.id, json(pageIds));
+  run(`DELETE FROM page_property_values WHERE property_id=? AND page_id IN ${sql.jsonValues()}`, from.id, json(pageIds));
 }
 
 // ---- Tag names in databases (tag-backed properties, #79) ----
@@ -164,7 +164,7 @@ function relinkValues(pageIds: string[], from: DefRow, to: DefRow | null) {
 type TagDb = { page: Page; fields: Field[] };
 function tagDatabasesOf(pageIds: string[]): TagDb[] {
   return all<Page & { db_fields: string }>(
-    `SELECT p.*,d.fields db_fields FROM databases d JOIN pages p ON p.id=d.page_id WHERE p.id IN (SELECT value FROM json_each(?)) AND instr(d.fields,'"tagOptions":true')>0`,
+    `SELECT p.*,d.fields db_fields FROM databases d JOIN pages p ON p.id=d.page_id WHERE p.id IN ${sql.jsonValues()} AND ${sql.instr("d.fields", `'"tagOptions":true'`)}>0`,
     json(pageIds),
   ).flatMap(({ db_fields, ...page }) => {
     const fields = (JSON.parse(db_fields) as Field[]).filter(isTagField);
@@ -207,14 +207,14 @@ const candidatesFor = (kind: MetaKind, target: MoveTarget, type?: string) =>
 // What pages moving to `target` carry that is not at home there: tags and
 // definitions of their (source) space – or, into another workspace, all.
 export function moveForeignMeta(pageIds: string[], target: MoveTarget): ForeignMeta[] {
-  const pages = all<Page>("SELECT * FROM pages WHERE id IN (SELECT value FROM json_each(?))", json(pageIds)).filter((p) => !isEncryptedPage(p));
+  const pages = all<Page>(`SELECT * FROM pages WHERE id IN ${sql.jsonValues()}`, json(pageIds)).filter((p) => !isEncryptedPage(p));
   if (!pages.length || isEncryptedPage({ space_id: target.spaceId })) return [];
   const ids = pages.map((p) => p.id);
   const foreign = (item: { workspace_id: string; space_id: string | null }) =>
     item.workspace_id !== target.workspaceId || (!!item.space_id && item.space_id !== target.spaceId);
   const out: ForeignMeta[] = [];
   const tags = all<TagRow & { n: number }>(
-    "SELECT t.*,COUNT(DISTINCT l.page_id) n FROM page_tag_links l JOIN page_tags t ON t.id=l.tag_id WHERE l.page_id IN (SELECT value FROM json_each(?)) GROUP BY t.id ORDER BY t.position",
+    `SELECT t.*,COUNT(DISTINCT l.page_id) n FROM page_tag_links l JOIN page_tags t ON t.id=l.tag_id WHERE l.page_id IN ${sql.jsonValues()} GROUP BY t.id ORDER BY t.position`,
     json(ids),
   );
   // Names in tag-backed properties of the moved databases, as the tags of
@@ -224,7 +224,7 @@ export function moveForeignMeta(pageIds: string[], target: MoveTarget): ForeignM
   for (const [key, list] of named)
     for (const entry of list) {
       const tag = one<TagRow>(
-        "SELECT * FROM page_tags WHERE workspace_id=? AND (space_id IS NULL OR space_id=?) AND name=? COLLATE NOCASE ORDER BY space_id IS NOT NULL",
+        "SELECT * FROM page_tags WHERE workspace_id=? AND (space_id IS NULL OR space_id=?) AND lower(name)=lower(?) ORDER BY space_id IS NOT NULL",
         entry.workspaceId,
         entry.spaceId,
         key,
@@ -249,7 +249,7 @@ export function moveForeignMeta(pageIds: string[], target: MoveTarget): ForeignM
     });
   }
   for (const def of all<DefRow & { n: number }>(
-    "SELECT d.*,COUNT(DISTINCT v.page_id) n FROM page_property_values v JOIN page_property_defs d ON d.id=v.property_id WHERE v.page_id IN (SELECT value FROM json_each(?)) GROUP BY d.id ORDER BY d.position",
+    `SELECT d.*,COUNT(DISTINCT v.page_id) n FROM page_property_values v JOIN page_property_defs d ON d.id=v.property_id WHERE v.page_id IN ${sql.jsonValues()} GROUP BY d.id ORDER BY d.position`,
     json(ids),
   )) {
     if (!foreign(def)) continue;
@@ -352,7 +352,7 @@ export function usageOutside(item: ScopeItem, target: string | null): ScopeUsage
 // Same-named items that would share a context with the item in `target`.
 function clashesIn(item: ScopeItem, target: string | null) {
   return all<TagRow | DefRow>(
-    `SELECT * FROM ${tableOf(item.kind)} WHERE workspace_id=? AND id<>? AND name=? COLLATE NOCASE${target ? " AND (space_id IS NULL OR space_id=?)" : ""}`,
+    `SELECT * FROM ${tableOf(item.kind)} WHERE workspace_id=? AND id<>? AND lower(name)=lower(?)${target ? " AND (space_id IS NULL OR space_id=?)" : ""}`,
     item.workspace_id,
     item.id,
     item.name,

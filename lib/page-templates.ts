@@ -12,7 +12,7 @@ import { canSeeScopedTemplate, createTemplateCopies, parseMetaPlan, resolveTempl
 import { metaKey, type ForeignMeta, type MetaKind, type MetaPlan } from "./meta-scope";
 import { foldName, isTagField, type PortableMeta } from "./page-properties";
 import { z } from "zod";
-import { all, one, run, id, nowText } from "./db";
+import { all, one, run, id, nowText, sql } from "./db";
 import { HttpError } from "./auth";
 import { isGuest, requireMember, requirePage, spaceRole } from "./permissions";
 import { cleanHtml, htmlState } from "./document-server";
@@ -435,7 +435,7 @@ export function listPageTemplates(user: Identity, workspaceId: string) {
   const guest = isGuest(user, workspaceId);
   const spaces = new Map(all<Space>("SELECT * FROM spaces WHERE workspace_id=?", workspaceId).map((sp) => [sp.id, sp]));
   return all<PageTemplate & { icon?: unknown }>(
-    `SELECT id,workspace_id,space_id,name,kind,visibility,category,created_by,version,deleted_at,json_extract(payload,'$.icon') icon FROM templates
+    `SELECT id,workspace_id,space_id,name,kind,visibility,category,created_by,version,deleted_at,${sql.jsonText("payload", "$.icon")} icon FROM templates
      WHERE (workspace_id=? AND (visibility IN (${guest ? "'instance','public'" : "'workspace','instance','public'"}) OR created_by=?))
         OR (workspace_id<>? AND visibility IN ('instance','public') AND deleted_at IS NULL)
      ORDER BY name`,

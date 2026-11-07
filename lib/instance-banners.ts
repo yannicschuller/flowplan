@@ -7,7 +7,7 @@
 // that went out can be paused, shown again to everyone or deleted; the
 // administration sees how many closed and how many followed the link.
 import { z } from "zod";
-import { all, audit, id, one, run } from "./db";
+import { all, audit, id, one, run, sql } from "./db";
 import { adminUserIds, HttpError } from "./auth";
 import type { Identity } from "./types";
 
@@ -193,7 +193,7 @@ export function dismissBanner(user: Identity, bannerId: string, clicked: boolean
   if (user.apiScope) throw new HttpError(403, "Nicht mit einem API-Token.");
   if (!one("SELECT 1 FROM instance_banners WHERE id=?", bannerId)) return { ok: false };
   run(
-    "INSERT INTO instance_banner_seen(banner_id,user_id,dismissed_at,clicked) VALUES(?,?,?,?) ON CONFLICT(banner_id,user_id) DO UPDATE SET clicked=MAX(clicked,excluded.clicked)",
+    `INSERT INTO instance_banner_seen(banner_id,user_id,dismissed_at,clicked) VALUES(?,?,?,?) ON CONFLICT(banner_id,user_id) DO UPDATE SET clicked=${sql.greatest("instance_banner_seen.clicked", "excluded.clicked")}`,
     bannerId,
     user.id,
     now,

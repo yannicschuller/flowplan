@@ -1410,7 +1410,7 @@ function runCommand(
           p.id,
         );
         const siblings = all<{ id: string }>(
-          "SELECT id FROM pages WHERE space_id=? AND parent_id IS ? AND deleted_at IS NULL AND id!=? ORDER BY position,id",
+          "SELECT id FROM pages WHERE space_id=? AND parent_id IS NOT DISTINCT FROM ? AND deleted_at IS NULL AND id!=? ORDER BY position,id",
           sid,
           parent,
           p.id,

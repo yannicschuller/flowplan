@@ -4,7 +4,7 @@
 import { escapeInline } from "./inline-markdown";
 import sanitize from "sanitize-html";
 import { z } from "zod";
-import { all, id, one, run, nowText } from "./db";
+import { all, id, one, run, nowText, sql } from "./db";
 import { createPage } from "./seed";
 import { HttpError } from "./auth";
 import { safeFetch } from "./safe-fetch";
@@ -221,7 +221,7 @@ export function addBookmarks(
   const db = one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId)!;
   const fields = JSON.parse(db.fields) as Field[];
   const known = new Set(
-    all<{ url: string }>("SELECT json_extract(cells,'$.bm_url') url FROM rows WHERE page_id=?", pageId).map((r) => r.url),
+    all<{ url: string }>(`SELECT ${sql.jsonText("cells", "$.bm_url")} url FROM rows WHERE page_id=?`, pageId).map((r) => r.url),
   );
   const addOption = (fieldId: string, value: string) => {
     const field = fields.find((f) => f.id === fieldId);

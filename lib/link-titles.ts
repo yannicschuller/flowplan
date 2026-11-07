@@ -5,7 +5,7 @@
 // are changed.
 import { Transform } from "@tiptap/pm/transform";
 import type { Mark, Node as PMNode } from "@tiptap/pm/model";
-import { all } from "./db";
+import { all, sql } from "./db";
 import { requirePage } from "./permissions";
 import { journalLocked } from "./journal-extras";
 import { rewriteDocument } from "./document-rewrite";
@@ -72,13 +72,13 @@ export function followRename(user: Identity, workspaceId: string, target: Target
   const sources = [
     ...all<{ page_id: string; row_id: null }>(
       `SELECT d.page_id,NULL row_id FROM documents d JOIN pages p ON p.id=d.page_id
-       WHERE p.workspace_id=? AND p.deleted_at IS NULL AND instr(d.html, ?)>0 LIMIT 200`,
+       WHERE p.workspace_id=? AND p.deleted_at IS NULL AND ${sql.instr("d.html", "?")}>0 LIMIT 200`,
       workspaceId,
       id,
     ),
     ...all<{ page_id: string; row_id: string }>(
       `SELECT r.page_id,r.id row_id FROM row_documents d JOIN rows r ON r.id=d.row_id JOIN pages p ON p.id=r.page_id
-       WHERE p.workspace_id=? AND p.deleted_at IS NULL AND instr(d.html, ?)>0 LIMIT 200`,
+       WHERE p.workspace_id=? AND p.deleted_at IS NULL AND ${sql.instr("d.html", "?")}>0 LIMIT 200`,
       workspaceId,
       id,
     ),

@@ -80,7 +80,7 @@ import {
   requireAdmin,
   pageRole,
 } from "@/lib/permissions";
-import { one, all, run, id, audit } from "@/lib/db";
+import { one, all, run, id, audit, sql } from "@/lib/db";
 import type { Page } from "@/lib/types";
 import { searchWorkspace } from "@/lib/search-index";
 import { listCollections, previewQuery, runCollection } from "@/lib/collections";
@@ -662,7 +662,7 @@ async function handleGET(
             run("UPDATE invites SET token=? WHERE id=?", inviteToken(), open.id);
           return all<Invite>(
           `SELECT i.id,i.email,i.role,i.guest,i.created_at,i.token,u.name inviter,
-             (SELECT json_group_array(p.title) FROM invite_grants g JOIN pages p ON p.id=g.resource_id WHERE g.workspace_id=i.workspace_id AND lower(g.email)=lower(i.email) AND p.deleted_at IS NULL) pages
+             (SELECT ${sql.jsonGroupArray("p.title")} FROM invite_grants g JOIN pages p ON p.id=g.resource_id WHERE g.workspace_id=i.workspace_id AND lower(g.email)=lower(i.email) AND p.deleted_at IS NULL) pages
            FROM invites i LEFT JOIN users u ON u.id=i.created_by WHERE i.workspace_id=? ORDER BY i.created_at DESC`,
           wid,
         ).map((i) => ({ ...i, pages: JSON.parse(i.pages || "[]") as string[] }));
@@ -989,7 +989,7 @@ async function handleGET(
         encryption: encryptionOverview(),
         // With the people who own each workspace (owner role; usually one).
         workspaces: all<{ id: string; name: string; members: number; pages: number; owners: string }>(
-          "SELECT w.id,w.name,(SELECT count(*) FROM members WHERE workspace_id=w.id) members,(SELECT count(*) FROM pages WHERE workspace_id=w.id AND deleted_at IS NULL AND journal_date IS NULL) pages,(SELECT count(*) FROM pages WHERE workspace_id=w.id AND deleted_at IS NULL AND journal_date IS NOT NULL) days,(SELECT json_group_array(json_object('id',u.id,'name',u.name,'email',u.email)) FROM members m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=w.id AND m.role='owner') owners FROM workspaces w ORDER BY w.name COLLATE NOCASE",
+          `SELECT w.id,w.name,(SELECT count(*) FROM members WHERE workspace_id=w.id) members,(SELECT count(*) FROM pages WHERE workspace_id=w.id AND deleted_at IS NULL AND journal_date IS NULL) pages,(SELECT count(*) FROM pages WHERE workspace_id=w.id AND deleted_at IS NULL AND journal_date IS NOT NULL) days,(SELECT ${sql.jsonGroupArray(sql.jsonObject("'id'", "u.id", "'name'", "u.name", "'email'", "u.email"))} FROM members m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=w.id AND m.role='owner') owners FROM workspaces w ORDER BY lower(w.name)`,
         ).map((w) => ({ ...w, owners: JSON.parse(w.owners || "[]") as { id: string; name: string; email: string | null }[] })),
         sessions: one(
           "SELECT count(*) count FROM sessions WHERE expires>?",

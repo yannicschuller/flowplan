@@ -7,7 +7,7 @@
 import { aliasField, pageAliases } from "./aliases";
 import { Transform } from "@tiptap/pm/transform";
 import type { Node as PMNode } from "@tiptap/pm/model";
-import { all, id, one, run, nowText } from "./db";
+import { all, id, one, run, nowText, sql } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import { requireUnlocked } from "./journal-extras";
@@ -178,14 +178,14 @@ export function pageToRecord(user: Identity, pageId: string, databaseId: string)
     for (const source of [
       ...all<{ page_id: string; row_id: null }>(
         `SELECT d.page_id,NULL row_id FROM documents d JOIN pages p ON p.id=d.page_id
-         WHERE p.workspace_id=? AND p.id!=? AND instr(d.html, ?)>0`,
+         WHERE p.workspace_id=? AND p.id!=? AND ${sql.instr("d.html", "?")}>0`,
         page.workspace_id,
         page.id,
         page.id,
       ),
       ...all<{ page_id: string; row_id: string }>(
         `SELECT r.page_id,r.id row_id FROM row_documents d JOIN rows r ON r.id=d.row_id JOIN pages p ON p.id=r.page_id
-         WHERE p.workspace_id=? AND instr(d.html, ?)>0`,
+         WHERE p.workspace_id=? AND ${sql.instr("d.html", "?")}>0`,
         page.workspace_id,
         page.id,
       ),

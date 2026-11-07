@@ -4,7 +4,7 @@
 // sessions, disable an account, revoke tokens and links.
 import { z } from "zod";
 import { CSV_FORMULA } from "./cell-text";
-import { all, id, one, run } from "./db";
+import { all, id, one, run, sql } from "./db";
 import { HttpError, adminUserIds } from "./auth";
 import { clientAddress } from "./client-address";
 import { setUserDisabled } from "./account-deletion";
@@ -305,8 +305,8 @@ function topAddresses(now: number) {
 // Signed-in people: administrators first, then whoever has the most sessions.
 function sessions(now: number) {
   const admins = new Set(adminUserIds());
-  return all<{ id: string; name: string; email: string; sessions: number; last_seen: number | null; agents: string }>(
-    `SELECT u.id,u.name,u.email,COUNT(*) sessions,MAX(s.last_seen) last_seen,GROUP_CONCAT(DISTINCT s.agent) agents
+  return all<{ id: string; name: string; email: string; sessions: number; last_seen: number | null }>(
+    `SELECT u.id,u.name,u.email,COUNT(*) sessions,MAX(s.last_seen) last_seen
      FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.expires>? AND u.disabled=0 AND u.demo_until IS NULL GROUP BY u.id`,
     now,
   )
@@ -423,7 +423,7 @@ export function securityOverview(now = Date.now(), viewer: Identity | null = nul
       events: (severities.info || 0) + (severities.warn || 0) + (severities.critical || 0),
       blocks: blockList(now).length,
       adminSessions: count(
-        "SELECT COUNT(*) n FROM sessions WHERE expires>? AND user_id IN (SELECT value FROM json_each(?))",
+        `SELECT COUNT(*) n FROM sessions WHERE expires>? AND user_id IN ${sql.jsonValues()}`,
         now,
         JSON.stringify(adminUserIds()),
       ),

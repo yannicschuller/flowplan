@@ -45,12 +45,12 @@ export function commentRecipients(author: Identity, page: Page, rowId: string | 
     ...(page.owner_id ? [page.owner_id] : []),
     ...(rowId ? recordPeople(page, rowId) : []),
     ...all<{ author_id: string }>(
-      "SELECT DISTINCT author_id FROM comments WHERE page_id=? AND row_id IS ? AND author_id IS NOT NULL",
+      "SELECT DISTINCT author_id FROM comments WHERE page_id=? AND row_id IS NOT DISTINCT FROM ? AND author_id IS NOT NULL",
       page.id,
       rowId,
     ).map((c) => c.author_id),
     ...all<{ author_id: string }>(
-      "SELECT DISTINCT m.author_id FROM inline_messages m JOIN inline_threads t ON t.id=m.thread_id WHERE t.page_id=? AND t.row_id IS ? AND m.author_id IS NOT NULL",
+      "SELECT DISTINCT m.author_id FROM inline_messages m JOIN inline_threads t ON t.id=m.thread_id WHERE t.page_id=? AND t.row_id IS NOT DISTINCT FROM ? AND m.author_id IS NOT NULL",
       page.id,
       rowId,
     ).map((m) => m.author_id),

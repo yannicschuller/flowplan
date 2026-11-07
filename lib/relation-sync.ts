@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { all, one, run, nowText } from "./db";
+import { all, one, run, nowText, sql } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import type { Field, Identity } from "./types";
@@ -322,7 +322,7 @@ export function flushRelationChanges(actor?: Identity) {
     for (const change of changes)
       if (change.old_version !== null)
         run(
-          "UPDATE rows SET version=max(version,?) WHERE id=?",
+          `UPDATE rows SET version=${sql.greatest("version", "?")} WHERE id=?`,
           change.old_version + 1,
           change.row_id,
         );

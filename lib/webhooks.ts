@@ -527,7 +527,7 @@ export function processDigests(now = Date.now()) {
     const config = parseConfig(hook.config);
     const clock = localClock(now, config.timeZone);
     if (clock.time < config.digestTime || hook.digest_day === clock.day) continue;
-    if (!run("UPDATE webhooks SET digest_day=? WHERE id=? AND digest_day IS NOT ?", clock.day, hook.id, clock.day).changes) continue;
+    if (!run("UPDATE webhooks SET digest_day=? WHERE id=? AND digest_day IS DISTINCT FROM ?", clock.day, hook.id, clock.day).changes) continue;
     // Only databases and records the webhook's owner may read.
     const reader = hookReader(hook);
     if (!reader) continue;

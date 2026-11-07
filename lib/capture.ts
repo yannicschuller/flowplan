@@ -29,7 +29,7 @@ export function captureTargets(user: Identity, workspaceId: string) {
     all<{ id: string; name: string }>("SELECT id,name FROM spaces WHERE workspace_id=? AND deleted_at IS NULL", workspaceId).map((s) => [s.id, s.name]),
   );
   const databases = all<Page>(
-    "SELECT * FROM pages WHERE workspace_id=? AND kind='database' AND deleted_at IS NULL AND synced=0 ORDER BY title COLLATE NOCASE",
+    "SELECT * FROM pages WHERE workspace_id=? AND kind='database' AND deleted_at IS NULL AND synced=0 ORDER BY lower(title)",
     workspaceId,
   )
     .filter((page) => spaces.has(page.space_id) && !locked.has(page.id) && writable(user, page))

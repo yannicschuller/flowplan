@@ -247,7 +247,7 @@ export function sharedContent(token: string, pageId?: string, rowId?: string) {
     related,
     files,
     comments: all<SharedComment>(
-      "SELECT id,name,body,resolved,created_at FROM shared_comments WHERE page_id=? AND row_id IS ? ORDER BY created_at,id LIMIT 500",
+      "SELECT id,name,body,resolved,created_at FROM shared_comments WHERE page_id=? AND row_id IS NOT DISTINCT FROM ? ORDER BY created_at,id LIMIT 500",
       s.page.id,
       rowId || null,
     ),

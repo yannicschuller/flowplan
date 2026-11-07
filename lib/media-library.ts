@@ -1,4 +1,4 @@
-import { all } from "./db";
+import { all, sql } from "./db";
 import { pageRole, requireMember } from "./permissions";
 import { lockedPageIds } from "./journal-extras";
 import { hiddenFileIds } from "./row-files";
@@ -59,7 +59,7 @@ export function mediaLibrary(
      FROM files f JOIN pages p ON p.id=f.page_id
      WHERE p.workspace_id=? AND p.deleted_at IS NULL
      ${kind === "all" ? "" : `AND ${kindSql[kind]}`}
-     ${query ? "AND instr(lower(f.name),lower(?))>0" : ""}
+     ${query ? `AND ${sql.instr("lower(f.name)", "lower(?)")}>0` : ""}
      ORDER BY f.created_at DESC,f.seq DESC LIMIT 5000`,
     workspaceId,
     ...(query ? [query] : []),

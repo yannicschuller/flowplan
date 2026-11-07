@@ -131,7 +131,7 @@ export type IntentResult = {
 
 const workspacesOf = (user: Identity) =>
   all<{ id: string; name: string }>(
-    "SELECT w.id,w.name FROM members m JOIN workspaces w ON w.id=m.workspace_id WHERE m.user_id=? ORDER BY w.name COLLATE NOCASE",
+    "SELECT w.id,w.name FROM members m JOIN workspaces w ON w.id=m.workspace_id WHERE m.user_id=? ORDER BY lower(w.name)",
     user.id,
   );
 

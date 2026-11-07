@@ -29,7 +29,7 @@ export function listRackTemplates(user: Identity, pageId: unknown) {
   // Guests see only their own, like whiteboard templates.
   const guest = isGuest(user, page.workspace_id);
   return all<Row>(
-    "SELECT * FROM rack_device_templates WHERE workspace_id=? AND (?=0 OR created_by=?) ORDER BY name COLLATE NOCASE",
+    "SELECT * FROM rack_device_templates WHERE workspace_id=? AND (?=0 OR created_by=?) ORDER BY lower(name)",
     page.workspace_id,
     guest ? 1 : 0,
     user.id,

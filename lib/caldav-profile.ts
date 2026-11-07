@@ -40,7 +40,7 @@ export function profileCalendars(user: Identity) {
   const pages = all<Page & { workspace_name: string }>(
     `SELECT p.*,w.name workspace_name FROM pages p JOIN members m ON m.workspace_id=p.workspace_id AND m.user_id=?
        JOIN workspaces w ON w.id=p.workspace_id
-     WHERE p.kind='database' AND p.deleted_at IS NULL ORDER BY w.name COLLATE NOCASE,p.title COLLATE NOCASE LIMIT 2000`,
+     WHERE p.kind='database' AND p.deleted_at IS NULL ORDER BY lower(w.name),lower(p.title) LIMIT 2000`,
     user.id,
   );
   const syncing = new Set(

@@ -187,7 +187,7 @@ const USER_SELECT =
 
 function renderUser(row: UserRow): Json {
   const groups = all<{ id: string; display_name: string }>(
-    "SELECT g.id,g.display_name FROM scim_group_members m JOIN scim_groups g ON g.id=m.group_id WHERE m.user_id=? ORDER BY g.display_name",
+    "SELECT g.id,g.display_name FROM scim_group_members m JOIN scim_groups g ON g.id=m.group_id WHERE m.user_id=? ORDER BY lower(g.display_name)",
     row.user_id,
   );
   const formatted = [row.given_name, row.family_name].filter(Boolean).join(" ");
@@ -409,7 +409,7 @@ function updateProfile(userId: string, input: UserInput) {
   if (input.email && !isLocal(userId)) run("UPDATE users SET email=? WHERE id=?", input.email, userId);
 }
 function uniqueUserName(userName: string, except?: string) {
-  if (one("SELECT 1 FROM scim_users WHERE user_name=? AND id<>?", userName, except || ""))
+  if (one("SELECT 1 FROM scim_users WHERE lower(user_name)=lower(?) AND id<>?", userName, except || ""))
     throw new ScimError(409, "userName is already in use.", "uniqueness");
 }
 
@@ -494,7 +494,7 @@ function memberUserIds(scimIds: string[]) {
   return ids;
 }
 function uniqueGroupName(name: string, except?: string) {
-  if (one("SELECT 1 FROM scim_groups WHERE display_name=? AND id<>?", name, except || ""))
+  if (one("SELECT 1 FROM scim_groups WHERE lower(display_name)=lower(?) AND id<>?", name, except || ""))
     throw new ScimError(409, "displayName is already in use.", "uniqueness");
 }
 // Sets the members; returns everyone whose groups changed.

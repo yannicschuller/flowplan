@@ -73,7 +73,7 @@ function workspaces(user: Identity) {
       role: w.role,
       guest: !!w.guest,
       spaces: all<Space>(
-        "SELECT * FROM spaces WHERE workspace_id=? AND deleted_at IS NULL ORDER BY name COLLATE NOCASE",
+        "SELECT * FROM spaces WHERE workspace_id=? AND deleted_at IS NULL ORDER BY lower(name)",
         w.id,
       )
         .filter((s) => spaceRole(user, s) || visible.has(s.id))

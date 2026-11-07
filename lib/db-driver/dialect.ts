@@ -71,8 +71,10 @@ const jsonPath = (path: string) => {
 
 export const sqliteDialect: Dialect = {
   name: "sqlite",
-  ieq: (c, p = "?") => `${c}=${p} COLLATE NOCASE`,
-  nocase: (e) => `${e} COLLATE NOCASE`,
+  // lower() on both sides on both databases (decided for #127): SQLite's
+  // lower() folds ASCII only, exactly what NOCASE compared.
+  ieq: (c, p = "?") => `lower(${c})=lower(${p})`,
+  nocase: (e) => `lower(${e})`,
   insertIgnore: (rest) => `INSERT OR IGNORE INTO ${rest}`,
   upsert: (t, cols, keys) =>
     `INSERT INTO ${t}(${cols.join(",")}) VALUES(${cols.map(() => "?").join(",")}) ON CONFLICT(${keys.join(",")}) DO ${
@@ -80,7 +82,8 @@ export const sqliteDialect: Dialect = {
         ? `UPDATE SET ${cols.filter((c) => !keys.includes(c)).map((c) => `${c}=excluded.${c}`).join(",")}`
         : "NOTHING"
     }`,
-  isNot: (c, p = "?") => `${c} IS NOT ${p}`,
+  // SQLite reads IS DISTINCT FROM since 3.39 (an alias of IS NOT).
+  isNot: (c, p = "?") => `${c} IS DISTINCT FROM ${p}`,
   jsonValues: (p = "?") => `(SELECT value FROM json_each(${p}))`,
   jsonText: (c, path) => `json_extract(${c},'${jsonPath(path)}')`,
   nowText: () => "CURRENT_TIMESTAMP",

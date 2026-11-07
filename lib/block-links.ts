@@ -9,7 +9,7 @@ import * as Y from "yjs";
 import { Node as PMNode } from "@tiptap/pm/model";
 import { Transform } from "@tiptap/pm/transform";
 import { updateYFragment, yDocToProsemirrorJSON } from "y-prosemirror";
-import { all, one, run } from "./db";
+import { all, one, run, sql } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import { journalLocked } from "./journal-extras";
@@ -175,10 +175,10 @@ export function linkedBlockIds(workspaceId: string) {
   const found = new Map<string, Set<string>>();
   const sources = all<{ html: string }>(
     `SELECT d.html FROM documents d JOIN pages p ON p.id=d.page_id
-     WHERE p.workspace_id=? AND p.deleted_at IS NULL AND instr(d.html,'block=')>0
+     WHERE p.workspace_id=? AND p.deleted_at IS NULL AND ${sql.instr("d.html", `'block='`)}>0
      UNION ALL
      SELECT d.html FROM row_documents d JOIN rows r ON r.id=d.row_id JOIN pages p ON p.id=r.page_id
-     WHERE p.workspace_id=? AND p.deleted_at IS NULL AND instr(d.html,'block=')>0`,
+     WHERE p.workspace_id=? AND p.deleted_at IS NULL AND ${sql.instr("d.html", `'block='`)}>0`,
     workspaceId,
     workspaceId,
   );

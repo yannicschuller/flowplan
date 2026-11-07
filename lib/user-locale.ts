@@ -8,7 +8,7 @@ export function userLocale(userId: string): Locale {
   return isLocale(value) ? value : "de";
 }
 export function rememberLocale(userId: string, locale: Locale) {
-  run("UPDATE users SET locale=? WHERE id=? AND locale IS NOT ?", locale, userId, locale);
+  run("UPDATE users SET locale=? WHERE id=? AND locale IS DISTINCT FROM ?", locale, userId, locale);
 }
 
 // A language chosen in the profile: it wins over the browser on every device.

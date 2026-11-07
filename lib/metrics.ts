@@ -16,7 +16,7 @@
 // Überwachung → Statistik).
 import { statfsSync } from "node:fs";
 import { resolve } from "node:path";
-import { all, one, run } from "./db";
+import { all, one, run, sql } from "./db";
 
 const MINUTE = 60_000,
   HOUR = 3_600_000,
@@ -253,7 +253,7 @@ function writeActive(at: number, people: number) {
   } catch {}
   const active = Math.max(people, seen);
   if (!active && !one("SELECT 1 FROM metrics_hour WHERE at=?", at)) return;
-  run("INSERT INTO metrics_hour(at,active) VALUES(?,?) ON CONFLICT(at) DO UPDATE SET active=MAX(metrics_hour.active,excluded.active)", at, active);
+  run(`INSERT INTO metrics_hour(at,active) VALUES(?,?) ON CONFLICT(at) DO UPDATE SET active=${sql.greatest("metrics_hour.active", "excluded.active")}`, at, active);
 }
 // AI counts: written by the worker and when read, so the chart includes
 // the last request.

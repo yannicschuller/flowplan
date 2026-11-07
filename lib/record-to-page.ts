@@ -10,7 +10,7 @@ import { copyFileSync, existsSync, mkdirSync, unlinkSync } from "node:fs";
 import { resolve } from "node:path";
 import { generateJSON } from "@tiptap/html/server";
 import { Fragment, Node as PMNode } from "@tiptap/pm/model";
-import { all, id, one, onTransactionRollback, run, nowText } from "./db";
+import { all, id, one, onTransactionRollback, run, nowText, sql } from "./db";
 import { SPACE_ORDER } from "./space-order";
 import { HttpError } from "./auth";
 import { quotaCheckpoint } from "./instance-ops";
@@ -49,7 +49,7 @@ function pageTargets(user: Identity, workspaceId: string): PageTarget[] {
   const locked = lockedPageIds(user, workspaceId);
   const pages = all<Page>(
     `SELECT * FROM pages WHERE workspace_id=? AND deleted_at IS NULL AND synced=0 AND journal_date IS NULL
-     AND kind!='database' AND COALESCE(locked,0)=0 ORDER BY title COLLATE NOCASE`,
+     AND kind!='database' AND COALESCE(locked,0)=0 ORDER BY lower(title)`,
     workspaceId,
   ).filter((p) => names.has(p.space_id) && !locked.has(p.id) && writes(pageRole(user, p)));
   return [
@@ -154,7 +154,7 @@ export function recordToPagePlan(user: Identity, databaseId: string, rowId: stri
     restricted: (row.access && row.access !== "inherit") || count("SELECT COUNT(*) n FROM row_grants WHERE row_id=?", row.id) > 0,
     // Relations from other records to this one end with the record.
     relations: count(
-      `SELECT COUNT(*) n FROM rows r JOIN pages p ON p.id=r.page_id WHERE p.workspace_id=? AND r.id!=? AND instr(r.cells, ?)>0`,
+      `SELECT COUNT(*) n FROM rows r JOIN pages p ON p.id=r.page_id WHERE p.workspace_id=? AND r.id!=? AND ${sql.instr("r.cells", "?")}>0`,
       database.workspace_id,
       row.id,
       row.id,
@@ -306,13 +306,13 @@ export function recordToPage(
   for (const source of [
     ...all<{ page_id: string; row_id: null }>(
       `SELECT d.page_id,NULL row_id FROM documents d JOIN pages p ON p.id=d.page_id
-       WHERE p.workspace_id=? AND instr(d.html, ?)>0`,
+       WHERE p.workspace_id=? AND ${sql.instr("d.html", "?")}>0`,
       database.workspace_id,
       row.id,
     ),
     ...all<{ page_id: string; row_id: string }>(
       `SELECT r.page_id,r.id row_id FROM row_documents d JOIN rows r ON r.id=d.row_id JOIN pages p ON p.id=r.page_id
-       WHERE p.workspace_id=? AND instr(d.html, ?)>0`,
+       WHERE p.workspace_id=? AND ${sql.instr("d.html", "?")}>0`,
       database.workspace_id,
       row.id,
     ),

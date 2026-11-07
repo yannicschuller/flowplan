@@ -62,7 +62,7 @@ const MAX_TARGET_PAGES = 400;
 // save to, newest first.
 export function clipperTargets(user: Identity) {
   const workspaces = all<{ id: string; name: string }>(
-    "SELECT w.id,w.name FROM workspaces w JOIN members m ON m.workspace_id=w.id WHERE m.user_id=? AND m.role IN ('owner','editor') ORDER BY w.name COLLATE NOCASE",
+    "SELECT w.id,w.name FROM workspaces w JOIN members m ON m.workspace_id=w.id WHERE m.user_id=? AND m.role IN ('owner','editor') ORDER BY lower(w.name)",
     user.id,
   );
   return {

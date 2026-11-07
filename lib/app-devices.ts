@@ -64,8 +64,8 @@ export function checkAppDevice(userId: string, key: AppDeviceKey | null, now = D
     return "known";
   }
   run(
-    `DELETE FROM app_devices WHERE user_id=? AND device_id IN (
-       SELECT device_id FROM app_devices WHERE user_id=? ORDER BY last_used_at DESC LIMIT -1 OFFSET ?)`,
+    `DELETE FROM app_devices WHERE user_id=? AND device_id NOT IN (
+       SELECT device_id FROM app_devices WHERE user_id=? ORDER BY last_used_at DESC LIMIT ?)`,
     userId,
     userId,
     MAX_APP_DEVICES - 1,

@@ -85,7 +85,7 @@ export function inlineThreads(
   const page = scope(user, pageId, rowId),
     canEdit = pageRole(user, page) !== "viewer";
   return all<StoredThread>(
-    "SELECT * FROM inline_threads WHERE page_id=? AND row_id IS ? ORDER BY created_at,id",
+    "SELECT * FROM inline_threads WHERE page_id=? AND row_id IS NOT DISTINCT FROM ? ORDER BY created_at,id",
     pageId,
     rowId || null,
   ).map((t) => ({
@@ -305,7 +305,7 @@ export function inlineCommentCommand(
     if (
       Number(
         one<{ n: number }>(
-          "SELECT count(*) n FROM inline_threads WHERE page_id=? AND row_id IS ?",
+          "SELECT count(*) n FROM inline_threads WHERE page_id=? AND row_id IS NOT DISTINCT FROM ?",
           pageId,
           rowId || null,
         )?.n,
@@ -352,7 +352,7 @@ export function inlineCommentCommand(
   }
   const threadId = z.uuid().parse(input.threadId),
     thread = one<StoredThread>(
-      "SELECT * FROM inline_threads WHERE id=? AND page_id=? AND row_id IS ?",
+      "SELECT * FROM inline_threads WHERE id=? AND page_id=? AND row_id IS NOT DISTINCT FROM ?",
       threadId,
       pageId,
       rowId || null,
