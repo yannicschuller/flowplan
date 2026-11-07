@@ -21,6 +21,8 @@ import { cpus, loadavg, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import pg from "pg";
+import webpush from "web-push";
+import { randomBytes as randomKey } from "node:crypto";
 
 const { values: opt } = parseArgs({
   options: {
@@ -57,6 +59,7 @@ if (!existsSync(join(standalone, "server.js"))) {
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const metricsToken = "loadtest-metrics-token-0123456789";
+const sharedKeys = { secrets: randomKey(32).toString("base64"), push: webpush.generateVAPIDKeys() };
 const children = new Set();
 const stopAll = () => {
   for (const child of children) child.kill("SIGINT");
@@ -146,6 +149,10 @@ async function measure(count, s3) {
     FLOWPLAN_METRICS_TOKEN: metricsToken,
     FLOWPLAN_METRICS_LOOP: "1",
     FLOWPLAN_TRUSTED_PROXIES: "1",
+    // The keys every instance shares (lib/cluster/config.ts).
+    FLOWPLAN_SECRETS_KEY: sharedKeys.secrets,
+    WEB_PUSH_PUBLIC_KEY: sharedKeys.push.publicKey,
+    WEB_PUSH_PRIVATE_KEY: sharedKeys.push.privateKey,
   };
   const servers = [];
   for (let i = 1; i <= count; i++) {

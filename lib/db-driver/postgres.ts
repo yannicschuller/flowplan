@@ -48,6 +48,16 @@ export function postgresTimeouts(env: Record<string, string | undefined> = proce
     connectTimeout: ms("FLOWPLAN_PG_CONNECT_TIMEOUT", 30_000),
   };
 }
+// Named prepared statements (default on): FLOWPLAN_PG_PREPARE=off sends
+// every statement unnamed – for PgBouncer in transaction mode before 1.21,
+// or without max_prepared_statements, where a name prepared on one server
+// connection is unknown on the next.
+export function postgresPrepare(env: Record<string, string | undefined> = process.env): boolean {
+  const raw = env.FLOWPLAN_PG_PREPARE?.trim().toLowerCase();
+  if (!raw || ["on", "1", "true", "yes"].includes(raw)) return true;
+  if (["off", "0", "false", "no"].includes(raw)) return false;
+  throw new Error(`FLOWPLAN_PG_PREPARE must be on or off: ${raw}`);
+}
 type Prepared = { text: string; name?: string };
 const MAX_PREPARED = 2000;
 const SCHEMA_CHANGE = /^\s*(ALTER|DROP|CREATE)\s/i;

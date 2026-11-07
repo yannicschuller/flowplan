@@ -8,7 +8,7 @@
 //   node scripts/db-search-rebuild.mjs --sqlite /app/data/flowplan.sqlite
 //   DATABASE_URL=postgres://… FLOWPLAN_PG_SCHEMA=flowplan node scripts/db-search-rebuild.mjs
 //
-// In the Docker image: docker exec flowplan node /app/db-search-rebuild.mjs
+// In the Docker image: docker exec flowplan node /app/scripts/db-search-rebuild.mjs
 // On PostgreSQL it also rebuilds the trigram indexes (REINDEX), e.g. after
 // pg_trgm was installed or upgraded.
 // db-dialect-scan: sqlite-only file – the SQLite branch edits the file directly.

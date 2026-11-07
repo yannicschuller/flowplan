@@ -22,6 +22,20 @@ export function clusterConfigProblems(env: Record<string, string | undefined> = 
   if (!redis) problems.push("REDIS_URL is missing (redis://…): instances exchange live updates, presence and rate limits through Redis.");
   else if (!/^rediss?:\/\//i.test(redis)) problems.push("REDIS_URL must start with redis:// or rediss://.");
   if (!env.S3_BUCKET?.trim()) problems.push("S3_BUCKET (with S3_ENDPOINT, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY) is missing: files must live in object storage that every instance reaches.");
+  // Keys every instance must share. Without them each instance generates
+  // its own in its data folder (secrets.key, web-push-keys.json): a secret
+  // sealed on one (two-factor secrets, stored API keys, unlocked share
+  // links) does not open on another, and push subscriptions made through
+  // one instance are refused when another sends.
+  const set = (name: string) => !!(env[name]?.trim() || env[`${name}_FILE`]?.trim());
+  if (!set("FLOWPLAN_ENCRYPTION_KEY") && !set("FLOWPLAN_SECRETS_KEY"))
+    problems.push(
+      "FLOWPLAN_ENCRYPTION_KEY or FLOWPLAN_SECRETS_KEY (or their _FILE variants) is missing: every instance needs the same key for stored secrets (two-factor, API keys, share links), otherwise each one generates its own secrets.key.",
+    );
+  if (!env.WEB_PUSH_PUBLIC_KEY?.trim() || !env.WEB_PUSH_PRIVATE_KEY?.trim())
+    problems.push(
+      "WEB_PUSH_PUBLIC_KEY and WEB_PUSH_PRIVATE_KEY are missing (npx web-push generate-vapid-keys): every instance must send push with the same keys, otherwise each one generates its own web-push-keys.json.",
+    );
   return problems;
 }
 

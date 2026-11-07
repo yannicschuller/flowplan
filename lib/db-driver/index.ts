@@ -8,7 +8,7 @@
 // lib/db.ts keep working next to it during the transition.
 import { AsyncLocalStorage } from "node:async_hooks";
 import { currentTx, dbContext, postgresSchema, postgresUrl } from "./context";
-import { createPostgresDb, postgresTimeouts } from "./postgres";
+import { createPostgresDb, postgresPrepare, postgresTimeouts } from "./postgres";
 import { createSqliteDb } from "./sqlite";
 import type { Db, Param, Row } from "./types";
 
@@ -22,7 +22,7 @@ export function database(): Db {
   const url = postgresUrl();
   return (holder.flowplanAsyncDb = opened(
     url
-      ? createPostgresDb(url, { schema: postgresSchema(), max: poolSize(), ...postgresTimeouts(), applicationName: applicationName() })
+      ? createPostgresDb(url, { schema: postgresSchema(), max: poolSize(), prepare: postgresPrepare(), ...postgresTimeouts(), applicationName: applicationName() })
       : createSqliteDb(),
   ));
 }

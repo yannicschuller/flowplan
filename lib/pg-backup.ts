@@ -21,7 +21,7 @@ import { closeSync, existsSync, openSync, readSync, readdirSync, rmSync, writeFi
 import { delimiter, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import pg from "pg";
-import { postgresSchema, postgresUrl } from "./db-driver/context";
+import { postgresSchema, postgresSessionUrl } from "./db-driver/context";
 import { quoteIdent } from "./db-driver/pg-ddl.mjs";
 import { VECTOR_TABLE, VECTOR_TRIGGER } from "./ai/vector-store";
 
@@ -96,11 +96,13 @@ export async function pgTool(tool: Tool, serverMajor: number) {
 
 // ---- Connection ----
 
-// libpq's own parameters of DATABASE_URL (node-postgres knows others, which
-// libpq would refuse); the password goes through the environment, never on
-// the command line.
+// libpq's own parameters of DATABASE_URL – or DATABASE_SESSION_URL, as
+// pg_dump and pg_restore need a session of their own (behind PgBouncer in
+// transaction mode) – (node-postgres knows others, which libpq would
+// refuse); the password goes through the environment, never on the
+// command line.
 const LIBPQ = new Set(["sslmode", "sslrootcert", "sslcert", "sslkey", "sslcrl", "application_name", "connect_timeout", "target_session_attrs", "gssencmode", "channel_binding", "host", "port"]);
-export function libpqConnection(url = postgresUrl()!) {
+export function libpqConnection(url = postgresSessionUrl()!) {
   const u = new URL(url);
   const password = decodeURIComponent(u.password);
   u.password = "";
@@ -113,7 +115,7 @@ export function libpqConnection(url = postgresUrl()!) {
   return { dbname: u.toString(), env: { ...process.env, ...(password ? { PGPASSWORD: password } : {}), PGCONNECT_TIMEOUT: process.env.PGCONNECT_TIMEOUT || "15" } };
 }
 async function withClient<T>(fn: (client: pg.Client) => Promise<T>): Promise<T> {
-  const client = new pg.Client({ connectionString: postgresUrl()!, options: `-c search_path=${postgresSchema()}` });
+  const client = new pg.Client({ connectionString: postgresSessionUrl()!, options: `-c search_path=${postgresSchema()}` });
   await client.connect();
   try {
     return await fn(client);

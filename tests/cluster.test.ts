@@ -15,7 +15,8 @@ import { onPostgres } from "./helpers/backend";
 import { startFakeRedis } from "./helpers/fake-redis";
 import { clusterConfigProblems, clusterMode, requireClusterConfig } from "../lib/cluster/config";
 import { RedisClient, encodeCommand, parseReply, parseRedisUrl } from "../lib/cluster/redis";
-import { postgresTimeouts } from "../lib/db-driver/postgres";
+import { createPostgresDb, postgresPrepare, postgresTimeouts } from "../lib/db-driver/postgres";
+import { postgresSchema, postgresSessionUrl } from "../lib/db-driver/context";
 
 const fake = process.env.FLOWPLAN_TEST_REDIS_URL ? null : await startFakeRedis();
 const redisUrl = process.env.FLOWPLAN_TEST_REDIS_URL || fake!.url;
@@ -23,26 +24,63 @@ after(async () => {
   await fake?.close();
 });
 
-test("cluster mode needs PostgreSQL, Redis and S3 – and says what is missing", () => {
+// The keys every instance must share (else each generates its own).
+const KEYS = { FLOWPLAN_SECRETS_KEY: "k", WEB_PUSH_PUBLIC_KEY: "p", WEB_PUSH_PRIVATE_KEY: "q" };
+test("cluster mode needs PostgreSQL, Redis, S3 and shared keys – and says what is missing", () => {
   assert.equal(clusterMode({}), false);
   assert.equal(clusterMode({ FLOWPLAN_CLUSTER: "1" }), true);
   assert.equal(clusterMode({ FLOWPLAN_MODE: "cluster" }), true);
   // Off: nothing is required (the single container as always).
   assert.equal(requireClusterConfig({ DATABASE_URL: "" }), false);
   const problems = clusterConfigProblems({ FLOWPLAN_CLUSTER: "1", DATABASE_URL: "./data/flowplan.sqlite" });
-  assert.equal(problems.length, 3);
+  assert.equal(problems.length, 5);
   assert.match(problems[0], /DATABASE_URL must point to PostgreSQL/);
   assert.match(problems[1], /REDIS_URL is missing/);
   assert.match(problems[2], /S3_BUCKET/);
-  assert.throws(() => requireClusterConfig({ FLOWPLAN_CLUSTER: "1", DATABASE_URL: "postgres://x/y", S3_BUCKET: "b" }), /cannot start:\n {2}- REDIS_URL is missing/);
-  assert.equal(requireClusterConfig({ FLOWPLAN_CLUSTER: "1", DATABASE_URL: "postgres://x/y", REDIS_URL: "redis://r:6379", S3_BUCKET: "b" }), true);
-  assert.match(clusterConfigProblems({ FLOWPLAN_CLUSTER: "1", DATABASE_URL: "postgres://x/y", REDIS_URL: "http://r", S3_BUCKET: "b" })[0], /redis:\/\//);
+  assert.match(problems[3], /FLOWPLAN_ENCRYPTION_KEY or FLOWPLAN_SECRETS_KEY/);
+  assert.match(problems[4], /WEB_PUSH_PUBLIC_KEY and WEB_PUSH_PRIVATE_KEY/);
+  assert.throws(() => requireClusterConfig({ FLOWPLAN_CLUSTER: "1", DATABASE_URL: "postgres://x/y", S3_BUCKET: "b", ...KEYS }), /cannot start:\n {2}- REDIS_URL is missing/);
+  const ready = { FLOWPLAN_CLUSTER: "1", DATABASE_URL: "postgres://x/y", REDIS_URL: "redis://r:6379", S3_BUCKET: "b" };
+  assert.equal(requireClusterConfig({ ...ready, ...KEYS }), true);
+  assert.match(clusterConfigProblems({ ...ready, ...KEYS, REDIS_URL: "http://r" })[0], /redis:\/\//);
+  // Either key for stored secrets, also as a file; both push keys.
+  assert.deepEqual(clusterConfigProblems({ ...ready, ...KEYS, FLOWPLAN_SECRETS_KEY: "", FLOWPLAN_ENCRYPTION_KEY: "e" }), []);
+  assert.deepEqual(clusterConfigProblems({ ...ready, ...KEYS, FLOWPLAN_SECRETS_KEY: "", FLOWPLAN_ENCRYPTION_KEY_FILE: "/run/secrets/key" }), []);
+  assert.deepEqual(clusterConfigProblems({ ...ready, ...KEYS, FLOWPLAN_SECRETS_KEY: "", FLOWPLAN_SECRETS_KEY_FILE: "/run/secrets/key" }), []);
+  assert.match(clusterConfigProblems({ ...ready, ...KEYS, FLOWPLAN_SECRETS_KEY: "" }).join(), /FLOWPLAN_ENCRYPTION_KEY or FLOWPLAN_SECRETS_KEY/);
+  assert.throws(() => requireClusterConfig({ ...ready, ...KEYS, WEB_PUSH_PRIVATE_KEY: "" }), /WEB_PUSH_PUBLIC_KEY and WEB_PUSH_PRIVATE_KEY are missing/);
 });
 
 test("pool limits come from the environment, with the bridge's 10 s lock timeout by default", () => {
   assert.deepEqual(postgresTimeouts({}), { statementTimeout: 120_000, lockTimeout: 10_000, idleInTransactionTimeout: 60_000, connectTimeout: 30_000 });
   assert.equal(postgresTimeouts({ FLOWPLAN_PG_LOCK_TIMEOUT: "0" }).lockTimeout, 0);
   assert.throws(() => postgresTimeouts({ FLOWPLAN_PG_STATEMENT_TIMEOUT: "soon" }), /milliseconds/);
+});
+
+test("PgBouncer: FLOWPLAN_PG_PREPARE=off sends statements unnamed; DATABASE_SESSION_URL for the session connection", async () => {
+  assert.equal(postgresPrepare({}), true);
+  assert.equal(postgresPrepare({ FLOWPLAN_PG_PREPARE: "on" }), true);
+  for (const off of ["off", "OFF", "false", "0", "no"]) assert.equal(postgresPrepare({ FLOWPLAN_PG_PREPARE: off }), false);
+  assert.throws(() => postgresPrepare({ FLOWPLAN_PG_PREPARE: "sometimes" }), /on or off/);
+  // The session connection (LISTEN, the leader lock, pg_dump): its own URL, else DATABASE_URL.
+  assert.equal(postgresSessionUrl({}), null);
+  assert.equal(postgresSessionUrl({ DATABASE_URL: "./data/flowplan.sqlite", DATABASE_SESSION_URL: "postgres://s/db" }), null);
+  assert.equal(postgresSessionUrl({ DATABASE_URL: "postgres://bouncer:6432/db" }), "postgres://bouncer:6432/db");
+  assert.equal(postgresSessionUrl({ DATABASE_URL: "postgres://bouncer:6432/db", DATABASE_SESSION_URL: "postgres://server:5432/db" }), "postgres://server:5432/db");
+  assert.throws(() => postgresSessionUrl({ DATABASE_URL: "postgres://bouncer:6432/db", DATABASE_SESSION_URL: "redis://x" }), /DATABASE_SESSION_URL/);
+  if (!onPostgres) return;
+  // Unprepared: the same statement twice on one connection, no name on the server.
+  const unprepared = createPostgresDb(process.env.DATABASE_URL!, { schema: postgresSchema(), max: 1, prepare: false });
+  const named = createPostgresDb(process.env.DATABASE_URL!, { schema: postgresSchema(), max: 1 });
+  try {
+    for (const db of [unprepared, named]) for (let i = 0; i < 2; i++) assert.equal((await db.one<{ n: number }>("SELECT 1+? AS n", i))!.n, 1 + i);
+    const names = async (db: typeof named) => Number((await db.one<{ n: number }>("SELECT COUNT(*) n FROM pg_prepared_statements"))!.n);
+    assert.equal(await names(unprepared), 0);
+    assert.ok((await names(named)) >= 1);
+  } finally {
+    await unprepared.pool.end();
+    await named.pool.end();
+  }
 });
 
 test("liveness answers without the database; readiness checks it and turns 503 while stopping; FLOWPLAN_READY_REQUIRE", async () => {

@@ -91,6 +91,19 @@ export function postgresUrl(): string | null {
   const url = process.env.DATABASE_URL?.trim();
   return url && /^postgres(ql)?:\/\//i.test(url) ? url : null;
 }
+// The connection for what needs a session of its own: LISTEN, the leader's
+// session-level advisory lock (lib/cluster/pg-session.ts) and pg_dump,
+// pg_restore, psql (lib/pg-backup.ts). Behind PgBouncer in transaction mode
+// DATABASE_URL points at the pooler; DATABASE_SESSION_URL then names the
+// server itself or a session-mode pool. Without it: DATABASE_URL.
+export function postgresSessionUrl(env: Record<string, string | undefined> = process.env): string | null {
+  const main = env.DATABASE_URL?.trim();
+  if (!main || !/^postgres(ql)?:\/\//i.test(main)) return null;
+  const session = env.DATABASE_SESSION_URL?.trim();
+  if (!session) return main;
+  if (!/^postgres(ql)?:\/\//i.test(session)) throw new Error("DATABASE_SESSION_URL must point to PostgreSQL (postgres://…).");
+  return session;
+}
 // The schema (namespace) inside the Postgres database; tests use one per
 // process so parallel test files do not see each other.
 export function postgresSchema(): string {

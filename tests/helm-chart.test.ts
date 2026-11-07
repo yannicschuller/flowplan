@@ -31,12 +31,12 @@ test("by default exactly one replica, replaced with Recreate, probes on /api/hea
   assert.match(values, /^cluster:\n {2}enabled: false$/m);
 });
 
-test("cluster mode: connection strings only as Secret references, refused without database, Redis or bucket", () => {
+test("cluster mode: connection strings and shared keys only as Secret references, refused without database, Redis, bucket or keys", () => {
   const helpers = readFileSync("deploy/helm/flowplan/templates/_helpers.tpl", "utf8");
   const values = readFileSync("deploy/helm/flowplan/values.yaml", "utf8");
   assert.doesNotMatch(values, /postgres:\/\/[^…]*@|redis:\/\/:[^…]/, "no connection string with credentials in values");
-  for (const name of ["DATABASE_URL", "REDIS_URL"]) assert.match(helpers, new RegExp(`- name: ${name}\\n {2}valueFrom:\\n {4}secretKeyRef:`));
-  for (const required of ["cluster.database.existingSecret", "cluster.redis.existingSecret", "s3.bucket"]) assert.match(helpers, new RegExp(`fail "cluster\\.enabled: set ${required.replace(/\./g, "\\.")}`));
+  for (const name of ["DATABASE_URL", "REDIS_URL", "FLOWPLAN_ENCRYPTION_KEY", "WEB_PUSH_PUBLIC_KEY", "WEB_PUSH_PRIVATE_KEY"]) assert.match(helpers, new RegExp(`- name: ${name}\\n {2}valueFrom:\\n {4}secretKeyRef:`));
+  for (const required of ["cluster.database.existingSecret", "cluster.redis.existingSecret", "s3.bucket", "cluster.keys.existingSecret"]) assert.match(helpers, new RegExp(`fail "cluster\\.enabled: set ${required.replace(/\./g, "\\.")}`));
   assert.match(deployment, /include "flowplan.clusterCheck"/);
   // No PVC in cluster mode; the schema Job runs before install and upgrade.
   assert.match(readFileSync("deploy/helm/flowplan/templates/pvc.yaml", "utf8"), /\(not \.Values\.cluster\.enabled\)/);

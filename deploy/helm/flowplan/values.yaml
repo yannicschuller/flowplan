@@ -80,6 +80,11 @@ encryptionKey: ""
 #   kubectl create secret generic flowplan-cluster \
 #     --from-literal=DATABASE_URL='postgres://flowplan:…@postgres:5432/flowplan' \
 #     --from-literal=REDIS_URL='redis://:…@redis:6379/0'
+# and the keys every pod must share (cluster.keys):
+#   npx web-push generate-vapid-keys      # the two push keys
+#   kubectl create secret generic flowplan-keys \
+#     --from-literal=FLOWPLAN_ENCRYPTION_KEY="$(openssl rand -base64 32)" \
+#     --from-literal=WEB_PUSH_PUBLIC_KEY='…' --from-literal=WEB_PUSH_PRIVATE_KEY='…'
 cluster:
   enabled: false
   replicas: 2
@@ -91,6 +96,15 @@ cluster:
     # Secret and key holding REDIS_URL (redis:// or rediss://).
     existingSecret: ""
     key: REDIS_URL
+  keys:
+    # Secret holding the keys every pod shares: the encryption key (stored
+    # secrets, two-factor, files, backups) and the web push (VAPID) key
+    # pair. Required – otherwise each pod would generate its own. Its
+    # FLOWPLAN_ENCRYPTION_KEY wins over encryptionKey above.
+    existingSecret: ""
+    encryptionKey: FLOWPLAN_ENCRYPTION_KEY
+    webPushPublicKey: WEB_PUSH_PUBLIC_KEY
+    webPushPrivateKey: WEB_PUSH_PRIVATE_KEY
   # PostgreSQL connections per pod (FLOWPLAN_PG_POOL). replicas × (pool + 2)
   # must stay below the server's max_connections (or use PgBouncer ≥ 1.21
   # with max_prepared_statements).

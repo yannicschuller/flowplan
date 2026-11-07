@@ -5,7 +5,7 @@
 // or cut-off leader frees it by itself). Reconnects with a growing pause and
 // listens again; the leader election learns that its lock is gone.
 import pg from "pg";
-import { postgresSchema, postgresUrl } from "../db-driver/context";
+import { postgresSchema, postgresSessionUrl } from "../db-driver/context";
 import { configureTypes } from "../db-driver/pg-types.mjs";
 
 configureTypes(pg);
@@ -52,7 +52,7 @@ export function sessionClient(): Promise<pg.Client> {
 }
 
 async function open(s: State): Promise<pg.Client> {
-  const url = postgresUrl();
+  const url = postgresSessionUrl();
   if (!url) throw new Error("No PostgreSQL database (DATABASE_URL)");
   s.closed = false;
   const client = new pg.Client({

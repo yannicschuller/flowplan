@@ -91,8 +91,9 @@ fails otherwise. With single sign-on, register
 
 With `cluster.enabled=true` the chart runs `cluster.replicas` pods (rolling
 updates, a PodDisruptionBudget, pods spread over nodes) against
-**PostgreSQL**, **Redis** and **S3 object storage** – all three required;
-a pod refuses to start without one, and the chart refuses to render. The
+**PostgreSQL**, **Redis** and **S3 object storage** – all three required,
+as are keys every pod shares (`cluster.keys`); a pod refuses to start
+without one, and the chart refuses to render. The
 chart creates none of them: use managed services or their own charts, and
 pass the connection strings as references to a Secret you create (the
 chart never holds them):
@@ -102,8 +103,11 @@ kubectl -n flowplan create secret generic flowplan-cluster \
   --from-literal=DATABASE_URL='postgres://flowplan:…@postgres:5432/flowplan' \
   --from-literal=REDIS_URL='redis://:…@redis-master:6379/0'
 kubectl -n flowplan create secret generic flowplan-env \
-  --from-literal=S3_ACCESS_KEY_ID=… --from-literal=S3_SECRET_ACCESS_KEY=… \
-  --from-literal=FLOWPLAN_ENCRYPTION_KEY="$(openssl rand -base64 32)"
+  --from-literal=S3_ACCESS_KEY_ID=… --from-literal=S3_SECRET_ACCESS_KEY=…
+# The keys every pod shares (push keys: npx web-push generate-vapid-keys).
+kubectl -n flowplan create secret generic flowplan-keys \
+  --from-literal=FLOWPLAN_ENCRYPTION_KEY="$(openssl rand -base64 32)" \
+  --from-literal=WEB_PUSH_PUBLIC_KEY=… --from-literal=WEB_PUSH_PRIVATE_KEY=…
 
 helm install flowplan deploy/helm/flowplan -n flowplan \
   --set appUrl=https://flowplan.example.org \
@@ -112,6 +116,7 @@ helm install flowplan deploy/helm/flowplan -n flowplan \
   --set cluster.replicas=3 \
   --set cluster.database.existingSecret=flowplan-cluster \
   --set cluster.redis.existingSecret=flowplan-cluster \
+  --set cluster.keys.existingSecret=flowplan-keys \
   --set s3.bucket=flowplan --set s3.endpoint=https://s3.example.org
 ```
 
@@ -123,6 +128,11 @@ helm install flowplan deploy/helm/flowplan -n flowplan \
 - **Probes:** liveness on `/api/health/live`, readiness on
   `/api/health/ready` (database, Redis, bucket; 503 while a pod stops, after
   which it waits `cluster.preStopSeconds` before Next.js closes).
+- **Shared keys:** without one encryption key and one web push key pair
+  for all pods, each would generate its own in its `/app/data`: secrets
+  sealed on one pod (two-factor, stored API keys, unlocked share links)
+  would not open on another, and push would fail. Keep a copy of the
+  encryption key apart from the backups.
 - **No volume:** `/app/data` is a per-pod cache (`emptyDir`,
   `cluster.cacheSizeLimit`); files live in the bucket, backups are
   PostgreSQL's (no Litestream).
@@ -165,6 +175,7 @@ helm install flowplan deploy/helm/flowplan -n flowplan \
 | `cluster.replicas` | `2` | Pods in cluster mode |
 | `cluster.database.existingSecret`, `.key` | –, `DATABASE_URL` | Secret holding the PostgreSQL URL (required in cluster mode) |
 | `cluster.redis.existingSecret`, `.key` | –, `REDIS_URL` | Secret holding the Redis URL (required in cluster mode) |
+| `cluster.keys.existingSecret` | – | Secret holding `FLOWPLAN_ENCRYPTION_KEY`, `WEB_PUSH_PUBLIC_KEY`, `WEB_PUSH_PRIVATE_KEY` (required in cluster mode; key names: `cluster.keys.encryptionKey`, `.webPushPublicKey`, `.webPushPrivateKey`) |
 | `cluster.poolSize` | `10` | PostgreSQL connections per pod (`FLOWPLAN_PG_POOL`) |
 | `cluster.migration.enabled` | `true` | Schema Job before install/upgrade |
 | `cluster.podDisruptionBudget.minAvailable` | `1` | PodDisruptionBudget (with 2+ replicas) |

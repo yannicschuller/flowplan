@@ -108,6 +108,9 @@ missing. */}}
 {{- if not .Values.s3.bucket }}
 {{- fail "cluster.enabled: set s3.bucket (and S3 credentials, best in existingSecret) – files must live in object storage." }}
 {{- end }}
+{{- if not .Values.cluster.keys.existingSecret }}
+{{- fail "cluster.enabled: set cluster.keys.existingSecret (a Secret with FLOWPLAN_ENCRYPTION_KEY, WEB_PUSH_PUBLIC_KEY and WEB_PUSH_PRIVATE_KEY) – every pod needs the same keys." }}
+{{- end }}
 {{- if lt (int .Values.cluster.replicas) 1 }}
 {{- fail "cluster.replicas must be at least 1." }}
 {{- end }}
@@ -128,6 +131,24 @@ missing. */}}
     secretKeyRef:
       name: {{ .Values.cluster.redis.existingSecret }}
       key: {{ .Values.cluster.redis.key }}
+# The keys every pod shares: without them each pod generates its own
+# (secrets.key, web-push-keys.json) and two-factor sign-in, stored secrets
+# and push break between pods.
+- name: FLOWPLAN_ENCRYPTION_KEY
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.cluster.keys.existingSecret }}
+      key: {{ .Values.cluster.keys.encryptionKey }}
+- name: WEB_PUSH_PUBLIC_KEY
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.cluster.keys.existingSecret }}
+      key: {{ .Values.cluster.keys.webPushPublicKey }}
+- name: WEB_PUSH_PRIVATE_KEY
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.cluster.keys.existingSecret }}
+      key: {{ .Values.cluster.keys.webPushPrivateKey }}
 - name: FLOWPLAN_PG_POOL
   value: {{ .Values.cluster.poolSize | toString | quote }}
 {{- if .Values.cluster.migration.enabled }}

@@ -772,7 +772,7 @@ adds about a microsecond on SQLite (two promise layers) – a request with
   per process – fine as long as memos stay request-scoped.
 - **Connections:** pool size × instances ≤ `max_connections` (or PgBouncer;
   named statements need PgBouncer ≥ 1.21 with `max_prepared_statements`, or
-  `prepare: false`); `statement_timeout`/`lock_timeout` per connection.
+  `FLOWPLAN_PG_PREPARE=off`); `statement_timeout`/`lock_timeout` per connection.
 - **No synchronous paths:** done in phase 2 – the bridge is gone and every
   database call is asynchronous (§12).
 
@@ -1044,7 +1044,7 @@ the transaction: the caller sees it).
   advisory locks. A staged restore on Postgres must be coordinated by the
   leader in cluster mode.
 - **Named prepared statements** need PgBouncer ≥ 1.21 with
-  `max_prepared_statements`, or `prepare: false` (§8).
+  `max_prepared_statements`, or `FLOWPLAN_PG_PREPARE=off` (§8).
 - **Search** still uses the plain-table stop-gap (§5a) and its triggers;
   the object storage queue still polls every 0.5 s on Postgres. *(The
   queue: LISTEN/NOTIFY since phase 3a, §14.)*
@@ -1407,9 +1407,19 @@ shared queues (files due/in flight, mail, push, webhooks, chat apps).
   PostgreSQL; the sidebar/bootstrap permission checks and `filterAsync`
   over pages are the hot spots in the load test (§15).
 - **PgBouncer:** named prepared statements need ≥ 1.21 with
-  `max_prepared_statements`; `LISTEN` and the leader's session lock need a
-  session-pooled connection (`pg-session.ts` connects with `DATABASE_URL`:
-  point it at the server or a session-mode pool).
+  `max_prepared_statements`; older ones, or without it:
+  `FLOWPLAN_PG_PREPARE=off` (every statement unnamed, `postgresPrepare()`
+  in lib/db-driver/postgres.ts; costs about a third of the throughput,
+  §8). `LISTEN`, the leader's session-level advisory lock and
+  `pg_dump`/`pg_restore`/`psql` need a session of their own:
+  `DATABASE_SESSION_URL` (the server itself or a session-mode pool;
+  `postgresSessionUrl()` in lib/db-driver/context.ts, used by
+  lib/cluster/pg-session.ts and lib/pg-backup.ts) – without it they use
+  `DATABASE_URL`. Pool connections pass `search_path` and the timeouts as
+  startup parameter `options`: a PgBouncer that refuses it needs
+  `ignore_startup_parameters = options`, and then the schema `public` and
+  the timeouts set on the role (`ALTER ROLE … SET statement_timeout …`) –
+  not tested here (no PgBouncer in CI).
 - **Redis** is a single point for live updates and shared limits: when it is
   away, editing and saving keep working (PostgreSQL), live updates between
   instances stop (clients catch up on their next check), rate limits count
