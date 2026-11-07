@@ -58,7 +58,9 @@ jobs:
     timeout-minutes: 45
     services:
       postgres:
-        image: postgres:16
+        # PostgreSQL 16 with pgvector (the semantic search's tests run with
+        # it; without the extension they skip, tests/pgvector.test.ts).
+        image: pgvector/pgvector:0.8.0-pg16
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: flowplan_test
@@ -89,6 +91,13 @@ jobs:
           docker restart ${{ job.services.postgres.id }}
           for i in $(seq 1 60); do pg_isready -h localhost -p 5432 -U postgres && break; sleep 1; done
           psql "$DATABASE_URL" -tAc "SHOW max_locks_per_transaction" | grep -qx 256
+      # pg_dump/pg_restore/psql for the backups (lib/pg-backup.ts): the
+      # runner's client must be at least the server's version.
+      - name: PostgreSQL client tools
+        run: |
+          pg_dump --version
+          psql "$DATABASE_URL" -tAc "SHOW server_version_num"
+          test "$(pg_dump --version | grep -oE '[0-9]+' | head -1)" -ge 16
       - run: npm test
       - run: npm run build
         env:
