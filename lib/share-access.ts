@@ -42,15 +42,15 @@ export function shareCookieOf(headers: Headers) {
 export const withShareRequest = <T>(req: Request, fn: () => T): T => withShareCookie(shareCookieOf(req.headers), fn);
 
 // The protection of a link or a publication (null: no such link).
-export function shareProtection(token: string): Protection | null {
-  const link = one<Protection>("SELECT password_hash,expires_at FROM share_links WHERE token=?", token);
+export async function shareProtection(token: string): Promise<Protection | null> {
+  const link = await one<Protection>("SELECT password_hash,expires_at FROM share_links WHERE token=?", token);
   if (link) return link;
   return (
-    one<Protection>(
+    await one<Protection>(
       "SELECT p.password_hash,p.expires_at FROM publications p JOIN pages g ON g.id=p.page_id WHERE g.public_token=? AND g.deleted_at IS NULL",
       token,
     ) ||
-    (one("SELECT 1 FROM pages WHERE public_token=? AND deleted_at IS NULL", token) ? { password_hash: null, expires_at: null } : null)
+    ((await one("SELECT 1 FROM pages WHERE public_token=? AND deleted_at IS NULL", token)) ? { password_hash: null, expires_at: null } : null)
   );
 }
 export const isExpired = (p: Protection, now = Date.now()) => !!p.expires_at && p.expires_at <= now;
@@ -66,8 +66,8 @@ export function validUnlock(token: string, hash: string, value: string | undefin
 }
 
 // What a visitor of the link sees.
-export function shareState(token: string, unlock: string | undefined, now = Date.now()) {
-  const p = shareProtection(token);
+export async function shareState(token: string, unlock: string | undefined, now = Date.now()) {
+  const p = await shareProtection(token);
   if (!p) return "missing" as const;
   if (isExpired(p, now)) return "expired" as const;
   if (p.password_hash && !validUnlock(token, p.password_hash, unlock, now)) return "password" as const;
@@ -83,10 +83,10 @@ export function checkShareProtection(token: string, p: Protection, now = Date.no
 // (never beyond the link's end).
 export async function unlockShare(token: string, password: unknown, address: string, now = Date.now()) {
   const key = `share:${token}:${address}`.slice(0, 300);
-  pruneLoginFailures(now - FAILURE_WINDOW, now);
-  const failures = Number(one<{ n: number }>("SELECT COUNT(*) n FROM login_failures WHERE key=? AND at>=?", key, now - FAILURE_WINDOW)?.n || 0);
+  await pruneLoginFailures(now - FAILURE_WINDOW, now);
+  const failures = Number((await one<{ n: number }>("SELECT COUNT(*) n FROM login_failures WHERE key=? AND at>=?", key, now - FAILURE_WINDOW))?.n || 0);
   if (failures >= MAX_FAILURES) throw new HttpError(429, "Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.");
-  const p = shareProtection(token);
+  const p = await shareProtection(token);
   const text = typeof password === "string" ? password.slice(0, 200) : "";
   // The same work whether the link exists and has a password or not.
   const ok = await verifyPassword(text, p?.password_hash || DUMMY_HASH);
@@ -94,7 +94,7 @@ export async function unlockShare(token: string, password: unknown, address: str
   if (isExpired(p, now)) throw new HttpError(410, "Dieser Link ist abgelaufen.");
   if (!p.password_hash) return { value: "", maxAge: 0 };
   if (!ok) {
-    run("INSERT INTO login_failures(key,at) VALUES(?,?)", key, now);
+    await run("INSERT INTO login_failures(key,at) VALUES(?,?)", key, now);
     throw new HttpError(401, "Das Passwort stimmt nicht.");
   }
   const seconds = Math.max(60, Math.min(UNLOCK_SECONDS, p.expires_at ? Math.floor((p.expires_at - now) / 1000) : UNLOCK_SECONDS));

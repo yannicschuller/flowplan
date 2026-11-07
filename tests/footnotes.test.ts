@@ -132,22 +132,22 @@ test("read-only pages number the markers and list the notes at the end", () => {
   assert.equal(file.querySelector("#fn-2 a[href='#fnref-2']")?.textContent, "↩");
 });
 
-function user(name: string): Identity {
+async function user(name: string): Promise<Identity> {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@test.invalid`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@test.invalid`);
   return { id: uid, name, email: `${name}@test.invalid`, groups: [], isAdmin: false, disabled: 0, created_at: "" };
 }
 
-test("search finds the text of footnotes", () => {
+test("search finds the text of footnotes", async () => {
   assert.deepEqual(footnoteTexts('<p>a<sup data-footnote="x &amp; y"></sup></p>'), ["x & y"]);
   assert.match(documentText(page), /Vierte/);
-  const owner = user("owner");
-  const wid = createWorkspace(owner.id, "Notes");
-  const boot = bootstrap(owner, wid);
-  const pageId = (command(owner, { action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, kind: "document", title: "Quellen" }) as { id: string }).id;
+  const owner = await user("owner");
+  const wid = await createWorkspace(owner.id, "Notes");
+  const boot = await bootstrap(owner, wid);
+  const pageId = ((await command(owner, { action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, kind: "document", title: "Quellen" })) as { id: string }).id;
   const html = '<p>Behauptung<sup data-footnote="Belegt durch Zitronenfalter-Studie"></sup></p>';
-  run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), pageId);
-  const hits = searchWorkspace(owner, wid, "Zitronenfalter");
+  await run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), pageId);
+  const hits = await searchWorkspace(owner, wid, "Zitronenfalter");
   assert.ok(hits.some((hit) => hit.id === pageId));
 });
 
@@ -155,16 +155,16 @@ test("ZIP imports (Obsidian, Notion) bring their footnotes along", async () => {
   const { writeZip } = await import("../lib/archive");
   const { importZip } = await import("../lib/zip-import");
   const { one } = await import("../lib/db");
-  const owner = user("importer");
-  const wid = createWorkspace(owner.id, "Vault");
-  const space = bootstrap(owner, wid).spaces[0].id;
+  const owner = await user("importer");
+  const wid = await createWorkspace(owner.id, "Vault");
+  const space = (await bootstrap(owner, wid)).spaces[0].id;
   const archive = await writeZip(
     new Map([["Vault/Notiz.md", Buffer.from("# Notiz\n\nAussage[^a] mit ^[Randnotiz].\n\n[^a]: Quelle im Buch, S. 12\n")]]),
   );
   await importZip(owner, wid, space, archive);
-  const html = one<{ html: string }>(
+  const html = (await one<{ html: string }>(
     "SELECT d.html FROM documents d JOIN pages p ON p.id=d.page_id WHERE p.workspace_id=? AND d.html LIKE '%data-footnote%'",
     wid,
-  )?.html;
+  ))?.html;
   assert.match(html || "", /Aussage<sup data-footnote="Quelle im Buch, S\. 12"[^>]*><\/sup> mit <sup data-footnote="Randnotiz"[^>]*><\/sup>\./);
 });

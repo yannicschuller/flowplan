@@ -19,26 +19,26 @@ const policy = await import("../lib/two-factor-policy");
 const { saveInstanceSettings } = await import("../lib/instance-settings");
 const { command } = await import("../lib/api");
 
-saveInstanceSettings({ allowSignup: true });
+await saveInstanceSettings({ allowSignup: true });
 const T0 = Date.UTC(2026, 9, 19, 12, 0, 0);
 const STEP = 30_000;
 async function account(name: string) {
   const { user } = await auth.register({ name, email: `${name}@example.test`, password: `${name}-passwort-123` }, "de");
   return user;
 }
-const identity = (userId: string, isAdmin = false): Identity => {
-  const u = one<{ name: string; email: string }>("SELECT name,email FROM users WHERE id=?", userId)!;
+const identity = async (userId: string, isAdmin = false): Promise<Identity> => {
+  const u = (await one<{ name: string; email: string }>("SELECT name,email FROM users WHERE id=?", userId))!;
   return { id: userId, name: u.name, email: u.email, groups: isAdmin ? [adminGroup()] : [], isAdmin, disabled: 0, created_at: "" };
 };
 // Sets up the app for an account and returns its secret and recovery codes.
-function enable(userId: string, now = T0) {
-  const setup = tf.startTotpSetup({ id: userId }, "de");
-  const { recoveryCodes } = tf.confirmTotpSetup(userId, { code: totp.totpCode(setup.secret, now) }, "de", now);
+async function enable(userId: string, now = T0) {
+  const setup = await tf.startTotpSetup({ id: userId }, "de");
+  const { recoveryCodes } = await tf.confirmTotpSetup(userId, { code: totp.totpCode(setup.secret, now) }, "de", now);
   return { secret: setup.secret, recoveryCodes, uri: setup.uri };
 }
 const signIn = async (name: string, address: string) => {
   const { userId } = await auth.passwordLogin({ email: `${name}@example.test`, password: `${name}-passwort-123` }, address, "de");
-  return tf.afterPassword(userId, false, "de");
+  return await tf.afterPassword(userId, false, "de");
 };
 
 test("TOTP codes follow RFC 6238, accept one step either side and never count twice", () => {
@@ -88,90 +88,90 @@ test("secrets are sealed with a key file of their own and bound to their place",
 
 test("setting up: QR code, confirmation with a code, recovery codes shown once and stored hashed", async () => {
   const ana = await account("ana");
-  assert.equal(policy.totpEnabled(ana.id), false);
-  const setup = tf.startTotpSetup({ id: ana.id }, "de");
+  assert.equal(await policy.totpEnabled(ana.id), false);
+  const setup = await tf.startTotpSetup({ id: ana.id }, "de");
   assert.match(setup.uri, /^otpauth:\/\/totp\/Flowplan:ana%40example\.test\?secret=/);
   assert.ok(setup.qr && setup.qr.size >= 21 && setup.qr.path.startsWith("M"));
-  const stored = one<{ secret: string; enabled: number }>("SELECT secret,enabled FROM user_totp WHERE user_id=?", ana.id)!;
+  const stored = (await one<{ secret: string; enabled: number }>("SELECT secret,enabled FROM user_totp WHERE user_id=?", ana.id))!;
   assert.equal(stored.enabled, 0);
   assert.ok(!stored.secret.includes(setup.secret), "the secret is encrypted at rest");
-  assert.throws(() => tf.confirmTotpSetup(ana.id, { code: "000000" }, "de", T0), /stimmt nicht/);
-  const { recoveryCodes } = tf.confirmTotpSetup(ana.id, { code: totp.totpCode(setup.secret, T0) }, "de", T0);
+  await assert.rejects(async () => await tf.confirmTotpSetup(ana.id, { code: "000000" }, "de", T0), /stimmt nicht/);
+  const { recoveryCodes } = await tf.confirmTotpSetup(ana.id, { code: totp.totpCode(setup.secret, T0) }, "de", T0);
   assert.equal(recoveryCodes.length, 10);
   assert.equal(new Set(recoveryCodes).size, 10);
   assert.ok(recoveryCodes.every((c) => /^[a-z2-9]{5}-[a-z2-9]{5}$/.test(c)));
-  const hashes = all<{ code_hash: string }>("SELECT code_hash FROM recovery_codes WHERE user_id=?", ana.id);
+  const hashes = await all<{ code_hash: string }>("SELECT code_hash FROM recovery_codes WHERE user_id=?", ana.id);
   assert.equal(hashes.length, 10);
   assert.ok(hashes.every((h) => !recoveryCodes.includes(h.code_hash)));
-  assert.equal(policy.totpEnabled(ana.id), true);
-  assert.deepEqual(tf.twoFactorStatus(ana.id), { enabled: true, recoveryLeft: 10, passkey: false, afterPasskey: false, required: false });
-  assert.throws(() => tf.startTotpSetup({ id: ana.id }, "de"), /schon eingerichtet/);
+  assert.equal(await policy.totpEnabled(ana.id), true);
+  assert.deepEqual(await tf.twoFactorStatus(ana.id), { enabled: true, recoveryLeft: 10, passkey: false, afterPasskey: false, required: false });
+  await assert.rejects(async () => await tf.startTotpSetup({ id: ana.id }, "de"), /schon eingerichtet/);
 });
 
 test("signing in needs the second step; codes and recovery codes count once", async () => {
   const ben = await account("ben");
-  const { secret, recoveryCodes } = enable(ben.id);
+  const { secret, recoveryCodes } = await enable(ben.id);
   const first = await signIn("ben", "10.1.0.1");
   assert.ok("pending" in first, "the password alone is not a session");
   const pending = (first as { pending: string }).pending;
-  assert.throws(() => tf.completeSignIn(pending, { code: "000000" }, "10.1.0.1", "de", T0 + STEP), /stimmt nicht/);
+  await assert.rejects(async () => await tf.completeSignIn(pending, { code: "000000" }, "10.1.0.1", "de", T0 + STEP), /stimmt nicht/);
   const later = T0 + 2 * STEP;
-  const done = tf.completeSignIn(pending, { code: totp.totpCode(secret, later) }, "10.1.0.1", "de", later);
+  const done = await tf.completeSignIn(pending, { code: totp.totpCode(secret, later) }, "10.1.0.1", "de", later);
   assert.equal(done.userId, ben.id);
   assert.equal(done.remember, false);
   // The same code (same window) does not work twice, not even with a new token.
-  assert.throws(() => tf.completeSignIn(tf.pendingToken(ben.id, false, later), { code: totp.totpCode(secret, later) }, "10.1.0.1", "de", later), /schon benutzt/);
+  await assert.rejects(async () => await tf.completeSignIn(await tf.pendingToken(ben.id, false, later), { code: totp.totpCode(secret, later) }, "10.1.0.1", "de", later), /schon benutzt/);
   // An older code inside the window is refused once a newer one was used.
-  assert.throws(() => tf.completeSignIn(tf.pendingToken(ben.id, false, later), { code: totp.totpCode(secret, later - STEP) }, "10.1.0.1", "de", later), /schon benutzt/);
+  await assert.rejects(async () => await tf.completeSignIn(await tf.pendingToken(ben.id, false, later), { code: totp.totpCode(secret, later - STEP) }, "10.1.0.1", "de", later), /schon benutzt/);
   const next = later + STEP;
-  assert.equal(tf.completeSignIn(tf.pendingToken(ben.id, true, next), { code: totp.totpCode(secret, next) }, "10.1.0.1", "de", next).remember, true);
+  assert.equal((await tf.completeSignIn(await tf.pendingToken(ben.id, true, next), { code: totp.totpCode(secret, next) }, "10.1.0.1", "de", next)).remember, true);
   // Recovery codes: each works once, with or without the dash and in any case.
   const code = recoveryCodes[3];
-  tf.completeSignIn(tf.pendingToken(ben.id, false, next), { code: code.toUpperCase().replace("-", " ") }, "10.1.0.1", "de", next);
-  assert.throws(() => tf.completeSignIn(tf.pendingToken(ben.id, false, next), { code }, "10.1.0.1", "de", next), /schon benutzt/);
-  assert.equal(tf.twoFactorStatus(ben.id).recoveryLeft, 9);
+  await tf.completeSignIn(await tf.pendingToken(ben.id, false, next), { code: code.toUpperCase().replace("-", " ") }, "10.1.0.1", "de", next);
+  await assert.rejects(async () => await tf.completeSignIn(await tf.pendingToken(ben.id, false, next), { code }, "10.1.0.1", "de", next), /schon benutzt/);
+  assert.equal((await tf.twoFactorStatus(ben.id)).recoveryLeft, 9);
   // Tampered, expired or foreign tokens are refused.
-  const token = tf.pendingToken(ben.id, false, next);
+  const token = await tf.pendingToken(ben.id, false, next);
   const parts = token.split(".");
-  assert.throws(() => tf.completeSignIn([parts[0], parts[1], "1", parts[3], parts[4]].join("."), { code: recoveryCodes[0] }, "10.1.0.1", "de", next), /abgelaufen/);
-  assert.throws(() => tf.completeSignIn(token, { code: recoveryCodes[0] }, "10.1.0.1", "de", next + 6 * 60_000), /abgelaufen/);
-  assert.throws(() => tf.completeSignIn(undefined, { code: recoveryCodes[0] }, "10.1.0.1", "de", next), /abgelaufen/);
+  await assert.rejects(async () => await tf.completeSignIn([parts[0], parts[1], "1", parts[3], parts[4]].join("."), { code: recoveryCodes[0] }, "10.1.0.1", "de", next), /abgelaufen/);
+  await assert.rejects(async () => await tf.completeSignIn(token, { code: recoveryCodes[0] }, "10.1.0.1", "de", next + 6 * 60_000), /abgelaufen/);
+  await assert.rejects(async () => await tf.completeSignIn(undefined, { code: recoveryCodes[0] }, "10.1.0.1", "de", next), /abgelaufen/);
   // A new password ends tokens issued before it.
   await auth.changePassword(ben.id, { current: "ben-passwort-123", next: "ben-passwort-456" }, "de");
-  assert.throws(() => tf.completeSignIn(token, { code: recoveryCodes[0] }, "10.1.0.1", "de", next), /abgelaufen/);
+  await assert.rejects(async () => await tf.completeSignIn(token, { code: recoveryCodes[0] }, "10.1.0.1", "de", next), /abgelaufen/);
   await auth.changePassword(ben.id, { current: "ben-passwort-456", next: "ben-passwort-123" }, "de");
 });
 
 test("wrong codes are limited per account", async () => {
   const cleo = await account("cleo");
-  const { secret } = enable(cleo.id);
+  const { secret } = await enable(cleo.id);
   const now = T0 + 10 * STEP;
   for (let i = 0; i < 8; i++)
-    assert.throws(() => tf.completeSignIn(tf.pendingToken(cleo.id, false, now), { code: String(100000 + i) }, `10.2.0.${i}`, "de", now), /stimmt nicht/);
-  assert.throws(
-    () => tf.completeSignIn(tf.pendingToken(cleo.id, false, now), { code: totp.totpCode(secret, now) }, "10.2.1.1", "de", now),
+    await assert.rejects(async () => await tf.completeSignIn(await tf.pendingToken(cleo.id, false, now), { code: String(100000 + i) }, `10.2.0.${i}`, "de", now), /stimmt nicht/);
+  await assert.rejects(
+    async () => await tf.completeSignIn(await tf.pendingToken(cleo.id, false, now), { code: totp.totpCode(secret, now) }, "10.2.1.1", "de", now),
     /Zu viele Versuche/,
     "even the right code waits once the limit is reached",
   );
-  run("DELETE FROM login_failures WHERE key=?", `totp:${cleo.id}`);
-  assert.equal(tf.completeSignIn(tf.pendingToken(cleo.id, false, now), { code: totp.totpCode(secret, now) }, "10.2.1.1", "de", now).userId, cleo.id);
+  await run("DELETE FROM login_failures WHERE key=?", `totp:${cleo.id}`);
+  assert.equal((await tf.completeSignIn(await tf.pendingToken(cleo.id, false, now), { code: totp.totpCode(secret, now) }, "10.2.1.1", "de", now)).userId, cleo.id);
 });
 
 test("a password reset by e-mail link does not skip the second step", async () => {
   const dora = await account("dora");
-  enable(dora.id);
-  const link = new URL(auth.adminResetLink(dora.id));
+  await enable(dora.id);
+  const link = new URL(await auth.adminResetLink(dora.id));
   await auth.resetPassword({ token: link.searchParams.get("token")!, password: "dora-neues-passwort" }, "de");
   const { userId } = await auth.passwordLogin({ email: "dora@example.test", password: "dora-neues-passwort" }, "10.3.0.1", "de");
-  const next = tf.afterPassword(userId, false, "de");
+  const next = await tf.afterPassword(userId, false, "de");
   assert.ok("pending" in next);
-  assert.equal(policy.totpEnabled(dora.id), true, "the reset keeps the authenticator app");
+  assert.equal(await policy.totpEnabled(dora.id), true, "the reset keeps the authenticator app");
 });
 
 test("turning it off and new recovery codes need the password or a code", async () => {
   const emil = await account("emil");
   // Set up a few minutes ago, so a code from now is a new one.
-  const { secret } = enable(emil.id, Date.now() - 10 * STEP);
+  const { secret } = await enable(emil.id, Date.now() - 10 * STEP);
   await assert.rejects(tf.regenerateRecoveryCodes(emil.id, { password: "falsch" }, "10.4.0.1", "de"), /aktuelle Passwort/);
   const { recoveryCodes } = await tf.regenerateRecoveryCodes(emil.id, { password: "emil-passwort-123" }, "10.4.0.1", "de");
   assert.equal(recoveryCodes.length, 10);
@@ -180,100 +180,100 @@ test("turning it off and new recovery codes need the password or a code", async 
   assert.equal(totp.matchTotp(secret, totp.totpCode(secret, now), now) !== null, true);
   const status = await tf.disableTotp(emil.id, { code: totp.totpCode(secret, now) }, "10.4.0.1", "de");
   assert.equal(status.enabled, false);
-  assert.equal(one("SELECT 1 FROM recovery_codes WHERE user_id=?", emil.id), undefined);
-  assert.ok("userId" in tf.afterPassword(emil.id, false, "de"));
+  assert.equal(await one("SELECT 1 FROM recovery_codes WHERE user_id=?", emil.id), undefined);
+  assert.ok("userId" in (await tf.afterPassword(emil.id, false, "de")));
 });
 
 test("required by the administration: setup right after signing in, passkeys count, admins may be the only ones", async () => {
   const fritz = await account("fritz");
-  const admin = one<{ user_id: string }>("SELECT user_id FROM local_accounts WHERE is_admin=1")!.user_id;
-  const session = (userId: string) => {
+  const admin = (await one<{ user_id: string }>("SELECT user_id FROM local_accounts WHERE is_admin=1"))!.user_id;
+  const session = async (userId: string) => {
     const token = `session-${userId}-${Math.random()}`;
-    run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", hash(token), userId, "[]", Date.now() + 60_000);
+    await run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", hash(token), userId, "[]", Date.now() + 60_000);
     return token;
   };
-  const fritzSession = session(fritz.id);
+  const fritzSession = await session(fritz.id);
   assert.equal((await identityFromToken(fritzSession))?.twoFactorSetup, undefined);
-  saveInstanceSettings({ twoFactor: "admins" });
-  assert.equal(policy.needsTwoFactorSetup(fritz.id), false);
-  assert.equal(policy.needsTwoFactorSetup(admin), !policy.totpEnabled(admin));
-  saveInstanceSettings({ twoFactor: "all" });
+  await saveInstanceSettings({ twoFactor: "admins" });
+  assert.equal(await policy.needsTwoFactorSetup(fritz.id), false);
+  assert.equal(await policy.needsTwoFactorSetup(admin), !(await policy.totpEnabled(admin)));
+  await saveInstanceSettings({ twoFactor: "all" });
   // Signed in with the password only: the session works for the setup alone.
-  assert.ok("userId" in tf.afterPassword(fritz.id, false, "de"));
+  assert.ok("userId" in (await tf.afterPassword(fritz.id, false, "de")));
   assert.equal((await identityFromToken(fritzSession))?.twoFactorSetup, true);
-  const { secret } = enable(fritz.id);
+  const { secret } = await enable(fritz.id);
   assert.equal((await identityFromToken(fritzSession))?.twoFactorSetup, undefined);
   // Required and on: turning it off needs a passkey first.
   await assert.rejects(tf.disableTotp(fritz.id, { code: totp.totpCode(secret, Date.now()) }, "10.5.0.1", "de"), /vorgeschrieben/);
   // An account with a passkey (and no app) signs in with the passkey.
   const gina = await account("gina");
-  run("INSERT INTO passkeys(id,user_id,public_key,created_at) VALUES(?,?,?,?)", `pk-${gina.id}`, gina.id, Buffer.from([1]), Date.now());
-  assert.equal(policy.needsTwoFactorSetup(gina.id), false);
-  assert.throws(() => tf.afterPassword(gina.id, false, "de"), /Passkey/);
+  await run("INSERT INTO passkeys(id,user_id,public_key,created_at) VALUES(?,?,?,?)", `pk-${gina.id}`, gina.id, Buffer.from([1]), Date.now());
+  assert.equal(await policy.needsTwoFactorSetup(gina.id), false);
+  await assert.rejects(async () => await tf.afterPassword(gina.id, false, "de"), /Passkey/);
   // SSO accounts and demos are not affected.
-  run("INSERT INTO users(id,subject,name,email) VALUES('sso-user','https://idp|1','SSO','sso@example.test')");
-  assert.equal(policy.needsTwoFactorSetup("sso-user"), false);
-  saveInstanceSettings({ twoFactor: "off" });
-  assert.equal(policy.needsTwoFactorSetup(gina.id), false);
+  await run("INSERT INTO users(id,subject,name,email) VALUES('sso-user','https://idp|1','SSO','sso@example.test')");
+  assert.equal(await policy.needsTwoFactorSetup("sso-user"), false);
+  await saveInstanceSettings({ twoFactor: "off" });
+  assert.equal(await policy.needsTwoFactorSetup(gina.id), false);
 });
 
 test("administrators reset the app of an account (lost phone), noted and told by e-mail", async () => {
   const hanna = await account("hanna");
-  enable(hanna.id);
+  await enable(hanna.id);
   process.env.SMTP_HOST = "smtp.example.test";
   try {
-    const admin = one<{ user_id: string }>("SELECT user_id FROM local_accounts WHERE is_admin=1")!.user_id;
-    assert.equal(auth.localAccountInfo()[hanna.id].totp, true);
-    assert.throws(() => command(identity(hanna.id), { action: "admin.twoFactorReset", userId: hanna.id }), (e: { status?: number }) => e.status === 403);
-    command(identity(admin, true), { action: "admin.twoFactorReset", userId: hanna.id });
-    assert.equal(policy.totpEnabled(hanna.id), false);
-    assert.equal(one("SELECT 1 FROM recovery_codes WHERE user_id=?", hanna.id), undefined);
-    assert.equal(auth.localAccountInfo()[hanna.id].totp, false);
-    assert.ok(one("SELECT 1 FROM audit WHERE action='admin.twoFactorReset' AND actor_id=? AND resource_id=?", admin, hanna.id));
-    assert.ok(one("SELECT 1 FROM mail_queue WHERE recipient='hanna@example.test' AND subject LIKE '%Zwei-Faktor%'"));
+    const admin = (await one<{ user_id: string }>("SELECT user_id FROM local_accounts WHERE is_admin=1"))!.user_id;
+    assert.equal((await auth.localAccountInfo())[hanna.id].totp, true);
+    await assert.rejects(async () => await command(await identity(hanna.id), { action: "admin.twoFactorReset", userId: hanna.id }), (e: { status?: number }) => e.status === 403);
+    await command(await identity(admin, true), { action: "admin.twoFactorReset", userId: hanna.id });
+    assert.equal(await policy.totpEnabled(hanna.id), false);
+    assert.equal(await one("SELECT 1 FROM recovery_codes WHERE user_id=?", hanna.id), undefined);
+    assert.equal((await auth.localAccountInfo())[hanna.id].totp, false);
+    assert.ok(await one("SELECT 1 FROM audit WHERE action='admin.twoFactorReset' AND actor_id=? AND resource_id=?", admin, hanna.id));
+    assert.ok(await one("SELECT 1 FROM mail_queue WHERE recipient='hanna@example.test' AND subject LIKE '%Zwei-Faktor%'"));
     // Signing in now goes without a code; the app can be set up again.
     assert.ok("userId" in (await signIn("hanna", "10.6.0.1")));
-    enable(hanna.id, T0 + 100 * STEP);
-    assert.equal(policy.totpEnabled(hanna.id), true);
+    await enable(hanna.id, T0 + 100 * STEP);
+    assert.equal(await policy.totpEnabled(hanna.id), true);
   } finally {
     delete process.env.SMTP_HOST;
   }
 });
 
 test("a long instance name and address still give a QR code, a very long one the key as text", async () => {
-  run("INSERT INTO instance_settings(key,value) VALUES('name',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", "Wiki der Stadtwerke Musterstadt GmbH – Abteilung Netze");
+  await run("INSERT INTO instance_settings(key,value) VALUES('name',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", "Wiki der Stadtwerke Musterstadt GmbH – Abteilung Netze");
   try {
     // Local accounts straight in the database (sign-up is closed by now).
-    const local = (email: string) => {
+    const local = async (email: string) => {
       const uid = id();
-      run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, `local:${uid}`, "Lang", email);
-      run("INSERT INTO local_accounts(user_id,email,password_hash,email_verified,created_at) VALUES(?,?,?,1,?)", uid, email, "x", Date.now());
+      await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, `local:${uid}`, "Lang", email);
+      await run("INSERT INTO local_accounts(user_id,email,password_hash,email_verified,created_at) VALUES(?,?,?,1,?)", uid, email, "x", Date.now());
       return uid;
     };
-    const setup = tf.startTotpSetup({ id: local("vorname.nachname.mit.langem.namen@abteilung-netze.example.test") }, "de");
+    const setup = await tf.startTotpSetup({ id: await local("vorname.nachname.mit.langem.namen@abteilung-netze.example.test") }, "de");
     assert.ok(setup.qr && setup.qr.size >= 21, "shortened issuer fits");
-    const plain = tf.startTotpSetup({ id: local(`${"x".repeat(180)}@example.test`) }, "de");
+    const plain = await tf.startTotpSetup({ id: await local(`${"x".repeat(180)}@example.test`) }, "de");
     assert.equal(plain.qr, null);
     assert.match(plain.secret, /^[A-Z2-7]+$/);
   } finally {
-    run("DELETE FROM instance_settings WHERE key='name'");
+    await run("DELETE FROM instance_settings WHERE key='name'");
   }
 });
 
 test("a passkey signs in on its own unless the person asks for a code after it", async () => {
-  saveInstanceSettings({ twoFactor: "off" });
+  await saveInstanceSettings({ twoFactor: "off" });
   const hana = await account("hana");
-  run("INSERT INTO passkeys(id,user_id,public_key,created_at) VALUES(?,?,?,?)", `pk-${hana.id}`, hana.id, Buffer.from([1]), Date.now());
+  await run("INSERT INTO passkeys(id,user_id,public_key,created_at) VALUES(?,?,?,?)", `pk-${hana.id}`, hana.id, Buffer.from([1]), Date.now());
   // Without the app, and with the app but the option off: no code.
-  assert.ok("userId" in tf.afterPasskey(hana.id, false));
-  const { secret } = enable(hana.id);
-  assert.ok("userId" in tf.afterPasskey(hana.id, false));
-  assert.equal(tf.twoFactorStatus(hana.id).afterPasskey, false);
+  assert.ok("userId" in (await tf.afterPasskey(hana.id, false)));
+  const { secret } = await enable(hana.id);
+  assert.ok("userId" in (await tf.afterPasskey(hana.id, false)));
+  assert.equal((await tf.twoFactorStatus(hana.id)).afterPasskey, false);
   // Turned on: a code follows, just like after the password.
   await tf.setCodeAfterPasskey(hana.id, { enabled: true }, "127.0.0.9", "de");
-  assert.ok("pending" in tf.afterPasskey(hana.id, false));
+  assert.ok("pending" in (await tf.afterPasskey(hana.id, false)));
   // Turning it off again needs the password or a code.
   await assert.rejects(tf.setCodeAfterPasskey(hana.id, { enabled: false }, "127.0.0.9", "de"), /Passwort/);
   await tf.setCodeAfterPasskey(hana.id, { enabled: false, code: totp.totpCode(secret, Date.now()) }, "127.0.0.9", "de");
-  assert.ok("userId" in tf.afterPasskey(hana.id, false));
+  assert.ok("userId" in (await tf.afterPasskey(hana.id, false)));
 });

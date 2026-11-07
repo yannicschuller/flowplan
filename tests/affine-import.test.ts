@@ -29,22 +29,22 @@ const { readAffineFile } = await import("../lib/importers/affine-read");
 const { importZip } = await import("../lib/zip-import");
 const { sampleWorkspace, IDS } = await import("./helpers/affine-sample");
 
-function account(name: string) {
+async function account(name: string) {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
   return { id: uid, name, email: `${name}@example.test`, groups: [], isAdmin: false, disabled: 0, created_at: "" } as Identity;
 }
-const owner = account("affine-owner");
-const wid = createWorkspace(owner.id, "AFFiNE-Import");
-const space = bootstrap(owner, wid).spaces[0].id;
+const owner = await account("affine-owner");
+const wid = await createWorkspace(owner.id, "AFFiNE-Import");
+const space = (await bootstrap(owner, wid)).spaces[0].id;
 type PageRow = { id: string; parent_id: string | null; kind: string; title: string; journal_date: string | null };
-const pageByTitle = (title: string) =>
-  one<PageRow>("SELECT id,parent_id,kind,title,journal_date FROM pages WHERE workspace_id=? AND title=? AND deleted_at IS NULL ORDER BY seq DESC LIMIT 1", wid, title)!;
-const html = (pageId: string) => one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", pageId)!.html;
+const pageByTitle = async (title: string) =>
+  (await one<PageRow>("SELECT id,parent_id,kind,title,journal_date FROM pages WHERE workspace_id=? AND title=? AND deleted_at IS NULL ORDER BY seq DESC LIMIT 1", wid, title))!;
+const html = async (pageId: string) => (await one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", pageId))!.html;
 const link = (pageId: string) => `/#page=${pageId}`;
 // The names of a page's tags (#70: importers set real tags).
-const tagsOf = (pageId: string) =>
-  all<{ name: string }>("SELECT t.name FROM page_tag_links l JOIN page_tags t ON t.id=l.tag_id WHERE l.page_id=? ORDER BY l.position", pageId).map((t) => t.name);
+const tagsOf = async (pageId: string) =>
+  (await all<{ name: string }>("SELECT t.name FROM page_tag_links l JOIN page_tags t ON t.id=l.tag_id WHERE l.page_id=? ORDER BY l.position", pageId)).map((t) => t.name);
 
 
 test("the formats are recognised", async () => {
@@ -59,11 +59,11 @@ test("the formats are recognised", async () => {
 
 test("workspace file: folders, links, tags, collections, database, files, whiteboards and journal days", async () => {
   // A journal with the second day already written in.
-  const journal = createPage(wid, space, owner.id, "Journal", "journal");
-  const existingDay = createPage(wid, space, owner.id, "2. Oktober 2026", "document", journal);
-  run("UPDATE pages SET journal_date='2026-10-02' WHERE id=?", existingDay);
+  const journal = await createPage(wid, space, owner.id, "Journal", "journal");
+  const existingDay = await createPage(wid, space, owner.id, "2. Oktober 2026", "document", journal);
+  await run("UPDATE pages SET journal_date='2026-10-02' WHERE id=?", existingDay);
   const { htmlState } = await import("../lib/document-server");
-  run("UPDATE documents SET html=?,state=? WHERE page_id=?", "<p>Schon da</p>", htmlState("<p>Schon da</p>"), existingDay);
+  await run("UPDATE documents SET html=?,state=? WHERE page_id=?", "<p>Schon da</p>", htmlState("<p>Schon da</p>"), existingDay);
 
   const bytes = affineFileV2(sampleWorkspace());
   const preview = await importFromSource(owner, wid, space, { name: "Mein Wissen_ws1.affine", bytes }, { dryRun: true });
@@ -87,31 +87,31 @@ test("workspace file: folders, links, tags, collections, database, files, whiteb
   assert.ok(preview.warnings.some((w) => /Elemente auf Whiteboards konnten nicht übernommen werden/.test(w)));
   assert.ok(preview.warnings.some((w) => /HTML-Einbettungen/.test(w)));
   assert.ok(preview.warnings.some((w) => /1 Bilder oder Anhänge fehlen/.test(w)));
-  assert.equal(all("SELECT id FROM pages WHERE title='Projektplan'").length, 0, "the preview writes nothing");
+  assert.equal((await all("SELECT id FROM pages WHERE title='Projektplan'")).length, 0, "the preview writes nothing");
 
   const result = await importFromSource(owner, wid, space, { name: "Mein Wissen_ws1.affine", bytes });
-  const root = pageByTitle("Mein Wissen");
+  const root = await pageByTitle("Mein Wissen");
   assert.ok(result.rootIds.includes(root.id));
   // Folders as pages, documents in their first folder.
-  const projects = pageByTitle("Projekte"),
-    archive = pageByTitle("Archiv");
+  const projects = await pageByTitle("Projekte"),
+    archive = await pageByTitle("Archiv");
   assert.equal(projects.parent_id, root.id);
   assert.equal(archive.parent_id, projects.id);
-  const plan = pageByTitle("Projektplan"),
-    notes = pageByTitle("Notizen"),
-    sketch = pageByTitle("Skizze");
+  const plan = await pageByTitle("Projektplan"),
+    notes = await pageByTitle("Notizen"),
+    sketch = await pageByTitle("Skizze");
   assert.equal(plan.parent_id, projects.id);
   assert.equal(notes.parent_id, archive.id);
   assert.equal(sketch.parent_id, root.id, "documents outside folders go below the workspace page");
-  assert.ok(html(archive.id).includes(link(plan.id)), "a second folder links to the document");
-  assert.match(html(archive.id), /#projekt/);
-  assert.equal(all("SELECT id FROM pages WHERE workspace_id=? AND title='Kreis A'", wid).length, 0, "folders in a cycle (not reachable in AFFiNE) are skipped without hanging");
-  assert.equal(all("SELECT id FROM pages WHERE workspace_id=? AND title='Weg damit'", wid).length, 0, "the trash stays behind");
+  assert.ok((await html(archive.id)).includes(link(plan.id)), "a second folder links to the document");
+  assert.match(await html(archive.id), /#projekt/);
+  assert.equal((await all("SELECT id FROM pages WHERE workspace_id=? AND title='Kreis A'", wid)).length, 0, "folders in a cycle (not reachable in AFFiNE) are skipped without hanging");
+  assert.equal((await all("SELECT id FROM pages WHERE workspace_id=? AND title='Weg damit'", wid)).length, 0, "the trash stays behind");
 
   // Rich text, links and tags.
   // Blocks carry their ids (#88, tests/block-links.test.ts); left out here.
-  const planHtml = html(plan.id).replace(/ data-block-id="[^"]*"/g, "");
-  assert.ok(tagsOf(plan.id).includes("projekt"));
+  const planHtml = (await html(plan.id)).replace(/ data-block-id="[^"]*"/g, "");
+  assert.ok((await tagsOf(plan.id)).includes("projekt"));
   assert.doesNotMatch(planHtml, /#projekt/);
   assert.match(planHtml, /<h1>Ziele<\/h1>/);
   assert.match(planHtml, /<strong>Fett<\/strong>/);
@@ -149,22 +149,22 @@ test("workspace file: folders, links, tags, collections, database, files, whiteb
     const kinds = state.getXmlFragment("default").toString();
     state.destroy();
     for (const kind of ["pdf", "audio", "video"]) assert.match(kinds, new RegExp(`kind="${kind}"`), kind);
-    const mimes = all<{ name: string; mime: string }>("SELECT name,mime FROM files WHERE page_id=? ORDER BY name", plan.id);
+    const mimes = await all<{ name: string; mime: string }>("SELECT name,mime FROM files WHERE page_id=? ORDER BY name", plan.id);
     assert.deepEqual(
       mimes.filter((f) => /Bericht|Ton|Film/.test(f.name)).map((f) => f.mime),
       ["application/pdf", "video/mp4", "audio/mpeg"],
     );
   }
   // Icons: an emoji of a document, folder or collection; never anything else.
-  const iconOf = (pageId: string) => one<{ icon: string }>("SELECT icon FROM pages WHERE id=?", pageId)!.icon;
-  assert.equal(iconOf(plan.id), "🚀");
-  assert.equal(iconOf(projects.id), "📁");
-  assert.equal(iconOf(pageByTitle("Sammlung: Wichtig").id), "⭐");
+  const iconOf = async (pageId: string) => (await one<{ icon: string }>("SELECT icon FROM pages WHERE id=?", pageId))!.icon;
+  assert.equal(await iconOf(plan.id), "🚀");
+  assert.equal(await iconOf(projects.id), "📁");
+  assert.equal(await iconOf((await pageByTitle("Sammlung: Wichtig")).id), "⭐");
   // Otherwise the default icon of a new page.
-  assert.equal(iconOf(notes.id), iconOf(archive.id), "AFFiNE's own symbols have no counterpart");
-  assert.equal(iconOf(sketch.id), iconOf(archive.id), "no links as icons");
+  assert.equal(await iconOf(notes.id), await iconOf(archive.id), "AFFiNE's own symbols have no counterpart");
+  assert.equal(await iconOf(sketch.id), await iconOf(archive.id), "no links as icons");
   // Properties as page properties (#70) with their types.
-  const meta = portableMeta(plan.id)!;
+  const meta = (await portableMeta(plan.id))!;
   const props = Object.fromEntries((meta.properties || []).map((p) => [p.name, { type: p.type, value: p.value }]));
   assert.deepEqual(props.Phase, { type: "text", value: "Planung" });
   assert.deepEqual(props.Budget, { type: "number", value: 1200.5 });
@@ -176,11 +176,11 @@ test("workspace file: folders, links, tags, collections, database, files, whiteb
   // Hostile input stays text.
   assert.doesNotMatch(planHtml, /javascript:|<script|<img src=x/);
   assert.match(planHtml, /&lt;img src=x/);
-  assert.ok(html(notes.id).includes(`href="${link(plan.id)}"`));
-  assert.ok(html(notes.id).includes(`href="${link(sketch.id)}"`), "AFFiNE app links to imported documents point to the page");
+  assert.ok((await html(notes.id)).includes(`href="${link(plan.id)}"`));
+  assert.ok((await html(notes.id)).includes(`href="${link(sketch.id)}"`), "AFFiNE app links to imported documents point to the page");
 
   // The database below its document, embedded where it was.
-  const db = pageByTitle("Aufgaben");
+  const db = await pageByTitle("Aufgaben");
   assert.equal(db.kind, "database");
   assert.equal(db.parent_id, plan.id);
   const embedded = /data-linked-database="([^"]+)" data-linked-source="([^"]+)" data-linked-views="([^"]+)"/.exec(planHtml);
@@ -188,7 +188,7 @@ test("workspace file: folders, links, tags, collections, database, files, whiteb
   assert.equal(embedded![2], db.id);
   const attrs = parseLinkedAttributes({ id: embedded![1], source: embedded![2], version: "1", views: embedded![3].replaceAll("&quot;", '"') });
   assert.equal(attrs.views[0].type, "table");
-  const { fields, views } = one<{ fields: string; views: string }>("SELECT fields,views FROM databases WHERE page_id=?", db.id)!;
+  const { fields, views } = (await one<{ fields: string; views: string }>("SELECT fields,views FROM databases WHERE page_id=?", db.id))!;
   const byName = Object.fromEntries((JSON.parse(fields) as { id: string; name: string; type: string; format?: string }[]).map((f) => [f.name, f]));
   assert.equal(byName.Aufgabe.id, "title");
   assert.equal(byName.Stunden.type, "number");
@@ -216,7 +216,7 @@ test("workspace file: folders, links, tags, collections, database, files, whiteb
   assert.deepEqual(named(viewList[1].fieldOrder).slice(0, 2), ["Fällig", "Labels"]);
   assert.deepEqual(named(viewList[1].hiddenFields), ["Labels"]);
   assert.equal(viewList[1].columnWidths, undefined);
-  const rows = all<{ cells: string; content: string; id: string }>("SELECT id,cells,content FROM rows WHERE page_id=? ORDER BY position", db.id);
+  const rows = await all<{ cells: string; content: string; id: string }>("SELECT id,cells,content FROM rows WHERE page_id=? ORDER BY position", db.id);
   assert.equal(rows.length, 2);
   const first = JSON.parse(rows[0].cells);
   assert.equal(first.title, "Erste Aufgabe");
@@ -228,16 +228,16 @@ test("workspace file: folders, links, tags, collections, database, files, whiteb
   assert.equal(first[byName.Link.id], undefined, "javascript: links are dropped");
   assert.equal(first[byName.Fortschritt.id], 0.4);
   assert.match(rows[0].content, /Inhalt der ersten Aufgabe/);
-  assert.ok(one("SELECT 1 FROM row_documents WHERE row_id=?", rows[0].id));
+  assert.ok(await one("SELECT 1 FROM row_documents WHERE row_id=?", rows[0].id));
   assert.equal(JSON.parse(rows[1].cells)[byName.Link.id], "https://example.com/r2");
   assert.equal(result.rows, 2);
 
   // Edgeless: a whiteboard next to the document, linked both ways.
-  const board = pageByTitle("Skizze – Whiteboard");
+  const board = await pageByTitle("Skizze – Whiteboard");
   assert.equal(board.kind, "whiteboard");
   assert.equal(board.parent_id, sketch.parent_id);
-  assert.ok(html(sketch.id).includes(link(board.id)), "the document links to its whiteboard");
-  const state = one<{ state: Uint8Array }>("SELECT state FROM whiteboards WHERE page_id=?", board.id)!.state;
+  assert.ok((await html(sketch.id)).includes(link(board.id)), "the document links to its whiteboard");
+  const state = (await one<{ state: Uint8Array }>("SELECT state FROM whiteboards WHERE page_id=?", board.id))!.state;
   const doc = new Y.Doc();
   Y.applyUpdate(doc, state);
   const items = whiteboardItems(doc);
@@ -254,24 +254,24 @@ test("workspace file: folders, links, tags, collections, database, files, whiteb
   assert.ok(items.some((i) => i.type === "image" && i.src?.startsWith("/api/files/")));
   doc.destroy();
   // A document that opens as edgeless gets a whiteboard even without more.
-  assert.equal(pageByTitle("Leinwand – Whiteboard").kind, "whiteboard");
+  assert.equal((await pageByTitle("Leinwand – Whiteboard")).kind, "whiteboard");
 
   // Collections: one page each, the documents as of the import.
-  const collection = pageByTitle("Sammlung: Wichtig");
+  const collection = await pageByTitle("Sammlung: Wichtig");
   assert.equal(collection.parent_id, projects.id, "a collection in a folder lives there");
-  assert.ok(html(collection.id).includes(link(plan.id)) && html(collection.id).includes(link(notes.id)));
-  assert.match(html(collection.id), /Tags enthält eines von projekt/);
-  assert.ok(html(pageByTitle("Sammlung: Favoriten").id).includes(link(plan.id)));
-  const unclear = html(pageByTitle("Sammlung: Unklar").id);
+  assert.ok((await html(collection.id)).includes(link(plan.id)) && (await html(collection.id)).includes(link(notes.id)));
+  assert.match(await html(collection.id), /Tags enthält eines von projekt/);
+  assert.ok((await html((await pageByTitle("Sammlung: Favoriten")).id)).includes(link(plan.id)));
+  const unclear = await html((await pageByTitle("Sammlung: Unklar")).id);
   assert.ok(unclear.includes(link(sketch.id)));
   assert.match(unclear, /Nicht alle Regeln/);
-  assert.ok(html(pageByTitle("Sammlung: Alt").id).includes(link(plan.id)), "old filter lists are understood");
+  assert.ok((await html((await pageByTitle("Sammlung: Alt")).id)).includes(link(plan.id)), "old filter lists are understood");
 
   // Journal: a new day, and text appended to the existing one.
-  const day1 = one<PageRow>("SELECT id,parent_id,kind,title,journal_date FROM pages WHERE parent_id=? AND journal_date='2026-10-01' AND deleted_at IS NULL", journal)!;
+  const day1 = (await one<PageRow>("SELECT id,parent_id,kind,title,journal_date FROM pages WHERE parent_id=? AND journal_date='2026-10-01' AND deleted_at IS NULL", journal))!;
   assert.ok(day1, "the day was created in the journal");
-  assert.match(html(day1.id), /Heute: Import gebaut\./);
-  const day2 = one<{ html: string; state: Uint8Array }>("SELECT html,state FROM documents WHERE page_id=?", existingDay)!;
+  assert.match(await html(day1.id), /Heute: Import gebaut\./);
+  const day2 = (await one<{ html: string; state: Uint8Array }>("SELECT html,state FROM documents WHERE page_id=?", existingDay))!;
   const { stateHtml } = await import("../lib/document-server");
   const ydoc = new Y.Doc();
   Y.applyUpdate(ydoc, day2.state);
@@ -279,8 +279,8 @@ test("workspace file: folders, links, tags, collections, database, files, whiteb
   ydoc.destroy();
   assert.match(appended, /Schon da/);
   assert.match(appended, /Nachtrag aus AFFiNE/);
-  assert.equal(all("SELECT id FROM pages WHERE parent_id=? AND journal_date='2026-10-02' AND deleted_at IS NULL", journal).length, 1, "no second day");
-  assert.equal(all("SELECT id FROM pages WHERE title IN ('Tagebuch 1','Oct 1, 2026') AND workspace_id=?", wid).length, 0, "journal documents are no pages of their own");
+  assert.equal((await all("SELECT id FROM pages WHERE parent_id=? AND journal_date='2026-10-02' AND deleted_at IS NULL", journal)).length, 1, "no second day");
+  assert.equal((await all("SELECT id FROM pages WHERE title IN ('Tagebuch 1','Oct 1, 2026') AND workspace_id=?", wid)).length, 0, "journal documents are no pages of their own");
 });
 
 test("documents are their snapshot plus later updates; version 1 files and sub-document guids", async () => {
@@ -346,18 +346,18 @@ test("snapshot ZIP: documents, links, tags from info.json and assets", async () 
   const result = await importFromSource(owner, wid, space, { name: "snapshot.zip", bytes: zip });
   assert.equal(result.source, "affine");
   assert.ok(result.warnings.some((w) => /nur die Arbeitsbereichsdatei/.test(w)));
-  const eins = one<{ id: string }>("SELECT id FROM pages WHERE workspace_id=? AND title='Eins' ORDER BY seq DESC", wid)!;
-  const zwei = one<{ id: string }>("SELECT id FROM pages WHERE workspace_id=? AND title='Zwei' ORDER BY seq DESC", wid)!;
-  assert.ok(html(eins.id).includes(link(zwei.id)));
-  assert.ok(tagsOf(eins.id).includes("aus-zip"));
+  const eins = (await one<{ id: string }>("SELECT id FROM pages WHERE workspace_id=? AND title='Eins' ORDER BY seq DESC", wid))!;
+  const zwei = (await one<{ id: string }>("SELECT id FROM pages WHERE workspace_id=? AND title='Zwei' ORDER BY seq DESC", wid))!;
+  assert.ok((await html(eins.id)).includes(link(zwei.id)));
+  assert.ok((await tagsOf(eins.id)).includes("aus-zip"));
   // No empty page named after the file above the documents (#77).
-  assert.equal(one<{ parent_id: string | null }>("SELECT parent_id FROM pages WHERE id=?", eins.id)!.parent_id, null);
-  assert.equal(one<{ parent_id: string | null }>("SELECT parent_id FROM pages WHERE id=?", zwei.id)!.parent_id, null);
-  assert.equal(all("SELECT id FROM pages WHERE workspace_id=? AND title='snapshot'", wid).length, 0);
+  assert.equal((await one<{ parent_id: string | null }>("SELECT parent_id FROM pages WHERE id=?", eins.id))!.parent_id, null);
+  assert.equal((await one<{ parent_id: string | null }>("SELECT parent_id FROM pages WHERE id=?", zwei.id))!.parent_id, null);
+  assert.equal((await all("SELECT id FROM pages WHERE workspace_id=? AND title='snapshot'", wid)).length, 0);
   assert.equal(result.folders, 0);
   assert.equal(result.wrapper, undefined);
   assert.deepEqual(new Set(result.rootIds), new Set([eins.id, zwei.id]));
-  assert.match(html(zwei.id), /<img src="\/api\/files\//);
+  assert.match(await html(zwei.id), /<img src="\/api\/files\//);
   assert.equal(({} as Record<string, unknown>).polluted, undefined);
 });
 
@@ -427,11 +427,11 @@ test("the workspace page only when it carries structure (#77)", async () => {
   assert.equal(preview.folders, 0);
   assert.equal(preview.wrapper, undefined);
   const result = await importFromSource(owner, wid, space, { name: "Einzeln.affine", bytes });
-  const sketch = one<PageRow>("SELECT id,parent_id,kind,title,journal_date FROM pages WHERE id IN (" + result.rootIds.map(() => "?").join(",") + ") AND kind='document'", ...result.rootIds)!;
+  const sketch = (await one<PageRow>("SELECT id,parent_id,kind,title,journal_date FROM pages WHERE id IN (" + result.rootIds.map(() => "?").join(",") + ") AND kind='document'", ...result.rootIds))!;
   assert.equal(sketch.title, "Skizze");
   assert.equal(sketch.parent_id, null, "no empty page above the document");
-  assert.equal(all("SELECT id FROM pages WHERE workspace_id=? AND title='Mein Wissen' AND id IN (" + result.rootIds.map(() => "?").join(",") + ")", wid, ...result.rootIds).length, 0);
-  const board = one<PageRow>("SELECT id,parent_id,kind,title,journal_date FROM pages WHERE workspace_id=? AND title='Skizze – Whiteboard' ORDER BY seq DESC", wid)!;
+  assert.equal((await all("SELECT id FROM pages WHERE workspace_id=? AND title='Mein Wissen' AND id IN (" + result.rootIds.map(() => "?").join(",") + ")", wid, ...result.rootIds)).length, 0);
+  const board = (await one<PageRow>("SELECT id,parent_id,kind,title,journal_date FROM pages WHERE workspace_id=? AND title='Skizze – Whiteboard' ORDER BY seq DESC", wid))!;
   assert.equal(board.parent_id, null, "the whiteboard sits next to its document");
 
   // Database mode is unchanged by it.
@@ -439,7 +439,7 @@ test("the workspace page only when it carries structure (#77)", async () => {
   assert.equal(asDb.rows, 1);
 });
 
-test("the import limit follows the upload limit, at least 100 MB; FLOWPLAN_IMPORT_MAX_MB replaces it (#76)", () => {
+test("the import limit follows the upload limit, at least 100 MB; FLOWPLAN_IMPORT_MAX_MB replaces it (#76)", async () => {
   assert.equal(upload.importLimitMb(10, null), 100);
   assert.equal(upload.importLimitMb(100, null), 100);
   assert.equal(upload.importLimitMb(512, null), 512);
@@ -453,24 +453,24 @@ test("the import limit follows the upload limit, at least 100 MB; FLOWPLAN_IMPOR
   assert.equal(upload.importEnvMb(" 250 "), 250);
   assert.equal(upload.importEnvMb("999999"), 20480);
 
-  const person = account("affine-limits");
-  const admin = { ...account("affine-admin"), isAdmin: true };
+  const person = await account("affine-limits");
+  const admin = { ...(await account("affine-admin")), isAdmin: true };
   const env = process.env.FLOWPLAN_IMPORT_MAX_MB;
   delete process.env.FLOWPLAN_IMPORT_MAX_MB;
   try {
-    saveInstanceSettings({ maxUploadMb: 10 });
-    assert.equal(upload.importLimitFor(person), 100);
-    saveInstanceSettings({ maxUploadMb: 400 });
-    assert.equal(upload.importLimitFor(person), 400, "raising the upload limit raises the import limit");
-    assert.equal(upload.importLimitFor(admin), 400);
-    setUserLimits(person.id, { uploadMb: 600 });
-    assert.equal(upload.importLimitFor(person), 600, "a person's own upload limit counts");
+    await saveInstanceSettings({ maxUploadMb: 10 });
+    assert.equal(await upload.importLimitFor(person), 100);
+    await saveInstanceSettings({ maxUploadMb: 400 });
+    assert.equal(await upload.importLimitFor(person), 400, "raising the upload limit raises the import limit");
+    assert.equal(await upload.importLimitFor(admin), 400);
+    await setUserLimits(person.id, { uploadMb: 600 });
+    assert.equal(await upload.importLimitFor(person), 600, "a person's own upload limit counts");
     process.env.FLOWPLAN_IMPORT_MAX_MB = "250";
-    assert.equal(upload.importLimitFor(person), 250);
+    assert.equal(await upload.importLimitFor(person), 250);
   } finally {
     if (env === undefined) delete process.env.FLOWPLAN_IMPORT_MAX_MB;
     else process.env.FLOWPLAN_IMPORT_MAX_MB = env;
-    saveInstanceSettings({ maxUploadMb: 10 });
+    await saveInstanceSettings({ maxUploadMb: 10 });
   }
   // The refusal names the limit and where to change it, in every language.
   const refusal = upload.importTooLarge(512, null);
@@ -512,7 +512,7 @@ test("large uploads: streamed to disk, the workspace file read in place, files r
   assert.equal(saved.size, bytes.length);
   // Only its owner can name it again.
   assert.equal(upload.importUploadPath(owner.id, saved.id), saved.path);
-  const other = account("affine-other");
+  const other = await account("affine-other");
   assert.throws(() => upload.importUploadPath(other.id, saved.id), /nicht mehr vorhanden/);
   assert.throws(() => upload.importUploadPath(owner.id, "../../etc"), /Ungültige Eingabe/);
 
@@ -528,7 +528,7 @@ test("large uploads: streamed to disk, the workspace file read in place, files r
   assert.ok(preview.bytes >= big.length);
   const result = await importFromSource(owner, wid, space, { name: "Gross.affine", path: saved.path });
   assert.equal(result.files, preview.files);
-  const stored = one<{ id: string; size: number }>("SELECT f.id,f.size FROM files f JOIN pages p ON p.id=f.page_id WHERE p.workspace_id=? AND f.size=?", wid, big.length);
+  const stored = await one<{ id: string; size: number }>("SELECT f.id,f.size FROM files f JOIN pages p ON p.id=f.page_id WHERE p.workspace_id=? AND f.size=?", wid, big.length);
   assert.ok(stored, "the large file was written");
   const { readFileSync } = await import("node:fs");
   assert.ok(readFileSync(join(process.env.FLOWPLAN_DATA_DIR!, "uploads", stored!.id)).equals(big));
@@ -602,11 +602,11 @@ test("snapshot ZIP: attachments as blocks, nested assets, tag colours; what only
   assert.equal(preview.tags, 1);
   assert.ok(preview.warnings.some((w) => /^Ordner, Sammlungen, Journale, Eigenschaften und Symbole von Dokumenten enthält nur die Arbeitsbereichsdatei/.test(w)));
   await importFromSource(owner, wid, space, { name: "alt.zip", bytes: old });
-  const doc = pageByTitle("Alter Snapshot");
-  assert.match(html(doc.id), /<img src="\/api\/files\//);
-  assert.match(html(doc.id), /<div data-pdf="\/api\/files\/[0-9a-f-]{36}" data-title="Vertrag\.pdf"/);
-  assert.deepEqual(tagsOf(doc.id), ["WebClips"]);
-  assert.equal(one<{ color: string }>("SELECT color FROM page_tags WHERE workspace_id=? AND name='WebClips'", wid)!.color, "purple", "the tag keeps its colour");
+  const doc = await pageByTitle("Alter Snapshot");
+  assert.match(await html(doc.id), /<img src="\/api\/files\//);
+  assert.match(await html(doc.id), /<div data-pdf="\/api\/files\/[0-9a-f-]{36}" data-title="Vertrag\.pdf"/);
+  assert.deepEqual(await tagsOf(doc.id), ["WebClips"]);
+  assert.equal((await one<{ color: string }>("SELECT color FROM page_tags WHERE workspace_id=? AND name='WebClips'", wid))!.color, "purple", "the tag keeps its colour");
 
   // Since 2025 a snapshot has no tags (meta.tags is empty, no info.json):
   // the preview says where they are.
@@ -630,9 +630,9 @@ test("more than 500 documents; the limit is the instance's and named (#82)", asy
   assert.equal(preview.tooMany, undefined);
   const result = await importFromSource(owner, wid, space, { name: "Viele.affine", bytes });
   assert.equal(result.pages, 520);
-  const wrapper = pageByTitle("Mein Wissen");
-  assert.equal(Number(one<{ n: number }>("SELECT COUNT(*) n FROM pages WHERE parent_id=? AND title LIKE 'Viele %'", wrapper.id)!.n), 520);
-  assert.match(html(pageByTitle("Viele 519").id), /Text 519/);
+  const wrapper = await pageByTitle("Mein Wissen");
+  assert.equal(Number((await one<{ n: number }>("SELECT COUNT(*) n FROM pages WHERE parent_id=? AND title LIKE 'Viele %'", wrapper.id))!.n), 520);
+  assert.match(await html((await pageByTitle("Viele 519")).id), /Text 519/);
 
   // A lower limit: the preview counts and names the setting, the import is
   // refused; nothing was converted.
@@ -647,10 +647,10 @@ test("more than 500 documents; the limit is the instance's and named (#82)", asy
     const message = limited.warnings[0];
     assert.match(message, /520 Seiten; erlaubt sind höchstens 100 je Import \(FLOWPLAN_IMPORT_MAX_DOCS\)/);
     assert.equal(englishMessage(message), "The file makes 520 pages; at most 100 are allowed per import (FLOWPLAN_IMPORT_MAX_DOCS).");
-    const before = Number(one<{ n: number }>("SELECT COUNT(*) n FROM pages")!.n);
+    const before = Number((await one<{ n: number }>("SELECT COUNT(*) n FROM pages"))!.n);
     await assert.rejects(importFromSource(owner, wid, space, { name: "Viele.affine", bytes }), (e: { status?: number; message: string }) => e.status === 413 && /FLOWPLAN_IMPORT_MAX_DOCS/.test(e.message));
     await assert.rejects(importFromSource(owner, wid, space, { name: "Viele.affine", bytes }, { mode: "database" }), /520 Einträge; erlaubt sind höchstens 100/);
-    assert.equal(Number(one<{ n: number }>("SELECT COUNT(*) n FROM pages")!.n), before);
+    assert.equal(Number((await one<{ n: number }>("SELECT COUNT(*) n FROM pages"))!.n), before);
     // Folders, databases and whiteboards count as pages too.
     process.env.FLOWPLAN_IMPORT_MAX_DOCS = "12";
     const sample = await importFromSource(owner, wid, space, { name: "Probe.affine", bytes: affineFileV2(sampleWorkspace()) }, { dryRun: true });
@@ -719,9 +719,9 @@ test("older workspaces: properties in the root document; deep folders (#82)", as
   assert.equal(notes.parent, "folder:deep49", "the document stays in the deepest folder taken over");
 });
 
-const boardDoc = (pageId: string) => {
+const boardDoc = async (pageId: string) => {
   const doc = new Y.Doc();
-  Y.applyUpdate(doc, one<{ state: Uint8Array }>("SELECT state FROM whiteboards WHERE page_id=?", pageId)!.state);
+  Y.applyUpdate(doc, (await one<{ state: Uint8Array }>("SELECT state FROM whiteboards WHERE page_id=?", pageId))!.state);
   return doc;
 };
 // A database row turned into a document of its own (#82): its title is a
@@ -827,12 +827,12 @@ test("documents made from database rows become the record's content (#82)", asyn
   const result = await importFromSource(owner, wid, space, { name: "z.affine", bytes });
   assert.ok(result.rootIds.length);
   for (const title of ["Angebot ACME", "Karte C", "Dokument D"])
-    assert.equal(all("SELECT id FROM pages WHERE workspace_id=? AND title=? AND kind='document'", wid, title).length, 0, `${title} is no page of its own`);
-  const db = pageByTitle("Angebote");
+    assert.equal((await all("SELECT id FROM pages WHERE workspace_id=? AND title=? AND kind='document'", wid, title)).length, 0, `${title} is no page of its own`);
+  const db = await pageByTitle("Angebote");
   type Rec = { id: string; cells: string; content: string; icon: string };
-  const recs = all<Rec>("SELECT id,cells,content,icon FROM rows WHERE page_id=? ORDER BY position", db.id);
+  const recs = await all<Rec>("SELECT id,cells,content,icon FROM rows WHERE page_id=? ORDER BY position", db.id);
   const cells = recs.map((r) => JSON.parse(r.cells) as Record<string, unknown>);
-  const fields = JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", db.id)!.fields) as { id: string; name: string; options?: string[] }[];
+  const fields = JSON.parse((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", db.id))!.fields) as { id: string; name: string; options?: string[] }[];
   const fid = (name: string) => fields.find((f) => f.name === name)!.id;
   const [a, b, c, d, j, s] = recs;
   // The first row: the document's content, title, icon, tags, properties.
@@ -846,7 +846,7 @@ test("documents made from database rows become the record's content (#82)", asyn
   assert.ok(fields.find((f) => f.name === "Tags")!.options!.includes("Wichtig"));
   assert.equal(cells[0][fid("Kunde")], "ACME");
   assert.equal(cells[0][fid("Fertig")], true, "the row's own cells stay");
-  assert.equal(one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", a.id)!.html.includes("Inhalt von A"), true);
+  assert.equal((await one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", a.id))!.html.includes("Inhalt von A"), true);
   // A second row naming the same document links to the first.
   assert.equal(cells[1].title, "Angebot ACME");
   assert.match(b.content, new RegExp(`/#page=${db.id}&amp;row=${a.id}`));
@@ -860,31 +860,31 @@ test("documents made from database rows become the record's content (#82)", asyn
   assert.deepEqual(cells[3][fid("Tags")], ["Neu"]);
   assert.equal(cells[3][fid("Kunde")], "Aus der Zelle", "a property never overwrites the row's cell");
   // A journal day and the database's own document: links.
-  const day = one<{ id: string }>("SELECT id FROM pages WHERE workspace_id=? AND journal_date='2026-10-05' AND deleted_at IS NULL", wid)!;
+  const day = (await one<{ id: string }>("SELECT id FROM pages WHERE workspace_id=? AND journal_date='2026-10-05' AND deleted_at IS NULL", wid))!;
   assert.match(j.content, new RegExp(link(day.id)));
-  assert.match(s.content, new RegExp(link(pageByTitle("Vertrieb").id)));
+  assert.match(s.content, new RegExp(link((await pageByTitle("Vertrieb")).id)));
   // Links from elsewhere and the folder lead to the record.
-  const over = pageByTitle("Übersicht Angebote");
-  assert.match(html(over.id), new RegExp(`/#page=${db.id}&amp;row=${a.id}`));
-  assert.match(html(over.id), new RegExp(`/#page=${db.id}&amp;row=${d.id}`));
-  const folder = pageByTitle("Kunden");
+  const over = await pageByTitle("Übersicht Angebote");
+  assert.match(await html(over.id), new RegExp(`/#page=${db.id}&amp;row=${a.id}`));
+  assert.match(await html(over.id), new RegExp(`/#page=${db.id}&amp;row=${d.id}`));
+  const folder = await pageByTitle("Kunden");
   assert.equal(over.parent_id, folder.id);
-  assert.match(html(folder.id), new RegExp(`/#page=${db.id}&amp;row=${a.id}`));
-  assert.equal(pageByTitle("Positionen").parent_id, db.id);
+  assert.match(await html(folder.id), new RegExp(`/#page=${db.id}&amp;row=${a.id}`));
+  assert.equal((await pageByTitle("Positionen")).parent_id, db.id);
   // The document's whiteboard shows the record on its card.
-  const board = pageByTitle("Angebot ACME – Whiteboard");
+  const board = await pageByTitle("Angebot ACME – Whiteboard");
   assert.equal(board.kind, "whiteboard");
-  const card = whiteboardItems(boardDoc(board.id)).find((i) => i.type === "card")!;
+  const card = whiteboardItems(await boardDoc(board.id)).find((i) => i.type === "card")!;
   assert.equal(card.pageId, db.id);
   assert.equal(card.rowId, a.id);
 
   // Imported as one database, the documents are records like any other.
   const flat = await importFromSource(owner, wid, space, { name: "z.affine", bytes }, { mode: "database" });
-  const flatRows = all<{ id: string; cells: string }>("SELECT id,cells FROM rows WHERE page_id=?", flat.databaseId!);
+  const flatRows = await all<{ id: string; cells: string }>("SELECT id,cells FROM rows WHERE page_id=?", flat.databaseId!);
   assert.ok(flatRows.some((r) => JSON.parse(r.cells).title === "Angebot ACME"));
   const overRow = flatRows.find((r) => JSON.parse(r.cells).title === "Übersicht Angebote")!;
   const accept = flatRows.find((r) => JSON.parse(r.cells).title === "Angebot ACME")!;
-  assert.match(one<{ content: string }>("SELECT content FROM rows WHERE id=?", overRow.id)!.content, new RegExp(`row=${accept.id}`));
+  assert.match((await one<{ content: string }>("SELECT content FROM rows WHERE id=?", overRow.id))!.content, new RegExp(`row=${accept.id}`));
 });
 
 test("snapshot ZIP: a database row's document becomes its record's content (#82)", async () => {
@@ -918,8 +918,8 @@ test("snapshot ZIP: a database row's document becomes its record's content (#82)
   const preview = await importFromSource(owner, wid, space, { name: "sn.zip", bytes: zip }, { dryRun: true });
   assert.equal(preview.rowDocuments, 1);
   await importFromSource(owner, wid, space, { name: "sn.zip", bytes: zip });
-  assert.equal(all("SELECT id FROM pages WHERE workspace_id=? AND title='Projekt Alpha'", wid).length, 0);
-  const rec = one<{ cells: string; content: string }>("SELECT cells,content FROM rows WHERE page_id=?", pageByTitle("Projektliste").id)!;
+  assert.equal((await all("SELECT id FROM pages WHERE workspace_id=? AND title='Projekt Alpha'", wid)).length, 0);
+  const rec = (await one<{ cells: string; content: string }>("SELECT cells,content FROM rows WHERE page_id=?", (await pageByTitle("Projektliste")).id))!;
   assert.equal(JSON.parse(rec.cells).title, "Projekt Alpha");
   assert.match(rec.content, /Alpha im Detail/);
 });
@@ -938,7 +938,7 @@ test("Mermaid code arrives as a code block that shows the diagram (#95)", async 
     ],
   };
   await importFromSource(owner, wid, space, { name: "Diagramme.affine", bytes: affineFileV2(ws) });
-  const stored = html(pageByTitle("Ablauf").id);
+  const stored = await html((await pageByTitle("Ablauf")).id);
   assert.match(stored, /<pre (?:data-block-id="[^"]+" )?data-code-view="preview"><code class="language-mermaid">flowchart LR\n {2}A --&gt; B<\/code><\/pre>/);
   assert.match(stored, /<pre(?: data-block-id="[^"]+")?><code class="language-python">print\(1\)<\/code><\/pre>/);
   assert.doesNotMatch(stored, /data-mermaid/);
@@ -954,7 +954,7 @@ test("Mermaid code arrives as a code block that shows the diagram (#95)", async 
     new Map([["Diagramm-mmd1.snapshot.json", Buffer.from(JSON.stringify(snapshotDoc("mmd1", "Sequenz", [block("mermaid", "sequenceDiagram\nA->>B: Hallo")])))]]),
   );
   await importFromSource(owner, wid, space, { name: "snapshot.zip", bytes: zip });
-  assert.match(html(pageByTitle("Sequenz").id), /<pre (?:data-block-id="[^"]+" )?data-code-view="preview"><code class="language-mermaid">sequenceDiagram\nA-&gt;&gt;B: Hallo<\/code><\/pre>/);
+  assert.match(await html((await pageByTitle("Sequenz")).id), /<pre (?:data-block-id="[^"]+" )?data-code-view="preview"><code class="language-mermaid">sequenceDiagram\nA-&gt;&gt;B: Hallo<\/code><\/pre>/);
 });
 
 /* ---------- #117: documents of database rows that stayed top-level pages ---------- */
@@ -1066,21 +1066,21 @@ test("documents of database rows: other ways AFFiNE names them, and what they li
 
   await importFromSource(owner, wid, space, { name: "z.affine", bytes });
   for (const title of ["Gleiche ID", "Per Link", "Aus der Titelzelle", "Kunde A", "Im Ordner-Dokument", "Von der Leinwand"])
-    assert.equal(all("SELECT id FROM pages WHERE workspace_id=? AND title=? AND kind='document' AND deleted_at IS NULL", wid, title).length, 0, `${title} is no page`);
-  const db = pageByTitle("Kunden Z");
-  assert.equal(db.parent_id, pageByTitle("Vertrieb Z").id);
-  assert.equal(pageByTitle("Unterseite").parent_id, db.id);
-  assert.equal(pageByTitle("Enkel").parent_id, pageByTitle("Unterseite").id);
-  assert.equal(pageByTitle("Leinwand-Datenbank").parent_id, pageByTitle("Vertrieb Z").id);
+    assert.equal((await all("SELECT id FROM pages WHERE workspace_id=? AND title=? AND kind='document' AND deleted_at IS NULL", wid, title)).length, 0, `${title} is no page`);
+  const db = await pageByTitle("Kunden Z");
+  assert.equal(db.parent_id, (await pageByTitle("Vertrieb Z")).id);
+  assert.equal((await pageByTitle("Unterseite")).parent_id, db.id);
+  assert.equal((await pageByTitle("Enkel")).parent_id, (await pageByTitle("Unterseite")).id);
+  assert.equal((await pageByTitle("Leinwand-Datenbank")).parent_id, (await pageByTitle("Vertrieb Z")).id);
   // (c) the record's document: content once, links from both folders and
   // the collection, no second page.
-  const records = all<{ id: string; page_id: string; content: string }>("SELECT id,page_id,content FROM rows WHERE page_id IN (?,?) AND content LIKE '%Inhalt von A%'", db.id, pageByTitle("Zweite").id);
+  const records = await all<{ id: string; page_id: string; content: string }>("SELECT id,page_id,content FROM rows WHERE page_id IN (?,?) AND content LIKE '%Inhalt von A%'", db.id, (await pageByTitle("Zweite")).id);
   assert.equal(records.length, 1);
   const recordLink = new RegExp(`/#page=${records[0].page_id}&amp;row=${records[0].id}`, "g");
-  assert.equal(html(pageByTitle("Ordner Eins").id).match(recordLink)?.length, 1);
-  assert.equal(html(pageByTitle("Ordner Zwei").id).match(recordLink)?.length, 1);
-  assert.equal(html(pageByTitle("Sammlung: Wichtige Kunden").id).match(recordLink)?.length, 1);
-  assert.match(html(pageByTitle("Unterseite").id), new RegExp(link(pageByTitle("Enkel").id)));
+  assert.equal((await html((await pageByTitle("Ordner Eins")).id)).match(recordLink)?.length, 1);
+  assert.equal((await html((await pageByTitle("Ordner Zwei")).id)).match(recordLink)?.length, 1);
+  assert.equal((await html((await pageByTitle("Sammlung: Wichtige Kunden")).id)).match(recordLink)?.length, 1);
+  assert.match(await html((await pageByTitle("Unterseite")).id), new RegExp(link((await pageByTitle("Enkel")).id)));
 });
 
 /* ---------- #116: AFFiNE templates ---------- */
@@ -1143,18 +1143,18 @@ test("AFFiNE templates become templates of the workspace, not pages (#116)", asy
   assert.equal(preview.files, 1, "the template's image");
 
   // Who may not create templates for the workspace gets them for themselves.
-  const viewer = account("affine-template-viewer");
-  run("INSERT INTO members(workspace_id,user_id,role) VALUES(?,?,?)", wid, viewer.id, "viewer");
-  assert.equal(importTemplateVisibility(viewer, wid), "private");
-  assert.equal(importTemplateVisibility(owner, wid), "workspace");
-  assert.equal(importTemplateVisibility({ ...owner, apiScope: "read" } as Identity, wid), "private");
+  const viewer = await account("affine-template-viewer");
+  await run("INSERT INTO members(workspace_id,user_id,role) VALUES(?,?,?)", wid, viewer.id, "viewer");
+  assert.equal(await importTemplateVisibility(viewer, wid), "private");
+  assert.equal(await importTemplateVisibility(owner, wid), "workspace");
+  assert.equal(await importTemplateVisibility({ ...owner, apiScope: "read" } as Identity, wid), "private");
   const fallback = "Die Vorlagen werden nur für dich gespeichert („Nur für mich“): Vorlagen für den Arbeitsbereich legt an, wer ihn bearbeiten darf.";
   assert.equal(englishMessage(fallback), "The templates are saved for you only (“Only me”): templates for the workspace are created by whoever may edit it.");
 
   await importFromSource(owner, wid, space, { name: "t.affine", bytes });
-  assert.equal(all("SELECT id FROM pages WHERE workspace_id=? AND title IN ('Besprechung','Aufgabenliste','Projektstart') AND deleted_at IS NULL", wid).length, 0);
+  assert.equal((await all("SELECT id FROM pages WHERE workspace_id=? AND title IN ('Besprechung','Aufgabenliste','Projektstart') AND deleted_at IS NULL", wid)).length, 0);
   type T = { id: string; name: string; kind: string; visibility: string; category: string; payload: string };
-  const saved = all<T>("SELECT id,name,kind,visibility,category,payload FROM templates WHERE workspace_id=? AND name IN ('Besprechung','Aufgabenliste','Projektstart') ORDER BY name", wid);
+  const saved = await all<T>("SELECT id,name,kind,visibility,category,payload FROM templates WHERE workspace_id=? AND name IN ('Besprechung','Aufgabenliste','Projektstart') ORDER BY name", wid);
   assert.deepEqual(saved.map((t) => [t.name, t.kind, t.visibility, t.category]), [
     ["Aufgabenliste", "database", "workspace", "other"],
     ["Besprechung", "document", "workspace", "other"],
@@ -1165,32 +1165,32 @@ test("AFFiNE templates become templates of the workspace, not pages (#116)", asy
   assert.equal(payload.icon, "🗓️");
   assert.deepEqual(payload.meta.tags, [{ name: "Team", color: "#ff0000" }]);
   assert.match(payload.html, /Agenda/);
-  assert.match(payload.html, new RegExp(link(pageByTitle("Protokolle").id)), "a link from the template to a page of the import");
+  assert.match(payload.html, new RegExp(link((await pageByTitle("Protokolle")).id)), "a link from the template to a page of the import");
   const fileId = /\/api\/files\/([0-9a-f-]{36})/.exec(payload.html)![1];
-  assert.equal(one<{ n: number }>("SELECT COUNT(*) n FROM template_files WHERE template_id=? AND original_id=?", meeting.id, fileId)!.n, 1, "the image goes with the template");
-  assert.equal(one("SELECT 1 FROM files WHERE id=?", fileId), undefined, "and is no upload of a page");
+  assert.equal((await one<{ n: number }>("SELECT COUNT(*) n FROM template_files WHERE template_id=? AND original_id=?", meeting.id, fileId))!.n, 1, "the image goes with the template");
+  assert.equal(await one("SELECT 1 FROM files WHERE id=?", fileId), undefined, "and is no upload of a page");
   const tasks = JSON.parse(saved.find((t) => t.name === "Aufgabenliste")!.payload) as { rows: { cells: { title: string } }[] };
   assert.deepEqual(tasks.rows.map((r) => r.cells.title), ["Erste Aufgabe", "Zweite"]);
   assert.match(JSON.parse(saved.find((t) => t.name === "Projektstart")!.payload).html, /Ziele/);
   // Links to templates are text; the folder names the template as text.
-  const protocols = html(pageByTitle("Protokolle").id);
+  const protocols = await html((await pageByTitle("Protokolle")).id);
   assert.match(protocols, /Neu aus Besprechung/);
   assert.match(protocols, /<p[^>]*>Besprechung<\/p>/);
   assert.match(protocols, /<p[^>]*>Vorlage<\/p>/);
   assert.doesNotMatch(protocols, /affine\.pro/);
-  assert.match(html(pageByTitle("Sitzungen").id), /<li>Besprechung<\/li>/);
+  assert.match(await html((await pageByTitle("Sitzungen")).id), /<li>Besprechung<\/li>/);
   // Listed and used like any saved template: the icon comes along.
-  const listed = listPageTemplates(owner, wid).find((t) => t.id === meeting.id)!;
+  const listed = (await listPageTemplates(owner, wid)).find((t) => t.id === meeting.id)!;
   assert.equal((listed as { icon?: string }).icon, "🗓️");
-  const used = createPage(wid, space, owner.id, "Aus Vorlage", "document");
+  const used = await createPage(wid, space, owner.id, "Aus Vorlage", "document");
   const { requirePage } = await import("../lib/permissions");
-  const tpl = one<Parameters<typeof applyPageTemplate>[2]>("SELECT * FROM templates WHERE id=?", meeting.id)!;
+  const tpl = (await one<Parameters<typeof applyPageTemplate>[2]>("SELECT * FROM templates WHERE id=?", meeting.id))!;
   const { transaction } = await import("../lib/db");
-  transaction(() => applyPageTemplate(owner, requirePage(owner, used, true), tpl, false), owner);
-  assert.equal(one<{ icon: string }>("SELECT icon FROM pages WHERE id=?", used)!.icon, "🗓️");
-  assert.match(html(used), /Agenda/);
-  assert.match(html(used), /<img src="\/api\/files\/[0-9a-f-]{36}"/);
-  assert.deepEqual(tagsOf(used), ["Team"]);
+  await transaction(async () => await applyPageTemplate(owner, await requirePage(owner, used, true), tpl, false), owner);
+  assert.equal((await one<{ icon: string }>("SELECT icon FROM pages WHERE id=?", used))!.icon, "🗓️");
+  assert.match(await html(used), /Agenda/);
+  assert.match(await html(used), /<img src="\/api\/files\/[0-9a-f-]{36}"/);
+  assert.deepEqual(await tagsOf(used), ["Team"]);
 
   // A snapshot does not say which documents are templates.
   const zip = await writeZip(new Map([["Notiz-tsnap.snapshot.json", Buffer.from(JSON.stringify(snapshotDoc("tsnap", "Vorlage im Snapshot", [])))]]));
@@ -1234,14 +1234,14 @@ test("a row's document that is only a database: that database goes below the rec
   assert.ok((x.parent === "affine:root" && y.parent === x.key) || (y.parent === "affine:root" && x.parent === y.key), `${x.parent} / ${y.parent}`);
 
   await importFromSource(owner, wid, space, { name: "o.affine", bytes });
-  assert.equal(all("SELECT id FROM pages WHERE workspace_id=? AND title='Projekt B' AND deleted_at IS NULL", wid).length, 0);
-  const a = pageByTitle("Projektliste O");
-  const c = pageByTitle("Aufgaben B");
+  assert.equal((await all("SELECT id FROM pages WHERE workspace_id=? AND title='Projekt B' AND deleted_at IS NULL", wid)).length, 0);
+  const a = await pageByTitle("Projektliste O");
+  const c = await pageByTitle("Aufgaben B");
   assert.equal(c.kind, "database");
   assert.equal(c.parent_id, a.id, "C is a subpage of database A");
-  assert.equal(all("SELECT id FROM rows WHERE page_id=?", c.id).length, 2);
-  const content = one<{ content: string }>("SELECT content FROM rows WHERE page_id=? AND position=0", a.id)!.content;
+  assert.equal((await all("SELECT id FROM rows WHERE page_id=?", c.id)).length, 2);
+  const content = (await one<{ content: string }>("SELECT content FROM rows WHERE page_id=? AND position=0", a.id))!.content;
   assert.match(content, new RegExp(`data-linked-source="${c.id}"`), "the record embeds C as a linked database");
   // The folder that held B lists its record.
-  assert.match(html(pageByTitle("Ordner O").id), new RegExp(`/#page=${a.id}&amp;row=`));
+  assert.match(await html((await pageByTitle("Ordner O")).id), new RegExp(`/#page=${a.id}&amp;row=`));
 });

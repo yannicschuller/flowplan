@@ -13,16 +13,16 @@ const { newQuestion, surveySchema, validateSurvey, conditionMet, surveyPages, su
 const { formSettings, getForm, saveFormSubmission } = await import("../lib/forms");
 const { surveyResults } = await import("../lib/survey-results");
 
-function user(name: string): Identity {
+async function user(name: string): Promise<Identity> {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@test.invalid`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@test.invalid`);
   return { id: uid, name, email: `${name}@test.invalid`, groups: [], isAdmin: false, disabled: 0, created_at: "" };
 }
-const owner = user("owner");
-const wid = createWorkspace(owner.id, "Surveys"),
-  boot = bootstrap(owner, wid);
-const act = (body: Record<string, unknown>): any => command(owner, body);
-const pageId = act({ action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, kind: "database", title: "Feedback" }).id as string;
+const owner = await user("owner");
+const wid = await createWorkspace(owner.id, "Surveys"),
+  boot = await bootstrap(owner, wid);
+const act = async (body: Record<string, unknown>): Promise<any> => await command(owner, body);
+const pageId = (await act({ action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, kind: "database", title: "Feedback" })).id as string;
 
 // A survey as the builder sends it.
 const q = (type: Parameters<typeof newQuestion>[0]) => newQuestion(type, "de");
@@ -48,20 +48,20 @@ const items = [
 ];
 const all = [nps, reason, choice, matrix, rank, stars, time];
 
-test("saving creates properties and form settings in one step", () => {
-  const result = act({
+test("saving creates properties and form settings in one step", async () => {
+  const result = await act({
     action: "survey.save",
     pageId,
-    version: database(pageId).version,
+    version: (await database(pageId)).version,
     survey: { enabled: true, items, onePerPerson: true },
     questions: Object.fromEntries(all.map((x) => [x.question.id, { title: x.title, options: x.options }])),
     form: { submitLabel: "Senden", successTitle: "Danke!" },
   });
-  const fields = database(pageId).fields;
+  const fields = (await database(pageId)).fields;
   // Matrix: one property per row.
   assert.equal(fields.filter((f) => f.name.startsWith(matrix.title)).length, 2);
   assert.equal(fields.find((f) => f.id === result.fields[nps.question.field])!.type, "number");
-  const config = formSettings(pageId)!.config;
+  const config = (await formSettings(pageId))!.config;
   assert.equal(config.survey!.items.length, 8);
   // The condition now points at the stored property.
   assert.equal(config.survey!.items[1].kind === "question" && config.survey!.items[1].showIf!.field, result.fields[nps.question.field]);
@@ -69,10 +69,10 @@ test("saving creates properties and form settings in one step", () => {
   assert.equal(surveyPages(config.survey!).length, 2);
 });
 
-test("answers are checked by type and conditions", () => {
-  const config = formSettings(pageId)!.config;
+test("answers are checked by type and conditions", async () => {
+  const config = (await formSettings(pageId))!.config;
   const survey = config.survey!;
-  const fields = database(pageId).fields;
+  const fields = (await database(pageId)).fields;
   const id = (draft: string) => (survey.items.find((i) => i.kind === "question" && i.id === draft) as { field: string }).field;
   const f = { nps: id(nps.question.id), reason: id(reason.question.id), choice: id(choice.question.id), rank: id(rank.question.id), stars: id(stars.question.id), time: id(time.question.id) };
   const mq = survey.items.find((i) => i.kind === "question" && i.type === "matrix") as { rows: { field: string }[]; columns: string[] };
@@ -91,16 +91,16 @@ test("answers are checked by type and conditions", () => {
   assert.equal(surveyClosed(surveySchema.parse({ limit: 2 }), 2), "full");
 });
 
-test("submissions become records; results summarise them", () => {
-  const survey = formSettings(pageId)!.config.survey!;
+test("submissions become records; results summarise them", async () => {
+  const survey = (await formSettings(pageId))!.config.survey!;
   const field = (draft: string) => (survey.items.find((i) => i.kind === "question" && i.id === draft) as { field: string }).field;
-  const send = (score: number, extra: Record<string, unknown> = {}) => saveFormSubmission(pageId, owner, { [field(nps.question.id)]: score, ...extra }, true);
-  send(10);
-  send(9);
-  send(3, { [field(reason.question.id)]: "Zu teuer" });
-  send(7);
-  assert.throws(() => send(11), /zwischen 0 und 10/);
-  const result = surveyResults(survey, database(pageId).fields, rows(pageId));
+  const send = async (score: number, extra: Record<string, unknown> = {}) => await saveFormSubmission(pageId, owner, { [field(nps.question.id)]: score, ...extra }, true);
+  await send(10);
+  await send(9);
+  await send(3, { [field(reason.question.id)]: "Zu teuer" });
+  await send(7);
+  await assert.rejects(async () => await send(11), /zwischen 0 und 10/);
+  const result = surveyResults(survey, (await database(pageId)).fields, await rows(pageId));
   assert.equal(result.responses, 4);
   const npsResult = result.questions.find((x) => x.q.id === nps.question.id)!;
   assert.equal(npsResult.kind === "number" && npsResult.nps!.score, 25);
@@ -142,10 +142,10 @@ test("form follow-ups: confirmation e-mail, team notification, hidden answers dr
   process.env.SMTP_HOST = "smtp.test.invalid";
   const { formDraft, saveFormDraft, confirmFormAnswer } = await import("../lib/forms");
   try {
-    const member = user("member"),
-      stranger = user("stranger");
-    run("INSERT INTO members VALUES(?,?,?)", wid, member.id, "editor");
-    const page = act({ action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, kind: "database", title: "Anfragen" }).id as string;
+    const member = await user("member"),
+      stranger = await user("stranger");
+    await run("INSERT INTO members VALUES(?,?,?)", wid, member.id, "editor");
+    const page = (await act({ action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, kind: "database", title: "Anfragen" })).id as string;
     const fields = [
       { id: "title", name: "Name", type: "text" },
       { id: "mail", name: "E-Mail", type: "email" },
@@ -153,8 +153,8 @@ test("form follow-ups: confirmation e-mail, team notification, hidden answers dr
       { id: "steps", name: "Schritte", type: "text" },
       { id: "notes", name: "Interne Notiz", type: "text" },
     ];
-    act({ action: "database.update", pageId: page, version: database(page).version, fields, views: database(page).views });
-    act({
+    await act({ action: "database.update", pageId: page, version: (await database(page)).version, fields, views: (await database(page)).views });
+    await act({
       action: "form.update",
       pageId: page,
       enabled: true,
@@ -168,67 +168,67 @@ test("form follow-ups: confirmation e-mail, team notification, hidden answers dr
         notifyMembers: [member.id, stranger.id],
       },
     });
-    const mails = () => rowsOf<{ recipient: string; subject: string; text: string }>("SELECT recipient,subject,text FROM mail_queue ORDER BY seq");
-    const before = mails().length;
+    const mails = async () => await rowsOf<{ recipient: string; subject: string; text: string }>("SELECT recipient,subject,text FROM mail_queue ORDER BY seq");
+    const before = (await mails()).length;
     // "Lob": the required "Schritte" is hidden, so not required, and its
     // answer is dropped; internal fields never reach the record or the mail.
-    const saved = saveFormSubmission(page, null, { title: "Kim", mail: "kim@example.com", kind: "Lob", steps: "secret", notes: "x" });
-    const cells = JSON.parse(one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", saved.id)!.cells);
+    const saved = await saveFormSubmission(page, null, { title: "Kim", mail: "kim@example.com", kind: "Lob", steps: "secret", notes: "x" });
+    const cells = JSON.parse((await one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", saved.id))!.cells);
     assert.equal(cells.steps, undefined);
     assert.equal(cells.notes, undefined);
     assert.equal(saved.confirmed, true);
-    const mail = mails().slice(before).find((m) => m.recipient === "kim@example.com")!;
+    const mail = (await mails()).slice(before).find((m) => m.recipient === "kim@example.com")!;
     assert.equal(mail.subject, "Danke, Kim");
     assert.match(mail.text, /^Hallo Kim,\n\nwir melden uns\./);
     assert.match(mail.text, /- Art: Lob/);
     assert.doesNotMatch(mail.text, /secret|Interne Notiz|Schritte/);
     // Only the member hears about it; a stranger is not in the workspace.
-    const notes = rowsOf<{ user_id: string; body: string }>("SELECT user_id,body FROM notifications WHERE row_id=?", saved.id);
+    const notes = await rowsOf<{ user_id: string; body: string }>("SELECT user_id,body FROM notifications WHERE row_id=?", saved.id);
     assert.deepEqual(notes.map((n) => [n.user_id, n.body]), [[member.id, "Neue Antwort über „Anfragen“"]]);
     // Anonymous: no typed address, no mail – even for a signed-in person.
-    const count = mails().length;
-    saveFormSubmission(page, owner, { title: "Ohne", kind: "Lob" });
-    assert.equal(mails().length, count);
+    const count = (await mails()).length;
+    await saveFormSubmission(page, owner, { title: "Ohne", kind: "Lob" });
+    assert.equal((await mails()).length, count);
     // With the customer portal the link goes into the confirmation.
-    assert.equal(confirmFormAnswer(page, null, { title: "Lee", mail: "lee@example.com" }, { ticketUrl: "https://flowplan.test/ticket/abc" }), true);
-    assert.match(mails().at(-1)!.text, /https:\/\/flowplan\.test\/ticket\/abc/);
+    assert.equal(await confirmFormAnswer(page, null, { title: "Lee", mail: "lee@example.com" }, { ticketUrl: "https://flowplan.test/ticket/abc" }), true);
+    assert.match((await mails()).at(-1)!.text, /https:\/\/flowplan\.test\/ticket\/abc/);
     // Per recipient: at most five an hour.
-    for (let i = 0; i < 6; i++) confirmFormAnswer(page, null, { mail: "flood@example.com" });
-    assert.equal(mails().filter((m) => m.recipient === "flood@example.com").length, 5);
+    for (let i = 0; i < 6; i++) await confirmFormAnswer(page, null, { mail: "flood@example.com" });
+    assert.equal((await mails()).filter((m) => m.recipient === "flood@example.com").length, 5);
 
     // Not anonymous: the account's address; drafts for signed-in people.
-    act({ action: "form.update", pageId: page, anonymous: false });
-    const { token } = formSettings(page)!;
-    saveFormSubmission(page, owner, { title: "Olli", kind: "Lob" });
-    assert.equal(mails().at(-1)!.recipient, owner.email);
-    saveFormDraft(token, owner, { cells: { title: "Halb", steps: "1", unknown: "x" }, page: 1 });
-    const draft = formDraft(token, owner)!;
+    await act({ action: "form.update", pageId: page, anonymous: false });
+    const { token } = (await formSettings(page))!;
+    await saveFormSubmission(page, owner, { title: "Olli", kind: "Lob" });
+    assert.equal((await mails()).at(-1)!.recipient, owner.email);
+    await saveFormDraft(token, owner, { cells: { title: "Halb", steps: "1", unknown: "x" }, page: 1 });
+    const draft = (await formDraft(token, owner))!;
     assert.deepEqual({ cells: draft.cells, page: draft.page }, { cells: { title: "Halb", steps: "1" }, page: 1 });
-    assert.throws(() => saveFormDraft(token, null, { cells: {} }), /melde dich an/);
+    await assert.rejects(async () => await saveFormDraft(token, null, { cells: {} }), /melde dich an/);
     // Sending replaces the draft.
-    saveFormSubmission(page, owner, { title: "Fertig", kind: "Lob" });
-    assert.equal(formDraft(token, owner), null);
-    act({ action: "form.update", pageId: page, anonymous: true });
-    assert.throws(() => formDraft(token, owner), /Anonyme Formulare/);
+    await saveFormSubmission(page, owner, { title: "Fertig", kind: "Lob" });
+    assert.equal(await formDraft(token, owner), null);
+    await act({ action: "form.update", pageId: page, anonymous: true });
+    await assert.rejects(async () => await formDraft(token, owner), /Anonyme Formulare/);
   } finally {
     delete process.env.SMTP_HOST;
   }
 });
 
-test("survey.save keeps follow-up settings it was not sent", () => {
-  const config = formSettings(pageId)!.config;
-  act({ action: "form.update", pageId, config: { ...config, notifyMembers: [owner.id], redirectUrl: "https://example.com/{x}" } });
-  const fields = database(pageId).fields;
-  act({
+test("survey.save keeps follow-up settings it was not sent", async () => {
+  const config = (await formSettings(pageId))!.config;
+  await act({ action: "form.update", pageId, config: { ...config, notifyMembers: [owner.id], redirectUrl: "https://example.com/{x}" } });
+  const fields = (await database(pageId)).fields;
+  await act({
     action: "survey.save",
     pageId,
-    version: database(pageId).version,
+    version: (await database(pageId)).version,
     survey: config.survey,
     questions: Object.fromEntries(
       config.survey!.items.flatMap((i) => (i.kind === "question" ? [[i.id, { title: i.title || "Frage", options: fields.find((f) => f.id === i.field)?.options }]] : [])),
     ),
     form: { submitLabel: "Senden" },
   });
-  assert.deepEqual(formSettings(pageId)!.config.notifyMembers, [owner.id]);
-  assert.equal(formSettings(pageId)!.config.redirectUrl, "https://example.com/{x}");
+  assert.deepEqual((await formSettings(pageId))!.config.notifyMembers, [owner.id]);
+  assert.equal((await formSettings(pageId))!.config.redirectUrl, "https://example.com/{x}");
 });

@@ -19,7 +19,7 @@ import type { Field, Identity, Page, Row, Space, View } from "./types";
 // publication shows is copied: published pages, public properties, published
 // files and record documents. Relations, people, computed properties, private
 // linked views, comments, versions and share settings stay behind.
-export function copyPublication(user: Identity, input: unknown) {
+export async function copyPublication(user: Identity, input: unknown) {
   const b = z
     .object({
       token: z.string().min(1).max(200),
@@ -27,7 +27,7 @@ export function copyPublication(user: Identity, input: unknown) {
       spaceId: z.string().uuid(),
     })
     .parse(input);
-  const publication = one<{ allow_copy: number; password_hash: string | null }>(
+  const publication = await one<{ allow_copy: number; password_hash: string | null }>(
     "SELECT p.allow_copy,p.password_hash FROM publications p JOIN pages g ON g.id=p.page_id WHERE g.public_token=? AND g.deleted_at IS NULL",
     b.token,
   );
@@ -37,27 +37,27 @@ export function copyPublication(user: Identity, input: unknown) {
       403,
       "Diese Veröffentlichung darf nicht kopiert werden.",
     );
-  const { root, pages } = publicTree(b.token);
-  requireMember(user, b.workspaceId, "editor");
-  const quota = quotaCheckpoint(b.workspaceId);
-  const space = one<Space>(
+  const { root, pages } = await publicTree(b.token);
+  await requireMember(user, b.workspaceId, "editor");
+  const quota = await quotaCheckpoint(b.workspaceId);
+  const space = await one<Space>(
     "SELECT * FROM spaces WHERE id=? AND workspace_id=? AND deleted_at IS NULL",
     b.spaceId,
     b.workspaceId,
   );
-  if (!space || !["editor", "owner"].includes(spaceRole(user, space) || ""))
+  if (!space || !["editor", "owner"].includes(await spaceRole(user, space) || ""))
     throw new HttpError(403, "Keine Schreibrechte im Zielbereich.");
   const pageIds = new Map<string, string>(),
     fileIds = new Map<string, string>();
   const dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads");
   // Copies a file only when the publication itself serves it.
-  const copyFile = (url: string) => {
+  const copyFile = async (url: string) => {
     const fid = fileIdOf(url) || imageFileId(url);
     if (!fid) return url;
     if (fileIds.has(fid)) return `/api/files/${fileIds.get(fid)}`;
     let file: { page_id: string; name: string; mime: string; size: number };
     try {
-      file = publicFile(b.token, fid) as unknown as typeof file;
+      file = (await publicFile(b.token, fid)) as unknown as typeof file;
     } catch {
       return "";
     }
@@ -67,11 +67,11 @@ export function copyPublication(user: Identity, input: unknown) {
     mkdirSync(dir, { recursive: true });
     copyFileSync(resolve(dir, fid), resolve(dir, nid));
     onTransactionRollback(() => unlinkSync(resolve(dir, nid)));
-    const meta = one<{ name: string; mime: string; size: number }>(
+    const meta = (await one<{ name: string; mime: string; size: number }>(
       "SELECT name,mime,size FROM files WHERE id=?",
       fid,
-    )!;
-    run(
+    ))!;
+    await run(
       "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
       nid,
       target,
@@ -84,7 +84,7 @@ export function copyPublication(user: Identity, input: unknown) {
     return `/api/files/${nid}`;
   };
   const rewriteHtml = (html: string) =>
-    cleanHtml(html, (tagName, attribs) => {
+    cleanHtml(html, async (tagName, attribs) => {
       const attrs = { ...attribs };
       // Linked database blocks point at sources the visitor cannot read.
       if (attrs["data-linked-database"]) {
@@ -95,7 +95,7 @@ export function copyPublication(user: Identity, input: unknown) {
       for (const key of ["src", "href", "data-pdf"]) {
         if (!attrs[key]) continue;
         if (fileIdOf(attrs[key])) {
-          const copied = copyFile(attrs[key]);
+          const copied = await copyFile(attrs[key]);
           if (copied) attrs[key] = copied;
           else delete attrs[key];
         }
@@ -121,7 +121,7 @@ export function copyPublication(user: Identity, input: unknown) {
   };
   visit(null);
   for (const p of ordered) {
-    const copy = createPage(
+    const copy = await createPage(
       b.workspaceId,
       b.spaceId,
       user.id,
@@ -133,9 +133,9 @@ export function copyPublication(user: Identity, input: unknown) {
   }
   for (const p of ordered) {
     const copy = pageIds.get(p.id)!;
-    const icon = imageFileId(p.icon) ? copyFile(p.icon) : p.icon;
-    const cover = imageFileId(p.cover) ? copyFile(p.cover) : p.cover;
-    run(
+    const icon = imageFileId(p.icon) ? (await copyFile(p.icon)) : p.icon;
+    const cover = imageFileId(p.cover) ? (await copyFile(p.cover)) : p.cover;
+    await run(
       "UPDATE pages SET icon=?,cover=?,cover_position=?,full_width=?,caption_numbers=?,font=?,position=? WHERE id=?",
       icon || "file",
       cover,
@@ -148,12 +148,12 @@ export function copyPublication(user: Identity, input: unknown) {
     );
     if (p.kind === "document") {
       const html = rewriteHtml(
-        one<{ html: string }>(
+        (await one<{ html: string }>(
           "SELECT html FROM documents WHERE page_id=?",
           p.id,
-        )?.html || "",
+        ))?.html || "",
       );
-      run(
+      await run(
         "UPDATE documents SET html=?,state=?,generation=? WHERE page_id=?",
         html,
         htmlState(html),
@@ -162,10 +162,10 @@ export function copyPublication(user: Identity, input: unknown) {
       );
       continue;
     }
-    const stored = one<{ fields: string; views: string }>(
+    const stored = (await one<{ fields: string; views: string }>(
       "SELECT fields,views FROM databases WHERE page_id=?",
       p.id,
-    )!;
+    ))!;
     const fields = (JSON.parse(stored.fields) as Field[]).filter(publicField);
     const kept = new Set(fields.map((f) => f.id));
     // Layouts may reference removed properties; the copy starts with a table.
@@ -178,13 +178,13 @@ export function copyPublication(user: Identity, input: unknown) {
         sorts: [],
       },
     ];
-    run(
+    await run(
       "UPDATE databases SET fields=?,views=? WHERE page_id=?",
       JSON.stringify(fields),
       JSON.stringify(views),
       copy,
     );
-    for (const row of all<Row & { cells: string }>(
+    for (const row of await all<Row & { cells: string }>(
       "SELECT * FROM rows WHERE page_id=? AND access!='private' ORDER BY position",
       p.id,
     )) {
@@ -194,10 +194,10 @@ export function copyPublication(user: Identity, input: unknown) {
         ),
       );
       const content = rewriteHtml(
-        ensureRowDocument({ ...row, cells: JSON.parse(row.cells) }).html,
+        (await ensureRowDocument({ ...row, cells: JSON.parse(row.cells) })).html,
       );
       const rid = id();
-      run(
+      await run(
         "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content,icon,cover) VALUES(?,?,?,?,?,?,?,?,?)",
         rid,
         copy,
@@ -206,10 +206,10 @@ export function copyPublication(user: Identity, input: unknown) {
         user.id,
         user.id,
         content,
-        imageFileId(row.icon || "") ? copyFile(row.icon!) : row.icon || "",
-        imageFileId(row.cover || "") ? copyFile(row.cover!) : row.cover || "",
+        imageFileId(row.icon || "") ? (await copyFile(row.icon!)) : row.icon || "",
+        imageFileId(row.cover || "") ? (await copyFile(row.cover!)) : row.cover || "",
       );
-      run(
+      await run(
         "INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?)",
         rid,
         htmlState(content),

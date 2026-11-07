@@ -14,8 +14,8 @@ import { cleanDevice } from "./whiteboard-rack";
 import { netboxToRacks, type NetboxData } from "./whiteboard-rack-netbox";
 import type { Identity } from "./types";
 
-function boardPage(user: Identity, pageId: unknown, write = false) {
-  const page = requirePage(user, z.uuid().parse(pageId), write);
+async function boardPage(user: Identity, pageId: unknown, write = false) {
+  const page = await requirePage(user, z.uuid().parse(pageId), write);
   if (page.kind !== "whiteboard") throw new HttpError(400, "Kein Whiteboard.");
   return page;
 }
@@ -23,17 +23,17 @@ function boardPage(user: Identity, pageId: unknown, write = false) {
 // ---- own device templates ----
 
 type Row = { id: string; workspace_id: string; name: string; device: string; fill: string | null; created_by: string | null; created_at: number };
-export function listRackTemplates(user: Identity, pageId: unknown) {
-  const page = boardPage(user, pageId);
-  const role = requireMember(user, page.workspace_id);
+export async function listRackTemplates(user: Identity, pageId: unknown) {
+  const page = await boardPage(user, pageId);
+  const role = await requireMember(user, page.workspace_id);
   // Guests see only their own, like whiteboard templates.
-  const guest = isGuest(user, page.workspace_id);
-  return all<Row>(
+  const guest = await isGuest(user, page.workspace_id);
+  return (await all<Row>(
     "SELECT * FROM rack_device_templates WHERE workspace_id=? AND (?=0 OR created_by=?) ORDER BY lower(name)",
     page.workspace_id,
     guest ? 1 : 0,
     user.id,
-  ).flatMap((row) => {
+  )).flatMap((row) => {
     let device;
     try {
       device = cleanDevice(JSON.parse(row.device));
@@ -52,17 +52,17 @@ const saveInput = z.object({
     .regex(/^#[0-9a-f]{6}$/i)
     .optional(),
 });
-export function saveRackTemplate(user: Identity, pageId: unknown, raw: unknown) {
-  const page = boardPage(user, pageId, true);
-  requireMember(user, page.workspace_id, "editor");
+export async function saveRackTemplate(user: Identity, pageId: unknown, raw: unknown) {
+  const page = await boardPage(user, pageId, true);
+  await requireMember(user, page.workspace_id, "editor");
   const input = saveInput.parse(raw);
   const device = cleanDevice(input.device);
   if (!device) throw new HttpError(400, "Ungültiges Gerät.");
-  lockFor(`rack-templates:${page.workspace_id}`);
-  if ((one<{ n: number }>("SELECT COUNT(*) n FROM rack_device_templates WHERE workspace_id=?", page.workspace_id)?.n || 0) >= 500)
+  await lockFor(`rack-templates:${page.workspace_id}`);
+  if (((await one<{ n: number }>("SELECT COUNT(*) n FROM rack_device_templates WHERE workspace_id=?", page.workspace_id))?.n || 0) >= 500)
     throw new HttpError(409, "Dieser Arbeitsbereich hat schon 500 eigene Geräte.");
   const templateId = id();
-  run(
+  await run(
     "INSERT INTO rack_device_templates(id,workspace_id,name,device,fill,created_by,created_at) VALUES(?,?,?,?,?,?,?)",
     templateId,
     page.workspace_id,
@@ -74,14 +74,14 @@ export function saveRackTemplate(user: Identity, pageId: unknown, raw: unknown) 
   );
   return { id: templateId };
 }
-export function deleteRackTemplate(user: Identity, pageId: unknown, templateId: unknown) {
-  const page = boardPage(user, pageId);
-  const role = requireMember(user, page.workspace_id, "editor");
-  const row = one<Row>("SELECT * FROM rack_device_templates WHERE id=? AND workspace_id=?", z.uuid().parse(templateId), page.workspace_id);
+export async function deleteRackTemplate(user: Identity, pageId: unknown, templateId: unknown) {
+  const page = await boardPage(user, pageId);
+  const role = await requireMember(user, page.workspace_id, "editor");
+  const row = await one<Row>("SELECT * FROM rack_device_templates WHERE id=? AND workspace_id=?", z.uuid().parse(templateId), page.workspace_id);
   if (!row) throw new HttpError(404, "Vorlage fehlt.");
   if (row.created_by !== user.id && role !== "owner")
     throw new HttpError(403, "Nur der Ersteller oder ein Besitzer darf die Vorlage verwalten.");
-  run("DELETE FROM rack_device_templates WHERE id=?", row.id);
+  await run("DELETE FROM rack_device_templates WHERE id=?", row.id);
   return { ok: true };
 }
 
@@ -165,7 +165,7 @@ export async function fetchNetbox(raw: unknown, fetcher: NetboxFetch = defaultFe
   const byIds = async <T>(path: string, key: string, ids: number[], enough = Infinity) => {
     const out: T[] = [];
     for (let i = 0; i < ids.length && out.length < enough; i += 100)
-      out.push(...(await list<T>(path, ids.slice(i, i + 100).map((n) => [key, String(n)]), enough - out.length)));
+      out.push(...await list<T>(path, ids.slice(i, i + 100).map((n) => [key, String(n)]), enough - out.length));
     return out;
   };
   const rackParams: [string, string][] = [];
@@ -198,10 +198,10 @@ export async function fetchNetbox(raw: unknown, fetcher: NetboxFetch = defaultFe
 }
 export async function netboxImport(user: Identity, pageId: unknown, raw: unknown, fetcher?: NetboxFetch) {
   if (user.demo) throw new HttpError(403, "In der Demo nicht verfügbar. Registriere dich, um das zu nutzen.");
-  const page = boardPage(user, pageId, true);
+  const page = await boardPage(user, pageId, true);
   if (page.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
   const data = await fetchNetbox(raw, fetcher);
   const result = netboxToRacks(data);
-  audit(user.id, "whiteboard.netbox", page.id, `racks:${result.racks.length} devices:${result.devices.length} cables:${result.cables.length}`);
+  await audit(user.id, "whiteboard.netbox", page.id, `racks:${result.racks.length} devices:${result.devices.length} cables:${result.cables.length}`);
   return result;
 }

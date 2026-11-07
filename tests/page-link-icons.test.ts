@@ -75,36 +75,36 @@ test("which links point to a page or record", () => {
   assert.equal(parseTargetKey("x"), null);
 });
 
-function account(name: string) {
+async function account(name: string) {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
   return { id: uid, name, email: `${name}@example.test`, groups: [], isAdmin: false, disabled: 0, created_at: "" } as Identity;
 }
-const owner = account("Olga"),
-  viewer = account("Vera"),
-  stranger = account("Sven");
-const wid = createWorkspace(owner.id, "Agentur");
-run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
-const team = bootstrap(owner, wid).spaces[0].id;
-const act = (input: Record<string, unknown>, as = owner) => command(as, input) as Record<string, unknown>;
-const create = (title: string, kind = "document", spaceId = team) =>
-  (act({ action: "page.create", workspaceId: wid, spaceId, title, kind }) as { id: string }).id;
+const owner = await account("Olga"),
+  viewer = await account("Vera"),
+  stranger = await account("Sven");
+const wid = await createWorkspace(owner.id, "Agentur");
+await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
+const team = (await bootstrap(owner, wid)).spaces[0].id;
+const act = async (input: Record<string, unknown>, as = owner) => (await command(as, input)) as Record<string, unknown>;
+const create = async (title: string, kind = "document", spaceId = team) =>
+  ((await act({ action: "page.create", workspaceId: wid, spaceId, title, kind })) as { id: string }).id;
 
-const rocket = create("Raketen");
-act({ action: "page.update", pageId: rocket, patch: { icon: "🚀" } });
-const tasks = create("Aufgaben", "database");
-const record = (act({ action: "row.create", pageId: tasks, cells: { title: "Steuer" } }) as { id: string }).id;
-run("UPDATE rows SET icon=? WHERE id=?", "💸", record);
-const plain = (act({ action: "row.create", pageId: tasks, cells: { title: "Ohne" } }) as { id: string }).id;
-const secret = (act({ action: "row.create", pageId: tasks, cells: { title: "Geheim" } }) as { id: string }).id;
-act({ action: "row.access", pageId: tasks, rowId: secret, access: "private", grants: [] });
-const privateSpace = (act({ action: "space.create", workspaceId: wid, name: "Privat", private: true }) as { id: string }).id;
-const hidden = create("Tagebuch", "document", privateSpace);
-act({ action: "page.update", pageId: hidden, patch: { icon: "🔒" } });
+const rocket = await create("Raketen");
+await act({ action: "page.update", pageId: rocket, patch: { icon: "🚀" } });
+const tasks = await create("Aufgaben", "database");
+const record = ((await act({ action: "row.create", pageId: tasks, cells: { title: "Steuer" } })) as { id: string }).id;
+await run("UPDATE rows SET icon=? WHERE id=?", "💸", record);
+const plain = ((await act({ action: "row.create", pageId: tasks, cells: { title: "Ohne" } })) as { id: string }).id;
+const secret = ((await act({ action: "row.create", pageId: tasks, cells: { title: "Geheim" } })) as { id: string }).id;
+await act({ action: "row.access", pageId: tasks, rowId: secret, access: "private", grants: [] });
+const privateSpace = ((await act({ action: "space.create", workspaceId: wid, name: "Privat", private: true })) as { id: string }).id;
+const hidden = await create("Tagebuch", "document", privateSpace);
+await act({ action: "page.update", pageId: hidden, patch: { icon: "🔒" } });
 
-test("the server answers only for what the person may read", () => {
+test("the server answers only for what the person may read", async () => {
   const keys = [rocket, tasks, `${tasks}:${record}`, `${tasks}:${plain}`, `${tasks}:${secret}`, hidden, `${rocket}:${record}`, id(), "junk"];
-  const own = linkTargets(owner, keys);
+  const own = await linkTargets(owner, keys);
   assert.deepEqual(own[rocket], { icon: "🚀", kind: "document" });
   assert.deepEqual(own[tasks], { icon: "file", kind: "database" });
   assert.deepEqual(own[`${tasks}:${record}`], { icon: "💸", kind: "record" });
@@ -113,43 +113,43 @@ test("the server answers only for what the person may read", () => {
   assert.ok(own[hidden]);
   // A record under the wrong database, unknown ids and junk: nothing.
   assert.equal(Object.keys(own).length, 6);
-  const read = linkTargets(viewer, keys);
+  const read = await linkTargets(viewer, keys);
   assert.ok(read[rocket] && read[`${tasks}:${record}`]);
   // A private record and a private space: not even that they exist.
   assert.equal(read[`${tasks}:${secret}`], undefined);
   assert.equal(read[hidden], undefined);
-  assert.deepEqual(linkTargets(stranger, keys), {});
+  assert.deepEqual(await linkTargets(stranger, keys), {});
   // No titles in the answer.
   assert.ok(Object.values(own).every((v) => Object.keys(v).sort().join() === "icon,kind"));
   // Pages in the trash drop out.
-  const gone = create("Weg");
-  act({ action: "page.delete", pageId: gone });
-  assert.deepEqual(linkTargets(owner, [gone]), {});
+  const gone = await create("Weg");
+  await act({ action: "page.delete", pageId: gone });
+  assert.deepEqual(await linkTargets(owner, [gone]), {});
   assert.ok(LINK_TARGETS_LIMIT >= 50);
 });
 
-test("backlinks, search and related pages give records their own icon", () => {
-  const target = create("Ziel");
-  run(
+test("backlinks, search and related pages give records their own icon", async () => {
+  const target = await create("Ziel");
+  await run(
     "INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?)",
     record,
     Buffer.alloc(0),
     `<p><a href="/#page=${target}">Ziel</a></p>`,
     "g",
   );
-  const links = textBacklinks(owner, { id: target, workspace_id: wid });
+  const links = await textBacklinks(owner, { id: target, workspace_id: wid });
   const fromRecord = links.find((l) => l.rowId === record);
   assert.ok(fromRecord);
   assert.equal(fromRecord!.icon, "💸");
   assert.equal(fromRecord!.kind, "record");
-  const hits = searchWorkspace(owner, wid, "Steuer", { kind: "row" });
+  const hits = await searchWorkspace(owner, wid, "Steuer", { kind: "row" });
   const hit = hits.find((h) => h.rowId === record);
   assert.ok(hit);
   assert.equal(hit!.icon, "💸");
 });
 
-test("published pages: uploads through the share, unpublished uploads left out", () => {
-  const pages = publishedLinkPages("token", [
+test("published pages: uploads through the share, unpublished uploads left out", async () => {
+  const pages = await publishedLinkPages("token", [
     { id: rocket, icon: "🚀", kind: "document" },
     { id: tasks, icon: `/api/files/${id()}`, kind: "database" },
   ]);

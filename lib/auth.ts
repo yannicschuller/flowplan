@@ -21,17 +21,17 @@ export function adminGroup() {
 // of their latest sign-in (SSO, local accounts and LDAP all write it into
 // the session), else the flag of a local or directory account. Accounts
 // without a session since then keep the last state they signed in with.
-export function adminUserIds(): string[] {
+export async function adminUserIds(): Promise<string[]> {
   // The group as a JSON string inside the list; % and _ in its name are
   // literal characters, not LIKE wildcards.
   const needle = `%${JSON.stringify(adminGroup()).replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-  return all<{ id: string }>(
+  return (await all<{ id: string }>(
     `SELECT u.id FROM users u WHERE u.disabled=0 AND (
        (SELECT s.groups_json FROM sessions s WHERE s.user_id=u.id ORDER BY COALESCE(s.created_at,0) DESC, s.expires DESC LIMIT 1) LIKE ? ESCAPE '\\'
        OR EXISTS (SELECT 1 FROM local_accounts a WHERE a.user_id=u.id AND a.is_admin=1)
        OR EXISTS (SELECT 1 FROM ldap_accounts l WHERE l.user_id=u.id AND l.is_admin=1))`,
     needle,
-  ).map((r) => r.id);
+  )).map((r) => r.id);
 }
 export function extractGroups(claims: Record<string, unknown>): string[] {
   const val = (process.env.OIDC_GROUPS_CLAIM || "groups")
@@ -58,7 +58,7 @@ type SessionUse = { token: string; expires: number; created_at: number | null; r
 // background keep the session of their app alive like the app itself.
 export async function touchSession(s: SessionUse, now = Date.now()) {
   if (s.demo_until) return;
-  const policy = s.remember ? rememberPolicy(s.app ? "app" : "browser") : null;
+  const policy = s.remember ? (await rememberPolicy(s.app ? "app" : "browser")) : null;
   const stale = now - (s.last_seen || 0) > 5 * 60_000;
   if (policy && s.created_at) {
     const next = Math.min(now + policy.idleHours * 3_600_000, rememberedEnd(s.created_at, !!s.sso, policy));
@@ -99,13 +99,13 @@ export async function identityFromToken(token: string): Promise<Identity | null>
     demo: !!s.demo_until,
     groups,
     isAdmin: !s.demo_until && groups.includes(adminGroup()),
-    ...(!s.demo_until && needsTwoFactorSetup(s.id) ? { twoFactorSetup: true } : {}),
+    ...(!s.demo_until && await needsTwoFactorSetup(s.id) ? { twoFactorSetup: true } : {}),
   };
 }
 export async function currentUser() {
   const requestHeaders = await headers();
   // Blocked addresses (Administration → Sicherheit) are signed out.
-  if (blockedRequest(requestHeaders)) return null;
+  if (await blockedRequest(requestHeaders)) return null;
   // Scripts and integrations sign in with a personal API token.
   const authorization = requestHeaders.get("authorization");
   if (authorization?.startsWith("Bearer ")) return identityFromApiToken(authorization);
@@ -117,7 +117,7 @@ export async function currentUser() {
 // tests without a Next.js request around them): a personal API token, or
 // the session cookie.
 export async function identityFromRequest(req: Request): Promise<Identity | null> {
-  if (blockedRequest(req.headers)) return null;
+  if (await blockedRequest(req.headers)) return null;
   const authorization = req.headers.get("authorization");
   if (authorization?.startsWith("Bearer ")) return identityFromApiToken(authorization);
   return sessionIdentityFromRequest(req);
@@ -176,7 +176,7 @@ export async function issueSession(
   // How long it lasts (lib/session-policy.ts): the desktop and mobile apps
   // stay signed in unless the instance says otherwise – when they proved the
   // sign-in theirs; the user agent alone does not.
-  const terms = demo ? null : sessionTerms({ app: !!options.app, remember: options.remember, sso: options.sso }, now);
+  const terms = demo ? null : (await sessionTerms({ app: !!options.app, remember: options.remember, sso: options.sso }, now));
   const expires = terms ? terms.expires : demo!.expires;
   // A security event (lib/security-events.ts): the detection compares it
   // with earlier sign-ins and failures of the same account.
@@ -259,37 +259,37 @@ export async function upsertUser(subject: string, name: string, email: string) {
 // over at sign-in and when the app loads, so an account that already exists
 // gets a later invitation too. SSO accounts take them over at sign-in, when
 // the provider confirms the address.
-export function acceptPendingInvites(userId: string) {
-  const user = one<User>("SELECT * FROM users WHERE id=?", userId);
-  if (!user || !one("SELECT 1 FROM invites WHERE lower(email)=lower(?)", user.email)) return;
+export async function acceptPendingInvites(userId: string) {
+  const user = await one<User>("SELECT * FROM users WHERE id=?", userId);
+  if (!user || !(await one("SELECT 1 FROM invites WHERE lower(email)=lower(?)", user.email))) return;
   // Only a confirmed address (by e-mail link, an administrator or the SSO
   // provider) proves it is this person's.
-  if (one("SELECT 1 FROM users WHERE id=? AND email_verified=1", userId)) acceptInvites(user, true);
+  if (await one("SELECT 1 FROM users WHERE id=? AND email_verified=1", userId)) await acceptInvites(user, true);
 }
-export function acceptInvites(user: User, emailVerified: boolean) {
+export async function acceptInvites(user: User, emailVerified: boolean) {
   if (!emailVerified) return;
-  for (const inv of all<Invite>("SELECT * FROM invites WHERE lower(email)=lower(?)", user.email)) acceptInvite(user, inv);
+  for (const inv of await all<Invite>("SELECT * FROM invites WHERE lower(email)=lower(?)", user.email)) await acceptInvite(user, inv);
 }
 type Invite = { id: string; workspace_id: string; email: string; role: string; guest: number };
 // One invitation for this person: membership (as guest when invited so),
 // the pages that waited for it, and a note in the inbox.
-function acceptInvite(user: User, inv: Invite) {
-    const added = run(
+async function acceptInvite(user: User, inv: Invite) {
+    const added = (await run(
       "INSERT INTO members VALUES(?,?,?) ON CONFLICT DO NOTHING",
       inv.workspace_id,
       user.id,
       inv.role,
-    ).changes;
+    )).changes;
     // The person finds the workspace (or the shared page) in the inbox.
     if (added) {
-      const ws = one<{ name: string }>("SELECT name FROM workspaces WHERE id=?", inv.workspace_id);
-      const by = one<{ name: string }>("SELECT u.name FROM invites i JOIN users u ON u.id=i.created_by WHERE i.id=?", inv.id);
-      const page = one<{ id: string; title: string }>(
+      const ws = await one<{ name: string }>("SELECT name FROM workspaces WHERE id=?", inv.workspace_id);
+      const by = await one<{ name: string }>("SELECT u.name FROM invites i JOIN users u ON u.id=i.created_by WHERE i.id=?", inv.id);
+      const page = await one<{ id: string; title: string }>(
         "SELECT p.id,p.title FROM invite_grants g JOIN pages p ON p.id=g.resource_id WHERE lower(g.email)=lower(?) AND g.workspace_id=? AND p.deleted_at IS NULL",
         inv.email,
         inv.workspace_id,
       );
-      run(
+      await run(
         "INSERT INTO notifications(id,user_id,body,page_id,kind) VALUES(?,?,?,?,'share')",
         id(),
         user.id,
@@ -301,45 +301,45 @@ function acceptInvite(user: User, inv: Invite) {
     }
     // An existing membership is never downgraded to guest by an invite.
     if (added && inv.guest)
-      run(
+      await run(
         "INSERT INTO workspace_guests(workspace_id,user_id) VALUES(?,?) ON CONFLICT DO NOTHING",
         inv.workspace_id,
         user.id,
       );
     // Pages shared before the account existed (lib/page-share.ts).
-    for (const g of all<{ resource_id: string; role: string }>(
+    for (const g of await all<{ resource_id: string; role: string }>(
       "SELECT resource_id,role FROM invite_grants WHERE lower(email)=lower(?) AND workspace_id=?",
       inv.email,
       inv.workspace_id,
     )) {
-      if (!one("SELECT 1 FROM pages WHERE id=? AND workspace_id=? AND deleted_at IS NULL", g.resource_id, inv.workspace_id)) continue;
-      run("DELETE FROM grants WHERE resource_id=? AND user_id=? AND group_id=''", g.resource_id, user.id);
-      run("INSERT INTO grants VALUES(?,?,?,?)", g.resource_id, user.id, "", g.role);
+      if (!(await one("SELECT 1 FROM pages WHERE id=? AND workspace_id=? AND deleted_at IS NULL", g.resource_id, inv.workspace_id))) continue;
+      await run("DELETE FROM grants WHERE resource_id=? AND user_id=? AND group_id=''", g.resource_id, user.id);
+      await run("INSERT INTO grants VALUES(?,?,?,?)", g.resource_id, user.id, "", g.role);
     }
-    run("DELETE FROM invite_grants WHERE lower(email)=lower(?) AND workspace_id=?", inv.email, inv.workspace_id);
-    run("DELETE FROM invites WHERE id=?", inv.id);
+    await run("DELETE FROM invite_grants WHERE lower(email)=lower(?) AND workspace_id=?", inv.email, inv.workspace_id);
+    await run("DELETE FROM invites WHERE id=?", inv.id);
 }
 // The link from an invitation (?invite=…): whoever opens it signed in takes
 // the invitation over, whatever their address – the link is the proof. This
 // is the way in on instances without e-mail, where an address cannot be
 // confirmed. Returns the workspace, or null for an unknown or used link.
 export const inviteTokenShape = /^[A-Za-z0-9_-]{20,64}$/;
-export function acceptInviteToken(user: User, token: string) {
+export async function acceptInviteToken(user: User, token: string) {
   if (!inviteTokenShape.test(token)) return null;
-  const inv = one<Invite>("SELECT * FROM invites WHERE token=?", token);
+  const inv = await one<Invite>("SELECT * FROM invites WHERE token=?", token);
   if (!inv) return null;
-  acceptInvite(user, inv);
+  await acceptInvite(user, inv);
   return inv.workspace_id;
 }
 export const inviteToken = () => randomBytes(24).toString("base64url");
 // Changes that do not pass checkOrigin (tokens in the address: webhooks,
 // inbound mail, Git, CalDAV) call this themselves.
-export function refuseWhileReadOnly(req: Request) {
+export async function refuseWhileReadOnly(req: Request) {
   let path = "";
   try {
     path = new URL(req.url).pathname;
   } catch {}
-  const refusal = readOnlyRefusal(path);
+  const refusal = await readOnlyRefusal(path);
   if (refusal) throw new HttpError(423, refusal);
 }
 export class HttpError extends Error {
@@ -352,11 +352,11 @@ export class HttpError extends Error {
     if (status === 429) recordOpsEvent("rate_limited");
   }
 }
-export function checkOrigin(req: Request) {
+export async function checkOrigin(req: Request) {
   // Every change passes here: while the instance moves (lib/instance-move.ts)
   // it is read-only, for API tokens as well. 423, not 503: a final answer
   // the offline queue does not retry.
-  refuseWhileReadOnly(req);
+  await refuseWhileReadOnly(req);
   // Browsers never add a bearer token on their own, so such requests cannot
   // be forged by another site (the cookie is ignored for them).
   if (req.headers.get("authorization")?.startsWith("Bearer fp_")) return;

@@ -31,7 +31,7 @@ test("the first account sets the instance up and administers it", async () => {
   const { user, groups } = await auth.register({ name: "Ana", email: "Ana@Example.test", password: "ein-langes-passwort" }, "de");
   assert.deepEqual(groups, [adminGroup()]);
   assert.equal(user.email, "ana@example.test");
-  assert.deepEqual(auth.localGroups(user.id), [adminGroup()]);
+  assert.deepEqual(await auth.localGroups(user.id), [adminGroup()]);
   assert.equal(await auth.firstAccount(), false);
   // Sign-ups are now closed until the administration opens them.
   assert.equal(await auth.signupOpen(), false);
@@ -39,11 +39,11 @@ test("the first account sets the instance up and administers it", async () => {
 });
 
 test("an invitation link offers creating the account while sign-ups are closed", async () => {
-  const ana = one<{ user_id: string }>("SELECT user_id FROM local_accounts WHERE email='ana@example.test'")!.user_id;
+  const ana = (await one<{ user_id: string }>("SELECT user_id FROM local_accounts WHERE email='ana@example.test'"))!.user_id;
   const wid = id(),
     token = "einladung-eva-0123456789";
-  run("INSERT INTO workspaces(id,name,created_by) VALUES(?,?,?)", wid, "Eingeladen", ana);
-  run("INSERT INTO invites(id,workspace_id,email,role,created_by,guest,token) VALUES(?,?,?,?,?,0,?)", id(), wid, "eva@example.test", "editor", ana, token);
+  await run("INSERT INTO workspaces(id,name,created_by) VALUES(?,?,?)", wid, "Eingeladen", ana);
+  await run("INSERT INTO invites(id,workspace_id,email,role,created_by,guest,token) VALUES(?,?,?,?,?,0,?)", id(), wid, "eva@example.test", "editor", ana, token);
   // The sign-in page offers the account for the invited address.
   assert.equal(await auth.signupOpen(), false);
   assert.equal(await auth.signupOpen(undefined, token), true);
@@ -68,8 +68,8 @@ test("an invitation link offers creating the account while sign-ups are closed",
   await assert.rejects(auth.register({ name: "Eva?", email: "eva@example.test", password: "ein-langes-passwort" }, "de"), /nur Admins/);
   const { user } = await auth.register({ name: "Eva", email: "EVA@example.test", password: "ein-langes-passwort", invite: token }, "de");
   // Without e-mail the address is not confirmed: the link (app/page.tsx) takes the invitation over.
-  assert.equal(acceptInviteToken(user, token), wid);
-  assert.ok(one("SELECT 1 FROM members WHERE user_id=? AND workspace_id=?", user.id, wid));
+  assert.equal(await acceptInviteToken(user, token), wid);
+  assert.ok(await one("SELECT 1 FROM members WHERE user_id=? AND workspace_id=?", user.id, wid));
   // A used link no longer opens sign-ups, and the server refuses it.
   assert.equal(await auth.signupOpen(undefined, token), false);
   assert.equal((await auth.loginOptions(undefined, token)).invitedEmail, "");
@@ -95,48 +95,48 @@ test("signing in with e-mail and password; failed attempts are limited", async (
   assert.ok(await auth.passwordLogin({ email: "ana@example.test", password: "ein-langes-passwort" }, "10.0.1.1", "de"));
   // Spread over many addresses, the account's ceiling still applies.
   const now = Date.now();
-  for (let i = 0; i < auth.LIMITS.name; i++) run("INSERT INTO login_failures(key,at) VALUES(?,?)", "email:ziel@example.test", now);
+  for (let i = 0; i < auth.LIMITS.name; i++) await run("INSERT INTO login_failures(key,at) VALUES(?,?)", "email:ziel@example.test", now);
   await assert.rejects(auth.passwordLogin({ email: "ziel@example.test", password: "noch-einer" }, "10.0.2.9", "de"), /Zu viele Versuche/);
-  run("DELETE FROM login_failures WHERE key LIKE 'email:ziel@%'");
+  await run("DELETE FROM login_failures WHERE key LIKE 'email:ziel@%'");
   // Without a proxy address (""), failures count per account only: 30 wrong
   // passwords for one address do not lock everyone else out.
   for (let i = 0; i < 31; i++)
     await auth.passwordLogin({ email: `fremd${i}@example.test`, password: "falsch-falsch" }, "", "de").catch(() => {});
   assert.ok(await auth.passwordLogin({ email: "ana@example.test", password: "ein-langes-passwort" }, "", "de"));
-  assert.equal(one("SELECT 1 FROM login_failures WHERE key='ip:'"), undefined, "no bucket for the unknown address");
+  assert.equal(await one("SELECT 1 FROM login_failures WHERE key='ip:'"), undefined, "no bucket for the unknown address");
   // A disabled account cannot sign in.
-  const uid = one<{ user_id: string }>("SELECT user_id FROM local_accounts WHERE email='ana@example.test'")!.user_id;
-  run("UPDATE users SET disabled=1 WHERE id=?", uid);
+  const uid = (await one<{ user_id: string }>("SELECT user_id FROM local_accounts WHERE email='ana@example.test'"))!.user_id;
+  await run("UPDATE users SET disabled=1 WHERE id=?", uid);
   await assert.rejects(auth.passwordLogin({ email: "ana@example.test", password: "ein-langes-passwort" }, "10.0.3.1", "de"), /deaktiviert/);
-  run("UPDATE users SET disabled=0 WHERE id=?", uid);
+  await run("UPDATE users SET disabled=0 WHERE id=?", uid);
 });
 
 test("open sign-ups, confirmation by e-mail accepts invitations", async () => {
   process.env.SMTP_HOST = "smtp.example.test";
   process.env.SMTP_FROM = "Flowplan <flowplan@example.test>";
   // An invited address may create its account even with sign-ups closed.
-  const ana = one<{ user_id: string }>("SELECT user_id FROM local_accounts WHERE email='ana@example.test'")!.user_id;
+  const ana = (await one<{ user_id: string }>("SELECT user_id FROM local_accounts WHERE email='ana@example.test'"))!.user_id;
   const wid = id();
-  run("INSERT INTO workspaces(id,name,created_by) VALUES(?,?,?)", wid, "Team", ana);
-  run("INSERT INTO invites(id,workspace_id,email,role,created_by,guest) VALUES(?,?,?,?,?,0)", id(), wid, "cem@example.test", "editor", ana);
+  await run("INSERT INTO workspaces(id,name,created_by) VALUES(?,?,?)", wid, "Team", ana);
+  await run("INSERT INTO invites(id,workspace_id,email,role,created_by,guest) VALUES(?,?,?,?,?,0)", id(), wid, "cem@example.test", "editor", ana);
   const { user, groups, pending } = await auth.register({ name: "Cem", email: "cem@example.test", password: "ein-langes-passwort" }, "de");
   assert.deepEqual(groups, []);
   // The instance sends e-mail: the account waits for the confirmation.
   assert.equal(pending, true);
   await assert.rejects(auth.passwordLogin({ email: "cem@example.test", password: "ein-langes-passwort" }, "10.0.3.9", "de"), /bestätige zuerst/);
   // Not a member before the address is confirmed.
-  assert.equal(one("SELECT 1 FROM members WHERE user_id=?", user.id), undefined);
+  assert.equal(await one("SELECT 1 FROM members WHERE user_id=?", user.id), undefined);
   await mail.flushMailQueue();
   const confirm = sent.find((m) => m.to === "cem@example.test")!;
   assert.match(confirm.subject, /bestätigen/);
   const token = new URL(linkIn(confirm.text)).searchParams.get("token")!;
-  assert.equal(auth.verifyEmail("falsch"), null);
-  assert.equal(auth.verifyEmail(token), user.id);
-  assert.equal(auth.verifyEmail(token), null, "used once");
+  assert.equal(await auth.verifyEmail("falsch"), null);
+  assert.equal(await auth.verifyEmail(token), user.id);
+  assert.equal(await auth.verifyEmail(token), null, "used once");
   assert.ok(await auth.passwordLogin({ email: "cem@example.test", password: "ein-langes-passwort" }, "10.0.3.9", "de"));
-  assert.ok(one("SELECT 1 FROM members WHERE user_id=? AND workspace_id=?", user.id, wid));
+  assert.ok(await one("SELECT 1 FROM members WHERE user_id=? AND workspace_id=?", user.id, wid));
   // With sign-ups open, anyone may register; a second account per address not.
-  saveInstanceSettings({ ...instanceSettings(), allowSignup: true });
+  await saveInstanceSettings({ ...(await instanceSettings()), allowSignup: true });
   assert.equal(await auth.signupOpen(), true);
   await auth.register({ name: "Dana", email: "dana@example.test", password: "ein-langes-passwort" }, "de");
   await assert.rejects(auth.register({ name: "Dana 2", email: "DANA@example.test", password: "ein-langes-passwort" }, "de"), /schon ein Konto/);
@@ -152,32 +152,32 @@ test("password reset by e-mail and by an administrator's link", async () => {
   const link = linkIn(resets[0].text);
   assert.match(link, /^https:\/\/flowplan\.example\.test\/reset\?token=/);
   const token = new URL(link).searchParams.get("token")!;
-  const dana = one<{ user_id: string }>("SELECT user_id FROM local_accounts WHERE email='dana@example.test'")!.user_id;
-  run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", "s-dana", dana, "[]", Date.now() + 60_000);
+  const dana = (await one<{ user_id: string }>("SELECT user_id FROM local_accounts WHERE email='dana@example.test'"))!.user_id;
+  await run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", "s-dana", dana, "[]", Date.now() + 60_000);
   await assert.rejects(auth.resetPassword({ token, password: "kurz" }, "de"), /mindestens/);
   await auth.resetPassword({ token, password: "ganz-neues-passwort" }, "de");
-  assert.equal(one("SELECT 1 FROM sessions WHERE user_id=?", dana), undefined, "signed out everywhere");
+  assert.equal(await one("SELECT 1 FROM sessions WHERE user_id=?", dana), undefined, "signed out everywhere");
   await assert.rejects(auth.resetPassword({ token, password: "noch-ein-passwort" }, "de"), /abgelaufen/);
   await auth.passwordLogin({ email: "dana@example.test", password: "ganz-neues-passwort" }, "10.0.4.1", "de");
-  const adminLink = new URL(auth.adminResetLink(dana));
+  const adminLink = new URL(await auth.adminResetLink(dana));
   await auth.resetPassword({ token: adminLink.searchParams.get("token")!, password: "drittes-passwort-1" }, "de");
   await auth.changePassword(dana, { current: "drittes-passwort-1", next: "viertes-passwort-1" }, "de");
   await assert.rejects(auth.changePassword(dana, { current: "falsch", next: "fuenftes-passwort" }, "de"), /stimmt nicht/);
 });
 
-test("administrators give and take the admin right; one always remains", () => {
-  const ana = one<{ user_id: string }>("SELECT user_id FROM local_accounts WHERE email='ana@example.test'")!.user_id;
-  const cem = one<{ user_id: string }>("SELECT user_id FROM local_accounts WHERE email='cem@example.test'")!.user_id;
-  assert.throws(() => auth.setLocalAdmin(ana, false), /mindestens eine Person/);
-  auth.setLocalAdmin(cem, true);
-  assert.deepEqual(auth.localGroups(cem), [adminGroup()]);
-  auth.setLocalAdmin(ana, false);
-  assert.deepEqual(auth.localGroups(ana), []);
-  assert.equal(auth.localAccountInfo()[cem].admin, true);
+test("administrators give and take the admin right; one always remains", async () => {
+  const ana = (await one<{ user_id: string }>("SELECT user_id FROM local_accounts WHERE email='ana@example.test'"))!.user_id;
+  const cem = (await one<{ user_id: string }>("SELECT user_id FROM local_accounts WHERE email='cem@example.test'"))!.user_id;
+  await assert.rejects(async () => await auth.setLocalAdmin(ana, false), /mindestens eine Person/);
+  await auth.setLocalAdmin(cem, true);
+  assert.deepEqual(await auth.localGroups(cem), [adminGroup()]);
+  await auth.setLocalAdmin(ana, false);
+  assert.deepEqual(await auth.localGroups(ana), []);
+  assert.equal((await auth.localAccountInfo())[cem].admin, true);
 });
 
 test("passkeys: options for local accounts, unknown passkeys are refused", async () => {
-  const cem = one<{ user_id: string; email: string }>("SELECT user_id,email FROM local_accounts WHERE email='cem@example.test'")!;
+  const cem = (await one<{ user_id: string; email: string }>("SELECT user_id,email FROM local_accounts WHERE email='cem@example.test'"))!;
   const user = { id: cem.user_id, name: "Cem", email: cem.email, disabled: 0, created_at: "" };
   const { options, token } = await auth.passkeyRegistrationOptions(user, "de");
   assert.equal(options.rp.id, "flowplan.example.test");
@@ -190,9 +190,9 @@ test("passkeys: options for local accounts, unknown passkeys are refused", async
   await assert.rejects(auth.passkeyLogin(login.token, { id: "unbekannt", rawId: "unbekannt", type: "public-key", response: {} }, "10.0.5.1", "en"), /not known/);
   // SSO accounts manage their sign-in with their provider.
   const sso = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", sso, "https://id.example|1", "Sso", "sso@example.test");
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", sso, "https://id.example|1", "Sso", "sso@example.test");
   await assert.rejects(auth.passkeyRegistrationOptions({ id: sso, name: "Sso", email: "sso@example.test", disabled: 0, created_at: "" }, "de"), /SSO/);
-  assert.deepEqual(auth.listPasskeys(cem.user_id), []);
+  assert.deepEqual(await auth.listPasskeys(cem.user_id), []);
 });
 
 test("FLOWPLAN_LOCAL_LOGIN=false leaves only single sign-on", async () => {
@@ -203,28 +203,28 @@ test("FLOWPLAN_LOCAL_LOGIN=false leaves only single sign-on", async () => {
   delete process.env.FLOWPLAN_LOCAL_LOGIN;
 });
 
-test("failed sign-ins: per account and address, a ceiling per account, a growing delay", () => {
-  run("DELETE FROM login_failures");
+test("failed sign-ins: per account and address, a ceiling per account, a growing delay", async () => {
+  await run("DELETE FROM login_failures");
   const keys = (address: string) => [...(address ? [`ip:${address}`] : []), "email:opfer@example.test"];
-  for (let i = 0; i < auth.LIMITS.nameAddress; i++) auth.failed(keys("10.9.0.1"));
-  assert.equal(auth.limited(keys("10.9.0.1")), true, "the attacking address waits");
-  assert.equal(auth.limited(keys("10.9.0.2")), false, "the owner elsewhere does not");
+  for (let i = 0; i < auth.LIMITS.nameAddress; i++) await auth.failed(keys("10.9.0.1"));
+  assert.equal(await auth.limited(keys("10.9.0.1")), true, "the attacking address waits");
+  assert.equal(await auth.limited(keys("10.9.0.2")), false, "the owner elsewhere does not");
   // An unknown address (no proxy header) counts the account alone, strictly.
-  assert.equal(auth.limited(keys("")), true);
+  assert.equal(await auth.limited(keys("")), true);
   // The delay grows with the account's failures from every address.
-  assert.equal(auth.failureDelay(keys("10.9.0.2")), 0);
-  for (let i = 0; i < 6; i++) auth.failed(keys(`10.9.1.${i}`));
-  assert.equal(auth.failureDelay(keys("10.9.0.2")), (14 - auth.LIMITS.slowFrom) * auth.LIMITS.slowStepMs);
+  assert.equal(await auth.failureDelay(keys("10.9.0.2")), 0);
+  for (let i = 0; i < 6; i++) await auth.failed(keys(`10.9.1.${i}`));
+  assert.equal(await auth.failureDelay(keys("10.9.0.2")), (14 - auth.LIMITS.slowFrom) * auth.LIMITS.slowStepMs);
   const now = Date.now();
-  for (let i = 0; i < 200; i++) run("INSERT INTO login_failures(key,at) VALUES(?,?)", "email:opfer@example.test", now);
-  assert.equal(auth.failureDelay(keys("10.9.0.2")), auth.LIMITS.slowMaxMs);
-  assert.equal(auth.limited(keys("10.9.0.2")), true, "the ceiling per account");
+  for (let i = 0; i < 200; i++) await run("INSERT INTO login_failures(key,at) VALUES(?,?)", "email:opfer@example.test", now);
+  assert.equal(await auth.failureDelay(keys("10.9.0.2")), auth.LIMITS.slowMaxMs);
+  assert.equal(await auth.limited(keys("10.9.0.2")), true, "the ceiling per account");
   // A success clears the account's failures from every address.
-  auth.clearFailures("email:opfer@example.test");
-  assert.equal(one("SELECT 1 FROM login_failures WHERE key LIKE 'email:opfer@%'"), undefined);
-  assert.equal(auth.limited(keys("10.9.0.1")), false);
+  await auth.clearFailures("email:opfer@example.test");
+  assert.equal(await one("SELECT 1 FROM login_failures WHERE key LIKE 'email:opfer@%'"), undefined);
+  assert.equal(await auth.limited(keys("10.9.0.1")), false);
   // Codes stay strict per account, whatever the address.
-  for (let i = 0; i < auth.LIMITS.other; i++) auth.failed([`ip:10.9.2.${i}`, "totp:someone"]);
-  assert.equal(auth.limited(["ip:10.9.3.1", "totp:someone"]), true);
-  run("DELETE FROM login_failures");
+  for (let i = 0; i < auth.LIMITS.other; i++) await auth.failed([`ip:10.9.2.${i}`, "totp:someone"]);
+  assert.equal(await auth.limited(["ip:10.9.3.1", "totp:someone"]), true);
+  await run("DELETE FROM login_failures");
 });

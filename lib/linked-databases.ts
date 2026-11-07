@@ -19,23 +19,23 @@ import { requireUnlocked } from "./journal-extras";
 import type { Identity, Filter, View } from "./types";
 import { documentChanged } from "./document-live";
 // The host is a page document or, with `rowId`, a record document.
-function hostDocument(
+async function hostDocument(
   user: Identity,
   hostId: string,
   rowId: string | undefined,
   write: boolean,
 ) {
   if (rowId) {
-    const { page, row } = requireRow(user, hostId, rowId, write);
-    return { host: page, rowId: row.id, stored: ensureRowDocument(row) };
+    const { page, row } = await requireRow(user, hostId, rowId, write);
+    return { host: page, rowId: row.id, stored: await ensureRowDocument(row) };
   }
-  const host = requirePage(user, hostId, write);
-  requireUnlocked(user, host);
+  const host = await requirePage(user, hostId, write);
+  await requireUnlocked(user, host);
   if (host.kind !== "document")
     throw new HttpError(400, "Einbettung benötigt ein Dokument.");
   if (write && host.locked)
     throw new HttpError(409, "Das Dokument ist gesperrt.");
-  const stored = one<{
+  const stored = await one<{
     state: Uint8Array | null;
     html: string;
     generation: string;
@@ -43,14 +43,14 @@ function hostDocument(
   if (!stored) throw new HttpError(404, "Dokument fehlt.");
   return { host, rowId: undefined, stored };
 }
-function open(
+async function open(
   user: Identity,
   hostId: string,
   blockId: string,
   write = false,
   rowId?: string,
 ) {
-  const { host, stored } = hostDocument(user, hostId, rowId, write);
+  const { host, stored } = await hostDocument(user, hostId, rowId, write);
   const doc = new Y.Doc();
   try {
     Y.applyUpdate(doc, stored.state || htmlState(stored.html));
@@ -74,11 +74,11 @@ function open(
       );
     const node = matches[0],
       attrs = parseLinkedAttributes(node.getAttributes());
-    const source = requirePage(user, attrs.source);
+    const source = await requirePage(user, attrs.source);
     if (source.kind !== "database" || source.workspace_id !== host.workspace_id)
       throw new HttpError(403, "Datenquelle nicht verfügbar.");
     // A source below a journal behind a PIN stays closed here as well.
-    requireUnlocked(user, source);
+    await requireUnlocked(user, source);
     return {
       host,
       rowId,
@@ -93,20 +93,20 @@ function open(
     throw error;
   }
 }
-export function linkedDatabaseData(
+export async function linkedDatabaseData(
   user: Identity,
   hostId: string,
   blockId: string,
   rowId?: string,
 ) {
-  const context = open(user, hostId, blockId, false, rowId);
+  const context = await open(user, hostId, blockId, false, rowId);
   try {
-    const source = pageData(user, context.source.id);
+    const source = await pageData(user, context.source.id);
     if (!("database" in source)) throw new HttpError(400, "Keine Datenbank.");
     return {
       ...source,
       sourceVersion: source.database.version,
-      hostRole: pageRole(user, context.host),
+      hostRole: await pageRole(user, context.host),
       hostLocked: !!context.host.locked,
       database: {
         ...source.database,
@@ -122,7 +122,7 @@ export function linkedDatabaseData(
     context.doc.destroy();
   }
 }
-function writeViews(context: ReturnType<typeof open>, views: View[]) {
+async function writeViews(context: Awaited<ReturnType<typeof open>>, views: View[]) {
   context.doc.transact(() => {
     context.node.setAttribute("views", JSON.stringify(views));
     context.node.setAttribute("version", String(context.attrs.version + 1));
@@ -130,32 +130,32 @@ function writeViews(context: ReturnType<typeof open>, views: View[]) {
   const state = Y.encodeStateAsUpdate(context.doc),
     html = stateHtml(context.doc);
   if (context.rowId) {
-    run(
+    await run(
       "UPDATE row_documents SET state=?,html=?,updated_at=? WHERE row_id=?",
       state,
       html, nowText(),
       context.rowId,
     );
-    run(
+    await run(
       "UPDATE rows SET content=?,updated_at=? WHERE id=?",
       html, nowText(),
       context.rowId,
     );
   } else
-    run(
+    await run(
       "UPDATE documents SET state=?,html=?,updated_at=? WHERE page_id=?",
       state,
       html, nowText(),
       context.host.id,
     );
-  run(
+  await run(
     "UPDATE pages SET updated_at=? WHERE id=?", nowText(),
     context.host.id,
   );
   documentChanged(context.host.id, context.rowId);
 }
 // Runs inside the command transaction. Any failed source mutation also rolls back the merged document update.
-export function mutateLinkedDatabase(
+export async function mutateLinkedDatabase(
   user: Identity,
   input: Record<string, unknown>,
 ) {
@@ -170,10 +170,10 @@ export function mutateLinkedDatabase(
     .object({ action: z.string() })
     .passthrough()
     .parse(input.mutation);
-  const host = requirePage(user, hostId);
-  const hostWritable = pageRole(user, host) !== "viewer" && !host.locked;
+  const host = await requirePage(user, hostId);
+  const hostWritable = (await pageRole(user, host)) !== "viewer" && !host.locked;
   if (hostWritable && input.update)
-    command(
+    await command(
       user,
       {
         action: rowId ? "row.document.sync" : "document.sync",
@@ -184,7 +184,7 @@ export function mutateLinkedDatabase(
       },
       true,
     );
-  const context = open(
+  const context = await open(
     user,
     hostId,
     blockId,
@@ -198,7 +198,7 @@ export function mutateLinkedDatabase(
         "Die Dokumentversion wurde geändert. Bitte neu laden.",
       );
     let result: unknown = { ok: true };
-    const d = database(context.source.id);
+    const d = await database(context.source.id);
     if (
       ["database.update", "row.move", "row.schedule"].includes(mutation.action)
     ) {
@@ -252,20 +252,20 @@ export function mutateLinkedDatabase(
             "Galerie verweist auf eine unbekannte Bildeigenschaft.",
           );
       }
-      validateViewRowOrders(context.source.id, views);
-      writeViews(context, views);
+      await validateViewRowOrders(context.source.id, views);
+      await writeViews(context, views);
     } else if (mutation.action === "row.schedule") {
-      result = scheduleRow(user, context.source.id, mutation, {
+      result = await scheduleRow(user, context.source.id, mutation, {
         fields: d.fields,
         views: context.attrs.views,
         version: context.attrs.version,
       });
     } else if (mutation.action === "row.move") {
-      result = moveRow(user, context.source.id, mutation, {
+      result = await moveRow(user, context.source.id, mutation, {
         fields: d.fields,
         views: context.attrs.views,
         version: context.attrs.version,
-        save: (views) => writeViews(context, views),
+        save: async (views) => await writeViews(context, views),
       });
     } else {
       const actions = [
@@ -290,23 +290,23 @@ export function mutateLinkedDatabase(
           400,
           "Diese Aktion ist in einer Einbettung nicht verfügbar.",
         );
-      result = command(user, { ...mutation, pageId: context.source.id }, true);
+      result = await command(user, { ...mutation, pageId: context.source.id }, true);
     }
     const stored = rowId
-      ? one<{ state: Uint8Array }>(
+      ? (await one<{ state: Uint8Array }>(
           "SELECT state FROM row_documents WHERE row_id=?",
           rowId,
-        )
-      : one<{ state: Uint8Array }>(
+        ))
+      : (await one<{ state: Uint8Array }>(
           "SELECT state FROM documents WHERE page_id=?",
           hostId,
-        );
+        ));
     return {
       result,
       state: Buffer.from(
         stored?.state || Y.encodeStateAsUpdate(context.doc),
       ).toString("base64"),
-      data: linkedDatabaseData(user, hostId, blockId, rowId),
+      data: await linkedDatabaseData(user, hostId, blockId, rowId),
     };
   } finally {
     context.doc.destroy();

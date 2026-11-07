@@ -37,8 +37,8 @@ const midnight = (now: number) => {
   return d.getTime();
 };
 
-export function mobileAdminSummary(now = Date.now(), update: UpdateStatus | null = null) {
-  const s = adminSummary(now, update);
+export async function mobileAdminSummary(now = Date.now(), update: UpdateStatus | null = null) {
+  const s = await adminSummary(now, update);
   const problems: AdminProblem[] = [];
   const notices: AdminNotice[] = [];
   if (s.monitoring.failingWorkers.length) problems.push("workers");
@@ -55,8 +55,8 @@ export function mobileAdminSummary(now = Date.now(), update: UpdateStatus | null
   if (!s.mail.configured) notices.push("mailOff");
   if (s.extensions.domainsFailing) notices.push("domains");
   if (s.maintenance.state) notices.push("maintenance");
-  const metrics = metricsSetting().enabled;
-  const live = metrics ? liveNumbers(now) : null;
+  const metrics = (await metricsSetting()).enabled;
+  const live = metrics ? (await liveNumbers(now)) : null;
   const disk = diskUsage();
   return {
     at: now,
@@ -79,7 +79,7 @@ export function mobileAdminSummary(now = Date.now(), update: UpdateStatus | null
           requestsPerMinute: live.requestsPerMinute,
           errorRate: Math.round(live.errorRate * 10_000) / 10_000,
           errorsHour: live.errorsHour,
-          signinsToday: Number(one<{ n: number }>("SELECT COUNT(*) n FROM ops_events WHERE kind='login_success' AND at>=?", midnight(now))?.n || 0),
+          signinsToday: Number((await one<{ n: number }>("SELECT COUNT(*) n FROM ops_events WHERE kind='login_success' AND at>=?", midnight(now)))?.n || 0),
           // Requests per hour, the last 24 hours, oldest first (null: not collected).
           requests24h: s.charts.requests24h,
         }

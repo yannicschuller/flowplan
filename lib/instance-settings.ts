@@ -84,32 +84,32 @@ const defaults: InstanceSettings = {
 };
 // Read on every use: route handlers and pages run as separate module
 // instances, so an in-memory cache would go stale.
-export function instanceSettings(): InstanceSettings {
+export async function instanceSettings(): Promise<InstanceSettings> {
   let stored: Record<string, unknown> = {};
   try {
     stored = Object.fromEntries(
-      all<{ key: string; value: string }>(
+      (await all<{ key: string; value: string }>(
         "SELECT key,value FROM instance_settings",
-      ).map((row) => [row.key, JSON.parse(row.value)]),
+      )).map((row) => [row.key, JSON.parse(row.value)]),
     );
   } catch {}
   const parsed = instanceSettingsSchema.safeParse({ ...defaults, ...stored });
   return parsed.success ? parsed.data : defaults;
 }
-export function saveInstanceSettings(input: unknown) {
+export async function saveInstanceSettings(input: unknown) {
   // Fields a form does not send keep their stored value.
   const next = instanceSettingsSchema.parse({
-    ...instanceSettings(),
+    ...(await instanceSettings()),
     ...(input && typeof input === "object" ? input : {}),
   });
   // Deleting comes after blocking, never before it.
   if (next.deleteInactiveDays && next.inactiveDays && next.deleteInactiveDays <= next.inactiveDays)
     throw new HttpError(400, "Löschen muss später kommen als Sperren: mehr Tage als bei „Inaktive Konten sperren“.");
   for (const [key, value] of Object.entries(next))
-    run(
+    await run(
       "INSERT INTO instance_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
       key,
       JSON.stringify(value),
     );
-  return instanceSettings();
+  return await instanceSettings();
 }

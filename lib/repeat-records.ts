@@ -23,13 +23,13 @@ const repeatInput = z.object({
   repeat: repeatSchema.nullable(),
 });
 // Command "row.repeat": sets or removes the rule of a record.
-export function setRowRepeat(user: Identity, input: unknown) {
+export async function setRowRepeat(user: Identity, input: unknown) {
   const b = repeatInput.parse(input);
-  const { row } = requireRow(user, b.pageId, b.rowId, true);
+  const { row } = await requireRow(user, b.pageId, b.rowId, true);
   if (row.version !== b.version) throw new HttpError(409, "Der Eintrag wurde inzwischen geändert. Bitte erneut versuchen.");
   let stored = "";
   if (b.repeat) {
-    const fields = JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", b.pageId)!.fields) as Field[];
+    const fields = JSON.parse((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", b.pageId))!.fields) as Field[];
     if (fields.find((f) => f.id === b.repeat!.field)?.type !== "date")
       throw new HttpError(400, "Die Wiederholung braucht eine Datumseigenschaft.");
     const rule = { ...b.repeat };
@@ -41,7 +41,7 @@ export function setRowRepeat(user: Identity, input: unknown) {
     if (rule.freq !== "weekly") delete rule.weekdays;
     stored = JSON.stringify(rule);
   }
-  run(
+  await run(
     "UPDATE rows SET repeat=?,version=version+1,updated_by=?,updated_at=? WHERE id=?",
     stored,
     user.id, nowText(),
@@ -52,7 +52,7 @@ export function setRowRepeat(user: Identity, input: unknown) {
 
 // After a change: when a repeating record became done, creates its successor
 // and returns its id (the caller runs the "created" automations).
-export function spawnNextRecord(
+export async function spawnNextRecord(
   actor: Identity | null,
   pageId: string,
   rowId: string,
@@ -60,10 +60,10 @@ export function spawnNextRecord(
   settings: DatabaseSettings,
   before: Cells,
   after: Cells,
-): string | null {
+): Promise<string | null> {
   const done = doneRule(fields, settings);
   if (!done || isDone(done, before) || !isDone(done, after)) return null;
-  const row = one<{ repeat: string; created_by: string; icon: string; cover: string; access: string }>(
+  const row = await one<{ repeat: string; created_by: string; icon: string; cover: string; access: string }>(
     "SELECT repeat,created_by,icon,cover,access FROM rows WHERE id=? AND page_id=?",
     rowId,
     pageId,
@@ -86,7 +86,7 @@ export function spawnNextRecord(
   cells[done.field.id] = done.field.type === "checkbox" ? false : before[done.field.id] ?? "";
   const rid = id(),
     author = actor?.id || row.created_by;
-  run(
+  await run(
     "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,icon,cover,access,repeat) VALUES(?,?,?,?,?,?,?,?,?,?)",
     rid,
     pageId,
@@ -99,8 +99,8 @@ export function spawnNextRecord(
     row.access,
     row.repeat,
   );
-  run("UPDATE rows SET repeat='' WHERE id=?", rowId);
-  const html = one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", rowId)?.html;
-  if (html) replaceRowDocument(rid, html, author);
+  await run("UPDATE rows SET repeat='' WHERE id=?", rowId);
+  const html = (await one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", rowId))?.html;
+  if (html) await replaceRowDocument(rid, html, author);
   return rid;
 }

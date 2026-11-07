@@ -22,17 +22,17 @@ type Extract = {
 };
 const extract = (globalThis as unknown as { FlowplanExtract: Extract }).FlowplanExtract;
 
-function account(name: string) {
+async function account(name: string) {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
   return { id: uid, name, email: `${name}@example.test`, groups: [], isAdmin: false, disabled: 0, created_at: "" } as Identity;
 }
-const anna = account("clip-anna"),
-  ben = account("clip-ben");
-const wid = createWorkspace(anna.id, "Clips");
-run("INSERT INTO members VALUES(?,?,?)", wid, ben.id, "viewer");
-const space = bootstrap(anna, wid).spaces[0].id;
-const html = (pageId: string) => one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", pageId)!.html;
+const anna = await account("clip-anna"),
+  ben = await account("clip-ben");
+const wid = await createWorkspace(anna.id, "Clips");
+await run("INSERT INTO members VALUES(?,?,?)", wid, ben.id, "viewer");
+const space = (await bootstrap(anna, wid)).spaces[0].id;
+const html = async (pageId: string) => (await one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", pageId))!.html;
 // Text matched literally inside a regex.
 const literal = (text: string) => text.replace(/[\\^$.*+?()[\]{}|/]/g, "\\$&");
 
@@ -108,9 +108,9 @@ test("the server sanitises clipped HTML and makes addresses absolute", () => {
 });
 
 test("clipper tokens only reach the clipper endpoints", async () => {
-  const clipper = createApiToken(anna, { name: "Browser", scope: "clipper" }).token;
-  const write = createApiToken(anna, { name: "Skript", scope: "write" }).token;
-  const read = createApiToken(anna, { name: "Lesen", scope: "read" }).token;
+  const clipper = (await createApiToken(anna, { name: "Browser", scope: "clipper" })).token;
+  const write = (await createApiToken(anna, { name: "Skript", scope: "write" })).token;
+  const read = (await createApiToken(anna, { name: "Lesen", scope: "read" })).token;
   assert.equal(await identityFromApiToken(`Bearer ${clipper}`), null, "everywhere else a clipper token is no token");
   assert.equal((await identityFromApiToken(`Bearer ${clipper}`, { clipper: true }))?.apiScope, "clipper");
   assert.equal((await clipperUser(`Bearer ${clipper}`)).id, anna.id);
@@ -118,7 +118,7 @@ test("clipper tokens only reach the clipper endpoints", async () => {
   await assert.rejects(async () => clipperUser(`Bearer ${read}`), /nur lesen/);
   await assert.rejects(async () => clipperUser(null), /API-Token/);
   await assert.rejects(async () => clipperUser("Bearer fp_unknownunknownunknownunknown"), /ungültig/);
-  assert.equal(one<{ scope: string }>("SELECT scope FROM api_tokens WHERE prefix=?", clipper.slice(0, 10))!.scope, "clipper");
+  assert.equal((await one<{ scope: string }>("SELECT scope FROM api_tokens WHERE prefix=?", clipper.slice(0, 10)))!.scope, "clipper");
 });
 
 test("CORS only for browser-extension origins, never with credentials", () => {
@@ -136,7 +136,7 @@ test("the route answers preflights and refuses cookies", async () => {
   const preflight = OPTIONS(new Request("https://flowplan.example.test/api/clipper/save", { method: "OPTIONS", headers: { origin } }));
   assert.equal(preflight.status, 204);
   assert.equal(preflight.headers.get("access-control-allow-origin"), origin);
-  const token = createApiToken(anna, { name: "Route", scope: "clipper" }).token;
+  const token = (await createApiToken(anna, { name: "Route", scope: "clipper" })).token;
   const params = (action: string) => ({ params: Promise.resolve({ action }) });
   const ok = await GET(new Request("https://flowplan.example.test/api/clipper/targets", { headers: { origin, authorization: `Bearer ${token}` } }), params("targets"));
   assert.equal(ok.status, 200);
@@ -152,18 +152,18 @@ test("the route answers preflights and refuses cookies", async () => {
   assert.equal(((await bad.json()) as { error: string }).error, "Invalid input.");
 });
 
-test("targets list writable spaces, pages and databases only", () => {
-  const db = createPage(wid, space, anna.id, "Leseliste", "database");
-  const targets = clipperTargets(anna);
+test("targets list writable spaces, pages and databases only", async () => {
+  const db = await createPage(wid, space, anna.id, "Leseliste", "database");
+  const targets = await clipperTargets(anna);
   const workspace = targets.workspaces.find((w) => w.id === wid)!;
   assert.ok(workspace.spaces.some((s) => s.id === space));
   assert.ok(workspace.pages.some((p) => p.id === db && p.kind === "database"));
-  assert.equal(clipperTargets(ben).workspaces.find((w) => w.id === wid), undefined, "viewers cannot save");
+  assert.equal((await clipperTargets(ben)).workspaces.find((w) => w.id === wid), undefined, "viewers cannot save");
 });
 
-test("whole page and selection: new page in a space, sub-page, record with tags", () => {
+test("whole page and selection: new page in a space, sub-page, record with tags", async () => {
   const url = "https://news.example/blog/planung.html";
-  const saved = saveClip(anna, {
+  const saved = await saveClip(anna, {
     mode: "page",
     target: { workspaceId: wid, spaceId: space },
     url,
@@ -172,37 +172,37 @@ test("whole page and selection: new page in a space, sub-page, record with tags"
     tags: ["planung", "teams"],
   });
   assert.equal(saved.url, `https://flowplan.example.test/#page=${saved.pageId}`);
-  const page = html(saved.pageId);
+  const page = await html(saved.pageId);
   assert.match(page, new RegExp(`<a href="${literal(url)}"`));
   assert.match(page, /#planung #teams/);
   assert.match(page, /href="https:\/\/news\.example\/x"/);
   assert.doesNotMatch(page, /<script/);
-  const parent = createPage(wid, space, anna.id, "Recherche", "document");
-  const sub = saveClip(anna, { mode: "selection", target: { workspaceId: wid, pageId: parent }, url, title: "Auszug", html: "<p>Nur dieser Satz.</p>" });
-  assert.equal(one<{ parent_id: string }>("SELECT parent_id FROM pages WHERE id=?", sub.pageId)!.parent_id, parent);
+  const parent = await createPage(wid, space, anna.id, "Recherche", "document");
+  const sub = await saveClip(anna, { mode: "selection", target: { workspaceId: wid, pageId: parent }, url, title: "Auszug", html: "<p>Nur dieser Satz.</p>" });
+  assert.equal((await one<{ parent_id: string }>("SELECT parent_id FROM pages WHERE id=?", sub.pageId))!.parent_id, parent);
   // A database: a record; its "Tags" property gets the tags.
-  const db = createPage(wid, space, anna.id, "Artikel", "database");
+  const db = await createPage(wid, space, anna.id, "Artikel", "database");
   const fields = [
     { id: "title", name: "Name", type: "text" },
     { id: "link", name: "Link", type: "url" },
     { id: "tags", name: "Tags", type: "multiselect", options: ["teams"] },
   ];
-  run("UPDATE databases SET fields=? WHERE page_id=?", JSON.stringify(fields), db);
-  const record = saveClip(anna, { mode: "page", target: { workspaceId: wid, pageId: db }, url, title: "Artikel A", html: "<p>Text</p>", tags: ["Teams", "neu"] });
+  await run("UPDATE databases SET fields=? WHERE page_id=?", JSON.stringify(fields), db);
+  const record = await saveClip(anna, { mode: "page", target: { workspaceId: wid, pageId: db }, url, title: "Artikel A", html: "<p>Text</p>", tags: ["Teams", "neu"] });
   assert.ok(record.rowId);
-  const cells = JSON.parse(one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", record.rowId!)!.cells);
+  const cells = JSON.parse((await one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", record.rowId!))!.cells);
   assert.equal(cells.title, "Artikel A");
   assert.equal(cells.link, url);
   assert.deepEqual(cells.tags, ["teams", "neu"]);
-  assert.match(one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", record.rowId!)!.html, /Text/);
+  assert.match((await one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", record.rowId!))!.html, /Text/);
   // Viewers and foreign workspaces are refused.
-  assert.throws(() => saveClip(ben, { mode: "page", target: { workspaceId: wid, spaceId: space }, url, html: "<p>x</p>" }));
-  assert.throws(() => saveClip(anna, { mode: "page", target: { workspaceId: wid, spaceId: space }, url: "javascript:alert(1)", html: "<p>x</p>" }));
+  await assert.rejects(async () => await saveClip(ben, { mode: "page", target: { workspaceId: wid, spaceId: space }, url, html: "<p>x</p>" }));
+  await assert.rejects(async () => await saveClip(anna, { mode: "page", target: { workspaceId: wid, spaceId: space }, url: "javascript:alert(1)", html: "<p>x</p>" }));
 });
 
-test("bookmarks: title, address, description, favicon and tags; no duplicates", () => {
+test("bookmarks: title, address, description, favicon and tags; no duplicates", async () => {
   const url = "https://tools.example/editor";
-  const saved = saveClip(anna, {
+  const saved = await saveClip(anna, {
     mode: "bookmark",
     target: { workspaceId: wid, spaceId: space },
     url,
@@ -211,37 +211,37 @@ test("bookmarks: title, address, description, favicon and tags; no duplicates", 
     favicon: "https://tools.example/favicon.ico",
     tags: ["werkzeug"],
   });
-  const row = JSON.parse(one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", saved.rowId!)!.cells);
+  const row = JSON.parse((await one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", saved.rowId!))!.cells);
   assert.equal(row.title, "Ein Editor");
   assert.equal(row.bm_url, url);
   assert.equal(row.bm_note, "Schreibt Texte.");
   assert.equal(row.bm_favicon, "https://tools.example/favicon.ico");
   assert.deepEqual(row.bm_tags, ["werkzeug"]);
-  assert.throws(() => saveClip(anna, { mode: "bookmark", target: { workspaceId: wid, spaceId: space }, url }), /schon unter den Lesezeichen/);
+  await assert.rejects(async () => await saveClip(anna, { mode: "bookmark", target: { workspaceId: wid, spaceId: space }, url }), /schon unter den Lesezeichen/);
 });
 
-test("highlights: quotes with a link to the source, appended to one page", () => {
+test("highlights: quotes with a link to the source, appended to one page", async () => {
   const url = "https://news.example/blog/zitat.html";
-  const first = saveClip(anna, { mode: "highlight", target: { workspaceId: wid, spaceId: space }, url, title: "Zitate", html: "<b>Erster</b> Satz", text: "Erster Satz" });
-  saveClip(anna, { mode: "highlight", target: { workspaceId: wid, pageId: first.pageId }, url, title: "Zitate", text: "Zweiter Satz" });
-  const page = html(first.pageId);
+  const first = await saveClip(anna, { mode: "highlight", target: { workspaceId: wid, spaceId: space }, url, title: "Zitate", html: "<b>Erster</b> Satz", text: "Erster Satz" });
+  await saveClip(anna, { mode: "highlight", target: { workspaceId: wid, pageId: first.pageId }, url, title: "Zitate", text: "Zweiter Satz" });
+  const page = await html(first.pageId);
   assert.equal((page.match(/<blockquote>/g) || []).length, 2);
   assert.match(page, /<strong>Erster<\/strong> Satz/);
   assert.match(page, /Zweiter Satz/);
   assert.match(page, new RegExp(`— <a [^>]*href="${literal(url)}"[^>]*>Zitate</a>`));
   assert.ok(page.indexOf("Erster") < page.indexOf("Zweiter"));
-  assert.throws(() => saveClip(anna, { mode: "highlight", target: { workspaceId: wid, pageId: first.pageId }, url, text: "" }), /Kein Text/);
-  assert.equal(all("SELECT id FROM pages WHERE title='Zitate'").length, 1);
+  await assert.rejects(async () => await saveClip(anna, { mode: "highlight", target: { workspaceId: wid, pageId: first.pageId }, url, text: "" }), /Kein Text/);
+  assert.equal((await all("SELECT id FROM pages WHERE title='Zitate'")).length, 1);
 });
 
-test("end-to-end encrypted spaces are neither offered nor written to", () => {
-  run("UPDATE spaces SET encrypted=1 WHERE id=?", space);
+test("end-to-end encrypted spaces are neither offered nor written to", async () => {
+  await run("UPDATE spaces SET encrypted=1 WHERE id=?", space);
   try {
-    const workspace = clipperTargets(anna).workspaces.find((w) => w.id === wid)!;
+    const workspace = (await clipperTargets(anna)).workspaces.find((w) => w.id === wid)!;
     assert.ok(!workspace.spaces.some((s) => s.id === space));
-    assert.throws(() => saveClip(anna, { mode: "page", target: { workspaceId: wid, spaceId: space }, url: "https://a.example/", html: "<p>x</p>" }), (e: { status?: number }) => e.status === 409);
+    await assert.rejects(async () => await saveClip(anna, { mode: "page", target: { workspaceId: wid, spaceId: space }, url: "https://a.example/", html: "<p>x</p>" }), (e: { status?: number }) => e.status === 409);
   } finally {
-    run("UPDATE spaces SET encrypted=0 WHERE id=?", space);
+    await run("UPDATE spaces SET encrypted=0 WHERE id=?", space);
   }
 });
 

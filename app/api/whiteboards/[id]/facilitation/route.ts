@@ -35,7 +35,7 @@ export const GET = withRequestLocale(async (req: Request, { params }: Context) =
   try {
     const user = await signedIn(req);
     const pageId = z.uuid().parse((await params).id);
-    return NextResponse.json(facilitationState(user, pageId), noStore);
+    return NextResponse.json(await facilitationState(user, pageId), noStore);
   } catch (e) {
     return error(e);
   }
@@ -43,7 +43,7 @@ export const GET = withRequestLocale(async (req: Request, { params }: Context) =
 
 export const POST = withRequestLocale(async (req: Request, { params }: Context) => {
   try {
-    checkOrigin(req);
+    await checkOrigin(req);
     const user = await signedIn(req);
     const pageId = z.uuid().parse((await params).id);
     const limit = Math.ceil((PRIVATE_LIMITS.update * 4) / 3) + 4096;
@@ -56,7 +56,7 @@ export const POST = withRequestLocale(async (req: Request, { params }: Context) 
     } catch {
       throw new HttpError(400, "Ungültige Eingabe.");
     }
-    return NextResponse.json(facilitate(user, pageId, body) ?? { ok: true }, noStore);
+    return NextResponse.json(await facilitate(user, pageId, body) ?? { ok: true }, noStore);
   } catch (e) {
     return error(e);
   }

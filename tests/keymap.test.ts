@@ -148,26 +148,26 @@ test("shortcuts are stored per person (shortcuts.save)", async () => {
   const { run, id } = await import("../lib/db");
   const { createWorkspace } = await import("../lib/seed");
   const { command, bootstrap } = await import("../lib/api");
-  const account = (name: string) => {
+  const account = async (name: string) => {
     const uid = id();
-    run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
+    await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
     return { id: uid, name, email: `${name}@example.test`, groups: [], isAdmin: false, disabled: 0, created_at: "" } as Identity;
   };
-  const me = account("keys-me"),
-    other = account("keys-other");
-  const mine = createWorkspace(me.id, "Tasten"),
-    theirs = createWorkspace(other.id, "Andere");
-  assert.deepEqual(bootstrap(me, mine).shortcuts, {});
-  const saved = command(me, {
+  const me = await account("keys-me"),
+    other = await account("keys-other");
+  const mine = await createWorkspace(me.id, "Tasten"),
+    theirs = await createWorkspace(other.id, "Andere");
+  assert.deepEqual((await bootstrap(me, mine)).shortcuts, {});
+  const saved = (await command(me, {
     action: "shortcuts.save",
     bindings: { search: ["mod+shift+k"], present: [], newPage: ["Mod+N"] },
-  }) as { bindings: Record<string, string[]> };
+  })) as { bindings: Record<string, string[]> };
   assert.deepEqual(saved.bindings, { search: ["Mod+Shift+K"], present: [] });
-  assert.deepEqual(bootstrap(me, mine).shortcuts, { search: ["Mod+Shift+K"], present: [] });
-  assert.deepEqual(bootstrap(other, theirs).shortcuts, {});
-  assert.throws(() => command(me, { action: "shortcuts.save", bindings: { search: ["Mod+"] } }));
-  assert.throws(() => command(me, { action: "shortcuts.save", bindings: { unknown: ["Mod+K"] } }));
-  assert.throws(() => command(me, { action: "shortcuts.save", bindings: { search: ["Mod+A", "Mod+B", "Mod+C", "Mod+D"] } }));
-  command(me, { action: "shortcuts.save", bindings: {} });
-  assert.deepEqual(bootstrap(me, mine).shortcuts, {});
+  assert.deepEqual((await bootstrap(me, mine)).shortcuts, { search: ["Mod+Shift+K"], present: [] });
+  assert.deepEqual((await bootstrap(other, theirs)).shortcuts, {});
+  await assert.rejects(async () => await command(me, { action: "shortcuts.save", bindings: { search: ["Mod+"] } }));
+  await assert.rejects(async () => await command(me, { action: "shortcuts.save", bindings: { unknown: ["Mod+K"] } }));
+  await assert.rejects(async () => await command(me, { action: "shortcuts.save", bindings: { search: ["Mod+A", "Mod+B", "Mod+C", "Mod+D"] } }));
+  await command(me, { action: "shortcuts.save", bindings: {} });
+  assert.deepEqual((await bootstrap(me, mine)).shortcuts, {});
 });

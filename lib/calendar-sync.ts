@@ -40,6 +40,7 @@ import { safeSend } from "./safe-fetch";
 import { ct } from "./content-locale";
 import { validZone } from "./date-values";
 import type { Field, Identity, Page, Row, View } from "./types";
+import { flatMapAsync } from "./each-async";
 
 export const calendarProviders = ["google", "microsoft"] as const;
 export type CalendarProvider = (typeof calendarProviders)[number];
@@ -144,15 +145,15 @@ const FLOW_MS = 10 * 60_000;
 
 // The provider's sign-in page for this person, and the value of the cookie
 // that ties the answer to this browser.
-export function startCalendarConnection(user: Identity, provider: CalendarProvider) {
+export async function startCalendarConnection(user: Identity, provider: CalendarProvider) {
   if (user.demo || user.apiScope) throw new HttpError(403, "Kalender lassen sich nur im Browser verbinden.");
   const config = requireProvider(provider);
   const verifier = randomBytes(32).toString("base64url"),
     state = randomBytes(24).toString("base64url"),
     nonce = randomBytes(24).toString("base64url"),
     flow = randomBytes(32).toString("base64url");
-  run("DELETE FROM calendar_oauth_flows WHERE expires<? OR user_id=?", Date.now(), user.id);
-  run(
+  await run("DELETE FROM calendar_oauth_flows WHERE expires<? OR user_id=?", Date.now(), user.id);
+  await run(
     "INSERT INTO calendar_oauth_flows(id,user_id,provider,state,verifier,nonce,expires) VALUES(?,?,?,?,?,?,?)",
     hash(flow),
     user.id,
@@ -211,11 +212,11 @@ async function tokenRequest(config: ProviderConfig, form: Record<string, string>
 export async function finishCalendarConnection(user: Identity, provider: CalendarProvider, flow: string | undefined, params: URLSearchParams) {
   const config = requireProvider(provider);
   if (!flow) throw new HttpError(400, "Die Kalenderverbindung ist abgelaufen. Bitte erneut verbinden.");
-  const stored = one<{ user_id: string; provider: string; state: string; verifier: string; nonce: string; expires: number }>(
+  const stored = await one<{ user_id: string; provider: string; state: string; verifier: string; nonce: string; expires: number }>(
     "SELECT * FROM calendar_oauth_flows WHERE id=?",
     hash(flow),
   );
-  run("DELETE FROM calendar_oauth_flows WHERE id=?", hash(flow));
+  await run("DELETE FROM calendar_oauth_flows WHERE id=?", hash(flow));
   if (!stored || stored.expires < Date.now() || stored.user_id !== user.id || stored.provider !== provider)
     throw new HttpError(400, "Die Kalenderverbindung ist abgelaufen. Bitte erneut verbinden.");
   if (!same(params.get("state") || "", stored.state)) throw new HttpError(400, "Ungültige Antwort des Kalenderanbieters.");
@@ -245,11 +246,11 @@ export async function finishCalendarConnection(user: Identity, provider: Calenda
   if (typeof refresh !== "string" || !refresh)
     throw new HttpError(502, "Kein Aktualisierungstoken erhalten. Bitte den Zugriff erneut erlauben.");
   const account = String(claims.email || claims.preferred_username || claims.upn || "").slice(0, 300);
-  const existing = one<{ id: string }>("SELECT id FROM calendar_connections WHERE user_id=? AND provider=? AND account=?", user.id, provider, account);
+  const existing = await one<{ id: string }>("SELECT id FROM calendar_connections WHERE user_id=? AND provider=? AND account=?", user.id, provider, account);
   const cid = existing?.id || id();
   const expires = Date.now() + Math.max(60, Number(token.data.expires_in) || 3600) * 1000;
   if (existing)
-    run(
+    await run(
       "UPDATE calendar_connections SET refresh_token=?,access_token=?,access_expires=?,last_error=NULL WHERE id=?",
       sealSecret(refresh, refreshAad(cid)),
       sealSecret(token.data.access_token as string, accessAad(cid)),
@@ -257,7 +258,7 @@ export async function finishCalendarConnection(user: Identity, provider: Calenda
       cid,
     );
   else
-    run(
+    await run(
       "INSERT INTO calendar_connections(id,user_id,provider,account,refresh_token,access_token,access_expires,created_at) VALUES(?,?,?,?,?,?,?,?)",
       cid,
       user.id,
@@ -268,7 +269,7 @@ export async function finishCalendarConnection(user: Identity, provider: Calenda
       expires,
       Date.now(),
     );
-  audit(user.id, "calendar.connect", cid, provider);
+  await audit(user.id, "calendar.connect", cid, provider);
   return cid;
 }
 
@@ -295,7 +296,7 @@ async function accessToken(conn: ConnectionRow) {
   });
   if (answer.status !== 200 || typeof answer.data.access_token !== "string") {
     if (answer.status === 400 || answer.status === 401) {
-      run("UPDATE calendar_connections SET last_error=? WHERE id=?", REVOKED, conn.id);
+      await run("UPDATE calendar_connections SET last_error=? WHERE id=?", REVOKED, conn.id);
       throw new HttpError(409, REVOKED);
     }
     throw new HttpError(502, "Der Kalenderanbieter ist gerade nicht erreichbar.");
@@ -306,7 +307,7 @@ async function accessToken(conn: ConnectionRow) {
   // Microsoft rotates refresh tokens.
   if (typeof answer.data.refresh_token === "string" && answer.data.refresh_token)
     conn.refresh_token = sealSecret(answer.data.refresh_token, refreshAad(conn.id));
-  run(
+  await run(
     "UPDATE calendar_connections SET access_token=?,access_expires=?,refresh_token=?,last_error=NULL WHERE id=?",
     conn.access_token,
     conn.access_expires,
@@ -653,17 +654,17 @@ const adapters: Record<CalendarProvider, Adapter> = { google, microsoft };
 
 /* ---------- Connections and mappings ---------- */
 
-function ownConnection(user: Identity, connectionId: unknown) {
-  const conn = one<ConnectionRow>("SELECT * FROM calendar_connections WHERE id=? AND user_id=?", z.uuid().parse(connectionId), user.id);
+async function ownConnection(user: Identity, connectionId: unknown) {
+  const conn = await one<ConnectionRow>("SELECT * FROM calendar_connections WHERE id=? AND user_id=?", z.uuid().parse(connectionId), user.id);
   if (!conn) throw new HttpError(404, "Kalenderverbindung nicht gefunden.");
   return conn;
 }
 export async function listExternalCalendars(user: Identity, connectionId: unknown) {
-  const conn = ownConnection(user, connectionId);
+  const conn = await ownConnection(user, connectionId);
   return adapters[conn.provider].calendars(conn);
 }
-function viewsOf(pageId: string) {
-  const d = one<{ fields: string; views: string }>("SELECT fields,views FROM databases WHERE page_id=?", pageId);
+async function viewsOf(pageId: string) {
+  const d = await one<{ fields: string; views: string }>("SELECT fields,views FROM databases WHERE page_id=?", pageId);
   if (!d) throw new HttpError(400, "Keine Datenbank.");
   return { fields: JSON.parse(d.fields) as Field[], views: JSON.parse(d.views) as View[] };
 }
@@ -675,36 +676,36 @@ const mappingInput = z.object({
   calendarName: z.string().max(300).optional(),
 });
 // One external calendar per view and person; a calendar belongs to one view.
-export function saveCalendarMapping(user: Identity, input: unknown) {
+export async function saveCalendarMapping(user: Identity, input: unknown) {
   const b = mappingInput.parse(input);
-  const conn = ownConnection(user, b.connectionId);
-  const page = requirePage(user, b.pageId, true);
+  const conn = await ownConnection(user, b.connectionId);
+  const page = await requirePage(user, b.pageId, true);
   if (page.kind !== "database") throw new HttpError(400, "Keine Datenbank.");
-  requireUnlocked(user, page);
-  const { fields, views } = viewsOf(page.id);
+  await requireUnlocked(user, page);
+  const { fields, views } = await viewsOf(page.id);
   const view = views.find((v) => v.id === b.viewId);
   if (!view) throw new HttpError(404, "Ansicht nicht gefunden.");
   if (!scheduleFields(fields, view).start) throw new HttpError(400, "Diese Ansicht hat kein Datum.");
-  const taken = one<{ id: string; page_id: string; view_id: string }>(
+  const taken = await one<{ id: string; page_id: string; view_id: string }>(
     "SELECT id,page_id,view_id FROM calendar_sync_mappings WHERE connection_id=? AND calendar_id=?",
     conn.id,
     b.calendarId,
   );
   if (taken && (taken.page_id !== page.id || taken.view_id !== view.id))
     throw new HttpError(409, "Dieser Kalender ist schon mit einer anderen Ansicht verbunden.");
-  const current = one<{ id: string; connection_id: string; calendar_id: string }>(
+  const current = await one<{ id: string; connection_id: string; calendar_id: string }>(
     "SELECT id,connection_id,calendar_id FROM calendar_sync_mappings WHERE user_id=? AND page_id=? AND view_id=?",
     user.id,
     page.id,
     view.id,
   );
   if (current && current.connection_id === conn.id && current.calendar_id === b.calendarId) {
-    run("UPDATE calendar_sync_mappings SET calendar_name=? WHERE id=?", b.calendarName || "", current.id);
+    await run("UPDATE calendar_sync_mappings SET calendar_name=? WHERE id=?", b.calendarName || "", current.id);
     return { id: current.id };
   }
-  if (current) run("DELETE FROM calendar_sync_mappings WHERE id=?", current.id);
+  if (current) await run("DELETE FROM calendar_sync_mappings WHERE id=?", current.id);
   const mid = id();
-  run(
+  await run(
     "INSERT INTO calendar_sync_mappings(id,connection_id,user_id,page_id,view_id,calendar_id,calendar_name,created_at) VALUES(?,?,?,?,?,?,?,?)",
     mid,
     conn.id,
@@ -717,26 +718,26 @@ export function saveCalendarMapping(user: Identity, input: unknown) {
   );
   return { id: mid };
 }
-export function deleteCalendarMapping(user: Identity, input: unknown) {
+export async function deleteCalendarMapping(user: Identity, input: unknown) {
   const mid = z.object({ id: z.uuid() }).parse(input).id;
-  if (!run("DELETE FROM calendar_sync_mappings WHERE id=? AND user_id=?", mid, user.id).changes)
+  if (!(await run("DELETE FROM calendar_sync_mappings WHERE id=? AND user_id=?", mid, user.id)).changes)
     throw new HttpError(404, "Kalenderzuordnung nicht gefunden.");
 }
-export function disconnectCalendar(user: Identity, input: unknown) {
+export async function disconnectCalendar(user: Identity, input: unknown) {
   const cid = z.object({ connectionId: z.uuid() }).parse(input).connectionId;
-  if (!run("DELETE FROM calendar_connections WHERE id=? AND user_id=?", cid, user.id).changes)
+  if (!(await run("DELETE FROM calendar_connections WHERE id=? AND user_id=?", cid, user.id)).changes)
     throw new HttpError(404, "Kalenderverbindung nicht gefunden.");
-  audit(user.id, "calendar.disconnect", cid);
+  await audit(user.id, "calendar.disconnect", cid);
 }
 // What the settings and the mapping dialog show.
-export function calendarSyncStatus(user: Identity, pageId?: string | null) {
+export async function calendarSyncStatus(user: Identity, pageId?: string | null) {
   return {
     providers: calendarProviders.map((p) => ({ id: p, configured: providerConfigured(p) })),
-    connections: all<{ id: string; provider: CalendarProvider; account: string; last_error: string | null; created_at: number }>(
+    connections: (await all<{ id: string; provider: CalendarProvider; account: string; last_error: string | null; created_at: number }>(
       "SELECT id,provider,account,last_error,created_at FROM calendar_connections WHERE user_id=? ORDER BY created_at",
       user.id,
-    ).map((c) => ({ id: c.id, provider: c.provider, account: c.account, lastError: c.last_error, createdAt: c.created_at })),
-    mappings: all<{
+    )).map((c) => ({ id: c.id, provider: c.provider, account: c.account, lastError: c.last_error, createdAt: c.created_at })),
+    mappings: (await all<{
       id: string;
       connection_id: string;
       page_id: string;
@@ -753,7 +754,7 @@ export function calendarSyncStatus(user: Identity, pageId?: string | null) {
        FROM calendar_sync_mappings m JOIN pages p ON p.id=m.page_id
        WHERE m.user_id=? AND p.deleted_at IS NULL ${pageId ? "AND m.page_id=?" : ""} ORDER BY m.created_at`,
       ...(pageId ? [user.id, pageId] : [user.id]),
-    ).map((m) => ({
+    )).map((m) => ({
       id: m.id,
       connectionId: m.connection_id,
       pageId: m.page_id,
@@ -768,9 +769,9 @@ export function calendarSyncStatus(user: Identity, pageId?: string | null) {
   };
 }
 // Attendees of the calendar events behind a record (meeting notes).
-export function syncedAttendees(rowId: string): Attendee[] {
+export async function syncedAttendees(rowId: string): Promise<Attendee[]> {
   const seen = new Map<string, Attendee>();
-  for (const item of all<{ attendees: string }>("SELECT attendees FROM calendar_sync_items WHERE row_id=?", rowId))
+  for (const item of await all<{ attendees: string }>("SELECT attendees FROM calendar_sync_items WHERE row_id=?", rowId))
     try {
       for (const a of JSON.parse(item.attendees) as Attendee[]) if (a.email && !seen.has(a.email)) seen.set(a.email, a);
     } catch {}
@@ -812,23 +813,23 @@ export type SyncResult = {
   skipped: number;
 };
 
-function identityOf(userId: string): Identity | null {
-  const account = one<Identity>("SELECT * FROM users WHERE id=? AND disabled=0 AND demo_until IS NULL", userId);
+async function identityOf(userId: string): Promise<Identity | null> {
+  const account = await one<Identity>("SELECT * FROM users WHERE id=? AND disabled=0 AND demo_until IS NULL", userId);
   if (!account) return null;
-  const groups = all<{ group_id: string }>("SELECT group_id FROM group_members WHERE user_id=?", userId).map((g) => g.group_id);
+  const groups = (await all<{ group_id: string }>("SELECT group_id FROM group_members WHERE user_id=?", userId)).map((g) => g.group_id);
   return { ...account, groups, isAdmin: false } as Identity;
 }
-function contextOf(mapping: MappingRow): Context {
-  const conn = one<ConnectionRow>("SELECT * FROM calendar_connections WHERE id=?", mapping.connection_id);
+async function contextOf(mapping: MappingRow): Promise<Context> {
+  const conn = await one<ConnectionRow>("SELECT * FROM calendar_connections WHERE id=?", mapping.connection_id);
   if (!conn) throw new HttpError(404, "Kalenderverbindung nicht gefunden.");
-  const user = identityOf(mapping.user_id);
+  const user = await identityOf(mapping.user_id);
   if (!user) throw new HttpError(403, "Keine Berechtigung für diese Seite.");
-  const page = one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", mapping.page_id);
-  const role = page ? pageRole(user, page) : null;
+  const page = await one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", mapping.page_id);
+  const role = page ? (await pageRole(user, page)) : null;
   if (!page || !role) throw new HttpError(403, "Keine Berechtigung für diese Seite.");
   // Behind a journal PIN the calendar stays closed, as its feed and CalDAV do.
-  if (journalLocked(user, page)) throw new HttpError(423, "Dieses Journal ist gesperrt.");
-  const { fields, views } = viewsOf(page.id);
+  if (await journalLocked(user, page)) throw new HttpError(423, "Dieses Journal ist gesperrt.");
+  const { fields, views } = await viewsOf(page.id);
   const view = views.find((v) => v.id === mapping.view_id);
   if (!view || !scheduleFields(fields, view).start) throw new HttpError(404, "Ansicht nicht gefunden.");
   const calendar = calendarSchema.safeParse(view.calendar);
@@ -845,15 +846,15 @@ function contextOf(mapping: MappingRow): Context {
   };
 }
 type LiveRow = Row & { role?: string };
-function rowsOf(ctx: Context, ids?: string[]): LiveRow[] {
+async function rowsOf(ctx: Context, ids?: string[]): Promise<LiveRow[]> {
   const raw = ids
-    ? ids.flatMap((rid) => {
-        const r = one<Row & { cells: string }>("SELECT * FROM rows WHERE id=? AND page_id=?", rid, ctx.page.id);
+    ? (await flatMapAsync(ids, async (rid) => {
+        const r = await one<Row & { cells: string }>("SELECT * FROM rows WHERE id=? AND page_id=?", rid, ctx.page.id);
         return r ? [r] : [];
-      })
-    : all<Row & { cells: string }>("SELECT * FROM rows WHERE page_id=?", ctx.page.id);
+      }))
+    : (await all<Row & { cells: string }>("SELECT * FROM rows WHERE page_id=?", ctx.page.id));
   const parsed = raw.map((r) => ({ ...r, cells: JSON.parse(r.cells as unknown as string) }) as Row);
-  return visibleRows(ctx.user, ctx.page, parsed) as LiveRow[];
+  return (await visibleRows(ctx.user, ctx.page, parsed)) as LiveRow[];
 }
 const editable = (ctx: Context, row: LiveRow) => ctx.canWrite && (row.role === "owner" || row.role === "editor");
 const rowText = (row: Row) => {
@@ -879,8 +880,8 @@ function patchOf(ctx: Context, event: EventContent) {
   return patch;
 }
 const stamp = (sqlTime: string) => Date.parse(`${sqlTime.replace(" ", "T")}${/Z|[+-]\d\d:\d\d$/.test(sqlTime) ? "" : "Z"}`) || 0;
-function saveItem(ctx: Context, rowId: string, eventId: string, hashValue: string, attendees?: Attendee[]) {
-  run(
+async function saveItem(ctx: Context, rowId: string, eventId: string, hashValue: string, attendees?: Attendee[]) {
+  await run(
     `INSERT INTO calendar_sync_items(mapping_id,row_id,event_id,hash,attendees,synced_at) VALUES(?,?,?,?,?,?)
      ON CONFLICT(mapping_id,row_id) DO UPDATE SET event_id=excluded.event_id,hash=excluded.hash,synced_at=excluded.synced_at${attendees ? ",attendees=excluded.attendees" : ""}`,
     ctx.mapping.id,
@@ -891,31 +892,31 @@ function saveItem(ctx: Context, rowId: string, eventId: string, hashValue: strin
     Date.now(),
   );
 }
-const dropItem = (ctx: Context, rowId: string) => run("DELETE FROM calendar_sync_items WHERE mapping_id=? AND row_id=?", ctx.mapping.id, rowId);
-function conflict(ctx: Context, rowId: string, detail: Record<string, unknown>) {
-  audit(ctx.user.id, "calendar.sync.conflict", rowId, JSON.stringify({ mapping: ctx.mapping.id, event: detail.event, ...detail }));
+const dropItem = async (ctx: Context, rowId: string) => await run("DELETE FROM calendar_sync_items WHERE mapping_id=? AND row_id=?", ctx.mapping.id, rowId);
+async function conflict(ctx: Context, rowId: string, detail: Record<string, unknown>) {
+  await audit(ctx.user.id, "calendar.sync.conflict", rowId, JSON.stringify({ mapping: ctx.mapping.id, event: detail.event, ...detail }));
 }
 
 // A calendar change applied to the database.
-function applyRemote(ctx: Context, event: RemoteEvent, items: Map<string, Item>, result: SyncResult) {
+async function applyRemote(ctx: Context, event: RemoteEvent, items: Map<string, Item>, result: SyncResult) {
   const item = items.get(event.id);
   if (event.deleted) {
     if (!item) return;
     items.delete(event.id);
-    const [row] = rowsOf(ctx, [item.row_id]);
+    const [row] = await rowsOf(ctx, [item.row_id]);
     const local = row && localContent(row, ctx.fields, ctx.view, ctx.zone);
-    if (!row) return dropItem(ctx, item.row_id);
+    if (!row) return await dropItem(ctx, item.row_id);
     if (local && contentHash(local) !== item.hash) {
       // Changed here since the last sync: the record stays and goes out again.
-      conflict(ctx, row.id, { event: event.id, winner: "local", reason: "deleted-in-calendar" });
+      await conflict(ctx, row.id, { event: event.id, winner: "local", reason: "deleted-in-calendar" });
       result.conflicts++;
-      return dropItem(ctx, row.id);
+      return await dropItem(ctx, row.id);
     }
-    if (!editable(ctx, row)) return dropItem(ctx, row.id);
-    transaction(() => {
-      trashRow(ctx.user, ctx.page, row.id);
-      maintainRowOrders(ctx.page.id);
-      dropItem(ctx, row.id);
+    if (!editable(ctx, row)) return await dropItem(ctx, row.id);
+    await transaction(async () => {
+      await trashRow(ctx.user, ctx.page, row.id);
+      await maintainRowOrders(ctx.page.id);
+      await dropItem(ctx, row.id);
     }, ctx.user);
     result.deleted++;
     return;
@@ -931,10 +932,10 @@ function applyRemote(ctx: Context, event: RemoteEvent, items: Map<string, Item>,
       return;
     }
     const patch = patchOf(ctx, event);
-    assertFieldsWritable(ctx.user, ctx.page, ctx.fields, Object.keys(patch));
+    await assertFieldsWritable(ctx.user, ctx.page, ctx.fields, Object.keys(patch));
     const rid = id();
-    transaction(() => {
-      run(
+    await transaction(async () => {
+      await run(
         "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by) VALUES(?,?,?,?,?,?)",
         rid,
         ctx.page.id,
@@ -943,23 +944,23 @@ function applyRemote(ctx: Context, event: RemoteEvent, items: Map<string, Item>,
         ctx.user.id,
         ctx.user.id,
       );
-      rowCreated(ctx.user, ctx.page, rid);
-      if (event.description) replaceRowDocument(rid, textToHtml(event.description), ctx.user.id);
-      saveItem(ctx, rid, event.id, remoteHash, event.attendees);
+      await rowCreated(ctx.user, ctx.page, rid);
+      if (event.description) await replaceRowDocument(rid, textToHtml(event.description), ctx.user.id);
+      await saveItem(ctx, rid, event.id, remoteHash, event.attendees);
     }, ctx.user);
     items.set(event.id, { row_id: rid, event_id: event.id, hash: remoteHash });
     result.created++;
     return;
   }
-  run("UPDATE calendar_sync_items SET attendees=? WHERE mapping_id=? AND row_id=?", JSON.stringify(event.attendees), ctx.mapping.id, item.row_id);
+  await run("UPDATE calendar_sync_items SET attendees=? WHERE mapping_id=? AND row_id=?", JSON.stringify(event.attendees), ctx.mapping.id, item.row_id);
   // Unchanged in the calendar (also our own change coming back).
   if (remoteHash === item.hash) return;
-  const [row] = rowsOf(ctx, [item.row_id]);
+  const [row] = await rowsOf(ctx, [item.row_id]);
   if (!row) return; // deleted here: the push removes the event
   const local = localContent(row, ctx.fields, ctx.view, ctx.zone);
   const localHash = local ? contentHash(local) : null;
   if (localHash === remoteHash) {
-    saveItem(ctx, row.id, event.id, remoteHash, event.attendees);
+    await saveItem(ctx, row.id, event.id, remoteHash, event.attendees);
     item.hash = remoteHash;
     return;
   }
@@ -968,7 +969,7 @@ function applyRemote(ctx: Context, event: RemoteEvent, items: Map<string, Item>,
     const localAt = stamp(row.updated_at),
       remoteAt = Date.parse(event.updated) || 0;
     const winner = localAt > remoteAt ? "local" : "remote";
-    conflict(ctx, row.id, { event: event.id, winner, local: new Date(localAt).toISOString(), remote: new Date(remoteAt).toISOString() });
+    await conflict(ctx, row.id, { event: event.id, winner, local: new Date(localAt).toISOString(), remote: new Date(remoteAt).toISOString() });
     result.conflicts++;
     if (winner === "local") return; // the push sends the record
   }
@@ -977,16 +978,16 @@ function applyRemote(ctx: Context, event: RemoteEvent, items: Map<string, Item>,
     return;
   }
   const patch = patchOf(ctx, event);
-  assertFieldsWritable(ctx.user, ctx.page, ctx.fields, Object.keys(patch));
-  transaction(() => {
-    const stored = one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", row.id)!;
+  await assertFieldsWritable(ctx.user, ctx.page, ctx.fields, Object.keys(patch));
+  await transaction(async () => {
+    const stored = (await one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", row.id))!;
     const before = JSON.parse(stored.cells),
       after = { ...before, ...patch };
-    run("UPDATE rows SET cells=?,version=version+1,updated_at=?,updated_by=? WHERE id=?", JSON.stringify(after), nowText(), ctx.user.id, row.id);
-    rowChanged(ctx.user, ctx.page, row.id, before, after, ctx.fields);
+    await run("UPDATE rows SET cells=?,version=version+1,updated_at=?,updated_by=? WHERE id=?", JSON.stringify(after), nowText(), ctx.user.id, row.id);
+    await rowChanged(ctx.user, ctx.page, row.id, before, after, ctx.fields);
     if (normalizeText(event.description) !== (local ? normalizeText(local.description) : ""))
-      replaceRowDocument(row.id, textToHtml(event.description), ctx.user.id);
-    saveItem(ctx, row.id, event.id, remoteHash, event.attendees);
+      await replaceRowDocument(row.id, textToHtml(event.description), ctx.user.id);
+    await saveItem(ctx, row.id, event.id, remoteHash, event.attendees);
   }, ctx.user);
   item.hash = remoteHash;
   result.updated++;
@@ -995,7 +996,7 @@ function applyRemote(ctx: Context, event: RemoteEvent, items: Map<string, Item>,
 // Database changes sent to the calendar.
 async function pushLocal(ctx: Context, items: Map<string, Item>, result: SyncResult) {
   const byRow = new Map([...items.values()].map((i) => [i.row_id, i]));
-  const rows = rowsOf(ctx);
+  const rows = await rowsOf(ctx);
   const inView = new Set(queryRows(rows, ctx.fields, ctx.view).map((r) => r.id));
   const now = Date.now();
   let budget = MAX_PUSHES;
@@ -1006,7 +1007,7 @@ async function pushLocal(ctx: Context, items: Map<string, Item>, result: SyncRes
     if (!item && !inView.has(row.id)) continue;
     if (!editable(ctx, row)) {
       // No longer the person's to change: the event stays as it is.
-      if (item) dropItem(ctx, row.id);
+      if (item) await dropItem(ctx, row.id);
       continue;
     }
     const local = localContent(row, ctx.fields, ctx.view, ctx.zone);
@@ -1015,7 +1016,7 @@ async function pushLocal(ctx: Context, items: Map<string, Item>, result: SyncRes
       if (item) {
         budget--;
         await ctx.adapter.remove(ctx.conn, ctx.mapping.calendar_id, item.event_id);
-        dropItem(ctx, row.id);
+        await dropItem(ctx, row.id);
         result.removed++;
       }
       continue;
@@ -1032,19 +1033,19 @@ async function pushLocal(ctx: Context, items: Map<string, Item>, result: SyncRes
     let saved = item ? await ctx.adapter.update(ctx.conn, ctx.mapping.calendar_id, item.event_id, local, ctx.zone, row.id, link) : null;
     // Gone in the calendar without us noticing: created again.
     if (!saved) saved = await ctx.adapter.create(ctx.conn, ctx.mapping.calendar_id, local, ctx.zone, row.id, link);
-    saveItem(ctx, row.id, saved.id, localHash);
+    await saveItem(ctx, row.id, saved.id, localHash);
     result.pushed++;
   }
   // Linked records that are gone (deleted here) or hidden from the person now.
   for (const item of byRow.values()) {
     if (budget <= 0) break;
-    if (one("SELECT 1 FROM rows WHERE id=? AND page_id=?", item.row_id, ctx.page.id)) {
-      dropItem(ctx, item.row_id);
+    if (await one("SELECT 1 FROM rows WHERE id=? AND page_id=?", item.row_id, ctx.page.id)) {
+      await dropItem(ctx, item.row_id);
       continue;
     }
     budget--;
     await ctx.adapter.remove(ctx.conn, ctx.mapping.calendar_id, item.event_id);
-    dropItem(ctx, item.row_id);
+    await dropItem(ctx, item.row_id);
     result.removed++;
   }
 }
@@ -1061,11 +1062,11 @@ function readToken(raw: string | null) {
 // One sync run of a mapping. Errors of single events are counted, not
 // fatal; an error of the calendar itself ends the run (the worker backs off).
 export async function syncCalendarMapping(mappingId: string): Promise<SyncResult> {
-  const mapping = one<MappingRow>("SELECT * FROM calendar_sync_mappings WHERE id=?", mappingId);
+  const mapping = await one<MappingRow>("SELECT * FROM calendar_sync_mappings WHERE id=?", mappingId);
   if (!mapping) throw new HttpError(404, "Kalenderzuordnung nicht gefunden.");
   const result: SyncResult = { pulled: 0, created: 0, updated: 0, deleted: 0, pushed: 0, removed: 0, conflicts: 0, skipped: 0 };
   try {
-    const ctx = contextOf(mapping);
+    const ctx = await contextOf(mapping);
     const stored = readToken(mapping.sync_token);
     let changes: { events: RemoteEvent[]; token: string };
     let since = stored?.since || Date.now();
@@ -1078,20 +1079,20 @@ export async function syncCalendarMapping(mappingId: string): Promise<SyncResult
     }
     if (!stored) since = Date.now();
     const items = new Map(
-      all<Item>("SELECT row_id,event_id,hash FROM calendar_sync_items WHERE mapping_id=?", mapping.id).map((i) => [i.event_id, i]),
+      (await all<Item>("SELECT row_id,event_id,hash FROM calendar_sync_items WHERE mapping_id=?", mapping.id)).map((i) => [i.event_id, i]),
     );
     result.pulled = changes.events.length;
     for (const event of changes.events) {
       try {
-        applyRemote(ctx, event, items, result);
+        await applyRemote(ctx, event, items, result);
       } catch (error) {
         result.skipped++;
         if (!(error instanceof HttpError)) console.error("Calendar sync: event", error);
       }
     }
-    run("UPDATE calendar_sync_mappings SET sync_token=? WHERE id=?", JSON.stringify({ token: changes.token, since }), mapping.id);
+    await run("UPDATE calendar_sync_mappings SET sync_token=? WHERE id=?", JSON.stringify({ token: changes.token, since }), mapping.id);
     await pushLocal(ctx, items, result);
-    run(
+    await run(
       "UPDATE calendar_sync_mappings SET last_sync_at=?,last_error=NULL,failures=0,next_at=? WHERE id=?",
       Date.now(),
       Date.now() + SYNC_INTERVAL_MS,
@@ -1103,7 +1104,7 @@ export async function syncCalendarMapping(mappingId: string): Promise<SyncResult
     if (!(error instanceof HttpError)) console.error("Calendar sync", error);
     // Back off: 20 minutes, 40, 80 … at most a day.
     const failures = mapping.failures + 1;
-    run(
+    await run(
       "UPDATE calendar_sync_mappings SET last_error=?,failures=?,next_at=? WHERE id=?",
       message,
       failures,
@@ -1116,7 +1117,7 @@ export async function syncCalendarMapping(mappingId: string): Promise<SyncResult
 // "Jetzt synchronisieren" of the person who set the mapping up.
 export async function syncOwnMapping(user: Identity, input: unknown) {
   const mid = z.object({ id: z.uuid() }).parse(input).id;
-  if (!one("SELECT 1 FROM calendar_sync_mappings WHERE id=? AND user_id=?", mid, user.id)) throw new HttpError(404, "Kalenderzuordnung nicht gefunden.");
+  if (!(await one("SELECT 1 FROM calendar_sync_mappings WHERE id=? AND user_id=?", mid, user.id))) throw new HttpError(404, "Kalenderzuordnung nicht gefunden.");
   return syncCalendarMapping(mid);
 }
 
@@ -1125,7 +1126,7 @@ export async function syncDueCalendars(now = Date.now()) {
   if (runtime.flowplanCalendarBusy) return;
   runtime.flowplanCalendarBusy = true;
   try {
-    for (const m of all<{ id: string }>("SELECT id FROM calendar_sync_mappings WHERE next_at<=? ORDER BY next_at LIMIT 50", now))
+    for (const m of await all<{ id: string }>("SELECT id FROM calendar_sync_mappings WHERE next_at<=? ORDER BY next_at LIMIT 50", now))
       await syncCalendarMapping(m.id).catch(() => {});
   } finally {
     runtime.flowplanCalendarBusy = false;

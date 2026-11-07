@@ -15,7 +15,7 @@ export const GET = withRequestLocale(async () => {
     const user = requireOpsAdmin(await requireUser());
     // The push relay's live check (cached a minute) for its tile.
     const [update] = await Promise.all([updateStatus().catch(() => null), warmPushChecks()]);
-    return Response.json(adminSummaryFor(user, Date.now(), update), { headers: { "Cache-Control": "no-store" } });
+    return Response.json(await adminSummaryFor(user, Date.now(), update), { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     if (!(e instanceof HttpError)) console.error(e);
     return Response.json(

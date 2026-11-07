@@ -29,6 +29,7 @@ import { securityRules, type SecurityRule } from "./security-kinds";
 import { sweepSecurityEvents } from "./security-events";
 import { opsMessengerAdmins, queueOpsAlert } from "./messengers";
 import { openWebhookUrl } from "./sealed-values";
+import { mapAsync } from "./each-async";
 
 const DAY = 86_400_000;
 
@@ -54,10 +55,10 @@ const localDay = (ms: number) => {
 
 /* ---------- Refused requests ---------- */
 
-export function opsEventSummary(now = Date.now(), days = 14) {
-  flushOpsEvents();
-  const count = (kind: OpsEventKind, since: number) =>
-    Number(one<{ n: number }>("SELECT COUNT(*) n FROM ops_events WHERE kind=? AND at>=?", kind, since)?.n || 0);
+export async function opsEventSummary(now = Date.now(), days = 14) {
+  await flushOpsEvents();
+  const count = async (kind: OpsEventKind, since: number) =>
+    Number((await one<{ n: number }>("SELECT COUNT(*) n FROM ops_events WHERE kind=? AND at>=?", kind, since))?.n || 0);
   const start = new Date(now);
   start.setHours(0, 0, 0, 0);
   start.setDate(start.getDate() - (days - 1));
@@ -67,23 +68,23 @@ export function opsEventSummary(now = Date.now(), days = 14) {
     d.setDate(d.getDate() + i);
     series.set(localDay(d.getTime()), { login_failure: 0, rate_limited: 0, anonymous_refused: 0, login_success: 0 });
   }
-  for (const e of all<{ kind: OpsEventKind; at: number }>("SELECT kind,at FROM ops_events WHERE at>=?", start.getTime())) {
+  for (const e of await all<{ kind: OpsEventKind; at: number }>("SELECT kind,at FROM ops_events WHERE at>=?", start.getTime())) {
     const day = series.get(localDay(e.at));
     if (day && e.kind in day) day[e.kind]++;
   }
   return {
     totals: Object.fromEntries(
-      opsEventKinds.map((kind) => [kind, { hour: count(kind, now - 3600_000), day: count(kind, now - DAY), week: count(kind, now - 7 * DAY) }]),
+      await mapAsync(opsEventKinds, async (kind) => [kind, { hour: await count(kind, now - 3600_000), day: await count(kind, now - DAY), week: await count(kind, now - 7 * DAY) }]),
     ) as Record<OpsEventKind, { hour: number; day: number; week: number }>,
     days: [...series].map(([day, counts]) => ({ day, ...counts })),
-    anonymousBytesToday: anonymousBytesToday("*", now),
+    anonymousBytesToday: await anonymousBytesToday("*", now),
   };
 }
 
-export function sweepOpsEvents(now = Date.now()) {
-  flushOpsEvents();
-  run("DELETE FROM ops_events WHERE at<?", now - KEEP_EVENTS_DAYS * DAY);
-  run("DELETE FROM ops_alerts WHERE sent_at<?", now - 90 * DAY);
+export async function sweepOpsEvents(now = Date.now()) {
+  await flushOpsEvents();
+  await run("DELETE FROM ops_events WHERE at<?", now - KEEP_EVENTS_DAYS * DAY);
+  await run("DELETE FROM ops_alerts WHERE sent_at<?", now - 90 * DAY);
 }
 
 /* ---------- Background workers ---------- */
@@ -97,12 +98,12 @@ export type WorkerStatus = {
   detail?: string;
 };
 
-const workerRow = (name: string) =>
-  one<{ last_run: number; last_error: string | null; error_at: number | null }>("SELECT last_run,last_error,error_at FROM ops_workers WHERE name=?", name);
+const workerRow = async (name: string) =>
+  await one<{ last_run: number; last_error: string | null; error_at: number | null }>("SELECT last_run,last_error,error_at FROM ops_workers WHERE name=?", name);
 
-export function workerStatuses(now = Date.now()): WorkerStatus[] {
+export async function workerStatuses(now = Date.now()): Promise<WorkerStatus[]> {
   const result: WorkerStatus[] = [];
-  const backup = scheduledBackupStatus();
+  const backup = await scheduledBackupStatus();
   result.push({
     key: "backup",
     active: backup.enabled,
@@ -111,7 +112,7 @@ export function workerStatuses(now = Date.now()): WorkerStatus[] {
     errorAt: backup.last?.error ? backup.last.at : null,
     detail: backup.target,
   });
-  const exports = markdownExportStatus();
+  const exports = await markdownExportStatus();
   const latest = Math.max(0, ...exports.runs.map((r) => r.at));
   const failed = exports.runs.filter((r) => r.error && r.at >= latest - 3600_000);
   result.push({
@@ -121,17 +122,17 @@ export function workerStatuses(now = Date.now()): WorkerStatus[] {
     error: failed[0]?.error ?? null,
     errorAt: failed[0]?.at ?? null,
   });
-  const ai = workerRow("ai");
+  const ai = await workerRow("ai");
   let aiOn = false;
   try {
-    aiOn = instanceAiSettings().enabled;
+    aiOn = (await instanceAiSettings()).enabled;
   } catch {}
   result.push({ key: "ai", active: aiOn, lastRun: ai?.last_run ?? null, error: ai?.last_error ?? null, errorAt: ai?.error_at ?? null });
-  const calendar = one<{ n: number; last: number | null; failing: number }>(
+  const calendar = await one<{ n: number; last: number | null; failing: number }>(
     "SELECT COUNT(*) n,MAX(last_sync_at) last,SUM(CASE WHEN last_error IS NOT NULL AND failures>0 THEN 1 ELSE 0 END) failing FROM calendar_sync_mappings",
   );
   const calendarError = calendar?.failing
-    ? one<{ last_error: string }>("SELECT last_error FROM calendar_sync_mappings WHERE last_error IS NOT NULL AND failures>0 ORDER BY next_at DESC LIMIT 1")?.last_error ?? null
+    ? (await one<{ last_error: string }>("SELECT last_error FROM calendar_sync_mappings WHERE last_error IS NOT NULL AND failures>0 ORDER BY next_at DESC LIMIT 1"))?.last_error ?? null
     : null;
   result.push({
     key: "calendar-sync",
@@ -142,10 +143,10 @@ export function workerStatuses(now = Date.now()): WorkerStatus[] {
     errorAt: calendarError ? now : null,
     detail: calendar?.n ? `${calendar.failing || 0}/${calendar.n}` : undefined,
   });
-  const issues = workerRow("issue-sync");
-  const maps = Number(one<{ n: number }>("SELECT COUNT(*) n FROM issue_sync_maps")?.n || 0);
+  const issues = await workerRow("issue-sync");
+  const maps = Number((await one<{ n: number }>("SELECT COUNT(*) n FROM issue_sync_maps"))?.n || 0);
   result.push({ key: "issue-sync", active: maps > 0, lastRun: issues?.last_run ?? null, error: issues?.last_error ?? null, errorAt: issues?.error_at ?? null });
-  const ldap = ldapStatus();
+  const ldap = await ldapStatus();
   result.push({
     key: "ldap-sync",
     active: ldap.configured,
@@ -158,15 +159,15 @@ export function workerStatuses(now = Date.now()): WorkerStatus[] {
 
 /* ---------- Webhooks, storage, overview ---------- */
 
-export function webhookFailures() {
-  const count = (sql: string) => Number(one<{ n: number }>(sql)?.n || 0);
-  const recent = all<{ id: string; url: string; workspace: string | null; error: string | null; status: number | null; attempts: number; at: number }>(
+export async function webhookFailures() {
+  const count = async (sql: string) => Number((await one<{ n: number }>(sql))?.n || 0);
+  const recent = await all<{ id: string; url: string; workspace: string | null; error: string | null; status: number | null; attempts: number; at: number }>(
     `SELECT w.id,w.url,ws.name workspace,d.error,d.status,d.attempts,d.next_at at FROM webhook_deliveries d JOIN webhooks w ON w.id=d.webhook_id
      LEFT JOIN workspaces ws ON ws.id=w.workspace_id WHERE d.delivered_at IS NULL AND d.attempts>0 ORDER BY d.next_at DESC LIMIT 8`,
   );
   return {
-    retrying: count("SELECT COUNT(*) n FROM webhook_deliveries WHERE delivered_at IS NULL AND attempts>0 AND attempts<6"),
-    givenUp: count("SELECT COUNT(*) n FROM webhook_deliveries WHERE delivered_at IS NULL AND attempts>=6"),
+    retrying: await count("SELECT COUNT(*) n FROM webhook_deliveries WHERE delivered_at IS NULL AND attempts>0 AND attempts<6"),
+    givenUp: await count("SELECT COUNT(*) n FROM webhook_deliveries WHERE delivered_at IS NULL AND attempts>=6"),
     // The host only: paths and queries of webhook addresses may hold secrets.
     recent: recent.map((r) => {
       let host = "";
@@ -178,26 +179,26 @@ export function webhookFailures() {
   };
 }
 
-export function storageByWorkspace() {
-  const names = new Map(all<{ id: string; name: string }>("SELECT id,name FROM workspaces").map((w) => [w.id, w.name]));
-  return workspaceUsage()
+export async function storageByWorkspace() {
+  const names = new Map((await all<{ id: string; name: string }>("SELECT id,name FROM workspaces")).map((w) => [w.id, w.name]));
+  return (await workspaceUsage())
     .map((w) => ({ id: w.id, name: names.get(w.id) || "", bytes: w.bytes, quotaMb: w.effectiveQuotaMb }))
     .sort((a, b) => b.bytes - a.bytes);
 }
 
-export function opsOverview(now = Date.now()) {
-  const metrics = instanceMetrics();
+export async function opsOverview(now = Date.now()) {
+  const metrics = await instanceMetrics();
   return {
-    events: opsEventSummary(now),
-    storage: { databaseBytes: metrics.databaseBytes, uploadBytes: metrics.uploadBytes, workspaces: storageByWorkspace() },
-    mail: mailStatus(),
-    webhooks: webhookFailures(),
-    workers: workerStatuses(now),
-    alerts: alertSettingsForAdmin(),
-    maintenance: storedMaintenance(),
+    events: await opsEventSummary(now),
+    storage: { databaseBytes: metrics.databaseBytes, uploadBytes: metrics.uploadBytes, workspaces: await storageByWorkspace() },
+    mail: await mailStatus(),
+    webhooks: await webhookFailures(),
+    workers: await workerStatuses(now),
+    alerts: await alertSettingsForAdmin(),
+    maintenance: await storedMaintenance(),
   };
 }
-export type OpsOverview = ReturnType<typeof opsOverview>;
+export type OpsOverview = Awaited<ReturnType<typeof opsOverview>>;
 
 /* ---------- Activity log export ---------- */
 
@@ -208,7 +209,7 @@ export const auditExportSchema = z.object({
   format: z.enum(["csv", "json"]).default("csv"),
 });
 // The activity log between two days (UTC, as stored), newest first.
-export function auditExport(input: unknown) {
+export async function auditExport(input: unknown) {
   const { from, to, format } = auditExportSchema.parse(input);
   if (from && to && from > to) throw new HttpError(400, "Das Startdatum liegt nach dem Enddatum.");
   const where: string[] = [],
@@ -221,7 +222,7 @@ export function auditExport(input: unknown) {
     where.push("a.created_at<=?");
     args.push(`${to} 23:59:59`);
   }
-  const rows = all<{ created_at: string; name: string | null; email: string | null; action: string; resource_id: string; detail: string }>(
+  const rows = await all<{ created_at: string; name: string | null; email: string | null; action: string; resource_id: string; detail: string }>(
     `SELECT a.created_at,u.name,u.email,a.action,a.resource_id,a.detail FROM audit a LEFT JOIN users u ON u.id=a.actor_id ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY a.created_at DESC LIMIT 200000`,
     ...args,
   );
@@ -253,18 +254,18 @@ export function auditExport(input: unknown) {
 
 /* ---------- Settings stored next to the instance settings ---------- */
 
-function readSetting<T>(key: string): T | null {
-  const row = one<{ value: string }>("SELECT value FROM instance_settings WHERE key=?", key);
+async function readSetting<T>(key: string): Promise<T | null> {
+  const row = await one<{ value: string }>("SELECT value FROM instance_settings WHERE key=?", key);
   try {
     return row ? (JSON.parse(row.value) as T) : null;
   } catch {
     return null;
   }
 }
-function writeSetting(key: string, value: unknown) {
-  if (value === null) run("DELETE FROM instance_settings WHERE key=?", key);
+async function writeSetting(key: string, value: unknown) {
+  if (value === null) await run("DELETE FROM instance_settings WHERE key=?", key);
   else
-    run(
+    await run(
       "INSERT INTO instance_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
       key,
       JSON.stringify(value),
@@ -279,8 +280,8 @@ type StoredAlerts = { url: string; events: AlertEvent[]; secret: string; version
 const ALERTS_KEY = "opsAlerts";
 const allowPrivate = () => process.env.FLOWPLAN_WEBHOOK_ALLOW_PRIVATE === "true";
 
-function storedAlerts(): (StoredAlerts & { plainSecret: string }) | null {
-  const stored = readSetting<StoredAlerts>(ALERTS_KEY);
+async function storedAlerts(): Promise<(StoredAlerts & { plainSecret: string }) | null> {
+  const stored = await readSetting<StoredAlerts>(ALERTS_KEY);
   if (!stored?.url) return null;
   let plainSecret = "";
   try {
@@ -291,14 +292,14 @@ function storedAlerts(): (StoredAlerts & { plainSecret: string }) | null {
   if (!stored.version && !events.includes("security")) events.push("security");
   return { ...stored, events, plainSecret };
 }
-export function alertSettingsForAdmin() {
-  const stored = storedAlerts();
+export async function alertSettingsForAdmin() {
+  const stored = await storedAlerts();
   return {
     url: stored?.url || "",
     events: stored?.events || [...alertEvents],
     // Shown to administrators to verify the X-Flowplan-Signature header.
     secret: stored?.plainSecret || "",
-    sent: all<{ event: string; day: string; sent_at: number; status: number | null; error: string | null }>(
+    sent: await all<{ event: string; day: string; sent_at: number; status: number | null; error: string | null }>(
       "SELECT event,day,sent_at,status,error FROM ops_alerts ORDER BY sent_at DESC LIMIT 10",
     ),
   };
@@ -308,12 +309,12 @@ const alertsSchema = z.object({
   events: z.array(z.enum(alertEvents)).max(alertEvents.length),
   newSecret: z.boolean().optional(),
 });
-export function saveAlertSettings(actorId: string, input: unknown) {
+export async function saveAlertSettings(actorId: string, input: unknown) {
   const { url, events, newSecret } = alertsSchema.parse(input);
   if (!url) {
-    writeSetting(ALERTS_KEY, null);
-    audit(actorId, "admin.ops.alerts", "instance", "off");
-    return alertSettingsForAdmin();
+    await writeSetting(ALERTS_KEY, null);
+    await audit(actorId, "admin.ops.alerts", "instance", "off");
+    return await alertSettingsForAdmin();
   }
   let parsed: URL;
   try {
@@ -323,28 +324,28 @@ export function saveAlertSettings(actorId: string, input: unknown) {
   }
   if (parsed.protocol !== "https:" && !(allowPrivate() && parsed.protocol === "http:"))
     throw new HttpError(400, "Die Webhook-Adresse muss mit https:// beginnen.");
-  const previous = storedAlerts();
+  const previous = await storedAlerts();
   const secret = !newSecret && previous?.plainSecret ? previous.plainSecret : randomBytes(24).toString("base64url");
-  writeSetting(ALERTS_KEY, { url: parsed.toString(), events: [...new Set(events)], secret: sealSecret(secret, "ops-alerts"), version: 2 });
-  audit(actorId, "admin.ops.alerts", "instance", parsed.host);
-  return alertSettingsForAdmin();
+  await writeSetting(ALERTS_KEY, { url: parsed.toString(), events: [...new Set(events)], secret: sealSecret(secret, "ops-alerts"), version: 2 });
+  await audit(actorId, "admin.ops.alerts", "instance", parsed.host);
+  return await alertSettingsForAdmin();
 }
 
 // The conditions that hold right now, with a short description each.
-export function activeAlerts(now = Date.now()): { event: AlertEvent; detail: string }[] {
+export async function activeAlerts(now = Date.now()): Promise<{ event: AlertEvent; detail: string }[]> {
   const result: { event: AlertEvent; detail: string }[] = [];
-  const backup = scheduledBackupStatus();
+  const backup = await scheduledBackupStatus();
   if (backup.enabled && backup.last?.error) result.push({ event: "backup_failed", detail: backup.last.error });
-  const full = storageByWorkspace().filter((w) => w.quotaMb > 0 && w.bytes >= w.quotaMb * 1024 * 1024 * STORAGE_ALERT_SHARE);
+  const full = (await storageByWorkspace()).filter((w) => w.quotaMb > 0 && w.bytes >= w.quotaMb * 1024 * 1024 * STORAGE_ALERT_SHARE);
   if (full.length)
     result.push({
       event: "storage_high",
       detail: full.map((w) => `${w.name || w.id}: ${Math.round((w.bytes / (w.quotaMb * 1024 * 1024)) * 100)} %`).join(", "),
     });
-  const failing = workerStatuses(now).filter((w) => w.active && w.error && (w.errorAt ?? 0) >= now - DAY);
+  const failing = (await workerStatuses(now)).filter((w) => w.active && w.error && (w.errorAt ?? 0) >= now - DAY);
   if (failing.length) result.push({ event: "worker_error", detail: failing.map((w) => `${w.key}: ${w.error}`).join("; ").slice(0, 500) });
-  flushOpsEvents();
-  const logins = Number(one<{ n: number }>("SELECT COUNT(*) n FROM ops_events WHERE kind='login_failure' AND at>=?", now - 3600_000)?.n || 0);
+  await flushOpsEvents();
+  const logins = Number((await one<{ n: number }>("SELECT COUNT(*) n FROM ops_events WHERE kind='login_failure' AND at>=?", now - 3600_000))?.n || 0);
   if (logins >= LOGIN_ALERT_THRESHOLD) result.push({ event: "login_failures", detail: String(logins) });
   return result;
 }
@@ -365,7 +366,7 @@ async function deliver(config: { url: string; plainSecret: string }, event: Aler
     title: alertTitle(event),
     detail,
     ...extra,
-    instance: instanceSettings().name || "Flowplan",
+    instance: (await instanceSettings()).name || "Flowplan",
     url: process.env.APP_URL || "",
     at: new Date(now).toISOString(),
   });
@@ -397,21 +398,21 @@ const alertTitleIn = (event: AlertEvent) => (say: (de: string, en: string) => st
 // the operator's webhook (its chosen events) and to the chat apps of
 // administrators who want operations alerts there (lib/messengers.ts).
 export async function checkHealthAlerts(now = Date.now()) {
-  const config = storedAlerts();
+  const config = await storedAlerts();
   const webhook = config?.plainSecret ? config : null;
-  const admins = opsMessengerAdmins().length > 0;
+  const admins = (await opsMessengerAdmins()).length > 0;
   if (!webhook && !admins) return [];
   const day = localDay(now);
   const sent: { event: AlertEvent; status: number | null; error: string | null }[] = [];
-  for (const alert of activeAlerts(now)) {
+  for (const alert of await activeAlerts(now)) {
     const toWebhook = !!webhook && webhook.events.includes(alert.event);
     if (!toWebhook && !admins) continue;
     // Claimed before sending, so two runs at once do not both send.
-    if (!run("INSERT INTO ops_alerts(event,day,sent_at) VALUES(?,?,?) ON CONFLICT DO NOTHING", alert.event, day, now).changes) continue;
-    if (admins) queueOpsAlert(alertTitleIn(alert.event), alert.detail, now);
+    if (!(await run("INSERT INTO ops_alerts(event,day,sent_at) VALUES(?,?,?) ON CONFLICT DO NOTHING", alert.event, day, now)).changes) continue;
+    if (admins) await queueOpsAlert(alertTitleIn(alert.event), alert.detail, now);
     if (!toWebhook) continue;
     const result = await deliver(webhook, alert.event, alert.detail, now);
-    run("UPDATE ops_alerts SET status=?,error=? WHERE event=? AND day=?", result.status, result.error, alert.event, day);
+    await run("UPDATE ops_alerts SET status=?,error=? WHERE event=? AND day=?", result.status, result.error, alert.event, day);
     sent.push({ event: alert.event, ...result });
   }
   return sent;
@@ -422,17 +423,17 @@ export async function checkHealthAlerts(now = Date.now()) {
 // incident is also a notification of the kind "security" for each of them
 // (lib/security-detect.ts), which reaches their chat apps by that kind.
 export async function sendSecurityAlert(rule: SecurityRule, detail: string, now = Date.now()) {
-  const config = storedAlerts();
+  const config = await storedAlerts();
   if (!config?.plainSecret || !config.events.includes("security")) return null;
   const title = securityRules[rule];
   return deliver(config, "security", `${ct(title.de, title.en)}${detail ? ` – ${detail}` : ""}`, now, { rule, severity: title.severity });
 }
 
 export async function sendTestAlert(actorId: string) {
-  const config = storedAlerts();
+  const config = await storedAlerts();
   if (!config?.plainSecret) throw new HttpError(400, "Zuerst eine Webhook-Adresse speichern.");
   const result = await deliver(config, "test", ct("Die Benachrichtigungen kommen an.", "Notifications arrive."), Date.now());
-  audit(actorId, "admin.ops.alerts.test", "instance", result.error || String(result.status));
+  await audit(actorId, "admin.ops.alerts.test", "instance", result.error || String(result.status));
   return result;
 }
 
@@ -448,23 +449,23 @@ const maintenanceSchema = z
   })
   .nullable();
 
-export function storedMaintenance(): MaintenanceNotice | null {
-  return readSetting<MaintenanceNotice>(MAINTENANCE_KEY);
+export async function storedMaintenance(): Promise<MaintenanceNotice | null> {
+  return await readSetting<MaintenanceNotice>(MAINTENANCE_KEY);
 }
 // Shown to everyone from when it is saved until its end.
-export function maintenanceNotice(now = Date.now()): MaintenanceNotice | null {
-  const notice = storedMaintenance();
+export async function maintenanceNotice(now = Date.now()): Promise<MaintenanceNotice | null> {
+  const notice = await storedMaintenance();
   return notice && notice.end > now ? notice : null;
 }
-export function saveMaintenance(actorId: string, input: unknown, now = Date.now()) {
+export async function saveMaintenance(actorId: string, input: unknown, now = Date.now()) {
   const notice = maintenanceSchema.parse(input);
   if (notice) {
     if (notice.end <= notice.start) throw new HttpError(400, "Das Ende der Wartung muss nach dem Beginn liegen.");
     if (notice.end <= now) throw new HttpError(400, "Das Ende der Wartung liegt in der Vergangenheit.");
   }
-  writeSetting(MAINTENANCE_KEY, notice);
-  audit(actorId, "admin.ops.maintenance", "instance", notice ? `${new Date(notice.start).toISOString()} – ${new Date(notice.end).toISOString()}` : "off");
-  return storedMaintenance();
+  await writeSetting(MAINTENANCE_KEY, notice);
+  await audit(actorId, "admin.ops.maintenance", "instance", notice ? `${new Date(notice.start).toISOString()} – ${new Date(notice.end).toISOString()}` : "off");
+  return await storedMaintenance();
 }
 
 /* ---------- Worker ---------- */
@@ -474,16 +475,16 @@ const runtime = globalThis as unknown as { flowplanOpsTimer?: ReturnType<typeof 
 // old counters go.
 export function startOpsWorker() {
   if (runtime.flowplanOpsTimer) return;
-  const tick = () => {
+  const tick = async () => {
     const now = Date.now();
     try {
-      flushOpsEvents();
+      await flushOpsEvents();
       // Idempotency keys live 24 hours (lib/idempotency.ts).
-      sweepIdempotencyKeys(now);
+      await sweepIdempotencyKeys(now);
       if (now - (runtime.flowplanOpsSwept ?? 0) >= DAY) {
-        sweepOpsEvents(now);
+        await sweepOpsEvents(now);
         // Security events after their retention (lib/security-events.ts).
-        sweepSecurityEvents(now);
+        await sweepSecurityEvents(now);
         runtime.flowplanOpsSwept = now;
       }
     } catch (error) {

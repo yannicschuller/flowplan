@@ -23,23 +23,23 @@ const { withMeetingNotes } = await import("../lib/meeting-notes");
 const sync = await import("../lib/calendar-sync");
 type CalendarRequest = import("../lib/calendar-sync").CalendarRequest;
 
-function user(name: string): Identity {
+async function user(name: string): Promise<Identity> {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@test.invalid`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@test.invalid`);
   return { id: uid, name, email: `${name}@test.invalid`, groups: [], isAdmin: false, disabled: 0, created_at: "" };
 }
-const owner = user("owner"),
-  viewer = user("viewer");
-const wid = createWorkspace(owner.id, "Sync"),
-  boot = bootstrap(owner, wid);
-run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
-const act = (body: Record<string, unknown>, who = owner): any => command(who, body);
-function calendarDatabase(title: string) {
-  const pageId = act({ action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, kind: "database", title }).id as string;
-  act({
+const owner = await user("owner"),
+  viewer = await user("viewer");
+const wid = await createWorkspace(owner.id, "Sync"),
+  boot = await bootstrap(owner, wid);
+await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
+const act = async (body: Record<string, unknown>, who = owner): Promise<any> => await command(who, body);
+async function calendarDatabase(title: string) {
+  const pageId = (await act({ action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, kind: "database", title })).id as string;
+  await act({
     action: "database.update",
     pageId,
-    version: database(pageId).version,
+    version: (await database(pageId)).version,
     fields: [
       { id: "title", name: "Title", type: "text" },
       { id: "start", name: "Start", type: "date" },
@@ -50,8 +50,8 @@ function calendarDatabase(title: string) {
   });
   return pageId;
 }
-const version = (rid: string) => one<{ version: number }>("SELECT version FROM rows WHERE id=?", rid)!.version;
-const cells = (rid: string) => JSON.parse(one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", rid)!.cells);
+const version = async (rid: string) => (await one<{ version: number }>("SELECT version FROM rows WHERE id=?", rid))!.version;
+const cells = async (rid: string) => JSON.parse((await one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", rid))!.cells);
 const soon = (days: number) => new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
 
 /* ---------- A fake network ---------- */
@@ -104,15 +104,15 @@ function tokenEndpoint(nonce: () => string): Handler {
   };
 }
 async function connect(provider: "google" | "microsoft", who = owner) {
-  const { url, flow } = sync.startCalendarConnection(who, provider);
-  const stored = one<{ nonce: string; state: string }>("SELECT nonce,state FROM calendar_oauth_flows WHERE id=?", hash(flow))!;
+  const { url, flow } = await sync.startCalendarConnection(who, provider);
+  const stored = (await one<{ nonce: string; state: string }>("SELECT nonce,state FROM calendar_oauth_flows WHERE id=?", hash(flow)))!;
   handlers = [tokenEndpoint(() => stored.nonce)];
   const params = new URLSearchParams({ code: "the-code", state: new URL(url).searchParams.get("state")! });
   return sync.finishCalendarConnection(who, provider, flow, params);
 }
 
 test("connecting: PKCE, state and nonce are checked; the refresh token is sealed", async () => {
-  const { url, flow } = sync.startCalendarConnection(owner, "google");
+  const { url, flow } = await sync.startCalendarConnection(owner, "google");
   const target = new URL(url);
   assert.equal(target.origin + target.pathname, "https://accounts.google.com/o/oauth2/v2/auth");
   assert.equal(target.searchParams.get("code_challenge_method"), "S256");
@@ -122,24 +122,24 @@ test("connecting: PKCE, state and nonce are checked; the refresh token is sealed
   await assert.rejects(sync.finishCalendarConnection(owner, "google", flow, new URLSearchParams({ code: "the-code", state: "forged" })), /Ungültige Antwort/);
   await assert.rejects(sync.finishCalendarConnection(owner, "google", flow, new URLSearchParams({ code: "the-code", state: target.searchParams.get("state")! })), /abgelaufen/);
   // Someone else's flow does not count for this person.
-  const other = sync.startCalendarConnection(owner, "google");
+  const other = await sync.startCalendarConnection(owner, "google");
   await assert.rejects(sync.finishCalendarConnection(viewer, "google", other.flow, new URLSearchParams({ state: "x" })), /abgelaufen/);
   // A token whose nonce does not match is refused.
-  const third = sync.startCalendarConnection(owner, "google");
+  const third = await sync.startCalendarConnection(owner, "google");
   handlers = [tokenEndpoint(() => "other-nonce")];
   await assert.rejects(
     sync.finishCalendarConnection(owner, "google", third.flow, new URLSearchParams({ code: "the-code", state: new URL(third.url).searchParams.get("state")! })),
     /Ungültige Antwort/,
   );
   const cid = await connect("google");
-  const stored = one<{ refresh_token: string; account: string }>("SELECT refresh_token,account FROM calendar_connections WHERE id=?", cid)!;
+  const stored = (await one<{ refresh_token: string; account: string }>("SELECT refresh_token,account FROM calendar_connections WHERE id=?", cid))!;
   assert.equal(stored.account, "owner@gmail.test");
   assert.ok(!stored.refresh_token.includes("refresh-secret-value"));
   // Connecting the same account again keeps one connection.
   assert.equal(await connect("google"), cid);
-  assert.equal(all("SELECT 1 FROM calendar_connections WHERE user_id=?", owner.id).length, 1);
+  assert.equal((await all("SELECT 1 FROM calendar_connections WHERE user_id=?", owner.id)).length, 1);
   // Demo accounts and API tokens cannot connect.
-  assert.throws(() => sync.startCalendarConnection({ ...owner, apiScope: "write" }, "google"), /nur im Browser/);
+  await assert.rejects(async () => await sync.startCalendarConnection({ ...owner, apiScope: "write" }, "google"), /nur im Browser/);
 });
 
 /* ---------- Google ---------- */
@@ -203,26 +203,26 @@ function fakeGoogle() {
 }
 
 test("Google: records go out, events come in, changes and deletions both ways", async () => {
-  const pageId = calendarDatabase("Termine Google");
-  const cid = one<{ id: string }>("SELECT id FROM calendar_connections WHERE user_id=? AND provider='google'", owner.id)!.id;
+  const pageId = await calendarDatabase("Termine Google");
+  const cid = (await one<{ id: string }>("SELECT id FROM calendar_connections WHERE user_id=? AND provider='google'", owner.id))!.id;
   const google = fakeGoogle();
   handlers = [tokenEndpoint(() => ""), google.handler];
   const calendars = await sync.listExternalCalendars(owner, cid);
   assert.deepEqual(calendars.map((c) => c.name), ["Owner", "Team"]);
   // Only editors of the database map it.
-  assert.throws(() => act({ action: "calendarSync.map", connectionId: cid, pageId, viewId: "cal", calendarId: "primary" }, viewer), /Kalenderverbindung nicht gefunden|Keine Berechtigung/);
+  await assert.rejects(async () => await act({ action: "calendarSync.map", connectionId: cid, pageId, viewId: "cal", calendarId: "primary" }, viewer), /Kalenderverbindung nicht gefunden|Keine Berechtigung/);
   const day = soon(3);
-  const planning = act({ action: "row.create", pageId, cells: { title: "Planung", start: `${day}T08:00Z`, end: `${day}T09:30Z` } }).id;
-  const mapping = act({ action: "calendarSync.map", connectionId: cid, pageId, viewId: "cal", calendarId: "primary", calendarName: "Owner" }).id;
+  const planning = (await act({ action: "row.create", pageId, cells: { title: "Planung", start: `${day}T08:00Z`, end: `${day}T09:30Z` } })).id;
+  const mapping = (await act({ action: "calendarSync.map", connectionId: cid, pageId, viewId: "cal", calendarId: "primary", calendarName: "Owner" })).id;
   // An event that already is in the calendar.
   google.touch({ id: "ext1", status: "confirmed", summary: "Urlaub", description: "Strand\n\nSonne", start: { date: soon(10) }, end: { date: soon(13) } });
 
   let result = await sync.syncCalendarMapping(mapping);
   assert.equal(result.created, 1);
   assert.equal(result.pushed, 1);
-  const holiday = one<{ row_id: string }>("SELECT row_id FROM calendar_sync_items WHERE event_id='ext1'")!.row_id;
-  assert.deepEqual([cells(holiday).title, cells(holiday).start, cells(holiday).end], ["Urlaub", soon(10), soon(12)]);
-  assert.match(one<{ content: string }>("SELECT content FROM rows WHERE id=?", holiday)!.content, /<p>Strand<\/p><p><\/p><p>Sonne<\/p>/);
+  const holiday = (await one<{ row_id: string }>("SELECT row_id FROM calendar_sync_items WHERE event_id='ext1'"))!.row_id;
+  assert.deepEqual([(await cells(holiday)).title, (await cells(holiday)).start, (await cells(holiday)).end], ["Urlaub", soon(10), soon(12)]);
+  assert.match((await one<{ content: string }>("SELECT content FROM rows WHERE id=?", holiday))!.content, /<p>Strand<\/p><p><\/p><p>Sonne<\/p>/);
   const pushed = [...google.events.values()].find((e) => e.summary === "Planung")!;
   assert.equal(pushed.start.dateTime, `${day}T08:00:00Z`);
   assert.equal(pushed.start.timeZone, "Europe/Berlin");
@@ -237,47 +237,47 @@ test("Google: records go out, events come in, changes and deletions both ways", 
   google.touch({ ...pushed, summary: "Planung neu", start: { dateTime: `${day}T14:00:00+02:00` }, end: { dateTime: `${day}T15:00:00+02:00` } });
   result = await sync.syncCalendarMapping(mapping);
   assert.equal(result.updated, 1);
-  assert.deepEqual([cells(planning).title, cells(planning).start, cells(planning).end], ["Planung neu", `${day}T12:00Z`, `${day}T13:00Z`]);
+  assert.deepEqual([(await cells(planning)).title, (await cells(planning)).start, (await cells(planning)).end], ["Planung neu", `${day}T12:00Z`, `${day}T13:00Z`]);
 
   // Changed here: the event follows, all-day with an exclusive end.
-  act({ action: "row.update", pageId, rowId: planning, version: version(planning), cells: { start: day, end: soon(4) } });
+  await act({ action: "row.update", pageId, rowId: planning, version: await version(planning), cells: { start: day, end: soon(4) } });
   result = await sync.syncCalendarMapping(mapping);
   assert.equal(result.pushed, 1);
   const allDay = google.events.get(pushed.id)!;
   assert.deepEqual([allDay.start.date, allDay.end.date, allDay.start.dateTime], [day, soon(5), undefined]);
 
   // Both sides changed: the later change wins, with an audit line.
-  act({ action: "row.update", pageId, rowId: planning, version: version(planning), cells: { title: "Hier geändert" } });
-  run("UPDATE rows SET updated_at=? WHERE id=?", nowText(Date.now() - 3_600_000), planning);
+  await act({ action: "row.update", pageId, rowId: planning, version: await version(planning), cells: { title: "Hier geändert" } });
+  await run("UPDATE rows SET updated_at=? WHERE id=?", nowText(Date.now() - 3_600_000), planning);
   google.touch({ ...google.events.get(pushed.id)!, summary: "Dort geändert" });
   result = await sync.syncCalendarMapping(mapping);
   assert.equal(result.conflicts, 1);
-  assert.equal(cells(planning).title, "Dort geändert");
-  const line = one<{ detail: string }>("SELECT detail FROM audit WHERE action='calendar.sync.conflict' AND resource_id=?", planning)!;
+  assert.equal((await cells(planning)).title, "Dort geändert");
+  const line = (await one<{ detail: string }>("SELECT detail FROM audit WHERE action='calendar.sync.conflict' AND resource_id=?", planning))!;
   assert.equal(JSON.parse(line.detail).winner, "remote");
 
   // Deleted in the calendar: the record goes to the trash.
   google.touch({ ...google.events.get("ext1")!, status: "cancelled" });
   result = await sync.syncCalendarMapping(mapping);
   assert.equal(result.deleted, 1);
-  assert.equal(one("SELECT 1 FROM rows WHERE id=?", holiday), undefined);
-  assert.ok(one("SELECT 1 FROM row_trash WHERE id=?", holiday));
+  assert.equal(await one("SELECT 1 FROM rows WHERE id=?", holiday), undefined);
+  assert.ok(await one("SELECT 1 FROM row_trash WHERE id=?", holiday));
 
   // Deleted here: the event goes.
-  act({ action: "row.delete", pageId, rowId: planning });
+  await act({ action: "row.delete", pageId, rowId: planning });
   result = await sync.syncCalendarMapping(mapping);
   assert.equal(result.removed, 1);
   assert.equal(google.events.get(pushed.id)!.status, "cancelled");
-  assert.equal(one<{ n: number }>("SELECT COUNT(*) n FROM calendar_sync_items WHERE mapping_id=?", mapping)!.n, 0);
+  assert.equal((await one<{ n: number }>("SELECT COUNT(*) n FROM calendar_sync_items WHERE mapping_id=?", mapping))!.n, 0);
 });
 
 test("Google: rate limits back off, an expired sync token starts over, errors back off the mapping", async () => {
-  const pageId = calendarDatabase("Termine Retry");
-  const cid = one<{ id: string }>("SELECT id FROM calendar_connections WHERE user_id=? AND provider='google'", owner.id)!.id;
-  run("DELETE FROM calendar_sync_mappings WHERE connection_id=?", cid);
+  const pageId = await calendarDatabase("Termine Retry");
+  const cid = (await one<{ id: string }>("SELECT id FROM calendar_connections WHERE user_id=? AND provider='google'", owner.id))!.id;
+  await run("DELETE FROM calendar_sync_mappings WHERE connection_id=?", cid);
   const google = fakeGoogle();
   handlers = [tokenEndpoint(() => ""), google.handler];
-  const mapping = act({ action: "calendarSync.map", connectionId: cid, pageId, viewId: "cal", calendarId: "primary" }).id;
+  const mapping = (await act({ action: "calendarSync.map", connectionId: cid, pageId, viewId: "cal", calendarId: "primary" })).id;
   google.touch({ id: "r1", status: "confirmed", summary: "Eins", start: { dateTime: `${soon(2)}T10:00:00Z` }, end: { dateTime: `${soon(2)}T11:00:00Z` } });
   google.state.limited = 2;
   waits.length = 0;
@@ -291,25 +291,25 @@ test("Google: rate limits back off, an expired sync token starts over, errors ba
   // The provider fails: the run ends, the mapping waits longer.
   handlers = [tokenEndpoint(() => ""), () => ({ status: 400, body: {} })];
   await assert.rejects(sync.syncCalendarMapping(mapping), /Kalenderanbieter meldet einen Fehler/);
-  const stored = one<{ failures: number; next_at: number; last_error: string }>("SELECT failures,next_at,last_error FROM calendar_sync_mappings WHERE id=?", mapping)!;
+  const stored = (await one<{ failures: number; next_at: number; last_error: string }>("SELECT failures,next_at,last_error FROM calendar_sync_mappings WHERE id=?", mapping))!;
   assert.equal(stored.failures, 1);
   assert.ok(stored.next_at > Date.now() + 15 * 60_000);
   assert.match(stored.last_error, /Kalenderanbieter/);
-  run("DELETE FROM calendar_sync_mappings WHERE id=?", mapping);
+  await run("DELETE FROM calendar_sync_mappings WHERE id=?", mapping);
 });
 
 test("records the person may only read are not synced", async () => {
-  const pageId = calendarDatabase("Nur lesen");
+  const pageId = await calendarDatabase("Nur lesen");
   const day = soon(5);
-  act({ action: "row.create", pageId, cells: { title: "Geheim", start: day } });
+  await act({ action: "row.create", pageId, cells: { title: "Geheim", start: day } });
   // The viewer connects an account of their own; mapping a database they cannot edit fails.
   const viewerCid = await connect("google", viewer);
   const google = fakeGoogle();
   handlers = [tokenEndpoint(() => ""), google.handler];
-  assert.throws(() => act({ action: "calendarSync.map", connectionId: viewerCid, pageId, viewId: "cal", calendarId: "primary" }, viewer), /Keine Berechtigung/);
+  await assert.rejects(async () => await act({ action: "calendarSync.map", connectionId: viewerCid, pageId, viewId: "cal", calendarId: "primary" }, viewer), /Keine Berechtigung/);
   // Losing edit rights later: nothing is pushed, nothing comes in.
   const mid = id();
-  run(
+  await run(
     "INSERT INTO calendar_sync_mappings(id,connection_id,user_id,page_id,view_id,calendar_id,created_at) VALUES(?,?,?,?,?,?,?)",
     mid,
     viewerCid,
@@ -328,7 +328,7 @@ test("records the person may only read are not synced", async () => {
 /* ---------- Microsoft ---------- */
 
 test("Microsoft Graph: delta link, UTC times, all-day events and removals", async () => {
-  const pageId = calendarDatabase("Termine Outlook");
+  const pageId = await calendarDatabase("Termine Outlook");
   const cid = await connect("microsoft");
   const events = new Map<string, Record<string, any>>();
   let delta: Record<string, any>[] = [];
@@ -369,13 +369,13 @@ test("Microsoft Graph: delta link, UTC times, all-day events and removals", asyn
     lastModifiedDateTime: new Date().toISOString(),
     attendees: [{ emailAddress: { address: "Viewer@test.invalid", name: "Viewer" }, type: "required" }, { emailAddress: { address: "guest@example.test", name: "Gast" } }],
   });
-  const local = act({ action: "row.create", pageId, cells: { title: "Messe", start: soon(7), end: soon(8) } }).id;
-  const mapping = act({ action: "calendarSync.map", connectionId: cid, pageId, viewId: "cal", calendarId: "cal-1" }).id;
+  const local = (await act({ action: "row.create", pageId, cells: { title: "Messe", start: soon(7), end: soon(8) } })).id;
+  const mapping = (await act({ action: "calendarSync.map", connectionId: cid, pageId, viewId: "cal", calendarId: "cal-1" })).id;
   let result = await sync.syncCalendarMapping(mapping);
   assert.deepEqual([result.created, result.pushed], [1, 1]);
-  const customer = one<{ row_id: string }>("SELECT row_id FROM calendar_sync_items WHERE event_id='x1'")!.row_id;
-  assert.deepEqual([cells(customer).title, cells(customer).start, cells(customer).end], ["Kundentermin", `${day}T07:30Z`, `${day}T08:15Z`]);
-  assert.deepEqual(sync.syncedAttendees(customer).map((a) => a.email), ["viewer@test.invalid", "guest@example.test"]);
+  const customer = (await one<{ row_id: string }>("SELECT row_id FROM calendar_sync_items WHERE event_id='x1'"))!.row_id;
+  assert.deepEqual([(await cells(customer)).title, (await cells(customer)).start, (await cells(customer)).end], ["Kundentermin", `${day}T07:30Z`, `${day}T08:15Z`]);
+  assert.deepEqual((await sync.syncedAttendees(customer)).map((a) => a.email), ["viewer@test.invalid", "guest@example.test"]);
   const fair = [...events.values()].find((e) => e.subject === "Messe")!;
   assert.deepEqual([fair.isAllDay, fair.start.dateTime, fair.end.dateTime, fair.start.timeZone], [true, `${soon(7)}T00:00:00`, `${soon(9)}T00:00:00`, "UTC"]);
   assert.ok(fair.body.content.includes(`row=${local}`));
@@ -388,28 +388,28 @@ test("Microsoft Graph: delta link, UTC times, all-day events and removals", asyn
   result = await sync.syncCalendarMapping(mapping);
   assert.equal(result.deleted, 1);
   // The status lists the mapping for the settings.
-  const status = sync.calendarSyncStatus(owner, pageId);
+  const status = await sync.calendarSyncStatus(owner, pageId);
   assert.equal(status.mappings[0].events, 1);
   assert.ok(status.providers.every((p) => p.configured));
   // Disconnecting removes the mappings.
-  act({ action: "calendarSync.disconnect", connectionId: cid });
-  assert.equal(one("SELECT 1 FROM calendar_sync_mappings WHERE id=?", mapping), undefined);
+  await act({ action: "calendarSync.disconnect", connectionId: cid });
+  assert.equal(await one("SELECT 1 FROM calendar_sync_mappings WHERE id=?", mapping), undefined);
 });
 
 /* ---------- Meeting notes ---------- */
 
 test("meeting notes from a synced record and from an ICS event", async () => {
-  const pageId = calendarDatabase("Meetings");
-  const journalId = act({ action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, title: "Journal", kind: "journal" }).id;
-  const journal = one<Page>("SELECT * FROM pages WHERE id=?", journalId)!;
+  const pageId = await calendarDatabase("Meetings");
+  const journalId = (await act({ action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, title: "Journal", kind: "journal" })).id;
+  const journal = (await one<Page>("SELECT * FROM pages WHERE id=?", journalId))!;
   const date = "2026-10-06";
-  const dayId = rollJournal(owner, journal, date, date).dayId;
-  const rowId = act({ action: "row.create", pageId, cells: { title: "Jour fixe", start: `${date}T08:00Z`, end: `${date}T09:00Z`, people: [owner.id] } }).id;
+  const dayId = (await rollJournal(owner, journal, date, date)).dayId;
+  const rowId = (await act({ action: "row.create", pageId, cells: { title: "Jour fixe", start: `${date}T08:00Z`, end: `${date}T09:00Z`, people: [owner.id] } })).id;
   // Attendees known from the calendar (lib/calendar-sync.ts).
   const mid = id();
-  const cid = one<{ id: string }>("SELECT id FROM calendar_connections WHERE user_id=?", owner.id)!.id;
-  run("INSERT INTO calendar_sync_mappings(id,connection_id,user_id,page_id,view_id,calendar_id,created_at) VALUES(?,?,?,?,?,?,?)", mid, cid, owner.id, pageId, "cal", "notes-cal", Date.now());
-  run(
+  const cid = (await one<{ id: string }>("SELECT id FROM calendar_connections WHERE user_id=?", owner.id))!.id;
+  await run("INSERT INTO calendar_sync_mappings(id,connection_id,user_id,page_id,view_id,calendar_id,created_at) VALUES(?,?,?,?,?,?,?)", mid, cid, owner.id, pageId, "cal", "notes-cal", Date.now());
+  await run(
     "INSERT INTO calendar_sync_items(mapping_id,row_id,event_id,hash,attendees,synced_at) VALUES(?,?,?,?,?,?)",
     mid,
     rowId,
@@ -418,11 +418,11 @@ test("meeting notes from a synced record and from an ICS event", async () => {
     JSON.stringify([{ email: "viewer@test.invalid", name: "V" }, { email: "extern@example.test", name: "Extern" }]),
     Date.now(),
   );
-  const note = act({ action: "meeting.note", pageId: dayId, zone: "Europe/Berlin", event: { title: "ignored", start: `${date}T08:00Z`, end: `${date}T09:00Z`, timed: true, pageId, rowId } });
-  const page = one<Page>("SELECT * FROM pages WHERE id=?", note.id)!;
+  const note = await act({ action: "meeting.note", pageId: dayId, zone: "Europe/Berlin", event: { title: "ignored", start: `${date}T08:00Z`, end: `${date}T09:00Z`, timed: true, pageId, rowId } });
+  const page = (await one<Page>("SELECT * FROM pages WHERE id=?", note.id))!;
   assert.equal(page.parent_id, journalId);
   assert.equal(page.title, "Jour fixe – 06.10.2026");
-  const html = one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", note.id)!.html;
+  const html = (await one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", note.id))!.html;
   assert.match(html, /10:00–11:00/);
   assert.ok(html.includes(`data-mention="${owner.id}"`));
   assert.ok(html.includes(`data-mention="${viewer.id}"`));
@@ -430,10 +430,10 @@ test("meeting notes from a synced record and from an ICS event", async () => {
   assert.ok(html.includes(`href="/#page=${pageId}&amp;row=${rowId}"`));
   for (const heading of ["Teilnehmende", "Agenda", "Notizen", "Aufgaben"]) assert.ok(html.includes(`<h2>${heading}</h2>`), heading);
   // Asked again: the same note.
-  assert.deepEqual(act({ action: "meeting.note", pageId: dayId, event: { start: date, pageId, rowId } }), { id: note.id, existing: true });
+  assert.deepEqual(await act({ action: "meeting.note", pageId: dayId, event: { start: date, pageId, rowId } }), { id: note.id, existing: true });
   // The day lists the note next to the appointment.
-  const day = one<Page>("SELECT * FROM pages WHERE id=?", dayId)!;
-  const listed = withMeetingNotes(owner, day, [{ title: "Jour fixe", start: `${date}T08:00Z`, end: "", timed: true, source: "Meetings", pageId, rowId }]);
+  const day = (await one<Page>("SELECT * FROM pages WHERE id=?", dayId))!;
+  const listed = await withMeetingNotes(owner, day, [{ title: "Jour fixe", start: `${date}T08:00Z`, end: "", timed: true, source: "Meetings", pageId, rowId }]);
   assert.equal(listed[0].noteId, note.id);
 
   // A task with an assignee in the note shows up in "Meine Aufgaben".
@@ -444,9 +444,9 @@ test("meeting notes from a synced record and from an ICS event", async () => {
   assert.notEqual(withTask, html);
   const { htmlState } = await import("../lib/document-server");
   const { indexPageTasks } = await import("../lib/doc-tasks");
-  run("UPDATE documents SET html=?,state=? WHERE page_id=?", withTask, htmlState(withTask), note.id);
-  indexPageTasks(note.id, false);
-  assert.deepEqual(myTasks(viewer, wid).map((t) => t.text), ["Protokoll schicken @viewer"]);
+  await run("UPDATE documents SET html=?,state=? WHERE page_id=?", withTask, htmlState(withTask), note.id);
+  await indexPageTasks(note.id, false);
+  assert.deepEqual((await myTasks(viewer, wid)).map((t) => t.text), ["Protokoll schicken @viewer"]);
 
   // An ICS event: UID and attendees from the feed.
   const ics = parseIcs(
@@ -469,13 +469,13 @@ test("meeting notes from a synced record and from an ICS event", async () => {
     { email: "owner@test.invalid", name: "Owner" },
     { email: "fremd@example.test", name: "Fremd" },
   ]);
-  const icsNote = act({ action: "meeting.note", pageId: dayId, zone: "Europe/Berlin", event });
-  const icsHtml = one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", icsNote.id)!.html;
+  const icsNote = await act({ action: "meeting.note", pageId: dayId, zone: "Europe/Berlin", event });
+  const icsHtml = (await one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", icsNote.id))!.html;
   assert.ok(icsHtml.includes(`data-mention="${owner.id}"`));
   assert.ok(icsHtml.includes("Fremd &lt;fremd@example.test&gt;"));
-  assert.equal(withMeetingNotes(owner, day, [event])[0].noteId, icsNote.id);
+  assert.equal((await withMeetingNotes(owner, day, [event]))[0].noteId, icsNote.id);
   // Readers of the journal cannot create notes in it.
-  assert.throws(() => act({ action: "meeting.note", pageId: dayId, event }, viewer), /Keine Berechtigung|nicht gefunden/);
+  await assert.rejects(async () => await act({ action: "meeting.note", pageId: dayId, event }, viewer), /Keine Berechtigung|nicht gefunden/);
 });
 
 test("the template catalogue has the meeting note", async () => {

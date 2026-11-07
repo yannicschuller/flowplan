@@ -31,12 +31,12 @@ const BACKUP_NAME = /flowplan-[\d-]+\.sqlite(\.enc)?$/;
 
 export type BackupRun = { at: number; target: "s3" | "local"; name: string; bytes: number; error: string | null };
 
-function lastRun(): BackupRun | null {
-  const row = one<{ value: string }>("SELECT value FROM instance_state WHERE key='scheduledBackup'");
+async function lastRun(): Promise<BackupRun | null> {
+  const row = await one<{ value: string }>("SELECT value FROM instance_state WHERE key='scheduledBackup'");
   return row ? (JSON.parse(row.value) as BackupRun) : null;
 }
-function remember(result: BackupRun) {
-  run(
+async function remember(result: BackupRun) {
+  await run(
     "INSERT INTO instance_state(key,value) VALUES('scheduledBackup',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
     JSON.stringify(result),
   );
@@ -69,7 +69,7 @@ async function purgeDeleted(prefix: string, oldest: number | null, now: number) 
   for (const key of await listBucket(`${prefix}${DELETED_UPLOADS}/`)) {
     const copy = parseDeleted(key.slice(`${prefix}${DELETED_UPLOADS}/`.length));
     if (!copy) continue;
-    const back = !!one("SELECT 1 FROM files WHERE id=?", copy.file) && !one("SELECT 1 FROM storage_queue WHERE key=?", copy.file);
+    const back = !!(await one("SELECT 1 FROM files WHERE id=?", copy.file)) && !(await one("SELECT 1 FROM storage_queue WHERE key=?", copy.file));
     if (!back && !(purgeable(copy, oldest) && copy.at < now - DAY_MS)) continue;
     const response = await bucketFetch(key.slice(prefix.length), { method: "DELETE" });
     if (response.ok || response.status === 404) purged++;
@@ -78,14 +78,14 @@ async function purgeDeleted(prefix: string, oldest: number | null, now: number) 
 }
 
 export async function runScheduledBackup(now = Date.now()): Promise<BackupRun> {
-  const keep = Math.max(1, instanceSettings().backupKeep ?? 14);
+  const keep = Math.max(1, (await instanceSettings()).backupKeep ?? 14);
   let name = backupName(now, false);
   const copy = copyPath();
   const config = storageConfig();
   let result: BackupRun;
-  let made: ReturnType<typeof databaseCopy> | null = null;
+  let made: Awaited<ReturnType<typeof databaseCopy>> | null = null;
   try {
-    made = databaseCopy(now, copy);
+    made = await databaseCopy(now, copy);
     name = made.name;
     const { encrypted, bytes } = made;
     if (config) {
@@ -109,7 +109,7 @@ export async function runScheduledBackup(now = Date.now()): Promise<BackupRun> {
       mkdirSync(folder, { recursive: true });
       // A copy, not a move, when the SFTP target below still sends this one.
       // A move that also works onto a mounted share (#161).
-      (sftpBackupActive() ? copyFileSync : moveFile)(copy, resolve(folder, name));
+      ((await sftpBackupActive()) ? copyFileSync : moveFile)(copy, resolve(folder, name));
       for (const file of beyondKeep(readdirSync(folder).filter((f) => BACKUP_NAME.test(f)), keep)) rmSync(resolve(folder, file));
       result = { at: now, target: "local", name, bytes, error: null };
     }
@@ -117,18 +117,18 @@ export async function runScheduledBackup(now = Date.now()): Promise<BackupRun> {
     result = { at: now, target: config ? "s3" : "local", name, bytes: 0, error: String((error as Error).message || error).slice(0, 300) };
   }
   try {
-    remember(result);
+    await remember(result);
     // The same copy also goes to the SFTP server when one is set up; its
     // outcome is recorded on its own (lib/sftp-backup.ts).
-    if (made && existsSync(copy) && sftpBackupActive()) await sendToSftp(made, now);
+    if (made && existsSync(copy) && await sftpBackupActive()) await sendToSftp(made, now);
   } finally {
     if (existsSync(copy)) rmSync(copy);
   }
   return result;
 }
 
-export function scheduledBackupStatus() {
-  const settings = instanceSettings();
+export async function scheduledBackupStatus() {
+  const settings = await instanceSettings();
   return {
     enabled: settings.backupSchedule !== false,
     hourly: settings.backupInterval === "hourly",
@@ -141,9 +141,9 @@ export function scheduledBackupStatus() {
     })(),
     keep: settings.backupKeep ?? 14,
     target: storageConfig() ? ("s3" as const) : ("local" as const),
-    last: lastRun(),
+    last: await lastRun(),
     // The additional SFTP target (lib/sftp-backup.ts).
-    sftp: sftpBackupStatus(),
+    sftp: await sftpBackupStatus(),
   };
 }
 
@@ -152,7 +152,7 @@ const runtime = globalThis as unknown as { flowplanBackupTimer?: ReturnType<type
 export function startBackupWorker() {
   if (runtime.flowplanBackupTimer) return;
   const backupDue = async () => {
-    const status = scheduledBackupStatus();
+    const status = await scheduledBackupStatus();
     if (!status.enabled) return false;
     // Not before the first account: a new instance pointed at the bucket of
     // an old one would put its empty copy next to the old backups – as the
@@ -170,7 +170,7 @@ export function startBackupWorker() {
         await runScheduledBackup();
         // The readable copy (Markdown, optionally into Git) comes along, once
         // a day also with hourly backups.
-        const exported = lastMarkdownExport();
+        const exported = await lastMarkdownExport();
         if (!exported || Date.now() - exported >= DAY_MS - 30 * 60_000)
           await runMarkdownExports().catch((error) => console.error("Markdown export failed", error));
       }

@@ -15,9 +15,9 @@ const { rowDocumentData } = await import("../lib/row-documents");
 const { documentAuthors, recordDocumentAuthors } = await import("../lib/document-authors");
 const { authorRuns, attributeRuns, authorShares, authorHue, authorColor, changedClients } = await import("../lib/authorship");
 
-function user(name: string): Identity {
+async function user(name: string): Promise<Identity> {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.com`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.com`);
   return { id: uid, name, email: `${name}@example.com`, groups: [], isAdmin: false, disabled: 0, created_at: "" };
 }
 // A Yjs document whose session id is fixed, so authorship can be checked.
@@ -108,61 +108,61 @@ test("colours are stable per person and the changed sessions of an update are fo
   assert.deepEqual(changedClients(Y.encodeStateVector(doc), Y.encodeStateVector(doc)), []);
 });
 
-test("the server notes who sent which session and keeps it per document", () => {
-  const owner = user("Anna"),
-    editor = user("Ben"),
-    reader = user("Carla"),
-    stranger = user("Dora");
-  const wid = createWorkspace(owner.id, "Autoren");
-  run("INSERT INTO members VALUES(?,?,?)", wid, editor.id, "editor");
-  run("INSERT INTO members VALUES(?,?,?)", wid, reader.id, "viewer");
-  const space = bootstrap(owner, wid).spaces[0].id;
-  const pageId = (command(owner, { action: "page.create", workspaceId: wid, spaceId: space, title: "Text" }) as { id: string }).id;
-  const sync = (who: Identity, doc: Y.Doc) => {
-    const { generation } = pageData(who, pageId) as { generation: string };
-    command(who, { action: "document.sync", pageId, generation, update: b64(Y.encodeStateAsUpdate(doc)) });
+test("the server notes who sent which session and keeps it per document", async () => {
+  const owner = await user("Anna"),
+    editor = await user("Ben"),
+    reader = await user("Carla"),
+    stranger = await user("Dora");
+  const wid = await createWorkspace(owner.id, "Autoren");
+  await run("INSERT INTO members VALUES(?,?,?)", wid, editor.id, "editor");
+  await run("INSERT INTO members VALUES(?,?,?)", wid, reader.id, "viewer");
+  const space = (await bootstrap(owner, wid)).spaces[0].id;
+  const pageId = ((await command(owner, { action: "page.create", workspaceId: wid, spaceId: space, title: "Text" })) as { id: string }).id;
+  const sync = async (who: Identity, doc: Y.Doc) => {
+    const { generation } = (await pageData(who, pageId)) as { generation: string };
+    await command(who, { action: "document.sync", pageId, generation, update: b64(Y.encodeStateAsUpdate(doc)) });
   };
   const anna = session(1111);
   anna.getXmlFragment("default").insert(0, [paragraph("Von Anna")]);
-  sync(owner, anna);
+  await sync(owner, anna);
   const ben = session(2222, Y.encodeStateAsUpdate(anna));
   textOf(ben).insert(8, " und Ben");
   // Ben's whole state includes Anna's session – it stays Anna's.
-  sync(editor, ben);
-  const seen = documentAuthors(reader, pageId);
+  await sync(editor, ben);
+  const seen = await documentAuthors(reader, pageId);
   assert.deepEqual(seen.clients, { "1111": owner.id, "2222": editor.id });
   assert.deepEqual(seen.people.map((p) => p.name).sort(), ["Anna", "Ben"]);
   // Nothing new in an update: nothing recorded.
-  sync(editor, ben);
-  assert.equal(all("SELECT 1 FROM document_authors WHERE page_id=?", pageId).length, 2);
+  await sync(editor, ben);
+  assert.equal((await all("SELECT 1 FROM document_authors WHERE page_id=?", pageId)).length, 2);
   // Only people who may read the page see the names.
-  assert.throws(() => documentAuthors(stranger, pageId), (e: any) => [403, 404].includes(e.status));
+  await assert.rejects(async () => await documentAuthors(stranger, pageId), (e: any) => [403, 404].includes(e.status));
   // A restored version is a new document identity: the old sessions go.
-  command(owner, { action: "page.snapshot", pageId });
-  const snapshot = all<{ id: string }>("SELECT id FROM snapshots WHERE page_id=? ORDER BY created_at DESC", pageId)[0];
-  command(owner, { action: "snapshot.restore", pageId, snapshotId: snapshot.id });
-  assert.deepEqual(documentAuthors(owner, pageId).clients, {});
-  const fresh = session(3333, Buffer.from((pageData(owner, pageId) as { state: string }).state, "base64"));
+  await command(owner, { action: "page.snapshot", pageId });
+  const snapshot = (await all<{ id: string }>("SELECT id FROM snapshots WHERE page_id=? ORDER BY created_at DESC", pageId))[0];
+  await command(owner, { action: "snapshot.restore", pageId, snapshotId: snapshot.id });
+  assert.deepEqual((await documentAuthors(owner, pageId)).clients, {});
+  const fresh = session(3333, Buffer.from(((await pageData(owner, pageId)) as { state: string }).state, "base64"));
   fresh.getXmlFragment("default").insert(0, [paragraph("Neu")]);
-  sync(editor, fresh);
-  assert.deepEqual(documentAuthors(owner, pageId).clients, { "3333": editor.id });
-  assert.equal(all("SELECT 1 FROM document_authors WHERE page_id=?", pageId).length, 1);
+  await sync(editor, fresh);
+  assert.deepEqual((await documentAuthors(owner, pageId)).clients, { "3333": editor.id });
+  assert.equal((await all("SELECT 1 FROM document_authors WHERE page_id=?", pageId)).length, 1);
   // A session belongs to whoever sent it first, even if others resend it.
-  const generation = (pageData(owner, pageId) as { generation: string }).generation;
-  recordDocumentAuthors(pageId, null, generation, owner.id, Y.encodeStateVector(session(1)), Y.encodeStateVector(fresh));
-  assert.equal(documentAuthors(owner, pageId).clients["3333"], editor.id);
+  const generation = ((await pageData(owner, pageId)) as { generation: string }).generation;
+  await recordDocumentAuthors(pageId, null, generation, owner.id, Y.encodeStateVector(session(1)), Y.encodeStateVector(fresh));
+  assert.equal((await documentAuthors(owner, pageId)).clients["3333"], editor.id);
 });
 
-test("record documents note their authors too", () => {
-  const owner = user("Eva");
-  const wid = createWorkspace(owner.id, "Records");
-  const space = bootstrap(owner, wid).spaces[0].id;
-  const db = (command(owner, { action: "page.create", workspaceId: wid, spaceId: space, title: "DB", kind: "database" }) as { id: string }).id;
-  const rowId = (command(owner, { action: "row.create", pageId: db, cells: { title: "Eintrag" } }) as { id: string }).id;
-  const initial = rowDocumentData(owner, db, rowId);
+test("record documents note their authors too", async () => {
+  const owner = await user("Eva");
+  const wid = await createWorkspace(owner.id, "Records");
+  const space = (await bootstrap(owner, wid)).spaces[0].id;
+  const db = ((await command(owner, { action: "page.create", workspaceId: wid, spaceId: space, title: "DB", kind: "database" })) as { id: string }).id;
+  const rowId = ((await command(owner, { action: "row.create", pageId: db, cells: { title: "Eintrag" } })) as { id: string }).id;
+  const initial = await rowDocumentData(owner, db, rowId);
   const doc = session(4444, Buffer.from(initial.state, "base64"));
   doc.getXmlFragment("default").insert(0, [paragraph("Notiz")]);
-  command(owner, { action: "row.document.sync", pageId: db, rowId, generation: initial.generation, update: b64(Y.encodeStateAsUpdate(doc)) });
-  assert.deepEqual(documentAuthors(owner, db, rowId).clients, { "4444": owner.id });
-  assert.deepEqual(documentAuthors(owner, db, rowId).people, [{ id: owner.id, name: "Eva" }]);
+  await command(owner, { action: "row.document.sync", pageId: db, rowId, generation: initial.generation, update: b64(Y.encodeStateAsUpdate(doc)) });
+  assert.deepEqual((await documentAuthors(owner, db, rowId)).clients, { "4444": owner.id });
+  assert.deepEqual((await documentAuthors(owner, db, rowId)).people, [{ id: owner.id, name: "Eva" }]);
 });

@@ -14,6 +14,6 @@ export async function generateMetadata(): Promise<Metadata> {
 // A first SSO sign-in whose verified address belongs to an existing account
 // (#101, lib/oidc-link.ts): the person proves that account to connect it.
 export default async function LinkAccountPage() {
-  const info = pendingLinkInfo((await cookies()).get("flowplan_link")?.value);
-  return <LinkAccount info={info} instanceName={instanceSettings().name} />;
+  const info = await pendingLinkInfo((await cookies()).get("flowplan_link")?.value);
+  return <LinkAccount info={info} instanceName={(await instanceSettings()).name} />;
 }

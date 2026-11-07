@@ -16,9 +16,9 @@ const { createWorkspace } = await import("../lib/seed");
 const sync = await import("../lib/issue-sync");
 const { setIssueSyncTransport, syncIssues, issueEndpoint, testIssueConnection, receiveIssueWebhook, issueSyncOverview, issueLinkOf, retryAfter, issueSyncDatabase } = sync;
 
-function user(name: string): Identity {
+async function user(name: string): Promise<Identity> {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@test.invalid`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@test.invalid`);
   return { id: uid, name, email: `${name}@test.invalid`, groups: [], isAdmin: false, disabled: 0, created_at: "" };
 }
 
@@ -158,20 +158,20 @@ class FakeProvider {
 
 /* ---------- Workspace, database, connection ---------- */
 
-const owner = user("ada"),
-  editor = user("bo"),
-  other = user("cy");
-const wid = createWorkspace(owner.id, "Dev"),
-  boot = bootstrap(owner, wid);
-run("INSERT INTO members VALUES(?,?,?)", wid, editor.id, "editor");
-run("INSERT INTO members VALUES(?,?,?)", wid, other.id, "editor");
-const act = (body: Record<string, unknown>, who: Identity = owner): any => command(who, body);
-function makeDatabase(title: string) {
-  const pageId = act({ action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, kind: "database", title }).id as string;
-  act({
+const owner = await user("ada"),
+  editor = await user("bo"),
+  other = await user("cy");
+const wid = await createWorkspace(owner.id, "Dev"),
+  boot = await bootstrap(owner, wid);
+await run("INSERT INTO members VALUES(?,?,?)", wid, editor.id, "editor");
+await run("INSERT INTO members VALUES(?,?,?)", wid, other.id, "editor");
+const act = async (body: Record<string, unknown>, who: Identity = owner): Promise<any> => await command(who, body);
+async function makeDatabase(title: string) {
+  const pageId = (await act({ action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, kind: "database", title })).id as string;
+  await act({
     action: "database.update",
     pageId,
-    version: database(pageId).version,
+    version: (await database(pageId)).version,
     fields: [
       { id: "title", name: "Title", type: "text" },
       { id: "status", name: "Status", type: "select", options: ["Todo", "Doing", "Done"] },
@@ -182,7 +182,7 @@ function makeDatabase(title: string) {
       { id: "link", name: "Link", type: "url" },
       { id: "notes", name: "Notes", type: "text" },
     ],
-    views: database(pageId).views,
+    views: (await database(pageId)).views,
   });
   return pageId;
 }
@@ -207,15 +207,15 @@ const config = (extra: Record<string, unknown> = {}) => ({
   importExisting: true,
   ...extra,
 });
-const cells = (rid: string) => JSON.parse(one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", rid)!.cells);
-const rowsOf = (pageId: string) => all<{ id: string; cells: string }>("SELECT id,cells FROM rows WHERE page_id=? ORDER BY position", pageId);
-const rowByTitle = (pageId: string, title: string) => rowsOf(pageId).find((r) => JSON.parse(r.cells).title === title)!.id;
-const version = (rid: string) => one<{ version: number }>("SELECT version FROM rows WHERE id=?", rid)!.version;
-const update = (pageId: string, rid: string, patch: Record<string, unknown>, who = owner) => act({ action: "row.update", pageId, rowId: rid, version: version(rid), cells: patch }, who);
+const cells = async (rid: string) => JSON.parse((await one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", rid))!.cells);
+const rowsOf = async (pageId: string) => await all<{ id: string; cells: string }>("SELECT id,cells FROM rows WHERE page_id=? ORDER BY position", pageId);
+const rowByTitle = async (pageId: string, title: string) => (await rowsOf(pageId)).find((r) => JSON.parse(r.cells).title === title)!.id;
+const version = async (rid: string) => (await one<{ version: number }>("SELECT version FROM rows WHERE id=?", rid))!.version;
+const update = async (pageId: string, rid: string, patch: Record<string, unknown>, who = owner) => await act({ action: "row.update", pageId, rowId: rid, version: await version(rid), cells: patch }, who);
 
 const github = new FakeProvider("github", "acme/web");
 setIssueSyncTransport(github.handle);
-const pageId = makeDatabase("Web");
+const pageId = await makeDatabase("Web");
 let connectionId = "";
 
 test("only github.com, gitlab.com and listed servers are reached", () => {
@@ -238,19 +238,19 @@ test("only github.com, gitlab.com and listed servers are reached", () => {
 });
 
 test("connections: owners only, token sealed, checked with one call", async () => {
-  assert.throws(() => act({ action: "issueSync.connect", workspaceId: wid, provider: "github", repo: "acme/web", token: "ghp_x" }, editor), /Eigentümer/);
-  connectionId = act({
+  await assert.rejects(async () => await act({ action: "issueSync.connect", workspaceId: wid, provider: "github", repo: "acme/web", token: "ghp_x" }, editor), /Eigentümer/);
+  connectionId = (await act({
     action: "issueSync.connect",
     workspaceId: wid,
     provider: "github",
     repo: "acme/web",
     token: "ghp_secret",
     people: [{ login: "Ada-gh", email: owner.email }],
-  }).id;
-  const stored = one<{ token: string }>("SELECT token FROM issue_connections WHERE id=?", connectionId)!;
+  })).id;
+  const stored = (await one<{ token: string }>("SELECT token FROM issue_connections WHERE id=?", connectionId))!;
   assert.ok(!stored.token.includes("ghp_secret"));
-  assert.equal(issueSyncOverview(editor, wid).available, false);
-  const overview = issueSyncOverview(owner, wid);
+  assert.equal((await issueSyncOverview(editor, wid)).available, false);
+  const overview = await issueSyncOverview(owner, wid);
   assert.ok(overview.available && overview.connections[0].hookUrl.includes("/api/issue-sync/hook/"));
   github.requests = [];
   const result = await testIssueConnection(owner, { workspaceId: wid, id: connectionId, provider: "github", repo: "acme/web" });
@@ -266,29 +266,29 @@ test("pull creates records with status, labels, assignee, milestone, number and 
   github.add({ title: "Dark mode", labels: ["feature", "in progress"], milestone: 4 });
   const done = github.add({ title: "Old thing", state: "closed" });
   done.comments.push({ id: 1, author: "zoe", body: "Fixed in 1.2" });
-  assert.throws(() => act({ action: "issueSync.map", pageId, connectionId, config: { ...config(), labels: "status" } }), /passt nicht|nur einmal/);
-  act({ action: "issueSync.map", pageId, connectionId, config: config() });
+  await assert.rejects(async () => await act({ action: "issueSync.map", pageId, connectionId, config: { ...config(), labels: "status" } }), /passt nicht|nur einmal/);
+  await act({ action: "issueSync.map", pageId, connectionId, config: config() });
   const result = await syncIssues(pageId);
   assert.equal(result.ok, true);
   assert.equal(result.pulled, 3);
-  const login = cells(rowByTitle(pageId, "Login broken"));
+  const login = await cells(await rowByTitle(pageId, "Login broken"));
   assert.equal(login.status, "Todo");
   assert.deepEqual(login.tags, ["bug"]);
   assert.equal(login.owner, owner.id);
   assert.equal(login.notes, "Steps **here**");
   assert.equal(login.num, 1);
   assert.equal(login.link, "https://github.com/acme/web/issues/1");
-  const dark = cells(rowByTitle(pageId, "Dark mode"));
+  const dark = await cells(await rowByTitle(pageId, "Dark mode"));
   assert.equal(dark.status, "Doing");
   assert.deepEqual(dark.tags, ["feature"]);
   assert.equal(dark.due, "2026-12-01");
-  const old = rowByTitle(pageId, "Old thing");
-  assert.equal(cells(old).status, "Done");
-  const comments = all<{ body: string; author_id: string }>("SELECT body,author_id FROM comments WHERE row_id=?", old);
+  const old = await rowByTitle(pageId, "Old thing");
+  assert.equal((await cells(old)).status, "Done");
+  const comments = await all<{ body: string; author_id: string }>("SELECT body,author_id FROM comments WHERE row_id=?", old);
   assert.equal(comments.length, 1);
   assert.match(comments[0].body, /Fixed in 1\.2[\s\S]*zoe \(GitHub\) https:\/\/github\.com/);
   assert.equal(comments[0].author_id, owner.id);
-  assert.equal(issueLinkOf(owner, pageId, old)!.label, "GitHub #3");
+  assert.equal((await issueLinkOf(owner, pageId, old))!.label, "GitHub #3");
   // A second run changes nothing and pushes nothing back.
   github.requests = [];
   const again = await syncIssues(pageId, { scan: true });
@@ -303,15 +303,15 @@ test("pull updates a record when its issue changes", async () => {
   issue.state = "closed";
   issue.updated = github.tick();
   await syncIssues(pageId);
-  const row = cells(rowByTitle(pageId, "Login broken on Safari"));
+  const row = await cells(await rowByTitle(pageId, "Login broken on Safari"));
   assert.equal(row.status, "Done");
-  assert.equal(issueSyncDatabase(owner, pageId).map!.state.pulled, 1);
+  assert.equal((await issueSyncDatabase(owner, pageId)).map!.state.pulled, 1);
 });
 
 test("push: record changes update the issue, new records create issues", async () => {
-  const rid = rowByTitle(pageId, "Dark mode");
-  update(pageId, rid, { status: "Done", tags: ["feature", "bug"], owner: "" });
-  assert.ok(one("SELECT 1 FROM issue_sync_queue WHERE row_id=?", rid));
+  const rid = await rowByTitle(pageId, "Dark mode");
+  await update(pageId, rid, { status: "Done", tags: ["feature", "bug"], owner: "" });
+  assert.ok(await one("SELECT 1 FROM issue_sync_queue WHERE row_id=?", rid));
   github.requests = [];
   const result = await syncIssues(pageId, { pushOnly: true });
   assert.equal(result.pushed, 1);
@@ -321,26 +321,26 @@ test("push: record changes update the issue, new records create issues", async (
   assert.deepEqual(body.labels, ["bug", "feature"]);
   assert.deepEqual(body.assignees, []);
   assert.equal(github.issues[1].state, "closed");
-  assert.ok(!one("SELECT 1 FROM issue_sync_queue WHERE row_id=?", rid));
+  assert.ok(!(await one("SELECT 1 FROM issue_sync_queue WHERE row_id=?", rid)));
 
-  const fresh = act({ action: "row.create", pageId, cells: { title: "From Flowplan", status: "Doing", owner: owner.id, due: "2026-12-01", notes: "Body" } }).id;
+  const fresh = (await act({ action: "row.create", pageId, cells: { title: "From Flowplan", status: "Doing", owner: owner.id, due: "2026-12-01", notes: "Body" } })).id;
   await syncIssues(pageId, { pushOnly: true });
   const created = github.issues.find((i) => i.title === "From Flowplan")!;
   assert.deepEqual(created.labels, ["in progress"]);
   assert.deepEqual(created.assignees, ["Ada-gh"]);
   assert.equal(created.milestone, 4);
   assert.equal(created.body, "Body");
-  assert.equal(cells(fresh).num, created.number);
-  assert.equal(cells(fresh).link, `https://github.com/acme/web/issues/${created.number}`);
+  assert.equal((await cells(fresh)).num, created.number);
+  assert.equal((await cells(fresh)).link, `https://github.com/acme/web/issues/${created.number}`);
   // The pull after the push sees its own change and leaves the record alone.
-  const before = version(fresh);
+  const before = await version(fresh);
   await syncIssues(pageId);
-  assert.equal(version(fresh), before);
+  assert.equal(await version(fresh), before);
 });
 
 test("comments both ways", async () => {
-  const rid = rowByTitle(pageId, "From Flowplan");
-  act({ action: "comment.create", pageId, rowId: rid, body: "Looks good" }, editor);
+  const rid = await rowByTitle(pageId, "From Flowplan");
+  await act({ action: "comment.create", pageId, rowId: rid, body: "Looks good" }, editor);
   github.requests = [];
   await syncIssues(pageId, { pushOnly: true });
   const posted = github.requests.find((r) => r.method === "POST" && r.url.endsWith("/comments"))!;
@@ -350,64 +350,64 @@ test("comments both ways", async () => {
   issue.comments.push({ id: 9, author: "dev", body: "Thanks" });
   issue.updated = github.tick();
   await syncIssues(pageId);
-  const bodies = all<{ body: string }>("SELECT body FROM comments WHERE row_id=? ORDER BY created_at", rid).map((c) => c.body);
+  const bodies = (await all<{ body: string }>("SELECT body FROM comments WHERE row_id=? ORDER BY created_at", rid)).map((c) => c.body);
   assert.equal(bodies.length, 2);
   assert.match(bodies[1], /^Thanks/);
 });
 
 test("conflicts: the later change wins, with an audit line", async () => {
-  const rid = rowByTitle(pageId, "Login broken on Safari");
+  const rid = await rowByTitle(pageId, "Login broken on Safari");
   const issue = github.issues[0];
   // Local change now, remote change later (in the future): remote wins.
-  update(pageId, rid, { title: "Local title" });
+  await update(pageId, rid, { title: "Local title" });
   issue.title = "Remote title";
   issue.updated = Date.now() + 3_600_000;
   await syncIssues(pageId);
-  assert.equal(cells(rid).title, "Remote title");
-  const audits = all<{ detail: string }>("SELECT detail FROM audit WHERE action='issueSync.conflict' AND resource_id=?", rid);
+  assert.equal((await cells(rid)).title, "Remote title");
+  const audits = await all<{ detail: string }>("SELECT detail FROM audit WHERE action='issueSync.conflict' AND resource_id=?", rid);
   assert.match(audits.at(-1)!.detail, /#1: remote/);
   // Remote change long ago (but after the last sync), local change now: local wins.
   const lines = audits.length;
-  update(pageId, rid, { title: "Local wins" });
+  await update(pageId, rid, { title: "Local wins" });
   issue.title = "Stale remote";
   issue.updated = issue.updated + 1000;
-  const link = one<{ remote_updated: number }>("SELECT remote_updated FROM issue_links WHERE row_id=?", rid)!;
-  run("UPDATE issue_links SET remote_updated=? WHERE row_id=?", link.remote_updated - 10_000_000_000, rid);
-  run("UPDATE rows SET updated_at='2099-01-01 00:00:00' WHERE id=?", rid);
+  const link = (await one<{ remote_updated: number }>("SELECT remote_updated FROM issue_links WHERE row_id=?", rid))!;
+  await run("UPDATE issue_links SET remote_updated=? WHERE row_id=?", link.remote_updated - 10_000_000_000, rid);
+  await run("UPDATE rows SET updated_at='2099-01-01 00:00:00' WHERE id=?", rid);
   await syncIssues(pageId);
-  assert.equal(cells(rid).title, "Local wins");
+  assert.equal((await cells(rid)).title, "Local wins");
   assert.equal(issue.title, "Local wins");
-  const after = all<{ detail: string }>("SELECT detail FROM audit WHERE action='issueSync.conflict' AND resource_id=?", rid);
+  const after = await all<{ detail: string }>("SELECT detail FROM audit WHERE action='issueSync.conflict' AND resource_id=?", rid);
   assert.equal(after.length, lines + 1);
   assert.match(after.at(-1)!.detail, /local/);
 });
 
 test("records the connecting person may not read are skipped", async () => {
-  const rid = act({ action: "row.create", pageId, cells: { title: "Private plan" } }, other).id;
-  run("UPDATE rows SET access='private' WHERE id=?", rid);
+  const rid = (await act({ action: "row.create", pageId, cells: { title: "Private plan" } }, other)).id;
+  await run("UPDATE rows SET access='private' WHERE id=?", rid);
   // The owner sees everything; with an editor grant on the page, not this.
-  run("INSERT INTO grants(resource_id,user_id,group_id,role) VALUES(?,?,NULL,'editor')", pageId, owner.id);
+  await run("INSERT INTO grants(resource_id,user_id,group_id,role) VALUES(?,?,NULL,'editor')", pageId, owner.id);
   try {
     const result = await syncIssues(pageId, { scan: true });
     assert.ok((result.skipped || 0) >= 1);
     assert.ok(!github.issues.some((i) => i.title === "Private plan"));
   } finally {
-    run("DELETE FROM grants WHERE resource_id=? AND user_id=?", pageId, owner.id);
-    run("DELETE FROM rows WHERE id=?", rid);
+    await run("DELETE FROM grants WHERE resource_id=? AND user_id=?", pageId, owner.id);
+    await run("DELETE FROM rows WHERE id=?", rid);
   }
 });
 
-test("webhooks: signature checked, the matching database is named", () => {
-  const row = one<{ hook_token: string }>("SELECT hook_token FROM issue_connections WHERE id=?", connectionId)!;
-  const secret = issueSyncOverview(owner, wid).available ? (issueSyncOverview(owner, wid) as any).connections[0].hookSecret : "";
+test("webhooks: signature checked, the matching database is named", async () => {
+  const row = (await one<{ hook_token: string }>("SELECT hook_token FROM issue_connections WHERE id=?", connectionId))!;
+  const secret = (await issueSyncOverview(owner, wid)).available ? ((await issueSyncOverview(owner, wid)) as any).connections[0].hookSecret : "";
   const payload = JSON.stringify({ action: "edited", repository: { full_name: "acme/web" }, issue: { number: 1 } });
   const signature = `sha256=${createHmac("sha256", secret).update(payload).digest("hex")}`;
-  assert.throws(() => receiveIssueWebhook(row.hook_token, new Headers({ "x-github-event": "issues", "x-hub-signature-256": "sha256=00" }), payload), /Signatur/);
-  assert.throws(() => receiveIssueWebhook("unknown-token-unknown-token", new Headers(), payload), /Nicht gefunden/);
-  const result = receiveIssueWebhook(row.hook_token, new Headers({ "x-github-event": "issues", "x-hub-signature-256": signature }), payload);
+  await assert.rejects(async () => await receiveIssueWebhook(row.hook_token, new Headers({ "x-github-event": "issues", "x-hub-signature-256": "sha256=00" }), payload), /Signatur/);
+  await assert.rejects(async () => await receiveIssueWebhook("unknown-token-unknown-token", new Headers(), payload), /Nicht gefunden/);
+  const result = await receiveIssueWebhook(row.hook_token, new Headers({ "x-github-event": "issues", "x-hub-signature-256": signature }), payload);
   assert.deepEqual(result.pages, [pageId]);
   const comment = JSON.stringify({ repository: { full_name: "acme/other" } });
-  const other = receiveIssueWebhook(row.hook_token, new Headers({ "x-github-event": "issue_comment", "x-hub-signature-256": `sha256=${createHmac("sha256", secret).update(comment).digest("hex")}` }), comment);
+  const other = await receiveIssueWebhook(row.hook_token, new Headers({ "x-github-event": "issue_comment", "x-hub-signature-256": `sha256=${createHmac("sha256", secret).update(comment).digest("hex")}` }), comment);
   assert.deepEqual(other.pages, []);
 });
 
@@ -421,29 +421,29 @@ test("rate limits pause the connection until Retry-After", async () => {
   const result = await syncIssues(pageId);
   assert.equal(result.ok, false);
   assert.match(String(result.error), /begrenzt/);
-  const state = JSON.parse(one<{ state: string }>("SELECT state FROM issue_connections WHERE id=?", connectionId)!.state);
+  const state = JSON.parse((await one<{ state: string }>("SELECT state FROM issue_connections WHERE id=?", connectionId))!.state);
   assert.ok(state.backoffUntil > Date.now() + 100_000);
   github.requests = [];
   const paused = await syncIssues(pageId);
   assert.ok(paused.backoffUntil);
   assert.equal(github.requests.length, 0);
-  run("UPDATE issue_connections SET state='{}' WHERE id=?", connectionId);
+  await run("UPDATE issue_connections SET state='{}' WHERE id=?", connectionId);
 });
 
 test("GitLab: closed state, usernames, labels and state events", async () => {
   const gitlab = new FakeProvider("gitlab", "team/app");
   setIssueSyncTransport(gitlab.handle);
-  const gid = act({ action: "issueSync.connect", workspaceId: wid, provider: "gitlab", repo: "team/app", token: "glpat", people: [{ login: "bo", email: editor.email }] }).id;
-  const lab = makeDatabase("App");
+  const gid = (await act({ action: "issueSync.connect", workspaceId: wid, provider: "gitlab", repo: "team/app", token: "glpat", people: [{ login: "bo", email: editor.email }] })).id;
+  const lab = await makeDatabase("App");
   gitlab.add({ title: "Crash", state: "closed", assignees: ["bo"], labels: ["bug"] });
-  act({ action: "issueSync.map", pageId: lab, connectionId: gid, config: config({ comments: { pull: false, push: false } }) });
+  await act({ action: "issueSync.map", pageId: lab, connectionId: gid, config: config({ comments: { pull: false, push: false } }) });
   await syncIssues(lab);
-  const rid = rowByTitle(lab, "Crash");
-  assert.equal(cells(rid).status, "Done");
-  assert.equal(cells(rid).owner, editor.id);
-  assert.equal(cells(rid).link, "https://gitlab.com/team/app/-/issues/1");
+  const rid = await rowByTitle(lab, "Crash");
+  assert.equal((await cells(rid)).status, "Done");
+  assert.equal((await cells(rid)).owner, editor.id);
+  assert.equal((await cells(rid)).link, "https://gitlab.com/team/app/-/issues/1");
   assert.equal(gitlab.requests[0].headers["private-token"], "glpat");
-  update(lab, rid, { status: "Doing" });
+  await update(lab, rid, { status: "Doing" });
   gitlab.requests = [];
   await syncIssues(lab, { pushOnly: true });
   const put = gitlab.requests.find((r) => r.method === "PUT")!;
@@ -453,28 +453,28 @@ test("GitLab: closed state, usernames, labels and state events", async () => {
   assert.deepEqual(body.assignee_ids, [77]);
   assert.equal(gitlab.issues[0].state, "open");
   // The same repository cannot feed a second database.
-  const third = makeDatabase("Again");
-  assert.throws(() => act({ action: "issueSync.map", pageId: third, connectionId: gid, config: config() }), /schon mit einer anderen Datenbank/);
-  act({ action: "issueSync.unmap", pageId: lab });
-  assert.equal(one<{ n: number }>("SELECT COUNT(*) n FROM issue_links WHERE page_id=?", lab)!.n, 0);
+  const third = await makeDatabase("Again");
+  await assert.rejects(async () => await act({ action: "issueSync.map", pageId: third, connectionId: gid, config: config() }), /schon mit einer anderen Datenbank/);
+  await act({ action: "issueSync.unmap", pageId: lab });
+  assert.equal((await one<{ n: number }>("SELECT COUNT(*) n FROM issue_links WHERE page_id=?", lab))!.n, 0);
   setIssueSyncTransport(github.handle);
 });
 
 test("the record's document as Markdown body", async () => {
   const docs = new FakeProvider("github", "acme/docs");
   setIssueSyncTransport(docs.handle);
-  const did = act({ action: "issueSync.connect", workspaceId: wid, provider: "github", repo: "acme/docs", token: "ghp_docs" }).id;
-  const dbId = makeDatabase("Docs");
+  const did = (await act({ action: "issueSync.connect", workspaceId: wid, provider: "github", repo: "acme/docs", token: "ghp_docs" })).id;
+  const dbId = await makeDatabase("Docs");
   docs.add({ title: "Spec", body: "## Goal\n\nShip **it**" });
-  act({ action: "issueSync.map", pageId: dbId, connectionId: did, config: config({ body: "@document", status: null, labels: "", assignee: "", milestone: "" }) });
+  await act({ action: "issueSync.map", pageId: dbId, connectionId: did, config: config({ body: "@document", status: null, labels: "", assignee: "", milestone: "" }) });
   await syncIssues(dbId);
-  const rid = rowByTitle(dbId, "Spec");
-  const html = one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", rid)!.html;
+  const rid = await rowByTitle(dbId, "Spec");
+  const html = (await one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", rid))!.html;
   assert.match(html, /<h2[^>]*>Goal<\/h2>/);
   assert.match(html, /<strong>it<\/strong>/);
   const { replaceRowDocument } = await import("../lib/row-documents");
-  replaceRowDocument(rid, "<h2>Goal</h2><p>Ship <em>soon</em></p>", owner.id);
-  run("UPDATE rows SET updated_at='2099-01-01 00:00:00' WHERE id=?", rid);
+  await replaceRowDocument(rid, "<h2>Goal</h2><p>Ship <em>soon</em></p>", owner.id);
+  await run("UPDATE rows SET updated_at='2099-01-01 00:00:00' WHERE id=?", rid);
   docs.requests = [];
   await syncIssues(dbId, { scan: true });
   const patch = docs.requests.find((r) => r.method === "PATCH")!;

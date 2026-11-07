@@ -26,7 +26,7 @@ export const GET = withRequestLocale(async (req: Request) => {
     const params = new URL(req.url).searchParams;
     const format = params.get("export");
     if (format === "csv" || format === "json") {
-      const file = securityExport(format);
+      const file = await securityExport(format);
       securityEvent("data.export", { actorId: user.id, headers: req.headers, detail: `security events ${format}` });
       return new Response(file.body, {
         headers: {
@@ -37,9 +37,9 @@ export const GET = withRequestLocale(async (req: Request) => {
       });
     }
     const incident = params.get("incident");
-    if (incident) return Response.json(securityIncident(incident), noStore);
-    if (params.get("events")) return Response.json(securityEvents(Object.fromEntries(params)), noStore);
-    return Response.json(securityOverview(Date.now(), user), noStore);
+    if (incident) return Response.json(await securityIncident(incident), noStore);
+    if (params.get("events")) return Response.json(await securityEvents(Object.fromEntries(params)), noStore);
+    return Response.json(await securityOverview(Date.now(), user), noStore);
   } catch (e) {
     return failure(e);
   }
@@ -47,9 +47,9 @@ export const GET = withRequestLocale(async (req: Request) => {
 
 export const POST = withRequestLocale(async (req: Request) => {
   try {
-    checkOrigin(req);
+    await checkOrigin(req);
     const user = await admin();
-    return Response.json(securityAction(user, await req.json().catch(() => ({})), req.headers), noStore);
+    return Response.json(await securityAction(user, await req.json().catch(() => ({})), req.headers), noStore);
   } catch (e) {
     return failure(e);
   }

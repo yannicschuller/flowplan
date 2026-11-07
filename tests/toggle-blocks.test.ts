@@ -8,8 +8,8 @@ import { isToggleClosed, titleAbove, toggleBlocksPlugin, toggleIdentity, toggleK
 // document – stored HTML, exports and published pages keep an open toggle.
 const schema = documentSchema();
 const p = (text: string) => schema.nodes.paragraph.create(null, text ? schema.text(text) : undefined);
-const toggle = (attrs: Record<string, unknown>, ...content: ReturnType<typeof p>[]) => schema.nodes.toggle.create(attrs, content);
-const state = (...nodes: ReturnType<typeof p>[]) =>
+const toggle = (attrs: Record<string, unknown>, ...content: Awaited<ReturnType<typeof p>>[]) => schema.nodes.toggle.create(attrs, content);
+const state = (...nodes: Awaited<ReturnType<typeof p>>[]) =>
   EditorState.create({ schema, doc: schema.nodes.doc.create(null, nodes), plugins: [toggleBlocksPlugin()] });
 // The toggle after "Intro" sits at 7 ("Intro" is 7 long with its tags).
 const sample = () => state(p("Intro"), toggle({ title: "Mehr", blockId: "tog12345" }, p("Geheim"), p("Zwei")), p("Ende"));

@@ -63,7 +63,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   let upload = "";
   try {
-    checkOrigin(req);
+    await checkOrigin(req);
     await guard(req);
     if ((req.headers.get("content-type") || "").startsWith("application/json")) {
       const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;

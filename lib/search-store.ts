@@ -33,18 +33,18 @@ export const foldText = (text: string) => foldWithMap(text).folded;
 const likePattern = (phrase: string) => `%${foldText(phrase).replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 
 // The entry of a page (key "") or of a record, comment, message or file.
-export function removeEntry(pageId: string, key: string) {
+export async function removeEntry(pageId: string, key: string) {
   if (sql.name === "sqlite")
     // Through the content table (c0 = page_id, c1 = row_id) and its index
     // (lib/db.ts) instead of `WHERE page_id=? AND row_id=?` on the index
     // itself, which reads every entry.
-    run("DELETE FROM search_index WHERE rowid IN (SELECT id FROM search_index_content WHERE c0=? AND c1=?)", pageId, key); // sqlite-only
-  else run("DELETE FROM search_index WHERE page_id=? AND row_id=?", pageId, key);
+    await run("DELETE FROM search_index WHERE rowid IN (SELECT id FROM search_index_content WHERE c0=? AND c1=?)", pageId, key); // sqlite-only
+  else await run("DELETE FROM search_index WHERE page_id=? AND row_id=?", pageId, key);
 }
-export function addEntry(pageId: string, key: string, title: string, body: string) {
-  if (sql.name === "sqlite") run("INSERT INTO search_index(page_id,row_id,title,body) VALUES(?,?,?,?)", pageId, key, title, body);
+export async function addEntry(pageId: string, key: string, title: string, body: string) {
+  if (sql.name === "sqlite") await run("INSERT INTO search_index(page_id,row_id,title,body) VALUES(?,?,?,?)", pageId, key, title, body);
   else
-    run(
+    await run(
       "INSERT INTO search_index(page_id,row_id,title,body,title_folded,body_folded) VALUES(?,?,?,?,?,?)",
       pageId,
       key,
@@ -54,13 +54,13 @@ export function addEntry(pageId: string, key: string, title: string, body: strin
       foldText(body),
     );
 }
-export function clearIndex() {
-  run("DELETE FROM search_index");
+export async function clearIndex() {
+  await run("DELETE FROM search_index");
 }
-export function removePages(pageIds: string[]) {
+export async function removePages(pageIds: string[]) {
   for (let i = 0; i < pageIds.length; i += 500) {
     const batch = pageIds.slice(i, i + 500);
-    run(`DELETE FROM search_index WHERE page_id IN (${batch.map(() => "?").join(",")})`, ...batch);
+    await run(`DELETE FROM search_index WHERE page_id IN (${batch.map(() => "?").join(",")})`, ...batch);
   }
 }
 

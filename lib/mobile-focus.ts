@@ -24,27 +24,27 @@ export const focusInput = z.object({
 
 // The device behind "Authorization: Bearer fpd_…" (the token itself is
 // checked by identityFromDeviceToken before).
-function deviceOf(authorization: string | null) {
+async function deviceOf(authorization: string | null) {
   const token = authorization?.match(/^Bearer\s+(fpd_[A-Za-z0-9_-]{20,80})$/)?.[1];
   if (!token) return null;
-  return one<{ id: string; user_id: string }>(
+  return await one<{ id: string; user_id: string }>(
     "SELECT id,user_id FROM mobile_devices WHERE token_hash=?",
     createHash("sha256").update(token).digest("hex"),
   );
 }
 
-export function setDeviceFocus(user: Identity, authorization: string | null, input: unknown, now = Date.now()) {
+export async function setDeviceFocus(user: Identity, authorization: string | null, input: unknown, now = Date.now()) {
   const b = focusInput.parse(input);
-  const device = deviceOf(authorization);
+  const device = await deviceOf(authorization);
   if (!device || device.user_id !== user.id) throw new HttpError(401, "Bitte melde dich an.");
-  if (b.workspaceId && !one("SELECT 1 FROM members WHERE workspace_id=? AND user_id=?", b.workspaceId, user.id))
+  if (b.workspaceId && !(await one("SELECT 1 FROM members WHERE workspace_id=? AND user_id=?", b.workspaceId, user.id)))
     throw new HttpError(404, ct("Arbeitsbereich nicht gefunden.", "Workspace not found."));
   if (!b.hide) {
-    run("DELETE FROM mobile_focus WHERE device_id=?", device.id);
+    await run("DELETE FROM mobile_focus WHERE device_id=?", device.id);
     return { ok: true, focus: null };
   }
   const until = now + b.hours * 3_600_000;
-  run(
+  await run(
     "INSERT INTO mobile_focus(device_id,workspace_id,until) VALUES(?,?,?) ON CONFLICT(device_id) DO UPDATE SET workspace_id=excluded.workspace_id,until=excluded.until",
     device.id,
     b.workspaceId,
@@ -56,8 +56,8 @@ export function setDeviceFocus(user: Identity, authorization: string | null, inp
 // Whether a push to this subscription is held back by the device's Focus:
 // everything when the Focus is for another profile, otherwise what belongs
 // to another workspace. Notifications without a page always come through.
-export function focusSilences(subscriptionId: string, workspaceId: string | null | undefined, now = Date.now()) {
-  const focus = one<{ workspace_id: string | null }>(
+export async function focusSilences(subscriptionId: string, workspaceId: string | null | undefined, now = Date.now()) {
+  const focus = await one<{ workspace_id: string | null }>(
     "SELECT f.workspace_id FROM mobile_focus f JOIN mobile_devices d ON d.id=f.device_id WHERE d.push_subscription_id=? AND f.until>?",
     subscriptionId,
     now,
@@ -69,6 +69,6 @@ export function focusSilences(subscriptionId: string, workspaceId: string | null
 
 // Whether a Focus with a Flowplan filter is on for this app installation
 // right now (for the test notification in the settings, lib/push-test.ts).
-export function focusActive(deviceId: string, now = Date.now()) {
-  return !!one("SELECT 1 FROM mobile_focus WHERE device_id=? AND until>?", deviceId, now);
+export async function focusActive(deviceId: string, now = Date.now()) {
+  return !!(await one("SELECT 1 FROM mobile_focus WHERE device_id=? AND until>?", deviceId, now));
 }

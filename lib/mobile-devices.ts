@@ -112,13 +112,13 @@ const parseLabels = (value: unknown): LiveLabels | null => {
   return parsed.success ? parsed.data : null;
 };
 
-function storeLiveToken(deviceId: string, kind: LiveActivityKind, token: string | null, labels: LiveLabels | null) {
-  run("DELETE FROM mobile_live_activities WHERE device_id=? AND kind=?", deviceId, kind);
+async function storeLiveToken(deviceId: string, kind: LiveActivityKind, token: string | null, labels: LiveLabels | null) {
+  await run("DELETE FROM mobile_live_activities WHERE device_id=? AND kind=?", deviceId, kind);
   if (!token) return;
   const tokenHash = hashToken(token);
   // An activity token belongs to one installation (another account on the phone before).
-  run("DELETE FROM mobile_live_activities WHERE token_hash=?", tokenHash);
-  run(
+  await run("DELETE FROM mobile_live_activities WHERE token_hash=?", tokenHash);
+  await run(
     "INSERT INTO mobile_live_activities(device_id,kind,relay_token,token_hash,created_at,labels) VALUES(?,?,?,?,?,?)",
     deviceId,
     kind,
@@ -128,37 +128,37 @@ function storeLiveToken(deviceId: string, kind: LiveActivityKind, token: string 
     labels ? JSON.stringify(labels) : null,
   );
 }
-const liveKinds = (deviceId: string) =>
-  all<{ kind: LiveActivityKind }>("SELECT kind FROM mobile_live_activities WHERE device_id=? ORDER BY kind", deviceId).map((r) => r.kind);
+const liveKinds = async (deviceId: string) =>
+  (await all<{ kind: LiveActivityKind }>("SELECT kind FROM mobile_live_activities WHERE device_id=? ORDER BY kind", deviceId)).map((r) => r.kind);
 
-function requireSession(user: Identity, sessionToken: string) {
+async function requireSession(user: Identity, sessionToken: string) {
   if (user.apiScope) throw new HttpError(403, "Mit einem API-Token nicht erlaubt.");
-  if (!one("SELECT token FROM sessions WHERE token=? AND user_id=? AND expires>?", sessionToken, user.id, Date.now()))
+  if (!(await one("SELECT token FROM sessions WHERE token=? AND user_id=? AND expires>?", sessionToken, user.id, Date.now())))
     throw new HttpError(401, "Sitzung abgelaufen.");
 }
 
 // Registers (or renews) this installation for the signed-in session and
 // returns a fresh device token; the previous one stops working.
-export function registerMobileDevice(user: Identity, sessionToken: string, input: unknown) {
-  requireSession(user, sessionToken);
+export async function registerMobileDevice(user: Identity, sessionToken: string, input: unknown) {
+  await requireSession(user, sessionToken);
   const b = registration.parse(input);
   if (b.publicKey && !validDeviceKey(b.publicKey)) throw new HttpError(400, "Ungültiger Push-Schlüssel.");
   const relay = pushRelayInfo();
   // The relay part counts only for this instance's relay.
   const relayMatches = !!relay && (!b.relayUrl || strictOrigin(b.relayUrl) === relay.url);
-  const existing = one<{ id: string; push_subscription_id: string | null }>(
+  const existing = await one<{ id: string; push_subscription_id: string | null }>(
     "SELECT id,push_subscription_id FROM mobile_devices WHERE user_id=? AND installation_id=?",
     user.id,
     b.installationId,
   );
   if (
     !existing &&
-    Number(one<{ n: number }>("SELECT COUNT(*) n FROM mobile_devices WHERE user_id=?", user.id)?.n || 0) >= MAX_DEVICES
+    Number((await one<{ n: number }>("SELECT COUNT(*) n FROM mobile_devices WHERE user_id=?", user.id))?.n || 0) >= MAX_DEVICES
   )
     throw new HttpError(429, "Höchstens 20 Apps pro Konto.");
   if (existing) {
-    if (existing.push_subscription_id) run("DELETE FROM push_subscriptions WHERE id=?", existing.push_subscription_id);
-    run("DELETE FROM mobile_devices WHERE id=?", existing.id);
+    if (existing.push_subscription_id) await run("DELETE FROM push_subscriptions WHERE id=?", existing.push_subscription_id);
+    await run("DELETE FROM mobile_devices WHERE id=?", existing.id);
   }
   const deviceId = id();
   const withRelay = relayMatches && !!b.relayToken && !!b.publicKey;
@@ -167,9 +167,9 @@ export function registerMobileDevice(user: Identity, sessionToken: string, input
     // Expo stays the fallback when the relay refuses the device (lib/push.ts).
     const endpoint = b.pushToken ? `${EXPO_ENDPOINT}${b.pushToken}` : `${RELAY_ENDPOINT}${deviceId}`;
     // A phone signed in with another account before: its pushes now go here.
-    run("DELETE FROM push_subscriptions WHERE endpoint=?", endpoint);
+    await run("DELETE FROM push_subscriptions WHERE endpoint=?", endpoint);
     subscription = id();
-    run(
+    await run(
       "INSERT INTO push_subscriptions(id,user_id,session_token,endpoint,p256dh,auth) VALUES(?,?,?,?,?,?)",
       subscription,
       user.id,
@@ -181,7 +181,7 @@ export function registerMobileDevice(user: Identity, sessionToken: string, input
   }
   const token = `fpd_${randomBytes(30).toString("base64url")}`;
   const now = Date.now();
-  run(
+  await run(
     "INSERT INTO mobile_devices(id,user_id,installation_id,session_token,platform,name,app_version,token_hash,push_subscription_id,created_at,last_seen_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
     deviceId,
     user.id,
@@ -198,8 +198,8 @@ export function registerMobileDevice(user: Identity, sessionToken: string, input
   if (withRelay && subscription) {
     const relayHash = hashToken(b.relayToken!);
     // A phone signed in with another account before: its pushes now go here.
-    run("DELETE FROM mobile_push_relay WHERE token_hash=?", relayHash);
-    run(
+    await run("DELETE FROM mobile_push_relay WHERE token_hash=?", relayHash);
+    await run(
       "INSERT INTO mobile_push_relay(device_id,relay_token,token_hash,public_key,created_at) VALUES(?,?,?,?,?)",
       deviceId,
       sealSecret(b.relayToken!, relayAad(deviceId)),
@@ -213,7 +213,7 @@ export function registerMobileDevice(user: Identity, sessionToken: string, input
     const labels = parseLabels(b.liveActivityLabels);
     for (const kind of LIVE_ACTIVITY_KINDS) {
       const value = b.liveActivityRelayTokens[kind];
-      if (value) storeLiveToken(deviceId, kind, value, labels);
+      if (value) await storeLiveToken(deviceId, kind, value, labels);
     }
   }
   return {
@@ -221,7 +221,7 @@ export function registerMobileDevice(user: Identity, sessionToken: string, input
     push: !!subscription,
     // Whether notifications go through the relay, end-to-end encrypted.
     relay: withRelay && !!subscription,
-    liveActivities: liveKinds(deviceId),
+    liveActivities: await liveKinds(deviceId),
   };
 }
 
@@ -230,27 +230,27 @@ export function registerMobileDevice(user: Identity, sessionToken: string, input
 const liveInput = z
   .object({ kind: z.enum(LIVE_ACTIVITY_KINDS), relayToken: relayTokenSchema.nullable(), relayUrl: z.string().max(300).nullable().optional(), labels: z.unknown().optional() })
   .strict();
-export function setLiveActivityToken(authorization: string | null, input: unknown) {
+export async function setLiveActivityToken(authorization: string | null, input: unknown) {
   const match = authorization?.match(/^Bearer\s+(fpd_[A-Za-z0-9_-]{20,80})$/);
   const device = match
-    ? one<{ id: string }>(
+    ? (await one<{ id: string }>(
         "SELECT d.id FROM mobile_devices d JOIN sessions s ON s.token=d.session_token JOIN users u ON u.id=d.user_id WHERE d.token_hash=? AND s.expires>? AND u.disabled=0",
         hashToken(match[1]),
         Date.now(),
-      )
+      ))
     : undefined;
   if (!device) throw new HttpError(401, "Bitte melde dich an.");
   const b = liveInput.parse(input);
   const relay = pushRelayInfo();
-  if (b.relayToken && (!relay || (b.relayUrl && strictOrigin(b.relayUrl) !== relay.url))) return { ok: false, liveActivities: liveKinds(device.id), pushRelay: relay };
-  storeLiveToken(device.id, b.kind, b.relayToken, parseLabels(b.labels));
-  return { ok: true, liveActivities: liveKinds(device.id), pushRelay: relay };
+  if (b.relayToken && (!relay || (b.relayUrl && strictOrigin(b.relayUrl) !== relay.url))) return { ok: false, liveActivities: await liveKinds(device.id), pushRelay: relay };
+  await storeLiveToken(device.id, b.kind, b.relayToken, parseLabels(b.labels));
+  return { ok: true, liveActivities: await liveKinds(device.id), pushRelay: relay };
 }
 
 // The person behind a device, with the rights of its session, for work in
 // the background (Live Activity pushes); null once the session ended.
-export function deviceIdentity(deviceId: string): Identity | null {
-  const row = one<User & { groups_json: string }>(
+export async function deviceIdentity(deviceId: string): Promise<Identity | null> {
+  const row = await one<User & { groups_json: string }>(
     `SELECT u.*,s.groups_json FROM mobile_devices d JOIN users u ON u.id=d.user_id JOIN sessions s ON s.token=d.session_token
      WHERE d.id=? AND s.expires>? AND u.disabled=0`,
     deviceId,
@@ -276,31 +276,31 @@ export function deviceIdentity(deviceId: string): Identity | null {
   };
 }
 
-export function unregisterMobileDevice(user: Identity, installationId: unknown) {
-  const device = one<{ id: string; push_subscription_id: string | null }>(
+export async function unregisterMobileDevice(user: Identity, installationId: unknown) {
+  const device = await one<{ id: string; push_subscription_id: string | null }>(
     "SELECT id,push_subscription_id FROM mobile_devices WHERE user_id=? AND installation_id=?",
     user.id,
     z.uuid().parse(installationId),
   );
   if (device) {
-    if (device.push_subscription_id) run("DELETE FROM push_subscriptions WHERE id=?", device.push_subscription_id);
-    run("DELETE FROM mobile_devices WHERE id=?", device.id);
+    if (device.push_subscription_id) await run("DELETE FROM push_subscriptions WHERE id=?", device.push_subscription_id);
+    await run("DELETE FROM mobile_devices WHERE id=?", device.id);
   }
   return { ok: true };
 }
 
 // The app leaves the instance (another server, "forget"): its device token
 // alone removes the entry, without the web view's cookie.
-export function unregisterByDeviceToken(header: string | null) {
+export async function unregisterByDeviceToken(header: string | null) {
   const match = header?.match(/^Bearer\s+(fpd_[A-Za-z0-9_-]{20,80})$/);
   if (!match) return false;
-  const device = one<{ id: string; push_subscription_id: string | null }>(
+  const device = await one<{ id: string; push_subscription_id: string | null }>(
     "SELECT id,push_subscription_id FROM mobile_devices WHERE token_hash=?",
     hashToken(match[1]),
   );
   if (!device) return false;
-  if (device.push_subscription_id) run("DELETE FROM push_subscriptions WHERE id=?", device.push_subscription_id);
-  run("DELETE FROM mobile_devices WHERE id=?", device.id);
+  if (device.push_subscription_id) await run("DELETE FROM push_subscriptions WHERE id=?", device.push_subscription_id);
+  await run("DELETE FROM mobile_devices WHERE id=?", device.id);
   return true;
 }
 
@@ -309,7 +309,7 @@ export async function identityFromDeviceToken(header: string | null): Promise<Id
   const match = header?.match(/^Bearer\s+(fpd_[A-Za-z0-9_-]{20,80})$/);
   if (!match) return null;
   const now = Date.now();
-  const row = one<User & { device_id: string; last_seen_at: number; groups_json: string; session_token: string; expires: number; session_created: number | null; remember: number; sso: number; app: number; last_seen: number | null }>(
+  const row = await one<User & { device_id: string; last_seen_at: number; groups_json: string; session_token: string; expires: number; session_created: number | null; remember: number; sso: number; app: number; last_seen: number | null }>(
     `SELECT u.*,d.id device_id,d.last_seen_at,d.session_token,s.groups_json,s.expires,s.created_at session_created,s.remember,s.sso,s.app,s.last_seen FROM mobile_devices d
        JOIN users u ON u.id=d.user_id JOIN sessions s ON s.token=d.session_token
      WHERE d.token_hash=? AND s.expires>? AND u.disabled=0`,
@@ -317,7 +317,7 @@ export async function identityFromDeviceToken(header: string | null): Promise<Id
     now,
   );
   if (!row) return null;
-  if (now - row.last_seen_at > 60_000) run("UPDATE mobile_devices SET last_seen_at=? WHERE id=?", now, row.device_id);
+  if (now - row.last_seen_at > 60_000) await run("UPDATE mobile_devices SET last_seen_at=? WHERE id=?", now, row.device_id);
   // The widgets are the app in the background: they keep its session alive
   // like the app's web view does (a remembered session slides, never beyond
   // its maximum).
@@ -353,17 +353,17 @@ const day = z
 
 // What the widgets and the Live Activity show. `today` is the phone's date,
 // so "due today" means the person's day, not the server's.
-export function mobileSummary(user: Identity, todayInput?: unknown) {
+export async function mobileSummary(user: Identity, todayInput?: unknown) {
   const now = new Date();
   const today =
     day.parse(todayInput) ||
     `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   const unread = Number(
-    one<{ n: number }>("SELECT COUNT(*) n FROM notifications WHERE user_id=? AND read_at IS NULL", user.id)?.n || 0,
+    (await one<{ n: number }>("SELECT COUNT(*) n FROM notifications WHERE user_id=? AND read_at IS NULL", user.id))?.n || 0,
   );
   // Overdue, today, upcoming, undated – as in the "Tasks" widget.
   const tasks = sortTasks(
-    openTasksEverywhere(user)
+    (await openTasksEverywhere(user))
       .filter((t) => t.assigned || t.journal || t.due)
       .map((t) => ({ ...t, page: t.title })),
     today,
@@ -383,7 +383,7 @@ export function mobileSummary(user: Identity, todayInput?: unknown) {
         url: `/${pageLocationHash({ pageId: t.pageId, ...(t.rowId ? { rowId: t.rowId } : {}) })}`,
       })),
     },
-    timer: runningTimer(user),
+    timer: await runningTimer(user),
     today,
     at: Date.now(),
     // The person administers the instance: the app also shows the
@@ -393,17 +393,17 @@ export function mobileSummary(user: Identity, todayInput?: unknown) {
 }
 
 // The person's running timer (time tracking), if they may still see it.
-function runningTimer(user: Identity) {
-  const entry = one<{ page_id: string; row_id: string; start: number }>(
+async function runningTimer(user: Identity) {
+  const entry = await one<{ page_id: string; row_id: string; start: number }>(
     `SELECT page_id,row_id,start FROM time_entries WHERE user_id=? AND "end" IS NULL ORDER BY start DESC LIMIT 1`,
     user.id,
   );
   if (!entry) return null;
-  const page = one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", entry.page_id);
-  if (!page || !pageRole(user, page) || hiddenRowIds(user, page).has(entry.row_id)) return null;
-  const row = one<{ cells: string }>("SELECT cells FROM rows WHERE id=? AND page_id=?", entry.row_id, page.id);
+  const page = await one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", entry.page_id);
+  if (!page || !(await pageRole(user, page)) || (await hiddenRowIds(user, page)).has(entry.row_id)) return null;
+  const row = await one<{ cells: string }>("SELECT cells FROM rows WHERE id=? AND page_id=?", entry.row_id, page.id);
   if (!row) return null;
-  const fields = JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", page.id)?.fields || "[]") as Field[];
+  const fields = JSON.parse((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", page.id))?.fields || "[]") as Field[];
   const cells = JSON.parse(row.cells) as Record<string, unknown>;
   return {
     start: entry.start,
@@ -414,8 +414,8 @@ function runningTimer(user: Identity) {
 }
 
 // The installations of a person, for the profile settings.
-export function listMobileDevices(user: Identity) {
-  return all<{ installation_id: string; platform: string; name: string; app_version: string; created_at: number; last_seen_at: number; push: number; relay: number }>(
+export async function listMobileDevices(user: Identity) {
+  return await all<{ installation_id: string; platform: string; name: string; app_version: string; created_at: number; last_seen_at: number; push: number; relay: number }>(
     "SELECT installation_id,platform,name,app_version,created_at,last_seen_at,(push_subscription_id IS NOT NULL) push,EXISTS(SELECT 1 FROM mobile_push_relay r WHERE r.device_id=mobile_devices.id) relay FROM mobile_devices WHERE user_id=? ORDER BY last_seen_at DESC",
     user.id,
   );

@@ -58,8 +58,8 @@ export const fileInkSchema = z.object({ data: z.string().max(6_500_000), recogni
 
 // ---- Export ----
 
-export function exportDatabaseExtras(pageId: string, visibleRows: Set<string>) {
-  const raw = one<{ settings: string }>("SELECT settings FROM databases WHERE page_id=?", pageId)?.settings;
+export async function exportDatabaseExtras(pageId: string, visibleRows: Set<string>) {
+  const raw = (await one<{ settings: string }>("SELECT settings FROM databases WHERE page_id=?", pageId))?.settings;
   let settings: DatabaseSettings | undefined;
   try {
     const parsed = settingsSchema.parse(JSON.parse(raw || "{}"));
@@ -69,11 +69,11 @@ export function exportDatabaseExtras(pageId: string, visibleRows: Set<string>) {
     if (!parsed.automations?.length) delete parsed.automations;
     settings = Object.keys(parsed).length ? parsed : undefined;
   } catch {}
-  const timeEntries = all<z.infer<typeof timeEntrySchema>>(
+  const timeEntries = (await all<z.infer<typeof timeEntrySchema>>(
     `SELECT row_id,field_id,start,"end",note FROM time_entries WHERE page_id=? AND "end" IS NOT NULL ORDER BY start`,
     pageId,
-  ).filter((e) => visibleRows.has(e.row_id));
-  const statusLog = all<z.infer<typeof statusEntrySchema>>("SELECT row_id,done,at FROM row_status_log WHERE page_id=? ORDER BY at", pageId).filter((e) =>
+  )).filter((e) => visibleRows.has(e.row_id));
+  const statusLog = (await all<z.infer<typeof statusEntrySchema>>("SELECT row_id,done,at FROM row_status_log WHERE page_id=? ORDER BY at", pageId)).filter((e) =>
     visibleRows.has(e.row_id),
   );
   return {
@@ -83,11 +83,11 @@ export function exportDatabaseExtras(pageId: string, visibleRows: Set<string>) {
   };
 }
 
-export function exportPageExtras(page: { id: string; kind: string; synced?: number; journal_date?: string | null; parent_id: string | null }) {
+export async function exportPageExtras(page: { id: string; kind: string; synced?: number; journal_date?: string | null; parent_id: string | null }) {
   const out: { synced?: number; journal?: unknown; journalEntry?: unknown } = {};
   if (page.synced) out.synced = 1;
   if (page.kind === "journal") {
-    const row = one<{ template: string; trackers: string; options: string }>("SELECT template,trackers,options FROM journal_settings WHERE page_id=?", page.id);
+    const row = await one<{ template: string; trackers: string; options: string }>("SELECT template,trackers,options FROM journal_settings WHERE page_id=?", page.id);
     if (row)
       out.journal = {
         template: row.template || "",
@@ -96,14 +96,14 @@ export function exportPageExtras(page: { id: string; kind: string; synced?: numb
       };
   }
   if (page.journal_date) {
-    const entry = one<{ data: string; place: string }>("SELECT data,place FROM journal_entries WHERE page_id=?", page.id);
+    const entry = await one<{ data: string; place: string }>("SELECT data,place FROM journal_entries WHERE page_id=?", page.id);
     if (entry) out.journalEntry = { values: entryValues.catch({}).parse(safeJson(entry.data, {})), place: entry.place || "" };
   }
   return out;
 }
 
-export function exportFileInk(fileId: string) {
-  const row = one<{ data: string; recognized: string }>("SELECT data,recognized FROM file_ink WHERE file_id=?", fileId);
+export async function exportFileInk(fileId: string) {
+  const row = await one<{ data: string; recognized: string }>("SELECT data,recognized FROM file_ink WHERE file_id=?", fileId);
   if (!row) return {};
   const doc = parseInk(row.data);
   if (!Object.values(doc.pages).some((items) => items.length)) return {};
@@ -112,8 +112,8 @@ export function exportFileInk(fileId: string) {
 }
 
 // The exporter's own start page of this workspace, if they set one up.
-export function exportHomeLayout(userId: string, workspaceId: string) {
-  const row = one<{ layout: string }>("SELECT layout FROM home_layouts WHERE user_id=? AND workspace_id=?", userId, workspaceId);
+export async function exportHomeLayout(userId: string, workspaceId: string) {
+  const row = await one<{ layout: string }>("SELECT layout FROM home_layouts WHERE user_id=? AND workspace_id=?", userId, workspaceId);
   return row ? { home: parseLayout(row.layout) } : {};
 }
 
@@ -139,7 +139,7 @@ export function remapBlockAttributes(attrs: Record<string, string>, pages: Map<s
 
 // Settings of an imported database: rules act for the person importing,
 // people who are not members become "whoever triggered the rule".
-export function importDatabaseSettings(
+export async function importDatabaseSettings(
   pageId: string,
   raw: unknown,
   ctx: { user: string; fields: Field[]; members: Set<string>; templates: Map<string, string>; person: (value: string) => string },
@@ -174,10 +174,10 @@ export function importDatabaseSettings(
       return action;
     }),
   }));
-  run("UPDATE databases SET settings=? WHERE page_id=?", JSON.stringify(settings), pageId);
+  await run("UPDATE databases SET settings=? WHERE page_id=?", JSON.stringify(settings), pageId);
 }
 
-export function importDatabaseHistory(
+export async function importDatabaseHistory(
   pageId: string,
   data: { timeEntries?: z.infer<typeof timeEntrySchema>[]; statusLog?: z.infer<typeof statusEntrySchema>[] },
   ctx: { user: string; rows: Map<string, string>; fields: Field[] },
@@ -185,7 +185,7 @@ export function importDatabaseHistory(
   const timeFields = new Set(ctx.fields.filter((f) => f.type === "time").map((f) => f.id));
   for (const e of data.timeEntries || [])
     if (ctx.rows.has(e.row_id) && timeFields.has(e.field_id) && e.end >= e.start)
-      run(
+      await run(
         `INSERT INTO time_entries(id,page_id,row_id,field_id,user_id,start,"end",note) VALUES(?,?,?,?,?,?,?,?)`,
         id(),
         pageId,
@@ -198,18 +198,18 @@ export function importDatabaseHistory(
       );
   for (const e of data.statusLog || [])
     if (ctx.rows.has(e.row_id))
-      run("INSERT INTO row_status_log(id,page_id,row_id,done,at) VALUES(?,?,?,?,?)", id(), pageId, ctx.rows.get(e.row_id)!, e.done, e.at);
+      await run("INSERT INTO row_status_log(id,page_id,row_id,done,at) VALUES(?,?,?,?,?)", id(), pageId, ctx.rows.get(e.row_id)!, e.done, e.at);
 }
 
-export function importPageExtras(
+export async function importPageExtras(
   pageId: string,
   p: { synced?: number; journal?: { template: string; trackers: z.infer<typeof trackerSchema>[]; options?: z.infer<typeof journalOptionsSchema> }; journalEntry?: { values: Record<string, number | boolean>; place: string } },
   rewriteHtml: (html: string) => string,
 ) {
-  if (p.synced) run("UPDATE pages SET synced=1 WHERE id=?", pageId);
+  if (p.synced) await run("UPDATE pages SET synced=1 WHERE id=?", pageId);
   if (p.journal) {
     if (new Set(p.journal.trackers.map((t) => t.id)).size !== p.journal.trackers.length) return;
-    run(
+    await run(
       "INSERT INTO journal_settings(page_id,template,trackers,options) VALUES(?,?,?,?) ON CONFLICT(page_id) DO UPDATE SET template=excluded.template,trackers=excluded.trackers,options=excluded.options",
       pageId,
       p.journal.template ? rewriteHtml(p.journal.template) : "",
@@ -218,7 +218,7 @@ export function importPageExtras(
     );
   }
   if (p.journalEntry)
-    run(
+    await run(
       "INSERT INTO journal_entries(page_id,data,place,updated_at) VALUES(?,?,?,?) ON CONFLICT(page_id) DO UPDATE SET data=excluded.data,place=excluded.place",
       pageId,
       JSON.stringify(p.journalEntry.values),
@@ -227,7 +227,7 @@ export function importPageExtras(
     );
 }
 
-export function importFileInk(fileId: string, ink: z.infer<typeof fileInkSchema> | undefined, user: string) {
+export async function importFileInk(fileId: string, ink: z.infer<typeof fileInkSchema> | undefined, user: string) {
   if (!ink) return;
   const doc = parseInk(ink.data);
   const data = serializeInk(doc);
@@ -235,7 +235,7 @@ export function importFileInk(fileId: string, ink: z.infer<typeof fileInkSchema>
   const recognized = cleanRecognizedMap(safeJson(ink.recognized || "{}", {}));
   for (const key of Object.keys(recognized)) if (!doc.pages[key]?.length) delete recognized[key];
   const now = Date.now();
-  run(
+  await run(
     "INSERT INTO file_ink(file_id,data,text,recognized,version,updated_by,updated_at) VALUES(?,?,?,?,1,?,?)",
     fileId,
     data,
@@ -244,14 +244,14 @@ export function importFileInk(fileId: string, ink: z.infer<typeof fileInkSchema>
     user,
     now,
   );
-  run("INSERT INTO file_ink_versions(file_id,version,data,created_by,created_at) VALUES(?,1,?,?,?)", fileId, data, user, now);
+  await run("INSERT INTO file_ink_versions(file_id,version,data,created_by,created_at) VALUES(?,1,?,?,?)", fileId, data, user, now);
 }
 
 // The start page comes along only for someone who has not set one up yet
 // (neither for this workspace nor as their own default); "Reset" undoes it.
-export function importHomeLayout(user: string, workspaceId: string, raw: unknown, maps: Maps) {
+export async function importHomeLayout(user: string, workspaceId: string, raw: unknown, maps: Maps) {
   if (raw === undefined) return;
-  if (one("SELECT 1 FROM home_layouts WHERE user_id=? AND workspace_id IN (?, '')", user, workspaceId)) return;
+  if (await one("SELECT 1 FROM home_layouts WHERE user_id=? AND workspace_id IN (?, '')", user, workspaceId)) return;
   const layout = parseLayout(raw);
   const pageKeys = ["pageId", "journalId", "targetId"];
   layout.widgets = layout.widgets.flatMap((w) => {
@@ -277,7 +277,7 @@ export function importHomeLayout(user: string, workspaceId: string, raw: unknown
   }
   const clean = parseLayout(layout);
   if (layoutBytes(clean) > MAX_LAYOUT_BYTES) return;
-  run("INSERT INTO home_layouts(user_id,workspace_id,layout,updated_at) VALUES(?,?,?,?)", user, workspaceId, JSON.stringify(clean), Date.now());
+  await run("INSERT INTO home_layouts(user_id,workspace_id,layout,updated_at) VALUES(?,?,?,?)", user, workspaceId, JSON.stringify(clean), Date.now());
 }
 
 function safeJson<T>(value: string | null | undefined, fallback: T): T {

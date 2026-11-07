@@ -16,8 +16,8 @@ import { requireMember } from "./permissions";
 import type { Identity } from "./types";
 import { applySidebarChanges, isSidebarKey, pruneSidebarKeys, SIDEBAR_CHANGES_LIMIT } from "./sidebar-folds";
 
-function knownIn(workspaceId: string) {
-  const pages = all<{ id: string; parent_id: string | null }>(
+async function knownIn(workspaceId: string) {
+  const pages = await all<{ id: string; parent_id: string | null }>(
     "SELECT id,parent_id FROM pages WHERE workspace_id=? AND deleted_at IS NULL",
     workspaceId,
   );
@@ -25,13 +25,13 @@ function knownIn(workspaceId: string) {
     pages: new Set(pages.map((p) => p.id)),
     parents: new Set(pages.flatMap((p) => (p.parent_id ? [p.parent_id] : []))),
     spaces: new Set(
-      all<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=? AND deleted_at IS NULL", workspaceId).map((s) => s.id),
+      (await all<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=? AND deleted_at IS NULL", workspaceId)).map((s) => s.id),
     ),
   };
 }
 
-function stored(userId: string, workspaceId: string) {
-  const row = one<{ keys: string; updated_at: number }>(
+async function stored(userId: string, workspaceId: string) {
+  const row = await one<{ keys: string; updated_at: number }>(
     "SELECT keys,updated_at FROM sidebar_state WHERE user_id=? AND workspace_id=?",
     userId,
     workspaceId,
@@ -48,13 +48,13 @@ function stored(userId: string, workspaceId: string) {
 
 // For the bootstrap: null when the person never folded anything here (the
 // client then takes over what this device remembered before #97).
-export function sidebarState(
+export async function sidebarState(
   user: Pick<Identity, "id">,
   workspaceId: string,
-): { keys: string[]; updatedAt: number } | null {
-  const state = stored(user.id, workspaceId);
+): Promise<{ keys: string[]; updatedAt: number } | null> {
+  const state = await stored(user.id, workspaceId);
   if (!state) return null;
-  return { keys: pruneSidebarKeys(state.keys, knownIn(workspaceId)), updatedAt: state.updatedAt };
+  return { keys: pruneSidebarKeys(state.keys, await knownIn(workspaceId)), updatedAt: state.updatedAt };
 }
 
 const input = z.object({
@@ -65,15 +65,15 @@ const input = z.object({
 });
 
 // The command `sidebar.state`: { workspaceId, changes: { key: boolean } }.
-export function saveSidebarState(user: Identity, body: unknown): { keys: string[]; updatedAt: number } {
+export async function saveSidebarState(user: Identity, body: unknown): Promise<{ keys: string[]; updatedAt: number }> {
   const b = input.parse(body);
-  requireMember(user, b.workspaceId);
+  await requireMember(user, b.workspaceId);
   const keys = pruneSidebarKeys(
-    applySidebarChanges(stored(user.id, b.workspaceId)?.keys || [], b.changes),
-    knownIn(b.workspaceId),
+    applySidebarChanges((await stored(user.id, b.workspaceId))?.keys || [], b.changes),
+    await knownIn(b.workspaceId),
   );
   const updatedAt = Date.now();
-  run(
+  await run(
     `INSERT INTO sidebar_state(user_id,workspace_id,keys,updated_at) VALUES(?,?,?,?)
      ON CONFLICT(user_id,workspace_id) DO UPDATE SET keys=excluded.keys,updated_at=excluded.updated_at`,
     user.id,

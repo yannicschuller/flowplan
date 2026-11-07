@@ -189,9 +189,9 @@ export async function restoreBackupFile(path: string, keys: Key[], progress: Res
     }
     progress.phase = "apply";
     const restart = process.env.FLOWPLAN_LITESTREAM_ACTIVE === "1";
-    if (!restart) reopenDatabase();
+    if (!restart) await reopenDatabase();
     const keyHint = keys.length > 0 && !setupRestoreStatus().encryption;
-    audit("", "instance.restore.setup", "", JSON.stringify({ ...summary, missingFiles, source: progress.source, restart }));
+    await audit("", "instance.restore.setup", "", JSON.stringify({ ...summary, missingFiles, source: progress.source, restart }));
     return { ...summary, missingFiles, restart, keyHint };
   } finally {
     rmSync(plain, { force: true });

@@ -31,6 +31,7 @@ import {
 import { emojiEntries } from "./emoji-data";
 import { emojiPresentation } from "./emoji-presentation";
 import type { Identity, Page } from "./types";
+import { mapAsync } from "./each-async";
 const emojis = new Set(emojiEntries.map((e) => e.emoji));
 const bodySchema = z.string().trim().min(1).max(5000);
 const versionSchema = z.number().int().positive();
@@ -42,20 +43,20 @@ type StoredMessage = Omit<InlineMessage, "reactions" | "name"> & {
   rich_body: string | null;
   author_name: string;
 };
-function scope(user: Identity, pageId: string, rowId?: string) {
-  const page = requirePage(user, pageId);
-  requireUnlocked(user, page);
-  if (rowId) requireRow(user, pageId, rowId);
+async function scope(user: Identity, pageId: string, rowId?: string) {
+  const page = await requirePage(user, pageId);
+  await requireUnlocked(user, page);
+  if (rowId) await requireRow(user, pageId, rowId);
   else if (page.kind !== "document")
     throw new HttpError(400, "Bitte einen Datensatz auswählen.");
   return page;
 }
-export function withCommentDocument<T>(
+export async function withCommentDocument<T>(
   pageId: string,
   rowId: string | null,
   fn: (binding: CommentBinding, generation: string) => T,
-): T {
-  const stored = one<{ state: Uint8Array; generation: string }>(
+): Promise<T> {
+  const stored = await one<{ state: Uint8Array; generation: string }>(
     rowId
       ? "SELECT state,generation FROM row_documents WHERE row_id=?"
       : "SELECT state,generation FROM documents WHERE page_id=?",
@@ -76,20 +77,20 @@ export function withCommentDocument<T>(
     doc.destroy();
   }
 }
-export function inlineThreads(
+export async function inlineThreads(
   user: Identity,
   pageId: string,
   rowId?: string,
   summaries = false,
   detailId?: string,
-): InlineThread[] {
-  const page = scope(user, pageId, rowId),
-    canEdit = pageRole(user, page) !== "viewer";
-  return all<StoredThread>(
+): Promise<InlineThread[]> {
+  const page = await scope(user, pageId, rowId),
+    canEdit = (await pageRole(user, page)) !== "viewer";
+  return await mapAsync(await all<StoredThread>(
     "SELECT * FROM inline_threads WHERE page_id=? AND row_id IS NOT DISTINCT FROM ? ORDER BY created_at,id",
     pageId,
     rowId || null,
-  ).map((t) => ({
+  ), async (t) => ({
     ...t,
     anchor: {
       ...JSON.parse(t.anchor),
@@ -99,24 +100,24 @@ export function inlineThreads(
       ),
     },
     messageCount: Number(
-      one<{ n: number }>(
+      (await one<{ n: number }>(
         "SELECT count(*) n FROM inline_messages WHERE thread_id=?",
         t.id,
-      )?.n || 0,
+      ))?.n || 0,
     ),
     complete: !summaries || t.id === detailId,
     canResolve: canEdit || t.author_id === user.id,
-    messages: all<StoredMessage & { name: string; imported_reactions: string }>(
+    messages: await mapAsync(await all<StoredMessage & { name: string; imported_reactions: string }>(
       `SELECT m.*,COALESCE(u.name,m.author_name) name FROM inline_messages m LEFT JOIN users u ON u.id=m.author_id WHERE thread_id=? ORDER BY m.created_at,m.seq ${summaries && t.id !== detailId ? "LIMIT 1" : ""}`,
       t.id,
-    ).map((m) => {
+    ), async (m) => {
       const reactions =
         summaries && t.id !== detailId
           ? []
-          : all<{ emoji: string; user_id: string; name: string }>(
+          : (await all<{ emoji: string; user_id: string; name: string }>(
               "SELECT r.emoji,r.user_id,u.name FROM inline_reactions r JOIN users u ON u.id=r.user_id WHERE r.message_id=? ORDER BY r.emoji,u.name",
               m.id,
-            );
+            ));
       const imported: { emoji: string; names: string[] }[] = (
         summaries && t.id !== detailId
           ? []
@@ -164,19 +165,19 @@ export function inlineThreads(
     }),
   }));
 }
-export function inlineMentionCandidates(
+export async function inlineMentionCandidates(
   user: Identity,
   pageId: string,
   rowId?: string,
   query = "",
 ) {
-  const page = scope(user, pageId, rowId),
+  const page = await scope(user, pageId, rowId),
     search = z.string().max(100).parse(query).trim().toLocaleLowerCase();
   const matches: { id: string; name: string; email: string }[] = [];
   // Guests see nobody of the workspace but themselves (like bootstrap and
   // the share dialog), so they get no names or addresses here either.
-  const guest = isGuest(user, page.workspace_id);
-  for (const member of all<{ id: string; name: string; email: string }>(
+  const guest = await isGuest(user, page.workspace_id);
+  for (const member of await all<{ id: string; name: string; email: string }>(
     "SELECT u.id,u.name,COALESCE(u.email,'') email FROM users u JOIN members m ON m.user_id=u.id WHERE m.workspace_id=? AND u.disabled=0 ORDER BY u.name,u.id",
     page.workspace_id,
   )) {
@@ -184,26 +185,26 @@ export function inlineMentionCandidates(
     if (
       (member.name.toLocaleLowerCase().includes(search) ||
         member.email.toLocaleLowerCase().includes(search)) &&
-      pageRole({ ...user, id: member.id }, page) &&
-      (!rowId || !hiddenRowIds({ ...user, id: member.id }, page).has(rowId))
+      await pageRole({ ...user, id: member.id }, page) &&
+      (!rowId || !(await hiddenRowIds({ ...user, id: member.id }, page)).has(rowId))
     )
       matches.push({ ...member, name: member.name.slice(0, 200) });
     if (matches.length === 100) break;
   }
   return matches;
 }
-function messageInput(input: Record<string, unknown>, page: Page) {
+async function messageInput(input: Record<string, unknown>, page: Page) {
   let content: CommentNode | null =
     input.content == null ? null : richCommentSchema.parse(input.content);
   if (content)
-    content = mapCommentMentions(content, (userId, label) => {
+    content = await mapCommentMentions(content, async (userId, label) => {
       if (!userId) return { userId: null, label };
-      const member = one<{ id: string; name: string }>(
+      const member = await one<{ id: string; name: string }>(
         "SELECT u.id,u.name FROM users u JOIN members m ON m.user_id=u.id WHERE u.id=? AND m.workspace_id=? AND u.disabled=0",
         userId,
         page.workspace_id,
       );
-      if (!member || !pageRole({ id: userId } as Identity, page))
+      if (!member || !(await pageRole({ id: userId } as Identity, page)))
         throw new HttpError(
           400,
           "Eine erwähnte Person hat keinen Zugriff mehr. Bitte entferne die Erwähnung oder wähle eine berechtigte Person.",
@@ -218,16 +219,16 @@ function messageInput(input: Record<string, unknown>, page: Page) {
     serialized: content ? JSON.stringify(content) : null,
   };
 }
-function sameMessage(
+async function sameMessage(
   old: StoredMessage,
-  next: ReturnType<typeof messageInput>,
+  next: Awaited<ReturnType<typeof messageInput>>,
 ) {
   return old.rich_body && next.content
-    ? commentContentIdentity(JSON.parse(old.rich_body)) ===
-        commentContentIdentity(next.content)
+    ? (await commentContentIdentity(JSON.parse(old.rich_body))) ===
+        (await commentContentIdentity(next.content))
     : !old.rich_body && !next.content && old.body === next.body;
 }
-function notify(
+async function notify(
   user: Identity,
   page: Page,
   threadId: string,
@@ -235,28 +236,28 @@ function notify(
   mentions: string[] = [],
   onlyMentions = false,
 ) {
-  const target = one<{ row_id: string | null }>(
+  const target = await one<{ row_id: string | null }>(
     "SELECT row_id FROM inline_threads WHERE id=?",
     threadId,
   );
   const rowId = target?.row_id || null;
   // Guests see nobody of the workspace (inlineMentionCandidates): their
   // mentions notify nobody, like "@Name" in their page comments.
-  if (isGuest(user, page.workspace_id)) mentions = [];
+  if (await isGuest(user, page.workspace_id)) mentions = [];
   // A new thread: who the page or record concerns (lib/comment-recipients.ts),
   // never the whole workspace. A reply: the thread's participants.
   const recipients = onlyMentions
     ? []
     : first
-      ? commentRecipients(user, page, rowId)
-      : all<{ author_id: string }>(
+      ? (await commentRecipients(user, page, rowId))
+      : (await all<{ author_id: string }>(
           "SELECT DISTINCT author_id FROM inline_messages WHERE thread_id=? AND author_id IS NOT NULL",
           threadId,
-        ).map((m) => m.author_id);
+        )).map((m) => m.author_id);
   for (const uid of new Set([...recipients, ...mentions]))
-    if (uid !== user.id && mayHear(uid, page, rowId)) {
-      if (mentions.includes(uid)) mentionWebhook(page.workspace_id, page.id, rowId, uid, user.name);
-      run(
+    if (uid !== user.id && await mayHear(uid, page, rowId)) {
+      if (mentions.includes(uid)) await mentionWebhook(page.workspace_id, page.id, rowId, uid, user.name);
+      await run(
         "INSERT INTO notifications(id,user_id,body,page_id,row_id,thread_id,kind) VALUES(?,?,?,?,?,?,?)",
         id(),
         uid,
@@ -270,26 +271,26 @@ function notify(
       );
     }
 }
-export function inlineCommentCommand(
+export async function inlineCommentCommand(
   user: Identity,
   input: Record<string, unknown>,
 ) {
   const pageId = z.uuid().parse(input.pageId),
     rowId = input.rowId ? z.uuid().parse(input.rowId) : undefined;
-  const page = scope(user, pageId, rowId),
+  const page = await scope(user, pageId, rowId),
     action = input.action;
   if (action === "thread.create") {
     const threadId = z.uuid().parse(input.threadId),
       messageId = z.uuid().parse(input.messageId),
-      messageInputValue = messageInput(input, page),
+      messageInputValue = await messageInput(input, page),
       { body } = messageInputValue,
       anchor = commentAnchorSchema.parse(input.anchor);
-    const existing = one<StoredThread>(
+    const existing = await one<StoredThread>(
       "SELECT * FROM inline_threads WHERE id=?",
       threadId,
     );
     if (existing) {
-      const message = one<StoredMessage>(
+      const message = await one<StoredMessage>(
         "SELECT * FROM inline_messages WHERE id=? AND thread_id=?",
         messageId,
         threadId,
@@ -299,7 +300,7 @@ export function inlineCommentCommand(
         existing.row_id === (rowId || null) &&
         existing.author_id === user.id &&
         message &&
-        sameMessage(message, messageInputValue) &&
+        await sameMessage(message, messageInputValue) &&
         existing.anchor === JSON.stringify(anchor)
       )
         return { id: threadId };
@@ -310,16 +311,16 @@ export function inlineCommentCommand(
     }
     if (
       Number(
-        one<{ n: number }>(
+        (await one<{ n: number }>(
           "SELECT count(*) n FROM inline_threads WHERE page_id=? AND row_id IS NOT DISTINCT FROM ?",
           pageId,
           rowId || null,
-        )?.n,
+        ))?.n,
       ) >= 500
     )
       throw new HttpError(409, "Maximal 500 Textkommentare pro Dokument.");
-    if (rowId) ensureRowDocument(requireRow(user, pageId, rowId).row);
-    withCommentDocument(pageId, rowId || null, (binding, generation) => {
+    if (rowId) await ensureRowDocument((await requireRow(user, pageId, rowId)).row);
+    await withCommentDocument(pageId, rowId || null, (binding, generation) => {
       const range = commentRange(binding, anchor, generation);
       if (
         !range ||
@@ -330,7 +331,7 @@ export function inlineCommentCommand(
           "Die ausgewählte Textstelle hat sich geändert. Bitte erneut auswählen; dein Entwurf bleibt erhalten.",
         );
     });
-    run(
+    await run(
       "INSERT INTO inline_threads(id,page_id,row_id,author_id,anchor) VALUES(?,?,?,?,?)",
       threadId,
       pageId,
@@ -338,7 +339,7 @@ export function inlineCommentCommand(
       user.id,
       JSON.stringify(anchor),
     );
-    run(
+    await run(
       "INSERT INTO inline_messages(id,thread_id,author_id,author_name,body,rich_body) VALUES(?,?,?,?,?,?)",
       messageId,
       threadId,
@@ -347,7 +348,7 @@ export function inlineCommentCommand(
       body,
       messageInputValue.serialized,
     );
-    notify(
+    await notify(
       user,
       page,
       threadId,
@@ -357,7 +358,7 @@ export function inlineCommentCommand(
     return { id: threadId };
   }
   const threadId = z.uuid().parse(input.threadId),
-    thread = one<StoredThread>(
+    thread = await one<StoredThread>(
       "SELECT * FROM inline_threads WHERE id=? AND page_id=? AND row_id IS NOT DISTINCT FROM ?",
       threadId,
       pageId,
@@ -365,7 +366,7 @@ export function inlineCommentCommand(
     );
   if (!thread) throw new HttpError(404, "Kommentar nicht gefunden.");
   if (action === "thread.resolve") {
-    if (thread.author_id !== user.id && pageRole(user, page) === "viewer")
+    if (thread.author_id !== user.id && (await pageRole(user, page)) === "viewer")
       throw new HttpError(
         403,
         "Nur Verfasser oder Bearbeiter können diesen Thread abschließen.",
@@ -375,16 +376,16 @@ export function inlineCommentCommand(
         409,
         "Der Thread wurde geändert. Bitte prüfe die neueste Antwort.",
       );
-    run(
+    await run(
       "UPDATE inline_threads SET resolved=?,version=version+1 WHERE id=?",
       z.boolean().parse(input.resolved) ? 1 : 0,
       thread.id,
     );
   } else if (action === "thread.reply") {
     const messageId = z.uuid().parse(input.messageId),
-      messageInputValue = messageInput(input, page),
+      messageInputValue = await messageInput(input, page),
       { body } = messageInputValue;
-    const old = one<StoredMessage>(
+    const old = await one<StoredMessage>(
       "SELECT * FROM inline_messages WHERE id=?",
       messageId,
     );
@@ -392,7 +393,7 @@ export function inlineCommentCommand(
       if (
         old.thread_id === thread.id &&
         old.author_id === user.id &&
-        sameMessage(old, messageInputValue)
+        await sameMessage(old, messageInputValue)
       )
         return { id: messageId };
       throw new HttpError(
@@ -404,14 +405,14 @@ export function inlineCommentCommand(
       throw new HttpError(409, "Bitte den Thread zuerst wieder öffnen.");
     if (
       Number(
-        one<{ n: number }>(
+        (await one<{ n: number }>(
           "SELECT count(*) n FROM inline_messages WHERE thread_id=?",
           thread.id,
-        )?.n,
+        ))?.n,
       ) >= 500
     )
       throw new HttpError(409, "Maximal 500 Antworten pro Thread.");
-    run(
+    await run(
       "INSERT INTO inline_messages(id,thread_id,author_id,author_name,body,rich_body) VALUES(?,?,?,?,?,?)",
       messageId,
       thread.id,
@@ -420,8 +421,8 @@ export function inlineCommentCommand(
       body,
       messageInputValue.serialized,
     );
-    run("UPDATE inline_threads SET version=version+1 WHERE id=?", thread.id);
-    notify(
+    await run("UPDATE inline_threads SET version=version+1 WHERE id=?", thread.id);
+    await notify(
       user,
       page,
       thread.id,
@@ -430,7 +431,7 @@ export function inlineCommentCommand(
     );
   } else {
     const messageId = z.uuid().parse(input.messageId),
-      message = one<StoredMessage>(
+      message = await one<StoredMessage>(
         "SELECT * FROM inline_messages WHERE id=? AND thread_id=?",
         messageId,
         thread.id,
@@ -447,26 +448,26 @@ export function inlineCommentCommand(
       if (z.boolean().parse(input.active)) {
         if (
           Number(
-            one<{ n: number }>(
+            (await one<{ n: number }>(
               "SELECT count(DISTINCT emoji) n FROM inline_reactions WHERE message_id=?",
               messageId,
-            )?.n,
+            ))?.n,
           ) >= 50 &&
-          !one(
+          !(await one(
             "SELECT 1 FROM inline_reactions WHERE message_id=? AND emoji=?",
             messageId,
             emoji,
-          )
+          ))
         )
           throw new HttpError(409, "Maximal 50 unterschiedliche Reaktionen.");
-        run(
+        await run(
           "INSERT INTO inline_reactions VALUES(?,?,?) ON CONFLICT DO NOTHING",
           messageId,
           user.id,
           emoji,
         );
       } else
-        run(
+        await run(
           "DELETE FROM inline_reactions WHERE message_id=? AND user_id=? AND emoji=?",
           messageId,
           user.id,
@@ -485,9 +486,9 @@ export function inlineCommentCommand(
         );
       const edited =
         action === "thread.edit"
-          ? messageInput(input, page)
+          ? (await messageInput(input, page))
           : { body: "", content: null, serialized: null };
-      run(
+      await run(
         "UPDATE inline_messages SET body=?,rich_body=?,deleted=?,version=version+1,edited_at=? WHERE id=?",
         edited.body,
         edited.serialized,
@@ -498,7 +499,7 @@ export function inlineCommentCommand(
         const before = commentMentions(
           message.rich_body ? JSON.parse(message.rich_body) : null,
         );
-        notify(
+        await notify(
           user,
           page,
           thread.id,
@@ -510,8 +511,8 @@ export function inlineCommentCommand(
         );
       }
       if (action === "thread.deleteMessage")
-        run("DELETE FROM inline_reactions WHERE message_id=?", messageId);
-      run("UPDATE inline_threads SET version=version+1 WHERE id=?", thread.id);
+        await run("DELETE FROM inline_reactions WHERE message_id=?", messageId);
+      await run("UPDATE inline_threads SET version=version+1 WHERE id=?", thread.id);
     } else throw new HttpError(400, "Unbekannte Kommentaraktion.");
   }
   return { ok: true };

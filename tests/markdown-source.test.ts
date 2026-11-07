@@ -93,47 +93,47 @@ test("what Markdown cannot hold is named before applying", () => {
   assert.deepEqual(source.lossy.sort(), ["Ausrichtung", "Einzug", "Textrichtung"]);
 });
 
-function user(name: string): Identity {
+async function user(name: string): Promise<Identity> {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@test.invalid`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@test.invalid`);
   return { id: uid, name, email: `${name}@test.invalid`, groups: [], isAdmin: false, disabled: 0, created_at: "" };
 }
-const owner = user("owner"),
-  reader = user("reader");
-const wid = createWorkspace(owner.id, "Source");
-run("INSERT INTO members VALUES(?,?,?)", wid, reader.id, "viewer");
-const boot = bootstrap(owner, wid);
-const pageId = (command(owner, { action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, kind: "document", title: "Quelltext" }) as { id: string }).id;
-const seed = (html: string) => run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), pageId);
+const owner = await user("owner"),
+  reader = await user("reader");
+const wid = await createWorkspace(owner.id, "Source");
+await run("INSERT INTO members VALUES(?,?,?)", wid, reader.id, "viewer");
+const boot = await bootstrap(owner, wid);
+const pageId = ((await command(owner, { action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, kind: "document", title: "Quelltext" })) as { id: string }).id;
+const seed = async (html: string) => await run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), pageId);
 
-test("the commands: reading for readers, applying for editors, a version first, missing markers reported", () => {
+test("the commands: reading for readers, applying for editors, a version first, missing markers reported", async () => {
   const html = canonical(`<p>Hallo</p><div data-synced-block="${synced}"></div><p>Welt</p>`);
-  seed(html);
+  await seed(html);
   // Readers get the text, but cannot apply it.
-  const read = command(reader, { action: "document.markdown", pageId, html }) as ReturnType<typeof markdownSource>;
+  const read = (await command(reader, { action: "document.markdown", pageId, html })) as Awaited<ReturnType<typeof markdownSource>>;
   assert.match(read.markdown, /^Hallo\n\n<!-- flowplan:block 0 Synchronisierter Block -->\n\nWelt\n$/);
   const blocks = read.blocks.map((block) => block.html);
-  assert.throws(
-    () => command(reader, { action: "document.markdown.apply", pageId, markdown: "x", blocks }),
+  await assert.rejects(
+    async () => await command(reader, { action: "document.markdown.apply", pageId, markdown: "x", blocks }),
     /Keine Berechtigung/,
   );
   // Without the marker: the check names the block and keeps no version.
-  const versions = () => all("SELECT id FROM snapshots WHERE page_id=?", pageId).length;
-  const count = versions();
-  const check = command(owner, { action: "document.markdown.apply", pageId, markdown: "Hallo\n\nWelt", blocks, check: true }) as { missing: number[] };
+  const versions = async () => (await all("SELECT id FROM snapshots WHERE page_id=?", pageId)).length;
+  const count = await versions();
+  const check = (await command(owner, { action: "document.markdown.apply", pageId, markdown: "Hallo\n\nWelt", blocks, check: true })) as { missing: number[] };
   assert.deepEqual(check.missing, [0]);
-  assert.equal(versions(), count);
+  assert.equal(await versions(), count);
   // Applying keeps the current state as a version and returns the new content.
-  const done = command(owner, { action: "document.markdown.apply", pageId, markdown: "# Hallo\n\n<!-- flowplan:block 0 -->\n\nWelt", blocks }) as { html: string; missing: number[] };
+  const done = (await command(owner, { action: "document.markdown.apply", pageId, markdown: "# Hallo\n\n<!-- flowplan:block 0 -->\n\nWelt", blocks })) as { html: string; missing: number[] };
   assert.deepEqual(done.missing, []);
   assert.match(done.html, new RegExp(`^<h1>Hallo</h1>\\n?<div data-synced-block="${synced}"`));
-  assert.equal(versions(), count + 1);
-  assert.equal(one<{ html: string }>("SELECT html FROM snapshots WHERE page_id=? ORDER BY created_at DESC, seq DESC", pageId)?.html, html);
+  assert.equal(await versions(), count + 1);
+  assert.equal((await one<{ html: string }>("SELECT html FROM snapshots WHERE page_id=? ORDER BY created_at DESC, seq DESC", pageId))?.html, html);
   // A copied marker does not copy the block.
-  const twice = command(owner, { action: "document.markdown.apply", pageId, markdown: "<!-- flowplan:block 0 -->\n\n<!-- flowplan:block 0 -->", blocks, check: true }) as { html: string };
+  const twice = (await command(owner, { action: "document.markdown.apply", pageId, markdown: "<!-- flowplan:block 0 -->\n\n<!-- flowplan:block 0 -->", blocks, check: true })) as { html: string };
   assert.equal((twice.html.match(/data-synced-block/g) || []).length, 1);
   // Locked pages refuse.
-  command(owner, { action: "page.update", pageId, patch: { locked: true } });
-  assert.throws(() => command(owner, { action: "document.markdown.apply", pageId, markdown: "x", blocks: [] }), /gesperrt/);
-  command(owner, { action: "page.update", pageId, patch: { locked: false } });
+  await command(owner, { action: "page.update", pageId, patch: { locked: true } });
+  await assert.rejects(async () => await command(owner, { action: "document.markdown.apply", pageId, markdown: "x", blocks: [] }), /gesperrt/);
+  await command(owner, { action: "page.update", pageId, patch: { locked: false } });
 });

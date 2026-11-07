@@ -24,10 +24,10 @@ const BOOT = randomUUID();
 
 const current = new AsyncLocalStorage<{ id: string; reported: number }>();
 
-export function startJob(user: Pick<Identity, "id">, kind: JobKind, label: string) {
+export async function startJob(user: Pick<Identity, "id">, kind: JobKind, label: string) {
   const jobId = randomUUID(),
     now = Date.now();
-  run(
+  await run(
     "INSERT INTO background_jobs(id,user_id,kind,label,progress,status,boot,started_at,updated_at) VALUES(?,?,?,?,NULL,'running',?,?,?)",
     jobId,
     user.id,
@@ -37,13 +37,13 @@ export function startJob(user: Pick<Identity, "id">, kind: JobKind, label: strin
     now,
     now,
   );
-  run("DELETE FROM background_jobs WHERE updated_at<?", now - KEEP_MS);
+  await run("DELETE FROM background_jobs WHERE updated_at<?", now - KEEP_MS);
   return jobId;
 }
 
-export function finishJob(jobId: string, error?: unknown) {
+export async function finishJob(jobId: string, error?: unknown) {
   const now = Date.now();
-  run(
+  await run(
     "UPDATE background_jobs SET status=?,progress=CASE WHEN ?='done' THEN 1 ELSE progress END,error=?,updated_at=?,finished_at=? WHERE id=? AND status='running'",
     error === undefined ? "done" : "failed",
     error === undefined ? "done" : "failed",
@@ -56,14 +56,14 @@ export function finishJob(jobId: string, error?: unknown) {
 
 // The job's share of work done (0–1). At most every half second; outside a
 // job it does nothing.
-export function jobProgress(share: number) {
+export async function jobProgress(share: number) {
   const job = current.getStore();
   if (!job || !Number.isFinite(share)) return;
   const now = Date.now();
   if (now - job.reported < 500 && share < 1) return;
   job.reported = now;
   try {
-    run(
+    await run(
       "UPDATE background_jobs SET progress=?,updated_at=? WHERE id=? AND status='running'",
       Math.max(0, Math.min(1, share)),
       now,
@@ -77,37 +77,37 @@ export function jobProgress(share: number) {
 export async function trackJob<T>(user: Pick<Identity, "id">, kind: JobKind, label: string, work: () => T | Promise<T>): Promise<T> {
   let jobId: string | null = null;
   try {
-    jobId = startJob(user, kind, label);
+    jobId = await startJob(user, kind, label);
   } catch {}
-  if (!jobId) return work();
+  if (!jobId) return await work();
   const id = jobId;
   try {
     const value = await current.run({ id, reported: 0 }, work);
-    finishJob(id);
+    await finishJob(id);
     return value;
   } catch (error) {
-    finishJob(id, error);
+    await finishJob(id, error);
     throw error;
   }
 }
 
 // A download that is produced while it streams: the job ends with the stream.
-export function trackStream<S extends NodeJS.ReadableStream>(user: Pick<Identity, "id">, kind: JobKind, label: string, stream: S): S {
+export async function trackStream<S extends NodeJS.ReadableStream>(user: Pick<Identity, "id">, kind: JobKind, label: string, stream: S): Promise<S> {
   let jobId: string;
   try {
-    jobId = startJob(user, kind, label);
+    jobId = await startJob(user, kind, label);
   } catch {
     return stream;
   }
   let ended = false;
-  const end = (error?: unknown) => {
+  const end = async (error?: unknown) => {
     if (ended) return;
     ended = true;
-    finishJob(jobId, error);
+    await finishJob(jobId, error);
   };
-  stream.once("end", () => end());
-  stream.once("error", (error) => end(error));
-  stream.once("close", () => end(ended ? undefined : new Error("aborted")));
+  stream.once("end", async () => await end());
+  stream.once("error", async (error) => await end(error));
+  stream.once("close", async () => await end(ended ? undefined : new Error("aborted")));
   return stream;
 }
 
@@ -123,8 +123,8 @@ export type JobView = {
 };
 
 // The person's running jobs and those that ended in the last `recentMs`.
-export function personJobs(user: Pick<Identity, "id">, recentMs = 10 * 60_000, now = Date.now()): JobView[] {
-  return all<{
+export async function personJobs(user: Pick<Identity, "id">, recentMs = 10 * 60_000, now = Date.now()): Promise<JobView[]> {
+  return (await all<{
     id: string;
     kind: JobKind;
     label: string;
@@ -138,7 +138,7 @@ export function personJobs(user: Pick<Identity, "id">, recentMs = 10 * 60_000, n
     "SELECT * FROM background_jobs WHERE user_id=? AND (status='running' OR finished_at>=?) ORDER BY started_at DESC LIMIT 20",
     user.id,
     now - recentMs,
-  ).map((job) => {
+  )).map((job) => {
     const interrupted = job.status === "running" && job.boot !== BOOT;
     return {
       id: job.id,

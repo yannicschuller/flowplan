@@ -24,34 +24,34 @@ import type { Identity } from "../lib/types";
 
 async function person(name: string): Promise<Identity> {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name.toLowerCase()}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name.toLowerCase()}@example.test`);
   const token = randomBytes(16).toString("hex");
-  run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", createHash("sha256").update(token).digest("hex"), uid, "[]", Date.now() + 3600_000);
+  await run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", createHash("sha256").update(token).digest("hex"), uid, "[]", Date.now() + 3600_000);
   return (await identityFromToken(token))!;
 }
 const admin = { ...(await person("Admin")), isAdmin: true };
 const user = await person("User");
 // Own workspace first (sorted by name it comes second), the client's one
 // where the person is a guest.
-const own = createWorkspace(admin.id, "Zeta-own");
-run("INSERT INTO members VALUES(?,?,?)", own, user.id, "editor");
-const client = createWorkspace(admin.id, "Alpha-client");
-run("INSERT INTO members VALUES(?,?,?)", client, user.id, "editor");
-run("INSERT INTO workspace_guests VALUES(?,?)", client, user.id);
-const ownSpace = one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", own)!.id;
-const clientSpace = one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", client)!.id;
-const inbox = createPage(own, ownSpace, user.id, "AAA Inbox", "database");
-const guestDb = createPage(client, clientSpace, admin.id, "Kunde Übernahmeziele 2027", "database");
-run("INSERT INTO grants(resource_id,user_id,role) VALUES(?,?,?)", guestDb, user.id, "editor");
+const own = await createWorkspace(admin.id, "Zeta-own");
+await run("INSERT INTO members VALUES(?,?,?)", own, user.id, "editor");
+const client = await createWorkspace(admin.id, "Alpha-client");
+await run("INSERT INTO members VALUES(?,?,?)", client, user.id, "editor");
+await run("INSERT INTO workspace_guests VALUES(?,?)", client, user.id);
+const ownSpace = (await one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", own))!.id;
+const clientSpace = (await one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", client))!.id;
+const inbox = await createPage(own, ownSpace, user.id, "AAA Inbox", "database");
+const guestDb = await createPage(client, clientSpace, admin.id, "Kunde Übernahmeziele 2027", "database");
+await run("INSERT INTO grants(resource_id,user_id,role) VALUES(?,?,?)", guestDb, user.id, "editor");
 
 const mock = await startOllamaMock();
 after(() => mock.close());
 mock.answer = () => JSON.stringify({ targetId: inbox, title: "Notiz", fields: [] });
 
 test("a guest workspace's databases never reach the model when AI is off for guests", async () => {
-  command(admin, { action: "admin.ai", settings: { enabled: true, guests: false, device: true, provider: { kind: "ollama", baseUrl: mock.base, model: "chat", embeddingModel: "" } } });
-  assert.equal(resolveAi(user, "actions", { workspaceId: client }).ok, false);
-  assert.equal(resolveAi(user, "actions", { workspaceId: own }).ok, true);
+  await command(admin, { action: "admin.ai", settings: { enabled: true, guests: false, device: true, provider: { kind: "ollama", baseUrl: mock.base, model: "chat", embeddingModel: "" } } });
+  assert.equal((await resolveAi(user, "actions", { workspaceId: client })).ok, false);
+  assert.equal((await resolveAi(user, "actions", { workspaceId: own })).ok, true);
   const chats = mock.chats.length;
   const result = (await suggestCapture(user, { text: "notiz zum testen", today: "2026-11-07" })) as { suggestion: { targetId: string | null } };
   assert.equal(result.suggestion.targetId, inbox);
@@ -70,7 +70,7 @@ test("the on-device prompt and its check leave the guest workspace out as well",
 });
 
 test("with AI for guests allowed, the guest workspace's databases are offered", async () => {
-  command(admin, { action: "admin.ai", settings: { guests: true } });
+  await command(admin, { action: "admin.ai", settings: { guests: true } });
   const chats = mock.chats.length;
   await suggestCapture(user, { text: "notiz zum testen", today: "2026-11-07" });
   assert.ok(mock.chats[chats].prompt.includes("Kunde Übernahmeziele 2027"));

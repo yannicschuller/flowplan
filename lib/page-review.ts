@@ -22,31 +22,31 @@ const today = (now = Date.now()) => new Date(now).toISOString().slice(0, 10);
 const addDays = (date: string, days: number) => Temporal.PlainDate.from(date).add({ days }).toString();
 
 // Who may own a page: a member (not a guest) of its workspace who can read it.
-function checkOwner(page: Page, ownerId: string) {
-  const member = one<Identity>(
+async function checkOwner(page: Page, ownerId: string) {
+  const member = await one<Identity>(
     `SELECT u.* FROM users u JOIN members m ON m.user_id=u.id AND m.workspace_id=?
      WHERE u.id=? AND u.disabled=0 AND NOT EXISTS(SELECT 1 FROM workspace_guests g WHERE g.workspace_id=m.workspace_id AND g.user_id=u.id)`,
     page.workspace_id,
     ownerId,
   );
   if (!member) throw new HttpError(400, "Besitzer muss Mitglied des Arbeitsbereichs sein.");
-  if (!pageRole({ ...member, groups: [], isAdmin: false }, page))
+  if (!(await pageRole({ ...member, groups: [], isAdmin: false }, page)))
     throw new HttpError(400, "Der Besitzer hat keinen Zugriff auf diese Seite.");
 }
 
 // Command "page.owner": { pageId, ownerId | null }.
-export function setPageOwner(user: Identity, input: unknown) {
+export async function setPageOwner(user: Identity, input: unknown) {
   const b = z.object({ pageId: z.string().uuid(), ownerId: z.string().min(1).max(60).nullable() }).parse(input);
-  const page = requirePage(user, b.pageId, true);
-  if (b.ownerId) checkOwner(page, b.ownerId);
-  run("UPDATE pages SET owner_id=?,review_notified=NULL WHERE id=?", b.ownerId, page.id);
+  const page = await requirePage(user, b.pageId, true);
+  if (b.ownerId) await checkOwner(page, b.ownerId);
+  await run("UPDATE pages SET owner_id=?,review_notified=NULL WHERE id=?", b.ownerId, page.id);
   return { ok: true };
 }
 
 // Command "page.review": { pageId, reviewAt?, everyDays?, done? }. An
 // interval without a date starts from today; `done` marks the page as
 // reviewed.
-export function setPageReview(user: Identity, input: unknown) {
+export async function setPageReview(user: Identity, input: unknown) {
   const b = z
     .object({
       pageId: z.string().uuid(),
@@ -55,14 +55,14 @@ export function setPageReview(user: Identity, input: unknown) {
       done: z.literal(true).optional(),
     })
     .parse(input);
-  const page = requirePage(user, b.pageId, true) as Page & { review_at: string | null; review_every_days: number | null };
+  const page = (await requirePage(user, b.pageId, true)) as Page & { review_at: string | null; review_every_days: number | null };
   const every = b.everyDays !== undefined ? b.everyDays : page.review_every_days;
   let at = b.reviewAt !== undefined ? b.reviewAt : page.review_at;
   if (b.done) {
     if (!page.review_at) throw new HttpError(400, "Für diese Seite ist keine Prüfung geplant.");
     at = every ? addDays(today(), every) : null;
   } else if (!at && every) at = addDays(today(), every);
-  run(
+  await run(
     "UPDATE pages SET review_at=?,review_every_days=?,review_notified=CASE WHEN review_at IS NOT DISTINCT FROM ? THEN review_notified ELSE NULL END WHERE id=?",
     at,
     every,
@@ -86,21 +86,21 @@ export function reviewsDue(user: Identity, pages: (Page & { owner_id?: string | 
 
 // Daily reminders (run by a background tick): one inbox notification per
 // page and due date for its owner, while the owner can still read the page.
-export function processPageReviews(now = Date.now()) {
+export async function processPageReviews(now = Date.now()) {
   let sent = 0;
-  const due = all<Due>(
+  const due = await all<Due>(
     `SELECT id,title,review_at,owner_id,review_notified FROM pages
      WHERE review_at IS NOT NULL AND review_at<=? AND owner_id IS NOT NULL AND deleted_at IS NULL
        AND review_notified IS DISTINCT FROM review_at`,
     today(now),
   );
   for (const p of due) {
-    const owner = one<Identity>("SELECT * FROM users WHERE id=? AND disabled=0", p.owner_id);
-    const page = one<Page>("SELECT * FROM pages WHERE id=?", p.id);
-    if (!owner || !page || !pageRole({ ...owner, groups: [], isAdmin: false }, page)) continue;
-    transaction(() => {
-      if (!run("UPDATE pages SET review_notified=? WHERE id=? AND review_notified IS DISTINCT FROM ?", p.review_at, p.id, p.review_at).changes) return;
-      run(
+    const owner = await one<Identity>("SELECT * FROM users WHERE id=? AND disabled=0", p.owner_id);
+    const page = await one<Page>("SELECT * FROM pages WHERE id=?", p.id);
+    if (!owner || !page || !(await pageRole({ ...owner, groups: [], isAdmin: false }, page))) continue;
+    await transaction(async () => {
+      if (!(await run("UPDATE pages SET review_notified=? WHERE id=? AND review_notified IS DISTINCT FROM ?", p.review_at, p.id, p.review_at)).changes) return;
+      await run(
         "INSERT INTO notifications(id,user_id,body,page_id,kind) VALUES(?,?,?,?,'reminder')",
         id(),
         p.owner_id,
@@ -116,9 +116,9 @@ export function processPageReviews(now = Date.now()) {
 const runtime = globalThis as typeof globalThis & { flowplanReviewTimer?: ReturnType<typeof setInterval> };
 export function startReviewWorker(onSent: () => void) {
   if (runtime.flowplanReviewTimer) return;
-  const tick = () => {
+  const tick = async () => {
     try {
-      if (processPageReviews()) onSent();
+      if (await processPageReviews()) onSent();
     } catch (error) {
       console.error("Page reviews failed", error);
     }

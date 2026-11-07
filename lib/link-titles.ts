@@ -65,18 +65,18 @@ export function retitleLinks(doc: PMNode, target: Target, before: string, after:
 
 // Called when a page or record is renamed; returns the updates to send to
 // open editors once the transaction is stored.
-export function followRename(user: Identity, workspaceId: string, target: Target, before: string, after: string) {
+export async function followRename(user: Identity, workspaceId: string, target: Target, before: string, after: string) {
   const publish: (() => void)[] = [];
   if (!before.trim() || !after.trim() || before === after) return publish;
   const id = target.rowId || target.pageId;
   const sources = [
-    ...all<{ page_id: string; row_id: null }>(
+    ...await all<{ page_id: string; row_id: null }>(
       `SELECT d.page_id,NULL row_id FROM documents d JOIN pages p ON p.id=d.page_id
        WHERE p.workspace_id=? AND p.deleted_at IS NULL AND ${sql.instr("d.html", "?")}>0 LIMIT 200`,
       workspaceId,
       id,
     ),
-    ...all<{ page_id: string; row_id: string }>(
+    ...await all<{ page_id: string; row_id: string }>(
       `SELECT r.page_id,r.id row_id FROM row_documents d JOIN rows r ON r.id=d.row_id JOIN pages p ON p.id=r.page_id
        WHERE p.workspace_id=? AND p.deleted_at IS NULL AND ${sql.instr("d.html", "?")}>0 LIMIT 200`,
       workspaceId,
@@ -87,19 +87,19 @@ export function followRename(user: Identity, workspaceId: string, target: Target
   for (const source of sources) {
     try {
       if (!pages.has(source.page_id)) {
-        const page = requirePage(user, source.page_id, true);
-        pages.set(source.page_id, page.locked || journalLocked(user, page) ? null : page);
+        const page = await requirePage(user, source.page_id, true);
+        pages.set(source.page_id, page.locked || await journalLocked(user, page) ? null : page);
       }
       const page = pages.get(source.page_id);
       if (!page) continue;
       if (source.row_id) {
-        const row = all<{ id: string; access: string; created_by: string }>(
+        const row = (await all<{ id: string; access: string; created_by: string }>(
           "SELECT id,access,created_by FROM rows WHERE id=?",
           source.row_id,
-        )[0];
-        assertRowAccess(user, page, row, true);
+        ))[0];
+        await assertRowAccess(user, page, row, true);
       } else if (page.kind !== "document") continue;
-      const result = rewriteDocument(page.id, source.row_id, user.id, (doc) => retitleLinks(doc, target, before, after));
+      const result = await rewriteDocument(page.id, source.row_id, user.id, (doc) => retitleLinks(doc, target, before, after));
       if (result) publish.push(result.publish);
     } catch {
       // No permission or no document: that text keeps its wording.

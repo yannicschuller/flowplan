@@ -31,9 +31,9 @@ export const GET = withRequestLocale(async (req: Request) => {
     await admin();
     const url = new URL(req.url);
     const range = rangeOf(url.searchParams.get("range"));
-    if (url.searchParams.get("view") === "live") return Response.json(monitoringLive(Date.now(), range), noStore);
+    if (url.searchParams.get("view") === "live") return Response.json(await monitoringLive(Date.now(), range), noStore);
     const [update] = await Promise.all([updateStatus().catch(() => null), warmPushChecks(1000)]);
-    return Response.json(monitoringOverview(Date.now(), range, update), noStore);
+    return Response.json(await monitoringOverview(Date.now(), range, update), noStore);
   } catch (e) {
     return failure(e);
   }
@@ -47,18 +47,18 @@ const postSchema = z.discriminatedUnion("action", [
 
 export const POST = withRequestLocale(async (req: Request) => {
   try {
-    checkOrigin(req);
+    await checkOrigin(req);
     const user = await admin();
     const body = postSchema.parse(await req.json().catch(() => ({})));
     if (body.action === "metrics.save") {
-      if (metricsSetting().locked) throw new HttpError(409, "Die Statistik ist mit FLOWPLAN_METRICS=off ausgeschaltet.");
-      saveMetricsSetting(body.enabled);
-      audit(user.id, "admin.metrics", "instance", body.enabled ? "on" : "off");
+      if ((await metricsSetting()).locked) throw new HttpError(409, "Die Statistik ist mit FLOWPLAN_METRICS=off ausgeschaltet.");
+      await saveMetricsSetting(body.enabled);
+      await audit(user.id, "admin.metrics", "instance", body.enabled ? "on" : "off");
     } else if (body.action === "metrics.clear") {
-      clearMetrics();
-      audit(user.id, "admin.metrics.clear", "instance", "");
+      await clearMetrics();
+      await audit(user.id, "admin.metrics.clear", "instance", "");
     } else resetAiPing();
-    return Response.json(monitoringLive(), noStore);
+    return Response.json(await monitoringLive(), noStore);
   } catch (e) {
     return failure(e);
   }

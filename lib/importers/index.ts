@@ -143,14 +143,14 @@ export async function importFromSource(
   options: ImportOptions = {},
 ): Promise<ImportPreview | ImportResult> {
   // Rights first: reading a large archive costs time.
-  requireSpace(user, workspaceId, spaceId);
+  await requireSpace(user, workspaceId, spaceId);
   const tree = await parseImport(file.name, "bytes" in file ? file.bytes : { path: file.path }, options.source);
   try {
     // Reading is about half of the work (Live Activity, lib/background-jobs.ts).
-    jobProgress(0.5);
+    await jobProgress(0.5);
     return options.dryRun
-      ? previewImport(user, workspaceId, spaceId, tree, options.mode)
-      : writeImport(user, workspaceId, spaceId, tree, options.mode);
+      ? (await previewImport(user, workspaceId, spaceId, tree, options.mode))
+      : (await writeImport(user, workspaceId, spaceId, tree, options.mode));
   } finally {
     tree.close?.();
   }

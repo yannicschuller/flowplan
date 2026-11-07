@@ -46,6 +46,7 @@ import { requireAi } from "./run";
 import { cellPlain, nameLookup, recordTitle, sourceText } from "./sources";
 import { DATABASE_CONTEXT_LIMITS, databaseContext, databaseNotes } from "./database-context";
 import type { DatabaseNote } from "./database-note";
+import { filterAsync, mapAsync } from "../each-async";
 
 export const ACTION_LIMITS = {
   actions: 12,
@@ -126,14 +127,14 @@ export type ActionResult = {
 // ---- Context for the model ----
 
 type Member = { id: string; name: string; email: string };
-const members = (workspaceId: string) =>
-  all<Member>("SELECT u.id,u.name,u.email FROM members m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=? AND u.disabled=0 ORDER BY u.name", workspaceId);
+const members = async (workspaceId: string) =>
+  await all<Member>("SELECT u.id,u.name,u.email FROM members m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=? AND u.disabled=0 ORDER BY u.name", workspaceId);
 
 // Property types the AI may fill: plain values a person types.
 const FILLABLE: Field["type"][] = ["text", "number", "date", "select", "multiselect", "checkbox", "url", "email", "phone", "person", "checklist"];
-export function writableFields(user: Identity, page: Page) {
-  const fields = readableDatabase(user, page, database(page.id)).fields;
-  const readOnly = readOnlyFieldIds(user, page, fields);
+export async function writableFields(user: Identity, page: Page) {
+  const fields = (await readableDatabase(user, page, await database(page.id))).fields;
+  const readOnly = await readOnlyFieldIds(user, page, fields);
   return fields.filter((f) => FILLABLE.includes(f.type) && !readOnly.includes(f.id) && !f.ai);
 }
 const editable = (role: string | null | undefined) => role === "editor" || role === "owner";
@@ -148,44 +149,41 @@ export type ActionContextInput = {
 
 // The catalogue the model chooses from: only places the person may write
 // to and the AI may read.
-export function actionCatalog(user: Identity, input: ActionContextInput) {
-  const spaces = all<Space>("SELECT * FROM spaces WHERE workspace_id=? AND deleted_at IS NULL ORDER BY name", input.workspaceId).filter((s) =>
-    editable(spaceRole(user, s)),
+export async function actionCatalog(user: Identity, input: ActionContextInput) {
+  const spaces = await filterAsync(await all<Space>("SELECT * FROM spaces WHERE workspace_id=? AND deleted_at IS NULL ORDER BY name", input.workspaceId), async (s) =>
+    editable(await spaceRole(user, s)),
   );
-  const pages = all<Page>("SELECT * FROM pages WHERE workspace_id=? AND kind='database' AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT 200", input.workspaceId);
-  const readable = new Set(aiFilter(user, pages.map((p) => ({ pageId: p.id }))).map((p) => p.pageId));
-  const databases = pages
-    .filter((p) => readable.has(p.id) && editable(pageRole(user, p)) && !p.locked)
-    .slice(0, ACTION_LIMITS.databases)
-    .map((p) => ({
+  const pages = await all<Page>("SELECT * FROM pages WHERE workspace_id=? AND kind='database' AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT 200", input.workspaceId);
+  const readable = new Set((await aiFilter(user, pages.map((p) => ({ pageId: p.id })))).map((p) => p.pageId));
+  const databases = await mapAsync((await filterAsync(pages, async (p) => readable.has(p.id) && editable(await pageRole(user, p)) && !p.locked))
+    .slice(0, ACTION_LIMITS.databases), async (p) => ({
       id: p.id,
       title: p.title,
-      fields: writableFields(user, p)
+      fields: (await writableFields(user, p))
         .slice(0, ACTION_LIMITS.fields)
         .map((f) => ({ id: f.id, name: f.name, type: f.type, ...(f.options?.length ? { options: f.options.slice(0, 30) } : {}) })),
     }));
   let current: { id: string; title: string } | null = null;
   if (input.pageId) {
-    const page = one<Page>("SELECT * FROM pages WHERE id=? AND workspace_id=?", input.pageId, input.workspaceId);
-    if (page && page.kind === "document" && editable(pageRole(user, page)) && !page.locked && aiMayRead(user, page.id)) current = { id: page.id, title: page.title };
+    const page = await one<Page>("SELECT * FROM pages WHERE id=? AND workspace_id=?", input.pageId, input.workspaceId);
+    if (page && page.kind === "document" && editable(await pageRole(user, page)) && !page.locked && await aiMayRead(user, page.id)) current = { id: page.id, title: page.title };
   }
   const names = nameLookup();
-  const records = aiFilter(
+  const records = (await mapAsync((await aiFilter(
     user,
     (input.sources || []).filter((s) => s.rowId).map((s) => ({ pageId: s.pageId, rowId: s.rowId })),
-  )
-    .slice(0, ACTION_LIMITS.records)
-    .map((s) => {
-      const source = sourceText(s.pageId, s.rowId, names);
+  ))
+    .slice(0, ACTION_LIMITS.records), async (s) => {
+      const source = await sourceText(s.pageId, s.rowId, names);
       return source ? { databaseId: s.pageId, recordId: s.rowId!, title: source.title, database: source.pageTitle || "" } : null;
-    })
+    }))
     .filter((r): r is NonNullable<typeof r> => !!r);
   return {
     spaces: spaces.map((s) => ({ id: s.id, name: s.name })),
     databases,
     currentPage: current,
     records,
-    members: members(input.workspaceId)
+    members: (await members(input.workspaceId))
       .slice(0, ACTION_LIMITS.members)
       .map((m) => ({ id: m.id, name: m.name })),
   };
@@ -234,21 +232,21 @@ export const TRANSCRIPT_INSTRUCTION =
 // The model's proposal, checked and normalized into previews.
 export async function proposeActions(user: Identity, raw: ProposeInput, signal?: AbortSignal): Promise<{ actions: ActionPreview[]; databases: DatabaseNote[] }> {
   const input = proposeInput.parse(raw);
-  requireMember(user, input.workspaceId);
-  requireAi(user, "actions", { workspaceId: input.workspaceId });
+  await requireMember(user, input.workspaceId);
+  await requireAi(user, "actions", { workspaceId: input.workspaceId });
   // The text in the prompt comes from this page: the AI must be allowed to read it.
-  if (input.pageId && input.context && !aiMayRead(user, input.pageId)) throw new HttpError(403, AI_BLOCKED_MESSAGE);
-  const catalog = actionCatalog(user, input);
+  if (input.pageId && input.context && !(await aiMayRead(user, input.pageId))) throw new HttpError(403, AI_BLOCKED_MESSAGE);
+  const catalog = await actionCatalog(user, input);
   const today = input.today || new Date().toISOString().slice(0, 10);
   const instruction = input.mode === "transcript" ? `${TRANSCRIPT_INSTRUCTION}\n${input.instruction}` : input.instruction;
   // Records of the databases the request refers to (#80): named or linked in
   // the instruction or the context, the open page, Ask sources that are a
   // whole database – within what is left of the context budget.
-  const data = databaseContext(user, {
+  const data = await databaseContext(user, {
     workspaceId: input.workspaceId,
     instruction: input.instruction,
     texts: [input.context],
-    document: input.pageId ? openDocument(user, input.pageId) : null,
+    document: input.pageId ? (await openDocument(user, input.pageId)) : null,
     pageIds: [input.pageId, ...input.sources.filter((s) => !s.rowId).map((s) => s.pageId)],
     maxChars: Math.min(DATABASE_CONTEXT_LIMITS.chars, ACTION_LIMITS.context - input.context.length),
   });
@@ -269,16 +267,16 @@ export async function proposeActions(user: Identity, raw: ProposeInput, signal?:
     { workspaceId: input.workspaceId, signal },
   );
   return {
-    actions: answer.actions.slice(0, ACTION_LIMITS.actions).map((action, index) => previewAction(user, input.workspaceId, action, index)),
+    actions: await mapAsync(answer.actions.slice(0, ACTION_LIMITS.actions), async (action, index) => await previewAction(user, input.workspaceId, action, index)),
     databases: databaseNotes(data),
   };
 }
 
 // The open document's stored HTML (its links to databases), when the person
 // and the AI may read it.
-function openDocument(user: Identity, pageId: string) {
-  if (!aiMayRead(user, pageId)) return null;
-  return one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", pageId)?.html || null;
+async function openDocument(user: Identity, pageId: string) {
+  if (!(await aiMayRead(user, pageId))) return null;
+  return (await one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", pageId))?.html || null;
 }
 
 // ---- Checking and normalizing ----
@@ -298,10 +296,10 @@ function memberBy(list: Member[], value: unknown): Member | undefined {
 // The model's values as property values (by property id), then the same
 // validation as every edit (validateCellPatch: types, options, field
 // permissions).
-export function cellPatch(user: Identity, page: Page, input: Record<string, unknown>) {
-  const fields = readableDatabase(user, page, database(page.id)).fields;
-  const fillable = new Set(writableFields(user, page).map((f) => f.id));
-  const people = members(page.workspace_id);
+export async function cellPatch(user: Identity, page: Page, input: Record<string, unknown>) {
+  const fields = (await readableDatabase(user, page, await database(page.id))).fields;
+  const fillable = new Set((await writableFields(user, page)).map((f) => f.id));
+  const people = await members(page.workspace_id);
   const patch: Record<string, unknown> = {};
   for (const [key, raw] of Object.entries(input)) {
     const f = fields.find((f) => f.id === key) || fields.find((f) => f.name.toLocaleLowerCase() === key.trim().toLocaleLowerCase());
@@ -341,24 +339,24 @@ export function cellPatch(user: Identity, page: Page, input: Record<string, unkn
     }
     patch[f.id] = value;
   }
-  return { cells: validateCellPatch(user, page, fields, patch), fields };
+  return { cells: await validateCellPatch(user, page, fields, patch), fields };
 }
 
-function documentTarget(user: Identity, workspaceId: string, pageId: string) {
-  const page = requirePage(user, pageId, true);
+async function documentTarget(user: Identity, workspaceId: string, pageId: string) {
+  const page = await requirePage(user, pageId, true);
   if (page.workspace_id !== workspaceId) throw new HttpError(404, "Seite nicht gefunden.");
   if (page.kind !== "document") throw new HttpError(400, "Kein Dokument.");
   if (page.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
-  requireUnlocked(user, page);
-  if (!aiMayRead(user, page.id)) throw new HttpError(403, AI_BLOCKED_MESSAGE);
+  await requireUnlocked(user, page);
+  if (!(await aiMayRead(user, page.id))) throw new HttpError(403, AI_BLOCKED_MESSAGE);
   return page;
 }
-function databaseTarget(user: Identity, workspaceId: string, databaseId: string) {
-  const page = requirePage(user, databaseId, true);
+async function databaseTarget(user: Identity, workspaceId: string, databaseId: string) {
+  const page = await requirePage(user, databaseId, true);
   if (page.workspace_id !== workspaceId) throw new HttpError(404, "Seite nicht gefunden.");
   if (page.kind !== "database") throw new HttpError(400, "Keine Datenbank.");
-  requireUnlocked(user, page);
-  if (!aiMayRead(user, page.id)) throw new HttpError(403, AI_BLOCKED_MESSAGE);
+  await requireUnlocked(user, page);
+  if (!(await aiMayRead(user, page.id))) throw new HttpError(403, AI_BLOCKED_MESSAGE);
   return page;
 }
 
@@ -374,7 +372,7 @@ function storedCells(cells: unknown): Record<string, unknown> {
 
 type Checked = { action: AiAction; view: ActionPreview["view"] };
 // Checks one action as the person; throws the reason it cannot run.
-function checkAction(user: Identity, workspaceId: string, action: AiAction): Checked {
+async function checkAction(user: Identity, workspaceId: string, action: AiAction): Promise<Checked> {
   const names = nameLookup();
   const display = (fields: Field[], cells: Record<string, unknown>) =>
     Object.entries(cells).map(([fid, value]) => {
@@ -383,11 +381,11 @@ function checkAction(user: Identity, workspaceId: string, action: AiAction): Che
     });
   switch (action.tool) {
     case "create_page": {
-      const space = one<Space>("SELECT * FROM spaces WHERE id=? AND workspace_id=? AND deleted_at IS NULL", action.spaceId, workspaceId);
-      if (!space || !editable(spaceRole(user, space))) throw new HttpError(403, "Kein Zugriff auf Bereich.");
+      const space = await one<Space>("SELECT * FROM spaces WHERE id=? AND workspace_id=? AND deleted_at IS NULL", action.spaceId, workspaceId);
+      if (!space || !editable(await spaceRole(user, space))) throw new HttpError(403, "Kein Zugriff auf Bereich.");
       let parentTitle = "";
       if (action.parentId) {
-        const parent = requirePage(user, action.parentId, true);
+        const parent = await requirePage(user, action.parentId, true);
         if (parent.space_id !== space.id) throw new HttpError(400, "Übergeordnete Seite liegt in anderem Bereich.");
         parentTitle = parent.title;
       }
@@ -397,8 +395,8 @@ function checkAction(user: Identity, workspaceId: string, action: AiAction): Che
       };
     }
     case "create_tasks": {
-      const page = documentTarget(user, workspaceId, action.pageId);
-      const people = members(workspaceId);
+      const page = await documentTarget(user, workspaceId, action.pageId);
+      const people = await members(workspaceId);
       const tasks = action.tasks.map((task) => {
         const person = memberBy(people, task.assignee);
         return { text: task.text, assignee: person?.id || null, due: validDay(task.due) || null };
@@ -416,19 +414,19 @@ function checkAction(user: Identity, workspaceId: string, action: AiAction): Che
       };
     }
     case "append_text": {
-      const page = documentTarget(user, workspaceId, action.pageId);
+      const page = await documentTarget(user, workspaceId, action.pageId);
       return { action, view: { target: page.title, markdown: action.markdown } };
     }
     case "create_record": {
-      const page = databaseTarget(user, workspaceId, action.databaseId);
-      const { cells, fields } = cellPatch(user, page, action.cells);
+      const page = await databaseTarget(user, workspaceId, action.databaseId);
+      const { cells, fields } = await cellPatch(user, page, action.cells);
       return { action: { ...action, cells }, view: { target: page.title, title: recordTitle(fields, cells), cells: display(fields, cells) } };
     }
     case "update_record": {
-      const page = databaseTarget(user, workspaceId, action.databaseId);
-      const { row } = requireRow(user, page.id, action.recordId, true);
-      if (!aiMayRead(user, page.id, row.id)) throw new HttpError(403, AI_BLOCKED_MESSAGE);
-      const { cells, fields } = cellPatch(user, page, action.cells);
+      const page = await databaseTarget(user, workspaceId, action.databaseId);
+      const { row } = await requireRow(user, page.id, action.recordId, true);
+      if (!(await aiMayRead(user, page.id, row.id))) throw new HttpError(403, AI_BLOCKED_MESSAGE);
+      const { cells, fields } = await cellPatch(user, page, action.cells);
       return {
         action: { ...action, cells },
         view: { target: `${page.title} / ${recordTitle(fields, storedCells(row.cells))}`, cells: display(fields, cells) },
@@ -439,12 +437,12 @@ function checkAction(user: Identity, workspaceId: string, action: AiAction): Che
 const reason = (error: unknown) =>
   error instanceof HttpError ? error.message : error instanceof z.ZodError ? "Ungültige Eingabe." : "Die Aktion ist nicht möglich.";
 
-export function previewAction(user: Identity, workspaceId: string, raw: unknown, index: number): ActionPreview {
+export async function previewAction(user: Identity, workspaceId: string, raw: unknown, index: number): Promise<ActionPreview> {
   const tool = raw && typeof raw === "object" && typeof (raw as { tool?: unknown }).tool === "string" ? String((raw as { tool: string }).tool).slice(0, 40) : "";
   const parsed = actionSchema.safeParse(raw);
   if (!parsed.success) return { index, tool, action: null, ok: false, problem: "Die KI hat eine ungültige Aktion vorgeschlagen.", view: { target: "" } };
   try {
-    const checked = checkAction(user, workspaceId, parsed.data);
+    const checked = await checkAction(user, workspaceId, parsed.data);
     return { index, tool, action: checked.action, ok: true, view: checked.view };
   } catch (error) {
     if (!(error instanceof HttpError) && !(error instanceof z.ZodError)) console.error("KI-Aktion:", (error as Error)?.message);
@@ -466,8 +464,8 @@ export function tasksHtml(tasks: { text: string; assignee?: string | null; due?:
 // HTML appended to a stored document as one change, sent like an edit from
 // the editor ("document.sync"): versions, mentions, tasks, the activity and
 // webhooks behave the same.
-export function appendHtml(user: Identity, pageId: string, html: string) {
-  const stored = one<{ state: Uint8Array | null; html: string; generation: string }>("SELECT state,html,generation FROM documents WHERE page_id=?", pageId);
+export async function appendHtml(user: Identity, pageId: string, html: string) {
+  const stored = await one<{ state: Uint8Array | null; html: string; generation: string }>("SELECT state,html,generation FROM documents WHERE page_id=?", pageId);
   if (!stored) throw new HttpError(404, "Dokument nicht gefunden.");
   const schema = documentSchema();
   const added = PMNode.fromJSON(schema, generateJSON(cleanHtml(html) || "<p></p>", documentExtensions));
@@ -480,7 +478,7 @@ export function appendHtml(user: Identity, pageId: string, html: string) {
     const next = doc.type.create(doc.attrs, empty ? added.content : doc.content.append(added.content));
     ydoc.transact(() => updateYFragment(ydoc, ydoc.getXmlFragment("default"), next, { mapping: new Map(), isOMark: new Map() }));
     const update = stored.state ? Y.encodeStateAsUpdate(ydoc, before) : Y.encodeStateAsUpdate(ydoc);
-    command(user, { action: "document.sync", pageId, generation: stored.generation, update: Buffer.from(update).toString("base64") });
+    await command(user, { action: "document.sync", pageId, generation: stored.generation, update: Buffer.from(update).toString("base64") });
   } finally {
     ydoc.destroy();
   }
@@ -493,50 +491,50 @@ export const runInput = z.object({
 
 // Runs the actions the person confirmed – each checked again and executed
 // on its own, so one failure does not stop the others.
-export function runActions(user: Identity, raw: unknown): { results: ActionResult[] } {
+export async function runActions(user: Identity, raw: unknown): Promise<{ results: ActionResult[] }> {
   const input = runInput.parse(raw);
-  requireMember(user, input.workspaceId);
-  requireAi(user, "actions", { workspaceId: input.workspaceId });
+  await requireMember(user, input.workspaceId);
+  await requireAi(user, "actions", { workspaceId: input.workspaceId });
   const names = nameLookup();
-  const results = input.actions.map((raw, index): ActionResult => {
+  const results = await mapAsync(input.actions, async (raw, index): Promise<ActionResult> => {
     const parsed = actionSchema.safeParse(raw);
     const tool = parsed.success ? parsed.data.tool : "";
     if (!parsed.success) return { index, tool, ok: false, error: "Ungültige Eingabe." };
     try {
-      const { action } = checkAction(user, input.workspaceId, parsed.data);
+      const { action } = await checkAction(user, input.workspaceId, parsed.data);
       switch (action.tool) {
         case "create_page": {
-          const { id } = command(user, {
+          const { id } = (await command(user, {
             action: "page.create",
             workspaceId: input.workspaceId,
             spaceId: action.spaceId,
             ...(action.parentId ? { parentId: action.parentId } : {}),
             title: action.title,
             kind: "document",
-          }) as { id: string };
-          if (action.markdown.trim()) appendHtml(user, id, markdownToHtml(action.markdown, aiAnswerHref));
-          audit(user.id, "ai.action", id, "create_page");
+          })) as { id: string };
+          if (action.markdown.trim()) await appendHtml(user, id, markdownToHtml(action.markdown, aiAnswerHref));
+          await audit(user.id, "ai.action", id, "create_page");
           return { index, tool, ok: true, pageId: id, title: action.title, undo: { action: "page.delete", pageId: id } };
         }
         case "create_tasks": {
-          appendHtml(user, action.pageId, tasksHtml(action.tasks, names));
-          audit(user.id, "ai.action", action.pageId, `create_tasks:${action.tasks.length}`);
+          await appendHtml(user, action.pageId, tasksHtml(action.tasks, names));
+          await audit(user.id, "ai.action", action.pageId, `create_tasks:${action.tasks.length}`);
           return { index, tool, ok: true, pageId: action.pageId };
         }
         case "append_text": {
-          appendHtml(user, action.pageId, markdownToHtml(action.markdown, aiAnswerHref));
-          audit(user.id, "ai.action", action.pageId, "append_text");
+          await appendHtml(user, action.pageId, markdownToHtml(action.markdown, aiAnswerHref));
+          await audit(user.id, "ai.action", action.pageId, "append_text");
           return { index, tool, ok: true, pageId: action.pageId };
         }
         case "create_record": {
-          const { id } = command(user, { action: "row.create", pageId: action.databaseId, cells: action.cells }) as { id: string };
-          audit(user.id, "ai.action", id, "create_record");
+          const { id } = (await command(user, { action: "row.create", pageId: action.databaseId, cells: action.cells })) as { id: string };
+          await audit(user.id, "ai.action", id, "create_record");
           return { index, tool, ok: true, pageId: action.databaseId, rowId: id, undo: { action: "row.delete", pageId: action.databaseId, rowId: id } };
         }
         case "update_record": {
-          const { row } = requireRow(user, action.databaseId, action.recordId, true);
-          command(user, { action: "row.update", pageId: action.databaseId, rowId: row.id, version: row.version, cells: action.cells });
-          audit(user.id, "ai.action", row.id, "update_record");
+          const { row } = await requireRow(user, action.databaseId, action.recordId, true);
+          await command(user, { action: "row.update", pageId: action.databaseId, rowId: row.id, version: row.version, cells: action.cells });
+          await audit(user.id, "ai.action", row.id, "update_record");
           return { index, tool, ok: true, pageId: action.databaseId, rowId: row.id };
         }
       }

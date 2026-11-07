@@ -15,9 +15,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
     const pageId = url.searchParams.get("page") || "";
     const block = url.searchParams.get("block") || "";
     if (!/^[0-9a-f-]{36}$/i.test(pageId) || !/^[\w-]{1,40}$/.test(block)) throw new HttpError(400, "Ungültige Eingabe.");
-    const picture = withShareRequest(req, () => {
-      const { page } = publicPage(token, pageId);
-      return inkPicture(page, { id: block, height: url.searchParams.get("height"), paper: url.searchParams.get("paper") });
+    const picture = await withShareRequest(req, async () => {
+      const { page } = await publicPage(token, pageId);
+      return await inkPicture(page, { id: block, height: url.searchParams.get("height"), paper: url.searchParams.get("paper") });
     });
     return NextResponse.json({ svg: picture?.svg ?? null, text: picture?.text ?? "" }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (e) {

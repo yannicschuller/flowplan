@@ -19,6 +19,7 @@ import { pageRole, requirePage } from "./permissions";
 import { translate } from "./i18n";
 import { userLocale } from "./user-locale";
 import type { Identity, Page, View } from "./types";
+import { filterAsync, flatMapAsync } from "./each-async";
 
 const LINK_MS = 10 * 60_000;
 const MAX_CALENDARS = 20;
@@ -26,8 +27,8 @@ const hash = (value: string) => createHash("sha256").update(value).digest("hex")
 const appUrl = () => (process.env.APP_URL || "http://localhost:3000").replace(/\/$/, "");
 
 
-const calendarViews = (pageId: string) =>
-  (JSON.parse(one<{ views: string }>("SELECT views FROM databases WHERE page_id=?", pageId)?.views || "[]") as View[]).filter((v) => v.type === "calendar");
+const calendarViews = async (pageId: string) =>
+  (JSON.parse((await one<{ views: string }>("SELECT views FROM databases WHERE page_id=?", pageId))?.views || "[]") as View[]).filter((v) => v.type === "calendar");
 
 function refuse(user: Identity) {
   if (user.apiScope) throw new HttpError(403, "Mit einem API-Token nicht erlaubt.");
@@ -35,21 +36,19 @@ function refuse(user: Identity) {
 }
 
 // The calendar views of all the person's workspaces, for the settings.
-export function profileCalendars(user: Identity) {
+export async function profileCalendars(user: Identity) {
   refuse(user);
-  const pages = all<Page & { workspace_name: string }>(
+  const pages = await all<Page & { workspace_name: string }>(
     `SELECT p.*,w.name workspace_name FROM pages p JOIN members m ON m.workspace_id=p.workspace_id AND m.user_id=?
        JOIN workspaces w ON w.id=p.workspace_id
      WHERE p.kind='database' AND p.deleted_at IS NULL ORDER BY lower(w.name),lower(p.title) LIMIT 2000`,
     user.id,
   );
   const syncing = new Set(
-    all<{ page_id: string; view_id: string }>("SELECT page_id,view_id FROM caldav_accesses WHERE user_id=?", user.id).map((a) => `${a.page_id}|${a.view_id}`),
+    (await all<{ page_id: string; view_id: string }>("SELECT page_id,view_id FROM caldav_accesses WHERE user_id=?", user.id)).map((a) => `${a.page_id}|${a.view_id}`),
   );
-  return pages
-    .filter((page) => pageRole(user, page))
-    .flatMap((page) =>
-      calendarViews(page.id).map((view) => ({
+  return (await flatMapAsync(await filterAsync(pages, async (page) => await pageRole(user, page)), async (page) =>
+      (await calendarViews(page.id)).map((view) => ({
         pageId: page.id,
         viewId: view.id,
         page: page.title || "",
@@ -57,7 +56,7 @@ export function profileCalendars(user: Identity) {
         workspace: page.workspace_name || "",
         syncing: syncing.has(`${page.id}|${view.id}`),
       })),
-    )
+    ))
     .slice(0, 200);
 }
 
@@ -67,16 +66,16 @@ const selection = z
   .max(MAX_CALENDARS);
 
 // A link that downloads the profile once, within ten minutes.
-export function createProfileLink(user: Identity, input: unknown, now = Date.now()) {
+export async function createProfileLink(user: Identity, input: unknown, now = Date.now()) {
   refuse(user);
   const calendars = selection.parse((input as { calendars?: unknown } | null)?.calendars);
   for (const calendar of calendars) {
-    const page = requirePage(user, calendar.pageId);
-    if (!calendarViews(page.id).some((v) => v.id === calendar.viewId)) throw new HttpError(404, "Kalenderansicht nicht gefunden.");
+    const page = await requirePage(user, calendar.pageId);
+    if (!(await calendarViews(page.id)).some((v) => v.id === calendar.viewId)) throw new HttpError(404, "Kalenderansicht nicht gefunden.");
   }
-  run("DELETE FROM caldav_profile_links WHERE expires<=?", now);
+  await run("DELETE FROM caldav_profile_links WHERE expires<=?", now);
   const token = randomBytes(24).toString("base64url");
-  run("INSERT INTO caldav_profile_links(token_hash,user_id,calendars,expires) VALUES(?,?,?,?)", hash(token), user.id, JSON.stringify(calendars), now + LINK_MS);
+  await run("INSERT INTO caldav_profile_links(token_hash,user_id,calendars,expires) VALUES(?,?,?,?)", hash(token), user.id, JSON.stringify(calendars), now + LINK_MS);
   return { url: `${appUrl()}/api/calendar-profile?token=${token}`, expires: now + LINK_MS };
 }
 
@@ -86,26 +85,26 @@ const entry = (key: string, value: string | number | boolean) =>
 
 // The profile behind a link (null: unknown, used or expired). The link is
 // used up by this call.
-export function redeemProfileLink(token: string, now = Date.now()) {
+export async function redeemProfileLink(token: string, now = Date.now()) {
   if (!/^[A-Za-z0-9_-]{32}$/.test(token)) return null;
-  const link = one<{ token_hash: string; user_id: string; calendars: string; expires: number }>("SELECT * FROM caldav_profile_links WHERE token_hash=?", hash(token));
-  if (!link || !run("DELETE FROM caldav_profile_links WHERE token_hash=?", link.token_hash).changes || link.expires <= now) return null;
-  const account = one<Identity & { demo_until: string | null }>("SELECT * FROM users WHERE id=? AND disabled=0", link.user_id);
+  const link = await one<{ token_hash: string; user_id: string; calendars: string; expires: number }>("SELECT * FROM caldav_profile_links WHERE token_hash=?", hash(token));
+  if (!link || !(await run("DELETE FROM caldav_profile_links WHERE token_hash=?", link.token_hash)).changes || link.expires <= now) return null;
+  const account = await one<Identity & { demo_until: string | null }>("SELECT * FROM users WHERE id=? AND disabled=0", link.user_id);
   if (!account || account.demo_until) return null;
   const user = { ...account, groups: [], isAdmin: false } as Identity;
-  const say = translate(userLocale(user.id));
+  const say = translate(await userLocale(user.id));
   const base = new URL(appUrl());
   const ssl = base.protocol === "https:";
   const port = Number(base.port) || (ssl ? 443 : 80);
   const accounts: string[] = [];
   for (const calendar of selection.parse(JSON.parse(link.calendars))) {
     // Access may have ended since the link was made.
-    const page = one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", calendar.pageId);
-    const view = page && pageRole(user, page) ? calendarViews(page.id).find((v) => v.id === calendar.viewId) : undefined;
+    const page = await one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", calendar.pageId);
+    const view = page && await pageRole(user, page) ? (await calendarViews(page.id)).find((v) => v.id === calendar.viewId) : undefined;
     if (!page || !view) continue;
     const password = randomBytes(18).toString("base64url");
     const access = id();
-    run(
+    await run(
       "INSERT INTO caldav_accesses(id,user_id,page_id,view_id,token_hash,created_at) VALUES(?,?,?,?,?,?)",
       access,
       user.id,

@@ -32,10 +32,10 @@ const inputSchema = z.object({
     .default({}),
 });
 
-export function saveSurvey(page: Pick<Page, "id">, raw: unknown) {
+export async function saveSurvey(page: Pick<Page, "id">, raw: unknown) {
   const b = inputSchema.parse(raw);
   const sentForm = ((raw as { form?: unknown }).form && typeof (raw as { form?: unknown }).form === "object" ? (raw as { form: object }).form : {}) as object;
-  const db = one<{ fields: string; version: number }>("SELECT fields,version FROM databases WHERE page_id=?", page.id);
+  const db = await one<{ fields: string; version: number }>("SELECT fields,version FROM databases WHERE page_id=?", page.id);
   if (!db) throw new HttpError(404, "Datenbank nicht gefunden.");
   if (db.version !== b.version) throw new HttpError(409, "Die Datenbank wurde zwischenzeitlich geändert. Bitte neu laden.");
   const fields: Field[] = JSON.parse(db.fields);
@@ -80,10 +80,10 @@ export function saveSurvey(page: Pick<Page, "id">, raw: unknown) {
   }
   const survey: Survey = { ...b.survey, items };
   const stored = z.array(fieldSchema).max(80).parse(fields);
-  run("UPDATE databases SET fields=?,version=version+1 WHERE page_id=?", JSON.stringify(stored), page.id);
+  await run("UPDATE databases SET fields=?,version=version+1 WHERE page_id=?", JSON.stringify(stored), page.id);
 
   // Form settings follow the survey, so other places show the same questions.
-  const previous = formSettings(page.id);
+  const previous = await formSettings(page.id);
   const config = previous?.config || formConfigSchema.parse({});
   const questions = items.filter(isQuestion);
   const asked = questions.flatMap(questionFields);
@@ -102,7 +102,7 @@ export function saveSurvey(page: Pick<Page, "id">, raw: unknown) {
     ),
     survey,
   });
-  run(
+  await run(
     "INSERT INTO forms(page_id,token,enabled,internal,anonymous,config) VALUES(?,?,?,?,?,?) ON CONFLICT(page_id) DO UPDATE SET config=excluded.config",
     page.id,
     id(),
@@ -122,9 +122,9 @@ function unique(name: string, fields: Field[]) {
 
 // A starter survey for the "Survey" template: recommendation (NPS), what
 // people use, and an open question for low scores.
-export function starterSurvey(pageId: string, locale: Locale) {
+export async function starterSurvey(pageId: string, locale: Locale) {
   const say = translate(locale);
-  const version = one<{ version: number }>("SELECT version FROM databases WHERE page_id=?", pageId)!.version;
+  const version = (await one<{ version: number }>("SELECT version FROM databases WHERE page_id=?", pageId))!.version;
   const nps = newQuestion("nps", locale),
     use = newQuestion("multiple", locale),
     why = newQuestion("long", locale);
@@ -133,7 +133,7 @@ export function starterSurvey(pageId: string, locale: Locale) {
   why.title = say("Was sollten wir besser machen?", "What should we improve?");
   nps.question.required = true;
   why.question.showIf = { field: nps.question.field, op: "lte", value: "6" };
-  return saveSurvey(
+  return await saveSurvey(
     { id: pageId },
     {
       version,

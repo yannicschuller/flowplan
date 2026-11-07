@@ -28,23 +28,23 @@ import type { WhiteboardItem } from "../lib/whiteboard-model";
 
 async function person(name: string): Promise<Identity> {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name.toLowerCase()}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name.toLowerCase()}@example.test`);
   const token = randomBytes(16).toString("hex");
-  run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", createHash("sha256").update(token).digest("hex"), uid, "[]", Date.now() + 3600_000);
+  await run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", createHash("sha256").update(token).digest("hex"), uid, "[]", Date.now() + 3600_000);
   return (await identityFromToken(token))!;
 }
 const admin = { ...(await person("Ada")), isAdmin: true };
 const ben = await person("Ben"),
   vic = await person("Vic");
-const wid = createWorkspace(admin.id, "Team");
-run("INSERT INTO members VALUES(?,?,?)", wid, ben.id, "editor");
-run("INSERT INTO members VALUES(?,?,?)", wid, vic.id, "viewer");
-const space = one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid)!.id;
-const folder = createPage(wid, space, admin.id, "Workshops");
+const wid = await createWorkspace(admin.id, "Team");
+await run("INSERT INTO members VALUES(?,?,?)", wid, ben.id, "editor");
+await run("INSERT INTO members VALUES(?,?,?)", wid, vic.id, "viewer");
+const space = (await one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid))!.id;
+const folder = await createPage(wid, space, admin.id, "Workshops");
 
 type Note = Partial<WhiteboardItem> & { id: string };
-function board(title: string, items: Note[], parent: string | null = folder) {
-  const pid = createPage(wid, space, admin.id, title, "whiteboard", parent);
+async function board(title: string, items: Note[], parent: string | null = folder) {
+  const pid = await createPage(wid, space, admin.id, title, "whiteboard", parent);
   const doc = new Y.Doc();
   const map = doc.getMap<Y.Map<unknown>>("items");
   items.forEach((item, z) => {
@@ -52,16 +52,16 @@ function board(title: string, items: Note[], parent: string | null = folder) {
     for (const [key, value] of Object.entries({ z, w: 160, h: 120, x: 0, y: 0, ...item })) if (key !== "id") m.set(key, value);
     map.set(item.id, m);
   });
-  writeWhiteboard(pid, Y.encodeStateAsUpdate(doc));
+  await writeWhiteboard(pid, Y.encodeStateAsUpdate(doc));
   return pid;
 }
 const sticky = (n: number, text: string, extra: Partial<WhiteboardItem> = {}): Note => ({ id: `s${n}`, type: "sticky", text, x: n * 180, y: 0, fill: "#fff6b6", author: ben.id, ...extra });
 
 const mock = await startOllamaMock();
 after(() => mock.close());
-const setAi = (settings: Record<string, unknown>) => command(admin, { action: "admin.ai", settings });
+const setAi = async (settings: Record<string, unknown>) => await command(admin, { action: "admin.ai", settings });
 
-const retro = board("Retro", [
+const retro = await board("Retro", [
   sticky(1, "Deployments dauern zu lange"),
   sticky(2, "Tests sind langsam"),
   sticky(3, "Tolles Teamevent"),
@@ -181,15 +181,15 @@ test("colours find options by name, notes split into title and text", () => {
 
 test("AI on whiteboards is off by default, a feature of its own and on with AI", async () => {
   await assert.rejects(clusterNotes(ben, { pageId: retro, ids: ["s1", "s2"] }), /ausgeschaltet/);
-  setAi({ enabled: true, provider: { kind: "ollama", baseUrl: mock.base, model: "chat", embeddingModel: "" } });
-  assert.equal(aiStatus(ben, wid).features.whiteboard.ok, true, "on together with AI");
-  setAi({ features: { whiteboard: false } });
-  assert.equal(aiStatus(ben, wid).features.whiteboard.ok, false);
+  await setAi({ enabled: true, provider: { kind: "ollama", baseUrl: mock.base, model: "chat", embeddingModel: "" } });
+  assert.equal((await aiStatus(ben, wid)).features.whiteboard.ok, true, "on together with AI");
+  await setAi({ features: { whiteboard: false } });
+  assert.equal((await aiStatus(ben, wid)).features.whiteboard.ok, false);
   await assert.rejects(generateStructure(ben, { pageId: retro, prompt: "Ideen", kind: "mindmap" }), /ausgeschaltet/);
-  setAi({ features: { whiteboard: true } });
-  command(ben, { action: "ai.settings", features: { whiteboard: false } });
+  await setAi({ features: { whiteboard: true } });
+  await command(ben, { action: "ai.settings", features: { whiteboard: false } });
   await assert.rejects(summarizeBoard(ben, { pageId: retro }), /ausgeschaltet/);
-  command(ben, { action: "ai.settings", features: { whiteboard: true } });
+  await command(ben, { action: "ai.settings", features: { whiteboard: true } });
 });
 
 test("cluster: only visible notes with text reach the model, only for editors", async () => {
@@ -208,8 +208,8 @@ test("cluster: only visible notes with text reach the model, only for editors", 
   assert.equal(result.sent, 4);
   await assert.rejects(clusterNotes(vic, { pageId: retro, ids: ["s1", "s2"] }), /Keine Berechtigung/);
   // A board closed to the AI.
-  const closed = board("Gehälter", [sticky(1, "a"), sticky(2, "b")]);
-  command(admin, { action: "ai.block", targetId: closed, kind: "page", blocked: true });
+  const closed = await board("Gehälter", [sticky(1, "a"), sticky(2, "b")]);
+  await command(admin, { action: "ai.block", targetId: closed, kind: "page", blocked: true });
   await assert.rejects(clusterNotes(ben, { pageId: closed, ids: ["s1", "s2"] }), /für die KI gesperrt/);
   // Garbage twice: a clear error, nothing changes.
   mock.answer = () => "Ich weiß es nicht.";
@@ -233,21 +233,21 @@ test("summary: a page next to the board with themes, decisions, questions and ta
   const prompt = mock.chats[before].prompt;
   assert.match(prompt, /## Was lief gut\?\n- \[note, by Ben\] Kaffee war gut/, "frames become sections");
   assert.ok(!prompt.includes("Geheimer Zettel"));
-  const page = one<{ title: string; parent_id: string; space_id: string; kind: string; created_by: string }>("SELECT title,parent_id,space_id,kind,created_by FROM pages WHERE id=?", result.pageId)!;
+  const page = (await one<{ title: string; parent_id: string; space_id: string; kind: string; created_by: string }>("SELECT title,parent_id,space_id,kind,created_by FROM pages WHERE id=?", result.pageId))!;
   assert.deepEqual(page, { title: "Zusammenfassung: Retro", parent_id: folder, space_id: space, kind: "document", created_by: ben.id });
-  const html = one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", result.pageId)!.html;
+  const html = (await one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", result.pageId))!.html;
   assert.match(html, new RegExp(`href="/#page=${retro}"`), "links back to the board");
   assert.match(html, /Entscheidungen/);
   assert.match(html, /Offene Fragen/);
   assert.match(html, /Deployments &lt;langsam&gt;/);
   assert.match(html, new RegExp(`data-mention="${ben.id}"`));
   assert.match(html, /Pairing-Plan \(Unbekannt\)/);
-  assert.ok(one("SELECT 1 FROM doc_tasks WHERE page_id=? AND assignee=? AND due='2026-11-03'", result.pageId, ben.id), "action items became tasks");
+  assert.ok(await one("SELECT 1 FROM doc_tasks WHERE page_id=? AND assignee=? AND due='2026-11-03'", result.pageId, ben.id), "action items became tasks");
   assert.deepEqual(result.counts, { themes: 1, decisions: 1, questions: 1, actions: 2 });
   assert.equal(result.included, result.total);
   // Without tasks: a plain list, in English.
   const plain = await summarizeBoard(ben, { pageId: retro, tasks: false, locale: "en", ids: ["s1", "s2"] });
-  const english = one<{ html: string; title: string }>("SELECT d.html,p.title FROM documents d JOIN pages p ON p.id=d.page_id WHERE d.page_id=?", plain.pageId)!;
+  const english = (await one<{ html: string; title: string }>("SELECT d.html,p.title FROM documents d JOIN pages p ON p.id=d.page_id WHERE d.page_id=?", plain.pageId))!;
   assert.equal(english.title, "Summary: Retro");
   assert.doesNotMatch(english.html, /taskList/);
   assert.match(english.html, /Runner bestellen \(Ben, 2026-11-03\)/);
@@ -256,22 +256,22 @@ test("summary: a page next to the board with themes, decisions, questions and ta
 
 test("summary of a large board: what is left out is said", async () => {
   const items = Array.from({ length: wbAi.WB_AI_LIMITS.summaryItems + 50 }, (_, i) => sticky(i, `Idee ${i}`));
-  const big = board("Großes Board", items, null);
+  const big = await board("Großes Board", items, null);
   mock.answer = (request) => (request.system.includes("JSON") ? JSON.stringify({ summary: "Viele Ideen." }) : "- Ideen");
   const result = await summarizeBoard(admin, { pageId: big, locale: "de" });
   assert.equal(result.total, wbAi.WB_AI_LIMITS.summaryItems + 50);
   assert.equal(result.included, wbAi.WB_AI_LIMITS.summaryItems);
-  const html = one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", result.pageId)!.html;
+  const html = (await one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", result.pageId))!.html;
   assert.match(html, /Nicht berücksichtigt: 50/);
-  const page = one<{ parent_id: string | null }>("SELECT parent_id FROM pages WHERE id=?", result.pageId)!;
+  const page = (await one<{ parent_id: string | null }>("SELECT parent_id FROM pages WHERE id=?", result.pageId))!;
   assert.equal(page.parent_id, null, "next to a board at the top of the space");
 });
 
-test("linked pages the AI may not read stay out of the board text", () => {
-  const secret = createPage(wid, space, admin.id, "Geheimprojekt");
-  command(admin, { action: "ai.block", targetId: secret, kind: "page", blocked: true });
-  const open = createPage(wid, space, admin.id, "Roadmap");
-  const text = boardText(ben, [
+test("linked pages the AI may not read stay out of the board text", async () => {
+  const secret = await createPage(wid, space, admin.id, "Geheimprojekt");
+  await command(admin, { action: "ai.block", targetId: secret, kind: "page", blocked: true });
+  const open = await createPage(wid, space, admin.id, "Roadmap");
+  const text = await boardText(ben, [
     { id: "c1", type: "card", pageId: secret, x: 0, y: 0, w: 10, h: 10, z: 0 },
     { id: "c2", type: "card", pageId: open, x: 0, y: 20, w: 10, h: 10, z: 1 },
   ] as WhiteboardItem[]);
@@ -294,12 +294,12 @@ test("generate: the answer is validated and limited, invalid answers fail", asyn
 
 // ---- Notes → records ----
 
-const db = createPage(wid, space, admin.id, "Backlog", "database");
-const fields = JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", db)!.fields);
+const db = await createPage(wid, space, admin.id, "Backlog", "database");
+const fields = JSON.parse((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", db))!.fields);
 fields.push({ id: "farbe", name: "Farbe", type: "select", options: ["Gelb", "Rot"] });
-run("UPDATE databases SET fields=? WHERE page_id=?", JSON.stringify(fields), db);
+await run("UPDATE databases SET fields=? WHERE page_id=?", JSON.stringify(fields), db);
 
-test("notes become records: title, document, colour option and author; repeating is a no-op", () => {
+test("notes become records: title, document, colour option and author; repeating is a no-op", async () => {
   const rowA = randomUUID(),
     rowB = randomUUID();
   const input = {
@@ -314,21 +314,21 @@ test("notes become records: title, document, colour option and author; repeating
       { rowId: rowB, itemId: "s2", text: "Tests sind langsam", color: "#a5d8ff", author: "jemand-anderes", cells: { priority: "Hoch" } },
     ],
   };
-  const result = command(ben, input) as { records: { itemId: string; rowId: string; created: boolean }[] };
+  const result = (await command(ben, input)) as { records: { itemId: string; rowId: string; created: boolean }[] };
   assert.deepEqual(result.records.map((r) => r.created), [true, true]);
-  const a = JSON.parse(one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", rowA)!.cells);
+  const a = JSON.parse((await one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", rowA))!.cells);
   assert.deepEqual(a, { farbe: "Gelb", assignee: ben.id, title: "Deployments dauern zu lange" });
-  assert.match(one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", rowA)!.html, /seit Mai/);
-  const b = JSON.parse(one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", rowB)!.cells);
+  assert.match((await one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", rowA))!.html, /seit Mai/);
+  const b = JSON.parse((await one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", rowB))!.cells);
   assert.deepEqual(b, { priority: "Hoch", title: "Tests sind langsam" }, "unmapped colour and non-members stay empty");
-  const count = () => Number(one<{ n: number }>("SELECT count(*) n FROM rows WHERE page_id=?", db)!.n);
-  const before = count();
-  const again = command(ben, input) as { records: { created: boolean }[] };
+  const count = async () => Number((await one<{ n: number }>("SELECT count(*) n FROM rows WHERE page_id=?", db))!.n);
+  const before = await count();
+  const again = (await command(ben, input)) as { records: { created: boolean }[] };
   assert.deepEqual(again.records.map((r) => r.created), [false, false]);
-  assert.equal(count(), before, "idempotent");
+  assert.equal(await count(), before, "idempotent");
 });
 
-test("notes → records checks rights, values and limits", () => {
+test("notes → records checks rights, values and limits", async () => {
   const one_ = (extra: Record<string, unknown> = {}) => ({
     action: "whiteboard.toRecords",
     pageId: retro,
@@ -336,17 +336,17 @@ test("notes → records checks rights, values and limits", () => {
     records: [{ rowId: randomUUID(), itemId: "s3", text: "Tolles Teamevent" }],
     ...extra,
   });
-  assert.throws(() => command(vic, one_()), /Keine Berechtigung/, "readers of the board");
-  assert.throws(() => command(ben, one_({ records: [{ rowId: randomUUID(), itemId: "s3", text: "x", cells: { status: "Gibt es nicht" } }] })), /Unbekannte Auswahl/);
-  assert.throws(() => command(ben, one_({ colorField: "status-gibt-es-nicht" })), /Eigenschaft fehlt/);
-  assert.throws(() => command(ben, one_({ databaseId: retro })), /Keine Datenbank/);
-  assert.throws(() => command(ben, one_({ records: Array.from({ length: 101 }, (_, i) => ({ rowId: randomUUID(), itemId: `x${i}`, text: "x" })) })));
+  await assert.rejects(async () => await command(vic, one_()), /Keine Berechtigung/, "readers of the board");
+  await assert.rejects(async () => await command(ben, one_({ records: [{ rowId: randomUUID(), itemId: "s3", text: "x", cells: { status: "Gibt es nicht" } }] })), /Unbekannte Auswahl/);
+  await assert.rejects(async () => await command(ben, one_({ colorField: "status-gibt-es-nicht" })), /Eigenschaft fehlt/);
+  await assert.rejects(async () => await command(ben, one_({ databaseId: retro })), /Keine Datenbank/);
+  await assert.rejects(async () => await command(ben, one_({ records: Array.from({ length: 101 }, (_, i) => ({ rowId: randomUUID(), itemId: `x${i}`, text: "x" })) })));
   // A database the person may only read.
-  const readOnly = createPage(wid, space, admin.id, "Archiv", "database");
-  const vicBoard = board("Vics Board", [sticky(1, "x")]);
-  run("INSERT INTO grants(resource_id,user_id,role) VALUES(?,?,?)", vicBoard, vic.id, "editor");
-  assert.throws(() => command(vic, { ...one_({ pageId: vicBoard, databaseId: readOnly }) }), /Keine Berechtigung/);
-  assert.ok(!all("SELECT 1 FROM rows WHERE page_id=?", readOnly).length);
+  const readOnly = await createPage(wid, space, admin.id, "Archiv", "database");
+  const vicBoard = await board("Vics Board", [sticky(1, "x")]);
+  await run("INSERT INTO grants(resource_id,user_id,role) VALUES(?,?,?)", vicBoard, vic.id, "editor");
+  await assert.rejects(async () => await command(vic, { ...one_({ pageId: vicBoard, databaseId: readOnly }) }), /Keine Berechtigung/);
+  assert.ok(!(await all("SELECT 1 FROM rows WHERE page_id=?", readOnly)).length);
 });
 
 test("split with AI: values are normalised per property, wrong ones reported", async () => {
@@ -365,8 +365,8 @@ test("split with AI: values are normalised per property, wrong ones reported", a
   assert.match(records.s1.problem || "", /Unbekannte Auswahl/);
   assert.deepEqual(records.s2.cells, { date: "2026-12-01" });
   assert.deepEqual(records.s1.view.find((v) => v.name === "Verantwortlich"), { name: "Verantwortlich", value: "Ben" });
-  const blocked = createPage(wid, space, admin.id, "Gesperrt", "database");
-  command(admin, { action: "ai.block", targetId: blocked, kind: "page", blocked: true });
+  const blocked = await createPage(wid, space, admin.id, "Gesperrt", "database");
+  await command(admin, { action: "ai.block", targetId: blocked, kind: "page", blocked: true });
   await assert.rejects(splitNotes(ben, { pageId: retro, databaseId: blocked, ids: ["s1"] }), /für die KI gesperrt/);
 });
 

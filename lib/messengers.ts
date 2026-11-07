@@ -70,6 +70,7 @@ import {
   type MessengerSecrets,
   type SendOutcome,
 } from "./messenger-send";
+import { filterAsync } from "./each-async";
 
 export const MAX_ATTEMPTS = 6;
 export const DISABLE_AFTER = 3;
@@ -99,7 +100,7 @@ const resolveHost = (host: string) =>
   runtime.flowplanMessengerResolve ? runtime.flowplanMessengerResolve(host) : lookup(host, { all: true }).then((list) => list.map((a) => a.address));
 
 const appUrl = () => (process.env.APP_URL || "http://localhost:3000").replace(/\/$/, "");
-const instanceName = () => instanceSettings().name || "Flowplan";
+const instanceName = async () => (await instanceSettings()).name || "Flowplan";
 
 /* ---------- Instance configuration ---------- */
 
@@ -110,26 +111,26 @@ type StoredConfig = {
   bot?: { token: string; apiUrl?: string; username?: string } | null;
 };
 const CONFIG_KEY = "messengers";
-function readStored(): StoredConfig {
-  const row = one<{ value: string }>("SELECT value FROM instance_settings WHERE key=?", CONFIG_KEY);
+async function readStored(): Promise<StoredConfig> {
+  const row = await one<{ value: string }>("SELECT value FROM instance_settings WHERE key=?", CONFIG_KEY);
   try {
     return row ? (JSON.parse(row.value) as StoredConfig) : {};
   } catch {
     return {};
   }
 }
-function writeStored(config: StoredConfig) {
-  run(
+async function writeStored(config: StoredConfig) {
+  await run(
     "INSERT INTO instance_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
     CONFIG_KEY,
     JSON.stringify(config),
   );
 }
-const state = (key: string) => one<{ value: string }>("SELECT value FROM instance_state WHERE key=?", key)?.value ?? null;
-const setState = (key: string, value: string | null) =>
+const state = async (key: string) => (await one<{ value: string }>("SELECT value FROM instance_state WHERE key=?", key))?.value ?? null;
+const setState = async (key: string, value: string | null) =>
   value === null
-    ? run("DELETE FROM instance_state WHERE key=?", key)
-    : run("INSERT INTO instance_state(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", key, value);
+    ? (await run("DELETE FROM instance_state WHERE key=?", key))
+    : (await run("INSERT INTO instance_state(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", key, value));
 
 // Internal addresses (Gotify or ntfy in the own network): only when the
 // operator allows them, like webhooks.
@@ -148,8 +149,8 @@ function envServices(): Record<MessengerService, boolean> | null {
 }
 
 type Bot = { token: string; apiUrl: string; username: string | null; source: "env" | "stored" };
-export function messengerConfig() {
-  const stored = readStored();
+export async function messengerConfig() {
+  const stored = await readStored();
   const env = envServices();
   const services = Object.fromEntries(
     messengerServices.map((s) => [s, stored.services?.[s] ?? env?.[s] ?? true]),
@@ -170,7 +171,7 @@ export function messengerConfig() {
     }
   } else if (process.env.FLOWPLAN_TELEGRAM_BOT_TOKEN?.trim()) {
     const token = process.env.FLOWPLAN_TELEGRAM_BOT_TOKEN.trim();
-    const known = state("telegramBot");
+    const known = await state("telegramBot");
     let username: string | null = null;
     try {
       const parsed = known ? (JSON.parse(known) as { hash: string; username: string }) : null;
@@ -187,7 +188,7 @@ export function messengerConfig() {
   };
 }
 const tokenHash = (token: string) => createHash("sha256").update(token).digest("hex").slice(0, 16);
-const serviceAllowed = (service: MessengerService) => messengerConfig().services[service];
+const serviceAllowed = async (service: MessengerService) => (await messengerConfig()).services[service];
 
 /* ---------- Server addresses ---------- */
 
@@ -218,7 +219,7 @@ export async function checkServerUrl(raw: string, defaults: string[] = []): Prom
   if (url.username || url.password || url.search || url.hash)
     throw new HttpError(400, ct("Zugangsdaten und Parameter gehören nicht in die Server-Adresse.", "Credentials and parameters do not belong in the server address."));
   const host = url.hostname.replace(/^\[|\]$/g, "").toLowerCase();
-  if (!hostAllowed(host, messengerConfig().allowedHosts, defaults))
+  if (!hostAllowed(host, (await messengerConfig()).allowedHosts, defaults))
     throw new HttpError(400, ct(`Server „${host}“ ist auf dieser Instanz nicht freigegeben.`, `Server “${host}” is not allowed on this instance.`));
   if (!allowPrivate) {
     const addresses = isIP(host) ? [host] : await resolveHost(host).catch(() => []);
@@ -286,7 +287,7 @@ function targetDetail(t: TargetRow, bot: Bot | null): string {
       return `${c.room} · ${hostOf(c.homeserver)}`;
   }
 }
-function targetView(t: TargetRow, config: ReturnType<typeof messengerConfig>): MessengerTarget {
+function targetView(t: TargetRow, config: Awaited<ReturnType<typeof messengerConfig>>): MessengerTarget {
   return {
     id: t.id,
     service: t.service,
@@ -302,14 +303,14 @@ function targetView(t: TargetRow, config: ReturnType<typeof messengerConfig>): M
   };
 }
 
-function personalSettings(userId: string) {
-  const row = one<{ preview: number; ops: number }>("SELECT preview,ops FROM messenger_settings WHERE user_id=?", userId);
+async function personalSettings(userId: string) {
+  const row = await one<{ preview: number; ops: number }>("SELECT preview,ops FROM messenger_settings WHERE user_id=?", userId);
   return { preview: row ? !!row.preview : true, ops: row ? !!row.ops : true };
 }
 
-export function messengerOverview(user: Identity): MessengerOverview {
-  const config = messengerConfig();
-  const settings = personalSettings(user.id);
+export async function messengerOverview(user: Identity): Promise<MessengerOverview> {
+  const config = await messengerConfig();
+  const settings = await personalSettings(user.id);
   return {
     services: messengerServices.filter((s) => config.services[s]),
     bot: config.bot && config.services.telegram ? { username: config.bot.username || "" } : null,
@@ -317,7 +318,7 @@ export function messengerOverview(user: Identity): MessengerOverview {
     preview: settings.preview,
     ops: settings.ops,
     admin: !!user.isAdmin,
-    targets: all<TargetRow>("SELECT * FROM messenger_targets WHERE user_id=? ORDER BY created_at", user.id).map((t) => targetView(t, config)),
+    targets: (await all<TargetRow>("SELECT * FROM messenger_targets WHERE user_id=? ORDER BY created_at", user.id)).map((t) => targetView(t, config)),
   };
 }
 
@@ -360,9 +361,9 @@ const TELEGRAM_TOKEN = /^\d{3,15}:[A-Za-z0-9_-]{20,100}$/;
 export async function connectMessenger(user: Identity, input: unknown) {
   requireBrowserUser(user);
   const b = connectInput.parse(input);
-  if (!serviceAllowed(b.service))
+  if (!(await serviceAllowed(b.service)))
     throw new HttpError(403, ct(`${messengerNames[b.service]} ist auf dieser Instanz ausgeschaltet.`, `${messengerNames[b.service]} is switched off on this instance.`));
-  const existing = one<TargetRow>("SELECT * FROM messenger_targets WHERE user_id=? AND service=?", user.id, b.service);
+  const existing = await one<TargetRow>("SELECT * FROM messenger_targets WHERE user_id=? AND service=?", user.id, b.service);
   const previous = existing ? openTargetSecrets(existing) : {};
   const previousConfig = existing ? parseConfig(existing.config) : {};
   let config: MessengerConfig;
@@ -402,12 +403,12 @@ export async function connectMessenger(user: Identity, input: unknown) {
   const targetId = existing?.id ?? id();
   const sealed = Object.keys(secrets).length ? sealSecret(JSON.stringify(secrets), sealedFor(targetId)) : null;
   const hint = secrets.token ? (keyHint(secrets.token) ? `…${keyHint(secrets.token)}` : "") : "";
-  saveTarget(user.id, targetId, b.service, b.service === "telegram" ? "own" : "", config, sealed, hint, !!existing);
-  return messengerOverview(user);
+  await saveTarget(user.id, targetId, b.service, b.service === "telegram" ? "own" : "", config, sealed, hint, !!existing);
+  return await messengerOverview(user);
 }
 
-function saveTarget(userId: string, targetId: string, service: MessengerService, mode: string, config: MessengerConfig, sealed: string | null, hint: string, existed: boolean) {
-  run(
+async function saveTarget(userId: string, targetId: string, service: MessengerService, mode: string, config: MessengerConfig, sealed: string | null, hint: string, existed: boolean) {
+  await run(
     `INSERT INTO messenger_targets(id,user_id,service,mode,config,secret,secret_hint,enabled,failures,created_at) VALUES(?,?,?,?,?,?,?,1,0,?)
      ON CONFLICT(user_id,service) DO UPDATE SET mode=excluded.mode,config=excluded.config,secret=excluded.secret,secret_hint=excluded.secret_hint,
        enabled=1,disabled_reason=NULL,failures=0,last_error=NULL`,
@@ -423,40 +424,40 @@ function saveTarget(userId: string, targetId: string, service: MessengerService,
   // Where it goes (host, never a token) for the person's security log.
   const where = config.server || config.homeserver || (mode === "bot" ? "bot" : config.apiUrl) || "";
   securityEvent("account.messenger_added", { actorId: userId, detail: `${service}${existed ? " (changed)" : ""} ${hostOf(where) || where}`.trim() });
-  audit(userId, "messenger.connect", targetId, service);
+  await audit(userId, "messenger.connect", targetId, service);
 }
 
-export function removeMessenger(user: Identity, input: unknown) {
+export async function removeMessenger(user: Identity, input: unknown) {
   requireBrowserUser(user);
   const targetId = z.string().max(60).parse((input as { id?: unknown })?.id);
-  const target = one<TargetRow>("SELECT * FROM messenger_targets WHERE id=? AND user_id=?", targetId, user.id);
+  const target = await one<TargetRow>("SELECT * FROM messenger_targets WHERE id=? AND user_id=?", targetId, user.id);
   if (!target) throw new HttpError(404, ct("Verbindung nicht gefunden.", "Connection not found."));
-  run("DELETE FROM messenger_targets WHERE id=?", target.id);
+  await run("DELETE FROM messenger_targets WHERE id=?", target.id);
   securityEvent("account.messenger_removed", { actorId: user.id, detail: target.service });
-  audit(user.id, "messenger.remove", target.id, target.service);
-  return messengerOverview(user);
+  await audit(user.id, "messenger.remove", target.id, target.service);
+  return await messengerOverview(user);
 }
 
 // Turned off after repeated refusals: on again (counting starts anew).
-export function enableMessenger(user: Identity, input: unknown) {
+export async function enableMessenger(user: Identity, input: unknown) {
   requireBrowserUser(user);
   const targetId = z.string().max(60).parse((input as { id?: unknown })?.id);
-  if (!run("UPDATE messenger_targets SET enabled=1,disabled_reason=NULL,failures=0 WHERE id=? AND user_id=?", targetId, user.id).changes)
+  if (!(await run("UPDATE messenger_targets SET enabled=1,disabled_reason=NULL,failures=0 WHERE id=? AND user_id=?", targetId, user.id)).changes)
     throw new HttpError(404, ct("Verbindung nicht gefunden.", "Connection not found."));
-  return messengerOverview(user);
+  return await messengerOverview(user);
 }
 
-export function setMessengerSettings(user: Identity, input: unknown) {
+export async function setMessengerSettings(user: Identity, input: unknown) {
   requireBrowserUser(user);
   const b = z.object({ preview: z.boolean().optional(), ops: z.boolean().optional() }).parse(input);
-  const current = personalSettings(user.id);
-  run(
+  const current = await personalSettings(user.id);
+  await run(
     "INSERT INTO messenger_settings(user_id,preview,ops) VALUES(?,?,?) ON CONFLICT(user_id) DO UPDATE SET preview=excluded.preview,ops=excluded.ops",
     user.id,
     (b.preview ?? current.preview) ? 1 : 0,
     (b.ops ?? current.ops) ? 1 : 0,
   );
-  return messengerOverview(user);
+  return await messengerOverview(user);
 }
 
 /* ---------- Messages ---------- */
@@ -480,26 +481,26 @@ const excerpt = (text: string, max = 280) => {
 
 // The message for one notification: its text, or only a hint when the
 // person wants that or the page is end-to-end encrypted.
-export function notificationMessage(
+export async function notificationMessage(
   notification: { id?: string; body: string | null; kind: string | null; page_id: string | null; row_id?: string | null; thread_id?: string | null; link?: string | null },
   locale: Locale,
   options: { preview: boolean; encrypted: boolean },
-): MessengerMessage {
+): Promise<MessengerMessage> {
   const say = translate(locale);
   const url = `${appUrl()}${notificationUrl(notification)}`;
   const open = say("In Flowplan öffnen", "Open in Flowplan");
   const kind = (notification.kind || "comment") as NotificationKind;
   const urgent = kind === "security" || kind === "incident";
   if (!options.preview || options.encrypted || !notification.body)
-    return { title: instanceName(), text: say("Neue Benachrichtigung in Flowplan", "New notification in Flowplan"), url, open, urgent };
+    return { title: await instanceName(), text: say("Neue Benachrichtigung in Flowplan", "New notification in Flowplan"), url, open, urgent };
   const label = kindTitles[kind] ? say(...kindTitles[kind]) : "";
-  return { title: label ? `${instanceName()} · ${label}` : instanceName(), text: excerpt(localizedMessage(notification.body, locale)), url, open, urgent };
+  return { title: label ? `${await instanceName()} · ${label}` : (await instanceName()), text: excerpt(localizedMessage(notification.body, locale)), url, open, urgent };
 }
 
-export function testMessage(locale: Locale): MessengerMessage {
+export async function testMessage(locale: Locale): Promise<MessengerMessage> {
   const say = translate(locale);
   return {
-    title: instanceName(),
+    title: await instanceName(),
     text: say("Testnachricht – Benachrichtigungen aus Flowplan kommen hier an.", "Test message – notifications from Flowplan arrive here."),
     url: `${appUrl()}/#settings/notifications/messengers`,
     open: say("Einstellungen öffnen", "Open settings"),
@@ -532,23 +533,23 @@ async function deliverTo(t: TargetRow, bot: Bot | null, message: MessengerMessag
 export async function testMessenger(user: Identity, input: unknown, now = Date.now()) {
   requireBrowserUser(user);
   const targetId = z.string().max(60).parse((input as { id?: unknown })?.id);
-  const target = one<TargetRow>("SELECT * FROM messenger_targets WHERE id=? AND user_id=?", targetId, user.id);
+  const target = await one<TargetRow>("SELECT * FROM messenger_targets WHERE id=? AND user_id=?", targetId, user.id);
   if (!target) throw new HttpError(404, ct("Verbindung nicht gefunden.", "Connection not found."));
-  const config = messengerConfig();
+  const config = await messengerConfig();
   if (!config.services[target.service])
     throw new HttpError(403, ct(`${messengerNames[target.service]} ist auf dieser Instanz ausgeschaltet.`, `${messengerNames[target.service]} is switched off on this instance.`));
   runtime.flowplanMessengerTests ??= new Map();
   const recent = (runtime.flowplanMessengerTests.get(user.id) || []).filter((at) => at > now - 60_000);
   if (recent.length >= TEST_PER_MINUTE) throw new HttpError(429, ct("Zu viele Testnachrichten – bitte warte eine Minute.", "Too many test messages – wait a minute."));
   runtime.flowplanMessengerTests.set(user.id, [...recent, now]);
-  const outcome = await deliverTo(target, config.bot, testMessage(userLocale(user.id)), `test-${id()}`);
+  const outcome = await deliverTo(target, config.bot, await testMessage(await userLocale(user.id)), `test-${id()}`);
   if (outcome.ok) {
-    run("UPDATE messenger_targets SET last_ok_at=?,last_error=NULL WHERE id=?", Date.now(), target.id);
-    return { ok: true as const, overview: messengerOverview(user) };
+    await run("UPDATE messenger_targets SET last_ok_at=?,last_error=NULL WHERE id=?", Date.now(), target.id);
+    return { ok: true as const, overview: await messengerOverview(user) };
   }
   const code = failureCode(outcome)!;
-  run("UPDATE messenger_targets SET last_error=? WHERE id=?", code, target.id);
-  return { ok: false as const, error: code, overview: messengerOverview(user) };
+  await run("UPDATE messenger_targets SET last_error=? WHERE id=?", code, target.id);
+  return { ok: false as const, error: code, overview: await messengerOverview(user) };
 }
 
 /* ---------- Queue ---------- */
@@ -573,10 +574,10 @@ type Job = TargetRow & {
 };
 
 // Why a target was turned off, as the inbox notification says it.
-function disableTarget(t: TargetRow, outcome: SendOutcome) {
+async function disableTarget(t: TargetRow, outcome: SendOutcome) {
   const detail = outcome.ok ? "" : outcome.reason === "private" ? "SSRF" : `HTTP ${outcome.status ?? "?"}`;
-  if (!run("UPDATE messenger_targets SET enabled=0,disabled_reason=? WHERE id=? AND enabled=1", failureCode(outcome), t.id).changes) return;
-  run(
+  if (!(await run("UPDATE messenger_targets SET enabled=0,disabled_reason=? WHERE id=? AND enabled=1", failureCode(outcome), t.id)).changes) return;
+  await run(
     "INSERT INTO notifications(id,user_id,body,kind,link) VALUES(?,?,?,'security',?)",
     id(),
     t.user_id,
@@ -585,56 +586,56 @@ function disableTarget(t: TargetRow, outcome: SendOutcome) {
     "#settings/notifications/messengers",
   );
   // What waits for it is dropped; the notifications stay in the inbox.
-  run("DELETE FROM messenger_deliveries WHERE target_id=? AND delivered_at IS NULL", t.id);
+  await run("DELETE FROM messenger_deliveries WHERE target_id=? AND delivered_at IS NULL", t.id);
 }
 
-function sentLastMinute(targetId: string, now: number) {
+async function sentLastMinute(targetId: string, now: number) {
   return Number(
-    one<{ n: number }>("SELECT COUNT(*) n FROM messenger_deliveries WHERE target_id=? AND delivered_at>?", targetId, now - 60_000)?.n || 0,
+    (await one<{ n: number }>("SELECT COUNT(*) n FROM messenger_deliveries WHERE target_id=? AND delivered_at>?", targetId, now - 60_000))?.n || 0,
   );
 }
 
 async function handle(job: Job, bot: Bot | null, services: Record<MessengerService, boolean>, now: number) {
-  const drop = () => run("DELETE FROM messenger_deliveries WHERE id=?", job.delivery_id);
-  if (!job.enabled || job.disabled_user || !services[job.service]) return drop();
+  const drop = async () => await run("DELETE FROM messenger_deliveries WHERE id=?", job.delivery_id);
+  if (!job.enabled || job.disabled_user || !services[job.service]) return await drop();
   // Per target at most RATE_PER_MINUTE a minute: the rest waits, no attempt lost.
-  if (sentLastMinute(job.id, now) >= RATE_PER_MINUTE) {
-    run(`UPDATE messenger_deliveries SET available_at=?,attempts=${sql.greatest("0", "attempts-1")} WHERE id=?`, now + 30_000, job.delivery_id);
+  if ((await sentLastMinute(job.id, now)) >= RATE_PER_MINUTE) {
+    await run(`UPDATE messenger_deliveries SET available_at=?,attempts=${sql.greatest("0", "attempts-1")} WHERE id=?`, now + 30_000, job.delivery_id);
     return;
   }
-  const locale = userLocale(job.user_id);
-  const { preview } = personalSettings(job.user_id);
+  const locale = await userLocale(job.user_id);
+  const { preview } = await personalSettings(job.user_id);
   let message: MessengerMessage;
   if (job.notification_id) {
     // Read in the app meanwhile, removed, or no longer accessible: not sent.
-    if (!job.n_exists || job.n_read_at) return drop();
-    const page = job.n_page_id ? one<Page>("SELECT * FROM pages WHERE id=?", job.n_page_id) : undefined;
-    if (job.n_page_id && (!page || page.deleted_at || !pageRole({ id: job.user_id } as Identity, page))) return drop();
-    if (job.n_row_id && !one("SELECT 1 FROM rows WHERE id=? AND page_id=?", job.n_row_id, job.n_page_id)) return drop();
-    message = notificationMessage(
+    if (!job.n_exists || job.n_read_at) return await drop();
+    const page = job.n_page_id ? (await one<Page>("SELECT * FROM pages WHERE id=?", job.n_page_id)) : undefined;
+    if (job.n_page_id && (!page || page.deleted_at || !(await pageRole({ id: job.user_id } as Identity, page)))) return await drop();
+    if (job.n_row_id && !(await one("SELECT 1 FROM rows WHERE id=? AND page_id=?", job.n_row_id, job.n_page_id))) return await drop();
+    message = await notificationMessage(
       { body: job.n_body, kind: job.n_kind, page_id: job.n_page_id, row_id: job.n_row_id, thread_id: job.n_thread_id, link: job.n_link },
       locale,
       // Behind a journal PIN not entered: only the hint, like encrypted pages.
-      { preview, encrypted: !!page && (isEncryptedPage(page) || lockedNotification()({ page_id: job.n_page_id, kind: job.n_kind }, job.user_id)) },
+      { preview, encrypted: !!page && (await isEncryptedPage(page) || (await lockedNotification())({ page_id: job.n_page_id, kind: job.n_kind }, job.user_id)) },
     );
   } else {
     const say = translate(locale);
     message = preview
-      ? { title: job.d_title || instanceName(), text: excerpt(job.d_body || "", 500), url: job.d_url || appUrl(), open: say("In Flowplan öffnen", "Open in Flowplan"), urgent: true }
-      : { title: instanceName(), text: say("Neue Betriebswarnung in Flowplan", "New operations alert in Flowplan"), url: job.d_url || appUrl(), open: say("In Flowplan öffnen", "Open in Flowplan"), urgent: true };
+      ? { title: job.d_title || await instanceName(), text: excerpt(job.d_body || "", 500), url: job.d_url || appUrl(), open: say("In Flowplan öffnen", "Open in Flowplan"), urgent: true }
+      : { title: await instanceName(), text: say("Neue Betriebswarnung in Flowplan", "New operations alert in Flowplan"), url: job.d_url || appUrl(), open: say("In Flowplan öffnen", "Open in Flowplan"), urgent: true };
   }
   const outcome = await deliverTo(job, bot, message, `fp-${job.delivery_id}`);
   if (outcome.ok) {
-    run("UPDATE messenger_deliveries SET delivered_at=?,last_error=NULL WHERE id=?", Date.now(), job.delivery_id);
-    run("UPDATE messenger_targets SET failures=0,last_ok_at=?,last_error=NULL WHERE id=?", Date.now(), job.id);
+    await run("UPDATE messenger_deliveries SET delivered_at=?,last_error=NULL WHERE id=?", Date.now(), job.delivery_id);
+    await run("UPDATE messenger_targets SET failures=0,last_ok_at=?,last_error=NULL WHERE id=?", Date.now(), job.id);
     return;
   }
   const code = failureCode(outcome);
-  run("UPDATE messenger_targets SET last_error=? WHERE id=?", code, job.id);
+  await run("UPDATE messenger_targets SET last_error=? WHERE id=?", code, job.id);
   switch (outcome.reason) {
     case "rate_limited":
       // Not a failed attempt: again once the service allows it.
-      run(
+      await run(
         `UPDATE messenger_deliveries SET available_at=?,attempts=${sql.greatest("0", "attempts-1")},last_error=? WHERE id=?`,
         Date.now() + (outcome.retryAfter ?? 60) * 1000,
         code,
@@ -645,21 +646,21 @@ async function handle(job: Job, bot: Bot | null, services: Record<MessengerServi
     case "notfound":
     case "private": {
       const failures = job.failures + 1;
-      run("UPDATE messenger_targets SET failures=? WHERE id=?", failures, job.id);
-      if (failures >= DISABLE_AFTER) return disableTarget(job, outcome);
+      await run("UPDATE messenger_targets SET failures=? WHERE id=?", failures, job.id);
+      if (failures >= DISABLE_AFTER) return await disableTarget(job, outcome);
       break;
     }
     case "rejected":
       // The service will not take this message however often it comes.
-      run("UPDATE messenger_deliveries SET attempts=?,last_error=? WHERE id=?", MAX_ATTEMPTS, code, job.delivery_id);
+      await run("UPDATE messenger_deliveries SET attempts=?,last_error=? WHERE id=?", MAX_ATTEMPTS, code, job.delivery_id);
       return;
   }
-  run("UPDATE messenger_deliveries SET available_at=?,last_error=? WHERE id=?", Date.now() + backoff(job.attempts), code, job.delivery_id);
+  await run("UPDATE messenger_deliveries SET available_at=?,last_error=? WHERE id=?", Date.now() + backoff(job.attempts), code, job.delivery_id);
 }
 
 export async function flushMessengerQueue(now = Date.now()) {
-  run("DELETE FROM messenger_deliveries WHERE created_at<?", now - 7 * DAY);
-  const jobs = all<Job>(
+  await run("DELETE FROM messenger_deliveries WHERE created_at<?", now - 7 * DAY);
+  const jobs = await all<Job>(
     `SELECT t.*,d.id delivery_id,d.attempts,d.notification_id,d.title d_title,d.body d_body,d.url d_url,
        n.body n_body,n.kind n_kind,n.page_id n_page_id,n.row_id n_row_id,n.thread_id n_thread_id,n.link n_link,n.read_at n_read_at,
        CASE WHEN n.id IS NULL THEN 0 ELSE 1 END n_exists,u.disabled disabled_user
@@ -670,7 +671,7 @@ export async function flushMessengerQueue(now = Date.now()) {
     now,
   );
   if (!jobs.length) return;
-  const config = messengerConfig();
+  const config = await messengerConfig();
   // Targets in parallel, each one's messages in order.
   const byTarget = new Map<string, Job[]>();
   for (const job of jobs) byTarget.set(job.id, [...(byTarget.get(job.id) || []), job]);
@@ -679,15 +680,15 @@ export async function flushMessengerQueue(now = Date.now()) {
       for (const job of list) {
         // Claimed first: another run must not send the same message.
         if (
-          !run(
+          !(await run(
             "UPDATE messenger_deliveries SET available_at=?,attempts=attempts+1 WHERE id=? AND available_at<=? AND delivered_at IS NULL",
             now + 60_000,
             job.delivery_id,
             now,
-          ).changes
+          )).changes
         )
           continue;
-        const fresh = one<{ enabled: number; failures: number }>("SELECT enabled,failures FROM messenger_targets WHERE id=?", job.id);
+        const fresh = await one<{ enabled: number; failures: number }>("SELECT enabled,failures FROM messenger_targets WHERE id=?", job.id);
         if (!fresh) continue;
         await handle({ ...job, enabled: fresh.enabled, failures: fresh.failures }, config.bot, config.services, now);
       }
@@ -701,25 +702,25 @@ export async function flushMessengerQueue(now = Date.now()) {
 // want them. Security incidents are not sent here: they already reach the
 // administrators as notifications of the kind "incident", which go to their
 // chat apps through the matrix like every other kind.
-export function opsMessengerAdmins() {
-  const admins = adminUserIds();
+export async function opsMessengerAdmins() {
+  const admins = await adminUserIds();
   if (!admins.length) return [];
-  return admins.filter(
-    (userId) =>
-      personalSettings(userId).ops && !!one("SELECT 1 FROM messenger_targets WHERE user_id=? AND enabled=1", userId),
+  return await filterAsync(admins, 
+    async (userId) =>
+      (await personalSettings(userId)).ops && !!(await one("SELECT 1 FROM messenger_targets WHERE user_id=? AND enabled=1", userId)),
   );
 }
-export function queueOpsAlert(title: (say: (de: string, en: string) => string) => string, detail: string, now = Date.now()) {
-  const services = messengerConfig().services;
+export async function queueOpsAlert(title: (say: (de: string, en: string) => string) => string, detail: string, now = Date.now()) {
+  const services = (await messengerConfig()).services;
   let queued = 0;
-  for (const userId of opsMessengerAdmins()) {
-    const say = translate(userLocale(userId));
-    for (const t of all<{ id: string; service: MessengerService }>("SELECT id,service FROM messenger_targets WHERE user_id=? AND enabled=1", userId)) {
+  for (const userId of await opsMessengerAdmins()) {
+    const say = translate(await userLocale(userId));
+    for (const t of await all<{ id: string; service: MessengerService }>("SELECT id,service FROM messenger_targets WHERE user_id=? AND enabled=1", userId)) {
       if (!services[t.service]) continue;
-      run(
+      await run(
         "INSERT INTO messenger_deliveries(target_id,title,body,url,available_at,created_at) VALUES(?,?,?,?,?,?)",
         t.id,
-        `${instanceName()} · ${title(say)}`,
+        `${await instanceName()} · ${title(say)}`,
         detail,
         `${appUrl()}/#admin/monitoring`,
         now,
@@ -740,18 +741,18 @@ const codeHash = (code: string) => createHash("sha256").update(`telegram-link:${
 // valid LINK_MINUTES, once; a new one replaces the person's earlier ones.
 export async function createTelegramLink(user: Identity, now = Date.now()): Promise<TelegramLink> {
   requireBrowserUser(user);
-  const config = messengerConfig();
+  const config = await messengerConfig();
   if (!config.services.telegram)
     throw new HttpError(403, ct("Telegram ist auf dieser Instanz ausgeschaltet.", "Telegram is switched off on this instance."));
   if (!config.bot) throw new HttpError(400, ct("Diese Instanz hat keinen Telegram-Bot eingerichtet.", "This instance has no Telegram bot set up."));
-  const recent = Number(one<{ n: number }>("SELECT COUNT(*) n FROM telegram_links WHERE user_id=? AND expires>?", user.id, now - 45 * 60_000)?.n || 0);
+  const recent = Number((await one<{ n: number }>("SELECT COUNT(*) n FROM telegram_links WHERE user_id=? AND expires>?", user.id, now - 45 * 60_000))?.n || 0);
   if (recent >= 10) throw new HttpError(429, ct("Zu viele Verbindungscodes – bitte später erneut.", "Too many connection codes – try again later."));
-  const username = config.bot.username || (await refreshBotName(config.bot));
+  const username = config.bot.username || await refreshBotName(config.bot);
   if (!username) throw new HttpError(502, ct("Der Telegram-Bot antwortet nicht – bitte Administration prüfen.", "The Telegram bot does not answer – ask an administrator."));
-  run("DELETE FROM telegram_links WHERE user_id=? AND used_at IS NULL", user.id);
+  await run("DELETE FROM telegram_links WHERE user_id=? AND used_at IS NULL", user.id);
   const code = randomBytes(18).toString("base64url");
   const expires = now + LINK_MINUTES * 60_000;
-  run("INSERT INTO telegram_links(code_hash,user_id,expires) VALUES(?,?,?)", codeHash(code), user.id, expires);
+  await run("INSERT INTO telegram_links(code_hash,user_id,expires) VALUES(?,?,?)", codeHash(code), user.id, expires);
   ensureTelegramPolling();
   return { url: `https://t.me/${username}?start=${code}`, code, expires, username };
 }
@@ -760,21 +761,21 @@ export type LinkResult = { status: "linked"; userId: string } | { status: "inval
 
 // "/start <code>" from a private chat: binds that chat to the person the
 // code belongs to. Unknown, used and expired codes bind nothing.
-export function consumeTelegramCode(code: string, chatId: string, now = Date.now()): LinkResult {
+export async function consumeTelegramCode(code: string, chatId: string, now = Date.now()): Promise<LinkResult> {
   if (!/^[A-Za-z0-9_-]{8,64}$/.test(code)) return { status: "invalid" };
   const hash = codeHash(code);
-  const row = one<{ user_id: string; expires: number; used_at: number | null }>("SELECT user_id,expires,used_at FROM telegram_links WHERE code_hash=?", hash);
+  const row = await one<{ user_id: string; expires: number; used_at: number | null }>("SELECT user_id,expires,used_at FROM telegram_links WHERE code_hash=?", hash);
   if (!row) return { status: "invalid" };
   if (row.used_at) return { status: "used" };
   if (row.expires < now) return { status: "expired" };
-  const config = messengerConfig();
-  const person = one<{ disabled: number }>("SELECT disabled FROM users WHERE id=?", row.user_id);
+  const config = await messengerConfig();
+  const person = await one<{ disabled: number }>("SELECT disabled FROM users WHERE id=?", row.user_id);
   if (!config.services.telegram || !config.bot || !person || person.disabled) return { status: "unavailable" };
   // Claimed once, even when two messages carry the same code.
-  if (!run("UPDATE telegram_links SET used_at=?,chat_id=? WHERE code_hash=? AND used_at IS NULL AND expires>=?", now, chatId, hash, now).changes)
+  if (!(await run("UPDATE telegram_links SET used_at=?,chat_id=? WHERE code_hash=? AND used_at IS NULL AND expires>=?", now, chatId, hash, now)).changes)
     return { status: "used" };
-  const existing = one<{ id: string }>("SELECT id FROM messenger_targets WHERE user_id=? AND service='telegram'", row.user_id);
-  saveTarget(row.user_id, existing?.id ?? id(), "telegram", "bot", { chatId }, null, "", !!existing);
+  const existing = await one<{ id: string }>("SELECT id FROM messenger_targets WHERE user_id=? AND service='telegram'", row.user_id);
+  await saveTarget(row.user_id, existing?.id ?? id(), "telegram", "bot", { chatId }, null, "", !!existing);
   return { status: "linked", userId: row.user_id };
 }
 
@@ -785,14 +786,14 @@ type TelegramUpdate = {
 
 // The answer in the chat: in the person's language once known, else in
 // the language of their Telegram app.
-function linkReply(result: LinkResult, languageCode: string | undefined) {
-  const locale: Locale = result.status === "linked" ? userLocale(result.userId) : languageCode?.startsWith("de") ? "de" : languageCode?.startsWith("fr") ? "fr" : "en";
+async function linkReply(result: LinkResult, languageCode: string | undefined) {
+  const locale: Locale = result.status === "linked" ? (await userLocale(result.userId)) : languageCode?.startsWith("de") ? "de" : languageCode?.startsWith("fr") ? "fr" : "en";
   const say = translate(locale);
   switch (result.status) {
     case "linked":
       return say(
-        `Verbunden – Benachrichtigungen aus ${instanceName()} kommen jetzt hier an. Was ankommt, stellst du unter Einstellungen → Benachrichtigungen ein.`,
-        `Connected – notifications from ${instanceName()} now arrive here. Choose what arrives under Settings → Notifications.`,
+        `Verbunden – Benachrichtigungen aus ${await instanceName()} kommen jetzt hier an. Was ankommt, stellst du unter Einstellungen → Benachrichtigungen ein.`,
+        `Connected – notifications from ${await instanceName()} now arrive here. Choose what arrives under Settings → Notifications.`,
       );
     case "expired":
       return say("Dieser Code ist abgelaufen. Erzeuge in Flowplan einen neuen Link.", "This code has expired. Create a new link in Flowplan.");
@@ -814,14 +815,14 @@ export async function handleTelegramUpdate(update: TelegramUpdate, bot: Bot, now
   if (!message?.text || chat?.id === undefined || chat.type !== "private") return null;
   const match = /^\/start(?:@\w+)?(?:\s+(\S+))?\s*$/.exec(message.text.trim());
   if (!match) return null;
-  const result: LinkResult = match[1] ? consumeTelegramCode(match[1], String(chat.id), now) : { status: "invalid" };
+  const result: LinkResult = match[1] ? (await consumeTelegramCode(match[1], String(chat.id), now)) : { status: "invalid" };
   try {
     await http()(
       {
         url: telegramMethodUrl(bot.apiUrl, bot.token, "sendMessage"),
         method: "POST",
         headers: { "Content-Type": "application/json; charset=utf-8" },
-        body: JSON.stringify({ chat_id: chat.id, text: linkReply(result, message.from?.language_code) }),
+        body: JSON.stringify({ chat_id: chat.id, text: await linkReply(result, message.from?.language_code) }),
       },
       { allowPrivate: true },
     );
@@ -847,10 +848,10 @@ async function refreshBotName(bot: Bot): Promise<string | null> {
     const { status, data } = await telegramCall(bot, "getMe", {});
     const username = status === 200 && data.ok ? (data.result as { username?: string })?.username : null;
     if (!username) return null;
-    if (bot.source === "env") setState("telegramBot", JSON.stringify({ hash: tokenHash(bot.token), username }));
+    if (bot.source === "env") await setState("telegramBot", JSON.stringify({ hash: tokenHash(bot.token), username }));
     else {
-      const stored = readStored();
-      if (stored.bot) writeStored({ ...stored, bot: { ...stored.bot, username } });
+      const stored = await readStored();
+      if (stored.bot) await writeStored({ ...stored, bot: { ...stored.bot, username } });
     }
     return username;
   } catch {
@@ -858,32 +859,32 @@ async function refreshBotName(bot: Bot): Promise<string | null> {
   }
 }
 
-const pendingLinks = (now = Date.now()) => !!one("SELECT 1 FROM telegram_links WHERE used_at IS NULL AND expires>? LIMIT 1", now);
+const pendingLinks = async (now = Date.now()) => !!(await one("SELECT 1 FROM telegram_links WHERE used_at IS NULL AND expires>? LIMIT 1", now));
 
 // One getUpdates round; `timeout` seconds of long polling.
 export async function pollTelegram(timeout = 20, now = Date.now()) {
-  const config = messengerConfig();
+  const config = await messengerConfig();
   const bot = config.bot;
   if (!bot || !config.services.telegram) return [];
-  const offset = Number(state("telegramOffset") || 0);
+  const offset = Number(await state("telegramOffset") || 0);
   let answer;
   try {
     answer = await telegramCall(bot, "getUpdates", { offset: offset || undefined, timeout, allowed_updates: ["message"] }, (timeout + 10) * 1000);
   } catch (error) {
-    setState("telegramPoll", JSON.stringify({ at: now, error: "unreachable" }));
+    await setState("telegramPoll", JSON.stringify({ at: now, error: "unreachable" }));
     throw error;
   }
   if (answer.status !== 200 || !answer.data.ok) {
     // 409: a webhook is set for the bot, or another program polls it.
     const error = answer.status === 409 ? "conflict" : answer.status === 401 || answer.status === 404 ? `auth:${answer.status}` : `server:${answer.status}`;
-    setState("telegramPoll", JSON.stringify({ at: now, error }));
+    await setState("telegramPoll", JSON.stringify({ at: now, error }));
     throw new Error(error);
   }
-  setState("telegramPoll", JSON.stringify({ at: now, error: null }));
+  await setState("telegramPoll", JSON.stringify({ at: now, error: null }));
   const updates = (Array.isArray(answer.data.result) ? answer.data.result : []) as TelegramUpdate[];
   const results: (LinkResult | null)[] = [];
   for (const update of updates) {
-    if (typeof update.update_id === "number") setState("telegramOffset", String(update.update_id + 1));
+    if (typeof update.update_id === "number") await setState("telegramOffset", String(update.update_id + 1));
     results.push(await handleTelegramUpdate(update, bot, Date.now()));
   }
   return results;
@@ -894,7 +895,7 @@ export async function pollTelegram(timeout = 20, now = Date.now()) {
 export function ensureTelegramPolling() {
   if (runtime.flowplanTelegramPoll || runtime.flowplanMessengerHttp) return;
   runtime.flowplanTelegramPoll = (async () => {
-    while (pendingLinks()) {
+    while (await pendingLinks()) {
       try {
         await pollTelegram(20);
       } catch {
@@ -921,19 +922,19 @@ const adminInput = z.object({
 // For the administration: a bot from the environment learns its @name
 // (getMe) the first time the section is opened.
 export async function messengerAdminStatusFresh(): Promise<MessengerAdminStatus> {
-  const bot = messengerConfig().bot;
+  const bot = (await messengerConfig()).bot;
   if (bot && !bot.username) await refreshBotName(bot);
-  return messengerAdminStatus();
+  return await messengerAdminStatus();
 }
 
-export function messengerAdminStatus(): MessengerAdminStatus {
-  const config = messengerConfig();
-  const stored = readStored();
+export async function messengerAdminStatus(): Promise<MessengerAdminStatus> {
+  const config = await messengerConfig();
+  const stored = await readStored();
   let poll: { at: number; error: string | null } | null = null;
   try {
-    poll = JSON.parse(state("telegramPoll") || "null");
+    poll = JSON.parse(await state("telegramPoll") || "null");
   } catch {}
-  const counts = all<{ service: MessengerService; enabled: number; n: number }>(
+  const counts = await all<{ service: MessengerService; enabled: number; n: number }>(
     "SELECT service,enabled,COUNT(*) n FROM messenger_targets GROUP BY service,enabled",
   );
   const targets = Object.fromEntries(
@@ -945,7 +946,7 @@ export function messengerAdminStatus(): MessengerAdminStatus {
       },
     ]),
   ) as MessengerAdminStatus["targets"];
-  const count = (sql: string, ...args: number[]) => Number(one<{ n: number }>(sql, ...args)?.n || 0);
+  const count = async (sql: string, ...args: number[]) => Number((await one<{ n: number }>(sql, ...args))?.n || 0);
   const now = Date.now();
   return {
     services: config.services,
@@ -964,27 +965,27 @@ export function messengerAdminStatus(): MessengerAdminStatus {
     },
     targets,
     deliveries: {
-      delivered: count("SELECT COUNT(*) n FROM messenger_deliveries WHERE delivered_at>?", now - DAY),
-      failed: count("SELECT COUNT(*) n FROM messenger_deliveries WHERE delivered_at IS NULL AND attempts>=? AND created_at>?", MAX_ATTEMPTS, now - DAY),
-      pending: count("SELECT COUNT(*) n FROM messenger_deliveries WHERE delivered_at IS NULL AND attempts<?", MAX_ATTEMPTS),
+      delivered: await count("SELECT COUNT(*) n FROM messenger_deliveries WHERE delivered_at>?", now - DAY),
+      failed: await count("SELECT COUNT(*) n FROM messenger_deliveries WHERE delivered_at IS NULL AND attempts>=? AND created_at>?", MAX_ATTEMPTS, now - DAY),
+      pending: await count("SELECT COUNT(*) n FROM messenger_deliveries WHERE delivered_at IS NULL AND attempts<?", MAX_ATTEMPTS),
       lastError:
-        one<{ last_error: string }>("SELECT last_error FROM messenger_deliveries WHERE last_error IS NOT NULL AND created_at>? ORDER BY id DESC LIMIT 1", now - DAY)
+        (await one<{ last_error: string }>("SELECT last_error FROM messenger_deliveries WHERE last_error IS NOT NULL AND created_at>? ORDER BY id DESC LIMIT 1", now - DAY))
           ?.last_error ?? null,
     },
   };
 }
 
-export function saveMessengerAdmin(actor: Identity, input: unknown) {
+export async function saveMessengerAdmin(actor: Identity, input: unknown) {
   const b = adminInput.parse(input);
-  const stored = readStored();
+  const stored = await readStored();
   const next: StoredConfig = { ...stored };
-  if (b.services) next.services = { ...messengerConfig().services, ...b.services };
+  if (b.services) next.services = { ...(await messengerConfig()).services, ...b.services };
   if (b.allowedHosts) next.allowedHosts = [...new Set(b.allowedHosts.map((h) => h.replace(/^\[|\]$/g, "")))];
-  writeStored(next);
-  const detail = `messengers ${messengerServices.filter((s) => (next.services ?? messengerConfig().services)[s]).join(",") || "none"}${next.allowedHosts?.length ? ` hosts:${next.allowedHosts.length}` : ""}`;
-  audit(actor.id, "admin.messengers", "instance", detail);
+  await writeStored(next);
+  const detail = `messengers ${(await filterAsync(messengerServices, async (s) => (next.services ?? (await messengerConfig()).services)[s])).join(",") || "none"}${next.allowedHosts?.length ? ` hosts:${next.allowedHosts.length}` : ""}`;
+  await audit(actor.id, "admin.messengers", "instance", detail);
   securityEvent("admin.settings", { actorId: actor.id, detail });
-  return messengerAdminStatus();
+  return await messengerAdminStatus();
 }
 
 const botInput = z.object({
@@ -996,8 +997,8 @@ const botInput = z.object({
 // before it is stored (sealed). An empty token keeps the stored one.
 export async function saveMessengerBot(actor: Identity, input: unknown) {
   const b = botInput.parse(input);
-  const stored = readStored();
-  const current = messengerConfig().bot;
+  const stored = await readStored();
+  const current = (await messengerConfig()).bot;
   const token = b.token || (current?.source === "stored" ? current.token : "");
   if (!token) throw new HttpError(400, ct("Bot-Token fehlt.", "Bot token is missing."));
   if (!TELEGRAM_TOKEN.test(token)) throw new HttpError(400, ct("Das sieht nicht wie ein Bot-Token aus (123456:ABC…).", "That does not look like a bot token (123456:ABC…)."));
@@ -1023,24 +1024,24 @@ export async function saveMessengerBot(actor: Identity, input: unknown) {
   if (me.status === 401 || me.status === 404) throw new HttpError(400, ct("Telegram lehnt den Bot-Token ab.", "Telegram refuses the bot token."));
   const username = me.status === 200 && me.data.ok ? (me.data.result as { username?: string })?.username : undefined;
   if (!username) throw new HttpError(502, ct(`Die Telegram-API antwortet unerwartet (HTTP ${me.status}).`, `The Telegram API answers unexpectedly (HTTP ${me.status}).`));
-  writeStored({ ...stored, bot: { token: sealSecret(token, "messenger-bot"), apiUrl, username } });
-  setState("telegramOffset", null);
-  setState("telegramPoll", null);
-  audit(actor.id, "admin.messenger_bot", "instance", `@${username} ${hostOf(apiUrl)}`);
+  await writeStored({ ...stored, bot: { token: sealSecret(token, "messenger-bot"), apiUrl, username } });
+  await setState("telegramOffset", null);
+  await setState("telegramPoll", null);
+  await audit(actor.id, "admin.messenger_bot", "instance", `@${username} ${hostOf(apiUrl)}`);
   securityEvent("admin.messenger_bot", { actorId: actor.id, detail: `@${username} ${hostOf(apiUrl)}` });
-  return messengerAdminStatus();
+  return await messengerAdminStatus();
 }
 
 // Removes the stored bot (the environment's token, if any, applies again).
-export function removeMessengerBot(actor: Identity) {
-  const stored = readStored();
+export async function removeMessengerBot(actor: Identity) {
+  const stored = await readStored();
   if (!stored.bot) throw new HttpError(400, ct("Es ist kein Bot gespeichert.", "No bot is stored."));
-  writeStored({ ...stored, bot: null });
-  setState("telegramOffset", null);
-  setState("telegramPoll", null);
-  audit(actor.id, "admin.messenger_bot", "instance", "removed");
+  await writeStored({ ...stored, bot: null });
+  await setState("telegramOffset", null);
+  await setState("telegramPoll", null);
+  await audit(actor.id, "admin.messenger_bot", "instance", "removed");
   securityEvent("admin.messenger_bot", { actorId: actor.id, detail: "removed" });
-  return messengerAdminStatus();
+  return await messengerAdminStatus();
 }
 
 /* ---------- Worker ---------- */
@@ -1056,10 +1057,10 @@ export function dispatchMessengers() {
 
 export function startMessengerWorker() {
   if (runtime.flowplanMessengerTimer) return;
-  runtime.flowplanMessengerTimer = setInterval(() => {
+  runtime.flowplanMessengerTimer = setInterval(async () => {
     void dispatchMessengers();
     // A code may have been made by another process (several replicas).
-    if (pendingLinks()) ensureTelegramPolling();
+    if (await pendingLinks()) ensureTelegramPolling();
   }, 15_000);
   runtime.flowplanMessengerTimer.unref?.();
   void dispatchMessengers();

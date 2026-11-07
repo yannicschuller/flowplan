@@ -257,8 +257,8 @@ import type {
 } from "./types";
 const str = z.string().min(1).max(500),
   uuid = z.string().uuid();
-export function database(pid: string): Database {
-  const raw = one<{
+export async function database(pid: string): Promise<Database> {
+  const raw = await one<{
     page_id: string;
     fields: string;
     views: string;
@@ -273,28 +273,28 @@ export function database(pid: string): Database {
     fields: JSON.parse(raw.fields),
     views: JSON.parse(raw.views),
     recordLayout: parseRecordLayout(record_layout),
-    settings: clientSettings(databaseSettings(pid)),
+    settings: clientSettings(await databaseSettings(pid)),
   };
 }
-export function rows(pid: string): Row[] {
-  return all<Row & { cells: string }>(
+export async function rows(pid: string): Promise<Row[]> {
+  return (await all<Row & { cells: string }>(
     "SELECT * FROM rows WHERE page_id=? ORDER BY position",
     pid,
-  ).map((r) => ({ ...r, cells: JSON.parse(r.cells) }));
+  )).map((r) => ({ ...r, cells: JSON.parse(r.cells) }));
 }
 // Records visible on public pages and share links: private ones stay hidden.
 // Cells of properties with a read rule are left out (lib/field-access.ts).
-export function publicRows(pid: string): Row[] {
-  const hidden = publicHiddenFieldIds(database(pid).fields);
-  return rows(pid)
+export async function publicRows(pid: string): Promise<Row[]> {
+  const hidden = publicHiddenFieldIds((await database(pid)).fields);
+  return (await rows(pid))
     .filter((r) => r.access !== "private")
     .map((r) => ({ ...r, cells: stripCells(r.cells, hidden) }));
 }
 // `agent`: the request's user agent – the mobile apps get no sponsor link
 // (lib/about.ts).
-export function bootstrap(user: Identity, wid?: string, agent?: string | null) {
-  if (!user.demo && !user.apiScope) acceptPendingInvites(user.id);
-  const workspaces = all<{
+export async function bootstrap(user: Identity, wid?: string, agent?: string | null) {
+  if (!user.demo && !user.apiScope) await acceptPendingInvites(user.id);
+  const workspaces = await all<{
     id: string;
     name: string;
     icon: string;
@@ -306,70 +306,70 @@ export function bootstrap(user: Identity, wid?: string, agent?: string | null) {
   );
   const workspace = workspaces.find((w) => w.id === wid) || workspaces[0];
   if (!workspace) throw new HttpError(404, "Kein Arbeitsbereich.");
-  const pages = all<Page>(
+  const pages = await filterAsync(await all<Page>(
     // Synced blocks live inside the pages that show them, not in the tree.
     "SELECT * FROM pages WHERE workspace_id=? AND synced=0 ORDER BY position",
     workspace.id,
-  ).filter((p) => pageRole(user, p));
+  ), async (p) => await pageRole(user, p));
   const visibleSpaceIds = new Set(pages.map((p) => p.space_id));
-  const lockedInbox = lockedNotification();
+  const lockedInbox = await lockedNotification();
   return {
     user,
     // Signs in with e-mail and password (and passkeys) rather than SSO.
-    localAccount: isLocalAccount(user.id),
+    localAccount: await isLocalAccount(user.id),
     // Sign-in methods (#101): a local account may have removed its
     // password; whether an SSO identity is connected.
-    hasPassword: !!one("SELECT 1 FROM local_accounts WHERE user_id=? AND password_hash<>''", user.id),
-    ssoLinked: !!one("SELECT 1 FROM user_identities WHERE user_id=?", user.id),
-    ldapAccount: isLdapAccount(user.id),
+    hasPassword: !!(await one("SELECT 1 FROM local_accounts WHERE user_id=? AND password_hash<>''", user.id)),
+    ssoLinked: !!(await one("SELECT 1 FROM user_identities WHERE user_id=?", user.id)),
+    ldapAccount: await isLdapAccount(user.id),
     workspaces,
     workspace,
     pages,
-    pageCounts: pageCounts(user, workspace.id, pages),
+    pageCounts: await pageCounts(user, workspace.id, pages),
     // "Tage in der Seitenleiste" of journals that differ from the default.
-    journalSidebar: journalSidebarModes(workspace.id),
+    journalSidebar: await journalSidebarModes(workspace.id),
     // Pages owned by me whose review date has passed (lib/page-review.ts).
     reviewsDue: reviewsDue(user, pages),
     // In the workspace's order (lib/space-order.ts).
-    spaces: visibleSpaces(user, workspace.id, visibleSpaceIds),
-    trashedSpaces: all<Space>(
+    spaces: await visibleSpaces(user, workspace.id, visibleSpaceIds),
+    trashedSpaces: await filterAsync(await all<Space>(
       `SELECT * FROM spaces WHERE workspace_id=? AND deleted_at IS NOT NULL ORDER BY ${SPACE_ORDER}`,
       workspace.id,
-    ).filter((s) => canManageSpace(user, s)),
+    ), async (s) => await canManageSpace(user, s)),
     // Days pages stay in the trash (0 = until emptied; lib/trash.ts).
-    trashDays: trashDays(),
-    managedSpaces: all<Space>(
+    trashDays: await trashDays(),
+    managedSpaces: await filterAsync(await all<Space>(
       `SELECT * FROM spaces WHERE workspace_id=? AND deleted_at IS NULL ORDER BY ${SPACE_ORDER}`,
       workspace.id,
-    ).filter((s) => canManageSpace(user, s)),
-    favorites: all<{ page_id: string }>(
+    ), async (s) => await canManageSpace(user, s)),
+    favorites: (await all<{ page_id: string }>(
       "SELECT page_id FROM favorites WHERE user_id=?",
       user.id,
-    ).map((f) => f.page_id),
+    )).map((f) => f.page_id),
     // Own and shared collections, in the person's order (lib/collections.ts).
-    collections: listCollections(user, workspace.id),
+    collections: await listCollections(user, workspace.id),
     // Tags and property definitions, and the tags of the pages shown
     // (lib/page-properties-server.ts).
-    taxonomy: workspaceTaxonomy(user, workspace.id, pages),
-    recentVisits: recentVisits(user, workspace.id, 8),
-    dueTasks: dueTaskCount(user, workspace.id),
-    notificationPrefs: notificationPrefs(user),
-    ...(user.isAdmin ? { incidentThreshold: incidentThreshold(user.id) } : {}),
-    weeklyDigest: weeklyDigestPrefs(user),
+    taxonomy: await workspaceTaxonomy(user, workspace.id, pages),
+    recentVisits: await recentVisits(user, workspace.id, 8),
+    dueTasks: await dueTaskCount(user, workspace.id),
+    notificationPrefs: await notificationPrefs(user),
+    ...(user.isAdmin ? { incidentThreshold: await incidentThreshold(user.id) } : {}),
+    weeklyDigest: await weeklyDigestPrefs(user),
     // Own keyboard shortcuts (lib/keymap.ts), only those that differ.
-    shortcuts: userShortcuts(user),
+    shortcuts: await userShortcuts(user),
     // What this person folded and unfolded in the sidebar (#97,
     // lib/sidebar-state.ts); null: nothing yet.
-    sidebar: sidebarState(user, workspace.id),
+    sidebar: await sidebarState(user, workspace.id),
     // The start page of this workspace (lib/home-layout.ts).
-    home: homeLayout(user, workspace.id),
+    home: await homeLayout(user, workspace.id),
     instance: {
-      name: instanceSettings().name,
-      announcement: instanceSettings().announcement,
+      name: (await instanceSettings()).name,
+      announcement: (await instanceSettings()).announcement,
       // Banners to click away once (lib/instance-banners.ts).
-      banners: bannersFor(user),
+      banners: await bannersFor(user),
       allowWorkspaceCreation:
-        instanceSettings().allowWorkspaceCreation || user.isAdmin,
+        (await instanceSettings()).allowWorkspaceCreation || user.isAdmin,
       transcription: transcriptionEnabled() && !user.demo,
       // The draw.io editor (DRAWIO_URL, lib/drawio.ts); null when the
       // address set is not usable.
@@ -382,20 +382,19 @@ export function bootstrap(user: Identity, wid?: string, agent?: string | null) {
     // What applies to me: limits with my usage, and my fixed language.
     myLimits: user.isAdmin
       ? null
-      : { ...effectiveUserLimits(user.id), usedBytes: userBytes(user.id), ownedWorkspaces: ownedWorkspaces(user.id) },
-    language: fixedLanguage(user.id),
+      : { ...(await effectiveUserLimits(user.id)), usedBytes: await userBytes(user.id), ownedWorkspaces: await ownedWorkspaces(user.id) },
+    language: await fixedLanguage(user.id),
     // New accounts see the introduction once (components/onboarding.tsx).
-    onboarding: !user.demo && !one<{ onboarded_at: number | null }>("SELECT onboarded_at FROM users WHERE id=?", user.id)?.onboarded_at,
+    onboarding: !user.demo && !(await one<{ onboarded_at: number | null }>("SELECT onboarded_at FROM users WHERE id=?", user.id))?.onboarded_at,
     // Favourite records of readable databases in this workspace.
-    favoriteRows: all<Page & { row_id: string; cells: string; fields: string }>(
+    favoriteRows: (await filterAsync(await all<Page & { row_id: string; cells: string; fields: string }>(
       `SELECT p.*,r.id row_id,r.cells,d.fields FROM row_favorites f
        JOIN rows r ON r.id=f.row_id JOIN pages p ON p.id=f.page_id
        JOIN databases d ON d.page_id=p.id
        WHERE f.user_id=? AND p.workspace_id=? AND p.deleted_at IS NULL`,
       user.id,
       workspace.id,
-    )
-      .filter((p) => pageRole(user, p))
+    ), async (p) => await pageRole(user, p)))
       .map((p) => ({
         pageId: p.id,
         rowId: p.row_id,
@@ -407,46 +406,46 @@ export function bootstrap(user: Identity, wid?: string, agent?: string | null) {
           ) || "Ohne Titel",
       })),
     // Guests only see themselves; members see who is a guest.
-    members: all(
+    members: (await all(
       `SELECT u.id,u.name,u.email,u.disabled,u.avatar,m.role,
        EXISTS(SELECT 1 FROM workspace_guests g WHERE g.workspace_id=m.workspace_id AND g.user_id=u.id) guest
        FROM users u JOIN members m ON m.user_id=u.id WHERE m.workspace_id=?`,
       workspace.id,
-    ).filter(
+    )).filter(
       (m) => !(workspace as { guest?: number }).guest || m.id === user.id,
     ),
     // Behind a journal PIN not entered: only that the journal is locked.
-    notifications: all<Record<string, unknown> & { page_id: string | null; kind: string | null; body: string | null }>(
+    notifications: (await all<Record<string, unknown> & { page_id: string | null; kind: string | null; body: string | null }>(
       "SELECT * FROM notifications WHERE user_id=? ORDER BY created_at DESC LIMIT 100",
       user.id,
-    ).map((n) => (lockedInbox(n, user.id) ? { ...n, body: LOCKED_NOTICE } : n)),
+    )).map((n) => (lockedInbox(n, user.id) ? { ...n, body: LOCKED_NOTICE } : n)),
     // Which AI features work here, with which provider, and which pages the
     // AI may not read (lib/ai). Never keys or addresses beyond the host.
-    ai: aiStatus(user, workspace.id, pages),
+    ai: await aiStatus(user, workspace.id, pages),
   };
 }
-export function pageData(user: Identity, pid: string, options: { presence?: boolean } = {}) {
-  const data = pageContent(user, pid, options);
+export async function pageData(user: Identity, pid: string, options: { presence?: boolean } = {}) {
+  const data = await pageContent(user, pid, options);
   // Tags and property values (#70); none behind a journal PIN or for
   // encrypted pages.
   if ((data as { locked?: unknown }).locked) return data;
-  const properties = pageMetaFor(data.page);
+  const properties = await pageMetaFor(data.page);
   // Whether this person collapsed the bar (#83; null: the default applies),
   // so the bar opens in the right state without a jump.
-  return properties ? { ...data, properties, propertiesCollapsed: propertiesCollapsed(user, data.page.id) } : data;
+  return properties ? { ...data, properties, propertiesCollapsed: await propertiesCollapsed(user, data.page.id) } : data;
 }
-function pageContent(user: Identity, pid: string, options: { presence?: boolean } = {}) {
-  const p = requirePage(user, pid);
-  const role = pageRole(user, p);
+async function pageContent(user: Identity, pid: string, options: { presence?: boolean } = {}) {
+  const p = await requirePage(user, pid);
+  const role = await pageRole(user, p);
   // Behind a journal PIN: only what the lock screen needs.
   // Any page below the journal shows the lock screen of that journal.
-  const lockedBy = lockingJournal(user, p);
+  const lockedBy = await lockingJournal(user, p);
   if (lockedBy)
     return {
       page: p,
       role,
       // Owners of the workspace may reset the PIN from the lock screen.
-      locked: { journalId: lockedBy, canReset: mayResetJournalLock(user, one<Page>("SELECT * FROM pages WHERE id=?", lockedBy)!) },
+      locked: { journalId: lockedBy, canReset: await mayResetJournalLock(user, (await one<Page>("SELECT * FROM pages WHERE id=?", lockedBy))!) },
       comments: [],
       snapshots: [],
       present: [],
@@ -459,151 +458,150 @@ function pageContent(user: Identity, pid: string, options: { presence?: boolean 
     };
   // End-to-end encrypted: the content comes as ciphertext through its own
   // log (lib/e2ee-server.ts); here only what the page shell needs.
-  if (isEncryptedPage(p)) return { ...encryptedPageData(user, p) };
+  if (await isEncryptedPage(p)) return { ...(await encryptedPageData(user, p)) };
   // Pages and records whose text links here.
-  const backlinks = textBacklinks(user, p);
-  const hidden = p.kind === "database" ? hiddenRowIds(user, p) : new Set();
-  const comments = all<{ id: string; row_id: string | null }>(
+  const backlinks = await textBacklinks(user, p);
+  const hidden = p.kind === "database" ? (await hiddenRowIds(user, p)) : new Set();
+  const comments = await mapAsync((await all<{ id: string; row_id: string | null }>(
     `SELECT c.id,c.page_id,c.row_id,c.author_id,c.body,c.resolved,c.created_at,u.name FROM comments c JOIN users u ON u.id=c.author_id WHERE page_id=?
      UNION ALL SELECT id,page_id,row_id,NULL author_id,body,resolved,created_at,name || ' (Gast)' name FROM shared_comments WHERE page_id=? ORDER BY created_at`,
     pid,
     pid,
-  )
-    .filter((c) => !c.row_id || !hidden.has(c.row_id))
-    .map((c) => ({ ...c, reactions: commentReactions(user, c.id) }));
-  const snapshots = all(
+  ))
+    .filter((c) => !c.row_id || !hidden.has(c.row_id)), async (c) => ({ ...c, reactions: await commentReactions(user, c.id) }));
+  const snapshots = await all(
     "SELECT id,title,created_at,kind FROM snapshots WHERE page_id=? ORDER BY created_at DESC LIMIT 50",
     pid,
   );
-  const present = all(
+  const present = await all(
     "SELECT u.id,u.name FROM presence p JOIN users u ON u.id=p.user_id WHERE p.page_id=? AND seen>?",
     pid,
     Date.now() - 45000,
   );
   if (options.presence !== false)
-    run(
+    await run(
       "INSERT INTO presence VALUES(?,?,?) ON CONFLICT(page_id,user_id) DO UPDATE SET seen=excluded.seen",
       pid,
       user.id,
       Date.now(),
     );
   if (p.kind === "database") {
-    const data = database(pid);
+    const data = await database(pid);
     // This database's own rows are already in rows (the client adds them).
-    const relations = relatedData(user, p, { rootRows: false });
+    const relations = await relatedData(user, p, { rootRows: false });
     relations.related[pid] = [];
     const documentHtml = new Map(
-      all<{ row_id: string; html: string }>(
+      (await all<{ row_id: string; html: string }>(
         "SELECT d.row_id,d.html FROM row_documents d JOIN rows r ON r.id=d.row_id WHERE r.page_id=?",
         pid,
-      ).map((d) => [d.row_id, d.html]),
+      )).map((d) => [d.row_id, d.html]),
     );
     return {
       page: p,
-      images: pageImages(pid),
-      files: pageFiles(pid, hiddenFileIds(user, p)),
-      publication: publicationSettings(pid),
-      shareLinks: role === "viewer" ? [] : listShareLinks(user, pid),
+      images: await pageImages(pid),
+      files: await pageFiles(pid, await hiddenFileIds(user, p)),
+      publication: await publicationSettings(pid),
+      shareLinks: role === "viewer" ? [] : (await listShareLinks(user, pid)),
       role,
       comments,
       snapshots,
       present,
       backlinks,
       // Properties hidden from this person are left out (lib/field-access.ts).
-      database: { ...data, fields: visibleFields(user, p, data.fields) },
+      database: { ...data, fields: await visibleFields(user, p, data.fields) },
       // Visible properties this person may not change.
-      readOnlyFields: readOnlyFieldIds(user, p, data.fields),
-      relationPairs: relationPairs(pid),
+      readOnlyFields: await readOnlyFieldIds(user, p, data.fields),
+      relationPairs: await relationPairs(pid),
       // Each record carries the viewer's role; hidden ones are left out.
-      rows: visibleRows(user, p, rows(pid)).map((r) => ({
+      rows: await mapAsync(await visibleRows(user, p, await rows(pid)), async (r) => ({
         ...r,
         preview: documentPreview(documentHtml.get(r.id) ?? r.content ?? ""),
-        ...(r.access !== "inherit" && canManageRow(user, p, r)
-          ? { grants: rowGrants(r.id) }
+        ...(r.access !== "inherit" && await canManageRow(user, p, r)
+          ? { grants: await rowGrants(r.id) }
           : {}),
       })),
-      rowTemplates: rowTemplates(pid),
+      rowTemplates: await rowTemplates(pid),
       // Groups for record permissions.
       groups:
         role === "viewer"
           ? []
-          : all<{ id: string; name: string }>(
+          : (await all<{ id: string; name: string }>(
               "SELECT id,name FROM groups WHERE workspace_id=? ORDER BY name",
               p.workspace_id,
-            ),
-      reminders: listDateReminders(user, pid),
+            )),
+      reminders: await listDateReminders(user, pid),
       ...relations,
-      form: formSettings(pid),
+      form: await formSettings(pid),
       // Contacts databases: records kept by the LDAP directory (lib/contacts.ts).
-      contacts: contactsPageData(pid),
+      contacts: await contactsPageData(pid),
     };
   }
   if (p.kind === "dashboard")
     return {
       page: p,
-      images: pageImages(pid),
-      publication: publicationSettings(pid),
-      shareLinks: role === "viewer" ? [] : listShareLinks(user, pid),
+      images: await pageImages(pid),
+      publication: await publicationSettings(pid),
+      shareLinks: role === "viewer" ? [] : (await listShareLinks(user, pid)),
       role,
       comments,
       snapshots,
       present,
       backlinks,
-      dashboard: dashboardData(user, p, role),
+      dashboard: await dashboardData(user, p, role),
       html: "",
     };
   if (p.kind === "notebook")
     return {
       page: p,
-      images: pageImages(pid),
-      publication: publicationSettings(pid),
-      shareLinks: role === "viewer" ? [] : listShareLinks(user, pid),
+      images: await pageImages(pid),
+      publication: await publicationSettings(pid),
+      shareLinks: role === "viewer" ? [] : (await listShareLinks(user, pid)),
       role,
       comments,
       snapshots,
       present,
       backlinks,
-      notebook: notebookData(user, p),
+      notebook: await notebookData(user, p),
       html: "",
     };
   if (p.kind === "whiteboard")
     return {
       page: p,
-      images: pageImages(pid),
-      publication: publicationSettings(pid),
-      shareLinks: role === "viewer" ? [] : listShareLinks(user, pid),
+      images: await pageImages(pid),
+      publication: await publicationSettings(pid),
+      shareLinks: role === "viewer" ? [] : (await listShareLinks(user, pid)),
       role,
       comments,
       snapshots,
       present,
       backlinks,
-      whiteboard: whiteboardData(p),
+      whiteboard: await whiteboardData(p),
       // Texts on the board, for search and previews.
       html: String(
-        one("SELECT html FROM documents WHERE page_id=?", pid)?.html || "",
+        (await one("SELECT html FROM documents WHERE page_id=?", pid))?.html || "",
       ),
     };
-  let doc = one<{ state: Uint8Array | null; html: string; generation: string }>(
+  let doc = await one<{ state: Uint8Array | null; html: string; generation: string }>(
     "SELECT * FROM documents WHERE page_id=?",
     pid,
   );
   if (doc && !doc.state) {
     const state = htmlState(doc.html);
-    run(
+    await run(
       "UPDATE documents SET state=? WHERE page_id=? AND state IS NULL",
       state,
       pid,
     );
-    doc = one<{ state: Uint8Array | null; html: string; generation: string }>(
+    doc = await one<{ state: Uint8Array | null; html: string; generation: string }>(
       "SELECT * FROM documents WHERE page_id=?",
       pid,
     );
   }
   return {
     page: p,
-    images: pageImages(pid),
-    publication: publicationSettings(pid),
-    shareLinks: role === "viewer" ? [] : listShareLinks(user, pid),
+    images: await pageImages(pid),
+    publication: await publicationSettings(pid),
+    shareLinks: role === "viewer" ? [] : (await listShareLinks(user, pid)),
     role,
     comments,
     snapshots,
@@ -612,23 +610,23 @@ function pageContent(user: Identity, pid: string, options: { presence?: boolean 
     ...(p.kind === "journal"
       ? {
           journal: {
-            days: journalDayDetails(p.id),
+            days: await journalDayDetails(p.id),
             settings: (({ icsUrl, ...rest }) =>
               role === "viewer" ? rest : { ...rest, icsUrl })(
-              journalSettings(p.id),
+              await journalSettings(p.id),
             ),
           },
         }
       : {}),
-    ...(p.synced ? { syncedUsage: syncedUsage(user, p) } : {}),
-    ...(p.journal_date && journalOf(p)
+    ...(p.synced ? { syncedUsage: await syncedUsage(user, p) } : {}),
+    ...(p.journal_date && await journalOf(p)
       ? {
           journalDay: {
             journalId: p.parent_id,
             date: p.journal_date,
-            trackers: journalSettings(p.parent_id!).trackers,
-            options: journalSettings(p.parent_id!).options,
-            entry: dayEntry(p.id),
+            trackers: (await journalSettings(p.parent_id!)).trackers,
+            options: (await journalSettings(p.parent_id!)).options,
+            entry: await dayEntry(p.id),
           },
         }
       : {}),
@@ -638,12 +636,12 @@ function pageContent(user: Identity, pid: string, options: { presence?: boolean 
   };
 }
 // Where page.move (and page.moveCheck) puts a page.
-function moveDestination(user: Identity, p: Page, b: Record<string, unknown>) {
+async function moveDestination(user: Identity, p: Page, b: Record<string, unknown>) {
   const placement = z
     .enum(["before", "after", "inside"])
     .parse(b.placement || "inside");
   const target = b.targetId
-    ? requirePage(user, uuid.parse(b.targetId), true)
+    ? (await requirePage(user, uuid.parse(b.targetId), true))
     : null;
   const parent = target
     ? placement === "inside"
@@ -653,20 +651,20 @@ function moveDestination(user: Identity, p: Page, b: Record<string, unknown>) {
       ? uuid.parse(b.parentId)
       : null;
   const destinationParent = parent
-    ? requirePage(user, parent, true)
+    ? (await requirePage(user, parent, true))
     : null;
   const sid: string =
     destinationParent?.space_id ||
     target?.space_id ||
     (b.spaceId ? uuid.parse(b.spaceId) : p.space_id);
-  const destination = one<Space>("SELECT * FROM spaces WHERE id=?", sid);
+  const destination = await one<Space>("SELECT * FROM spaces WHERE id=?", sid);
   return { placement, target, parent, destinationParent, sid, destination };
 }
-function descendants(pid: string): string[] {
-  return all<{ id: string }>(
+async function descendants(pid: string): Promise<string[]> {
+  return (await all<{ id: string }>(
     "WITH RECURSIVE tree(id) AS (SELECT id FROM pages WHERE id=? UNION ALL SELECT p.id FROM pages p JOIN tree t ON p.parent_id=t.id) SELECT id FROM tree",
     pid,
-  ).map((p) => p.id);
+  )).map((p) => p.id);
 }
 // Snapshot images whose file was removed meanwhile are dropped, not restored.
 function restorableImage(
@@ -696,23 +694,23 @@ const GIT_EXPORT_ENDS = new Set([
   "admin.deleteUser",
   "admin.mergeUsers",
 ]);
-export function command(
+export async function command(
   user: Identity,
   input: unknown,
   withinTransaction = false,
   // An Idempotency-Key, reserved and answered in the action's transaction
   // (lib/idempotency.ts idempotencyHook).
   keyed?: TransactionHook,
-): unknown {
+): Promise<unknown> {
   // Permission lookups are remembered until the next write (lib/read-memo.ts).
-  return withReadMemo(() => runCommand(user, input, withinTransaction, keyed));
+  return await withReadMemo(async () => await runCommand(user, input, withinTransaction, keyed));
 }
-function runCommand(
+async function runCommand(
   user: Identity,
   input: unknown,
   withinTransaction: boolean,
   keyed: TransactionHook | undefined,
-): unknown {
+): Promise<unknown> {
   const base = z.object({ action: str }).passthrough().parse(input);
   const action = base.action;
   const b = base as Record<string, unknown>;
@@ -728,9 +726,9 @@ function runCommand(
     );
   const pid = () => uuid.parse(b.pageId);
   const wid = () => uuid.parse(b.workspaceId);
-  const write = () => {
-    const p = requirePage(user, pid(), true);
-    requireUnlocked(user, p);
+  const write = async () => {
+    const p = await requirePage(user, pid(), true);
+    await requireUnlocked(user, p);
     if (
       p.locked &&
       !["page.update", "page.delete", "page.snapshot"].includes(action)
@@ -740,10 +738,10 @@ function runCommand(
   };
   // Work that must only happen once the transaction is committed.
   const afterCommit: (() => void)[] = [];
-  const execute = () => {
+  const execute = async () => {
     let result: unknown = { ok: true };
     // Pages of encrypted spaces: only what works without plaintext.
-    guardEncryptedCommand(action, b);
+    await guardEncryptedCommand(action, b);
     switch (action) {
       case "e2ee.identity.setup":
       case "e2ee.identity.update":
@@ -754,116 +752,116 @@ function runCommand(
       case "e2ee.append":
       case "e2ee.compact":
       case "e2ee.title":
-        result = e2eeCommand(user, action, b, afterCommit);
+        result = await e2eeCommand(user, action, b, afterCommit);
         break;
       case "workspace.create":
-        if (!instanceSettings().allowWorkspaceCreation && !user.isAdmin)
+        if (!(await instanceSettings()).allowWorkspaceCreation && !user.isAdmin)
           throw new HttpError(
             403,
             "Neue Arbeitsbereiche legen auf dieser Instanz nur Admins an.",
           );
-        assertMayCreateWorkspace(user);
-        result = { id: createWorkspaceInner(user.id, str.parse(b.name)) };
+        await assertMayCreateWorkspace(user);
+        result = { id: await createWorkspaceInner(user.id, str.parse(b.name)) };
         break;
       case "admin.settings":
         requireAdmin(user);
-        result = saveInstanceSettings(b.settings);
+        result = await saveInstanceSettings(b.settings);
         break;
       // AI (lib/ai): administration, own settings, what the AI may read.
       case "admin.ai":
-        result = saveInstanceAi(user, b);
+        result = await saveInstanceAi(user, b);
         break;
       case "admin.aiUser":
-        result = setUserAiPolicy(user, b);
+        result = await setUserAiPolicy(user, b);
         break;
       case "ai.settings":
-        result = saveUserAiPrefs(user, b);
+        result = await saveUserAiPrefs(user, b);
         break;
       case "ai.provider":
-        result = saveUserAiProvider(user, b);
+        result = await saveUserAiProvider(user, b);
         break;
       case "ai.rule":
-        result = setAiRule(user, b);
+        result = await setAiRule(user, b);
         break;
       case "ai.block":
-        result = setAiBlock(user, b);
+        result = await setAiBlock(user, b);
         break;
       case "profile.onboarded":
-        run("UPDATE users SET onboarded_at=? WHERE id=?", Date.now(), user.id);
+        await run("UPDATE users SET onboarded_at=? WHERE id=?", Date.now(), user.id);
         result = { ok: true };
         break;
       case "notification.reset":
-        result = resetNotificationPrefs(user);
+        result = await resetNotificationPrefs(user);
         break;
       case "notification.email":
-        result = setEmailForAll(user, b.email);
+        result = await setEmailForAll(user, b.email);
         break;
       // The weekly digest e-mail (lib/weekly-digest.ts).
       case "notification.weekly":
-        result = setWeeklyDigest(user, b);
+        result = await setWeeklyDigest(user, b);
         break;
       // Own keyboard shortcuts (lib/user-shortcuts.ts).
       case "shortcuts.save":
-        result = saveShortcuts(user, b);
+        result = await saveShortcuts(user, b);
         break;
       // The personal start page (lib/home-layout.ts).
       case "home.save":
-        result = saveHomeLayout(user, b);
+        result = await saveHomeLayout(user, b);
         break;
       case "home.reset":
-        result = resetHomeLayout(user, b);
+        result = await resetHomeLayout(user, b);
         break;
       case "home.note":
-        result = saveHomeNote(user, b);
+        result = await saveHomeNote(user, b);
         break;
       case "home.config":
-        result = saveHomeConfig(user, b);
+        result = await saveHomeConfig(user, b);
         break;
       case "home.default":
-        result = setTeamDefault(user, b);
+        result = await setTeamDefault(user, b);
         break;
       case "profile.language":
-        result = { language: setFixedLanguage(user.id, b.language) };
+        result = { language: await setFixedLanguage(user.id, b.language) };
         break;
       case "account.deletePlan":
-        result = ownDeletionPlan(user);
+        result = await ownDeletionPlan(user);
         break;
       case "account.delete":
-        result = deleteOwnAccount(user, b);
+        result = await deleteOwnAccount(user, b);
         break;
       case "admin.deletePlan":
         requireAdmin(user);
-        result = deletionPlan(z.uuid().parse(b.userId));
+        result = await deletionPlan(z.uuid().parse(b.userId));
         break;
       case "admin.deleteUser":
         requireAdmin(user);
-        result = deleteAccount(user, z.uuid().parse(b.userId));
+        result = await deleteAccount(user, z.uuid().parse(b.userId));
         break;
       // Two accounts of one person (#101, lib/account-merge.ts): the
       // preview, then the merge in this transaction.
       case "admin.mergePlan":
         requireAdmin(user);
-        result = mergePreview(user, z.uuid().parse(b.sourceId), z.uuid().parse(b.targetId));
+        result = await mergePreview(user, z.uuid().parse(b.sourceId), z.uuid().parse(b.targetId));
         break;
       case "admin.mergeUsers": {
         requireAdmin(user);
-        const merged = mergeAccounts(user, z.uuid().parse(b.sourceId), z.uuid().parse(b.targetId));
+        const merged = await mergeAccounts(user, z.uuid().parse(b.sourceId), z.uuid().parse(b.targetId));
         afterCommit.push(...merged.publish);
         result = merged.preview;
         break;
       }
       case "admin.confirmEmail":
         requireAdmin(user);
-        confirmAddress(z.uuid().parse(b.userId));
+        await confirmAddress(z.uuid().parse(b.userId));
         break;
       case "admin.userLimits":
         requireAdmin(user);
-        result = setUserLimits(z.uuid().parse(b.userId), b.limits);
+        result = await setUserLimits(z.uuid().parse(b.userId), b.limits);
         break;
       case "workspace.update": {
-        requireMember(user, wid(), "owner");
+        await requireMember(user, wid(), "owner");
         if (b.name !== undefined)
-          run(
+          await run(
             "UPDATE workspaces SET name=? WHERE id=?",
             str.parse(b.name),
             wid(),
@@ -875,30 +873,30 @@ function runCommand(
               400,
               "Als Symbol sind ein Emoji, ein Bibliothekssymbol oder ein Bild (PNG, JPEG, WebP bis 100 KB) möglich.",
             );
-          run("UPDATE workspaces SET icon=? WHERE id=?", icon, wid());
+          await run("UPDATE workspaces SET icon=? WHERE id=?", icon, wid());
         }
         break;
       }
       case "workspace.delete":
       case "workspace.leave":
-        result = manageWorkspace(user, b);
+        result = await manageWorkspace(user, b);
         break;
       case "space.delete":
       case "space.restore":
       case "space.purge":
-        result = manageSpace(user, b);
+        result = await manageSpace(user, b);
         break;
       case "page.import": {
-        requireMember(user, wid(), "editor");
+        await requireMember(user, wid(), "editor");
         const sid = uuid.parse(b.spaceId),
-          space = one<Space>(
+          space = await one<Space>(
             "SELECT * FROM spaces WHERE id=? AND workspace_id=?",
             sid,
             wid(),
           );
         if (
           !space ||
-          !["owner", "editor"].includes(spaceRole(user, space) || "")
+          !["owner", "editor"].includes(await spaceRole(user, space) || "")
         )
           throw new HttpError(403, "Kein Zugriff");
         const content = z.string().max(2_000_000).parse(b.content);
@@ -906,7 +904,7 @@ function runCommand(
         // frontmatter with nothing else is not repeated in the text.
         const front = b.format === "markdown" ? splitFrontmatter(content) : null;
         const frontMeta = front
-          ? frontmatterMeta(front.data, wid(), memberByName(wid()), { createDefinitions: canManageScope(user, wid(), sid), spaceId: sid })
+          ? (await frontmatterMeta(front.data, wid(), await memberByName(wid()), { createDefinitions: await canManageScope(user, wid(), sid), spaceId: sid }))
           : null;
         const frontTaken =
           !!front &&
@@ -918,34 +916,34 @@ function runCommand(
             : b.format === "markdown"
               ? markdownHtml(frontTaken ? front!.body : content)
               : `<p>${escaped(content).replaceAll("\n", "</p><p>")}</p>`;
-        const np = createPage(wid(), sid, user.id, str.parse(b.title));
+        const np = await createPage(wid(), sid, user.id, str.parse(b.title));
         if (front && frontMeta) {
-          applyPortableMeta(user, { id: np, workspace_id: wid(), space_id: sid }, frontMeta.meta, { createDefinitions: canManageScope(user, wid(), sid) });
+          await applyPortableMeta(user, { id: np, workspace_id: wid(), space_id: sid }, frontMeta.meta, { createDefinitions: await canManageScope(user, wid(), sid) });
           const aliases = frontmatterAliases(front.data);
-          if (aliases.length) run("UPDATE pages SET aliases=? WHERE id=?", storedAliases(aliases), np);
+          if (aliases.length) await run("UPDATE pages SET aliases=? WHERE id=?", storedAliases(aliases), np);
         }
-        run(
+        await run(
           "UPDATE documents SET html=?,state=? WHERE page_id=?",
           html,
           htmlState(html),
           np,
         );
         // Tasks in the imported text appear under "Meine Aufgaben".
-        indexPageTasks(np);
+        await indexPageTasks(np);
         result = { id: np };
         break;
       }
       case "workspace.import": {
-        requireMember(user, wid(), "editor");
+        await requireMember(user, wid(), "editor");
         const sid = uuid.parse(b.spaceId),
-          space = one<Space>(
+          space = await one<Space>(
             "SELECT * FROM spaces WHERE id=? AND workspace_id=?",
             sid,
             wid(),
           );
         if (
           !space ||
-          !["owner", "editor"].includes(spaceRole(user, space) || "")
+          !["owner", "editor"].includes(await spaceRole(user, space) || "")
         )
           throw new HttpError(403, "Kein Zugriff");
         const backup = z
@@ -967,7 +965,7 @@ function runCommand(
         const mapped = new Map<string, string>();
         for (const p of backup.pages) {
           if (mapped.has(p.id)) throw new HttpError(400, "Doppelte Seiten-ID");
-          const np = createPage(wid(), sid, user.id, p.title, p.kind);
+          const np = await createPage(wid(), sid, user.id, p.title, p.kind);
           mapped.set(p.id, np);
         }
         const rowIds = new Map<string, string>();
@@ -988,8 +986,8 @@ function runCommand(
             }
           }
         const rewriteHtml = (html: string) =>
-          cleanHtml(html, (tagName, attribs) => {
-            const attrs = remapLinkedAttributes(
+          cleanHtml(html, async (tagName, attribs) => {
+            const attrs = await remapLinkedAttributes(
               { ...attribs },
               mapped,
               rowIds,
@@ -1030,7 +1028,7 @@ function runCommand(
               parent =
                 backup.pages.find((x) => x.id === parent)?.parent_id || "";
             }
-            run(
+            await run(
               "UPDATE pages SET parent_id=? WHERE id=?",
               mapped.get(p.parent_id)!,
               np,
@@ -1041,7 +1039,7 @@ function runCommand(
               .object({ html: z.string().max(2_000_000) })
               .parse(p.data);
             const html = rewriteHtml(doc.html);
-            run(
+            await run(
               "UPDATE documents SET html=?,state=? WHERE page_id=?",
               html,
               htmlState(html),
@@ -1071,7 +1069,7 @@ function runCommand(
                 ? mapped.get(f.relationPage)
                 : undefined,
             }));
-            run(
+            await run(
               "UPDATE databases SET fields=?,views=? WHERE page_id=?",
               JSON.stringify(fields),
               JSON.stringify(
@@ -1085,7 +1083,7 @@ function runCommand(
               np,
             );
             for (const [i, r] of d.rows.entries())
-              run(
+              await run(
                 "INSERT INTO rows(id,page_id,cells,content,position,created_by,updated_by) VALUES(?,?,?,?,?,?,?)",
                 rowIds.get(r.id || `${p.id}:row:${i}`)!,
                 np,
@@ -1113,7 +1111,7 @@ function runCommand(
                 user.id,
               );
             // Tag-backed properties use this workspace's tags (#79).
-            reconcileTagFields(user, np);
+            await reconcileTagFields(user, np);
           }
         }
         result = {
@@ -1123,23 +1121,23 @@ function runCommand(
         break;
       }
       case "space.duplicate":
-        result = duplicateSpace(user, b);
+        result = await duplicateSpace(user, b);
         break;
       // The order of the spaces in the sidebar (lib/space-order.ts).
       case "space.reorder":
-        result = reorderSpaces(user, b);
+        result = await reorderSpaces(user, b);
         break;
       // Git export of the space, by its owner (lib/space-git-export.ts).
       case "space.gitExport":
-        result = saveSpaceGitExport(user, b);
+        result = await saveSpaceGitExport(user, b);
         break;
       case "space.create": {
-        requireMember(user, wid(), "editor");
+        await requireMember(user, wid(), "editor");
         // An encrypted space comes with its id chosen in the browser: the
         // sealed space key names the space it belongs to.
         const sid = b.encrypted && b.id !== undefined ? uuid.parse(b.id) : id();
-        if (one("SELECT 1 FROM spaces WHERE id=?", sid)) throw new HttpError(409, "Ungültige Eingabe.");
-        run(
+        if (await one("SELECT 1 FROM spaces WHERE id=?", sid)) throw new HttpError(409, "Ungültige Eingabe.");
+        await run(
           "INSERT INTO spaces(id,workspace_id,name,visibility,owner_id,icon,icon_color) VALUES(?,?,?,?,?,?,?)",
           sid,
           wid(),
@@ -1150,13 +1148,13 @@ function runCommand(
           spaceColorSchema.parse(b.iconColor ?? "none"),
         );
         // "Verschlüsselter Bereich": the creator's sealed space key comes along.
-        if (b.encrypted) makeSpaceEncrypted(user, sid, b.encrypted);
+        if (b.encrypted) await makeSpaceEncrypted(user, sid, b.encrypted);
         result = { id: sid };
         break;
       }
       case "space.update": {
         const sid = uuid.parse(b.spaceId);
-        const s = requireSpaceManager(user, sid);
+        const s = await requireSpaceManager(user, sid);
         if (s.deleted_at)
           throw new HttpError(409, "Den Bereich zuerst wiederherstellen.");
         if (b.version !== undefined && b.version !== s.version)
@@ -1164,7 +1162,7 @@ function runCommand(
             409,
             "Der Bereich wurde inzwischen geändert. Bitte neu laden.",
           );
-        run(
+        await run(
           "UPDATE spaces SET name=?,visibility=?,icon=?,icon_color=?,version=version+1 WHERE id=?",
           str.parse(b.name),
           b.private ? "private" : "team",
@@ -1175,18 +1173,18 @@ function runCommand(
         break;
       }
       case "page.create": {
-        requireMember(user, wid(), "editor");
+        await requireMember(user, wid(), "editor");
         const sid = uuid.parse(b.spaceId),
-          s = one<Space>(
+          s = await one<Space>(
             "SELECT * FROM spaces WHERE id=? AND workspace_id=?",
             sid,
             wid(),
           );
-        if (!s || !["editor", "owner"].includes(spaceRole(user, s) || ""))
+        if (!s || !["editor", "owner"].includes(await spaceRole(user, s) || ""))
           throw new HttpError(403, "Kein Zugriff auf Bereich.");
         const parent = b.parentId ? uuid.parse(b.parentId) : null;
         if (parent) {
-          const p = requirePage(user, parent, true);
+          const p = await requirePage(user, parent, true);
           if (p.space_id !== sid)
             throw new HttpError(
               400,
@@ -1194,14 +1192,14 @@ function runCommand(
             );
         }
         const savedTemplate = b.templateId
-          ? requireTemplate(user, b.templateId, wid())
+          ? (await requireTemplate(user, b.templateId, wid()))
           : undefined;
         const kind =
           savedTemplate?.kind ||
           z
             .enum(["document", "database", "whiteboard", "journal", "dashboard", "notebook"])
             .parse(b.kind || "document");
-        const created = createPage(
+        const created = await createPage(
           wid(),
           sid,
           user.id,
@@ -1211,9 +1209,9 @@ function runCommand(
           b.aiDatabase !== undefined ? "empty" : z.enum(databaseKinds).default("tasks").parse(b.databaseKind ?? undefined),
         );
         if (savedTemplate)
-          applyPageTemplate(
+          await applyPageTemplate(
             user,
-            requirePage(user, created, true),
+            await requirePage(user, created, true),
             savedTemplate,
             false,
             // Tags and definitions of the template's space (#136).
@@ -1224,7 +1222,7 @@ function runCommand(
         if (b.aiDatabase !== undefined) {
           if (kind !== "database" || savedTemplate || b.starterTemplate)
             throw new HttpError(400, "Ein KI-Vorschlag gilt nur für eine neue, leere Datenbank.");
-          applyDatabaseProposal(created, user.id, b.aiDatabase, { all: ct("Alle Einträge", "All records"), board: "Board" });
+          await applyDatabaseProposal(created, user.id, b.aiDatabase, { all: ct("Alle Einträge", "All records"), board: "Board" });
         }
         if (b.starterTemplate && savedTemplate)
           throw new HttpError(400, "Nur eine Vorlage auswählen.");
@@ -1232,14 +1230,14 @@ function runCommand(
           const key = z.enum(templateKeys).parse(b.starterTemplate);
           if (starterTemplates[key].kind !== kind)
             throw new HttpError(400, "Vorlage passt nicht zum Seitentyp.");
-          applyStarterTemplate(created, user.id, key);
+          await applyStarterTemplate(created, user.id, key);
         }
-        afterEncryptedPageCreate(created, b);
+        await afterEncryptedPageCreate(created, b);
         result = { id: created };
         break;
       }
       case "page.update": {
-        const p = write();
+        const p = await write();
         const data = z
           .object({
             title: str.optional(),
@@ -1265,10 +1263,10 @@ function runCommand(
               409,
               "Das Cover wurde inzwischen geändert. Bitte neu öffnen.",
             );
-          validateCover(p.id, data.cover ?? p.cover);
-          if (p.kind === "database") databaseSnapshot(user, p);
+          await validateCover(p.id, data.cover ?? p.cover);
+          if (p.kind === "database") await databaseSnapshot(user, p);
           else
-            run(
+            await run(
               "INSERT INTO snapshots(id,page_id,state,html,title,created_by) SELECT ?,page_id,state,html,?,? FROM documents WHERE page_id=?",
               id(),
               p.title,
@@ -1276,11 +1274,11 @@ function runCommand(
               p.id,
             );
         }
-        if (data.icon !== undefined) validateIcon(p.id, data.icon);
+        if (data.icon !== undefined) await validateIcon(p.id, data.icon);
         if (data.title !== undefined && data.title !== p.title)
-          afterCommit.push(...followRename(user, p.workspace_id, { pageId: p.id }, p.title, data.title));
+          afterCommit.push(...await followRename(user, p.workspace_id, { pageId: p.id }, p.title, data.title));
         for (const [key, val] of Object.entries(data))
-          run(
+          await run(
             `UPDATE pages SET ${key}=?,updated_at=? WHERE id=?`,
             typeof val === "boolean" ? Number(val) : val, nowText(),
             p.id,
@@ -1295,8 +1293,8 @@ function runCommand(
         const ids = [
           ...new Set(z.array(uuid).min(1).max(100).parse(b.pageIds)),
         ];
-        const pages = ids.map((pid) => {
-          const p = requirePage(user, pid, true);
+        const pages = await mapAsync(ids, async (pid) => {
+          const p = await requirePage(user, pid, true);
           if (p.workspace_id !== wid())
             throw new HttpError(
               400,
@@ -1307,28 +1305,28 @@ function runCommand(
         // Pages inside another selected page travel with their ancestor.
         const covered = new Set<string>();
         for (const p of pages)
-          for (const child of descendants(p.id))
+          for (const child of await descendants(p.id))
             if (child !== p.id) covered.add(child);
         const roots = pages.filter((p) => !covered.has(p.id));
         const created: string[] = [];
         let previous: string | undefined;
         for (const p of roots) {
           if (operation === "delete")
-            command(user, { action: "page.delete", pageId: p.id }, true);
+            await command(user, { action: "page.delete", pageId: p.id }, true);
           else if (operation === "duplicate")
             created.push(
               (
-                command(
+                (await command(
                   user,
                   { action: "page.duplicate", pageId: p.id },
                   true,
-                ) as { id: string }
+                )) as { id: string }
               ).id,
             );
           else {
             // Keep the selection order: the first root goes to the target,
             // every further root directly after the previous one.
-            command(
+            await command(
               user,
               previous
                 ? {
@@ -1357,23 +1355,23 @@ function runCommand(
       // What a move would bring that its destination lacks (#136): the
       // source space's tags and definitions, to map, copy or remove first.
       case "page.moveCheck": {
-        const p = write();
-        const { sid, destination, destinationParent } = moveDestination(user, p, b);
+        const p = await write();
+        const { sid, destination, destinationParent } = await moveDestination(user, p, b);
         if (!destination || destination.deleted_at) throw new HttpError(400, "Ungültiges Verschieben.");
         // The same destination rights as page.move: nothing about a space
         // the person may not write in (its name, tags, workspace).
-        if (!destinationParent && !["editor", "owner"].includes(spaceRole(user, destination) || ""))
+        if (!destinationParent && !["editor", "owner"].includes(await spaceRole(user, destination) || ""))
           throw new HttpError(403, "Keine Schreibrechte im Zielbereich.");
         result = {
-          foreign: destination.id === p.space_id ? [] : moveForeignMeta(descendants(p.id), { workspaceId: destination.workspace_id, spaceId: sid }),
+          foreign: destination.id === p.space_id ? [] : (await moveForeignMeta(await descendants(p.id), { workspaceId: destination.workspace_id, spaceId: sid })),
           target: { workspaceId: destination.workspace_id, spaceId: sid, spaceName: destination.name },
         };
         break;
       }
       case "page.move": {
-        const p = write(),
-          subtree = descendants(p.id);
-        const { placement, target, parent, destinationParent, sid, destination } = moveDestination(user, p, b);
+        const p = await write(),
+          subtree = await descendants(p.id);
+        const { placement, target, parent, destinationParent, sid, destination } = await moveDestination(user, p, b);
         if (
           !destination ||
           destination.deleted_at ||
@@ -1385,59 +1383,59 @@ function runCommand(
           throw new HttpError(409, "Zielseite ist gesperrt.");
         if (
           !destinationParent &&
-          !["editor", "owner"].includes(spaceRole(user, destination) || "")
+          !["editor", "owner"].includes(await spaceRole(user, destination) || "")
         )
           throw new HttpError(403, "Keine Schreibrechte im Zielbereich.");
-        subtree.forEach((child) => requirePage(user, child, true, true));
+        await forEachAsync(subtree, async (child) => await requirePage(user, child, true, true));
         // Tags and definitions of the source space (or workspace) the
         // pages carry: mapped, copied or removed as chosen (`meta`), never
         // dropped silently (#136, lib/meta-scope-server.ts).
         const foreignMeta =
-          sid === p.space_id ? [] : moveForeignMeta(subtree, { workspaceId: destination.workspace_id, spaceId: sid });
+          sid === p.space_id ? [] : (await moveForeignMeta(subtree, { workspaceId: destination.workspace_id, spaceId: sid }));
         const metaPlan = parseMetaPlan(b.meta);
         if (foreignMeta.some((item) => !choiceFor(item, metaPlan))) throw new HttpError(409, needsPlanMessage(foreignMeta));
         // Into another workspace: rights, favourites and quota follow it.
         // Only full members take pages out; a guest edits what was shared
         // with them but cannot carry it off into a workspace of their own.
         if (destination.workspace_id !== p.workspace_id) {
-          requireMember(user, p.workspace_id, "editor");
-          transferPages(user, subtree, p.workspace_id, destination.workspace_id);
+          await requireMember(user, p.workspace_id, "editor");
+          await transferPages(user, subtree, p.workspace_id, destination.workspace_id);
         }
         for (const child of subtree)
-          run("UPDATE pages SET space_id=? WHERE id=?", sid, child);
-        applyMovePlan(user, subtree, foreignMeta, metaPlan, { workspaceId: destination.workspace_id, spaceId: sid });
-        run(
+          await run("UPDATE pages SET space_id=? WHERE id=?", sid, child);
+        await applyMovePlan(user, subtree, foreignMeta, metaPlan, { workspaceId: destination.workspace_id, spaceId: sid });
+        await run(
           "UPDATE pages SET parent_id=?,updated_at=? WHERE id=?",
           parent, nowText(),
           p.id,
         );
-        const siblings = all<{ id: string }>(
+        const siblings = (await all<{ id: string }>(
           "SELECT id FROM pages WHERE space_id=? AND parent_id IS NOT DISTINCT FROM ? AND deleted_at IS NULL AND id!=? ORDER BY position,id",
           sid,
           parent,
           p.id,
-        ).map((x) => x.id);
+        )).map((x) => x.id);
         const index =
           target && placement !== "inside"
             ? siblings.indexOf(target.id) + (placement === "after" ? 1 : 0)
             : siblings.length;
         siblings.splice(Math.max(0, index), 0, p.id);
-        siblings.forEach((sibling, i) =>
-          run("UPDATE pages SET position=? WHERE id=?", i, sibling),
+        await forEachAsync(siblings, async (sibling, i) =>
+          await run("UPDATE pages SET position=? WHERE id=?", i, sibling),
         );
         break;
       }
       case "task.update": {
-        afterCommit.push(changeDocTask(user, b));
-        if (typeof b.pageId === "string") recordPageEdit(user, b.pageId);
+        afterCommit.push(await changeDocTask(user, b));
+        if (typeof b.pageId === "string") await recordPageEdit(user, b.pageId);
         break;
       }
       case "synced.create": {
         // The content of a new synced block: a document under the page that
         // first shows it (and so with its permissions).
-        const host = write();
+        const host = await write();
         const html = z.string().max(500_000).optional().parse(b.html) || "";
-        const sid = createPage(
+        const sid = await createPage(
           host.workspace_id,
           host.space_id,
           user.id,
@@ -1445,9 +1443,9 @@ function runCommand(
           "document",
           host.journal_date ? null : host.id,
         );
-        run("UPDATE pages SET synced=1 WHERE id=?", sid);
+        await run("UPDATE pages SET synced=1 WHERE id=?", sid);
         if (html)
-          run(
+          await run(
             "UPDATE documents SET html=?,state=? WHERE page_id=?",
             cleanHtml(html),
             htmlState(html),
@@ -1477,13 +1475,13 @@ function runCommand(
         // The host: written to (the embed replaces the table) – a document,
         // or a record whose database the person may change.
         const rowId = b.rowId ? uuid.parse(b.rowId) : undefined;
-        const host = rowId ? requireRow(user, pid(), rowId, true).page : write();
+        const host = rowId ? (await requireRow(user, pid(), rowId, true)).page : (await write());
         if (!rowId && host.kind !== "document") throw new HttpError(400, "Kein Dokument.");
         // Created like any page (rights in the space, encrypted spaces …):
         // below the document, or for a record at the top of its space.
         const title = z.string().trim().max(200).optional().parse(b.title) || ct("Tabelle", "Table");
         const created = (
-          command(
+          (await command(
             user,
             {
               action: "page.create",
@@ -1495,19 +1493,19 @@ function runCommand(
               databaseKind: "empty",
             },
             true,
-          ) as { id: string }
+          )) as { id: string }
         ).id;
         const converted = tableToDatabase(table, (n) => ct(`Spalte ${n}`, `Column ${n}`));
         const view: View = { id: id(), name: ct("Tabelle", "Table"), type: "table", filters: [], sorts: [] };
-        run(
+        await run(
           "UPDATE databases SET fields=?,views=?,version=version+1 WHERE page_id=?",
           JSON.stringify(converted.fields),
           JSON.stringify([view]),
           created,
         );
         const now = Date.now();
-        converted.rows.forEach((cells, i) =>
-          run(
+        await forEachAsync(converted.rows, async (cells, i) =>
+          await run(
             "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by) VALUES(?,?,?,?,?,?)",
             id(),
             created,
@@ -1522,57 +1520,57 @@ function runCommand(
       }
       case "mention.link": {
         afterCommit.push(
-          linkMention(
+          await linkMention(
             user,
             { pageId: pid(), rowId: b.rowId ? uuid.parse(b.rowId) : undefined },
             { pageId: uuid.parse(b.targetId), rowId: b.targetRowId ? uuid.parse(b.targetRowId) : undefined },
           ),
         );
-        recordPageEdit(user, pid());
+        await recordPageEdit(user, pid());
         break;
       }
       // Folded and unfolded in the sidebar (#97).
       case "sidebar.state":
-        result = saveSidebarState(user, b);
+        result = await saveSidebarState(user, b);
         break;
       // The bar with tags and properties, collapsed or open (#83).
       case "page.collapseProperties":
-        result = setPropertiesCollapsed(user, b);
+        result = await setPropertiesCollapsed(user, b);
         break;
       case "page.follow": {
-        const page = requirePage(user, pid());
-        setFollowing(user, page.id, z.boolean().parse(b.follow));
+        const page = await requirePage(user, pid());
+        await setFollowing(user, page.id, z.boolean().parse(b.follow));
         result = { following: z.boolean().parse(b.follow) };
         break;
       }
       case "journal.settings": {
-        const journal = write();
+        const journal = await write();
         if (journal.kind !== "journal")
           throw new HttpError(400, "Diese Seite ist kein Journal.");
-        if (typeof b.template === "string") setJournalTemplate(journal, b.template);
-        if (b.options !== undefined) setJournalOptions(journal, b.options);
-        if (b.templateFromDay) templateFromDay(journal, uuid.parse(b.templateFromDay));
+        if (typeof b.template === "string") await setJournalTemplate(journal, b.template);
+        if (b.options !== undefined) await setJournalOptions(journal, b.options);
+        if (b.templateFromDay) await templateFromDay(journal, uuid.parse(b.templateFromDay));
         if (b.trackers !== undefined)
-          setJournalTrackers(journal, z.array(trackerSchema).parse(b.trackers));
+          await setJournalTrackers(journal, z.array(trackerSchema).parse(b.trackers));
         if (b.icsUrl !== undefined) {
           // The server would load foreign addresses for anonymous guests.
           if (user.demo)
             throw new HttpError(403, "In der Demo nicht verfügbar. Registriere dich, um das zu nutzen.");
-          setJournalCalendar(journal, z.string().parse(b.icsUrl));
+          await setJournalCalendar(journal, z.string().parse(b.icsUrl));
         }
-        result = journalSettings(journal.id);
+        result = await journalSettings(journal.id);
         break;
       }
       case "journal.lock": {
         // Not write(): its own PIN is checked by setJournalLock (the
         // current one, or a reset by a workspace owner).
-        const journal = requirePage(user, pid(), true);
+        const journal = await requirePage(user, pid(), true);
         if (journal.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
         if (journal.kind !== "journal")
           throw new HttpError(400, "Diese Seite ist kein Journal.");
         // Setting a PIN revokes the journal's links and publications; the
         // answer says how many.
-        result = setJournalLock(
+        result = await setJournalLock(
           user,
           journal,
           b.pin === null ? null : pinSchema.parse(b.pin),
@@ -1581,41 +1579,41 @@ function runCommand(
         break;
       }
       case "journal.unlock": {
-        const journal = requirePage(user, pid());
+        const journal = await requirePage(user, pid());
         if (journal.kind !== "journal")
           throw new HttpError(400, "Diese Seite ist kein Journal.");
-        unlockJournal(user, journal, z.string().max(20).parse(b.pin));
+        await unlockJournal(user, journal, z.string().max(20).parse(b.pin));
         break;
       }
       case "journal.relock": {
-        const journal = requirePage(user, pid());
-        lockJournalNow(user, journal);
+        const journal = await requirePage(user, pid());
+        await lockJournalNow(user, journal);
         break;
       }
       case "journal.entry": {
-        const day = write();
-        const journal = journalOf(day);
+        const day = await write();
+        const journal = await journalOf(day);
         if (!journal || day.kind === "journal")
           throw new HttpError(400, "Diese Seite ist kein Journaltag.");
-        result = saveDayEntry(journal, day, b.entry);
+        result = await saveDayEntry(journal, day, b.entry);
         break;
       }
       case "journal.summary": {
         // A normal sub page with the month's review (lib/journal-summary.ts).
-        result = createMonthSummary(user, write(), b);
+        result = await createMonthSummary(user, await write(), b);
         break;
       }
       case "journal.roll": {
         // The client sends its own date: a new day starts at local midnight.
         const date = journalDate.parse(b.date);
         if (b.pageId) {
-          const journal = write();
+          const journal = await write();
           // `write`: the first keystroke, task, tracker value or file in a
           // draft day creates it (journals set to "beim ersten Schreiben").
-          result = rollJournal(user, journal, date, undefined, b.recreate === true, { write: b.write === true });
+          result = await rollJournal(user, journal, date, undefined, b.recreate === true, { write: b.write === true });
         } else {
-          requireMember(user, wid());
-          result = { changed: rollJournals(user, wid(), date) };
+          await requireMember(user, wid());
+          result = { changed: await rollJournals(user, wid(), date) };
         }
         break;
       }
@@ -1623,7 +1621,7 @@ function runCommand(
       // Block links (#88): ids for the blocks of an older document, for
       // people who only read it (editors give a block its id themselves).
       case "block.ids": {
-        const ensured = ensureBlockIds(
+        const ensured = await ensureBlockIds(
           user,
           pid(),
           b.rowId ? uuid.parse(b.rowId) : null,
@@ -1635,8 +1633,8 @@ function runCommand(
         break;
       }
       case "journal.link": {
-        requireMember(user, wid());
-        result = journalDayLink(user, wid(), {
+        await requireMember(user, wid());
+        result = await journalDayLink(user, wid(), {
           date: z.string().parse(b.date),
           today: z.string().parse(b.today),
           fromPageId: b.fromPageId ? uuid.parse(b.fromPageId) : null,
@@ -1645,8 +1643,8 @@ function runCommand(
       }
       // "Leere Tage entfernen": the days chosen from the preview go to the trash.
       case "journal.removeEmpty": {
-        const journal = write();
-        result = removeEmptyJournalDays(
+        const journal = await write();
+        result = await removeEmptyJournalDays(
           user,
           journal,
           z.array(uuid).max(5000).parse(b.dayIds),
@@ -1655,19 +1653,19 @@ function runCommand(
         break;
       }
       case "page.delete": {
-        const p = write();
-        const subtree = descendants(p.id);
-        subtree.forEach((child) => requirePage(user, child, true, true));
+        const p = await write();
+        const subtree = await descendants(p.id);
+        await forEachAsync(subtree, async (child) => await requirePage(user, child, true, true));
         for (const child of subtree) {
-          run(
+          await run(
             "DELETE FROM publication_pages WHERE page_id=? OR root_id=?",
             child,
             child,
           );
-          run("DELETE FROM publications WHERE page_id=?", child);
-          run("DELETE FROM share_links WHERE root_id=?", child);
-          run("DELETE FROM share_link_pages WHERE page_id=?", child);
-          run(
+          await run("DELETE FROM publications WHERE page_id=?", child);
+          await run("DELETE FROM share_links WHERE root_id=?", child);
+          await run("DELETE FROM share_link_pages WHERE page_id=?", child);
+          await run(
             "UPDATE pages SET deleted_at=?,public_token=NULL WHERE id=?", nowText(),
             child,
           );
@@ -1675,46 +1673,46 @@ function runCommand(
         break;
       }
       case "page.restore": {
-        const p = requirePage(user, pid(), true, true);
+        const p = await requirePage(user, pid(), true, true);
         if (
           p.parent_id &&
-          one<Page>("SELECT * FROM pages WHERE id=?", p.parent_id)?.deleted_at
+          (await one<Page>("SELECT * FROM pages WHERE id=?", p.parent_id))?.deleted_at
         )
-          run("UPDATE pages SET parent_id=NULL WHERE id=?", p.id);
-        for (const child of descendants(p.id))
-          run("UPDATE pages SET deleted_at=NULL WHERE id=?", child);
+          await run("UPDATE pages SET parent_id=NULL WHERE id=?", p.id);
+        for (const child of await descendants(p.id))
+          await run("UPDATE pages SET deleted_at=NULL WHERE id=?", child);
         break;
       }
       case "page.purge":
-        result = purgeTrashedPage(user, b);
+        result = await purgeTrashedPage(user, b);
         break;
       case "trash.empty":
-        result = emptyTrash(user, b);
+        result = await emptyTrash(user, b);
         break;
       case "page.duplicate": {
-        result = duplicatePageTree(user, write());
+        result = await duplicatePageTree(user, await write());
         break;
       }
       case "favorite":
-        requirePage(user, pid());
+        await requirePage(user, pid());
         if (b.value)
-          run("INSERT INTO favorites(user_id,page_id) VALUES(?,?) ON CONFLICT DO NOTHING", user.id, pid());
+          await run("INSERT INTO favorites(user_id,page_id) VALUES(?,?) ON CONFLICT DO NOTHING", user.id, pid());
         else
-          run(
+          await run(
             "DELETE FROM favorites WHERE user_id=? AND page_id=?",
             user.id,
             pid(),
           );
         break;
       case "linked.command":
-        result = mutateLinkedDatabase(user, b);
+        result = await mutateLinkedDatabase(user, b);
         break;
       case "document.sync": {
-        const p = write();
+        const p = await write();
         if (p.kind !== "document") throw new HttpError(400, "Kein Dokument.");
         const update = z.string().max(8_000_000).parse(b.update);
         const d = new Y.Doc();
-        const existing = one<{
+        const existing = await one<{
           state: Uint8Array | null;
           html: string;
           generation: string;
@@ -1726,12 +1724,12 @@ function runCommand(
           );
         if (
           existing?.state &&
-          !one(
+          !(await one(
             "SELECT id FROM snapshots WHERE page_id=? AND created_at>?",
             p.id, nowText(Date.now() - 300_000),
-          )
+          ))
         ) {
-          run(
+          await run(
             "INSERT INTO snapshots(id,page_id,state,html,title,created_by) VALUES(?,?,?,?,?,?)",
             id(),
             p.id,
@@ -1746,39 +1744,39 @@ function runCommand(
           const before = Y.encodeStateVector(d);
           Y.applyUpdate(d, Buffer.from(update, "base64"));
           // Who wrote what: the editor sessions in this update are this person's.
-          recordDocumentAuthors(p.id, null, existing!.generation, user.id, before, Y.encodeStateVector(d));
+          await recordDocumentAuthors(p.id, null, existing!.generation, user.id, before, Y.encodeStateVector(d));
           const merged = Y.encodeStateAsUpdate(d);
           // Refused above the size cap (lib/document-size.ts) – before the
           // document is rendered or anything is written.
           requireDocumentSize(merged, existing?.state?.byteLength || 0);
           const canonical = stateHtml(d);
           // Tasks: people given a task are told once (not also as mention).
-          const assigned = syncDocTasks(user, p, null, d);
+          const assigned = await syncDocTasks(user, p, null, d);
           for (const match of canonical.matchAll(/data-mention="([^"]+)"/g)) {
             const uid = match[1];
             if (
               uid !== user.id &&
               !assigned.has(uid) &&
               !existing?.html.includes('data-mention="' + uid + '"') &&
-              pageRole({ ...user, id: uid }, p)
+              await pageRole({ ...user, id: uid }, p)
             ) {
-              run(
+              await run(
                 "INSERT INTO notifications(id,user_id,body,page_id,kind) VALUES(?,?,?,?,'mention')",
                 id(),
                 uid,
                 `${user.name} hat dich in „${p.title}“ erwähnt`,
                 p.id,
               );
-              mentionWebhook(p.workspace_id, p.id, null, uid, user.name);
+              await mentionWebhook(p.workspace_id, p.id, null, uid, user.name);
             }
           }
-          run(
+          await run(
             "UPDATE documents SET state=?,html=?,updated_at=? WHERE page_id=?",
             merged,
             canonical, nowText(),
             p.id,
           );
-          run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), p.id);
+          await run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), p.id);
           result = { state: liveState(d, merged, b.vector) };
           const key = documentKey(p.id, null, existing!.generation);
           afterCommit.push(() => publishDocumentUpdate(key, update, liveClient(b.client)));
@@ -1790,10 +1788,10 @@ function runCommand(
       // Source view (components/markdown-source.tsx): the page as Markdown,
       // with the blocks Markdown cannot hold kept aside. Reading suffices.
       case "document.markdown": {
-        const p = requirePage(user, pid());
-        requireUnlocked(user, p);
+        const p = await requirePage(user, pid());
+        await requireUnlocked(user, p);
         if (p.kind !== "document") throw new HttpError(400, "Kein Dokument.");
-        const linked = linkedBlockIds(p.workspace_id).get(p.id);
+        const linked = (await linkedBlockIds(p.workspace_id)).get(p.id);
         result = markdownSource(z.string().max(8_000_000).parse(b.html), (blockId) => !!linked?.has(blockId));
         break;
       }
@@ -1802,7 +1800,7 @@ function runCommand(
       // names. With check, only that; otherwise the page's current state is
       // kept as a version first.
       case "document.markdown.apply": {
-        const p = write();
+        const p = await write();
         if (p.kind !== "document") throw new HttpError(400, "Kein Dokument.");
         const markdown = z.string().max(4_000_000).parse(b.markdown);
         const blocks = z.array(z.string().max(4_000_000)).max(5000).parse(b.blocks ?? []);
@@ -1817,12 +1815,12 @@ function runCommand(
           },
         });
         if (b.check !== true) {
-          const current = one<{ state: Uint8Array | null; html: string }>(
+          const current = await one<{ state: Uint8Array | null; html: string }>(
             "SELECT state,html FROM documents WHERE page_id=?",
             p.id,
           );
           if (current)
-            run(
+            await run(
               "INSERT INTO snapshots(id,page_id,state,html,title,created_by) VALUES(?,?,?,?,?,?)",
               id(),
               p.id,
@@ -1836,19 +1834,19 @@ function runCommand(
         break;
       }
       case "page.snapshot": {
-        const p = write(),
-          d = one<{ state: Uint8Array | null; html: string }>(
+        const p = await write(),
+          d = await one<{ state: Uint8Array | null; html: string }>(
             "SELECT * FROM documents WHERE page_id=?",
             p.id,
           );
         if (p.kind === "database") {
-          const sid = databaseSnapshot(user, p);
-          run("UPDATE snapshots SET kind='manual' WHERE id=?", sid);
+          const sid = await databaseSnapshot(user, p);
+          await run("UPDATE snapshots SET kind='manual' WHERE id=?", sid);
           result = { id: sid };
           break;
         }
         const sid = id();
-        run(
+        await run(
           "INSERT INTO snapshots(id,page_id,state,html,title,created_by,kind) VALUES(?,?,?,?,?,?,'manual')",
           sid,
           p.id,
@@ -1862,11 +1860,11 @@ function runCommand(
       }
       case "snapshot.restoreBlock":
         // One paragraph from an older version back into the document.
-        afterCommit.push(restoreBlock(user, b));
+        afterCommit.push(await restoreBlock(user, b));
         break;
       case "snapshot.restore": {
-        const p = write(),
-          s = one<{
+        const p = await write(),
+          s = await one<{
             state: Uint8Array | null;
             html: string;
             title: string;
@@ -1877,16 +1875,16 @@ function runCommand(
             p.id,
           );
         if (!s) throw new HttpError(404, "Version nicht gefunden.");
-        const appearance = snapshotAppearance(p.id, s.appearance);
-        if (appearance) applyAppearance(p.id, appearance);
+        const appearance = await snapshotAppearance(p.id, s.appearance);
+        if (appearance) await applyAppearance(p.id, appearance);
         if (p.kind === "whiteboard") {
           if (!s.state) throw new HttpError(400, "Version ohne Inhalt.");
-          restoreWhiteboardSnapshot(p, s.state);
+          await restoreWhiteboardSnapshot(p, s.state);
         } else if (p.kind === "dashboard" || p.kind === "notebook") {
           // Versions of a dashboard or notebook only hold its appearance
           // (restored above); notebook sheets keep their own ink versions.
         } else if (p.kind === "document") {
-          run(
+          await run(
             "UPDATE documents SET state=?,html=?,generation=? WHERE page_id=?",
             htmlState(s.html),
             s.html,
@@ -1898,8 +1896,8 @@ function runCommand(
           const data = JSON.parse(s.html);
           // Versions with restricted records are restored by owners only.
           if (
-            pageRole(user, p) !== "owner" &&
-            (one(
+            (await pageRole(user, p)) !== "owner" &&
+            (await one(
               "SELECT 1 FROM rows WHERE page_id=? AND access!='inherit'",
               p.id,
             ) ||
@@ -1913,31 +1911,31 @@ function runCommand(
             );
           // Likewise with properties only some people read or write.
           if (
-            pageRole(user, p) !== "owner" &&
-            (hasFieldAccess(database(p.id).fields) ||
+            (await pageRole(user, p)) !== "owner" &&
+            (hasFieldAccess((await database(p.id)).fields) ||
               hasFieldAccess(data.database?.fields || []))
           )
             throw new HttpError(
               403,
               "Diese Version enthält Eigenschaften mit eigener Sichtbarkeit. Nur Besitzer stellen sie wieder her.",
             );
-          run(
+          await run(
             "UPDATE databases SET fields=?,views=?,version=version+1 WHERE page_id=?",
             JSON.stringify(data.database.fields),
             JSON.stringify(data.database.views),
             p.id,
           );
           if (data.database.recordLayout)
-            run(
+            await run(
               "UPDATE databases SET record_layout=? WHERE page_id=?",
               JSON.stringify(parseRecordLayout(data.database.recordLayout)),
               p.id,
             );
           if (Array.isArray(data.comments))
-            run("DELETE FROM comments WHERE page_id=?", p.id);
-          run("DELETE FROM rows WHERE page_id=?", p.id);
+            await run("DELETE FROM comments WHERE page_id=?", p.id);
+          await run("DELETE FROM rows WHERE page_id=?", p.id);
           for (const r of data.rows)
-            run(
+            await run(
               "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content,icon,cover,recurrence,access,repeat) VALUES(?,?,?,?,COALESCE((SELECT id FROM users WHERE id=?),?),?,?,?,?,?,?,?)",
               r.id,
               p.id,
@@ -1955,7 +1953,7 @@ function runCommand(
             );
           for (const r of data.rows)
             for (const g of Array.isArray(r.grants) ? r.grants : [])
-              run(
+              await run(
                 "INSERT INTO row_grants(row_id,user_id,group_id,role) SELECT ?,?,?,? WHERE ? IN ('viewer','editor') ON CONFLICT DO NOTHING",
                 r.id,
                 String(g.user_id || ""),
@@ -1964,11 +1962,11 @@ function runCommand(
                 String(g.role),
               );
           // The restored records' tasks (removed with the old rows).
-          reindexRowTasks(user, p, data.rows.map((r: { id: string }) => r.id));
+          await reindexRowTasks(user, p, data.rows.map((r: { id: string }) => r.id));
           if (Array.isArray(data.rowTemplates)) {
-            run("DELETE FROM row_templates WHERE page_id=?", p.id);
+            await run("DELETE FROM row_templates WHERE page_id=?", p.id);
             for (const t of data.rowTemplates)
-              run(
+              await run(
                 "INSERT INTO row_templates(id,page_id,name,cells,html,is_default,created_by) VALUES(?,?,?,?,?,?,?)",
                 id(),
                 p.id,
@@ -1992,19 +1990,19 @@ function runCommand(
                   400,
                   "Ungültiger Datensatzkommentar in der Version.",
                 );
-              ensureRowDocument(requireRow(user, p.id, t.row_id).row);
+              await ensureRowDocument((await requireRow(user, p.id, t.row_id)).row);
             }
-            importInlineComments(p.id, restoredThreads, restoredRows, user.id);
+            await importInlineComments(p.id, restoredThreads, restoredRows, user.id);
           }
           if (data.formConfig)
-            run(
+            await run(
               "UPDATE forms SET config=? WHERE page_id=?",
               JSON.stringify(formConfigSchema.parse(data.formConfig)),
               p.id,
             );
           if (Array.isArray(data.comments))
             for (const c of data.comments)
-              run(
+              await run(
                 "INSERT INTO comments(id,page_id,row_id,author_id,body,resolved,created_at) VALUES(?,?,?,?,?,?,?)",
                 c.id,
                 p.id,
@@ -2014,11 +2012,11 @@ function runCommand(
                 c.resolved,
                 c.created_at,
               );
-          restoreRelationPairs(user, p.id, data.relationPairs);
+          await restoreRelationPairs(user, p.id, data.relationPairs);
           // Tag-backed properties: values become tags again where allowed (#79).
-          reconcileTagFields(user, p.id);
+          await reconcileTagFields(user, p.id);
         }
-        run(
+        await run(
           "UPDATE pages SET title=?,updated_at=? WHERE id=?",
           s.title, nowText(),
           p.id,
@@ -2026,8 +2024,8 @@ function runCommand(
         break;
       }
       case "database.update": {
-        autoDatabaseSnapshot(user, write());
-        const d = database(pid());
+        await autoDatabaseSnapshot(user, await write());
+        const d = await database(pid());
         if (b.version !== d.version)
           throw new HttpError(
             409,
@@ -2035,17 +2033,17 @@ function runCommand(
           );
         // Properties hidden from this person stay as they are; only owners
         // change who reads and writes a property (lib/field-access.ts).
-        const fields = mergeHiddenFields(
+        const fields = await mergeHiddenFields(
           user,
-          write(),
+          await write(),
           z.array(field).min(1).max(80).parse(b.fields),
           d.fields,
         );
         if (fields.length > 80)
           throw new HttpError(400, "Zu viele Eigenschaften.");
-        validateFieldAccess(user, write(), fields, d.fields);
+        await validateFieldAccess(user, await write(), fields, d.fields);
         // AI properties: references, output types, who automatic updates run as.
-        const aiChanges = prepareAiFields(user, write(), fields, d.fields);
+        const aiChanges = await prepareAiFields(user, await write(), fields, d.fields);
         if (
           d.fields.some((old) =>
             fields.some((next) => next.id === old.id && next.name !== old.name),
@@ -2053,7 +2051,7 @@ function runCommand(
         ) {
           // Record templates saved before placeholders were stored by id:
           // their "{{Old name}}" becomes the id, so the rename keeps them.
-          storeTemplateNames(pid(), d.fields);
+          await storeTemplateNames(pid(), d.fields);
           for (const next of fields) {
             const old = d.fields.find((f) => f.id === next.id);
             if (
@@ -2111,12 +2109,12 @@ function runCommand(
         // Aliases weigh like the title in the search: index the records again
         // when the aliases property changes.
         if (aliasField(fields)?.id !== aliasField(d.fields)?.id)
-          run("INSERT INTO search_dirty SELECT page_id,id FROM rows WHERE page_id=? ON CONFLICT DO NOTHING", pid());
-        prepareSubtaskFields(write(), fields, databaseSettings(pid()));
+          await run("INSERT INTO search_dirty SELECT page_id,id FROM rows WHERE page_id=? ON CONFLICT DO NOTHING", pid());
+        prepareSubtaskFields(await write(), fields, await databaseSettings(pid()));
         // Multi-selects with the workspace's tags as options (#79).
-        prepareTagFields(user, write(), fields, d.fields);
-        validateDatabaseRelations(user, write(), fields, d.fields);
-        validateTicketPrefix(write(), fields);
+        await prepareTagFields(user, await write(), fields, d.fields);
+        await validateDatabaseRelations(user, await write(), fields, d.fields);
+        await validateTicketPrefix(await write(), fields);
         for (const v of views) {
           try {
             if (v.calculations)
@@ -2143,17 +2141,17 @@ function runCommand(
               );
           }
         }
-        validateViewRowOrders(pid(), views);
+        await validateViewRowOrders(pid(), views);
         // Changed read rules change what search may index.
         if (
           JSON.stringify(d.fields.map((f) => [f.id, f.access?.read ?? null])) !==
           JSON.stringify(fields.map((f) => [f.id, f.access?.read ?? null]))
         ) {
-          run(
+          await run(
             "INSERT INTO search_dirty(page_id,row_id) SELECT page_id,id FROM rows WHERE page_id=? ON CONFLICT DO NOTHING",
             pid(),
           );
-          run(
+          await run(
             "INSERT INTO ai_embed_dirty(page_id,row_id) SELECT page_id,id FROM rows WHERE page_id=? UNION ALL SELECT ?,'' WHERE true ON CONFLICT DO NOTHING",
             pid(),
             pid(),
@@ -2161,71 +2159,71 @@ function runCommand(
         }
         // Formatted text (#126): a property that becomes or stops being
         // formatted text keeps its values' text.
-        convertFormattedValues(pid(), d.fields, fields);
-        run(
+        await convertFormattedValues(pid(), d.fields, fields);
+        await run(
           "UPDATE databases SET fields=?,views=?,version=version+1 WHERE page_id=?",
           JSON.stringify(fields),
           JSON.stringify(views),
           pid(),
         );
-        forgetAiFields(pid(), aiChanges.removed);
-        configureRelation(user, pid(), d.version, b.relation);
+        await forgetAiFields(pid(), aiChanges.removed);
+        await configureRelation(user, pid(), d.version, b.relation);
         break;
       }
       case "row.schedule":
-        result = scheduleRow(user, pid(), b);
+        result = await scheduleRow(user, pid(), b);
         break;
       case "timeline.cascade":
-        result = cascadeTimeline(user, pid(), b);
+        result = await cascadeTimeline(user, pid(), b);
         break;
       case "timeline.link":
-        result = linkTimeline(user, pid(), b);
+        result = await linkTimeline(user, pid(), b);
         break;
       // The workspace's bibliography (citations).
       case "citation.import":
-        result = importBibliography(user, b);
+        result = await importBibliography(user, b);
         break;
       case "citation.remove":
-        result = removeFromBibliography(user, b);
+        result = await removeFromBibliography(user, b);
         break;
       case "row.move":
-        result = moveRow(user, pid(), b);
+        result = await moveRow(user, pid(), b);
         break;
       case "rows.transfer": {
         // Copy or move records into another database.
-        const p = requirePage(user, pid());
-        autoDatabaseSnapshot(user, p);
-        result = transferRows(user, p.id, b);
+        const p = await requirePage(user, pid());
+        await autoDatabaseSnapshot(user, p);
+        result = await transferRows(user, p.id, b);
         break;
       }
       case "rows.bulk":
-        result = bulkRows(user, pid(), b);
+        result = await bulkRows(user, pid(), b);
         break;
       case "row.create": {
-        autoDatabaseSnapshot(user, write());
-        const selectedTemplate = selectedRowTemplate(pid(), b.templateId);
+        await autoDatabaseSnapshot(user, await write());
+        const selectedTemplate = await selectedRowTemplate(pid(), b.templateId);
         // A template opened for editing keeps its placeholders, with the
         // properties' current names (lib/record-template-apply.ts).
         const template =
           selectedTemplate && b.rawTemplate === true
-            ? { ...selectedTemplate, ...rawTemplate(selectedTemplate, database(pid()).fields) }
+            ? { ...selectedTemplate, ...rawTemplate(selectedTemplate, (await database(pid())).fields) }
             : selectedTemplate;
         const given = z.record(z.string(), z.unknown()).parse(b.cells || {});
-        assertFieldsWritable(user, write(), database(pid()).fields, Object.keys(given));
+        await assertFieldsWritable(user, await write(), (await database(pid())).fields, Object.keys(given));
         // Tag-backed properties: tag names, new ones only where allowed (#79).
-        Object.assign(given, tagCells(user, write(), database(pid()).fields, given, true));
+        Object.assign(given, await tagCells(user, await write(), (await database(pid())).fields, given, true));
         // Contacts: the display name from the names (lib/contacts.ts).
         // A template fills only properties this person may change, like
         // row.template.apply (lib/field-access.ts).
         const fromTemplate = template
-          ? stripCells(JSON.parse(template.cells) as Record<string, unknown>, unwritableFieldIds(user, write(), database(pid()).fields))
+          ? stripCells(JSON.parse(template.cells) as Record<string, unknown>, await unwritableFieldIds(user, await write(), (await database(pid())).fields))
           : {};
-        const cells = contactCellsFor(pid(), database(pid()).fields, {}, {
+        const cells = await contactCellsFor(pid(), (await database(pid())).fields, {}, {
           ...fromTemplate,
           ...given,
         }, Object.keys(given));
         // Aliases follow their limits (lib/aliases.ts).
-        const aliasProperty = aliasField(database(pid()).fields);
+        const aliasProperty = aliasField((await database(pid())).fields);
         if (aliasProperty && cells[aliasProperty.id] !== undefined)
           cells[aliasProperty.id] = parseAliases(Array.isArray(cells[aliasProperty.id]) ? cells[aliasProperty.id] : aliasList(cells[aliasProperty.id]));
         if (JSON.stringify(cells).length > 200000)
@@ -2233,7 +2231,7 @@ function runCommand(
         // Records created offline bring their own id; a repeat is a no-op.
         const rid = b.rowId ? uuid.parse(b.rowId) : id();
         if (b.rowId) {
-          const existing = one<{ page_id: string }>(
+          const existing = await one<{ page_id: string }>(
             "SELECT page_id FROM rows WHERE id=?",
             rid,
           );
@@ -2243,11 +2241,11 @@ function runCommand(
           }
           if (
             existing ||
-            one("SELECT 1 FROM row_trash WHERE id=?", rid)
+            await one("SELECT 1 FROM row_trash WHERE id=?", rid)
           )
             throw new HttpError(409, "Diese Kennung ist bereits vergeben.");
         }
-        run(
+        await run(
           "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by) VALUES(?,?,?,?,?,?)",
           rid,
           pid(),
@@ -2257,35 +2255,35 @@ function runCommand(
           user.id,
         );
         if (template)
-          replaceRowDocument(
+          await replaceRowDocument(
             rid,
             b.rawTemplate === true
               ? template.html
-              : fillNewRecord({ page: write(), rowId: rid, template, actor: user, zone: typeof b.timeZone === "string" ? b.timeZone : undefined }),
+              : (await fillNewRecord({ page: await write(), rowId: rid, template, actor: user, zone: typeof b.timeZone === "string" ? b.timeZone : undefined })),
             user.id,
           );
-        afterContactWrite(pid(), rid);
-        rowCreated(user, requirePage(user, pid()), rid);
+        await afterContactWrite(pid(), rid);
+        await rowCreated(user, await requirePage(user, pid()), rid);
         result = { id: rid };
         break;
       }
       case "row.document.sync": {
-        const synced = syncRowDocument(
+        const synced = (await syncRowDocument(
           user,
           pid(),
           uuid.parse(b.rowId),
           b.generation,
           b.update,
-        ) as { state: string };
+        )) as { state: string };
         {
-          const stored = one<{ state: Uint8Array }>(
+          const stored = await one<{ state: Uint8Array }>(
             "SELECT state FROM row_documents WHERE row_id=?",
             uuid.parse(b.rowId),
           );
           if (stored) {
             const rowDoc = new Y.Doc();
             Y.applyUpdate(rowDoc, stored.state);
-            syncDocTasks(user, requirePage(user, pid()), uuid.parse(b.rowId), rowDoc);
+            await syncDocTasks(user, await requirePage(user, pid()), uuid.parse(b.rowId), rowDoc);
             rowDoc.destroy();
           }
         }
@@ -2296,21 +2294,21 @@ function runCommand(
         break;
       }
       case "row.snapshot":
-        result = snapshotRow(user, pid(), uuid.parse(b.rowId));
+        result = await snapshotRow(user, pid(), uuid.parse(b.rowId));
         break;
       case "row.snapshot.restore":
-        restoreRow(user, pid(), uuid.parse(b.rowId), b.snapshotId);
+        await restoreRow(user, pid(), uuid.parse(b.rowId), b.snapshotId);
         break;
       case "row.template.save":
-        result = saveRowTemplate(user, pid(), uuid.parse(b.rowId), b.name, b.replaceId);
+        result = await saveRowTemplate(user, pid(), uuid.parse(b.rowId), b.name, b.replaceId);
         break;
       case "row.template.apply": {
         // A record template on an existing record, by hand: fills empty
         // properties and an empty document, or appends below the text.
-        const { input, page: p, row, template } = prepareManualApply(user, pid(), b);
-        autoDatabaseSnapshot(user, p);
-        const fieldsNow = database(pid()).fields;
-        const applied = applyTemplate({
+        const { input, page: p, row, template } = await prepareManualApply(user, pid(), b);
+        await autoDatabaseSnapshot(user, p);
+        const fieldsNow = (await database(pid())).fields;
+        const applied = await applyTemplate({
           page: p,
           row,
           template,
@@ -2320,9 +2318,9 @@ function runCommand(
           snapshotId: input.snapshotId,
           strict: true,
           // Only properties this person may change, with values that fit.
-          keep: (f, value) => {
+          keep: async (f, value) => {
             try {
-              return validateCellPatch(user, p, fieldsNow, { [f.id]: value })[f.id];
+              return (await validateCellPatch(user, p, fieldsNow, { [f.id]: value }))[f.id];
             } catch {
               return undefined;
             }
@@ -2330,21 +2328,21 @@ function runCommand(
         });
         if (Object.keys(applied.cells).length) {
           const before = JSON.parse(String(row.cells));
-          const cells = contactCellsFor(pid(), fieldsNow, before, { ...before, ...applied.cells }, Object.keys(applied.cells));
-          run(
+          const cells = await contactCellsFor(pid(), fieldsNow, before, { ...before, ...applied.cells }, Object.keys(applied.cells));
+          await run(
             "UPDATE rows SET cells=?,updated_at=?,updated_by=?,version=version+1 WHERE id=?",
             JSON.stringify(cells), nowText(),
             user.id,
             row.id,
           );
-          rowChanged(user, p, row.id, before, cells, fieldsNow);
-          afterContactWrite(pid(), row.id);
+          await rowChanged(user, p, row.id, before, cells, fieldsNow);
+          await afterContactWrite(pid(), row.id);
         }
         result = { document: applied.document, cells: Object.keys(applied.cells) };
         break;
       }
       case "row.template.default":
-        manageRowTemplate(
+        await manageRowTemplate(
           user,
           pid(),
           b.templateId,
@@ -2353,29 +2351,29 @@ function runCommand(
         );
         break;
       case "row.template.delete":
-        manageRowTemplate(user, pid(), b.templateId, "delete");
+        await manageRowTemplate(user, pid(), b.templateId, "delete");
         break;
       case "rows.import": {
-        write();
+        await write();
         const imported = z
           .array(z.record(z.string(), z.unknown()))
           .max(5000)
           .parse(b.rows);
-        assertFieldsWritable(
+        await assertFieldsWritable(
           user,
-          write(),
-          database(pid()).fields,
+          await write(),
+          (await database(pid())).fields,
           new Set(imported.flatMap((cells) => Object.keys(cells))),
         );
-        const importFields = database(pid()).fields;
-        imported.forEach((cells, i) =>
-          run(
+        const importFields = (await database(pid())).fields;
+        await forEachAsync(imported, async (cells, i) =>
+          await run(
             "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by) VALUES(?,?,?,?,?,?)",
             id(),
             pid(),
             // Tag-backed properties create missing tags where allowed (#79);
             // names that may not become tags are left out.
-            JSON.stringify(tagCells(user, write(), importFields, cells, false)),
+            JSON.stringify(await tagCells(user, await write(), importFields, cells, false)),
             Date.now() + i,
             user.id,
             user.id,
@@ -2384,9 +2382,9 @@ function runCommand(
         break;
       }
       case "row.update": {
-        const p = write();
+        const p = await write();
         const rid = uuid.parse(b.rowId),
-          row = one<{
+          row = await one<{
             id: string;
             version: number;
             cells: string;
@@ -2394,8 +2392,8 @@ function runCommand(
             created_by: string;
           }>("SELECT * FROM rows WHERE id=? AND page_id=?", rid, pid());
         if (!row) throw new HttpError(404, "Datensatz fehlt.");
-        assertRowAccess(user, p, row, true);
-        autoDatabaseSnapshot(user, p);
+        await assertRowAccess(user, p, row, true);
+        await autoDatabaseSnapshot(user, p);
         const before = JSON.parse(row.cells);
         // An older version still applies when the properties it changes
         // are as the person saw them (`base`, lib/row-patch.ts): the newer
@@ -2414,12 +2412,12 @@ function runCommand(
             400,
             "Dokumentinhalt über den Dokumenteditor bearbeiten.",
           );
-        const fieldsNow = database(pid()).fields;
-        const patch = validateCellPatch(user, p, fieldsNow, b.cells || {});
-        const cells = contactCellsFor(pid(), fieldsNow, before, { ...before, ...patch }, Object.keys(patch));
+        const fieldsNow = (await database(pid())).fields;
+        const patch = await validateCellPatch(user, p, fieldsNow, b.cells || {});
+        const cells = await contactCellsFor(pid(), fieldsNow, before, { ...before, ...patch }, Object.keys(patch));
         if (JSON.stringify(cells).length > 200000)
           throw new HttpError(413, "Datensatz zu groß.");
-        run(
+        await run(
           "UPDATE rows SET cells=?,content=COALESCE(?,content),updated_at=?,updated_by=?,version=version+1 WHERE id=?",
           JSON.stringify(cells),
           b.content === undefined
@@ -2428,64 +2426,64 @@ function runCommand(
           user.id,
           rid,
         );
-        rowChanged(user, p, rid, before, cells, fieldsNow);
-        afterContactWrite(pid(), rid);
+        await rowChanged(user, p, rid, before, cells, fieldsNow);
+        await afterContactWrite(pid(), rid);
         const titleField = fieldsNow[0]?.id || "title";
         const [oldTitle, newTitle] = [cellText(before[titleField]), cellText(cells[titleField])];
         if (oldTitle !== newTitle)
-          afterCommit.push(...followRename(user, p.workspace_id, { pageId: p.id, rowId: rid }, oldTitle, newTitle));
+          afterCommit.push(...await followRename(user, p.workspace_id, { pageId: p.id, rowId: rid }, oldTitle, newTitle));
         break;
       }
       case "row.delete": {
-        const p = write();
-        requireRow(user, p.id, uuid.parse(b.rowId), true);
-        autoDatabaseSnapshot(user, p);
-        trashRow(user, p, uuid.parse(b.rowId));
-        maintainRowOrders(pid());
+        const p = await write();
+        await requireRow(user, p.id, uuid.parse(b.rowId), true);
+        await autoDatabaseSnapshot(user, p);
+        await trashRow(user, p, uuid.parse(b.rowId));
+        await maintainRowOrders(pid());
         break;
       }
       case "row.trash.restore":
-        result = restoreTrashedRow(user, b);
+        result = await restoreTrashedRow(user, b);
         break;
       case "database.settings": {
         // Optional settings (done rule, workflow, automations, sprints …).
-        const p = write();
-        autoDatabaseSnapshot(user, p);
-        const before = database(p.id).fields;
-        const saved = updateDatabaseSettings(user, p, before, b.settings);
+        const p = await write();
+        await autoDatabaseSnapshot(user, p);
+        const before = (await database(p.id)).fields;
+        const saved = await updateDatabaseSettings(user, p, before, b.settings);
         // Progress properties follow the done rule.
         const fieldsNow = prepareSubtaskFields(p, structuredClone(before), saved);
         if (JSON.stringify(fieldsNow) !== JSON.stringify(before))
-          run("UPDATE databases SET fields=? WHERE page_id=?", JSON.stringify(fieldsNow), p.id);
+          await run("UPDATE databases SET fields=? WHERE page_id=?", JSON.stringify(fieldsNow), p.id);
         result = clientSettings(saved);
         break;
       }
       case "database.recordLayout": {
-        const p = write();
-        const fields = database(p.id).fields;
+        const p = await write();
+        const fields = (await database(p.id)).fields;
         const layout = recordLayoutSchema.parse(b.layout);
         // The title stays visible; unknown properties are dropped.
         layout.hidden = [...new Set(layout.hidden)].filter(
           (fid) => fid !== fields[0]?.id && fields.some((f) => f.id === fid),
         );
-        run(
+        await run(
           "UPDATE databases SET record_layout=? WHERE page_id=?",
           JSON.stringify(layout),
           p.id,
         );
-        run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), p.id);
+        await run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), p.id);
         result = layout;
         break;
       }
       case "whiteboard.sync":
-        result = syncWhiteboard(user, b);
+        result = await syncWhiteboard(user, b);
         break;
       // Sticky notes → database records (lib/whiteboard-to-records.ts).
       case "whiteboard.toRecords":
-        result = notesToRecords(user, b);
+        result = await notesToRecords(user, b);
         break;
       case "dashboard.save":
-        result = saveDashboard(write(), b.tiles);
+        result = await saveDashboard(await write(), b.tiles);
         break;
       // Notebooks: sheets, their order and paper, PDF import (lib/notebook.ts).
       case "notebook.paper":
@@ -2495,50 +2493,50 @@ function runCommand(
       case "notebook.sheet.move":
       case "notebook.sheet.paper":
       case "notebook.import":
-        result = notebookCommand(user, write(), action, b);
+        result = await notebookCommand(user, await write(), action, b);
         break;
       case "row.access":
-        result = setRowAccess(user, b);
+        result = await setRowAccess(user, b);
         break;
       case "row.trash.purge":
-        result = purgeTrashedRow(user, b);
+        result = await purgeTrashedRow(user, b);
         break;
       // Saved searches became collections (#86); the old actions stay.
       case "search.save":
-        result = saveSearchAsCollection(user, b);
+        result = await saveSearchAsCollection(user, b);
         break;
       case "search.delete":
-        deleteCollection(user, b.searchId);
+        await deleteCollection(user, b.searchId);
         break;
       case "collection.create":
-        result = createCollection(user, b);
+        result = await createCollection(user, b);
         break;
       case "collection.update":
-        result = updateCollection(user, b);
+        result = await updateCollection(user, b);
         break;
       case "collection.delete":
-        result = deleteCollection(user, b.collectionId);
+        result = await deleteCollection(user, b.collectionId);
         break;
       case "collection.restore":
-        result = restoreCollection(user, b.collectionId);
+        result = await restoreCollection(user, b.collectionId);
         break;
       case "collection.duplicate":
-        result = duplicateCollection(user, b);
+        result = await duplicateCollection(user, b);
         break;
       case "collection.reorder":
-        reorderCollections(user, b);
+        await reorderCollections(user, b);
         break;
       case "favorite.row": {
-        const { row } = requireRow(user, pid(), uuid.parse(b.rowId));
+        const { row } = await requireRow(user, pid(), uuid.parse(b.rowId));
         if (b.value)
-          run(
+          await run(
             "INSERT INTO row_favorites(user_id,row_id,page_id) VALUES(?,?,?) ON CONFLICT DO NOTHING",
             user.id,
             row.id,
             pid(),
           );
         else
-          run(
+          await run(
             "DELETE FROM row_favorites WHERE user_id=? AND row_id=?",
             user.id,
             row.id,
@@ -2551,21 +2549,21 @@ function runCommand(
       case "thread.edit":
       case "thread.deleteMessage":
       case "thread.react":
-        result = inlineCommentCommand(user, b);
+        result = await inlineCommentCommand(user, b);
         break;
       case "comment.react": {
-        const p = requirePage(user, pid());
+        const p = await requirePage(user, pid());
         const commentId = uuid.parse(b.commentId);
-        const comment = one<{ row_id: string | null }>(
+        const comment = await one<{ row_id: string | null }>(
           "SELECT row_id FROM comments WHERE id=? AND page_id=?",
           commentId,
           p.id,
         );
         if (!comment) throw new HttpError(404, "Kommentar nicht gefunden.");
-        if (comment.row_id) requireRow(user, p.id, comment.row_id);
+        if (comment.row_id) await requireRow(user, p.id, comment.row_id);
         const emoji = reactionEmoji.parse(b.emoji);
         if (b.active === false)
-          run(
+          await run(
             "DELETE FROM comment_reactions WHERE comment_id=? AND user_id=? AND emoji=?",
             commentId,
             user.id,
@@ -2573,11 +2571,11 @@ function runCommand(
           );
         else {
           if (
-            Number(one<{ n: number }>("SELECT COUNT(DISTINCT emoji) n FROM comment_reactions WHERE comment_id=?", commentId)?.n || 0) >= 20 &&
-            !one("SELECT 1 FROM comment_reactions WHERE comment_id=? AND emoji=?", commentId, emoji)
+            Number((await one<{ n: number }>("SELECT COUNT(DISTINCT emoji) n FROM comment_reactions WHERE comment_id=?", commentId))?.n || 0) >= 20 &&
+            !(await one("SELECT 1 FROM comment_reactions WHERE comment_id=? AND emoji=?", commentId, emoji))
           )
             throw new HttpError(400, "Zu viele verschiedene Reaktionen.");
-          run(
+          await run(
             "INSERT INTO comment_reactions(comment_id,user_id,emoji,created_at) VALUES(?,?,?,?) ON CONFLICT DO NOTHING",
             commentId,
             user.id,
@@ -2585,14 +2583,14 @@ function runCommand(
             Date.now(),
           );
         }
-        result = { reactions: commentReactions(user, commentId) };
+        result = { reactions: await commentReactions(user, commentId) };
         break;
       }
       case "comment.create": {
-        const p = requirePage(user, pid());
-        if (b.rowId) requireRow(user, p.id, uuid.parse(b.rowId));
+        const p = await requirePage(user, pid());
+        if (b.rowId) await requireRow(user, p.id, uuid.parse(b.rowId));
         const body = z.string().trim().min(1).max(5000).parse(b.body);
-        run(
+        await run(
           "INSERT INTO comments(id,page_id,row_id,author_id,body) VALUES(?,?,?,?,?)",
           id(),
           p.id,
@@ -2600,17 +2598,17 @@ function runCommand(
           user.id,
           body,
         );
-        emitWebhook(p.workspace_id, "comment.created", { pageId: p.id, rowId: b.rowId ? uuid.parse(b.rowId) : null, text: body }, user.name);
-        if (b.rowId) queueIssuePush(p.id, uuid.parse(b.rowId));
+        await emitWebhook(p.workspace_id, "comment.created", { pageId: p.id, rowId: b.rowId ? uuid.parse(b.rowId) : null, text: body }, user.name);
+        if (b.rowId) await queueIssuePush(p.id, uuid.parse(b.rowId));
         // Followers, the owner, the record's people, earlier commenters and
         // whoever "@Name" names – not the whole workspace, and only who may
         // read the page and the record (lib/comment-recipients.ts). A
         // mentioned person hears of it once, as a mention.
         const commentRow = b.rowId ? uuid.parse(b.rowId) : null;
-        const mentioned = commentTextMentions(user, p, body);
-        for (const recipient of commentRecipients(user, p, commentRow, mentioned)) {
+        const mentioned = await commentTextMentions(user, p, body);
+        for (const recipient of await commentRecipients(user, p, commentRow, mentioned)) {
           const mention = mentioned.includes(recipient);
-          run(
+          await run(
             "INSERT INTO notifications(id,user_id,body,page_id,row_id,kind) VALUES(?,?,?,?,?,?)",
             id(),
             recipient,
@@ -2619,19 +2617,19 @@ function runCommand(
             commentRow,
             mention ? "mention" : "comment",
           );
-          if (mention) mentionWebhook(p.workspace_id, p.id, commentRow, recipient, user.name);
+          if (mention) await mentionWebhook(p.workspace_id, p.id, commentRow, recipient, user.name);
         }
         break;
       }
       case "comment.resolve":
-        requirePage(user, pid(), true);
-        run(
+        await requirePage(user, pid(), true);
+        await run(
           "UPDATE comments SET resolved=? WHERE id=? AND page_id=?",
           b.resolved ? 1 : 0,
           uuid.parse(b.commentId),
           pid(),
         );
-        run(
+        await run(
           "UPDATE shared_comments SET resolved=? WHERE id=? AND page_id=?",
           b.resolved ? 1 : 0,
           uuid.parse(b.commentId),
@@ -2639,22 +2637,22 @@ function runCommand(
         );
         break;
       case "row.appearance":
-        result = setRowAppearance(user, b);
+        result = await setRowAppearance(user, b);
         break;
       case "row.recurrence":
-        result = setRowRecurrence(user, b);
+        result = await setRowRecurrence(user, b);
         break;
       case "row.repeat":
-        result = setRowRepeat(user, b);
+        result = await setRowRepeat(user, b);
         break;
       case "page.owner":
-        result = setPageOwner(user, b);
+        result = await setPageOwner(user, b);
         break;
       case "page.review":
-        result = setPageReview(user, b);
+        result = await setPageReview(user, b);
         break;
       case "page.aliases":
-        result = setPageAliases(user, b);
+        result = await setPageAliases(user, b);
         break;
       // Tags and custom properties (#70, lib/page-properties-server.ts).
       case "page.properties":
@@ -2666,27 +2664,27 @@ function runCommand(
       case "property.save":
       case "property.delete":
       case "property.reorder":
-        result = pagePropertiesCommand(user, action, b, write);
+        result = await pagePropertiesCommand(user, action, b, write);
         break;
       // Scopes (#136, lib/meta-scope-server.ts).
       case "tag.scope":
       case "property.scope":
-        result = changeScope(user, action === "tag.scope" ? "tag" : "property", b);
+        result = await changeScope(user, action === "tag.scope" ? "tag" : "property", b);
         break;
       case "meta.usage":
-        result = metaUsage(user, b);
+        result = await metaUsage(user, b);
         break;
       case "row.detachOccurrence":
-        result = detachOccurrence(user, b);
+        result = await detachOccurrence(user, b);
         break;
       case "reminder.set":
-        result = setDateReminder(user, b);
+        result = await setDateReminder(user, b);
         break;
       case "notification.prefs":
-        result = setNotificationPref(user, b);
+        result = await setNotificationPref(user, b);
         break;
       case "notification.read":
-        run(
+        await run(
           "UPDATE notifications SET read_at=? WHERE user_id=? AND read_at IS NULL", nowText(),
           user.id,
         );
@@ -2697,19 +2695,19 @@ function runCommand(
         const nid = z.string().min(1).max(100).parse(b.notificationId);
         const changed =
           action === "notification.delete"
-            ? run(
+            ? (await run(
                 "DELETE FROM notifications WHERE id=? AND user_id=?",
                 nid,
                 user.id,
-              ).changes
-            : run(
+              )).changes
+            : (await run(
                 "UPDATE notifications SET read_at=? WHERE id=? AND user_id=?",
                 z.boolean().parse(b.read)
                   ? new Date().toISOString().replace("T", " ").slice(0, 19)
                   : null,
                 nid,
                 user.id,
-              ).changes;
+              )).changes;
         if (!changed)
           throw new HttpError(404, "Benachrichtigung nicht gefunden.");
         break;
@@ -2717,15 +2715,15 @@ function runCommand(
       case "share.create":
       case "share.revoke":
       case "share.protect":
-        result = manageShareLink(user, b);
+        result = await manageShareLink(user, b);
         break;
       case "publication.protect":
-        protectPublication(write(), protectionChanges(b));
+        await protectPublication(await write(), protectionChanges(b));
         break;
       case "page.publish": {
-        const p = write();
+        const p = await write();
         const enabled = z.boolean().parse(b.enabled);
-        publishPage(
+        await publishPage(
           user,
           p,
           enabled,
@@ -2736,29 +2734,29 @@ function runCommand(
         break;
       }
       case "publication.copy":
-        result = copyPublication(user, b);
+        result = await copyPublication(user, b);
         break;
       // The look of a publication and its own domain (lib/custom-domains.ts).
       case "publication.theme":
-        result = savePublicationTheme(user, b);
+        result = await savePublicationTheme(user, b);
         break;
       case "domain.add":
-        result = addDomain(user, b);
+        result = await addDomain(user, b);
         break;
       case "domain.remove":
-        result = removeDomain(user, b);
+        result = await removeDomain(user, b);
         break;
       // Block extensions (lib/plugins.ts); registering is POST /api/plugins.
       case "plugin.update":
-        result = updatePlugin(user, b);
+        result = await updatePlugin(user, b);
         break;
       case "plugin.delete":
-        result = deletePlugin(user, b);
+        result = await deletePlugin(user, b);
         break;
       case "form.update": {
-        write();
-        database(pid());
-        const previous = formSettings(pid()),
+        await write();
+        await database(pid());
+        const previous = await formSettings(pid()),
           config =
             b.config === undefined
               ? previous?.config || formConfigSchema.parse({})
@@ -2766,8 +2764,8 @@ function runCommand(
         const enabled = b.enabled === undefined ? previous?.enabled || 0 : b.enabled ? 1 : 0,
           internal = b.internal === undefined ? (previous?.internal ?? 1) : b.internal ? 1 : 0;
         // No public form in a journal with a PIN (lib/journal-extras.ts).
-        if (enabled && !internal && inPinJournal({ id: pid() })) throw new HttpError(423, PIN_JOURNAL_NOT_SHARED);
-        run(
+        if (enabled && !internal && await inPinJournal({ id: pid() })) throw new HttpError(423, PIN_JOURNAL_NOT_SHARED);
+        await run(
           "INSERT INTO forms(page_id,token,enabled,internal,anonymous,config) VALUES(?,?,?,?,?,?) ON CONFLICT(page_id) DO UPDATE SET enabled=excluded.enabled,internal=excluded.internal,anonymous=excluded.anonymous,config=excluded.config",
           pid(),
           id(),
@@ -2789,51 +2787,51 @@ function runCommand(
       case "sprint.complete":
       case "sprint.delete":
       case "sprint.points": {
-        const p = write();
-        autoDatabaseSnapshot(user, p);
-        result = sprintCommand(user, p, action, b);
+        const p = await write();
+        await autoDatabaseSnapshot(user, p);
+        result = await sprintCommand(user, p, action, b);
         break;
       }
       case "survey.save": {
         // The survey builder saves questions (properties) and settings at once.
-        const p = write();
+        const p = await write();
         if (p.kind !== "database") throw new HttpError(400, "Keine Datenbank.");
-        autoDatabaseSnapshot(user, p);
-        result = saveSurvey(p, b);
+        await autoDatabaseSnapshot(user, p);
+        result = await saveSurvey(p, b);
         break;
       }
       case "recordView.save":
-        result = saveRecordView(user, b);
+        result = await saveRecordView(user, b);
         break;
       case "recordView.delete":
-        result = deleteRecordView(user, b);
+        result = await deleteRecordView(user, b);
         break;
       case "git.setup":
       case "git.disable":
-        result = gitSetup(write(), action);
+        result = await gitSetup(await write(), action);
         break;
       // GitHub/GitLab issue sync: connections and database mappings.
       case "issueSync.connect":
       case "issueSync.disconnect":
       case "issueSync.map":
       case "issueSync.unmap":
-        result = issueSyncCommand(user, action, b);
+        result = await issueSyncCommand(user, action, b);
         break;
       case "time.start":
       case "time.stop":
       case "time.add":
       case "time.delete":
-        result = timeCommand(user, requirePage(user, pid()), action, b);
+        result = await timeCommand(user, await requirePage(user, pid()), action, b);
         break;
       case "ticket.reply":
         // A team answer to a customer request; e-mailed to the customer.
-        write();
-        result = teamReply(user, pid(), uuid.parse(b.rowId), b.body);
+        await write();
+        result = await teamReply(user, pid(), uuid.parse(b.rowId), b.body);
         break;
       case "form.submit":
-        write();
-        database(pid());
-        result = saveFormSubmission(
+        await write();
+        await database(pid());
+        result = await saveFormSubmission(
           pid(),
           user,
           z.record(z.string(), z.unknown()).parse(b.cells),
@@ -2841,11 +2839,11 @@ function runCommand(
         );
         break;
       case "member.invite": {
-        requireMember(user, wid(), "owner");
+        await requireMember(user, wid(), "owner");
         limitInviter(user.id);
         const email = z.email().parse(b.email).toLowerCase(),
           role = z.enum(["editor", "viewer"]).parse(b.role);
-        run(
+        await run(
           "INSERT INTO invites(id,workspace_id,email,role,created_by,guest,created_at,token) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(workspace_id,email) DO UPDATE SET role=excluded.role,guest=excluded.guest,created_at=excluded.created_at,token=COALESCE(invites.token,excluded.token)",
           id(),
           wid(),
@@ -2859,12 +2857,12 @@ function runCommand(
         securityEvent("invite.created", { actorId: user.id, subject: email, detail: `${role}${b.guest === true ? " guest" : ""} workspace ${wid()}` });
         // With SMTP configured the person hears about it by e-mail.
         {
-          const ws = one<{ name: string }>("SELECT name FROM workspaces WHERE id=?", wid());
-          const token = one<{ token: string }>("SELECT token FROM invites WHERE workspace_id=? AND email=?", wid(), email)?.token;
+          const ws = await one<{ name: string }>("SELECT name FROM workspaces WHERE id=?", wid());
+          const token = (await one<{ token: string }>("SELECT token FROM invites WHERE workspace_id=? AND email=?", wid(), email))?.token;
           const invite = { email, inviter: user.name, workspace: ws?.name || "Flowplan", guest: b.guest === true, token };
           if (mailAllowed(email))
-            afterCommit.push(() => {
-              if (queueInviteMail(invite)) void dispatchMail();
+            afterCommit.push(async () => {
+              if (await queueInviteMail(invite)) void dispatchMail();
             });
         }
         break;
@@ -2872,40 +2870,40 @@ function runCommand(
       // Open invitations: withdraw (with the pages waiting for them) or send again.
       case "invite.cancel":
       case "invite.resend": {
-        requireMember(user, wid(), "owner");
-        const invite = one<{ email: string; guest: number }>("SELECT email,guest FROM invites WHERE id=? AND workspace_id=?", uuid.parse(b.inviteId), wid());
+        await requireMember(user, wid(), "owner");
+        const invite = await one<{ email: string; guest: number }>("SELECT email,guest FROM invites WHERE id=? AND workspace_id=?", uuid.parse(b.inviteId), wid());
         if (!invite) throw new HttpError(404, "Einladung nicht gefunden.");
         if (action === "invite.cancel") {
-          run("DELETE FROM invite_grants WHERE workspace_id=? AND lower(email)=lower(?)", wid(), invite.email);
-          run("DELETE FROM invites WHERE id=?", uuid.parse(b.inviteId));
+          await run("DELETE FROM invite_grants WHERE workspace_id=? AND lower(email)=lower(?)", wid(), invite.email);
+          await run("DELETE FROM invites WHERE id=?", uuid.parse(b.inviteId));
         } else {
-          const ws = one<{ name: string }>("SELECT name FROM workspaces WHERE id=?", wid());
-          const page = one<{ title: string }>(
+          const ws = await one<{ name: string }>("SELECT name FROM workspaces WHERE id=?", wid());
+          const page = await one<{ title: string }>(
             "SELECT p.title FROM invite_grants g JOIN pages p ON p.id=g.resource_id WHERE g.workspace_id=? AND lower(g.email)=lower(?) AND p.deleted_at IS NULL",
             wid(),
             invite.email,
           );
-          let token = one<{ token: string | null }>("SELECT token FROM invites WHERE id=?", uuid.parse(b.inviteId))?.token;
+          let token = (await one<{ token: string | null }>("SELECT token FROM invites WHERE id=?", uuid.parse(b.inviteId)))?.token;
           if (!token) {
             token = inviteToken();
-            run("UPDATE invites SET token=? WHERE id=?", token, uuid.parse(b.inviteId));
+            await run("UPDATE invites SET token=? WHERE id=?", token, uuid.parse(b.inviteId));
           }
           const mail = { email: invite.email, inviter: user.name, workspace: ws?.name || "Flowplan", guest: !!invite.guest, page: invite.guest ? page?.title : undefined, token };
           limitInviter(user.id);
           if (!mailAllowed(invite.email)) throw new HttpError(429, "Zu viele Einladungen in kurzer Zeit. Bitte später erneut versuchen.");
-          run("UPDATE invites SET created_at=? WHERE id=?", Date.now(), uuid.parse(b.inviteId));
-          afterCommit.push(() => {
-            if (queueInviteMail(mail)) void dispatchMail();
+          await run("UPDATE invites SET created_at=? WHERE id=?", Date.now(), uuid.parse(b.inviteId));
+          afterCommit.push(async () => {
+            if (await queueInviteMail(mail)) void dispatchMail();
           });
           result = { mail: !!mailConfig() };
         }
         break;
       }
       case "member.role": {
-        requireMember(user, wid(), "owner");
+        await requireMember(user, wid(), "owner");
         const target = uuid.parse(b.userId),
           role = z.enum(["owner", "editor", "viewer", "remove"]).parse(b.role);
-        const old = one<{ role: string }>(
+        const old = await one<{ role: string }>(
           "SELECT role FROM members WHERE workspace_id=? AND user_id=?",
           wid(),
           target,
@@ -2913,23 +2911,23 @@ function runCommand(
         if (
           old?.role === "owner" &&
           role !== "owner" &&
-          all(
+          (await all(
             "SELECT user_id FROM members WHERE workspace_id=? AND role=?",
             wid(),
             "owner",
-          ).length <= 1
+          )).length <= 1
         )
           throw new HttpError(400, "Der letzte Eigentümer muss bleiben.");
-        if (role === "owner" && isGuest({ id: target }, wid()))
+        if (role === "owner" && await isGuest({ id: target }, wid()))
           throw new HttpError(
             400,
             "Gäste zuerst zu Mitgliedern machen, bevor sie Eigentümer werden.",
           );
         if (role === "remove") {
           // Grants, groups and spaces go too: re-inviting starts afresh.
-          removeFromWorkspace(target, wid(), user.id);
+          await removeFromWorkspace(target, wid(), user.id);
         } else {
-          run(
+          await run(
             "UPDATE members SET role=? WHERE workspace_id=? AND user_id=?",
             role,
             wid(),
@@ -2945,29 +2943,29 @@ function runCommand(
       // Only instance admins map SSO groups: a mapping brings people of the
       // whole instance into a workspace (and shows their addresses there).
       case "sso.mapping.add":
-        requireMember(user, wid(), "owner");
+        await requireMember(user, wid(), "owner");
         requireAdmin(user);
-        result = addSsoMapping(wid(), b);
+        result = await addSsoMapping(wid(), b);
         break;
       case "sso.mapping.delete":
-        requireMember(user, wid(), "owner");
+        await requireMember(user, wid(), "owner");
         requireAdmin(user);
-        deleteSsoMapping(wid(), b.id);
+        await deleteSsoMapping(wid(), b.id);
         break;
       // The same for any workspace, from the administration.
       case "admin.ssoMapping.add":
         requireAdmin(user);
-        result = addSsoMapping(wid(), b);
+        result = await addSsoMapping(wid(), b);
         break;
       case "admin.ssoMapping.delete":
         requireAdmin(user);
-        deleteSsoMapping(wid(), b.id);
+        await deleteSsoMapping(wid(), b.id);
         break;
       case "member.guest": {
-        requireMember(user, wid(), "owner");
+        await requireMember(user, wid(), "owner");
         const target = uuid.parse(b.userId),
           guest = z.boolean().parse(b.guest);
-        const member = one<{ role: string }>(
+        const member = await one<{ role: string }>(
           "SELECT role FROM members WHERE workspace_id=? AND user_id=?",
           wid(),
           target,
@@ -2977,15 +2975,15 @@ function runCommand(
           throw new HttpError(400, "Eigentümer können keine Gäste sein.");
         // A guest manages no space: their spaces go to the owner acting.
         if (guest)
-          run("UPDATE spaces SET owner_id=?,version=version+1 WHERE workspace_id=? AND owner_id=?", user.id, wid(), target);
+          await run("UPDATE spaces SET owner_id=?,version=version+1 WHERE workspace_id=? AND owner_id=?", user.id, wid(), target);
         if (guest)
-          run(
+          await run(
             "INSERT INTO workspace_guests(workspace_id,user_id) VALUES(?,?) ON CONFLICT DO NOTHING",
             wid(),
             target,
           );
         else
-          run(
+          await run(
             "DELETE FROM workspace_guests WHERE workspace_id=? AND user_id=?",
             wid(),
             target,
@@ -2994,12 +2992,12 @@ function runCommand(
       }
       // One page with a person, without the whole workspace (lib/page-share.ts).
       case "page.share": {
-        const shared = sharePage(user, b);
+        const shared = await sharePage(user, b);
         if (shared.status === "invited") {
           const { mail, send, ...rest } = shared;
           if (send)
-            afterCommit.push(() => {
-              if (queueInviteMail(mail)) void dispatchMail();
+            afterCommit.push(async () => {
+              if (await queueInviteMail(mail)) void dispatchMail();
             });
           result = rest;
         } else {
@@ -3009,44 +3007,44 @@ function runCommand(
         break;
       }
       case "page.shareUpdate":
-        result = updatePageShare(user, b);
+        result = await updatePageShare(user, b);
         break;
       case "grant.set": {
         const resource = uuid.parse(b.resourceId);
-        const p = one<Page>("SELECT * FROM pages WHERE id=?", resource),
-          s = one<Space>("SELECT * FROM spaces WHERE id=?", resource);
+        const p = await one<Page>("SELECT * FROM pages WHERE id=?", resource),
+          s = await one<Space>("SELECT * FROM spaces WHERE id=?", resource);
         if (!p && !s) throw new HttpError(404, "Ressource fehlt.");
-        requireMember(user, (p || s)!.workspace_id, "owner");
+        await requireMember(user, (p || s)!.workspace_id, "owner");
         const uid = b.userId ? uuid.parse(b.userId) : "",
           gid = b.groupId ? uuid.parse(b.groupId) : "";
         if (!uid && !gid)
           throw new HttpError(400, "Mitglied oder Gruppe erforderlich.");
         if (
           uid &&
-          !one(
+          !(await one(
             "SELECT 1 FROM members WHERE workspace_id=? AND user_id=?",
             (p || s)!.workspace_id,
             uid,
-          )
+          ))
         )
           throw new HttpError(400, "Mitglied fehlt.");
         if (
           gid &&
-          !one(
+          !(await one(
             "SELECT 1 FROM groups WHERE id=? AND workspace_id=?",
             gid,
             (p || s)!.workspace_id,
-          )
+          ))
         )
           throw new HttpError(400, "Gruppe fehlt.");
-        run(
+        await run(
           "DELETE FROM grants WHERE resource_id=? AND user_id=? AND group_id=?",
           resource,
           uid,
           gid,
         );
         if (b.role !== "remove")
-          run(
+          await run(
             "INSERT INTO grants VALUES(?,?,?,?)",
             resource,
             uid,
@@ -3056,33 +3054,33 @@ function runCommand(
         break;
       }
       case "group.create": {
-        requireMember(user, wid(), "owner");
+        await requireMember(user, wid(), "owner");
         const gid = id();
-        run("INSERT INTO groups VALUES(?,?,?)", gid, wid(), str.parse(b.name));
+        await run("INSERT INTO groups VALUES(?,?,?)", gid, wid(), str.parse(b.name));
         result = { id: gid };
         break;
       }
       case "group.member": {
         const gid = uuid.parse(b.groupId),
-          g = one<{ workspace_id: string }>(
+          g = await one<{ workspace_id: string }>(
             "SELECT * FROM groups WHERE id=?",
             gid,
           );
         if (!g) throw new HttpError(404, "Gruppe fehlt");
-        requireMember(user, g.workspace_id, "owner");
+        await requireMember(user, g.workspace_id, "owner");
         const uid = uuid.parse(b.userId);
         if (
-          !one(
+          !(await one(
             "SELECT 1 FROM members WHERE workspace_id=? AND user_id=?",
             g.workspace_id,
             uid,
-          )
+          ))
         )
           throw new HttpError(400, "Mitglied fehlt");
         if (b.enabled)
-          run("INSERT INTO group_members VALUES(?,?) ON CONFLICT DO NOTHING", gid, uid);
+          await run("INSERT INTO group_members VALUES(?,?) ON CONFLICT DO NOTHING", gid, uid);
         else
-          run(
+          await run(
             "DELETE FROM group_members WHERE group_id=? AND user_id=?",
             gid,
             uid,
@@ -3090,28 +3088,28 @@ function runCommand(
         break;
       }
       case "template.save": {
-        const p = write();
+        const p = await write();
         const payload =
           p.kind === "database"
             ? JSON.stringify({
                 appearance: pageAppearance(p),
-                database: database(p.id),
+                database: await database(p.id),
                 // Only the records this person sees go into the template.
-                rows: visibleRows(user, p, rows(p.id)),
-                ...databaseTemplateExtras(user, p),
+                rows: await visibleRows(user, p, await rows(p.id)),
+                ...(await databaseTemplateExtras(user, p)),
                 // Tags and property values (lib/page-properties-server.ts).
-                meta: portableMeta(p.id),
+                meta: await portableMeta(p.id),
               })
             : JSON.stringify({
                 appearance: pageAppearance(p),
                 html:
-                  one<{ html: string }>(
+                  (await one<{ html: string }>(
                     "SELECT html FROM documents WHERE page_id=?",
                     p.id,
-                  )?.html || "",
+                  ))?.html || "",
                 // Notebooks: their sheets' paper and handwriting.
-                ...(p.kind === "notebook" ? { notebook: notebookArchive(p.id) } : {}),
-                meta: portableMeta(p.id),
+                ...(p.kind === "notebook" ? { notebook: await notebookArchive(p.id) } : {}),
+                meta: await portableMeta(p.id),
               });
         const templateId = id();
         if (payload.length > 20_000_000)
@@ -3122,14 +3120,14 @@ function runCommand(
         const templateSpace = b.spaceId === null ? null : b.spaceId === undefined ? p.space_id : uuid.parse(b.spaceId);
         if (templateSpace && templateSpace !== p.space_id)
           throw new HttpError(400, "Eine Vorlage gehört zum Bereich ihrer Seite oder zum ganzen Arbeitsbereich.");
-        requireTemplateScope(user, p.workspace_id, templateSpace, b.private ? "private" : "workspace");
+        await requireTemplateScope(user, p.workspace_id, templateSpace, b.private ? "private" : "workspace");
         let storedPayload = payload;
         if (!templateSpace) {
-          const refs = templateSpaceRefs(payload, p.workspace_id, p.space_id);
+          const refs = await templateSpaceRefs(payload, p.workspace_id, p.space_id);
           if (refs.length && b.spaceMeta !== "remove") throw new HttpError(409, spaceRefsMessage(refs));
-          if (refs.length) storedPayload = stripSpaceRefs(payload, refs);
+          if (refs.length) storedPayload = await stripSpaceRefs(payload, refs);
         }
-        run(
+        await run(
           "INSERT INTO templates(id,workspace_id,space_id,name,kind,payload,created_by,visibility,category) VALUES(?,?,?,?,?,?,?,?,?)",
           templateId,
           p.workspace_id,
@@ -3145,47 +3143,47 @@ function runCommand(
             .catch("")
             .parse(b.category ?? ""),
         );
-        const quota = quotaCheckpoint(p.workspace_id);
-        captureTemplateFiles(user, templateId, storedPayload);
+        const quota = await quotaCheckpoint(p.workspace_id);
+        await captureTemplateFiles(user, templateId, storedPayload);
         quota();
         result = { id: templateId };
         break;
       }
       case "template.copy":
-        result = copyPageTemplate(user, b);
+        result = await copyPageTemplate(user, b);
         break;
       case "template.dependencies":
-        result = pageTemplateDependencies(user, b);
+        result = await pageTemplateDependencies(user, b);
         break;
       case "template.purge":
-        result = purgeTemplate(user, b);
+        result = await purgeTemplate(user, b);
         break;
       case "template.update":
       case "template.delete":
       case "template.restore":
-        result = managePageTemplate(user, b);
+        result = await managePageTemplate(user, b);
         break;
       case "template.apply": {
-        const p = write();
-        const template = requireTemplate(user, b.templateId, p.workspace_id);
-        if (p.kind === "database" && b.version !== database(p.id).version)
+        const p = await write();
+        const template = await requireTemplate(user, b.templateId, p.workspace_id);
+        if (p.kind === "database" && b.version !== (await database(p.id)).version)
           throw new HttpError(
             409,
             "Die Datenbank wurde zwischenzeitlich geändert. Bitte neu laden.",
           );
-        result = applyPageTemplate(user, p, template, true, parseMetaPlan(b.meta));
+        result = await applyPageTemplate(user, p, template, true, parseMetaPlan(b.meta));
         break;
       }
       case "page.fromShare": {
         // "Teilen an Flowplan": text and link from another app as a page.
-        requireMember(user, wid(), "editor");
+        await requireMember(user, wid(), "editor");
         const sid = uuid.parse(b.spaceId);
-        const shareSpace = one<Space>("SELECT * FROM spaces WHERE id=? AND workspace_id=? AND deleted_at IS NULL", sid, wid());
+        const shareSpace = await one<Space>("SELECT * FROM spaces WHERE id=? AND workspace_id=? AND deleted_at IS NULL", sid, wid());
         if (!shareSpace) throw new HttpError(404, "Bereich nicht gefunden.");
         // A page (or bookmark) lands in the space: only for those who may
         // write there, as with page.create. A record goes into its database,
         // whose rights requirePage checks below.
-        if (b.as !== "record" && !["editor", "owner"].includes(spaceRole(user, shareSpace) || ""))
+        if (b.as !== "record" && !["editor", "owner"].includes(await spaceRole(user, shareSpace) || ""))
           throw new HttpError(403, "Kein Zugriff auf Bereich.");
         const shared = z
           .object({
@@ -3214,36 +3212,36 @@ function runCommand(
         const article = typeof b.article === "string" ? cleanHtml(b.article.slice(0, 250_000)) : "";
         const body = article ? `${html}<hr>${article}` : html;
         if (b.as === "record") {
-          const target = requirePage(user, uuid.parse(b.databaseId));
+          const target = await requirePage(user, uuid.parse(b.databaseId));
           if (target.workspace_id !== wid()) throw new HttpError(400, "Nur innerhalb eines Arbeitsbereichs.");
-          result = captureRecord(user, { pageId: target.id, title: shared.title, text: shared.text, url: shared.url, article: article || undefined });
+          result = await captureRecord(user, { pageId: target.id, title: shared.title, text: shared.text, url: shared.url, article: article || undefined });
           break;
         }
         if (b.as === "bookmark") {
           if (!safeLink) throw new HttpError(400, "Ein Lesezeichen braucht einen Link.");
-          const db = bookmarksDatabase(wid(), sid, user.id);
-          requirePage(user, db, true);
-          const saved = addBookmarks(db, user.id, [
+          const db = await bookmarksDatabase(wid(), sid, user.id);
+          await requirePage(user, db, true);
+          const saved = await addBookmarks(db, user.id, [
             { title: title.slice(0, 300), url: safeLink, note: text.slice(0, 2000), content: article },
           ]);
           if (!saved.added) throw new HttpError(409, "Dieser Link ist schon unter den Lesezeichen.");
           result = { id: db, rowId: saved.ids[0] };
           break;
         }
-        const created = createPage(wid(), sid, user.id, title.slice(0, 200), "document");
-        run("UPDATE documents SET html=?,state=? WHERE page_id=?", body, htmlState(body), created);
+        const created = await createPage(wid(), sid, user.id, title.slice(0, 200), "document");
+        await run("UPDATE documents SET html=?,state=? WHERE page_id=?", body, htmlState(body), created);
         result = { id: created };
         break;
       }
       case "page.toRecord": {
-        const moved = pageToRecord(user, pid(), uuid.parse(b.databaseId));
+        const moved = await pageToRecord(user, pid(), uuid.parse(b.databaseId));
         afterCommit.push(...moved.publish);
         result = moved.result;
         break;
       }
       case "record.toPage": {
         // The reverse: a record becomes a page (lib/record-to-page.ts).
-        const moved = recordToPage(user, pid(), uuid.parse(b.rowId), {
+        const moved = await recordToPage(user, pid(), uuid.parse(b.rowId), {
           spaceId: uuid.parse(b.spaceId),
           parentId: b.parentId ? uuid.parse(b.parentId) : null,
           keepProperties: b.keepProperties !== false,
@@ -3253,71 +3251,71 @@ function runCommand(
         break;
       }
       case "capture.record":
-        result = captureRecord(user, b);
+        result = await captureRecord(user, b);
         break;
       case "capture.target":
-        result = setCaptureTarget(user, wid(), b.pageId ? uuid.parse(b.pageId) : null);
+        result = await setCaptureTarget(user, wid(), b.pageId ? uuid.parse(b.pageId) : null);
         break;
       case "bookmarks.import": {
-        requireMember(user, wid(), "editor");
+        await requireMember(user, wid(), "editor");
         const sid = uuid.parse(b.spaceId);
-        const importSpace = one<Space>("SELECT * FROM spaces WHERE id=? AND workspace_id=? AND deleted_at IS NULL", sid, wid());
+        const importSpace = await one<Space>("SELECT * FROM spaces WHERE id=? AND workspace_id=? AND deleted_at IS NULL", sid, wid());
         if (!importSpace) throw new HttpError(404, "Bereich nicht gefunden.");
         // The bookmarks database is created in the space – rights first.
-        if (!["editor", "owner"].includes(spaceRole(user, importSpace) || ""))
+        if (!["editor", "owner"].includes(await spaceRole(user, importSpace) || ""))
           throw new HttpError(403, "Kein Zugriff auf Bereich.");
         const items = parseBookmarksHtml(z.string().max(20_000_000).parse(b.html));
         if (!items.length) throw new HttpError(400, "In der Datei wurden keine Lesezeichen gefunden.");
-        const db = bookmarksDatabase(wid(), sid, user.id);
-        requirePage(user, db, true);
-        const saved = addBookmarks(db, user.id, items);
+        const db = await bookmarksDatabase(wid(), sid, user.id);
+        await requirePage(user, db, true);
+        const saved = await addBookmarks(db, user.id, items);
         result = { id: db, added: saved.added, skipped: saved.skipped };
         break;
       }
       case "calendar.feed":
-        result = createCalendarFeed(user, pid(), z.string().max(100).parse(b.viewId));
+        result = await createCalendarFeed(user, pid(), z.string().max(100).parse(b.viewId));
         break;
       case "calendar.feed.revoke":
-        revokeCalendarFeed(user, pid(), z.string().max(100).parse(b.viewId));
+        await revokeCalendarFeed(user, pid(), z.string().max(100).parse(b.viewId));
         break;
       case "calendar.caldav":
-        result = createCalDavAccess(user, pid(), z.string().max(100).parse(b.viewId));
+        result = await createCalDavAccess(user, pid(), z.string().max(100).parse(b.viewId));
         break;
       case "calendar.caldav.revoke":
-        revokeCalDavAccess(user, pid(), z.string().max(100).parse(b.viewId));
+        await revokeCalDavAccess(user, pid(), z.string().max(100).parse(b.viewId));
         break;
       // Google / Microsoft 365 calendar sync, per person (lib/calendar-sync.ts).
       case "calendarSync.map":
-        result = saveCalendarMapping(user, b);
+        result = await saveCalendarMapping(user, b);
         break;
       case "calendarSync.unmap":
-        deleteCalendarMapping(user, b);
+        await deleteCalendarMapping(user, b);
         break;
       case "calendarSync.disconnect":
-        disconnectCalendar(user, b);
+        await disconnectCalendar(user, b);
         break;
       // A meeting note for an appointment of a journal day (lib/meeting-notes.ts).
       case "meeting.note":
-        result = createMeetingNote(user, b);
+        result = await createMeetingNote(user, b);
         break;
       case "token.create":
-        result = createApiToken(user, b);
+        result = await createApiToken(user, b);
         break;
       case "token.revoke":
-        revokeApiToken(user, b.id);
+        await revokeApiToken(user, b.id);
         break;
       case "webhook.delete":
-        deleteWebhook(user, b);
+        await deleteWebhook(user, b);
         break;
       // E-mail inbound capture, by workspace owners (lib/inbound-mail.ts).
       case "inbound.save":
-        result = saveInboundAddress(user, b);
+        result = await saveInboundAddress(user, b);
         break;
       case "inbound.rotate":
-        result = rotateInboundToken(user, b);
+        result = await rotateInboundToken(user, b);
         break;
       case "inbound.delete":
-        result = deleteInboundAddress(user, b);
+        result = await deleteInboundAddress(user, b);
         break;
       case "admin.user": {
         requireAdmin(user);
@@ -3327,7 +3325,7 @@ function runCommand(
             400,
             "Eigenes Konto kann nicht deaktiviert werden.",
           );
-        setUserDisabled(uid, !!b.disabled);
+        await setUserDisabled(uid, !!b.disabled);
         securityEvent("admin.user", { actorId: user.id, detail: `${b.disabled ? "disabled" : "enabled"} ${uid}` });
         break;
       }
@@ -3340,7 +3338,7 @@ function runCommand(
           .max(10_000_000)
           .nullable()
           .parse(b.quotaMb);
-        setWorkspaceQuota(uuid.parse(b.workspaceId), quota);
+        await setWorkspaceQuota(uuid.parse(b.workspaceId), quota);
         break;
       }
       // Accounts with e-mail and password: admin right, reset link.
@@ -3349,24 +3347,24 @@ function runCommand(
         const uid = uuid.parse(b.userId);
         if (uid === user.id && !b.admin)
           throw new HttpError(400, "Das eigene Admin-Recht kann nur eine andere Person entziehen.");
-        setLocalAdmin(uid, b.admin === true);
+        await setLocalAdmin(uid, b.admin === true);
         securityEvent(b.admin === true ? "admin.granted" : "admin.revoked", { actorId: user.id, detail: `local account ${uid}` });
         break;
       }
       // Lost phone: the authenticator app of an account is turned off.
       case "admin.twoFactorReset":
         requireAdmin(user);
-        adminResetTwoFactor(uuid.parse(b.userId));
+        await adminResetTwoFactor(uuid.parse(b.userId));
         securityEvent("admin.user", { actorId: user.id, detail: `two-factor reset ${b.userId}` });
         break;
       case "admin.resetLink":
         requireAdmin(user);
-        result = { url: adminResetLink(uuid.parse(b.userId)) };
+        result = { url: await adminResetLink(uuid.parse(b.userId)) };
         securityEvent("admin.user", { actorId: user.id, detail: `password reset link ${b.userId}` });
         break;
       case "admin.revoke":
         requireAdmin(user);
-        run("DELETE FROM sessions WHERE user_id=?", uuid.parse(b.userId));
+        await run("DELETE FROM sessions WHERE user_id=?", uuid.parse(b.userId));
         securityEvent("session.revoked", { actorId: user.id, detail: `all sessions of ${b.userId}` });
         break;
       default:
@@ -3376,16 +3374,16 @@ function runCommand(
     // automations included –, so the next change of the same record can
     // carry it right away (lib/row-queue.ts, #104).
     if (rowVersionActions.has(action) && typeof b.rowId === "string" && result && typeof result === "object" && !Array.isArray(result)) {
-      const changed = one<{ version: number }>("SELECT version FROM rows WHERE id=?", b.rowId);
+      const changed = await one<{ version: number }>("SELECT version FROM rows WHERE id=?", b.rowId);
       if (changed) result = { ...result, rowVersion: changed.version };
     }
     // Content changes: who edited, and followers are told.
     if (editActions.has(action) && typeof b.pageId === "string")
-      recordPageEdit(user, b.pageId);
+      await recordPageEdit(user, b.pageId);
     // Whoever creates a page follows it.
     const createdId = (result as { id?: unknown } | null)?.id;
     if (action === "page.create" && typeof createdId === "string" && !user.apiScope)
-      setFollowing(user, createdId, true);
+      await setFollowing(user, createdId, true);
     if (
       ![
         "document.sync",
@@ -3396,7 +3394,7 @@ function runCommand(
         "favorite",
       ].includes(action)
     )
-      audit(
+      await audit(
         user.id,
         action,
         String(b.pageId || b.spaceId || b.workspaceId || b.userId || ""),
@@ -3404,24 +3402,24 @@ function runCommand(
     return result;
   };
   // Files copied by a command count towards the person's storage.
-  const checked = () => {
-    const check = userStorageCheckpoint(user);
-    const value = execute();
+  const checked = async () => {
+    const check = await userStorageCheckpoint(user);
+    const value = await execute();
     check();
     return value;
   };
   // Commands that may end the Git export of a space: its working copy goes
   // once the settings are gone.
   if (GIT_EXPORT_ENDS.has(action)) afterCommit.push(sweepSpaceGitCopies);
-  const applied = () => {
+  const applied = async () => {
     keyed?.begin(action);
-    const value = checked();
+    const value = await checked();
     keyed?.end(value, action);
     return value;
   };
-  const result = withinTransaction ? applied() : transaction(applied, user);
+  const result = withinTransaction ? (await applied()) : (await transaction(applied, user));
   try {
-    commandWebhooks(action, b, result, user.name);
+    await commandWebhooks(action, b, result, user.name);
   } catch (error) {
     console.error("Webhook-Ereignis fehlgeschlagen", error);
   }
@@ -3438,8 +3436,8 @@ const reactionEmoji = z
   .string()
   .max(32)
   .regex(/^(?:\p{Extended_Pictographic}|\p{Emoji_Presentation}|\p{Regional_Indicator}|\p{Emoji_Modifier}|\u200d|\ufe0f)+$/u, "Nur ein Emoji.");
-export function commentReactions(user: Identity, commentId: string) {
-  const rows = all<{ emoji: string; user_id: string; name: string }>(
+export async function commentReactions(user: Identity, commentId: string) {
+  const rows = await all<{ emoji: string; user_id: string; name: string }>(
     "SELECT r.emoji,r.user_id,u.name FROM comment_reactions r JOIN users u ON u.id=r.user_id WHERE r.comment_id=? ORDER BY r.created_at",
     commentId,
   );
@@ -3499,19 +3497,19 @@ export const editActions = new Set([
   "page.update",
 ]);
 // Webhooks for records and pages changed through commands.
-function commandWebhooks(action: string, b: Record<string, unknown>, result: unknown, actor?: string) {
+async function commandWebhooks(action: string, b: Record<string, unknown>, result: unknown, actor?: string) {
   const created = (result as { id?: unknown } | null)?.id;
   // Shared or captured as a record (or bookmark): a new record, not a page.
   const capturedRow = (result as { rowId?: unknown } | null)?.rowId;
   if ((action === "page.fromShare" || action === "capture.record") && typeof capturedRow === "string")
-    return commandWebhooks("row.create", b, { id: capturedRow }, actor);
+    return await commandWebhooks("row.create", b, { id: capturedRow }, actor);
   if ((action === "page.create" || action === "page.fromShare") && typeof created === "string") {
-    const page = one<{ workspace_id: string; title: string; kind: string; parent_id: string | null }>(
+    const page = await one<{ workspace_id: string; title: string; kind: string; parent_id: string | null }>(
       "SELECT workspace_id,title,kind,parent_id FROM pages WHERE id=?",
       created,
     );
     if (page)
-      emitWebhook(page.workspace_id, "page.created", {
+      await emitWebhook(page.workspace_id, "page.created", {
         pageId: created,
         title: page.title,
         kind: page.kind,
@@ -3521,12 +3519,12 @@ function commandWebhooks(action: string, b: Record<string, unknown>, result: unk
   }
   const rowId = action === "row.create" ? created : action === "row.update" ? b.rowId : null;
   if (typeof rowId !== "string") return;
-  const row = one<{ page_id: string; cells: string; workspace_id: string }>(
+  const row = await one<{ page_id: string; cells: string; workspace_id: string }>(
     "SELECT r.page_id,r.cells,p.workspace_id FROM rows r JOIN pages p ON p.id=r.page_id WHERE r.id=?",
     rowId,
   );
   if (!row) return;
-  emitWebhook(row.workspace_id, action === "row.create" ? "row.created" : "row.updated", {
+  await emitWebhook(row.workspace_id, action === "row.create" ? "row.created" : "row.updated", {
     pageId: row.page_id,
     rowId,
     cells: JSON.parse(row.cells),
@@ -3556,24 +3554,24 @@ function liveDiff(state: string, vector: unknown) {
 }
 const liveClient = (client: unknown) =>
   typeof client === "string" && client.length <= 64 ? client : undefined;
-function createWorkspaceInner(user: string, name: string) {
+async function createWorkspaceInner(user: string, name: string) {
   const wid = id(),
     sid = id();
-  run(
+  await run(
     "INSERT INTO workspaces(id,name,created_by) VALUES(?,?,?)",
     wid,
     name,
     user,
   );
-  run("INSERT INTO members VALUES(?,?,?)", wid, user, "owner");
-  run(
+  await run("INSERT INTO members VALUES(?,?,?)", wid, user, "owner");
+  await run(
     "INSERT INTO spaces(id,workspace_id,name,owner_id) VALUES(?,?,?,?)",
     sid,
     wid,
     "Teamspace",
     user,
   );
-  createPage(wid, sid, user, "Willkommen");
+  await createPage(wid, sid, user, "Willkommen");
   return wid;
 }
 import { inlineCommentCommand } from "./inline-comments";
@@ -3621,3 +3619,4 @@ import { applyDatabaseProposal, forgetAiFields, prepareAiFields } from "./ai/dat
 import { ct } from "./content-locale";
 import { TABLE_DATABASE_LIMITS, tableToDatabase } from "./table-database";
 import { ensureBlockIds, linkedBlockIds } from "./block-links";
+import { filterAsync, forEachAsync, mapAsync } from "./each-async";

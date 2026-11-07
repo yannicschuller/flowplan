@@ -10,7 +10,7 @@ export async function GET(
 ) {
   try {
     const { id, fileId } = await params;
-    const file = publicTemplateFile(id, fileId);
+    const file = await publicTemplateFile(id, fileId);
     const inline = /^(image\/(png|jpeg|gif|webp|avif)|application\/pdf)$/.test(
       file.mime,
     );

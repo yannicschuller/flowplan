@@ -175,31 +175,31 @@ test("XHTML (PDF, EPUB): figure, figcaption and table caption, numbered when the
   assert.match(numbered, /<caption><span class="caption-label">Tabelle 1:<\/span> Kosten 2026<\/caption>/);
 });
 
-function person(name: string): Identity {
+async function person(name: string): Promise<Identity> {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
   return { id: uid, name, email: `${name}@example.test`, groups: [], isAdmin: false, disabled: 0, created_at: "" } as Identity;
 }
 
 test("the page switch: stored, copied, exported to Word, print and Markdown", async () => {
-  const owner = person("Beschrifterin");
-  const wid = createWorkspace(owner.id, "Beschriftungen");
-  const space = (command(owner, { action: "space.create", workspaceId: wid, name: "Doku" }) as { id: string }).id;
-  const pageId = (command(owner, { action: "page.create", workspaceId: wid, spaceId: space, title: "Bericht", kind: "document" }) as { id: string }).id;
-  run("UPDATE documents SET html=?,state=? WHERE page_id=?", STORED, htmlState(STORED), pageId);
-  const flag = (pid: string) => one<{ caption_numbers: number }>("SELECT caption_numbers FROM pages WHERE id=?", pid)!.caption_numbers;
-  assert.equal(flag(pageId), 0, "off by default");
-  command(owner, { action: "page.update", pageId, patch: { caption_numbers: true } });
-  assert.equal(flag(pageId), 1);
-  const copy = (command(owner, { action: "page.duplicate", pageId }) as { id: string }).id;
-  assert.equal(flag(copy), 1, "a copy numbers too");
+  const owner = await person("Beschrifterin");
+  const wid = await createWorkspace(owner.id, "Beschriftungen");
+  const space = ((await command(owner, { action: "space.create", workspaceId: wid, name: "Doku" })) as { id: string }).id;
+  const pageId = ((await command(owner, { action: "page.create", workspaceId: wid, spaceId: space, title: "Bericht", kind: "document" })) as { id: string }).id;
+  await run("UPDATE documents SET html=?,state=? WHERE page_id=?", STORED, htmlState(STORED), pageId);
+  const flag = async (pid: string) => (await one<{ caption_numbers: number }>("SELECT caption_numbers FROM pages WHERE id=?", pid))!.caption_numbers;
+  assert.equal(await flag(pageId), 0, "off by default");
+  await command(owner, { action: "page.update", pageId, patch: { caption_numbers: true } });
+  assert.equal(await flag(pageId), 1);
+  const copy = ((await command(owner, { action: "page.duplicate", pageId })) as { id: string }).id;
+  assert.equal(await flag(copy), 1, "a copy numbers too");
 
   const word = (await readExportZip((await exportDocx(owner, { pageId })).bytes)).get("word/document.xml")!.toString("utf8");
   assert.match(word, /<w:pStyle w:val="Caption"\/>.*?Abbildung <\/w:t><\/w:r><w:fldSimple w:instr=" SEQ Figure \\\* ARABIC "><w:r><w:t>1<\/w:t><\/w:r><\/w:fldSimple>.*?Ablauf der Freigabe/);
   assert.match(word, /SEQ Listing .*?Beispiel in TypeScript/);
   assert.match(word, /<\/w:tbl><w:p><w:pPr><w:pStyle w:val="Caption"\/><w:jc w:val="left"\/><\/w:pPr>.*?SEQ Table .*?Kosten 2026/, "the table's caption is the paragraph after it");
 
-  const print = exportPrintHtml(owner, { pageId }).html;
+  const print = (await exportPrintHtml(owner, { pageId })).html;
   assert.match(print, /<span class="caption-label">Tabelle 1:<\/span> Kosten 2026/);
 
   const file = (await exportMarkdown(owner, { pageId, format: "markdown", includeSubpages: false })).bytes.toString("utf8");
@@ -209,7 +209,7 @@ test("the page switch: stored, copied, exported to Word, print and Markdown", as
   assert.equal(numberedInFrontmatter(splitFrontmatter(file).data), true);
   assert.equal(numberedInFrontmatter({ flowplan: { id: "x" } }), false);
 
-  command(owner, { action: "page.update", pageId, patch: { caption_numbers: false } });
+  await command(owner, { action: "page.update", pageId, patch: { caption_numbers: false } });
   const unnumbered = (await readExportZip((await exportDocx(owner, { pageId })).bytes)).get("word/document.xml")!.toString("utf8");
   assert.doesNotMatch(unnumbered, /SEQ /);
   assert.match(unnumbered, /Ablauf der Freigabe/);

@@ -42,6 +42,7 @@ import {
   type Filter,
   type PatchPath,
 } from "./scim-filter";
+import { mapAsync } from "./each-async";
 
 const ERROR_SCHEMA = "urn:ietf:params:scim:api:messages:2.0:Error";
 const LIST_SCHEMA = "urn:ietf:params:scim:api:messages:2.0:ListResponse";
@@ -76,13 +77,13 @@ export const scimBase = () => `${appUrl().replace(/\/$/, "")}/api/scim/v2`;
 // ---- Tokens ----
 
 const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
-export function createScimToken(createdBy: string, name: unknown) {
+export async function createScimToken(createdBy: string, name: unknown) {
   const label = typeof name === "string" && name.trim() ? name.trim().slice(0, 80) : "SCIM";
-  if (Number(one<{ n: number }>("SELECT COUNT(*) n FROM scim_tokens")?.n || 0) >= MAX_TOKENS)
+  if (Number((await one<{ n: number }>("SELECT COUNT(*) n FROM scim_tokens"))?.n || 0) >= MAX_TOKENS)
     throw new ScimError(409, `At most ${MAX_TOKENS} SCIM tokens.`);
   const token = `fpscim_${randomBytes(32).toString("base64url")}`;
   const tokenId = id();
-  run(
+  await run(
     "INSERT INTO scim_tokens(id,name,scope,token_hash,prefix,created_by,created_at) VALUES(?,?,?,?,?,?,?)",
     tokenId,
     label,
@@ -92,38 +93,38 @@ export function createScimToken(createdBy: string, name: unknown) {
     createdBy,
     Date.now(),
   );
-  audit(createdBy, "scim.token.create", tokenId, label);
+  await audit(createdBy, "scim.token.create", tokenId, label);
   return { id: tokenId, token };
 }
-export function revokeScimToken(actor: string, tokenId: unknown) {
+export async function revokeScimToken(actor: string, tokenId: unknown) {
   if (typeof tokenId !== "string" || tokenId.length > 100) return;
-  if (run("DELETE FROM scim_tokens WHERE id=?", tokenId).changes) audit(actor, "scim.token.revoke", tokenId);
+  if ((await run("DELETE FROM scim_tokens WHERE id=?", tokenId)).changes) await audit(actor, "scim.token.revoke", tokenId);
 }
-function tokenFromHeader(header: string | null) {
+async function tokenFromHeader(header: string | null) {
   const match = header?.match(/^Bearer\s+(fpscim_[A-Za-z0-9_-]{20,80})\s*$/);
   if (!match) return null;
-  const row = one<{ id: string; last_used_at: number | null }>(
+  const row = await one<{ id: string; last_used_at: number | null }>(
     "SELECT id,last_used_at FROM scim_tokens WHERE token_hash=? AND scope='scim'",
     hashToken(match[1]),
   );
   if (row && (!row.last_used_at || Date.now() - row.last_used_at > 60_000))
-    run("UPDATE scim_tokens SET last_used_at=? WHERE id=?", Date.now(), row.id);
+    await run("UPDATE scim_tokens SET last_used_at=? WHERE id=?", Date.now(), row.id);
   return row || null;
 }
-export function scimOverview() {
+export async function scimOverview() {
   return {
     baseUrl: scimBase(),
-    tokens: all<{ id: string; name: string; prefix: string; created_at: number; last_used_at: number | null }>(
+    tokens: await all<{ id: string; name: string; prefix: string; created_at: number; last_used_at: number | null }>(
       "SELECT id,name,prefix,created_at,last_used_at FROM scim_tokens ORDER BY created_at DESC",
     ),
-    users: Number(one<{ n: number }>("SELECT COUNT(*) n FROM scim_users")?.n || 0),
-    groups: Number(one<{ n: number }>("SELECT COUNT(*) n FROM scim_groups")?.n || 0),
-    requests: all<{ id: number; at: number; method: string; path: string; status: number; detail: string }>(
+    users: Number((await one<{ n: number }>("SELECT COUNT(*) n FROM scim_users"))?.n || 0),
+    groups: Number((await one<{ n: number }>("SELECT COUNT(*) n FROM scim_groups"))?.n || 0),
+    requests: await all<{ id: number; at: number; method: string; path: string; status: number; detail: string }>(
       "SELECT id,at,method,path,status,detail FROM scim_requests ORDER BY id DESC LIMIT 25",
     ),
   };
 }
-export type ScimOverview = ReturnType<typeof scimOverview>;
+export type ScimOverview = Awaited<ReturnType<typeof scimOverview>>;
 
 // ---- OIDC sign-in of a provisioned account ----
 
@@ -132,10 +133,10 @@ export type ScimOverview = ReturnType<typeof scimOverview>;
 // subject when its externalId is the provider's "sub", or – with a verified
 // address – when its e-mail matches. Only an unambiguous match counts.
 // The claimed account also gets the identity (user_identities, #101).
-export function claimProvisionedAccount(subject: string, sub: string, email: string, emailVerified: boolean) {
+export async function claimProvisionedAccount(subject: string, sub: string, email: string, emailVerified: boolean) {
   const issuer = subject.slice(0, subject.length - sub.length - 1);
-  if (identityOwner(issuer, sub)) return;
-  const candidates = all<{ id: string }>(
+  if (await identityOwner(issuer, sub)) return;
+  const candidates = await all<{ id: string }>(
     `SELECT u.id FROM scim_users s JOIN users u ON u.id=s.user_id WHERE u.subject LIKE 'scim:%'
        AND (s.external_id=? OR (?=1 AND u.email<>'' AND lower(u.email)=lower(?)))`,
     sub,
@@ -143,8 +144,8 @@ export function claimProvisionedAccount(subject: string, sub: string, email: str
     email,
   );
   if (candidates.length !== 1) return;
-  run("UPDATE users SET subject=? WHERE id=?", subject, candidates[0].id);
-  run(
+  await run("UPDATE users SET subject=? WHERE id=?", subject, candidates[0].id);
+  await run(
     "INSERT INTO user_identities(id,user_id,provider,issuer,subject,email,created_at) VALUES(?,?,'oidc',?,?,?,?) ON CONFLICT DO NOTHING",
     id(),
     candidates[0].id,
@@ -185,8 +186,8 @@ const meta = (type: "User" | "Group", row: { id: string; version: number; create
 const USER_SELECT =
   "SELECT s.*,u.name,u.email,u.disabled FROM scim_users s JOIN users u ON u.id=s.user_id";
 
-function renderUser(row: UserRow): Json {
-  const groups = all<{ id: string; display_name: string }>(
+async function renderUser(row: UserRow): Promise<Json> {
+  const groups = await all<{ id: string; display_name: string }>(
     "SELECT g.id,g.display_name FROM scim_group_members m JOIN scim_groups g ON g.id=m.group_id WHERE m.user_id=? ORDER BY lower(g.display_name)",
     row.user_id,
   );
@@ -208,12 +209,12 @@ function renderUser(row: UserRow): Json {
     meta: meta("User", row),
   };
 }
-function renderGroup(row: GroupRow, withMembers = true): Json {
+async function renderGroup(row: GroupRow, withMembers = true): Promise<Json> {
   const members = withMembers
-    ? all<{ id: string; name: string }>(
+    ? (await all<{ id: string; name: string }>(
         "SELECT s.id,u.name FROM scim_group_members m JOIN scim_users s ON s.user_id=m.user_id JOIN users u ON u.id=m.user_id WHERE m.group_id=? ORDER BY u.name",
         row.id,
-      )
+      ))
     : [];
   return {
     schemas: [GROUP_SCHEMA],
@@ -224,8 +225,8 @@ function renderGroup(row: GroupRow, withMembers = true): Json {
     meta: meta("Group", row),
   };
 }
-const userRow = (scimId: string) => one<UserRow>(`${USER_SELECT} WHERE s.id=?`, scimId);
-const groupRow = (scimId: string) => one<GroupRow>("SELECT * FROM scim_groups WHERE id=?", scimId);
+const userRow = async (scimId: string) => await one<UserRow>(`${USER_SELECT} WHERE s.id=?`, scimId);
+const groupRow = async (scimId: string) => await one<GroupRow>("SELECT * FROM scim_groups WHERE id=?", scimId);
 
 // ---- Input ----
 
@@ -390,51 +391,51 @@ function applyPatch(resource: Json, body: unknown): Json {
 
 // ---- Users ----
 
-function setActive(userId: string, active: boolean) {
-  const user = one<{ disabled: number }>("SELECT disabled FROM users WHERE id=?", userId);
+async function setActive(userId: string, active: boolean) {
+  const user = await one<{ disabled: number }>("SELECT disabled FROM users WHERE id=?", userId);
   if (!user) return;
   if (!active && !user.disabled) {
-    if (lastAdmin(userId)) throw new ScimError(409, "The last administrator cannot be deactivated.", "mutability");
-    setUserDisabled(userId, true);
-    audit("", "scim.user.deactivate", userId);
+    if (await lastAdmin(userId)) throw new ScimError(409, "The last administrator cannot be deactivated.", "mutability");
+    await setUserDisabled(userId, true);
+    await audit("", "scim.user.deactivate", userId);
   } else if (active && user.disabled) {
-    setUserDisabled(userId, false);
-    audit("", "scim.user.activate", userId);
+    await setUserDisabled(userId, false);
+    await audit("", "scim.user.activate", userId);
   }
 }
-const isLocal = (userId: string) => !!one("SELECT 1 FROM local_accounts WHERE user_id=?", userId);
-function updateProfile(userId: string, input: UserInput) {
-  run("UPDATE users SET name=? WHERE id=?", flowplanName(input), userId);
+const isLocal = async (userId: string) => !!(await one("SELECT 1 FROM local_accounts WHERE user_id=?", userId));
+async function updateProfile(userId: string, input: UserInput) {
+  await run("UPDATE users SET name=? WHERE id=?", flowplanName(input), userId);
   // An account with e-mail and password keeps its address: it signs in with it.
-  if (input.email && !isLocal(userId)) run("UPDATE users SET email=? WHERE id=?", input.email, userId);
+  if (input.email && !(await isLocal(userId))) await run("UPDATE users SET email=? WHERE id=?", input.email, userId);
 }
-function uniqueUserName(userName: string, except?: string) {
-  if (one("SELECT 1 FROM scim_users WHERE lower(user_name)=lower(?) AND id<>?", userName, except || ""))
+async function uniqueUserName(userName: string, except?: string) {
+  if (await one("SELECT 1 FROM scim_users WHERE lower(user_name)=lower(?) AND id<>?", userName, except || ""))
     throw new ScimError(409, "userName is already in use.", "uniqueness");
 }
 
-function createUser(body: unknown) {
+async function createUser(body: unknown) {
   const input = userInput(body);
-  return transaction(() => {
-    uniqueUserName(input.userName);
+  return await transaction(async () => {
+    await uniqueUserName(input.userName);
     const subject = `scim:${input.externalId || input.userName}`;
     let userId =
-      one<{ id: string }>("SELECT id FROM users WHERE subject=?", subject)?.id ||
+      (await one<{ id: string }>("SELECT id FROM users WHERE subject=?", subject))?.id ||
       (input.email
-        ? one<{ id: string }>(
+        ? (await one<{ id: string }>(
             `SELECT id FROM users WHERE lower(email)=lower(?) AND email<>'' AND (email_verified=1 OR id IN (SELECT user_id FROM local_accounts WHERE email_verified=1)) AND demo_until IS NULL AND subject NOT LIKE 'deleted:%' AND subject<>'local-development'
                AND id NOT IN (SELECT user_id FROM scim_users) ORDER BY created_at LIMIT 1`,
             input.email,
-          )?.id
+          ))?.id
         : undefined);
-    if (userId && one("SELECT 1 FROM scim_users WHERE user_id=?", userId)) throw new ScimError(409, "This account is already provisioned.", "uniqueness");
+    if (userId && await one("SELECT 1 FROM scim_users WHERE user_id=?", userId)) throw new ScimError(409, "This account is already provisioned.", "uniqueness");
     if (!userId) {
       userId = id();
-      run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", userId, subject, flowplanName(input), input.email);
-    } else updateProfile(userId, input);
+      await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", userId, subject, flowplanName(input), input.email);
+    } else await updateProfile(userId, input);
     const scimId = id();
     const now = Date.now();
-    run(
+    await run(
       "INSERT INTO scim_users(id,user_id,user_name,external_id,given_name,family_name,display_name,version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,1,?,?)",
       scimId,
       userId,
@@ -446,18 +447,18 @@ function createUser(body: unknown) {
       now,
       now,
     );
-    setActive(userId, input.active);
-    reapplySsoUser(userId);
-    audit("", "scim.user.create", userId, input.userName);
-    return renderUser(userRow(scimId)!);
+    await setActive(userId, input.active);
+    await reapplySsoUser(userId);
+    await audit("", "scim.user.create", userId, input.userName);
+    return await renderUser((await userRow(scimId))!);
   });
 }
-function replaceUser(scimId: string, input: UserInput) {
-  return transaction(() => {
-    const row = userRow(scimId);
+async function replaceUser(scimId: string, input: UserInput) {
+  return await transaction(async () => {
+    const row = await userRow(scimId);
     if (!row) throw new ScimError(404, "User not found.");
-    uniqueUserName(input.userName, scimId);
-    run(
+    await uniqueUserName(input.userName, scimId);
+    await run(
       "UPDATE scim_users SET user_name=?,external_id=?,given_name=?,family_name=?,display_name=?,version=version+1,updated_at=? WHERE id=?",
       input.userName,
       input.externalId,
@@ -467,87 +468,87 @@ function replaceUser(scimId: string, input: UserInput) {
       Date.now(),
       scimId,
     );
-    updateProfile(row.user_id, input);
-    setActive(row.user_id, input.active);
-    return renderUser(userRow(scimId)!);
+    await updateProfile(row.user_id, input);
+    await setActive(row.user_id, input.active);
+    return await renderUser((await userRow(scimId))!);
   });
 }
-function deleteUser(scimId: string) {
-  transaction(() => {
-    const row = userRow(scimId);
+async function deleteUser(scimId: string) {
+  await transaction(async () => {
+    const row = await userRow(scimId);
     if (!row) throw new ScimError(404, "User not found.");
-    setActive(row.user_id, false);
-    run("DELETE FROM scim_group_members WHERE user_id=?", row.user_id);
-    run("DELETE FROM scim_users WHERE id=?", scimId);
-    audit("", "scim.user.delete", row.user_id, row.user_name);
+    await setActive(row.user_id, false);
+    await run("DELETE FROM scim_group_members WHERE user_id=?", row.user_id);
+    await run("DELETE FROM scim_users WHERE id=?", scimId);
+    await audit("", "scim.user.delete", row.user_id, row.user_name);
   });
 }
 
 // ---- Groups ----
 
-function memberUserIds(scimIds: string[]) {
+async function memberUserIds(scimIds: string[]) {
   const ids = new Set<string>();
   for (const scimId of scimIds) {
-    const userId = one<{ user_id: string }>("SELECT user_id FROM scim_users WHERE id=?", scimId)?.user_id;
+    const userId = (await one<{ user_id: string }>("SELECT user_id FROM scim_users WHERE id=?", scimId))?.user_id;
     if (userId) ids.add(userId);
   }
   return ids;
 }
-function uniqueGroupName(name: string, except?: string) {
-  if (one("SELECT 1 FROM scim_groups WHERE lower(display_name)=lower(?) AND id<>?", name, except || ""))
+async function uniqueGroupName(name: string, except?: string) {
+  if (await one("SELECT 1 FROM scim_groups WHERE lower(display_name)=lower(?) AND id<>?", name, except || ""))
     throw new ScimError(409, "displayName is already in use.", "uniqueness");
 }
 // Sets the members; returns everyone whose groups changed.
-function setMembers(groupId: string, wanted: Set<string>) {
-  const current = new Set(all<{ user_id: string }>("SELECT user_id FROM scim_group_members WHERE group_id=?", groupId).map((m) => m.user_id));
+async function setMembers(groupId: string, wanted: Set<string>) {
+  const current = new Set((await all<{ user_id: string }>("SELECT user_id FROM scim_group_members WHERE group_id=?", groupId)).map((m) => m.user_id));
   const changed = new Set<string>();
   for (const userId of current)
     if (!wanted.has(userId)) {
-      run("DELETE FROM scim_group_members WHERE group_id=? AND user_id=?", groupId, userId);
+      await run("DELETE FROM scim_group_members WHERE group_id=? AND user_id=?", groupId, userId);
       changed.add(userId);
     }
   for (const userId of wanted)
     if (!current.has(userId)) {
-      run("INSERT INTO scim_group_members(group_id,user_id) VALUES(?,?)", groupId, userId);
+      await run("INSERT INTO scim_group_members(group_id,user_id) VALUES(?,?)", groupId, userId);
       changed.add(userId);
     }
   return changed;
 }
-const groupMembers = (groupId: string) => all<{ user_id: string }>("SELECT user_id FROM scim_group_members WHERE group_id=?", groupId).map((m) => m.user_id);
+const groupMembers = async (groupId: string) => (await all<{ user_id: string }>("SELECT user_id FROM scim_group_members WHERE group_id=?", groupId)).map((m) => m.user_id);
 
-function createGroup(body: unknown) {
+async function createGroup(body: unknown) {
   const input = groupInput(body);
-  return transaction(() => {
-    uniqueGroupName(input.displayName);
+  return await transaction(async () => {
+    await uniqueGroupName(input.displayName);
     const groupId = id();
     const now = Date.now();
-    run("INSERT INTO scim_groups(id,display_name,external_id,version,created_at,updated_at) VALUES(?,?,?,1,?,?)", groupId, input.displayName, input.externalId, now, now);
-    for (const userId of setMembers(groupId, memberUserIds(input.members || []))) reapplySsoUser(userId);
-    audit("", "scim.group.create", groupId, input.displayName);
-    return renderGroup(groupRow(groupId)!);
+    await run("INSERT INTO scim_groups(id,display_name,external_id,version,created_at,updated_at) VALUES(?,?,?,1,?,?)", groupId, input.displayName, input.externalId, now, now);
+    for (const userId of await setMembers(groupId, await memberUserIds(input.members || []))) await reapplySsoUser(userId);
+    await audit("", "scim.group.create", groupId, input.displayName);
+    return await renderGroup((await groupRow(groupId))!);
   });
 }
-function replaceGroup(groupId: string, input: GroupInput) {
-  return transaction(() => {
-    const row = groupRow(groupId);
+async function replaceGroup(groupId: string, input: GroupInput) {
+  return await transaction(async () => {
+    const row = await groupRow(groupId);
     if (!row) throw new ScimError(404, "Group not found.");
-    uniqueGroupName(input.displayName, groupId);
+    await uniqueGroupName(input.displayName, groupId);
     const renamed = row.display_name !== input.displayName;
-    run("UPDATE scim_groups SET display_name=?,external_id=?,version=version+1,updated_at=? WHERE id=?", input.displayName, input.externalId, Date.now(), groupId);
-    const affected = input.members ? setMembers(groupId, memberUserIds(input.members)) : new Set<string>();
-    if (renamed) for (const userId of groupMembers(groupId)) affected.add(userId);
-    for (const userId of affected) reapplySsoUser(userId);
-    return renderGroup(groupRow(groupId)!);
+    await run("UPDATE scim_groups SET display_name=?,external_id=?,version=version+1,updated_at=? WHERE id=?", input.displayName, input.externalId, Date.now(), groupId);
+    const affected = input.members ? (await setMembers(groupId, await memberUserIds(input.members))) : new Set<string>();
+    if (renamed) for (const userId of await groupMembers(groupId)) affected.add(userId);
+    for (const userId of affected) await reapplySsoUser(userId);
+    return await renderGroup((await groupRow(groupId))!);
   });
 }
-function deleteGroup(groupId: string) {
-  transaction(() => {
-    const row = groupRow(groupId);
+async function deleteGroup(groupId: string) {
+  await transaction(async () => {
+    const row = await groupRow(groupId);
     if (!row) throw new ScimError(404, "Group not found.");
-    const members = groupMembers(groupId);
-    run("DELETE FROM scim_groups WHERE id=?", groupId);
-    for (const userId of members) reapplySsoUser(userId);
-    audit("", "scim.group.delete", groupId, row.display_name);
+    const members = await groupMembers(groupId);
+    await run("DELETE FROM scim_groups WHERE id=?", groupId);
+    for (const userId of members) await reapplySsoUser(userId);
+    await audit("", "scim.group.delete", groupId, row.display_name);
   });
 }
 
@@ -723,7 +724,7 @@ function patchSchema(body: unknown) {
   if (Array.isArray(s) && !s.includes(PATCH_SCHEMA)) throw new ScimError(400, "PATCH needs the PatchOp schema.", "invalidSyntax");
 }
 
-function route(req: ScimRequest): ScimResult {
+async function route(req: ScimRequest): Promise<ScimResult> {
   const [resource, resourceId, ...rest] = req.path;
   const method = req.method.toUpperCase();
   if (rest.length) throw new ScimError(404, "Not found.");
@@ -754,51 +755,51 @@ function route(req: ScimRequest): ScimResult {
       if (!resourceId) {
         only("GET", "POST");
         if (method === "POST") {
-          const created = createUser(parseBody(req.body));
+          const created = await createUser(parseBody(req.body));
           return { status: 201, body: created, headers: { Location: String((created.meta as Json).location) } };
         }
-        const users = all<UserRow>(`${USER_SELECT} ORDER BY s.created_at,s.seq`).map(renderUser);
+        const users = await mapAsync(await all<UserRow>(`${USER_SELECT} ORDER BY s.created_at,s.seq`), renderUser);
         return { status: 200, body: list(users, req.query) };
       }
       only("GET", "PUT", "PATCH", "DELETE");
-      const row = userRow(resourceId);
+      const row = await userRow(resourceId);
       if (!row) throw new ScimError(404, "User not found.");
-      if (method === "GET") return { status: 200, body: project(renderUser(row), req.query) };
+      if (method === "GET") return { status: 200, body: project(await renderUser(row), req.query) };
       if (method === "DELETE") {
-        deleteUser(resourceId);
+        await deleteUser(resourceId);
         return { status: 204 };
       }
       const body = parseBody(req.body);
-      if (method === "PUT") return { status: 200, body: replaceUser(resourceId, userInput(body)) };
+      if (method === "PUT") return { status: 200, body: await replaceUser(resourceId, userInput(body)) };
       patchSchema(body);
-      return { status: 200, body: replaceUser(resourceId, userInput(applyPatch(renderUser(row), body))) };
+      return { status: 200, body: await replaceUser(resourceId, userInput(applyPatch(await renderUser(row), body))) };
     }
     case "Groups": {
       if (!resourceId) {
         only("GET", "POST");
         if (method === "POST") {
-          const created = createGroup(parseBody(req.body));
+          const created = await createGroup(parseBody(req.body));
           return { status: 201, body: created, headers: { Location: String((created.meta as Json).location) } };
         }
         const withMembers = !/\bmembers\b/i.test(req.query.get("excludedAttributes") || "");
-        const groups = all<GroupRow>("SELECT * FROM scim_groups ORDER BY created_at,seq").map((g) => renderGroup(g, withMembers));
+        const groups = await mapAsync(await all<GroupRow>("SELECT * FROM scim_groups ORDER BY created_at,seq"), async (g) => await renderGroup(g, withMembers));
         return { status: 200, body: list(groups, req.query) };
       }
       only("GET", "PUT", "PATCH", "DELETE");
-      const row = groupRow(resourceId);
+      const row = await groupRow(resourceId);
       if (!row) throw new ScimError(404, "Group not found.");
-      if (method === "GET") return { status: 200, body: project(renderGroup(row), req.query) };
+      if (method === "GET") return { status: 200, body: project(await renderGroup(row), req.query) };
       if (method === "DELETE") {
-        deleteGroup(resourceId);
+        await deleteGroup(resourceId);
         return { status: 204 };
       }
       const body = parseBody(req.body);
-      if (method === "PUT") return { status: 200, body: replaceGroup(resourceId, groupInput(body)) };
+      if (method === "PUT") return { status: 200, body: await replaceGroup(resourceId, groupInput(body)) };
       patchSchema(body);
-      const patched = applyPatch(renderGroup(row), body);
+      const patched = applyPatch(await renderGroup(row), body);
       // Members only change when the operations touched them.
       const input = groupInput(patched);
-      return { status: 200, body: replaceGroup(resourceId, input) };
+      return { status: 200, body: await replaceGroup(resourceId, input) };
     }
     case "Me":
     case "Bulk":
@@ -810,18 +811,18 @@ function route(req: ScimRequest): ScimResult {
 
 // One SCIM request: authentication, the answer, and a line in the log of
 // the last requests (shown in the administration).
-export function handleScim(req: ScimRequest): ScimResult {
+export async function handleScim(req: ScimRequest): Promise<ScimResult> {
   let tokenId: string | null = null;
   let result: ScimResult;
   try {
-    const token = tokenFromHeader(req.authorization);
+    const token = await tokenFromHeader(req.authorization);
     if (!token) throw new ScimError(401, "A valid SCIM bearer token is required.");
     tokenId = token.id;
     // No provisioning while the instance moves (lib/instance-read-only.ts):
     // the identity provider retries later.
-    const refusal = req.method === "GET" ? null : readOnlyRefusal("/api/scim/v2");
+    const refusal = req.method === "GET" ? null : (await readOnlyRefusal("/api/scim/v2"));
     if (refusal) throw new ScimError(423, refusal);
-    result = route(req);
+    result = await route(req);
   } catch (e) {
     const error =
       e instanceof ScimError
@@ -834,7 +835,7 @@ export function handleScim(req: ScimRequest): ScimResult {
   }
   try {
     const detail = result.status >= 400 ? String((result.body as Json)?.detail || "") : "";
-    run(
+    await run(
       "INSERT INTO scim_requests(at,method,path,status,token_id,detail) VALUES(?,?,?,?,?,?)",
       Date.now(),
       req.method.toUpperCase().slice(0, 10),
@@ -843,7 +844,7 @@ export function handleScim(req: ScimRequest): ScimResult {
       tokenId,
       detail.slice(0, 300),
     );
-    run("DELETE FROM scim_requests WHERE id<=(SELECT MAX(id) FROM scim_requests)-?", KEEP_REQUESTS);
+    await run("DELETE FROM scim_requests WHERE id<=(SELECT MAX(id) FROM scim_requests)-?", KEEP_REQUESTS);
   } catch (error) {
     console.error("SCIM request log failed", error);
   }

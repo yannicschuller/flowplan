@@ -22,17 +22,17 @@ import type { Identity } from "../lib/types";
 
 async function person(name: string): Promise<Identity> {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name.toLowerCase()}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name.toLowerCase()}@example.test`);
   const token = randomBytes(16).toString("hex");
-  run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", createHash("sha256").update(token).digest("hex"), uid, "[]", Date.now() + 3600_000);
+  await run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", createHash("sha256").update(token).digest("hex"), uid, "[]", Date.now() + 3600_000);
   return (await identityFromToken(token))!;
 }
 const admin = { ...(await person("Ada")), isAdmin: true };
 const ben = await person("Ben");
-const wid = createWorkspace(admin.id, "Team");
-run("INSERT INTO members VALUES(?,?,?)", wid, ben.id, "editor");
-const space = one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid)!.id;
-const meeting = createPage(wid, space, admin.id, "Teamsitzung");
+const wid = await createWorkspace(admin.id, "Team");
+await run("INSERT INTO members VALUES(?,?,?)", wid, ben.id, "editor");
+const space = (await one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid))!.id;
+const meeting = await createPage(wid, space, admin.id, "Teamsitzung");
 
 // A Whisper service: verbose_json with segments (and speakers when asked
 // for diarization), or – in "old" mode – a server that only knows json.
@@ -161,7 +161,7 @@ test("tasks and summary from a transcript go through the AI actions preview", as
   const transcript = transcriptText(await transcribe(new Blob(["audio"], { type: "audio/webm" })), (n) => `Sprecher ${n}`);
   // AI off: no proposal.
   await assert.rejects(proposeActions(ben, { workspaceId: wid, instruction: "x", context: transcript, pageId: meeting, mode: "transcript" }), /ausgeschaltet/);
-  command(admin, { action: "admin.ai", settings: { enabled: true, provider: { kind: "ollama", baseUrl: mock.base, model: "chat", embeddingModel: "" } } });
+  await command(admin, { action: "admin.ai", settings: { enabled: true, provider: { kind: "ollama", baseUrl: mock.base, model: "chat", embeddingModel: "" } } });
   mock.answer = () =>
     JSON.stringify({
       actions: [
@@ -180,9 +180,9 @@ test("tasks and summary from a transcript go through the AI actions preview", as
       ["create_tasks", true],
     ],
   );
-  assert.ok(!one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", meeting)!.html.includes("Angebot"), "nothing before confirming");
-  runActions(ben, { workspaceId: wid, actions: actions.map((a) => a.action) });
-  const html = one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", meeting)!.html;
+  assert.ok(!(await one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", meeting))!.html.includes("Angebot"), "nothing before confirming");
+  await runActions(ben, { workspaceId: wid, actions: actions.map((a) => a.action) });
+  const html = (await one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", meeting))!.html;
   assert.match(html, /Das Angebot geht raus/);
   assert.match(html, /Angebot übernehmen/);
 });

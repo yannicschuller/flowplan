@@ -22,7 +22,7 @@ export const GET = withRequestLocale(async (req: Request) => {
       const database = url.searchParams.get("database");
       const exclude = url.searchParams.get("exclude");
       const excludeRow = url.searchParams.get("excludeRow");
-      const items = similarTitles(user, {
+      const items = await similarTitles(user, {
         workspaceId: uuid.parse(url.searchParams.get("workspace")),
         title: z.string().max(300).parse(title),
         databaseId: database ? uuid.parse(database) : null,

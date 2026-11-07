@@ -100,7 +100,7 @@ export default function StorageSection() {
 
 // Where copies go and when: the S3 mirror, Litestream, the scheduled backup
 // (with its settings) and a run right now.
-function Backups({ data, storage, onChange }: { data: AdminData; storage: ReturnType<typeof useStorageOverview>; onChange: () => Promise<void> }) {
+function Backups({ data, storage, onChange }: { data: AdminData; storage: Awaited<ReturnType<typeof useStorageOverview>>; onChange: () => Promise<void> }) {
   const t = useT();
   const [status, run] = useSaveState();
   const [note, setNote] = useState("");

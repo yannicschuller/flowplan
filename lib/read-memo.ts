@@ -20,16 +20,16 @@ const MAX_AGE = 1000;
 const store = ((globalThis as { flowplanReadMemo?: AsyncLocalStorage<Memo> }).flowplanReadMemo ??= new AsyncLocalStorage<Memo>());
 
 // Runs fn with a memo of its own, or within the one already in place.
-export function withReadMemo<T>(fn: () => T): T {
-  if (store.getStore()) return fn();
+export async function withReadMemo<T>(fn: () => T): Promise<T> {
+  if (store.getStore()) return await fn();
   return store.run({ generation: -1, since: 0, values: new Map() }, fn);
 }
 
 // The remembered value for key, or compute() remembered. The key names the
 // lookup and all its inputs.
-export function memoized<T>(key: string, compute: () => T): T {
+export async function memoized<T>(key: string, compute: () => T): Promise<T> {
   const memo = store.getStore();
-  if (!memo) return compute();
+  if (!memo) return await compute();
   const generation = writeGeneration();
   const now = performance.now();
   if (memo.generation !== generation || now - memo.since > MAX_AGE) {
@@ -38,7 +38,7 @@ export function memoized<T>(key: string, compute: () => T): T {
     memo.since = now;
   }
   if (memo.values.has(key)) return memo.values.get(key) as T;
-  const value = compute();
+  const value = await compute();
   memo.values.set(key, value);
   return value;
 }

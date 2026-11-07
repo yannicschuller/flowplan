@@ -68,7 +68,7 @@ test("scanned images and PDFs are recognised", async () => {
 
 test("the background extraction makes Office files and scans searchable", async (t) => {
   const uid = id();
-  run(
+  await run(
     "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
     uid,
     uid,
@@ -84,21 +84,21 @@ test("the background extraction makes Office files and scans searchable", async 
     disabled: 0,
     created_at: "",
   } as Identity;
-  const wid = createWorkspace(owner.id, "Scans");
+  const wid = await createWorkspace(owner.id, "Scans");
   const page = (
-    command(owner, {
+    (await command(owner, {
       action: "page.create",
       workspaceId: wid,
-      spaceId: bootstrap(owner, wid).spaces[0].id,
+      spaceId: (await bootstrap(owner, wid)).spaces[0].id,
       title: "Ablage",
-    }) as { id: string }
+    })) as { id: string }
   ).id;
   const dir = join(process.env.FLOWPLAN_DATA_DIR!, "uploads");
   mkdirSync(dir, { recursive: true });
-  const attach = (name: string, mime: string, data: Buffer) => {
+  const attach = async (name: string, mime: string, data: Buffer) => {
     const fid = id();
     writeFileSync(join(dir, fid), data);
-    run(
+    await run(
       "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
       fid,
       page,
@@ -108,12 +108,12 @@ test("the background extraction makes Office files and scans searchable", async 
       owner.id,
     );
   };
-  attach(
+  await attach(
     "scan.pdf",
     "application/pdf",
     readFileSync("tests/fixtures/scan.pdf"),
   );
-  attach(
+  await attach(
     "brief.docx",
     "application/octet-stream",
     await zip({
@@ -122,11 +122,11 @@ test("the background extraction makes Office files and scans searchable", async 
     }),
   );
   while (await extractPendingFileTexts());
-  const titles = (q: string) =>
-    searchWorkspace(owner, wid, q, { kind: "file" }).map((r) => r.title);
+  const titles = async (q: string) =>
+    (await searchWorkspace(owner, wid, q, { kind: "file" })).map((r) => r.title);
   // Scans are only searchable with text recognition (FLOWPLAN_OCR=0 turns it off).
   if (process.env.FLOWPLAN_OCR === "0")
     t.diagnostic("Texterkennung abgeschaltet – Scan-Suche nicht geprüft.");
-  else assert.deepEqual(titles("Wartungsvertrag"), ["scan.pdf"]);
-  assert.deepEqual(titles("Kündigungsbestätigung"), ["brief.docx"]);
+  else assert.deepEqual(await titles("Wartungsvertrag"), ["scan.pdf"]);
+  assert.deepEqual(await titles("Kündigungsbestätigung"), ["brief.docx"]);
 });

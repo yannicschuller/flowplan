@@ -14,34 +14,34 @@ const { failed, limited } = await import("../lib/local-auth");
 
 // Events are written right after the current synchronous work.
 const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
-const reset = () => {
-  run("DELETE FROM security_events");
-  run("DELETE FROM security_incidents");
-  run("DELETE FROM security_blocks");
-  run("DELETE FROM login_failures");
+const reset = async () => {
+  await run("DELETE FROM security_events");
+  await run("DELETE FROM security_incidents");
+  await run("DELETE FROM security_blocks");
+  await run("DELETE FROM login_failures");
   events.invalidateSecurityBlocks();
 };
-const person = (name: string) => {
+const person = async (name: string) => {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name.toLowerCase()}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name.toLowerCase()}@example.test`);
   return { id: uid, name, email: `${name.toLowerCase()}@example.test`, groups: [], isAdmin: true, disabled: 0, created_at: "" } as Identity;
 };
 const headersFrom = (address: string, extra: Record<string, string> = {}) =>
   new Headers({ "x-forwarded-for": address, "user-agent": "Mozilla/5.0 (Macintosh; Mac OS X 14_0) Chrome/130.0", ...extra });
 
 test("addresses become a network and a keyed hash, never stored themselves", async () => {
-  reset();
+  await reset();
   assert.equal(events.networkOf("203.0.113.77"), "203.0.113.0/24");
   assert.equal(events.networkOf("::ffff:198.51.100.9"), "198.51.100.0/24");
   assert.equal(events.networkOf("2001:db8:abcd:12::1"), "2001:db8:abcd::/48");
   assert.equal(events.networkOf("2001:db8::1"), "2001:db8:0::/48");
   assert.equal(events.networkOf("not an address"), "");
   assert.equal(events.maskSubject("maria@example.com"), "ma***@example.com");
-  assert.equal(events.addressHash("203.0.113.77"), events.addressHash("::ffff:203.0.113.77"));
-  assert.notEqual(events.addressHash("203.0.113.77"), events.addressHash("203.0.113.78"));
+  assert.equal(await events.addressHash("203.0.113.77"), await events.addressHash("::ffff:203.0.113.77"));
+  assert.notEqual(await events.addressHash("203.0.113.77"), await events.addressHash("203.0.113.78"));
   events.securityEvent("login.failure", { address: "203.0.113.77", subject: "maria@example.com", detail: "password" });
   await settle();
-  const row = one<Record<string, string>>("SELECT * FROM security_events");
+  const row = await one<Record<string, string>>("SELECT * FROM security_events");
   assert.ok(row);
   assert.equal(row.network, "203.0.113.0/24");
   assert.equal(row.subject, "ma***@example.com");
@@ -50,12 +50,12 @@ test("addresses become a network and a keyed hash, never stored themselves", asy
 });
 
 test("an event inside a rolled-back transaction stays", async () => {
-  reset();
-  run("BEGIN");
+  await reset();
+  await run("BEGIN");
   events.securityEvent("login.refused", { address: "198.51.100.4", detail: "limit" });
-  run("ROLLBACK");
+  await run("ROLLBACK");
   await settle();
-  assert.equal(all("SELECT 1 FROM security_events WHERE kind='login.refused'").length, 1);
+  assert.equal((await all("SELECT 1 FROM security_events WHERE kind='login.refused'")).length, 1);
 });
 
 test("the log line carries the address unless anonymous; OTLP records follow the log record", () => {
@@ -85,36 +85,36 @@ test("the log line carries the address unless anonymous; OTLP records follow the
 });
 
 test("password guessing on one account, then a correct guess, open incidents once each", async () => {
-  reset();
+  await reset();
   for (let i = 0; i < SECURITY_THRESHOLDS.accountFailures + 3; i++)
-    failed([`ip:203.0.113.${10 + (i % 3)}`, "email:anna@example.test"]);
+    await failed([`ip:203.0.113.${10 + (i % 3)}`, "email:anna@example.test"]);
   await settle();
-  const guessing = all<{ rule: string; count: number }>("SELECT rule,count FROM security_incidents");
+  const guessing = await all<{ rule: string; count: number }>("SELECT rule,count FROM security_incidents");
   assert.equal(guessing.length, 1);
   assert.equal(guessing[0].rule, "brute_force_account");
   assert.equal(guessing[0].count, 4);
-  const anna = person("Anna");
+  const anna = await person("Anna");
   events.securityEvent("login.success", { actorId: anna.id, subject: "Anna@example.test", headers: headersFrom("203.0.113.10") });
   await settle();
-  assert.ok(one("SELECT 1 FROM security_incidents WHERE rule='login_after_failures' AND key=?", anna.id));
+  assert.ok(await one("SELECT 1 FROM security_incidents WHERE rule='login_after_failures' AND key=?", anna.id));
 });
 
 test("many accounts from one address is credential stuffing", async () => {
-  reset();
-  for (let i = 0; i < SECURITY_THRESHOLDS.stuffingAccounts; i++) failed(["ip:192.0.2.50", `email:person${i}@example.test`]);
+  await reset();
+  for (let i = 0; i < SECURITY_THRESHOLDS.stuffingAccounts; i++) await failed(["ip:192.0.2.50", `email:person${i}@example.test`]);
   await settle();
-  const incident = one<{ id: string; severity: string; network: string }>("SELECT id,severity,network FROM security_incidents WHERE rule='credential_stuffing'");
+  const incident = await one<{ id: string; severity: string; network: string }>("SELECT id,severity,network FROM security_incidents WHERE rule='credential_stuffing'");
   assert.ok(incident);
   // Every account on its own, though their masked names look alike.
-  assert.equal(securityIncident(incident.id).accounts.length, SECURITY_THRESHOLDS.stuffingAccounts);
+  assert.equal((await securityIncident(incident.id)).accounts.length, SECURITY_THRESHOLDS.stuffingAccounts);
   assert.equal(incident.severity, "critical");
   assert.equal(incident.network, "192.0.2.0/24");
 });
 
 test("a new device is told to the person; two countries in two hours are impossible travel", async () => {
-  reset();
+  await reset();
   process.env.FLOWPLAN_COUNTRY_HEADER = "x-country";
-  const ben = person("Ben");
+  const ben = await person("Ben");
   const t0 = Date.now() - 60_000;
   events.securityEvent("login.success", { actorId: ben.id, headers: headersFrom("198.51.100.1", { "x-country": "DE" }), at: t0 });
   await settle();
@@ -124,47 +124,47 @@ test("a new device is told to the person; two countries in two hours are impossi
   });
   await settle();
   await settle();
-  assert.ok(one("SELECT 1 FROM security_incidents WHERE rule='impossible_travel' AND key=?", ben.id));
-  const notice = one<{ body: string }>("SELECT body FROM notifications WHERE user_id=? AND kind='security'", ben.id);
+  assert.ok(await one("SELECT 1 FROM security_incidents WHERE rule='impossible_travel' AND key=?", ben.id));
+  const notice = await one<{ body: string }>("SELECT body FROM notifications WHERE user_id=? AND kind='security'", ben.id);
   assert.match(notice?.body || "", /Neue Anmeldung/);
   assert.match(notice?.body || "", /iPhone/);
   delete process.env.FLOWPLAN_COUNTRY_HEADER;
 });
 
 test("activity log entries that matter become events; admin rights are an incident", async () => {
-  reset();
-  const admin = person("Admin");
-  audit(admin.id, "space.markdown.export", "space-1");
-  audit(admin.id, "ldap.enable", "instance", "ldap.example.test");
-  audit(admin.id, "page.create", "page-1");
+  await reset();
+  const admin = await person("Admin");
+  await audit(admin.id, "space.markdown.export", "space-1");
+  await audit(admin.id, "ldap.enable", "instance", "ldap.example.test");
+  await audit(admin.id, "page.create", "page-1");
   await settle();
-  const kinds = all<{ kind: string }>("SELECT kind FROM security_events ORDER BY id").map((e) => e.kind);
+  const kinds = (await all<{ kind: string }>("SELECT kind FROM security_events ORDER BY id")).map((e) => e.kind);
   assert.deepEqual(kinds, ["data.export", "admin.settings"]);
-  assert.ok(one("SELECT 1 FROM security_incidents WHERE rule='privilege_change'"));
+  assert.ok(await one("SELECT 1 FROM security_incidents WHERE rule='privilege_change'"));
 });
 
-test("probing: many refused API requests from one address make one event", () => {
+test("probing: many refused API requests from one address make one event", async () => {
   const recorded: string[] = [];
-  for (let i = 0; i < SECURITY_THRESHOLDS.probes + 10; i++) noteRefusal("192.0.2.99", 404, `/api/pages/${i}`, 1_000_000 + i, (d) => recorded.push(d));
-  noteRefusal("192.0.2.99", 200, "/api/pages/x", 1_000_100, (d) => recorded.push(d));
-  noteRefusal("192.0.2.98", 404, "/page", 1_000_100, (d) => recorded.push(d));
+  for (let i = 0; i < SECURITY_THRESHOLDS.probes + 10; i++) await noteRefusal("192.0.2.99", 404, `/api/pages/${i}`, 1_000_000 + i, (d) => recorded.push(d));
+  await noteRefusal("192.0.2.99", 200, "/api/pages/x", 1_000_100, (d) => recorded.push(d));
+  await noteRefusal("192.0.2.98", 404, "/page", 1_000_100, (d) => recorded.push(d));
   assert.equal(recorded.length, 1);
   assert.match(recorded[0], /404 \/api\/pages\/0/);
 });
 
 test("probing keeps the refused paths with their answers on the incident", async () => {
-  reset();
+  await reset();
   const uuid = "5aa9f3fa-1912-4c2b-9e8a-0123456789ab";
   for (let i = 0; i < SECURITY_THRESHOLDS.probes; i++) {
     const [status, path] = i % 3 === 0 ? [401, "/api/bootstrap"] : i % 3 === 1 ? [404, `/api/pages/${uuid.slice(0, -2)}${String(i).padStart(2, "0")}`] : [403, `/api/admin/users/${i}`];
-    noteRefusal("198.51.100.77", status, path, 2_000_000 + i, (detail) =>
+    await noteRefusal("198.51.100.77", status, path, 2_000_000 + i, (detail) =>
       events.securityEvent("request.probing", { headers: headersFrom("198.51.100.77"), detail }),
     );
   }
   await settle();
-  const incident = one<{ id: string }>("SELECT id FROM security_incidents WHERE rule='probing'");
+  const incident = await one<{ id: string }>("SELECT id FROM security_incidents WHERE rule='probing'");
   assert.ok(incident);
-  const d = securityIncident(incident.id);
+  const d = await securityIncident(incident.id);
   assert.deepEqual(d.evidence?.statuses, { "401": 20, "404": 20, "403": 20 });
   assert.deepEqual(
     d.evidence?.paths.map((p) => `${p.status} ${p.path} ${p.count}`).sort(),
@@ -173,19 +173,19 @@ test("probing keeps the refused paths with their answers on the incident", async
   assert.match(d.reason.de, /401, 403 oder 404/);
   assert.equal(d.events[0].kind, "request.probing");
   assert.deepEqual(d.networks.map((n) => n.value), ["198.51.100.0/24"]);
-  assert.throws(() => securityIncident("nope"), /Ungültiger Vorfall/);
+  await assert.rejects(async () => await securityIncident("nope"), /Ungültiger Vorfall/);
 });
 
 test("an incident shows the accounts tried, the successful sign-in and its events", async () => {
-  reset();
-  const carla = person("Carla");
-  for (let i = 0; i < SECURITY_THRESHOLDS.accountFailures; i++) failed(["ip:203.0.113.20", "email:carla@example.test"]);
+  await reset();
+  const carla = await person("Carla");
+  for (let i = 0; i < SECURITY_THRESHOLDS.accountFailures; i++) await failed(["ip:203.0.113.20", "email:carla@example.test"]);
   await settle();
   events.securityEvent("login.success", { actorId: carla.id, subject: "carla@example.test", headers: headersFrom("203.0.113.20") });
   await settle();
-  const guessing = one<{ id: string }>("SELECT id FROM security_incidents WHERE rule='brute_force_account'");
+  const guessing = await one<{ id: string }>("SELECT id FROM security_incidents WHERE rule='brute_force_account'");
   assert.ok(guessing);
-  const d = securityIncident(guessing.id);
+  const d = await securityIncident(guessing.id);
   assert.equal(d.total, SECURITY_THRESHOLDS.accountFailures + 1);
   assert.equal(d.accounts.length, 1);
   assert.equal(d.accounts[0].n, SECURITY_THRESHOLDS.accountFailures);
@@ -204,59 +204,59 @@ test("dangerous HTML is recognised", () => {
 });
 
 test("blocks: an address or network is refused at sign-in, the own one cannot be blocked", async () => {
-  reset();
-  const admin = person("Root");
-  failed(["ip:203.0.113.200", "email:x@example.test"]);
+  await reset();
+  const admin = await person("Root");
+  await failed(["ip:203.0.113.200", "email:x@example.test"]);
   await settle();
-  const short = one<{ address_key: string }>("SELECT address_key FROM security_events")!.address_key.slice(0, 12);
-  assert.throws(() => securityAction(admin, { action: "block.add", kind: "address", value: short, hours: 1, reason: "" }, headersFrom("203.0.113.200")), /eigene Adresse/);
-  assert.throws(() => securityAction(admin, { action: "block.add", kind: "network", value: "10.0.0.0/24", hours: 1, reason: "" }, headersFrom("10.0.0.5")), /eigenes Netz/);
-  const overview = securityAction(admin, { action: "block.add", kind: "address", value: short, hours: 1, reason: "Test" }, headersFrom("198.51.100.1"));
+  const short = (await one<{ address_key: string }>("SELECT address_key FROM security_events"))!.address_key.slice(0, 12);
+  await assert.rejects(async () => await securityAction(admin, { action: "block.add", kind: "address", value: short, hours: 1, reason: "" }, headersFrom("203.0.113.200")), /eigene Adresse/);
+  await assert.rejects(async () => await securityAction(admin, { action: "block.add", kind: "network", value: "10.0.0.0/24", hours: 1, reason: "" }, headersFrom("10.0.0.5")), /eigenes Netz/);
+  const overview = await securityAction(admin, { action: "block.add", kind: "address", value: short, hours: 1, reason: "Test" }, headersFrom("198.51.100.1"));
   assert.equal(overview.blocks.length, 1);
-  assert.equal(events.blockedAddress("203.0.113.200"), true);
-  assert.equal(events.blockedAddress("203.0.113.201"), false);
-  assert.equal(limited(["ip:203.0.113.200", "email:x@example.test"]), true);
-  securityAction(admin, { action: "block.add", kind: "network", value: "2001:db8:5::/48", hours: null, reason: "" }, headersFrom("198.51.100.1"));
-  assert.equal(events.blockedAddress("2001:db8:5:1::7"), true);
-  assert.equal(events.blockedRequest(new Headers({ "x-forwarded-for": "2001:db8:5::9" })), true);
-  const id = securityOverview().blocks.find((b) => b.kind === "network")!.id;
-  securityAction(admin, { action: "block.remove", id }, headersFrom("198.51.100.1"));
-  assert.equal(events.blockedAddress("2001:db8:5:1::7"), false);
+  assert.equal(await events.blockedAddress("203.0.113.200"), true);
+  assert.equal(await events.blockedAddress("203.0.113.201"), false);
+  assert.equal(await limited(["ip:203.0.113.200", "email:x@example.test"]), true);
+  await securityAction(admin, { action: "block.add", kind: "network", value: "2001:db8:5::/48", hours: null, reason: "" }, headersFrom("198.51.100.1"));
+  assert.equal(await events.blockedAddress("2001:db8:5:1::7"), true);
+  assert.equal(await events.blockedRequest(new Headers({ "x-forwarded-for": "2001:db8:5::9" })), true);
+  const id = (await securityOverview()).blocks.find((b) => b.kind === "network")!.id;
+  await securityAction(admin, { action: "block.remove", id }, headersFrom("198.51.100.1"));
+  assert.equal(await events.blockedAddress("2001:db8:5:1::7"), false);
 });
 
 test("the overview sums up; incidents are resolved; the export holds no addresses", async () => {
-  reset();
-  const admin = person("Chef");
-  for (let i = 0; i < SECURITY_THRESHOLDS.addressFailures; i++) failed(["ip:192.0.2.7", `email:a${i % 2}@example.test`]);
+  await reset();
+  const admin = await person("Chef");
+  for (let i = 0; i < SECURITY_THRESHOLDS.addressFailures; i++) await failed(["ip:192.0.2.7", `email:a${i % 2}@example.test`]);
   await settle();
-  const overview = securityOverview();
+  const overview = await securityOverview();
   assert.equal(overview.summary.failedSignIns, SECURITY_THRESHOLDS.addressFailures);
   assert.ok(overview.summary.openIncidents >= 1);
   assert.equal(overview.addresses[0].network, "192.0.2.0/24");
   assert.equal(overview.hourly.length, 24);
   assert.equal(overview.hourly.at(-1)!.failures, SECURITY_THRESHOLDS.addressFailures);
-  const after = securityAction(admin, { action: "incident.resolveAll" }, headersFrom("198.51.100.1"));
+  const after = await securityAction(admin, { action: "incident.resolveAll" }, headersFrom("198.51.100.1"));
   assert.equal(after.summary.openIncidents, 0);
-  const csv = securityExport("csv");
+  const csv = await securityExport("csv");
   assert.match(csv.body, /login\.failure/);
   assert.ok(!csv.body.includes("192.0.2.7"));
 });
 
-test("the CSV export defuses formulas and keeps line breaks inside a cell", () => {
-  reset();
-  run("INSERT INTO security_events(at,kind,severity,detail) VALUES(?,?,?,?)", Date.now(), "login.failure", "warn", "\t=cmd|' /C calc'!A0\rnext");
-  run("INSERT INTO security_events(at,kind,severity,detail) VALUES(?,?,?,?)", Date.now() - 1, "login.failure", "warn", " @SUM(1)");
-  const body = securityExport("csv").body;
+test("the CSV export defuses formulas and keeps line breaks inside a cell", async () => {
+  await reset();
+  await run("INSERT INTO security_events(at,kind,severity,detail) VALUES(?,?,?,?)", Date.now(), "login.failure", "warn", "\t=cmd|' /C calc'!A0\rnext");
+  await run("INSERT INTO security_events(at,kind,severity,detail) VALUES(?,?,?,?)", Date.now() - 1, "login.failure", "warn", " @SUM(1)");
+  const body = (await securityExport("csv")).body;
   assert.ok(body.includes(`"'\t=cmd|' /C calc'!A0\rnext"`), body);
   assert.ok(body.includes(`"' @SUM(1)"`), body);
 });
 
-test("old events go after the retention", () => {
-  reset();
-  run("INSERT INTO security_events(at,kind,severity) VALUES(?,?,?)", Date.now() - 100 * 86_400_000, "login.failure", "warn");
-  run("INSERT INTO security_events(at,kind,severity) VALUES(?,?,?)", Date.now(), "login.failure", "warn");
-  events.sweepSecurityEvents();
-  assert.equal(all("SELECT 1 FROM security_events").length, 1);
+test("old events go after the retention", async () => {
+  await reset();
+  await run("INSERT INTO security_events(at,kind,severity) VALUES(?,?,?)", Date.now() - 100 * 86_400_000, "login.failure", "warn");
+  await run("INSERT INTO security_events(at,kind,severity) VALUES(?,?,?)", Date.now(), "login.failure", "warn");
+  await events.sweepSecurityEvents();
+  assert.equal((await all("SELECT 1 FROM security_events")).length, 1);
 });
 
 test("every rule has steps, and every link of a step leads to a real section", async () => {

@@ -14,9 +14,9 @@ const { command, bootstrap } = await import("../lib/api");
 const { defaultQuotaMb } = await import("../lib/instance-ops");
 const { retentionDays } = await import("../lib/version-history");
 
-function account(name: string, isAdmin = false) {
+async function account(name: string, isAdmin = false) {
   const uid = id();
-  run(
+  await run(
     "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
     uid,
     uid,
@@ -33,15 +33,15 @@ function account(name: string, isAdmin = false) {
     created_at: "",
   } as Identity;
 }
-const admin = account("inst-admin", true),
-  person = account("inst-person");
-const wid = createWorkspace(person.id, "Eigener");
+const admin = await account("inst-admin", true),
+  person = await account("inst-person");
+const wid = await createWorkspace(person.id, "Eigener");
 
-test("admins configure the instance; stored values override the environment", () => {
+test("admins configure the instance; stored values override the environment", async () => {
   process.env.FLOWPLAN_WORKSPACE_QUOTA_MB = "50";
   process.env.FLOWPLAN_SNAPSHOT_RETENTION_DAYS = "30";
-  assert.equal(defaultQuotaMb(), 50);
-  assert.equal(retentionDays(), 30);
+  assert.equal(await defaultQuotaMb(), 50);
+  assert.equal(await retentionDays(), 30);
   const settings = {
     name: "Muster GmbH",
     announcement: "Wartung am Samstag",
@@ -50,20 +50,20 @@ test("admins configure the instance; stored values override the environment", ()
     maxUploadMb: 25,
     allowWorkspaceCreation: false,
   };
-  assert.throws(
-    () => command(person, { action: "admin.settings", settings }),
+  await assert.rejects(
+    async () => await command(person, { action: "admin.settings", settings }),
     /Administrator/,
   );
-  assert.throws(() =>
-    command(admin, {
+  await assert.rejects(async () =>
+    await command(admin, {
       action: "admin.settings",
       settings: { ...settings, maxUploadMb: 0 },
     }),
   );
-  command(admin, { action: "admin.settings", settings });
-  assert.equal(defaultQuotaMb(), 200);
-  assert.equal(retentionDays(), 0);
-  assert.deepEqual(bootstrap(person, wid).instance, {
+  await command(admin, { action: "admin.settings", settings });
+  assert.equal(await defaultQuotaMb(), 200);
+  assert.equal(await retentionDays(), 0);
+  assert.deepEqual((await bootstrap(person, wid)).instance, {
     name: "Muster GmbH",
     announcement: "Wartung am Samstag",
     // No banners to click away (lib/instance-banners.ts).
@@ -78,19 +78,19 @@ test("admins configure the instance; stored values override the environment", ()
     // Settings → Über Flowplan (no update shown to non-admins).
     about: aboutInfo(),
   });
-  assert.throws(
-    () => command(person, { action: "workspace.create", name: "Noch einer" }),
+  await assert.rejects(
+    async () => await command(person, { action: "workspace.create", name: "Noch einer" }),
     /nur Admins/,
   );
   assert.ok(
     (
-      command(admin, { action: "workspace.create", name: "Admin-Bereich" }) as {
+      (await command(admin, { action: "workspace.create", name: "Admin-Bereich" })) as {
         id: string;
       }
     ).id,
   );
   // Empty values fall back to the environment again.
-  command(admin, {
+  await command(admin, {
     action: "admin.settings",
     settings: {
       ...settings,
@@ -99,14 +99,14 @@ test("admins configure the instance; stored values override the environment", ()
       allowWorkspaceCreation: true,
     },
   });
-  assert.equal(defaultQuotaMb(), 50);
-  assert.equal(retentionDays(), 30);
+  assert.equal(await defaultQuotaMb(), 50);
+  assert.equal(await retentionDays(), 30);
   assert.ok(
     (
-      command(person, {
+      (await command(person, {
         action: "workspace.create",
         name: "Jetzt erlaubt",
-      }) as { id: string }
+      })) as { id: string }
     ).id,
   );
   delete process.env.FLOWPLAN_WORKSPACE_QUOTA_MB;

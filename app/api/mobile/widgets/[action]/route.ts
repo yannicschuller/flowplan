@@ -34,7 +34,7 @@ async function withDevice(req: Request, lang: string | null, handle: (user: Iden
   const fallback = pickLocale(null, req.headers.get("accept-language"));
   const user = await widgetUser(req.headers.get("authorization"));
   if (!user) return failure(new HttpError(401, "Bitte melde dich an."), fallback);
-  const locale = widgetLocale(user, lang, req.headers.get("accept-language"));
+  const locale = await widgetLocale(user, lang, req.headers.get("accept-language"));
   return withContentLocale(locale, async () => {
     try {
       return await handle(user);
@@ -52,7 +52,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ action: 
     const kind = query.get("kind");
     if (!widgetKinds.includes(kind as WidgetKind)) throw new HttpError(400, "Ungültige Anfrage.");
     limitWidgets(user, "options");
-    return NextResponse.json(widgetOptions(user, kind as WidgetKind, { pageId: query.get("pageId") }), { headers });
+    return NextResponse.json(await widgetOptions(user, kind as WidgetKind, { pageId: query.get("pageId") }), { headers });
   });
 }
 

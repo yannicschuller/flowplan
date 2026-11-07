@@ -10,7 +10,7 @@ import type { Field, Identity, Page, Row } from "./types";
 // Load only databases this user can read. No server-computed value may bypass that graph.
 // `rootRows: false`: the caller has the root database's own records already
 // (they come back as an empty list instead of being read a second time).
-export function relatedData(user: Identity, root: Page, options: { rootRows?: boolean } = {}) {
+export async function relatedData(user: Identity, root: Page, options: { rootRows?: boolean } = {}) {
   const related: Record<string, Row[]> = {},
     relatedSchemas: Record<string, Field[]> = {};
   const pending = [root.id],
@@ -21,40 +21,40 @@ export function relatedData(user: Identity, root: Page, options: { rootRows?: bo
     visited.add(pageId);
     let page: Page;
     try {
-      page = requirePage(user, pageId);
+      page = await requirePage(user, pageId);
     } catch {
       continue;
     }
     // Nothing of a database behind a journal PIN the person has not entered.
-    if (page.workspace_id !== root.workspace_id || page.kind !== "database" || journalLocked(user, page))
+    if (page.workspace_id !== root.workspace_id || page.kind !== "database" || await journalLocked(user, page))
       continue;
-    const raw = one<{ fields: string }>(
+    const raw = await one<{ fields: string }>(
       "SELECT fields FROM databases WHERE page_id=?",
       pageId,
     );
     if (!raw) continue;
     const fields: Field[] = JSON.parse(raw.fields);
-    relatedSchemas[pageId] = visibleFields(user, page, fields);
+    relatedSchemas[pageId] = await visibleFields(user, page, fields);
     // Cells parsed before the hidden ones are left out (stripCells would
     // otherwise parse and serialise each record once more).
     related[pageId] =
       pageId === root.id && options.rootRows === false
         ? []
-        : visibleRows(
+        : (await visibleRows(
             user,
             page,
-            all<Row & { cells: string }>(
+            (await all<Row & { cells: string }>(
               "SELECT * FROM rows WHERE page_id=? ORDER BY position",
               pageId,
-            ).map((r) => ({ ...r, cells: JSON.parse(r.cells) as Row["cells"] })),
-          );
+            )).map((r) => ({ ...r, cells: JSON.parse(r.cells) as Row["cells"] })),
+          ));
     for (const field of fields)
       if (field.type === "relation" && field.relationPage)
         pending.push(field.relationPage);
   }
   return { related, relatedSchemas };
 }
-export function validateDatabaseRelations(
+export async function validateDatabaseRelations(
   user: Identity,
   page: Page,
   fields: Field[],
@@ -73,7 +73,7 @@ export function validateDatabaseRelations(
     if (f.type === "relation") {
       if (!f.relationPage) throw new HttpError(400, "Relationsziel fehlt.");
       try {
-        const target = requirePage(user, f.relationPage);
+        const target = await requirePage(user, f.relationPage);
         if (
           target.kind !== "database" ||
           target.workspace_id !== page.workspace_id
@@ -98,7 +98,7 @@ export function validateDatabaseRelations(
         throw new HttpError(400, "Für den Rollup zuerst eine Relation wählen.");
       let target: Page;
       try {
-        target = requirePage(user, relation.relationPage);
+        target = await requirePage(user, relation.relationPage);
       } catch (e) {
         const previousRelation = previous.find((p) => p.id === relation.id);
         if (same && previousRelation?.relationPage === relation.relationPage)
@@ -115,7 +115,7 @@ export function validateDatabaseRelations(
           ? fields
           : JSON.parse(
               String(
-                one("SELECT fields FROM databases WHERE page_id=?", target.id)
+                (await one("SELECT fields FROM databases WHERE page_id=?", target.id))
                   ?.fields || "[]",
               ),
             );

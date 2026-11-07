@@ -13,6 +13,6 @@ export async function generateMetadata(): Promise<Metadata> {
 // created by a request from this page.
 export default async function DemoPage() {
   if (await currentUser()) redirect("/");
-  if (!demoEnabled()) redirect("/login");
+  if (!(await demoEnabled())) redirect("/login");
   return <DemoStart />;
 }

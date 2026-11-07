@@ -18,6 +18,7 @@ import {
   matches,
   matchesFilterGroup,
 } from "../lib/database-filters";
+import { mapAsync } from "../lib/each-async";
 const condition = (field: string, op: Filter["op"], value = "") => ({
   kind: "condition" as const,
   field,
@@ -248,9 +249,9 @@ const { command, database, rows, bootstrap, pageData } =
   await import("../lib/api");
 const { createWorkspace } = await import("../lib/seed");
 const { exportArchive, importArchive } = await import("../lib/archive");
-function user(name: string): Identity {
+async function user(name: string): Promise<Identity> {
   const uid = id();
-  run(
+  await run(
     "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
     uid,
     uid,
@@ -267,48 +268,48 @@ function user(name: string): Identity {
     created_at: "",
   };
 }
-const owner = user("owner"),
-  viewer = user("viewer"),
-  wid = createWorkspace(owner.id, "Advanced filters"),
-  boot = bootstrap(owner, wid);
-run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
-const act = (body: Record<string, unknown>, user = owner): any =>
-  command(user, body);
-function create() {
-  return act({
+const owner = await user("owner"),
+  viewer = await user("viewer"),
+  wid = await createWorkspace(owner.id, "Advanced filters"),
+  boot = await bootstrap(owner, wid);
+await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
+const act = async (body: Record<string, unknown>, user = owner): Promise<any> =>
+  await command(user, body);
+async function create() {
+  return (await act({
     action: "page.create",
     workspaceId: wid,
     spaceId: boot.spaces[0].id,
     title: "Filtered database",
     kind: "database",
-  }).id as string;
+  })).id as string;
 }
-function schema(
+async function schema(
   pageId: string,
   patch: Partial<View>,
   nextFields = fields,
   extra = {},
 ) {
-  return act({
+  return await act({
     action: "database.update",
     pageId,
-    version: database(pageId).version,
+    version: (await database(pageId)).version,
     fields: nextFields,
     views: [{ ...base, ...patch }],
     ...extra,
   });
 }
-function fixture() {
-  const page = create();
-  schema(page, { filterGroup: tree });
-  const ids = sampleRows.map(
-    (r) =>
-      act({ action: "row.create", pageId: page, cells: r.cells }).id as string,
+async function fixture() {
+  const page = await create();
+  await schema(page, { filterGroup: tree });
+  const ids = await mapAsync(sampleRows, 
+    async (r) =>
+      (await act({ action: "row.create", pageId: page, cells: r.cells })).id as string,
   );
   return { page, ids };
 }
-function visible(pageId: string) {
-  const d = pageData(owner, pageId) as any;
+async function visible(pageId: string) {
+  const d = (await pageData(owner, pageId)) as any;
   return queryRows(
     d.rows,
     d.database.fields,
@@ -319,17 +320,17 @@ function visible(pageId: string) {
   ).map((r) => r.cells.title);
 }
 
-test("API guards versions, permissions, unknown fields and conflicting formats; deleting properties prunes nested filters", () => {
-  const { page } = fixture(),
-    before = database(page);
-  assert.deepEqual(visible(page), ["Alpha", "Beta"]);
-  assert.throws(
-    () => schema(page, { filterGroup: tree }, fields, { version: 1 }),
+test("API guards versions, permissions, unknown fields and conflicting formats; deleting properties prunes nested filters", async () => {
+  const { page } = await fixture(),
+    before = await database(page);
+  assert.deepEqual(await visible(page), ["Alpha", "Beta"]);
+  await assert.rejects(
+    async () => await schema(page, { filterGroup: tree }, fields, { version: 1 }),
     /zwischenzeitlich/,
   );
-  assert.throws(
-    () =>
-      act(
+  await assert.rejects(
+    async () =>
+      await act(
         {
           action: "database.update",
           pageId: page,
@@ -341,17 +342,17 @@ test("API guards versions, permissions, unknown fields and conflicting formats; 
       ),
     /Berechtigung/,
   );
-  assert.throws(
-    () =>
-      schema(page, {
+  await assert.rejects(
+    async () =>
+      await schema(page, {
         filters: [condition("title", "eq", "x")],
         filterGroup: tree,
       }),
     /nicht gleichzeitig/,
   );
-  assert.throws(
-    () =>
-      schema(page, {
+  await assert.rejects(
+    async () =>
+      await schema(page, {
         filterGroup: {
           kind: "group",
           join: "or",
@@ -360,89 +361,89 @@ test("API guards versions, permissions, unknown fields and conflicting formats; 
       }),
     /unbekannte Eigenschaft/,
   );
-  assert.deepEqual(database(page), before);
-  schema(
+  assert.deepEqual(await database(page), before);
+  await schema(
     page,
     { filterGroup: tree, sorts: [{ field: "priority", direction: "asc" }] },
     fields.filter((f) => f.id !== "priority"),
   );
-  assert.deepEqual(visible(page), ["Beta"]);
-  assert.deepEqual(database(page).views[0].sorts, []);
+  assert.deepEqual(await visible(page), ["Beta"]);
+  assert.deepEqual((await database(page)).views[0].sorts, []);
   assert.equal(
-    (database(page).views[0].filterGroup!.rules[1] as FilterGroup).rules.length,
+    ((await database(page)).views[0].filterGroup!.rules[1] as FilterGroup).rules.length,
     1,
   );
 });
 
-test("removing sort rules during a filtered move retains rows hidden by nested predicates", () => {
-  const { page, ids } = fixture();
-  schema(page, {
+test("removing sort rules during a filtered move retains rows hidden by nested predicates", async () => {
+  const { page, ids } = await fixture();
+  await schema(page, {
     filterGroup: tree,
     sorts: [{ field: "title", direction: "desc" }],
   });
-  act({
+  await act({
     action: "row.move",
     pageId: page,
     viewId: "table",
-    version: database(page).version,
+    version: (await database(page)).version,
     rowId: ids[0],
     rowVersion: 1,
     targetId: ids[1],
     placement: "before",
     clearSorts: true,
   });
-  assert.equal(database(page).views[0].rowOrder?.length, 4);
-  assert.deepEqual(new Set(database(page).views[0].rowOrder), new Set(ids));
-  assert.deepEqual(visible(page), ["Alpha", "Beta"]);
+  assert.equal((await database(page)).views[0].rowOrder?.length, 4);
+  assert.deepEqual(new Set((await database(page)).views[0].rowOrder), new Set(ids));
+  assert.deepEqual(await visible(page), ["Alpha", "Beta"]);
 });
 
 test("relation-filter values remap through copies, templates, JSON and ZIP snapshots without touching originals", async () => {
-  const page = create(),
+  const page = await create(),
     relation: Field = {
       id: "link",
       name: "Related",
       type: "relation",
       relationPage: page,
     };
-  schema(page, {}, [fields[0], relation]);
-  const a = act({
+  await schema(page, {}, [fields[0], relation]);
+  const a = (await act({
       action: "row.create",
       pageId: page,
       cells: { title: "Referenced" },
-    }).id,
-    b = act({
+    })).id,
+    b = (await act({
       action: "row.create",
       pageId: page,
       cells: { title: "Match", link: [a] },
-    }).id;
+    })).id;
   const group: FilterGroup = {
     kind: "group",
     join: "or",
     rules: [condition("link", "eq", a)],
   };
-  schema(page, { filterGroup: group }, [fields[0], relation]);
-  act({ action: "page.snapshot", pageId: page });
-  const clone = act({ action: "page.duplicate", pageId: page }).id;
-  assert.deepEqual(visible(clone), ["Match"]);
+  await schema(page, { filterGroup: group }, [fields[0], relation]);
+  await act({ action: "page.snapshot", pageId: page });
+  const clone = (await act({ action: "page.duplicate", pageId: page })).id;
+  assert.deepEqual(await visible(clone), ["Match"]);
   assert.notEqual(
-    (database(clone).views[0].filterGroup!.rules[0] as Filter).value,
+    ((await database(clone)).views[0].filterGroup!.rules[0] as Filter).value,
     a,
   );
   const templateName = `Filter template ${id()}`,
-    template = act({
+    template = (await act({
       action: "template.save",
       pageId: page,
       name: templateName,
-    }).id;
-  const instance = act({
+    })).id;
+  const instance = (await act({
     action: "page.create",
     workspaceId: wid,
     spaceId: boot.spaces[0].id,
     title: "Filtered template",
     templateId: template,
-  }).id;
-  assert.deepEqual(visible(instance), ["Match"]);
-  const json = act({
+  })).id;
+  assert.deepEqual(await visible(instance), ["Match"]);
+  const json = (await act({
     action: "workspace.import",
     workspaceId: wid,
     spaceId: boot.spaces[0].id,
@@ -454,48 +455,48 @@ test("relation-filter values remap through copies, templates, JSON and ZIP snaps
           parent_id: null,
           title: "Legacy filter copy",
           kind: "database",
-          data: { database: database(page), rows: rows(page) },
+          data: { database: await database(page), rows: await rows(page) },
         },
       ],
     },
-  }).pageIds[page];
-  assert.deepEqual(visible(json), ["Match"]);
-  const dest = createWorkspace(owner.id, "Restored filters"),
+  })).pageIds[page];
+  assert.deepEqual(await visible(json), ["Match"]);
+  const dest = await createWorkspace(owner.id, "Restored filters"),
     imported = await importArchive(
       owner,
       dest,
       await exportArchive(owner, wid),
     ),
     restored = imported.pageIds[page];
-  assert.deepEqual(visible(restored), ["Match"]);
-  const snapshot = one<{ id: string }>(
+  assert.deepEqual(await visible(restored), ["Match"]);
+  const snapshot = (await one<{ id: string }>(
     "SELECT id FROM snapshots WHERE page_id=?",
     restored,
-  )!.id;
-  const d = database(restored);
-  schema(
+  ))!.id;
+  const d = await database(restored);
+  await schema(
     restored,
     { filterGroup: { kind: "group", join: "and", rules: [] } },
     d.fields,
   );
-  assert.equal(visible(restored).length, 2);
-  act({ action: "snapshot.restore", pageId: restored, snapshotId: snapshot });
-  assert.deepEqual(visible(restored), ["Match"]);
-  const restoredTemplate = one<{ id: string }>(
+  assert.equal((await visible(restored)).length, 2);
+  await act({ action: "snapshot.restore", pageId: restored, snapshotId: snapshot });
+  assert.deepEqual(await visible(restored), ["Match"]);
+  const restoredTemplate = (await one<{ id: string }>(
     "SELECT id FROM templates WHERE workspace_id=? AND name=?",
     dest,
     templateName,
-  )!.id;
-  const destInstance = act({
+  ))!.id;
+  const destInstance = (await act({
     action: "page.create",
     workspaceId: dest,
-    spaceId: bootstrap(owner, dest).spaces[0].id,
+    spaceId: (await bootstrap(owner, dest)).spaces[0].id,
     title: "Restored template",
     templateId: restoredTemplate,
-  }).id;
-  assert.deepEqual(visible(destInstance), ["Match"]);
+  })).id;
+  assert.deepEqual(await visible(destInstance), ["Match"]);
   assert.equal(
-    (database(page).views[0].filterGroup!.rules[0] as Filter).value,
+    ((await database(page)).views[0].filterGroup!.rules[0] as Filter).value,
     a,
   );
 });

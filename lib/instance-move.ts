@@ -65,17 +65,17 @@ export const MOVE_TOKEN_HOURS = 24;
 const dataDir = () => resolve(/* turbopackIgnore: true */ process.env.FLOWPLAN_DATA_DIR || "./data");
 export const movePrivateAllowed = () => process.env.FLOWPLAN_MOVE_ALLOW_PRIVATE === "true";
 
-function readSetting<T>(key: string): T | null {
-  const row = one<{ value: string }>("SELECT value FROM instance_settings WHERE key=?", key);
+async function readSetting<T>(key: string): Promise<T | null> {
+  const row = await one<{ value: string }>("SELECT value FROM instance_settings WHERE key=?", key);
   try {
     return row ? (JSON.parse(row.value) as T) : null;
   } catch {
     return null;
   }
 }
-function writeSetting(key: string, value: unknown) {
-  if (value === null) run("DELETE FROM instance_settings WHERE key=?", key);
-  else run("INSERT INTO instance_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", key, JSON.stringify(value));
+async function writeSetting(key: string, value: unknown) {
+  if (value === null) await run("DELETE FROM instance_settings WHERE key=?", key);
+  else await run("INSERT INTO instance_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", key, JSON.stringify(value));
 }
 
 /* ---------- Source: the move token ---------- */
@@ -95,14 +95,14 @@ type SourceState = {
   movedTo?: string | null;
   redirect?: boolean;
 };
-const sourceState = () => readSetting<SourceState>(MOVE_KEY);
+const sourceState = async () => await readSetting<SourceState>(MOVE_KEY);
 export const tokenUsable = (s: SourceState | null, now = Date.now()) => !!s && !!s.hash && !s.revokedAt && !s.usedAt && s.expiresAt > now;
 
 // For the administration: never the token or its hash.
-export function moveSourceStatus(now = Date.now()) {
-  const s = sourceState();
+export async function moveSourceStatus(now = Date.now()) {
+  const s = await sourceState();
   if (s?.hash && !tokenUsable(s, now)) removeSnapshots();
-  const ro = readOnlyState();
+  const ro = await readOnlyState();
   if (!s) return { token: null, readOnly: ro.readOnly, readOnlyAt: null, movedTo: null, redirect: false };
   return {
     token: s.hash
@@ -124,9 +124,9 @@ export function moveSourceStatus(now = Date.now()) {
 }
 
 // A new token replaces any earlier one. The caller has done the step-up.
-export function prepareMove(user: Identity, now = Date.now()) {
+export async function prepareMove(user: Identity, now = Date.now()) {
   const token = MOVE_TOKEN_PREFIX + randomBytes(32).toString("base64url");
-  const previous = sourceState();
+  const previous = await sourceState();
   const state: SourceState = {
     id: randomUUID(),
     hash: hash(token),
@@ -137,34 +137,34 @@ export function prepareMove(user: Identity, now = Date.now()) {
     movedTo: previous?.movedTo ?? null,
     redirect: previous?.redirect ?? false,
   };
-  writeSetting(MOVE_KEY, state);
+  await writeSetting(MOVE_KEY, state);
   removeSnapshots();
-  audit(user.id, "instance.move.prepare", state.id, `bis ${new Date(state.expiresAt).toISOString()}`);
+  await audit(user.id, "instance.move.prepare", state.id, `bis ${new Date(state.expiresAt).toISOString()}`);
   return { token, url: appUrl().replace(/\/+$/, ""), expiresAt: state.expiresAt, id: state.id };
 }
-export function revokeMove(user: Identity, now = Date.now()) {
-  const s = sourceState();
+export async function revokeMove(user: Identity, now = Date.now()) {
+  const s = await sourceState();
   if (!s?.hash) throw new HttpError(404, "Es gibt kein Umzugstoken.");
-  writeSetting(MOVE_KEY, { ...s, revokedAt: s.revokedAt ?? now });
+  await writeSetting(MOVE_KEY, { ...s, revokedAt: s.revokedAt ?? now });
   removeSnapshots();
-  audit(user.id, "instance.move.revoke", s.id);
-  return moveSourceStatus(now);
+  await audit(user.id, "instance.move.revoke", s.id);
+  return await moveSourceStatus(now);
 }
 // Lifts the read-only state (a move that was called off). After a finished
 // move it also forgets the new address.
-export function unfreezeSource(user: Identity) {
-  const s = sourceState();
-  if (!s) return moveSourceStatus();
-  writeSetting(MOVE_KEY, { ...s, readOnlyAt: null, movedTo: null, redirect: false });
-  audit(user.id, "instance.move.unfreeze", s.id);
-  return moveSourceStatus();
+export async function unfreezeSource(user: Identity) {
+  const s = await sourceState();
+  if (!s) return await moveSourceStatus();
+  await writeSetting(MOVE_KEY, { ...s, readOnlyAt: null, movedTo: null, redirect: false });
+  await audit(user.id, "instance.move.unfreeze", s.id);
+  return await moveSourceStatus();
 }
-export function setMoveRedirect(user: Identity, on: boolean) {
-  const s = sourceState();
+export async function setMoveRedirect(user: Identity, on: boolean) {
+  const s = await sourceState();
   if (!s?.movedTo) throw new HttpError(409, "Diese Instanz ist noch nicht umgezogen.");
-  writeSetting(MOVE_KEY, { ...s, redirect: on });
-  audit(user.id, "instance.move.redirect", s.id, on ? "on" : "off");
-  return moveSourceStatus();
+  await writeSetting(MOVE_KEY, { ...s, redirect: on });
+  await audit(user.id, "instance.move.redirect", s.id, on ? "on" : "off");
+  return await moveSourceStatus();
 }
 
 /* ---------- Source: the token's endpoints ---------- */
@@ -181,7 +181,7 @@ function recentFailures(address: string, now: number) {
 // The move token of a request: Authorization: Bearer fpmove_…. Wrong or
 // stale tokens count per address; ten within 15 minutes lock the address
 // out of these endpoints. `kind` limits each kind of request on its own.
-export function authorizeMove(req: Request, kind: "manifest" | "file" | "env" | "freeze" | "finish", now = Date.now()) {
+export async function authorizeMove(req: Request, kind: "manifest" | "file" | "env" | "freeze" | "finish", now = Date.now()) {
   const address = clientAddress(req.headers) || "unknown";
   if (recentFailures(address, now).length >= FAIL_MAX) {
     securityEvent("instance.move_refused", { headers: req.headers, detail: "limit" });
@@ -190,7 +190,7 @@ export function authorizeMove(req: Request, kind: "manifest" | "file" | "env" | 
   if (!allow(`move-ip:${address}`, 1200, 60_000, now)) throw new HttpError(429, "Zu viele Anfragen in kurzer Zeit. Bitte später erneut versuchen.");
   const header = req.headers.get("authorization") || "";
   const token = header.startsWith(`Bearer ${MOVE_TOKEN_PREFIX}`) ? header.slice(7).trim() : "";
-  const s = sourceState();
+  const s = await sourceState();
   const given = Buffer.from(hash(token || "-"), "hex"),
     stored = Buffer.from(s?.hash || "0".repeat(64), "hex");
   const matches = !!token && given.length === stored.length && timingSafeEqual(given, stored);
@@ -204,7 +204,7 @@ export function authorizeMove(req: Request, kind: "manifest" | "file" | "env" | 
   const perHour = { manifest: 30, env: 60, freeze: 10, finish: 10, file: 1_000_000 }[kind];
   if (!allow(`move-${kind}:${s!.id}`, perHour, 3_600_000, now) || !allow(`move-token:${s!.id}`, 3000, 60_000, now))
     throw new HttpError(429, "Zu viele Anfragen in kurzer Zeit. Bitte später erneut versuchen.");
-  if (!s!.lastUsedAt || now - s!.lastUsedAt > 60_000) writeSetting(MOVE_KEY, { ...s, lastUsedAt: now });
+  if (!s!.lastUsedAt || now - s!.lastUsedAt > 60_000) await writeSetting(MOVE_KEY, { ...s, lastUsedAt: now });
   return { state: s!, token };
 }
 
@@ -228,7 +228,7 @@ export async function createSnapshot() {
   const id = randomUUID(),
     name = `move-snapshot-${id}.sqlite`,
     path = resolve(snapshotDir(), name);
-  snapshotDatabase(path);
+  await snapshotDatabase(path);
   const copy = new DatabaseSync(path);
   try {
     copy.prepare("DELETE FROM instance_settings WHERE key IN (?,?)").run(MOVE_KEY, INCOMING_KEY);
@@ -274,7 +274,7 @@ export async function moveManifest(): Promise<MoveManifest> {
     format: MOVE_FORMAT,
     createdAt: new Date().toISOString(),
     appUrl: appUrl().replace(/\/+$/, ""),
-    readOnly: readOnlyState().readOnly,
+    readOnly: (await readOnlyState()).readOnly,
     snapshot,
     files: await hashedFiles(uploads, names),
     extras: await hashedFiles(dir, MOVE_EXTRAS.filter((n) => existsSync(resolve(dir, n)))),
@@ -285,14 +285,14 @@ export function movePath(kind: "file" | "extra", name: string) {
   const path = kind === "file" ? resolve(dataDir(), "uploads", name) : resolve(dataDir(), name);
   return existsSync(path) ? path : null;
 }
-export function freezeSource(state: SourceState, now = Date.now()) {
+export async function freezeSource(state: SourceState, now = Date.now()) {
   if (!state.readOnlyAt) {
-    writeSetting(MOVE_KEY, { ...sourceState(), readOnlyAt: now });
-    audit("", "instance.move.freeze", state.id);
+    await writeSetting(MOVE_KEY, { ...(await sourceState()), readOnlyAt: now });
+    await audit("", "instance.move.freeze", state.id);
   }
   return { readOnly: true };
 }
-export function finishSource(state: SourceState, input: unknown, now = Date.now()) {
+export async function finishSource(state: SourceState, input: unknown, now = Date.now()) {
   const { target } = z.object({ target: z.string().max(500) }).parse(input);
   let url: URL;
   try {
@@ -301,9 +301,9 @@ export function finishSource(state: SourceState, input: unknown, now = Date.now(
     throw new HttpError(400, "Ungültige Adresse der neuen Instanz.");
   }
   if (!/^https?:$/.test(url.protocol) || url.username || url.password) throw new HttpError(400, "Ungültige Adresse der neuen Instanz.");
-  writeSetting(MOVE_KEY, { ...sourceState(), readOnlyAt: state.readOnlyAt ?? now, movedTo: url.origin, usedAt: now });
+  await writeSetting(MOVE_KEY, { ...(await sourceState()), readOnlyAt: state.readOnlyAt ?? now, movedTo: url.origin, usedAt: now });
   removeSnapshots();
-  audit("", "instance.move.finish", state.id, url.origin);
+  await audit("", "instance.move.finish", state.id, url.origin);
   return { ok: true };
 }
 
@@ -383,7 +383,7 @@ export type EnvReport = {
   secrets: { current: string | null; env: string[]; file: string | null; source: string };
   vars: Record<string, string | null>;
 };
-export function envReport(token: string, env: Record<string, string | undefined> = process.env): EnvReport {
+export async function envReport(token: string, env: Record<string, string | undefined> = process.env): Promise<EnvReport> {
   const salt = envSalt(token);
   const vars: Record<string, string | null> = {};
   for (const name of [...new Set([...NAMES, ...Object.keys(env).filter(comparedName)])].sort()) {
@@ -402,7 +402,7 @@ export function envReport(token: string, env: Record<string, string | undefined>
   try {
     origin = new URL(env.APP_URL || appUrl()).origin;
   } catch {}
-  return { appUrl: origin, schema: schemaVersion(), encryption, secrets, vars };
+  return { appUrl: origin, schema: await schemaVersion(), encryption, secrets, vars };
 }
 
 export type PreflightLevel = "ok" | "warn" | "error";
@@ -515,16 +515,16 @@ type Incoming = {
 };
 type Job = { kind: "copy" | "final"; progress: MoveProgress | null; controller: AbortController; promise: Promise<void> };
 const jobs = globalThis as unknown as { flowplanMoveJob?: Job | null };
-const incoming = () => readSetting<Incoming>(INCOMING_KEY);
+const incoming = async () => await readSetting<Incoming>(INCOMING_KEY);
 const stagingDir = () => resolve(dataDir(), INCOMING_DIR);
 
 // "Fresh": nothing besides the first admin and the example workspace.
-export function instanceContent() {
-  const count = (sql: string) => Number(one<{ n: number }>(sql)?.n || 0);
-  const users = count("SELECT count(*) n FROM users"),
-    workspaces = count("SELECT count(*) n FROM workspaces"),
-    pages = count("SELECT count(*) n FROM pages"),
-    files = count("SELECT count(*) n FROM files");
+export async function instanceContent() {
+  const count = async (sql: string) => Number((await one<{ n: number }>(sql))?.n || 0);
+  const users = await count("SELECT count(*) n FROM users"),
+    workspaces = await count("SELECT count(*) n FROM workspaces"),
+    pages = await count("SELECT count(*) n FROM pages"),
+    files = await count("SELECT count(*) n FROM files");
   return { users, workspaces, pages, files, fresh: users <= 1 && workspaces <= 1 && files === 0 && pages <= 12 };
 }
 
@@ -554,12 +554,12 @@ function asHttp(e: unknown) {
   return new HttpError(502, /Interne Adressen/.test(message) ? "Interne Adressen sind nur mit FLOWPLAN_MOVE_ALLOW_PRIVATE=true erlaubt." : `Die Quelle ist nicht erreichbar: ${message}`);
 }
 
-export function moveTargetStatus() {
-  const state = incoming();
+export async function moveTargetStatus() {
+  const state = await incoming();
   const job = jobs.flowplanMoveJob;
   return {
     allowPrivate: movePrivateAllowed(),
-    content: instanceContent(),
+    content: await instanceContent(),
     incoming: state
       ? {
           source: state.source,
@@ -582,11 +582,11 @@ function runJob(kind: Job["kind"], state: Incoming) {
     try {
       const { manifest } = await pullInstance(fromIncoming(state), stagingDir(), { signal: controller.signal, onProgress: (p) => (job.progress = p) });
       const now = Date.now();
-      writeSetting(INCOMING_KEY, { ...incoming(), error: null, manifestCreatedAt: manifest.createdAt, ...(kind === "copy" ? { firstCopyAt: now } : { finalAt: now }) });
+      await writeSetting(INCOMING_KEY, { ...(await incoming()), error: null, manifestCreatedAt: manifest.createdAt, ...(kind === "copy" ? { firstCopyAt: now } : { finalAt: now }) });
     } catch (e) {
       if (!controller.signal.aborted) {
         const message = asHttp(e).message;
-        if (incoming()) writeSetting(INCOMING_KEY, { ...incoming(), error: message });
+        if (await incoming()) await writeSetting(INCOMING_KEY, { ...(await incoming()), error: message });
       }
     } finally {
       if (jobs.flowplanMoveJob === job) jobs.flowplanMoveJob = null;
@@ -602,13 +602,13 @@ export async function startIncoming(user: Identity, input: unknown) {
   busy();
   const { url, token, confirm } = z.object({ url: z.string().trim().min(1).max(500), token: z.string().trim().max(200), confirm: z.boolean().optional() }).parse(input);
   if (!token.startsWith(MOVE_TOKEN_PREFIX) || token.length < 40) throw new HttpError(400, "Das ist kein Umzugstoken (es beginnt mit fpmove_).");
-  if (!instanceContent().fresh && !confirm) throw new HttpError(409, "Diese Instanz hat schon Inhalte. Bitte bestätige, dass alles ersetzt wird.");
-  if (readOnlyState().readOnly) throw new HttpError(409, "Diese Instanz ist selbst Quelle eines Umzugs.");
+  if (!(await instanceContent()).fresh && !confirm) throw new HttpError(409, "Diese Instanz hat schon Inhalte. Bitte bestätige, dass alles ersetzt wird.");
+  if ((await readOnlyState()).readOnly) throw new HttpError(409, "Diese Instanz ist selbst Quelle eines Umzugs.");
   const source = moveSource(url, token);
   // The token of this very instance: it would pull from itself. (The
   // address alone says nothing: a move that keeps the domain pulls from
   // the same APP_URL before the DNS switch.)
-  if (sourceState()?.hash === hash(token)) throw new HttpError(400, "Das ist das Umzugstoken dieser Instanz – es gehört auf die neue Instanz.");
+  if ((await sourceState())?.hash === hash(token)) throw new HttpError(400, "Das ist das Umzugstoken dieser Instanz – es gehört auf die neue Instanz.");
   // The token and the address work: the configuration report answers.
   try {
     await moveJson(source, "/api/move/env", { timeoutMs: 20_000 });
@@ -617,21 +617,21 @@ export async function startIncoming(user: Identity, input: unknown) {
   }
   rmSync(stagingDir(), { recursive: true, force: true });
   const state: Incoming = { source: source.url, token: sealSecret(token, "instance-move"), startedAt: Date.now(), startedBy: user.id };
-  writeSetting(INCOMING_KEY, state);
-  audit(user.id, "instance.move.start", "", source.url);
+  await writeSetting(INCOMING_KEY, state);
+  await audit(user.id, "instance.move.start", "", source.url);
   runJob("copy", state);
-  return moveTargetStatus();
+  return await moveTargetStatus();
 }
 // Continues an interrupted transfer (or the final sync) where it stopped.
-export function resumeIncoming() {
+export async function resumeIncoming() {
   busy();
-  const state = incoming();
+  const state = await incoming();
   if (!state) throw new HttpError(404, "Es läuft kein Umzug.");
   runJob(state.firstCopyAt ? "final" : "copy", state);
-  return moveTargetStatus();
+  return await moveTargetStatus();
 }
 export async function preflight() {
-  const state = incoming();
+  const state = await incoming();
   if (!state) throw new HttpError(404, "Es läuft kein Umzug.");
   const source = fromIncoming(state);
   let remote: EnvReport;
@@ -640,13 +640,13 @@ export async function preflight() {
   } catch (e) {
     throw asHttp(e);
   }
-  const items = [...comparePreflight(remote, envReport(source.token)), ...(await reachability())];
+  const items = [...comparePreflight(remote, await envReport(source.token)), ...await reachability()];
   return { checkedAt: Date.now(), items };
 }
 // "Quelle schreibschützen und letzten Stand holen".
 export async function finalSync(user: Identity) {
   busy();
-  const state = incoming();
+  const state = await incoming();
   if (!state?.firstCopyAt) throw new HttpError(409, "Zuerst muss die erste Kopie fertig sein.");
   const source = fromIncoming(state);
   try {
@@ -654,16 +654,16 @@ export async function finalSync(user: Identity) {
   } catch (e) {
     throw asHttp(e);
   }
-  audit(user.id, "instance.move.final", "", state.source);
-  writeSetting(INCOMING_KEY, { ...state, finalAt: null, error: null });
+  await audit(user.id, "instance.move.final", "", state.source);
+  await writeSetting(INCOMING_KEY, { ...state, finalAt: null, error: null });
   runJob("final", { ...state, finalAt: null });
-  return moveTargetStatus();
+  return await moveTargetStatus();
 }
 // Hands the copy to the restore on the next start and tells the source
 // where the instance lives now (which also uses up the token).
 export async function applyIncoming(user: Identity) {
   busy();
-  const state = incoming();
+  const state = await incoming();
   if (!state?.finalAt) throw new HttpError(409, "Zuerst den letzten Stand holen (Quelle schreibschützen).");
   let summary: MoveSummary;
   try {
@@ -673,25 +673,25 @@ export async function applyIncoming(user: Identity) {
   }
   const source = fromIncoming(state);
   stageMove(dataDir(), stagingDir(), summary);
-  writeSetting(INCOMING_KEY, { ...state, stagedAt: Date.now() });
+  await writeSetting(INCOMING_KEY, { ...state, stagedAt: Date.now() });
   let notified = true;
   try {
     await moveJson(source, "/api/move/finish", { method: "POST", body: { target: new URL(appUrl()).origin }, timeoutMs: 20_000 });
   } catch {
     notified = false;
   }
-  audit(user.id, "instance.move.applied", "", JSON.stringify({ ...summary, notified }));
+  await audit(user.id, "instance.move.applied", "", JSON.stringify({ ...summary, notified }));
   return { summary, notified };
 }
-export function cancelIncoming(user: Identity) {
+export async function cancelIncoming(user: Identity) {
   const job = jobs.flowplanMoveJob;
   job?.controller.abort();
   jobs.flowplanMoveJob = null;
   rmSync(stagingDir(), { recursive: true, force: true });
-  const state = incoming();
-  writeSetting(INCOMING_KEY, null);
-  if (state) audit(user.id, "instance.move.cancel", "", state.source);
-  return moveTargetStatus();
+  const state = await incoming();
+  await writeSetting(INCOMING_KEY, null);
+  if (state) await audit(user.id, "instance.move.cancel", "", state.source);
+  return await moveTargetStatus();
 }
 // Waits for a running transfer (tests, the command line).
 export const moveJobDone = () => jobs.flowplanMoveJob?.promise ?? Promise.resolve();
@@ -701,21 +701,21 @@ export const moveJobDone = () => jobs.flowplanMoveJob?.promise ?? Promise.resolv
 // Accounts with a password (local or LDAP) confirm with it; SSO accounts
 // must have signed in within the last 15 minutes. API tokens never may.
 export const STEP_UP_MINUTES = 15;
-export function stepUpKind(user: Identity): "password" | "recent-sign-in" {
-  return confirmsWithPassword(user.id) || one("SELECT 1 FROM ldap_accounts WHERE user_id=?", user.id) ? "password" : "recent-sign-in";
+export async function stepUpKind(user: Identity): Promise<"password" | "recent-sign-in"> {
+  return await confirmsWithPassword(user.id) || await one("SELECT 1 FROM ldap_accounts WHERE user_id=?", user.id) ? "password" : "recent-sign-in";
 }
 export async function requireStepUp(user: Identity, req: Request, password: unknown, locale: Locale) {
   if (user.apiScope) throw new HttpError(403, "Mit einem API-Token nicht erlaubt.");
   if (user.demo) throw new HttpError(403, "Im Demo-Modus nicht verfügbar.");
   const pass = typeof password === "string" ? password : "";
-  if (confirmsWithPassword(user.id)) {
+  if (await confirmsWithPassword(user.id)) {
     if (!pass) throw new HttpError(403, "Bitte bestätige mit deinem Passwort.");
-    const email = one<{ email: string }>("SELECT email FROM local_accounts WHERE user_id=?", user.id)!.email;
+    const email = (await one<{ email: string }>("SELECT email FROM local_accounts WHERE user_id=?", user.id))!.email;
     const { userId } = await passwordLogin({ email, password: pass }, clientAddress(req.headers), locale);
     if (userId !== user.id) throw new HttpError(403, "E-Mail-Adresse oder Passwort stimmt nicht.");
     return "password";
   }
-  if (one("SELECT 1 FROM ldap_accounts WHERE user_id=?", user.id)) {
+  if (await one("SELECT 1 FROM ldap_accounts WHERE user_id=?", user.id)) {
     if (!pass) throw new HttpError(403, "Bitte bestätige mit deinem Passwort.");
     if (!(await verifyLdapPassword(user.id, pass))) throw new HttpError(403, "Das Passwort stimmt nicht.");
     return "ldap";
@@ -725,7 +725,7 @@ export async function requireStepUp(user: Identity, req: Request, password: unkn
     const [name, ...value] = part.trim().split("=");
     if (name === cookieName) token = decodeURIComponent(value.join("="));
   }
-  const created = token ? one<{ created_at: number | null }>("SELECT created_at FROM sessions WHERE token=?", hash(token))?.created_at : null;
+  const created = token ? (await one<{ created_at: number | null }>("SELECT created_at FROM sessions WHERE token=?", hash(token)))?.created_at : null;
   if (!created || Date.now() - created > STEP_UP_MINUTES * 60_000)
     throw new HttpError(403, "Bitte melde dich ab und erneut an, um den Umzug vorzubereiten (Anmeldung höchstens 15 Minuten alt).");
   return "recent-sign-in";

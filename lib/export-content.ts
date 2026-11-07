@@ -30,6 +30,7 @@ import { dashboardSummary } from "./dashboard";
 import { inkPicture, notebookExportHtml, type InkPicture } from "./ink-export";
 import { markdownToHtml } from "./markdown-import";
 import type { Identity, Page, Row, Field, Space } from "./types";
+import { filterAsync, mapAsync } from "./each-async";
 
 export type ExportSelection = {
   pageId?: string;
@@ -101,34 +102,34 @@ export function documentNode(html: string) {
   return documentSchema().nodeFromJSON(generateJSON(cleanHtml(html) || "<p></p>", documentExtensions));
 }
 
-export function collectExportContent(user: Identity, options: ExportSelection): ExportContent {
-  return transaction(() => collect(user, options));
+export async function collectExportContent(user: Identity, options: ExportSelection): Promise<ExportContent> {
+  return await transaction(async () => await collect(user, options));
 }
 
-function collect(user: Identity, options: ExportSelection): ExportContent {
+async function collect(user: Identity, options: ExportSelection): Promise<ExportContent> {
   let space: Space | null = null,
     root: Page | null = null;
   if (options.spaceId) {
     if (options.pageId || options.rowId) throw new HttpError(400, "Entweder eine Seite oder einen Bereich exportieren.");
-    space = one<Space>("SELECT * FROM spaces WHERE id=? AND deleted_at IS NULL", options.spaceId) || null;
+    space = await one<Space>("SELECT * FROM spaces WHERE id=? AND deleted_at IS NULL", options.spaceId) || null;
     if (!space) throw new HttpError(404, "Bereich nicht gefunden.");
-    if (!spaceRole(user, space)) throw new HttpError(403, "Keine Berechtigung für diesen Bereich.");
+    if (!(await spaceRole(user, space))) throw new HttpError(403, "Keine Berechtigung für diesen Bereich.");
     // Encrypted spaces leave only as the encrypted archive or decrypted in the browser.
-    requirePlaintextSpace(space);
+    await requirePlaintextSpace(space);
   } else {
     if (!options.pageId) throw new HttpError(400, "Seite fehlt.");
-    root = requirePage(user, options.pageId);
-    requireUnlocked(user, root);
-    requirePlaintext(root);
+    root = await requirePage(user, options.pageId);
+    await requireUnlocked(user, root);
+    await requirePlaintext(root);
   }
   if (options.rowId && (root?.kind !== "database" || options.children))
     throw new HttpError(400, "Nur ein Eintrag einer Datenbank.");
   const workspaceId = space ? space.workspace_id : root!.workspace_id;
-  const locked = lockedPageIds(user, workspaceId);
-  const visible = all<Page>(
+  const locked = await lockedPageIds(user, workspaceId);
+  const visible = await filterAsync(await all<Page>(
     "SELECT * FROM pages WHERE workspace_id=? AND deleted_at IS NULL AND synced=0 ORDER BY position,id",
     workspaceId,
-  ).filter((page) => !locked.has(page.id) && pageRole(user, page));
+  ), async (page) => !locked.has(page.id) && await pageRole(user, page));
   const roots = space ? visible.filter((page) => page.space_id === space.id && !page.parent_id) : [root!];
   // Depth first, in the order of the page tree.
   const selected: { page: Page; depth: number }[] = [];
@@ -144,7 +145,7 @@ function collect(user: Identity, options: ExportSelection): ExportContent {
   };
   for (const page of roots) walk(page, 0);
   const pageCache = new Map<string, Page | null>();
-  const readable = (idOrUrl: string) => {
+  const readable = async (idOrUrl: string) => {
     let id = idOrUrl;
     if (!/^[a-f0-9-]{36}$/i.test(id)) {
       try {
@@ -162,7 +163,7 @@ function collect(user: Identity, options: ExportSelection): ExportContent {
     if (!pageCache.has(id)) {
       let page: Page | null = null;
       try {
-        page = requirePage(user, id);
+        page = await requirePage(user, id);
         if (locked.has(page.id)) page = null;
       } catch {}
       pageCache.set(id, page);
@@ -176,28 +177,28 @@ function collect(user: Identity, options: ExportSelection): ExportContent {
   const infos = new Map<string, ExportFileInfo | null>();
   const files = new Map<string, ExportFile | null>();
   let total = 0;
-  const fileInfo = (raw: string) => {
+  const fileInfo = async (raw: string) => {
     const id = fileId(raw);
     if (!id) return null;
     if (infos.has(id)) return infos.get(id)!;
     infos.set(id, null);
-    const row = one<{ id: string; page_id: string; name: string; mime: string }>("SELECT id,page_id,name,mime FROM files WHERE id=?", id);
-    const owner = row ? readable(row.page_id) : null;
+    const row = await one<{ id: string; page_id: string; name: string; mime: string }>("SELECT id,page_id,name,mime FROM files WHERE id=?", id);
+    const owner = row ? (await readable(row.page_id)) : null;
     if (!row || !owner) return null;
     try {
-      requireUnlocked(user, owner);
+      await requireUnlocked(user, owner);
     } catch {
       return null;
     }
-    if (!hiddenFiles.has(owner.id)) hiddenFiles.set(owner.id, hiddenFileIds(user, owner));
+    if (!hiddenFiles.has(owner.id)) hiddenFiles.set(owner.id, await hiddenFileIds(user, owner));
     if (hiddenFiles.get(owner.id)!.has(row.id)) return null;
     const mime = String(row.mime || "application/octet-stream");
     const info: ExportFileInfo = { id: row.id, name: row.name, mime, ext: imageExtension(mime) || "bin" };
     infos.set(id, info);
     return info;
   };
-  const file = (raw: string) => {
-    const info = fileInfo(raw);
+  const file = async (raw: string) => {
+    const info = await fileInfo(raw);
     if (!info) return null;
     if (files.has(info.id)) return files.get(info.id)!;
     files.set(info.id, null);
@@ -218,34 +219,34 @@ function collect(user: Identity, options: ExportSelection): ExportContent {
     return result;
   };
   const boards = new Map<string, string | null>();
-  const boardSvg = (pageId: string) => {
-    const page = readable(pageId);
+  const boardSvg = async (pageId: string) => {
+    const page = await readable(pageId);
     if (!page || page.kind !== "whiteboard") return null;
     if (!boards.has(page.id))
       boards.set(
         page.id,
         whiteboardSvg(
-          whiteboardSnapshotItems(page),
+          await whiteboardSnapshotItems(page),
           {
             // Pictures on the board go along as data: the SVG is one file.
-            image: (src) => {
-              const picture = file(src);
+            image: async (src) => {
+              const picture = await file(src);
               return picture && imageExtension(picture.mime)
                 ? `data:${picture.mime};base64,${picture.bytes.toString("base64")}`
                 : /^https?:\/\//.test(src)
                   ? src
                   : null;
             },
-            page: (id) => {
-              const target = readable(id);
+            page: async (id) => {
+              const target = await readable(id);
               return target ? { title: target.title, kind: target.kind } : null;
             },
-            record: (databaseId, rowId) => {
-              const db = readable(databaseId);
+            record: async (databaseId, rowId) => {
+              const db = await readable(databaseId);
               if (!db || db.kind !== "database") return null;
-              const row = visibleRows(user, db, rows(db.id)).find((r) => r.id === rowId);
+              const row = (await visibleRows(user, db, await rows(db.id))).find((r) => r.id === rowId);
               if (!row) return null;
-              const fields = database(db.id).fields;
+              const fields = (await database(db.id)).fields;
               return { title: cellText(row.cells[fields[0]?.id || "title"]) || recordWord(), database: db.title };
             },
             label: ct,
@@ -256,45 +257,45 @@ function collect(user: Identity, options: ExportSelection): ExportContent {
     return boards.get(page.id)!;
   };
   const members = new Map(
-    all<{ id: string; name: string }>(
+    (await all<{ id: string; name: string }>(
       "SELECT u.id,u.name FROM users u JOIN members m ON m.user_id=u.id WHERE m.workspace_id=?",
       workspaceId,
-    ).map((member) => [member.id, member.name]),
+    )).map((member) => [member.id, member.name]),
   );
   let rowCount = 0;
   let name = space ? space.name : root!.title;
-  const pages = selected.map(({ page, depth }): ExportPage => {
-    const cover = page.cover.startsWith("/api/files/") && fileInfo(page.cover) ? page.cover : null;
-    if (page.kind === "whiteboard") return { page, depth, title: page.title, html: "", svg: boardSvg(page.id), cover };
+  const pages = await mapAsync(selected, async ({ page, depth }): Promise<ExportPage> => {
+    const cover = page.cover.startsWith("/api/files/") && await fileInfo(page.cover) ? page.cover : null;
+    if (page.kind === "whiteboard") return { page, depth, title: page.title, html: "", svg: await boardSvg(page.id), cover };
     if (page.kind === "dashboard")
       return {
         page,
         depth,
         title: page.title,
-        html: dashboardSummary(user, page)
+        html: (await dashboardSummary(user, page))
           .map((t) => `<h2>${escaped(t.title)}</h2>` + (t.text ? markdownToHtml(t.text) : `<p><em>${escaped(t.source ? `${t.kind} · ${t.source}` : t.kind)}</em></p>`))
           .join(""),
         svg: null,
         cover,
       };
     // A notebook: its sheets as pictures (drawing blocks the exporters draw).
-    if (page.kind === "notebook") return { page, depth, title: page.title, html: notebookExportHtml(page), svg: null, cover };
+    if (page.kind === "notebook") return { page, depth, title: page.title, html: await notebookExportHtml(page), svg: null, cover };
     if (page.kind === "document" || page.kind === "journal")
-      return { page, depth, title: page.title, html: one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", page.id)?.html || "", svg: null, cover };
+      return { page, depth, title: page.title, html: (await one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", page.id))?.html || "", svg: null, cover };
     // A database: its records as a table, then every record's document.
     // Properties hidden from this person are left out (lib/field-access.ts).
-    const schema = readableDatabase(user, page, database(page.id)),
+    const schema = await readableDatabase(user, page, await database(page.id)),
       fields = schema.fields,
-      related = relatedData(user, page),
-      visibleRecords = visibleRows(user, page, rows(page.id)).filter((row) => !options.rowId || row.id === options.rowId);
+      related = await relatedData(user, page),
+      visibleRecords = (await visibleRows(user, page, await rows(page.id))).filter((row) => !options.rowId || row.id === options.rowId);
     if (options.rowId && !visibleRecords.length) throw new HttpError(404, "Datensatz fehlt.");
     rowCount += visibleRecords.length;
     if (rowCount > MAX_ROWS) throw new HttpError(413, `Bitte höchstens ${MAX_ROWS.toLocaleString("de-DE")} Datensätze je ${options.format}-Export auswählen.`);
-    const records = visibleRecords.map((row) => {
+    const records = await mapAsync(visibleRecords, async (row) => {
       const computed = computedCells(row, fields, related.related, related.relatedSchemas);
       const title = cellText(computed[fields[0].id]) || recordWord();
-      const values = fields.map((field) => propertyText(computed[field.id], field, related, members));
-      const content = one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", row.id)?.html ?? row.content ?? "";
+      const values = await mapAsync(fields, async (field) => await propertyText(computed[field.id], field, related, members));
+      const content = (await one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", row.id))?.html ?? row.content ?? "";
       const body = content.trimStart().startsWith("<") ? content : content ? `<p>${escaped(content)}</p>` : "";
       return { row, title, values, body };
     });
@@ -317,15 +318,15 @@ function collect(user: Identity, options: ExportSelection): ExportContent {
     for (const record of records) if (record.body) html += `<h2>${escaped(record.title)}</h2>${record.body}`;
     return { page, depth, title: page.title, html, svg: null, cover };
   });
-  const ink = (pageId: string, attrs: { id?: unknown; height?: unknown; paper?: unknown }) => {
-    const page = readable(pageId);
-    return page && !locked.has(page.id) ? inkPicture(page, attrs) : null;
+  const ink = async (pageId: string, attrs: { id?: unknown; height?: unknown; paper?: unknown }) => {
+    const page = await readable(pageId);
+    return page && !locked.has(page.id) ? (await inkPicture(page, attrs)) : null;
   };
   return { root, space, name, pages, fileInfo, file, readable, pageUrl, boardSvg, ink };
 }
 
 // A property as plain text, like the Markdown export shows it.
-function propertyText(
+async function propertyText(
   value: unknown,
   field: Field,
   data: { related: Record<string, Row[]>; relatedSchemas: Record<string, Field[]> },
@@ -345,12 +346,11 @@ function propertyText(
   }
   if (["person", "created_by", "updated_by"].includes(field.type)) return values.map((id) => members.get(String(id)) || unavailable()).join(", ");
   if (field.type === "files")
-    return fileUrls(value)
-      .map((raw) => {
+    return (await mapAsync(fileUrls(value), async (raw) => {
         const id = fileId(raw);
-        const file = id ? one<{ name: string }>("SELECT name FROM files WHERE id=?", id) : null;
+        const file = id ? (await one<{ name: string }>("SELECT name FROM files WHERE id=?", id)) : null;
         return id ? file?.name || ct("Datei nicht verfügbar", "File not available") : raw;
-      })
+      }))
       .join(", ");
   if (field.type === "checkbox") return value ? ct("Ja", "Yes") : ct("Nein", "No");
   // Created and edited time as ISO 8601 instants, like dates with time.

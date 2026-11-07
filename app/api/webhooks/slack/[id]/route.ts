@@ -8,12 +8,12 @@ import { receiveSlackEvent } from "@/lib/slack-replies";
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     // Not during an instance move (lib/instance-read-only.ts): the sender retries.
-    refuseWhileReadOnly(req);
+    await refuseWhileReadOnly(req);
     const { id } = await params;
     if (Number(req.headers.get("content-length") || 0) > 1_000_000) throw new HttpError(413, "Anfrage zu groß.");
     const body = await req.text();
     if (body.length > 1_000_000) throw new HttpError(413, "Anfrage zu groß.");
-    return NextResponse.json(transaction(() => receiveSlackEvent(id, req.headers, body)));
+    return NextResponse.json(await transaction(async () => await receiveSlackEvent(id, req.headers, body)));
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof HttpError ? e.message : "Webhook konnte nicht verarbeitet werden." },

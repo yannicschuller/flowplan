@@ -39,8 +39,8 @@ export async function exportTemplate(
   workspaceId: string,
   templateId: string,
 ) {
-  const template = requireTemplate(user, templateId, workspaceId);
-  const files = all<{
+  const template = await requireTemplate(user, templateId, workspaceId);
+  const files = await all<{
     original_id: string;
     name: string;
     mime: string;
@@ -81,8 +81,8 @@ export async function importTemplate(
   visibility: "private" | "workspace",
   spaceId: string | null = null,
 ) {
-  requireMember(user, workspaceId, "editor");
-  if (spaceId) requireTemplateSpace(user, workspaceId, spaceId);
+  await requireMember(user, workspaceId, "editor");
+  if (spaceId) await requireTemplateSpace(user, workspaceId, spaceId);
   const entries = await readZip(bytes, { foreign: true, maxEntries: 202 });
   const raw = entries.get("template.json");
   if (!raw) throw new HttpError(400, "template.json fehlt.");
@@ -125,10 +125,10 @@ export async function importTemplate(
         `Anhang „${file.name}“ fehlt oder ist beschädigt.`,
       );
   }
-  return transaction(() => {
-    const quota = quotaCheckpoint(workspaceId);
+  return await transaction(async () => {
+    const quota = await quotaCheckpoint(workspaceId);
     const templateId = id();
-    run(
+    await run(
       "INSERT INTO templates(id,workspace_id,space_id,name,kind,payload,created_by,visibility,category) VALUES(?,?,?,?,?,?,?,?,?)",
       templateId,
       workspaceId,
@@ -141,7 +141,7 @@ export async function importTemplate(
       manifest.category || "",
     );
     for (const file of manifest.files)
-      run(
+      await run(
         "INSERT INTO template_files(id,template_id,original_id,name,mime,data) VALUES(?,?,?,?,?,?)",
         id(),
         templateId,

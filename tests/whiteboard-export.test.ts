@@ -18,13 +18,13 @@ const { readExportZip } = await import("./helpers/read-export-zip");
 const { markdownToHtml } = await import("../lib/markdown-import");
 
 const uid = id();
-run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, "Ada", "ada@example.test");
+await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, "Ada", "ada@example.test");
 const ada = { id: uid, name: "Ada", email: "ada@example.test", groups: [], isAdmin: false } as unknown as Identity;
-const wid = createWorkspace(uid, "Familie");
-const space = bootstrap(ada, wid).spaces[0].id;
-const act = (b: Record<string, unknown>) => command(ada, { workspaceId: wid, ...b }) as Record<string, unknown>;
+const wid = await createWorkspace(uid, "Familie");
+const space = (await bootstrap(ada, wid)).spaces[0].id;
+const act = async (b: Record<string, unknown>) => (await command(ada, { workspaceId: wid, ...b })) as Record<string, unknown>;
 
-function board(pageId: string, items: Record<string, unknown>[]) {
+async function board(pageId: string, items: Record<string, unknown>[]) {
   const doc = new Y.Doc();
   const map = doc.getMap<Y.Map<unknown>>("items");
   for (const item of items) {
@@ -32,20 +32,20 @@ function board(pageId: string, items: Record<string, unknown>[]) {
     for (const [key, value] of Object.entries(item)) if (key !== "id") entry.set(key, value);
     map.set(String(item.id), entry);
   }
-  writeWhiteboard(pageId, Y.encodeStateAsUpdate(doc));
+  await writeWhiteboard(pageId, Y.encodeStateAsUpdate(doc));
   doc.destroy();
 }
 
-const house = String(act({ action: "page.create", spaceId: space, title: "Haus", kind: "document" }).id);
-const plan = String(act({ action: "page.create", spaceId: space, title: "Grundriss", kind: "whiteboard", parentId: house }).id);
-const empty = String(act({ action: "page.create", spaceId: space, title: "Leer", kind: "whiteboard", parentId: house }).id);
-act({ action: "page.create", spaceId: space, title: "Tagebuch", kind: "journal", parentId: house });
+const house = String((await act({ action: "page.create", spaceId: space, title: "Haus", kind: "document" })).id);
+const plan = String((await act({ action: "page.create", spaceId: space, title: "Grundriss", kind: "whiteboard", parentId: house })).id);
+const empty = String((await act({ action: "page.create", spaceId: space, title: "Leer", kind: "whiteboard", parentId: house })).id);
+await act({ action: "page.create", spaceId: space, title: "Tagebuch", kind: "journal", parentId: house });
 // An uploaded image on the board.
 const fileId = id();
 mkdirSync(join(process.env.FLOWPLAN_DATA_DIR!, "uploads"), { recursive: true });
 writeFileSync(join(process.env.FLOWPLAN_DATA_DIR!, "uploads", fileId), Buffer.from("<svg xmlns='http://www.w3.org/2000/svg'/>"));
-run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fileId, plan, "foto.svg", "image/svg+xml", 40, uid);
-board(plan, [
+await run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fileId, plan, "foto.svg", "image/svg+xml", 40, uid);
+await board(plan, [
   { id: "a", type: "sticky", x: 0, y: 0, w: 160, h: 120, z: 1, text: "Haupthahn <Keller>" },
   { id: "b", type: "shape", shape: "ellipse", x: 300, y: 0, w: 120, h: 80, z: 2, text: "Heizung" },
   { id: "c", type: "connector", x: 0, y: 0, w: 0, h: 0, z: 3, from: { id: "a", x: 0, y: 0 }, to: { id: "b", x: 0, y: 0 }, text: "Leitung" },
@@ -55,7 +55,7 @@ board(plan, [
   { id: "g", type: "comment", x: 900, y: 900, w: 32, h: 32, z: 7, messages: [{ text: "Nur Gespräch" }] },
 ]);
 const html = `<p>Plan:</p><div data-whiteboard="${plan}" data-whiteboard-height="380"></div><div data-whiteboard="${empty}" data-whiteboard-height="300"></div>`;
-run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), house);
+await run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), house);
 
 test("whiteboards come along as SVG images: pages, embeds and their pictures", async () => {
   const { bytes } = await exportMarkdown(ada, { pageId: house, format: "zip", includeSubpages: true });

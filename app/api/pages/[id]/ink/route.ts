@@ -34,13 +34,13 @@ export const GET = withRequestLocale(async (req: Request, { params }: Context) =
     const user = await requireUser();
     const pageId = z.uuid().parse((await params).id);
     const url = new URL(req.url);
-    if (!url.searchParams.has("surface")) return NextResponse.json({ versions: pageInkVersions(user, pageId) }, noStore);
+    if (!url.searchParams.has("surface")) return NextResponse.json({ versions: await pageInkVersions(user, pageId) }, noStore);
     const surface = surfaceOf(url);
-    if (url.searchParams.has("versions")) return NextResponse.json({ versions: pageInkHistory(user, pageId, surface) }, noStore);
+    if (url.searchParams.has("versions")) return NextResponse.json({ versions: await pageInkHistory(user, pageId, surface) }, noStore);
     const version = url.searchParams.get("version");
-    if (version !== null) return NextResponse.json(pageInkVersion(user, pageId, surface, z.coerce.number().int().min(1).parse(version)), noStore);
+    if (version !== null) return NextResponse.json(await pageInkVersion(user, pageId, surface, z.coerce.number().int().min(1).parse(version)), noStore);
     const from = url.searchParams.get("from");
-    return NextResponse.json(readPageInk(user, pageId, surface, from && /^[0-9a-f-]{36}\/[\w-]{1,40}$/i.test(from) ? from : null), noStore);
+    return NextResponse.json(await readPageInk(user, pageId, surface, from && /^[0-9a-f-]{36}\/[\w-]{1,40}$/i.test(from) ? from : null), noStore);
   } catch (e) {
     return failure(e);
   }
@@ -48,7 +48,7 @@ export const GET = withRequestLocale(async (req: Request, { params }: Context) =
 
 async function save(req: Request, { params }: Context) {
   try {
-    checkOrigin(req);
+    await checkOrigin(req);
     if (Number(req.headers.get("content-length") || 0) > INK_LIMITS.bytes * 2) throw new HttpError(413, "Anfrage zu groß.");
     const user = await requireUser();
     if (user.apiScope === "read") throw new HttpError(403, "Dieses API-Token darf nur lesen.");
@@ -58,8 +58,8 @@ async function save(req: Request, { params }: Context) {
     if (text.length > INK_LIMITS.bytes * 2) throw new HttpError(413, "Anfrage zu groß.");
     const body = JSON.parse(text);
     if (body && typeof body === "object" && body.doc === undefined && body.recognized !== undefined)
-      return NextResponse.json(savePageRecognized(user, pageId, surface, body), noStore);
-    return NextResponse.json(savePageInk(user, pageId, surface, body), noStore);
+      return NextResponse.json(await savePageRecognized(user, pageId, surface, body), noStore);
+    return NextResponse.json(await savePageInk(user, pageId, surface, body), noStore);
   } catch (e) {
     return failure(e);
   }

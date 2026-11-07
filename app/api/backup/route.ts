@@ -39,7 +39,7 @@ export async function GET(req: Request) {
         .string()
         .uuid()
         .parse(new URL(req.url).searchParams.get("workspace"));
-    const stream = trackStream(user, "archive", "Flowplan", exportArchiveStream(user, wid));
+    const stream = await trackStream(user, "archive", "Flowplan", await exportArchiveStream(user, wid));
     return new Response(Readable.toWeb(stream) as ReadableStream, {
       headers: {
         "Content-Type": "application/zip",
@@ -55,14 +55,14 @@ export async function POST(req: Request) {
   const dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "tmp");
   const file = resolve(dir, `upload-${randomUUID()}.zip`);
   try {
-    checkOrigin(req);
+    await checkOrigin(req);
     const user = await requireUser();
     if (user.apiScope === "read") throw new HttpError(403, "Dieses API-Token darf nur lesen.");
     const wid = z
       .string()
       .uuid()
       .parse(new URL(req.url).searchParams.get("workspace"));
-    requireMember(user, wid, "editor");
+    await requireMember(user, wid, "editor");
     if (Number(req.headers.get("content-length") || 0) > LARGE_ARCHIVE_LIMIT)
       throw new HttpError(413, "ZIP darf maximal 2 GB groß sein.");
     if (!req.body) throw new HttpError(400, "Archiv fehlt.");

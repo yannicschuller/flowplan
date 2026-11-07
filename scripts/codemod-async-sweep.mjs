@@ -111,6 +111,20 @@ function functionOfSymbol(symbol) {
     const init = unwrapParens(decl.initializer);
     if (ts.isArrowFunction(init) || ts.isFunctionExpression(init)) return init;
   }
+  // const { f } = await import("…") / = module: the property it names.
+  if (ts.isBindingElement(decl) && ts.isObjectBindingPattern(decl.parent)) {
+    const holder = decl.parent.parent;
+    const init = holder && (ts.isVariableDeclaration(holder) || ts.isParameter(holder)) ? holder.initializer : null;
+    if (init) {
+      let type = checker.getTypeAtLocation(init);
+      type = checker.getAwaitedType(type) ?? type;
+      const name = (decl.propertyName ?? decl.name).getText();
+      let prop = checker.getPropertyOfType(type, name);
+      if (prop && prop.flags & ts.SymbolFlags.Alias) prop = checker.getAliasedSymbol(prop);
+      if (prop && prop !== symbol) return functionOfSymbol(prop);
+    }
+    return null;
+  }
   if (ts.isShorthandPropertyAssignment(decl)) {
     const value = checker.getShorthandAssignmentValueSymbol(decl);
     if (value) return functionOfSymbol(value.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(value) : value);

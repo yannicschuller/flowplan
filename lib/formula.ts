@@ -643,7 +643,7 @@ export function evaluateFormula(
         "Unbekannte Datumseinheit. Erlaubt: years, months, weeks, days, hours, minutes, seconds.",
         node,
       );
-    return name as ReturnType<typeof unit>;
+    return name as Awaited<ReturnType<typeof unit>>;
   }
   function property(name: string, node: Span) {
     if (!Object.hasOwn(cells, name))

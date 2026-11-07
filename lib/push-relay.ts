@@ -214,11 +214,11 @@ const retrySeconds = (value: unknown) => {
 
 // The request exactly as it goes out: the body bytes and the headers that
 // sign them. Exported for tests.
-export function relayRequest(config: { relay: string; instance: string }, messages: RelayMessage[], now = Date.now()) {
+export async function relayRequest(config: { relay: string; instance: string }, messages: RelayMessage[], now = Date.now()) {
   if (!messages.length || messages.length > MAX_BATCH) throw new Error("1–100 messages per request");
   // requestId (§6.5): the relay refuses a repeated one (replay protection).
   const body = Buffer.from(JSON.stringify({ requestId: randomBytes(16).toString("base64url"), messages }), "utf8");
-  const { header } = signRelayRequest(config.instance, body, now);
+  const { header } = await signRelayRequest(config.instance, body, now);
   return {
     url: `${config.relay}/v1/send`,
     body,
@@ -250,7 +250,7 @@ export const sendToRelay: RelaySender = async (messages) => {
     messages.map(() => ({ status, ...(retryAfter ? { retryAfter } : {}), ...(reason ? { reason } : {}), ...(httpStatus ? { httpStatus } : {}) }));
   if (!config.enabled) return failed("error", undefined, "off");
   try {
-    const request = relayRequest(config, messages);
+    const request = await relayRequest(config, messages);
     const response = await fetch(request.url, {
       method: "POST",
       headers: request.headers,
@@ -319,7 +319,7 @@ export async function sendBatched(messages: RelayMessage[], send: RelaySender = 
       const result = answer[j] ?? { status: "error", reason: "response" };
       results.push(result);
       try {
-        notePushResult("relay", result.status, result.status === "ok" ? null : relayFailureCode(result));
+        await notePushResult("relay", result.status, result.status === "ok" ? null : relayFailureCode(result));
       } catch {}
     }
   }

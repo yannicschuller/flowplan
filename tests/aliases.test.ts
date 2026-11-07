@@ -20,34 +20,34 @@ const { importZip } = await import("../lib/zip-import");
 const { writeZip } = await import("../lib/archive");
 const { readExportZip } = await import("./helpers/read-export-zip");
 
-function account(name: string) {
+async function account(name: string) {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
   return { id: uid, name, email: `${name}@example.test`, groups: [], isAdmin: false, disabled: 0, created_at: "" } as Identity;
 }
-const owner = account("alias-owner"),
-  member = account("alias-member"),
-  viewer = account("alias-viewer");
-const wid = createWorkspace(owner.id, "Haus");
-run("INSERT INTO members VALUES(?,?,?)", wid, member.id, "editor");
-run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
-const team = bootstrap(owner, wid).spaces[0].id;
-const act = (input: Record<string, unknown>, as = owner) => command(as, input) as { id: string } & Record<string, unknown>;
-const page = (title: string, kind = "document", spaceId = team) => act({ action: "page.create", workspaceId: wid, spaceId, title, kind }).id;
-const write = (pageId: string, html: string) => run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), pageId);
-const html = (pageId: string) => String(one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", pageId)!.html);
-const pageOf = (pageId: string) => one<Page>("SELECT * FROM pages WHERE id=?", pageId)!;
-const withAliasField = (pageId: string, name = "Aliasse") => {
-  const d = database(pageId);
+const owner = await account("alias-owner"),
+  member = await account("alias-member"),
+  viewer = await account("alias-viewer");
+const wid = await createWorkspace(owner.id, "Haus");
+await run("INSERT INTO members VALUES(?,?,?)", wid, member.id, "editor");
+await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
+const team = (await bootstrap(owner, wid)).spaces[0].id;
+const act = async (input: Record<string, unknown>, as = owner) => (await command(as, input)) as { id: string } & Record<string, unknown>;
+const page = async (title: string, kind = "document", spaceId = team) => (await act({ action: "page.create", workspaceId: wid, spaceId, title, kind })).id;
+const write = async (pageId: string, html: string) => await run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), pageId);
+const html = async (pageId: string) => String((await one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", pageId))!.html);
+const pageOf = async (pageId: string) => (await one<Page>("SELECT * FROM pages WHERE id=?", pageId))!;
+const withAliasField = async (pageId: string, name = "Aliasse") => {
+  const d = await database(pageId);
   const field = { id: `al${id().slice(0, 6)}`, name, type: "aliases" as const };
-  act({ action: "database.update", pageId, version: d.version, fields: [...d.fields, field], views: d.views });
+  await act({ action: "database.update", pageId, version: d.version, fields: [...d.fields, field], views: d.views });
   return field.id;
 };
 
-const chauffage = page("Chauffage");
-const notes = page("Notizen");
+const chauffage = await page("Chauffage");
+const notes = await page("Notizen");
 
-test("aliases are trimmed, deduplicated and limited", () => {
+test("aliases are trimmed, deduplicated and limited", async () => {
   assert.deepEqual(aliasList([" PAC ", "pac", "Pompe  à chaleur", "", 7]), ["PAC", "Pompe à chaleur", "7"]);
   assert.deepEqual(aliasList("PAC, Pompe à chaleur"), ["PAC", "Pompe à chaleur"]);
   assert.equal(aliasList(Array.from({ length: 30 }, (_, i) => `A${i}`)).length, 10);
@@ -55,42 +55,42 @@ test("aliases are trimmed, deduplicated and limited", () => {
   assert.throws(() => parseAliases(Array.from({ length: 11 }, (_, i) => `Name ${i}`)), /Höchstens 10 Aliasse/);
   assert.throws(() => parseAliases(["x".repeat(101)]), /höchstens 100 Zeichen/);
   // Page aliases: editors only.
-  const result = act({ action: "page.aliases", pageId: chauffage, aliases: ["PAC", "Pompe à chaleur", "pac"] });
+  const result = await act({ action: "page.aliases", pageId: chauffage, aliases: ["PAC", "Pompe à chaleur", "pac"] });
   assert.deepEqual(result.aliases, ["PAC", "Pompe à chaleur"]);
-  assert.deepEqual(pageAliases(pageOf(chauffage)), ["PAC", "Pompe à chaleur"]);
-  assert.throws(() => act({ action: "page.aliases", pageId: chauffage, aliases: ["X"] }, viewer), /Berechtigung|Schreibrechte|Rechte/);
+  assert.deepEqual(pageAliases(await pageOf(chauffage)), ["PAC", "Pompe à chaleur"]);
+  await assert.rejects(async () => await act({ action: "page.aliases", pageId: chauffage, aliases: ["X"] }, viewer), /Berechtigung|Schreibrechte|Rechte/);
   // One aliases property per database; its cells follow the same rules.
-  const db = page("Geräte", "database");
-  const fieldId = withAliasField(db);
-  const d = database(db);
-  assert.throws(
-    () => act({ action: "database.update", pageId: db, version: d.version, fields: [...d.fields, { id: "second", name: "Mehr", type: "aliases" }], views: d.views }),
+  const db = await page("Geräte", "database");
+  const fieldId = await withAliasField(db);
+  const d = await database(db);
+  await assert.rejects(
+    async () => await act({ action: "database.update", pageId: db, version: d.version, fields: [...d.fields, { id: "second", name: "Mehr", type: "aliases" }], views: d.views }),
     /höchstens eine Alias-Eigenschaft/,
   );
-  assert.throws(
-    () => act({ action: "row.create", pageId: db, cells: { title: "Kessel", [fieldId]: Array.from({ length: 12 }, (_, i) => `K${i}`) } }),
+  await assert.rejects(
+    async () => await act({ action: "row.create", pageId: db, cells: { title: "Kessel", [fieldId]: Array.from({ length: 12 }, (_, i) => `K${i}`) } }),
     /Höchstens 10 Aliasse/,
   );
-  const row = act({ action: "row.create", pageId: db, cells: { title: "Kessel", [fieldId]: [" Brenner ", "brenner"] } }).id;
-  assert.deepEqual(JSON.parse(one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", row)!.cells)[fieldId], ["Brenner"]);
+  const row = (await act({ action: "row.create", pageId: db, cells: { title: "Kessel", [fieldId]: [" Brenner ", "brenner"] } })).id;
+  assert.deepEqual(JSON.parse((await one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", row))!.cells)[fieldId], ["Brenner"]);
 });
 
-test("search finds pages and records by alias, with the real title and the alias", () => {
-  write(notes, "<p>Eine Pompe à chaleur ist eine Pompe à chaleur ist eine Pompe à chaleur.</p>");
-  const hits = searchWorkspace(member, wid, "Pompe à chaleur");
+test("search finds pages and records by alias, with the real title and the alias", async () => {
+  await write(notes, "<p>Eine Pompe à chaleur ist eine Pompe à chaleur ist eine Pompe à chaleur.</p>");
+  const hits = await searchWorkspace(member, wid, "Pompe à chaleur");
   assert.equal(hits[0].id, chauffage, "an alias weighs like the title");
   assert.equal(hits[0].title, "Chauffage");
   assert.equal(hits[0].alias, "Pompe à chaleur");
   assert.ok(hits.some((h) => h.id === notes && !h.alias));
   // Short queries (no trigram) match aliases too.
-  assert.equal(searchWorkspace(member, wid, "PA").find((h) => h.id === chauffage)?.alias, "PAC");
+  assert.equal((await searchWorkspace(member, wid, "PA")).find((h) => h.id === chauffage)?.alias, "PAC");
   // A title match shows no alias.
-  assert.equal(searchWorkspace(member, wid, "Chauffage").find((h) => h.id === chauffage)?.alias, undefined);
+  assert.equal((await searchWorkspace(member, wid, "Chauffage")).find((h) => h.id === chauffage)?.alias, undefined);
   // Records (the @ mention dialog searches with kind "row").
-  const db = page("Anlagen", "database");
-  const fieldId = withAliasField(db);
-  const row = act({ action: "row.create", pageId: db, cells: { title: "Heizung Keller", [fieldId]: ["Wärmepumpe", "WP"] } }).id;
-  const [record] = searchWorkspace(member, wid, "wärmepumpe", { kind: "row" });
+  const db = await page("Anlagen", "database");
+  const fieldId = await withAliasField(db);
+  const row = (await act({ action: "row.create", pageId: db, cells: { title: "Heizung Keller", [fieldId]: ["Wärmepumpe", "WP"] } })).id;
+  const [record] = await searchWorkspace(member, wid, "wärmepumpe", { kind: "row" });
   assert.equal(record.rowId, row);
   assert.equal(record.title, "Heizung Keller");
   assert.equal(record.alias, "Wärmepumpe");
@@ -98,63 +98,63 @@ test("search finds pages and records by alias, with the real title and the alias
   // The alias is not repeated in the body snippet.
   assert.doesNotMatch(record.snippet, /Wärmepumpe/);
   // Changing the aliases updates the index.
-  act({ action: "row.update", pageId: db, rowId: row, version: one<{ version: number }>("SELECT version FROM rows WHERE id=?", row)!.version, cells: { [fieldId]: ["Erdwärme"] } });
-  assert.deepEqual(searchWorkspace(member, wid, "wärmepumpe", { kind: "row" }), []);
-  assert.equal(searchWorkspace(member, wid, "erdwärme", { kind: "row" })[0]?.alias, "Erdwärme");
+  await act({ action: "row.update", pageId: db, rowId: row, version: (await one<{ version: number }>("SELECT version FROM rows WHERE id=?", row))!.version, cells: { [fieldId]: ["Erdwärme"] } });
+  assert.deepEqual(await searchWorkspace(member, wid, "wärmepumpe", { kind: "row" }), []);
+  assert.equal((await searchWorkspace(member, wid, "erdwärme", { kind: "row" }))[0]?.alias, "Erdwärme");
   assert.equal(matchedAlias("Chauffage", ["Pompe à chaleur"], "pompe a"), "Pompe à chaleur");
 });
 
-test("aliases of items the person may not read are not found", () => {
-  const secret = act({ action: "space.create", workspaceId: wid, name: "Privat", private: true }).id;
-  const hidden = page("Gehaltsliste", "document", secret);
-  act({ action: "page.aliases", pageId: hidden, aliases: ["Lohnzettelgeheimnis"] });
-  assert.equal(searchWorkspace(owner, wid, "Lohnzettelgeheimnis")[0]?.id, hidden);
-  assert.deepEqual(searchWorkspace(member, wid, "Lohnzettelgeheimnis"), []);
-  const db = page("Personal", "database", secret);
-  const fieldId = withAliasField(db);
-  act({ action: "row.create", pageId: db, cells: { title: "Vertrag", [fieldId]: ["Geheimvertragsalias"] } });
-  assert.equal(searchWorkspace(owner, wid, "Geheimvertragsalias", { kind: "row" }).length, 1);
-  assert.deepEqual(searchWorkspace(member, wid, "Geheimvertragsalias", { kind: "row" }), []);
+test("aliases of items the person may not read are not found", async () => {
+  const secret = (await act({ action: "space.create", workspaceId: wid, name: "Privat", private: true })).id;
+  const hidden = await page("Gehaltsliste", "document", secret);
+  await act({ action: "page.aliases", pageId: hidden, aliases: ["Lohnzettelgeheimnis"] });
+  assert.equal((await searchWorkspace(owner, wid, "Lohnzettelgeheimnis"))[0]?.id, hidden);
+  assert.deepEqual(await searchWorkspace(member, wid, "Lohnzettelgeheimnis"), []);
+  const db = await page("Personal", "database", secret);
+  const fieldId = await withAliasField(db);
+  await act({ action: "row.create", pageId: db, cells: { title: "Vertrag", [fieldId]: ["Geheimvertragsalias"] } });
+  assert.equal((await searchWorkspace(owner, wid, "Geheimvertragsalias", { kind: "row" })).length, 1);
+  assert.deepEqual(await searchWorkspace(member, wid, "Geheimvertragsalias", { kind: "row" }), []);
   // Unlinked mentions only come from documents the person may read.
-  const note = page("Privatnotiz", "document", secret);
-  write(note, "<p>Die PAC läuft.</p>");
-  assert.ok(unlinkedMentions(owner, pageOf(chauffage)).some((m) => m.id === note));
-  assert.ok(!unlinkedMentions(member, pageOf(chauffage)).some((m) => m.id === note));
-  write(note, "<p>leer</p>");
+  const note = await page("Privatnotiz", "document", secret);
+  await write(note, "<p>Die PAC läuft.</p>");
+  assert.ok((await unlinkedMentions(owner, await pageOf(chauffage))).some((m) => m.id === note));
+  assert.ok(!(await unlinkedMentions(member, await pageOf(chauffage))).some((m) => m.id === note));
+  await write(note, "<p>leer</p>");
 });
 
-test("unlinked mentions find aliases as whole words and keep the text when linking", () => {
+test("unlinked mentions find aliases as whole words and keep the text when linking", async () => {
   assert.equal(aliasIndex("Die PAC läuft", "pac"), 4);
   assert.equal(aliasIndex("PACKAGE und Spacer", "PAC"), -1);
   assert.equal(aliasIndex("A und B", "A"), -1, "too short");
-  const visit = page("Wartung");
-  write(visit, "<p>Ein PACKAGE kam an. Danach haben wir die pac gewartet.</p>");
-  const found = unlinkedMentions(member, pageOf(chauffage));
+  const visit = await page("Wartung");
+  await write(visit, "<p>Ein PACKAGE kam an. Danach haben wir die pac gewartet.</p>");
+  const found = await unlinkedMentions(member, await pageOf(chauffage));
   const mention = found.find((m) => m.id === visit);
   assert.equal(mention?.alias, "PAC");
   assert.match(mention!.snippet, /die pac gewartet/);
-  act({ action: "mention.link", pageId: visit, targetId: chauffage }, member);
-  assert.match(html(visit), new RegExp(`PACKAGE kam an\\. Danach haben wir die <a[^>]*href="/#page=${chauffage}"[^>]*>pac</a> gewartet`));
-  assert.ok(!unlinkedMentions(member, pageOf(chauffage)).some((m) => m.id === visit));
+  await act({ action: "mention.link", pageId: visit, targetId: chauffage }, member);
+  assert.match(await html(visit), new RegExp(`PACKAGE kam an\\. Danach haben wir die <a[^>]*href="/#page=${chauffage}"[^>]*>pac</a> gewartet`));
+  assert.ok(!(await unlinkedMentions(member, await pageOf(chauffage))).some((m) => m.id === visit));
   // The title still comes first when both are there.
-  write(visit, "<p>PAC oder Chauffage?</p>");
-  act({ action: "mention.link", pageId: visit, targetId: chauffage }, member);
-  assert.match(html(visit), /PAC oder <a[^>]*>Chauffage<\/a>\?/);
+  await write(visit, "<p>PAC oder Chauffage?</p>");
+  await act({ action: "mention.link", pageId: visit, targetId: chauffage }, member);
+  assert.match(await html(visit), /PAC oder <a[^>]*>Chauffage<\/a>\?/);
 });
 
 test("Obsidian aliases round trip through Markdown for records", async () => {
-  const db = page("Bereich Haus", "database");
+  const db = await page("Bereich Haus", "database");
   const note = Buffer.from("---\naliases: [PAC, Pompe à chaleur]\nalias: Heizpumpe\ntags: [heating]\n---\n# Chauffage\n\nEntretien annuel.\n");
   const entries = await markdownEntries("Chauffage.md", note);
   // Without an aliases property, the import offers to create one.
-  const plan = importMarkdownRecords(owner, db, entries, { dryRun: true });
+  const plan = await importMarkdownRecords(owner, db, entries, { dryRun: true });
   assert.deepEqual(plan.missing.find((m) => m.type === "aliases"), { name: "Aliases", type: "aliases" });
   assert.ok(!plan.missing.some((m) => m.name.toLowerCase() === "alias"));
-  importMarkdownRecords(owner, db, entries, { createMissing: true });
-  const fields = database(db).fields;
+  await importMarkdownRecords(owner, db, entries, { createMissing: true });
+  const fields = (await database(db)).fields;
   const aliasProperty = fields.find((f) => f.type === "aliases")!;
   assert.equal(fields.filter((f) => f.type === "aliases").length, 1);
-  const row = one<{ id: string; cells: string }>("SELECT id,cells FROM rows WHERE page_id=?", db)!;
+  const row = (await one<{ id: string; cells: string }>("SELECT id,cells FROM rows WHERE page_id=?", db))!;
   assert.deepEqual(JSON.parse(row.cells)[aliasProperty.id], ["PAC", "Pompe à chaleur", "Heizpumpe"]);
   // Export writes Obsidian's key; the import reads it back into the same property.
   const { bytes } = await exportMarkdown(owner, { pageId: db, format: "zip", includeSubpages: false });
@@ -163,11 +163,11 @@ test("Obsidian aliases round trip through Markdown for records", async () => {
   const { data } = splitFrontmatter(file.toString("utf8"));
   assert.deepEqual(data.aliases, ["PAC", "Pompe à chaleur", "Heizpumpe"]);
   assert.ok(!(aliasProperty.name in data));
-  const again = importMarkdownRecords(owner, db, files, { dryRun: true });
+  const again = await importMarkdownRecords(owner, db, files, { dryRun: true });
   assert.deepEqual(again.missing, []);
   assert.ok(again.matched.includes(aliasProperty.name));
-  importMarkdownRecords(owner, db, files, { updateExisting: true });
-  assert.deepEqual(JSON.parse(one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", row.id)!.cells)[aliasProperty.id], ["PAC", "Pompe à chaleur", "Heizpumpe"]);
+  await importMarkdownRecords(owner, db, files, { updateExisting: true });
+  assert.deepEqual(JSON.parse((await one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", row.id))!.cells)[aliasProperty.id], ["PAC", "Pompe à chaleur", "Heizpumpe"]);
   // One string means one alias list split at commas.
   assert.deepEqual(frontmatterAliases({ alias: "A1, B2" }), ["A1", "B2"]);
 });
@@ -186,19 +186,19 @@ test("page aliases go to frontmatter in the export and come back with a vault im
       ["Vault/Garage.md", Buffer.from("---\nalias: Carport\nstatus: done\n---\n# Garage\n\nText.\n")],
     ]),
   );
-  const space = act({ action: "space.create", workspaceId: wid, name: "Import" }).id;
+  const space = (await act({ action: "space.create", workspaceId: wid, name: "Import" })).id;
   await importZip(owner, wid, space, archive);
-  const imported = one<Page>("SELECT * FROM pages WHERE space_id=? AND title='Chauffage'", space)!;
+  const imported = (await one<Page>("SELECT * FROM pages WHERE space_id=? AND title='Chauffage'", space))!;
   assert.deepEqual(pageAliases(imported), ["PAC", "Pompe à chaleur"]);
-  assert.doesNotMatch(html(imported.id), /aliases/);
-  const garage = one<Page>("SELECT * FROM pages WHERE space_id=? AND title='Garage'", space)!;
+  assert.doesNotMatch(await html(imported.id), /aliases/);
+  const garage = (await one<Page>("SELECT * FROM pages WHERE space_id=? AND title='Garage'", space))!;
   assert.deepEqual(pageAliases(garage), ["Carport"]);
   // Other frontmatter becomes properties of the page (#70, the importer
   // owns the workspace), so the text stays without it.
-  assert.doesNotMatch(html(garage.id), /status/);
+  assert.doesNotMatch(await html(garage.id), /status/);
   assert.equal(
-    one<{ value: string }>("SELECT v.value FROM page_property_values v JOIN page_property_defs d ON d.id=v.property_id WHERE v.page_id=? AND d.name='status'", garage.id)?.value,
+    (await one<{ value: string }>("SELECT v.value FROM page_property_values v JOIN page_property_defs d ON d.id=v.property_id WHERE v.page_id=? AND d.name='status'", garage.id))?.value,
     JSON.stringify("done"),
   );
-  assert.equal(searchWorkspace(owner, wid, "Carport")[0]?.id, garage.id);
+  assert.equal((await searchWorkspace(owner, wid, "Carport"))[0]?.id, garage.id);
 });

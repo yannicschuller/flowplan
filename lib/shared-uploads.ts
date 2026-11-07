@@ -37,9 +37,9 @@ const DAY = 86400000;
 // Files per link in ten minutes: enough for a guest who drops a folder of
 // pictures, far from a script that fills the disk.
 export const GUEST_UPLOADS_PER_10_MIN = 20;
-function limitGuestUploads(token: string, now = Date.now()) {
+async function limitGuestUploads(token: string, now = Date.now()) {
   const recent = Number(
-    one<{ n: number }>("SELECT COUNT(*) n FROM share_uploads WHERE token=? AND created_at>?", token, now - 10 * 60_000)?.n || 0,
+    (await one<{ n: number }>("SELECT COUNT(*) n FROM share_uploads WHERE token=? AND created_at>?", token, now - 10 * 60_000))?.n || 0,
   );
   if (recent >= GUEST_UPLOADS_PER_10_MIN)
     throw new HttpError(429, "Zu viele Uploads in kurzer Zeit. Bitte in ein paar Minuten erneut versuchen.");
@@ -65,17 +65,17 @@ export async function guestUpload(token: string, pageId: string, file: File) {
   if (file.type === "text/plain" && data.includes(0))
     throw new HttpError(415, "Keine Textdatei.");
   const dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads");
-  return transaction(() => {
-    const { page, role } = publicPage(token, pageId);
+  return await transaction(async () => {
+    const { page, role } = await publicPage(token, pageId);
     if (role !== "editor")
       throw new HttpError(403, "Dieser Link erlaubt keine Uploads.");
     if (page.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
-    limitShareRequests(token);
-    limitGuestUploads(token);
-    purgeUnusedGuestUploads();
-    enforceQuota(page.workspace_id, data.length);
+    await limitShareRequests(token);
+    await limitGuestUploads(token);
+    await purgeUnusedGuestUploads();
+    await enforceQuota(page.workspace_id, data.length);
     // Independent of the workspace quota, which is unlimited by default.
-    takeAnonymousBudget(`share:${token}`, data.length);
+    await takeAnonymousBudget(`share:${token}`, data.length);
     const fid = id(),
       path = resolve(dir, fid);
     mkdirSync(dir, { recursive: true });
@@ -86,7 +86,7 @@ export async function guestUpload(token: string, pageId: string, file: File) {
     });
     writeFileSync(path, data, { flag: "wx" });
     const name = sanitizeFileName(file.name, `datei.${allowed[file.type]}`);
-    run(
+    await run(
       "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,NULL)",
       fid,
       page.id,
@@ -94,13 +94,13 @@ export async function guestUpload(token: string, pageId: string, file: File) {
       file.type,
       data.length,
     );
-    run(
+    await run(
       "INSERT INTO share_uploads(file_id,token,created_at) VALUES(?,?,?)",
       fid,
       token,
       Date.now(),
     );
-    audit("guest", "share.upload", page.id, name);
+    await audit("guest", "share.upload", page.id, name);
     return {
       url: `/api/share/${token}/files/${fid}`,
       name,
@@ -110,8 +110,8 @@ export async function guestUpload(token: string, pageId: string, file: File) {
 }
 // Guest uploads not referenced by any document or record after a day are
 // deleted.
-export function purgeUnusedGuestUploads(now = Date.now()) {
-  const stale = all<{ id: string; page_id: string }>(
+export async function purgeUnusedGuestUploads(now = Date.now()) {
+  const stale = await all<{ id: string; page_id: string }>(
     `SELECT f.id,f.page_id FROM share_uploads s JOIN files f ON f.id=s.file_id
      WHERE s.created_at<? LIMIT 50`,
     now - DAY,
@@ -119,7 +119,7 @@ export function purgeUnusedGuestUploads(now = Date.now()) {
   const dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads");
   for (const f of stale) {
     const needle = `%/api/files/${f.id}%`;
-    const used = all(
+    const used = (await all(
       `SELECT 1 FROM documents WHERE page_id=? AND html LIKE ?
        UNION ALL SELECT 1 FROM row_documents d JOIN rows r ON r.id=d.row_id WHERE r.page_id=? AND d.html LIKE ?
        UNION ALL SELECT 1 FROM rows WHERE page_id=? AND cells LIKE ?
@@ -131,10 +131,10 @@ export function purgeUnusedGuestUploads(now = Date.now()) {
       // Files properties of records keep their uploads too.
       f.page_id,
       needle,
-    ).length;
-    if (used) run("DELETE FROM share_uploads WHERE file_id=?", f.id);
+    )).length;
+    if (used) await run("DELETE FROM share_uploads WHERE file_id=?", f.id);
     else {
-      run("DELETE FROM files WHERE id=?", f.id);
+      await run("DELETE FROM files WHERE id=?", f.id);
       try {
         unlinkSync(resolve(dir, f.id));
       } catch {}

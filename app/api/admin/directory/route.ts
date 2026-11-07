@@ -21,12 +21,12 @@ async function admin() {
   requireAdmin(user);
   return user;
 }
-const overview = () => ({ scim: scimOverview(), ldap: ldapStatus(), contacts: contactsLdapStatus() });
+const overview = async () => ({ scim: await scimOverview(), ldap: await ldapStatus(), contacts: await contactsLdapStatus() });
 
 export async function GET() {
   try {
     await admin();
-    return Response.json(overview(), { headers: { "Cache-Control": "no-store" } });
+    return Response.json(await overview(), { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     return failure(e);
   }
@@ -34,27 +34,27 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    checkOrigin(req);
+    await checkOrigin(req);
     const user = await admin();
     const body = (await req.json().catch(() => ({}))) as { action?: unknown; name?: unknown; id?: unknown; settings?: unknown };
     switch (body.action) {
       case "scim.token.create":
-        return Response.json({ ...createScimToken(user.id, body.name), ...overview() }, { headers: { "Cache-Control": "no-store" } });
+        return Response.json({ ...(await createScimToken(user.id, body.name)), ...(await overview()) }, { headers: { "Cache-Control": "no-store" } });
       case "scim.token.revoke":
-        revokeScimToken(user.id, body.id);
-        return Response.json(overview());
+        await revokeScimToken(user.id, body.id);
+        return Response.json(await overview());
       case "ldap.test":
-        return Response.json({ test: await testLdapConnection(), ...overview() });
+        return Response.json({ test: await testLdapConnection(), ...(await overview()) });
       case "ldap.sync":
-        return Response.json({ sync: await syncLdapAccounts(), ...overview() });
+        return Response.json({ sync: await syncLdapAccounts(), ...(await overview()) });
       // Contacts from the directory (lib/contacts-ldap.ts): base DN, filter,
       // interval and on/off; the connection test uses that base.
       case "contacts.ldap.save":
-        saveContactsLdapSettings(user, body.settings);
-        return Response.json(overview());
+        await saveContactsLdapSettings(user, body.settings);
+        return Response.json(await overview());
       case "contacts.ldap.test": {
-        const config = contactsLdapConfig();
-        return Response.json({ test: config ? { ...(await ldapTest(config)), at: Date.now() } : { ok: false, ms: 0, error: "LDAP is not configured", at: Date.now() }, ...overview() });
+        const config = await contactsLdapConfig();
+        return Response.json({ test: config ? { ...(await ldapTest(config)), at: Date.now() } : { ok: false, ms: 0, error: "LDAP is not configured", at: Date.now() }, ...(await overview()) });
       }
       default:
         throw new HttpError(400, "Unbekannte Aktion.");

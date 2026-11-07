@@ -21,11 +21,11 @@ export const isDesktopChallenge = (value: unknown): value is string =>
 export const desktopReturnPath = (challenge: string) =>
   `/api/auth/desktop?challenge=${challenge}`;
 
-export function createDesktopCode(userId: string, groups: string[], challenge: string, authenticatedAt: number | null = null) {
+export async function createDesktopCode(userId: string, groups: string[], challenge: string, authenticatedAt: number | null = null) {
   if (!isDesktopChallenge(challenge)) throw new Error("invalid challenge");
   const code = randomBytes(32).toString("base64url");
-  run("DELETE FROM auth_challenges WHERE expires<?", Date.now());
-  run(
+  await run("DELETE FROM auth_challenges WHERE expires<?", Date.now());
+  await run(
     "INSERT INTO auth_challenges(id,challenge,user_id,kind,expires) VALUES(?,?,?,?,?)",
     hash(code),
     JSON.stringify({ challenge, groups, authenticatedAt }),
@@ -36,15 +36,15 @@ export function createDesktopCode(userId: string, groups: string[], challenge: s
   return code;
 }
 
-export function redeemDesktopCode(code: unknown, verifier: unknown) {
+export async function redeemDesktopCode(code: unknown, verifier: unknown) {
   if (typeof code !== "string" || typeof verifier !== "string" || code.length > 100 || verifier.length > 200) return null;
-  const row = one<{ challenge: string; user_id: string; expires: number }>(
+  const row = await one<{ challenge: string; user_id: string; expires: number }>(
     "SELECT challenge,user_id,expires FROM auth_challenges WHERE id=? AND kind='desktop'",
     hash(code),
   );
   if (!row) return null;
   // Single use, whatever the outcome.
-  run("DELETE FROM auth_challenges WHERE id=?", hash(code));
+  await run("DELETE FROM auth_challenges WHERE id=?", hash(code));
   if (row.expires < Date.now()) return null;
   const { challenge, groups, authenticatedAt } = JSON.parse(row.challenge) as { challenge: string; groups: string[]; authenticatedAt?: number | null };
   const expected = Buffer.from(challenge);

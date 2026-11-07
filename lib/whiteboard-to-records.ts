@@ -24,17 +24,17 @@ import type { Identity } from "./types";
 
 export type ToRecordsResult = { records: { itemId: string; rowId: string; created: boolean }[] };
 
-export function notesToRecords(user: Identity, raw: unknown): ToRecordsResult {
+export async function notesToRecords(user: Identity, raw: unknown): Promise<ToRecordsResult> {
   const b = toRecordsInput.parse(raw);
-  const board = requirePage(user, b.pageId, true);
+  const board = await requirePage(user, b.pageId, true);
   if (board.kind !== "whiteboard") throw new HttpError(400, "Kein Whiteboard.");
   if (board.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
-  const db = requirePage(user, b.databaseId, true);
+  const db = await requirePage(user, b.databaseId, true);
   if (db.kind !== "database") throw new HttpError(400, "Keine Datenbank.");
   if (db.workspace_id !== board.workspace_id) throw new HttpError(404, "Seite nicht gefunden.");
   if (db.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
-  requireUnlocked(user, db);
-  const fields = database(db.id).fields;
+  await requireUnlocked(user, db);
+  const fields = (await database(db.id)).fields;
   const title = fields[0];
   if (!title) throw new HttpError(400, "Eigenschaft fehlt.");
   const colorField = b.colorField ? fields.find((f) => f.id === b.colorField && f.type === "select") : undefined;
@@ -43,7 +43,7 @@ export function notesToRecords(user: Identity, raw: unknown): ToRecordsResult {
   if (b.personField && !personField) throw new HttpError(400, "Eigenschaft fehlt.");
   const records: ToRecordsResult["records"] = [];
   for (const note of b.records) {
-    const existing = one<{ page_id: string }>("SELECT page_id FROM rows WHERE id=?", note.rowId);
+    const existing = await one<{ page_id: string }>("SELECT page_id FROM rows WHERE id=?", note.rowId);
     if (existing?.page_id === db.id) {
       records.push({ itemId: note.itemId, rowId: note.rowId, created: false });
       continue;
@@ -56,11 +56,11 @@ export function notesToRecords(user: Identity, raw: unknown): ToRecordsResult {
       if (option) given[colorField.id] = option;
     }
     // Authors who are no member of the workspace (any more) stay empty.
-    if (personField && note.author && one("SELECT 1 FROM members WHERE workspace_id=? AND user_id=?", db.workspace_id, note.author))
+    if (personField && note.author && await one("SELECT 1 FROM members WHERE workspace_id=? AND user_id=?", db.workspace_id, note.author))
       given[personField.id] = note.author;
-    const checked = Object.keys(given).length ? validateCellPatch(user, db, fields, given) : {};
-    command(user, { action: "row.create", pageId: db.id, rowId: note.rowId, cells: { ...checked, [title.id]: text } }, true);
-    if (body) replaceRowDocument(note.rowId, body.split(/\n{2,}/).map((p) => `<p>${escaped(p).replace(/\n/g, "<br>")}</p>`).join(""), user.id);
+    const checked = Object.keys(given).length ? (await validateCellPatch(user, db, fields, given)) : {};
+    await command(user, { action: "row.create", pageId: db.id, rowId: note.rowId, cells: { ...checked, [title.id]: text } }, true);
+    if (body) await replaceRowDocument(note.rowId, body.split(/\n{2,}/).map((p) => `<p>${escaped(p).replace(/\n/g, "<br>")}</p>`).join(""), user.id);
     records.push({ itemId: note.itemId, rowId: note.rowId, created: true });
   }
   return { records };

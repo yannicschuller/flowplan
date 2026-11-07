@@ -14,6 +14,7 @@ import { canManageSpace } from "./workspace-lifecycle";
 import { documentKey, publishEncryptedUpdate } from "./document-live";
 import type { Identity, Page, Space } from "./types";
 import { ENCRYPTED_TITLE } from "./e2ee";
+import { filterAsync, mapAsync } from "./each-async";
 
 export { ENCRYPTED_TITLE };
 export const PLAINTEXT_REFUSED = "Für verschlüsselte Seiten nicht verfügbar.";
@@ -61,33 +62,33 @@ const titleCipher = z
 // ---- What is encrypted ----
 
 type SpaceFlags = Space & { encrypted?: number; key_version?: number; encrypt_titles?: number; rotate_pending?: number };
-export function encryptedSpace(spaceId: string | null | undefined): SpaceFlags | null {
+export async function encryptedSpace(spaceId: string | null | undefined): Promise<SpaceFlags | null> {
   if (!spaceId) return null;
-  const space = one<SpaceFlags>("SELECT * FROM spaces WHERE id=?", spaceId);
+  const space = await one<SpaceFlags>("SELECT * FROM spaces WHERE id=?", spaceId);
   return space?.encrypted ? space : null;
 }
-export function isEncryptedPage(page: Pick<Page, "space_id"> | null | undefined) {
-  return !!page && !!encryptedSpace(page.space_id);
+export async function isEncryptedPage(page: Pick<Page, "space_id"> | null | undefined) {
+  return !!page && !!(await encryptedSpace(page.space_id));
 }
 // For every route that hands out or takes content as plaintext.
-export function requirePlaintext(page: Pick<Page, "space_id"> | null | undefined) {
-  if (isEncryptedPage(page)) throw new HttpError(409, PLAINTEXT_REFUSED);
+export async function requirePlaintext(page: Pick<Page, "space_id"> | null | undefined) {
+  if (await isEncryptedPage(page)) throw new HttpError(409, PLAINTEXT_REFUSED);
 }
-export function requirePlaintextSpace(space: Pick<Space, "id"> | null | undefined) {
-  if (space && encryptedSpace(space.id)) throw new HttpError(409, PLAINTEXT_REFUSED);
+export async function requirePlaintextSpace(space: Pick<Space, "id"> | null | undefined) {
+  if (space && await encryptedSpace(space.id)) throw new HttpError(409, PLAINTEXT_REFUSED);
 }
-export function encryptedPageIds(workspaceId: string) {
+export async function encryptedPageIds(workspaceId: string) {
   return new Set(
-    all<{ id: string }>("SELECT p.id FROM pages p JOIN spaces s ON s.id=p.space_id WHERE p.workspace_id=? AND s.encrypted=1", workspaceId).map(
+    (await all<{ id: string }>("SELECT p.id FROM pages p JOIN spaces s ON s.id=p.space_id WHERE p.workspace_id=? AND s.encrypted=1", workspaceId)).map(
       (r) => r.id,
     ),
   );
 }
 // Webhook payloads name an encrypted page, never its content.
-export function metadataOnly<T extends Record<string, unknown> & { pageId?: string }>(data: T): T | Record<string, unknown> {
+export async function metadataOnly<T extends Record<string, unknown> & { pageId?: string }>(data: T): Promise<T | Record<string, unknown>> {
   if (!data.pageId) return data;
-  const page = one<Page>("SELECT * FROM pages WHERE id=?", data.pageId);
-  if (!page || !isEncryptedPage(page)) return data;
+  const page = await one<Page>("SELECT * FROM pages WHERE id=?", data.pageId);
+  if (!page || !(await isEncryptedPage(page))) return data;
   return {
     pageId: data.pageId,
     ...(typeof data.rowId === "string" ? { rowId: data.rowId } : {}),
@@ -129,16 +130,16 @@ const ALLOWED = new Set([
 ]);
 const PAGE_KEYS = ["pageId", "targetId", "parentId", "resourceId", "journalId", "sourcePageId", "targetPageId", "databaseId", "rootId"];
 const SPACE_KEYS = ["spaceId", "resourceId", "targetSpaceId"];
-export function guardEncryptedCommand(action: string, b: Record<string, unknown>) {
+export async function guardEncryptedCommand(action: string, b: Record<string, unknown>) {
   const ids = (keys: string[]) => keys.map((key) => b[key]).filter((value): value is string => typeof value === "string" && value.length <= 100);
   const pageIds = [...ids(PAGE_KEYS), ...(Array.isArray(b.pageIds) ? b.pageIds.filter((v): v is string => typeof v === "string") : [])];
   const touched: string[] = [];
   for (const pid of pageIds) {
-    const page = one<{ space_id: string }>("SELECT space_id FROM pages WHERE id=?", pid);
+    const page = await one<{ space_id: string }>("SELECT space_id FROM pages WHERE id=?", pid);
     if (page) touched.push(page.space_id);
   }
-  for (const sid of ids(SPACE_KEYS)) if (one("SELECT 1 FROM spaces WHERE id=?", sid)) touched.push(sid);
-  const encrypted = touched.map((sid) => encryptedSpace(sid)).filter((s): s is SpaceFlags => !!s);
+  for (const sid of ids(SPACE_KEYS)) if (await one("SELECT 1 FROM spaces WHERE id=?", sid)) touched.push(sid);
+  const encrypted = (await mapAsync(touched, async (sid) => await encryptedSpace(sid))).filter((s): s is SpaceFlags => !!s);
   if (!encrypted.length) return;
   if (!ALLOWED.has(action)) throw new HttpError(409, PLAINTEXT_REFUSED);
   // Everything one command touches stays inside the same encrypted space:
@@ -166,8 +167,8 @@ export function guardEncryptedCommand(action: string, b: Record<string, unknown>
 // ---- Identities ----
 
 type IdentityRow = { user_id: string; public_key: string; wrapped_private: string; recovery_wrapped: string; version: number };
-export function identityOf(userId: string) {
-  const row = one<IdentityRow>("SELECT * FROM e2ee_identities WHERE user_id=?", userId);
+export async function identityOf(userId: string) {
+  const row = await one<IdentityRow>("SELECT * FROM e2ee_identities WHERE user_id=?", userId);
   return row
     ? {
         publicKey: row.public_key,
@@ -178,39 +179,39 @@ export function identityOf(userId: string) {
     : null;
 }
 
-function requireIdentity(userId: string) {
-  const identity = one<IdentityRow>("SELECT * FROM e2ee_identities WHERE user_id=?", userId);
+async function requireIdentity(userId: string) {
+  const identity = await one<IdentityRow>("SELECT * FROM e2ee_identities WHERE user_id=?", userId);
   if (!identity) throw new HttpError(409, "Zuerst die Verschlüsselung einrichten.");
   return identity;
 }
 
 // ---- Spaces and their keys ----
 
-function heldVersions(spaceId: string, userId: string) {
-  return all<{ key_version: number }>("SELECT key_version FROM e2ee_space_keys WHERE space_id=? AND user_id=? ORDER BY key_version", spaceId, userId).map(
+async function heldVersions(spaceId: string, userId: string) {
+  return (await all<{ key_version: number }>("SELECT key_version FROM e2ee_space_keys WHERE space_id=? AND user_id=? ORDER BY key_version", spaceId, userId)).map(
     (r) => r.key_version,
   );
 }
-function holders(spaceId: string, version: number) {
-  return all<{ user_id: string }>("SELECT user_id FROM e2ee_space_keys WHERE space_id=? AND key_version=?", spaceId, version).map((r) => r.user_id);
+async function holders(spaceId: string, version: number) {
+  return (await all<{ user_id: string }>("SELECT user_id FROM e2ee_space_keys WHERE space_id=? AND key_version=?", spaceId, version)).map((r) => r.user_id);
 }
-function requireEncryptedSpace(user: Identity, spaceId: string) {
-  const space = encryptedSpace(spaceId);
+async function requireEncryptedSpace(user: Identity, spaceId: string) {
+  const space = await encryptedSpace(spaceId);
   if (!space || space.deleted_at) throw new HttpError(404, "Bereich nicht gefunden.");
-  if (!spaceRole(user, space)) throw new HttpError(403, "Kein Zugriff auf Bereich.");
+  if (!(await spaceRole(user, space))) throw new HttpError(403, "Kein Zugriff auf Bereich.");
   return space;
 }
-function requireHolder(user: Identity, space: SpaceFlags) {
-  if (!heldVersions(space.id, user.id).includes(space.key_version!))
+async function requireHolder(user: Identity, space: SpaceFlags) {
+  if (!(await heldVersions(space.id, user.id)).includes(space.key_version!))
     throw new HttpError(403, "Dir fehlt der Schlüssel dieses Bereichs. Ein Mitglied muss dich hinzufügen.");
 }
 
 // Called by space.create right after the space row exists.
-export function makeSpaceEncrypted(user: Identity, spaceId: string, input: unknown) {
+export async function makeSpaceEncrypted(user: Identity, spaceId: string, input: unknown) {
   const data = z.object({ key: sealedKey, encryptTitles: z.boolean().optional() }).parse(input);
-  requireIdentity(user.id);
-  run("UPDATE spaces SET encrypted=1,key_version=1,encrypt_titles=?,visibility='private' WHERE id=?", data.encryptTitles ? 1 : 0, spaceId);
-  run(
+  await requireIdentity(user.id);
+  await run("UPDATE spaces SET encrypted=1,key_version=1,encrypt_titles=?,visibility='private' WHERE id=?", data.encryptTitles ? 1 : 0, spaceId);
+  await run(
     "INSERT INTO e2ee_space_keys(space_id,user_id,key_version,sealed,sealed_by,created_at) VALUES(?,?,?,?,?,?)",
     spaceId,
     user.id,
@@ -219,35 +220,35 @@ export function makeSpaceEncrypted(user: Identity, spaceId: string, input: unkno
     user.id,
     Date.now(),
   );
-  audit(user.id, "e2ee.space", spaceId);
+  await audit(user.id, "e2ee.space", spaceId);
 }
 
 // Called by page.create for a page of an encrypted space.
-export function afterEncryptedPageCreate(pageId: string, input: Record<string, unknown>) {
-  const page = one<Page>("SELECT * FROM pages WHERE id=?", pageId);
-  const space = encryptedSpace(page?.space_id);
+export async function afterEncryptedPageCreate(pageId: string, input: Record<string, unknown>) {
+  const page = await one<Page>("SELECT * FROM pages WHERE id=?", pageId);
+  const space = await encryptedSpace(page?.space_id);
   if (!page || !space) return;
   if (space.encrypt_titles) {
     const cipher = input.titleCipher === undefined ? null : titleCipher.parse(input.titleCipher);
     if (cipher && JSON.parse(cipher).v !== space.key_version) throw new HttpError(409, "Der Schlüssel des Bereichs wurde erneuert. Bitte neu laden.");
-    run("UPDATE pages SET title=?,title_cipher=? WHERE id=?", ENCRYPTED_TITLE, cipher, pageId);
+    await run("UPDATE pages SET title=?,title_cipher=? WHERE id=?", ENCRYPTED_TITLE, cipher, pageId);
   }
 }
 
 // What the browser needs to open a space: my sealed keys, the members
 // holding the current key (with public keys, for sealing a new one) and
 // the people who could be added.
-export function spaceKeys(user: Identity, spaceId: string) {
-  const space = requireEncryptedSpace(user, spaceId);
+export async function spaceKeys(user: Identity, spaceId: string) {
+  const space = await requireEncryptedSpace(user, spaceId);
   const current = space.key_version!;
-  const keyHolders = all<{ id: string; name: string; public_key: string | null }>(
+  const keyHolders = await all<{ id: string; name: string; public_key: string | null }>(
     `SELECT u.id,u.name,i.public_key FROM e2ee_space_keys k JOIN users u ON u.id=k.user_id
      LEFT JOIN e2ee_identities i ON i.user_id=u.id WHERE k.space_id=? AND k.key_version=? ORDER BY u.name`,
     space.id,
     current,
   );
   const holderIds = new Set(keyHolders.map((h) => h.id));
-  const manage = canManageSpace(user, space);
+  const manage = await canManageSpace(user, space);
   return {
     spaceId: space.id,
     keyVersion: current,
@@ -255,39 +256,39 @@ export function spaceKeys(user: Identity, spaceId: string) {
     rotatePending: !!space.rotate_pending,
     manage,
     ownerId: space.owner_id,
-    myKeys: all<{ key_version: number; sealed: string }>(
+    myKeys: (await all<{ key_version: number; sealed: string }>(
       "SELECT key_version,sealed FROM e2ee_space_keys WHERE space_id=? AND user_id=? ORDER BY key_version",
       space.id,
       user.id,
-    ).map((k) => ({ version: k.key_version, sealed: JSON.parse(k.sealed) })),
+    )).map((k) => ({ version: k.key_version, sealed: JSON.parse(k.sealed) })),
     holders: keyHolders.map((h) => ({ userId: h.id, name: h.name, publicKey: h.public_key })),
     // Workspace members with a key pair who do not hold the key yet.
     candidates: manage
-      ? all<{ id: string; name: string; email: string; public_key: string }>(
+      ? (await all<{ id: string; name: string; email: string; public_key: string }>(
           `SELECT u.id,u.name,u.email,i.public_key FROM members m JOIN users u ON u.id=m.user_id JOIN e2ee_identities i ON i.user_id=u.id
            WHERE m.workspace_id=? AND u.disabled=0 AND NOT EXISTS(SELECT 1 FROM workspace_guests g WHERE g.workspace_id=m.workspace_id AND g.user_id=u.id)
            ORDER BY u.name`,
           space.workspace_id,
-        )
+        ))
           .filter((u) => !holderIds.has(u.id))
           .map((u) => ({ userId: u.id, name: u.name, email: u.email, publicKey: u.public_key }))
       : [],
     // Members without a key pair cannot be added yet.
     withoutKeys: manage
-      ? all<{ id: string; name: string }>(
+      ? (await all<{ id: string; name: string }>(
           `SELECT u.id,u.name FROM members m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=? AND u.disabled=0
            AND NOT EXISTS(SELECT 1 FROM e2ee_identities i WHERE i.user_id=u.id) ORDER BY u.name`,
           space.workspace_id,
-        ).map((u) => ({ userId: u.id, name: u.name }))
+        )).map((u) => ({ userId: u.id, name: u.name }))
       : [],
   };
 }
 
 // ---- Document log ----
 
-function requireEncryptedDocument(user: Identity, pageId: string, write: boolean) {
-  const page = requirePage(user, pageId, write);
-  const space = encryptedSpace(page.space_id);
+async function requireEncryptedDocument(user: Identity, pageId: string, write: boolean) {
+  const page = await requirePage(user, pageId, write);
+  const space = await encryptedSpace(page.space_id);
   if (!space) throw new HttpError(400, "Keine verschlüsselte Seite.");
   if (page.kind !== "document") throw new HttpError(400, "Kein Dokument.");
   if (write && page.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
@@ -296,12 +297,12 @@ function requireEncryptedDocument(user: Identity, pageId: string, write: boolean
 const toB64 = (data: Uint8Array) => Buffer.from(data).toString("base64");
 
 // The snapshot (when the reader is behind it) and every update after.
-export function documentLog(user: Identity, pageId: string, after: number) {
-  const { page, space } = requireEncryptedDocument(user, pageId, false);
-  const snapshot = one<{ upto: number; key_version: number; data: Uint8Array }>("SELECT * FROM e2ee_snapshots WHERE page_id=?", page.id);
+export async function documentLog(user: Identity, pageId: string, after: number) {
+  const { page, space } = await requireEncryptedDocument(user, pageId, false);
+  const snapshot = await one<{ upto: number; key_version: number; data: Uint8Array }>("SELECT * FROM e2ee_snapshots WHERE page_id=?", page.id);
   const fromSnapshot = !!snapshot && after < snapshot.upto;
   const start = fromSnapshot ? snapshot!.upto : after;
-  const updates = all<{ seq: number; key_version: number; data: Uint8Array }>(
+  const updates = await all<{ seq: number; key_version: number; data: Uint8Array }>(
     "SELECT seq,key_version,data FROM e2ee_updates WHERE page_id=? AND seq>? ORDER BY seq LIMIT 5000",
     page.id,
     start,
@@ -312,7 +313,7 @@ export function documentLog(user: Identity, pageId: string, after: number) {
     updates: updates.map((u) => ({ seq: u.seq, version: u.key_version, data: toB64(u.data) })),
     // More than one answer holds: ask again from the last seq.
     more: updates.length === 5000,
-    pending: one<{ n: number }>("SELECT count(*) n FROM e2ee_updates WHERE page_id=?", page.id)!.n,
+    pending: (await one<{ n: number }>("SELECT count(*) n FROM e2ee_updates WHERE page_id=?", page.id))!.n,
   };
 }
 
@@ -326,13 +327,13 @@ function ciphertext(value: unknown) {
 
 // ---- Commands ----
 
-export function e2eeCommand(user: Identity, action: string, b: Record<string, unknown>, afterCommit: (() => void)[]): unknown {
+export async function e2eeCommand(user: Identity, action: string, b: Record<string, unknown>, afterCommit: (() => void)[]): Promise<unknown> {
   switch (action) {
     case "e2ee.identity.setup": {
       if (user.apiScope || user.demo) throw new HttpError(403, "Nicht erlaubt.");
       const data = z.object({ publicKey, wrappedPrivate: passphraseWrap, recoveryWrapped: recoveryWrap }).parse(b);
-      if (one("SELECT 1 FROM e2ee_identities WHERE user_id=?", user.id)) throw new HttpError(409, "Die Verschlüsselung ist bereits eingerichtet.");
-      run(
+      if (await one("SELECT 1 FROM e2ee_identities WHERE user_id=?", user.id)) throw new HttpError(409, "Die Verschlüsselung ist bereits eingerichtet.");
+      await run(
         "INSERT INTO e2ee_identities(user_id,public_key,wrapped_private,recovery_wrapped,version,created_at,updated_at) VALUES(?,?,?,?,1,?,?)",
         user.id,
         data.publicKey,
@@ -341,7 +342,7 @@ export function e2eeCommand(user: Identity, action: string, b: Record<string, un
         Date.now(),
         Date.now(),
       );
-      audit(user.id, "e2ee.identity.setup", user.id);
+      await audit(user.id, "e2ee.identity.setup", user.id);
       return { ok: true };
     }
     // New passphrase or new recovery key: the key pair stays, only its wraps change.
@@ -350,25 +351,25 @@ export function e2eeCommand(user: Identity, action: string, b: Record<string, un
       const data = z
         .object({ version: z.number().int(), wrappedPrivate: passphraseWrap.optional(), recoveryWrapped: recoveryWrap.optional() })
         .parse(b);
-      const current = requireIdentity(user.id);
+      const current = await requireIdentity(user.id);
       if (current.version !== data.version) throw new HttpError(409, "Die Schlüssel wurden inzwischen geändert. Bitte neu laden.");
-      run(
+      await run(
         "UPDATE e2ee_identities SET wrapped_private=?,recovery_wrapped=?,version=version+1,updated_at=? WHERE user_id=?",
         data.wrappedPrivate ? JSON.stringify(data.wrappedPrivate) : current.wrapped_private,
         data.recoveryWrapped ? JSON.stringify(data.recoveryWrapped) : current.recovery_wrapped,
         Date.now(),
         user.id,
       );
-      audit(user.id, "e2ee.identity.update", user.id);
+      await audit(user.id, "e2ee.identity.update", user.id);
       return { ok: true };
     }
     // Passphrase and recovery key both lost: start over. The keys of every
     // space are gone for this person; a member has to add them again.
     case "e2ee.identity.reset": {
       if (user.apiScope) throw new HttpError(403, "Nicht erlaubt.");
-      run("DELETE FROM e2ee_space_keys WHERE user_id=?", user.id);
-      run("DELETE FROM e2ee_identities WHERE user_id=?", user.id);
-      audit(user.id, "e2ee.identity.reset", user.id);
+      await run("DELETE FROM e2ee_space_keys WHERE user_id=?", user.id);
+      await run("DELETE FROM e2ee_identities WHERE user_id=?", user.id);
+      await audit(user.id, "e2ee.identity.reset", user.id);
       return { ok: true };
     }
     case "e2ee.member.add": {
@@ -380,20 +381,20 @@ export function e2eeCommand(user: Identity, action: string, b: Record<string, un
           keys: z.array(z.object({ version: z.number().int().min(1), sealed: sealedKey })).min(1).max(1000),
         })
         .parse(b);
-      const space = requireEncryptedSpace(user, data.spaceId);
-      if (!canManageSpace(user, space)) throw new HttpError(403, "Nur Bereichs- oder Arbeitsbereichseigentümer dürfen Mitglieder hinzufügen.");
-      requireHolder(user, space);
-      if (!memberRole({ ...user, id: data.userId }, space.workspace_id)) throw new HttpError(400, "Mitglied fehlt.");
-      if (!one("SELECT 1 FROM e2ee_identities WHERE user_id=?", data.userId))
+      const space = await requireEncryptedSpace(user, data.spaceId);
+      if (!(await canManageSpace(user, space))) throw new HttpError(403, "Nur Bereichs- oder Arbeitsbereichseigentümer dürfen Mitglieder hinzufügen.");
+      await requireHolder(user, space);
+      if (!(await memberRole({ ...user, id: data.userId }, space.workspace_id))) throw new HttpError(400, "Mitglied fehlt.");
+      if (!(await one("SELECT 1 FROM e2ee_identities WHERE user_id=?", data.userId)))
         throw new HttpError(409, "Diese Person hat die Verschlüsselung noch nicht eingerichtet.");
-      if (holders(space.id, space.key_version!).includes(data.userId)) throw new HttpError(409, "Diese Person hat den Schlüssel bereits.");
+      if ((await holders(space.id, space.key_version!)).includes(data.userId)) throw new HttpError(409, "Diese Person hat den Schlüssel bereits.");
       // Every key version I hold, so the new member reads older content too.
-      const mine = heldVersions(space.id, user.id);
+      const mine = await heldVersions(space.id, user.id);
       const given = [...new Set(data.keys.map((k) => k.version))].sort((a, b) => a - b);
       if (given.length !== data.keys.length || given.join() !== mine.join())
         throw new HttpError(409, "Die Schlüssel des Bereichs wurden inzwischen geändert. Bitte neu laden.");
       for (const key of data.keys)
-        run(
+        await run(
           "INSERT INTO e2ee_space_keys(space_id,user_id,key_version,sealed,sealed_by,created_at) VALUES(?,?,?,?,?,?) ON CONFLICT(space_id,user_id,key_version) DO UPDATE SET sealed=excluded.sealed,sealed_by=excluded.sealed_by",
           space.id,
           data.userId,
@@ -403,13 +404,13 @@ export function e2eeCommand(user: Identity, action: string, b: Record<string, un
           Date.now(),
         );
       if (space.owner_id !== data.userId)
-        run(
+        await run(
           "INSERT INTO grants(resource_id,user_id,group_id,role) VALUES(?,?,'',?) ON CONFLICT(resource_id,user_id,group_id) DO UPDATE SET role=excluded.role",
           space.id,
           data.userId,
           data.role,
         );
-      audit(user.id, "e2ee.member.add", space.id, data.userId);
+      await audit(user.id, "e2ee.member.add", space.id, data.userId);
       return { ok: true };
     }
     // Removing a member (or leaving): their grant and sealed keys go, and
@@ -417,14 +418,14 @@ export function e2eeCommand(user: Identity, action: string, b: Record<string, un
     // (e2ee.rotate, done right away by the remover's browser).
     case "e2ee.member.remove": {
       const data = z.object({ spaceId: uuid, userId: uuid }).parse(b);
-      const space = requireEncryptedSpace(user, data.spaceId);
-      if (data.userId !== user.id && !canManageSpace(user, space))
+      const space = await requireEncryptedSpace(user, data.spaceId);
+      if (data.userId !== user.id && !(await canManageSpace(user, space)))
         throw new HttpError(403, "Nur Bereichs- oder Arbeitsbereichseigentümer dürfen Mitglieder entfernen.");
       if (data.userId === space.owner_id) throw new HttpError(409, "Die Eigentümerin oder der Eigentümer des Bereichs bleibt Mitglied.");
-      run("DELETE FROM grants WHERE resource_id=? AND user_id=? AND group_id=''", space.id, data.userId);
-      run("DELETE FROM e2ee_space_keys WHERE space_id=? AND user_id=?", space.id, data.userId);
-      run("UPDATE spaces SET rotate_pending=1 WHERE id=?", space.id);
-      audit(user.id, "e2ee.member.remove", space.id, data.userId);
+      await run("DELETE FROM grants WHERE resource_id=? AND user_id=? AND group_id=''", space.id, data.userId);
+      await run("DELETE FROM e2ee_space_keys WHERE space_id=? AND user_id=?", space.id, data.userId);
+      await run("UPDATE spaces SET rotate_pending=1 WHERE id=?", space.id);
+      await audit(user.id, "e2ee.member.remove", space.id, data.userId);
       return { ok: true, rotate: true };
     }
     // A new space key for everyone who still holds the current one.
@@ -432,17 +433,16 @@ export function e2eeCommand(user: Identity, action: string, b: Record<string, un
       const data = z
         .object({ spaceId: uuid, version: z.number().int().min(2), keys: z.array(z.object({ userId: uuid, sealed: sealedKey })).min(1).max(10000) })
         .parse(b);
-      const space = requireEncryptedSpace(user, data.spaceId);
-      requireHolder(user, space);
+      const space = await requireEncryptedSpace(user, data.spaceId);
+      await requireHolder(user, space);
       if (data.version !== space.key_version! + 1) throw new HttpError(409, "Der Schlüssel des Bereichs wurde inzwischen erneuert. Bitte neu laden.");
-      const expected = holders(space.id, space.key_version!)
-        .filter((uid) => spaceRole({ ...user, id: uid }, space))
+      const expected = (await filterAsync(await holders(space.id, space.key_version!), async (uid) => await spaceRole({ ...user, id: uid }, space)))
         .sort();
       const given = data.keys.map((k) => k.userId).sort();
       if (new Set(given).size !== given.length || given.join() !== expected.join())
         throw new HttpError(409, "Die Mitglieder des Bereichs haben sich geändert. Bitte neu laden.");
       for (const key of data.keys)
-        run(
+        await run(
           "INSERT INTO e2ee_space_keys(space_id,user_id,key_version,sealed,sealed_by,created_at) VALUES(?,?,?,?,?,?)",
           space.id,
           key.userId,
@@ -451,29 +451,29 @@ export function e2eeCommand(user: Identity, action: string, b: Record<string, un
           user.id,
           Date.now(),
         );
-      run("UPDATE spaces SET key_version=?,rotate_pending=0 WHERE id=?", data.version, space.id);
-      audit(user.id, "e2ee.rotate", space.id, String(data.version));
+      await run("UPDATE spaces SET key_version=?,rotate_pending=0 WHERE id=?", data.version, space.id);
+      await audit(user.id, "e2ee.rotate", space.id, String(data.version));
       return { ok: true, keyVersion: data.version };
     }
     case "e2ee.append": {
       const pageId = uuid.parse(b.pageId);
       const version = z.number().int().parse(b.version);
-      const { page, space } = requireEncryptedDocument(user, pageId, true);
-      requireHolder(user, space);
+      const { page, space } = await requireEncryptedDocument(user, pageId, true);
+      await requireHolder(user, space);
       if (space.rotate_pending) throw new HttpError(409, "Der Schlüssel des Bereichs muss erneuert werden.");
       if (version !== space.key_version) throw new HttpError(409, "Der Schlüssel des Bereichs wurde erneuert. Bitte neu laden.");
       const data = ciphertext(b.data);
       const seq = Number(
-        one<{ seq: number }>(
+        (await one<{ seq: number }>(
           "INSERT INTO e2ee_updates(page_id,key_version,data,created_by,created_at) VALUES(?,?,?,?,?) RETURNING seq",
           page.id,
           version,
           data,
           user.id,
           Date.now(),
-        )!.seq,
+        ))!.seq,
       );
-      run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), page.id);
+      await run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), page.id);
       const client = typeof b.client === "string" && b.client.length <= 100 ? b.client : undefined;
       const encoded = data.toString("base64");
       afterCommit.push(() => publishEncryptedUpdate(documentKey(page.id, null, E2EE_GENERATION), { seq, version, data: encoded }, client));
@@ -485,14 +485,14 @@ export function e2eeCommand(user: Identity, action: string, b: Record<string, un
       const pageId = uuid.parse(b.pageId);
       const upto = z.number().int().min(1).parse(b.upto);
       const version = z.number().int().parse(b.version);
-      const { page, space } = requireEncryptedDocument(user, pageId, true);
-      requireHolder(user, space);
+      const { page, space } = await requireEncryptedDocument(user, pageId, true);
+      await requireHolder(user, space);
       if (version !== space.key_version) throw new HttpError(409, "Der Schlüssel des Bereichs wurde erneuert. Bitte neu laden.");
-      const last = one<{ seq: number | null }>("SELECT max(seq) seq FROM e2ee_updates WHERE page_id=?", page.id)?.seq;
-      const current = one<{ upto: number }>("SELECT upto FROM e2ee_snapshots WHERE page_id=?", page.id)?.upto || 0;
+      const last = (await one<{ seq: number | null }>("SELECT max(seq) seq FROM e2ee_updates WHERE page_id=?", page.id))?.seq;
+      const current = (await one<{ upto: number }>("SELECT upto FROM e2ee_snapshots WHERE page_id=?", page.id))?.upto || 0;
       if (!last || upto > last || upto <= current) throw new HttpError(409, "Inzwischen gibt es neuere Änderungen.");
       const data = ciphertext(b.data);
-      run(
+      await run(
         "INSERT INTO e2ee_snapshots(page_id,upto,key_version,data,created_by,created_at) VALUES(?,?,?,?,?,?) ON CONFLICT(page_id) DO UPDATE SET upto=excluded.upto,key_version=excluded.key_version,data=excluded.data,created_by=excluded.created_by,created_at=excluded.created_at",
         page.id,
         upto,
@@ -501,18 +501,18 @@ export function e2eeCommand(user: Identity, action: string, b: Record<string, un
         user.id,
         Date.now(),
       );
-      run("DELETE FROM e2ee_updates WHERE page_id=? AND seq<=?", page.id, upto);
+      await run("DELETE FROM e2ee_updates WHERE page_id=? AND seq<=?", page.id, upto);
       return { ok: true };
     }
     case "e2ee.title": {
       const pageId = uuid.parse(b.pageId);
-      const page = requirePage(user, pageId, true);
-      const space = encryptedSpace(page.space_id);
+      const page = await requirePage(user, pageId, true);
+      const space = await encryptedSpace(page.space_id);
       if (!space?.encrypt_titles) throw new HttpError(400, "In diesem Bereich sind Titel nicht verschlüsselt.");
-      requireHolder(user, space);
+      await requireHolder(user, space);
       const cipher = titleCipher.parse(b.cipher);
       if (JSON.parse(cipher).v !== space.key_version) throw new HttpError(409, "Der Schlüssel des Bereichs wurde erneuert. Bitte neu laden.");
-      run("UPDATE pages SET title=?,title_cipher=?,updated_at=? WHERE id=?", ENCRYPTED_TITLE, cipher, nowText(), page.id);
+      await run("UPDATE pages SET title=?,title_cipher=?,updated_at=? WHERE id=?", ENCRYPTED_TITLE, cipher, nowText(), page.id);
       return { ok: true };
     }
   }
@@ -521,11 +521,11 @@ export function e2eeCommand(user: Identity, action: string, b: Record<string, un
 
 // ---- Page data and the encrypted archive ----
 
-export function encryptedPageData(user: Identity, page: Page) {
-  const space = encryptedSpace(page.space_id)!;
+export async function encryptedPageData(user: Identity, page: Page) {
+  const space = (await encryptedSpace(page.space_id))!;
   return {
     page,
-    role: pageRole(user, page),
+    role: await pageRole(user, page),
     encrypted: {
       spaceId: space.id,
       keyVersion: space.key_version,
@@ -548,24 +548,24 @@ export function encryptedPageData(user: Identity, page: Page) {
 // Everything of an encrypted space as the server holds it: ciphertext,
 // sealed keys and my wrapped private key. Readable later with the
 // passphrase or recovery key alone (no server needed).
-export function encryptedArchive(user: Identity, spaceId: string) {
-  const space = requireEncryptedSpace(user, spaceId);
-  const pages = all<Page & { title_cipher: string | null }>(
+export async function encryptedArchive(user: Identity, spaceId: string) {
+  const space = await requireEncryptedSpace(user, spaceId);
+  const pages = await filterAsync(await all<Page & { title_cipher: string | null }>(
     "SELECT * FROM pages WHERE space_id=? AND deleted_at IS NULL ORDER BY position,id",
     space.id,
-  ).filter((page) => pageRole(user, page));
+  ), async (page) => await pageRole(user, page));
   return {
     format: "flowplan-e2ee-1",
     exportedAt: new Date().toISOString(),
     space: { id: space.id, name: space.name, keyVersion: space.key_version, encryptTitles: !!space.encrypt_titles },
-    identity: identityOf(user.id),
-    keys: all<{ key_version: number; sealed: string }>(
+    identity: await identityOf(user.id),
+    keys: (await all<{ key_version: number; sealed: string }>(
       "SELECT key_version,sealed FROM e2ee_space_keys WHERE space_id=? AND user_id=? ORDER BY key_version",
       space.id,
       user.id,
-    ).map((k) => ({ version: k.key_version, sealed: JSON.parse(k.sealed) })),
-    pages: pages.map((page) => {
-      const snapshot = one<{ upto: number; key_version: number; data: Uint8Array }>("SELECT * FROM e2ee_snapshots WHERE page_id=?", page.id);
+    )).map((k) => ({ version: k.key_version, sealed: JSON.parse(k.sealed) })),
+    pages: await mapAsync(pages, async (page) => {
+      const snapshot = await one<{ upto: number; key_version: number; data: Uint8Array }>("SELECT * FROM e2ee_snapshots WHERE page_id=?", page.id);
       return {
         id: page.id,
         parentId: page.parent_id,
@@ -574,11 +574,11 @@ export function encryptedArchive(user: Identity, spaceId: string) {
         icon: page.icon,
         updatedAt: page.updated_at,
         snapshot: snapshot ? { upto: snapshot.upto, version: snapshot.key_version, data: toB64(snapshot.data) } : null,
-        updates: all<{ seq: number; key_version: number; data: Uint8Array }>(
+        updates: (await all<{ seq: number; key_version: number; data: Uint8Array }>(
           "SELECT seq,key_version,data FROM e2ee_updates WHERE page_id=? ORDER BY seq",
           page.id,
-        ).map((u) => ({ seq: u.seq, version: u.key_version, data: toB64(u.data) })),
-        files: all<{ id: string; size: number }>("SELECT id,size FROM files WHERE page_id=?", page.id),
+        )).map((u) => ({ seq: u.seq, version: u.key_version, data: toB64(u.data) })),
+        files: await all<{ id: string; size: number }>("SELECT id,size FROM files WHERE page_id=?", page.id),
       };
     }),
   };

@@ -1060,7 +1060,7 @@ export function vectorActions(text: string, locale: Locale): MathAction[] | null
   if (/[a-zA-Z]/.test(text)) return null;
   const read = vectorTokens(text, locale);
   if (!read) return null;
-  let parsed: ReturnType<typeof parseVectors>;
+  let parsed: Awaited<ReturnType<typeof parseVectors>>;
   try {
     parsed = parseVectors(read.tokens);
   } catch {

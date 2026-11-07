@@ -20,20 +20,20 @@ const { readOnlyState } = await import("../../lib/instance-read-only");
 const route = await import("../../app/api/move/[...path]/route");
 
 const uid = id();
-run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, `source:${uid}`, "Quelle", `${uid}@example.test`);
+await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, `source:${uid}`, "Quelle", `${uid}@example.test`);
 const owner = { id: uid, name: "Quelle", email: `${uid}@example.test`, groups: ["flowplan-admins"], isAdmin: true, disabled: 0, created_at: "" } as never;
-const wid = createWorkspace(uid, "Quelle");
-const pageId = (command(owner, { action: "page.create", workspaceId: wid, spaceId: bootstrap(owner, wid).spaces[0].id, title: "Auf der Quelle" }) as { id: string }).id;
+const wid = await createWorkspace(uid, "Quelle");
+const pageId = ((await command(owner, { action: "page.create", workspaceId: wid, spaceId: (await bootstrap(owner, wid)).spaces[0].id, title: "Auf der Quelle" })) as { id: string }).id;
 mkdirSync(join(dir, "uploads"), { recursive: true });
 const fileId = id();
 writeFileSync(join(dir, "uploads", fileId), "Datei der Quelle");
-const { token } = move.prepareMove(owner);
+const { token } = await move.prepareMove(owner);
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url!, "http://127.0.0.1");
   if (url.pathname === "/state") {
     res.writeHead(200, { "content-type": "application/json" });
-    return res.end(JSON.stringify(readOnlyState()));
+    return res.end(JSON.stringify(await readOnlyState()));
   }
   const chunks: Buffer[] = [];
   for await (const c of req) chunks.push(c as Buffer);

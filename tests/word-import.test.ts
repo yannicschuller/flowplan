@@ -16,18 +16,18 @@ const { legacyOffice, DOC_REFUSAL, ONENOTE_REFUSAL } = await import("../lib/impo
 const { englishMessage } = await import("../lib/i18n-errors");
 
 const uid = id();
-run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, "word", "word@example.test");
+await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, "word", "word@example.test");
 const owner = { id: uid, name: "word", email: "word@example.test", groups: [], isAdmin: false, disabled: 0, created_at: "" } as Identity;
-const wid = createWorkspace(owner.id, "Word");
-const space = bootstrap(owner, wid).spaces[0].id;
+const wid = await createWorkspace(owner.id, "Word");
+const space = (await bootstrap(owner, wid)).spaces[0].id;
 
 const fixture = join(import.meta.dirname, "fixtures", "import", "docx");
 const walk = (dir: string): string[] =>
   readdirSync(dir).flatMap((name) => (statSync(join(dir, name)).isDirectory() ? walk(join(dir, name)) : [join(dir, name)]));
 const docx = () => writeZip(new Map(walk(fixture).map((f) => [relative(fixture, f), readFileSync(f)] as [string, Buffer])));
-const pageByTitle = (title: string) =>
-  one<{ id: string; parent_id: string | null }>("SELECT id,parent_id FROM pages WHERE workspace_id=? AND title=? AND deleted_at IS NULL ORDER BY seq DESC LIMIT 1", wid, title);
-const pageHtml = (pageId: string) => one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", pageId)!.html;
+const pageByTitle = async (title: string) =>
+  await one<{ id: string; parent_id: string | null }>("SELECT id,parent_id FROM pages WHERE workspace_id=? AND title=? AND deleted_at IS NULL ORDER BY seq DESC LIMIT 1", wid, title);
+const pageHtml = async (pageId: string) => (await one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", pageId))!.html;
 
 // Minimal files with the first bytes of each format.
 const OLE2 = Buffer.from("d0cf11e0a1b11ae1000000000000000000000000000000003e000300feff0900", "hex");
@@ -45,8 +45,8 @@ test("a single .docx through the Microsoft Word source becomes one page", async 
   assert.deepEqual(preview.warnings, []);
   const result = await importFromSource(owner, wid, space, { name: "Quartalsbericht.docx", bytes }, { source: "word" });
   assert.equal(result.rootIds.length, 1);
-  const page = pageByTitle("Quartalsbericht")!;
-  const html = pageHtml(page.id).replace(/ data-block-id="[^"]*"/g, "");
+  const page = (await pageByTitle("Quartalsbericht"))!;
+  const html = (await pageHtml(page.id)).replace(/ data-block-id="[^"]*"/g, "");
   assert.match(html, /<h1>Bericht<\/h1>/);
   assert.match(html, /<strong>Fett<\/strong>/);
   assert.match(html, /<ol><li><p>Erstens<\/p>/);
@@ -75,11 +75,11 @@ test("a ZIP with folders and two .docx becomes a page tree", async () => {
   // The single top folder of the ZIP is dropped; Protokolle stays.
   assert.equal(preview.folders, 1);
   await importFromSource(owner, wid, space, { name: "Word.zip", bytes: zip }, { source: "word" });
-  const folder = pageByTitle("Protokolle")!;
-  assert.equal(pageByTitle("Sitzung Mai")!.parent_id, folder.id);
-  assert.equal(pageByTitle("Leitfaden")!.parent_id, folder.parent_id, "Leitfaden sits beside the folder");
-  assert.equal(pageByTitle("~$itfaden"), undefined, "Word's lock file is left out");
-  assert.match(pageHtml(pageByTitle("Leitfaden")!.id), /Fett/);
+  const folder = (await pageByTitle("Protokolle"))!;
+  assert.equal((await pageByTitle("Sitzung Mai"))!.parent_id, folder.id);
+  assert.equal((await pageByTitle("Leitfaden"))!.parent_id, folder.parent_id, "Leitfaden sits beside the folder");
+  assert.equal(await pageByTitle("~$itfaden"), undefined, "Word's lock file is left out");
+  assert.match(await pageHtml((await pageByTitle("Leitfaden"))!.id), /Fett/);
 });
 
 test(".doc, .one, .onetoc2 and .onepkg are refused with what to do instead", async () => {
@@ -131,6 +131,6 @@ test("a ZIP mixing .docx with .doc and OneNote imports the .docx and lists the r
   assert.equal(englishMessage(preview.warnings[0]), "Abschnitt.one: OneNote file skipped – please export it from OneNote as a Word document (.docx).");
   const result = await importFromSource(owner, wid, space, { name: "Gemischt.zip", bytes: zip });
   assert.equal(result.pages, 1);
-  assert.ok(pageByTitle("Neu"));
-  assert.equal(pageByTitle("Alt"), undefined);
+  assert.ok(await pageByTitle("Neu"));
+  assert.equal(await pageByTitle("Alt"), undefined);
 });

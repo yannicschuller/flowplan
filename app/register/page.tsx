@@ -28,7 +28,7 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
         legal={legalLinks()}
       {...options}
       mode={options.signupOpen ? "register" : "signin"}
-      instanceName={instanceSettings().name}
+      instanceName={(await instanceSettings()).name}
       sourceUrl={sourceUrl()}
     />
   );

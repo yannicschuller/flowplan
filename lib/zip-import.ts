@@ -21,6 +21,7 @@ import { BoardImportError, parseBoardFile, type ImportedBoard } from "./whiteboa
 import type { Field, Identity, Space } from "./types";
 import { maxImportEntries, maxImportPages, tooManyPages } from "./importers/types";
 import { documentAnchors, findAnchor, pendingAnchor, resolvePendingAnchors } from "./import-anchors";
+import { forEachAsync } from "./each-async";
 
 // Imports Markdown/CSV exports (Notion, AppFlowy, Obsidian-like folders):
 // every .md becomes a document, every .csv a database; a folder named like a
@@ -187,13 +188,13 @@ export async function importZip(
   spaceId: string,
   bytes: Buffer,
 ) {
-  requireMember(user, workspaceId, "editor");
-  const space = one<Space>(
+  await requireMember(user, workspaceId, "editor");
+  const space = await one<Space>(
     "SELECT * FROM spaces WHERE id=? AND workspace_id=? AND deleted_at IS NULL",
     spaceId,
     workspaceId,
   );
-  if (!space || !["editor", "owner"].includes(spaceRole(user, space) || ""))
+  if (!space || !["editor", "owner"].includes(await spaceRole(user, space) || ""))
     throw new HttpError(403, "Keine Schreibrechte im Zielbereich.");
   const entries = await entriesOf(bytes);
   // An Obsidian vault (its settings folder): wikilinks, embeds, folder
@@ -201,7 +202,7 @@ export async function importZip(
   if ([...entries.keys()].some((name) => name.startsWith(".obsidian/"))) {
     const { parseObsidian } = await import("./importers/obsidian");
     const { writeImport } = await import("./importers/write");
-    const result = writeImport(user, workspaceId, spaceId, parseObsidian(entries));
+    const result = await writeImport(user, workspaceId, spaceId, parseObsidian(entries));
     return { rootIds: result.rootIds, pages: result.pages + result.folders, rows: 0, files: result.files };
   }
   // Notion exports "Name.csv" (current view) and "Name_all.csv" (all rows).
@@ -266,7 +267,7 @@ export async function importZip(
         });
       }
   const journals = new Set([...days.values()].filter((d) => !d.skip).map((d) => d.journal));
-  return transaction(() => {
+  return await transaction(async () => {
     const pageIds = new Map<string, string>();
     const ordered = [...nodes.values()].sort(
       (a, b) => a.depth - b.depth || a.key.localeCompare(b.key, "de"),
@@ -274,7 +275,7 @@ export async function importZip(
     for (const node of ordered) {
       const day = days.get(node.key);
       const parent = (day ? pageIds.get(day.journal) : pageIds.get(posix.dirname(node.key))) || null;
-      const created = createPage(
+      const created = await createPage(
         workspaceId,
         spaceId,
         user.id,
@@ -283,7 +284,7 @@ export async function importZip(
         parent,
       );
       if (day && parent)
-        run(
+        await run(
           "UPDATE pages SET journal_date=?,icon='day',position=? WHERE id=?",
           day.date,
           -Number(day.date.replaceAll("-", "")),
@@ -306,7 +307,7 @@ export async function importZip(
     // on the same page; #88) wait for the targets' ids (resolvePendingAnchors).
     const resolver =
       (from: string, pageId: string, self?: string) =>
-      (href: string, kind: "link" | "image") => {
+      async (href: string, kind: "link" | "image") => {
         const notion = kind === "link" ? /^https?:\/\/(?:www\.)?notion\.so\/[^?#\s]*?([0-9a-f]{32})(?:\?[^#\s]*)?(?:#([0-9a-f]{32}))?$/i.exec(href) : null;
         const notionPage = notion && notionPages.get(notion[1].toLowerCase());
         if (notionPage) return notion![2] ? pendingAnchor(`/#page=${notionPage}`, notion![2]) : `/#page=${notionPage}`;
@@ -333,12 +334,12 @@ export async function importZip(
         const fid = id(),
           ext = target.split(".").pop()!.toLowerCase();
         bytesAdded += data.length;
-        enforceQuota(workspaceId, bytesAdded);
-        enforceUserStorage(user, bytesAdded);
+        await enforceQuota(workspaceId, bytesAdded);
+        await enforceUserStorage(user, bytesAdded);
         mkdirSync(dir, { recursive: true });
         writeFileSync(resolve(dir, fid), data);
         onTransactionRollback(() => unlinkSync(resolve(dir, fid)));
-        run(
+        await run(
           "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
           fid,
           pageId,
@@ -351,8 +352,8 @@ export async function importZip(
         uploaded.set(target, url);
         return url;
       };
-    const manageProperties = canManageScope(user, workspaceId, spaceId),
-      people = memberByName(workspaceId);
+    const manageProperties = await canManageScope(user, workspaceId, spaceId),
+      people = await memberByName(workspaceId);
     let rowCount = 0,
       boardImages = 0;
     const anchors = new Map<string, Map<string, string>>();
@@ -363,10 +364,10 @@ export async function importZip(
       const pid = pageIds.get(node.key)!;
       if (node.kind === "whiteboard") {
         imageBytes.bytes = bytesAdded;
-        const urls = storeBoardImages(user, pid, workspaceId, boards.get(node.key)!, imageBytes);
+        const urls = await storeBoardImages(user, pid, workspaceId, boards.get(node.key)!, imageBytes);
         bytesAdded = imageBytes.bytes;
         boardImages += urls.size;
-        writeWhiteboard(pid, boardState(boards.get(node.key)!, urls));
+        await writeWhiteboard(pid, boardState(boards.get(node.key)!, urls));
         continue;
       }
       if (node.kind === "document") {
@@ -374,12 +375,12 @@ export async function importZip(
         // frontmatter with nothing else (as Flowplan exports it) is dropped.
         const { data, body: rest } = splitFrontmatter(text(node.path));
         const aliases = frontmatterAliases(data);
-        if (aliases.length) run("UPDATE pages SET aliases=? WHERE id=?", storedAliases(aliases), pid);
-        if (numberedInFrontmatter(data)) run("UPDATE pages SET caption_numbers=1 WHERE id=?", pid);
+        if (aliases.length) await run("UPDATE pages SET aliases=? WHERE id=?", storedAliases(aliases), pid);
+        if (numberedInFrontmatter(data)) await run("UPDATE pages SET caption_numbers=1 WHERE id=?", pid);
         // Tags and properties (#70): known properties by name; other keys
         // become properties when the person manages them.
-        const { meta, consumed } = frontmatterMeta(data, workspaceId, people, { createDefinitions: manageProperties, spaceId });
-        applyPortableMeta(user, { id: pid, workspace_id: workspaceId, space_id: spaceId }, meta, { createDefinitions: manageProperties });
+        const { meta, consumed } = await frontmatterMeta(data, workspaceId, people, { createDefinitions: manageProperties, spaceId });
+        await applyPortableMeta(user, { id: pid, workspace_id: workspaceId, space_id: spaceId }, meta, { createDefinitions: manageProperties });
         // Flowplan's own keys (a journal day's id and date) go too.
         const taken = new Set(consumed.map((key) => key.trim().toLowerCase()));
         const keys = Object.keys(data).map((key) => key.trim().toLowerCase());
@@ -413,7 +414,7 @@ export async function importZip(
         ),
       );
       // Default views may refer to default properties; start with a table.
-      run(
+      await run(
         "UPDATE databases SET fields=?,views=? WHERE page_id=?",
         JSON.stringify(fields),
         JSON.stringify([
@@ -427,7 +428,7 @@ export async function importZip(
         const title = exportTitle(posix.basename(key));
         pagesByTitle.set(title, [...(pagesByTitle.get(title) || []), key]);
       }
-      records.forEach((record, i) => {
+      await forEachAsync(records, async (record, i) => {
         const cells = Object.fromEntries(
           fields.map((f, j) => [f.id, cellValue(f, record[j] || "")]),
         );
@@ -438,7 +439,7 @@ export async function importZip(
           ? markdownToHtml(markdown, resolver(`${pageKey}.md`, pid))
           : "";
         const rid = id();
-        run(
+        await run(
           "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content) VALUES(?,?,?,?,?,?,?)",
           rid,
           pid,
@@ -455,12 +456,12 @@ export async function importZip(
     const lookup = (pageId: string, anchor: string) => findAnchor(anchors.get(pageId), anchor);
     for (const doc of documents) {
       const html = resolvePendingAnchors(doc.html, lookup);
-      run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), doc.pid);
+      await run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), doc.pid);
     }
     for (const record of recordDocs) {
       const html = resolvePendingAnchors(record.html, lookup);
-      if (html !== record.html) run("UPDATE rows SET content=? WHERE id=?", html, record.rid);
-      run("INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?)", record.rid, htmlState(html), html, id());
+      if (html !== record.html) await run("UPDATE rows SET content=? WHERE id=?", html, record.rid);
+      await run("INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?)", record.rid, htmlState(html), html, id());
     }
     return {
       rootIds: ordered

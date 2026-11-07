@@ -148,7 +148,7 @@ export function DocumentBlockControls({
   const t = useT();
   const surface = useRef<HTMLDivElement>(null);
   const selected = useRef<number[]>([]);
-  const bookmarks = useRef<ReturnType<typeof captureBlockSelection>>([]);
+  const bookmarks = useRef<Awaited<ReturnType<typeof captureBlockSelection>>>([]);
   function remember(positions: number[]) {
     selected.current = positions;
     bookmarks.current = editor ? captureBlockSelection(editor, positions) : [];

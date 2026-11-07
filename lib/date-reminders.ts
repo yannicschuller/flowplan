@@ -37,8 +37,8 @@ const setSchema = z.object({
   timeZone: z.string().max(100),
 });
 
-function dateField(pageId: string, fieldId: string) {
-  const stored = one<{ fields: string }>(
+async function dateField(pageId: string, fieldId: string) {
+  const stored = await one<{ fields: string }>(
     "SELECT fields FROM databases WHERE page_id=?",
     pageId,
   );
@@ -50,13 +50,13 @@ function dateField(pageId: string, fieldId: string) {
 
 // Reminders are personal: anyone who can read the database may set their own,
 // including viewers and locked pages, without changing the record itself.
-export function setDateReminder(user: Identity, input: unknown) {
+export async function setDateReminder(user: Identity, input: unknown) {
   const parsed = setSchema.parse(input);
-  const { row } = requireRow(user, parsed.pageId, parsed.rowId);
-  if (!dateField(parsed.pageId, parsed.fieldId))
+  const { row } = await requireRow(user, parsed.pageId, parsed.rowId);
+  if (!(await dateField(parsed.pageId, parsed.fieldId)))
     throw new HttpError(400, "Datumseigenschaft fehlt.");
   if (parsed.offset === null) {
-    run(
+    await run(
       "DELETE FROM date_reminders WHERE user_id=? AND row_id=? AND field_id=?",
       user.id,
       row.id,
@@ -75,7 +75,7 @@ export function setDateReminder(user: Identity, input: unknown) {
     throw new HttpError(400, "Bitte zuerst ein Datum eintragen.");
   if (!reminderOffsets(value).includes(parsed.offset))
     throw new HttpError(400, "Diese Erinnerung passt nicht zum Datum.");
-  const existing = one(
+  const existing = await one(
     "SELECT 1 FROM date_reminders WHERE user_id=? AND row_id=? AND field_id=?",
     user.id,
     row.id,
@@ -83,16 +83,16 @@ export function setDateReminder(user: Identity, input: unknown) {
   );
   if (
     !existing &&
-    (one<{ n: number }>(
+    ((await one<{ n: number }>(
       "SELECT COUNT(*) n FROM date_reminders WHERE user_id=?",
       user.id,
-    )?.n ?? 0) >= MAX_REMINDERS_PER_USER
+    ))?.n ?? 0) >= MAX_REMINDERS_PER_USER
   )
     throw new HttpError(
       400,
       `Maximal ${MAX_REMINDERS_PER_USER.toLocaleString("de-DE")} Erinnerungen je Person.`,
     );
-  run(
+  await run(
     `INSERT INTO date_reminders(user_id,page_id,row_id,field_id,offset_minutes,time_zone,observed_value,armed_at,fired_value)
      VALUES(?,?,?,?,?,?,?,?,NULL)
      ON CONFLICT(user_id,row_id,field_id) DO UPDATE SET offset_minutes=excluded.offset_minutes,
@@ -119,11 +119,11 @@ export function setDateReminder(user: Identity, input: unknown) {
   };
 }
 
-export function listDateReminders(
+export async function listDateReminders(
   user: Identity,
   pageId: string,
-): DateReminder[] {
-  return all<{
+): Promise<DateReminder[]> {
+  return (await all<{
     row_id: string;
     field_id: string;
     offset_minutes: number;
@@ -132,7 +132,7 @@ export function listDateReminders(
     "SELECT row_id,field_id,offset_minutes,time_zone FROM date_reminders WHERE page_id=? AND user_id=?",
     pageId,
     user.id,
-  ).map((r) => ({
+  )).map((r) => ({
     rowId: r.row_id,
     fieldId: r.field_id,
     offset: r.offset_minutes,
@@ -157,9 +157,9 @@ type Due = {
 
 // Returns the number of created inbox notifications. Inserting a notification
 // queues push deliveries through the existing trigger.
-export function processDateReminders(now = Date.now()) {
+export async function processDateReminders(now = Date.now()) {
   let fired = 0;
-  const reminders = all<Due>(
+  const reminders = await all<Due>(
     `SELECT r.*,w.cells,w.recurrence,u.disabled FROM date_reminders r
      JOIN rows w ON w.id=r.row_id AND w.page_id=r.page_id
      JOIN users u ON u.id=r.user_id`,
@@ -167,7 +167,7 @@ export function processDateReminders(now = Date.now()) {
   const fields = new Map<string, Field[]>();
   for (const reminder of reminders) {
     if (!fields.has(reminder.page_id)) {
-      const stored = one<{ fields: string }>(
+      const stored = await one<{ fields: string }>(
         "SELECT fields FROM databases WHERE page_id=?",
         reminder.page_id,
       );
@@ -178,7 +178,7 @@ export function processDateReminders(now = Date.now()) {
       .find((f) => f.id === reminder.field_id);
     const key = [reminder.user_id, reminder.row_id, reminder.field_id];
     if (field?.type !== "date") {
-      run(
+      await run(
         "DELETE FROM date_reminders WHERE user_id=? AND row_id=? AND field_id=?",
         ...key,
       );
@@ -192,7 +192,7 @@ export function processDateReminders(now = Date.now()) {
     if (value !== reminder.observed_value) {
       // A changed date re-arms the reminder from now on.
       armed = now;
-      run(
+      await run(
         "UPDATE date_reminders SET observed_value=?,armed_at=? WHERE user_id=? AND row_id=? AND field_id=?",
         value,
         now,
@@ -240,37 +240,37 @@ export function processDateReminders(now = Date.now()) {
       .at(-1);
     if (!due || due.occurrence === reminder.fired_value) continue;
     const occurrence = due.occurrence;
-    const page = one<Page>(
+    const page = await one<Page>(
       "SELECT * FROM pages WHERE id=? AND deleted_at IS NULL",
       reminder.page_id,
     );
     // Missing access keeps the reminder; it may fire after access returns.
-    if (!page || !pageRole({ id: reminder.user_id } as Identity, page))
+    if (!page || !(await pageRole({ id: reminder.user_id } as Identity, page)))
       continue;
     // Likewise while the record is hidden from the person (made private).
-    const target = one<{ id: string; access: string; created_by: string }>(
+    const target = await one<{ id: string; access: string; created_by: string }>(
       "SELECT id,access,created_by FROM rows WHERE id=?",
       reminder.row_id,
     );
-    if (!target || !rowRole({ id: reminder.user_id } as Identity, page, target)) continue;
+    if (!target || !(await rowRole({ id: reminder.user_id } as Identity, page, target))) continue;
     const cells = JSON.parse(reminder.cells) as Record<string, unknown>;
     const titleField = fields.get(reminder.page_id)![0];
     const title =
       (titleField && cellText(cells[titleField.id]).slice(0, 200)) ||
       "Ohne Titel";
-    transaction(() => {
+    await transaction(async () => {
       if (
-        !run(
+        !(await run(
           "UPDATE date_reminders SET fired_value=? WHERE user_id=? AND row_id=? AND field_id=? AND observed_value=? AND fired_value IS DISTINCT FROM ?",
           occurrence,
           ...key,
           value,
           occurrence,
-        ).changes
+        )).changes
       )
         return;
       const notificationId = id();
-      run(
+      await run(
         "INSERT INTO notifications(id,user_id,body,page_id,row_id,kind) VALUES(?,?,?,?,?,'reminder')",
         notificationId,
         reminder.user_id,
@@ -279,7 +279,7 @@ export function processDateReminders(now = Date.now()) {
         reminder.row_id,
       );
       // "Done" and "Tomorrow" on the app's notification (lib/notification-actions.ts).
-      rememberTaskTarget(notificationId, { type: "row", pageId: reminder.page_id, rowId: reminder.row_id, fieldId: field.id });
+      await rememberTaskTarget(notificationId, { type: "row", pageId: reminder.page_id, rowId: reminder.row_id, fieldId: field.id });
       fired++;
     });
   }
@@ -289,16 +289,16 @@ export function processDateReminders(now = Date.now()) {
 const runtime = globalThis as typeof globalThis & {
   flowplanReminderTimer?: ReturnType<typeof setInterval>;
 };
-export function startReminderWorker(onFired: () => void) {
+export async function startReminderWorker(onFired: () => void) {
   if (runtime.flowplanReminderTimer) return;
-  const tick = () => {
+  const tick = async () => {
     try {
-      if (processDateReminders()) onFired();
+      if (await processDateReminders()) onFired();
     } catch (error) {
       console.error("Date reminders failed", error);
     }
   };
   runtime.flowplanReminderTimer = setInterval(tick, 30000);
   runtime.flowplanReminderTimer.unref();
-  tick();
+  await tick();
 }

@@ -26,6 +26,7 @@ import { localeTag } from "./i18n";
 import { validZone } from "./date-values";
 import { task, tasks } from "./template-catalog";
 import type { Field, Identity, Page } from "./types";
+import { mapAsync } from "./each-async";
 
 // The appointment on a given day: records by id (a repeating record has a
 // note per occurrence), calendar events by UID.
@@ -36,17 +37,17 @@ export function meetingEventKey(event: Pick<DayEvent, "rowId" | "uid" | "title" 
 }
 
 // The notes this person can open, for the appointments of a journal day.
-export function withMeetingNotes<E extends DayEvent>(user: Identity, day: Pick<Page, "parent_id" | "journal_date">, events: E[]): (E & { noteId?: string })[] {
+export async function withMeetingNotes<E extends DayEvent>(user: Identity, day: Pick<Page, "parent_id" | "journal_date">, events: E[]): Promise<(E & { noteId?: string })[]> {
   if (!day.parent_id || !day.journal_date) return events;
   const notes = new Map(
-    all<{ event_key: string; page_id: string }>("SELECT event_key,page_id FROM meeting_notes WHERE journal_id=?", day.parent_id).map((n) => [n.event_key, n.page_id]),
+    (await all<{ event_key: string; page_id: string }>("SELECT event_key,page_id FROM meeting_notes WHERE journal_id=?", day.parent_id)).map((n) => [n.event_key, n.page_id]),
   );
   if (!notes.size) return events;
-  return events.map((event) => {
+  return await mapAsync(events, async (event) => {
     const noteId = notes.get(meetingEventKey(event, day.journal_date!));
     if (!noteId) return event;
-    const page = one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", noteId);
-    return page && pageRole(user, page) ? { ...event, noteId } : event;
+    const page = await one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", noteId);
+    return page && await pageRole(user, page) ? { ...event, noteId } : event;
   });
 }
 
@@ -67,15 +68,15 @@ export const meetingNoteInput = z.object({
 });
 
 type Person = { userId?: string; name: string; email?: string };
-function members(workspaceId: string) {
-  return all<{ id: string; name: string; email: string }>(
+async function members(workspaceId: string) {
+  return await all<{ id: string; name: string; email: string }>(
     "SELECT u.id,u.name,u.email FROM members m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=? AND u.disabled=0",
     workspaceId,
   );
 }
 // Attendees as people: members (by e-mail or id) become mentions.
-function people(workspaceId: string, attendees: Attendee[], userIds: string[]): Person[] {
-  const team = members(workspaceId);
+async function people(workspaceId: string, attendees: Attendee[], userIds: string[]): Promise<Person[]> {
+  const team = await members(workspaceId);
   const byMail = new Map(team.filter((m) => m.email).map((m) => [m.email.toLowerCase(), m]));
   const out: Person[] = [];
   const seen = new Set<string>();
@@ -135,12 +136,12 @@ export function meetingNoteHtml(o: { when: string; attendees: Person[]; link?: {
 }
 
 // Creates the note (or returns the one already there).
-export function createMeetingNote(user: Identity, input: unknown) {
+export async function createMeetingNote(user: Identity, input: unknown) {
   const b = meetingNoteInput.parse(input);
-  const day = requirePage(user, b.pageId);
+  const day = await requirePage(user, b.pageId);
   if (!day.journal_date || !day.parent_id) throw new HttpError(400, "Kein Journaltag.");
-  const journal = requirePage(user, day.parent_id, true);
-  requireUnlocked(user, journal);
+  const journal = await requirePage(user, day.parent_id, true);
+  await requireUnlocked(user, journal);
   if (journal.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
   const date = day.journal_date;
   const zone = b.zone && validZone(b.zone) ? b.zone : "UTC";
@@ -151,32 +152,32 @@ export function createMeetingNote(user: Identity, input: unknown) {
   if (b.event.rowId) {
     // A record: what the server knows about it, not what the browser says.
     if (!b.event.pageId) throw new HttpError(400, "Datensatz nicht gefunden.");
-    const { page, row } = requireRow(user, b.event.pageId, b.event.rowId);
+    const { page, row } = await requireRow(user, b.event.pageId, b.event.rowId);
     // Only properties the person may read.
-    const declared = JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", page.id)!.fields) as Field[];
-    const fields = visibleFields(user, page, declared);
+    const declared = JSON.parse((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", page.id))!.fields) as Field[];
+    const fields = await visibleFields(user, page, declared);
     const cells = JSON.parse(row.cells as unknown as string) as Record<string, unknown>;
     if (declared[0] && fields.includes(declared[0])) title = cellText(cells[declared[0].id]) || title;
     for (const f of fields.filter((f) => f.type === "person")) {
       const value = cells[f.id];
       for (const v of Array.isArray(value) ? value : [value]) if (typeof v === "string" && v) userIds.push(v);
     }
-    attendees = syncedAttendees(row.id);
+    attendees = await syncedAttendees(row.id);
     link = { href: `/#page=${page.id}&row=${row.id}`, label: ct("Eintrag öffnen", "Open record") };
   }
   const key = meetingEventKey({ rowId: b.event.rowId, uid: b.event.uid, title, start }, date);
-  const existing = one<{ page_id: string }>("SELECT page_id FROM meeting_notes WHERE journal_id=? AND event_key=?", journal.id, key);
+  const existing = await one<{ page_id: string }>("SELECT page_id FROM meeting_notes WHERE journal_id=? AND event_key=?", journal.id, key);
   if (existing) {
-    const page = one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", existing.page_id);
-    if (page && pageRole(user, page)) return { id: page.id, existing: true };
+    const page = await one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", existing.page_id);
+    if (page && await pageRole(user, page)) return { id: page.id, existing: true };
   }
-  const html = meetingNoteHtml({ when: whenText(start, end, timed, date, zone), attendees: people(journal.workspace_id, attendees, userIds), link });
-  const created = createPage(journal.workspace_id, journal.space_id, user.id, noteTitle(title, date).slice(0, 500), "document", journal.id);
-  run("UPDATE pages SET icon=? WHERE id=?", "📝", created);
-  run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), created);
+  const html = meetingNoteHtml({ when: whenText(start, end, timed, date, zone), attendees: await people(journal.workspace_id, attendees, userIds), link });
+  const created = await createPage(journal.workspace_id, journal.space_id, user.id, noteTitle(title, date).slice(0, 500), "document", journal.id);
+  await run("UPDATE pages SET icon=? WHERE id=?", "📝", created);
+  await run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), created);
   // Assigned tasks count for "Meine Aufgaben" without waiting for the first edit.
-  indexPageTasks(created, false);
-  run(
+  await indexPageTasks(created, false);
+  await run(
     "INSERT INTO meeting_notes(journal_id,event_key,page_id,created_by,created_at) VALUES(?,?,?,?,?) ON CONFLICT(journal_id,event_key) DO UPDATE SET page_id=excluded.page_id,created_by=excluded.created_by,created_at=excluded.created_at",
     journal.id,
     key,

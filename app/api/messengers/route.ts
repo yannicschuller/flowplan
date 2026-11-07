@@ -35,7 +35,7 @@ async function browserUser() {
 
 export const GET = withRequestLocale(async () => {
   try {
-    return Response.json(messengerOverview(await browserUser()), noStore);
+    return Response.json(await messengerOverview(await browserUser()), noStore);
   } catch (e) {
     return failure(e);
   }
@@ -45,7 +45,7 @@ const actionSchema = z.object({ action: z.enum(["connect", "remove", "enable", "
 
 export const POST = withRequestLocale(async (req: Request) => {
   try {
-    checkOrigin(req);
+    await checkOrigin(req);
     const user = await browserUser();
     const text = await req.text();
     if (text.length > 10_000) throw new HttpError(413, "Anfrage zu groß.");
@@ -55,11 +55,11 @@ export const POST = withRequestLocale(async (req: Request) => {
       case "connect":
         return Response.json(await connectMessenger(user, body), noStore);
       case "remove":
-        return Response.json(removeMessenger(user, body), noStore);
+        return Response.json(await removeMessenger(user, body), noStore);
       case "enable":
-        return Response.json(enableMessenger(user, body), noStore);
+        return Response.json(await enableMessenger(user, body), noStore);
       case "settings":
-        return Response.json(setMessengerSettings(user, body), noStore);
+        return Response.json(await setMessengerSettings(user, body), noStore);
       case "test":
         return Response.json(await testMessenger(user, body), noStore);
       case "link":

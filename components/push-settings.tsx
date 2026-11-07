@@ -12,10 +12,10 @@ import PushTest, { type ThisBrowser } from "./push-test";
 export default function PushSettings({ group = false }: { group?: boolean }) {
   const t = useT();
   // In the Flowplan app the app delivers push itself (flowplan-app).
-  const [app, setApp] = useState<ReturnType<typeof nativeApp>>(undefined);
+  const [app, setApp] = useState<Awaited<ReturnType<typeof nativeApp>>>(undefined);
   // In the desktop app the app shows system notifications itself: Electron
   // has no Web Push. "old" is a desktop app from before it could.
-  const [desktop, setDesktop] = useState<ReturnType<typeof desktopApp> | "old">(undefined);
+  const [desktop, setDesktop] = useState<Awaited<ReturnType<typeof desktopApp>> | "old">(undefined);
   const [desktopOn, setDesktopOn] = useState(false);
   const [registration, setRegistration] =
     useState<ServiceWorkerRegistration | null>(null);

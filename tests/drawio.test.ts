@@ -162,14 +162,14 @@ test("a .drawio.svg: the picture with the diagram inside", () => {
 
 test("ZIP export: each diagram as a .drawio.svg next to the page", async () => {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, "Zeichnerin", "zeichnerin@example.test");
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, "Zeichnerin", "zeichnerin@example.test");
   const owner: Identity = { id: uid, name: "Zeichnerin", email: "zeichnerin@example.test", disabled: 0, created_at: "", groups: [], isAdmin: false };
-  const wid = createWorkspace(owner.id, "Diagramme");
-  const space = one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid)!;
-  const pageId = (command(owner, { action: "page.create", workspaceId: wid, spaceId: space.id, title: "Ablauf", kind: "document" }) as { id: string }).id;
+  const wid = await createWorkspace(owner.id, "Diagramme");
+  const space = (await one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid))!;
+  const pageId = ((await command(owner, { action: "page.create", workspaceId: wid, spaceId: space.id, title: "Ablauf", kind: "document" })) as { id: string }).id;
   const attr = (text: string) => text.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
   const html = `<p>Plan</p><div data-drawio="${attr(XML)}" data-drawio-svg="${attr(SVG)}"></div>`;
-  run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), pageId);
+  await run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), pageId);
   const zip = await readExportZip((await exportMarkdown(owner, { pageId, format: "zip", includeSubpages: false })).bytes);
   const index = zip.get("index.md")!.toString();
   const asset = [...zip.keys()].find((key) => key.endsWith(".drawio.svg"))!;

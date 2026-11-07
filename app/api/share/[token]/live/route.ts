@@ -20,17 +20,17 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
     // Password and end date count on every keepalive too: a new password or
     // the link's end closes the stream.
     const unlock = shareCookieOf(req.headers);
-    const check = () => withShareCookie(unlock, () => shareAccess(token, pageId, rowId));
-    check();
+    const check = async () => await withShareCookie(unlock, async () => await shareAccess(token, pageId, rowId));
+    await check();
     const encoder = new TextEncoder();
     let stop = () => {};
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
         const send = (chunk: string) => controller.enqueue(encoder.encode(chunk));
         const unwatch = watchPrefix(pageId, rowId, clientId, send);
-        const ping = setInterval(() => {
+        const ping = setInterval(async () => {
           try {
-            check();
+            await check();
             send(": ping\n\n");
           } catch {
             try {

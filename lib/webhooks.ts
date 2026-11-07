@@ -50,6 +50,7 @@ import {
 } from "./notification-templates";
 import { buildNotice, dueItems, localClock, recordUrl } from "./notification-events";
 import type { Identity, Page, User } from "./types";
+import { mapAsync } from "./each-async";
 
 export const webhookEvents = {
   "row.created": "Neuer Eintrag in einer Datenbank",
@@ -78,9 +79,9 @@ type HookRow = {
   credentials: string | null;
 };
 
-function requireOwner(user: Identity, workspaceId: string) {
+async function requireOwner(user: Identity, workspaceId: string) {
   if (user.demo) throw new HttpError(403, "In der Demo nicht verfügbar.");
-  const member = one<{ role: string }>(
+  const member = await one<{ role: string }>(
     "SELECT role FROM members WHERE workspace_id=? AND user_id=?",
     workspaceId,
     user.id,
@@ -88,36 +89,36 @@ function requireOwner(user: Identity, workspaceId: string) {
   if (member?.role !== "owner") throw new HttpError(403, "Nur Eigentümer verwalten Webhooks.");
 }
 // A webhook for one page: only one its owner may read, in this workspace.
-function requireHookPage(user: Identity, workspaceId: string, pageId: string | null | undefined) {
+async function requireHookPage(user: Identity, workspaceId: string, pageId: string | null | undefined) {
   if (!pageId) return;
-  const page = requirePage(user, pageId);
+  const page = await requirePage(user, pageId);
   if (page.workspace_id !== workspaceId) throw new HttpError(404, "Seite nicht gefunden.");
-  requireUnlocked(user, page);
+  await requireUnlocked(user, page);
 }
 
 // The person a webhook speaks for: who set it up (webhooks from before
 // that was kept: the workspace's first owner). None when they are gone.
-function hookReader(hook: { workspace_id: string; created_by: string | null }): Identity | null {
+async function hookReader(hook: { workspace_id: string; created_by: string | null }): Promise<Identity | null> {
   const userId =
     hook.created_by ??
     // (The one who created the workspace, if still an owner.)
-    one<{ user_id: string }>(
+    (await one<{ user_id: string }>(
       "SELECT m.user_id FROM members m JOIN workspaces w ON w.id=m.workspace_id WHERE m.workspace_id=? AND m.role='owner' ORDER BY CASE WHEN m.user_id=w.created_by THEN 0 ELSE 1 END,m.user_id LIMIT 1",
       hook.workspace_id,
-    )?.user_id;
-  const user = userId ? one<User>("SELECT * FROM users WHERE id=? AND disabled=0", userId) : undefined;
+    ))?.user_id;
+  const user = userId ? (await one<User>("SELECT * FROM users WHERE id=? AND disabled=0", userId)) : undefined;
   return user ? ({ ...user, groups: [], isAdmin: false } as Identity) : null;
 }
 // Whether that person may read the page (and record) an event is about.
-function readerMaySee(reader: Identity | null, pageId: string, rowId: unknown) {
+async function readerMaySee(reader: Identity | null, pageId: string, rowId: unknown) {
   if (!reader) return false;
-  const page = one<Page>("SELECT * FROM pages WHERE id=?", pageId);
-  const role = page ? pageRole(reader, page) : null;
+  const page = await one<Page>("SELECT * FROM pages WHERE id=?", pageId);
+  const role = page ? (await pageRole(reader, page)) : null;
   // Below a journal behind a PIN the reader has not entered: nothing goes out.
-  if (!page || !role || journalLocked(reader, page)) return false;
+  if (!page || !role || await journalLocked(reader, page)) return false;
   if (typeof rowId !== "string") return true;
-  const row = one<{ id: string; access: string; created_by: string | null }>("SELECT id,access,created_by FROM rows WHERE id=? AND page_id=?", rowId, page.id);
-  return !!row && !!rowRoleResolver(reader, page, role)(row);
+  const row = await one<{ id: string; access: string; created_by: string | null }>("SELECT id,access,created_by FROM rows WHERE id=? AND page_id=?", rowId, page.id);
+  return !!row && !!(await rowRoleResolver(reader, page, role))(row);
 }
 // Address and signing secret; unsealed values from before are read as
 // they are. Throws when they were sealed with a key that is not here.
@@ -213,15 +214,15 @@ export async function createWebhook(user: Identity, input: unknown) {
   // Write tokens of an owner may register webhooks (e.g. the n8n trigger
   // node registers and removes its own); read tokens may not.
   if (user.apiScope === "read") throw new HttpError(403, "Dieses API-Token darf nur lesen.");
-  requireOwner(user, b.workspaceId);
-  requireHookPage(user, b.workspaceId, b.pageId);
+  await requireOwner(user, b.workspaceId);
+  await requireHookPage(user, b.workspaceId, b.pageId);
   const credentials = storedCredentials(b.format, b.credentials || {});
   const url = await checkTarget(resolveTarget(b.format, b.url, b.config, credentials));
-  if (Number(one<{ n: number }>("SELECT COUNT(*) n FROM webhooks WHERE workspace_id=?", b.workspaceId)?.n) >= 20)
+  if (Number((await one<{ n: number }>("SELECT COUNT(*) n FROM webhooks WHERE workspace_id=?", b.workspaceId))?.n) >= 20)
     throw new HttpError(409, "Höchstens 20 Webhooks pro Arbeitsbereich.");
   const secret = randomBytes(24).toString("base64url");
   const hookId = id();
-  run(
+  await run(
     "INSERT INTO webhooks(id,workspace_id,url,events,page_id,secret,created_by,created_at,format,templates,config,credentials) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
     hookId,
     b.workspaceId,
@@ -244,17 +245,17 @@ export async function createWebhook(user: Identity, input: unknown) {
 export async function updateWebhook(user: Identity, input: unknown) {
   const b = updateInput.parse(input);
   if (user.apiScope === "read") throw new HttpError(403, "Dieses API-Token darf nur lesen.");
-  requireOwner(user, b.workspaceId);
-  const hook = one<HookRow>("SELECT * FROM webhooks WHERE id=? AND workspace_id=?", b.id, b.workspaceId);
+  await requireOwner(user, b.workspaceId);
+  const hook = await one<HookRow>("SELECT * FROM webhooks WHERE id=? AND workspace_id=?", b.id, b.workspaceId);
   if (!hook) throw new HttpError(404, "Unbekannter Webhook.");
-  requireHookPage(user, b.workspaceId, b.pageId);
+  await requireHookPage(user, b.workspaceId, b.pageId);
   const previous = openCredentials(hook);
   const merged = b.credentials === null ? {} : b.credentials ? { ...previous, ...b.credentials } : previous;
   const credentials = storedCredentials(b.format, merged);
   const stored = shownUrl(hook);
   const target = resolveTarget(b.format, b.url ?? stored, b.config, credentials);
   const url = stored && target === stored ? stored : (await checkTarget(target)).href;
-  run(
+  await run(
     "UPDATE webhooks SET url=?,events=?,page_id=?,format=?,templates=?,config=?,credentials=? WHERE id=?",
     sealWebhookUrl(hook.id, url),
     JSON.stringify(b.events),
@@ -269,17 +270,17 @@ export async function updateWebhook(user: Identity, input: unknown) {
 }
 
 const appBase = () => (process.env.APP_URL || "http://localhost:3000").replace(/\/$/, "");
-export function listWebhooks(user: Identity, workspaceId: string) {
-  requireOwner(user, workspaceId);
-  return all<HookRow & { events: string; page_id: string | null; created_at: number }>(
+export async function listWebhooks(user: Identity, workspaceId: string) {
+  await requireOwner(user, workspaceId);
+  return await mapAsync(await all<HookRow & { events: string; page_id: string | null; created_at: number }>(
     "SELECT * FROM webhooks WHERE workspace_id=? ORDER BY created_at",
     workspaceId,
-  ).map((h) => {
-    const last = one<{ status: number | null; error: string | null; delivered_at: number | null }>(
+  ), async (h) => {
+    const last = await one<{ status: number | null; error: string | null; delivered_at: number | null }>(
       "SELECT status,error,delivered_at FROM webhook_deliveries WHERE webhook_id=? ORDER BY created_at DESC LIMIT 1",
       h.id,
     );
-    const lastError = one<{ error: string | null; created_at: number }>(
+    const lastError = await one<{ error: string | null; created_at: number }>(
       "SELECT error,created_at FROM webhook_deliveries WHERE webhook_id=? AND error IS NOT NULL ORDER BY created_at DESC LIMIT 1",
       h.id,
     );
@@ -302,10 +303,10 @@ export function listWebhooks(user: Identity, workspaceId: string) {
   });
 }
 
-export function deleteWebhook(user: Identity, input: unknown) {
+export async function deleteWebhook(user: Identity, input: unknown) {
   const b = z.object({ workspaceId: z.uuid(), id: z.string() }).parse(input);
-  requireOwner(user, b.workspaceId);
-  run("DELETE FROM webhooks WHERE id=? AND workspace_id=?", b.id, b.workspaceId);
+  await requireOwner(user, b.workspaceId);
+  await run("DELETE FROM webhooks WHERE id=? AND workspace_id=?", b.id, b.workspaceId);
 }
 
 // The webhook whose own Slack thread a reply came from gets no echo of it.
@@ -314,22 +315,22 @@ const runtime = globalThis as unknown as {
   flowplanHookTimer?: ReturnType<typeof setInterval>;
   flowplanHookQuiet?: string | null;
 };
-export function quietly<T>(hookId: string, fn: () => T): T {
+export async function quietly<T>(hookId: string, fn: () => T): Promise<T> {
   runtime.flowplanHookQuiet = hookId;
   try {
-    return fn();
+    return await fn();
   } finally {
     runtime.flowplanHookQuiet = null;
   }
 }
 
-function queueDelivery(hook: { id: string; format: string }, workspaceId: string, event: WebhookEvent | "test", data: Record<string, unknown>, notice: () => Notice) {
+async function queueDelivery(hook: { id: string; format: string }, workspaceId: string, event: WebhookEvent | "test", data: Record<string, unknown>, notice: () => Notice) {
   const envelope: Record<string, unknown> = { event, id: id(), createdAt: new Date().toISOString(), workspaceId, data };
   // Chat formats render at delivery time (current template); the notice
   // holds what is needed, taken now from the database.
   if (hook.format !== "json") envelope.notice = notice();
   const deliveryId = id();
-  run(
+  await run(
     "INSERT INTO webhook_deliveries(id,webhook_id,body,next_at,created_at) VALUES(?,?,?,?,?)",
     deliveryId,
     hook.id,
@@ -345,25 +346,25 @@ function queueDelivery(hook: { id: string; format: string }, workspaceId: string
 // stays private. Runs inside the command transaction; delivery happens
 // afterwards in the worker. `actor` is the name of the person who caused it
 // (chat messages show it).
-export function emitWebhook(
+export async function emitWebhook(
   workspaceId: string,
   event: WebhookEvent,
   data: Record<string, unknown> & { pageId?: string },
   actor?: string | null,
 ) {
-  const hooks = all<{ id: string; workspace_id: string; events: string; page_id: string | null; format: string; created_by: string | null }>(
+  const hooks = await all<{ id: string; workspace_id: string; events: string; page_id: string | null; format: string; created_by: string | null }>(
     "SELECT id,workspace_id,events,page_id,format,created_by FROM webhooks WHERE workspace_id=?",
     workspaceId,
   );
   let queued = 0;
   // Pages of end-to-end encrypted spaces: ids only, never content.
-  data = metadataOnly(data) as typeof data;
+  data = (await metadataOnly(data)) as typeof data;
   // Receivers are outside: properties with a read rule are never sent
   // (lib/field-access.ts).
   if (data.pageId && (data.cells || data.changed) && hooks.length) {
     const hidden = publicHiddenFieldIds(
       JSON.parse(
-        String(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", data.pageId)?.fields || "[]"),
+        String((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", data.pageId))?.fields || "[]"),
       ),
     );
     if (hidden.size)
@@ -380,17 +381,17 @@ export function emitWebhook(
     if (hook.id === runtime.flowplanHookQuiet) continue;
     if (!(JSON.parse(hook.events) as string[]).includes(event)) continue;
     if (hook.page_id && hook.page_id !== data.pageId) continue;
-    if (data.pageId && !readerMaySee(hookReader(hook), data.pageId, data.rowId)) continue;
-    queueDelivery(hook, workspaceId, event, data, () => (notice ??= buildNotice(event, data, actor)));
+    if (data.pageId && !(await readerMaySee(await hookReader(hook), data.pageId, data.rowId))) continue;
+    await queueDelivery(hook, workspaceId, event, data, async () => (notice ??= (await buildNotice(event, data, actor))));
     queued++;
   }
   if (queued) queueMicrotask(() => void dispatchWebhooks());
 }
 
 // A person was mentioned in a page or record document.
-export function mentionWebhook(workspaceId: string, pageId: string, rowId: string | null, userId: string, actor: string) {
-  const name = one<{ name: string }>("SELECT name FROM users WHERE id=?", userId)?.name || "";
-  emitWebhook(workspaceId, "mention", { pageId, rowId, userId, text: name }, actor);
+export async function mentionWebhook(workspaceId: string, pageId: string, rowId: string | null, userId: string, actor: string) {
+  const name = (await one<{ name: string }>("SELECT name FROM users WHERE id=?", userId))?.name || "";
+  await emitWebhook(workspaceId, "mention", { pageId, rowId, userId, text: name }, actor);
 }
 
 type Delivery = HookRow & { delivery_id: string; body: string; attempts: number };
@@ -441,7 +442,7 @@ async function deliver(delivery: Delivery): Promise<{ status: number | null; err
     if (!answer.ok) return { status: response.status, error: `Slack: ${String(answer.error || "unknown_error").slice(0, 100)}` };
     const pageId = envelope.data?.pageId;
     if (answer.ts && typeof pageId === "string" && credentials.signingSecret && envelope.event !== "digest.due" && envelope.event !== "test")
-      run(
+      await run(
         "INSERT INTO webhook_messages(webhook_id,ts,page_id,row_id,created_at) SELECT ?,?,?,?,? WHERE EXISTS(SELECT 1 FROM pages WHERE id=?) ON CONFLICT DO NOTHING",
         delivery.id,
         answer.ts,
@@ -462,10 +463,10 @@ async function deliverAndRecord(delivery: Delivery) {
     result = { status: null, error: String((e as Error).message || e).slice(0, 300) };
   }
   if (!result.error)
-    run("UPDATE webhook_deliveries SET delivered_at=?,status=?,error=NULL WHERE id=?", Date.now(), result.status, delivery.delivery_id);
+    await run("UPDATE webhook_deliveries SET delivered_at=?,status=?,error=NULL WHERE id=?", Date.now(), result.status, delivery.delivery_id);
   else {
     const attempts = delivery.attempts + 1;
-    run(
+    await run(
       "UPDATE webhook_deliveries SET attempts=?,status=?,error=?,next_at=? WHERE id=?",
       attempts,
       result.status,
@@ -479,62 +480,62 @@ async function deliverAndRecord(delivery: Delivery) {
 
 const deliveryColumns = "d.id delivery_id,d.body,d.attempts,w.id,w.workspace_id,w.created_by,w.url,w.secret,w.format,w.config,w.templates,w.credentials";
 export async function flushWebhooks(now = Date.now()) {
-  const due = all<Delivery>(
+  const due = await all<Delivery>(
     `SELECT ${deliveryColumns} FROM webhook_deliveries d JOIN webhooks w ON w.id=d.webhook_id
      WHERE d.delivered_at IS NULL AND d.attempts<6 AND d.next_at<=? ORDER BY d.next_at LIMIT 50`,
     now,
   );
   for (const delivery of due) {
     // Claimed first, so parallel runs never deliver twice.
-    if (!run("UPDATE webhook_deliveries SET next_at=? WHERE id=? AND delivered_at IS NULL AND next_at<=?", Date.now() + 10 * 60_000, delivery.delivery_id, now).changes)
+    if (!(await run("UPDATE webhook_deliveries SET next_at=? WHERE id=? AND delivered_at IS NULL AND next_at<=?", Date.now() + 10 * 60_000, delivery.delivery_id, now)).changes)
       continue;
     await deliverAndRecord(delivery);
   }
-  run("DELETE FROM webhook_deliveries WHERE created_at<?", now - 7 * 86400_000);
-  run("DELETE FROM webhook_messages WHERE created_at<?", now - 30 * 86400_000);
+  await run("DELETE FROM webhook_deliveries WHERE created_at<?", now - 7 * 86400_000);
+  await run("DELETE FROM webhook_messages WHERE created_at<?", now - 30 * 86400_000);
 }
 
 // "Testnachricht senden": a sample message, sent right away and not retried.
 export async function testWebhook(user: Identity, input: unknown) {
   const b = z.object({ workspaceId: z.uuid(), id: z.string().max(60) }).parse(input);
   if (user.apiScope === "read") throw new HttpError(403, "Dieses API-Token darf nur lesen.");
-  requireOwner(user, b.workspaceId);
-  const hook = one<HookRow>("SELECT * FROM webhooks WHERE id=? AND workspace_id=?", b.id, b.workspaceId);
+  await requireOwner(user, b.workspaceId);
+  const hook = await one<HookRow>("SELECT * FROM webhooks WHERE id=? AND workspace_id=?", b.id, b.workspaceId);
   if (!hook) throw new HttpError(404, "Unbekannter Webhook.");
-  const workspace = one<{ name: string }>("SELECT name FROM workspaces WHERE id=?", b.workspaceId);
+  const workspace = await one<{ name: string }>("SELECT name FROM workspaces WHERE id=?", b.workspaceId);
   const lang = parseConfig(hook.config).language;
-  const deliveryId = queueDelivery(hook, b.workspaceId, "test", { workspace: workspace?.name || "" }, () => ({
+  const deliveryId = await queueDelivery(hook, b.workspaceId, "test", { workspace: workspace?.name || "" }, () => ({
     ...sampleNotice("test", lang),
     title: workspace?.name || "Flowplan",
     url: appBase(),
     actor: user.name,
   }));
   // Only this attempt: a failed test is not retried.
-  run("UPDATE webhook_deliveries SET attempts=5,next_at=? WHERE id=?", Date.now() + 10 * 60_000, deliveryId);
-  const delivery = one<Delivery>(`SELECT ${deliveryColumns} FROM webhook_deliveries d JOIN webhooks w ON w.id=d.webhook_id WHERE d.id=?`, deliveryId)!;
+  await run("UPDATE webhook_deliveries SET attempts=5,next_at=? WHERE id=?", Date.now() + 10 * 60_000, deliveryId);
+  const delivery = (await one<Delivery>(`SELECT ${deliveryColumns} FROM webhook_deliveries d JOIN webhooks w ON w.id=d.webhook_id WHERE d.id=?`, deliveryId))!;
   const result = await deliverAndRecord(delivery);
   return { ok: !result.error, status: result.status, error: result.error };
 }
 
 // The daily digest: once per local day, after the configured time, a list
 // of due and overdue open records (nothing is sent when there are none).
-export function processDigests(now = Date.now()) {
+export async function processDigests(now = Date.now()) {
   let queued = 0;
-  for (const hook of all<{ id: string; workspace_id: string; page_id: string | null; events: string; format: string; config: string; digest_day: string | null; created_by: string | null }>(
+  for (const hook of await all<{ id: string; workspace_id: string; page_id: string | null; events: string; format: string; config: string; digest_day: string | null; created_by: string | null }>(
     "SELECT id,workspace_id,page_id,events,format,config,digest_day,created_by FROM webhooks WHERE events LIKE '%digest.due%'",
   )) {
     if (!(JSON.parse(hook.events) as string[]).includes("digest.due")) continue;
     const config = parseConfig(hook.config);
     const clock = localClock(now, config.timeZone);
     if (clock.time < config.digestTime || hook.digest_day === clock.day) continue;
-    if (!run("UPDATE webhooks SET digest_day=? WHERE id=? AND digest_day IS DISTINCT FROM ?", clock.day, hook.id, clock.day).changes) continue;
+    if (!(await run("UPDATE webhooks SET digest_day=? WHERE id=? AND digest_day IS DISTINCT FROM ?", clock.day, hook.id, clock.day)).changes) continue;
     // Only databases and records the webhook's owner may read.
-    const reader = hookReader(hook);
+    const reader = await hookReader(hook);
     if (!reader) continue;
-    const items = dueItems(hook.workspace_id, hook.page_id, clock.day, 100, reader);
+    const items = await dueItems(hook.workspace_id, hook.page_id, clock.day, 100, reader);
     if (!items.length) continue;
     const data = { date: clock.day, ...(hook.page_id ? { pageId: hook.page_id } : {}), items };
-    queueDelivery(hook, hook.workspace_id, "digest.due", data, () => ({
+    await queueDelivery(hook, hook.workspace_id, "digest.due", data, () => ({
       event: "digest.due",
       title: "",
       page: "",
@@ -561,9 +562,9 @@ export function dispatchWebhooks() {
 
 export function startWebhookWorker() {
   if (runtime.flowplanHookTimer) return;
-  runtime.flowplanHookTimer = setInterval(() => {
+  runtime.flowplanHookTimer = setInterval(async () => {
     try {
-      transaction(() => processDigests());
+      await transaction(async () => await processDigests());
     } catch (error) {
       console.error("Webhook-Übersicht fehlgeschlagen", error);
     }

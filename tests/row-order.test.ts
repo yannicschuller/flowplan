@@ -5,15 +5,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Identity, Field, View } from "../lib/types";
 import { queryRows } from "../lib/database";
+import { mapAsync } from "../lib/each-async";
 process.env.FLOWPLAN_DATA_DIR = mkdtempSync(join(tmpdir(), "flowplan-order-"));
 const { id, run, one } = await import("../lib/db");
 const { command, database, rows, bootstrap } = await import("../lib/api");
 const { createWorkspace } = await import("../lib/seed");
 const { exportArchive, importArchive } = await import("../lib/archive");
 const { relationPairs } = await import("../lib/relation-sync");
-function user(name: string): Identity {
+async function user(name: string): Promise<Identity> {
   const uid = id();
-  run(
+  await run(
     "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
     uid,
     uid,
@@ -30,36 +31,36 @@ function user(name: string): Identity {
     created_at: "",
   };
 }
-const owner = user("owner"),
-  editor = user("editor"),
-  viewer = user("viewer"),
-  wid = createWorkspace(owner.id, "Row ordering"),
-  boot = bootstrap(owner, wid);
-run("INSERT INTO members VALUES(?,?,?)", wid, editor.id, "editor");
-run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
-const act = (input: Record<string, unknown>, actor = owner): any =>
-  command(actor, input);
-const makePage = (title: string, extra = {}) =>
-  act({
+const owner = await user("owner"),
+  editor = await user("editor"),
+  viewer = await user("viewer"),
+  wid = await createWorkspace(owner.id, "Row ordering"),
+  boot = await bootstrap(owner, wid);
+await run("INSERT INTO members VALUES(?,?,?)", wid, editor.id, "editor");
+await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
+const act = async (input: Record<string, unknown>, actor = owner): Promise<any> =>
+  await command(actor, input);
+const makePage = async (title: string, extra = {}) =>
+  (await act({
     action: "page.create",
     workspaceId: wid,
     spaceId: boot.spaces[0].id,
     title,
     kind: "database",
     ...extra,
-  }).id as string;
-function schema(pageId: string, fields: Field[], views: View[], extra = {}) {
-  return act({
+  })).id as string;
+async function schema(pageId: string, fields: Field[], views: View[], extra = {}) {
+  return await act({
     action: "database.update",
     pageId,
     fields,
     views,
-    version: database(pageId).version,
+    version: (await database(pageId)).version,
     ...extra,
   });
 }
-function fixture() {
-  const page = makePage("Ordered rows");
+async function fixture() {
+  const page = await makePage("Ordered rows");
   const fields: Field[] = [
     { id: "title", name: "Name", type: "text" },
     { id: "value", name: "Value", type: "number" },
@@ -73,19 +74,19 @@ function fixture() {
     sorts: [],
     ...(type === "board" ? { groupBy: "status" } : {}),
   }));
-  schema(page, fields, views);
-  const ids = ["A", "B", "C", "D"].map((title, i) => {
-    const rid = act({
+  await schema(page, fields, views);
+  const ids = await mapAsync(["A", "B", "C", "D"], async (title, i) => {
+    const rid = (await act({
       action: "row.create",
       pageId: page,
       cells: { title, value: 4 - i, status: i < 2 ? "Todo" : "Done" },
-    }).id as string;
-    run("UPDATE rows SET position=? WHERE id=?", i, rid);
+    })).id as string;
+    await run("UPDATE rows SET position=? WHERE id=?", i, rid);
     return rid;
   });
   return { page, ids };
 }
-function move(
+async function move(
   pageId: string,
   rowId: string,
   targetId: string | undefined,
@@ -93,14 +94,14 @@ function move(
   extra = {},
   actor = owner,
 ) {
-  return act(
+  return await act(
     {
       action: "row.move",
       pageId,
       viewId: "table",
-      version: database(pageId).version,
+      version: (await database(pageId)).version,
       rowId,
-      rowVersion: rows(pageId).find((r) => r.id === rowId)!.version,
+      rowVersion: (await rows(pageId)).find((r) => r.id === rowId)!.version,
       targetId,
       placement,
       ...extra,
@@ -108,27 +109,27 @@ function move(
     actor,
   );
 }
-function titles(pageId: string, viewId = "table") {
-  const d = database(pageId);
+async function titles(pageId: string, viewId = "table") {
+  const d = await database(pageId);
   return queryRows(
-    rows(pageId),
+    await rows(pageId),
     d.fields,
     d.views.find((v) => v.id === viewId)!,
   ).map((r) => r.cells.title);
 }
 
-test("manual ordering is per-view, keeps filtered rows and appends new records without editing their contents", () => {
+test("manual ordering is per-view, keeps filtered rows and appends new records without editing their contents", async () => {
   const {
       page,
       ids: [a, b, c, d],
-    } = fixture(),
-    before = rows(page);
-  move(page, c, a);
-  assert.deepEqual(titles(page), ["C", "A", "B", "D"]);
-  assert.deepEqual(titles(page, "board"), ["A", "B", "C", "D"]);
-  assert.deepEqual(rows(page), before);
-  const db = database(page);
-  schema(
+    } = await fixture(),
+    before = await rows(page);
+  await move(page, c, a);
+  assert.deepEqual(await titles(page), ["C", "A", "B", "D"]);
+  assert.deepEqual(await titles(page, "board"), ["A", "B", "C", "D"]);
+  assert.deepEqual(await rows(page), before);
+  const db = await database(page);
+  await schema(
     page,
     db.fields,
     db.views.map((v) =>
@@ -137,27 +138,27 @@ test("manual ordering is per-view, keeps filtered rows and appends new records w
         : v,
     ),
   );
-  move(page, d, c);
-  assert.deepEqual(titles(page), ["D", "C", "A"]);
-  const full = database(page);
+  await move(page, d, c);
+  assert.deepEqual(await titles(page), ["D", "C", "A"]);
+  const full = await database(page);
   assert.deepEqual(
-    queryRows(rows(page), full.fields, { ...full.views[0], filters: [] }).map(
+    queryRows(await rows(page), full.fields, { ...full.views[0], filters: [] }).map(
       (r) => r.cells.title,
     ),
     ["D", "C", "A", "B"],
   );
-  act({ action: "row.create", pageId: page, cells: { title: "E", value: 8 } });
-  assert.deepEqual(titles(page), ["D", "C", "A", "E"]);
-  assert.ok(database(page).views[0].rowOrder?.includes(b));
+  await act({ action: "row.create", pageId: page, cells: { title: "E", value: 8 } });
+  assert.deepEqual(await titles(page), ["D", "C", "A", "E"]);
+  assert.ok((await database(page)).views[0].rowOrder?.includes(b));
 });
 
-test("active sorts require explicit removal and preserve the sorted sequence as a starting point", () => {
+test("active sorts require explicit removal and preserve the sorted sequence as a starting point", async () => {
   const {
       page,
       ids: [a, b, c, d],
-    } = fixture(),
-    db = database(page);
-  schema(
+    } = await fixture(),
+    db = await database(page);
+  await schema(
     page,
     db.fields,
     db.views.map((v) =>
@@ -166,15 +167,15 @@ test("active sorts require explicit removal and preserve the sorted sequence as 
         : v,
     ),
   );
-  assert.deepEqual(titles(page), ["D", "C", "B", "A"]);
-  const before = database(page);
-  assert.throws(() => move(page, b, d), /Sortierung aufheben/);
-  assert.deepEqual(database(page), before);
-  move(page, b, d, "before", { clearSorts: true });
-  assert.deepEqual(titles(page), ["B", "D", "C", "A"]);
-  assert.deepEqual(database(page).views[0].sorts, []);
-  const latest = database(page);
-  schema(
+  assert.deepEqual(await titles(page), ["D", "C", "B", "A"]);
+  const before = await database(page);
+  await assert.rejects(async () => await move(page, b, d), /Sortierung aufheben/);
+  assert.deepEqual(await database(page), before);
+  await move(page, b, d, "before", { clearSorts: true });
+  assert.deepEqual(await titles(page), ["B", "D", "C", "A"]);
+  assert.deepEqual((await database(page)).views[0].sorts, []);
+  const latest = await database(page);
+  await schema(
     page,
     latest.fields,
     latest.views.map((v) =>
@@ -183,81 +184,81 @@ test("active sorts require explicit removal and preserve the sorted sequence as 
         : v,
     ),
   );
-  assert.deepEqual(titles(page), ["D", "C", "B", "A"]); // manual order resolves equal sort values
+  assert.deepEqual(await titles(page), ["D", "C", "B", "A"]); // manual order resolves equal sort values
 });
 
-test("reordering rejects stale schemas, stale rows, foreign anchors, invalid orders, viewers and locked/private pages", () => {
+test("reordering rejects stale schemas, stale rows, foreign anchors, invalid orders, viewers and locked/private pages", async () => {
   const {
       page,
       ids: [a, b],
-    } = fixture(),
-    other = fixture(),
-    version = database(page).version;
-  move(page, b, a);
-  const before = database(page);
-  assert.throws(
-    () => move(page, a, b, "after", { version }),
+    } = await fixture(),
+    other = await fixture(),
+    version = (await database(page)).version;
+  await move(page, b, a);
+  const before = await database(page);
+  await assert.rejects(
+    async () => await move(page, a, b, "after", { version }),
     /Ansicht wurde geändert/,
   );
-  act({
+  await act({
     action: "row.update",
     pageId: page,
     rowId: a,
     version: 1,
     cells: { title: "Updated" },
   });
-  assert.throws(
-    () => move(page, a, b, "after", { rowVersion: 1 }),
+  await assert.rejects(
+    async () => await move(page, a, b, "after", { rowVersion: 1 }),
     /Eintrag wurde geändert/,
   );
-  assert.throws(() => move(page, a, other.ids[0]), /Zieleintrag/);
-  assert.throws(() => move(page, a, b, "after", {}, viewer), /Berechtigung/);
-  assert.throws(
-    () =>
-      schema(
+  await assert.rejects(async () => await move(page, a, other.ids[0]), /Zieleintrag/);
+  await assert.rejects(async () => await move(page, a, b, "after", {}, viewer), /Berechtigung/);
+  await assert.rejects(
+    async () =>
+      await schema(
         page,
         before.fields,
         before.views.map((v) => ({ ...v, rowOrder: [other.ids[0]] })),
       ),
     /fremden/,
   );
-  assert.throws(() =>
-    schema(
+  await assert.rejects(async () =>
+    await schema(
       page,
       before.fields,
       before.views.map((v) => ({ ...v, rowOrder: [a, a] })),
     ),
   );
-  act({ action: "page.update", pageId: page, patch: { locked: true } });
-  assert.throws(() => move(page, a, b), /gesperrt/);
-  act({ action: "page.update", pageId: page, patch: { locked: false } });
-  const privateSpace = act({
+  await act({ action: "page.update", pageId: page, patch: { locked: true } });
+  await assert.rejects(async () => await move(page, a, b), /gesperrt/);
+  await act({ action: "page.update", pageId: page, patch: { locked: false } });
+  const privateSpace = (await act({
     action: "space.create",
     workspaceId: wid,
     name: "Private",
     private: true,
-  }).id;
-  run("UPDATE pages SET space_id=? WHERE id=?", privateSpace, page);
-  assert.throws(() => move(page, a, b, "after", {}, editor), /Berechtigung/);
-  assert.deepEqual(database(page), before);
+  })).id;
+  await run("UPDATE pages SET space_id=? WHERE id=?", privateSpace, page);
+  await assert.rejects(async () => await move(page, a, b, "after", {}, editor), /Berechtigung/);
+  assert.deepEqual(await database(page), before);
 });
 
-test("board drops save group and order together and roll back when a paired relation cannot be changed", () => {
+test("board drops save group and order together and roll back when a paired relation cannot be changed", async () => {
   const {
     page,
     ids: [a, b, c, d],
-  } = fixture();
-  move(page, a, c, "before", {
+  } = await fixture();
+  await move(page, a, c, "before", {
     viewId: "board",
     group: { from: JSON.stringify("Todo"), to: JSON.stringify("Done") },
   });
-  assert.equal(rows(page).find((r) => r.id === a)!.cells.status, "Done");
-  assert.deepEqual(titles(page, "board"), ["B", "A", "C", "D"]);
-  const target = makePage("Projects"),
-    p = act({ action: "row.create", pageId: target, cells: { title: "P" } }).id,
-    q = act({ action: "row.create", pageId: target, cells: { title: "Q" } }).id;
-  let db = database(page);
-  schema(
+  assert.equal((await rows(page)).find((r) => r.id === a)!.cells.status, "Done");
+  assert.deepEqual(await titles(page, "board"), ["B", "A", "C", "D"]);
+  const target = await makePage("Projects"),
+    p = (await act({ action: "row.create", pageId: target, cells: { title: "P" } })).id,
+    q = (await act({ action: "row.create", pageId: target, cells: { title: "Q" } })).id;
+  let db = await database(page);
+  await schema(
     page,
     [
       ...db.fields,
@@ -268,7 +269,7 @@ test("board drops save group and order together and roll back when a paired rela
       relation: {
         fieldId: "links",
         enabled: true,
-        targetVersion: database(target).version,
+        targetVersion: (await database(target)).version,
       },
     },
   );
@@ -276,87 +277,87 @@ test("board drops save group and order together and roll back when a paired rela
     [a, p],
     [b, q],
   ])
-    act({
+    await act({
       action: "row.update",
       pageId: page,
       rowId,
-      version: rows(page).find((r) => r.id === rowId)!.version,
+      version: (await rows(page)).find((r) => r.id === rowId)!.version,
       cells: { links: [linked] },
     });
-  const inverse = relationPairs(page)[0].right_field;
-  act({ action: "page.update", pageId: target, patch: { locked: true } });
-  const before = rows(page);
-  db = database(page);
-  assert.throws(
-    () =>
-      move(page, a, b, "before", {
+  const inverse = (await relationPairs(page))[0].right_field;
+  await act({ action: "page.update", pageId: target, patch: { locked: true } });
+  const before = await rows(page);
+  db = await database(page);
+  await assert.rejects(
+    async () =>
+      await move(page, a, b, "before", {
         viewId: "board",
         group: { from: JSON.stringify(p), to: JSON.stringify(q) },
       }),
     /gesperrt/,
   );
-  assert.deepEqual(rows(page), before);
-  assert.deepEqual(database(page), db);
-  act({ action: "page.update", pageId: target, patch: { locked: false } });
-  move(page, a, b, "after", {
+  assert.deepEqual(await rows(page), before);
+  assert.deepEqual(await database(page), db);
+  await act({ action: "page.update", pageId: target, patch: { locked: false } });
+  await move(page, a, b, "after", {
     viewId: "board",
     group: { from: JSON.stringify(p), to: JSON.stringify(q) },
   });
-  assert.deepEqual(rows(target).find((r) => r.id === p)!.cells[inverse], []);
+  assert.deepEqual((await rows(target)).find((r) => r.id === p)!.cells[inverse], []);
   assert.deepEqual(
-    new Set(rows(target).find((r) => r.id === q)!.cells[inverse] as string[]),
+    new Set((await rows(target)).find((r) => r.id === q)!.cells[inverse] as string[]),
     new Set([a, b]),
   );
   assert.deepEqual(
-    database(page).views.find((v) => v.id === "board")!.rowOrder,
+    (await database(page)).views.find((v) => v.id === "board")!.rowOrder,
     [b, a, c, d],
   );
 });
 
-test("duplicates follow originals in manual views, deletes prune orders and snapshots restore them", () => {
+test("duplicates follow originals in manual views, deletes prune orders and snapshots restore them", async () => {
   const {
     page,
     ids: [a, b, c, d],
-  } = fixture();
-  move(page, c, a);
-  const snapshot = act({ action: "page.snapshot", pageId: page }).id;
-  const duplicated = act({
+  } = await fixture();
+  await move(page, c, a);
+  const snapshot = (await act({ action: "page.snapshot", pageId: page })).id;
+  const duplicated = (await act({
     action: "rows.bulk",
     pageId: page,
     operation: "duplicate",
-    rows: [{ id: a, version: rows(page).find((r) => r.id === a)!.version }],
-  }).ids[0];
-  assert.deepEqual(database(page).views[0].rowOrder, [c, a, duplicated, b, d]);
-  act({ action: "row.delete", pageId: page, rowId: b });
-  assert.ok(!database(page).views[0].rowOrder?.includes(b));
-  act({
+    rows: [{ id: a, version: (await rows(page)).find((r) => r.id === a)!.version }],
+  })).ids[0];
+  assert.deepEqual((await database(page)).views[0].rowOrder, [c, a, duplicated, b, d]);
+  await act({ action: "row.delete", pageId: page, rowId: b });
+  assert.ok(!(await database(page)).views[0].rowOrder?.includes(b));
+  await act({
     action: "rows.bulk",
     pageId: page,
     operation: "delete",
-    rows: [{ id: c, version: rows(page).find((r) => r.id === c)!.version }],
+    rows: [{ id: c, version: (await rows(page)).find((r) => r.id === c)!.version }],
   });
-  assert.ok(!database(page).views[0].rowOrder?.includes(c));
-  act({ action: "snapshot.restore", pageId: page, snapshotId: snapshot });
-  assert.deepEqual(titles(page), ["C", "A", "B", "D"]);
+  assert.ok(!(await database(page)).views[0].rowOrder?.includes(c));
+  await act({ action: "snapshot.restore", pageId: page, snapshotId: snapshot });
+  assert.deepEqual(await titles(page), ["C", "A", "B", "D"]);
 });
 
 test("page copies, templates, legacy JSON and ZIP archives remap view row IDs including saved versions", async () => {
   const {
     page,
     ids: [a, b, c],
-  } = fixture();
-  move(page, c, a);
-  move(page, b, c, "after", { viewId: "list" });
-  const snapshot = act({ action: "page.snapshot", pageId: page }).id;
-  const clone = act({ action: "page.duplicate", pageId: page }).id;
-  assert.deepEqual(titles(clone), ["C", "A", "B", "D"]);
-  assert.deepEqual(titles(clone, "list"), ["A", "C", "B", "D"]);
-  assert.ok(!database(clone).views[0].rowOrder?.includes(a));
+  } = await fixture();
+  await move(page, c, a);
+  await move(page, b, c, "after", { viewId: "list" });
+  const snapshot = (await act({ action: "page.snapshot", pageId: page })).id;
+  const clone = (await act({ action: "page.duplicate", pageId: page })).id;
+  assert.deepEqual(await titles(clone), ["C", "A", "B", "D"]);
+  assert.deepEqual(await titles(clone, "list"), ["A", "C", "B", "D"]);
+  assert.ok(!(await database(clone)).views[0].rowOrder?.includes(a));
   const name = `Ordered template ${id()}`,
-    template = act({ action: "template.save", pageId: page, name }).id;
-  const fromTemplate = makePage("Template copy", { templateId: template });
-  assert.deepEqual(titles(fromTemplate), titles(page));
-  const json = act({
+    template = (await act({ action: "template.save", pageId: page, name })).id;
+  const fromTemplate = await makePage("Template copy", { templateId: template });
+  assert.deepEqual(await titles(fromTemplate), await titles(page));
+  const json = (await act({
     action: "workspace.import",
     workspaceId: wid,
     spaceId: boot.spaces[0].id,
@@ -368,36 +369,36 @@ test("page copies, templates, legacy JSON and ZIP archives remap view row IDs in
           parent_id: null,
           title: "JSON copy",
           kind: "database",
-          data: { database: database(page), rows: rows(page) },
+          data: { database: await database(page), rows: await rows(page) },
         },
       ],
     },
-  }).pageIds[page];
-  assert.deepEqual(titles(json), titles(page));
-  const dest = createWorkspace(owner.id, "Restored order"),
+  })).pageIds[page];
+  assert.deepEqual(await titles(json), await titles(page));
+  const dest = await createWorkspace(owner.id, "Restored order"),
     zip = await importArchive(owner, dest, await exportArchive(owner, wid)),
     restored = zip.pageIds[page];
-  assert.deepEqual(titles(restored), titles(page));
-  const saved = one<{ id: string }>(
+  assert.deepEqual(await titles(restored), await titles(page));
+  const saved = (await one<{ id: string }>(
     "SELECT id FROM snapshots WHERE page_id=?",
     restored,
-  )!.id;
-  const restoredRows = rows(restored);
-  move(restored, restoredRows[0].id, undefined, "end");
-  act({ action: "snapshot.restore", pageId: restored, snapshotId: saved });
-  assert.deepEqual(titles(restored), titles(page));
-  const restoredTemplate = one<{ id: string }>(
+  ))!.id;
+  const restoredRows = await rows(restored);
+  await move(restored, restoredRows[0].id, undefined, "end");
+  await act({ action: "snapshot.restore", pageId: restored, snapshotId: saved });
+  assert.deepEqual(await titles(restored), await titles(page));
+  const restoredTemplate = (await one<{ id: string }>(
     "SELECT id FROM templates WHERE workspace_id=? AND name=?",
     dest,
     name,
-  )!.id;
-  const instance = act({
+  ))!.id;
+  const instance = (await act({
     action: "page.create",
     workspaceId: dest,
-    spaceId: bootstrap(owner, dest).spaces[0].id,
+    spaceId: (await bootstrap(owner, dest)).spaces[0].id,
     title: "Restored template",
     templateId: restoredTemplate,
-  }).id;
-  assert.deepEqual(titles(instance), titles(page));
-  assert.deepEqual(titles(instance, "list"), titles(page, "list"));
+  })).id;
+  assert.deepEqual(await titles(instance), await titles(page));
+  assert.deepEqual(await titles(instance, "list"), await titles(page, "list"));
 });

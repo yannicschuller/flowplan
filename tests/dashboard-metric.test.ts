@@ -11,17 +11,17 @@ const { command, database, bootstrap } = await import("../lib/api");
 const { createWorkspace } = await import("../lib/seed");
 const { computeMetric, metricSchema, metricSources } = await import("../lib/dashboard-metric");
 
-function user(name: string): Identity {
+async function user(name: string): Promise<Identity> {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@test.invalid`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@test.invalid`);
   return { id: uid, name, email: `${name}@test.invalid`, groups: [], isAdmin: false, disabled: 0, created_at: "" };
 }
-const owner = user("owner"),
-  stranger = user("stranger");
-const wid = createWorkspace(owner.id, "Dashboards"),
-  boot = bootstrap(owner, wid);
-const act = (body: Record<string, unknown>): any => command(owner, body);
-const source = act({ action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, kind: "database", title: "Tickets" })
+const owner = await user("owner"),
+  stranger = await user("stranger");
+const wid = await createWorkspace(owner.id, "Dashboards"),
+  boot = await bootstrap(owner, wid);
+const act = async (body: Record<string, unknown>): Promise<any> => await command(owner, body);
+const source = (await act({ action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, kind: "database", title: "Tickets" }))
   .id as string;
 const fields: Field[] = [
   { id: "title", name: "Name", type: "text" },
@@ -33,41 +33,41 @@ const views: View[] = [
   { id: "all", name: "All", type: "table", filters: [], sorts: [] },
   { id: "open", name: "Open", type: "table", filters: [{ field: "status", op: "eq", value: "Open" }], sorts: [] },
 ];
-act({ action: "database.update", pageId: source, version: database(source).version, fields, views });
+await act({ action: "database.update", pageId: source, version: (await database(source)).version, fields, views });
 for (const [title, status, hours] of [
   ["A", "Open", 2],
   ["B", "Open", 4.5],
   ["C", "Done", 10],
   ["D", "Done", ""],
 ] as const)
-  act({ action: "row.create", pageId: source, cells: { title, status, hours } });
+  await act({ action: "row.create", pageId: source, cells: { title, status, hours } });
 
-const metric = (query: Record<string, string>, who = owner) =>
-  computeMetric(who, metricSchema.parse({ source, ...query }));
+const metric = async (query: Record<string, string>, who = owner) =>
+  await computeMetric(who, metricSchema.parse({ source, ...query }));
 
-test("counts records, all or as a view filters them", () => {
-  assert.equal(metric({}).value, 4);
-  const open = metric({ view: "open" });
+test("counts records, all or as a view filters them", async () => {
+  assert.equal((await metric({})).value, 4);
+  const open = await metric({ view: "open" });
   assert.equal(open.value, 2);
   assert.equal(open.view, "Open");
   assert.equal(open.source, "Tickets");
 });
 
-test("sum, average, minimum and maximum of a number property", () => {
-  assert.equal(metric({ aggregate: "sum", field: "hours" }).value, 16.5);
-  assert.equal(metric({ aggregate: "average", field: "hours" }).value, 5.5);
-  assert.equal(metric({ aggregate: "min", field: "hours" }).value, 2);
-  assert.equal(metric({ aggregate: "max", field: "hours", view: "open" }).value, 4.5);
-  assert.throws(() => metric({ aggregate: "sum" }), /Eigenschaft fehlt/);
+test("sum, average, minimum and maximum of a number property", async () => {
+  assert.equal((await metric({ aggregate: "sum", field: "hours" })).value, 16.5);
+  assert.equal((await metric({ aggregate: "average", field: "hours" })).value, 5.5);
+  assert.equal((await metric({ aggregate: "min", field: "hours" })).value, 2);
+  assert.equal((await metric({ aggregate: "max", field: "hours", view: "open" })).value, 4.5);
+  await assert.rejects(async () => await metric({ aggregate: "sum" }), /Eigenschaft fehlt/);
   // Formulas are calculated before they are added up.
-  assert.equal(metric({ aggregate: "sum", field: "double", view: "open" }).value, 13);
+  assert.equal((await metric({ aggregate: "sum", field: "double", view: "open" })).value, 13);
 });
 
-test("only for people who can read the database", () => {
-  assert.throws(() => metric({}, stranger));
-  const sources = metricSources(owner, wid);
+test("only for people who can read the database", async () => {
+  await assert.rejects(async () => await metric({}, stranger));
+  const sources = await metricSources(owner, wid);
   const tickets = sources.find((s) => s.id === source)!;
   assert.deepEqual(tickets.numbers.map((n) => n.id), ["hours", "double"]);
   assert.deepEqual(tickets.views.map((v) => v.id), ["all", "open"]);
-  assert.equal(metricSources(stranger, wid).length, 0);
+  assert.equal((await metricSources(stranger, wid)).length, 0);
 });

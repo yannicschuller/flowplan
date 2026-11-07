@@ -38,7 +38,7 @@ export async function GET() {
   try {
     const user = await requireUser();
     requireAdmin(user);
-    return Response.json({ source: moveSourceStatus(), target: moveTargetStatus(), stepUp: stepUpKind(user) }, { headers });
+    return Response.json({ source: await moveSourceStatus(), target: await moveTargetStatus(), stepUp: await stepUpKind(user) }, { headers });
   } catch (e) {
     return failure(e);
   }
@@ -46,7 +46,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    checkOrigin(req);
+    await checkOrigin(req);
     const user = await requireUser();
     requireAdmin(user);
     if (user.apiScope) throw new HttpError(403, "Mit einem API-Token nicht erlaubt.");
@@ -57,26 +57,26 @@ export async function POST(req: Request) {
       case "prepare": {
         await requireStepUp(user, req, body.password, await requestLocale());
         // The token is in this answer only.
-        return reply({ ...prepareMove(user), source: moveSourceStatus() });
+        return reply({ ...(await prepareMove(user)), source: await moveSourceStatus() });
       }
       case "revoke":
-        return reply({ source: revokeMove(user) });
+        return reply({ source: await revokeMove(user) });
       case "unfreeze":
-        return reply({ source: unfreezeSource(user) });
+        return reply({ source: await unfreezeSource(user) });
       case "redirect":
-        return reply({ source: setMoveRedirect(user, z.boolean().parse(body.on)) });
+        return reply({ source: await setMoveRedirect(user, z.boolean().parse(body.on)) });
       case "start":
         return reply({ target: await startIncoming(user, body) });
       case "resume":
-        return reply({ target: resumeIncoming() });
+        return reply({ target: await resumeIncoming() });
       case "preflight":
         return reply(await preflight());
       case "final":
         return reply({ target: await finalSync(user) });
       case "apply":
-        return reply({ ...(await applyIncoming(user)), target: moveTargetStatus() });
+        return reply({ ...(await applyIncoming(user)), target: await moveTargetStatus() });
       case "cancel":
-        return reply({ target: cancelIncoming(user) });
+        return reply({ target: await cancelIncoming(user) });
     }
   } catch (e) {
     return failure(e);

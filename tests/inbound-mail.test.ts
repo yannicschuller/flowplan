@@ -30,19 +30,19 @@ const PDF = Buffer.from("%PDF-1.4\n%%EOF\n");
 
 async function person(name: string) {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name.toLowerCase()}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name.toLowerCase()}@example.test`);
   const token = randomBytes(16).toString("hex");
-  run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", createHash("sha256").update(token).digest("hex"), uid, "[]", Date.now() + 3600_000);
+  await run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", createHash("sha256").update(token).digest("hex"), uid, "[]", Date.now() + 3600_000);
   return (await identityFromToken(token))!;
 }
 const ana = await person("Ana"),
   ben = await person("Ben");
-const wid = createWorkspace(ana.id, "Team");
-run("INSERT INTO members VALUES(?,?,?)", wid, ben.id, "editor");
-const space = one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid)!.id;
-const inboxPage = createPage(wid, space, ana.id, "Posteingang");
-const db = createPage(wid, space, ana.id, "Anfragen", "database", null, "empty");
-run(
+const wid = await createWorkspace(ana.id, "Team");
+await run("INSERT INTO members VALUES(?,?,?)", wid, ben.id, "editor");
+const space = (await one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid))!.id;
+const inboxPage = await createPage(wid, space, ana.id, "Posteingang");
+const db = await createPage(wid, space, ana.id, "Anfragen", "database", null, "empty");
+await run(
   "UPDATE databases SET fields=? WHERE page_id=?",
   JSON.stringify([
     { id: "title", name: "Betreff", type: "text" },
@@ -52,9 +52,9 @@ run(
   db,
 );
 
-const save = (input: Record<string, unknown>, user = ana) =>
-  command(user, { action: "inbound.save", workspaceId: wid, ...input }) as { id: string };
-const tokenOf = (addressId: string) => one<{ token: string }>("SELECT token FROM inbound_addresses WHERE id=?", addressId)!.token;
+const save = async (input: Record<string, unknown>, user = ana) =>
+  (await command(user, { action: "inbound.save", workspaceId: wid, ...input })) as { id: string };
+const tokenOf = async (addressId: string) => (await one<{ token: string }>("SELECT token FROM inbound_addresses WHERE id=?", addressId))!.token;
 const mail = (over: Partial<import("../lib/inbound-mail").InboundMail> = {}) => ({
   from: "ada@example.org",
   to: ["inbox@example.test"],
@@ -71,43 +71,43 @@ after(() => {
   delete process.env.INBOUND_MAIL_DOMAIN;
 });
 
-test("owners create addresses with a 32-character token, allowed senders and a page or database target", () => {
-  assert.throws(() => save({ pageId: inboxPage, senders: ["example.org"] }, ben), /Nur Eigentümer/);
-  assert.throws(() => save({ pageId: inboxPage, senders: [] }), /mindestens einen erlaubten Absender/);
-  assert.throws(() => save({ pageId: inboxPage, senders: ["not an address"] }), /Ungültiger Absender/);
-  const board = createPage(wid, space, ana.id, "Tafel", "whiteboard");
-  assert.throws(() => save({ pageId: board, senders: ["example.org"] }), /nur unter einer Seite oder in einer Datenbank/);
-  const { id: addressId } = save({ pageId: inboxPage, label: "Team", senders: ["@Example.org", "boss@partner.test"] });
-  const token = tokenOf(addressId);
+test("owners create addresses with a 32-character token, allowed senders and a page or database target", async () => {
+  await assert.rejects(async () => await save({ pageId: inboxPage, senders: ["example.org"] }, ben), /Nur Eigentümer/);
+  await assert.rejects(async () => await save({ pageId: inboxPage, senders: [] }), /mindestens einen erlaubten Absender/);
+  await assert.rejects(async () => await save({ pageId: inboxPage, senders: ["not an address"] }), /Ungültiger Absender/);
+  const board = await createPage(wid, space, ana.id, "Tafel", "whiteboard");
+  await assert.rejects(async () => await save({ pageId: board, senders: ["example.org"] }), /nur unter einer Seite oder in einer Datenbank/);
+  const { id: addressId } = await save({ pageId: inboxPage, label: "Team", senders: ["@Example.org", "boss@partner.test"] });
+  const token = await tokenOf(addressId);
   assert.match(token, /^[a-z2-7]{32}$/);
-  const listed = inbound.listInboundAddresses(ana, wid).addresses.find((a) => a.id === addressId)!;
+  const listed = (await inbound.listInboundAddresses(ana, wid)).addresses.find((a) => a.id === addressId)!;
   assert.deepEqual(listed.senders, ["example.org", "boss@partner.test"]);
   assert.equal(listed.webhookUrl, `https://flowplan.example.test/api/inbound-mail/${token}`);
   assert.equal(listed.email, `inbox+${token}@mail.example.test`);
   assert.equal(listed.target.title, "Posteingang");
-  assert.throws(() => inbound.listInboundAddresses(ben, wid), /Nur Eigentümer/);
-  assert.ok(one("SELECT 1 FROM audit WHERE action='inbound.create' AND resource_id=?", addressId));
+  await assert.rejects(async () => await inbound.listInboundAddresses(ben, wid), /Nur Eigentümer/);
+  assert.ok(await one("SELECT 1 FROM audit WHERE action='inbound.create' AND resource_id=?", addressId));
 });
 
-test("sender rules: addresses and domains on the list get in, everyone else is logged and dropped", () => {
+test("sender rules: addresses and domains on the list get in, everyone else is logged and dropped", async () => {
   assert.equal(inbound.senderAllowed(["example.org"], "Ada@Example.org"), true);
   assert.equal(inbound.senderAllowed(["example.org"], "ada@evil-example.org"), false);
   assert.equal(inbound.senderAllowed(["example.org"], "ada@sub.example.org"), false);
   assert.equal(inbound.senderAllowed(["boss@partner.test"], "boss@partner.test"), true);
   assert.equal(inbound.senderAllowed(["boss@partner.test"], "other@partner.test"), false);
-  const { id: addressId } = save({ pageId: inboxPage, senders: ["example.org"] });
-  const pages = Number(one<{ n: number }>("SELECT COUNT(*) n FROM pages WHERE parent_id=?", inboxPage)!.n);
-  const result = inbound.receiveInboundMail(tokenOf(addressId), mail({ from: "spam@elsewhere.test" }));
+  const { id: addressId } = await save({ pageId: inboxPage, senders: ["example.org"] });
+  const pages = Number((await one<{ n: number }>("SELECT COUNT(*) n FROM pages WHERE parent_id=?", inboxPage))!.n);
+  const result = await inbound.receiveInboundMail(await tokenOf(addressId), mail({ from: "spam@elsewhere.test" }));
   assert.deepEqual(result, { status: "rejected", reason: "sender" });
-  assert.equal(Number(one<{ n: number }>("SELECT COUNT(*) n FROM pages WHERE parent_id=?", inboxPage)!.n), pages);
-  assert.ok(one("SELECT 1 FROM audit WHERE action='inbound.rejected' AND resource_id=? AND detail LIKE '%spam@elsewhere.test%'", addressId));
-  assert.match(one<{ last_error: string }>("SELECT last_error FROM inbound_addresses WHERE id=?", addressId)!.last_error, /Absender abgelehnt/);
+  assert.equal(Number((await one<{ n: number }>("SELECT COUNT(*) n FROM pages WHERE parent_id=?", inboxPage))!.n), pages);
+  assert.ok(await one("SELECT 1 FROM audit WHERE action='inbound.rejected' AND resource_id=? AND detail LIKE '%spam@elsewhere.test%'", addressId));
+  assert.match((await one<{ last_error: string }>("SELECT last_error FROM inbound_addresses WHERE id=?", addressId))!.last_error, /Absender abgelehnt/);
 });
 
-test("a page target: a new page per mail, cleaned HTML, inline images and attachments as files", () => {
-  const { id: addressId } = save({ pageId: inboxPage, senders: ["example.org"] });
-  const token = tokenOf(addressId);
-  const result = inbound.receiveInboundMail(
+test("a page target: a new page per mail, cleaned HTML, inline images and attachments as files", async () => {
+  const { id: addressId } = await save({ pageId: inboxPage, senders: ["example.org"] });
+  const token = await tokenOf(addressId);
+  const result = await inbound.receiveInboundMail(
     token,
     mail({
       subject: "Bericht",
@@ -122,18 +122,18 @@ test("a page target: a new page per mail, cleaned HTML, inline images and attach
   );
   assert.equal(result.status, "stored");
   if (result.status !== "stored") return;
-  const page = one<{ title: string; parent_id: string; kind: string; created_by: string }>("SELECT * FROM pages WHERE id=?", result.pageId)!;
+  const page = (await one<{ title: string; parent_id: string; kind: string; created_by: string }>("SELECT * FROM pages WHERE id=?", result.pageId))!;
   assert.equal(page.title, "Bericht");
   assert.equal(page.parent_id, inboxPage);
   assert.equal(page.kind, "document");
   assert.equal(page.created_by, ana.id);
-  const html = one<{ html: string; state: Uint8Array }>("SELECT html,state FROM documents WHERE page_id=?", result.pageId)!;
+  const html = (await one<{ html: string; state: Uint8Array }>("SELECT html,state FROM documents WHERE page_id=?", result.pageId))!;
   assert.ok(html.state?.length, "the editor state is stored");
   assert.doesNotMatch(html.html, /script|alert|onclick|tracker\.example|p\{\}/);
   assert.match(html.html, /Hallo <(b|strong)>Team<\/(b|strong)>/);
   assert.match(html.html, /href="https:\/\/example.org\/"/);
   assert.match(html.html, /ada@example.org/);
-  const files = all<{ id: string; name: string; mime: string; page_id: string }>("SELECT * FROM files WHERE page_id=? ORDER BY name", result.pageId);
+  const files = await all<{ id: string; name: string; mime: string; page_id: string }>("SELECT * FROM files WHERE page_id=? ORDER BY name", result.pageId);
   assert.deepEqual(
     files.map((f) => [f.name, f.mime]),
     [
@@ -150,21 +150,21 @@ test("a page target: a new page per mail, cleaned HTML, inline images and attach
   }
   assert.equal(result.files, 3);
   // The same Message-ID again: nothing new.
-  const again = inbound.receiveInboundMail(token, mail({ subject: "Bericht", messageId: one<{ message_id: string }>("SELECT message_id FROM inbound_messages WHERE page_id=?", result.pageId)!.message_id }));
+  const again = await inbound.receiveInboundMail(token, mail({ subject: "Bericht", messageId: (await one<{ message_id: string }>("SELECT message_id FROM inbound_messages WHERE page_id=?", result.pageId))!.message_id }));
   assert.deepEqual(again, { status: "duplicate" });
   // Without a Message-ID the content counts.
   const bare = mail({ messageId: "", subject: "Ohne ID" });
-  assert.equal(inbound.receiveInboundMail(token, bare).status, "stored");
-  assert.equal(inbound.receiveInboundMail(token, bare).status, "duplicate");
-  const row = one<{ last_received_at: number; received: number }>("SELECT * FROM inbound_addresses WHERE id=?", addressId)!;
+  assert.equal((await inbound.receiveInboundMail(token, bare)).status, "stored");
+  assert.equal((await inbound.receiveInboundMail(token, bare)).status, "duplicate");
+  const row = (await one<{ last_received_at: number; received: number }>("SELECT * FROM inbound_addresses WHERE id=?", addressId))!;
   assert.equal(row.received, 2);
   assert.ok(row.last_received_at);
 });
 
-test("a database target: subject, sender e-mail, date as created, attachments in the files property", () => {
-  const { id: addressId } = save({ pageId: db, senders: ["example.org"] });
-  const result = inbound.receiveInboundMail(
-    tokenOf(addressId),
+test("a database target: subject, sender e-mail, date as created, attachments in the files property", async () => {
+  const { id: addressId } = await save({ pageId: db, senders: ["example.org"] });
+  const result = await inbound.receiveInboundMail(
+    await tokenOf(addressId),
     mail({
       subject: "  Angebot\n anfordern ",
       text: "Bitte ein Angebot.",
@@ -175,99 +175,99 @@ test("a database target: subject, sender e-mail, date as created, attachments in
   assert.equal(result.status, "stored");
   if (result.status !== "stored") return;
   assert.equal(result.pageId, db);
-  const row = one<{ cells: string; created_at: string; content: string }>("SELECT * FROM rows WHERE id=?", result.rowId!)!;
+  const row = (await one<{ cells: string; created_at: string; content: string }>("SELECT * FROM rows WHERE id=?", result.rowId!))!;
   const cells = JSON.parse(row.cells);
   assert.equal(cells.title, "Angebot anfordern");
   assert.equal(cells.sender, "ada@example.org");
   assert.equal(cells.files.length, 1);
-  const file = one<{ page_id: string; name: string }>("SELECT * FROM files WHERE id=?", cells.files[0].split("/").pop())!;
+  const file = (await one<{ page_id: string; name: string }>("SELECT * FROM files WHERE id=?", cells.files[0].split("/").pop()))!;
   assert.deepEqual([file.page_id, file.name], [db, "plan.pdf"]);
   assert.equal(row.created_at, "2026-10-19 07:15:00");
   assert.match(row.content, /Bitte ein Angebot\./);
-  assert.ok(one("SELECT 1 FROM row_documents WHERE row_id=?", result.rowId!));
+  assert.ok(await one("SELECT 1 FROM row_documents WHERE row_id=?", result.rowId!));
   // A date in the future is not believed.
-  const future = inbound.receiveInboundMail(tokenOf(addressId), mail({ date: new Date(Date.now() + 86_400_000 * 30) }));
-  if (future.status === "stored") assert.ok(new Date(one<{ created_at: string }>("SELECT created_at FROM rows WHERE id=?", future.rowId!)!.created_at + "Z").getTime() <= Date.now() + 1000);
+  const future = await inbound.receiveInboundMail(await tokenOf(addressId), mail({ date: new Date(Date.now() + 86_400_000 * 30) }));
+  if (future.status === "stored") assert.ok(new Date((await one<{ created_at: string }>("SELECT created_at FROM rows WHERE id=?", future.rowId!))!.created_at + "Z").getTime() <= Date.now() + 1000);
 });
 
-test("attachments: size limits, the daily budget per address and the workspace quota", () => {
-  const { id: addressId } = save({ pageId: inboxPage, senders: ["example.org"] });
-  const token = tokenOf(addressId);
+test("attachments: size limits, the daily budget per address and the workspace quota", async () => {
+  const { id: addressId } = await save({ pageId: inboxPage, senders: ["example.org"] });
+  const token = await tokenOf(addressId);
   const big = Buffer.alloc(inbound.INBOUND_FILE_BYTES + 1, 1);
-  const result = inbound.receiveInboundMail(
+  const result = await inbound.receiveInboundMail(
     token,
     mail({ attachments: [{ filename: "riesig.bin", contentType: "application/octet-stream", data: big, contentId: "", inline: false }] }),
   );
   assert.equal(result.status, "stored");
   if (result.status === "stored") {
     assert.deepEqual(result.skipped, ["riesig.bin"]);
-    assert.match(one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", result.pageId)!.html, /riesig\.bin/);
+    assert.match((await one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", result.pageId))!.html, /riesig\.bin/);
   }
   // The instance-wide anonymous budget is shared with forms and links.
   process.env.FLOWPLAN_ANONYMOUS_UPLOAD_MB = "1";
   try {
-    const before = Number(one<{ n: number }>("SELECT COUNT(*) n FROM pages WHERE parent_id=?", inboxPage)!.n);
-    assert.throws(
-      () =>
-        inbound.receiveInboundMail(
+    const before = Number((await one<{ n: number }>("SELECT COUNT(*) n FROM pages WHERE parent_id=?", inboxPage))!.n);
+    await assert.rejects(
+      async () =>
+        await inbound.receiveInboundMail(
           token,
           mail({ attachments: [{ filename: "a.bin", contentType: "application/octet-stream", data: Buffer.alloc(1_200_000, 2), contentId: "", inline: false }] }),
         ),
       (e: any) => e.status === 413,
     );
-    assert.equal(Number(one<{ n: number }>("SELECT COUNT(*) n FROM pages WHERE parent_id=?", inboxPage)!.n), before, "nothing stored");
-    assert.match(one<{ last_error: string }>("SELECT last_error FROM inbound_addresses WHERE id=?", addressId)!.last_error, /anonymen Uploads/);
+    assert.equal(Number((await one<{ n: number }>("SELECT COUNT(*) n FROM pages WHERE parent_id=?", inboxPage))!.n), before, "nothing stored");
+    assert.match((await one<{ last_error: string }>("SELECT last_error FROM inbound_addresses WHERE id=?", addressId))!.last_error, /anonymen Uploads/);
   } finally {
     delete process.env.FLOWPLAN_ANONYMOUS_UPLOAD_MB;
   }
-  run("UPDATE workspaces SET quota_mb=? WHERE id=?", 1, wid);
+  await run("UPDATE workspaces SET quota_mb=? WHERE id=?", 1, wid);
   try {
-    assert.throws(
-      () =>
-        inbound.receiveInboundMail(
+    await assert.rejects(
+      async () =>
+        await inbound.receiveInboundMail(
           token,
           mail({ attachments: [{ filename: "b.bin", contentType: "application/octet-stream", data: Buffer.alloc(1_100_000, 3), contentId: "", inline: false }] }),
         ),
       /Speicherkontingent/,
     );
   } finally {
-    run("UPDATE workspaces SET quota_mb=NULL WHERE id=?", wid);
+    await run("UPDATE workspaces SET quota_mb=NULL WHERE id=?", wid);
   }
 });
 
-test("each address takes 60 mails per hour; refused senders count too", () => {
-  const { id: addressId } = save({ pageId: inboxPage, senders: ["example.org"] });
-  const token = tokenOf(addressId);
+test("each address takes 60 mails per hour; refused senders count too", async () => {
+  const { id: addressId } = await save({ pageId: inboxPage, senders: ["example.org"] });
+  const token = await tokenOf(addressId);
   const now = Date.now();
-  for (let i = 0; i < inbound.INBOUND_MAILS_PER_HOUR; i++) inbound.receiveInboundMail(token, mail({ from: "x@spam.test" }), now + i);
-  assert.throws(() => inbound.receiveInboundMail(token, mail(), now + 100), (e: any) => e.status === 429);
+  for (let i = 0; i < inbound.INBOUND_MAILS_PER_HOUR; i++) await inbound.receiveInboundMail(token, mail({ from: "x@spam.test" }), now + i);
+  await assert.rejects(async () => await inbound.receiveInboundMail(token, mail(), now + 100), (e: any) => e.status === 429);
   // An hour later the address takes mail again.
-  assert.equal(inbound.receiveInboundMail(token, mail(), now + 3_600_001).status, "stored");
+  assert.equal((await inbound.receiveInboundMail(token, mail(), now + 3_600_001)).status, "stored");
 });
 
-test("rotating the token ends the old address at once; deleting removes it", () => {
-  const { id: addressId } = save({ pageId: inboxPage, senders: ["example.org"] });
-  const old = tokenOf(addressId);
+test("rotating the token ends the old address at once; deleting removes it", async () => {
+  const { id: addressId } = await save({ pageId: inboxPage, senders: ["example.org"] });
+  const old = await tokenOf(addressId);
   const message = mail();
-  assert.equal(inbound.receiveInboundMail(old, message).status, "stored");
-  assert.throws(() => command(ben, { action: "inbound.rotate", workspaceId: wid, id: addressId }), /Nur Eigentümer/);
-  const { token } = command(ana, { action: "inbound.rotate", workspaceId: wid, id: addressId }) as { token: string };
+  assert.equal((await inbound.receiveInboundMail(old, message)).status, "stored");
+  await assert.rejects(async () => await command(ben, { action: "inbound.rotate", workspaceId: wid, id: addressId }), /Nur Eigentümer/);
+  const { token } = (await command(ana, { action: "inbound.rotate", workspaceId: wid, id: addressId })) as { token: string };
   assert.notEqual(token, old);
-  assert.throws(() => inbound.receiveInboundMail(old, mail()), (e: any) => e.status === 404);
+  await assert.rejects(async () => await inbound.receiveInboundMail(old, mail()), (e: any) => e.status === 404);
   // Deduplication belongs to the address, not the token.
-  assert.deepEqual(inbound.receiveInboundMail(token, message), { status: "duplicate" });
-  command(ana, { action: "inbound.delete", workspaceId: wid, id: addressId });
-  assert.throws(() => inbound.receiveInboundMail(token, mail()), (e: any) => e.status === 404);
-  assert.equal(one("SELECT 1 FROM inbound_messages WHERE address_id=?", addressId), undefined);
+  assert.deepEqual(await inbound.receiveInboundMail(token, message), { status: "duplicate" });
+  await command(ana, { action: "inbound.delete", workspaceId: wid, id: addressId });
+  await assert.rejects(async () => await inbound.receiveInboundMail(token, mail()), (e: any) => e.status === 404);
+  assert.equal(await one("SELECT 1 FROM inbound_messages WHERE address_id=?", addressId), undefined);
 });
 
-test("the address stops when its creator loses access to the target", () => {
-  const { id: addressId } = save({ pageId: db, senders: ["example.org"] });
-  run("UPDATE pages SET locked=1 WHERE id=?", db);
+test("the address stops when its creator loses access to the target", async () => {
+  const { id: addressId } = await save({ pageId: db, senders: ["example.org"] });
+  await run("UPDATE pages SET locked=1 WHERE id=?", db);
   try {
-    assert.throws(() => inbound.receiveInboundMail(tokenOf(addressId), mail()), (e: any) => e.status === 409);
+    await assert.rejects(async () => await inbound.receiveInboundMail(await tokenOf(addressId), mail()), (e: any) => e.status === 409);
   } finally {
-    run("UPDATE pages SET locked=0 WHERE id=?", db);
+    await run("UPDATE pages SET locked=0 WHERE id=?", db);
   }
 });
 
@@ -385,9 +385,9 @@ test("webhook adapters: generic JSON, Postmark, Mailgun, SendGrid, raw MIME and 
 });
 
 test("POST /api/inbound-mail/<token>: stores, checks the signing key, refuses unknown tokens", async () => {
-  const { id: addressId } = save({ pageId: inboxPage, senders: ["example.org"], secret: "s3cret-key" });
-  const token = tokenOf(addressId);
-  assert.equal(inbound.listInboundAddresses(ana, wid).addresses.find((a) => a.id === addressId)!.signed, true);
+  const { id: addressId } = await save({ pageId: inboxPage, senders: ["example.org"], secret: "s3cret-key" });
+  const token = await tokenOf(addressId);
+  assert.equal((await inbound.listInboundAddresses(ana, wid)).addresses.find((a) => a.id === addressId)!.signed, true);
   const body = JSON.stringify({ from: "ada@example.org", subject: "Per Webhook", text: "Hallo", messageId: "wh-1@example.org" });
   const post = (headers: Record<string, string>, data: string = body, t = token) =>
     POST(new Request(`https://flowplan.example.test/api/inbound-mail/${t}`, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: data }), {
@@ -400,7 +400,7 @@ test("POST /api/inbound-mail/<token>: stores, checks the signing key, refuses un
   assert.equal(ok.status, 200);
   const answer = await ok.json();
   assert.equal(answer.status, "stored");
-  assert.equal(one<{ title: string }>("SELECT title FROM pages WHERE id=?", answer.pageId)!.title, "Per Webhook");
+  assert.equal((await one<{ title: string }>("SELECT title FROM pages WHERE id=?", answer.pageId))!.title, "Per Webhook");
   assert.equal((await (await post({ "x-flowplan-signature": signature })).json()).status, "duplicate");
   // Mailgun's own signature (timestamp + token) also counts.
   const ts = String(Math.floor(Date.now() / 1000));
@@ -432,21 +432,21 @@ test("POST /api/inbound-mail/<token>: stores, checks the signing key, refuses un
     { params: Promise.resolve({ token }) },
   );
   assert.equal(replay.status, 401);
-  assert.equal(one("SELECT 1 x FROM pages WHERE title=?", "Untergeschoben"), undefined);
+  assert.equal(await one("SELECT 1 x FROM pages WHERE title=?", "Untergeschoben"), undefined);
   const retried = await POST(
     new Request(`https://flowplan.example.test/api/inbound-mail/${token}`, { method: "POST", headers: { "content-type": encoded.type }, body: encoded.body }),
     { params: Promise.resolve({ token }) },
   );
   assert.equal(retried.status, 200);
-  const stored = one<{ id: string; secret: string }>("SELECT id,secret FROM inbound_addresses WHERE id=?", addressId)!;
-  assert.throws(
-    () => inbound.verifyInboundSignature(stored, Buffer.from("other"), null, { timestamp: ts, token: "tok123", signature: form.get("signature") as string }),
+  const stored = (await one<{ id: string; secret: string }>("SELECT id,secret FROM inbound_addresses WHERE id=?", addressId))!;
+  await assert.rejects(
+    async () => await inbound.verifyInboundSignature(stored, Buffer.from("other"), null, { timestamp: ts, token: "tok123", signature: form.get("signature") as string }),
     (e: { status?: number }) => e.status === 401,
   );
   assert.equal((await post({}, body, "a".repeat(32))).status, 404);
   assert.equal((await post({ "content-length": String(inbound.INBOUND_REQUEST_BYTES + 1) })).status, 413);
   // Removing the key: no signature needed any more.
-  save({ id: addressId, pageId: inboxPage, senders: ["example.org"], secret: "" });
+  await save({ id: addressId, pageId: inboxPage, senders: ["example.org"], secret: "" });
   const unsigned = JSON.stringify({ from: "ada@example.org", subject: "Ohne Signatur", text: "x" });
   assert.equal((await post({}, unsigned)).status, 200);
 });
@@ -454,8 +454,8 @@ test("POST /api/inbound-mail/<token>: stores, checks the signing key, refuses un
 /* ---------- IMAP ---------- */
 
 test("the IMAP poller routes inbox+<token> mail, marks it seen and leaves the rest", async () => {
-  const { id: addressId } = save({ pageId: inboxPage, senders: ["example.com"] });
-  const token = tokenOf(addressId);
+  const { id: addressId } = await save({ pageId: inboxPage, senders: ["example.com"] });
+  const token = await tokenOf(addressId);
   const messages = new Map<number, Buffer>([
     [7, Buffer.from(fixture("related-inline.eml").toString("latin1").replaceAll("abcdefghijklmnopqrstuvwxyz234567", token), "latin1")],
     // No token: marked seen, nothing stored.
@@ -495,16 +495,16 @@ test("the IMAP poller routes inbox+<token> mail, marks it seen and leaves the re
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
   const port = (server.address() as { port: number }).port;
   try {
-    const before = Number(one<{ n: number }>("SELECT COUNT(*) n FROM pages WHERE parent_id=?", inboxPage)!.n);
+    const before = Number((await one<{ n: number }>("SELECT COUNT(*) n FROM pages WHERE parent_id=?", inboxPage))!.n);
     const result = await inbound.pollInboundMailbox({ host: "127.0.0.1", port, user: "inbox", password: 'pa"ss', tls: false });
     assert.equal(result.processed, 1);
     assert.deepEqual(seen.sort(), [7, 8]);
     assert.ok(commands.includes("UID SEARCH") && commands.includes("LOGOUT"));
-    const created = one<{ id: string; title: string }>("SELECT id,title FROM pages WHERE parent_id=? ORDER BY position DESC LIMIT 1", inboxPage)!;
-    assert.equal(Number(one<{ n: number }>("SELECT COUNT(*) n FROM pages WHERE parent_id=?", inboxPage)!.n), before + 1);
+    const created = (await one<{ id: string; title: string }>("SELECT id,title FROM pages WHERE parent_id=? ORDER BY position DESC LIMIT 1", inboxPage))!;
+    assert.equal(Number((await one<{ n: number }>("SELECT COUNT(*) n FROM pages WHERE parent_id=?", inboxPage))!.n), before + 1);
     assert.equal(created.title, "Foto vom Büro");
-    const logo = one<{ id: string }>("SELECT id FROM files WHERE page_id=?", created.id)!;
-    assert.match(one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", created.id)!.html, new RegExp(`/api/files/${logo.id}`));
+    const logo = (await one<{ id: string }>("SELECT id FROM files WHERE page_id=?", created.id))!;
+    assert.match((await one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", created.id))!.html, new RegExp(`/api/files/${logo.id}`));
     // A second round finds nothing unseen.
     assert.equal((await inbound.pollInboundMailbox({ host: "127.0.0.1", port, user: "inbox", password: 'pa"ss', tls: false })).processed, 0);
     await assert.rejects(inbound.pollInboundMailbox({ host: "127.0.0.1", port, user: "inbox", password: "wrong", tls: false }), /IMAP LOGIN/);

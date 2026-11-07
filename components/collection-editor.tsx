@@ -35,7 +35,7 @@ import { typeName } from "./collection-view";
 
 export type CollectionDraft = { id?: string; name: string; icon: string; query: string; shared: boolean; mine?: boolean };
 type Act = (b: Record<string, unknown>) => Promise<unknown>;
-type T = ReturnType<typeof useT>;
+type T = Awaited<ReturnType<typeof useT>>;
 
 const MAX_DEPTH = 2;
 const zone = () => {

@@ -45,7 +45,7 @@ async function handleGET(req: Request) {
     const params = new URL(req.url).searchParams;
     const profile = params.get("profile");
     if (profile !== null) {
-      const body = redeemCardDavProfileLink(profile);
+      const body = await redeemCardDavProfileLink(profile);
       if (!body)
         return new NextResponse("Dieser Link ist abgelaufen oder wurde schon benutzt. / This link has expired or was already used.", {
           status: 410,
@@ -59,16 +59,16 @@ async function handleGET(req: Request) {
     const pageId = uuid.parse(params.get("page"));
     switch (params.get("view")) {
       case "status": {
-        const page = requirePage(user, pageId);
-        requireContactsDatabase(page.id);
-        return NextResponse.json({ ...contactsSourceStatus(page.id), carddav: hasCardDavAccess(user, page.id) }, { headers });
+        const page = await requirePage(user, pageId);
+        await requireContactsDatabase(page.id);
+        return NextResponse.json({ ...(await contactsSourceStatus(page.id)), carddav: await hasCardDavAccess(user, page.id) }, { headers });
       }
       case "units":
         return NextResponse.json(await browseUnits(user, pageId, params.get("parent") || undefined), { headers });
       case "people":
         return NextResponse.json(await listPeople(user, pageId, params.get("unit") || undefined, params.get("q") || ""), { headers });
       case "card":
-        return NextResponse.json({ card: contactCard(user, pageId, uuid.parse(params.get("row"))) }, { headers });
+        return NextResponse.json({ card: await contactCard(user, pageId, uuid.parse(params.get("row"))) }, { headers });
       default:
         throw new HttpError(400, "Unbekannte Aktion.");
     }
@@ -80,7 +80,7 @@ async function handleGET(req: Request) {
 export const POST = withRequestLocale(handlePOST);
 async function handlePOST(req: Request) {
   try {
-    checkOrigin(req);
+    await checkOrigin(req);
     const user = await sessionUser();
     const text = await req.text();
     if (text.length > 6 * 1024 * 1024) throw new HttpError(413, "Die Datei ist zu groß (höchstens 5 MB).");
@@ -88,17 +88,17 @@ async function handlePOST(req: Request) {
     const pageId = uuid.parse(b.pageId);
     switch (b.action) {
       case "ldap.import":
-        return NextResponse.json({ result: await importContacts(user, pageId, b), status: contactsSourceStatus(pageId) }, { headers });
+        return NextResponse.json({ result: await importContacts(user, pageId, b), status: await contactsSourceStatus(pageId) }, { headers });
       case "ldap.sync":
-        return NextResponse.json({ result: await syncContactsNow(user, pageId), status: contactsSourceStatus(pageId) }, { headers });
+        return NextResponse.json({ result: await syncContactsNow(user, pageId), status: await contactsSourceStatus(pageId) }, { headers });
       case "ldap.unsubscribe":
-        return NextResponse.json({ status: unsubscribeUnit(user, pageId, z.string().max(1000).parse(b.unit)) }, { headers });
+        return NextResponse.json({ status: await unsubscribeUnit(user, pageId, z.string().max(1000).parse(b.unit)) }, { headers });
       case "vcard.import":
-        return NextResponse.json(importVCards(user, pageId, z.string().parse(b.text)), { headers });
+        return NextResponse.json(await importVCards(user, pageId, z.string().parse(b.text)), { headers });
       case "vcard.export": {
         const rowIds = b.rowIds === undefined ? undefined : z.array(uuid).max(5000).parse(b.rowIds);
         const version = b.version === "4.0" ? "4.0" : "3.0";
-        const file = exportVCards(user, pageId, rowIds, version);
+        const file = await exportVCards(user, pageId, rowIds, version);
         const name = `${exportName(file.title || "Kontakte")}.vcf`;
         return new NextResponse(file.text, {
           headers: {
@@ -110,12 +110,12 @@ async function handlePOST(req: Request) {
         });
       }
       case "carddav.create":
-        return NextResponse.json(createCardDavAccess(user, pageId), { headers });
+        return NextResponse.json(await createCardDavAccess(user, pageId), { headers });
       case "carddav.revoke":
-        revokeCardDavAccess(user, pageId);
+        await revokeCardDavAccess(user, pageId);
         return NextResponse.json({ ok: true }, { headers });
       case "carddav.profile":
-        return NextResponse.json(createCardDavProfileLink(user, pageId), { headers });
+        return NextResponse.json(await createCardDavProfileLink(user, pageId), { headers });
       default:
         throw new HttpError(400, "Unbekannte Aktion.");
     }

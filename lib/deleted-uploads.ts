@@ -26,7 +26,7 @@ export function parseDeleted(name: string) {
   const m = /^([A-Za-z0-9_-]{1,100})\.(\d{1,16})$/.exec(name);
   return m ? { file: m[1], at: Number(m[2]), name } : null;
 }
-export type DeletedCopy = NonNullable<ReturnType<typeof parseDeleted>>;
+export type DeletedCopy = NonNullable<Awaited<ReturnType<typeof parseDeleted>>>;
 // The newest deleted copy of each file.
 export function newestDeleted(copies: DeletedCopy[]) {
   const map = new Map<string, DeletedCopy>();

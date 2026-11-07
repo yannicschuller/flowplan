@@ -10,6 +10,7 @@ import { HttpError } from "./auth";
 import { safeFetch } from "./safe-fetch";
 import { scanHtml, VOID_ELEMENTS } from "./html-tokens";
 import type { Field, View } from "./types";
+import { forEachAsync } from "./each-async";
 
 const ARTICLE_LIMIT = 200_000;
 // Pages larger than this are cut before they are read.
@@ -186,8 +187,8 @@ const BOOKMARK_VIEWS: View[] = [
   { id: "bm_unread", name: "Ungelesen", type: "list", filters: [{ field: "bm_read", op: "unchecked", value: "" }], sorts: [{ field: "bm_added", direction: "desc" }] } as unknown as View,
 ];
 // The bookmarks database of a space; created on first use.
-export function bookmarksDatabase(workspaceId: string, spaceId: string, userId: string) {
-  const existing = one<{ id: string }>(
+export async function bookmarksDatabase(workspaceId: string, spaceId: string, userId: string) {
+  const existing = await one<{ id: string }>(
     `SELECT p.id FROM pages p JOIN databases d ON d.page_id=p.id
      WHERE p.workspace_id=? AND p.space_id=? AND p.deleted_at IS NULL AND d.fields LIKE '%"id":"bm_url"%'
      ORDER BY p.created_at,p.id LIMIT 1`,
@@ -195,14 +196,14 @@ export function bookmarksDatabase(workspaceId: string, spaceId: string, userId: 
     spaceId,
   );
   if (existing) return existing.id;
-  const pageId = createPage(workspaceId, spaceId, userId, "Lesezeichen", "database");
-  run(
+  const pageId = await createPage(workspaceId, spaceId, userId, "Lesezeichen", "database");
+  await run(
     "UPDATE databases SET fields=?,views=? WHERE page_id=?",
     JSON.stringify(BOOKMARK_FIELDS),
     JSON.stringify(BOOKMARK_VIEWS),
     pageId,
   );
-  run("UPDATE pages SET icon='🔖' WHERE id=?", pageId);
+  await run("UPDATE pages SET icon='🔖' WHERE id=?", pageId);
   return pageId;
 }
 function site(url: string) {
@@ -213,15 +214,15 @@ function site(url: string) {
   }
 }
 // Adds options to the select fields as needed and stores the records.
-export function addBookmarks(
+export async function addBookmarks(
   pageId: string,
   userId: string,
   items: { title: string; url: string; folder?: string; note?: string; added?: string; content?: string }[],
 ) {
-  const db = one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId)!;
+  const db = (await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId))!;
   const fields = JSON.parse(db.fields) as Field[];
   const known = new Set(
-    all<{ url: string }>(`SELECT ${sql.jsonText("cells", "$.bm_url")} url FROM rows WHERE page_id=?`, pageId).map((r) => r.url),
+    (await all<{ url: string }>(`SELECT ${sql.jsonText("cells", "$.bm_url")} url FROM rows WHERE page_id=?`, pageId)).map((r) => r.url),
   );
   const addOption = (fieldId: string, value: string) => {
     const field = fields.find((f) => f.id === fieldId);
@@ -231,14 +232,14 @@ export function addBookmarks(
   let added = 0;
   const ids: string[] = [];
   const today = new Date().toISOString().slice(0, 10);
-  items.forEach((item, i) => {
+  await forEachAsync(items, async (item, i) => {
     if (!/^https?:\/\//i.test(item.url) || known.has(item.url)) return;
     known.add(item.url);
     const host = site(item.url);
     addOption("bm_site", host);
     if (item.folder) addOption("bm_folder", item.folder);
     const rid = id();
-    run(
+    await run(
       "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content) VALUES(?,?,?,?,?,?,?)",
       rid,
       pageId,
@@ -260,8 +261,8 @@ export function addBookmarks(
     ids.push(rid);
     added++;
   });
-  run("UPDATE databases SET fields=? WHERE page_id=?", JSON.stringify(fields), pageId);
-  run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), pageId);
+  await run("UPDATE databases SET fields=? WHERE page_id=?", JSON.stringify(fields), pageId);
+  await run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), pageId);
   return { added, skipped: items.length - added, ids };
 }
 

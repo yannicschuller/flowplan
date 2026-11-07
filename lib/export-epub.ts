@@ -230,7 +230,7 @@ export function epubChapters(content: ExportContent) {
 
 export const EPUB_MAX_PAGES = 200;
 export async function exportEpub(user: Identity, options: { pageId?: string; spaceId?: string; children?: boolean }) {
-  const content = collectExportContent(user, { ...options, maxPages: EPUB_MAX_PAGES, format: "EPUB" });
+  const content = await collectExportContent(user, { ...options, maxPages: EPUB_MAX_PAGES, format: "EPUB" });
   const { chapters, resources } = epubChapters(content);
   const bytes = await buildEpub({
     identifier: `urn:uuid:${content.space ? content.space.id : content.root!.id}`,
@@ -240,7 +240,7 @@ export async function exportEpub(user: Identity, options: { pageId?: string; spa
     chapters,
     resources,
   });
-  if (content.space) audit(user.id, "space.epub.export", content.space.id);
-  else audit(user.id, "page.epub.export", content.root!.id);
+  if (content.space) await audit(user.id, "space.epub.export", content.space.id);
+  else await audit(user.id, "page.epub.export", content.root!.id);
   return { bytes, name: `${exportName(content.name)}.epub`, mime: EPUB_MIME };
 }

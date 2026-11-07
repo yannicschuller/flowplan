@@ -18,91 +18,91 @@ const DESKTOP = "Mozilla/5.0 (Macintosh) AppleWebKit/537.36 Chrome/130.0 Electro
 const BROWSER = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0 Safari/537.36";
 const DAY = 86_400_000;
 const HOUR = 3_600_000;
-const user = () => {
+const user = async () => {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, "Mara", `${uid}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, "Mara", `${uid}@example.test`);
   return uid;
 };
 const key = () => ({ id: randomBytes(16).toString("base64url"), secret: randomBytes(32).toString("base64url") });
 // What a session of this sign-in would get (issueSession → sessionTerms).
-const lifetime = (app: boolean, now: number) => sessionTerms({ app }, now).expires - now;
+const lifetime = async (app: boolean, now: number) => (await sessionTerms({ app }, now)).expires - now;
 for (const name of ["SESSION_HOURS", "SESSION_REMEMBER", "SESSION_APP_REMEMBER", "SESSION_APP_DAYS", "SESSION_MAX_DAYS"]) delete process.env[name];
 
-test("the hand-off is the app's: only the holder of the verifier redeems the code", () => {
-  const uid = user();
+test("the hand-off is the app's: only the holder of the verifier redeems the code", async () => {
+  const uid = await user();
   const verifier = randomBytes(32).toString("base64url");
   const challenge = createHash("sha256").update(verifier).digest("base64url");
-  const code = createDesktopCode(uid, [], challenge);
-  assert.equal(redeemDesktopCode(code, "someone-else"), null, "a wrong verifier redeems nothing (and uses the code up)");
-  const again = createDesktopCode(uid, [], challenge);
-  assert.deepEqual(redeemDesktopCode(again, verifier), { userId: uid, groups: [], authenticatedAt: null });
+  const code = await createDesktopCode(uid, [], challenge);
+  assert.equal(await redeemDesktopCode(code, "someone-else"), null, "a wrong verifier redeems nothing (and uses the code up)");
+  const again = await createDesktopCode(uid, [], challenge);
+  assert.deepEqual(await redeemDesktopCode(again, verifier), { userId: uid, groups: [], authenticatedAt: null });
   const now = Date.now();
-  assert.equal(provesApp({ via: "handoff" }), true);
-  assert.equal(lifetime(provesApp({ via: "handoff" }), now), 90 * DAY, "90 days without use by default");
+  assert.equal(await provesApp({ via: "handoff" }), true);
+  assert.equal(await lifetime(await provesApp({ via: "handoff" }), now), 90 * DAY, "90 days without use by default");
 });
 
-test("the user agent alone gives the browser lifetime", () => {
-  const uid = user();
+test("the user agent alone gives the browser lifetime", async () => {
+  const uid = await user();
   const now = Date.now();
   for (const agent of [ANDROID, DESKTOP]) {
-    const app = provesApp({ via: "form", userId: uid, input: { email: "x", password: "y" }, agent }, now);
+    const app = await provesApp({ via: "form", userId: uid, input: { email: "x", password: "y" }, agent }, now);
     assert.equal(app, false, agent);
-    assert.equal(lifetime(app, now), 8 * HOUR, "8 hours, like any browser without Stay signed in");
+    assert.equal(await lifetime(app, now), 8 * HOUR, "8 hours, like any browser without Stay signed in");
   }
   // "Stay signed in" still works for them where the instance offers it.
   process.env.SESSION_REMEMBER = "true";
-  assert.equal(sessionTerms({ app: false, remember: true }, now).expires - now, 7 * DAY);
+  assert.equal((await sessionTerms({ app: false, remember: true }, now)).expires - now, 7 * DAY);
   delete process.env.SESSION_REMEMBER;
-  assert.equal(all("SELECT 1 FROM app_devices WHERE user_id=?", uid).length, 0, "nothing registered without a key");
+  assert.equal((await all("SELECT 1 FROM app_devices WHERE user_id=?", uid)).length, 0, "nothing registered without a key");
 });
 
-test("password in the app with its device key: registered on first use, then required", () => {
-  const uid = user();
+test("password in the app with its device key: registered on first use, then required", async () => {
+  const uid = await user();
   const device = key();
   const now = Date.now();
   // First sign-in on this device: registered (trust on first use).
-  assert.equal(checkAppDevice(uid, device, now), "registered");
-  const rows = all<{ device_id: string; secret_hash: Buffer }>("SELECT device_id,secret_hash FROM app_devices WHERE user_id=?", uid);
+  assert.equal(await checkAppDevice(uid, device, now), "registered");
+  const rows = await all<{ device_id: string; secret_hash: Buffer }>("SELECT device_id,secret_hash FROM app_devices WHERE user_id=?", uid);
   assert.equal(rows.length, 1);
   assert.equal(rows[0].device_id, device.id);
   assert.ok(!Buffer.from(rows[0].secret_hash).toString("latin1").includes(device.secret), "only a hash is kept");
   // Later sign-ins with the same key: the app's.
-  const app = provesApp({ via: "form", userId: uid, input: { password: "…", device }, agent: ANDROID }, now + 1000);
+  const app = await provesApp({ via: "form", userId: uid, input: { password: "…", device }, agent: ANDROID }, now + 1000);
   assert.equal(app, true);
-  assert.equal(lifetime(app, now), 90 * DAY);
-  assert.equal(provesApp({ via: "form", userId: uid, input: { device }, agent: DESKTOP }), true);
+  assert.equal(await lifetime(app, now), 90 * DAY);
+  assert.equal(await provesApp({ via: "form", userId: uid, input: { device }, agent: DESKTOP }), true);
   // The same key for another account: a device of that account of its own.
-  const other = user();
-  assert.equal(checkAppDevice(other, device), "registered");
+  const other = await user();
+  assert.equal(await checkAppDevice(other, device), "registered");
 });
 
-test("a wrong secret for a known device gives the browser lifetime", () => {
-  const uid = user();
+test("a wrong secret for a known device gives the browser lifetime", async () => {
+  const uid = await user();
   const device = key();
-  assert.equal(provesApp({ via: "form", userId: uid, input: { device }, agent: ANDROID }), true, "first use registers");
+  assert.equal(await provesApp({ via: "form", userId: uid, input: { device }, agent: ANDROID }), true, "first use registers");
   const wrong = { id: device.id, secret: key().secret };
-  assert.equal(checkAppDevice(uid, wrong), "mismatch");
-  const app = provesApp({ via: "form", userId: uid, input: { device: wrong }, agent: ANDROID });
+  assert.equal(await checkAppDevice(uid, wrong), "mismatch");
+  const app = await provesApp({ via: "form", userId: uid, input: { device: wrong }, agent: ANDROID });
   assert.equal(app, false);
-  assert.equal(lifetime(app, Date.now()), 8 * HOUR);
+  assert.equal(await lifetime(app, Date.now()), 8 * HOUR);
   // The registered key is not replaced by the wrong one.
-  assert.equal(checkAppDevice(uid, device), "known");
+  assert.equal(await checkAppDevice(uid, device), "known");
   // The key without the app's user agent (copied into a browser): no.
-  assert.equal(provesApp({ via: "form", userId: uid, input: { device }, agent: BROWSER }), false);
+  assert.equal(await provesApp({ via: "form", userId: uid, input: { device }, agent: BROWSER }), false);
 });
 
-test("malformed keys are ignored; the list per account stays bounded", () => {
+test("malformed keys are ignored; the list per account stays bounded", async () => {
   assert.equal(appDeviceKey({ device: { id: "short", secret: "x".repeat(43) } }), null);
   assert.equal(appDeviceKey({ device: { id: "a".repeat(22), secret: "not base64url!" } }), null);
   assert.equal(appDeviceKey({ device: "a.b" }), null);
   assert.equal(appDeviceKey(null), null);
-  const uid = user();
-  assert.equal(provesApp({ via: "form", userId: uid, input: { device: { id: "x", secret: "y" } }, agent: ANDROID }), false);
+  const uid = await user();
+  assert.equal(await provesApp({ via: "form", userId: uid, input: { device: { id: "x", secret: "y" } }, agent: ANDROID }), false);
   const first = key();
-  checkAppDevice(uid, first, 1);
-  for (let i = 0; i < MAX_APP_DEVICES; i++) checkAppDevice(uid, key(), 100 + i);
-  assert.equal(all("SELECT 1 FROM app_devices WHERE user_id=?", uid).length, MAX_APP_DEVICES);
-  assert.equal(checkAppDevice(uid, first), "registered", "the one unused longest made room");
+  await checkAppDevice(uid, first, 1);
+  for (let i = 0; i < MAX_APP_DEVICES; i++) await checkAppDevice(uid, key(), 100 + i);
+  assert.equal((await all("SELECT 1 FROM app_devices WHERE user_id=?", uid)).length, MAX_APP_DEVICES);
+  assert.equal(await checkAppDevice(uid, first), "registered", "the one unused longest made room");
 });
 
 test("the page finds the app's device key in the bridge (lib/native-app.ts)", () => {

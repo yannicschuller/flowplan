@@ -143,7 +143,7 @@ function useOps() {
   };
   return { data, busy, note, send };
 }
-type Ops = ReturnType<typeof useOps>;
+type Ops = Awaited<ReturnType<typeof useOps>>;
 
 /* ---------- Building blocks ---------- */
 

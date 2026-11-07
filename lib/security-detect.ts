@@ -28,77 +28,77 @@ export const SECURITY_THRESHOLDS = {
 } as const;
 const T = SECURITY_THRESHOLDS;
 
-const count = (sql: string, ...args: (string | number)[]) => Number(one<{ n: number }>(sql, ...args)?.n || 0);
+const count = async (sql: string, ...args: (string | number)[]) => Number((await one<{ n: number }>(sql, ...args))?.n || 0);
 
-export function detectSecurity(e: SecurityEvent) {
+export async function detectSecurity(e: SecurityEvent) {
   switch (e.kind) {
     // Refused attempts (over the limit, blocked) are attempts as well.
     case "login.failure":
     case "login.refused":
-      return loginFailure(e);
+      return await loginFailure(e);
     case "login.success":
-      return loginSuccess(e);
+      return await loginSuccess(e);
     case "admin.granted":
-      return openIncident("privilege_change", `event:${e.id}`, e, e.detail);
+      return await openIncident("privilege_change", `event:${e.id}`, e, e.detail);
     case "admin.settings":
       // Who may sign in and with which rights: directory, provisioning,
       // restores, extensions and domains that run in the instance.
       if (/^(ldap|scim|instance\.restore|plugin\.register|domain\.add|e2ee\.identity\.reset)/.test(e.detail))
-        return openIncident("privilege_change", `event:${e.id}`, e, e.detail);
+        return await openIncident("privilege_change", `event:${e.id}`, e, e.detail);
       return;
     case "data.export":
-      return exports(e);
+      return await exports(e);
     case "request.probing":
-      return openIncident("probing", e.addressKey || e.network, e, e.detail, takeProbeEvidence(e.addressKey));
+      return await openIncident("probing", e.addressKey || e.network, e, e.detail, takeProbeEvidence(e.addressKey));
     case "blocked.ssrf":
     case "blocked.content":
-      return attempts(e);
+      return await attempts(e);
   }
 }
 
 const ATTEMPTS = "kind IN ('login.failure','login.refused')";
-function loginFailure(e: SecurityEvent) {
+async function loginFailure(e: SecurityEvent) {
   const since = e.at - T.window;
   if (e.subjectKey) {
-    const n = count(`SELECT COUNT(*) n FROM security_events WHERE ${ATTEMPTS} AND subject_key=? AND at>=?`, e.subjectKey, since);
-    if (n >= T.accountFailures) openIncident("brute_force_account", e.subjectKey, e, `${e.subject}: ${n}`);
+    const n = await count(`SELECT COUNT(*) n FROM security_events WHERE ${ATTEMPTS} AND subject_key=? AND at>=?`, e.subjectKey, since);
+    if (n >= T.accountFailures) await openIncident("brute_force_account", e.subjectKey, e, `${e.subject}: ${n}`);
   }
   if (!e.addressKey) return;
-  const n = count(`SELECT COUNT(*) n FROM security_events WHERE ${ATTEMPTS} AND address_key=? AND at>=?`, e.addressKey, since);
-  if (n >= T.addressFailures) openIncident("brute_force_address", e.addressKey, e, `${e.network}: ${n}`);
-  const accounts = count(
+  const n = await count(`SELECT COUNT(*) n FROM security_events WHERE ${ATTEMPTS} AND address_key=? AND at>=?`, e.addressKey, since);
+  if (n >= T.addressFailures) await openIncident("brute_force_address", e.addressKey, e, `${e.network}: ${n}`);
+  const accounts = await count(
     `SELECT COUNT(DISTINCT subject_key) n FROM security_events WHERE ${ATTEMPTS} AND address_key=? AND subject_key<>'' AND at>=?`,
     e.addressKey,
     since,
   );
-  if (accounts >= T.stuffingAccounts) openIncident("credential_stuffing", e.addressKey, e, `${e.network}: ${accounts}`);
+  if (accounts >= T.stuffingAccounts) await openIncident("credential_stuffing", e.addressKey, e, `${e.network}: ${accounts}`);
 }
 
-function loginSuccess(e: SecurityEvent) {
+async function loginSuccess(e: SecurityEvent) {
   if (!e.actorId) return;
   // Guessed right after many tries: the strongest sign of a taken account.
   if (e.subjectKey) {
-    const failures = count(
+    const failures = await count(
       "SELECT COUNT(*) n FROM security_events WHERE kind='login.failure' AND subject_key=? AND at>=? AND at<=?",
       e.subjectKey,
       e.at - T.window,
       e.at,
     );
-    if (failures >= T.failuresBeforeSuccess) openIncident("login_after_failures", e.actorId, e, `${e.subject}: ${failures}`);
+    if (failures >= T.failuresBeforeSuccess) await openIncident("login_after_failures", e.actorId, e, `${e.subject}: ${failures}`);
   }
   if (e.country) {
-    const last = one<{ country: string; at: number }>(
+    const last = await one<{ country: string; at: number }>(
       "SELECT country,at FROM security_events WHERE kind='login.success' AND actor_id=? AND country<>'' AND id<? ORDER BY id DESC LIMIT 1",
       e.actorId,
       e.id,
     );
     if (last && last.country !== e.country && e.at - last.at <= T.travelWindow)
-      openIncident("impossible_travel", e.actorId, e, `${last.country} → ${e.country}`);
+      await openIncident("impossible_travel", e.actorId, e, `${last.country} → ${e.country}`);
   }
   if (!e.device) return;
-  const earlier = count("SELECT COUNT(*) n FROM security_events WHERE kind='login.success' AND actor_id=? AND id<? AND at>=?", e.actorId, e.id, e.at - 90 * DAY);
+  const earlier = await count("SELECT COUNT(*) n FROM security_events WHERE kind='login.success' AND actor_id=? AND id<? AND at>=?", e.actorId, e.id, e.at - 90 * DAY);
   if (!earlier) return;
-  const known = count(
+  const known = await count(
     "SELECT COUNT(*) n FROM security_events WHERE kind='login.success' AND actor_id=? AND device=? AND id<? AND at>=?",
     e.actorId,
     e.device,
@@ -113,7 +113,7 @@ function loginSuccess(e: SecurityEvent) {
 // days; for administrators it is an incident too.
 async function newDevice(e: SecurityEvent) {
   const where = [e.device, e.network, e.country].filter(Boolean).join(", ");
-  run(
+  await run(
     "INSERT INTO notifications(id,user_id,body,kind,link) VALUES(?,?,?,'security',?)",
     id(),
     e.actorId,
@@ -124,52 +124,52 @@ async function newDevice(e: SecurityEvent) {
   const { securityEvent } = await import("./security-events");
   securityEvent("login.new_device", { actorId: e.actorId, detail: where, address: "", at: e.at });
   const { adminUserIds } = await import("./auth");
-  if (adminUserIds().includes(e.actorId!)) openIncident("admin_new_device", `${e.actorId}:${e.device}`, e, where);
+  if ((await adminUserIds()).includes(e.actorId!)) await openIncident("admin_new_device", `${e.actorId}:${e.device}`, e, where);
   else void dispatch();
 }
 
-function exports(e: SecurityEvent) {
+async function exports(e: SecurityEvent) {
   if (!e.actorId) return;
-  const lastHour = count("SELECT COUNT(*) n FROM security_events WHERE kind='data.export' AND actor_id=? AND at>=?", e.actorId, e.at - HOUR);
+  const lastHour = await count("SELECT COUNT(*) n FROM security_events WHERE kind='data.export' AND actor_id=? AND at>=?", e.actorId, e.at - HOUR);
   if (lastHour < T.exportsPerHour) return;
   // Compared with the person's usual hour of the last 30 days.
-  const month = count("SELECT COUNT(*) n FROM security_events WHERE kind='data.export' AND actor_id=? AND at>=? AND at<?", e.actorId, e.at - 30 * DAY, e.at - HOUR);
-  if (lastHour >= Math.max(T.exportsPerHour, (month / (30 * 24)) * 10)) openIncident("mass_export", e.actorId, e, String(lastHour));
+  const month = await count("SELECT COUNT(*) n FROM security_events WHERE kind='data.export' AND actor_id=? AND at>=? AND at<?", e.actorId, e.at - 30 * DAY, e.at - HOUR);
+  if (lastHour >= Math.max(T.exportsPerHour, (month / (30 * 24)) * 10)) await openIncident("mass_export", e.actorId, e, String(lastHour));
 }
 
-function attempts(e: SecurityEvent) {
+async function attempts(e: SecurityEvent) {
   const key = e.actorId || e.addressKey;
   if (!key) return;
-  const n = count(
+  const n = await count(
     `SELECT COUNT(*) n FROM security_events WHERE kind IN ('blocked.ssrf','blocked.content') AND ${e.actorId ? "actor_id" : "address_key"}=? AND at>=?`,
     key,
     e.at - HOUR,
   );
-  if (n >= T.contentAttempts) openIncident("injection_attempts", key, e, `${n}: ${e.detail}`);
+  if (n >= T.contentAttempts) await openIncident("injection_attempts", key, e, `${n}: ${e.detail}`);
 }
 
 /* ---------- Incidents ---------- */
 
-export function openIncident(
+export async function openIncident(
   rule: SecurityRule,
   key: string,
   e: Pick<SecurityEvent, "at" | "actorId" | "network" | "addressKey">,
   detail: string,
   evidence?: ProbeEvidence | null,
 ) {
-  const open = one<{ id: string }>(
+  const open = await one<{ id: string }>(
     "SELECT id FROM security_incidents WHERE rule=? AND key=? AND resolved_at IS NULL AND last_at>=?",
     rule,
     key,
     e.at - DAY,
   );
   if (open) {
-    run("UPDATE security_incidents SET count=count+1,last_at=?,detail=? WHERE id=?", e.at, detail.slice(0, 500), open.id);
-    if (evidence) mergeEvidence(open.id, evidence);
+    await run("UPDATE security_incidents SET count=count+1,last_at=?,detail=? WHERE id=?", e.at, detail.slice(0, 500), open.id);
+    if (evidence) await mergeEvidence(open.id, evidence);
     return open.id;
   }
   const incident = id();
-  run(
+  await run(
     "INSERT INTO security_incidents(id,rule,key,severity,actor_id,network,address_key,detail,first_at,last_at,evidence) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
     incident,
     rule,
@@ -206,9 +206,9 @@ async function report(incident: string, rule: SecurityRule, detail: string, now:
     // Each administrator chose the channels (notification kind "incident")
     // and from which severity on; the incident shows under Administration →
     // Sicherheit either way. The notification leads to the incident's page.
-    for (const admin of adminUserIds())
-      if (incidentPasses(incidentThreshold(admin), severity))
-        run(
+    for (const admin of await adminUserIds())
+      if (incidentPasses(await incidentThreshold(admin), severity))
+        await run(
           "INSERT INTO notifications(id,user_id,body,kind,link) VALUES(?,?,?,'incident',?)",
           id(),
           admin,
@@ -273,12 +273,12 @@ function takeProbeEvidence(addressKey: string) {
   probeEvidence.delete(addressKey);
   return ev;
 }
-function mergeEvidence(incidentId: string, add: ProbeEvidence) {
+async function mergeEvidence(incidentId: string, add: ProbeEvidence) {
   let old: ProbeEvidence | null = null;
   try {
-    old = JSON.parse(one<{ evidence: string }>("SELECT evidence FROM security_incidents WHERE id=?", incidentId)?.evidence || "null");
+    old = JSON.parse((await one<{ evidence: string }>("SELECT evidence FROM security_incidents WHERE id=?", incidentId))?.evidence || "null");
   } catch {}
-  if (!old) return run("UPDATE security_incidents SET evidence=? WHERE id=?", JSON.stringify(add), incidentId);
+  if (!old) return await run("UPDATE security_incidents SET evidence=? WHERE id=?", JSON.stringify(add), incidentId);
   const statuses = { ...old.statuses };
   for (const [k, v] of Object.entries(add.statuses)) statuses[k] = (statuses[k] ?? 0) + v;
   const paths = new Map(old.paths.map((p) => [`${p.status} ${p.path}`, p]));
@@ -293,13 +293,13 @@ function mergeEvidence(incidentId: string, add: ProbeEvidence) {
     statuses,
     paths: [...paths.values()].sort((a, b) => b.count - a.count).slice(0, MAX_PATHS),
   };
-  run("UPDATE security_incidents SET evidence=? WHERE id=?", JSON.stringify(merged), incidentId);
+  await run("UPDATE security_incidents SET evidence=? WHERE id=?", JSON.stringify(merged), incidentId);
 }
 
 // Called for every answered request (lib/request-metrics.ts): many 401, 403
 // and 404 answers of the API from one address in ten minutes are recorded
 // as one event, which opens an incident.
-export function noteRefusal(address: string, status: number, path: string, now = Date.now(), record?: (detail: string) => void) {
+export async function noteRefusal(address: string, status: number, path: string, now = Date.now(), record?: (detail: string) => void) {
   if (!address || ![401, 403, 404].includes(status) || !path.startsWith("/api/")) return;
   let entry = probes.get(address);
   if (!entry || now - entry.since > T.probeWindow) {
@@ -316,7 +316,7 @@ export function noteRefusal(address: string, status: number, path: string, now =
   if (entry.count < T.probes || entry.reported) return;
   entry.reported = true;
   if (probeEvidence.size > 1000) probeEvidence.clear();
-  probeEvidence.set(addressHash(address), evidenceOf(entry));
+  probeEvidence.set(await addressHash(address), evidenceOf(entry));
   record?.(`${entry.count} × 401/403/404, z. B. ${entry.sample}`);
 }
 

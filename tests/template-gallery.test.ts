@@ -10,9 +10,9 @@ const { createWorkspace } = await import("../lib/seed");
 const { command, bootstrap } = await import("../lib/api");
 const { listPageTemplates } = await import("../lib/page-templates");
 
-function account(name: string, isAdmin = false) {
+async function account(name: string, isAdmin = false) {
   const uid = id();
-  run(
+  await run(
     "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
     uid,
     uid,
@@ -29,81 +29,81 @@ function account(name: string, isAdmin = false) {
     created_at: "",
   } as Identity;
 }
-const admin = account("tpl-admin", true),
-  owner = account("tpl-owner"),
-  other = account("tpl-other");
-const home = createWorkspace(admin.id, "Zentrale"),
-  own = createWorkspace(owner.id, "Eigene"),
-  elsewhere = createWorkspace(other.id, "Anderswo");
-run("INSERT INTO members VALUES(?,?,?)", home, owner.id, "owner");
+const admin = await account("tpl-admin", true),
+  owner = await account("tpl-owner"),
+  other = await account("tpl-other");
+const home = await createWorkspace(admin.id, "Zentrale"),
+  own = await createWorkspace(owner.id, "Eigene"),
+  elsewhere = await createWorkspace(other.id, "Anderswo");
+await run("INSERT INTO members VALUES(?,?,?)", home, owner.id, "owner");
 
-test("templates carry categories and admins share them with every workspace", () => {
+test("templates carry categories and admins share them with every workspace", async () => {
   const page = (
-    command(admin, {
+    (await command(admin, {
       action: "page.create",
       workspaceId: home,
-      spaceId: bootstrap(admin, home).spaces[0].id,
+      spaceId: (await bootstrap(admin, home)).spaces[0].id,
       title: "Retro",
-    }) as { id: string }
+    })) as { id: string }
   ).id;
-  run("UPDATE documents SET html='<p>Was lief gut?</p>' WHERE page_id=?", page);
+  await run("UPDATE documents SET html='<p>Was lief gut?</p>' WHERE page_id=?", page);
   const template = (
-    command(admin, {
+    (await command(admin, {
       action: "template.save",
       pageId: page,
       name: "Retrospektive",
       category: "meetings",
-    }) as { id: string }
+    })) as { id: string }
   ).id;
-  const find = (as: Identity, wid: string) =>
-    listPageTemplates(as, wid).find((t) => t.id === template);
-  assert.equal(find(admin, home)?.category, "meetings");
-  assert.equal(find(other, elsewhere), undefined);
-  const update = (as: Identity, visibility: string, category = "meetings") =>
-    command(as, {
+  const find = async (as: Identity, wid: string) =>
+    (await listPageTemplates(as, wid)).find((t) => t.id === template);
+  assert.equal((await find(admin, home))?.category, "meetings");
+  assert.equal(await find(other, elsewhere), undefined);
+  const update = async (as: Identity, visibility: string, category = "meetings") =>
+    await command(as, {
       action: "template.update",
       workspaceId: home,
       templateId: template,
-      version: one<{ version: number }>(
+      version: (await one<{ version: number }>(
         "SELECT version FROM templates WHERE id=?",
         template,
-      )!.version,
+      ))!.version,
       name: "Retrospektive",
       visibility,
       category,
     });
   // Workspace owners may not publish to the whole instance.
-  assert.throws(() => update(owner, "instance"), /Nur Admins/);
+  await assert.rejects(async () => await update(owner, "instance"), /Nur Admins/);
   // Unknown categories are dropped instead of stored.
-  update(owner, "workspace", "unknown");
-  assert.equal(find(admin, home)?.category, "");
-  update(admin, "instance");
-  const shared = find(other, elsewhere)!;
+  await update(owner, "workspace", "unknown");
+  assert.equal((await find(admin, home))?.category, "");
+  await update(admin, "instance");
+  const shared = (await find(other, elsewhere))!;
   assert.equal(shared.shared, true);
   assert.equal(shared.can_manage, false);
-  assert.equal(find(owner, home)?.can_manage, false);
-  assert.equal(find(admin, home)?.can_manage, true);
+  assert.equal((await find(owner, home))?.can_manage, false);
+  assert.equal((await find(admin, home))?.can_manage, true);
   // Other workspaces use it but cannot manage it.
   const created = (
-    command(other, {
+    (await command(other, {
       action: "page.create",
       workspaceId: elsewhere,
-      spaceId: bootstrap(other, elsewhere).spaces[0].id,
+      spaceId: (await bootstrap(other, elsewhere)).spaces[0].id,
       title: "Unsere Retro",
       templateId: template,
-    }) as { id: string }
+    })) as { id: string }
   ).id;
   assert.match(
     String(
-      one<{ html: string }>(
+      (await one<{ html: string }>(
         "SELECT html FROM documents WHERE page_id=?",
         created,
-      )?.html,
+      ))?.html,
     ),
     /Was lief gut/,
   );
-  assert.throws(() =>
-    command(other, {
+  await assert.rejects(async () =>
+    await command(other, {
       action: "template.delete",
       workspaceId: elsewhere,
       templateId: template,
@@ -111,14 +111,14 @@ test("templates carry categories and admins share them with every workspace", ()
     }),
   );
   // Deleted or unshared templates disappear elsewhere again.
-  update(admin, "workspace", "");
-  assert.equal(find(other, elsewhere), undefined);
-  assert.equal(find(admin, home)?.category, "");
-  assert.throws(() =>
-    command(other, {
+  await update(admin, "workspace", "");
+  assert.equal(await find(other, elsewhere), undefined);
+  assert.equal((await find(admin, home))?.category, "");
+  await assert.rejects(async () =>
+    await command(other, {
       action: "page.create",
       workspaceId: elsewhere,
-      spaceId: bootstrap(other, elsewhere).spaces[0].id,
+      spaceId: (await bootstrap(other, elsewhere)).spaces[0].id,
       title: "Nicht mehr",
       templateId: template,
     }),

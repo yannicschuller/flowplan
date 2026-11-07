@@ -23,7 +23,7 @@ const { exportArchiveStream, importArchive } = await import("../lib/archive");
 
 test("large archives stream through disk in both directions", async () => {
   const uid = id();
-  run(
+  await run(
     "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
     uid,
     uid,
@@ -39,8 +39,8 @@ test("large archives stream through disk in both directions", async () => {
     disabled: 0,
     created_at: "",
   } as Identity;
-  const wid = createWorkspace(owner.id, "Groß");
-  command(owner, {
+  const wid = await createWorkspace(owner.id, "Groß");
+  await command(owner, {
     action: "admin.settings",
     settings: {
       name: "",
@@ -52,12 +52,12 @@ test("large archives stream through disk in both directions", async () => {
     },
   });
   const page = (
-    command(owner, {
+    (await command(owner, {
       action: "page.create",
       workspaceId: wid,
-      spaceId: bootstrap(owner, wid).spaces[0].id,
+      spaceId: (await bootstrap(owner, wid)).spaces[0].id,
       title: "Video",
-    }) as { id: string }
+    })) as { id: string }
   ).id;
   // 12 MB: above the former 10 MB per-file limit.
   const big = Buffer.alloc(12 * 1024 * 1024, 7);
@@ -65,7 +65,7 @@ test("large archives stream through disk in both directions", async () => {
   mkdirSync(dir, { recursive: true });
   const fid = id();
   writeFileSync(join(dir, fid), big);
-  run(
+  await run(
     "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
     fid,
     page,
@@ -75,17 +75,17 @@ test("large archives stream through disk in both directions", async () => {
     owner.id,
   );
   const archive = join(process.env.FLOWPLAN_DATA_DIR!, "export.zip");
-  await pipeline(exportArchiveStream(owner, wid), createWriteStream(archive));
-  const target = createWorkspace(owner.id, "Ziel");
+  await pipeline(await exportArchiveStream(owner, wid), createWriteStream(archive));
+  const target = await createWorkspace(owner.id, "Ziel");
   const result = (await importArchive(owner, target, archive)) as {
     files: number;
     pageIds: Record<string, string>;
   };
   assert.equal(result.files, 1);
-  const copy = one<{ id: string; size: number }>(
+  const copy = (await one<{ id: string; size: number }>(
     "SELECT id,size FROM files WHERE page_id=?",
     result.pageIds[page],
-  )!;
+  ))!;
   assert.equal(copy.size, big.length);
   assert.ok(readFileSync(join(dir, copy.id)).equals(big));
   // The spool folder is cleaned up.
@@ -97,7 +97,7 @@ test("large archives stream through disk in both directions", async () => {
   writeFileSync(broken, bytes.subarray(0, bytes.length - 100));
   await assert.rejects(importArchive(owner, target, broken), /ZIP|Archiv/);
   assert.equal(
-    all("SELECT id FROM pages WHERE workspace_id=? AND title='Video'", target)
+    (await all("SELECT id FROM pages WHERE workspace_id=? AND title='Video'", target))
       .length,
     1,
   );

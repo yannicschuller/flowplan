@@ -47,36 +47,36 @@ test("row.update: answers with the version, applies an untouched patch, refuses 
   const { bootstrap, command, pageData } = await import("../lib/api");
   const { createWorkspace } = await import("../lib/seed");
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, "Alex", "alex@test.invalid");
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, "Alex", "alex@test.invalid");
   const owner: Identity = { id: uid, name: "Alex", email: "alex@test.invalid", groups: [], isAdmin: false, disabled: 0, created_at: "" };
-  const wid = createWorkspace(owner.id, "Quick edits");
-  const boot = bootstrap(owner, wid);
-  const act = (body: Record<string, unknown>) => command(owner, body) as Record<string, unknown>;
-  const pageId = act({ action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, title: "Aufgaben", kind: "database" }).id;
-  const rowId = act({ action: "row.create", pageId, cells: { title: "Neue Aufgabe" } }).id;
+  const wid = await createWorkspace(owner.id, "Quick edits");
+  const boot = await bootstrap(owner, wid);
+  const act = async (body: Record<string, unknown>) => (await command(owner, body)) as Record<string, unknown>;
+  const pageId = (await act({ action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, title: "Aufgaben", kind: "database" })).id;
+  const rowId = (await act({ action: "row.create", pageId, cells: { title: "Neue Aufgabe" } })).id;
   type Rows = { rows: { id: string; version: number; cells: Record<string, unknown> }[] };
-  const row = () => (pageData(owner, pageId as string) as unknown as Rows).rows.find((r) => r.id === rowId)!;
-  assert.equal(row().version, 1);
+  const row = async () => ((await pageData(owner, pageId as string)) as unknown as Rows).rows.find((r) => r.id === rowId)!;
+  assert.equal((await row()).version, 1);
 
   // The title: the answer says the version after it.
-  assert.deepEqual(act({ action: "row.update", pageId, rowId, version: 1, cells: { title: "test" }, base: { title: "Neue Aufgabe" } }), {
+  assert.deepEqual(await act({ action: "row.update", pageId, rowId, version: 1, cells: { title: "test" }, base: { title: "Neue Aufgabe" } }), {
     ok: true,
     rowVersion: 2,
   });
   // The status, still on version 1: the title it did not touch changed.
   assert.equal(
-    act({ action: "row.update", pageId, rowId, version: 1, cells: { status: "In Arbeit" }, base: { status: null } }).rowVersion,
+    (await act({ action: "row.update", pageId, rowId, version: 1, cells: { status: "In Arbeit" }, base: { status: null } })).rowVersion,
     3,
   );
-  assert.deepEqual([row().cells.title, row().cells.status, row().version], ["test", "In Arbeit", 3]);
+  assert.deepEqual([(await row()).cells.title, (await row()).cells.status, (await row()).version], ["test", "In Arbeit", 3]);
   // Without a base an older version stays refused (API clients as before).
-  assert.throws(() => act({ action: "row.update", pageId, rowId, version: 1, cells: { priority: "Hoch" } }), /Datensatz wurde geändert/);
+  await assert.rejects(async () => await act({ action: "row.update", pageId, rowId, version: 1, cells: { priority: "Hoch" } }), /Datensatz wurde geändert/);
   // The status changed since the person saw it: a real conflict.
-  assert.throws(
-    () => act({ action: "row.update", pageId, rowId, version: 2, cells: { status: "Erledigt" }, base: { status: null } }),
+  await assert.rejects(
+    async () => await act({ action: "row.update", pageId, rowId, version: 2, cells: { status: "Erledigt" }, base: { status: null } }),
     /Datensatz wurde geändert/,
   );
-  assert.equal(row().cells.status, "In Arbeit");
+  assert.equal((await row()).cells.status, "In Arbeit");
   // Other changes of the record answer with its version too.
-  assert.equal(act({ action: "row.appearance", pageId, rowId, version: 3, icon: "Star" }).rowVersion, 4);
+  assert.equal((await act({ action: "row.appearance", pageId, rowId, version: 3, icon: "Star" })).rowVersion, 4);
 });

@@ -31,14 +31,14 @@ const { ensureLocal } = await import("../lib/storage");
 
 // The old instance: an account, a page and a file.
 const uid = id();
-run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, `local:${uid}`, "Ana", "ana@example.test");
+await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, `local:${uid}`, "Ana", "ana@example.test");
 const owner = { id: uid, name: "Ana", email: "ana@example.test", groups: [], isAdmin: true, disabled: 0, created_at: "" } as Identity;
-const wid = createWorkspace(owner.id, "Alt");
-const page = (command(owner, { action: "page.create", workspaceId: wid, spaceId: bootstrap(owner, wid).spaces[0].id, title: "Aus der Sicherung" }) as { id: string }).id;
+const wid = await createWorkspace(owner.id, "Alt");
+const page = ((await command(owner, { action: "page.create", workspaceId: wid, spaceId: (await bootstrap(owner, wid)).spaces[0].id, title: "Aus der Sicherung" })) as { id: string }).id;
 const fid = id();
 mkdirSync(join(old, "uploads"), { recursive: true });
 writeFileSync(join(old, "uploads", fid), "Anhang der alten Instanz");
-run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fid, page, "anhang.txt", "text/plain", 24, uid);
+await run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fid, page, "anhang.txt", "text/plain", 24, uid);
 const keep = mkdtempSync(join(tmpdir(), "flowplan-setup-restore-files-"));
 // On PostgreSQL an instance is a schema of its own (as a data folder is on SQLite).
 const oldSchema = process.env.FLOWPLAN_PG_SCHEMA;
@@ -53,18 +53,18 @@ async function freshInstance() {
   const dir = mkdtempSync(join(tmpdir(), "flowplan-setup-restore-new-"));
   process.env.FLOWPLAN_DATA_DIR = dir;
   if (onPostgres) await (await import("./helpers/postgres-backend")).preparePostgres(process.env.DATABASE_URL!);
-  reopenDatabase();
+  await reopenDatabase();
   assert.equal(await firstAccount(), true);
   return dir;
 }
-function backOnOld() {
+async function backOnOld() {
   process.env.FLOWPLAN_DATA_DIR = old;
   if (onPostgres) process.env.FLOWPLAN_PG_SCHEMA = oldSchema;
-  reopenDatabase();
+  await reopenDatabase();
 }
 async function restoredPage(dir: string) {
   assert.equal(await firstAccount(), false, "the accounts came back");
-  assert.equal(one<{ title: string }>("SELECT title FROM pages WHERE id=?", page)?.title, "Aus der Sicherung");
+  assert.equal((await one<{ title: string }>("SELECT title FROM pages WHERE id=?", page))?.title, "Aus der Sicherung");
   return existsSync(join(dir, "uploads", fid)) ? readFileSync(join(dir, "uploads", fid), "utf8") : null;
 }
 
@@ -90,14 +90,14 @@ test("round trip: scheduled backup → fresh instance → restore → data prese
   // Now that an account exists, nobody may restore here any more.
   assert.equal(await restore.setupRestoreOpen(), false);
   await assert.rejects(async () => restore.requireSetupRestore(""), /schon eingerichtet/);
-  backOnOld();
+  await backOnOld();
 });
 
 test("an encrypted instance download needs the key and brings the files", async () => {
   const key = randomBytes(32).toString("base64");
   process.env.FLOWPLAN_ENCRYPTION_KEY = key;
   const file = join(keep, "flowplan-instanz.zip.enc");
-  await pipeline(instanceBackupStream().pipe(sealStream()), createWriteStream(file));
+  await pipeline((await instanceBackupStream()).pipe(sealStream()), createWriteStream(file));
   const dir = await freshInstance();
   await assert.rejects(restore.restoreUpload(file, ""), (e: Error & { needsKey?: boolean }) => e.needsKey === true && /verschlüsselt/.test(e.message));
   await assert.rejects(restore.restoreUpload(file, randomBytes(32).toString("base64")), /Schlüssel passt nicht/);
@@ -108,7 +108,7 @@ test("an encrypted instance download needs the key and brings the files", async 
   // The key was entered, not configured: a hint to set it.
   assert.equal(restored.keyHint, true);
   assert.equal(await restoredPage(dir), "Anhang der alten Instanz");
-  backOnOld();
+  await backOnOld();
 });
 
 test("refuses while an account exists, and backups from a newer version", async () => {
@@ -131,7 +131,7 @@ test("refuses while an account exists, and backups from a newer version", async 
   writeFileSync(junk, "kein Backup");
   await assert.rejects(restore.restoreUpload(junk, ""), /keine Flowplan-Sicherung/);
   assert.equal(await firstAccount(), true);
-  backOnOld();
+  await backOnOld();
 });
 
 test("with FLOWPLAN_SETUP_TOKEN only with the token", async () => {
@@ -145,7 +145,7 @@ test("with FLOWPLAN_SETUP_TOKEN only with the token", async () => {
     delete process.env.FLOWPLAN_SETUP_TOKEN;
   }
   assert.ok(dir);
-  backOnOld();
+  await backOnOld();
 });
 
 test("an archive with an entry outside its folders is refused", async () => {
@@ -165,7 +165,7 @@ test("an archive with an entry outside its folders is refused", async () => {
   await assert.rejects(restore.restoreUpload(file, ""), /unbekannte Einträge|Ungültige ZIP|Beschädigte Sicherung/);
   assert.ok(!existsSync(join(dir, "..", "evil")));
   assert.equal(await firstAccount(), true);
-  backOnOld();
+  await backOnOld();
 });
 
 test("the newest backup from an SFTP server, with its files, encrypted", async () => {
@@ -175,8 +175,8 @@ test("the newest backup from an SFTP server, with its files, encrypted", async (
   const server = await startSftpServer(remote, { user: "backup", password: "geheim-genug" });
   try {
     const target = { host: "127.0.0.1", port: server.port, username: "backup", password: "geheim-genug", directory: "flowplan" };
-    sftpBackup.saveSftpBackup(uid, { ...target, enabled: true, auth: "password", keep: 5, uploads: true });
-    sftpBackup.trustSftpHostKey(uid, (await sftpBackup.testSftpBackup()).fingerprint);
+    await sftpBackup.saveSftpBackup(uid, { ...target, enabled: true, auth: "password", keep: 5, uploads: true });
+    await sftpBackup.trustSftpHostKey(uid, (await sftpBackup.testSftpBackup()).fingerprint);
     assert.equal((await sftpBackup.runSftpBackup(Date.UTC(2026, 10, 6, 5, 0))).error, null);
     assert.equal((await sftpBackup.runSftpBackup(Date.UTC(2026, 10, 6, 6, 0))).error, null);
     // On the server everything is encrypted.
@@ -204,7 +204,7 @@ test("the newest backup from an SFTP server, with its files, encrypted", async (
     await server.close();
     delete process.env.FLOWPLAN_ENCRYPTION_KEY;
   }
-  backOnOld();
+  await backOnOld();
 });
 
 test("an older SFTP backup finds a file deleted since then in .deleted/", async () => {
@@ -212,16 +212,16 @@ test("an older SFTP backup finds a file deleted since then in .deleted/", async 
   const server = await startSftpServer(remote, { user: "backup", password: "geheim-genug" });
   try {
     const target = { host: "127.0.0.1", port: server.port, username: "backup", password: "geheim-genug", directory: "flowplan" };
-    sftpBackup.saveSftpBackup(uid, { ...target, enabled: true, auth: "password", keep: 5, uploads: true });
-    sftpBackup.trustSftpHostKey(uid, (await sftpBackup.testSftpBackup()).fingerprint);
+    await sftpBackup.saveSftpBackup(uid, { ...target, enabled: true, auth: "password", keep: 5, uploads: true });
+    await sftpBackup.trustSftpHostKey(uid, (await sftpBackup.testSftpBackup()).fingerprint);
     assert.equal((await sftpBackup.runSftpBackup(Date.UTC(2026, 10, 7, 3, 0))).error, null);
     // Deleted here after the 03:00 backup: moved aside by the next one.
     const content = readFileSync(join(old, "uploads", fid));
-    run("DELETE FROM files WHERE id=?", fid);
+    await run("DELETE FROM files WHERE id=?", fid);
     rmSync(join(old, "uploads", fid));
     const next = await sftpBackup.runSftpBackup(Date.UTC(2026, 10, 7, 4, 0));
     writeFileSync(join(old, "uploads", fid), content);
-    run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fid, page, "anhang.txt", "text/plain", 24, uid);
+    await run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fid, page, "anhang.txt", "text/plain", 24, uid);
     assert.deepEqual([next.error, next.removed], [null, 1]);
     assert.ok(!existsSync(join(remote, "flowplan/uploads", fid)));
     assert.equal(readdirSync(join(remote, "flowplan/.deleted/uploads")).length, 1);
@@ -237,7 +237,7 @@ test("an older SFTP backup finds a file deleted since then in .deleted/", async 
   } finally {
     await server.close();
   }
-  backOnOld();
+  await backOnOld();
 });
 
 test("from S3: a file deleted after the backup comes from .deleted/", async () => {
@@ -256,7 +256,7 @@ test("from S3: a file deleted after the backup comes from .deleted/", async () =
   await new Promise<void>((done) => s3.listen(0, "127.0.0.1", done));
   try {
     const copy = join(old, "tmp", "s3-copy.sqlite");
-    const made = databaseCopy(Date.UTC(2026, 10, 8, 3, 0), copy);
+    const made = await databaseCopy(Date.UTC(2026, 10, 8, 3, 0), copy);
     objects.set(`/bucket/flowplan/backups/${made.name}`, readFileSync(copy));
     rmSync(copy);
     // Deleted after that backup: lib/storage.ts moved it aside.
@@ -271,7 +271,7 @@ test("from S3: a file deleted after the backup comes from .deleted/", async () =
   } finally {
     s3.close();
   }
-  backOnOld();
+  await backOnOld();
 });
 
 test("an uploaded database-only backup counts the files this instance's own bucket has", async () => {
@@ -310,7 +310,7 @@ test("an uploaded database-only backup counts the files this instance's own buck
     for (const name of Object.keys(bucket)) delete process.env[name];
     s3.close();
   }
-  backOnOld();
+  await backOnOld();
 });
 
 test("a new instance makes no scheduled backup before its first account", async (t) => {
@@ -324,10 +324,10 @@ test("a new instance makes no scheduled backup before its first account", async 
   assert.equal(existsSync(join(dir, "backups")), false);
   // Set up: the next check makes the backup.
   const user = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", user, `local:${user}`, "Neu", "neu@example.test");
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", user, `local:${user}`, "Neu", "neu@example.test");
   t.mock.timers.tick(10 * 60_000);
   // (Postgres answers over the network: by time, not by turns.)
   for (const until = Date.now() + 60_000; Date.now() < until && !existsSync(join(dir, "backups")); ) await new Promise((done) => setImmediate(done));
   assert.equal(readdirSync(join(dir, "backups")).length, 1);
-  backOnOld();
+  await backOnOld();
 });

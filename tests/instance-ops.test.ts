@@ -16,9 +16,9 @@ const {
   workspaceQuotaMb,
 } = await import("../lib/instance-ops");
 
-function account(name: string, isAdmin = false) {
+async function account(name: string, isAdmin = false) {
   const uid = id();
-  run(
+  await run(
     "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
     uid,
     uid,
@@ -35,19 +35,19 @@ function account(name: string, isAdmin = false) {
     created_at: "",
   } as Identity;
 }
-const admin = account("ops-admin", true),
-  owner = account("ops-owner");
-const wid = createWorkspace(owner.id, "Speicher");
+const admin = await account("ops-admin", true),
+  owner = await account("ops-owner");
+const wid = await createWorkspace(owner.id, "Speicher");
 const page = (
-  command(owner, {
+  (await command(owner, {
     action: "page.create",
     workspaceId: wid,
-    spaceId: bootstrap(owner, wid).spaces[0].id,
+    spaceId: (await bootstrap(owner, wid)).spaces[0].id,
     title: "Ablage",
-  }) as { id: string }
+  })) as { id: string }
 ).id;
-const addFile = (size: number) =>
-  run(
+const addFile = async (size: number) =>
+  await run(
     "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
     id(),
     page,
@@ -57,42 +57,42 @@ const addFile = (size: number) =>
     owner.id,
   );
 
-test("workspace storage counts page files and template files", () => {
-  assert.equal(workspaceBytes(wid), 0);
-  addFile(600 * 1024);
-  assert.equal(workspaceBytes(wid), 600 * 1024);
-  const metrics = instanceMetrics();
+test("workspace storage counts page files and template files", async () => {
+  assert.equal(await workspaceBytes(wid), 0);
+  await addFile(600 * 1024);
+  assert.equal(await workspaceBytes(wid), 600 * 1024);
+  const metrics = await instanceMetrics();
   assert.ok(metrics.files >= 1);
   assert.ok(metrics.uploadBytes >= 600 * 1024);
   assert.ok(metrics.databaseBytes > 0);
   assert.equal(typeof metrics.searchBacklog, "number");
 });
 
-test("quotas come from the environment or an admin override and block uploads beyond them", () => {
+test("quotas come from the environment or an admin override and block uploads beyond them", async () => {
   delete process.env.FLOWPLAN_WORKSPACE_QUOTA_MB;
-  assert.equal(workspaceQuotaMb(wid), 0);
-  assert.doesNotThrow(() => enforceQuota(wid, 10 * 1024 * 1024 * 1024));
+  assert.equal(await workspaceQuotaMb(wid), 0);
+  await assert.doesNotReject(async () => await enforceQuota(wid, 10 * 1024 * 1024 * 1024));
   process.env.FLOWPLAN_WORKSPACE_QUOTA_MB = "1";
-  assert.equal(workspaceQuotaMb(wid), 1);
-  assert.doesNotThrow(() => enforceQuota(wid, 300 * 1024));
-  assert.throws(() => enforceQuota(wid, 500 * 1024), /Speicherkontingent/);
-  assert.throws(
-    () =>
-      command(owner, { action: "admin.quota", workspaceId: wid, quotaMb: 5 }),
+  assert.equal(await workspaceQuotaMb(wid), 1);
+  await assert.doesNotReject(async () => await enforceQuota(wid, 300 * 1024));
+  await assert.rejects(async () => await enforceQuota(wid, 500 * 1024), /Speicherkontingent/);
+  await assert.rejects(
+    async () =>
+      await command(owner, { action: "admin.quota", workspaceId: wid, quotaMb: 5 }),
     /Admin|Berechtigung/i,
   );
-  command(admin, { action: "admin.quota", workspaceId: wid, quotaMb: 5 });
-  assert.equal(workspaceQuotaMb(wid), 5);
-  assert.doesNotThrow(() => enforceQuota(wid, 500 * 1024));
-  assert.equal(workspaceUsage().find((u) => u.id === wid)?.quotaMb, 5);
-  command(admin, { action: "admin.quota", workspaceId: wid, quotaMb: null });
-  assert.equal(workspaceQuotaMb(wid), 1);
-  assert.throws(() =>
-    command(admin, { action: "admin.quota", workspaceId: wid, quotaMb: -1 }),
+  await command(admin, { action: "admin.quota", workspaceId: wid, quotaMb: 5 });
+  assert.equal(await workspaceQuotaMb(wid), 5);
+  await assert.doesNotReject(async () => await enforceQuota(wid, 500 * 1024));
+  assert.equal((await workspaceUsage()).find((u) => u.id === wid)?.quotaMb, 5);
+  await command(admin, { action: "admin.quota", workspaceId: wid, quotaMb: null });
+  assert.equal(await workspaceQuotaMb(wid), 1);
+  await assert.rejects(async () =>
+    await command(admin, { action: "admin.quota", workspaceId: wid, quotaMb: -1 }),
   );
-  assert.throws(
-    () =>
-      command(admin, { action: "admin.quota", workspaceId: id(), quotaMb: 1 }),
+  await assert.rejects(
+    async () =>
+      await command(admin, { action: "admin.quota", workspaceId: id(), quotaMb: 1 }),
     /nicht gefunden/,
   );
   delete process.env.FLOWPLAN_WORKSPACE_QUOTA_MB;
@@ -104,16 +104,16 @@ test("copies are refused atomically when they would exceed the quota", async () 
   const dir = join(process.env.FLOWPLAN_DATA_DIR!, "uploads");
   mkdirSync(dir, { recursive: true });
   const source = (
-    command(owner, {
+    (await command(owner, {
       action: "page.create",
       workspaceId: wid,
-      spaceId: bootstrap(owner, wid).spaces[0].id,
+      spaceId: (await bootstrap(owner, wid)).spaces[0].id,
       title: "Große Anlage",
-    }) as { id: string }
+    })) as { id: string }
   ).id;
   const fid = id();
   writeFileSync(join(dir, fid), Buffer.alloc(300 * 1024));
-  run(
+  await run(
     "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
     fid,
     source,
@@ -124,17 +124,17 @@ test("copies are refused atomically when they would exceed the quota", async () 
   );
   // 600 KB + 300 KB stored; a copy adds another 300 KB beyond 1 MB.
   process.env.FLOWPLAN_WORKSPACE_QUOTA_MB = "1";
-  const pages = () =>
-    all("SELECT id FROM pages WHERE workspace_id=?", wid).length;
-  const before = [pages(), workspaceBytes(wid)];
-  assert.throws(
-    () => command(owner, { action: "page.duplicate", pageId: source }),
+  const pages = async () =>
+    (await all("SELECT id FROM pages WHERE workspace_id=?", wid)).length;
+  const before = [await pages(), await workspaceBytes(wid)];
+  await assert.rejects(
+    async () => await command(owner, { action: "page.duplicate", pageId: source }),
     /Speicherkontingent/,
   );
-  assert.deepEqual([pages(), workspaceBytes(wid)], before);
+  assert.deepEqual([await pages(), await workspaceBytes(wid)], before);
   delete process.env.FLOWPLAN_WORKSPACE_QUOTA_MB;
-  command(owner, { action: "page.duplicate", pageId: source });
-  assert.equal(workspaceBytes(wid), before[1] + 300 * 1024);
+  await command(owner, { action: "page.duplicate", pageId: source });
+  assert.equal(await workspaceBytes(wid), before[1] + 300 * 1024);
 });
 
 test("prometheus metrics need the configured bearer token", async () => {
@@ -149,7 +149,7 @@ test("prometheus metrics need the configured bearer token", async () => {
   assert.equal(metricsAuthorized(`Bearer ${"b".repeat(32)}`), false);
   assert.equal(metricsAuthorized(`Bearer ${"a".repeat(32)}`), true);
   delete process.env.FLOWPLAN_METRICS_TOKEN;
-  const text = prometheusMetrics();
+  const text = await prometheusMetrics();
   assert.match(text, /^# HELP flowplan_database_bytes /m);
   assert.match(text, /^# TYPE flowplan_pages gauge$/m);
   assert.match(

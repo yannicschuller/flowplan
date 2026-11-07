@@ -30,9 +30,9 @@ const { bibliography, resolveDoi, bibliographyForDoi } = await import("../lib/ci
 
 const fixture = (name: string) => readFileSync(join(import.meta.dirname, "fixtures", "citations", name), "utf8");
 const english = (_de: string, en: string) => en;
-function user(name: string): Identity {
+async function user(name: string): Promise<Identity> {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.com`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.com`);
   return { id: uid, name, email: `${name}@example.com`, groups: [], isAdmin: false, disabled: 0, created_at: "" };
 }
 
@@ -114,7 +114,7 @@ test("citations read like (Müller 2021) and the bibliography is APA-like", () =
   assert.deepEqual(sortReferences([mueller, wiki, knuth, garcia, thesis]).map((i) => i.id), ["noyear", "garcia2019", "knuth1984", "mueller2021", "wiki"]);
 });
 
-test("DOIs, keys and Pandoc citations", () => {
+test("DOIs, keys and Pandoc citations", async () => {
   assert.equal(normalizeDoi("https://doi.org/10.1145/3365199"), "10.1145/3365199");
   assert.equal(normalizeDoi("doi: 10.1000/xyz123."), "10.1000/xyz123");
   assert.equal(normalizeDoi("http://dx.doi.org/10.1002/(SICI)1097-4571"), "10.1002/(SICI)1097-4571");
@@ -122,7 +122,7 @@ test("DOIs, keys and Pandoc citations", () => {
   assert.equal(normalizeDoi("10.1000/<script>"), null);
   const [mueller] = parseBibtex(fixture("zotero.bib"));
   assert.equal(suggestKey(mueller), "mueller2021gemeinsames");
-  assert.equal(uniqueKey("a", (k) => k === "a" || k === "aa"), "ab");
+  assert.equal(await uniqueKey("a", (k) => k === "a" || k === "aa"), "ab");
   assert.equal(pandocCitation("mueller2021"), "[@mueller2021]");
   assert.equal(pandocCitation("mueller2021", "12–14"), "[@mueller2021, p. 12–14]");
   assert.equal(pandocCitation("doi:10.1/x"), "[@doi:10.1/x]");
@@ -159,21 +159,21 @@ test("citations survive the document round trip and export as Pandoc Markdown", 
 });
 
 test("the workspace bibliography: import, update, permissions and DOIs", async () => {
-  const owner = user("Bib"),
-    reader = user("Leser");
-  const wid = createWorkspace(owner.id, "Literatur");
-  run("INSERT INTO members VALUES(?,?,?)", wid, reader.id, "viewer");
-  bootstrap(owner, wid);
-  const imported = command(owner, { action: "citation.import", workspaceId: wid, text: fixture("zotero.bib") }) as { added: number; updated: number };
+  const owner = await user("Bib"),
+    reader = await user("Leser");
+  const wid = await createWorkspace(owner.id, "Literatur");
+  await run("INSERT INTO members VALUES(?,?,?)", wid, reader.id, "viewer");
+  await bootstrap(owner, wid);
+  const imported = (await command(owner, { action: "citation.import", workspaceId: wid, text: fixture("zotero.bib") })) as { added: number; updated: number };
   assert.deepEqual([imported.added, imported.updated], [5, 0]);
-  const again = command(owner, { action: "citation.import", workspaceId: wid, text: fixture("zotero.json") }) as { added: number };
+  const again = (await command(owner, { action: "citation.import", workspaceId: wid, text: fixture("zotero.json") })) as { added: number };
   assert.equal(again.added, 2);
-  assert.equal(bibliography(reader, wid).length, 7);
-  assert.equal((command(owner, { action: "citation.import", workspaceId: wid, text: fixture("zotero.bib") }) as { updated: number }).updated, 5);
-  assert.throws(() => command(reader, { action: "citation.import", workspaceId: wid, text: fixture("zotero.bib") }), /Berechtigung/);
-  assert.throws(() => command(owner, { action: "citation.import", workspaceId: wid, text: "nur Text" }), /Keine Literaturangaben/);
-  command(owner, { action: "citation.remove", workspaceId: wid, key: "wiki" });
-  assert.equal(bibliography(owner, wid).length, 6);
+  assert.equal((await bibliography(reader, wid)).length, 7);
+  assert.equal(((await command(owner, { action: "citation.import", workspaceId: wid, text: fixture("zotero.bib") })) as { updated: number }).updated, 5);
+  await assert.rejects(async () => await command(reader, { action: "citation.import", workspaceId: wid, text: fixture("zotero.bib") }), /Berechtigung/);
+  await assert.rejects(async () => await command(owner, { action: "citation.import", workspaceId: wid, text: "nur Text" }), /Keine Literaturangaben/);
+  await command(owner, { action: "citation.remove", workspaceId: wid, key: "wiki" });
+  assert.equal((await bibliography(owner, wid)).length, 6);
 
   // DOIs: resolved once through the (here simulated) safe fetch, then cached.
   let calls = 0;
@@ -200,10 +200,10 @@ test("the workspace bibliography: import, update, permissions and DOIs", async (
   assert.equal(data.title, "Toward a Unified Theory of High-Energy Metaphysics");
   await resolveDoi("10.5555/12345678", fetcher as never);
   assert.equal(calls, 1);
-  assert.ok(one("SELECT 1 FROM doi_cache WHERE doi='10.5555/12345678'"));
-  const first = bibliographyForDoi(owner, wid, data);
+  assert.ok(await one("SELECT 1 FROM doi_cache WHERE doi='10.5555/12345678'"));
+  const first = await bibliographyForDoi(owner, wid, data);
   assert.equal(first.id, "josiah2008toward");
-  assert.equal(bibliographyForDoi(owner, wid, data).id, first.id);
+  assert.equal((await bibliographyForDoi(owner, wid, data)).id, first.id);
   await assert.rejects(resolveDoi("keine doi"), (e: any) => e.status === 400);
   const missing = async () => ({ url: "", status: 404, type: "text/html", body: "", data: Buffer.alloc(0) });
   await assert.rejects(resolveDoi("10.5555/missing", missing as never), (e: any) => e.status === 404);

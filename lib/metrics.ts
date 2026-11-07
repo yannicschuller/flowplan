@@ -89,38 +89,38 @@ function forget(s: State) {
 
 /* ---------- Switch ---------- */
 
-export function metricsSetting(): { enabled: boolean; locked: boolean } {
+export async function metricsSetting(): Promise<{ enabled: boolean; locked: boolean }> {
   if (envOff()) return { enabled: false, locked: true };
   let enabled = true;
   try {
-    const row = one<{ value: string }>("SELECT value FROM instance_settings WHERE key=?", SETTING_KEY);
+    const row = await one<{ value: string }>("SELECT value FROM instance_settings WHERE key=?", SETTING_KEY);
     if (row) enabled = JSON.parse(row.value)?.enabled !== false;
   } catch {}
   return { enabled, locked: false };
 }
 // Re-reads the switch (the worker does this every minute; saving at once).
-export function refreshMetricsEnabled() {
+export async function refreshMetricsEnabled() {
   const s = state();
-  s.enabled = metricsSetting().enabled;
+  s.enabled = (await metricsSetting()).enabled;
   if (!s.enabled) forget(s);
   return s.enabled;
 }
-export function saveMetricsSetting(enabled: boolean) {
-  run(
+export async function saveMetricsSetting(enabled: boolean) {
+  await run(
     "INSERT INTO instance_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
     SETTING_KEY,
     JSON.stringify({ enabled }),
   );
-  return refreshMetricsEnabled();
+  return await refreshMetricsEnabled();
 }
 // Removes everything collected so far (successful sign-ins included).
-export function clearMetrics() {
-  run("DELETE FROM metrics_minute");
-  run("DELETE FROM metrics_hour");
-  run("DELETE FROM metrics_day");
-  run("DELETE FROM metrics_ai");
-  run("DELETE FROM metrics_push");
-  run("DELETE FROM ops_events WHERE kind='login_success'");
+export async function clearMetrics() {
+  await run("DELETE FROM metrics_minute");
+  await run("DELETE FROM metrics_hour");
+  await run("DELETE FROM metrics_day");
+  await run("DELETE FROM metrics_ai");
+  await run("DELETE FROM metrics_push");
+  await run("DELETE FROM ops_events WHERE kind='login_success'");
   forget(state());
 }
 
@@ -214,9 +214,9 @@ export function percentile(hist: number[], q: number): number | null {
 
 /* ---------- Writing ---------- */
 
-function writeMinute(m: Minute) {
-  const existing = one<{ requests: number; errors: number; hist: string }>("SELECT requests,errors,hist FROM metrics_minute WHERE at=?", m.at);
-  run(
+async function writeMinute(m: Minute) {
+  const existing = await one<{ requests: number; errors: number; hist: string }>("SELECT requests,errors,hist FROM metrics_minute WHERE at=?", m.at);
+  await run(
     "INSERT INTO metrics_minute(at,requests,errors,hist) VALUES(?,?,?,?) ON CONFLICT(at) DO UPDATE SET requests=excluded.requests,errors=excluded.errors,hist=excluded.hist",
     m.at,
     m.requests + (existing?.requests || 0),
@@ -225,8 +225,8 @@ function writeMinute(m: Minute) {
   );
 }
 // The hour row from its minutes (exact: histograms add up).
-export function rollupHour(at: number) {
-  const rows = all<{ requests: number; errors: number; hist: string }>("SELECT requests,errors,hist FROM metrics_minute WHERE at>=? AND at<?", at, at + HOUR);
+export async function rollupHour(at: number) {
+  const rows = await all<{ requests: number; errors: number; hist: string }>("SELECT requests,errors,hist FROM metrics_minute WHERE at>=? AND at<?", at, at + HOUR);
   if (!rows.length) return;
   let hist = emptyHist(),
     requests = 0,
@@ -236,7 +236,7 @@ export function rollupHour(at: number) {
     errors += r.errors;
     hist = addHist(hist, decodeHist(r.hist));
   }
-  run(
+  await run(
     "INSERT INTO metrics_hour(at,requests,errors,hist) VALUES(?,?,?,?) ON CONFLICT(at) DO UPDATE SET requests=excluded.requests,errors=excluded.errors,hist=excluded.hist",
     at,
     requests,
@@ -246,24 +246,24 @@ export function rollupHour(at: number) {
 }
 // People active in an hour: what was counted in memory, at least those whose
 // session was last seen in it (after a restart the memory is empty).
-function writeActive(at: number, people: number) {
+async function writeActive(at: number, people: number) {
   let seen = 0;
   try {
-    seen = Number(one<{ n: number }>("SELECT COUNT(DISTINCT user_id) n FROM sessions WHERE last_seen>=? AND last_seen<?", at, at + HOUR)?.n || 0);
+    seen = Number((await one<{ n: number }>("SELECT COUNT(DISTINCT user_id) n FROM sessions WHERE last_seen>=? AND last_seen<?", at, at + HOUR))?.n || 0);
   } catch {}
   const active = Math.max(people, seen);
-  if (!active && !one("SELECT 1 FROM metrics_hour WHERE at=?", at)) return;
-  run(`INSERT INTO metrics_hour(at,active) VALUES(?,?) ON CONFLICT(at) DO UPDATE SET active=${sql.greatest("metrics_hour.active", "excluded.active")}`, at, active);
+  if (!active && !(await one("SELECT 1 FROM metrics_hour WHERE at=?", at))) return;
+  await run(`INSERT INTO metrics_hour(at,active) VALUES(?,?) ON CONFLICT(at) DO UPDATE SET active=${sql.greatest("metrics_hour.active", "excluded.active")}`, at, active);
 }
 // AI counts: written by the worker and when read, so the chart includes
 // the last request.
-function flushAi() {
+async function flushAi() {
   const s = state();
   for (const [key, c] of [...s.ai]) {
     s.ai.delete(key);
     const [day, feature] = key.split("|");
     try {
-      run(
+      await run(
         "INSERT INTO metrics_ai(day,feature,requests,tokens_in,tokens_out) VALUES(?,?,?,?,?) ON CONFLICT(day,feature) DO UPDATE SET requests=metrics_ai.requests+excluded.requests,tokens_in=metrics_ai.tokens_in+excluded.tokens_in,tokens_out=metrics_ai.tokens_out+excluded.tokens_out",
         day,
         feature,
@@ -292,9 +292,9 @@ export function diskUsage(): { total: number; free: number } | null {
 type Sizes = { databaseBytes: number; uploadBytes: number; files: number };
 // Today's storage row (refreshed once an hour; the last row of a day stays).
 // The sizes come from instanceMetrics() (lib/instance-ops.ts).
-export function snapshotStorage(m: Sizes, now = Date.now()) {
+export async function snapshotStorage(m: Sizes, now = Date.now()) {
   const disk = diskUsage();
-  run(
+  await run(
     "INSERT INTO metrics_day(day,database_bytes,upload_bytes,files,disk_total,disk_free,at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(day) DO UPDATE SET database_bytes=excluded.database_bytes,upload_bytes=excluded.upload_bytes,files=excluded.files,disk_total=excluded.disk_total,disk_free=excluded.disk_free,at=excluded.at",
     localDay(now),
     m.databaseBytes,
@@ -306,21 +306,21 @@ export function snapshotStorage(m: Sizes, now = Date.now()) {
   );
 }
 
-export function sweepMetrics(now = Date.now()) {
-  run("DELETE FROM metrics_minute WHERE at<?", now - METRICS_KEEP.minutesMs);
-  run("DELETE FROM metrics_hour WHERE at<?", now - METRICS_KEEP.hoursMs);
-  run("DELETE FROM metrics_push WHERE at<?", now - METRICS_KEEP.hoursMs);
+export async function sweepMetrics(now = Date.now()) {
+  await run("DELETE FROM metrics_minute WHERE at<?", now - METRICS_KEEP.minutesMs);
+  await run("DELETE FROM metrics_hour WHERE at<?", now - METRICS_KEEP.hoursMs);
+  await run("DELETE FROM metrics_push WHERE at<?", now - METRICS_KEEP.hoursMs);
   const oldest = localDay(now - METRICS_KEEP.days * DAY);
-  run("DELETE FROM metrics_day WHERE day<?", oldest);
-  run("DELETE FROM metrics_ai WHERE day<?", oldest);
+  await run("DELETE FROM metrics_day WHERE day<?", oldest);
+  await run("DELETE FROM metrics_ai WHERE day<?", oldest);
 }
 
 // Writes what is finished: minutes, their hours, the people of the last
 // and the running hour, AI tokens; refreshes today's storage row hourly
 // (`sizes` measures it) and sweeps daily.
-export function flushMetrics(now = Date.now(), sizes?: () => Sizes) {
+export async function flushMetrics(now = Date.now(), sizes?: () => Sizes) {
   const s = state();
-  savePushLast();
+  await savePushLast();
   if (!s.enabled) return;
   if (s.current && s.current.at < floorTo(now, MINUTE)) {
     s.done.push(s.current);
@@ -329,33 +329,33 @@ export function flushMetrics(now = Date.now(), sizes?: () => Sizes) {
   const hours = new Set<number>();
   for (const m of s.done.splice(0)) {
     try {
-      writeMinute(m);
+      await writeMinute(m);
       hours.add(floorTo(m.at, HOUR));
     } catch {}
   }
   for (const h of hours)
     try {
-      rollupHour(h);
+      await rollupHour(h);
     } catch {}
   const hour = hourFor(s, now);
   try {
     if (s.lastHour) {
-      writeActive(s.lastHour.at, s.lastHour.people);
+      await writeActive(s.lastHour.at, s.lastHour.people);
       s.lastHour = null;
     }
-    writeActive(hour.at, hour.people.size);
+    await writeActive(hour.at, hour.people.size);
   } catch {}
-  flushAi();
-  flushPush();
+  await flushAi();
+  await flushPush();
   if (sizes && now - (s.snapshotAt ?? 0) >= HOUR) {
     try {
-      snapshotStorage(sizes(), now);
+      await snapshotStorage(sizes(), now);
       s.snapshotAt = now;
     } catch {}
   }
   if (now - (s.sweptAt ?? 0) >= DAY) {
     try {
-      sweepMetrics(now);
+      await sweepMetrics(now);
       s.sweptAt = now;
     } catch {}
   }
@@ -371,10 +371,10 @@ export function metricsTimer(timer?: ReturnType<typeof setInterval>) {
 /* ---------- Reading ---------- */
 
 // Minutes from the database and those still in memory, by start time.
-function minutesSince(since: number) {
+async function minutesSince(since: number) {
   const s = state();
   const byAt = new Map<number, Minute>();
-  for (const r of all<{ at: number; requests: number; errors: number; hist: string }>("SELECT at,requests,errors,hist FROM metrics_minute WHERE at>=?", since))
+  for (const r of await all<{ at: number; requests: number; errors: number; hist: string }>("SELECT at,requests,errors,hist FROM metrics_minute WHERE at>=?", since))
     byAt.set(r.at, { at: r.at, requests: r.requests, errors: r.errors, hist: decodeHist(r.hist) });
   for (const m of [...s.done, ...(s.current ? [s.current] : [])]) {
     if (m.at < since) continue;
@@ -384,11 +384,11 @@ function minutesSince(since: number) {
   return byAt;
 }
 // When collecting began (the oldest row or minute in memory).
-export function collectingSince(): number | null {
+export async function collectingSince(): Promise<number | null> {
   const s = state();
   const values = [
-    one<{ at: number | null }>("SELECT MIN(at) at FROM metrics_minute")?.at,
-    one<{ at: number | null }>("SELECT MIN(at) at FROM metrics_hour WHERE requests>0")?.at,
+    (await one<{ at: number | null }>("SELECT MIN(at) at FROM metrics_minute"))?.at,
+    (await one<{ at: number | null }>("SELECT MIN(at) at FROM metrics_hour WHERE requests>0"))?.at,
     s.done[0]?.at,
     s.current?.at,
   ].filter((x): x is number => typeof x === "number");
@@ -400,12 +400,12 @@ export const REQUEST_RANGES: RequestRange[] = ["1h", "24h", "7d"];
 export type RequestPoint = { at: number; requests: number | null; errors: number | null; p95: number | null };
 // Requests and 5xx per bucket: 1 h by minute, 24 h by 5 minutes, 7 d by
 // hour. Buckets before anything was collected are null (a gap, not a zero).
-export function requestSeries(range: RequestRange, now = Date.now()): { range: RequestRange; bucketMs: number; points: RequestPoint[] } {
+export async function requestSeries(range: RequestRange, now = Date.now()): Promise<{ range: RequestRange; bucketMs: number; points: RequestPoint[] }> {
   const bucketMs = range === "1h" ? MINUTE : range === "24h" ? 5 * MINUTE : HOUR;
   const count = range === "1h" ? 60 : range === "24h" ? 288 : 168;
   const end = floorTo(now, bucketMs);
   const start = end - (count - 1) * bucketMs;
-  const first = collectingSince();
+  const first = await collectingSince();
   const buckets = new Map<number, { requests: number; errors: number; hist: number[] }>();
   const add = (at: number, requests: number, errors: number, hist: number[]) => {
     const key = floorTo(at, bucketMs);
@@ -418,10 +418,10 @@ export function requestSeries(range: RequestRange, now = Date.now()): { range: R
   if (range === "7d") {
     // Finished hours from their rows, the running hour from its minutes.
     const running = floorTo(now, HOUR);
-    for (const r of all<{ at: number; requests: number; errors: number; hist: string }>("SELECT at,requests,errors,hist FROM metrics_hour WHERE at>=? AND at<?", start, running))
+    for (const r of await all<{ at: number; requests: number; errors: number; hist: string }>("SELECT at,requests,errors,hist FROM metrics_hour WHERE at>=? AND at<?", start, running))
       add(r.at, r.requests, r.errors, decodeHist(r.hist));
-    for (const m of minutesSince(running).values()) add(m.at, m.requests, m.errors, m.hist);
-  } else for (const m of minutesSince(start).values()) add(m.at, m.requests, m.errors, m.hist);
+    for (const m of (await minutesSince(running)).values()) add(m.at, m.requests, m.errors, m.hist);
+  } else for (const m of (await minutesSince(start)).values()) add(m.at, m.requests, m.errors, m.hist);
   const points: RequestPoint[] = [];
   for (let at = start; at <= end; at += bucketMs) {
     const b = buckets.get(at);
@@ -433,11 +433,11 @@ export function requestSeries(range: RequestRange, now = Date.now()): { range: R
 }
 
 // People active per hour (7 days); the running hour from memory.
-export function activeSeries(now = Date.now(), hours = 168): { at: number; people: number | null }[] {
+export async function activeSeries(now = Date.now(), hours = 168): Promise<{ at: number; people: number | null }[]> {
   const s = state();
   const end = floorTo(now, HOUR);
   const start = end - (hours - 1) * HOUR;
-  const rows = new Map(all<{ at: number; active: number }>("SELECT at,active FROM metrics_hour WHERE at>=?", start).map((r) => [r.at, r.active]));
+  const rows = new Map((await all<{ at: number; active: number }>("SELECT at,active FROM metrics_hour WHERE at>=?", start)).map((r) => [r.at, r.active]));
   if (s.enabled && s.hour.at === end) rows.set(end, Math.max(rows.get(end) || 0, s.hour.people.size));
   const first = rows.size ? Math.min(...rows.keys()) : null;
   const out: { at: number; people: number | null }[] = [];
@@ -446,9 +446,9 @@ export function activeSeries(now = Date.now(), hours = 168): { at: number; peopl
 }
 
 // The numbers of the live strip: now and the last hour.
-export function liveNumbers(now = Date.now()) {
+export async function liveNumbers(now = Date.now()) {
   const s = state();
-  const minutes = minutesSince(now - HOUR);
+  const minutes = await minutesSince(now - HOUR);
   let requests = 0,
     errors = 0,
     hist = emptyHist();
@@ -462,7 +462,7 @@ export function liveNumbers(now = Date.now()) {
   const recent = s.hour.at === floorTo(now, HOUR) ? [...s.hour.people.values()].filter((t) => t >= now - 5 * MINUTE).length : 0;
   let seen = 0;
   try {
-    seen = Number(one<{ n: number }>("SELECT COUNT(DISTINCT user_id) n FROM sessions WHERE last_seen>=? AND expires>?", now - 5 * MINUTE, now)?.n || 0);
+    seen = Number((await one<{ n: number }>("SELECT COUNT(DISTINCT user_id) n FROM sessions WHERE last_seen>=? AND expires>?", now - 5 * MINUTE, now))?.n || 0);
   } catch {}
   return {
     enabled: s.enabled,
@@ -489,10 +489,10 @@ const lastDays = (now: number, days: number) => {
 };
 
 // Tokens per day (the last `days`) and per feature over that time.
-export function aiUsage(now = Date.now(), days = 14) {
-  flushAi();
+export async function aiUsage(now = Date.now(), days = 14) {
+  await flushAi();
   const keys = lastDays(now, days);
-  const rows = all<{ day: string; feature: string; requests: number; tokens_in: number; tokens_out: number }>(
+  const rows = await all<{ day: string; feature: string; requests: number; tokens_in: number; tokens_out: number }>(
     "SELECT day,feature,requests,tokens_in,tokens_out FROM metrics_ai WHERE day>=?",
     keys[0],
   );
@@ -513,10 +513,10 @@ export function aiUsage(now = Date.now(), days = 14) {
 }
 
 // Storage (database + uploads) per day, the last `days`; days without a row are null.
-export function storageTrend(now = Date.now(), days = 30) {
+export async function storageTrend(now = Date.now(), days = 30) {
   const keys = lastDays(now, days);
   const rows = new Map(
-    all<{ day: string; database_bytes: number; upload_bytes: number }>("SELECT day,database_bytes,upload_bytes FROM metrics_day WHERE day>=?", keys[0]).map((r) => [r.day, r]),
+    (await all<{ day: string; database_bytes: number; upload_bytes: number }>("SELECT day,database_bytes,upload_bytes FROM metrics_day WHERE day>=?", keys[0])).map((r) => [r.day, r]),
   );
   return keys.map((day) => {
     const r = rows.get(day);
@@ -568,11 +568,11 @@ export type PushLast = { ok: Record<PushChannel, number | null>; error: PushFail
 const PUSH_LAST_KEY = "push-delivery";
 const safeCode = (code: string | null | undefined) => (code && /^[A-Za-z0-9 _.:-]{1,60}$/.test(code) ? code : null);
 
-function pushLast(s: State): PushLast {
+async function pushLast(s: State): Promise<PushLast> {
   if (!s.pushLast) {
     let stored: Partial<PushLast> = {};
     try {
-      const row = one<{ value: string }>("SELECT value FROM instance_settings WHERE key=?", PUSH_LAST_KEY);
+      const row = await one<{ value: string }>("SELECT value FROM instance_settings WHERE key=?", PUSH_LAST_KEY);
       if (row) stored = JSON.parse(row.value) || {};
     } catch {}
     const ok = (c: PushChannel) => (typeof stored.ok?.[c] === "number" ? stored.ok[c] : null);
@@ -591,9 +591,9 @@ function pushLast(s: State): PushLast {
 
 // One delivery's outcome. "gone" (the device is no longer registered) is
 // counted, but it is no failure of the instance.
-export function notePushResult(channel: PushChannel, result: PushResult, code: string | null = null, now = Date.now()) {
+export async function notePushResult(channel: PushChannel, result: PushResult, code: string | null = null, now = Date.now()) {
   const s = state();
-  const last = pushLast(s);
+  const last = await pushLast(s);
   if (result === "ok") last.ok[channel] = Math.max(last.ok[channel] ?? 0, now);
   else if (result !== "gone") last.error = { channel, result, code: safeCode(code), at: now };
   if (!s.enabled) return;
@@ -601,13 +601,13 @@ export function notePushResult(channel: PushChannel, result: PushResult, code: s
   if (s.push.size < 1000 || s.push.has(key)) s.push.set(key, (s.push.get(key) || 0) + 1);
 }
 
-function flushPush() {
+async function flushPush() {
   const s = state();
   for (const [key, n] of [...s.push]) {
     s.push.delete(key);
     const [at, channel, result] = key.split("|");
     try {
-      run(
+      await run(
         "INSERT INTO metrics_push(at,channel,result,count) VALUES(?,?,?,?) ON CONFLICT(at,channel,result) DO UPDATE SET count=metrics_push.count+excluded.count",
         Number(at),
         channel,
@@ -617,13 +617,13 @@ function flushPush() {
     } catch {}
   }
 }
-function savePushLast() {
+async function savePushLast() {
   const s = state();
   if (!s.pushLast) return;
   const text = JSON.stringify(s.pushLast);
   if (text === s.pushLastSaved) return;
   try {
-    run("INSERT INTO instance_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", PUSH_LAST_KEY, text);
+    await run("INSERT INTO instance_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", PUSH_LAST_KEY, text);
     s.pushLastSaved = text;
   } catch {}
 }
@@ -636,15 +636,15 @@ const emptyPushCounts = (): PushCounts =>
 // and per hour delivered/failed (oldest first, for a sparkline). Failed:
 // everything but ok and gone. With the statistics off, only the last
 // success and failure are known.
-export function pushDeliveries(now = Date.now(), hours = 24) {
+export async function pushDeliveries(now = Date.now(), hours = 24) {
   const s = state();
-  flushPush();
-  savePushLast();
+  await flushPush();
+  await savePushLast();
   const end = floorTo(now, HOUR);
   const start = end - (hours - 1) * HOUR;
   const totals = emptyPushCounts();
   const perHour = new Map<number, { ok: number; failed: number }>();
-  for (const r of all<{ at: number; channel: PushChannel; result: PushResult; count: number }>(
+  for (const r of await all<{ at: number; channel: PushChannel; result: PushResult; count: number }>(
     "SELECT at,channel,result,count FROM metrics_push WHERE at>=?",
     start,
   )) {
@@ -657,7 +657,7 @@ export function pushDeliveries(now = Date.now(), hours = 24) {
   }
   const hourly: { at: number; ok: number; failed: number }[] = [];
   for (let at = start; at <= end; at += HOUR) hourly.push({ at, ...(perHour.get(at) || { ok: 0, failed: 0 }) });
-  const last = pushLast(s);
+  const last = await pushLast(s);
   return { collecting: s.enabled, hours, totals, hourly, lastOk: { ...last.ok }, lastError: last.error ? { ...last.error } : null };
 }
-export type PushDeliveries = ReturnType<typeof pushDeliveries>;
+export type PushDeliveries = Awaited<ReturnType<typeof pushDeliveries>>;

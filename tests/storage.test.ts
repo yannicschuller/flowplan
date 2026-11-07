@@ -61,25 +61,25 @@ const { run, id, one, transaction } = await import("../lib/db");
 const { ensureLocal, storageStatus, kickStorage } = await import("../lib/storage");
 const { createWorkspace, createPage } = await import("../lib/seed");
 const user = id();
-run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", user, user, "S", "s@example.test");
-const workspace = createWorkspace(user, "Speicher");
-const space = String(one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", workspace)!.id);
-const page = createPage(workspace, space, user, "Dateien");
+await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", user, user, "S", "s@example.test");
+const workspace = await createWorkspace(user, "Speicher");
+const space = String((await one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", workspace))!.id);
+const page = await createPage(workspace, space, user, "Dateien");
 
 const uploads = join(dir, "uploads");
 mkdirSync(uploads, { recursive: true });
 const object = (key: string) => `/bucket/flowplan/uploads/${key}`;
 const until = async (check: () => boolean, label: string) => {
   for (let i = 0; i < 200; i++) {
-    if (check()) return;
+    if (await check()) return;
     await new Promise((r) => setTimeout(r, 20));
   }
   assert.fail(`timed out: ${label}`);
 };
-function addFile(content: string) {
+async function addFile(content: string) {
   const fid = id();
   writeFileSync(join(uploads, fid), content);
-  run(
+  await run(
     "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
     fid,
     page,
@@ -92,22 +92,22 @@ function addFile(content: string) {
 }
 
 test("new files are uploaded, deleted files removed, rolled back files never sent", async () => {
-  const fid = addFile("hallo");
+  const fid = await addFile("hallo");
   await until(() => objects.has(object(fid)), "upload");
   assert.equal(objects.get(object(fid))!.toString(), "hallo");
-  await until(() => storageStatus().enabled && storageStatus().pending === 0, "queue empty");
+  await until(async () => (await storageStatus()).enabled && (await storageStatus()).pending === 0, "queue empty");
 
   const ghost = id();
-  assert.throws(() =>
-    transaction(() => {
+  await assert.rejects(async () =>
+    await transaction(async () => {
       writeFileSync(join(uploads, ghost), "weg");
-      run("INSERT INTO files(id,page_id,name,mime,size) VALUES(?,?,?,?,?)", ghost, page, "b", "text/plain", 3);
+      await run("INSERT INTO files(id,page_id,name,mime,size) VALUES(?,?,?,?,?)", ghost, page, "b", "text/plain", 3);
       throw new Error("abort");
     }),
   );
-  assert.equal(one("SELECT 1 FROM storage_queue WHERE key=?", ghost), undefined);
+  assert.equal(await one("SELECT 1 FROM storage_queue WHERE key=?", ghost), undefined);
 
-  run("DELETE FROM files WHERE id=?", fid);
+  await run("DELETE FROM files WHERE id=?", fid);
   await until(() => !objects.has(object(fid)), "delete");
   // Moved aside, not lost: the scheduled backups may still refer to it.
   const moved = [...objects.keys()].filter((k) => k.startsWith(`/bucket/flowplan/.deleted/uploads/${fid}.`));
@@ -118,7 +118,7 @@ test("new files are uploaded, deleted files removed, rolled back files never sen
 });
 
 test("a container without the local file fetches it from the bucket", async () => {
-  const fid = addFile("aus dem Bucket");
+  const fid = await addFile("aus dem Bucket");
   await until(() => objects.has(object(fid)), "upload");
   rmSync(join(uploads, fid));
   assert.equal(await ensureLocal(fid), true);
@@ -131,14 +131,14 @@ test("failed uploads are retried with backoff instead of lost", async () => {
   const fid = id();
   failing.add(fid);
   writeFileSync(join(uploads, fid), "später");
-  run("INSERT INTO files(id,page_id,name,mime,size) VALUES(?,?,?,?,?)", fid, page, "c", "text/plain", 6);
+  await run("INSERT INTO files(id,page_id,name,mime,size) VALUES(?,?,?,?,?)", fid, page, "c", "text/plain", 6);
   await until(
-    () => Number(one<{ attempts: number }>("SELECT attempts FROM storage_queue WHERE key=?", fid)?.attempts) > 0,
+    async () => Number((await one<{ attempts: number }>("SELECT attempts FROM storage_queue WHERE key=?", fid))?.attempts) > 0,
     "retry scheduled",
   );
-  assert.equal(storageStatus().enabled && storageStatus().failing, true);
+  assert.equal((await storageStatus()).enabled && (await storageStatus()).failing, true);
   failing.delete(fid);
-  run("UPDATE storage_queue SET next_at=0 WHERE key=?", fid);
+  await run("UPDATE storage_queue SET next_at=0 WHERE key=?", fid);
   kickStorage();
   await until(() => objects.has(object(fid)), "retried upload");
   assert.ok(existsSync(join(uploads, fid)));
@@ -153,9 +153,9 @@ test("deleted files leave the bucket once no kept backup refers to them", async 
   // Moved since: a kept backup may refer to it.
   const recent = trash(id(), now - 3 * 86_400_000);
   // Moved before, but the instance has it again: goes.
-  const back = addFile("wieder da");
+  const back = await addFile("wieder da");
   await until(() => objects.has(object(back)), "upload");
-  await until(() => !one("SELECT 1 FROM storage_queue WHERE key=?", back), "queue empty");
+  await until(async () => !(await one("SELECT 1 FROM storage_queue WHERE key=?", back)), "queue empty");
   const again = trash(back, now - 60_000);
   for (const key of [longAgo, recent, again]) objects.set(key, Buffer.from("alt"));
   // The oldest kept backup is from 5 days ago.
@@ -167,9 +167,9 @@ test("deleted files leave the bucket once no kept backup refers to them", async 
   assert.ok(!objects.has(again), "the file is in uploads/ again");
 
   // Without scheduled backups nothing would remove it: deleted right away.
-  run("INSERT INTO instance_settings(key,value) VALUES('backupSchedule','false') ON CONFLICT(key) DO UPDATE SET value=excluded.value");
-  run("DELETE FROM files WHERE id=?", back);
+  await run("INSERT INTO instance_settings(key,value) VALUES('backupSchedule','false') ON CONFLICT(key) DO UPDATE SET value=excluded.value");
+  await run("DELETE FROM files WHERE id=?", back);
   await until(() => !objects.has(object(back)), "delete");
   assert.equal([...objects.keys()].filter((k) => k.includes(`/.deleted/uploads/${back}.`)).length, 0);
-  run("DELETE FROM instance_settings WHERE key='backupSchedule'");
+  await run("DELETE FROM instance_settings WHERE key='backupSchedule'");
 });

@@ -20,6 +20,7 @@ import { AI_REASON_TEXT } from "./features";
 import { resolveAi } from "./resolve";
 import { cellPlain, recordContent, recordTitle } from "./sources";
 import { isContentReferenceName } from "./content-references";
+import { forEachAsync, mapAsync } from "../each-async";
 
 export const AI_OUTPUT_TYPES = ["text", "select", "multiselect", "number"] as const satisfies readonly FieldType[];
 // Properties "Mit KI ausfüllen" can fill.
@@ -69,7 +70,7 @@ const sameConfig = (a: Field, b: Field | undefined) =>
 // and decides who automatic updates run as: the person who switches them on
 // – or who changes prompt, type or options while they are on. A value sent
 // by the browser for autoBy is never trusted.
-export function prepareAiFields(user: Identity, page: Pick<Page, "workspace_id">, fields: Field[], before: Field[]) {
+export async function prepareAiFields(user: Identity, page: Pick<Page, "workspace_id">, fields: Field[], before: Field[]) {
   const aiFields = fields.filter((f) => f.ai);
   for (const f of aiFields) {
     const ai = f.ai!;
@@ -111,18 +112,18 @@ export function prepareAiFields(user: Identity, page: Pick<Page, "workspace_id">
       ai.autoBy = old.ai.autoBy;
       continue;
     }
-    if (isGuest(user, page.workspace_id)) throw new HttpError(403, "Gäste können keine automatischen KI-Werte einschalten.");
-    const resolved = resolveAi(user, "database", { workspaceId: page.workspace_id });
+    if (await isGuest(user, page.workspace_id)) throw new HttpError(403, "Gäste können keine automatischen KI-Werte einschalten.");
+    const resolved = await resolveAi(user, "database", { workspaceId: page.workspace_id });
     if (!resolved.ok) throw new HttpError(403, AI_REASON_TEXT[resolved.reason][0]);
     ai.autoBy = user.id;
   }
   // Removed AI properties take their bookkeeping along.
   return { removed: before.filter((o) => o.ai && !fields.some((f) => f.id === o.id && f.ai)).map((o) => o.id) };
 }
-export function forgetAiFields(pageId: string, fieldIds: string[]) {
+export async function forgetAiFields(pageId: string, fieldIds: string[]) {
   for (const fid of fieldIds) {
-    run("DELETE FROM ai_cell_jobs WHERE page_id=? AND field_id=?", pageId, fid);
-    run("DELETE FROM ai_cell_meta WHERE page_id=? AND field_id=?", pageId, fid);
+    await run("DELETE FROM ai_cell_jobs WHERE page_id=? AND field_id=?", pageId, fid);
+    await run("DELETE FROM ai_cell_meta WHERE page_id=? AND field_id=?", pageId, fid);
   }
 }
 
@@ -136,24 +137,24 @@ export type PromptContext = {
 // Related records' titles, filtered with aiFilter for the person.
 export function relationTitlesFor(user: Identity) {
   const schemas = new Map<string, Field[]>();
-  return (field: Field, ids: string[]) => {
+  return async (field: Field, ids: string[]) => {
     if (!field.relationPage || !ids.length) return [];
-    const readable = aiFilter(
+    const readable = await aiFilter(
       user,
       ids.slice(0, 100).map((rowId) => ({ pageId: field.relationPage!, rowId })),
     );
     if (!schemas.has(field.relationPage)) {
-      const stored = one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", field.relationPage);
+      const stored = await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", field.relationPage);
       schemas.set(field.relationPage, stored ? JSON.parse(stored.fields) : []);
     }
     const fields = schemas.get(field.relationPage)!;
-    return readable.map((r) => {
-      const row = one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", r.rowId!);
+    return await mapAsync(readable, async (r) => {
+      const row = await one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", r.rowId!);
       return row ? recordTitle(fields, JSON.parse(row.cells)) : "";
     });
   };
 }
-export const contentOf = (rowId: string) => () => recordContent(rowId);
+export const contentOf = (rowId: string) => async () => await recordContent(rowId);
 
 // ---- "Mit KI ausfüllen": only inputs at least as visible as the target ----
 //
@@ -190,17 +191,17 @@ export function fillInputFieldIds(fields: Field[], target: Field): Set<string> {
 // Whether every member of the workspace who may open `pageId` may also open
 // `relatedPageId` – checked once per pair for half a minute.
 const coverage = new Map<string, { at: number; covered: boolean }>();
-function relatedPageCovers(page: Page, relatedPageId: string) {
+async function relatedPageCovers(page: Page, relatedPageId: string) {
   if (relatedPageId === page.id) return true;
   const key = `${page.id}|${relatedPageId}`;
   const cached = coverage.get(key);
   if (cached && cached.at > Date.now() - 30_000) return cached.covered;
-  const related = one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", relatedPageId);
+  const related = await one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", relatedPageId);
   let covered = !!related;
   if (related)
-    for (const member of all<User>("SELECT u.* FROM members m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=?", page.workspace_id)) {
+    for (const member of await all<User>("SELECT u.* FROM members m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=?", page.workspace_id)) {
       const person: Identity = { ...member, groups: [], isAdmin: false };
-      if (pageRole(person, page) && !pageRole(person, related)) {
+      if (await pageRole(person, page) && !(await pageRole(person, related))) {
         covered = false;
         break;
       }
@@ -215,14 +216,14 @@ function relatedPageCovers(page: Page, relatedPageId: string) {
 // not private records, and only from databases open to all of them.
 export function fillRelationTitlesFor(user: Identity, page: Page) {
   const titles = relationTitlesFor(user);
-  return (field: Field, ids: string[]) => {
-    if (!field.relationPage || !ids.length || !relatedPageCovers(page, field.relationPage)) return [];
+  return async (field: Field, ids: string[]) => {
+    if (!field.relationPage || !ids.length || !(await relatedPageCovers(page, field.relationPage))) return [];
     const open = new Set(
-      all<{ id: string }>(
+      (await all<{ id: string }>(
         `SELECT id FROM rows WHERE page_id=? AND access!='private' AND id IN (${ids.slice(0, 100).map(() => "?").join(",")})`,
         field.relationPage,
         ...ids.slice(0, 100),
-      ).map((r) => r.id),
+      )).map((r) => r.id),
     );
     return titles(field, ids.filter((id) => open.has(id)));
   };
@@ -479,7 +480,7 @@ export function normalizeProposal(raw: unknown): DatabaseProposal {
 const fieldId = () => `ai_${randomBytes(5).toString("hex")}`;
 // Sets up an (empty) database page from a reviewed proposal: properties,
 // a table, a board when there is a selection, and the example records.
-export function applyDatabaseProposal(pageId: string, userId: string, raw: unknown, labels: { all: string; board: string }) {
+export async function applyDatabaseProposal(pageId: string, userId: string, raw: unknown, labels: { all: string; board: string }) {
   const proposal = normalizeProposal(raw);
   const fields: Field[] = proposal.fields.map((f, i) => ({
     id: i === 0 ? "title" : fieldId(),
@@ -492,19 +493,19 @@ export function applyDatabaseProposal(pageId: string, userId: string, raw: unkno
     { id: "table", name: labels.all, type: "table", filters: [], sorts: [] },
     ...(select ? [{ id: "board", name: labels.board, type: "board" as const, filters: [], sorts: [], groupBy: select.id }] : []),
   ];
-  run("UPDATE databases SET fields=?,views=?,version=version+1 WHERE page_id=?", JSON.stringify(fields), JSON.stringify(views), pageId);
+  await run("UPDATE databases SET fields=?,views=?,version=version+1 WHERE page_id=?", JSON.stringify(fields), JSON.stringify(views), pageId);
   const now = Date.now();
-  proposal.rows.forEach((row, i) => {
+  await forEachAsync(proposal.rows, async (row, i) => {
     const cells = Object.fromEntries(Object.entries(row).map(([name, value]) => [fields.find((f) => f.name === name)!.id, value]));
-    run("INSERT INTO rows(id,page_id,cells,position,created_by,updated_by) VALUES(?,?,?,?,?,?)", uuid(), pageId, JSON.stringify(cells), now + i, userId, userId);
+    await run("INSERT INTO rows(id,page_id,cells,position,created_by,updated_by) VALUES(?,?,?,?,?,?)", uuid(), pageId, JSON.stringify(cells), now + i, userId, userId);
   });
   return { fields: fields.length, rows: proposal.rows.length };
 }
 
 // For the browser: metadata of AI values and the queue of a database.
-export function aiCellMeta(pageId: string, visible: (rowId: string) => boolean) {
+export async function aiCellMeta(pageId: string, visible: (rowId: string) => boolean) {
   const meta: Record<string, Record<string, { at: number; model: string; status: string }>> = {};
-  for (const m of all<{ row_id: string; field_id: string; model: string; computed_at: number; status: string }>(
+  for (const m of await all<{ row_id: string; field_id: string; model: string; computed_at: number; status: string }>(
     "SELECT row_id,field_id,model,computed_at,status FROM ai_cell_meta WHERE page_id=?",
     pageId,
   )) {

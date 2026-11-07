@@ -149,9 +149,9 @@ async function changedFiles(from: string, to: string) {
   return changed;
 }
 
-function readableBoard(user: Identity, id: string) {
+async function readableBoard(user: Identity, id: string) {
   try {
-    return requirePage(user, id).kind === "whiteboard";
+    return (await requirePage(user, id)).kind === "whiteboard";
   } catch {
     return false;
   }
@@ -182,21 +182,21 @@ export function exportedLink(href: string, file: string, folders: Map<string, st
   const block = /^\^([A-Za-z0-9-]{1,64})$/.exec(decodeURIComponent(anchor))?.[1];
   return `/#page=${pageId}${block ? `&block=${block}` : ""}`;
 }
-function updateDocument(user: Identity, pageId: string, markdown: string, link: (href: string) => string | null = (href) => (/^(https?:|mailto:|\/#page=)/i.test(href) ? href : null)) {
-  const page = requirePage(user, pageId, true);
+async function updateDocument(user: Identity, pageId: string, markdown: string, link: (href: string) => string | null = (href) => (/^(https?:|mailto:|\/#page=)/i.test(href) ? href : null)) {
+  const page = await requirePage(user, pageId, true);
   if (page.kind !== "document" || page.locked) return false;
   // Journal days behind a PIN stay untouched.
-  requireUnlocked(user, page);
+  await requireUnlocked(user, page);
   const { data, body: text } = splitFrontmatter(markdown);
   // Aliases come back from the frontmatter (the export writes them there).
   const aliases = frontmatterAliases(data);
   const aliasesChanged = JSON.stringify(aliases) !== JSON.stringify(pageAliases(page));
-  if (aliasesChanged) run("UPDATE pages SET aliases=? WHERE id=?", storedAliases(aliases), page.id);
+  if (aliasesChanged) await run("UPDATE pages SET aliases=? WHERE id=?", storedAliases(aliases), page.id);
   // So do tags and property values (#70) and numbered captions (#84).
-  let metaChanged = syncMetaFromFrontmatter(user, page, data);
+  let metaChanged = await syncMetaFromFrontmatter(user, page, data);
   const numbered = numberedInFrontmatter(data) ? 1 : 0;
   if (numbered !== (page.caption_numbers || 0)) {
-    run("UPDATE pages SET caption_numbers=? WHERE id=?", numbered, page.id);
+    await run("UPDATE pages SET caption_numbers=? WHERE id=?", numbered, page.id);
     metaChanged = true;
   }
   const body = text.replace(/^\s*#\s+[^\n]*\n+/, "")
@@ -205,11 +205,11 @@ function updateDocument(user: Identity, pageId: string, markdown: string, link: 
     body.replace(/^!\[Cover\]\([^)]*\)\n+/, ""),
     (href, kind) => (kind === "image" ? (/^(https?:|mailto:|\/#page=)/i.test(href) ? href : null) : link(href)),
     // Embedded boards come back as embeds when this person may read them.
-    { whiteboard: (id) => one<{ workspace_id: string; kind: string }>("SELECT workspace_id,kind FROM pages WHERE id=? AND deleted_at IS NULL", id)?.workspace_id === page.workspace_id && readableBoard(user, id) },
+    { whiteboard: async (id) => (await one<{ workspace_id: string; kind: string }>("SELECT workspace_id,kind FROM pages WHERE id=? AND deleted_at IS NULL", id))?.workspace_id === page.workspace_id && await readableBoard(user, id) },
   );
-  const current = one<{ html: string; state: Uint8Array | null }>("SELECT html,state FROM documents WHERE page_id=?", page.id);
+  const current = await one<{ html: string; state: Uint8Array | null }>("SELECT html,state FROM documents WHERE page_id=?", page.id);
   if (!current || current.html === html) return aliasesChanged || metaChanged;
-  run(
+  await run(
     "INSERT INTO snapshots(id,page_id,state,html,title,created_by,kind) VALUES(?,?,?,?,?,?,'manual')",
     id(),
     page.id,
@@ -218,8 +218,8 @@ function updateDocument(user: Identity, pageId: string, markdown: string, link: 
     page.title,
     user.id,
   );
-  run("UPDATE documents SET state=?,html=?,generation=?,updated_at=? WHERE page_id=?", htmlState(html), html, id(), nowText(), page.id);
-  run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), page.id);
+  await run("UPDATE documents SET state=?,html=?,generation=?,updated_at=? WHERE page_id=?", htmlState(html), html, id(), nowText(), page.id);
+  await run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), page.id);
   documentChanged(page.id);
   return true;
 }
@@ -228,22 +228,22 @@ function updateDocument(user: Identity, pageId: string, markdown: string, link: 
 // 2026/10/2026-10-27.md, the folder of the export's root page or
 // pages/<title>-<journal id>/): the journal's day of that date. The id in
 // the file's frontmatter decides when it names a day of the same journal.
-export function journalDayOf(rootId: string, inside: string, text: string) {
+export async function journalDayOf(rootId: string, inside: string, text: string) {
   const match = /^(?:pages\/[^/]*-([0-9a-f-]{36})\/)?(\d{4})\/(\d{2})\/((\d{4})-(\d{2})-\d{2})\.md$/.exec(inside);
   if (!match || match[2] !== match[5] || match[3] !== match[6]) return undefined;
   const journalId = match[1] || rootId;
   const flowplan = splitFrontmatter(text).data.flowplan;
   const stored = flowplan && typeof flowplan === "object" && !Array.isArray(flowplan) ? String(flowplan.id || "") : "";
   const byId = /^[0-9a-f-]{36}$/.test(stored)
-    ? one<{ id: string }>("SELECT id FROM pages WHERE id=? AND parent_id=? AND journal_date IS NOT NULL AND deleted_at IS NULL", stored, journalId)?.id
+    ? (await one<{ id: string }>("SELECT id FROM pages WHERE id=? AND parent_id=? AND journal_date IS NOT NULL AND deleted_at IS NULL", stored, journalId))?.id
     : undefined;
   return (
     byId ||
-    one<{ id: string }>(
+    (await one<{ id: string }>(
       "SELECT p.id FROM pages p JOIN pages j ON j.id=p.parent_id WHERE p.parent_id=? AND j.kind='journal' AND p.journal_date=? AND p.deleted_at IS NULL",
       journalId,
       match[4],
-    )?.id
+    ))?.id
   );
 }
 
@@ -261,13 +261,13 @@ async function importChanges(user: Identity, folders: Map<string, string>, from:
     try {
       const record = /^records\/([0-9a-f-]{36})\/[^/]+\.md$/.exec(inside);
       if (record) {
-        const result = importMarkdownRecords(user, record[1], new Map([[posix.basename(inside), Buffer.from(text)]]), { updateExisting: true });
+        const result = await importMarkdownRecords(user, record[1], new Map([[posix.basename(inside), Buffer.from(text)]]), { updateExisting: true });
         imported += (result.created || 0) + (result.updated || 0);
         continue;
       }
       const page =
-        inside === "index.md" ? rootId : /^pages\/[^/]*-([0-9a-f-]{36})\.md$/.exec(inside)?.[1] || journalDayOf(rootId, inside, text);
-      if (page && transaction(() => updateDocument(user, page, text, (href) => exportedLink(href, path, folders)), user)) imported++;
+        inside === "index.md" ? rootId : /^pages\/[^/]*-([0-9a-f-]{36})\.md$/.exec(inside)?.[1] || await journalDayOf(rootId, inside, text);
+      if (page && await transaction(async () => await updateDocument(user, page, text, (href) => exportedLink(href, path, folders)), user)) imported++;
     } catch (error) {
       console.error("Git import skipped", path, (error as Error).message);
     }

@@ -95,8 +95,8 @@ export function pageEditPrompt(input: { title: string; outline: string; truncate
 }
 
 // The stored document as it is now (its Yjs state, else the HTML).
-function storedDocument(pageId: string) {
-  const stored = one<{ state: Uint8Array | null; html: string }>("SELECT state,html FROM documents WHERE page_id=?", pageId);
+async function storedDocument(pageId: string) {
+  const stored = await one<{ state: Uint8Array | null; html: string }>("SELECT state,html FROM documents WHERE page_id=?", pageId);
   if (!stored) throw new HttpError(404, "Dokument nicht gefunden.");
   const ydoc = new Y.Doc();
   try {
@@ -122,13 +122,13 @@ export type PageEditResult = {
 export async function suggestPageEdits(user: Identity, raw: unknown, signal?: AbortSignal): Promise<PageEditResult> {
   const input = pageEditInput.parse(raw);
   // Edit rights first: people who may only read get the answer, no changes.
-  const page = requirePage(user, input.pageId, true);
+  const page = await requirePage(user, input.pageId, true);
   if (page.workspace_id !== input.workspaceId) throw new HttpError(404, "Seite nicht gefunden.");
   if (page.kind !== "document") throw new HttpError(400, "Änderungsvorschläge gibt es nur für Dokumente.");
   if (page.locked) throw new HttpError(403, "Die Seite ist gesperrt.");
-  const resolved = requireAi(user, "ask", { workspaceId: page.workspace_id, pageId: page.id });
+  const resolved = await requireAi(user, "ask", { workspaceId: page.workspace_id, pageId: page.id });
   const local = resolved.config.kind === "ollama" || isLocalProvider(resolved.config);
-  const outline = pageOutline(storedDocument(page.id), local ? PAGE_EDIT_LIMITS.outlineChars.local : PAGE_EDIT_LIMITS.outlineChars.remote);
+  const outline = pageOutline(await storedDocument(page.id), local ? PAGE_EDIT_LIMITS.outlineChars.local : PAGE_EDIT_LIMITS.outlineChars.remote);
   const answer = await aiComplete(
     user,
     "ask",
@@ -138,9 +138,9 @@ export async function suggestPageEdits(user: Identity, raw: unknown, signal?: Ab
   const offered = new Set(outline.blocks.map((b) => b.handle));
   const edits = parsePageEdits(answer).filter((e) => offered.has(e.handle));
   if (!edits.length) return { proposed: 0, applied: 0, failed: 0, reasons: [] };
-  const name = one<{ name: string }>("SELECT name FROM users WHERE id=?", user.id)?.name || ct("Jemand", "Someone");
-  let result: ReturnType<typeof applyPageEdits> | null = null;
-  const change = rewriteDocument(page.id, null, user.id, (doc) => {
+  const name = (await one<{ name: string }>("SELECT name FROM users WHERE id=?", user.id))?.name || ct("Jemand", "Someone");
+  let result: Awaited<ReturnType<typeof applyPageEdits>> | null = null;
+  const change = await rewriteDocument(page.id, null, user.id, (doc) => {
     result = applyPageEdits(doc, edits, outline.blocks.map(snapshotOf), {
       parse: parseMarkdown,
       author: { id: user.id, name: ct(`${name} (KI)`, `${name} (AI)`) },
@@ -148,7 +148,7 @@ export async function suggestPageEdits(user: Identity, raw: unknown, signal?: Ab
     return result.applied ? result.doc : null;
   });
   change?.publish();
-  const done = result as ReturnType<typeof applyPageEdits> | null;
+  const done = result as Awaited<ReturnType<typeof applyPageEdits>> | null;
   return {
     proposed: edits.length,
     applied: done?.applied || 0,

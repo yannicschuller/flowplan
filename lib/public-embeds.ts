@@ -28,7 +28,7 @@ export function withPublicEmbeds(
   });
   if (!blocks.size) return published;
   const published_ = new Map(pages.map((p) => [p.id, p]));
-  return published.replace(BLOCK, (match, blockId: string) => {
+  return published.replace(BLOCK, async (match, blockId: string) => {
     const attrs = blocks.get(blockId);
     if (!attrs) return match;
     try {
@@ -40,8 +40,8 @@ export function withPublicEmbeds(
       });
       const source = published_.get(linked.source);
       if (!source || source.kind !== "database") return match;
-      const d = database(source.id),
-        all = rows(source.id);
+      const d = await database(source.id),
+        all = await rows(source.id);
       const [view] = availableLinkedViews(linked.views, d.fields, all);
       if (!view) return match;
       const hidden = new Set(view.hiddenFields || []);

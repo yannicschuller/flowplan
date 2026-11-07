@@ -30,6 +30,7 @@ import { semanticNeighbours } from "./ai/semantic";
 import { allow } from "./action-limits";
 import { recordTitle } from "./ai/sources";
 import type { Field, Identity, Page } from "./types";
+import { filterAsync, mapAsync } from "./each-async";
 
 export type RelatedReason = "meaning" | "link" | "backlink" | "shared-links" | "tags" | "title";
 export type RelatedItem = {
@@ -53,61 +54,61 @@ const key = (pageId: string, rowId?: string | null) => `${pageId}/${rowId || ""}
 function visibility(user: Identity) {
   const pages = new Map<string, Page | null>();
   const hidden = new Map<string, Set<string>>();
-  const page = (id: string) => {
+  const page = async (id: string) => {
     if (!pages.has(id)) {
-      const p = one<Page>("SELECT * FROM pages WHERE id=?", id) || null;
-      pages.set(id, p && !p.deleted_at && !p.synced && pageRole(user, p) && !journalLocked(user, p) ? p : null);
+      const p = await one<Page>("SELECT * FROM pages WHERE id=?", id) || null;
+      pages.set(id, p && !p.deleted_at && !p.synced && await pageRole(user, p) && !(await journalLocked(user, p)) ? p : null);
     }
     return pages.get(id) || null;
   };
   return {
     page,
-    visible(pageId: string, rowId?: string | null) {
-      const p = page(pageId);
+    async visible(pageId: string, rowId?: string | null) {
+      const p = await page(pageId);
       if (!p) return false;
       if (!rowId) return true;
-      if (p.kind !== "database" || !one("SELECT 1 FROM rows WHERE id=? AND page_id=?", rowId, pageId)) return false;
-      if (!hidden.has(pageId)) hidden.set(pageId, hiddenRowIds(user, p));
+      if (p.kind !== "database" || !(await one("SELECT 1 FROM rows WHERE id=? AND page_id=?", rowId, pageId))) return false;
+      if (!hidden.has(pageId)) hidden.set(pageId, await hiddenRowIds(user, p));
       return !hidden.get(pageId)!.has(rowId);
     },
   };
 }
 
-function fieldsOf(pageId: string): Field[] {
+async function fieldsOf(pageId: string): Promise<Field[]> {
   try {
-    return JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId)?.fields || "[]");
+    return JSON.parse((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId))?.fields || "[]");
   } catch {
     return [];
   }
 }
-function cellsOf(rowId: string): Record<string, unknown> {
+async function cellsOf(rowId: string): Promise<Record<string, unknown>> {
   try {
-    return JSON.parse(one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", rowId)?.cells || "{}");
+    return JSON.parse((await one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", rowId))?.cells || "{}");
   } catch {
     return {};
   }
 }
-const indexReady = () => {
-  refreshSearchIndex();
+const indexReady = async () => {
+  await refreshSearchIndex();
 };
 
 // The text of a page or record as stored HTML (for its links).
-function storedHtml(pageId: string, rowId: string | null) {
-  if (!rowId) return one<{ html: string | null }>("SELECT html FROM documents WHERE page_id=?", pageId)?.html || "";
-  const row = one<{ html: string | null; content: string | null }>("SELECT d.html,r.content FROM rows r LEFT JOIN row_documents d ON d.row_id=r.id WHERE r.id=?", rowId);
+async function storedHtml(pageId: string, rowId: string | null) {
+  if (!rowId) return (await one<{ html: string | null }>("SELECT html FROM documents WHERE page_id=?", pageId))?.html || "";
+  const row = await one<{ html: string | null; content: string | null }>("SELECT d.html,r.content FROM rows r LEFT JOIN row_documents d ON d.row_id=r.id WHERE r.id=?", rowId);
   return row?.html ?? row?.content ?? "";
 }
 // Documents and record texts of the workspace that contain a link.
-function linkingTo(workspaceId: string, needle: string, limit = 40) {
+async function linkingTo(workspaceId: string, needle: string, limit = 40) {
   const like = `%${needle.replace(/[%_\\]/g, "\\$&")}%`;
   return [
-    ...all<{ page_id: string; row_id: string }>(
+    ...await all<{ page_id: string; row_id: string }>(
       "SELECT d.page_id,'' row_id FROM documents d JOIN pages p ON p.id=d.page_id WHERE p.workspace_id=? AND p.deleted_at IS NULL AND d.html LIKE ? ESCAPE '\\' LIMIT ?",
       workspaceId,
       like,
       limit,
     ),
-    ...all<{ page_id: string; row_id: string }>(
+    ...await all<{ page_id: string; row_id: string }>(
       "SELECT r.page_id,r.id row_id FROM row_documents d JOIN rows r ON r.id=d.row_id JOIN pages p ON p.id=r.page_id WHERE p.workspace_id=? AND p.deleted_at IS NULL AND d.html LIKE ? ESCAPE '\\' LIMIT ?",
       workspaceId,
       like,
@@ -118,8 +119,8 @@ function linkingTo(workspaceId: string, needle: string, limit = 40) {
 const linkNeedle = (pageId: string, rowId?: string | null) => (rowId ? `row=${rowId}` : `#page=${pageId}`);
 
 export async function relatedPages(user: Identity, pageId: string, rowId: string | null = null, limit = RELATED_LIMIT): Promise<{ items: RelatedItem[]; semantic: boolean }> {
-  const page = rowId ? requireRow(user, pageId, rowId).page : requirePage(user, pageId);
-  if (journalLocked(user, page)) return { items: [], semantic: false };
+  const page = rowId ? (await requireRow(user, pageId, rowId)).page : (await requirePage(user, pageId));
+  if (await journalLocked(user, page)) return { items: [], semantic: false };
   const self = key(pageId, rowId);
   const found = new Map<string, { pageId: string; rowId: string | null; score: number; reasons: Set<RelatedReason> }>();
   const add = (p: string, r: string | null | undefined, score: number, reason: RelatedReason) => {
@@ -136,9 +137,9 @@ export async function relatedPages(user: Identity, pageId: string, rowId: string
   // The vector scan is limited per person (60 a minute, 600 an hour); past
   // that the panel shows links and tags only.
   let semantic = false;
-  if (aiMayRead(user, pageId, rowId) && allow(`related-semantic:${user.id}`, 60, 60_000) && allow(`related-semantic-hour:${user.id}`, 600, 3_600_000)) {
+  if (await aiMayRead(user, pageId, rowId) && allow(`related-semantic:${user.id}`, 60, 60_000) && allow(`related-semantic-hour:${user.id}`, 600, 3_600_000)) {
     const hits = await semanticNeighbours(user, page.workspace_id, pageId, rowId || "");
-    const allowed = new Set(aiFilter(user, hits.map((h) => ({ pageId: h.pageId, rowId: h.rowId || null }))).map((h) => key(h.pageId, h.rowId)));
+    const allowed = new Set((await aiFilter(user, hits.map((h) => ({ pageId: h.pageId, rowId: h.rowId || null })))).map((h) => key(h.pageId, h.rowId)));
     for (const hit of hits)
       if (allowed.has(key(hit.pageId, hit.rowId)) && hit.score > 0.2) {
         add(hit.pageId, hit.rowId, 4 * hit.score, "meaning");
@@ -148,21 +149,21 @@ export async function relatedPages(user: Identity, pageId: string, rowId: string
 
   // Links from the page, backlinks and pages linking to the same targets.
   const targets: { pageId: string; rowId: string | null }[] = [];
-  for (const match of storedHtml(pageId, rowId).matchAll(reference)) {
+  for (const match of (await storedHtml(pageId, rowId)).matchAll(reference)) {
     const target = { pageId: match[1].toLowerCase(), rowId: match[2]?.toLowerCase() || null };
     if (!targets.some((t) => t.pageId === target.pageId && t.rowId === target.rowId)) targets.push(target);
   }
   for (const target of targets.slice(0, 40)) add(target.pageId, target.rowId, 3, "link");
-  for (const source of linkingTo(page.workspace_id, linkNeedle(pageId, rowId))) add(source.page_id, source.row_id || null, 3, "backlink");
+  for (const source of await linkingTo(page.workspace_id, linkNeedle(pageId, rowId))) add(source.page_id, source.row_id || null, 3, "backlink");
   for (const target of targets.slice(0, 8))
-    for (const source of linkingTo(page.workspace_id, linkNeedle(target.pageId, target.rowId), 20)) add(source.page_id, source.row_id || null, 1.5, "shared-links");
+    for (const source of await linkingTo(page.workspace_id, linkNeedle(target.pageId, target.rowId), 20)) add(source.page_id, source.row_id || null, 1.5, "shared-links");
 
   // Records: others in the same database with the same tags.
-  const fields = rowId ? fieldsOf(pageId) : [];
-  const own = rowId ? cellsOf(rowId) : {};
+  const fields = rowId ? (await fieldsOf(pageId)) : [];
+  const own = rowId ? (await cellsOf(rowId)) : {};
   const tagFields = fields.filter((f) => f.type === "multiselect" && Array.isArray(own[f.id]) && (own[f.id] as unknown[]).length);
   if (tagFields.length)
-    for (const row of all<{ id: string; cells: string }>("SELECT id,cells FROM rows WHERE page_id=? AND id<>? LIMIT 3000", pageId, rowId!)) {
+    for (const row of await all<{ id: string; cells: string }>("SELECT id,cells FROM rows WHERE page_id=? AND id<>? LIMIT 3000", pageId, rowId!)) {
       let cells: Record<string, unknown> = {};
       try {
         cells = JSON.parse(row.cells);
@@ -179,8 +180,8 @@ export async function relatedPages(user: Identity, pageId: string, rowId: string
   const title = rowId ? recordTitle(fields, own) : page.title;
   const terms = questionTerms(title || "");
   if (terms.length) {
-    indexReady();
-    termMatches(page.workspace_id, terms, { limit: 30 })
+    await indexReady();
+    (await termMatches(page.workspace_id, terms, { limit: 30 }))
       .filter((r) => !/^[cmf]:/.test(r.row_id))
       .forEach((r, rank) => add(r.page_id, r.row_id || null, 2 / (1 + rank * 0.4), "title"));
   }
@@ -190,14 +191,14 @@ export async function relatedPages(user: Identity, pageId: string, rowId: string
   const items: RelatedItem[] = [];
   for (const entry of [...found.values()].sort((a, b) => b.score - a.score)) {
     if (items.length >= limit) break;
-    if (!seen.visible(entry.pageId, entry.rowId)) continue;
-    const target = seen.page(entry.pageId)!;
+    if (!(await seen.visible(entry.pageId, entry.rowId))) continue;
+    const target = (await seen.page(entry.pageId))!;
     items.push({
       pageId: entry.pageId,
       ...(entry.rowId ? { rowId: entry.rowId, pageTitle: target.title } : {}),
-      title: entry.rowId ? recordTitle(fieldsOf(entry.pageId), cellsOf(entry.rowId)) : target.title,
+      title: entry.rowId ? recordTitle(await fieldsOf(entry.pageId), await cellsOf(entry.rowId)) : target.title,
       // Records their own icon (#96); empty: the client's record symbol.
-      icon: entry.rowId ? one<{ icon: string | null }>("SELECT icon FROM rows WHERE id=?", entry.rowId)?.icon || "" : target.icon || "file",
+      icon: entry.rowId ? (await one<{ icon: string | null }>("SELECT icon FROM rows WHERE id=?", entry.rowId))?.icon || "" : target.icon || "file",
       kind: entry.rowId ? "row" : target.kind,
       reasons: [...entry.reasons],
       score: Math.round(entry.score * 100) / 100,
@@ -246,23 +247,23 @@ export function titleSimilarity(a: string, b: string) {
 export const DUPLICATE_THRESHOLD = 0.72;
 
 export type SimilarItem = { pageId: string; rowId?: string; title: string; pageTitle?: string; score: number };
-export function similarTitles(
+export async function similarTitles(
   user: Identity,
   input: { workspaceId: string; title: string; databaseId?: string | null; excludePageId?: string | null; excludeRowId?: string | null },
   limit = 5,
-): SimilarItem[] {
-  requireMember(user, input.workspaceId);
+): Promise<SimilarItem[]> {
+  await requireMember(user, input.workspaceId);
   const wanted = normalizeTitle(input.title);
   if (wanted.length < 4) return [];
   const terms = [...new Set(wanted.split(" ").filter((w) => [...w].length >= 3))].slice(0, 8);
   if (!terms.length) return [];
   if (input.databaseId) {
-    const database = requirePage(user, input.databaseId);
+    const database = await requirePage(user, input.databaseId);
     if (database.kind !== "database" || database.workspace_id !== input.workspaceId) return [];
   }
-  indexReady();
+  await indexReady();
   const match = textMatch(terms, { titleOnly: true });
-  const rows = all<{ page_id: string; row_id: string; title: string }>(
+  const rows = (await all<{ page_id: string; row_id: string; title: string }>(
     `SELECT s.page_id,s.row_id,s.title FROM search_index s JOIN pages p ON p.id=s.page_id
      WHERE ${match.where} AND p.workspace_id=? AND p.deleted_at IS NULL AND COALESCE(p.synced,0)=0
        ${input.databaseId ? "AND s.page_id=? AND s.row_id<>''" : "AND s.row_id=''"}
@@ -271,17 +272,15 @@ export function similarTitles(
     input.workspaceId,
     ...(input.databaseId ? [input.databaseId] : []),
     ...match.rankArgs,
-  ).filter((r) => !/^[cmf]:/.test(r.row_id) && !(r.row_id ? r.row_id === input.excludeRowId : r.page_id === input.excludePageId));
+  )).filter((r) => !/^[cmf]:/.test(r.row_id) && !(r.row_id ? r.row_id === input.excludeRowId : r.page_id === input.excludePageId));
   const seen = visibility(user);
-  return rows
+  return await mapAsync((await filterAsync(rows
     .map((r) => ({ ...r, score: titleSimilarity(input.title, r.title) }))
     .filter((r) => r.score >= DUPLICATE_THRESHOLD)
-    .sort((a, b) => b.score - a.score)
-    .filter((r) => seen.visible(r.page_id, r.row_id || null))
-    .slice(0, limit)
-    .map((r) => ({
+    .sort((a, b) => b.score - a.score), async (r) => await seen.visible(r.page_id, r.row_id || null)))
+    .slice(0, limit), async (r) => ({
       pageId: r.page_id,
-      ...(r.row_id ? { rowId: r.row_id, pageTitle: seen.page(r.page_id)!.title } : {}),
+      ...(r.row_id ? { rowId: r.row_id, pageTitle: (await seen.page(r.page_id))!.title } : {}),
       title: r.title,
       score: Math.round(r.score * 100) / 100,
     }));

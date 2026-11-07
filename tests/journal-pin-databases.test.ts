@@ -20,42 +20,42 @@ const { crossRecords } = await import("../lib/cross-records");
 const { listRowTrash } = await import("../lib/row-trash");
 const { createCalendarFeed, calendarFeed } = await import("../lib/calendar-feed");
 
-function account(name: string) {
+async function account(name: string) {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
   return { id: uid, name, email: `${name}@example.test`, groups: [], isAdmin: false, disabled: 0, created_at: "" } as Identity;
 }
 type Result = { id: string } & Record<string, unknown>;
-const owner = account("Olga"),
-  member = account("Max");
-const wid = createWorkspace(owner.id, "Firma");
-run("INSERT INTO members VALUES(?,?,?)", wid, member.id, "editor");
-const act = (input: Record<string, unknown>, as = owner) => api.command(as, input) as Result;
-const status = (fn: () => unknown) => {
+const owner = await account("Olga"),
+  member = await account("Max");
+const wid = await createWorkspace(owner.id, "Firma");
+await run("INSERT INTO members VALUES(?,?,?)", wid, member.id, "editor");
+const act = async (input: Record<string, unknown>, as = owner) => (await api.command(as, input)) as Result;
+const status = async (fn: () => unknown) => {
   try {
-    fn();
+    await fn();
     return 200;
   } catch (e) {
     return (e as { status?: number }).status ?? String(e);
   }
 };
-const team = act({ action: "space.create", workspaceId: wid, name: "Team" }).id;
-const journal = act({ action: "page.create", workspaceId: wid, spaceId: team, title: "Tagebuch", kind: "journal" }).id;
-const db = act({ action: "page.create", workspaceId: wid, spaceId: team, title: "Geheime DB", kind: "database", parentId: journal, databaseKind: "empty" }).id;
-let d = api.database(db);
-act({
+const team = (await act({ action: "space.create", workspaceId: wid, name: "Team" })).id;
+const journal = (await act({ action: "page.create", workspaceId: wid, spaceId: team, title: "Tagebuch", kind: "journal" })).id;
+const db = (await act({ action: "page.create", workspaceId: wid, spaceId: team, title: "Geheime DB", kind: "database", parentId: journal, databaseKind: "empty" })).id;
+let d = await api.database(db);
+await act({
   action: "database.update",
   pageId: db,
   version: d.version,
   views: [...d.views, { id: "cal", name: "Kalender", type: "calendar", dateField: "when", filters: [], sorts: [] }],
   fields: [...d.fields, { id: "when", name: "Wann", type: "date" }],
 });
-d = api.database(db);
+d = await api.database(db);
 const title = d.fields[0].id;
-const rid = act({ action: "row.create", pageId: db, cells: { [title]: "SECRET-ROW-TITLE", when: "2026-11-10" } }).id;
-const trashed = act({ action: "row.create", pageId: db, cells: { [title]: "SECRET-TRASHED" } }).id;
-act({ action: "row.delete", pageId: db, rowId: trashed });
-run(
+const rid = (await act({ action: "row.create", pageId: db, cells: { [title]: "SECRET-ROW-TITLE", when: "2026-11-10" } })).id;
+const trashed = (await act({ action: "row.create", pageId: db, cells: { [title]: "SECRET-TRASHED" } })).id;
+await act({ action: "row.delete", pageId: db, rowId: trashed });
+await run(
   "INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?) ON CONFLICT(row_id) DO UPDATE SET state=excluded.state,html=excluded.html,generation=excluded.generation",
   rid,
   htmlState("<p>SECRET-ROW-BODY</p>"),
@@ -63,23 +63,23 @@ run(
   "g1",
 );
 // The member's own database with a relation to the one below the journal.
-const mine = act({ action: "page.create", workspaceId: wid, spaceId: team, title: "Meine DB", kind: "database", databaseKind: "empty" }, member).id;
-const m = api.database(mine);
-act({ action: "database.update", pageId: mine, version: m.version, views: m.views, fields: [...m.fields, { id: "rel1", name: "Link", type: "relation", relationPage: db }] }, member);
-const token = createCalendarFeed(member, db, "cal").url.split("/").pop()!.replace(/\.ics$/, "");
+const mine = (await act({ action: "page.create", workspaceId: wid, spaceId: team, title: "Meine DB", kind: "database", databaseKind: "empty" }, member)).id;
+const m = await api.database(mine);
+await act({ action: "database.update", pageId: mine, version: m.version, views: m.views, fields: [...m.fields, { id: "rel1", name: "Link", type: "relation", relationPage: db }] }, member);
+const token = (await createCalendarFeed(member, db, "cal")).url.split("/").pop()!.replace(/\.ics$/, "");
 
-act({ action: "journal.lock", pageId: journal, pin: "471108" });
-act({ action: "journal.relock", pageId: journal });
+await act({ action: "journal.lock", pageId: journal, pin: "471108" });
+await act({ action: "journal.relock", pageId: journal });
 
-const leaks = () => {
-  const data = api.pageData(member, mine) as { related?: Record<string, { cells: Record<string, unknown> }[]> };
-  const cards = whiteboardRowCards(member, [{ pageId: db, rowId: rid }]);
-  const cross = crossRecords(member, wid, { mine: false });
-  const trash = listRowTrash(member, wid);
+const leaks = async () => {
+  const data = (await api.pageData(member, mine)) as { related?: Record<string, { cells: Record<string, unknown> }[]> };
+  const cards = await whiteboardRowCards(member, [{ pageId: db, rowId: rid }]);
+  const cross = await crossRecords(member, wid, { mine: false });
+  const trash = await listRowTrash(member, wid);
   let ics = "";
-  status(() => (ics = calendarFeed(token) as unknown as string));
+  await status(async () => (ics = (await calendarFeed(token)) as unknown as string));
   let html = "";
-  const doc = status(() => (html = (rowDocumentData(member, db, rid) as { html: string }).html));
+  const doc = await status(async () => (html = ((await rowDocumentData(member, db, rid)) as { html: string }).html));
   return {
     related: JSON.stringify(data.related?.[db] ?? []).includes("SECRET-ROW-TITLE"),
     cards: !!cards[rid] || Object.values(cards).some((c) => c.title.includes("SECRET")),
@@ -90,36 +90,36 @@ const leaks = () => {
   };
 };
 
-test("records below a locked journal stay closed without the PIN", () => {
-  assert.deepEqual(leaks(), { related: false, cards: false, cross: false, trash: false, feed: false, document: false });
+test("records below a locked journal stay closed without the PIN", async () => {
+  assert.deepEqual(await leaks(), { related: false, cards: false, cross: false, trash: false, feed: false, document: false });
   // The lock screen of the journal instead of a server error.
-  const data = api.pageData(member, db) as { locked?: { journalId: string } };
+  const data = (await api.pageData(member, db)) as { locked?: { journalId: string } };
   assert.equal(data.locked?.journalId, journal);
-  assert.equal(status(() => rowDocumentData(member, db, rid)), 423);
+  assert.equal(await status(async () => await rowDocumentData(member, db, rid)), 423);
   // Copying records out of the database (or into it) needs the PIN too.
-  assert.equal(status(() => act({ action: "rows.transfer", pageId: db, rowIds: [rid], targetPageId: mine, mode: "copy" }, member)), 423);
-  assert.equal(api.rows(mine).length, 0);
-  const trashId = one<{ id: string }>("SELECT id FROM row_trash WHERE page_id=?", db)!.id;
-  assert.equal(status(() => act({ action: "row.trash.restore", trashId }, member)), 423);
+  assert.equal(await status(async () => await act({ action: "rows.transfer", pageId: db, rowIds: [rid], targetPageId: mine, mode: "copy" }, member)), 423);
+  assert.equal((await api.rows(mine)).length, 0);
+  const trashId = (await one<{ id: string }>("SELECT id FROM row_trash WHERE page_id=?", db))!.id;
+  assert.equal(await status(async () => await act({ action: "row.trash.restore", trashId }, member)), 423);
 });
 
-test("after journal.unlock the same ways work again", () => {
-  act({ action: "journal.unlock", pageId: journal, pin: "471108" }, member);
-  assert.deepEqual(leaks(), { related: true, cards: true, cross: true, trash: true, feed: true, document: true });
-  assert.equal(status(() => act({ action: "rows.transfer", pageId: db, rowIds: [rid], targetPageId: mine, mode: "copy" }, member)), 200);
-  assert.equal(api.rows(mine).length, 1);
+test("after journal.unlock the same ways work again", async () => {
+  await act({ action: "journal.unlock", pageId: journal, pin: "471108" }, member);
+  assert.deepEqual(await leaks(), { related: true, cards: true, cross: true, trash: true, feed: true, document: true });
+  assert.equal(await status(async () => await act({ action: "rows.transfer", pageId: db, rowIds: [rid], targetPageId: mine, mode: "copy" }, member)), 200);
+  assert.equal((await api.rows(mine)).length, 1);
 });
 
 test("hover previews count only the records the person sees", async () => {
   const { pagePreview } = await import("../lib/page-preview");
-  const open = act({ action: "page.create", workspaceId: wid, spaceId: team, title: "Offen", kind: "database", databaseKind: "empty" }).id;
-  const f = api.database(open).fields[0].id;
-  act({ action: "row.create", pageId: open, cells: { [f]: "Sichtbar" } });
-  const hidden = act({ action: "row.create", pageId: open, cells: { [f]: "Privat" } }).id;
-  run("UPDATE rows SET access='private' WHERE id=?", hidden);
-  assert.equal(pagePreview(member, open).rows, 1);
-  assert.equal(pagePreview(owner, open).rows, 2);
+  const open = (await act({ action: "page.create", workspaceId: wid, spaceId: team, title: "Offen", kind: "database", databaseKind: "empty" })).id;
+  const f = (await api.database(open)).fields[0].id;
+  await act({ action: "row.create", pageId: open, cells: { [f]: "Sichtbar" } });
+  const hidden = (await act({ action: "row.create", pageId: open, cells: { [f]: "Privat" } })).id;
+  await run("UPDATE rows SET access='private' WHERE id=?", hidden);
+  assert.equal((await pagePreview(member, open)).rows, 1);
+  assert.equal((await pagePreview(owner, open)).rows, 2);
   // Below a journal whose PIN the person has not entered: none.
-  act({ action: "journal.relock", pageId: journal }, member);
-  assert.equal(pagePreview(member, db).rows, 0);
+  await act({ action: "journal.relock", pageId: journal }, member);
+  assert.equal((await pagePreview(member, db)).rows, 0);
 });

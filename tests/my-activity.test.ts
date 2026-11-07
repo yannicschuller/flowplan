@@ -20,34 +20,34 @@ const { homeData } = await import("../lib/home-widgets");
 const S = await import("../lib/home-layout-schema");
 const { periodRange, offsetSpans, myActivity } = await import("../lib/my-activity");
 
-function account(name: string) {
+async function account(name: string) {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
   return { id: uid, name, email: `${name}@example.test`, groups: [], isAdmin: false, disabled: 0, created_at: "" } as Identity;
 }
-const owner = account("mine-owner"),
-  me = account("mine-me");
-const wid = createWorkspace(owner.id, "Mine");
-const sid = bootstrap(owner, wid).spaces[0].id;
-run("INSERT INTO members VALUES(?,?,?)", wid, me.id, "editor");
-const elsewhere = createWorkspace(me.id, "Elsewhere");
-const elsewhereSpace = bootstrap(me, elsewhere).spaces[0].id;
-const page = (user: Identity, title: string, opts: { workspaceId?: string; spaceId?: string; kind?: string; parentId?: string } = {}) =>
-  (command(user, { action: "page.create", workspaceId: opts.workspaceId ?? wid, spaceId: opts.spaceId ?? sid, title, kind: opts.kind ?? "document", ...(opts.parentId ? { parentId: opts.parentId } : {}) }) as { id: string }).id;
+const owner = await account("mine-owner"),
+  me = await account("mine-me");
+const wid = await createWorkspace(owner.id, "Mine");
+const sid = (await bootstrap(owner, wid)).spaces[0].id;
+await run("INSERT INTO members VALUES(?,?,?)", wid, me.id, "editor");
+const elsewhere = await createWorkspace(me.id, "Elsewhere");
+const elsewhereSpace = (await bootstrap(me, elsewhere)).spaces[0].id;
+const page = async (user: Identity, title: string, opts: { workspaceId?: string; spaceId?: string; kind?: string; parentId?: string } = {}) =>
+  ((await command(user, { action: "page.create", workspaceId: opts.workspaceId ?? wid, spaceId: opts.spaceId ?? sid, title, kind: opts.kind ?? "document", ...(opts.parentId ? { parentId: opts.parentId } : {}) })) as { id: string }).id;
 // Only the rows each test writes: commands log their own edits at "now".
-const clean = () => {
-  run("DELETE FROM snapshots");
-  run("DELETE FROM audit");
-  run("DELETE FROM page_edits");
-  run("UPDATE pages SET created_at='2000-01-01 00:00:00'");
+const clean = async () => {
+  await run("DELETE FROM snapshots");
+  await run("DELETE FROM audit");
+  await run("DELETE FROM page_edits");
+  await run("UPDATE pages SET created_at='2000-01-01 00:00:00'");
 };
-const created = (pageId: string, at: string) => run("UPDATE pages SET created_at=? WHERE id=?", at, pageId);
-const snapshot = (pageId: string, by: string, at: string, kind = "auto") =>
-  run("INSERT INTO snapshots(id,page_id,html,title,created_by,created_at,kind) VALUES(?,?,?,?,?,?,?)", id(), pageId, "<p>x</p>", "x", by, at, kind);
-const logged = (pageId: string, by: string, at: string, action = "page.update") =>
-  run("INSERT INTO audit(id,actor_id,action,resource_id,detail,created_at) VALUES(?,?,?,?,?,?)", id(), by, action, pageId, "", at);
-const lastEdit = (pageId: string, by: string, at: string) =>
-  run("INSERT INTO page_edits(page_id,user_id,at) VALUES(?,?,?) ON CONFLICT(page_id,user_id) DO UPDATE SET at=excluded.at", pageId, by, Date.parse(`${at.replace(" ", "T")}Z`));
+const created = async (pageId: string, at: string) => await run("UPDATE pages SET created_at=? WHERE id=?", at, pageId);
+const snapshot = async (pageId: string, by: string, at: string, kind = "auto") =>
+  await run("INSERT INTO snapshots(id,page_id,html,title,created_by,created_at,kind) VALUES(?,?,?,?,?,?,?)", id(), pageId, "<p>x</p>", "x", by, at, kind);
+const logged = async (pageId: string, by: string, at: string, action = "page.update") =>
+  await run("INSERT INTO audit(id,actor_id,action,resource_id,detail,created_at) VALUES(?,?,?,?,?,?)", id(), by, action, pageId, "", at);
+const lastEdit = async (pageId: string, by: string, at: string) =>
+  await run("INSERT INTO page_edits(page_id,user_id,at) VALUES(?,?,?) ON CONFLICT(page_id,user_id) DO UPDATE SET at=excluded.at", pageId, by, Date.parse(`${at.replace(" ", "T")}Z`));
 
 const TODAY = "2026-11-04"; // a Wednesday
 
@@ -74,32 +74,32 @@ test("summer time splits a year into stretches of one offset", () => {
   assert.deepEqual(offsetSpans("2026-11-02", "2026-11-05", "America/New_York").map((s) => s.offset), ["-18000 seconds"]);
 });
 
-test("created and edited pages, once per page and day, on the person's days", () => {
-  const a = page(me, "A"),
-    b = page(me, "B"),
-    c = page(owner, "C by someone else");
-  clean();
-  created(a, "2026-11-02 08:00:00");
-  created(b, "2026-10-27 09:00:00"); // last week, before "today" of last week
-  created(c, "2026-11-03 09:00:00"); // not mine
+test("created and edited pages, once per page and day, on the person's days", async () => {
+  const a = await page(me, "A"),
+    b = await page(me, "B"),
+    c = await page(owner, "C by someone else");
+  await clean();
+  await created(a, "2026-11-02 08:00:00");
+  await created(b, "2026-10-27 09:00:00"); // last week, before "today" of last week
+  await created(c, "2026-11-03 09:00:00"); // not mine
   // Autosaves: many versions of one page on one day count once.
-  for (const hour of ["08", "09", "10", "11"]) snapshot(a, me.id, `2026-11-03 ${hour}:00:00`);
+  for (const hour of ["08", "09", "10", "11"]) await snapshot(a, me.id, `2026-11-03 ${hour}:00:00`);
   // The same page edited through the activity log and page_edits that day: still once.
-  logged(a, me.id, "2026-11-03 12:00:00");
-  lastEdit(a, me.id, "2026-11-03 13:00:00");
+  await logged(a, me.id, "2026-11-03 12:00:00");
+  await lastEdit(a, me.id, "2026-11-03 13:00:00");
   // Another day: once more.
-  logged(a, me.id, "2026-11-04 07:00:00", "row.update");
+  await logged(a, me.id, "2026-11-04 07:00:00", "row.update");
   // B on two days of last week, one after "today" of last week (Thursday).
-  snapshot(b, me.id, "2026-10-27 10:00:00");
-  snapshot(b, me.id, "2026-10-29 10:00:00");
+  await snapshot(b, me.id, "2026-10-27 10:00:00");
+  await snapshot(b, me.id, "2026-10-29 10:00:00");
   // Someone else's edits never count, nor versions brought in by an import.
-  snapshot(c, owner.id, "2026-11-03 10:00:00");
-  logged(c, owner.id, "2026-11-03 10:00:00");
-  snapshot(c, me.id, "2026-11-03 10:00:00", "manual");
+  await snapshot(c, owner.id, "2026-11-03 10:00:00");
+  await logged(c, owner.id, "2026-11-03 10:00:00");
+  await snapshot(c, me.id, "2026-11-03 10:00:00", "manual");
   // Commands that are not edits do not count.
-  logged(c, me.id, "2026-11-03 10:00:00", "page.follow");
+  await logged(c, me.id, "2026-11-03 10:00:00", "page.follow");
 
-  const week = myActivity(me, wid, TODAY, "UTC", "week");
+  const week = await myActivity(me, wid, TODAY, "UTC", "week");
   assert.equal(week.created.total, 1);
   assert.equal(week.created.previous, 1);
   assert.deepEqual(week.created.series, [1, 0, 0, null, null, null, null]);
@@ -108,19 +108,19 @@ test("created and edited pages, once per page and day, on the person's days", ()
   assert.equal(week.edited.previous, 1);
 
   // Late on Sunday in UTC is Monday in Berlin: the edit moves into this week.
-  lastEdit(b, me.id, "2026-11-01 23:30:00");
-  assert.equal(myActivity(me, wid, TODAY, "UTC", "week").edited.total, 2);
-  const berlin = myActivity(me, wid, TODAY, "Europe/Berlin", "week");
+  await lastEdit(b, me.id, "2026-11-01 23:30:00");
+  assert.equal((await myActivity(me, wid, TODAY, "UTC", "week")).edited.total, 2);
+  const berlin = await myActivity(me, wid, TODAY, "Europe/Berlin", "week");
   assert.equal(berlin.edited.total, 3);
   assert.equal(berlin.edited.series[0], 1);
 
   // A month and a year sum the days; a year has twelve months.
-  const month = myActivity(me, wid, TODAY, "UTC", "month");
+  const month = await myActivity(me, wid, TODAY, "UTC", "month");
   assert.equal(month.buckets.length, 30);
   // A on the 3rd and 4th, B late on the 1st; B's October days are after the 4th.
   assert.equal(month.edited.total, 3);
   assert.equal(month.edited.previous, 0);
-  const year = myActivity(me, wid, TODAY, "UTC", "year");
+  const year = await myActivity(me, wid, TODAY, "UTC", "year");
   assert.equal(year.buckets.length, 12);
   assert.equal(year.created.total, 2);
   assert.deepEqual(year.created.series.slice(9), [1, 1, null]);
@@ -129,75 +129,75 @@ test("created and edited pages, once per page and day, on the person's days", ()
   assert.equal(year.created.previous, 0);
 });
 
-test("only pages the person can still open, in this workspace", () => {
-  clean();
-  const trashed = page(me, "Trashed");
-  const foreign = page(me, "Elsewhere", { workspaceId: elsewhere, spaceId: elsewhereSpace });
+test("only pages the person can still open, in this workspace", async () => {
+  await clean();
+  const trashed = await page(me, "Trashed");
+  const foreign = await page(me, "Elsewhere", { workspaceId: elsewhere, spaceId: elsewhereSpace });
   // A page the person edited that has since gone private to someone else.
-  const privateSpace = (command(owner, { action: "space.create", workspaceId: wid, name: "Private", private: true }) as { id: string }).id;
-  const secret = page(owner, "Salary review", { spaceId: privateSpace });
+  const privateSpace = ((await command(owner, { action: "space.create", workspaceId: wid, name: "Private", private: true })) as { id: string }).id;
+  const secret = await page(owner, "Salary review", { spaceId: privateSpace });
   // An own journal behind a PIN that was not entered.
-  const journal = page(me, "Diary", { kind: "journal" });
-  const entry = page(me, "4 November", { parentId: journal });
-  const visible = page(me, "Visible");
-  command(me, { action: "page.delete", pageId: trashed });
-  command(me, { action: "journal.lock", pageId: journal, pin: "482915" });
-  run("DELETE FROM journal_unlocks WHERE page_id=?", journal);
-  clean();
-  for (const p of [trashed, foreign, entry, journal, visible]) created(p, "2026-11-03 09:00:00");
-  for (const p of [trashed, foreign, secret, entry, visible]) snapshot(p, me.id, "2026-11-03 10:00:00");
-  const week = myActivity(me, wid, TODAY, "UTC", "week");
+  const journal = await page(me, "Diary", { kind: "journal" });
+  const entry = await page(me, "4 November", { parentId: journal });
+  const visible = await page(me, "Visible");
+  await command(me, { action: "page.delete", pageId: trashed });
+  await command(me, { action: "journal.lock", pageId: journal, pin: "482915" });
+  await run("DELETE FROM journal_unlocks WHERE page_id=?", journal);
+  await clean();
+  for (const p of [trashed, foreign, entry, journal, visible]) await created(p, "2026-11-03 09:00:00");
+  for (const p of [trashed, foreign, secret, entry, visible]) await snapshot(p, me.id, "2026-11-03 10:00:00");
+  const week = await myActivity(me, wid, TODAY, "UTC", "week");
   assert.equal(week.created.total, 1);
   assert.equal(week.edited.total, 1);
   // Unlocked, the journal and its day count again.
-  run("INSERT INTO journal_unlocks(page_id,user_id,until) VALUES(?,?,?)", journal, me.id, Date.now() + 60_000);
-  const unlocked = myActivity(me, wid, TODAY, "UTC", "week");
+  await run("INSERT INTO journal_unlocks(page_id,user_id,until) VALUES(?,?,?)", journal, me.id, Date.now() + 60_000);
+  const unlocked = await myActivity(me, wid, TODAY, "UTC", "week");
   assert.equal(unlocked.created.total, 3);
   assert.equal(unlocked.edited.total, 2);
   // The owner sees none of this person's work as their own.
-  assert.equal(myActivity(owner, wid, TODAY, "UTC", "week").edited.total, 0);
+  assert.equal((await myActivity(owner, wid, TODAY, "UTC", "week")).edited.total, 0);
 });
 
-test("the widget on the start page and its period, kept in its settings", () => {
-  clean();
-  const fresh = account("mine-new");
-  run("INSERT INTO members VALUES(?,?,?)", wid, fresh.id, "editor");
-  const ask = (user: Identity, config: Record<string, unknown>) =>
-    withContentLocale("en", () => homeData(user, { workspaceId: wid, today: TODAY, zone: "Europe/Berlin", widgets: [{ id: "mine", kind: "myActivity", config }] })).widgets[0] as unknown as {
+test("the widget on the start page and its period, kept in its settings", async () => {
+  await clean();
+  const fresh = await account("mine-new");
+  await run("INSERT INTO members VALUES(?,?,?)", wid, fresh.id, "editor");
+  const ask = async (user: Identity, config: Record<string, unknown>) =>
+    (await withContentLocale("en", async () => await homeData(user, { workspaceId: wid, today: TODAY, zone: "Europe/Berlin", widgets: [{ id: "mine", kind: "myActivity", config }] }))).widgets[0] as unknown as {
       ok: boolean;
       data: { period: string; created: { total: number; previous: number }; edited: { total: number }; buckets: string[] };
     };
   // A new account: zeros, which the widget shows as its empty state.
-  const empty = ask(fresh, {});
+  const empty = await ask(fresh, {});
   assert.equal(empty.ok, true);
   assert.equal(empty.data.period, "week");
   assert.deepEqual([empty.data.created.total, empty.data.created.previous, empty.data.edited.total], [0, 0, 0]);
-  assert.equal(ask(fresh, { period: "year" }).data.buckets.length, 12);
-  assert.equal(ask(fresh, { period: "decade" }).ok, false);
+  assert.equal((await ask(fresh, { period: "year" })).data.buckets.length, 12);
+  assert.equal((await ask(fresh, { period: "decade" })).ok, false);
 
   // The period chosen on the widget is saved with the layout, nothing else.
   const layout = S.defaultLayout();
   layout.widgets.push(S.makeWidget("myActivity", "mine"), S.makeWidget("notes", "note"));
-  command(fresh, { action: "home.save", workspaceId: wid, layout });
-  command(fresh, { action: "home.config", workspaceId: wid, widgetId: "mine", config: { period: "month" } });
-  const saved = homeLayout(fresh, wid).layout.widgets.find((w) => w.id === "mine");
+  await command(fresh, { action: "home.save", workspaceId: wid, layout });
+  await command(fresh, { action: "home.config", workspaceId: wid, widgetId: "mine", config: { period: "month" } });
+  const saved = (await homeLayout(fresh, wid)).layout.widgets.find((w) => w.id === "mine");
   assert.deepEqual(saved?.config, { period: "month" });
-  assert.throws(() => command(fresh, { action: "home.config", workspaceId: wid, widgetId: "mine", config: { period: "decade" } }));
-  assert.throws(() => command(fresh, { action: "home.config", workspaceId: wid, widgetId: "mine", config: { title: "Hacked" } }));
-  assert.throws(() => command(fresh, { action: "home.config", workspaceId: wid, widgetId: "note", config: { text: "x" } }));
+  await assert.rejects(async () => await command(fresh, { action: "home.config", workspaceId: wid, widgetId: "mine", config: { period: "decade" } }));
+  await assert.rejects(async () => await command(fresh, { action: "home.config", workspaceId: wid, widgetId: "mine", config: { title: "Hacked" } }));
+  await assert.rejects(async () => await command(fresh, { action: "home.config", workspaceId: wid, widgetId: "note", config: { text: "x" } }));
   // The stored layout parses back with the period.
   assert.equal((S.parseLayout({ version: 1, widgets: [{ id: "m", kind: "myActivity", size: "m", config: { period: "year" } }] }).widgets[0].config as { period?: string }).period, "year");
 });
 
 // SQLite's query planner (Postgres decides by statistics).
-test("schema 89: one person's rows are found by index, not by scanning", { skip: sqliteOnly }, () => {
+test("schema 89: one person's rows are found by index, not by scanning", { skip: sqliteOnly }, async () => {
   for (const [table, where] of [
     ["pages", "created_by=? AND created_at>=? AND created_at<?"],
     ["snapshots", "created_by=? AND created_at>=? AND created_at<?"],
     ["audit", "actor_id=? AND created_at>=? AND created_at<?"],
     ["page_edits", "user_id=? AND at>=? AND at<?"],
   ]) {
-    const plan = all<{ detail: string }>(`EXPLAIN QUERY PLAN SELECT * FROM ${table} WHERE ${where}`, "x", "a", "b").map((r) => r.detail).join(" ");
+    const plan = (await all<{ detail: string }>(`EXPLAIN QUERY PLAN SELECT * FROM ${table} WHERE ${where}`, "x", "a", "b")).map((r) => r.detail).join(" ");
     assert.match(plan, /USING INDEX (pages_creator|snapshots_author|audit_actor|page_edits_user)/, `${table}: ${plan}`);
   }
 });

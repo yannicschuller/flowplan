@@ -44,10 +44,10 @@ test("two sign-ups at the same moment: only one becomes the administrator", asyn
   assert.equal(refused.length, 2);
   for (const r of refused) assert.equal(r.reason.status, 409);
   assert.deepEqual(
-    all<{ is_admin: number }>("SELECT is_admin FROM local_accounts").map((a) => a.is_admin),
+    (await all<{ is_admin: number }>("SELECT is_admin FROM local_accounts")).map((a) => a.is_admin),
     [1],
   );
-  assert.equal(all("SELECT id FROM users WHERE subject LIKE 'local:%'").length, 1);
+  assert.equal((await all("SELECT id FROM users WHERE subject LIKE 'local:%'")).length, 1);
   // Set up: no warning and no note any more.
   assert.equal(await auth.setupWarning(), "");
   assert.equal((await auth.loginOptions()).unprotectedSetup, false);

@@ -22,16 +22,16 @@ import type { Identity } from "../lib/types";
 
 async function person(name: string): Promise<Identity> {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name.toLowerCase()}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name.toLowerCase()}@example.test`);
   const token = randomBytes(16).toString("hex");
-  run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", createHash("sha256").update(token).digest("hex"), uid, "[]", Date.now() + 3600_000);
+  await run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", createHash("sha256").update(token).digest("hex"), uid, "[]", Date.now() + 3600_000);
   return (await identityFromToken(token))!;
 }
 const owner = await person("Own");
 const editor = await person("Ed");
-const wid = createWorkspace(owner.id, "W");
-run("INSERT INTO members VALUES(?,?,?)", wid, editor.id, "editor");
-const space = one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid)!.id;
+const wid = await createWorkspace(owner.id, "W");
+await run("INSERT INTO members VALUES(?,?,?)", wid, editor.id, "editor");
+const space = (await one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid))!.id;
 
 // A client document mirroring `state`; push() sends one paragraph.
 function client(state: Uint8Array | null) {
@@ -50,34 +50,34 @@ function client(state: Uint8Array | null) {
 }
 const KB = 1024;
 
-test("a page document grows up to the cap, then a sync that grows it is refused and nothing is stored", () => {
-  const page = createPage(wid, space, owner.id, "Doc");
-  const stored = () => one<{ state: Uint8Array | null; html: string; generation: string }>("SELECT state,html,generation FROM documents WHERE page_id=?", page)!;
-  const push = client(stored().state);
-  const sync = (text: string) => command(editor, { action: "document.sync", pageId: page, generation: stored().generation, update: push(text) });
-  sync("a".repeat(600 * KB));
-  const size = stored().state!.byteLength;
+test("a page document grows up to the cap, then a sync that grows it is refused and nothing is stored", async () => {
+  const page = await createPage(wid, space, owner.id, "Doc");
+  const stored = async () => (await one<{ state: Uint8Array | null; html: string; generation: string }>("SELECT state,html,generation FROM documents WHERE page_id=?", page))!;
+  const push = client((await stored()).state);
+  const sync = async (text: string) => await command(editor, { action: "document.sync", pageId: page, generation: (await stored()).generation, update: push(text) });
+  await sync("a".repeat(600 * KB));
+  const size = (await stored()).state!.byteLength;
   assert.ok(size > 600 * KB && size < 1024 * KB);
-  const html = stored().html;
-  assert.throws(
-    () => withContentLocale("en", () => sync("b".repeat(600 * KB))),
+  const html = (await stored()).html;
+  await assert.rejects(
+    async () => await withContentLocale("en", async () => await sync("b".repeat(600 * KB))),
     (e: { status?: number; message?: string }) => e.status === 413 && /at most 1 MB/.test(e.message || ""),
   );
-  assert.equal(stored().state!.byteLength, size, "stored size unchanged");
-  assert.equal(stored().html, html);
+  assert.equal((await stored()).state!.byteLength, size, "stored size unchanged");
+  assert.equal((await stored()).html, html);
 });
 
-test("a record's document has the same cap", () => {
-  const db = createPage(wid, space, owner.id, "Tabelle", "database");
-  const row = command(owner, { action: "row.create", pageId: db, cells: { title: "Eintrag" } }) as { id: string };
-  const first = rowDocumentData(editor, db, row.id);
+test("a record's document has the same cap", async () => {
+  const db = await createPage(wid, space, owner.id, "Tabelle", "database");
+  const row = (await command(owner, { action: "row.create", pageId: db, cells: { title: "Eintrag" } })) as { id: string };
+  const first = await rowDocumentData(editor, db, row.id);
   const push = client(Buffer.from(first.state, "base64"));
-  const stored = () => one<{ state: Uint8Array }>("SELECT state FROM row_documents WHERE row_id=?", row.id)!.state.byteLength;
-  command(editor, { action: "row.document.sync", pageId: db, rowId: row.id, generation: first.generation, update: push("a".repeat(600 * KB)) });
-  const size = stored();
-  assert.throws(
-    () => command(editor, { action: "row.document.sync", pageId: db, rowId: row.id, generation: first.generation, update: push("b".repeat(600 * KB)) }),
+  const stored = async () => (await one<{ state: Uint8Array }>("SELECT state FROM row_documents WHERE row_id=?", row.id))!.state.byteLength;
+  await command(editor, { action: "row.document.sync", pageId: db, rowId: row.id, generation: first.generation, update: push("a".repeat(600 * KB)) });
+  const size = await stored();
+  await assert.rejects(
+    async () => await command(editor, { action: "row.document.sync", pageId: db, rowId: row.id, generation: first.generation, update: push("b".repeat(600 * KB)) }),
     (e: { status?: number; message?: string }) => e.status === 413 && /Das Dokument ist zu groß/.test(e.message || ""),
   );
-  assert.equal(stored(), size);
+  assert.equal(await stored(), size);
 });

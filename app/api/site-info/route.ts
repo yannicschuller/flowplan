@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const options = await loginOptions();
   return NextResponse.json(
-    { signupOpen: options.signupOpen || (!options.localLogin && options.configured), demo: demoEnabled(), sso: options.configured, movedTo: readOnlyState().movedTo, readOnly: readOnlyState().readOnly },
+    { signupOpen: options.signupOpen || (!options.localLogin && options.configured), demo: await demoEnabled(), sso: options.configured, movedTo: (await readOnlyState()).movedTo, readOnly: (await readOnlyState()).readOnly },
     { headers: { "Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=60" } },
   );
 }

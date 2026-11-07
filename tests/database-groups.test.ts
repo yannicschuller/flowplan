@@ -157,9 +157,9 @@ const { id, run, one } = await import("../lib/db");
 const { command, database, rows, bootstrap } = await import("../lib/api");
 const { createWorkspace } = await import("../lib/seed");
 const { exportArchive, importArchive } = await import("../lib/archive");
-function user(name: string): Identity {
+async function user(name: string): Promise<Identity> {
   const uid = id();
-  run(
+  await run(
     "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
     uid,
     uid,
@@ -176,87 +176,87 @@ function user(name: string): Identity {
     created_at: "",
   };
 }
-const owner = user("owner"),
-  viewer = user("viewer"),
-  wid = createWorkspace(owner.id, "Grouped views"),
-  boot = bootstrap(owner, wid);
-run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
-const act = (body: Record<string, unknown>, as = owner): any =>
-  command(as, body);
-const create = () =>
-  act({
+const owner = await user("owner"),
+  viewer = await user("viewer"),
+  wid = await createWorkspace(owner.id, "Grouped views"),
+  boot = await bootstrap(owner, wid);
+await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
+const act = async (body: Record<string, unknown>, as = owner): Promise<any> =>
+  await command(as, body);
+const create = async () =>
+  (await act({
     action: "page.create",
     workspaceId: wid,
     spaceId: boot.spaces[0].id,
     title: "Grouped database",
     kind: "database",
-  }).id as string;
-function schema(pageId: string, views: View[], nextFields = fields) {
-  act({
+  })).id as string;
+async function schema(pageId: string, views: View[], nextFields = fields) {
+  await act({
     action: "database.update",
     pageId,
-    version: database(pageId).version,
+    version: (await database(pageId)).version,
     fields: nextFields,
     views,
   });
 }
-function fixture() {
-  const page = create();
-  schema(page, [
+async function fixture() {
+  const page = await create();
+  await schema(page, [
     view,
     { ...view, id: "list", type: "list", groupBy: "tags" },
     { ...view, id: "plain", groupBy: undefined },
   ]);
-  const a = act({
+  const a = (await act({
       action: "row.create",
       pageId: page,
       cells: { title: "Alpha", status: "Open", tags: ["A", "B"], amount: 4 },
-    }).id,
-    b = act({
+    })).id,
+    b = (await act({
       action: "row.create",
       pageId: page,
       cells: { title: "Beta", status: "Done", tags: ["C"], amount: 2 },
-    }).id;
+    })).id;
   return { page, a, b };
 }
-test("grouped table/list moves atomically update membership and order while preserving other memberships and view independence", () => {
-  const { page, a, b } = fixture();
-  act({
+test("grouped table/list moves atomically update membership and order while preserving other memberships and view independence", async () => {
+  const { page, a, b } = await fixture();
+  await act({
     action: "row.move",
     pageId: page,
     viewId: "table",
-    version: database(page).version,
+    version: (await database(page)).version,
     rowId: a,
     rowVersion: 1,
     targetId: b,
     placement: "after",
     group: { from: '"Open"', to: '"Done"' },
   });
-  assert.equal(rows(page).find((r) => r.id === a)!.cells.status, "Done");
-  assert.deepEqual(database(page).views[0].rowOrder, [b, a]);
-  assert.equal(database(page).views[1].rowOrder, undefined);
-  act({
+  assert.equal((await rows(page)).find((r) => r.id === a)!.cells.status, "Done");
+  assert.deepEqual((await database(page)).views[0].rowOrder, [b, a]);
+  assert.equal((await database(page)).views[1].rowOrder, undefined);
+  await act({
     action: "row.move",
     pageId: page,
     viewId: "list",
-    version: database(page).version,
+    version: (await database(page)).version,
     rowId: a,
     rowVersion: 2,
     targetId: b,
     placement: "before",
     group: { from: '"A"', to: '"C"' },
   });
-  assert.deepEqual(rows(page).find((r) => r.id === a)!.cells.tags, ["B", "C"]);
-  assert.deepEqual(database(page).views[1].rowOrder, [a, b]);
+  assert.deepEqual((await rows(page)).find((r) => r.id === a)!.cells.tags, ["B", "C"]);
+  assert.deepEqual((await database(page)).views[1].rowOrder, [a, b]);
   assert.deepEqual(
-    queryRows(rows(page), fields, database(page).views[0]).map((r) => r.id),
+    queryRows(await rows(page), fields, (await database(page)).views[0]).map((r) => r.id),
     [b, a],
   );
 });
-test("grouped moves reject stale/foreign groups, plain views, viewers and locked pages without partial changes", () => {
-  const { page, a, b } = fixture(),
-    d = database(page),
-    before = rows(page);
+test("grouped moves reject stale/foreign groups, plain views, viewers and locked pages without partial changes", async () => {
+  const { page, a, b } = await fixture(),
+    d = await database(page),
+    before = await rows(page);
   const move = {
     action: "row.move",
     pageId: page,
@@ -268,36 +268,36 @@ test("grouped moves reject stale/foreign groups, plain views, viewers and locked
     placement: "before",
     group: { from: '"Open"', to: '"Done"' },
   };
-  assert.throws(() => act(move, viewer), /Berechtigung/);
-  assert.throws(() => act({ ...move, viewId: "plain" }), /Gruppe/);
-  assert.throws(
-    () => act({ ...move, group: { from: '"Done"', to: '"Open"' } }),
+  await assert.rejects(async () => await act(move, viewer), /Berechtigung/);
+  await assert.rejects(async () => await act({ ...move, viewId: "plain" }), /Gruppe/);
+  await assert.rejects(
+    async () => await act({ ...move, group: { from: '"Done"', to: '"Open"' } }),
     /Gruppenzuordnung/,
   );
-  assert.throws(() => act({ ...move, version: 0 }));
-  assert.deepEqual(rows(page), before);
-  assert.deepEqual(database(page), d);
-  act({ action: "page.update", pageId: page, patch: { locked: true } });
-  assert.throws(() => act(move), /gesperrt/);
+  await assert.rejects(async () => await act({ ...move, version: 0 }));
+  assert.deepEqual(await rows(page), before);
+  assert.deepEqual(await database(page), d);
+  await act({ action: "page.update", pageId: page, patch: { locked: true } });
+  await assert.rejects(async () => await act(move), /gesperrt/);
 });
 test("collapsed relation groups remap through page copies, templates, JSON/ZIP and snapshots", async () => {
-  const page = create(),
+  const page = await create(),
     nextFields: Field[] = [
       fields[0],
       { id: "link", name: "Relation", type: "relation", relationPage: page },
     ];
-  schema(page, [{ ...view, groupBy: "link" }], nextFields);
-  const a = act({
+  await schema(page, [{ ...view, groupBy: "link" }], nextFields);
+  const a = (await act({
     action: "row.create",
     pageId: page,
     cells: { title: "Referenced" },
-  }).id;
-  act({
+  })).id;
+  await act({
     action: "row.create",
     pageId: page,
     cells: { title: "Linked", link: [a] },
   });
-  schema(
+  await schema(
     page,
     [
       {
@@ -312,9 +312,9 @@ test("collapsed relation groups remap through page copies, templates, JSON/ZIP a
     ],
     nextFields,
   );
-  const check = (target: string) => {
-    const d = database(target),
-      targetId = rows(target).find((r) => r.cells.title === "Referenced")!.id;
+  const check = async (target: string) => {
+    const d = await database(target),
+      targetId = (await rows(target)).find((r) => r.cells.title === "Referenced")!.id;
     assert.equal(d.views[0].groupBy, "link");
     assert.deepEqual(d.views[0].groupSettings, {
       hideEmpty: false,
@@ -323,24 +323,24 @@ test("collapsed relation groups remap through page copies, templates, JSON/ZIP a
     });
     if (target !== page) assert.notEqual(targetId, a);
   };
-  act({ action: "page.snapshot", pageId: page });
-  check(act({ action: "page.duplicate", pageId: page }).id);
-  const template = act({
+  await act({ action: "page.snapshot", pageId: page });
+  await check((await act({ action: "page.duplicate", pageId: page })).id);
+  const template = (await act({
     action: "template.save",
     pageId: page,
     name: "Grouped template",
-  }).id;
-  check(
-    act({
+  })).id;
+  await check(
+    (await act({
       action: "page.create",
       workspaceId: wid,
       spaceId: boot.spaces[0].id,
       title: "Grouped copy",
       templateId: template,
-    }).id,
+    })).id,
   );
-  check(
-    act({
+  await check(
+    (await act({
       action: "workspace.import",
       workspaceId: wid,
       spaceId: boot.spaces[0].id,
@@ -352,31 +352,31 @@ test("collapsed relation groups remap through page copies, templates, JSON/ZIP a
             parent_id: null,
             title: "Grouped JSON",
             kind: "database",
-            data: { database: database(page), rows: rows(page) },
+            data: { database: await database(page), rows: await rows(page) },
           },
         ],
       },
-    }).pageIds[page],
+    })).pageIds[page],
   );
-  const dest = createWorkspace(owner.id, "Restored groups"),
+  const dest = await createWorkspace(owner.id, "Restored groups"),
     imported = await importArchive(
       owner,
       dest,
       await exportArchive(owner, wid),
     ),
     restored = imported.pageIds[page];
-  check(restored);
-  const snapshot = one<{ id: string }>(
+  await check(restored);
+  const snapshot = (await one<{ id: string }>(
     "SELECT id FROM snapshots WHERE page_id=?",
     restored,
-  )!.id;
-  schema(
+  ))!.id;
+  await schema(
     restored,
     [{ ...view, groupBy: undefined }],
-    database(restored).fields,
+    (await database(restored)).fields,
   );
-  act({ action: "snapshot.restore", pageId: restored, snapshotId: snapshot });
-  check(restored);
+  await act({ action: "snapshot.restore", pageId: restored, snapshotId: snapshot });
+  await check(restored);
 });
 
 test("manual group order keeps unlisted groups in their natural slot and survives relation remaps", async () => {
@@ -545,13 +545,13 @@ test("subgroups nest a second property, move across both levels atomically and r
     ],
   );
 
-  const { page, a, b } = fixture();
-  schema(page, [sub, { ...view, id: "list", type: "list", groupBy: "tags" }]);
+  const { page, a, b } = await fixture();
+  await schema(page, [sub, { ...view, id: "list", type: "list", groupBy: "tags" }]);
   const move = {
     action: "row.move",
     pageId: page,
     viewId: "table",
-    version: database(page).version,
+    version: (await database(page)).version,
     rowId: a,
     rowVersion: 1,
     targetId: b,
@@ -560,24 +560,24 @@ test("subgroups nest a second property, move across both levels atomically and r
     subgroup: { from: '"B"', to: '"C"' },
   };
   // Stale subgroup memberships are rejected without partial changes.
-  const before = rows(page);
-  assert.throws(
-    () => act({ ...move, subgroup: { from: '"C"', to: '"C"' } }),
+  const before = await rows(page);
+  await assert.rejects(
+    async () => await act({ ...move, subgroup: { from: '"C"', to: '"C"' } }),
     /Gruppenzuordnung/,
   );
-  assert.throws(
-    () => act({ ...move, subgroup: { from: '"B"', to: '"A"' } }),
+  await assert.rejects(
+    async () => await act({ ...move, subgroup: { from: '"B"', to: '"A"' } }),
     /Gruppenzuordnung/,
   );
-  assert.throws(() => act({ ...move, group: undefined }), /Untergruppe/);
-  assert.throws(() => act(move, viewer), /Berechtigung/);
-  assert.deepEqual(rows(page), before);
-  act(move);
-  const moved = rows(page).find((r) => r.id === a)!;
+  await assert.rejects(async () => await act({ ...move, group: undefined }), /Untergruppe/);
+  await assert.rejects(async () => await act(move, viewer), /Berechtigung/);
+  assert.deepEqual(await rows(page), before);
+  await act(move);
+  const moved = (await rows(page)).find((r) => r.id === a)!;
   assert.equal(moved.cells.status, "Done");
   assert.deepEqual(moved.cells.tags, ["A", "C"]);
   assert.equal(moved.version, 2);
-  assert.deepEqual(database(page).views[0].rowOrder, [b, a]);
+  assert.deepEqual((await database(page)).views[0].rowOrder, [b, a]);
 
   const relationFields: Field[] = [
     { id: "title", name: "Name", type: "text" },
@@ -614,56 +614,56 @@ test("subgroups nest a second property, move across both levels atomically and r
     false,
   );
 });
-test("board columns keep their own card order for rows listed in several columns", () => {
-  const page = create();
-  schema(page, [{ ...view, id: "board", type: "board", groupBy: "tags" }]);
-  const cell = (title: string, tags: string[]) =>
-    act({ action: "row.create", pageId: page, cells: { title, tags } }).id;
-  const a = cell("Alpha", ["A", "B"]),
-    b = cell("Beta", ["A", "B"]),
-    c = cell("Gamma", ["B"]);
-  const move = (
+test("board columns keep their own card order for rows listed in several columns", async () => {
+  const page = await create();
+  await schema(page, [{ ...view, id: "board", type: "board", groupBy: "tags" }]);
+  const cell = async (title: string, tags: string[]) =>
+    (await act({ action: "row.create", pageId: page, cells: { title, tags } })).id;
+  const a = await cell("Alpha", ["A", "B"]),
+    b = await cell("Beta", ["A", "B"]),
+    c = await cell("Gamma", ["B"]);
+  const move = async (
     rowId: string,
     targetId: string,
     placement: string,
     key: string,
   ) =>
-    act({
+    await act({
       action: "row.move",
       pageId: page,
       viewId: "board",
-      version: database(page).version,
+      version: (await database(page)).version,
       rowId,
-      rowVersion: rows(page).find((r) => r.id === rowId)!.version,
+      rowVersion: (await rows(page)).find((r) => r.id === rowId)!.version,
       targetId,
       placement,
       group: { from: key, to: key },
     });
-  const columns = () =>
+  const columns = async () =>
     Object.fromEntries(
       configuredGroups(
         databaseGroups(
-          queryRows(rows(page), fields, database(page).views[0]),
+          queryRows(await rows(page), fields, (await database(page)).views[0]),
           fields[2],
           {},
         ),
-        database(page).views[0],
+        (await database(page)).views[0],
       ).map((g) => [g.label, g.rows.map((r) => r.cells.title)]),
     );
   // Column A: Beta above Alpha; column B: Alpha after Gamma.
-  move(b, a, "before", '"A"');
-  move(a, c, "after", '"B"');
-  const shown = columns();
+  await move(b, a, "before", '"A"');
+  await move(a, c, "after", '"B"');
+  const shown = await columns();
   assert.deepEqual(shown.A, ["Beta", "Alpha"]);
   assert.deepEqual(shown.B, ["Beta", "Gamma", "Alpha"]);
   // A new card keeps its natural slot without disturbing saved orders.
-  cell("Delta", ["A"]);
-  assert.deepEqual(columns().A, ["Beta", "Alpha", "Delta"]);
+  await cell("Delta", ["A"]);
+  assert.deepEqual((await columns()).A, ["Beta", "Alpha", "Delta"]);
   // Deleted rows leave the saved column orders.
-  act({ action: "row.delete", pageId: page, rowId: b });
-  const saved = database(page).views[0].groupRowOrder!;
+  await act({ action: "row.delete", pageId: page, rowId: b });
+  const saved = (await database(page)).views[0].groupRowOrder!;
   assert.ok(Object.values(saved).every((ids) => !ids.includes(b)));
-  assert.deepEqual(columns().A, ["Alpha", "Delta"]);
+  assert.deepEqual((await columns()).A, ["Alpha", "Delta"]);
 });
 
 test("up to three further group levels nest below the subgroups", async () => {

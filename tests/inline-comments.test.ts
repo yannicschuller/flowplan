@@ -23,10 +23,10 @@ const { inlineThreads, withCommentDocument } =
 const { exportArchive, importArchive, readZip, writeZip } =
   await import("../lib/archive");
 const { rowDocumentData } = await import("../lib/row-documents");
-function fixture() {
-  function user(name: string): Identity {
+async function fixture() {
+  async function user(name: string): Promise<Identity> {
     const uid = id();
-    run(
+    await run(
       "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
       uid,
       uid,
@@ -43,62 +43,62 @@ function fixture() {
       groups: [],
     };
   }
-  const owner = user("Writer"),
-    viewer = user("Reader"),
-    other = user("Other"),
-    wid = createWorkspace(owner.id, "Inline tests"),
-    sid = String(one("SELECT id FROM spaces WHERE workspace_id=?", wid)!.id);
-  run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
-  const act = (data: Record<string, unknown>, u = owner): any =>
-    command(u, data);
-  const pageId = act({
+  const owner = await user("Writer"),
+    viewer = await user("Reader"),
+    other = await user("Other"),
+    wid = await createWorkspace(owner.id, "Inline tests"),
+    sid = String((await one("SELECT id FROM spaces WHERE workspace_id=?", wid))!.id);
+  await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
+  const act = async (data: Record<string, unknown>, u = owner): Promise<any> =>
+    await command(u, data);
+  const pageId = (await act({
     action: "page.create",
     workspaceId: wid,
     spaceId: sid,
     title: "Thread source",
-  }).id;
+  })).id;
   // The reader follows the page: new comments reach followers, not the
   // whole workspace (lib/comment-recipients.ts).
-  act({ action: "page.follow", pageId, follow: true }, viewer);
+  await act({ action: "page.follow", pageId, follow: true }, viewer);
   const html =
     "<p>Alpha Bravo Charlie</p><ul><li><p>Nested words</p></li></ul>";
-  run(
+  await run(
     "UPDATE documents SET html=?,state=? WHERE page_id=?",
     html,
     htmlState(html),
     pageId,
   );
-  const anchor = () =>
-    withCommentDocument(pageId, null, (b, g) => commentAnchor(b, 7, 12, g));
-  const create = (u = owner, extra = {}) => {
+  const anchor = async () =>
+    await withCommentDocument(pageId, null, (b, g) => commentAnchor(b, 7, 12, g));
+  const create = async (u = owner, extra = {}) => {
     const data = {
       action: "thread.create",
       pageId,
       threadId: id(),
       messageId: id(),
-      anchor: anchor(),
+      anchor: await anchor(),
       body: "Please review",
       ...extra,
     };
-    act(data, u);
+    await act(data, u);
     return data;
   };
   return { owner, viewer, other, wid, sid, pageId, html, act, anchor, create };
 }
-test("threads accept readers, replies are idempotent, notifications respect rights, and content is unchanged", () => {
-  const f = fixture(),
-    before = one("SELECT * FROM documents WHERE page_id=?", f.pageId),
-    c = f.create();
-  const first = inlineThreads(f.viewer, f.pageId)[0];
+test("threads accept readers, replies are idempotent, notifications respect rights, and content is unchanged", async () => {
+  const f = await fixture(),
+    before = await one("SELECT * FROM documents WHERE page_id=?", f.pageId),
+    c = await f.create();
+  const first = (await inlineThreads(f.viewer, f.pageId))[0];
   assert.equal(first.messages[0].body, "Please review");
   assert.equal(first.canResolve, false);
   assert.equal(
-    all("SELECT * FROM notifications WHERE user_id=?", f.viewer.id).length,
+    (await all("SELECT * FROM notifications WHERE user_id=?", f.viewer.id)).length,
     1,
   );
-  f.act(c);
+  await f.act(c);
   assert.equal(
-    all("SELECT * FROM notifications WHERE user_id=?", f.viewer.id).length,
+    (await all("SELECT * FROM notifications WHERE user_id=?", f.viewer.id)).length,
     1,
   );
   const reply = {
@@ -108,54 +108,54 @@ test("threads accept readers, replies are idempotent, notifications respect righ
     messageId: id(),
     body: "Looks good",
   };
-  f.act(reply, f.viewer);
-  f.act(reply, f.viewer);
-  assert.equal(inlineThreads(f.owner, f.pageId)[0].messageCount, 2);
+  await f.act(reply, f.viewer);
+  await f.act(reply, f.viewer);
+  assert.equal((await inlineThreads(f.owner, f.pageId))[0].messageCount, 2);
   assert.equal(
-    all("SELECT * FROM notifications WHERE user_id=?", f.owner.id).length,
+    (await all("SELECT * FROM notifications WHERE user_id=?", f.owner.id)).length,
     1,
   );
   assert.equal(
-    all("SELECT * FROM notifications WHERE user_id=?", f.other.id).length,
+    (await all("SELECT * FROM notifications WHERE user_id=?", f.other.id)).length,
     0,
   );
   assert.deepEqual(
-    one("SELECT * FROM documents WHERE page_id=?", f.pageId),
+    await one("SELECT * FROM documents WHERE page_id=?", f.pageId),
     before,
   );
-  assert.throws(() => inlineThreads(f.other, f.pageId), /Berechtigung/);
+  await assert.rejects(async () => await inlineThreads(f.other, f.pageId), /Berechtigung/);
 });
-test("resolution and message changes enforce ownership and compare versions without losing replies", () => {
-  const f = fixture(),
-    c = f.create(),
+test("resolution and message changes enforce ownership and compare versions without losing replies", async () => {
+  const f = await fixture(),
+    c = await f.create(),
     base = { pageId: f.pageId, threadId: c.threadId };
-  f.act(
+  await f.act(
     { action: "thread.reply", ...base, messageId: id(), body: "Second" },
     f.viewer,
   );
-  assert.throws(
-    () =>
-      f.act({ action: "thread.resolve", ...base, version: 1, resolved: true }),
+  await assert.rejects(
+    async () =>
+      await f.act({ action: "thread.resolve", ...base, version: 1, resolved: true }),
     /geändert/,
   );
-  assert.throws(
-    () =>
-      f.act(
+  await assert.rejects(
+    async () =>
+      await f.act(
         { action: "thread.resolve", ...base, version: 2, resolved: true },
         f.viewer,
       ),
     /Verfasser/,
   );
-  f.act({
+  await f.act({
     action: "thread.edit",
     ...base,
     messageId: c.messageId,
     version: 1,
     body: "Changed",
   });
-  assert.throws(
-    () =>
-      f.act({
+  await assert.rejects(
+    async () =>
+      await f.act({
         action: "thread.edit",
         ...base,
         messageId: c.messageId,
@@ -164,9 +164,9 @@ test("resolution and message changes enforce ownership and compare versions with
       }),
     /inzwischen/,
   );
-  assert.throws(
-    () =>
-      f.act(
+  await assert.rejects(
+    async () =>
+      await f.act(
         {
           action: "thread.deleteMessage",
           ...base,
@@ -177,38 +177,38 @@ test("resolution and message changes enforce ownership and compare versions with
       ),
     /eigene/,
   );
-  f.act({
+  await f.act({
     action: "thread.deleteMessage",
     ...base,
     messageId: c.messageId,
     version: 2,
   });
-  let thread = inlineThreads(f.owner, f.pageId)[0];
+  let thread = (await inlineThreads(f.owner, f.pageId))[0];
   assert.equal(thread.messages[0].body, "");
   assert.equal(thread.messages[1].body, "Second");
-  f.act({
+  await f.act({
     action: "thread.resolve",
     ...base,
     version: thread.version,
     resolved: true,
   });
-  assert.throws(
-    () =>
-      f.act({ action: "thread.reply", ...base, messageId: id(), body: "Late" }),
+  await assert.rejects(
+    async () =>
+      await f.act({ action: "thread.reply", ...base, messageId: id(), body: "Late" }),
     /wieder öffnen/,
   );
-  thread = inlineThreads(f.owner, f.pageId)[0];
-  f.act({
+  thread = (await inlineThreads(f.owner, f.pageId))[0];
+  await f.act({
     action: "thread.resolve",
     ...base,
     version: thread.version,
     resolved: false,
   });
-  assert.equal(inlineThreads(f.owner, f.pageId)[0].resolved, 0);
+  assert.equal((await inlineThreads(f.owner, f.pageId))[0].resolved, 0);
 });
-test("emoji reactions are distinct per member and reject arbitrary text; summaries bound message content", () => {
-  const f = fixture(),
-    c = f.create(f.owner, { body: "A".repeat(300) }),
+test("emoji reactions are distinct per member and reject arbitrary text; summaries bound message content", async () => {
+  const f = await fixture(),
+    c = await f.create(f.owner, { body: "A".repeat(300) }),
     base = {
       pageId: f.pageId,
       threadId: c.threadId,
@@ -217,31 +217,31 @@ test("emoji reactions are distinct per member and reject arbitrary text; summari
       emoji: "🚀",
       active: true,
     };
-  f.act(base);
-  f.act(base);
-  f.act(base, f.viewer);
-  let reaction = inlineThreads(f.owner, f.pageId)[0].messages[0].reactions[0];
+  await f.act(base);
+  await f.act(base);
+  await f.act(base, f.viewer);
+  let reaction = (await inlineThreads(f.owner, f.pageId))[0].messages[0].reactions[0];
   assert.equal(reaction.count, 2);
   assert.equal(reaction.mine, true);
-  f.act({ ...base, active: false });
-  reaction = inlineThreads(f.owner, f.pageId)[0].messages[0].reactions[0];
+  await f.act({ ...base, active: false });
+  reaction = (await inlineThreads(f.owner, f.pageId))[0].messages[0].reactions[0];
   assert.equal(reaction.count, 1);
   assert.equal(reaction.mine, false);
-  assert.throws(() => f.act({ ...base, emoji: "<script>" }));
-  const summary = inlineThreads(f.owner, f.pageId, undefined, true)[0];
+  await assert.rejects(async () => await f.act({ ...base, emoji: "<script>" }));
+  const summary = (await inlineThreads(f.owner, f.pageId, undefined, true))[0];
   assert.equal(summary.complete, false);
   assert.equal(summary.messages[0].body.length, 160);
   assert.deepEqual(summary.messages[0].reactions, []);
   assert.equal(
-    inlineThreads(f.owner, f.pageId, undefined, true, c.threadId)[0].messages[0]
+    (await inlineThreads(f.owner, f.pageId, undefined, true, c.threadId))[0].messages[0]
       .body.length,
     300,
   );
 });
 // The stored reactions move by a SQLite migration step (lib/db.ts).
-test("reactions with a redundant U+FE0F (emojibase-data 17) are read and stored as the picker's form", { skip: sqliteOnly }, () => {
-  const f = fixture(),
-    c = f.create(f.owner),
+test("reactions with a redundant U+FE0F (emojibase-data 17) are read and stored as the picker's form", { skip: sqliteOnly }, async () => {
+  const f = await fixture(),
+    c = await f.create(f.owner),
     base = {
       pageId: f.pageId,
       threadId: c.threadId,
@@ -250,97 +250,97 @@ test("reactions with a redundant U+FE0F (emojibase-data 17) are read and stored 
       active: true,
     };
   // Stored before the update: the viewer's 👍️ and the owner's ⌚️ and ⌚.
-  run("INSERT INTO inline_reactions VALUES(?,?,?)", c.messageId, f.viewer.id, "👍️");
-  run("INSERT INTO inline_reactions VALUES(?,?,?)", c.messageId, f.owner.id, "⌚️");
-  run("INSERT INTO inline_reactions VALUES(?,?,?)", c.messageId, f.owner.id, "⌚");
+  await run("INSERT INTO inline_reactions VALUES(?,?,?)", c.messageId, f.viewer.id, "👍️");
+  await run("INSERT INTO inline_reactions VALUES(?,?,?)", c.messageId, f.owner.id, "⌚️");
+  await run("INSERT INTO inline_reactions VALUES(?,?,?)", c.messageId, f.owner.id, "⌚");
   (globalThis as { flowplanSchema?: number }).flowplanSchema = undefined;
   // An older client still sends 👍️; the heart keeps its FE0F.
-  f.act({ ...base, emoji: "👍️" });
-  f.act({ ...base, emoji: "❤️" });
+  await f.act({ ...base, emoji: "👍️" });
+  await f.act({ ...base, emoji: "❤️" });
   assert.deepEqual(
     Object.fromEntries(
-      all<{ emoji: string; n: number }>(
+      (await all<{ emoji: string; n: number }>(
         "SELECT emoji,count(*) n FROM inline_reactions WHERE message_id=? GROUP BY emoji",
         c.messageId,
-      ).map((r) => [r.emoji, r.n]),
+      )).map((r) => [r.emoji, r.n]),
     ),
     { "⌚": 1, "❤️": 1, "👍": 2 },
   );
-  const thumbs = inlineThreads(f.owner, f.pageId)[0].messages[0].reactions.find((r) => r.emoji === "👍");
+  const thumbs = (await inlineThreads(f.owner, f.pageId))[0].messages[0].reactions.find((r) => r.emoji === "👍");
   assert.equal(thumbs?.count, 2);
-  f.act({ ...base, emoji: "👍", active: false });
-  f.act({ ...base, emoji: "⌚️", active: false });
+  await f.act({ ...base, emoji: "👍", active: false });
+  await f.act({ ...base, emoji: "⌚️", active: false });
   assert.deepEqual(
-    all<{ emoji: string }>("SELECT emoji FROM inline_reactions WHERE message_id=? AND user_id=?", c.messageId, f.owner.id).map((r) => r.emoji),
+    (await all<{ emoji: string }>("SELECT emoji FROM inline_reactions WHERE message_id=? AND user_id=?", c.messageId, f.owner.id)).map((r) => r.emoji),
     ["❤️"],
   );
 });
-test("relative anchors follow insertions, reject stale drafts, and detach after deletion or generation changes", () => {
-  const f = fixture(),
-    anchor = f.anchor(),
-    c = f.create();
-  withCommentDocument(f.pageId, null, (b) => {
+test("relative anchors follow insertions, reject stale drafts, and detach after deletion or generation changes", async () => {
+  const f = await fixture(),
+    anchor = await f.anchor(),
+    c = await f.create();
+  await withCommentDocument(f.pageId, null, async (b) => {
     const text = (b.type.get(0) as Y.XmlElement).get(0) as Y.XmlText;
     text.insert(0, "New ");
-    run(
+    await run(
       "UPDATE documents SET state=? WHERE page_id=?",
       Y.encodeStateAsUpdate(b.doc),
       f.pageId,
     );
   });
-  withCommentDocument(f.pageId, null, (b, g) => {
+  await withCommentDocument(f.pageId, null, (b, g) => {
     const r = commentRange(b, anchor, g)!;
     assert.equal(r.from, 11);
     assert.equal(commentQuote(b.content, r.from, r.to), "Bravo");
   });
   // Original quote still matches after insertion before the selection.
-  f.create(f.viewer, { anchor });
-  withCommentDocument(f.pageId, null, (b) => {
+  await f.create(f.viewer, { anchor });
+  await withCommentDocument(f.pageId, null, async (b) => {
     const text = (b.type.get(0) as Y.XmlElement).get(0) as Y.XmlText;
     text.delete(10, 5);
-    run(
+    await run(
       "UPDATE documents SET state=? WHERE page_id=?",
       Y.encodeStateAsUpdate(b.doc),
       f.pageId,
     );
   });
-  withCommentDocument(f.pageId, null, (b, g) =>
+  await withCommentDocument(f.pageId, null, (b, g) =>
     assert.equal(commentRange(b, anchor, g), null),
   );
-  assert.throws(() => f.create(f.viewer, { anchor }), /Textstelle/);
-  assert.equal(inlineThreads(f.owner, f.pageId)[0].anchor.quote, "Bravo");
-  run("UPDATE documents SET generation=? WHERE page_id=?", id(), f.pageId);
-  assert.throws(() => f.create(f.viewer, { anchor }), /Textstelle/);
+  await assert.rejects(async () => await f.create(f.viewer, { anchor }), /Textstelle/);
+  assert.equal((await inlineThreads(f.owner, f.pageId))[0].anchor.quote, "Bravo");
+  await run("UPDATE documents SET generation=? WHERE page_id=?", id(), f.pageId);
+  await assert.rejects(async () => await f.create(f.viewer, { anchor }), /Textstelle/);
   assert.equal(
-    inlineThreads(f.owner, f.pageId).some((t) => t.id === c.threadId),
+    (await inlineThreads(f.owner, f.pageId)).some((t) => t.id === c.threadId),
     true,
   );
 });
-test("document and row scope, private permissions and generation validation reject forged anchors", () => {
-  const f = fixture(),
-    c = f.create(),
-    database = f.act({
+test("document and row scope, private permissions and generation validation reject forged anchors", async () => {
+  const f = await fixture(),
+    c = await f.create(),
+    database = (await f.act({
       action: "page.create",
       workspaceId: f.wid,
       spaceId: f.sid,
       title: "Rows",
       kind: "database",
-    }).id;
-  const row = f.act({
+    })).id;
+  const row = (await f.act({
     action: "row.create",
     pageId: database,
     cells: { title: "One" },
-  }).id;
-  rowDocumentData(f.owner, database, row);
-  run(
+  })).id;
+  await rowDocumentData(f.owner, database, row);
+  await run(
     "UPDATE row_documents SET html=?,state=? WHERE row_id=?",
     f.html,
     htmlState(f.html),
     row,
   );
-  assert.throws(
-    () =>
-      f.act({
+  await assert.rejects(
+    async () =>
+      await f.act({
         ...c,
         threadId: id(),
         messageId: id(),
@@ -349,14 +349,14 @@ test("document and row scope, private permissions and generation validation reje
       }),
     /Textstelle/,
   );
-  assert.throws(
-    () => f.act({ ...c, threadId: id(), messageId: id(), rowId: row }),
+  await assert.rejects(
+    async () => await f.act({ ...c, threadId: id(), messageId: id(), rowId: row }),
     /Datenbank/,
   );
-  const anchor = withCommentDocument(database, row, (b, g) =>
+  const anchor = await withCommentDocument(database, row, (b, g) =>
     commentAnchor(b, 7, 12, g),
   );
-  f.act({
+  await f.act({
     ...c,
     threadId: id(),
     messageId: id(),
@@ -364,23 +364,23 @@ test("document and row scope, private permissions and generation validation reje
     rowId: row,
     anchor,
   });
-  assert.equal(inlineThreads(f.viewer, database, row).length, 1);
-  run("UPDATE spaces SET visibility='private' WHERE id=?", f.sid);
-  assert.throws(() => inlineThreads(f.viewer, database, row), /Berechtigung/);
-  assert.throws(
-    () => f.act({ ...c, threadId: id(), messageId: id() }, f.viewer),
+  assert.equal((await inlineThreads(f.viewer, database, row)).length, 1);
+  await run("UPDATE spaces SET visibility='private' WHERE id=?", f.sid);
+  await assert.rejects(async () => await inlineThreads(f.viewer, database, row), /Berechtigung/);
+  await assert.rejects(
+    async () => await f.act({ ...c, threadId: id(), messageId: id() }, f.viewer),
     /Berechtigung/,
   );
-  run("DELETE FROM rows WHERE id=?", row);
+  await run("DELETE FROM rows WHERE id=?", row);
   assert.equal(
-    all("SELECT * FROM inline_threads WHERE row_id=?", row).length,
+    (await all("SELECT * FROM inline_threads WHERE row_id=?", row)).length,
     0,
   );
 });
 test("ZIP archives preserve threads, quotes, replies and reactions with fresh document anchors", async () => {
-  const f = fixture(),
-    c = f.create();
-  f.act(
+  const f = await fixture(),
+    c = await f.create();
+  await f.act(
     {
       action: "thread.reply",
       pageId: f.pageId,
@@ -390,7 +390,7 @@ test("ZIP archives preserve threads, quotes, replies and reactions with fresh do
     },
     f.viewer,
   );
-  f.act(
+  await f.act(
     {
       action: "thread.react",
       pageId: f.pageId,
@@ -408,13 +408,13 @@ test("ZIP archives preserve threads, quotes, replies and reactions with fresh do
   assert.equal(original.inlineThreads[0].messages.length, 2);
   const imported = await importArchive(f.owner, f.wid, bytes),
     copy = imported.pageIds[f.pageId],
-    thread = inlineThreads(f.owner, copy)[0];
+    thread = (await inlineThreads(f.owner, copy))[0];
   assert.equal(thread.messages[1].body, "Agreed");
   assert.equal(thread.messages[0].name, f.owner.name);
   assert.equal(thread.messages[0].author_id, null);
   assert.equal(thread.messages[0].reactions[0].count, 1);
   assert.equal(thread.messages[0].reactions[0].mine, false);
-  withCommentDocument(copy, null, (b, g) => {
+  await withCommentDocument(copy, null, (b, g) => {
     const r = commentRange(b, thread.anchor, g)!;
     assert.equal(commentQuote(b.content, r.from, r.to), "Bravo");
   });
@@ -422,35 +422,35 @@ test("ZIP archives preserve threads, quotes, replies and reactions with fresh do
   original.inlineThreads[0].range.from = 999999;
   zip.set("flowplan.json", Buffer.from(JSON.stringify(manifest)));
   const detached = await importArchive(f.owner, f.wid, await writeZip(zip));
-  const dt = inlineThreads(f.owner, detached.pageIds[f.pageId])[0];
+  const dt = (await inlineThreads(f.owner, detached.pageIds[f.pageId]))[0];
   assert.equal(dt.anchor.generation, "detached-import");
 });
-test("database snapshots recover row threads after deletion with visible historical authorship", () => {
-  const f = fixture(),
-    database = f.act({
+test("database snapshots recover row threads after deletion with visible historical authorship", async () => {
+  const f = await fixture(),
+    database = (await f.act({
       action: "page.create",
       workspaceId: f.wid,
       spaceId: f.sid,
       title: "Row threads",
       kind: "database",
-    }).id;
-  const row = f.act({
+    })).id;
+  const row = (await f.act({
     action: "row.create",
     pageId: database,
     cells: { title: "Entry" },
-  }).id;
-  rowDocumentData(f.owner, database, row);
-  run(
+  })).id;
+  await rowDocumentData(f.owner, database, row);
+  await run(
     "UPDATE row_documents SET html=?,state=? WHERE row_id=?",
     f.html,
     htmlState(f.html),
     row,
   );
-  run("UPDATE rows SET content=? WHERE id=?", f.html, row);
-  const anchor = withCommentDocument(database, row, (b, g) =>
+  await run("UPDATE rows SET content=? WHERE id=?", f.html, row);
+  const anchor = await withCommentDocument(database, row, (b, g) =>
     commentAnchor(b, 7, 12, g),
   );
-  f.act(
+  await f.act(
     {
       action: "thread.create",
       pageId: database,
@@ -481,10 +481,10 @@ test("database snapshots recover row threads after deletion with visible histori
     },
     f.viewer,
   );
-  const snapshot = f.act({ action: "page.snapshot", pageId: database }).id;
-  f.act({ action: "row.delete", pageId: database, rowId: row });
-  f.act({ action: "snapshot.restore", pageId: database, snapshotId: snapshot });
-  const thread = inlineThreads(f.owner, database, row)[0];
+  const snapshot = (await f.act({ action: "page.snapshot", pageId: database })).id;
+  await f.act({ action: "row.delete", pageId: database, rowId: row });
+  await f.act({ action: "snapshot.restore", pageId: database, snapshotId: snapshot });
+  const thread = (await inlineThreads(f.owner, database, row))[0];
   assert.equal(thread.messages[0].body, "Recover me\n@Writer");
   assert.equal(
     thread.messages[0].content?.content?.[0].content?.[0].marks?.[0].type,
@@ -495,7 +495,7 @@ test("database snapshots recover row threads after deletion with visible histori
     null,
   );
   assert.equal(thread.messages[0].name, "Reader");
-  withCommentDocument(database, row, (b, g) =>
+  await withCommentDocument(database, row, (b, g) =>
     assert.ok(commentRange(b, thread.anchor, g)),
   );
 });
@@ -553,31 +553,31 @@ test("comment draft storage scopes users and documents, expires stale drafts and
   }
 });
 test("archived database versions remap row threads and reject foreign row references atomically", async () => {
-  const f = fixture(),
-    database = f.act({
+  const f = await fixture(),
+    database = (await f.act({
       action: "page.create",
       workspaceId: f.wid,
       spaceId: f.sid,
       title: "Historical threads",
       kind: "database",
-    }).id;
-  const row = f.act({
+    })).id;
+  const row = (await f.act({
     action: "row.create",
     pageId: database,
     cells: { title: "Entry" },
-  }).id;
-  rowDocumentData(f.owner, database, row);
-  run(
+  })).id;
+  await rowDocumentData(f.owner, database, row);
+  await run(
     "UPDATE row_documents SET html=?,state=? WHERE row_id=?",
     f.html,
     htmlState(f.html),
     row,
   );
-  run("UPDATE rows SET content=? WHERE id=?", f.html, row);
-  const anchor = withCommentDocument(database, row, (b, g) =>
+  await run("UPDATE rows SET content=? WHERE id=?", f.html, row);
+  const anchor = await withCommentDocument(database, row, (b, g) =>
     commentAnchor(b, 7, 12, g),
   );
-  f.act({
+  await f.act({
     action: "thread.create",
     pageId: database,
     rowId: row,
@@ -586,21 +586,21 @@ test("archived database versions remap row threads and reject foreign row refere
     anchor,
     body: "History reply",
   });
-  f.act({ action: "page.snapshot", pageId: database });
-  f.act({ action: "row.delete", pageId: database, rowId: row });
+  await f.act({ action: "page.snapshot", pageId: database });
+  await f.act({ action: "row.delete", pageId: database, rowId: row });
   const bytes = await exportArchive(f.owner, f.wid),
     imported = await importArchive(f.owner, f.wid, bytes),
     copy = imported.pageIds[database];
-  const snapshot = one<{ id: string; html: string }>(
+  const snapshot = (await one<{ id: string; html: string }>(
       "SELECT id,html FROM snapshots WHERE page_id=?",
       copy,
-    )!,
+    ))!,
     payload = JSON.parse(snapshot.html);
   assert.equal(payload.inlineThreads[0].row_id, payload.rows[0].id);
-  f.act({ action: "snapshot.restore", pageId: copy, snapshotId: snapshot.id });
-  const thread = inlineThreads(f.owner, copy, payload.rows[0].id)[0];
+  await f.act({ action: "snapshot.restore", pageId: copy, snapshotId: snapshot.id });
+  const thread = (await inlineThreads(f.owner, copy, payload.rows[0].id))[0];
   assert.equal(thread.messages[0].body, "History reply");
-  withCommentDocument(copy, payload.rows[0].id, (b, g) =>
+  await withCommentDocument(copy, payload.rows[0].id, (b, g) =>
     assert.ok(commentRange(b, thread.anchor, g)),
   );
   const zip = await readZip(bytes),
@@ -610,18 +610,18 @@ test("archived database versions remap row threads and reject foreign row refere
   bad.inlineThreads[0].row_id = id();
   p.snapshots[0].html = JSON.stringify(bad);
   zip.set("flowplan.json", Buffer.from(JSON.stringify(manifest)));
-  const count = all("SELECT id FROM pages").length;
+  const count = (await all("SELECT id FROM pages")).length;
   await assert.rejects(
     importArchive(f.owner, f.wid, await writeZip(zip)),
     /Datenbankversion/,
   );
-  assert.equal(all("SELECT id FROM pages").length, count);
+  assert.equal((await all("SELECT id FROM pages")).length, count);
 });
 
-test("thread notifications preserve scoped row and thread destinations for initial comments and replies", () => {
-  const f = fixture();
-  const t = f.create();
-  const first = one<{
+test("thread notifications preserve scoped row and thread destinations for initial comments and replies", async () => {
+  const f = await fixture();
+  const t = await f.create();
+  const first = (await one<{
     page_id: string;
     row_id: string | null;
     thread_id: string;
@@ -629,11 +629,11 @@ test("thread notifications preserve scoped row and thread destinations for initi
     "SELECT * FROM notifications WHERE user_id=? AND thread_id=?",
     f.viewer.id,
     t.threadId,
-  )!;
+  ))!;
   assert.equal(first.page_id, f.pageId);
   assert.equal(first.row_id, null);
   assert.equal(first.thread_id, t.threadId);
-  f.act(
+  await f.act(
     {
       action: "thread.reply",
       pageId: f.pageId,
@@ -644,38 +644,38 @@ test("thread notifications preserve scoped row and thread destinations for initi
     f.viewer,
   );
   assert.equal(
-    one(
+    (await one(
       "SELECT thread_id FROM notifications WHERE user_id=? AND thread_id=?",
       f.owner.id,
       t.threadId,
-    )?.thread_id,
+    ))?.thread_id,
     t.threadId,
   );
-  const database = f.act({
+  const database = (await f.act({
     action: "page.create",
     workspaceId: f.wid,
     spaceId: f.sid,
     title: "Rows",
     kind: "database",
-  }).id;
-  const row = f.act({
+  })).id;
+  const row = (await f.act({
     action: "row.create",
     pageId: database,
     cells: { title: "Row" },
-  }).id;
-  f.act({ action: "page.follow", pageId: database, follow: true }, f.viewer);
-  rowDocumentData(f.owner, database, row);
-  run(
+  })).id;
+  await f.act({ action: "page.follow", pageId: database, follow: true }, f.viewer);
+  await rowDocumentData(f.owner, database, row);
+  await run(
     "UPDATE row_documents SET state=?,html=? WHERE row_id=?",
     htmlState(f.html),
     f.html,
     row,
   );
-  const anchor = withCommentDocument(database, row, (b, g) =>
+  const anchor = await withCommentDocument(database, row, (b, g) =>
     commentAnchor(b, 7, 12, g),
   );
   const tid = id();
-  f.act({
+  await f.act({
     action: "thread.create",
     pageId: database,
     rowId: row,
@@ -684,33 +684,33 @@ test("thread notifications preserve scoped row and thread destinations for initi
     anchor,
     body: "Row destination",
   });
-  const n = one(
+  const n = (await one(
     "SELECT page_id,row_id,thread_id FROM notifications WHERE user_id=? AND thread_id=?",
     f.viewer.id,
     tid,
-  )!;
+  ))!;
   assert.deepEqual(
     { ...n },
     { page_id: database, row_id: row, thread_id: tid },
   );
-  f.act({
+  await f.act({
     action: "comment.create",
     pageId: database,
     rowId: row,
     body: "Ordinary row comment",
   });
   assert.equal(
-    one(
+    (await one(
       "SELECT row_id FROM notifications WHERE user_id=? AND page_id=? AND thread_id IS NULL",
       f.viewer.id,
       database,
-    )?.row_id,
+    ))?.row_id,
     row,
   );
 });
 
-test("formatted messages preserve marks across retries and edits; plain text remains compatible", () => {
-  const f = fixture();
+test("formatted messages preserve marks across retries and edits; plain text remains compatible", async () => {
+  const f = await fixture();
   const rich = {
     type: "doc",
     content: [
@@ -722,14 +722,14 @@ test("formatted messages preserve marks across retries and edits; plain text rem
       },
     ],
   };
-  const c = f.create(f.owner, { content: rich, body: "Ignored client text" });
-  const message = inlineThreads(f.viewer, f.pageId)[0].messages[0];
+  const c = await f.create(f.owner, { content: rich, body: "Ignored client text" });
+  const message = (await inlineThreads(f.viewer, f.pageId))[0].messages[0];
   assert.equal(message.body, "Formatted");
   assert.deepEqual(message.content, rich);
-  f.act(c);
-  assert.throws(
-    () =>
-      f.act({
+  await f.act(c);
+  await assert.rejects(
+    async () =>
+      await f.act({
         ...c,
         content: {
           ...rich,
@@ -749,7 +749,7 @@ test("formatted messages preserve marks across retries and edits; plain text rem
       }),
     /anders gespeichert/,
   );
-  f.act({
+  await f.act({
     action: "thread.edit",
     pageId: f.pageId,
     threadId: c.threadId,
@@ -757,12 +757,12 @@ test("formatted messages preserve marks across retries and edits; plain text rem
     version: 1,
     body: "<b>Literal old client</b>",
   });
-  const changed = inlineThreads(f.viewer, f.pageId)[0].messages[0];
+  const changed = (await inlineThreads(f.viewer, f.pageId))[0].messages[0];
   assert.equal(changed.body, "<b>Literal old client</b>");
   assert.equal(changed.content, null);
-  assert.throws(
-    () =>
-      f.act({
+  await assert.rejects(
+    async () =>
+      await f.act({
         action: "thread.edit",
         pageId: f.pageId,
         threadId: c.threadId,
@@ -772,7 +772,7 @@ test("formatted messages preserve marks across retries and edits; plain text rem
       }),
     /inzwischen/,
   );
-  f.act({
+  await f.act({
     action: "thread.deleteMessage",
     pageId: f.pageId,
     threadId: c.threadId,
@@ -780,13 +780,13 @@ test("formatted messages preserve marks across retries and edits; plain text rem
     version: 2,
   });
   assert.equal(
-    one("SELECT rich_body FROM inline_messages WHERE id=?", c.messageId)
+    (await one("SELECT rich_body FROM inline_messages WHERE id=?", c.messageId))
       ?.rich_body,
     null,
   );
 });
 test("mention lookup and submission enforce current page access, active accounts and server-derived names", async () => {
-  const f = fixture();
+  const f = await fixture();
   const { inlineMentionCandidates } = await import("../lib/inline-comments");
   const content = {
     type: "doc",
@@ -803,59 +803,59 @@ test("mention lookup and submission enforce current page access, active accounts
     ],
   };
   assert.deepEqual(
-    inlineMentionCandidates(f.owner, f.pageId, undefined, "read").map(
+    (await inlineMentionCandidates(f.owner, f.pageId, undefined, "read")).map(
       (u) => u.id,
     ),
     [f.viewer.id],
   );
-  assert.throws(
-    () => inlineMentionCandidates(f.other, f.pageId),
+  await assert.rejects(
+    async () => await inlineMentionCandidates(f.other, f.pageId),
     /Berechtigung/,
   );
-  const c = f.create(f.owner, { content });
+  const c = await f.create(f.owner, { content });
   assert.equal(
-    inlineThreads(f.viewer, f.pageId)[0].messages[0].body,
+    (await inlineThreads(f.viewer, f.pageId))[0].messages[0].body,
     "@Reader",
   );
   assert.match(
     String(
-      one(
+      (await one(
         "SELECT body FROM notifications WHERE user_id=? AND thread_id=?",
         f.viewer.id,
         c.threadId,
-      )?.body,
+      ))?.body,
     ),
     /erwähnt/,
   );
-  run("UPDATE users SET name='Renamed Reader' WHERE id=?", f.viewer.id);
-  f.act(c); // Retries are stable even after the mentioned person's display name changes.
+  await run("UPDATE users SET name='Renamed Reader' WHERE id=?", f.viewer.id);
+  await f.act(c); // Retries are stable even after the mentioned person's display name changes.
   assert.equal(
-    all(
+    (await all(
       "SELECT id FROM notifications WHERE user_id=? AND thread_id=?",
       f.viewer.id,
       c.threadId,
-    ).length,
+    )).length,
     1,
   );
-  run("UPDATE users SET disabled=1 WHERE id=?", f.viewer.id);
+  await run("UPDATE users SET disabled=1 WHERE id=?", f.viewer.id);
   assert.equal(
-    inlineMentionCandidates(f.owner, f.pageId, undefined, "Reader").length,
+    (await inlineMentionCandidates(f.owner, f.pageId, undefined, "Reader")).length,
     0,
   );
-  assert.throws(() => f.create(f.owner, { content }), /keinen Zugriff/);
-  run("UPDATE users SET disabled=0 WHERE id=?", f.viewer.id);
-  run("UPDATE spaces SET visibility='private' WHERE id=?", f.sid);
-  assert.equal(inlineMentionCandidates(f.owner, f.pageId).length, 1);
-  assert.throws(() => f.create(f.owner, { content }), /keinen Zugriff/);
+  await assert.rejects(async () => await f.create(f.owner, { content }), /keinen Zugriff/);
+  await run("UPDATE users SET disabled=0 WHERE id=?", f.viewer.id);
+  await run("UPDATE spaces SET visibility='private' WHERE id=?", f.sid);
+  assert.equal((await inlineMentionCandidates(f.owner, f.pageId)).length, 1);
+  await assert.rejects(async () => await f.create(f.owner, { content }), /keinen Zugriff/);
   assert.equal(
-    all("SELECT id FROM inline_threads WHERE page_id=?", f.pageId).length,
+    (await all("SELECT id FROM inline_threads WHERE page_id=?", f.pageId)).length,
     1,
   );
 });
-test("reply mentions notify non-participants once; edits notify only newly mentioned members with exact destinations", () => {
-  const f = fixture(),
-    c = f.create();
-  run("INSERT INTO members VALUES(?,?,?)", f.wid, f.other.id, "viewer");
+test("reply mentions notify non-participants once; edits notify only newly mentioned members with exact destinations", async () => {
+  const f = await fixture(),
+    c = await f.create();
+  await run("INSERT INTO members VALUES(?,?,?)", f.wid, f.other.id, "viewer");
   const rich = (uid: string) => ({
     type: "doc",
     content: [
@@ -875,25 +875,25 @@ test("reply mentions notify non-participants once; edits notify only newly menti
     messageId: id(),
     content: rich(f.other.id),
   };
-  f.act(reply, f.viewer);
-  f.act(reply, f.viewer);
+  await f.act(reply, f.viewer);
+  await f.act(reply, f.viewer);
   assert.equal(
-    all(
+    (await all(
       "SELECT id FROM notifications WHERE user_id=? AND thread_id=?",
       f.other.id,
       c.threadId,
-    ).length,
+    )).length,
     1,
   );
-  const n = one(
+  const n = (await one(
     "SELECT * FROM notifications WHERE user_id=? AND thread_id=?",
     f.other.id,
     c.threadId,
-  )!;
+  ))!;
   assert.equal(n.page_id, f.pageId);
   assert.equal(n.row_id, null);
   assert.match(String(n.body), /erwähnt/);
-  f.act({
+  await f.act({
     action: "thread.edit",
     pageId: f.pageId,
     threadId: c.threadId,
@@ -902,14 +902,14 @@ test("reply mentions notify non-participants once; edits notify only newly menti
     content: rich(f.viewer.id),
   });
   assert.equal(
-    all(
+    (await all(
       "SELECT id FROM notifications WHERE user_id=? AND thread_id=?",
       f.viewer.id,
       c.threadId,
-    ).length,
+    )).length,
     2,
   );
-  f.act({
+  await f.act({
     action: "thread.edit",
     pageId: f.pageId,
     threadId: c.threadId,
@@ -918,17 +918,17 @@ test("reply mentions notify non-participants once; edits notify only newly menti
     content: rich(f.viewer.id),
   });
   assert.equal(
-    all(
+    (await all(
       "SELECT id FROM notifications WHERE user_id=? AND thread_id=?",
       f.viewer.id,
       c.threadId,
-    ).length,
+    )).length,
     2,
   );
 });
 test("archives retain rich comments while imported mentions become historical and trigger no notifications", async () => {
-  const f = fixture();
-  f.create(f.owner, {
+  const f = await fixture();
+  await f.create(f.owner, {
     content: {
       type: "doc",
       content: [
@@ -946,9 +946,9 @@ test("archives retain rich comments while imported mentions become historical an
     },
   });
   const bytes = await exportArchive(f.owner, f.wid),
-    before = all("SELECT id FROM notifications").length;
+    before = (await all("SELECT id FROM notifications")).length;
   const imported = await importArchive(f.owner, f.wid, bytes);
-  const message = inlineThreads(f.owner, imported.pageIds[f.pageId])[0]
+  const message = (await inlineThreads(f.owner, imported.pageIds[f.pageId]))[0]
     .messages[0];
   assert.equal(message.body, "Please @Reader");
   assert.equal(message.content?.content?.[0].content?.[1].attrs?.userId, null);
@@ -956,19 +956,19 @@ test("archives retain rich comments while imported mentions become historical an
     message.content?.content?.[0].content?.[0].marks?.[0].type,
     "bold",
   );
-  assert.equal(all("SELECT id FROM notifications").length, before);
+  assert.equal((await all("SELECT id FROM notifications")).length, before);
   const zip = await readZip(bytes),
     manifest = JSON.parse(zip.get("flowplan.json")!.toString());
   manifest.pages.find(
     (p: any) => p.id === f.pageId,
   ).inlineThreads[0].messages[0].body = "Mismatched";
   zip.set("flowplan.json", Buffer.from(JSON.stringify(manifest)));
-  const count = all("SELECT id FROM pages").length;
+  const count = (await all("SELECT id FROM pages")).length;
   await assert.rejects(
     importArchive(f.owner, f.wid, await writeZip(zip)),
     /stimmen nicht überein/,
   );
-  assert.equal(all("SELECT id FROM pages").length, count);
+  assert.equal((await all("SELECT id FROM pages")).length, count);
 });
 
 test("rich comment drafts preserve formatting and mentions separately for new messages and replies", async () => {

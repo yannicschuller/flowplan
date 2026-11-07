@@ -186,26 +186,26 @@ test("reading an editor table: plain text, merged cells, links of whole cells, t
   assert.equal(tableTitle(withCaption, 0), "Budget 2026");
 });
 
-function user(name: string): Identity {
+async function user(name: string): Promise<Identity> {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@test.invalid`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@test.invalid`);
   return { id: uid, name, email: `${name}@test.invalid`, groups: [], isAdmin: false, disabled: 0, created_at: "" };
 }
 
-test("table.toDatabase creates the database below the document with typed properties and records", () => {
-  const owner = user("owner"),
-    viewer = user("viewer");
-  const wid = createWorkspace(owner.id, "Tables"),
-    boot = bootstrap(owner, wid);
-  run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
+test("table.toDatabase creates the database below the document with typed properties and records", async () => {
+  const owner = await user("owner"),
+    viewer = await user("viewer");
+  const wid = await createWorkspace(owner.id, "Tables"),
+    boot = await bootstrap(owner, wid);
+  await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
   const space = boot.spaces[0].id;
-  const host = (command(owner, { action: "page.create", workspaceId: wid, spaceId: space, title: "Host", kind: "document" }) as { id: string }).id;
+  const host = ((await command(owner, { action: "page.create", workspaceId: wid, spaceId: space, title: "Host", kind: "document" })) as { id: string }).id;
   const rows = [
     cells("Aufgabe", "Stunden", "Fällig", "Erledigt"),
     cells("Lesen", "1,5", "04.11.2026", "ja"),
     cells("Schreiben", "2", "", "nein"),
   ];
-  const result = command(owner, { action: "table.toDatabase", pageId: host, title: "Projekte", rows }) as {
+  const result = (await command(owner, { action: "table.toDatabase", pageId: host, title: "Projekte", rows })) as {
     id: string;
     view: { id: string; type: string };
     fields: number;
@@ -214,37 +214,37 @@ test("table.toDatabase creates the database below the document with typed proper
   assert.equal(result.fields, 4);
   assert.equal(result.rows, 2);
   assert.equal(result.view.type, "table");
-  const page = one<{ parent_id: string; space_id: string; kind: string; title: string }>("SELECT * FROM pages WHERE id=?", result.id)!;
+  const page = (await one<{ parent_id: string; space_id: string; kind: string; title: string }>("SELECT * FROM pages WHERE id=?", result.id))!;
   assert.deepEqual([page.parent_id, page.space_id, page.kind, page.title], [host, space, "database", "Projekte"]);
-  const data = database(result.id) as unknown as { fields: { id: string; name: string; type: string }[]; views: { id: string }[] };
+  const data = (await database(result.id)) as unknown as { fields: { id: string; name: string; type: string }[]; views: { id: string }[] };
   assert.deepEqual(data.fields.map((f) => [f.name, f.type]), [["Aufgabe", "text"], ["Stunden", "number"], ["Fällig", "date"], ["Erledigt", "checkbox"]]);
   assert.deepEqual(data.views.map((v) => v.id), [result.view.id]);
-  const stored = all<{ cells: string }>("SELECT cells FROM rows WHERE page_id=? ORDER BY position", result.id).map((r) => JSON.parse(r.cells));
+  const stored = (await all<{ cells: string }>("SELECT cells FROM rows WHERE page_id=? ORDER BY position", result.id)).map((r) => JSON.parse(r.cells));
   assert.deepEqual(stored, [
     { title: "Lesen", f1: 1.5, f2: "2026-11-04", f3: true },
     { title: "Schreiben", f1: 2, f3: false },
   ]);
   // Without a title the database is called "Tabelle".
-  const untitled = command(owner, { action: "table.toDatabase", pageId: host, rows }) as { id: string };
-  assert.equal(one<{ title: string }>("SELECT title FROM pages WHERE id=?", untitled.id)!.title, "Tabelle");
+  const untitled = (await command(owner, { action: "table.toDatabase", pageId: host, rows })) as { id: string };
+  assert.equal((await one<{ title: string }>("SELECT title FROM pages WHERE id=?", untitled.id))!.title, "Tabelle");
 
   // Viewers may not; nothing is created.
-  const before = one<{ n: number }>("SELECT COUNT(*) n FROM pages")!.n;
-  assert.throws(() => command(viewer, { action: "table.toDatabase", pageId: host, rows }), /Kein|Zugriff|Rechte|darf/i);
+  const before = (await one<{ n: number }>("SELECT COUNT(*) n FROM pages"))!.n;
+  await assert.rejects(async () => await command(viewer, { action: "table.toDatabase", pageId: host, rows }), /Kein|Zugriff|Rechte|darf/i);
   // A guest who may edit the document still may not create pages.
-  const guest = user("guest");
-  run("INSERT INTO members VALUES(?,?,?)", wid, guest.id, "editor");
-  run("INSERT INTO workspace_guests VALUES(?,?)", wid, guest.id);
-  run("INSERT INTO grants(resource_id,user_id,role) VALUES(?,?,?)", host, guest.id, "editor");
-  assert.throws(() => command(guest, { action: "table.toDatabase", pageId: host, rows }), /Gäste/);
+  const guest = await user("guest");
+  await run("INSERT INTO members VALUES(?,?,?)", wid, guest.id, "editor");
+  await run("INSERT INTO workspace_guests VALUES(?,?)", wid, guest.id);
+  await run("INSERT INTO grants(resource_id,user_id,role) VALUES(?,?,?)", host, guest.id, "editor");
+  await assert.rejects(async () => await command(guest, { action: "table.toDatabase", pageId: host, rows }), /Gäste/);
   // Too many columns or rows: refused with the importer's limits.
   const wide = [Array.from({ length: TABLE_DATABASE_LIMITS.columns + 1 }, (_, i) => ({ text: `S${i}` }))];
-  assert.throws(() => command(owner, { action: "table.toDatabase", pageId: host, rows: wide }), (e: Error & { status?: number }) => e.status === 413);
+  await assert.rejects(async () => await command(owner, { action: "table.toDatabase", pageId: host, rows: wide }), (e: Error & { status?: number }) => e.status === 413);
   const long = Array.from({ length: TABLE_DATABASE_LIMITS.rows + 2 }, (_, i) => [{ text: `R${i}` }]);
-  assert.throws(() => command(owner, { action: "table.toDatabase", pageId: host, rows: long }));
+  await assert.rejects(async () => await command(owner, { action: "table.toDatabase", pageId: host, rows: long }));
   // Encrypted spaces have no databases.
-  run("UPDATE spaces SET encrypted=1 WHERE id=?", space);
-  assert.throws(() => command(owner, { action: "table.toDatabase", pageId: host, rows }), (e: Error & { status?: number }) => e.status === 409);
-  run("UPDATE spaces SET encrypted=0 WHERE id=?", space);
-  assert.equal(one<{ n: number }>("SELECT COUNT(*) n FROM pages")!.n, before);
+  await run("UPDATE spaces SET encrypted=1 WHERE id=?", space);
+  await assert.rejects(async () => await command(owner, { action: "table.toDatabase", pageId: host, rows }), (e: Error & { status?: number }) => e.status === 409);
+  await run("UPDATE spaces SET encrypted=0 WHERE id=?", space);
+  assert.equal((await one<{ n: number }>("SELECT COUNT(*) n FROM pages"))!.n, before);
 });

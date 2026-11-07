@@ -17,9 +17,9 @@ const {
   listDateReminders,
 } = await import("../lib/date-reminders");
 
-function account(name: string) {
+async function account(name: string) {
   const uid = id();
-  run(
+  await run(
     "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
     uid,
     uid,
@@ -36,24 +36,24 @@ function account(name: string) {
     created_at: "",
   } as Identity;
 }
-const owner = account("reminder-owner"),
-  viewer = account("reminder-viewer"),
-  stranger = account("reminder-stranger");
-const wid = createWorkspace(owner.id, "Reminder workspace");
-run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
-const space = bootstrap(owner, wid).spaces[0];
-const page = command(owner, {
+const owner = await account("reminder-owner"),
+  viewer = await account("reminder-viewer"),
+  stranger = await account("reminder-stranger");
+const wid = await createWorkspace(owner.id, "Reminder workspace");
+await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
+const space = (await bootstrap(owner, wid)).spaces[0];
+const page = (await command(owner, {
   action: "page.create",
   workspaceId: wid,
   spaceId: space.id,
   title: "Termine",
   kind: "database",
-}) as { id: string };
-const schema = one<{ version: number }>(
+})) as { id: string };
+const schema = (await one<{ version: number }>(
   "SELECT version FROM databases WHERE page_id=?",
   page.id,
-)!;
-command(owner, {
+))!;
+await command(owner, {
   action: "database.update",
   pageId: page.id,
   version: schema.version,
@@ -64,20 +64,20 @@ command(owner, {
   ],
   views: [{ id: "t", name: "Tabelle", type: "table", filters: [], sorts: [] }],
 });
-const createRow = (cells: Record<string, unknown>) =>
+const createRow = async (cells: Record<string, unknown>) =>
   (
-    command(owner, { action: "row.create", pageId: page.id, cells }) as {
+    (await command(owner, { action: "row.create", pageId: page.id, cells })) as {
       id: string;
     }
   ).id;
-const setCells = (rowId: string, cells: Record<string, unknown>) =>
-  run(
+const setCells = async (rowId: string, cells: Record<string, unknown>) =>
+  await run(
     "UPDATE rows SET cells=?,version=version+1 WHERE id=?",
     JSON.stringify(cells),
     rowId,
   );
-const inbox = (user: Identity) =>
-  all<{ body: string; row_id: string }>(
+const inbox = async (user: Identity) =>
+  await all<{ body: string; row_id: string }>(
     "SELECT body,row_id FROM notifications WHERE user_id=? AND body LIKE 'Erinnerung:%' ORDER BY created_at",
     user.id,
   );
@@ -112,12 +112,12 @@ test("reminder targets follow timed offsets, all-day 09:00 and DST", () => {
   assert.equal(reminderLabel(0, true), "Zum Zeitpunkt des Termins");
 });
 
-test("reminders are personal, validated and fire exactly once per date value", () => {
+test("reminders are personal, validated and fire exactly once per date value", async () => {
   const now = Date.now();
-  const rowId = createRow({ title: "Review", due: iso(now + 3600000) });
-  assert.throws(
-    () =>
-      command(stranger, {
+  const rowId = await createRow({ title: "Review", due: iso(now + 3600000) });
+  await assert.rejects(
+    async () =>
+      await command(stranger, {
         action: "reminder.set",
         pageId: page.id,
         rowId,
@@ -132,9 +132,9 @@ test("reminders are personal, validated and fire exactly once per date value", (
     [{ fieldId: "due", offset: 7, timeZone: "UTC" }, /passt nicht/],
     [{ fieldId: "due", offset: 0, timeZone: "Nowhere/Zone" }, /Zeitzone/],
   ] as const)
-    assert.throws(
-      () =>
-        command(viewer, {
+    await assert.rejects(
+      async () =>
+        await command(viewer, {
           action: "reminder.set",
           pageId: page.id,
           rowId,
@@ -143,11 +143,11 @@ test("reminders are personal, validated and fire exactly once per date value", (
       message,
     );
   // Viewers may set personal reminders without changing the record.
-  const before = one<{ version: number }>(
+  const before = (await one<{ version: number }>(
     "SELECT version FROM rows WHERE id=?",
     rowId,
-  )!.version;
-  command(viewer, {
+  ))!.version;
+  await command(viewer, {
     action: "reminder.set",
     pageId: page.id,
     rowId,
@@ -156,38 +156,38 @@ test("reminders are personal, validated and fire exactly once per date value", (
     timeZone: "Europe/Berlin",
   });
   assert.equal(
-    one<{ version: number }>("SELECT version FROM rows WHERE id=?", rowId)!
+    (await one<{ version: number }>("SELECT version FROM rows WHERE id=?", rowId))!
       .version,
     before,
   );
-  assert.deepEqual(listDateReminders(viewer, page.id), [
+  assert.deepEqual(await listDateReminders(viewer, page.id), [
     { rowId, fieldId: "due", offset: 30, timeZone: "Europe/Berlin" },
   ]);
-  assert.deepEqual(listDateReminders(owner, page.id), []);
+  assert.deepEqual(await listDateReminders(owner, page.id), []);
   // Not yet due.
-  assert.equal(processDateReminders(now + 20 * 60000), 0);
-  assert.equal(processDateReminders(now + 31 * 60000), 1);
-  assert.equal(processDateReminders(now + 32 * 60000), 0);
-  const [note] = inbox(viewer);
+  assert.equal(await processDateReminders(now + 20 * 60000), 0);
+  assert.equal(await processDateReminders(now + 31 * 60000), 1);
+  assert.equal(await processDateReminders(now + 32 * 60000), 0);
+  const [note] = await inbox(viewer);
   assert.equal(note.row_id, rowId);
   assert.match(note.body, /^Erinnerung: „Review“ – Fällig: /);
-  assert.equal(inbox(owner).length, 0);
+  assert.equal((await inbox(owner)).length, 0);
   // Push delivery is queued through the existing notification trigger.
   assert.equal(
-    one<{ n: number }>(
+    (await one<{ n: number }>(
       "SELECT COUNT(*) n FROM notifications WHERE user_id=? AND page_id=? AND row_id=?",
       viewer.id,
       page.id,
       rowId,
-    )!.n,
+    ))!.n,
     1,
   );
 
   // A changed date re-arms the reminder; the cleared offset removes it.
-  setCells(rowId, { title: "Review", due: iso(now + 2 * 3600000) });
-  assert.equal(processDateReminders(now + 40 * 60000), 0);
-  assert.equal(processDateReminders(now + 91 * 60000), 1);
-  command(viewer, {
+  await setCells(rowId, { title: "Review", due: iso(now + 2 * 3600000) });
+  assert.equal(await processDateReminders(now + 40 * 60000), 0);
+  assert.equal(await processDateReminders(now + 91 * 60000), 1);
+  await command(viewer, {
     action: "reminder.set",
     pageId: page.id,
     rowId,
@@ -195,13 +195,13 @@ test("reminders are personal, validated and fire exactly once per date value", (
     offset: null,
     timeZone: "UTC",
   });
-  assert.deepEqual(listDateReminders(viewer, page.id), []);
+  assert.deepEqual(await listDateReminders(viewer, page.id), []);
 });
 
-test("past moments do not flood, access and schema changes are respected", () => {
+test("past moments do not flood, access and schema changes are respected", async () => {
   const now = Date.now();
-  const past = createRow({ title: "Gestern", due: iso(now - 86400000) });
-  command(owner, {
+  const past = await createRow({ title: "Gestern", due: iso(now - 86400000) });
+  await command(owner, {
     action: "reminder.set",
     pageId: page.id,
     rowId: past,
@@ -209,10 +209,10 @@ test("past moments do not flood, access and schema changes are respected", () =>
     offset: 0,
     timeZone: "UTC",
   });
-  assert.equal(processDateReminders(now + 1000), 0);
+  assert.equal(await processDateReminders(now + 1000), 0);
 
-  const hidden = createRow({ title: "Geheim", due: iso(now + 60000) });
-  command(viewer, {
+  const hidden = await createRow({ title: "Geheim", due: iso(now + 60000) });
+  await command(viewer, {
     action: "reminder.set",
     pageId: page.id,
     rowId: hidden,
@@ -220,17 +220,17 @@ test("past moments do not flood, access and schema changes are respected", () =>
     offset: 0,
     timeZone: "UTC",
   });
-  const count = inbox(viewer).length;
-  run("DELETE FROM members WHERE workspace_id=? AND user_id=?", wid, viewer.id);
-  assert.equal(processDateReminders(now + 2 * 60000), 0);
-  assert.equal(inbox(viewer).length, count);
+  const count = (await inbox(viewer)).length;
+  await run("DELETE FROM members WHERE workspace_id=? AND user_id=?", wid, viewer.id);
+  assert.equal(await processDateReminders(now + 2 * 60000), 0);
+  assert.equal((await inbox(viewer)).length, count);
   // Access returns within the grace window; the reminder is kept and fires.
-  run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
-  assert.equal(processDateReminders(now + 2 * 60000), 1);
+  await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
+  assert.equal(await processDateReminders(now + 2 * 60000), 1);
 
   // Deleting the record removes its reminders.
-  const doomed = createRow({ title: "Weg", due: iso(now + 3600000) });
-  command(owner, {
+  const doomed = await createRow({ title: "Weg", due: iso(now + 3600000) });
+  await command(owner, {
     action: "reminder.set",
     pageId: page.id,
     rowId: doomed,
@@ -238,15 +238,15 @@ test("past moments do not flood, access and schema changes are respected", () =>
     offset: 0,
     timeZone: "UTC",
   });
-  command(owner, { action: "row.delete", pageId: page.id, rowId: doomed });
+  await command(owner, { action: "row.delete", pageId: page.id, rowId: doomed });
   assert.equal(
-    one("SELECT 1 FROM date_reminders WHERE row_id=?", doomed),
+    await one("SELECT 1 FROM date_reminders WHERE row_id=?", doomed),
     undefined,
   );
 
   // A field that is no longer a date property drops its reminders.
-  const later = createRow({ title: "Später", due: iso(now + 3600000) });
-  command(owner, {
+  const later = await createRow({ title: "Später", due: iso(now + 3600000) });
+  await command(owner, {
     action: "reminder.set",
     pageId: page.id,
     rowId: later,
@@ -254,11 +254,11 @@ test("past moments do not flood, access and schema changes are respected", () =>
     offset: 0,
     timeZone: "UTC",
   });
-  const current = one<{ version: number; views: string }>(
+  const current = (await one<{ version: number; views: string }>(
     "SELECT version,views FROM databases WHERE page_id=?",
     page.id,
-  )!;
-  command(owner, {
+  ))!;
+  await command(owner, {
     action: "database.update",
     pageId: page.id,
     version: current.version,
@@ -268,14 +268,14 @@ test("past moments do not flood, access and schema changes are respected", () =>
     ],
     views: JSON.parse(current.views),
   });
-  processDateReminders(now);
+  await processDateReminders(now);
   assert.equal(
-    one("SELECT 1 FROM date_reminders WHERE row_id=?", later),
+    await one("SELECT 1 FROM date_reminders WHERE row_id=?", later),
     undefined,
   );
 
   // Leaving the workspace clears personal reminders there.
-  run(
+  await run(
     "INSERT INTO date_reminders(user_id,page_id,row_id,field_id,offset_minutes,time_zone,armed_at) VALUES(?,?,?,?,?,?,?)",
     viewer.id,
     page.id,
@@ -285,13 +285,13 @@ test("past moments do not flood, access and schema changes are respected", () =>
     "UTC",
     now,
   );
-  command(viewer, {
+  await command(viewer, {
     action: "workspace.leave",
     workspaceId: wid,
     confirmName: "Reminder workspace",
   });
   assert.equal(
-    one("SELECT 1 FROM date_reminders WHERE user_id=?", viewer.id),
+    await one("SELECT 1 FROM date_reminders WHERE user_id=?", viewer.id),
     undefined,
   );
 });

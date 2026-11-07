@@ -14,9 +14,9 @@ const { command, bootstrap, database } = await import("../lib/api");
 const { snapshotChanges, pruneSnapshots, htmlParagraphs, retentionDays } =
   await import("../lib/version-history");
 
-function account(name: string) {
+async function account(name: string) {
   const uid = id();
-  run(
+  await run(
     "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
     uid,
     uid,
@@ -33,22 +33,22 @@ function account(name: string) {
     created_at: "",
   } as Identity;
 }
-const owner = account("history-owner"),
-  stranger = account("history-stranger");
-const wid = createWorkspace(owner.id, "Verlauf");
-const space = bootstrap(owner, wid).spaces[0].id;
-const create = (title: string, kind = "document") =>
+const owner = await account("history-owner"),
+  stranger = await account("history-stranger");
+const wid = await createWorkspace(owner.id, "Verlauf");
+const space = (await bootstrap(owner, wid)).spaces[0].id;
+const create = async (title: string, kind = "document") =>
   (
-    command(owner, {
+    (await command(owner, {
       action: "page.create",
       workspaceId: wid,
       spaceId: space,
       title,
       kind,
-    }) as { id: string }
+    })) as { id: string }
   ).id;
-const setHtml = (pageId: string, html: string) =>
-  run("UPDATE documents SET html=? WHERE page_id=?", html, pageId);
+const setHtml = async (pageId: string, html: string) =>
+  await run("UPDATE documents SET html=? WHERE page_id=?", html, pageId);
 
 test("paragraph extraction keeps block boundaries and decodes entities", () => {
   assert.deepEqual(
@@ -59,19 +59,19 @@ test("paragraph extraction keeps block boundaries and decodes entities", () => {
   );
 });
 
-test("document versions compare to the current text with word-level changes", () => {
-  const page = create("Protokoll");
-  setHtml(page, "<p>Der Hund bellt laut</p><p>Ende</p>");
+test("document versions compare to the current text with word-level changes", async () => {
+  const page = await create("Protokoll");
+  await setHtml(page, "<p>Der Hund bellt laut</p><p>Ende</p>");
   const snapshot = (
-    command(owner, { action: "page.snapshot", pageId: page }) as { id: string }
+    (await command(owner, { action: "page.snapshot", pageId: page })) as { id: string }
   ).id;
   assert.equal(
-    one<{ kind: string }>("SELECT kind FROM snapshots WHERE id=?", snapshot)!
+    (await one<{ kind: string }>("SELECT kind FROM snapshots WHERE id=?", snapshot))!
       .kind,
     "manual",
   );
-  setHtml(page, "<p>Der Hund schläft laut</p><p>Neu</p><p>Ende</p>");
-  const result = snapshotChanges(owner, page, snapshot);
+  await setHtml(page, "<p>Der Hund schläft laut</p><p>Neu</p><p>Ende</p>");
+  const result = await snapshotChanges(owner, page, snapshot);
   assert.equal(result.kind, "document");
   assert.deepEqual(result.changes, [
     {
@@ -89,21 +89,21 @@ test("document versions compare to the current text with word-level changes", ()
   ]);
   if (result.kind === "document")
     assert.deepEqual(result.words, { added: 2, removed: 1 });
-  assert.throws(
-    () => snapshotChanges(stranger, page, snapshot),
+  await assert.rejects(
+    async () => await snapshotChanges(stranger, page, snapshot),
     /Berechtigung/,
   );
-  const other = create("Andere");
-  assert.throws(
-    () => snapshotChanges(owner, other, snapshot),
+  const other = await create("Andere");
+  await assert.rejects(
+    async () => await snapshotChanges(owner, other, snapshot),
     /nicht gefunden/,
   );
 });
 
-test("databases snapshot automatically at the start of an editing session and summarize changes", () => {
-  const page = create("Aufgaben", "database");
-  const d = database(page);
-  command(owner, {
+test("databases snapshot automatically at the start of an editing session and summarize changes", async () => {
+  const page = await create("Aufgaben", "database");
+  const d = await database(page);
+  await command(owner, {
     action: "database.update",
     pageId: page,
     version: d.version,
@@ -111,42 +111,42 @@ test("databases snapshot automatically at the start of an editing session and su
     views: d.views,
   });
   const first = (
-    command(owner, {
+    (await command(owner, {
       action: "row.create",
       pageId: page,
       cells: { title: "Alt", note: "x" },
-    }) as { id: string }
+    })) as { id: string }
   ).id;
-  const snapshots = () =>
-    all<{ id: string; kind: string }>(
+  const snapshots = async () =>
+    await all<{ id: string; kind: string }>(
       "SELECT id,kind FROM snapshots WHERE page_id=? ORDER BY seq",
       page,
     );
   // A fresh database has no automatic version yet.
-  assert.equal(snapshots().length, 0);
+  assert.equal((await snapshots()).length, 0);
   // After ten quiet minutes the next edit keeps the previous state.
-  run("UPDATE pages SET updated_at=? WHERE id=?", nowText(Date.now() - 3_600_000), page);
-  run(
+  await run("UPDATE pages SET updated_at=? WHERE id=?", nowText(Date.now() - 3_600_000), page);
+  await run(
     "UPDATE rows SET updated_at=? WHERE page_id=?", nowText(Date.now() - 3_600_000),
     page,
   );
-  command(owner, {
+  await command(owner, {
     action: "row.update",
     pageId: page,
     rowId: first,
     version: 1,
     cells: { note: "y" },
   });
-  command(owner, {
+  await command(owner, {
     action: "row.create",
     pageId: page,
     cells: { title: "Neu" },
   });
   assert.deepEqual(
-    snapshots().map((s) => s.kind),
+    (await snapshots()).map((s) => s.kind),
     ["auto"],
   );
-  const result = snapshotChanges(owner, page, snapshots()[0].id);
+  const result = await snapshotChanges(owner, page, (await snapshots())[0].id);
   assert.equal(result.kind, "database");
   if (result.kind === "database") {
     assert.deepEqual(result.changes.rows.added, ["Neu"]);
@@ -157,10 +157,10 @@ test("databases snapshot automatically at the start of an editing session and su
   }
 });
 
-test("retention thins and expires automatic versions but keeps manual ones", () => {
-  const page = create("Aufbewahrung");
-  const insert = (age: string, kind: string, hour = 0) =>
-    run(
+test("retention thins and expires automatic versions but keeps manual ones", async () => {
+  const page = await create("Aufbewahrung");
+  const insert = async (age: string, kind: string, hour = 0) =>
+    await run(
       "INSERT INTO snapshots(id,page_id,html,title,created_at,kind) VALUES(?,?,?,?,?,?)",
       id(),
       page,
@@ -171,49 +171,49 @@ test("retention thins and expires automatic versions but keeps manual ones", () 
       kind,
     );
   // Anchored at the start of a day so hours never cross midnight.
-  insert("-1 days", "auto");
-  insert("-1 days", "auto", 1);
-  insert("-20 days", "auto");
-  insert("-20 days", "auto", 1);
-  insert("-20 days", "auto", 2);
-  insert("-400 days", "auto");
-  insert("-400 days", "manual");
-  const count = (kind: string) =>
-    one<{ n: number }>(
+  await insert("-1 days", "auto");
+  await insert("-1 days", "auto", 1);
+  await insert("-20 days", "auto");
+  await insert("-20 days", "auto", 1);
+  await insert("-20 days", "auto", 2);
+  await insert("-400 days", "auto");
+  await insert("-400 days", "manual");
+  const count = async (kind: string) =>
+    (await one<{ n: number }>(
       "SELECT COUNT(*) n FROM snapshots WHERE page_id=? AND kind=?",
       page,
       kind,
-    )!.n;
-  assert.equal(retentionDays(), 180);
-  pruneSnapshots(180);
+    ))!.n;
+  assert.equal(await retentionDays(), 180);
+  await pruneSnapshots(180);
   // Recent autos stay, the 20-day-old day keeps one, the old one expires.
-  assert.equal(count("auto"), 3);
-  assert.equal(count("manual"), 1);
-  pruneSnapshots(0);
-  assert.equal(count("auto"), 3);
+  assert.equal(await count("auto"), 3);
+  assert.equal(await count("manual"), 1);
+  await pruneSnapshots(0);
+  assert.equal(await count("auto"), 3);
   process.env.FLOWPLAN_SNAPSHOT_RETENTION_DAYS = "0";
-  assert.equal(retentionDays(), 0);
+  assert.equal(await retentionDays(), 0);
   process.env.FLOWPLAN_SNAPSHOT_RETENTION_DAYS = "x";
-  assert.equal(retentionDays(), 180);
+  assert.equal(await retentionDays(), 180);
   delete process.env.FLOWPLAN_SNAPSHOT_RETENTION_DAYS;
 });
 
 test("two saved versions compare with each other, also for record documents", async () => {
   const { rowSnapshotChanges } = await import("../lib/version-history");
   const { replaceRowDocument } = await import("../lib/row-documents");
-  const page = create("Zwei Versionen");
-  const save = () =>
+  const page = await create("Zwei Versionen");
+  const save = async () =>
     (
-      command(owner, { action: "page.snapshot", pageId: page }) as {
+      (await command(owner, { action: "page.snapshot", pageId: page })) as {
         id: string;
       }
     ).id;
-  setHtml(page, "<p>eins</p>");
-  const first = save();
-  setHtml(page, "<p>eins zwei</p>");
-  const second = save();
-  setHtml(page, "<p>drei</p>");
-  assert.deepEqual(snapshotChanges(owner, page, first, second).changes, [
+  await setHtml(page, "<p>eins</p>");
+  const first = await save();
+  await setHtml(page, "<p>eins zwei</p>");
+  const second = await save();
+  await setHtml(page, "<p>drei</p>");
+  assert.deepEqual((await snapshotChanges(owner, page, first, second)).changes, [
     {
       type: "changed",
       kind: "paragraph",
@@ -223,27 +223,27 @@ test("two saved versions compare with each other, also for record documents", as
       ],
     },
   ]);
-  assert.throws(
-    () => snapshotChanges(owner, page, first, id()),
+  await assert.rejects(
+    async () => await snapshotChanges(owner, page, first, id()),
     /nicht gefunden/,
   );
 
-  const db = create("Datensatzversionen", "database");
+  const db = await create("Datensatzversionen", "database");
   const row = (
-    command(owner, {
+    (await command(owner, {
       action: "row.create",
       pageId: db,
       cells: { title: "A" },
-    }) as { id: string }
+    })) as { id: string }
   ).id;
-  replaceRowDocument(row, "<p>Alt</p>", owner.id);
+  await replaceRowDocument(row, "<p>Alt</p>", owner.id);
   const version = (
-    command(owner, { action: "row.snapshot", pageId: db, rowId: row }) as {
+    (await command(owner, { action: "row.snapshot", pageId: db, rowId: row })) as {
       id: string;
     }
   ).id;
-  replaceRowDocument(row, "<p>Neu</p>", owner.id);
-  const changes = rowSnapshotChanges(owner, db, row, version).changes!;
+  await replaceRowDocument(row, "<p>Neu</p>", owner.id);
+  const changes = (await rowSnapshotChanges(owner, db, row, version)).changes!;
   assert.deepEqual(
     changes.flatMap((c) =>
       c.type === "changed"
@@ -252,8 +252,8 @@ test("two saved versions compare with each other, also for record documents", as
     ),
     ["removed:Alt", "added:Neu"],
   );
-  assert.throws(
-    () => rowSnapshotChanges(stranger, db, row, version),
+  await assert.rejects(
+    async () => await rowSnapshotChanges(stranger, db, row, version),
     /Berechtigung/,
   );
 });

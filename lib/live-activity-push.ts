@@ -27,6 +27,7 @@ import { deviceIdentity, liveLabelsSchema, openLiveToken, type LiveActivityKind,
 import { focusState, runningTimer } from "./mobile-widgets";
 import { pushContent, sendBatched, type RelayMessage, type RelayResult, type RelaySender } from "./push-relay";
 import type { Identity } from "./types";
+import { forEachAsync } from "./each-async";
 
 const MAX_ATTEMPTS = 5;
 const backoff = (attempts: number) => Math.min(600_000, 30_000 * 2 ** attempts);
@@ -107,7 +108,7 @@ type Built = { message: Omit<RelayMessage, "to">; end: boolean };
 
 // The push for this activity now; null when nothing may be sent (an update
 // without the app's labels).
-export function liveActivityMessage(kind: LiveActivityKind, user: Identity, labels: LiveLabels | null, now = Date.now()): Built | null {
+export async function liveActivityMessage(kind: LiveActivityKind, user: Identity, labels: LiveLabels | null, now = Date.now()): Promise<Built | null> {
   const content = pushContent("live");
   const end = (props: FocusViewProps | TimerViewProps): Built => ({
     end: true,
@@ -136,7 +137,7 @@ export function liveActivityMessage(kind: LiveActivityKind, user: Identity, labe
   });
   const texts = labels ?? NO_LABELS;
   if (kind === "focus") {
-    const state = focusState(user, now);
+    const state = await focusState(user, now);
     if (state.phase === "idle")
       return end(focusProps({ phase: "focus", startedAt: now, focusEndsAt: now, breakEndsAt: now, task: null }, texts, false));
     if (!labels) return null;
@@ -147,43 +148,43 @@ export function liveActivityMessage(kind: LiveActivityKind, user: Identity, labe
     );
     return update(props, props.endsAt);
   }
-  const timer = runningTimer(user);
+  const timer = await runningTimer(user);
   if (!timer) return end(timerProps({ start: now, title: "", database: "", url: "/" }, texts, false));
   if (!labels) return null;
   return update(timerProps(timer, labels, content), null);
 }
 
-function retry(deviceId: string, kind: string, at: number, attempts: number) {
+async function retry(deviceId: string, kind: string, at: number, attempts: number) {
   if (attempts >= MAX_ATTEMPTS) return;
-  run("INSERT INTO push_live_queue(device_id,kind,available_at,attempts) VALUES(?,?,?,?) ON CONFLICT DO NOTHING", deviceId, kind, Math.floor(at), attempts);
+  await run("INSERT INTO push_live_queue(device_id,kind,available_at,attempts) VALUES(?,?,?,?) ON CONFLICT DO NOTHING", deviceId, kind, Math.floor(at), attempts);
 }
-const forget = (deviceId: string, kind: string) => run("DELETE FROM mobile_live_activities WHERE device_id=? AND kind=?", deviceId, kind);
+const forget = async (deviceId: string, kind: string) => await run("DELETE FROM mobile_live_activities WHERE device_id=? AND kind=?", deviceId, kind);
 
 export async function flushLiveActivities(send: RelaySender, now = Date.now()) {
-  const due = all<{ device_id: string; kind: LiveActivityKind; attempts: number }>(
+  const due = await all<{ device_id: string; kind: LiveActivityKind; attempts: number }>(
     "SELECT device_id,kind,MAX(attempts) attempts FROM push_live_queue WHERE available_at<=? GROUP BY device_id,kind ORDER BY MIN(available_at) LIMIT 100",
     now,
   );
   const batch: { device_id: string; kind: LiveActivityKind; attempts: number; end: boolean; message: RelayMessage }[] = [];
   for (const item of due) {
     // Claimed by removing what is due; later entries (a phase end) stay.
-    if (!run("DELETE FROM push_live_queue WHERE device_id=? AND kind=? AND available_at<=?", item.device_id, item.kind, now).changes) continue;
-    const stored = one<{ relay_token: string; labels: string | null }>(
+    if (!(await run("DELETE FROM push_live_queue WHERE device_id=? AND kind=? AND available_at<=?", item.device_id, item.kind, now)).changes) continue;
+    const stored = await one<{ relay_token: string; labels: string | null }>(
       "SELECT relay_token,labels FROM mobile_live_activities WHERE device_id=? AND kind=?",
       item.device_id,
       item.kind,
     );
     if (!stored) continue;
-    const user = deviceIdentity(item.device_id);
+    const user = await deviceIdentity(item.device_id);
     if (!user) continue;
     let to: string;
     try {
       to = openLiveToken(item.device_id, item.kind, stored.relay_token);
     } catch {
-      forget(item.device_id, item.kind);
+      await forget(item.device_id, item.kind);
       continue;
     }
-    const built = liveActivityMessage(item.kind, user, parseLiveLabels(stored.labels), now);
+    const built = await liveActivityMessage(item.kind, user, parseLiveLabels(stored.labels), now);
     if (!built) continue;
     batch.push({ ...item, end: built.end, message: { to, ...built.message } });
   }
@@ -192,27 +193,27 @@ export async function flushLiveActivities(send: RelaySender, now = Date.now()) {
     batch.map((b) => b.message),
     send,
   );
-  batch.forEach((item, i) => outcome(item, results[i]));
+  await forEachAsync(batch, async (item, i) => await outcome(item, results[i]));
 }
 
-function outcome(item: { device_id: string; kind: LiveActivityKind; attempts: number; end: boolean }, result: RelayResult) {
+async function outcome(item: { device_id: string; kind: LiveActivityKind; attempts: number; end: boolean }, result: RelayResult) {
   switch (result.status) {
     case "ok":
       // An ended activity takes no more pushes; a new one brings a new token.
-      if (item.end) forget(item.device_id, item.kind);
+      if (item.end) await forget(item.device_id, item.kind);
       return;
     case "gone":
-      forget(item.device_id, item.kind);
+      await forget(item.device_id, item.kind);
       return;
     case "forbidden":
     case "invalid":
       console.warn(`push relay: removed a Live Activity registration (${result.status})`);
-      forget(item.device_id, item.kind);
+      await forget(item.device_id, item.kind);
       return;
     case "rate_limited":
-      retry(item.device_id, item.kind, Date.now() + (result.retryAfter ?? 60) * 1000, item.attempts);
+      await retry(item.device_id, item.kind, Date.now() + (result.retryAfter ?? 60) * 1000, item.attempts);
       return;
     default:
-      retry(item.device_id, item.kind, Date.now() + backoff(item.attempts), item.attempts + 1);
+      await retry(item.device_id, item.kind, Date.now() + backoff(item.attempts), item.attempts + 1);
   }
 }

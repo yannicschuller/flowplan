@@ -279,27 +279,27 @@ test("map-reduce: short content goes straight through; long content is summarise
 
 async function person(name: string): Promise<Identity> {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name.toLowerCase()}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name.toLowerCase()}@example.test`);
   const token = randomBytes(16).toString("hex");
-  run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", createHash("sha256").update(token).digest("hex"), uid, "[]", Date.now() + 3600_000);
+  await run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", createHash("sha256").update(token).digest("hex"), uid, "[]", Date.now() + 3600_000);
   return (await identityFromToken(token))!;
 }
 const admin = { ...(await person("Ada")), isAdmin: true };
 const ben = await person("Ben"),
   stranger = await person("Sam");
-const wid = createWorkspace(admin.id, "Team");
-run("INSERT INTO members VALUES(?,?,?)", wid, ben.id, "editor");
-const space = one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid)!.id;
-const notes = createPage(wid, space, admin.id, "Notizen");
-const secretPage = createPage(wid, space, admin.id, "Geheim");
-const tasks = createPage(wid, space, admin.id, "Aufgaben", "database");
-const document = (pageId: string, html: string) => run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), pageId);
-document(notes, "<h1>Planung</h1><p>Wir müssen bis Freitag die Folien fertig machen. INHALT-NOTIZEN</p>");
-document(secretPage, "<p>GEHEIMER-INHALT</p>");
-const rowA = (command(ben, { action: "row.create", pageId: tasks, cells: { title: "Login reparieren" } }) as { id: string }).id;
-const rowB = (command(ben, { action: "row.create", pageId: tasks, cells: { title: "Release vorbereiten" } }) as { id: string }).id;
-const rowPrivate = (command(admin, { action: "row.create", pageId: tasks, cells: { title: "PRIVATER-EINTRAG" } }) as { id: string }).id;
-run("UPDATE rows SET access='private' WHERE id=?", rowPrivate);
+const wid = await createWorkspace(admin.id, "Team");
+await run("INSERT INTO members VALUES(?,?,?)", wid, ben.id, "editor");
+const space = (await one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid))!.id;
+const notes = await createPage(wid, space, admin.id, "Notizen");
+const secretPage = await createPage(wid, space, admin.id, "Geheim");
+const tasks = await createPage(wid, space, admin.id, "Aufgaben", "database");
+const document = async (pageId: string, html: string) => await run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), pageId);
+await document(notes, "<h1>Planung</h1><p>Wir müssen bis Freitag die Folien fertig machen. INHALT-NOTIZEN</p>");
+await document(secretPage, "<p>GEHEIMER-INHALT</p>");
+const rowA = ((await command(ben, { action: "row.create", pageId: tasks, cells: { title: "Login reparieren" } })) as { id: string }).id;
+const rowB = ((await command(ben, { action: "row.create", pageId: tasks, cells: { title: "Release vorbereiten" } })) as { id: string }).id;
+const rowPrivate = ((await command(admin, { action: "row.create", pageId: tasks, cells: { title: "PRIVATER-EINTRAG" } })) as { id: string }).id;
+await run("UPDATE rows SET access='private' WHERE id=?", rowPrivate);
 
 // An OpenAI-compatible provider that remembers what it was asked.
 const asked: { system: string; user: string }[] = [];
@@ -322,22 +322,22 @@ const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`;
 // the file still awaits between tests, and later tests would find the
 // server gone. unref() lets the process end without it.
 server.unref();
-const setAi = (settings: Record<string, unknown>) => command(admin, { action: "admin.ai", settings });
+const setAi = async (settings: Record<string, unknown>) => await command(admin, { action: "admin.ai", settings });
 const never = new AbortController().signal;
 const write = (user: Identity, body: Record<string, unknown>) => aiWriteResponse(user, { pageId: notes, action: "improve", text: "Das ist ein Satz.", locale: "de", ...body }, never);
 const summarize = (user: Identity, body: Record<string, unknown>) => aiSummaryResponse(user, { pageId: notes, locale: "de", ...body }, never);
 
 test("both endpoints refuse while AI or the feature is off", async () => {
   await assert.rejects(write(ben, {}), /ausgeschaltet/);
-  setAi({ enabled: true, provider: { kind: "openai", baseUrl: base, model: "m1", embeddingModel: "" } });
-  setAi({ features: { write: false, summarize: false } });
+  await setAi({ enabled: true, provider: { kind: "openai", baseUrl: base, model: "m1", embeddingModel: "" } });
+  await setAi({ features: { write: false, summarize: false } });
   await assert.rejects(write(ben, {}), /Diese KI-Funktion ist auf dieser Instanz ausgeschaltet/);
   await assert.rejects(summarize(ben, {}), /Diese KI-Funktion ist auf dieser Instanz ausgeschaltet/);
-  setAi({ features: { write: true, summarize: true } });
-  command(ben, { action: "ai.settings", features: { summarize: false } });
+  await setAi({ features: { write: true, summarize: true } });
+  await command(ben, { action: "ai.settings", features: { summarize: false } });
   await assert.rejects(summarize(ben, {}), /in deinen Einstellungen ausgeschaltet/);
   assert.equal((await write(ben, {})).status, 200, "the other feature still works");
-  command(ben, { action: "ai.settings", features: { summarize: true } });
+  await command(ben, { action: "ai.settings", features: { summarize: true } });
   assert.equal(asked.length, 1);
 });
 
@@ -359,23 +359,23 @@ test("the writing assistant: prompt built on the server, the page as context onl
 
 test("refused: pages excluded for the AI, pages without read permission, API tokens", async () => {
   asked.length = 0;
-  command(ben, { action: "ai.rule", targetId: secretPage, mode: "exclude" });
+  await command(ben, { action: "ai.rule", targetId: secretPage, mode: "exclude" });
   await assert.rejects(write(ben, { pageId: secretPage }), /für die KI gesperrt/);
   await assert.rejects(summarize(ben, { pageId: secretPage }), /für die KI gesperrt/);
   // Also the selected text of an excluded page, and a voice note there.
   await assert.rejects(summarize(ben, { pageId: secretPage, text: "Transkript" }), /für die KI gesperrt/);
-  command(ben, { action: "ai.rule", targetId: secretPage, mode: null });
+  await command(ben, { action: "ai.rule", targetId: secretPage, mode: null });
   // A manager closes the page for everyone.
-  command(admin, { action: "ai.block", targetId: secretPage, kind: "page", blocked: true });
+  await command(admin, { action: "ai.block", targetId: secretPage, kind: "page", blocked: true });
   await assert.rejects(write(admin, { pageId: secretPage }), /für die KI gesperrt/);
-  command(admin, { action: "ai.block", targetId: secretPage, kind: "page", blocked: false });
+  await command(admin, { action: "ai.block", targetId: secretPage, kind: "page", blocked: false });
   // Not a member.
   await assert.rejects(write(stranger, {}), (e: Error & { status?: number }) => e.status === 403 || e.status === 404);
   await assert.rejects(summarize(stranger, {}), (e: Error & { status?: number }) => e.status === 403 || e.status === 404);
   // Another person's private record.
   await assert.rejects(summarize(ben, { pageId: tasks, rowId: rowPrivate }), (e: Error & { status?: number }) => e.status === 403 || e.status === 404);
   // API tokens.
-  const { token } = command(ben, { action: "token.create", name: "Skript", scope: "write" }) as { token: string };
+  const { token } = (await command(ben, { action: "token.create", name: "Skript", scope: "write" })) as { token: string };
   const viaToken = (await identityFromApiToken(`Bearer ${token}`))!;
   await assert.rejects(write(viaToken, {}), /API-Token/);
   await assert.rejects(summarize(viaToken, {}), /API-Token/);
@@ -408,7 +408,7 @@ test("summaries: a page, a record, a database view – only what the AI may read
   await (await summarize(ben, { text: "Ähm, wir müssen morgen die Folien machen und das Budget klären." })).text();
   assert.match(asked.at(-1)!.system, /voice note/);
   // Nothing to summarise.
-  const empty = createPage(wid, space, admin.id, "Leer");
+  const empty = await createPage(wid, space, admin.id, "Leer");
   await assert.rejects(summarize(ben, { pageId: empty }), /nichts, das sich zusammenfassen/);
 });
 
@@ -416,9 +416,9 @@ test("summaries of long pages go through map-reduce within the size limits", asy
   asked.length = 0;
   // Someone who has not used up the rate limit in the tests before.
   const lia = await person("Lia");
-  run("INSERT INTO members VALUES(?,?,?)", wid, lia.id, "editor");
-  const long = createPage(wid, space, admin.id, "Lang");
-  document(long, Array.from({ length: 40 }, (_, i) => `<h2>Teil ${i}</h2><p>${"Wir besprechen die Planung für das nächste Quartal. ".repeat(12)}</p>`).join(""));
+  await run("INSERT INTO members VALUES(?,?,?)", wid, lia.id, "editor");
+  const long = await createPage(wid, space, admin.id, "Lang");
+  await document(long, Array.from({ length: 40 }, (_, i) => `<h2>Teil ${i}</h2><p>${"Wir besprechen die Planung für das nächste Quartal. ".repeat(12)}</p>`).join(""));
   const response = await summarize(lia, { pageId: long });
   await response.text();
   const parts = Number(response.headers.get("X-Flowplan-AI-Parts"));

@@ -29,7 +29,7 @@ const computed = [
   "progress",
   "time",
 ];
-export function validateCellPatch(
+export async function validateCellPatch(
   user: Identity,
   page: Page,
   fields: Field[],
@@ -40,7 +40,7 @@ export function validateCellPatch(
   if (!Object.keys(patch).length)
     throw new HttpError(400, "Mindestens eine Eigenschaft wählen.");
   // Properties this person may not change (lib/field-access.ts).
-  assertFieldsWritable(user, page, fields, Object.keys(patch));
+  await assertFieldsWritable(user, page, fields, Object.keys(patch));
   for (const [key, value] of Object.entries(patch)) {
     const f = fields.find((f) => f.id === key);
     if (!f || computed.includes(f.type))
@@ -54,7 +54,7 @@ export function validateCellPatch(
     } else if (f.type === "checkbox") result[key] = z.boolean().parse(value);
     else if (isTagField(f))
       // The workspace's tags; new names create tags when allowed (#79).
-      result[key] = tagCell(user, page, f, z.array(z.string().max(1000)).max(100).parse(value));
+      result[key] = await tagCell(user, page, f, z.array(z.string().max(1000)).max(100).parse(value));
     else if (f.type === "multiselect") {
       const values = z.array(z.string()).max(100).parse(value);
       if (values.some((v) => !f.options?.includes(v)))
@@ -79,7 +79,7 @@ export function validateCellPatch(
         const fid = fileIdOf(url);
         if (
           fid &&
-          !one("SELECT id FROM files WHERE id=? AND page_id=?", fid, page.id)
+          !(await one("SELECT id FROM files WHERE id=? AND page_id=?", fid, page.id))
         )
           throw new HttpError(400, "Datei gehört nicht zu dieser Datenbank.");
       }
@@ -91,14 +91,14 @@ export function validateCellPatch(
       if (!f.relationPage && ids.length)
         throw new HttpError(400, "Relationsziel fehlt.");
       if (f.relationPage) {
-        requirePage(user, f.relationPage);
+        await requirePage(user, f.relationPage);
         for (const rid of ids)
           if (
-            !one(
+            !(await one(
               "SELECT id FROM rows WHERE id=? AND page_id=?",
               rid,
               f.relationPage,
-            )
+            ))
           )
             throw new HttpError(400, "Verknüpfter Eintrag fehlt.");
       }
@@ -107,16 +107,16 @@ export function validateCellPatch(
       const text = z.string().max(10000).parse(value);
       if (f.type === "select" && text && !f.options?.includes(text))
         throw new HttpError(400, "Unbekannte Auswahl.");
-      if (f.type === "sprint" && text && !databaseSettings(page.id).sprints?.some((s) => s.id === text))
+      if (f.type === "sprint" && text && !(await databaseSettings(page.id)).sprints?.some((s) => s.id === text))
         throw new HttpError(400, "Unbekannter Sprint.");
       if (
         f.type === "person" &&
         text &&
-        !one(
+        !(await one(
           "SELECT user_id FROM members WHERE workspace_id=? AND user_id=?",
           page.workspace_id,
           text,
-        )
+        ))
       )
         throw new HttpError(400, "Mitglied fehlt.");
       if (f.type === "date" && text && !validDateValue(text))
@@ -130,8 +130,8 @@ export function validateCellPatch(
 }
 // Automatic database version at the start of an editing session: the first
 // edit after 10 quiet minutes keeps the previous state.
-export function autoDatabaseSnapshot(user: Identity, page: Page) {
-  const recent = one(
+export async function autoDatabaseSnapshot(user: Identity, page: Page) {
+  const recent = await one(
     `SELECT 1 WHERE EXISTS(SELECT 1 FROM snapshots WHERE page_id=? AND created_at>?)
        OR EXISTS(SELECT 1 FROM pages WHERE id=? AND updated_at>?)
        OR EXISTS(SELECT 1 FROM rows WHERE page_id=? AND updated_at>?)`,
@@ -139,23 +139,23 @@ export function autoDatabaseSnapshot(user: Identity, page: Page) {
     page.id, nowText(Date.now() - 600_000),
     page.id, nowText(Date.now() - 600_000),
   );
-  if (!recent) databaseSnapshot(user, page);
+  if (!recent) await databaseSnapshot(user, page);
 }
-export function databaseSnapshot(user: Identity, page: Page) {
-  const db = one<{ fields: string; views: string; record_layout: string }>(
+export async function databaseSnapshot(user: Identity, page: Page) {
+  const db = (await one<{ fields: string; views: string; record_layout: string }>(
     "SELECT fields,views,record_layout FROM databases WHERE page_id=?",
     page.id,
-  )!;
-  const rows = all<Row & { cells: string }>(
+  ))!;
+  const rows = await mapAsync(await all<Row & { cells: string }>(
     "SELECT * FROM rows WHERE page_id=? ORDER BY position",
     page.id,
-  ).map((r) => ({
+  ), async (r) => ({
     ...r,
     cells: JSON.parse(r.cells),
-    ...(r.access && r.access !== "inherit" ? { grants: rowGrants(r.id) } : {}),
+    ...(r.access && r.access !== "inherit" ? { grants: await rowGrants(r.id) } : {}),
   }));
   const snapshotId = id();
-  run(
+  await run(
     "INSERT INTO snapshots(id,page_id,html,title,created_by) VALUES(?,?,?,?,?)",
     snapshotId,
     page.id,
@@ -165,11 +165,11 @@ export function databaseSnapshot(user: Identity, page: Page) {
         views: JSON.parse(db.views),
         recordLayout: JSON.parse(db.record_layout || "{}"),
       },
-      relationPairs: relationPairs(page.id),
+      relationPairs: await relationPairs(page.id),
       rows,
-      comments: all("SELECT * FROM comments WHERE page_id=?", page.id),
-      inlineThreads: exportInlineComments(page.id),
-      rowTemplates: all<{
+      comments: await all("SELECT * FROM comments WHERE page_id=?", page.id),
+      inlineThreads: await exportInlineComments(page.id),
+      rowTemplates: (await all<{
         name: string;
         cells: string;
         html: string;
@@ -177,10 +177,10 @@ export function databaseSnapshot(user: Identity, page: Page) {
       }>(
         "SELECT name,cells,html,is_default FROM row_templates WHERE page_id=?",
         page.id,
-      ).map((t) => ({ ...t, cells: JSON.parse(t.cells) })),
+      )).map((t) => ({ ...t, cells: JSON.parse(t.cells) })),
       formConfig: JSON.parse(
         String(
-          one("SELECT config FROM forms WHERE page_id=?", page.id)?.config ||
+          (await one("SELECT config FROM forms WHERE page_id=?", page.id))?.config ||
             "{}",
         ),
       ),
@@ -190,12 +190,12 @@ export function databaseSnapshot(user: Identity, page: Page) {
   );
   return snapshotId;
 }
-export function bulkRows(
+export async function bulkRows(
   user: Identity,
   pageId: string,
   input: Record<string, unknown>,
 ) {
-  const page = requirePage(user, pageId, true);
+  const page = await requirePage(user, pageId, true);
   if (page.locked) throw new HttpError(409, "Datenbank ist gesperrt.");
   if (page.kind !== "database") throw new HttpError(400, "Keine Datenbank.");
   const operation = z
@@ -210,9 +210,9 @@ export function bulkRows(
       .parse(input.rows);
   if (new Set(selected.map((r) => r.id)).size !== selected.length)
     throw new HttpError(400, "Doppelte Einträge in der Auswahl.");
-  const access = rowRoleResolver(user, page);
-  const source = selected.map((selection) => {
-    const row = one<Row & { cells: string }>(
+  const access = await rowRoleResolver(user, page);
+  const source = await mapAsync(selected, async (selection) => {
+    const row = await one<Row & { cells: string }>(
       "SELECT * FROM rows WHERE id=? AND page_id=?",
       selection.id,
       pageId,
@@ -231,31 +231,31 @@ export function bulkRows(
       );
     return row;
   });
-  const db = one<{ fields: string }>(
+  const db = (await one<{ fields: string }>(
       "SELECT fields FROM databases WHERE page_id=?",
       pageId,
-    )!,
+    ))!,
     fields: Field[] = JSON.parse(db.fields);
   const patch =
     operation === "update"
-      ? validateCellPatch(user, page, fields, input.cells)
+      ? (await validateCellPatch(user, page, fields, input.cells))
       : null;
-  const snapshotId = databaseSnapshot(user, page),
+  const snapshotId = await databaseSnapshot(user, page),
     mapping = new Map(source.map((r) => [r.id, id()]));
   for (const row of source) {
     if (operation === "update") {
       const cells = { ...JSON.parse(row.cells), ...patch };
       if (JSON.stringify(cells).length > 200000)
         throw new HttpError(413, "Datensatz zu groß.");
-      run(
+      await run(
         "UPDATE rows SET cells=?,updated_at=?,updated_by=?,version=version+1 WHERE id=?",
         JSON.stringify(cells), nowText(),
         user.id,
         row.id,
       );
-      rowChanged(user, page, row.id, JSON.parse(row.cells), cells, fields);
+      await rowChanged(user, page, row.id, JSON.parse(row.cells), cells, fields);
     } else if (operation === "delete") {
-      trashRow(user, page, row.id);
+      await trashRow(user, page, row.id);
     } else {
       const cells = JSON.parse(row.cells);
       for (const f of fields)
@@ -264,7 +264,7 @@ export function bulkRows(
             (rid: string) => mapping.get(rid) || rid,
           );
       const rid = mapping.get(row.id)!;
-      run(
+      await run(
         "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,icon,cover,recurrence,access,repeat) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
         rid,
         pageId,
@@ -279,22 +279,22 @@ export function bulkRows(
         row.repeat || "",
       );
       // Copies keep the record permissions of their original.
-      run(
+      await run(
         "INSERT INTO row_grants(row_id,user_id,group_id,role) SELECT ?,user_id,group_id,role FROM row_grants WHERE row_id=?",
         rid,
         row.id,
       );
       const html = String(
-        one("SELECT html FROM row_documents WHERE row_id=?", row.id)?.html ||
+        (await one("SELECT html FROM row_documents WHERE row_id=?", row.id))?.html ||
           row.content ||
           "",
       );
-      replaceRowDocument(rid, html, user.id);
+      await replaceRowDocument(rid, html, user.id);
     }
   }
-  run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), pageId);
+  await run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), pageId);
   if (operation !== "update")
-    maintainRowOrders(pageId, operation === "duplicate" ? mapping : undefined);
+    await maintainRowOrders(pageId, operation === "duplicate" ? mapping : undefined);
   return {
     count: source.length,
     snapshotId,
@@ -305,3 +305,4 @@ import { exportInlineComments } from "./inline-comment-archive";
 import { rowChanged } from "./automations";
 import { databaseSettings } from "./database-settings";
 import { isTagField, tagCell } from "./tag-fields";
+import { mapAsync } from "./each-async";

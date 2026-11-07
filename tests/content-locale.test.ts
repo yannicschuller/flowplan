@@ -9,29 +9,29 @@ const { ensureWorkspace } = await import("../lib/seed");
 const { withContentLocale, localeOfRequest } = await import("../lib/content-locale");
 const { isAutoDayTitle, dayTitle } = await import("../lib/journal-title");
 
-const user = (name: string) => {
+const user = async (name: string) => {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${uid}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${uid}@example.test`);
   return uid;
 };
-const titles = (uid: string) =>
-  all<{ title: string }>(
+const titles = async (uid: string) =>
+  (await all<{ title: string }>(
     "SELECT p.title FROM pages p JOIN members m ON m.workspace_id=p.workspace_id WHERE m.user_id=? ORDER BY p.title",
     uid,
-  ).map((p) => p.title);
+  )).map((p) => p.title);
 
-test("the first workspace follows the reader's language", () => {
-  const de = user("Jana");
-  ensureWorkspace(de);
-  assert.ok(titles(de).includes("Willkommen bei Flowplan"));
-  const en = user("Jane");
-  withContentLocale("en", () => ensureWorkspace(en));
-  assert.deepEqual(titles(en), ["Meeting notes", "Product roadmap", "Team handbook", "Welcome to Flowplan"]);
+test("the first workspace follows the reader's language", async () => {
+  const de = await user("Jana");
+  await ensureWorkspace(de);
+  assert.ok((await titles(de)).includes("Willkommen bei Flowplan"));
+  const en = await user("Jane");
+  await withContentLocale("en", async () => await ensureWorkspace(en));
+  assert.deepEqual(await titles(en), ["Meeting notes", "Product roadmap", "Team handbook", "Welcome to Flowplan"]);
   const fields = JSON.parse(
-    one<{ fields: string }>(
+    (await one<{ fields: string }>(
       "SELECT d.fields FROM databases d JOIN pages p ON p.id=d.page_id JOIN members m ON m.workspace_id=p.workspace_id WHERE m.user_id=?",
       en,
-    )!.fields,
+    ))!.fields,
   );
   assert.deepEqual(fields[1].options, ["Not started", "In progress", "Done"]);
 });
@@ -75,13 +75,13 @@ test("the English template catalog matches the German one", async () => {
 test("the demo workspace is in English for English visitors", async () => {
   const { createWorkspace } = await import("../lib/seed");
   const { seedDemoShowcase } = await import("../lib/demo-content");
-  const uid = user("Guest");
-  withContentLocale("en", () => {
-    const wid = createWorkspace(uid, "Demo workspace");
-    const space = one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid)!.id;
-    seedDemoShowcase(wid, space, uid);
+  const uid = await user("Guest");
+  await withContentLocale("en", async () => {
+    const wid = await createWorkspace(uid, "Demo workspace");
+    const space = (await one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid))!.id;
+    await seedDemoShowcase(wid, space, uid);
   });
-  const docs = all<{ title: string; html: string }>(
+  const docs = await all<{ title: string; html: string }>(
     "SELECT p.title, d.html FROM pages p JOIN documents d ON d.page_id=p.id JOIN members m ON m.workspace_id=p.workspace_id WHERE m.user_id=?",
     uid,
   );

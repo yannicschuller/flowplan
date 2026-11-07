@@ -48,6 +48,7 @@ import {
   publicLayout,
   publicMonth,
 } from "./public-views";
+import { mapAsync } from "../lib/each-async";
 
 // A property value on a published page; formatted text (#126) with its
 // formatting (no links inside a card that is itself a link; line breaks
@@ -73,7 +74,7 @@ type PublishedPageProps = {
 // else is rendered with the cookie in hand, so every check sees it.
 export async function PublishedPage(props: PublishedPageProps) {
   const unlock = (await cookies()).get(SHARE_COOKIE)?.value;
-  const state = shareState(props.token, unlock);
+  const state = await shareState(props.token, unlock);
   if (state === "missing") notFound();
   if (state !== "open") {
     const t = await serverT();
@@ -114,15 +115,15 @@ async function renderPublishedPage({
   const t = await serverT();
   let context;
   try {
-    context = publicPage(token, pageId);
+    context = await publicPage(token, pageId);
   } catch (e) {
     if (e instanceof HttpError && e.status === 404) notFound();
     throw e;
   }
   const { page, root, pages } = context;
   // Links between the published pages show their icons (#96).
-  const linkPages = publishedLinkPages(token, pages);
-  const d = page.kind === "database" ? database(page.id) : null;
+  const linkPages = await publishedLinkPages(token, pages);
+  const d = page.kind === "database" ? (await database(page.id)) : null;
   const visible = d?.fields.filter(publicFieldsOf(d.fields));
   // Views are published with their filters, sorting and order when their
   // layout only needs public properties; forms are never listed.
@@ -136,7 +137,7 @@ async function renderPublishedPage({
     publicViews[0] ||
     (d?.views[0] && { ...d.views[0], type: "table" });
   const ranks = rowOrderRanks(activeView?.rowOrder);
-  const allRecords = d ? rows(page.id) : [];
+  const allRecords = d ? (await rows(page.id)) : [];
   const records =
     d && activeView
       ? queryRows(
@@ -150,11 +151,11 @@ async function renderPublishedPage({
             a.position - b.position,
         );
   // Images are shown only when the publication serves them.
-  const publicImage = (url: unknown) => {
+  const publicImage = async (url: unknown) => {
     const fid = typeof url === "string" ? imageFileId(url) : undefined;
     if (!fid) return undefined;
     try {
-      publicFile(token, fid);
+      await publicFile(token, fid);
       return `/api/share/${token}/files/${fid}`;
     } catch {
       return undefined;
@@ -164,18 +165,18 @@ async function renderPublishedPage({
   if (rowId && !record) notFound();
   const html = record
     ? String(
-        one("SELECT html FROM row_documents WHERE row_id=?", record.id)?.html ||
+        (await one("SELECT html FROM row_documents WHERE row_id=?", record.id))?.html ||
           record.content ||
           "",
       )
     : String(
-        one("SELECT html FROM documents WHERE page_id=?", page.id)?.html || "",
+        (await one("SELECT html FROM documents WHERE page_id=?", page.id))?.html || "",
       );
   let iconUrl = page.icon;
   const iconId = imageFileId(page.icon);
   if (iconId) {
     try {
-      publicFile(token, iconId);
+      await publicFile(token, iconId);
       iconUrl = `/api/share/${token}/files/${iconId}`;
     } catch {
       iconUrl = "";
@@ -185,18 +186,18 @@ async function renderPublishedPage({
   const coverId = imageFileId(page.cover);
   if (coverId) {
     try {
-      publicFile(token, coverId);
+      await publicFile(token, coverId);
       coverUrl = `/api/share/${token}/files/${coverId}`;
     } catch {}
   }
   // Only real publications (not private share links) show metadata and copying.
   const publication =
     root.public_token === token
-      ? one<{ published_at: string | null; allow_copy: number }>(
+      ? (await one<{ published_at: string | null; allow_copy: number }>(
           // Behind a password, a publication is not offered for copying.
           "SELECT published_at,allow_copy AND password_hash IS NULL allow_copy FROM publications WHERE page_id=?",
           root.id,
-        )
+        ))
       : undefined;
   const tag = localeTag(await requestLocale());
   const date = (value: string | null | undefined) =>
@@ -211,10 +212,10 @@ async function renderPublishedPage({
   const href = (id: string) =>
     customHost ? `/${id === root.id ? "" : id}` : `/share/${token}${id === root.id ? "" : "/" + id}`;
   // The look an owner chose for the publication (logo, accent, footer).
-  const theme = publication ? renderedTheme(token, root.id) : null;
+  const theme = publication ? (await renderedTheme(token, root.id)) : null;
   // Blocks of block extensions their owners did not allow on published
   // pages keep only their text.
-  const shownPlugins = publicPluginIds(root.workspace_id);
+  const shownPlugins = await publicPluginIds(root.workspace_id);
   const withPlugins = (value: string) =>
     value.includes("data-plugin")
       ? cleanHtml(value, (tagName, attribs) => {
@@ -300,17 +301,17 @@ async function renderPublishedPage({
         </nav>
       )}
       {page.kind === "notebook" ? (
-        <PublicNotebook label={page.title} sheets={publicNotebookSheets(page, token)} />
+        <PublicNotebook label={page.title} sheets={await publicNotebookSheets(page, token)} />
       ) : page.kind === "whiteboard" ? (
         <WhiteboardStatic
           height={640}
           pages={pages.map((p) => ({ id: p.id, title: p.title, kind: p.kind }))}
-          items={whiteboardSnapshotItems(page).map((item) => {
+          items={await mapAsync(await whiteboardSnapshotItems(page), async (item) => {
             // Images only through the share, and only if they are published.
             const file = /^\/api\/files\/([\w-]+)$/.exec(item.src || "");
             if (!file) return item;
             try {
-              publicFile(token, file[1]);
+              await publicFile(token, file[1]);
               return { ...item, src: `/api/share/${token}/files/${file[1]}` };
             } catch {
               return { ...item, src: undefined };
@@ -344,9 +345,9 @@ async function renderPublishedPage({
         />
       ) : d && !record && activeView?.type === "feed" ? (
         <div className="public-feed">
-          {records.slice(0, 50).map((r) => {
+          {await mapAsync(records.slice(0, 50), async (r) => {
             const body = String(
-              one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", r.id)?.html || r.content || "",
+              (await one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", r.id))?.html || r.content || "",
             );
             return (
               <article key={r.id} className="public-feed-entry">
@@ -390,10 +391,10 @@ async function renderPublishedPage({
         />
       ) : d && !record && activeView?.type === "gallery" ? (
         <div className="gallery gallery-size-medium public-gallery">
-          {records.map((r) => {
+          {await mapAsync(records, async (r) => {
             const image =
-              publicImage(r.cover) ||
-              publicImage(documentPreview(String(r.content || "")).image);
+              await publicImage(r.cover) ||
+              await publicImage(documentPreview(String(r.content || "")).image);
             return (
               <a
                 key={r.id}
@@ -538,7 +539,7 @@ async function renderPublishedPage({
       <SharedInteractions
         key={`${page.id}:${rowId || ""}`}
         token={token}
-        initial={sharedContent(token, page.id, rowId)}
+        initial={await sharedContent(token, page.id, rowId)}
       />
       {theme?.footer && <footer className="public-theme-footer">{theme.footer}</footer>}
       {!theme?.hideBranding && (
@@ -613,9 +614,9 @@ async function PublicRelation({
   const t = await serverT();
   const list = Array.isArray(ids) ? (ids as string[]).slice(0, 50) : [];
   if (!list.length) return <>—</>;
-  const fields = database(target).fields;
+  const fields = (await database(target)).fields;
   const titles = new Map(
-    rows(target).map((r) => [
+    (await rows(target)).map((r) => [
       r.id,
       cellText(r.cells[fields[0]?.id]) || t("Ohne Titel", "Untitled"),
     ]),
@@ -633,7 +634,7 @@ async function PublicRelation({
   );
 }
 // Files of a published record; external links stay external.
-function PublicFiles({
+async function PublicFiles({
   value,
   token,
   pageId,
@@ -646,7 +647,7 @@ function PublicFiles({
   if (!urls.length) return <>—</>;
   return (
     <span className="public-relations">
-      {urls.map((url) => {
+      {await mapAsync(urls, async (url) => {
         const fid = fileIdOf(url);
         if (!fid)
           return (
@@ -654,7 +655,7 @@ function PublicFiles({
               {url}
             </a>
           );
-        const file = one<{ name: string }>(
+        const file = await one<{ name: string }>(
           "SELECT name FROM files WHERE id=? AND page_id=?",
           fid,
           pageId,

@@ -11,7 +11,7 @@ import { htmlState, stateHtml } from "./document-server";
 import { documentKey, documentChanged, publishDocumentUpdate } from "./document-live";
 import { HttpError } from "./auth";
 
-let cachedSchema: ReturnType<typeof documentSchema> | undefined;
+let cachedSchema: Awaited<ReturnType<typeof documentSchema>> | undefined;
 export const rewriteSchema = () => (cachedSchema ??= documentSchema());
 
 /**
@@ -71,21 +71,21 @@ export function rewriteStoredDocument(
   }
 }
 
-export function rewriteDocument(
+export async function rewriteDocument(
   pageId: string,
   rowId: string | null,
   userId: string,
   change: (doc: PMNode) => PMNode | null,
 ) {
   const stored = rowId
-    ? one<{ state: Uint8Array | null; html: string; generation: string }>(
+    ? (await one<{ state: Uint8Array | null; html: string; generation: string }>(
         "SELECT state,html,generation FROM row_documents WHERE row_id=?",
         rowId,
-      )
-    : one<{ state: Uint8Array | null; html: string; generation: string }>(
+      ))
+    : (await one<{ state: Uint8Array | null; html: string; generation: string }>(
         "SELECT state,html,generation FROM documents WHERE page_id=?",
         pageId,
-      );
+      ));
   if (!stored) throw new HttpError(404, "Dokument nicht gefunden.");
   const ydoc = new Y.Doc();
   Y.applyUpdate(ydoc, stored.state || htmlState(stored.html));
@@ -105,11 +105,11 @@ export function rewriteDocument(
   const state = Y.encodeStateAsUpdate(ydoc);
   const html = stateHtml(ydoc);
   if (rowId) {
-    run("UPDATE row_documents SET state=?,html=?,updated_at=? WHERE row_id=?", state, html, nowText(), rowId);
-    run("UPDATE rows SET content=?,updated_at=?,updated_by=? WHERE id=?", html, nowText(), userId, rowId);
+    await run("UPDATE row_documents SET state=?,html=?,updated_at=? WHERE row_id=?", state, html, nowText(), rowId);
+    await run("UPDATE rows SET content=?,updated_at=?,updated_by=? WHERE id=?", html, nowText(), userId, rowId);
   } else {
-    run("UPDATE documents SET state=?,html=?,updated_at=? WHERE page_id=?", state, html, nowText(), pageId);
-    run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), pageId);
+    await run("UPDATE documents SET state=?,html=?,updated_at=? WHERE page_id=?", state, html, nowText(), pageId);
+    await run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), pageId);
   }
   const update = Buffer.from(Y.encodeStateAsUpdate(ydoc, before)).toString("base64");
   const key = documentKey(pageId, rowId, stored.generation);

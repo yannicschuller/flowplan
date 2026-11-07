@@ -41,6 +41,7 @@ import { openSecret, sealSecret } from "./secret-box";
 import { onIssueQueued, quietly } from "./issue-sync-queue";
 import { noteWorkerRun } from "./ops-events";
 import type { Field, Identity, Page, User } from "./types";
+import { mapAsync } from "./each-async";
 
 export type IssueProvider = "github" | "gitlab";
 const MINUTE = 60_000;
@@ -229,7 +230,7 @@ const limited = (status: number, headers: Record<string, string>) => {
   return status === 429 || (status === 403 && (h["x-ratelimit-remaining"] === "0" || h["ratelimit-remaining"] === "0" || !!h["retry-after"]));
 };
 
-type Endpoint = ReturnType<typeof issueEndpoint>;
+type Endpoint = Awaited<ReturnType<typeof issueEndpoint>>;
 type Client = { provider: IssueProvider; endpoint: Endpoint; token: string; repo: string };
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -394,20 +395,20 @@ function issueApi(client: Client) {
   };
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
-type IssueApi = ReturnType<typeof issueApi>;
+type IssueApi = Awaited<ReturnType<typeof issueApi>>;
 
 /* ---------- Permissions ---------- */
 
 // Connections: workspace owners and administrators (as full members).
-function requireConnectionManager(user: Identity, workspaceId: string) {
+async function requireConnectionManager(user: Identity, workspaceId: string) {
   if (user.demo) throw new HttpError(403, "In der Demo nicht verfügbar. Registriere dich, um das zu nutzen.");
-  const role = memberRole(user, workspaceId);
-  if (!role || isGuest(user, workspaceId) || (role !== "owner" && !user.isAdmin))
+  const role = await memberRole(user, workspaceId);
+  if (!role || await isGuest(user, workspaceId) || (role !== "owner" && !user.isAdmin))
     throw new HttpError(403, "Nur Eigentümer des Arbeitsbereichs und Administratoren verbinden GitHub oder GitLab.");
 }
-const mayManage = (user: Identity, workspaceId: string) => {
+const mayManage = async (user: Identity, workspaceId: string) => {
   try {
-    requireConnectionManager(user, workspaceId);
+    await requireConnectionManager(user, workspaceId);
     return true;
   } catch {
     return false;
@@ -415,12 +416,12 @@ const mayManage = (user: Identity, workspaceId: string) => {
 };
 // The person the sync acts as, while they still may: an active account,
 // a full member who is owner (or was an administrator when connecting).
-function connector(connection: ConnectionRow): Identity | null {
-  const user = one<User>("SELECT * FROM users WHERE id=? AND disabled=0", connection.created_by);
+async function connector(connection: ConnectionRow): Promise<Identity | null> {
+  const user = await one<User>("SELECT * FROM users WHERE id=? AND disabled=0", connection.created_by);
   if (!user) return null;
   const who = { ...user, groups: [], isAdmin: false } as Identity;
-  const role = memberRole(who, connection.workspace_id);
-  if (!role || isGuest(who, connection.workspace_id)) return null;
+  const role = await memberRole(who, connection.workspace_id);
+  if (!role || await isGuest(who, connection.workspace_id)) return null;
   if (role !== "owner" && !parse<ConnectionState>(connection.state, {}).admin) return null;
   return who;
 }
@@ -437,8 +438,8 @@ const connectionInput = z.object({
   token: z.string().trim().max(1000).optional(),
   people: peopleSchema.optional(),
 });
-function connectionRow(workspaceId: string, connectionId: string) {
-  const row = one<ConnectionRow>("SELECT * FROM issue_connections WHERE id=? AND workspace_id=?", connectionId, workspaceId);
+async function connectionRow(workspaceId: string, connectionId: string) {
+  const row = await one<ConnectionRow>("SELECT * FROM issue_connections WHERE id=? AND workspace_id=?", connectionId, workspaceId);
   if (!row) throw new HttpError(404, "Verbindung nicht gefunden.");
   return row;
 }
@@ -450,22 +451,22 @@ function clientFor(connection: Pick<ConnectionRow, "id" | "provider" | "base_url
     repo,
   };
 }
-function saveConnection(user: Identity, workspaceId: string, raw: unknown) {
-  requireConnectionManager(user, workspaceId);
+async function saveConnection(user: Identity, workspaceId: string, raw: unknown) {
+  await requireConnectionManager(user, workspaceId);
   const input = connectionInput.parse(raw);
   const endpoint = issueEndpoint(input.provider, input.baseUrl);
   const base = endpoint.selfHosted ? endpoint.web : "";
   const repo = input.repo.trim() ? checkedRepo(input.provider, input.repo) : "";
   const people = JSON.stringify(input.people || []);
   if (input.id) {
-    const row = connectionRow(workspaceId, input.id);
+    const row = await connectionRow(workspaceId, input.id);
     // Another server needs the token again: it must not travel elsewhere.
     if ((row.base_url !== base || row.provider !== input.provider) && !input.token)
       throw new HttpError(400, "Für einen anderen Server bitte das Token erneut eingeben.");
     const token = input.token ? sealSecret(input.token, tokenAad(row.id)) : row.token;
     // A new token makes the person saving it the one the sync acts as.
     const state = { ...parse<ConnectionState>(row.state, {}), error: null, ...(input.token ? { admin: user.isAdmin } : {}) };
-    run(
+    await run(
       "UPDATE issue_connections SET provider=?,base_url=?,repo=?,token=?,people=?,state=?,created_by=? WHERE id=?",
       input.provider,
       base,
@@ -476,15 +477,15 @@ function saveConnection(user: Identity, workspaceId: string, raw: unknown) {
       input.token ? user.id : row.created_by,
       row.id,
     );
-    audit(user.id, "issueSync.connection", row.id, `${input.provider} ${base || PUBLIC_HOST[input.provider]}`);
+    await audit(user.id, "issueSync.connection", row.id, `${input.provider} ${base || PUBLIC_HOST[input.provider]}`);
     return { id: row.id };
   }
   if (!input.token) throw new HttpError(400, "Bitte ein Zugangstoken eingeben.");
-  lockFor(`issue-connections:${workspaceId}`);
-  if ((one<{ n: number }>("SELECT COUNT(*) n FROM issue_connections WHERE workspace_id=?", workspaceId)?.n || 0) >= 20)
+  await lockFor(`issue-connections:${workspaceId}`);
+  if (((await one<{ n: number }>("SELECT COUNT(*) n FROM issue_connections WHERE workspace_id=?", workspaceId))?.n || 0) >= 20)
     throw new HttpError(400, "Höchstens 20 Verbindungen je Arbeitsbereich.");
   const cid = id();
-  run(
+  await run(
     "INSERT INTO issue_connections(id,workspace_id,provider,base_url,repo,token,hook_token,hook_secret,people,state,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
     cid,
     workspaceId,
@@ -495,22 +496,22 @@ function saveConnection(user: Identity, workspaceId: string, raw: unknown) {
     randomBytes(24).toString("base64url"),
     sealSecret(randomBytes(24).toString("base64url"), hookAad(cid)),
     people,
-    JSON.stringify({ admin: user.isAdmin && memberRole(user, workspaceId) !== "owner" }),
+    JSON.stringify({ admin: user.isAdmin && (await memberRole(user, workspaceId)) !== "owner" }),
     user.id,
     Date.now(),
   );
-  audit(user.id, "issueSync.connection", cid, `${input.provider} ${base || PUBLIC_HOST[input.provider]}`);
+  await audit(user.id, "issueSync.connection", cid, `${input.provider} ${base || PUBLIC_HOST[input.provider]}`);
   return { id: cid };
 }
 
 // "Test": one API call with the entered (or stored) token.
 export async function testIssueConnection(user: Identity, raw: unknown) {
   const input = connectionInput.extend({ workspaceId: z.string().uuid() }).parse(raw);
-  requireConnectionManager(user, input.workspaceId);
+  await requireConnectionManager(user, input.workspaceId);
   const endpoint = issueEndpoint(input.provider, input.baseUrl);
   let token = input.token || "";
   if (!token && input.id) {
-    const row = connectionRow(input.workspaceId, input.id);
+    const row = await connectionRow(input.workspaceId, input.id);
     if (row.provider !== input.provider || row.base_url !== (endpoint.selfHosted ? endpoint.web : ""))
       throw new HttpError(400, "Für einen anderen Server bitte das Token erneut eingeben.");
     token = openSecret(row.token, tokenAad(row.id));
@@ -519,9 +520,9 @@ export async function testIssueConnection(user: Identity, raw: unknown) {
   const repo = checkedRepo(input.provider, input.repo);
   const result = await issueApi({ provider: input.provider, endpoint, token, repo }).verify();
   if (input.id)
-    transaction(() => {
-      const row = one<ConnectionRow>("SELECT * FROM issue_connections WHERE id=?", input.id!);
-      if (row) run("UPDATE issue_connections SET state=? WHERE id=?", JSON.stringify({ ...parse<ConnectionState>(row.state, {}), checkedAt: Date.now(), error: null }), row.id);
+    await transaction(async () => {
+      const row = await one<ConnectionRow>("SELECT * FROM issue_connections WHERE id=?", input.id!);
+      if (row) await run("UPDATE issue_connections SET state=? WHERE id=?", JSON.stringify({ ...parse<ConnectionState>(row.state, {}), checkedAt: Date.now(), error: null }), row.id);
     });
   return { ok: true, repo: result.name };
 }
@@ -561,19 +562,19 @@ function checkConfig(fields: Field[], config: IssueSyncConfig) {
   );
   if (new Set(used).size !== used.length) throw new HttpError(400, "Jede Eigenschaft nur einmal zuordnen.");
 }
-const databaseFields = (pageId: string) => parse<Field[]>(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId)?.fields, []);
+const databaseFields = async (pageId: string) => parse<Field[]>((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId))?.fields, []);
 
-function saveMapping(user: Identity, raw: unknown) {
+async function saveMapping(user: Identity, raw: unknown) {
   const input = z.object({ pageId: z.string().uuid(), connectionId: z.string().uuid(), repo: z.string().max(300).optional(), config: z.unknown() }).parse(raw);
-  const page = requirePage(user, input.pageId, true);
+  const page = await requirePage(user, input.pageId, true);
   if (page.kind !== "database") throw new HttpError(400, "Keine Datenbank.");
-  requireUnlocked(user, page);
-  requireConnectionManager(user, page.workspace_id);
-  const connection = connectionRow(page.workspace_id, input.connectionId);
+  await requireUnlocked(user, page);
+  await requireConnectionManager(user, page.workspace_id);
+  const connection = await connectionRow(page.workspace_id, input.connectionId);
   const repo = checkedRepo(connection.provider, input.repo?.trim() || connection.repo);
   const config = issueSyncConfigSchema.parse(input.config);
-  checkConfig(databaseFields(page.id), config);
-  const taken = one<{ page_id: string }>(
+  checkConfig(await databaseFields(page.id), config);
+  const taken = await one<{ page_id: string }>(
     "SELECT m.page_id FROM issue_sync_maps m JOIN issue_connections c ON c.id=m.connection_id WHERE c.provider=? AND c.base_url=? AND m.repo=? AND m.page_id!=?",
     connection.provider,
     connection.base_url,
@@ -581,15 +582,15 @@ function saveMapping(user: Identity, raw: unknown) {
     page.id,
   );
   if (taken) throw new HttpError(409, "Dieses Repository ist schon mit einer anderen Datenbank verbunden.");
-  const existing = one<MapRow>("SELECT * FROM issue_sync_maps WHERE page_id=?", page.id);
+  const existing = await one<MapRow>("SELECT * FROM issue_sync_maps WHERE page_id=?", page.id);
   // Another repository starts over: links of the old one no longer apply.
   if (existing && (existing.repo !== repo || existing.connection_id !== connection.id)) {
-    run("DELETE FROM issue_links WHERE page_id=?", page.id);
-    run("DELETE FROM issue_comment_links WHERE page_id=?", page.id);
-    run("DELETE FROM issue_sync_queue WHERE page_id=?", page.id);
+    await run("DELETE FROM issue_links WHERE page_id=?", page.id);
+    await run("DELETE FROM issue_comment_links WHERE page_id=?", page.id);
+    await run("DELETE FROM issue_sync_queue WHERE page_id=?", page.id);
   }
   const fresh = !existing || existing.repo !== repo || existing.connection_id !== connection.id;
-  run(
+  await run(
     "INSERT INTO issue_sync_maps(page_id,connection_id,repo,config,state,created_by,created_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(page_id) DO UPDATE SET connection_id=excluded.connection_id,repo=excluded.repo,config=excluded.config,state=CASE WHEN ? THEN excluded.state ELSE issue_sync_maps.state END,created_by=excluded.created_by,created_at=CASE WHEN ? THEN excluded.created_at ELSE issue_sync_maps.created_at END",
     page.id,
     connection.id,
@@ -601,50 +602,50 @@ function saveMapping(user: Identity, raw: unknown) {
     fresh ? 1 : 0,
     fresh ? 1 : 0,
   );
-  audit(user.id, "issueSync.map", page.id, `${connection.provider}:${repo} ${config.direction}`);
+  await audit(user.id, "issueSync.map", page.id, `${connection.provider}:${repo} ${config.direction}`);
   return { ok: true };
 }
 
 // Commands (lib/api.ts): issueSync.connect, .disconnect, .map, .unmap.
-export function issueSyncCommand(user: Identity, action: string, b: Record<string, unknown>) {
+export async function issueSyncCommand(user: Identity, action: string, b: Record<string, unknown>) {
   if (user.apiScope === "read") throw new HttpError(403, "Dieses API-Token darf nur lesen.");
-  if (action === "issueSync.connect") return saveConnection(user, z.string().uuid().parse(b.workspaceId), b);
+  if (action === "issueSync.connect") return await saveConnection(user, z.string().uuid().parse(b.workspaceId), b);
   if (action === "issueSync.disconnect") {
     const workspaceId = z.string().uuid().parse(b.workspaceId);
-    requireConnectionManager(user, workspaceId);
-    const row = connectionRow(workspaceId, z.string().uuid().parse(b.id));
-    for (const m of all<{ page_id: string }>("SELECT page_id FROM issue_sync_maps WHERE connection_id=?", row.id)) dropMapping(m.page_id);
-    run("DELETE FROM issue_connections WHERE id=?", row.id);
-    audit(user.id, "issueSync.disconnect", row.id, row.provider);
+    await requireConnectionManager(user, workspaceId);
+    const row = await connectionRow(workspaceId, z.string().uuid().parse(b.id));
+    for (const m of await all<{ page_id: string }>("SELECT page_id FROM issue_sync_maps WHERE connection_id=?", row.id)) await dropMapping(m.page_id);
+    await run("DELETE FROM issue_connections WHERE id=?", row.id);
+    await audit(user.id, "issueSync.disconnect", row.id, row.provider);
     return { ok: true };
   }
-  if (action === "issueSync.map") return saveMapping(user, b);
+  if (action === "issueSync.map") return await saveMapping(user, b);
   if (action === "issueSync.unmap") {
-    const page = requirePage(user, z.string().uuid().parse(b.pageId), true);
-    requireConnectionManager(user, page.workspace_id);
-    dropMapping(page.id);
-    audit(user.id, "issueSync.unmap", page.id, "");
+    const page = await requirePage(user, z.string().uuid().parse(b.pageId), true);
+    await requireConnectionManager(user, page.workspace_id);
+    await dropMapping(page.id);
+    await audit(user.id, "issueSync.unmap", page.id, "");
     return { ok: true };
   }
   throw new HttpError(400, "Unbekannte Aktion.");
 }
-function dropMapping(pageId: string) {
-  run("DELETE FROM issue_sync_maps WHERE page_id=?", pageId);
-  run("DELETE FROM issue_links WHERE page_id=?", pageId);
-  run("DELETE FROM issue_comment_links WHERE page_id=?", pageId);
-  run("DELETE FROM issue_sync_queue WHERE page_id=?", pageId);
+async function dropMapping(pageId: string) {
+  await run("DELETE FROM issue_sync_maps WHERE page_id=?", pageId);
+  await run("DELETE FROM issue_links WHERE page_id=?", pageId);
+  await run("DELETE FROM issue_comment_links WHERE page_id=?", pageId);
+  await run("DELETE FROM issue_sync_queue WHERE page_id=?", pageId);
 }
 
 /* ---------- Status for the settings ---------- */
 
 const hookUrl = (token: string) => `${appUrl().replace(/\/$/, "")}/api/issue-sync/hook/${token}`;
-export function issueSyncOverview(user: Identity, workspaceId: string) {
-  if (!mayManage(user, workspaceId)) return { available: false as const };
-  const connections = all<ConnectionRow>("SELECT * FROM issue_connections WHERE workspace_id=? ORDER BY created_at", workspaceId);
+export async function issueSyncOverview(user: Identity, workspaceId: string) {
+  if (!(await mayManage(user, workspaceId))) return { available: false as const };
+  const connections = await all<ConnectionRow>("SELECT * FROM issue_connections WHERE workspace_id=? ORDER BY created_at", workspaceId);
   return {
     available: true as const,
     allowedHosts: issueSyncHosts(),
-    connections: connections.map((c) => {
+    connections: await mapAsync(connections, async (c) => {
       let secret = "";
       try {
         secret = openSecret(c.hook_secret, hookAad(c.id));
@@ -661,49 +662,49 @@ export function issueSyncOverview(user: Identity, workspaceId: string) {
         people: parse<People>(c.people, []),
         hookUrl: hookUrl(c.hook_token),
         hookSecret: secret,
-        connectedBy: one<{ name: string }>("SELECT name FROM users WHERE id=?", c.created_by)?.name || "",
-        active: !!connector(c),
+        connectedBy: (await one<{ name: string }>("SELECT name FROM users WHERE id=?", c.created_by))?.name || "",
+        active: !!(await connector(c)),
         checkedAt: state.checkedAt || null,
         error: state.error || null,
         backoffUntil: state.backoffUntil && state.backoffUntil > Date.now() ? state.backoffUntil : null,
-        databases: all<{ page_id: string; title: string; repo: string; state: string }>(
+        databases: (await all<{ page_id: string; title: string; repo: string; state: string }>(
           "SELECT m.page_id,p.title,m.repo,m.state FROM issue_sync_maps m JOIN pages p ON p.id=m.page_id WHERE m.connection_id=? AND p.deleted_at IS NULL",
           c.id,
-        ).map((m) => ({ pageId: m.page_id, title: m.title, repo: m.repo, state: parse<MapState>(m.state, {}) })),
+        )).map((m) => ({ pageId: m.page_id, title: m.title, repo: m.repo, state: parse<MapState>(m.state, {}) })),
       };
     }),
   };
 }
 // The mapping dialog of a database.
-export function issueSyncDatabase(user: Identity, pageId: string) {
-  const page = requirePage(user, pageId);
-  const map = one<MapRow>("SELECT * FROM issue_sync_maps WHERE page_id=?", pageId);
-  const manage = mayManage(user, page.workspace_id) && pageRole(user, page) !== "viewer";
+export async function issueSyncDatabase(user: Identity, pageId: string) {
+  const page = await requirePage(user, pageId);
+  const map = await one<MapRow>("SELECT * FROM issue_sync_maps WHERE page_id=?", pageId);
+  const manage = await mayManage(user, page.workspace_id) && (await pageRole(user, page)) !== "viewer";
   return {
     manage,
     connections: manage
-      ? all<{ id: string; provider: IssueProvider; base_url: string; repo: string }>(
+      ? (await all<{ id: string; provider: IssueProvider; base_url: string; repo: string }>(
           "SELECT id,provider,base_url,repo FROM issue_connections WHERE workspace_id=? ORDER BY created_at",
           page.workspace_id,
-        ).map((c) => ({ id: c.id, provider: c.provider, baseUrl: c.base_url, repo: c.repo }))
+        )).map((c) => ({ id: c.id, provider: c.provider, baseUrl: c.base_url, repo: c.repo }))
       : [],
     map: map
       ? {
           connectionId: manage ? map.connection_id : "",
-          provider: one<{ provider: IssueProvider }>("SELECT provider FROM issue_connections WHERE id=?", map.connection_id)?.provider || "github",
+          provider: (await one<{ provider: IssueProvider }>("SELECT provider FROM issue_connections WHERE id=?", map.connection_id))?.provider || "github",
           repo: map.repo,
           config: parse<IssueSyncConfig>(map.config, issueSyncConfigSchema.parse({ title: "" })),
           state: parse<MapState>(map.state, {}),
-          links: one<{ n: number }>("SELECT COUNT(*) n FROM issue_links WHERE page_id=?", pageId)?.n || 0,
+          links: (await one<{ n: number }>("SELECT COUNT(*) n FROM issue_links WHERE page_id=?", pageId))?.n || 0,
         }
       : null,
   };
 }
 // "GitHub #123" on a record.
-export function issueLinkOf(user: Identity, pageId: string, rowId: string) {
-  requirePage(user, pageId);
-  requireRow(user, pageId, rowId);
-  const link = one<{ provider: IssueProvider; number: number; url: string }>("SELECT provider,number,url FROM issue_links WHERE row_id=? AND page_id=?", rowId, pageId);
+export async function issueLinkOf(user: Identity, pageId: string, rowId: string) {
+  await requirePage(user, pageId);
+  await requireRow(user, pageId, rowId);
+  const link = await one<{ provider: IssueProvider; number: number; url: string }>("SELECT provider,number,url FROM issue_links WHERE row_id=? AND page_id=?", rowId, pageId);
   return link ? { provider: link.provider, label: `${providerName[link.provider]} #${link.number}`, number: link.number, url: link.url } : null;
 }
 
@@ -717,8 +718,8 @@ const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(valu
 const sorted = (list: string[]) => [...new Set(list)].sort();
 const statusLabels = (config: IssueSyncConfig) => new Set((config.status?.map || []).map((m) => m.label).filter(Boolean));
 
-function documentMarkdown(rowId: string) {
-  const html = one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", rowId)?.html || "";
+async function documentMarkdown(rowId: string) {
+  const html = (await one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", rowId))?.html || "";
   if (!html.trim()) return "";
   try {
     return markdownSource(html).markdown.trim();
@@ -727,9 +728,9 @@ function documentMarkdown(rowId: string) {
   }
 }
 // What of a record the mapping covers, comparable between runs.
-function localView(config: IssueSyncConfig, people: Map<string, string>, rowId: string, cells: Cells) {
+async function localView(config: IssueSyncConfig, people: Map<string, string>, rowId: string, cells: Cells) {
   const view: Record<string, unknown> = { title: cellText(cells[config.title]).trim() };
-  if (config.body) view.body = config.body === "@document" ? documentMarkdown(rowId) : cellText(cells[config.body]).trim();
+  if (config.body) view.body = config.body === "@document" ? (await documentMarkdown(rowId)) : cellText(cells[config.body]).trim();
   if (config.status) view.status = cellText(cells[config.status.field]);
   if (config.labels) view.labels = sorted(Array.isArray(cells[config.labels]) ? (cells[config.labels] as string[]) : []);
   if (config.assignee) view.assignee = people.get(String(cells[config.assignee] || "")) || "";
@@ -846,11 +847,11 @@ type Context = {
   state: MapState;
   milestones: { id: number; due: string | null }[] | null;
 };
-function peopleMaps(connection: ConnectionRow) {
+async function peopleMaps(connection: ConnectionRow) {
   const logins = new Map<string, string>(),
     users = new Map<string, string>();
   for (const entry of parse<People>(connection.people, [])) {
-    const member = one<{ id: string }>(
+    const member = await one<{ id: string }>(
       "SELECT u.id FROM users u JOIN members m ON m.user_id=u.id WHERE m.workspace_id=? AND lower(u.email)=?",
       connection.workspace_id,
       entry.email.toLowerCase(),
@@ -861,37 +862,37 @@ function peopleMaps(connection: ConnectionRow) {
   }
   return { logins, users };
 }
-function saveMapState(pageId: string, patch: MapState) {
-  const row = one<{ state: string }>("SELECT state FROM issue_sync_maps WHERE page_id=?", pageId);
-  if (row) run("UPDATE issue_sync_maps SET state=? WHERE page_id=?", JSON.stringify({ ...parse<MapState>(row.state, {}), ...patch }), pageId);
+async function saveMapState(pageId: string, patch: MapState) {
+  const row = await one<{ state: string }>("SELECT state FROM issue_sync_maps WHERE page_id=?", pageId);
+  if (row) await run("UPDATE issue_sync_maps SET state=? WHERE page_id=?", JSON.stringify({ ...parse<MapState>(row.state, {}), ...patch }), pageId);
 }
-function saveConnectionState(connectionId: string, patch: ConnectionState) {
-  const row = one<{ state: string }>("SELECT state FROM issue_connections WHERE id=?", connectionId);
-  if (row) run("UPDATE issue_connections SET state=? WHERE id=?", JSON.stringify({ ...parse<ConnectionState>(row.state, {}), ...patch }), connectionId);
+async function saveConnectionState(connectionId: string, patch: ConnectionState) {
+  const row = await one<{ state: string }>("SELECT state FROM issue_connections WHERE id=?", connectionId);
+  if (row) await run("UPDATE issue_connections SET state=? WHERE id=?", JSON.stringify({ ...parse<ConnectionState>(row.state, {}), ...patch }), connectionId);
 }
-const rowOf = (ctx: Context, rowId: string) =>
-  one<RowData>("SELECT id,cells,created_at,updated_at,access,created_by FROM rows WHERE id=? AND page_id=?", rowId, ctx.page.id);
-const localUpdated = (rowId: string, row: RowData) =>
-  Math.max(fromSql(row.updated_at), fromSql(one<{ updated_at: string }>("SELECT updated_at FROM row_documents WHERE row_id=?", rowId)?.updated_at));
-const linkOfIssue = (ctx: Context, issueId: string) =>
-  one<LinkRow>("SELECT * FROM issue_links WHERE provider=? AND repo=? AND issue_id=?", ctx.connection.provider, ctx.map.repo, issueId);
-const currentHash = (ctx: Context, rowId: string) => {
-  const row = rowOf(ctx, rowId);
-  return row ? hash(localView(ctx.config, ctx.logins, rowId, parse<Cells>(row.cells, {}))) : "";
+const rowOf = async (ctx: Context, rowId: string) =>
+  await one<RowData>("SELECT id,cells,created_at,updated_at,access,created_by FROM rows WHERE id=? AND page_id=?", rowId, ctx.page.id);
+const localUpdated = async (rowId: string, row: RowData) =>
+  Math.max(fromSql(row.updated_at), fromSql((await one<{ updated_at: string }>("SELECT updated_at FROM row_documents WHERE row_id=?", rowId))?.updated_at));
+const linkOfIssue = async (ctx: Context, issueId: string) =>
+  await one<LinkRow>("SELECT * FROM issue_links WHERE provider=? AND repo=? AND issue_id=?", ctx.connection.provider, ctx.map.repo, issueId);
+const currentHash = async (ctx: Context, rowId: string) => {
+  const row = await rowOf(ctx, rowId);
+  return row ? hash(await localView(ctx.config, ctx.logins, rowId, parse<Cells>(row.cells, {}))) : "";
 };
 
 // Writes an issue into its record (new or existing), as the connecting
 // person, with workflow and automations; returns false when refused.
-function applyIssue(ctx: Context, issue: RemoteIssue, link: LinkRow | undefined): boolean {
+async function applyIssue(ctx: Context, issue: RemoteIssue, link: LinkRow | undefined): Promise<boolean> {
   try {
-    return transaction(() =>
-      quietly(() => {
+    return await transaction(async () =>
+      await quietly(async () => {
         let rowId = link?.row_id;
-        if (rowId && !rowOf(ctx, rowId)) return false; // in the trash
+        if (rowId && !(await rowOf(ctx, rowId))) return false; // in the trash
         if (!rowId) {
           rowId = id();
           const cells = cellsFromIssue(ctx.config, ctx.fields, ctx.users, issue, {});
-          run(
+          await run(
             "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by) VALUES(?,?,?,?,?,?)",
             rowId,
             ctx.page.id,
@@ -900,20 +901,20 @@ function applyIssue(ctx: Context, issue: RemoteIssue, link: LinkRow | undefined)
             ctx.who.id,
             ctx.who.id,
           );
-          if (ctx.config.body === "@document" && issue.body.trim()) replaceRowDocument(rowId, markdownToHtml(issue.body), ctx.who.id);
-          rowCreated(ctx.who, ctx.page, rowId);
+          if (ctx.config.body === "@document" && issue.body.trim()) await replaceRowDocument(rowId, markdownToHtml(issue.body), ctx.who.id);
+          await rowCreated(ctx.who, ctx.page, rowId);
         } else {
-          const row = rowOf(ctx, rowId)!;
+          const row = (await rowOf(ctx, rowId))!;
           const before = parse<Cells>(row.cells, {});
           const after = { ...before, ...cellsFromIssue(ctx.config, ctx.fields, ctx.users, issue, before) };
           if (JSON.stringify(after) !== JSON.stringify(before)) {
-            run("UPDATE rows SET cells=?,updated_at=?,updated_by=?,version=version+1 WHERE id=?", JSON.stringify(after), nowText(), ctx.who.id, rowId);
-            rowChanged(ctx.who, ctx.page, rowId, before, after, ctx.fields);
+            await run("UPDATE rows SET cells=?,updated_at=?,updated_by=?,version=version+1 WHERE id=?", JSON.stringify(after), nowText(), ctx.who.id, rowId);
+            await rowChanged(ctx.who, ctx.page, rowId, before, after, ctx.fields);
           }
-          if (ctx.config.body === "@document" && documentMarkdown(rowId) !== issue.body.trim())
-            replaceRowDocument(rowId, issue.body.trim() ? markdownToHtml(issue.body) : "", ctx.who.id);
+          if (ctx.config.body === "@document" && (await documentMarkdown(rowId)) !== issue.body.trim())
+            await replaceRowDocument(rowId, issue.body.trim() ? markdownToHtml(issue.body) : "", ctx.who.id);
         }
-        storeLink(ctx, rowId, issue, currentHash(ctx, rowId), link);
+        await storeLink(ctx, rowId, issue, await currentHash(ctx, rowId), link);
         return true;
       }),
     );
@@ -922,8 +923,8 @@ function applyIssue(ctx: Context, issue: RemoteIssue, link: LinkRow | undefined)
     return false;
   }
 }
-function storeLink(ctx: Context, rowId: string, issue: RemoteIssue, localHash: string, link?: LinkRow) {
-  run(
+async function storeLink(ctx: Context, rowId: string, issue: RemoteIssue, localHash: string, link?: LinkRow) {
+  await run(
     "INSERT INTO issue_links(id,page_id,row_id,provider,repo,issue_id,number,url,remote,local_hash,remote_updated,synced_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(row_id) DO UPDATE SET issue_id=excluded.issue_id,number=excluded.number,url=excluded.url,remote=excluded.remote,local_hash=excluded.local_hash,remote_updated=excluded.remote_updated,synced_at=excluded.synced_at",
     link?.id || id(),
     ctx.page.id,
@@ -940,10 +941,10 @@ function storeLink(ctx: Context, rowId: string, issue: RemoteIssue, localHash: s
   );
 }
 // Both sides changed since the last sync: the later change wins.
-function conflict(ctx: Context, rowId: string, issue: RemoteIssue, remoteWins: boolean) {
+async function conflict(ctx: Context, rowId: string, issue: RemoteIssue, remoteWins: boolean) {
   ctx.state.conflicts = (ctx.state.conflicts || 0) + 1;
-  transaction(() =>
-    audit(ctx.who.id, "issueSync.conflict", rowId, `${providerName[ctx.connection.provider]} #${issue.number}: ${remoteWins ? "remote" : "local"}`),
+  await transaction(async () =>
+    await audit(ctx.who.id, "issueSync.conflict", rowId, `${providerName[ctx.connection.provider]} #${issue.number}: ${remoteWins ? "remote" : "local"}`),
   );
 }
 
@@ -953,19 +954,19 @@ async function pullComments(ctx: Context, rowId: string, issue: RemoteIssue) {
   let added = 0;
   for (const c of comments) {
     if (added >= MAX_COMMENTS) break;
-    if (one("SELECT 1 FROM issue_comment_links WHERE provider=? AND repo=? AND remote_id=?", ctx.connection.provider, ctx.map.repo, c.id)) continue;
+    if (await one("SELECT 1 FROM issue_comment_links WHERE provider=? AND repo=? AND remote_id=?", ctx.connection.provider, ctx.map.repo, c.id)) continue;
     const text = `${c.body.trim()}\n\n— ${c.author || "?"} (${providerName[ctx.connection.provider]})${c.url ? ` ${c.url}` : issue.url ? ` ${issue.url}` : ""}`;
-    transaction(() => {
+    await transaction(async () => {
       const cid = id();
-      run("INSERT INTO comments(id,page_id,row_id,author_id,body) VALUES(?,?,?,?,?)", cid, ctx.page.id, rowId, ctx.who.id, text.slice(0, 5000));
-      run("INSERT INTO issue_comment_links(comment_id,page_id,provider,repo,remote_id) VALUES(?,?,?,?,?)", cid, ctx.page.id, ctx.connection.provider, ctx.map.repo, c.id);
+      await run("INSERT INTO comments(id,page_id,row_id,author_id,body) VALUES(?,?,?,?,?)", cid, ctx.page.id, rowId, ctx.who.id, text.slice(0, 5000));
+      await run("INSERT INTO issue_comment_links(comment_id,page_id,provider,repo,remote_id) VALUES(?,?,?,?,?)", cid, ctx.page.id, ctx.connection.provider, ctx.map.repo, c.id);
     });
     added++;
   }
 }
 async function pushComments(ctx: Context, rowId: string, number: number) {
   if (!ctx.config.comments.push) return;
-  const comments = all<{ id: string; body: string; name: string | null }>(
+  const comments = await all<{ id: string; body: string; name: string | null }>(
     `SELECT c.id,c.body,u.name FROM comments c LEFT JOIN users u ON u.id=c.author_id
       WHERE c.page_id=? AND c.row_id=? AND c.created_at>=? AND NOT EXISTS(SELECT 1 FROM issue_comment_links l WHERE l.comment_id=c.id)
       ORDER BY c.created_at LIMIT ?`,
@@ -976,8 +977,8 @@ async function pushComments(ctx: Context, rowId: string, number: number) {
   );
   for (const c of comments) {
     const posted = await ctx.api.comment(number, `**${c.name || "Flowplan"}** (Flowplan):\n\n${c.body}`);
-    transaction(() =>
-      run("INSERT INTO issue_comment_links(comment_id,page_id,provider,repo,remote_id) VALUES(?,?,?,?,?) ON CONFLICT DO NOTHING", c.id, ctx.page.id, ctx.connection.provider, ctx.map.repo, posted.id),
+    await transaction(async () =>
+      await run("INSERT INTO issue_comment_links(comment_id,page_id,provider,repo,remote_id) VALUES(?,?,?,?,?) ON CONFLICT DO NOTHING", c.id, ctx.page.id, ctx.connection.provider, ctx.map.repo, posted.id),
     );
   }
 }
@@ -989,32 +990,32 @@ async function pull(ctx: Context) {
     const issues = await ctx.api.list(cursor ?? null, page);
     for (const issue of issues) {
       if (issue.pull) continue;
-      const link = linkOfIssue(ctx, issue.id);
+      const link = await linkOfIssue(ctx, issue.id);
       const remoteChanged = !link || remoteProjection(ctx.config, parse<RemoteView>(link.remote, {} as RemoteView)) !== remoteProjection(ctx.config, remoteView(issue));
-      if (link && (!rowOf(ctx, link.row_id) || ctx.hidden.has(link.row_id))) {
+      if (link && (!(await rowOf(ctx, link.row_id)) || ctx.hidden.has(link.row_id))) {
         ctx.state.skipped = (ctx.state.skipped || 0) + 1;
         continue;
       }
       if (remoteChanged) {
         let apply = true;
         if (link) {
-          const row = rowOf(ctx, link.row_id)!;
-          const localChanged = ctx.config.direction !== "pull" && currentHash(ctx, link.row_id) !== link.local_hash;
+          const row = (await rowOf(ctx, link.row_id))!;
+          const localChanged = ctx.config.direction !== "pull" && (await currentHash(ctx, link.row_id)) !== link.local_hash;
           if (localChanged) {
-            apply = issue.updatedAt > localUpdated(link.row_id, row);
-            conflict(ctx, link.row_id, issue, apply);
+            apply = issue.updatedAt > (await localUpdated(link.row_id, row));
+            await conflict(ctx, link.row_id, issue, apply);
             // The record wins: the push overwrites this state of the issue.
             if (!apply)
-              transaction(() => {
-                run("UPDATE issue_links SET remote=?,remote_updated=? WHERE id=?", JSON.stringify(remoteView(issue)), issue.updatedAt, link.id);
-                run("INSERT INTO issue_sync_queue(row_id,page_id,at) VALUES(?,?,?) ON CONFLICT DO NOTHING", link.row_id, ctx.page.id, Date.now());
+              await transaction(async () => {
+                await run("UPDATE issue_links SET remote=?,remote_updated=? WHERE id=?", JSON.stringify(remoteView(issue)), issue.updatedAt, link.id);
+                await run("INSERT INTO issue_sync_queue(row_id,page_id,at) VALUES(?,?,?) ON CONFLICT DO NOTHING", link.row_id, ctx.page.id, Date.now());
               });
           }
         }
-        if (apply && applyIssue(ctx, issue, link)) pulled++;
+        if (apply && await applyIssue(ctx, issue, link)) pulled++;
       } else if (link && issue.updatedAt > link.remote_updated)
-        transaction(() => run("UPDATE issue_links SET remote_updated=? WHERE id=?", issue.updatedAt, link.id));
-      const current = linkOfIssue(ctx, issue.id);
+        await transaction(async () => await run("UPDATE issue_links SET remote_updated=? WHERE id=?", issue.updatedAt, link.id));
+      const current = await linkOfIssue(ctx, issue.id);
       if (current && (!link || issue.updatedAt > link.remote_updated)) await pullComments(ctx, current.row_id, issue);
       cursor = Math.max(cursor || 0, issue.updatedAt);
     }
@@ -1027,13 +1028,13 @@ async function pull(ctx: Context) {
 
 // Records to push: queued ones and, on the poll, those changed since the
 // last scan (also documents, whose edits do not pass the record hooks).
-function pushCandidates(ctx: Context, scan: boolean) {
+async function pushCandidates(ctx: Context, scan: boolean) {
   const ids = new Set(
-    all<{ row_id: string }>("SELECT row_id FROM issue_sync_queue WHERE page_id=? ORDER BY at LIMIT ?", ctx.page.id, MAX_PUSH).map((r) => r.row_id),
+    (await all<{ row_id: string }>("SELECT row_id FROM issue_sync_queue WHERE page_id=? ORDER BY at LIMIT ?", ctx.page.id, MAX_PUSH)).map((r) => r.row_id),
   );
   if (scan) {
     const since = sqlTime(ctx.state.scanAt ?? ctx.map.created_at);
-    for (const r of all<{ id: string }>(
+    for (const r of await all<{ id: string }>(
       `SELECT r.id FROM rows r LEFT JOIN row_documents d ON d.row_id=r.id
         WHERE r.page_id=? AND (r.updated_at>=? OR d.updated_at>=?) ORDER BY r.updated_at LIMIT ?`,
       ctx.page.id,
@@ -1049,30 +1050,30 @@ function pushCandidates(ctx: Context, scan: boolean) {
 
 async function push(ctx: Context, scan: boolean) {
   let pushed = 0;
-  for (const rowId of pushCandidates(ctx, scan)) {
-    const row = rowOf(ctx, rowId);
-    const done = () => transaction(() => run("DELETE FROM issue_sync_queue WHERE row_id=?", rowId));
+  for (const rowId of await pushCandidates(ctx, scan)) {
+    const row = await rowOf(ctx, rowId);
+    const done = async () => await transaction(async () => await run("DELETE FROM issue_sync_queue WHERE row_id=?", rowId));
     if (!row || ctx.hidden.has(rowId)) {
       if (row) ctx.state.skipped = (ctx.state.skipped || 0) + 1;
-      done();
+      await done();
       continue;
     }
-    let link = one<LinkRow>("SELECT * FROM issue_links WHERE row_id=?", rowId);
+    let link = await one<LinkRow>("SELECT * FROM issue_links WHERE row_id=?", rowId);
     // Only records created after the mapping become new issues.
     if (!link && fromSql(row.created_at) < ctx.map.created_at - 1000) {
-      done();
+      await done();
       continue;
     }
     const cells = parse<Cells>(row.cells, {});
-    const view = localView(ctx.config, ctx.logins, rowId, cells);
+    const view = await localView(ctx.config, ctx.logins, rowId, cells);
     const localHash = hash(view);
     if (link && localHash === link.local_hash) {
       await pushComments(ctx, rowId, link.number);
-      done();
+      await done();
       continue;
     }
     if (!view.title) {
-      done();
+      await done();
       continue;
     }
     let previous = link ? parse<RemoteView>(link.remote, null as unknown as RemoteView) : null;
@@ -1080,11 +1081,11 @@ async function push(ctx: Context, scan: boolean) {
       // Changed on both sides since the last sync? The later change wins.
       const remote = await ctx.api.get(link.number);
       if (remoteProjection(ctx.config, remoteView(remote)) !== remoteProjection(ctx.config, previous || {})) {
-        const remoteWins = remote.updatedAt > localUpdated(rowId, row);
-        conflict(ctx, rowId, remote, remoteWins);
+        const remoteWins = remote.updatedAt > (await localUpdated(rowId, row));
+        await conflict(ctx, rowId, remote, remoteWins);
         if (remoteWins) {
-          applyIssue(ctx, remote, link);
-          done();
+          await applyIssue(ctx, remote, link);
+          await done();
           continue;
         }
       }
@@ -1093,21 +1094,21 @@ async function push(ctx: Context, scan: boolean) {
     if (ctx.config.milestone && !ctx.milestones) ctx.milestones = await ctx.api.milestones();
     const change = issueFromView(ctx.config, ctx.fields, view, previous, ctx.milestones);
     const issue = link ? await ctx.api.update(link.number, change) : await ctx.api.create(change);
-    transaction(() =>
-      quietly(() => {
+    await transaction(async () =>
+      await quietly(async () => {
         // Number and address are read-only copies of the issue.
-        const fresh = rowOf(ctx, rowId);
+        const fresh = await rowOf(ctx, rowId);
         if (fresh) {
           const before = parse<Cells>(fresh.cells, {});
           const after = { ...before, ...readOnlyCells(ctx.config, ctx.fields, issue) };
           if (JSON.stringify(after) !== JSON.stringify(before))
-            run("UPDATE rows SET cells=?,version=version+1 WHERE id=?", JSON.stringify(after), rowId);
+            await run("UPDATE rows SET cells=?,version=version+1 WHERE id=?", JSON.stringify(after), rowId);
         }
-        storeLink(ctx, rowId, issue, currentHash(ctx, rowId), link);
-        run("DELETE FROM issue_sync_queue WHERE row_id=?", rowId);
+        await storeLink(ctx, rowId, issue, await currentHash(ctx, rowId), link);
+        await run("DELETE FROM issue_sync_queue WHERE row_id=?", rowId);
       }),
     );
-    link = one<LinkRow>("SELECT * FROM issue_links WHERE row_id=?", rowId);
+    link = await one<LinkRow>("SELECT * FROM issue_links WHERE row_id=?", rowId);
     if (link) await pushComments(ctx, rowId, link.number);
     pushed++;
   }
@@ -1123,36 +1124,36 @@ export async function syncIssues(pageId: string, options: { scan?: boolean; push
   if (running.has(pageId)) return { ok: false, running: true };
   running.add(pageId);
   try {
-    const map = one<MapRow>("SELECT * FROM issue_sync_maps WHERE page_id=?", pageId);
+    const map = await one<MapRow>("SELECT * FROM issue_sync_maps WHERE page_id=?", pageId);
     if (!map) return { ok: false };
-    const connection = one<ConnectionRow>("SELECT * FROM issue_connections WHERE id=?", map.connection_id)!;
-    const page = one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", pageId);
+    const connection = (await one<ConnectionRow>("SELECT * FROM issue_connections WHERE id=?", map.connection_id))!;
+    const page = await one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", pageId);
     if (!page) return { ok: false };
     const cstate = parse<ConnectionState>(connection.state, {});
     if (cstate.backoffUntil && cstate.backoffUntil > Date.now()) return { ok: false, backoffUntil: cstate.backoffUntil };
     const state: MapState = { ...parse<MapState>(map.state, {}), error: null, conflicts: 0, skipped: 0 };
-    const who = connector(connection);
-    const fail = (message: string) => {
-      transaction(() => saveMapState(pageId, { error: message }));
+    const who = await connector(connection);
+    const fail = async (message: string) => {
+      await transaction(async () => await saveMapState(pageId, { error: message }));
       return { ok: false, error: message };
     };
-    if (!who) return fail("Die Person, die die Verbindung eingerichtet hat, ist nicht mehr Eigentümer des Arbeitsbereichs – bitte neu verbinden.");
-    const role = pageRole(who, page);
-    if (!role || role === "viewer" || page.locked) return fail("Die verbindende Person darf diese Datenbank nicht bearbeiten.");
+    if (!who) return await fail("Die Person, die die Verbindung eingerichtet hat, ist nicht mehr Eigentümer des Arbeitsbereichs – bitte neu verbinden.");
+    const role = await pageRole(who, page);
+    if (!role || role === "viewer" || page.locked) return await fail("Die verbindende Person darf diese Datenbank nicht bearbeiten.");
     // Below a journal behind a PIN nothing goes out to the repository.
-    if (journalLocked(who, page)) return fail("Dieses Journal ist gesperrt.");
+    if (await journalLocked(who, page)) return await fail("Dieses Journal ist gesperrt.");
     const config = parse<IssueSyncConfig>(map.config, issueSyncConfigSchema.parse({ title: "" }));
-    const fields = databaseFields(pageId);
+    const fields = await databaseFields(pageId);
     try {
       checkConfig(fields, config);
     } catch (error) {
-      return fail((error as Error).message);
+      return await fail((error as Error).message);
     }
     let client: Client;
     try {
       client = clientFor(connection, map.repo);
     } catch (error) {
-      return fail((error as Error).message);
+      return await fail((error as Error).message);
     }
     const ctx: Context = {
       page,
@@ -1162,8 +1163,8 @@ export async function syncIssues(pageId: string, options: { scan?: boolean; push
       who,
       api: issueApi(client),
       fields,
-      ...peopleMaps(connection),
-      hidden: hiddenRowIds(who, page),
+      ...(await peopleMaps(connection)),
+      hidden: await hiddenRowIds(who, page),
       state,
       milestones: null,
     };
@@ -1171,10 +1172,10 @@ export async function syncIssues(pageId: string, options: { scan?: boolean; push
       if (config.direction !== "push" && !options.pushOnly) await pull(ctx);
       if (config.direction !== "pull") await push(ctx, !!options.scan);
     } catch (error) {
-      if (error instanceof IssueRateLimit) transaction(() => saveConnectionState(connection.id, { backoffUntil: error.until }));
+      if (error instanceof IssueRateLimit) await transaction(async () => await saveConnectionState(connection.id, { backoffUntil: error.until }));
       ctx.state.error = (error as Error).message;
     }
-    transaction(() => saveMapState(pageId, ctx.state));
+    await transaction(async () => await saveMapState(pageId, ctx.state));
     return { ok: !ctx.state.error, ...ctx.state };
   } finally {
     running.delete(pageId);
@@ -1183,8 +1184,8 @@ export async function syncIssues(pageId: string, options: { scan?: boolean; push
 
 // "Sync now" in the database dialog.
 export async function runIssueSync(user: Identity, pageId: string) {
-  const page = requirePage(user, pageId, true);
-  if (!one("SELECT 1 FROM issue_sync_maps WHERE page_id=?", page.id)) throw new HttpError(404, "Diese Datenbank ist mit keinem Repository verbunden.");
+  const page = await requirePage(user, pageId, true);
+  if (!(await one("SELECT 1 FROM issue_sync_maps WHERE page_id=?", page.id))) throw new HttpError(404, "Diese Datenbank ist mit keinem Repository verbunden.");
   return syncIssues(page.id, { scan: true });
 }
 
@@ -1197,9 +1198,9 @@ function same(a: string, b: string) {
 }
 // Checks a webhook of GitHub (X-Hub-Signature-256) or GitLab
 // (X-Gitlab-Token) and names the databases to pull.
-export function receiveIssueWebhook(token: string, headers: Headers, body: string) {
+export async function receiveIssueWebhook(token: string, headers: Headers, body: string) {
   if (!/^[A-Za-z0-9_-]{20,64}$/.test(token)) throw new HttpError(404, "Nicht gefunden.");
-  const connection = one<ConnectionRow>("SELECT * FROM issue_connections WHERE hook_token=?", token);
+  const connection = await one<ConnectionRow>("SELECT * FROM issue_connections WHERE hook_token=?", token);
   if (!connection) throw new HttpError(404, "Nicht gefunden.");
   let secret: string;
   try {
@@ -1230,7 +1231,7 @@ export function receiveIssueWebhook(token: string, headers: Headers, body: strin
       .filter((v): v is string => !!v)
       .map((v) => v.toLowerCase()),
   );
-  const pages = all<{ page_id: string; repo: string }>("SELECT page_id,repo FROM issue_sync_maps WHERE connection_id=?", connection.id)
+  const pages = (await all<{ page_id: string; repo: string }>("SELECT page_id,repo FROM issue_sync_maps WHERE connection_id=?", connection.id))
     .filter((m) => repos.has(m.repo.toLowerCase()))
     .map((m) => m.page_id);
   return { ok: true, pages };
@@ -1240,7 +1241,7 @@ export function receiveIssueWebhook(token: string, headers: Headers, body: strin
 
 async function pollAll() {
   let failure: unknown;
-  for (const { page_id } of all<{ page_id: string }>("SELECT page_id FROM issue_sync_maps")) {
+  for (const { page_id } of await all<{ page_id: string }>("SELECT page_id FROM issue_sync_maps")) {
     try {
       await syncIssues(page_id, { scan: true });
     } catch (error) {
@@ -1249,7 +1250,7 @@ async function pollAll() {
     }
   }
   // For the operations dashboard (Administration → Operations).
-  noteWorkerRun("issue-sync", failure);
+  await noteWorkerRun("issue-sync", failure);
 }
 // Every 10 minutes; a queued record is pushed a few seconds after the change.
 export function startIssueSyncWorker() {

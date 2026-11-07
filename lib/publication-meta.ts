@@ -13,7 +13,7 @@ import { publicPage } from "./publication";
 export async function requestCustomHost(token: string) {
   const host = (await headers()).get(CUSTOM_HOST_HEADER);
   try {
-    return customHostFor(host, token);
+    return await customHostFor(host, token);
   } catch {
     return null;
   }
@@ -23,7 +23,7 @@ export async function publicationMetadata(token: string, pageId?: string): Promi
   const base: Metadata = { robots: { index: false, follow: false }, referrer: "no-referrer" };
   let context;
   try {
-    context = publicPage(token, pageId);
+    context = await publicPage(token, pageId);
   } catch {
     return base;
   }
@@ -32,10 +32,10 @@ export async function publicationMetadata(token: string, pageId?: string): Promi
   let favicon: string | undefined;
   if (isPublication)
     try {
-      favicon = renderedTheme(token, root.id).favicon;
+      favicon = (await renderedTheme(token, root.id)).favicon;
     } catch {}
   const customHost = await requestCustomHost(token);
-  const host = customHost || (isPublication ? publicationHost(root.id) : null);
+  const host = customHost || (isPublication ? (await publicationHost(root.id)) : null);
   const path = page.id === root.id ? "/" : `/${page.id}`;
   return {
     ...base,

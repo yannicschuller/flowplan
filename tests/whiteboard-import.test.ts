@@ -18,16 +18,16 @@ const { parseBoardFile, parseXml, importText, boardFormat, placeDrafts, BOARD_IM
 
 const fixture = (name: string) => readFileSync(join(import.meta.dirname, "fixtures", "whiteboard-import", name), "utf8");
 const byId = <T extends { id: string }>(items: T[]) => new Map(items.map((i) => [i.id, i]));
-function user(name: string): Identity {
+async function user(name: string): Promise<Identity> {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.com`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.com`);
   return { id: uid, name, email: `${name}@example.com`, groups: [], isAdmin: false, disabled: 0, created_at: "" };
 }
-const owner = user("board-owner"),
-  reader = user("board-reader"),
-  wid = createWorkspace(owner.id, "Imports"),
-  space = bootstrap(owner, wid).spaces[0].id;
-run("INSERT INTO members VALUES(?,?,?)", wid, reader.id, "viewer");
+const owner = await user("board-owner"),
+  reader = await user("board-reader"),
+  wid = await createWorkspace(owner.id, "Imports"),
+  space = (await bootstrap(owner, wid)).spaces[0].id;
+await run("INSERT INTO members VALUES(?,?,?)", wid, reader.id, "viewer");
 
 test("Excalidraw scenes become shapes, labels, connectors, pens, images and notes", async () => {
   const board = await parseBoardFile("skizze.excalidraw", fixture("board.excalidraw"));
@@ -190,24 +190,24 @@ test("the server stores embedded pictures and creates whiteboards from files", a
   const file = Buffer.from(fixture("board.excalidraw"));
   const created = await importWhiteboardFile(owner, "Skizze.excalidraw", file, { workspaceId: wid, spaceId: space });
   assert.ok("pageId" in created);
-  const page = one<{ title: string; kind: string }>("SELECT title,kind FROM pages WHERE id=?", created.pageId)!;
+  const page = (await one<{ title: string; kind: string }>("SELECT title,kind FROM pages WHERE id=?", created.pageId))!;
   assert.deepEqual([page.title, page.kind], ["Skizze", "whiteboard"]);
-  const items = whiteboardSnapshotItems({ id: created.pageId } as never);
+  const items = await whiteboardSnapshotItems({ id: created.pageId } as never);
   assert.equal(items.length, 11);
   const image = items.find((i) => i.type === "image")!;
-  const files = all<{ id: string; mime: string }>("SELECT id,mime FROM files WHERE page_id=?", created.pageId);
+  const files = await all<{ id: string; mime: string }>("SELECT id,mime FROM files WHERE page_id=?", created.pageId);
   assert.deepEqual(files.map((f) => f.mime), ["image/png"]);
   assert.equal(image.src, `/api/files/${files[0].id}`);
   // Connectors point at the new ids of their shapes.
   const arrow = items.find((i) => i.type === "connector" && i.endArrow)!;
   assert.ok(items.some((i) => i.id === arrow.from?.id && i.type === "shape"));
   // Search and previews see the texts.
-  const html = one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", created.pageId)!.html;
+  const html = (await one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", created.pageId))!.html;
   assert.match(html, /Freier Text/);
   assert.match(html, /Start &lt;b&gt;here/);
 
   // Onto an existing board: items to place, pictures already stored.
-  const board = (command(owner, { action: "page.create", workspaceId: wid, spaceId: space, title: "Board", kind: "whiteboard" }) as { id: string }).id;
+  const board = ((await command(owner, { action: "page.create", workspaceId: wid, spaceId: space, title: "Board", kind: "whiteboard" })) as { id: string }).id;
   const onto = await importWhiteboardFile(owner, "x.drawio", Buffer.from(fixture("board-compressed.drawio")), { pageId: board });
   assert.ok("items" in onto && Array.isArray(onto.items));
   const drawn = (onto as { items: { type: string; src?: string }[] }).items;
@@ -217,7 +217,7 @@ test("the server stores embedded pictures and creates whiteboards from files", a
     importWhiteboardFile(reader, "x.drawio", Buffer.from(fixture("board.drawio")), { workspaceId: wid, spaceId: space }),
     (e: any) => e.status === 403,
   );
-  const doc = (command(owner, { action: "page.create", workspaceId: wid, spaceId: space, title: "Doc" }) as { id: string }).id;
+  const doc = ((await command(owner, { action: "page.create", workspaceId: wid, spaceId: space, title: "Doc" })) as { id: string }).id;
   await assert.rejects(importWhiteboardFile(owner, "x.drawio", Buffer.from(fixture("board.drawio")), { pageId: doc }), (e: any) => e.status === 400);
   await assert.rejects(importWhiteboardFile(owner, "x.txt", Buffer.from("nothing"), { pageId: board }), (e: any) => e.status === 400);
 });
@@ -234,19 +234,19 @@ test("Excalidraw files inside a ZIP export become whiteboard pages", async () =>
   const result = await importZip(owner, wid, space, zip);
   assert.equal(result.pages, 4);
   assert.equal(result.files, 2);
-  const page = (title: string) =>
-    one<{ id: string; kind: string; parent_id: string | null }>(
+  const page = async (title: string) =>
+    (await one<{ id: string; kind: string; parent_id: string | null }>(
       "SELECT id,kind,parent_id FROM pages WHERE workspace_id=? AND title=? AND deleted_at IS NULL ORDER BY seq DESC",
       wid,
       title,
-    )!;
-  const sketch = page("Skizze"),
-    flow = page("Ablauf");
+    ))!;
+  const sketch = await page("Skizze"),
+    flow = await page("Ablauf");
   assert.equal(sketch.kind, "whiteboard");
-  assert.equal(sketch.parent_id, page("Projekt").id);
-  assert.equal(whiteboardSnapshotItems({ id: sketch.id } as never).length, 11);
-  assert.ok(whiteboardSnapshotItems({ id: flow.id } as never).some((i) => i.text === "Zweite Seite & mehr"));
+  assert.equal(sketch.parent_id, (await page("Projekt")).id);
+  assert.equal((await whiteboardSnapshotItems({ id: sketch.id } as never)).length, 11);
+  assert.ok((await whiteboardSnapshotItems({ id: flow.id } as never)).some((i) => i.text === "Zweite Seite & mehr"));
   // A drawing that cannot be read still arrives, with a note saying why.
-  const broken = whiteboardSnapshotItems({ id: page("Kaputt").id } as never);
+  const broken = await whiteboardSnapshotItems({ id: (await page("Kaputt")).id } as never);
   assert.match(broken[0].text || "", /Kaputt\.excalidraw: .*JSON/);
 });

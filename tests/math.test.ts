@@ -69,7 +69,7 @@ const { sharedContent, mutateSharedContent } =
   await import("../lib/shared-content");
 const { replaceRowDocument } = await import("../lib/row-documents");
 const uid = id();
-run(
+await run(
   "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
   uid,
   uid,
@@ -85,19 +85,19 @@ const owner: Identity = {
   disabled: 0,
   created_at: "",
 };
-const wid = createWorkspace(uid, "Math workspace"),
-  boot = bootstrap(owner, wid);
-const act = (body: Record<string, unknown>): any => command(owner, body);
-const create = (kind = "document") =>
-  act({
+const wid = await createWorkspace(uid, "Math workspace"),
+  boot = await bootstrap(owner, wid);
+const act = async (body: Record<string, unknown>): Promise<any> => await command(owner, body);
+const create = async (kind = "document") =>
+  (await act({
     action: "page.create",
     workspaceId: wid,
     spaceId: boot.spaces[0].id,
     title: "Mathematik",
     kind,
-  }).id as string;
-const check = (pid: string) => {
-  const data = pageData(owner, pid) as { html: string; state: string };
+  })).id as string;
+const check = async (pid: string) => {
+  const data = (await pageData(owner, pid)) as { html: string; state: string };
   assert.match(data.html, /class="math-inline"/);
   assert.match(data.html, /class="math-block"/);
   assert.match(roundtrip(data.html), /bleibt im Satz/);
@@ -107,74 +107,74 @@ const check = (pid: string) => {
   doc.destroy();
 };
 test("math survives document and record copies, templates, ZIP, restore and permission-checked guest editing", async () => {
-  const pid = create();
-  run(
+  const pid = await create();
+  await run(
     "UPDATE documents SET html=?,state=? WHERE page_id=?",
     html,
     htmlState(html),
     pid,
   );
-  check(pid);
-  act({ action: "page.snapshot", pageId: pid });
-  check(act({ action: "page.duplicate", pageId: pid }).id);
-  const template = act({
+  await check(pid);
+  await act({ action: "page.snapshot", pageId: pid });
+  await check((await act({ action: "page.duplicate", pageId: pid })).id);
+  const template = (await act({
     action: "template.save",
     pageId: pid,
     name: "Math template",
-  }).id;
-  check(
-    act({
+  })).id;
+  await check(
+    (await act({
       action: "page.create",
       workspaceId: wid,
       spaceId: boot.spaces[0].id,
       title: "Math from template",
       templateId: template,
-    }).id,
+    })).id,
   );
-  const db = create("database");
-  const row = act({
+  const db = await create("database");
+  const row = (await act({
     action: "row.create",
     pageId: db,
     cells: { title: "Math row" },
-  }).id;
-  replaceRowDocument(row, html, uid);
-  const dbCopy = act({ action: "page.duplicate", pageId: db }).id;
-  const copied = pageData(owner, dbCopy) as any;
+  })).id;
+  await replaceRowDocument(row, html, uid);
+  const dbCopy = (await act({ action: "page.duplicate", pageId: db })).id;
+  const copied = (await pageData(owner, dbCopy)) as any;
   assert.match(copied.rows[0].preview.html, /math-inline/);
-  const destination = createWorkspace(uid, "Math restore");
+  const destination = await createWorkspace(uid, "Math restore");
   const imported = await importArchive(
     owner,
     destination,
     await exportArchive(owner, wid),
   );
   const restored = imported.pageIds[pid];
-  check(restored);
-  const snapshot = one<{ id: string }>(
+  await check(restored);
+  const snapshot = (await one<{ id: string }>(
     "SELECT id FROM snapshots WHERE page_id=?",
     restored,
-  )!.id;
-  run(
+  ))!.id;
+  await run(
     "UPDATE documents SET html=?,state=? WHERE page_id=?",
     "<p>Changed</p>",
     htmlState("<p>Changed</p>"),
     restored,
   );
-  act({ action: "snapshot.restore", pageId: restored, snapshotId: snapshot });
-  check(restored);
-  const read = act({
+  await act({ action: "snapshot.restore", pageId: restored, snapshotId: snapshot });
+  await check(restored);
+  const read = (await act({
     action: "share.create",
     pageId: pid,
     name: "Read math",
     role: "viewer",
-  }).token;
-  const edit = act({
+  })).token;
+  const edit = (await act({
     action: "share.create",
     pageId: pid,
     name: "Edit math",
     role: "editor",
-  }).token;
-  assert.match(sharedContent(read).html, /math-inline/);
-  const data = sharedContent(edit);
+  })).token;
+  assert.match((await sharedContent(read)).html, /math-inline/);
+  const data = await sharedContent(edit);
   const mutation = {
     action: "save",
     pageId: pid,
@@ -182,11 +182,11 @@ test("math survives document and record copies, templates, ZIP, restore and perm
     title: data.title,
     html: html.replaceAll("mc^2", "mc^3"),
   };
-  assert.throws(
-    () => mutateSharedContent(read, mutation),
+  await assert.rejects(
+    async () => await mutateSharedContent(read, mutation),
     (error: unknown) => (error as { status: number }).status === 403,
   );
-  mutateSharedContent(edit, mutation);
-  assert.match(sharedContent(read).html, /mc\^3/);
-  assert.match(roundtrip(sharedContent(read).html), /math-inline/);
+  await mutateSharedContent(edit, mutation);
+  assert.match((await sharedContent(read)).html, /mc\^3/);
+  assert.match(roundtrip((await sharedContent(read)).html), /math-inline/);
 });

@@ -9,7 +9,7 @@ export async function GET(
 ) {
   try {
     const { token, fileId } = await params;
-    return await fileResponse(req, withShareRequest(req, () => publicFile(token, fileId)));
+    return await fileResponse(req, await withShareRequest(req, async () => await publicFile(token, fileId)));
   } catch (e) {
     return Response.json(
       { error: e instanceof HttpError ? e.message : "Datei nicht verfügbar." },

@@ -7,27 +7,28 @@ import { resolveCatalogDates, templateCatalog, type TemplateKey } from "./templa
 import { catalogFor } from "./template-catalogs";
 import { contentLocale } from "./content-locale";
 import { starterSurvey } from "./survey-server";
+import { forEachAsync } from "./each-async";
 
 export const starterTemplates = templateCatalog;
 export type StarterTemplateKey = TemplateKey;
 
-export function applyStarterTemplate(pageId: string, userId: string, key: StarterTemplateKey) {
+export async function applyStarterTemplate(pageId: string, userId: string, key: StarterTemplateKey) {
   const template = catalogFor(contentLocale())[key];
-  run("UPDATE pages SET icon=? WHERE id=?", template.icon, pageId);
+  await run("UPDATE pages SET icon=? WHERE id=?", template.icon, pageId);
   if (template.kind === "document") {
     const html = template.html || "";
-    run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), pageId);
+    await run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), pageId);
     return;
   }
-  run(
+  await run(
     "UPDATE databases SET fields=?,views=? WHERE page_id=?",
     JSON.stringify(template.fields || []),
     JSON.stringify(template.views || []),
     pageId,
   );
-  if (template.survey) starterSurvey(pageId, contentLocale());
-  (template.rows || []).forEach((row, i) =>
-    run(
+  if (template.survey) await starterSurvey(pageId, contentLocale());
+  await forEachAsync((template.rows || []), async (row, i) =>
+    await run(
       "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content) VALUES(?,?,?,?,?,?,?)",
       id(),
       pageId,

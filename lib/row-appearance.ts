@@ -16,17 +16,17 @@ const schema = z.object({
 });
 // Record icons and covers use images uploaded to the database page, like its
 // attachments; changing them is a normal versioned record edit.
-export function setRowAppearance(user: Identity, input: unknown) {
+export async function setRowAppearance(user: Identity, input: unknown) {
   const b = schema.parse(input);
-  const { row } = requireRow(user, b.pageId, b.rowId, true);
+  const { row } = await requireRow(user, b.pageId, b.rowId, true);
   if (row.version !== b.version)
     throw new HttpError(
       409,
       "Der Eintrag wurde inzwischen geändert. Bitte erneut versuchen.",
     );
-  if (b.icon !== undefined) validateIcon(b.pageId, b.icon);
-  if (b.cover !== undefined) validateCover(b.pageId, b.cover);
-  run(
+  if (b.icon !== undefined) await validateIcon(b.pageId, b.icon);
+  if (b.cover !== undefined) await validateCover(b.pageId, b.cover);
+  await run(
     "UPDATE rows SET icon=COALESCE(?,icon),cover=COALESCE(?,cover),version=version+1,updated_by=?,updated_at=? WHERE id=?",
     b.icon ?? null,
     b.cover ?? null,
@@ -42,15 +42,15 @@ const recurrenceInput = z.object({
   version: z.number().int().positive(),
   recurrence: recurrenceSchema.nullable(),
 });
-export function setRowRecurrence(user: Identity, input: unknown) {
+export async function setRowRecurrence(user: Identity, input: unknown) {
   const b = recurrenceInput.parse(input);
-  const { row } = requireRow(user, b.pageId, b.rowId, true);
+  const { row } = await requireRow(user, b.pageId, b.rowId, true);
   if (row.version !== b.version)
     throw new HttpError(
       409,
       "Der Eintrag wurde inzwischen geändert. Bitte erneut versuchen.",
     );
-  run(
+  await run(
     "UPDATE rows SET recurrence=?,version=version+1,updated_by=?,updated_at=? WHERE id=?",
     b.recurrence ? JSON.stringify(b.recurrence) : "",
     user.id, nowText(),

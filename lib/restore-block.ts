@@ -51,20 +51,20 @@ function findBlock(doc: PMNode, text: string) {
   return found as { node: PMNode; pos: number } | null;
 }
 
-export function restoreBlock(user: Identity, raw: unknown) {
+export async function restoreBlock(user: Identity, raw: unknown) {
   const b = input.parse(raw);
-  const page = requirePage(user, b.pageId, true);
+  const page = await requirePage(user, b.pageId, true);
   if (page.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
-  if (b.rowId) requireRow(user, page.id, b.rowId, true);
+  if (b.rowId) await requireRow(user, page.id, b.rowId, true);
   else if (page.kind !== "document") throw new HttpError(400, "Kein Dokument.");
   const snapshot = b.rowId
-    ? one<{ state: Uint8Array | null; html: string }>("SELECT state,html FROM row_snapshots WHERE id=? AND row_id=?", b.snapshotId, b.rowId)
-    : one<{ state: Uint8Array | null; html: string }>("SELECT state,html FROM snapshots WHERE id=? AND page_id=?", b.snapshotId, page.id);
+    ? (await one<{ state: Uint8Array | null; html: string }>("SELECT state,html FROM row_snapshots WHERE id=? AND row_id=?", b.snapshotId, b.rowId))
+    : (await one<{ state: Uint8Array | null; html: string }>("SELECT state,html FROM snapshots WHERE id=? AND page_id=?", b.snapshotId, page.id));
   if (!snapshot) throw new HttpError(404, "Version nicht gefunden.");
   const old = findBlock(docOf(snapshot.state, snapshot.html || ""), b.text);
   if (!old) throw new HttpError(404, "Der Absatz steht nicht in dieser Version.");
   const block = rewriteSchema().nodeFromJSON(old.node.toJSON());
-  const result = rewriteDocument(page.id, b.rowId || null, user.id, (doc) => {
+  const result = await rewriteDocument(page.id, b.rowId || null, user.id, (doc) => {
     const tr = new Transform(doc);
     const current = b.replace ? findBlock(doc, b.replace) : null;
     if (current) tr.replaceWith(current.pos, current.pos + current.node.nodeSize, block);

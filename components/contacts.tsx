@@ -196,7 +196,7 @@ export function LdapMarker() {
   );
 }
 
-const syncSummary = (r: SyncResult, t: ReturnType<typeof useT>) =>
+const syncSummary = (r: SyncResult, t: Awaited<ReturnType<typeof useT>>) =>
   r.ok
     ? t(
         `${new Date(r.at).toLocaleString(LOCALE_TAG)} · ${r.created} neu, ${r.updated} geändert, ${r.missing} nicht mehr im Verzeichnis`,

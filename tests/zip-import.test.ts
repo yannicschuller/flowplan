@@ -16,9 +16,9 @@ const { importZip, inferField, importDate, exportTitle } =
   await import("../lib/zip-import");
 const { markdownToHtml } = await import("../lib/markdown-import");
 
-function account(name: string) {
+async function account(name: string) {
   const uid = id();
-  run(
+  await run(
     "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
     uid,
     uid,
@@ -35,11 +35,11 @@ function account(name: string) {
     created_at: "",
   } as Identity;
 }
-const owner = account("import-owner"),
-  viewer = account("import-viewer");
-const wid = createWorkspace(owner.id, "Import");
-run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
-const space = bootstrap(owner, wid).spaces[0].id;
+const owner = await account("import-owner"),
+  viewer = await account("import-viewer");
+const wid = await createWorkspace(owner.id, "Import");
+await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
+const space = (await bootstrap(owner, wid)).spaces[0].id;
 const png = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==",
   "base64",
@@ -100,23 +100,23 @@ test("Notion exports become nested pages, databases with record pages and attach
   assert.equal(result.pages, 3);
   assert.equal(result.rows, 4);
   assert.equal(result.files, 1);
-  const page = (title: string) =>
-    one<{ id: string; parent_id: string | null; kind: string }>(
+  const page = async (title: string) =>
+    (await one<{ id: string; parent_id: string | null; kind: string }>(
       "SELECT id,parent_id,kind FROM pages WHERE workspace_id=? AND title=? AND deleted_at IS NULL",
       wid,
       title,
-    )!;
-  const wiki = page("Wiki"),
-    chapter = page("Kapitel"),
-    tasks = page("Aufgaben");
+    ))!;
+  const wiki = await page("Wiki"),
+    chapter = await page("Kapitel"),
+    tasks = await page("Aufgaben");
   assert.equal(chapter.parent_id, wiki.id);
   assert.equal(tasks.kind, "database");
-  const html = one<{ html: string }>(
+  const html = (await one<{ html: string }>(
     "SELECT html FROM documents WHERE page_id=?",
     wiki.id,
-  )!.html;
+  ))!.html;
   assert.match(html, new RegExp(`#page=${chapter.id}`));
-  const files = all<{ id: string; name: string }>(
+  const files = await all<{ id: string; name: string }>(
     "SELECT id,name FROM files WHERE page_id=?",
     wiki.id,
   );
@@ -131,7 +131,7 @@ test("Notion exports become nested pages, databases with record pages and attach
     ).equals(png),
   );
   assert.doesNotMatch(html, /<h1>Wiki<\/h1>/);
-  const fields = database(tasks.id).fields;
+  const fields = (await database(tasks.id)).fields;
   assert.deepEqual(
     fields.map((f) => [f.name, f.type]),
     [
@@ -142,17 +142,17 @@ test("Notion exports become nested pages, databases with record pages and attach
       ["Fällig", "date"],
     ],
   );
-  const records = rows(tasks.id);
+  const records = await rows(tasks.id);
   assert.deepEqual(
     records.map((r) => r.cells.title),
     ["Planen", "Bauen", "Testen", "Prüfen"],
   );
   assert.equal(records[0].cells.f4, "2026-09-24");
   assert.equal(records[1].cells.f3, true);
-  const rowHtml = one<{ html: string }>(
+  const rowHtml = (await one<{ html: string }>(
     "SELECT html FROM row_documents WHERE row_id=?",
     records[0].id,
-  )!.html;
+  ))!.html;
   assert.match(rowHtml, /<strong>Planen<\/strong>/);
   assert.doesNotMatch(rowHtml, /Status: Offen/);
 });
@@ -174,7 +174,7 @@ test("imports need write access, content and stay within limits", async () => {
   // A tiny archive that unpacks to a lot (a "zip bomb") is refused.
   const bomb = await zip({ "Notiz.md": "Hallo", "leer.bin": Buffer.alloc(8 * 1024 * 1024) });
   await assert.rejects(importZip(owner, wid, space, bomb), /Größenlimit/);
-  const before = one<{ n: number }>("SELECT COUNT(*) n FROM pages")!.n;
+  const before = (await one<{ n: number }>("SELECT COUNT(*) n FROM pages"))!.n;
   process.env.FLOWPLAN_WORKSPACE_QUOTA_MB = "1";
   const big = await zip({
     "Groß.md": "![x](gross.bin)",
@@ -183,7 +183,7 @@ test("imports need write access, content and stay within limits", async () => {
   await assert.rejects(importZip(owner, wid, space, big), /Speicherkontingent/);
   delete process.env.FLOWPLAN_WORKSPACE_QUOTA_MB;
   // Failed imports leave nothing behind.
-  assert.equal(one<{ n: number }>("SELECT COUNT(*) n FROM pages")!.n, before);
+  assert.equal((await one<{ n: number }>("SELECT COUNT(*) n FROM pages"))!.n, before);
   const ok = await importZip(owner, wid, space, simple);
   assert.equal(ok.pages, 1);
 });

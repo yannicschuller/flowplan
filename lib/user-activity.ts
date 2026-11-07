@@ -16,7 +16,7 @@ export type { UserActivity };
 // Idle times beyond this are reported as this (the app may sleep longer).
 const MAX_IDLE_MS = 24 * 3_600_000;
 
-export function recordActivity(
+export async function recordActivity(
   user: Identity,
   body: unknown,
   now = Date.now(),
@@ -28,7 +28,7 @@ export function recordActivity(
     Number.isFinite(idle) && idle >= 0
       ? now - Math.min(idle, MAX_IDLE_MS)
       : null;
-  run(
+  await run(
     "UPDATE users SET last_open_at=?,last_active_at=CASE WHEN ? IS NOT NULL AND (last_active_at IS NULL OR last_active_at<?) THEN ? ELSE last_active_at END WHERE id=?",
     now,
     activeAt,
@@ -39,17 +39,17 @@ export function recordActivity(
   return { ok: true };
 }
 
-export function userActivity(admin: Identity): UserActivity[] {
+export async function userActivity(admin: Identity): Promise<UserActivity[]> {
   if (!admin.isAdmin)
     throw new HttpError(403, "Administrator-Gruppe erforderlich.");
-  return all<{
+  return (await all<{
     id: string;
     open_at: number | null;
     active_at: number | null;
     seen: number | null;
   }>(
     "SELECT u.id,u.last_open_at open_at,u.last_active_at active_at,(SELECT max(s.last_seen) FROM sessions s WHERE s.user_id=u.id) seen FROM users u WHERE u.demo_until IS NULL",
-  ).map((r) => ({
+  )).map((r) => ({
     id: r.id,
     openAt: r.open_at,
     activeAt: r.active_at ?? r.seen,

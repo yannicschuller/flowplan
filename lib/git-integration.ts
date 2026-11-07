@@ -22,15 +22,15 @@ type Item = { kind: "commit" | "pr"; ref: string; title: string; text: string; u
 
 const CLOSING = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?|schließt|behebt)\s*:?\s+#?([A-Z][A-Z0-9]{0,9}-\d{1,7})\b/gi;
 
-export function gitSetup(page: Page, action: "git.setup" | "git.disable") {
-  const settings = databaseSettings(page.id);
+export async function gitSetup(page: Page, action: "git.setup" | "git.disable") {
+  const settings = await databaseSettings(page.id);
   if (action === "git.disable") {
     const { git: _git, ...rest } = settings;
-    storeSettings(page.id, rest);
+    await storeSettings(page.id, rest);
     return { ok: true };
   }
   const git = { token: randomBytes(24).toString("base64url"), secret: randomBytes(24).toString("base64url"), createdAt: new Date().toISOString() };
-  storeSettings(page.id, { ...settings, git: sealGit(page.id, git) });
+  await storeSettings(page.id, { ...settings, git: sealGit(page.id, git) });
   return git;
 }
 
@@ -109,37 +109,37 @@ function items(provider: "github" | "gitlab" | "gitea", event: string, p: any): 
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 // Marks a record done (the database's done rule) as the Git connection.
-function closeRecord(pageId: string, rowId: string) {
-  const page = one<Page>("SELECT * FROM pages WHERE id=?", pageId)!;
-  const fields = JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId)!.fields) as Field[];
-  const rule = doneRule(fields, databaseSettings(pageId));
-  const row = one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", rowId);
+async function closeRecord(pageId: string, rowId: string) {
+  const page = (await one<Page>("SELECT * FROM pages WHERE id=?", pageId))!;
+  const fields = JSON.parse((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId))!.fields) as Field[];
+  const rule = doneRule(fields, await databaseSettings(pageId));
+  const row = await one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", rowId);
   if (!rule || !row) return false;
   const before = JSON.parse(row.cells);
   if (isDone(rule, before)) return false;
   const after = { ...before, [rule.field.id]: rule.field.type === "checkbox" ? true : rule.values[0] };
-  run("UPDATE rows SET cells=?,version=version+1,updated_at=? WHERE id=?", JSON.stringify(after), nowText(), rowId);
+  await run("UPDATE rows SET cells=?,version=version+1,updated_at=? WHERE id=?", JSON.stringify(after), nowText(), rowId);
   // Workflow and automations as for any change; a refused step stays open.
   try {
-    rowChanged("system", page, rowId, before, after, fields);
+    await rowChanged("system", page, rowId, before, after, fields);
   } catch {
-    run("UPDATE rows SET cells=?,version=version+1 WHERE id=?", JSON.stringify(before), rowId);
+    await run("UPDATE rows SET cells=?,version=version+1 WHERE id=?", JSON.stringify(before), rowId);
     return false;
   }
   return true;
 }
 
-export function receiveGitWebhook(token: string, headers: Headers, body: string) {
+export async function receiveGitWebhook(token: string, headers: Headers, body: string) {
   if (!/^[A-Za-z0-9_-]{20,64}$/.test(token)) throw new HttpError(404, "Nicht gefunden.");
   // Sealed connections by the hash of their token, older ones by the token.
-  const candidates = all<{ page_id: string; workspace_id: string }>(
+  const candidates = await all<{ page_id: string; workspace_id: string }>(
     "SELECT d.page_id,p.workspace_id FROM databases d JOIN pages p ON p.id=d.page_id WHERE p.deleted_at IS NULL AND (d.settings LIKE ? OR d.settings LIKE ?)",
     `%"tokenHash":"${gitTokenHash(token)}"%`,
     `%"token":"${token}"%`,
   );
-  let db: (typeof candidates)[number] | undefined, git: ReturnType<typeof openGit> = null;
+  let db: (typeof candidates)[number] | undefined, git: Awaited<ReturnType<typeof openGit>> = null;
   for (const candidate of candidates) {
-    const found = openGit(candidate.page_id, databaseSettings(candidate.page_id).git);
+    const found = openGit(candidate.page_id, (await databaseSettings(candidate.page_id)).git);
     if (found && same(found.token, token)) [db, git] = [candidate, found];
     if (db) break;
   }
@@ -160,10 +160,10 @@ export function receiveGitWebhook(token: string, headers: Headers, body: string)
     const keys = new Set([...item.text.matchAll(TICKET_REF)].map((m) => m[0]));
     const closing = new Set([...item.text.matchAll(CLOSING)].map((m) => m[1].toUpperCase()));
     for (const key of keys) {
-      const ticket = resolveTicket(null, db.workspace_id, key);
+      const ticket = await resolveTicket(null, db.workspace_id, key);
       // The connection belongs to this database: only its own tickets.
       if (!ticket || ticket.pageId !== db.page_id) continue;
-      run(
+      await run(
         "INSERT INTO git_links(id,page_id,row_id,kind,ref,title,url,author,state,at) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(row_id,url) DO UPDATE SET title=excluded.title,state=excluded.state,at=excluded.at",
         id(),
         ticket.pageId,
@@ -177,7 +177,7 @@ export function receiveGitWebhook(token: string, headers: Headers, body: string)
         Date.now(),
       );
       linked++;
-      if (item.closes && closing.has(key) && closeRecord(ticket.pageId, ticket.rowId)) closed++;
+      if (item.closes && closing.has(key) && await closeRecord(ticket.pageId, ticket.rowId)) closed++;
     }
   }
   return { ok: true, linked, closed };
@@ -185,15 +185,15 @@ export function receiveGitWebhook(token: string, headers: Headers, body: string)
 
 // Address and secret for setting up the webhook: only for people who may
 // change the database (a reader with the secret could close records).
-export function gitConfig(user: Identity, pageId: string) {
-  requirePage(user, pageId, true);
-  return openGit(pageId, databaseSettings(pageId).git);
+export async function gitConfig(user: Identity, pageId: string) {
+  await requirePage(user, pageId, true);
+  return openGit(pageId, (await databaseSettings(pageId)).git);
 }
 
-export function gitLinks(user: Identity, pageId: string, rowId: string) {
-  requirePage(user, pageId);
-  requireRow(user, pageId, rowId);
-  return all<{ id: string; kind: string; ref: string; title: string; url: string; author: string; state: string; at: number }>(
+export async function gitLinks(user: Identity, pageId: string, rowId: string) {
+  await requirePage(user, pageId);
+  await requireRow(user, pageId, rowId);
+  return await all<{ id: string; kind: string; ref: string; title: string; url: string; author: string; state: string; at: number }>(
     "SELECT id,kind,ref,title,url,author,state,at FROM git_links WHERE row_id=? ORDER BY at DESC LIMIT 100",
     rowId,
   );

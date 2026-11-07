@@ -44,19 +44,19 @@ export const publicViewer: FieldViewer = {
   groups: new Set(),
   public: true,
 };
-export function fieldViewer(
+export async function fieldViewer(
   user: Identity,
   page: Page,
-  role: Role | null = pageRole(user, page),
-): FieldViewer {
+  role: Role | null = (await pageRole(user, page)),
+): Promise<FieldViewer> {
   return {
     role,
     groups: new Set([
       ...(user.groups || []),
-      ...all<{ group_id: string }>(
+      ...(await all<{ group_id: string }>(
         "SELECT group_id FROM group_members WHERE user_id=?",
         user.id,
-      ).map((g) => g.group_id),
+      )).map((g) => g.group_id),
     ]),
   };
 }
@@ -143,26 +143,26 @@ export function canWriteField(viewer: FieldViewer, field: Field, readable: Set<s
   return open(rule) || ruleAllows(rule, viewer);
 }
 
-const storedFields = (pageId: string): Field[] =>
+const storedFields = async (pageId: string): Promise<Field[]> =>
   JSON.parse(
-    String(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId)?.fields || "[]"),
+    String((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId))?.fields || "[]"),
   );
 // Rollups read a property of another database: visible when the person may
 // read that page and that property there (nested rollups a few levels deep).
 function remoteResolver(user: Identity, fields: Field[], depth = 0) {
   const cache = new Map<string, Set<string> | null>();
-  return (field: Field) => {
+  return async (field: Field) => {
     const pageId = fields.find((r) => r.id === field.relationField)?.relationPage;
     if (!pageId || !field.rollupField) return true;
     if (depth > 3) return false;
     if (!cache.has(pageId)) {
-      const page = one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", pageId);
-      const role = page ? pageRole(user, page) : null;
-      const target = page ? storedFields(pageId) : [];
+      const page = await one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", pageId);
+      const role = page ? (await pageRole(user, page)) : null;
+      const target = page ? (await storedFields(pageId)) : [];
       cache.set(
         pageId,
         page && role
-          ? readableFieldIds(fieldViewer(user, page, role), target, remoteResolver(user, target, depth + 1))
+          ? readableFieldIds(await fieldViewer(user, page, role), target, remoteResolver(user, target, depth + 1))
           : null,
       );
     }
@@ -173,15 +173,15 @@ const needsCheck = (fields: Field[]) =>
   fields.some((f) => readRestricted(f) || (f.type === "rollup" && !!f.rollupField));
 // Hidden property ids for a person in a database (by its stored schema
 // unless `fields` is given).
-export function hiddenFieldsFor(
+export async function hiddenFieldsFor(
   user: Identity,
   page: Page,
-  fields: Field[] = storedFields(page.id),
+  fields: Field[] = (await storedFields(page.id)),
   role?: Role | null,
-): Set<string> {
+): Promise<Set<string>> {
   if (!needsCheck(fields)) return new Set();
   return hiddenFieldIds(
-    fieldViewer(user, page, role === undefined ? pageRole(user, page) : role),
+    await fieldViewer(user, page, role === undefined ? (await pageRole(user, page)) : role),
     fields,
     remoteResolver(user, fields),
   );
@@ -189,12 +189,12 @@ export function hiddenFieldsFor(
 // The properties a person sees, in order.
 // Guests see as options of tag-backed properties only the tags used in the
 // records they see (lib/tag-fields.ts).
-export function visibleFields(user: Identity, page: Page, fields: Field[]) {
-  const hidden = hiddenFieldsFor(user, page, fields);
-  return guestTagOptions(user, page, hidden.size ? fields.filter((f) => !hidden.has(f.id)) : fields);
+export async function visibleFields(user: Identity, page: Page, fields: Field[]) {
+  const hidden = await hiddenFieldsFor(user, page, fields);
+  return await guestTagOptions(user, page, hidden.size ? fields.filter((f) => !hidden.has(f.id)) : fields);
 }
-export function readableDatabase<D extends { fields: Field[] }>(user: Identity, page: Page, d: D): D {
-  return { ...d, fields: visibleFields(user, page, d.fields) };
+export async function readableDatabase<D extends { fields: Field[] }>(user: Identity, page: Page, d: D): Promise<D> {
+  return { ...d, fields: await visibleFields(user, page, d.fields) };
 }
 export function stripCells<T>(cells: T, hidden: Set<string>): T {
   if (!hidden.size || !cells) return cells;
@@ -209,31 +209,31 @@ export function stripCells<T>(cells: T, hidden: Set<string>): T {
 }
 // Records without the cells a person may not read (cells stored as JSON
 // text or as an object).
-export function stripHiddenCells<T extends { cells?: unknown }>(
+export async function stripHiddenCells<T extends { cells?: unknown }>(
   user: Identity,
   page: Page,
   rows: T[],
   fields?: Field[],
-): T[] {
+): Promise<T[]> {
   if (!rows.length) return rows;
-  const hidden = hiddenFieldsFor(user, page, fields || storedFields(page.id));
+  const hidden = await hiddenFieldsFor(user, page, fields || await storedFields(page.id));
   return hidden.size ? rows.map((r) => ({ ...r, cells: stripCells(r.cells, hidden) })) : rows;
 }
 export function publicHiddenFieldIds(fields: Field[]) {
   return hiddenFieldIds(publicViewer, fields);
 }
 // Visible properties a person may not change (shown read-only).
-export function readOnlyFieldIds(user: Identity, page: Page, fields: Field[]) {
+export async function readOnlyFieldIds(user: Identity, page: Page, fields: Field[]) {
   if (!fields.some((f) => writeRestricted(f) || readRestricted(f))) return [];
-  const viewer = fieldViewer(user, page);
+  const viewer = await fieldViewer(user, page);
   const readable = readableFieldIds(viewer, fields, remoteResolver(user, fields));
   return fields.filter((f) => readable.has(f.id) && !canWriteField(viewer, f, readable)).map((f) => f.id);
 }
 // Properties a person may not change: hidden or read-only for them (record
 // templates carry only the others, lib/row-documents.ts).
-export function unwritableFieldIds(user: Identity, page: Page, fields: Field[]) {
+export async function unwritableFieldIds(user: Identity, page: Page, fields: Field[]) {
   if (!fields.some((f) => writeRestricted(f) || readRestricted(f)) && !needsCheck(fields)) return new Set<string>();
-  const viewer = fieldViewer(user, page);
+  const viewer = await fieldViewer(user, page);
   const readable = readableFieldIds(viewer, fields, remoteResolver(user, fields));
   return new Set(fields.filter((f) => !canWriteField(viewer, f, readable)).map((f) => f.id));
 }
@@ -241,12 +241,12 @@ export function fieldWriteMessage(field: Pick<Field, "name">) {
   return `„${field.name}“ ist nur für bestimmte Personen bearbeitbar.`;
 }
 // Refuses a change to properties the person may not write (403).
-export function assertFieldsWritable(
+export async function assertFieldsWritable(
   user: Identity,
   page: Page,
   fields: Field[],
   keys: Iterable<string>,
-  viewer: FieldViewer = fieldViewer(user, page),
+  viewer: FieldViewer = (await fieldViewer(user, page)),
 ) {
   const list = [...keys];
   if (!list.length) return;
@@ -263,7 +263,7 @@ export function publicWritable(field: Field, fields: Field[]) {
 
 // Rules as stored: groups must exist in the workspace, the title property
 // stays open, and only page owners change rules.
-export function validateFieldAccess(
+export async function validateFieldAccess(
   user: Identity,
   page: Page,
   next: Field[],
@@ -271,9 +271,9 @@ export function validateFieldAccess(
 ) {
   const same = (a?: FieldAccess, b?: FieldAccess) =>
     JSON.stringify(normalAccess(a) || null) === JSON.stringify(normalAccess(b) || null);
-  const owner = pageRole(user, page) === "owner";
+  const owner = (await pageRole(user, page)) === "owner";
   if (!owner) {
-    const viewer = fieldViewer(user, page);
+    const viewer = await fieldViewer(user, page);
     const readable = readableFieldIds(viewer, previous, remoteResolver(user, previous));
     for (const old of previous)
       if (!next.some((f) => f.id === old.id) && readable.has(old.id) && !canWriteField(viewer, old, readable))
@@ -291,7 +291,7 @@ export function validateFieldAccess(
       if (rule && typeof rule === "object")
         for (const gid of rule.groups)
           if (
-            !one("SELECT 1 FROM groups WHERE id=? AND workspace_id=?", gid, page.workspace_id) &&
+            !(await one("SELECT 1 FROM groups WHERE id=? AND workspace_id=?", gid, page.workspace_id)) &&
             !(old?.access && JSON.stringify(old.access).includes(JSON.stringify(gid)))
           )
             throw new HttpError(400, "Gruppe fehlt.");
@@ -306,13 +306,13 @@ function normalAccess(access?: FieldAccess): FieldAccess | undefined {
 }
 // Merges the schema an editor sends with the properties hidden from them:
 // those stay where they were, unchanged.
-export function mergeHiddenFields(
+export async function mergeHiddenFields(
   user: Identity,
   page: Page,
   next: Field[],
   previous: Field[],
 ) {
-  const hidden = hiddenFieldsFor(user, page, previous);
+  const hidden = await hiddenFieldsFor(user, page, previous);
   if (!hidden.size) return next;
   const merged = next.filter((f) => !hidden.has(f.id));
   previous.forEach((f, index) => {

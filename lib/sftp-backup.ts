@@ -61,22 +61,22 @@ type Stored = {
 // removed: moved to .deleted/uploads/; purged: removed from there for good.
 export type SftpRun = { at: number; name: string; bytes: number; files: number; removed: number; purged?: number; error: string | null };
 
-function readJson<T>(table: "instance_settings" | "instance_state", key: string): T | null {
-  const row = one<{ value: string }>(`SELECT value FROM ${table} WHERE key=?`, key);
+async function readJson<T>(table: "instance_settings" | "instance_state", key: string): Promise<T | null> {
+  const row = await one<{ value: string }>(`SELECT value FROM ${table} WHERE key=?`, key);
   try {
     return row ? (JSON.parse(row.value) as T) : null;
   } catch {
     return null;
   }
 }
-function writeJson(table: "instance_settings" | "instance_state", key: string, value: unknown) {
-  run(`INSERT INTO ${table}(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, key, JSON.stringify(value));
+async function writeJson(table: "instance_settings" | "instance_state", key: string, value: unknown) {
+  await run(`INSERT INTO ${table}(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, key, JSON.stringify(value));
 }
-const stored = () => readJson<Stored>("instance_settings", SETTING);
+const stored = async () => await readJson<Stored>("instance_settings", SETTING);
 const AAD = { password: "sftp-backup:password", privateKey: "sftp-backup:private-key", passphrase: "sftp-backup:passphrase" } as const;
 
-export function sftpBackupActive() {
-  const s = stored();
+export async function sftpBackupActive() {
+  const s = await stored();
   return !!s?.enabled && !!s.host;
 }
 
@@ -100,8 +100,8 @@ function login(s: Stored): SftpLogin {
 }
 
 // For the admin page: everything but the secrets.
-export function sftpBackupSettings() {
-  const s = stored();
+export async function sftpBackupSettings() {
+  const s = await stored();
   return {
     enabled: !!s?.enabled,
     host: s?.host || "",
@@ -117,9 +117,9 @@ export function sftpBackupSettings() {
     hostKey: s?.hostKey || null,
   };
 }
-export function sftpBackupStatus() {
-  const s = stored();
-  return { enabled: !!s?.enabled && !!s.host, hostKey: s?.hostKey || null, last: readJson<SftpRun>("instance_state", LAST) };
+export async function sftpBackupStatus() {
+  const s = await stored();
+  return { enabled: !!s?.enabled && !!s.host, hostKey: s?.hostKey || null, last: await readJson<SftpRun>("instance_state", LAST) };
 }
 
 // A secret field: left out keeps the stored one, "" removes it.
@@ -137,13 +137,13 @@ const settingsSchema = z.object({
   keep: z.number().int().min(1).max(365).default(14),
   uploads: z.boolean().default(true),
 });
-export function saveSftpBackup(actor: string, input: unknown) {
+export async function saveSftpBackup(actor: string, input: unknown) {
   const parsed = settingsSchema.safeParse(input);
   if (!parsed.success) throw new HttpError(400, "Bitte Server, Benutzer und Anmeldung des SFTP-Ziels angeben.");
   const b = parsed.data;
   const host = sftpHost(b.host);
   const directory = remoteDirectory(b.directory);
-  const before = stored();
+  const before = await stored();
   const keep = (value: string | undefined, old: string | undefined, aad: string) =>
     value === undefined ? old || "" : value ? sealSecret(value, aad) : "";
   if (b.privateKey && !/-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/.test(b.privateKey))
@@ -166,34 +166,34 @@ export function saveSftpBackup(actor: string, input: unknown) {
   };
   if (next.auth === "password" && !next.password) throw new HttpError(400, "Bitte das Passwort für den SFTP-Server angeben.");
   if (next.auth === "key" && !next.privateKey) throw new HttpError(400, "Bitte den privaten Schlüssel für den SFTP-Server angeben.");
-  writeJson("instance_settings", SETTING, next);
+  await writeJson("instance_settings", SETTING, next);
   // Never the secrets, only what changed about them.
-  audit(actor, "backup.sftp.saved", "", JSON.stringify({ host, port: b.port, username: b.username, auth: b.auth, directory, enabled: b.enabled }));
-  return sftpBackupSettings();
+  await audit(actor, "backup.sftp.saved", "", JSON.stringify({ host, port: b.port, username: b.username, auth: b.auth, directory, enabled: b.enabled }));
+  return await sftpBackupSettings();
 }
-export function removeSftpBackup(actor: string) {
-  run("DELETE FROM instance_settings WHERE key=?", SETTING);
-  run("DELETE FROM instance_state WHERE key IN (?,?)", LAST, SEEN);
-  audit(actor, "backup.sftp.removed", "");
-  return sftpBackupSettings();
+export async function removeSftpBackup(actor: string) {
+  await run("DELETE FROM instance_settings WHERE key=?", SETTING);
+  await run("DELETE FROM instance_state WHERE key IN (?,?)", LAST, SEEN);
+  await audit(actor, "backup.sftp.removed", "");
+  return await sftpBackupSettings();
 }
 
-function remember(s: Stored, fingerprint: string) {
-  writeJson("instance_state", SEEN, { host: s.host, port: s.port, fingerprint, at: Date.now() });
+async function remember(s: Stored, fingerprint: string) {
+  await writeJson("instance_state", SEEN, { host: s.host, port: s.port, fingerprint, at: Date.now() });
 }
 
 // "Test connection": learns the host key without sending credentials while
 // it is unknown or changed; with the confirmed key it signs in, creates the
 // folder and writes (and removes) a test file.
 export async function testSftpBackup() {
-  const s = stored();
+  const s = await stored();
   if (!s?.host) throw new HttpError(400, "Zuerst das SFTP-Ziel speichern.");
   let session: SftpSession;
   try {
     session = await connectSftp(login(s), s.hostKey);
   } catch (error) {
     if (error instanceof HostKeyError) {
-      remember(s, error.fingerprint);
+      await remember(s, error.fingerprint);
       return { state: error.expected ? ("changed" as const) : ("unknown" as const), fingerprint: error.fingerprint, expected: error.expected, backups: 0 };
     }
     throw error;
@@ -214,14 +214,14 @@ export async function testSftpBackup() {
 }
 
 // Confirms the host key the last test saw for this server.
-export function trustSftpHostKey(actor: string, fingerprint: unknown) {
-  const s = stored();
-  const seen = readJson<{ host: string; port: number; fingerprint: string; at: number }>("instance_state", SEEN);
+export async function trustSftpHostKey(actor: string, fingerprint: unknown) {
+  const s = await stored();
+  const seen = await readJson<{ host: string; port: number; fingerprint: string; at: number }>("instance_state", SEEN);
   if (!s || typeof fingerprint !== "string" || !seen || seen.host !== s.host || seen.port !== s.port || seen.fingerprint !== fingerprint || Date.now() - seen.at > 3_600_000)
     throw new HttpError(409, "Bitte zuerst die Verbindung testen und dann den angezeigten Hostschlüssel bestätigen.");
-  writeJson("instance_settings", SETTING, { ...s, hostKey: fingerprint });
-  audit(actor, s.hostKey ? "backup.sftp.hostkey-changed" : "backup.sftp.hostkey-trusted", "", JSON.stringify({ host: s.host, port: s.port, fingerprint, previous: s.hostKey }));
-  return sftpBackupSettings();
+  await writeJson("instance_settings", SETTING, { ...s, hostKey: fingerprint });
+  await audit(actor, s.hostKey ? "backup.sftp.hostkey-changed" : "backup.sftp.hostkey-trusted", "", JSON.stringify({ host: s.host, port: s.port, fingerprint, previous: s.hostKey }));
+  return await sftpBackupSettings();
 }
 
 // Uploads missing files to <folder>/uploads/. What is gone here is moved to
@@ -233,7 +233,7 @@ export function trustSftpHostKey(actor: string, fingerprint: unknown) {
 async function mirrorUploads(session: SftpSession, folder: string, now: number, oldest: number | null) {
   const local = resolve(dataDir(), "uploads");
   const mine = existsSync(local) ? readdirSync(local).filter((n) => UPLOAD.test(n)) : [];
-  const listed = new Set(all<{ id: string }>("SELECT id FROM files").map((r) => String(r.id)));
+  const listed = new Set((await all<{ id: string }>("SELECT id FROM files")).map((r) => String(r.id)));
   if (!mine.length && listed.size)
     return { files: 0, removed: 0, purged: 0, error: "Dateien nicht gespiegelt: Der Ordner uploads fehlt oder ist leer, obwohl die Datenbank Dateien verzeichnet." };
   const remoteDir = remotePath(folder, "uploads");
@@ -299,7 +299,7 @@ export async function sendToSftp(copy: { copy: string; name: string; bytes: numb
   let result: SftpRun;
   let session: SftpSession | null = null;
   try {
-    const s = stored();
+    const s = await stored();
     if (!s?.host) throw new HttpError(400, "Kein SFTP-Ziel eingerichtet.");
     if (!s.hostKey) throw new HttpError(409, "Der Hostschlüssel des SFTP-Servers ist noch nicht bestätigt.");
     session = await connectSftp(login(s), s.hostKey);
@@ -319,21 +319,21 @@ export async function sendToSftp(copy: { copy: string; name: string; bytes: numb
   } finally {
     session?.end();
   }
-  writeJson("instance_state", LAST, result);
+  await writeJson("instance_state", LAST, result);
   return result;
 }
 
 // "Back up now" of the SFTP target alone.
 export async function runSftpBackup(now = Date.now()) {
-  if (!stored()?.host) throw new HttpError(400, "Zuerst das SFTP-Ziel speichern.");
+  if (!(await stored())?.host) throw new HttpError(400, "Zuerst das SFTP-Ziel speichern.");
   const path = copyPath();
   try {
-    let made: ReturnType<typeof databaseCopy>;
+    let made: Awaited<ReturnType<typeof databaseCopy>>;
     try {
-      made = databaseCopy(now, path);
+      made = await databaseCopy(now, path);
     } catch (error) {
       const result: SftpRun = { at: now, name: "", bytes: 0, files: 0, removed: 0, error: String((error as Error)?.message || error).slice(0, 300) };
-      writeJson("instance_state", LAST, result);
+      await writeJson("instance_state", LAST, result);
       return result;
     }
     return await sendToSftp(made, now);

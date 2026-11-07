@@ -14,9 +14,10 @@ const { formula, queryRows } = await import("../lib/database");
 const { htmlState, stateHtml, cleanHtml } =
   await import("../lib/document-server");
 import type { Identity, Page, Row, Field, View } from "../lib/types";
-function user(name: string, groups: string[] = []): Identity {
+import { everyAsync } from "../lib/each-async";
+async function user(name: string, groups: string[] = []): Promise<Identity> {
   const uid = id();
-  run(
+  await run(
     "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
     uid,
     uid,
@@ -33,22 +34,22 @@ function user(name: string, groups: string[] = []): Identity {
     isAdmin: groups.includes("flowplan-admins"),
   };
 }
-const owner = user("owner"),
-  editor = user("editor"),
-  viewer = user("viewer"),
-  stranger = user("stranger");
-const wid = createWorkspace(owner.id, "Test", true);
-run("INSERT INTO members VALUES(?,?,?)", wid, editor.id, "editor");
-run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
-const boot = bootstrap(owner, wid),
+const owner = await user("owner"),
+  editor = await user("editor"),
+  viewer = await user("viewer"),
+  stranger = await user("stranger");
+const wid = await createWorkspace(owner.id, "Test", true);
+await run("INSERT INTO members VALUES(?,?,?)", wid, editor.id, "editor");
+await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
+const boot = await bootstrap(owner, wid),
   page = boot.pages.find((p) => p.kind === "document")!,
   database = boot.pages.find((p) => p.kind === "database")!;
-test("workspace and page access does not leak across users", () => {
-  assert.throws(() => requirePage(stranger, page.id), /Berechtigung/);
-  assert.equal(requirePage(viewer, page.id).id, page.id);
-  assert.throws(
-    () =>
-      command(viewer, {
+test("workspace and page access does not leak across users", async () => {
+  await assert.rejects(async () => await requirePage(stranger, page.id), /Berechtigung/);
+  assert.equal((await requirePage(viewer, page.id)).id, page.id);
+  await assert.rejects(
+    async () =>
+      await command(viewer, {
         action: "page.update",
         pageId: page.id,
         patch: { title: "attack" },
@@ -56,41 +57,41 @@ test("workspace and page access does not leak across users", () => {
     /Berechtigung/,
   );
   assert.equal(
-    one<Page>("SELECT * FROM pages WHERE id=?", page.id)?.title,
+    (await one<Page>("SELECT * FROM pages WHERE id=?", page.id))?.title,
     page.title,
   );
 });
-test("private spaces and explicit grants are enforced", () => {
-  const space = command(owner, {
+test("private spaces and explicit grants are enforced", async () => {
+  const space = (await command(owner, {
     action: "space.create",
     workspaceId: wid,
     name: "Private",
     private: true,
-  }) as { id: string };
-  const p = command(owner, {
+  })) as { id: string };
+  const p = (await command(owner, {
     action: "page.create",
     workspaceId: wid,
     spaceId: space.id,
     title: "Secret",
-  }) as { id: string };
-  assert.throws(() => requirePage(editor, p.id), /Berechtigung/);
-  command(owner, {
+  })) as { id: string };
+  await assert.rejects(async () => await requirePage(editor, p.id), /Berechtigung/);
+  await command(owner, {
     action: "grant.set",
     resourceId: p.id,
     userId: editor.id,
     role: "viewer",
   });
-  assert.equal(requirePage(editor, p.id).id, p.id);
-  assert.throws(() => requirePage(editor, p.id, true), /Berechtigung/);
-  assert.throws(() => bootstrap(stranger), /Arbeitsbereich/);
+  assert.equal((await requirePage(editor, p.id)).id, p.id);
+  await assert.rejects(async () => await requirePage(editor, p.id, true), /Berechtigung/);
+  await assert.rejects(async () => await bootstrap(stranger), /Arbeitsbereich/);
 });
-test("admin requires exact verified group, never a substring", () => {
+test("admin requires exact verified group, never a substring", async () => {
   assert.throws(() => requireAdmin(owner), /Gruppe/);
-  assert.throws(
-    () => requireAdmin(user("fake", ["not-flowplan-admins"])),
+  await assert.rejects(
+    async () => requireAdmin(await user("fake", ["not-flowplan-admins"])),
     /Gruppe/,
   );
-  assert.doesNotThrow(() => requireAdmin(user("admin", ["flowplan-admins"])));
+  await assert.doesNotReject(async () => requireAdmin(await user("admin", ["flowplan-admins"])));
   assert.deepEqual(extractGroups({ groups: ["x", 3, "flowplan-admins"] }), [
     "x",
     "flowplan-admins",
@@ -98,7 +99,7 @@ test("admin requires exact verified group, never a substring", () => {
 });
 test("expired and disabled sessions are rejected", async () => {
   const token = "test-secret";
-  run(
+  await run(
     "INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)",
     hash(token),
     owner.id,
@@ -106,20 +107,20 @@ test("expired and disabled sessions are rejected", async () => {
     Date.now() + 10000,
   );
   assert.equal((await identityFromToken(token))?.id, owner.id);
-  run("UPDATE users SET disabled=1 WHERE id=?", owner.id);
+  await run("UPDATE users SET disabled=1 WHERE id=?", owner.id);
   assert.equal(await identityFromToken(token), null);
-  run("UPDATE users SET disabled=0 WHERE id=?", owner.id);
-  run(
+  await run("UPDATE users SET disabled=0 WHERE id=?", owner.id);
+  await run(
     "UPDATE sessions SET expires=? WHERE token=?",
     Date.now() - 1,
     hash(token),
   );
   assert.equal(await identityFromToken(token), null);
 });
-test("last owner cannot be removed and trees cannot become cyclic", () => {
-  assert.throws(
-    () =>
-      command(owner, {
+test("last owner cannot be removed and trees cannot become cyclic", async () => {
+  await assert.rejects(
+    async () =>
+      await command(owner, {
         action: "member.role",
         workspaceId: wid,
         userId: owner.id,
@@ -127,16 +128,16 @@ test("last owner cannot be removed and trees cannot become cyclic", () => {
       }),
     /Eigentümer/,
   );
-  const child = command(owner, {
+  const child = (await command(owner, {
     action: "page.create",
     workspaceId: wid,
     spaceId: page.space_id,
     parentId: page.id,
     title: "Child",
-  }) as { id: string };
-  assert.throws(
-    () =>
-      command(owner, {
+  })) as { id: string };
+  await assert.rejects(
+    async () =>
+      await command(owner, {
         action: "page.move",
         pageId: page.id,
         parentId: child.id,
@@ -144,33 +145,33 @@ test("last owner cannot be removed and trees cannot become cyclic", () => {
     /Verschieben/,
   );
 });
-test("trash removes publications and restores descendants", () => {
-  command(owner, { action: "page.publish", pageId: page.id, enabled: true });
-  command(owner, { action: "page.delete", pageId: page.id });
-  assert.throws(() => requirePage(owner, page.id), /gefunden/);
+test("trash removes publications and restores descendants", async () => {
+  await command(owner, { action: "page.publish", pageId: page.id, enabled: true });
+  await command(owner, { action: "page.delete", pageId: page.id });
+  await assert.rejects(async () => await requirePage(owner, page.id), /gefunden/);
   assert.equal(
-    one<Page>("SELECT * FROM pages WHERE id=?", page.id)?.public_token,
+    (await one<Page>("SELECT * FROM pages WHERE id=?", page.id))?.public_token,
     null,
   );
-  command(owner, { action: "page.restore", pageId: page.id });
-  assert.equal(requirePage(owner, page.id).deleted_at, null);
+  await command(owner, { action: "page.restore", pageId: page.id });
+  assert.equal((await requirePage(owner, page.id)).deleted_at, null);
 });
-test("row version guards prevent lost updates", () => {
-  const r = command(editor, {
+test("row version guards prevent lost updates", async () => {
+  const r = (await command(editor, {
     action: "row.create",
     pageId: database.id,
     cells: { title: "A" },
-  }) as { id: string };
-  command(editor, {
+  })) as { id: string };
+  await command(editor, {
     action: "row.update",
     pageId: database.id,
     rowId: r.id,
     version: 1,
     cells: { title: "B" },
   });
-  assert.throws(
-    () =>
-      command(owner, {
+  await assert.rejects(
+    async () =>
+      await command(owner, {
         action: "row.update",
         pageId: database.id,
         rowId: r.id,
@@ -181,7 +182,7 @@ test("row version guards prevent lost updates", () => {
   );
   assert.equal(
     JSON.parse(
-      one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", r.id)!.cells,
+      (await one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", r.id))!.cells,
     ).title,
     "B",
   );
@@ -213,7 +214,7 @@ test("filters and numeric sorting operate on formula results", () => {
     [20, 6],
   );
 });
-test("Yjs merges independent edits and persists canonical HTML", () => {
+test("Yjs merges independent edits and persists canonical HTML", async () => {
   const state = htmlState("<p>Start</p>"),
     a = new Y.Doc(),
     b = new Y.Doc();
@@ -231,8 +232,8 @@ test("Yjs merges independent edits and persists canonical HTML", () => {
   Y.applyUpdate(b, Y.encodeStateAsUpdate(a));
   assert.equal(stateHtml(a), stateHtml(b));
   assert.match(stateHtml(a), /A Start B/);
-  const pd = pageData(owner, page.id) as { generation: string };
-  command(owner, {
+  const pd = (await pageData(owner, page.id)) as { generation: string };
+  await command(owner, {
     action: "document.sync",
     pageId: page.id,
     generation: pd.generation,
@@ -240,10 +241,10 @@ test("Yjs merges independent edits and persists canonical HTML", () => {
     html: "<script>attack</script>",
   });
   assert.ok(
-    !one<{ html: string }>(
+    !(await one<{ html: string }>(
       "SELECT html FROM documents WHERE page_id=?",
       page.id,
-    )?.html.includes("script"),
+    ))?.html.includes("script"),
   );
   a.destroy();
   b.destroy();
@@ -257,21 +258,21 @@ test("public HTML sanitization blocks scripts, event handlers, unsafe URLs", () 
   assert.ok(!html.includes("iframe"));
   assert.ok(html.includes("<p>safe</p>"));
 });
-test("restoring a version rejects stale collaboration generations", () => {
-  command(owner, { action: "page.snapshot", pageId: page.id });
-  const snapshot = one<{ id: string }>(
+test("restoring a version rejects stale collaboration generations", async () => {
+  await command(owner, { action: "page.snapshot", pageId: page.id });
+  const snapshot = (await one<{ id: string }>(
     "SELECT id FROM snapshots WHERE page_id=?",
     page.id,
-  )!;
-  const prior = pageData(owner, page.id) as { generation: string };
-  command(owner, {
+  ))!;
+  const prior = (await pageData(owner, page.id)) as { generation: string };
+  await command(owner, {
     action: "snapshot.restore",
     pageId: page.id,
     snapshotId: snapshot.id,
   });
-  assert.throws(
-    () =>
-      command(owner, {
+  await assert.rejects(
+    async () =>
+      await command(owner, {
         action: "document.sync",
         pageId: page.id,
         generation: prior.generation,
@@ -283,17 +284,17 @@ test("restoring a version rejects stale collaboration generations", () => {
 
 test("record documents retain rich content and enforce database permissions", async () => {
   const { rowDocumentData } = await import("../lib/row-documents");
-  const r = command(owner, {
+  const r = (await command(owner, {
     action: "row.create",
     pageId: database.id,
     cells: { title: "Rich row" },
     templateId: null,
-  }) as { id: string };
-  const initial = rowDocumentData(owner, database.id, r.id);
+  })) as { id: string };
+  const initial = await rowDocumentData(owner, database.id, r.id);
   const doc = new Y.Doc();
   Y.applyUpdate(doc, Buffer.from(initial.state, "base64"));
   Y.applyUpdate(doc, htmlState("<h2>A complete record document</h2>"));
-  command(owner, {
+  await command(owner, {
     action: "row.document.sync",
     pageId: database.id,
     rowId: r.id,
@@ -301,16 +302,16 @@ test("record documents retain rich content and enforce database permissions", as
     update: Buffer.from(Y.encodeStateAsUpdate(doc)).toString("base64"),
   });
   assert.match(
-    rowDocumentData(viewer, database.id, r.id).html,
+    (await rowDocumentData(viewer, database.id, r.id)).html,
     /<h2[^>]*>A complete record document<\/h2>/,
   );
-  assert.throws(
-    () => rowDocumentData(stranger, database.id, r.id),
+  await assert.rejects(
+    async () => await rowDocumentData(stranger, database.id, r.id),
     /Berechtigung/,
   );
-  assert.throws(
-    () =>
-      command(viewer, {
+  await assert.rejects(
+    async () =>
+      await command(viewer, {
         action: "row.document.sync",
         pageId: database.id,
         rowId: r.id,
@@ -319,25 +320,25 @@ test("record documents retain rich content and enforce database permissions", as
       }),
     /Berechtigung/,
   );
-  assert.throws(() => rowDocumentData(owner, page.id, r.id), /Datenbank/);
-  const snap = command(owner, {
+  await assert.rejects(async () => await rowDocumentData(owner, page.id, r.id), /Datenbank/);
+  const snap = (await command(owner, {
     action: "row.snapshot",
     pageId: database.id,
     rowId: r.id,
-  }) as { id: string };
-  command(owner, {
+  })) as { id: string };
+  await command(owner, {
     action: "row.snapshot.restore",
     pageId: database.id,
     rowId: r.id,
     snapshotId: snap.id,
   });
   assert.notEqual(
-    rowDocumentData(owner, database.id, r.id).generation,
+    (await rowDocumentData(owner, database.id, r.id)).generation,
     initial.generation,
   );
-  assert.throws(
-    () =>
-      command(owner, {
+  await assert.rejects(
+    async () =>
+      await command(owner, {
         action: "row.document.sync",
         pageId: database.id,
         rowId: r.id,
@@ -346,9 +347,9 @@ test("record documents retain rich content and enforce database permissions", as
       }),
     /Dokumentversion/,
   );
-  command(owner, { action: "row.delete", pageId: database.id, rowId: r.id });
+  await command(owner, { action: "row.delete", pageId: database.id, rowId: r.id });
   assert.equal(
-    one("SELECT row_id FROM row_documents WHERE row_id=?", r.id),
+    await one("SELECT row_id FROM row_documents WHERE row_id=?", r.id),
     undefined,
   );
   doc.destroy();
@@ -356,7 +357,7 @@ test("record documents retain rich content and enforce database permissions", as
 test("record templates clone properties, relations and rich documents with independent CRDT identities", async () => {
   const { rowDocumentData, replaceRowDocument } =
     await import("../lib/row-documents");
-  const original = command(owner, {
+  const original = (await command(owner, {
     action: "row.create",
     pageId: database.id,
     templateId: null,
@@ -365,72 +366,72 @@ test("record templates clone properties, relations and rich documents with indep
       status: "In Arbeit",
       link: ["related-id"],
     },
-  }) as { id: string };
-  replaceRowDocument(
+  })) as { id: string };
+  await replaceRowDocument(
     original.id,
     "<h2>Briefing</h2><ul><li><p>Deliverable</p></li></ul>",
     owner.id,
   );
-  const template = command(owner, {
+  const template = (await command(owner, {
     action: "row.template.save",
     pageId: database.id,
     rowId: original.id,
     name: "Project briefing",
-  }) as { id: string };
-  command(owner, {
+  })) as { id: string };
+  await command(owner, {
     action: "row.template.default",
     pageId: database.id,
     templateId: template.id,
     enabled: true,
   });
-  const copy = command(editor, {
+  const copy = (await command(editor, {
     action: "row.create",
     pageId: database.id,
     cells: { title: "New project" },
-  }) as { id: string };
-  const copied = one<{ cells: string }>(
+  })) as { id: string };
+  const copied = (await one<{ cells: string }>(
     "SELECT cells FROM rows WHERE id=?",
     copy.id,
-  )!;
+  ))!;
   assert.deepEqual(JSON.parse(copied.cells), {
     title: "New project",
     status: "In Arbeit",
     link: ["related-id"],
   });
   assert.match(
-    rowDocumentData(editor, database.id, copy.id).html,
+    (await rowDocumentData(editor, database.id, copy.id)).html,
     /<h2[^>]*>Briefing/,
   );
   assert.notEqual(
-    rowDocumentData(editor, database.id, copy.id).state,
-    rowDocumentData(owner, database.id, original.id).state,
+    (await rowDocumentData(editor, database.id, copy.id)).state,
+    (await rowDocumentData(owner, database.id, original.id)).state,
   );
-  const other = command(owner, {
+  const other = (await command(owner, {
     action: "page.create",
     workspaceId: wid,
     spaceId: page.space_id,
     title: "Other database",
     kind: "database",
-  }) as { id: string };
-  assert.throws(
-    () =>
-      command(owner, {
+  })) as { id: string };
+  await assert.rejects(
+    async () =>
+      await command(owner, {
         action: "row.create",
         pageId: other.id,
         templateId: template.id,
       }),
     /vorlage/,
   );
-  assert.throws(
-    () =>
-      command(viewer, {
+  await assert.rejects(
+    async () =>
+      await command(viewer, {
         action: "row.template.delete",
         pageId: database.id,
         templateId: template.id,
       }),
     /Berechtigung/,
   );
-  command(owner, {
+  await command(owner, {
     action: "row.template.delete",
     pageId: database.id,
     templateId: template.id,
@@ -440,38 +441,38 @@ test("record templates clone properties, relations and rich documents with indep
 test("recursive page copies preserve children, rich row content and internal relations without sharing CRDT IDs", async () => {
   const { replaceRowDocument, rowDocumentData } =
     await import("../lib/row-documents");
-  const root = command(owner, {
+  const root = (await command(owner, {
     action: "page.create",
     workspaceId: wid,
     spaceId: page.space_id,
     title: "Project wiki",
-  }) as { id: string };
-  const child = command(owner, {
+  })) as { id: string };
+  const child = (await command(owner, {
     action: "page.create",
     workspaceId: wid,
     spaceId: page.space_id,
     parentId: root.id,
     title: "Child tasks",
     kind: "database",
-  }) as { id: string };
-  const first = command(owner, {
+  })) as { id: string };
+  const first = (await command(owner, {
     action: "row.create",
     pageId: child.id,
     templateId: null,
     cells: { title: "First" },
-  }) as { id: string };
-  const second = command(owner, {
+  })) as { id: string };
+  const second = (await command(owner, {
     action: "row.create",
     pageId: child.id,
     templateId: null,
     cells: { title: "Second", relation: [first.id] },
-  }) as { id: string };
-  replaceRowDocument(first.id, "<h2>Detailed record</h2>", owner.id);
-  const raw = one<{ fields: string; views: string; version: number }>(
+  })) as { id: string };
+  await replaceRowDocument(first.id, "<h2>Detailed record</h2>", owner.id);
+  const raw = (await one<{ fields: string; views: string; version: number }>(
     "SELECT * FROM databases WHERE page_id=?",
     child.id,
-  )!;
-  command(owner, {
+  ))!;
+  await command(owner, {
     action: "database.update",
     pageId: child.id,
     version: raw.version,
@@ -487,83 +488,83 @@ test("recursive page copies preserve children, rich row content and internal rel
     views: JSON.parse(raw.views),
   });
   const html = `<p><a href="/#page=${child.id}">Tasks</a></p>`;
-  run(
+  await run(
     "UPDATE documents SET html=?,state=? WHERE page_id=?",
     html,
     htmlState(html),
     root.id,
   );
-  const clone = command(owner, {
+  const clone = (await command(owner, {
     action: "page.duplicate",
     pageId: root.id,
-  }) as { id: string; pages: number };
+  })) as { id: string; pages: number };
   assert.equal(clone.pages, 2);
-  const copiedChild = one<Page>(
+  const copiedChild = (await one<Page>(
     "SELECT * FROM pages WHERE parent_id=?",
     clone.id,
-  )!;
-  const copiedRows = (await import("../lib/api")).rows(copiedChild.id);
+  ))!;
+  const copiedRows = await (await import("../lib/api")).rows(copiedChild.id);
   const copiedFirst = copiedRows.find((r) => r.cells.title === "First")!,
     copiedSecond = copiedRows.find((r) => r.cells.title === "Second")!;
   assert.deepEqual(copiedSecond.cells.relation, [copiedFirst.id]);
   assert.notEqual(copiedFirst.id, first.id);
   assert.match(
-    rowDocumentData(owner, copiedChild.id, copiedFirst.id).html,
+    (await rowDocumentData(owner, copiedChild.id, copiedFirst.id)).html,
     /Detailed record/,
   );
   assert.ok(
-    one<{ html: string }>(
+    (await one<{ html: string }>(
       "SELECT html FROM documents WHERE page_id=?",
       clone.id,
-    )!.html.includes(copiedChild.id),
+    ))!.html.includes(copiedChild.id),
   );
   const fields = JSON.parse(
-    one<{ fields: string }>(
+    (await one<{ fields: string }>(
       "SELECT fields FROM databases WHERE page_id=?",
       copiedChild.id,
-    )!.fields,
+    ))!.fields,
   );
   assert.equal(
     fields.find((f: Field) => f.id === "relation").relationPage,
     copiedChild.id,
   );
-  command(owner, {
+  await command(owner, {
     action: "page.move",
     pageId: copiedChild.id,
     targetId: root.id,
     placement: "before",
   });
   assert.equal(
-    one<Page>("SELECT * FROM pages WHERE id=?", copiedChild.id)!.parent_id,
+    (await one<Page>("SELECT * FROM pages WHERE id=?", copiedChild.id))!.parent_id,
     null,
   );
-  const ordered = (await import("../lib/db"))
+  const ordered = (await (await import("../lib/db"))
     .all<Page>(
       "SELECT * FROM pages WHERE parent_id IS NULL AND space_id=? ORDER BY position",
       page.space_id,
-    )
+    ))
     .map((p) => p.id);
   assert.equal(ordered.indexOf(copiedChild.id) + 1, ordered.indexOf(root.id));
 });
-test("starter templates create real content and reject mismatched page kinds atomically", () => {
-  const created = command(owner, {
+test("starter templates create real content and reject mismatched page kinds atomically", async () => {
+  const created = (await command(owner, {
     action: "page.create",
     workspaceId: wid,
     spaceId: page.space_id,
     title: "Meeting",
     kind: "document",
     starterTemplate: "meeting",
-  }) as { id: string };
+  })) as { id: string };
   assert.match(
-    one<{ html: string }>(
+    (await one<{ html: string }>(
       "SELECT html FROM documents WHERE page_id=?",
       created.id,
-    )!.html,
+    ))!.html,
     /<h2>Agenda<\/h2>/,
   );
-  assert.throws(
-    () =>
-      command(owner, {
+  await assert.rejects(
+    async () =>
+      await command(owner, {
         action: "page.create",
         workspaceId: wid,
         spaceId: page.space_id,
@@ -574,7 +575,7 @@ test("starter templates create real content and reject mismatched page kinds ato
     /Seitentyp/,
   );
   assert.equal(
-    one("SELECT id FROM pages WHERE title=?", "Rejected template"),
+    await one("SELECT id FROM pages WHERE title=?", "Rejected template"),
     undefined,
   );
 });
@@ -582,26 +583,26 @@ test("starter templates create real content and reject mismatched page kinds ato
 test("publications require edit access to the full tree, publish only selected descendants and revoke moved or deleted pages", async () => {
   const { publicPage, publicTree, publishedHtml, publicFile } =
     await import("../lib/publication");
-  const create = (title: string, parentId?: string) =>
-    command(owner, {
+  const create = async (title: string, parentId?: string) =>
+    (await command(owner, {
       action: "page.create",
       workspaceId: wid,
       spaceId: page.space_id,
       title,
       parentId,
-    }) as { id: string };
-  const root = create("Public wiki"),
-    child = create("Public child", root.id),
-    privatePage = create("Keep private");
-  run(
+    })) as { id: string };
+  const root = await create("Public wiki"),
+    child = await create("Public child", root.id),
+    privatePage = await create("Keep private");
+  await run(
     "INSERT INTO grants(resource_id,user_id,role) VALUES(?,?,?)",
     child.id,
     editor.id,
     "viewer",
   );
-  assert.throws(
-    () =>
-      command(editor, {
+  await assert.rejects(
+    async () =>
+      await command(editor, {
         action: "page.publish",
         pageId: root.id,
         enabled: true,
@@ -610,30 +611,30 @@ test("publications require edit access to the full tree, publish only selected d
     /Berechtigung/,
   );
   assert.equal(
-    one<Page>("SELECT * FROM pages WHERE id=?", root.id)!.public_token,
+    (await one<Page>("SELECT * FROM pages WHERE id=?", root.id))!.public_token,
     null,
   );
-  command(owner, {
+  await command(owner, {
     action: "page.publish",
     pageId: root.id,
     enabled: true,
     includeChildren: true,
   });
-  const token = one<Page>(
+  const token = (await one<Page>(
     "SELECT * FROM pages WHERE id=?",
     root.id,
-  )!.public_token!;
-  assert.equal(publicPage(token, child.id).page.id, child.id);
-  assert.throws(
-    () => publicPage(token, privatePage.id),
+  ))!.public_token!;
+  assert.equal((await publicPage(token, child.id)).page.id, child.id);
+  await assert.rejects(
+    async () => await publicPage(token, privatePage.id),
     /nicht veröffentlicht/,
   );
-  const added = create("New private child", root.id);
-  assert.throws(() => publicPage(token, added.id), /nicht veröffentlicht/);
+  const added = await create("New private child", root.id);
+  await assert.rejects(async () => await publicPage(token, added.id), /nicht veröffentlicht/);
   const file = id(),
     unused = id();
   for (const fid of [file, unused])
-    run(
+    await run(
       "INSERT INTO files(id,page_id,name,mime,size) VALUES(?,?,?,?,?)",
       fid,
       child.id,
@@ -641,30 +642,30 @@ test("publications require edit access to the full tree, publish only selected d
       "image/png",
       3,
     );
-  run(
+  await run(
     "UPDATE documents SET html=? WHERE page_id=?",
     `<img src="/api/files/${file}"><a href="/#page=${root.id}">Home</a><a href="/#page=${privatePage.id}">Private</a>`,
     child.id,
   );
-  assert.equal(publicFile(token, file).id, file);
-  assert.throws(() => publicFile(token, unused), /nicht veröffentlicht/);
+  assert.equal((await publicFile(token, file)).id, file);
+  await assert.rejects(async () => await publicFile(token, unused), /nicht veröffentlicht/);
   const published = publishedHtml(
-    String(one("SELECT html FROM documents WHERE page_id=?", child.id)!.html),
+    String((await one("SELECT html FROM documents WHERE page_id=?", child.id))!.html),
     token,
-    publicTree(token).pages,
+    (await publicTree(token)).pages,
   );
   assert.match(published, new RegExp(`/api/share/${token}/files/${file}`));
   assert.ok(published.includes(`/share/${token}/${root.id}`));
   assert.ok(!published.includes(privatePage.id));
-  command(owner, { action: "page.move", pageId: child.id, parentId: null });
-  assert.throws(() => publicPage(token, child.id), /nicht veröffentlicht/);
-  assert.throws(() => publicFile(token, file), /nicht veröffentlicht/);
-  command(owner, { action: "page.move", pageId: child.id, parentId: root.id });
-  command(owner, { action: "page.delete", pageId: child.id });
-  command(owner, { action: "page.restore", pageId: child.id });
-  assert.throws(() => publicPage(token, child.id), /nicht veröffentlicht/);
-  command(owner, { action: "page.publish", pageId: root.id, enabled: false });
-  assert.throws(() => publicTree(token), /nicht gefunden/);
+  await command(owner, { action: "page.move", pageId: child.id, parentId: null });
+  await assert.rejects(async () => await publicPage(token, child.id), /nicht veröffentlicht/);
+  await assert.rejects(async () => await publicFile(token, file), /nicht veröffentlicht/);
+  await command(owner, { action: "page.move", pageId: child.id, parentId: root.id });
+  await command(owner, { action: "page.delete", pageId: child.id });
+  await command(owner, { action: "page.restore", pageId: child.id });
+  await assert.rejects(async () => await publicPage(token, child.id), /nicht veröffentlicht/);
+  await command(owner, { action: "page.publish", pageId: root.id, enabled: false });
+  await assert.rejects(async () => await publicTree(token), /nicht gefunden/);
 });
 
 test("media responses support range seeking and never render executable uploads inline", async () => {
@@ -714,7 +715,7 @@ test("media responses support range seeking and never render executable uploads 
   assert.match(unsafe.headers.get("content-disposition")!, /^attachment/);
 });
 
-test("legacy JSON import remaps page links and row relations without changing literal text", () => {
+test("legacy JSON import remaps page links and row relations without changing literal text", async () => {
   const oldPage = id(),
     oldDatabase = id(),
     first = id(),
@@ -767,35 +768,35 @@ test("legacy JSON import remaps page links and row relations without changing li
       },
     ],
   };
-  const result = command(owner, {
+  const result = (await command(owner, {
     action: "workspace.import",
     workspaceId: wid,
     spaceId: page.space_id,
     backup,
-  }) as { pageIds: Record<string, string> };
-  const document = one<{ html: string }>(
+  })) as { pageIds: Record<string, string> };
+  const document = (await one<{ html: string }>(
     "SELECT html FROM documents WHERE page_id=?",
     result.pageIds[oldPage],
-  )!;
+  ))!;
   assert.ok(document.html.includes(result.pageIds[oldDatabase]));
-  const imported = one<{ fields: string }>(
+  const imported = (await one<{ fields: string }>(
     "SELECT fields FROM databases WHERE page_id=?",
     result.pageIds[oldDatabase],
-  )!;
+  ))!;
   assert.equal(
     JSON.parse(imported.fields)[1].relationPage,
     result.pageIds[oldDatabase],
   );
-  const firstRow = one<{ id: string; content: string }>(
+  const firstRow = (await one<{ id: string; content: string }>(
     `SELECT id,content FROM rows WHERE page_id=? AND ${sql.jsonText("cells", "$.title")}=?`,
     result.pageIds[oldDatabase],
     "First",
-  )!;
-  const secondRow = one<{ cells: string }>(
+  ))!;
+  const secondRow = (await one<{ cells: string }>(
     `SELECT cells FROM rows WHERE page_id=? AND ${sql.jsonText("cells", "$.title")}=?`,
     result.pageIds[oldDatabase],
     first,
-  )!;
+  ))!;
   assert.deepEqual(JSON.parse(secondRow.cells).related, [firstRow.id]);
   assert.match(firstRow.content, /Rich legacy record/);
 });
@@ -804,40 +805,40 @@ test("bulk operations reject stale versions atomically, clone rich rows and rest
   const { rows, database: readDatabase } = await import("../lib/api");
   const { replaceRowDocument, rowDocumentData } =
     await import("../lib/row-documents");
-  const table = command(owner, {
+  const table = (await command(owner, {
     action: "page.create",
     workspaceId: wid,
     spaceId: page.space_id,
     title: "Bulk",
     kind: "database",
-  }) as { id: string };
-  const first = command(owner, {
+  })) as { id: string };
+  const first = (await command(owner, {
     action: "row.create",
     pageId: table.id,
     cells: { title: "First", status: "Nicht begonnen" },
-  }) as { id: string };
-  const second = command(owner, {
+  })) as { id: string };
+  const second = (await command(owner, {
     action: "row.create",
     pageId: table.id,
     cells: { title: "Second", status: "Nicht begonnen" },
-  }) as { id: string };
-  replaceRowDocument(first.id, "<h2>Preserved detail</h2>", owner.id);
-  command(owner, {
+  })) as { id: string };
+  await replaceRowDocument(first.id, "<h2>Preserved detail</h2>", owner.id);
+  await command(owner, {
     action: "comment.create",
     pageId: table.id,
     rowId: first.id,
     body: "Preserved discussion",
   });
-  command(owner, {
+  await command(owner, {
     action: "row.update",
     pageId: table.id,
     rowId: second.id,
     version: 1,
     cells: { status: "In Arbeit" },
   });
-  assert.throws(
-    () =>
-      command(owner, {
+  await assert.rejects(
+    async () =>
+      await command(owner, {
         action: "rows.bulk",
         pageId: table.id,
         operation: "update",
@@ -849,29 +850,29 @@ test("bulk operations reject stale versions atomically, clone rich rows and rest
       }),
     /Auswahl erneuern/,
   );
-  assert.equal(rows(table.id)[0].cells.status, "Nicht begonnen");
-  const ids = () =>
-    rows(table.id).map((r) => ({ id: r.id, version: r.version }));
-  command(owner, {
+  assert.equal((await rows(table.id))[0].cells.status, "Nicht begonnen");
+  const ids = async () =>
+    (await rows(table.id)).map((r) => ({ id: r.id, version: r.version }));
+  await command(owner, {
     action: "rows.bulk",
     pageId: table.id,
     operation: "update",
-    rows: ids(),
+    rows: await ids(),
     cells: { status: "Erledigt" },
   });
-  assert.ok(rows(table.id).every((r) => r.cells.status === "Erledigt"));
-  assert.throws(
-    () =>
-      command(viewer, {
+  assert.ok((await rows(table.id)).every((r) => r.cells.status === "Erledigt"));
+  await assert.rejects(
+    async () =>
+      await command(viewer, {
         action: "rows.bulk",
         pageId: table.id,
         operation: "delete",
-        rows: ids(),
+        rows: await ids(),
       }),
     /Berechtigung/,
   );
-  const schema = readDatabase(table.id);
-  command(owner, {
+  const schema = await readDatabase(table.id);
+  await command(owner, {
     action: "database.update",
     pageId: table.id,
     version: schema.version,
@@ -886,50 +887,50 @@ test("bulk operations reject stale versions atomically, clone rich rows and rest
     ],
     views: schema.views,
   });
-  const current = rows(table.id).find((r) => r.id === second.id)!;
-  command(owner, {
+  const current = (await rows(table.id)).find((r) => r.id === second.id)!;
+  await command(owner, {
     action: "row.update",
     pageId: table.id,
     rowId: second.id,
     version: current.version,
     cells: { related: [first.id] },
   });
-  const copies = command(owner, {
+  const copies = (await command(owner, {
     action: "rows.bulk",
     pageId: table.id,
     operation: "duplicate",
-    rows: ids(),
-  }) as { ids: string[] };
-  const cloneA = rows(table.id).find(
+    rows: await ids(),
+  })) as { ids: string[] };
+  const cloneA = (await rows(table.id)).find(
       (r) => copies.ids.includes(r.id) && r.cells.title === "First",
     )!,
-    cloneB = rows(table.id).find(
+    cloneB = (await rows(table.id)).find(
       (r) => copies.ids.includes(r.id) && r.cells.title === "Second",
     )!;
   assert.deepEqual(cloneB.cells.related, [cloneA.id]);
   assert.match(
-    rowDocumentData(owner, table.id, cloneA.id).html,
+    (await rowDocumentData(owner, table.id, cloneA.id)).html,
     /Preserved detail/,
   );
-  const deletion = command(owner, {
+  const deletion = (await command(owner, {
     action: "rows.bulk",
     pageId: table.id,
     operation: "delete",
-    rows: ids(),
-  }) as { snapshotId: string };
-  assert.equal(rows(table.id).length, 0);
-  command(owner, {
+    rows: await ids(),
+  })) as { snapshotId: string };
+  assert.equal((await rows(table.id)).length, 0);
+  await command(owner, {
     action: "snapshot.restore",
     pageId: table.id,
     snapshotId: deletion.snapshotId,
   });
-  assert.equal(rows(table.id).length, 4);
+  assert.equal((await rows(table.id)).length, 4);
   assert.match(
-    rowDocumentData(owner, table.id, first.id).html,
+    (await rowDocumentData(owner, table.id, first.id)).html,
     /Preserved detail/,
   );
   assert.equal(
-    one<{ body: string }>("SELECT body FROM comments WHERE row_id=?", first.id)!
+    (await one<{ body: string }>("SELECT body FROM comments WHERE row_id=?", first.id))!
       .body,
     "Preserved discussion",
   );
@@ -937,7 +938,7 @@ test("bulk operations reject stale versions atomically, clone rich rows and rest
 
 test("view-specific column settings persist with schema version and width guards", async () => {
   const { database: readDatabase } = await import("../lib/api");
-  const before = readDatabase(database.id);
+  const before = await readDatabase(database.id);
   const next = before.views.map((v, i) =>
     i === 0
       ? {
@@ -947,19 +948,19 @@ test("view-specific column settings persist with schema version and width guards
         }
       : v,
   );
-  command(owner, {
+  await command(owner, {
     action: "database.update",
     pageId: database.id,
     version: before.version,
     fields: before.fields,
     views: next,
   });
-  const current = readDatabase(database.id);
+  const current = await readDatabase(database.id);
   assert.equal(current.views[0].columnWidths?.title, 360);
   assert.deepEqual(current.views[0].fieldOrder, ["status", "title"]);
   assert.equal(current.views[1].columnWidths, undefined);
-  assert.throws(() =>
-    command(owner, {
+  await assert.rejects(async () =>
+    await command(owner, {
       action: "database.update",
       pageId: database.id,
       version: current.version,
@@ -967,7 +968,7 @@ test("view-specific column settings persist with schema version and width guards
       views: [{ ...next[0], columnWidths: { title: 900 } }],
     }),
   );
-  assert.equal(readDatabase(database.id).version, current.version);
+  assert.equal((await readDatabase(database.id)).version, current.version);
 });
 
 test("form configuration validates required fields, types and hidden answers on every submission path", async () => {
@@ -976,20 +977,20 @@ test("form configuration validates required fields, types and hidden answers on 
     await import("../lib/forms");
   const { formConfigSchema, validateFormValues } =
     await import("../lib/form-settings");
-  const table = command(owner, {
+  const table = (await command(owner, {
     action: "page.create",
     workspaceId: wid,
     spaceId: page.space_id,
     title: "Validated form",
     kind: "database",
-  }) as { id: string };
-  const d = readDatabase(table.id);
+  })) as { id: string };
+  const d = await readDatabase(table.id);
   const fields: Field[] = [
     ...d.fields,
     { id: "email", name: "E-Mail", type: "email" },
     { id: "number", name: "Zahl", type: "number" },
   ];
-  command(owner, {
+  await command(owner, {
     action: "database.update",
     pageId: table.id,
     version: d.version,
@@ -1004,7 +1005,7 @@ test("form configuration validates required fields, types and hidden answers on 
     fieldOrder: ["email", "title"],
     successTitle: "Received",
   });
-  command(owner, {
+  await command(owner, {
     action: "form.update",
     pageId: table.id,
     enabled: true,
@@ -1012,28 +1013,28 @@ test("form configuration validates required fields, types and hidden answers on 
     anonymous: true,
     config,
   });
-  const settings = formSettings(table.id)!;
-  assert.equal(getForm(settings.token, null).fields[0].id, "email");
-  assert.throws(
-    () => saveFormSubmission(table.id, null, { email: "wrong", number: 0 }),
+  const settings = (await formSettings(table.id))!;
+  assert.equal((await getForm(settings.token, null)).fields[0].id, "email");
+  await assert.rejects(
+    async () => await saveFormSubmission(table.id, null, { email: "wrong", number: 0 }),
     /Bitte ausfüllen/,
   );
-  assert.equal(rows(table.id).length, 0);
-  const accepted = saveFormSubmission(table.id, null, {
+  assert.equal((await rows(table.id)).length, 0);
+  const accepted = await saveFormSubmission(table.id, null, {
     title: "Test",
     email: "test@example.test",
     number: 0,
     priority: "Hoch",
     assignee: owner.id,
   });
-  const row = rows(table.id).find((r) => r.id === accepted.id)!;
+  const row = (await rows(table.id)).find((r) => r.id === accepted.id)!;
   assert.equal(row.cells.number, 0);
   assert.equal(row.cells.priority, undefined);
   assert.equal(row.cells.assignee, undefined);
   assert.equal(row.created_by, null);
-  assert.throws(
-    () =>
-      command(owner, {
+  await assert.rejects(
+    async () =>
+      await command(owner, {
         action: "form.submit",
         pageId: table.id,
         cells: { title: "Missing required" },
@@ -1048,27 +1049,27 @@ test("form configuration validates required fields, types and hidden answers on 
   assert.ok(invalid.errors.number);
   assert.ok(invalid.errors.date);
   assert.ok(invalid.errors.status);
-  command(owner, { action: "form.update", pageId: table.id, enabled: false });
-  assert.equal(formSettings(table.id)!.config.title, "Feedback");
-  assert.throws(() => getForm(settings.token, null), /nicht gefunden/);
+  await command(owner, { action: "form.update", pageId: table.id, enabled: false });
+  assert.equal((await formSettings(table.id))!.config.title, "Feedback");
+  await assert.rejects(async () => await getForm(settings.token, null), /nicht gefunden/);
 });
 
 test("saved database page templates copy records, self-relations, rich text, row templates and form design atomically", async () => {
   const { database: readDatabase, rows: readRows } = await import("../lib/api");
   const { replaceRowDocument, rowDocumentData } =
     await import("../lib/row-documents");
-  const create = (title: string, extra = {}) =>
-    command(owner, {
+  const create = async (title: string, extra = {}) =>
+    (await command(owner, {
       action: "page.create",
       workspaceId: wid,
       spaceId: boot.spaces[0].id,
       kind: "database",
       title,
       ...extra,
-    }) as { id: string };
-  const source = create("Reusable project");
-  const schema = readDatabase(source.id);
-  command(owner, {
+    })) as { id: string };
+  const source = await create("Reusable project");
+  const schema = await readDatabase(source.id);
+  await command(owner, {
     action: "database.update",
     pageId: source.id,
     version: schema.version,
@@ -1083,35 +1084,35 @@ test("saved database page templates copy records, self-relations, rich text, row
     ],
     views: schema.views,
   });
-  const a = command(owner, {
+  const a = (await command(owner, {
     action: "row.create",
     pageId: source.id,
     cells: { title: "Kickoff", assignee: owner.id },
-  }) as { id: string };
-  const b = command(owner, {
+  })) as { id: string };
+  const b = (await command(owner, {
     action: "row.create",
     pageId: source.id,
     cells: { title: "Delivery", related: [a.id] },
-  }) as { id: string };
-  replaceRowDocument(
+  })) as { id: string };
+  await replaceRowDocument(
     a.id,
     `<h2>Project brief</h2><p><a href="/#page=${source.id}">Project home</a></p>`,
     owner.id,
   );
-  replaceRowDocument(b.id, "<p>Delivery instructions</p>", owner.id);
-  const rowTemplate = command(owner, {
+  await replaceRowDocument(b.id, "<p>Delivery instructions</p>", owner.id);
+  const rowTemplate = (await command(owner, {
     action: "row.template.save",
     pageId: source.id,
     rowId: b.id,
     name: "Milestone",
-  }) as { id: string };
-  command(owner, {
+  })) as { id: string };
+  await command(owner, {
     action: "row.template.default",
     pageId: source.id,
     templateId: rowTemplate.id,
     enabled: true,
   });
-  command(owner, {
+  await command(owner, {
     action: "form.update",
     pageId: source.id,
     enabled: true,
@@ -1119,62 +1120,62 @@ test("saved database page templates copy records, self-relations, rich text, row
     anonymous: true,
     config: { title: "New proposal", requiredFields: ["title"] },
   });
-  command(owner, {
+  await command(owner, {
     action: "template.save",
     pageId: source.id,
     name: "Reusable complete database",
   });
-  const saved = one<{ id: string; payload: string }>(
+  const saved = (await one<{ id: string; payload: string }>(
     "SELECT id,payload FROM templates WHERE name=?",
     "Reusable complete database",
-  )!;
+  ))!;
   // The saved content is a snapshot, independent of subsequent source edits.
-  replaceRowDocument(a.id, "<p>Changed later</p>", owner.id);
-  command(owner, { action: "row.delete", pageId: source.id, rowId: b.id });
-  const copy = create("Copied project", { templateId: saved.id });
-  const copiedRows = readRows(copy.id);
+  await replaceRowDocument(a.id, "<p>Changed later</p>", owner.id);
+  await command(owner, { action: "row.delete", pageId: source.id, rowId: b.id });
+  const copy = await create("Copied project", { templateId: saved.id });
+  const copiedRows = await readRows(copy.id);
   assert.equal(copiedRows.length, 2);
   const first = copiedRows.find((r) => r.cells.title === "Kickoff")!;
   const second = copiedRows.find((r) => r.cells.title === "Delivery")!;
   assert.notEqual(first.id, a.id);
   assert.deepEqual(second.cells.related, [first.id]);
   assert.equal(
-    readDatabase(copy.id).fields.find((f) => f.id === "related")!.relationPage,
+    (await readDatabase(copy.id)).fields.find((f) => f.id === "related")!.relationPage,
     copy.id,
   );
-  const doc = rowDocumentData(owner, copy.id, first.id);
+  const doc = await rowDocumentData(owner, copy.id, first.id);
   assert.match(doc.html, /Project brief/);
   assert.match(doc.html, new RegExp(copy.id));
   assert.notEqual(
     doc.generation,
-    rowDocumentData(owner, source.id, a.id).generation,
+    (await rowDocumentData(owner, source.id, a.id)).generation,
   );
-  const third = command(owner, { action: "row.create", pageId: copy.id }) as {
+  const third = (await command(owner, { action: "row.create", pageId: copy.id })) as {
     id: string;
   };
   assert.deepEqual(
-    readRows(copy.id).find((r) => r.id === third.id)!.cells.related,
+    (await readRows(copy.id)).find((r) => r.id === third.id)!.cells.related,
     [first.id],
   );
   assert.match(
-    rowDocumentData(owner, copy.id, third.id).html,
+    (await rowDocumentData(owner, copy.id, third.id)).html,
     /Delivery instructions/,
   );
-  const form = one<{
+  const form = (await one<{
     enabled: number;
     internal: number;
     anonymous: number;
     config: string;
-  }>("SELECT * FROM forms WHERE page_id=?", copy.id)!;
+  }>("SELECT * FROM forms WHERE page_id=?", copy.id))!;
   assert.equal(form.enabled, 0);
   assert.equal(form.internal, 1);
   assert.equal(form.anonymous, 0);
   assert.equal(JSON.parse(form.config).title, "New proposal");
   // Private templates and malformed templates cannot leave a half-created page.
-  run("UPDATE templates SET visibility='private' WHERE id=?", saved.id);
-  assert.throws(
-    () =>
-      command(editor, {
+  await run("UPDATE templates SET visibility='private' WHERE id=?", saved.id);
+  await assert.rejects(
+    async () =>
+      await command(editor, {
         action: "page.create",
         workspaceId: wid,
         spaceId: boot.spaces[0].id,
@@ -1184,78 +1185,78 @@ test("saved database page templates copy records, self-relations, rich text, row
     /Private Vorlage/,
   );
   assert.equal(
-    one("SELECT id FROM pages WHERE title=?", "Unauthorized template copy"),
+    await one("SELECT id FROM pages WHERE title=?", "Unauthorized template copy"),
     undefined,
   );
   const broken = JSON.parse(saved.payload);
   broken.rows.push(broken.rows[0]);
-  run(
+  await run(
     "UPDATE templates SET payload=? WHERE id=?",
     JSON.stringify(broken),
     saved.id,
   );
-  assert.throws(
-    () => create("Broken template copy", { templateId: saved.id }),
+  await assert.rejects(
+    async () => await create("Broken template copy", { templateId: saved.id }),
     /Doppelte/,
   );
   assert.equal(
-    one("SELECT id FROM pages WHERE title=?", "Broken template copy"),
+    await one("SELECT id FROM pages WHERE title=?", "Broken template copy"),
     undefined,
   );
 });
 
 test("replacing a database with a saved template checks versions and restores the full prior database", async () => {
   const { database: readDatabase, rows: readRows } = await import("../lib/api");
-  const create = (title: string) =>
-    command(owner, {
+  const create = async (title: string) =>
+    (await command(owner, {
       action: "page.create",
       workspaceId: wid,
       spaceId: boot.spaces[0].id,
       kind: "database",
       title,
-    }) as { id: string };
-  const source = create("Replacement source");
-  command(owner, {
+    })) as { id: string };
+  const source = await create("Replacement source");
+  await command(owner, {
     action: "row.create",
     pageId: source.id,
     cells: { title: "Replacement row" },
   });
-  command(owner, {
+  await command(owner, {
     action: "template.save",
     pageId: source.id,
     name: "Replacement template",
   });
-  const template = one<{ id: string }>(
+  const template = (await one<{ id: string }>(
     "SELECT id FROM templates WHERE name=?",
     "Replacement template",
-  )!;
-  const target = create("Existing database");
-  const row = command(owner, {
+  ))!;
+  const target = await create("Existing database");
+  const row = (await command(owner, {
     action: "row.create",
     pageId: target.id,
     cells: { title: "Original row" },
-  }) as { id: string };
-  command(owner, {
+  })) as { id: string };
+  await command(owner, {
     action: "comment.create",
     pageId: target.id,
     rowId: row.id,
     body: "Original discussion",
   });
-  command(owner, {
+  await command(owner, {
     action: "row.template.save",
     pageId: target.id,
     rowId: row.id,
     name: "Original template",
   });
-  command(owner, {
+  await command(owner, {
     action: "form.update",
     pageId: target.id,
     config: { title: "Original form" },
   });
-  const version = readDatabase(target.id).version;
-  assert.throws(
-    () =>
-      command(owner, {
+  const version = (await readDatabase(target.id)).version;
+  await assert.rejects(
+    async () =>
+      await command(owner, {
         action: "template.apply",
         pageId: target.id,
         templateId: template.id,
@@ -1263,43 +1264,43 @@ test("replacing a database with a saved template checks versions and restores th
       }),
     /zwischenzeitlich/,
   );
-  assert.equal(readRows(target.id)[0].id, row.id);
-  const applied = command(owner, {
+  assert.equal((await readRows(target.id))[0].id, row.id);
+  const applied = (await command(owner, {
     action: "template.apply",
     pageId: target.id,
     templateId: template.id,
     version,
-  }) as { snapshotId: string };
-  assert.equal(readRows(target.id).length, 1);
-  assert.equal(readRows(target.id)[0].cells.title, "Replacement row");
+  })) as { snapshotId: string };
+  assert.equal((await readRows(target.id)).length, 1);
+  assert.equal((await readRows(target.id))[0].cells.title, "Replacement row");
   assert.equal(
-    one("SELECT id FROM comments WHERE page_id=?", target.id),
+    await one("SELECT id FROM comments WHERE page_id=?", target.id),
     undefined,
   );
-  command(owner, {
+  await command(owner, {
     action: "snapshot.restore",
     pageId: target.id,
     snapshotId: applied.snapshotId,
   });
-  assert.equal(readRows(target.id)[0].id, row.id);
+  assert.equal((await readRows(target.id))[0].id, row.id);
   assert.equal(
-    one<{ body: string }>("SELECT body FROM comments WHERE row_id=?", row.id)!
+    (await one<{ body: string }>("SELECT body FROM comments WHERE row_id=?", row.id))!
       .body,
     "Original discussion",
   );
   assert.equal(
-    one<{ name: string }>(
+    (await one<{ name: string }>(
       "SELECT name FROM row_templates WHERE page_id=?",
       target.id,
-    )!.name,
+    ))!.name,
     "Original template",
   );
   assert.equal(
     JSON.parse(
-      one<{ config: string }>(
+      (await one<{ config: string }>(
         "SELECT config FROM forms WHERE page_id=?",
         target.id,
-      )!.config,
+      ))!.config,
     ).title,
     "Original form",
   );
@@ -1307,33 +1308,33 @@ test("replacing a database with a saved template checks versions and restores th
 
 test("shared page templates omit inaccessible external relations and non-member people", async () => {
   const { database: readDatabase, rows: readRows } = await import("../lib/api");
-  const privateSpace = command(owner, {
+  const privateSpace = (await command(owner, {
     action: "space.create",
     workspaceId: wid,
     name: "Template relation secrets",
     private: true,
-  }) as { id: string };
-  const secret = command(owner, {
+  })) as { id: string };
+  const secret = (await command(owner, {
     action: "page.create",
     workspaceId: wid,
     spaceId: privateSpace.id,
     title: "Private relation target",
     kind: "database",
-  }) as { id: string };
-  const secretRow = command(owner, {
+  })) as { id: string };
+  const secretRow = (await command(owner, {
     action: "row.create",
     pageId: secret.id,
     cells: { title: "Secret record" },
-  }) as { id: string };
-  const source = command(owner, {
+  })) as { id: string };
+  const source = (await command(owner, {
     action: "page.create",
     workspaceId: wid,
     spaceId: boot.spaces[0].id,
     title: "Shared relation template source",
     kind: "database",
-  }) as { id: string };
-  const schema = readDatabase(source.id);
-  command(owner, {
+  })) as { id: string };
+  const schema = await readDatabase(source.id);
+  await command(owner, {
     action: "database.update",
     pageId: source.id,
     version: schema.version,
@@ -1348,7 +1349,7 @@ test("shared page templates omit inaccessible external relations and non-member 
     ],
     views: schema.views,
   });
-  command(owner, {
+  await command(owner, {
     action: "row.create",
     pageId: source.id,
     cells: {
@@ -1357,33 +1358,33 @@ test("shared page templates omit inaccessible external relations and non-member 
       assignee: stranger.id,
     },
   });
-  command(owner, {
+  await command(owner, {
     action: "template.save",
     pageId: source.id,
     name: "Shared restricted relations",
   });
-  const templateId = one<{ id: string }>(
+  const templateId = (await one<{ id: string }>(
     "SELECT id FROM templates WHERE name=?",
     "Shared restricted relations",
-  )!.id;
-  const copy = command(editor, {
+  ))!.id;
+  const copy = (await command(editor, {
     action: "page.create",
     workspaceId: wid,
     spaceId: boot.spaces[0].id,
     title: "Member template instance",
     templateId,
-  }) as { id: string };
+  })) as { id: string };
   assert.equal(
-    readDatabase(copy.id).fields.find((f) => f.id === "external")!.relationPage,
+    (await readDatabase(copy.id)).fields.find((f) => f.id === "external")!.relationPage,
     undefined,
   );
-  assert.deepEqual(readRows(copy.id)[0].cells.external, []);
-  assert.equal(readRows(copy.id)[0].cells.assignee, "");
-  const otherWorkspace = createWorkspace(owner.id, "Other template workspace");
-  const otherBoot = bootstrap(owner, otherWorkspace);
-  assert.throws(
-    () =>
-      command(owner, {
+  assert.deepEqual((await readRows(copy.id))[0].cells.external, []);
+  assert.equal((await readRows(copy.id))[0].cells.assignee, "");
+  const otherWorkspace = await createWorkspace(owner.id, "Other template workspace");
+  const otherBoot = await bootstrap(owner, otherWorkspace);
+  await assert.rejects(
+    async () =>
+      await command(owner, {
         action: "page.create",
         workspaceId: otherWorkspace,
         spaceId: otherBoot.spaces[0].id,
@@ -1393,70 +1394,70 @@ test("shared page templates omit inaccessible external relations and non-member 
     /Arbeitsbereich/,
   );
   assert.equal(
-    one("SELECT id FROM pages WHERE title=?", "Cross-workspace template"),
+    await one("SELECT id FROM pages WHERE title=?", "Cross-workspace template"),
     undefined,
   );
 });
 
-test("document template replacement snapshots content and rotates collaboration identity", () => {
-  const source = command(owner, {
+test("document template replacement snapshots content and rotates collaboration identity", async () => {
+  const source = (await command(owner, {
     action: "page.create",
     workspaceId: wid,
     spaceId: boot.spaces[0].id,
     title: "Document template source",
-  }) as { id: string };
-  run(
+  })) as { id: string };
+  await run(
     "UPDATE documents SET html=?,state=? WHERE page_id=?",
     "<h2>Reusable agenda</h2>",
     htmlState("<h2>Reusable agenda</h2>"),
     source.id,
   );
-  command(owner, {
+  await command(owner, {
     action: "template.save",
     pageId: source.id,
     name: "Document replacement template",
   });
-  const templateId = one<{ id: string }>(
+  const templateId = (await one<{ id: string }>(
     "SELECT id FROM templates WHERE name=?",
     "Document replacement template",
-  )!.id;
-  const target = command(owner, {
+  ))!.id;
+  const target = (await command(owner, {
     action: "page.create",
     workspaceId: wid,
     spaceId: boot.spaces[0].id,
     title: "Document before replacement",
-  }) as { id: string };
-  run(
+  })) as { id: string };
+  await run(
     "UPDATE documents SET html=?,state=? WHERE page_id=?",
     "<p>Keep my old content</p>",
     htmlState("<p>Keep my old content</p>"),
     target.id,
   );
-  const generation = one<{ generation: string }>(
+  const generation = (await one<{ generation: string }>(
     "SELECT generation FROM documents WHERE page_id=?",
     target.id,
-  )!.generation;
-  const result = command(owner, {
+  ))!.generation;
+  const result = (await command(owner, {
     action: "template.apply",
     pageId: target.id,
     templateId,
-  }) as { snapshotId: string };
-  const replaced = one<{ html: string; generation: string }>(
+  })) as { snapshotId: string };
+  const replaced = (await one<{ html: string; generation: string }>(
     "SELECT html,generation FROM documents WHERE page_id=?",
     target.id,
-  )!;
+  ))!;
   assert.match(replaced.html, /Reusable agenda/);
   assert.notEqual(replaced.generation, generation);
-  command(owner, {
+  await command(owner, {
     action: "snapshot.restore",
     pageId: target.id,
     snapshotId: result.snapshotId,
   });
   assert.match(
-    one<{ html: string }>(
+    (await one<{ html: string }>(
       "SELECT html FROM documents WHERE page_id=?",
       target.id,
-    )!.html,
+    ))!.html,
     /Keep my old content/,
   );
 });
@@ -1488,99 +1489,99 @@ test("form file questions accept only server-attached uploads and enforce requir
     assert.ok(validateFormValues(fields, config, { cv: bad }).errors.cv);
 });
 
-test("bulk page actions move, duplicate and trash several pages atomically", () => {
+test("bulk page actions move, duplicate and trash several pages atomically", async () => {
   const space = boot.spaces[0].id;
-  const create = (title: string, parentId?: string) =>
+  const create = async (title: string, parentId?: string) =>
     (
-      command(owner, {
+      (await command(owner, {
         action: "page.create",
         workspaceId: wid,
         spaceId: space,
         title,
         parentId,
-      }) as { id: string }
+      })) as { id: string }
     ).id;
-  const target = create("Bulk Ziel"),
-    a = create("Bulk A"),
-    b = create("Bulk B"),
-    child = create("Bulk Kind", a);
-  const pageOf = (pid: string) =>
-    one<{
+  const target = await create("Bulk Ziel"),
+    a = await create("Bulk A"),
+    b = await create("Bulk B"),
+    child = await create("Bulk Kind", a);
+  const pageOf = async (pid: string) =>
+    (await one<{
       parent_id: string | null;
       deleted_at: string | null;
       position: number;
-    }>("SELECT parent_id,deleted_at,position FROM pages WHERE id=?", pid)!;
-  const bulk = (input: Record<string, unknown>, as = owner) =>
-    command(as, { action: "pages.bulk", workspaceId: wid, ...input }) as {
+    }>("SELECT parent_id,deleted_at,position FROM pages WHERE id=?", pid))!;
+  const bulk = async (input: Record<string, unknown>, as = owner) =>
+    (await command(as, { action: "pages.bulk", workspaceId: wid, ...input })) as {
       count: number;
       created: string[];
     };
   // A selected child travels with its selected parent.
   assert.equal(
-    bulk({ operation: "move", pageIds: [b, a, child], parentId: target }).count,
+    (await bulk({ operation: "move", pageIds: [b, a, child], parentId: target })).count,
     2,
   );
-  assert.equal(pageOf(a).parent_id, target);
-  assert.equal(pageOf(b).parent_id, target);
-  assert.equal(pageOf(child).parent_id, a);
-  assert.ok(pageOf(b).position < pageOf(a).position);
+  assert.equal((await pageOf(a)).parent_id, target);
+  assert.equal((await pageOf(b)).parent_id, target);
+  assert.equal((await pageOf(child)).parent_id, a);
+  assert.ok((await pageOf(b)).position < (await pageOf(a)).position);
   // Moving into one of the moved pages fails without partial changes.
-  assert.throws(
-    () => bulk({ operation: "move", pageIds: [target, b], parentId: a }),
+  await assert.rejects(
+    async () => await bulk({ operation: "move", pageIds: [target, b], parentId: a }),
     /Ungültiges Verschieben/,
   );
-  assert.equal(pageOf(target).parent_id, null);
-  assert.equal(pageOf(b).parent_id, target);
-  const { created } = bulk({ operation: "duplicate", pageIds: [a, b] });
+  assert.equal((await pageOf(target)).parent_id, null);
+  assert.equal((await pageOf(b)).parent_id, target);
+  const { created } = await bulk({ operation: "duplicate", pageIds: [a, b] });
   assert.equal(created.length, 2);
-  assert.ok(created.every((pid) => pageOf(pid).deleted_at === null));
-  bulk({ operation: "delete", pageIds: [a, b] });
+  assert.ok(await everyAsync(created, async (pid) => (await pageOf(pid)).deleted_at === null));
+  await bulk({ operation: "delete", pageIds: [a, b] });
   assert.ok(
-    pageOf(a).deleted_at && pageOf(child).deleted_at && pageOf(b).deleted_at,
+    (await pageOf(a)).deleted_at && (await pageOf(child)).deleted_at && (await pageOf(b)).deleted_at,
   );
-  assert.throws(() => bulk({ operation: "delete", pageIds: [] }));
-  const other = createWorkspace(owner.id, "Bulk fremd");
+  await assert.rejects(async () => await bulk({ operation: "delete", pageIds: [] }));
+  const other = await createWorkspace(owner.id, "Bulk fremd");
   const foreign = (
-    command(owner, {
+    (await command(owner, {
       action: "page.create",
       workspaceId: other,
-      spaceId: bootstrap(owner, other).spaces[0].id,
+      spaceId: (await bootstrap(owner, other)).spaces[0].id,
       title: "Fremd",
-    }) as { id: string }
+    })) as { id: string }
   ).id;
-  assert.throws(
-    () => bulk({ operation: "delete", pageIds: [target, foreign] }),
+  await assert.rejects(
+    async () => await bulk({ operation: "delete", pageIds: [target, foreign] }),
     /anderen Arbeitsbereich/,
   );
-  assert.equal(pageOf(target).deleted_at, null);
+  assert.equal((await pageOf(target)).deleted_at, null);
 });
 
 test("internal forms ask for people and relations; public forms never expose them", async () => {
   const { getForm, saveFormSubmission } = await import("../lib/forms");
   const { database: readDatabase, rows } = await import("../lib/api");
-  const create = (title: string) =>
+  const create = async (title: string) =>
     (
-      command(owner, {
+      (await command(owner, {
         action: "page.create",
         workspaceId: wid,
         spaceId: page.space_id,
         title,
         kind: "database",
-      }) as { id: string }
+      })) as { id: string }
     ).id;
-  const people = create("Formular Kontakte"),
-    requests = create("Formular Anfragen");
+  const people = await create("Formular Kontakte"),
+    requests = await create("Formular Anfragen");
   const contact = (
-    command(owner, {
+    (await command(owner, {
       action: "row.create",
       pageId: people,
       cells: { title: "Kim" },
-    }) as {
+    })) as {
       id: string;
     }
   ).id;
-  const d = readDatabase(requests);
-  command(owner, {
+  const d = await readDatabase(requests);
+  await command(owner, {
     action: "database.update",
     pageId: requests,
     version: d.version,
@@ -1596,18 +1597,18 @@ test("internal forms ask for people and relations; public forms never expose the
     ],
     views: d.views,
   });
-  command(owner, {
+  await command(owner, {
     action: "form.update",
     pageId: requests,
     enabled: true,
     internal: true,
     anonymous: false,
   });
-  const token = one<{ token: string }>(
+  const token = (await one<{ token: string }>(
     "SELECT token FROM forms WHERE page_id=?",
     requests,
-  )!.token;
-  const internal = getForm(token, editor);
+  ))!.token;
+  const internal = await getForm(token, editor);
   assert.deepEqual(
     internal.fields.map((f) => f.id),
     ["title", "owner", "contact"],
@@ -1617,44 +1618,44 @@ test("internal forms ask for people and relations; public forms never expose the
     internal.related[people].map((r) => r.cells.title),
     ["Kim"],
   );
-  saveFormSubmission(requests, editor, {
+  await saveFormSubmission(requests, editor, {
     title: "Frage",
     owner: owner.id,
     contact: [contact],
   });
-  const saved = rows(requests).find((r) => r.cells.title === "Frage")!;
+  const saved = (await rows(requests)).find((r) => r.cells.title === "Frage")!;
   assert.equal(saved.cells.owner, owner.id);
   assert.deepEqual(saved.cells.contact, [contact]);
-  assert.throws(
-    () =>
-      saveFormSubmission(requests, editor, { title: "x", owner: stranger.id }),
+  await assert.rejects(
+    async () =>
+      await saveFormSubmission(requests, editor, { title: "x", owner: stranger.id }),
     /Mitglied/,
   );
-  assert.throws(
-    () => saveFormSubmission(requests, editor, { title: "x", contact: [id()] }),
+  await assert.rejects(
+    async () => await saveFormSubmission(requests, editor, { title: "x", contact: [id()] }),
     /Eintrag nicht gefunden/,
   );
   // Public forms drop people and relations and never list members.
-  command(owner, {
+  await command(owner, {
     action: "form.update",
     pageId: requests,
     enabled: true,
     internal: false,
     anonymous: true,
   });
-  const open = getForm(token, null);
+  const open = await getForm(token, null);
   assert.deepEqual(
     open.fields.map((f) => f.id),
     ["title"],
   );
   assert.deepEqual(open.members, []);
   assert.deepEqual(open.related, {});
-  saveFormSubmission(requests, null, {
+  await saveFormSubmission(requests, null, {
     title: "Anonym",
     owner: owner.id,
     contact: [contact],
   });
-  const anon = rows(requests).find((r) => r.cells.title === "Anonym")!;
+  const anon = (await rows(requests)).find((r) => r.cells.title === "Anonym")!;
   assert.equal(anon.cells.owner, undefined);
   assert.equal(anon.cells.contact, undefined);
 });

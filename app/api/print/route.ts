@@ -7,7 +7,7 @@ const headers = { "Cache-Control": "private, no-store" };
 // Stores a print view (lib/print-snapshots.ts) and answers with its address.
 export async function POST(req: Request) {
   try {
-    checkOrigin(req);
+    await checkOrigin(req);
     const user = await requireUser();
     if (!req.body) throw new HttpError(400, "Ungültige Eingabe.");
     const reader = req.body.getReader(),

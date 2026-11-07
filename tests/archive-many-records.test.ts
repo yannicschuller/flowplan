@@ -14,21 +14,21 @@ const { createWorkspace } = await import("../lib/seed");
 const { command, database } = await import("../lib/api");
 const { exportArchive, importArchive, readZip, MAX_ARCHIVE_ROWS } = await import("../lib/archive");
 
-function user(name: string): Identity {
+async function user(name: string): Promise<Identity> {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${uid}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${uid}@example.test`);
   return { id: uid, name, email: `${uid}@example.test`, disabled: 0, created_at: "", groups: [], isAdmin: false };
 }
 // ARCHIVE_TEST_RECORDS measures other sizes (e.g. 40000, 100000) by hand.
 const RECORDS = Number(process.env.ARCHIVE_TEST_RECORDS || 12_000);
-const owner = user("Owner"),
-  wid = createWorkspace(owner.id, "Large"),
-  space = one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid)!.id;
+const owner = await user("Owner"),
+  wid = await createWorkspace(owner.id, "Large"),
+  space = (await one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid))!.id;
 // The default database has title, status, priority, date, assignee and tags.
-const table = (command(owner, { action: "page.create", workspaceId: wid, spaceId: space, title: "Tasks", kind: "database" }) as { id: string }).id;
+const table = ((await command(owner, { action: "page.create", workspaceId: wid, spaceId: space, title: "Tasks", kind: "database" })) as { id: string }).id;
 {
-  const db = database(table);
-  command(owner, {
+  const db = await database(table);
+  await command(owner, {
     action: "database.update",
     pageId: table,
     version: db.version,
@@ -41,7 +41,7 @@ const table = (command(owner, { action: "page.create", workspaceId: wid, spaceId
   });
 }
 for (let i = 0; i < RECORDS; i += 5000)
-  command(owner, {
+  await command(owner, {
     action: "rows.import",
     pageId: table,
     rows: Array.from({ length: Math.min(5000, RECORDS - i) }, (_, k) => ({
@@ -54,15 +54,15 @@ for (let i = 0; i < RECORDS; i += 5000)
     })),
   });
 // Some records carry content and comments; one version of the whole database.
-const sample = all<{ id: string }>("SELECT id FROM rows WHERE page_id=? ORDER BY position LIMIT 50", table);
+const sample = await all<{ id: string }>("SELECT id FROM rows WHERE page_id=? ORDER BY position LIMIT 50", table);
 for (const r of sample) {
-  run("UPDATE rows SET content=? WHERE id=?", `<p>Content of ${r.id}</p>`, r.id);
-  command(owner, { action: "comment.create", pageId: table, rowId: r.id, body: "Looks fine" });
+  await run("UPDATE rows SET content=? WHERE id=?", `<p>Content of ${r.id}</p>`, r.id);
+  await command(owner, { action: "comment.create", pageId: table, rowId: r.id, body: "Looks fine" });
 }
-command(owner, { action: "page.snapshot", pageId: table });
+await command(owner, { action: "page.snapshot", pageId: table });
 
 test(`a database with ${RECORDS} records round-trips through the content archive`, async () => {
-  assert.equal(Number(one<{ n: number }>("SELECT COUNT(*) n FROM rows WHERE page_id=?", table)!.n), RECORDS);
+  assert.equal(Number((await one<{ n: number }>("SELECT COUNT(*) n FROM rows WHERE page_id=?", table))!.n), RECORDS);
   assert.ok(MAX_ARCHIVE_ROWS >= 100_000);
   const heap = process.memoryUsage().heapUsed;
   let t = performance.now();
@@ -77,17 +77,17 @@ test(`a database with ${RECORDS} records round-trips through the content archive
   if (RECORDS <= 12_000) assert.equal(exportedTable.snapshots.length, 1);
   assert.equal(exportedTable.comments.length, sample.length);
 
-  const target = createWorkspace(owner.id, "Restored");
+  const target = await createWorkspace(owner.id, "Restored");
   t = performance.now();
   await importArchive(owner, target, zip);
   const importMs = performance.now() - t;
-  const restored = one<{ id: string }>("SELECT id FROM pages WHERE workspace_id=? AND kind='database' AND title='Tasks'", target)!.id;
-  assert.equal(Number(one<{ n: number }>("SELECT COUNT(*) n FROM rows WHERE page_id=?", restored)!.n), RECORDS);
-  const cells = JSON.parse(one<{ cells: string }>(`SELECT cells FROM rows WHERE page_id=? AND ${sql.jsonText("cells", "$.title")}='Task 11999'`, restored)!.cells);
+  const restored = (await one<{ id: string }>("SELECT id FROM pages WHERE workspace_id=? AND kind='database' AND title='Tasks'", target))!.id;
+  assert.equal(Number((await one<{ n: number }>("SELECT COUNT(*) n FROM rows WHERE page_id=?", restored))!.n), RECORDS);
+  const cells = JSON.parse((await one<{ cells: string }>(`SELECT cells FROM rows WHERE page_id=? AND ${sql.jsonText("cells", "$.title")}='Task 11999'`, restored))!.cells);
   assert.equal(cells.title, "Task 11999");
   assert.equal(cells.memo, "Note for record 11999 with a little text");
-  assert.equal(Number(one<{ n: number }>("SELECT COUNT(*) n FROM comments WHERE page_id=?", restored)!.n), sample.length);
-  assert.equal(Number(one<{ n: number }>("SELECT COUNT(*) n FROM snapshots WHERE page_id=?", restored)!.n), exportedTable.snapshots.length);
+  assert.equal(Number((await one<{ n: number }>("SELECT COUNT(*) n FROM comments WHERE page_id=?", restored))!.n), sample.length);
+  assert.equal(Number((await one<{ n: number }>("SELECT COUNT(*) n FROM snapshots WHERE page_id=?", restored))!.n), exportedTable.snapshots.length);
   const heapMb = Math.round((process.memoryUsage().heapUsed - heap) / 1048576);
   console.log(
     `archive: ${RECORDS} records, ZIP ${(zip.length / 1048576).toFixed(1)} MB, manifest ${(manifest.length / 1048576).toFixed(1)} MB, export ${Math.round(exportMs)} ms, import ${Math.round(importMs)} ms, heap +${heapMb} MB, rss ${Math.round(process.memoryUsage().rss / 1048576)} MB`,

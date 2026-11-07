@@ -12,6 +12,7 @@ import type { AiConfig } from "./providers";
 import { featureAllowed, instanceAiSettings, instanceKey, userAiSettings, userAllowedByPolicy, userKey, type AiProviderSettings } from "./settings";
 import { privateAddress } from "../safe-fetch";
 import { isIP } from "node:net";
+import { mapAsync } from "../each-async";
 
 export type AiResolution = { ok: true; config: AiConfig; source: "instance" | "user" } | { ok: false; reason: AiReason };
 type Options = {
@@ -21,9 +22,9 @@ type Options = {
 
 // Whether the person counts as a guest here. Without a workspace: when they
 // are a full member of none.
-function guestHere(user: Identity, workspaceId?: string) {
-  if (workspaceId) return isGuest(user, workspaceId) || !one("SELECT 1 FROM members WHERE workspace_id=? AND user_id=?", workspaceId, user.id);
-  const memberships = all<{ guest: number }>(
+async function guestHere(user: Identity, workspaceId?: string) {
+  if (workspaceId) return await isGuest(user, workspaceId) || !(await one("SELECT 1 FROM members WHERE workspace_id=? AND user_id=?", workspaceId, user.id));
+  const memberships = await all<{ guest: number }>(
     "SELECT EXISTS(SELECT 1 FROM workspace_guests g WHERE g.workspace_id=m.workspace_id AND g.user_id=m.user_id) guest FROM members m WHERE m.user_id=?",
     user.id,
   );
@@ -31,16 +32,16 @@ function guestHere(user: Identity, workspaceId?: string) {
 }
 
 // Everything but the provider: may this person use this feature?
-function gate(user: Identity, feature: string, options: Options): AiReason | null {
+async function gate(user: Identity, feature: string, options: Options): Promise<AiReason | null> {
   if (!isAiFeature(feature)) return "unknown-feature";
   if (user.demo) return "demo";
   if (user.apiScope) return "api-token";
-  const instance = instanceAiSettings();
+  const instance = await instanceAiSettings();
   if (!instance.enabled) return "off";
   if (!featureAllowed(instance, feature)) return "feature-off";
-  if (!userAllowedByPolicy(user.id, instance)) return "not-allowed";
-  if (!instance.guests && guestHere(user, options.workspaceId)) return "guest";
-  const own = userAiSettings(user.id);
+  if (!(await userAllowedByPolicy(user.id, instance))) return "not-allowed";
+  if (!instance.guests && await guestHere(user, options.workspaceId)) return "guest";
+  const own = await userAiSettings(user.id);
   if (!own.enabled) return "user-off";
   if (own.features[feature] === false) return "user-feature-off";
   return null;
@@ -51,15 +52,15 @@ function gate(user: Identity, feature: string, options: Options): AiReason | nul
 // the administration's own switch for it, the feature switches, the
 // "selected people" policy, guests and every switch of the person (AI off,
 // the feature off, on-device AI off) do.
-export function deviceGate(user: Identity, feature: string, options: Options = {}): AiReason | null {
+export async function deviceGate(user: Identity, feature: string, options: Options = {}): Promise<AiReason | null> {
   if (!isAiFeature(feature) || !DEVICE_AI_FEATURES.includes(feature)) return "unknown-feature";
   if (user.apiScope) return "api-token";
-  const instance = instanceAiSettings();
+  const instance = await instanceAiSettings();
   if (!instance.device) return "off";
   if (!featureAllowed(instance, feature)) return "feature-off";
-  if (!userAllowedByPolicy(user.id, instance)) return "not-allowed";
-  if (!instance.guests && guestHere(user, options.workspaceId)) return "guest";
-  const own = userAiSettings(user.id);
+  if (!(await userAllowedByPolicy(user.id, instance))) return "not-allowed";
+  if (!instance.guests && await guestHere(user, options.workspaceId)) return "guest";
+  const own = await userAiSettings(user.id);
   if (!own.enabled || own.device === "off") return "user-off";
   if (own.features[feature] === false) return "user-feature-off";
   return null;
@@ -68,39 +69,39 @@ export function deviceGate(user: Identity, feature: string, options: Options = {
 const configured = (p: AiProviderSettings | null): p is AiProviderSettings => !!p && !!p.model.trim();
 type Built = { ok: true; config: AiConfig } | { ok: false; reason: AiReason };
 // The instance provider as a config (also for the administration's tests).
-export function instanceProviderConfig(): Built {
-  const p = instanceAiSettings().provider;
+export async function instanceProviderConfig(): Promise<Built> {
+  const p = (await instanceAiSettings()).provider;
   if (!configured(p)) return { ok: false, reason: "no-provider" };
-  const key = instanceKey();
+  const key = await instanceKey();
   if (key.unreadable) return { ok: false, reason: "key-unreadable" };
   if (AI_DEFAULTS[p.kind].keyRequired && !key.key) return { ok: false, reason: "no-provider" };
   return { ok: true, config: { ...p, baseUrl: p.baseUrl || AI_DEFAULTS[p.kind].baseUrl, apiKey: key.key || undefined, trusted: true } };
 }
 // The person's own provider: public https addresses only (trusted: false).
-export function userProviderConfig(user: Identity): Built {
-  const p = userAiSettings(user.id).provider;
-  if (!instanceAiSettings().userProviders || !configured(p)) return { ok: false, reason: "no-provider" };
-  const key = userKey(user.id);
+export async function userProviderConfig(user: Identity): Promise<Built> {
+  const p = (await userAiSettings(user.id)).provider;
+  if (!(await instanceAiSettings()).userProviders || !configured(p)) return { ok: false, reason: "no-provider" };
+  const key = await userKey(user.id);
   if (key.unreadable) return { ok: false, reason: "key-unreadable" };
   if (AI_DEFAULTS[p.kind].keyRequired && !key.key) return { ok: false, reason: "no-provider" };
   return { ok: true, config: { ...p, baseUrl: p.baseUrl || AI_DEFAULTS[p.kind].baseUrl, apiKey: key.key || undefined, trusted: false } };
 }
 // Which provider applies: the person's own when they chose it, else the
 // instance's, else their own as the only one there is.
-function provider(user: Identity): AiResolution {
-  const own = userAiSettings(user.id);
-  const mine = userProviderConfig(user);
-  const instance = instanceProviderConfig();
+async function provider(user: Identity): Promise<AiResolution> {
+  const own = await userAiSettings(user.id);
+  const mine = await userProviderConfig(user);
+  const instance = await instanceProviderConfig();
   if (own.source === "user" && mine.ok) return { ...mine, source: "user" };
   if (instance.ok) return { ...instance, source: "instance" };
   if (mine.ok) return { ...mine, source: "user" };
   return { ok: false, reason: !mine.ok && mine.reason === "key-unreadable" ? mine.reason : !instance.ok ? instance.reason : "no-provider" };
 }
 
-export function resolveAi(user: Identity, feature: AiFeature | string, options: Options = {}): AiResolution {
-  const reason = gate(user, feature, options);
+export async function resolveAi(user: Identity, feature: AiFeature | string, options: Options = {}): Promise<AiResolution> {
+  const reason = await gate(user, feature, options);
   if (reason) return { ok: false, reason };
-  return provider(user);
+  return await provider(user);
 }
 
 // Text stays on the server or in its own network: Ollama or another server
@@ -119,26 +120,26 @@ export function isLocalProvider(config: { kind: string; baseUrl: string }) {
 // For the browser (bootstrap): which features work, with which provider,
 // and which pages of this workspace the AI may not read. No keys, no URLs
 // beyond the host name.
-export function aiStatus(user: Identity, workspaceId?: string, visiblePages: { id: string }[] = []): AiStatus {
+export async function aiStatus(user: Identity, workspaceId?: string, visiblePages: { id: string }[] = []): Promise<AiStatus> {
   const features = Object.fromEntries(AI_FEATURE_IDS.map((id) => [id, { ok: false }])) as AiStatus["features"];
-  const own = userAiSettings(user.id);
-  const instance = instanceAiSettings();
+  const own = await userAiSettings(user.id);
+  const instance = await instanceAiSettings();
   let resolved: AiResolution | null = null;
   for (const id of AI_FEATURE_IDS) {
-    const reason = gate(user, id, { workspaceId });
+    const reason = await gate(user, id, { workspaceId });
     if (reason) {
       features[id] = { ok: false, reason };
       continue;
     }
-    resolved ??= provider(user);
+    resolved ??= (await provider(user));
     features[id] = resolved.ok ? { ok: true } : { ok: false, reason: resolved.reason };
   }
   const enabled = AI_FEATURE_IDS.some((id) => features[id].ok);
-  const deviceFeatures = Object.fromEntries(DEVICE_AI_FEATURES.map((id) => [id, !deviceGate(user, id, { workspaceId })])) as Partial<Record<AiFeature, boolean>>;
+  const deviceFeatures = Object.fromEntries(await mapAsync(DEVICE_AI_FEATURES, async (id) => [id, !(await deviceGate(user, id, { workspaceId }))])) as Partial<Record<AiFeature, boolean>>;
   const device = Object.values(deviceFeatures).some(Boolean);
   // One pass for both: what the device may not read is a part of what the
   // server's AI may not.
-  const excluded = (enabled || device) && workspaceId ? aiExcludedPages(user, visiblePages) : [];
+  const excluded = (enabled || device) && workspaceId ? (await aiExcludedPages(user, visiblePages)) : [];
   const config = resolved?.ok ? resolved.config : null;
   let host = "";
   try {
@@ -151,6 +152,6 @@ export function aiStatus(user: Identity, workspaceId?: string, visiblePages: { i
     userProviders: !user.demo && !user.apiScope && instance.enabled && instance.userProviders,
     scope: own.scope,
     excludedPages: enabled ? excluded : [],
-    device: device ? { mode: own.device === "fallback" ? "fallback" : "prefer", features: deviceFeatures, excludedPages: aiDeviceExcludedPages(user, excluded) } : null,
+    device: device ? { mode: own.device === "fallback" ? "fallback" : "prefer", features: deviceFeatures, excludedPages: await aiDeviceExcludedPages(user, excluded) } : null,
   };
 }

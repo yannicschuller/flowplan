@@ -551,7 +551,7 @@ export function matrixSendUrl(homeserver: string, room: string, txn: string) {
 }
 // A room webhook (e.g. hookshot) reads `text`/`html`; the event fields are
 // sent along for bridges that pass them on unchanged.
-export function matrixWebhookBody(content: ReturnType<typeof renderMatrix>) {
+export function matrixWebhookBody(content: Awaited<ReturnType<typeof renderMatrix>>) {
   return { text: content.body, html: content.formatted_body, ...content };
 }
 export const SLACK_POST_MESSAGE = "https://slack.com/api/chat.postMessage";

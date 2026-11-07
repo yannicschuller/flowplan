@@ -17,7 +17,7 @@ const uuid = z.uuid();
 
 export const POST = withRequestLocale(async (req: Request, { params }: { params: Promise<{ path: string[] }> }) => {
   try {
-    checkOrigin(req);
+    await checkOrigin(req);
     const { path } = await params;
     const user = await requireUser();
     if (user.demo || user.apiScope) throw new HttpError(403, "Hier nicht verfügbar.");
@@ -25,7 +25,7 @@ export const POST = withRequestLocale(async (req: Request, { params }: { params:
     if (path.length === 1 && path[0] === "chunk") {
       const url = new URL(req.url);
       const pageId = uuid.parse(url.searchParams.get("page"));
-      requirePage(user, pageId, true);
+      await requirePage(user, pageId, true);
       if (Number(req.headers.get("content-length") || 0) > TRANSCRIBE_CHUNK_BYTES) throw new HttpError(413, "Anfrage zu groß.");
       const bytes = new Uint8Array(await req.arrayBuffer());
       return NextResponse.json(
@@ -42,7 +42,7 @@ export const POST = withRequestLocale(async (req: Request, { params }: { params:
           type: z.string().regex(/^audio\/[\w.+-]+$/),
         })
         .parse(await req.json());
-      requirePage(user, b.pageId, true);
+      await requirePage(user, b.pageId, true);
       return NextResponse.json(await finishTranscribeUpload(user, { uploadId: b.upload, pageId: b.pageId, parts: b.parts, name: b.name, type: b.type }));
     }
     throw new HttpError(404, "Nicht gefunden.");

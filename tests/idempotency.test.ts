@@ -21,23 +21,23 @@ const K = await import("../lib/idempotency-key");
 const widgets = await import("../app/api/mobile/widgets/[action]/route");
 
 const sha = (value: string) => createHash("sha256").update(value).digest("hex");
-function account(name: string) {
+async function account(name: string) {
   const uid = id(),
     cookie = randomUUID();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
-  run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", sha(cookie), uid, "[]", Date.now() + 3600_000);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
+  await run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", sha(cookie), uid, "[]", Date.now() + 3600_000);
   const user = { id: uid, name, email: `${name}@example.test`, groups: [], isAdmin: false, disabled: 0, created_at: "" } as unknown as Identity;
   return { user, cookie, auth: { cookie: `flowplan_session=${cookie}` } as Record<string, string> };
 }
-const owner = account("idem-owner"),
-  other = account("idem-other");
-const wid = createWorkspace(owner.user.id, "Idempotency");
-const sid = bootstrap(owner.user, wid).spaces[0].id;
-run("INSERT INTO members VALUES(?,?,?)", wid, other.user.id, "editor");
-const pageId = (command(owner.user, { action: "page.create", workspaceId: wid, spaceId: sid, title: "Notes" }) as { id: string }).id;
-const dbId = (command(owner.user, { action: "page.create", workspaceId: wid, spaceId: sid, kind: "database", title: "Tasks" }) as { id: string }).id;
-const comments = () => Number(one<{ n: number }>("SELECT COUNT(*) n FROM comments WHERE page_id=?", pageId)!.n);
-const rowCount = () => Number(one<{ n: number }>("SELECT COUNT(*) n FROM rows WHERE page_id=?", dbId)!.n);
+const owner = await account("idem-owner"),
+  other = await account("idem-other");
+const wid = await createWorkspace(owner.user.id, "Idempotency");
+const sid = (await bootstrap(owner.user, wid)).spaces[0].id;
+await run("INSERT INTO members VALUES(?,?,?)", wid, other.user.id, "editor");
+const pageId = ((await command(owner.user, { action: "page.create", workspaceId: wid, spaceId: sid, title: "Notes" })) as { id: string }).id;
+const dbId = ((await command(owner.user, { action: "page.create", workspaceId: wid, spaceId: sid, kind: "database", title: "Tasks" })) as { id: string }).id;
+const comments = async () => Number((await one<{ n: number }>("SELECT COUNT(*) n FROM comments WHERE page_id=?", pageId))!.n);
+const rowCount = async () => Number((await one<{ n: number }>("SELECT COUNT(*) n FROM rows WHERE page_id=?", dbId))!.n);
 
 // /api/command as the catch-all route runs it: the key is reserved in the
 // action's transaction (idempotencyHook), errors answer like route.ts error().
@@ -47,7 +47,7 @@ const commandRoute = I.withIdempotency(
       const user = await identityFromRequest(req);
       if (!user) throw new HttpError(401, "Bitte melde dich an.");
       const text = await req.text();
-      return Response.json(command(user, JSON.parse(text), false, I.idempotencyHook()));
+      return Response.json(await command(user, JSON.parse(text), false, I.idempotencyHook()));
     } catch (e) {
       return Response.json({ error: (e as Error).message }, { status: e instanceof HttpError ? e.status : 500 });
     }
@@ -66,7 +66,7 @@ const post = (body: unknown, headers: Record<string, string>, key?: string) =>
 test("a repeat with the same key and body answers from the store: same status and body, applied once", async () => {
   const key = K.newIdempotencyKey();
   assert.ok(K.isIdempotencyKey(key));
-  const before = comments();
+  const before = await comments();
   const body = { action: "comment.create", pageId, body: "Once" };
   const first = await post(body, owner.auth, key);
   assert.equal(first.status, 200);
@@ -76,43 +76,43 @@ test("a repeat with the same key and body answers from the store: same status an
   assert.equal(second.status, 200);
   assert.equal(second.headers.get("Idempotent-Replayed"), "true");
   assert.equal(await second.text(), firstBody);
-  assert.equal(comments(), before + 1);
+  assert.equal(await comments(), before + 1);
   // Without a key everything is as before: two requests, two comments.
   await post(body, owner.auth);
   await post(body, owner.auth);
-  assert.equal(comments(), before + 3);
+  assert.equal(await comments(), before + 3);
 });
 
 test("the same key with another body: 422, nothing applied", async () => {
   const key = randomUUID();
-  const before = comments();
+  const before = await comments();
   assert.equal((await post({ action: "comment.create", pageId, body: "A" }, owner.auth, key)).status, 200);
   const other = await post({ action: "comment.create", pageId, body: "B" }, owner.auth, key);
   assert.equal(other.status, 422);
   assert.equal(((await other.json()) as { code: string }).code, "idempotency_key_reused");
-  assert.equal(comments(), before + 1);
+  assert.equal(await comments(), before + 1);
 });
 
 test("invalid keys are refused before anything happens", async () => {
-  const before = comments();
+  const before = await comments();
   for (const key of ["short", "x".repeat(129), "has space!", "ümlaut-key"]) {
     const response = await post({ action: "comment.create", pageId, body: "Nope" }, owner.auth, key);
     assert.equal(response.status, 400, key);
     assert.equal(((await response.json()) as { code: string }).code, "idempotency_key_invalid");
   }
-  assert.equal(comments(), before);
+  assert.equal(await comments(), before);
 });
 
 test("concurrent duplicates: one is applied, both get the same answer", async () => {
   const key = randomUUID();
-  const before = comments();
+  const before = await comments();
   const body = { action: "comment.create", pageId, body: "Double click" };
   const answers = await Promise.all([post(body, owner.auth, key), post(body, owner.auth, key), post(body, owner.auth, key)]);
   assert.deepEqual(answers.map((a) => a.status), [200, 200, 200]);
   const texts = await Promise.all(answers.map((a) => a.text()));
   assert.equal(new Set(texts).size, 1);
   assert.equal(answers.filter((a) => a.headers.get("Idempotent-Replayed") === "true").length, 2);
-  assert.equal(comments(), before + 1);
+  assert.equal(await comments(), before + 1);
 });
 
 test("a handler still running: 409 with Retry-After, then the stored answer", async () => {
@@ -143,15 +143,15 @@ test("a handler still running: 409 with Retry-After, then the stored answer", as
 
 test("a failed action keeps no key: the retry is applied", async () => {
   const key = randomUUID();
-  const before = rowCount();
+  const before = await rowCount();
   const body = { action: "row.create", pageId: dbId, cells: {} };
-  run("UPDATE pages SET locked=1 WHERE id=?", dbId);
+  await run("UPDATE pages SET locked=1 WHERE id=?", dbId);
   const locked = await post(body, owner.auth, key);
   assert.equal(locked.status, 409);
-  assert.equal(one("SELECT 1 x FROM idempotency_keys WHERE key=?", key), undefined);
-  run("UPDATE pages SET locked=0 WHERE id=?", dbId);
+  assert.equal(await one("SELECT 1 x FROM idempotency_keys WHERE key=?", key), undefined);
+  await run("UPDATE pages SET locked=0 WHERE id=?", dbId);
   assert.equal((await post(body, owner.auth, key)).status, 200);
-  assert.equal(rowCount(), before + 1);
+  assert.equal(await rowCount(), before + 1);
   // The same for handlers outside a transaction: a thrown error releases.
   let calls = 0;
   const flaky = I.withIdempotency(async () => {
@@ -166,58 +166,58 @@ test("a failed action keeps no key: the retry is applied", async () => {
 
 test("keys expire after 24 hours and are swept", async () => {
   const key = randomUUID();
-  const before = comments();
+  const before = await comments();
   const body = { action: "comment.create", pageId, body: "Expiring" };
   await post(body, owner.auth, key);
-  run("UPDATE idempotency_keys SET created_at=? WHERE key=?", Date.now() - I.IDEMPOTENCY_TTL - 1000, key);
+  await run("UPDATE idempotency_keys SET created_at=? WHERE key=?", Date.now() - I.IDEMPOTENCY_TTL - 1000, key);
   // Expired: the request counts as new.
   const again = await post(body, owner.auth, key);
   assert.equal(again.headers.get("Idempotent-Replayed"), null);
-  assert.equal(comments(), before + 2);
-  run("UPDATE idempotency_keys SET created_at=? WHERE key=?", Date.now() - I.IDEMPOTENCY_TTL - 1000, key);
+  assert.equal(await comments(), before + 2);
+  await run("UPDATE idempotency_keys SET created_at=? WHERE key=?", Date.now() - I.IDEMPOTENCY_TTL - 1000, key);
   const fresh = randomUUID();
   await post(body, owner.auth, fresh);
-  assert.ok(I.sweepIdempotencyKeys() >= 1);
-  assert.equal(one("SELECT 1 x FROM idempotency_keys WHERE key=?", key), undefined);
-  assert.ok(one("SELECT 1 x FROM idempotency_keys WHERE key=?", fresh));
+  assert.ok((await I.sweepIdempotencyKeys()) >= 1);
+  assert.equal(await one("SELECT 1 x FROM idempotency_keys WHERE key=?", key), undefined);
+  assert.ok(await one("SELECT 1 x FROM idempotency_keys WHERE key=?", fresh));
 });
 
 test("keys belong to their principal: people, API tokens and devices never share them", async () => {
   const key = randomUUID();
-  const before = comments();
+  const before = await comments();
   const body = { action: "comment.create", pageId, body: "Mine" };
   await post(body, owner.auth, key);
   // Another person with the same key and body: their own comment.
   const theirs = await post(body, other.auth, key);
   assert.equal(theirs.headers.get("Idempotent-Replayed"), null);
   // The same person with an API token, or a second token: separate scopes.
-  const token = createApiToken(owner.user, { name: "script", scope: "write" }).token;
-  const token2 = createApiToken(owner.user, { name: "script 2", scope: "write" }).token;
+  const token = (await createApiToken(owner.user, { name: "script", scope: "write" })).token;
+  const token2 = (await createApiToken(owner.user, { name: "script 2", scope: "write" })).token;
   const viaToken = await post(body, { authorization: `Bearer ${token}` }, key);
   assert.equal(viaToken.status, 200);
   assert.equal(viaToken.headers.get("Idempotent-Replayed"), null);
   assert.equal((await post(body, { authorization: `Bearer ${token}` }, key)).headers.get("Idempotent-Replayed"), "true");
   assert.equal((await post(body, { authorization: `Bearer ${token2}` }, key)).headers.get("Idempotent-Replayed"), null);
-  assert.equal(comments(), before + 4);
-  const scopes = all<{ scope: string; user_id: string }>("SELECT scope,user_id FROM idempotency_keys WHERE key=? ORDER BY scope", key);
+  assert.equal(await comments(), before + 4);
+  const scopes = await all<{ scope: string; user_id: string }>("SELECT scope,user_id FROM idempotency_keys WHERE key=? ORDER BY scope", key);
   assert.equal(scopes.length, 4);
   assert.ok(scopes.every((s) => /^[tu]:/.test(s.scope)));
   assert.ok(scopes.filter((s) => s.scope.startsWith("t:")).every((s) => s.user_id === owner.user.id));
   // Nobody signed in: no key is reserved, the handler refuses.
   const anonymous = await post(body, {}, randomUUID());
   assert.equal(anonymous.status, 401);
-  assert.equal(Number(one<{ n: number }>("SELECT COUNT(*) n FROM idempotency_keys WHERE key=?", key)!.n), 4);
+  assert.equal(Number((await one<{ n: number }>("SELECT COUNT(*) n FROM idempotency_keys WHERE key=?", key))!.n), 4);
 });
 
 test("secrets are never replayed: a new API token is applied once, a repeat gets 409", async () => {
   const key = randomUUID();
-  const count = () => Number(one<{ n: number }>("SELECT COUNT(*) n FROM api_tokens WHERE user_id=?", owner.user.id)!.n);
-  const before = count();
+  const count = async () => Number((await one<{ n: number }>("SELECT COUNT(*) n FROM api_tokens WHERE user_id=?", owner.user.id))!.n);
+  const before = await count();
   const body = { action: "token.create", name: "ci", scope: "read" };
   const first = await post(body, owner.auth, key);
   assert.equal(first.status, 200);
   assert.match(((await first.json()) as { token: string }).token, /^fp_/);
-  const stored = one<{ response: string | null; stored: string }>("SELECT response,stored FROM idempotency_keys WHERE key=?", key)!;
+  const stored = (await one<{ response: string | null; stored: string }>("SELECT response,stored FROM idempotency_keys WHERE key=?", key))!;
   assert.equal(stored.response, null);
   assert.equal(stored.stored, "secret");
   const second = await post(body, owner.auth, key);
@@ -225,7 +225,7 @@ test("secrets are never replayed: a new API token is applied once, a repeat gets
   const answer = (await second.json()) as { code: string; token?: string };
   assert.equal(answer.code, "idempotency_already_applied");
   assert.equal(answer.token, undefined);
-  assert.equal(count(), before + 1);
+  assert.equal(await count(), before + 1);
   // Detected by the answer as well, for handlers outside command().
   assert.equal(I.containsSecret({ id: "x", webhook: { secret: "s" } }), true);
   assert.equal(I.containsSecret({ id: "x", url: "/api/files/1" }), false);
@@ -261,12 +261,12 @@ test("multipart bodies: a retry with a new boundary is the same request", async 
 });
 
 test("CRDT syncs go without a key; the server ignores one", async () => {
-  const generation = String(one<{ generation: string }>("SELECT generation FROM documents WHERE page_id=?", pageId)!.generation);
+  const generation = String((await one<{ generation: string }>("SELECT generation FROM documents WHERE page_id=?", pageId))!.generation);
   const key = randomUUID();
   const update = Buffer.from(htmlState("<p>Synced</p>")).toString("base64");
   const body = { action: "document.sync", workspaceId: wid, pageId, generation, update };
   assert.equal((await post(body, owner.auth, key)).status, 200);
-  assert.equal(one("SELECT 1 x FROM idempotency_keys WHERE key=?", key), undefined);
+  assert.equal(await one("SELECT 1 x FROM idempotency_keys WHERE key=?", key), undefined);
   assert.equal(K.idempotencyKeyOf(body, true), undefined);
   const comment = { action: "comment.create", pageId, body: "x" };
   assert.equal(K.idempotencyKeyOf(comment, true), K.idempotencyKeyOf(comment));
@@ -282,7 +282,7 @@ test("offline queue replay: the queued change goes with the key of the failed at
   const rowId = randomUUID();
   const body = { action: "row.create", pageId: dbId, rowId, cells: {}, templateId: null };
   const key = K.idempotencyKeyOf(body, true)!;
-  const before = rowCount();
+  const before = await rowCount();
   assert.equal((await post(body, owner.auth, key)).status, 200);
   // components/offline-queue.tsx flush(): the same request, the same key –
   // twice, as after a second reconnect before the queue was saved.
@@ -291,17 +291,17 @@ test("offline queue replay: the queued change goes with the key of the failed at
     assert.equal(replay.status, 200);
     assert.equal(replay.headers.get("Idempotent-Replayed"), "true");
   }
-  assert.equal(rowCount(), before + 1);
-  assert.ok(database(dbId));
+  assert.equal(await rowCount(), before + 1);
+  assert.ok(await database(dbId));
   // A comment queued the same way.
   const commentKey = randomUUID();
-  const start = comments();
+  const start = await comments();
   for (let i = 0; i < 3; i++) await post({ action: "comment.create", pageId, body: "Queued" }, owner.auth, commentKey);
-  assert.equal(comments(), start + 1);
+  assert.equal(await comments(), start + 1);
 });
 
 test("widget actions through the route: one record per tap, the device's own scope", async () => {
-  const { deviceToken } = registerMobileDevice(owner.user, sha(owner.cookie), { installationId: randomUUID(), platform: "ios" });
+  const { deviceToken } = await registerMobileDevice(owner.user, sha(owner.cookie), { installationId: randomUUID(), platform: "ios" });
   const ctx = { params: Promise.resolve({ action: "action" }) };
   const tap = (key: string, title = "Call Anna") =>
     widgets.POST(
@@ -312,7 +312,7 @@ test("widget actions through the route: one record per tap, the device's own sco
       }),
       ctx,
     );
-  const before = rowCount();
+  const before = await rowCount();
   const key = randomUUID();
   const first = await tap(key);
   assert.equal(first.status, 200, await first.clone().text());
@@ -320,9 +320,9 @@ test("widget actions through the route: one record per tap, the device's own sco
   assert.equal(retry.status, 200);
   assert.equal(retry.headers.get("Idempotent-Replayed"), "true");
   assert.deepEqual(await retry.json(), await first.json());
-  assert.equal(rowCount(), before + 1);
+  assert.equal(await rowCount(), before + 1);
   assert.equal((await tap(key, "Other title")).status, 422);
-  assert.ok(one<{ scope: string }>("SELECT scope FROM idempotency_keys WHERE key=?", key)!.scope.startsWith("d:"));
+  assert.ok((await one<{ scope: string }>("SELECT scope FROM idempotency_keys WHERE key=?", key))!.scope.startsWith("d:"));
   // The data refresh only reads: no key is kept.
   const dataKey = randomUUID();
   await widgets.POST(
@@ -333,12 +333,12 @@ test("widget actions through the route: one record per tap, the device's own sco
     }),
     { params: Promise.resolve({ action: "data" }) },
   );
-  assert.equal(one("SELECT 1 x FROM idempotency_keys WHERE key=?", dataKey), undefined);
+  assert.equal(await one("SELECT 1 x FROM idempotency_keys WHERE key=?", dataKey), undefined);
 });
 
-test("deleting an account removes its keys", () => {
-  const gone = account("idem-gone");
-  run(
+test("deleting an account removes its keys", async () => {
+  const gone = await account("idem-gone");
+  await run(
     "INSERT INTO idempotency_keys(scope,key,user_id,request_hash,status,stored,created_at) VALUES(?,?,?,?,'done','body',?)",
     `u:${gone.user.id}`,
     "gone-key-1",
@@ -346,8 +346,8 @@ test("deleting an account removes its keys", () => {
     "h",
     Date.now(),
   );
-  run("DELETE FROM users WHERE id=?", gone.user.id);
-  assert.equal(one("SELECT 1 x FROM idempotency_keys WHERE key='gone-key-1'"), undefined);
+  await run("DELETE FROM users WHERE id=?", gone.user.id);
+  assert.equal(await one("SELECT 1 x FROM idempotency_keys WHERE key='gone-key-1'"), undefined);
 });
 
 test("OpenAPI: every operation that takes the key documents the header, 409/422 and the replay header", async () => {
@@ -371,19 +371,19 @@ test("OpenAPI: every operation that takes the key documents the header, 409/422 
 });
 
 test("space.reorder with a key: a retry answers from the store, the order is applied once", async () => {
-  const second = (command(owner.user, { action: "space.create", workspaceId: wid, name: "Second" }) as { id: string }).id;
+  const second = ((await command(owner.user, { action: "space.create", workspaceId: wid, name: "Second" })) as { id: string }).id;
   const order = [second, sid];
   const key = K.newIdempotencyKey();
   const first = await post({ action: "space.reorder", workspaceId: wid, order }, owner.auth, key);
   assert.equal(first.status, 200);
   const answer = await first.text();
   assert.deepEqual(JSON.parse(answer).order, order);
-  const positions = () => all<{ id: string; position: number }>("SELECT id,position FROM spaces WHERE workspace_id=? ORDER BY id", wid);
-  const before = positions();
+  const positions = async () => await all<{ id: string; position: number }>("SELECT id,position FROM spaces WHERE workspace_id=? ORDER BY id", wid);
+  const before = await positions();
   const retry = await post({ action: "space.reorder", workspaceId: wid, order }, owner.auth, key);
   assert.equal(retry.headers.get("Idempotent-Replayed"), "true");
   assert.equal(await retry.text(), answer);
-  assert.deepEqual(positions(), before);
+  assert.deepEqual(await positions(), before);
   // Another order with the same key is refused.
   assert.equal((await post({ action: "space.reorder", workspaceId: wid, order: [sid, second] }, owner.auth, key)).status, 422);
   // Editors may not reorder.

@@ -141,23 +141,23 @@ type PageContext = {
 
 function contexts(user: Identity) {
   const cache = new Map<string, PageContext | null>();
-  return (pageId: string): PageContext | null => {
+  return async (pageId: string): Promise<PageContext | null> => {
     if (cache.has(pageId)) return cache.get(pageId)!;
-    const page = one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", pageId);
+    const page = await one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", pageId);
     let context: PageContext | null = null;
     if (page) {
-      const fields = JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId)?.fields || "[]") as Field[];
+      const fields = JSON.parse((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId))?.fields || "[]") as Field[];
       // Below a journal behind a PIN not entered: like a page without access
       // (one's own entries stay, without the record).
-      const role = journalLocked(user, page) ? null : pageRole(user, page);
+      const role = (await journalLocked(user, page)) ? null : (await pageRole(user, page));
       context = {
         page,
         role,
         fields,
-        hiddenRows: role ? hiddenRowIds(user, page) : new Set(),
-        hiddenFields: role ? hiddenFieldsFor(user, page, fields, role) : new Set(),
-        readOnly: role ? new Set(readOnlyFieldIds(user, page, fields)) : new Set(),
-        rowRole: role ? rowRoleResolver(user, page, role) : () => null,
+        hiddenRows: role ? (await hiddenRowIds(user, page)) : new Set(),
+        hiddenFields: role ? (await hiddenFieldsFor(user, page, fields, role)) : new Set(),
+        readOnly: role ? new Set(await readOnlyFieldIds(user, page, fields)) : new Set(),
+        rowRole: role ? (await rowRoleResolver(user, page, role)) : () => null,
         project: projectFieldOf(fields),
       };
     }
@@ -170,9 +170,9 @@ function contexts(user: Identity) {
 function projectTitles(user: Identity) {
   const pages = contexts(user);
   const cache = new Map<string, { id: string; title: string } | null>();
-  return (rowId: string) => {
+  return async (rowId: string) => {
     if (cache.has(rowId)) return cache.get(rowId)!;
-    const row = one<{ id: string; page_id: string; cells: string }>("SELECT id,page_id,cells FROM rows WHERE id=?", rowId);
+    const row = await one<{ id: string; page_id: string; cells: string }>("SELECT id,page_id,cells FROM rows WHERE id=?", rowId);
     const context = row ? pages(row.page_id) : null;
     const result =
       row && context?.role && !context.hiddenRows.has(row.id)
@@ -183,8 +183,8 @@ function projectTitles(user: Identity) {
   };
 }
 
-function rates(workspaceId: string) {
-  const rows = all<{ kind: "person" | "project"; target_id: string; rate: number }>(
+async function rates(workspaceId: string) {
+  const rows = await all<{ kind: "person" | "project"; target_id: string; rate: number }>(
     "SELECT kind,target_id,rate FROM time_rates WHERE workspace_id=?",
     workspaceId,
   );
@@ -193,29 +193,29 @@ function rates(workspaceId: string) {
     project: new Map(rows.filter((r) => r.kind === "project").map((r) => [r.target_id, r.rate])),
   };
 }
-export const currencyOf = (workspaceId: string) =>
-  one<{ currency: string }>("SELECT currency FROM time_billing WHERE workspace_id=?", workspaceId)?.currency || "EUR";
-const seeAmounts = (user: Identity, workspaceId: string) => {
-  const role = memberRole(user, workspaceId);
-  return !!role && rank[role] >= rank.editor && !isGuest(user, workspaceId);
+export const currencyOf = async (workspaceId: string) =>
+  (await one<{ currency: string }>("SELECT currency FROM time_billing WHERE workspace_id=?", workspaceId))?.currency || "EUR";
+const seeAmounts = async (user: Identity, workspaceId: string) => {
+  const role = await memberRole(user, workspaceId);
+  return !!role && rank[role] >= rank.editor && !(await isGuest(user, workspaceId));
 };
 
 // The workspace (and database) a report is about; refuses without access.
-function scopeOf(user: Identity, filter: z.infer<typeof reportFilterSchema>) {
+async function scopeOf(user: Identity, filter: z.infer<typeof reportFilterSchema>) {
   if (filter.page) {
-    const page = requirePage(user, filter.page);
+    const page = await requirePage(user, filter.page);
     if (page.kind !== "database") throw new HttpError(400, "Keine Datenbank.");
-    requireUnlocked(user, page);
+    await requireUnlocked(user, page);
     return { workspaceId: page.workspace_id, pageId: page.id };
   }
   if (!filter.workspace) throw new HttpError(400, "Arbeitsbereich oder Datenbank fehlt.");
-  requireMember(user, filter.workspace);
+  await requireMember(user, filter.workspace);
   return { workspaceId: filter.workspace, pageId: null as string | null };
 }
 
 // Every entry of the report a person may see, newest first.
-function reportEntries(user: Identity, filter: z.infer<typeof reportFilterSchema>, now = Date.now()) {
-  const scope = scopeOf(user, filter);
+async function reportEntries(user: Identity, filter: z.infer<typeof reportFilterSchema>, now = Date.now()) {
+  const scope = await scopeOf(user, filter);
   const range = periodRange(filter.period, filter.from, filter.to, now);
   const where = ["p.workspace_id=?", "p.deleted_at IS NULL", "e.start>=?", "e.start<?"];
   const args: (string | number)[] = [scope.workspaceId, range.start, range.end];
@@ -234,21 +234,21 @@ function reportEntries(user: Identity, filter: z.infer<typeof reportFilterSchema
     args.push(filter.status);
   }
   if (filter.billable) where.push(filter.billable === "yes" ? "e.billing!='unbillable'" : "e.billing='unbillable'");
-  const raw = all<RawEntry>(
+  const raw = await all<RawEntry>(
     `SELECT e.id,e.page_id,e.row_id,e.field_id,e.user_id,e.start,e.end,e.note,e.billing,e.billed_at,u.name,p.title page_title,p.workspace_id,r.cells,r.access,r.created_by
      FROM time_entries e JOIN pages p ON p.id=e.page_id LEFT JOIN rows r ON r.id=e.row_id LEFT JOIN users u ON u.id=e.user_id
      WHERE ${where.join(" AND ")} ORDER BY e.start DESC`,
     ...args,
   );
-  return { scope, range, entries: evaluate(user, scope.workspaceId, raw, now, filter.project) };
+  return { scope, range, entries: await evaluate(user, scope.workspaceId, raw, now, filter.project) };
 }
 
 // Raw entries → what this person sees of them (or nothing).
-function evaluate(user: Identity, workspaceId: string, raw: RawEntry[], now: number, project?: string) {
+async function evaluate(user: Identity, workspaceId: string, raw: RawEntry[], now: number, project?: string) {
   const pages = contexts(user);
   const titles = projectTitles(user);
-  const rate = rates(workspaceId);
-  const amounts = seeAmounts(user, workspaceId);
+  const rate = await rates(workspaceId);
+  const amounts = await seeAmounts(user, workspaceId);
   const result: ReportEntry[] = [];
   for (const e of raw) {
     const context = pages(e.page_id);
@@ -305,10 +305,10 @@ function groupKey(e: ReportEntry, group: ReportGroup): { key: string; label: str
   return { key: week, label: week };
 }
 
-export function timeReportData(user: Identity, input: unknown, now = Date.now()) {
+export async function timeReportData(user: Identity, input: unknown, now = Date.now()) {
   const filter = reportFilterSchema.parse(input);
-  const { scope, range, entries } = reportEntries(user, filter, now);
-  const amounts = seeAmounts(user, scope.workspaceId);
+  const { scope, range, entries } = await reportEntries(user, filter, now);
+  const amounts = await seeAmounts(user, scope.workspaceId);
   const groups = new Map<string, { key: string; label: string; seconds: number; amount: number | null; entries: number }>();
   const byStatus: Record<BillingState, number> = { open: 0, billed: 0, unbillable: 0 };
   let seconds = 0,
@@ -347,22 +347,22 @@ export function timeReportData(user: Identity, input: unknown, now = Date.now())
       databases: [...databases].map(([id, title]) => ({ id, title })).sort((a, b) => a.title.localeCompare(b.title)),
       projects: [...projects].map(([id, title]) => ({ id, title })).sort((a, b) => a.title.localeCompare(b.title)),
     },
-    currency: currencyOf(scope.workspaceId),
+    currency: await currencyOf(scope.workspaceId),
     showAmounts: amounts,
-    canEditRates: memberRole(user, scope.workspaceId) === "owner" && user.apiScope !== "read",
-    rates: amounts ? listRates(scope.workspaceId) : [],
+    canEditRates: (await memberRole(user, scope.workspaceId)) === "owner" && user.apiScope !== "read",
+    rates: amounts ? (await listRates(scope.workspaceId)) : [],
   };
 }
-export type TimeReportData = ReturnType<typeof timeReportData>;
+export type TimeReportData = Awaited<ReturnType<typeof timeReportData>>;
 
 /* ---------- Export ---------- */
 
 // CSV of every entry of the report. "excel": semicolons, decimal commas and
 // a byte order mark, as German Excel opens it with a double click.
-export function timeReportCsv(user: Identity, input: unknown, variant: "csv" | "excel" = "csv", now = Date.now()) {
+export async function timeReportCsv(user: Identity, input: unknown, variant: "csv" | "excel" = "csv", now = Date.now()) {
   const filter = reportFilterSchema.parse(input);
-  const { scope, range, entries } = reportEntries(user, filter, now);
-  const amounts = seeAmounts(user, scope.workspaceId);
+  const { scope, range, entries } = await reportEntries(user, filter, now);
+  const amounts = await seeAmounts(user, scope.workspaceId);
   const sep = variant === "excel" ? ";" : ",";
   const number = (n: number | null) => (n === null ? "" : variant === "excel" ? String(n).replace(".", ",") : String(n));
   const cell = (v: unknown) => {
@@ -386,7 +386,7 @@ export function timeReportCsv(user: Identity, input: unknown, variant: "csv" | "
     ct("Abrechnung", "Billing"),
     ...(amounts ? [ct("Stundensatz", "Hourly rate"), ct("Betrag", "Amount"), ct("Währung", "Currency")] : []),
   ];
-  const currency = currencyOf(scope.workspaceId);
+  const currency = await currencyOf(scope.workspaceId);
   const lines = [...entries]
     .reverse()
     .map((e) =>
@@ -422,7 +422,7 @@ const billingSchema = z.object({
   filter: reportFilterSchema.optional(),
   workspace: z.uuid().optional(),
 });
-export function setBilling(user: Identity, input: unknown, now = Date.now()) {
+export async function setBilling(user: Identity, input: unknown, now = Date.now()) {
   if (user.apiScope === "read") throw new HttpError(403, "Dieses API-Token darf nur lesen.");
   const body = billingSchema.parse(input);
   let entries: ReportEntry[];
@@ -430,19 +430,19 @@ export function setBilling(user: Identity, input: unknown, now = Date.now()) {
   if (body.ids) {
     if (!body.workspace) throw new HttpError(400, "Arbeitsbereich fehlt.");
     workspaceId = body.workspace;
-    requireMember(user, workspaceId);
+    await requireMember(user, workspaceId);
     if (!body.ids.length) return { changed: 0, skipped: 0 };
-    const raw = all<RawEntry>(
+    const raw = await all<RawEntry>(
       `SELECT e.id,e.page_id,e.row_id,e.field_id,e.user_id,e.start,e.end,e.note,e.billing,e.billed_at,u.name,p.title page_title,p.workspace_id,r.cells,r.access,r.created_by
        FROM time_entries e JOIN pages p ON p.id=e.page_id LEFT JOIN rows r ON r.id=e.row_id LEFT JOIN users u ON u.id=e.user_id
        WHERE p.workspace_id=? AND p.deleted_at IS NULL AND e.id IN (${body.ids.map(() => "?").join(",")})`,
       workspaceId,
       ...body.ids,
     );
-    entries = evaluate(user, workspaceId, raw, now);
+    entries = await evaluate(user, workspaceId, raw, now);
   } else {
     if (!body.filter) throw new HttpError(400, "Filter oder Einträge fehlen.");
-    const report = reportEntries(user, reportFilterSchema.parse(body.filter), now);
+    const report = await reportEntries(user, reportFilterSchema.parse(body.filter), now);
     workspaceId = report.scope.workspaceId;
     // "Mark as billed" for a filtered set leaves entries that are not
     // billable as they are.
@@ -451,10 +451,10 @@ export function setBilling(user: Identity, input: unknown, now = Date.now()) {
   const target = entries.filter((e) => e.billing !== body.status);
   const allowed = target.filter((e) => e.editable);
   if (!allowed.length && target.length) throw new HttpError(403, "Nur Personen mit Bearbeitungsrechten ändern den Abrechnungsstatus.");
-  transaction(() => {
+  await transaction(async () => {
     const byPage = new Map<string, number>();
     for (const e of allowed) {
-      run(
+      await run(
         "UPDATE time_entries SET billing=?,billed_at=?,billed_by=? WHERE id=?",
         body.status,
         body.status === "billed" ? now : null,
@@ -463,16 +463,16 @@ export function setBilling(user: Identity, input: unknown, now = Date.now()) {
       );
       byPage.set(e.pageId, (byPage.get(e.pageId) || 0) + 1);
     }
-    for (const [pageId, count] of byPage) audit(user.id, "time.billing", pageId, JSON.stringify({ status: body.status, entries: count }));
+    for (const [pageId, count] of byPage) await audit(user.id, "time.billing", pageId, JSON.stringify({ status: body.status, entries: count }));
   });
   return { changed: allowed.length, skipped: target.length - allowed.length };
 }
 
-export function listRates(workspaceId: string) {
-  return all<{ kind: "person" | "project"; target_id: string; rate: number }>(
+export async function listRates(workspaceId: string) {
+  return (await all<{ kind: "person" | "project"; target_id: string; rate: number }>(
     "SELECT kind,target_id,rate FROM time_rates WHERE workspace_id=? ORDER BY kind,target_id",
     workspaceId,
-  ).map((r) => ({ kind: r.kind, targetId: r.target_id, rate: r.rate }));
+  )).map((r) => ({ kind: r.kind, targetId: r.target_id, rate: r.rate }));
 }
 const rateSchema = z.object({
   workspace: z.uuid(),
@@ -481,18 +481,18 @@ const rateSchema = z.object({
   // Per hour in the workspace's currency; null removes the rate.
   rate: z.number().min(0).max(1_000_000).nullable(),
 });
-export function setRate(user: Identity, input: unknown) {
+export async function setRate(user: Identity, input: unknown) {
   const body = rateSchema.parse(input);
-  if (requireMember(user, body.workspace, "editor") !== "owner")
+  if ((await requireMember(user, body.workspace, "editor")) !== "owner")
     throw new HttpError(403, "Nur Eigentümer des Arbeitsbereichs legen Stundensätze fest.");
-  if (body.kind === "person" && !one("SELECT 1 FROM members WHERE workspace_id=? AND user_id=?", body.workspace, body.targetId))
+  if (body.kind === "person" && !(await one("SELECT 1 FROM members WHERE workspace_id=? AND user_id=?", body.workspace, body.targetId)))
     throw new HttpError(404, "Person nicht gefunden.");
-  if (body.kind === "project" && !one("SELECT 1 FROM rows r JOIN pages p ON p.id=r.page_id WHERE r.id=? AND p.workspace_id=?", body.targetId, body.workspace))
+  if (body.kind === "project" && !(await one("SELECT 1 FROM rows r JOIN pages p ON p.id=r.page_id WHERE r.id=? AND p.workspace_id=?", body.targetId, body.workspace)))
     throw new HttpError(404, "Eintrag nicht gefunden.");
   if (body.rate === null)
-    run("DELETE FROM time_rates WHERE workspace_id=? AND kind=? AND target_id=?", body.workspace, body.kind, body.targetId);
+    await run("DELETE FROM time_rates WHERE workspace_id=? AND kind=? AND target_id=?", body.workspace, body.kind, body.targetId);
   else
-    run(
+    await run(
       "INSERT INTO time_rates(workspace_id,kind,target_id,rate,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(workspace_id,kind,target_id) DO UPDATE SET rate=excluded.rate,updated_at=excluded.updated_at",
       body.workspace,
       body.kind,
@@ -500,18 +500,18 @@ export function setRate(user: Identity, input: unknown) {
       body.rate,
       Date.now(),
     );
-  audit(user.id, "time.rate", body.targetId, JSON.stringify({ kind: body.kind, rate: body.rate }));
-  return listRates(body.workspace);
+  await audit(user.id, "time.rate", body.targetId, JSON.stringify({ kind: body.kind, rate: body.rate }));
+  return await listRates(body.workspace);
 }
-export function setCurrency(user: Identity, input: unknown) {
+export async function setCurrency(user: Identity, input: unknown) {
   const body = z.object({ workspace: z.uuid(), currency: z.string().trim().regex(/^[A-Z]{3}$/) }).parse(input);
-  if (requireMember(user, body.workspace, "editor") !== "owner")
+  if ((await requireMember(user, body.workspace, "editor")) !== "owner")
     throw new HttpError(403, "Nur Eigentümer des Arbeitsbereichs legen Stundensätze fest.");
-  run(
+  await run(
     "INSERT INTO time_billing(workspace_id,currency) VALUES(?,?) ON CONFLICT(workspace_id) DO UPDATE SET currency=excluded.currency",
     body.workspace,
     body.currency,
   );
-  audit(user.id, "time.currency", body.workspace, body.currency);
+  await audit(user.id, "time.currency", body.workspace, body.currency);
   return { currency: body.currency };
 }

@@ -15,6 +15,7 @@ import { pageRole } from "./permissions";
 import { hiddenRowIds } from "./row-access";
 import { LOCKED_NOTICE, lockedNotification } from "./journal-extras";
 import type { Field, Identity, Page } from "./types";
+import { mapAsync } from "./each-async";
 
 const LIMIT = 50;
 // Without `since`: the latest few, enough for an app to know what is old.
@@ -27,8 +28,8 @@ const toSql = (ms: number) => new Date(ms).toISOString().replace("T", " ").slice
 // `since`: server time (ISO 8601 or milliseconds, lib/offline-changes.ts
 // parseSince); notifications from that second on, the app drops the ones it
 // already knows by their id.
-export function notificationFeed(user: Identity, since: number | null) {
-  const rows = all<{
+export async function notificationFeed(user: Identity, since: number | null) {
+  const rows = await all<{
     id: string;
     kind: string | null;
     body: string | null;
@@ -47,33 +48,33 @@ export function notificationFeed(user: Identity, since: number | null) {
     ...(since === null ? [user.id, FIRST] : [user.id, toSql(since), LIMIT]),
   );
   const unread = Number(
-    one<{ n: number }>("SELECT COUNT(*) n FROM notifications WHERE user_id=? AND read_at IS NULL", user.id)?.n || 0,
+    (await one<{ n: number }>("SELECT COUNT(*) n FROM notifications WHERE user_id=? AND read_at IS NULL", user.id))?.n || 0,
   );
   const locale = contentLocale();
   const pages = new Map<string, Page | null>();
-  const pageOf = (pid: string) => {
+  const pageOf = async (pid: string) => {
     if (!pages.has(pid)) {
-      const page = one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", pid);
-      pages.set(pid, page && pageRole(user, page) ? page : null);
+      const page = await one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", pid);
+      pages.set(pid, page && await pageRole(user, page) ? page : null);
     }
     return pages.get(pid)!;
   };
-  const locked = lockedNotification();
+  const locked = await lockedNotification();
   return {
     now: new Date().toISOString(),
     unread,
-    notifications: rows.map((n) => {
-      const page = n.page_id ? pageOf(n.page_id) : null;
+    notifications: await mapAsync(rows, async (n) => {
+      const page = n.page_id ? (await pageOf(n.page_id)) : null;
       // Behind a journal PIN not entered: neither its text nor the record.
       const secret = !!page && locked(n, user.id);
       // Like push (lib/push.ts): nothing for a page that is gone or no
       // longer readable, and nothing about a record hidden from the reader.
-      const hidden = !!n.row_id && !!page && hiddenRowIds(user, page).has(n.row_id);
+      const hidden = !!n.row_id && !!page && (await hiddenRowIds(user, page)).has(n.row_id);
       const gone = (!!n.page_id && !page) || hidden;
       let detail = "";
       if (page && n.row_id && !hidden && !secret) {
-        const fields = JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", page.id)?.fields || "[]") as Field[];
-        const cells = one<{ cells: string }>("SELECT cells FROM rows WHERE id=? AND page_id=?", n.row_id, page.id);
+        const fields = JSON.parse((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", page.id))?.fields || "[]") as Field[];
+        const cells = await one<{ cells: string }>("SELECT cells FROM rows WHERE id=? AND page_id=?", n.row_id, page.id);
         if (cells) detail = cellText((JSON.parse(cells.cells) as Record<string, unknown>)[fields[0]?.id || "title"]).trim();
       }
       return {

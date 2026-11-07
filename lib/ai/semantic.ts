@@ -26,12 +26,13 @@ import { instanceProviderConfig, resolveAi } from "./resolve";
 import { embed, type AiConfig } from "./providers";
 import { redactSecrets } from "./redact";
 import { sourceText } from "./sources";
+import { forEachAsync } from "../each-async";
 
 // The instance's embedding configuration, or null when semantic search is off.
-export function semanticConfig(): (AiConfig & { embeddingModel: string }) | null {
-  const settings = instanceAiSettings();
+export async function semanticConfig(): Promise<(AiConfig & { embeddingModel: string }) | null> {
+  const settings = await instanceAiSettings();
   if (!settings.enabled || !settings.semanticSearch || !featureAllowed(settings, "ask")) return null;
-  const built = instanceProviderConfig();
+  const built = await instanceProviderConfig();
   if (!built.ok || built.config.kind === "anthropic" || !built.config.embeddingModel?.trim()) return null;
   return { ...built.config, embeddingModel: built.config.embeddingModel.trim() };
 }
@@ -39,14 +40,14 @@ const configKey = (c: AiConfig & { embeddingModel: string }) => `${c.kind}|${nor
 
 // Semantic search for this person: "ask" usable with the instance provider
 // (questions go to the same place as the indexed text, never elsewhere).
-export function semanticFor(user: Identity, workspaceId: string) {
-  const resolved = resolveAi(user, "ask", { workspaceId });
+export async function semanticFor(user: Identity, workspaceId: string) {
+  const resolved = await resolveAi(user, "ask", { workspaceId });
   if (!resolved.ok || resolved.source !== "instance") return null;
-  return semanticConfig();
+  return await semanticConfig();
 }
 
-const meta = (key: string) => one<{ value: string }>("SELECT value FROM ai_meta WHERE key=?", key)?.value ?? null;
-const setMeta = (key: string, value: string) => run("INSERT INTO ai_meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", key, value);
+const meta = async (key: string) => (await one<{ value: string }>("SELECT value FROM ai_meta WHERE key=?", key))?.value ?? null;
+const setMeta = async (key: string, value: string) => await run("INSERT INTO ai_meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", key, value);
 
 export const chunkHash = (text: string) => createHash("sha256").update(text).digest("hex").slice(0, 32);
 // The text that is embedded for a chunk: its source's title gives context.
@@ -68,21 +69,21 @@ export function fromVector(blob: Uint8Array): Float32Array {
 
 // Pages that are never embedded: in the trash (themselves, a page above or
 // their space), below a journal with a PIN, or closed to the AI by a manager.
-export function embeddableChecker() {
-  const blocks = new Set(all<{ target_id: string }>("SELECT target_id FROM ai_blocks").map((r) => r.target_id));
-  const pinned = new Set(all<{ page_id: string }>("SELECT page_id FROM journal_settings WHERE lock_hash IS NOT NULL").map((r) => r.page_id));
-  const deletedSpaces = new Set(all<{ id: string }>("SELECT id FROM spaces WHERE deleted_at IS NOT NULL").map((r) => r.id));
+export async function embeddableChecker() {
+  const blocks = new Set((await all<{ target_id: string }>("SELECT target_id FROM ai_blocks")).map((r) => r.target_id));
+  const pinned = new Set((await all<{ page_id: string }>("SELECT page_id FROM journal_settings WHERE lock_hash IS NOT NULL")).map((r) => r.page_id));
+  const deletedSpaces = new Set((await all<{ id: string }>("SELECT id FROM spaces WHERE deleted_at IS NOT NULL")).map((r) => r.id));
   const known = new Map<string, boolean>();
-  return (pageId: string): boolean => {
+  return async (pageId: string): Promise<boolean> => {
     if (known.has(pageId)) return known.get(pageId)!;
     let ok = true;
     const seen = new Set<string>();
-    let current = one<{ id: string; parent_id: string | null; space_id: string; deleted_at: string | null }>("SELECT id,parent_id,space_id,deleted_at FROM pages WHERE id=?", pageId);
+    let current = await one<{ id: string; parent_id: string | null; space_id: string; deleted_at: string | null }>("SELECT id,parent_id,space_id,deleted_at FROM pages WHERE id=?", pageId);
     if (!current || deletedSpaces.has(current.space_id) || blocks.has(current.space_id)) ok = false;
     while (ok && current) {
       if (seen.has(current.id) || seen.size > 256 || current.deleted_at || pinned.has(current.id) || blocks.has(current.id)) ok = false;
       seen.add(current.id);
-      current = current.parent_id ? one("SELECT id,parent_id,space_id,deleted_at FROM pages WHERE id=?", current.parent_id) : undefined;
+      current = current.parent_id ? (await one("SELECT id,parent_id,space_id,deleted_at FROM pages WHERE id=?", current.parent_id)) : undefined;
     }
     known.set(pageId, ok);
     return ok;
@@ -90,15 +91,15 @@ export function embeddableChecker() {
 }
 
 // What decides which pages may be embedded; a change re-checks everything.
-function blockSignature() {
-  const blocks = all<{ target_id: string }>("SELECT target_id FROM ai_blocks ORDER BY target_id").map((r) => r.target_id);
-  const pins = all<{ page_id: string }>("SELECT page_id FROM journal_settings WHERE lock_hash IS NOT NULL ORDER BY page_id").map((r) => r.page_id);
-  const spaces = all<{ id: string }>("SELECT id FROM spaces WHERE deleted_at IS NOT NULL ORDER BY id").map((r) => r.id);
+async function blockSignature() {
+  const blocks = (await all<{ target_id: string }>("SELECT target_id FROM ai_blocks ORDER BY target_id")).map((r) => r.target_id);
+  const pins = (await all<{ page_id: string }>("SELECT page_id FROM journal_settings WHERE lock_hash IS NOT NULL ORDER BY page_id")).map((r) => r.page_id);
+  const spaces = (await all<{ id: string }>("SELECT id FROM spaces WHERE deleted_at IS NOT NULL ORDER BY id")).map((r) => r.id);
   return chunkHash([blocks.join(","), pins.join(","), spaces.join(",")].join("|"));
 }
-function markEverything() {
-  run("INSERT INTO ai_embed_dirty SELECT id,'' FROM pages WHERE deleted_at IS NULL AND COALESCE(synced,0)=0 ON CONFLICT DO NOTHING");
-  run("INSERT INTO ai_embed_dirty SELECT page_id,id FROM rows WHERE true ON CONFLICT DO NOTHING");
+async function markEverything() {
+  await run("INSERT INTO ai_embed_dirty SELECT id,'' FROM pages WHERE deleted_at IS NULL AND COALESCE(synced,0)=0 ON CONFLICT DO NOTHING");
+  await run("INSERT INTO ai_embed_dirty SELECT page_id,id FROM rows WHERE true ON CONFLICT DO NOTHING");
 }
 
 // Texts per hour for the background job (FLOWPLAN_AI_EMBED_PER_HOUR).
@@ -115,67 +116,67 @@ export type EmbedRun = { embedded: number; reused: number; removed: number; pend
 // what happened (tests call it directly).
 export async function processEmbeddings(maxTexts = 64, signal?: AbortSignal): Promise<EmbedRun> {
   const result: EmbedRun = { embedded: 0, reused: 0, removed: 0, pending: 0 };
-  const config = semanticConfig();
+  const config = await semanticConfig();
   if (!config) {
     // Switched off: nothing is kept.
-    if (one("SELECT 1 FROM ai_embeddings LIMIT 1") || one("SELECT 1 FROM ai_embed_dirty LIMIT 1") || meta("embed-config"))
-      transaction(() => {
-        result.removed = Number(run("DELETE FROM ai_embeddings").changes);
-        run("DELETE FROM ai_embed_dirty");
-        run("DELETE FROM ai_meta WHERE key IN ('embed-config','embed-blocks')");
+    if (await one("SELECT 1 FROM ai_embeddings LIMIT 1") || await one("SELECT 1 FROM ai_embed_dirty LIMIT 1") || await meta("embed-config"))
+      await transaction(async () => {
+        result.removed = Number((await run("DELETE FROM ai_embeddings")).changes);
+        await run("DELETE FROM ai_embed_dirty");
+        await run("DELETE FROM ai_meta WHERE key IN ('embed-config','embed-blocks')");
       });
     return result;
   }
   const key = configKey(config);
-  if (meta("embed-config") !== key)
-    transaction(() => {
-      result.removed += Number(run("DELETE FROM ai_embeddings").changes);
-      markEverything();
-      setMeta("embed-config", key);
+  if ((await meta("embed-config")) !== key)
+    await transaction(async () => {
+      result.removed += Number((await run("DELETE FROM ai_embeddings")).changes);
+      await markEverything();
+      await setMeta("embed-config", key);
     });
-  const signature = blockSignature();
-  if (meta("embed-blocks") !== signature)
-    transaction(() => {
-      markEverything();
-      setMeta("embed-blocks", signature);
+  const signature = await blockSignature();
+  if ((await meta("embed-blocks")) !== signature)
+    await transaction(async () => {
+      await markEverything();
+      await setMeta("embed-blocks", signature);
     });
   if ((runtime.flowplanEmbedRetry || 0) > Date.now()) return result;
   const allowance = Math.min(maxTexts, budgetLeft());
-  const embeddable = embeddableChecker();
-  const entries = all<{ page_id: string; row_id: string }>("SELECT page_id,row_id FROM ai_embed_dirty LIMIT 100");
+  const embeddable = await embeddableChecker();
+  const entries = await all<{ page_id: string; row_id: string }>("SELECT page_id,row_id FROM ai_embed_dirty LIMIT 100");
   for (const entry of entries) {
     if (signal?.aborted) break;
-    const clear = () => run("DELETE FROM ai_embeddings WHERE page_id=? AND row_id=?", entry.page_id, entry.row_id);
+    const clear = async () => await run("DELETE FROM ai_embeddings WHERE page_id=? AND row_id=?", entry.page_id, entry.row_id);
     // Taken off the list first: a change while embedding marks it again.
-    run("DELETE FROM ai_embed_dirty WHERE page_id=? AND row_id=?", entry.page_id, entry.row_id);
-    const page = one<{ workspace_id: string; synced: number | null }>("SELECT workspace_id,synced FROM pages WHERE id=?", entry.page_id);
+    await run("DELETE FROM ai_embed_dirty WHERE page_id=? AND row_id=?", entry.page_id, entry.row_id);
+    const page = await one<{ workspace_id: string; synced: number | null }>("SELECT workspace_id,synced FROM pages WHERE id=?", entry.page_id);
     if (!page || page.synced || !embeddable(entry.page_id)) {
       // Not embeddable: neither the page nor any of its records.
-      result.removed += Number((entry.row_id ? clear() : run("DELETE FROM ai_embeddings WHERE page_id=?", entry.page_id)).changes);
+      result.removed += Number((entry.row_id ? (await clear()) : (await run("DELETE FROM ai_embeddings WHERE page_id=?", entry.page_id))).changes);
       continue;
     }
-    const source = sourceText(entry.page_id, entry.row_id || null);
+    const source = await sourceText(entry.page_id, entry.row_id || null);
     if (!source || !source.chunks.length) {
-      result.removed += Number(clear().changes);
+      result.removed += Number((await clear()).changes);
       continue;
     }
     const texts = source.chunks.slice(0, 200).map((c) => embedText(source.title, c));
     const hashes = texts.map(chunkHash);
     const existing = new Map(
-      all<{ hash: string; vector: Uint8Array }>("SELECT hash,vector FROM ai_embeddings WHERE page_id=? AND row_id=? AND model=?", entry.page_id, entry.row_id, config.embeddingModel).map(
+      (await all<{ hash: string; vector: Uint8Array }>("SELECT hash,vector FROM ai_embeddings WHERE page_id=? AND row_id=? AND model=?", entry.page_id, entry.row_id, config.embeddingModel)).map(
         (r) => [r.hash, r.vector],
       ),
     );
     const missing = texts.map((t, i) => ({ text: t, hash: hashes[i] })).filter((t) => !existing.has(t.hash));
     const unique = [...new Map(missing.map((m) => [m.hash, m])).values()];
     if (unique.length && result.embedded + unique.length > allowance && result.embedded > 0) {
-      run("INSERT INTO ai_embed_dirty VALUES(?,?) ON CONFLICT DO NOTHING", entry.page_id, entry.row_id);
+      await run("INSERT INTO ai_embed_dirty VALUES(?,?) ON CONFLICT DO NOTHING", entry.page_id, entry.row_id);
       break;
     }
     // Larger than what is left: wait for a step with the full allowance (a
     // source larger than a whole step is embedded at once then).
     if (unique.length > allowance && allowance < maxTexts) {
-      run("INSERT INTO ai_embed_dirty VALUES(?,?) ON CONFLICT DO NOTHING", entry.page_id, entry.row_id);
+      await run("INSERT INTO ai_embed_dirty VALUES(?,?) ON CONFLICT DO NOTHING", entry.page_id, entry.row_id);
       break;
     }
     let vectors: number[][] = [];
@@ -186,22 +187,22 @@ export async function processEmbeddings(maxTexts = 64, signal?: AbortSignal): Pr
         vectors.push(...part);
       }
     } catch (error) {
-      run("INSERT INTO ai_embed_dirty VALUES(?,?) ON CONFLICT DO NOTHING", entry.page_id, entry.row_id);
+      await run("INSERT INTO ai_embed_dirty VALUES(?,?) ON CONFLICT DO NOTHING", entry.page_id, entry.row_id);
       runtime.flowplanEmbedRetry = Date.now() + 5 * 60_000;
       console.error("Embeddings fehlgeschlagen:", redactSecrets(String((error as Error)?.message || error), [config.apiKey]));
       break;
     }
     if (vectors.length) (runtime.flowplanEmbedLog ||= []).push({ at: Date.now(), n: vectors.length });
     const fresh = new Map(unique.map((u, i) => [u.hash, toVector(vectors[i])]));
-    transaction(() => {
+    await transaction(async () => {
       // Deleted while embedding: nothing to store.
-      if (!one("SELECT 1 FROM pages WHERE id=? AND deleted_at IS NULL", entry.page_id)) return;
-      if (entry.row_id && !one("SELECT 1 FROM rows WHERE id=? AND page_id=?", entry.row_id, entry.page_id)) return;
-      clear();
-      hashes.forEach((hash, chunk) => {
+      if (!(await one("SELECT 1 FROM pages WHERE id=? AND deleted_at IS NULL", entry.page_id))) return;
+      if (entry.row_id && !(await one("SELECT 1 FROM rows WHERE id=? AND page_id=?", entry.row_id, entry.page_id))) return;
+      await clear();
+      await forEachAsync(hashes, async (hash, chunk) => {
         const vector = fresh.get(hash) || existing.get(hash);
         if (!vector) return;
-        run(
+        await run(
           "INSERT INTO ai_embeddings(page_id,row_id,chunk,workspace_id,hash,model,vector,created_at) VALUES(?,?,?,?,?,?,?,?)",
           entry.page_id,
           entry.row_id,
@@ -217,7 +218,7 @@ export async function processEmbeddings(maxTexts = 64, signal?: AbortSignal): Pr
     result.embedded += unique.length;
     result.reused += hashes.length - missing.length;
   }
-  result.pending = Number(one<{ n: number }>("SELECT count(*) n FROM ai_embed_dirty")?.n || 0);
+  result.pending = Number((await one<{ n: number }>("SELECT count(*) n FROM ai_embed_dirty"))?.n || 0);
   return result;
 }
 
@@ -235,13 +236,13 @@ export async function semanticCandidates(
   question: string,
   options: { pages?: Set<string> | null; limit?: number; signal?: AbortSignal; limited?: boolean; vector?: Float32Array | null } = {},
 ): Promise<SemanticHit[]> {
-  const config = semanticFor(user, workspaceId);
+  const config = await semanticFor(user, workspaceId);
   if (!config) return [];
-  if (!one("SELECT 1 FROM ai_embeddings WHERE workspace_id=? AND model=? LIMIT 1", workspaceId, config.embeddingModel)) return [];
+  if (!(await one("SELECT 1 FROM ai_embeddings WHERE workspace_id=? AND model=? LIMIT 1", workspaceId, config.embeddingModel))) return [];
   let query = options.vector || null;
   if (!query) {
     if (!options.limited) limitAi(user.id);
-    const [values] = (await embed(config, [question.slice(0, 2000)], options.signal)) || [];
+    const [values] = await embed(config, [question.slice(0, 2000)], options.signal) || [];
     if (!values?.length) return [];
     query = fromVector(toVector(values));
   }
@@ -256,10 +257,10 @@ export async function semanticQueryVector(
   question: string,
   options: { signal?: AbortSignal; limited?: boolean } = {},
 ): Promise<Float32Array | null> {
-  const config = semanticFor(user, workspaceId);
+  const config = await semanticFor(user, workspaceId);
   if (!config) return null;
   if (!options.limited) limitAi(user.id);
-  const [values] = (await embed(config, [question.slice(0, 2000)], options.signal)) || [];
+  const [values] = await embed(config, [question.slice(0, 2000)], options.signal) || [];
   return values?.length ? fromVector(toVector(values)) : null;
 }
 
@@ -285,7 +286,7 @@ async function nearestChunks(
   let after: [string, string, number] = ["", "", -1],
     scanned = 0;
   while (scanned < MAX_SCANNED) {
-    const rows = all<{
+    const rows = await all<{
       page_id: string;
       row_id: string;
       chunk: number;
@@ -329,17 +330,17 @@ async function nearestChunks(
 const NEIGHBOUR_TTL = 60_000;
 const neighbourCache = new Map<string, { at: number; hits: SemanticHit[] }>();
 export async function semanticNeighbours(user: Identity, workspaceId: string, pageId: string, rowId: string, limit = 60): Promise<SemanticHit[]> {
-  const config = semanticFor(user, workspaceId);
+  const config = await semanticFor(user, workspaceId);
   if (!config) return [];
   const cacheKey = `${workspaceId}|${config.embeddingModel}|${pageId}|${rowId}|${limit}`;
   const cached = neighbourCache.get(cacheKey);
   if (cached && cached.at > Date.now() - NEIGHBOUR_TTL) return cached.hits;
-  const own = all<{ vector: Uint8Array }>(
+  const own = (await all<{ vector: Uint8Array }>(
     "SELECT vector FROM ai_embeddings WHERE page_id=? AND row_id=? AND model=? ORDER BY chunk LIMIT 50",
     pageId,
     rowId,
     config.embeddingModel,
-  ).map((r) => fromVector(r.vector));
+  )).map((r) => fromVector(r.vector));
   if (!own.length) return [];
   const mean = new Array<number>(own[0].length).fill(0);
   for (const v of own) if (v.length === mean.length) for (let i = 0; i < v.length; i++) mean[i] += v[i];
@@ -359,12 +360,12 @@ export async function semanticNeighbours(user: Identity, workspaceId: string, pa
 }
 
 // For the administration: how much is stored.
-export function semanticStats() {
-  const stats = one<{ chunks: number; bytes: number; sources: number }>(
+export async function semanticStats() {
+  const stats = await one<{ chunks: number; bytes: number; sources: number }>(
     "SELECT count(*) chunks,COALESCE(sum(length(vector)),0) bytes,count(DISTINCT page_id||'/'||row_id) sources FROM ai_embeddings",
   );
-  const pending = Number(one<{ n: number }>("SELECT count(*) n FROM ai_embed_dirty")?.n || 0);
-  const config = semanticConfig();
+  const pending = Number((await one<{ n: number }>("SELECT count(*) n FROM ai_embed_dirty"))?.n || 0);
+  const config = await semanticConfig();
   return {
     active: !!config,
     model: config?.embeddingModel || "",

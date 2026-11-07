@@ -147,6 +147,7 @@ import {
   instanceMetrics,
   workspaceUsage,
 } from "@/lib/instance-ops";
+import { filterAsync, mapAsync } from "../../../lib/each-async";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 function error(e: unknown) {
@@ -177,13 +178,13 @@ async function handleGET(
     // Block extensions on published pages (lib/plugins.ts): only those the
     // owners allowed there.
     if (path.length === 4 && path[0] === "share" && path[2] === "plugins")
-      return NextResponse.json(withShareRequest(req, () => publicPlugin(path[1], z.uuid().parse(path[3]))), {
+      return NextResponse.json(await withShareRequest(req, async () => await publicPlugin(path[1], z.uuid().parse(path[3]))), {
         headers: { "Cache-Control": "no-store" },
       });
     // Custom domains (lib/custom-domains.ts): Caddy's on-demand TLS asks
     // whether a certificate may be requested – 200 only for verified domains.
     if (path.length === 2 && path[0] === "domains" && path[1] === "allowed") {
-      const allowed = domainAllowed(url.searchParams.get("domain") || "");
+      const allowed = await domainAllowed(url.searchParams.get("domain") || "");
       return new Response(allowed ? "ok" : "unknown", {
         status: allowed ? 200 : 404,
         headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
@@ -193,7 +194,7 @@ async function handleGET(
     // here); the Host decides, other hosts get nothing.
     if (path.length === 2 && path[0] === "domains" && (path[1] === "sitemap" || path[1] === "robots")) {
       const host = req.headers.get("host") || "";
-      const body = path[1] === "sitemap" ? domainSitemap(host) : domainRobots(host);
+      const body = path[1] === "sitemap" ? (await domainSitemap(host)) : (await domainRobots(host));
       if (body === null) throw new HttpError(404, "Nicht gefunden.");
       return new Response(body, {
         headers: {
@@ -204,10 +205,10 @@ async function handleGET(
     }
     // Keep public asset authorization identical when the catch-all handles the URL.
     if (path.length === 4 && path[0] === "share" && path[2] === "files")
-      return await fileResponse(req, withShareRequest(req, () => publicFile(path[1], path[3])));
+      return await fileResponse(req, await withShareRequest(req, async () => await publicFile(path[1], path[3])));
     // Calendar subscriptions: the secret link is the authorization.
     if (path.length === 2 && path[0] === "calendar" && path[1].endsWith(".ics"))
-      return new Response(calendarFeed(path[1].slice(0, -4)), {
+      return new Response(await calendarFeed(path[1].slice(0, -4)), {
         headers: {
           "Content-Type": "text/calendar; charset=utf-8",
           "Cache-Control": "private, no-store",
@@ -220,21 +221,21 @@ async function handleGET(
     // Choices for the start page's widget settings (lib/home-widgets.ts).
     if (path.length === 2 && path[0] === "home" && path[1] === "options")
       return NextResponse.json(
-        homeOptions(user, { workspaceId: url.searchParams.get("workspace"), kind: url.searchParams.get("kind"), pageId: url.searchParams.get("page") }),
+        await homeOptions(user, { workspaceId: url.searchParams.get("workspace"), kind: url.searchParams.get("kind"), pageId: url.searchParams.get("page") }),
         { headers: { "Cache-Control": "no-store" } },
       );
     // Block extensions of a workspace (settings) or of a page's workspace (editor).
     if (path.length === 1 && path[0] === "plugins")
       return NextResponse.json(
         url.searchParams.get("page")
-          ? pluginsForPage(user, z.uuid().parse(url.searchParams.get("page")))
-          : listPlugins(user, z.uuid().parse(url.searchParams.get("workspace"))),
+          ? (await pluginsForPage(user, z.uuid().parse(url.searchParams.get("page"))))
+          : (await listPlugins(user, z.uuid().parse(url.searchParams.get("workspace")))),
         { headers: { "Cache-Control": "no-store" } },
       );
     // A frame's database query: the reader's own rights, granted databases only.
     if (path.length === 3 && path[0] === "plugins" && path[2] === "query")
       return NextResponse.json(
-        queryPluginDatabase(user, {
+        await queryPluginDatabase(user, {
           pluginId: path[1],
           pageId: url.searchParams.get("page"),
           databaseId: url.searchParams.get("database"),
@@ -244,22 +245,22 @@ async function handleGET(
       );
     // The custom domain and look of a publication.
     if (path.length === 1 && path[0] === "domains")
-      return NextResponse.json(domainSettings(user, z.uuid().parse(url.searchParams.get("page"))), {
+      return NextResponse.json(await domainSettings(user, z.uuid().parse(url.searchParams.get("page"))), {
         headers: { "Cache-Control": "no-store" },
       });
     if (path.length === 1 && path[0] === "webhooks")
       return NextResponse.json({
-        webhooks: listWebhooks(user, z.uuid().parse(url.searchParams.get("workspace"))),
+        webhooks: await listWebhooks(user, z.uuid().parse(url.searchParams.get("workspace"))),
         events: webhookEvents,
       });
     if (path.length === 1 && path[0] === "calendar-feed")
       return NextResponse.json({
-        active: hasCalendarFeed(
+        active: await hasCalendarFeed(
           user,
           z.uuid().parse(url.searchParams.get("page")),
           z.string().max(100).parse(url.searchParams.get("view")),
         ),
-        caldav: hasCalDavAccess(user, z.uuid().parse(url.searchParams.get("page")), z.string().max(100).parse(url.searchParams.get("view"))),
+        caldav: await hasCalDavAccess(user, z.uuid().parse(url.searchParams.get("page")), z.string().max(100).parse(url.searchParams.get("view"))),
       });
     if (path.length === 2 && path[0] === "admin" && path[1] === "audit.csv") {
       requireAdmin(user);
@@ -269,7 +270,7 @@ async function handleGET(
         const safe = CSV_FORMULA.test(text) ? `'${text}` : text;
         return `"${safe.replace(/"/g, '""')}"`;
       };
-      const rowsCsv = all<Record<string, unknown>>(
+      const rowsCsv = await all<Record<string, unknown>>(
         "SELECT a.created_at,u.name,u.email,a.action,a.resource_id,a.detail FROM audit a LEFT JOIN users u ON u.id=a.actor_id ORDER BY a.created_at DESC LIMIT 100000",
       );
       const csv = [
@@ -288,7 +289,7 @@ async function handleGET(
     }
     if (path.length === 2 && path[0] === "threads" && path[1] === "mentions")
       return NextResponse.json(
-        inlineMentionCandidates(
+        await inlineMentionCandidates(
           user,
           z.uuid().parse(url.searchParams.get("page")),
           url.searchParams.get("row")
@@ -300,7 +301,7 @@ async function handleGET(
       );
     if (path.length === 1 && path[0] === "threads")
       return NextResponse.json(
-        inlineThreads(
+        await inlineThreads(
           user,
           z.uuid().parse(url.searchParams.get("page")),
           url.searchParams.get("row")
@@ -316,24 +317,24 @@ async function handleGET(
     // What "Empty trash" would delete for this person, and the trash period (#123).
     if (path.length === 2 && path[0] === "trash" && path[1] === "summary") {
       const wid = z.uuid().parse(url.searchParams.get("workspace"));
-      return NextResponse.json({ ...trashCounts(user, wid), days: trashDays() });
+      return NextResponse.json({ ...(await trashCounts(user, wid)), days: await trashDays() });
     }
     if (path[0] === "trash" && path[1] === "rows") {
       const wid = z.uuid().parse(url.searchParams.get("workspace"));
-      requireMember(user, wid);
-      return NextResponse.json(listRowTrash(user, wid));
+      await requireMember(user, wid);
+      return NextResponse.json(await listRowTrash(user, wid));
     }
     // The newest notifications in short, for the desktop app (no push in
     // Electron, lib/notification-feed.ts).
     if (path.length === 1 && path[0] === "notifications")
-      return NextResponse.json(notificationFeed(user, parseSince(url.searchParams.get("since"))), {
+      return NextResponse.json(await notificationFeed(user, parseSince(url.searchParams.get("since"))), {
         headers: { "Cache-Control": "no-store" },
       });
     // Tags and property definitions of pages (#70); /api/tags/<id> also
     // lists the readable pages with that tag.
     if (path[0] === "tags" && path.length <= 2)
       return NextResponse.json(
-        tagListing(
+        await tagListing(
           user,
           z.uuid().parse(url.searchParams.get("workspace")),
           path[1] ? z.uuid().parse(path[1]) : undefined,
@@ -349,23 +350,23 @@ async function handleGET(
       const headers = { "Cache-Control": "no-store" };
       if (path[1] === "preview")
         return NextResponse.json(
-          previewQuery(user, z.uuid().parse(url.searchParams.get("workspace")), z.string().max(1000).parse(url.searchParams.get("q") || ""), { timeZone }),
+          await previewQuery(user, z.uuid().parse(url.searchParams.get("workspace")), z.string().max(1000).parse(url.searchParams.get("q") || ""), { timeZone }),
           { headers },
         );
-      if (path[1]) return NextResponse.json(runCollection(user, z.uuid().parse(path[1]), { timeZone }), { headers });
+      if (path[1]) return NextResponse.json(await runCollection(user, z.uuid().parse(path[1]), { timeZone }), { headers });
       const wid = z.uuid().parse(url.searchParams.get("workspace"));
-      requireMember(user, wid);
-      return NextResponse.json(listCollections(user, wid), { headers });
+      await requireMember(user, wid);
+      return NextResponse.json(await listCollections(user, wid), { headers });
     }
     if (path[0] === "bootstrap")
       return NextResponse.json(
-        bootstrap(user, url.searchParams.get("workspace") || undefined, req.headers.get("user-agent")),
+        await bootstrap(user, url.searchParams.get("workspace") || undefined, req.headers.get("user-agent")),
       );
     // Offline copies on a device: readable pages and what changed since.
     if (path.length === 2 && path[0] === "offline" && path[1] === "changes") {
       const wid = z.uuid().parse(url.searchParams.get("workspace"));
       return NextResponse.json(
-        offlineChanges(user, wid, parseSince(url.searchParams.get("since"))),
+        await offlineChanges(user, wid, parseSince(url.searchParams.get("since"))),
         { headers: { "Cache-Control": "no-store" } },
       );
     }
@@ -390,13 +391,13 @@ async function handleGET(
     }
     // Own whiteboard templates of the board's workspace.
     if (path.length === 3 && path[0] === "whiteboards" && path[2] === "templates")
-      return NextResponse.json({ templates: listBoardTemplates(user, path[1]) }, { headers: { "Cache-Control": "no-store" } });
+      return NextResponse.json({ templates: await listBoardTemplates(user, path[1]) }, { headers: { "Cache-Control": "no-store" } });
     // Own devices of the workspace for racks on boards (#90).
     if (path.length === 3 && path[0] === "whiteboards" && path[2] === "rack-templates")
-      return NextResponse.json({ templates: listRackTemplates(user, path[1]) }, { headers: { "Cache-Control": "no-store" } });
+      return NextResponse.json({ templates: await listRackTemplates(user, path[1]) }, { headers: { "Cache-Control": "no-store" } });
     // Live data of database records shown as cards on a whiteboard.
     if (path.length === 3 && path[0] === "whiteboards" && path[2] === "cards") {
-      requirePage(user, z.uuid().parse(path[1]));
+      await requirePage(user, z.uuid().parse(path[1]));
       const refs = (url.searchParams.get("rows") || "")
         .split(",")
         .filter(Boolean)
@@ -405,49 +406,49 @@ async function handleGET(
           const [pageId, rowId] = ref.split(":");
           return { pageId: z.uuid().parse(pageId), rowId: z.uuid().parse(rowId) };
         });
-      return NextResponse.json({ cards: whiteboardRowCards(user, refs) }, { headers: { "Cache-Control": "no-store" } });
+      return NextResponse.json({ cards: await whiteboardRowCards(user, refs) }, { headers: { "Cache-Control": "no-store" } });
     }
     // Links between pages as a graph; texts naming a page without a link.
     if (path.length === 1 && path[0] === "graph") {
       const wid = z.uuid().parse(url.searchParams.get("workspace"));
-      requireMember(user, wid);
+      await requireMember(user, wid);
       // Journal days: hidden, one dot per month or each day.
       const days = z.enum(["hide", "month", "show"]).catch("hide").parse(url.searchParams.get("days") || "hide");
-      return NextResponse.json(pageGraph(user, wid, { days }), { headers: { "Cache-Control": "no-store" } });
+      return NextResponse.json(await pageGraph(user, wid, { days }), { headers: { "Cache-Control": "no-store" } });
     }
     if (path.length === 3 && path[0] === "pages" && path[2] === "unlinked") {
-      const page = requirePage(user, z.uuid().parse(path[1]));
-      requireUnlocked(user, page);
-      return NextResponse.json({ mentions: unlinkedMentions(user, page) }, { headers: { "Cache-Control": "no-store" } });
+      const page = await requirePage(user, z.uuid().parse(path[1]));
+      await requireUnlocked(user, page);
+      return NextResponse.json({ mentions: await unlinkedMentions(user, page) }, { headers: { "Cache-Control": "no-store" } });
     }
     if (path.length === 5 && path[0] === "pages" && path[2] === "rows" && path[4] === "unlinked") {
-      const page = requirePage(user, z.uuid().parse(path[1]));
-      requireUnlocked(user, page);
+      const page = await requirePage(user, z.uuid().parse(path[1]));
+      await requireUnlocked(user, page);
       const rowId = z.uuid().parse(path[3]);
-      requireRow(user, page.id, rowId);
-      return NextResponse.json({ mentions: unlinkedMentions(user, page, rowId) }, { headers: { "Cache-Control": "no-store" } });
+      await requireRow(user, page.id, rowId);
+      return NextResponse.json({ mentions: await unlinkedMentions(user, page, rowId) }, { headers: { "Cache-Control": "no-store" } });
     }
     // The person's own sessions (devices).
     if (path.length === 1 && path[0] === "sessions")
       return NextResponse.json(
-        { sessions: mySessions(user, (await cookies()).get(cookieName)?.value), rememberAvailable: !!rememberPolicy() },
+        { sessions: await mySessions(user, (await cookies()).get(cookieName)?.value), rememberAvailable: !!(await rememberPolicy()) },
         { headers: { "Cache-Control": "no-store" } },
       );
     // Settings → Sicherheitscheck: one's own account, shares and sign-ins.
     if (path.length === 1 && path[0] === "security")
-      return NextResponse.json(mySecurity(user, (await cookies()).get(cookieName)?.value), { headers: { "Cache-Control": "no-store" } });
+      return NextResponse.json(await mySecurity(user, (await cookies()).get(cookieName)?.value), { headers: { "Cache-Control": "no-store" } });
     // Who has access to exactly this page (the share dialog).
     if (path.length === 3 && path[0] === "pages" && path[2] === "shares")
-      return NextResponse.json(pageShares(user, z.uuid().parse(path[1])), { headers: { "Cache-Control": "no-store" } });
+      return NextResponse.json(await pageShares(user, z.uuid().parse(path[1])), { headers: { "Cache-Control": "no-store" } });
     // What moving a page into a database would change (confirmation).
     if (path.length === 3 && path[0] === "pages" && path[2] === "to-record") {
-      const plan = pageToRecordPlan(user, z.uuid().parse(path[1]));
+      const plan = await pageToRecordPlan(user, z.uuid().parse(path[1]));
       const { page, ...rest } = plan;
       return NextResponse.json({ ...rest, title: page.title }, { headers: { "Cache-Control": "no-store" } });
     }
     // What turning a record into a page would change (confirmation).
     if (path.length === 5 && path[0] === "pages" && path[2] === "rows" && path[4] === "to-page") {
-      const plan = recordToPagePlan(user, z.uuid().parse(path[1]), z.uuid().parse(path[3]));
+      const plan = await recordToPagePlan(user, z.uuid().parse(path[1]), z.uuid().parse(path[3]));
       return NextResponse.json(
         {
           title: plan.title,
@@ -464,113 +465,113 @@ async function handleGET(
     }
     // E-mail inbound addresses of a workspace (owners, lib/inbound-mail.ts).
     if (path.length === 1 && path[0] === "inbound-mail")
-      return NextResponse.json(listInboundAddresses(user, z.uuid().parse(url.searchParams.get("workspace"))), { headers: { "Cache-Control": "no-store" } });
+      return NextResponse.json(await listInboundAddresses(user, z.uuid().parse(url.searchParams.get("workspace"))), { headers: { "Cache-Control": "no-store" } });
     // Quick capture of the desktop app: targets with what the shorthand can
     // fill there (lib/desktop-capture.ts).
     if (path.length === 2 && path[0] === "capture" && path[1] === "targets")
-      return NextResponse.json(desktopCaptureTargets(user), { headers: { "Cache-Control": "no-store" } });
+      return NextResponse.json(await desktopCaptureTargets(user), { headers: { "Cache-Control": "no-store" } });
     // Databases to capture into, and the person's default.
     if (path.length === 1 && path[0] === "capture") {
       const wid = z.uuid().parse(url.searchParams.get("workspace"));
-      return NextResponse.json(captureTargets(user, wid), { headers: { "Cache-Control": "no-store" } });
+      return NextResponse.json(await captureTargets(user, wid), { headers: { "Cache-Control": "no-store" } });
     }
     // Synced blocks that can be inserted into another page.
     if (path.length === 1 && path[0] === "synced") {
       const wid = z.uuid().parse(url.searchParams.get("workspace"));
-      requireMember(user, wid);
-      return NextResponse.json({ blocks: listSyncedBlocks(user, wid) }, { headers: { "Cache-Control": "no-store" } });
+      await requireMember(user, wid);
+      return NextResponse.json({ blocks: await listSyncedBlocks(user, wid) }, { headers: { "Cache-Control": "no-store" } });
     }
     // Tasks in documents assigned to the person ("Meine Aufgaben").
     if (path.length === 1 && path[0] === "tasks") {
       const wid = z.uuid().parse(url.searchParams.get("workspace"));
-      requireMember(user, wid);
+      await requireMember(user, wid);
       const done = url.searchParams.get("done") === "1";
       return NextResponse.json(
-        { tasks: myTasks(user, wid, done), others: otherWorkspaceTasks(user, wid, done) },
+        { tasks: await myTasks(user, wid, done), others: await otherWorkspaceTasks(user, wid, done) },
         { headers: { "Cache-Control": "no-store" } },
       );
     }
     // Journal: review of a period, appointments of a day.
     if (path.length === 3 && path[0] === "journals" && path[2] === "review") {
-      const journal = requirePage(user, z.uuid().parse(path[1]));
+      const journal = await requirePage(user, z.uuid().parse(path[1]));
       if (journal.kind !== "journal") throw new HttpError(400, "Kein Journal.");
-      requireUnlocked(user, journal);
+      await requireUnlocked(user, journal);
       const from = journalDate.parse(url.searchParams.get("from"));
       const to = journalDate.parse(url.searchParams.get("to"));
       // A whole month: its summary page, when there is one (lib/journal-summary.ts).
       const month = wholeMonth(from, to);
       return NextResponse.json(
-        { ...journalReview(journal, from, to), ...(month ? { summaryId: existingSummary(user, journal, month) } : {}) },
+        { ...(await journalReview(journal, from, to)), ...(month ? { summaryId: await existingSummary(user, journal, month) } : {}) },
         { headers: { "Cache-Control": "no-store" } },
       );
     }
     // "Leere Tage entfernen": the preview of what would go to the trash.
     if (path.length === 3 && path[0] === "journals" && path[2] === "empty") {
-      const journal = requirePage(user, z.uuid().parse(path[1]), true);
-      requireUnlocked(user, journal);
+      const journal = await requirePage(user, z.uuid().parse(path[1]), true);
+      await requireUnlocked(user, journal);
       return NextResponse.json(
-        { days: emptyJournalDays(journal, journalDate.parse(url.searchParams.get("today"))) },
+        { days: await emptyJournalDays(journal, journalDate.parse(url.searchParams.get("today"))) },
         { headers: { "Cache-Control": "no-store" } },
       );
     }
     if (path.length === 3 && path[0] === "journals" && path[2] === "events") {
       // A draft day (not stored yet) shows the appointments of its date too.
-      const draft = dayOrDraft(user, z.uuid().parse(path[1]));
+      const draft = await dayOrDraft(user, z.uuid().parse(path[1]));
       if (draft) {
-        requireUnlocked(user, draft.journal);
+        await requireUnlocked(user, draft.journal);
         const zone = z.string().max(100).catch("UTC").parse(url.searchParams.get("zone") || "UTC");
-        const events = databaseEvents(user, draft.journal.workspace_id, draft.date, zone);
+        const events = await databaseEvents(user, draft.journal.workspace_id, draft.date, zone);
         let calendarError = "";
         try {
-          if (!user.demo) events.push(...(await calendarEvents(draft.journal.id, draft.date, zone)));
+          if (!user.demo) events.push(...await calendarEvents(draft.journal.id, draft.date, zone));
         } catch (e) {
           calendarError = e instanceof HttpError ? e.message : "Der Kalender konnte nicht geladen werden.";
         }
         events.sort((a, b) => Number(a.timed) - Number(b.timed) || a.start.localeCompare(b.start));
         return NextResponse.json({ events, calendarError }, { headers: { "Cache-Control": "no-store" } });
       }
-      const day = requirePage(user, z.uuid().parse(path[1]));
+      const day = await requirePage(user, z.uuid().parse(path[1]));
       if (!day.journal_date || !day.parent_id) throw new HttpError(400, "Kein Journaltag.");
-      requireUnlocked(user, day);
+      await requireUnlocked(user, day);
       const zone = z.string().max(100).catch("UTC").parse(url.searchParams.get("zone") || "UTC");
-      const events = databaseEvents(user, day.workspace_id, day.journal_date, zone);
+      const events = await databaseEvents(user, day.workspace_id, day.journal_date, zone);
       let calendarError = "";
       try {
-        if (!user.demo) events.push(...(await calendarEvents(day.parent_id, day.journal_date, zone)));
+        if (!user.demo) events.push(...await calendarEvents(day.parent_id, day.journal_date, zone));
       } catch (e) {
         calendarError = e instanceof HttpError ? e.message : "Der Kalender konnte nicht geladen werden.";
       }
       events.sort((a, b) => Number(a.timed) - Number(b.timed) || a.start.localeCompare(b.start));
-      return NextResponse.json({ events: withMeetingNotes(user, day, events), calendarError }, { headers: { "Cache-Control": "no-store" } });
+      return NextResponse.json({ events: await withMeetingNotes(user, day, events), calendarError }, { headers: { "Cache-Control": "no-store" } });
     }
     // A pasted block link: title and start of the block (#88).
     if (path[0] === "pages" && path[1] && path[2] === "blocks" && path[3] && !path[4]) {
       const row = url.searchParams.get("row");
-      return NextResponse.json(blockPreview(user, z.uuid().parse(path[1]), path[3], row ? z.uuid().parse(row) : null), {
+      return NextResponse.json(await blockPreview(user, z.uuid().parse(path[1]), path[3], row ? z.uuid().parse(row) : null), {
         headers: { "Cache-Control": "no-store" },
       });
     }
     // Headings and blocks of other pages for "@" (#88).
     if (path[0] === "blocks" && !path[1]) {
       const wid = url.searchParams.get("workspace") || "";
-      requireMember(user, wid);
+      await requireMember(user, wid);
       const exclude = url.searchParams.get("exclude");
-      return NextResponse.json(searchBlocks(user, wid, url.searchParams.get("q") || "", exclude && /^[0-9a-f-]{36}$/i.test(exclude) ? exclude : null), {
+      return NextResponse.json(await searchBlocks(user, wid, url.searchParams.get("q") || "", exclude && /^[0-9a-f-]{36}$/i.test(exclude) ? exclude : null), {
         headers: { "Cache-Control": "no-store" },
       });
     }
     // The icons of link targets (#96): pages and records one may read.
     if (path[0] === "link-targets" && !path[1])
       return NextResponse.json(
-        { targets: linkTargets(user, (url.searchParams.get("ids") || "").split(",").filter(Boolean)) },
+        { targets: await linkTargets(user, (url.searchParams.get("ids") || "").split(",").filter(Boolean)) },
         { headers: { "Cache-Control": "no-store" } },
       );
     if (path[0] === "pages" && path[1] && path[2] === "preview")
-      return NextResponse.json(pagePreview(user, z.uuid().parse(path[1])), {
+      return NextResponse.json(await pagePreview(user, z.uuid().parse(path[1])), {
         headers: { "Cache-Control": "no-store" },
       });
     if (path[0] === "pages" && path[2] === "linked" && path[3])
-      return NextResponse.json(linkedDatabaseData(user, path[1], path[3]));
+      return NextResponse.json(await linkedDatabaseData(user, path[1], path[3]));
     // Embeddings inside a record document.
     if (
       path[0] === "pages" &&
@@ -580,7 +581,7 @@ async function handleGET(
       path[5]
     )
       return NextResponse.json(
-        linkedDatabaseData(user, path[1], path[5], z.uuid().parse(path[3])),
+        await linkedDatabaseData(user, path[1], path[5], z.uuid().parse(path[3])),
       );
     if (
       path[0] === "pages" &&
@@ -589,7 +590,7 @@ async function handleGET(
       path[4] === "changes"
     )
       return NextResponse.json(
-        snapshotChanges(
+        await snapshotChanges(
           user,
           z.uuid().parse(path[1]),
           z.uuid().parse(path[3]),
@@ -606,7 +607,7 @@ async function handleGET(
       path[6] === "changes"
     )
       return NextResponse.json(
-        rowSnapshotChanges(
+        await rowSnapshotChanges(
           user,
           z.uuid().parse(path[1]),
           z.uuid().parse(path[3]),
@@ -623,29 +624,29 @@ async function handleGET(
       path[4] === "backlinks"
     )
       return NextResponse.json(
-        recordBacklinks(
+        await recordBacklinks(
           user,
           z.uuid().parse(path[1]),
           z.uuid().parse(path[3]),
         ),
       );
     if (path[0] === "pages" && path[2] === "rows" && path[3])
-      return NextResponse.json(rowDocumentData(user, path[1], path[3]));
+      return NextResponse.json(await rowDocumentData(user, path[1], path[3]));
     // Opening a page (header X-Flowplan-Visit) records the visit: read
     // receipts and changes since then. Reloads and embeds do not.
     // Today's journal day while it is a draft (lib/journal-days.ts).
-    if (path[0] === "pages" && path[1] && path.length === 2 && z.uuid().safeParse(path[1]).success && !one("SELECT 1 FROM pages WHERE id=?", path[1])) {
-      const draft = journalDraftPage(user, path[1]);
-      if (draft && "existing" in draft) return NextResponse.json(pageData(user, draft.existing, { presence: false }), { headers: { "Cache-Control": "no-store" } });
+    if (path[0] === "pages" && path[1] && path.length === 2 && z.uuid().safeParse(path[1]).success && !(await one("SELECT 1 FROM pages WHERE id=?", path[1]))) {
+      const draft = await journalDraftPage(user, path[1]);
+      if (draft && "existing" in draft) return NextResponse.json(await pageData(user, draft.existing, { presence: false }), { headers: { "Cache-Control": "no-store" } });
       if (draft) return NextResponse.json(draft.data, { headers: { "Cache-Control": "no-store" } });
     }
     if (path[0] === "pages" && path[1])
       return NextResponse.json(
-        withActivity(
+        await withActivity(
           user,
           // Offline refreshes (X-Flowplan-Offline) and loading ahead on hover
           // (X-Flowplan-Prefetch, components/prefetch.ts) do not count as presence.
-          pageData(user, path[1], {
+          await pageData(user, path[1], {
             presence: req.headers.get("x-flowplan-offline") !== "1" && req.headers.get("x-flowplan-prefetch") !== "1",
           }),
           req.headers.get("x-flowplan-visit") === "1",
@@ -653,41 +654,41 @@ async function handleGET(
       );
     if (path[0] === "settings") {
       const wid = url.searchParams.get("workspace") || "";
-      requireMember(user, wid, "owner");
+      await requireMember(user, wid, "owner");
       return NextResponse.json({
         // With who invited, when, the pages waiting for them and the link.
-        invites: (() => {
+        invites: (async () => {
           type Invite = { id: string; email: string; role: string; guest: number; created_at: number | null; token: string; inviter: string | null; pages: string | null };
-          for (const open of all<{ id: string }>("SELECT id FROM invites WHERE workspace_id=? AND token IS NULL", wid))
-            run("UPDATE invites SET token=? WHERE id=?", inviteToken(), open.id);
-          return all<Invite>(
+          for (const open of await all<{ id: string }>("SELECT id FROM invites WHERE workspace_id=? AND token IS NULL", wid))
+            await run("UPDATE invites SET token=? WHERE id=?", inviteToken(), open.id);
+          return (await all<Invite>(
           `SELECT i.id,i.email,i.role,i.guest,i.created_at,i.token,u.name inviter,
              (SELECT ${sql.jsonGroupArray("p.title")} FROM invite_grants g JOIN pages p ON p.id=g.resource_id WHERE g.workspace_id=i.workspace_id AND lower(g.email)=lower(i.email) AND p.deleted_at IS NULL) pages
            FROM invites i LEFT JOIN users u ON u.id=i.created_by WHERE i.workspace_id=? ORDER BY i.created_at DESC`,
           wid,
-        ).map((i) => ({ ...i, pages: JSON.parse(i.pages || "[]") as string[] }));
+        )).map((i) => ({ ...i, pages: JSON.parse(i.pages || "[]") as string[] }));
         })(),
-        groups: all("SELECT * FROM groups WHERE workspace_id=?", wid),
-        groupMembers: all(
+        groups: await all("SELECT * FROM groups WHERE workspace_id=?", wid),
+        groupMembers: await all(
           "SELECT gm.* FROM group_members gm JOIN groups g ON g.id=gm.group_id WHERE g.workspace_id=?",
           wid,
         ),
-        grants: all(
+        grants: await all(
           "SELECT g.* FROM grants g WHERE resource_id IN (SELECT id FROM pages WHERE workspace_id=? UNION SELECT id FROM spaces WHERE workspace_id=?)",
           wid,
           wid,
         ),
         // SSO groups mapped to membership and groups, and what they granted.
         sso: !!process.env.OIDC_ISSUER,
-        ssoMappings: listSsoMappings(wid),
-        ssoSources: ssoSources(wid),
+        ssoMappings: await listSsoMappings(wid),
+        ssoSources: await ssoSources(wid),
       });
     }
     if (path[0] === "search") {
       const wid = url.searchParams.get("workspace") || "";
-      requireMember(user, wid);
+      await requireMember(user, wid);
       return NextResponse.json(
-        searchWorkspace(user, wid, url.searchParams.get("q") || "", {
+        await searchWorkspace(user, wid, url.searchParams.get("q") || "", {
           kind: z
             .enum(["all", "document", "database", "whiteboard", "row", "comment", "file"])
             .catch("all")
@@ -724,32 +725,32 @@ async function handleGET(
     // The workspace's bibliography for citations.
     if (path.length === 1 && path[0] === "citations")
       return NextResponse.json(
-        { items: bibliography(user, z.uuid().parse(url.searchParams.get("workspace"))) },
+        { items: await bibliography(user, z.uuid().parse(url.searchParams.get("workspace"))) },
         { headers: { "Cache-Control": "no-store" } },
       );
     // Who wrote what: the people behind the editor sessions of a document.
     if (path.length === 1 && path[0] === "document-authors") {
       const row = url.searchParams.get("row");
       return NextResponse.json(
-        documentAuthors(user, z.uuid().parse(url.searchParams.get("page")), row ? z.uuid().parse(row) : null),
+        await documentAuthors(user, z.uuid().parse(url.searchParams.get("page")), row ? z.uuid().parse(row) : null),
         { headers: { "Cache-Control": "no-store" } },
       );
     }
     // Dashboards: one number from a database, and the databases to choose from.
     if (path[0] === "dashboard-metric") {
       const query = metricSchema.parse(Object.fromEntries(url.searchParams));
-      return NextResponse.json(computeMetric(user, query), { headers: { "Cache-Control": "no-store" } });
+      return NextResponse.json(await computeMetric(user, query), { headers: { "Cache-Control": "no-store" } });
     }
     if (path[0] === "time-entries") {
       // Time worked on a record (time tracking property).
-      const page = requirePage(user, z.uuid().parse(url.searchParams.get("page")));
+      const page = await requirePage(user, z.uuid().parse(url.searchParams.get("page")));
       return NextResponse.json(
-        recordTime(user, page, z.uuid().parse(url.searchParams.get("row")), z.string().max(500).parse(url.searchParams.get("field"))),
+        await recordTime(user, page, z.uuid().parse(url.searchParams.get("row")), z.string().max(500).parse(url.searchParams.get("field"))),
         { headers: { "Cache-Control": "no-store" } },
       );
     }
     if (path[0] === "transfer-targets")
-      return NextResponse.json(transferTargets(user, z.uuid().parse(url.searchParams.get("page"))), { headers: { "Cache-Control": "no-store" } });
+      return NextResponse.json(await transferTargets(user, z.uuid().parse(url.searchParams.get("page"))), { headers: { "Cache-Control": "no-store" } });
     if (path[0] === "records") {
       // Records across all databases (My tasks → records).
       const wid = z.uuid().parse(url.searchParams.get("workspace"));
@@ -760,35 +761,35 @@ async function handleGET(
         throw new HttpError(400, "Ungültiger Filter.");
       }
       return NextResponse.json(
-        { ...crossRecords(user, wid, filter), views: recordViews(user, wid) },
+        { ...(await crossRecords(user, wid, filter)), views: await recordViews(user, wid) },
         { headers: { "Cache-Control": "no-store" } },
       );
     }
     // Git export of a space: only its owner sees the settings (no token).
     if (path.length === 3 && path[0] === "spaces" && path[2] === "git-export")
-      return NextResponse.json(spaceGitStatus(user, z.uuid().parse(path[1])), { headers: { "Cache-Control": "no-store" } });
+      return NextResponse.json(await spaceGitStatus(user, z.uuid().parse(path[1])), { headers: { "Cache-Control": "no-store" } });
     if (path[0] === "git-config")
-      return NextResponse.json(gitConfig(user, z.uuid().parse(url.searchParams.get("page"))), { headers: { "Cache-Control": "no-store" } });
+      return NextResponse.json(await gitConfig(user, z.uuid().parse(url.searchParams.get("page"))), { headers: { "Cache-Control": "no-store" } });
     if (path[0] === "git-links")
-      return NextResponse.json(gitLinks(user, z.uuid().parse(url.searchParams.get("page")), z.uuid().parse(url.searchParams.get("row"))), {
+      return NextResponse.json(await gitLinks(user, z.uuid().parse(url.searchParams.get("page")), z.uuid().parse(url.searchParams.get("row"))), {
         headers: { "Cache-Control": "no-store" },
       });
     if (path[0] === "sprint-charts") {
       return NextResponse.json(
-        sprintCharts(user, z.uuid().parse(url.searchParams.get("page")), z.string().max(60).parse(url.searchParams.get("sprint"))),
+        await sprintCharts(user, z.uuid().parse(url.searchParams.get("page")), z.string().max(60).parse(url.searchParams.get("sprint"))),
         { headers: { "Cache-Control": "no-store" } },
       );
     }
     if (path[0] === "time-report") {
       const weeks = Math.min(26, Math.max(1, Number(url.searchParams.get("weeks")) || 8));
-      return NextResponse.json(timeReport(user, z.uuid().parse(url.searchParams.get("page")), weeks), { headers: { "Cache-Control": "no-store" } });
+      return NextResponse.json(await timeReport(user, z.uuid().parse(url.searchParams.get("page")), weeks), { headers: { "Cache-Control": "no-store" } });
     }
     if (path[0] === "ticket-refs" || path[0] === "ticket-ref") {
       // Ticket numbers (WEB-123) in the workspace of a page.
-      const page = requirePage(user, z.uuid().parse(url.searchParams.get("page")));
+      const page = await requirePage(user, z.uuid().parse(url.searchParams.get("page")));
       if (path[0] === "ticket-refs")
-        return NextResponse.json(readablePrefixes(user, page.workspace_id), { headers: { "Cache-Control": "no-store" } });
-      const found = resolveTicket(user, page.workspace_id, z.string().max(30).parse(url.searchParams.get("key")));
+        return NextResponse.json(await readablePrefixes(user, page.workspace_id), { headers: { "Cache-Control": "no-store" } });
+      const found = await resolveTicket(user, page.workspace_id, z.string().max(30).parse(url.searchParams.get("key")));
       if (!found) throw new HttpError(404, "Eintrag nicht gefunden.");
       return NextResponse.json(found, { headers: { "Cache-Control": "no-store" } });
     }
@@ -796,18 +797,18 @@ async function handleGET(
       // The customer conversation of a record (service desk).
       const pageId = z.uuid().parse(url.searchParams.get("page")),
         rowId = z.uuid().parse(url.searchParams.get("row"));
-      return NextResponse.json(teamThread(user, pageId, rowId), { headers: { "Cache-Control": "no-store" } });
+      return NextResponse.json(await teamThread(user, pageId, rowId), { headers: { "Cache-Control": "no-store" } });
     }
     if (path[0] === "dashboard-sources") {
       // The workspace of the page the dashboard is on.
-      const wid = requirePage(user, z.uuid().parse(url.searchParams.get("page"))).workspace_id;
-      requireMember(user, wid);
-      return NextResponse.json(metricSources(user, wid), { headers: { "Cache-Control": "no-store" } });
+      const wid = (await requirePage(user, z.uuid().parse(url.searchParams.get("page")))).workspace_id;
+      await requireMember(user, wid);
+      return NextResponse.json(await metricSources(user, wid), { headers: { "Cache-Control": "no-store" } });
     }
     if (path[0] === "media") {
       const wid = url.searchParams.get("workspace") || "";
       return NextResponse.json(
-        mediaLibrary(user, wid, {
+        await mediaLibrary(user, wid, {
           kind: z
             .enum(["all", "image", "video", "audio", "pdf", "other"])
             .catch("all")
@@ -822,11 +823,11 @@ async function handleGET(
       const sessionToken = hash((await cookies()).get(cookieName)?.value || "");
       return NextResponse.json({
         publicKey: pushKeys().publicKey,
-        subscribed: !!one(
+        subscribed: !!(await one(
           "SELECT id FROM push_subscriptions WHERE session_token=? AND user_id=?",
           sessionToken,
           user.id,
-        ),
+        )),
       });
     }
     if (path[0] === "templates" && path[1] && path[2] === "export") {
@@ -847,7 +848,7 @@ async function handleGET(
     }
     if (path[0] === "templates") {
       const wid = url.searchParams.get("workspace") || "";
-      return NextResponse.json(listPageTemplates(user, wid));
+      return NextResponse.json(await listPageTemplates(user, wid));
     }
     // Live stream of an open document or record content: changes and cursor
     // moves of the others arrive as they happen (lib/document-live.ts).
@@ -858,15 +859,15 @@ async function handleGET(
         : null;
       const generation = z.string().min(1).max(100).parse(url.searchParams.get("generation"));
       const clientId = z.uuid().parse(url.searchParams.get("client"));
-      const check = () => {
-        if (rowId) requireRow(user, pageId, rowId);
+      const check = async () => {
+        if (rowId) await requireRow(user, pageId, rowId);
         else {
-          const page = requirePage(user, pageId);
+          const page = await requirePage(user, pageId);
           if (page.kind !== "document") throw new HttpError(400, "Kein Dokument.");
-          requireUnlocked(user, page);
+          await requireUnlocked(user, page);
         }
       };
-      check();
+      await check();
       const allowed = streamGuard(
         hash((await cookies()).get(cookieName)?.value || ""),
         check,
@@ -912,12 +913,12 @@ async function handleGET(
       });
     }
     if (path.length === 3 && path[0] === "whiteboards" && path[2] === "cursors") {
-      const page = requirePage(user, z.uuid().parse(path[1]));
+      const page = await requirePage(user, z.uuid().parse(path[1]));
       if (page.kind !== "whiteboard") throw new HttpError(400, "Kein Whiteboard.");
-      requireUnlocked(user, page);
+      await requireUnlocked(user, page);
       const boardAllowed = streamGuard(
         hash((await cookies()).get(cookieName)?.value || ""),
-        () => requireUnlocked(user, requirePage(user, page.id)),
+        async () => await requireUnlocked(user, await requirePage(user, page.id)),
       );
       if (!(req.headers.get("accept") || "").includes("text/event-stream"))
         return NextResponse.json(boardCursors(page.id, user.id), {
@@ -961,7 +962,7 @@ async function handleGET(
     }
     // Who is here right now (Administration → Users, refreshed while open).
     if (path.length === 2 && path[0] === "admin" && path[1] === "activity")
-      return NextResponse.json({ now: Date.now(), users: userActivity(user) }, { headers: { "Cache-Control": "no-store" } });
+      return NextResponse.json({ now: Date.now(), users: await userActivity(user) }, { headers: { "Cache-Control": "no-store" } });
     if (path.length === 2 && path[0] === "admin" && path[1] === "storage") {
       requireAdmin(user);
       return NextResponse.json(await storageOverview(), {
@@ -970,7 +971,7 @@ async function handleGET(
     }
     if (path.length === 2 && path[0] === "admin" && path[1] === "export-pages") {
       requireAdmin(user);
-      return NextResponse.json({ pages: exportablePages(user) }, { headers: { "Cache-Control": "no-store" } });
+      return NextResponse.json({ pages: await exportablePages(user) }, { headers: { "Cache-Control": "no-store" } });
     }
     if (path[0] === "admin") {
       requireAdmin(user);
@@ -978,68 +979,68 @@ async function handleGET(
         build: buildInfo(),
         update: await updateStatus(),
         plainHttp: plainHttpInstance(),
-        userUsage: usersUsage(),
-        users: all(
+        userUsage: await usersUsage(),
+        users: await all(
           "SELECT id,name,email,disabled,created_at,last_login_at,deletion_due_at,last_open_at,COALESCE(last_active_at,(SELECT max(s.last_seen) FROM sessions s WHERE s.user_id=users.id)) last_active_at FROM users WHERE demo_until IS NULL AND subject NOT LIKE 'deleted:%' ORDER BY created_at DESC",
         ),
-        mail: mailStatus(),
-        backup: scheduledBackupStatus(),
-        markdownExport: markdownExportStatus(),
-        spaceGitExport: spaceGitOverview(),
-        encryption: encryptionOverview(),
+        mail: await mailStatus(),
+        backup: await scheduledBackupStatus(),
+        markdownExport: await markdownExportStatus(),
+        spaceGitExport: await spaceGitOverview(),
+        encryption: await encryptionOverview(),
         // With the people who own each workspace (owner role; usually one).
-        workspaces: all<{ id: string; name: string; members: number; pages: number; owners: string }>(
+        workspaces: (await all<{ id: string; name: string; members: number; pages: number; owners: string }>(
           `SELECT w.id,w.name,(SELECT count(*) FROM members WHERE workspace_id=w.id) members,(SELECT count(*) FROM pages WHERE workspace_id=w.id AND deleted_at IS NULL AND journal_date IS NULL) pages,(SELECT count(*) FROM pages WHERE workspace_id=w.id AND deleted_at IS NULL AND journal_date IS NOT NULL) days,(SELECT ${sql.jsonGroupArray(sql.jsonObject("'id'", "u.id", "'name'", "u.name", "'email'", "u.email"))} FROM members m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=w.id AND m.role='owner') owners FROM workspaces w ORDER BY lower(w.name)`,
-        ).map((w) => ({ ...w, owners: JSON.parse(w.owners || "[]") as { id: string; name: string; email: string | null }[] })),
-        sessions: one(
+        )).map((w) => ({ ...w, owners: JSON.parse(w.owners || "[]") as { id: string; name: string; email: string | null }[] })),
+        sessions: (await one(
           "SELECT count(*) count FROM sessions WHERE expires>?",
           Date.now(),
-        )?.count,
-        audit: all(
+        ))?.count,
+        audit: await all(
           "SELECT a.*,u.name FROM audit a LEFT JOIN users u ON u.id=a.actor_id ORDER BY a.created_at DESC LIMIT 100",
         ),
         adminGroup: adminGroup(),
         oidcConfigured: !!process.env.OIDC_ISSUER,
         // SSO group mappings of every workspace, with the groups to pick from.
-        ssoMappings: listSsoMappings(),
-        workspaceGroups: all("SELECT id,workspace_id,name FROM groups ORDER BY name"),
-        metrics: instanceMetrics(),
-        usage: workspaceUsage(),
-        settings: instanceSettings(),
+        ssoMappings: await listSsoMappings(),
+        workspaceGroups: await all("SELECT id,workspace_id,name FROM groups ORDER BY name"),
+        metrics: await instanceMetrics(),
+        usage: await workspaceUsage(),
+        settings: await instanceSettings(),
         // How long sessions last, and what the environment would give (#133).
-        sessionPolicy: sessionSettings(),
-        localAccounts: localAccountInfo(),
+        sessionPolicy: await sessionSettings(),
+        localAccounts: await localAccountInfo(),
         // Connected SSO identities of every account (#101).
-        identities: all<{ user_id: string; id: string; issuer: string; email: string; created_at: number; last_used_at: number | null }>(
+        identities: await all<{ user_id: string; id: string; issuer: string; email: string; created_at: number; last_used_at: number | null }>(
           "SELECT user_id,id,issuer,email,created_at,last_used_at FROM user_identities ORDER BY created_at",
         ),
-        ldapAccounts: all<{ user_id: string }>("SELECT user_id FROM ldap_accounts").map((r) => r.user_id),
+        ldapAccounts: (await all<{ user_id: string }>("SELECT user_id FROM ldap_accounts")).map((r) => r.user_id),
         // Administrators of every kind of sign-in (SSO groups included).
-        adminIds: adminUserIds(),
+        adminIds: await adminUserIds(),
         localLogin: localLoginEnabled(),
         restorePending: pendingRestore(),
         // Who may use AI when the administration chose "selected people".
-        aiPolicy: { access: instanceAiSettings().access, enabled: instanceAiSettings().enabled, allowed: aiAllowedUsers() },
+        aiPolicy: { access: (await instanceAiSettings()).access, enabled: (await instanceAiSettings()).enabled, allowed: await aiAllowedUsers() },
       });
     }
     // End-to-end encrypted spaces (lib/e2ee-server.ts): my wrapped key
     // pair, a space's sealed keys, a document's encrypted log and the
     // encrypted archive of a space. Ciphertext only.
     if (path[0] === "e2ee") {
-      if (path.length === 2 && path[1] === "identity") return NextResponse.json({ identity: identityOf(user.id) });
-      if (path.length === 3 && path[1] === "spaces") return NextResponse.json(spaceKeys(user, z.uuid().parse(path[2])));
+      if (path.length === 2 && path[1] === "identity") return NextResponse.json({ identity: await identityOf(user.id) });
+      if (path.length === 3 && path[1] === "spaces") return NextResponse.json(await spaceKeys(user, z.uuid().parse(path[2])));
       if (path.length === 4 && path[1] === "spaces" && path[3] === "archive")
-        return NextResponse.json(encryptedArchive(user, z.uuid().parse(path[2])), {
+        return NextResponse.json(await encryptedArchive(user, z.uuid().parse(path[2])), {
           headers: { "Content-Disposition": 'attachment; filename="flowplan-encrypted-archive.json"', "Cache-Control": "private, no-store" },
         });
       if (path.length === 4 && path[1] === "pages" && path[3] === "log") {
         const after = z.coerce.number().int().min(0).parse(url.searchParams.get("after") || "0");
-        return NextResponse.json(documentLog(user, z.uuid().parse(path[2]), after));
+        return NextResponse.json(await documentLog(user, z.uuid().parse(path[2]), after));
       }
       throw new HttpError(404, "Nicht gefunden.");
     }
     if (path.length === 2 && path[0] === "avatars") {
-      const picture = avatarFor(user, z.uuid().parse(path[1]));
+      const picture = await avatarFor(user, z.uuid().parse(path[1]));
       if (!picture) throw new HttpError(404, "Kein Profilbild.");
       return new Response(Buffer.from(picture.data), {
         headers: {
@@ -1058,40 +1059,40 @@ async function handleGET(
       return NextResponse.json({ placeholders: await placeholdersFor(user, ids) }, { headers: { "Cache-Control": "private, no-store" } });
     }
     if (path[0] === "files" && path[1]) {
-      const file = one<{
+      const file = await one<{
         id: string;
         page_id: string;
         name: string;
         mime: string;
       }>("SELECT * FROM files WHERE id=?", path[1]);
       if (!file) throw new HttpError(404, "Datei fehlt.");
-      const owner = requirePage(user, file.page_id);
-      requireUnlocked(user, owner);
+      const owner = await requirePage(user, file.page_id);
+      await requireUnlocked(user, owner);
       // A file used only by a record hidden from this person stays hidden.
-      if (hiddenFileIds(user, owner).has(file.id)) throw new HttpError(404, "Datei fehlt.");
+      if ((await hiddenFileIds(user, owner)).has(file.id)) throw new HttpError(404, "Datei fehlt.");
       return await fileResponse(req, file);
     }
     if (path[0] === "export") {
       const wid = url.searchParams.get("workspace") || "";
-      requireMember(user, wid);
+      await requireMember(user, wid);
       // Readable pages outside the trash, no journal behind a PIN, and only
       // the records this person may see.
-      const locked = lockedPageIds(user, wid);
-      const pages = all<Page>(
+      const locked = await lockedPageIds(user, wid);
+      const pages = await filterAsync(await all<Page>(
         "SELECT * FROM pages WHERE workspace_id=? AND deleted_at IS NULL",
         wid,
-      ).filter((p) => !locked.has(p.id) && pageRole(user, p));
+      ), async (p) => !locked.has(p.id) && await pageRole(user, p));
       return NextResponse.json(
         {
           format: "flowplan-1",
           exportedAt: new Date().toISOString(),
-          workspace: one("SELECT name,icon FROM workspaces WHERE id=?", wid),
-          pages: pages.map((p) => ({
+          workspace: await one("SELECT name,icon FROM workspaces WHERE id=?", wid),
+          pages: await mapAsync(pages, async (p) => ({
             ...p,
             data:
               p.kind === "database"
-                ? { database: readableDatabase(user, p, database(p.id)), rows: visibleRows(user, p, rows(p.id)) }
-                : one("SELECT html FROM documents WHERE page_id=?", p.id),
+                ? { database: await readableDatabase(user, p, await database(p.id)), rows: await visibleRows(user, p, await rows(p.id)) }
+                : (await one("SELECT html FROM documents WHERE page_id=?", p.id)),
           })),
         },
         {
@@ -1126,7 +1127,7 @@ async function handlePOST(
   { params }: { params: Promise<{ path: string[] }> },
 ) {
   try {
-    checkOrigin(req);
+    await checkOrigin(req);
     const { path } = await params;
     // ZIP imports may be as large as content archives. File uploads must
     // state their size, so the limit holds before anything is read. A raw
@@ -1151,10 +1152,10 @@ async function handlePOST(
     // The start page: data of its widgets (reads, but with the layout in
     // the body) and what its widgets do (lib/home-widgets.ts).
     if (path.length === 2 && path[0] === "home" && path[1] === "data")
-      return NextResponse.json(homeData(user, await req.json()), { headers: { "Cache-Control": "no-store" } });
+      return NextResponse.json(await homeData(user, await req.json()), { headers: { "Cache-Control": "no-store" } });
     // The open app reports that it is open and how long it has been idle.
     if (path.length === 1 && path[0] === "activity")
-      return NextResponse.json(recordActivity(user, await req.json().catch(() => null)), { headers: { "Cache-Control": "no-store" } });
+      return NextResponse.json(await recordActivity(user, await req.json().catch(() => null)), { headers: { "Cache-Control": "no-store" } });
     if (user.apiScope === "read") throw new HttpError(403, "Dieses API-Token darf nur lesen.");
     if (path.length === 2 && path[0] === "home" && path[1] === "action")
       return NextResponse.json(await homeAction(user, await req.json()), { headers: { "Cache-Control": "no-store" } });
@@ -1181,12 +1182,12 @@ async function handlePOST(
     // The pages of the scheduled Markdown export (lib/scheduled-markdown-export.ts).
     if (path.length === 2 && path[0] === "admin" && path[1] === "markdown-export") {
       requireAdmin(user);
-      return NextResponse.json(setMarkdownExport(user, (await req.json().catch(() => ({}))).pageIds));
+      return NextResponse.json(await setMarkdownExport(user, (await req.json().catch(() => ({}))).pageIds));
     }
     // Uploads the objects in the bucket that are not yet encrypted again.
     if (path.length === 2 && path[0] === "admin" && path[1] === "encrypt-existing") {
       requireAdmin(user);
-      return NextResponse.json(encryptExisting(user));
+      return NextResponse.json(await encryptExisting(user));
     }
     // "Run now" in the Git export settings of a space.
     if (path.length === 4 && path[0] === "spaces" && path[2] === "git-export" && path[3] === "run")
@@ -1201,7 +1202,7 @@ async function handlePOST(
       if (user.apiScope) throw new HttpError(403, "Hier nicht verfügbar.");
       const body = z.object({ action: z.enum(["save", "delete"]) }).passthrough().parse(await req.json());
       return NextResponse.json(
-        body.action === "save" ? saveBoardTemplate(user, path[1], body) : deleteBoardTemplate(user, path[1], body.templateId),
+        body.action === "save" ? (await saveBoardTemplate(user, path[1], body)) : (await deleteBoardTemplate(user, path[1], body.templateId)),
       );
     }
     // Own devices of the rack library: save or delete (#90).
@@ -1209,7 +1210,7 @@ async function handlePOST(
       if (user.apiScope) throw new HttpError(403, "Hier nicht verfügbar.");
       const body = z.object({ action: z.enum(["save", "delete"]) }).passthrough().parse(await req.json());
       return NextResponse.json(
-        body.action === "save" ? saveRackTemplate(user, path[1], body) : deleteRackTemplate(user, path[1], body.templateId),
+        body.action === "save" ? (await saveRackTemplate(user, path[1], body)) : (await deleteRackTemplate(user, path[1], body.templateId)),
       );
     }
     // Racks from NetBox: address and token are used for this request only.
@@ -1220,7 +1221,7 @@ async function handlePOST(
     if (path.length === 3 && path[0] === "whiteboards" && path[2] === "cursor") {
       if (Number(req.headers.get("content-length") || 0) > 512)
         throw new HttpError(413, "Cursoranfrage zu groß.");
-      const page = requirePage(user, z.uuid().parse(path[1]));
+      const page = await requirePage(user, z.uuid().parse(path[1]));
       if (page.kind !== "whiteboard") throw new HttpError(400, "Kein Whiteboard.");
       const body = z
         .object({
@@ -1264,7 +1265,7 @@ async function handlePOST(
       } catch {
         throw new HttpError(400, "Ungültige Cursoranfrage.");
       }
-      const presence = editorPresence(
+      const presence = await editorPresence(
         user,
         hash((await cookies()).get(cookieName)?.value || ""),
         data,
@@ -1285,19 +1286,19 @@ async function handlePOST(
       const body = z
         .object({ pageId: z.uuid(), url: z.string().max(2000), credit: z.string().max(500).optional(), gif: z.boolean().optional() })
         .parse(await req.json());
-      const p = requirePage(user, body.pageId, true);
+      const p = await requirePage(user, body.pageId, true);
       if (p.locked) throw new HttpError(409, "Seite ist gesperrt");
-      requirePlaintext(p);
-      const maxUpload = maxUploadMbFor(user);
+      await requirePlaintext(p);
+      const maxUpload = await maxUploadMbFor(user);
       const image = await downloadImage(body.url, Math.min(maxUpload * 1024 * 1024, body.gif ? GIF_MAX_BYTES : 15 * 1024 * 1024));
-      enforceQuota(p.workspace_id, image.data.length);
-      enforceUserStorage(user, image.data.length);
+      await enforceQuota(p.workspace_id, image.data.length);
+      await enforceUserStorage(user, image.data.length);
       const fid = id(),
         dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads");
       await mkdir(dir, { recursive: true });
       await writeFile(resolve(dir, fid), image.data);
       const name = `${(body.credit || "Bild").replace(/[\\/:*?"<>|]+/g, " ").slice(0, 80)}.${image.ext}`;
-      run(
+      await run(
         "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
         fid,
         p.id,
@@ -1306,7 +1307,7 @@ async function handlePOST(
         image.data.length,
         user.id,
       );
-      audit(user.id, "file.upload", p.id, name);
+      await audit(user.id, "file.upload", p.id, name);
       const placeholder = await placeholderForUpload(fid, image.type, p.id, image.data);
       return NextResponse.json({ id: fid, url: `/api/files/${fid}`, name, mime: image.type, ...(placeholder ? { placeholder } : {}) });
     }
@@ -1316,7 +1317,7 @@ async function handlePOST(
         throw new HttpError(403, "Hier nicht verfügbar.");
       const data = await req.formData();
       // The recording would reach the transcription service as plaintext.
-      requirePlaintext(requirePage(user, z.uuid().parse(data.get("pageId")), true));
+      await requirePlaintext(await requirePage(user, z.uuid().parse(data.get("pageId")), true));
       const file = data.get("file");
       if (!(file instanceof Blob) || !file.type.startsWith("audio/"))
         throw new HttpError(400, "Keine Aufnahme.");
@@ -1336,9 +1337,9 @@ async function handlePOST(
       if (path[1] === "preview") {
         const text = await req.text();
         if (text.length > 100_000) throw new HttpError(413, "Anfrage zu groß.");
-        return NextResponse.json(capturePreview(user, JSON.parse(text || "{}")), { headers: { "Cache-Control": "no-store" } });
+        return NextResponse.json(await capturePreview(user, JSON.parse(text || "{}")), { headers: { "Cache-Control": "no-store" } });
       }
-      if (path[1] === "undo") return NextResponse.json(captureUndo(user, await req.json()));
+      if (path[1] === "undo") return NextResponse.json(await captureUndo(user, await req.json()));
       if (path[1] === "save") {
         if (!(req.headers.get("content-type") || "").startsWith("multipart/form-data")) {
           const text = await req.text();
@@ -1347,7 +1348,7 @@ async function handlePOST(
           after(dispatchPush);
           return NextResponse.json(saved);
         }
-        requireBodySize(req, Math.min(100 * 1024 * 1024, maxUploadMbFor(user) * 1024 * 1024 * MAX_CAPTURE_FILES) + 1_000_000, "Anfrage zu groß.");
+        requireBodySize(req, Math.min(100 * 1024 * 1024, (await maxUploadMbFor(user)) * 1024 * 1024 * MAX_CAPTURE_FILES) + 1_000_000, "Anfrage zu groß.");
         const form = await req.formData();
         const files = [];
         for (const file of form.getAll("file"))
@@ -1362,7 +1363,7 @@ async function handlePOST(
       const text = await req.text();
       if (text.length > 10_000_000)
         throw new HttpError(413, "Anfrage zu groß.");
-      const result = command(user, JSON.parse(text), false, idempotencyHook());
+      const result = await command(user, JSON.parse(text), false, idempotencyHook());
       after(dispatchPush);
       return NextResponse.json(result);
     }
@@ -1373,12 +1374,12 @@ async function handlePOST(
       const body = JSON.parse(text);
       const result =
         body.action === "unsubscribe"
-          ? unsubscribePush(user, body.endpoint)
+          ? (await unsubscribePush(user, body.endpoint))
           : body.action === "test"
             ? // Waits (≤ 10 s) for the outcome per device (lib/push-test.ts).
               await sendTestPush(user, sessionToken)
             : body.action === "subscribe"
-              ? subscribePush(user, sessionToken, body.subscription)
+              ? (await subscribePush(user, sessionToken, body.subscription))
               : (() => {
                   throw new HttpError(400, "Unbekannte Push-Aktion.");
                 })();
@@ -1408,12 +1409,12 @@ async function handlePOST(
       const file = data.get("file");
       if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
       if (file.size > 30 * 1024 * 1024) throw new HttpError(413, "Die Datei darf maximal 30 MB groß sein.");
-      requirePlaintextSpace({ id: z.uuid().parse(data.get("spaceId")) });
+      await requirePlaintextSpace({ id: z.uuid().parse(data.get("spaceId")) });
       const text = await file.text();
       const kind = /\.json$/i.test(file.name) || text.trimStart().startsWith("{") ? "trello" : "jira";
       return NextResponse.json(
-        await trackJob(user, "import", file.name, () =>
-          importTracker(user, z.uuid().parse(data.get("workspaceId")), z.uuid().parse(data.get("spaceId")), kind, text, file.name),
+        await trackJob(user, "import", file.name, async () =>
+          await importTracker(user, z.uuid().parse(data.get("workspaceId")), z.uuid().parse(data.get("spaceId")), kind, text, file.name),
         ),
       );
     }
@@ -1428,13 +1429,13 @@ async function handlePOST(
       for (const file of files)
         for (const [name, bytes] of await markdownEntries(file.name, Buffer.from(await file.arrayBuffer())))
           entries.set(entries.has(name) ? `${entries.size}-${name}` : name, bytes);
-      const records = () =>
-        importMarkdownRecords(user, z.uuid().parse(path[1]), entries, {
+      const records = async () =>
+        await importMarkdownRecords(user, z.uuid().parse(path[1]), entries, {
           dryRun: data.get("dryRun") === "1",
           createMissing: data.get("createMissing") === "1",
           updateExisting: data.get("updateExisting") === "1",
         });
-      return NextResponse.json(data.get("dryRun") === "1" ? records() : await trackJob(user, "import", files[0].name, records));
+      return NextResponse.json(data.get("dryRun") === "1" ? (await records()) : await trackJob(user, "import", files[0].name, records));
     }
     // AFFiNE, Confluence, Evernote, Google Docs, Microsoft Word and Obsidian
     // (lib/importers):
@@ -1447,7 +1448,7 @@ async function handlePOST(
     if (path.length === 2 && path[0] === "import" && path[1] === "source") {
       const { importFromSource } = await import("@/lib/importers");
       const upload = await import("@/lib/importers/upload");
-      const limitMb = upload.importLimitFor(user);
+      const limitMb = await upload.importLimitFor(user);
       let fields: { get(name: string): unknown };
       let file: { name: string; bytes: Buffer } | { name: string; path: string };
       let kept: string | null = null;
@@ -1474,7 +1475,7 @@ async function handlePOST(
         else {
           // Rights before a large body is read.
           const { requireSpace } = await import("@/lib/importers/write");
-          requireSpace(user, z.uuid().parse(query.get("workspaceId")), z.uuid().parse(query.get("spaceId")));
+          await requireSpace(user, z.uuid().parse(query.get("workspaceId")), z.uuid().parse(query.get("spaceId")));
           // The size must be stated (a body without it would pass proxy.ts).
           requireBodySize(req, Number.MAX_SAFE_INTEGER, "Anfrage zu groß.");
           if (Number(req.headers.get("content-length")) > upload.importLimitBytes(limitMb)) throw upload.importTooLarge(limitMb);
@@ -1514,7 +1515,7 @@ async function handlePOST(
       if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
       if (file.size > ARCHIVE_LIMIT)
         throw new HttpError(413, "ZIP darf maximal 100 MB groß sein.");
-      requirePlaintextSpace({ id: z.uuid().parse(data.get("spaceId")) });
+      await requirePlaintextSpace({ id: z.uuid().parse(data.get("spaceId")) });
       const bytes = Buffer.from(await file.arrayBuffer());
       return NextResponse.json(
         await trackJob(user, "import", file.name, () =>
@@ -1528,9 +1529,9 @@ async function handlePOST(
       // The server would fetch for anonymous demo guests.
       if (user.demo || user.apiScope) throw new HttpError(403, "Hier nicht verfügbar.");
       const body = z.object({ workspaceId: z.uuid(), doi: z.string().min(4).max(400) }).parse(await req.json());
-      requireMember(user, body.workspaceId, "editor");
+      await requireMember(user, body.workspaceId, "editor");
       const data = await resolveDoi(body.doi);
-      return NextResponse.json({ item: transaction(() => bibliographyForDoi(user, body.workspaceId, data), user) });
+      return NextResponse.json({ item: await transaction(async () => await bibliographyForDoi(user, body.workspaceId, data), user) });
     }
     // Excalidraw and draw.io files: onto a board (pageId) or as a new one.
     if (path.length === 2 && path[0] === "whiteboards" && path[1] === "import") {
@@ -1542,9 +1543,9 @@ async function handlePOST(
         throw new HttpError(413, "Die Datei ist zu groß (höchstens 20 MB).");
       for (const key of ["pageId", "parentId"]) {
         const value = data.get(key);
-        if (typeof value === "string" && value) requirePlaintext(one<Page>("SELECT * FROM pages WHERE id=?", value));
+        if (typeof value === "string" && value) await requirePlaintext(await one<Page>("SELECT * FROM pages WHERE id=?", value));
       }
-      if (typeof data.get("spaceId") === "string" && data.get("spaceId")) requirePlaintextSpace({ id: String(data.get("spaceId")) });
+      if (typeof data.get("spaceId") === "string" && data.get("spaceId")) await requirePlaintextSpace({ id: String(data.get("spaceId")) });
       const fields = Object.fromEntries(
         ["pageId", "workspaceId", "spaceId", "parentId"]
           .map((key) => [key, data.get(key)])
@@ -1557,27 +1558,27 @@ async function handlePOST(
     // Signs out one of the person's devices, or all others.
     if (path.length === 2 && path[0] === "sessions" && path[1] === "end") {
       const jar = await cookies();
-      const result = endMySessions(user, jar.get(cookieName)?.value, await req.json().catch(() => ({})));
+      const result = await endMySessions(user, jar.get(cookieName)?.value, await req.json().catch(() => ({})));
       if (result.current) jar.delete(cookieName);
       return NextResponse.json(result);
     }
     if (path[0] === "upload") {
       const data = await req.formData();
       const pageId = z.string().uuid().parse(data.get("pageId"));
-      const p = requirePage(user, pageId, true);
+      const p = await requirePage(user, pageId, true);
       if (p.locked) throw new HttpError(409, "Seite ist gesperrt");
       const file = data.get("file");
       if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
       // Pages of encrypted spaces take only files the browser encrypted
       // (lib/e2ee.ts encryptFile): no name, no type, no content to inspect.
-      const encrypted = isEncryptedPage(p);
+      const encrypted = await isEncryptedPage(p);
       if (encrypted && data.get("purpose") !== "e2ee")
         throw new HttpError(409, "Für verschlüsselte Seiten nicht verfügbar.");
-      const maxUpload = maxUploadMbFor(user);
+      const maxUpload = await maxUploadMbFor(user);
       if (file.size > maxUpload * 1024 * 1024)
         throw new HttpError(413, `Maximal ${maxUpload} MB pro Datei.`);
-      enforceQuota(p.workspace_id, file.size);
-      enforceUserStorage(user, file.size);
+      await enforceQuota(p.workspace_id, file.size);
+      await enforceUserStorage(user, file.size);
       if (
         data.get("purpose") === "cover" &&
         !imageMimes.includes(file.type as (typeof imageMimes)[number])
@@ -1596,7 +1597,7 @@ async function handlePOST(
       const name = encrypted ? "encrypted.bin" : sanitizeFileName(file.name);
       await mkdir(dir, { recursive: true });
       await writeFile(resolve(dir, fid), content);
-      run(
+      await run(
         "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
         fid,
         pageId,
@@ -1605,11 +1606,11 @@ async function handlePOST(
         content.length,
         user.id,
       );
-      audit(user.id, "file.upload", pageId, name);
+      await audit(user.id, "file.upload", pageId, name);
       // The size and blurred picture shown while the image loads; encrypted
       // files are never looked into.
       let placeholder = null;
-      if (encrypted) storePlaceholder(fid, null);
+      if (encrypted) await storePlaceholder(fid, null);
       else placeholder = await placeholderForUpload(fid, mime, pageId, content);
       return NextResponse.json({
         id: fid,
@@ -1630,15 +1631,15 @@ export const HEAD = GET;
 // Long-lived streams: whether the session is still valid, the account
 // active and the resource still readable. Used on every keepalive.
 function streamGuard(sessionToken: string, check: () => unknown) {
-  return () => {
-    const session = one<{ ok: number }>(
+  return async () => {
+    const session = await one<{ ok: number }>(
       "SELECT 1 ok FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=? AND s.expires>? AND u.disabled=0",
       sessionToken,
       Date.now(),
     );
     if (!session) return false;
     try {
-      check();
+      await check();
       return true;
     } catch {
       return false;

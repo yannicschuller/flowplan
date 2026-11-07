@@ -234,7 +234,7 @@ test("filter injection finds nobody", async () => {
 test("unreachable server and connection test", async () => {
   const ok = await testLdapConnection();
   assert.equal(ok.ok, true);
-  assert.equal(ldapStatus().lastTest?.ok, true);
+  assert.equal((await ldapStatus()).lastTest?.ok, true);
   const down = await ldap.ldapTest({ ...ldap.ldapConfig()!, url: "ldap://127.0.0.1:1", timeoutMs: 1000 });
   assert.equal(down.ok, false);
   const wrongBase = await ldap.ldapTest({ ...ldap.ldapConfig()!, baseDn: "dc=nowhere" });
@@ -245,26 +245,26 @@ test("unreachable server and connection test", async () => {
 // ---- Flowplan accounts ----
 
 const admin = id();
-run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", admin, `local:${admin}`, "Admin", "admin@example.org");
-run("INSERT INTO local_accounts(user_id,email,password_hash,is_admin,created_at) VALUES(?,?,?,1,?)", admin, "admin@example.org", await hashPassword("local-password"), Date.now());
+await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", admin, `local:${admin}`, "Admin", "admin@example.org");
+await run("INSERT INTO local_accounts(user_id,email,password_hash,is_admin,created_at) VALUES(?,?,?,1,?)", admin, "admin@example.org", await hashPassword("local-password"), Date.now());
 const owner = { id: admin, name: "Admin", email: "admin@example.org", groups: [], isAdmin: true, disabled: 0, created_at: "" } as unknown as Identity;
-const wid = createWorkspace(admin, "Firma");
-command(owner, { action: "sso.mapping.add", workspaceId: wid, ssoGroup: "staff", role: "editor" });
-command(owner, { action: "sso.mapping.add", workspaceId: wid, ssoGroup: "Team, Blue", role: "viewer" });
-command(owner, { action: "sso.mapping.add", workspaceId: wid, ssoGroup: `cn=ops,ou=groups,${BASE}`, role: "owner" });
-const role = (userId: string) => one<{ role: string }>("SELECT role FROM members WHERE workspace_id=? AND user_id=?", wid, userId)?.role ?? null;
-const disabled = (userId: string) => one<{ disabled: number }>("SELECT disabled FROM users WHERE id=?", userId)!.disabled;
+const wid = await createWorkspace(admin, "Firma");
+await command(owner, { action: "sso.mapping.add", workspaceId: wid, ssoGroup: "staff", role: "editor" });
+await command(owner, { action: "sso.mapping.add", workspaceId: wid, ssoGroup: "Team, Blue", role: "viewer" });
+await command(owner, { action: "sso.mapping.add", workspaceId: wid, ssoGroup: `cn=ops,ou=groups,${BASE}`, role: "owner" });
+const role = async (userId: string) => (await one<{ role: string }>("SELECT role FROM members WHERE workspace_id=? AND user_id=?", wid, userId))?.role ?? null;
+const disabled = async (userId: string) => (await one<{ disabled: number }>("SELECT disabled FROM users WHERE id=?", userId))!.disabled;
 
 test("LDAP sign-in creates a directory account; its groups feed the SSO mappings", async () => {
   const { userId, groups } = await ldapPasswordLogin("alice", "secret-pw", "203.0.113.5", "de");
   assert.ok(groups.includes("staff") && groups.includes("Team, Blue") && groups.includes(`cn=staff,ou=groups,${BASE}`));
-  const user = one<{ subject: string; name: string; email: string }>("SELECT subject,name,email FROM users WHERE id=?", userId)!;
+  const user = (await one<{ subject: string; name: string; email: string }>("SELECT subject,name,email FROM users WHERE id=?", userId))!;
   assert.equal(user.subject, `ldap:uid=alice,ou=people,${BASE}`);
   assert.equal(user.email, "alice@example.org");
   // The route syncs memberships at sign-in; the directory groups alone do it too.
   const { syncSsoMemberships } = await import("../lib/sso-mappings");
-  syncSsoMemberships(userId, []);
-  assert.equal(role(userId), "editor");
+  await syncSsoMemberships(userId, []);
+  assert.equal(await role(userId), "editor");
   // The same person again: the same account.
   assert.equal((await ldapPasswordLogin("alice@example.org", "secret-pw", "203.0.113.5", "de")).userId, userId);
   await assert.rejects(ldapPasswordLogin("alice", "wrong", "203.0.113.5", "de"), /stimmt nicht/);
@@ -275,7 +275,7 @@ test("local accounts keep their password; others go to the directory", async () 
   assert.equal(local.userId, admin);
   await assert.rejects(directoryPasswordLogin({ email: "admin@example.org", password: "secret-pw" }, "203.0.113.6", "de"), /stimmt nicht/);
   const viaLdap = await directoryPasswordLogin({ email: "bob", password: "secret-pw" }, "203.0.113.6", "de");
-  assert.ok(one("SELECT 1 FROM ldap_accounts WHERE user_id=?", viaLdap.userId));
+  assert.ok(await one("SELECT 1 FROM ldap_accounts WHERE user_id=?", viaLdap.userId));
   // A directory entry with the address of a local account never takes it over.
   person("admin2", { mail: ["admin@example.org"] });
   await assert.rejects(ldapPasswordLogin("admin2", "secret-pw", "203.0.113.6", "de"), /Konto mit Passwort/);
@@ -286,22 +286,22 @@ test("an existing SSO account with the same, confirmed address is linked – an 
   // Audit F2: an address the provider did not vouch for is no proof – someone
   // else could have registered it to catch the directory sign-in.
   const unconfirmed = id();
-  run("INSERT INTO users(id,subject,name,email,email_verified) VALUES(?,?,?,?,0)", unconfirmed, `https://idp|${unconfirmed}`, "Eve?", "eve@example.org");
+  await run("INSERT INTO users(id,subject,name,email,email_verified) VALUES(?,?,?,?,0)", unconfirmed, `https://idp|${unconfirmed}`, "Eve?", "eve@example.org");
   const first = (await ldapPasswordLogin("eve", "secret-pw", "203.0.113.7", "de")).userId;
   assert.notEqual(first, unconfirmed);
-  run("DELETE FROM ldap_accounts WHERE user_id=?", first);
-  run("DELETE FROM users WHERE id IN (?,?)", first, unconfirmed);
+  await run("DELETE FROM ldap_accounts WHERE user_id=?", first);
+  await run("DELETE FROM users WHERE id IN (?,?)", first, unconfirmed);
   const sso = id();
-  run("INSERT INTO users(id,subject,name,email,email_verified) VALUES(?,?,?,?,1)", sso, `https://idp|${sso}`, "Eve", "eve@example.org");
+  await run("INSERT INTO users(id,subject,name,email,email_verified) VALUES(?,?,?,?,1)", sso, `https://idp|${sso}`, "Eve", "eve@example.org");
   assert.equal((await ldapPasswordLogin("eve", "secret-pw", "203.0.113.7", "de")).userId, sso);
 });
 
 test("disabled in the directory: no sign-in; an admin's disable stays", async () => {
   await assert.rejects(ldapPasswordLogin("locked", "secret-pw", "203.0.113.8", "de"), /deaktiviert/);
-  const bob = one<{ user_id: string }>("SELECT user_id FROM ldap_accounts WHERE dn=?", `uid=bob,ou=people,${BASE}`)!.user_id;
-  run("UPDATE users SET disabled=1 WHERE id=?", bob);
+  const bob = (await one<{ user_id: string }>("SELECT user_id FROM ldap_accounts WHERE dn=?", `uid=bob,ou=people,${BASE}`))!.user_id;
+  await run("UPDATE users SET disabled=1 WHERE id=?", bob);
   await assert.rejects(ldapPasswordLogin("bob", "secret-pw", "203.0.113.8", "de"), /deaktiviert/);
-  run("UPDATE users SET disabled=0 WHERE id=?", bob);
+  await run("UPDATE users SET disabled=0 WHERE id=?", bob);
 });
 
 test("too many wrong passwords are limited", async () => {
@@ -312,9 +312,9 @@ test("too many wrong passwords are limited", async () => {
 });
 
 test("the hourly sync updates groups, disables and enables again", async () => {
-  const alice = one<{ user_id: string }>("SELECT user_id FROM ldap_accounts WHERE dn=?", `uid=alice,ou=people,${BASE}`)!.user_id;
-  const bob = one<{ user_id: string }>("SELECT user_id FROM ldap_accounts WHERE dn=?", `uid=bob,ou=people,${BASE}`)!.user_id;
-  run(
+  const alice = (await one<{ user_id: string }>("SELECT user_id FROM ldap_accounts WHERE dn=?", `uid=alice,ou=people,${BASE}`))!.user_id;
+  const bob = (await one<{ user_id: string }>("SELECT user_id FROM ldap_accounts WHERE dn=?", `uid=bob,ou=people,${BASE}`))!.user_id;
+  await run(
     "INSERT INTO sessions(token,user_id,groups_json,expires,created_at,sso) VALUES(?,?,?,?,?,1)",
     id(),
     alice,
@@ -330,43 +330,43 @@ test("the hourly sync updates groups, disables and enables again", async () => {
   const first = await syncLdapAccounts();
   assert.equal(first.ok, true, first.error || "");
   assert.equal(first.disabled, 1);
-  assert.equal(role(alice), "owner");
-  assert.deepEqual(JSON.parse(one<{ groups_json: string }>("SELECT groups_json FROM sessions WHERE user_id=?", alice)!.groups_json).includes("flowplan-admins"), true);
-  assert.equal(one<{ is_admin: number }>("SELECT is_admin FROM ldap_accounts WHERE user_id=?", alice)!.is_admin, 1);
-  assert.equal(disabled(bob), 1);
-  assert.equal(ldapStatus().lastSync?.disabled, 1);
+  assert.equal(await role(alice), "owner");
+  assert.deepEqual(JSON.parse((await one<{ groups_json: string }>("SELECT groups_json FROM sessions WHERE user_id=?", alice))!.groups_json).includes("flowplan-admins"), true);
+  assert.equal((await one<{ is_admin: number }>("SELECT is_admin FROM ldap_accounts WHERE user_id=?", alice))!.is_admin, 1);
+  assert.equal(await disabled(bob), 1);
+  assert.equal((await ldapStatus()).lastSync?.disabled, 1);
   // Back in the directory: enabled again by the next sync.
   directory.set(`uid=bob,ou=people,${BASE}`, bobEntry);
   const second = await syncLdapAccounts();
   assert.equal(second.enabled, 1);
-  assert.equal(disabled(bob), 0);
+  assert.equal(await disabled(bob), 0);
   // Locked in the directory.
   bobEntry.attrs.pwdAccountLockedTime = ["000001010000Z"];
   await syncLdapAccounts();
-  assert.equal(disabled(bob), 1);
+  assert.equal(await disabled(bob), 1);
   delete bobEntry.attrs.pwdAccountLockedTime;
   // A wrong base DN is an error, not "everyone left".
   process.env.LDAP_BASE_DN = "dc=nowhere";
   const broken = await syncLdapAccounts();
   assert.equal(broken.ok, false);
-  assert.equal(disabled(alice), 0);
+  assert.equal(await disabled(alice), 0);
   process.env.LDAP_BASE_DN = BASE;
   // Sign-in after the directory unlocked: enabled again.
   await ldapPasswordLogin("bob", "secret-pw", "203.0.113.9", "de");
-  assert.equal(disabled(bob), 0);
+  assert.equal(await disabled(bob), 0);
 });
 
 test("the two-factor policy applies to LDAP accounts as to passwords", async () => {
-  const alice = one<{ user_id: string }>("SELECT user_id FROM ldap_accounts WHERE dn=?", `uid=alice,ou=people,${BASE}`)!.user_id;
-  const bob = one<{ user_id: string }>("SELECT user_id FROM ldap_accounts WHERE dn=?", `uid=bob,ou=people,${BASE}`)!.user_id;
+  const alice = (await one<{ user_id: string }>("SELECT user_id FROM ldap_accounts WHERE dn=?", `uid=alice,ou=people,${BASE}`))!.user_id;
+  const bob = (await one<{ user_id: string }>("SELECT user_id FROM ldap_accounts WHERE dn=?", `uid=bob,ou=people,${BASE}`))!.user_id;
   const { saveInstanceSettings } = await import("../lib/instance-settings");
-  saveInstanceSettings({ twoFactor: "admins" });
+  await saveInstanceSettings({ twoFactor: "admins" });
   // Alice is in the admin group, Bob is not.
-  assert.equal(twoFactorRequired(alice), true);
-  assert.equal(twoFactorRequired(bob), false);
-  saveInstanceSettings({ twoFactor: "off" });
-  run("INSERT INTO user_totp(user_id,secret,enabled,created_at) VALUES(?,?,1,?)", alice, "sealed", Date.now());
-  const next = afterPassword(alice, false, "de");
+  assert.equal(await twoFactorRequired(alice), true);
+  assert.equal(await twoFactorRequired(bob), false);
+  await saveInstanceSettings({ twoFactor: "off" });
+  await run("INSERT INTO user_totp(user_id,secret,enabled,created_at) VALUES(?,?,1,?)", alice, "sealed", Date.now());
+  const next = await afterPassword(alice, false, "de");
   assert.ok("pending" in next);
-  assert.ok(pendingToken(alice, false).split(".").length === 5);
+  assert.ok((await pendingToken(alice, false)).split(".").length === 5);
 });

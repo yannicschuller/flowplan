@@ -21,34 +21,34 @@ import { foreignKeySql, quoteIdent } from "./db-driver/pg-ddl.mjs";
 type Param = string | number | null | Uint8Array;
 const ROWS_PER_INSERT = 200;
 
-export function restorePendingIntoPostgres() {
+export async function restorePendingIntoPostgres() {
   const dir = resolve(/* turbopackIgnore: true */ process.env.FLOWPLAN_DATA_DIR || "./data");
   if (!existsSync(resolve(dir, "restore-pending", "READY"))) return null;
   const previous = applyPendingRestore(dir);
   if (!previous) return null;
   // The state before, recoverable like the database file on SQLite.
-  if (!existsSync(resolve(previous, "flowplan.sqlite"))) snapshotDatabase(resolve(previous, "flowplan.sqlite"));
-  loadSqliteFile(resolve(dir, "flowplan.sqlite"));
+  if (!existsSync(resolve(previous, "flowplan.sqlite"))) await snapshotDatabase(resolve(previous, "flowplan.sqlite"));
+  await loadSqliteFile(resolve(dir, "flowplan.sqlite"));
   console.log(`Instanz wiederhergestellt; vorheriger Stand in ${previous}`);
   return previous;
 }
 
-export function loadSqliteFile(path: string) {
+export async function loadSqliteFile(path: string) {
   const schema = schemaJson as unknown as PgSchema;
   const file = new DatabaseSync(path);
   try {
     migrateFile(file);
     const tables = schema.tables.filter((t) => t.name !== "search_index");
     const names = tables.map((t) => quoteIdent(t.name));
-    transaction(() => {
+    await transaction(async () => {
       // Foreign keys go while the tables are refilled (parents and children
       // in any order) and come back checked; triggers would fire per row.
-      const fks = all<{ tbl: string; conname: string }>(
+      const fks = await all<{ tbl: string; conname: string }>(
         "SELECT conrelid::regclass::text AS tbl,conname FROM pg_constraint WHERE connamespace=current_schema()::regnamespace AND contype='f'",
       );
-      for (const fk of fks) run(`ALTER TABLE ${fk.tbl} DROP CONSTRAINT ${quoteIdent(fk.conname)}`);
-      for (const name of names) run(`ALTER TABLE ${name} DISABLE TRIGGER USER`);
-      run(`TRUNCATE ${names.join(",")}`);
+      for (const fk of fks) await run(`ALTER TABLE ${fk.tbl} DROP CONSTRAINT ${quoteIdent(fk.conname)}`);
+      for (const name of names) await run(`ALTER TABLE ${name} DISABLE TRIGGER USER`);
+      await run(`TRUNCATE ${names.join(",")}`);
       for (const t of tables) {
         const have = new Set((file.prepare(`PRAGMA table_info("${t.name}")`).all() as { name: string }[]).map((c) => c.name)); // sqlite-only
         const cols = t.columns.filter((c) => have.has(c.name));
@@ -56,23 +56,23 @@ export function loadSqliteFile(path: string) {
         const rows = file.prepare(`SELECT ${cols.map((c) => `"${c.name}"`).join(",")} FROM "${t.name}"`).all() as Record<string, Param>[];
         for (let i = 0; i < rows.length; i += ROWS_PER_INSERT) {
           const part = rows.slice(i, i + ROWS_PER_INSERT);
-          run(
+          await run(
             `INSERT INTO ${quoteIdent(t.name)}(${cols.map((c) => quoteIdent(c.name)).join(",")}) OVERRIDING SYSTEM VALUE VALUES ${part.map(() => `(${cols.map(() => "?").join(",")})`).join(",")}`,
             ...part.flatMap((row) => cols.map((c) => row[c.name] ?? null)),
           );
         }
         for (const c of t.columns.filter((x) => x.identity))
-          run(
+          await run(
             `SELECT setval(pg_get_serial_sequence(?,?), COALESCE((SELECT max(${quoteIdent(c.name)}) FROM ${quoteIdent(t.name)}),0)+1, false)`,
             quoteIdent(t.name),
             c.name,
           );
       }
-      for (const name of names) run(`ALTER TABLE ${name} ENABLE TRIGGER USER`);
-      for (const t of tables) for (const fk of t.foreignKeys) run(foreignKeySql(t, fk));
+      for (const name of names) await run(`ALTER TABLE ${name} ENABLE TRIGGER USER`);
+      for (const t of tables) for (const fk of t.foreignKeys) await run(foreignKeySql(t, fk));
       // Built again from the restored data.
-      run("DELETE FROM search_index");
-      run("DELETE FROM search_state");
+      await run("DELETE FROM search_index");
+      await run("DELETE FROM search_state");
     });
   } finally {
     file.close();

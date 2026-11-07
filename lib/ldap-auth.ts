@@ -42,9 +42,9 @@ import {
 
 type LdapAccount = { user_id: string; dn: string; username: string; groups_json: string; is_admin: number; locked: number; synced_at: number | null };
 
-export const isLdapAccount = (userId: string) => !!one("SELECT 1 FROM ldap_accounts WHERE user_id=?", userId);
-export function ldapGroups(userId: string): string[] {
-  const row = one<{ groups_json: string }>("SELECT groups_json FROM ldap_accounts WHERE user_id=?", userId);
+export const isLdapAccount = async (userId: string) => !!(await one("SELECT 1 FROM ldap_accounts WHERE user_id=?", userId));
+export async function ldapGroups(userId: string): Promise<string[]> {
+  const row = await one<{ groups_json: string }>("SELECT groups_json FROM ldap_accounts WHERE user_id=?", userId);
   try {
     const parsed = row ? JSON.parse(row.groups_json) : [];
     return Array.isArray(parsed) ? parsed.filter((g): g is string => typeof g === "string") : [];
@@ -53,16 +53,16 @@ export function ldapGroups(userId: string): string[] {
   }
 }
 
-function status(key: string, value: unknown) {
-  run(
+async function status(key: string, value: unknown) {
+  await run(
     "INSERT INTO directory_status(key,value,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at",
     key,
     JSON.stringify(value),
     Date.now(),
   );
 }
-function readStatus<T>(key: string): T | null {
-  const row = one<{ value: string }>("SELECT value FROM directory_status WHERE key=?", key);
+async function readStatus<T>(key: string): Promise<T | null> {
+  const row = await one<{ value: string }>("SELECT value FROM directory_status WHERE key=?", key);
   try {
     return row ? (JSON.parse(row.value) as T) : null;
   } catch {
@@ -71,11 +71,11 @@ function readStatus<T>(key: string): T | null {
 }
 
 // Stores what the directory says about one person (inside a transaction).
-function storeEntry(userId: string, entry: LdapEntry, groups: string[], now: number) {
+async function storeEntry(userId: string, entry: LdapEntry, groups: string[], now: number) {
   const profile = entryProfile(entry);
-  run("UPDATE users SET name=? WHERE id=?", profile.name, userId);
-  if (profile.email) run("UPDATE users SET email=? WHERE id=?", profile.email, userId);
-  run(
+  await run("UPDATE users SET name=? WHERE id=?", profile.name, userId);
+  if (profile.email) await run("UPDATE users SET email=? WHERE id=?", profile.email, userId);
+  await run(
     "UPDATE ldap_accounts SET dn=?,groups_json=?,is_admin=?,synced_at=? WHERE user_id=?",
     entry.dn,
     JSON.stringify(groups),
@@ -86,12 +86,12 @@ function storeEntry(userId: string, entry: LdapEntry, groups: string[], now: num
 }
 
 // The account for a directory entry: found by DN, linked by e-mail, or new.
-function linkAccount(entry: LdapEntry, signInName: string, groups: string[], t: (de: string, en: string) => string) {
+async function linkAccount(entry: LdapEntry, signInName: string, groups: string[], t: (de: string, en: string) => string) {
   const now = Date.now();
   const profile = entryProfile(entry, signInName);
-  let row = one<LdapAccount>("SELECT * FROM ldap_accounts WHERE lower(dn)=lower(?)", entry.dn);
+  let row = await one<LdapAccount>("SELECT * FROM ldap_accounts WHERE lower(dn)=lower(?)", entry.dn);
   if (!row) {
-    if (profile.email && one("SELECT 1 FROM local_accounts WHERE lower(email)=lower(?)", profile.email))
+    if (profile.email && await one("SELECT 1 FROM local_accounts WHERE lower(email)=lower(?)", profile.email))
       throw new HttpError(
         409,
         t(
@@ -101,33 +101,33 @@ function linkAccount(entry: LdapEntry, signInName: string, groups: string[], t: 
       );
     const subject = `ldap:${entry.dn.toLowerCase()}`;
     let userId =
-      one<{ id: string }>("SELECT id FROM users WHERE subject=?", subject)?.id ||
+      (await one<{ id: string }>("SELECT id FROM users WHERE subject=?", subject))?.id ||
       (profile.email
-        ? one<{ id: string }>(
+        ? (await one<{ id: string }>(
             `SELECT u.id FROM users u WHERE lower(u.email)=lower(?) AND u.email<>'' AND u.email_verified=1 AND u.demo_until IS NULL AND u.subject NOT LIKE 'deleted:%' AND u.subject<>'local-development'
                AND NOT EXISTS(SELECT 1 FROM local_accounts a WHERE a.user_id=u.id) AND NOT EXISTS(SELECT 1 FROM ldap_accounts l WHERE l.user_id=u.id)
              ORDER BY u.created_at LIMIT 1`,
             profile.email,
-          )?.id
+          ))?.id
         : undefined);
     if (!userId) {
       userId = id();
-      run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", userId, subject, profile.name, profile.email);
+      await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", userId, subject, profile.name, profile.email);
     }
-    run("DELETE FROM ldap_accounts WHERE user_id=?", userId);
-    run("INSERT INTO ldap_accounts(user_id,dn,username,created_at) VALUES(?,?,?,?)", userId, entry.dn, profile.username, now);
-    row = one<LdapAccount>("SELECT * FROM ldap_accounts WHERE user_id=?", userId)!;
+    await run("DELETE FROM ldap_accounts WHERE user_id=?", userId);
+    await run("INSERT INTO ldap_accounts(user_id,dn,username,created_at) VALUES(?,?,?,?)", userId, entry.dn, profile.username, now);
+    row = (await one<LdapAccount>("SELECT * FROM ldap_accounts WHERE user_id=?", userId))!;
   }
-  const user = one<{ disabled: number }>("SELECT disabled FROM users WHERE id=?", row.user_id);
+  const user = await one<{ disabled: number }>("SELECT disabled FROM users WHERE id=?", row.user_id);
   if (user?.disabled) {
     // Disabled by the sync because the directory had locked the person:
     // the directory lets them in again, so Flowplan does too.
     if (!row.locked) throw new HttpError(403, t("Dieses Konto ist deaktiviert.", "This account is disabled."));
-    setUserDisabled(row.user_id, false);
-    audit("", "ldap.enable", row.user_id, entry.dn);
+    await setUserDisabled(row.user_id, false);
+    await audit("", "ldap.enable", row.user_id, entry.dn);
   }
-  run("UPDATE ldap_accounts SET locked=0,username=? WHERE user_id=?", profile.username, row.user_id);
-  storeEntry(row.user_id, entry, groups, now);
+  await run("UPDATE ldap_accounts SET locked=0,username=? WHERE user_id=?", profile.username, row.user_id);
+  await storeEntry(row.user_id, entry, groups, now);
   return row.user_id;
 }
 
@@ -137,25 +137,25 @@ export async function ldapPasswordLogin(identifier: string, password: string, ad
   if (!config) throw new HttpError(403, t("Anmeldung mit Passwort ist ausgeschaltet.", "Password sign-in is turned off."));
   const name = identifier.trim();
   const keys = [...addressKey("ip", address), `ldap:${name.toLowerCase()}`];
-  if (limited(keys)) throw new HttpError(429, t("Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.", "Too many attempts. Please try again in 15 minutes."));
+  if (await limited(keys)) throw new HttpError(429, t("Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.", "Too many attempts. Please try again in 15 minutes."));
   await slowDown(keys);
-  const wrong = () => {
-    failed(keys);
+  const wrong = async () => {
+    await failed(keys);
     return new HttpError(401, t("E-Mail-Adresse oder Passwort stimmt nicht.", "E-mail address or password is wrong."));
   };
-  if (!name || !password) throw wrong();
+  if (!name || !password) throw (await wrong());
   let entry: LdapEntry;
   try {
     entry = await ldapAuthenticate(name, password, config);
   } catch (e) {
-    if (e instanceof LdapError && e.invalidCredentials) throw wrong();
+    if (e instanceof LdapError && e.invalidCredentials) throw (await wrong());
     console.error("LDAP sign-in failed", e instanceof Error ? e.message : e);
     throw new HttpError(503, t("Der Verzeichnisdienst (LDAP) ist gerade nicht erreichbar.", "The directory service (LDAP) cannot be reached right now."));
   }
   if (entryLocked(entry)) throw new HttpError(403, t("Dieses Konto ist deaktiviert.", "This account is disabled."));
   const groups = groupNames(entry, config.groupAttribute);
-  const userId = transaction(() => linkAccount(entry, name, groups, t));
-  clearFailures(`ldap:${name.toLowerCase()}`);
+  const userId = await transaction(async () => await linkAccount(entry, name, groups, t));
+  await clearFailures(`ldap:${name.toLowerCase()}`);
   return { userId, groups };
 }
 
@@ -163,13 +163,13 @@ export async function ldapPasswordLogin(identifier: string, password: string, ad
 export async function directoryPasswordLogin(input: unknown, address: string, locale: Locale) {
   if (!ldapConfigured()) return passwordLogin(input, address, locale);
   const { email, password } = z.object({ email: z.string().trim().max(256), password: z.string().max(200) }).parse(input);
-  if (localLoginEnabled() && one("SELECT 1 FROM local_accounts WHERE lower(email)=lower(?)", email)) return passwordLogin(input, address, locale);
+  if (localLoginEnabled() && await one("SELECT 1 FROM local_accounts WHERE lower(email)=lower(?)", email)) return passwordLogin(input, address, locale);
   return ldapPasswordLogin(email, password, address, locale);
 }
 
 // Confirms a change in the settings with the LDAP password.
 export async function verifyLdapPassword(userId: string, password: string) {
-  const row = one<{ dn: string }>("SELECT dn FROM ldap_accounts WHERE user_id=?", userId);
+  const row = await one<{ dn: string }>("SELECT dn FROM ldap_accounts WHERE user_id=?", userId);
   if (!row || !password) return false;
   try {
     return await ldapCheckPassword(row.dn, password);
@@ -189,7 +189,7 @@ export type LdapSyncResult = { at: number; ok: boolean; accounts: number; update
 export async function syncLdapAccounts(now = Date.now()): Promise<LdapSyncResult> {
   const config = ldapConfig();
   if (!config) return { at: now, ok: false, accounts: 0, updated: 0, disabled: 0, enabled: 0, error: "LDAP is not configured" };
-  const accounts = all<LdapAccount & { disabled: number }>(
+  const accounts = await all<LdapAccount & { disabled: number }>(
     "SELECT l.*,u.disabled FROM ldap_accounts l JOIN users u ON u.id=l.user_id ORDER BY l.created_at",
   );
   const result: LdapSyncResult = { at: now, ok: true, accounts: accounts.length, updated: 0, disabled: 0, enabled: 0 };
@@ -201,48 +201,48 @@ export async function syncLdapAccounts(now = Date.now()): Promise<LdapSyncResult
     });
     if (gone.length >= 5 && gone.length * 2 > accounts.length)
       throw new LdapError(`Sync stopped: ${gone.length} of ${accounts.length} accounts would be disabled`);
-    transaction(() => {
+    await transaction(async () => {
       for (const a of accounts) {
         const entry = entries.get(a.dn);
         if (!entry || entryLocked(entry)) {
           if (!a.disabled) {
-            setUserDisabled(a.user_id, true);
-            run("UPDATE ldap_accounts SET locked=1 WHERE user_id=?", a.user_id);
-            audit("", "ldap.disable", a.user_id, entry ? "locked" : "missing");
+            await setUserDisabled(a.user_id, true);
+            await run("UPDATE ldap_accounts SET locked=1 WHERE user_id=?", a.user_id);
+            await audit("", "ldap.disable", a.user_id, entry ? "locked" : "missing");
             result.disabled++;
           }
           continue;
         }
         if (a.disabled && a.locked) {
-          setUserDisabled(a.user_id, false);
-          run("UPDATE ldap_accounts SET locked=0 WHERE user_id=?", a.user_id);
-          audit("", "ldap.enable", a.user_id, a.dn);
+          await setUserDisabled(a.user_id, false);
+          await run("UPDATE ldap_accounts SET locked=0 WHERE user_id=?", a.user_id);
+          await audit("", "ldap.enable", a.user_id, a.dn);
           result.enabled++;
         }
         const groups = groupNames(entry, config.groupAttribute);
         if (JSON.stringify(groups) !== a.groups_json) result.updated++;
-        storeEntry(a.user_id, entry, groups, now);
+        await storeEntry(a.user_id, entry, groups, now);
         // Sessions of pure LDAP accounts carry the new groups (admin right).
-        if (one("SELECT 1 FROM users WHERE id=? AND subject LIKE 'ldap:%'", a.user_id))
-          run("UPDATE sessions SET groups_json=? WHERE user_id=? AND sso=1", JSON.stringify(groups), a.user_id);
-        reapplySsoUser(a.user_id);
+        if (await one("SELECT 1 FROM users WHERE id=? AND subject LIKE 'ldap:%'", a.user_id))
+          await run("UPDATE sessions SET groups_json=? WHERE user_id=? AND sso=1", JSON.stringify(groups), a.user_id);
+        await reapplySsoUser(a.user_id);
       }
     });
   } catch (e) {
     result.ok = false;
     result.error = e instanceof Error ? e.message : "LDAP error";
   }
-  status("ldap.sync", result);
+  await status("ldap.sync", result);
   return result;
 }
 
 export async function testLdapConnection() {
   const result = { ...(await ldapTest()), at: Date.now() };
-  status("ldap.test", result);
+  await status("ldap.test", result);
   return result;
 }
 
-export function ldapStatus() {
+export async function ldapStatus() {
   const config = ldapConfig();
   return {
     configured: !!config,
@@ -252,12 +252,12 @@ export function ldapStatus() {
     userFilter: config?.userFilter || "",
     groupAttribute: config?.groupAttribute || "",
     startTls: !!config?.startTls,
-    accounts: Number(one<{ n: number }>("SELECT COUNT(*) n FROM ldap_accounts")?.n || 0),
-    lastSync: readStatus<LdapSyncResult>("ldap.sync"),
-    lastTest: readStatus<{ ok: boolean; ms: number; error: string; at: number }>("ldap.test"),
+    accounts: Number((await one<{ n: number }>("SELECT COUNT(*) n FROM ldap_accounts"))?.n || 0),
+    lastSync: await readStatus<LdapSyncResult>("ldap.sync"),
+    lastTest: await readStatus<{ ok: boolean; ms: number; error: string; at: number }>("ldap.test"),
   };
 }
-export type LdapStatus = ReturnType<typeof ldapStatus>;
+export type LdapStatus = Awaited<ReturnType<typeof ldapStatus>>;
 
 const runtime = globalThis as unknown as { flowplanLdapTimer?: ReturnType<typeof setInterval> };
 export function startLdapSyncWorker() {

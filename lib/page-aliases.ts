@@ -19,10 +19,10 @@ export function parseAliases(input: unknown): string[] {
 }
 
 // Command "page.aliases": { pageId, aliases }. Needs editor rights.
-export function setPageAliases(user: Identity, input: unknown) {
+export async function setPageAliases(user: Identity, input: unknown) {
   const b = z.object({ pageId: z.string().uuid(), aliases: z.unknown() }).parse(input);
-  const page = requirePage(user, b.pageId, true);
+  const page = await requirePage(user, b.pageId, true);
   const aliases = parseAliases(b.aliases);
-  run("UPDATE pages SET aliases=? WHERE id=?", storedAliases(aliases), page.id);
+  await run("UPDATE pages SET aliases=? WHERE id=?", storedAliases(aliases), page.id);
   return { ok: true, aliases };
 }

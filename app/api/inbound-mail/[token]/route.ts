@@ -41,14 +41,14 @@ async function limitedBody(req: Request) {
 export async function POST(req: Request, { params }: { params: Promise<{ token: string }> }) {
   try {
     // Not during an instance move (lib/instance-read-only.ts): the sender retries.
-    refuseWhileReadOnly(req);
+    await refuseWhileReadOnly(req);
     const { token } = await params;
-    const address = inboundAddressByToken(token);
+    const address = await inboundAddressByToken(token);
     if (!address) throw new HttpError(404, "E-Mail-Eingang nicht gefunden.");
     const body = await limitedBody(req);
     const payload = await parseInboundPayload(req.headers.get("content-type") || "", body);
-    verifyInboundSignature(address, body, req.headers.get("x-flowplan-signature"), payload.signature);
-    const result = receiveInboundMail(token, payload.mail);
+    await verifyInboundSignature(address, body, req.headers.get("x-flowplan-signature"), payload.signature);
+    const result = await receiveInboundMail(token, payload.mail);
     return NextResponse.json({ ok: true, provider: payload.provider, ...result });
   } catch (e) {
     if (!(e instanceof HttpError) && !(e instanceof z.ZodError)) console.error(e);

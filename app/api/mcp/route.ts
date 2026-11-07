@@ -64,7 +64,7 @@ async function handlePOST(req: Request) {
   if (origin && origin !== new URL(appUrl()).origin) return rpcError(403, -32000, "Origin not allowed.");
   // Blocked addresses (Administration → Sicherheit) count as signed out, as
   // on every other route.
-  const user = blockedRequest(req.headers) ? null : await identityFromApiToken(req.headers.get("authorization"));
+  const user = (await blockedRequest(req.headers)) ? null : await identityFromApiToken(req.headers.get("authorization"));
   if (!user || user.demo)
     return rpcError(401, -32001, "A personal Flowplan API token is required (Authorization: Bearer fp_…).", {
       "WWW-Authenticate": 'Bearer realm="flowplan"',
@@ -84,7 +84,7 @@ async function handlePOST(req: Request) {
   if (Array.isArray(input)) return rpcError(400, -32600, "Batch requests are not supported.");
   try {
     // Write tools not while the instance moves (423, like /api/command).
-    if (mcpChanges(input)) refuseWhileReadOnly(req);
+    if (mcpChanges(input)) await refuseWhileReadOnly(req);
     const answer = await handleMcpMessage(user, input);
     after(dispatchPush);
     return answer ? reply(200, answer) : reply(202);

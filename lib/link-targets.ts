@@ -25,34 +25,34 @@ export function parseTargetKey(key: string): { pageId: string; rowId?: string } 
   return rowId ? { pageId, rowId } : { pageId };
 }
 
-export function linkTargets(user: Identity, keys: readonly string[]): Record<string, LinkTargetInfo> {
+export async function linkTargets(user: Identity, keys: readonly string[]): Promise<Record<string, LinkTargetInfo>> {
   const out: Record<string, LinkTargetInfo> = {};
   const pages = new Map<string, Page | null>();
-  const resolvers = new Map<string, ReturnType<typeof rowRoleResolver>>();
-  const readable = (pageId: string) => {
+  const resolvers = new Map<string, Awaited<ReturnType<typeof rowRoleResolver>>>();
+  const readable = async (pageId: string) => {
     if (!pages.has(pageId)) {
-      const page = one<Page>("SELECT * FROM pages WHERE id=?", pageId) || null;
-      pages.set(pageId, page && !page.deleted_at && !page.synced && pageRole(user, page) && !journalLocked(user, page) ? page : null);
+      const page = await one<Page>("SELECT * FROM pages WHERE id=?", pageId) || null;
+      pages.set(pageId, page && !page.deleted_at && !page.synced && await pageRole(user, page) && !(await journalLocked(user, page)) ? page : null);
     }
     return pages.get(pageId) || null;
   };
   for (const key of [...new Set(keys)].slice(0, LINK_TARGETS_LIMIT)) {
     const target = parseTargetKey(key);
     if (!target) continue;
-    const page = readable(target.pageId);
+    const page = await readable(target.pageId);
     if (!page) continue;
     if (!target.rowId) {
       out[key] = { icon: page.icon || "", kind: page.kind };
       continue;
     }
     if (page.kind !== "database") continue;
-    const row = all<{ id: string; access: string; created_by: string; icon: string | null }>(
+    const row = (await all<{ id: string; access: string; created_by: string; icon: string | null }>(
       "SELECT id,access,created_by,icon FROM rows WHERE id=? AND page_id=?",
       target.rowId,
       page.id,
-    )[0];
+    ))[0];
     if (!row) continue;
-    if (!resolvers.has(page.id)) resolvers.set(page.id, rowRoleResolver(user, page));
+    if (!resolvers.has(page.id)) resolvers.set(page.id, await rowRoleResolver(user, page));
     if (!resolvers.get(page.id)!(row)) continue;
     out[key] = { icon: row.icon || "", kind: "record" };
   }

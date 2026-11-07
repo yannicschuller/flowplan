@@ -21,17 +21,18 @@ import { fixedLanguage, userLocale } from "./user-locale";
 import { gitConfig, syncGit, type GitRun } from "./git-export";
 import { encryptionEnabled, seal } from "./encryption";
 import type { Identity, Page, User } from "./types";
+import { filterAsync, mapAsync } from "./each-async";
 
 const dataDir = () => resolve(process.env.FLOWPLAN_DATA_DIR || "./data");
 type Config = { userId: string; pageIds: string[] };
 export type ExportRun = { pageId: string; name: string; at: number; bytes: number; error: string | null };
 
-function state<T>(key: string): T | null {
-  const row = one<{ value: string }>("SELECT value FROM instance_state WHERE key=?", key);
+async function state<T>(key: string): Promise<T | null> {
+  const row = await one<{ value: string }>("SELECT value FROM instance_state WHERE key=?", key);
   return row ? (JSON.parse(row.value) as T) : null;
 }
-function store(key: string, value: unknown) {
-  run(
+async function store(key: string, value: unknown) {
+  await run(
     "INSERT INTO instance_state(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
     key,
     JSON.stringify(value),
@@ -39,31 +40,31 @@ function store(key: string, value: unknown) {
 }
 
 // The administrator who saves the choice is the one the export reads as.
-export function setMarkdownExport(admin: Identity, input: unknown) {
+export async function setMarkdownExport(admin: Identity, input: unknown) {
   if (!admin.isAdmin) throw new HttpError(403, "Administrator-Gruppe erforderlich.");
   if (admin.apiScope) throw new HttpError(403, "Mit einem API-Token nicht möglich.");
   // Pages that were deleted since the choice was made drop out silently
   // (a page restored later has to be chosen again); the rest still has to
   // be readable by the administrator.
-  const pageIds = [...new Set(z.array(z.uuid()).max(50).parse(input))].filter((pageId) =>
-    one("SELECT 1 FROM pages WHERE id=? AND deleted_at IS NULL", pageId),
+  const pageIds = await filterAsync([...new Set(z.array(z.uuid()).max(50).parse(input))], async (pageId) =>
+    await one("SELECT 1 FROM pages WHERE id=? AND deleted_at IS NULL", pageId),
   );
-  for (const pageId of pageIds) requirePage(admin, pageId);
-  if (pageIds.length) store("markdownExport", { userId: admin.id, pageIds } satisfies Config);
-  else run("DELETE FROM instance_state WHERE key='markdownExport'");
-  return markdownExportStatus();
+  for (const pageId of pageIds) await requirePage(admin, pageId);
+  if (pageIds.length) await store("markdownExport", { userId: admin.id, pageIds } satisfies Config);
+  else await run("DELETE FROM instance_state WHERE key='markdownExport'");
+  return await markdownExportStatus();
 }
 
 // Pages the administrator may choose: everything they may read.
-export function exportablePages(admin: Identity) {
-  const workspaces = all<{ id: string; name: string }>("SELECT id,name FROM workspaces");
+export async function exportablePages(admin: Identity) {
+  const workspaces = await all<{ id: string; name: string }>("SELECT id,name FROM workspaces");
   const result: { id: string; title: string; kind: string; workspace: string; parent: string }[] = [];
   for (const workspace of workspaces) {
-    const locked = lockedPageIds(admin, workspace.id);
-    const pages = all<Page>(
+    const locked = await lockedPageIds(admin, workspace.id);
+    const pages = await filterAsync(await all<Page>(
       "SELECT * FROM pages WHERE workspace_id=? AND deleted_at IS NULL AND synced=0 AND journal_date IS NULL ORDER BY position",
       workspace.id,
-    ).filter((page) => !locked.has(page.id) && pageRole(admin, page));
+    ), async (page) => !locked.has(page.id) && await pageRole(admin, page));
     const titles = new Map(pages.map((p) => [p.id, p.title]));
     for (const page of pages)
       if (["document", "database", "journal"].includes(page.kind))
@@ -73,22 +74,22 @@ export function exportablePages(admin: Identity) {
   return result;
 }
 
-export function markdownExportStatus() {
-  const config = state<Config>("markdownExport");
-  const owner = config ? one<{ name: string }>("SELECT name FROM users WHERE id=?", config.userId) : null;
+export async function markdownExportStatus() {
+  const config = await state<Config>("markdownExport");
+  const owner = config ? (await one<{ name: string }>("SELECT name FROM users WHERE id=?", config.userId)) : null;
   const titles = new Map(
-    (config?.pageIds || []).map((pid) => [pid, one<{ title: string }>("SELECT title FROM pages WHERE id=? AND deleted_at IS NULL", pid)?.title ?? null]),
+    await mapAsync((config?.pageIds || []), async (pid) => [pid, (await one<{ title: string }>("SELECT title FROM pages WHERE id=? AND deleted_at IS NULL", pid))?.title ?? null]),
   );
   return {
     pages: (config?.pageIds || []).map((pid) => ({ id: pid, title: titles.get(pid) })),
     owner: owner?.name || null,
-    runs: state<ExportRun[]>("markdownExportRuns") || [],
-    git: gitStatus(),
+    runs: await state<ExportRun[]>("markdownExportRuns") || [],
+    git: await gitStatus(),
   };
 }
 
-function gitStatus() {
-  let config: ReturnType<typeof gitConfig> = null;
+async function gitStatus() {
+  let config: Awaited<ReturnType<typeof gitConfig>> = null;
   let problem = "";
   try {
     config = gitConfig();
@@ -101,13 +102,13 @@ function gitStatus() {
     branch: config?.branch || null,
     importChanges: !!config?.importChanges,
     problem: problem || (config && !config.token ? "EXPORT_GIT_TOKEN fehlt." : null),
-    last: state<GitRun>("gitExportRun"),
+    last: await state<GitRun>("gitExportRun"),
   };
 }
 // The stored administrator as they would be signed in, without SSO groups:
 // reading pages depends on memberships and grants, not on groups.
-function exporter(userId: string): Identity | null {
-  const user = one<User>("SELECT * FROM users WHERE id=? AND disabled=0", userId);
+async function exporter(userId: string): Promise<Identity | null> {
+  const user = await one<User>("SELECT * FROM users WHERE id=? AND disabled=0", userId);
   return user ? { ...user, groups: [], isAdmin: false } : null;
 }
 
@@ -117,25 +118,25 @@ async function listBucket(prefix: string) {
   return [...(await response.text()).matchAll(/<Key>([^<]+)<\/Key>/g)].map((m) => m[1]);
 }
 
-export function lastMarkdownExport() {
-  return state<ExportRun[]>("markdownExportRuns")?.[0]?.at ?? null;
+export async function lastMarkdownExport() {
+  return (await state<ExportRun[]>("markdownExportRuns"))?.[0]?.at ?? null;
 }
 const zipName = (name: string) => name.endsWith(".zip") || name.endsWith(".zip.enc");
 
 export async function runMarkdownExports(now = Date.now()): Promise<ExportRun[]> {
-  const config = state<Config>("markdownExport");
+  const config = await state<Config>("markdownExport");
   if (!config?.pageIds.length) return [];
-  const keep = Math.max(1, instanceSettings().backupKeep ?? 7);
-  const user = exporter(config.userId);
+  const keep = Math.max(1, (await instanceSettings()).backupKeep ?? 7);
+  const user = await exporter(config.userId);
   // README, labels, comment and version files in the language of the
   // administrator who set the export up (German if never known).
-  const locale = fixedLanguage(config.userId) ?? userLocale(config.userId);
+  const locale = await fixedLanguage(config.userId) ?? await userLocale(config.userId);
   const stamp = new Date(now).toISOString().slice(0, 16).replace(/[:T]/g, "-");
   const storage = storageConfig();
   const runs: ExportRun[] = [];
   const done: { pageId: string; folder: string; bytes: Buffer }[] = [];
   for (const pageId of config.pageIds) {
-    const title = one<{ title: string }>("SELECT title FROM pages WHERE id=?", pageId)?.title || pageId;
+    const title = (await one<{ title: string }>("SELECT title FROM pages WHERE id=?", pageId))?.title || pageId;
     // Stable per page (the id), readable (the title), sortable (the date).
     const base = exportFolder({ id: pageId, title });
     let name = `${base}-${stamp}.zip`;
@@ -170,14 +171,14 @@ export async function runMarkdownExports(now = Date.now()): Promise<ExportRun[]>
       runs.push({ pageId, name, at: now, bytes: 0, error: String((error as Error).message || error).slice(0, 300) });
     }
   }
-  store("markdownExportRuns", runs);
+  await store("markdownExportRuns", runs);
   // Into the Git repository, when one is configured (lib/git-export.ts).
-  let config_: ReturnType<typeof gitConfig> = null;
+  let config_: Awaited<ReturnType<typeof gitConfig>> = null;
   try {
     config_ = gitConfig();
   } catch (error) {
-    store("gitExportRun", { at: now, commit: null, pushed: false, imported: 0, error: (error as Error).message } satisfies GitRun);
+    await store("gitExportRun", { at: now, commit: null, pushed: false, imported: 0, error: (error as Error).message } satisfies GitRun);
   }
-  if (config_ && user && done.length) store("gitExportRun", await syncGit(user, done, state<GitRun>("gitExportRun")));
+  if (config_ && user && done.length) await store("gitExportRun", await syncGit(user, done, await state<GitRun>("gitExportRun")));
   return runs;
 }

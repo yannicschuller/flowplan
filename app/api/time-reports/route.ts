@@ -25,8 +25,8 @@ export const GET = withRequestLocale(async (req: Request) => {
     const query = Object.fromEntries([...url.searchParams].filter(([, v]) => v !== ""));
     const format = z.enum(["json", "csv", "excel"]).default("json").parse(query.format);
     delete query.format;
-    if (format === "json") return Response.json(timeReportData(user, query), { headers: { "Cache-Control": "no-store" } });
-    const file = timeReportCsv(user, query, format);
+    if (format === "json") return Response.json(await timeReportData(user, query), { headers: { "Cache-Control": "no-store" } });
+    const file = await timeReportCsv(user, query, format);
     return new Response(file.body, {
       headers: {
         "Content-Type": "text/csv; charset=utf-8",
@@ -42,14 +42,14 @@ export const GET = withRequestLocale(async (req: Request) => {
 export const POST = withRequestLocale(
   withIdempotency(async (req: Request) => {
     try {
-      checkOrigin(req);
+      await checkOrigin(req);
       if (Number(req.headers.get("content-length") || 0) > 1_000_000) throw new HttpError(413, "Anfrage zu groß.");
       const user = await requireUser();
       if (user.apiScope === "read") throw new HttpError(403, "Dieses API-Token darf nur lesen.");
       const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
-      if (body.action === "billing") return Response.json(setBilling(user, body));
-      if (body.action === "rate") return Response.json({ rates: setRate(user, body) });
-      if (body.action === "currency") return Response.json(setCurrency(user, body));
+      if (body.action === "billing") return Response.json(await setBilling(user, body));
+      if (body.action === "rate") return Response.json({ rates: await setRate(user, body) });
+      if (body.action === "currency") return Response.json(await setCurrency(user, body));
       throw new HttpError(400, "Unbekannte Aktion.");
     } catch (e) {
       return failure(e);

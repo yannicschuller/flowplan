@@ -8,10 +8,10 @@ export const runtime = "nodejs";
 // The key is created on first use, never at build time.
 export const dynamic = "force-dynamic";
 
-export function GET() {
+export async function GET() {
   if (!relayConfig().enabled)
     return Response.json({ error: "Not found" }, { status: 404, headers: { "Cache-Control": "no-store" } });
-  return Response.json(pushIdentityDocument(), {
+  return Response.json(await pushIdentityDocument(), {
     headers: {
       "Cache-Control": "public, max-age=3600",
       "X-Content-Type-Options": "nosniff",

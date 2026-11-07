@@ -81,28 +81,28 @@ function cellWords(value: unknown): string {
   return value === true ? "" : String(value);
 }
 
-function indexPage(pageId: string) {
-  removeEntry(pageId, "");
-  const page = one<{ title: string; aliases: string | null; html: string | null; deleted_at: string; kind: string }>(
+async function indexPage(pageId: string) {
+  await removeEntry(pageId, "");
+  const page = await one<{ title: string; aliases: string | null; html: string | null; deleted_at: string; kind: string }>(
     "SELECT p.title,p.aliases,p.deleted_at,p.kind,d.html FROM pages p LEFT JOIN documents d ON d.page_id=p.id WHERE p.id=?",
     pageId,
   );
   if (!page || page.deleted_at) return;
   // End-to-end encrypted pages stay out of the index (lib/e2ee-server.ts).
-  if (isEncryptedPage(one<{ space_id: string }>("SELECT space_id FROM pages WHERE id=?", pageId))) return;
-  addEntry(
+  if (await isEncryptedPage(await one<{ space_id: string }>("SELECT space_id FROM pages WHERE id=?", pageId))) return;
+  await addEntry(
     pageId,
     "",
     titleColumn(page.title, pageAliases(page)),
     // Handwriting: typed text and what the device recognised (notebook
     // sheets, drawing blocks still in the document).
     // Tags and property values (#70) as words of the page.
-    [documentText(page.html || ""), pageInkSearchText(pageId, page.kind, page.html || ""), pageMetaSearchText(pageId)].filter(Boolean).join("\n").slice(0, 400000),
+    [documentText(page.html || ""), await pageInkSearchText(pageId, page.kind, page.html || ""), await pageMetaSearchText(pageId)].filter(Boolean).join("\n").slice(0, 400000),
   );
 }
-function indexRow(pageId: string, rowId: string, fields: Field[]) {
-  removeEntry(pageId, rowId);
-  const row = one<{ cells: string; content: string; html: string | null; number: number | null }>(
+async function indexRow(pageId: string, rowId: string, fields: Field[]) {
+  await removeEntry(pageId, rowId);
+  const row = await one<{ cells: string; content: string; html: string | null; number: number | null }>(
     "SELECT r.cells,r.content,r.number,d.html FROM rows r LEFT JOIN row_documents d ON d.row_id=r.id WHERE r.id=? AND r.page_id=?",
     rowId,
     pageId,
@@ -120,7 +120,7 @@ function indexRow(pageId: string, rowId: string, fields: Field[]) {
     .map((f) => (f.type === "id" ? ticketId(f, row.number) : isFormattedText(f, fields) ? toPlain(cells[f.id]) : cellWords(cells[f.id])))
     .filter(Boolean);
   const content = row.html ?? row.content ?? "";
-  addEntry(
+  await addEntry(
     pageId,
     rowId,
     titleColumn(title || "Ohne Titel", recordAliases(fields, cells)),
@@ -132,88 +132,88 @@ function indexRow(pageId: string, rowId: string, fields: Field[]) {
 
 // Comments, text comment messages and attachments are indexed under
 // prefixed keys (c:, m:, f:) next to pages and records.
-function indexExtra(pageId: string, key: string) {
-  removeEntry(pageId, key);
-  if (isEncryptedPage(one<{ space_id: string }>("SELECT space_id FROM pages WHERE id=?", pageId))) return;
+async function indexExtra(pageId: string, key: string) {
+  await removeEntry(pageId, key);
+  if (await isEncryptedPage(await one<{ space_id: string }>("SELECT space_id FROM pages WHERE id=?", pageId))) return;
   const [prefix, id] = [key.slice(0, 1), key.slice(2)];
   const entry =
     prefix === "c"
-      ? one<{ title: string; body: string }>(
+      ? (await one<{ title: string; body: string }>(
           "SELECT 'Kommentar von '||COALESCE(u.name,'Unbekannt') title,c.body FROM comments c LEFT JOIN users u ON u.id=c.author_id WHERE c.id=? AND c.page_id=?",
           id,
           pageId,
-        )
+        ))
       : prefix === "m"
-        ? one<{ title: string; body: string }>(
+        ? (await one<{ title: string; body: string }>(
             "SELECT 'Textkommentar von '||m.author_name title,m.body FROM inline_messages m JOIN inline_threads t ON t.id=m.thread_id WHERE m.id=? AND t.page_id=? AND m.deleted=0",
             id,
             pageId,
-          )
-        : one<{ title: string; body: string }>(
+          ))
+        : (await one<{ title: string; body: string }>(
             "SELECT f.name title,f.name||' '||f.mime||COALESCE('\n'||t.text,'')||COALESCE('\n'||NULLIF(i.text,''),'') body FROM files f LEFT JOIN file_texts t ON t.file_id=f.id LEFT JOIN file_ink i ON i.file_id=f.id WHERE f.id=? AND f.page_id=?",
             id,
             pageId,
-          );
+          ));
   if (!entry) return;
   // Handwriting on a PDF the device recognised (JSON: page → text).
   const recognized =
-    prefix === "f" ? Object.values(parseRecognizedMap(one<{ recognized: string }>("SELECT recognized FROM file_ink WHERE file_id=?", id)?.recognized)).join("\n") : "";
-  addEntry(
+    prefix === "f" ? Object.values(parseRecognizedMap((await one<{ recognized: string }>("SELECT recognized FROM file_ink WHERE file_id=?", id))?.recognized)).join("\n") : "";
+  await addEntry(
     pageId,
     key,
     entry.title.slice(0, 300),
     (recognized ? `${entry.body}\n${recognized}` : entry.body).slice(0, 100000),
   );
 }
-export function ensureSearchIndex() {
-  if (!one("SELECT 1 FROM search_meta WHERE key='extras'")) {
-    transaction(() => {
-      run(
+export async function ensureSearchIndex() {
+  if (!(await one("SELECT 1 FROM search_meta WHERE key='extras'"))) {
+    await transaction(async () => {
+      await run(
         "INSERT INTO search_dirty SELECT page_id,'c:'||id FROM comments WHERE true ON CONFLICT DO NOTHING",
       );
-      run(
+      await run(
         "INSERT INTO search_dirty SELECT t.page_id,'m:'||m.id FROM inline_messages m JOIN inline_threads t ON t.id=m.thread_id WHERE true ON CONFLICT DO NOTHING",
       );
-      run(
+      await run(
         "INSERT INTO search_dirty SELECT page_id,'f:'||id FROM files WHERE page_id IS NOT NULL ON CONFLICT DO NOTHING",
       );
-      run("INSERT INTO search_meta(key) VALUES('extras')");
+      await run("INSERT INTO search_meta(key) VALUES('extras')");
     });
   }
-  if (!one("SELECT 1 FROM search_state WHERE id=1")) {
-    transaction(() => {
-      clearIndex();
-      run("INSERT INTO search_dirty SELECT id,'' FROM pages WHERE true ON CONFLICT DO NOTHING");
-      run("INSERT INTO search_dirty SELECT page_id,id FROM rows WHERE true ON CONFLICT DO NOTHING");
-      run("INSERT INTO search_state(id,built) VALUES(1,?)", Date.now());
+  if (!(await one("SELECT 1 FROM search_state WHERE id=1"))) {
+    await transaction(async () => {
+      await clearIndex();
+      await run("INSERT INTO search_dirty SELECT id,'' FROM pages WHERE true ON CONFLICT DO NOTHING");
+      await run("INSERT INTO search_dirty SELECT page_id,id FROM rows WHERE true ON CONFLICT DO NOTHING");
+      await run("INSERT INTO search_state(id,built) VALUES(1,?)", Date.now());
     });
   }
 }
 // Returns the number of processed entries; call repeatedly until 0.
-export function processSearchIndex(limit = BATCH) {
-  ensureSearchIndex();
-  const dirty = all<{ page_id: string; row_id: string }>(
+export async function processSearchIndex(limit = BATCH) {
+  await ensureSearchIndex();
+  const dirty = await all<{ page_id: string; row_id: string }>(
     "SELECT page_id,row_id FROM search_dirty LIMIT ?",
     limit,
   );
   if (!dirty.length) return 0;
   const fields = new Map<string, Field[]>();
-  transaction(() => {
+  await transaction(async () => {
     for (const entry of dirty) {
-      if (!entry.row_id) indexPage(entry.page_id);
+      if (!entry.row_id) await indexPage(entry.page_id);
       else if (/^[cmf]:/.test(entry.row_id))
-        indexExtra(entry.page_id, entry.row_id);
+        await indexExtra(entry.page_id, entry.row_id);
       else {
         if (!fields.has(entry.page_id)) {
-          const stored = one<{ fields: string }>(
+          const stored = await one<{ fields: string }>(
             "SELECT fields FROM databases WHERE page_id=?",
             entry.page_id,
           );
           fields.set(entry.page_id, stored ? JSON.parse(stored.fields) : []);
         }
-        indexRow(entry.page_id, entry.row_id, fields.get(entry.page_id)!);
+        await indexRow(entry.page_id, entry.row_id, fields.get(entry.page_id)!);
       }
-      run(
+      await run(
         "DELETE FROM search_dirty WHERE page_id=? AND row_id=?",
         entry.page_id,
         entry.row_id,
@@ -233,31 +233,31 @@ const SHORT_TERMS = 4;
 // BM25; shorter ones (two-character Chinese, Japanese, Korean or Thai
 // words, which MATCH cannot find) through a scan like the short search
 // above, ranked by how many of them occur (in the title or the text), and follow the index's hits.
-export function termMatches(
+export async function termMatches(
   workspaceId: string,
   terms: string[],
   options: { spaceId?: string; limit: number },
-): { page_id: string; row_id: string }[] {
+): Promise<{ page_id: string; row_id: string }[]> {
   const scope = `p.workspace_id=? AND p.deleted_at IS NULL${options.spaceId ? " AND p.space_id=?" : ""}`;
   const scopeArgs = [workspaceId, ...(options.spaceId ? [options.spaceId] : [])];
   const long = terms.filter((t) => !isShortTerm(t)),
     short = terms.filter(isShortTerm).slice(0, SHORT_TERMS);
   const match = textMatch(long);
   const rows = long.length
-    ? all<{ page_id: string; row_id: string }>(
+    ? (await all<{ page_id: string; row_id: string }>(
         `SELECT s.page_id,s.row_id FROM search_index s JOIN pages p ON p.id=s.page_id
          WHERE ${match.where} AND ${scope}
          ORDER BY ${match.rank} LIMIT ${options.limit}`,
         ...match.whereArgs,
         ...scopeArgs,
         ...match.rankArgs,
-      )
+      ))
     : [];
   if (short.length && rows.length < options.limit) {
     const seen = new Set(rows.map((r) => `${r.page_id}:${r.row_id}`));
     // A term in the title counts twice, as in BM25 above.
     const hits = short.map(() => `(CASE WHEN ${sql.instr("s.title", "?")}>0 THEN 2 ELSE 0 END)+(CASE WHEN ${sql.instr("s.body", "?")}>0 THEN 1 ELSE 0 END)`).join("+");
-    for (const r of all<{ page_id: string; row_id: string }>(
+    for (const r of await all<{ page_id: string; row_id: string }>(
       `SELECT page_id,row_id FROM (SELECT s.page_id,s.row_id,${hits} n,p.updated_at FROM search_index s JOIN pages p ON p.id=s.page_id WHERE ${scope})
        WHERE n>0 ORDER BY n DESC,updated_at DESC LIMIT ${options.limit}`,
       ...short.flatMap((t) => [t, t]),
@@ -290,39 +290,39 @@ export type SearchResult = {
 export const MARK_START = "\u0002",
   MARK_END = "\u0003";
 
-export function searchWorkspace(
+export async function searchWorkspace(
   user: Identity,
   workspaceId: string,
   rawQuery: string,
   // excludeDays: "Ohne Journaltage" – no hits on journal days at all.
   options: { kind?: SearchKind; spaceId?: string; excludeDays?: boolean; timeZone?: string } = {},
-): SearchResult[] {
+): Promise<SearchResult[]> {
   // Keep the index current for this request; a large backlog is also
   // drained by the background worker.
-  refreshSearchIndex();
+  await refreshSearchIndex();
   // OR, NOT, parentheses, created_by:, created:, type:, in:, title: (#86,
   // lib/collection-query.ts): the pages and records that match, as a
   // collection finds them, latest change first. Queries the search knew
   // before keep their ranking and snippets below.
   const parsed = parseQuery(rawQuery.slice(0, 1000));
-  if (!isClassicQuery(parsed.node)) return queryResults(user, workspaceId, parsed.node, options);
+  if (!isClassicQuery(parsed.node)) return await queryResults(user, workspaceId, parsed.node, options);
   // `#tag`, `-#tag` and `name:value` keep the pages with these tags and
   // values (lib/page-properties.ts); the rest is searched as text.
   // A #name names the tags of that name the person may know, one per
   // space (#136).
-  const visibleScope = visibleScopes(user, workspaceId);
+  const visibleScope = await visibleScopes(user, workspaceId);
   const tokens = parseSearchTokens(rawQuery.replace(/[\u0000-\u001f]/g, " ").slice(0, 400), {
-    tags: workspaceTags(workspaceId).filter((t) => visibleScope(t.spaceId)),
-    properties: workspaceProperties(workspaceId).filter((p) => visibleScope(p.spaceId)),
+    tags: (await workspaceTags(workspaceId)).filter((t) => visibleScope(t.spaceId)),
+    properties: (await workspaceProperties(workspaceId)).filter((p) => visibleScope(p.spaceId)),
   });
-  const only = filteredPageIds(user, workspaceId, tokens);
+  const only = await filteredPageIds(user, workspaceId, tokens);
   // Records carry the tags of their tag-backed properties (#79) and those
   // of their database: #tag finds them, -#tag leaves them out.
-  const records = tokens.tags.length ? taggedRecords(user, workspaceId) : [];
+  const records = tokens.tags.length ? (await taggedRecords(user, workspaceId)) : [];
   const recordTags = new Map(records.map((r) => [`${r.pageId}:${r.rowId}`, r.tags]));
   const pageTags = new Map<string, Set<string>>();
   if (tokens.tags.length)
-    for (const link of all<{ page_id: string; tag_id: string }>(
+    for (const link of await all<{ page_id: string; tag_id: string }>(
       "SELECT l.page_id,l.tag_id FROM page_tag_links l JOIN page_tags t ON t.id=l.tag_id WHERE t.workspace_id=?",
       workspaceId,
     ))
@@ -341,10 +341,10 @@ export function searchWorkspace(
   const kind = options.kind || "all";
   const roles = new Map<string, boolean>();
   // Journals behind a PIN stay out of the results until unlocked.
-  const locked = lockedPageIds(user, workspaceId);
-  const allowed = (page: Page) => {
+  const locked = await lockedPageIds(user, workspaceId);
+  const allowed = async (page: Page) => {
     if (!roles.has(page.id))
-      roles.set(page.id, !locked.has(page.id) && !!pageRole(user, page));
+      roles.set(page.id, !locked.has(page.id) && !!(await pageRole(user, page)));
     return roles.get(page.id)!;
   };
   const hitKind = (page: Page, key: string) =>
@@ -360,17 +360,17 @@ export function searchWorkspace(
   const matchesKind = (page: Page, key: string) =>
     kind === "all" || hitKind(page, key) === kind;
   // Comments on records open the record.
-  const recordOf = (key: string) =>
+  const recordOf = async (key: string) =>
     key.startsWith("c:")
-      ? one<{ row_id: string | null }>(
+      ? (await one<{ row_id: string | null }>(
           "SELECT row_id FROM comments WHERE id=?",
           key.slice(2),
-        )?.row_id || undefined
+        ))?.row_id || undefined
       : key.startsWith("m:")
-        ? one<{ row_id: string | null }>(
+        ? (await one<{ row_id: string | null }>(
             "SELECT t.row_id FROM inline_messages m JOIN inline_threads t ON t.id=m.thread_id WHERE m.id=?",
             key.slice(2),
-          )?.row_id || undefined
+          ))?.row_id || undefined
         : key.startsWith("f:")
           ? undefined
           : key || undefined;
@@ -381,21 +381,21 @@ export function searchWorkspace(
   const finish = () => [...results, ...days].slice(0, SEARCH_LIMIT);
   const hidden = new Map<string, Set<string>>(),
     hiddenFiles = new Map<string, Set<string>>();
-  const push = (hit: Page, key: string, column: string, snippet: string) => {
+  const push = async (hit: Page, key: string, column: string, snippet: string) => {
     let page = hit;
     let { title, aliases } = splitTitle(column);
     if (!key) aliases = pageAliases(hit);
     // Text of a synced block leads to the page it was created on.
     if (page.synced) {
       const origin = page.parent_id
-        ? one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", page.parent_id)
+        ? (await one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", page.parent_id))
         : undefined;
-      if (!origin || !allowed(origin) || results.some((r) => r.id === origin.id && !r.rowId)) return;
+      if (!origin || !(await allowed(origin)) || results.some((r) => r.id === origin.id && !r.rowId)) return;
       page = origin;
       title = origin.title;
       aliases = [];
     }
-    const rowId = recordOf(key),
+    const rowId = await recordOf(key),
       type = hitKind(page, key);
     // With tag or property tokens: pages (and their comments and files)
     // that pass, records whose own or database tags pass.
@@ -403,11 +403,11 @@ export function searchWorkspace(
     // Records hidden by their own permissions do not appear, nor files
     // used only by them.
     if (rowId && page.kind === "database") {
-      if (!hidden.has(page.id)) hidden.set(page.id, hiddenRowIds(user, page));
+      if (!hidden.has(page.id)) hidden.set(page.id, await hiddenRowIds(user, page));
       if (hidden.get(page.id)!.has(rowId)) return;
     }
     if (key.startsWith("f:") && page.kind === "database") {
-      if (!hiddenFiles.has(page.id)) hiddenFiles.set(page.id, hiddenFileIds(user, page));
+      if (!hiddenFiles.has(page.id)) hiddenFiles.set(page.id, await hiddenFileIds(user, page));
       if (hiddenFiles.get(page.id)!.has(key.slice(2))) return;
     }
     const alias = matchedAlias(key ? title : page.title, aliases, query);
@@ -420,7 +420,7 @@ export function searchWorkspace(
       ...(key ? { pageTitle: page.title } : {}),
       title: key ? title : page.title,
       // Records their own icon (#96); empty: the client's record symbol.
-      icon: type === "row" && rowId ? one<{ icon: string | null }>("SELECT icon FROM rows WHERE id=?", rowId)?.icon || "" : page.icon,
+      icon: type === "row" && rowId ? (await one<{ icon: string | null }>("SELECT icon FROM rows WHERE id=?", rowId))?.icon || "" : page.icon,
       space_id: page.space_id,
       kind: type,
       snippet,
@@ -435,12 +435,12 @@ export function searchWorkspace(
   const scopeArgs = [workspaceId, ...(options.spaceId ? [options.spaceId] : []), ...(scoped ? [JSON.stringify([...scoped])] : [])];
   if (!query) {
     if (!["all", "document", "database", ...(only ? ["whiteboard", "row"] : [])].includes(kind)) return [];
-    for (const page of all<Page>(
+    for (const page of await all<Page>(
       `SELECT p.* FROM pages p WHERE ${scope} ORDER BY p.updated_at DESC LIMIT 500`,
       ...scopeArgs,
     )) {
-      if (page.synced || !allowed(page) || !matchesKind(page, "") || (only && !only.has(page.id))) continue;
-      push(page, "", page.title, "");
+      if (page.synced || !(await allowed(page)) || !matchesKind(page, "") || (only && !only.has(page.id))) continue;
+      await push(page, "", page.title, "");
       if (done()) break;
     }
     // #tag alone: the records with the tag follow the pages.
@@ -449,10 +449,10 @@ export function searchWorkspace(
       for (const r of tagged.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))) {
         if (done()) break;
         if (options.spaceId && r.spaceId !== options.spaceId) continue;
-        if (!databases.has(r.pageId)) databases.set(r.pageId, one<Page>("SELECT * FROM pages WHERE id=?", r.pageId)!);
+        if (!databases.has(r.pageId)) databases.set(r.pageId, (await one<Page>("SELECT * FROM pages WHERE id=?", r.pageId))!);
         const page = databases.get(r.pageId)!;
-        if (!allowed(page)) continue;
-        push(page, r.rowId, r.title || "Ohne Titel", "");
+        if (!(await allowed(page))) continue;
+        await push(page, r.rowId, r.title || "Ohne Titel", "");
       }
     }
     return finish();
@@ -463,7 +463,7 @@ export function searchWorkspace(
   const match = textMatch([query]);
   const snip = snippet([query], MARK_START, MARK_END);
   const titleLike = sql.ilike("s.title", "?");
-  const candidates = all<
+  const candidates = (await all<
     Page & { row_id: string; hit_title: string; snippet: string }
   >(
     short
@@ -480,10 +480,10 @@ export function searchWorkspace(
           return [...scopeArgs, like, like, like];
         })()
       : [...snip.args, ...match.whereArgs, ...scopeArgs, ...match.rankArgs]),
-  ).map((hit) => (short ? hit : { ...hit, snippet: snip.finish(hit.snippet) }));
+  )).map((hit) => (short ? hit : { ...hit, snippet: snip.finish(hit.snippet) }));
   for (const hit of candidates) {
-    if (!matchesKind(hit, hit.row_id) || !allowed(hit)) continue;
-    push(
+    if (!matchesKind(hit, hit.row_id) || !(await allowed(hit))) continue;
+    await push(
       hit,
       hit.row_id,
       hit.hit_title,
@@ -494,16 +494,16 @@ export function searchWorkspace(
   return finish();
 }
 
-function queryResults(
+async function queryResults(
   user: Identity,
   workspaceId: string,
-  node: ReturnType<typeof parseQuery>["node"],
+  node: Awaited<ReturnType<typeof parseQuery>>["node"],
   options: { kind?: SearchKind; spaceId?: string; excludeDays?: boolean; timeZone?: string },
-): SearchResult[] {
+): Promise<SearchResult[]> {
   const kind = options.kind || "all";
   if (kind === "comment" || kind === "file") return [];
   const types: ItemType[] | undefined = kind === "all" ? undefined : [kind === "row" ? "record" : kind];
-  const { items } = evaluateQuery(user, workspaceId, node, {
+  const { items } = await evaluateQuery(user, workspaceId, node, {
     types,
     spaceId: options.spaceId,
     timeZone: options.timeZone,
@@ -534,7 +534,7 @@ export function drainSearchIndex(): Promise<void> {
   const drain = (async () => {
     await nextTurn();
     try {
-      while (processSearchIndex()) await nextTurn();
+      while (await processSearchIndex()) await nextTurn();
     } catch (error) {
       console.error("Search indexing failed", error);
     }
@@ -548,9 +548,9 @@ export function drainSearchIndex(): Promise<void> {
 // few edits leave behind, a large backlog only in part (INLINE_LIMIT) – the
 // background drain takes over the rest instead of one request stalling the
 // server for seconds.
-export function refreshSearchIndex() {
+export async function refreshSearchIndex() {
   for (let done = 0; done < INLINE_LIMIT; ) {
-    const n = processSearchIndex(Math.min(BATCH, INLINE_LIMIT - done));
+    const n = await processSearchIndex(Math.min(BATCH, INLINE_LIMIT - done));
     if (!n) return;
     done += n;
   }

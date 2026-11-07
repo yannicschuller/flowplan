@@ -47,6 +47,7 @@ import { racksMarkdown } from "./whiteboard-rack";
 import type { Identity, Page, Row, Field, Space } from "./types";
 import { linkedBlockIds } from "./block-links";
 import { MAX_ARCHIVE_ROWS } from "./archive-limits";
+import { filterAsync, flatMapAsync, mapAsync } from "./each-async";
 export type MarkdownExportOptions = {
   // One page (with its sub-pages) or a whole space: every top-level page
   // in a folder of its own, named like the scheduled export
@@ -104,34 +105,34 @@ function journalDayPath(page: Page, parentPath: string | undefined, selected: Pa
   return selected.some((other) => other !== page && other.parent_id === page.parent_id && other.journal_date === date && selected.indexOf(other) < selected.indexOf(page)) ? null : path;
 }
 
-function collect(user: Identity, options: MarkdownExportOptions) {
+async function collect(user: Identity, options: MarkdownExportOptions) {
   const zip = options.format === "zip";
   let space: Space | null = null,
     root: Page | null = null;
   if (options.spaceId) {
     if (options.pageId || options.rowId) throw new HttpError(400, "Entweder eine Seite oder einen Bereich exportieren.");
     if (!zip) throw new HttpError(400, "Ein Bereich lässt sich nur als ZIP exportieren.");
-    space = one<Space>("SELECT * FROM spaces WHERE id=? AND deleted_at IS NULL", options.spaceId) || null;
+    space = await one<Space>("SELECT * FROM spaces WHERE id=? AND deleted_at IS NULL", options.spaceId) || null;
     if (!space) throw new HttpError(404, "Bereich nicht gefunden.");
-    if (!spaceRole(user, space)) throw new HttpError(403, "Keine Berechtigung für diesen Bereich.");
+    if (!(await spaceRole(user, space))) throw new HttpError(403, "Keine Berechtigung für diesen Bereich.");
     // Encrypted spaces leave only as the encrypted archive or decrypted in the browser.
-    requirePlaintextSpace(space);
+    await requirePlaintextSpace(space);
   } else {
     if (!options.pageId) throw new HttpError(400, "Seite fehlt.");
-    root = requirePage(user, options.pageId);
-    requireUnlocked(user, root);
-    requirePlaintext(root);
+    root = await requirePage(user, options.pageId);
+    await requireUnlocked(user, root);
+    await requirePlaintext(root);
   }
   const workspaceId = space ? space.workspace_id : root!.workspace_id;
-  const locked = lockedPageIds(user, workspaceId);
+  const locked = await lockedPageIds(user, workspaceId);
   if (!zip && options.includeSubpages)
     throw new HttpError(400, "Unterseiten sind nur im ZIP-Export verfügbar.");
   if (options.rowId && (root?.kind !== "database" || options.includeSubpages))
     throw new HttpError(400, "Nur ein Eintrag einer Datenbank.");
-  const visible = all<Page>(
+  const visible = await filterAsync(await all<Page>(
     "SELECT * FROM pages WHERE workspace_id=? AND deleted_at IS NULL ORDER BY position,id",
     workspaceId,
-  ).filter((page) => !locked.has(page.id) && pageRole(user, page));
+  ), async (page) => !locked.has(page.id) && await pageRole(user, page));
   // Top-level pages: the one page, or all the person may read in the space.
   const roots = space ? visible.filter((page) => page.space_id === space.id && !page.parent_id) : [root!];
   const selected: Page[] = [...roots],
@@ -186,32 +187,31 @@ function collect(user: Identity, options: MarkdownExportOptions) {
     entries.set(path, data);
   };
   const pageCache = new Map<string, Page | null>();
-  const readable = (id: string) => {
+  const readable = async (id: string) => {
     if (!pageCache.has(id)) {
       let page: Page | null = null;
       try {
-        page = requirePage(user, id);
+        page = await requirePage(user, id);
       } catch {}
       pageCache.set(id, page);
     }
     return pageCache.get(id)!;
   };
   const members = new Map(
-    all<{ id: string; name: string }>(
+    (await all<{ id: string; name: string }>(
       "SELECT u.id,u.name FROM users u JOIN members m ON m.user_id=u.id WHERE m.workspace_id=?",
       workspaceId,
-    ).map((member) => [member.id, member.name]),
+    )).map((member) => [member.id, member.name]),
   );
   const dbs = new Map(
-    selected
-      .filter((page) => page.kind === "database")
-      .map((page) => [
+    await mapAsync(selected
+      .filter((page) => page.kind === "database"), async (page) => [
         page.id,
         {
           // Properties hidden from this person are left out (lib/field-access.ts).
-          schema: readableDatabase(user, page, database(page.id)),
-          rows: visibleRows(user, page, rows(page.id)).filter((row) => !options.rowId || row.id === options.rowId),
-          ...relatedData(user, page),
+          schema: await readableDatabase(user, page, await database(page.id)),
+          rows: (await visibleRows(user, page, await rows(page.id))).filter((row) => !options.rowId || row.id === options.rowId),
+          ...(await relatedData(user, page)),
         },
       ]),
   );
@@ -239,27 +239,27 @@ function collect(user: Identity, options: MarkdownExportOptions) {
   // A file comes along only if the person could download it: its page is
   // readable and unlocked, and it does not belong to a private record.
   const hiddenFiles = new Map<string, Set<string>>();
-  const fileInfo = (id: string) => {
+  const fileInfo = async (id: string) => {
     if (!/^[a-f0-9-]{36}$/i.test(id)) return null;
-    const file = one<{ id: string; page_id: string; name: string }>(
+    const file = await one<{ id: string; page_id: string; name: string }>(
       "SELECT id,page_id,name FROM files WHERE id=?",
       id,
     );
-    const owner = file ? readable(file.page_id) : null;
+    const owner = file ? (await readable(file.page_id)) : null;
     if (!file || !owner || locked.has(owner.id)) return null;
     try {
-      requireUnlocked(user, owner);
+      await requireUnlocked(user, owner);
     } catch {
       return null;
     }
-    if (!hiddenFiles.has(owner.id)) hiddenFiles.set(owner.id, hiddenFileIds(user, owner));
+    if (!hiddenFiles.has(owner.id)) hiddenFiles.set(owner.id, await hiddenFileIds(user, owner));
     return hiddenFiles.get(owner.id)!.has(file.id) ? null : file;
   };
   // Drawing blocks of a page: their picture as SVG next to the attachments
   // (ZIP), and their text.
-  const inkImage = (page: Page, from: string, attrs: Record<string, unknown>) => {
+  const inkImage = async (page: Page, from: string, attrs: Record<string, unknown>) => {
     if (locked.has(page.id)) return null;
-    const picture = inkPicture(page, attrs);
+    const picture = await inkPicture(page, attrs);
     if (!picture) return null;
     let image: string | null = null;
     if (zip && picture.svg) {
@@ -282,15 +282,15 @@ function collect(user: Identity, options: MarkdownExportOptions) {
     return relative(from, path);
   };
   // Blocks other texts link to keep their id as a marker ("^id", #88).
-  let linkedBlocks: ReturnType<typeof linkedBlockIds> | null = null;
-  const linked = (owner: string, blockId: string) => !!(linkedBlocks ??= linkedBlockIds(workspaceId)).get(owner)?.has(blockId);
+  let linkedBlocks: Awaited<ReturnType<typeof linkedBlockIds>> | null = null;
+  const linked = async (owner: string, blockId: string) => !!(linkedBlocks ??= (await linkedBlockIds(workspaceId))).get(owner)?.has(blockId);
   function context(from: string, page?: Page, record?: string): MarkdownContext {
     const owner = record || page?.id;
     return {
-      ...(page ? { ink: (attrs: Record<string, unknown>) => inkImage(page, from, attrs) } : {}),
+      ...(page ? { ink: async (attrs: Record<string, unknown>) => await inkImage(page, from, attrs) } : {}),
       ...(owner ? { drawio: (attrs: Record<string, unknown>) => drawioImage(from, owner, page?.title || recordWord(), attrs) } : {}),
-      ...(owner ? { blockIds: (blockId: string) => linked(owner, blockId) } : {}),
-      url(raw) {
+      ...(owner ? { blockIds: async (blockId: string) => await linked(owner, blockId) } : {}),
+      async url(raw) {
         let url: URL;
         try {
           url = new URL(raw, appUrl());
@@ -306,7 +306,7 @@ function collect(user: Identity, options: MarkdownExportOptions) {
         if (url.origin === new URL(appUrl()).origin) {
           const fileMatch = /^\/api\/files\/([^/]+)$/.exec(url.pathname);
           if (fileMatch) {
-            const file = fileInfo(fileMatch[1]);
+            const file = await fileInfo(fileMatch[1]);
             if (!file) return null;
             if (!zip)
               return `${appUrl().replace(/\/$/, "")}/api/files/${file.id}`;
@@ -339,7 +339,7 @@ function collect(user: Identity, options: MarkdownExportOptions) {
             const id = params.get("page") || "",
               row = params.get("row"),
               block = params.get("block");
-            if (!readable(id)) return null;
+            if (!(await readable(id))) return null;
             // A block link (#88): the file with the block's marker as
             // anchor ("other.md#^id", as Obsidian links blocks), or the
             // address in Flowplan.
@@ -354,15 +354,15 @@ function collect(user: Identity, options: MarkdownExportOptions) {
         }
         return url.href;
       },
-      linked(source) {
-        const page = readable(source);
+      async linked(source) {
+        const page = await readable(source);
         return page && page.kind === "database"
           ? { title: page.title, url: pageUrl(page.id, from) }
           : null;
       },
-      plugin(pluginId) {
+      async plugin(pluginId) {
         // Only the exporting person's own workspaces name their plugins.
-        const row = one<{ url: string; manifest: string; workspace_id: string }>(
+        const row = await one<{ url: string; manifest: string; workspace_id: string }>(
           "SELECT p.url,p.manifest,p.workspace_id FROM plugins p JOIN members m ON m.workspace_id=p.workspace_id AND m.user_id=? WHERE p.id=?",
           user.id,
           pluginId,
@@ -374,10 +374,10 @@ function collect(user: Identity, options: MarkdownExportOptions) {
           return null;
         }
       },
-      whiteboard(pageId) {
-        const page = readable(pageId);
+      async whiteboard(pageId) {
+        const page = await readable(pageId);
         if (!page || page.kind !== "whiteboard" || locked.has(page.id)) return null;
-        const image = zip ? boardImage(page, prefixOfPath(from)) : null;
+        const image = zip ? (await boardImage(page, prefixOfPath(from))) : null;
         return {
           title: page.title,
           image: image ? relative(from, image) : null,
@@ -389,24 +389,24 @@ function collect(user: Identity, options: MarkdownExportOptions) {
   // Whiteboards as SVG next to the attachments (#34), once per folder; null
   // for an empty board.
   const boards = new Map<string, string | null>();
-  function boardImage(page: Page, folder: string) {
+  async function boardImage(page: Page, folder: string) {
     const path = `${folder}assets/${exportName(page.title)}-${page.id}.svg`;
     if (boards.has(path)) return boards.get(path)!;
     const images = context(path);
     const svg = whiteboardSvg(
-      whiteboardSnapshotItems(page),
+      await whiteboardSnapshotItems(page),
       {
         image: (src) => images.url(src),
-        page: (id) => {
-          const target = readable(id);
+        page: async (id) => {
+          const target = await readable(id);
           return target && !locked.has(target.id) ? { title: target.title, kind: target.kind } : null;
         },
-        record: (databaseId, rowId) => {
-          const db = readable(databaseId);
+        record: async (databaseId, rowId) => {
+          const db = await readable(databaseId);
           if (!db || db.kind !== "database" || locked.has(db.id)) return null;
-          const row = visibleRows(user, db, rows(db.id)).find((r) => r.id === rowId);
+          const row = (await visibleRows(user, db, await rows(db.id))).find((r) => r.id === rowId);
           if (!row) return null;
-          const fields = database(db.id).fields;
+          const fields = (await database(db.id)).fields;
           return { title: cellText(row.cells[fields[0]?.id || "title"]) || recordWord(), database: db.title };
         },
         label: ct,
@@ -429,12 +429,12 @@ function collect(user: Identity, options: MarkdownExportOptions) {
       throw error;
     }
   }
-  function property(
+  async function property(
     value: unknown,
     field: Field,
-    data: NonNullable<ReturnType<typeof dbs.get>>,
+    data: NonNullable<Awaited<ReturnType<typeof dbs.get>>>,
     from: string,
-  ): { plain: string; md: string; numeric: boolean } {
+  ): Promise<{ plain: string; md: string; numeric: boolean }> {
     const ctx = context(from),
       values = Array.isArray(value)
         ? value
@@ -480,10 +480,10 @@ function collect(user: Identity, options: MarkdownExportOptions) {
       return { plain: text, md: markdownText(text), numeric: false };
     }
     if (field.type === "files") {
-      const entries = fileUrls(value).map((raw) => {
+      const entries = await mapAsync(fileUrls(value), async (raw) => {
         const url = ctx.url(raw),
           id = /\/api\/files\/([a-f0-9-]{36})/i.exec(raw)?.[1],
-          name = id ? fileInfo(id)?.name || ct("Datei nicht verfügbar", "File not available") : ct("Datei", "File");
+          name = id ? (await fileInfo(id))?.name || ct("Datei nicht verfügbar", "File not available") : ct("Datei", "File");
         return {
           plain: id ? name : raw,
           md: url ? markdownLink(name, url) : markdownText(id ? name : raw),
@@ -531,15 +531,15 @@ function collect(user: Identity, options: MarkdownExportOptions) {
     } catch {}
     return body;
   };
-  function history(path: string, pageId: string, rowId: string | null, title: string) {
+  async function history(path: string, pageId: string, rowId: string | null, title: string) {
     if (!zip || !options.history) return;
     const base = path.replace(/\.md$/, "");
-    const comments = all<{ name: string | null; body: string; resolved: number; created_at: string }>(
+    const comments = await all<{ name: string | null; body: string; resolved: number; created_at: string }>(
       `SELECT u.name,c.body,c.resolved,c.created_at FROM comments c LEFT JOIN users u ON u.id=c.author_id
        WHERE c.page_id=? AND ${rowId ? "c.row_id=?" : "c.row_id IS NULL"} ORDER BY c.created_at`,
       ...(rowId ? [pageId, rowId] : [pageId]),
     );
-    const threads = all<{ id: string; anchor: string; resolved: number }>(
+    const threads = await all<{ id: string; anchor: string; resolved: number }>(
       `SELECT id,anchor,resolved FROM inline_threads WHERE page_id=? AND ${rowId ? "row_id=?" : "row_id IS NULL"} ORDER BY created_at`,
       ...(rowId ? [pageId, rowId] : [pageId]),
     );
@@ -553,7 +553,7 @@ function collect(user: Identity, options: MarkdownExportOptions) {
         quote = String(JSON.parse(thread.anchor).quote || "");
       } catch {}
       text += `## ${ct("Zur Textstelle", "On the passage")}${thread.resolved ? ` · ${ct("erledigt", "resolved")}` : ""}\n\n${quote ? `> ${markdownText(quote).replace(/\n/g, "\n> ")}\n\n` : ""}`;
-      for (const m of all<{ author_name: string; body: string; created_at: string }>(
+      for (const m of await all<{ author_name: string; body: string; created_at: string }>(
         "SELECT author_name,body,created_at FROM inline_messages WHERE thread_id=? AND deleted=0 ORDER BY created_at",
         thread.id,
       ))
@@ -562,14 +562,14 @@ function collect(user: Identity, options: MarkdownExportOptions) {
     }
     if (text) add(`${base}.comments.md`, Buffer.from(`# ${ct("Kommentare", "Comments")} – ${markdownText(title)}\n\n${text.trimEnd()}\n`), true);
     const versions = rowId
-      ? all<{ id: string; html: string; created_at: string }>(
+      ? (await all<{ id: string; html: string; created_at: string }>(
           "SELECT id,html,created_at FROM row_snapshots WHERE row_id=? ORDER BY created_at DESC LIMIT 50",
           rowId,
-        )
-      : all<{ id: string; html: string; created_at: string }>(
+        ))
+      : (await all<{ id: string; html: string; created_at: string }>(
           "SELECT id,html,created_at FROM snapshots WHERE page_id=? AND html IS NOT NULL AND html!='' ORDER BY created_at DESC LIMIT 50",
           pageId,
-        );
+        ));
     for (const version of versions) {
       const versionPath = `${base}.versions/${version.created_at.replace(/[: T]/g, "-").slice(0, 19)}-${version.id.slice(0, 8)}.md`;
       add(versionPath, Buffer.from(`# ${markdownText(title)} (${when(version.created_at)})\n\n${render(version.html, context(versionPath))}`), true);
@@ -582,7 +582,7 @@ function collect(user: Identity, options: MarkdownExportOptions) {
     row: Row,
     computed: Record<string, unknown>,
     fields: Field[],
-    data: NonNullable<ReturnType<typeof dbs.get>>,
+    data: NonNullable<Awaited<ReturnType<typeof dbs.get>>>,
     from: string,
   ): Frontmatter {
     const result: Frontmatter = { title: cellText(computed[fields[0].id]) || recordWord() };
@@ -635,7 +635,7 @@ function collect(user: Identity, options: MarkdownExportOptions) {
     const front: Frontmatter = {
       ...(aliases.length ? { aliases } : {}),
       // Tags and property values (#70), read back by the import.
-      ...metaFrontmatter(page.id, (uid) => members.get(uid)),
+      ...(await metaFrontmatter(page.id, (uid) => members.get(uid))),
       // A day's page and date; numbered captions (#84).
       ...(day || page.caption_numbers
         ? { flowplan: { ...(day ? { id: page.id, date: day } : {}), ...(page.caption_numbers ? { captions: "numbered" } : {}) } }
@@ -649,9 +649,9 @@ function collect(user: Identity, options: MarkdownExportOptions) {
       const cover = ctx.url(page.cover);
       if (cover) markdown += `![Cover](<${markdownUrl(cover)}>)\n\n`;
     }
-    if (page.kind === "document") history(path, page.id, null, page.title);
+    if (page.kind === "document") await history(path, page.id, null, page.title);
     if (page.kind === "whiteboard") {
-      const image = zip ? boardImage(page, prefix(page.id)) : null;
+      const image = zip ? (await boardImage(page, prefix(page.id))) : null;
       markdown += image
         ? `![${markdownText(page.title || "Whiteboard")}](<${markdownUrl(relative(path, image))}>)\n`
         : zip
@@ -659,24 +659,24 @@ function collect(user: Identity, options: MarkdownExportOptions) {
           : markdownLink(ct("Whiteboard in Flowplan öffnen", "Open the whiteboard in Flowplan"), `${appUrl().replace(/\/$/, "")}/#page=${page.id}`) + "\n";
       // Racks on the board (#90): devices, port assignments and the cable list.
       if (!locked.has(page.id)) {
-        const racks = racksMarkdown(whiteboardSnapshotItems(page).filter((i) => !i.covered), ct, markdownText);
+        const racks = racksMarkdown((await whiteboardSnapshotItems(page)).filter((i) => !i.covered), ct, markdownText);
         if (racks) markdown += `\n## ${markdownText(ct("Racks und Verkabelung", "Racks and cabling"))}\n\n${racks}`;
       }
     } else if (page.kind === "notebook") {
       // A short stub: the notebook itself as a PDF next to it (ZIP), and the
       // text typed or recognised on its sheets.
-      const sheets = notebookSheets(page.id);
+      const sheets = await notebookSheets(page.id);
       markdown += `*${markdownText(sheets.length === 1 ? ct("Notizbuch mit einem Blatt", "Notebook with one sheet") : ct(`Notizbuch mit ${sheets.length} Blättern`, `Notebook with ${sheets.length} sheets`))}*\n\n`;
       if (zip && !locked.has(page.id)) {
         const pdfPath = `${prefix(page.id)}assets/${exportName(page.title)}-${page.id}.pdf`;
-        const defaults = notebookPaper(page.id);
-        const inks = pageInkDocs(page.id);
+        const defaults = await notebookPaper(page.id);
+        const inks = await pageInkDocs(page.id);
         const pdfSheets = notebookPdfSheets(
           defaults,
           sheets.map((sheet) => ({ ...sheet, ink: inks.get(sheet.id)?.doc ?? emptyInk() })),
         );
         // Background PDFs only when the person could download them.
-        const files = new Set(sheets.flatMap((sheet) => (sheet.background && fileInfo(sheet.background.file) ? [sheet.background.file] : [])));
+        const files = new Set(await flatMapAsync(sheets, async (sheet) => (sheet.background && await fileInfo(sheet.background.file) ? [sheet.background.file] : [])));
         pending.push({
           path: pdfPath,
           build: () =>
@@ -695,34 +695,34 @@ function collect(user: Identity, options: MarkdownExportOptions) {
         });
         markdown += markdownLink(ct("Notizbuch als PDF", "Notebook as PDF"), relative(path, pdfPath)) + "\n\n";
       } else markdown += markdownLink(ct("Notizbuch in Flowplan öffnen", "Open the notebook in Flowplan"), `${appUrl().replace(/\/$/, "")}/#page=${page.id}`) + "\n\n";
-      for (const text of locked.has(page.id) ? [] : notebookText(page.id)) markdown += `${markdownText(text)}\n\n`;
+      for (const text of locked.has(page.id) ? [] : (await notebookText(page.id))) markdown += `${markdownText(text)}\n\n`;
     } else if (page.kind === "dashboard") {
       // A text summary: the data of the tiles depends on who looks.
-      for (const tile of dashboardSummary(user, page)) {
+      for (const tile of await dashboardSummary(user, page)) {
         markdown += `## ${markdownText(tile.title)}\n\n`;
         if (tile.text) markdown += `${tile.text.trim()}\n\n`;
         else markdown += `*${markdownText(tile.source ? `${tile.kind} · ${tile.source}` : tile.kind)}*\n\n`;
       }
     } else if (page.kind === "document" || page.kind === "journal")
       markdown += render(
-        one<{ html: string }>(
+        (await one<{ html: string }>(
           "SELECT html FROM documents WHERE page_id=?",
           page.id,
-        )?.html || "",
+        ))?.html || "",
         ctx,
       );
     else {
       const data = dbs.get(page.id)!,
         fields = data.schema.fields;
-      const values = data.rows.map((row) => {
+      const values = await mapAsync(data.rows, async (row) => {
         const computed = computedCells(
           row,
           fields,
           data.related,
           data.relatedSchemas,
         );
-        return fields.map((field) =>
-          property(computed[field.id], field, data, path),
+        return await mapAsync(fields, async (field) =>
+          await property(computed[field.id], field, data, path),
         );
       });
       markdown +=
@@ -776,7 +776,7 @@ function collect(user: Identity, options: MarkdownExportOptions) {
         // A single record is its own file, with frontmatter in both formats.
         if (options.rowId) {
           const content =
-            one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", row.id)?.html ?? row.content ?? "";
+            (await one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", row.id))?.html ?? row.content ?? "";
           add(
             "index.md",
             Buffer.from(
@@ -797,18 +797,17 @@ function collect(user: Identity, options: MarkdownExportOptions) {
         if (!zip)
           document +=
             `| ${ct("Eigenschaft", "Property")} | ${ct("Wert", "Value")} |\n| --- | --- |\n` +
-            fields
-              .map(
-                (field) =>
-                  `| ${tableCell(markdownText(field.name))} | ${tableCell(property(computed[field.id], field, data, recordPath).md)} |`,
-              )
+            (await mapAsync(fields, 
+                async (field) =>
+                  `| ${tableCell(markdownText(field.name))} | ${tableCell((await property(computed[field.id], field, data, recordPath)).md)} |`,
+              ))
               .join("\n") +
             "\n\n";
         const content =
-          one<{ html: string }>(
+          (await one<{ html: string }>(
             "SELECT html FROM row_documents WHERE row_id=?",
             row.id,
-          )?.html ??
+          ))?.html ??
           row.content ??
           "";
         document += content.trimStart().startsWith("<")
@@ -816,7 +815,7 @@ function collect(user: Identity, options: MarkdownExportOptions) {
           : markdownText(content) + "\n";
         if (zip) {
           add(recordPath, Buffer.from(document), true);
-          history(recordPath, page.id, row.id, title);
+          await history(recordPath, page.id, row.id, title);
         }
         else markdown += "\n\n" + document;
       }
@@ -854,7 +853,7 @@ export async function exportMarkdown(
   user: Identity,
   options: MarkdownExportOptions,
 ) {
-  const { entries, root, space, name, pending } = transaction(() => collect(user, options));
+  const { entries, root, space, name, pending } = await transaction(async () => await collect(user, options));
   // Notebooks as PDF (built outside the transaction).
   if (options.format !== "markdown")
     for (const item of pending) {
@@ -897,8 +896,8 @@ export async function exportMarkdown(
     ),
   );
   const bytes = await writeZip(entries);
-  if (space) audit(user.id, "space.markdown.export", space.id);
-  else audit(user.id, "page.markdown.export", root!.id);
+  if (space) await audit(user.id, "space.markdown.export", space.id);
+  else await audit(user.id, "page.markdown.export", root!.id);
   return {
     bytes,
     name: `${exportName(name)}.zip`,

@@ -335,7 +335,7 @@ function DeletionBadge({ due }: { due?: number | null }) {
   );
 }
 
-function StateBadge({ state }: { state: ReturnType<typeof stateOf> }) {
+function StateBadge({ state }: { state: Awaited<ReturnType<typeof stateOf>> }) {
   const t = useT();
   const tone: Tone = state.key === "disabled" ? "error" : state.key === "inactive" ? "warn" : "ok";
   return (
@@ -382,7 +382,7 @@ function UserRow({
   ldap: boolean;
   admin: boolean;
   usage?: Usage;
-  state: ReturnType<typeof stateOf>;
+  state: Awaited<ReturnType<typeof stateOf>>;
   activity: Pick<UserActivity, "openAt" | "activeAt">;
   now: number;
   selected: boolean;
@@ -441,7 +441,7 @@ function UserSheet({
 }: {
   user: User;
   data: AdminData;
-  state: ReturnType<typeof stateOf>;
+  state: Awaited<ReturnType<typeof stateOf>>;
   activity: Pick<UserActivity, "openAt" | "activeAt">;
   now: number;
   onClose: () => void;

@@ -47,25 +47,25 @@ import type { Node as PMNodeType } from "@tiptap/pm/model";
 
 async function person(name: string): Promise<Identity> {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name.toLowerCase()}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name.toLowerCase()}@example.test`);
   const token = randomBytes(16).toString("hex");
-  run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", createHash("sha256").update(token).digest("hex"), uid, "[]", Date.now() + 3600_000);
+  await run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", createHash("sha256").update(token).digest("hex"), uid, "[]", Date.now() + 3600_000);
   return (await identityFromToken(token))!;
 }
 const admin = { ...(await person("Ada")), isAdmin: true };
 const ben = await person("Ben"),
   vic = await person("Vic");
-const wid = createWorkspace(admin.id, "Homelab");
-run("INSERT INTO members VALUES(?,?,?)", wid, ben.id, "editor");
-run("INSERT INTO members VALUES(?,?,?)", wid, vic.id, "viewer");
-const space = one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid)!.id;
+const wid = await createWorkspace(admin.id, "Homelab");
+await run("INSERT INTO members VALUES(?,?,?)", wid, ben.id, "editor");
+await run("INSERT INTO members VALUES(?,?,?)", wid, vic.id, "viewer");
+const space = (await one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid))!.id;
 const privateSpace = id();
-run("INSERT INTO spaces(id,workspace_id,name,visibility,owner_id) VALUES(?,?,?,?,?)", privateSpace, wid, "Privat", "private", admin.id);
-const html = (page: string, body: string) => run("UPDATE documents SET html=?,state=? WHERE page_id=?", body, htmlState(body), page);
+await run("INSERT INTO spaces(id,workspace_id,name,visibility,owner_id) VALUES(?,?,?,?,?)", privateSpace, wid, "Privat", "private", admin.id);
+const html = async (page: string, body: string) => await run("UPDATE documents SET html=?,state=? WHERE page_id=?", body, htmlState(body), page);
 
 const mock = await startOllamaMock();
 after(() => mock.close());
-command(admin, { action: "admin.ai", settings: { enabled: true, provider: { kind: "ollama", baseUrl: mock.base, model: "chat", embeddingModel: "" } } });
+await command(admin, { action: "admin.ai", settings: { enabled: true, provider: { kind: "ollama", baseUrl: mock.base, model: "chat", embeddingModel: "" } } });
 const never = new AbortController().signal;
 const schema = documentSchema();
 const parse = (markdown: string) => PMNode.fromJSON(schema, generateJSON(aiMarkdownToHtml(markdown, null, { raw: true }), documentExtensions)).content;
@@ -79,20 +79,20 @@ const author = { id: ben.id, name: "Ben (KI)" };
 const SERVICES = ["n8n", "Flowplan", "fredy", "openwebui", "it-tools", "Mailflow", "Pocketid", "Paperless", "Immich", "Vaultwarden", "Uptime Kuma", "Gitea"];
 const servicePages = new Map<string, string>();
 for (const name of SERVICES) {
-  const page = createPage(wid, space, admin.id, name === "it-tools" ? "🛠️ IT-Tools" : name === "Pocketid" ? "PocketID" : name);
-  html(page, `<p>Docker Compose Stack für ${name}.</p><pre><code class="language-yaml">services:\n  ${name.toLowerCase().replace(/\s/g, "")}:\n    image: ${name.toLowerCase()}</code></pre>`);
+  const page = await createPage(wid, space, admin.id, name === "it-tools" ? "🛠️ IT-Tools" : name === "Pocketid" ? "PocketID" : name);
+  await html(page, `<p>Docker Compose Stack für ${name}.</p><pre><code class="language-yaml">services:\n  ${name.toLowerCase().replace(/\s/g, "")}:\n    image: ${name.toLowerCase()}</code></pre>`);
   servicePages.set(name, page);
 }
-const overview = createPage(wid, space, admin.id, "Homelab Übersicht");
+const overview = await createPage(wid, space, admin.id, "Homelab Übersicht");
 // Two pages called "Notizen": never guessed between.
-createPage(wid, space, admin.id, "Notizen");
-createPage(wid, space, admin.id, "notizen");
+await createPage(wid, space, admin.id, "Notizen");
+await createPage(wid, space, admin.id, "notizen");
 // Ben cannot read this one; it is not linked for him even when named exactly.
-const secret = createPage(wid, privateSpace, admin.id, "Geheimer Stack");
-html(secret, "<p>Docker Compose GEHEIM.</p>");
-const blocked = createPage(wid, space, admin.id, "Gesperrter Stack");
-html(blocked, "<p>Docker Compose gesperrt.</p>");
-command(admin, { action: "ai.block", targetId: blocked, kind: "page", blocked: true });
+const secret = await createPage(wid, privateSpace, admin.id, "Geheimer Stack");
+await html(secret, "<p>Docker Compose GEHEIM.</p>");
+const blocked = await createPage(wid, space, admin.id, "Gesperrter Stack");
+await html(blocked, "<p>Docker Compose gesperrt.</p>");
+await command(admin, { action: "ai.block", targetId: blocked, kind: "page", blocked: true });
 
 test("cause of #134: only eight pages are offered by handle, the rest arrive as plain text", async () => {
   const instruction = "Liste alle Docker-Compose-Seiten mit Links auf.";
@@ -134,7 +134,7 @@ test("the writing assistant sends the title index for list requests; titles come
   const targets = decodeLinkTargets(response.headers.get(LINKS_HEADER));
   // What the browser does once the answer is complete (components/ai-writer.tsx).
   const titles = listTitleCandidates(answer);
-  const resolved = resolveLinkTitles(ben, { workspaceId: wid, pageId: overview, titles });
+  const resolved = await resolveLinkTitles(ben, { workspaceId: wid, pageId: overview, titles });
   const linked = applyTitleLinks(answer, resolved, targets);
   const out = aiMarkdownToHtml(linked.markdown, linked.targets);
   for (const name of SERVICES) assert.ok(out.includes(`href="/#page=${servicePages.get(name)}"`), `${name} is a link: ${out}`);
@@ -143,9 +143,9 @@ test("the writing assistant sends the title index for list requests; titles come
   assert.ok(out.includes("<strong>"), "the bold start stays bold");
 });
 
-test("plain titles resolve only to one page the person and the AI may read", () => {
-  const resolve = (titles: string[], user = ben) => resolveLinkTitles(user, { workspaceId: wid, pageId: overview, titles });
-  const found = resolve(["it-tools", "POCKETID", "Pocket ID", "  n8n.", "Notizen", "Geheimer Stack", "Gesperrter Stack", "Homelab Übersicht", "Unbekannt"]);
+test("plain titles resolve only to one page the person and the AI may read", async () => {
+  const resolve = async (titles: string[], user = ben) => await resolveLinkTitles(user, { workspaceId: wid, pageId: overview, titles });
+  const found = await resolve(["it-tools", "POCKETID", "Pocket ID", "  n8n.", "Notizen", "Geheimer Stack", "Gesperrter Stack", "Homelab Übersicht", "Unbekannt"]);
   const byText = new Map(found.map((r) => [r.text, r.pageId]));
   assert.equal(byText.get("it-tools"), servicePages.get("it-tools"), "emoji and case do not matter");
   assert.equal(byText.get("POCKETID"), servicePages.get("Pocketid"));
@@ -156,11 +156,11 @@ test("plain titles resolve only to one page the person and the AI may read", () 
   assert.ok(!byText.has("Homelab Übersicht"), "never the page being written");
   assert.ok(!byText.has("Unbekannt"));
   // The owner of the private space may read it.
-  assert.equal(new Map(resolve(["Geheimer Stack"], admin).map((r) => [r.text, r.pageId])).get("Geheimer Stack"), secret);
+  assert.equal(new Map((await resolve(["Geheimer Stack"], admin)).map((r) => [r.text, r.pageId])).get("Geheimer Stack"), secret);
   // Links switched off for the person: nothing.
-  command(ben, { action: "ai.settings", features: { links: false } });
-  assert.deepEqual(resolve(["n8n"]), []);
-  command(ben, { action: "ai.settings", features: { links: true } });
+  await command(ben, { action: "ai.settings", features: { links: false } });
+  assert.deepEqual(await resolve(["n8n"]), []);
+  await command(ben, { action: "ai.settings", features: { links: true } });
 });
 
 test("list items: whole item, bold start or text before a dash; links and code stay as they are", () => {
@@ -206,8 +206,8 @@ test("conversational preambles and sign-offs never reach the document", () => {
 // ---- #135: "Diese Seite" ----
 
 const COMPOSE = "services:\n  db:\n    image: postgres:15\n  app:\n    image: flowplan\n    ports:\n      - 3000:3000";
-const stack = createPage(wid, space, admin.id, "Compose Stack");
-html(
+const stack = await createPage(wid, space, admin.id, "Compose Stack");
+await html(
   stack,
   `<h2>Datenbank</h2><p>Wir nutzen Postgres als Datenbank.</p><ul><li><p>Backup täglich</p></li><li><p>Monitoring mit Uptime Kuma</p></li></ul><pre><code class="language-yaml">${COMPOSE}</code></pre><p>Ende der Seite.</p>`,
 );
@@ -232,8 +232,8 @@ test("“This page” goes along in full as source 1 – only what the person an
 });
 
 test("a long page is cut to fit the model, with a note", async () => {
-  const long = createPage(wid, space, admin.id, "Langes Protokoll");
-  html(long, Array.from({ length: 900 }, (_, i) => `<p>Absatz ${i}: ${"Protokolltext ".repeat(8)}</p>`).join(""));
+  const long = await createPage(wid, space, admin.id, "Langes Protokoll");
+  await html(long, Array.from({ length: 900 }, (_, i) => `<p>Absatz ${i}: ${"Protokolltext ".repeat(8)}</p>`).join(""));
   const prepared = await prepareAsk(ben, { workspaceId: wid, question: "Fass zusammen", page: { pageId: long } });
   assert.deepEqual(prepared.page, { pageId: long, truncated: true });
   const prompt = prepared.messages[prepared.messages.length - 1].content;
@@ -246,8 +246,8 @@ test("a long page is cut to fit the model, with a note", async () => {
 
 // ---- #135: suggested changes ----
 
-const storedDoc = (pageId: string) => {
-  const row = one<{ state: Uint8Array }>("SELECT state FROM documents WHERE page_id=?", pageId)!;
+const storedDoc = async (pageId: string) => {
+  const row = (await one<{ state: Uint8Array }>("SELECT state FROM documents WHERE page_id=?", pageId))!;
   const ydoc = new Y.Doc();
   Y.applyUpdate(ydoc, row.state);
   const doc = PMNode.fromJSON(schema, yDocToProsemirrorJSON(ydoc, "default"));
@@ -264,14 +264,14 @@ const suggestionsIn = (doc: PMNodeType) => {
   return out;
 };
 
-test("the page as numbered blocks: every text block with a handle, code fenced", () => {
-  const outline = pageOutline(storedDoc(stack), 10_000);
+test("the page as numbered blocks: every text block with a handle, code fenced", async () => {
+  const outline = pageOutline(await storedDoc(stack), 10_000);
   assert.equal(outline.truncated, false);
   assert.match(outline.text, /^\[B1\] ## Datenbank$/m);
   assert.match(outline.text, /^\[B3\] - Backup täglich$/m);
   assert.match(outline.text, /^\[B5\] ```yaml\nservices:/m);
   assert.equal(outline.blocks.length, 6);
-  const short = pageOutline(storedDoc(stack), 60);
+  const short = pageOutline(await storedDoc(stack), 60);
   assert.equal(short.truncated, true);
   assert.ok(short.blocks.length < 6);
 });
@@ -293,8 +293,8 @@ test("word and line differences", () => {
   assert.deepEqual(diffHunks("gleich", "gleich"), []);
 });
 
-test("applying: words, a code block line by line, a new list item, a deletion – all as suggestions", () => {
-  const doc = storedDoc(stack);
+test("applying: words, a code block line by line, a new list item, a deletion – all as suggestions", async () => {
+  const doc = await storedDoc(stack);
   const blocks = pageBlocks(doc).map(snapshotOf);
   const code = COMPOSE.replace("postgres:15", "postgres:16");
   const result = applyPageEdits(
@@ -392,12 +392,12 @@ test("“Suggest as changes”: the stub model's edits land in the stored page a
   const sent = mock.chats[before];
   assert.match(sent.prompt, /\[B5\] ```yaml/);
   assert.match(sent.prompt, /Stell den Stack auf Postgres 16 um/);
-  const marks = suggestionsIn(storedDoc(stack));
+  const marks = suggestionsIn(await storedDoc(stack));
   assert.deepEqual(marks.map((m) => [m.kind, m.text]), [
     ["delete", "    image: postgres:15\n"],
     ["insert", "    image: postgres:16\n"],
   ]);
-  const name = one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", stack)!.html;
+  const name = (await one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", stack))!.html;
   assert.match(name, /data-suggestion-name="Ben \(KI\)"/);
   // Nothing proposed: nothing changes.
   mock.answer = () => "<none/>";
@@ -411,8 +411,8 @@ test("suggested changes need edit rights, an unlocked document and a page the AI
   await assert.rejects(suggestPageEdits(vic, { workspaceId: wid, pageId: stack, history }, never), /Berechtigung/);
   await assert.rejects(suggestPageEdits(ben, { workspaceId: wid, pageId: secret, history }, never), /Berechtigung|nicht gefunden/);
   await assert.rejects(suggestPageEdits(ben, { workspaceId: wid, pageId: blocked, history }, never), /für die KI gesperrt/);
-  const locked = createPage(wid, space, admin.id, "Gesperrt zum Lesen");
-  run("UPDATE pages SET locked=1 WHERE id=?", locked);
+  const locked = await createPage(wid, space, admin.id, "Gesperrt zum Lesen");
+  await run("UPDATE pages SET locked=1 WHERE id=?", locked);
   await assert.rejects(suggestPageEdits(ben, { workspaceId: wid, pageId: locked, history }, never), /gesperrt/);
   assert.equal(mock.chats.length, calls, "no request reached the model");
 });

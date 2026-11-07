@@ -12,10 +12,10 @@ const { extractArticle, parseBookmarksHtml } = await import("../lib/web-clip");
 const { bookmarklet } = await import("../components/clipper-settings");
 
 const uid = id();
-run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, "Anna", "anna@example.test");
+await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, "Anna", "anna@example.test");
 const anna = { id: uid, name: "Anna", email: "anna@example.test", groups: [], isAdmin: false, disabled: 0, created_at: "" } as Identity;
-const wid = createWorkspace(anna.id, "Team");
-const space = bootstrap(anna, wid).spaces[0].id;
+const wid = await createWorkspace(anna.id, "Team");
+const space = (await bootstrap(anna, wid)).spaces[0].id;
 
 test("the article text is taken without navigation, scripts and ads", () => {
   const article = extractArticle(
@@ -99,12 +99,12 @@ test("browser bookmark files keep folders and dates", () => {
   assert.equal(items[0].added, "2023-11-14");
 });
 
-test("imports and clips land in the space's bookmarks database", () => {
+test("imports and clips land in the space's bookmarks database", async () => {
   const html = `<DL><DT><H3>Tools</H3><DL><DT><A HREF="https://example.com/a">A</A><DT><A HREF="https://example.com/a">A doppelt</A><DT><A HREF="javascript:x">X</A></DL></DL>`;
-  const imported = command(anna, { action: "bookmarks.import", workspaceId: wid, spaceId: space, html }) as { id: string; added: number; skipped: number };
+  const imported = (await command(anna, { action: "bookmarks.import", workspaceId: wid, spaceId: space, html })) as { id: string; added: number; skipped: number };
   assert.equal(imported.added, 1);
   assert.equal(imported.skipped, 2);
-  const shared = command(anna, {
+  const shared = (await command(anna, {
     action: "page.fromShare",
     workspaceId: wid,
     spaceId: space,
@@ -113,24 +113,24 @@ test("imports and clips land in the space's bookmarks database", () => {
     url: "https://www.news.example/story",
     as: "bookmark",
     article: "<p>Artikeltext</p><script>x</script>",
-  }) as { id: string; rowId: string };
+  })) as { id: string; rowId: string };
   assert.equal(shared.id, imported.id, "same database");
-  const row = one<{ cells: string; content: string }>("SELECT cells,content FROM rows WHERE id=?", shared.rowId)!;
+  const row = (await one<{ cells: string; content: string }>("SELECT cells,content FROM rows WHERE id=?", shared.rowId))!;
   const cells = JSON.parse(row.cells);
   assert.equal(cells.bm_site, "news.example");
   assert.equal(cells.bm_note, "Unbedingt ansehen");
   assert.match(row.content, /Artikeltext/);
   assert.doesNotMatch(row.content, /script/);
-  const fields = JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", imported.id)!.fields);
+  const fields = JSON.parse((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", imported.id))!.fields);
   assert.deepEqual(fields.find((f: { id: string }) => f.id === "bm_folder").options, ["Tools"]);
-  assert.throws(
-    () => command(anna, { action: "page.fromShare", workspaceId: wid, spaceId: space, url: "https://www.news.example/story", as: "bookmark" }),
+  await assert.rejects(
+    async () => await command(anna, { action: "page.fromShare", workspaceId: wid, spaceId: space, url: "https://www.news.example/story", as: "bookmark" }),
     /schon unter den Lesezeichen/,
   );
-  assert.equal(all("SELECT 1 FROM pages WHERE title='Lesezeichen'").length, 1);
+  assert.equal((await all("SELECT 1 FROM pages WHERE title='Lesezeichen'")).length, 1);
   // As a page, the article follows the shared link.
-  const page = command(anna, { action: "page.fromShare", workspaceId: wid, spaceId: space, url: "https://x.example/", article: "<h2>Titel</h2><p>Text</p>" }) as { id: string };
-  assert.match(String(one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", page.id)!.html), /<hr ?\/?><h2>Titel<\/h2>/);
+  const page = (await command(anna, { action: "page.fromShare", workspaceId: wid, spaceId: space, url: "https://x.example/", article: "<h2>Titel</h2><p>Text</p>" })) as { id: string };
+  assert.match(String((await one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", page.id))!.html), /<hr ?\/?><h2>Titel<\/h2>/);
 });
 
 test("the bookmarklet opens the save window with title, address and selection", () => {

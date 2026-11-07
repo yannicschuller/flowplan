@@ -22,9 +22,9 @@ import type { Field, Identity } from "../lib/types";
 
 async function person(name: string): Promise<Identity> {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name.toLowerCase()}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name.toLowerCase()}@example.test`);
   const token = randomBytes(16).toString("hex");
-  run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", createHash("sha256").update(token).digest("hex"), uid, "[]", Date.now() + 3600_000);
+  await run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", createHash("sha256").update(token).digest("hex"), uid, "[]", Date.now() + 3600_000);
   return (await identityFromToken(token))!;
 }
 const admin = { ...(await person("Ada")), isAdmin: true };
@@ -32,21 +32,21 @@ const ben = await person("Ben"),
   vic = await person("Vic"),
   gus = await person("Gus"),
   eva = await person("Eva");
-const wid = createWorkspace(admin.id, "Team");
-run("INSERT INTO members VALUES(?,?,?)", wid, ben.id, "editor");
-run("INSERT INTO members VALUES(?,?,?)", wid, vic.id, "viewer");
-run("INSERT INTO members VALUES(?,?,?)", wid, gus.id, "editor");
-run("INSERT INTO members VALUES(?,?,?)", wid, eva.id, "editor");
-run("INSERT INTO workspace_guests VALUES(?,?)", wid, gus.id);
-const space = one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid)!.id;
+const wid = await createWorkspace(admin.id, "Team");
+await run("INSERT INTO members VALUES(?,?,?)", wid, ben.id, "editor");
+await run("INSERT INTO members VALUES(?,?,?)", wid, vic.id, "viewer");
+await run("INSERT INTO members VALUES(?,?,?)", wid, gus.id, "editor");
+await run("INSERT INTO members VALUES(?,?,?)", wid, eva.id, "editor");
+await run("INSERT INTO workspace_guests VALUES(?,?)", wid, gus.id);
+const space = (await one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid))!.id;
 
 const mock = await startOllamaMock();
 after(() => mock.close());
-const setAi = (settings: Record<string, unknown>) => command(admin, { action: "admin.ai", settings });
+const setAi = async (settings: Record<string, unknown>) => await command(admin, { action: "admin.ai", settings });
 
 // Books with a description, a category (AI select) and a summary (AI text).
-const books = createPage(wid, space, admin.id, "Bücher", "database");
-run("INSERT INTO grants(resource_id,user_id,role) VALUES(?,?,?)", books, gus.id, "editor");
+const books = await createPage(wid, space, admin.id, "Bücher", "database");
+await run("INSERT INTO grants(resource_id,user_id,role) VALUES(?,?,?)", books, gus.id, "editor");
 const base: Field[] = [
   { id: "title", name: "Titel", type: "text" },
   { id: "desc", name: "Beschreibung", type: "text" },
@@ -55,20 +55,20 @@ const base: Field[] = [
   { id: "tags", name: "Tags", type: "multiselect", options: ["Spannend", "Lustig", "Lang"] },
   { id: "pages", name: "Seiten", type: "number" },
 ];
-function schema(user: Identity, fields: Field[]) {
-  const d = database(books);
-  return command(user, { action: "database.update", pageId: books, version: d.version, fields, views: d.views });
+async function schema(user: Identity, fields: Field[]) {
+  const d = await database(books);
+  return await command(user, { action: "database.update", pageId: books, version: d.version, fields, views: d.views });
 }
-const row = (cells: Record<string, unknown>, user: Identity = admin) => (command(user, { action: "row.create", pageId: books, cells }) as { id: string }).id;
-const cells = (rowId: string) => JSON.parse(one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", rowId)!.cells) as Record<string, unknown>;
-const field = (fid: string) => database(books).fields.find((f) => f.id === fid)!;
+const row = async (cells: Record<string, unknown>, user: Identity = admin) => ((await command(user, { action: "row.create", pageId: books, cells })) as { id: string }).id;
+const cells = async (rowId: string) => JSON.parse((await one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", rowId))!.cells) as Record<string, unknown>;
+const field = async (fid: string) => (await database(books)).fields.find((f) => f.id === fid)!;
 const context = { names: () => "", relationTitles: () => [], content: () => "Inhalt des Eintrags" };
 // The debounce and the queue on one clock. processAutoDirty queues its jobs
 // due at the `now` it is given; the queue must then run at that time, not at
 // its own Date.now(), which can still be the millisecond before.
 let clock = 0;
 const later = () => (clock = Math.max(Date.now(), clock) + 1);
-const settle = () => processAutoDirty(0, later());
+const settle = async () => await processAutoDirty(0, later());
 const work = () => processAiCellJobs(50, Math.max(Date.now(), clock));
 
 // ---- Templates and constraints ----
@@ -138,16 +138,16 @@ test("values are constrained to what the property allows", () => {
   assert.equal((constrainAiValue(base[1], "x".repeat(10_000)) as string).length, 4000);
 });
 
-test("AI properties are checked when saved; automatic updates run as the person who switches them on", () => {
-  setAi({ enabled: true, provider: { kind: "ollama", baseUrl: mock.base, model: "chat", embeddingModel: "" } });
+test("AI properties are checked when saved; automatic updates run as the person who switches them on", async () => {
+  await setAi({ enabled: true, provider: { kind: "ollama", baseUrl: mock.base, model: "chat", embeddingModel: "" } });
   const ai = (prompt: string, extra: Partial<Field> = {}): Field => ({ id: "summary", name: "Zusammenfassung", type: "text", ai: { prompt }, ...extra });
-  assert.throws(() => schema(admin, [...base, ai("Fasse {Klappentext} zusammen")]), /Unbekannte Eigenschaft/);
-  assert.throws(() => schema(admin, [...base, ai("Fasse {Zusammenfassung} zusammen")]), /eigene Eigenschaft/);
-  assert.throws(() => schema(admin, [...base, ai("x", { type: "date" })]), /Text, eine Auswahl/);
-  assert.throws(() => schema(admin, [...base, ai("x", { type: "select", options: [] })]), /Optionen/);
-  assert.throws(
-    () =>
-      schema(admin, [
+  await assert.rejects(async () => await schema(admin, [...base, ai("Fasse {Klappentext} zusammen")]), /Unbekannte Eigenschaft/);
+  await assert.rejects(async () => await schema(admin, [...base, ai("Fasse {Zusammenfassung} zusammen")]), /eigene Eigenschaft/);
+  await assert.rejects(async () => await schema(admin, [...base, ai("x", { type: "date" })]), /Text, eine Auswahl/);
+  await assert.rejects(async () => await schema(admin, [...base, ai("x", { type: "select", options: [] })]), /Optionen/);
+  await assert.rejects(
+    async () =>
+      await schema(admin, [
         ...base,
         { id: "a1", name: "Eins", type: "text", ai: { prompt: "{Zwei}" } },
         { id: "a2", name: "Zwei", type: "text", ai: { prompt: "{Eins}" } },
@@ -155,48 +155,48 @@ test("AI properties are checked when saved; automatic updates run as the person 
     /im Kreis/,
   );
   // autoBy from the browser is ignored: the person saving it is set.
-  schema(ben, [...base, ai("Fasse {Beschreibung} in einem Satz zusammen", { ai: { prompt: "Fasse {Beschreibung} in einem Satz zusammen", auto: true, autoBy: admin.id } })]);
-  assert.equal(field("summary").ai?.autoBy, ben.id);
+  await schema(ben, [...base, ai("Fasse {Beschreibung} in einem Satz zusammen", { ai: { prompt: "Fasse {Beschreibung} in einem Satz zusammen", auto: true, autoBy: admin.id } })]);
+  assert.equal((await field("summary")).ai?.autoBy, ben.id);
   // Someone else saving other properties keeps it; changing the prompt takes it over.
-  schema(admin, [...database(books).fields.map((f) => (f.id === "author" ? { ...f, name: "Autor" } : f))]);
-  assert.equal(field("summary").ai?.autoBy, ben.id);
-  schema(eva, database(books).fields.map((f) => (f.id === "summary" ? { ...f, ai: { ...f.ai!, prompt: "Fasse {Beschreibung} kurz zusammen" } } : f)));
-  assert.equal(field("summary").ai?.autoBy, eva.id);
+  await schema(admin, [...(await database(books)).fields.map((f) => (f.id === "author" ? { ...f, name: "Autor" } : f))]);
+  assert.equal((await field("summary")).ai?.autoBy, ben.id);
+  await schema(eva, (await database(books)).fields.map((f) => (f.id === "summary" ? { ...f, ai: { ...f.ai!, prompt: "Fasse {Beschreibung} kurz zusammen" } } : f)));
+  assert.equal((await field("summary")).ai?.autoBy, eva.id);
   // Off: no autoBy stays behind.
-  schema(admin, database(books).fields.map((f) => (f.id === "summary" ? { ...f, ai: { prompt: f.ai!.prompt, auto: false, autoBy: eva.id } } : f)));
-  assert.equal(field("summary").ai?.autoBy, undefined);
+  await schema(admin, (await database(books)).fields.map((f) => (f.id === "summary" ? { ...f, ai: { prompt: f.ai!.prompt, auto: false, autoBy: eva.id } } : f)));
+  assert.equal((await field("summary")).ai?.autoBy, undefined);
   // Guests cannot switch automatic updates on.
-  assert.throws(() => schema(gus, database(books).fields.map((f) => (f.id === "summary" ? { ...f, ai: { ...f.ai!, auto: true } } : f))), /Gäste/);
+  await assert.rejects(async () => await schema(gus, (await database(books)).fields.map((f) => (f.id === "summary" ? { ...f, ai: { ...f.ai!, auto: true } } : f))), /Gäste/);
   // Without AI for the person, no automatic updates in their name.
-  command(eva, { action: "ai.settings", features: { database: false } });
-  assert.throws(() => schema(eva, database(books).fields.map((f) => (f.id === "summary" ? { ...f, ai: { ...f.ai!, auto: true } } : f))), /ausgeschaltet/);
-  command(eva, { action: "ai.settings", features: { database: true } });
-  schema(admin, [
-    ...database(books).fields.filter((f) => f.id !== "summary"),
+  await command(eva, { action: "ai.settings", features: { database: false } });
+  await assert.rejects(async () => await schema(eva, (await database(books)).fields.map((f) => (f.id === "summary" ? { ...f, ai: { ...f.ai!, auto: true } } : f))), /ausgeschaltet/);
+  await command(eva, { action: "ai.settings", features: { database: true } });
+  await schema(admin, [
+    ...(await database(books)).fields.filter((f) => f.id !== "summary"),
     { id: "summary", name: "Zusammenfassung", type: "text", ai: { prompt: "Fasse {Beschreibung} in einem Satz zusammen" } },
     { id: "category", name: "Kategorie", type: "select", options: ["Roman", "Sachbuch", "Krimi"], ai: { prompt: "Kategorie aus {Titel}: eine von Roman, Sachbuch, Krimi" } },
   ]);
 });
 
 test("one value: computed, constrained, written like an edit, with metadata", async () => {
-  const moby = row({ title: "Moby Dick", desc: "Ein Kapitän jagt einen weißen Wal." });
+  const moby = await row({ title: "Moby Dick", desc: "Ein Kapitän jagt einen weißen Wal." });
   mock.answer = (request) => (request.system.includes("Kategorie") ? '{"value": "roman"}' : '```json\n{"value": "Ahab jagt den Wal."}\n```');
   const before = mock.chats.length;
   const result = await runAiCell(ben, books, "summary", moby, "compute");
   assert.deepEqual(result, { status: "ok", value: "Ahab jagt den Wal." });
   assert.match(mock.chats[before].prompt, /Fasse Ein Kapitän jagt einen weißen Wal\. in einem Satz zusammen/);
-  assert.equal(cells(moby).summary, "Ahab jagt den Wal.");
-  const meta = one<{ model: string; provider: string; computed_by: string; status: string }>("SELECT * FROM ai_cell_meta WHERE row_id=? AND field_id='summary'", moby)!;
+  assert.equal((await cells(moby)).summary, "Ahab jagt den Wal.");
+  const meta = (await one<{ model: string; provider: string; computed_by: string; status: string }>("SELECT * FROM ai_cell_meta WHERE row_id=? AND field_id='summary'", moby))!;
   assert.deepEqual([meta.model, meta.provider, meta.computed_by, meta.status], ["chat", "ollama", ben.id, "ok"]);
-  assert.equal(one<{ updated_by: string }>("SELECT updated_by FROM rows WHERE id=?", moby)!.updated_by, ben.id);
+  assert.equal((await one<{ updated_by: string }>("SELECT updated_by FROM rows WHERE id=?", moby))!.updated_by, ben.id);
   // Select: the answer is matched to an option.
   assert.equal((await runAiCell(ben, books, "category", moby, "compute")).value, "Roman");
-  const status = aiDatabaseStatus(vic, books);
+  const status = await aiDatabaseStatus(vic, books);
   assert.equal(status.meta[moby].summary.model, "chat");
 });
 
 test("invalid JSON or an invented option gets one retry, then nothing is written", async () => {
-  const dune = row({ title: "Dune" });
+  const dune = await row({ title: "Dune" });
   mock.answer = (_r, i) => (i % 2 === 0 ? "Das ist sicher ein Roman!" : '{"value": "Roman"}');
   mock.chats.length = 0;
   assert.equal((await runAiCell(ben, books, "category", dune, "compute")).value, "Roman");
@@ -207,11 +207,11 @@ test("invalid JSON or an invented option gets one retry, then nothing is written
   await assert.rejects(runAiCell(ben, books, "category", dune, "compute"), /keine verwertbare Antwort/);
   assert.equal(mock.chats.length, 2);
   assert.match(mock.chats[1].prompt, /genau eine dieser Optionen/);
-  assert.equal(cells(dune).category, "Roman", "the old value stays");
+  assert.equal((await cells(dune)).category, "Roman", "the old value stays");
 });
 
 test("empty inputs give an empty value without asking the model", async () => {
-  const empty = row({ title: "Leer" });
+  const empty = await row({ title: "Leer" });
   mock.chats.length = 0;
   const result = await runAiCell(ben, books, "summary", empty, "compute");
   assert.equal(result.status, "cleared");
@@ -219,141 +219,141 @@ test("empty inputs give an empty value without asking the model", async () => {
 });
 
 test("who may compute: viewers, guests, API tokens, switched-off AI, private and closed records", async () => {
-  const it = row({ title: "Es", desc: "Ein Clown." });
+  const it = await row({ title: "Es", desc: "Ein Clown." });
   await assert.rejects(runAiCell(vic, books, "summary", it, "compute"), /Berechtigung/);
   await assert.rejects(runAiCell(gus, books, "summary", it, "compute"), /Gäste|ausgeschaltet/);
-  const { token } = command(ben, { action: "token.create", name: "Skript", scope: "write" }) as { token: string };
+  const { token } = (await command(ben, { action: "token.create", name: "Skript", scope: "write" })) as { token: string };
   await assert.rejects(runAiCell((await identityFromApiToken(`Bearer ${token}`))!, books, "summary", it, "compute"), /API-Token/);
-  setAi({ features: { database: false } });
+  await setAi({ features: { database: false } });
   await assert.rejects(runAiCell(ben, books, "summary", it, "compute"), /ausgeschaltet/);
-  setAi({ features: { database: true } });
+  await setAi({ features: { database: true } });
   // Another person's private record.
-  const secret = row({ title: "Privat", desc: "GEHEIM" });
-  run("UPDATE rows SET access='private' WHERE id=?", secret);
+  const secret = await row({ title: "Privat", desc: "GEHEIM" });
+  await run("UPDATE rows SET access='private' WHERE id=?", secret);
   mock.chats.length = 0;
   await assert.rejects(runAiCell(ben, books, "summary", secret, "compute"), /nicht gefunden|schreibgeschützt/);
   // The person excluded the database from the AI.
-  command(ben, { action: "ai.rule", targetId: books, mode: "exclude" });
+  await command(ben, { action: "ai.rule", targetId: books, mode: "exclude" });
   await assert.rejects(runAiCell(ben, books, "summary", it, "compute"), /für die KI gesperrt/);
-  command(ben, { action: "ai.rule", targetId: books, mode: null });
+  await command(ben, { action: "ai.rule", targetId: books, mode: null });
   assert.ok(!mock.chats.some((c) => c.prompt.includes("GEHEIM")));
   // Queueing checks the same way: viewers and guests cannot.
-  assert.throws(() => queueAiCells(vic, { pageId: books, fieldId: "summary", mode: "compute" }), /Berechtigung/);
-  assert.throws(() => queueAiCells(gus, { pageId: books, fieldId: "summary", mode: "compute" }), /Gäste/);
+  await assert.rejects(async () => await queueAiCells(vic, { pageId: books, fieldId: "summary", mode: "compute" }), /Berechtigung/);
+  await assert.rejects(async () => await queueAiCells(gus, { pageId: books, fieldId: "summary", mode: "compute" }), /Gäste/);
 });
 
 test("Für alle ausfüllen: queued, processed in the background, private records skipped", async () => {
   mock.answer = (request) => `{"value": "Zusammenfassung: ${request.prompt.length}"}`;
-  const queued = queueAiCells(ben, { pageId: books, fieldId: "summary", mode: "compute" });
-  const total = one<{ n: number }>("SELECT count(*) n FROM rows WHERE page_id=?", books)!.n;
+  const queued = await queueAiCells(ben, { pageId: books, fieldId: "summary", mode: "compute" });
+  const total = (await one<{ n: number }>("SELECT count(*) n FROM rows WHERE page_id=?", books))!.n;
   assert.equal(queued.queued, total - 1, "the private record is skipped");
-  assert.equal(aiDatabaseStatus(ben, books).pending, queued.queued);
-  while (aiDatabaseStatus(ben, books).pending) await work();
-  const filled = (await import("../lib/db")).all<{ cells: string }>("SELECT cells FROM rows WHERE page_id=? AND access!='private'", books);
+  assert.equal((await aiDatabaseStatus(ben, books)).pending, queued.queued);
+  while ((await aiDatabaseStatus(ben, books)).pending) await work();
+  const filled = await (await import("../lib/db")).all<{ cells: string }>("SELECT cells FROM rows WHERE page_id=? AND access!='private'", books);
   // Records with a description got a summary; without one there is nothing to summarize.
   for (const r of filled.map((x) => JSON.parse(x.cells))) assert.equal(typeof r.summary === "string" && r.summary.startsWith("Zusammenfassung"), !!r.desc, JSON.stringify(r));
 });
 
 test("Mit KI ausfüllen: only empty cells of the chosen property, constrained to its options", async () => {
-  const a = row({ title: "Witzebuch", desc: "Lauter Witze" });
-  const b = row({ title: "Schon getaggt", tags: ["Lang"] });
+  const a = await row({ title: "Witzebuch", desc: "Lauter Witze" });
+  const b = await row({ title: "Schon getaggt", tags: ["Lang"] });
   mock.answer = () => '{"value": ["Lustig", "Erfunden"]}';
-  const queued = queueAiCells(ben, { pageId: books, fieldId: "tags", rowIds: [a, b], mode: "fill" });
+  const queued = await queueAiCells(ben, { pageId: books, fieldId: "tags", rowIds: [a, b], mode: "fill" });
   assert.deepEqual(queued, { queued: 1, skipped: 1 });
   await work();
-  assert.deepEqual(cells(a).tags, ["Lustig"]);
-  assert.deepEqual(cells(b).tags, ["Lang"], "filled cells stay");
+  assert.deepEqual((await cells(a)).tags, ["Lustig"]);
+  assert.deepEqual((await cells(b)).tags, ["Lang"], "filled cells stay");
   assert.match(mock.chats[mock.chats.length - 1].prompt, /Gesucht: Tags/);
   await assert.rejects(runAiCell(ben, books, "nope", a, "fill"), /Eigenschaft fehlt/);
 });
 
 test("over the rate limit, queued values wait instead of failing", async () => {
   const limited = await person("Lia");
-  run("INSERT INTO members VALUES(?,?,?)", wid, limited.id, "editor");
-  const r = row({ title: "Warten", desc: "Text" });
-  queueAiCells(limited, { pageId: books, fieldId: "summary", rowIds: [r], mode: "compute" });
+  await run("INSERT INTO members VALUES(?,?,?)", wid, limited.id, "editor");
+  const r = await row({ title: "Warten", desc: "Text" });
+  await queueAiCells(limited, { pageId: books, fieldId: "summary", rowIds: [r], mode: "compute" });
   process.env.FLOWPLAN_AI_REQUESTS_PER_HOUR = "1";
   const { limitAi } = await import("../lib/action-limits");
   try {
     limitAi(limited.id);
   } catch {}
   await work();
-  const job = one<{ next_at: number }>("SELECT next_at FROM ai_cell_jobs WHERE row_id=?", r);
+  const job = await one<{ next_at: number }>("SELECT next_at FROM ai_cell_jobs WHERE row_id=?", r);
   assert.ok(job && job.next_at > Date.now() + 30_000, "postponed by a minute");
   process.env.FLOWPLAN_AI_REQUESTS_PER_HOUR = "100000";
 });
 
 test("automatic updates: debounced, only when inputs change, stop when the person loses access", async (t) => {
-  schema(ben, database(books).fields.map((f) => (f.id === "summary" ? { ...f, ai: { ...f.ai!, auto: true } } : f)));
-  const r = row({ title: "Faust", desc: "Ein Gelehrter wettet." });
+  await schema(ben, (await database(books)).fields.map((f) => (f.id === "summary" ? { ...f, ai: { ...f.ai!, auto: true } } : f)));
+  const r = await row({ title: "Faust", desc: "Ein Gelehrter wettet." });
   mock.answer = (request) => `{"value": "Kurz: ${request.prompt.includes("Teufel") ? "Teufel" : "Gelehrter"}"}`;
-  assert.ok(one("SELECT 1 FROM ai_auto_dirty WHERE row_id=?", r), "new records are marked");
-  assert.equal(processAutoDirty(60_000), 0, "debounced: too recent");
-  assert.equal(settle(), 1);
-  assert.equal(one<{ user_id: string; mode: string }>("SELECT user_id,mode FROM ai_cell_jobs WHERE row_id=?", r)?.user_id, ben.id);
+  assert.ok(await one("SELECT 1 FROM ai_auto_dirty WHERE row_id=?", r), "new records are marked");
+  assert.equal(await processAutoDirty(60_000), 0, "debounced: too recent");
+  assert.equal(await settle(), 1);
+  assert.equal((await one<{ user_id: string; mode: string }>("SELECT user_id,mode FROM ai_cell_jobs WHERE row_id=?", r))?.user_id, ben.id);
   await work();
-  assert.equal(cells(r).summary, "Kurz: Gelehrter");
+  assert.equal((await cells(r)).summary, "Kurz: Gelehrter");
   // Its own write and changes elsewhere do not recompute.
-  settle();
-  const v = one<{ version: number }>("SELECT version FROM rows WHERE id=?", r)!.version;
-  command(admin, { action: "row.update", pageId: books, rowId: r, version: v, cells: { author: "Goethe" } });
-  assert.equal(settle(), 0, "the author is no input");
+  await settle();
+  const v = (await one<{ version: number }>("SELECT version FROM rows WHERE id=?", r))!.version;
+  await command(admin, { action: "row.update", pageId: books, rowId: r, version: v, cells: { author: "Goethe" } });
+  assert.equal(await settle(), 0, "the author is no input");
   // A referenced property changes: recomputed as Ben.
-  const v2 = one<{ version: number }>("SELECT version FROM rows WHERE id=?", r)!.version;
-  command(admin, { action: "row.update", pageId: books, rowId: r, version: v2, cells: { desc: "Ein Gelehrter wettet mit dem Teufel." } });
-  assert.equal(settle(), 1);
+  const v2 = (await one<{ version: number }>("SELECT version FROM rows WHERE id=?", r))!.version;
+  await command(admin, { action: "row.update", pageId: books, rowId: r, version: v2, cells: { desc: "Ein Gelehrter wettet mit dem Teufel." } });
+  assert.equal(await settle(), 1);
   await work();
-  assert.equal(cells(r).summary, "Kurz: Teufel");
-  assert.equal(one<{ computed_by: string }>("SELECT computed_by FROM ai_cell_meta WHERE row_id=? AND field_id='summary'", r)!.computed_by, ben.id);
+  assert.equal((await cells(r)).summary, "Kurz: Teufel");
+  assert.equal((await one<{ computed_by: string }>("SELECT computed_by FROM ai_cell_meta WHERE row_id=? AND field_id='summary'", r))!.computed_by, ben.id);
   // Ben becomes a viewer: the next run stops automatic updates.
-  run("UPDATE members SET role='viewer' WHERE workspace_id=? AND user_id=?", wid, ben.id);
+  await run("UPDATE members SET role='viewer' WHERE workspace_id=? AND user_id=?", wid, ben.id);
   // Restored even if an assertion fails, so later tests keep Ben as editor.
-  t.after(() => run("UPDATE members SET role='editor' WHERE workspace_id=? AND user_id=?", wid, ben.id));
-  const v3 = one<{ version: number }>("SELECT version FROM rows WHERE id=?", r)!.version;
-  command(admin, { action: "row.update", pageId: books, rowId: r, version: v3, cells: { desc: "Neu." } });
-  settle();
+  t.after(async () => await run("UPDATE members SET role='editor' WHERE workspace_id=? AND user_id=?", wid, ben.id));
+  const v3 = (await one<{ version: number }>("SELECT version FROM rows WHERE id=?", r))!.version;
+  await command(admin, { action: "row.update", pageId: books, rowId: r, version: v3, cells: { desc: "Neu." } });
+  await settle();
   await work();
-  assert.equal(field("summary").ai?.auto, undefined, "switched off");
-  assert.equal(cells(r).summary, "Kurz: Teufel", "nothing written in his name");
+  assert.equal((await field("summary")).ai?.auto, undefined, "switched off");
+  assert.equal((await cells(r)).summary, "Kurz: Teufel", "nothing written in his name");
 });
 
 test("automatic values never take 'Zuletzt geändert' as input: refused when saved, left out of the hash", async (t) => {
-  const withChanged: Field[] = [...database(books).fields.filter((f) => f.id !== "summary"), { id: "changed", name: "Geändert", type: "updated_at" }];
+  const withChanged: Field[] = [...(await database(books)).fields.filter((f) => f.id !== "summary"), { id: "changed", name: "Geändert", type: "updated_at" }];
   const stamped = (ai: Partial<Field["ai"]> = {}): Field => ({ id: "summary", name: "Zusammenfassung", type: "text", ai: { prompt: "Fasse {Beschreibung} zusammen, Stand {Geändert}", ...ai } });
-  assert.throws(() => schema(ben, [...withChanged, stamped({ auto: true })]), /jedem Schreiben der KI/);
+  await assert.rejects(async () => await schema(ben, [...withChanged, stamped({ auto: true })]), /jedem Schreiben der KI/);
   // Without automatic updates the reference is fine.
-  schema(ben, [...withChanged, stamped()]);
+  await schema(ben, [...withChanged, stamped()]);
   // A property switched on before this check existed: its own write must
   // not queue it again once the minute changes.
-  run("UPDATE databases SET fields=? WHERE page_id=?", JSON.stringify([...withChanged, stamped({ auto: true, autoBy: ben.id })]), books);
+  await run("UPDATE databases SET fields=? WHERE page_id=?", JSON.stringify([...withChanged, stamped({ auto: true, autoBy: ben.id })]), books);
   // Switched off again even if an assertion fails: later schema saves would be refused.
-  t.after(() => schema(admin, [...withChanged, stamped()]));
+  t.after(async () => await schema(admin, [...withChanged, stamped()]));
   let calls = 0;
   mock.answer = () => `{"value": "Antwort ${++calls}"}`;
   // Only this record's prompts (jobs of earlier tests may still be waiting).
   const asked = () => mock.chats.filter((c) => c.prompt.includes("Briefe"));
-  const r = row({ title: "Werther", desc: "Briefe eines Unglücklichen." });
-  assert.equal(settle(), 1);
+  const r = await row({ title: "Werther", desc: "Briefe eines Unglücklichen." });
+  assert.equal(await settle(), 1);
   await work();
   assert.equal(asked().length, 1);
   assert.match(asked()[0].prompt, /Stand \d{4}-\d{2}-\d{2}/, "the prompt itself carries the timestamp");
-  assert.ok(one("SELECT 1 FROM ai_auto_dirty WHERE row_id=?", r), "marked dirty by its own write");
-  run("UPDATE rows SET cells=cells,updated_at=? WHERE id=?", nowText(Date.now() + 120_000), r);
-  assert.equal(settle(), 0, "a later minute is no new input");
+  assert.ok(await one("SELECT 1 FROM ai_auto_dirty WHERE row_id=?", r), "marked dirty by its own write");
+  await run("UPDATE rows SET cells=cells,updated_at=? WHERE id=?", nowText(Date.now() + 120_000), r);
+  assert.equal(await settle(), 0, "a later minute is no new input");
   await work();
   assert.equal(asked().length, 1);
   // A referenced property changing still recomputes.
-  const v = one<{ version: number }>("SELECT version FROM rows WHERE id=?", r)!.version;
-  command(admin, { action: "row.update", pageId: books, rowId: r, version: v, cells: { desc: "Briefe an Lotte." } });
-  assert.equal(settle(), 1);
+  const v = (await one<{ version: number }>("SELECT version FROM rows WHERE id=?", r))!.version;
+  await command(admin, { action: "row.update", pageId: books, rowId: r, version: v, cells: { desc: "Briefe an Lotte." } });
+  assert.equal(await settle(), 1);
   await work();
   assert.equal(asked().length, 2);
 });
 
-test("removing an AI property removes its bookkeeping", () => {
-  assert.ok(one("SELECT 1 FROM ai_cell_meta WHERE page_id=? AND field_id='category'", books));
-  schema(admin, database(books).fields.filter((f) => f.id !== "category"));
-  assert.equal(one("SELECT 1 FROM ai_cell_meta WHERE page_id=? AND field_id='category'", books), undefined);
+test("removing an AI property removes its bookkeeping", async () => {
+  assert.ok(await one("SELECT 1 FROM ai_cell_meta WHERE page_id=? AND field_id='category'", books));
+  await schema(admin, (await database(books)).fields.filter((f) => f.id !== "category"));
+  assert.equal(await one("SELECT 1 FROM ai_cell_meta WHERE page_id=? AND field_id='category'", books), undefined);
 });
 
 // ---- A database from a description ----
@@ -415,15 +415,15 @@ test("create from a description: proposed by the AI (with one retry), created on
           ],
           rows: [{ Titel: "Dune", Autor: "Herbert", Genre: "Roman", Status: "Gelesen", Bewertung: 5 }],
         });
-  const pagesBefore = one<{ n: number }>("SELECT count(*) n FROM pages")!.n;
+  const pagesBefore = (await one<{ n: number }>("SELECT count(*) n FROM pages"))!.n;
   const proposal = await proposeDatabase(ben, wid, "Leseliste mit Autor, Genre, Status, Bewertung");
   assert.equal(call, 2, "the invalid type got one retry");
-  assert.equal(one<{ n: number }>("SELECT count(*) n FROM pages")!.n, pagesBefore, "nothing created yet");
+  assert.equal((await one<{ n: number }>("SELECT count(*) n FROM pages"))!.n, pagesBefore, "nothing created yet");
   await assert.rejects(proposeDatabase(vic, wid, "Leseliste"), /Berechtigung/);
   // The person removes a property and confirms.
   const reviewed = { ...proposal, fields: proposal.fields.filter((f) => f.name !== "Bewertung") };
-  const created = command(ben, { action: "page.create", workspaceId: wid, spaceId: space, title: "Leseliste", kind: "database", aiDatabase: reviewed }) as { id: string };
-  const d = database(created.id);
+  const created = (await command(ben, { action: "page.create", workspaceId: wid, spaceId: space, title: "Leseliste", kind: "database", aiDatabase: reviewed })) as { id: string };
+  const d = await database(created.id);
   assert.deepEqual(
     d.fields.map((f) => [f.name, f.type]),
     [
@@ -435,11 +435,11 @@ test("create from a description: proposed by the AI (with one retry), created on
   );
   assert.equal(d.fields[0].id, "title");
   assert.ok(d.views.some((v) => v.type === "board" && v.groupBy === d.fields[2].id));
-  const records = (await import("../lib/db")).all<{ cells: string }>("SELECT cells FROM rows WHERE page_id=?", created.id).map((r) => JSON.parse(r.cells));
+  const records = (await (await import("../lib/db")).all<{ cells: string }>("SELECT cells FROM rows WHERE page_id=?", created.id)).map((r) => JSON.parse(r.cells));
   assert.equal(records.length, 1);
   assert.equal(records[0].title, "Dune");
   assert.equal(Object.keys(records[0]).length, 4, "the removed property's value is gone");
   // Whatever the browser sends is checked again.
-  assert.throws(() => command(ben, { action: "page.create", workspaceId: wid, spaceId: space, title: "X", kind: "database", aiDatabase: { fields: [{ name: "Code", type: "formula" }] } }));
-  assert.throws(() => command(ben, { action: "page.create", workspaceId: wid, spaceId: space, title: "X", kind: "document", aiDatabase: reviewed }), /neue, leere Datenbank/);
+  await assert.rejects(async () => await command(ben, { action: "page.create", workspaceId: wid, spaceId: space, title: "X", kind: "database", aiDatabase: { fields: [{ name: "Code", type: "formula" }] } }));
+  await assert.rejects(async () => await command(ben, { action: "page.create", workspaceId: wid, spaceId: space, title: "X", kind: "document", aiDatabase: reviewed }), /neue, leere Datenbank/);
 });

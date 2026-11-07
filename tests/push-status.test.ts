@@ -72,15 +72,15 @@ const metrics = await import("../lib/metrics");
 const { flushPushQueue, subscribePush } = await import("../lib/push");
 const { registerMobileDevice } = await import("../lib/mobile-devices");
 
-function account(name: string, groups: string[] = []) {
+async function account(name: string, groups: string[] = []) {
   const uid = id(),
     token = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
-  run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", token, uid, JSON.stringify(groups), Date.now() + 3_600_000);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
+  await run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", token, uid, JSON.stringify(groups), Date.now() + 3_600_000);
   const user = { id: uid, name, email: `${name}@example.test`, groups, isAdmin: false, disabled: 0, created_at: "" } as Identity;
   return { user, token };
 }
-const serveDocument: Handler = (req, res) => (req.url === "/.well-known/flowplan-push" ? json(res, 200, pushIdentityDocument()) : json(res, 404, {}));
+const serveDocument: Handler = async (req, res) => (req.url === "/.well-known/flowplan-push" ? json(res, 200, await pushIdentityDocument()) : json(res, 404, {}));
 
 beforeEach(() => {
   configure({ PUSH_RELAY_URL: RELAY, APP_URL: INSTANCE });
@@ -220,7 +220,7 @@ test("own /.well-known: unreachable from here is a warning, a document without t
   // After a rotation the waiting key is listed, the signing one still signs.
   resetPushProbes();
   instanceHandler = serveDocument;
-  rotatePushIdentity();
+  await rotatePushIdentity();
   s = await pushStatus();
   assert.equal(s.relay.self?.ok, true);
   const waiting = s.relay.keys.find((k) => !k.signing && k.activeFrom > s.at);
@@ -243,21 +243,21 @@ test("cache: one check a minute per address, concurrent asks share it, force che
   await pushStatus({ force: true });
   assert.equal(hits.relay - before, 3);
   // The tiles only read what is known, without a request.
-  const summary = pushSummary();
+  const summary = await pushSummary();
   assert.equal(hits.relay - before, 3);
   assert.equal(summary.health?.ok, true);
   assert.equal(summary.enabled, true);
   // Not checked yet: "info", and still no request.
   resetPushProbes();
-  assert.equal(pushSummary().tone, "info");
-  assert.equal(pushSummary().health, null);
+  assert.equal((await pushSummary()).tone, "info");
+  assert.equal((await pushSummary()).health, null);
   assert.equal(hits.relay - before, 3);
 });
 
 test("only administrators in the browser; rate limited", async () => {
-  const admin = account("push-status-admin");
+  const admin = await account("push-status-admin");
   admin.user.isAdmin = true;
-  const member = account("push-status-member");
+  const member = await account("push-status-member");
   await assert.rejects(pushStatusFor(member.user), /Administrator/);
   await assert.rejects(pushStatusFor({ ...admin.user, apiScope: "read" } as Identity), /API-Token/);
   const ok = await pushStatusFor(admin.user);
@@ -270,15 +270,15 @@ test("only administrators in the browser; rate limited", async () => {
 });
 
 test("no token, key or secret in the answer", async () => {
-  const { user, token } = account("push-status-devices");
+  const { user, token } = await account("push-status-devices");
   const relayToken = randomBytes(32).toString("base64url");
   const publicKey = generateKeyPairSync("x25519").publicKey.export({ format: "jwk" }).x as string;
-  registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios", relayToken, publicKey });
+  await registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios", relayToken, publicKey });
   const curve = createECDH("prime256v1");
   curve.generateKeys();
   const endpoint = `https://fcm.googleapis.com/fcm/send/${id()}`;
   const p256dh = curve.getPublicKey().toString("base64url");
-  subscribePush(user, token, { endpoint, keys: { p256dh, auth: randomBytes(16).toString("base64url") } });
+  await subscribePush(user, token, { endpoint, keys: { p256dh, auth: randomBytes(16).toString("base64url") } });
   process.env.WEB_PUSH_PUBLIC_KEY = "BPublicVapidKeyForTheTest";
   process.env.WEB_PUSH_PRIVATE_KEY = "private-vapid-secret-for-the-test";
   try {
@@ -288,9 +288,9 @@ test("no token, key or secret in the answer", async () => {
     assert.equal(s.devices.relayOnly, 1);
     assert.equal(s.devices.web, 1);
     assert.equal(s.web.vapid, "env");
-    const text = JSON.stringify(s) + JSON.stringify(pushSummary());
-    const keyRows = (await import("../lib/db")).all<{ public_key: string; private_key: string }>("SELECT public_key,private_key FROM push_identity_keys");
-    const sealed = one<{ relay_token: string; public_key: string }>("SELECT relay_token,public_key FROM mobile_push_relay")!;
+    const text = JSON.stringify(s) + JSON.stringify(await pushSummary());
+    const keyRows = await (await import("../lib/db")).all<{ public_key: string; private_key: string }>("SELECT public_key,private_key FROM push_identity_keys");
+    const sealed = (await one<{ relay_token: string; public_key: string }>("SELECT relay_token,public_key FROM mobile_push_relay"))!;
     for (const secret of [relayToken, sealed.relay_token, publicKey, endpoint, p256dh, "private-vapid-secret-for-the-test", "BPublicVapidKeyForTheTest", ...keyRows.flatMap((k) => [k.private_key, k.public_key])])
       assert.ok(!text.includes(secret), "nothing secret or device-specific");
     assert.doesNotMatch(text, /private/i);
@@ -314,7 +314,7 @@ test("Expo fallback and Web Push rows: MOBILE_PUSH, MOBILE_PUSH_CONTENT, VAPID",
     assert.equal(s.web.subject, true);
     process.env.MOBILE_PUSH_CONTENT = "off";
     assert.equal((await pushStatus()).mobile.content, "off");
-    assert.equal(pushSummary().mobile, false);
+    assert.equal((await pushSummary()).mobile, false);
   } finally {
     delete process.env.MOBILE_PUSH;
     delete process.env.MOBILE_PUSH_CONTENT;
@@ -324,7 +324,7 @@ test("Expo fallback and Web Push rows: MOBILE_PUSH, MOBILE_PUSH_CONTENT, VAPID",
 });
 
 test("delivery counters: per hour, channel and result, written to metrics_push; last success and failure", async () => {
-  metrics.clearMetrics();
+  await metrics.clearMetrics();
   const now = Date.now();
   // Relay results through sendBatched (also tests and Live Activities).
   const message = { to: "t".repeat(30), type: "alert" as const, payload: "x", category: null, collapseId: null, badge: null, priority: "high" as const, ttl: 60, liveActivity: null };
@@ -338,7 +338,7 @@ test("delivery counters: per hour, channel and result, written to metrics_push; 
   await sendBatched([message], async () => {
     throw new Error("boom");
   });
-  let d = metrics.pushDeliveries();
+  let d = await metrics.pushDeliveries();
   assert.equal(d.collecting, true);
   assert.equal(d.totals.relay.ok, 2);
   assert.equal(d.totals.relay.gone, 1);
@@ -348,75 +348,75 @@ test("delivery counters: per hour, channel and result, written to metrics_push; 
   assert.equal(d.hourly.length, 24);
   assert.equal(d.hourly.at(-1)?.ok, 2);
   assert.equal(d.hourly.at(-1)?.failed, 2, "gone is no failure");
-  const rows = (await import("../lib/db")).all<{ channel: string; result: string; count: number }>("SELECT channel,result,count FROM metrics_push ORDER BY result");
+  const rows = await (await import("../lib/db")).all<{ channel: string; result: string; count: number }>("SELECT channel,result,count FROM metrics_push ORDER BY result");
   assert.deepEqual(
     rows.map((r) => `${r.channel}:${r.result}:${r.count}`),
     ["relay:error:2", "relay:gone:1", "relay:ok:2"],
   );
 
   // Web Push through the push worker: delivered, and gone (410).
-  const { user, token } = account("push-status-web");
-  const sub = (host: string) => {
+  const { user, token } = await account("push-status-web");
+  const sub = async (host: string) => {
     const curve = createECDH("prime256v1");
     curve.generateKeys();
     const endpoint = `https://${host}/${id()}`;
-    subscribePush(user, token, { endpoint, keys: { p256dh: curve.getPublicKey().toString("base64url"), auth: randomBytes(16).toString("base64url") } });
+    await subscribePush(user, token, { endpoint, keys: { p256dh: curve.getPublicKey().toString("base64url"), auth: randomBytes(16).toString("base64url") } });
     return endpoint;
   };
-  const good = sub("web.push.apple.com"),
-    gone = sub("fcm.googleapis.com");
+  const good = await sub("web.push.apple.com"),
+    gone = await sub("fcm.googleapis.com");
   const nid = id();
-  run("INSERT INTO notifications(id,user_id,body) VALUES(?,?,?)", nid, user.id, "Counted");
-  const subs = (await import("../lib/db")).all<{ id: string }>("SELECT id FROM push_subscriptions WHERE user_id=?", user.id);
-  for (const s of subs) if (!one("SELECT 1 FROM push_deliveries WHERE notification_id=? AND subscription_id=?", nid, s.id)) run("INSERT INTO push_deliveries(notification_id,subscription_id) VALUES(?,?)", nid, s.id);
+  await run("INSERT INTO notifications(id,user_id,body) VALUES(?,?,?)", nid, user.id, "Counted");
+  const subs = await (await import("../lib/db")).all<{ id: string }>("SELECT id FROM push_subscriptions WHERE user_id=?", user.id);
+  for (const s of subs) if (!(await one("SELECT 1 FROM push_deliveries WHERE notification_id=? AND subscription_id=?", nid, s.id))) await run("INSERT INTO push_deliveries(notification_id,subscription_id) VALUES(?,?)", nid, s.id);
   await flushPushQueue(async (s) => {
     if (s.endpoint === gone) throw Object.assign(new Error("gone"), { statusCode: 410 });
     assert.equal(s.endpoint, good);
   });
-  d = metrics.pushDeliveries();
+  d = await metrics.pushDeliveries();
   assert.equal(d.totals.web.ok, 1);
   assert.equal(d.totals.web.gone, 1);
   assert.ok(d.lastOk.web);
 
   // Written by the metrics worker; the last success survives a restart.
-  metrics.flushMetrics(Date.now());
-  const stored = one<{ value: string }>("SELECT value FROM instance_settings WHERE key='push-delivery'");
+  await metrics.flushMetrics(Date.now());
+  const stored = await one<{ value: string }>("SELECT value FROM instance_settings WHERE key='push-delivery'");
   assert.ok(stored && JSON.parse(stored.value).ok.relay >= now);
   assert.doesNotMatch(stored!.value, /t{30}/);
 
   // A failure code is kept only when it is a plain code.
-  metrics.notePushResult("expo", "error", "https://exp.host/secret?token=abc");
-  assert.equal(metrics.pushDeliveries().lastError?.code, null);
-  metrics.notePushResult("expo", "error", "MessageRateExceeded");
-  assert.equal(metrics.pushDeliveries().lastError?.code, "MessageRateExceeded");
+  await metrics.notePushResult("expo", "error", "https://exp.host/secret?token=abc");
+  assert.equal((await metrics.pushDeliveries()).lastError?.code, null);
+  await metrics.notePushResult("expo", "error", "MessageRateExceeded");
+  assert.equal((await metrics.pushDeliveries()).lastError?.code, "MessageRateExceeded");
   // Statistics off: nothing counted, the last outcome still known.
-  metrics.saveMetricsSetting(false);
+  await metrics.saveMetricsSetting(false);
   try {
-    const before = metrics.pushDeliveries().totals.relay.ok;
-    metrics.notePushResult("relay", "ok");
-    const off = metrics.pushDeliveries();
+    const before = (await metrics.pushDeliveries()).totals.relay.ok;
+    await metrics.notePushResult("relay", "ok");
+    const off = await metrics.pushDeliveries();
     assert.equal(off.collecting, false);
     assert.equal(off.totals.relay.ok, before);
     assert.ok(off.lastOk.relay);
   } finally {
-    metrics.saveMetricsSetting(true);
+    await metrics.saveMetricsSetting(true);
   }
   // Clearing the statistics removes the counts.
-  metrics.clearMetrics();
-  assert.equal(one<{ n: number }>("SELECT COUNT(*) n FROM metrics_push")!.n, 0);
+  await metrics.clearMetrics();
+  assert.equal((await one<{ n: number }>("SELECT COUNT(*) n FROM metrics_push"))!.n, 0);
 });
 
 test("a relay failing since its last success turns the tile amber; the relay setup is the test notification's", async () => {
-  metrics.clearMetrics();
+  await metrics.clearMetrics();
   // Explicit times: an earlier test may have noted a success in this same
   // millisecond, and the last success outlives clearMetrics().
   const t = Date.now() + 1000;
-  metrics.notePushResult("relay", "ok", null, t - 60_000);
-  metrics.notePushResult("relay", "error", "unreachable", t);
+  await metrics.notePushResult("relay", "ok", null, t - 60_000);
+  await metrics.notePushResult("relay", "error", "unreachable", t);
   const s = await pushStatus();
   assert.equal(s.relay.health?.ok, true);
   assert.equal(s.tone, "warn");
-  metrics.notePushResult("relay", "ok", null, t + 1000);
+  await metrics.notePushResult("relay", "ok", null, t + 1000);
   assert.equal((await pushStatus()).tone, "ok");
   const setup = relaySetup();
   assert.deepEqual([setup.url, setup.instance, setup.wellKnown], [RELAY, INSTANCE, true]);

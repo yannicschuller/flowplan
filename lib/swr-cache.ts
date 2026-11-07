@@ -185,7 +185,7 @@ export function createSwrCache({
   };
   return cache;
 }
-export type SwrCache = ReturnType<typeof createSwrCache>;
+export type SwrCache = Awaited<ReturnType<typeof createSwrCache>>;
 
 // Keys.
 export const pageKey = (pageId: string) => `page:${pageId}`;

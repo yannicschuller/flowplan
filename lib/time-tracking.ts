@@ -16,10 +16,10 @@ import { markLiveActivity } from "./live-activity-queue";
 
 type Entry = { id: string; page_id: string; row_id: string; field_id: string; user_id: string; start: number; end: number | null; note: string };
 
-const fieldsOf = (pageId: string) =>
-  JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId)?.fields || "[]") as Field[];
-function timeField(pageId: string, fieldId: string) {
-  const field = fieldsOf(pageId).find((f) => f.id === fieldId && f.type === "time");
+const fieldsOf = async (pageId: string) =>
+  JSON.parse((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId))?.fields || "[]") as Field[];
+async function timeField(pageId: string, fieldId: string) {
+  const field = (await fieldsOf(pageId)).find((f) => f.id === fieldId && f.type === "time");
   if (!field) throw new HttpError(400, "Keine Eigenschaft für Zeiterfassung.");
   return field;
 }
@@ -28,54 +28,54 @@ const localDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).pad
 const seconds = (e: Pick<Entry, "start" | "end">, now = Date.now()) => Math.max(0, Math.round(((e.end ?? now) - e.start) / 1000));
 
 // The property's value: all finished entries of the record.
-function refreshTotal(pageId: string, rowId: string, fieldId: string) {
-  const total = all<Entry>(`SELECT * FROM time_entries WHERE row_id=? AND field_id=? AND "end" IS NOT NULL`, rowId, fieldId).reduce(
+async function refreshTotal(pageId: string, rowId: string, fieldId: string) {
+  const total = (await all<Entry>(`SELECT * FROM time_entries WHERE row_id=? AND field_id=? AND "end" IS NOT NULL`, rowId, fieldId)).reduce(
     (sum, e) => sum + seconds(e),
     0,
   );
-  const row = one<{ cells: string }>("SELECT cells FROM rows WHERE id=? AND page_id=?", rowId, pageId);
+  const row = await one<{ cells: string }>("SELECT cells FROM rows WHERE id=? AND page_id=?", rowId, pageId);
   if (!row) return;
   const cells = JSON.parse(row.cells);
   cells[fieldId] = total;
-  run("UPDATE rows SET cells=?,version=version+1,updated_at=? WHERE id=?", JSON.stringify(cells), nowText(), rowId);
+  await run("UPDATE rows SET cells=?,version=version+1,updated_at=? WHERE id=?", JSON.stringify(cells), nowText(), rowId);
 }
 
 // Also for focus sessions of the mobile app, which end at a set time
 // (lib/mobile-widgets.ts).
-export function stopRunning(userId: string, now = Date.now()) {
-  const running = all<Entry>(`SELECT * FROM time_entries WHERE user_id=? AND "end" IS NULL`, userId);
+export async function stopRunning(userId: string, now = Date.now()) {
+  const running = await all<Entry>(`SELECT * FROM time_entries WHERE user_id=? AND "end" IS NULL`, userId);
   for (const e of running) {
-    run(`UPDATE time_entries SET "end"=? WHERE id=?`, Math.max(now, e.start), e.id);
-    refreshTotal(e.page_id, e.row_id, e.field_id);
+    await run(`UPDATE time_entries SET "end"=? WHERE id=?`, Math.max(now, e.start), e.id);
+    await refreshTotal(e.page_id, e.row_id, e.field_id);
   }
   // The timer's Live Activity on the person's phones (lib/live-activity-push.ts).
-  if (running.length) markLiveActivity(userId, "timer");
+  if (running.length) await markLiveActivity(userId, "timer");
 }
 
 const target = z.object({ rowId: z.uuid(), fieldId: z.string().min(1).max(500) });
 // A time property can carry its own read and write rule (and is hidden
 // with the estimate it reads, lib/field-access.ts): its entries and total
 // only for people who may read it, its timer only for those who may write it.
-function assertTimeWritable(user: Identity, page: Page, fieldId: string) {
-  assertFieldsWritable(user, page, fieldsOf(page.id), [fieldId]);
+async function assertTimeWritable(user: Identity, page: Page, fieldId: string) {
+  await assertFieldsWritable(user, page, await fieldsOf(page.id), [fieldId]);
 }
 
-export function timeCommand(user: Identity, page: Page, action: string, input: Record<string, unknown>) {
+export async function timeCommand(user: Identity, page: Page, action: string, input: Record<string, unknown>) {
   if (action === "time.start") {
     const { rowId, fieldId } = target.parse(input);
-    requireRow(user, page.id, rowId, true);
-    timeField(page.id, fieldId);
-    assertTimeWritable(user, page, fieldId);
-    stopRunning(user.id);
-    run("INSERT INTO time_entries(id,page_id,row_id,field_id,user_id,start) VALUES(?,?,?,?,?,?)", id(), page.id, rowId, fieldId, user.id, Date.now());
-    markLiveActivity(user.id, "timer");
-    return recordTime(user, page, rowId, fieldId);
+    await requireRow(user, page.id, rowId, true);
+    await timeField(page.id, fieldId);
+    await assertTimeWritable(user, page, fieldId);
+    await stopRunning(user.id);
+    await run("INSERT INTO time_entries(id,page_id,row_id,field_id,user_id,start) VALUES(?,?,?,?,?,?)", id(), page.id, rowId, fieldId, user.id, Date.now());
+    await markLiveActivity(user.id, "timer");
+    return await recordTime(user, page, rowId, fieldId);
   }
   if (action === "time.stop") {
     const { rowId, fieldId } = target.parse(input);
-    requireRow(user, page.id, rowId, true);
-    stopRunning(user.id);
-    return recordTime(user, page, rowId, fieldId);
+    await requireRow(user, page.id, rowId, true);
+    await stopRunning(user.id);
+    return await recordTime(user, page, rowId, fieldId);
   }
   if (action === "time.add") {
     const b = target
@@ -85,12 +85,12 @@ export function timeCommand(user: Identity, page: Page, action: string, input: R
         note: z.string().trim().max(300).default(""),
       })
       .parse(input);
-    requireRow(user, page.id, b.rowId, true);
-    timeField(page.id, b.fieldId);
-    assertTimeWritable(user, page, b.fieldId);
+    await requireRow(user, page.id, b.rowId, true);
+    await timeField(page.id, b.fieldId);
+    await assertTimeWritable(user, page, b.fieldId);
     const start = new Date(`${b.date}T09:00:00`).getTime();
     if (!Number.isFinite(start)) throw new HttpError(400, "Ungültiges Datum.");
-    run(
+    await run(
       `INSERT INTO time_entries(id,page_id,row_id,field_id,user_id,start,"end",note) VALUES(?,?,?,?,?,?,?,?)`,
       id(),
       page.id,
@@ -101,30 +101,30 @@ export function timeCommand(user: Identity, page: Page, action: string, input: R
       start + b.minutes * 60_000,
       b.note,
     );
-    refreshTotal(page.id, b.rowId, b.fieldId);
-    return recordTime(user, page, b.rowId, b.fieldId);
+    await refreshTotal(page.id, b.rowId, b.fieldId);
+    return await recordTime(user, page, b.rowId, b.fieldId);
   }
   if (action === "time.delete") {
     const entryId = z.uuid().parse(input.entryId);
-    const entry = one<Entry>("SELECT * FROM time_entries WHERE id=? AND page_id=?", entryId, page.id);
+    const entry = await one<Entry>("SELECT * FROM time_entries WHERE id=? AND page_id=?", entryId, page.id);
     if (!entry) throw new HttpError(404, "Zeiteintrag nicht gefunden.");
-    requireRow(user, page.id, entry.row_id, true);
-    assertTimeWritable(user, page, entry.field_id);
+    await requireRow(user, page.id, entry.row_id, true);
+    await assertTimeWritable(user, page, entry.field_id);
     // Own entries; owners of the database may correct everyone's.
-    if (entry.user_id !== user.id && pageRole(user, page) !== "owner")
+    if (entry.user_id !== user.id && (await pageRole(user, page)) !== "owner")
       throw new HttpError(403, "Nur eigene Zeiteinträge löschen.");
-    run("DELETE FROM time_entries WHERE id=?", entryId);
-    refreshTotal(page.id, entry.row_id, entry.field_id);
-    return recordTime(user, page, entry.row_id, entry.field_id);
+    await run("DELETE FROM time_entries WHERE id=?", entryId);
+    await refreshTotal(page.id, entry.row_id, entry.field_id);
+    return await recordTime(user, page, entry.row_id, entry.field_id);
   }
   throw new HttpError(400, "Unbekannte Aktion.");
 }
 
 // Entries of one record, newest first, and whether my timer runs here.
-export function recordTime(user: Identity, page: Page, rowId: string, fieldId: string) {
-  requireRow(user, page.id, rowId);
-  if (hiddenFieldsFor(user, page).has(fieldId)) throw new HttpError(404, "Eigenschaft fehlt.");
-  const entries = all<Entry & { name: string }>(
+export async function recordTime(user: Identity, page: Page, rowId: string, fieldId: string) {
+  await requireRow(user, page.id, rowId);
+  if ((await hiddenFieldsFor(user, page)).has(fieldId)) throw new HttpError(404, "Eigenschaft fehlt.");
+  const entries = await all<Entry & { name: string }>(
     "SELECT e.*,u.name FROM time_entries e LEFT JOIN users u ON u.id=e.user_id WHERE e.row_id=? AND e.field_id=? ORDER BY e.start DESC LIMIT 200",
     rowId,
     fieldId,
@@ -147,12 +147,12 @@ export function recordTime(user: Identity, page: Page, rowId: string, fieldId: s
 }
 
 // Hours per person and week (Monday) over the last weeks, for a database.
-export function timeReport(user: Identity, pageId: string, weeks = 8) {
-  const page = requirePage(user, pageId);
-  requireUnlocked(user, page);
-  const hidden = hiddenRowIds(user, page);
+export async function timeReport(user: Identity, pageId: string, weeks = 8) {
+  const page = await requirePage(user, pageId);
+  await requireUnlocked(user, page);
+  const hidden = await hiddenRowIds(user, page);
   // Time properties hidden from this person count for nobody here.
-  const hiddenFields = hiddenFieldsFor(user, page);
+  const hiddenFields = await hiddenFieldsFor(user, page);
   const monday = (ms: number) => {
     const d = new Date(ms);
     d.setHours(0, 0, 0, 0);
@@ -161,12 +161,12 @@ export function timeReport(user: Identity, pageId: string, weeks = 8) {
   };
   const first = monday(Date.now());
   first.setDate(first.getDate() - 7 * (weeks - 1));
-  const entries = all<Entry & { name: string; cells: string }>(
+  const entries = (await all<Entry & { name: string; cells: string }>(
     "SELECT e.*,u.name,r.cells FROM time_entries e JOIN rows r ON r.id=e.row_id LEFT JOIN users u ON u.id=e.user_id WHERE e.page_id=? AND e.start>=?",
     pageId,
     first.getTime(),
-  ).filter((e) => !hidden.has(e.row_id) && !hiddenFields.has(e.field_id));
-  const fields = fieldsOf(pageId);
+  )).filter((e) => !hidden.has(e.row_id) && !hiddenFields.has(e.field_id));
+  const fields = await fieldsOf(pageId);
   const title = fields[0];
   const weekKeys = Array.from({ length: weeks }, (_, i) => {
     const d = new Date(first);

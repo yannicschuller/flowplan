@@ -17,6 +17,7 @@ import { aliasIndex, MIN_ALIAS_MENTION, pageAliases, recordAliases } from "./ali
 import { contentLocale } from "./content-locale";
 import { localeTag } from "./i18n";
 import type { Field, Identity, Page } from "./types";
+import { filterAsync } from "./each-async";
 
 // A link to a page, a record (#page=…&row=…) or an embedded board, database
 // or synced block. In stored HTML the "&" before row= is "&amp;".
@@ -25,19 +26,19 @@ const reference =
 
 type RecordSource = { id: string; page_id: string; html: string; cells: string; access: string; created_by: string | null };
 // The records of the workspace this person may read, with their text.
-function readableRecords(user: Identity, workspaceId: string, readable: (page: Page) => boolean) {
-  const databases = new Map<string, { page: Page; fields: Field[]; visible: ReturnType<typeof rowRoleResolver> } | null>();
+async function readableRecords(user: Identity, workspaceId: string, readable: (page: Page) => boolean) {
+  const databases = new Map<string, { page: Page; fields: Field[]; visible: Awaited<ReturnType<typeof rowRoleResolver>> } | null>();
   const records = new Map<string, RecordSource & { title: string; database: Page }>();
-  for (const row of all<RecordSource>(
+  for (const row of await all<RecordSource>(
     `SELECT r.id,r.page_id,r.cells,r.access,r.created_by,COALESCE(d.html,r.content,'') html
      FROM rows r JOIN pages p ON p.id=r.page_id LEFT JOIN row_documents d ON d.row_id=r.id
      WHERE p.workspace_id=? AND p.deleted_at IS NULL`,
     workspaceId,
   )) {
     if (!databases.has(row.page_id)) {
-      const page = one<Page>("SELECT * FROM pages WHERE id=?", row.page_id)!;
-      const fields = JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", page.id)?.fields || "[]") as Field[];
-      databases.set(page.id, readable(page) ? { page, fields, visible: rowRoleResolver(user, page) } : null);
+      const page = (await one<Page>("SELECT * FROM pages WHERE id=?", row.page_id))!;
+      const fields = JSON.parse((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", page.id))?.fields || "[]") as Field[];
+      databases.set(page.id, readable(page) ? { page, fields, visible: await rowRoleResolver(user, page) } : null);
     }
     const database = databases.get(row.page_id);
     if (!database || !database.visible(row)) continue;
@@ -70,17 +71,17 @@ const monthName = (month: string) =>
     year: "numeric",
     timeZone: "UTC",
   }).format(new Date(`${month}-01T00:00:00Z`));
-export function pageGraph(user: Identity, workspaceId: string, options: { days?: GraphDays } = {}) {
+export async function pageGraph(user: Identity, workspaceId: string, options: { days?: GraphDays } = {}) {
   const mode = options.days || "hide";
-  const locked = lockedPageIds(user, workspaceId);
-  const readable = (page: Page) => !locked.has(page.id) && !!pageRole(user, page);
-  const pages = all<Page & { html: string | null }>(
+  const locked = await lockedPageIds(user, workspaceId);
+  const readable = async (page: Page) => !locked.has(page.id) && !!(await pageRole(user, page));
+  const pages = await filterAsync(await all<Page & { html: string | null }>(
     `SELECT p.*,d.html FROM pages p LEFT JOIN documents d ON d.page_id=p.id
      WHERE p.workspace_id=? AND p.deleted_at IS NULL`,
     workspaceId,
-  ).filter(readable);
+  ), readable);
   const visible = new Map(pages.map((page) => [page.id, page]));
-  const records = readableRecords(user, workspaceId, readable);
+  const records = await readableRecords(user, workspaceId, readable);
   // A synced block counts as part of the page it was created on.
   const owner = (id: string) => {
     const page = visible.get(id);
@@ -178,19 +179,19 @@ function usableTitle(title: string) {
 type Target = { page: Page; rowId?: string };
 // The matched alias is set when the text names the item by an alias.
 type Mention = { id: string; rowId?: string; pageTitle?: string; title: string; icon: string; snippet: string; alias?: string };
-function recordInfo(page: Page, rowId: string) {
-  const row = one<{ cells: string }>("SELECT cells FROM rows WHERE id=? AND page_id=?", rowId, page.id);
+async function recordInfo(page: Page, rowId: string) {
+  const row = await one<{ cells: string }>("SELECT cells FROM rows WHERE id=? AND page_id=?", rowId, page.id);
   if (!row) return { title: "", aliases: [] as string[] };
-  const fields = JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", page.id)?.fields || "[]") as Field[];
+  const fields = JSON.parse((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", page.id))?.fields || "[]") as Field[];
   const cells = JSON.parse(row.cells) as Record<string, unknown>;
   return { title: cellText(cells[fields[0]?.id || "title"]), aliases: recordAliases(fields, cells) };
 }
-const recordTitle = (page: Page, rowId: string) => recordInfo(page, rowId).title;
+const recordTitle = async (page: Page, rowId: string) => (await recordInfo(page, rowId)).title;
 // The names an item is mentioned by: its title (found anywhere in a word,
 // from four characters) and its aliases (as whole words, from two).
 type Name = { text: string; alias: boolean };
-function namesOf(target: Target): Name[] {
-  const info = target.rowId ? recordInfo(target.page, target.rowId) : { title: target.page.title, aliases: pageAliases(target.page) };
+async function namesOf(target: Target): Promise<Name[]> {
+  const info = target.rowId ? (await recordInfo(target.page, target.rowId)) : { title: target.page.title, aliases: pageAliases(target.page) };
   const title = usableTitle(info.title);
   return [
     ...(title ? [{ text: title, alias: false }] : []),
@@ -210,15 +211,15 @@ function snippetOf(html: string, name: Name) {
 }
 // Documents and record texts that contain the title or an alias of a page
 // or record as text but do not link to it.
-export function unlinkedMentions(user: Identity, page: Page, rowId?: string) {
-  const names = namesOf({ page, rowId });
+export async function unlinkedMentions(user: Identity, page: Page, rowId?: string) {
+  const names = await namesOf({ page, rowId });
   const targetId = rowId || page.id;
   const found: Mention[] = [];
   const seen = new Set<string>();
-  const resolvers = new Map<string, ReturnType<typeof rowRoleResolver> | null>();
+  const resolvers = new Map<string, Awaited<ReturnType<typeof rowRoleResolver>> | null>();
   for (const name of names) {
     const alias = name.alias ? { alias: name.text } : {};
-    for (const doc of all<Page & { html: string }>(
+    for (const doc of await all<Page & { html: string }>(
       `SELECT p.*,d.html FROM pages p JOIN documents d ON d.page_id=p.id
        WHERE p.workspace_id=? AND p.deleted_at IS NULL AND p.id!=? AND p.kind='document'
        AND ${sql.instr("lower(d.html)", "lower(?)")}>0 AND ${sql.instr("d.html", "?")}=0 LIMIT 200`,
@@ -227,11 +228,11 @@ export function unlinkedMentions(user: Identity, page: Page, rowId?: string) {
       name.text,
       targetId,
     )) {
-      if (seen.has(doc.id) || !pageRole(user, doc) || journalLocked(user, doc)) continue;
+      if (seen.has(doc.id) || !(await pageRole(user, doc)) || await journalLocked(user, doc)) continue;
       const snippet = snippetOf(doc.html, name);
       if (!snippet) continue;
       seen.add(doc.id);
-      const host = doc.synced && doc.parent_id ? one<Page>("SELECT * FROM pages WHERE id=?", doc.parent_id) : null;
+      const host = doc.synced && doc.parent_id ? (await one<Page>("SELECT * FROM pages WHERE id=?", doc.parent_id)) : null;
       found.push({
         id: doc.id,
         title: host ? `${host.title} (synchronisierter Block)` : doc.title,
@@ -242,7 +243,7 @@ export function unlinkedMentions(user: Identity, page: Page, rowId?: string) {
       if (found.length >= 20) return found;
     }
     // Record texts, as far as the person may read the record.
-    for (const row of all<RecordSource & { db_title: string; db_icon: string }>(
+    for (const row of await all<RecordSource & { db_title: string; db_icon: string }>(
       `SELECT r.id,r.page_id,r.cells,r.access,r.created_by,d.html,p.title db_title,p.icon db_icon
        FROM row_documents d JOIN rows r ON r.id=d.row_id JOIN pages p ON p.id=r.page_id
        WHERE p.workspace_id=? AND p.deleted_at IS NULL AND r.id!=?
@@ -254,16 +255,16 @@ export function unlinkedMentions(user: Identity, page: Page, rowId?: string) {
     )) {
       if (seen.has(row.id)) continue;
       if (!resolvers.has(row.page_id)) {
-        const database = one<Page>("SELECT * FROM pages WHERE id=?", row.page_id)!;
-        resolvers.set(row.page_id, pageRole(user, database) && !journalLocked(user, database) ? rowRoleResolver(user, database) : null);
+        const database = (await one<Page>("SELECT * FROM pages WHERE id=?", row.page_id))!;
+        resolvers.set(row.page_id, await pageRole(user, database) && !(await journalLocked(user, database)) ? (await rowRoleResolver(user, database)) : null);
       }
       const visible = resolvers.get(row.page_id);
       if (!visible || !visible(row)) continue;
       const snippet = snippetOf(row.html, name);
       if (!snippet) continue;
       seen.add(row.id);
-      const source = one<Page>("SELECT * FROM pages WHERE id=?", row.page_id)!;
-      found.push({ id: row.page_id, rowId: row.id, pageTitle: row.db_title, title: recordTitle(source, row.id) || "Ohne Titel", icon: row.db_icon, snippet, ...alias });
+      const source = (await one<Page>("SELECT * FROM pages WHERE id=?", row.page_id))!;
+      found.push({ id: row.page_id, rowId: row.id, pageTitle: row.db_title, title: await recordTitle(source, row.id) || "Ohne Titel", icon: row.db_icon, snippet, ...alias });
       if (found.length >= 20) return found;
     }
   }
@@ -272,30 +273,30 @@ export function unlinkedMentions(user: Identity, page: Page, rowId?: string) {
 
 // Turns the first unlinked mention of the target's title in a document or a
 // record's text into a link to the target (a page or a record).
-export function linkMention(
+export async function linkMention(
   user: Identity,
   source: { pageId: string; rowId?: string },
   target: { pageId: string; rowId?: string },
 ) {
-  const sourcePage = requirePage(user, source.pageId, true);
-  const targetPage = requirePage(user, target.pageId);
-  if (target.rowId) requireRow(user, targetPage.id, target.rowId);
+  const sourcePage = await requirePage(user, source.pageId, true);
+  const targetPage = await requirePage(user, target.pageId);
+  if (target.rowId) await requireRow(user, targetPage.id, target.rowId);
   if (sourcePage.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
   if (source.rowId) {
-    const row = one<{ id: string; access: string; created_by: string }>(
+    const row = await one<{ id: string; access: string; created_by: string }>(
       "SELECT id,access,created_by FROM rows WHERE id=? AND page_id=?",
       source.rowId,
       sourcePage.id,
     );
     if (!row) throw new HttpError(404, "Datensatz fehlt.");
-    assertRowAccess(user, sourcePage, row, true);
+    await assertRowAccess(user, sourcePage, row, true);
   } else if (sourcePage.kind !== "document") throw new HttpError(400, "Kein Dokument.");
-  const names = namesOf({ page: targetPage, rowId: target.rowId });
+  const names = await namesOf({ page: targetPage, rowId: target.rowId });
   if (!names.length) throw new HttpError(400, "Der Titel ist zu kurz zum Verlinken.");
   const href = target.rowId ? `/#page=${targetPage.id}&row=${target.rowId}` : `/#page=${targetPage.id}`;
   // The first mention by the title, else by an alias; the text stays as
   // written ("PAC" links to "Chauffage" and still reads "PAC").
-  const result = rewriteDocument(sourcePage.id, source.rowId ?? null, user.id, (doc) => {
+  const result = await rewriteDocument(sourcePage.id, source.rowId ?? null, user.id, (doc) => {
     let range: { from: number; to: number } | null = null;
     for (const name of names) {
       doc.descendants((node: PMNode, pos: number) => {

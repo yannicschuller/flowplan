@@ -39,18 +39,18 @@ const deletedFiles = () => {
 const HOUR = 3_600_000;
 let deletedLater = "";
 
-test("the password is stored sealed and never shown again", () => {
-  backup.saveSftpBackup(admin, settings());
-  const raw = one<{ value: string }>("SELECT value FROM instance_settings WHERE key='sftpBackup'")!.value;
+test("the password is stored sealed and never shown again", async () => {
+  await backup.saveSftpBackup(admin, settings());
+  const raw = (await one<{ value: string }>("SELECT value FROM instance_settings WHERE key='sftpBackup'"))!.value;
   assert.ok(!raw.includes("richtig-geheim"));
-  const shown = backup.sftpBackupSettings();
+  const shown = await backup.sftpBackupSettings();
   assert.equal(shown.hasPassword, true);
   assert.ok(!JSON.stringify(shown).includes("richtig-geheim"));
   // Not in the activity log either.
-  assert.ok(!JSON.stringify(one("SELECT detail FROM audit WHERE action='backup.sftp.saved'")).includes("richtig-geheim"));
+  assert.ok(!JSON.stringify(await one("SELECT detail FROM audit WHERE action='backup.sftp.saved'")).includes("richtig-geheim"));
   // Saving again without a password keeps it.
-  backup.saveSftpBackup(admin, { ...settings(), password: undefined });
-  assert.equal(backup.sftpBackupSettings().hasPassword, true);
+  await backup.saveSftpBackup(admin, { ...settings(), password: undefined });
+  assert.equal((await backup.sftpBackupSettings()).hasPassword, true);
 });
 
 test("the host key is confirmed before any credential is sent", async () => {
@@ -63,8 +63,8 @@ test("the host key is confirmed before any credential is sent", async () => {
   const refused = await backup.runSftpBackup();
   assert.match(refused.error!, /Hostschlüssel/);
   // Only the key the test saw can be confirmed.
-  assert.throws(() => backup.trustSftpHostKey(admin, "SHA256:anders"), /zuerst die Verbindung testen/);
-  backup.trustSftpHostKey(admin, first.fingerprint);
+  await assert.rejects(async () => await backup.trustSftpHostKey(admin, "SHA256:anders"), /zuerst die Verbindung testen/);
+  await backup.trustSftpHostKey(admin, first.fingerprint);
   const ok = await backup.testSftpBackup();
   assert.equal(ok.state, "ok");
   assert.equal(server.logins, before + 1);
@@ -81,7 +81,7 @@ test("backups go to the SFTP server, with the files, keeping the newest N", asyn
   // The scheduled backup sends the same copy to SFTP as well.
   const local = await runScheduledBackup(start);
   assert.equal(local.error, null);
-  assert.equal(scheduledBackupStatus().sftp.last?.error, null);
+  assert.equal((await scheduledBackupStatus()).sftp.last?.error, null);
   assert.deepEqual(remoteFiles(), ["flowplan-2026-11-06-03-00.sqlite"]);
   assert.equal(readFileSync(join(remote, "sicherungen/flowplan/uploads", kept), "utf8"), "Anhang");
   // A file deleted here leaves uploads/ there, into .deleted/uploads/.
@@ -130,12 +130,12 @@ test("deleted files wait in .deleted/ until no kept backup refers to them", asyn
 test("files the database still lists stay on the server when they are missing here", async () => {
   const start = Date.UTC(2026, 10, 6, 10, 0);
   const { createWorkspace, createPage } = await import("../lib/seed");
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", admin, admin, "Admin", "admin@example.test");
-  const workspace = createWorkspace(admin, "W");
-  const page = createPage(workspace, one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", workspace)!.id, admin, "P");
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", admin, admin, "Admin", "admin@example.test");
+  const workspace = await createWorkspace(admin, "W");
+  const page = await createPage(workspace, (await one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", workspace))!.id, admin, "P");
   const listed = id();
   writeFileSync(join(dir, "uploads", listed), "noch verzeichnet");
-  run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", listed, page, "a.txt", "text/plain", 16, admin);
+  await run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", listed, page, "a.txt", "text/plain", 16, admin);
   assert.equal((await backup.runSftpBackup(start)).files, 1);
   const mirrored = () => readdirSync(join(remote, "sicherungen/flowplan/uploads")).sort();
   const before = mirrored();
@@ -162,20 +162,20 @@ test("files the database still lists stay on the server when they are missing he
   assert.deepEqual([partial.error, partial.removed], [null, 0]);
   assert.ok(mirrored().includes(listed));
   // Deleted for real (the row is gone): moved to .deleted/ as before.
-  run("DELETE FROM files WHERE id=?", listed);
+  await run("DELETE FROM files WHERE id=?", listed);
   assert.equal((await backup.runSftpBackup(start + 6 * HOUR)).removed, 1);
   assert.deepEqual(deletedFiles(), [`${listed}.${start + 6 * HOUR}`]);
   // Listed again (a database restored without its files): the copy there
   // is not purged, however old the kept backups make it.
-  run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", listed, page, "a.txt", "text/plain", 16, admin);
+  await run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", listed, page, "a.txt", "text/plain", 16, admin);
   for (let hour = 7; hour <= 9; hour++) assert.equal((await backup.runSftpBackup(start + hour * HOUR)).purged, 0);
   assert.deepEqual(deletedFiles(), [`${listed}.${start + 6 * HOUR}`]);
-  run("DELETE FROM files WHERE id=?", listed);
+  await run("DELETE FROM files WHERE id=?", listed);
 });
 
 test("a changed host key stops the backups until it is confirmed again", async () => {
-  const stored = JSON.parse(one<{ value: string }>("SELECT value FROM instance_settings WHERE key='sftpBackup'")!.value);
-  run("UPDATE instance_settings SET value=? WHERE key='sftpBackup'", JSON.stringify({ ...stored, hostKey: "SHA256:frueher" }));
+  const stored = JSON.parse((await one<{ value: string }>("SELECT value FROM instance_settings WHERE key='sftpBackup'"))!.value);
+  await run("UPDATE instance_settings SET value=? WHERE key='sftpBackup'", JSON.stringify({ ...stored, hostKey: "SHA256:frueher" }));
   const before = server.logins;
   const result = await backup.runSftpBackup(Date.UTC(2026, 10, 7, 3, 0));
   assert.match(result.error!, /Hostschlüssel.*geändert/);
@@ -183,17 +183,17 @@ test("a changed host key stops the backups until it is confirmed again", async (
   assert.equal(remoteFiles().length, 2);
   const seen = await backup.testSftpBackup();
   assert.deepEqual([seen.state, seen.expected, seen.fingerprint], ["changed", "SHA256:frueher", server.hostKey]);
-  backup.trustSftpHostKey(admin, seen.fingerprint);
+  await backup.trustSftpHostKey(admin, seen.fingerprint);
   assert.equal((await backup.testSftpBackup()).state, "ok");
 });
 
 test("a wrong password is reported, not retried with something else", async () => {
-  backup.saveSftpBackup(admin, settings({ password: "falsch" }));
+  await backup.saveSftpBackup(admin, settings({ password: "falsch" }));
   await assert.rejects(backup.testSftpBackup(), /Anmeldung am SFTP-Server fehlgeschlagen/);
   const result = await backup.runSftpBackup();
   assert.match(result.error!, /Anmeldung am SFTP-Server fehlgeschlagen/);
   assert.ok(!result.error!.includes("falsch"));
-  backup.saveSftpBackup(admin, settings());
+  await backup.saveSftpBackup(admin, settings());
 });
 
 test("sign-in with a private key and passphrase", async () => {
@@ -201,27 +201,27 @@ test("sign-in with a private key and passphrase", async () => {
   const keyRemote = mkdtempSync(join(tmpdir(), "flowplan-sftp-key-"));
   const keyServer = await startSftpServer(keyRemote, { user: "schluessel", publicKey: keys.public });
   try {
-    backup.saveSftpBackup(admin, settings({ port: keyServer.port, username: "schluessel", auth: "key", password: "", privateKey: keys.private, passphrase: "schluessel-satz", directory: "/" }));
+    await backup.saveSftpBackup(admin, settings({ port: keyServer.port, username: "schluessel", auth: "key", password: "", privateKey: keys.private, passphrase: "schluessel-satz", directory: "/" }));
     // Another port: the host key is confirmed anew.
-    assert.equal(backup.sftpBackupSettings().hostKey, null);
+    assert.equal((await backup.sftpBackupSettings()).hostKey, null);
     const seen = await backup.testSftpBackup();
-    backup.trustSftpHostKey(admin, seen.fingerprint);
+    await backup.trustSftpHostKey(admin, seen.fingerprint);
     const result = await backup.runSftpBackup(Date.UTC(2026, 10, 8, 3, 0));
     assert.equal(result.error, null);
     assert.ok(existsSync(join(keyRemote, "flowplan-2026-11-08-03-00.sqlite")));
     // A wrong passphrase is a readable error.
-    backup.saveSftpBackup(admin, settings({ port: keyServer.port, username: "schluessel", auth: "key", passphrase: "falsch", directory: "/" }));
+    await backup.saveSftpBackup(admin, settings({ port: keyServer.port, username: "schluessel", auth: "key", passphrase: "falsch", directory: "/" }));
     await assert.rejects(backup.testSftpBackup(), /private Schlüssel kann nicht gelesen werden/);
   } finally {
     await keyServer.close();
   }
 });
 
-test("folders on the server cannot leave the login folder by ..", () => {
+test("folders on the server cannot leave the login folder by ..", async () => {
   assert.throws(() => remoteDirectory("../etc"), /Ungültiger Ordner/);
   assert.throws(() => remoteDirectory("backups/../../x"), /Ungültiger Ordner/);
   assert.throws(() => remoteDirectory("a\nb"), /Ungültiger Ordner/);
   assert.equal(remoteDirectory("/srv/backups/"), "/srv/backups");
   assert.equal(remoteDirectory(""), ".");
-  assert.throws(() => backup.saveSftpBackup(admin, settings({ host: "ssh://example.org" })), /Ungültiger SFTP-Server/);
+  await assert.rejects(async () => await backup.saveSftpBackup(admin, settings({ host: "ssh://example.org" })), /Ungültiger SFTP-Server/);
 });

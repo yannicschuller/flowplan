@@ -68,17 +68,17 @@ const sha256 = (value: string | Buffer) => createHash("sha256").update(value).di
 
 // Who the key belongs to, from the request's own credentials (the handler
 // still authenticates; null means it will refuse, so no key is reserved).
-export function idempotencyPrincipal(req: Request): Principal | null {
+export async function idempotencyPrincipal(req: Request): Promise<Principal | null> {
   const authorization = req.headers.get("authorization");
   if (authorization?.startsWith("Bearer ")) {
     const match = authorization.match(/^Bearer\s+(fpd?_[A-Za-z0-9_-]{20,80})$/);
     if (!match) return null;
     const tokenHash = sha256(match[1]);
     if (match[1].startsWith("fpd_")) {
-      const device = one<{ id: string; user_id: string }>("SELECT id,user_id FROM mobile_devices WHERE token_hash=?", tokenHash);
+      const device = await one<{ id: string; user_id: string }>("SELECT id,user_id FROM mobile_devices WHERE token_hash=?", tokenHash);
       return device ? { scope: `d:${device.id}`, userId: device.user_id } : null;
     }
-    const token = one<{ id: string; user_id: string }>(
+    const token = await one<{ id: string; user_id: string }>(
       "SELECT id,user_id FROM api_tokens WHERE token_hash=? AND (expires_at IS NULL OR expires_at>?)",
       tokenHash,
       Date.now(),
@@ -94,7 +94,7 @@ export function idempotencyPrincipal(req: Request): Principal | null {
     } catch {
       return null;
     }
-    const session = one<{ user_id: string }>("SELECT user_id FROM sessions WHERE token=? AND expires>?", sha256(token), Date.now());
+    const session = await one<{ user_id: string }>("SELECT user_id FROM sessions WHERE token=? AND expires>?", sha256(token), Date.now());
     return session ? { scope: `u:${session.user_id}`, userId: session.user_id } : null;
   }
   return null;
@@ -151,10 +151,10 @@ type Row = {
   stored: string;
   created_at: number;
 };
-function lookup(scope: string, key: string, now: number): Row | undefined {
-  const row = one<Row>("SELECT request_hash,status,http_status,response,stored,created_at FROM idempotency_keys WHERE scope=? AND key=?", scope, key);
+async function lookup(scope: string, key: string, now: number): Promise<Row | undefined> {
+  const row = await one<Row>("SELECT request_hash,status,http_status,response,stored,created_at FROM idempotency_keys WHERE scope=? AND key=?", scope, key);
   if (row && row.created_at <= now - IDEMPOTENCY_TTL) {
-    run("DELETE FROM idempotency_keys WHERE scope=? AND key=? AND created_at=?", scope, key, row.created_at);
+    await run("DELETE FROM idempotency_keys WHERE scope=? AND key=? AND created_at=?", scope, key, row.created_at);
     return undefined;
   }
   return row;
@@ -238,29 +238,29 @@ export function idempotencyHook(): TransactionHook | undefined {
   const ctx = context.getStore();
   if (!ctx || !ctx.atomic) return undefined;
   return {
-    begin(action) {
+    async begin(action) {
       if (unkeyedActions.has(action)) {
         ctx.skipped = true;
         return;
       }
-      const inserted = run(
+      const inserted = (await run(
         "INSERT INTO idempotency_keys(scope,key,user_id,request_hash,status,stored,created_at) VALUES(?,?,?,?,'processing','body',?) ON CONFLICT(scope,key) DO NOTHING",
         ctx.principal.scope,
         ctx.key,
         ctx.principal.userId,
         ctx.hash,
         ctx.now,
-      ).changes;
+      )).changes;
       if (!inserted) {
         ctx.raced = true;
         throw new IdempotencyRace();
       }
     },
-    end(result, action) {
+    async end(result, action) {
       if (ctx.skipped) return;
       const body = result === undefined ? null : JSON.stringify(result);
       const { stored, response } = storedForm(200, body, secretActions.has(action) || containsSecret(result));
-      run(
+      await run(
         "UPDATE idempotency_keys SET status='done',http_status=200,response=?,stored=? WHERE scope=? AND key=?",
         response,
         stored,
@@ -294,7 +294,7 @@ export function withIdempotency<A extends unknown[]>(
     const extra = options.headers?.(req) ?? {};
     if (!isIdempotencyKey(key))
       return refusal(req, 400, "Ungültiger Idempotency-Key (8–128 Zeichen: A–Z, a–z, 0–9, _ und -).", IDEMPOTENCY_CODES.invalid, extra);
-    const principal = idempotencyPrincipal(req);
+    const principal = await idempotencyPrincipal(req);
     if (!principal) return handler(req, ...rest);
     let hash: string;
     try {
@@ -305,40 +305,40 @@ export function withIdempotency<A extends unknown[]>(
       throw e;
     }
     const now = Date.now();
-    const existing = lookup(principal.scope, key, now);
+    const existing = await lookup(principal.scope, key, now);
     if (existing) return answerFor(req, existing, hash, extra);
     const ctx: Context = { principal, key, hash, now, atomic: !!options.atomic?.(req, ...rest) };
     if (!ctx.atomic) {
-      const reserved = run(
+      const reserved = (await run(
         "INSERT INTO idempotency_keys(scope,key,user_id,request_hash,status,stored,created_at) VALUES(?,?,?,?,'processing','body',?) ON CONFLICT(scope,key) DO NOTHING",
         principal.scope,
         key,
         principal.userId,
         hash,
         now,
-      ).changes;
+      )).changes;
       if (!reserved) {
-        const row = lookup(principal.scope, key, now);
+        const row = await lookup(principal.scope, key, now);
         if (row) return answerFor(req, row, hash, extra);
       }
     }
-    const release = () => run("DELETE FROM idempotency_keys WHERE scope=? AND key=? AND status='processing'", principal.scope, key);
+    const release = async () => await run("DELETE FROM idempotency_keys WHERE scope=? AND key=? AND status='processing'", principal.scope, key);
     let response: Response;
     try {
       response = await context.run(ctx, () => handler(req, ...rest));
     } catch (e) {
-      if (!ctx.atomic) release();
+      if (!ctx.atomic) await release();
       throw e;
     }
     // Another request with this key won inside the transaction: its answer.
     if (ctx.raced) {
-      const row = lookup(principal.scope, key, Date.now());
+      const row = await lookup(principal.scope, key, Date.now());
       if (row) return answerFor(req, row, hash, extra);
       return response;
     }
     if (ctx.done || ctx.skipped) return response;
     if (response.status < 200 || response.status >= 300) {
-      if (!ctx.atomic) release();
+      if (!ctx.atomic) await release();
       return response;
     }
     const text = await responseText(response);
@@ -350,7 +350,7 @@ export function withIdempotency<A extends unknown[]>(
     const { stored, response: body } = storedForm(response.status, text, secret);
     if (ctx.atomic)
       // The handler answered without the hook (an action outside command()).
-      run(
+      await run(
         "INSERT INTO idempotency_keys(scope,key,user_id,request_hash,status,http_status,response,stored,created_at) VALUES(?,?,?,?,'done',?,?,?,?) ON CONFLICT(scope,key) DO NOTHING",
         principal.scope,
         key,
@@ -362,7 +362,7 @@ export function withIdempotency<A extends unknown[]>(
         now,
       );
     else
-      run(
+      await run(
         "UPDATE idempotency_keys SET status='done',http_status=?,response=?,stored=? WHERE scope=? AND key=?",
         response.status,
         body,
@@ -375,6 +375,6 @@ export function withIdempotency<A extends unknown[]>(
 }
 
 // Keys older than 24 hours (the operations worker, every ten minutes).
-export function sweepIdempotencyKeys(now = Date.now()) {
-  return Number(run("DELETE FROM idempotency_keys WHERE created_at<=?", now - IDEMPOTENCY_TTL).changes);
+export async function sweepIdempotencyKeys(now = Date.now()) {
+  return Number((await run("DELETE FROM idempotency_keys WHERE created_at<=?", now - IDEMPOTENCY_TTL)).changes);
 }

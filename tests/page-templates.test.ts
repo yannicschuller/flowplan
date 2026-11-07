@@ -20,9 +20,9 @@ const { listPageTemplates } = await import("../lib/page-templates");
 const { exportArchive, importArchive, readZip, writeZip } =
   await import("../lib/archive");
 const { requirePage } = await import("../lib/permissions");
-function user(name: string): Identity {
+async function user(name: string): Promise<Identity> {
   const uid = id();
-  run(
+  await run(
     "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
     uid,
     uid,
@@ -39,32 +39,32 @@ function user(name: string): Identity {
     created_at: "",
   };
 }
-const owner = user("owner"),
-  editor = user("editor"),
-  viewer = user("viewer");
-const wid = createWorkspace(owner.id, "Template tests");
-run("INSERT INTO members VALUES(?,?,?)", wid, editor.id, "editor");
-run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
-const boot = bootstrap(owner, wid);
+const owner = await user("owner"),
+  editor = await user("editor"),
+  viewer = await user("viewer");
+const wid = await createWorkspace(owner.id, "Template tests");
+await run("INSERT INTO members VALUES(?,?,?)", wid, editor.id, "editor");
+await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
+const boot = await bootstrap(owner, wid);
 const dir = join(process.env.FLOWPLAN_DATA_DIR!, "uploads");
 mkdirSync(dir, { recursive: true });
 const bytes = Buffer.from("Saved independent attachment\0original bytes");
-function fixture() {
-  const space = command(owner, {
+async function fixture() {
+  const space = (await command(owner, {
     action: "space.create",
     workspaceId: wid,
     name: "Private original",
     private: true,
-  }) as { id: string };
-  const page = command(owner, {
+  })) as { id: string };
+  const page = (await command(owner, {
     action: "page.create",
     workspaceId: wid,
     spaceId: space.id,
     title: "Private source",
-  }) as { id: string };
+  })) as { id: string };
   const fid = id();
   writeFileSync(join(dir, fid), bytes);
-  run(
+  await run(
     "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
     fid,
     page.id,
@@ -73,78 +73,78 @@ function fixture() {
     bytes.length,
     owner.id,
   );
-  run(
+  await run(
     "UPDATE documents SET html=? WHERE page_id=?",
     `<p><a href="/api/files/${fid}">Read the attachment</a></p><p>Literal: /api/files/${fid}</p>`,
     page.id,
   );
-  const template = command(owner, {
+  const template = (await command(owner, {
     action: "template.save",
     pageId: page.id,
     name: `Reusable ${id()}`,
     // For the whole workspace (#136: by default a template belongs to its
     // page's space – here a private one).
     spaceId: null,
-  }) as { id: string };
+  })) as { id: string };
   return { page, fid, template };
 }
-function create(templateId: string, extra = {}) {
-  return command(editor, {
+async function create(templateId: string, extra = {}) {
+  return (await command(editor, {
     action: "page.create",
     workspaceId: wid,
     spaceId: boot.spaces[0].id,
     title: "Independent copy",
     templateId,
     ...extra,
-  }) as { id: string };
+  })) as { id: string };
 }
-test("template files survive source deletion and create independently authorized copies with rollback cleanup", () => {
-  const { page, fid, template } = fixture();
-  assert.throws(() => requirePage(editor, page.id), /Berechtigung/);
+test("template files survive source deletion and create independently authorized copies with rollback cleanup", async () => {
+  const { page, fid, template } = await fixture();
+  await assert.rejects(async () => await requirePage(editor, page.id), /Berechtigung/);
   writeFileSync(join(dir, fid), "Changed source bytes");
-  run("DELETE FROM pages WHERE id=?", page.id);
-  const copied = create(template.id);
-  const file = one<{ id: string }>(
+  await run("DELETE FROM pages WHERE id=?", page.id);
+  const copied = await create(template.id);
+  const file = (await one<{ id: string }>(
     "SELECT id FROM files WHERE page_id=?",
     copied.id,
-  )!;
+  ))!;
   assert.notEqual(file.id, fid);
   assert.deepEqual(readFileSync(join(dir, file.id)), bytes);
-  assert.equal(requirePage(editor, copied.id).id, copied.id);
-  const html = one<{ html: string }>(
+  assert.equal((await requirePage(editor, copied.id)).id, copied.id);
+  const html = (await one<{ html: string }>(
     "SELECT html FROM documents WHERE page_id=?",
     copied.id,
-  )!.html;
+  ))!.html;
   assert.match(html, new RegExp(`href="/api/files/${file.id}"`));
   assert.match(html, new RegExp(`Literal: /api/files/${fid}`));
   const before = readdirSync(dir).sort();
-  assert.throws(
-    () =>
-      create(template.id, {
+  await assert.rejects(
+    async () =>
+      await create(template.id, {
         title: "Rollback template",
         starterTemplate: "meeting",
       }),
     /Nur eine Vorlage/,
   );
   assert.equal(
-    one("SELECT id FROM pages WHERE title=?", "Rollback template"),
+    await one("SELECT id FROM pages WHERE title=?", "Rollback template"),
     undefined,
   );
   assert.deepEqual(readdirSync(dir).sort(), before);
 });
-test("template management enforces creator ownership, versions, visibility and recoverable deletion", () => {
-  const { template } = fixture();
-  let current = listPageTemplates(owner, wid).find(
+test("template management enforces creator ownership, versions, visibility and recoverable deletion", async () => {
+  const { template } = await fixture();
+  let current = (await listPageTemplates(owner, wid)).find(
     (t) => t.id === template.id,
   )!;
   assert.equal(
-    listPageTemplates(editor, wid).find((t) => t.id === template.id)!
+    (await listPageTemplates(editor, wid)).find((t) => t.id === template.id)!
       .can_manage,
     false,
   );
-  assert.throws(
-    () =>
-      command(editor, {
+  await assert.rejects(
+    async () =>
+      await command(editor, {
         action: "template.delete",
         workspaceId: wid,
         templateId: template.id,
@@ -152,9 +152,9 @@ test("template management enforces creator ownership, versions, visibility and r
       }),
     /Ersteller/,
   );
-  assert.throws(
-    () =>
-      command(viewer, {
+  await assert.rejects(
+    async () =>
+      await command(viewer, {
         action: "template.delete",
         workspaceId: wid,
         templateId: template.id,
@@ -162,7 +162,7 @@ test("template management enforces creator ownership, versions, visibility and r
       }),
     /Berechtigung/,
   );
-  command(owner, {
+  await command(owner, {
     action: "template.update",
     workspaceId: wid,
     templateId: template.id,
@@ -171,13 +171,13 @@ test("template management enforces creator ownership, versions, visibility and r
     visibility: "private",
   });
   assert.equal(
-    listPageTemplates(editor, wid).some((t) => t.id === template.id),
+    (await listPageTemplates(editor, wid)).some((t) => t.id === template.id),
     false,
   );
-  assert.throws(() => create(template.id), /Private Vorlage/);
-  assert.throws(
-    () =>
-      command(owner, {
+  await assert.rejects(async () => await create(template.id), /Private Vorlage/);
+  await assert.rejects(
+    async () =>
+      await command(owner, {
         action: "template.delete",
         workspaceId: wid,
         templateId: template.id,
@@ -185,16 +185,16 @@ test("template management enforces creator ownership, versions, visibility and r
       }),
     /zwischenzeitlich/,
   );
-  current = listPageTemplates(owner, wid).find((t) => t.id === template.id)!;
-  command(owner, {
+  current = (await listPageTemplates(owner, wid)).find((t) => t.id === template.id)!;
+  await command(owner, {
     action: "template.delete",
     workspaceId: wid,
     templateId: template.id,
     version: current.version,
   });
-  assert.throws(
-    () =>
-      command(owner, {
+  await assert.rejects(
+    async () =>
+      await command(owner, {
         action: "page.create",
         workspaceId: wid,
         spaceId: boot.spaces[0].id,
@@ -203,76 +203,76 @@ test("template management enforces creator ownership, versions, visibility and r
       }),
     /Vorlage fehlt/,
   );
-  current = listPageTemplates(owner, wid).find((t) => t.id === template.id)!;
+  current = (await listPageTemplates(owner, wid)).find((t) => t.id === template.id)!;
   assert.ok(current.deleted_at);
-  command(owner, {
+  await command(owner, {
     action: "template.restore",
     workspaceId: wid,
     templateId: template.id,
     version: current.version,
   });
   assert.equal(
-    listPageTemplates(owner, wid).find((t) => t.id === template.id)!.deleted_at,
+    (await listPageTemplates(owner, wid)).find((t) => t.id === template.id)!.deleted_at,
     null,
   );
   assert.ok(
-    one("SELECT id FROM template_files WHERE template_id=?", template.id),
+    await one("SELECT id FROM template_files WHERE template_id=?", template.id),
   );
 });
 test("ZIP archives preserve template-only binaries and reject corrupted attachment checksums atomically", async () => {
-  const { page, template } = fixture();
-  run("DELETE FROM pages WHERE id=?", page.id);
+  const { page, template } = await fixture();
+  await run("DELETE FROM pages WHERE id=?", page.id);
   const archive = await exportArchive(owner, wid);
-  const target = createWorkspace(owner.id, "Asset restore");
+  const target = await createWorkspace(owner.id, "Asset restore");
   await importArchive(owner, target, archive);
-  const name = one<{ name: string }>(
+  const name = (await one<{ name: string }>(
     "SELECT name FROM templates WHERE id=?",
     template.id,
-  )!.name;
-  const imported = listPageTemplates(owner, target).find(
+  ))!.name;
+  const imported = (await listPageTemplates(owner, target)).find(
     (t) => t.name === name,
   )!;
-  const space = bootstrap(owner, target).spaces[0];
-  const copied = command(owner, {
+  const space = (await bootstrap(owner, target)).spaces[0];
+  const copied = (await command(owner, {
     action: "page.create",
     workspaceId: target,
     spaceId: space.id,
     title: "Restored attachment",
     templateId: imported.id,
-  }) as { id: string };
-  const file = one<{ id: string }>(
+  })) as { id: string };
+  const file = (await one<{ id: string }>(
     "SELECT id FROM files WHERE page_id=?",
     copied.id,
-  )!;
+  ))!;
   assert.deepEqual(readFileSync(join(dir, file.id)), bytes);
   const entries = await readZip(archive);
   const assetEntry = [...entries.keys()].find((key) =>
     key.startsWith("template-files/"),
   )!;
   entries.set(assetEntry, Buffer.from("corrupted"));
-  const before = listPageTemplates(owner, target).length;
+  const before = (await listPageTemplates(owner, target)).length;
   await assert.rejects(
     importArchive(owner, target, await writeZip(entries)),
     /Prüfsumme/,
   );
-  assert.equal(listPageTemplates(owner, target).length, before);
+  assert.equal((await listPageTemplates(owner, target)).length, before);
 });
-test("saving a template cannot capture attachments from an inaccessible page", () => {
-  const { fid } = fixture();
-  const own = command(editor, {
+test("saving a template cannot capture attachments from an inaccessible page", async () => {
+  const { fid } = await fixture();
+  const own = (await command(editor, {
     action: "page.create",
     workspaceId: wid,
     spaceId: boot.spaces[0].id,
     title: "Forged attachment",
-  }) as { id: string };
-  run(
+  })) as { id: string };
+  await run(
     "UPDATE documents SET html=? WHERE page_id=?",
     `<p><a href="/api/files/${fid}">Private file</a></p>`,
     own.id,
   );
-  assert.throws(
-    () =>
-      command(editor, {
+  await assert.rejects(
+    async () =>
+      await command(editor, {
         action: "template.save",
         pageId: own.id,
         name: "Forbidden capture",
@@ -280,7 +280,7 @@ test("saving a template cannot capture attachments from an inaccessible page", (
     /Berechtigung/,
   );
   assert.equal(
-    one("SELECT id FROM templates WHERE name=?", "Forbidden capture"),
+    await one("SELECT id FROM templates WHERE name=?", "Forbidden capture"),
     undefined,
   );
 });

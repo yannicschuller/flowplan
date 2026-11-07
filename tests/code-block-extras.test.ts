@@ -197,7 +197,7 @@ test("line numbers and highlighted lines are decorations of the editor, never do
     listeners.add(listener);
     return () => listeners.delete(listener);
   });
-  const decorations = (doc: ReturnType<typeof make>) => {
+  const decorations = (doc: Awaited<ReturnType<typeof make>>) => {
     const state = EditorState.create({ schema, doc, plugins: [plugin] });
     return codeLinesKey.getState(state)!.find();
   };

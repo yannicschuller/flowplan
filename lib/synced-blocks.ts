@@ -5,9 +5,10 @@ import { pageRole } from "./permissions";
 import { htmlParagraphs } from "./version-history";
 import { lockedPageIds } from "./journal-extras";
 import type { Identity, Page } from "./types";
+import { filterAsync, mapAsync } from "./each-async";
 
-export function syncedUsage(user: Identity, page: Page) {
-  const hosts = all<Page>(
+export async function syncedUsage(user: Identity, page: Page) {
+  const hosts = await all<Page>(
     `SELECT p.* FROM documents d JOIN pages p ON p.id=d.page_id
      WHERE p.workspace_id=? AND p.deleted_at IS NULL AND d.html LIKE ?
      UNION SELECT p.* FROM row_documents rd JOIN rows r ON r.id=rd.row_id JOIN pages p ON p.id=r.page_id
@@ -17,27 +18,24 @@ export function syncedUsage(user: Identity, page: Page) {
     page.workspace_id,
     `%data-synced-block="${page.id}"%`,
   );
-  const origin = page.parent_id ? one<Page>("SELECT * FROM pages WHERE id=?", page.parent_id) : undefined;
+  const origin = page.parent_id ? (await one<Page>("SELECT * FROM pages WHERE id=?", page.parent_id)) : undefined;
   return {
     count: hosts.length,
-    hosts: hosts
-      .filter((host) => pageRole(user, host))
+    hosts: (await filterAsync(hosts, async (host) => await pageRole(user, host)))
       .slice(0, 20)
       .map((host) => ({ id: host.id, title: host.title, icon: host.icon })),
-    origin: origin && !origin.deleted_at && pageRole(user, origin) ? { id: origin.id, title: origin.title } : null,
+    origin: origin && !origin.deleted_at && await pageRole(user, origin) ? { id: origin.id, title: origin.title } : null,
   };
 }
-export function listSyncedBlocks(user: Identity, workspaceId: string) {
+export async function listSyncedBlocks(user: Identity, workspaceId: string) {
   // Blocks made in a journal behind a PIN not entered: not offered.
-  const locked = lockedPageIds(user, workspaceId);
-  return all<Page & { html: string }>(
+  const locked = await lockedPageIds(user, workspaceId);
+  return await mapAsync(await filterAsync(await all<Page & { html: string }>(
     `SELECT p.*,d.html FROM pages p JOIN documents d ON d.page_id=p.id
      WHERE p.workspace_id=? AND p.synced=1 AND p.deleted_at IS NULL ORDER BY p.updated_at DESC LIMIT 200`,
     workspaceId,
-  )
-    .filter((page) => !locked.has(page.id) && pageRole(user, page))
-    .map((page) => {
-      const origin = page.parent_id ? one<Page>("SELECT title FROM pages WHERE id=?", page.parent_id) : undefined;
+  ), async (page) => !locked.has(page.id) && await pageRole(user, page)), async (page) => {
+      const origin = page.parent_id ? (await one<Page>("SELECT title FROM pages WHERE id=?", page.parent_id)) : undefined;
       return {
         id: page.id,
         preview: htmlParagraphs(page.html).join(" · ").slice(0, 160) || "Leer",

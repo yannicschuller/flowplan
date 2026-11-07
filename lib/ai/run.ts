@@ -51,10 +51,10 @@ const inputSchema = z.object({
 const running = new Map<string, number>();
 
 // Throws the reason when the feature is not available for this person.
-export function requireAi(user: Identity, feature: AiFeature, options: AiRunOptions = {}) {
-  const resolved = resolveAi(user, feature, { workspaceId: options.workspaceId });
+export async function requireAi(user: Identity, feature: AiFeature, options: AiRunOptions = {}) {
+  const resolved = await resolveAi(user, feature, { workspaceId: options.workspaceId });
   if (!resolved.ok) throw new HttpError(resolved.reason === "no-provider" || resolved.reason === "key-unreadable" ? 409 : 403, AI_REASON_TEXT[resolved.reason][0]);
-  if (options.pageId) requireAiRead(user, options.pageId, options.rowId);
+  if (options.pageId) await requireAiRead(user, options.pageId, options.rowId);
   return resolved;
 }
 

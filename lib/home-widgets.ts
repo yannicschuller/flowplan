@@ -44,6 +44,7 @@ import {
 import { widgetAction } from "./mobile-widget-actions";
 import { MAX_HOME_WIDGETS, serverWidgetKinds, widgetConfigs, type ServerWidgetKind, type WidgetConfig } from "./home-layout-schema";
 import type { Field, Identity, Page } from "./types";
+import { filterAsync, findAsync } from "./each-async";
 
 // Bytes per widget answer (the phone's widgets get 2 KB).
 export const HOME_WIDGET_BYTES = 12_000;
@@ -68,13 +69,13 @@ function limit(user: Pick<Identity, "id">, what: "data" | "action" | "options") 
 type Scope = { user: Identity; workspaceId: string; inside: (pageId: string | null | undefined) => boolean; need: (pageId: string | null | undefined) => string };
 function scopeOf(user: Identity, workspaceId: string): Scope {
   const cache = new Map<string, string | null>();
-  const inside = (pageId: string | null | undefined) => {
+  const inside = async (pageId: string | null | undefined) => {
     if (!pageId) return false;
-    if (!cache.has(pageId)) cache.set(pageId, one<{ workspace_id: string }>("SELECT workspace_id FROM pages WHERE id=? AND deleted_at IS NULL", pageId)?.workspace_id ?? null);
+    if (!cache.has(pageId)) cache.set(pageId, (await one<{ workspace_id: string }>("SELECT workspace_id FROM pages WHERE id=? AND deleted_at IS NULL", pageId))?.workspace_id ?? null);
     return cache.get(pageId) === workspaceId;
   };
-  const need = (pageId: string | null | undefined) => {
-    if (!inside(pageId)) throw new HttpError(404, ct("Seite nicht gefunden.", "Page not found."));
+  const need = async (pageId: string | null | undefined) => {
+    if (!(await inside(pageId))) throw new HttpError(404, ct("Seite nicht gefunden.", "Page not found."));
     return pageId!;
   };
   return { user, workspaceId, inside, need };
@@ -82,9 +83,9 @@ function scopeOf(user: Identity, workspaceId: string): Scope {
 // Whether the person can tick off tasks in a page.
 function editableIn(user: Identity) {
   const cache = new Map<string, boolean>();
-  return (pageId: string) => {
+  return async (pageId: string) => {
     if (!cache.has(pageId)) {
-      const access = pageAccess(user, pageId);
+      const access = await pageAccess(user, pageId);
       cache.set(pageId, !!access && rank[access.role] >= 2 && !access.page.locked && !access.locked && !access.encrypted);
     }
     return cache.get(pageId)!;
@@ -95,7 +96,7 @@ function editableIn(user: Identity) {
 
 type Builder<K extends ServerWidgetKind> = (ctx: Context, scope: Scope, config: WidgetConfig<K>) => Record<string, unknown>;
 
-const tasks: Builder<"tasks"> = (ctx, scope, config) => {
+const tasks: Builder<"tasks"> = async (ctx, scope, config) => {
   const { today } = ctx;
   const keep = (due: string | null) =>
     config.filter === "open" ? true : config.filter === "today" ? due === today : config.filter === "overdue" ? !!due && due < today : !!due && due <= today;
@@ -108,7 +109,7 @@ const tasks: Builder<"tasks"> = (ctx, scope, config) => {
     return { ...data, items: items.slice(0, config.max), total: config.filter === "due" ? items.length : data.total };
   }
   const canEdit = editableIn(ctx.user);
-  const mine = myTasks(ctx.user, scope.workspaceId).filter((t) => keep(t.due));
+  const mine = (await myTasks(ctx.user, scope.workspaceId)).filter((t) => keep(t.due));
   const sorted = sortTasks(
     mine.map((t) => ({ due: t.due, page: t.title, pageId: t.pageId, rowId: t.rowId, index: t.index, task: t })),
     today,
@@ -132,8 +133,8 @@ const tasks: Builder<"tasks"> = (ctx, scope, config) => {
   };
 };
 
-const calendar: Builder<"calendar"> = (ctx, scope, config) => {
-  const sources = (config.sources.length ? config.sources : calendarSourceList(ctx.user, 60))
+const calendar: Builder<"calendar"> = async (ctx, scope, config) => {
+  const sources = (config.sources.length ? config.sources : (await calendarSourceList(ctx.user, 60)))
     .filter((s) => scope.inside(s.pageId))
     .slice(0, 10)
     .map((s) => ({ pageId: s.pageId, ...(s.viewId ? { viewId: s.viewId } : {}) }));
@@ -145,26 +146,26 @@ const calendar: Builder<"calendar"> = (ctx, scope, config) => {
     : { from: ctx.today, to: last, items: [] as Record<string, unknown>[], total: 0 };
   const items = [...((data.items as Record<string, unknown>[]) || [])];
   if (config.tasks)
-    for (const t of myTasks(ctx.user, scope.workspaceId).filter((t) => t.due && t.due >= ctx.today && t.due <= last))
+    for (const t of (await myTasks(ctx.user, scope.workspaceId)).filter((t) => t.due && t.due >= ctx.today && t.due <= last))
       items.push({ type: "task", title: clip(t.text, 120), day: t.due, start: t.due, end: t.due, timed: false, calendar: clip(t.title || untitled(), 40), pageId: t.pageId, rowId: t.rowId });
   items.sort((a, b) => String(a.day).localeCompare(String(b.day)) || Number(b.type === "event") - Number(a.type === "event") || String(a.start).localeCompare(String(b.start)));
   return { from: ctx.today, to: last, calendars: sources.length, total: items.length, items: items.slice(0, config.max) };
 };
 
 // The person's journal in this workspace: their own first.
-function defaultJournal(user: Identity, workspaceId: string) {
-  return all<Page>("SELECT * FROM pages WHERE workspace_id=? AND kind='journal' AND deleted_at IS NULL ORDER BY (created_by=?) DESC, position", workspaceId, user.id).find((p) => pageRole(user, p))?.id;
+async function defaultJournal(user: Identity, workspaceId: string) {
+  return (await findAsync(await all<Page>("SELECT * FROM pages WHERE workspace_id=? AND kind='journal' AND deleted_at IS NULL ORDER BY (created_by=?) DESC, position", workspaceId, user.id), async (p) => await pageRole(user, p)))?.id;
 }
-const journal: Builder<"journal"> = (ctx, scope, config) => {
-  const journalId = config.journalId ?? defaultJournal(ctx.user, scope.workspaceId);
+const journal: Builder<"journal"> = async (ctx, scope, config) => {
+  const journalId = config.journalId ?? await defaultJournal(ctx.user, scope.workspaceId);
   if (!journalId) return { journal: null };
   scope.need(journalId);
   const data = widgetData(ctx, "journal", { journalId }, HOME_WIDGET_BYTES) as { journal: Record<string, unknown> | null };
   const entry = data.journal;
   let excerpt = "";
   if (entry && !entry.locked && !entry.encrypted) {
-    const today = one<Page>("SELECT * FROM pages WHERE parent_id=? AND journal_date=? AND deleted_at IS NULL", journalId, ctx.today);
-    if (today && pageRole(ctx.user, today)) excerpt = clip(htmlText(one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", today.id)?.html || ""), 280);
+    const today = await one<Page>("SELECT * FROM pages WHERE parent_id=? AND journal_date=? AND deleted_at IS NULL", journalId, ctx.today);
+    if (today && await pageRole(ctx.user, today)) excerpt = clip(htmlText((await one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", today.id))?.html || ""), 280);
   }
   return { journal: entry ? { ...entry, excerpt } : null };
 };
@@ -175,17 +176,17 @@ const database: Builder<"database"> = (ctx, scope, config) => {
   return widgetData(ctx, "pinned", { mode: "page", pageId: config.pageId, viewId: config.viewId, properties: config.properties, max: config.max }, HOME_WIDGET_BYTES);
 };
 
-const pinned: Builder<"pinned"> = (ctx, scope, config) => {
+const pinned: Builder<"pinned"> = async (ctx, scope, config) => {
   if (!config.pageId) return { unconfigured: true };
   scope.need(config.pageId);
-  const access = pageAccess(ctx.user, config.pageId);
+  const access = await pageAccess(ctx.user, config.pageId);
   if (!access) throw new HttpError(404, ct("Seite nicht gefunden.", "Page not found."));
   const base = { id: access.page.id, kind: access.page.kind };
   // Behind a PIN or end-to-end encrypted: no content, the title comes from
   // the sidebar (decrypted in the browser).
   if (access.locked || access.encrypted) return { ...base, ...(access.encrypted ? { encrypted: true } : { locked: true }) };
   const children = config.preview ? widgetData(ctx, "pinned", { mode: "page", pageId: access.page.id, max: 5 }, HOME_WIDGET_BYTES) : null;
-  const preview = config.preview && access.page.kind === "document" ? pagePreview(ctx.user, access.page.id) : null;
+  const preview = config.preview && access.page.kind === "document" ? (await pagePreview(ctx.user, access.page.id)) : null;
   return {
     ...base,
     title: clip(access.page.title || untitled(), 120),
@@ -203,8 +204,8 @@ const focus: Builder<"focus"> = (ctx) => {
   return { ...state, timer: time.timer, today: time.today, week: time.week, recent: time.recent };
 };
 
-const habits: Builder<"habits"> = (ctx, scope, config) => {
-  const pageId = config.pageId ?? habitDatabases(ctx.user).find((d) => scope.inside(d.id))?.id;
+const habits: Builder<"habits"> = async (ctx, scope, config) => {
+  const pageId = config.pageId ?? (await habitDatabases(ctx.user)).find((d) => scope.inside(d.id))?.id;
   if (!pageId) return { habits: null };
   scope.need(pageId);
   // The journal part is not needed; any readable journal keeps it cheap.
@@ -219,47 +220,47 @@ const counter: Builder<"counter"> = (ctx, scope, config) => {
 
 // Who changed what lately: page edits (lib/page-activity.ts) and records,
 // only where the person may read, never behind a PIN or encrypted.
-const activity: Builder<"activity"> = (ctx, scope, config) => {
+const activity: Builder<"activity"> = async (ctx, scope, config) => {
   const { user, workspaceId } = scope;
-  const hidden = lockedPageIds(user, workspaceId);
+  const hidden = await lockedPageIds(user, workspaceId);
   const readable = new Map<string, Page | null>();
-  const page = (id: string) => {
+  const page = async (id: string) => {
     if (!readable.has(id)) {
-      const p = one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL AND COALESCE(synced,0)=0", id);
-      readable.set(id, p && !hidden.has(p.id) && pageRole(user, p) ? p : null);
+      const p = await one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL AND COALESCE(synced,0)=0", id);
+      readable.set(id, p && !hidden.has(p.id) && await pageRole(user, p) ? p : null);
     }
     return readable.get(id);
   };
   const names = new Map<string, string>();
-  const nameOf = (id: string | null) => {
+  const nameOf = async (id: string | null) => {
     if (!id) return "";
-    if (!names.has(id)) names.set(id, one<{ name: string }>("SELECT name FROM users WHERE id=?", id)?.name || "");
+    if (!names.has(id)) names.set(id, (await one<{ name: string }>("SELECT name FROM users WHERE id=?", id))?.name || "");
     return names.get(id)!;
   };
   const items: { type: "page" | "record"; pageId: string; rowId?: string; title: string; page?: string; icon: string; by: string; mine: boolean; at: number }[] = [];
-  for (const e of all<{ page_id: string; user_id: string; at: number }>(
+  for (const e of await all<{ page_id: string; user_id: string; at: number }>(
     "SELECT e.page_id,e.user_id,e.at FROM page_edits e JOIN pages p ON p.id=e.page_id WHERE p.workspace_id=? ORDER BY e.at DESC LIMIT 200",
     workspaceId,
   )) {
-    const p = page(e.page_id);
+    const p = await page(e.page_id);
     if (!p) continue;
-    items.push({ type: "page", pageId: p.id, title: clip(p.title || untitled(), 80), icon: p.icon, by: nameOf(e.user_id), mine: e.user_id === user.id, at: e.at });
+    items.push({ type: "page", pageId: p.id, title: clip(p.title || untitled(), 80), icon: p.icon, by: await nameOf(e.user_id), mine: e.user_id === user.id, at: e.at });
     if (items.length >= config.max * 2) break;
   }
   if (config.records) {
     const fieldsOf = new Map<string, { fields: Field[]; shown: Field[]; hidden: Set<string> }>();
-    const candidates = all<{ id: string; page_id: string; cells: string; updated_at: string; updated_by: string | null }>(
+    const candidates = await all<{ id: string; page_id: string; cells: string; updated_at: string; updated_by: string | null }>(
       `SELECT r.id,r.page_id,r.cells,r.updated_at,r.updated_by FROM rows r JOIN pages p ON p.id=r.page_id
        WHERE p.workspace_id=? AND p.deleted_at IS NULL ORDER BY r.updated_at DESC LIMIT 200`,
       workspaceId,
     );
     let records = 0;
     for (const r of candidates) {
-      const p = page(r.page_id);
+      const p = await page(r.page_id);
       if (!p || p.kind !== "database") continue;
       if (!fieldsOf.has(p.id)) {
-        const fields = JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", p.id)?.fields || "[]") as Field[];
-        fieldsOf.set(p.id, { fields, shown: visibleFields(user, p, fields), hidden: hiddenRowIds(user, p) });
+        const fields = JSON.parse((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", p.id))?.fields || "[]") as Field[];
+        fieldsOf.set(p.id, { fields, shown: await visibleFields(user, p, fields), hidden: await hiddenRowIds(user, p) });
       }
       const { fields, shown, hidden: privateRows } = fieldsOf.get(p.id)!;
       // Private records of others stay hidden.
@@ -271,7 +272,7 @@ const activity: Builder<"activity"> = (ctx, scope, config) => {
       } catch {}
       const title = (first && shown.includes(first) ? clip(cellText(cells[first.id]), 80) : "") || untitled();
       const at = Date.parse(`${r.updated_at.replace(" ", "T")}Z`);
-      items.push({ type: "record", pageId: p.id, rowId: r.id, title, page: clip(p.title || untitled(), 60), icon: p.icon, by: nameOf(r.updated_by), mine: r.updated_by === user.id, at: Number.isFinite(at) ? at : 0 });
+      items.push({ type: "record", pageId: p.id, rowId: r.id, title, page: clip(p.title || untitled(), 60), icon: p.icon, by: await nameOf(r.updated_by), mine: r.updated_by === user.id, at: Number.isFinite(at) ? at : 0 });
       if (++records >= config.max) break;
     }
   }
@@ -280,32 +281,32 @@ const activity: Builder<"activity"> = (ctx, scope, config) => {
 };
 
 // This week in numbers (Monday to today, in the person's time zone).
-const stats: Builder<"stats"> = (ctx, scope) => {
+const stats: Builder<"stats"> = async (ctx, scope) => {
   const { user, workspaceId } = scope;
   const today = Temporal.PlainDate.from(ctx.today);
   const monday = today.subtract({ days: today.dayOfWeek - 1 });
   const from = monday.toZonedDateTime({ timeZone: ctx.zone }).epochMilliseconds;
-  const hidden = lockedPageIds(user, workspaceId);
+  const hidden = await lockedPageIds(user, workspaceId);
   const readable = new Map<string, boolean>();
-  const canRead = (id: string) => {
+  const canRead = async (id: string) => {
     if (!readable.has(id)) {
-      const p = one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", id);
-      readable.set(id, !!p && !hidden.has(id) && !!pageRole(user, p));
+      const p = await one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", id);
+      readable.set(id, !!p && !hidden.has(id) && !!(await pageRole(user, p)));
     }
     return readable.get(id)!;
   };
-  const edits = all<{ page_id: string; user_id: string }>(
+  const edits = await filterAsync(await all<{ page_id: string; user_id: string }>(
     "SELECT e.page_id,e.user_id FROM page_edits e JOIN pages p ON p.id=e.page_id WHERE p.workspace_id=? AND e.at>=? LIMIT 5000",
     workspaceId,
     from,
-  ).filter((e) => canRead(e.page_id));
+  ), async (e) => await canRead(e.page_id));
   // Records that became done this week (lib/automations.ts writes the log).
-  const done = all<{ page_id: string; row_id: string }>(
+  const done = await filterAsync(await all<{ page_id: string; row_id: string }>(
     "SELECT l.page_id,l.row_id FROM row_status_log l JOIN pages p ON p.id=l.page_id WHERE p.workspace_id=? AND l.done=1 AND l.at>=? LIMIT 5000",
     workspaceId,
     from,
-  ).filter((l) => canRead(l.page_id));
-  const open = myTasks(user, workspaceId);
+  ), async (l) => await canRead(l.page_id));
+  const open = await myTasks(user, workspaceId);
   const time = widgetData(ctx, "time", {}, HOME_WIDGET_BYTES) as { week?: number };
   return {
     from: monday.toString(),
@@ -322,7 +323,7 @@ const instance: Builder<"instance"> = (ctx) => widgetData(ctx, "incident", {}, H
 
 // The person's own pages created and edited (lib/my-activity.ts): only
 // their numbers, never anyone else's.
-const myActivity: Builder<"myActivity"> = (ctx, scope, config) => myActivityData(scope.user, scope.workspaceId, ctx.today, ctx.zone, config.period);
+const myActivity: Builder<"myActivity"> = async (ctx, scope, config) => await myActivityData(scope.user, scope.workspaceId, ctx.today, ctx.zone, config.period);
 
 const builders: { [K in ServerWidgetKind]: Builder<K> } = { tasks, calendar, journal, database, pinned, focus, habits, counter, activity, stats, instance, myActivity };
 
@@ -337,9 +338,9 @@ export const homeDataSchema = z.object({
 });
 
 // Each widget answers on its own: one that fails does not take the others.
-export function homeData(user: Identity, input: unknown, now = Date.now()) {
+export async function homeData(user: Identity, input: unknown, now = Date.now()) {
   const request = homeDataSchema.parse(input);
-  requireMember(user, request.workspaceId);
+  await requireMember(user, request.workspaceId);
   limit(user, "data");
   const ctx = widgetContext(user, request.today, request.zone, now);
   const scope = scopeOf(user, request.workspaceId);
@@ -371,15 +372,15 @@ const homeActions = ["task.complete", "habit.check", "focus.start", "focus.stop"
 const journalNote = z.object({ action: z.literal("journal.note"), journalId: uuid, today: day, text: z.string().trim().min(1).max(4000) });
 
 // A few lines at the end of today's journal entry, as if typed there.
-function writeJournal(user: Identity, input: z.infer<typeof journalNote>) {
+async function writeJournal(user: Identity, input: z.infer<typeof journalNote>) {
   const writer = writerOf(user);
-  const access = pageAccess(user, input.journalId);
+  const access = await pageAccess(user, input.journalId);
   if (!access || access.page.kind !== "journal") throw new HttpError(404, ct("Seite nicht gefunden.", "Page not found."));
   if (access.encrypted) throw new HttpError(409, ct("Für verschlüsselte Seiten nicht verfügbar.", "Not available for encrypted pages."));
   if (access.locked) throw new HttpError(423, ct("Dieses Journal ist gesperrt.", "This journal is locked."));
-  const { dayId } = command(writer, { action: "journal.roll", pageId: input.journalId, date: input.today, write: true }) as { dayId: string };
-  const dayPage = requirePage(writer, dayId, true);
-  requireUnlocked(writer, dayPage);
+  const { dayId } = (await command(writer, { action: "journal.roll", pageId: input.journalId, date: input.today, write: true })) as { dayId: string };
+  const dayPage = await requirePage(writer, dayId, true);
+  await requireUnlocked(writer, dayPage);
   if (dayPage.locked) throw new HttpError(409, ct("Diese Seite ist gesperrt.", "This page is locked."));
   const schema = rewriteSchema();
   const paragraphs = input.text
@@ -393,11 +394,11 @@ function writeJournal(user: Identity, input: z.infer<typeof journalNote>) {
       }),
     );
   let publish: () => void = () => {};
-  transaction(() => {
-    const result = rewriteDocument(dayPage.id, null, writer.id, (doc) => doc.type.create(doc.attrs, doc.content.append(Fragment.from(paragraphs)), doc.marks));
+  await transaction(async () => {
+    const result = await rewriteDocument(dayPage.id, null, writer.id, (doc) => doc.type.create(doc.attrs, doc.content.append(Fragment.from(paragraphs)), doc.marks));
     if (result) publish = result.publish;
-    recordPageEdit(writer, dayPage.id);
-    audit(writer.id, "journal.note", dayPage.id);
+    await recordPageEdit(writer, dayPage.id);
+    await audit(writer.id, "journal.note", dayPage.id);
   }, writer);
   publish();
   return { ok: true, action: "journal.note", dayId };
@@ -407,26 +408,26 @@ export async function homeAction(user: Identity, input: unknown) {
   const { action } = z.object({ action: z.enum(homeActions) }).passthrough().parse(input);
   limit(user, "action");
   if (user.apiScope === "read") throw new HttpError(403, "Dieses API-Token darf nur lesen.");
-  if (action === "journal.note") return writeJournal(user, journalNote.parse(input));
+  if (action === "journal.note") return await writeJournal(user, journalNote.parse(input));
   return widgetAction(user, input);
 }
 
 // ---- Options for the widget settings ----
 
-export function homeOptions(user: Identity, query: { workspaceId: string | null; kind: string | null; pageId?: string | null }) {
+export async function homeOptions(user: Identity, query: { workspaceId: string | null; kind: string | null; pageId?: string | null }) {
   const workspaceId = uuid.parse(query.workspaceId);
-  requireMember(user, workspaceId);
+  await requireMember(user, workspaceId);
   limit(user, "options");
   const scope = scopeOf(user, workspaceId);
   switch (query.kind) {
     case "calendar":
-      return { calendars: calendarSourceList(user, 60).filter((c) => scope.inside(c.pageId)) };
+      return { calendars: (await calendarSourceList(user, 60)).filter((c) => scope.inside(c.pageId)) };
     case "habits":
-      return { habits: habitDatabases(user).filter((d) => scope.inside(d.id)) };
+      return { habits: (await habitDatabases(user)).filter((d) => scope.inside(d.id)) };
     case "database": {
       // Views and properties of one database.
       const pageId = scope.need(uuid.parse(query.pageId));
-      return { database: (widgetOptions(user, "pinned", { pageId }) as { database: unknown }).database };
+      return { database: ((await widgetOptions(user, "pinned", { pageId })) as { database: unknown }).database };
     }
     default:
       throw new HttpError(400, ct("Ungültige Anfrage.", "Invalid request."));

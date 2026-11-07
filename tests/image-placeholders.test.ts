@@ -189,134 +189,134 @@ test("hashes match the reference implementation and decode to a picture", () => 
 
 // ---- storage, access and computing later ----
 
-function account(name: string) {
+async function account(name: string) {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
   return { id: uid, name, email: `${name}@example.test`, groups: [], isAdmin: false, disabled: 0, created_at: "" } as Identity;
 }
-const owner = account("owner"),
-  viewer = account("viewer"),
-  stranger = account("stranger");
-const wid = createWorkspace(owner.id, "Bilder");
-run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
-createWorkspace(stranger.id, "Elsewhere");
-const space = bootstrap(owner, wid).spaces[0].id;
-const newPage = (title: string, kind = "document", spaceId = space) =>
-  (command(owner, { action: "page.create", workspaceId: wid, spaceId, title, kind }) as { id: string }).id;
-const pageId = newPage("Fotos");
+const owner = await account("owner"),
+  viewer = await account("viewer"),
+  stranger = await account("stranger");
+const wid = await createWorkspace(owner.id, "Bilder");
+await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
+await createWorkspace(stranger.id, "Elsewhere");
+const space = (await bootstrap(owner, wid)).spaces[0].id;
+const newPage = async (title: string, kind = "document", spaceId = space) =>
+  ((await command(owner, { action: "page.create", workspaceId: wid, spaceId, title, kind })) as { id: string }).id;
+const pageId = await newPage("Fotos");
 mkdirSync(join(dir, "uploads"), { recursive: true });
 /** A file as earlier versions stored it: no placeholder yet. */
-function storedFile(page: string, name: string, mime = "image/png", data: Buffer = fixture("photo.png")) {
+async function storedFile(page: string, name: string, mime = "image/png", data: Buffer = fixture("photo.png")) {
   const fid = id();
   writeFileSync(join(dir, "uploads", fid), data);
-  run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fid, page, name, mime, data.length, owner.id);
+  await run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fid, page, name, mime, data.length, owner.id);
   return fid;
 }
-const stored = (fid: string) => one<{ width: number | null; height: number | null; thumbhash: string | null }>("SELECT width,height,thumbhash FROM files WHERE id=?", fid);
+const stored = async (fid: string) => await one<{ width: number | null; height: number | null; thumbhash: string | null }>("SELECT width,height,thumbhash FROM files WHERE id=?", fid);
 
 test("an upload stores size and hash and answers with them", async () => {
-  const fid = storedFile(pageId, "photo.webp", "image/webp", fixture("photo-lossy.webp"));
+  const fid = await storedFile(pageId, "photo.webp", "image/webp", fixture("photo-lossy.webp"));
   const answer = await P.placeholderForUpload(fid, "image/webp", pageId, fixture("photo-lossy.webp"));
   assert.equal(answer?.w, 64);
   assert.equal(answer?.h, 48);
   assert.ok(answer?.hash && T.thumbHashFromBase64(answer.hash));
-  assert.deepEqual(stored(fid), { width: 64, height: 48, thumbhash: answer.hash });
+  assert.deepEqual(await stored(fid), { width: 64, height: 48, thumbhash: answer.hash });
   // Other files: nothing to show, and marked so they are not tried again.
-  const pdf = storedFile(pageId, "a.pdf", "application/pdf", Buffer.from("%PDF-1.4"));
+  const pdf = await storedFile(pageId, "a.pdf", "application/pdf", Buffer.from("%PDF-1.4"));
   assert.equal(await P.placeholderForUpload(pdf, "application/pdf", pageId, Buffer.from("%PDF-1.4")), null);
-  assert.deepEqual(stored(pdf), { width: null, height: null, thumbhash: "" });
+  assert.deepEqual(await stored(pdf), { width: null, height: null, thumbhash: "" });
   // AVIF: the size only.
-  const avif = storedFile(pageId, "photo.avif", "image/avif", fixture("photo.avif"));
+  const avif = await storedFile(pageId, "photo.avif", "image/avif", fixture("photo.avif"));
   assert.deepEqual(await P.placeholderForUpload(avif, "image/avif", pageId, fixture("photo.avif")), { w: 64, h: 48 });
 });
 
 test("files from before get their placeholder when first asked for, once", async () => {
-  const fid = storedFile(pageId, "old.png");
-  assert.equal(stored(fid)?.thumbhash, null);
+  const fid = await storedFile(pageId, "old.png");
+  assert.equal((await stored(fid))?.thumbhash, null);
   const first = P.backfillPlaceholder(fid);
   assert.equal(P.backfillPlaceholder(fid), first, "the same file is not computed twice at once");
   await first;
-  assert.deepEqual(stored(fid), { width: 64, height: 48, thumbhash: "XwgGPYiGmHeAd3h6d4eGd2CFpPId" });
+  assert.deepEqual(await stored(fid), { width: 64, height: 48, thumbhash: "XwgGPYiGmHeAd3h6d4eGd2CFpPId" });
   // Through the request: computed while it waits.
-  const later = storedFile(pageId, "later.jpg", "image/jpeg", fixture("photo-rotated.jpg"));
+  const later = await storedFile(pageId, "later.jpg", "image/jpeg", fixture("photo-rotated.jpg"));
   const answer = await P.placeholdersFor(viewer, [later]);
   assert.equal(answer[later]?.w, 48);
   assert.equal(answer[later]?.h, 64);
   assert.ok(answer[later]?.hash);
   // A file that cannot be decoded keeps its size, without a picture.
   const broken = fixture("photo.png");
-  const truncated = storedFile(pageId, "broken.png", "image/png", Buffer.concat([broken.subarray(0, 60), Buffer.alloc(40)]));
+  const truncated = await storedFile(pageId, "broken.png", "image/png", Buffer.concat([broken.subarray(0, 60), Buffer.alloc(40)]));
   assert.deepEqual((await P.placeholdersFor(owner, [truncated]))[truncated], { w: 64, h: 48 });
   // Missing on disk: nothing, and not tried again.
   const gone = id();
-  run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", gone, pageId, "gone.png", "image/png", 10, owner.id);
+  await run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", gone, pageId, "gone.png", "image/png", 10, owner.id);
   assert.deepEqual(await P.placeholdersFor(owner, [gone]), {});
-  assert.equal(stored(gone)?.thumbhash, "");
+  assert.equal((await stored(gone))?.thumbhash, "");
 });
 
 test("placeholders follow the access rules of the file", async () => {
-  const fid = storedFile(pageId, "shared.png");
+  const fid = await storedFile(pageId, "shared.png");
   await P.backfillPlaceholder(fid);
   assert.ok((await P.placeholdersFor(viewer, [fid]))[fid]);
   // No member of the workspace: nothing, as for a file that does not exist.
   assert.deepEqual(await P.placeholdersFor(stranger, [fid, id()]), {});
   // A private space of the owner.
-  const privateSpace = (command(owner, { action: "space.create", workspaceId: wid, name: "Privat", private: true }) as { id: string }).id;
-  const privatePage = newPage("Mein", "document", privateSpace);
-  const mine = storedFile(privatePage, "mine.png");
+  const privateSpace = ((await command(owner, { action: "space.create", workspaceId: wid, name: "Privat", private: true })) as { id: string }).id;
+  const privatePage = await newPage("Mein", "document", privateSpace);
+  const mine = await storedFile(privatePage, "mine.png");
   assert.ok((await P.placeholdersFor(owner, [mine]))[mine]);
   assert.deepEqual(await P.placeholdersFor(viewer, [mine]), {});
   // An attachment of a record hidden from the viewer.
-  const db = newPage("HR", "database");
-  command(owner, {
+  const db = await newPage("HR", "database");
+  await command(owner, {
     action: "database.update",
     pageId: db,
-    version: database(db).version,
+    version: (await database(db)).version,
     fields: [
       { id: "title", name: "Name", type: "text" },
       { id: "att", name: "Files", type: "files" },
     ],
-    views: database(db).views,
+    views: (await database(db)).views,
   });
-  const attachment = storedFile(db, "salary.png");
-  const row = (command(owner, { action: "row.create", pageId: db, cells: { title: "Private", att: [`/api/files/${attachment}`] } }) as { id: string }).id;
-  command(owner, { action: "row.access", pageId: db, rowId: row, access: "private", grants: [] });
+  const attachment = await storedFile(db, "salary.png");
+  const row = ((await command(owner, { action: "row.create", pageId: db, cells: { title: "Private", att: [`/api/files/${attachment}`] } })) as { id: string }).id;
+  await command(owner, { action: "row.access", pageId: db, rowId: row, access: "private", grants: [] });
   assert.ok((await P.placeholdersFor(owner, [attachment]))[attachment]);
   assert.deepEqual(await P.placeholdersFor(viewer, [attachment]), {});
   // Pages in the trash.
-  const trashed = newPage("Weg");
-  const old = storedFile(trashed, "old.png");
+  const trashed = await newPage("Weg");
+  const old = await storedFile(trashed, "old.png");
   await P.backfillPlaceholder(old);
-  run("UPDATE pages SET deleted_at=? WHERE id=?", nowText(), trashed);
+  await run("UPDATE pages SET deleted_at=? WHERE id=?", nowText(), trashed);
   assert.deepEqual(await P.placeholdersFor(owner, [old]), {});
   // Not more than a request may ask for; junk ids are ignored.
   assert.deepEqual(await P.placeholdersFor(owner, ["../../etc/passwd", "", "avatar:x"]), {});
 });
 
 test("files of end-to-end encrypted spaces are never looked into", async () => {
-  const sealed = (command(owner, { action: "space.create", workspaceId: wid, name: "Tresor" }) as { id: string }).id;
-  run("UPDATE spaces SET encrypted=1,key_version=1 WHERE id=?", sealed);
+  const sealed = ((await command(owner, { action: "space.create", workspaceId: wid, name: "Tresor" })) as { id: string }).id;
+  await run("UPDATE spaces SET encrypted=1,key_version=1 WHERE id=?", sealed);
   const vault = id();
-  run("INSERT INTO pages(id,workspace_id,space_id,title,kind,created_by) VALUES(?,?,?,?,?,?)", vault, wid, sealed, "Tresor", "document", owner.id);
+  await run("INSERT INTO pages(id,workspace_id,space_id,title,kind,created_by) VALUES(?,?,?,?,?,?)", vault, wid, sealed, "Tresor", "document", owner.id);
   // Even an image the server could read (it never should get one) …
-  const plain = storedFile(vault, "leak.png");
+  const plain = await storedFile(vault, "leak.png");
   assert.equal(await P.placeholderForUpload(plain, "image/png", vault, fixture("photo.png")), null);
-  assert.deepEqual(stored(plain), { width: null, height: null, thumbhash: "" });
-  const later = storedFile(vault, "later.png");
+  assert.deepEqual(await stored(plain), { width: null, height: null, thumbhash: "" });
+  const later = await storedFile(vault, "later.png");
   await P.backfillPlaceholder(later);
-  assert.deepEqual(stored(later), { width: null, height: null, thumbhash: "" });
+  assert.deepEqual(await stored(later), { width: null, height: null, thumbhash: "" });
   // … and a stored hash (from before the space was sealed) is not handed out.
-  run("UPDATE files SET width=64,height=48,thumbhash='XwgGPYiGmHeAd3h6d4eGd2CFpPId' WHERE id=?", later);
+  await run("UPDATE files SET width=64,height=48,thumbhash='XwgGPYiGmHeAd3h6d4eGd2CFpPId' WHERE id=?", later);
   assert.deepEqual(await P.placeholdersFor(owner, [plain, later]), {});
   // What uploads to encrypted pages are: ciphertext, stored as a download.
-  const cipher = storedFile(vault, "encrypted.bin", "application/octet-stream", Buffer.concat([Buffer.from("FPX1"), fixture("photo.png")]));
+  const cipher = await storedFile(vault, "encrypted.bin", "application/octet-stream", Buffer.concat([Buffer.from("FPX1"), fixture("photo.png")]));
   await P.backfillPlaceholder(cipher);
-  assert.equal(stored(cipher)?.thumbhash, "");
+  assert.equal((await stored(cipher))?.thumbhash, "");
   assert.deepEqual(await P.placeholdersFor(owner, [cipher]), {});
 });
 
 test("profile pictures: for people sharing a workspace only", async () => {
-  run("INSERT INTO user_avatars(user_id,mime,data) VALUES(?,?,?)", owner.id, "image/png", fixture("photo.png"));
+  await run("INSERT INTO user_avatars(user_id,mime,data) VALUES(?,?,?)", owner.id, "image/png", fixture("photo.png"));
   const key = `avatar:${owner.id}`;
   const answer = await P.placeholdersFor(viewer, [key]);
   assert.deepEqual(answer[key], { w: 64, h: 48, hash: "XwgGPYiGmHeAd3h6d4eGd2CFpPId" });

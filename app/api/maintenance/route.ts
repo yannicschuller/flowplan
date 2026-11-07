@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     await requireUser();
-    return Response.json({ notice: maintenanceNotice(), move: readOnlyState() }, { headers: { "Cache-Control": "no-store" } });
+    return Response.json({ notice: await maintenanceNotice(), move: await readOnlyState() }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     if (!(e instanceof HttpError)) console.error(e);
     return Response.json({ error: e instanceof HttpError ? e.message : "Die Anfrage konnte nicht verarbeitet werden." }, { status: e instanceof HttpError ? e.status : 500 });

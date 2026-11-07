@@ -17,17 +17,17 @@ const {
 } = await import("../lib/push");
 const { createWorkspace } = await import("../lib/seed");
 const { command, bootstrap } = await import("../lib/api");
-function account(name: string) {
+async function account(name: string) {
   const uid = id(),
     token = id();
-  run(
+  await run(
     "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
     uid,
     uid,
     name,
     `${name}@example.test`,
   );
-  run(
+  await run(
     "INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)",
     token,
     uid,
@@ -58,10 +58,10 @@ function subscription() {
     },
   };
 }
-test("push registration binds a valid device to an authenticated session and rejects SSRF destinations", () => {
-  const { user, token } = account("push-owner");
+test("push registration binds a valid device to an authenticated session and rejects SSRF destinations", async () => {
+  const { user, token } = await account("push-owner");
   const sub = subscription();
-  assert.throws(() => subscribePush(user, "missing-session", sub), /Sitzung/);
+  await assert.rejects(async () => await subscribePush(user, "missing-session", sub), /Sitzung/);
   for (const endpoint of [
     "http://web.push.apple.com/a",
     "https://127.0.0.1/a",
@@ -73,36 +73,36 @@ test("push registration binds a valid device to an authenticated session and rej
       () => validatePushSubscription({ ...sub, endpoint }),
       /Push-Dienst/,
     );
-  subscribePush(user, token, sub);
+  await subscribePush(user, token, sub);
   assert.equal(
-    one<{ user_id: string }>(
+    (await one<{ user_id: string }>(
       "SELECT user_id FROM push_subscriptions WHERE endpoint=?",
       sub.endpoint,
-    )!.user_id,
+    ))!.user_id,
     user.id,
   );
-  unsubscribePush(account("other-user").user, sub.endpoint);
+  await unsubscribePush((await account("other-user")).user, sub.endpoint);
   assert.ok(
-    one("SELECT id FROM push_subscriptions WHERE endpoint=?", sub.endpoint),
+    await one("SELECT id FROM push_subscriptions WHERE endpoint=?", sub.endpoint),
   );
-  run("DELETE FROM sessions WHERE token=?", token);
+  await run("DELETE FROM sessions WHERE token=?", token);
   assert.equal(
-    one("SELECT id FROM push_subscriptions WHERE endpoint=?", sub.endpoint),
+    await one("SELECT id FROM push_subscriptions WHERE endpoint=?", sub.endpoint),
     undefined,
   );
   assert.equal(pushKeys().publicKey, pushKeys().publicKey);
 });
 test("comments enqueue encrypted web push once, omit private content and recheck page permission before sending", async () => {
-  const owner = account("author"),
-    recipient = account("recipient");
-  const wid = createWorkspace(owner.user.id, "Push workspace");
-  run("INSERT INTO members VALUES(?,?,?)", wid, recipient.user.id, "editor");
-  const page = bootstrap(owner.user, wid).pages[0];
+  const owner = await account("author"),
+    recipient = await account("recipient");
+  const wid = await createWorkspace(owner.user.id, "Push workspace");
+  await run("INSERT INTO members VALUES(?,?,?)", wid, recipient.user.id, "editor");
+  const page = (await bootstrap(owner.user, wid)).pages[0];
   const sub = subscription();
-  subscribePush(recipient.user, recipient.token, sub);
+  await subscribePush(recipient.user, recipient.token, sub);
   // Comments reach the page's followers (lib/comment-recipients.ts).
-  command(recipient.user, { action: "page.follow", pageId: page.id, follow: true });
-  command(owner.user, {
+  await command(recipient.user, { action: "page.follow", pageId: page.id, follow: true });
+  await command(owner.user, {
     action: "comment.create",
     pageId: page.id,
     body: "Confidential document text",
@@ -119,12 +119,12 @@ test("comments enqueue encrypted web push once, omit private content and recheck
   await flushPushQueue(async () => {
     throw new Error("Already delivered");
   });
-  command(owner.user, {
+  await command(owner.user, {
     action: "comment.create",
     pageId: page.id,
     body: "Second comment",
   });
-  run(
+  await run(
     "DELETE FROM members WHERE workspace_id=? AND user_id=?",
     wid,
     recipient.user.id,
@@ -132,32 +132,32 @@ test("comments enqueue encrypted web push once, omit private content and recheck
   await flushPushQueue(async () => {
     assert.fail("Revoked access must not receive push");
   });
-  unsubscribePush(recipient.user, sub.endpoint);
+  await unsubscribePush(recipient.user, sub.endpoint);
 });
 test("push retries transient failures, removes expired devices and suppresses read notifications", async () => {
-  const { user, token } = account("retry-user"),
+  const { user, token } = await account("retry-user"),
     sub = subscription();
-  subscribePush(user, token, sub);
-  run("INSERT INTO notifications(id,user_id,body) VALUES(?,?,?)", id(), user.id, "Retry me");
+  await subscribePush(user, token, sub);
+  await run("INSERT INTO notifications(id,user_id,body) VALUES(?,?,?)", id(), user.id, "Retry me");
   await flushPushQueue(async () => {
     throw { statusCode: 503 };
   });
-  const job = one<{ id: number; attempts: number; available_at: number }>(
+  const job = (await one<{ id: number; attempts: number; available_at: number }>(
     "SELECT d.* FROM push_deliveries d JOIN push_subscriptions s ON s.id=d.subscription_id WHERE s.endpoint=?",
     sub.endpoint,
-  )!;
+  ))!;
   assert.equal(job.attempts, 1);
   assert.ok(job.available_at > Date.now());
-  run("UPDATE push_deliveries SET available_at=0 WHERE id=?", job.id);
+  await run("UPDATE push_deliveries SET available_at=0 WHERE id=?", job.id);
   await flushPushQueue(async () => {
     throw { statusCode: 410 };
   });
   assert.equal(
-    one("SELECT id FROM push_subscriptions WHERE endpoint=?", sub.endpoint),
+    await one("SELECT id FROM push_subscriptions WHERE endpoint=?", sub.endpoint),
     undefined,
   );
-  subscribePush(user, token, subscription());
-  run(
+  await subscribePush(user, token, subscription());
+  await run(
     "INSERT INTO notifications(id,user_id,body,read_at) VALUES(?,?,?,?)",
     id(),
     user.id,
@@ -166,57 +166,57 @@ test("push retries transient failures, removes expired devices and suppresses re
   await flushPushQueue(async () => {
     assert.fail("Read notifications must not be pushed");
   });
-  run("UPDATE sessions SET expires=0 WHERE token=?", token);
+  await run("UPDATE sessions SET expires=0 WHERE token=?", token);
   await flushPushQueue(async () => {
     assert.fail("Expired sessions must not receive push");
   });
   assert.equal(
-    one("SELECT id FROM push_subscriptions WHERE user_id=?", user.id),
+    await one("SELECT id FROM push_subscriptions WHERE user_id=?", user.id),
     undefined,
   );
 });
 
 test("push opens exact row threads and drops deleted or mismatched destinations", async () => {
-  const owner = account("thread-push-owner"),
-    recipient = account("thread-push-reader");
-  const wid = createWorkspace(owner.user.id, "Thread push");
-  run("INSERT INTO members VALUES(?,?,?)", wid, recipient.user.id, "viewer");
-  const boot = bootstrap(owner.user, wid);
-  const page = command(owner.user, {
+  const owner = await account("thread-push-owner"),
+    recipient = await account("thread-push-reader");
+  const wid = await createWorkspace(owner.user.id, "Thread push");
+  await run("INSERT INTO members VALUES(?,?,?)", wid, recipient.user.id, "viewer");
+  const boot = await bootstrap(owner.user, wid);
+  const page = (await command(owner.user, {
     action: "page.create",
     workspaceId: wid,
     spaceId: boot.spaces[0].id,
     title: "Private title",
     kind: "database",
-  }) as { id: string };
-  const row = command(owner.user, {
+  })) as { id: string };
+  const row = (await command(owner.user, {
     action: "row.create",
     pageId: page.id,
     cells: { title: "Secret entry" },
-  }) as { id: string };
-  command(recipient.user, { action: "page.follow", pageId: page.id, follow: true });
+  })) as { id: string };
+  await command(recipient.user, { action: "page.follow", pageId: page.id, follow: true });
   const { rowDocumentData } = await import("../lib/row-documents");
   const { htmlState } = await import("../lib/document-server");
   const { withCommentDocument } = await import("../lib/inline-comments");
   const { commentAnchor } = await import("../lib/comment-positions");
-  rowDocumentData(owner.user, page.id, row.id);
+  await rowDocumentData(owner.user, page.id, row.id);
   const html = "<p>Review words</p>";
-  run(
+  await run(
     "UPDATE row_documents SET html=?,state=? WHERE row_id=?",
     html,
     htmlState(html),
     row.id,
   );
   const tid = id();
-  subscribePush(recipient.user, recipient.token, subscription());
-  command(owner.user, {
+  await subscribePush(recipient.user, recipient.token, subscription());
+  await command(owner.user, {
     action: "thread.create",
     pageId: page.id,
     rowId: row.id,
     threadId: tid,
     messageId: id(),
     body: "Secret review",
-    anchor: withCommentDocument(page.id, row.id, (b, g) =>
+    anchor: await withCommentDocument(page.id, row.id, (b, g) =>
       commentAnchor(b, 1, 7, g),
     ),
   });
@@ -235,7 +235,7 @@ test("push opens exact row threads and drops deleted or mismatched destinations"
     [row.id, id()],
     [null, tid],
   ])
-    run(
+    await run(
       "INSERT INTO notifications(id,user_id,body,page_id,row_id,thread_id) VALUES(?,?,?,?,?,?)",
       id(),
       recipient.user.id,

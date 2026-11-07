@@ -43,7 +43,7 @@ test("placeholders are numbered outside strings, identifiers and comments", () =
 test("slice: sign-up, sign-in and the session behind a cookie", async () => {
   const { user: ana, groups } = await auth.register({ name: "Ana", email: "Ana@Example.test", password: "ein-langes-passwort" }, "en");
   assert.deepEqual(groups, [adminGroup()], "the first account administers the instance");
-  saveInstanceSettings({ ...instanceSettings(), allowSignup: true });
+  await saveInstanceSettings({ ...(await instanceSettings()), allowSignup: true });
   await assert.rejects(auth.register({ name: "Ana 2", email: "ANA@example.test", password: "ein-langes-passwort" }, "en"), /already is an account|schon ein Konto/);
   const login = await auth.passwordLogin({ email: "aNa@example.TEST", password: "ein-langes-passwort" }, "198.51.100.1", "en");
   assert.equal(login.userId, ana.id, "the address ignores case on both backends");
@@ -154,23 +154,23 @@ test("synchronous writes from elsewhere are refused while an async transaction i
   });
   await new Promise((r) => setTimeout(r, 20));
   // Reads are fine (SQLite: the open transaction's data; Postgres: committed data).
-  assert.ok(legacy.one("SELECT 1 FROM users WHERE id=?", uid));
-  if (backend === "sqlite") assert.throws(() => legacy.run("UPDATE users SET name=? WHERE id=?", "Outside", uid), /asynchronous transaction/);
+  assert.ok(await legacy.one("SELECT 1 FROM users WHERE id=?", uid));
+  if (backend === "sqlite") await assert.rejects(async () => await legacy.run("UPDATE users SET name=? WHERE id=?", "Outside", uid), /asynchronous transaction/);
   release();
   await open;
   assert.equal((await db.one<{ name: string }>("SELECT name FROM users WHERE id=?", uid))!.name, "Inside");
   // Inside the transaction, synchronous helpers share it on SQLite and may
   // only read on Postgres (their bridge has a connection of its own).
   await db.tx(async () => {
-    if (backend === "sqlite") legacy.run("UPDATE users SET name=? WHERE id=?", "Sync inside", uid);
-    else assert.throws(() => legacy.run("UPDATE users SET name=? WHERE id=?", "Sync inside", uid), /inside an asynchronous Postgres transaction/);
+    if (backend === "sqlite") await legacy.run("UPDATE users SET name=? WHERE id=?", "Sync inside", uid);
+    else await assert.rejects(async () => await legacy.run("UPDATE users SET name=? WHERE id=?", "Sync inside", uid), /inside an asynchronous Postgres transaction/);
   });
 });
 
 test("slice: API tokens", async () => {
   const uid = await user("Toni");
-  const owner = (await identityFromToken("none")) ?? { id: uid, name: "Toni", email: "toni@example.test", disabled: 0, created_at: "", groups: [], isAdmin: false };
-  const { token } = createApiToken(owner, { name: "Skript", scope: "write" });
+  const owner = await identityFromToken("none") ?? { id: uid, name: "Toni", email: "toni@example.test", disabled: 0, created_at: "", groups: [], isAdmin: false };
+  const { token } = await createApiToken(owner, { name: "Skript", scope: "write" });
   const viaToken = await identityFromApiToken(`Bearer ${token}`);
   assert.equal(viaToken?.id, uid);
   assert.equal(viaToken?.apiScope, "write");
@@ -181,7 +181,7 @@ test("slice: API tokens", async () => {
 test("slice: tag list and tag.save", async () => {
   const uid = await user("Olga");
   const owner = { id: uid, name: "Olga", email: "olga@example.test", disabled: 0, created_at: "", groups: [], isAdmin: false };
-  const wid = createWorkspace(uid, "Team");
+  const wid = await createWorkspace(uid, "Team");
   const kunde = (await saveTag(owner, { workspaceId: wid, name: "Kunde" })).id;
   await saveTag(owner, { workspaceId: wid, name: "angebot", color: "red" });
   await assert.rejects(saveTag(owner, { workspaceId: wid, name: "KUNDE" }), (e: { status?: number }) => e.status === 409);
@@ -195,7 +195,7 @@ test("slice: tag list and tag.save", async () => {
   await saveTag(owner, { workspaceId: wid, tagId: kunde, name: "Kunden", color: "purple" });
   assert.deepEqual((await listTags(wid, null)).map((t) => t.name), ["Kunden", "angebot"]);
   // The synchronous list reads the same rows (SQLite directly, Postgres through the bridge).
-  assert.deepEqual(workspaceTags(wid).map((t) => t.name), ["Kunden", "angebot"]);
+  assert.deepEqual((await workspaceTags(wid)).map((t) => t.name), ["Kunden", "angebot"]);
   const audit = await db.all<{ action: string }>("SELECT action FROM audit WHERE actor_id=? ORDER BY created_at", uid);
   assert.deepEqual(audit.map((a) => a.action).filter((a) => a.startsWith("tag.")).sort(), ["tag.create", "tag.create", "tag.save"]);
 });

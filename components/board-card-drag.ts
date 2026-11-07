@@ -341,4 +341,4 @@ export function startBoardCardDrag(options: {
     },
   };
 }
-export type BoardCardDrag = NonNullable<ReturnType<typeof startBoardCardDrag>>;
+export type BoardCardDrag = NonNullable<Awaited<ReturnType<typeof startBoardCardDrag>>>;

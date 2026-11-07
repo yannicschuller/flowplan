@@ -9,15 +9,15 @@ import { presencePrefix, setTextPresence, textPeers } from "./text-presence";
 import { publishPresenceFor } from "./document-live";
 
 // Only edit links have the live editor; the row must be shared too.
-export function shareAccess(token: string, pageId: string, rowId?: string | null) {
-  const { page, role } = publicPage(token, pageId);
+export async function shareAccess(token: string, pageId: string, rowId?: string | null) {
+  const { page, role } = await publicPage(token, pageId);
   if (role !== "editor") throw new HttpError(403, "Dieser Link erlaubt keine Live-Bearbeitung.");
-  if (rowId && !one("SELECT 1 FROM rows WHERE id=? AND page_id=? AND access NOT IN ('private','readonly')", rowId, page.id))
+  if (rowId && !(await one("SELECT 1 FROM rows WHERE id=? AND page_id=? AND access NOT IN ('private','readonly')", rowId, page.id)))
     throw new HttpError(404, "Datensatz nicht gefunden.");
   return page;
 }
 
-export function sharePresence(token: string, input: unknown) {
+export async function sharePresence(token: string, input: unknown) {
   const b = z
     .object({
       action: z.literal("presence"),
@@ -27,10 +27,10 @@ export function sharePresence(token: string, input: unknown) {
       text: textCursorSchema.nullable(),
     })
     .parse(input);
-  const page = shareAccess(token, b.pageId, b.rowId);
+  const page = await shareAccess(token, b.pageId, b.rowId);
   const prefix = presencePrefix(page.id, b.rowId);
   const id = `guest:${b.clientId}`;
-  const link = one<{ name: string }>("SELECT name FROM share_links WHERE token=?", token);
+  const link = await one<{ name: string }>("SELECT name FROM share_links WHERE token=?", token);
   const changed = setTextPresence(
     prefix,
     b.text

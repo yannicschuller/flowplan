@@ -91,22 +91,22 @@ export function cleanTemplateItems(raw: unknown): TemplateDraft[] {
 }
 
 type Row = { id: string; workspace_id: string; name: string; items: string; created_by: string | null; visibility: string; created_at: number };
-function boardPage(user: Identity, pageId: unknown, write = false) {
-  const page = requirePage(user, z.uuid().parse(pageId), write);
+async function boardPage(user: Identity, pageId: unknown, write = false) {
+  const page = await requirePage(user, z.uuid().parse(pageId), write);
   if (page.kind !== "whiteboard") throw new HttpError(400, "Kein Whiteboard.");
   return page;
 }
-export function listBoardTemplates(user: Identity, pageId: unknown) {
-  const page = boardPage(user, pageId);
-  const role = requireMember(user, page.workspace_id);
-  const guest = isGuest(user, page.workspace_id);
-  const names = new Map(all<{ id: string; name: string }>("SELECT id,name FROM users").map((u) => [u.id, u.name]));
-  return all<Row>(
+export async function listBoardTemplates(user: Identity, pageId: unknown) {
+  const page = await boardPage(user, pageId);
+  const role = await requireMember(user, page.workspace_id);
+  const guest = await isGuest(user, page.workspace_id);
+  const names = new Map((await all<{ id: string; name: string }>("SELECT id,name FROM users")).map((u) => [u.id, u.name]));
+  return (await all<Row>(
     `SELECT * FROM whiteboard_templates WHERE workspace_id=? AND (created_by=? OR (visibility='workspace' AND ?=0)) ORDER BY lower(name)`,
     page.workspace_id,
     user.id,
     guest ? 1 : 0,
-  ).map((row) => ({
+  )).map((row) => ({
     id: row.id,
     name: row.name,
     private: row.visibility === "private",
@@ -126,17 +126,17 @@ const saveInput = z.object({
   items: z.array(z.unknown()).min(1).max(MAX_TEMPLATE_ITEMS),
   private: z.boolean().optional(),
 });
-export function saveBoardTemplate(user: Identity, pageId: unknown, raw: unknown) {
-  const page = boardPage(user, pageId, true);
-  requireMember(user, page.workspace_id, "editor");
+export async function saveBoardTemplate(user: Identity, pageId: unknown, raw: unknown) {
+  const page = await boardPage(user, pageId, true);
+  await requireMember(user, page.workspace_id, "editor");
   const input = saveInput.parse(raw);
   const items = cleanTemplateItems(input.items);
   const json = JSON.stringify(items);
   if (json.length > 4_000_000) throw new HttpError(413, "Vorlage zu groß.");
-  if ((one<{ n: number }>("SELECT COUNT(*) n FROM whiteboard_templates WHERE workspace_id=?", page.workspace_id)?.n || 0) >= 500)
+  if (((await one<{ n: number }>("SELECT COUNT(*) n FROM whiteboard_templates WHERE workspace_id=?", page.workspace_id))?.n || 0) >= 500)
     throw new HttpError(409, "Dieser Arbeitsbereich hat schon 500 Whiteboard-Vorlagen.");
   const templateId = id();
-  run(
+  await run(
     "INSERT INTO whiteboard_templates(id,workspace_id,name,items,created_by,visibility,created_at) VALUES(?,?,?,?,?,?,?)",
     templateId,
     page.workspace_id,
@@ -148,13 +148,13 @@ export function saveBoardTemplate(user: Identity, pageId: unknown, raw: unknown)
   );
   return { id: templateId };
 }
-export function deleteBoardTemplate(user: Identity, pageId: unknown, templateId: unknown) {
-  const page = boardPage(user, pageId);
-  const role = requireMember(user, page.workspace_id, "editor");
-  const row = one<Row>("SELECT * FROM whiteboard_templates WHERE id=? AND workspace_id=?", z.uuid().parse(templateId), page.workspace_id);
+export async function deleteBoardTemplate(user: Identity, pageId: unknown, templateId: unknown) {
+  const page = await boardPage(user, pageId);
+  const role = await requireMember(user, page.workspace_id, "editor");
+  const row = await one<Row>("SELECT * FROM whiteboard_templates WHERE id=? AND workspace_id=?", z.uuid().parse(templateId), page.workspace_id);
   if (!row) throw new HttpError(404, "Vorlage fehlt.");
   if (row.created_by !== user.id && role !== "owner")
     throw new HttpError(403, "Nur der Ersteller oder ein Besitzer darf die Vorlage verwalten.");
-  run("DELETE FROM whiteboard_templates WHERE id=?", row.id);
+  await run("DELETE FROM whiteboard_templates WHERE id=?", row.id);
   return { ok: true };
 }

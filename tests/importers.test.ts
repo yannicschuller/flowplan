@@ -14,33 +14,33 @@ const { convertWikilinks, noteTags } = await import("../lib/importers/obsidian")
 const { unwrapGoogleLink } = await import("../lib/importers/google-docs");
 const { docxEntriesToHtml } = await import("../lib/importers/docx");
 
-function account(name: string) {
+async function account(name: string) {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
   return { id: uid, name, email: `${name}@example.test`, groups: [], isAdmin: false, disabled: 0, created_at: "" } as Identity;
 }
-const owner = account("importers-owner"),
-  viewer = account("importers-viewer");
-const wid = createWorkspace(owner.id, "Importe");
-run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
-const space = bootstrap(owner, wid).spaces[0].id;
+const owner = await account("importers-owner"),
+  viewer = await account("importers-viewer");
+const wid = await createWorkspace(owner.id, "Importe");
+await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
+const space = (await bootstrap(owner, wid)).spaces[0].id;
 
 const fixtures = join(import.meta.dirname, "fixtures", "import");
 const walk = (dir: string): string[] =>
   readdirSync(dir).flatMap((name) => (statSync(join(dir, name)).isDirectory() ? walk(join(dir, name)) : [join(dir, name)]));
 const zipDir = (dir: string, extra: Record<string, Buffer> = {}) =>
   writeZip(new Map([...walk(join(fixtures, dir)).map((f) => [relative(join(fixtures, dir), f), readFileSync(f)] as [string, Buffer]), ...Object.entries(extra)]));
-const pageHtml = (pageId: string) => one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", pageId)!.html;
+const pageHtml = async (pageId: string) => (await one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", pageId))!.html;
 // The names of a page's tags (#70: importers set real tags).
-const tagsOf = (pageId: string) =>
-  all<{ name: string }>("SELECT t.name FROM page_tag_links l JOIN page_tags t ON t.id=l.tag_id WHERE l.page_id=? ORDER BY l.position", pageId).map((t) => t.name);
-const pageByTitle = (title: string) =>
-  one<{ id: string; parent_id: string | null; aliases: string | null; updated_at: string }>(
+const tagsOf = async (pageId: string) =>
+  (await all<{ name: string }>("SELECT t.name FROM page_tag_links l JOIN page_tags t ON t.id=l.tag_id WHERE l.page_id=? ORDER BY l.position", pageId)).map((t) => t.name);
+const pageByTitle = async (title: string) =>
+  (await one<{ id: string; parent_id: string | null; aliases: string | null; updated_at: string }>(
     "SELECT id,parent_id,aliases,updated_at FROM pages WHERE workspace_id=? AND title=? AND deleted_at IS NULL ORDER BY seq DESC LIMIT 1",
     wid,
     title,
-  )!;
-const fileCount = () => Number(one<{ n: number }>("SELECT COUNT(*) n FROM files")!.n);
+  ))!;
+const fileCount = async () => Number((await one<{ n: number }>("SELECT COUNT(*) n FROM files"))!.n);
 
 test("formats are recognised from the file and its contents", async () => {
   const enex = readFileSync(join(fixtures, "evernote/Notizbuch.enex"));
@@ -62,13 +62,13 @@ test("Evernote: notes with ENML, tasks, resources by hash, tags and dates", asyn
   assert.equal(preview.files, 2);
   assert.equal(preview.tags, 2);
   assert.ok(preview.warnings.some((w) => /Verschlüsselt/.test(w)));
-  const files = fileCount();
-  assert.equal(all("SELECT id FROM pages WHERE title='Einkaufsliste & Ideen'").length, 0, "the preview writes nothing");
+  const files = await fileCount();
+  assert.equal((await all("SELECT id FROM pages WHERE title='Einkaufsliste & Ideen'")).length, 0, "the preview writes nothing");
   const result = await importFromSource(owner, wid, space, { name: "Notizbuch.enex", bytes });
   assert.equal(result.rootIds.length, 2);
-  const page = pageByTitle("Einkaufsliste & Ideen");
-  const html = pageHtml(page.id);
-  assert.deepEqual(tagsOf(page.id), ["privat", "listen"]);
+  const page = await pageByTitle("Einkaufsliste & Ideen");
+  const html = await pageHtml(page.id);
+  assert.deepEqual(await tagsOf(page.id), ["privat", "listen"]);
   assert.match(html, /https:\/\/example\.com\/rezept/);
   assert.match(html, /<strong>Wichtig:<\/strong> Milch kaufen/);
   assert.match(html, /data-type="taskList"/);
@@ -77,8 +77,8 @@ test("Evernote: notes with ENML, tasks, resources by hash, tags and dates", asyn
   assert.match(html, /<img src="\/api\/files\/[0-9a-f-]{36}"/);
   assert.match(html, /<a href="\/api\/files\/[0-9a-f-]{36}"[^>]*>rechnung\.pdf<\/a>/);
   assert.doesNotMatch(html, /javascript:|<script/);
-  assert.equal(fileCount(), files + 2);
-  const pdf = one<{ mime: string; name: string }>("SELECT mime,name FROM files WHERE page_id=? AND name='rechnung.pdf'", page.id)!;
+  assert.equal(await fileCount(), files + 2);
+  const pdf = (await one<{ mime: string; name: string }>("SELECT mime,name FROM files WHERE page_id=? AND name='rechnung.pdf'", page.id))!;
   assert.equal(pdf.mime, "application/pdf");
   assert.match(page.updated_at, /^2026-01-03 10:11:12/);
 });
@@ -88,10 +88,10 @@ test("Evernote into a database: tags, dates and source as properties", async () 
   const result = await importFromSource(owner, wid, space, { name: "Notizbuch.enex", bytes }, { mode: "database" });
   assert.ok(result.databaseId);
   assert.equal(result.rows, 2);
-  const fields = JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", result.databaseId)!.fields) as { id: string; type: string; options?: string[] }[];
+  const fields = JSON.parse((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", result.databaseId))!.fields) as { id: string; type: string; options?: string[] }[];
   assert.deepEqual(fields.find((f) => f.id === "imp_tags")?.options?.sort(), ["listen", "privat"]);
   assert.ok(fields.some((f) => f.id === "imp_url" && f.type === "url"));
-  const rows = all<{ cells: string; created_at: string }>("SELECT cells,created_at FROM rows WHERE page_id=? ORDER BY position", result.databaseId!);
+  const rows = await all<{ cells: string; created_at: string }>("SELECT cells,created_at FROM rows WHERE page_id=? ORDER BY position", result.databaseId!);
   const first = JSON.parse(rows[0].cells);
   assert.equal(first.title, "Einkaufsliste & Ideen");
   assert.deepEqual(first.imp_tags, ["privat", "listen"]);
@@ -105,20 +105,20 @@ test("Confluence HTML export: page tree, callouts, code, tasks, attachments", as
   const bytes = await zipDir("confluence-html");
   const result = await importFromSource(owner, wid, space, { name: "DOC.zip", bytes });
   assert.equal(result.pages, 3);
-  const home = pageByTitle("Home"),
-    guide = pageByTitle("Anleitung"),
-    details = pageByTitle("Details");
+  const home = await pageByTitle("Home"),
+    guide = await pageByTitle("Anleitung"),
+    details = await pageByTitle("Details");
   assert.equal(guide.parent_id, home.id);
   assert.equal(details.parent_id, guide.id);
-  const html = pageHtml(home.id);
+  const html = await pageHtml(home.id);
   assert.match(html, new RegExp(`href="/#page=${guide.id}"`));
   assert.match(html, /<aside data-callout="caution">/);
   assert.match(html, /<pre><code>npm install<\/code><\/pre>/);
   assert.match(html, /data-checked="true"/);
   assert.doesNotMatch(html, /javascript:|onclick|<script/);
-  assert.match(pageHtml(guide.id), /<img src="\/api\/files\//);
-  assert.match(pageHtml(guide.id), /<table>/);
-  assert.match(pageHtml(details.id), /<details><summary>Mehr anzeigen<\/summary>/);
+  assert.match(await pageHtml(guide.id), /<img src="\/api\/files\//);
+  assert.match(await pageHtml(guide.id), /<table>/);
+  assert.match(await pageHtml(details.id), /<details><summary>Mehr anzeigen<\/summary>/);
 });
 
 test("Confluence XML export: current versions, storage format, page links and attachments", async () => {
@@ -127,15 +127,15 @@ test("Confluence XML export: current versions, storage format, page links and at
   assert.equal(preview.pages, 2, "the historical version is skipped");
   assert.ok(preview.warnings.some((w) => /toc/.test(w)));
   await importFromSource(owner, wid, space, { name: "xml.zip", bytes });
-  const start = pageByTitle("Start"),
-    sub = pageByTitle("Unterseite");
+  const start = await pageByTitle("Start"),
+    sub = await pageByTitle("Unterseite");
   assert.equal(sub.parent_id, start.id);
-  const html = pageHtml(start.id);
+  const html = await pageHtml(start.id);
   assert.match(html, new RegExp(`<a href="/#page=${sub.id}"[^>]*>hier</a>`));
   assert.match(html, /<aside data-callout="note"><p><strong>Hinweis<\/strong><\/p><p>Info-Text<\/p><\/aside>/);
   assert.match(html, /let a = 1 &lt; 2;/);
   assert.match(html, /data-checked="true"/);
-  assert.match(pageHtml(sub.id), /<img src="\/api\/files\/[0-9a-f-]{36}" alt="diagramm\.png"/);
+  assert.match(await pageHtml(sub.id), /<img src="\/api\/files\/[0-9a-f-]{36}" alt="diagramm\.png"/);
 });
 
 test("Google Docs: Takeout HTML with classes, nested lists, images and a DOCX", async () => {
@@ -144,16 +144,16 @@ test("Google Docs: Takeout HTML with classes, nested lists, images and a DOCX", 
   const result = await importFromSource(owner, wid, space, { name: "takeout.zip", bytes }, { source: "gdocs" });
   assert.equal(result.pages, 2);
   assert.equal(result.folders, 1);
-  const plan = pageByTitle("Plan");
-  assert.equal(plan.parent_id, pageByTitle("Projekte").id);
-  const html = pageHtml(plan.id);
+  const plan = await pageByTitle("Plan");
+  assert.equal(plan.parent_id, (await pageByTitle("Projekte")).id);
+  const html = await pageHtml(plan.id);
   assert.match(html, /<strong>Fett<\/strong> und <em>kursiv<\/em>/);
   assert.match(html, /href="https:\/\/example\.org\/ziel"/);
   assert.match(html, /<ul><li><p>Punkt A<\/p><ul><li><p>Unterpunkt<\/p><\/li><\/ul><\/li><li><p>Punkt B<\/p><\/li><\/ul>/);
   assert.equal((html.match(/<img src="\/api\/files\//g) || []).length, 2, "file and data: images are stored");
   assert.doesNotMatch(html, /data:image/);
   // Headings carry their block ids (#88); left out here.
-  const report = pageHtml(pageByTitle("Bericht").id).replace(/ data-block-id="[^"]*"/g, "");
+  const report = (await pageHtml((await pageByTitle("Bericht")).id)).replace(/ data-block-id="[^"]*"/g, "");
   assert.match(report, /<h1>Bericht<\/h1>/);
   assert.match(report, /<ol><li><p>Erstens<\/p><ol><li><p>Unterpunkt<\/p><\/li><\/ol><\/li><li><p>Aufzählung<\/p><\/li><\/ol>/);
   assert.match(report, /<td colspan="2"/);
@@ -167,27 +167,27 @@ test("Obsidian: wikilinks, embeds, callouts, tags, aliases and folders as page t
   const bytes = await zipDir("obsidian");
   const result = await importFromSource(owner, wid, space, { name: "Tresor.zip", bytes });
   assert.equal(result.files, 1);
-  const start = pageByTitle("Start"),
-    alpha = pageByTitle("Alpha"),
-    notes = pageByTitle("Notizen"),
-    projects = pageByTitle("Projekte");
+  const start = await pageByTitle("Start"),
+    alpha = await pageByTitle("Alpha"),
+    notes = await pageByTitle("Notizen"),
+    projects = await pageByTitle("Projekte");
   assert.equal(alpha.parent_id, projects.id, "the folder note stands for its folder");
   assert.equal(notes.parent_id, alpha.id);
-  assert.equal(pageByTitle("Übersicht").parent_id, projects.id);
+  assert.equal((await pageByTitle("Übersicht")).parent_id, projects.id);
   assert.deepEqual(JSON.parse(start.aliases!), ["Startseite"]);
-  const html = pageHtml(start.id);
+  const html = await pageHtml(start.id);
   assert.match(html, new RegExp(`<a href="/#page=${alpha.id}"[^>]*>Alpha</a>`));
   assert.match(html, new RegExp(`<a href="/#page=${notes.id}"[^>]*>die Notizen</a>`));
   assert.match(html, /sowie Fehlt\./);
   assert.match(html, /<img src="\/api\/files\/[0-9a-f-]{36}"/);
   assert.match(html, /<aside data-callout="warning">/);
-  assert.deepEqual(tagsOf(start.id), ["projekt", "wichtig", "idee"]);
-  assert.match(pageHtml(notes.id), /data-type="taskList"/);
+  assert.deepEqual(await tagsOf(start.id), ["projekt", "wichtig", "idee"]);
+  assert.match(await pageHtml(notes.id), /data-type="taskList"/);
   // The same picture, referenced twice, is stored once.
-  assert.equal(all("SELECT id FROM files WHERE name='diagramm.png' AND page_id IN (?,?)", start.id, notes.id).length, 1);
+  assert.equal((await all("SELECT id FROM files WHERE name='diagramm.png' AND page_id IN (?,?)", start.id, notes.id)).length, 1);
   // Into a database: the tags become a property.
   const db = await importFromSource(owner, wid, space, { name: "Tresor.zip", bytes }, { mode: "database" });
-  const rows = all<{ cells: string }>("SELECT cells FROM rows WHERE page_id=?", db.databaseId!).map((r) => JSON.parse(r.cells));
+  const rows = (await all<{ cells: string }>("SELECT cells FROM rows WHERE page_id=?", db.databaseId!)).map((r) => JSON.parse(r.cells));
   assert.deepEqual(rows.find((r) => r.title === "Start").imp_tags, ["projekt", "wichtig", "idee"]);
   assert.equal(rows.find((r) => r.title === "Notizen").imp_folder, "Projekte / Alpha");
 });
@@ -202,7 +202,7 @@ test("wikilinks and tags: code stays untouched, labels and sizes", () => {
 test("rights, page limit and quota are checked before anything is written", async () => {
   const bytes = readFileSync(join(fixtures, "evernote/Notizbuch.enex"));
   await assert.rejects(importFromSource(viewer, wid, space, { name: "n.enex", bytes }), /Rechte|Schreibrechte|editor|Keine/);
-  const pages = Number(one<{ n: number }>("SELECT COUNT(*) n FROM pages")!.n);
+  const pages = Number((await one<{ n: number }>("SELECT COUNT(*) n FROM pages"))!.n);
   // The page limit is the instance's (FLOWPLAN_IMPORT_MAX_DOCS, #82).
   const many = `<en-export>${"<note><title>x</title><content><![CDATA[<en-note><div>x</div></en-note>]]></content></note>".repeat(21)}</en-export>`;
   process.env.FLOWPLAN_IMPORT_MAX_DOCS = "20";
@@ -216,22 +216,22 @@ test("rights, page limit and quota are checked before anything is written", asyn
   }
   // A full workspace: 1 MB allowed, 1 MB used (quota_mb is an integer column).
   const filler = id();
-  run("INSERT INTO files(id,page_id,name,mime,size) VALUES(?,?,?,?,?)", filler, one<{ id: string }>("SELECT id FROM pages WHERE workspace_id=? LIMIT 1", wid)!.id, "filler", "application/octet-stream", 1024 * 1024);
-  run("UPDATE workspaces SET quota_mb=? WHERE id=?", 1, wid);
+  await run("INSERT INTO files(id,page_id,name,mime,size) VALUES(?,?,?,?,?)", filler, (await one<{ id: string }>("SELECT id FROM pages WHERE workspace_id=? LIMIT 1", wid))!.id, "filler", "application/octet-stream", 1024 * 1024);
+  await run("UPDATE workspaces SET quota_mb=? WHERE id=?", 1, wid);
   try {
     const limited = await importFromSource(owner, wid, space, { name: "n.enex", bytes }, { dryRun: true });
     assert.ok(limited.warnings.length > 0);
     await assert.rejects(importFromSource(owner, wid, space, { name: "n.enex", bytes }));
   } finally {
-    run("UPDATE workspaces SET quota_mb=NULL WHERE id=?", wid);
-    run("DELETE FROM files WHERE id=?", filler);
+    await run("UPDATE workspaces SET quota_mb=NULL WHERE id=?", wid);
+    await run("DELETE FROM files WHERE id=?", filler);
   }
-  assert.equal(Number(one<{ n: number }>("SELECT COUNT(*) n FROM pages")!.n), pages);
+  assert.equal(Number((await one<{ n: number }>("SELECT COUNT(*) n FROM pages"))!.n), pages);
   // End-to-end encrypted spaces take no plaintext.
-  run("UPDATE spaces SET encrypted=1 WHERE id=?", space);
+  await run("UPDATE spaces SET encrypted=1 WHERE id=?", space);
   try {
     await assert.rejects(importFromSource(owner, wid, space, { name: "n.enex", bytes }, { dryRun: true }), (e: { status?: number }) => e.status === 409);
   } finally {
-    run("UPDATE spaces SET encrypted=0 WHERE id=?", space);
+    await run("UPDATE spaces SET encrypted=0 WHERE id=?", space);
   }
 });

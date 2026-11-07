@@ -34,8 +34,8 @@ type Cells = Record<string, unknown>;
 export type ApplyMode = "empty" | "append";
 export const applyModeSchema = z.enum(["empty", "append"]).default("empty");
 
-const fieldsOf = (pageId: string) =>
-  JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId)?.fields || "[]") as Field[];
+const fieldsOf = async (pageId: string) =>
+  JSON.parse((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId))?.fields || "[]") as Field[];
 
 // Properties a template cannot carry: computed or kept by the system.
 const COMPUTED = new Set(["formula", "rollup", "created_at", "updated_at", "created_by", "updated_by", "id", "progress", "time"]);
@@ -58,25 +58,25 @@ export function rawTemplate(template: RowTemplate, fields: Field[]) {
 
 // Names in the stored templates of a database as ids (before a rename,
 // with the properties as they were).
-export function storeTemplateNames(pageId: string, fields: Field[]) {
+export async function storeTemplateNames(pageId: string, fields: Field[]) {
   const store = (key: string) => storeKey(key, fields);
-  for (const t of all<{ id: string; cells: string; html: string }>("SELECT id,cells,html FROM row_templates WHERE page_id=?", pageId)) {
+  for (const t of await all<{ id: string; cells: string; html: string }>("SELECT id,cells,html FROM row_templates WHERE page_id=?", pageId)) {
     if (!t.html.includes("{{") && !t.cells.includes("{{")) continue;
     const html = mapHtmlPlaceholders(t.html, store);
     const cells = JSON.stringify(mapTextCells(JSON.parse(t.cells) as Cells, fields, (text) => mapPlaceholders(text, store)));
-    if (html !== t.html || cells !== t.cells) run("UPDATE row_templates SET html=?,cells=? WHERE id=?", html, cells, t.id);
+    if (html !== t.html || cells !== t.cells) await run("UPDATE row_templates SET html=?,cells=? WHERE id=?", html, cells, t.id);
   }
 }
 
 /* ---------- Values of a record ---------- */
 
-const names = (ids: string[]) =>
+const names = async (ids: string[]) =>
   ids.length
     ? new Map(
-        all<{ id: string; name: string }>(
+        (await all<{ id: string; name: string }>(
           `SELECT id,name FROM users WHERE id IN (${ids.map(() => "?").join(",")})`,
           ...ids,
-        ).map((u) => [u.id, u.name]),
+        )).map((u) => [u.id, u.name]),
       )
     : new Map<string, string>();
 
@@ -85,29 +85,29 @@ function formatFor(actor: Identity | null, zone: string): PlaceholderFormat {
   return {
     tag: localeTag(contentLocale()),
     zone,
-    person: (uid) => {
-      if (!people.has(uid)) people.set(uid, names([uid]).get(uid) || "");
+    person: async (uid) => {
+      if (!people.has(uid)) people.set(uid, (await names([uid])).get(uid) || "");
       return people.get(uid)!;
     },
     // Titles of the related records the person may see.
-    relation: (field, ids) => {
+    relation: async (field, ids) => {
       if (!field.relationPage || !ids.length) return [];
-      const target = one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", field.relationPage);
-      if (!target || (actor && !pageRole(actor, target))) return [];
-      const hidden = actor ? hiddenRowIds(actor, target) : new Set<string>();
-      const titleId = fieldsOf(target.id)[0]?.id || "title";
+      const target = await one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", field.relationPage);
+      if (!target || (actor && !(await pageRole(actor, target)))) return [];
+      const hidden = actor ? (await hiddenRowIds(actor, target)) : new Set<string>();
+      const titleId = (await fieldsOf(target.id))[0]?.id || "title";
       const rows = new Map(
-        all<{ id: string; cells: string }>(
+        (await all<{ id: string; cells: string }>(
           `SELECT id,cells FROM rows WHERE page_id=? AND id IN (${ids.map(() => "?").join(",")})`,
           target.id,
           ...ids,
-        ).map((r) => [r.id, cellText(JSON.parse(r.cells)[titleId])]),
+        )).map((r) => [r.id, cellText(JSON.parse(r.cells)[titleId])]),
       );
       return ids.filter((rid) => rows.has(rid) && !hidden.has(rid)).map((rid) => rows.get(rid)!);
     },
-    file: (url) => {
+    file: async (url) => {
       const fid = /^\/api\/files\/([0-9a-f-]{36})$/i.exec(url)?.[1];
-      return (fid && one<{ name: string }>("SELECT name FROM files WHERE id=?", fid)?.name) || url.split("/").pop() || url;
+      return (fid && (await one<{ name: string }>("SELECT name FROM files WHERE id=?", fid))?.name) || url.split("/").pop() || url;
     },
   };
 }
@@ -177,9 +177,9 @@ function fillCells(cells: Cells, keys: Set<string>, fields: Field[], resolve: (k
 // After a record was stored with a template's cells and before its
 // document: fills the placeholders in the cells that came from the
 // template (unchanged) and returns the template's text for the document.
-export function fillNewRecord(input: { page: Page; rowId: string; template: RowTemplate; actor: Identity | null; zone?: string }) {
-  const fields = fieldsOf(input.page.id);
-  const raw = one<Row & { cells: string }>("SELECT * FROM rows WHERE id=?", input.rowId);
+export async function fillNewRecord(input: { page: Page; rowId: string; template: RowTemplate; actor: Identity | null; zone?: string }) {
+  const fields = await fieldsOf(input.page.id);
+  const raw = await one<Row & { cells: string }>("SELECT * FROM rows WHERE id=?", input.rowId);
   if (!raw) return input.template.html;
   const cells = JSON.parse(raw.cells) as Cells;
   const fromTemplate = JSON.parse(input.template.cells) as Cells;
@@ -187,14 +187,14 @@ export function fillNewRecord(input: { page: Page; rowId: string; template: RowT
   const record = { ...raw, cells };
   const filled = fillCells(cells, keys, fields, placeholderResolver(input.page, fields, record, input.actor, input.zone));
   if (JSON.stringify(filled) !== JSON.stringify(cells))
-    run("UPDATE rows SET cells=? WHERE id=?", JSON.stringify(filled), input.rowId);
+    await run("UPDATE rows SET cells=? WHERE id=?", JSON.stringify(filled), input.rowId);
   return mapHtmlPlaceholders(input.template.html, placeholderResolver(input.page, fields, { ...record, cells: filled }, input.actor, input.zone));
 }
 
 // The template's cells for a record that is not stored yet (pages turned
 // into records): text cells with placeholders filled from these cells.
-export function fillTemplateCells(page: Page, cells: Cells, keys: Iterable<string>, actor: Identity | null) {
-  const fields = fieldsOf(page.id);
+export async function fillTemplateCells(page: Page, cells: Cells, keys: Iterable<string>, actor: Identity | null) {
+  const fields = await fieldsOf(page.id);
   const record: PlaceholderRecord = {
     id: "",
     page_id: page.id,
@@ -230,7 +230,7 @@ export type ApplyResult = {
 // `keep` decides which template properties may be written (permissions).
 // The caller stores `cells`; the document is stored here, after a version
 // of the previous text (`snapshotId`) when there was one.
-export function applyTemplate(input: {
+export async function applyTemplate(input: {
   page: Page;
   row: Row;
   template: RowTemplate;
@@ -240,9 +240,9 @@ export function applyTemplate(input: {
   keep?: (field: Field, value: unknown) => unknown | undefined;
   snapshotId?: string;
   strict?: boolean;
-}): ApplyResult {
+}): Promise<ApplyResult> {
   const { page, row, template } = input;
-  const fields = fieldsOf(page.id);
+  const fields = await fieldsOf(page.id);
   const current = (typeof row.cells === "string" ? JSON.parse(row.cells) : row.cells) as Cells;
   const fromTemplate = JSON.parse(template.cells) as Cells;
   let patch: Cells = {};
@@ -254,7 +254,7 @@ export function applyTemplate(input: {
   }
   const record = { ...row, cells: { ...current, ...patch } };
   patch = fillCells(patch, new Set(Object.keys(patch)), fields, placeholderResolver(page, fields, record, input.actor, input.zone));
-  const d = ensureRowDocument(row);
+  const d = await ensureRowDocument(row);
   const empty = emptyDocument(d.html);
   if (!empty && input.mode === "empty") {
     if (input.strict)
@@ -266,7 +266,7 @@ export function applyTemplate(input: {
     placeholderResolver(page, fields, { ...record, cells: { ...current, ...patch } }, input.actor, input.zone),
   );
   if (input.snapshotId || !empty)
-    run(
+    await run(
       "INSERT INTO row_snapshots(id,row_id,state,html,created_by,kind) VALUES(?,?,?,?,?,'auto')",
       input.snapshotId || id(),
       row.id,
@@ -274,7 +274,7 @@ export function applyTemplate(input: {
       d.html,
       input.actor?.id || null,
     );
-  replaceRowDocument(row.id, empty ? text : d.html + text, input.actor?.id || row.updated_by || row.created_by);
+  await replaceRowDocument(row.id, empty ? text : d.html + text, input.actor?.id || row.updated_by || row.created_by);
   return { document: empty ? "applied" : "appended", cells: patch };
 }
 
@@ -287,20 +287,20 @@ export const applyCommandSchema = z.object({
   // The version of the previous text, so "Undo" can bring it back.
   snapshotId: z.uuid().optional(),
 });
-export function templateForApply(pageId: string, templateId: string) {
-  const template = one<RowTemplate>("SELECT * FROM row_templates WHERE id=? AND page_id=?", templateId, pageId);
+export async function templateForApply(pageId: string, templateId: string) {
+  const template = await one<RowTemplate>("SELECT * FROM row_templates WHERE id=? AND page_id=?", templateId, pageId);
   if (!template) throw new HttpError(404, "Datensatzvorlage nicht gefunden.");
   return template;
 }
-export function prepareManualApply(user: Identity, pageId: string, body: unknown) {
+export async function prepareManualApply(user: Identity, pageId: string, body: unknown) {
   const input = applyCommandSchema.parse(body);
-  if (input.snapshotId && one("SELECT 1 FROM row_snapshots WHERE id=?", input.snapshotId))
+  if (input.snapshotId && await one("SELECT 1 FROM row_snapshots WHERE id=?", input.snapshotId))
     throw new HttpError(409, "Diese Kennung ist bereits vergeben.");
-  const { page, row } = requireRow(user, pageId, input.rowId, true);
-  return { input, page, row, template: templateForApply(page.id, input.templateId) };
+  const { page, row } = await requireRow(user, pageId, input.rowId, true);
+  return { input, page, row, template: await templateForApply(page.id, input.templateId) };
 }
 
 // Recorded in the audit log with the template's name.
-export function auditApply(actor: string, rowId: string, template: RowTemplate, how: string) {
-  audit(actor, "row.template.applied", rowId, `${template.name} (${how})`.slice(0, 300));
+export async function auditApply(actor: string, rowId: string, template: RowTemplate, how: string) {
+  await audit(actor, "row.template.applied", rowId, `${template.name} (${how})`.slice(0, 300));
 }

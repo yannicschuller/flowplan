@@ -36,12 +36,12 @@ export const ssoNewAccounts = () => process.env.OIDC_NEW_ACCOUNTS !== "false";
 // The account of an identity: by user_identities, else (rows from before
 // schema 88, or a subject set by SCIM) by users.subject – then the identity
 // is recorded so the next lookup finds it directly.
-export function identityOwner(issuer: string, subject: string): string | null {
-  const row = one<{ user_id: string }>("SELECT user_id FROM user_identities WHERE issuer=? AND subject=?", issuer, subject);
+export async function identityOwner(issuer: string, subject: string): Promise<string | null> {
+  const row = await one<{ user_id: string }>("SELECT user_id FROM user_identities WHERE issuer=? AND subject=?", issuer, subject);
   if (row) return row.user_id;
-  const legacy = one<{ id: string; email: string }>("SELECT id,email FROM users WHERE subject=?", subjectKey(issuer, subject));
+  const legacy = await one<{ id: string; email: string }>("SELECT id,email FROM users WHERE subject=?", subjectKey(issuer, subject));
   if (!legacy) return null;
-  run(
+  await run(
     "INSERT INTO user_identities(id,user_id,provider,issuer,subject,email,created_at) VALUES(?,?,'oidc',?,?,?,?) ON CONFLICT DO NOTHING",
     id(),
     legacy.id,
@@ -53,15 +53,15 @@ export function identityOwner(issuer: string, subject: string): string | null {
   return legacy.id;
 }
 
-export function listIdentities(userId: string) {
-  return all<IdentityRow>("SELECT * FROM user_identities WHERE user_id=? ORDER BY created_at", userId);
+export async function listIdentities(userId: string) {
+  return await all<IdentityRow>("SELECT * FROM user_identities WHERE user_id=? ORDER BY created_at", userId);
 }
-export const identityCount = (userId: string) => Number(one<{ n: number }>("SELECT COUNT(*) n FROM user_identities WHERE user_id=?", userId)?.n || 0);
-export const hasIdentity = (userId: string) => identityCount(userId) > 0;
+export const identityCount = async (userId: string) => Number((await one<{ n: number }>("SELECT COUNT(*) n FROM user_identities WHERE user_id=?", userId))?.n || 0);
+export const hasIdentity = async (userId: string) => (await identityCount(userId)) > 0;
 
 // Noted at every SSO sign-in with the address the provider sent.
-export function touchIdentity(issuer: string, subject: string, email: string, now = Date.now()) {
-  run("UPDATE user_identities SET last_used_at=?,email=? WHERE issuer=? AND subject=?", now, email, issuer, subject);
+export async function touchIdentity(issuer: string, subject: string, email: string, now = Date.now()) {
+  await run("UPDATE user_identities SET last_used_at=?,email=? WHERE issuer=? AND subject=?", now, email, issuer, subject);
 }
 
 export class IdentityTaken extends HttpError {
@@ -78,11 +78,11 @@ export class IdentityTaken extends HttpError {
 
 // Attaches an identity to an account; refused when another account has it.
 // Returns false when the account already had it.
-export function attachIdentity(userId: string, issuer: string, subject: string, email: string, locale: Locale, now = Date.now()) {
-  const owner = identityOwner(issuer, subject);
+export async function attachIdentity(userId: string, issuer: string, subject: string, email: string, locale: Locale, now = Date.now()) {
+  const owner = await identityOwner(issuer, subject);
   if (owner && owner !== userId) throw new IdentityTaken(locale);
   if (owner === userId) return false;
-  run(
+  await run(
     "INSERT INTO user_identities(id,user_id,provider,issuer,subject,email,created_at,last_used_at) VALUES(?,?,'oidc',?,?,?,?,?)",
     id(),
     userId,
@@ -96,28 +96,28 @@ export function attachIdentity(userId: string, issuer: string, subject: string, 
 }
 
 // The ways an account can sign in (for the settings and the unlink rules).
-export function signInMethods(userId: string) {
-  const local = one<{ password_hash: string; email: string }>("SELECT password_hash,email FROM local_accounts WHERE user_id=?", userId);
+export async function signInMethods(userId: string) {
+  const local = await one<{ password_hash: string; email: string }>("SELECT password_hash,email FROM local_accounts WHERE user_id=?", userId);
   return {
     // An account with e-mail and password (also one whose password was removed).
     local: !!local,
     password: !!local?.password_hash,
-    ldap: !!one("SELECT 1 FROM ldap_accounts WHERE user_id=?", userId),
-    identities: identityCount(userId),
-    passkeys: Number(one<{ n: number }>("SELECT COUNT(*) n FROM passkeys WHERE user_id=?", userId)?.n || 0),
-    totp: !!one("SELECT 1 FROM user_totp WHERE user_id=? AND enabled=1", userId),
+    ldap: !!(await one("SELECT 1 FROM ldap_accounts WHERE user_id=?", userId)),
+    identities: await identityCount(userId),
+    passkeys: Number((await one<{ n: number }>("SELECT COUNT(*) n FROM passkeys WHERE user_id=?", userId))?.n || 0),
+    totp: !!(await one("SELECT 1 FROM user_totp WHERE user_id=? AND enabled=1", userId)),
   };
 }
 
 // What the account settings show: the methods and the connected identities.
-export function signInOverview(userId: string) {
-  const methods = signInMethods(userId);
+export async function signInOverview(userId: string) {
+  const methods = await signInMethods(userId);
   return {
     ...methods,
     ssoConfigured: !!process.env.OIDC_ISSUER,
     ssoOnly: linkedSsoOnly() && methods.identities > 0,
     linkedSsoOnly: linkedSsoOnly(),
-    list: listIdentities(userId).map((i) => ({
+    list: (await listIdentities(userId)).map((i) => ({
       id: i.id,
       issuer: i.issuer,
       // The provider's host, for a short label.
@@ -128,7 +128,7 @@ export function signInOverview(userId: string) {
     })),
   };
 }
-export type SignInOverview = ReturnType<typeof signInOverview>;
+export type SignInOverview = Awaited<ReturnType<typeof signInOverview>>;
 function hostOf(issuer: string) {
   try {
     return new URL(issuer).host;
@@ -138,11 +138,11 @@ function hostOf(issuer: string) {
 }
 
 // Whether this account may sign in with its password or a passkey now.
-export function ssoOnlyAccount(userId: string) {
-  return linkedSsoOnly() && hasIdentity(userId);
+export async function ssoOnlyAccount(userId: string) {
+  return linkedSsoOnly() && await hasIdentity(userId);
 }
-export function refuseSsoOnly(userId: string, locale: Locale) {
-  if (ssoOnlyAccount(userId))
+export async function refuseSsoOnly(userId: string, locale: Locale) {
+  if (await ssoOnlyAccount(userId))
     throw new HttpError(
       403,
       translate(locale)(
@@ -153,11 +153,11 @@ export function refuseSsoOnly(userId: string, locale: Locale) {
 }
 
 // Disconnecting one identity: only while another way in remains.
-export function removeIdentity(userId: string, identityId: string, locale: Locale) {
+export async function removeIdentity(userId: string, identityId: string, locale: Locale) {
   const t = translate(locale);
-  const row = one<IdentityRow>("SELECT * FROM user_identities WHERE id=? AND user_id=?", identityId, userId);
+  const row = await one<IdentityRow>("SELECT * FROM user_identities WHERE id=? AND user_id=?", identityId, userId);
   if (!row) throw new HttpError(404, t("Diese Verbindung gibt es nicht mehr.", "This connection no longer exists."));
-  const methods = signInMethods(userId);
+  const methods = await signInMethods(userId);
   if (!methods.password && !methods.ldap && methods.identities <= 1)
     throw new HttpError(
       409,
@@ -166,35 +166,35 @@ export function removeIdentity(userId: string, identityId: string, locale: Local
         "This is your only way to sign in. Set a password or connect another SSO identity first.",
       ),
     );
-  run("DELETE FROM user_identities WHERE id=?", row.id);
+  await run("DELETE FROM user_identities WHERE id=?", row.id);
   // The account's key no longer names this identity: a later sign-in with
   // it starts fresh instead of finding this account again.
-  run("UPDATE users SET subject=? WHERE id=? AND subject=?", `user:${userId}`, userId, subjectKey(row.issuer, row.subject));
-  audit(userId, "account.sso.unlink", userId, row.issuer);
+  await run("UPDATE users SET subject=? WHERE id=? AND subject=?", `user:${userId}`, userId, subjectKey(row.issuer, row.subject));
+  await audit(userId, "account.sso.unlink", userId, row.issuer);
   securityEvent("account.sso_unlinked", { actorId: userId, detail: hostOf(row.issuer) });
   return row;
 }
 
 // "Remove password": the account then signs in through SSO only.
-export function removePassword(userId: string, locale: Locale) {
+export async function removePassword(userId: string, locale: Locale) {
   const t = translate(locale);
-  const methods = signInMethods(userId);
+  const methods = await signInMethods(userId);
   if (!methods.password) throw new HttpError(400, t("Dieses Konto hat kein Passwort.", "This account has no password."));
   if (!methods.identities)
     throw new HttpError(409, t("Verbinde zuerst ein SSO-Konto – sonst kannst du dich nicht mehr anmelden.", "Connect an SSO identity first – otherwise you could no longer sign in."));
-  run("UPDATE local_accounts SET password_hash='' WHERE user_id=?", userId);
-  run("DELETE FROM auth_tokens WHERE user_id=? AND kind='reset'", userId);
-  audit(userId, "account.password.remove", userId);
+  await run("UPDATE local_accounts SET password_hash='' WHERE user_id=?", userId);
+  await run("DELETE FROM auth_tokens WHERE user_id=? AND kind='reset'", userId);
+  await audit(userId, "account.password.remove", userId);
   securityEvent("account.password_removed", { actorId: userId });
 }
 
 // The one account a first SSO sign-in may be connected to: its address is
 // the verified one, and it can prove itself (password, LDAP or passkey).
 // Several matches, a disabled account or none: no offer.
-export function linkCandidate(email: string) {
+export async function linkCandidate(email: string) {
   const address = email.trim();
   if (!address) return null;
-  const rows = all<{ id: string; disabled: number }>(
+  const rows = await all<{ id: string; disabled: number }>(
     `SELECT DISTINCT u.id,u.disabled FROM users u
        LEFT JOIN local_accounts a ON a.user_id=u.id
        WHERE u.demo_until IS NULL AND u.subject NOT LIKE 'deleted:%' AND u.subject<>'local-development'

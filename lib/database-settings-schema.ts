@@ -131,7 +131,7 @@ export function doneRule(fields: Field[], settings: DatabaseSettings | undefined
   const check = fields.find((f) => f.type === "checkbox" && /erledigt|done|fertig|abgeschlossen/i.test(f.name));
   return check ? { field: check, values: ["true"] } : null;
 }
-export function isDone(rule: ReturnType<typeof doneRule>, cells: Record<string, unknown>) {
+export function isDone(rule: Awaited<ReturnType<typeof doneRule>>, cells: Record<string, unknown>) {
   if (!rule) return false;
   const value = cells[rule.field.id];
   if (rule.field.type === "checkbox") return value === true;

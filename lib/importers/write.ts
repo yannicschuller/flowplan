@@ -30,6 +30,7 @@ import { quotaCheckpoint } from "../instance-ops";
 import { pageIconSchema } from "../page-appearance";
 import { documentAnchors, findAnchor, type DocumentAnchors } from "../import-anchors";
 import type { Field, Identity, Page, Space } from "../types";
+import { filterAsync, forEachAsync } from "../each-async";
 
 export type ImportMode = "pages" | "database";
 export type ImportPreview = {
@@ -105,42 +106,42 @@ function templateFiles(tree: ImportTree, used: Map<string, string>) {
 // Who sees imported templates: the workspace, as a template saved in the
 // app (template.save, /api/templates/import) for whoever may edit the
 // workspace – else only the person importing.
-export function importTemplateVisibility(user: Identity, workspaceId: string): "workspace" | "private" {
-  const role = memberRole(user, workspaceId);
-  return (role === "editor" || role === "owner") && !isGuest(user, workspaceId) && user.apiScope !== "read" ? "workspace" : "private";
+export async function importTemplateVisibility(user: Identity, workspaceId: string): Promise<"workspace" | "private"> {
+  const role = await memberRole(user, workspaceId);
+  return (role === "editor" || role === "owner") && !(await isGuest(user, workspaceId)) && user.apiScope !== "read" ? "workspace" : "private";
 }
 // Limits of a saved template (lib/template-files.ts captureTemplateFiles).
 const TEMPLATE_FILES = 200;
 const TEMPLATE_FILE_BYTES = 10 * 1024 * 1024;
 // The journal days of an import go to: the writable journal in the target
 // space, else one elsewhere in the workspace, else a new one.
-function importJournal(user: Identity, workspaceId: string, spaceId: string) {
-  const journals = all<Page>(
+async function importJournal(user: Identity, workspaceId: string, spaceId: string) {
+  const journals = await filterAsync(await all<Page>(
     "SELECT * FROM pages WHERE workspace_id=? AND kind='journal' AND deleted_at IS NULL ORDER BY (space_id=?) DESC, updated_at DESC",
     workspaceId,
     spaceId,
-  ).filter((j) => ["editor", "owner"].includes(pageRole(user, j) || "") && !j.locked && !journalLocked(user, j) && !isEncryptedPage(j));
+  ), async (j) => ["editor", "owner"].includes(await pageRole(user, j) || "") && !j.locked && !(await journalLocked(user, j)) && !(await isEncryptedPage(j)));
   if (journals[0]) return { id: journals[0].id, spaceId: journals[0].space_id };
-  return { id: createPage(workspaceId, spaceId, user.id, ct("Journal", "Journal"), "journal"), spaceId };
+  return { id: await createPage(workspaceId, spaceId, user.id, ct("Journal", "Journal"), "journal"), spaceId };
 }
 
-export function requireSpace(user: Identity, workspaceId: string, spaceId: string) {
-  requireMember(user, workspaceId, "editor");
-  const space = one<Space>("SELECT * FROM spaces WHERE id=? AND workspace_id=? AND deleted_at IS NULL", spaceId, workspaceId);
-  if (!space || !["editor", "owner"].includes(spaceRole(user, space) || "")) throw new HttpError(403, "Keine Schreibrechte im Zielbereich.");
+export async function requireSpace(user: Identity, workspaceId: string, spaceId: string) {
+  await requireMember(user, workspaceId, "editor");
+  const space = await one<Space>("SELECT * FROM spaces WHERE id=? AND workspace_id=? AND deleted_at IS NULL", spaceId, workspaceId);
+  if (!space || !["editor", "owner"].includes(await spaceRole(user, space) || "")) throw new HttpError(403, "Keine Schreibrechte im Zielbereich.");
   // End-to-end encrypted spaces never take plaintext from the server.
-  requirePlaintextSpace(space);
+  await requirePlaintextSpace(space);
 }
 
-export function previewImport(user: Identity, workspaceId: string, spaceId: string, tree: ImportTree, mode: ImportMode = "pages"): ImportPreview {
-  requireSpace(user, workspaceId, spaceId);
+export async function previewImport(user: Identity, workspaceId: string, spaceId: string, tree: ImportTree, mode: ImportMode = "pages"): Promise<ImportPreview> {
+  await requireSpace(user, workspaceId, spaceId);
   const used = referencedFiles(tree, mode);
   const forTemplates = templateFiles(tree, used);
   const bytes = [...used.keys(), ...forTemplates].reduce((sum, key) => sum + importFileSize(tree.files.get(key)!), 0);
   const warnings = [...tree.warnings];
   const unused = tree.files.size - used.size - forTemplates.size;
   const templates = tree.templates?.length || 0;
-  const templateVisibility = templates ? importTemplateVisibility(user, workspaceId) : undefined;
+  const templateVisibility = templates ? (await importTemplateVisibility(user, workspaceId)) : undefined;
   if (templateVisibility === "private")
     warnings.push("Die Vorlagen werden nur für dich gespeichert („Nur für mich“): Vorlagen für den Arbeitsbereich legt an, wer ihn bearbeiten darf.");
   if (unused > 0) warnings.push(`${unused} Dateien werden von keiner Seite verwendet und nicht übernommen.`);
@@ -160,8 +161,8 @@ export function previewImport(user: Identity, workspaceId: string, spaceId: stri
   const rowDocuments = mode === "pages" ? records.filter((r) => r.key).length : 0;
   const icons = pages.filter((p) => importIcon(p.icon)).length + (mode === "pages" ? records.filter((r) => importIcon(r.icon)).length : 0);
   try {
-    enforceQuota(workspaceId, bytes);
-    enforceUserStorage(user, bytes);
+    await enforceQuota(workspaceId, bytes);
+    await enforceUserStorage(user, bytes);
   } catch (error) {
     if (error instanceof HttpError) warnings.push(error.message);
     else throw error;
@@ -195,13 +196,13 @@ export function previewImport(user: Identity, workspaceId: string, spaceId: stri
 const sqlTime = (iso?: string) => (iso ? iso.replace("T", " ").replace(/\.\d+Z?$|Z$/, "").slice(0, 19) : null);
 const day = (iso?: string) => (iso ? iso.slice(0, 10) : null);
 
-export function writeImport(user: Identity, workspaceId: string, spaceId: string, tree: ImportTree, mode: ImportMode = "pages"): ImportResult {
-  const preview = previewImport(user, workspaceId, spaceId, tree, mode);
+export async function writeImport(user: Identity, workspaceId: string, spaceId: string, tree: ImportTree, mode: ImportMode = "pages"): Promise<ImportResult> {
+  const preview = await previewImport(user, workspaceId, spaceId, tree, mode);
   if (!tree.pages.length && !tree.templates?.length) throw new HttpError(400, "In der Datei wurden keine Seiten gefunden.");
   if (preview.tooMany)
     throw new HttpError(413, mode === "database" ? tooManyRecords(preview.pages) : tooManyPages(pagesFor(tree, mode).length));
-  enforceQuota(workspaceId, preview.bytes);
-  enforceUserStorage(user, preview.bytes);
+  await enforceQuota(workspaceId, preview.bytes);
+  await enforceUserStorage(user, preview.bytes);
   const used = referencedFiles(tree, mode);
   const pagesOf = pagesFor(tree, mode);
   const byKey = new Map(pagesOf.map((p) => [p.key, p]));
@@ -222,8 +223,8 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
   // the import (as an edit of the live document).
   const appends: { pageId: string; html: string }[] = [];
 
-  const result = transaction(() => {
-    const quota = tree.templates?.length ? quotaCheckpoint(workspaceId) : () => {};
+  const result = await transaction(async () => {
+    const quota = tree.templates?.length ? (await quotaCheckpoint(workspaceId)) : () => {};
     const dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads");
     const pageIds = new Map<string, string>();
     const rowIds = new Map<string, string>();
@@ -231,17 +232,17 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
     const existingDays = new Set<string>();
     let databaseId: string | undefined;
     if (mode === "database") {
-      databaseId = createPage(workspaceId, spaceId, user.id, tree.title.slice(0, 200) || "Import", "database");
+      databaseId = await createPage(workspaceId, spaceId, user.id, tree.title.slice(0, 200) || "Import", "database");
       for (const { page } of ordered) if (!page.folder) rowIds.set(page.key, id());
     } else {
       // Journal days: an existing day of that date, or one new day per date.
       const days = new Map<string, { id: string; existing: boolean }>();
-      const journal = ordered.some(({ page }) => page.journalDate) ? importJournal(user, workspaceId, spaceId) : null;
+      const journal = ordered.some(({ page }) => page.journalDate) ? (await importJournal(user, workspaceId, spaceId)) : null;
       for (const { page } of ordered) {
         if (page.journalDate && journal && mode === "pages") {
           let day = days.get(page.journalDate);
           if (!day) {
-            const existing = one<{ id: string }>(
+            const existing = await one<{ id: string }>(
               "SELECT id FROM pages WHERE parent_id=? AND journal_date=? AND deleted_at IS NULL AND kind='document'",
               journal.id,
               page.journalDate,
@@ -249,9 +250,9 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
             // A day lives in its journal's space.
             day = existing
               ? { id: existing.id, existing: true }
-              : { id: createPage(workspaceId, journal.spaceId, user.id, dayTitle(page.journalDate), "document", journal.id), existing: false };
+              : { id: await createPage(workspaceId, journal.spaceId, user.id, dayTitle(page.journalDate), "document", journal.id), existing: false };
             if (!existing)
-              run("UPDATE pages SET journal_date=?,icon='day',position=? WHERE id=?", page.journalDate, -Number(page.journalDate.replaceAll("-", "")), day.id);
+              await run("UPDATE pages SET journal_date=?,icon='day',position=? WHERE id=?", page.journalDate, -Number(page.journalDate.replaceAll("-", "")), day.id);
             days.set(page.journalDate, day);
           }
           pageIds.set(page.key, day.id);
@@ -260,7 +261,7 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
         const parent = page.parent ? pageIds.get(page.parent) || null : null;
         pageIds.set(
           page.key,
-          createPage(workspaceId, spaceId, user.id, page.title.slice(0, 200) || ct("Ohne Titel", "Untitled"), page.kind === "whiteboard" || page.kind === "database" ? page.kind : "document", parent),
+          await createPage(workspaceId, spaceId, user.id, page.title.slice(0, 200) || ct("Ohne Titel", "Untitled"), page.kind === "whiteboard" || page.kind === "database" ? page.kind : "document", parent),
         );
       }
       for (const day of days.values()) if (day.existing) existingDays.add(day.id);
@@ -272,7 +273,7 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
       // Icons of documents, folders and collections (journal days keep theirs).
       for (const { page } of ordered) {
         const icon = importIcon(page.icon);
-        if (icon && !page.journalDate) run("UPDATE pages SET icon=? WHERE id=?", icon, pageIds.get(page.key)!);
+        if (icon && !page.journalDate) await run("UPDATE pages SET icon=? WHERE id=?", icon, pageIds.get(page.key)!);
       }
     }
     // Files: stored once, at the page that uses them first.
@@ -287,7 +288,7 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
       mkdirSync(dir, { recursive: true });
       writeFileSync(resolve(dir, fid), data);
       onTransactionRollback(() => unlinkSync(resolve(dir, fid)));
-      run(
+      await run(
         "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
         fid,
         databaseId || pageIds.get(pageKey)!,
@@ -366,13 +367,13 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
         ...(folders.length ? [{ id: "imp_folder", name: ct("Ordner", "Folder"), type: "select", options: folders } as Field] : []),
         ...(notes.some(({ page }) => page.url) ? [{ id: "imp_url", name: ct("Quelle", "Source"), type: "url" } as Field] : []),
       ];
-      run(
+      await run(
         "UPDATE databases SET fields=?,views=? WHERE page_id=?",
         JSON.stringify(fields),
         JSON.stringify([{ id: id(), name: ct("Tabelle", "Table"), type: "table", filters: [], sorts: [] }]),
         databaseId,
       );
-      notes.forEach(({ page }, i) => {
+      await forEachAsync(notes, async ({ page }, i) => {
         const rid = rowIds.get(page.key)!;
         const html = page.html ? resolveHtml(prepared(page.key).html) : "";
         const folder = folderOf(page);
@@ -384,7 +385,7 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
           ...(folder && folders.includes(folder) ? { imp_folder: folder } : {}),
           ...(page.url && /^https?:\/\//i.test(page.url) ? { imp_url: page.url.slice(0, 2000) } : {}),
         };
-        run(
+        await run(
           "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content,created_at,updated_at) VALUES(?,?,?,?,?,?,?,COALESCE(?,?),COALESCE(?,?))",
           rid,
           databaseId!,
@@ -396,7 +397,7 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
           sqlTime(page.created), nowText(),
           sqlTime(page.updated || page.created), nowText(),
         );
-        if (html) run("INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?)", rid, htmlState(html), html, id());
+        if (html) await run("INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?)", rid, htmlState(html), html, id());
         rows++;
       });
     } else {
@@ -406,23 +407,23 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
       for (const { page } of ordered) {
         const pid = pageIds.get(page.key)!;
         if (page.kind === "whiteboard" && page.board) {
-          const urls = storeBoardImages(user, pid, workspaceId, page.board, boardBytes);
+          const urls = await storeBoardImages(user, pid, workspaceId, page.board, boardBytes);
           // Cards of documents that are records' content show the record.
           const recordOf = new Map([...records].map(([key, record]) => [pageRef(key), record]));
           const board = recordOf.size
             ? { ...page.board, items: page.board.items.map((item) => (item.type === "card" && item.pageId && recordOf.has(item.pageId) ? { ...item, ...recordOf.get(item.pageId)! } : item)) }
             : page.board;
-          writeWhiteboard(pid, boardState(board, urls), placeholders);
+          await writeWhiteboard(pid, boardState(board, urls), placeholders);
           continue;
         }
         if (page.kind === "database" && page.database) {
           const { fields, views, rows: rowsOf } = page.database;
-          run("UPDATE databases SET fields=?,views=? WHERE page_id=?", JSON.stringify(fields), JSON.stringify(views), pid);
-          rowsOf.slice(0, MAX_IMPORT_ROWS).forEach((record, i) => {
+          await run("UPDATE databases SET fields=?,views=? WHERE page_id=?", JSON.stringify(fields), JSON.stringify(views), pid);
+          await forEachAsync(rowsOf.slice(0, MAX_IMPORT_ROWS), async (record, i) => {
             const own = record.key ? records.get(record.key) : undefined;
             const rid = own?.pageId === pid ? own.rowId : id();
             const html = record.html ? resolveHtml(record.html) : "";
-            run(
+            await run(
               "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content,created_at,icon) VALUES(?,?,?,?,?,?,?,COALESCE(?,?),?)",
               rid,
               pid,
@@ -434,7 +435,7 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
               sqlTime(record.created), nowText(),
               importIcon(record.icon) || "",
             );
-            if (html) run("INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?)", rid, htmlState(html), html, id());
+            if (html) await run("INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?)", rid, htmlState(html), html, id());
             rows++;
           });
           continue;
@@ -442,16 +443,16 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
         const html = resolveHtml(prepared(page.key).html);
         // Tags and frontmatter properties become the page's (#70,
         // lib/page-properties-server.ts).
-        importPageMeta(user, workspaceId, pid, page, tree.tagColors);
+        await importPageMeta(user, workspaceId, pid, page, tree.tagColors);
         const source = page.url && /^https?:\/\//i.test(page.url) ? `<p><a href="${esc(page.url)}">${esc(page.url)}</a></p>` : "";
         const body = cleanHtml(source + html);
         if (page.journalDate) {
           dayBodies.set(pid, [...(dayBodies.get(pid) || []), { title: page.title, body }]);
           continue;
         }
-        run("UPDATE documents SET html=?,state=? WHERE page_id=?", body, htmlState(body), pid);
-        if (page.aliases?.length) run("UPDATE pages SET aliases=? WHERE id=?", storedAliases(page.aliases.slice(0, 10)), pid);
-        if (page.updated) run("UPDATE pages SET updated_at=? WHERE id=?", sqlTime(page.updated), pid);
+        await run("UPDATE documents SET html=?,state=? WHERE page_id=?", body, htmlState(body), pid);
+        if (page.aliases?.length) await run("UPDATE pages SET aliases=? WHERE id=?", storedAliases(page.aliases.slice(0, 10)), pid);
+        if (page.updated) await run("UPDATE pages SET updated_at=? WHERE id=?", sqlTime(page.updated), pid);
       }
       for (const [pid, bodies] of dayBodies) {
         // Several documents of one day, or text added to a day that already
@@ -459,12 +460,12 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
         const titled = bodies.length > 1 || existingDays.has(pid);
         const body = cleanHtml(bodies.map((b) => (titled ? `<h2>${esc(b.title)}</h2>` : "") + b.body).join(""));
         if (existingDays.has(pid)) appends.push({ pageId: pid, html: body });
-        else run("UPDATE documents SET html=?,state=? WHERE page_id=?", body, htmlState(body), pid);
+        else await run("UPDATE documents SET html=?,state=? WHERE page_id=?", body, htmlState(body), pid);
       }
     }
     // Templates (#116): saved templates of the workspace, category "other";
     // their files go with them (template_files), as when saving one.
-    const templateWarnings = writeTemplates(user, workspaceId, tree, preview.templateVisibility || "private", (template) => {
+    const templateWarnings = await writeTemplates(user, workspaceId, tree, preview.templateVisibility || "private", (template) => {
       const own = new Map<string, { url: string; name: string; mime: string }>();
       const stored: { original: string; name: string; mime: string; data: Buffer }[] = [];
       let skipped = 0;
@@ -493,7 +494,7 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
   }, user);
   for (const append of appends)
     try {
-      appendHtmlToPage(user, append);
+      await appendHtmlToPage(user, append);
     } catch (error) {
       if (!(error instanceof HttpError)) throw error;
       result.warnings.push(`Ein Journaltag konnte nicht ergänzt werden: ${error.message}`);
@@ -504,7 +505,7 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
 // The templates of an import (#116), each as the template a person saves
 // from a page: a document's HTML, or a database's fields, views and
 // records; tags as the template's meta, the emoji as its icon.
-function writeTemplates(
+async function writeTemplates(
   user: Identity,
   workspaceId: string,
   tree: ImportTree,
@@ -535,7 +536,7 @@ function writeTemplates(
       continue;
     }
     const templateId = id();
-    run(
+    await run(
       "INSERT INTO templates(id,workspace_id,name,kind,payload,created_by,visibility,category) VALUES(?,?,?,?,?,?,?,?)",
       templateId,
       workspaceId,
@@ -547,7 +548,7 @@ function writeTemplates(
       "other",
     );
     for (const file of files.files)
-      run(
+      await run(
         "INSERT INTO template_files(id,template_id,original_id,name,mime,data) VALUES(?,?,?,?,?,?)",
         id(),
         templateId,
@@ -585,12 +586,12 @@ export function importIcon(value: unknown): string | null {
 
 // The tags (with the source's colours) and frontmatter properties of an
 // imported page; new properties only for workspace owners.
-function importPageMeta(user: Identity, workspaceId: string, pageId: string, page: ImportPage, colors: Record<string, string> = {}) {
-  const space = one<{ space_id: string }>("SELECT space_id FROM pages WHERE id=?", pageId);
+async function importPageMeta(user: Identity, workspaceId: string, pageId: string, page: ImportPage, colors: Record<string, string> = {}) {
+  const space = await one<{ space_id: string }>("SELECT space_id FROM pages WHERE id=?", pageId);
   if (!space) return;
-  const manage = canManageScope(user, workspaceId, space.space_id);
-  const fromFront = page.properties ? frontmatterMeta(page.properties, workspaceId, memberByName(workspaceId), { createDefinitions: manage, spaceId: space.space_id }).meta : {};
-  applyPortableMeta(
+  const manage = await canManageScope(user, workspaceId, space.space_id);
+  const fromFront = page.properties ? (await frontmatterMeta(page.properties, workspaceId, await memberByName(workspaceId), { createDefinitions: manage, spaceId: space.space_id })).meta : {};
+  await applyPortableMeta(
     user,
     { id: pageId, workspace_id: workspaceId, space_id: space.space_id },
     {

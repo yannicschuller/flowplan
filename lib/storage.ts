@@ -53,7 +53,7 @@ function objectUrl(config: StorageConfig, key: string, folder = "uploads") {
 // CopyObject's source: /<bucket>/<key>, URL-encoded.
 const copySource = (config: StorageConfig, key: string) =>
   `/${encodeURIComponent(config.bucket)}/${[config.prefix, "uploads", key].filter(Boolean).map(encodeURIComponent).join("/")}`;
-const scheduledBackupsOn = () => one<{ value: string }>("SELECT value FROM instance_settings WHERE key='backupSchedule'")?.value !== "false";
+const scheduledBackupsOn = async () => (await one<{ value: string }>("SELECT value FROM instance_settings WHERE key='backupSchedule'"))?.value !== "false";
 let client: { key: string; aws: AwsClient } | undefined;
 function aws(config: StorageConfig) {
   const key = `${config.accessKeyId}:${config.region}`;
@@ -97,7 +97,7 @@ const state = globalThis as unknown as {
 // Called once when the database opens: with the SQLite connection
 // (lib/db.ts, db()), or without one on PostgreSQL (the first use of the
 // database). The queue tables are in the migrations.
-export function setupStorage(d?: DatabaseSync) {
+export async function setupStorage(d?: DatabaseSync) {
   const config = storageConfig();
   const postgres = sql.name === "postgres";
   if (!config) {
@@ -105,11 +105,11 @@ export function setupStorage(d?: DatabaseSync) {
       d.exec(`DROP TRIGGER IF EXISTS storage_file_insert;
         DROP TRIGGER IF EXISTS storage_file_delete;`); // sqlite-only
     else if (postgres) {
-      run("DROP TRIGGER IF EXISTS storage_file_insert ON files");
-      run("DROP TRIGGER IF EXISTS storage_file_delete ON files");
+      await run("DROP TRIGGER IF EXISTS storage_file_insert ON files");
+      await run("DROP TRIGGER IF EXISTS storage_file_delete ON files");
     }
-    run("DELETE FROM storage_queue");
-    run("DELETE FROM storage_sealed");
+    await run("DELETE FROM storage_queue");
+    await run("DELETE FROM storage_sealed");
     return;
   }
   if (d) {
@@ -131,7 +131,7 @@ export function setupStorage(d?: DatabaseSync) {
   } else if (postgres) {
     // The same queue; the worker looks at it often instead of being kicked
     // by the trigger (a function of this process cannot run in Postgres).
-    run(`CREATE OR REPLACE FUNCTION storage_queue_file() RETURNS trigger LANGUAGE plpgsql AS $fn$
+    await run(`CREATE OR REPLACE FUNCTION storage_queue_file() RETURNS trigger LANGUAGE plpgsql AS $fn$
       BEGIN
         IF TG_OP='DELETE' THEN
           INSERT INTO storage_queue(key,op) VALUES(OLD.id,'delete') ON CONFLICT(key) DO UPDATE SET op='delete',attempts=0,next_at=0;
@@ -140,17 +140,17 @@ export function setupStorage(d?: DatabaseSync) {
         END IF;
         RETURN NULL;
       END $fn$`);
-    run("CREATE OR REPLACE TRIGGER storage_file_insert AFTER INSERT ON files FOR EACH ROW EXECUTE FUNCTION storage_queue_file()");
-    run("CREATE OR REPLACE TRIGGER storage_file_delete AFTER DELETE ON files FOR EACH ROW EXECUTE FUNCTION storage_queue_file()");
+    await run("CREATE OR REPLACE TRIGGER storage_file_insert AFTER INSERT ON files FOR EACH ROW EXECUTE FUNCTION storage_queue_file()");
+    await run("CREATE OR REPLACE TRIGGER storage_file_delete AFTER DELETE ON files FOR EACH ROW EXECUTE FUNCTION storage_queue_file()");
   }
   const marker = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "storage-resync");
-  const previous = one<{ value: string }>("SELECT value FROM storage_state WHERE name='target'")?.value;
+  const previous = (await one<{ value: string }>("SELECT value FROM storage_state WHERE name='target'"))?.value;
   // First use of this bucket, or local files replaced by an instance
   // restore: every file is uploaded again.
   if (previous !== target(config) || existsSync(marker)) {
-    run("DELETE FROM storage_sealed");
-    run("INSERT INTO storage_queue(key,op) SELECT id,'put' FROM files WHERE true ON CONFLICT(key) DO UPDATE SET op='put',attempts=0,next_at=0");
-    run("INSERT INTO storage_state(name,value) VALUES('target',?) ON CONFLICT(name) DO UPDATE SET value=excluded.value", target(config));
+    await run("DELETE FROM storage_sealed");
+    await run("INSERT INTO storage_queue(key,op) SELECT id,'put' FROM files WHERE true ON CONFLICT(key) DO UPDATE SET op='put',attempts=0,next_at=0");
+    await run("INSERT INTO storage_state(name,value) VALUES('target',?) ON CONFLICT(name) DO UPDATE SET value=excluded.value", target(config));
     rmSync(marker, { force: true });
   }
   state.flowplanStorage = { draining: false, again: false };
@@ -194,22 +194,22 @@ async function drain() {
     config = storageConfig();
   if (!s || !config) return;
   for (;;) {
-    const jobs = all<{ key: string; op: string; attempts: number }>(
+    const jobs = await all<{ key: string; op: string; attempts: number }>(
       "SELECT key,op,attempts FROM storage_queue WHERE next_at<=? ORDER BY next_at,key LIMIT 16",
       Date.now(),
     );
     if (!jobs.length) return;
     await Promise.all(
       jobs.map(async (job) => {
-        const finish = () => run("DELETE FROM storage_queue WHERE key=? AND op=? AND attempts=?", job.key, job.op, job.attempts);
+        const finish = async () => await run("DELETE FROM storage_queue WHERE key=? AND op=? AND attempts=?", job.key, job.op, job.attempts);
         try {
-          if (!validKey(job.key)) return finish();
+          if (!validKey(job.key)) return await finish();
           if (job.op === "put") {
             const path = localPath(job.key);
             // Removed again before it was uploaded.
             if (!existsSync(path)) {
-              if (!one("SELECT 1 FROM files WHERE id=?", job.key))
-                return finish();
+              if (!(await one("SELECT 1 FROM files WHERE id=?", job.key)))
+                return await finish();
               throw new Error("Lokale Datei fehlt noch.");
             }
             const keyId = currentKeyId();
@@ -218,14 +218,14 @@ async function drain() {
               body: new Uint8Array(seal(readFileSync(path))),
             });
             if (!response.ok) throw new Error(`PUT ${response.status}`);
-            run("INSERT INTO storage_sealed(key,key_id) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET key_id=excluded.key_id", job.key, keyId);
+            await run("INSERT INTO storage_sealed(key,key_id) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET key_id=excluded.key_id", job.key, keyId);
           } else {
             // Delayed deletion (lib/deleted-uploads.ts): the object moves to
             // .deleted/uploads/ first, so the scheduled backups in the bucket
             // that still refer to it keep their file; lib/scheduled-backup.ts
             // removes it once no kept backup does. Without scheduled backups
             // nothing would ever remove it: then it goes right away.
-            if (scheduledBackupsOn()) {
+            if (await scheduledBackupsOn()) {
               const copy = await aws(config).fetch(objectUrl(config, deletedName(job.key, Date.now()), DELETED_UPLOADS), {
                 method: "PUT",
                 headers: { "x-amz-copy-source": copySource(config, job.key) },
@@ -238,15 +238,15 @@ async function drain() {
             });
             if (!response.ok && response.status !== 404)
               throw new Error(`DELETE ${response.status}`);
-            run("DELETE FROM storage_sealed WHERE key=?", job.key);
+            await run("DELETE FROM storage_sealed WHERE key=?", job.key);
           }
-          finish();
+          await finish();
         } catch (error) {
           if (job.attempts + 1 >= MAX_ATTEMPTS) {
             console.error(`Dateispeicher: ${job.op} ${job.key} aufgegeben`, error);
-            return finish();
+            return await finish();
           }
-          run(
+          await run(
             "UPDATE storage_queue SET attempts=attempts+1,next_at=? WHERE key=? AND op=? AND attempts=?",
             Date.now() + Math.min(3_600_000, 5_000 * 2 ** job.attempts),
             job.key,
@@ -273,7 +273,7 @@ export async function ensureLocal(key: string) {
     // that went up encrypted must still be: a plain object in its place was
     // swapped in the bucket.
     const raw = Buffer.from(await response.arrayBuffer());
-    const sealedWith = state.flowplanStorage ? one<{ key_id: string }>("SELECT key_id FROM storage_sealed WHERE key=?", key) : undefined;
+    const sealedWith = state.flowplanStorage ? (await one<{ key_id: string }>("SELECT key_id FROM storage_sealed WHERE key=?", key)) : undefined;
     if (sealedWith?.key_id && !isEncrypted(raw)) throw new Error("Unverschlüsseltes Objekt anstelle eines verschlüsselten – nicht übernommen.");
     const data = unseal(raw);
     mkdirSync(uploadsDir(), { recursive: true });
@@ -292,21 +292,21 @@ export async function ensureLocal(key: string) {
 async function hydrate() {
   const s = state.flowplanStorage;
   if (!s) return;
-  const ids = all<{ id: string }>("SELECT id FROM files")
+  const ids = (await all<{ id: string }>("SELECT id FROM files"))
     .map((row) => row.id)
     .filter((key) => validKey(key) && !existsSync(localPath(key)));
   let restored = 0;
   for (const key of ids)
-    if (!one("SELECT 1 FROM storage_queue WHERE key=?", key) && (await ensureLocal(key)))
+    if (!(await one("SELECT 1 FROM storage_queue WHERE key=?", key)) && await ensureLocal(key))
       restored++;
   if (restored) console.log(`Dateispeicher: ${restored} Dateien aus dem Bucket geladen`);
 }
 
-export function storageStatus() {
+export async function storageStatus() {
   const s = state.flowplanStorage;
   const config = storageConfig();
   if (!config || !s) return { enabled: false as const };
-  const row = one<{ pending: number; attempts: number }>("SELECT COUNT(*) AS pending, COALESCE(MAX(attempts),0) AS attempts FROM storage_queue")!;
+  const row = (await one<{ pending: number; attempts: number }>("SELECT COUNT(*) AS pending, COALESCE(MAX(attempts),0) AS attempts FROM storage_queue"))!;
   return {
     enabled: true as const,
     bucket: config.bucket,
@@ -317,30 +317,30 @@ export function storageStatus() {
 
 // Files whose object in the bucket is not (yet) encrypted with the current
 // key: from before encryption was turned on, or with an earlier key.
-export function storageEncryption() {
+export async function storageEncryption() {
   const s = state.flowplanStorage;
   if (!s || !storageConfig()) return null;
   let keyId = "";
   try {
     keyId = currentKeyId();
   } catch {}
-  const count = (query: string, ...args: string[]) => Number(one<{ n: number }>(query, ...args)?.n || 0);
+  const count = async (query: string, ...args: string[]) => Number((await one<{ n: number }>(query, ...args))?.n || 0);
   return {
-    files: count("SELECT count(*) n FROM files"),
+    files: await count("SELECT count(*) n FROM files"),
     behind: keyId
-      ? count(
+      ? (await count(
           "SELECT count(*) n FROM files f LEFT JOIN storage_sealed x ON x.key=f.id WHERE x.key_id IS NULL OR x.key_id<>?",
           keyId,
-        )
+        ))
       : 0,
   };
 }
 // Uploads those again; the queue encrypts them on the way.
-export function encryptExistingObjects() {
+export async function encryptExistingObjects() {
   const s = state.flowplanStorage;
   const keyId = currentKeyId();
   if (!s || !keyId) return 0;
-  const result = run(
+  const result = await run(
     `INSERT INTO storage_queue(key,op) SELECT f.id,'put' FROM files f LEFT JOIN storage_sealed x ON x.key=f.id
      WHERE (x.key_id IS NULL OR x.key_id<>?) AND f.id NOT IN (SELECT key FROM storage_queue)
      ON CONFLICT(key) DO NOTHING`,

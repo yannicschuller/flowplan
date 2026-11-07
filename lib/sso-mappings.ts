@@ -35,95 +35,95 @@ export type SsoMapping = {
 const rank: Record<Role, number> = { viewer: 1, editor: 2, owner: 3 };
 const MAX_MAPPINGS = 100;
 
-const isLocal = (userId: string) => !!one("SELECT 1 FROM local_accounts WHERE user_id=?", userId);
-const owners = (workspaceId: string) =>
-  Number(one<{ n: number }>("SELECT COUNT(*) n FROM members WHERE workspace_id=? AND role='owner'", workspaceId)?.n || 0);
+const isLocal = async (userId: string) => !!(await one("SELECT 1 FROM local_accounts WHERE user_id=?", userId));
+const owners = async (workspaceId: string) =>
+  Number((await one<{ n: number }>("SELECT COUNT(*) n FROM members WHERE workspace_id=? AND role='owner'", workspaceId))?.n || 0);
 
 // Records exactly these SSO groups as the source of one target.
-function setSources(workspaceId: string, userId: string, target: string, groups: string[]) {
+async function setSources(workspaceId: string, userId: string, target: string, groups: string[]) {
   const keep = [...new Set(groups)];
-  for (const s of all<{ sso_group: string }>(
+  for (const s of await all<{ sso_group: string }>(
     "SELECT sso_group FROM sso_sources WHERE workspace_id=? AND user_id=? AND target=?",
     workspaceId,
     userId,
     target,
   ))
     if (!keep.includes(s.sso_group))
-      run("DELETE FROM sso_sources WHERE workspace_id=? AND user_id=? AND target=? AND sso_group=?", workspaceId, userId, target, s.sso_group);
+      await run("DELETE FROM sso_sources WHERE workspace_id=? AND user_id=? AND target=? AND sso_group=?", workspaceId, userId, target, s.sso_group);
   for (const group of keep)
-    run("INSERT INTO sso_sources(workspace_id,user_id,target,sso_group) VALUES(?,?,?,?) ON CONFLICT DO NOTHING", workspaceId, userId, target, group);
+    await run("INSERT INTO sso_sources(workspace_id,user_id,target,sso_group) VALUES(?,?,?,?) ON CONFLICT DO NOTHING", workspaceId, userId, target, group);
 }
 
-function applyWorkspace(userId: string, workspaceId: string, matched: SsoMapping[]) {
+async function applyWorkspace(userId: string, workspaceId: string, matched: SsoMapping[]) {
   // Workspace membership with the highest mapped role.
   const roleMappings = matched.filter((m): m is SsoMapping & { role: Role } => !!m.role);
-  const member = one<{ role: Role }>("SELECT role FROM members WHERE workspace_id=? AND user_id=?", workspaceId, userId);
-  const managed = !!one("SELECT 1 FROM sso_sources WHERE workspace_id=? AND user_id=? AND target=''", workspaceId, userId);
+  const member = await one<{ role: Role }>("SELECT role FROM members WHERE workspace_id=? AND user_id=?", workspaceId, userId);
+  const managed = !!(await one("SELECT 1 FROM sso_sources WHERE workspace_id=? AND user_id=? AND target=''", workspaceId, userId));
   if (roleMappings.length) {
     let desired = roleMappings.map((m) => m.role).sort((a, b) => rank[b] - rank[a])[0];
-    const guest = !!one("SELECT 1 FROM workspace_guests WHERE workspace_id=? AND user_id=?", workspaceId, userId);
+    const guest = !!(await one("SELECT 1 FROM workspace_guests WHERE workspace_id=? AND user_id=?", workspaceId, userId));
     if (guest && desired === "owner") desired = "editor";
     if (!member) {
-      run("INSERT INTO members(workspace_id,user_id,role) VALUES(?,?,?)", workspaceId, userId, desired);
-      setSources(workspaceId, userId, "", roleMappings.map((m) => m.sso_group));
+      await run("INSERT INTO members(workspace_id,user_id,role) VALUES(?,?,?)", workspaceId, userId, desired);
+      await setSources(workspaceId, userId, "", roleMappings.map((m) => m.sso_group));
     } else {
       // Also a membership added or changed by hand: the mapping wins.
-      const lastOwner = member.role === "owner" && owners(workspaceId) <= 1;
+      const lastOwner = member.role === "owner" && (await owners(workspaceId)) <= 1;
       if (member.role !== desired && !lastOwner)
-        run("UPDATE members SET role=? WHERE workspace_id=? AND user_id=?", desired, workspaceId, userId);
-      setSources(workspaceId, userId, "", roleMappings.map((m) => m.sso_group));
+        await run("UPDATE members SET role=? WHERE workspace_id=? AND user_id=?", desired, workspaceId, userId);
+      await setSources(workspaceId, userId, "", roleMappings.map((m) => m.sso_group));
     }
   } else if (managed) {
-    if (member?.role === "owner" && owners(workspaceId) <= 1) {
+    if (member?.role === "owner" && (await owners(workspaceId)) <= 1) {
       // The last owner stays; the membership remains SSO-managed and goes
       // once another owner exists.
     } else {
       if (member) {
-        const heir = one<{ user_id: string }>(
+        const heir = (await one<{ user_id: string }>(
           "SELECT user_id FROM members WHERE workspace_id=? AND role='owner' AND user_id<>? ORDER BY user_id LIMIT 1",
           workspaceId,
           userId,
-        )?.user_id;
-        removeFromWorkspace(userId, workspaceId, heir);
+        ))?.user_id;
+        await removeFromWorkspace(userId, workspaceId, heir);
       }
-      run("DELETE FROM sso_sources WHERE workspace_id=? AND user_id=?", workspaceId, userId);
+      await run("DELETE FROM sso_sources WHERE workspace_id=? AND user_id=?", workspaceId, userId);
     }
   }
   // Workspace groups (permissions on spaces and pages), for members only.
-  const isMember = !!one("SELECT 1 FROM members WHERE workspace_id=? AND user_id=?", workspaceId, userId);
+  const isMember = !!(await one("SELECT 1 FROM members WHERE workspace_id=? AND user_id=?", workspaceId, userId));
   const wanted = new Map<string, string[]>();
   if (isMember)
     for (const m of matched)
-      if (m.group_id && one("SELECT 1 FROM groups WHERE id=? AND workspace_id=?", m.group_id, workspaceId))
+      if (m.group_id && await one("SELECT 1 FROM groups WHERE id=? AND workspace_id=?", m.group_id, workspaceId))
         wanted.set(m.group_id, [...(wanted.get(m.group_id) || []), m.sso_group]);
   const sourced = new Set(
-    all<{ target: string }>(
+    (await all<{ target: string }>(
       "SELECT DISTINCT target FROM sso_sources WHERE workspace_id=? AND user_id=? AND target<>''",
       workspaceId,
       userId,
-    ).map((s) => s.target),
+    )).map((s) => s.target),
   );
   for (const [groupId, ssoGroups] of wanted) {
-    const has = !!one("SELECT 1 FROM group_members WHERE group_id=? AND user_id=?", groupId, userId);
-    if (!has) run("INSERT INTO group_members(group_id,user_id) VALUES(?,?)", groupId, userId);
+    const has = !!(await one("SELECT 1 FROM group_members WHERE group_id=? AND user_id=?", groupId, userId));
+    if (!has) await run("INSERT INTO group_members(group_id,user_id) VALUES(?,?)", groupId, userId);
     // Added by hand or not: from now on it comes from SSO.
-    setSources(workspaceId, userId, groupId, ssoGroups);
+    await setSources(workspaceId, userId, groupId, ssoGroups);
   }
   for (const groupId of sourced)
     if (!wanted.has(groupId)) {
-      run("DELETE FROM sso_sources WHERE workspace_id=? AND user_id=? AND target=?", workspaceId, userId, groupId);
-      run("DELETE FROM group_members WHERE group_id=? AND user_id=?", groupId, userId);
+      await run("DELETE FROM sso_sources WHERE workspace_id=? AND user_id=? AND target=?", workspaceId, userId, groupId);
+      await run("DELETE FROM group_members WHERE group_id=? AND user_id=?", groupId, userId);
     }
 }
 
 // The groups a directory gives this person: SCIM groups they are a member
 // of and the groups of their LDAP account.
-export function directoryGroups(userId: string) {
-  const groups = all<{ name: string }>(
+export async function directoryGroups(userId: string) {
+  const groups = (await all<{ name: string }>(
     "SELECT g.display_name name FROM scim_group_members m JOIN scim_groups g ON g.id=m.group_id WHERE m.user_id=?",
     userId,
-  ).map((g) => g.name);
-  const ldap = one<{ groups_json: string }>("SELECT groups_json FROM ldap_accounts WHERE user_id=?", userId);
+  )).map((g) => g.name);
+  const ldap = await one<{ groups_json: string }>("SELECT groups_json FROM ldap_accounts WHERE user_id=?", userId);
   if (ldap) groups.push(...sessionGroups(ldap.groups_json));
   return groups;
 }
@@ -132,19 +132,19 @@ export function directoryGroups(userId: string) {
 // a transaction of the caller), together with their directory groups.
 // Accounts with e-mail and password are never touched. With a workspace,
 // only that one.
-export function applySsoGroups(userId: string, ssoGroups: string[], workspaceId?: string) {
-  if (isLocal(userId)) return;
-  const user = one<{ demo_until: number | null; disabled: number }>("SELECT demo_until,disabled FROM users WHERE id=?", userId);
+export async function applySsoGroups(userId: string, ssoGroups: string[], workspaceId?: string) {
+  if (await isLocal(userId)) return;
+  const user = await one<{ demo_until: number | null; disabled: number }>("SELECT demo_until,disabled FROM users WHERE id=?", userId);
   if (!user || user.demo_until) return;
-  const groups = new Set([...ssoGroups, ...directoryGroups(userId)]);
+  const groups = new Set([...ssoGroups, ...await directoryGroups(userId)]);
   const mappings = workspaceId
-    ? all<SsoMapping>("SELECT * FROM sso_mappings WHERE workspace_id=?", workspaceId)
-    : all<SsoMapping>("SELECT * FROM sso_mappings");
+    ? (await all<SsoMapping>("SELECT * FROM sso_mappings WHERE workspace_id=?", workspaceId))
+    : (await all<SsoMapping>("SELECT * FROM sso_mappings"));
   const workspaces = new Set(mappings.map((m) => m.workspace_id));
-  for (const s of all<{ workspace_id: string }>("SELECT DISTINCT workspace_id FROM sso_sources WHERE user_id=?", userId))
+  for (const s of await all<{ workspace_id: string }>("SELECT DISTINCT workspace_id FROM sso_sources WHERE user_id=?", userId))
     if (!workspaceId || s.workspace_id === workspaceId) workspaces.add(s.workspace_id);
   for (const ws of workspaces)
-    applyWorkspace(
+    await applyWorkspace(
       userId,
       ws,
       mappings.filter((m) => m.workspace_id === ws && groups.has(m.sso_group)),
@@ -152,8 +152,8 @@ export function applySsoGroups(userId: string, ssoGroups: string[], workspaceId?
 }
 
 // At SSO sign-in: its own transaction.
-export function syncSsoMemberships(userId: string, ssoGroups: string[]) {
-  transaction(() => applySsoGroups(userId, ssoGroups));
+export async function syncSsoMemberships(userId: string, ssoGroups: string[]) {
+  await transaction(async () => await applySsoGroups(userId, ssoGroups));
 }
 
 // A list of group names stored as JSON (sessions, LDAP accounts).
@@ -166,8 +166,8 @@ function sessionGroups(json: string) {
   }
 }
 // The SSO groups of a person's latest live SSO session (none without one).
-export function latestSsoGroups(userId: string) {
-  const s = one<{ groups_json: string }>(
+export async function latestSsoGroups(userId: string) {
+  const s = await one<{ groups_json: string }>(
     "SELECT groups_json FROM sessions WHERE user_id=? AND sso=1 AND expires>? ORDER BY created_at DESC LIMIT 1",
     userId,
     Date.now(),
@@ -176,15 +176,15 @@ export function latestSsoGroups(userId: string) {
 }
 // After the directory groups of one person changed (SCIM, LDAP sync): the
 // mappings again, with the groups of their latest SSO session.
-export function reapplySsoUser(userId: string) {
-  applySsoGroups(userId, latestSsoGroups(userId));
+export async function reapplySsoUser(userId: string) {
+  await applySsoGroups(userId, await latestSsoGroups(userId));
 }
 
 // After a mapping changed: applied right away to everyone signed in through
 // SSO, with the groups of their latest session, and to everyone with
 // directory groups. Others follow at sign-in.
-export function reapplySsoMappings(workspaceId: string) {
-  const sessions = all<{ user_id: string; groups_json: string }>(
+export async function reapplySsoMappings(workspaceId: string) {
+  const sessions = await all<{ user_id: string; groups_json: string }>(
     `SELECT s.user_id,s.groups_json FROM sessions s
      WHERE s.sso=1 AND s.expires>? AND s.created_at=(SELECT MAX(created_at) FROM sessions x WHERE x.user_id=s.user_id AND x.sso=1 AND x.expires>?)`,
     Date.now(),
@@ -194,26 +194,26 @@ export function reapplySsoMappings(workspaceId: string) {
   for (const s of sessions) {
     if (seen.has(s.user_id)) continue;
     seen.add(s.user_id);
-    applySsoGroups(s.user_id, sessionGroups(s.groups_json), workspaceId);
+    await applySsoGroups(s.user_id, sessionGroups(s.groups_json), workspaceId);
   }
-  for (const u of all<{ user_id: string }>(
+  for (const u of await all<{ user_id: string }>(
     "SELECT DISTINCT user_id FROM scim_group_members UNION SELECT user_id FROM ldap_accounts WHERE groups_json<>'[]'",
   ))
     if (!seen.has(u.user_id)) {
       seen.add(u.user_id);
-      applySsoGroups(u.user_id, [], workspaceId);
+      await applySsoGroups(u.user_id, [], workspaceId);
     }
 }
 
-export function listSsoMappings(workspaceId?: string) {
+export async function listSsoMappings(workspaceId?: string) {
   return workspaceId
-    ? all<SsoMapping>("SELECT * FROM sso_mappings WHERE workspace_id=? ORDER BY sso_group,created_at", workspaceId)
-    : all<SsoMapping>("SELECT * FROM sso_mappings ORDER BY workspace_id,sso_group,created_at");
+    ? (await all<SsoMapping>("SELECT * FROM sso_mappings WHERE workspace_id=? ORDER BY sso_group,created_at", workspaceId))
+    : (await all<SsoMapping>("SELECT * FROM sso_mappings ORDER BY workspace_id,sso_group,created_at"));
 }
 
 // Where memberships and group memberships of a workspace come from.
-export function ssoSources(workspaceId: string) {
-  return all<{ user_id: string; target: string; sso_group: string }>(
+export async function ssoSources(workspaceId: string) {
+  return await all<{ user_id: string; target: string; sso_group: string }>(
     "SELECT user_id,target,sso_group FROM sso_sources WHERE workspace_id=? ORDER BY sso_group",
     workspaceId,
   );
@@ -228,16 +228,16 @@ const mappingInput = z
   .refine((m) => m.role || m.groupId, { message: "Rolle oder Gruppe erforderlich." });
 
 // Permission checks are the caller's (workspace owner or administrator).
-export function addSsoMapping(workspaceId: string, input: unknown) {
+export async function addSsoMapping(workspaceId: string, input: unknown) {
   const b = mappingInput.parse(input);
-  if (!one("SELECT 1 FROM workspaces WHERE id=?", workspaceId)) throw new HttpError(404, "Arbeitsbereich nicht gefunden.");
-  if (b.groupId && !one("SELECT 1 FROM groups WHERE id=? AND workspace_id=?", b.groupId, workspaceId))
+  if (!(await one("SELECT 1 FROM workspaces WHERE id=?", workspaceId))) throw new HttpError(404, "Arbeitsbereich nicht gefunden.");
+  if (b.groupId && !(await one("SELECT 1 FROM groups WHERE id=? AND workspace_id=?", b.groupId, workspaceId)))
     throw new HttpError(400, "Gruppe fehlt.");
-  lockFor(`sso-mappings:${workspaceId}`);
-  if (Number(one<{ n: number }>("SELECT COUNT(*) n FROM sso_mappings WHERE workspace_id=?", workspaceId)?.n) >= MAX_MAPPINGS)
+  await lockFor(`sso-mappings:${workspaceId}`);
+  if (Number((await one<{ n: number }>("SELECT COUNT(*) n FROM sso_mappings WHERE workspace_id=?", workspaceId))?.n) >= MAX_MAPPINGS)
     throw new HttpError(409, "Höchstens 100 SSO-Zuordnungen pro Arbeitsbereich.");
   if (
-    one(
+    await one(
       "SELECT 1 FROM sso_mappings WHERE workspace_id=? AND sso_group=? AND COALESCE(role,'')=? AND COALESCE(group_id,'')=?",
       workspaceId,
       b.ssoGroup,
@@ -247,7 +247,7 @@ export function addSsoMapping(workspaceId: string, input: unknown) {
   )
     throw new HttpError(409, "Diese SSO-Zuordnung gibt es schon.");
   const mappingId = id();
-  run(
+  await run(
     "INSERT INTO sso_mappings(id,workspace_id,sso_group,role,group_id,created_at) VALUES(?,?,?,?,?,?)",
     mappingId,
     workspaceId,
@@ -256,11 +256,11 @@ export function addSsoMapping(workspaceId: string, input: unknown) {
     b.groupId || null,
     Date.now(),
   );
-  reapplySsoMappings(workspaceId);
+  await reapplySsoMappings(workspaceId);
   return { id: mappingId };
 }
 
-export function deleteSsoMapping(workspaceId: string, mappingId: unknown) {
-  run("DELETE FROM sso_mappings WHERE id=? AND workspace_id=?", z.string().max(100).parse(mappingId), workspaceId);
-  reapplySsoMappings(workspaceId);
+export async function deleteSsoMapping(workspaceId: string, mappingId: unknown) {
+  await run("DELETE FROM sso_mappings WHERE id=? AND workspace_id=?", z.string().max(100).parse(mappingId), workspaceId);
+  await reapplySsoMappings(workspaceId);
 }

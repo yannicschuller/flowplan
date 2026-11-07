@@ -13,39 +13,39 @@ const { listSyncedBlocks } = await import("../lib/synced-blocks");
 const { searchWorkspace } = await import("../lib/search-index");
 
 const uid = id();
-run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, "Anna", "anna@example.test");
+await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, "Anna", "anna@example.test");
 const anna = { id: uid, name: "Anna", email: "anna@example.test", groups: [], isAdmin: false, disabled: 0, created_at: "" } as Identity;
-const wid = createWorkspace(anna.id, "Team");
-const space = bootstrap(anna, wid).spaces[0].id;
-const page = (title: string) =>
-  (command(anna, { action: "page.create", workspaceId: wid, spaceId: space, title, kind: "document" }) as { id: string }).id;
-const first = page("Onboarding");
-const second = page("Handbuch");
+const wid = await createWorkspace(anna.id, "Team");
+const space = (await bootstrap(anna, wid)).spaces[0].id;
+const page = async (title: string) =>
+  ((await command(anna, { action: "page.create", workspaceId: wid, spaceId: space, title, kind: "document" })) as { id: string }).id;
+const first = await page("Onboarding");
+const second = await page("Handbuch");
 
-test("a synced block is a page outside the tree, shown on several pages", () => {
-  const { id: synced } = command(anna, {
+test("a synced block is a page outside the tree, shown on several pages", async () => {
+  const { id: synced } = (await command(anna, {
     action: "synced.create",
     pageId: first,
     html: "<p>Kontakt: support@example.test</p><script>x</script>",
-  }) as { id: string };
-  assert.equal(bootstrap(anna, wid).pages.some((p) => p.id === synced), false, "not in the page tree");
+  })) as { id: string };
+  assert.equal((await bootstrap(anna, wid)).pages.some((p) => p.id === synced), false, "not in the page tree");
   const embed = `<div data-synced-block="${synced}"></div>`;
   for (const host of [first, second])
-    run("UPDATE documents SET html=?,state=? WHERE page_id=?", `<p>Text</p>${embed}`, htmlState(`<p>Text</p>${embed}`), host);
+    await run("UPDATE documents SET html=?,state=? WHERE page_id=?", `<p>Text</p>${embed}`, htmlState(`<p>Text</p>${embed}`), host);
   // The reference survives the document schema.
-  assert.match(String((pageData(anna, second) as { html: string }).html), new RegExp(`data-synced-block="${synced}"`));
-  const data = pageData(anna, synced) as { html: string; syncedUsage: { count: number; origin: { title: string } } };
+  assert.match(String(((await pageData(anna, second)) as { html: string }).html), new RegExp(`data-synced-block="${synced}"`));
+  const data = (await pageData(anna, synced)) as { html: string; syncedUsage: { count: number; origin: { title: string } } };
   assert.doesNotMatch(data.html, /script/);
   assert.equal(data.syncedUsage.count, 2);
   assert.equal(data.syncedUsage.origin.title, "Onboarding");
-  const listed = listSyncedBlocks(anna, wid);
+  const listed = await listSyncedBlocks(anna, wid);
   assert.equal(listed[0].id, synced);
   assert.match(listed[0].preview, /Kontakt/);
   assert.equal(listed[0].origin, "Onboarding");
 });
 
 test("search finds synced text on the page it was created on", async () => {
-  const results = searchWorkspace(anna, wid, "support@example");
+  const results = await searchWorkspace(anna, wid, "support@example");
   assert.equal(results.length, 1);
   assert.equal((results[0] as { id: string }).id, first);
   assert.equal((results[0] as { title: string }).title, "Onboarding");

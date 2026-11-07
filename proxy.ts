@@ -73,7 +73,7 @@ async function pluginOrigins() {
   let origins: string[] = [];
   try {
     const { pluginFrameOrigins } = await import("./lib/plugin-origins");
-    origins = pluginFrameOrigins();
+    origins = await pluginFrameOrigins();
   } catch {}
   pluginOriginCache = { at: Date.now(), origins };
   return origins;
@@ -94,7 +94,7 @@ async function customHostState(host: string): Promise<HostState> {
   let state: HostState = { status: "none" };
   try {
     const { hostState } = await import("./lib/custom-domains");
-    state = hostState(host);
+    state = await hostState(host);
   } catch {}
   if (hostCache.size > 1000) hostCache.clear();
   hostCache.set(host, { at: Date.now(), state });
@@ -135,7 +135,7 @@ async function withBuild(response: NextResponse) {
 async function blocked(request: NextRequest) {
   try {
     const { blockedRequest } = await import("./lib/security-events");
-    return blockedRequest(request.headers);
+    return await blockedRequest(request.headers);
   } catch {
     return false;
   }

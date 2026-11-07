@@ -13,16 +13,16 @@ export type PublicTemplate = {
   kind: "document" | "database";
   category: string;
 };
-export function publicTemplates(category?: string) {
-  return all<PublicTemplate>(
+export async function publicTemplates(category?: string) {
+  return await all<PublicTemplate>(
     `SELECT id,name,kind,category FROM templates
      WHERE visibility='public' AND deleted_at IS NULL
      ${category ? "AND category=?" : ""} ORDER BY name`,
     ...(category ? [category] : []),
   );
 }
-export function publicTemplate(id: string) {
-  const template = one<PublicTemplate & { payload: string }>(
+export async function publicTemplate(id: string) {
+  const template = await one<PublicTemplate & { payload: string }>(
     "SELECT id,name,kind,category,payload FROM templates WHERE id=? AND visibility='public' AND deleted_at IS NULL",
     id,
   );
@@ -49,8 +49,8 @@ export function publicTemplate(id: string) {
     rows: (payload.rows || []).slice(0, 100),
   };
 }
-export function publicTemplateFile(templateId: string, originalId: string) {
-  const file = one<{ name: string; mime: string; data: Uint8Array }>(
+export async function publicTemplateFile(templateId: string, originalId: string) {
+  const file = await one<{ name: string; mime: string; data: Uint8Array }>(
     `SELECT f.name,f.mime,f.data FROM template_files f JOIN templates t ON t.id=f.template_id
      WHERE t.id=? AND t.visibility='public' AND t.deleted_at IS NULL AND f.original_id=?`,
     templateId,

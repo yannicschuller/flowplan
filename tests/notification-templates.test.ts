@@ -164,15 +164,15 @@ test("every event has a default template and a sample that renders in every form
 
 async function person(name: string) {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name.toLowerCase()}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name.toLowerCase()}@example.test`);
   const token = randomBytes(16).toString("hex");
-  run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", createHash("sha256").update(token).digest("hex"), uid, "[]", Date.now() + 3600_000);
+  await run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", createHash("sha256").update(token).digest("hex"), uid, "[]", Date.now() + 3600_000);
   return (await identityFromToken(token))!;
 }
 const ana = await person("Ana");
-const wid = createWorkspace(ana.id, "Team");
-const space = one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid)!.id;
-const db = createPage(wid, space, ana.id, "Aufgaben", "database");
+const wid = await createWorkspace(ana.id, "Team");
+const space = (await one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid))!.id;
+const db = await createPage(wid, space, ana.id, "Aufgaben", "database");
 
 const received: { method: string; url: string; body: string; headers: Record<string, string | string[] | undefined> }[] = [];
 const server = createServer((req, res) => {
@@ -196,16 +196,16 @@ process.env.FLOWPLAN_WEBHOOK_ALLOW_PRIVATE = "true";
 const settle = async () => {
   await new Promise((r) => setTimeout(r, 50));
   for (let i = 0; i < 200; i++) {
-    const inFlight = one<{ n: number }>(
+    const inFlight = (await one<{ n: number }>(
       "SELECT COUNT(*) n FROM webhook_deliveries WHERE delivered_at IS NULL AND next_at>?",
       Date.now() + 5 * 60_000,
-    )?.n;
+    ))?.n;
     if (!inFlight) return;
     await new Promise((r) => setTimeout(r, 50));
   }
 };
-const lastBody = (hookId: string) =>
-  JSON.parse(one<{ body: string }>("SELECT body FROM webhook_deliveries WHERE webhook_id=? ORDER BY seq DESC LIMIT 1", hookId)!.body);
+const lastBody = async (hookId: string) =>
+  JSON.parse((await one<{ body: string }>("SELECT body FROM webhook_deliveries WHERE webhook_id=? ORDER BY seq DESC LIMIT 1", hookId))!.body);
 
 test("chat webhooks render at delivery; record done, comments and the test message", async () => {
   const slack = await createWebhook(ana, {
@@ -215,9 +215,9 @@ test("chat webhooks render at delivery; record done, comments and the test messa
     format: "slack",
     templates: { "comment.created": "{actor} sagt: {text}" },
   });
-  const row = (command(ana, { action: "row.create", pageId: db, cells: { title: "Angebot", status: "In Arbeit" } }) as { id: string }).id;
-  const version = one<{ version: number }>("SELECT version FROM rows WHERE id=?", row)!.version;
-  command(ana, { action: "row.update", pageId: db, rowId: row, version, cells: { status: "Erledigt" } });
+  const row = ((await command(ana, { action: "row.create", pageId: db, cells: { title: "Angebot", status: "In Arbeit" } })) as { id: string }).id;
+  const version = (await one<{ version: number }>("SELECT version FROM rows WHERE id=?", row))!.version;
+  await command(ana, { action: "row.update", pageId: db, rowId: row, version, cells: { status: "Erledigt" } });
   await settle();
   await flushWebhooks(Date.now() + 3600_000);
   const slackPosts = received.filter((r) => r.url === "/slack").map((r) => JSON.parse(r.body));
@@ -228,16 +228,16 @@ test("chat webhooks render at delivery; record done, comments and the test messa
   assert.match(changed.blocks[1].text.text, /^Ana hat <https:\/\/flowplan\.example\.test\/#page=[^|]+&amp;row=[^|]+\|Angebot> in \*Aufgaben\* geändert\.$/);
   assert.deepEqual(changed.blocks[2].fields, [{ type: "mrkdwn", text: "*Status*\nErledigt" }]);
 
-  command(ana, { action: "comment.create", pageId: db, rowId: row, body: "Bitte *heute* prüfen" });
+  await command(ana, { action: "comment.create", pageId: db, rowId: row, body: "Bitte *heute* prüfen" });
   await settle();
   const comment = JSON.parse(received.filter((r) => r.url === "/slack").at(-1)!.body);
   // The comment's own * stay literal (Slack shows them as typed).
   assert.equal(comment.blocks[1].text.text, "Ana sagt: Bitte *heute* prüfen");
-  assert.equal(lastBody(slack.id).notice.text, "Bitte *heute* prüfen");
+  assert.equal((await lastBody(slack.id)).notice.text, "Bitte *heute* prüfen");
 
   // A changed template applies to queued messages too (rendered on delivery).
   await updateWebhook(ana, { workspaceId: wid, id: slack.id, events: ["row.updated"], format: "discord", templates: {} });
-  const listed = listWebhooks(ana, wid).find((h) => h.id === slack.id)!;
+  const listed = (await listWebhooks(ana, wid)).find((h) => h.id === slack.id)!;
   assert.equal(listed.format, "discord");
   assert.deepEqual(listed.events, ["row.updated"]);
 
@@ -259,13 +259,13 @@ test("JSON webhooks keep the signed envelope; Matrix uses the client API with a 
     credentials: { token: "syt_secret_token" },
   });
   // The token is stored sealed and never listed.
-  assert.ok(!one<{ credentials: string }>("SELECT credentials FROM webhooks WHERE id=?", matrix.id)!.credentials.includes("syt_secret_token"));
-  assert.ok(!JSON.stringify(listWebhooks(ana, wid)).includes("syt_secret_token"));
-  assert.deepEqual(listWebhooks(ana, wid).find((h) => h.id === matrix.id)!.credentials, { token: true, signingSecret: false });
-  const row = (command(ana, { action: "row.create", pageId: db, cells: { title: "Neu", status: "Erledigt" } }) as { id: string }).id;
-  const version = one<{ version: number }>("SELECT version FROM rows WHERE id=?", row)!.version;
-  command(ana, { action: "row.update", pageId: db, rowId: row, version, cells: { status: "In Arbeit" } });
-  command(ana, { action: "row.update", pageId: db, rowId: row, version: version + 1, cells: { status: "Erledigt" } });
+  assert.ok(!(await one<{ credentials: string }>("SELECT credentials FROM webhooks WHERE id=?", matrix.id))!.credentials.includes("syt_secret_token"));
+  assert.ok(!JSON.stringify(await listWebhooks(ana, wid)).includes("syt_secret_token"));
+  assert.deepEqual((await listWebhooks(ana, wid)).find((h) => h.id === matrix.id)!.credentials, { token: true, signingSecret: false });
+  const row = ((await command(ana, { action: "row.create", pageId: db, cells: { title: "Neu", status: "Erledigt" } })) as { id: string }).id;
+  const version = (await one<{ version: number }>("SELECT version FROM rows WHERE id=?", row))!.version;
+  await command(ana, { action: "row.update", pageId: db, rowId: row, version, cells: { status: "In Arbeit" } });
+  await command(ana, { action: "row.update", pageId: db, rowId: row, version: version + 1, cells: { status: "Erledigt" } });
   await settle();
   await flushWebhooks(Date.now() + 3600_000);
   const put = received.find((r) => r.method === "PUT")!;
@@ -288,7 +288,7 @@ test("JSON webhooks keep the signed envelope; Matrix uses the client API with a 
     createWebhook(ana, { workspaceId: wid, url: `${base}/`, events: ["row.created"], format: "slack", credentials: { token: "xoxb-12345678" } }),
     /Kanal-ID/,
   );
-  run("DELETE FROM webhooks WHERE id IN (?,?)", json.id, matrix.id);
+  await run("DELETE FROM webhooks WHERE id IN (?,?)", json.id, matrix.id);
 });
 
 test("the daily digest lists due and overdue open records once per day after its time", async () => {
@@ -300,7 +300,7 @@ test("the daily digest lists due and overdue open records once per day after its
     format: "teams",
     config: { digestTime: "08:00", timeZone: "Europe/Berlin" },
   });
-  run("DELETE FROM rows WHERE page_id=?", db);
+  await run("DELETE FROM rows WHERE page_id=?", db);
   const today = localClock(Date.parse("2026-10-21T07:00:00Z"), "Europe/Berlin").day;
   assert.equal(today, "2026-10-21");
   for (const [title, date, status] of [
@@ -310,13 +310,13 @@ test("the daily digest lists due and overdue open records once per day after its
     ["Erledigt", "2026-10-19", "Erledigt"],
     ["Privat", "2026-10-18", ""],
   ])
-    command(ana, { action: "row.create", pageId: db, cells: { title, date, ...(status ? { status } : {}) } });
-  run("UPDATE rows SET access='private' WHERE page_id=? AND cells LIKE '%Privat%'", db);
+    await command(ana, { action: "row.create", pageId: db, cells: { title, date, ...(status ? { status } : {}) } });
+  await run("UPDATE rows SET access='private' WHERE page_id=? AND cells LIKE '%Privat%'", db);
   // 07:59 in Berlin: too early.
-  assert.equal(transaction(() => processDigests(Date.parse("2026-10-21T05:59:00Z"))), 0);
-  assert.equal(transaction(() => processDigests(Date.parse("2026-10-21T06:05:00Z"))), 1);
-  assert.equal(transaction(() => processDigests(Date.parse("2026-10-21T09:00:00Z"))), 0, "once per day");
-  const envelope = lastBody(hook.id);
+  assert.equal(await transaction(async () => await processDigests(Date.parse("2026-10-21T05:59:00Z"))), 0);
+  assert.equal(await transaction(async () => await processDigests(Date.parse("2026-10-21T06:05:00Z"))), 1);
+  assert.equal(await transaction(async () => await processDigests(Date.parse("2026-10-21T09:00:00Z"))), 0, "once per day");
+  const envelope = await lastBody(hook.id);
   assert.equal(envelope.event, "digest.due");
   assert.deepEqual(envelope.data.items.map((i: { title: string }) => i.title), ["Gestern", "Heute"]);
   assert.deepEqual(envelope.notice.items.map((i: { overdue: boolean }) => i.overdue), [true, false]);
@@ -325,8 +325,8 @@ test("the daily digest lists due and overdue open records once per day after its
   assert.equal(card.body[0].text, "Heute fällig");
   assert.match(card.body[1].text, /^\*\*2 fällige oder überfällige Einträge\*\* am 21\.10\.2026:\n\n- \[Gestern\]\(https:[^)]+\) · Aufgaben · \*\*überfällig seit 20\.10\.2026\*\*\n\n- \[Heute\]/);
   // The next day it comes again.
-  assert.equal(transaction(() => processDigests(Date.parse("2026-10-22T06:05:00Z"))), 1);
-  run("DELETE FROM webhooks WHERE id=?", hook.id);
+  assert.equal(await transaction(async () => await processDigests(Date.parse("2026-10-22T06:05:00Z"))), 1);
+  await run("DELETE FROM webhooks WHERE id=?", hook.id);
 });
 
 test("Slack thread replies become comments when the signature is valid", async () => {
@@ -339,44 +339,44 @@ test("Slack thread replies become comments when the signature is valid", async (
     config: { slackChannel: "C0123456789" },
     credentials: { token: "xoxb-1234567890", signingSecret: "8f742231b10e8888abcd99yyyzzz85a5" },
   });
-  const listed = listWebhooks(ana, wid).find((h) => h.id === hookId)!;
+  const listed = (await listWebhooks(ana, wid)).find((h) => h.id === hookId)!;
   assert.equal(listed.url, templates.SLACK_POST_MESSAGE);
   assert.equal(listed.repliesUrl, `https://flowplan.example.test/api/webhooks/slack/${hookId}`);
-  const row = (command(ana, { action: "row.create", pageId: db, cells: { title: "Thread" } }) as { id: string }).id;
-  run("INSERT INTO webhook_messages(webhook_id,ts,page_id,row_id,created_at) VALUES(?,?,?,?,?)", hookId, "1700000000.000100", db, row, Date.now());
+  const row = ((await command(ana, { action: "row.create", pageId: db, cells: { title: "Thread" } })) as { id: string }).id;
+  await run("INSERT INTO webhook_messages(webhook_id,ts,page_id,row_id,created_at) VALUES(?,?,?,?,?)", hookId, "1700000000.000100", db, row, Date.now());
   const secret = "8f742231b10e8888abcd99yyyzzz85a5";
   const signed = (body: string, ts = String(Math.floor(Date.now() / 1000))) =>
     new Headers({ "x-slack-request-timestamp": ts, "x-slack-signature": "v0=" + createHmac("sha256", secret).update(`v0:${ts}:${body}`).digest("hex") });
 
   const challenge = JSON.stringify({ type: "url_verification", challenge: "abc" });
-  assert.deepEqual(transaction(() => receiveSlackEvent(hookId, signed(challenge), challenge)), { challenge: "abc" });
-  assert.throws(() => receiveSlackEvent(hookId, new Headers({ "x-slack-request-timestamp": "1", "x-slack-signature": "v0=00" }), challenge), /Signatur/);
-  assert.throws(() => receiveSlackEvent(hookId, signed(challenge, String(Math.floor(Date.now() / 1000) - 600)), challenge), /Signatur/, "too old");
-  assert.throws(() => receiveSlackEvent(id(), signed(challenge), challenge), /Unbekannter Webhook/);
+  assert.deepEqual(await transaction(async () => await receiveSlackEvent(hookId, signed(challenge), challenge)), { challenge: "abc" });
+  await assert.rejects(async () => await receiveSlackEvent(hookId, new Headers({ "x-slack-request-timestamp": "1", "x-slack-signature": "v0=00" }), challenge), /Signatur/);
+  await assert.rejects(async () => await receiveSlackEvent(hookId, signed(challenge, String(Math.floor(Date.now() / 1000) - 600)), challenge), /Signatur/, "too old");
+  await assert.rejects(async () => await receiveSlackEvent(id(), signed(challenge), challenge), /Unbekannter Webhook/);
 
   const reply = JSON.stringify({
     type: "event_callback",
     event_id: "Ev0123456789",
     event: { type: "message", text: "Erledigt, siehe <https://x.test|Ticket> &amp; <@U123>", ts: "1700000001.000200", thread_ts: "1700000000.000100" },
   });
-  const before = all("SELECT 1 FROM webhook_deliveries WHERE webhook_id=?", hookId).length;
-  assert.deepEqual(transaction(() => receiveSlackEvent(hookId, signed(reply), reply)), { ok: true });
-  const comment = one<{ body: string; author_id: string }>("SELECT body,author_id FROM comments WHERE row_id=?", row)!;
+  const before = (await all("SELECT 1 FROM webhook_deliveries WHERE webhook_id=?", hookId)).length;
+  assert.deepEqual(await transaction(async () => await receiveSlackEvent(hookId, signed(reply), reply)), { ok: true });
+  const comment = (await one<{ body: string; author_id: string }>("SELECT body,author_id FROM comments WHERE row_id=?", row))!;
   assert.equal(comment.body, "Slack: Erledigt, siehe Ticket (https://x.test) & @U123");
   assert.equal(comment.author_id, ana.id);
-  assert.equal(all("SELECT 1 FROM webhook_deliveries WHERE webhook_id=?", hookId).length, before, "no echo into its own channel");
+  assert.equal((await all("SELECT 1 FROM webhook_deliveries WHERE webhook_id=?", hookId)).length, before, "no echo into its own channel");
   // Bot messages, other threads and retries are ignored.
   const bot = JSON.stringify({ type: "event_callback", event: { type: "message", bot_id: "B1", text: "x", ts: "2", thread_ts: "1700000000.000100" } });
-  assert.equal((transaction(() => receiveSlackEvent(hookId, signed(bot), bot)) as { ignored?: string }).ignored, "event");
+  assert.equal(((await transaction(async () => await receiveSlackEvent(hookId, signed(bot), bot))) as { ignored?: string }).ignored, "event");
   const retry = signed(reply);
   retry.set("x-slack-retry-num", "1");
-  assert.equal((transaction(() => receiveSlackEvent(hookId, retry, reply)) as { ignored?: string }).ignored, "retry");
+  assert.equal(((await transaction(async () => await receiveSlackEvent(hookId, retry, reply))) as { ignored?: string }).ignored, "retry");
   // The same signed event sent again without the retry header (a replay
   // within the signature's five minutes) counts once as well.
-  assert.equal((transaction(() => receiveSlackEvent(hookId, signed(reply), reply)) as { ignored?: string }).ignored, "retry");
+  assert.equal(((await transaction(async () => await receiveSlackEvent(hookId, signed(reply), reply))) as { ignored?: string }).ignored, "retry");
   const noId = JSON.stringify({ type: "event_callback", event: { type: "message", text: "x", ts: "3", thread_ts: "1700000000.000100" } });
-  assert.equal((transaction(() => receiveSlackEvent(hookId, signed(noId), noId)) as { ignored?: string }).ignored, "event");
-  assert.equal(all("SELECT 1 FROM comments WHERE row_id=?", row).length, 1);
+  assert.equal(((await transaction(async () => await receiveSlackEvent(hookId, signed(noId), noId))) as { ignored?: string }).ignored, "event");
+  assert.equal((await all("SELECT 1 FROM comments WHERE row_id=?", row)).length, 1);
 });
 
 test("Slack signatures and mrkdwn are read correctly", () => {

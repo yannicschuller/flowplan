@@ -15,7 +15,7 @@ const { createDesktopCode, redeemDesktopCode } = await import("../lib/desktop-si
 const { sessionStartedAt, stepUpMethods } = await import("../lib/step-up");
 
 const uid = id();
-run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, `https://idp|${uid}`, "Sam", "sam@example.test");
+await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, `https://idp|${uid}`, "Sam", "sam@example.test");
 
 test("the desktop hand-off refuses API-token identities (source guard)", () => {
   const route = readFileSync(join(import.meta.dirname, "../app/api/auth/[action]/route.ts"), "utf8");
@@ -25,25 +25,25 @@ test("the desktop hand-off refuses API-token identities (source guard)", () => {
   assert.match(get.slice(0, 400), /user\.apiScope/, "GET desktop must treat API tokens as not signed in");
 });
 
-test("a hand-off carries the browser session's sign-in time into the app session", () => {
+test("a hand-off carries the browser session's sign-in time into the app session", async () => {
   const verifier = randomBytes(32).toString("base64url");
   const challenge = createHash("sha256").update(verifier).digest("base64url");
   const signedIn = Date.now() - 3 * 3600_000;
-  const code = createDesktopCode(uid, [], challenge, signedIn);
-  const handoff = redeemDesktopCode(code, verifier)!;
+  const code = await createDesktopCode(uid, [], challenge, signedIn);
+  const handoff = (await redeemDesktopCode(code, verifier))!;
   assert.equal(handoff.authenticatedAt, signedIn);
   // The new session (created now) counts as signed in when the browser did.
   const token = randomBytes(32).toString("base64url");
-  run(
+  await run(
     "INSERT INTO sessions(token,user_id,groups_json,expires,created_at,authenticated_at) VALUES(?,?,?,?,?,?)",
     hash(token), uid, "[]", Date.now() + 3600_000, Date.now(), handoff.authenticatedAt,
   );
-  assert.equal(sessionStartedAt(token), signedIn);
-  assert.equal(stepUpMethods(uid, sessionStartedAt(token)).recentOk, false);
+  assert.equal(await sessionStartedAt(token), signedIn);
+  assert.equal((await stepUpMethods(uid, await sessionStartedAt(token))).recentOk, false);
   // A genuinely fresh sign-in still passes.
   const fresh = randomBytes(32).toString("base64url");
-  run("INSERT INTO sessions(token,user_id,groups_json,expires,created_at,authenticated_at) VALUES(?,?,?,?,?,?)", hash(fresh), uid, "[]", Date.now() + 3600_000, Date.now(), Date.now());
-  assert.equal(stepUpMethods(uid, sessionStartedAt(fresh)).recentOk, true);
+  await run("INSERT INTO sessions(token,user_id,groups_json,expires,created_at,authenticated_at) VALUES(?,?,?,?,?,?)", hash(fresh), uid, "[]", Date.now() + 3600_000, Date.now(), Date.now());
+  assert.equal((await stepUpMethods(uid, await sessionStartedAt(fresh))).recentOk, true);
 });
 
 // Security audit hardening: sessions end where a sign-in method changes.
@@ -62,10 +62,10 @@ test("turning on the authenticator app or removing a passkey ends the other sess
 
 test("deletePasskey tells whether a passkey was removed", async () => {
   const { deletePasskey } = await import("../lib/local-auth");
-  run("INSERT INTO passkeys(id,user_id,public_key,counter,transports,name,created_at) VALUES(?,?,?,?,?,?,?)", "pk-1", uid, Buffer.from([1]), 0, "[]", "Key", Date.now());
-  assert.equal(deletePasskey(uid, "pk-1"), true);
-  assert.equal(deletePasskey(uid, "pk-1"), false, "gone already");
-  assert.equal(deletePasskey(id(), "pk-1"), false);
+  await run("INSERT INTO passkeys(id,user_id,public_key,counter,transports,name,created_at) VALUES(?,?,?,?,?,?,?)", "pk-1", uid, Buffer.from([1]), 0, "[]", "Key", Date.now());
+  assert.equal(await deletePasskey(uid, "pk-1"), true);
+  assert.equal(await deletePasskey(uid, "pk-1"), false, "gone already");
+  assert.equal(await deletePasskey(id(), "pk-1"), false);
 });
 
 test("the e-mail confirmation link signs in only where other sign-ins would (SSO-only accounts)", () => {

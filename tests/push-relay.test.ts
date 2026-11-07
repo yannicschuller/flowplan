@@ -77,11 +77,11 @@ function deviceKeys() {
 const relayToken = () => randomBytes(32).toString("base64url");
 const expoToken = () => `ExponentPushToken[${randomUUID().replaceAll("-", "").slice(0, 22)}]`;
 
-function account(name: string) {
+async function account(name: string) {
   const uid = id(),
     token = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
-  run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", token, uid, "[]", Date.now() + 3600000);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
+  await run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", token, uid, "[]", Date.now() + 3600000);
   const user = { id: uid, name, email: `${name}@example.test`, groups: [], isAdmin: false, disabled: 0, created_at: "" } as Identity;
   return { user, token };
 }
@@ -196,7 +196,7 @@ test("plaintext: shortened to fit the relay's 2800 bytes (v1.1), the fields the 
 
 // ---- §1 Identity, §3 signatures ----
 
-test("signature: the base string, a fixed RFC 8032 vector and the header format", () => {
+test("signature: the base string, a fixed RFC 8032 vector and the header format", async () => {
   const body = Buffer.from('{"messages":[]}');
   const base = identity.signatureBase(INSTANCE, 1767225600, body);
   assert.equal(base.toString("utf8"), `flowplan-push-v1\n${INSTANCE}\n1767225600\n${createHash("sha256").update(body).digest("hex")}`);
@@ -205,11 +205,11 @@ test("signature: the base string, a fixed RFC 8032 vector and the header format"
   assert.equal(sign(null, base, key).toString("base64url"), "v5neH5h4qvqFSqvOvOzkWTTp6eFHf758Gv829JwCpgPgyTp7idfiabX-kbgZFjAwROusHtD9d68JiimcW3USCQ");
 
   const now = Date.now();
-  const signed = identity.signRelayRequest(INSTANCE, body, now);
+  const signed = await identity.signRelayRequest(INSTANCE, body, now);
   const match = signed.header.match(/^kid=([A-Za-z0-9_-]{16}), ts=(\d+), sig=([A-Za-z0-9_-]{86})$/);
   assert.ok(match, signed.header);
   assert.equal(Number(match[2]), Math.floor(now / 1000));
-  const published = identity.pushIdentityDocument(now).keys.find((k) => k.id === match[1])!;
+  const published = (await identity.pushIdentityDocument(now)).keys.find((k) => k.id === match[1])!;
   const publicKey = identity.publicKeyObject(published.publicKey);
   assert.equal(verify(null, identity.signatureBase(INSTANCE, Number(match[2]), body), publicKey, Buffer.from(match[3], "base64url")), true);
   // Another body (one byte) or another instance: the signature does not fit.
@@ -218,7 +218,7 @@ test("signature: the base string, a fixed RFC 8032 vector and the header format"
 });
 
 test("/.well-known/flowplan-push: public keys only, cacheable for an hour; the private key only sealed", async () => {
-  const response = wellKnown.GET();
+  const response = await wellKnown.GET();
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("cache-control"), "public, max-age=3600");
   const doc = (await response.json()) as { version: number; keys: Record<string, string>[] };
@@ -230,41 +230,41 @@ test("/.well-known/flowplan-push: public keys only, cacheable for an hour; the p
     assert.equal(k.alg, "Ed25519");
     assert.equal(Buffer.from(k.publicKey, "base64url").length, 32);
   }
-  for (const row of all<{ private_key: string }>("SELECT private_key FROM push_identity_keys")) {
+  for (const row of await all<{ private_key: string }>("SELECT private_key FROM push_identity_keys")) {
     assert.match(row.private_key, /^fps1:/);
     assert.doesNotMatch(row.private_key, /PRIVATE|MC4CAQ/);
   }
   process.env.PUSH_RELAY = "off";
   try {
-    assert.equal(wellKnown.GET().status, 404);
+    assert.equal((await wellKnown.GET()).status, 404);
   } finally {
     delete process.env.PUSH_RELAY;
   }
 });
 
-test("key rotation: the new key is listed first and signs after the publish delay; the old one stays for the grace period", () => {
+test("key rotation: the new key is listed first and signs after the publish delay; the old one stays for the grace period", async () => {
   const now = Date.now() + 1000;
-  const before = identity.signRelayRequest(INSTANCE, Buffer.from("x"), now).kid;
-  const rotated = identity.rotatePushIdentity({ graceMs: 2 * 86_400_000 }, now);
+  const before = (await identity.signRelayRequest(INSTANCE, Buffer.from("x"), now)).kid;
+  const rotated = await identity.rotatePushIdentity({ graceMs: 2 * 86_400_000 }, now);
   assert.equal(rotated.retired, before);
-  const listed = identity.pushIdentityDocument(now).keys.map((k) => k.id);
+  const listed = (await identity.pushIdentityDocument(now)).keys.map((k) => k.id);
   assert.ok(listed.includes(before) && listed.includes(rotated.kid));
-  assert.equal(identity.signRelayRequest(INSTANCE, Buffer.from("x"), now).kid, before);
+  assert.equal((await identity.signRelayRequest(INSTANCE, Buffer.from("x"), now)).kid, before);
   const later = rotated.activeFrom + 1;
-  assert.equal(identity.signRelayRequest(INSTANCE, Buffer.from("x"), later).kid, rotated.kid);
-  assert.ok(identity.pushIdentityDocument(later).keys.some((k) => k.id === before));
+  assert.equal((await identity.signRelayRequest(INSTANCE, Buffer.from("x"), later)).kid, rotated.kid);
+  assert.ok((await identity.pushIdentityDocument(later)).keys.some((k) => k.id === before));
   const afterGrace = rotated.retiredAt! + 1;
-  assert.deepEqual(identity.pushIdentityDocument(afterGrace).keys.map((k) => k.id), [rotated.kid]);
-  assert.equal(one("SELECT kid FROM push_identity_keys WHERE kid=?", before), undefined);
+  assert.deepEqual((await identity.pushIdentityDocument(afterGrace)).keys.map((k) => k.id), [rotated.kid]);
+  assert.equal(await one("SELECT kid FROM push_identity_keys WHERE kid=?", before), undefined);
   // Many rotations never list more than a handful of keys.
-  for (let i = 0; i < 12; i++) identity.rotatePushIdentity({}, afterGrace + i);
-  assert.ok(identity.pushIdentityDocument(afterGrace + 20).keys.length <= 5);
+  for (let i = 0; i < 12; i++) await identity.rotatePushIdentity({}, afterGrace + i);
+  assert.ok((await identity.pushIdentityDocument(afterGrace + 20)).keys.length <= 5);
   // Emergency: the new key signs at once, nothing older is listed.
-  const urgent = identity.rotatePushIdentity({ immediate: true }, afterGrace + 30);
-  assert.deepEqual(identity.pushIdentityDocument(afterGrace + 31).keys.map((k) => k.id), [urgent.kid]);
-  assert.equal(identity.signRelayRequest(INSTANCE, Buffer.from("x"), afterGrace + 31).kid, urgent.kid);
+  const urgent = await identity.rotatePushIdentity({ immediate: true }, afterGrace + 30);
+  assert.deepEqual((await identity.pushIdentityDocument(afterGrace + 31)).keys.map((k) => k.id), [urgent.kid]);
+  assert.equal((await identity.signRelayRequest(INSTANCE, Buffer.from("x"), afterGrace + 31)).kid, urgent.kid);
   // Back to the present for the other tests.
-  identity.rotatePushIdentity({ immediate: true });
+  await identity.rotatePushIdentity({ immediate: true });
 });
 
 // ---- Configuration ----
@@ -292,10 +292,10 @@ test("relay URL: https origins only (http for localhost), nothing else; PUSH_REL
 
 // ---- Registration (instance API of the app) ----
 
-test("registration: older apps (Expo only) unchanged; relay token and key validated strictly and stored sealed", () => {
-  const { user, token } = account("relay-register");
+test("registration: older apps (Expo only) unchanged; relay token and key validated strictly and stored sealed", async () => {
+  const { user, token } = await account("relay-register");
   // Version 1: as before.
-  const old = registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios", pushToken: expoToken() });
+  const old = await registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios", pushToken: expoToken() });
   assert.equal(old.push, true);
   assert.equal(old.relay, false);
   assert.deepEqual(old.liveActivities, []);
@@ -303,53 +303,53 @@ test("registration: older apps (Expo only) unchanged; relay token and key valida
   const keys = deviceKeys(),
     relay = relayToken();
   const installationId = randomUUID();
-  const fresh = registerMobileDevice(user, token, { installationId, platform: "android", relayToken: relay, publicKey: keys.publicKey, relayUrl: `${process.env.PUSH_RELAY_URL}/` });
+  const fresh = await registerMobileDevice(user, token, { installationId, platform: "android", relayToken: relay, publicKey: keys.publicKey, relayUrl: `${process.env.PUSH_RELAY_URL}/` });
   assert.equal(fresh.push, true);
   assert.equal(fresh.relay, true);
   assert.doesNotMatch(JSON.stringify(fresh), new RegExp(relay));
-  const stored = one<{ relay_token: string; public_key: string; device_id: string }>(
+  const stored = (await one<{ relay_token: string; public_key: string; device_id: string }>(
     "SELECT r.* FROM mobile_push_relay r JOIN mobile_devices d ON d.id=r.device_id WHERE d.installation_id=?",
     installationId,
-  )!;
+  ))!;
   assert.match(stored.relay_token, /^fps1:/);
   assert.ok(!stored.relay_token.includes(relay));
   assert.equal(stored.public_key, keys.publicKey);
-  assert.equal(one<{ endpoint: string }>("SELECT s.endpoint FROM push_subscriptions s JOIN mobile_devices d ON d.push_subscription_id=s.id WHERE d.installation_id=?", installationId)!.endpoint, `relay:${stored.device_id}`);
+  assert.equal((await one<{ endpoint: string }>("SELECT s.endpoint FROM push_subscriptions s JOIN mobile_devices d ON d.push_subscription_id=s.id WHERE d.installation_id=?", installationId))!.endpoint, `relay:${stored.device_id}`);
   // Nothing in the database holds the token in plain text.
-  assert.equal(one("SELECT 1 FROM push_subscriptions WHERE endpoint LIKE ?", `%${relay}%`), undefined);
+  assert.equal(await one("SELECT 1 FROM push_subscriptions WHERE endpoint LIKE ?", `%${relay}%`), undefined);
   // The device list says relay, never the token.
-  const listed = devices.listMobileDevices(user);
+  const listed = await devices.listMobileDevices(user);
   assert.equal(listed.find((d) => d.installation_id === installationId)?.relay, 1);
   assert.doesNotMatch(JSON.stringify(listed), new RegExp(relay));
 
   const base = { installationId: randomUUID(), platform: "ios" };
-  assert.throws(() => registerMobileDevice(user, token, { ...base, relayToken: relayToken() }), /publicKey/);
-  assert.throws(() => registerMobileDevice(user, token, { ...base, publicKey: keys.publicKey }), /publicKey/);
-  assert.throws(() => registerMobileDevice(user, token, { ...base, relayToken: "short", publicKey: keys.publicKey }));
-  assert.throws(() => registerMobileDevice(user, token, { ...base, relayToken: relayToken(), publicKey: keys.publicKey.slice(1) }));
-  assert.throws(() => registerMobileDevice(user, token, { ...base, relayToken: `${relayToken()}!`, publicKey: keys.publicKey }));
-  assert.throws(() => registerMobileDevice(user, token, { ...base, relayToken: relayToken(), publicKey: "A".repeat(43) }), /Push-Schlüssel/);
-  assert.throws(() => registerMobileDevice(user, token, { ...base, liveActivityRelayTokens: { focus: relayToken(), meeting: relayToken() } }));
-  assert.throws(() => registerMobileDevice(user, token, { ...base, relayUrl: "x".repeat(400), relayToken: relayToken(), publicKey: keys.publicKey }));
+  await assert.rejects(async () => await registerMobileDevice(user, token, { ...base, relayToken: relayToken() }), /publicKey/);
+  await assert.rejects(async () => await registerMobileDevice(user, token, { ...base, publicKey: keys.publicKey }), /publicKey/);
+  await assert.rejects(async () => await registerMobileDevice(user, token, { ...base, relayToken: "short", publicKey: keys.publicKey }));
+  await assert.rejects(async () => await registerMobileDevice(user, token, { ...base, relayToken: relayToken(), publicKey: keys.publicKey.slice(1) }));
+  await assert.rejects(async () => await registerMobileDevice(user, token, { ...base, relayToken: `${relayToken()}!`, publicKey: keys.publicKey }));
+  await assert.rejects(async () => await registerMobileDevice(user, token, { ...base, relayToken: relayToken(), publicKey: "A".repeat(43) }), /Push-Schlüssel/);
+  await assert.rejects(async () => await registerMobileDevice(user, token, { ...base, liveActivityRelayTokens: { focus: relayToken(), meeting: relayToken() } }));
+  await assert.rejects(async () => await registerMobileDevice(user, token, { ...base, relayUrl: "x".repeat(400), relayToken: relayToken(), publicKey: keys.publicKey }));
 
   // Another relay than the instance's: registered, but without the relay part.
-  const other = registerMobileDevice(user, token, { ...base, relayToken: relayToken(), publicKey: keys.publicKey, relayUrl: "https://evil.example.test" });
+  const other = await registerMobileDevice(user, token, { ...base, relayToken: relayToken(), publicKey: keys.publicKey, relayUrl: "https://evil.example.test" });
   assert.equal(other.relay, false);
   assert.equal(other.push, false);
   assert.deepEqual(devices.pushRelayInfo(), { version: 1, url: process.env.PUSH_RELAY_URL, instance: INSTANCE });
 
   // Unregistering removes the relay part with the installation.
-  unregisterMobileDevice(user, installationId);
-  assert.equal(one("SELECT 1 FROM mobile_push_relay WHERE device_id=?", stored.device_id), undefined);
+  await unregisterMobileDevice(user, installationId);
+  assert.equal(await one("SELECT 1 FROM mobile_push_relay WHERE device_id=?", stored.device_id), undefined);
 });
 
-test("registration: relay off or mobile push off store no relay token; still at most 20 apps", () => {
-  const { user, token } = account("relay-limits");
+test("registration: relay off or mobile push off store no relay token; still at most 20 apps", async () => {
+  const { user, token } = await account("relay-limits");
   const keys = deviceKeys();
   for (const [name, value] of [["PUSH_RELAY", "off"], ["MOBILE_PUSH", "off"]] as const) {
     process.env[name] = value;
     try {
-      const result = registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios", relayToken: relayToken(), publicKey: keys.publicKey, liveActivityRelayTokens: { timer: relayToken() } });
+      const result = await registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios", relayToken: relayToken(), publicKey: keys.publicKey, liveActivityRelayTokens: { timer: relayToken() } });
       assert.equal(result.relay, false);
       assert.deepEqual(result.liveActivities, []);
       assert.equal(devices.pushRelayInfo(), null);
@@ -357,32 +357,32 @@ test("registration: relay off or mobile push off store no relay token; still at 
       delete process.env[name];
     }
   }
-  assert.equal(one<{ n: number }>("SELECT COUNT(*) n FROM mobile_push_relay r JOIN mobile_devices d ON d.id=r.device_id WHERE d.user_id=?", user.id)!.n, 0);
-  for (let i = 2; i < 20; i++) registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios", relayToken: relayToken(), publicKey: keys.publicKey });
-  assert.throws(() => registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios", relayToken: relayToken(), publicKey: keys.publicKey }), /20/);
+  assert.equal((await one<{ n: number }>("SELECT COUNT(*) n FROM mobile_push_relay r JOIN mobile_devices d ON d.id=r.device_id WHERE d.user_id=?", user.id))!.n, 0);
+  for (let i = 2; i < 20; i++) await registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios", relayToken: relayToken(), publicKey: keys.publicKey });
+  await assert.rejects(async () => await registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios", relayToken: relayToken(), publicKey: keys.publicKey }), /20/);
 });
 
-test("registration: a relay token moves with the phone to the account that registered it last", () => {
-  const anna = account("relay-anna"),
-    ben = account("relay-ben");
+test("registration: a relay token moves with the phone to the account that registered it last", async () => {
+  const anna = await account("relay-anna"),
+    ben = await account("relay-ben");
   const shared = relayToken(),
     keys = deviceKeys(),
     installationId = randomUUID();
-  registerMobileDevice(anna.user, anna.token, { installationId, platform: "ios", relayToken: shared, publicKey: keys.publicKey });
-  registerMobileDevice(ben.user, ben.token, { installationId, platform: "ios", relayToken: shared, publicKey: keys.publicKey });
-  const owners = all<{ user_id: string }>("SELECT d.user_id FROM mobile_push_relay r JOIN mobile_devices d ON d.id=r.device_id WHERE r.token_hash=?", createHash("sha256").update(shared).digest("hex"));
+  await registerMobileDevice(anna.user, anna.token, { installationId, platform: "ios", relayToken: shared, publicKey: keys.publicKey });
+  await registerMobileDevice(ben.user, ben.token, { installationId, platform: "ios", relayToken: shared, publicKey: keys.publicKey });
+  const owners = await all<{ user_id: string }>("SELECT d.user_id FROM mobile_push_relay r JOIN mobile_devices d ON d.id=r.device_id WHERE r.token_hash=?", createHash("sha256").update(shared).digest("hex"));
   assert.deepEqual(owners.map((o) => o.user_id), [ben.user.id]);
 });
 
 // ---- Sending through the relay ----
 
 test("a notification goes to the relay signed and end-to-end encrypted: no plaintext leaves the instance", async () => {
-  const { user, token } = account("relay-sender");
+  const { user, token } = await account("relay-sender");
   const keys = deviceKeys(),
     relay = relayToken();
-  registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios", relayToken: relay, publicKey: keys.publicKey, pushToken: expoToken() });
+  await registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios", relayToken: relay, publicKey: keys.publicKey, pushToken: expoToken() });
   const notificationId = id();
-  run("INSERT INTO notifications(id,user_id,body) VALUES(?,?,?)", notificationId, user.id, "Quarterly numbers are confidential");
+  await run("INSERT INTO notifications(id,user_id,body) VALUES(?,?,?)", notificationId, user.id, "Quarterly numbers are confidential");
   requests.length = 0;
   handler = okAll;
   const { lines } = await quietly(() => flushPushQueue(noWebPush, noExpo));
@@ -394,7 +394,7 @@ test("a notification goes to the relay signed and end-to-end encrypted: no plain
   assert.equal(request.headers["flowplan-instance"], INSTANCE);
   // The signature covers exactly the bytes that arrived.
   const match = String(request.headers["flowplan-signature"]).match(/^kid=([^,]+), ts=(\d+), sig=([A-Za-z0-9_-]+)$/)!;
-  const doc = (await wellKnown.GET().json()) as { keys: { id: string; publicKey: string }[] };
+  const doc = (await (await wellKnown.GET()).json()) as { keys: { id: string; publicKey: string }[] };
   const key = identity.publicKeyObject(doc.keys.find((k) => k.id === match[1])!.publicKey);
   const base = Buffer.from(`flowplan-push-v1\n${INSTANCE}\n${match[2]}\n${createHash("sha256").update(request.body).digest("hex")}`);
   assert.equal(verify(null, base, key, Buffer.from(match[3], "base64url")), true);
@@ -424,14 +424,14 @@ test("a notification goes to the relay signed and end-to-end encrypted: no plain
   assert.equal(new URL(plain.url).origin, INSTANCE);
   assert.equal(plain.category, "flowplan.read");
   assert.ok(Math.abs(plain.sentAt - Date.now() / 1000) < 10);
-  assert.ok(one("SELECT 1 FROM push_deliveries WHERE notification_id=? AND delivered_at IS NOT NULL", notificationId));
+  assert.ok(await one("SELECT 1 FROM push_deliveries WHERE notification_id=? AND delivered_at IS NOT NULL", notificationId));
   // Nothing of it in the logs.
   assert.doesNotMatch(lines.join("\n"), new RegExp(`${relay}|Quarterly|${keys.publicKey}`));
 
   // MOBILE_PUSH_CONTENT=off: even the relay gets only the general text.
   process.env.MOBILE_PUSH_CONTENT = "off";
   try {
-    run("INSERT INTO notifications(id,user_id,body) VALUES(?,?,?)", id(), user.id, "Second secret");
+    await run("INSERT INTO notifications(id,user_id,body) VALUES(?,?,?)", id(), user.id, "Second secret");
     requests.length = 0;
     await flushPushQueue(noWebPush, noExpo);
     const second = JSON.parse(decrypt(keys.privateKey, messagesOf(requests[0])[0].payload));
@@ -443,19 +443,19 @@ test("a notification goes to the relay signed and end-to-end encrypted: no plain
 });
 
 test("relay answers: ok, gone, rate_limited, forbidden (Expo takes over), invalid, error", async () => {
-  const { user, token } = account("relay-outcomes");
+  const { user, token } = await account("relay-outcomes");
   const keys = deviceKeys();
-  const install = (status: string, withExpo: boolean) => {
+  const install = async (status: string, withExpo: boolean) => {
     const relay = relayToken(),
       installationId = randomUUID();
-    registerMobileDevice(user, token, { installationId, platform: "ios", relayToken: relay, publicKey: keys.publicKey, ...(withExpo ? { pushToken: expoToken() } : {}) });
-    const device = one<{ id: string; push_subscription_id: string }>("SELECT id,push_subscription_id FROM mobile_devices WHERE installation_id=?", installationId)!;
+    await registerMobileDevice(user, token, { installationId, platform: "ios", relayToken: relay, publicKey: keys.publicKey, ...(withExpo ? { pushToken: expoToken() } : {}) });
+    const device = (await one<{ id: string; push_subscription_id: string }>("SELECT id,push_subscription_id FROM mobile_devices WHERE installation_id=?", installationId))!;
     return { status, relay, device };
   };
-  const set = [install("ok", false), install("gone", false), install("rate_limited", true), install("forbidden", true), install("invalid", false), install("error", false)];
+  const set = [await install("ok", false), await install("gone", false), await install("rate_limited", true), await install("forbidden", true), await install("invalid", false), await install("error", false)];
   const byToken = new Map(set.map((s) => [s.relay, s.status]));
   const notificationId = id();
-  run("INSERT INTO notifications(id,user_id,body) VALUES(?,?,?)", notificationId, user.id, "Outcome check");
+  await run("INSERT INTO notifications(id,user_id,body) VALUES(?,?,?)", notificationId, user.id, "Outcome check");
   requests.length = 0;
   handler = (r) => ({
     status: 200,
@@ -471,32 +471,32 @@ test("relay answers: ok, gone, rate_limited, forbidden (Expo takes over), invali
   assert.equal(requests.length, 1);
   assert.equal(messagesOf(requests[0]).length, 6);
   assert.equal(expo.length, 0);
-  const delivery = (s: (typeof set)[number]) =>
-    one<{ delivered_at: number | null; attempts: number; available_at: number; last_error: string | null }>(
+  const delivery = async (s: (typeof set)[number]) =>
+    await one<{ delivered_at: number | null; attempts: number; available_at: number; last_error: string | null }>(
       "SELECT delivered_at,attempts,available_at,last_error FROM push_deliveries WHERE notification_id=? AND subscription_id=?",
       notificationId,
       s.device.push_subscription_id,
     );
   const [ok, gone, limited, forbidden, invalid, error] = set;
-  assert.ok(delivery(ok)?.delivered_at);
+  assert.ok((await delivery(ok))?.delivered_at);
   // gone: the installation is removed.
-  assert.equal(one("SELECT 1 FROM mobile_devices WHERE id=?", gone.device.id), undefined);
-  assert.equal(one("SELECT 1 FROM push_subscriptions WHERE id=?", gone.device.push_subscription_id), undefined);
+  assert.equal(await one("SELECT 1 FROM mobile_devices WHERE id=?", gone.device.id), undefined);
+  assert.equal(await one("SELECT 1 FROM push_subscriptions WHERE id=?", gone.device.push_subscription_id), undefined);
   // rate_limited: later, without counting as an attempt.
-  assert.equal(delivery(limited)!.attempts, 0);
-  assert.ok(delivery(limited)!.available_at >= started + 29_000);
-  assert.ok(one("SELECT 1 FROM mobile_push_relay WHERE device_id=?", limited.device.id));
+  assert.equal((await delivery(limited))!.attempts, 0);
+  assert.ok((await delivery(limited))!.available_at >= started + 29_000);
+  assert.ok(await one("SELECT 1 FROM mobile_push_relay WHERE device_id=?", limited.device.id));
   // forbidden: the relay part goes, the Expo token takes over at once.
-  assert.equal(one("SELECT 1 FROM mobile_push_relay WHERE device_id=?", forbidden.device.id), undefined);
-  assert.ok(one("SELECT 1 FROM mobile_devices WHERE id=?", forbidden.device.id));
-  assert.equal(delivery(forbidden)!.delivered_at, null);
+  assert.equal(await one("SELECT 1 FROM mobile_push_relay WHERE device_id=?", forbidden.device.id), undefined);
+  assert.ok(await one("SELECT 1 FROM mobile_devices WHERE id=?", forbidden.device.id));
+  assert.equal((await delivery(forbidden))!.delivered_at, null);
   // invalid without Expo: nothing can reach it any more.
-  assert.equal(one("SELECT 1 FROM mobile_push_relay WHERE device_id=?", invalid.device.id), undefined);
-  assert.equal(one("SELECT 1 FROM push_subscriptions WHERE id=?", invalid.device.push_subscription_id), undefined);
+  assert.equal(await one("SELECT 1 FROM mobile_push_relay WHERE device_id=?", invalid.device.id), undefined);
+  assert.equal(await one("SELECT 1 FROM push_subscriptions WHERE id=?", invalid.device.push_subscription_id), undefined);
   // error: the usual backoff.
-  assert.equal(delivery(error)!.attempts, 1);
-  assert.equal(delivery(error)!.last_error, "Relay: error");
-  assert.ok(delivery(error)!.available_at > Date.now() + 20_000);
+  assert.equal((await delivery(error))!.attempts, 1);
+  assert.equal((await delivery(error))!.last_error, "Relay: error");
+  assert.ok((await delivery(error))!.available_at > Date.now() + 20_000);
   // Logged without tokens.
   assert.ok(lines.some((l) => /forbidden/.test(l)));
   assert.doesNotMatch(lines.join("\n"), new RegExp(set.map((s) => s.relay).join("|")));
@@ -508,31 +508,31 @@ test("relay answers: ok, gone, rate_limited, forbidden (Expo takes over), invali
   });
   assert.equal(expo.length, 1);
   assert.equal(requests.length, 0);
-  assert.ok(delivery(forbidden)!.delivered_at);
+  assert.ok((await delivery(forbidden))!.delivered_at);
 });
 
 test("relay failures: HTTP errors and 429 are retried, redirects are never followed", async () => {
-  const { user, token } = account("relay-failures");
+  const { user, token } = await account("relay-failures");
   const keys = deviceKeys();
-  registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios", relayToken: relayToken(), publicKey: keys.publicKey });
-  const pending = () => one<{ attempts: number; available_at: number; delivered_at: number | null }>("SELECT d.attempts,d.available_at,d.delivered_at FROM push_deliveries d JOIN push_subscriptions s ON s.id=d.subscription_id WHERE s.user_id=?", user.id)!;
-  const ready = () => run("UPDATE push_deliveries SET available_at=0 WHERE subscription_id IN (SELECT id FROM push_subscriptions WHERE user_id=?)", user.id);
-  run("INSERT INTO notifications(id,user_id,body) VALUES(?,?,?)", id(), user.id, "Failure check");
+  await registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios", relayToken: relayToken(), publicKey: keys.publicKey });
+  const pending = async () => (await one<{ attempts: number; available_at: number; delivered_at: number | null }>("SELECT d.attempts,d.available_at,d.delivered_at FROM push_deliveries d JOIN push_subscriptions s ON s.id=d.subscription_id WHERE s.user_id=?", user.id))!;
+  const ready = async () => await run("UPDATE push_deliveries SET available_at=0 WHERE subscription_id IN (SELECT id FROM push_subscriptions WHERE user_id=?)", user.id);
+  await run("INSERT INTO notifications(id,user_id,body) VALUES(?,?,?)", id(), user.id, "Failure check");
 
   handler = () => ({ status: 500, json: { error: "boom" } });
   await quietly(() => flushPushQueue(noWebPush, noExpo));
-  assert.equal(pending().attempts, 1);
-  assert.equal(pending().delivered_at, null);
+  assert.equal((await pending()).attempts, 1);
+  assert.equal((await pending()).delivered_at, null);
 
-  ready();
+  await ready();
   handler = () => ({ status: 429, headers: { "Retry-After": "120" } });
   const before = Date.now();
   await quietly(() => flushPushQueue(noWebPush, noExpo));
-  assert.equal(pending().attempts, 1);
-  assert.ok(pending().available_at >= before + 119_000);
+  assert.equal((await pending()).attempts, 1);
+  assert.ok((await pending()).available_at >= before + 119_000);
 
   // A redirect (e.g. to an internal address) is an error, not followed.
-  ready();
+  await ready();
   let followed = false;
   const elsewhere = createServer((_req, res) => {
     followed = true;
@@ -543,23 +543,23 @@ test("relay failures: HTTP errors and 429 are retried, redirects are never follo
   await quietly(() => flushPushQueue(noWebPush, noExpo));
   elsewhere.close();
   assert.equal(followed, false);
-  assert.equal(pending().attempts, 2);
+  assert.equal((await pending()).attempts, 2);
 
   // Whole-request errors (v1.1 §6.6) never drop the registration.
   for (const status of [400, 401, 403, 409, 413, 415, 502]) {
-    ready();
+    await ready();
     handler = () => ({ status, json: { error: "x" } });
     await quietly(() => flushPushQueue(noWebPush, noExpo));
-    assert.ok(one("SELECT 1 FROM mobile_push_relay r JOIN mobile_devices d ON d.id=r.device_id WHERE d.user_id=?", user.id), String(status));
+    assert.ok(await one("SELECT 1 FROM mobile_push_relay r JOIN mobile_devices d ON d.id=r.device_id WHERE d.user_id=?", user.id), String(status));
   }
-  run("UPDATE push_deliveries SET attempts=2 WHERE subscription_id IN (SELECT id FROM push_subscriptions WHERE user_id=?)", user.id);
+  await run("UPDATE push_deliveries SET attempts=2 WHERE subscription_id IN (SELECT id FROM push_subscriptions WHERE user_id=?)", user.id);
 
   // A malformed answer (wrong number of results) is an error too.
-  ready();
+  await ready();
   handler = () => ({ status: 200, json: { results: [] } });
   await quietly(() => flushPushQueue(noWebPush, noExpo));
-  assert.equal(pending().attempts, 3);
-  assert.equal(pending().delivered_at, null);
+  assert.equal((await pending()).attempts, 3);
+  assert.equal((await pending()).delivered_at, null);
 });
 
 test("batches of at most 100 messages per request", async () => {
@@ -577,12 +577,12 @@ test("batches of at most 100 messages per request", async () => {
 });
 
 test("PUSH_RELAY=off: a device with an Expo token gets Expo, a relay-only device nothing", async () => {
-  const { user, token } = account("relay-off");
+  const { user, token } = await account("relay-off");
   const keys = deviceKeys();
   const expo = expoToken();
-  registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios", relayToken: relayToken(), publicKey: keys.publicKey, pushToken: expo });
-  registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios", relayToken: relayToken(), publicKey: keys.publicKey });
-  run("INSERT INTO notifications(id,user_id,body) VALUES(?,?,?)", id(), user.id, "Relay off");
+  await registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios", relayToken: relayToken(), publicKey: keys.publicKey, pushToken: expo });
+  await registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios", relayToken: relayToken(), publicKey: keys.publicKey });
+  await run("INSERT INTO notifications(id,user_id,body) VALUES(?,?,?)", id(), user.id, "Relay off");
   process.env.PUSH_RELAY = "off";
   requests.length = 0;
   const sent: { to: string; body: string }[] = [];
@@ -619,40 +619,40 @@ const TIMER_KEYS = ["database", "label", "start", "title", "url"];
 const FOCUS_KEYS = ["endsAt", "label", "phase", "startedAt", "stopLabel", "title", "untilLabel", "url"];
 
 test("Live Activities: timer changes are pushed as liveactivity messages without titles", async () => {
-  const { user, token } = account("relay-live");
-  const wid = createWorkspace(user.id, "Live"),
-    boot = bootstrap(user, wid);
-  const dbId = (command(user, { action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, kind: "database", title: "Billable work" }) as { id: string }).id;
-  command(user, {
+  const { user, token } = await account("relay-live");
+  const wid = await createWorkspace(user.id, "Live"),
+    boot = await bootstrap(user, wid);
+  const dbId = ((await command(user, { action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, kind: "database", title: "Billable work" })) as { id: string }).id;
+  await command(user, {
     action: "database.update",
     pageId: dbId,
-    version: database(dbId).version,
+    version: (await database(dbId)).version,
     fields: [
       { id: "title", name: "Title", type: "text" },
       { id: "spent", name: "Time", type: "time" },
     ],
-    views: database(dbId).views,
+    views: (await database(dbId)).views,
   });
-  const rowId = (command(user, { action: "row.create", pageId: dbId, cells: { title: "Secret client project" } }) as { id: string }).id;
+  const rowId = ((await command(user, { action: "row.create", pageId: dbId, cells: { title: "Secret client project" } })) as { id: string }).id;
   const timerToken = relayToken(),
     focusToken = relayToken();
-  const registered = registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios", liveActivityRelayTokens: { timer: timerToken }, liveActivityLabels: LABELS });
+  const registered = await registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios", liveActivityRelayTokens: { timer: timerToken }, liveActivityLabels: LABELS });
   assert.deepEqual(registered.liveActivities, ["timer"]);
   // Labels that do not check out are left out, never the registration.
   {
-    const other = account("relay-live-labels");
-    const kept = registerMobileDevice(other.user, other.token, { installationId: randomUUID(), platform: "ios", liveActivityRelayTokens: { timer: relayToken() }, liveActivityLabels: { ...LABELS, timeZone: "Mars/Olympus" } });
+    const other = await account("relay-live-labels");
+    const kept = await registerMobileDevice(other.user, other.token, { installationId: randomUUID(), platform: "ios", liveActivityRelayTokens: { timer: relayToken() }, liveActivityLabels: { ...LABELS, timeZone: "Mars/Olympus" } });
     assert.deepEqual(kept.liveActivities, ["timer"]);
-    assert.equal(one<{ labels: string | null }>("SELECT l.labels FROM mobile_live_activities l JOIN mobile_devices d ON d.id=l.device_id WHERE d.user_id=?", other.user.id)!.labels, null);
+    assert.equal((await one<{ labels: string | null }>("SELECT l.labels FROM mobile_live_activities l JOIN mobile_devices d ON d.id=l.device_id WHERE d.user_id=?", other.user.id))!.labels, null);
   }
   // Without a notification permission there is no push subscription, but the Live Activity works.
   assert.equal(registered.push, false);
-  assert.throws(() => setLiveActivityToken("Bearer fpd_notarealtokenatall00000", { kind: "focus", relayToken: focusToken }), /melde dich an/);
-  assert.throws(() => setLiveActivityToken(`Bearer ${registered.deviceToken}`, { kind: "meeting", relayToken: focusToken }));
-  assert.deepEqual(setLiveActivityToken(`Bearer ${registered.deviceToken}`, { kind: "focus", relayToken: focusToken, labels: LABELS }).liveActivities, ["focus", "timer"]);
+  await assert.rejects(async () => await setLiveActivityToken("Bearer fpd_notarealtokenatall00000", { kind: "focus", relayToken: focusToken }), /melde dich an/);
+  await assert.rejects(async () => await setLiveActivityToken(`Bearer ${registered.deviceToken}`, { kind: "meeting", relayToken: focusToken }));
+  assert.deepEqual((await setLiveActivityToken(`Bearer ${registered.deviceToken}`, { kind: "focus", relayToken: focusToken, labels: LABELS })).liveActivities, ["focus", "timer"]);
 
-  command(user, { action: "time.start", pageId: dbId, rowId, fieldId: "spent" });
-  assert.equal(one<{ n: number }>("SELECT COUNT(*) n FROM push_live_queue WHERE kind='timer'")!.n, 1);
+  await command(user, { action: "time.start", pageId: dbId, rowId, fieldId: "spent" });
+  assert.equal((await one<{ n: number }>("SELECT COUNT(*) n FROM push_live_queue WHERE kind='timer'"))!.n, 1);
   requests.length = 0;
   handler = okAll;
   await flushPushQueue(noWebPush, noExpo);
@@ -670,7 +670,7 @@ test("Live Activities: timer changes are pushed as liveactivity messages without
   assert.deepEqual({ ...shown.props, start: 0 }, { title: "Time tracking", database: "", start: 0, label: "Time tracking", url: "flowplan://open?path=%2F" });
   assert.doesNotMatch(requests[0].body.toString(), /Secret client project|Billable work/);
 
-  command(user, { action: "time.stop", pageId: dbId, rowId, fieldId: "spent" });
+  await command(user, { action: "time.stop", pageId: dbId, rowId, fieldId: "spent" });
   requests.length = 0;
   await flushPushQueue(noWebPush, noExpo);
   const [end] = messagesOf(requests[0]);
@@ -679,20 +679,20 @@ test("Live Activities: timer changes are pushed as liveactivity messages without
   assert.deepEqual(Object.keys(viewProps(end.liveActivity.contentState).props).sort(), TIMER_KEYS);
   assert.ok(end.liveActivity.dismissalDate);
   // An ended activity takes no more pushes.
-  assert.equal(one("SELECT 1 FROM mobile_live_activities l JOIN mobile_devices d ON d.id=l.device_id WHERE l.kind='timer' AND d.user_id=?", user.id), undefined);
+  assert.equal(await one("SELECT 1 FROM mobile_live_activities l JOIN mobile_devices d ON d.id=l.device_id WHERE l.kind='timer' AND d.user_id=?", user.id), undefined);
 
   // With MOBILE_PUSH_CONTENT=on the title comes along (plain text, by choice).
   process.env.MOBILE_PUSH_CONTENT = "on";
   try {
-    setLiveActivityToken(`Bearer ${registered.deviceToken}`, { kind: "timer", relayToken: timerToken, labels: LABELS });
-    command(user, { action: "time.start", pageId: dbId, rowId, fieldId: "spent" });
+    await setLiveActivityToken(`Bearer ${registered.deviceToken}`, { kind: "timer", relayToken: timerToken, labels: LABELS });
+    await command(user, { action: "time.start", pageId: dbId, rowId, fieldId: "spent" });
     requests.length = 0;
     await flushPushQueue(noWebPush, noExpo);
     const withContent = viewProps(messagesOf(requests[0])[0].liveActivity.contentState).props;
     assert.equal(withContent.title, "Secret client project");
     assert.equal(withContent.database, "Billable work");
     assert.match(withContent.url, /^flowplan:\/\/open\?path=%2F%23/);
-    command(user, { action: "time.stop", pageId: dbId, rowId, fieldId: "spent" });
+    await command(user, { action: "time.stop", pageId: dbId, rowId, fieldId: "spent" });
     await flushPushQueue(noWebPush, noExpo);
   } finally {
     delete process.env.MOBILE_PUSH_CONTENT;
@@ -700,13 +700,13 @@ test("Live Activities: timer changes are pushed as liveactivity messages without
 });
 
 test("Live Activities: a focus session pushes its start, the break and its end; gone forgets the token", async () => {
-  const { user, token } = account("relay-focus");
+  const { user, token } = await account("relay-focus");
   const focusToken = relayToken();
-  const registered = registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios", liveActivityRelayTokens: { focus: focusToken }, liveActivityLabels: LABELS });
+  const registered = await registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios", liveActivityRelayTokens: { focus: focusToken }, liveActivityLabels: LABELS });
   const device = (await identityFromDeviceToken(`Bearer ${registered.deviceToken}`))!;
   const started = Date.now();
   await widgetAction(device, { action: "focus.start", minutes: 25, breakMinutes: 5 });
-  assert.equal(one<{ n: number }>("SELECT COUNT(*) n FROM push_live_queue q JOIN mobile_devices d ON d.id=q.device_id WHERE d.user_id=?", user.id)!.n, 3);
+  assert.equal((await one<{ n: number }>("SELECT COUNT(*) n FROM push_live_queue q JOIN mobile_devices d ON d.id=q.device_id WHERE d.user_id=?", user.id))!.n, 3);
   const sent: Record<string, any>[] = [];
   const sender = async (messages: Record<string, any>[]) => {
     sent.push(...messages);
@@ -735,7 +735,7 @@ test("Live Activities: a focus session pushes its start, the break and its end; 
   assert.equal(pause.startedAt, focus.props.endsAt);
   // Gone (the activity was dismissed): the token is forgotten, the end is not sent.
   await flushLiveActivities(async (messages) => messages.map(() => ({ status: "gone" as const })), started + 31 * 60_000);
-  assert.equal(one("SELECT 1 FROM mobile_live_activities l JOIN mobile_devices d ON d.id=l.device_id WHERE d.user_id=?", user.id), undefined);
+  assert.equal(await one("SELECT 1 FROM mobile_live_activities l JOIN mobile_devices d ON d.id=l.device_id WHERE d.user_id=?", user.id), undefined);
 });
 
 // The relay's test vectors (flowplan-push docs/test-vectors.json). The
@@ -788,7 +788,7 @@ test("relay test vectors: encryption gives exactly the relay's payloads, the dec
   }
 });
 
-test("relay test vectors: signing string, signature, header and key document", () => {
+test("relay test vectors: signing string, signature, header and key document", async () => {
   assert.ok(vectors.signatures.vectors.length >= 1);
   for (const v of vectors.signatures.vectors) {
     const body = Buffer.from(v.body, "utf8");
@@ -803,7 +803,7 @@ test("relay test vectors: signing string, signature, header and key document", (
     assert.equal(verify(null, identity.signatureBase(v.instance, v.ts, body), identity.publicKeyObject(v.publicKey), Buffer.from(v.signature, "base64url")), true);
   }
   // Our document has the same shape as the relay's example.
-  const ours = identity.pushIdentityDocument();
+  const ours = await identity.pushIdentityDocument();
   const theirs = vectors.signatures.vectors[0].wellKnown as typeof ours;
   assert.deepEqual(Object.keys(ours).sort(), Object.keys(theirs).sort());
   assert.deepEqual(Object.keys(ours.keys[0]).sort(), Object.keys(theirs.keys[0]).sort());
@@ -824,11 +824,11 @@ const CONTRACT_DEVICE = "a8ababababababababababababababababababababababababababa
 test("contract with the app: an alert and both Live Activity views, as sent", async () => {
   const devicePrivate = x25519FromRaw(CONTRACT_DEVICE);
   const devicePublic = rawX(createPublicKey(devicePrivate)).toString("base64url");
-  const { user, token } = account("relay-contract");
+  const { user, token } = await account("relay-contract");
   const relay = relayToken();
-  registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios", relayToken: relay, publicKey: devicePublic, relayUrl: process.env.PUSH_RELAY_URL });
+  await registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios", relayToken: relay, publicKey: devicePublic, relayUrl: process.env.PUSH_RELAY_URL });
   const notificationId = id();
-  run("INSERT INTO notifications(id,user_id,body) VALUES(?,?,?)", notificationId, user.id, "Anna commented on Roadmap");
+  await run("INSERT INTO notifications(id,user_id,body) VALUES(?,?,?)", notificationId, user.id, "Anna commented on Roadmap");
   requests.length = 0;
   handler = okAll;
   await flushPushQueue(noWebPush, noExpo);
@@ -880,16 +880,16 @@ test("contract with the app: an alert and both Live Activity views, as sent", as
   assert.doesNotMatch(JSON.stringify([live.focus, live.timer]), /release notes|Client call|Billable|page=/);
 });
 
-test("Live Activities without the app's labels (older apps): only the end is pushed", () => {
-  const { user } = account("relay-no-labels");
+test("Live Activities without the app's labels (older apps): only the end is pushed", async () => {
+  const { user } = await account("relay-no-labels");
   // No focus session, no timer: the end, whose texts nobody sees.
-  const ended = liveActivityMessage("timer", user, null)!;
+  const ended = (await liveActivityMessage("timer", user, null))!;
   assert.equal(ended.end, true);
   assert.equal(ended.message.liveActivity!.event, "end");
   assert.equal((ended.message.liveActivity!.contentState as { name: string }).name, "FlowplanTimer");
-  run("INSERT INTO widget_focus(user_id,started_at,focus_ms,break_ms) VALUES(?,?,?,?)", user.id, Date.now(), 25 * 60_000, 5 * 60_000);
-  assert.equal(liveActivityMessage("focus", user, null), null);
-  assert.equal(liveActivityMessage("focus", user, LABELS)!.message.liveActivity!.event, "update");
+  await run("INSERT INTO widget_focus(user_id,started_at,focus_ms,break_ms) VALUES(?,?,?,?)", user.id, Date.now(), 25 * 60_000, 5 * 60_000);
+  assert.equal(await liveActivityMessage("focus", user, null), null);
+  assert.equal((await liveActivityMessage("focus", user, LABELS))!.message.liveActivity!.event, "update");
   // A long title is shortened to fit the relay's 2 KB.
   const long = contentState("timer", timerProps({ start: 1, title: "x".repeat(5000), database: "", url: "/" }, LABELS, true));
   assert.ok(Buffer.byteLength(JSON.stringify(long)) <= 1900);

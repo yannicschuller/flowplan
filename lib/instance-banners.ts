@@ -107,14 +107,14 @@ function stateOf(r: BannerRow, now: number): AdminBanner["state"] {
   return "active";
 }
 
-export function listBanners(user: Identity, now = Date.now()): AdminBanner[] {
+export async function listBanners(user: Identity, now = Date.now()): Promise<AdminBanner[]> {
   requireAdmin(user);
-  const people = one<{ n: number }>("SELECT COUNT(*) n FROM users WHERE disabled=0")?.n ?? 0;
-  const rows = all<BannerRow & { closed: number; clicked: number }>(
+  const people = (await one<{ n: number }>("SELECT COUNT(*) n FROM users WHERE disabled=0"))?.n ?? 0;
+  const rows = await all<BannerRow & { closed: number; clicked: number }>(
     `SELECT b.*,COUNT(s.user_id) closed,COALESCE(SUM(s.clicked),0) clicked FROM instance_banners b
      LEFT JOIN instance_banner_seen s ON s.banner_id=b.id GROUP BY b.id ORDER BY b.created_at DESC`,
   );
-  const admins = rows.some((r) => r.audience === "admins") ? adminCount() : 0;
+  const admins = rows.some((r) => r.audience === "admins") ? (await adminCount()) : 0;
   return rows.map((r) => ({
     ...toBanner(r),
     paused: !!r.paused,
@@ -126,9 +126,9 @@ export function listBanners(user: Identity, now = Date.now()): AdminBanner[] {
     state: stateOf(r, now),
   }));
 }
-const adminCount = () => adminUserIds().length;
+const adminCount = async () => (await adminUserIds()).length;
 
-export function saveBanner(user: Identity, body: unknown, now = Date.now()) {
+export async function saveBanner(user: Identity, body: unknown, now = Date.now()) {
   requireAdmin(user);
   const b = input.parse(body);
   const link = safeBannerLink(b.linkUrl);
@@ -137,45 +137,45 @@ export function saveBanner(user: Identity, body: unknown, now = Date.now()) {
   if (b.endsAt && b.endsAt <= now && !b.id) throw new HttpError(400, "Das Ende liegt in der Vergangenheit.");
   const values = [b.title, b.message, link, link ? b.linkLabel || null : null, b.tone, b.audience, b.surface, b.startsAt, b.endsAt, b.paused ? 1 : 0, now] as const;
   if (b.id) {
-    if (!one("SELECT 1 FROM instance_banners WHERE id=?", b.id)) throw new HttpError(404, "Banner nicht gefunden.");
-    run(
+    if (!(await one("SELECT 1 FROM instance_banners WHERE id=?", b.id))) throw new HttpError(404, "Banner nicht gefunden.");
+    await run(
       "UPDATE instance_banners SET title=?,message=?,link_url=?,link_label=?,tone=?,audience=?,surface=?,starts_at=?,ends_at=?,paused=?,updated_at=? WHERE id=?",
       ...values,
       b.id,
     );
-    audit(user.id, "admin.banner.update", b.id, b.message.slice(0, 80));
+    await audit(user.id, "admin.banner.update", b.id, b.message.slice(0, 80));
     return b.id;
   }
-  if ((one<{ n: number }>("SELECT COUNT(*) n FROM instance_banners")?.n ?? 0) >= MAX_BANNERS)
+  if (((await one<{ n: number }>("SELECT COUNT(*) n FROM instance_banners"))?.n ?? 0) >= MAX_BANNERS)
     throw new HttpError(400, `Höchstens ${MAX_BANNERS} Banner – lösche zuerst alte.`);
   const bannerId = id();
-  run(
+  await run(
     "INSERT INTO instance_banners(title,message,link_url,link_label,tone,audience,surface,starts_at,ends_at,paused,updated_at,id,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
     ...values,
     bannerId,
     user.id,
     now,
   );
-  audit(user.id, "admin.banner.create", bannerId, b.message.slice(0, 80));
+  await audit(user.id, "admin.banner.create", bannerId, b.message.slice(0, 80));
   return bannerId;
 }
 
-export function deleteBanner(user: Identity, bannerId: string) {
+export async function deleteBanner(user: Identity, bannerId: string) {
   requireAdmin(user);
-  run("DELETE FROM instance_banners WHERE id=?", bannerId);
-  audit(user.id, "admin.banner.delete", bannerId, "");
+  await run("DELETE FROM instance_banners WHERE id=?", bannerId);
+  await audit(user.id, "admin.banner.delete", bannerId, "");
 }
 // Everyone sees it again, also those who closed it.
-export function showBannerAgain(user: Identity, bannerId: string) {
+export async function showBannerAgain(user: Identity, bannerId: string) {
   requireAdmin(user);
-  run("DELETE FROM instance_banner_seen WHERE banner_id=?", bannerId);
-  audit(user.id, "admin.banner.reset", bannerId, "");
+  await run("DELETE FROM instance_banner_seen WHERE banner_id=?", bannerId);
+  await audit(user.id, "admin.banner.reset", bannerId, "");
 }
 
 // The banners for this person right now, newest first, at most three.
-export function bannersFor(user: Identity, now = Date.now()): Banner[] {
+export async function bannersFor(user: Identity, now = Date.now()): Promise<Banner[]> {
   if (user.apiScope || user.demo) return [];
-  return all<BannerRow>(
+  return (await all<BannerRow>(
     `SELECT b.* FROM instance_banners b
      WHERE b.paused=0 AND (b.starts_at IS NULL OR b.starts_at<=?) AND (b.ends_at IS NULL OR b.ends_at>?)
        AND (b.audience='all' OR ?=1)
@@ -185,14 +185,14 @@ export function bannersFor(user: Identity, now = Date.now()): Banner[] {
     now,
     user.isAdmin ? 1 : 0,
     user.id,
-  ).map(toBanner);
+  )).map(toBanner);
 }
 
 // Closed, or its link followed: gone for this person.
-export function dismissBanner(user: Identity, bannerId: string, clicked: boolean, now = Date.now()) {
+export async function dismissBanner(user: Identity, bannerId: string, clicked: boolean, now = Date.now()) {
   if (user.apiScope) throw new HttpError(403, "Nicht mit einem API-Token.");
-  if (!one("SELECT 1 FROM instance_banners WHERE id=?", bannerId)) return { ok: false };
-  run(
+  if (!(await one("SELECT 1 FROM instance_banners WHERE id=?", bannerId))) return { ok: false };
+  await run(
     `INSERT INTO instance_banner_seen(banner_id,user_id,dismissed_at,clicked) VALUES(?,?,?,?) ON CONFLICT(banner_id,user_id) DO UPDATE SET clicked=${sql.greatest("instance_banner_seen.clicked", "excluded.clicked")}`,
     bannerId,
     user.id,

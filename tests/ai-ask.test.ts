@@ -27,58 +27,58 @@ import { z } from "zod";
 
 async function person(name: string): Promise<Identity> {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name.toLowerCase()}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name.toLowerCase()}@example.test`);
   const token = randomBytes(16).toString("hex");
-  run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", createHash("sha256").update(token).digest("hex"), uid, "[]", Date.now() + 3600_000);
+  await run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", createHash("sha256").update(token).digest("hex"), uid, "[]", Date.now() + 3600_000);
   return (await identityFromToken(token))!;
 }
 const admin = { ...(await person("Ada")), isAdmin: true };
 const ben = await person("Ben"),
   vic = await person("Vic"),
   gus = await person("Gus");
-const wid = createWorkspace(admin.id, "Team");
-run("INSERT INTO members VALUES(?,?,?)", wid, ben.id, "editor");
-run("INSERT INTO members VALUES(?,?,?)", wid, vic.id, "viewer");
-run("INSERT INTO members VALUES(?,?,?)", wid, gus.id, "viewer");
-run("INSERT INTO workspace_guests VALUES(?,?)", wid, gus.id);
-const space = one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid)!.id;
+const wid = await createWorkspace(admin.id, "Team");
+await run("INSERT INTO members VALUES(?,?,?)", wid, ben.id, "editor");
+await run("INSERT INTO members VALUES(?,?,?)", wid, vic.id, "viewer");
+await run("INSERT INTO members VALUES(?,?,?)", wid, gus.id, "viewer");
+await run("INSERT INTO workspace_guests VALUES(?,?)", wid, gus.id);
+const space = (await one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid))!.id;
 const privateSpace = id();
-run("INSERT INTO spaces(id,workspace_id,name,visibility,owner_id) VALUES(?,?,?,?,?)", privateSpace, wid, "Privat", "private", admin.id);
-const html = (page: string, body: string) => run("UPDATE documents SET html=? WHERE page_id=?", body, page);
+await run("INSERT INTO spaces(id,workspace_id,name,visibility,owner_id) VALUES(?,?,?,?,?)", privateSpace, wid, "Privat", "private", admin.id);
+const html = async (page: string, body: string) => await run("UPDATE documents SET html=? WHERE page_id=?", body, page);
 
 // What Ben may read …
-const plan = createPage(wid, space, admin.id, "Urlaubsplanung");
-html(plan, "<h2>Ausflug</h2><p>Der Betriebsausflug findet am 12. Juni in Hamburg statt.</p><p>Treffpunkt ist der Hauptbahnhof um 9 Uhr.</p><h2>Sonstiges</h2><p>Die Kantine bleibt geschlossen.</p>");
-const sub = createPage(wid, space, admin.id, "Anreise", "document", plan);
-html(sub, "<p>Zum Betriebsausflug fahren wir mit dem Zug nach Hamburg.</p>");
-const other = createPage(wid, space, admin.id, "Wartung");
-html(other, "<p>Der Server wird am Samstag gewartet.</p>");
-const db = createPage(wid, space, admin.id, "Ausflüge", "database");
-const trip = command(admin, { action: "row.create", pageId: db, cells: { title: "Betriebsausflug Hamburg", status: "In Arbeit" } }) as { id: string };
+const plan = await createPage(wid, space, admin.id, "Urlaubsplanung");
+await html(plan, "<h2>Ausflug</h2><p>Der Betriebsausflug findet am 12. Juni in Hamburg statt.</p><p>Treffpunkt ist der Hauptbahnhof um 9 Uhr.</p><h2>Sonstiges</h2><p>Die Kantine bleibt geschlossen.</p>");
+const sub = await createPage(wid, space, admin.id, "Anreise", "document", plan);
+await html(sub, "<p>Zum Betriebsausflug fahren wir mit dem Zug nach Hamburg.</p>");
+const other = await createPage(wid, space, admin.id, "Wartung");
+await html(other, "<p>Der Server wird am Samstag gewartet.</p>");
+const db = await createPage(wid, space, admin.id, "Ausflüge", "database");
+const trip = (await command(admin, { action: "row.create", pageId: db, cells: { title: "Betriebsausflug Hamburg", status: "In Arbeit" } })) as { id: string };
 // … and what must never reach a prompt for him.
-const secretPage = createPage(wid, privateSpace, admin.id, "Geheimprojekt");
-html(secretPage, "<p>Betriebsausflug Budget: 5000 Euro GEHEIMBUDGET.</p>");
-const blocked = createPage(wid, space, admin.id, "Personalakte");
-html(blocked, "<p>Betriebsausflug Abmahnung GESPERRTINHALT.</p>");
-command(admin, { action: "ai.block", targetId: blocked, kind: "page", blocked: true });
-const journal = createPage(wid, space, ben.id, "Tagebuch", "journal");
-const day = createPage(wid, space, ben.id, "Montag", "document", journal);
-html(day, "<p>Betriebsausflug war langweilig TAGEBUCHINHALT.</p>");
-run("INSERT INTO journal_settings(page_id,lock_hash) VALUES(?,?)", journal, "pin-hash");
-const excluded = createPage(wid, space, admin.id, "Gehaltsliste");
-html(excluded, "<p>Betriebsausflug Zuschuss AUSGESCHLOSSENINHALT.</p>");
-command(ben, { action: "ai.rule", targetId: excluded, mode: "exclude" });
-const privateRow = command(admin, { action: "row.create", pageId: db, cells: { title: "Betriebsausflug Notiz PRIVATEREINTRAG" } }) as { id: string };
-run("UPDATE rows SET access='private' WHERE id=?", privateRow.id);
-const trashed = createPage(wid, space, admin.id, "Alt");
-html(trashed, "<p>Betriebsausflug 2019 PAPIERKORBINHALT.</p>");
-run("UPDATE pages SET deleted_at=? WHERE id=?", nowText(), trashed);
+const secretPage = await createPage(wid, privateSpace, admin.id, "Geheimprojekt");
+await html(secretPage, "<p>Betriebsausflug Budget: 5000 Euro GEHEIMBUDGET.</p>");
+const blocked = await createPage(wid, space, admin.id, "Personalakte");
+await html(blocked, "<p>Betriebsausflug Abmahnung GESPERRTINHALT.</p>");
+await command(admin, { action: "ai.block", targetId: blocked, kind: "page", blocked: true });
+const journal = await createPage(wid, space, ben.id, "Tagebuch", "journal");
+const day = await createPage(wid, space, ben.id, "Montag", "document", journal);
+await html(day, "<p>Betriebsausflug war langweilig TAGEBUCHINHALT.</p>");
+await run("INSERT INTO journal_settings(page_id,lock_hash) VALUES(?,?)", journal, "pin-hash");
+const excluded = await createPage(wid, space, admin.id, "Gehaltsliste");
+await html(excluded, "<p>Betriebsausflug Zuschuss AUSGESCHLOSSENINHALT.</p>");
+await command(ben, { action: "ai.rule", targetId: excluded, mode: "exclude" });
+const privateRow = (await command(admin, { action: "row.create", pageId: db, cells: { title: "Betriebsausflug Notiz PRIVATEREINTRAG" } })) as { id: string };
+await run("UPDATE rows SET access='private' WHERE id=?", privateRow.id);
+const trashed = await createPage(wid, space, admin.id, "Alt");
+await html(trashed, "<p>Betriebsausflug 2019 PAPIERKORBINHALT.</p>");
+await run("UPDATE pages SET deleted_at=? WHERE id=?", nowText(), trashed);
 const FORBIDDEN = ["GEHEIMBUDGET", "GESPERRTINHALT", "TAGEBUCHINHALT", "AUSGESCHLOSSENINHALT", "PRIVATEREINTRAG", "PAPIERKORBINHALT"];
 const FORBIDDEN_PAGES = [secretPage, blocked, day, journal, excluded, trashed];
 
 const mock = await startOllamaMock();
 after(() => mock.close());
-const setAi = (settings: Record<string, unknown>) => command(admin, { action: "admin.ai", settings });
+const setAi = async (settings: Record<string, unknown>) => await command(admin, { action: "admin.ai", settings });
 const ask = (user: Identity, question: string, extra: Record<string, unknown> = {}) => prepareAsk(user, { workspaceId: wid, question, ...extra });
 
 // ---- Pure parts ----
@@ -186,16 +186,16 @@ test("vectors are stored normalized as 32-bit floats", () => {
 
 test("ask needs the feature: off, guests, API tokens and the person's switch refuse", async () => {
   await assert.rejects(ask(ben, "Betriebsausflug?"), /ausgeschaltet/);
-  setAi({ enabled: true, provider: { kind: "ollama", baseUrl: mock.base, model: "chat", embeddingModel: "" } });
+  await setAi({ enabled: true, provider: { kind: "ollama", baseUrl: mock.base, model: "chat", embeddingModel: "" } });
   await assert.rejects(ask(gus, "Betriebsausflug?"), /Gäste/);
-  const { token } = command(ben, { action: "token.create", name: "Skript", scope: "read" }) as { token: string };
+  const { token } = (await command(ben, { action: "token.create", name: "Skript", scope: "read" })) as { token: string };
   await assert.rejects(ask((await identityFromApiToken(`Bearer ${token}`))!, "Betriebsausflug?"), /API-Token/);
-  setAi({ features: { ask: false } });
+  await setAi({ features: { ask: false } });
   await assert.rejects(ask(ben, "Betriebsausflug?"), /ausgeschaltet/);
-  setAi({ features: { ask: true } });
-  command(vic, { action: "ai.settings", features: { ask: false } });
+  await setAi({ features: { ask: true } });
+  await command(vic, { action: "ai.settings", features: { ask: false } });
   await assert.rejects(ask(vic, "Betriebsausflug?"), /ausgeschaltet/);
-  command(vic, { action: "ai.settings", features: { ask: true } });
+  await command(vic, { action: "ai.settings", features: { ask: true } });
 });
 
 test("excluded, hidden, blocked, PIN and trashed content never reaches the prompt or the sources", async () => {
@@ -271,8 +271,8 @@ test("a short follow-up uses the previous question's terms; history is trimmed",
 });
 
 test("the prompt stays within the passage budget", async () => {
-  const big = createPage(wid, space, admin.id, "Handbuch");
-  html(big, Array.from({ length: 300 }, (_, i) => `<p>Kapitel ${i}: Betriebsausflug Regeln und Hinweise, ausführlich beschrieben für alle Teams.</p>`).join(""));
+  const big = await createPage(wid, space, admin.id, "Handbuch");
+  await html(big, Array.from({ length: 300 }, (_, i) => `<p>Kapitel ${i}: Betriebsausflug Regeln und Hinweise, ausführlich beschrieben für alle Teams.</p>`).join(""));
   const prepared = await ask(ben, "Betriebsausflug Regeln");
   const prompt = prepared.messages[prepared.messages.length - 1].content;
   assert.ok(prompt.length < ASK_LIMITS.passageChars + 4000, String(prompt.length));
@@ -280,10 +280,10 @@ test("the prompt stays within the passage budget", async () => {
 });
 
 test("Chinese questions find their documents, also by two-character words", async () => {
-  const invoices = createPage(wid, space, admin.id, "供应商");
-  html(invoices, "<p>发票编号 4711 在上海市浦东新区。</p>");
-  const minutes = createPage(wid, space, admin.id, "会议记录");
-  html(minutes, "<p>明天下午三点开会，讨论新产品。</p>");
+  const invoices = await createPage(wid, space, admin.id, "供应商");
+  await html(invoices, "<p>发票编号 4711 在上海市浦东新区。</p>");
+  const minutes = await createPage(wid, space, admin.id, "会议记录");
+  await html(minutes, "<p>明天下午三点开会，讨论新产品。</p>");
   const prepared = await ask(ben, "浦东新区的发票在哪里");
   assert.equal(prepared.nothing, false);
   assert.ok(prepared.sources.some((s) => s.pageId === invoices));
@@ -295,8 +295,8 @@ test("Chinese questions find their documents, also by two-character words", asyn
   assert.ok(short.sources.some((s) => s.pageId === invoices));
   assert.ok(!short.sources.some((s) => s.pageId === minutes));
   // Readable content only, as for any other language.
-  const hidden = createPage(wid, privateSpace, admin.id, "机密");
-  html(hidden, "<p>发票 机密内容</p>");
+  const hidden = await createPage(wid, privateSpace, admin.id, "机密");
+  await html(hidden, "<p>发票 机密内容</p>");
   const forBen = await ask(ben, "发票");
   assert.ok(!forBen.sources.some((s) => s.pageId === hidden));
   assert.ok(!forBen.messages.map((m) => m.content).join("\n").includes("机密内容"));
@@ -313,15 +313,15 @@ const meaning = (text: string) => {
 
 test("semantic search stays off until switched on with an embedding model", async () => {
   assert.equal((await processEmbeddings()).embedded, 0);
-  assert.equal(semanticStats().active, false);
-  setAi({ provider: { kind: "ollama", baseUrl: mock.base, model: "chat", embeddingModel: "embed" } });
+  assert.equal((await semanticStats()).active, false);
+  await setAi({ provider: { kind: "ollama", baseUrl: mock.base, model: "chat", embeddingModel: "embed" } });
   assert.equal((await processEmbeddings()).embedded, 0, "an embedding model alone is not enough");
-  assert.equal(one<{ n: number }>("SELECT count(*) n FROM ai_embeddings")!.n, 0);
+  assert.equal((await one<{ n: number }>("SELECT count(*) n FROM ai_embeddings"))!.n, 0);
 });
 
 test("embeddings: readable content only, never PIN journals, blocked pages or the trash; incremental", async () => {
   mock.vector = meaning;
-  setAi({ semanticSearch: true });
+  await setAi({ semanticSearch: true });
   let total = 0;
   for (let i = 0; i < 20; i++) {
     const step = await processEmbeddings(500);
@@ -329,7 +329,7 @@ test("embeddings: readable content only, never PIN journals, blocked pages or th
     if (!step.pending) break;
   }
   assert.ok(total > 0);
-  const embedded = new Set((await import("../lib/db")).all<{ page_id: string }>("SELECT DISTINCT page_id FROM ai_embeddings").map((r) => r.page_id));
+  const embedded = new Set((await (await import("../lib/db")).all<{ page_id: string }>("SELECT DISTINCT page_id FROM ai_embeddings")).map((r) => r.page_id));
   assert.ok(embedded.has(plan) && embedded.has(sub) && embedded.has(db));
   for (const page of [blocked, day, journal, trashed]) assert.ok(!embedded.has(page), page);
   // Personal rules and permissions apply at query time, not when embedding.
@@ -337,26 +337,26 @@ test("embeddings: readable content only, never PIN journals, blocked pages or th
   const sentTexts = mock.embeds.flat().join("\n");
   for (const word of ["GESPERRTINHALT", "TAGEBUCHINHALT", "PAPIERKORBINHALT"]) assert.ok(!sentTexts.includes(word), word);
   // Only hashes are stored, never the text.
-  const stored = (await import("../lib/db")).all<{ hash: string }>("SELECT hash FROM ai_embeddings");
+  const stored = await (await import("../lib/db")).all<{ hash: string }>("SELECT hash FROM ai_embeddings");
   assert.ok(stored.every((r) => /^[0-9a-f]{32}$/.test(r.hash)));
   // Nothing changed: nothing is embedded again.
   assert.equal((await processEmbeddings(500)).embedded, 0);
   // One paragraph changes: only that chunk is embedded again.
-  html(other, "<p>Der Server wird am Sonntag gewartet.</p>");
+  await html(other, "<p>Der Server wird am Sonntag gewartet.</p>");
   const step = await processEmbeddings(500);
   assert.equal(step.embedded, 1);
   // Closing a page to the AI removes its vectors.
-  command(admin, { action: "ai.block", targetId: other, kind: "page", blocked: true });
+  await command(admin, { action: "ai.block", targetId: other, kind: "page", blocked: true });
   await processEmbeddings(500);
-  assert.equal(one<{ n: number }>("SELECT count(*) n FROM ai_embeddings WHERE page_id=?", other)!.n, 0);
-  command(admin, { action: "ai.block", targetId: other, kind: "page", blocked: false });
-  const stats = semanticStats();
+  assert.equal((await one<{ n: number }>("SELECT count(*) n FROM ai_embeddings WHERE page_id=?", other))!.n, 0);
+  await command(admin, { action: "ai.block", targetId: other, kind: "page", blocked: false });
+  const stats = await semanticStats();
   assert.equal(stats.active, true);
   assert.ok(stats.bytes >= stats.chunks * 3 * 4);
 });
 
 test("meaning finds passages without shared words – and still respects every rule", async () => {
-  assert.ok(semanticFor(ben, wid));
+  assert.ok(await semanticFor(ben, wid));
   const hits = await semanticCandidates(ben, wid, "Reise");
   assert.ok(hits.length > 0);
   const prepared = await ask(ben, "Reise");
@@ -375,7 +375,7 @@ test("a question takes one slot of the AI rate limit before any work, not one mo
   const { limitAi } = await import("../lib/action-limits");
   const { aiComplete } = await import("../lib/ai/run");
   const asker = await person("Lim");
-  run("INSERT INTO members VALUES(?,?,?)", wid, asker.id, "editor");
+  await run("INSERT INTO members VALUES(?,?,?)", wid, asker.id, "editor");
   // 28 of the 30 requests per minute used up: the question takes the 29th –
   // its embedding takes none.
   for (let i = 0; i < 28; i++) limitAi(asker.id);
@@ -394,37 +394,37 @@ test("a question takes one slot of the AI rate limit before any work, not one mo
   await assert.rejects(() => semanticCandidates(asker, wid, "Reise"), /Zu viele KI-Anfragen/);
 });
 
-test("people with their own provider do not use the instance's embeddings", () => {
-  setAi({ userProviders: true });
-  command(vic, { action: "ai.provider", provider: { kind: "openai", baseUrl: "https://api.example.com/v1", model: "x", embeddingModel: "" }, apiKey: "sk-vic-0123456789" });
-  command(vic, { action: "ai.settings", source: "user" });
-  assert.equal(semanticFor(vic, wid), null);
-  assert.ok(semanticFor(ben, wid));
+test("people with their own provider do not use the instance's embeddings", async () => {
+  await setAi({ userProviders: true });
+  await command(vic, { action: "ai.provider", provider: { kind: "openai", baseUrl: "https://api.example.com/v1", model: "x", embeddingModel: "" }, apiKey: "sk-vic-0123456789" });
+  await command(vic, { action: "ai.settings", source: "user" });
+  assert.equal(await semanticFor(vic, wid), null);
+  assert.ok(await semanticFor(ben, wid));
 });
 
 test("switching semantic search off removes all vectors", async () => {
-  setAi({ semanticSearch: false });
+  await setAi({ semanticSearch: false });
   const step = await processEmbeddings();
   assert.ok(step.removed > 0);
-  assert.equal(one<{ n: number }>("SELECT count(*) n FROM ai_embeddings")!.n, 0);
-  assert.equal(semanticFor(ben, wid), null);
+  assert.equal((await one<{ n: number }>("SELECT count(*) n FROM ai_embeddings"))!.n, 0);
+  assert.equal(await semanticFor(ben, wid), null);
 });
 
 test("the last lesson with a person: the newest journal day, with its date", async () => {
-  setAi({ enabled: true, semanticSearch: false, provider: { kind: "ollama", baseUrl: mock.base, model: "chat", embeddingModel: "" } });
+  await setAi({ enabled: true, semanticSearch: false, provider: { kind: "ollama", baseUrl: mock.base, model: "chat", embeddingModel: "" } });
   // Pages that say "Nachhilfe" a lot – they must not crowd out the days.
   for (const name of ["Henry", "Sophie", "Lea", "Tom", "Mia", "Ole", "Ida", "Paul", "Emma"])
-    html(createPage(wid, space, admin.id, `Nachhilfe ${name}`), `<p>Nachhilfe Nachhilfe Nachhilfe mit ${name}: Termine, Nachhilfe-Plan, Nachhilfe-Material.</p>`);
-  const journal = createPage(wid, space, admin.id, "Tagebuch", "journal");
-  const day = (date: string, body: string) => {
-    const pageId = createPage(wid, space, admin.id, date, "document", journal);
-    run("UPDATE pages SET journal_date=? WHERE id=?", date, pageId);
-    html(pageId, body);
+    await html(await createPage(wid, space, admin.id, `Nachhilfe ${name}`), `<p>Nachhilfe Nachhilfe Nachhilfe mit ${name}: Termine, Nachhilfe-Plan, Nachhilfe-Material.</p>`);
+  const journal = await createPage(wid, space, admin.id, "Tagebuch", "journal");
+  const day = async (date: string, body: string) => {
+    const pageId = await createPage(wid, space, admin.id, date, "document", journal);
+    await run("UPDATE pages SET journal_date=? WHERE id=?", date, pageId);
+    await html(pageId, body);
     return pageId;
   };
-  for (let m = 1; m <= 9; m++) day(`2026-0${m}-10`, `<p>Heute mit Batu Nachhilfe gemacht: Thema ${m}.</p>`);
-  const newest = day("2026-10-20", "<p>Mit Batu Nachhilfe: quadratische Gleichungen und die pq-Formel.</p>");
-  day("2026-10-22", "<p>Einkaufen und Sport.</p>");
+  for (let m = 1; m <= 9; m++) await day(`2026-0${m}-10`, `<p>Heute mit Batu Nachhilfe gemacht: Thema ${m}.</p>`);
+  const newest = await day("2026-10-20", "<p>Mit Batu Nachhilfe: quadratische Gleichungen und die pq-Formel.</p>");
+  await day("2026-10-22", "<p>Einkaufen und Sport.</p>");
   const prepared = await ask(admin, "Was war das letzte was ich mit Batu in der Nachhilfe hatte?");
   assert.ok(prepared.sources.some((s) => s.pageId === newest), "the newest day with Batu is a source");
   const prompt = prepared.messages.at(-1)!.content;

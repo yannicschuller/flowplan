@@ -21,13 +21,13 @@ test("FLOWPLAN_SETUP_TOKEN: the first account needs the setup link", async () =>
   // An invitation (from a demo workspace) does not replace the setup link.
   const demo = id(),
     wid = id();
-  run("INSERT INTO users(id,subject,name,email,demo_until) VALUES(?,?,?,?,?)", demo, `demo:${demo}`, "Demo", "demo@example.test", Date.now() + 60_000);
-  run("INSERT INTO workspaces(id,name,created_by) VALUES(?,?,?)", wid, "Demo", demo);
-  run("INSERT INTO invites(id,workspace_id,email,role,created_by,guest,token) VALUES(?,?,?,?,?,0,?)", id(), wid, ana.email, "editor", demo, "einladung-vor-dem-setup");
+  await run("INSERT INTO users(id,subject,name,email,demo_until) VALUES(?,?,?,?,?)", demo, `demo:${demo}`, "Demo", "demo@example.test", Date.now() + 60_000);
+  await run("INSERT INTO workspaces(id,name,created_by) VALUES(?,?,?)", wid, "Demo", demo);
+  await run("INSERT INTO invites(id,workspace_id,email,role,created_by,guest,token) VALUES(?,?,?,?,?,0,?)", id(), wid, ana.email, "editor", demo, "einladung-vor-dem-setup");
   assert.equal(await auth.signupOpen(undefined, "einladung-vor-dem-setup"), false);
   assert.equal((await auth.loginOptions(undefined, "einladung-vor-dem-setup")).invitedEmail, "");
   await assert.rejects(auth.register({ ...ana, invite: "einladung-vor-dem-setup" }, "en"), /setup link/);
-  run("DELETE FROM invites");
+  await run("DELETE FROM invites");
   await assert.rejects(auth.register(ana, "en"), /setup link/);
   await assert.rejects(auth.register({ ...ana, setup: "falsch" }, "de"), /Einrichtungslink/);
   assert.equal(await auth.firstAccount(), true, "nothing was created");
@@ -36,26 +36,26 @@ test("FLOWPLAN_SETUP_TOKEN: the first account needs the setup link", async () =>
   assert.equal((await auth.loginOptions("einrichten-2026")).firstAccount, true);
   const { user, groups } = await auth.register({ ...ana, setup: "einrichten-2026" }, "de");
   assert.deepEqual(groups, [adminGroup()]);
-  assert.deepEqual(auth.localGroups(user.id), [adminGroup()]);
+  assert.deepEqual(await auth.localGroups(user.id), [adminGroup()]);
   // Afterwards the token opens nothing: sign-ups follow the instance settings.
   assert.equal(await auth.signupOpen("einrichten-2026"), false);
   await assert.rejects(auth.register({ name: "Ben", email: "ben@example.test", password: "ein-langes-passwort", setup: "einrichten-2026" }, "en"), /Only administrators/);
 });
 
-test("the admin group is matched literally in the admin list", () => {
+test("the admin group is matched literally in the admin list", async () => {
   const before = process.env.OIDC_ADMIN_GROUP;
   process.env.OIDC_ADMIN_GROUP = "max_mueller";
   try {
     const exact = id(),
       lookalike = id();
-    run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", exact, `oidc:${exact}`, "Max", `${exact}@example.test`);
-    run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", lookalike, `oidc:${lookalike}`, "Maxi", `${lookalike}@example.test`);
-    const session = (userId: string, groups: string[]) =>
-      run("INSERT INTO sessions(token,user_id,groups_json,expires,created_at) VALUES(?,?,?,?,?)", id(), userId, JSON.stringify(groups), Date.now() + 3_600_000, Date.now());
-    session(exact, ["max_mueller"]);
+    await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", exact, `oidc:${exact}`, "Max", `${exact}@example.test`);
+    await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", lookalike, `oidc:${lookalike}`, "Maxi", `${lookalike}@example.test`);
+    const session = async (userId: string, groups: string[]) =>
+      await run("INSERT INTO sessions(token,user_id,groups_json,expires,created_at) VALUES(?,?,?,?,?)", id(), userId, JSON.stringify(groups), Date.now() + 3_600_000, Date.now());
+    await session(exact, ["max_mueller"]);
     // "_" used to be a LIKE wildcard: "maxXmueller" counted as the admin group.
-    session(lookalike, ["maxXmueller"]);
-    const admins = adminUserIds();
+    await session(lookalike, ["maxXmueller"]);
+    const admins = await adminUserIds();
     assert.ok(admins.includes(exact));
     assert.ok(!admins.includes(lookalike));
   } finally {

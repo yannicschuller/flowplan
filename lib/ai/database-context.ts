@@ -110,8 +110,8 @@ export function namedDatabases<T extends { id: string; title: string }>(text: st
 
 // The databases a request refers to (ids, at most `limit`), each readable
 // for the AI.
-export function referencedDatabases(user: Identity, input: DatabaseRefInput, limit: number = DATABASE_CONTEXT_LIMITS.databases): string[] {
-  const candidates = all<{ id: string; title: string }>(
+export async function referencedDatabases(user: Identity, input: DatabaseRefInput, limit: number = DATABASE_CONTEXT_LIMITS.databases): Promise<string[]> {
+  const candidates = await all<{ id: string; title: string }>(
     "SELECT id,title FROM pages WHERE workspace_id=? AND kind='database' AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT 5000",
     input.workspaceId,
   );
@@ -126,10 +126,10 @@ export function referencedDatabases(user: Identity, input: DatabaseRefInput, lim
   add(input.pageIds || []);
   if (input.document && GENERIC.test(input.instruction)) add(linkedPageIds(input.document));
   if (!ordered.length) return [];
-  return aiFilter(
+  return (await aiFilter(
     user,
     ordered.map((pageId) => ({ pageId })),
-  )
+  ))
     .slice(0, limit)
     .map((p) => p.pageId);
 }
@@ -143,18 +143,18 @@ const oneLine = (text: string) => {
 };
 
 // One database's records as data, within `maxChars` and `maxRecords`.
-export function databaseRecords(user: Identity, pageId: string, limits: { maxChars: number; maxRecords: number }): DatabaseData | null {
-  const page = one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", pageId);
+export async function databaseRecords(user: Identity, pageId: string, limits: { maxChars: number; maxRecords: number }): Promise<DatabaseData | null> {
+  const page = await one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", pageId);
   if (!page || page.kind !== "database") return null;
   // Checked again here: callers may pass ids from anywhere.
-  if (!aiFilter(user, [{ pageId }]).length) return null;
-  const fields = visibleFields(user, page, database(page.id).fields as Field[]);
+  if (!(await aiFilter(user, [{ pageId }])).length) return null;
+  const fields = await visibleFields(user, page, (await database(page.id)).fields as Field[]);
   const titleField = fields[0];
-  const visible = visibleRows(user, page, databaseRows(page.id));
-  const readable = aiFilter(
+  const visible = await visibleRows(user, page, await databaseRows(page.id));
+  const readable = (await aiFilter(
     user,
     visible.map((row) => ({ pageId: page.id, rowId: row.id, row })),
-  ).map((item) => item.row);
+  )).map((item) => item.row);
   const names = nameLookup();
   const header = fields.length ? `Eigenschaften: ${fields.filter((f, i) => i === 0 || !SKIPPED.includes(f.type)).map((f) => f.name).join(", ")}` : "";
   const lines: string[] = [];
@@ -183,17 +183,17 @@ export function databaseRecords(user: Identity, pageId: string, limits: { maxCha
 }
 
 // The records of every database the request refers to, sharing one budget.
-export function databaseContext(
+export async function databaseContext(
   user: Identity,
   input: DatabaseRefInput & { maxChars?: number; maxRecords?: number },
-): DatabaseData[] {
+): Promise<DatabaseData[]> {
   let chars = Math.min(input.maxChars ?? DATABASE_CONTEXT_LIMITS.chars, DATABASE_CONTEXT_LIMITS.chars);
   let records = Math.min(input.maxRecords ?? DATABASE_CONTEXT_LIMITS.records, DATABASE_CONTEXT_LIMITS.records);
   if (chars < 200) return [];
   const result: DatabaseData[] = [];
-  for (const pageId of referencedDatabases(user, input)) {
+  for (const pageId of await referencedDatabases(user, input)) {
     if (chars < 200 || records <= 0) break;
-    const data = databaseRecords(user, pageId, { maxChars: chars, maxRecords: records });
+    const data = await databaseRecords(user, pageId, { maxChars: chars, maxRecords: records });
     if (!data) continue;
     result.push(data);
     chars -= data.block.length;

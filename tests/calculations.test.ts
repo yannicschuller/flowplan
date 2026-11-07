@@ -288,9 +288,9 @@ const { command, database, rows, bootstrap } = await import("../lib/api");
 const { linkedDatabaseData } = await import("../lib/linked-databases");
 const { createWorkspace } = await import("../lib/seed");
 const { exportArchive, importArchive } = await import("../lib/archive");
-function user(): Identity {
+async function user(): Promise<Identity> {
   const uid = id();
-  run(
+  await run(
     "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
     uid,
     uid,
@@ -307,13 +307,13 @@ function user(): Identity {
     groups: [],
   };
 }
-const owner = user(),
-  viewer = user(),
-  wid = createWorkspace(owner.id, "Calculations"),
-  sid = bootstrap(owner, wid).spaces[0].id;
-run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
-const act = (data: Record<string, unknown>, actor = owner): any =>
-  command(actor, data);
+const owner = await user(),
+  viewer = await user(),
+  wid = await createWorkspace(owner.id, "Calculations"),
+  sid = (await bootstrap(owner, wid)).spaces[0].id;
+await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
+const act = async (data: Record<string, unknown>, actor = owner): Promise<any> =>
+  await command(actor, data);
 const fields: Field[] = [
   { id: "title", name: "Name", type: "text" },
   field("number"),
@@ -322,15 +322,15 @@ const configured: View = {
   ...baseView,
   calculations: { title: "count", value: "average" },
 };
-function fixture() {
-  const pid = act({
+async function fixture() {
+  const pid = (await act({
     action: "page.create",
     workspaceId: wid,
     spaceId: sid,
     kind: "database",
     title: "Calculation fixture",
-  }).id;
-  act({
+  })).id;
+  await act({
     action: "database.update",
     pageId: pid,
     version: 1,
@@ -340,56 +340,56 @@ function fixture() {
       { ...baseView, id: "other", calculations: { value: "max" } },
     ],
   });
-  act({ action: "row.create", pageId: pid, cells: { title: "A", value: 4 } });
+  await act({ action: "row.create", pageId: pid, cells: { title: "A", value: 4 } });
   return pid as string;
 }
-test("server protects calculation settings with rights, locks and versions and cleans changed properties", () => {
-  const pid = fixture(),
+test("server protects calculation settings with rights, locks and versions and cleans changed properties", async () => {
+  const pid = await fixture(),
     input = {
       action: "database.update",
       pageId: pid,
-      version: database(pid).version,
+      version: (await database(pid)).version,
       fields,
       views: [configured],
     };
-  assert.throws(() => act(input, viewer), /Berechtigung/);
-  assert.throws(() => act({ ...input, version: 0 }), /geändert/);
-  assert.throws(
-    () =>
-      act({
+  await assert.rejects(async () => await act(input, viewer), /Berechtigung/);
+  await assert.rejects(async () => await act({ ...input, version: 0 }), /geändert/);
+  await assert.rejects(
+    async () =>
+      await act({
         ...input,
         views: [{ ...configured, calculations: { missing: "count" } }],
       }),
     /Berechnung/,
   );
-  assert.throws(
-    () =>
-      act({
+  await assert.rejects(
+    async () =>
+      await act({
         ...input,
         views: [{ ...configured, calculations: { title: "sum" } }],
       }),
     /Berechnung/,
   );
-  run("UPDATE pages SET locked=1 WHERE id=?", pid);
-  assert.throws(() => act(input), /gesperrt/);
-  run("UPDATE pages SET locked=0 WHERE id=?", pid);
-  act({ ...input, fields: [fields[0], field("text")] });
-  assert.deepEqual(database(pid).views[0].calculations, { title: "count" });
-  act({ ...input, version: database(pid).version, fields: [fields[0]] });
-  assert.deepEqual(database(pid).views[0].calculations, { title: "count" });
+  await run("UPDATE pages SET locked=1 WHERE id=?", pid);
+  await assert.rejects(async () => await act(input), /gesperrt/);
+  await run("UPDATE pages SET locked=0 WHERE id=?", pid);
+  await act({ ...input, fields: [fields[0], field("text")] });
+  assert.deepEqual((await database(pid)).views[0].calculations, { title: "count" });
+  await act({ ...input, version: (await database(pid)).version, fields: [fields[0]] });
+  assert.deepEqual((await database(pid)).views[0].calculations, { title: "count" });
 });
-test("linked calculations remain independent, reject invalid settings and follow source property removal", () => {
-  const pid = fixture(),
-    host = act({
+test("linked calculations remain independent, reject invalid settings and follow source property removal", async () => {
+  const pid = await fixture(),
+    host = (await act({
       action: "page.create",
       workspaceId: wid,
       spaceId: sid,
       title: "Linked",
       kind: "document",
-    }).id,
+    })).id,
     blockId = id();
   const html = `<div data-linked-database="${blockId}" data-linked-source="${pid}" data-linked-version="1" data-linked-views="${escaped(JSON.stringify([baseView]))}">Linked</div>`;
-  run(
+  await run(
     "UPDATE documents SET html=?,state=? WHERE page_id=?",
     html,
     htmlState(html),
@@ -400,26 +400,26 @@ test("linked calculations remain independent, reject invalid settings and follow
     pageId: host,
     blockId,
     generation: "1",
-    sourceVersion: database(pid).version,
+    sourceVersion: (await database(pid)).version,
     mutation: {
       action: "database.update",
       version: 1,
-      fields: database(pid).fields,
+      fields: (await database(pid)).fields,
       views: [{ ...baseView, calculations: { value: "median" } }],
     },
   };
-  assert.throws(() => act(input, viewer), /Berechtigung/);
-  act(input);
+  await assert.rejects(async () => await act(input, viewer), /Berechtigung/);
+  await act(input);
   assert.equal(
-    linkedDatabaseData(owner, host, blockId).database.views[0].calculations
+    (await linkedDatabaseData(owner, host, blockId)).database.views[0].calculations
       ?.value,
     "median",
   );
-  assert.equal(database(pid).views[0].calculations?.value, "average");
-  assert.throws(() => act(input), /Einbettung/);
-  assert.throws(
-    () =>
-      act({
+  assert.equal((await database(pid)).views[0].calculations?.value, "average");
+  await assert.rejects(async () => await act(input), /Einbettung/);
+  await assert.rejects(
+    async () =>
+      await act({
         ...input,
         mutation: {
           ...input.mutation,
@@ -437,61 +437,61 @@ test("linked calculations remain independent, reject invalid settings and follow
     )[0].calculations,
     { title: "count" },
   );
-  act({
+  await act({
     action: "database.update",
     pageId: pid,
-    version: database(pid).version,
+    version: (await database(pid)).version,
     fields: [fields[0]],
-    views: database(pid).views,
+    views: (await database(pid)).views,
   });
   assert.deepEqual(
-    linkedDatabaseData(owner, host, blockId).database.views[0].calculations,
+    (await linkedDatabaseData(owner, host, blockId)).database.views[0].calculations,
     {},
   );
 });
 test("calculation preferences survive independent view copies, templates, snapshots and ZIP restoration", async () => {
-  const pid = fixture(),
-    expected = database(pid).views.map((view) => view.calculations);
-  const check = (target: string) =>
+  const pid = await fixture(),
+    expected = (await database(pid)).views.map((view) => view.calculations);
+  const check = async (target: string) =>
     assert.deepEqual(
-      database(target).views.map((view) => view.calculations),
+      (await database(target)).views.map((view) => view.calculations),
       expected,
     );
-  check(act({ action: "page.duplicate", pageId: pid }).id);
-  const templateId = act({
+  await check((await act({ action: "page.duplicate", pageId: pid })).id);
+  const templateId = (await act({
     action: "template.save",
     pageId: pid,
     name: "Calculations",
-  }).id;
-  check(
-    act({
+  })).id;
+  await check(
+    (await act({
       action: "page.create",
       workspaceId: wid,
       spaceId: sid,
       title: "Template copy",
       templateId,
-    }).id,
+    })).id,
   );
-  act({ action: "page.snapshot", pageId: pid });
-  const snapshotId = one<{ id: string }>(
+  await act({ action: "page.snapshot", pageId: pid });
+  const snapshotId = (await one<{ id: string }>(
     "SELECT id FROM snapshots WHERE page_id=? ORDER BY seq DESC",
     pid,
-  )!.id;
-  act({
+  ))!.id;
+  await act({
     action: "database.update",
     pageId: pid,
-    version: database(pid).version,
+    version: (await database(pid)).version,
     fields,
     views: [baseView],
   });
-  act({ action: "snapshot.restore", pageId: pid, snapshotId });
-  check(pid);
-  const target = createWorkspace(owner.id, "Restored"),
+  await act({ action: "snapshot.restore", pageId: pid, snapshotId });
+  await check(pid);
+  const target = await createWorkspace(owner.id, "Restored"),
     imported = await importArchive(
       owner,
       target,
       await exportArchive(owner, wid),
     );
-  check(imported.pageIds[pid]);
-  assert.equal(rows(imported.pageIds[pid]).length, 1);
+  await check(imported.pageIds[pid]);
+  assert.equal((await rows(imported.pageIds[pid])).length, 1);
 });

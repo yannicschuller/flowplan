@@ -36,8 +36,8 @@ export async function GET(
     const { token } = await params,
       url = new URL(req.url);
     return NextResponse.json(
-      withShareRequest(req, () =>
-        sharedContent(
+      await withShareRequest(req, async () =>
+        await sharedContent(
           token,
           url.searchParams.get("pageId") || undefined,
           url.searchParams.get("rowId") || undefined,
@@ -54,7 +54,7 @@ export async function POST(
   { params }: { params: Promise<{ token: string }> },
 ) {
   try {
-    checkOrigin(req);
+    await checkOrigin(req);
     if (Number(req.headers.get("content-length") || 0) > 2_100_000)
       throw new HttpError(413, "Anfrage zu groß.");
     const { token } = await params,
@@ -62,8 +62,8 @@ export async function POST(
     if (text.length > 2_100_000) throw new HttpError(413, "Anfrage zu groß.");
     const body = JSON.parse(text);
     // Cursor of a guest editor: frequent and small, outside the edit limits.
-    if (body?.action === "presence") return NextResponse.json(withShareRequest(req, () => sharePresence(token, body)), { headers });
-    const data = withShareRequest(req, () => mutateSharedContent(token, body));
+    if (body?.action === "presence") return NextResponse.json(await withShareRequest(req, async () => await sharePresence(token, body)), { headers });
+    const data = await withShareRequest(req, async () => await mutateSharedContent(token, body));
     after(dispatchPush);
     return NextResponse.json(data, { headers });
   } catch (e) {

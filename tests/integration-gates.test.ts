@@ -26,14 +26,14 @@ const mcpRoute = await import("../app/api/mcp/route");
 const clipperRoute = await import("../app/api/clipper/[action]/route");
 
 const uid = id();
-run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, "Ana", "ana@example.test");
+await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, "Ana", "ana@example.test");
 const st = randomBytes(16).toString("hex");
-run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", createHash("sha256").update(st).digest("hex"), uid, "[]", Date.now() + 3600_000);
+await run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", createHash("sha256").update(st).digest("hex"), uid, "[]", Date.now() + 3600_000);
 const ana = (await identityFromToken(st))!;
-const wid = createWorkspace(ana.id, "Team");
-const space = one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid)!.id;
-const { token } = command(ana, { action: "token.create", name: "mcp", scope: "write" }) as { token: string };
-const pages = () => Number(one<{ n: number }>("SELECT COUNT(*) n FROM pages WHERE workspace_id=?", wid)!.n);
+const wid = await createWorkspace(ana.id, "Team");
+const space = (await one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid))!.id;
+const { token } = (await command(ana, { action: "token.create", name: "mcp", scope: "write" })) as { token: string };
+const pages = async () => Number((await one<{ n: number }>("SELECT COUNT(*) n FROM pages WHERE workspace_id=?", wid))!.n);
 
 const createPageCall = (title: string) =>
   JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "create_page", arguments: { workspaceId: wid, spaceId: space, title } } });
@@ -54,22 +54,22 @@ const clip = (headers: Record<string, string> = {}) =>
     }),
     { params: Promise.resolve({ action: "save" }) },
   );
-const freeze = () => run("INSERT INTO instance_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", MOVE_KEY, JSON.stringify({ id: "m", hash: "x", readOnlyAt: Date.now() }));
-const thaw = () => run("DELETE FROM instance_settings WHERE key=?", MOVE_KEY);
+const freeze = async () => await run("INSERT INTO instance_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", MOVE_KEY, JSON.stringify({ id: "m", hash: "x", readOnlyAt: Date.now() }));
+const thaw = async () => await run("DELETE FROM instance_settings WHERE key=?", MOVE_KEY);
 
 test("while the instance moves: MCP write tools, the extension and SCIM answer 423 and change nothing", async () => {
-  freeze();
+  await freeze();
   try {
-    assert.throws(
-      () => checkOrigin(new Request("https://flowplan.example.test/api/command", { method: "POST", headers: { authorization: `Bearer ${token}` } })),
+    await assert.rejects(
+      async () => await checkOrigin(new Request("https://flowplan.example.test/api/command", { method: "POST", headers: { authorization: `Bearer ${token}` } })),
       (e: { status?: number }) => e.status === 423,
       "/api/command as the reference",
     );
-    const before = pages();
+    const before = await pages();
     const res = await mcp(createPageCall("Written while read-only"));
     assert.equal(res.status, 423);
     assert.match(((await res.json()) as { error: { message: string } }).error.message, /schreibgeschützt/);
-    assert.equal(pages(), before, "no page from MCP");
+    assert.equal(await pages(), before, "no page from MCP");
     // Reading tools keep working.
     const read = (await handleMcpMessage((await identityFromApiToken(`Bearer ${token}`))!, { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "list_workspaces", arguments: {} } })) as {
       result?: { isError?: boolean };
@@ -78,31 +78,31 @@ test("while the instance moves: MCP write tools, the extension and SCIM answer 4
 
     const clipped = await clip();
     assert.equal(clipped.status, 423);
-    assert.equal(pages(), before, "no page from the extension");
+    assert.equal(await pages(), before, "no page from the extension");
 
     const admin = id();
-    run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", admin, `local:${admin}`, "Admin", "admin@example.test");
-    const scim = createScimToken(admin, "Okta").token;
-    const call = (method: string, path: string[], body = "") =>
-      handleScim({ method, path, query: new URLSearchParams(), authorization: `Bearer ${scim}`, body });
-    const users = Number(one<{ n: number }>("SELECT COUNT(*) n FROM users")!.n);
-    const created = call("POST", ["Users"], JSON.stringify({ schemas: ["urn:ietf:params:scim:schemas:core:2.0:User"], userName: "neu@example.test", emails: [{ value: "neu@example.test", primary: true }] }));
+    await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", admin, `local:${admin}`, "Admin", "admin@example.test");
+    const scim = (await createScimToken(admin, "Okta")).token;
+    const call = async (method: string, path: string[], body = "") =>
+      await handleScim({ method, path, query: new URLSearchParams(), authorization: `Bearer ${scim}`, body });
+    const users = Number((await one<{ n: number }>("SELECT COUNT(*) n FROM users"))!.n);
+    const created = await call("POST", ["Users"], JSON.stringify({ schemas: ["urn:ietf:params:scim:schemas:core:2.0:User"], userName: "neu@example.test", emails: [{ value: "neu@example.test", primary: true }] }));
     assert.equal(created.status, 423);
-    assert.equal(Number(one<{ n: number }>("SELECT COUNT(*) n FROM users")!.n), users, "no account from SCIM");
-    assert.equal(call("GET", ["Users"]).status, 200, "SCIM reads keep working");
+    assert.equal(Number((await one<{ n: number }>("SELECT COUNT(*) n FROM users"))!.n), users, "no account from SCIM");
+    assert.equal((await call("GET", ["Users"])).status, 200, "SCIM reads keep working");
   } finally {
-    thaw();
+    await thaw();
   }
   // Afterwards it works again.
-  const before = pages();
+  const before = await pages();
   assert.equal((await clip()).status, 200);
-  assert.equal(pages(), before + 1);
+  assert.equal(await pages(), before + 1);
 });
 
 test("a blocked address is signed out on /api/mcp and the extension's endpoints", async () => {
   // The administrator's own address is elsewhere.
-  securityAction({ ...ana, isAdmin: true }, { action: "block.add", kind: "network", value: "203.0.113.0/24", hours: 24, reason: "" }, new Headers({ "x-forwarded-for": "198.51.100.1" }));
-  const before = pages();
+  await securityAction({ ...ana, isAdmin: true }, { action: "block.add", kind: "network", value: "203.0.113.0/24", hours: 24, reason: "" }, new Headers({ "x-forwarded-for": "198.51.100.1" }));
+  const before = await pages();
   const blocked = { "x-forwarded-for": "203.0.113.7" };
   assert.equal((await mcp(createPageCall("from a blocked address"), blocked)).status, 401);
   assert.equal((await clip(blocked)).status, 401);
@@ -111,7 +111,7 @@ test("a blocked address is signed out on /api/mcp and the extension's endpoints"
     { params: Promise.resolve({ action: "targets" }) },
   );
   assert.equal(targets.status, 401);
-  assert.equal(pages(), before);
+  assert.equal(await pages(), before);
   // Another address still gets through.
   assert.equal((await clip({ "x-forwarded-for": "198.51.100.9" })).status, 200);
 });

@@ -22,7 +22,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     description = builtIn?.description;
   if (!builtIn)
     try {
-      name = publicTemplate(id).name;
+      name = (await publicTemplate(id)).name;
     } catch {
       return { robots: { index: false, follow: false } };
     }
@@ -101,7 +101,7 @@ export default async function TemplatePreview({
   }
   let template;
   try {
-    template = publicTemplate(id);
+    template = await publicTemplate(id);
   } catch (e) {
     if (e instanceof HttpError && e.status === 404) notFound();
     throw e;

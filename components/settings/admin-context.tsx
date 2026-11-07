@@ -8,7 +8,7 @@ import type { UpdateStatus } from "@/lib/update-check";
 import type { User } from "@/lib/types";
 import type { InstanceSettings } from "@/lib/instance-settings";
 import type { sessionSettings } from "@/lib/session-policy";
-type SessionSettings = ReturnType<typeof sessionSettings>;
+type SessionSettings = Awaited<ReturnType<typeof sessionSettings>>;
 import type { MarkdownExportStatus, SpaceGitOverview } from "../markdown-export-settings";
 import type { EncryptionStatus } from "../encryption-settings";
 import type { SsoMappingRow } from "../sso-mappings";

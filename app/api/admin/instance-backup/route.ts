@@ -29,8 +29,8 @@ export async function GET() {
     const user = await requireUser();
     requireAdmin(user);
     const encrypted = encryptionEnabled();
-    audit(user.id, "instance.backup", "", encrypted ? "encrypted" : "");
-    const zip = instanceBackupStream();
+    await audit(user.id, "instance.backup", "", encrypted ? "encrypted" : "");
+    const zip = await instanceBackupStream();
     let body: Readable = zip;
     if (encrypted) {
       body = zip.pipe(sealStream());
@@ -58,7 +58,7 @@ export async function POST(req: Request) {
   const file = resolve(dir, `instance-upload-${randomUUID()}.zip`);
   const plain = `${file}.plain`;
   try {
-    checkOrigin(req);
+    await checkOrigin(req);
     const user = await requireUser();
     requireAdmin(user);
     if (!req.body) throw new HttpError(400, "Sicherung fehlt.");
@@ -86,7 +86,7 @@ export async function POST(req: Request) {
       zip = plain;
     }
     const summary = await stageInstanceRestore(zip);
-    audit(user.id, "instance.restore.staged", "", JSON.stringify(summary));
+    await audit(user.id, "instance.restore.staged", "", JSON.stringify(summary));
     return Response.json(summary);
   } catch (e) {
     return failure(e);
@@ -97,11 +97,11 @@ export async function POST(req: Request) {
 }
 export async function DELETE(req: Request) {
   try {
-    checkOrigin(req);
+    await checkOrigin(req);
     const user = await requireUser();
     requireAdmin(user);
     cancelRestore();
-    audit(user.id, "instance.restore.cancelled", "");
+    await audit(user.id, "instance.restore.cancelled", "");
     return Response.json({ ok: true });
   } catch (e) {
     return failure(e);

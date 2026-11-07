@@ -14,9 +14,9 @@ export default async function FormPage({
   const t = await serverT();
   const { token } = await params;
   try {
-    const form = getForm(token, await activeUser());
+    const form = await getForm(token, await activeUser());
     const survey = form.config.survey?.enabled ? form.config.survey : null;
-    const state = survey ? surveyClosed(survey, one<{ n: number }>("SELECT count(*) n FROM form_submissions WHERE form_token=?", token)?.n || 0) : null;
+    const state = survey ? surveyClosed(survey, (await one<{ n: number }>("SELECT count(*) n FROM form_submissions WHERE form_token=?", token))?.n || 0) : null;
     return (
       <>
       <FormClient

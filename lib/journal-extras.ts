@@ -26,8 +26,9 @@ import { Temporal, validZone } from "./date-values";
 import { safeFetch } from "./safe-fetch";
 import type { Field, Identity, Page, Row, View } from "./types";
 import { DEFAULT_SIDEBAR_MODE, SIDEBAR_MODES, sidebarMode, type SidebarMode } from "./journal-nav";
+import { findAsync, someAsync } from "./each-async";
 
-let cachedSchema: ReturnType<typeof documentSchema> | undefined;
+let cachedSchema: Awaited<ReturnType<typeof documentSchema>> | undefined;
 const schema = () => (cachedSchema ??= documentSchema());
 
 export const trackerSchema = z.object({
@@ -62,14 +63,14 @@ export const journalOptionsSchema = z.object({
   sidebar: z.enum(SIDEBAR_MODES).default(DEFAULT_SIDEBAR_MODE),
 });
 export type JournalOptions = z.infer<typeof journalOptionsSchema>;
-function settingsRow(journalId: string) {
-  return one<SettingsRow>(
+async function settingsRow(journalId: string) {
+  return await one<SettingsRow>(
     "SELECT * FROM journal_settings WHERE page_id=?",
     journalId,
   );
 }
-export function journalSettings(journalId: string) {
-  const row = settingsRow(journalId);
+export async function journalSettings(journalId: string) {
+  const row = await settingsRow(journalId);
   let trackers = defaultTrackers;
   try {
     if (row) trackers = z.array(trackerSchema).parse(JSON.parse(row.trackers));
@@ -86,13 +87,13 @@ export function journalSettings(journalId: string) {
     options,
   };
 }
-export function setJournalOptions(journal: Page, input: unknown) {
-  ensureSettings(journal.id);
-  const options = journalOptionsSchema.parse({ ...journalSettings(journal.id).options, ...(input as object) });
-  run("UPDATE journal_settings SET options=? WHERE page_id=?", JSON.stringify(options), journal.id);
+export async function setJournalOptions(journal: Page, input: unknown) {
+  await ensureSettings(journal.id);
+  const options = journalOptionsSchema.parse({ ...(await journalSettings(journal.id)).options, ...(input as object) });
+  await run("UPDATE journal_settings SET options=? WHERE page_id=?", JSON.stringify(options), journal.id);
 }
-function ensureSettings(journalId: string) {
-  run(
+async function ensureSettings(journalId: string) {
+  await run(
     "INSERT INTO journal_settings(page_id,trackers) VALUES(?,?) ON CONFLICT DO NOTHING",
     journalId,
     JSON.stringify(defaultTrackers),
@@ -100,9 +101,9 @@ function ensureSettings(journalId: string) {
 }
 // "Tage in der Seitenleiste" of every journal of a workspace, for the page
 // tree (sent with the bootstrap). Journals without settings use the default.
-export function journalSidebarModes(workspaceId: string): Record<string, SidebarMode> {
+export async function journalSidebarModes(workspaceId: string): Promise<Record<string, SidebarMode>> {
   const modes: Record<string, SidebarMode> = {};
-  for (const row of all<{ page_id: string; options: string }>(
+  for (const row of await all<{ page_id: string; options: string }>(
     "SELECT s.page_id,s.options FROM journal_settings s JOIN pages p ON p.id=s.page_id WHERE p.workspace_id=? AND p.kind='journal'",
     workspaceId,
   )) {
@@ -114,10 +115,10 @@ export function journalSidebarModes(workspaceId: string): Record<string, Sidebar
   return modes;
 }
 // The journal a page belongs to: the journal itself or the one of a day.
-export function journalOf(page: Page) {
+export async function journalOf(page: Page) {
   if (page.kind === "journal") return page;
   if (!page.journal_date || !page.parent_id) return null;
-  return one<Page>(
+  return await one<Page>(
     "SELECT * FROM pages WHERE id=? AND kind='journal'",
     page.parent_id,
   ) || null;
@@ -163,16 +164,16 @@ function resetTasks(doc: PMNode): PMNode {
   return walk(doc);
 }
 // The template as document nodes, for a new day.
-export function templateNodes(
+export async function templateNodes(
   journalId: string,
-  target: ReturnType<typeof documentSchema> = schema(),
-): PMNode[] {
-  return templateNodesOf(journalSettings(journalId).template, target);
+  target: Awaited<ReturnType<typeof documentSchema>> = schema(),
+): Promise<PMNode[]> {
+  return templateNodesOf((await journalSettings(journalId)).template, target);
 }
 // The nodes of one version of a template (stored HTML).
 export function templateNodesOf(
   html: string,
-  target: ReturnType<typeof documentSchema> = schema(),
+  target: Awaited<ReturnType<typeof documentSchema>> = schema(),
 ): PMNode[] {
   if (!html) return [];
   const ydoc = new Y.Doc();
@@ -185,7 +186,7 @@ export function templateNodesOf(
 }
 // Texts of the template's tasks: they come back every day by themselves and
 // are not carried over as well.
-export function templateTaskTexts(journalId: string, nodes = templateNodes(journalId)) {
+export async function templateTaskTexts(journalId: string, nodes = (await templateNodes(journalId))) {
   const texts = new Set<string>();
   for (const node of nodes)
     node.descendants((child) => {
@@ -196,14 +197,14 @@ export function templateTaskTexts(journalId: string, nodes = templateNodes(journ
 }
 // A day that still reads exactly like the template (plus carried tasks):
 // the current one, or the version the day was created from.
-export function onlyTemplate(
+export async function onlyTemplate(
   journalId: string,
   doc: PMNode,
   date: string,
-  nodes: PMNode[] = templateNodes(journalId),
+  nodes: PMNode[] = (await templateNodes(journalId)),
 ) {
   if (!nodes.length) return false;
-  const tasks = templateTaskTexts(journalId, nodes);
+  const tasks = await templateTaskTexts(journalId, nodes);
   const strip = (node: PMNode): unknown => {
     if (node.isText) return node.text;
     const kids: unknown[] = [];
@@ -226,36 +227,36 @@ export function onlyTemplate(
   const template = schema().node("doc", null, nodes);
   return JSON.stringify(strip(doc)) === JSON.stringify(strip(template));
 }
-export function setJournalTemplate(journal: Page, html: string) {
-  ensureSettings(journal.id);
-  run(
+export async function setJournalTemplate(journal: Page, html: string) {
+  await ensureSettings(journal.id);
+  await run(
     "UPDATE journal_settings SET template=? WHERE page_id=?",
     html ? normalizeTemplate(html) : "",
     journal.id,
   );
 }
 // The template from an existing day: its content with unchecked tasks.
-export function templateFromDay(journal: Page, dayId: string) {
-  const day = one<Page>(
+export async function templateFromDay(journal: Page, dayId: string) {
+  const day = await one<Page>(
     "SELECT * FROM pages WHERE id=? AND parent_id=? AND journal_date IS NOT NULL",
     dayId,
     journal.id,
   );
   if (!day) throw new HttpError(404, "Tag nicht gefunden.");
   const html = String(
-    one("SELECT html FROM documents WHERE page_id=?", day.id)?.html || "",
+    (await one("SELECT html FROM documents WHERE page_id=?", day.id))?.html || "",
   );
-  setJournalTemplate(journal, html);
+  await setJournalTemplate(journal, html);
 }
 
 // ---- Trackers, place ----
 
-export function setJournalTrackers(journal: Page, trackers: Tracker[]) {
+export async function setJournalTrackers(journal: Page, trackers: Tracker[]) {
   const list = z.array(trackerSchema).max(12).parse(trackers);
   if (new Set(list.map((t) => t.id)).size !== list.length)
     throw new HttpError(400, "Tracker doppelt.");
-  ensureSettings(journal.id);
-  run(
+  await ensureSettings(journal.id);
+  await run(
     "UPDATE journal_settings SET trackers=? WHERE page_id=?",
     JSON.stringify(list),
     journal.id,
@@ -278,8 +279,8 @@ export type EntryData = {
   lat: number | null;
   lon: number | null;
 };
-export function dayEntry(dayId: string): EntryData {
-  const row = one<{ data: string; place: string; lat: number | null; lon: number | null }>(
+export async function dayEntry(dayId: string): Promise<EntryData> {
+  const row = await one<{ data: string; place: string; lat: number | null; lon: number | null }>(
     "SELECT data,place,lat,lon FROM journal_entries WHERE page_id=?",
     dayId,
   );
@@ -289,14 +290,14 @@ export function dayEntry(dayId: string): EntryData {
   } catch {}
   return { values, place: row?.place || "", lat: row?.lat ?? null, lon: row?.lon ?? null };
 }
-export function hasEntryData(dayId: string) {
-  const entry = dayEntry(dayId);
+export async function hasEntryData(dayId: string) {
+  const entry = await dayEntry(dayId);
   return !!(Object.keys(entry.values).length || entry.place || entry.lat !== null);
 }
-export function saveDayEntry(journal: Page, day: Page, input: unknown) {
+export async function saveDayEntry(journal: Page, day: Page, input: unknown) {
   const patch = entrySchema.parse(input);
-  const current = dayEntry(day.id);
-  const trackers = new Map(journalSettings(journal.id).trackers.map((t) => [t.id, t]));
+  const current = await dayEntry(day.id);
+  const trackers = new Map((await journalSettings(journal.id)).trackers.map((t) => [t.id, t]));
   const values = { ...current.values };
   for (const [key, value] of Object.entries(patch.values || {})) {
     const tracker = trackers.get(key);
@@ -319,7 +320,7 @@ export function saveDayEntry(journal: Page, day: Page, input: unknown) {
   };
   if ((next.lat === null) !== (next.lon === null))
     throw new HttpError(400, "Breite und Länge gehören zusammen.");
-  run(
+  await run(
     "INSERT INTO journal_entries(page_id,data,place,lat,lon,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(page_id) DO UPDATE SET data=excluded.data,place=excluded.place,lat=excluded.lat,lon=excluded.lon,updated_at=excluded.updated_at",
     day.id,
     JSON.stringify(next.values),
@@ -328,7 +329,7 @@ export function saveDayEntry(journal: Page, day: Page, input: unknown) {
     next.lon,
     Date.now(),
   );
-  run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), day.id);
+  await run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), day.id);
   return next;
 }
 
@@ -348,8 +349,8 @@ export function words(html: string) {
 }
 // The days with what the journal page shows about them: trackers, place,
 // first photo, number of words.
-export function journalDayDetails(journalId: string) {
-  return all<{
+export async function journalDayDetails(journalId: string) {
+  return (await all<{
     id: string;
     title: string;
     icon: string;
@@ -363,7 +364,7 @@ export function journalDayDetails(journalId: string) {
      FROM pages p LEFT JOIN documents d ON d.page_id=p.id LEFT JOIN journal_entries e ON e.page_id=p.id
      WHERE p.parent_id=? AND p.journal_date IS NOT NULL AND p.deleted_at IS NULL ORDER BY p.journal_date DESC`,
     journalId,
-  ).map(({ html, data, place, ...day }) => {
+  )).map(({ html, data, place, ...day }) => {
     let values: Record<string, number | boolean> = {};
     try {
       values = data ? JSON.parse(data) : {};
@@ -381,8 +382,8 @@ export function journalDayDetails(journalId: string) {
 
 // ---- Review of a week or month ----
 
-function loadDoc(pageId: string) {
-  const row = one<{ state: Uint8Array | null; html: string }>(
+async function loadDoc(pageId: string) {
+  const row = await one<{ state: Uint8Array | null; html: string }>(
     "SELECT state,html FROM documents WHERE page_id=?",
     pageId,
   );
@@ -392,12 +393,12 @@ function loadDoc(pageId: string) {
   ydoc.destroy();
   return { doc, html: row?.html || "" };
 }
-export function journalReview(journal: Page, from: string, to: string) {
+export async function journalReview(journal: Page, from: string, to: string) {
   if (from > to) throw new HttpError(400, "Der Zeitraum ist ungültig.");
   const span = (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 864e5;
   if (span > 92) throw new HttpError(400, "Höchstens drei Monate auf einmal.");
-  const settings = journalSettings(journal.id);
-  const days = all<Page>(
+  const settings = await journalSettings(journal.id);
+  const days = await all<Page>(
     "SELECT * FROM pages WHERE parent_id=? AND journal_date BETWEEN ? AND ? AND deleted_at IS NULL ORDER BY journal_date",
     journal.id,
     from,
@@ -411,7 +412,7 @@ export function journalReview(journal: Page, from: string, to: string) {
   const trackerValues = new Map<string, { date: string; value: number | boolean }[]>();
   for (const day of days) {
     const date = day.journal_date!;
-    const { doc, html } = loadDoc(day.id);
+    const { doc, html } = await loadDoc(day.id);
     wordCount += words(html);
     doc.descendants((node) => {
       if (node.type.name !== "taskItem") return true;
@@ -426,7 +427,7 @@ export function journalReview(journal: Page, from: string, to: string) {
       });
     for (const match of html.matchAll(new RegExp(imagePattern, "gi")))
       if (images.length < 24) images.push({ src: match[1], date, dayId: day.id });
-    const entry = dayEntry(day.id);
+    const entry = await dayEntry(day.id);
     if (entry.place) places.add(entry.place);
     for (const [key, value] of Object.entries(entry.values))
       trackerValues.set(key, [...(trackerValues.get(key) || []), { date, value }]);
@@ -472,23 +473,23 @@ export const pinSchema = z.string().regex(/^\d{6,8}$/, "Die PIN hat 6 bis 8 Ziff
 // Who sets, changes or removes a journal's PIN: whoever created the journal
 // and the workspace's owners – not every editor, who could otherwise lock
 // everybody else out of a shared journal.
-const workspaceOwner = (user: Identity, workspaceId: string) =>
-  memberRole(user, workspaceId) === "owner" && !isGuest(user, workspaceId);
-export function mayManageJournalLock(user: Identity, journal: Page) {
-  return journal.created_by === user.id || workspaceOwner(user, journal.workspace_id);
+const workspaceOwner = async (user: Identity, workspaceId: string) =>
+  (await memberRole(user, workspaceId)) === "owner" && !(await isGuest(user, workspaceId));
+export async function mayManageJournalLock(user: Identity, journal: Page) {
+  return journal.created_by === user.id || await workspaceOwner(user, journal.workspace_id);
 }
 // Owners remove a PIN they do not know (a reset); the creator hears of it.
-export function mayResetJournalLock(user: Identity, journal: Page) {
-  return workspaceOwner(user, journal.workspace_id);
+export async function mayResetJournalLock(user: Identity, journal: Page) {
+  return await workspaceOwner(user, journal.workspace_id);
 }
-export function setJournalLock(user: Identity, journal: Page, pin: string | null, current?: string) {
-  if (!mayManageJournalLock(user, journal))
+export async function setJournalLock(user: Identity, journal: Page, pin: string | null, current?: string) {
+  if (!(await mayManageJournalLock(user, journal)))
     throw new HttpError(403, "Die PIN setzen nur, wer das Journal angelegt hat, und Besitzer des Arbeitsbereichs.");
-  ensureSettings(journal.id);
-  const row = settingsRow(journal.id);
+  await ensureSettings(journal.id);
+  const row = await settingsRow(journal.id);
   // Changing or removing an existing lock needs the PIN – except for an
   // owner removing it without one.
-  const reset = !!row?.lock_hash && pin === null && !current && mayResetJournalLock(user, journal);
+  const reset = !!row?.lock_hash && pin === null && !current && await mayResetJournalLock(user, journal);
   if (row?.lock_hash && !reset && !checkPin(row.lock_hash, current || ""))
     throw new HttpError(403, "Die bisherige PIN stimmt nicht.");
   // Removing a PIN one does not know opens the journal to everyone with
@@ -496,9 +497,9 @@ export function setJournalLock(user: Identity, journal: Page, pin: string | null
   // (lib/step-up.ts; POST /api/auth/journal-pin-reset sets stepUp).
   if (reset && !user.stepUp) throw new HttpError(403, JOURNAL_RESET_STEP_UP);
   if (reset) {
-    audit(user.id, "journal.lock.reset", journal.id, (journal.title || "").slice(0, 200));
-    if (journal.created_by && journal.created_by !== user.id && one("SELECT 1 FROM users WHERE id=? AND disabled=0", journal.created_by))
-      run(
+    await audit(user.id, "journal.lock.reset", journal.id, (journal.title || "").slice(0, 200));
+    if (journal.created_by && journal.created_by !== user.id && await one("SELECT 1 FROM users WHERE id=? AND disabled=0", journal.created_by))
+      await run(
         "INSERT INTO notifications(id,user_id,body,page_id,kind) VALUES(?,?,?,?,'security')",
         id(),
         journal.created_by,
@@ -506,14 +507,14 @@ export function setJournalLock(user: Identity, journal: Page, pin: string | null
         journal.id,
       );
   }
-  run(
+  await run(
     "UPDATE journal_settings SET lock_hash=? WHERE page_id=?",
     pin ? pinHash(pinSchema.parse(pin)) : null,
     journal.id,
   );
-  run("DELETE FROM journal_unlocks WHERE page_id=?", journal.id);
-  if (pin) unlockUntil(user, journal);
-  return { revoked: pin ? revokePublicAccess(user, journal) : 0 };
+  await run("DELETE FROM journal_unlocks WHERE page_id=?", journal.id);
+  if (pin) await unlockUntil(user, journal);
+  return { revoked: pin ? (await revokePublicAccess(user, journal)) : 0 };
 }
 export const JOURNAL_RESET_STEP_UP = "Bitte bestätige das Zurücksetzen der PIN zur Sicherheit noch einmal.";
 
@@ -525,29 +526,29 @@ const JOURNAL_TREE = `WITH RECURSIVE tree(id) AS (SELECT ? UNION SELECT p.id FRO
 // journal's pages in links and publications of pages above it, and public
 // forms of its databases. Returns how many were revoked; the security log
 // records it (lib/security-events.ts, "share.revoked").
-function revokePublicAccess(user: Identity, journal: Page) {
-  const links = all<{ token: string }>(`${JOURNAL_TREE} SELECT token FROM share_links WHERE root_id IN (SELECT id FROM tree)`, journal.id);
-  for (const link of links) run("DELETE FROM share_links WHERE token=?", link.token);
-  const widerLinks = all<{ token: string }>(`${JOURNAL_TREE} SELECT DISTINCT token FROM share_link_pages WHERE page_id IN (SELECT id FROM tree)`, journal.id);
-  run(`${JOURNAL_TREE} DELETE FROM share_link_pages WHERE page_id IN (SELECT id FROM tree)`, journal.id);
-  const published = all<{ id: string }>(
+async function revokePublicAccess(user: Identity, journal: Page) {
+  const links = await all<{ token: string }>(`${JOURNAL_TREE} SELECT token FROM share_links WHERE root_id IN (SELECT id FROM tree)`, journal.id);
+  for (const link of links) await run("DELETE FROM share_links WHERE token=?", link.token);
+  const widerLinks = await all<{ token: string }>(`${JOURNAL_TREE} SELECT DISTINCT token FROM share_link_pages WHERE page_id IN (SELECT id FROM tree)`, journal.id);
+  await run(`${JOURNAL_TREE} DELETE FROM share_link_pages WHERE page_id IN (SELECT id FROM tree)`, journal.id);
+  const published = await all<{ id: string }>(
     `${JOURNAL_TREE} SELECT p.id FROM pages p WHERE p.id IN (SELECT id FROM tree) AND (p.public_token IS NOT NULL OR EXISTS(SELECT 1 FROM publications u WHERE u.page_id=p.id))`,
     journal.id,
   );
   for (const page of published) {
-    run("DELETE FROM publication_pages WHERE root_id=?", page.id);
-    run("DELETE FROM publications WHERE page_id=?", page.id);
-    run("UPDATE pages SET public_token=NULL WHERE id=?", page.id);
+    await run("DELETE FROM publication_pages WHERE root_id=?", page.id);
+    await run("DELETE FROM publications WHERE page_id=?", page.id);
+    await run("UPDATE pages SET public_token=NULL WHERE id=?", page.id);
   }
-  const widerPublications = all<{ root_id: string }>(
+  const widerPublications = await all<{ root_id: string }>(
     `${JOURNAL_TREE} SELECT DISTINCT root_id FROM publication_pages WHERE page_id IN (SELECT id FROM tree)`,
     journal.id,
   );
-  run(`${JOURNAL_TREE} DELETE FROM publication_pages WHERE page_id IN (SELECT id FROM tree)`, journal.id);
-  const forms = run(`${JOURNAL_TREE} UPDATE forms SET enabled=0 WHERE enabled=1 AND internal=0 AND page_id IN (SELECT id FROM tree)`, journal.id).changes;
+  await run(`${JOURNAL_TREE} DELETE FROM publication_pages WHERE page_id IN (SELECT id FROM tree)`, journal.id);
+  const forms = (await run(`${JOURNAL_TREE} UPDATE forms SET enabled=0 WHERE enabled=1 AND internal=0 AND page_id IN (SELECT id FROM tree)`, journal.id)).changes;
   const revoked = links.length + widerLinks.length + published.length + widerPublications.length + Number(forms);
   if (revoked)
-    audit(
+    await audit(
       user.id,
       "journal.lock.revoke",
       journal.id,
@@ -558,18 +559,18 @@ function revokePublicAccess(user: Identity, journal: Page) {
 // Whether the page is a journal with a PIN, one of its days or a page
 // below it. Such pages are not shared or published (lib/share-links.ts,
 // lib/publication.ts) – whether or not the person has entered the PIN.
-export function inPinJournal(page: Pick<Page, "id">) {
-  return enclosingJournals(page as Page).some((journal) => !!settingsRow(journal.id)?.lock_hash);
+export async function inPinJournal(page: Pick<Page, "id">) {
+  return await someAsync(await enclosingJournals(page as Page), async (journal) => !!(await settingsRow(journal.id))?.lock_hash);
 }
 // Ids of every page in a journal with a PIN in the workspace.
-export function pinJournalPageIds(workspaceId: string) {
-  const journals = all<{ id: string }>(
+export async function pinJournalPageIds(workspaceId: string) {
+  const journals = await all<{ id: string }>(
     "SELECT p.id FROM pages p JOIN journal_settings s ON s.page_id=p.id WHERE p.workspace_id=? AND s.lock_hash IS NOT NULL",
     workspaceId,
   );
   const ids = new Set<string>();
   for (const journal of journals)
-    for (const page of all<{ id: string }>(`${JOURNAL_TREE} SELECT id FROM tree`, journal.id)) ids.add(page.id);
+    for (const page of await all<{ id: string }>(`${JOURNAL_TREE} SELECT id FROM tree`, journal.id)) ids.add(page.id);
   return ids;
 }
 export const PIN_JOURNAL_NOT_SHARED = "Ein Journal mit PIN lässt sich nicht freigeben oder veröffentlichen.";
@@ -579,37 +580,37 @@ function checkPin(stored: string, pin: string) {
   const actual = scryptSync(pin, salt, 32);
   return timingSafeEqual(actual, Buffer.from(expected, "hex"));
 }
-function unlockUntil(user: Identity, journal: Page) {
-  run(
+async function unlockUntil(user: Identity, journal: Page) {
+  await run(
     "INSERT INTO journal_unlocks(user_id,page_id,until) VALUES(?,?,?) ON CONFLICT(user_id,page_id) DO UPDATE SET until=excluded.until",
     user.id,
     journal.id,
     Date.now() + UNLOCK_MS,
   );
 }
-export function unlockJournal(user: Identity, journal: Page, pin: string, now = Date.now()) {
-  const row = settingsRow(journal.id);
+export async function unlockJournal(user: Identity, journal: Page, pin: string, now = Date.now()) {
+  const row = await settingsRow(journal.id);
   if (!row?.lock_hash) return;
   const key = `pin:${user.id}:${journal.id}`;
-  run("DELETE FROM login_failures WHERE key=? AND at<?", key, now - DAY_MS);
-  if (failuresSince(key, DAY_MS, now) >= PIN_PER_DAY)
+  await run("DELETE FROM login_failures WHERE key=? AND at<?", key, now - DAY_MS);
+  if ((await failuresSince(key, DAY_MS, now)) >= PIN_PER_DAY)
     throw new HttpError(429, "Zu viele Versuche für heute. Bitte morgen erneut versuchen.");
-  if (failuresSince(key, PIN_BURST_MS, now) >= PIN_BURST)
+  if ((await failuresSince(key, PIN_BURST_MS, now)) >= PIN_BURST)
     throw new HttpError(429, "Zu viele Versuche. Warte ein paar Minuten.");
   if (!checkPin(row.lock_hash, pin)) {
-    run("INSERT INTO login_failures(key,at) VALUES(?,?)", key, now);
-    if (failuresSince(key, PIN_BURST_MS, now) === PIN_BURST) notifyOwnerOfPinAttempts(user, journal);
+    await run("INSERT INTO login_failures(key,at) VALUES(?,?)", key, now);
+    if ((await failuresSince(key, PIN_BURST_MS, now)) === PIN_BURST) await notifyOwnerOfPinAttempts(user, journal);
     throw new HttpError(403, "Die PIN stimmt nicht.");
   }
-  run("DELETE FROM login_failures WHERE key=?", key);
-  unlockUntil(user, journal);
+  await run("DELETE FROM login_failures WHERE key=?", key);
+  await unlockUntil(user, journal);
 }
 // The person who created the journal learns when somebody else keeps
 // guessing its PIN (once per burst; their own typos stay quiet).
-function notifyOwnerOfPinAttempts(user: Identity, journal: Page) {
+async function notifyOwnerOfPinAttempts(user: Identity, journal: Page) {
   if (!journal.created_by || journal.created_by === user.id) return;
-  if (!one("SELECT 1 FROM users WHERE id=? AND disabled=0", journal.created_by)) return;
-  run(
+  if (!(await one("SELECT 1 FROM users WHERE id=? AND disabled=0", journal.created_by))) return;
+  await run(
     "INSERT INTO notifications(id,user_id,body,page_id,kind) VALUES(?,?,?,?,'security')",
     id(),
     journal.created_by,
@@ -617,13 +618,13 @@ function notifyOwnerOfPinAttempts(user: Identity, journal: Page) {
     journal.id,
   );
 }
-export function lockJournalNow(user: Identity, journal: Page) {
-  run("DELETE FROM journal_unlocks WHERE user_id=? AND page_id=?", user.id, journal.id);
+export async function lockJournalNow(user: Identity, journal: Page) {
+  await run("DELETE FROM journal_unlocks WHERE user_id=? AND page_id=?", user.id, journal.id);
 }
 // The journals a page lies in: the journal itself, its days and any page
 // below – nested journals included.
-function enclosingJournals(page: Page) {
-  return all<{ id: string }>(
+async function enclosingJournals(page: Page) {
+  return await all<{ id: string }>(
     `WITH RECURSIVE up(id,parent_id,kind,depth) AS (
        SELECT id,parent_id,kind,0 FROM pages WHERE id=?
        UNION ALL SELECT p.id,p.parent_id,p.kind,up.depth+1 FROM pages p JOIN up ON p.id=up.parent_id WHERE up.depth<64)
@@ -633,21 +634,21 @@ function enclosingJournals(page: Page) {
 }
 // The journal whose PIN keeps the page closed for the person (the page
 // itself, a day or any page below a journal), or null.
-export function lockingJournal(user: Identity, page: Page) {
+export async function lockingJournal(user: Identity, page: Page) {
   return (
-    enclosingJournals(page).find(
-      (journal) =>
-        !!settingsRow(journal.id)?.lock_hash &&
-        !one("SELECT 1 FROM journal_unlocks WHERE user_id=? AND page_id=? AND until>?", user.id, journal.id, Date.now()),
-    )?.id || null
+    (await findAsync(await enclosingJournals(page), 
+      async (journal) =>
+        !!(await settingsRow(journal.id))?.lock_hash &&
+        !(await one("SELECT 1 FROM journal_unlocks WHERE user_id=? AND page_id=? AND until>?", user.id, journal.id, Date.now())),
+    ))?.id || null
   );
 }
 // Whether the page is behind a journal PIN the person has not entered.
-export function journalLocked(user: Identity, page: Page) {
-  return !!lockingJournal(user, page);
+export async function journalLocked(user: Identity, page: Page) {
+  return !!(await lockingJournal(user, page));
 }
-export function requireUnlocked(user: Identity, page: Page) {
-  if (journalLocked(user, page))
+export async function requireUnlocked(user: Identity, page: Page) {
+  if (await journalLocked(user, page))
     throw new HttpError(423, "Dieses Journal ist gesperrt.");
 }
 // A notification about a page behind a PIN its recipient has not entered
@@ -655,43 +656,43 @@ export function requireUnlocked(user: Identity, page: Page) {
 // chat apps): its text may quote a record or a task from there. Security
 // notices (wrong PINs, a reset PIN) keep their text.
 export const LOCKED_NOTICE = "Dieses Journal ist gesperrt.";
-export function lockedNotification() {
+export async function lockedNotification() {
   // Without any PIN on the instance nothing is checked.
-  if (!one("SELECT 1 FROM journal_settings WHERE lock_hash IS NOT NULL LIMIT 1")) return () => false;
+  if (!(await one("SELECT 1 FROM journal_settings WHERE lock_hash IS NOT NULL LIMIT 1"))) return () => false;
   const known = new Map<string, boolean>();
-  return (n: { user_id?: string; page_id: string | null; kind: string | null }, userId = n.user_id || "") => {
+  return async (n: { user_id?: string; page_id: string | null; kind: string | null }, userId = n.user_id || "") => {
     if (!n.page_id || n.kind === "security" || n.kind === "incident") return false;
     const key = `${userId}:${n.page_id}`;
     if (!known.has(key)) {
-      const page = one<Page>("SELECT * FROM pages WHERE id=?", n.page_id);
-      known.set(key, !!page && journalLocked({ id: userId } as Identity, page));
+      const page = await one<Page>("SELECT * FROM pages WHERE id=?", n.page_id);
+      known.set(key, !!page && await journalLocked({ id: userId } as Identity, page));
     }
     return known.get(key)!;
   };
 }
 // Ids of all pages behind a PIN the person has not entered (for search).
-export function lockedPageIds(user: Identity, workspaceId: string) {
-  const locked = all<{ id: string }>(
+export async function lockedPageIds(user: Identity, workspaceId: string) {
+  const locked = (await all<{ id: string }>(
     `SELECT p.id FROM pages p JOIN journal_settings s ON s.page_id=p.id
      WHERE p.workspace_id=? AND s.lock_hash IS NOT NULL
      AND NOT EXISTS(SELECT 1 FROM journal_unlocks u WHERE u.page_id=p.id AND u.user_id=? AND u.until>?)`,
     workspaceId,
     user.id,
     Date.now(),
-  ).map((r) => r.id);
+  )).map((r) => r.id);
   // Pages of end-to-end encrypted spaces count as locked too: the server
   // holds no plaintext of them for search, exports, previews or the AI
   // (lib/e2ee-server.ts). Their sub-pages are in the same space.
-  const encrypted = encryptedPageIds(workspaceId);
+  const encrypted = await encryptedPageIds(workspaceId);
   if (!locked.length) return encrypted;
   // The journals, their days and every page below them.
   const ids = new Set([...locked, ...encrypted]);
   let level = locked;
   for (let depth = 0; level.length && depth < 64; depth++) {
-    level = all<{ id: string }>(
+    level = (await all<{ id: string }>(
       `SELECT id FROM pages WHERE parent_id IN (${level.map(() => "?").join(",")})`,
       ...level,
-    )
+    ))
       .map((r) => r.id)
       .filter((id) => !ids.has(id));
     for (const id of level) ids.add(id);
@@ -728,15 +729,15 @@ function covers(range: { timed: boolean; start: string; end: string; startMs: nu
   return first <= date && date <= last;
 }
 // Entries of all databases the person may read whose date falls on the day.
-export function databaseEvents(user: Identity, workspaceId: string, date: string, zone: string) {
+export async function databaseEvents(user: Identity, workspaceId: string, date: string, zone: string) {
   if (!validZone(zone)) zone = "UTC";
   const events: DayEvent[] = [];
-  const pages = all<Page & { fields: string; views: string }>(
+  const pages = await all<Page & { fields: string; views: string }>(
     "SELECT p.*,d.fields,d.views FROM pages p JOIN databases d ON d.page_id=p.id WHERE p.workspace_id=? AND p.deleted_at IS NULL",
     workspaceId,
   );
   for (const page of pages) {
-    if (!pageRole(user, page) || journalLocked(user, page)) continue;
+    if (!(await pageRole(user, page)) || await journalLocked(user, page)) continue;
     const fields = JSON.parse(page.fields) as Field[];
     const views = JSON.parse(page.views) as View[];
     const view =
@@ -750,7 +751,7 @@ export function databaseEvents(user: Identity, workspaceId: string, date: string
     const end = view.endDateField ? fields.find((f) => f.id === view.endDateField) : undefined;
     const path = (id: string) => id.replace(/"/g, "");
     // A generous prefilter in SQL; the exact check follows below.
-    const candidates = all<Row & { cells: string; recurrence: string | null }>(
+    const candidates = (await all<Row & { cells: string; recurrence: string | null }>(
       `SELECT * FROM rows WHERE page_id=? AND (
         (recurrence IS NOT NULL AND recurrence!='') OR
         substr(${sql.jsonKey("cells")},1,10) BETWEEN ? AND ? OR
@@ -765,9 +766,9 @@ export function databaseEvents(user: Identity, workspaceId: string, date: string
       shift(date, 1),
       path(end?.id || start.id),
       shift(date, -1),
-    ).map((r) => ({ ...r, cells: JSON.parse(r.cells as unknown as string) }) as Row & { recurrence: string | null });
+    )).map((r) => ({ ...r, cells: JSON.parse(r.cells as unknown as string) }) as Row & { recurrence: string | null });
     const title = fields[0];
-    for (const row of visibleRows(user, page, candidates)) {
+    for (const row of await visibleRows(user, page, candidates)) {
       const range = calendarRange(row, fields, { ...view, dateField: start.id } as View, zone);
       if (!range) continue;
       let hit = covers(range, date, zone);
@@ -816,9 +817,9 @@ export const icsUrlSchema = z
   .trim()
   .max(1000)
   .refine((v) => v === "" || /^(https|webcal):\/\//i.test(v), "Nur https- oder webcal-Adressen.");
-export function setJournalCalendar(journal: Page, url: string) {
-  ensureSettings(journal.id);
-  run(
+export async function setJournalCalendar(journal: Page, url: string) {
+  await ensureSettings(journal.id);
+  await run(
     "UPDATE journal_settings SET ics_url=? WHERE page_id=?",
     icsUrlSchema.parse(url).replace(/^webcal:/i, "https:") || null,
     journal.id,
@@ -943,7 +944,7 @@ export function icsEventsOn(events: IcsEvent[], date: string, zone: string): Day
   return out.slice(0, 100);
 }
 export async function calendarEvents(journalId: string, date: string, zone: string) {
-  const url = journalSettings(journalId).icsUrl;
+  const url = (await journalSettings(journalId)).icsUrl;
   if (!url) return [];
   let cached = icsCache.get(url);
   if (!cached || cached.at < Date.now() - 30 * 60_000) {

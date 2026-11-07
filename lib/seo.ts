@@ -10,9 +10,9 @@ export const DOCS_URL = "https://docs.flowplan.org";
 export const GITHUB_URL = "https://github.com/yannicschuller/flowplan";
 
 // Indexed pages: always the same for every reader, so no language versions.
-export function publicPaths() {
+export async function publicPaths() {
   const builtIn = Object.keys(catalogFor("de")).map((key) => `/templates/starter-${key}`);
-  const published = publicTemplates().map((t) => `/templates/${t.id}`);
+  const published = (await publicTemplates()).map((t) => `/templates/${t.id}`);
   return ["/login", "/register", "/templates", ...builtIn, ...published];
 }
 

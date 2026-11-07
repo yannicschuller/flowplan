@@ -26,12 +26,12 @@ export const INSTANCE_ARCHIVE_LIMIT = 50 * 1024 * 1024 * 1024;
 const dataDir = () => resolve(process.env.FLOWPLAN_DATA_DIR || "./data");
 const UPLOAD = /^uploads\/[A-Za-z0-9_-]{1,100}$/;
 
-export function instanceBackupStream() {
+export async function instanceBackupStream() {
   const dir = dataDir(),
     tmp = resolve(dir, "tmp");
   mkdirSync(tmp, { recursive: true });
   const copy = resolve(tmp, `instance-${id()}.sqlite`);
-  snapshotDatabase(copy);
+  await snapshotDatabase(copy);
   const uploads = resolve(dir, "uploads");
   const files = existsSync(uploads)
     ? readdirSync(uploads).filter((n) => /^[A-Za-z0-9_-]{1,100}$/.test(n))

@@ -27,7 +27,7 @@ export default async function Home({
 }) {
   // An instance that has moved (lib/instance-move.ts) may send the browser
   // to its new address; otherwise a banner says where it went.
-  const move = readOnlyState();
+  const move = await readOnlyState();
   if (move.redirect && move.movedTo) redirect(move.movedTo);
   const user = await currentUser();
   // Visitors sign in.
@@ -40,27 +40,27 @@ export default async function Home({
           {...await loginOptions((await searchParams).setup, (await searchParams).invite)}
           error={(await searchParams).authError}
           notice={(await searchParams).confirmed ? "confirmed" : undefined}
-          instanceName={instanceSettings().name}
+          instanceName={(await instanceSettings()).name}
           sourceUrl={sourceUrl()}
         />
       </>
     );
   // The instance requires a second factor this account does not have yet.
-  if (user.twoFactorSetup) return <TwoFactorRequired name={user.name} instanceName={instanceSettings().name} />;
+  if (user.twoFactorSetup) return <TwoFactorRequired name={user.name} instanceName={(await instanceSettings()).name} />;
   const locale = await requestLocale();
-  rememberLocale(user.id, locale);
-  withContentLocale(locale, () => ensureWorkspace(user.id));
+  await rememberLocale(user.id, locale);
+  await withContentLocale(locale, async () => await ensureWorkspace(user.id));
   const { useTemplate, invite } = await searchParams;
   // An invitation link: taken over by whoever opens it signed in, and the
   // app opens in that workspace.
-  const invited = invite ? acceptInviteToken(one<User>("SELECT * FROM users WHERE id=?", user.id)!, invite) : null;
+  const invited = invite ? (await acceptInviteToken((await one<User>("SELECT * FROM users WHERE id=?", user.id))!, invite)) : null;
   return (
     <>
       {/* A scheduled maintenance announced in Administration → Operations. */}
       <MoveBanner initial={move} poll />
-      <MaintenanceBanner initial={maintenanceNotice()} />
+      <MaintenanceBanner initial={await maintenanceNotice()} />
       <WorkspaceApp
-        initial={bootstrap(user, invited || undefined, (await headers()).get("user-agent")) as never}
+        initial={(await bootstrap(user, invited || undefined, (await headers()).get("user-agent"))) as never}
         inviteResult={invite ? (invited ? "accepted" : "invalid") : undefined}
         useTemplate={
           useTemplate && (/^[0-9a-f-]{36}$/i.test(useTemplate) || /^starter:[A-Za-z]{1,40}$/.test(useTemplate))

@@ -13,56 +13,56 @@ const { resolveTicket } = await import("../lib/ticket-refs");
 const { computedCells } = await import("../lib/database");
 const { suggestedPrefix } = await import("../lib/ticket-ids");
 
-function user(name: string): Identity {
+async function user(name: string): Promise<Identity> {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@test.invalid`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@test.invalid`);
   return { id: uid, name, email: `${name}@test.invalid`, groups: [], isAdmin: false, disabled: 0, created_at: "" };
 }
-const owner = user("owner"),
-  stranger = user("stranger");
-const wid = createWorkspace(owner.id, "Tickets"),
-  boot = bootstrap(owner, wid);
-const act = (body: Record<string, unknown>): any => command(owner, body);
-const db = (title: string) => act({ action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, kind: "database", title }).id as string;
-const withId = (pageId: string, prefix?: string) => {
-  const fields: Field[] = [...database(pageId).fields.filter((f) => f.type !== "id"), { id: "key", name: "ID", type: "id", prefix }];
-  return act({ action: "database.update", pageId, version: database(pageId).version, fields, views: database(pageId).views });
+const owner = await user("owner"),
+  stranger = await user("stranger");
+const wid = await createWorkspace(owner.id, "Tickets"),
+  boot = await bootstrap(owner, wid);
+const act = async (body: Record<string, unknown>): Promise<any> => await command(owner, body);
+const db = async (title: string) => (await act({ action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, kind: "database", title })).id as string;
+const withId = async (pageId: string, prefix?: string) => {
+  const fields: Field[] = [...(await database(pageId)).fields.filter((f) => f.type !== "id"), { id: "key", name: "ID", type: "id", prefix }];
+  return await act({ action: "database.update", pageId, version: (await database(pageId)).version, fields, views: (await database(pageId)).views });
 };
 
-test("records get running numbers, shown with the prefix", () => {
-  const web = db("Website");
-  const a = act({ action: "row.create", pageId: web, cells: { title: "A" } }).id;
-  const b = act({ action: "row.create", pageId: web, cells: { title: "B" } }).id;
-  withId(web, "WEB");
-  const fields = database(web).fields;
-  const shown = (rid: string) => {
-    const row = one<any>("SELECT * FROM rows WHERE id=?", rid);
+test("records get running numbers, shown with the prefix", async () => {
+  const web = await db("Website");
+  const a = (await act({ action: "row.create", pageId: web, cells: { title: "A" } })).id;
+  const b = (await act({ action: "row.create", pageId: web, cells: { title: "B" } })).id;
+  await withId(web, "WEB");
+  const fields = (await database(web)).fields;
+  const shown = async (rid: string) => {
+    const row = await one<any>("SELECT * FROM rows WHERE id=?", rid);
     return computedCells({ ...row, cells: JSON.parse(row.cells) }, fields).key;
   };
-  assert.equal(shown(a), "WEB-1");
-  assert.equal(shown(b), "WEB-2");
+  assert.equal(await shown(a), "WEB-1");
+  assert.equal(await shown(b), "WEB-2");
   // Deleted and restored: the same number again.
-  act({ action: "row.delete", pageId: web, rowId: b });
-  const c = act({ action: "row.create", pageId: web, cells: { title: "C" } }).id;
-  assert.equal(shown(c), "WEB-3");
-  const trash = one<{ id: string }>("SELECT id FROM row_trash WHERE id=?", b);
-  act({ action: "row.trash.restore", pageId: web, trashId: trash!.id });
-  assert.equal(shown(b), "WEB-2");
+  await act({ action: "row.delete", pageId: web, rowId: b });
+  const c = (await act({ action: "row.create", pageId: web, cells: { title: "C" } })).id;
+  assert.equal(await shown(c), "WEB-3");
+  const trash = await one<{ id: string }>("SELECT id FROM row_trash WHERE id=?", b);
+  await act({ action: "row.trash.restore", pageId: web, trashId: trash!.id });
+  assert.equal(await shown(b), "WEB-2");
   // The number cannot be edited.
-  assert.throws(() => act({ action: "row.update", pageId: web, rowId: a, version: 1, cells: { key: "X" } }));
+  await assert.rejects(async () => await act({ action: "row.update", pageId: web, rowId: a, version: 1, cells: { key: "X" } }));
   // References resolve for readers only.
-  const found = resolveTicket(owner, wid, "web-2")!;
+  const found = (await resolveTicket(owner, wid, "web-2"))!;
   assert.equal(found.rowId, b);
   assert.equal(found.title, "B");
-  assert.equal(resolveTicket(stranger, wid, "WEB-2"), null);
-  assert.equal(resolveTicket(owner, wid, "WEB-99"), null);
+  assert.equal(await resolveTicket(stranger, wid, "WEB-2"), null);
+  assert.equal(await resolveTicket(owner, wid, "WEB-99"), null);
 });
 
-test("prefixes are required and unique in the workspace", () => {
-  const other = db("Other");
-  assert.throws(() => withId(other), /Präfix/);
-  assert.throws(() => withId(other, "WEB"), /WEB nutzt schon/);
-  withId(other, "OPS");
+test("prefixes are required and unique in the workspace", async () => {
+  const other = await db("Other");
+  await assert.rejects(async () => await withId(other), /Präfix/);
+  await assert.rejects(async () => await withId(other, "WEB"), /WEB nutzt schon/);
+  await withId(other, "OPS");
   assert.equal(suggestedPrefix("Website Relaunch"), "WR");
   assert.equal(suggestedPrefix("Marketing"), "MARK");
 });

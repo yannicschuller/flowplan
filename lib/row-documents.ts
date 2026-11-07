@@ -22,29 +22,29 @@ export type RowTemplate = {
   html: string;
   is_default: number;
 };
-export function requireRow(
+export async function requireRow(
   user: Identity,
   pageId: string,
   rowId: string,
   write = false,
 ) {
-  const page = requirePage(user, pageId, write);
+  const page = await requirePage(user, pageId, write);
   if (page.kind !== "database") throw new HttpError(400, "Keine Datenbank.");
   // Records of a database below a journal stay behind its PIN.
-  requireUnlocked(user, page);
+  await requireUnlocked(user, page);
   if (write && page.locked)
     throw new HttpError(409, "Diese Seite ist gesperrt.");
-  const row = one<Row>(
+  const row = await one<Row>(
     "SELECT * FROM rows WHERE id=? AND page_id=?",
     rowId,
     pageId,
   );
   if (!row) throw new HttpError(404, "Datensatz nicht gefunden.");
-  assertRowAccess(user, page, row, write);
+  await assertRowAccess(user, page, row, write);
   return { page, row };
 }
-export function ensureRowDocument(row: Row): StoredDocument {
-  let d = one<StoredDocument>(
+export async function ensureRowDocument(row: Row): Promise<StoredDocument> {
+  let d = await one<StoredDocument>(
     "SELECT * FROM row_documents WHERE row_id=?",
     row.id,
   );
@@ -54,42 +54,42 @@ export function ensureRowDocument(row: Row): StoredDocument {
       ? cleanHtml(source)
       : `<p>${escaped(source).replaceAll("\n", "</p><p>")}</p>`;
     d = { state: htmlState(html), html, generation: id() };
-    run(
+    await run(
       "INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?) ON CONFLICT DO NOTHING",
       row.id,
       d.state,
       d.html,
       d.generation,
     );
-    d = one<StoredDocument>(
+    d = (await one<StoredDocument>(
       "SELECT * FROM row_documents WHERE row_id=?",
       row.id,
-    )!;
+    ))!;
   }
   return d;
 }
-export function rowDocumentData(user: Identity, pageId: string, rowId: string) {
-  const { row } = requireRow(user, pageId, rowId);
-  const d = ensureRowDocument(row);
+export async function rowDocumentData(user: Identity, pageId: string, rowId: string) {
+  const { row } = await requireRow(user, pageId, rowId);
+  const d = await ensureRowDocument(row);
   return {
     state: Buffer.from(d.state).toString("base64"),
     html: d.html,
     generation: d.generation,
-    snapshots: all<{ id: string; created_at: string }>(
+    snapshots: await all<{ id: string; created_at: string }>(
       "SELECT id,created_at FROM row_snapshots WHERE row_id=? ORDER BY created_at DESC LIMIT 50",
       rowId,
     ),
   };
 }
-export function syncRowDocument(
+export async function syncRowDocument(
   user: Identity,
   pageId: string,
   rowId: string,
   generation: unknown,
   update: unknown,
 ) {
-  const { row, page } = requireRow(user, pageId, rowId, true);
-  const previous = ensureRowDocument(row);
+  const { row, page } = await requireRow(user, pageId, rowId, true);
+  const previous = await ensureRowDocument(row);
   if (previous.generation !== generation)
     throw new HttpError(
       409,
@@ -104,29 +104,29 @@ export function syncRowDocument(
     const state = Y.encodeStateAsUpdate(doc);
     // Refused above the size cap (lib/document-size.ts) before anything is written.
     requireDocumentSize(state, previous.state.byteLength);
-    recordDocumentAuthors(pageId, rowId, previous.generation, user.id, before, Y.encodeStateVector(doc));
+    await recordDocumentAuthors(pageId, rowId, previous.generation, user.id, before, Y.encodeStateVector(doc));
     const html = stateHtml(doc);
     if (
       html !== previous.html &&
-      !one(
+      !(await one(
         "SELECT id FROM row_snapshots WHERE row_id=? AND created_at>?",
         row.id, nowText(Date.now() - 300_000),
-      )
+      ))
     )
-      snapshotRow(user, pageId, rowId);
-    run(
+      await snapshotRow(user, pageId, rowId);
+    await run(
       "UPDATE row_documents SET state=?,html=?,updated_at=? WHERE row_id=?",
       state,
       html, nowText(),
       row.id,
     );
-    run(
+    await run(
       "UPDATE rows SET content=?,updated_at=?,updated_by=? WHERE id=?",
       html, nowText(),
       user.id,
       row.id,
     );
-    run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), pageId);
+    await run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), pageId);
     for (const match of html.matchAll(/data-mention="([^"]+)"/g)) {
       const uid = match[1];
       if (
@@ -134,9 +134,9 @@ export function syncRowDocument(
         !previous.html.includes('data-mention="' + uid + '"')
       ) {
         try {
-          requireRow({ ...user, id: uid }, pageId, rowId);
-          inSavepoint(() =>
-            run(
+          await requireRow({ ...user, id: uid }, pageId, rowId);
+          await inSavepoint(async () =>
+            await run(
               "INSERT INTO notifications(id,user_id,body,page_id,row_id,kind) VALUES(?,?,?,?,?,'mention')",
               id(),
               uid,
@@ -145,7 +145,7 @@ export function syncRowDocument(
               rowId,
             ),
           );
-          mentionWebhook(page.workspace_id, pageId, rowId, uid, user.name);
+          await mentionWebhook(page.workspace_id, pageId, rowId, uid, user.name);
         } catch {}
       }
     }
@@ -154,11 +154,11 @@ export function syncRowDocument(
     doc.destroy();
   }
 }
-export function snapshotRow(user: Identity, pageId: string, rowId: string) {
-  const { row } = requireRow(user, pageId, rowId, true),
-    d = ensureRowDocument(row);
+export async function snapshotRow(user: Identity, pageId: string, rowId: string) {
+  const { row } = await requireRow(user, pageId, rowId, true),
+    d = await ensureRowDocument(row);
   const sid = id();
-  run(
+  await run(
     "INSERT INTO row_snapshots(id,row_id,state,html,created_by,kind) VALUES(?,?,?,?,?,'manual')",
     sid,
     rowId,
@@ -168,88 +168,88 @@ export function snapshotRow(user: Identity, pageId: string, rowId: string) {
   );
   return { id: sid };
 }
-export function restoreRow(
+export async function restoreRow(
   user: Identity,
   pageId: string,
   rowId: string,
   snapshotId: unknown,
 ) {
-  requireRow(user, pageId, rowId, true);
+  await requireRow(user, pageId, rowId, true);
   const sid = z.string().uuid().parse(snapshotId);
-  const s = one<{ html: string }>(
+  const s = await one<{ html: string }>(
     "SELECT html FROM row_snapshots WHERE id=? AND row_id=?",
     sid,
     rowId,
   );
   if (!s) throw new HttpError(404, "Version nicht gefunden.");
-  snapshotRow(user, pageId, rowId);
-  replaceRowDocument(rowId, s.html, user.id);
+  await snapshotRow(user, pageId, rowId);
+  await replaceRowDocument(rowId, s.html, user.id);
 }
-export function replaceRowDocument(
+export async function replaceRowDocument(
   rowId: string,
   html: string,
   userId: string,
 ) {
   const safe = cleanHtml(html);
-  run(
+  await run(
     "INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?) ON CONFLICT(row_id) DO UPDATE SET state=excluded.state,html=excluded.html,generation=excluded.generation,updated_at=?",
     rowId,
     htmlState(safe),
     safe,
     id(), nowText(),
   );
-  run(
+  await run(
     "UPDATE rows SET content=?,updated_at=?,updated_by=? WHERE id=?",
     safe, nowText(),
     userId,
     rowId,
   );
-  const owner = one<{ page_id: string }>("SELECT page_id FROM rows WHERE id=?", rowId);
+  const owner = await one<{ page_id: string }>("SELECT page_id FROM rows WHERE id=?", rowId);
   if (owner) documentChanged(owner.page_id, rowId);
 }
-export function rowTemplates(pageId: string) {
-  return all<{ id: string; name: string; is_default: number }>(
+export async function rowTemplates(pageId: string) {
+  return await all<{ id: string; name: string; is_default: number }>(
     "SELECT id,name,is_default FROM row_templates WHERE page_id=? ORDER BY created_at",
     pageId,
   );
 }
-export function selectedRowTemplate(
+export async function selectedRowTemplate(
   pageId: string,
   templateId: unknown,
-): RowTemplate | undefined {
+): Promise<RowTemplate | undefined> {
   if (templateId === null) return undefined;
   const template = templateId
-    ? one<RowTemplate>(
+    ? (await one<RowTemplate>(
         "SELECT * FROM row_templates WHERE id=? AND page_id=?",
         z.string().uuid().parse(templateId),
         pageId,
-      )
-    : one<RowTemplate>(
+      ))
+    : (await one<RowTemplate>(
         "SELECT * FROM row_templates WHERE page_id=? AND is_default=1",
         pageId,
-      );
+      ));
   if (templateId && !template)
     throw new HttpError(404, "Datensatzvorlage nicht gefunden.");
   return template;
 }
 // A stored template's cells without the properties hidden from a reader
 // (archives, page templates, copies).
-export function readableTemplateCells(user: Identity, page: Page, cells: string, hidden = hiddenFieldsFor(user, page)) {
+export async function readableTemplateCells(user: Identity, page: Page, cells: string, hidden = (await hiddenFieldsFor(user, page))) {
   return stripCells(JSON.parse(cells) as Record<string, unknown>, hidden);
 }
-export function saveRowTemplate(
+export async function saveRowTemplate(
   user: Identity,
   pageId: string,
   rowId: string,
   name: unknown,
   replaceId?: unknown,
 ) {
-  const { page, row } = requireRow(user, pageId, rowId, true),
-    d = ensureRowDocument(row);
-  const raw = one<{ fields: string }>(
+  const { page, row } = await requireRow(user, pageId, rowId, true),
+    d = await ensureRowDocument(row);
+  const raw = (await one<{ fields: string }>(
     "SELECT fields FROM databases WHERE page_id=?",
     pageId,
-  )!;
+  ))!;
   const fields = JSON.parse(raw.fields) as Field[];
   const cells = JSON.parse(String(row.cells));
   for (const f of fields)
@@ -270,7 +270,7 @@ export function saveRowTemplate(
   // Only values this person may read and change go into the template: a
   // template must not carry a hidden value out of someone's record
   // (lib/field-access.ts).
-  const unwritable = unwritableFieldIds(user, page, fields);
+  const unwritable = await unwritableFieldIds(user, page, fields);
   for (const key of unwritable) delete cells[key];
   // Placeholders name properties by id from now on, so renaming a
   // property keeps the template working (lib/record-placeholders.ts).
@@ -281,12 +281,12 @@ export function saveRowTemplate(
   // An edited template replaces the one it came from (same id: default
   // template and automations keep pointing at it).
   if (replaceId) {
-    const old = selectedRowTemplate(pageId, replaceId);
+    const old = await selectedRowTemplate(pageId, replaceId);
     if (!old) throw new HttpError(404, "Datensatzvorlage nicht gefunden.");
     // Values of the old template this person may not change stay as they were.
     const previous = JSON.parse(old.cells) as Record<string, unknown>;
     for (const key of unwritable) if (key in previous) stored[key] = previous[key];
-    run(
+    await run(
       "UPDATE row_templates SET name=?,cells=?,html=? WHERE id=?",
       title,
       JSON.stringify(stored),
@@ -296,7 +296,7 @@ export function saveRowTemplate(
     return { id: old.id };
   }
   const tid = id();
-  run(
+  await run(
     "INSERT INTO row_templates(id,page_id,name,cells,html,created_by) VALUES(?,?,?,?,?,?)",
     tid,
     pageId,
@@ -307,20 +307,20 @@ export function saveRowTemplate(
   );
   return { id: tid };
 }
-export function manageRowTemplate(
+export async function manageRowTemplate(
   user: Identity,
   pageId: string,
   templateId: unknown,
   operation: "default" | "delete",
   enabled = false,
 ) {
-  const p = requirePage(user, pageId, true);
+  const p = await requirePage(user, pageId, true);
   if (p.locked) throw new HttpError(409, "Seite ist gesperrt.");
-  const t = selectedRowTemplate(pageId, templateId);
+  const t = await selectedRowTemplate(pageId, templateId);
   if (!t) throw new HttpError(404, "Vorlage fehlt.");
-  if (operation === "delete") run("DELETE FROM row_templates WHERE id=?", t.id);
+  if (operation === "delete") await run("DELETE FROM row_templates WHERE id=?", t.id);
   else {
-    run("UPDATE row_templates SET is_default=0 WHERE page_id=?", pageId);
-    if (enabled) run("UPDATE row_templates SET is_default=1 WHERE id=?", t.id);
+    await run("UPDATE row_templates SET is_default=0 WHERE page_id=?", pageId);
+    if (enabled) await run("UPDATE row_templates SET is_default=1 WHERE id=?", t.id);
   }
 }

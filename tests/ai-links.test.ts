@@ -39,47 +39,47 @@ import type { Identity, Page } from "../lib/types";
 
 async function person(name: string): Promise<Identity> {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name.toLowerCase()}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name.toLowerCase()}@example.test`);
   const token = randomBytes(16).toString("hex");
-  run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", createHash("sha256").update(token).digest("hex"), uid, "[]", Date.now() + 3600_000);
+  await run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", createHash("sha256").update(token).digest("hex"), uid, "[]", Date.now() + 3600_000);
   return (await identityFromToken(token))!;
 }
 const admin = { ...(await person("Ada")), isAdmin: true };
 const ben = await person("Ben");
-const wid = createWorkspace(admin.id, "Team");
-run("INSERT INTO members VALUES(?,?,?)", wid, ben.id, "editor");
-const space = one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid)!.id;
+const wid = await createWorkspace(admin.id, "Team");
+await run("INSERT INTO members VALUES(?,?,?)", wid, ben.id, "editor");
+const space = (await one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid))!.id;
 const privateSpace = id();
-run("INSERT INTO spaces(id,workspace_id,name,visibility,owner_id) VALUES(?,?,?,?,?)", privateSpace, wid, "Privat", "private", admin.id);
+await run("INSERT INTO spaces(id,workspace_id,name,visibility,owner_id) VALUES(?,?,?,?,?)", privateSpace, wid, "Privat", "private", admin.id);
 const sealedSpace = id();
-run("INSERT INTO spaces(id,workspace_id,name,visibility,owner_id,encrypted) VALUES(?,?,?,?,?,1)", sealedSpace, wid, "Tresor", "workspace", admin.id);
-const html = (page: string, body: string) => run("UPDATE documents SET html=?,state=? WHERE page_id=?", body, htmlState(body), page);
-const storedHtml = (page: string) => String(one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", page)!.html);
+await run("INSERT INTO spaces(id,workspace_id,name,visibility,owner_id,encrypted) VALUES(?,?,?,?,?,1)", sealedSpace, wid, "Tresor", "workspace", admin.id);
+const html = async (page: string, body: string) => await run("UPDATE documents SET html=?,state=? WHERE page_id=?", body, htmlState(body), page);
+const storedHtml = async (page: string) => String((await one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", page))!.html);
 
 // The page being written, and pages Ben may link …
-const current = createPage(wid, space, admin.id, "Projektnotizen");
-html(current, "<p>Wir planen den Umzug ins neue Büro.</p>");
-const budget = createPage(wid, space, admin.id, "Umzugsbudget");
-html(budget, "<h2>Umzugsbudget</h2><p>Für den Umzug ins neue Büro stehen 20.000 Euro bereit.</p>");
-const checklist = createPage(wid, space, admin.id, "Umzug Checkliste");
-html(checklist, "<p>Kartons packen, Möbel für den Umzug ins Büro bestellen.</p>");
+const current = await createPage(wid, space, admin.id, "Projektnotizen");
+await html(current, "<p>Wir planen den Umzug ins neue Büro.</p>");
+const budget = await createPage(wid, space, admin.id, "Umzugsbudget");
+await html(budget, "<h2>Umzugsbudget</h2><p>Für den Umzug ins neue Büro stehen 20.000 Euro bereit.</p>");
+const checklist = await createPage(wid, space, admin.id, "Umzug Checkliste");
+await html(checklist, "<p>Kartons packen, Möbel für den Umzug ins Büro bestellen.</p>");
 // … and what must never be offered to him.
-const secret = createPage(wid, privateSpace, admin.id, "Umzug Geheimplan");
-html(secret, "<p>Umzug Büro GEHEIMINHALT.</p>");
-const blocked = createPage(wid, space, admin.id, "Umzug Personalakte");
-html(blocked, "<p>Umzug Büro GESPERRTINHALT.</p>");
-command(admin, { action: "ai.block", targetId: blocked, kind: "page", blocked: true });
-const journal = createPage(wid, space, ben.id, "Tagebuch", "journal");
-const day = createPage(wid, space, ben.id, "Umzug Tagebuchtag", "document", journal);
-html(day, "<p>Umzug Büro TAGEBUCHINHALT.</p>");
-run("INSERT INTO journal_settings(page_id,lock_hash) VALUES(?,?)", journal, "pin-hash");
-const excluded = createPage(wid, space, admin.id, "Umzug Gehälter");
-html(excluded, "<p>Umzug Büro AUSGESCHLOSSENINHALT.</p>");
-command(ben, { action: "ai.rule", targetId: excluded, mode: "exclude" });
-const trashed = createPage(wid, space, admin.id, "Umzug Archiv");
-html(trashed, "<p>Umzug Büro PAPIERKORBINHALT.</p>");
-run("UPDATE pages SET deleted_at=? WHERE id=?", nowText(), trashed);
-const sealed = createPage(wid, sealedSpace, admin.id, "Umzug Tresor");
+const secret = await createPage(wid, privateSpace, admin.id, "Umzug Geheimplan");
+await html(secret, "<p>Umzug Büro GEHEIMINHALT.</p>");
+const blocked = await createPage(wid, space, admin.id, "Umzug Personalakte");
+await html(blocked, "<p>Umzug Büro GESPERRTINHALT.</p>");
+await command(admin, { action: "ai.block", targetId: blocked, kind: "page", blocked: true });
+const journal = await createPage(wid, space, ben.id, "Tagebuch", "journal");
+const day = await createPage(wid, space, ben.id, "Umzug Tagebuchtag", "document", journal);
+await html(day, "<p>Umzug Büro TAGEBUCHINHALT.</p>");
+await run("INSERT INTO journal_settings(page_id,lock_hash) VALUES(?,?)", journal, "pin-hash");
+const excluded = await createPage(wid, space, admin.id, "Umzug Gehälter");
+await html(excluded, "<p>Umzug Büro AUSGESCHLOSSENINHALT.</p>");
+await command(ben, { action: "ai.rule", targetId: excluded, mode: "exclude" });
+const trashed = await createPage(wid, space, admin.id, "Umzug Archiv");
+await html(trashed, "<p>Umzug Büro PAPIERKORBINHALT.</p>");
+await run("UPDATE pages SET deleted_at=? WHERE id=?", nowText(), trashed);
+const sealed = await createPage(wid, sealedSpace, admin.id, "Umzug Tresor");
 // End-to-end encrypted: the server keeps no plaintext, but the title is named in the text below.
 const FORBIDDEN = ["GEHEIMINHALT", "GESPERRTINHALT", "TAGEBUCHINHALT", "AUSGESCHLOSSENINHALT", "PAPIERKORBINHALT"];
 const FORBIDDEN_PAGES = [secret, blocked, day, journal, excluded, trashed, sealed];
@@ -87,8 +87,8 @@ const FORBIDDEN_TITLES = ["Umzug Geheimplan", "Umzug Personalakte", "Umzug Tageb
 
 const mock = await startOllamaMock();
 after(() => mock.close());
-const setAi = (settings: Record<string, unknown>) => command(admin, { action: "admin.ai", settings });
-setAi({ enabled: true, provider: { kind: "ollama", baseUrl: mock.base, model: "chat", embeddingModel: "" } });
+const setAi = async (settings: Record<string, unknown>) => await command(admin, { action: "admin.ai", settings });
+await setAi({ enabled: true, provider: { kind: "ollama", baseUrl: mock.base, model: "chat", embeddingModel: "" } });
 const QUERY = "Schreib eine Einleitung über den Umzug ins neue Büro und das Umzugsbudget.";
 const candidates = (user: Identity, query = QUERY, pageId = current) => findLinkCandidates(user, { workspaceId: wid, pageId, query });
 const never = new AbortController().signal;
@@ -125,20 +125,20 @@ test("a page the person cannot read is never offered, even when its title is nam
 });
 
 test("the switches: off for the instance, off for the person, nothing without terms", async () => {
-  setAi({ features: { links: false } });
+  await setAi({ features: { links: false } });
   assert.deepEqual(await candidates(ben), { prompt: [], targets: [], index: [] });
-  setAi({ features: { links: true } });
-  command(ben, { action: "ai.settings", features: { links: false } });
+  await setAi({ features: { links: true } });
+  await command(ben, { action: "ai.settings", features: { links: false } });
   assert.deepEqual(await candidates(ben), { prompt: [], targets: [], index: [] });
-  command(ben, { action: "ai.settings", features: { links: true } });
+  await command(ben, { action: "ai.settings", features: { links: true } });
   assert.deepEqual(await candidates(ben, "Was ist das?"), { prompt: [], targets: [], index: [] });
   assert.ok((await candidates(ben)).targets.length > 0);
 });
 
 test("a strict budget: at most eight short candidates", async () => {
   for (let i = 0; i < 20; i++) {
-    const page = createPage(wid, space, admin.id, `Umzug Raum ${i}`);
-    html(page, `<p>${"Umzug ins neue Büro, Raumplanung und Möbel. ".repeat(40)}</p>`);
+    const page = await createPage(wid, space, admin.id, `Umzug Raum ${i}`);
+    await html(page, `<p>${"Umzug ins neue Büro, Raumplanung und Möbel. ".repeat(40)}</p>`);
   }
   const found = await candidates(ben);
   assert.equal(found.targets.length, LINK_LIMITS.candidates.remote);
@@ -253,12 +253,12 @@ test("inserted links are page links: in backlinks, renamed with their page, in t
     { text: "die Liste", href: `/#page=${checklist}` },
   ]);
   // Stored like any edit: the page shows up in the budget's backlinks …
-  html(current, generateHTML(next.doc.toJSON(), documentExtensions));
-  assert.ok(textBacklinks(ben, one<Page>("SELECT * FROM pages WHERE id=?", budget)!).some((l) => l.id === current));
+  await html(current, generateHTML(next.doc.toJSON(), documentExtensions));
+  assert.ok((await textBacklinks(ben, (await one<Page>("SELECT * FROM pages WHERE id=?", budget))!)).some((l) => l.id === current));
   // … the link text follows a rename …
-  command(admin, { action: "page.update", pageId: budget, patch: { title: "Umzugsbudget 2027" } });
-  assert.match(storedHtml(current), new RegExp(`<a[^>]*href="/#page=${budget}"[^>]*>Umzugsbudget 2027</a>`));
-  assert.match(storedHtml(current), />die Liste<\/a>/, "own wording stays");
+  await command(admin, { action: "page.update", pageId: budget, patch: { title: "Umzugsbudget 2027" } });
+  assert.match(await storedHtml(current), new RegExp(`<a[^>]*href="/#page=${budget}"[^>]*>Umzugsbudget 2027</a>`));
+  assert.match(await storedHtml(current), />die Liste<\/a>/, "own wording stays");
   // … and the Markdown export writes it as a link to the page.
   const { bytes } = await exportMarkdown(ben, { pageId: current, format: "markdown", includeSubpages: false });
   const markdown = Buffer.from(bytes as Uint8Array).toString("utf8");

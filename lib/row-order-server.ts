@@ -21,14 +21,14 @@ import {
 } from "./row-order";
 import type { Identity, Row, View, Field } from "./types";
 import { rowChanged } from "./automations";
-function records(pageId: string) {
-  return all<Omit<Row, "cells"> & { cells: string }>(
+async function records(pageId: string) {
+  return (await all<Omit<Row, "cells"> & { cells: string }>(
     "SELECT * FROM rows WHERE page_id=? ORDER BY position",
     pageId,
-  ).map((r) => ({ ...r, cells: JSON.parse(r.cells) }) as Row);
+  )).map((r) => ({ ...r, cells: JSON.parse(r.cells) }) as Row);
 }
-function schema(pageId: string) {
-  const d = one<{ fields: string; views: string; version: number }>(
+async function schema(pageId: string) {
+  const d = await one<{ fields: string; views: string; version: number }>(
     "SELECT fields,views,version FROM databases WHERE page_id=?",
     pageId,
   );
@@ -39,19 +39,19 @@ function schema(pageId: string) {
     version: d.version,
   };
 }
-function save(pageId: string, views: View[]) {
+async function save(pageId: string, views: View[]) {
   if (views.some((v) => (v.rowOrder?.length || 0) > MAX_ORDERED_ROWS))
     throw new HttpError(413, "Zu viele Einträge für die manuelle Reihenfolge.");
-  run(
+  await run(
     "UPDATE databases SET views=?,version=version+1 WHERE page_id=?",
     JSON.stringify(views),
     pageId,
   );
-  run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), pageId);
+  await run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), pageId);
 }
-export function validateViewRowOrders(pageId: string, views: View[]) {
+export async function validateViewRowOrders(pageId: string, views: View[]) {
   const ids = new Set(
-    all<{ id: string }>("SELECT id FROM rows WHERE page_id=?", pageId).map(
+    (await all<{ id: string }>("SELECT id FROM rows WHERE page_id=?", pageId)).map(
       (r) => r.id,
     ),
   );
@@ -63,12 +63,12 @@ export function validateViewRowOrders(pageId: string, views: View[]) {
       );
 }
 // Called after deletes/duplicates, inside the same command transaction.
-export function maintainRowOrders(
+export async function maintainRowOrders(
   pageId: string,
   copies?: Map<string, string>,
 ) {
-  const d = schema(pageId),
-    rows = records(pageId),
+  const d = await schema(pageId),
+    rows = await records(pageId),
     ids = new Set(rows.map((r) => r.id)),
     copied = new Set(copies?.values());
   const views = d.views.map((v) => {
@@ -92,9 +92,9 @@ export function maintainRowOrders(
         : v.rowOrder.filter((r) => ids.has(r)),
     };
   });
-  if (JSON.stringify(views) !== JSON.stringify(d.views)) save(pageId, views);
+  if (JSON.stringify(views) !== JSON.stringify(d.views)) await save(pageId, views);
 }
-export function moveRow(
+export async function moveRow(
   user: Identity,
   pageId: string,
   input: unknown,
@@ -122,9 +122,9 @@ export function moveRow(
         .optional(),
     })
     .parse(input);
-  const page = requirePage(user, pageId, true);
+  const page = await requirePage(user, pageId, true);
   if (page.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
-  const d = context || schema(pageId),
+  const d = context || await schema(pageId),
     view = d.views.find((v) => v.id === b.viewId);
   if (d.version !== b.version)
     throw new HttpError(409, "Die Ansicht wurde geändert. Bitte neu laden.");
@@ -136,11 +136,11 @@ export function moveRow(
     );
   if (view.sorts.length && !b.clearSorts)
     throw new HttpError(409, "Zuerst die aktive Sortierung aufheben.");
-  const rows = records(pageId),
+  const rows = await records(pageId),
     row = rows.find((r) => r.id === b.rowId);
   if (!row) throw new HttpError(404, "Eintrag fehlt.");
   // Reordering is a view setting; changing groups changes the record.
-  assertRowAccess(user, page, row, !!b.group);
+  await assertRowAccess(user, page, row, !!b.group);
   if (row.version !== b.rowVersion)
     throw new HttpError(409, "Der Eintrag wurde geändert. Bitte neu laden.");
   if ((b.placement === "before" || b.placement === "after") && !b.targetId)
@@ -150,7 +150,7 @@ export function moveRow(
     (b.targetId && !rows.some((r) => r.id === b.targetId))
   )
     throw new HttpError(400, "Ungültiger Zieleintrag.");
-  const related = relatedData(user, page);
+  const related = await relatedData(user, page);
   let order = view.sorts.length
     ? queryRows(
         rows,
@@ -257,17 +257,17 @@ export function moveRow(
     if (Object.keys(patch).length) {
       const cells = {
         ...row.cells,
-        ...validateCellPatch(user, page, d.fields, patch),
+        ...(await validateCellPatch(user, page, d.fields, patch)),
       };
       if (JSON.stringify(cells).length > 200000)
         throw new HttpError(413, "Datensatz zu groß.");
-      run(
+      await run(
         "UPDATE rows SET cells=?,version=version+1,updated_by=?,updated_at=? WHERE id=?",
         JSON.stringify(cells),
         user.id, nowText(),
         row.id,
       );
-      rowChanged(user, page, row.id, row.cells, cells, d.fields);
+      await rowChanged(user, page, row.id, row.cells, cells, d.fields);
     }
   }
   order = order.filter((r) => r !== row.id);
@@ -320,7 +320,7 @@ export function moveRow(
   );
   if (JSON.stringify(views) !== JSON.stringify(d.views)) {
     if (context) context.save(views);
-    else save(pageId, views);
+    else await save(pageId, views);
   }
   return { ok: true };
 }

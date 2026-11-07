@@ -17,21 +17,21 @@ export type Backlink = {
   field: string;
 };
 // Records in readable databases whose relation properties point at this record.
-export function relationBacklinks(
+export async function relationBacklinks(
   user: Identity,
   pageId: string,
   rowId: string,
   limit = 100,
-): Backlink[] {
-  const page = requirePage(user, pageId);
-  requireUnlocked(user, page);
-  const target = one<{ id: string; access: string; created_by: string }>(
+): Promise<Backlink[]> {
+  const page = await requirePage(user, pageId);
+  await requireUnlocked(user, page);
+  const target = await one<{ id: string; access: string; created_by: string }>(
     "SELECT id,access,created_by FROM rows WHERE id=? AND page_id=?",
     rowId,
     page.id,
   );
-  if (!target || !rowRole(user, page, target)) return [];
-  const sources = all<Page & { fields: string }>(
+  if (!target || !(await rowRole(user, page, target))) return [];
+  const sources = await all<Page & { fields: string }>(
     `SELECT p.*,d.fields FROM databases d JOIN pages p ON p.id=d.page_id
      WHERE p.workspace_id=? AND p.deleted_at IS NULL AND d.fields LIKE ?`,
     page.workspace_id,
@@ -40,8 +40,8 @@ export function relationBacklinks(
   const links: Backlink[] = [];
   for (const source of sources) {
     // Records below a journal behind a PIN not entered stay unnamed.
-    if (!pageRole(user, source) || journalLocked(user, source)) continue;
-    const hidden = hiddenFieldsFor(user, source, JSON.parse(source.fields));
+    if (!(await pageRole(user, source)) || await journalLocked(user, source)) continue;
+    const hidden = await hiddenFieldsFor(user, source, JSON.parse(source.fields));
     const fields = (JSON.parse(source.fields) as Field[]).filter(
       (f) =>
         f.type === "relation" &&
@@ -49,8 +49,8 @@ export function relationBacklinks(
         !hidden.has(f.id),
     );
     if (!fields.length) continue;
-    const visible = rowRoleResolver(user, source);
-    for (const row of all<{
+    const visible = await rowRoleResolver(user, source);
+    for (const row of await all<{
       id: string;
       cells: string;
       access: string;
@@ -87,18 +87,18 @@ export function relationBacklinks(
 
 // Everything that leads to a record: relations first, then links in the
 // texts of pages and records.
-export function recordBacklinks(user: Identity, pageId: string, rowId: string): Backlink[] {
-  const relations = relationBacklinks(user, pageId, rowId);
-  const page = requirePage(user, pageId);
-  const target = one<{ id: string; access: string; created_by: string }>(
+export async function recordBacklinks(user: Identity, pageId: string, rowId: string): Promise<Backlink[]> {
+  const relations = await relationBacklinks(user, pageId, rowId);
+  const page = await requirePage(user, pageId);
+  const target = await one<{ id: string; access: string; created_by: string }>(
     "SELECT id,access,created_by FROM rows WHERE id=? AND page_id=?",
     rowId,
     page.id,
   );
-  if (!target || !rowRole(user, page, target)) return [];
+  if (!target || !(await rowRole(user, page, target))) return [];
   return [
     ...relations,
-    ...textBacklinks(user, page, rowId).map((link) => ({
+    ...(await textBacklinks(user, page, rowId)).map((link) => ({
       pageId: link.id,
       pageTitle: link.pageTitle || "",
       ...(link.rowId ? { rowId: link.rowId } : {}),

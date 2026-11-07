@@ -11,21 +11,21 @@ const { createWorkspace } = await import("../lib/seed");
 const { whiteboardRowCards } = await import("../lib/whiteboard-cards");
 const { displayText } = await import("../lib/field-format");
 
-function user(name: string): Identity {
+async function user(name: string): Promise<Identity> {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.com`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.com`);
   return { id: uid, name, email: `${name}@example.com`, groups: [], isAdmin: false, disabled: 0, created_at: "" };
 }
-const owner = user("owner"),
-  wid = createWorkspace(owner.id, "Cards"),
-  boot = bootstrap(owner, wid);
-const act = (body: Record<string, unknown>): any => command(owner, body);
+const owner = await user("owner"),
+  wid = await createWorkspace(owner.id, "Cards"),
+  boot = await bootstrap(owner, wid);
+const act = async (body: Record<string, unknown>): Promise<any> => await command(owner, body);
 
-test("record cards send dates and numbers raw, for the reader's language", () => {
-  const page = act({ action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, title: "Projects", kind: "database" }).id as string;
-  const version = one<{ version: number }>("SELECT version FROM databases WHERE page_id=?", page)!.version;
-  const views = JSON.parse(one<{ views: string }>("SELECT views FROM databases WHERE page_id=?", page)!.views);
-  act({
+test("record cards send dates and numbers raw, for the reader's language", async () => {
+  const page = (await act({ action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, title: "Projects", kind: "database" })).id as string;
+  const version = (await one<{ version: number }>("SELECT version FROM databases WHERE page_id=?", page))!.version;
+  const views = JSON.parse((await one<{ views: string }>("SELECT views FROM databases WHERE page_id=?", page))!.views);
+  await act({
     action: "database.update",
     pageId: page,
     version,
@@ -37,10 +37,10 @@ test("record cards send dates and numbers raw, for the reader's language", () =>
     ],
     views,
   });
-  const named = act({ action: "row.create", pageId: page, cells: { title: "Launch", due: "2026-10-20", budget: 1234.5, state: "Open" } }).id as string;
-  const untitled = act({ action: "row.create", pageId: page, cells: { due: "2026-10-21" } }).id as string;
+  const named = (await act({ action: "row.create", pageId: page, cells: { title: "Launch", due: "2026-10-20", budget: 1234.5, state: "Open" } })).id as string;
+  const untitled = (await act({ action: "row.create", pageId: page, cells: { due: "2026-10-21" } })).id as string;
 
-  const cards = whiteboardRowCards(owner, [
+  const cards = await whiteboardRowCards(owner, [
     { pageId: page, rowId: named },
     { pageId: page, rowId: untitled },
   ]);

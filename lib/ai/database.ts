@@ -63,28 +63,28 @@ export class AiCellError extends HttpError {
 }
 const INSTANCE_REASONS: AiReason[] = ["off", "feature-off", "no-provider", "key-unreadable"];
 
-function activeUser(userId: string): Identity | null {
-  const user = one<User>("SELECT * FROM users WHERE id=? AND disabled=0", userId);
+async function activeUser(userId: string): Promise<Identity | null> {
+  const user = await one<User>("SELECT * FROM users WHERE id=? AND disabled=0", userId);
   return user ? { ...user, groups: [], isAdmin: false } : null;
 }
 
 // Everything checked before a record's content reaches a prompt.
-function checkCell(user: Identity, pageId: string, fieldId: string, rowId: string, mode: AiCellMode) {
+async function checkCell(user: Identity, pageId: string, fieldId: string, rowId: string, mode: AiCellMode) {
   let page: Page;
   try {
-    page = requirePage(user, pageId, true);
+    page = await requirePage(user, pageId, true);
   } catch (e) {
     throw new AiCellError((e as HttpError).status || 403, (e as Error).message, "access");
   }
   if (page.kind !== "database") throw new AiCellError(400, "Keine Datenbank.", "access");
   if (user.apiScope) throw new AiCellError(403, AI_REASON_TEXT["api-token"][0], "access");
-  if (isGuest(user, page.workspace_id)) throw new AiCellError(403, "Gäste können keine KI-Werte schreiben.", "access");
-  const resolved = resolveAi(user, "database", { workspaceId: page.workspace_id });
+  if (await isGuest(user, page.workspace_id)) throw new AiCellError(403, "Gäste können keine KI-Werte schreiben.", "access");
+  const resolved = await resolveAi(user, "database", { workspaceId: page.workspace_id });
   if (!resolved.ok)
     throw new AiCellError(resolved.reason === "no-provider" || resolved.reason === "key-unreadable" ? 409 : 403, AI_REASON_TEXT[resolved.reason][0], INSTANCE_REASONS.includes(resolved.reason) ? "instance" : "access");
   // The AI reads and writes only what this person may (lib/field-access.ts).
-  const allFields = database(pageId).fields;
-  const hidden = hiddenFieldsFor(user, page, allFields);
+  const allFields = (await database(pageId)).fields;
+  const hidden = await hiddenFieldsFor(user, page, allFields);
   const fields = allFields.filter((f) => !hidden.has(f.id));
   const field = fields.find((f) => f.id === fieldId);
   if (!field) throw new AiCellError(404, "Eigenschaft fehlt.", "access");
@@ -92,20 +92,20 @@ function checkCell(user: Identity, pageId: string, fieldId: string, rowId: strin
   if (mode === "auto" && (!field.ai?.auto || field.ai.autoBy !== user.id)) throw new AiCellError(409, "Automatische KI-Werte sind ausgeschaltet.", "row");
   if (mode === "fill" && !(AI_FILL_TYPES as readonly string[]).includes(field.type))
     throw new AiCellError(400, "Diese Eigenschaft lässt sich nicht mit KI ausfüllen.", "access");
-  const row = one<{ id: string; cells: string; version: number; access: string; created_by: string | null; number: number | null; created_at: string; updated_at: string; updated_by: string | null }>(
+  const row = await one<{ id: string; cells: string; version: number; access: string; created_by: string | null; number: number | null; created_at: string; updated_at: string; updated_by: string | null }>(
     "SELECT * FROM rows WHERE id=? AND page_id=?",
     rowId,
     pageId,
   );
   if (!row) throw new AiCellError(404, "Datensatz fehlt.", "row");
   try {
-    assertRowAccess(user, page, row, true);
+    await assertRowAccess(user, page, row, true);
   } catch (e) {
     throw new AiCellError((e as HttpError).status, (e as Error).message, "row");
   }
-  if (!aiMayRead(user, pageId, rowId)) throw new AiCellError(403, AI_BLOCKED_MESSAGE, "row");
+  if (!(await aiMayRead(user, pageId, rowId))) throw new AiCellError(403, AI_BLOCKED_MESSAGE, "row");
   try {
-    assertFieldsWritable(user, page, allFields, [field.id]);
+    await assertFieldsWritable(user, page, allFields, [field.id]);
   } catch (e) {
     throw new AiCellError((e as HttpError).status, (e as Error).message, "access");
   }
@@ -122,8 +122,8 @@ function promptContext(user: Identity, rowId: string): PromptContext {
   return { names: nameLookup(), relationTitles: relationTitlesFor(user), content: contentOf(rowId) };
 }
 
-function saveMeta(rowId: string, fieldId: string, pageId: string, values: { model: string; provider: string; by: string; hash: string; status: string }) {
-  run(
+async function saveMeta(rowId: string, fieldId: string, pageId: string, values: { model: string; provider: string; by: string; hash: string; status: string }) {
+  await run(
     `INSERT INTO ai_cell_meta(row_id,field_id,page_id,model,provider,computed_at,computed_by,input_hash,status) VALUES(?,?,?,?,?,?,?,?,?)
      ON CONFLICT(row_id,field_id) DO UPDATE SET model=excluded.model,provider=excluded.provider,computed_at=excluded.computed_at,computed_by=excluded.computed_by,input_hash=excluded.input_hash,status=excluded.status`,
     rowId,
@@ -143,7 +143,7 @@ export type AiCellResult = { status: "ok" | "unchanged" | "skipped" | "cleared";
 // Computes one value and writes it like an edit of this person (row.update:
 // validation, version history, automations, webhooks).
 export async function runAiCell(user: Identity, pageId: string, fieldId: string, rowId: string, mode: AiCellMode, signal?: AbortSignal): Promise<AiCellResult> {
-  const { page, fields, field, row, resolved } = checkCell(user, pageId, fieldId, rowId, mode);
+  const { page, fields, field, row, resolved } = await checkCell(user, pageId, fieldId, rowId, mode);
   const cells = JSON.parse(row.cells) as Record<string, unknown>;
   if (mode === "fill" && !isEmptyCell(cells[field.id])) return { status: "skipped" };
   const context = promptContext(user, rowId);
@@ -160,7 +160,7 @@ export async function runAiCell(user: Identity, pageId: string, fieldId: string,
   } else {
     const rendered = renderAiPrompt(field.ai!.prompt, fields, cells, row, context);
     hash = aiInputHash(field, rendered.input);
-    if (mode === "auto" && one<{ input_hash: string }>("SELECT input_hash FROM ai_cell_meta WHERE row_id=? AND field_id=?", rowId, fieldId)?.input_hash === hash)
+    if (mode === "auto" && (await one<{ input_hash: string }>("SELECT input_hash FROM ai_cell_meta WHERE row_id=? AND field_id=?", rowId, fieldId))?.input_hash === hash)
       return { status: "unchanged" };
     if (rendered.empty) {
       // Nothing to work with: an empty value instead of an invented one.
@@ -182,18 +182,18 @@ export async function runAiCell(user: Identity, pageId: string, fieldId: string,
   }
   const meta = { model: resolved.config.model, provider: resolved.config.kind, by: user.id, hash };
   if (mode === "fill" && (value === null || (Array.isArray(value) && !value.length))) {
-    saveMeta(rowId, fieldId, pageId, { ...meta, status: "empty" });
+    await saveMeta(rowId, fieldId, pageId, { ...meta, status: "empty" });
     return { status: "skipped" };
   }
   // The record as it is now (the answer may have taken a while).
-  const fresh = one<{ cells: string; version: number }>("SELECT cells,version FROM rows WHERE id=? AND page_id=?", rowId, pageId);
+  const fresh = await one<{ cells: string; version: number }>("SELECT cells,version FROM rows WHERE id=? AND page_id=?", rowId, pageId);
   if (!fresh) throw new AiCellError(404, "Datensatz fehlt.", "row");
   const current = (JSON.parse(fresh.cells) as Record<string, unknown>)[field.id];
   if (mode === "fill" && !isEmptyCell(current)) return { status: "skipped" };
   const next = value === null ? emptyAiCell(field) : value;
   const changed = JSON.stringify(current ?? emptyAiCell(field)) !== JSON.stringify(next);
-  if (changed) command(user, { action: "row.update", pageId, rowId, version: fresh.version, cells: { [field.id]: next } });
-  saveMeta(rowId, fieldId, pageId, { ...meta, model: content ? meta.model : "", status: value === null ? "empty" : "ok" });
+  if (changed) await command(user, { action: "row.update", pageId, rowId, version: fresh.version, cells: { [field.id]: next } });
+  await saveMeta(rowId, fieldId, pageId, { ...meta, model: content ? meta.model : "", status: value === null ? "empty" : "ok" });
   return { status: value === null ? "cleared" : changed ? "ok" : "unchanged", value: next };
 }
 
@@ -204,39 +204,39 @@ const queueInput = z.object({
   mode: z.enum(["compute", "fill"]),
 });
 // Queues values for many records; each is checked now and again when it runs.
-export function queueAiCells(user: Identity, raw: unknown) {
+export async function queueAiCells(user: Identity, raw: unknown) {
   const b = queueInput.parse(raw);
-  const page = requirePage(user, b.pageId, true);
+  const page = await requirePage(user, b.pageId, true);
   if (page.kind !== "database") throw new HttpError(400, "Keine Datenbank.");
   if (page.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
-  if (isGuest(user, page.workspace_id)) throw new HttpError(403, "Gäste können keine KI-Werte schreiben.");
-  const resolved = resolveAi(user, "database", { workspaceId: page.workspace_id });
+  if (await isGuest(user, page.workspace_id)) throw new HttpError(403, "Gäste können keine KI-Werte schreiben.");
+  const resolved = await resolveAi(user, "database", { workspaceId: page.workspace_id });
   if (!resolved.ok) throw new HttpError(resolved.reason === "no-provider" || resolved.reason === "key-unreadable" ? 409 : 403, AI_REASON_TEXT[resolved.reason][0]);
-  const allFields = database(page.id).fields;
+  const allFields = (await database(page.id)).fields;
   const field = allFields.find((f) => f.id === b.fieldId);
-  if (!field || hiddenFieldsFor(user, page, allFields).has(field.id)) throw new HttpError(404, "Eigenschaft fehlt.");
-  assertFieldsWritable(user, page, allFields, [field.id]);
+  if (!field || (await hiddenFieldsFor(user, page, allFields)).has(field.id)) throw new HttpError(404, "Eigenschaft fehlt.");
+  await assertFieldsWritable(user, page, allFields, [field.id]);
   if (b.mode === "compute" && !field.ai) throw new HttpError(400, "Das ist keine KI-Eigenschaft.");
   if (b.mode === "fill" && !(AI_FILL_TYPES as readonly string[]).includes(field.type)) throw new HttpError(400, "Diese Eigenschaft lässt sich nicht mit KI ausfüllen.");
   const rows = b.rowIds
     ? b.rowIds.length
-      ? all<{ id: string; cells: string; access: string; created_by: string | null }>(
+      ? (await all<{ id: string; cells: string; access: string; created_by: string | null }>(
           `SELECT id,cells,access,created_by FROM rows WHERE page_id=? AND id IN (${b.rowIds.map(() => "?").join(",")})`,
           page.id,
           ...b.rowIds,
-        )
+        ))
       : []
-    : all<{ id: string; cells: string; access: string; created_by: string | null }>("SELECT id,cells,access,created_by FROM rows WHERE page_id=? ORDER BY position LIMIT ?", page.id, AI_QUEUE_LIMITS.perRequest + 1);
+    : (await all<{ id: string; cells: string; access: string; created_by: string | null }>("SELECT id,cells,access,created_by FROM rows WHERE page_id=? ORDER BY position LIMIT ?", page.id, AI_QUEUE_LIMITS.perRequest + 1));
   if (rows.length > AI_QUEUE_LIMITS.perRequest) throw new HttpError(400, "Höchstens 1000 Einträge auf einmal.");
-  const role = rowRoleResolver(user, page);
+  const role = await rowRoleResolver(user, page);
   const writable = rows.filter((r) => ["editor", "owner"].includes(role(r) || ""));
-  const readable = new Set(aiFilter(user, writable.map((r) => ({ pageId: page.id, rowId: r.id }))).map((r) => r.rowId));
+  const readable = new Set((await aiFilter(user, writable.map((r) => ({ pageId: page.id, rowId: r.id })))).map((r) => r.rowId));
   const chosen = writable.filter((r) => readable.has(r.id) && (b.mode !== "fill" || isEmptyCell((JSON.parse(r.cells) as Record<string, unknown>)[field.id])));
-  const waiting = Number(one<{ n: number }>("SELECT count(*) n FROM ai_cell_jobs WHERE user_id=?", user.id)?.n || 0);
+  const waiting = Number((await one<{ n: number }>("SELECT count(*) n FROM ai_cell_jobs WHERE user_id=?", user.id))?.n || 0);
   if (waiting + chosen.length > AI_QUEUE_LIMITS.perPerson) throw new HttpError(429, "Zu viele KI-Werte in der Warteschlange. Bitte warten, bis sie berechnet sind.");
   const now = Date.now();
   for (const r of chosen)
-    run(
+    await run(
       `INSERT INTO ai_cell_jobs(row_id,field_id,page_id,user_id,mode,queued_at,next_at,attempts) VALUES(?,?,?,?,?,?,?,0)
        ON CONFLICT(row_id,field_id) DO UPDATE SET user_id=excluded.user_id,mode=excluded.mode,queued_at=excluded.queued_at,next_at=excluded.next_at,attempts=0`,
       r.id,
@@ -247,25 +247,25 @@ export function queueAiCells(user: Identity, raw: unknown) {
       now,
       now,
     );
-  audit(user.id, b.mode === "fill" ? "ai.fill" : "ai.compute", page.id, `${field.id}:${chosen.length}`);
+  await audit(user.id, b.mode === "fill" ? "ai.fill" : "ai.compute", page.id, `${field.id}:${chosen.length}`);
   // Skipped: of the records this person sees – private ones of others do not count.
   return { queued: chosen.length, skipped: rows.filter((r) => role(r)).length - chosen.length };
 }
 
 // Pending values and when/with what each value was computed.
-export function aiDatabaseStatus(user: Identity, pageId: string) {
-  const page = requirePage(user, pageId);
-  const hidden = page.kind === "database" ? hiddenRowIds(user, page) : new Set<string>();
+export async function aiDatabaseStatus(user: Identity, pageId: string) {
+  const page = await requirePage(user, pageId);
+  const hidden = page.kind === "database" ? (await hiddenRowIds(user, page)) : new Set<string>();
   return {
-    pending: Number(one<{ n: number }>("SELECT count(*) n FROM ai_cell_jobs WHERE page_id=?", pageId)?.n || 0),
-    mine: Number(one<{ n: number }>("SELECT count(*) n FROM ai_cell_jobs WHERE page_id=? AND user_id=?", pageId, user.id)?.n || 0),
-    meta: aiCellMeta(pageId, (rowId) => !hidden.has(rowId)),
+    pending: Number((await one<{ n: number }>("SELECT count(*) n FROM ai_cell_jobs WHERE page_id=?", pageId))?.n || 0),
+    mine: Number((await one<{ n: number }>("SELECT count(*) n FROM ai_cell_jobs WHERE page_id=? AND user_id=?", pageId, user.id))?.n || 0),
+    meta: await aiCellMeta(pageId, (rowId) => !hidden.has(rowId)),
   };
 }
 
 // Automatic updates off (the person lost access or left).
-export function disableAutoAi(pageId: string, fieldId: string, reason: string) {
-  const stored = one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId);
+export async function disableAutoAi(pageId: string, fieldId: string, reason: string) {
+  const stored = await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId);
   if (!stored) return;
   const fields = JSON.parse(stored.fields) as Field[];
   const field = fields.find((f) => f.id === fieldId);
@@ -273,36 +273,36 @@ export function disableAutoAi(pageId: string, fieldId: string, reason: string) {
   const by = field.ai.autoBy || "";
   delete field.ai.auto;
   delete field.ai.autoBy;
-  run("UPDATE databases SET fields=?,version=version+1 WHERE page_id=?", JSON.stringify(fields), pageId);
-  run("DELETE FROM ai_cell_jobs WHERE page_id=? AND field_id=? AND mode='auto'", pageId, fieldId);
-  audit(by, "ai.auto.off", pageId, `${fieldId}: ${reason}`.slice(0, 300));
+  await run("UPDATE databases SET fields=?,version=version+1 WHERE page_id=?", JSON.stringify(fields), pageId);
+  await run("DELETE FROM ai_cell_jobs WHERE page_id=? AND field_id=? AND mode='auto'", pageId, fieldId);
+  await audit(by, "ai.auto.off", pageId, `${fieldId}: ${reason}`.slice(0, 300));
 }
 
 // Records whose inputs changed (marked by triggers, see lib/db.ts), once
 // they have been quiet for `debounceMs`: queued where the rendered prompt
 // differs from the one the value was computed from.
-export function processAutoDirty(debounceMs = 8000, now = Date.now()) {
-  if (!instanceAiSettings().enabled) {
-    run("DELETE FROM ai_auto_dirty");
+export async function processAutoDirty(debounceMs = 8000, now = Date.now()) {
+  if (!(await instanceAiSettings()).enabled) {
+    await run("DELETE FROM ai_auto_dirty");
     return 0;
   }
   const cutoff = now - debounceMs;
-  const entries = all<{ row_id: string; page_id: string; changed_at: number }>("SELECT row_id,page_id,changed_at FROM ai_auto_dirty WHERE changed_at<=? LIMIT 500", cutoff);
+  const entries = await all<{ row_id: string; page_id: string; changed_at: number }>("SELECT row_id,page_id,changed_at FROM ai_auto_dirty WHERE changed_at<=? LIMIT 500", cutoff);
   let queued = 0;
   const byPage = new Map<string, typeof entries>();
   for (const e of entries) byPage.set(e.page_id, [...(byPage.get(e.page_id) || []), e]);
   for (const [pageId, list] of byPage) {
-    const stored = one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId);
+    const stored = await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId);
     const fields = stored ? (JSON.parse(stored.fields) as Field[]) : [];
     for (const field of fields.filter((f) => f.ai?.auto && f.ai.autoBy)) {
-      const user = activeUser(field.ai!.autoBy!);
+      const user = await activeUser(field.ai!.autoBy!);
       if (!user) {
-        disableAutoAi(pageId, field.id, "Konto deaktiviert oder gelöscht");
+        await disableAutoAi(pageId, field.id, "Konto deaktiviert oder gelöscht");
         continue;
       }
       const context: PromptContext = { names: nameLookup(), relationTitles: relationTitlesFor(user), content: () => "" };
       for (const e of list) {
-        const row = one<{ id: string; cells: string; number: number | null; created_at: string; updated_at: string; created_by: string | null; updated_by: string | null }>(
+        const row = await one<{ id: string; cells: string; number: number | null; created_at: string; updated_at: string; created_by: string | null; updated_by: string | null }>(
           "SELECT id,cells,number,created_at,updated_at,created_by,updated_by FROM rows WHERE id=? AND page_id=?",
           e.row_id,
           pageId,
@@ -311,10 +311,10 @@ export function processAutoDirty(debounceMs = 8000, now = Date.now()) {
         const cells = JSON.parse(row.cells) as Record<string, unknown>;
         const rendered = renderAiPrompt(field.ai!.prompt, fields, cells, row, { ...context, content: contentOf(row.id) });
         const hash = aiInputHash(field, rendered.input);
-        const meta = one<{ input_hash: string }>("SELECT input_hash FROM ai_cell_meta WHERE row_id=? AND field_id=?", row.id, field.id);
+        const meta = await one<{ input_hash: string }>("SELECT input_hash FROM ai_cell_meta WHERE row_id=? AND field_id=?", row.id, field.id);
         if (meta?.input_hash === hash) continue;
         if (!meta && rendered.empty && isEmptyCell(cells[field.id])) continue;
-        const inserted = run(
+        const inserted = await run(
           "INSERT INTO ai_cell_jobs(row_id,field_id,page_id,user_id,mode,queued_at,next_at,attempts) VALUES(?,?,?,?,'auto',?,?,0) ON CONFLICT(row_id,field_id) DO NOTHING",
           row.id,
           field.id,
@@ -326,14 +326,14 @@ export function processAutoDirty(debounceMs = 8000, now = Date.now()) {
         queued += Number(inserted.changes);
       }
     }
-    for (const e of list) run("DELETE FROM ai_auto_dirty WHERE row_id=? AND changed_at<=?", e.row_id, e.changed_at);
+    for (const e of list) await run("DELETE FROM ai_auto_dirty WHERE row_id=? AND changed_at<=?", e.row_id, e.changed_at);
   }
   return queued;
 }
 
 // Works through the queue; a person over their AI rate limit waits a minute.
 export async function processAiCellJobs(limit = 12, now = Date.now()) {
-  const jobs = all<{ row_id: string; field_id: string; page_id: string; user_id: string; mode: AiCellMode; attempts: number }>(
+  const jobs = await all<{ row_id: string; field_id: string; page_id: string; user_id: string; mode: AiCellMode; attempts: number }>(
     "SELECT row_id,field_id,page_id,user_id,mode,attempts FROM ai_cell_jobs WHERE next_at<=? ORDER BY queued_at LIMIT ?",
     now,
     limit,
@@ -342,35 +342,35 @@ export async function processAiCellJobs(limit = 12, now = Date.now()) {
   let done = 0;
   for (const job of jobs) {
     if (waiting.has(job.user_id)) continue;
-    const remove = () => run("DELETE FROM ai_cell_jobs WHERE row_id=? AND field_id=?", job.row_id, job.field_id);
-    const user = activeUser(job.user_id);
+    const remove = async () => await run("DELETE FROM ai_cell_jobs WHERE row_id=? AND field_id=?", job.row_id, job.field_id);
+    const user = await activeUser(job.user_id);
     if (!user) {
-      remove();
-      if (job.mode === "auto") disableAutoAi(job.page_id, job.field_id, "Konto deaktiviert oder gelöscht");
+      await remove();
+      if (job.mode === "auto") await disableAutoAi(job.page_id, job.field_id, "Konto deaktiviert oder gelöscht");
       continue;
     }
     try {
       await runAiCell(user, job.page_id, job.field_id, job.row_id, job.mode);
-      remove();
+      await remove();
       done++;
     } catch (error) {
       const status = (error as HttpError).status || 500;
       const message = String((error as Error)?.message || error);
       if (status === 429) {
         waiting.add(job.user_id);
-        run("UPDATE ai_cell_jobs SET next_at=? WHERE user_id=? AND next_at<=?", Date.now() + 60_000, job.user_id, Date.now() + 60_000);
+        await run("UPDATE ai_cell_jobs SET next_at=? WHERE user_id=? AND next_at<=?", Date.now() + 60_000, job.user_id, Date.now() + 60_000);
         continue;
       }
       const scope = error instanceof AiCellError ? error.scope : status >= 500 ? null : "row";
       if (scope === "access") {
-        remove();
-        if (job.mode === "auto") disableAutoAi(job.page_id, job.field_id, message);
+        await remove();
+        if (job.mode === "auto") await disableAutoAi(job.page_id, job.field_id, message);
         continue;
       }
       if (scope === "row" || scope === "instance") {
-        remove();
-        if (one("SELECT 1 FROM rows WHERE id=?", job.row_id))
-          run(
+        await remove();
+        if (await one("SELECT 1 FROM rows WHERE id=?", job.row_id))
+          await run(
             `INSERT INTO ai_cell_meta(row_id,field_id,page_id,computed_at,computed_by,status) VALUES(?,?,?,?,?,?)
              ON CONFLICT(row_id,field_id) DO UPDATE SET status=excluded.status,computed_at=excluded.computed_at`,
             job.row_id,
@@ -384,8 +384,8 @@ export async function processAiCellJobs(limit = 12, now = Date.now()) {
       }
       // The provider failed: a few more tries, then the value is left as it is.
       if (job.attempts + 1 >= AI_QUEUE_LIMITS.attempts) {
-        remove();
-        run(
+        await remove();
+        await run(
           `INSERT INTO ai_cell_meta(row_id,field_id,page_id,computed_at,computed_by,status) VALUES(?,?,?,?,?,'error')
            ON CONFLICT(row_id,field_id) DO UPDATE SET status='error',computed_at=excluded.computed_at`,
           job.row_id,
@@ -395,7 +395,7 @@ export async function processAiCellJobs(limit = 12, now = Date.now()) {
           job.user_id,
         );
         console.error("KI-Eigenschaft fehlgeschlagen:", redactSecrets(message));
-      } else run("UPDATE ai_cell_jobs SET attempts=attempts+1,next_at=? WHERE row_id=? AND field_id=?", Date.now() + 30_000 * (job.attempts + 1), job.row_id, job.field_id);
+      } else await run("UPDATE ai_cell_jobs SET attempts=attempts+1,next_at=? WHERE row_id=? AND field_id=?", Date.now() + 30_000 * (job.attempts + 1), job.row_id, job.field_id);
     }
   }
   return done;
@@ -414,7 +414,7 @@ Regeln:
 
 // A proposal for the person to review – nothing is created here.
 export async function proposeDatabase(user: Identity, workspaceId: string, description: string, signal?: AbortSignal): Promise<DatabaseProposal> {
-  requireMember(user, workspaceId, "editor");
+  await requireMember(user, workspaceId, "editor");
   const answer = await aiJson(
     user,
     "database",
@@ -434,13 +434,13 @@ export function startAiWorker() {
     if (runtime.flowplanAiBusy) return;
     runtime.flowplanAiBusy = true;
     try {
-      processAutoDirty();
+      await processAutoDirty();
       await processAiCellJobs();
       const { processEmbeddings } = await import("./semantic");
       await processEmbeddings();
-      noteWorkerRun("ai");
+      await noteWorkerRun("ai");
     } catch (error) {
-      noteWorkerRun("ai", redactSecrets(String((error as Error)?.message || error)));
+      await noteWorkerRun("ai", redactSecrets(String((error as Error)?.message || error)));
       console.error("KI-Hintergrundarbeit fehlgeschlagen:", redactSecrets(String((error as Error)?.message || error)));
     } finally {
       runtime.flowplanAiBusy = false;

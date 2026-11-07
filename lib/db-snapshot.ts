@@ -14,9 +14,9 @@ import type { PgSchema } from "./db-driver/pg-schema";
 import { quoteIdent } from "./db-driver/pg-ddl.mjs";
 
 const BATCH = 2000;
-export function snapshotDatabase(path: string) {
+export async function snapshotDatabase(path: string) {
   if (sql.name === "sqlite") {
-    run(`VACUUM INTO '${path.replaceAll("'", "''")}'`); // sqlite-only
+    await run(`VACUUM INTO '${path.replaceAll("'", "''")}'`); // sqlite-only
     return;
   }
   const schema = schemaJson as unknown as PgSchema;
@@ -25,8 +25,8 @@ export function snapshotDatabase(path: string) {
     file.exec("PRAGMA journal_mode=DELETE; PRAGMA foreign_keys=OFF;"); // sqlite-only: the file
     for (const o of schema.sqlite.filter((x) => x.type === "table")) file.exec(o.sql);
     const sqliteTables = new Set(schema.sqlite.filter((x) => x.type === "table").map((x) => x.name));
-    transaction(() => {
-      run("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
+    await transaction(async () => {
+      await run("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
       for (const t of schema.tables) {
         // The search index is rebuilt from the data (search_state below).
         if (t.name === "search_index" || !sqliteTables.has(t.name)) continue;
@@ -40,11 +40,11 @@ export function snapshotDatabase(path: string) {
         for (;;) {
           // Keyset by the primary key; tables without one by offset (small ones).
           const rows: Record<string, unknown>[] = t.primaryKey.length
-            ? all(
+            ? (await all(
                 `SELECT ${list} FROM ${quoteIdent(t.name)}${after ? ` WHERE (${order})>(${key.map(() => "?").join(",")})` : ""} ORDER BY ${order} LIMIT ${BATCH}`,
                 ...((after ?? []) as (string | number | null)[]),
-              )
-            : all(`SELECT ${list} FROM ${quoteIdent(t.name)} ORDER BY ${order} LIMIT ${BATCH} OFFSET ${offset}`);
+              ))
+            : (await all(`SELECT ${list} FROM ${quoteIdent(t.name)} ORDER BY ${order} LIMIT ${BATCH} OFFSET ${offset}`));
           if (!rows.length) break;
           file.exec("BEGIN");
           for (const row of rows) insert.run(...cols.map((c) => value(row[c])));

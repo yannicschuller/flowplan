@@ -18,35 +18,35 @@ const { registerMobileDevice, identityFromDeviceToken, mobileSummary } = await i
 const { isInstanceAdmin, mobileAdminSummary } = await import("../lib/mobile-admin");
 const { saveMetricsSetting } = await import("../lib/metrics");
 
-function account(name: string, groups: string[]) {
+async function account(name: string, groups: string[]) {
   const uid = id(),
     token = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
-  run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", token, uid, JSON.stringify(groups), Date.now() + 3600000);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
+  await run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", token, uid, JSON.stringify(groups), Date.now() + 3600000);
   const user = { id: uid, name, email: `${name}@example.test`, groups, isAdmin: groups.includes("flowplan-admins"), disabled: 0, created_at: "" } as Identity;
-  const { deviceToken } = registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios" });
+  const { deviceToken } = await registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios" });
   return { user, token, header: `Bearer ${deviceToken}` };
 }
 
 test("only devices of instance administrators, checked against the session every time", async () => {
-  const admin = account("widget-admin", ["flowplan-admins"]);
-  const member = account("widget-member", ["staff"]);
+  const admin = await account("widget-admin", ["flowplan-admins"]);
+  const member = await account("widget-member", ["staff"]);
   const adminIdentity = (await identityFromDeviceToken(admin.header))!;
   const memberIdentity = (await identityFromDeviceToken(member.header))!;
   // The device token never carries the administration itself.
   assert.equal(adminIdentity.isAdmin, false);
   assert.equal(isInstanceAdmin(adminIdentity), true);
   assert.equal(isInstanceAdmin(memberIdentity), false);
-  assert.equal(mobileSummary(adminIdentity).admin, true);
-  assert.equal(mobileSummary(memberIdentity).admin, false);
+  assert.equal((await mobileSummary(adminIdentity)).admin, true);
+  assert.equal((await mobileSummary(memberIdentity)).admin, false);
   // Leaving the admin group (a new sign-in with other groups) ends it.
-  run("UPDATE sessions SET groups_json=? WHERE token=?", JSON.stringify(["staff"]), admin.token);
+  await run("UPDATE sessions SET groups_json=? WHERE token=?", JSON.stringify(["staff"]), admin.token);
   assert.equal(isInstanceAdmin((await identityFromDeviceToken(admin.header))!), false);
-  run("UPDATE sessions SET groups_json=? WHERE token=?", JSON.stringify(["flowplan-admins"]), admin.token);
+  await run("UPDATE sessions SET groups_json=? WHERE token=?", JSON.stringify(["flowplan-admins"]), admin.token);
   // A demo is never an administrator.
   assert.equal(isInstanceAdmin({ ...adminIdentity, demo: true }), false);
   // A removed device or an ended session: no identity at all (401).
-  run("DELETE FROM mobile_devices WHERE user_id=?", admin.user.id);
+  await run("DELETE FROM mobile_devices WHERE user_id=?", admin.user.id);
   assert.equal(await identityFromDeviceToken(admin.header), null);
 });
 
@@ -55,10 +55,10 @@ test("the route refuses everyone but administrators' devices", () => {
   assert.match(route, /identityFromDeviceToken[\s\S]*if \(action === "admin-summary"\) \{\s*\/\/[^\n]*\n\s*if \(!isInstanceAdmin\(user\)\) throw new HttpError\(403/);
 });
 
-test("state, live numbers and storage as numbers and codes", () => {
-  account("widget-admin-2", ["flowplan-admins"]);
-  saveMetricsSetting(true);
-  const s = mobileAdminSummary(Date.now(), { latest: "99.0.0" } as never);
+test("state, live numbers and storage as numbers and codes", async () => {
+  await account("widget-admin-2", ["flowplan-admins"]);
+  await saveMetricsSetting(true);
+  const s = await mobileAdminSummary(Date.now(), { latest: "99.0.0" } as never);
   assert.ok(["ok", "notice", "problem"].includes(s.health.state));
   // No mail server in a fresh instance: a notice.
   assert.ok(s.health.notices.includes("mailOff"));
@@ -75,13 +75,13 @@ test("state, live numbers and storage as numbers and codes", () => {
   assert.doesNotMatch(text, /widget-admin|example\.test/);
 });
 
-test("with the statistics off the live numbers are left out", () => {
-  saveMetricsSetting(false);
-  assert.equal(mobileAdminSummary().live, null);
-  saveMetricsSetting(true);
+test("with the statistics off the live numbers are left out", async () => {
+  await saveMetricsSetting(false);
+  assert.equal((await mobileAdminSummary()).live, null);
+  await saveMetricsSetting(true);
   process.env.FLOWPLAN_METRICS = "off";
   try {
-    assert.equal(mobileAdminSummary().live, null);
+    assert.equal((await mobileAdminSummary()).live, null);
   } finally {
     delete process.env.FLOWPLAN_METRICS;
   }

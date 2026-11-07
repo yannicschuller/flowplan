@@ -31,9 +31,9 @@ export function startRequestMetrics() {
     const { request, response } = message as Message;
     if (countedPath(request?.url)) started.set(response, performance.now());
   });
-  diagnosticsChannel.subscribe("http.server.response.finish", (message) => {
+  diagnosticsChannel.subscribe("http.server.response.finish", async (message) => {
     const { response } = message as Message;
-    noteProbe(response);
+    await noteProbe(response);
     const start = started.get(response);
     if (start === undefined) return;
     started.delete(response);
@@ -48,7 +48,7 @@ export function startRequestMetrics() {
 
 // Refused API requests per address (lib/security-detect.ts): many of them in
 // a short time are someone probing for addresses and ids.
-function noteProbe(response: ServerResponse) {
+async function noteProbe(response: ServerResponse) {
   try {
     const status = response.statusCode;
     if (status !== 401 && status !== 403 && status !== 404) return;
@@ -61,7 +61,7 @@ function noteProbe(response: ServerResponse) {
       if (typeof value === "string") headers.set(name, value);
     }
     const address = clientAddress(headers);
-    noteRefusal(address, status, path, Date.now(), (detail) => securityEvent("request.probing", { headers, detail }));
+    await noteRefusal(address, status, path, Date.now(), (detail) => securityEvent("request.probing", { headers, detail }));
   } catch {
     // Counting never disturbs a request.
   }

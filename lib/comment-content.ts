@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { parsePageLocation } from "./page-location";
+import { mapAsync } from "./each-async";
 export type CommentMark = {
   type: "bold" | "italic" | "underline" | "strike" | "code" | "link";
   attrs?: { href: string };
@@ -175,31 +176,31 @@ export function commentMentions(content: CommentNode | null): string[] {
   if (content) visit(content);
   return [...ids];
 }
-export function mapCommentMentions(
+export async function mapCommentMentions(
   content: CommentNode,
   map: (
     id: string | null,
     label: string,
   ) => { userId: string | null; label: string },
-): CommentNode {
+): Promise<CommentNode> {
   return {
     ...content,
     ...(content.type === "mention"
       ? {
-          attrs: map(content.attrs?.userId || null, content.attrs?.label || ""),
+          attrs: await map(content.attrs?.userId || null, content.attrs?.label || ""),
         }
       : {}),
     ...(content.content
-      ? { content: content.content.map((c) => mapCommentMentions(c, map)) }
+      ? { content: await mapAsync(content.content, async (c) => await mapCommentMentions(c, map)) }
       : {}),
   };
 }
-export function commentContentIdentity(
+export async function commentContentIdentity(
   content: CommentNode | null,
-): string | null {
+): Promise<string | null> {
   return content
     ? JSON.stringify(
-        mapCommentMentions(content, (userId, label) => ({
+        await mapCommentMentions(content, (userId, label) => ({
           userId,
           label: userId ? "" : label,
         })),

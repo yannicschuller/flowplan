@@ -126,11 +126,11 @@ export function suggestKey(item: Omit<CslItem, "id"> & { id?: string }) {
   ).toLowerCase();
   return (who + year + word).slice(0, 60) || "ref";
 }
-export function uniqueKey(key: string, taken: (key: string) => boolean) {
-  if (!taken(key)) return key;
+export async function uniqueKey(key: string, taken: (key: string) => boolean) {
+  if (!(await taken(key))) return key;
   for (let i = 0; i < 26 * 26; i++) {
     const suffix = i < 26 ? String.fromCharCode(97 + i) : String(i);
-    if (!taken(key + suffix)) return key + suffix;
+    if (!(await taken(key + suffix))) return key + suffix;
   }
   return `${key}-${Date.now().toString(36)}`;
 }

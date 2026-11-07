@@ -58,6 +58,7 @@ import {
 } from "./page-properties";
 import type { Identity, Page, Space } from "./types";
 import { rewriteTagValues, syncTagFieldOptions, syncTagFieldOptionsAsync, taggedRecords } from "./tag-fields";
+import { filterAsync, forEachAsync, mapAsync } from "./each-async";
 
 export type TagRow = { id: string; workspace_id: string; space_id: string | null; name: string; color: string; position: number };
 export type DefRow = { id: string; workspace_id: string; space_id: string | null; name: string; type: string; options: string; position: number };
@@ -86,34 +87,34 @@ export const asDef = (d: DefRow): PagePropertyDef => ({
 });
 
 // Every tag or definition of the workspace, of all scopes.
-export function workspaceTags(workspaceId: string): PageTag[] {
-  return all<TagRow>(`SELECT * FROM page_tags WHERE workspace_id=? ORDER BY position,${d().nocase("name")}`, workspaceId).map(asTag);
+export async function workspaceTags(workspaceId: string): Promise<PageTag[]> {
+  return (await all<TagRow>(`SELECT * FROM page_tags WHERE workspace_id=? ORDER BY position,${d().nocase("name")}`, workspaceId)).map(asTag);
 }
-export function workspaceProperties(workspaceId: string): PagePropertyDef[] {
-  return all<DefRow>(`SELECT * FROM page_property_defs WHERE workspace_id=? ORDER BY position,${d().nocase("name")}`, workspaceId).map(asDef);
+export async function workspaceProperties(workspaceId: string): Promise<PagePropertyDef[]> {
+  return (await all<DefRow>(`SELECT * FROM page_property_defs WHERE workspace_id=? ORDER BY position,${d().nocase("name")}`, workspaceId)).map(asDef);
 }
 // Those a page of `spaceId` uses: the workspace's and its space's (#136).
 // null: only the workspace's.
-export function contextTags(workspaceId: string, spaceId: string | null): PageTag[] {
-  return all<TagRow>(
+export async function contextTags(workspaceId: string, spaceId: string | null): Promise<PageTag[]> {
+  return (await all<TagRow>(
     `SELECT * FROM page_tags WHERE workspace_id=? AND (space_id IS NULL OR space_id=?) ORDER BY position,${d().nocase("name")}`,
     workspaceId,
     spaceId,
-  ).map(asTag);
+  )).map(asTag);
 }
-export function contextProperties(workspaceId: string, spaceId: string | null): PagePropertyDef[] {
-  return all<DefRow>(
+export async function contextProperties(workspaceId: string, spaceId: string | null): Promise<PagePropertyDef[]> {
+  return (await all<DefRow>(
     `SELECT * FROM page_property_defs WHERE workspace_id=? AND (space_id IS NULL OR space_id=?) ORDER BY position,${d().nocase("name")}`,
     workspaceId,
     spaceId,
-  ).map(asDef);
+  )).map(asDef);
 }
 export type MetaTable = "page_tags" | "page_property_defs";
 // The item a new or renamed one would clash with (#136): within one context
 // names are unique – a space's item with the workspace's and its own
 // space's, a workspace item with every scope (it is in every context).
-export function scopeClash(table: MetaTable, workspaceId: string, spaceId: string | null, name: string, exceptId?: string) {
-  return one<{ id: string; space_id: string | null; name: string }>(
+export async function scopeClash(table: MetaTable, workspaceId: string, spaceId: string | null, name: string, exceptId?: string) {
+  return await one<{ id: string; space_id: string | null; name: string }>(
     `SELECT id,space_id,name FROM ${table} WHERE workspace_id=? AND ${d().ieq("name")} AND ${d().isNot("id")}${spaceId ? " AND (space_id IS NULL OR space_id=?)" : ""} ORDER BY space_id IS NOT NULL LIMIT 1`,
     workspaceId,
     name,
@@ -121,8 +122,8 @@ export function scopeClash(table: MetaTable, workspaceId: string, spaceId: strin
     ...(spaceId ? [spaceId] : []),
   );
 }
-export function clashMessage(table: MetaTable, clash: { space_id: string | null }) {
-  const space = clash.space_id ? one<{ name: string }>("SELECT name FROM spaces WHERE id=?", clash.space_id)?.name : null;
+export async function clashMessage(table: MetaTable, clash: { space_id: string | null }) {
+  const space = clash.space_id ? (await one<{ name: string }>("SELECT name FROM spaces WHERE id=?", clash.space_id))?.name : null;
   const what = table === "page_tags" ? "Diesen Tag" : "Eine Eigenschaft mit diesem Namen";
   return space ? `${what} gibt es schon im Bereich „${space}“.` : `${what} gibt es schon.`;
 }
@@ -130,39 +131,39 @@ export function clashMessage(table: MetaTable, clash: { space_id: string | null 
 // ---- Who may do what ----
 
 // Workspace owners: every scope.
-export function canManageTaxonomy(user: Identity, workspaceId: string) {
-  return memberRole(user, workspaceId) === "owner" && !isGuest(user, workspaceId) && user.apiScope !== "read";
+export async function canManageTaxonomy(user: Identity, workspaceId: string) {
+  return (await memberRole(user, workspaceId)) === "owner" && !(await isGuest(user, workspaceId)) && user.apiScope !== "read";
 }
 // A live space of the workspace for a scope, else 400/404; end-to-end
 // encrypted spaces have no tags or properties.
-export function scopeSpace(workspaceId: string, spaceId: string): Space {
-  const space = one<Space>("SELECT * FROM spaces WHERE id=? AND workspace_id=?", spaceId, workspaceId);
+export async function scopeSpace(workspaceId: string, spaceId: string): Promise<Space> {
+  const space = await one<Space>("SELECT * FROM spaces WHERE id=? AND workspace_id=?", spaceId, workspaceId);
   if (!space || space.deleted_at) throw new HttpError(404, "Bereich nicht gefunden.");
-  if (isEncryptedPage({ space_id: space.id })) throw new HttpError(409, "Seiten verschlüsselter Bereiche haben keine Tags und Eigenschaften.");
+  if (await isEncryptedPage({ space_id: space.id })) throw new HttpError(409, "Seiten verschlüsselter Bereiche haben keine Tags und Eigenschaften.");
   return space;
 }
 // Owners for every scope; for a space also its managers (the space's owner
 // with edit rights, as for the space's settings).
-export function canManageScope(user: Identity, workspaceId: string, spaceId: string | null) {
-  if (canManageTaxonomy(user, workspaceId)) return true;
-  if (!spaceId || user.apiScope === "read" || isGuest(user, workspaceId)) return false;
-  const space = one<Space>("SELECT * FROM spaces WHERE id=? AND workspace_id=?", spaceId, workspaceId);
-  return !!space && !space.deleted_at && space.owner_id === user.id && memberRole(user, workspaceId) === "editor";
+export async function canManageScope(user: Identity, workspaceId: string, spaceId: string | null) {
+  if (await canManageTaxonomy(user, workspaceId)) return true;
+  if (!spaceId || user.apiScope === "read" || await isGuest(user, workspaceId)) return false;
+  const space = await one<Space>("SELECT * FROM spaces WHERE id=? AND workspace_id=?", spaceId, workspaceId);
+  return !!space && !space.deleted_at && space.owner_id === user.id && (await memberRole(user, workspaceId)) === "editor";
 }
 // New tags while tagging: members with edit rights for a space they may
 // write in; workspace tags only owners. Without a scope: whether the person
 // may create tags at all.
-export function canCreateTags(user: Identity, workspaceId: string, spaceId?: string | null) {
-  const role = memberRole(user, workspaceId);
-  if (!role || role === "viewer" || isGuest(user, workspaceId) || user.apiScope === "read") return false;
+export async function canCreateTags(user: Identity, workspaceId: string, spaceId?: string | null) {
+  const role = await memberRole(user, workspaceId);
+  if (!role || role === "viewer" || await isGuest(user, workspaceId) || user.apiScope === "read") return false;
   if (spaceId === undefined) return true;
-  if (spaceId === null) return canManageTaxonomy(user, workspaceId);
-  const space = one<Space>("SELECT * FROM spaces WHERE id=? AND workspace_id=?", spaceId, workspaceId);
-  return !!space && ["editor", "owner"].includes(spaceRole(user, space) || "");
+  if (spaceId === null) return await canManageTaxonomy(user, workspaceId);
+  const space = await one<Space>("SELECT * FROM spaces WHERE id=? AND workspace_id=?", spaceId, workspaceId);
+  return !!space && ["editor", "owner"].includes(await spaceRole(user, space) || "");
 }
-function requireManage(user: Identity, workspaceId: string, spaceId: string | null = null) {
-  requireMember(user, workspaceId, "editor");
-  if (!canManageScope(user, workspaceId, spaceId))
+async function requireManage(user: Identity, workspaceId: string, spaceId: string | null = null) {
+  await requireMember(user, workspaceId, "editor");
+  if (!(await canManageScope(user, workspaceId, spaceId)))
     throw new HttpError(
       403,
       spaceId
@@ -172,11 +173,10 @@ function requireManage(user: Identity, workspaceId: string, spaceId: string | nu
 }
 // The spaces whose scoped tags and definitions a person sees: those they
 // may open; owners see every scope (they manage them).
-export function visibleScopes(user: Identity, workspaceId: string): (spaceId: string | null | undefined) => boolean {
-  if (canManageTaxonomy(user, workspaceId)) return () => true;
+export async function visibleScopes(user: Identity, workspaceId: string): Promise<(spaceId: string | null | undefined) => boolean> {
+  if (await canManageTaxonomy(user, workspaceId)) return () => true;
   const open = new Set(
-    all<Space>("SELECT * FROM spaces WHERE workspace_id=? AND deleted_at IS NULL", workspaceId)
-      .filter((s) => !!spaceRole(user, s))
+    (await filterAsync(await all<Space>("SELECT * FROM spaces WHERE workspace_id=? AND deleted_at IS NULL", workspaceId), async (s) => !!(await spaceRole(user, s))))
       .map((s) => s.id),
   );
   return (spaceId) => !spaceId || open.has(spaceId);
@@ -186,51 +186,50 @@ export function visibleScopes(user: Identity, workspaceId: string): (spaceId: st
 
 // The definitions and the tags of the visible pages for the bootstrap.
 // Guests learn only the tags and properties used on pages shared with them.
-export function workspaceTaxonomy(user: Identity, workspaceId: string, visiblePages: Pick<Page, "id" | "space_id">[]): WorkspaceTaxonomy {
-  const visible = visiblePages.filter((p) => !isEncryptedPage(p));
+export async function workspaceTaxonomy(user: Identity, workspaceId: string, visiblePages: Pick<Page, "id" | "space_id">[]): Promise<WorkspaceTaxonomy> {
+  const visible = await filterAsync(visiblePages, async (p) => !(await isEncryptedPage(p)));
   const ids = new Set(visible.map((p) => p.id));
   const links: Record<string, string[]> = {};
-  for (const link of all<{ page_id: string; tag_id: string }>(
+  for (const link of await all<{ page_id: string; tag_id: string }>(
     "SELECT l.page_id,l.tag_id FROM page_tag_links l JOIN page_tags t ON t.id=l.tag_id WHERE t.workspace_id=? ORDER BY l.position,t.position",
     workspaceId,
   ))
     if (ids.has(link.page_id)) (links[link.page_id] ||= []).push(link.tag_id);
   // A space's own ones: for who may open that space, and where they are on
   // a page one may read (a page shared from a private space, #136).
-  const visibleScope = visibleScopes(user, workspaceId);
+  const visibleScope = await visibleScopes(user, workspaceId);
   const onPages = new Set(Object.values(links).flat());
   const scopedValues = new Set(
-    all<{ page_id: string; property_id: string }>(
+    (await all<{ page_id: string; property_id: string }>(
       "SELECT v.page_id,v.property_id FROM page_property_values v JOIN page_property_defs d ON d.id=v.property_id WHERE d.workspace_id=? AND d.space_id IS NOT NULL",
       workspaceId,
-    )
+    ))
       .filter((v) => ids.has(v.page_id))
       .map((v) => v.property_id),
   );
-  let tags = workspaceTags(workspaceId).filter((t) => visibleScope(t.spaceId) || onPages.has(t.id)),
-    properties = workspaceProperties(workspaceId).filter((p) => visibleScope(p.spaceId) || scopedValues.has(p.id));
-  if (isGuest(user, workspaceId)) {
+  let tags = (await workspaceTags(workspaceId)).filter((t) => visibleScope(t.spaceId) || onPages.has(t.id)),
+    properties = (await workspaceProperties(workspaceId)).filter((p) => visibleScope(p.spaceId) || scopedValues.has(p.id));
+  if (await isGuest(user, workspaceId)) {
     // Tags of the pages and of the records (tag-backed properties, #79)
     // shared with the guest.
-    const used = new Set([...Object.values(links).flat(), ...taggedRecords(user, workspaceId).flatMap((r) => r.tags)]);
+    const used = new Set([...Object.values(links).flat(), ...(await taggedRecords(user, workspaceId)).flatMap((r) => r.tags)]);
     tags = tags.filter((t) => used.has(t.id));
     const valued = new Set(
-      all<{ page_id: string; property_id: string }>(
+      (await all<{ page_id: string; property_id: string }>(
         "SELECT v.page_id,v.property_id FROM page_property_values v JOIN page_property_defs d ON d.id=v.property_id WHERE d.workspace_id=?",
         workspaceId,
-      )
+      ))
         .filter((v) => ids.has(v.page_id))
         .map((v) => v.property_id),
     );
     properties = properties.filter((p) => valued.has(p.id));
   }
-  const manage = canManageTaxonomy(user, workspaceId);
+  const manage = await canManageTaxonomy(user, workspaceId);
   const manageSpaces = manage
     ? []
-    : all<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=? AND deleted_at IS NULL AND owner_id=?", workspaceId, user.id)
-        .map((s) => s.id)
-        .filter((sid) => canManageScope(user, workspaceId, sid));
-  return { tags, properties, links, manage, createTags: canCreateTags(user, workspaceId), manageSpaces };
+    : (await filterAsync((await all<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=? AND deleted_at IS NULL AND owner_id=?", workspaceId, user.id))
+        .map((s) => s.id), async (sid) => await canManageScope(user, workspaceId, sid)));
+  return { tags, properties, links, manage, createTags: await canCreateTags(user, workspaceId), manageSpaces };
 }
 
 function storedValue(raw: string): unknown {
@@ -240,14 +239,14 @@ function storedValue(raw: string): unknown {
     return null;
   }
 }
-export function pageInfo(pageId: string): PageInfo {
-  const page = one<{ created_at: string | null; created_by: string | null; updated_at: string | null }>(
+export async function pageInfo(pageId: string): Promise<PageInfo> {
+  const page = await one<{ created_at: string | null; created_by: string | null; updated_at: string | null }>(
     // Pages from before schema 82 have no created_at: their first version
     // or, without one, their last change.
     "SELECT COALESCE(created_at,(SELECT MIN(s.created_at) FROM snapshots s WHERE s.page_id=pages.id),updated_at) created_at,created_by,updated_at FROM pages WHERE id=?",
     pageId,
   );
-  const editor = one<{ user_id: string }>("SELECT user_id FROM page_edits WHERE page_id=? ORDER BY at DESC LIMIT 1", pageId);
+  const editor = await one<{ user_id: string }>("SELECT user_id FROM page_edits WHERE page_id=? ORDER BY at DESC LIMIT 1", pageId);
   return {
     createdAt: page?.created_at ?? null,
     createdBy: page?.created_by ?? null,
@@ -256,30 +255,30 @@ export function pageInfo(pageId: string): PageInfo {
   };
 }
 // The tags and values of a page (no permission check: the caller read it).
-export function pageMeta(pageId: string): PageMeta {
+export async function pageMeta(pageId: string): Promise<PageMeta> {
   return {
-    tags: all<{ tag_id: string }>(
+    tags: (await all<{ tag_id: string }>(
       "SELECT l.tag_id FROM page_tag_links l JOIN page_tags t ON t.id=l.tag_id WHERE l.page_id=? ORDER BY l.position,t.position",
       pageId,
-    ).map((l) => l.tag_id),
+    )).map((l) => l.tag_id),
     values: Object.fromEntries(
-      all<{ property_id: string; value: string }>("SELECT property_id,value FROM page_property_values WHERE page_id=?", pageId).map((v) => [
+      (await all<{ property_id: string; value: string }>("SELECT property_id,value FROM page_property_values WHERE page_id=?", pageId)).map((v) => [
         v.property_id,
         storedValue(v.value),
       ]),
     ),
-    info: pageInfo(pageId),
+    info: await pageInfo(pageId),
   };
 }
 // What pageData hands out; nothing for encrypted pages.
-export function pageMetaFor(page: Pick<Page, "id" | "space_id">): PageMeta | undefined {
-  return isEncryptedPage(page) ? undefined : pageMeta(page.id);
+export async function pageMetaFor(page: Pick<Page, "id" | "space_id">): Promise<PageMeta | undefined> {
+  return (await isEncryptedPage(page)) ? undefined : (await pageMeta(page.id));
 }
 
 // ---- Values ----
 
 // A value for a definition as stored, or null for "no value" (removed).
-export function parsePropertyValue(def: PagePropertyDef, value: unknown, workspaceId: string): unknown {
+export async function parsePropertyValue(def: PagePropertyDef, value: unknown, workspaceId: string): Promise<unknown> {
   if (isComputedProperty(def.type)) throw new HttpError(400, `${def.name}: Diese Eigenschaft wird automatisch gesetzt.`);
   if (value === null || value === undefined || value === "") return null;
   const bad = (): never => {
@@ -312,7 +311,7 @@ export function parsePropertyValue(def: PagePropertyDef, value: unknown, workspa
     }
     case "person": {
       if (typeof value !== "string") bad();
-      if (!one("SELECT 1 FROM members WHERE workspace_id=? AND user_id=?", workspaceId, String(value)))
+      if (!(await one("SELECT 1 FROM members WHERE workspace_id=? AND user_id=?", workspaceId, String(value))))
         throw new HttpError(400, `${def.name}: Mitglied fehlt.`);
       return value;
     }
@@ -331,85 +330,85 @@ export type MetaScope = { workspaceId: string; spaceId: string | null };
 export const scopeOf = (page: Pick<Page, "workspace_id" | "space_id">): MetaScope => ({ workspaceId: page.workspace_id, spaceId: page.space_id ?? null });
 const OTHER_SPACE_TAG = "Dieser Tag gehört zu einem anderen Bereich.";
 // An existing tag of the context by id or name.
-function findTag(scope: MetaScope, ref: string): string | undefined {
-  return one<{ id: string }>(
+async function findTag(scope: MetaScope, ref: string): Promise<string | undefined> {
+  return (await one<{ id: string }>(
     `SELECT id FROM page_tags WHERE workspace_id=? AND (space_id IS NULL OR space_id=?) AND (id=? OR ${d().ieq("name")})`,
     scope.workspaceId,
     scope.spaceId,
     ref,
     cleanTagName(ref),
-  )?.id;
+  ))?.id;
 }
 // A tag of the context by id or name; a new name creates the tag in the
 // context's space (or the workspace for spaceId null) when the person may.
 // A tag of another space is refused, never silently replaced.
-export function resolveTag(user: Identity | null, scope: MetaScope, ref: string, color?: string): string | null {
+export async function resolveTag(user: Identity | null, scope: MetaScope, ref: string, color?: string): Promise<string | null> {
   const { workspaceId, spaceId } = scope;
-  const byId = one<{ id: string; space_id: string | null }>("SELECT id,space_id FROM page_tags WHERE id=? AND workspace_id=?", ref, workspaceId);
+  const byId = await one<{ id: string; space_id: string | null }>("SELECT id,space_id FROM page_tags WHERE id=? AND workspace_id=?", ref, workspaceId);
   if (byId) {
     if (!inScope({ spaceId: byId.space_id }, spaceId)) throw new HttpError(400, OTHER_SPACE_TAG);
     return byId.id;
   }
   const name = cleanTagName(ref);
   if (!name) return null;
-  const byName = one<{ id: string }>(
+  const byName = await one<{ id: string }>(
     `SELECT id FROM page_tags WHERE workspace_id=? AND (space_id IS NULL OR space_id=?) AND ${d().ieq("name")} ORDER BY space_id IS NOT NULL`,
     workspaceId,
     spaceId,
     name,
   );
   if (byName) return byName.id;
-  if (user && !canCreateTags(user, workspaceId, spaceId))
+  if (user && !(await canCreateTags(user, workspaceId, spaceId)))
     throw new HttpError(
       403,
       spaceId ? "Neue Tags legen nur Mitglieder mit Bearbeitungsrechten an." : "Tags für den ganzen Arbeitsbereich legen nur Eigentümer an.",
     );
   // Names, the limit and the position: one creation at a time per workspace.
-  lockFor(`tags:${workspaceId}`);
-  const clash = scopeClash("page_tags", workspaceId, spaceId, name);
-  if (clash) throw new HttpError(409, clashMessage("page_tags", clash));
-  if ((one<{ n: number }>("SELECT COUNT(*) n FROM page_tags WHERE workspace_id=?", workspaceId)?.n ?? 0) >= MAX_TAGS)
+  await lockFor(`tags:${workspaceId}`);
+  const clash = await scopeClash("page_tags", workspaceId, spaceId, name);
+  if (clash) throw new HttpError(409, await clashMessage("page_tags", clash));
+  if (((await one<{ n: number }>("SELECT COUNT(*) n FROM page_tags WHERE workspace_id=?", workspaceId))?.n ?? 0) >= MAX_TAGS)
     throw new HttpError(400, "Höchstens 1000 Tags je Arbeitsbereich.");
   const tagId = id();
-  run(
+  await run(
     "INSERT INTO page_tags(id,workspace_id,space_id,name,color,position,created_by,created_at) VALUES(?,?,?,?,?,(SELECT COALESCE(MAX(position),0)+1 FROM page_tags WHERE workspace_id=?),?,?)",
     tagId,
     workspaceId,
     spaceId,
     name,
-    color ? tagColorFrom(color) : autoColor(workspaceId),
+    color ? tagColorFrom(color) : (await autoColor(workspaceId)),
     workspaceId,
     user?.id ?? null,
     Date.now(),
   );
   // Tag-backed database properties offer it at once (lib/tag-fields.ts).
-  syncTagFieldOptions(workspaceId);
+  await syncTagFieldOptions(workspaceId);
   return tagId;
 }
 // New tags take the colours in turn, so neighbours differ.
-function autoColor(workspaceId: string): PageTagColor {
-  const count = one<{ n: number }>("SELECT COUNT(*) n FROM page_tags WHERE workspace_id=?", workspaceId)?.n ?? 0;
+async function autoColor(workspaceId: string): Promise<PageTagColor> {
+  const count = (await one<{ n: number }>("SELECT COUNT(*) n FROM page_tags WHERE workspace_id=?", workspaceId))?.n ?? 0;
   const palette = PAGE_TAG_COLORS.filter((c) => c !== "gray");
   return palette[count % palette.length];
 }
 
-function setPageTags(user: Identity | null, page: Pick<Page, "id" | "workspace_id" | "space_id">, refs: string[]) {
+async function setPageTags(user: Identity | null, page: Pick<Page, "id" | "workspace_id" | "space_id">, refs: string[]) {
   const ids: string[] = [];
   for (const ref of refs) {
-    const tagId = resolveTag(user, scopeOf(page), ref);
+    const tagId = await resolveTag(user, scopeOf(page), ref);
     if (tagId && !ids.includes(tagId)) ids.push(tagId);
   }
   if (ids.length > MAX_TAGS_PER_PAGE) throw new HttpError(400, "Höchstens 50 Tags je Seite.");
-  run(`DELETE FROM page_tag_links WHERE page_id=? AND tag_id NOT IN ${d().jsonValues()}`, page.id, JSON.stringify(ids));
-  ids.forEach((tagId, i) =>
-    run("INSERT INTO page_tag_links(page_id,tag_id,position) VALUES(?,?,?) ON CONFLICT(page_id,tag_id) DO UPDATE SET position=excluded.position", page.id, tagId, i),
+  await run(`DELETE FROM page_tag_links WHERE page_id=? AND tag_id NOT IN ${d().jsonValues()}`, page.id, JSON.stringify(ids));
+  await forEachAsync(ids, async (tagId, i) =>
+    await run("INSERT INTO page_tag_links(page_id,tag_id,position) VALUES(?,?,?) ON CONFLICT(page_id,tag_id) DO UPDATE SET position=excluded.position", page.id, tagId, i),
   );
   return ids;
 }
-export function setPageValue(pageId: string, propertyId: string, value: unknown) {
-  if (value === null || isEmptyValue(value)) run("DELETE FROM page_property_values WHERE page_id=? AND property_id=?", pageId, propertyId);
+export async function setPageValue(pageId: string, propertyId: string, value: unknown) {
+  if (value === null || isEmptyValue(value)) await run("DELETE FROM page_property_values WHERE page_id=? AND property_id=?", pageId, propertyId);
   else
-    run(
+    await run(
       "INSERT INTO page_property_values(page_id,property_id,value) VALUES(?,?,?) ON CONFLICT(page_id,property_id) DO UPDATE SET value=excluded.value",
       pageId,
       propertyId,
@@ -418,11 +417,11 @@ export function setPageValue(pageId: string, propertyId: string, value: unknown)
 }
 
 // The names of a page's tags, in its order.
-export function pageTagNames(pageId: string): string[] {
-  return all<{ name: string }>(
+export async function pageTagNames(pageId: string): Promise<string[]> {
+  return (await all<{ name: string }>(
     "SELECT t.name FROM page_tag_links l JOIN page_tags t ON t.id=l.tag_id WHERE l.page_id=? ORDER BY l.position,t.position",
     pageId,
-  ).map((t) => t.name);
+  )).map((t) => t.name);
 }
 
 // ---- Commands ----
@@ -442,17 +441,17 @@ export function cleanOptions(list: string[]) {
   if (out.length > MAX_OPTIONS) throw new HttpError(400, "Höchstens 100 Optionen.");
   return out;
 }
-function touch(pageId: string) {
-  run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), pageId);
+async function touch(pageId: string) {
+  await run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), pageId);
 }
 // The page's tags and values after a change (the command's answer).
-const metaAnswer = (pageId: string) => {
-  const meta = pageMeta(pageId);
+const metaAnswer = async (pageId: string) => {
+  const meta = await pageMeta(pageId);
   return { ok: true, tags: meta.tags, values: meta.values };
 };
 
 // `write` is the command's page check (editor rights, journal PIN, lock).
-export function pagePropertiesCommand(user: Identity, action: string, input: Record<string, unknown>, write: () => Page): unknown {
+export async function pagePropertiesCommand(user: Identity, action: string, input: Record<string, unknown>, write: () => Page): Promise<unknown> {
   switch (action) {
     // { pageId, tags?: [id or name], addTags?, removeTags?, values?: { id or name: value | null } }
     case "page.properties": {
@@ -466,37 +465,37 @@ export function pagePropertiesCommand(user: Identity, action: string, input: Rec
         })
         .parse(input);
       const page = write();
-      if (isEncryptedPage(page)) throw new HttpError(409, "Seiten verschlüsselter Bereiche haben keine Tags und Eigenschaften.");
+      if (await isEncryptedPage(page)) throw new HttpError(409, "Seiten verschlüsselter Bereiche haben keine Tags und Eigenschaften.");
       if (b.tags || b.addTags || b.removeTags) {
-        const ids = setPageTags(user, page, [...(b.tags ?? pageMeta(page.id).tags), ...(b.addTags || [])]);
-        const removed = new Set((b.removeTags || []).map((ref) => findTag(scopeOf(page), ref)));
-        if (ids.some((tagId) => removed.has(tagId))) setPageTags(user, page, ids.filter((tagId) => !removed.has(tagId)));
+        const ids = await setPageTags(user, page, [...(b.tags ?? (await pageMeta(page.id)).tags), ...(b.addTags || [])]);
+        const removed = new Set(await mapAsync((b.removeTags || []), async (ref) => await findTag(scopeOf(page), ref)));
+        if (ids.some((tagId) => removed.has(tagId))) await setPageTags(user, page, ids.filter((tagId) => !removed.has(tagId)));
       }
       if (b.values) {
         // The definitions of the page's context (#136).
-        const defs = contextProperties(page.workspace_id, page.space_id);
+        const defs = await contextProperties(page.workspace_id, page.space_id);
         for (const [key, value] of Object.entries(b.values)) {
           const def = defs.find((d) => d.id === key) ?? defs.find((d) => foldName(d.name) === foldName(key));
           if (!def) throw new HttpError(400, "Unbekannte Eigenschaft.");
-          setPageValue(page.id, def.id, parsePropertyValue(def, value, page.workspace_id));
+          await setPageValue(page.id, def.id, await parsePropertyValue(def, value, page.workspace_id));
         }
       }
-      touch(page.id);
-      return metaAnswer(page.id);
+      await touch(page.id);
+      return await metaAnswer(page.id);
     }
     // Several pages at once: { workspaceId, pageIds, addTags?, removeTags? }.
     case "pages.tag": {
       const b = z.object({ workspaceId: uuid, pageIds: z.array(uuid).min(1).max(500), addTags: tagRefs.optional(), removeTags: tagRefs.optional() }).parse(input);
-      requireMember(user, b.workspaceId);
-      const pages = b.pageIds.map((pid) => requirePage(user, pid, true));
+      await requireMember(user, b.workspaceId);
+      const pages = await mapAsync(b.pageIds, async (pid) => await requirePage(user, pid, true));
       if (pages.some((p) => p.workspace_id !== b.workspaceId)) throw new HttpError(400, "Seiten aus einem anderen Arbeitsbereich.");
       if (pages.some((p) => p.locked)) throw new HttpError(409, "Diese Seite ist gesperrt.");
       for (const page of pages) {
-        if (isEncryptedPage(page)) continue;
-        const current = pageMeta(page.id).tags;
-        const removed = new Set((b.removeTags || []).map((ref) => findTag(scopeOf(page), ref)));
-        setPageTags(user, page, [...current.filter((t) => !removed.has(t)), ...(b.addTags || [])]);
-        touch(page.id);
+        if (await isEncryptedPage(page)) continue;
+        const current = (await pageMeta(page.id)).tags;
+        const removed = new Set(await mapAsync((b.removeTags || []), async (ref) => await findTag(scopeOf(page), ref)));
+        await setPageTags(user, page, [...current.filter((t) => !removed.has(t)), ...(b.addTags || [])]);
+        await touch(page.id);
       }
       return { ok: true, pages: pages.length };
     }
@@ -508,47 +507,47 @@ export function pagePropertiesCommand(user: Identity, action: string, input: Rec
       const b = z
         .object({ workspaceId: uuid, tagId: uuid.optional(), name: z.string().max(1000), color: colorSchema.optional(), spaceId: uuid.nullable().optional() })
         .parse(input);
-      requireMember(user, b.workspaceId, "editor");
+      await requireMember(user, b.workspaceId, "editor");
       const name = cleanTagName(b.name);
       if (!name) throw new HttpError(400, "Bitte einen Namen angeben.");
       if (!b.tagId) {
         const spaceId = b.spaceId ?? null;
-        if (spaceId) scopeSpace(b.workspaceId, spaceId);
+        if (spaceId) await scopeSpace(b.workspaceId, spaceId);
         // A space's rights before the name check: a clash must not tell
         // outsiders which tags a space has (workspace tags every member
         // sees anyway, so there the clash still comes first).
-        if (spaceId && !canCreateTags(user, b.workspaceId, spaceId)) throw new HttpError(403, "Keine Schreibrechte in diesem Bereich.");
-        const clash = scopeClash("page_tags", b.workspaceId, spaceId, name);
-        if (clash) throw new HttpError(409, clashMessage("page_tags", clash));
-        if (!canCreateTags(user, b.workspaceId, spaceId))
+        if (spaceId && !(await canCreateTags(user, b.workspaceId, spaceId))) throw new HttpError(403, "Keine Schreibrechte in diesem Bereich.");
+        const clash = await scopeClash("page_tags", b.workspaceId, spaceId, name);
+        if (clash) throw new HttpError(409, await clashMessage("page_tags", clash));
+        if (!(await canCreateTags(user, b.workspaceId, spaceId)))
           throw new HttpError(403, spaceId ? "Keine Schreibrechte in diesem Bereich." : "Tags für den ganzen Arbeitsbereich legen nur Eigentümer an.");
-        const tagId = resolveTag(user, { workspaceId: b.workspaceId, spaceId }, name);
-        if (b.color) run("UPDATE page_tags SET color=? WHERE id=?", b.color, tagId);
-        audit(user.id, "tag.create", tagId!, `${name}${spaceId ? ` (${spaceId})` : ""}`);
+        const tagId = await resolveTag(user, { workspaceId: b.workspaceId, spaceId }, name);
+        if (b.color) await run("UPDATE page_tags SET color=? WHERE id=?", b.color, tagId);
+        await audit(user.id, "tag.create", tagId!, `${name}${spaceId ? ` (${spaceId})` : ""}`);
         return { ok: true, id: tagId };
       }
-      const before = one<TagRow>("SELECT * FROM page_tags WHERE id=? AND workspace_id=?", b.tagId, b.workspaceId);
+      const before = await one<TagRow>("SELECT * FROM page_tags WHERE id=? AND workspace_id=?", b.tagId, b.workspaceId);
       if (!before) throw new HttpError(404, "Schlagwort (Tag) nicht gefunden.");
-      requireManage(user, b.workspaceId, before.space_id);
-      const clash = scopeClash("page_tags", b.workspaceId, before.space_id, name, b.tagId);
-      if (clash) throw new HttpError(409, `${clashMessage("page_tags", clash)} Zum Zusammenführen „Zusammenführen“ wählen.`);
-      run("UPDATE page_tags SET name=?,color=COALESCE(?,color) WHERE id=?", name, b.color ?? null, b.tagId);
+      await requireManage(user, b.workspaceId, before.space_id);
+      const clash = await scopeClash("page_tags", b.workspaceId, before.space_id, name, b.tagId);
+      if (clash) throw new HttpError(409, `${await clashMessage("page_tags", clash)} Zum Zusammenführen „Zusammenführen“ wählen.`);
+      await run("UPDATE page_tags SET name=?,color=COALESCE(?,color) WHERE id=?", name, b.color ?? null, b.tagId);
       // Records of tag-backed properties keep the tag under its new name.
-      if (before.name !== name) rewriteTagValues(user, b.workspaceId, before.name, name, before.space_id);
-      syncTagFieldOptions(b.workspaceId);
-      audit(user.id, "tag.save", b.tagId, name);
+      if (before.name !== name) await rewriteTagValues(user, b.workspaceId, before.name, name, before.space_id);
+      await syncTagFieldOptions(b.workspaceId);
+      await audit(user.id, "tag.save", b.tagId, name);
       return { ok: true, id: b.tagId };
     }
     case "tag.delete": {
       const b = z.object({ workspaceId: uuid, tagId: uuid }).parse(input);
-      const tag = one<TagRow>("SELECT * FROM page_tags WHERE id=? AND workspace_id=?", b.tagId, b.workspaceId);
+      const tag = await one<TagRow>("SELECT * FROM page_tags WHERE id=? AND workspace_id=?", b.tagId, b.workspaceId);
       if (!tag) throw new HttpError(404, "Schlagwort (Tag) nicht gefunden.");
-      requireManage(user, b.workspaceId, tag.space_id);
-      run("DELETE FROM page_tags WHERE id=?", tag.id);
+      await requireManage(user, b.workspaceId, tag.space_id);
+      await run("DELETE FROM page_tags WHERE id=?", tag.id);
       // The tag leaves the records of tag-backed properties too.
-      rewriteTagValues(user, b.workspaceId, tag.name, null, tag.space_id);
-      syncTagFieldOptions(b.workspaceId);
-      audit(user.id, "tag.delete", tag.id, tag.name);
+      await rewriteTagValues(user, b.workspaceId, tag.name, null, tag.space_id);
+      await syncTagFieldOptions(b.workspaceId);
+      await audit(user.id, "tag.delete", tag.id, tag.name);
       return { ok: true };
     }
     // { workspaceId, tagId, into }: pages with tagId get `into`, tagId goes.
@@ -557,22 +556,22 @@ export function pagePropertiesCommand(user: Identity, action: string, input: Rec
     case "tag.merge": {
       const b = z.object({ workspaceId: uuid, tagId: uuid, into: uuid }).parse(input);
       if (b.tagId === b.into) throw new HttpError(400, "Einen Tag mit sich selbst zusammenführen geht nicht.");
-      const [from, into] = [b.tagId, b.into].map((tid) => one<TagRow>("SELECT * FROM page_tags WHERE id=? AND workspace_id=?", tid, b.workspaceId));
+      const [from, into] = await mapAsync([b.tagId, b.into], async (tid) => await one<TagRow>("SELECT * FROM page_tags WHERE id=? AND workspace_id=?", tid, b.workspaceId));
       if (!from || !into) throw new HttpError(404, "Schlagwort (Tag) nicht gefunden.");
-      requireManage(user, b.workspaceId, from.space_id);
-      requireManage(user, b.workspaceId, into.space_id);
+      await requireManage(user, b.workspaceId, from.space_id);
+      await requireManage(user, b.workspaceId, into.space_id);
       if (into.space_id && into.space_id !== from.space_id)
         throw new HttpError(409, "Nur in einen Tag des ganzen Arbeitsbereichs oder desselben Bereichs zusammenführen.");
-      run(
+      await run(
         "INSERT INTO page_tag_links(page_id,tag_id,position) SELECT page_id,?,position FROM page_tag_links WHERE tag_id=? ON CONFLICT(page_id,tag_id) DO NOTHING",
         into.id,
         from.id,
       );
-      run("DELETE FROM page_tags WHERE id=?", from.id);
+      await run("DELETE FROM page_tags WHERE id=?", from.id);
       // Records with the source carry the target (once).
-      rewriteTagValues(user, b.workspaceId, from.name, into.name, from.space_id);
-      syncTagFieldOptions(b.workspaceId);
-      audit(user.id, "tag.merge", into.id, `${from.name} → ${into.name}`);
+      await rewriteTagValues(user, b.workspaceId, from.name, into.name, from.space_id);
+      await syncTagFieldOptions(b.workspaceId);
+      await audit(user.id, "tag.merge", into.id, `${from.name} → ${into.name}`);
       return { ok: true };
     }
     case "tag.reorder":
@@ -581,14 +580,14 @@ export function pagePropertiesCommand(user: Identity, action: string, input: Rec
       const table = action === "tag.reorder" ? "page_tags" : "page_property_defs";
       // Space managers order their space's own ones (#136).
       const scopes = new Set(
-        all<{ space_id: string | null }>(`SELECT space_id FROM ${table} WHERE workspace_id=? AND id IN ${d().jsonValues()}`, b.workspaceId, JSON.stringify(b.order)).map(
+        (await all<{ space_id: string | null }>(`SELECT space_id FROM ${table} WHERE workspace_id=? AND id IN ${d().jsonValues()}`, b.workspaceId, JSON.stringify(b.order))).map(
           (r) => r.space_id,
         ),
       );
-      if (!scopes.size) requireManage(user, b.workspaceId);
-      for (const scope of scopes) requireManage(user, b.workspaceId, scope);
-      b.order.forEach((itemId, i) => run(`UPDATE ${table} SET position=? WHERE id=? AND workspace_id=?`, i + 1, itemId, b.workspaceId));
-      if (action === "tag.reorder") syncTagFieldOptions(b.workspaceId);
+      if (!scopes.size) await requireManage(user, b.workspaceId);
+      for (const scope of scopes) await requireManage(user, b.workspaceId, scope);
+      await forEachAsync(b.order, async (itemId, i) => await run(`UPDATE ${table} SET position=? WHERE id=? AND workspace_id=?`, i + 1, itemId, b.workspaceId));
+      if (action === "tag.reorder") await syncTagFieldOptions(b.workspaceId);
       return { ok: true };
     }
     // { workspaceId, propertyId?, name, type, options? }
@@ -606,20 +605,20 @@ export function pagePropertiesCommand(user: Identity, action: string, input: Rec
         .parse(input);
       const name = cleanName(b.name, MAX_PROPERTY_NAME);
       if (!name) throw new HttpError(400, "Bitte einen Namen angeben.");
-      const stored = b.propertyId ? one<DefRow>("SELECT * FROM page_property_defs WHERE id=? AND workspace_id=?", b.propertyId, b.workspaceId) : undefined;
+      const stored = b.propertyId ? (await one<DefRow>("SELECT * FROM page_property_defs WHERE id=? AND workspace_id=?", b.propertyId, b.workspaceId)) : undefined;
       if (b.propertyId && !stored) throw new HttpError(404, "Eigenschaft nicht gefunden.");
       const spaceId = stored ? stored.space_id : (b.spaceId ?? null);
-      if (!stored && spaceId) scopeSpace(b.workspaceId, spaceId);
-      requireManage(user, b.workspaceId, spaceId);
-      lockFor(`properties:${b.workspaceId}`);
-      const clash = scopeClash("page_property_defs", b.workspaceId, spaceId, name, b.propertyId);
-      if (clash) throw new HttpError(409, clashMessage("page_property_defs", clash));
+      if (!stored && spaceId) await scopeSpace(b.workspaceId, spaceId);
+      await requireManage(user, b.workspaceId, spaceId);
+      await lockFor(`properties:${b.workspaceId}`);
+      const clash = await scopeClash("page_property_defs", b.workspaceId, spaceId, name, b.propertyId);
+      if (clash) throw new HttpError(409, await clashMessage("page_property_defs", clash));
       if (!stored) {
         if (!b.type) throw new HttpError(400, "Bitte einen Typ wählen.");
-        if ((one<{ n: number }>("SELECT COUNT(*) n FROM page_property_defs WHERE workspace_id=?", b.workspaceId)?.n ?? 0) >= MAX_PROPERTIES)
+        if (((await one<{ n: number }>("SELECT COUNT(*) n FROM page_property_defs WHERE workspace_id=?", b.workspaceId))?.n ?? 0) >= MAX_PROPERTIES)
           throw new HttpError(400, "Höchstens 100 Eigenschaften je Arbeitsbereich.");
         const propertyId = id();
-        run(
+        await run(
           "INSERT INTO page_property_defs(id,workspace_id,space_id,name,type,options,position,created_by,created_at) VALUES(?,?,?,?,?,?,(SELECT COALESCE(MAX(position),0)+1 FROM page_property_defs WHERE workspace_id=?),?,?)",
           propertyId,
           b.workspaceId,
@@ -631,7 +630,7 @@ export function pagePropertiesCommand(user: Identity, action: string, input: Rec
           user.id,
           Date.now(),
         );
-        audit(user.id, "property.save", propertyId, name);
+        await audit(user.id, "property.save", propertyId, name);
         return { ok: true, id: propertyId };
       }
       const before = asDef(stored);
@@ -642,30 +641,30 @@ export function pagePropertiesCommand(user: Identity, action: string, input: Rec
         type,
         options: ["select", "multiselect"].includes(type) ? cleanOptions(b.options ?? before.options) : [],
       };
-      run("UPDATE page_property_defs SET name=?,type=?,options=? WHERE id=?", next.name, next.type, JSON.stringify(next.options), next.id);
+      await run("UPDATE page_property_defs SET name=?,type=?,options=? WHERE id=?", next.name, next.type, JSON.stringify(next.options), next.id);
       // Values that no longer fit (another type, a removed option) are
       // converted where possible, else removed.
       if (type !== before.type || JSON.stringify(next.options) !== JSON.stringify(before.options))
-        for (const v of all<{ page_id: string; value: string }>("SELECT page_id,value FROM page_property_values WHERE property_id=?", next.id)) {
+        for (const v of await all<{ page_id: string; value: string }>("SELECT page_id,value FROM page_property_values WHERE property_id=?", next.id)) {
           let value: unknown = null;
           if (!isComputedProperty(type))
             try {
-              value = parsePropertyValue(next, convertValue(before, next, storedValue(v.value)), b.workspaceId);
+              value = await parsePropertyValue(next, convertValue(before, next, storedValue(v.value)), b.workspaceId);
             } catch {
               value = null;
             }
-          setPageValue(v.page_id, next.id, value);
+          await setPageValue(v.page_id, next.id, value);
         }
-      audit(user.id, "property.save", next.id, name);
+      await audit(user.id, "property.save", next.id, name);
       return { ok: true, id: next.id };
     }
     case "property.delete": {
       const b = z.object({ workspaceId: uuid, propertyId: uuid }).parse(input);
-      const stored = one<DefRow>("SELECT * FROM page_property_defs WHERE id=? AND workspace_id=?", b.propertyId, b.workspaceId);
+      const stored = await one<DefRow>("SELECT * FROM page_property_defs WHERE id=? AND workspace_id=?", b.propertyId, b.workspaceId);
       if (!stored) throw new HttpError(404, "Eigenschaft nicht gefunden.");
-      requireManage(user, b.workspaceId, stored.space_id);
-      run("DELETE FROM page_property_defs WHERE id=?", stored.id);
-      audit(user.id, "property.delete", stored.id, stored.name);
+      await requireManage(user, b.workspaceId, stored.space_id);
+      await run("DELETE FROM page_property_defs WHERE id=?", stored.id);
+      await audit(user.id, "property.delete", stored.id, stored.name);
       return { ok: true };
     }
   }
@@ -686,15 +685,15 @@ export function convertValue(from: PagePropertyDef, to: PagePropertyDef, value: 
 
 // The words of a page's tags and values in the search index (people are
 // left out, as in records).
-export function pageMetaSearchText(pageId: string): string {
-  const tags = all<{ name: string }>(
+export async function pageMetaSearchText(pageId: string): Promise<string> {
+  const tags = (await all<{ name: string }>(
     "SELECT t.name FROM page_tag_links l JOIN page_tags t ON t.id=l.tag_id WHERE l.page_id=? ORDER BY l.position",
     pageId,
-  ).map((t) => `#${t.name}`);
-  const values = all<DefRow & { value: string }>(
+  )).map((t) => `#${t.name}`);
+  const values = (await all<DefRow & { value: string }>(
     "SELECT d.*,v.value FROM page_property_values v JOIN page_property_defs d ON d.id=v.property_id WHERE v.page_id=?",
     pageId,
-  )
+  ))
     .filter((v) => !["person", "checkbox"].includes(v.type))
     .map((v) => propertyText(asDef(v), storedValue(v.value)))
     .filter(Boolean);
@@ -703,49 +702,49 @@ export function pageMetaSearchText(pageId: string): string {
 
 // The pages of a workspace that pass the tag and property tokens of a
 // search; null without tokens. Reading rights are checked by the search.
-export function filteredPageIds(user: Identity, workspaceId: string, parsed: Pick<ParsedQuery, "tags" | "properties">): Set<string> | null {
+export async function filteredPageIds(user: Identity, workspaceId: string, parsed: Pick<ParsedQuery, "tags" | "properties">): Promise<Set<string> | null> {
   if (!parsed.tags.length && !parsed.properties.length) return null;
   let ids = new Set(
-    all<{ id: string }>("SELECT id FROM pages WHERE workspace_id=? AND deleted_at IS NULL AND synced=0", workspaceId).map((p) => p.id),
+    (await all<{ id: string }>("SELECT id FROM pages WHERE workspace_id=? AND deleted_at IS NULL AND synced=0", workspaceId)).map((p) => p.id),
   );
   const keep = (next: Set<string>) => {
     ids = new Set([...ids].filter((pid) => next.has(pid)));
   };
   for (const filter of parsed.tags) {
     const tagged = new Set(
-      all<{ page_id: string }>(`SELECT page_id FROM page_tag_links WHERE tag_id IN ${d().jsonValues()}`, JSON.stringify(tagFilterIds(filter))).map((l) => l.page_id),
+      (await all<{ page_id: string }>(`SELECT page_id FROM page_tag_links WHERE tag_id IN ${d().jsonValues()}`, JSON.stringify(tagFilterIds(filter)))).map((l) => l.page_id),
     );
     ids = new Set([...ids].filter((pid) => tagged.has(pid) !== filter.exclude));
   }
   if (parsed.properties.length) {
-    const defs = new Map(workspaceProperties(workspaceId).map((d) => [d.id, d]));
-    const names = new Map(all<{ id: string; name: string }>("SELECT u.id,u.name FROM users u JOIN members m ON m.user_id=u.id WHERE m.workspace_id=?", workspaceId).map((u) => [u.id, u.name]));
+    const defs = new Map((await workspaceProperties(workspaceId)).map((d) => [d.id, d]));
+    const names = new Map((await all<{ id: string; name: string }>("SELECT u.id,u.name FROM users u JOIN members m ON m.user_id=u.id WHERE m.workspace_id=?", workspaceId)).map((u) => [u.id, u.name]));
     const people = (uid: string) => names.get(uid);
     // A token names a property: the one of that name in each space (#136)
     // – a page passes with the one of its context.
-    const passingFor = (filter: PropertyFilter): Set<string> => {
+    const passingFor = async (filter: PropertyFilter): Promise<Set<string>> => {
       const def = defs.get(filter.propertyId);
       if (!def) return new Set();
       const own = [...ids].filter((pid) => !def.spaceId || pageSpaces.get(pid) === def.spaceId);
       if (isComputedProperty(def.type)) {
         const passing = new Set<string>();
         for (const pid of own) {
-          const info = pageInfo(pid);
+          const info = await pageInfo(pid);
           const value = { created_at: info.createdAt, updated_at: info.updatedAt, created_by: info.createdBy, updated_by: info.updatedBy }[def.type as "created_at"];
           if (matchesPropertyFilter(def, value, filter, people, user.id)) passing.add(pid);
         }
         return passing;
       }
       const values = new Map(
-        all<{ page_id: string; value: string }>("SELECT page_id,value FROM page_property_values WHERE property_id=?", def.id).map((v) => [v.page_id, storedValue(v.value)]),
+        (await all<{ page_id: string; value: string }>("SELECT page_id,value FROM page_property_values WHERE property_id=?", def.id)).map((v) => [v.page_id, storedValue(v.value)]),
       );
       return new Set(own.filter((pid) => matchesPropertyFilter(def, values.get(pid), filter, people, user.id)));
     };
-    const pageSpaces = new Map(all<{ id: string; space_id: string }>("SELECT id,space_id FROM pages WHERE workspace_id=?", workspaceId).map((p) => [p.id, p.space_id]));
+    const pageSpaces = new Map((await all<{ id: string; space_id: string }>("SELECT id,space_id FROM pages WHERE workspace_id=?", workspaceId)).map((p) => [p.id, p.space_id]));
     for (const filter of parsed.properties) {
       if (!defs.has(filter.propertyId)) continue;
-      const passing = passingFor(filter);
-      for (const other of filter.also ?? []) for (const pid of passingFor(other)) passing.add(pid);
+      const passing = await passingFor(filter);
+      for (const other of filter.also ?? []) for (const pid of await passingFor(other)) passing.add(pid);
       keep(passing);
     }
   }
@@ -754,15 +753,15 @@ export function filteredPageIds(user: Identity, workspaceId: string, parsed: Pic
 
 // ---- Portable form (templates, copies, archives, Markdown) ----
 
-export function portableMeta(pageId: string): PortableMeta | undefined {
-  const tags = all<TagRow>(
+export async function portableMeta(pageId: string): Promise<PortableMeta | undefined> {
+  const tags = (await all<TagRow>(
     "SELECT t.* FROM page_tag_links l JOIN page_tags t ON t.id=l.tag_id WHERE l.page_id=? ORDER BY l.position,t.position",
     pageId,
-  ).map((t) => ({ name: t.name, color: t.color, ...(t.space_id ? { space: true } : {}) }));
-  const properties = all<DefRow & { value: string }>(
+  )).map((t) => ({ name: t.name, color: t.color, ...(t.space_id ? { space: true } : {}) }));
+  const properties = (await all<DefRow & { value: string }>(
     "SELECT d.*,v.value FROM page_property_values v JOIN page_property_defs d ON d.id=v.property_id WHERE v.page_id=? ORDER BY d.position",
     pageId,
-  ).map((v) => {
+  )).map((v) => {
     const def = asDef(v);
     return { name: def.name, type: def.type, ...(def.options.length ? { options: def.options } : {}), value: storedValue(v.value), ...(v.space_id ? { space: true } : {}) };
   });
@@ -794,7 +793,7 @@ export const portableMetaSchema = z
 // for one marked `space` – or listed in `createIn` – in the page's space,
 // else for the workspace); values that do not fit are skipped, never fail
 // the whole operation.
-export function applyPortableMeta(
+export async function applyPortableMeta(
   user: Identity | null,
   page: Pick<Page, "id" | "workspace_id" | "space_id">,
   meta: PortableMeta | undefined,
@@ -802,34 +801,34 @@ export function applyPortableMeta(
   // unless marked `space` (archives); by default to the page's space.
   options: { createDefinitions?: boolean; createTags?: boolean; createProperties?: Set<string>; definitionsScope?: "space" | "marked" } = {},
 ) {
-  if (!meta || isEncryptedPage(page)) return;
+  if (!meta || await isEncryptedPage(page)) return;
   const scope = scopeOf(page);
-  const mayCreateTags = options.createTags ?? (user ? canCreateTags(user, page.workspace_id, page.space_id) : true);
-  const tagIds: string[] = [...pageMeta(page.id).tags];
+  const mayCreateTags = options.createTags ?? (user ? (await canCreateTags(user, page.workspace_id, page.space_id)) : true);
+  const tagIds: string[] = [...(await pageMeta(page.id)).tags];
   for (const tag of meta.tags || []) {
     const name = cleanTagName(tag.name);
     if (!name) continue;
     let tagId =
-      one<{ id: string }>(
+      (await one<{ id: string }>(
         `SELECT id FROM page_tags WHERE workspace_id=? AND (space_id IS NULL OR space_id=?) AND ${d().ieq("name")} ORDER BY space_id IS NOT NULL`,
         scope.workspaceId,
         scope.spaceId,
         name,
-      )?.id ?? null;
+      ))?.id ?? null;
     if (!tagId && mayCreateTags)
       try {
-        tagId = resolveTag(null, options.definitionsScope === "marked" && !tag.space ? { ...scope, spaceId: null } : scope, name, tag.color);
+        tagId = await resolveTag(null, options.definitionsScope === "marked" && !tag.space ? { ...scope, spaceId: null } : scope, name, tag.color);
       } catch {
         tagId = null;
       }
     if (tagId && !tagIds.includes(tagId)) tagIds.push(tagId);
   }
-  if (tagIds.length) setPageTags(null, page, tagIds.slice(0, MAX_TAGS_PER_PAGE));
+  if (tagIds.length) await setPageTags(null, page, tagIds.slice(0, MAX_TAGS_PER_PAGE));
   for (const property of meta.properties || []) {
     if (isComputedProperty(property.type)) continue;
     const name = cleanName(property.name, MAX_PROPERTY_NAME);
     if (!name) continue;
-    let stored = one<DefRow>(
+    let stored = await one<DefRow>(
       `SELECT * FROM page_property_defs WHERE workspace_id=? AND (space_id IS NULL OR space_id=?) AND ${d().ieq("name")} ORDER BY space_id IS NOT NULL`,
       page.workspace_id,
       scope.spaceId,
@@ -837,12 +836,12 @@ export function applyPortableMeta(
     );
     const copy = options.createProperties?.has(foldName(name));
     if (!stored && (options.createDefinitions || copy)) {
-      lockFor(`properties:${page.workspace_id}`);
-      if ((one<{ n: number }>("SELECT COUNT(*) n FROM page_property_defs WHERE workspace_id=?", page.workspace_id)?.n ?? 0) >= MAX_PROPERTIES) continue;
+      await lockFor(`properties:${page.workspace_id}`);
+      if (((await one<{ n: number }>("SELECT COUNT(*) n FROM page_property_defs WHERE workspace_id=?", page.workspace_id))?.n ?? 0) >= MAX_PROPERTIES) continue;
       const spaceId = property.space || copy || options.definitionsScope !== "marked" ? scope.spaceId : null;
-      if (scopeClash("page_property_defs", page.workspace_id, spaceId, name)) continue;
+      if (await scopeClash("page_property_defs", page.workspace_id, spaceId, name)) continue;
       const propertyId = id();
-      run(
+      await run(
         "INSERT INTO page_property_defs(id,workspace_id,space_id,name,type,options,position,created_by,created_at) VALUES(?,?,?,?,?,?,(SELECT COALESCE(MAX(position),0)+1 FROM page_property_defs WHERE workspace_id=?),?,?)",
         propertyId,
         page.workspace_id,
@@ -854,7 +853,7 @@ export function applyPortableMeta(
         user?.id ?? null,
         Date.now(),
       );
-      stored = one<DefRow>("SELECT * FROM page_property_defs WHERE id=?", propertyId);
+      stored = await one<DefRow>("SELECT * FROM page_property_defs WHERE id=?", propertyId);
     }
     if (!stored) continue;
     let def = asDef(stored);
@@ -865,13 +864,13 @@ export function applyPortableMeta(
       );
       const merged = cleanOptions([...def.options, ...wanted].slice(0, MAX_OPTIONS));
       if (merged.length !== def.options.length) {
-        run("UPDATE page_property_defs SET options=? WHERE id=?", JSON.stringify(merged), def.id);
+        await run("UPDATE page_property_defs SET options=? WHERE id=?", JSON.stringify(merged), def.id);
         def = { ...def, options: merged };
       }
     }
     try {
-      const value = parsePropertyValue(def, convertValue({ ...def, type: property.type }, def, property.value), page.workspace_id);
-      if (value !== null) setPageValue(page.id, def.id, value);
+      const value = await parsePropertyValue(def, convertValue({ ...def, type: property.type }, def, property.value), page.workspace_id);
+      if (value !== null) await setPageValue(page.id, def.id, value);
     } catch {
       // A value that does not fit this workspace is left out.
     }
@@ -883,17 +882,17 @@ export function applyPortableMeta(
 // by name (#136: in another space or workspace the same-named one of the
 // copy's context, else tags created for its space when allowed and
 // definitions copied into its space – the source keeps its own).
-export function copyPageMeta(user: Identity, fromPageId: string, to: Pick<Page, "id" | "workspace_id" | "space_id">) {
-  const from = one<Page>("SELECT * FROM pages WHERE id=?", fromPageId);
-  if (!from || isEncryptedPage(from) || isEncryptedPage(to)) return;
+export async function copyPageMeta(user: Identity, fromPageId: string, to: Pick<Page, "id" | "workspace_id" | "space_id">) {
+  const from = await one<Page>("SELECT * FROM pages WHERE id=?", fromPageId);
+  if (!from || await isEncryptedPage(from) || await isEncryptedPage(to)) return;
   if (from.workspace_id === to.workspace_id) {
-    run(
+    await run(
       d().insertIgnore("page_tag_links(page_id,tag_id,position) SELECT ?,l.tag_id,l.position FROM page_tag_links l JOIN page_tags t ON t.id=l.tag_id WHERE l.page_id=? AND (t.space_id IS NULL OR t.space_id=?)"),
       to.id,
       from.id,
       to.space_id,
     );
-    run(
+    await run(
       d().insertIgnore("page_property_values(page_id,property_id,value) SELECT ?,v.property_id,v.value FROM page_property_values v JOIN page_property_defs d ON d.id=v.property_id WHERE v.page_id=? AND (d.space_id IS NULL OR d.space_id=?)"),
       to.id,
       from.id,
@@ -901,14 +900,14 @@ export function copyPageMeta(user: Identity, fromPageId: string, to: Pick<Page, 
     );
     if (from.space_id === to.space_id) return;
   }
-  const meta = portableMeta(from.id);
+  const meta = await portableMeta(from.id);
   if (!meta) return;
   const own = from.workspace_id === to.workspace_id;
   const foreign: PortableMeta = {
     tags: (meta.tags || []).filter((t) => !own || t.space),
     properties: (meta.properties || []).filter((p) => !own || p.space),
   };
-  applyPortableMeta(user, to, foreign, {
+  await applyPortableMeta(user, to, foreign, {
     createProperties: new Set((foreign.properties || []).filter((p) => p.space || !own).map((p) => foldName(p.name))),
   });
 }
@@ -917,14 +916,14 @@ export function copyPageMeta(user: Identity, fromPageId: string, to: Pick<Page, 
 
 // Keys of a page's frontmatter: `tags` (as Obsidian reads them) and each
 // property by its name; dates as YYYY-MM-DD…, people by name.
-export function metaFrontmatter(pageId: string, people: (id: string) => string | undefined): Record<string, string | number | boolean | string[]> {
+export async function metaFrontmatter(pageId: string, people: (id: string) => string | undefined): Promise<Record<string, string | number | boolean | string[]>> {
   const out: Record<string, string | number | boolean | string[]> = {};
-  const tags = all<{ name: string }>(
+  const tags = (await all<{ name: string }>(
     "SELECT t.name FROM page_tag_links l JOIN page_tags t ON t.id=l.tag_id WHERE l.page_id=? ORDER BY l.position,t.position",
     pageId,
-  ).map((t) => t.name);
+  )).map((t) => t.name);
   if (tags.length) out.tags = tags;
-  for (const v of all<DefRow & { value: string }>(
+  for (const v of await all<DefRow & { value: string }>(
     "SELECT d.*,v.value FROM page_property_values v JOIN page_property_defs d ON d.id=v.property_id WHERE v.page_id=? ORDER BY d.position",
     pageId,
   )) {
@@ -970,16 +969,16 @@ const NOT_PROPERTIES = new Set([
 // list or "a, b" / "a b") and properties – existing definitions by name,
 // unknown keys as new ones when definitions may be created (the type
 // guessed from the value). `consumed` lists the keys taken.
-export function frontmatterMeta(
+export async function frontmatterMeta(
   data: Record<string, unknown>,
   workspaceId: string,
   people: (name: string) => string | undefined,
   options: { createDefinitions?: boolean; spaceId?: string | null } = {},
-): { meta: PortableMeta; consumed: string[] } {
+): Promise<{ meta: PortableMeta; consumed: string[] }> {
   const meta: PortableMeta = { tags: [], properties: [] },
     consumed: string[] = [];
   // The definitions of the page's context (#136); without a space all.
-  const defs = options.spaceId === undefined ? workspaceProperties(workspaceId) : contextProperties(workspaceId, options.spaceId);
+  const defs = options.spaceId === undefined ? (await workspaceProperties(workspaceId)) : (await contextProperties(workspaceId, options.spaceId));
   for (const [key, raw] of Object.entries(data)) {
     const folded = foldName(key);
     if (folded === "tags" || folded === "tag") {
@@ -1031,17 +1030,17 @@ function guessType(raw: unknown): PagePropertyType {
 // definitions and – with `tagId` – those pages and records.
 // `sameName`: also the tags of that name in other spaces (#136; by default
 // a tag is one id).
-export function tagListing(user: Identity, workspaceId: string, tagId?: string, sameName = false) {
-  requireMember(user, workspaceId);
-  const locked = lockedPageIds(user, workspaceId);
-  const pages = all<Page>("SELECT * FROM pages WHERE workspace_id=? AND deleted_at IS NULL AND synced=0 ORDER BY updated_at DESC", workspaceId).filter(
-    (p) => !locked.has(p.id) && !isEncryptedPage(p) && !!pageRole(user, p),
+export async function tagListing(user: Identity, workspaceId: string, tagId?: string, sameName = false) {
+  await requireMember(user, workspaceId);
+  const locked = await lockedPageIds(user, workspaceId);
+  const pages = await filterAsync(await all<Page>("SELECT * FROM pages WHERE workspace_id=? AND deleted_at IS NULL AND synced=0 ORDER BY updated_at DESC", workspaceId), 
+    async (p) => !locked.has(p.id) && !(await isEncryptedPage(p)) && !!(await pageRole(user, p)),
   );
-  const taxonomy = workspaceTaxonomy(user, workspaceId, pages);
+  const taxonomy = await workspaceTaxonomy(user, workspaceId, pages);
   const counts = new Map<string, number>(),
     recordCounts = new Map<string, number>();
   for (const ids of Object.values(taxonomy.links)) for (const t of ids) counts.set(t, (counts.get(t) || 0) + 1);
-  const records = taggedRecords(user, workspaceId);
+  const records = await taggedRecords(user, workspaceId);
   for (const r of records) for (const t of r.tags) recordCounts.set(t, (recordCounts.get(t) || 0) + 1);
   const chosen = taxonomy.tags.find((t) => t.id === tagId);
   if (tagId && !chosen) throw new HttpError(404, "Schlagwort (Tag) nicht gefunden.");
@@ -1074,28 +1073,28 @@ export function tagListing(user: Identity, workspaceId: string, tagId?: string, 
 }
 
 // Members by name (frontmatter names people).
-export function memberByName(workspaceId: string) {
-  const members = all<{ id: string; name: string }>("SELECT u.id,u.name FROM users u JOIN members m ON m.user_id=u.id WHERE m.workspace_id=?", workspaceId);
+export async function memberByName(workspaceId: string) {
+  const members = await all<{ id: string; name: string }>("SELECT u.id,u.name FROM users u JOIN members m ON m.user_id=u.id WHERE m.workspace_id=?", workspaceId);
   return (name: string) => members.find((m) => foldName(m.name) === foldName(name))?.id;
 }
 
 // Git export: a file changed in the repository brings its tags and values
 // back – they replace the page's (as its aliases do). True when they changed.
-export function syncMetaFromFrontmatter(user: Identity, page: Page, data: Record<string, unknown>): boolean {
-  if (isEncryptedPage(page)) return false;
-  const before = JSON.stringify(portableMeta(page.id) ?? {});
-  const { meta } = frontmatterMeta(data, page.workspace_id, memberByName(page.workspace_id), { spaceId: page.space_id });
-  run("DELETE FROM page_tag_links WHERE page_id=?", page.id);
-  run("DELETE FROM page_property_values WHERE page_id=?", page.id);
-  applyPortableMeta(user, page, meta);
-  const changed = before !== JSON.stringify(portableMeta(page.id) ?? {});
-  if (changed) touch(page.id);
+export async function syncMetaFromFrontmatter(user: Identity, page: Page, data: Record<string, unknown>): Promise<boolean> {
+  if (await isEncryptedPage(page)) return false;
+  const before = JSON.stringify(await portableMeta(page.id) ?? {});
+  const { meta } = await frontmatterMeta(data, page.workspace_id, await memberByName(page.workspace_id), { spaceId: page.space_id });
+  await run("DELETE FROM page_tag_links WHERE page_id=?", page.id);
+  await run("DELETE FROM page_property_values WHERE page_id=?", page.id);
+  await applyPortableMeta(user, page, meta);
+  const changed = before !== JSON.stringify(await portableMeta(page.id) ?? {});
+  if (changed) await touch(page.id);
   return changed;
 }
 
 // Archives: the workspace's tags and definitions by name; existing names
 // are kept as they are.
-export function importTaxonomy(
+export async function importTaxonomy(
   user: Identity,
   workspaceId: string,
   taxonomy: { tags: { name: string; color?: string; spaceId?: string }[]; properties: { name: string; type: PagePropertyType; options?: string[]; spaceId?: string }[] } | undefined,
@@ -1106,12 +1105,12 @@ export function importTaxonomy(
   // A space's own ones go to the space it was restored as (#136); without
   // that space they are left out (its pages bring the ones they use).
   const scopeFor = (spaceId: string | undefined) => (spaceId ? (spaceMap?.get(spaceId) ?? undefined) : null);
-  if (canCreateTags(user, workspaceId))
+  if (await canCreateTags(user, workspaceId))
     for (const tag of taxonomy.tags) {
       const spaceId = scopeFor(tag.spaceId);
-      if (spaceId === undefined || scopeClash("page_tags", workspaceId, spaceId, cleanTagName(tag.name))) continue;
+      if (spaceId === undefined || await scopeClash("page_tags", workspaceId, spaceId, cleanTagName(tag.name))) continue;
       try {
-        resolveTag(null, { workspaceId, spaceId }, tag.name, tag.color);
+        await resolveTag(null, { workspaceId, spaceId }, tag.name, tag.color);
       } catch {
         break;
       }
@@ -1120,9 +1119,9 @@ export function importTaxonomy(
   for (const property of taxonomy.properties) {
     const name = cleanName(property.name, MAX_PROPERTY_NAME);
     const spaceId = scopeFor(property.spaceId);
-    if (!name || spaceId === undefined || scopeClash("page_property_defs", workspaceId, spaceId, name)) continue;
-    if ((one<{ n: number }>("SELECT COUNT(*) n FROM page_property_defs WHERE workspace_id=?", workspaceId)?.n ?? 0) >= MAX_PROPERTIES) break;
-    run(
+    if (!name || spaceId === undefined || await scopeClash("page_property_defs", workspaceId, spaceId, name)) continue;
+    if (((await one<{ n: number }>("SELECT COUNT(*) n FROM page_property_defs WHERE workspace_id=?", workspaceId))?.n ?? 0) >= MAX_PROPERTIES) break;
+    await run(
       "INSERT INTO page_property_defs(id,workspace_id,space_id,name,type,options,position,created_by,created_at) VALUES(?,?,?,?,?,?,(SELECT COALESCE(MAX(position),0)+1 FROM page_property_defs WHERE workspace_id=?),?,?)",
       id(),
       workspaceId,
@@ -1196,7 +1195,7 @@ async function createTag(user: Identity, workspaceId: string, spaceId: string | 
   } catch (error) {
     if (!uniqueViolation(error)) throw error;
     const clash = await tagClash(workspaceId, spaceId, name);
-    throw new HttpError(409, clash ? clashMessage("page_tags", clash) : "Diesen Tag gibt es schon.");
+    throw new HttpError(409, clash ? (await clashMessage("page_tags", clash)) : "Diesen Tag gibt es schon.");
   }
   return tagId;
 }
@@ -1207,16 +1206,16 @@ export async function saveTag(user: Identity, input: unknown): Promise<{ ok: tru
     .object({ workspaceId: uuid, tagId: uuid.optional(), name: z.string().max(1000), color: colorSchema.optional(), spaceId: uuid.nullable().optional() })
     .parse(input);
   return db.tx(async () => {
-    requireMember(user, b.workspaceId, "editor");
+    await requireMember(user, b.workspaceId, "editor");
     const name = cleanTagName(b.name);
     if (!name) throw new HttpError(400, "Bitte einen Namen angeben.");
     if (!b.tagId) {
       const spaceId = b.spaceId ?? null;
-      if (spaceId) scopeSpace(b.workspaceId, spaceId);
-      if (spaceId && !canCreateTags(user, b.workspaceId, spaceId)) throw new HttpError(403, "Keine Schreibrechte in diesem Bereich.");
+      if (spaceId) await scopeSpace(b.workspaceId, spaceId);
+      if (spaceId && !(await canCreateTags(user, b.workspaceId, spaceId))) throw new HttpError(403, "Keine Schreibrechte in diesem Bereich.");
       const clash = await tagClash(b.workspaceId, spaceId, name);
-      if (clash) throw new HttpError(409, clashMessage("page_tags", clash));
-      if (!canCreateTags(user, b.workspaceId, spaceId))
+      if (clash) throw new HttpError(409, await clashMessage("page_tags", clash));
+      if (!(await canCreateTags(user, b.workspaceId, spaceId)))
         throw new HttpError(403, spaceId ? "Keine Schreibrechte in diesem Bereich." : "Tags für den ganzen Arbeitsbereich legen nur Eigentümer an.");
       const tagId = await createTag(user, b.workspaceId, spaceId, name, b.color);
       await syncTagFieldOptionsAsync(b.workspaceId);
@@ -1225,13 +1224,13 @@ export async function saveTag(user: Identity, input: unknown): Promise<{ ok: tru
     }
     const before = await db.one<TagRow>("SELECT * FROM page_tags WHERE id=? AND workspace_id=?", b.tagId, b.workspaceId);
     if (!before) throw new HttpError(404, "Schlagwort (Tag) nicht gefunden.");
-    requireManage(user, b.workspaceId, before.space_id);
+    await requireManage(user, b.workspaceId, before.space_id);
     const clash = await tagClash(b.workspaceId, before.space_id, name, b.tagId);
-    if (clash) throw new HttpError(409, `${clashMessage("page_tags", clash)} Zum Zusammenführen „Zusammenführen“ wählen.`);
+    if (clash) throw new HttpError(409, `${await clashMessage("page_tags", clash)} Zum Zusammenführen „Zusammenführen“ wählen.`);
     await db.run("UPDATE page_tags SET name=?,color=COALESCE(?,color) WHERE id=?", name, b.color ?? null, b.tagId);
     // Still synchronous (records of tag-backed properties): on Postgres it
     // refuses inside this transaction once it has records to rewrite.
-    if (before.name !== name) rewriteTagValues(user, b.workspaceId, before.name, name, before.space_id);
+    if (before.name !== name) await rewriteTagValues(user, b.workspaceId, before.name, name, before.space_id);
     await syncTagFieldOptionsAsync(b.workspaceId);
     await auditAsync(user.id, "tag.save", b.tagId, name);
     return { ok: true as const, id: b.tagId };

@@ -9,7 +9,7 @@ import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import { absolutePositionToRelativePosition, relativePositionToAbsolutePosition, ySyncPluginKey } from "@tiptap/y-tiptap";
 import type * as Y from "yjs";
 
-type Relative = ReturnType<typeof absolutePositionToRelativePosition>;
+type Relative = Awaited<ReturnType<typeof absolutePositionToRelativePosition>>;
 type Target = { from: number; to: number; rel: { from: Relative; to: Relative } | null };
 const key = new PluginKey<Target | null>("flowplanAiTarget");
 

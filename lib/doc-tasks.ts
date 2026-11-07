@@ -18,6 +18,7 @@ import { journalLocked } from "./journal-extras";
 import { notificationOn } from "./notification-kinds";
 import { rememberTaskTarget } from "./notification-targets";
 import type { Identity, Page, Row } from "./types";
+import { filterAsync } from "./each-async";
 
 
 type JsonNode = {
@@ -80,7 +81,7 @@ export function extractTasks(json: JsonNode): DocTask[] {
 // Stores the tasks of a document; people newly assigned are told.
 // Returns everyone a task is given to: their mention in the task is not
 // reported again as a plain mention.
-export function syncDocTasks(
+export async function syncDocTasks(
   user: Identity,
   page: Page,
   rowId: string | null,
@@ -88,19 +89,19 @@ export function syncDocTasks(
   notify = true,
 ) {
   const tasks = extractTasks(yDocToProsemirrorJSON(ydoc, "default") as JsonNode);
-  const previous = all<{ text: string; assignee: string | null }>(
+  const previous = await all<{ text: string; assignee: string | null }>(
     "SELECT text,assignee FROM doc_tasks WHERE page_id=? AND row_id=?",
     page.id,
     rowId || "",
   );
   const known = new Set(previous.map((t) => `${t.assignee}\u0000${t.text}`));
-  run("DELETE FROM doc_tasks WHERE page_id=? AND row_id=?", page.id, rowId || "");
+  await run("DELETE FROM doc_tasks WHERE page_id=? AND row_id=?", page.id, rowId || "");
   const notified = new Set<string>();
   const assignees = new Set(tasks.flatMap((task) => task.assignees));
   for (const task of tasks.slice(0, 2000)) {
     const people = task.assignees.length ? task.assignees : [null];
     for (const assignee of people) {
-      run(
+      await run(
         "INSERT INTO doc_tasks(id,page_id,row_id,idx,text,checked,assignee,due,workspace_id,updated_by,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
         id(),
         page.id,
@@ -122,12 +123,12 @@ export function syncDocTasks(
         !known.has(`${assignee}\u0000${task.text}`) &&
         !notified.has(assignee)
       ) {
-        const person = one<Identity>("SELECT * FROM users WHERE id=? AND disabled=0", assignee);
+        const person = await one<Identity>("SELECT * FROM users WHERE id=? AND disabled=0", assignee);
         if (!person) continue;
-        const groups = all<{ group_id: string }>("SELECT group_id FROM group_members WHERE user_id=?", assignee).map((g) => g.group_id);
-        if (!pageRole({ ...person, groups, isAdmin: false }, page)) continue;
+        const groups = (await all<{ group_id: string }>("SELECT group_id FROM group_members WHERE user_id=?", assignee)).map((g) => g.group_id);
+        if (!(await pageRole({ ...person, groups, isAdmin: false }, page))) continue;
         notified.add(assignee);
-        run(
+        await run(
           "INSERT INTO notifications(id,user_id,body,page_id,row_id,kind) VALUES(?,?,?,?,?,'mention')",
           id(),
           assignee,
@@ -159,8 +160,8 @@ type TaskRow = {
   workspace_id: string;
   journal: number;
 };
-function taskRows(user: Identity, workspaceId: string | null, includeDone: boolean) {
-  const rows = all<TaskRow>(
+async function taskRows(user: Identity, workspaceId: string | null, includeDone: boolean) {
+  const rows = await all<TaskRow>(
     `SELECT t.page_id,t.row_id,t.idx,t.text,t.checked,t.assignee,t.due,t.updated_at,p.title,p.icon,t.workspace_id,
        (j.id IS NOT NULL) AS journal
      FROM doc_tasks t JOIN pages p ON p.id=t.page_id
@@ -182,16 +183,15 @@ function taskRows(user: Identity, workspaceId: string | null, includeDone: boole
   );
   const allowed = new Map<string, boolean>(),
     hidden = new Map<string, Set<string>>();
-  return rows
-    .filter((row) => {
+  return (await filterAsync(rows, async (row) => {
       if (!allowed.has(row.page_id)) {
-        const page = one<Page>("SELECT * FROM pages WHERE id=?", row.page_id);
-        allowed.set(row.page_id, !!page && !!pageRole(user, page) && !journalLocked(user, page));
+        const page = await one<Page>("SELECT * FROM pages WHERE id=?", row.page_id);
+        allowed.set(row.page_id, !!page && !!(await pageRole(user, page)) && !(await journalLocked(user, page)));
         // Tasks in records hidden from the person (private records) stay hidden.
-        hidden.set(row.page_id, page?.kind === "database" && allowed.get(row.page_id) ? hiddenRowIds(user, page) : new Set());
+        hidden.set(row.page_id, page?.kind === "database" && allowed.get(row.page_id) ? (await hiddenRowIds(user, page)) : new Set());
       }
       return allowed.get(row.page_id) && !(row.row_id && hidden.get(row.page_id)!.has(row.row_id));
-    })
+    }))
     .map((row) => ({
       pageId: row.page_id,
       rowId: row.row_id || null,
@@ -206,24 +206,24 @@ function taskRows(user: Identity, workspaceId: string | null, includeDone: boole
       workspaceId: row.workspace_id,
     }));
 }
-export function myTasks(user: Identity, workspaceId: string, includeDone = false) {
-  return taskRows(user, workspaceId, includeDone).slice(0, 500);
+export async function myTasks(user: Identity, workspaceId: string, includeDone = false) {
+  return (await taskRows(user, workspaceId, includeDone)).slice(0, 500);
 }
 // Open tasks across all of the person's workspaces (widgets of the mobile app).
-export function openTasksEverywhere(user: Identity) {
-  return taskRows(user, null, false);
+export async function openTasksEverywhere(user: Identity) {
+  return await taskRows(user, null, false);
 }
 // The person's tasks in their other workspaces, per workspace.
-export function otherWorkspaceTasks(user: Identity, workspaceId: string, includeDone = false) {
+export async function otherWorkspaceTasks(user: Identity, workspaceId: string, includeDone = false) {
   const names = new Map(
-    all<{ id: string; name: string }>(
+    (await all<{ id: string; name: string }>(
       "SELECT w.id,w.name FROM workspaces w JOIN members m ON m.workspace_id=w.id WHERE m.user_id=? AND w.id<>? ORDER BY lower(w.name)",
       user.id,
       workspaceId,
-    ).map((w) => [w.id, w.name]),
+    )).map((w) => [w.id, w.name]),
   );
   if (!names.size) return [];
-  const tasks = taskRows(user, null, includeDone).filter((t) => names.has(t.workspaceId));
+  const tasks = (await taskRows(user, null, includeDone)).filter((t) => names.has(t.workspaceId));
   return [...names]
     .map(([id, name]) => ({ workspaceId: id, name, tasks: tasks.filter((t) => t.workspaceId === id).slice(0, 200) }))
     .filter((w) => w.tasks.length);
@@ -244,16 +244,16 @@ export const taskChangeSchema = z
     due: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   })
   .refine((change) => change.text !== undefined || change.key !== undefined, { message: "text or key" });
-export function changeDocTask(user: Identity, input: unknown) {
+export async function changeDocTask(user: Identity, input: unknown) {
   const change = taskChangeSchema.parse(input);
-  const page = requirePage(user, change.pageId, true);
+  const page = await requirePage(user, change.pageId, true);
   if (page.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
-  if (journalLocked(user, page)) throw new HttpError(423, "Dieses Journal ist gesperrt.");
+  if (await journalLocked(user, page)) throw new HttpError(423, "Dieses Journal ist gesperrt.");
   const rowId = change.rowId || null;
-  if (rowId) requireRow(user, page.id, rowId, true);
+  if (rowId) await requireRow(user, page.id, rowId, true);
   else if (page.kind !== "document") throw new HttpError(400, "Kein Dokument.");
   let found = false;
-  const result = rewriteDocument(page.id, rowId, user.id, (doc) => {
+  const result = (await rewriteDocument(page.id, rowId, user.id, (doc) => {
     let index = -1;
     // Ticking a task off ticks off its subtasks too.
     const edit = (node: PMNode, tickAll = false): PMNode => {
@@ -283,14 +283,14 @@ export function changeDocTask(user: Identity, input: unknown) {
     const next = edit(doc);
     if (!found) throw new HttpError(409, "Die Aufgabe wurde inzwischen geändert. Bitte neu laden.");
     return next;
-  })!;
-  syncDocTasks(user, page, rowId, result.ydoc);
+  }))!;
+  await syncDocTasks(user, page, rowId, result.ydoc);
   return result.publish;
 }
 
 // Morning reminders: open tasks due today, once per task and person.
-export function processDueTasks(today = localToday()) {
-  const due = all<{ id: string; page_id: string; row_id: string; text: string; assignee: string; title: string }>(
+export async function processDueTasks(today = localToday()) {
+  const due = await all<{ id: string; page_id: string; row_id: string; text: string; assignee: string; title: string }>(
     `SELECT t.id,t.page_id,t.row_id,t.text,t.assignee,p.title FROM doc_tasks t JOIN pages p ON p.id=t.page_id
      WHERE t.due=? AND t.checked=0 AND t.assignee IS NOT NULL AND p.deleted_at IS NULL
      AND (t.row_id='' OR EXISTS (SELECT 1 FROM rows r WHERE r.id=t.row_id AND r.page_id=t.page_id))
@@ -300,7 +300,7 @@ export function processDueTasks(today = localToday()) {
     today,
   );
   for (const task of due) {
-    run(
+    await run(
       "INSERT INTO task_reminders(user_id,page_id,text,due) VALUES(?,?,?,?) ON CONFLICT DO NOTHING",
       task.assignee,
       task.page_id,
@@ -308,7 +308,7 @@ export function processDueTasks(today = localToday()) {
       today,
     );
     const notificationId = id();
-    run(
+    await run(
       "INSERT INTO notifications(id,user_id,body,page_id,row_id,kind) VALUES(?,?,?,?,?,'reminder')",
       notificationId,
       task.assignee,
@@ -317,7 +317,7 @@ export function processDueTasks(today = localToday()) {
       task.row_id || null,
     );
     // "Done" and "Tomorrow" on the app's notification (lib/notification-actions.ts).
-    rememberTaskTarget(notificationId, { type: "doc", pageId: task.page_id, rowId: task.row_id || null, key: taskKey(task.text) });
+    await rememberTaskTarget(notificationId, { type: "doc", pageId: task.page_id, rowId: task.row_id || null, key: taskKey(task.text) });
   }
   return due.length;
 }
@@ -328,8 +328,8 @@ function localToday() {
 // Tasks of a document written directly (seeded content, imports, journal
 // days). `notify` false: only the list is updated (tasks moved between
 // journal days are not new).
-export function indexPageTasks(pageId: string, notify = true) {
-  const page = one<Page & { state: Uint8Array | null; html: string }>(
+export async function indexPageTasks(pageId: string, notify = true) {
+  const page = await one<Page & { state: Uint8Array | null; html: string }>(
     "SELECT p.*,d.state,d.html FROM pages p JOIN documents d ON d.page_id=p.id WHERE p.id=?",
     pageId,
   );
@@ -338,7 +338,7 @@ export function indexPageTasks(pageId: string, notify = true) {
   try {
     Y.applyUpdate(ydoc, page.state || htmlState(page.html));
     const system = { id: page.created_by, name: "", groups: [], isAdmin: false } as unknown as Identity;
-    syncDocTasks(system, page, null, ydoc, notify);
+    await syncDocTasks(system, page, null, ydoc, notify);
   } finally {
     ydoc.destroy();
   }
@@ -346,40 +346,40 @@ export function indexPageTasks(pageId: string, notify = true) {
 // The tasks of a record's document written without the editor (quick
 // capture of the desktop app, share and clipper as a record): collected at
 // once, so they show under "My tasks" before anyone opens the record.
-export function indexRowTasks(user: Identity, page: Page, rowId: string) {
-  const doc = one<{ state: Uint8Array | null; html: string }>("SELECT state,html FROM row_documents WHERE row_id=?", rowId);
+export async function indexRowTasks(user: Identity, page: Page, rowId: string) {
+  const doc = await one<{ state: Uint8Array | null; html: string }>("SELECT state,html FROM row_documents WHERE row_id=?", rowId);
   if (!doc) return;
   const ydoc = new Y.Doc();
   try {
     Y.applyUpdate(ydoc, doc.state || htmlState(doc.html));
-    syncDocTasks(user, page, rowId, ydoc);
+    await syncDocTasks(user, page, rowId, ydoc);
   } finally {
     ydoc.destroy();
   }
 }
 // Records that come back (from the trash, an older version of the
 // database): their tasks were removed with them and are indexed again.
-export function reindexRowTasks(user: Identity, page: Page, rowIds: Iterable<string>) {
+export async function reindexRowTasks(user: Identity, page: Page, rowIds: Iterable<string>) {
   for (const rowId of rowIds) {
-    const row = one<Row>("SELECT * FROM rows WHERE id=? AND page_id=?", rowId, page.id);
+    const row = await one<Row>("SELECT * FROM rows WHERE id=? AND page_id=?", rowId, page.id);
     if (!row) continue;
-    const stored = one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", rowId);
+    const stored = await one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", rowId);
     if (!(stored?.html ?? row.content ?? "").includes('data-type="taskItem"')) continue;
-    if (!stored) ensureRowDocument(row);
-    indexRowTasks(user, page, rowId);
+    if (!stored) await ensureRowDocument(row);
+    await indexRowTasks(user, page, rowId);
   }
 }
 // Documents written before tasks were collected: indexed once.
-export function backfillDocTasks() {
-  if (one("SELECT 1 FROM instance_state WHERE key='doc_tasks_indexed'")) return;
-  const index = (page: Page, rowId: string | null, state: Uint8Array | null, html: string) => {
+export async function backfillDocTasks() {
+  if (await one("SELECT 1 FROM instance_state WHERE key='doc_tasks_indexed'")) return;
+  const index = async (page: Page, rowId: string | null, state: Uint8Array | null, html: string) => {
     const ydoc = new Y.Doc();
     try {
       Y.applyUpdate(ydoc, state || htmlState(html));
       const tasks = extractTasks(yDocToProsemirrorJSON(ydoc, "default") as JsonNode);
       for (const task of tasks.slice(0, 2000))
         for (const assignee of task.assignees.length ? task.assignees : [null])
-          run(
+          await run(
             "INSERT INTO doc_tasks(id,page_id,row_id,idx,text,checked,assignee,due,workspace_id,updated_by,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
             id(),
             page.id,
@@ -397,41 +397,41 @@ export function backfillDocTasks() {
       ydoc.destroy();
     }
   };
-  for (const doc of all<Page & { state: Uint8Array | null; html: string }>(
+  for (const doc of await all<Page & { state: Uint8Array | null; html: string }>(
     `SELECT p.*,d.state,d.html FROM documents d JOIN pages p ON p.id=d.page_id
      WHERE d.html LIKE '%data-type="taskItem"%' AND NOT EXISTS(SELECT 1 FROM doc_tasks t WHERE t.page_id=p.id AND t.row_id='')`,
   ))
-    index(doc, null, doc.state, doc.html);
-  for (const doc of all<Page & { row_id: string; state: Uint8Array | null; html: string }>(
+    await index(doc, null, doc.state, doc.html);
+  for (const doc of await all<Page & { row_id: string; state: Uint8Array | null; html: string }>(
     `SELECT p.*,r.id row_id,d.state,d.html FROM row_documents d JOIN rows r ON r.id=d.row_id JOIN pages p ON p.id=r.page_id
      WHERE d.html LIKE '%data-type="taskItem"%' AND NOT EXISTS(SELECT 1 FROM doc_tasks t WHERE t.page_id=p.id AND t.row_id=r.id)`,
   ))
-    index(doc, doc.row_id, doc.state, doc.html);
-  run("INSERT INTO instance_state(key,value) VALUES('doc_tasks_indexed','1') ON CONFLICT(key) DO UPDATE SET value=excluded.value");
+    await index(doc, doc.row_id, doc.state, doc.html);
+  await run("INSERT INTO instance_state(key,value) VALUES('doc_tasks_indexed','1') ON CONFLICT(key) DO UPDATE SET value=excluded.value");
 }
 const runtime = globalThis as typeof globalThis & { flowplanTaskTimer?: ReturnType<typeof setInterval> };
-export function startTaskWorker(onFired: () => void) {
+export async function startTaskWorker(onFired: () => void) {
   if (runtime.flowplanTaskTimer) return;
   try {
-    backfillDocTasks();
+    await backfillDocTasks();
   } catch (error) {
     console.error("Aufgaben konnten nicht erfasst werden", error);
   }
-  const tick = () => {
+  const tick = async () => {
     try {
       // From 8 o'clock on (server time), so reminders do not come at night.
-      if (new Date().getHours() >= 8 && processDueTasks()) onFired();
+      if (new Date().getHours() >= 8 && await processDueTasks()) onFired();
     } catch (error) {
       console.error("Aufgaben-Erinnerungen fehlgeschlagen", error);
     }
   };
   runtime.flowplanTaskTimer = setInterval(tick, 5 * 60_000);
   runtime.flowplanTaskTimer.unref();
-  tick();
+  await tick();
 }
 
 // Badge in the sidebar: open tasks given to the person or in their journal,
 // due today or earlier.
-export function dueTaskCount(user: Identity, workspaceId: string, today = localToday()) {
-  return myTasks(user, workspaceId).filter((task) => (task.assigned || task.journal) && task.due && task.due <= today).length;
+export async function dueTaskCount(user: Identity, workspaceId: string, today = localToday()) {
+  return (await myTasks(user, workspaceId)).filter((task) => (task.assigned || task.journal) && task.due && task.due <= today).length;
 }

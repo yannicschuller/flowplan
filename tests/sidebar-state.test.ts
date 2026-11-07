@@ -17,59 +17,59 @@ const { command, bootstrap } = await import("../lib/api");
 const { commandActionNames, commandActions } = await import("../lib/openapi");
 const folds = await import("../lib/sidebar-folds");
 
-function account(name: string) {
+async function account(name: string) {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
   return { id: uid, name, email: `${name}@example.test`, groups: [], isAdmin: false, disabled: 0, created_at: "" } as Identity;
 }
-const owner = account("Olga"),
-  viewer = account("Vera"),
-  stranger = account("Sven");
-const wid = createWorkspace(owner.id, "Agentur");
-run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
-const team = bootstrap(owner, wid).spaces[0].id;
-const act = (input: Record<string, unknown>, as = owner) => command(as, input) as Record<string, unknown>;
-const page = (title: string, parentId?: string) =>
-  (act({ action: "page.create", workspaceId: wid, spaceId: team, title, kind: "document", ...(parentId ? { parentId } : {}) }) as { id: string }).id;
-const save = (changes: Record<string, boolean>, as = owner) =>
-  act({ action: "sidebar.state", workspaceId: wid, changes }, as) as { keys: string[]; updatedAt: number };
-const stateOf = (as = owner) => bootstrap(as, wid).sidebar;
+const owner = await account("Olga"),
+  viewer = await account("Vera"),
+  stranger = await account("Sven");
+const wid = await createWorkspace(owner.id, "Agentur");
+await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
+const team = (await bootstrap(owner, wid)).spaces[0].id;
+const act = async (input: Record<string, unknown>, as = owner) => (await command(as, input)) as Record<string, unknown>;
+const page = async (title: string, parentId?: string) =>
+  ((await act({ action: "page.create", workspaceId: wid, spaceId: team, title, kind: "document", ...(parentId ? { parentId } : {}) })) as { id: string }).id;
+const save = async (changes: Record<string, boolean>, as = owner) =>
+  (await act({ action: "sidebar.state", workspaceId: wid, changes }, as)) as { keys: string[]; updatedAt: number };
+const stateOf = async (as = owner) => (await bootstrap(as, wid)).sidebar;
 
-const projekte = page("Projekte");
-const kunde = page("Kunde A", projekte);
-const notizen = page("Notizen", kunde);
-const leer = page("Leer");
+const projekte = await page("Projekte");
+const kunde = await page("Kunde A", projekte);
+const notizen = await page("Notizen", kunde);
+const leer = await page("Leer");
 
-test("schema 87: the table exists", () => {
-  assert.ok(tableNames().includes("sidebar_state"));
+test("schema 87: the table exists", async () => {
+  assert.ok((await tableNames()).includes("sidebar_state"));
   // (The SQLite migrations ran; Postgres has the translated schema.)
   if (!onPostgres) assert.equal((globalThis as { flowplanSchema?: number }).flowplanSchema, SCHEMA_VERSION);
 });
 
-test("nothing stored yet: null in the bootstrap", () => {
-  assert.equal(stateOf(), null);
+test("nothing stored yet: null in the bootstrap", async () => {
+  assert.equal(await stateOf(), null);
 });
 
-test("changes per person, the same in every bootstrap (all devices)", () => {
-  const saved = save({ [`p:${projekte}`]: true, [`p:${kunde}`]: true, [`s:${team}`]: true, "g:favorites": true });
+test("changes per person, the same in every bootstrap (all devices)", async () => {
+  const saved = await save({ [`p:${projekte}`]: true, [`p:${kunde}`]: true, [`s:${team}`]: true, "g:favorites": true });
   assert.deepEqual(saved.keys, [`p:${projekte}`, `p:${kunde}`, `s:${team}`, "g:favorites"]);
-  assert.deepEqual(stateOf()?.keys, saved.keys);
-  assert.equal(typeof stateOf()?.updatedAt, "number");
+  assert.deepEqual((await stateOf())?.keys, saved.keys);
+  assert.equal(typeof (await stateOf())?.updatedAt, "number");
   // Folding again removes only that key: another device's changes stay.
-  save({ [`p:${kunde}`]: false, "g:collections": true });
-  assert.deepEqual(stateOf()?.keys, [`p:${projekte}`, `s:${team}`, "g:favorites", "g:collections"]);
+  await save({ [`p:${kunde}`]: false, "g:collections": true });
+  assert.deepEqual((await stateOf())?.keys, [`p:${projekte}`, `s:${team}`, "g:favorites", "g:collections"]);
   // Another person has their own.
-  assert.equal(stateOf(viewer), null);
-  save({ [`p:${projekte}`]: true }, viewer);
-  assert.deepEqual(stateOf(viewer)?.keys, [`p:${projekte}`]);
-  assert.deepEqual(stateOf()?.keys, [`p:${projekte}`, `s:${team}`, "g:favorites", "g:collections"]);
+  assert.equal(await stateOf(viewer), null);
+  await save({ [`p:${projekte}`]: true }, viewer);
+  assert.deepEqual((await stateOf(viewer))?.keys, [`p:${projekte}`]);
+  assert.deepEqual((await stateOf())?.keys, [`p:${projekte}`, `s:${team}`, "g:favorites", "g:collections"]);
   void notizen;
 });
 
-test("pages without sub-pages, unknown keys and other workspaces' pages drop out", () => {
-  const elsewhere = createWorkspace(owner.id, "Privat");
-  const otherSpace = bootstrap(owner, elsewhere).spaces[0].id;
-  const saved = save({
+test("pages without sub-pages, unknown keys and other workspaces' pages drop out", async () => {
+  const elsewhere = await createWorkspace(owner.id, "Privat");
+  const otherSpace = (await bootstrap(owner, elsewhere)).spaces[0].id;
+  const saved = await save({
     [`p:${leer}`]: true,
     [`s:${otherSpace}`]: true,
     "x:whatever": true,
@@ -79,37 +79,37 @@ test("pages without sub-pages, unknown keys and other workspaces' pages drop out
   assert.deepEqual(saved.keys, [`p:${projekte}`, `s:${team}`, "g:favorites", "g:collections"]);
 });
 
-test("deleted pages are pruned when read and saved", () => {
-  const extra = page("Archiv");
-  const child = page("Alt", extra);
-  save({ [`p:${extra}`]: true });
-  assert.ok(stateOf()?.keys.includes(`p:${extra}`));
+test("deleted pages are pruned when read and saved", async () => {
+  const extra = await page("Archiv");
+  const child = await page("Alt", extra);
+  await save({ [`p:${extra}`]: true });
+  assert.ok((await stateOf())?.keys.includes(`p:${extra}`));
   // The only sub-page goes to the trash: nothing left to unfold.
-  act({ action: "page.delete", pageId: child });
-  assert.ok(!stateOf()?.keys.includes(`p:${extra}`));
-  save({ [`p:${extra}`]: true });
-  act({ action: "page.delete", pageId: extra });
-  assert.ok(!stateOf()?.keys.includes(`p:${extra}`));
-  const stored = JSON.parse(one<{ keys: string }>("SELECT keys FROM sidebar_state WHERE user_id=? AND workspace_id=?", owner.id, wid)!.keys);
-  save({});
-  const after = JSON.parse(one<{ keys: string }>("SELECT keys FROM sidebar_state WHERE user_id=? AND workspace_id=?", owner.id, wid)!.keys);
+  await act({ action: "page.delete", pageId: child });
+  assert.ok(!(await stateOf())?.keys.includes(`p:${extra}`));
+  await save({ [`p:${extra}`]: true });
+  await act({ action: "page.delete", pageId: extra });
+  assert.ok(!(await stateOf())?.keys.includes(`p:${extra}`));
+  const stored = JSON.parse((await one<{ keys: string }>("SELECT keys FROM sidebar_state WHERE user_id=? AND workspace_id=?", owner.id, wid))!.keys);
+  await save({});
+  const after = JSON.parse((await one<{ keys: string }>("SELECT keys FROM sidebar_state WHERE user_id=? AND workspace_id=?", owner.id, wid))!.keys);
   assert.ok(after.length <= stored.length);
   assert.ok(!after.includes(`p:${extra}`));
 });
 
-test("members only; bad input refused; documented", () => {
-  assert.throws(() => save({ [`p:${projekte}`]: true }, stranger), /Arbeitsbereich|Zugriff|Mitglied|Berechtigung|gefunden/);
-  assert.throws(() => act({ action: "sidebar.state", workspaceId: "nope", changes: {} }));
-  assert.throws(() => act({ action: "sidebar.state", workspaceId: wid, changes: { "p:x": "yes" } }));
+test("members only; bad input refused; documented", async () => {
+  await assert.rejects(async () => await save({ [`p:${projekte}`]: true }, stranger), /Arbeitsbereich|Zugriff|Mitglied|Berechtigung|gefunden/);
+  await assert.rejects(async () => await act({ action: "sidebar.state", workspaceId: "nope", changes: {} }));
+  await assert.rejects(async () => await act({ action: "sidebar.state", workspaceId: wid, changes: { "p:x": "yes" } }));
   const many = Object.fromEntries(Array.from({ length: folds.SIDEBAR_CHANGES_LIMIT + 1 }, (_, i) => [`g:${i}`, true]));
-  assert.throws(() => act({ action: "sidebar.state", workspaceId: wid, changes: many }));
+  await assert.rejects(async () => await act({ action: "sidebar.state", workspaceId: wid, changes: many }));
   assert.ok(commandActionNames.includes("sidebar.state"));
   assert.ok(commandActions.some((a) => a.action === "sidebar.state"));
 });
 
-test("gone with the person", () => {
-  run("DELETE FROM users WHERE id=?", viewer.id);
-  assert.equal(one("SELECT 1 FROM sidebar_state WHERE user_id=?", viewer.id), undefined);
+test("gone with the person", async () => {
+  await run("DELETE FROM users WHERE id=?", viewer.id);
+  assert.equal(await one("SELECT 1 FROM sidebar_state WHERE user_id=?", viewer.id), undefined);
 });
 
 test("keys: only the known kinds", () => {

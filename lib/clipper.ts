@@ -21,6 +21,7 @@ import { appendHtmlToPage } from "./mcp";
 import { ct } from "./content-locale";
 import { encryptedSpace, requirePlaintext, requirePlaintextSpace } from "./e2ee-server";
 import type { Field, Identity, Page, Space } from "./types";
+import { filterAsync, mapAsync } from "./each-async";
 
 // chrome-extension://<32 letters> (Chrome, Edge, Brave, Opera),
 // moz-extension://<uuid> (Firefox), safari-web-extension://<uuid>.
@@ -45,7 +46,7 @@ export function clipperCors(origin: string | null): Record<string, string> {
 // Sicherheit) counts as signed out, as everywhere else.
 export async function clipperUser(request: Headers | string | null): Promise<Identity> {
   const authorization = request instanceof Headers ? request.get("authorization") : request;
-  if (request instanceof Headers && blockedRequest(request)) throw new HttpError(401, "Das API-Token ist ungültig oder abgelaufen.");
+  if (request instanceof Headers && await blockedRequest(request)) throw new HttpError(401, "Das API-Token ist ungültig oder abgelaufen.");
   if (!authorization?.startsWith("Bearer ")) throw new HttpError(401, "Bitte melde dich mit einem API-Token an.");
   const user = await identityFromApiToken(authorization, { clipper: true });
   if (!user) throw new HttpError(401, "Das API-Token ist ungültig oder abgelaufen.");
@@ -54,39 +55,37 @@ export async function clipperUser(request: Headers | string | null): Promise<Ide
 }
 
 const rank: Record<string, number> = { viewer: 1, commenter: 1, editor: 2, owner: 3 };
-const writable = (user: Identity, page: Page) =>
-  !page.deleted_at && !page.locked && ["document", "database"].includes(page.kind) && rank[pageRole(user, page) || ""] >= 2 && !journalLocked(user, page);
+const writable = async (user: Identity, page: Page) =>
+  !page.deleted_at && !page.locked && ["document", "database"].includes(page.kind) && rank[await pageRole(user, page) || ""] >= 2 && !(await journalLocked(user, page));
 const MAX_TARGET_PAGES = 400;
 
 // Workspaces, spaces and pages (documents and databases) this person may
 // save to, newest first.
-export function clipperTargets(user: Identity) {
-  const workspaces = all<{ id: string; name: string }>(
+export async function clipperTargets(user: Identity) {
+  const workspaces = await all<{ id: string; name: string }>(
     "SELECT w.id,w.name FROM workspaces w JOIN members m ON m.workspace_id=w.id WHERE m.user_id=? AND m.role IN ('owner','editor') ORDER BY lower(w.name)",
     user.id,
   );
   return {
     user: { name: user.name },
-    workspaces: workspaces.map((w) => {
+    workspaces: await mapAsync(workspaces, async (w) => {
       // End-to-end encrypted spaces are left out: the server never writes
       // plaintext into them.
-      const spaces = all<Space>(`SELECT * FROM spaces WHERE workspace_id=? AND deleted_at IS NULL ORDER BY ${SPACE_ORDER}`, w.id).filter(
-        (s) => ["editor", "owner"].includes(spaceRole(user, s) || "") && !encryptedSpace(s.id),
+      const spaces = await filterAsync(await all<Space>(`SELECT * FROM spaces WHERE workspace_id=? AND deleted_at IS NULL ORDER BY ${SPACE_ORDER}`, w.id), 
+        async (s) => ["editor", "owner"].includes(await spaceRole(user, s) || "") && !(await encryptedSpace(s.id)),
       );
       const names = new Map(spaces.map((s) => [s.id, s.name]));
-      const locked = lockedPageIds(user, w.id);
-      const pages = all<Page>(
+      const locked = await lockedPageIds(user, w.id);
+      const pages = await mapAsync((await filterAsync(await all<Page>(
         "SELECT * FROM pages WHERE workspace_id=? AND kind IN ('document','database') AND deleted_at IS NULL AND synced=0 AND journal_date IS NULL ORDER BY updated_at DESC LIMIT 2000",
         w.id,
-      )
-        .filter((p) => names.has(p.space_id) && !locked.has(p.id) && writable(user, p))
-        .slice(0, MAX_TARGET_PAGES)
-        .map((p) => ({ id: p.id, title: p.title, kind: p.kind, space: p.space_id, bookmarks: p.kind === "database" && isBookmarks(p.id) }));
+      ), async (p) => names.has(p.space_id) && !locked.has(p.id) && await writable(user, p)))
+        .slice(0, MAX_TARGET_PAGES), async (p) => ({ id: p.id, title: p.title, kind: p.kind, space: p.space_id, bookmarks: p.kind === "database" && await isBookmarks(p.id) }));
       return { id: w.id, name: w.name, spaces: spaces.map((s) => ({ id: s.id, name: s.name })), pages };
     }),
   };
 }
-const isBookmarks = (pageId: string) => !!one("SELECT 1 FROM databases WHERE page_id=? AND fields LIKE '%\"id\":\"bm_url\"%'", pageId);
+const isBookmarks = async (pageId: string) => !!(await one("SELECT 1 FROM databases WHERE page_id=? AND fields LIKE '%\"id\":\"bm_url\"%'", pageId));
 
 // ---- Sanitising ----
 
@@ -148,26 +147,26 @@ const link = (url: string, title?: string) => `<a href="${esc(url)}">${esc(title
 const openUrl = (pageId: string, rowId?: string) => `${appUrl().replace(/\/$/, "")}/#page=${pageId}${rowId ? `&row=${rowId}` : ""}`;
 
 // A space the person may create pages in.
-function writableSpace(user: Identity, workspaceId: string, spaceId: string) {
-  requireMember(user, workspaceId, "editor");
-  const space = one<Space>("SELECT * FROM spaces WHERE id=? AND workspace_id=? AND deleted_at IS NULL", spaceId, workspaceId);
-  if (!space || !["editor", "owner"].includes(spaceRole(user, space) || "")) throw new HttpError(403, "Keine Schreibrechte im Zielbereich.");
-  requirePlaintextSpace(space);
+async function writableSpace(user: Identity, workspaceId: string, spaceId: string) {
+  await requireMember(user, workspaceId, "editor");
+  const space = await one<Space>("SELECT * FROM spaces WHERE id=? AND workspace_id=? AND deleted_at IS NULL", spaceId, workspaceId);
+  if (!space || !["editor", "owner"].includes(await spaceRole(user, space) || "")) throw new HttpError(403, "Keine Schreibrechte im Zielbereich.");
+  await requirePlaintextSpace(space);
   return space;
 }
-function targetPage(user: Identity, workspaceId: string, pageId: string) {
-  const page = requirePage(user, pageId, true);
+async function targetPage(user: Identity, workspaceId: string, pageId: string) {
+  const page = await requirePage(user, pageId, true);
   if (page.workspace_id !== workspaceId) throw new HttpError(400, "Nur innerhalb eines Arbeitsbereichs.");
-  if (!writable(user, page)) throw new HttpError(403, "In diese Seite kann nicht gespeichert werden.");
-  requirePlaintext(page);
+  if (!(await writable(user, page))) throw new HttpError(403, "In diese Seite kann nicht gespeichert werden.");
+  await requirePlaintext(page);
   return page;
 }
 
 // Tags into a multi-select (or select) property named "Tags" or
 // "Schlagwörter"; for bookmarks a "Tags" property is added on first use.
-function tagRecord(pageId: string, rowId: string, tags: string[], create = false) {
+async function tagRecord(pageId: string, rowId: string, tags: string[], create = false) {
   if (!tags.length) return;
-  const fields = JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId)!.fields) as Field[];
+  const fields = JSON.parse((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId))!.fields) as Field[];
   let field = fields.find((f) => ["multiselect", "select"].includes(f.type) && /^(tags?|schlagw(ö|oe)rter|stichw(ö|oe)rter|labels?)$/i.test(f.name.trim()));
   if (!field && create) {
     field = { id: "bm_tags", name: ct("Tags", "Tags"), type: "multiselect", options: [] };
@@ -178,40 +177,40 @@ function tagRecord(pageId: string, rowId: string, tags: string[], create = false
   for (const tag of tags) if (!options.some((o) => o.toLowerCase() === tag.toLowerCase()) && options.length < 300) options.push(tag);
   field.options = options;
   const chosen = tags.map((tag) => options.find((o) => o.toLowerCase() === tag.toLowerCase())).filter((t): t is string => !!t);
-  const cells = JSON.parse(one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", rowId)!.cells) as Record<string, unknown>;
+  const cells = JSON.parse((await one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", rowId))!.cells) as Record<string, unknown>;
   cells[field.id] = field.type === "select" ? chosen[0] : [...new Set(chosen)];
-  run("UPDATE databases SET fields=? WHERE page_id=?", JSON.stringify(fields), pageId);
-  run("UPDATE rows SET cells=? WHERE id=?", JSON.stringify(cells), rowId);
+  await run("UPDATE databases SET fields=? WHERE page_id=?", JSON.stringify(fields), pageId);
+  await run("UPDATE rows SET cells=? WHERE id=?", JSON.stringify(cells), rowId);
 }
 
-export function saveClip(user: Identity, raw: unknown) {
+export async function saveClip(user: Identity, raw: unknown) {
   const input = clipSchema.parse(raw);
   const { workspaceId } = input.target;
   const title = (input.title?.trim() || new URL(input.url).hostname).slice(0, 200);
   const tags = [...new Set(input.tags || [])];
   const tagLine = tags.length ? `<p>${tags.map((t) => `#${esc(t)}`).join(" ")}</p>` : "";
-  const target = input.target.pageId ? targetPage(user, workspaceId, input.target.pageId) : null;
-  const space = target ? null : writableSpace(user, workspaceId, z.uuid().parse(input.target.spaceId));
-  const result = transaction(() => {
+  const target = input.target.pageId ? (await targetPage(user, workspaceId, input.target.pageId)) : null;
+  const space = target ? null : (await writableSpace(user, workspaceId, z.uuid().parse(input.target.spaceId)));
+  const result = await transaction(async () => {
     if (input.mode === "bookmark") {
       // The space's bookmarks database, or the chosen one if it is one.
-      const db = target?.kind === "database" && isBookmarks(target.id) ? target.id : bookmarksDatabase(workspaceId, target?.space_id || space!.id, user.id);
-      requirePage(user, db, true);
-      const saved = addBookmarks(db, user.id, [{ title, url: input.url, note: input.description?.slice(0, 2000) }]);
+      const db = target?.kind === "database" && await isBookmarks(target.id) ? target.id : (await bookmarksDatabase(workspaceId, target?.space_id || space!.id, user.id));
+      await requirePage(user, db, true);
+      const saved = await addBookmarks(db, user.id, [{ title, url: input.url, note: input.description?.slice(0, 2000) }]);
       if (!saved.added) throw new HttpError(409, "Dieser Link ist schon unter den Lesezeichen.");
       const rowId = saved.ids[0];
       const favicon = input.favicon && /^https:\/\//i.test(input.favicon) ? input.favicon : "";
       if (favicon) {
         // The site's icon as a link property (added on first use).
-        const fields = JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", db)!.fields) as Field[];
+        const fields = JSON.parse((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", db))!.fields) as Field[];
         if (!fields.some((f) => f.id === "bm_favicon")) {
           fields.push({ id: "bm_favicon", name: ct("Favicon", "Favicon"), type: "url" });
-          run("UPDATE databases SET fields=? WHERE page_id=?", JSON.stringify(fields), db);
+          await run("UPDATE databases SET fields=? WHERE page_id=?", JSON.stringify(fields), db);
         }
-        const cells = JSON.parse(one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", rowId)!.cells);
-        run("UPDATE rows SET cells=? WHERE id=?", JSON.stringify({ ...cells, bm_favicon: favicon }), rowId);
+        const cells = JSON.parse((await one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", rowId))!.cells);
+        await run("UPDATE rows SET cells=? WHERE id=?", JSON.stringify({ ...cells, bm_favicon: favicon }), rowId);
       }
-      tagRecord(db, rowId, tags, true);
+      await tagRecord(db, rowId, tags, true);
       return { pageId: db, rowId };
     }
     if (input.mode === "highlight") {
@@ -220,15 +219,15 @@ export function saveClip(user: Identity, raw: unknown) {
       if (!quote && !text) throw new HttpError(400, "Kein Text markiert.");
       const body = `<blockquote>${quote || `<p>${esc(text).replace(/\n/g, "<br>")}</p>`}<p>— ${link(input.url, title)}</p></blockquote>`;
       if (target?.kind === "database") {
-        const saved = captureRecord(user, { pageId: target.id, title, url: input.url, article: body });
-        tagRecord(target.id, saved.rowId, tags);
+        const saved = await captureRecord(user, { pageId: target.id, title, url: input.url, article: body });
+        await tagRecord(target.id, saved.rowId, tags);
         return { pageId: target.id, rowId: saved.rowId };
       }
       // A space: a new page for the source, later highlights are appended.
-      const pageId = target?.id || createPage(workspaceId, space!.id, user.id, title, "document");
+      const pageId = target?.id || await createPage(workspaceId, space!.id, user.id, title, "document");
       if (!target) {
         const intro = cleanHtml(`<p>${link(input.url, input.url)}</p>${tagLine}`);
-        run("UPDATE documents SET html=?,state=? WHERE page_id=?", intro, htmlState(intro), pageId);
+        await run("UPDATE documents SET html=?,state=? WHERE page_id=?", intro, htmlState(intro), pageId);
       }
       return { pageId, append: body };
     }
@@ -236,18 +235,18 @@ export function saveClip(user: Identity, raw: unknown) {
     const content = input.html ? clipHtml(input.html, input.url) : input.text ? `<p>${esc(input.text).replace(/\n/g, "<br>")}</p>` : "";
     if (!content) throw new HttpError(400, "Kein Inhalt zum Speichern.");
     if (target?.kind === "database") {
-      const saved = captureRecord(user, { pageId: target.id, title, url: input.url, article: content });
-      tagRecord(target.id, saved.rowId, tags);
+      const saved = await captureRecord(user, { pageId: target.id, title, url: input.url, article: content });
+      await tagRecord(target.id, saved.rowId, tags);
       return { pageId: target.id, rowId: saved.rowId };
     }
-    const pageId = createPage(workspaceId, target?.space_id || space!.id, user.id, title, "document", target?.id || null);
+    const pageId = await createPage(workspaceId, target?.space_id || space!.id, user.id, title, "document", target?.id || null);
     const html = cleanHtml(`<p>${link(input.url, input.url)}</p>${tagLine}<hr>${content}`);
-    run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), pageId);
-    audit(user.id, "page.clip", pageId, input.url.slice(0, 200));
+    await run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), pageId);
+    await audit(user.id, "page.clip", pageId, input.url.slice(0, 200));
     return { pageId };
   }, user);
   // Appending goes through the document's normal sync (versions, live
   // editors), outside the transaction above.
-  if ("append" in result && result.append) appendHtmlToPage(user, { pageId: result.pageId, html: result.append });
+  if ("append" in result && result.append) await appendHtmlToPage(user, { pageId: result.pageId, html: result.append });
   return { pageId: result.pageId, ...("rowId" in result && result.rowId ? { rowId: result.rowId } : {}), url: openUrl(result.pageId, "rowId" in result ? result.rowId : undefined) };
 }

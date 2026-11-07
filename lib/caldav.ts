@@ -32,16 +32,16 @@ const BASE = "/api/caldav";
 
 /* ---------- Accesses ---------- */
 
-export function createCalDavAccess(user: Identity, pageId: string, viewId: string) {
+export async function createCalDavAccess(user: Identity, pageId: string, viewId: string) {
   // A credential of its own would outlive the API token (as for CardDAV).
   if (user.apiScope) throw new HttpError(403, "Mit einem API-Token nicht erlaubt.");
-  const page = requirePage(user, pageId);
-  const view = viewOf(page.id, viewId);
+  const page = await requirePage(user, pageId);
+  const view = await viewOf(page.id, viewId);
   if (!view) throw new HttpError(404, "Kalenderansicht nicht gefunden.");
   const password = randomBytes(18).toString("base64url");
-  run("DELETE FROM caldav_accesses WHERE user_id=? AND page_id=? AND view_id=?", user.id, page.id, viewId);
+  await run("DELETE FROM caldav_accesses WHERE user_id=? AND page_id=? AND view_id=?", user.id, page.id, viewId);
   const access = id();
-  run(
+  await run(
     "INSERT INTO caldav_accesses(id,user_id,page_id,view_id,token_hash,created_at) VALUES(?,?,?,?,?,?)",
     access,
     user.id,
@@ -57,15 +57,15 @@ export function createCalDavAccess(user: Identity, pageId: string, viewId: strin
     password,
   };
 }
-export function revokeCalDavAccess(user: Identity, pageId: string, viewId: string) {
-  run("DELETE FROM caldav_accesses WHERE user_id=? AND page_id=? AND view_id=?", user.id, pageId, viewId);
+export async function revokeCalDavAccess(user: Identity, pageId: string, viewId: string) {
+  await run("DELETE FROM caldav_accesses WHERE user_id=? AND page_id=? AND view_id=?", user.id, pageId, viewId);
 }
-export function hasCalDavAccess(user: Identity, pageId: string, viewId: string) {
-  return !!one("SELECT 1 FROM caldav_accesses WHERE user_id=? AND page_id=? AND view_id=?", user.id, pageId, viewId);
+export async function hasCalDavAccess(user: Identity, pageId: string, viewId: string) {
+  return !!(await one("SELECT 1 FROM caldav_accesses WHERE user_id=? AND page_id=? AND view_id=?", user.id, pageId, viewId));
 }
 
-function viewOf(pageId: string, viewId: string) {
-  const raw = one<{ views: string }>("SELECT views FROM databases WHERE page_id=?", pageId);
+async function viewOf(pageId: string, viewId: string) {
+  const raw = await one<{ views: string }>("SELECT views FROM databases WHERE page_id=?", pageId);
   return (JSON.parse(raw?.views || "[]") as View[]).find((v) => v.id === viewId && v.type === "calendar");
 }
 
@@ -73,36 +73,36 @@ function viewOf(pageId: string, viewId: string) {
 
 type Context = { access: string; user: Identity; page: Page; view: View; fields: Field[]; zone: string; canWrite: boolean };
 
-function authenticate(request: Request): Context | null {
+async function authenticate(request: Request): Promise<Context | null> {
   const header = request.headers.get("authorization") || "";
   const basic = /^Basic\s+(.+)$/i.exec(header);
   if (!basic) return null;
   const decoded = Buffer.from(basic[1], "base64").toString("utf8");
   const password = decoded.slice(decoded.indexOf(":") + 1);
   if (!password || password.length > 200) return null;
-  const access = one<{ id: string; user_id: string; page_id: string; view_id: string }>(
+  const access = await one<{ id: string; user_id: string; page_id: string; view_id: string }>(
     "SELECT * FROM caldav_accesses WHERE token_hash=?",
     hash(password),
   );
   if (!access) return null;
-  const account = one<Identity>("SELECT * FROM users WHERE id=? AND disabled=0 AND demo_until IS NULL", access.user_id);
+  const account = await one<Identity>("SELECT * FROM users WHERE id=? AND disabled=0 AND demo_until IS NULL", access.user_id);
   if (!account) return null;
   const user = { ...account, groups: [], isAdmin: false } as Identity;
-  const page = one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", access.page_id);
-  const role = page ? pageRole(user, page) : null;
-  const view = page ? viewOf(page.id, access.view_id) : undefined;
+  const page = await one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", access.page_id);
+  const role = page ? (await pageRole(user, page)) : null;
+  const view = page ? (await viewOf(page.id, access.view_id)) : undefined;
   // Behind a journal PIN the calendar stays closed like any other way in.
-  if (!page || !role || !view || journalLocked(user, page)) return null;
-  const fields = JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", page.id)!.fields) as Field[];
+  if (!page || !role || !view || await journalLocked(user, page)) return null;
+  const fields = JSON.parse((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", page.id))!.fields) as Field[];
   const zone = calendarSchema.safeParse(view.calendar).success ? (view.calendar as { timeZone: string }).timeZone : "UTC";
   return { access: access.id, user, page, view, fields, zone, canWrite: (role === "owner" || role === "editor") && !page.locked };
 }
 
-function events(ctx: Context) {
-  const rows = all<Row & { cells: string }>("SELECT * FROM rows WHERE page_id=?", ctx.page.id).map(
+async function events(ctx: Context) {
+  const rows = (await all<Row & { cells: string }>("SELECT * FROM rows WHERE page_id=?", ctx.page.id)).map(
     (r) => ({ ...r, cells: JSON.parse(r.cells as unknown as string) }) as Row,
   );
-  return queryRows(visibleRows(ctx.user, ctx.page, rows), ctx.fields, ctx.view).filter((r) => calendarRange(r, ctx.fields, ctx.view, ctx.zone));
+  return queryRows(await visibleRows(ctx.user, ctx.page, rows), ctx.fields, ctx.view).filter((r) => calendarRange(r, ctx.fields, ctx.view, ctx.zone));
 }
 const etag = (r: Pick<Row, "id" | "version">) => `"${r.version}-${r.id.slice(0, 8)}"`;
 const ctag = (rows: Row[]) => hash(rows.map((r) => etag(r)).join(",")).slice(0, 24);
@@ -244,7 +244,7 @@ export async function handleCalDav(request: Request): Promise<Response> {
     return new Response(null, {
       headers: { Allow: "OPTIONS, GET, HEAD, PUT, DELETE, PROPFIND, REPORT", DAV: "1, 2, calendar-access" },
     });
-  const ctx = authenticate(request);
+  const ctx = await authenticate(request);
   if (!ctx)
     return new Response("Anmeldung erforderlich", {
       status: 401,
@@ -252,7 +252,7 @@ export async function handleCalDav(request: Request): Promise<Response> {
     });
   // Calendar apps write with PUT and DELETE; not while the instance moves
   // (lib/instance-read-only.ts). 403: the app keeps its change and reports it.
-  const refusal = request.method === "PUT" || request.method === "DELETE" ? readOnlyRefusal(url.pathname) : null;
+  const refusal = request.method === "PUT" || request.method === "DELETE" ? (await readOnlyRefusal(url.pathname)) : null;
   if (refusal) return new Response(refusal, { status: 403, headers: { "Content-Type": "text/plain; charset=utf-8" } });
   const parts = url.pathname.slice(BASE.length).split("/").filter(Boolean);
   const body = ["PROPFIND", "REPORT", "PUT"].includes(request.method) ? (await request.text()).slice(0, 2_000_000) : "";
@@ -265,21 +265,21 @@ export async function handleCalDav(request: Request): Promise<Response> {
       return xml(response(parts.length ? `${BASE}/principal/` : `${BASE}/`, principalProps()));
     if (request.method === "PROPFIND" && parts[0] === "calendars" && parts.length === 1) {
       let out = response(home, `<d:resourcetype><d:collection/></d:resourcetype><d:current-user-principal><d:href>${BASE}/principal/</d:href></d:current-user-principal>`);
-      if (depth !== "0") out += response(collection, calendarProps(ctx, events(ctx)));
+      if (depth !== "0") out += response(collection, calendarProps(ctx, await events(ctx)));
       return xml(out);
     }
     if (parts[0] !== "calendars" || parts[1] !== ctx.access) return new Response("Nicht gefunden", { status: 404 });
     const rowId = parts[2]?.replace(/\.ics$/, "");
     if (!rowId) {
       if (request.method === "PROPFIND") {
-        const rows = events(ctx);
+        const rows = await events(ctx);
         let out = response(collection, calendarProps(ctx, rows));
         if (depth !== "0")
           for (const r of rows) out += response(`${collection}${r.id}.ics`, `<d:getetag>${esc(etag(r))}</d:getetag><d:getcontenttype>text/calendar; charset=utf-8; component=vevent</d:getcontenttype><d:resourcetype/>`);
         return xml(out);
       }
       if (request.method === "REPORT") {
-        const rows = events(ctx);
+        const rows = await events(ctx);
         const wanted = /calendar-multiget/.test(body) ? new Set(hrefsOf(body).map((h) => h.split("/").pop()!.replace(/\.ics$/, ""))) : null;
         const withData = /calendar-data/.test(body) || !!wanted;
         return xml(
@@ -294,7 +294,7 @@ export async function handleCalDav(request: Request): Promise<Response> {
       return new Response(null, { status: 405 });
     }
     // A single event.
-    const row = events(ctx).find((r) => r.id === rowId);
+    const row = (await events(ctx)).find((r) => r.id === rowId);
     if (request.method === "GET" || request.method === "HEAD" || request.method === "PROPFIND") {
       if (!row) return new Response("Nicht gefunden", { status: 404 });
       if (request.method === "PROPFIND") return xml(response(`${collection}${row.id}.ics`, `<d:getetag>${esc(etag(row))}</d:getetag><d:getcontenttype>text/calendar; charset=utf-8; component=vevent</d:getcontenttype>`));
@@ -305,20 +305,20 @@ export async function handleCalDav(request: Request): Promise<Response> {
       if (!row) return new Response(null, { status: 404 });
       // Read-only records stay, as in the app.
       try {
-        assertRowAccess(ctx.user, ctx.page, row as Parameters<typeof assertRowAccess>[2], true);
+        await assertRowAccess(ctx.user, ctx.page, row as Parameters<typeof assertRowAccess>[2], true);
       } catch {
         return new Response("Nur lesen", { status: 403 });
       }
-      transaction(() => {
-        trashRow(ctx.user, ctx.page, row.id);
-        maintainRowOrders(ctx.page.id);
+      await transaction(async () => {
+        await trashRow(ctx.user, ctx.page, row.id);
+        await maintainRowOrders(ctx.page.id);
       });
       return new Response(null, { status: 204 });
     }
     if (request.method === "PUT") {
       const ifMatch = request.headers.get("if-match");
       if (row && ifMatch && ifMatch !== "*" && ifMatch !== etag(row)) return new Response("Geändert", { status: 412 });
-      if (!row && request.headers.get("if-none-match") !== "*" && one("SELECT 1 FROM rows WHERE id=?", rowId)) return new Response("Geändert", { status: 412 });
+      if (!row && request.headers.get("if-none-match") !== "*" && await one("SELECT 1 FROM rows WHERE id=?", rowId)) return new Response("Geändert", { status: 412 });
       const event = parseEvent(body);
       const { start, end } = scheduleFields(ctx.fields, ctx.view);
       if (!start) return new Response("Diese Ansicht hat kein Datum", { status: 409 });
@@ -327,23 +327,23 @@ export async function handleCalDav(request: Request): Promise<Response> {
       if (event.title) patch[ctx.fields[0].id] = event.title;
       // Date properties this person may not change (lib/field-access.ts).
       try {
-        assertFieldsWritable(ctx.user, ctx.page, ctx.fields, Object.keys(patch));
+        await assertFieldsWritable(ctx.user, ctx.page, ctx.fields, Object.keys(patch));
       } catch {
         return new Response("Nur lesen", { status: 403 });
       }
-      const saved = transaction(() => {
+      const saved = await transaction(async () => {
         if (row) {
-          const stored = one<Row & { cells: string }>("SELECT * FROM rows WHERE id=?", row.id)!;
-          assertRowAccess(ctx.user, ctx.page, stored, true);
+          const stored = (await one<Row & { cells: string }>("SELECT * FROM rows WHERE id=?", row.id))!;
+          await assertRowAccess(ctx.user, ctx.page, stored, true);
           const before = JSON.parse(stored.cells as unknown as string);
           const after = { ...before, ...patch };
-          run("UPDATE rows SET cells=?,version=version+1,updated_at=?,updated_by=? WHERE id=?", JSON.stringify(after), nowText(), ctx.user.id, row.id);
-          rowChanged(ctx.user, ctx.page, row.id, before, after, ctx.fields);
+          await run("UPDATE rows SET cells=?,version=version+1,updated_at=?,updated_by=? WHERE id=?", JSON.stringify(after), nowText(), ctx.user.id, row.id);
+          await rowChanged(ctx.user, ctx.page, row.id, before, after, ctx.fields);
           return row.id;
         }
         // A new event: a new record (the client's name becomes its id when it is one).
-        const rid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rowId) && !one("SELECT 1 FROM row_trash WHERE id=?", rowId) ? rowId : id();
-        run(
+        const rid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rowId) && !(await one("SELECT 1 FROM row_trash WHERE id=?", rowId)) ? rowId : id();
+        await run(
           "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by) VALUES(?,?,?,?,?,?)",
           rid,
           ctx.page.id,
@@ -352,10 +352,10 @@ export async function handleCalDav(request: Request): Promise<Response> {
           ctx.user.id,
           ctx.user.id,
         );
-        rowCreated(ctx.user, ctx.page, rid);
+        await rowCreated(ctx.user, ctx.page, rid);
         return rid;
       });
-      const stored = one<{ id: string; version: number }>("SELECT id,version FROM rows WHERE id=?", saved)!;
+      const stored = (await one<{ id: string; version: number }>("SELECT id,version FROM rows WHERE id=?", saved))!;
       const headers: Record<string, string> = { ETag: etag(stored) };
       if (saved !== rowId) headers.Location = `${collection}${saved}.ics`;
       return new Response(null, { status: row ? 204 : 201, headers });

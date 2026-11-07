@@ -43,27 +43,27 @@ test("created and edited time show in the viewer's zone like a date with time", 
   assert.equal(clipboardCell(edited, "2026-11-05 17:39:02", ctx), "2026-11-05, 12:39 PM (UTC-05:00)");
 });
 
-function user(name: string): Identity {
+async function user(name: string): Promise<Identity> {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
   return { id: uid, name, email: `${name}@example.test`, disabled: 0, created_at: "", groups: [], isAdmin: false };
 }
 
 test("exports write created and edited time as ISO 8601 instants", async () => {
-  const owner = user("Exporter"),
-    wid = createWorkspace(owner.id, "Timestamps"),
-    space = one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid)!;
-  const table = (command(owner, { action: "page.create", workspaceId: wid, spaceId: space.id, title: "Records", kind: "database" }) as { id: string }).id;
-  const schema = database(table);
-  command(owner, {
+  const owner = await user("Exporter"),
+    wid = await createWorkspace(owner.id, "Timestamps"),
+    space = (await one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid))!;
+  const table = ((await command(owner, { action: "page.create", workspaceId: wid, spaceId: space.id, title: "Records", kind: "database" })) as { id: string }).id;
+  const schema = await database(table);
+  await command(owner, {
     action: "database.update",
     pageId: table,
     version: schema.version,
     fields: [schema.fields[0], created, edited],
     views: schema.views,
   });
-  const row = command(owner, { action: "row.create", pageId: table, cells: { title: "Task" } }) as { id: string };
-  run("UPDATE rows SET created_at='2026-11-05 17:39:02',updated_at='2026-11-06 08:00:00' WHERE id=?", row.id);
+  const row = (await command(owner, { action: "row.create", pageId: table, cells: { title: "Task" } })) as { id: string };
+  await run("UPDATE rows SET created_at='2026-11-05 17:39:02',updated_at='2026-11-06 08:00:00' WHERE id=?", row.id);
   const zip = await readExportZip((await exportMarkdown(owner, { pageId: table, format: "zip", includeSubpages: false })).bytes);
   const csv = zip.get(`tables/${table}.csv`)!.toString();
   assert.match(csv, /"2026-11-05T17:39:02Z","2026-11-06T08:00:00Z"/);
@@ -73,6 +73,6 @@ test("exports write created and edited time as ISO 8601 instants", async () => {
   assert.match(record, /Created: "?2026-11-05T17:39:02Z"?/);
   assert.match(record, /Edited: "?2026-11-06T08:00:00Z"?/);
   // Word, PDF and EPUB read the same text.
-  const content = collectExportContent(owner, { pageId: table, maxPages: 10, format: "PDF" });
+  const content = await collectExportContent(owner, { pageId: table, maxPages: 10, format: "PDF" });
   assert.match(content.pages[0].html, /<td>2026-11-05T17:39:02Z<\/td><td>2026-11-06T08:00:00Z<\/td>/);
 });

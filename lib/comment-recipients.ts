@@ -15,24 +15,25 @@ import { all, one } from "./db";
 import { isGuest, pageRole } from "./permissions";
 import { hiddenRowIds } from "./row-access";
 import type { Field, Identity, Page } from "./types";
+import { filterAsync } from "./each-async";
 
-function asRecipient(userId: string): Identity | null {
-  const user = one<Identity>("SELECT * FROM users WHERE id=? AND disabled=0", userId);
+async function asRecipient(userId: string): Promise<Identity | null> {
+  const user = await one<Identity>("SELECT * FROM users WHERE id=? AND disabled=0", userId);
   if (!user) return null;
-  const groups = all<{ group_id: string }>("SELECT group_id FROM group_members WHERE user_id=?", userId).map((g) => g.group_id);
+  const groups = (await all<{ group_id: string }>("SELECT group_id FROM group_members WHERE user_id=?", userId)).map((g) => g.group_id);
   return { ...user, groups, isAdmin: false };
 }
 
 // Whether this person may read the page and, for a record, the record.
-export function mayHear(userId: string, page: Page, rowId: string | null) {
-  const recipient = asRecipient(userId);
-  return !!recipient && !!pageRole(recipient, page) && (!rowId || !hiddenRowIds(recipient, page).has(rowId));
+export async function mayHear(userId: string, page: Page, rowId: string | null) {
+  const recipient = await asRecipient(userId);
+  return !!recipient && !!(await pageRole(recipient, page)) && (!rowId || !(await hiddenRowIds(recipient, page)).has(rowId));
 }
 
-function recordPeople(page: Page, rowId: string) {
-  const row = one<{ cells: string; created_by: string | null }>("SELECT cells,created_by FROM rows WHERE id=? AND page_id=?", rowId, page.id);
+async function recordPeople(page: Page, rowId: string) {
+  const row = await one<{ cells: string; created_by: string | null }>("SELECT cells,created_by FROM rows WHERE id=? AND page_id=?", rowId, page.id);
   if (!row) return [];
-  const fields = JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", page.id)?.fields || "[]") as Field[];
+  const fields = JSON.parse((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", page.id))?.fields || "[]") as Field[];
   const cells = JSON.parse(row.cells || "{}") as Record<string, unknown>;
   const people: string[] = row.created_by ? [row.created_by] : [];
   for (const f of fields)
@@ -41,25 +42,25 @@ function recordPeople(page: Page, rowId: string) {
   return people;
 }
 
-export function commentRecipients(author: Identity, page: Page, rowId: string | null, mentions: Iterable<string> = []) {
+export async function commentRecipients(author: Identity, page: Page, rowId: string | null, mentions: Iterable<string> = []) {
   const candidates = new Set<string>([
-    ...all<{ user_id: string }>("SELECT user_id FROM page_follows WHERE page_id=?", page.id).map((f) => f.user_id),
+    ...(await all<{ user_id: string }>("SELECT user_id FROM page_follows WHERE page_id=?", page.id)).map((f) => f.user_id),
     ...(page.owner_id ? [page.owner_id] : []),
-    ...(rowId ? recordPeople(page, rowId) : []),
-    ...all<{ author_id: string }>(
+    ...(rowId ? (await recordPeople(page, rowId)) : []),
+    ...(await all<{ author_id: string }>(
       "SELECT DISTINCT author_id FROM comments WHERE page_id=? AND row_id IS NOT DISTINCT FROM ? AND author_id IS NOT NULL",
       page.id,
       rowId,
-    ).map((c) => c.author_id),
-    ...all<{ author_id: string }>(
+    )).map((c) => c.author_id),
+    ...(await all<{ author_id: string }>(
       "SELECT DISTINCT m.author_id FROM inline_messages m JOIN inline_threads t ON t.id=m.thread_id WHERE t.page_id=? AND t.row_id IS NOT DISTINCT FROM ? AND m.author_id IS NOT NULL",
       page.id,
       rowId,
-    ).map((m) => m.author_id),
+    )).map((m) => m.author_id),
     ...mentions,
   ]);
   candidates.delete(author.id);
-  return [...candidates].filter((uid) => mayHear(uid, page, rowId));
+  return await filterAsync([...candidates], async (uid) => await mayHear(uid, page, rowId));
 }
 
 // People named with "@Name" in the plain text of a page or record comment:
@@ -68,12 +69,12 @@ export function commentRecipients(author: Identity, page: Page, rowId: string | 
 // Berg, not Anna. An "@" inside a word (an e-mail address in the text) is
 // no mention. Guests see nobody of the workspace, so their "@" names nobody.
 // Who may not read the page or record is filtered by commentRecipients.
-export function commentTextMentions(author: Identity, page: Page, body: string) {
-  if (!body.includes("@") || isGuest(author, page.workspace_id)) return [];
-  const members = all<{ id: string; name: string; email: string }>(
+export async function commentTextMentions(author: Identity, page: Page, body: string) {
+  if (!body.includes("@") || await isGuest(author, page.workspace_id)) return [];
+  const members = (await all<{ id: string; name: string; email: string }>(
     "SELECT u.id,u.name,COALESCE(u.email,'') email FROM users u JOIN members m ON m.user_id=u.id WHERE m.workspace_id=? AND u.disabled=0",
     page.workspace_id,
-  ).flatMap((m) =>
+  )).flatMap((m) =>
     [m.name, m.email]
       .map((n) => n.trim().toLocaleLowerCase())
       .filter((n) => n.length > 0)

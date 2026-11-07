@@ -636,7 +636,7 @@ const { command, database, rows, bootstrap } = await import("../lib/api");
 const { createWorkspace } = await import("../lib/seed");
 const { exportArchive, importArchive } = await import("../lib/archive");
 const uid = id();
-run(
+await run(
   "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
   uid,
   uid,
@@ -652,17 +652,17 @@ const owner: Identity = {
   isAdmin: false,
   groups: [],
 };
-const wid = createWorkspace(uid, "Formula tests"),
-  sid = bootstrap(owner, wid).spaces[0].id;
-const act = (data: Record<string, unknown>): any => command(owner, data);
-test("renaming properties binds legacy references without altering literal text and preserves CAS conflicts", () => {
-  const pid = act({
+const wid = await createWorkspace(uid, "Formula tests"),
+  sid = (await bootstrap(owner, wid)).spaces[0].id;
+const act = async (data: Record<string, unknown>): Promise<any> => await command(owner, data);
+test("renaming properties binds legacy references without altering literal text and preserves CAS conflicts", async () => {
+  const pid = (await act({
     action: "page.create",
     workspaceId: wid,
     spaceId: sid,
     kind: "database",
     title: "Formula rename",
-  }).id;
+  })).id;
   const fields: Field[] = [
     { id: "title", name: "Name", type: "text" },
     { id: "n", name: "Hours", type: "number" },
@@ -682,12 +682,12 @@ test("renaming properties binds legacy references without altering literal text 
   const views: View[] = [
     { id: "table", name: "Table", type: "table", filters: [], sorts: [] },
   ];
-  act({ action: "database.update", pageId: pid, version: 1, fields, views });
-  act({ action: "row.create", pageId: pid, cells: { n: 3, title: "Example" } });
+  await act({ action: "database.update", pageId: pid, version: 1, fields, views });
+  await act({ action: "row.create", pageId: pid, cells: { n: 3, title: "Example" } });
   const renamed = fields.map((f) =>
     f.id === "n" ? { ...f, name: "Effort" } : f,
   );
-  act({
+  await act({
     action: "database.update",
     pageId: pid,
     version: 2,
@@ -695,17 +695,17 @@ test("renaming properties binds legacy references without altering literal text 
     views,
   });
   assert.equal(
-    database(pid).fields.find((f) => f.id === "total")!.formula,
+    (await database(pid)).fields.find((f) => f.id === "total")!.formula,
     'prop("n") * 2',
   );
-  assert.equal(computedCells(rows(pid)[0], database(pid).fields).total, 6);
+  assert.equal(computedCells((await rows(pid))[0], (await database(pid)).fields).total, 6);
   assert.equal(
-    computedCells(rows(pid)[0], database(pid).fields).text,
+    computedCells((await rows(pid))[0], (await database(pid)).fields).text,
     "Hours3",
   );
-  assert.throws(
-    () =>
-      act({
+  await assert.rejects(
+    async () =>
+      await act({
         action: "database.update",
         pageId: pid,
         version: 2,
@@ -714,16 +714,16 @@ test("renaming properties binds legacy references without altering literal text 
       }),
     /zwischenzeitlich/,
   );
-  assert.equal(database(pid).fields.find((f) => f.id === "n")!.name, "Effort");
+  assert.equal((await database(pid)).fields.find((f) => f.id === "n")!.name, "Effort");
 });
 test("formula expressions and stable references survive copies, templates, snapshots and ZIP archives", async () => {
-  const pid = act({
+  const pid = (await act({
     action: "page.create",
     workspaceId: wid,
     spaceId: sid,
     kind: "database",
     title: "Formula persistence",
-  }).id;
+  })).id;
   const fields: Field[] = [
     { id: "title", name: "Name", type: "text" },
     { id: "n", name: "Effort", type: "number" },
@@ -738,48 +738,48 @@ test("formula expressions and stable references survive copies, templates, snaps
   const views: View[] = [
     { id: "table", name: "Table", type: "table", filters: [], sorts: [] },
   ];
-  act({ action: "database.update", pageId: pid, version: 1, fields, views });
-  act({ action: "row.create", pageId: pid, cells: { n: 3, title: "Example" } });
-  const check = (pageId: string) => {
+  await act({ action: "database.update", pageId: pid, version: 1, fields, views });
+  await act({ action: "row.create", pageId: pid, cells: { n: 3, title: "Example" } });
+  const check = async (pageId: string) => {
     assert.equal(
-      database(pageId).fields.at(-1)!.formula,
+      (await database(pageId)).fields.at(-1)!.formula,
       fields.at(-1)!.formula,
     );
     assert.equal(
-      computedCells(rows(pageId)[0], database(pageId).fields).result,
+      computedCells((await rows(pageId))[0], (await database(pageId)).fields).result,
       "Hours: 5",
     );
   };
-  check(act({ action: "page.duplicate", pageId: pid }).id);
-  const tid = act({ action: "template.save", pageId: pid, name: "Formula" }).id;
-  check(
-    act({
+  await check((await act({ action: "page.duplicate", pageId: pid })).id);
+  const tid = (await act({ action: "template.save", pageId: pid, name: "Formula" })).id;
+  await check(
+    (await act({
       action: "page.create",
       workspaceId: wid,
       spaceId: sid,
       title: "Formula template",
       templateId: tid,
-    }).id,
+    })).id,
   );
-  act({ action: "page.snapshot", pageId: pid });
-  const snapshot = one<{ id: string }>(
+  await act({ action: "page.snapshot", pageId: pid });
+  const snapshot = (await one<{ id: string }>(
     "SELECT id FROM snapshots WHERE page_id=? ORDER BY seq DESC",
     pid,
-  )!.id;
-  act({
+  ))!.id;
+  await act({
     action: "database.update",
     pageId: pid,
-    version: database(pid).version,
+    version: (await database(pid)).version,
     fields: fields.slice(0, 2),
     views,
   });
-  act({ action: "snapshot.restore", pageId: pid, snapshotId: snapshot });
-  check(pid);
-  const restored = createWorkspace(uid, "Formula restore");
+  await act({ action: "snapshot.restore", pageId: pid, snapshotId: snapshot });
+  await check(pid);
+  const restored = await createWorkspace(uid, "Formula restore");
   const result = await importArchive(
     owner,
     restored,
     await exportArchive(owner, wid),
   );
-  check(result.pageIds[pid]);
+  await check(result.pageIds[pid]);
 });

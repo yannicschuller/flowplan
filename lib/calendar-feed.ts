@@ -19,8 +19,8 @@ import type { Field, Identity, Page, Row, View } from "./types";
 const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
 const appUrl = () => (process.env.APP_URL || "http://localhost:3000").replace(/\/$/, "");
 
-function calendarView(pageId: string, viewId: string) {
-  const db = one<{ fields: string; views: string }>(
+async function calendarView(pageId: string, viewId: string) {
+  const db = await one<{ fields: string; views: string }>(
     "SELECT fields,views FROM databases WHERE page_id=?",
     pageId,
   );
@@ -33,14 +33,14 @@ function calendarView(pageId: string, viewId: string) {
 }
 
 // A new secret link for this person and view; an older one stops working.
-export function createCalendarFeed(user: Identity, pageId: string, viewId: string) {
+export async function createCalendarFeed(user: Identity, pageId: string, viewId: string) {
   // A credential of its own would outlive the API token (as for CardDAV).
   if (user.apiScope) throw new HttpError(403, "Mit einem API-Token nicht erlaubt.");
-  const page = requirePage(user, pageId);
-  calendarView(page.id, viewId);
+  const page = await requirePage(user, pageId);
+  await calendarView(page.id, viewId);
   const token = randomBytes(24).toString("base64url");
-  run("DELETE FROM calendar_feeds WHERE user_id=? AND page_id=? AND view_id=?", user.id, page.id, viewId);
-  run(
+  await run("DELETE FROM calendar_feeds WHERE user_id=? AND page_id=? AND view_id=?", user.id, page.id, viewId);
+  await run(
     "INSERT INTO calendar_feeds(id,user_id,page_id,view_id,token_hash,created_at) VALUES(?,?,?,?,?,?)",
     id(),
     user.id,
@@ -51,11 +51,11 @@ export function createCalendarFeed(user: Identity, pageId: string, viewId: strin
   );
   return { url: `${appUrl()}/api/calendar/${token}.ics` };
 }
-export function revokeCalendarFeed(user: Identity, pageId: string, viewId: string) {
-  run("DELETE FROM calendar_feeds WHERE user_id=? AND page_id=? AND view_id=?", user.id, pageId, viewId);
+export async function revokeCalendarFeed(user: Identity, pageId: string, viewId: string) {
+  await run("DELETE FROM calendar_feeds WHERE user_id=? AND page_id=? AND view_id=?", user.id, pageId, viewId);
 }
-export function hasCalendarFeed(user: Identity, pageId: string, viewId: string) {
-  return !!one("SELECT 1 FROM calendar_feeds WHERE user_id=? AND page_id=? AND view_id=?", user.id, pageId, viewId);
+export async function hasCalendarFeed(user: Identity, pageId: string, viewId: string) {
+  return !!(await one("SELECT 1 FROM calendar_feeds WHERE user_id=? AND page_id=? AND view_id=?", user.id, pageId, viewId));
 }
 
 // RFC 5545 text: escape, then fold lines at 75 octets.
@@ -85,30 +85,30 @@ function nextDay(date: string) {
   return d.toISOString().slice(0, 10);
 }
 
-export function calendarFeed(token: string) {
+export async function calendarFeed(token: string) {
   if (!/^[A-Za-z0-9_-]{20,80}$/.test(token)) throw new HttpError(404, "Unbekannter Kalender.");
-  const feed = one<{ user_id: string; page_id: string; view_id: string }>(
+  const feed = await one<{ user_id: string; page_id: string; view_id: string }>(
     "SELECT user_id,page_id,view_id FROM calendar_feeds WHERE token_hash=?",
     hashToken(token),
   );
   if (!feed) throw new HttpError(404, "Unbekannter Kalender.");
-  const account = one<Identity>(
+  const account = await one<Identity>(
     "SELECT * FROM users WHERE id=? AND disabled=0 AND demo_until IS NULL",
     feed.user_id,
   );
   if (!account) throw new HttpError(404, "Unbekannter Kalender.");
   const user = { ...account, groups: [], isAdmin: false } as Identity;
-  const page = one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", feed.page_id);
+  const page = await one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", feed.page_id);
   // Behind a journal PIN the feed stays closed like any other way in.
-  if (!page || !pageRole(user, page) || journalLocked(user, page)) throw new HttpError(404, "Unbekannter Kalender.");
-  const { fields, view } = calendarView(page.id, feed.view_id);
+  if (!page || !(await pageRole(user, page)) || await journalLocked(user, page)) throw new HttpError(404, "Unbekannter Kalender.");
+  const { fields, view } = await calendarView(page.id, feed.view_id);
   const zone = calendarSchema.safeParse(view.calendar).success
     ? (view.calendar as { timeZone: string }).timeZone
     : "UTC";
-  const rows = all<Row & { cells: string }>("SELECT * FROM rows WHERE page_id=?", page.id).map(
+  const rows = (await all<Row & { cells: string }>("SELECT * FROM rows WHERE page_id=?", page.id)).map(
     (r) => ({ ...r, cells: JSON.parse(r.cells as unknown as string) }) as Row,
   );
-  const shown = queryRows(visibleRows(user, page, rows), fields, view);
+  const shown = queryRows(await visibleRows(user, page, rows), fields, view);
   const titleField = fields[0];
   const host = new URL(appUrl()).host;
   const stamp = utc(new Date().toISOString());

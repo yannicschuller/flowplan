@@ -17,65 +17,65 @@ const { withReadMemo, memoized } = await import("../lib/read-memo");
 // next write (lib/read-memo.ts) – never across requests, never past a
 // change of rights.
 
-const account = (name: string) => {
+const account = async (name: string) => {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
   return { id: uid, name, email: `${name}@example.test`, groups: [], isAdmin: false, disabled: 0, created_at: "" } as Identity;
 };
-const owner = account("memo-owner"),
-  member = account("memo-member");
-const wid = createWorkspace(owner.id, "Memo");
-run("INSERT INTO members VALUES(?,?,?)", wid, member.id, "editor");
-const space = bootstrap(owner, wid).spaces[0];
-const pageId = (command(owner, { action: "page.create", workspaceId: wid, spaceId: space.id, title: "Plan", kind: "document" }) as { id: string }).id;
-const childId = (command(owner, { action: "page.create", workspaceId: wid, spaceId: space.id, parentId: pageId, title: "Teil", kind: "document" }) as { id: string }).id;
-const page = (pid: string) => one<Page>("SELECT * FROM pages WHERE id=?", pid)!;
+const owner = await account("memo-owner"),
+  member = await account("memo-member");
+const wid = await createWorkspace(owner.id, "Memo");
+await run("INSERT INTO members VALUES(?,?,?)", wid, member.id, "editor");
+const space = (await bootstrap(owner, wid)).spaces[0];
+const pageId = ((await command(owner, { action: "page.create", workspaceId: wid, spaceId: space.id, title: "Plan", kind: "document" })) as { id: string }).id;
+const childId = ((await command(owner, { action: "page.create", workspaceId: wid, spaceId: space.id, parentId: pageId, title: "Teil", kind: "document" })) as { id: string }).id;
+const page = async (pid: string) => (await one<Page>("SELECT * FROM pages WHERE id=?", pid))!;
 
-test("nothing is remembered outside a request or command", () => {
+test("nothing is remembered outside a request or command", async () => {
   let calls = 0;
-  memoized("probe", () => ++calls);
-  memoized("probe", () => ++calls);
+  await memoized("probe", () => ++calls);
+  await memoized("probe", () => ++calls);
   assert.equal(calls, 2);
 });
 
-test("within a scope a lookup runs once until something is written", () => {
-  withReadMemo(() => {
+test("within a scope a lookup runs once until something is written", async () => {
+  await withReadMemo(async () => {
     let calls = 0;
-    assert.equal(memoized("probe", () => ++calls), 1);
-    assert.equal(memoized("probe", () => ++calls), 1);
+    assert.equal(await memoized("probe", () => ++calls), 1);
+    assert.equal(await memoized("probe", () => ++calls), 1);
     const before = writeGeneration();
-    run("UPDATE pages SET title=title WHERE id=?", pageId);
+    await run("UPDATE pages SET title=title WHERE id=?", pageId);
     assert.ok(writeGeneration() > before);
-    assert.equal(memoized("probe", () => ++calls), 2);
+    assert.equal(await memoized("probe", () => ++calls), 2);
   });
 });
 
-test("a write in the same scope changes the rights the next check sees", () => {
-  withReadMemo(() => {
-    assert.equal(pageRole(member, page(childId)), "editor");
-    run("INSERT INTO grants(resource_id,user_id,group_id,role) VALUES(?,?,?,?)", pageId, member.id, "", "viewer");
+test("a write in the same scope changes the rights the next check sees", async () => {
+  await withReadMemo(async () => {
+    assert.equal(await pageRole(member, await page(childId)), "editor");
+    await run("INSERT INTO grants(resource_id,user_id,group_id,role) VALUES(?,?,?,?)", pageId, member.id, "", "viewer");
     // Inherited from the parent page.
-    assert.equal(pageRole(member, page(childId)), "viewer");
-    run("DELETE FROM members WHERE workspace_id=? AND user_id=?", wid, member.id);
-    assert.equal(pageRole(member, page(childId)), null);
-    assert.throws(() => requirePage(member, childId), /Keine Berechtigung/);
-    run("INSERT INTO members VALUES(?,?,?)", wid, member.id, "editor");
-    run("DELETE FROM grants WHERE resource_id=? AND user_id=?", pageId, member.id);
-    assert.equal(pageRole(member, page(childId)), "editor");
+    assert.equal(await pageRole(member, await page(childId)), "viewer");
+    await run("DELETE FROM members WHERE workspace_id=? AND user_id=?", wid, member.id);
+    assert.equal(await pageRole(member, await page(childId)), null);
+    await assert.rejects(async () => await requirePage(member, childId), /Keine Berechtigung/);
+    await run("INSERT INTO members VALUES(?,?,?)", wid, member.id, "editor");
+    await run("DELETE FROM grants WHERE resource_id=? AND user_id=?", pageId, member.id);
+    assert.equal(await pageRole(member, await page(childId)), "editor");
   });
 });
 
-test("a rolled back change of rights is forgotten too", () => {
-  withReadMemo(() => {
-    assert.equal(pageRole(member, page(pageId)), "editor");
-    assert.throws(() =>
-      transaction(() => {
-        run("DELETE FROM members WHERE workspace_id=? AND user_id=?", wid, member.id);
-        assert.equal(pageRole(member, page(pageId)), null);
+test("a rolled back change of rights is forgotten too", async () => {
+  await withReadMemo(async () => {
+    assert.equal(await pageRole(member, await page(pageId)), "editor");
+    await assert.rejects(async () =>
+      await transaction(async () => {
+        await run("DELETE FROM members WHERE workspace_id=? AND user_id=?", wid, member.id);
+        assert.equal(await pageRole(member, await page(pageId)), null);
         throw new Error("abort");
       }),
     );
-    assert.equal(pageRole(member, page(pageId)), "editor");
+    assert.equal(await pageRole(member, await page(pageId)), "editor");
   });
 });
 
@@ -85,20 +85,20 @@ test("scopes do not share what they remember", { skip: sqliteOnly }, async () =>
   const other = new DatabaseSync(join(process.env.FLOWPLAN_DATA_DIR!, "flowplan.sqlite"));
   try {
     await withReadMemo(async () => {
-      assert.equal(pageRole(member, page(pageId)), "editor");
+      assert.equal(await pageRole(member, await page(pageId)), "editor");
       other.prepare("UPDATE members SET role='viewer' WHERE workspace_id=? AND user_id=?").run(wid, member.id);
       await withReadMemo(async () => {
         // The inner call joins the scope of the outer one.
-        assert.equal(pageRole(member, page(pageId)), "editor");
+        assert.equal(await pageRole(member, await page(pageId)), "editor");
       });
     });
     await Promise.all([
-      withReadMemo(async () => {
-        assert.equal(pageRole(member, page(pageId)), "viewer");
+      await withReadMemo(async () => {
+        assert.equal(await pageRole(member, await page(pageId)), "viewer");
       }),
-      withReadMemo(async () => {
+      await withReadMemo(async () => {
         await new Promise((resolve) => setImmediate(resolve));
-        assert.equal(pageRole(member, page(pageId)), "viewer");
+        assert.equal(await pageRole(member, await page(pageId)), "viewer");
       }),
     ]);
   } finally {
@@ -107,19 +107,19 @@ test("scopes do not share what they remember", { skip: sqliteOnly }, async () =>
   }
 });
 
-test("a command that shares a page checks the new rights within itself", () => {
-  const viewer = account("memo-viewer");
-  run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
-  const privateSpace = (command(owner, { action: "space.create", workspaceId: wid, name: "Privat", private: true }) as { id: string }).id;
-  const secret = (command(owner, { action: "page.create", workspaceId: wid, spaceId: privateSpace, title: "Geheim", kind: "document" }) as { id: string }).id;
-  assert.throws(() => requirePage(viewer, secret));
-  run("INSERT INTO grants(resource_id,user_id,group_id,role) VALUES(?,?,?,?)", secret, viewer.id, "", "viewer");
-  assert.equal(requirePage(viewer, secret).id, secret);
+test("a command that shares a page checks the new rights within itself", async () => {
+  const viewer = await account("memo-viewer");
+  await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
+  const privateSpace = ((await command(owner, { action: "space.create", workspaceId: wid, name: "Privat", private: true })) as { id: string }).id;
+  const secret = ((await command(owner, { action: "page.create", workspaceId: wid, spaceId: privateSpace, title: "Geheim", kind: "document" })) as { id: string }).id;
+  await assert.rejects(async () => await requirePage(viewer, secret));
+  await run("INSERT INTO grants(resource_id,user_id,group_id,role) VALUES(?,?,?,?)", secret, viewer.id, "", "viewer");
+  assert.equal((await requirePage(viewer, secret)).id, secret);
   // The copy handed out does not change what later checks read.
-  withReadMemo(() => {
-    const copy = requirePage(owner, secret) as Page & { title: string };
+  await withReadMemo(async () => {
+    const copy = (await requirePage(owner, secret)) as Page & { title: string };
     copy.title = "verändert";
     copy.parent_id = null;
-    assert.equal(requirePage(owner, secret).title, "Geheim");
+    assert.equal((await requirePage(owner, secret)).title, "Geheim");
   });
 });

@@ -9,9 +9,9 @@ import { run } from "./db";
 export type LiveActivityChange = "focus" | "timer";
 
 // `at`: when the state should be pushed (now, and e.g. when a focus phase ends).
-export function markLiveActivity(userId: string, kind: LiveActivityChange, at: number[] = [Date.now()]) {
+export async function markLiveActivity(userId: string, kind: LiveActivityChange, at: number[] = [Date.now()]) {
   for (const when of at)
-    run(
+    await run(
       `INSERT INTO push_live_queue(device_id,kind,available_at,attempts)
        SELECT l.device_id,l.kind,?,0 FROM mobile_live_activities l JOIN mobile_devices d ON d.id=l.device_id WHERE d.user_id=? AND l.kind=? ON CONFLICT DO NOTHING`,
       Math.floor(when),

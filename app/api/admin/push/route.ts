@@ -32,7 +32,7 @@ const postSchema = z.object({ action: z.literal("check") });
 
 export const POST = withRequestLocale(async (req: Request) => {
   try {
-    checkOrigin(req);
+    await checkOrigin(req);
     const user = requireOpsAdmin(await requireUser());
     postSchema.parse(await req.json().catch(() => ({})));
     return Response.json(await pushStatusFor(user, { force: true }), noStore);

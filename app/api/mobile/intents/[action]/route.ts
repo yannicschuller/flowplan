@@ -33,7 +33,7 @@ async function withDevice(req: Request, handle: (user: Identity) => Promise<Resp
   const fallback = pickLocale(null, req.headers.get("accept-language"));
   const user = await widgetUser(req.headers.get("authorization"));
   if (!user) return failure(new HttpError(401, "Bitte melde dich an."), fallback);
-  const locale = widgetLocale(user, new URL(req.url).searchParams.get("lang"), req.headers.get("accept-language"));
+  const locale = await widgetLocale(user, new URL(req.url).searchParams.get("lang"), req.headers.get("accept-language"));
   return withContentLocale(locale, async () => {
     try {
       return await handle(user);
@@ -46,14 +46,14 @@ async function withDevice(req: Request, handle: (user: Identity) => Promise<Resp
 export async function GET(req: Request, { params }: { params: Promise<{ action: string }> }) {
   const { action } = await params;
   const query = new URL(req.url).searchParams;
-  return withDevice(req, (user) => {
+  return await withDevice(req, async (user) => {
     limitWidgets(user, "options");
     if (action === "pages") {
       const ids = query.get("ids");
-      return NextResponse.json(intentPages(user, { q: query.get("q") ?? undefined, ids: ids ? ids.split(",").filter(Boolean) : undefined }), { headers });
+      return NextResponse.json(await intentPages(user, { q: query.get("q") ?? undefined, ids: ids ? ids.split(",").filter(Boolean) : undefined }), { headers });
     }
-    if (action === "search") return NextResponse.json(intentSearch(user, { q: query.get("q") ?? "" }), { headers });
-    if (action === "workspaces") return NextResponse.json(intentWorkspaces(user), { headers });
+    if (action === "search") return NextResponse.json(await intentSearch(user, { q: query.get("q") ?? "" }), { headers });
+    if (action === "workspaces") return NextResponse.json(await intentWorkspaces(user), { headers });
     throw new HttpError(404, "Nicht gefunden");
   });
 }
@@ -66,6 +66,6 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ action: 
     limitWidgets(user, "action");
     const text = await req.text();
     if (text.length > JSON_LIMIT) throw new HttpError(413, "Anfrage zu groß.");
-    return NextResponse.json(setDeviceFocus(user, req.headers.get("authorization"), JSON.parse(text || "{}")), { headers });
+    return NextResponse.json(await setDeviceFocus(user, req.headers.get("authorization"), JSON.parse(text || "{}")), { headers });
   });
 }

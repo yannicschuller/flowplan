@@ -9,9 +9,10 @@ import { inPinJournal, lockedPageIds, pinJournalPageIds, PIN_JOURNAL_NOT_SHARED 
 import { cleanHtml } from "./document-server";
 import { checkShareProtection } from "./share-access";
 import type { Identity, Page } from "./types";
+import { mapAsync } from "./each-async";
 
-export function publicationSettings(pageId: string) {
-  const row = one<{
+export async function publicationSettings(pageId: string) {
+  const row = await one<{
     include_children: number;
     allow_copy: number;
     published_at: string | null;
@@ -28,13 +29,13 @@ export function publicationSettings(pageId: string) {
     password: !!row?.password,
     expiresAt: row?.expires_at ?? null,
     count:
-      one<{ count: number }>(
+      (await one<{ count: number }>(
         "SELECT count(*) count FROM publication_pages WHERE root_id=?",
         pageId,
-      )?.count || 0,
+      ))?.count || 0,
   };
 }
-export function publishPage(
+export async function publishPage(
   user: Identity,
   page: Page,
   enabled: boolean,
@@ -44,36 +45,36 @@ export function publishPage(
   // A journal with a PIN is never published (setting the PIN ended its
   // publications, lib/journal-extras.ts); below a published page it stays
   // out with all its days.
-  if (enabled && inPinJournal(page)) throw new HttpError(423, PIN_JOURNAL_NOT_SHARED);
-  const pinned = enabled && includeChildren ? pinJournalPageIds(page.workspace_id) : new Set<string>();
+  if (enabled && await inPinJournal(page)) throw new HttpError(423, PIN_JOURNAL_NOT_SHARED);
+  const pinned = enabled && includeChildren ? (await pinJournalPageIds(page.workspace_id)) : new Set<string>();
   const pages = includeChildren
-    ? all<Page>(
+    ? (await all<Page>(
         `WITH RECURSIVE tree AS (SELECT * FROM pages WHERE id=? AND deleted_at IS NULL UNION ALL SELECT p.* FROM pages p JOIN tree t ON p.parent_id=t.id WHERE p.deleted_at IS NULL) SELECT * FROM tree`,
         page.id,
-      ).filter((p) => !pinned.has(p.id))
+      )).filter((p) => !pinned.has(p.id))
     : [page];
   if (enabled) {
     // Like share links: nothing below a journal whose PIN the person has not entered.
-    const locked = lockedPageIds(user, page.workspace_id);
+    const locked = await lockedPageIds(user, page.workspace_id);
     for (const p of pages) {
-      requirePage(user, p.id, true);
+      await requirePage(user, p.id, true);
       if (locked.has(p.id)) throw new HttpError(423, "Dieses Journal ist gesperrt.");
     }
   }
   // Password and end date stay while the page remains published.
-  const kept = one<{ password_hash: string | null; expires_at: number | null }>(
+  const kept = await one<{ password_hash: string | null; expires_at: number | null }>(
     "SELECT password_hash,expires_at FROM publications WHERE page_id=?",
     page.id,
   );
-  run("DELETE FROM publication_pages WHERE root_id=?", page.id);
-  run("DELETE FROM publications WHERE page_id=?", page.id);
-  run(
+  await run("DELETE FROM publication_pages WHERE root_id=?", page.id);
+  await run("DELETE FROM publications WHERE page_id=?", page.id);
+  await run(
     "UPDATE pages SET public_token=? WHERE id=?",
     enabled ? page.public_token || id() : null,
     page.id,
   );
   if (enabled) {
-    run(
+    await run(
       "INSERT INTO publications(page_id,include_children,published_at,published_by,allow_copy,password_hash,expires_at) VALUES(?,?,?,?,?,?,?)",
       page.id,
       includeChildren ? 1 : 0, nowText(),
@@ -83,57 +84,57 @@ export function publishPage(
       kept?.expires_at ?? null,
     );
     for (const p of pages)
-      run(
+      await run(
         "INSERT INTO publication_pages(root_id,page_id) VALUES(?,?)",
         page.id,
         p.id,
       );
   }
 }
-export function publicTree(token: string) {
-  const link = one<{
+export async function publicTree(token: string) {
+  const link = await one<{
     root_id: string;
     role: "viewer" | "commenter" | "editor";
     password_hash: string | null;
     expires_at: number | null;
   }>("SELECT root_id,role,password_hash,expires_at FROM share_links WHERE token=?", token);
   const root = link
-    ? one<Page>(
+    ? (await one<Page>(
         "SELECT * FROM pages WHERE id=? AND deleted_at IS NULL",
         link.root_id,
-      )
-    : one<Page>(
+      ))
+    : (await one<Page>(
         "SELECT * FROM pages WHERE public_token=? AND deleted_at IS NULL",
         token,
-      );
+      ));
   // Nothing of a journal with a PIN goes out through a link or a
   // publication – also when a shared page was moved into one later.
-  if (!root || inPinJournal(root)) throw new HttpError(404, "Veröffentlichung nicht gefunden.");
+  if (!root || await inPinJournal(root)) throw new HttpError(404, "Veröffentlichung nicht gefunden.");
   // End date and password (lib/share-access.ts) hold for everything served
   // through the link: pages, records, files, live updates and guest edits.
   checkShareProtection(
     token,
     link ||
-      one<{ password_hash: string | null; expires_at: number | null }>(
+      await one<{ password_hash: string | null; expires_at: number | null }>(
         "SELECT password_hash,expires_at FROM publications WHERE page_id=?",
         root.id,
       ) || { password_hash: null, expires_at: null },
   );
   // The explicit publication set is intersected with the current tree. Moving a page out revokes inherited publication.
-  const descendants = all<Page>(
+  const descendants = await all<Page>(
     `WITH RECURSIVE tree AS (SELECT * FROM pages WHERE id=? AND deleted_at IS NULL UNION ALL SELECT p.* FROM pages p JOIN tree t ON p.parent_id=t.id WHERE p.deleted_at IS NULL) SELECT * FROM tree ORDER BY position`,
     root.id,
   );
   const selected = new Set(
-    all<{ page_id: string }>(
+    (await all<{ page_id: string }>(
       link
         ? "SELECT page_id FROM share_link_pages WHERE token=?"
         : "SELECT page_id FROM publication_pages WHERE root_id=?",
       link ? token : root.id,
-    ).map((p) => p.page_id),
+    )).map((p) => p.page_id),
   );
   selected.add(root.id); // Existing single-page links remain valid after migration.
-  for (const id of pinJournalPageIds(root.workspace_id)) selected.delete(id);
+  for (const id of await pinJournalPageIds(root.workspace_id)) selected.delete(id);
   const accessible = new Set([root.id]);
   let changed = true;
   while (changed) {
@@ -155,15 +156,15 @@ export function publicTree(token: string) {
     pages: descendants.filter((p) => accessible.has(p.id)),
   };
 }
-export function publicPage(token: string, pageId?: string) {
-  const tree = publicTree(token),
+export async function publicPage(token: string, pageId?: string) {
+  const tree = await publicTree(token),
     page = tree.pages.find((p) => p.id === (pageId || tree.root.id));
   if (!page) throw new HttpError(404, "Seite nicht veröffentlicht.");
   return { ...tree, page };
 }
-export function publicFile(token: string, fileId: string) {
-  const { pages } = publicTree(token);
-  const file = one<{ id: string; page_id: string; name: string; mime: string }>(
+export async function publicFile(token: string, fileId: string) {
+  const { pages } = await publicTree(token);
+  const file = await one<{ id: string; page_id: string; name: string; mime: string }>(
     "SELECT * FROM files WHERE id=?",
     fileId,
   );
@@ -171,7 +172,7 @@ export function publicFile(token: string, fileId: string) {
     throw new HttpError(404, "Datei nicht veröffentlicht.");
   // Fresh guest uploads are readable through the link that uploaded them.
   if (
-    one(
+    await one(
       "SELECT 1 FROM share_uploads WHERE file_id=? AND token=?",
       fileId,
       token,
@@ -180,13 +181,13 @@ export function publicFile(token: string, fileId: string) {
     return file;
   const html =
     String(
-      one("SELECT html FROM documents WHERE page_id=?", file.page_id)?.html ||
+      (await one("SELECT html FROM documents WHERE page_id=?", file.page_id))?.html ||
         "",
     ) +
-    all<{ html: string }>(
+    (await all<{ html: string }>(
       "SELECT d.html FROM row_documents d JOIN rows r ON r.id=d.row_id WHERE r.page_id=? AND r.access!='private'",
       file.page_id,
-    )
+    ))
       .map((d) => d.html)
       .join("");
   // An old, unused upload is not published simply because its parent page is public.
@@ -194,12 +195,12 @@ export function publicFile(token: string, fileId: string) {
   // Images placed on a whiteboard.
   const board = pages.find((p) => p.id === file.page_id);
   if (board?.kind === "whiteboard")
-    for (const item of whiteboardSnapshotItems(board as Page))
+    for (const item of await whiteboardSnapshotItems(board as Page))
       if (item.src === `/api/files/${fileId}`) referenced.add(fileId);
   // PDFs imported as the pages of a notebook (lib/notebook.ts).
   if (
     board?.kind === "notebook" &&
-    one("SELECT 1 FROM notebook_sheets WHERE page_id=? AND background LIKE ?", file.page_id, `%"file":"${fileId}"%`)
+    await one("SELECT 1 FROM notebook_sheets WHERE page_id=? AND background LIKE ?", file.page_id, `%"file":"${fileId}"%`)
   )
     referenced.add(fileId);
   const coverId = imageFileId(
@@ -214,16 +215,16 @@ export function publicFile(token: string, fileId: string) {
   // it, except in properties with a read rule (lib/field-access.ts).
   const restricted = publicHiddenFieldIds(
     JSON.parse(
-      String(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", file.page_id)?.fields || "[]"),
+      String((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", file.page_id))?.fields || "[]"),
     ),
   );
-  for (const row of all<{ cells: string }>(
+  for (const row of await all<{ cells: string }>(
     "SELECT cells FROM rows WHERE page_id=? AND access!='private' AND cells LIKE ?",
     file.page_id,
     `%/api/files/${fileId}%`,
   ))
     if (stripCells(row.cells, restricted).includes(`"/api/files/${fileId}"`)) referenced.add(fileId);
-  for (const row of all<{ icon: string; cover: string }>(
+  for (const row of await all<{ icon: string; cover: string }>(
     "SELECT icon,cover FROM rows WHERE page_id=? AND access!='private' AND (icon LIKE '/api/files/%' OR cover LIKE '/api/files/%')",
     file.page_id,
   ))
@@ -245,13 +246,13 @@ export function publicFile(token: string, fileId: string) {
 // The published pages with the icons links to them show (#96): uploaded
 // pictures through the share's own file address, or none when the picture
 // is not published.
-export function publishedLinkPages(token: string, pages: Pick<Page, "id" | "icon" | "kind">[]) {
-  return pages.map((p) => {
+export async function publishedLinkPages(token: string, pages: Pick<Page, "id" | "icon" | "kind">[]) {
+  return await mapAsync(pages, async (p) => {
     let icon = p.icon || "";
     const fileId = imageFileId(icon);
     if (fileId) {
       try {
-        publicFile(token, fileId);
+        await publicFile(token, fileId);
         icon = `/api/share/${token}/files/${fileId}`;
       } catch {
         icon = "";
@@ -283,7 +284,7 @@ export function publishedHtml(
       attrs[attr] = placeholder;
     } else delete attrs[attr];
   };
-  return cleanHtml(html, (tagName, attribs) => {
+  return cleanHtml(html, async (tagName, attribs) => {
     const attrs = { ...attribs };
     if (attrs["data-linked-database"]) {
       delete attrs["data-linked-source"];
@@ -297,7 +298,7 @@ export function publishedHtml(
       const file = /^\/api\/files\/([\w-]+)$/.exec(attrs[attr] || "");
       if (file) {
         try {
-          publicFile(token, file[1]);
+          await publicFile(token, file[1]);
           attrs[attr] = `/api/share/${token}/files/${file[1]}`;
         } catch {
           hide(attrs, attr);
@@ -315,11 +316,11 @@ export function publishedHtml(
 }
 
 // Password and end date of a publication (owners with write access).
-export function protectPublication(page: Page, changes: { password_hash?: string | null; expires_at?: number | null }) {
-  if (!page.public_token || !one("SELECT 1 FROM publications WHERE page_id=?", page.id))
+export async function protectPublication(page: Page, changes: { password_hash?: string | null; expires_at?: number | null }) {
+  if (!page.public_token || !(await one("SELECT 1 FROM publications WHERE page_id=?", page.id)))
     throw new HttpError(400, "Diese Seite ist nicht veröffentlicht.");
   if (changes.password_hash !== undefined)
-    run("UPDATE publications SET password_hash=? WHERE page_id=?", changes.password_hash, page.id);
+    await run("UPDATE publications SET password_hash=? WHERE page_id=?", changes.password_hash, page.id);
   if (changes.expires_at !== undefined)
-    run("UPDATE publications SET expires_at=? WHERE page_id=?", changes.expires_at, page.id);
+    await run("UPDATE publications SET expires_at=? WHERE page_id=?", changes.expires_at, page.id);
 }

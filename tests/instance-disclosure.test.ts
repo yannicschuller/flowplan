@@ -21,17 +21,17 @@ const { disclosedVersion, apiDocsAllowed } = await import("../lib/instance-discl
 const openapiRoute = await import("../app/api/openapi.json/route");
 const healthRoute = await import("../app/api/health/route");
 
-function account(name: string, groups: string[] = []) {
+async function account(name: string, groups: string[] = []) {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, `sub-${uid}`, name, `${name}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, `sub-${uid}`, name, `${name}@example.test`);
   const session = `session-${uid}`;
-  run("INSERT INTO sessions(token,user_id,groups_json,expires,created_at) VALUES(?,?,?,?,?)", hash(session), uid, JSON.stringify(groups), Date.now() + 3_600_000, Date.now());
+  await run("INSERT INTO sessions(token,user_id,groups_json,expires,created_at) VALUES(?,?,?,?,?)", hash(session), uid, JSON.stringify(groups), Date.now() + 3_600_000, Date.now());
   const identity: Identity = { id: uid, name, email: `${name}@example.test`, groups, isAdmin: false, disabled: 0, created_at: "" };
   return { identity, cookie: `theme=dark; ${cookieName}=${session}` };
 }
-const member = account("member");
-const admin = account("admin", ["flowplan-admins"]);
-const apiToken = createApiToken(member.identity, { name: "docs", scope: "read" }).token;
+const member = await account("member");
+const admin = await account("admin", ["flowplan-admins"]);
+const apiToken = (await createApiToken(member.identity, { name: "docs", scope: "read" })).token;
 
 const request = (path: string, headers: Record<string, string> = {}) => new Request(`https://flowplan.example.test${path}`, { headers });
 const openapi = (headers?: Record<string, string>) => openapiRoute.GET(request("/api/openapi.json", headers));

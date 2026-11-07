@@ -21,8 +21,8 @@ import { contentLocale, ct } from "./content-locale";
 import { translate } from "./i18n";
 import { mailConfig, queueFormConfirmationMail } from "./mail";
 import { allow, mailAllowed } from "./action-limits";
-export function formSettings(pageId: string) {
-  const raw = one<{
+export async function formSettings(pageId: string) {
+  const raw = await one<{
     token: string;
     enabled: number;
     internal: number;
@@ -33,8 +33,8 @@ export function formSettings(pageId: string) {
     ? { ...raw, config: formConfigSchema.parse(JSON.parse(raw.config)) }
     : null;
 }
-export function getForm(token: string, user: Identity | null) {
-  const f = one<{
+export async function getForm(token: string, user: Identity | null) {
+  const f = await one<{
     page_id: string;
     title: string;
     workspace_id: string;
@@ -46,26 +46,26 @@ export function getForm(token: string, user: Identity | null) {
     token,
   );
   // A public form of a database in a journal with a PIN stays closed.
-  if (!f || (!f.internal && inPinJournal({ id: f.page_id }))) throw new HttpError(404, "Formular nicht gefunden.");
+  if (!f || (!f.internal && await inPinJournal({ id: f.page_id }))) throw new HttpError(404, "Formular nicht gefunden.");
   if (f.internal) {
     if (!user)
       throw new HttpError(
         401,
         "Bitte melde dich an, um dieses Formular auszufüllen.",
       );
-    requireMember(user, f.workspace_id);
+    await requireMember(user, f.workspace_id);
   }
   if (!f.anonymous && !user)
     throw new HttpError(401, "Dieses Formular erfordert eine Anmeldung.");
   const fields: Field[] = JSON.parse(
-      one<{ fields: string }>(
+      (await one<{ fields: string }>(
         "SELECT fields FROM databases WHERE page_id=?",
         f.page_id,
-      )!.fields,
+      ))!.fields,
     ),
     config = formConfigSchema.parse(JSON.parse(f.config));
   const internal = !!f.internal && !!user;
-  const guest = internal && isGuest(user!, f.workspace_id);
+  const guest = internal && await isGuest(user!, f.workspace_id);
   // Properties with a read or write rule are never asked in a form
   // (lib/field-access.ts).
   const questions = orderedFormFields(fields, config, internal).filter((q) =>
@@ -79,42 +79,42 @@ export function getForm(token: string, user: Identity | null) {
     // Choices for people and relations, only for signed-in members; guests
     // see nobody of the workspace but themselves.
     members: internal
-      ? all<{ id: string; name: string }>(
+      ? (await all<{ id: string; name: string }>(
           "SELECT u.id,u.name FROM users u JOIN members m ON m.user_id=u.id WHERE m.workspace_id=? AND u.disabled=0 ORDER BY u.name",
           f.workspace_id,
-        ).filter((m) => !guest || m.id === user!.id)
+        )).filter((m) => !guest || m.id === user!.id)
       : [],
-    related: internal ? relationChoices(user!, questions) : {},
+    related: internal ? (await relationChoices(user!, questions)) : {},
   };
 }
-function relationChoices(user: Identity, fields: Field[]) {
+async function relationChoices(user: Identity, fields: Field[]) {
   const related: Record<string, { id: string; cells: { title: string } }[]> =
     {};
   for (const f of fields) {
     if (f.type !== "relation" || !f.relationPage || related[f.relationPage])
       continue;
-    const target = one<Page>(
+    const target = await one<Page>(
       "SELECT * FROM pages WHERE id=? AND deleted_at IS NULL",
       f.relationPage,
     );
-    if (!target || !pageRole(user, target) || journalLocked(user, target)) continue;
+    if (!target || !(await pageRole(user, target)) || await journalLocked(user, target)) continue;
     const title =
       (
         JSON.parse(
-          one<{ fields: string }>(
+          (await one<{ fields: string }>(
             "SELECT fields FROM databases WHERE page_id=?",
             target.id,
-          )?.fields || "[]",
+          ))?.fields || "[]",
         ) as Field[]
       )[0]?.id || "title";
-    related[target.id] = visibleRows(
+    related[target.id] = (await visibleRows(
       user,
       target,
-      all<{ id: string; cells: string; access: string; created_by: string }>(
+      await all<{ id: string; cells: string; access: string; created_by: string }>(
         "SELECT id,cells,access,created_by FROM rows WHERE page_id=? ORDER BY position LIMIT 1000",
         target.id,
       ),
-    ).map((r) => ({
+    )).map((r) => ({
       id: r.id,
       cells: { title: cellText(JSON.parse(r.cells)[title]) },
     }));
@@ -124,21 +124,21 @@ function relationChoices(user: Identity, fields: Field[]) {
 // Options: `confirm: false` when the caller sends the confirmation e-mail
 // itself (with the customer portal's link); `sender` tells visitors apart
 // for the e-mail limits (account or address).
-export function saveFormSubmission(
+export async function saveFormSubmission(
   pageId: string,
   user: Identity | null,
   values: Record<string, unknown>,
   memberSubmission = false,
   options: { confirm?: boolean; sender?: string } = {},
 ) {
-  const form = formSettings(pageId),
+  const form = await formSettings(pageId),
     config = form?.config || formConfigSchema.parse({});
   const internal = memberSubmission || (!!form?.internal && !!user);
   const fields: Field[] = JSON.parse(
-    one<{ fields: string }>(
+    (await one<{ fields: string }>(
       "SELECT fields FROM databases WHERE page_id=?",
       pageId,
-    )!.fields,
+    ))!.fields,
   );
   for (const key of Object.keys(values)) {
     const f = fields.find((f) => f.id === key);
@@ -148,30 +148,30 @@ export function saveFormSubmission(
   const result = validateFormValues(fields, config, values, internal);
   if (Object.keys(result.errors).length)
     throw new HttpError(400, Object.values(result.errors).join(" "));
-  const page = one<Page>("SELECT * FROM pages WHERE id=?", pageId)!;
+  const page = (await one<Page>("SELECT * FROM pages WHERE id=?", pageId))!;
   for (const f of fields) {
     const value = result.cells[f.id];
     if (value === undefined || value === null || value === "") continue;
     if (
       f.type === "person" &&
-      !one(
+      !(await one(
         "SELECT 1 FROM members WHERE workspace_id=? AND user_id=?",
         page.workspace_id,
         String(value),
-      )
+      ))
     )
       throw new HttpError(400, `${f.name}: Mitglied nicht gefunden.`);
     if (f.type === "relation" && Array.isArray(value) && value.length) {
       if (!f.relationPage || !user)
         throw new HttpError(400, `${f.name}: Verknüpfung nicht möglich.`);
-      requirePage(user, f.relationPage);
+      await requirePage(user, f.relationPage);
       for (const rid of value)
         if (
-          !one(
+          !(await one(
             "SELECT 1 FROM rows WHERE id=? AND page_id=?",
             rid,
             f.relationPage,
-          )
+          ))
         )
           throw new HttpError(400, `${f.name}: Eintrag nicht gefunden.`);
     }
@@ -179,11 +179,11 @@ export function saveFormSubmission(
     if (f.type === "files" && Array.isArray(value))
       for (const url of value)
         if (
-          !one(
+          !(await one(
             "SELECT 1 FROM files WHERE id=? AND page_id=?",
             String(url).split("/").pop() || "",
             pageId,
-          )
+          ))
         )
           throw new HttpError(400, `${f.name}: Datei nicht gefunden.`);
   }
@@ -193,7 +193,7 @@ export function saveFormSubmission(
   const stored = { ...result.cells };
   for (const f of fields)
     if (isFormattedText(f, fields) && typeof stored[f.id] === "string") stored[f.id] = escapeInline(stored[f.id] as string);
-  run(
+  await run(
     "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by) VALUES(?,?,?,?,?,?)",
     rid,
     pageId,
@@ -202,49 +202,49 @@ export function saveFormSubmission(
     form?.anonymous ? null : user?.id || null,
     form?.anonymous ? null : user?.id || null,
   );
-  run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), pageId);
+  await run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), pageId);
   // Survey answers without a title get a running one ("Antwort 12").
   const titleField = fields[0];
   let cells = stored;
   if (config.survey?.enabled && titleField?.type === "text" && !result.cells[titleField.id]) {
-    const number = one<{ number: number }>("SELECT number FROM rows WHERE id=?", rid)?.number;
+    const number = (await one<{ number: number }>("SELECT number FROM rows WHERE id=?", rid))?.number;
     if (number) {
       cells = { ...stored, [titleField.id]: `${ct("Antwort", "Response")} ${number}` };
-      run("UPDATE rows SET cells=? WHERE id=?", JSON.stringify(cells), rid);
+      await run("UPDATE rows SET cells=? WHERE id=?", JSON.stringify(cells), rid);
     }
   }
   // A sent answer replaces the person's saved draft.
-  if (user) run("DELETE FROM form_drafts WHERE page_id=? AND user_id=?", pageId, user.id);
-  notifyTeam(page, config, rid);
+  if (user) await run("DELETE FROM form_drafts WHERE page_id=? AND user_id=?", pageId, user.id);
+  await notifyTeam(page, config, rid);
   const confirmed =
     options.confirm !== false &&
-    confirmFormAnswer(pageId, user, result.cells, { sender: options.sender ?? user?.id ?? "", anonymous: !!form?.anonymous });
+    await confirmFormAnswer(pageId, user, result.cells, { sender: options.sender ?? user?.id ?? "", anonymous: !!form?.anonymous });
   // Automations: "a new record arrives through a form".
-  rowCreated(user, page, rid, true);
-  const workspace = one<{ workspace_id: string }>("SELECT workspace_id FROM pages WHERE id=?", pageId);
+  await rowCreated(user, page, rid, true);
+  const workspace = await one<{ workspace_id: string }>("SELECT workspace_id FROM pages WHERE id=?", pageId);
   if (workspace) {
     const payload = { pageId, rowId: rid, cells: stored, anonymous: !!form?.anonymous };
-    emitWebhook(workspace.workspace_id, "form.submitted", payload);
-    emitWebhook(workspace.workspace_id, "row.created", payload);
+    await emitWebhook(workspace.workspace_id, "form.submitted", payload);
+    await emitWebhook(workspace.workspace_id, "row.created", payload);
   }
   return { id: rid, cells, confirmed };
 }
 
 // Members chosen in the form settings hear about each new answer (kind
 // "guest", like guest comments and records) – if they can see the record.
-function notifyTeam(page: Page, config: FormConfig, rowId: string) {
+async function notifyTeam(page: Page, config: FormConfig, rowId: string) {
   if (!config.notifyMembers.length) return;
   const title = config.title || page.title;
   for (const uid of new Set(config.notifyMembers)) {
-    const member = one<Identity>(
+    const member = await one<Identity>(
       "SELECT u.* FROM users u JOIN members m ON m.user_id=u.id AND m.workspace_id=? WHERE u.id=? AND u.disabled=0",
       page.workspace_id,
       uid,
     );
     if (!member) continue;
     const who = { ...member, groups: [], isAdmin: false } as Identity;
-    if (!pageRole(who, page) || hiddenRowIds(who, page).has(rowId)) continue;
-    run(
+    if (!(await pageRole(who, page)) || (await hiddenRowIds(who, page)).has(rowId)) continue;
+    await run(
       "INSERT INTO notifications(id,user_id,body,page_id,row_id,kind) VALUES(?,?,?,?,?,'guest')",
       id(),
       uid,
@@ -262,18 +262,18 @@ const HOUR = 3_600_000;
 // are not anonymous, to the signed-in person's address. Limited per
 // recipient, per sender and per form, since the text partly comes from the
 // person answering. Returns whether a mail was queued.
-export function confirmFormAnswer(
+export async function confirmFormAnswer(
   pageId: string,
   user: Identity | null,
   cells: Record<string, unknown>,
   options: { sender?: string; anonymous?: boolean; ticketUrl?: string } = {},
 ) {
-  const form = formSettings(pageId);
+  const form = await formSettings(pageId);
   const config = form?.config;
   if (!config?.confirmation.enabled || !mailConfig()) return false;
-  const page = one<Page>("SELECT * FROM pages WHERE id=?", pageId);
+  const page = await one<Page>("SELECT * FROM pages WHERE id=?", pageId);
   if (!page) return false;
-  const fields: Field[] = JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId)?.fields || "[]");
+  const fields: Field[] = JSON.parse((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId))?.fields || "[]");
   // People and relations never appear; they are internal.
   const questions = orderedFormFields(fields, config, false);
   const typed = questions
@@ -311,7 +311,7 @@ export function confirmFormAnswer(
         "At the link below you can see the status at any time and reply to the team. Keep the link to yourself – anyone who has it can see the request.",
       ),
     );
-  return queueFormConfirmationMail({
+  return await queueFormConfirmationMail({
     to,
     locale,
     subject: (config.confirmation.subject.trim() ? fill(config.confirmation.subject) : t(`Deine Antwort: ${title}`, `Your answer: ${title}`)).replace(/\s+/g, " "),
@@ -329,23 +329,23 @@ const draftInput = z.object({
   cells: z.record(z.string().max(500), z.unknown()),
   page: z.number().int().min(0).max(300).default(0),
 });
-function draftForm(token: string, user: Identity | null) {
+async function draftForm(token: string, user: Identity | null) {
   if (!user) throw new HttpError(401, "Bitte melde dich an, um einen Entwurf zu speichern.");
-  const form = getForm(token, user);
+  const form = await getForm(token, user);
   if (form.anonymous) throw new HttpError(400, "Anonyme Formulare speichern keine Entwürfe.");
   return form;
 }
-export function formDraft(token: string, user: Identity | null) {
-  const form = draftForm(token, user);
-  const draft = one<{ cells: string; page: number; updated_at: number }>(
+export async function formDraft(token: string, user: Identity | null) {
+  const form = await draftForm(token, user);
+  const draft = await one<{ cells: string; page: number; updated_at: number }>(
     "SELECT cells,page,updated_at FROM form_drafts WHERE page_id=? AND user_id=?",
     form.page_id,
     user!.id,
   );
   return draft ? { cells: JSON.parse(draft.cells) as Record<string, unknown>, page: draft.page, updatedAt: draft.updated_at } : null;
 }
-export function saveFormDraft(token: string, user: Identity | null, input: unknown) {
-  const form = draftForm(token, user);
+export async function saveFormDraft(token: string, user: Identity | null, input: unknown) {
+  const form = await draftForm(token, user);
   if (!allow(`form-draft:${user!.id}`, 60, 60_000)) throw new HttpError(429, "Zu viele Entwürfe in kurzer Zeit. Bitte später erneut versuchen.");
   const b = draftInput.parse(input);
   // Only answers to the form's questions; files are chosen again on sending.
@@ -354,7 +354,7 @@ export function saveFormDraft(token: string, user: Identity | null, input: unkno
   const json = JSON.stringify(cells);
   if (json.length > 100_000) throw new HttpError(413, "Entwurf zu groß.");
   const now = Date.now();
-  run(
+  await run(
     "INSERT INTO form_drafts(page_id,user_id,cells,page,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(page_id,user_id) DO UPDATE SET cells=excluded.cells,page=excluded.page,updated_at=excluded.updated_at",
     form.page_id,
     user!.id,
@@ -363,11 +363,11 @@ export function saveFormDraft(token: string, user: Identity | null, input: unkno
     now,
   );
   // Drafts nobody came back to for half a year go away.
-  run("DELETE FROM form_drafts WHERE updated_at<?", now - 180 * 24 * HOUR);
+  await run("DELETE FROM form_drafts WHERE updated_at<?", now - 180 * 24 * HOUR);
   return { updatedAt: now };
 }
-export function deleteFormDraft(token: string, user: Identity | null) {
-  const form = draftForm(token, user);
-  run("DELETE FROM form_drafts WHERE page_id=? AND user_id=?", form.page_id, user!.id);
+export async function deleteFormDraft(token: string, user: Identity | null) {
+  const form = await draftForm(token, user);
+  await run("DELETE FROM form_drafts WHERE page_id=? AND user_id=?", form.page_id, user!.id);
   return { ok: true };
 }

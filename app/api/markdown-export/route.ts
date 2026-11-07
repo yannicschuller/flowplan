@@ -23,7 +23,7 @@ const options = z
 export const POST = withRequestLocale(exportPost);
 async function exportPost(req: Request) {
   try {
-    checkOrigin(req);
+    await checkOrigin(req);
     const user = await requireUser();
     if (!req.body) throw new HttpError(400, "Exportoptionen fehlen.");
     const reader = req.body.getReader(),

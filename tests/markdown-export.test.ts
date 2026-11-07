@@ -28,9 +28,9 @@ function parsed(markdown: string) {
   doc.body.innerHTML = marked.parse(markdown, { async: false });
   return doc;
 }
-function user(name: string): Identity {
+async function user(name: string): Promise<Identity> {
   const uid = id();
-  run(
+  await run(
     "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
     uid,
     uid,
@@ -47,36 +47,36 @@ function user(name: string): Identity {
     isAdmin: false,
   };
 }
-const owner = user("Exporter"),
-  viewer = user("Reader"),
-  stranger = user("Stranger"),
-  wid = createWorkspace(owner.id, "Markdown workspace");
-run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
-const space = one<{ id: string }>(
+const owner = await user("Exporter"),
+  viewer = await user("Reader"),
+  stranger = await user("Stranger"),
+  wid = await createWorkspace(owner.id, "Markdown workspace");
+await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
+const space = (await one<{ id: string }>(
   "SELECT id FROM spaces WHERE workspace_id=?",
   wid,
-)!;
-function page(title: string, kind = "document", parentId?: string) {
+))!;
+async function page(title: string, kind = "document", parentId?: string) {
   return (
-    command(owner, {
+    (await command(owner, {
       action: "page.create",
       workspaceId: wid,
       spaceId: space.id,
       title,
       kind,
       parentId,
-    }) as { id: string }
+    })) as { id: string }
   ).id;
 }
-function document(pageId: string, html: string) {
-  run(
+async function document(pageId: string, html: string) {
+  await run(
     "UPDATE documents SET html=?,state=? WHERE page_id=?",
     html,
     htmlState(html),
     pageId,
   );
 }
-function file(
+async function file(
   pageId: string,
   name: string,
   bytes = Buffer.from("Binary attachment \0 ü"),
@@ -86,7 +86,7 @@ function file(
     recursive: true,
   });
   writeFileSync(join(process.env.FLOWPLAN_DATA_DIR!, "uploads", fid), bytes);
-  run(
+  await run(
     "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
     fid,
     pageId,
@@ -168,14 +168,14 @@ test("Markdown retains code fences, formulas, diagrams, merged tables and portab
 });
 
 test("ZIP contains navigable pages, record documents, byte-exact attachments and safe CSV", async () => {
-  const root = page("Guide / Überblick"),
-    child = page("../same", "document", root),
-    other = page("../same", "document", root),
-    table = page("Records", "database", root);
-  page("𠮷".repeat(100), "document", root);
-  const asset = file(root, "../notes.txt"),
-    schema = database(table);
-  command(owner, {
+  const root = await page("Guide / Überblick"),
+    child = await page("../same", "document", root),
+    other = await page("../same", "document", root),
+    table = await page("Records", "database", root);
+  await page("𠮷".repeat(100), "document", root);
+  const asset = await file(root, "../notes.txt"),
+    schema = await database(table);
+  await command(owner, {
     action: "database.update",
     pageId: table,
     version: schema.version,
@@ -187,7 +187,7 @@ test("ZIP contains navigable pages, record documents, byte-exact attachments and
     ],
     views: schema.views,
   });
-  const row = command(owner, {
+  const row = (await command(owner, {
     action: "row.create",
     pageId: table,
     cells: {
@@ -196,19 +196,19 @@ test("ZIP contains navigable pages, record documents, byte-exact attachments and
       notes: 'line 1\nline "2"',
       file: asset.url,
     },
-  }) as { id: string };
-  replaceRowDocument(
+  })) as { id: string };
+  await replaceRowDocument(
     row.id,
     `<h2>Record body</h2><p><a href="${asset.url}">File</a></p>`,
     owner.id,
   );
-  document(
+  await document(
     root,
     `<h2>Start</h2><p><a href="/#page=${child}">Child</a></p><img src="${asset.url}" alt="Cover"><p><a href="https://example.org/external.png">Remote</a></p>`,
   );
-  document(child, `<p><a href="/#page=${root}">Back</a></p>`);
-  run("UPDATE pages SET cover=? WHERE id=?", asset.url, root);
-  const before = all(
+  await document(child, `<p><a href="/#page=${root}">Back</a></p>`);
+  await run("UPDATE pages SET cover=? WHERE id=?", asset.url, root);
+  const before = await all(
     "SELECT * FROM documents WHERE page_id IN (?,?,?)",
     root,
     child,
@@ -242,36 +242,36 @@ test("ZIP contains navigable pages, record documents, byte-exact attachments and
   assert.match(csv, /"-5"/);
   assert.match(csv, /"line 1\nline ""2"""/);
   assert.deepEqual(
-    all("SELECT * FROM documents WHERE page_id IN (?,?,?)", root, child, other),
+    await all("SELECT * FROM documents WHERE page_id IN (?,?,?)", root, child, other),
     before,
   );
 });
 
 test("reader exports exclude private descendants, attachments, relation targets and rollup values", async () => {
-  const root = page("Public"),
-    hidden = page("Secret document", "document", root),
-    table = page("Visible table", "database", root),
-    secretDB = page("Secret database", "database", root);
-  const privateSpace = command(owner, {
+  const root = await page("Public"),
+    hidden = await page("Secret document", "document", root),
+    table = await page("Visible table", "database", root),
+    secretDB = await page("Secret database", "database", root);
+  const privateSpace = (await command(owner, {
     action: "space.create",
     workspaceId: wid,
     name: "Private",
     private: true,
-  }) as { id: string };
-  run(
+  })) as { id: string };
+  await run(
     "UPDATE pages SET space_id=? WHERE id IN (?,?)",
     privateSpace.id,
     hidden,
     secretDB,
   );
-  const asset = file(hidden, "secret-name.txt", Buffer.from("SECRET BYTES"));
-  const secret = command(owner, {
+  const asset = await file(hidden, "secret-name.txt", Buffer.from("SECRET BYTES"));
+  const secret = (await command(owner, {
     action: "row.create",
     pageId: secretDB,
     cells: { title: "SECRET RECORD" },
-  }) as { id: string };
-  const schema = database(table);
-  command(owner, {
+  })) as { id: string };
+  const schema = await database(table);
+  await command(owner, {
     action: "database.update",
     pageId: table,
     version: schema.version,
@@ -290,16 +290,16 @@ test("reader exports exclude private descendants, attachments, relation targets 
     ],
     views: schema.views,
   });
-  command(owner, {
+  await command(owner, {
     action: "row.create",
     pageId: table,
     cells: { title: "Visible", rel: [secret.id], file: asset.url },
   });
-  document(
+  await document(
     root,
     `<p><a href="/#page=${hidden}">Restricted link</a><a href="${asset.url}">Restricted attachment</a></p><div data-linked-database="${id()}" data-linked-source="${secretDB}"></div><p><a href="javascript:alert(1)">Unsafe</a></p>`,
   );
-  run("UPDATE pages SET locked=1 WHERE id=?", root);
+  await run("UPDATE pages SET locked=1 WHERE id=?", root);
   const zip = await readZip(
       (await exportPage(root, "zip", true, viewer)).bytes,
     ),
@@ -333,10 +333,10 @@ test("reader exports exclude private descendants, attachments, relation targets 
 test("single Markdown keeps live links, inline record bodies and rejects invalid tree exports", async () => {
   assert.equal(exportName("CON.txt"), "_CON.txt");
   assert.doesNotMatch(exportName("../.."), /\/|\.\./);
-  const root = page("Single"),
-    child = page("Subpage", "document", root),
-    asset = file(root, "file.txt");
-  document(
+  const root = await page("Single"),
+    child = await page("Subpage", "document", root),
+    asset = await file(root, "file.txt");
+  await document(
     root,
     `<p><a href="${asset.url}">File</a><a href="/#page=${child}">Page</a></p>`,
   );
@@ -347,24 +347,24 @@ test("single Markdown keeps live links, inline record bodies and rejects invalid
   assert.ok(md.includes(`https://flowplan.example.test${asset.url}`));
   assert.ok(md.includes(`https://flowplan.example.test/#page=${child}`));
   await assert.rejects(exportPage(root, "markdown", true), { status: 400 });
-  const table = page("Inline records", "database"),
-    row = command(owner, {
+  const table = await page("Inline records", "database"),
+    row = (await command(owner, {
       action: "row.create",
       pageId: table,
       cells: { title: "Entry" },
-    }) as { id: string };
-  replaceRowDocument(row.id, "<p>Full record body</p>", owner.id);
+    })) as { id: string };
+  await replaceRowDocument(row.id, "<p>Full record body</p>", owner.id);
   const record = (await exportPage(table)).bytes.toString();
   assert.match(record, /Full record body/);
   assert.ok(record.includes(`<a id="record-${row.id}"></a>`));
-  command(owner, { action: "page.delete", pageId: root });
+  await command(owner, { action: "page.delete", pageId: root });
   await assert.rejects(exportPage(root), { status: 404 });
 });
 
 test("missing referenced files abort the ZIP without silently dropping attachments", async () => {
-  const root = page("Missing attachment"),
-    asset = file(root, "missing.txt");
-  document(root, `<p><a href="${asset.url}">Attachment</a></p>`);
+  const root = await page("Missing attachment"),
+    asset = await file(root, "missing.txt");
+  await document(root, `<p><a href="${asset.url}">Attachment</a></p>`);
   unlinkSync(join(process.env.FLOWPLAN_DATA_DIR!, "uploads", asset.id));
   await assert.rejects(exportPage(root, "zip"), { status: 409 });
   assert.match(
@@ -396,11 +396,11 @@ test("callout kinds round-trip as GitHub alerts", async () => {
 // scheduled backup export takes whole databases with their history and
 // failed there.
 test("databases above 5,000 records export in full, with history", async () => {
-  const table = page("Large table", "database");
-  const schema = database(table) as { fields: { id: string }[] };
+  const table = await page("Large table", "database");
+  const schema = (await database(table)) as { fields: { id: string }[] };
   const title = schema.fields[0].id;
-  const insert = (n: number) =>
-    run(
+  const insert = async (n: number) =>
+    await run(
       "INSERT INTO rows(id,page_id,cells,position,created_by) VALUES(?,?,?,?,?)",
       id(),
       table,
@@ -408,7 +408,7 @@ test("databases above 5,000 records export in full, with history", async () => {
       n,
       owner.id,
     );
-  for (let n = 0; n < 6001; n++) insert(n);
+  for (let n = 0; n < 6001; n++) await insert(n);
   const started = Date.now();
   const { bytes } = await exportMarkdown(owner, { pageId: table, format: "zip", includeSubpages: true, history: true });
   const files = await readZip(bytes as Buffer);

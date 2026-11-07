@@ -19,7 +19,7 @@ const MAX_TOKENS = 20;
 // Synchronous until command() (lib/api.ts, "token.create"/"token.revoke")
 // is asynchronous: its SQL is plain, so on Postgres it goes through the
 // transitional bridge of lib/db.ts (docs/architecture/database.md).
-export function createApiToken(user: Identity, input: unknown) {
+export async function createApiToken(user: Identity, input: unknown) {
   if (user.demo) throw new HttpError(403, "In der Demo nicht verfügbar.");
   if (user.apiScope) throw new HttpError(403, "API-Tokens können keine weiteren Tokens anlegen.");
   const b = z
@@ -29,11 +29,11 @@ export function createApiToken(user: Identity, input: unknown) {
       days: z.number().int().min(1).max(3650).nullable().optional(),
     })
     .parse(input);
-  const count = Number(one<{ n: number }>("SELECT COUNT(*) n FROM api_tokens WHERE user_id=?", user.id)?.n || 0);
+  const count = Number((await one<{ n: number }>("SELECT COUNT(*) n FROM api_tokens WHERE user_id=?", user.id))?.n || 0);
   if (count >= MAX_TOKENS) throw new HttpError(409, `Höchstens ${MAX_TOKENS} Tokens pro Person.`);
   const token = `fp_${randomBytes(30).toString("base64url")}`;
   const tokenId = id();
-  run(
+  await run(
     "INSERT INTO api_tokens(id,user_id,name,scope,token_hash,prefix,created_at,expires_at) VALUES(?,?,?,?,?,?,?,?)",
     tokenId,
     user.id,
@@ -63,9 +63,9 @@ export async function listApiTokens(user: Identity) {
   );
 }
 
-export function revokeApiToken(user: Identity, tokenId: unknown) {
+export async function revokeApiToken(user: Identity, tokenId: unknown) {
   if (user.apiScope) throw new HttpError(403, "API-Tokens können keine Tokens widerrufen.");
-  if (run("DELETE FROM api_tokens WHERE id=? AND user_id=?", z.string().parse(tokenId), user.id).changes)
+  if ((await run("DELETE FROM api_tokens WHERE id=? AND user_id=?", z.string().parse(tokenId), user.id)).changes)
     securityEvent("account.token_revoked", { actorId: user.id });
 }
 

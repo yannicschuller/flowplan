@@ -111,13 +111,13 @@ function envDefaults(): AiInstanceSettings {
 // ---- Instance ----
 
 type Row = { config: string; key_cipher: string | null; key_hint: string };
-const instanceRow = () => one<Row>("SELECT config,key_cipher,key_hint FROM ai_instance WHERE id=1");
+const instanceRow = async () => await one<Row>("SELECT config,key_cipher,key_hint FROM ai_instance WHERE id=1");
 // Read on every use (route handlers run as separate module instances).
-export function instanceAiSettings(): AiInstanceSettings {
+export async function instanceAiSettings(): Promise<AiInstanceSettings> {
   const defaults = envDefaults();
   let stored: Record<string, unknown> = {};
   try {
-    stored = JSON.parse(instanceRow()?.config || "{}");
+    stored = JSON.parse((await instanceRow())?.config || "{}");
   } catch {}
   const parsed = instanceSchema.safeParse({ ...defaults, ...stored, features: { ...defaults.features, ...((stored.features as object) || {}) } });
   return parsed.success ? parsed.data : defaults;
@@ -126,8 +126,8 @@ export const featureAllowed = (settings: AiInstanceSettings, feature: AiFeature)
 
 // The instance key: stored (sealed) or from the environment while the
 // provider is the environment's one.
-export function instanceKey(): { key: string; source: "stored" | "env" | null; unreadable: boolean } {
-  const row = instanceRow();
+export async function instanceKey(): Promise<{ key: string; source: "stored" | "env" | null; unreadable: boolean }> {
+  const row = await instanceRow();
   if (row?.key_cipher) {
     try {
       return { key: openSecret(row.key_cipher, "ai-key:instance"), source: "stored", unreadable: false };
@@ -135,15 +135,15 @@ export function instanceKey(): { key: string; source: "stored" | "env" | null; u
       return { key: "", source: "stored", unreadable: true };
     }
   }
-  const provider = instanceAiSettings().provider,
+  const provider = (await instanceAiSettings()).provider,
     env = envProvider(),
     key = envKey();
   if (key && provider && env && sameEndpoint(provider, env)) return { key, source: "env", unreadable: false };
   return { key: "", source: null, unreadable: false };
 }
 
-function saveInstanceRow(config: AiInstanceSettings, keyCipher: string | null, hint: string) {
-  run(
+async function saveInstanceRow(config: AiInstanceSettings, keyCipher: string | null, hint: string) {
+  await run(
     "INSERT INTO ai_instance(id,config,key_cipher,key_hint,updated_at) VALUES(1,?,?,?,?) ON CONFLICT(id) DO UPDATE SET config=excluded.config,key_cipher=excluded.key_cipher,key_hint=excluded.key_hint,updated_at=excluded.updated_at",
     JSON.stringify(config),
     keyCipher,
@@ -157,11 +157,11 @@ const adminInput = z.object({
   // A new key, null to remove it, absent to keep it.
   apiKey: apiKeySchema.nullable().optional(),
 });
-export function saveInstanceAi(user: Identity, raw: unknown) {
+export async function saveInstanceAi(user: Identity, raw: unknown) {
   assertSettingsCaller(user);
   requireAdmin(user);
   const b = adminInput.parse(raw);
-  const current = instanceAiSettings();
+  const current = await instanceAiSettings();
   const incoming = (b.settings && typeof b.settings === "object" ? b.settings : {}) as Record<string, unknown>;
   const next = instanceSchema.parse({
     ...current,
@@ -169,7 +169,7 @@ export function saveInstanceAi(user: Identity, raw: unknown) {
     features: { ...current.features, ...((incoming.features as object) || {}) },
   });
   if (next.provider?.baseUrl) checkAiUrl(next.provider.baseUrl, true);
-  const row = instanceRow();
+  const row = await instanceRow();
   let cipher = row?.key_cipher ?? null,
     hint = row?.key_hint ?? "";
   // Another kind or address: the stored key is gone.
@@ -183,32 +183,32 @@ export function saveInstanceAi(user: Identity, raw: unknown) {
     cipher = sealSecret(b.apiKey, "ai-key:instance");
     hint = keyHint(b.apiKey);
   }
-  saveInstanceRow(next, cipher, hint);
-  audit(user.id, "admin.ai", "instance", JSON.stringify({ enabled: next.enabled, device: next.device, provider: next.provider?.kind || null, key: typeof b.apiKey === "string" ? "replaced" : moved || b.apiKey === null ? "removed" : "kept" }));
-  return adminAiView();
+  await saveInstanceRow(next, cipher, hint);
+  await audit(user.id, "admin.ai", "instance", JSON.stringify({ enabled: next.enabled, device: next.device, provider: next.provider?.kind || null, key: typeof b.apiKey === "string" ? "replaced" : moved || b.apiKey === null ? "removed" : "kept" }));
+  return await adminAiView();
 }
 
 // Who may use AI when access is "selected".
-export function setUserAiPolicy(user: Identity, raw: unknown) {
+export async function setUserAiPolicy(user: Identity, raw: unknown) {
   assertSettingsCaller(user);
   requireAdmin(user);
   const b = z.object({ userId: z.uuid().or(z.string().min(1).max(100)), allowed: z.boolean() }).parse(raw);
-  if (!one("SELECT 1 FROM users WHERE id=?", b.userId)) throw new HttpError(404, "Benutzer nicht gefunden.");
-  run("INSERT INTO ai_user_policy(user_id,allowed) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET allowed=excluded.allowed", b.userId, b.allowed ? 1 : 0);
-  audit(user.id, "admin.aiUser", b.userId, b.allowed ? "allowed" : "denied");
-  return { ok: true, allowed: aiAllowedUsers() };
+  if (!(await one("SELECT 1 FROM users WHERE id=?", b.userId))) throw new HttpError(404, "Benutzer nicht gefunden.");
+  await run("INSERT INTO ai_user_policy(user_id,allowed) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET allowed=excluded.allowed", b.userId, b.allowed ? 1 : 0);
+  await audit(user.id, "admin.aiUser", b.userId, b.allowed ? "allowed" : "denied");
+  return { ok: true, allowed: await aiAllowedUsers() };
 }
-export const aiAllowedUsers = () => all<{ user_id: string }>("SELECT user_id FROM ai_user_policy WHERE allowed=1").map((r) => r.user_id);
-export function userAllowedByPolicy(userId: string, settings = instanceAiSettings()) {
+export const aiAllowedUsers = async () => (await all<{ user_id: string }>("SELECT user_id FROM ai_user_policy WHERE allowed=1")).map((r) => r.user_id);
+export async function userAllowedByPolicy(userId: string, settings = (await instanceAiSettings())) {
   if (settings.access === "everyone") return true;
-  return !!one("SELECT 1 FROM ai_user_policy WHERE user_id=? AND allowed=1", userId);
+  return !!(await one("SELECT 1 FROM ai_user_policy WHERE user_id=? AND allowed=1", userId));
 }
 
 // What the administration sees: never the key, only whether one is there.
-export function adminAiView() {
-  const settings = instanceAiSettings();
-  const row = instanceRow();
-  const key = instanceKey();
+export async function adminAiView() {
+  const settings = await instanceAiSettings();
+  const row = await instanceRow();
+  const key = await instanceKey();
   const env = envProvider();
   let secrets: string = "file";
   try {
@@ -219,7 +219,7 @@ export function adminAiView() {
     key: { stored: !!row?.key_cipher, hint: row?.key_cipher ? row.key_hint : "", fromEnv: key.source === "env", unreadable: key.unreadable },
     env: { provider: env ? { kind: env.kind, baseUrl: env.baseUrl } : null, key: !!envKey() },
     secretsKey: secrets,
-    allowedUsers: aiAllowedUsers(),
+    allowedUsers: await aiAllowedUsers(),
   };
 }
 
@@ -234,18 +234,18 @@ const defaultUser = (): AiUserSettings => ({
   device: "prefer",
 });
 type UserRow = Row & { user_id: string };
-const userRow = (userId: string) => one<UserRow>("SELECT user_id,config,key_cipher,key_hint FROM ai_user_settings WHERE user_id=?", userId);
-export function userAiSettings(userId: string): AiUserSettings {
+const userRow = async (userId: string) => await one<UserRow>("SELECT user_id,config,key_cipher,key_hint FROM ai_user_settings WHERE user_id=?", userId);
+export async function userAiSettings(userId: string): Promise<AiUserSettings> {
   let stored: Record<string, unknown> = {};
   try {
-    stored = JSON.parse(userRow(userId)?.config || "{}");
+    stored = JSON.parse((await userRow(userId))?.config || "{}");
   } catch {}
   const parsed = userSchema.safeParse({ ...defaultUser(), ...stored });
   return parsed.success ? parsed.data : defaultUser();
 }
 export const userAiKeyAad = (userId: string) => `ai-key:user:${userId}`;
-export function userKey(userId: string): { key: string; stored: boolean; unreadable: boolean } {
-  const row = userRow(userId);
+export async function userKey(userId: string): Promise<{ key: string; stored: boolean; unreadable: boolean }> {
+  const row = await userRow(userId);
   if (!row?.key_cipher) return { key: "", stored: false, unreadable: false };
   try {
     return { key: openSecret(row.key_cipher, userAiKeyAad(userId)), stored: true, unreadable: false };
@@ -253,8 +253,8 @@ export function userKey(userId: string): { key: string; stored: boolean; unreada
     return { key: "", stored: true, unreadable: true };
   }
 }
-function saveUserRow(userId: string, settings: AiUserSettings, cipher: string | null, hint: string) {
-  run(
+async function saveUserRow(userId: string, settings: AiUserSettings, cipher: string | null, hint: string) {
+  await run(
     "INSERT INTO ai_user_settings(user_id,config,key_cipher,key_hint,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET config=excluded.config,key_cipher=excluded.key_cipher,key_hint=excluded.key_hint,updated_at=excluded.updated_at",
     userId,
     JSON.stringify(settings),
@@ -278,17 +278,17 @@ const prefsInput = z.object({
   scope: z.enum(["all", "selected"]).optional(),
   device: z.enum(DEVICE_AI_MODES).optional(),
 });
-export function saveUserAiPrefs(user: Identity, raw: unknown) {
+export async function saveUserAiPrefs(user: Identity, raw: unknown) {
   assertSettingsCaller(user);
   const b = prefsInput.parse(raw);
-  const current = userAiSettings(user.id);
-  const row = userRow(user.id);
+  const current = await userAiSettings(user.id);
+  const row = await userRow(user.id);
   const next = userSchema.parse({
     ...current,
     ...Object.fromEntries(Object.entries(b).filter(([, v]) => v !== undefined)),
     features: { ...current.features, ...(b.features || {}) },
   });
-  saveUserRow(user.id, next, row?.key_cipher ?? null, row?.key_hint ?? "");
+  await saveUserRow(user.id, next, row?.key_cipher ?? null, row?.key_hint ?? "");
   return { ok: true };
 }
 
@@ -298,12 +298,12 @@ const providerInput = z.object({
 });
 // The person's own provider (only when the administration allows it).
 // Removing it is always possible.
-export function saveUserAiProvider(user: Identity, raw: unknown) {
+export async function saveUserAiProvider(user: Identity, raw: unknown) {
   assertSettingsCaller(user);
   const b = providerInput.parse(raw);
-  const current = userAiSettings(user.id);
-  const row = userRow(user.id);
-  if (b.provider && !instanceAiSettings().userProviders)
+  const current = await userAiSettings(user.id);
+  const row = await userRow(user.id);
+  if (b.provider && !(await instanceAiSettings()).userProviders)
     throw new HttpError(403, "Eigene KI-Anbieter sind auf dieser Instanz nicht erlaubt.");
   // Own providers are only reached through public https addresses.
   if (b.provider) checkAiUrl(b.provider.baseUrl || AI_DEFAULTS[b.provider.kind].baseUrl, false);
@@ -320,13 +320,13 @@ export function saveUserAiProvider(user: Identity, raw: unknown) {
     hint = keyHint(b.apiKey);
   }
   const next = { ...current, provider: b.provider, ...(b.provider ? {} : { source: "instance" as const }) };
-  saveUserRow(user.id, next, cipher, hint);
-  audit(user.id, "ai.provider", user.id, JSON.stringify({ provider: b.provider?.kind || null, key: typeof b.apiKey === "string" ? "replaced" : moved || b.apiKey === null ? "removed" : "kept" }));
+  await saveUserRow(user.id, next, cipher, hint);
+  await audit(user.id, "ai.provider", user.id, JSON.stringify({ provider: b.provider?.kind || null, key: typeof b.apiKey === "string" ? "replaced" : moved || b.apiKey === null ? "removed" : "kept" }));
   return { ok: true };
 }
 
-export function userKeyInfo(userId: string) {
-  const row = userRow(userId);
-  const key = userKey(userId);
+export async function userKeyInfo(userId: string) {
+  const row = await userRow(userId);
+  const key = await userKey(userId);
   return { stored: !!row?.key_cipher, hint: row?.key_cipher ? row.key_hint : "", unreadable: key.unreadable };
 }

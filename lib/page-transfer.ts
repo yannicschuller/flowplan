@@ -6,7 +6,7 @@ import { HttpError } from "./auth";
 import { enforceQuota } from "./instance-ops";
 import type { Field, Identity } from "./types";
 
-export function transferPages(
+export async function transferPages(
   user: Identity,
   ids: string[],
   fromWorkspace: string,
@@ -15,7 +15,7 @@ export function transferPages(
   const moving = new Set(ids);
   const placeholders = ids.map(() => "?").join(",");
   // Relations would point across workspaces: refuse instead of losing them.
-  for (const db of all<{ page_id: string; title: string; fields: string }>(
+  for (const db of await all<{ page_id: string; title: string; fields: string }>(
     "SELECT d.page_id,p.title,d.fields FROM databases d JOIN pages p ON p.id=d.page_id WHERE p.workspace_id=?",
     fromWorkspace,
   )) {
@@ -24,7 +24,7 @@ export function transferPages(
       if (moving.has(db.page_id) !== moving.has(field.relationPage)) {
         const inside = moving.has(db.page_id)
           ? db.title
-          : one<{ title: string }>("SELECT title FROM pages WHERE id=?", field.relationPage)?.title;
+          : (await one<{ title: string }>("SELECT title FROM pages WHERE id=?", field.relationPage))?.title;
         throw new HttpError(
           409,
           `„${inside || "Datenbank"}“ ist über die Eigenschaft „${field.name}“ mit einer Datenbank verknüpft, die nicht mitverschoben wird. Löse die Relation, bevor du in einen anderen Arbeitsbereich verschiebst.`,
@@ -34,17 +34,17 @@ export function transferPages(
   }
   // The files come along into the other workspace's quota.
   const bytes = Number(
-    one<{ n: number }>(
+    (await one<{ n: number }>(
       `SELECT COALESCE(SUM(size),0) n FROM files WHERE page_id IN (${placeholders})`,
       ...ids,
-    )?.n || 0,
+    ))?.n || 0,
   );
-  enforceQuota(toWorkspace, bytes);
+  await enforceQuota(toWorkspace, bytes);
 
   const member = `SELECT user_id FROM members WHERE workspace_id=?`;
   // Rights for groups of the old workspace and for people who are not in
   // the new one no longer apply.
-  run(
+  await run(
     `DELETE FROM grants WHERE resource_id IN (${placeholders}) AND (
        (group_id IS NOT NULL AND group_id!='' AND group_id NOT IN (SELECT id FROM groups WHERE workspace_id=?))
        OR (user_id IS NOT NULL AND user_id!='' AND user_id NOT IN (${member})))`,
@@ -52,7 +52,7 @@ export function transferPages(
     toWorkspace,
     toWorkspace,
   );
-  run(
+  await run(
     `DELETE FROM row_grants WHERE row_id IN (SELECT id FROM rows WHERE page_id IN (${placeholders})) AND (
        (group_id!='' AND group_id NOT IN (SELECT id FROM groups WHERE workspace_id=?))
        OR (user_id!='' AND user_id NOT IN (${member})))`,
@@ -60,50 +60,50 @@ export function transferPages(
     toWorkspace,
     toWorkspace,
   );
-  run(
+  await run(
     `DELETE FROM favorites WHERE page_id IN (${placeholders}) AND user_id NOT IN (${member})`,
     ...ids,
     toWorkspace,
   );
-  run(
+  await run(
     `DELETE FROM row_favorites WHERE page_id IN (${placeholders}) AND user_id NOT IN (${member})`,
     ...ids,
     toWorkspace,
   );
-  run(
+  await run(
     `UPDATE pages SET workspace_id=? WHERE id IN (${placeholders})`,
     toWorkspace,
     ...ids,
   );
   // Stored vectors of the pages and their records (semantic search) follow.
-  run(
+  await run(
     `UPDATE ai_embeddings SET workspace_id=? WHERE page_id IN (${placeholders})`,
     toWorkspace,
     ...ids,
   );
   // "Für KI gesperrt" and personal AI rules on the moved pages keep applying
   // in the new workspace (lib/ai/access.ts lists them per workspace).
-  run(
+  await run(
     `UPDATE ai_blocks SET workspace_id=? WHERE target_id IN (${placeholders})`,
     toWorkspace,
     ...ids,
   );
-  run(
+  await run(
     `UPDATE ai_access_rules SET workspace_id=? WHERE target_id IN (${placeholders})`,
     toWorkspace,
     ...ids,
   );
   // Tasks of the documents ("Meine Aufgaben") and trashed records of the
   // databases are listed per workspace as well.
-  run(
+  await run(
     `UPDATE doc_tasks SET workspace_id=? WHERE page_id IN (${placeholders})`,
     toWorkspace,
     ...ids,
   );
-  run(
+  await run(
     `UPDATE row_trash SET workspace_id=? WHERE page_id IN (${placeholders})`,
     toWorkspace,
     ...ids,
   );
-  audit(user.id, "page.transfer", ids[0], toWorkspace);
+  await audit(user.id, "page.transfer", ids[0], toWorkspace);
 }

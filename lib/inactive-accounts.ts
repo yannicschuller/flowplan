@@ -22,13 +22,13 @@ import { userLocale } from "./user-locale";
 import { db } from "./db-driver";
 import { localeTag, type Locale } from "./i18n";
 
-export function disableInactiveAccounts(now = Date.now()) {
-  const days = instanceSettings().inactiveDays;
+export async function disableInactiveAccounts(now = Date.now()) {
+  const days = (await instanceSettings()).inactiveDays;
   if (!days) return [];
   const cutoff = now - days * 86400_000;
   // Long sessions (stay signed in, the apps) rarely sign in anew: their use
   // counts as activity too, in the browser and through the apps' widgets.
-  const stale = all<{ id: string }>(
+  const stale = await all<{ id: string }>(
     `SELECT id FROM users u WHERE disabled=0 AND demo_until IS NULL
        AND COALESCE(last_login_at, ${db.dialect.textMs("created_at")}) < ?
        AND NOT EXISTS (SELECT 1 FROM sessions s WHERE s.user_id=u.id AND s.last_seen>=?)
@@ -38,9 +38,9 @@ export function disableInactiveAccounts(now = Date.now()) {
     cutoff,
   );
   for (const u of stale) {
-    run("UPDATE users SET disabled=1 WHERE id=?", u.id);
-    run("DELETE FROM sessions WHERE user_id=?", u.id);
-    run(
+    await run("UPDATE users SET disabled=1 WHERE id=?", u.id);
+    await run("DELETE FROM sessions WHERE user_id=?", u.id);
+    await run(
       `INSERT INTO audit(id,actor_id,action,resource_id,detail) VALUES(${db.dialect.randomHex()},NULL,'user.inactive',?,?)`,
       u.id,
       `${days} Tage ohne Anmeldung`,
@@ -77,8 +77,8 @@ type Candidate = {
   admin: number;
 };
 
-export function deleteInactiveAccounts(now = Date.now()) {
-  const days = instanceSettings().deleteInactiveDays;
+export async function deleteInactiveAccounts(now = Date.now()) {
+  const days = (await instanceSettings()).deleteInactiveDays;
   const done = {
     noticed: [] as string[],
     reminded: [] as string[],
@@ -87,14 +87,14 @@ export function deleteInactiveAccounts(now = Date.now()) {
   };
   if (!days) {
     // Switched off: nothing pending any more.
-    run(
+    await run(
       "UPDATE users SET deletion_notice_at=NULL,deletion_reminder_at=NULL,deletion_due_at=NULL WHERE deletion_due_at IS NOT NULL",
     );
     return done;
   }
   // Nobody is deleted without being told first.
   if (!mailConfig()) return done;
-  const people = all<Candidate>(
+  const people = await all<Candidate>(
     `SELECT u.id,u.name,u.email,u.disabled,${LAST_USE()} last,u.deletion_notice_at notice,u.deletion_reminder_at reminder,u.deletion_due_at due,
        EXISTS (SELECT 1 FROM local_accounts a WHERE a.user_id=u.id AND a.is_admin=1) admin
      FROM users u WHERE u.demo_until IS NULL AND u.subject NOT LIKE 'deleted:%'`,
@@ -102,7 +102,7 @@ export function deleteInactiveAccounts(now = Date.now()) {
   for (const p of people) {
     // Used since the notice: the account stays.
     if (p.notice && p.last > p.notice) {
-      run(
+      await run(
         "UPDATE users SET deletion_notice_at=NULL,deletion_reminder_at=NULL,deletion_due_at=NULL WHERE id=?",
         p.id,
       );
@@ -115,20 +115,20 @@ export function deleteInactiveAccounts(now = Date.now()) {
       if (now < deleteAt - DELETION_NOTICE_DAYS * DAY) continue;
       // Never sooner than the notice promises.
       const due = Math.max(deleteAt, now + DELETION_NOTICE_DAYS * DAY);
-      run(
+      await run(
         "UPDATE users SET deletion_notice_at=?,deletion_due_at=? WHERE id=?",
         now,
         due,
         p.id,
       );
-      deletionMail(p, due, days, now, false);
+      await deletionMail(p, due, days, now, false);
       done.noticed.push(p.id);
       continue;
     }
     if (now >= p.due) {
-      transaction(() => {
-        const plan = deleteInactiveAccount(p.id);
-        run(
+      await transaction(async () => {
+        const plan = await deleteInactiveAccount(p.id);
+        await run(
           `INSERT INTO audit(id,actor_id,action,resource_id,detail) VALUES(${db.dialect.randomHex()},NULL,'user.inactiveDeleted',?,?)`,
           p.id,
           `${plan.name} · ${days} Tage ohne Nutzung`,
@@ -138,8 +138,8 @@ export function deleteInactiveAccounts(now = Date.now()) {
       continue;
     }
     if (!p.reminder && now >= p.due - DELETION_REMINDER_DAYS * DAY) {
-      run("UPDATE users SET deletion_reminder_at=? WHERE id=?", now, p.id);
-      deletionMail(p, p.due, days, now, true);
+      await run("UPDATE users SET deletion_reminder_at=? WHERE id=?", now, p.id);
+      await deletionMail(p, p.due, days, now, true);
       done.reminded.push(p.id);
     }
   }
@@ -147,16 +147,16 @@ export function deleteInactiveAccounts(now = Date.now()) {
 }
 
 // The e-mail before the deletion, in the person's language.
-function deletionMail(
+async function deletionMail(
   p: Candidate,
   due: number,
   days: number,
   now: number,
   reminder: boolean,
 ) {
-  const locale: Locale = userLocale(p.id);
+  const locale: Locale = await userLocale(p.id);
   const de = locale === "de";
-  const instance = instanceSettings().name || "Flowplan";
+  const instance = (await instanceSettings()).name || "Flowplan";
   // The text is German or English; the date also in US English for "en-US".
   const date = new Date(due).toLocaleDateString(de || locale === "en-US" ? localeTag(locale) : "en-GB", {
     day: "numeric",
@@ -195,7 +195,7 @@ function deletionMail(
         url: mailAppUrl(),
       };
   const text = `${lines.join("\n\n")}${action ? `\n\n${action.label}: ${action.url}` : ""}\n`;
-  queueMail(
+  await queueMail(
     p.email,
     subject,
     text,
@@ -208,10 +208,10 @@ const runtime = globalThis as unknown as {
 };
 export function startInactiveWorker() {
   if (runtime.flowplanInactiveTimer) return;
-  runtime.flowplanInactiveTimer = setInterval(() => {
+  runtime.flowplanInactiveTimer = setInterval(async () => {
     try {
-      disableInactiveAccounts();
-      deleteInactiveAccounts();
+      await disableInactiveAccounts();
+      await deleteInactiveAccounts();
     } catch (error) {
       console.error("Prüfung inaktiver Konten fehlgeschlagen", error);
     }

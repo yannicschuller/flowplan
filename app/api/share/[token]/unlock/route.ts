@@ -13,7 +13,7 @@ const headers = {
 // for this link only (lib/share-access.ts); wrong ones are limited.
 export async function POST(req: Request, { params }: { params: Promise<{ token: string }> }) {
   try {
-    checkOrigin(req);
+    await checkOrigin(req);
     if (Number(req.headers.get("content-length") || 0) > 2000) throw new HttpError(413, "Anfrage zu groß.");
     const { token } = await params;
     const body = (await req.json().catch(() => ({}))) as { password?: unknown };

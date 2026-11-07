@@ -61,8 +61,8 @@ export function cellPlain(field: Field, value: unknown, row: { number?: number |
 
 export function nameLookup() {
   const cache = new Map<string, string>();
-  return (id: string) => {
-    if (!cache.has(id)) cache.set(id, one<{ name: string }>("SELECT name FROM users WHERE id=?", id)?.name || "");
+  return async (id: string) => {
+    if (!cache.has(id)) cache.set(id, (await one<{ name: string }>("SELECT name FROM users WHERE id=?", id))?.name || "");
     return cache.get(id)!;
   };
 }
@@ -87,10 +87,10 @@ export const recordTitle = (fields: Field[], cells: Record<string, unknown>) => 
 };
 
 const fieldsCache = new Map<string, { at: number; fields: Field[] }>();
-function databaseFields(pageId: string): Field[] {
+async function databaseFields(pageId: string): Promise<Field[]> {
   const hit = fieldsCache.get(pageId);
   if (hit && Date.now() - hit.at < 2000) return hit.fields;
-  const stored = one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId);
+  const stored = await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId);
   const every = stored ? (JSON.parse(stored.fields) as Field[]) : [];
   // The index is shared by everyone: properties with a read rule (and what
   // is derived from them) never go in (lib/field-access.ts).
@@ -103,13 +103,13 @@ function databaseFields(pageId: string): Field[] {
 
 // Text chunks of a page (rowId empty) or of one record, or null when it is
 // gone. Whiteboards contribute their title only.
-export function sourceText(pageId: string, rowId?: string | null, names = nameLookup()): SourceText | null {
-  const page = one<{ id: string; title: string; kind: SourceText["kind"] | "notebook" | "dashboard"; deleted_at: string | null }>("SELECT id,title,kind,deleted_at FROM pages WHERE id=?", pageId);
+export async function sourceText(pageId: string, rowId?: string | null, names = nameLookup()): Promise<SourceText | null> {
+  const page = await one<{ id: string; title: string; kind: SourceText["kind"] | "notebook" | "dashboard"; deleted_at: string | null }>("SELECT id,title,kind,deleted_at FROM pages WHERE id=?", pageId);
   if (!page || page.deleted_at) return null;
   if (!rowId) {
     if (page.kind === "database") {
-      const fields = databaseFields(pageId);
-      const count = Number(one<{ n: number }>("SELECT count(*) n FROM rows WHERE page_id=?", pageId)?.n || 0);
+      const fields = await databaseFields(pageId);
+      const count = Number((await one<{ n: number }>("SELECT count(*) n FROM rows WHERE page_id=?", pageId))?.n || 0);
       return {
         pageId,
         rowId: null,
@@ -120,23 +120,23 @@ export function sourceText(pageId: string, rowId?: string | null, names = nameLo
     }
     // Whiteboards: their racks, devices, ports and cables (#90) as text.
     if (page.kind === "whiteboard") {
-      const racks = racksText(whiteboardSnapshotItems({ id: page.id } as Page).filter((i) => !i.covered), ct);
+      const racks = racksText((await whiteboardSnapshotItems({ id: page.id } as Page)).filter((i) => !i.covered), ct);
       return { pageId, rowId: null, title: page.title, kind: "whiteboard", chunks: racks ? chunkPlain(racks) : [] };
     }
     // Notebooks: the text typed or recognised on their sheets.
-    if (page.kind === "notebook") return { pageId, rowId: null, title: page.title, kind: "document", chunks: notebookText(page.id).map((text) => text.slice(0, 4000)) };
-    const html = one<{ html: string | null }>("SELECT html FROM documents WHERE page_id=?", pageId)?.html || "";
+    if (page.kind === "notebook") return { pageId, rowId: null, title: page.title, kind: "document", chunks: (await notebookText(page.id)).map((text) => text.slice(0, 4000)) };
+    const html = (await one<{ html: string | null }>("SELECT html FROM documents WHERE page_id=?", pageId))?.html || "";
     // Tags and property values (#70) as one short chunk before the text.
-    const meta = pageMetaSearchText(pageId).slice(0, 1000);
+    const meta = (await pageMetaSearchText(pageId)).slice(0, 1000);
     return { pageId, rowId: null, title: page.title, kind: page.kind as SourceText["kind"], chunks: [...(meta ? [meta] : []), ...chunkHtml(html)] };
   }
-  const row = one<RowData>(
+  const row = await one<RowData>(
     "SELECT r.id,r.page_id,r.cells,r.content,r.number,r.created_at,r.updated_at,r.created_by,r.updated_by,d.html FROM rows r LEFT JOIN row_documents d ON d.row_id=r.id WHERE r.id=? AND r.page_id=?",
     rowId,
     pageId,
   );
   if (!row) return null;
-  const fields = databaseFields(pageId);
+  const fields = await databaseFields(pageId);
   let cells: Record<string, unknown> = {};
   try {
     cells = JSON.parse(row.cells);
@@ -155,17 +155,17 @@ export function sourceText(pageId: string, rowId?: string | null, names = nameLo
 }
 
 // The record document's plain text (for prompts of AI properties).
-export function recordContent(rowId: string, max = 6000): string {
-  const row = one<{ content: string | null; html: string | null }>("SELECT r.content,d.html FROM rows r LEFT JOIN row_documents d ON d.row_id=r.id WHERE r.id=?", rowId);
+export async function recordContent(rowId: string, max = 6000): Promise<string> {
+  const row = await one<{ content: string | null; html: string | null }>("SELECT r.content,d.html FROM rows r LEFT JOIN row_documents d ON d.row_id=r.id WHERE r.id=?", rowId);
   const content = row?.html ?? row?.content ?? "";
   return (content.startsWith("<") ? htmlText(content) : content.trim()).slice(0, max);
 }
 
 // All pages below (and including) a page.
-export function pageSubtree(pageId: string, limit = 5000): string[] {
-  return all<{ id: string }>(
+export async function pageSubtree(pageId: string, limit = 5000): Promise<string[]> {
+  return (await all<{ id: string }>(
     "WITH RECURSIVE tree(id,depth) AS (SELECT id,0 FROM pages WHERE id=? UNION ALL SELECT p.id,t.depth+1 FROM pages p JOIN tree t ON p.parent_id=t.id WHERE t.depth<64) SELECT id FROM tree LIMIT ?",
     pageId,
     limit,
-  ).map((r) => r.id);
+  )).map((r) => r.id);
 }

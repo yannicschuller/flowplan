@@ -15,7 +15,7 @@ import { aiFilter, requireAiRead } from "./access";
 // A page (without its title heading) or one record of a database
 // (properties as frontmatter, then the document) as Markdown.
 export async function aiPageMarkdown(user: Identity, page: Page, rowId?: string | null) {
-  requireAiRead(user, page.id, rowId);
+  await requireAiRead(user, page.id, rowId);
   const { bytes } = await exportMarkdown(user, {
     pageId: page.id,
     ...(rowId ? { rowId } : {}),
@@ -63,27 +63,27 @@ export type DatabaseText = {
 // sorting as the person sees them), or every visible record. Only records
 // the person may see and the AI may read; at most `maxRecords` and about
 // `maxChars` characters.
-export function aiDatabaseText(
+export async function aiDatabaseText(
   user: Identity,
   page: Page,
   rowIds: string[] | undefined,
   limits: { maxRecords: number; maxChars: number; documentChars: number },
-): DatabaseText {
-  requireAiRead(user, page.id);
+): Promise<DatabaseText> {
+  await requireAiRead(user, page.id);
   if (page.kind !== "database") throw new HttpError(400, "Keine Datenbank.");
-  const fields = visibleFields(user, page, database(page.id).fields as Field[]);
-  const visible = visibleRows(user, page, databaseRows(page.id));
+  const fields = await visibleFields(user, page, (await database(page.id)).fields as Field[]);
+  const visible = await visibleRows(user, page, await databaseRows(page.id));
   const byId = new Map(visible.map((row) => [row.id, row]));
   const asked: Row[] = rowIds ? [...new Set(rowIds)].flatMap((id) => byId.get(id) || []) : visible;
-  const readable = aiFilter(
+  const readable = (await aiFilter(
     user,
     asked.map((row) => ({ pageId: page.id, rowId: row.id, row })),
-  ).map((item) => item.row);
+  )).map((item) => item.row);
   const members = new Map(
-    all<{ id: string; name: string }>(
+    (await all<{ id: string; name: string }>(
       "SELECT u.id,u.name FROM users u JOIN members m ON m.user_id=u.id WHERE m.workspace_id=?",
       page.workspace_id,
-    ).map((m) => [m.id, m.name]),
+    )).map((m) => [m.id, m.name]),
   );
   const titleField = fields[0];
   const shown = fields.filter((field, i) => i > 0 && !computedTypes.includes(field.type) && field.type !== "files" && field.type !== "sprint");
@@ -95,10 +95,10 @@ export function aiDatabaseText(
         for (const id of [row.cells[field.id]].flat())
           if (typeof id === "string" && id) references.push({ pageId: field.relationPage, rowId: id });
   const relatedTitles = new Map<string, string>();
-  for (const ref of aiFilter(user, references.slice(0, 5000))) {
+  for (const ref of await aiFilter(user, references.slice(0, 5000))) {
     if (relatedTitles.has(ref.rowId)) continue;
-    const target = one<{ cells: string }>("SELECT cells FROM rows WHERE id=? AND page_id=?", ref.rowId, ref.pageId);
-    const targetFields = one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", ref.pageId);
+    const target = await one<{ cells: string }>("SELECT cells FROM rows WHERE id=? AND page_id=?", ref.rowId, ref.pageId);
+    const targetFields = await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", ref.pageId);
     if (!target || !targetFields) continue;
     const first = (JSON.parse(targetFields.fields) as Field[])[0];
     relatedTitles.set(ref.rowId, cellText(JSON.parse(target.cells)[first?.id || "title"]) || "–");
@@ -115,7 +115,7 @@ export function aiDatabaseText(
   const ids = readable.slice(0, limits.maxRecords).map((row) => row.id);
   for (let i = 0; i < ids.length; i += 500) {
     const chunk = ids.slice(i, i + 500);
-    for (const doc of all<{ row_id: string; html: string }>(
+    for (const doc of await all<{ row_id: string; html: string }>(
       `SELECT row_id,html FROM row_documents WHERE row_id IN (${chunk.map(() => "?").join(",")})`,
       ...chunk,
     ))

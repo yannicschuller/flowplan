@@ -15,6 +15,7 @@ import { all, one, run } from "./db";
 import { HttpError } from "./auth";
 import { pageRole, requireMember, spaceRole } from "./permissions";
 import type { Identity, Page, Space } from "./types";
+import { filterAsync, forEachAsync, someAsync } from "./each-async";
 
 // ORDER BY for every query that lists spaces for people.
 export const SPACE_ORDER = "position,seq";
@@ -24,13 +25,13 @@ type Slot = { id: string; position: number | null };
 // The spaces of a workspace someone sees in the sidebar: those they may
 // read, and those holding a page shared with them. `pageSpaces` are the
 // spaces of the readable pages when the caller already knows them.
-export function visibleSpaces(user: Identity, workspaceId: string, pageSpaces?: Set<string>): Space[] {
-  const spaces = all<Space>(`SELECT * FROM spaces WHERE workspace_id=? ORDER BY ${SPACE_ORDER}`, workspaceId);
-  return spaces.filter((s) => {
-    if (spaceRole(user, s)) return true;
+export async function visibleSpaces(user: Identity, workspaceId: string, pageSpaces?: Set<string>): Promise<Space[]> {
+  const spaces = await all<Space>(`SELECT * FROM spaces WHERE workspace_id=? ORDER BY ${SPACE_ORDER}`, workspaceId);
+  return await filterAsync(spaces, async (s) => {
+    if (await spaceRole(user, s)) return true;
     if (pageSpaces) return pageSpaces.has(s.id);
     if (s.deleted_at) return false;
-    return all<Page>("SELECT * FROM pages WHERE space_id=? AND synced=0", s.id).some((p) => pageRole(user, p));
+    return await someAsync(await all<Page>("SELECT * FROM pages WHERE space_id=? AND synced=0", s.id), async (p) => await pageRole(user, p));
   });
 }
 
@@ -93,13 +94,13 @@ export function reorderPositions(slots: Slot[], order: string[]): Map<string, nu
 
 // All spaces of a workspace in their order, with distinct positions: ties
 // and missing values (data from before, imports) are spread out to 1…n first.
-function slots(workspaceId: string, spread = false): Slot[] {
-  const list = all<Slot>(`SELECT id,position FROM spaces WHERE workspace_id=? ORDER BY ${SPACE_ORDER}`, workspaceId);
+async function slots(workspaceId: string, spread = false): Promise<Slot[]> {
+  const list = await all<Slot>(`SELECT id,position FROM spaces WHERE workspace_id=? ORDER BY ${SPACE_ORDER}`, workspaceId);
   const distinct = list.every((s, i) => s.position !== null && (i === 0 || s.position > list[i - 1].position!));
   if (distinct && !spread) return list;
-  list.forEach((s, i) => {
+  await forEachAsync(list, async (s, i) => {
     s.position = i + 1;
-    run("UPDATE spaces SET position=? WHERE id=?", i + 1, s.id);
+    await run("UPDATE spaces SET position=? WHERE id=?", i + 1, s.id);
   });
   return list;
 }
@@ -108,22 +109,22 @@ const reorderInput = z.object({
   workspaceId: z.uuid(),
   order: z.array(z.uuid()).min(1).max(1000),
 });
-export function reorderSpaces(user: Identity, input: unknown) {
+export async function reorderSpaces(user: Identity, input: unknown) {
   const { workspaceId, order } = reorderInput.parse(input);
-  requireMember(user, workspaceId, "owner");
+  await requireMember(user, workspaceId, "owner");
   if (new Set(order).size !== order.length) throw new HttpError(400, "Ein Bereich steht mehrfach in der Reihenfolge.");
-  const visible = visibleSpaces(user, workspaceId).filter((s) => !s.deleted_at);
+  const visible = (await visibleSpaces(user, workspaceId)).filter((s) => !s.deleted_at);
   const ids = new Set(visible.map((s) => s.id));
   // Unknown and hidden spaces get the same answer: nothing tells them apart.
   if (order.some((id) => !ids.has(id))) throw new HttpError(404, "Bereich nicht gefunden.");
   // Visible spaces the request leaves out (created meanwhile) keep their place.
-  let changes = reorderPositions(slots(workspaceId), order);
-  if (!changes) changes = reorderPositions(slots(workspaceId, true), order);
+  let changes = reorderPositions(await slots(workspaceId), order);
+  if (!changes) changes = reorderPositions(await slots(workspaceId, true), order);
   if (!changes) throw new HttpError(409, "Die Reihenfolge ließ sich nicht speichern. Bitte neu laden.");
-  for (const [id, position] of changes) run("UPDATE spaces SET position=? WHERE id=?", position, id);
+  for (const [id, position] of changes) await run("UPDATE spaces SET position=? WHERE id=?", position, id);
   return {
     ok: true as const,
-    order: all<{ id: string }>(`SELECT id FROM spaces WHERE workspace_id=? ORDER BY ${SPACE_ORDER}`, workspaceId)
+    order: (await all<{ id: string }>(`SELECT id FROM spaces WHERE workspace_id=? ORDER BY ${SPACE_ORDER}`, workspaceId))
       .map((s) => s.id)
       .filter((id) => ids.has(id)),
   };
@@ -131,10 +132,10 @@ export function reorderSpaces(user: Identity, input: unknown) {
 
 // A duplicate goes right after its original (before the next space, seen or
 // not). Called right after the copy's row exists.
-export function placeAfter(spaceId: string, originalId: string) {
-  const original = one<Space & { position: number | null }>("SELECT workspace_id FROM spaces WHERE id=?", originalId);
+export async function placeAfter(spaceId: string, originalId: string) {
+  const original = await one<Space & { position: number | null }>("SELECT workspace_id FROM spaces WHERE id=?", originalId);
   if (!original) return;
-  let list = slots(original.workspace_id).filter((s) => s.id !== spaceId);
+  let list = (await slots(original.workspace_id)).filter((s) => s.id !== spaceId);
   let at = list.findIndex((s) => s.id === originalId);
   const between = () => {
     const before = list[at].position!,
@@ -143,9 +144,9 @@ export function placeAfter(spaceId: string, originalId: string) {
   };
   let position = between();
   if (list[at + 1] && (position <= list[at].position! || position >= list[at + 1].position!)) {
-    list = slots(original.workspace_id, true).filter((s) => s.id !== spaceId);
+    list = (await slots(original.workspace_id, true)).filter((s) => s.id !== spaceId);
     at = list.findIndex((s) => s.id === originalId);
     position = between();
   }
-  run("UPDATE spaces SET position=? WHERE id=?", position, spaceId);
+  await run("UPDATE spaces SET position=? WHERE id=?", position, spaceId);
 }

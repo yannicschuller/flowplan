@@ -152,10 +152,10 @@ export function printHtml(content: ExportContent, author: string) {
   );
 }
 
-export function exportPrintHtml(user: Identity, options: { pageId?: string; spaceId?: string; children?: boolean }) {
-  const content = collectExportContent(user, { ...options, maxPages: PDF_MAX_PAGES, format: "PDF" });
+export async function exportPrintHtml(user: Identity, options: { pageId?: string; spaceId?: string; children?: boolean }) {
+  const content = await collectExportContent(user, { ...options, maxPages: PDF_MAX_PAGES, format: "PDF" });
   const html = printHtml(content, user.name);
-  if (content.space) audit(user.id, "space.pdf.export", content.space.id);
-  else audit(user.id, "page.pdf.export", content.root!.id);
+  if (content.space) await audit(user.id, "space.pdf.export", content.space.id);
+  else await audit(user.id, "page.pdf.export", content.root!.id);
   return { html, name: `${exportName(content.name)}.html` };
 }

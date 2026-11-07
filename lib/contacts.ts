@@ -103,12 +103,12 @@ export function contactsSetup(): { fields: Field[]; views: View[]; recordLayout:
 export function isContactsLayout(raw: unknown) {
   return parseRecordLayout(raw).card === "contact";
 }
-export function isContactsDatabase(pageId: string) {
-  const row = one<{ record_layout: string | null }>("SELECT record_layout FROM databases WHERE page_id=?", pageId);
+export async function isContactsDatabase(pageId: string) {
+  const row = await one<{ record_layout: string | null }>("SELECT record_layout FROM databases WHERE page_id=?", pageId);
   return !!row && isContactsLayout(row.record_layout);
 }
-export function requireContactsDatabase(pageId: string) {
-  if (!isContactsDatabase(pageId)) throw new HttpError(400, "Das ist keine Kontakte-Datenbank.");
+export async function requireContactsDatabase(pageId: string) {
+  if (!(await isContactsDatabase(pageId))) throw new HttpError(400, "Das ist keine Kontakte-Datenbank.");
 }
 
 type Cells = Record<string, unknown>;
@@ -149,31 +149,31 @@ export function deriveContactCells(fields: Field[], before: Cells, after: Cells,
 
 // Before a record of a contacts database is written: the derived title and
 // names. Returns the cells unchanged for every other database.
-export function contactCellsFor(pageId: string, fields: Field[], before: Cells, after: Cells, changed: string[]) {
-  if (!isContactsDatabase(pageId)) return after;
+export async function contactCellsFor(pageId: string, fields: Field[], before: Cells, after: Cells, changed: string[]) {
+  if (!(await isContactsDatabase(pageId))) return after;
   return deriveContactCells(fields, before, after, changed);
 }
 // After a record was written: a birthday repeats every year (the calendar
 // shows it each year), without one there is no series.
-export function afterContactWrite(pageId: string, rowId: string) {
-  if (!isContactsDatabase(pageId)) return;
-  syncBirthdaySeries(rowId);
+export async function afterContactWrite(pageId: string, rowId: string) {
+  if (!(await isContactsDatabase(pageId))) return;
+  await syncBirthdaySeries(rowId);
 }
 const YEARLY = JSON.stringify({ freq: "yearly", interval: 1 });
-export function syncBirthdaySeries(rowId: string) {
-  const row = one<{ cells: string; recurrence: string | null }>("SELECT cells,recurrence FROM rows WHERE id=?", rowId);
+export async function syncBirthdaySeries(rowId: string) {
+  const row = await one<{ cells: string; recurrence: string | null }>("SELECT cells,recurrence FROM rows WHERE id=?", rowId);
   if (!row) return;
   const birthday = cellText(JSON.parse(row.cells)[F.birthday]);
   const wanted = /^\d{4}-\d{2}-\d{2}$/.test(birthday.slice(0, 10)) ? YEARLY : "";
   // A series someone set up by hand stays.
-  if (wanted && !row.recurrence) run("UPDATE rows SET recurrence=? WHERE id=?", wanted, rowId);
-  else if (!wanted && row.recurrence === YEARLY) run("UPDATE rows SET recurrence='' WHERE id=?", rowId);
+  if (wanted && !row.recurrence) await run("UPDATE rows SET recurrence=? WHERE id=?", wanted, rowId);
+  else if (!wanted && row.recurrence === YEARLY) await run("UPDATE rows SET recurrence='' WHERE id=?", rowId);
 }
 
 // Adds options a multiselect needs (imported categories, the missing tag).
-export function ensureOptions(pageId: string, fieldId: string, values: string[]) {
+export async function ensureOptions(pageId: string, fieldId: string, values: string[]) {
   if (!values.length) return;
-  const raw = one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId);
+  const raw = await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId);
   if (!raw) return;
   const fields = JSON.parse(raw.fields) as Field[];
   const field = fields.find((f) => f.id === fieldId);
@@ -182,7 +182,7 @@ export function ensureOptions(pageId: string, fieldId: string, values: string[])
   const missing = [...new Set(values)].filter((v) => v && !options.includes(v));
   if (!missing.length) return;
   field.options = [...options, ...missing].slice(0, 500);
-  run("UPDATE databases SET fields=?,version=version+1 WHERE page_id=?", JSON.stringify(fields), pageId);
+  await run("UPDATE databases SET fields=?,version=version+1 WHERE page_id=?", JSON.stringify(fields), pageId);
 }
 
 /* ---------- Records ↔ vCards ---------- */
@@ -269,14 +269,14 @@ export function noteHtml(note: string) {
 
 // Which records came from the directory and which of their properties it
 // keeps (read-only here), for the record pages (lib/api.ts pageData).
-export function contactsPageData(pageId: string) {
-  if (!isContactsDatabase(pageId)) return undefined;
-  const source = one<{ fields: string; last_sync_at: number | null; last_result: string | null; ous: string }>(
+export async function contactsPageData(pageId: string) {
+  if (!(await isContactsDatabase(pageId))) return undefined;
+  const source = await one<{ fields: string; last_sync_at: number | null; last_result: string | null; ous: string }>(
     "SELECT fields,last_sync_at,last_result,ous FROM contact_ldap_sources WHERE page_id=?",
     pageId,
   );
   const synced: Record<string, { missing: boolean }> = {};
-  for (const link of all<{ row_id: string; missing_at: number | null }>("SELECT row_id,missing_at FROM contact_ldap_links WHERE page_id=?", pageId))
+  for (const link of await all<{ row_id: string; missing_at: number | null }>("SELECT row_id,missing_at FROM contact_ldap_links WHERE page_id=?", pageId))
     synced[link.row_id] = { missing: !!link.missing_at };
   let fields: string[] = [];
   try {
@@ -286,10 +286,10 @@ export function contactsPageData(pageId: string) {
 }
 // Refuses changes to properties the directory keeps (records linked to an
 // LDAP entry). The sync itself writes without this check.
-export function assertContactWritable(pageId: string, rowId: string, before: Cells, after: Cells) {
-  const link = one<{ row_id: string }>("SELECT row_id FROM contact_ldap_links WHERE row_id=? AND page_id=?", rowId, pageId);
+export async function assertContactWritable(pageId: string, rowId: string, before: Cells, after: Cells) {
+  const link = await one<{ row_id: string }>("SELECT row_id FROM contact_ldap_links WHERE row_id=? AND page_id=?", rowId, pageId);
   if (!link) return;
-  const source = one<{ fields: string }>("SELECT fields FROM contact_ldap_sources WHERE page_id=?", pageId);
+  const source = await one<{ fields: string }>("SELECT fields FROM contact_ldap_sources WHERE page_id=?", pageId);
   let fields: string[] = [];
   try {
     fields = source ? (JSON.parse(source.fields) as string[]) : [];

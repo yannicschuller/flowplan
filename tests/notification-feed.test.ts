@@ -13,14 +13,14 @@ const { command, bootstrap, database } = await import("../lib/api");
 const { notificationFeed } = await import("../lib/notification-feed");
 const { withContentLocale } = await import("../lib/content-locale");
 
-function account(name: string) {
+async function account(name: string) {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
   return { id: uid, name, email: `${name}@example.test`, groups: [], isAdmin: false, disabled: 0, created_at: "" } as Identity;
 }
-const notify = (user: Identity, body: string, at: string, extra: { page?: string; row?: string; kind?: string } = {}) => {
+const notify = async (user: Identity, body: string, at: string, extra: { page?: string; row?: string; kind?: string } = {}) => {
   const nid = id();
-  run(
+  await run(
     "INSERT INTO notifications(id,user_id,body,page_id,row_id,kind,created_at) VALUES(?,?,?,?,?,?,?)",
     nid,
     user.id,
@@ -33,22 +33,22 @@ const notify = (user: Identity, body: string, at: string, extra: { page?: string
   return nid;
 };
 
-test("the feed lists the newest notifications in the reader's language, with the push setting per kind", () => {
-  const me = account("feed-me"),
-    other = account("feed-other");
-  const wid = createWorkspace(me.id, "Feed"),
-    boot = bootstrap(me, wid);
-  const doc = (command(me, { action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, title: "Plan", kind: "document" }) as { id: string }).id;
-  const db = (command(me, { action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, title: "Work", kind: "database" }) as { id: string }).id;
-  assert.ok(database(db));
-  const row = (command(me, { action: "row.create", pageId: db, cells: { title: "Write offer" } }) as { id: string }).id;
+test("the feed lists the newest notifications in the reader's language, with the push setting per kind", async () => {
+  const me = await account("feed-me"),
+    other = await account("feed-other");
+  const wid = await createWorkspace(me.id, "Feed"),
+    boot = await bootstrap(me, wid);
+  const doc = ((await command(me, { action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, title: "Plan", kind: "document" })) as { id: string }).id;
+  const db = ((await command(me, { action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, title: "Work", kind: "database" })) as { id: string }).id;
+  assert.ok(await database(db));
+  const row = ((await command(me, { action: "row.create", pageId: db, cells: { title: "Write offer" } })) as { id: string }).id;
 
-  const mention = notify(me, "Anna hat dich in „Plan“ erwähnt", "2026-10-22 08:00:00", { page: doc, kind: "mention" });
-  const change = notify(me, "Anna kommentiert „Work“", "2026-10-22 08:00:05", { page: db, row, kind: "change" });
-  const gone = notify(me, "Anna hat dich in „Weg“ erwähnt", "2026-10-22 08:00:10", { page: id(), kind: "mention" });
-  notify(other, "Not mine", "2026-10-22 08:00:20");
+  const mention = await notify(me, "Anna hat dich in „Plan“ erwähnt", "2026-10-22 08:00:00", { page: doc, kind: "mention" });
+  const change = await notify(me, "Anna kommentiert „Work“", "2026-10-22 08:00:05", { page: db, row, kind: "change" });
+  const gone = await notify(me, "Anna hat dich in „Weg“ erwähnt", "2026-10-22 08:00:10", { page: id(), kind: "mention" });
+  await notify(other, "Not mine", "2026-10-22 08:00:20");
 
-  const feed = withContentLocale("en", () => notificationFeed(me, null));
+  const feed = await withContentLocale("en", async () => await notificationFeed(me, null));
   assert.equal(feed.unread, 3);
   assert.ok(!Number.isNaN(Date.parse(feed.now)));
   assert.deepEqual(feed.notifications.map((n) => n.id), [gone, change, mention], "newest first, only mine");
@@ -64,32 +64,32 @@ test("the feed lists the newest notifications in the reader's language, with the
   assert.equal(goneItem.push, false, "nothing for a page that is gone");
   assert.equal(goneItem.url, "/#inbox");
   // German by default.
-  assert.equal(notificationFeed(me, null).notifications[2].text, "Anna hat dich in „Plan“ erwähnt");
+  assert.equal((await notificationFeed(me, null)).notifications[2].text, "Anna hat dich in „Plan“ erwähnt");
 
   // The person's own settings decide, like for push.
-  command(me, { action: "notification.prefs", kind: "change", inbox: true, push: true });
-  command(me, { action: "notification.prefs", kind: "mention", inbox: true, push: false });
-  const prefs = notificationFeed(me, null).notifications;
+  await command(me, { action: "notification.prefs", kind: "change", inbox: true, push: true });
+  await command(me, { action: "notification.prefs", kind: "mention", inbox: true, push: false });
+  const prefs = (await notificationFeed(me, null)).notifications;
   assert.equal(prefs.find((n) => n.id === change)!.push, true);
   assert.equal(prefs.find((n) => n.id === mention)!.push, false);
 
   // Since a server time: from that second on; read ones say so.
-  command(me, { action: "notification.mark", notificationId: change, read: true });
-  const since = notificationFeed(me, Date.parse("2026-10-22T08:00:05Z"));
+  await command(me, { action: "notification.mark", notificationId: change, read: true });
+  const since = await notificationFeed(me, Date.parse("2026-10-22T08:00:05Z"));
   assert.deepEqual(since.notifications.map((n) => n.id), [gone, change]);
   assert.equal(since.notifications[1].read, true);
   assert.equal(since.unread, 2);
-  assert.deepEqual(notificationFeed(me, Date.parse("2026-10-22T09:00:00Z")).notifications, []);
+  assert.deepEqual((await notificationFeed(me, Date.parse("2026-10-22T09:00:00Z"))).notifications, []);
 });
 
-test("a page the reader may no longer see gives no title and no push", () => {
-  const owner = account("feed-owner"),
-    guest = account("feed-guest");
-  const wid = createWorkspace(owner.id, "Private"),
-    boot = bootstrap(owner, wid);
-  const doc = (command(owner, { action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, title: "Secret", kind: "document" }) as { id: string }).id;
-  const nid = notify(guest, "Owner hat dich in „Secret“ erwähnt", "2026-10-22 10:00:00", { page: doc, kind: "mention" });
-  const [item] = notificationFeed(guest, null).notifications;
+test("a page the reader may no longer see gives no title and no push", async () => {
+  const owner = await account("feed-owner"),
+    guest = await account("feed-guest");
+  const wid = await createWorkspace(owner.id, "Private"),
+    boot = await bootstrap(owner, wid);
+  const doc = ((await command(owner, { action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, title: "Secret", kind: "document" })) as { id: string }).id;
+  const nid = await notify(guest, "Owner hat dich in „Secret“ erwähnt", "2026-10-22 10:00:00", { page: doc, kind: "mention" });
+  const [item] = (await notificationFeed(guest, null)).notifications;
   assert.equal(item.id, nid);
   assert.equal(item.push, false);
   assert.equal(item.url, "/#inbox");

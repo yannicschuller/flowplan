@@ -11,7 +11,7 @@
 // Prometheus server shared with others.
 import { monitorEventLoopDelay, performance, type EventLoopUtilization } from "node:perf_hooks";
 
-type IntervalHistogram = ReturnType<typeof monitorEventLoopDelay>;
+type IntervalHistogram = Awaited<ReturnType<typeof monitorEventLoopDelay>>;
 
 type State = {
   histogram: IntervalHistogram;

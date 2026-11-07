@@ -58,22 +58,22 @@ const { createWorkspace } = await import("../lib/seed");
 const ldapContacts = await import("../lib/contacts-ldap");
 const { browseUnits, listPeople, importContacts, syncContactsNow, syncContactsSource, saveContactsLdapSettings, contactsLdapStatus, contactsSourceStatus, unsubscribeUnit } = ldapContacts;
 
-function user(name: string, isAdmin = false): Identity {
+async function user(name: string, isAdmin = false): Promise<Identity> {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@test.invalid`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@test.invalid`);
   return { id: uid, name, email: `${name}@test.invalid`, groups: [], isAdmin, disabled: 0, created_at: "" };
 }
-const owner = user("owner"),
-  viewer = user("viewer"),
-  admin = user("admin", true);
-const wid = createWorkspace(owner.id, "Team"),
-  boot = bootstrap(owner, wid);
-run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
-const act = (body: Record<string, unknown>, who = owner): any => command(who, { workspaceId: wid, ...body });
-const pageId = act({ action: "page.create", spaceId: boot.spaces[0].id, kind: "database", databaseKind: "contacts", title: "Adressbuch" }).id as string;
-const rowOf = (dn: string) => one<{ row_id: string }>("SELECT row_id FROM contact_ldap_links WHERE lower(dn)=lower(?)", dn)?.row_id;
-const cellsOf = (rid: string) => JSON.parse(one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", rid)!.cells);
-const versionOf = (rid: string) => one<{ version: number }>("SELECT version FROM rows WHERE id=?", rid)!.version;
+const owner = await user("owner"),
+  viewer = await user("viewer"),
+  admin = await user("admin", true);
+const wid = await createWorkspace(owner.id, "Team"),
+  boot = await bootstrap(owner, wid);
+await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
+const act = async (body: Record<string, unknown>, who = owner): Promise<any> => await command(who, { workspaceId: wid, ...body });
+const pageId = (await act({ action: "page.create", spaceId: boot.spaces[0].id, kind: "database", databaseKind: "contacts", title: "Adressbuch" })).id as string;
+const rowOf = async (dn: string) => (await one<{ row_id: string }>("SELECT row_id FROM contact_ldap_links WHERE lower(dn)=lower(?)", dn))?.row_id;
+const cellsOf = async (rid: string) => JSON.parse((await one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", rid))!.cells);
+const versionOf = async (rid: string) => (await one<{ version: number }>("SELECT version FROM rows WHERE id=?", rid))!.version;
 
 test("browsing: the units one level below the base, nothing outside it, only for editors of contacts databases", async () => {
   const root = await browseUnits(owner, pageId);
@@ -84,7 +84,7 @@ test("browsing: the units one level below the base, nothing outside it, only for
   assert.deepEqual(below.units, []);
   await assert.rejects(browseUnits(owner, pageId, `ou=services,${BASE}`), /außerhalb/);
   await assert.rejects(browseUnits(viewer, pageId), /Berechtigung/);
-  const tasks = act({ action: "page.create", spaceId: boot.spaces[0].id, kind: "database", title: "Aufgaben" }).id;
+  const tasks = (await act({ action: "page.create", spaceId: boot.spaces[0].id, kind: "database", title: "Aufgaben" })).id;
   await assert.rejects(browseUnits(owner, tasks), /keine Kontakte/);
 });
 
@@ -108,7 +108,7 @@ test("import: chosen entries and a whole unit become contacts with directory val
   const result = await importContacts(owner, pageId, { entries: [`uid=dave,${PEOPLE}`], units: [`ou=sales,${PEOPLE}`] });
   assert.equal(result.ok, true, result.error || "");
   assert.equal(result.created, 3);
-  const alice = cellsOf(rowOf(`uid=alice,ou=sales,${PEOPLE}`)!);
+  const alice = await cellsOf((await rowOf(`uid=alice,ou=sales,${PEOPLE}`))!);
   assert.equal(alice.title, "Alice Adler");
   assert.equal(alice.firstName, "Alice");
   assert.equal(alice.lastName, "Adler");
@@ -117,19 +117,19 @@ test("import: chosen entries and a whole unit become contacts with directory val
   assert.equal(alice.phone, "+49 30 1");
   assert.equal(alice.city, "Berlin");
   assert.equal(alice.birthday, "1985-03-14");
-  const aliceRow = one<{ icon: string; recurrence: string }>("SELECT icon,recurrence FROM rows WHERE id=?", rowOf(`uid=alice,ou=sales,${PEOPLE}`)!)!;
+  const aliceRow = (await one<{ icon: string; recurrence: string }>("SELECT icon,recurrence FROM rows WHERE id=?", (await rowOf(`uid=alice,ou=sales,${PEOPLE}`))!))!;
   assert.match(aliceRow.icon, /^\/api\/files\//);
   assert.equal(JSON.parse(aliceRow.recurrence).freq, "yearly");
-  const dave = cellsOf(rowOf(`uid=dave,${PEOPLE}`)!);
+  const dave = await cellsOf((await rowOf(`uid=dave,${PEOPLE}`))!);
   assert.deepEqual([dave.mobile, dave.street, dave.postalCode, dave.country], ["+49 171 4", "Weg 1", "10115", "DE"]);
-  const bob = one<{ uuid: string; ou: string }>("SELECT uuid,ou FROM contact_ldap_links WHERE row_id=?", rowOf(`uid=bob,ou=sales,${PEOPLE}`)!)!;
+  const bob = (await one<{ uuid: string; ou: string }>("SELECT uuid,ou FROM contact_ldap_links WHERE row_id=?", (await rowOf(`uid=bob,ou=sales,${PEOPLE}`))!))!;
   assert.equal(bob.uuid, "33221100-5544-7766-8899-aabbccddeeff", "objectGUID in its usual text form");
   assert.equal(bob.ou, `ou=sales,${PEOPLE}`);
-  assert.equal(cellsOf(rowOf(`uid=bob,ou=sales,${PEOPLE}`)!).title, "Bob B. Brandt");
-  const status = contactsSourceStatus(pageId);
+  assert.equal((await cellsOf((await rowOf(`uid=bob,ou=sales,${PEOPLE}`))!)).title, "Bob B. Brandt");
+  const status = await contactsSourceStatus(pageId);
   assert.deepEqual(status.units, [`ou=sales,${PEOPLE}`]);
   assert.equal(status.records, 3);
-  assert.ok(one("SELECT 1 FROM audit WHERE action='contacts.ldap.import' AND resource_id=?", pageId));
+  assert.ok(await one("SELECT 1 FROM audit WHERE action='contacts.ldap.import' AND resource_id=?", pageId));
   // Already imported people are marked in the list.
   const sales = await listPeople(owner, pageId, `ou=sales,${PEOPLE}`);
   assert.ok(sales.people.every((p) => p.imported));
@@ -138,23 +138,23 @@ test("import: chosen entries and a whole unit become contacts with directory val
   await assert.rejects(importContacts(viewer, pageId, { entries: [`uid=carol,ou=dev,${PEOPLE}`] }), /Berechtigung/);
 });
 
-test("synced properties are read-only, notes, tags and other properties stay editable", () => {
-  const rid = rowOf(`uid=alice,ou=sales,${PEOPLE}`)!;
-  assert.throws(() => act({ action: "row.update", pageId, rowId: rid, version: versionOf(rid), cells: { company: "Other" } }), /LDAP-Verzeichnis/);
-  assert.throws(() => act({ action: "row.update", pageId, rowId: rid, version: versionOf(rid), cells: { title: "Other" } }), /LDAP-Verzeichnis/);
-  const db = database(pageId);
-  act({
+test("synced properties are read-only, notes, tags and other properties stay editable", async () => {
+  const rid = (await rowOf(`uid=alice,ou=sales,${PEOPLE}`))!;
+  await assert.rejects(async () => await act({ action: "row.update", pageId, rowId: rid, version: await versionOf(rid), cells: { company: "Other" } }), /LDAP-Verzeichnis/);
+  await assert.rejects(async () => await act({ action: "row.update", pageId, rowId: rid, version: await versionOf(rid), cells: { title: "Other" } }), /LDAP-Verzeichnis/);
+  const db = await database(pageId);
+  await act({
     action: "database.update",
     pageId,
     version: db.version,
     views: db.views,
     fields: [...db.fields.map((f) => (f.id === "tags" ? { ...f, options: ["VIP"] } : f)), { id: "note", name: "Notiz", type: "text" }],
   });
-  act({ action: "row.update", pageId, rowId: rid, version: versionOf(rid), cells: { tags: ["VIP"], note: "kennt uns" } });
-  assert.deepEqual(cellsOf(rid).tags, ["VIP"]);
+  await act({ action: "row.update", pageId, rowId: rid, version: await versionOf(rid), cells: { tags: ["VIP"], note: "kennt uns" } });
+  assert.deepEqual((await cellsOf(rid)).tags, ["VIP"]);
   // Bulk edits obey the same rule.
-  assert.throws(() => act({ action: "rows.bulk", pageId, operation: "update", rows: [{ id: rid, version: versionOf(rid) }], cells: { city: "Hamburg" } }), /LDAP-Verzeichnis/);
-  const data = pageData(owner, pageId) as { contacts: { ldapFields: string[]; synced: Record<string, { missing: boolean }> } };
+  await assert.rejects(async () => await act({ action: "rows.bulk", pageId, operation: "update", rows: [{ id: rid, version: await versionOf(rid) }], cells: { city: "Hamburg" } }), /LDAP-Verzeichnis/);
+  const data = (await pageData(owner, pageId)) as { contacts: { ldapFields: string[]; synced: Record<string, { missing: boolean }> } };
   assert.ok(data.contacts.ldapFields.includes("company"));
   assert.ok(data.contacts.ldapFields.includes("title"));
   assert.ok(!data.contacts.ldapFields.includes("tags"));
@@ -162,8 +162,8 @@ test("synced properties are read-only, notes, tags and other properties stay edi
 });
 
 test("sync: changed values, new people of a unit, renamed entries keep their record", async () => {
-  const alice = rowOf(`uid=alice,ou=sales,${PEOPLE}`)!;
-  const bob = rowOf(`uid=bob,ou=sales,${PEOPLE}`)!;
+  const alice = (await rowOf(`uid=alice,ou=sales,${PEOPLE}`))!;
+  const bob = (await rowOf(`uid=bob,ou=sales,${PEOPLE}`))!;
   entries.get(`uid=alice,ou=sales,${PEOPLE}`)!.attrs.title = ["Vertriebsleitung"];
   person(`uid=erin,ou=sales,${PEOPLE}`, "Erin", "Eck");
   // Bob moves to development: found again by his objectGUID.
@@ -174,32 +174,32 @@ test("sync: changed values, new people of a unit, renamed entries keep their rec
   assert.equal(result.ok, true, result.error || "");
   assert.equal(result.created, 1);
   assert.equal(result.missing, 0);
-  assert.equal(cellsOf(alice).position, "Vertriebsleitung");
-  assert.deepEqual(cellsOf(alice).tags, ["VIP"], "Flowplan-only values stay");
-  assert.ok(rowOf(`uid=erin,ou=sales,${PEOPLE}`));
-  assert.equal(rowOf(`uid=bob,ou=dev,${PEOPLE}`), bob);
+  assert.equal((await cellsOf(alice)).position, "Vertriebsleitung");
+  assert.deepEqual((await cellsOf(alice)).tags, ["VIP"], "Flowplan-only values stay");
+  assert.ok(await rowOf(`uid=erin,ou=sales,${PEOPLE}`));
+  assert.equal(await rowOf(`uid=bob,ou=dev,${PEOPLE}`), bob);
   // Nothing changed: no new versions.
-  const before = versionOf(alice);
+  const before = await versionOf(alice);
   assert.equal((await syncContactsNow(owner, pageId)).updated, 0);
-  assert.equal(versionOf(alice), before);
+  assert.equal(await versionOf(alice), before);
 });
 
 test("entries that left the directory are tagged, not deleted, and come back", async () => {
   const carol = (await importContacts(owner, pageId, { entries: [`uid=carol,ou=dev,${PEOPLE}`] })).created;
   assert.equal(carol, 1);
-  const rid = rowOf(`uid=carol,ou=dev,${PEOPLE}`)!;
+  const rid = (await rowOf(`uid=carol,ou=dev,${PEOPLE}`))!;
   const entry = entries.get(`uid=carol,ou=dev,${PEOPLE}`)!;
   entries.delete(`uid=carol,ou=dev,${PEOPLE}`);
   const gone = await syncContactsSource(pageId, {});
   assert.equal(gone.ok, true, gone.error || "");
   assert.equal(gone.missing, 1);
-  assert.ok(one("SELECT 1 FROM rows WHERE id=?", rid), "the record stays");
-  assert.deepEqual(cellsOf(rid).tags, ["Nicht mehr im Verzeichnis"]);
-  assert.ok(one<{ missing_at: number }>("SELECT missing_at FROM contact_ldap_links WHERE row_id=?", rid)!.missing_at);
+  assert.ok(await one("SELECT 1 FROM rows WHERE id=?", rid), "the record stays");
+  assert.deepEqual((await cellsOf(rid)).tags, ["Nicht mehr im Verzeichnis"]);
+  assert.ok((await one<{ missing_at: number }>("SELECT missing_at FROM contact_ldap_links WHERE row_id=?", rid))!.missing_at);
   entries.set(`uid=carol,ou=dev,${PEOPLE}`, entry);
   const back = await syncContactsSource(pageId, {});
   assert.equal(back.back, 1);
-  assert.deepEqual(cellsOf(rid).tags, []);
+  assert.deepEqual((await cellsOf(rid)).tags, []);
 });
 
 test("a sync that would mark most contacts as gone stops instead; a vanished unit too", async () => {
@@ -212,29 +212,29 @@ test("a sync that would mark most contacts as gone stops instead; a vanished uni
   const stopped = await syncContactsSource(pageId, {});
   assert.equal(stopped.ok, false);
   assert.match(stopped.error!, /Sync stopped/);
-  assert.equal(Number(one<{ n: number }>("SELECT COUNT(*) n FROM contact_ldap_links WHERE page_id=? AND missing_at IS NOT NULL", pageId)!.n), 0);
+  assert.equal(Number((await one<{ n: number }>("SELECT COUNT(*) n FROM contact_ldap_links WHERE page_id=? AND missing_at IS NOT NULL", pageId))!.n), 0);
   for (const [dn, e] of saved) entries.set(dn, e);
   const unit = entries.get(`ou=dev,${PEOPLE}`)!;
   entries.delete(`ou=dev,${PEOPLE}`);
-  run("UPDATE contact_ldap_sources SET ous=? WHERE page_id=?", JSON.stringify([`ou=sales,${PEOPLE}`, `ou=big,${PEOPLE}`, `ou=dev,${PEOPLE}`]), pageId);
+  await run("UPDATE contact_ldap_sources SET ous=? WHERE page_id=?", JSON.stringify([`ou=sales,${PEOPLE}`, `ou=big,${PEOPLE}`, `ou=dev,${PEOPLE}`]), pageId);
   const vanished = await syncContactsSource(pageId, {});
   assert.equal(vanished.ok, false);
   entries.set(`ou=dev,${PEOPLE}`, unit);
-  unsubscribeUnit(owner, pageId, `ou=dev,${PEOPLE}`);
-  unsubscribeUnit(owner, pageId, `ou=big,${PEOPLE}`);
-  assert.deepEqual(contactsSourceStatus(pageId).units, [`ou=sales,${PEOPLE}`]);
+  await unsubscribeUnit(owner, pageId, `ou=dev,${PEOPLE}`);
+  await unsubscribeUnit(owner, pageId, `ou=big,${PEOPLE}`);
+  assert.deepEqual((await contactsSourceStatus(pageId)).units, [`ou=sales,${PEOPLE}`]);
 });
 
 test("a directory that does not answer in time leaves everything as it was", async () => {
   process.env.LDAP_TIMEOUT_MS = "1000";
   fake.delayMs = 1500;
   try {
-    const versions = all<{ id: string; version: number }>("SELECT id,version FROM rows WHERE page_id=?", pageId);
+    const versions = await all<{ id: string; version: number }>("SELECT id,version FROM rows WHERE page_id=?", pageId);
     const result = await syncContactsSource(pageId, {});
     assert.equal(result.ok, false);
-    assert.deepEqual(all<{ id: string; version: number }>("SELECT id,version FROM rows WHERE page_id=?", pageId), versions);
+    assert.deepEqual(await all<{ id: string; version: number }>("SELECT id,version FROM rows WHERE page_id=?", pageId), versions);
     await assert.rejects(browseUnits(owner, pageId), /nicht erreichbar/);
-    assert.equal(contactsSourceStatus(pageId).lastSync!.ok, false);
+    assert.equal((await contactsSourceStatus(pageId)).lastSync!.ok, false);
   } finally {
     fake.delayMs = 0;
     process.env.LDAP_TIMEOUT_MS = "5000";
@@ -242,38 +242,38 @@ test("a directory that does not answer in time leaves everything as it was", asy
 });
 
 test("a mapping of its own: only the mapped properties follow the directory", async () => {
-  const other = act({ action: "page.create", spaceId: boot.spaces[0].id, kind: "database", databaseKind: "contacts", title: "Partner" }).id as string;
+  const other = (await act({ action: "page.create", spaceId: boot.spaces[0].id, kind: "database", databaseKind: "contacts", title: "Partner" })).id as string;
   const result = await importContacts(owner, other, { entries: [`uid=dave,${PEOPLE}`], mapping: { title: ["cn"], lastName: ["sn"], city: ["l", "street"], unknown: ["x"] } });
   assert.equal(result.ok, true, result.error || "");
-  const rid = one<{ row_id: string }>("SELECT row_id FROM contact_ldap_links WHERE page_id=?", other)!.row_id;
-  assert.deepEqual(cellsOf(rid), { title: "Dave Dorn", lastName: "Dorn", city: "Weg 1" });
-  const data = pageData(owner, other) as { contacts: { ldapFields: string[] } };
+  const rid = (await one<{ row_id: string }>("SELECT row_id FROM contact_ldap_links WHERE page_id=?", other))!.row_id;
+  assert.deepEqual(await cellsOf(rid), { title: "Dave Dorn", lastName: "Dorn", city: "Weg 1" });
+  const data = (await pageData(owner, other)) as { contacts: { ldapFields: string[] } };
   assert.deepEqual([...data.contacts.ldapFields].sort(), ["city", "lastName", "title"]);
-  act({ action: "row.update", pageId: other, rowId: rid, version: versionOf(rid), cells: { company: "Dorn & Söhne" } });
+  await act({ action: "row.update", pageId: other, rowId: rid, version: await versionOf(rid), cells: { company: "Dorn & Söhne" } });
   await assert.rejects(importContacts(owner, other, { entries: [`uid=dave,${PEOPLE}`], mapping: { title: ["bad attribute!"] } }));
 });
 
 test("administration: base DN and filter, recorded as security events; switched off means no access", async () => {
-  assert.throws(() => saveContactsLdapSettings(owner, { filter: "(objectClass=person)" }), /Administrator/);
-  assert.throws(() => saveContactsLdapSettings(admin, { filter: "(objectClass=person" }), /Filter/);
-  assert.throws(() => saveContactsLdapSettings(admin, { baseDn: "nonsense" }), /Basis-DN/);
-  const status = saveContactsLdapSettings(admin, { filter: "(objectClass=inetOrgPerson)", intervalMinutes: 30 });
+  await assert.rejects(async () => await saveContactsLdapSettings(owner, { filter: "(objectClass=person)" }), /Administrator/);
+  await assert.rejects(async () => await saveContactsLdapSettings(admin, { filter: "(objectClass=person" }), /Filter/);
+  await assert.rejects(async () => await saveContactsLdapSettings(admin, { baseDn: "nonsense" }), /Basis-DN/);
+  const status = await saveContactsLdapSettings(admin, { filter: "(objectClass=inetOrgPerson)", intervalMinutes: 30 });
   assert.equal(status.filter, "(objectClass=inetOrgPerson)");
   assert.equal(status.filterSource, "admin");
   assert.equal(status.intervalMinutes, 30);
   assert.equal(status.baseDn, PEOPLE);
   assert.equal(status.baseDnSource, "env");
   assert.ok(status.available);
-  assert.ok(one("SELECT 1 FROM audit WHERE action='contacts.ldap.config' AND actor_id=?", admin.id));
+  assert.ok(await one("SELECT 1 FROM audit WHERE action='contacts.ldap.config' AND actor_id=?", admin.id));
   await new Promise((resolve) => setTimeout(resolve, 50));
-  assert.ok(one("SELECT 1 FROM security_events WHERE kind='admin.settings' AND detail LIKE 'contacts.ldap.config%'"));
+  assert.ok(await one("SELECT 1 FROM security_events WHERE kind='admin.settings' AND detail LIKE 'contacts.ldap.config%'"));
   // The bind password is never stored.
-  assert.ok(!all<{ value: string }>("SELECT value FROM directory_status").some((r) => r.value.includes("service-pw")));
+  assert.ok(!(await all<{ value: string }>("SELECT value FROM directory_status")).some((r) => r.value.includes("service-pw")));
   // The stricter filter leaves Bob (objectClass user) out of the list.
   const sales = await listPeople(owner, pageId, `ou=sales,${PEOPLE}`);
   assert.ok(!sales.people.some((p) => p.name.startsWith("Bob")));
-  saveContactsLdapSettings(admin, { enabled: false });
-  assert.equal(contactsLdapStatus().available, false);
+  await saveContactsLdapSettings(admin, { enabled: false });
+  assert.equal((await contactsLdapStatus()).available, false);
   await assert.rejects(browseUnits(owner, pageId), /kein LDAP-Verzeichnis/);
-  saveContactsLdapSettings(admin, { enabled: true, filter: "" });
+  await saveContactsLdapSettings(admin, { enabled: true, filter: "" });
 });

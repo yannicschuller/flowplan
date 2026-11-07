@@ -87,17 +87,17 @@ test("empty documents", () => {
 
 /* ---------- Templates in a database ---------- */
 
-function user(name: string): Identity {
+async function user(name: string): Promise<Identity> {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@test.invalid`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@test.invalid`);
   return { id: uid, name, email: `${name}@test.invalid`, groups: [], isAdmin: false, disabled: 0, created_at: "" };
 }
-const owner = user("Olivia"),
-  viewer = user("Vic");
-const wid = createWorkspace(owner.id, "Placeholders"),
-  boot = bootstrap(owner, wid);
-run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
-const act = (body: Record<string, unknown>, who = owner): any => command(who, body);
+const owner = await user("Olivia"),
+  viewer = await user("Vic");
+const wid = await createWorkspace(owner.id, "Placeholders"),
+  boot = await bootstrap(owner, wid);
+await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
+const act = async (body: Record<string, unknown>, who = owner): Promise<any> => await command(who, body);
 const fields: Field[] = [
   { id: "title", name: "Title", type: "text" },
   { id: "company", name: "Company", type: "text" },
@@ -105,53 +105,53 @@ const fields: Field[] = [
   { id: "tags", name: "Tags", type: "multiselect", options: ["red", "blue"] },
   { id: "note", name: "Note", type: "text" },
 ];
-const pageId = act({ action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, kind: "database", title: "Clients" }).id as string;
-const schema = (next: Field[]) => act({ action: "database.update", pageId, version: database(pageId).version, fields: next, views: database(pageId).views });
-schema(fields);
-const cells = (rid: string) => JSON.parse(one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", rid)!.cells);
-const html = (rid: string) => one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", rid)?.html || "";
-const version = (rid: string) => one<{ version: number }>("SELECT version FROM rows WHERE id=?", rid)!.version;
-const update = (rid: string, patch: Record<string, unknown>) => act({ action: "row.update", pageId, rowId: rid, version: version(rid), cells: patch });
+const pageId = (await act({ action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, kind: "database", title: "Clients" })).id as string;
+const schema = async (next: Field[]) => await act({ action: "database.update", pageId, version: (await database(pageId)).version, fields: next, views: (await database(pageId)).views });
+await schema(fields);
+const cells = async (rid: string) => JSON.parse((await one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", rid))!.cells);
+const html = async (rid: string) => (await one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", rid))?.html || "";
+const version = async (rid: string) => (await one<{ version: number }>("SELECT version FROM rows WHERE id=?", rid))!.version;
+const update = async (rid: string, patch: Record<string, unknown>) => await act({ action: "row.update", pageId, rowId: rid, version: await version(rid), cells: patch });
 
 // A template built in a record: placeholders in the title, a heading and a table.
-const source = act({ action: "row.create", pageId, cells: { title: "Kickoff {{company}}", status: "Draft", note: "For {{Me}}" } }).id;
-replaceRowDocument(
+const source = (await act({ action: "row.create", pageId, cells: { title: "Kickoff {{company}}", status: "Draft", note: "For {{Me}}" } })).id;
+await replaceRowDocument(
   source,
   "<h2>Welcome {{Company}}</h2><p>Tags: {{Tags}} · {{Database}} · {{Unknown}}</p><table><tbody><tr><td><p>{{Status}}</p></td></tr></tbody></table>",
   owner.id,
 );
-const kickoff = act({ action: "row.template.save", pageId, rowId: source, name: "Kickoff" }).id as string;
+const kickoff = (await act({ action: "row.template.save", pageId, rowId: source, name: "Kickoff" })).id as string;
 
-test("saving stores properties by id", () => {
-  const t = one<{ html: string; cells: string }>("SELECT html,cells FROM row_templates WHERE id=?", kickoff)!;
+test("saving stores properties by id", async () => {
+  const t = (await one<{ html: string; cells: string }>("SELECT html,cells FROM row_templates WHERE id=?", kickoff))!;
   assert.match(t.html, /Welcome \{\{field:company\}\}/);
   assert.match(t.html, /\{\{Database\}\} · \{\{Unknown\}\}/);
   assert.equal(JSON.parse(t.cells).title, "Kickoff {{field:company}}");
 });
 
-test("a new record from a template gets its values, also after a rename", () => {
-  schema(fields.map((f) => (f.id === "company" ? { ...f, name: "Firma" } : f)));
-  const rid = act({ action: "row.create", pageId, templateId: kickoff, cells: { company: "ACME <b>", tags: ["red", "blue"] } }).id;
-  assert.equal(cells(rid).title, "Kickoff ACME <b>");
-  assert.equal(cells(rid).note, "For Olivia");
-  const doc = html(rid);
+test("a new record from a template gets its values, also after a rename", async () => {
+  await schema(fields.map((f) => (f.id === "company" ? { ...f, name: "Firma" } : f)));
+  const rid = (await act({ action: "row.create", pageId, templateId: kickoff, cells: { company: "ACME <b>", tags: ["red", "blue"] } })).id;
+  assert.equal((await cells(rid)).title, "Kickoff ACME <b>");
+  assert.equal((await cells(rid)).note, "For Olivia");
+  const doc = await html(rid);
   assert.match(doc, /<h2>Welcome ACME &lt;b&gt;<\/h2>/);
   assert.match(doc, /Tags: red, blue · Clients · \{\{Unknown\}\}/);
   // Inside a table too; the status came from the template.
   assert.match(doc, /<td[^>]*><p>Draft<\/p><\/td>/);
   // Opened for editing, the placeholders show the current names.
-  const draft = act({ action: "row.create", pageId, templateId: kickoff, rawTemplate: true }).id;
-  assert.equal(cells(draft).title, "Kickoff {{Firma}}");
-  assert.match(html(draft), /Welcome \{\{Firma\}\}/);
+  const draft = (await act({ action: "row.create", pageId, templateId: kickoff, rawTemplate: true })).id;
+  assert.equal((await cells(draft)).title, "Kickoff {{Firma}}");
+  assert.match(await html(draft), /Welcome \{\{Firma\}\}/);
   // Saved again over the template, it keeps the id.
-  assert.equal(act({ action: "row.template.save", pageId, rowId: draft, name: "Kickoff", replaceId: kickoff }).id, kickoff);
-  assert.equal(all("SELECT id FROM row_templates WHERE page_id=?", pageId).length, 1);
-  schema(fields);
+  assert.equal((await act({ action: "row.template.save", pageId, rowId: draft, name: "Kickoff", replaceId: kickoff })).id, kickoff);
+  assert.equal((await all("SELECT id FROM row_templates WHERE page_id=?", pageId)).length, 1);
+  await schema(fields);
 });
 
-test("templates saved with names survive a rename", () => {
+test("templates saved with names survive a rename", async () => {
   const legacy = id();
-  run(
+  await run(
     "INSERT INTO row_templates(id,page_id,name,cells,html,created_by) VALUES(?,?,?,?,?,?)",
     legacy,
     pageId,
@@ -160,34 +160,34 @@ test("templates saved with names survive a rename", () => {
     "<p>{{Company}}</p>",
     owner.id,
   );
-  schema(fields.map((f) => (f.id === "company" ? { ...f, name: "Organisation" } : f)));
-  const rid = act({ action: "row.create", pageId, templateId: legacy, cells: { company: "Initech" } }).id;
-  assert.equal(cells(rid).title, "Initech");
-  assert.match(html(rid), /<p>Initech<\/p>/);
-  run("DELETE FROM row_templates WHERE id=?", legacy);
-  schema(fields);
+  await schema(fields.map((f) => (f.id === "company" ? { ...f, name: "Organisation" } : f)));
+  const rid = (await act({ action: "row.create", pageId, templateId: legacy, cells: { company: "Initech" } })).id;
+  assert.equal((await cells(rid)).title, "Initech");
+  assert.match(await html(rid), /<p>Initech<\/p>/);
+  await run("DELETE FROM row_templates WHERE id=?", legacy);
+  await schema(fields);
 });
 
-test("by hand: empty documents only, or appended; filled properties stay", () => {
-  const rid = act({ action: "row.create", pageId, cells: { title: "Globex", company: "Globex", status: "Approved" } }).id;
-  replaceRowDocument(rid, "<p>My notes</p>", owner.id);
-  assert.throws(() => act({ action: "row.template.apply", pageId, rowId: rid, templateId: kickoff }), /schon Inhalt/);
-  assert.equal(html(rid), "<p>My notes</p>");
+test("by hand: empty documents only, or appended; filled properties stay", async () => {
+  const rid = (await act({ action: "row.create", pageId, cells: { title: "Globex", company: "Globex", status: "Approved" } })).id;
+  await replaceRowDocument(rid, "<p>My notes</p>", owner.id);
+  await assert.rejects(async () => await act({ action: "row.template.apply", pageId, rowId: rid, templateId: kickoff }), /schon Inhalt/);
+  assert.equal(await html(rid), "<p>My notes</p>");
   // Viewers may not.
-  assert.throws(() => act({ action: "row.template.apply", pageId, rowId: rid, templateId: kickoff, mode: "append" }, viewer));
+  await assert.rejects(async () => await act({ action: "row.template.apply", pageId, rowId: rid, templateId: kickoff, mode: "append" }, viewer));
   const snapshotId = crypto.randomUUID();
-  const result = act({ action: "row.template.apply", pageId, rowId: rid, templateId: kickoff, mode: "append", snapshotId });
+  const result = await act({ action: "row.template.apply", pageId, rowId: rid, templateId: kickoff, mode: "append", snapshotId });
   assert.equal(result.document, "appended");
-  assert.match(html(rid), /^<p>My notes<\/p><h2>Welcome Globex<\/h2>/);
+  assert.match(await html(rid), /^<p>My notes<\/p><h2>Welcome Globex<\/h2>/);
   // Its status stays; the empty note is filled.
-  assert.equal(cells(rid).status, "Approved");
-  assert.equal(cells(rid).title, "Globex");
-  assert.equal(cells(rid).note, "For Olivia");
-  assert.equal(one<{ html: string }>("SELECT html FROM row_snapshots WHERE id=?", snapshotId)?.html, "<p>My notes</p>");
+  assert.equal((await cells(rid)).status, "Approved");
+  assert.equal((await cells(rid)).title, "Globex");
+  assert.equal((await cells(rid)).note, "For Olivia");
+  assert.equal((await one<{ html: string }>("SELECT html FROM row_snapshots WHERE id=?", snapshotId))?.html, "<p>My notes</p>");
   // An empty record gets the template's text.
-  const fresh = act({ action: "row.create", pageId, cells: { title: "Empty", company: "Hooli" } }).id;
-  assert.equal(act({ action: "row.template.apply", pageId, rowId: fresh, templateId: kickoff }).document, "applied");
-  assert.match(html(fresh), /^<h2>Welcome Hooli<\/h2>/);
+  const fresh = (await act({ action: "row.create", pageId, cells: { title: "Empty", company: "Hooli" } })).id;
+  assert.equal((await act({ action: "row.template.apply", pageId, rowId: fresh, templateId: kickoff })).document, "applied");
+  assert.match(await html(fresh), /^<h2>Welcome Hooli<\/h2>/);
 });
 
 test("undo restores the text and empties what the template filled", () => {
@@ -209,12 +209,12 @@ test("undo restores the text and empties what the template filled", () => {
   ]);
 });
 
-test("automation: when Status changes to Approved, apply once, only if the condition holds", () => {
-  assert.throws(
-    () => act({ action: "database.settings", pageId, settings: { automations: [{ id: "x", trigger: { type: "created" }, actions: [{ type: "template", template: "nope" }] }] } }),
+test("automation: when Status changes to Approved, apply once, only if the condition holds", async () => {
+  await assert.rejects(
+    async () => await act({ action: "database.settings", pageId, settings: { automations: [{ id: "x", trigger: { type: "created" }, actions: [{ type: "template", template: "nope" }] }] } }),
     /vorlage nicht gefunden/,
   );
-  act({
+  await act({
     action: "database.settings",
     pageId,
     settings: {
@@ -229,34 +229,34 @@ test("automation: when Status changes to Approved, apply once, only if the condi
       ],
     },
   });
-  const rid = act({ action: "row.create", pageId, cells: { title: "Umbrella", company: "Umbrella", status: "Draft" } }).id;
-  assert.equal(html(rid), "");
-  update(rid, { status: "Approved" });
-  const applied = html(rid);
+  const rid = (await act({ action: "row.create", pageId, cells: { title: "Umbrella", company: "Umbrella", status: "Draft" } })).id;
+  assert.equal(await html(rid), "");
+  await update(rid, { status: "Approved" });
+  const applied = await html(rid);
   assert.match(applied, /<h2>Welcome Umbrella<\/h2>/);
   assert.match(applied, /<td[^>]*><p>Approved<\/p><\/td>/);
-  assert.equal(cells(rid).note, "For Olivia");
+  assert.equal((await cells(rid)).note, "For Olivia");
   // Back and forth: not again (also not appended).
-  update(rid, { status: "Draft" });
-  update(rid, { status: "Approved" });
-  assert.equal(html(rid), applied);
-  assert.equal(one<{ n: number }>("SELECT COUNT(*) n FROM automation_runs WHERE automation_id='kick' AND row_id=?", rid)?.n, 1);
-  assert.ok(one("SELECT 1 FROM audit WHERE action='row.template.applied' AND resource_id=?", rid));
+  await update(rid, { status: "Draft" });
+  await update(rid, { status: "Approved" });
+  assert.equal(await html(rid), applied);
+  assert.equal((await one<{ n: number }>("SELECT COUNT(*) n FROM automation_runs WHERE automation_id='kick' AND row_id=?", rid))?.n, 1);
+  assert.ok(await one("SELECT 1 FROM audit WHERE action='row.template.applied' AND resource_id=?", rid));
   // Without a company the rule does not fire.
-  const other = act({ action: "row.create", pageId, cells: { title: "Nameless", status: "Draft" } }).id;
-  update(other, { status: "Approved" });
-  assert.equal(html(other), "");
+  const other = (await act({ action: "row.create", pageId, cells: { title: "Nameless", status: "Draft" } })).id;
+  await update(other, { status: "Approved" });
+  assert.equal(await html(other), "");
   // A record with text keeps it in "empty only" mode.
-  const busy = act({ action: "row.create", pageId, cells: { title: "Busy", company: "Busy", status: "Draft" } }).id;
-  replaceRowDocument(busy, "<p>Mine</p>", owner.id);
-  update(busy, { status: "Approved" });
-  assert.equal(html(busy), "<p>Mine</p>");
+  const busy = (await act({ action: "row.create", pageId, cells: { title: "Busy", company: "Busy", status: "Draft" } })).id;
+  await replaceRowDocument(busy, "<p>Mine</p>", owner.id);
+  await update(busy, { status: "Approved" });
+  assert.equal(await html(busy), "<p>Mine</p>");
   // Append mode puts it below.
-  act({
+  await act({
     action: "database.settings",
     pageId,
     settings: { automations: [{ id: "kick2", trigger: { type: "changed", field: "status", to: "Done" }, actions: [{ type: "template", template: kickoff, mode: "append" }] }] },
   });
-  update(busy, { status: "Done" });
-  assert.match(html(busy), /^<p>Mine<\/p><h2>Welcome Busy<\/h2>/);
+  await update(busy, { status: "Done" });
+  assert.match(await html(busy), /^<p>Mine<\/p><h2>Welcome Busy<\/h2>/);
 });

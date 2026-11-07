@@ -15,9 +15,9 @@ function fileSize(path: string) {
     return 0;
   }
 }
-const count = (sql: string) => {
+const count = async (sql: string) => {
   try {
-    return Number(one<{ n: number }>(sql)?.n || 0);
+    return Number((await one<{ n: number }>(sql))?.n || 0);
   } catch {
     return 0;
   }
@@ -48,9 +48,9 @@ const GROUPS: { key: string; label: string; match: (table: string) => boolean }[
   },
 ];
 // Snapshots are stored inside the version tables but are listed separately.
-function databaseBreakdown() {
+async function databaseBreakdown() {
   // dbstat missing (SQLite): the file size stays, without breakdown.
-  const tables = tableSizes();
+  const tables = await tableSizes();
   const groups = GROUPS.map((g) => ({ key: g.key, label: g.label, bytes: 0 }));
   const other = { key: "other", label: "Konten, Rechte und Verwaltung", bytes: 0 };
   for (const row of tables) {
@@ -132,7 +132,7 @@ async function bucketContents() {
 
 export async function storageOverview() {
   const dir = dataDir();
-  const files = all<{ id: string; mime: string; size: number }>(
+  const files = await all<{ id: string; mime: string; size: number }>(
     "SELECT id,mime,COALESCE(size,0) size FROM files",
   );
   const mimeById = new Map(files.map((f) => [f.id, f.mime || ""]));
@@ -142,35 +142,35 @@ export async function storageOverview() {
     bucket.files++;
     bucket.bytes += Number(f.size);
   }
-  const pages = (kind: string) =>
-    count(`SELECT COUNT(*) n FROM pages WHERE deleted_at IS NULL AND kind='${kind}'`);
+  const pages = async (kind: string) =>
+    await count(`SELECT COUNT(*) n FROM pages WHERE deleted_at IS NULL AND kind='${kind}'`);
   const counts = {
-    users: count("SELECT COUNT(*) n FROM users WHERE disabled=0"),
-    disabledUsers: count("SELECT COUNT(*) n FROM users WHERE disabled=1"),
-    sessions: count(`SELECT COUNT(*) n FROM sessions WHERE expires>${Date.now()}`),
-    workspaces: count("SELECT COUNT(*) n FROM workspaces"),
-    spaces: count("SELECT COUNT(*) n FROM spaces WHERE deleted_at IS NULL"),
-    documents: count(
+    users: await count("SELECT COUNT(*) n FROM users WHERE disabled=0"),
+    disabledUsers: await count("SELECT COUNT(*) n FROM users WHERE disabled=1"),
+    sessions: await count(`SELECT COUNT(*) n FROM sessions WHERE expires>${Date.now()}`),
+    workspaces: await count("SELECT COUNT(*) n FROM workspaces"),
+    spaces: await count("SELECT COUNT(*) n FROM spaces WHERE deleted_at IS NULL"),
+    documents: await count(
       "SELECT COUNT(*) n FROM pages WHERE deleted_at IS NULL AND kind='document' AND journal_date IS NULL",
     ),
-    databases: pages("database"),
-    whiteboards: pages("whiteboard"),
-    journals: pages("journal"),
-    journalDays: count(
+    databases: await pages("database"),
+    whiteboards: await pages("whiteboard"),
+    journals: await pages("journal"),
+    journalDays: await count(
       "SELECT COUNT(*) n FROM pages WHERE deleted_at IS NULL AND journal_date IS NOT NULL",
     ),
-    trashedPages: count("SELECT COUNT(*) n FROM pages WHERE deleted_at IS NOT NULL"),
-    rows: count("SELECT COUNT(*) n FROM rows"),
+    trashedPages: await count("SELECT COUNT(*) n FROM pages WHERE deleted_at IS NOT NULL"),
+    rows: await count("SELECT COUNT(*) n FROM rows"),
     files: files.length,
     comments:
-      count("SELECT COUNT(*) n FROM comments") +
-      count("SELECT COUNT(*) n FROM inline_messages WHERE deleted=0"),
+      (await count("SELECT COUNT(*) n FROM comments")) +
+      (await count("SELECT COUNT(*) n FROM inline_messages WHERE deleted=0")),
     versions:
-      count("SELECT COUNT(*) n FROM snapshots") + count("SELECT COUNT(*) n FROM row_snapshots"),
-    templates: count("SELECT COUNT(*) n FROM templates"),
-    shareLinks: count("SELECT COUNT(*) n FROM share_links"),
-    publications: count("SELECT COUNT(*) n FROM publications"),
-    forms: count("SELECT COUNT(*) n FROM forms WHERE enabled=1"),
+      (await count("SELECT COUNT(*) n FROM snapshots")) + (await count("SELECT COUNT(*) n FROM row_snapshots")),
+    templates: await count("SELECT COUNT(*) n FROM templates"),
+    shareLinks: await count("SELECT COUNT(*) n FROM share_links"),
+    publications: await count("SELECT COUNT(*) n FROM publications"),
+    forms: await count("SELECT COUNT(*) n FROM forms WHERE enabled=1"),
   };
   const wal = fileSize(resolve(dir, "flowplan.sqlite-wal"));
 
@@ -187,13 +187,13 @@ export async function storageOverview() {
         pending: number;
         retrying: boolean;
         partial?: boolean;
-        uploads?: { objects: number; bytes: number; byType: ReturnType<typeof emptyMedia> };
+        uploads?: { objects: number; bytes: number; byType: Awaited<ReturnType<typeof emptyMedia>> };
         missing?: number;
         orphans?: number;
         backup?: { objects: number; bytes: number; lastModified: string | null };
         other?: { objects: number; bytes: number };
       } = { enabled: false };
-  const status = storageStatus();
+  const status = await storageStatus();
   const config = storageConfig();
   if (config) {
     const base = {
@@ -265,9 +265,9 @@ export async function storageOverview() {
   return {
     checkedAt: new Date().toISOString(),
     local: {
-      databaseBytes: databaseBytes(),
+      databaseBytes: await databaseBytes(),
       walBytes: wal,
-      database: databaseBreakdown(),
+      database: await databaseBreakdown(),
       uploads: {
         files: files.length,
         bytes: files.reduce((sum, f) => sum + Number(f.size), 0),

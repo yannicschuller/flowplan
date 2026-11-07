@@ -50,7 +50,7 @@ export function mapTemplateFiles(
   }
   return JSON.stringify(data);
 }
-export function captureTemplateFiles(
+export async function captureTemplateFiles(
   user: Identity,
   templateId: string,
   payload: string,
@@ -65,12 +65,12 @@ export function captureTemplateFiles(
     throw new HttpError(413, "Höchstens 200 Anhänge je Vorlage.");
   let total = 0;
   for (const fid of references) {
-    const file = one<{ page_id: string; name: string; mime: string }>(
+    const file = await one<{ page_id: string; name: string; mime: string }>(
       "SELECT * FROM files WHERE id=?",
       fid,
     );
     if (!file) throw new HttpError(409, "Ein Vorlagenanhang fehlt.");
-    requirePage(user, file.page_id);
+    await requirePage(user, file.page_id);
     let bytes: Buffer;
     try {
       bytes = readFileSync(
@@ -85,7 +85,7 @@ export function captureTemplateFiles(
         413,
         "Vorlagenanhänge überschreiten 10 MB je Datei oder 100 MB insgesamt.",
       );
-    run(
+    await run(
       "INSERT INTO template_files(id,template_id,original_id,name,mime,data) VALUES(?,?,?,?,?,?)",
       id(),
       templateId,
@@ -96,13 +96,13 @@ export function captureTemplateFiles(
     );
   }
 }
-export function instantiateTemplateFiles(
+export async function instantiateTemplateFiles(
   user: Identity,
   pageId: string,
   templateId: string,
   payload: string,
 ) {
-  const files = all<{
+  const files = await all<{
     original_id: string;
     name: string;
     mime: string;
@@ -124,7 +124,7 @@ export function instantiateTemplateFiles(
       } catch {}
     });
     writeFileSync(path, file.data, { flag: "wx" });
-    run(
+    await run(
       "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
       fid,
       pageId,

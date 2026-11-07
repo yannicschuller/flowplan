@@ -12,9 +12,9 @@ const { createWorkspace } = await import("../lib/seed");
 const { command, bootstrap, database } = await import("../lib/api");
 const { relationBacklinks } = await import("../lib/relation-backlinks");
 
-function account(name: string) {
+async function account(name: string) {
   const uid = id();
-  run(
+  await run(
     "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
     uid,
     uid,
@@ -32,42 +32,42 @@ function account(name: string) {
   } as Identity;
 }
 
-test("backlinks list readable records whose relations point at a record", () => {
-  const owner = account("bl-owner"),
-    member = account("bl-member");
-  const wid = createWorkspace(owner.id, "Verknüpfungen");
-  run("INSERT INTO members VALUES(?,?,?)", wid, member.id, "editor");
-  const team = bootstrap(owner, wid).spaces[0].id;
+test("backlinks list readable records whose relations point at a record", async () => {
+  const owner = await account("bl-owner"),
+    member = await account("bl-member");
+  const wid = await createWorkspace(owner.id, "Verknüpfungen");
+  await run("INSERT INTO members VALUES(?,?,?)", wid, member.id, "editor");
+  const team = (await bootstrap(owner, wid)).spaces[0].id;
   const secret = (
-    command(owner, {
+    (await command(owner, {
       action: "space.create",
       workspaceId: wid,
       name: "Privat",
       private: true,
-    }) as { id: string }
+    })) as { id: string }
   ).id;
-  const db = (title: string, spaceId = team) =>
+  const db = async (title: string, spaceId = team) =>
     (
-      command(owner, {
+      (await command(owner, {
         action: "page.create",
         workspaceId: wid,
         spaceId,
         title,
         kind: "database",
-      }) as { id: string }
+      })) as { id: string }
     ).id;
-  const projects = db("Projekte"),
-    tasks = db("Aufgaben"),
-    notes = db("Notizen", secret);
-  const schema = (page: string, fields: unknown[]) =>
-    command(owner, {
+  const projects = await db("Projekte"),
+    tasks = await db("Aufgaben"),
+    notes = await db("Notizen", secret);
+  const schema = async (page: string, fields: unknown[]) =>
+    await command(owner, {
       action: "database.update",
       pageId: page,
-      version: database(page).version,
+      version: (await database(page)).version,
       fields,
-      views: database(page).views,
+      views: (await database(page)).views,
     });
-  schema(tasks, [
+  await schema(tasks, [
     { id: "title", name: "Name", type: "text" },
     {
       id: "project",
@@ -76,11 +76,11 @@ test("backlinks list readable records whose relations point at a record", () => 
       relationPage: projects,
     },
   ]);
-  schema(notes, [
+  await schema(notes, [
     { id: "title", name: "Name", type: "text" },
     { id: "project", name: "Bezug", type: "relation", relationPage: projects },
   ]);
-  schema(projects, [
+  await schema(projects, [
     { id: "title", name: "Name", type: "text" },
     {
       id: "parent",
@@ -89,34 +89,34 @@ test("backlinks list readable records whose relations point at a record", () => 
       relationPage: projects,
     },
   ]);
-  const row = (page: string, cells: Record<string, unknown>) =>
+  const row = async (page: string, cells: Record<string, unknown>) =>
     (
-      command(owner, { action: "row.create", pageId: page, cells }) as {
+      (await command(owner, { action: "row.create", pageId: page, cells })) as {
         id: string;
       }
     ).id;
-  const alpha = row(projects, { title: "Alpha" });
-  row(projects, { title: "Alpha 2", parent: [alpha] });
-  row(tasks, { title: "Entwurf", project: [alpha] });
-  row(tasks, { title: "Anderes", project: [] });
-  row(notes, { title: "Geheim", project: [alpha] });
-  const titles = (user: Identity) =>
-    relationBacklinks(user, projects, alpha)
+  const alpha = await row(projects, { title: "Alpha" });
+  await row(projects, { title: "Alpha 2", parent: [alpha] });
+  await row(tasks, { title: "Entwurf", project: [alpha] });
+  await row(tasks, { title: "Anderes", project: [] });
+  await row(notes, { title: "Geheim", project: [alpha] });
+  const titles = async (user: Identity) =>
+    (await relationBacklinks(user, projects, alpha))
       .map((l) => `${l.pageTitle}:${l.title}:${l.field}`)
       .sort();
-  assert.deepEqual(titles(owner), [
+  assert.deepEqual(await titles(owner), [
     "Aufgaben:Entwurf:Projekt",
     "Notizen:Geheim:Bezug",
     "Projekte:Alpha 2:Übergeordnet",
   ]);
   // Records in private areas stay hidden from other members.
-  assert.deepEqual(titles(member), [
+  assert.deepEqual(await titles(member), [
     "Aufgaben:Entwurf:Projekt",
     "Projekte:Alpha 2:Übergeordnet",
   ]);
-  assert.deepEqual(relationBacklinks(owner, projects, id()), []);
-  assert.throws(
-    () => relationBacklinks(account("stranger"), projects, alpha),
+  assert.deepEqual(await relationBacklinks(owner, projects, id()), []);
+  await assert.rejects(
+    async () => await relationBacklinks(await account("stranger"), projects, alpha),
     /Berechtigung/,
   );
 });

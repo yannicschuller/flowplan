@@ -10,34 +10,34 @@ import type { Notice, NoticeEvent, NoticeItem } from "./notification-templates";
 import { pageRole } from "./permissions";
 import { visibleRows } from "./row-access";
 import type { Field, Identity, Page } from "./types";
+import { filterAsync, mapAsync } from "./each-async";
 
 type Cells = Record<string, unknown>;
 const appUrl = () => (process.env.APP_URL || "http://localhost:3000").replace(/\/$/, "");
 export const recordUrl = (pageId: string, rowId?: string | null) =>
   `${appUrl()}/#page=${pageId}${rowId ? `&row=${rowId}` : ""}`;
 
-const fieldsOf = (pageId: string) => {
-  const raw = one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId);
+const fieldsOf = async (pageId: string) => {
+  const raw = await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId);
   return raw ? (JSON.parse(raw.fields) as Field[]) : [];
 };
 export const titleOf = (fields: Field[], cells: Cells) => cellText(cells[fields[0]?.id || "title"]).trim();
 
 // A cell as people read it: names instead of user IDs, ✓ for checkboxes.
-function display(field: Field, value: unknown): string {
+async function display(field: Field, value: unknown): Promise<string> {
   if (value === null || value === undefined || value === "") return "";
   if (field.type === "checkbox") return value === true ? "✓" : "✗";
   if (field.type === "person" || field.type === "created_by" || field.type === "updated_by") {
     const ids = (Array.isArray(value) ? value : [value]).filter((v): v is string => typeof v === "string").slice(0, 20);
-    return ids.map((uid) => one<{ name: string }>("SELECT name FROM users WHERE id=?", uid)?.name || "?").join(", ");
+    return (await mapAsync(ids, async (uid) => (await one<{ name: string }>("SELECT name FROM users WHERE id=?", uid))?.name || "?")).join(", ");
   }
   if (field.type === "relation") {
     const ids = (Array.isArray(value) ? value : [value]).filter((v): v is string => typeof v === "string").slice(0, 10);
-    const target = field.relationPage ? fieldsOf(field.relationPage) : [];
-    return ids
-      .map((rid) => {
-        const row = one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", rid);
+    const target = field.relationPage ? (await fieldsOf(field.relationPage)) : [];
+    return (await mapAsync(ids, async (rid) => {
+        const row = await one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", rid);
         return row ? titleOf(target, JSON.parse(row.cells)) : "";
-      })
+      }))
       .filter(Boolean)
       .join(", ");
   }
@@ -45,10 +45,10 @@ function display(field: Field, value: unknown): string {
   return cellText(value);
 }
 
-export function buildNotice(event: NoticeEvent, data: Record<string, unknown>, actor?: string | null): Notice {
+export async function buildNotice(event: NoticeEvent, data: Record<string, unknown>, actor?: string | null): Promise<Notice> {
   const pageId = typeof data.pageId === "string" ? data.pageId : "";
   const rowId = typeof data.rowId === "string" ? data.rowId : null;
-  const page = pageId ? one<{ title: string; parent_id: string | null }>("SELECT title,parent_id FROM pages WHERE id=?", pageId) : undefined;
+  const page = pageId ? (await one<{ title: string; parent_id: string | null }>("SELECT title,parent_id FROM pages WHERE id=?", pageId)) : undefined;
   const notice: Notice = {
     event,
     title: page?.title || "",
@@ -61,23 +61,23 @@ export function buildNotice(event: NoticeEvent, data: Record<string, unknown>, a
   };
   if (event === "page.created") {
     notice.title = typeof data.title === "string" ? data.title : notice.title;
-    const parent = page?.parent_id ? one<{ title: string }>("SELECT title FROM pages WHERE id=?", page.parent_id) : undefined;
+    const parent = page?.parent_id ? (await one<{ title: string }>("SELECT title FROM pages WHERE id=?", page.parent_id)) : undefined;
     notice.page = parent?.title || "";
     return notice;
   }
   notice.page = page?.title || "";
   if (!rowId) return notice;
-  const fields = fieldsOf(pageId);
-  const stored = one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", rowId);
+  const fields = await fieldsOf(pageId);
+  const stored = await one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", rowId);
   const cells = (data.cells && typeof data.cells === "object" ? data.cells : stored ? JSON.parse(stored.cells) : {}) as Cells;
   notice.title = titleOf(fields, cells);
   const shown =
     event === "row.updated"
       ? fields.filter((f) => Array.isArray(data.changed) && data.changed.includes(f.id))
       : event === "row.created" || event === "form.submitted"
-        ? fields.slice(1).filter((f) => display(f, cells[f.id]))
+        ? (await filterAsync(fields.slice(1), async (f) => await display(f, cells[f.id])))
         : [];
-  notice.changes = shown.slice(0, 20).map((f) => ({ name: f.name, value: display(f, cells[f.id]) }));
+  notice.changes = await mapAsync(shown.slice(0, 20), async (f) => ({ name: f.name, value: await display(f, cells[f.id]) }));
   return notice;
 }
 
@@ -88,25 +88,25 @@ const dueField = (fields: Field[]) =>
 // soonest first. Private records stay out: the channel is not a person.
 // With a `reader` (the person a webhook speaks for) only databases and
 // records they may read, without properties hidden from them.
-export function dueItems(workspaceId: string, pageId: string | null, day: string, limit = 100, reader?: Identity) {
+export async function dueItems(workspaceId: string, pageId: string | null, day: string, limit = 100, reader?: Identity) {
   const items: (NoticeItem & { pageId: string; rowId: string })[] = [];
-  const pages = all<Page>(
+  const pages = await all<Page>(
     "SELECT p.* FROM pages p JOIN databases d ON d.page_id=p.id WHERE p.workspace_id=? AND p.deleted_at IS NULL AND (? IS NULL OR p.id=?)",
     workspaceId,
     pageId,
     pageId,
   );
   for (const page of pages) {
-    if (reader && !pageRole(reader, page)) continue;
-    const fields = fieldsOf(page.id);
+    if (reader && !(await pageRole(reader, page))) continue;
+    const fields = await fieldsOf(page.id);
     const due = dueField(fields);
     if (!due) continue;
-    const rule = doneRule(fields, databaseSettings(page.id));
-    const stored = all<{ id: string; cells: string; access: string; created_by: string | null }>(
+    const rule = doneRule(fields, await databaseSettings(page.id));
+    const stored = await all<{ id: string; cells: string; access: string; created_by: string | null }>(
       "SELECT id,cells,access,created_by FROM rows WHERE page_id=? AND access!='private'",
       page.id,
     );
-    for (const row of reader ? visibleRows(reader, page, stored) : stored) {
+    for (const row of reader ? (await visibleRows(reader, page, stored)) : stored) {
       const cells = JSON.parse(row.cells) as Cells;
       const value = cells[due.id];
       if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}/.test(value)) continue;

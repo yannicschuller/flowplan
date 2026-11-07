@@ -218,7 +218,7 @@ const { sharedContent, mutateSharedContent } =
   await import("../lib/shared-content");
 const { replaceRowDocument } = await import("../lib/row-documents");
 const uid = id();
-run(
+await run(
   "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
   uid,
   uid,
@@ -234,84 +234,84 @@ const owner: Identity = {
   disabled: 0,
   created_at: "",
 };
-const wid = createWorkspace(uid, "Code blocks"),
-  boot = bootstrap(owner, wid);
-const act = (body: Record<string, unknown>): any => command(owner, body);
-const create = (kind = "document", extra = {}) =>
-  act({
+const wid = await createWorkspace(uid, "Code blocks"),
+  boot = await bootstrap(owner, wid);
+const act = async (body: Record<string, unknown>): Promise<any> => await command(owner, body);
+const create = async (kind = "document", extra = {}) =>
+  (await act({
     action: "page.create",
     workspaceId: wid,
     spaceId: boot.spaces[0].id,
     title: "Code fixture",
     kind,
     ...extra,
-  }).id as string;
+  })).id as string;
 test("code and display preferences survive page/record copies, templates, ZIP and snapshots; guest edits retain permissions and literal code", async () => {
-  const host = create();
-  run(
+  const host = await create();
+  await run(
     "UPDATE documents SET html=?,state=? WHERE page_id=?",
     html,
     htmlState(html),
     host,
   );
-  const check = (p: string) =>
-    assert.equal((pageData(owner, p) as any).html, html);
-  check(act({ action: "page.duplicate", pageId: host }).id);
-  const template = act({
+  const check = async (p: string) =>
+    assert.equal(((await pageData(owner, p)) as any).html, html);
+  await check((await act({ action: "page.duplicate", pageId: host })).id);
+  const template = (await act({
     action: "template.save",
     pageId: host,
     name: "Code template",
-  }).id;
-  check(create("document", { templateId: template }));
-  act({ action: "page.snapshot", pageId: host });
-  const database = create("database"),
-    row = act({
+  })).id;
+  await check(await create("document", { templateId: template }));
+  await act({ action: "page.snapshot", pageId: host });
+  const database = await create("database"),
+    row = (await act({
       action: "row.create",
       pageId: database,
       cells: { title: "Code record" },
-    }).id;
-  replaceRowDocument(row, html, uid);
-  const copied = pageData(
+    })).id;
+  await replaceRowDocument(row, html, uid);
+  const copied = (await pageData(
     owner,
-    act({ action: "page.duplicate", pageId: database }).id,
-  ) as any;
+    (await act({ action: "page.duplicate", pageId: database })).id,
+  )) as any;
   assert.equal(copied.rows[0].preview.html, html);
-  const destination = createWorkspace(uid, "Restore code"),
+  const destination = await createWorkspace(uid, "Restore code"),
     restored = await importArchive(
       owner,
       destination,
       await exportArchive(owner, wid),
     );
-  check(restored.pageIds[host]);
-  const snapshot = one<{ id: string }>(
+  await check(restored.pageIds[host]);
+  const snapshot = (await one<{ id: string }>(
     "SELECT id FROM snapshots WHERE page_id=?",
     restored.pageIds[host],
-  )!.id;
-  run(
+  ))!.id;
+  await run(
     "UPDATE documents SET html=?,state=? WHERE page_id=?",
     "<p>Changed</p>",
     htmlState("<p>Changed</p>"),
     restored.pageIds[host],
   );
-  act({
+  await act({
     action: "snapshot.restore",
     pageId: restored.pageIds[host],
     snapshotId: snapshot,
   });
-  check(restored.pageIds[host]);
-  const token = act({
+  await check(restored.pageIds[host]);
+  const token = (await act({
     action: "share.create",
     pageId: host,
     role: "editor",
     name: "Edit code",
-  }).token;
-  const read = act({
+  })).token;
+  const read = (await act({
     action: "share.create",
     pageId: host,
     role: "viewer",
     name: "Read code",
-  }).token;
-  const data = sharedContent(token),
+  })).token;
+  const data = await sharedContent(token),
     change = {
       action: "save",
       pageId: host,
@@ -319,9 +319,9 @@ test("code and display preferences survive page/record copies, templates, ZIP an
       title: data.title,
       html: html.replace("language-javascript", "language-typescript"),
     };
-  assert.throws(() => mutateSharedContent(read, change), /erlaubt/);
-  mutateSharedContent(token, change);
-  assert.match(sharedContent(read).html, /language-typescript/);
-  assert.match(sharedContent(read).html, /data-code-wrap="true"/);
-  assert.doesNotMatch(sharedContent(read).html, /<script/i);
+  await assert.rejects(async () => await mutateSharedContent(read, change), /erlaubt/);
+  await mutateSharedContent(token, change);
+  assert.match((await sharedContent(read)).html, /language-typescript/);
+  assert.match((await sharedContent(read)).html, /data-code-wrap="true"/);
+  assert.doesNotMatch((await sharedContent(read)).html, /<script/i);
 });

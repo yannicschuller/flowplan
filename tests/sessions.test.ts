@@ -13,10 +13,10 @@ const { mySessions, endMySessions, deviceName } = await import("../lib/my-sessio
 const { sessionTerms, sessionSettings } = await import("../lib/session-policy");
 
 const uid = id();
-run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, "Mara", "mara@example.test");
+await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, "Mara", "mara@example.test");
 const HOUR = 3_600_000;
-function session(token: string, values: { created: number; expires: number; remember?: boolean; sso?: boolean; app?: boolean; agent?: string }) {
-  run(
+async function session(token: string, values: { created: number; expires: number; remember?: boolean; sso?: boolean; app?: boolean; agent?: string }) {
+  await run(
     "INSERT INTO sessions(token,user_id,groups_json,expires,created_at,remember,sso,app,last_seen,agent) VALUES(?,?,?,?,?,?,?,?,?,?)",
     hash(token),
     uid,
@@ -30,15 +30,15 @@ function session(token: string, values: { created: number; expires: number; reme
     values.agent || "",
   );
 }
-const expires = (token: string) => one<{ expires: number }>("SELECT expires FROM sessions WHERE token=?", hash(token))!.expires;
+const expires = async (token: string) => (await one<{ expires: number }>("SELECT expires FROM sessions WHERE token=?", hash(token)))!.expires;
 
 test("without SESSION_REMEMBER nothing slides", async () => {
   delete process.env.SESSION_REMEMBER;
-  assert.equal(rememberPolicy(), null);
+  assert.equal(await rememberPolicy(), null);
   const now = Date.now();
-  session("plain", { created: now - HOUR, expires: now + HOUR, remember: true });
+  await session("plain", { created: now - HOUR, expires: now + HOUR, remember: true });
   assert.ok(await identityFromToken("plain"));
-  assert.equal(expires("plain"), now + HOUR);
+  assert.equal(await expires("plain"), now + HOUR);
 });
 
 test("a remembered session slides while used, up to its maximum", async () => {
@@ -47,23 +47,23 @@ test("a remembered session slides while used, up to its maximum", async () => {
   process.env.SESSION_MAX_DAYS = "30";
   process.env.SESSION_GROUPS_HOURS = "72";
   const now = Date.now();
-  session("phone", { created: now - 24 * HOUR, expires: now + HOUR, remember: true });
+  await session("phone", { created: now - 24 * HOUR, expires: now + HOUR, remember: true });
   assert.ok(await identityFromToken("phone"));
-  assert.ok(Math.abs(expires("phone") - (now + 48 * HOUR)) < 5000, "extended by the idle time");
+  assert.ok(Math.abs((await expires("phone")) - (now + 48 * HOUR)) < 5000, "extended by the idle time");
   // Near the absolute maximum it does not go beyond it.
-  session("old", { created: now - (30 * 24 - 2) * HOUR, expires: now + HOUR, remember: true });
+  await session("old", { created: now - (30 * 24 - 2) * HOUR, expires: now + HOUR, remember: true });
   await identityFromToken("old");
-  assert.ok(Math.abs(expires("old") - (now - (30 * 24 - 2) * HOUR + 30 * 24 * HOUR)) < 5000);
+  assert.ok(Math.abs((await expires("old")) - (now - (30 * 24 - 2) * HOUR + 30 * 24 * HOUR)) < 5000);
   // SSO: groups are checked again after SESSION_GROUPS_HOURS.
-  session("sso", { created: now - 70 * HOUR, expires: now + HOUR, remember: true, sso: true });
+  await session("sso", { created: now - 70 * HOUR, expires: now + HOUR, remember: true, sso: true });
   await identityFromToken("sso");
-  assert.ok(Math.abs(expires("sso") - (now + 2 * HOUR)) < 5000);
+  assert.ok(Math.abs((await expires("sso")) - (now + 2 * HOUR)) < 5000);
   // Expired: gone, and a disabled account ends every session at once.
-  session("gone", { created: now - 100 * HOUR, expires: now - 1000, remember: true });
+  await session("gone", { created: now - 100 * HOUR, expires: now - 1000, remember: true });
   assert.equal(await identityFromToken("gone"), null);
-  run("UPDATE users SET disabled=1 WHERE id=?", uid);
+  await run("UPDATE users SET disabled=1 WHERE id=?", uid);
   assert.equal(await identityFromToken("phone"), null);
-  run("UPDATE users SET disabled=0 WHERE id=?", uid);
+  await run("UPDATE users SET disabled=0 WHERE id=?", uid);
 });
 
 test("SSO sessions last as long as the others unless SESSION_GROUPS_HOURS is set", async () => {
@@ -71,21 +71,21 @@ test("SSO sessions last as long as the others unless SESSION_GROUPS_HOURS is set
   process.env.SESSION_IDLE_HOURS = "48";
   process.env.SESSION_MAX_DAYS = "30";
   delete process.env.SESSION_GROUPS_HOURS;
-  assert.equal(rememberPolicy()!.groupsHours, null);
+  assert.equal((await rememberPolicy())!.groupsHours, null);
   const now = Date.now();
   // Signed in through SSO 8 days ago (beyond the old fixed 7 days): it slides
   // like a password session, up to SESSION_MAX_DAYS.
-  session("sso-long", { created: now - 8 * 24 * HOUR, expires: now + HOUR, remember: true, sso: true });
+  await session("sso-long", { created: now - 8 * 24 * HOUR, expires: now + HOUR, remember: true, sso: true });
   assert.ok(await identityFromToken("sso-long"));
-  assert.ok(Math.abs(expires("sso-long") - (now + 48 * HOUR)) < 5000);
-  session("sso-max", { created: now - (30 * 24 - 2) * HOUR, expires: now + HOUR, remember: true, sso: true });
+  assert.ok(Math.abs((await expires("sso-long")) - (now + 48 * HOUR)) < 5000);
+  await session("sso-max", { created: now - (30 * 24 - 2) * HOUR, expires: now + HOUR, remember: true, sso: true });
   await identityFromToken("sso-max");
-  assert.ok(Math.abs(expires("sso-max") - (now + 2 * HOUR)) < 5000, "never beyond SESSION_MAX_DAYS");
+  assert.ok(Math.abs((await expires("sso-max")) - (now + 2 * HOUR)) < 5000, "never beyond SESSION_MAX_DAYS");
   // An instance that asks for it still ends SSO sessions earlier.
   process.env.SESSION_GROUPS_HOURS = "72";
-  session("sso-capped", { created: now - 70 * HOUR, expires: now + HOUR, remember: true, sso: true });
+  await session("sso-capped", { created: now - 70 * HOUR, expires: now + HOUR, remember: true, sso: true });
   await identityFromToken("sso-capped");
-  assert.ok(Math.abs(expires("sso-capped") - (now + 2 * HOUR)) < 5000);
+  assert.ok(Math.abs((await expires("sso-capped")) - (now + 2 * HOUR)) < 5000);
   delete process.env.SESSION_GROUPS_HOURS;
 });
 
@@ -93,77 +93,77 @@ test("the app's device token keeps its remembered session alive", async () => {
   process.env.SESSION_REMEMBER = "true";
   process.env.SESSION_IDLE_HOURS = "48";
   const now = Date.now();
-  session("app", { created: now - 10 * 24 * HOUR, expires: now + HOUR, remember: true, sso: true });
+  await session("app", { created: now - 10 * 24 * HOUR, expires: now + HOUR, remember: true, sso: true });
   const me = { id: uid, name: "Mara", email: "", groups: [], isAdmin: false, disabled: 0, created_at: "" } as never;
-  const { deviceToken } = registerMobileDevice(me, hash("app"), { installationId: "4b8a8f3e-1d5e-4c41-9a43-0d1f3b3c2a11", platform: "ios" });
-  run("UPDATE sessions SET last_seen=? WHERE token=?", now - HOUR, hash("app"));
+  const { deviceToken } = await registerMobileDevice(me, hash("app"), { installationId: "4b8a8f3e-1d5e-4c41-9a43-0d1f3b3c2a11", platform: "ios" });
+  await run("UPDATE sessions SET last_seen=? WHERE token=?", now - HOUR, hash("app"));
   assert.ok(await identityFromDeviceToken(`Bearer ${deviceToken}`));
-  assert.ok(Math.abs(expires("app") - (now + 48 * HOUR)) < 5000, "slid by the widget");
-  assert.ok(one<{ last_seen: number }>("SELECT last_seen FROM sessions WHERE token=?", hash("app"))!.last_seen >= now);
+  assert.ok(Math.abs((await expires("app")) - (now + 48 * HOUR)) < 5000, "slid by the widget");
+  assert.ok((await one<{ last_seen: number }>("SELECT last_seen FROM sessions WHERE token=?", hash("app")))!.last_seen >= now);
   // Without SESSION_REMEMBER nothing slides, and an expired session ends the token.
   delete process.env.SESSION_REMEMBER;
-  run("UPDATE sessions SET expires=? WHERE token=?", now - 1000, hash("app"));
+  await run("UPDATE sessions SET expires=? WHERE token=?", now - 1000, hash("app"));
   assert.equal(await identityFromDeviceToken(`Bearer ${deviceToken}`), null);
 });
 
 test("signing in again moves the app installation to the new session; signing out removes it", async () => {
   const now = Date.now();
   const me = { id: uid, name: "Mara", email: "", groups: [], isAdmin: false, disabled: 0, created_at: "" } as never;
-  session("before", { created: now - 40 * 24 * HOUR, expires: now - HOUR, remember: true, sso: true });
+  await session("before", { created: now - 40 * 24 * HOUR, expires: now - HOUR, remember: true, sso: true });
   const installationId = "8f0e3a52-6c1b-4f7e-8d29-5a4b3c2d1e0f";
-  run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", hash("live-for-register"), uid, "[]", now + HOUR);
-  const { deviceToken } = registerMobileDevice(me, hash("live-for-register"), { installationId, platform: "android" });
-  run("UPDATE mobile_devices SET session_token=? WHERE installation_id=?", hash("before"), installationId);
+  await run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", hash("live-for-register"), uid, "[]", now + HOUR);
+  const { deviceToken } = await registerMobileDevice(me, hash("live-for-register"), { installationId, platform: "android" });
+  await run("UPDATE mobile_devices SET session_token=? WHERE installation_id=?", hash("before"), installationId);
   // The old session ran out: the token stops working …
   assert.equal(await identityFromDeviceToken(`Bearer ${deviceToken}`), null);
   // … until the same person signs in again on the device.
-  session("after", { created: now, expires: now + HOUR, remember: true, sso: true });
+  await session("after", { created: now, expires: now + HOUR, remember: true, sso: true });
   assert.equal(await carryOverSession(hash("before"), hash("after"), uid), 1);
   assert.equal((await identityFromDeviceToken(`Bearer ${deviceToken}`))?.id, uid, "the same device token works again");
-  assert.equal(one("SELECT 1 FROM sessions WHERE token=?", hash("before")), undefined, "the old session ended");
+  assert.equal(await one("SELECT 1 FROM sessions WHERE token=?", hash("before")), undefined, "the old session ended");
   // Someone else signing in on that device takes nothing over.
   const other = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", other, other, "Nils", "nils@example.test");
-  run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", hash("nils"), other, "[]", now + HOUR);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", other, other, "Nils", "nils@example.test");
+  await run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", hash("nils"), other, "[]", now + HOUR);
   assert.equal(await carryOverSession(hash("after"), hash("nils"), other), 0);
   assert.equal((await identityFromDeviceToken(`Bearer ${deviceToken}`))?.id, uid);
   // Signing out (the session row goes) removes the installation.
-  run("DELETE FROM sessions WHERE token=?", hash("after"));
+  await run("DELETE FROM sessions WHERE token=?", hash("after"));
   assert.equal(await identityFromDeviceToken(`Bearer ${deviceToken}`), null);
-  assert.equal(one("SELECT 1 FROM mobile_devices WHERE installation_id=?", installationId), undefined);
+  assert.equal(await one("SELECT 1 FROM mobile_devices WHERE installation_id=?", installationId), undefined);
 });
 
-test("using a long session counts as activity for the inactive-account check", () => {
+test("using a long session counts as activity for the inactive-account check", async () => {
   const now = Date.now();
   const DAY = 24 * HOUR;
   const active = id(),
     idle = id();
   for (const [user, name] of [[active, "Aktiv"], [idle, "Weg"]])
-    run("INSERT INTO users(id,subject,name,email,last_login_at) VALUES(?,?,?,?,?)", user, user, name, `${user}@example.test`, now - 60 * DAY);
-  run("INSERT INTO sessions(token,user_id,groups_json,expires,created_at,remember,last_seen) VALUES(?,?,?,?,?,?,?)", hash(`s-${active}`), active, "[]", now + DAY, now - 60 * DAY, 1, now - DAY);
-  run("INSERT INTO sessions(token,user_id,groups_json,expires,created_at,remember,last_seen) VALUES(?,?,?,?,?,?,?)", hash(`s-${idle}`), idle, "[]", now - 20 * DAY, now - 60 * DAY, 1, now - 50 * DAY);
-  saveInstanceSettings({ inactiveDays: 30 });
-  const disabled = disableInactiveAccounts(now);
-  saveInstanceSettings({ inactiveDays: null });
+    await run("INSERT INTO users(id,subject,name,email,last_login_at) VALUES(?,?,?,?,?)", user, user, name, `${user}@example.test`, now - 60 * DAY);
+  await run("INSERT INTO sessions(token,user_id,groups_json,expires,created_at,remember,last_seen) VALUES(?,?,?,?,?,?,?)", hash(`s-${active}`), active, "[]", now + DAY, now - 60 * DAY, 1, now - DAY);
+  await run("INSERT INTO sessions(token,user_id,groups_json,expires,created_at,remember,last_seen) VALUES(?,?,?,?,?,?,?)", hash(`s-${idle}`), idle, "[]", now - 20 * DAY, now - 60 * DAY, 1, now - 50 * DAY);
+  await saveInstanceSettings({ inactiveDays: 30 });
+  const disabled = await disableInactiveAccounts(now);
+  await saveInstanceSettings({ inactiveDays: null });
   assert.ok(disabled.includes(idle));
   assert.ok(!disabled.includes(active), "signed in 60 days ago, but used the session yesterday");
 });
 
-test("own sessions are listed and signed out per device", () => {
+test("own sessions are listed and signed out per device", async () => {
   const now = Date.now();
-  session("laptop", { created: now, expires: now + HOUR, agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit Version/18 Safari/605" });
+  await session("laptop", { created: now, expires: now + HOUR, agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit Version/18 Safari/605" });
   const me = { id: uid, name: "Mara", email: "", groups: [], isAdmin: false, disabled: 0, created_at: "" } as never;
-  const list = mySessions(me, "laptop");
+  const list = await mySessions(me, "laptop");
   const laptop = list.find((s) => s.current)!;
   assert.deepEqual([laptop.browser, laptop.system], ["Safari", "macOS"]);
   assert.ok(list.every((s) => !("token" in s)), "no tokens or hashes leave the server");
   assert.deepEqual(deviceName("Mozilla/5.0 (iPhone) FlowplanMobile/1.0"), { app: "Flowplan app", browser: "", system: "iPhone" });
   const phone = list.find((s) => !s.current)!;
-  assert.deepEqual(endMySessions(me, "laptop", { id: phone.id }), { ended: 1, current: false });
-  assert.throws(() => endMySessions(me, "laptop", { id: phone.id }), /gibt es nicht mehr/);
-  const result = endMySessions(me, "laptop", { others: true });
+  assert.deepEqual(await endMySessions(me, "laptop", { id: phone.id }), { ended: 1, current: false });
+  await assert.rejects(async () => await endMySessions(me, "laptop", { id: phone.id }), /gibt es nicht mehr/);
+  const result = await endMySessions(me, "laptop", { others: true });
   assert.equal(result.current, false);
-  assert.deepEqual(mySessions(me, "laptop").map((s) => s.current), [true]);
+  assert.deepEqual((await mySessions(me, "laptop")).map((s) => s.current), [true]);
 });
 
 // Issue #133: "after about 30 minutes of inactivity the session is gone" on
@@ -176,18 +176,18 @@ const MIN = 60_000;
 const DAY = 24 * HOUR;
 // app: the app proved the sign-in (lib/app-devices.ts: the hand-off, or the
 // password form with its device key); the user agent alone does not.
-function signedIn(token: string, input: { agent: string; app?: boolean; remember?: boolean; sso?: boolean }, at: number) {
-  const terms = sessionTerms({ app: !!input.app, remember: input.remember, sso: input.sso }, at);
-  session(token, { created: at, expires: terms.expires, remember: terms.remember, sso: input.sso, app: terms.app, agent: input.agent });
+async function signedIn(token: string, input: { agent: string; app?: boolean; remember?: boolean; sso?: boolean }, at: number) {
+  const terms = await sessionTerms({ app: !!input.app, remember: input.remember, sso: input.sso }, at);
+  await session(token, { created: at, expires: terms.expires, remember: terms.remember, sso: input.sso, app: terms.app, agent: input.agent });
   return terms;
 }
-function clearSessionEnv() {
+async function clearSessionEnv() {
   for (const name of ["SESSION_HOURS", "SESSION_REMEMBER", "SESSION_IDLE_HOURS", "SESSION_MAX_DAYS", "SESSION_GROUPS_HOURS", "SESSION_APP_REMEMBER", "SESSION_APP_DAYS"]) delete process.env[name];
-  saveInstanceSettings({ sessionHours: null, sessionRemember: null, rememberDays: null, appSessions: null, appDays: null });
+  await saveInstanceSettings({ sessionHours: null, sessionRemember: null, rememberDays: null, appSessions: null, appDays: null });
 }
 
 test("#133: no session of any sign-in ends after 31 minutes idle; the apps stay signed in", async () => {
-  clearSessionEnv();
+  await clearSessionEnv();
   const now = Date.now();
   const before = now - 31 * MIN;
   const cases = [
@@ -203,60 +203,60 @@ test("#133: no session of any sign-in ends after 31 minutes idle; the apps stay 
     { token: "browser-passkey", agent: BROWSER, remember: false },
     { token: "browser-passkey-remember", agent: BROWSER, remember: true },
   ];
-  for (const c of cases) signedIn(c.token, c, before);
+  for (const c of cases) await signedIn(c.token, c, before);
   for (const c of cases) assert.ok(await identityFromToken(c.token), `${c.token} still signed in after 31 minutes`);
   // The apps: remembered by default, 90 days after the last use.
   for (const token of ["android-handoff-sso", "desktop-handoff-passkey", "android-password", "desktop-password-sso-account"]) {
-    const row = one<{ remember: number; app: number }>("SELECT remember,app FROM sessions WHERE token=?", hash(token))!;
+    const row = (await one<{ remember: number; app: number }>("SELECT remember,app FROM sessions WHERE token=?", hash(token)))!;
     assert.deepEqual([row.remember, row.app], [1, 1], token);
-    assert.ok(Math.abs(expires(token) - (now + 90 * DAY)) < 5000, `${token} slides to 90 days`);
+    assert.ok(Math.abs((await expires(token)) - (now + 90 * DAY)) < 5000, `${token} slides to 90 days`);
   }
   // Browsers keep today's posture: 8 hours after signing in, "Stay signed in"
   // only where the instance offers it (not by default).
   for (const token of ["browser-sso", "browser-sso-remember", "browser-passkey", "browser-passkey-remember"])
-    assert.equal(expires(token), before + 8 * HOUR, token);
+    assert.equal(await expires(token), before + 8 * HOUR, token);
   // The app after a weekend away: still signed in; a browser session is not.
-  signedIn("android-weekend", { agent: ANDROID, app: true }, now - 3 * DAY);
-  run("UPDATE sessions SET expires=? WHERE token=?", now - 3 * DAY + 90 * DAY, hash("android-weekend"));
+  await signedIn("android-weekend", { agent: ANDROID, app: true }, now - 3 * DAY);
+  await run("UPDATE sessions SET expires=? WHERE token=?", now - 3 * DAY + 90 * DAY, hash("android-weekend"));
   assert.ok(await identityFromToken("android-weekend"));
-  signedIn("browser-yesterday", { agent: BROWSER }, now - 9 * HOUR);
+  await signedIn("browser-yesterday", { agent: BROWSER }, now - 9 * HOUR);
   assert.equal(await identityFromToken("browser-yesterday"), null);
 });
 
 test("#133: the administration sets the session lifetimes; the environment stays the default", async () => {
-  clearSessionEnv();
+  await clearSessionEnv();
   const now = Date.now();
   // Environment equivalents.
   process.env.SESSION_REMEMBER = "true";
   process.env.SESSION_APP_DAYS = "30";
-  assert.equal(sessionSettings().browserRemember, true);
-  assert.equal(sessionTerms({ app: false, remember: true, sso: true }, now).expires, now + 7 * DAY, "SSO honours Stay signed in");
-  assert.equal(sessionTerms({ app: true }, now).expires, now + 30 * DAY);
+  assert.equal((await sessionSettings()).browserRemember, true);
+  assert.equal((await sessionTerms({ app: false, remember: true, sso: true }, now)).expires, now + 7 * DAY, "SSO honours Stay signed in");
+  assert.equal((await sessionTerms({ app: true }, now)).expires, now + 30 * DAY);
   // Stored values win over the environment.
-  saveInstanceSettings({ sessionRemember: false, sessionHours: 4, appDays: 365, rememberDays: 90 });
-  assert.deepEqual(sessionTerms({ app: false, remember: true }, now), { app: false, remember: false, expires: now + 4 * HOUR, maxAge: 4 * 3600 });
-  const app = sessionTerms({ app: true }, now);
+  await saveInstanceSettings({ sessionRemember: false, sessionHours: 4, appDays: 365, rememberDays: 90 });
+  assert.deepEqual(await sessionTerms({ app: false, remember: true }, now), { app: false, remember: false, expires: now + 4 * HOUR, maxAge: 4 * 3600 });
+  const app = await sessionTerms({ app: true }, now);
   assert.equal(app.expires, now + 365 * DAY);
   assert.equal(app.maxAge, 365 * 24 * 3600, "the cookie lasts as long as the session may");
-  saveInstanceSettings({ sessionRemember: true });
+  await saveInstanceSettings({ sessionRemember: true });
   // 90 days without use; the latest end follows (never shorter than that).
-  const browser = sessionTerms({ app: false, remember: true }, now);
+  const browser = await sessionTerms({ app: false, remember: true }, now);
   assert.equal(browser.expires, now + 90 * DAY);
   assert.equal(browser.maxAge, 90 * 24 * 3600);
   // An instance that does not want it: the apps end like a browser session.
-  saveInstanceSettings({ appSessions: "off" });
-  assert.deepEqual(sessionTerms({ app: true, remember: true }, now), { app: true, remember: false, expires: now + 4 * HOUR, maxAge: 4 * 3600 });
+  await saveInstanceSettings({ appSessions: "off" });
+  assert.deepEqual(await sessionTerms({ app: true, remember: true }, now), { app: true, remember: false, expires: now + 4 * HOUR, maxAge: 4 * 3600 });
   // A remembered app session stops sliding once the instance turns it off.
-  session("app-before-off", { created: now - DAY, expires: now + HOUR, remember: true, app: true, agent: ANDROID });
-  run("UPDATE sessions SET last_seen=? WHERE token=?", now - HOUR, hash("app-before-off"));
+  await session("app-before-off", { created: now - DAY, expires: now + HOUR, remember: true, app: true, agent: ANDROID });
+  await run("UPDATE sessions SET last_seen=? WHERE token=?", now - HOUR, hash("app-before-off"));
   assert.ok(await identityFromToken("app-before-off"));
-  assert.equal(expires("app-before-off"), now + HOUR);
-  saveInstanceSettings({ appSessions: "remember" });
+  assert.equal(await expires("app-before-off"), now + HOUR);
+  await saveInstanceSettings({ appSessions: "remember" });
   await identityFromToken("app-before-off");
   // Never beyond 365 days after signing in (the day before).
-  assert.ok(Math.abs(expires("app-before-off") - (now - DAY + 365 * DAY)) < 5000);
+  assert.ok(Math.abs((await expires("app-before-off")) - (now - DAY + 365 * DAY)) < 5000);
   // Out of range values are refused.
-  assert.throws(() => saveInstanceSettings({ sessionHours: 48 }));
-  assert.throws(() => saveInstanceSettings({ appSessions: "forever" }));
-  clearSessionEnv();
+  await assert.rejects(async () => await saveInstanceSettings({ sessionHours: 48 }));
+  await assert.rejects(async () => await saveInstanceSettings({ appSessions: "forever" }));
+  await clearSessionEnv();
 });

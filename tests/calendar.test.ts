@@ -42,9 +42,9 @@ const view: View = {
   endDateField: "end",
   calendar: { mode: "week", timeZone: "Europe/Berlin" },
 };
-function user(): Identity {
+async function user(): Promise<Identity> {
   const uid = id();
-  run(
+  await run(
     "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
     uid,
     uid,
@@ -61,30 +61,30 @@ function user(): Identity {
     groups: [],
   };
 }
-const owner = user(),
-  viewer = user(),
-  outsider = user(),
-  wid = createWorkspace(owner.id, "Calendar tests"),
-  sid = bootstrap(owner, wid).spaces[0].id;
-run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
-const act = (input: Record<string, unknown>, actor = owner): any =>
-  command(actor, input);
-function fixture() {
-  const pid = act({
+const owner = await user(),
+  viewer = await user(),
+  outsider = await user(),
+  wid = await createWorkspace(owner.id, "Calendar tests"),
+  sid = (await bootstrap(owner, wid)).spaces[0].id;
+await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
+const act = async (input: Record<string, unknown>, actor = owner): Promise<any> =>
+  await command(actor, input);
+async function fixture() {
+  const pid = (await act({
     action: "page.create",
     workspaceId: wid,
     spaceId: sid,
     kind: "database",
     title: "Calendar fixture",
-  }).id as string;
-  act({
+  })).id as string;
+  await act({
     action: "database.update",
     pageId: pid,
     version: 1,
     fields,
     views: [view],
   });
-  const rid = act({
+  const rid = (await act({
     action: "row.create",
     pageId: pid,
     cells: {
@@ -92,20 +92,20 @@ function fixture() {
       start: "2026-03-28T09:00:00+01:00",
       end: "2026-03-28T10:30:00+01:00",
     },
-  }).id as string;
-  const schedule = (
+  })).id as string;
+  const schedule = async (
     change: Record<string, unknown>,
     extra = {},
     actor = owner,
   ) =>
-    act(
+    await act(
       {
         action: "row.schedule",
         pageId: pid,
         viewId: view.id,
-        version: database(pid).version,
+        version: (await database(pid)).version,
         rowId: rid,
-        rowVersion: rows(pid)[0].version,
+        rowVersion: (await rows(pid))[0].version,
         change: { timeZone: "Europe/Berlin", ...change },
         ...extra,
       },
@@ -328,59 +328,59 @@ test("overlap columns include short hit areas and reset after connected event gr
     ],
   );
 });
-test("atomic time commands enforce rights, locks, range consistency and optimistic versions", () => {
-  const f = fixture(),
-    before = rows(f.pid)[0],
+test("atomic time commands enforce rights, locks, range consistency and optimistic versions", async () => {
+  const f = await fixture(),
+    before = (await rows(f.pid))[0],
     move = { operation: "move-time", at: "2026-03-29T07:00Z" };
   for (const actor of [viewer, outsider])
-    assert.throws(() => f.schedule(move, {}, actor), /Berechtigung/);
-  assert.throws(() => f.schedule(move, { rowVersion: 0 }), /Datensatz/);
-  assert.throws(() => f.schedule(move, { version: 0 }), /Ansicht/);
-  assert.throws(
-    () => f.schedule({ ...move, timeZone: "Mars/Olympus" }),
+    await assert.rejects(async () => await f.schedule(move, {}, actor), /Berechtigung/);
+  await assert.rejects(async () => await f.schedule(move, { rowVersion: 0 }), /Datensatz/);
+  await assert.rejects(async () => await f.schedule(move, { version: 0 }), /Ansicht/);
+  await assert.rejects(
+    async () => await f.schedule({ ...move, timeZone: "Mars/Olympus" }),
     /Zeitzone/,
   );
-  assert.throws(
-    () => f.schedule({ ...move, at: "2026-03-29T09:00" }),
+  await assert.rejects(
+    async () => await f.schedule({ ...move, at: "2026-03-29T09:00" }),
     /eindeutiger/,
   );
-  assert.throws(
-    () =>
-      f.schedule({
+  await assert.rejects(
+    async () =>
+      await f.schedule({
         operation: "set-range",
         start: "2026-03-29T09:00Z",
         end: "2026-03-29",
       }),
     /Ende/,
   );
-  assert.deepEqual(rows(f.pid)[0], before);
-  run("UPDATE pages SET locked=1 WHERE id=?", f.pid);
-  assert.throws(() => f.schedule(move), /gesperrt/);
-  run("UPDATE pages SET locked=0 WHERE id=?", f.pid);
-  f.schedule(move);
-  assert.deepEqual(rows(f.pid)[0].cells, {
+  assert.deepEqual((await rows(f.pid))[0], before);
+  await run("UPDATE pages SET locked=1 WHERE id=?", f.pid);
+  await assert.rejects(async () => await f.schedule(move), /gesperrt/);
+  await run("UPDATE pages SET locked=0 WHERE id=?", f.pid);
+  await f.schedule(move);
+  assert.deepEqual((await rows(f.pid))[0].cells, {
     title: "Meeting",
     start: "2026-03-29T07:00:00Z",
     end: "2026-03-29T08:30:00Z",
   });
-  assert.equal(rows(f.pid)[0].version, before.version + 1);
-  f.schedule({
+  assert.equal((await rows(f.pid))[0].version, before.version + 1);
+  await f.schedule({
     operation: "set-range",
     start: "2026-03-29",
     end: "2026-03-30",
   });
-  assert.deepEqual(rows(f.pid)[0].cells, {
+  assert.deepEqual((await rows(f.pid))[0].cells, {
     title: "Meeting",
     start: "2026-03-29",
     end: "2026-03-30",
   });
-  assert.throws(
-    () =>
-      act({
+  await assert.rejects(
+    async () =>
+      await act({
         action: "row.update",
         pageId: f.pid,
         rowId: f.rid,
-        version: rows(f.pid)[0].version,
+        version: (await rows(f.pid))[0].version,
         cells: { start: "2026-02-30T09:00Z" },
       }),
     /Datum/,
@@ -391,39 +391,39 @@ test("atomic time commands enforce rights, locks, range consistency and optimist
     { cells: values, errors: {} },
   );
 });
-test("linked calendars use independent time zones and protect source and embed versions", () => {
-  const f = fixture(),
-    host = act({
+test("linked calendars use independent time zones and protect source and embed versions", async () => {
+  const f = await fixture(),
+    host = (await act({
       action: "page.create",
       workspaceId: wid,
       spaceId: sid,
       kind: "document",
       title: "Linked calendar",
-    }).id,
+    })).id,
     blockId = id(),
     linked = {
       ...view,
       calendar: { mode: "day", timeZone: "America/New_York" },
     };
   const html = `<div data-linked-database="${blockId}" data-linked-source="${f.pid}" data-linked-version="1" data-linked-views="${escaped(JSON.stringify([linked]))}">Linked</div>`;
-  run(
+  await run(
     "UPDATE documents SET html=?,state=? WHERE page_id=?",
     html,
     htmlState(html),
     host,
   );
-  const input = () => ({
+  const input = async () => ({
     action: "linked.command",
     pageId: host,
     blockId,
     generation: "1",
-    sourceVersion: database(f.pid).version,
+    sourceVersion: (await database(f.pid)).version,
     mutation: {
       action: "row.schedule",
       viewId: view.id,
       version: 1,
       rowId: f.rid,
-      rowVersion: rows(f.pid)[0].version,
+      rowVersion: (await rows(f.pid))[0].version,
       change: {
         operation: "move-time",
         at: "2026-03-29T12:00Z",
@@ -431,57 +431,57 @@ test("linked calendars use independent time zones and protect source and embed v
       },
     },
   });
-  assert.throws(() => act({ ...input(), sourceVersion: 0 }), /Datenquelle/);
-  assert.throws(() => act(input(), viewer), /Berechtigung/);
-  run("UPDATE pages SET locked=1 WHERE id=?", host);
-  act(input());
-  assert.equal(rows(f.pid)[0].cells.start, "2026-03-29T12:00:00Z");
-  assert.equal(database(f.pid).views[0].calendar?.timeZone, "Europe/Berlin");
-  run("UPDATE pages SET locked=1 WHERE id=?", f.pid);
-  assert.throws(() => act(input()), /gesperrt/);
+  await assert.rejects(async () => await act({ ...(await input()), sourceVersion: 0 }), /Datenquelle/);
+  await assert.rejects(async () => await act(await input(), viewer), /Berechtigung/);
+  await run("UPDATE pages SET locked=1 WHERE id=?", host);
+  await act(await input());
+  assert.equal((await rows(f.pid))[0].cells.start, "2026-03-29T12:00:00Z");
+  assert.equal((await database(f.pid)).views[0].calendar?.timeZone, "Europe/Berlin");
+  await run("UPDATE pages SET locked=1 WHERE id=?", f.pid);
+  await assert.rejects(async () => await act(await input()), /gesperrt/);
 });
 test("calendar preferences and timed values survive copies, templates, snapshots and ZIP restoration", async () => {
-  const f = fixture(),
-    expected = database(f.pid).views[0].calendar;
-  const check = (pid: string) => {
-    assert.deepEqual(database(pid).views[0].calendar, expected);
-    assert.equal(rows(pid)[0].cells.start, "2026-03-28T09:00:00+01:00");
+  const f = await fixture(),
+    expected = (await database(f.pid)).views[0].calendar;
+  const check = async (pid: string) => {
+    assert.deepEqual((await database(pid)).views[0].calendar, expected);
+    assert.equal((await rows(pid))[0].cells.start, "2026-03-28T09:00:00+01:00");
   };
-  check(act({ action: "page.duplicate", pageId: f.pid }).id);
-  const tid = act({
+  await check((await act({ action: "page.duplicate", pageId: f.pid })).id);
+  const tid = (await act({
     action: "template.save",
     pageId: f.pid,
     name: "Calendar",
-  }).id;
-  check(
-    act({
+  })).id;
+  await check(
+    (await act({
       action: "page.create",
       workspaceId: wid,
       spaceId: sid,
       title: "Calendar copy",
       templateId: tid,
-    }).id,
+    })).id,
   );
-  act({ action: "page.snapshot", pageId: f.pid });
-  const snap = one<{ id: string }>(
+  await act({ action: "page.snapshot", pageId: f.pid });
+  const snap = (await one<{ id: string }>(
     "SELECT id FROM snapshots WHERE page_id=? ORDER BY seq DESC",
     f.pid,
-  )!.id;
-  f.schedule({ operation: "move-time", at: "2026-09-23T12:00Z" });
-  act({ action: "snapshot.restore", pageId: f.pid, snapshotId: snap });
-  check(f.pid);
-  const restored = createWorkspace(owner.id, "Calendar restore"),
+  ))!.id;
+  await f.schedule({ operation: "move-time", at: "2026-09-23T12:00Z" });
+  await act({ action: "snapshot.restore", pageId: f.pid, snapshotId: snap });
+  await check(f.pid);
+  const restored = await createWorkspace(owner.id, "Calendar restore"),
     result = await importArchive(
       owner,
       restored,
       await exportArchive(owner, wid),
     );
-  check(result.pageIds[f.pid]);
-  assert.throws(() =>
-    act({
+  await check(result.pageIds[f.pid]);
+  await assert.rejects(async () =>
+    await act({
       action: "database.update",
       pageId: f.pid,
-      version: database(f.pid).version,
+      version: (await database(f.pid)).version,
       fields,
       views: [
         { ...view, calendar: { mode: "week", timeZone: "Mars/Olympus" } },

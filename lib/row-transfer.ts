@@ -23,6 +23,7 @@ import { maintainRowOrders } from "./row-order-server";
 import { rowCreated } from "./automations";
 import { cellText } from "./cell-text";
 import type { Field, Identity, Page, Row } from "./types";
+import { filterAsync, mapAsync } from "./each-async";
 
 const input = z.object({
   rowIds: z.array(z.uuid()).min(1).max(500),
@@ -34,7 +35,7 @@ const input = z.object({
 
 const NOT_COPIED = new Set<Field["type"]>(["formula", "rollup", "created_at", "updated_at", "created_by", "updated_by", "id", "progress", "sprint"]);
 const TEXTLIKE = new Set<Field["type"]>(["text", "url", "email", "phone"]);
-const fieldsOf = (pageId: string) => JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId)!.fields) as Field[];
+const fieldsOf = async (pageId: string) => JSON.parse((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId))!.fields) as Field[];
 const dataDir = () => resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads");
 const FILE_URL = /\/api\/files\/([0-9a-f-]{36})/gi;
 
@@ -94,48 +95,48 @@ function convert(value: unknown, from: Field, to: Field, addOption: (f: Field, o
   }
 }
 
-function nextNumber(pageId: string) {
-  run(
+async function nextNumber(pageId: string) {
+  await run(
     "INSERT INTO row_counters(page_id,last) VALUES(?,(SELECT COALESCE(MAX(number),0) FROM rows WHERE page_id=?)) ON CONFLICT(page_id) DO NOTHING",
     pageId,
     pageId,
   );
-  run("UPDATE row_counters SET last=last+1 WHERE page_id=?", pageId);
-  return one<{ last: number }>("SELECT last FROM row_counters WHERE page_id=?", pageId)!.last;
+  await run("UPDATE row_counters SET last=last+1 WHERE page_id=?", pageId);
+  return (await one<{ last: number }>("SELECT last FROM row_counters WHERE page_id=?", pageId))!.last;
 }
 
 // Duplicates a file for the target database (a copy must not depend on the
 // source's permissions); without the local file the reference stays.
-function copyFile(fileId: string, target: Page, userId: string) {
-  const file = one<{ id: string; name: string; mime: string; size: number }>("SELECT id,name,mime,size FROM files WHERE id=?", fileId);
+async function copyFile(fileId: string, target: Page, userId: string) {
+  const file = await one<{ id: string; name: string; mime: string; size: number }>("SELECT id,name,mime,size FROM files WHERE id=?", fileId);
   const from = resolve(dataDir(), fileId);
   if (!file || !existsSync(from)) return fileId;
   const fresh = id();
   mkdirSync(dataDir(), { recursive: true });
   copyFileSync(from, resolve(dataDir(), fresh));
-  run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fresh, target.id, file.name, file.mime, file.size, userId);
+  await run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fresh, target.id, file.name, file.mime, file.size, userId);
   return fresh;
 }
 
-export function transferRows(user: Identity, sourcePageId: string, raw: unknown) {
+export async function transferRows(user: Identity, sourcePageId: string, raw: unknown) {
   const b = input.parse(raw);
-  const source = requirePage(user, sourcePageId, b.mode === "move");
-  const target = requirePage(user, b.targetPageId, true);
+  const source = await requirePage(user, sourcePageId, b.mode === "move");
+  const target = await requirePage(user, b.targetPageId, true);
   if (source.kind !== "database" || target.kind !== "database") throw new HttpError(400, "Keine Datenbank.");
   if (source.id === target.id) throw new HttpError(400, "Bitte eine andere Datenbank wählen.");
   if (source.workspace_id !== target.workspace_id) throw new HttpError(400, "Nur innerhalb eines Arbeitsbereichs.");
   // Neither side may be behind a journal PIN the person has not entered.
-  requireUnlocked(user, source);
-  requireUnlocked(user, target);
+  await requireUnlocked(user, source);
+  await requireUnlocked(user, target);
   if (target.locked || (b.mode === "move" && source.locked)) throw new HttpError(409, "Diese Seite ist gesperrt.");
-  const sourceFields = fieldsOf(source.id);
-  const targetFields = fieldsOf(target.id);
+  const sourceFields = await fieldsOf(source.id);
+  const targetFields = await fieldsOf(target.id);
   // Properties the target lacks, created on request.
   const created: string[] = [];
   const mapping = new Map<string, Field>();
   // Properties hidden from this person are not copied; moving would lose
   // them, so it is refused (lib/field-access.ts).
-  const hidden = hiddenFieldsFor(user, source, sourceFields);
+  const hidden = await hiddenFieldsFor(user, source, sourceFields);
   if (hidden.size && b.mode === "move")
     throw new HttpError(403, "Diese Einträge haben Eigenschaften, die du nicht sehen darfst.");
   sourceFields.forEach((f, i) => {
@@ -148,7 +149,7 @@ export function transferRows(user: Identity, sourcePageId: string, raw: unknown)
     }
     if (to) mapping.set(f.id, to);
   });
-  assertFieldsWritable(
+  await assertFieldsWritable(
     user,
     target,
     targetFields,
@@ -159,15 +160,15 @@ export function transferRows(user: Identity, sourcePageId: string, raw: unknown)
     f.options = [...(f.options || []), o].slice(0, 100);
     optionsAdded = true;
   };
-  const rows = b.rowIds.map((rid) => {
-    const row = one<Row & { cells: string }>("SELECT * FROM rows WHERE id=? AND page_id=?", rid, source.id);
+  const rows = await mapAsync(b.rowIds, async (rid) => {
+    const row = await one<Row & { cells: string }>("SELECT * FROM rows WHERE id=? AND page_id=?", rid, source.id);
     if (!row) throw new HttpError(404, "Eintrag nicht gefunden.");
-    assertRowAccess(user, source, row, b.mode === "move");
+    await assertRowAccess(user, source, row, b.mode === "move");
     return row;
   });
   const results: string[] = [];
-  lockFor(`row-positions:${target.id}`);
-  let position = (one<{ p: number }>("SELECT COALESCE(MAX(position),0) p FROM rows WHERE page_id=?", target.id)?.p || 0) + 1;
+  await lockFor(`row-positions:${target.id}`);
+  let position = ((await one<{ p: number }>("SELECT COALESCE(MAX(position),0) p FROM rows WHERE page_id=?", target.id))?.p || 0) + 1;
   for (const row of rows) {
     let cells: Record<string, unknown> = {};
     const old = JSON.parse(row.cells as unknown as string) as Record<string, unknown>;
@@ -177,15 +178,15 @@ export function transferRows(user: Identity, sourcePageId: string, raw: unknown)
       if (value !== undefined) cells[to.id] = value;
     }
     // Tag-backed properties: missing tags created where allowed (#79).
-    cells = tagCells(user, target, targetFields, cells, false);
-    const html = String(one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", row.id)?.html ?? row.content ?? "");
+    cells = await tagCells(user, target, targetFields, cells, false);
+    const html = String((await one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", row.id))?.html ?? row.content ?? "");
     const fileIds = new Set([...JSON.stringify(cells).matchAll(FILE_URL), ...html.matchAll(FILE_URL)].map((m) => m[1].toLowerCase()));
     if (b.mode === "copy") {
       // New files for the copy, and the references changed accordingly.
-      const swap = new Map([...fileIds].map((f) => [f, copyFile(f, target, user.id)]));
+      const swap = new Map(await mapAsync([...fileIds], async (f) => [f, await copyFile(f, target, user.id)]));
       const rewrite = (text: string) => text.replace(FILE_URL, (all, f: string) => `/api/files/${swap.get(f.toLowerCase()) || f}`);
       const rid = id();
-      run(
+      await run(
         "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content,icon,cover,recurrence) VALUES(?,?,?,?,?,?,?,?,?,?)",
         rid,
         target.id,
@@ -198,48 +199,48 @@ export function transferRows(user: Identity, sourcePageId: string, raw: unknown)
         row.cover || "",
         row.recurrence || "",
       );
-      if (html) replaceRowDocument(rid, rewrite(html), user.id);
+      if (html) await replaceRowDocument(rid, rewrite(html), user.id);
       results.push(rid);
     } else {
-      run(
+      await run(
         "UPDATE rows SET page_id=?,cells=?,position=?,number=?,version=version+1,updated_by=?,updated_at=? WHERE id=?",
         target.id,
         JSON.stringify(cells),
         position++,
-        nextNumber(target.id),
+        await nextNumber(target.id),
         user.id, nowText(),
         row.id,
       );
       // Everything that belongs to the record moves along.
       for (const table of ["comments", "notifications", "shared_comments", "inline_threads", "row_favorites", "time_entries", "git_links", "tickets", "doc_tasks"])
-        run(`UPDATE ${table} SET page_id=? WHERE row_id=? AND page_id=?`, target.id, row.id, source.id);
+        await run(`UPDATE ${table} SET page_id=? WHERE row_id=? AND page_id=?`, target.id, row.id, source.id);
       // Time entries follow their property, if it was carried over.
-      for (const [fid, to] of mapping) run("UPDATE time_entries SET field_id=? WHERE row_id=? AND field_id=?", to.id, row.id, fid);
-      for (const table of ["date_reminders", "editor_presence", "row_status_log"]) run(`DELETE FROM ${table} WHERE row_id=? AND page_id=?`, row.id, source.id);
-      if (fileIds.size) run(`UPDATE files SET page_id=? WHERE page_id=? AND id IN (${[...fileIds].map(() => "?").join(",")})`, target.id, source.id, ...fileIds);
+      for (const [fid, to] of mapping) await run("UPDATE time_entries SET field_id=? WHERE row_id=? AND field_id=?", to.id, row.id, fid);
+      for (const table of ["date_reminders", "editor_presence", "row_status_log"]) await run(`DELETE FROM ${table} WHERE row_id=? AND page_id=?`, row.id, source.id);
+      if (fileIds.size) await run(`UPDATE files SET page_id=? WHERE page_id=? AND id IN (${[...fileIds].map(() => "?").join(",")})`, target.id, source.id, ...fileIds);
       results.push(row.id);
     }
   }
   if (created.length || optionsAdded)
-    run("UPDATE databases SET fields=?,version=version+1 WHERE page_id=?", JSON.stringify(targetFields), target.id);
-  if (targetFields.some(isTagField)) syncTagFieldOptions(target.workspace_id);
-  run("UPDATE pages SET updated_at=? WHERE id IN (?,?)", nowText(), source.id, target.id);
-  maintainRowOrders(target.id);
-  if (b.mode === "move") maintainRowOrders(source.id);
-  for (const rid of results) rowCreated(user, target, rid);
+    await run("UPDATE databases SET fields=?,version=version+1 WHERE page_id=?", JSON.stringify(targetFields), target.id);
+  if (targetFields.some(isTagField)) await syncTagFieldOptions(target.workspace_id);
+  await run("UPDATE pages SET updated_at=? WHERE id IN (?,?)", nowText(), source.id, target.id);
+  await maintainRowOrders(target.id);
+  if (b.mode === "move") await maintainRowOrders(source.id);
+  for (const rid of results) await rowCreated(user, target, rid);
   return { ids: results, created, target: target.id, count: results.length };
 }
 
 // Databases a person can move or copy records into (same workspace).
-export function transferTargets(user: Identity, pageId: string) {
-  const page = requirePage(user, pageId);
-  return all<{ id: string; title: string; icon: string }>(
+export async function transferTargets(user: Identity, pageId: string) {
+  const page = await requirePage(user, pageId);
+  return await filterAsync(await all<{ id: string; title: string; icon: string }>(
     "SELECT id,title,icon FROM pages WHERE workspace_id=? AND kind='database' AND deleted_at IS NULL AND id!=? ORDER BY title",
     page.workspace_id,
     page.id,
-  ).filter((p) => {
+  ), async (p) => {
     try {
-      requirePage(user, p.id, true);
+      await requirePage(user, p.id, true);
       return true;
     } catch {
       return false;

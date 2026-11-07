@@ -108,7 +108,7 @@ test("records created offline keep their id and repeats are harmless", async () 
   const { command, bootstrap } = await import("../lib/api");
   const { createWorkspace } = await import("../lib/seed");
   const uid = id();
-  run(
+  await run(
     "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
     uid,
     uid,
@@ -124,37 +124,37 @@ test("records created offline keep their id and repeats are harmless", async () 
     disabled: 0,
     created_at: "",
   };
-  const wid = createWorkspace(owner.id, "Offline"),
-    boot = bootstrap(owner, wid);
-  const db = (title: string) =>
+  const wid = await createWorkspace(owner.id, "Offline"),
+    boot = await bootstrap(owner, wid);
+  const db = async (title: string) =>
     (
-      command(owner, {
+      (await command(owner, {
         action: "page.create",
         workspaceId: wid,
         spaceId: boot.spaces[0].id,
         title,
         kind: "database",
-      }) as { id: string }
+      })) as { id: string }
     ).id;
-  const pid = db("A"),
-    other = db("B");
+  const pid = await db("A"),
+    other = await db("B");
   const rid = crypto.randomUUID();
-  const create = (pageId: string) =>
-    command(owner, {
+  const create = async (pageId: string) =>
+    await command(owner, {
       action: "row.create",
       pageId,
       rowId: rid,
       cells: { title: "Offline" },
       templateId: null,
     });
-  assert.deepEqual(create(pid), { id: rid });
-  assert.deepEqual(create(pid), { id: rid });
+  assert.deepEqual(await create(pid), { id: rid });
+  assert.deepEqual(await create(pid), { id: rid });
   assert.equal(
-    Number(one("SELECT count(*) n FROM rows WHERE id=?", rid)?.n),
+    Number((await one("SELECT count(*) n FROM rows WHERE id=?", rid))?.n),
     1,
   );
-  assert.throws(
-    () => create(other),
+  await assert.rejects(
+    async () => await create(other),
     (e: any) => e.status === 409,
   );
 });

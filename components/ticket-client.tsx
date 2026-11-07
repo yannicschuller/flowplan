@@ -5,7 +5,7 @@ import { serverMessage } from "@/lib/i18n-errors";
 import { useT } from "./i18n";
 import type { customerTicket } from "@/lib/service-desk";
 
-type Ticket = ReturnType<typeof customerTicket>;
+type Ticket = Awaited<ReturnType<typeof customerTicket>>;
 
 // The customer's view of their request: status, their answers and the
 // conversation with the team, with a reply box.

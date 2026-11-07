@@ -13,28 +13,28 @@ const { htmlState } = await import("../lib/document-server");
 const { exportMarkdown } = await import("../lib/markdown-export");
 const { readExportZip } = await import("./helpers/read-export-zip");
 
-function person(name: string): Identity {
+async function person(name: string): Promise<Identity> {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
   return { id: uid, name, email: `${name}@example.test`, groups: [], isAdmin: false, disabled: 0, created_at: "" } as Identity;
 }
 // A family: Ada owns the workspace, Ben is a member with his own private space.
-const ada = person("Ada"),
-  ben = person("Ben");
-const wid = createWorkspace(ada.id, "Familie");
-run("INSERT INTO members VALUES(?,?,?)", wid, ben.id, "editor");
-const as = (user: Identity) => (b: Record<string, unknown>) => command(user, { workspaceId: wid, ...b }) as Record<string, unknown>;
-const shared = bootstrap(ada, wid).spaces[0].id;
+const ada = await person("Ada"),
+  ben = await person("Ben");
+const wid = await createWorkspace(ada.id, "Familie");
+await run("INSERT INTO members VALUES(?,?,?)", wid, ben.id, "editor");
+const as = (user: Identity) => async (b: Record<string, unknown>) => (await command(user, { workspaceId: wid, ...b })) as Record<string, unknown>;
+const shared = (await bootstrap(ada, wid)).spaces[0].id;
 const benSpace = String(as(ben)({ action: "space.create", name: "Ben privat", private: true }).id);
-const write = (pageId: string, html: string) => run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), pageId);
+const write = async (pageId: string, html: string) => await run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), pageId);
 
 const house = String(as(ada)({ action: "page.create", spaceId: shared, title: "Haus", kind: "document" }).id);
 const car = String(as(ada)({ action: "page.create", spaceId: shared, title: "Auto", kind: "document" }).id);
 const heating = String(as(ada)({ action: "page.create", spaceId: shared, title: "Heizung", kind: "document", parentId: house }).id);
-write(heating, `<p>Siehe <a href="/#page=${car}">Auto</a> und <a href="https://flowplan.example.test/#page=${house}">Haus</a>.</p>`);
+await write(heating, `<p>Siehe <a href="/#page=${car}">Auto</a> und <a href="https://flowplan.example.test/#page=${house}">Haus</a>.</p>`);
 as(ada)({ action: "comment.create", pageId: car, body: "TÜV im März" });
 const diary = String(as(ben)({ action: "page.create", spaceId: benSpace, title: "Tagebuch", kind: "document" }).id);
-write(diary, "<p>Nur für mich.</p>");
+await write(diary, "<p>Nur für mich.</p>");
 
 test("a space becomes one ZIP: a folder per top-level page, relative links, an index", async () => {
   const result = await exportMarkdown(ben, { spaceId: shared, format: "zip", includeSubpages: false, history: true });
@@ -58,7 +58,7 @@ test("a space becomes one ZIP: a folder per top-level page, relative links, an i
   assert.match(files.get("README.txt")!.toString("utf8"), /eigenen Ordner|folder of its own/);
   // Nothing from Ben's private space.
   assert.ok(!names.some((n) => n.includes("Tagebuch")));
-  assert.equal(result.name, `${bootstrap(ada, wid).spaces.find((s) => s.id === shared)!.name}.zip`.replace(/[\\/:*?"<>|]/g, "-"));
+  assert.equal(result.name, `${(await bootstrap(ada, wid)).spaces.find((s) => s.id === shared)!.name}.zip`.replace(/[\\/:*?"<>|]/g, "-"));
 });
 
 test("only who may read the space exports it, and only as a ZIP", async () => {

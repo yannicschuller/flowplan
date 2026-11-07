@@ -36,7 +36,7 @@ const bounded = (raw: string | undefined, fallback: number, min: number, max: nu
 export const isAppAgent = (agent: string | null | undefined) => /\bFlowplan(Mobile|Desktop)\//.test(agent || "");
 
 // The effective values, and where each comes from (for the administration).
-export function sessionSettings(settings: InstanceSettings = instanceSettings()) {
+export async function sessionSettings(settings: InstanceSettings = (await instanceSettings())) {
   const env = process.env;
   const maxDays = env.SESSION_MAX_DAYS ? bounded(env.SESSION_MAX_DAYS, 30, 1, 365) : null;
   return {
@@ -59,20 +59,20 @@ export function sessionSettings(settings: InstanceSettings = instanceSettings())
   };
 }
 
-export const sessionHours = () => sessionSettings().hours;
+export const sessionHours = async () => (await sessionSettings()).hours;
 
 // How a remembered session of this kind lives: the inactivity limit and its
 // latest end after signing in. null: sessions of this kind are not
 // remembered on this instance.
-export function rememberPolicy(kind: SessionKind = "browser") {
-  const s = sessionSettings();
+export async function rememberPolicy(kind: SessionKind = "browser") {
+  const s = await sessionSettings();
   if (kind === "app" ? !s.appRemember : !s.browserRemember) return null;
   const idleHours = kind === "app" ? s.appIdleHours : s.rememberIdleHours;
   // Never shorter than the inactivity limit the administration chose.
   const maxHours = Math.max(kind === "app" ? s.appMaxHours : s.browserMaxHours, idleHours);
   return { idleHours, maxHours, groupsHours: s.groupsHours ? Math.min(maxHours, s.groupsHours) : null };
 }
-export type RememberPolicy = NonNullable<ReturnType<typeof rememberPolicy>>;
+export type RememberPolicy = NonNullable<Awaited<ReturnType<typeof rememberPolicy>>>;
 
 // The latest end of a remembered session, from when it began.
 export function rememberedEnd(created: number, sso: boolean, policy: RememberPolicy) {
@@ -86,11 +86,11 @@ export function rememberedEnd(created: number, sso: boolean, policy: RememberPol
 // browser hand-off with a passkey or SSO, or the password form in the app
 // with its device key); a browser – and an app that proves nothing – only
 // with "Stay signed in", for password, passkey and SSO alike.
-export function sessionTerms(input: { app: boolean; remember?: boolean; sso?: boolean }, now = Date.now()) {
+export async function sessionTerms(input: { app: boolean; remember?: boolean; sso?: boolean }, now = Date.now()) {
   const app = input.app;
-  const policy = app ? rememberPolicy("app") : input.remember ? rememberPolicy("browser") : null;
+  const policy = app ? (await rememberPolicy("app")) : input.remember ? (await rememberPolicy("browser")) : null;
   if (!policy) {
-    const hours = sessionHours();
+    const hours = await sessionHours();
     return { app, remember: false, expires: now + hours * HOUR, maxAge: hours * 3600 };
   }
   const end = rememberedEnd(now, !!input.sso, policy);

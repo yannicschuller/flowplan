@@ -9,14 +9,14 @@ import { customerReply, requireTicketLink } from "@/lib/service-desk";
 // A customer answers on their request page (the link is the key).
 async function handlePOST(req: Request, { params }: { params: Promise<{ token: string }> }) {
   try {
-    checkOrigin(req);
+    await checkOrigin(req);
     const { token } = await params;
     // An unknown link is refused before the body is read; the body itself
     // is read with a limit (UTF-8: up to 4 bytes per character).
-    requireTicketLink(token);
+    await requireTicketLink(token);
     const raw = await readTextLimited(req, 80_000, "Nachricht zu lang.");
     if (raw.length > 20_000) throw new HttpError(413, "Nachricht zu lang.");
-    const ticket = transaction(() => customerReply(token, JSON.parse(raw)));
+    const ticket = await transaction(async () => await customerReply(token, JSON.parse(raw)));
     return NextResponse.json(ticket, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     const invalid = e instanceof z.ZodError || e instanceof SyntaxError;

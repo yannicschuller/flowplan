@@ -8,13 +8,13 @@ import { receiveGitWebhook } from "@/lib/git-integration";
 export async function POST(req: Request, { params }: { params: Promise<{ token: string }> }) {
   try {
     // Not during an instance move (lib/instance-read-only.ts): the sender retries.
-    refuseWhileReadOnly(req);
+    await refuseWhileReadOnly(req);
     const { token } = await params;
     const length = Number(req.headers.get("content-length") || 0);
     if (length > 5_000_000) throw new HttpError(413, "Anfrage zu groß.");
     const body = await req.text();
     if (body.length > 5_000_000) throw new HttpError(413, "Anfrage zu groß.");
-    return NextResponse.json(transaction(() => receiveGitWebhook(token, req.headers, body)));
+    return NextResponse.json(await transaction(async () => await receiveGitWebhook(token, req.headers, body)));
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof HttpError ? e.message : "Webhook konnte nicht verarbeitet werden." },

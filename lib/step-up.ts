@@ -20,17 +20,17 @@ import { translate, type Locale } from "./i18n";
 export const RECENT_SIGN_IN_MS = 10 * 60_000;
 
 // When the session of this cookie began (null without one).
-export function sessionStartedAt(token: string | undefined) {
+export async function sessionStartedAt(token: string | undefined) {
   if (!token) return null;
   return (
-    one<{ at: number | null }>("SELECT COALESCE(authenticated_at,created_at) at FROM sessions WHERE token=?", hash(token))?.at ?? null
+    (await one<{ at: number | null }>("SELECT COALESCE(authenticated_at,created_at) at FROM sessions WHERE token=?", hash(token)))?.at ?? null
   );
 }
 
 // What the account can confirm with, for the dialogs.
-export function stepUpMethods(userId: string, sessionStart: number | null, now = Date.now()) {
-  const m = signInMethods(userId);
-  const password = (m.password || m.ldap) && !ssoOnlyAccount(userId);
+export async function stepUpMethods(userId: string, sessionStart: number | null, now = Date.now()) {
+  const m = await signInMethods(userId);
+  const password = (m.password || m.ldap) && !(await ssoOnlyAccount(userId));
   const strong = password || m.totp || m.passkeys > 0;
   return {
     password,
@@ -41,7 +41,7 @@ export function stepUpMethods(userId: string, sessionStart: number | null, now =
     recentOk: !strong && !!sessionStart && now - sessionStart <= RECENT_SIGN_IN_MS,
   };
 }
-export type StepUpMethods = ReturnType<typeof stepUpMethods>;
+export type StepUpMethods = Awaited<ReturnType<typeof stepUpMethods>>;
 
 const stepSchema = z.object({
   password: z.string().max(200).optional(),
@@ -56,21 +56,21 @@ export async function confirmStep(
 ) {
   const t = translate(context.locale);
   const step = stepSchema.parse((input && typeof input === "object" ? (input as { confirm?: unknown }).confirm : undefined) ?? {});
-  const methods = stepUpMethods(userId, context.sessionStart);
+  const methods = await stepUpMethods(userId, context.sessionStart);
   const keys = [...addressKey("ip", context.address), `totp:${userId}`];
-  if (step.code && methods.code) return confirmSecondFactor(userId, step.code, context.address, context.locale);
+  if (step.code && methods.code) return await confirmSecondFactor(userId, step.code, context.address, context.locale);
   if (step.passkey && methods.passkey) {
-    if (limited(keys)) throw new HttpError(429, t("Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.", "Too many attempts. Please try again in 15 minutes."));
+    if (await limited(keys)) throw new HttpError(429, t("Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.", "Too many attempts. Please try again in 15 minutes."));
     if (await passkeyConfirm(userId, context.passkeyToken, step.passkey)) return;
-    failed(keys);
+    await failed(keys);
     throw new HttpError(401, t("Der Passkey konnte nicht bestätigt werden.", "The passkey could not be confirmed."));
   }
   if (step.password !== undefined && methods.password) {
-    if (limited(keys)) throw new HttpError(429, t("Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.", "Too many attempts. Please try again in 15 minutes."));
-    const local = one<{ password_hash: string }>("SELECT password_hash FROM local_accounts WHERE user_id=?", userId);
+    if (await limited(keys)) throw new HttpError(429, t("Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.", "Too many attempts. Please try again in 15 minutes."));
+    const local = await one<{ password_hash: string }>("SELECT password_hash FROM local_accounts WHERE user_id=?", userId);
     const ok = local?.password_hash ? await verifyPassword(step.password, local.password_hash) : await verifyLdapPassword(userId, step.password);
     if (ok) return;
-    failed(keys);
+    await failed(keys);
     throw new HttpError(401, t("Das Passwort stimmt nicht.", "The password is wrong."));
   }
   if (methods.recentOk) return;

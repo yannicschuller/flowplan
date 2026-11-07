@@ -17,7 +17,7 @@ const { Node: PMNode } = await import("@tiptap/pm/model");
 const { yDocToProsemirrorJSON } = await import("y-prosemirror");
 
 const uid = id();
-run(
+await run(
   "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
   uid,
   uid,
@@ -33,27 +33,27 @@ const user = {
   disabled: 0,
   created_at: "",
 } as Identity;
-const wid = createWorkspace(user.id, "Journal");
-const space = bootstrap(user, wid).spaces[0].id;
+const wid = await createWorkspace(user.id, "Journal");
+const space = (await bootstrap(user, wid)).spaces[0].id;
 const journalId = (
-  command(user, {
+  (await command(user, {
     action: "page.create",
     workspaceId: wid,
     spaceId: space,
     title: "Mein Journal",
     kind: "journal",
-  }) as { id: string }
+  })) as { id: string }
 ).id;
-const journal = () => one<Page>("SELECT * FROM pages WHERE id=?", journalId)!;
-const roll = (day: string) => rollJournal(user, journal(), day, day);
-const days = () =>
-  (pageData(user, journalId) as { journal: { days: { id: string; journal_date: string }[] } })
+const journal = async () => (await one<Page>("SELECT * FROM pages WHERE id=?", journalId))!;
+const roll = async (day: string) => await rollJournal(user, await journal(), day, day);
+const days = async () =>
+  ((await pageData(user, journalId)) as { journal: { days: { id: string; journal_date: string }[] } })
     .journal.days;
-const html = (pageId: string) =>
-  String(one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", pageId)!.html);
+const html = async (pageId: string) =>
+  String((await one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", pageId))!.html);
 // Writes a document as a user would (a full Yjs state).
-const write = (pageId: string, body: string) =>
-  run(
+const write = async (pageId: string, body: string) =>
+  await run(
     "UPDATE documents SET state=?,html=? WHERE page_id=?",
     htmlState(body),
     body,
@@ -63,65 +63,65 @@ const task = (text: string, checked = false, since?: string) =>
   `<li data-type="taskItem" data-checked="${checked}"${since ? ` data-journal-since="${since}"` : ""}><p>${text}</p></li>`;
 const tasks = (...items: string[]) => `<ul data-type="taskList">${items.join("")}</ul>`;
 
-test("day titles are German and dates outside the server day are refused", () => {
+test("day titles are German and dates outside the server day are refused", async () => {
   assert.equal(dayTitle("2026-09-26"), "Samstag, 26. September 2026");
-  assert.throws(
-    () => rollJournal(user, journal(), "2026-09-20", "2026-09-26"),
+  await assert.rejects(
+    async () => await rollJournal(user, await journal(), "2026-09-20", "2026-09-26"),
     /Serverzeit/,
   );
 });
 
-test("a new day gets its page once; open tasks move over, done ones stay", () => {
-  const first = roll("2026-09-01");
+test("a new day gets its page once; open tasks move over, done ones stay", async () => {
+  const first = await roll("2026-09-01");
   assert.equal(first.changed, true);
-  assert.equal(roll("2026-09-01").changed, false, "same day: nothing new");
+  assert.equal((await roll("2026-09-01")).changed, false, "same day: nothing new");
   const monday = first.dayId;
-  const page = one<Page>("SELECT * FROM pages WHERE id=?", monday)!;
+  const page = (await one<Page>("SELECT * FROM pages WHERE id=?", monday))!;
   assert.equal(page.title, "Dienstag, 1. September 2026");
   assert.equal(page.parent_id, journalId);
   assert.equal(page.journal_date, "2026-09-01");
-  write(
+  await write(
     monday,
     `<p>Heute viel geschafft</p>${tasks(task("Bericht schreiben"), task("Mails", true))}`,
   );
-  const tuesday = roll("2026-09-02").dayId;
+  const tuesday = (await roll("2026-09-02")).dayId;
   // Open task moved (not copied), done task and text stay on Monday.
-  assert.match(html(monday), /Heute viel geschafft/);
-  assert.match(html(monday), /Mails/);
-  assert.doesNotMatch(html(monday), /Bericht schreiben/);
-  assert.match(html(tuesday), /Bericht schreiben/);
-  assert.match(html(tuesday), /data-journal-since="2026-09-01"/);
-  assert.doesNotMatch(html(tuesday), /Mails/);
+  assert.match(await html(monday), /Heute viel geschafft/);
+  assert.match(await html(monday), /Mails/);
+  assert.doesNotMatch(await html(monday), /Bericht schreiben/);
+  assert.match(await html(tuesday), /Bericht schreiben/);
+  assert.match(await html(tuesday), /data-journal-since="2026-09-01"/);
+  assert.doesNotMatch(await html(tuesday), /Mails/);
   // The stored Yjs state matches the html (editors load the state).
-  const state = one<{ state: Uint8Array }>(
+  const state = (await one<{ state: Uint8Array }>(
     "SELECT state FROM documents WHERE page_id=?",
     monday,
-  )!.state;
+  ))!.state;
   const ydoc = new Y.Doc();
   Y.applyUpdate(ydoc, state);
   assert.doesNotMatch(JSON.stringify(yDocToProsemirrorJSON(ydoc, "default")), /Bericht/);
   assert.deepEqual(
-    days().map((d) => d.journal_date),
+    (await days()).map((d) => d.journal_date),
     ["2026-09-02", "2026-09-01"],
   );
 });
 
-test("a day with only carried tasks is removed; the tasks keep moving", () => {
-  const before = days()[0];
+test("a day with only carried tasks is removed; the tasks keep moving", async () => {
+  const before = (await days())[0];
   assert.equal(before.journal_date, "2026-09-02");
   // Nobody wrote anything on the 2nd; two days later the journal is opened.
-  const thursday = roll("2026-09-04").dayId;
-  assert.equal(one("SELECT id FROM pages WHERE id=?", before.id), undefined);
+  const thursday = (await roll("2026-09-04")).dayId;
+  assert.equal(await one("SELECT id FROM pages WHERE id=?", before.id), undefined);
   assert.deepEqual(
-    days().map((d) => d.journal_date),
+    (await days()).map((d) => d.journal_date),
     ["2026-09-04", "2026-09-01"],
   );
   // The task still remembers the day it was first written down.
-  assert.match(html(thursday), /Bericht schreiben/);
-  assert.match(html(thursday), /data-journal-since="2026-09-01"/);
+  assert.match(await html(thursday), /Bericht schreiben/);
+  assert.match(await html(thursday), /data-journal-since="2026-09-01"/);
 });
 
-test("new tasks, completed carried tasks and text all count as an entry", () => {
+test("new tasks, completed carried tasks and text all count as an entry", async () => {
   const schema = documentSchema();
   const docOf = (body: string) => {
     const ydoc = new Y.Doc();
@@ -136,49 +136,49 @@ test("new tasks, completed carried tasks and text all count as an entry", () => 
   assert.equal(hasOwnEntry(docOf("<p>Notiz</p>"), day), true);
   assert.equal(hasOwnEntry(docOf("<hr>"), day), true);
   // A completed carried task keeps its day; the open ones move on.
-  const current = days()[0];
-  write(
+  const current = (await days())[0];
+  await write(
     current.id,
     tasks(task("Bericht schreiben", true, "2026-09-01"), task("Anrufen", false, "2026-09-01")),
   );
-  const friday = roll("2026-09-05").dayId;
-  assert.ok(one("SELECT id FROM pages WHERE id=?", current.id));
-  assert.match(html(current.id), /Bericht schreiben/);
-  assert.doesNotMatch(html(current.id), /Anrufen/);
-  assert.match(html(friday), /Anrufen/);
+  const friday = (await roll("2026-09-05")).dayId;
+  assert.ok(await one("SELECT id FROM pages WHERE id=?", current.id));
+  assert.match(await html(current.id), /Bericht schreiben/);
+  assert.doesNotMatch(await html(current.id), /Anrufen/);
+  assert.match(await html(friday), /Anrufen/);
 });
 
-test("the command rolls every journal of the workspace for today", () => {
+test("the command rolls every journal of the workspace for today", async () => {
   const today = new Date().toISOString().slice(0, 10);
-  const result = command(user, {
+  const result = (await command(user, {
     action: "journal.roll",
     workspaceId: wid,
     date: today,
-  }) as { changed: boolean };
+  })) as { changed: boolean };
   assert.equal(result.changed, true);
-  assert.equal(days()[0].journal_date, today);
-  const again = command(user, {
+  assert.equal((await days())[0].journal_date, today);
+  const again = (await command(user, {
     action: "journal.roll",
     workspaceId: wid,
     date: today,
-  }) as { changed: boolean };
+  })) as { changed: boolean };
   assert.equal(again.changed, false);
-  assert.throws(
-    () => command(user, { action: "journal.roll", workspaceId: wid, date: "2026-02-30" }),
+  await assert.rejects(
+    async () => await command(user, { action: "journal.roll", workspaceId: wid, date: "2026-02-30" }),
     /Datum/,
   );
 });
 
-test("a deleted day is reported and can be created anew", () => {
+test("a deleted day is reported and can be created anew", async () => {
   const day = "2026-11-02";
-  const first = roll(day).dayId;
-  run("UPDATE pages SET deleted_at=? WHERE id=?", nowText(), first);
-  const again = rollJournal(user, journal(), day, day) as { dayId: string; changed: boolean; trashed?: boolean };
+  const first = (await roll(day)).dayId;
+  await run("UPDATE pages SET deleted_at=? WHERE id=?", nowText(), first);
+  const again = (await rollJournal(user, await journal(), day, day)) as { dayId: string; changed: boolean; trashed?: boolean };
   assert.equal(again.trashed, true);
   assert.equal(again.dayId, first);
-  const fresh = rollJournal(user, journal(), day, day, true) as { dayId: string; changed: boolean };
+  const fresh = (await rollJournal(user, await journal(), day, day, true)) as { dayId: string; changed: boolean };
   assert.equal(fresh.changed, true);
   assert.notEqual(fresh.dayId, first);
   // The deleted page stays in the trash as an ordinary page.
-  assert.equal(one<{ journal_date: string | null }>("SELECT journal_date FROM pages WHERE id=?", first)!.journal_date, null);
+  assert.equal((await one<{ journal_date: string | null }>("SELECT journal_date FROM pages WHERE id=?", first))!.journal_date, null);
 });

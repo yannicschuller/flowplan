@@ -130,20 +130,20 @@ async function rememberPending(token: string) {
 // app: the desktop or mobile app proved this sign-in its own
 // (lib/app-devices.ts) – it then lasts as long as the app's.
 async function signIn(userId: string, groups: string[], remember = false, app = false, authenticatedAt?: number | null) {
-  const user = one<{ disabled: number }>("SELECT disabled FROM users WHERE id=?", userId);
+  const user = await one<{ disabled: number }>("SELECT disabled FROM users WHERE id=?", userId);
   if (!user || user.disabled) throw new HttpError(403, "Dieses Konto ist deaktiviert.");
-  acceptPendingInvites(userId);
+  await acceptPendingInvites(userId);
   // SSO accounts (e.g. through the desktop app): workspaces from SSO groups.
-  if (!isLocalAccount(userId)) syncSsoMemberships(userId, groups);
-  ensureWorkspace(userId);
+  if (!(await isLocalAccount(userId))) await syncSsoMemberships(userId, groups);
+  await ensureWorkspace(userId);
   // Groups from an SSO provider (e.g. the desktop app of an SSO account) are
   // checked again after SESSION_GROUPS_HOURS.
-  await issueSession(userId, groups, undefined, { remember, sso: !isLocalAccount(userId), app, authenticatedAt });
+  await issueSession(userId, groups, undefined, { remember, sso: !(await isLocalAccount(userId)), app, authenticatedAt });
 }
 // The end of every SSO sign-in (also after connecting an existing account).
 async function finishSsoSignIn(userId: string, sso: OidcProfile, remember: boolean) {
-  const local = isLocalAccount(userId);
-  const user = one<User & { email_verified: number }>("SELECT * FROM users WHERE id=?", userId);
+  const local = await isLocalAccount(userId);
+  const user = await one<User & { email_verified: number }>("SELECT * FROM users WHERE id=?", userId);
   if (!user || user.disabled) throw new HttpError(403, "Dieses Konto ist deaktiviert.");
   // An account with e-mail and password keeps its picture and its own
   // confirmation of the address.
@@ -151,15 +151,15 @@ async function finishSsoSignIn(userId: string, sso: OidcProfile, remember: boole
     await syncAvatar(userId, sso.picture);
     // Whether the provider vouches for the address: decides whether
     // invitations and shared pages for it reach this account.
-    run("UPDATE users SET email_verified=? WHERE id=?", sso.emailVerified ? 1 : 0, userId);
+    await run("UPDATE users SET email_verified=? WHERE id=?", sso.emailVerified ? 1 : 0, userId);
   }
-  acceptInvites(user, local ? !!user.email_verified : sso.emailVerified);
+  await acceptInvites(user, local ? !!user.email_verified : sso.emailVerified);
   // Workspaces and groups mapped to the person's SSO groups, before a
   // personal workspace would be created for someone without one.
-  syncSsoMemberships(userId, sso.groups);
-  ensureWorkspace(userId);
+  await syncSsoMemberships(userId, sso.groups);
+  await ensureWorkspace(userId);
   // A linked account with e-mail and password keeps its admin flag.
-  const groups = [...new Set([...sso.groups, ...localGroups(userId)])];
+  const groups = [...new Set([...sso.groups, ...await localGroups(userId)])];
   await issueSession(userId, groups, undefined, { remember, sso: true });
 }
 // A first SSO sign-in waiting to be connected to an existing account.
@@ -189,8 +189,8 @@ async function handleGET(
         state = oidc.randomState(),
         nonce = oidc.randomNonce(),
         flow = randomBytes(32).toString("base64url");
-      run("DELETE FROM oidc_flows WHERE expires<?", Date.now());
-      run(
+      await run("DELETE FROM oidc_flows WHERE expires<?", Date.now());
+      await run(
         "INSERT INTO oidc_flows(id,state,verifier,nonce,expires,return_to,remember) VALUES(?,?,?,?,?,?,?)",
         hash(flow),
         state,
@@ -255,16 +255,16 @@ async function handleGET(
     // Link from the confirmation e-mail.
     if (action === "verify") {
       const token = new URL(req.url).searchParams.get("token") || "";
-      const userId = verifyEmail(token);
+      const userId = await verifyEmail(token);
       // Confirmed: signed in right away in the browser that signed up;
       // elsewhere the person signs in themselves.
       const jar = await cookies();
       // An account with an authenticator app always signs in with its code,
       // and one that signs in through SSO only (OIDC_LINKED_SSO_ONLY) there.
-      const here = !!userId && jar.get("flowplan_verify")?.value === userId && !totpEnabled(userId) && !ssoOnlyAccount(userId);
+      const here = !!userId && jar.get("flowplan_verify")?.value === userId && !(await totpEnabled(userId)) && !(await ssoOnlyAccount(userId));
       if (userId && here) {
         jar.delete("flowplan_verify");
-        await signIn(userId, localGroups(userId));
+        await signIn(userId, await localGroups(userId));
       }
       return NextResponse.redirect(
         new URL(userId ? (here ? "/?verified=1" : "/?confirmed=1") : `/?authError=${encodeURIComponent(translate(await requestLocale())("Der Bestätigungslink ist abgelaufen. Melde dich an, um einen neuen zu bekommen.", "The confirmation link has expired. Sign in to get a new one."))}`, appUrl()),
@@ -275,7 +275,7 @@ async function handleGET(
         flow = jar.get("flowplan_oidc")?.value;
       jar.delete("flowplan_oidc");
       if (!flow) throw new HttpError(400, "Anmeldung abgelaufen.");
-      const f = one<{
+      const f = await one<{
         state: string;
         verifier: string;
         nonce: string;
@@ -285,7 +285,7 @@ async function handleGET(
         link_user_id: string | null;
         link_session: string | null;
       }>("SELECT * FROM oidc_flows WHERE id=?", hash(flow));
-      run("DELETE FROM oidc_flows WHERE id=?", hash(flow));
+      await run("DELETE FROM oidc_flows WHERE id=?", hash(flow));
       if (!f || f.expires < Date.now())
         throw new HttpError(400, "Anmeldung abgelaufen.");
       returnTo = loginReturnPath(f.return_to);
@@ -329,7 +329,7 @@ async function handleGET(
         // An identity that may not sign in here is not connected either.
         if (process.env.OIDC_ALLOWED_GROUP && !groups.includes(process.env.OIDC_ALLOWED_GROUP)) return back(translate(locale)("Zugriff für diese Gruppe nicht erlaubt.", "Access not allowed for this group."));
         try {
-          linkFromSettings(me, sso, locale);
+          await linkFromSettings(me, sso, locale);
         } catch (e) {
           if (e instanceof HttpError) return back(e.message);
           throw e;
@@ -341,11 +341,11 @@ async function handleGET(
         !groups.includes(process.env.OIDC_ALLOWED_GROUP)
       )
         throw new HttpError(403, translate(locale)("Zugriff für diese Gruppe nicht erlaubt.", "Access not allowed for this group."));
-      const found = resolveOidcSignIn(sso, locale);
+      const found = await resolveOidcSignIn(sso, locale);
       // The address belongs to an existing account: it is connected only
       // after the person proves it (app/link-account).
       if (found.kind === "link") {
-        const token = startPendingLink(found.candidateId, sso, { remember: !!f.remember, returnTo });
+        const token = await startPendingLink(found.candidateId, sso, { remember: !!f.remember, returnTo });
         jar.set(LINK_COOKIE, token, { httpOnly: true, secure: appUrl().startsWith("https:"), sameSite: "lax", path: "/", maxAge: PENDING_LINK_SECONDS });
         return NextResponse.redirect(new URL("/link-account", appUrl()));
       }
@@ -386,7 +386,7 @@ async function handlePOST(
       });
       return new Response(response.body, { status: 400, headers: response.headers });
     }
-    checkOrigin(req);
+    await checkOrigin(req);
     // The app's sign-in page: a hand-off to the app that failed or went
     // unanswered (lib/app-sign-in.ts, #109) – a line for whoever runs it.
     if (action === "app-sign-in-report") {
@@ -405,7 +405,7 @@ async function handlePOST(
         "Alex Morgan",
         "alex@flowplan.local",
       );
-      ensureWorkspace(user.id);
+      await ensureWorkspace(user.id);
       // In development the demo account administers the instance.
       await issueSession(user.id, [adminGroup()]);
       return NextResponse.json({ ok: true });
@@ -413,15 +413,15 @@ async function handlePOST(
     // "Demo ausprobieren" on the start page.
     if (action === "trial") {
       const address = clientAddress(req.headers);
-      const uid = startDemo(address);
+      const uid = await startDemo(address);
       // Signed in already: that session ends rather than lingering behind
       // the demo's cookie (a previous demo ends with its data, as at sign-out).
       const jar = await cookies(),
         previous = jar.get(cookieName)?.value;
       if (previous) {
         const before = await currentUser();
-        if (before?.demo) endDemo(before.id);
-        run("DELETE FROM sessions WHERE token=?", hash(previous));
+        if (before?.demo) await endDemo(before.id);
+        await run("DELETE FROM sessions WHERE token=?", hash(previous));
       }
       const until = Date.now() + DEMO_MAX_MS;
       await issueSession(uid, [], {
@@ -433,7 +433,7 @@ async function handlePOST(
     // Ends a demo right away: account, workspace and files are deleted.
     if (action === "trial-end") {
       const user = await currentUser();
-      if (user?.demo) endDemo(user.id);
+      if (user?.demo) await endDemo(user.id);
       (await cookies()).delete(cookieName);
       return NextResponse.json({ ok: true });
     }
@@ -451,7 +451,7 @@ async function handlePOST(
           title: say("Anmeldung abgelaufen", "Sign-in expired"),
           text: say("Starte die Anmeldung noch einmal in der Flowplan-App.", "Start signing in again from the Flowplan app."),
         });
-      const code = createDesktopCode(user.id, user.groups, challenge, sessionStartedAt((await cookies()).get(cookieName)?.value));
+      const code = await createDesktopCode(user.id, user.groups, challenge, await sessionStartedAt((await cookies()).get(cookieName)?.value));
       const link = `flowplan://sign-in?${new URLSearchParams({ server: new URL(appUrl()).origin, challenge, code })}`;
       return desktopPage(locale, {
         title: say("Zurück zur App", "Back to the app"),
@@ -467,14 +467,14 @@ async function handlePOST(
     }
     if (action === "desktop-redeem") {
       const { code, verifier } = (await readJsonLimited(req, 16_000).catch(() => null) ?? {}) as { code?: unknown; verifier?: unknown };
-      const handoff = redeemDesktopCode(code, verifier);
+      const handoff = await redeemDesktopCode(code, verifier);
       if (!handoff)
         throw new HttpError(400, translate(locale)("Der Anmeldecode ist ungültig oder abgelaufen. Bitte erneut anmelden.", "The sign-in code is invalid or has expired. Please sign in again."));
       // The desktop and mobile apps are a device of their own: they stay
       // signed in unless the instance says otherwise. Only the app holding
       // the verifier gets here – the hand-off is its proof
       // (lib/app-devices.ts), for every app version.
-      await signIn(handoff.userId, handoff.groups, true, provesApp({ via: "handoff" }), handoff.authenticatedAt);
+      await signIn(handoff.userId, handoff.groups, true, await provesApp({ via: "handoff" }), handoff.authenticatedAt);
       return NextResponse.json({ ok: true });
     }
     // Read with a limit (lib/request-body.ts): an oversized body is a 413,
@@ -503,7 +503,7 @@ async function handlePOST(
         (await cookies()).set("flowplan_verify", user.id, { httpOnly: true, secure: appUrl().startsWith("https:"), sameSite: "lax", path: "/api/auth", maxAge: 7 * 86400 });
         return NextResponse.json({ ok: true, pending: true, email: user.email });
       }
-      await signIn(user.id, groups, false, provesApp({ via: "form", userId: user.id, input, agent }));
+      await signIn(user.id, groups, false, await provesApp({ via: "form", userId: user.id, input, agent }));
       return NextResponse.json({ ok: true });
     }
     if (action === "verify-resend") {
@@ -515,25 +515,25 @@ async function handlePOST(
       // Accounts with e-mail and password, or the LDAP directory (LDAP_URL).
       const { userId, groups } = await directoryPasswordLogin(input, clientAddress(req.headers), locale);
       // OIDC_LINKED_SSO_ONLY: an account connected to SSO signs in there.
-      refuseSsoOnly(userId, locale);
+      await refuseSsoOnly(userId, locale);
       // With an authenticator app, a code follows (action "totp-login").
-      const next = afterPassword(userId, wantsRemember(input), locale);
+      const next = await afterPassword(userId, wantsRemember(input), locale);
       if ("pending" in next) {
         await rememberPending(next.pending);
         return NextResponse.json({ ok: true, twoFactor: true });
       }
       // In the app with its device key: as long as the app's (lib/app-devices.ts).
-      await signIn(userId, groups, wantsRemember(input), provesApp({ via: "form", userId, input, agent }));
+      await signIn(userId, groups, wantsRemember(input), await provesApp({ via: "form", userId, input, agent }));
       return NextResponse.json({ ok: true });
     }
     if (action === "totp-login") {
       const jar = await cookies();
       const input = await body();
-      const result = completeSignIn(jar.get(PENDING_COOKIE)?.value, input, clientAddress(req.headers), locale);
+      const result = await completeSignIn(jar.get(PENDING_COOKIE)?.value, input, clientAddress(req.headers), locale);
       jar.delete(PENDING_COOKIE);
-      refuseSsoOnly(result.userId, locale);
+      await refuseSsoOnly(result.userId, locale);
       // The device key is checked (and registered) only now, after the code.
-      await signIn(result.userId, result.groups, result.remember, provesApp({ via: "form", userId: result.userId, input, agent }));
+      await signIn(result.userId, result.groups, result.remember, await provesApp({ via: "form", userId: result.userId, input, agent }));
       return NextResponse.json({ ok: true });
     }
     if (action === "reset-request") {
@@ -553,14 +553,14 @@ async function handlePOST(
     if (action === "passkey") {
       const input = await body();
       const { userId, groups } = await passkeyLogin(await takeChallengeCookie(), input, clientAddress(req.headers), locale);
-      refuseSsoOnly(userId, locale);
+      await refuseSsoOnly(userId, locale);
       // A code from the app follows only if the person asked for it.
-      const next = afterPasskey(userId, wantsRemember(input));
+      const next = await afterPasskey(userId, wantsRemember(input));
       if ("pending" in next) {
         await rememberPending(next.pending);
         return NextResponse.json({ ok: true, twoFactor: true });
       }
-      await signIn(userId, groups, wantsRemember(input), provesApp({ via: "form", userId, input, agent }));
+      await signIn(userId, groups, wantsRemember(input), await provesApp({ via: "form", userId, input, agent }));
       return NextResponse.json({ ok: true });
     }
     // ---- A first SSO sign-in that waits to be connected (#101,
@@ -569,20 +569,20 @@ async function handlePOST(
       const jar = await cookies();
       const token = jar.get(LINK_COOKIE)?.value;
       if (action === "link-cancel") {
-        cancelPending(token);
+        await cancelPending(token);
         jar.delete(LINK_COOKIE);
         return NextResponse.json({ ok: true });
       }
-      const row = requirePending(token, locale);
+      const row = await requirePending(token, locale);
       const address = clientAddress(req.headers);
       const done = async (provenUserId: string) => {
-        const linked = completePendingLink(row, provenUserId, locale);
+        const linked = await completePendingLink(row, provenUserId, locale);
         jar.delete(LINK_COOKIE);
         await finishSsoSignIn(linked.userId, linked.profile, linked.remember);
         return NextResponse.json({ ok: true, returnTo: loginReturnPath(linked.returnTo) });
       };
       if (action === "link-separate") {
-        const separate = separateFromPending(row, locale);
+        const separate = await separateFromPending(row, locale);
         jar.delete(LINK_COOKIE);
         await finishSsoSignIn(separate.userId, separate.profile, separate.remember);
         return NextResponse.json({ ok: true, returnTo: loginReturnPath(separate.returnTo) });
@@ -590,7 +590,7 @@ async function handlePOST(
       // The account's password (plus a code if its app is on) or its passkey.
       const proof =
         action === "link-code"
-          ? provePendingCode(row, await body(), address, locale)
+          ? (await provePendingCode(row, await body(), address, locale))
           : action === "link-password"
             ? await provePendingPassword(row, await body(), address, locale)
             : await provePendingPasskey(row, await takeChallengeCookie(), await body(), address, locale);
@@ -605,9 +605,9 @@ async function handlePOST(
       if (!user || user.demo || user.twoFactorSetup) throw new HttpError(401, translate(locale)("Bitte melde dich an.", "Please sign in."));
       if (user.apiScope) throw new HttpError(403, translate(locale)("Mit einem API-Token nicht möglich.", "Not possible with an API token."));
       const jar = await cookies();
-      const sessionStart = sessionStartedAt(jar.get(cookieName)?.value);
-      const overview = () => ({ ...signInOverview(user.id), confirm: stepUpMethods(user.id, sessionStart) });
-      if (action === "sign-in-methods") return NextResponse.json(overview(), { headers: { "Cache-Control": "no-store" } });
+      const sessionStart = await sessionStartedAt(jar.get(cookieName)?.value);
+      const overview = async () => ({ ...(await signInOverview(user.id)), confirm: await stepUpMethods(user.id, sessionStart) });
+      if (action === "sign-in-methods") return NextResponse.json(await overview(), { headers: { "Cache-Control": "no-store" } });
       if (action === "confirm-passkey-options") {
         const { options, token } = await passkeyConfirmOptions(user.id, locale);
         await rememberChallenge(token);
@@ -623,9 +623,9 @@ async function handlePOST(
           state = oidc.randomState(),
           nonce = oidc.randomNonce(),
           flow = randomBytes(32).toString("base64url");
-        run("DELETE FROM oidc_flows WHERE expires<?", Date.now());
+        await run("DELETE FROM oidc_flows WHERE expires<?", Date.now());
         // Bound to this account and this session: the callback checks both.
-        run(
+        await run(
           "INSERT INTO oidc_flows(id,state,verifier,nonce,expires,return_to,remember,link_user_id,link_session) VALUES(?,?,?,?,?,?,0,?,?)",
           hash(flow),
           state,
@@ -654,22 +654,22 @@ async function handlePOST(
       if (action === "journal-pin-reset") {
         const { pageId } = z.object({ pageId: z.uuid() }).passthrough().parse(input);
         await confirm();
-        const result = command({ ...user, stepUp: true }, { action: "journal.lock", pageId, pin: null });
+        const result = await command({ ...user, stepUp: true }, { action: "journal.lock", pageId, pin: null });
         after(dispatchPush);
         return NextResponse.json({ ok: true, ...(result && typeof result === "object" ? result : {}) });
       }
       if (action === "sso-unlink") {
         const { identityId } = z.object({ identityId: z.string().max(80) }).passthrough().parse(input);
         await confirm();
-        removeIdentity(user.id, identityId, locale);
+        await removeIdentity(user.id, identityId, locale);
       } else if (action === "password-remove") {
         await confirm();
-        removePassword(user.id, locale);
+        await removePassword(user.id, locale);
       } else if (action === "password-set") {
         await confirm();
         await setNewPassword(user.id, (input as { next?: unknown }).next, locale);
       }
-      return NextResponse.json({ ok: true, ...overview() });
+      return NextResponse.json({ ok: true, ...(await overview()) });
     }
     // ---- The signed-in person's authenticator app (also while the
     // instance waits for it to be set up) ----
@@ -678,19 +678,19 @@ async function handlePOST(
       if (!user || user.demo) throw new HttpError(401, translate(locale)("Bitte melde dich an.", "Please sign in."));
       if (user.apiScope) throw new HttpError(403, translate(locale)("Mit einem API-Token nicht möglich.", "Not possible with an API token."));
       const address = clientAddress(req.headers);
-      if (action === "totp-setup") return NextResponse.json(startTotpSetup(user, locale), { headers: { "Cache-Control": "no-store" } });
+      if (action === "totp-setup") return NextResponse.json(await startTotpSetup(user, locale), { headers: { "Cache-Control": "no-store" } });
       if (action === "totp-confirm") {
-        const result = confirmTotpSetup(user.id, await body(), locale);
+        const result = await confirmTotpSetup(user.id, await body(), locale);
         // Turned on: sessions elsewhere (perhaps from a known password) end.
         await endOtherSessions(user.id);
-        return NextResponse.json({ ...result, status: twoFactorStatus(user.id) }, { headers: { "Cache-Control": "no-store" } });
+        return NextResponse.json({ ...result, status: await twoFactorStatus(user.id) }, { headers: { "Cache-Control": "no-store" } });
       }
       if (action === "totp-recovery")
-        return NextResponse.json({ ...(await regenerateRecoveryCodes(user.id, await body(), address, locale)), status: twoFactorStatus(user.id) }, { headers: { "Cache-Control": "no-store" } });
+        return NextResponse.json({ ...(await regenerateRecoveryCodes(user.id, await body(), address, locale)), status: await twoFactorStatus(user.id) }, { headers: { "Cache-Control": "no-store" } });
       if (action === "totp-after-passkey")
         return NextResponse.json({ status: await setCodeAfterPasskey(user.id, await body(), address, locale) });
       if (action === "totp-disable") return NextResponse.json({ status: await disableTotp(user.id, await body(), address, locale) });
-      return NextResponse.json({ status: twoFactorStatus(user.id) });
+      return NextResponse.json({ status: await twoFactorStatus(user.id) });
     }
     // ---- The signed-in person's password and passkeys ----
     if (["profile", "password-change", "passkey-register-options", "passkey-register", "passkey-delete", "passkeys"].includes(action)) {
@@ -698,7 +698,7 @@ async function handlePOST(
       if (!user || user.demo) throw new HttpError(401, translate(locale)("Bitte melde dich an.", "Please sign in."));
       // API tokens act for scripts: they never change how the person signs in.
       if (user.apiScope) throw new HttpError(403, translate(locale)("Mit einem API-Token nicht möglich.", "Not possible with an API token."));
-      if (action === "profile") updateLocalProfile(user.id, await body(), locale);
+      if (action === "profile") await updateLocalProfile(user.id, await body(), locale);
       else if (action === "password-change") {
         await changePassword(user.id, await body(), locale);
         await endOtherSessions(user.id);
@@ -712,9 +712,9 @@ async function handlePOST(
       else if (action === "passkey-delete") {
         const { id } = (await body()) as { id?: unknown };
         // A removed passkey (perhaps on a lost device) signs nobody in any more.
-        if (typeof id === "string" && deletePasskey(user.id, id)) await endOtherSessions(user.id);
+        if (typeof id === "string" && await deletePasskey(user.id, id)) await endOtherSessions(user.id);
       }
-      return NextResponse.json({ ok: true, passkeys: listPasskeys(user.id) });
+      return NextResponse.json({ ok: true, passkeys: await listPasskeys(user.id) });
     }
     // Deleting one's own account: accounts with a password confirm with it,
     // SSO accounts by typing their e-mail address. The session ends with it.
@@ -722,26 +722,26 @@ async function handlePOST(
       const user = await currentUser();
       if (!user) throw new HttpError(401, translate(locale)("Bitte melde dich an.", "Please sign in."));
       const input = (await body()) as { password?: unknown; confirm?: unknown; successors?: unknown };
-      const local = one<{ email: string }>("SELECT email FROM local_accounts WHERE user_id=?", user.id);
+      const local = await one<{ email: string }>("SELECT email FROM local_accounts WHERE user_id=?", user.id);
       let confirm = input.confirm;
-      if (local && !user.demo && confirmsWithPassword(user.id)) {
+      if (local && !user.demo && await confirmsWithPassword(user.id)) {
         const { userId } = await passwordLogin({ email: local.email, password: input.password }, clientAddress(req.headers), locale);
         if (userId !== user.id) throw new HttpError(403, translate(locale)("E-Mail-Adresse oder Passwort stimmt nicht.", "E-mail address or password is wrong."));
-        confirm = one<{ email: string }>("SELECT email FROM users WHERE id=?", user.id)?.email;
+        confirm = (await one<{ email: string }>("SELECT email FROM users WHERE id=?", user.id))?.email;
       }
-      const result = transaction(() => deleteOwnAccount(user, { confirm, successors: input.successors }, !!local && !user.demo && confirmsWithPassword(user.id)));
+      const result = await transaction(async () => await deleteOwnAccount(user, { confirm, successors: input.successors }, !!local && !user.demo && await confirmsWithPassword(user.id)));
       // The Git exports of their spaces ended with the account: their
       // working copies go with them (lib/space-git-export.ts).
-      sweepSpaceGitCopies();
+      await sweepSpaceGitCopies();
       (await cookies()).delete(cookieName);
       return NextResponse.json(result);
     }
     if (action === "logout") {
       const demoUser = await currentUser();
-      if (demoUser?.demo) endDemo(demoUser.id);
+      if (demoUser?.demo) await endDemo(demoUser.id);
       const jar = await cookies(),
         token = jar.get(cookieName)?.value;
-      if (token) run("DELETE FROM sessions WHERE token=?", hash(token));
+      if (token) await run("DELETE FROM sessions WHERE token=?", hash(token));
       jar.delete(cookieName);
       return NextResponse.json({ ok: true });
     }

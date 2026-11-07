@@ -11,9 +11,9 @@ const { command, bootstrap, database } = await import("../lib/api");
 const { searchWorkspace, processSearchIndex, htmlText, MARK_START, MARK_END } =
   await import("../lib/search-index");
 
-function account(name: string) {
+async function account(name: string) {
   const uid = id();
-  run(
+  await run(
     "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
     uid,
     uid,
@@ -30,40 +30,40 @@ function account(name: string) {
     created_at: "",
   } as Identity;
 }
-const owner = account("search-owner"),
-  member = account("search-member");
-const wid = createWorkspace(owner.id, "Suche");
-run("INSERT INTO members VALUES(?,?,?)", wid, member.id, "editor");
-const team = bootstrap(owner, wid).spaces[0];
-const act = (input: Record<string, unknown>, as = owner) =>
-  command(as, input) as { id: string };
-const privateSpace = act({
+const owner = await account("search-owner"),
+  member = await account("search-member");
+const wid = await createWorkspace(owner.id, "Suche");
+await run("INSERT INTO members VALUES(?,?,?)", wid, member.id, "editor");
+const team = (await bootstrap(owner, wid)).spaces[0];
+const act = async (input: Record<string, unknown>, as = owner) =>
+  (await command(as, input)) as { id: string };
+const privateSpace = (await act({
   action: "space.create",
   workspaceId: wid,
   name: "Privat",
   private: true,
-}).id;
-const page = (title: string, kind = "document", spaceId = team.id) =>
-  act({ action: "page.create", workspaceId: wid, spaceId, title, kind }).id;
-const setHtml = (pageId: string, html: string) =>
-  run(
+})).id;
+const page = async (title: string, kind = "document", spaceId = team.id) =>
+  (await act({ action: "page.create", workspaceId: wid, spaceId, title, kind })).id;
+const setHtml = async (pageId: string, html: string) =>
+  await run(
     "INSERT INTO documents(page_id,html) VALUES(?,?) ON CONFLICT(page_id) DO UPDATE SET html=excluded.html",
     pageId,
     html,
   );
-const find = (q: string, as = member, options = {}) =>
-  searchWorkspace(as, wid, q, options);
+const find = async (q: string, as = member, options = {}) =>
+  await searchWorkspace(as, wid, q, options);
 
-const doc = page("Quartalsbericht");
-setHtml(
+const doc = await page("Quartalsbericht");
+await setHtml(
   doc,
   "<h1>Übersicht</h1><p>Die Projektplanung für den Umzug &amp; die Übergänge.</p>",
 );
-const db = page("Aufgaben", "database");
-command(owner, {
+const db = await page("Aufgaben", "database");
+await command(owner, {
   action: "database.update",
   pageId: db,
-  version: database(db).version,
+  version: (await database(db)).version,
   fields: [
     { id: "title", name: "Name", type: "text" },
     { id: "note", name: "Notiz", type: "text" },
@@ -72,7 +72,7 @@ command(owner, {
   ],
   views: [{ id: "t", name: "Tabelle", type: "table", filters: [], sorts: [] }],
 });
-const row = act({
+const row = (await act({
   action: "row.create",
   pageId: db,
   cells: {
@@ -80,14 +80,14 @@ const row = act({
     note: "Lieferant anrufen",
     tags: ["Kühlschrank"],
   },
-}).id;
-const linked = act({
+})).id;
+const linked = (await act({
   action: "row.create",
   pageId: db,
   cells: { title: "Folgeaufgabe", link: [row] },
-}).id;
-const secret = page("Gehaltsliste", "document", privateSpace);
-setHtml(secret, "<p>Vertraulicher Projektplanungsstand</p>");
+})).id;
+const secret = await page("Gehaltsliste", "document", privateSpace);
+await setHtml(secret, "<p>Vertraulicher Projektplanungsstand</p>");
 
 test("html text strips markup and decodes entities", () => {
   assert.equal(
@@ -96,125 +96,125 @@ test("html text strips markup and decodes entities", () => {
   );
 });
 
-test("indexed search finds compound parts, ignores case and diacritics and highlights snippets", () => {
-  const hits = find("planung");
+test("indexed search finds compound parts, ignores case and diacritics and highlights snippets", async () => {
+  const hits = await find("planung");
   assert.deepEqual(
     hits.map((h) => h.title),
     ["Quartalsbericht"],
   );
   assert.equal(hits[0].kind, "document");
   assert.ok(hits[0].snippet.includes(`${MARK_START}planung${MARK_END}`));
-  assert.equal(find("UBERGANGE")[0]?.id, doc);
-  assert.equal(find("kuhlschrank")[0]?.rowId, row);
+  assert.equal((await find("UBERGANGE"))[0]?.id, doc);
+  assert.equal((await find("kuhlschrank"))[0]?.rowId, row);
   // Titles rank before body matches.
-  assert.equal(find("aufgabe")[0]?.id, db);
+  assert.equal((await find("aufgabe"))[0]?.id, db);
 });
 
-test("record hits carry row ids and database titles; ids of related records are not indexed", () => {
-  const [hit] = find("Lieferant");
+test("record hits carry row ids and database titles; ids of related records are not indexed", async () => {
+  const [hit] = await find("Lieferant");
   assert.equal(hit.id, db);
   assert.equal(hit.rowId, row);
   assert.equal(hit.title, "Angebot einholen");
   assert.equal(hit.pageTitle, "Aufgaben");
   assert.equal(hit.kind, "row");
   assert.deepEqual(
-    find(row.slice(0, 13)).map((h) => h.rowId),
+    (await find(row.slice(0, 13))).map((h) => h.rowId),
     [],
   );
-  assert.ok(find("Folgeaufgabe").some((h) => h.rowId === linked));
+  assert.ok((await find("Folgeaufgabe")).some((h) => h.rowId === linked));
 });
 
-test("results respect permissions, trash, kind and space filters", () => {
+test("results respect permissions, trash, kind and space filters", async () => {
   assert.deepEqual(
-    find("Projektplanung").map((h) => h.id),
+    (await find("Projektplanung")).map((h) => h.id),
     [doc],
   );
   assert.deepEqual(
-    find("Projektplanungsstand", owner).map((h) => h.id),
+    (await find("Projektplanungsstand", owner)).map((h) => h.id),
     [secret],
   );
   assert.deepEqual(
-    find("a", member, { kind: "row" }).every((h) => h.kind === "row"),
+    (await find("a", member, { kind: "row" })).every((h) => h.kind === "row"),
     true,
   );
   assert.deepEqual(
-    find("Aufgaben", member, { kind: "database" }).map((h) => h.id),
+    (await find("Aufgaben", member, { kind: "database" })).map((h) => h.id),
     [db],
   );
   assert.deepEqual(
-    find("Projektplanung", owner, { spaceId: privateSpace }).map((h) => h.id),
+    (await find("Projektplanung", owner, { spaceId: privateSpace })).map((h) => h.id),
     [secret],
   );
-  command(owner, { action: "page.delete", pageId: doc });
-  assert.deepEqual(find("Projektplanung"), []);
-  command(owner, { action: "page.restore", pageId: doc });
+  await command(owner, { action: "page.delete", pageId: doc });
+  assert.deepEqual(await find("Projektplanung"), []);
+  await command(owner, { action: "page.restore", pageId: doc });
   assert.deepEqual(
-    find("Projektplanung").map((h) => h.id),
+    (await find("Projektplanung")).map((h) => h.id),
     [doc],
   );
 });
 
-test("edits, deletions and record documents update the index incrementally", () => {
-  command(owner, {
+test("edits, deletions and record documents update the index incrementally", async () => {
+  await command(owner, {
     action: "row.update",
     pageId: db,
     rowId: row,
     version: 1,
     cells: { note: "Handwerker beauftragen" },
   });
-  assert.deepEqual(find("Lieferant"), []);
-  assert.equal(find("Handwerker")[0]?.rowId, row);
-  run(
+  assert.deepEqual(await find("Lieferant"), []);
+  assert.equal((await find("Handwerker"))[0]?.rowId, row);
+  await run(
     "INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?)",
     row,
     new Uint8Array(),
     "<p>Rückfrage zur Montage</p>",
     "1",
   );
-  assert.equal(find("montage")[0]?.rowId, row);
-  command(owner, { action: "row.delete", pageId: db, rowId: row });
-  assert.deepEqual(find("montage"), []);
-  assert.equal(one<{ n: number }>("SELECT COUNT(*) n FROM search_dirty")!.n, 0);
+  assert.equal((await find("montage"))[0]?.rowId, row);
+  await command(owner, { action: "row.delete", pageId: db, rowId: row });
+  assert.deepEqual(await find("montage"), []);
+  assert.equal((await one<{ n: number }>("SELECT COUNT(*) n FROM search_dirty"))!.n, 0);
 });
 
-test("query syntax is literal and short queries still work", () => {
+test("query syntax is literal and short queries still work", async () => {
   for (const q of ['"', "AND OR NOT", "*", "planung*", "a:b", "(", "NEAR("])
-    assert.doesNotThrow(() => find(q));
-  assert.equal(find("Qu")[0]?.id, doc);
-  assert.equal(find("%").length, 0);
+    await assert.doesNotReject(async () => await find(q));
+  assert.equal((await find("Qu"))[0]?.id, doc);
+  assert.equal((await find("%")).length, 0);
   // Empty queries list recent accessible pages but no records.
-  assert.ok(find("").some((h) => h.id === doc));
-  assert.ok(!find("").some((h) => h.id === secret));
-  assert.deepEqual(find("", member, { kind: "row" }), []);
+  assert.ok((await find("")).some((h) => h.id === doc));
+  assert.ok(!(await find("")).some((h) => h.id === secret));
+  assert.deepEqual(await find("", member, { kind: "row" }), []);
 });
 
-test("a rebuilt index covers existing data and large backlogs drain in batches", () => {
-  run("DELETE FROM search_state");
-  assert.ok(processSearchIndex(1) >= 1);
+test("a rebuilt index covers existing data and large backlogs drain in batches", async () => {
+  await run("DELETE FROM search_state");
+  assert.ok((await processSearchIndex(1)) >= 1);
   let rounds = 0;
-  while (processSearchIndex(2)) rounds++;
+  while (await processSearchIndex(2)) rounds++;
   assert.ok(rounds > 0);
-  assert.equal(find("Projektplanung")[0]?.id, doc);
+  assert.equal((await find("Projektplanung"))[0]?.id, doc);
 });
 
 test("comments, text comments and attachment names are searchable with the page's permissions", async () => {
-  command(owner, {
+  await command(owner, {
     action: "comment.create",
     pageId: doc,
     body: "Budgetfreigabe bis Freitag",
   });
-  const recordRow = act({
+  const recordRow = (await act({
     action: "row.create",
     pageId: db,
     cells: { title: "Kommentierter Eintrag" },
-  }).id;
-  command(owner, {
+  })).id;
+  await command(owner, {
     action: "comment.create",
     pageId: db,
     rowId: recordRow,
     body: "Lieferschein prüfen",
   });
-  run(
+  await run(
     "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
     id(),
     doc,
@@ -223,7 +223,7 @@ test("comments, text comments and attachment names are searchable with the page'
     10,
     owner.id,
   );
-  run(
+  await run(
     "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
     id(),
     secret,
@@ -232,27 +232,27 @@ test("comments, text comments and attachment names are searchable with the page'
     10,
     owner.id,
   );
-  const [comment] = find("budgetfreigabe", member, { kind: "comment" });
+  const [comment] = await find("budgetfreigabe", member, { kind: "comment" });
   assert.equal(comment.kind, "comment");
   assert.equal(comment.id, doc);
   assert.match(comment.title, /^Kommentar von search-owner/);
-  const [recordComment] = find("Lieferschein", member, { kind: "comment" });
+  const [recordComment] = await find("Lieferschein", member, { kind: "comment" });
   assert.equal(recordComment.rowId, recordRow);
-  const [file] = find("vertragsentwurf", member, { kind: "file" });
+  const [file] = await find("vertragsentwurf", member, { kind: "file" });
   assert.equal(file.kind, "file");
   assert.equal(file.title, "Vertragsentwurf.pdf");
-  assert.deepEqual(find("Gehaltsdaten", member), []);
-  assert.equal(find("Gehaltsdaten", owner, { kind: "file" }).length, 1);
+  assert.deepEqual(await find("Gehaltsdaten", member), []);
+  assert.equal((await find("Gehaltsdaten", owner, { kind: "file" })).length, 1);
   // Text comment messages are indexed through their thread's page.
   const thread = id(),
     message = id();
-  run(
+  await run(
     "INSERT INTO inline_threads(id,page_id,anchor) VALUES(?,?,?)",
     thread,
     doc,
     "{}",
   );
-  run(
+  await run(
     "INSERT INTO inline_messages(id,thread_id,author_name,body) VALUES(?,?,?,?)",
     message,
     thread,
@@ -260,15 +260,15 @@ test("comments, text comments and attachment names are searchable with the page'
     "Rückfragezettel anhängen",
   );
   assert.match(
-    find("rückfragezettel", member)[0]?.title || "",
+    (await find("rückfragezettel", member))[0]?.title || "",
     /^Textkommentar/,
   );
-  run("UPDATE inline_messages SET deleted=1 WHERE id=?", message);
-  assert.deepEqual(find("rückfragezettel", member), []);
+  await run("UPDATE inline_messages SET deleted=1 WHERE id=?", message);
+  assert.deepEqual(await find("rückfragezettel", member), []);
   // Deleting the comment removes it from the index.
-  run("DELETE FROM comments WHERE body=?", "Budgetfreigabe bis Freitag");
-  assert.deepEqual(find("budgetfreigabe", member), []);
-  assert.deepEqual(find("", member, { kind: "comment" }), []);
+  await run("DELETE FROM comments WHERE body=?", "Budgetfreigabe bis Freitag");
+  assert.deepEqual(await find("budgetfreigabe", member), []);
+  assert.deepEqual(await find("", member, { kind: "comment" }), []);
 });
 
 test("PDF attachments are searchable by their text with the page's permissions", async () => {
@@ -277,10 +277,10 @@ test("PDF attachments are searchable by their text with the page's permissions",
   const { extractPendingFileTexts } = await import("../lib/file-text");
   const dir = join(process.env.FLOWPLAN_DATA_DIR!, "uploads");
   mkdirSync(dir, { recursive: true });
-  const attach = (pageId: string, name: string, data: Buffer) => {
+  const attach = async (pageId: string, name: string, data: Buffer) => {
     const fid = id();
     writeFileSync(join(dir, fid), data);
-    run(
+    await run(
       "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
       fid,
       pageId,
@@ -291,32 +291,32 @@ test("PDF attachments are searchable by their text with the page's permissions",
     );
     return fid;
   };
-  const visible = attach(
+  const visible = await attach(
     doc,
     "anlage.pdf",
     samplePdf(["Deckblatt", "Wartungsintervall der Kaeltemaschine"]),
   );
-  attach(secret, "intern.pdf", samplePdf(["Gehaltsband Stufe vier"]));
-  const broken = attach(doc, "kaputt.pdf", Buffer.from("%PDF-1.4 kaputt"));
+  await attach(secret, "intern.pdf", samplePdf(["Gehaltsband Stufe vier"]));
+  const broken = await attach(doc, "kaputt.pdf", Buffer.from("%PDF-1.4 kaputt"));
   while (await extractPendingFileTexts());
-  const [hit] = find("wartungsintervall", member, { kind: "file" });
+  const [hit] = await find("wartungsintervall", member, { kind: "file" });
   assert.equal(hit.title, "anlage.pdf");
   assert.equal(hit.id, doc);
   // The snippet comes from the PDF text, not only the file name.
   assert.ok(hit.snippet.includes(`${MARK_START}Wartu`));
   // Private pages keep their attachments private.
-  assert.deepEqual(find("gehaltsband", member), []);
-  assert.equal(find("gehaltsband", owner).length, 1);
+  assert.deepEqual(await find("gehaltsband", member), []);
+  assert.equal((await find("gehaltsband", owner)).length, 1);
   // Broken files are recorded once and not retried.
   assert.equal(
-    one<{ status: string }>(
+    (await one<{ status: string }>(
       "SELECT status FROM file_texts WHERE file_id=?",
       broken,
-    )?.status,
+    ))?.status,
     "error",
   );
   assert.equal(await extractPendingFileTexts(), 0);
   // Deleting the file removes its text from the index.
-  run("DELETE FROM files WHERE id=?", visible);
-  assert.deepEqual(find("wartungsintervall", member), []);
+  await run("DELETE FROM files WHERE id=?", visible);
+  assert.deepEqual(await find("wartungsintervall", member), []);
 });

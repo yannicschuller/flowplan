@@ -20,27 +20,27 @@ const { exportArchive, readZip } = await import("../lib/archive");
 const { deleteAccount } = await import("../lib/account-deletion");
 const { spaceGitStatus, runSpaceGitExport, runDueSpaceGitExports, spaceGitOverview, safeGitHttp } = await import("../lib/space-git-export");
 
-function person(name: string, admin = false): Identity {
+async function person(name: string, admin = false): Promise<Identity> {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
   return { id: uid, name, email: `${name}@example.test`, groups: [], isAdmin: admin, disabled: 0, created_at: "" } as Identity;
 }
 // Ada owns the workspace (and administers the instance), Ben is an editor
 // who owns the space "Projekte".
-const ada = person("Ada", true),
-  ben = person("Ben");
-const wid = createWorkspace(ada.id, "Familie");
-run("INSERT INTO members VALUES(?,?,?)", wid, ben.id, "editor");
-const as = (user: Identity) => (b: Record<string, unknown>) => command(user, { workspaceId: wid, ...b }) as Record<string, unknown>;
+const ada = await person("Ada", true),
+  ben = await person("Ben");
+const wid = await createWorkspace(ada.id, "Familie");
+await run("INSERT INTO members VALUES(?,?,?)", wid, ben.id, "editor");
+const as = (user: Identity) => async (b: Record<string, unknown>) => (await command(user, { workspaceId: wid, ...b })) as Record<string, unknown>;
 const projects = String(as(ben)({ action: "space.create", name: "Projekte" }).id);
 const adaPrivate = String(as(ada)({ action: "space.create", name: "Ada privat", private: true }).id);
-const write = (pageId: string, html: string) => run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), pageId);
+const write = async (pageId: string, html: string) => await run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), pageId);
 const garden = String(as(ben)({ action: "page.create", spaceId: projects, title: "Garten", kind: "document" }).id);
-write(garden, "<p>Tomaten pflanzen.</p>");
+await write(garden, "<p>Tomaten pflanzen.</p>");
 const shed = String(as(ben)({ action: "page.create", spaceId: projects, title: "Schuppen", kind: "document" }).id);
-write(shed, "<p>Dach reparieren.</p>");
+await write(shed, "<p>Dach reparieren.</p>");
 const diary = String(as(ada)({ action: "page.create", spaceId: adaPrivate, title: "Tagebuch", kind: "document" }).id);
-write(diary, "<p>NUR-FUER-ADA</p>");
+await write(diary, "<p>NUR-FUER-ADA</p>");
 // A database in Ben's space with a private record of Ada: Ben may not read it.
 const budget = String(as(ben)({ action: "page.create", spaceId: projects, title: "Budget", kind: "database" }).id);
 const secretRow = String(as(ada)({ action: "row.create", pageId: budget, cells: { title: "GEHALT-ADA" } }).id);
@@ -50,29 +50,29 @@ as(ben)({ action: "row.create", pageId: budget, cells: { title: "Saatgut" } });
 const copyOf = (spaceId: string) => join(process.env.FLOWPLAN_DATA_DIR!, "git-export", "spaces", spaceId);
 const save = (user: Identity, spaceId: string, b: Record<string, unknown>) => as(user)({ action: "space.gitExport", spaceId, enabled: true, ...b });
 
-test("the Git export of spaces is off unless the administrator turns it on", () => {
-  assert.deepEqual(spaceGitStatus(ben, projects), { available: false });
+test("the Git export of spaces is off unless the administrator turns it on", async () => {
+  assert.deepEqual(await spaceGitStatus(ben, projects), { available: false });
   assert.throws(
     () => save(ben, projects, { url: "https://git.example.org/ben/notes.git", username: "ben", token: "t0ken-value" }),
     /nicht eingeschaltet/,
   );
-  assert.equal(spaceGitOverview().enabled, false);
+  assert.equal((await spaceGitOverview()).enabled, false);
   process.env.SPACE_GIT_EXPORT = "true";
-  assert.equal(spaceGitStatus(ben, projects).available, true);
+  assert.equal((await spaceGitStatus(ben, projects)).available, true);
 });
 
 test("only the space owner sets it up – not workspace owners, demo accounts or API tokens", async () => {
   const input = { url: "https://git.example.org/ben/notes.git", username: "ben", token: "t0ken-value" };
   assert.throws(() => save(ada, projects, input), (e: { status?: number }) => e.status === 403);
-  assert.deepEqual(spaceGitStatus(ada, projects), { available: false });
+  assert.deepEqual(await spaceGitStatus(ada, projects), { available: false });
   await assert.rejects(() => runSpaceGitExport(ada, projects), (e: { status?: number }) => e.status === 403);
   assert.throws(() => save({ ...ben, demo: true }, projects, input), /Demo/);
   await assert.rejects(() => runSpaceGitExport({ ...ben, demo: true }, projects), /Demo/);
   assert.throws(() => save({ ...ben, apiScope: "write" }, projects, input), /API-Token/);
-  assert.equal(one("SELECT 1 FROM space_git_exports WHERE space_id=?", projects), undefined);
+  assert.equal(await one("SELECT 1 FROM space_git_exports WHERE space_id=?", projects), undefined);
 });
 
-test("only https addresses on allowed servers, never internal ones", () => {
+test("only https addresses on allowed servers, never internal ones", async () => {
   const base = { username: "ben", token: "t0ken-value" };
   process.env.SPACE_GIT_ALLOWED_HOSTS = "git.example.org, 127.0.0.1";
   assert.throws(() => save(ben, projects, { ...base, url: "https://evil.example.com/ben/notes.git" }), /nicht freigegeben/);
@@ -82,7 +82,7 @@ test("only https addresses on allowed servers, never internal ones", () => {
   assert.throws(() => save(ben, projects, { ...base, url: "https://127.0.0.1/ben/notes.git" }), /Interne Adressen/);
   assert.throws(() => save(ben, projects, { ...base, url: "https://git.example.org/ben/notes.git", branch: "../main" }), /Branch/);
   save(ben, projects, { ...base, url: "https://git.example.org/ben/notes.git" });
-  assert.equal(spaceGitStatus(ben, projects).configured, true);
+  assert.equal((await spaceGitStatus(ben, projects)).configured, true);
   as(ben)({ action: "space.gitExport", spaceId: projects, enabled: false });
 });
 
@@ -115,14 +115,14 @@ test("internal addresses only for servers the administrator listed, with SPACE_G
   // Without a list the opt-in does nothing.
   delete process.env.SPACE_GIT_ALLOWED_HOSTS;
   await assert.rejects(() => safeGitHttp("https://127.0.0.1/x.git").request({ url: "https://127.0.0.1/x.git/info/refs" }), /Interne Adressen/);
-  assert.equal(spaceGitOverview().allowPrivate, false);
+  assert.equal((await spaceGitOverview()).allowPrivate, false);
   // Listed but without the opt-in: refused as before.
   process.env.SPACE_GIT_ALLOWED_HOSTS = "127.0.0.1";
   delete process.env.SPACE_GIT_ALLOW_PRIVATE;
   assert.throws(() => save(ben, projects, { ...base, url: "https://127.0.0.1/ben/notes.git" }), /Interne Adressen/);
   process.env.SPACE_GIT_ALLOW_PRIVATE = "true";
   save(ben, projects, { ...base, url: "https://127.0.0.1/ben/notes.git" });
-  assert.equal(spaceGitOverview().allowPrivate, true);
+  assert.equal((await spaceGitOverview()).allowPrivate, true);
   as(ben)({ action: "space.gitExport", spaceId: projects, enabled: false });
   delete process.env.SPACE_GIT_ALLOW_PRIVATE;
   delete process.env.SPACE_GIT_ALLOWED_HOSTS;
@@ -130,16 +130,16 @@ test("internal addresses only for servers the administrator listed, with SPACE_G
 
 test("the token is stored sealed for this space and never shown again", async () => {
   save(ben, projects, { url: "https://git.example.org/ben/notes.git", username: "ben", token: "PLAIN-TOKEN-123" });
-  const status = spaceGitStatus(ben, projects);
+  const status = await spaceGitStatus(ben, projects);
   assert.ok(status.available && status.tokenSet);
   assert.doesNotMatch(JSON.stringify(status), /PLAIN-TOKEN-123/);
-  const stored = one<{ token: string }>("SELECT token FROM space_git_exports WHERE space_id=?", projects)!.token;
+  const stored = (await one<{ token: string }>("SELECT token FROM space_git_exports WHERE space_id=?", projects))!.token;
   assert.match(stored, /^fps1:/);
   assert.equal(openSecret(stored, `space-git:${projects}`), "PLAIN-TOKEN-123");
   assert.throws(() => openSecret(stored, `space-git:${adaPrivate}`));
   // Saving without a token keeps it; a new address needs it again.
   save(ben, projects, { url: "https://git.example.org/ben/notes.git", username: "ben", frequency: "weekly" });
-  assert.equal(one<{ token: string }>("SELECT token FROM space_git_exports WHERE space_id=?", projects)!.token, stored);
+  assert.equal((await one<{ token: string }>("SELECT token FROM space_git_exports WHERE space_id=?", projects))!.token, stored);
   assert.throws(() => save(ben, projects, { url: "https://git.example.org/ben/other.git", username: "ben" }), /Zugangstoken neu/);
   // Not in the workspace archive.
   const archive = await readZip(await exportArchive(ada, wid));
@@ -179,7 +179,7 @@ test("one commit per run, only when something changed, with what the owner may r
   assert.equal(first.last?.pushed, true);
   assert.ok(first.last!.files > 0);
   // Ben cannot read Ada's private record, so it is not exported either.
-  assert.ok(!(pageData(ben, budget) as { rows: { id: string }[] }).rows.some((r) => r.id === secretRow));
+  assert.ok(!((await pageData(ben, budget)) as { rows: { id: string }[] }).rows.some((r) => r.id === secretRow));
   let dir = clone();
   const gardenDir = `Garten-${garden.slice(0, 8)}`,
     shedDir = `Schuppen-${shed.slice(0, 8)}`;
@@ -198,7 +198,7 @@ test("one commit per run, only when something changed, with what the owner may r
   assert.equal(second.last?.commit, first.last?.commit);
 
   // A change and a page in the trash: one commit, the deletion included.
-  write(garden, "<p>Tomaten und Bohnen pflanzen.</p>");
+  await write(garden, "<p>Tomaten und Bohnen pflanzen.</p>");
   as(ben)({ action: "page.delete", pageId: shed });
   const third = await runSpaceGitExport(ben, projects);
   assert.ok(third.available);
@@ -258,7 +258,7 @@ test("a repository saved while a run was in progress starts from a fresh copy", 
 
 test("the scheduler runs spaces whose interval has passed", { skip: !existsSync(backend) && "git http-backend missing" }, async () => {
   local();
-  const last = one<{ last_run: string }>("SELECT last_run FROM space_git_exports WHERE space_id=?", projects)!;
+  const last = (await one<{ last_run: string }>("SELECT last_run FROM space_git_exports WHERE space_id=?", projects))!;
   const at = JSON.parse(last.last_run).at as number;
   assert.deepEqual(await runDueSpaceGitExports(at + 3600_000), []);
   const [result] = await runDueSpaceGitExports(at + 86400_000);
@@ -266,7 +266,7 @@ test("the scheduler runs spaces whose interval has passed", { skip: !existsSync(
   // Weekly: a day later is too early.
   save(ben, projects, { url: `http://127.0.0.1:${port}/space.git`, username: "flowplan", frequency: "weekly" });
   assert.deepEqual(await runDueSpaceGitExports(at + 2 * 86400_000), []);
-  const overview = spaceGitOverview();
+  const overview = await spaceGitOverview();
   assert.equal(overview.spaces, 1);
   assert.doesNotMatch(JSON.stringify(overview), /127\.0\.0\.1:\d+|space\.git|Garten/);
 });
@@ -278,95 +278,95 @@ function configured(owner: Identity, spaceId: string) {
   mkdirSync(join(copyOf(spaceId), ".git"), { recursive: true });
   writeFileSync(join(copyOf(spaceId), "index.md"), "# Copy\n");
 }
-const gone = (spaceId: string) => {
-  assert.equal(one("SELECT 1 FROM space_git_exports WHERE space_id=?", spaceId), undefined);
+const gone = async (spaceId: string) => {
+  assert.equal(await one("SELECT 1 FROM space_git_exports WHERE space_id=?", spaceId), undefined);
   assert.ok(!existsSync(copyOf(spaceId)), "working copy removed");
 };
 
-test("turning it off removes the token and the working copy", () => {
+test("turning it off removes the token and the working copy", async () => {
   assert.ok(existsSync(copyOf(projects)));
   as(ben)({ action: "space.gitExport", spaceId: projects, enabled: false });
-  gone(projects);
+  await gone(projects);
   assert.equal(readdirSync(join(process.env.FLOWPLAN_DATA_DIR!, "git-export", "spaces")).length, 0);
 });
 
-test("a new owner, the trash, leaving, becoming a guest or deleting the account end it", () => {
+test("a new owner, the trash, leaving, becoming a guest or deleting the account end it", async () => {
   // Leaving the workspace hands the space to another owner.
   configured(ben, projects);
   as(ben)({ action: "workspace.leave", confirmName: "Familie", transferTo: ada.id });
-  gone(projects);
-  assert.equal(one<{ owner_id: string }>("SELECT owner_id FROM spaces WHERE id=?", projects)!.owner_id, ada.id);
-  run("INSERT INTO members VALUES(?,?,?)", wid, ben.id, "editor");
-  run("UPDATE spaces SET owner_id=? WHERE id=?", ben.id, projects);
+  await gone(projects);
+  assert.equal((await one<{ owner_id: string }>("SELECT owner_id FROM spaces WHERE id=?", projects))!.owner_id, ada.id);
+  await run("INSERT INTO members VALUES(?,?,?)", wid, ben.id, "editor");
+  await run("UPDATE spaces SET owner_id=? WHERE id=?", ben.id, projects);
   // The space in the trash.
   configured(ben, projects);
-  as(ben)({ action: "space.delete", spaceId: projects, version: one<{ version: number }>("SELECT version FROM spaces WHERE id=?", projects)!.version, confirmName: "Projekte" });
-  gone(projects);
-  as(ben)({ action: "space.restore", spaceId: projects, version: one<{ version: number }>("SELECT version FROM spaces WHERE id=?", projects)!.version });
+  as(ben)({ action: "space.delete", spaceId: projects, version: (await one<{ version: number }>("SELECT version FROM spaces WHERE id=?", projects))!.version, confirmName: "Projekte" });
+  await gone(projects);
+  as(ben)({ action: "space.restore", spaceId: projects, version: (await one<{ version: number }>("SELECT version FROM spaces WHERE id=?", projects))!.version });
   // Removed from the workspace (their spaces go to the owner acting).
   configured(ben, projects);
   as(ada)({ action: "member.role", userId: ben.id, role: "remove" });
-  gone(projects);
-  assert.equal(one<{ owner_id: string }>("SELECT owner_id FROM spaces WHERE id=?", projects)!.owner_id, ada.id);
+  await gone(projects);
+  assert.equal((await one<{ owner_id: string }>("SELECT owner_id FROM spaces WHERE id=?", projects))!.owner_id, ada.id);
   // Made a guest.
-  const cleo = person("Cleo");
-  run("INSERT INTO members VALUES(?,?,?)", wid, cleo.id, "editor");
+  const cleo = await person("Cleo");
+  await run("INSERT INTO members VALUES(?,?,?)", wid, cleo.id, "editor");
   const cleoSpace = String(as(cleo)({ action: "space.create", name: "Cleo" }).id);
   configured(cleo, cleoSpace);
   as(ada)({ action: "member.guest", userId: cleo.id, guest: true });
-  gone(cleoSpace);
+  await gone(cleoSpace);
   // The account deleted.
-  const dan = person("Dan");
-  run("INSERT INTO members VALUES(?,?,?)", wid, dan.id, "editor");
+  const dan = await person("Dan");
+  await run("INSERT INTO members VALUES(?,?,?)", wid, dan.id, "editor");
   const danSpace = String(as(dan)({ action: "space.create", name: "Dan" }).id);
   configured(dan, danSpace);
-  run("UPDATE users SET disabled=1 WHERE id=?", dan.id);
-  command(ada, { action: "admin.deleteUser", userId: dan.id });
-  gone(danSpace);
+  await run("UPDATE users SET disabled=1 WHERE id=?", dan.id);
+  await command(ada, { action: "admin.deleteUser", userId: dan.id });
+  await gone(danSpace);
 });
 
 test("a deactivated owner pauses the export instead of ending it", async () => {
-  const fay = person("Fay");
-  run("INSERT INTO members VALUES(?,?,?)", wid, fay.id, "editor");
+  const fay = await person("Fay");
+  await run("INSERT INTO members VALUES(?,?,?)", wid, fay.id, "editor");
   const faySpace = String(as(fay)({ action: "space.create", name: "Fay" }).id);
   configured(fay, faySpace);
-  run("UPDATE users SET disabled=1 WHERE id=?", fay.id);
+  await run("UPDATE users SET disabled=1 WHERE id=?", fay.id);
   assert.deepEqual(await runDueSpaceGitExports(), []);
   // Settings, sealed token and working copy stay; the status says why.
-  const row = one<{ token: string; last_run: string }>("SELECT token,last_run FROM space_git_exports WHERE space_id=?", faySpace);
+  const row = await one<{ token: string; last_run: string }>("SELECT token,last_run FROM space_git_exports WHERE space_id=?", faySpace);
   assert.ok(row?.token);
   assert.ok(existsSync(copyOf(faySpace)), "working copy kept");
   const last = JSON.parse(row!.last_run) as { error: string; pushed: boolean };
   assert.match(last.error, /deaktiviert/);
   assert.equal(last.pushed, false);
-  assert.ok(spaceGitOverview().failing.some((f) => f.owner === "Fay" && /deaktiviert/.test(f.error)));
+  assert.ok((await spaceGitOverview()).failing.some((f) => f.owner === "Fay" && /deaktiviert/.test(f.error)));
   // Enabled again: the export is still set up for the owner.
-  run("UPDATE users SET disabled=0 WHERE id=?", fay.id);
-  const status = spaceGitStatus(fay, faySpace);
+  await run("UPDATE users SET disabled=0 WHERE id=?", fay.id);
+  const status = await spaceGitStatus(fay, faySpace);
   assert.equal(status.available && status.configured, true);
   as(fay)({ action: "space.gitExport", spaceId: faySpace, enabled: false });
-  gone(faySpace);
+  await gone(faySpace);
 });
 
 test("an export whose owner lost the space ends at the next run", async () => {
-  const eve = person("Eve");
-  run("INSERT INTO members VALUES(?,?,?)", wid, eve.id, "editor");
+  const eve = await person("Eve");
+  await run("INSERT INTO members VALUES(?,?,?)", wid, eve.id, "editor");
   const eveSpace = String(as(eve)({ action: "space.create", name: "Eve" }).id);
   configured(eve, eveSpace);
   // Changed behind Flowplan's back, without the trigger's column.
-  if (onPostgres) run("ALTER TABLE spaces DISABLE TRIGGER space_git_owner");
-  else run("DROP TRIGGER space_git_owner"); // sqlite-only
+  if (onPostgres) await run("ALTER TABLE spaces DISABLE TRIGGER space_git_owner");
+  else await run("DROP TRIGGER space_git_owner"); // sqlite-only
   try {
-    run("UPDATE spaces SET owner_id=? WHERE id=?", ada.id, eveSpace);
+    await run("UPDATE spaces SET owner_id=? WHERE id=?", ada.id, eveSpace);
   } finally {
-    if (onPostgres) run("ALTER TABLE spaces ENABLE TRIGGER space_git_owner");
+    if (onPostgres) await run("ALTER TABLE spaces ENABLE TRIGGER space_git_owner");
     else
-      run(
+      await run(
         // sqlite-only
         "CREATE TRIGGER space_git_owner AFTER UPDATE OF owner_id ON spaces WHEN OLD.owner_id IS NOT NEW.owner_id BEGIN DELETE FROM space_git_exports WHERE space_id=NEW.id; END",
       );
   }
-  assert.ok(one("SELECT 1 FROM space_git_exports WHERE space_id=?", eveSpace));
+  assert.ok(await one("SELECT 1 FROM space_git_exports WHERE space_id=?", eveSpace));
   await runDueSpaceGitExports();
-  gone(eveSpace);
+  await gone(eveSpace);
 });

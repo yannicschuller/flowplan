@@ -48,7 +48,7 @@ export function useStorageOverview(onError: (message: string) => void) {
 
 // The server names the parts in German (lib/storage-overview.ts); they are
 // shown in the page's language here (#121).
-function partLabel(t: ReturnType<typeof useT>, label: string): string {
+function partLabel(t: Awaited<ReturnType<typeof useT>>, label: string): string {
   switch (label) {
     case "Dokumente": return t("Dokumente", "Documents");
     case "Datenbanken und Einträge": return t("Datenbanken und Einträge", "Databases and records");
@@ -110,7 +110,7 @@ function Breakdown({ parts, label }: { parts: { key: string; label: string; byte
   );
 }
 
-export function StorageUsage({ storage }: { storage: ReturnType<typeof useStorageOverview> }) {
+export function StorageUsage({ storage }: { storage: Awaited<ReturnType<typeof useStorageOverview>> }) {
   const t = useT();
   const { data, busy, load } = storage;
   const refresh = (

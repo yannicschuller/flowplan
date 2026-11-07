@@ -19,21 +19,21 @@ const { exportPrintHtml } = await import("../lib/export-pdf");
 const { collectExportContent } = await import("../lib/export-content");
 const { englishMessage } = await import("../lib/i18n-errors");
 
-function person(name: string): Identity {
+async function person(name: string): Promise<Identity> {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
   return { id: uid, name, email: `${name}@example.test`, groups: [], isAdmin: false, disabled: 0, created_at: "" } as Identity;
 }
-const owner = person("Autor"),
-  viewer = person("Leserin"),
-  stranger = person("Fremd");
-const wid = createWorkspace(owner.id, "Handbuch-Werkstatt");
-run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
-const space = (command(owner, { action: "space.create", workspaceId: wid, name: "Dokumentation" }) as { id: string }).id;
-const privateSpace = (command(owner, { action: "space.create", workspaceId: wid, name: "Privat", private: true }) as { id: string }).id;
-const page = (title: string, kind = "document", parentId?: string) =>
-  (command(owner, { action: "page.create", workspaceId: wid, spaceId: space, title, kind, parentId }) as { id: string }).id;
-const write = (pageId: string, html: string) => run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), pageId);
+const owner = await person("Autor"),
+  viewer = await person("Leserin"),
+  stranger = await person("Fremd");
+const wid = await createWorkspace(owner.id, "Handbuch-Werkstatt");
+await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
+const space = ((await command(owner, { action: "space.create", workspaceId: wid, name: "Dokumentation" })) as { id: string }).id;
+const privateSpace = ((await command(owner, { action: "space.create", workspaceId: wid, name: "Privat", private: true })) as { id: string }).id;
+const page = async (title: string, kind = "document", parentId?: string) =>
+  ((await command(owner, { action: "page.create", workspaceId: wid, spaceId: space, title, kind, parentId })) as { id: string }).id;
+const write = async (pageId: string, html: string) => await run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), pageId);
 // A PNG header is enough for the size (the exports do not decode pictures).
 const png = Buffer.concat([
   Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]),
@@ -41,25 +41,25 @@ const png = Buffer.concat([
   Buffer.from([0, 0, 0x03, 0x20, 0, 0, 0x01, 0x90, 8, 6, 0, 0, 0]),
   Buffer.from("rest of the picture"),
 ]);
-function file(pageId: string, name: string, mime: string, bytes: Buffer) {
+async function file(pageId: string, name: string, mime: string, bytes: Buffer) {
   const fid = id();
   mkdirSync(join(process.env.FLOWPLAN_DATA_DIR!, "uploads"), { recursive: true });
   writeFileSync(join(process.env.FLOWPLAN_DATA_DIR!, "uploads", fid), bytes);
-  run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fid, pageId, name, mime, bytes.length, owner.id);
+  await run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fid, pageId, name, mime, bytes.length, owner.id);
   return { id: fid, url: `/api/files/${fid}` };
 }
 
-const root = page("Handbuch"),
-  chapter = page("Kapitel 1", "document", root),
-  section = page("Abschnitt 1.1", "document", chapter),
-  table = page("Tabelle", "database", root),
-  board = page("Skizze", "whiteboard", root),
-  hidden = page("Geheim", "document", root);
+const root = await page("Handbuch"),
+  chapter = await page("Kapitel 1", "document", root),
+  section = await page("Abschnitt 1.1", "document", chapter),
+  table = await page("Tabelle", "database", root),
+  board = await page("Skizze", "whiteboard", root),
+  hidden = await page("Geheim", "document", root);
 // Moved below the root into the owner's private space: readers do not see it.
-run("UPDATE pages SET space_id=? WHERE id=?", privateSpace, hidden);
-const picture = file(root, "bild.png", "image/png", png);
-const secretFile = file(hidden, "geheim.png", "image/png", png);
-write(
+await run("UPDATE pages SET space_id=? WHERE id=?", privateSpace, hidden);
+const picture = await file(root, "bild.png", "image/png", png);
+const secretFile = await file(hidden, "geheim.png", "image/png", png);
+await write(
   root,
   `<h2>Einführung</h2><p>Hallo <strong>fett</strong> <em>kursiv</em> <a href="/#page=${chapter}">Kapitel</a> <a href="https://example.org/">extern</a><sup data-footnote="Eine Notiz https://example.org/note"></sup> <a href="/#page=${hidden}">geheim</a></p>` +
     `<ul><li><p>Eins</p><ul><li><p>Zwei</p></li></ul></li></ul><ol start="3"><li><p>Drei</p></li></ol>` +
@@ -68,19 +68,19 @@ write(
     `<img src="${picture.url}" alt="Bild"><img src="${secretFile.url}" alt="Geheimes Bild">` +
     `<aside data-callout="warning"><p>Vorsicht &amp; Umsicht</p></aside><pre><code class="language-js">const x = 1 &lt; 2;</code></pre><blockquote><p>Zitat</p></blockquote>`,
 );
-write(chapter, `<p>Kapiteltext mit <mark>Markierung</mark> und <code>Code</code>.</p>`);
-write(section, `<p>Abschnittstext.</p>`);
-write(hidden, `<p>Nur für den Autor.</p>`);
-const schema = database(table);
-command(owner, {
+await write(chapter, `<p>Kapiteltext mit <mark>Markierung</mark> und <code>Code</code>.</p>`);
+await write(section, `<p>Abschnittstext.</p>`);
+await write(hidden, `<p>Nur für den Autor.</p>`);
+const schema = await database(table);
+await command(owner, {
   action: "database.update",
   pageId: table,
   version: schema.version,
   fields: [...schema.fields, { id: "amount", name: "Betrag", type: "number" }, { id: "done", name: "Fertig", type: "checkbox" }],
   views: schema.views,
 });
-const row = command(owner, { action: "row.create", pageId: table, cells: { title: "Erster Eintrag", amount: 42, done: true } }) as { id: string };
-replaceRowDocument(row.id, "<p>Text des Eintrags.</p>", owner.id);
+const row = (await command(owner, { action: "row.create", pageId: table, cells: { title: "Erster Eintrag", amount: 42, done: true } })) as { id: string };
+await replaceRowDocument(row.id, "<p>Text des Eintrags.</p>", owner.id);
 
 test("a page becomes a valid Word file with styles, lists, tasks, tables, pictures, callouts, code and footnotes", async () => {
   // As the reader: the owner's private sub-page and its picture stay out.
@@ -225,7 +225,7 @@ test("a space becomes one e-book with what the person may read", async () => {
 });
 
 test("the combined print view has a cover, a numbered table of contents and every page as a chapter", async () => {
-  const result = exportPrintHtml(viewer, { pageId: root, children: true });
+  const result = await exportPrintHtml(viewer, { pageId: root, children: true });
   assert.equal(result.name, "Handbuch.html");
   const html = result.html;
   assert.ok(html.startsWith("<!doctype html>"));
@@ -242,7 +242,7 @@ test("the combined print view has a cover, a numbered table of contents and ever
   assert.doesNotMatch(html, /Nur für den Autor/);
   assert.match(html, /Geheimes Bild \(nicht verfügbar\)/);
   // The owner reads the private page: it is a chapter for them.
-  assert.match(exportPrintHtml(owner, { pageId: root, children: true }).html, /Nur für den Autor/);
+  assert.match((await exportPrintHtml(owner, { pageId: root, children: true })).html, /Nur für den Autor/);
   assert.match(html, /page-break-before: always/);
   assert.match(html, /target-counter\(attr\(href url\), page\)/);
   assert.doesNotMatch(html, /<script/i);
@@ -250,18 +250,18 @@ test("the combined print view has a cover, a numbered table of contents and ever
   const order = [...html.matchAll(/<article class="chapter" id="p-([^"]+)"/g)].map((m) => m[1]);
   assert.deepEqual(order.slice(0, 3), [root, chapter, section]);
   assert.equal(order.length, 5);
-  const whole = exportPrintHtml(owner, { spaceId: space });
+  const whole = await exportPrintHtml(owner, { spaceId: space });
   assert.match(whole.html, /<p class="cover-kind">Bereich<\/p><h1>Dokumentation<\/h1>/);
-  assert.throws(() => exportPrintHtml(stranger, { pageId: root, children: true }), (error: { status: number }) => [403, 404].includes(error.status));
-  assert.throws(() => exportPrintHtml(viewer, { spaceId: privateSpace }), { status: 403 });
+  await assert.rejects(async () => await exportPrintHtml(stranger, { pageId: root, children: true }), (error: { status: number }) => [403, 404].includes(error.status));
+  await assert.rejects(async () => await exportPrintHtml(viewer, { spaceId: privateSpace }), { status: 403 });
 });
 
-test("the page limit stops an export with a clear message", () => {
-  assert.throws(() => collectExportContent(owner, { pageId: root, children: true, maxPages: 2, format: "PDF" }), {
+test("the page limit stops an export with a clear message", async () => {
+  await assert.rejects(async () => await collectExportContent(owner, { pageId: root, children: true, maxPages: 2, format: "PDF" }), {
     status: 413,
     message: "Bitte höchstens 2 Seiten je PDF-Export auswählen.",
   });
   assert.equal(englishMessage("Bitte höchstens 2 Seiten je PDF-Export auswählen."), "Please select at most 2 pages per PDF export.");
   // Without sub-pages the one page always fits.
-  assert.equal(collectExportContent(owner, { pageId: root, children: false, maxPages: 1, format: "Word" }).pages.length, 1);
+  assert.equal((await collectExportContent(owner, { pageId: root, children: false, maxPages: 1, format: "Word" })).pages.length, 1);
 });

@@ -21,35 +21,35 @@ export type TextBacklink = {
 
 const like = (value: string) => `%${value.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 
-export function textBacklinks(
+export async function textBacklinks(
   user: Identity,
   target: Pick<Page, "id" | "workspace_id">,
   rowId?: string,
   limit = 100,
-): TextBacklink[] {
+): Promise<TextBacklink[]> {
   // In stored HTML the "&" before row= is written as "&amp;".
   const needle = rowId ? `row=${rowId}` : `#page=${target.id}`;
   const linksHere = (html: string) =>
     html.includes(needle) && (!rowId || html.includes(`#page=${target.id}`));
   const roles = new Map<string, boolean>();
-  const readable = (page: Page) => {
+  const readable = async (page: Page) => {
     if (!roles.has(page.id))
-      roles.set(page.id, !!pageRole(user, page) && !journalLocked(user, page));
+      roles.set(page.id, !!(await pageRole(user, page)) && !(await journalLocked(user, page)));
     return roles.get(page.id)!;
   };
   const links: TextBacklink[] = [];
-  for (const page of all<Page & { html: string }>(
+  for (const page of await all<Page & { html: string }>(
     `SELECT p.*,d.html FROM pages p JOIN documents d ON d.page_id=p.id
      WHERE p.workspace_id=? AND p.deleted_at IS NULL AND d.html LIKE ? ESCAPE '\\' ORDER BY p.title`,
     target.workspace_id,
     like(needle),
   )) {
     if (links.length >= limit) return links;
-    if ((!rowId && page.id === target.id) || !linksHere(page.html) || !readable(page)) continue;
+    if ((!rowId && page.id === target.id) || !linksHere(page.html) || !(await readable(page))) continue;
     links.push({ id: page.id, title: page.title, icon: page.icon, kind: page.kind });
   }
-  const databases = new Map<string, { page: Page; fields: Field[]; visible: ReturnType<typeof rowRoleResolver> } | null>();
-  for (const row of all<Page & { row_id: string; row_cells: string; row_access: string; row_by: string | null; row_icon: string | null; db_fields: string; row_html: string }>(
+  const databases = new Map<string, { page: Page; fields: Field[]; visible: Awaited<ReturnType<typeof rowRoleResolver>> } | null>();
+  for (const row of await all<Page & { row_id: string; row_cells: string; row_access: string; row_by: string | null; row_icon: string | null; db_fields: string; row_html: string }>(
     `SELECT p.*,r.id row_id,r.icon row_icon,r.cells row_cells,r.access row_access,r.created_by row_by,db.fields db_fields,COALESCE(rd.html,r.content,'') row_html
      FROM rows r JOIN pages p ON p.id=r.page_id JOIN databases db ON db.page_id=p.id
      LEFT JOIN row_documents rd ON rd.row_id=r.id
@@ -63,8 +63,8 @@ export function textBacklinks(
     if (!databases.has(row.id))
       databases.set(
         row.id,
-        readable(row)
-          ? { page: row, fields: JSON.parse(row.db_fields) as Field[], visible: rowRoleResolver(user, row) }
+        (await readable(row))
+          ? { page: row, fields: JSON.parse(row.db_fields) as Field[], visible: await rowRoleResolver(user, row) }
           : null,
       );
     const database = databases.get(row.id);

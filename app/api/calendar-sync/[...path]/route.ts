@@ -46,7 +46,7 @@ export const GET = withRequestLocale(async (req: Request, { params }: { params: 
       const user = await browserUser();
       const jar = await cookies();
       if (path[0] === "connect") {
-        const { url: target, flow } = startCalendarConnection(user, provider);
+        const { url: target, flow } = await startCalendarConnection(user, provider);
         jar.set(FLOW_COOKIE, flow, {
           httpOnly: true,
           secure: appUrl().startsWith("https:"),
@@ -75,7 +75,7 @@ export const GET = withRequestLocale(async (req: Request, { params }: { params: 
     const user = await browserUser();
     if (path.length === 1 && path[0] === "status") {
       const page = url.searchParams.get("page");
-      return NextResponse.json(calendarSyncStatus(user, page ? z.uuid().parse(page) : null), { headers: { "Cache-Control": "no-store" } });
+      return NextResponse.json(await calendarSyncStatus(user, page ? z.uuid().parse(page) : null), { headers: { "Cache-Control": "no-store" } });
     }
     if (path.length === 1 && path[0] === "calendars")
       return NextResponse.json({ calendars: await listExternalCalendars(user, url.searchParams.get("connection")) }, { headers: { "Cache-Control": "no-store" } });
@@ -88,7 +88,7 @@ export const GET = withRequestLocale(async (req: Request, { params }: { params: 
 export const POST = withRequestLocale(async (req: Request, { params }: { params: Promise<{ path: string[] }> }) => {
   const { path } = await params;
   try {
-    checkOrigin(req);
+    await checkOrigin(req);
     const user = await browserUser();
     if (path.length === 1 && path[0] === "run") return NextResponse.json(await syncOwnMapping(user, await req.json()));
     throw new HttpError(404, "Nicht gefunden.");

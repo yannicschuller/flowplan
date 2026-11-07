@@ -34,6 +34,7 @@ import { ct } from "./content-locale";
 import { addresses, parseHeaders, parseMime, parseDate, type MimeAttachment } from "./mime-parse";
 import { ImapClient, type ImapOptions } from "./imap";
 import type { Field, Identity, Page } from "./types";
+import { mapAsync } from "./each-async";
 
 export const INBOUND_MAILS_PER_HOUR = 60;
 export const INBOUND_FILE_BYTES = 10 * 1024 * 1024;
@@ -90,9 +91,9 @@ export function inboundEmail(token: string) {
 }
 export const inboundWebhookUrl = (token: string) => `${appUrl().replace(/\/$/, "")}/api/inbound-mail/${token}`;
 
-function requireOwner(user: Identity, workspaceId: string) {
+async function requireOwner(user: Identity, workspaceId: string) {
   if (user.demo) throw new HttpError(403, "In der Demo nicht verfügbar.");
-  const member = one<{ role: string }>("SELECT role FROM members WHERE workspace_id=? AND user_id=?", workspaceId, user.id);
+  const member = await one<{ role: string }>("SELECT role FROM members WHERE workspace_id=? AND user_id=?", workspaceId, user.id);
   if (member?.role !== "owner") throw new HttpError(403, "Nur Eigentümer verwalten E-Mail-Eingänge.");
 }
 
@@ -112,12 +113,12 @@ export function senderAllowed(senders: string[], from: string) {
 }
 
 const targetKinds = new Set(["document", "database"]);
-function checkTarget(user: Identity, workspaceId: string, pageId: string) {
-  const page = one<Page>("SELECT * FROM pages WHERE id=?", pageId);
+async function checkTarget(user: Identity, workspaceId: string, pageId: string) {
+  const page = await one<Page>("SELECT * FROM pages WHERE id=?", pageId);
   if (!page || page.deleted_at || page.workspace_id !== workspaceId) throw new HttpError(404, "Seite nicht gefunden.");
   if (!targetKinds.has(page.kind) || page.synced || page.journal_date)
     throw new HttpError(400, "E-Mails landen nur unter einer Seite oder in einer Datenbank.");
-  const role = pageRole(user, page);
+  const role = await pageRole(user, page);
   if (role !== "editor" && role !== "owner") throw new HttpError(403, "Keine Berechtigung für diese Seite.");
   return page;
 }
@@ -132,18 +133,18 @@ const saveSchema = z.object({
   secret: z.string().max(500).optional(),
 });
 
-export function saveInboundAddress(user: Identity, raw: unknown) {
+export async function saveInboundAddress(user: Identity, raw: unknown) {
   const input = saveSchema.parse(raw);
-  requireOwner(user, input.workspaceId);
-  checkTarget(user, input.workspaceId, input.pageId);
+  await requireOwner(user, input.workspaceId);
+  await checkTarget(user, input.workspaceId, input.pageId);
   const senders = [...new Set(input.senders.map(normalizeSender).filter(Boolean))];
   if (!senders.length) throw new HttpError(400, "Bitte mindestens einen erlaubten Absender angeben.");
   const now = Date.now();
   if (input.id) {
-    const existing = one<AddressRow>("SELECT * FROM inbound_addresses WHERE id=? AND workspace_id=?", input.id, input.workspaceId);
+    const existing = await one<AddressRow>("SELECT * FROM inbound_addresses WHERE id=? AND workspace_id=?", input.id, input.workspaceId);
     if (!existing) throw new HttpError(404, "E-Mail-Eingang nicht gefunden.");
     const secret = input.secret === undefined ? existing.secret : input.secret ? sealSecret(input.secret, `inbound:${existing.id}`) : "";
-    run(
+    await run(
       "UPDATE inbound_addresses SET page_id=?,label=?,senders=?,secret=? WHERE id=?",
       input.pageId,
       input.label,
@@ -151,13 +152,13 @@ export function saveInboundAddress(user: Identity, raw: unknown) {
       secret,
       existing.id,
     );
-    audit(user.id, "inbound.update", existing.id);
+    await audit(user.id, "inbound.update", existing.id);
     return { id: existing.id };
   }
-  if (Number(one<{ n: number }>("SELECT COUNT(*) n FROM inbound_addresses WHERE workspace_id=?", input.workspaceId)?.n) >= MAX_ADDRESSES)
+  if (Number((await one<{ n: number }>("SELECT COUNT(*) n FROM inbound_addresses WHERE workspace_id=?", input.workspaceId))?.n) >= MAX_ADDRESSES)
     throw new HttpError(409, "Höchstens 50 E-Mail-Eingänge pro Arbeitsbereich.");
   const addressId = id();
-  run(
+  await run(
     "INSERT INTO inbound_addresses(id,workspace_id,page_id,label,token,secret,senders,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
     addressId,
     input.workspaceId,
@@ -169,36 +170,36 @@ export function saveInboundAddress(user: Identity, raw: unknown) {
     user.id,
     now,
   );
-  audit(user.id, "inbound.create", addressId);
+  await audit(user.id, "inbound.create", addressId);
   return { id: addressId };
 }
 
 const refSchema = z.object({ workspaceId: z.uuid(), id: z.uuid() });
-function ownedAddress(user: Identity, raw: unknown) {
+async function ownedAddress(user: Identity, raw: unknown) {
   const input = refSchema.parse(raw);
-  requireOwner(user, input.workspaceId);
-  const row = one<AddressRow>("SELECT * FROM inbound_addresses WHERE id=? AND workspace_id=?", input.id, input.workspaceId);
+  await requireOwner(user, input.workspaceId);
+  const row = await one<AddressRow>("SELECT * FROM inbound_addresses WHERE id=? AND workspace_id=?", input.id, input.workspaceId);
   if (!row) throw new HttpError(404, "E-Mail-Eingang nicht gefunden.");
   return row;
 }
 // A new token: the old address and webhook URL stop working at once.
-export function rotateInboundToken(user: Identity, raw: unknown) {
-  const row = ownedAddress(user, raw);
+export async function rotateInboundToken(user: Identity, raw: unknown) {
+  const row = await ownedAddress(user, raw);
   const token = newInboundToken();
-  run("UPDATE inbound_addresses SET token=? WHERE id=?", token, row.id);
-  audit(user.id, "inbound.rotate", row.id);
+  await run("UPDATE inbound_addresses SET token=? WHERE id=?", token, row.id);
+  await audit(user.id, "inbound.rotate", row.id);
   return { id: row.id, token };
 }
-export function deleteInboundAddress(user: Identity, raw: unknown) {
-  const row = ownedAddress(user, raw);
-  run("DELETE FROM inbound_addresses WHERE id=?", row.id);
-  audit(user.id, "inbound.delete", row.id);
+export async function deleteInboundAddress(user: Identity, raw: unknown) {
+  const row = await ownedAddress(user, raw);
+  await run("DELETE FROM inbound_addresses WHERE id=?", row.id);
+  await audit(user.id, "inbound.delete", row.id);
   return { ok: true as const };
 }
 
-export function listInboundAddresses(user: Identity, workspaceId: string) {
-  requireOwner(user, workspaceId);
-  const rows = all<AddressRow & { title: string | null; kind: string | null; deleted_at: string | null }>(
+export async function listInboundAddresses(user: Identity, workspaceId: string) {
+  await requireOwner(user, workspaceId);
+  const rows = await all<AddressRow & { title: string | null; kind: string | null; deleted_at: string | null }>(
     "SELECT a.*,p.title,p.kind,p.deleted_at FROM inbound_addresses a LEFT JOIN pages p ON p.id=a.page_id WHERE a.workspace_id=? ORDER BY a.created_at",
     workspaceId,
   );
@@ -223,9 +224,9 @@ export function listInboundAddresses(user: Identity, workspaceId: string) {
   };
 }
 
-export function inboundAddressByToken(token: string) {
+export async function inboundAddressByToken(token: string) {
   if (!/^[a-z0-9]{32,64}$/.test(token)) return undefined;
-  return one<AddressRow>("SELECT * FROM inbound_addresses WHERE token=?", token);
+  return await one<AddressRow>("SELECT * FROM inbound_addresses WHERE token=?", token);
 }
 
 /* ---------- Signatures ---------- */
@@ -240,7 +241,7 @@ export type SignatureFields = { timestamp: string; token: string; signature: str
 // (sha256=HMAC of the raw body, like Flowplan's own webhooks) or Mailgun's
 // signature fields (HMAC of timestamp + token, at most 15 minutes old, each
 // token once – lib/replay-guard.ts).
-export function verifyInboundSignature(
+export async function verifyInboundSignature(
   address: Pick<AddressRow, "id" | "secret">,
   body: Buffer,
   header: string | null,
@@ -263,7 +264,7 @@ export function verifyInboundSignature(
       // carries the same mail and passes.
       const fingerprint = createHash("sha256").update(body).digest("hex");
       const ttl = Math.max(900_000, Number(fields.timestamp) * 1000 + 900_000 - now);
-      if (claimOnce(`mailgun:${address.id}:${fields.token}`, fingerprint, ttl, now) !== "other") return;
+      if ((await claimOnce(`mailgun:${address.id}:${fields.token}`, fingerprint, ttl, now)) !== "other") return;
     }
   }
   throw new HttpError(401, "Signatur ungültig.");
@@ -512,54 +513,54 @@ export type ReceiveResult =
   | { status: "duplicate" }
   | { status: "rejected"; reason: "sender" };
 
-function creatorIdentity(userId: string): Identity | null {
-  const user = one<{ id: string; subject: string; name: string; email: string; disabled: number }>(
+async function creatorIdentity(userId: string): Promise<Identity | null> {
+  const user = await one<{ id: string; subject: string; name: string; email: string; disabled: number }>(
     "SELECT id,subject,name,email,disabled FROM users WHERE id=?",
     userId,
   );
   if (!user || user.disabled) return null;
   return { ...user, groups: [], isAdmin: false } as unknown as Identity;
 }
-function noteError(addressId: string, message: string) {
-  run("UPDATE inbound_addresses SET last_error=? WHERE id=?", message.slice(0, 300), addressId);
+async function noteError(addressId: string, message: string) {
+  await run("UPDATE inbound_addresses SET last_error=? WHERE id=?", message.slice(0, 300), addressId);
 }
 
 // Counted on its own, before the work: refused and rejected mail count too.
-function takeRate(addressId: string, now: number) {
-  run("DELETE FROM inbound_deliveries WHERE at<?", now - HOUR);
-  const n = Number(one<{ n: number }>("SELECT COUNT(*) n FROM inbound_deliveries WHERE address_id=? AND at>?", addressId, now - HOUR)?.n || 0);
+async function takeRate(addressId: string, now: number) {
+  await run("DELETE FROM inbound_deliveries WHERE at<?", now - HOUR);
+  const n = Number((await one<{ n: number }>("SELECT COUNT(*) n FROM inbound_deliveries WHERE address_id=? AND at>?", addressId, now - HOUR))?.n || 0);
   if (n >= INBOUND_MAILS_PER_HOUR) throw new HttpError(429, "Zu viele E-Mails an diese Adresse. Bitte später erneut versuchen.");
-  run("INSERT INTO inbound_deliveries(address_id,at) VALUES(?,?)", addressId, now);
+  await run("INSERT INTO inbound_deliveries(address_id,at) VALUES(?,?)", addressId, now);
 }
 
 const sqlTime = (date: Date) => date.toISOString().slice(0, 19).replace("T", " ");
 
-export function receiveInboundMail(token: string, mail: InboundMail, now = Date.now()): ReceiveResult {
-  const address = inboundAddressByToken(token);
+export async function receiveInboundMail(token: string, mail: InboundMail, now = Date.now()): Promise<ReceiveResult> {
+  const address = await inboundAddressByToken(token);
   if (!address) throw new HttpError(404, "E-Mail-Eingang nicht gefunden.");
-  takeRate(address.id, now);
+  await takeRate(address.id, now);
   const from = (mail.from || "").trim().toLowerCase();
   if (!senderAllowed(JSON.parse(address.senders) as string[], from)) {
     // Logged, not stored.
-    audit(address.created_by, "inbound.rejected", address.id, `sender: ${from.slice(0, 254) || "?"}`);
-    noteError(address.id, `Absender abgelehnt: ${from.slice(0, 254) || "?"}`);
+    await audit(address.created_by, "inbound.rejected", address.id, `sender: ${from.slice(0, 254) || "?"}`);
+    await noteError(address.id, `Absender abgelehnt: ${from.slice(0, 254) || "?"}`);
     return { status: "rejected", reason: "sender" };
   }
   const messageId = (mail.messageId || "").trim().slice(0, 500) || `sha256:${hash([from, mail.subject, mail.date?.toISOString() || "", mail.text, mail.html].join("\n"))}`;
-  if (one("SELECT 1 FROM inbound_messages WHERE address_id=? AND message_id=?", address.id, messageId)) return { status: "duplicate" };
+  if (await one("SELECT 1 FROM inbound_messages WHERE address_id=? AND message_id=?", address.id, messageId)) return { status: "duplicate" };
   try {
-    return transaction(() => storeMail(address, mail, from, messageId, now));
+    return await transaction(async () => await storeMail(address, mail, from, messageId, now));
   } catch (error) {
-    if (error instanceof HttpError) noteError(address.id, error.message);
+    if (error instanceof HttpError) await noteError(address.id, error.message);
     throw error;
   }
 }
 
-function storeMail(address: AddressRow, mail: InboundMail, from: string, messageId: string, now: number): ReceiveResult {
-  const user = creatorIdentity(address.created_by);
-  const target = one<Page>("SELECT * FROM pages WHERE id=?", address.page_id);
+async function storeMail(address: AddressRow, mail: InboundMail, from: string, messageId: string, now: number): Promise<ReceiveResult> {
+  const user = await creatorIdentity(address.created_by);
+  const target = await one<Page>("SELECT * FROM pages WHERE id=?", address.page_id);
   // The address acts with the rights of the person who created it.
-  const role = user && target && !target.deleted_at ? pageRole(user, target) : null;
+  const role = user && target && !target.deleted_at ? (await pageRole(user, target)) : null;
   if (!user || !target || target.deleted_at || target.locked || (role !== "editor" && role !== "owner"))
     throw new HttpError(409, "Das Ziel dieses E-Mail-Eingangs ist nicht mehr beschreibbar.");
   // Attachments: at most 20, 10 MB each, 25 MB together; the rest is named
@@ -579,27 +580,27 @@ function storeMail(address: AddressRow, mail: InboundMail, from: string, message
     kept.push({ ...a, filename: name, data, mime });
   }
   if (total) {
-    enforceQuota(address.workspace_id, total);
-    takeAnonymousBudget(`mail:${address.token}`, total, undefined, now);
+    await enforceQuota(address.workspace_id, total);
+    await takeAnonymousBudget(`mail:${address.token}`, total, undefined, now);
   }
   const database = target.kind === "database";
   const subject = mail.subject.replace(/\s+/g, " ").trim();
   const title = (subject || ct(`E-Mail von ${from}`, `E-mail from ${from}`)).slice(0, 300);
   const fields: Field[] = database
-    ? JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", target.id)?.fields || "[]")
+    ? JSON.parse((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", target.id))?.fields || "[]")
     : [];
   const filesField = fields.find((f) => f.type === "files");
   const emailField = fields.find((f) => f.type === "email");
-  const owner = database ? target.id : createPage(target.workspace_id, target.space_id, user.id, title, "document", target.id);
+  const owner = database ? target.id : (await createPage(target.workspace_id, target.space_id, user.id, title, "document", target.id));
   // Files go where the new content lives: the new page, or the database.
   const dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads");
   if (kept.length) mkdirSync(dir, { recursive: true });
-  const stored = kept.map((a) => {
+  const stored = await mapAsync(kept, async (a) => {
     const fid = id(),
       path = resolve(dir, fid);
     writeFileSync(path, a.data);
     onTransactionRollback(() => unlinkSync(path));
-    run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fid, owner, a.filename, a.mime, a.data.length, null);
+    await run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fid, owner, a.filename, a.mime, a.data.length, null);
     return { ...a, url: `/api/files/${fid}` };
   });
   const inlineFiles = new Map(
@@ -628,7 +629,7 @@ function storeMail(address: AddressRow, mail: InboundMail, from: string, message
     const cells: Record<string, unknown> = { [fields[0]?.id || "title"]: title };
     if (emailField && from) cells[emailField.id] = from;
     if (filesField && rest.length) cells[filesField.id] = rest.map((a) => a.url);
-    run(
+    await run(
       "INSERT INTO rows(id,page_id,cells,position,created_at,created_by,updated_by) VALUES(?,?,?,?,?,?,?)",
       rowId,
       target.id,
@@ -638,17 +639,17 @@ function storeMail(address: AddressRow, mail: InboundMail, from: string, message
       user.id,
       user.id,
     );
-    replaceRowDocument(rowId, html, user.id);
-    run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), target.id);
-    rowCreated(user, target, rowId);
+    await replaceRowDocument(rowId, html, user.id);
+    await run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), target.id);
+    await rowCreated(user, target, rowId);
     const payload = { pageId: target.id, rowId, cells, source: "email" };
-    emitWebhook(target.workspace_id, "row.created", payload);
+    await emitWebhook(target.workspace_id, "row.created", payload);
   } else {
     const safe = cleanHtml(html);
-    run("UPDATE documents SET html=?,state=?,updated_at=? WHERE page_id=?", safe, htmlState(safe), nowText(), owner);
-    emitWebhook(target.workspace_id, "page.created", { pageId: owner, title, parentId: target.id, source: "email" });
+    await run("UPDATE documents SET html=?,state=?,updated_at=? WHERE page_id=?", safe, htmlState(safe), nowText(), owner);
+    await emitWebhook(target.workspace_id, "page.created", { pageId: owner, title, parentId: target.id, source: "email" });
   }
-  run(
+  await run(
     "INSERT INTO inbound_messages(address_id,message_id,page_id,row_id,received_at) VALUES(?,?,?,?,?)",
     address.id,
     messageId,
@@ -656,8 +657,8 @@ function storeMail(address: AddressRow, mail: InboundMail, from: string, message
     rowId || null,
     now,
   );
-  run("UPDATE inbound_addresses SET last_received_at=?,last_error=NULL,received=received+1 WHERE id=?", now, address.id);
-  audit(address.created_by, "inbound.received", address.id, `${from} → ${rowId ? `row ${rowId}` : `page ${owner}`}`);
+  await run("UPDATE inbound_addresses SET last_received_at=?,last_error=NULL,received=received+1 WHERE id=?", now, address.id);
+  await audit(address.created_by, "inbound.received", address.id, `${from} → ${rowId ? `row ${rowId}` : `page ${owner}`}`);
   return { status: "stored", pageId: owner, ...(rowId ? { rowId } : {}), files: stored.length, skipped };
 }
 
@@ -677,10 +678,10 @@ export function imapOptionsFromEnv(): ImapOptions | null {
   };
 }
 // The token of inbox+<token>@… among the recipients.
-export function tokenFromRecipients(recipients: string[]) {
+export async function tokenFromRecipients(recipients: string[]) {
   for (const r of recipients) {
     const m = r.toLowerCase().match(/\+([a-z0-9]{32,64})@/);
-    if (m && inboundAddressByToken(m[1])) return m[1];
+    if (m && await inboundAddressByToken(m[1])) return m[1];
   }
   return "";
 }
@@ -706,13 +707,13 @@ export async function pollInboundMailbox(options = imapOptionsFromEnv()) {
         continue;
       }
       const mail = fromMime(raw);
-      const token = tokenFromRecipients(mail.to);
+      const token = await tokenFromRecipients(mail.to);
       if (!token) {
         await client.markSeen(uid);
         continue;
       }
       try {
-        receiveInboundMail(token, mail);
+        await receiveInboundMail(token, mail);
         processed++;
       } catch (error) {
         const status = error instanceof HttpError ? error.status : 500;

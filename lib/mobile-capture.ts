@@ -38,6 +38,7 @@ import { ensureRowDocument, requireRow } from "./row-documents";
 import { sanitizeFileName, stripLocation, verifiedMime } from "./upload-safety";
 import { enforceUserStorage, maxUploadMbFor } from "./user-limits";
 import type { Field, Identity, Page } from "./types";
+import { filterAsync } from "./each-async";
 
 export const MAX_CAPTURE_FILES = 10;
 export const MAX_SPOTLIGHT_PAGES = 500;
@@ -45,23 +46,23 @@ export const MAX_SPOTLIGHT_TASKS = 200;
 const IMAGE = /^image\/(png|jpeg|gif|webp|avif|heic|heif)$/;
 const rank: Record<string, number> = { viewer: 1, editor: 2, owner: 3 };
 const url = (pageId: string, rowId?: string | null) => `/${pageLocationHash({ pageId, ...(rowId ? { rowId } : {}) })}`;
-const fieldsOf = (pageId: string) => JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId)?.fields || "[]") as Field[];
+const fieldsOf = async (pageId: string) => JSON.parse((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId))?.fields || "[]") as Field[];
 
 // ---- Targets ----
 
 // The inbox: the person's capture database (the first one they set, like
 // the capture widget without a target), while they may still add to it.
-export function inboxTarget(user: Identity) {
-  for (const { page_id } of all<{ page_id: string }>("SELECT page_id FROM capture_targets WHERE user_id=? ORDER BY seq", user.id)) {
-    const access = pageAccess(user, page_id);
+export async function inboxTarget(user: Identity) {
+  for (const { page_id } of await all<{ page_id: string }>("SELECT page_id FROM capture_targets WHERE user_id=? ORDER BY seq", user.id)) {
+    const access = await pageAccess(user, page_id);
     if (!access || access.locked || access.encrypted || access.page.locked || access.page.kind !== "database" || rank[access.role] < 2) continue;
     return { id: access.page.id, name: access.page.title || ct("Ohne Titel", "Untitled"), icon: access.page.icon, kind: access.page.kind };
   }
   return null;
 }
 
-export function captureTargets(user: Identity) {
-  return { inbox: inboxTarget(user), targets: captureTargetList(user), maxFiles: MAX_CAPTURE_FILES, maxUploadMb: maxUploadMbFor(user) };
+export async function captureTargets(user: Identity) {
+  return { inbox: await inboxTarget(user), targets: await captureTargetList(user), maxFiles: MAX_CAPTURE_FILES, maxUploadMb: await maxUploadMbFor(user) };
 }
 
 // ---- Saving ----
@@ -88,9 +89,9 @@ const AUDIO = /^audio\/(webm|ogg|mp4|mpeg|aac|wav|x-wav|x-m4a|m4a)$/;
 
 // Checked files: images and PDFs (and, for the desktop app's voice notes,
 // recordings): the type from the content, photos without their location.
-export function prepareCaptureFiles(user: Identity, files: UploadFile[], options: { audio?: boolean } = {}): Prepared[] {
+export async function prepareCaptureFiles(user: Identity, files: UploadFile[], options: { audio?: boolean } = {}): Promise<Prepared[]> {
   if (files.length > MAX_CAPTURE_FILES) throw new HttpError(413, ct(`Höchstens ${MAX_CAPTURE_FILES} Dateien auf einmal.`, `At most ${MAX_CAPTURE_FILES} files at once.`));
-  const maxMb = maxUploadMbFor(user);
+  const maxMb = await maxUploadMbFor(user);
   return files.map((file, index) => {
     if (!file.bytes.length) throw new HttpError(400, ct("Datei fehlt.", "File missing."));
     if (file.bytes.length > maxMb * 1024 * 1024) throw new HttpError(413, ct(`Maximal ${maxMb} MB pro Datei.`, `At most ${maxMb} MB per file.`));
@@ -175,7 +176,7 @@ function titleOf(input: z.infer<typeof captureSaveSchema>, text: string, link: s
 
 // Writes checked files to the uploads and registers them with their page
 // (inside the transaction: a rollback removes them again).
-export function storeCaptureFiles(user: Identity, prepared: Prepared[], ownerId: string, recognized = "") {
+export async function storeCaptureFiles(user: Identity, prepared: Prepared[], ownerId: string, recognized = "") {
   if (!prepared.length) return;
   const dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads");
   mkdirSync(dir, { recursive: true });
@@ -184,15 +185,15 @@ export function storeCaptureFiles(user: Identity, prepared: Prepared[], ownerId:
     const path = resolve(dir, file.id);
     writeFileSync(path, file.content);
     onTransactionRollback(() => unlinkSync(path));
-    run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", file.id, ownerId, file.name, file.mime, file.content.length, user.id);
-    audit(user.id, "file.upload", ownerId, file.name);
+    await run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", file.id, ownerId, file.name, file.mime, file.content.length, user.id);
+    await audit(user.id, "file.upload", ownerId, file.name);
     // The scan's text, recognised on the phone: the search finds it at
     // once, and the server's extraction skips the file.
     if (file.pdf && recognized && !textStored) {
       // A replacement, as INSERT OR REPLACE was: the insert queues the file
       // for the search (trigger search_file_text), an upsert's update would not.
-      run("DELETE FROM file_texts WHERE file_id=?", file.id);
-      run("INSERT INTO file_texts(file_id,text,status) VALUES(?,?,?)", file.id, recognized.slice(0, MAX_PDF_TEXT), "device-ocr");
+      await run("DELETE FROM file_texts WHERE file_id=?", file.id);
+      await run("INSERT INTO file_texts(file_id,text,status) VALUES(?,?,?)", file.id, recognized.slice(0, MAX_PDF_TEXT), "device-ocr");
       textStored = true;
     }
   }
@@ -201,55 +202,55 @@ export function storeCaptureFiles(user: Identity, prepared: Prepared[], ownerId:
 export async function saveCapture(user: Identity, raw: unknown, files: UploadFile[] = []) {
   const input = captureSaveSchema.parse(raw);
   const writer = writerOf(user);
-  const targetId = input.targetId === "inbox" ? inboxTarget(user)?.id : input.targetId;
+  const targetId = input.targetId === "inbox" ? (await inboxTarget(user))?.id : input.targetId;
   if (!targetId) throw new HttpError(409, ct("Kein Eingang festgelegt. Bitte wähle, wohin.", "No inbox set. Please choose where to save."));
-  const { page } = captureTarget(user, targetId);
-  const prepared = prepareCaptureFiles(user, files);
+  const { page } = await captureTarget(user, targetId);
+  const prepared = await prepareCaptureFiles(user, files);
   const link = sharedLink(input);
   const text = (input.text || "").replace(link, "").trim();
   if (!prepared.length && !text && !link && !input.title)
     throw new HttpError(400, ct("Nichts zum Speichern.", "Nothing to save."));
   const size = prepared.reduce((sum, f) => sum + f.content.length, 0);
   if (size) {
-    enforceQuota(page.workspace_id, size);
-    enforceUserStorage(user, size);
+    await enforceQuota(page.workspace_id, size);
+    await enforceUserStorage(user, size);
   }
   const title = titleOf(input, text, link, prepared);
   const recognized = input.recognized?.trim() || "";
   // Files of records belong to their database (like e-mail capture).
-  const store = (ownerId: string) => storeCaptureFiles(user, prepared, ownerId, recognized);
+  const store = async (ownerId: string) => await storeCaptureFiles(user, prepared, ownerId, recognized);
   let publish: () => void = () => {};
-  const result = transaction(() => {
-    const append = (pageId: string, rowId: string | null) => {
+  const result = await transaction(async () => {
+    const append = async (pageId: string, rowId: string | null) => {
       const nodes = contentNodes(text, link, prepared);
-      const changed = rewriteDocument(pageId, rowId, writer.id, (doc) => doc.type.create(doc.attrs, doc.content.append(Fragment.fromArray(nodes)), doc.marks));
+      const changed = await rewriteDocument(pageId, rowId, writer.id, (doc) => doc.type.create(doc.attrs, doc.content.append(Fragment.fromArray(nodes)), doc.marks));
       if (changed) publish = changed.publish;
-      recordPageEdit(writer, pageId);
+      await recordPageEdit(writer, pageId);
     };
     if (page.kind === "database" && input.rowId) {
-      const { row } = requireRow(writer, page.id, input.rowId, true);
-      ensureRowDocument(row);
-      store(page.id);
-      append(page.id, row.id);
+      const { row } = await requireRow(writer, page.id, input.rowId, true);
+      await ensureRowDocument(row);
+      await store(page.id);
+      await append(page.id, row.id);
       return { pageId: page.id, rowId: row.id, url: url(page.id, row.id) };
     }
     if (page.kind === "database") {
-      store(page.id);
-      const created = command(
+      await store(page.id);
+      const created = (await command(
         writer,
         { action: "capture.record", pageId: page.id, title, text, url: link || undefined, article: mediaHtml(prepared) || undefined },
         true,
-      ) as { rowId: string };
-      const filesField = visibleFields(user, page, fieldsOf(page.id)).find((f) => f.type === "files" && !f.access?.write);
+      )) as { rowId: string };
+      const filesField = (await visibleFields(user, page, await fieldsOf(page.id))).find((f) => f.type === "files" && !f.access?.write);
       if (filesField && prepared.length) {
-        const version = one<{ version: number }>("SELECT version FROM rows WHERE id=?", created.rowId)!.version;
-        command(writer, { action: "row.update", pageId: page.id, rowId: created.rowId, version, cells: { [filesField.id]: prepared.map((f) => f.url) } }, true);
+        const version = (await one<{ version: number }>("SELECT version FROM rows WHERE id=?", created.rowId))!.version;
+        await command(writer, { action: "row.update", pageId: page.id, rowId: created.rowId, version, cells: { [filesField.id]: prepared.map((f) => f.url) } }, true);
       }
       return { pageId: page.id, rowId: created.rowId, url: url(page.id, created.rowId) };
     }
     if (input.place === "append") {
-      store(page.id);
-      append(page.id, null);
+      await store(page.id);
+      await append(page.id, null);
       return { pageId: page.id, url: url(page.id) };
     }
     const html = cleanHtml(
@@ -259,8 +260,8 @@ export async function saveCapture(user: Identity, raw: unknown, files: UploadFil
         mediaHtml(prepared),
       ].join(""),
     );
-    const pageId = subPage(writer, page, title, html);
-    store(pageId);
+    const pageId = await subPage(writer, page, title, html);
+    await store(pageId);
     return { pageId, url: url(pageId) };
   }, writer);
   publish();
@@ -288,13 +289,13 @@ type SpotlightPage = Page & { space_name: string; workspace_name: string; excerp
 // the person may read and their open tasks – titles, place and a short
 // excerpt. Nothing of end-to-end encrypted spaces, pages behind a journal
 // PIN or the days of a journal.
-export function spotlightItems(user: Identity) {
+export async function spotlightItems(user: Identity) {
   const pages: SpotlightPage[] = [];
   const encryptedSpaces = new Set<string>();
-  for (const { workspace_id } of all<{ workspace_id: string }>("SELECT workspace_id FROM members WHERE user_id=?", user.id)) {
-    const locked = lockedPageIds(user, workspace_id);
-    for (const s of all<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=? AND COALESCE(encrypted,0)=1", workspace_id)) encryptedSpaces.add(s.id);
-    const rows = all<SpotlightPage>(
+  for (const { workspace_id } of await all<{ workspace_id: string }>("SELECT workspace_id FROM members WHERE user_id=?", user.id)) {
+    const locked = await lockedPageIds(user, workspace_id);
+    for (const s of await all<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=? AND COALESCE(encrypted,0)=1", workspace_id)) encryptedSpaces.add(s.id);
+    const rows = await all<SpotlightPage>(
       `SELECT p.*,s.name space_name,w.name workspace_name,substr(d.html,1,4000) excerpt FROM pages p
          JOIN spaces s ON s.id=p.space_id JOIN workspaces w ON w.id=p.workspace_id
          LEFT JOIN documents d ON d.page_id=p.id
@@ -304,15 +305,14 @@ export function spotlightItems(user: Identity) {
       workspace_id,
       MAX_SPOTLIGHT_PAGES * 2,
     );
-    for (const page of rows) if (!locked.has(page.id) && pageRole(user, page)) pages.push(page);
+    for (const page of rows) if (!locked.has(page.id) && await pageRole(user, page)) pages.push(page);
   }
   pages.sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)));
   const spaceOf = new Map<string, string>();
-  const tasks = openTasksEverywhere(user)
-    .filter((task) => {
-      if (!spaceOf.has(task.pageId)) spaceOf.set(task.pageId, one<{ space_id: string }>("SELECT space_id FROM pages WHERE id=?", task.pageId)?.space_id || "");
+  const tasks = (await filterAsync(await openTasksEverywhere(user), async (task) => {
+      if (!spaceOf.has(task.pageId)) spaceOf.set(task.pageId, (await one<{ space_id: string }>("SELECT space_id FROM pages WHERE id=?", task.pageId))?.space_id || "");
       return !encryptedSpaces.has(spaceOf.get(task.pageId)!);
-    })
+    }))
     .slice(0, MAX_SPOTLIGHT_TASKS);
   return {
     pages: pages.slice(0, MAX_SPOTLIGHT_PAGES).map((p) => ({

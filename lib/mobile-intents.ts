@@ -22,6 +22,7 @@ import { pageLocationHash } from "./page-location";
 import { pageRole } from "./permissions";
 import { MARK_END, MARK_START, searchWorkspace } from "./search-index";
 import type { Identity, Page } from "./types";
+import { mapAsync } from "./each-async";
 
 export const MAX_PAGES = 20;
 export const MAX_RESULTS = 10;
@@ -61,14 +62,14 @@ const CANDIDATE = `SELECT p.*,s.name space_name,w.name workspace_name,COALESCE(s
     AND p.kind IN (${KINDS.map(() => "?").join(",")})`;
 
 // Readable, not encrypted; a journal behind a PIN only by its name.
-function visible(user: Identity, candidates: Candidate[], max: number) {
+async function visible(user: Identity, candidates: Candidate[], max: number) {
   const locked = new Map<string, Set<string>>();
   const out: IntentPage[] = [];
   for (const page of candidates) {
     if (out.length >= max) break;
-    if (page.encrypted || !pageRole(user, page)) continue;
+    if (page.encrypted || !(await pageRole(user, page))) continue;
     if (out.some((p) => p.id === page.id)) continue;
-    if (!locked.has(page.workspace_id)) locked.set(page.workspace_id, lockedPageIds(user, page.workspace_id));
+    if (!locked.has(page.workspace_id)) locked.set(page.workspace_id, await lockedPageIds(user, page.workspace_id));
     out.push({
       id: page.id,
       name: clip(page.title || untitled()),
@@ -87,15 +88,15 @@ function visible(user: Identity, candidates: Candidate[], max: number) {
 // Pages by id (Shortcuts resolving a saved choice), by title (Siri asking
 // "which page?"), or – without either – the person's favorites and the pages
 // they opened last.
-export function intentPages(user: Identity, input: unknown) {
+export async function intentPages(user: Identity, input: unknown) {
   const { q, ids } = pagesQuery.parse(input);
   if (ids?.length) {
-    const found = all<Candidate>(`${CANDIDATE} AND p.id IN (${ids.map(() => "?").join(",")})`, user.id, ...KINDS, ...ids);
-    return { pages: visible(user, ids.map((id) => found.find((p) => p.id === id)).filter((p): p is Candidate => !!p), MAX_PAGES) };
+    const found = await all<Candidate>(`${CANDIDATE} AND p.id IN (${ids.map(() => "?").join(",")})`, user.id, ...KINDS, ...ids);
+    return { pages: await visible(user, ids.map((id) => found.find((p) => p.id === id)).filter((p): p is Candidate => !!p), MAX_PAGES) };
   }
   const text = (q || "").replace(/[\u0000-\u001f]/g, " ").trim();
   if (!text) {
-    const candidates = all<Candidate>(
+    const candidates = await all<Candidate>(
       `${CANDIDATE} ORDER BY EXISTS(SELECT 1 FROM favorites f WHERE f.user_id=? AND f.page_id=p.id) DESC,
          COALESCE((SELECT v.seen_at FROM page_visits v WHERE v.user_id=? AND v.page_id=p.id),0) DESC,p.updated_at DESC LIMIT 200`,
       user.id,
@@ -103,11 +104,11 @@ export function intentPages(user: Identity, input: unknown) {
       user.id,
       user.id,
     );
-    return { pages: visible(user, candidates, MAX_PAGES) };
+    return { pages: await visible(user, candidates, MAX_PAGES) };
   }
   const like = `%${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
   const prefix = `${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-  const candidates = all<Candidate>(
+  const candidates = await all<Candidate>(
     `${CANDIDATE} AND ${sql.ilike("p.title")} ESCAPE '\\'
      ORDER BY (CASE WHEN ${sql.ilike("p.title")} ESCAPE '\\' THEN 1 ELSE 0 END) DESC,p.updated_at DESC LIMIT 500`,
     user.id,
@@ -115,7 +116,7 @@ export function intentPages(user: Identity, input: unknown) {
     like,
     prefix,
   );
-  return { pages: visible(user, candidates, MAX_PAGES) };
+  return { pages: await visible(user, candidates, MAX_PAGES) };
 }
 
 export type IntentResult = {
@@ -129,19 +130,19 @@ export type IntentResult = {
   url: string;
 };
 
-const workspacesOf = (user: Identity) =>
-  all<{ id: string; name: string }>(
+const workspacesOf = async (user: Identity) =>
+  await all<{ id: string; name: string }>(
     "SELECT w.id,w.name FROM members m JOIN workspaces w ON w.id=m.workspace_id WHERE m.user_id=? ORDER BY lower(w.name)",
     user.id,
   );
 
 // The full-text search of the web app in every workspace of the person, the
 // best hits of each in turn; snippets as plain text.
-export function intentSearch(user: Identity, input: unknown) {
+export async function intentSearch(user: Identity, input: unknown) {
   const { q } = searchQuery.parse(input);
-  const lists = workspacesOf(user).map((w) => ({
+  const lists = await mapAsync(await workspacesOf(user), async (w) => ({
     workspace: w,
-    hits: searchWorkspace(user, w.id, q).filter((hit) => hit.kind !== "file"),
+    hits: (await searchWorkspace(user, w.id, q)).filter((hit) => hit.kind !== "file"),
   }));
   const results: IntentResult[] = [];
   for (let i = 0; results.length < MAX_RESULTS && lists.some((l) => l.hits.length > i); i++) {
@@ -165,6 +166,6 @@ export function intentSearch(user: Identity, input: unknown) {
 }
 
 // The workspaces to choose from in a Focus filter.
-export function intentWorkspaces(user: Identity) {
-  return { workspaces: workspacesOf(user).map((w) => ({ id: w.id, name: clip(w.name, 60) })) };
+export async function intentWorkspaces(user: Identity) {
+  return { workspaces: (await workspacesOf(user)).map((w) => ({ id: w.id, name: clip(w.name, 60) })) };
 }

@@ -8,10 +8,10 @@ import { startRequestMetrics } from "./request-metrics";
 export function startMetricsWorker() {
   startRequestMetrics();
   if (metricsTimer()) return;
-  const tick = () => {
+  const tick = async () => {
     try {
-      refreshMetricsEnabled();
-      flushMetrics(Date.now(), instanceMetrics);
+      await refreshMetricsEnabled();
+      await flushMetrics(Date.now(), instanceMetrics);
     } catch (error) {
       console.error("Metrics flush failed", error);
     }

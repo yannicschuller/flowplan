@@ -53,24 +53,24 @@ export type AppDeviceResult = "registered" | "known" | "mismatch" | "none";
 
 // The device key of a sign-in whose credentials were right: registered on
 // first use, compared afterwards.
-export function checkAppDevice(userId: string, key: AppDeviceKey | null, now = Date.now()): AppDeviceResult {
+export async function checkAppDevice(userId: string, key: AppDeviceKey | null, now = Date.now()): Promise<AppDeviceResult> {
   if (!key) return "none";
-  const row = one<{ secret_hash: Buffer }>("SELECT secret_hash FROM app_devices WHERE user_id=? AND device_id=?", userId, key.id);
+  const row = await one<{ secret_hash: Buffer }>("SELECT secret_hash FROM app_devices WHERE user_id=? AND device_id=?", userId, key.id);
   if (row) {
     const stored = Buffer.from(row.secret_hash);
     const given = digest(key.secret);
     if (stored.length !== given.length || !timingSafeEqual(stored, given)) return "mismatch";
-    run("UPDATE app_devices SET last_used_at=? WHERE user_id=? AND device_id=?", now, userId, key.id);
+    await run("UPDATE app_devices SET last_used_at=? WHERE user_id=? AND device_id=?", now, userId, key.id);
     return "known";
   }
-  run(
+  await run(
     `DELETE FROM app_devices WHERE user_id=? AND device_id NOT IN (
        SELECT device_id FROM app_devices WHERE user_id=? ORDER BY last_used_at DESC LIMIT ?)`,
     userId,
     userId,
     MAX_APP_DEVICES - 1,
   );
-  run("INSERT INTO app_devices(user_id,device_id,secret_hash,created_at,last_used_at) VALUES(?,?,?,?,?)", userId, key.id, digest(key.secret), now, now);
+  await run("INSERT INTO app_devices(user_id,device_id,secret_hash,created_at,last_used_at) VALUES(?,?,?,?,?)", userId, key.id, digest(key.secret), now, now);
   return "registered";
 }
 
@@ -81,9 +81,9 @@ export function checkAppDevice(userId: string, key: AppDeviceKey | null, now = D
 export type AppProof =
   | { via: "handoff" }
   | { via: "form"; userId: string; input: unknown; agent: string | null | undefined };
-export function provesApp(proof: AppProof, now = Date.now()) {
+export async function provesApp(proof: AppProof, now = Date.now()) {
   if (proof.via === "handoff") return true;
   if (!isAppAgent(proof.agent)) return false;
-  const result = checkAppDevice(proof.userId, appDeviceKey(proof.input), now);
+  const result = await checkAppDevice(proof.userId, appDeviceKey(proof.input), now);
   return result === "registered" || result === "known";
 }

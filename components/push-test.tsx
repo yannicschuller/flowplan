@@ -10,7 +10,7 @@ import { useT } from "./i18n";
 import { api } from "./ui";
 import type { PushTestReport, PushTestTarget } from "@/lib/push-test";
 
-type Translate = ReturnType<typeof useT>;
+type Translate = Awaited<ReturnType<typeof useT>>;
 
 // The state of this browser, which the server cannot know: not subscribed
 // here, or notifications blocked in the browser.

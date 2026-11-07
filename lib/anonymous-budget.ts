@@ -24,25 +24,25 @@ export function anonymousInstanceMb() {
 }
 const INSTANCE_SCOPE = "*";
 
-export function anonymousBytesToday(scope: string, now = Date.now()) {
+export async function anonymousBytesToday(scope: string, now = Date.now()) {
   return Number(
-    one<{ n: number | null }>("SELECT SUM(bytes) n FROM anonymous_uploads WHERE scope=? AND at>?", scope, now - DAY)?.n || 0,
+    (await one<{ n: number | null }>("SELECT SUM(bytes) n FROM anonymous_uploads WHERE scope=? AND at>?", scope, now - DAY))?.n || 0,
   );
 }
 // Refuses the write when `bytes` more would exceed the day's budget of the
 // scope (`limitMb`) or of the instance; otherwise counts them.
-export function takeAnonymousBudget(scope: string, bytes: number, limitMb = ANONYMOUS_UPLOAD_MB, now = Date.now()) {
+export async function takeAnonymousBudget(scope: string, bytes: number, limitMb = ANONYMOUS_UPLOAD_MB, now = Date.now()) {
   if (bytes <= 0) return;
-  run("DELETE FROM anonymous_uploads WHERE at<?", now - DAY);
-  if (anonymousBytesToday(scope, now) + bytes > limitMb * MB) {
+  await run("DELETE FROM anonymous_uploads WHERE at<?", now - DAY);
+  if ((await anonymousBytesToday(scope, now)) + bytes > limitMb * MB) {
     recordOpsEvent("anonymous_refused");
     throw new HttpError(413, "Das Tageslimit für diesen Link ist erreicht. Bitte morgen erneut versuchen.");
   }
   const instance = anonymousInstanceMb();
-  if (instance && anonymousBytesToday(INSTANCE_SCOPE, now) + bytes > instance * MB) {
+  if (instance && (await anonymousBytesToday(INSTANCE_SCOPE, now)) + bytes > instance * MB) {
     recordOpsEvent("anonymous_refused");
     throw new HttpError(413, "Diese Instanz nimmt heute keine weiteren anonymen Uploads an.");
   }
-  run("INSERT INTO anonymous_uploads(scope,bytes,at) VALUES(?,?,?)", scope, bytes, now);
-  run("INSERT INTO anonymous_uploads(scope,bytes,at) VALUES(?,?,?)", INSTANCE_SCOPE, bytes, now);
+  await run("INSERT INTO anonymous_uploads(scope,bytes,at) VALUES(?,?,?)", scope, bytes, now);
+  await run("INSERT INTO anonymous_uploads(scope,bytes,at) VALUES(?,?,?)", INSTANCE_SCOPE, bytes, now);
 }

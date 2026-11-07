@@ -13,6 +13,7 @@ import { Slice } from "@tiptap/pm/model";
 import { AttrStep } from "@tiptap/pm/transform";
 import { ySyncPluginKey } from "@tiptap/y-tiptap";
 import type { Identity } from "../lib/types";
+import { findAsync } from "../lib/each-async";
 process.env.FLOWPLAN_DATA_DIR = mkdtempSync(join(tmpdir(), "flowplan-block-links-"));
 process.env.APP_URL = "https://flowplan.example.test";
 const { all, id, one, run } = await import("../lib/db");
@@ -36,20 +37,20 @@ const { exportedLink } = await import("../lib/git-export");
 const { changeBlocks, documentBlocks } = await import("../lib/document-blocks");
 const Y = await import("yjs");
 
-function account(name: string) {
+async function account(name: string) {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
   return { id: uid, name, email: `${name}@example.test`, groups: [], isAdmin: false, disabled: 0, created_at: "" } as Identity;
 }
-const owner = account("block-owner"),
-  viewer = account("block-viewer");
-const wid = createWorkspace(owner.id, "Blöcke");
-run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
-const space = bootstrap(owner, wid).spaces[0].id;
-const html = (pageId: string) => one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", pageId)!.html;
-function documentPage(title: string, body: string, parent: string | null = null, inSpace = space) {
-  const pid = createPage(wid, inSpace, owner.id, title, "document", parent);
-  run("UPDATE documents SET html=?,state=? WHERE page_id=?", body, htmlState(body), pid);
+const owner = await account("block-owner"),
+  viewer = await account("block-viewer");
+const wid = await createWorkspace(owner.id, "Blöcke");
+await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
+const space = (await bootstrap(owner, wid)).spaces[0].id;
+const html = async (pageId: string) => (await one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", pageId))!.html;
+async function documentPage(title: string, body: string, parent: string | null = null, inSpace = space) {
+  const pid = await createPage(wid, inSpace, owner.id, title, "document", parent);
+  await run("UPDATE documents SET html=?,state=? WHERE page_id=?", body, htmlState(body), pid);
   return pid;
 }
 const canonical = (body: string) => {
@@ -59,7 +60,7 @@ const canonical = (body: string) => {
 };
 const schema = documentSchema();
 const pmDoc = (body: string) => schema.nodeFromJSON(generateJSON(body, documentExtensions));
-const blockIdsOf = (doc: ReturnType<typeof pmDoc>) => ids.linkableBlocks(doc).map((b) => b.node.attrs.blockId as string | null);
+const blockIdsOf = (doc: Awaited<ReturnType<typeof pmDoc>>) => ids.linkableBlocks(doc).map((b) => b.node.attrs.blockId as string | null);
 const UUID = "0d5e1c3a-1111-4222-8333-944455556666";
 
 test("block links: format, parsing and page locations", () => {
@@ -183,42 +184,42 @@ test("pasting and duplicating: copies lose ids the document has, moved blocks ke
   assert.deepEqual(blockIdsOf(moved), ["b", "a"]);
 });
 
-test("preview, ids for older documents, search and the linked ids – only what the reader may read", () => {
-  const plan = documentPage("Plan", '<h2 data-block-id="goals">Ziele 2027</h2><p data-block-id="body">Mehr Kunden gewinnen</p><p>Alter Absatz ohne Id</p>');
-  const preview = blockPreview(viewer, plan, "body");
+test("preview, ids for older documents, search and the linked ids – only what the reader may read", async () => {
+  const plan = await documentPage("Plan", '<h2 data-block-id="goals">Ziele 2027</h2><p data-block-id="body">Mehr Kunden gewinnen</p><p>Alter Absatz ohne Id</p>');
+  const preview = await blockPreview(viewer, plan, "body");
   assert.equal(preview.title, "Plan");
   assert.equal(preview.text, "Mehr Kunden gewinnen");
   assert.equal(preview.found, true);
   assert.equal(preview.workspaceId, wid);
-  assert.equal(blockPreview(viewer, plan, "gone").found, false);
-  assert.throws(() => blockPreview(viewer, plan, "bad id"), /Ungültiger Blocklink/);
+  assert.equal((await blockPreview(viewer, plan, "gone")).found, false);
+  await assert.rejects(async () => await blockPreview(viewer, plan, "bad id"), /Ungültiger Blocklink/);
   // A private page: nothing for others, not even the title.
-  const privateSpace = (command(owner, { action: "space.create", workspaceId: wid, name: "Privat", private: true }) as { id: string }).id;
-  const secret = documentPage("Geheim", '<p data-block-id="s">Geheimer Text</p>', null, privateSpace);
-  assert.throws(() => blockPreview(viewer, secret, "s"), (e: { status?: number }) => e.status === 403 || e.status === 404);
-  assert.equal(searchBlocks(viewer, wid, "Geheimer").length, 0);
+  const privateSpace = ((await command(owner, { action: "space.create", workspaceId: wid, name: "Privat", private: true })) as { id: string }).id;
+  const secret = await documentPage("Geheim", '<p data-block-id="s">Geheimer Text</p>', null, privateSpace);
+  await assert.rejects(async () => await blockPreview(viewer, secret, "s"), (e: { status?: number }) => e.status === 403 || e.status === 404);
+  assert.equal((await searchBlocks(viewer, wid, "Geheimer")).length, 0);
   // A reader copies a link to a block without id: the server names it.
-  run("UPDATE pages SET updated_at='2020-01-01 00:00:00' WHERE id=?", plan);
-  const ensured = ensureBlockIds(viewer, plan, null, 2, "Alter Absatz ohne Id");
+  await run("UPDATE pages SET updated_at='2020-01-01 00:00:00' WHERE id=?", plan);
+  const ensured = await ensureBlockIds(viewer, plan, null, 2, "Alter Absatz ohne Id");
   assert.match(ensured.blockId, /^[a-z0-9]{8}$/);
-  assert.match(html(plan), new RegExp(`<p data-block-id="${ensured.blockId}">Alter Absatz ohne Id</p>`));
+  assert.match(await html(plan), new RegExp(`<p data-block-id="${ensured.blockId}">Alter Absatz ohne Id</p>`));
   // Not an edit: the page keeps its "changed" time.
-  assert.equal(one<{ updated_at: string }>("SELECT updated_at FROM pages WHERE id=?", plan)!.updated_at, "2020-01-01 00:00:00");
+  assert.equal((await one<{ updated_at: string }>("SELECT updated_at FROM pages WHERE id=?", plan))!.updated_at, "2020-01-01 00:00:00");
   // The same block again: the same id.
-  assert.equal(ensureBlockIds(viewer, plan, null, 2, "Alter Absatz ohne Id").blockId, ensured.blockId);
+  assert.equal((await ensureBlockIds(viewer, plan, null, 2, "Alter Absatz ohne Id")).blockId, ensured.blockId);
   // The "@" search: "Page › Heading" and plain words.
-  const other = documentPage("Notizen", "<p>nichts</p>");
-  const headings = searchBlocks(owner, wid, "Plan › Ziele", other);
+  const other = await documentPage("Notizen", "<p>nichts</p>");
+  const headings = await searchBlocks(owner, wid, "Plan › Ziele", other);
   assert.deepEqual(headings.map((h) => [h.pageTitle, h.text, h.blockId, h.level]), [["Plan", "Ziele 2027", "goals", 2]]);
-  const words = searchBlocks(owner, wid, "Kunden");
+  const words = await searchBlocks(owner, wid, "Kunden");
   assert.ok(words.some((h) => h.blockId === "body" && h.level === null));
-  assert.equal(searchBlocks(owner, wid, "Kunden", plan).length, 0, "the open page is left out");
+  assert.equal((await searchBlocks(owner, wid, "Kunden", plan)).length, 0, "the open page is left out");
   // Texts linking to blocks.
-  documentPage("Verweis", `<p><a href="/#page=${plan}&amp;block=body">Plan › Mehr</a></p>`);
-  assert.ok(linkedBlockIds(wid).get(plan)?.has("body"));
+  await documentPage("Verweis", `<p><a href="/#page=${plan}&amp;block=body">Plan › Mehr</a></p>`);
+  assert.ok((await linkedBlockIds(wid)).get(plan)?.has("body"));
 });
 
-test("renames: block link texts keep their block part", () => {
+test("renames: block link texts keep their block part", async () => {
   const target = { pageId: UUID };
   const doc = pmDoc(
     `<p><a href="/#page=${UUID}&amp;block=b1">Alt › Erster Absatz</a> und <a href="/#page=${UUID}&amp;block=b2">eigener Text</a> und <a href="/#page=${UUID}">Alt</a></p>`,
@@ -226,10 +227,10 @@ test("renames: block link texts keep their block part", () => {
   const next = retitleLinks(doc, target, "Alt", "Neu")!;
   assert.equal(next.textContent, "Neu › Erster Absatz und eigener Text und Neu");
   // Through the command: the linking page follows.
-  const plan = documentPage("Roadmap", '<p data-block-id="x1">Q1</p>');
-  const source = documentPage("Quelle", `<p><a href="/#page=${plan}&amp;block=x1">Roadmap › Q1</a></p>`);
-  command(owner, { action: "page.update", pageId: plan, patch: { title: "Fahrplan" } });
-  assert.match(html(source), /Fahrplan › Q1/);
+  const plan = await documentPage("Roadmap", '<p data-block-id="x1">Q1</p>');
+  const source = await documentPage("Quelle", `<p><a href="/#page=${plan}&amp;block=x1">Roadmap › Q1</a></p>`);
+  await command(owner, { action: "page.update", pageId: plan, patch: { title: "Fahrplan" } });
+  assert.match(await html(source), /Fahrplan › Q1/);
 });
 
 test("Markdown: markers for linked blocks, block links as file anchors, and back", async () => {
@@ -251,8 +252,8 @@ test("Markdown: markers for linked blocks, block links as file anchors, and back
   assert.doesNotMatch(canonical(markdownToHtml("Hoch^2 und `a ^b`")), /data-block-id="(2|b)"/);
 
   // The ZIP export of a page with a sub-page that links to its block…
-  const root = documentPage("Handbuch", '<h2 data-block-id="intro1">Einleitung</h2><p data-block-id="para1">Erster Absatz</p>');
-  documentPage("Kapitel", `<p>Siehe <a href="/#page=${root}&amp;block=para1">Handbuch › Erster Absatz</a></p>`, root);
+  const root = await documentPage("Handbuch", '<h2 data-block-id="intro1">Einleitung</h2><p data-block-id="para1">Erster Absatz</p>');
+  await documentPage("Kapitel", `<p>Siehe <a href="/#page=${root}&amp;block=para1">Handbuch › Erster Absatz</a></p>`, root);
   const { bytes } = await exportMarkdown(owner, { pageId: root, format: "zip", includeSubpages: true });
   const files = await readZip(bytes, { foreign: true });
   const index = files.get("index.md")!.toString("utf8");
@@ -261,16 +262,16 @@ test("Markdown: markers for linked blocks, block links as file anchors, and back
   const chapter = [...files].find(([name]) => /^pages\/Kapitel-/.test(name))![1].toString("utf8");
   assert.match(chapter, /\(<\.\.\/index\.md#\^para1>\)/);
   // …imported again: the link points to the block of the new page.
-  const kapitelId = one<{ id: string }>("SELECT id FROM pages WHERE workspace_id=? AND title='Kapitel'", wid)!.id;
-  const before = one<{ n: number }>("SELECT MAX(seq) n FROM pages")!.n;
+  const kapitelId = (await one<{ id: string }>("SELECT id FROM pages WHERE workspace_id=? AND title='Kapitel'", wid))!.id;
+  const before = (await one<{ n: number }>("SELECT MAX(seq) n FROM pages"))!.n;
   await importZip(owner, wid, space, bytes);
-  const imported = all<{ id: string }>("SELECT id FROM pages WHERE workspace_id=? AND seq>?", wid, before);
-  const kapitel = imported.find((p) => html(p.id).includes("Siehe"))!;
-  const link = /href="\/#page=([0-9a-f-]{36})&amp;block=([\w-]+)"/.exec(html(kapitel.id));
-  assert.ok(link, html(kapitel.id));
+  const imported = await all<{ id: string }>("SELECT id FROM pages WHERE workspace_id=? AND seq>?", wid, before);
+  const kapitel = (await findAsync(imported, async (p) => (await html(p.id)).includes("Siehe")))!;
+  const link = /href="\/#page=([0-9a-f-]{36})&amp;block=([\w-]+)"/.exec(await html(kapitel.id));
+  assert.ok(link, await html(kapitel.id));
   assert.notEqual(link![1], root);
   assert.equal(link![2], "para1");
-  assert.match(html(link![1]), /<p data-block-id="para1">Erster Absatz<\/p>/);
+  assert.match(await html(link![1]), /<p data-block-id="para1">Erster Absatz<\/p>/);
   // Not in a ZIP: the address in Flowplan with the block.
   const single = await exportMarkdown(owner, { pageId: kapitelId, format: "markdown", includeSubpages: false });
   assert.match(single.bytes.toString("utf8"), /https:\/\/flowplan\.example\.test\/#page=[0-9a-f-]{36}&block=para1/);
@@ -309,16 +310,16 @@ test("import anchors: block ids and headings of a converted document", () => {
   );
 });
 
-const pageByTitle = (title: string) => one<{ id: string }>("SELECT id FROM pages WHERE workspace_id=? AND title=? AND deleted_at IS NULL ORDER BY seq DESC LIMIT 1", wid, title)!.id;
+const pageByTitle = async (title: string) => (await one<{ id: string }>("SELECT id FROM pages WHERE workspace_id=? AND title=? AND deleted_at IS NULL ORDER BY seq DESC LIMIT 1", wid, title))!.id;
 // The block a link of `from` points to, in its target page.
-function linkedBlock(from: string, linkText: RegExp) {
-  const source = html(from);
+async function linkedBlock(from: string, linkText: RegExp) {
+  const source = await html(from);
   const link = new RegExp(`href="/#page=([0-9a-f-]{36})(?:&amp;block=([\\w-]+))?"[^>]*>${linkText.source}`).exec(source);
   assert.ok(link, source);
   return { pageId: link![1], blockId: link![2] || null };
 }
-const blockTextIn = (pageId: string, blockId: string) => {
-  const block = ids.findBlock(pmDoc(html(pageId)), blockId);
+const blockTextIn = async (pageId: string, blockId: string) => {
+  const block = ids.findBlock(pmDoc(await html(pageId)), blockId);
   return block ? block.node.textContent : null;
 };
 
@@ -331,19 +332,19 @@ test("Obsidian: [[Page#Heading]], [[Page#^id]], [[#Heading]] and ^id markers", a
     ]),
   );
   await importZip(owner, wid, space, zip);
-  const a = pageByTitle("ObsA"),
-    b = pageByTitle("ObsB");
-  const heading = linkedBlock(b, /Planung/);
+  const a = await pageByTitle("ObsA"),
+    b = await pageByTitle("ObsB");
+  const heading = await linkedBlock(b, /Planung/);
   assert.equal(heading.pageId, a);
-  assert.equal(blockTextIn(a, heading.blockId!), "Planung Q3");
-  const sentence = linkedBlock(b, /Satz/);
-  assert.equal(blockTextIn(a, sentence.blockId!), "Der wichtige Satz");
-  assert.equal(blockTextIn(a, linkedBlock(b, /Punkt/).blockId!), "Punkt mit Id");
-  assert.equal(linkedBlock(b, /Markdown/).blockId, sentence.blockId);
-  const own = linkedBlock(b, /nach unten/);
+  assert.equal(await blockTextIn(a, heading.blockId!), "Planung Q3");
+  const sentence = await linkedBlock(b, /Satz/);
+  assert.equal(await blockTextIn(a, sentence.blockId!), "Der wichtige Satz");
+  assert.equal(await blockTextIn(a, (await linkedBlock(b, /Punkt/)).blockId!), "Punkt mit Id");
+  assert.equal((await linkedBlock(b, /Markdown/)).blockId, sentence.blockId);
+  const own = await linkedBlock(b, /nach unten/);
   assert.equal(own.pageId, b);
-  assert.equal(blockTextIn(b, own.blockId!), "Unten");
-  assert.doesNotMatch(html(a), /\^satz1|\^punkt1/);
+  assert.equal(await blockTextIn(b, own.blockId!), "Unten");
+  assert.doesNotMatch(await html(a), /\^satz1|\^punkt1/);
 });
 
 test("Notion (Markdown export): heading anchors and notion.so links to pages of the export", async () => {
@@ -359,13 +360,13 @@ test("Notion (Markdown export): heading anchors and notion.so links to pages of 
     ]),
   );
   await importZip(owner, wid, space, zip);
-  const a = pageByTitle("NotionA"),
-    b = pageByTitle("NotionB");
-  const section = linkedBlock(b, /Abschnitt/);
+  const a = await pageByTitle("NotionA"),
+    b = await pageByTitle("NotionB");
+  const section = await linkedBlock(b, /Abschnitt/);
   assert.equal(section.pageId, a);
-  assert.equal(blockTextIn(a, section.blockId!), "Zweiter Abschnitt");
+  assert.equal(await blockTextIn(a, section.blockId!), "Zweiter Abschnitt");
   // A block Notion's Markdown has no id for: the page.
-  assert.deepEqual(linkedBlock(b, /Block/), { pageId: a, blockId: null });
+  assert.deepEqual(await linkedBlock(b, /Block/), { pageId: a, blockId: null });
 });
 
 test("Confluence (HTML export): anchors to headings of other pages and of the same page", async () => {
@@ -379,14 +380,14 @@ test("Confluence (HTML export): anchors to headings of other pages and of the sa
     ]),
   );
   await importFromSource(owner, wid, space, { name: "confluence.zip", bytes: zip }, { source: "confluence" });
-  const ziel = pageByTitle("Ziel"),
-    quelle = pageByTitle("Quelle");
-  const budget = linkedBlock(quelle, /Budget/);
+  const ziel = await pageByTitle("Ziel"),
+    quelle = await pageByTitle("Quelle");
+  const budget = await linkedBlock(quelle, /Budget/);
   assert.equal(budget.pageId, ziel);
-  assert.equal(blockTextIn(ziel, budget.blockId!), "Budgetplanung");
-  const here = linkedBlock(quelle, /hier/);
+  assert.equal(await blockTextIn(ziel, budget.blockId!), "Budgetplanung");
+  const here = await linkedBlock(quelle, /hier/);
   assert.equal(here.pageId, quelle);
-  assert.equal(blockTextIn(quelle, here.blockId!), "Hier");
+  assert.equal(await blockTextIn(quelle, here.blockId!), "Hier");
 });
 
 test("Google Docs (HTML): links to headings and bookmarks of the document", async () => {
@@ -394,9 +395,9 @@ test("Google Docs (HTML): links to headings and bookmarks of the document", asyn
     '<html><head><title>GDoc</title></head><body><h1 id="h.abc">Einleitung</h1><p><a id="kix.mark"></a>Markierter Absatz</p><p><a href="#h.abc">nach oben</a> <a href="#kix.mark">zur Marke</a></p></body></html>',
   );
   await importFromSource(owner, wid, space, { name: "GDoc.html", bytes: doc }, { source: "gdocs" });
-  const page = pageByTitle("GDoc");
-  assert.equal(blockTextIn(page, linkedBlock(page, /nach oben/).blockId!), "Einleitung");
-  assert.equal(blockTextIn(page, linkedBlock(page, /zur Marke/).blockId!), "Markierter Absatz");
+  const page = await pageByTitle("GDoc");
+  assert.equal(await blockTextIn(page, (await linkedBlock(page, /nach oben/)).blockId!), "Einleitung");
+  assert.equal(await blockTextIn(page, (await linkedBlock(page, /zur Marke/)).blockId!), "Markierter Absatz");
 });
 
 test("AFFiNE: references and app links with blockIds lead to the block's new id", async () => {
@@ -442,14 +443,14 @@ test("AFFiNE: references and app links with blockIds lead to the block's new id"
     ]),
   );
   await importFromSource(owner, wid, space, { name: "affine.zip", bytes: zip });
-  const quelle = pageByTitle("AffQuelle"),
-    ziel = pageByTitle("AffZiel");
-  const links = [...html(quelle).matchAll(/href="\/#page=([0-9a-f-]{36})(?:&amp;block=([\w-]+))?"/g)].map((m) => ({ page: m[1], block: m[2] || null }));
+  const quelle = await pageByTitle("AffQuelle"),
+    ziel = await pageByTitle("AffZiel");
+  const links = [...(await html(quelle)).matchAll(/href="\/#page=([0-9a-f-]{36})(?:&amp;block=([\w-]+))?"/g)].map((m) => ({ page: m[1], block: m[2] || null }));
   assert.equal(links.length, 3);
   assert.ok(links.every((l) => l.page === ziel));
-  assert.equal(blockTextIn(ziel, links[0].block!), "Zielabsatz");
-  assert.equal(blockTextIn(ziel, links[1].block!), "Kopf");
+  assert.equal(await blockTextIn(ziel, links[0].block!), "Zielabsatz");
+  assert.equal(await blockTextIn(ziel, links[1].block!), "Kopf");
   assert.equal(links[2].block, null, "a block that is not there: the page");
   // New Flowplan ids, not AFFiNE's.
-  assert.doesNotMatch(html(ziel), /blk-ziel|blk-kopf/);
+  assert.doesNotMatch(await html(ziel), /blk-ziel|blk-kopf/);
 });

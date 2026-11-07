@@ -27,9 +27,9 @@ const input = z.object({
 // series' properties, document, icon and reminders, and the series skips
 // that date. "This and following" splits the series at that date instead.
 // Both happen in the surrounding command transaction.
-export function detachOccurrence(user: Identity, raw: unknown) {
+export async function detachOccurrence(user: Identity, raw: unknown) {
   const b = input.parse(raw);
-  const { row } = requireRow(user, b.pageId, b.rowId, true);
+  const { row } = await requireRow(user, b.pageId, b.rowId, true);
   if (row.version !== b.version)
     throw new HttpError(
       409,
@@ -38,10 +38,10 @@ export function detachOccurrence(user: Identity, raw: unknown) {
   const rule = parseRecurrence(row.recurrence);
   if (!rule) throw new HttpError(400, "Der Eintrag wiederholt sich nicht.");
   const fields = JSON.parse(
-    one<{ fields: string }>(
+    (await one<{ fields: string }>(
       "SELECT fields FROM databases WHERE page_id=?",
       b.pageId,
-    )!.fields,
+    ))!.fields,
   ) as Field[];
   const dateField = (fid?: string) =>
     fid ? fields.find((f) => f.id === fid && f.type === "date") : undefined;
@@ -104,7 +104,7 @@ export function detachOccurrence(user: Identity, raw: unknown) {
         : null;
   }
   const rid = id();
-  run(
+  await run(
     "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,icon,cover,recurrence) VALUES(?,?,?,?,?,?,?,?,?)",
     rid,
     b.pageId,
@@ -116,20 +116,20 @@ export function detachOccurrence(user: Identity, raw: unknown) {
     row.cover || "",
     tail,
   );
-  replaceRowDocument(
+  await replaceRowDocument(
     rid,
     String(
-      one<{ html: string }>(
+      (await one<{ html: string }>(
         "SELECT html FROM row_documents WHERE row_id=?",
         row.id,
-      )?.html ||
+      ))?.html ||
         row.content ||
         "",
     ),
     user.id,
   );
   // Reminders of the series keep working for the detached occurrence.
-  for (const r of all<{
+  for (const r of await all<{
     user_id: string;
     field_id: string;
     offset_minutes: number;
@@ -138,7 +138,7 @@ export function detachOccurrence(user: Identity, raw: unknown) {
     "SELECT user_id,field_id,offset_minutes,time_zone FROM date_reminders WHERE row_id=?",
     row.id,
   ))
-    run(
+    await run(
       "INSERT INTO date_reminders(user_id,page_id,row_id,field_id,offset_minutes,time_zone,observed_value,armed_at) VALUES(?,?,?,?,?,?,?,?)",
       r.user_id,
       b.pageId,
@@ -149,7 +149,7 @@ export function detachOccurrence(user: Identity, raw: unknown) {
       String(copy[r.field_id] ?? ""),
       Date.now(),
     );
-  run(
+  await run(
     "UPDATE rows SET recurrence=?,version=version+1,updated_by=?,updated_at=? WHERE id=?",
     b.mode === "following"
       ? head
@@ -162,6 +162,6 @@ export function detachOccurrence(user: Identity, raw: unknown) {
     user.id, nowText(),
     row.id,
   );
-  maintainRowOrders(b.pageId, new Map([[row.id, rid]]));
+  await maintainRowOrders(b.pageId, new Map([[row.id, rid]]));
   return { id: rid };
 }

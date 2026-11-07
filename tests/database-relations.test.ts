@@ -247,9 +247,9 @@ test("relation and multiselect board groups use labels and preserve unrelated li
   );
 });
 
-function user(name: string): Identity {
+async function user(name: string): Promise<Identity> {
   const uid = id();
-  run(
+  await run(
     "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
     uid,
     uid,
@@ -266,26 +266,26 @@ function user(name: string): Identity {
     created_at: "",
   };
 }
-const owner = user("owner"),
-  editor = user("editor"),
-  wid = createWorkspace(owner.id, "Relations"),
-  boot = bootstrap(owner, wid);
-run("INSERT INTO members VALUES(?,?,?)", wid, editor.id, "editor");
-function create(title: string, extra = {}) {
+const owner = await user("owner"),
+  editor = await user("editor"),
+  wid = await createWorkspace(owner.id, "Relations"),
+  boot = await bootstrap(owner, wid);
+await run("INSERT INTO members VALUES(?,?,?)", wid, editor.id, "editor");
+async function create(title: string, extra = {}) {
   return (
-    command(owner, {
+    (await command(owner, {
       action: "page.create",
       workspaceId: wid,
       spaceId: boot.spaces[0].id,
       kind: "database",
       title,
       ...extra,
-    }) as { id: string }
+    })) as { id: string }
   ).id;
 }
-function schema(pageId: string, fields: Field[]) {
-  const d = database(pageId);
-  command(owner, {
+async function schema(pageId: string, fields: Field[]) {
+  const d = await database(pageId);
+  await command(owner, {
     action: "database.update",
     pageId,
     version: d.version,
@@ -294,11 +294,11 @@ function schema(pageId: string, fields: Field[]) {
   });
 }
 
-test("rollup configuration validates actual target properties and related data respects nested private access", () => {
-  const target = create("Hours"),
-    source = create("Projects"),
-    document = create("Document", { kind: "document" });
-  schema(target, [
+test("rollup configuration validates actual target properties and related data respects nested private access", async () => {
+  const target = await create("Hours"),
+    source = await create("Projects"),
+    document = await create("Document", { kind: "document" });
+  await schema(target, [
     { id: "title", name: "Title", type: "text" },
     { id: "hours", name: "Hours", type: "number" },
   ]);
@@ -316,10 +316,10 @@ test("rollup configuration validates actual target properties and related data r
       rollupMax: 20,
     },
   ];
-  schema(source, fields);
-  assert.throws(
-    () =>
-      schema(
+  await schema(source, fields);
+  await assert.rejects(
+    async () =>
+      await schema(
         source,
         fields.map((f) =>
           f.id === "total" ? { ...f, rollupField: "missing" } : f,
@@ -327,9 +327,9 @@ test("rollup configuration validates actual target properties and related data r
       ),
     /Eigenschaft fehlt/,
   );
-  assert.throws(
-    () =>
-      schema(
+  await assert.rejects(
+    async () =>
+      await schema(
         source,
         fields.map((f) =>
           f.id === "linked" ? { ...f, relationPage: document } : f,
@@ -337,9 +337,9 @@ test("rollup configuration validates actual target properties and related data r
       ),
     /Datenbank/,
   );
-  assert.throws(
-    () =>
-      schema(
+  await assert.rejects(
+    async () =>
+      await schema(
         source,
         fields.map((f) =>
           f.id === "total" ? { ...f, rollupField: "title" } : f,
@@ -347,30 +347,30 @@ test("rollup configuration validates actual target properties and related data r
       ),
     /Berechnung/,
   );
-  const task = command(owner, {
+  const task = (await command(owner, {
     action: "row.create",
     pageId: target,
     cells: { title: "Secret task", hours: 8 },
-  }) as { id: string };
-  const project = command(owner, {
+  })) as { id: string };
+  const project = (await command(owner, {
     action: "row.create",
     pageId: source,
     cells: { title: "Project", linked: [task.id] },
-  }) as { id: string };
-  const before = pageData(editor, source) as any;
+  })) as { id: string };
+  const before = (await pageData(editor, source)) as any;
   assert.equal(
     computedCells(before.rows[0], fields, before.related, before.relatedSchemas)
       .total,
     8,
   );
-  const privateSpace = command(owner, {
+  const privateSpace = (await command(owner, {
     action: "space.create",
     workspaceId: wid,
     name: "Private",
     private: true,
-  }) as { id: string };
-  run("UPDATE pages SET space_id=? WHERE id=?", privateSpace.id, target);
-  const after = pageData(editor, source) as any;
+  })) as { id: string };
+  await run("UPDATE pages SET space_id=? WHERE id=?", privateSpace.id, target);
+  const after = (await pageData(editor, source)) as any;
   assert.equal(after.related[target], undefined);
   assert.equal(after.relatedSchemas[target], undefined);
   assert.equal(
@@ -378,9 +378,9 @@ test("rollup configuration validates actual target properties and related data r
       .total,
     "#ACCESS",
   );
-  assert.throws(
-    () =>
-      command(editor, {
+  await assert.rejects(
+    async () =>
+      await command(editor, {
         action: "row.update",
         pageId: source,
         rowId: project.id,
@@ -389,8 +389,8 @@ test("rollup configuration validates actual target properties and related data r
       }),
     /Berechtigung/,
   );
-  const d = database(source);
-  command(editor, {
+  const d = await database(source);
+  await command(editor, {
     action: "database.update",
     pageId: source,
     version: d.version,
@@ -400,13 +400,13 @@ test("rollup configuration validates actual target properties and related data r
 });
 
 test("rollup settings and computed results survive archive round trips", async () => {
-  const from = create("Archive source"),
-    to = create("Archive target");
-  schema(to, [
+  const from = await create("Archive source"),
+    to = await create("Archive target");
+  await schema(to, [
     { id: "title", name: "Title", type: "text" },
     { id: "done", name: "Done", type: "checkbox" },
   ]);
-  schema(from, [
+  await schema(from, [
     { id: "title", name: "Title", type: "text" },
     { id: "items", name: "Items", type: "relation", relationPage: to },
     {
@@ -420,23 +420,23 @@ test("rollup settings and computed results survive archive round trips", async (
       rollupMax: 1,
     },
   ]);
-  const a = command(owner, {
+  const a = (await command(owner, {
     action: "row.create",
     pageId: to,
     cells: { title: "A", done: true },
-  }) as { id: string };
-  command(owner, {
+  })) as { id: string };
+  await command(owner, {
     action: "row.create",
     pageId: from,
     cells: { title: "Project", items: [a.id] },
   });
-  const dest = createWorkspace(owner.id, "Restored");
+  const dest = await createWorkspace(owner.id, "Restored");
   const result = await importArchive(
     owner,
     dest,
     await exportArchive(owner, wid),
   );
-  const restored = pageData(owner, result.pageIds[from]) as any;
+  const restored = (await pageData(owner, result.pageIds[from])) as any;
   assert.equal(restored.database.fields[2].aggregate, "percent_checked");
   assert.equal(restored.database.fields[2].rollupDisplay, "bar");
   assert.equal(

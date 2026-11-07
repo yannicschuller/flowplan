@@ -10,43 +10,44 @@ import { instanceSettings } from "./instance-settings";
 import { demoCounts } from "./demo";
 import { securityCounters } from "./security-events";
 import { runtimeMetricLines } from "./runtime-metrics";
+import { mapAsync } from "./each-async";
 
 // Storage quota in MB: per-workspace override or FLOWPLAN_WORKSPACE_QUOTA_MB;
 // 0 or unset means unlimited.
-export function defaultQuotaMb() {
-  const stored = instanceSettings().defaultQuotaMb;
+export async function defaultQuotaMb() {
+  const stored = (await instanceSettings()).defaultQuotaMb;
   if (stored !== null) return stored;
   const value = Number(process.env.FLOWPLAN_WORKSPACE_QUOTA_MB || 0);
   return Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
 }
-export function workspaceBytes(workspaceId: string) {
+export async function workspaceBytes(workspaceId: string) {
   return (
     Number(
-      one<{ n: number | null }>(
+      (await one<{ n: number | null }>(
         "SELECT SUM(f.size) n FROM files f JOIN pages p ON p.id=f.page_id WHERE p.workspace_id=?",
         workspaceId,
-      )?.n || 0,
+      ))?.n || 0,
     ) +
     Number(
-      one<{ n: number | null }>(
+      (await one<{ n: number | null }>(
         "SELECT SUM(length(tf.data)) n FROM template_files tf JOIN templates t ON t.id=tf.template_id WHERE t.workspace_id=?",
         workspaceId,
-      )?.n || 0,
+      ))?.n || 0,
     )
   );
 }
-export function workspaceQuotaMb(workspaceId: string) {
-  const own = one<{ quota_mb: number | null }>(
+export async function workspaceQuotaMb(workspaceId: string) {
+  const own = (await one<{ quota_mb: number | null }>(
     "SELECT quota_mb FROM workspaces WHERE id=?",
     workspaceId,
-  )?.quota_mb;
-  return own ?? defaultQuotaMb();
+  ))?.quota_mb;
+  return own ?? await defaultQuotaMb();
 }
 // Throws before a write that would exceed the workspace quota.
-export function enforceQuota(workspaceId: string, addBytes: number) {
-  const quota = workspaceQuotaMb(workspaceId);
+export async function enforceQuota(workspaceId: string, addBytes: number) {
+  const quota = await workspaceQuotaMb(workspaceId);
   if (!quota) return;
-  const used = workspaceBytes(workspaceId);
+  const used = await workspaceBytes(workspaceId);
   if (used + addBytes > quota * 1024 * 1024)
     throw new HttpError(
       413,
@@ -55,12 +56,12 @@ export function enforceQuota(workspaceId: string, addBytes: number) {
 }
 // For copies and imports: call before writing, run the returned check after
 // writing. Only growth beyond the quota is refused, inside the transaction.
-export function quotaCheckpoint(workspaceId: string) {
-  const before = workspaceBytes(workspaceId);
-  return () => {
-    const quota = workspaceQuotaMb(workspaceId);
+export async function quotaCheckpoint(workspaceId: string) {
+  const before = await workspaceBytes(workspaceId);
+  return async () => {
+    const quota = await workspaceQuotaMb(workspaceId);
     if (!quota) return;
-    const after = workspaceBytes(workspaceId);
+    const after = await workspaceBytes(workspaceId);
     if (after > before && after > quota * 1024 * 1024)
       throw new HttpError(
         413,
@@ -78,56 +79,56 @@ function fileSize(path: string) {
     return 0;
   }
 }
-export function instanceMetrics() {
+export async function instanceMetrics() {
   const dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data");
-  const count = (sql: string, ...args: (string | number)[]) =>
-    Number(one<{ n: number }>(sql, ...args)?.n || 0);
-  const demos = demoCounts();
+  const count = async (sql: string, ...args: (string | number)[]) =>
+    Number((await one<{ n: number }>(sql, ...args))?.n || 0);
+  const demos = await demoCounts();
   return {
-    databaseBytes: databaseBytes(),
+    databaseBytes: await databaseBytes(),
     uploadBytes:
-      count("SELECT COALESCE(SUM(size),0) n FROM files") +
-      count("SELECT COALESCE(SUM(length(data)),0) n FROM template_files"),
-    files: count("SELECT COUNT(*) n FROM files"),
-    pages: count("SELECT COUNT(*) n FROM pages WHERE deleted_at IS NULL"),
+      (await count("SELECT COALESCE(SUM(size),0) n FROM files")) +
+      (await count("SELECT COALESCE(SUM(length(data)),0) n FROM template_files")),
+    files: await count("SELECT COUNT(*) n FROM files"),
+    pages: await count("SELECT COUNT(*) n FROM pages WHERE deleted_at IS NULL"),
     // Of those, days of journals (shown apart: "120 Seiten · 340 Journaltage").
-    journalDays: count("SELECT COUNT(*) n FROM pages WHERE deleted_at IS NULL AND journal_date IS NOT NULL"),
-    trashedPages: count(
+    journalDays: await count("SELECT COUNT(*) n FROM pages WHERE deleted_at IS NULL AND journal_date IS NOT NULL"),
+    trashedPages: await count(
       "SELECT COUNT(*) n FROM pages WHERE deleted_at IS NOT NULL",
     ),
-    rows: count("SELECT COUNT(*) n FROM rows"),
+    rows: await count("SELECT COUNT(*) n FROM rows"),
     snapshots:
-      count("SELECT COUNT(*) n FROM snapshots") +
-      count("SELECT COUNT(*) n FROM row_snapshots"),
-    pushPending: count(
+      (await count("SELECT COUNT(*) n FROM snapshots")) +
+      (await count("SELECT COUNT(*) n FROM row_snapshots")),
+    pushPending: await count(
       "SELECT COUNT(*) n FROM push_deliveries WHERE delivered_at IS NULL AND attempts<5",
     ),
-    pushFailed: count(
+    pushFailed: await count(
       "SELECT COUNT(*) n FROM push_deliveries WHERE delivered_at IS NULL AND attempts>=5",
     ),
-    searchBacklog: count("SELECT COUNT(*) n FROM search_dirty"),
-    reminders: count("SELECT COUNT(*) n FROM date_reminders"),
+    searchBacklog: await count("SELECT COUNT(*) n FROM search_dirty"),
+    reminders: await count("SELECT COUNT(*) n FROM date_reminders"),
     demosActive: demos.active,
     demosStarted: demos.started,
-    retentionDays: retentionDays(),
-    defaultQuotaMb: defaultQuotaMb(),
+    retentionDays: await retentionDays(),
+    defaultQuotaMb: await defaultQuotaMb(),
     uptimeSeconds: Math.round(process.uptime()),
     node: process.version,
   };
 }
-export function workspaceUsage() {
-  return all<{ id: string; quota_mb: number | null }>(
+export async function workspaceUsage() {
+  return await mapAsync(await all<{ id: string; quota_mb: number | null }>(
     "SELECT id,quota_mb FROM workspaces",
-  ).map((w) => ({
+  ), async (w) => ({
     id: w.id,
-    bytes: workspaceBytes(w.id),
+    bytes: await workspaceBytes(w.id),
     quotaMb: w.quota_mb,
-    effectiveQuotaMb: w.quota_mb ?? defaultQuotaMb(),
+    effectiveQuotaMb: w.quota_mb ?? await defaultQuotaMb(),
   }));
 }
-export function setWorkspaceQuota(workspaceId: string, quotaMb: number | null) {
+export async function setWorkspaceQuota(workspaceId: string, quotaMb: number | null) {
   if (
-    !run("UPDATE workspaces SET quota_mb=? WHERE id=?", quotaMb, workspaceId)
+    !(await run("UPDATE workspaces SET quota_mb=? WHERE id=?", quotaMb, workspaceId))
       .changes
   )
     throw new HttpError(404, "Arbeitsbereich nicht gefunden.");
@@ -135,8 +136,8 @@ export function setWorkspaceQuota(workspaceId: string, quotaMb: number | null) {
 
 // Prometheus text exposition of the instance metrics and per-workspace
 // storage. Workspace IDs only, never names or content.
-export function prometheusMetrics() {
-  const m = instanceMetrics(),
+export async function prometheusMetrics() {
+  const m = await instanceMetrics(),
     lines: string[] = [];
   const metric = (
     name: string,
@@ -168,7 +169,7 @@ export function prometheusMetrics() {
     m.uploadBytes,
   );
   gauge("files", "Stored files.", m.files);
-  const mirror = storageStatus();
+  const mirror = await storageStatus();
   if (mirror.enabled)
     gauge(
       "object_storage_pending",
@@ -192,7 +193,7 @@ export function prometheusMetrics() {
   gauge("uptime_seconds", "Process uptime in seconds.", m.uptimeSeconds);
   const build = buildInfo();
   metric("build_info", "The running version and commit (always 1).", "gauge", [[{ version: build.version, commit: build.commit.slice(0, 12) }, 1]]);
-  const usage = workspaceUsage();
+  const usage = await workspaceUsage();
   metric(
     "workspace_bytes",
     "Stored bytes per workspace.",
@@ -217,14 +218,14 @@ export function prometheusMetrics() {
     "security_incidents_open",
     "Open security incidents by rule and severity.",
     "gauge",
-    all<{ rule: string; severity: string; n: number }>(
+    (await all<{ rule: string; severity: string; n: number }>(
       "SELECT rule,severity,COUNT(*) n FROM security_incidents WHERE resolved_at IS NULL GROUP BY rule,severity",
-    ).map((r) => [{ rule: r.rule, severity: r.severity }, r.n]),
+    )).map((r) => [{ rule: r.rule, severity: r.severity }, r.n]),
   );
   gauge(
     "security_blocks",
     "Blocked addresses and networks.",
-    Number(one<{ n: number }>("SELECT COUNT(*) n FROM security_blocks WHERE until IS NULL OR until>?", Date.now())?.n || 0),
+    Number((await one<{ n: number }>("SELECT COUNT(*) n FROM security_blocks WHERE until IS NULL OR until>?", Date.now()))?.n || 0),
   );
   // Event loop, SQLite time and process (FLOWPLAN_METRICS_LOOP=1, lib/runtime-metrics.ts).
   lines.push(...runtimeMetricLines(walBytes()));

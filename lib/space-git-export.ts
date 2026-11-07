@@ -163,13 +163,13 @@ async function* limited(res: IncomingMessage) {
 }
 
 // Only the owner of the space, as a full member, signed in themselves.
-function requireGitOwner(user: Identity, spaceId: string) {
+async function requireGitOwner(user: Identity, spaceId: string) {
   if (!spaceGitEnabled()) throw new HttpError(404, "Der Git-Export für Bereiche ist auf dieser Instanz nicht eingeschaltet.");
   if (user.demo) throw new HttpError(403, "In der Demo nicht verfügbar. Registriere dich, um das zu nutzen.");
   if (user.apiScope) throw new HttpError(403, "Mit einem API-Token nicht möglich.");
-  const space = one<Space>("SELECT * FROM spaces WHERE id=? AND deleted_at IS NULL", z.uuid().parse(spaceId));
+  const space = await one<Space>("SELECT * FROM spaces WHERE id=? AND deleted_at IS NULL", z.uuid().parse(spaceId));
   if (!space) throw new HttpError(404, "Bereich nicht gefunden.");
-  if (space.owner_id !== user.id || !memberRole(user, space.workspace_id) || isGuest(user, space.workspace_id))
+  if (space.owner_id !== user.id || !(await memberRole(user, space.workspace_id)) || await isGuest(user, space.workspace_id))
     throw new HttpError(403, "Nur wer den Bereich besitzt, richtet den Git-Export ein.");
   return space;
 }
@@ -182,14 +182,14 @@ const nextRun = (row: Row) => {
 
 // What the settings show: never the token, only whether one is stored.
 // People who do not own the space see nothing of it.
-export function spaceGitStatus(user: Identity, spaceId: string) {
+export async function spaceGitStatus(user: Identity, spaceId: string) {
   try {
-    requireGitOwner(user, spaceId);
+    await requireGitOwner(user, spaceId);
   } catch (error) {
     if (error instanceof HttpError && (error.status === 403 || error.status === 404)) return { available: false as const };
     throw error;
   }
-  const row = one<Row>("SELECT * FROM space_git_exports WHERE space_id=?", spaceId);
+  const row = await one<Row>("SELECT * FROM space_git_exports WHERE space_id=?", spaceId);
   return {
     available: true as const,
     configured: !!row,
@@ -227,14 +227,14 @@ const settings = z
 // Saves or turns off the export (command "space.gitExport", in its
 // transaction). A new address needs the token again, so a stored token
 // never goes to another server than the one it was entered for.
-export function saveSpaceGitExport(user: Identity, input: unknown) {
+export async function saveSpaceGitExport(user: Identity, input: unknown) {
   const b = settings.parse(input);
-  const space = requireGitOwner(user, b.spaceId);
-  const existing = one<Row>("SELECT * FROM space_git_exports WHERE space_id=?", space.id);
+  const space = await requireGitOwner(user, b.spaceId);
+  const existing = await one<Row>("SELECT * FROM space_git_exports WHERE space_id=?", space.id);
   if (!b.enabled) {
-    run("DELETE FROM space_git_exports WHERE space_id=?", space.id);
-    if (existing) audit(user.id, "space.gitExport.off", space.id);
-    return spaceGitStatus(user, space.id);
+    await run("DELETE FROM space_git_exports WHERE space_id=?", space.id);
+    if (existing) await audit(user.id, "space.gitExport.off", space.id);
+    return await spaceGitStatus(user, space.id);
   }
   const url = checkedGitUrl(b.url || "");
   const branch = b.branch || "main";
@@ -245,7 +245,7 @@ export function saveSpaceGitExport(user: Identity, input: unknown) {
     throw new HttpError(400, existing ? "Für eine neue Adresse bitte das Zugangstoken neu eingeben." : "Bitte ein Zugangstoken mit Schreibrechten eingeben.");
   if (!b.username) throw new HttpError(400, "Bitte den Benutzernamen für das Token eingeben.");
   const now = Date.now();
-  run(
+  await run(
     `INSERT INTO space_git_exports(space_id,user_id,url,branch,username,token,frequency,history,last_run,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,NULL,?,?)
      ON CONFLICT(space_id) DO UPDATE SET user_id=excluded.user_id,url=excluded.url,branch=excluded.branch,username=excluded.username,token=excluded.token,frequency=excluded.frequency,history=excluded.history,updated_at=excluded.updated_at${moved ? ",last_run=NULL" : ""}`,
     space.id,
@@ -261,30 +261,30 @@ export function saveSpaceGitExport(user: Identity, input: unknown) {
   );
   // Another repository or branch starts from a fresh working copy.
   if (moved && !running.has(space.id)) rmSync(copyDir(space.id), { recursive: true, force: true });
-  audit(user.id, existing ? "space.gitExport.update" : "space.gitExport.on", space.id);
-  return spaceGitStatus(user, space.id);
+  await audit(user.id, existing ? "space.gitExport.update" : "space.gitExport.on", space.id);
+  return await spaceGitStatus(user, space.id);
 }
 
 // Working copies whose settings are gone (turned off, owner changed, space
 // or account deleted). Runs after such commands and with every scheduler
 // round.
-export function sweepSpaceGitCopies() {
+export async function sweepSpaceGitCopies() {
   const root = spacesDir();
   if (!existsSync(root)) return;
   for (const name of readdirSync(root))
-    if (!running.has(name) && !one("SELECT 1 FROM space_git_exports WHERE space_id=?", name)) rmSync(resolve(root, name), { recursive: true, force: true });
+    if (!running.has(name) && !(await one("SELECT 1 FROM space_git_exports WHERE space_id=?", name))) rmSync(resolve(root, name), { recursive: true, force: true });
 }
 
 // The owner as they would be signed in, without SSO groups: reading pages
 // depends on memberships and grants, not on groups. Null when they no
 // longer own the space (the export ends), "disabled" while their account
 // is deactivated (the export waits).
-function exporter(row: Row): { owner: Identity; space: Space } | "disabled" | null {
-  const user = one<User>("SELECT * FROM users WHERE id=?", row.user_id);
-  const space = one<Space>("SELECT * FROM spaces WHERE id=? AND deleted_at IS NULL", row.space_id);
+async function exporter(row: Row): Promise<{ owner: Identity; space: Space } | "disabled" | null> {
+  const user = await one<User>("SELECT * FROM users WHERE id=?", row.user_id);
+  const space = await one<Space>("SELECT * FROM spaces WHERE id=? AND deleted_at IS NULL", row.space_id);
   if (!user || !space || space.owner_id !== user.id) return null;
   const owner: Identity = { ...user, groups: [], isAdmin: false };
-  if (!memberRole(owner, space.workspace_id) || isGuest(owner, space.workspace_id)) return null;
+  if (!(await memberRole(owner, space.workspace_id)) || await isGuest(owner, space.workspace_id)) return null;
   if (user.disabled) return "disabled";
   return { owner, space };
 }
@@ -313,11 +313,11 @@ async function staleCopy(dir: string, url: string, branch: string) {
 }
 
 async function exportSpace(row: Row, now: number): Promise<SpaceGitRun | null> {
-  const found = exporter(row);
+  const found = await exporter(row);
   if (!found) {
     // The owner no longer owns the space: the export ends.
-    run("DELETE FROM space_git_exports WHERE space_id=? AND user_id=?", row.space_id, row.user_id);
-    sweepSpaceGitCopies();
+    await run("DELETE FROM space_git_exports WHERE space_id=? AND user_id=?", row.space_id, row.user_id);
+    await sweepSpaceGitCopies();
     return null;
   }
   if (found === "disabled") {
@@ -325,7 +325,7 @@ async function exportSpace(row: Row, now: number): Promise<SpaceGitRun | null> {
     // stay; the status says why nothing is pushed, and the hourly retry of
     // a failed run picks it up again once the account is enabled.
     const paused: SpaceGitRun = { at: now, commit: lastRun(row)?.commit ?? null, files: 0, pushed: false, error: OWNER_DISABLED };
-    run("UPDATE space_git_exports SET last_run=? WHERE space_id=? AND user_id=?", JSON.stringify(paused), row.space_id, row.user_id);
+    await run("UPDATE space_git_exports SET last_run=? WHERE space_id=? AND user_id=?", JSON.stringify(paused), row.space_id, row.user_id);
     return null;
   }
   if (running.has(row.space_id)) throw new HttpError(409, "Der Git-Export dieses Bereichs läuft gerade.");
@@ -338,7 +338,7 @@ async function exportSpace(row: Row, now: number): Promise<SpaceGitRun | null> {
     const url = checkedGitUrl(row.url);
     const target: GitTarget = { dir: copyDir(row.space_id), url, branch: row.branch, username: row.username, token, http: safeGitHttp(url) };
     if (await staleCopy(target.dir, url, row.branch)) rmSync(target.dir, { recursive: true, force: true });
-    const { bytes } = await withContentLocale(userLocale(found.owner.id), () =>
+    const { bytes } = await withContentLocale(await userLocale(found.owner.id), () =>
       exportMarkdown(found.owner, { spaceId: row.space_id, format: "zip", includeSubpages: true, history: !!row.history }),
     );
     const entries = await readZip(bytes as Buffer, { foreign: true, maxEntries: 20000 });
@@ -361,28 +361,28 @@ async function exportSpace(row: Row, now: number): Promise<SpaceGitRun | null> {
   } finally {
     running.delete(row.space_id);
   }
-  run("UPDATE space_git_exports SET last_run=? WHERE space_id=? AND user_id=?", JSON.stringify(result), row.space_id, row.user_id);
+  await run("UPDATE space_git_exports SET last_run=? WHERE space_id=? AND user_id=?", JSON.stringify(result), row.space_id, row.user_id);
   // Turned off while it ran: the copy goes now.
-  sweepSpaceGitCopies();
+  await sweepSpaceGitCopies();
   return result;
 }
 
 // "Run now" in the space settings.
 export async function runSpaceGitExport(user: Identity, spaceId: string) {
-  const space = requireGitOwner(user, spaceId);
-  const row = one<Row>("SELECT * FROM space_git_exports WHERE space_id=? AND user_id=?", space.id, user.id);
+  const space = await requireGitOwner(user, spaceId);
+  const row = await one<Row>("SELECT * FROM space_git_exports WHERE space_id=? AND user_id=?", space.id, user.id);
   if (!row) throw new HttpError(404, "Der Git-Export ist für diesen Bereich nicht eingerichtet.");
   await exportSpace(row, Date.now());
-  return spaceGitStatus(user, space.id);
+  return await spaceGitStatus(user, space.id);
 }
 
 // With the backup worker (lib/scheduled-backup.ts): every space whose
 // interval has passed, one after another; failed runs again after an hour.
 export async function runDueSpaceGitExports(now = Date.now()) {
-  sweepSpaceGitCopies();
+  await sweepSpaceGitCopies();
   if (!spaceGitEnabled()) return [];
   const results: SpaceGitRun[] = [];
-  for (const row of all<Row>("SELECT * FROM space_git_exports ORDER BY updated_at")) {
+  for (const row of await all<Row>("SELECT * FROM space_git_exports ORDER BY updated_at")) {
     const next = nextRun(row);
     if ((next !== null && now < next) || running.has(row.space_id)) continue;
     const result = await exportSpace(row, now).catch((error) => {
@@ -396,8 +396,8 @@ export async function runDueSpaceGitExports(now = Date.now()) {
 
 // Admin → Instance: how many spaces use it and their last errors – without
 // addresses or content.
-export function spaceGitOverview() {
-  const rows = all<{ last_run: string | null; workspace: string; owner: string }>(
+export async function spaceGitOverview() {
+  const rows = await all<{ last_run: string | null; workspace: string; owner: string }>(
     "SELECT g.last_run,w.name workspace,u.name owner FROM space_git_exports g JOIN spaces s ON s.id=g.space_id JOIN workspaces w ON w.id=s.workspace_id JOIN users u ON u.id=g.user_id ORDER BY g.updated_at DESC",
   );
   const failing = rows

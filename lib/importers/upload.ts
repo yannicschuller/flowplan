@@ -35,7 +35,7 @@ export function importEnvMb(raw = process.env.FLOWPLAN_IMPORT_MAX_MB): number | 
 export function importLimitMb(uploadMb: number, envMb = importEnvMb()) {
   return envMb ?? Math.max(IMPORT_MIN_MB, uploadMb);
 }
-export const importLimitFor = (user: Pick<Identity, "id" | "isAdmin">) => importLimitMb(maxUploadMbFor(user));
+export const importLimitFor = async (user: Pick<Identity, "id" | "isAdmin">) => importLimitMb(await maxUploadMbFor(user));
 // The refusal names the limit and where it is changed.
 export function importTooLarge(limitMb: number, envMb = importEnvMb()) {
   return new HttpError(

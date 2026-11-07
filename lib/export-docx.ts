@@ -670,7 +670,7 @@ export async function buildDocx(options: DocxOptions): Promise<Buffer> {
 export const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 // A page, or one record of a database, as a Word file for the person.
 export async function exportDocx(user: Identity, options: { pageId: string; rowId?: string }) {
-  const content = collectExportContent(user, { pageId: options.pageId, rowId: options.rowId, children: false, maxPages: 1, format: "Word" });
+  const content = await collectExportContent(user, { pageId: options.pageId, rowId: options.rowId, children: false, maxPages: 1, format: "Word" });
   const page = content.pages[0];
   const bytes = await buildDocx({
     title: content.name,
@@ -687,7 +687,7 @@ export async function exportDocx(user: Identity, options: { pageId: string; rowI
       return db && db.kind === "database" ? { title: db.title, url: content.pageUrl(db.id) } : null;
     },
   });
-  audit(user.id, options.rowId ? "record.docx.export" : "page.docx.export", options.pageId);
+  await audit(user.id, options.rowId ? "record.docx.export" : "page.docx.export", options.pageId);
   return { bytes, name: `${exportName(content.name)}.docx`, mime: DOCX_MIME };
 }
 

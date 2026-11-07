@@ -3,6 +3,7 @@ import { all, one, run, nowText, sql } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import type { Field, Identity } from "./types";
+import { filterAsync } from "./each-async";
 export type RelationPair = {
   id: string;
   left_page: string;
@@ -17,24 +18,24 @@ export const relationPairSchema = z.object({
   right_page: z.string().uuid(),
   right_field: z.string().min(1).max(500),
 });
-export function relationPairs(pageId?: string) {
+export async function relationPairs(pageId?: string) {
   return pageId
-    ? all<RelationPair>(
+    ? (await all<RelationPair>(
         "SELECT * FROM two_way_relations WHERE left_page=? OR right_page=?",
         pageId,
         pageId,
-      )
-    : all<RelationPair>("SELECT * FROM two_way_relations");
+      ))
+    : (await all<RelationPair>("SELECT * FROM two_way_relations"));
 }
-export function relationFields(pageId: string): Field[] {
+export async function relationFields(pageId: string): Promise<Field[]> {
   return JSON.parse(
     String(
-      one("SELECT fields FROM databases WHERE page_id=?", pageId)?.fields ||
+      (await one("SELECT fields FROM databases WHERE page_id=?", pageId))?.fields ||
         "[]",
     ),
   );
 }
-export function insertRelationPair(pair: RelationPair) {
+export async function insertRelationPair(pair: RelationPair) {
   if (
     pair.left_page === pair.right_page &&
     pair.left_field === pair.right_field
@@ -48,7 +49,7 @@ export function insertRelationPair(pair: RelationPair) {
     [pair.right_page, pair.right_field],
   ])
     if (
-      one(
+      await one(
         "SELECT pair_id FROM relation_endpoints WHERE page_id=? AND field_id=?",
         page,
         field,
@@ -58,7 +59,7 @@ export function insertRelationPair(pair: RelationPair) {
         409,
         "Eigenschaft ist bereits bidirektional verknüpft.",
       );
-  run(
+  await run(
     "INSERT INTO two_way_relations VALUES(?,?,?,?,?)",
     pair.id,
     pair.left_page,
@@ -66,13 +67,13 @@ export function insertRelationPair(pair: RelationPair) {
     pair.right_page,
     pair.right_field,
   );
-  run(
+  await run(
     "INSERT INTO relation_endpoints VALUES(?,?,?)",
     pair.left_page,
     pair.left_field,
     pair.id,
   );
-  run(
+  await run(
     "INSERT INTO relation_endpoints VALUES(?,?,?)",
     pair.right_page,
     pair.right_field,
@@ -80,12 +81,12 @@ export function insertRelationPair(pair: RelationPair) {
   );
 }
 // Initialize from the authoritative forward side. Existing independent relations are untouched.
-export function initializeRelationPair(pair: RelationPair) {
-  const stored = one<RelationPair>(
+export async function initializeRelationPair(pair: RelationPair) {
+  const stored = (await one<RelationPair>(
     "SELECT * FROM two_way_relations WHERE id=?",
     pair.id,
-  )!;
-  run(
+  ))!;
+  await run(
     "INSERT INTO relation_initializations VALUES(?,?) ON CONFLICT(pair_id) DO UPDATE SET reversed=excluded.reversed",
     pair.id,
     stored.left_page === pair.left_page && stored.left_field === pair.left_field
@@ -94,14 +95,14 @@ export function initializeRelationPair(pair: RelationPair) {
   );
 }
 
-export function restoreRelationPairs(
+export async function restoreRelationPairs(
   actor: Identity,
   pageId: string,
   input: unknown,
 ) {
   if (input === undefined) return;
   const saved = z.array(relationPairSchema).max(80).parse(input);
-  flushRelationChanges(actor);
+  await flushRelationChanges(actor);
   for (const pair of saved) {
     if (pair.left_page !== pageId && pair.right_page !== pageId)
       throw new HttpError(400, "Ungültige Relationsversion.");
@@ -109,10 +110,10 @@ export function restoreRelationPairs(
       [pair.left_page, pair.left_field, pair.right_page],
       [pair.right_page, pair.right_field, pair.left_page],
     ]) {
-      const p = requirePage(actor, page, true);
+      const p = await requirePage(actor, page, true);
       if (p.locked)
         throw new HttpError(409, "Verknüpfte Datenbank ist gesperrt.");
-      const f = relationFields(page).find((f) => f.id === field);
+      const f = (await relationFields(page)).find((f) => f.id === field);
       if (f?.type !== "relation" || f.relationPage !== target)
         throw new HttpError(
           409,
@@ -120,11 +121,11 @@ export function restoreRelationPairs(
         );
     }
   }
-  for (const pair of relationPairs(pageId))
+  for (const pair of await relationPairs(pageId))
     if (!saved.some((p) => p.id === pair.id))
-      run("DELETE FROM two_way_relations WHERE id=?", pair.id);
+      await run("DELETE FROM two_way_relations WHERE id=?", pair.id);
   for (const pair of saved) {
-    const existing = one<RelationPair>(
+    const existing = await one<RelationPair>(
       "SELECT * FROM two_way_relations WHERE id=?",
       pair.id,
     );
@@ -140,8 +141,8 @@ export function restoreRelationPairs(
         409,
         "Relationsversion kollidiert mit einer anderen Verknüpfung.",
       );
-    if (!existing) insertRelationPair(pair);
-    initializeRelationPair(
+    if (!existing) await insertRelationPair(pair);
+    await initializeRelationPair(
       pair.left_page === pageId
         ? pair
         : {
@@ -155,16 +156,15 @@ export function restoreRelationPairs(
   }
 }
 const ids = z.array(z.string().uuid()).max(500);
-export function flushRelationChanges(actor?: Identity) {
+export async function flushRelationChanges(actor?: Identity) {
   // Removing/changing a relation property disconnects it, preserving the other property and values.
-  const pairs = relationPairs();
+  const pairs = await relationPairs();
   const invalid = new Set(
-    pairs
-      .filter((pair) => {
-        const left = relationFields(pair.left_page).find(
+    (await filterAsync(pairs, async (pair) => {
+        const left = (await relationFields(pair.left_page)).find(
             (f) => f.id === pair.left_field,
           ),
-          right = relationFields(pair.right_page).find(
+          right = (await relationFields(pair.right_page)).find(
             (f) => f.id === pair.right_field,
           );
         return !(
@@ -173,15 +173,15 @@ export function flushRelationChanges(actor?: Identity) {
           right?.type === "relation" &&
           right.relationPage === pair.left_page
         );
-      })
+      }))
       .map((p) => p.id),
   );
   const initializations = new Map(
-    all<{ pair_id: string; reversed: number }>(
+    (await all<{ pair_id: string; reversed: number }>(
       "SELECT * FROM relation_initializations",
-    ).map((p) => [p.pair_id, p.reversed]),
+    )).map((p) => [p.pair_id, p.reversed]),
   );
-  const changes = all<{
+  const changes = await all<{
     row_id: string;
     page_id: string;
     old_cells: string | null;
@@ -193,19 +193,19 @@ export function flushRelationChanges(actor?: Identity) {
     { id: string; page_id: string; cells: Record<string, unknown> }
   >();
   const writable = new Set<string>();
-  function requireWrite(pageId: string) {
+  async function requireWrite(pageId: string) {
     if (writable.has(pageId)) return;
     if (!actor)
       throw new HttpError(403, "Relationsänderung erfordert eine Anmeldung.");
-    const page = requirePage(actor, pageId, true);
+    const page = await requirePage(actor, pageId, true);
     if (page.locked)
       throw new HttpError(409, "Eine verknüpfte Datenbank ist gesperrt.");
     writable.add(pageId);
   }
-  function patchRow(rowId: string, pageId: string) {
+  async function patchRow(rowId: string, pageId: string) {
     const key = pageId + ":" + rowId;
     if (!patches.has(key)) {
-      const row = one<{ id: string; page_id: string; cells: string }>(
+      const row = await one<{ id: string; page_id: string; cells: string }>(
         "SELECT id,page_id,cells FROM rows WHERE id=? AND page_id=?",
         rowId,
         pageId,
@@ -221,15 +221,15 @@ export function flushRelationChanges(actor?: Identity) {
       { left: string; right: string; value: boolean }
     >();
     if (initializations.has(pair.id) && !invalid.has(pair.id)) {
-      requireWrite(pair.left_page);
-      requireWrite(pair.right_page);
+      await requireWrite(pair.left_page);
+      await requireWrite(pair.right_page);
       const reversed = !!initializations.get(pair.id);
       const authoritativePage = reversed ? pair.right_page : pair.left_page,
         authoritativeField = reversed ? pair.right_field : pair.left_field;
       const inversePage = reversed ? pair.left_page : pair.right_page,
         inverseField = reversed ? pair.left_field : pair.right_field;
       // Clear stale edges first, then replace them from the restored/forward side.
-      for (const row of all<{ id: string; cells: string }>(
+      for (const row of await all<{ id: string; cells: string }>(
         "SELECT id,cells FROM rows WHERE page_id=?",
         inversePage,
       ))
@@ -240,7 +240,7 @@ export function flushRelationChanges(actor?: Identity) {
             right = reversed ? target : row.id;
           intents.set(left + ":" + right, { left, right, value: false });
         }
-      for (const row of all<{ id: string; cells: string }>(
+      for (const row of await all<{ id: string; cells: string }>(
         "SELECT id,cells FROM rows WHERE page_id=?",
         authoritativePage,
       ))
@@ -269,8 +269,8 @@ export function flushRelationChanges(actor?: Identity) {
           for (const target of new Set([...before, ...after])) {
             if (before.has(target) === after.has(target)) continue;
             if (change.new_cells !== null) {
-              requireWrite(pair.left_page);
-              requireWrite(pair.right_page);
+              await requireWrite(pair.left_page);
+              await requireWrite(pair.right_page);
             }
             const left = reverse ? target : change.row_id,
               right = reverse ? change.row_id : target,
@@ -286,7 +286,7 @@ export function flushRelationChanges(actor?: Identity) {
       for (const reverse of [false, true]) {
         const page = reverse ? pair.right_page : pair.left_page,
           field = reverse ? pair.right_field : pair.left_field;
-        const row = patchRow(reverse ? intent.right : intent.left, page),
+        const row = await patchRow(reverse ? intent.right : intent.left, page),
           target = reverse ? intent.left : intent.right;
         if (!row) {
           if (intent.value)
@@ -301,37 +301,37 @@ export function flushRelationChanges(actor?: Identity) {
           throw new HttpError(400, "Maximal 500 Verknüpfungen pro Eintrag.");
       }
   }
-  run("UPDATE relation_sync_control SET syncing=1 WHERE id=1");
+  await run("UPDATE relation_sync_control SET syncing=1 WHERE id=1");
   try {
     for (const row of patches.values()) {
       const cells = JSON.stringify(row.cells);
       if (cells.length > 200000)
         throw new HttpError(413, "Datensatz mit Rückrelationen ist zu groß.");
-      run(
+      await run(
         "UPDATE rows SET cells=?,version=version+1,updated_at=?,updated_by=? WHERE id=? AND cells!=?",
         cells, nowText(),
         actor?.id || null,
         row.id,
         cells,
       );
-      run(
+      await run(
         "UPDATE pages SET updated_at=? WHERE id=?", nowText(),
         row.page_id,
       );
     }
     for (const change of changes)
       if (change.old_version !== null)
-        run(
+        await run(
           `UPDATE rows SET version=${sql.greatest("version", "?")} WHERE id=?`,
           change.old_version + 1,
           change.row_id,
         );
     for (const pairId of invalid)
-      run("DELETE FROM two_way_relations WHERE id=?", pairId);
-    run("DELETE FROM relation_changes");
-    run("DELETE FROM relation_initializations");
+      await run("DELETE FROM two_way_relations WHERE id=?", pairId);
+    await run("DELETE FROM relation_changes");
+    await run("DELETE FROM relation_initializations");
   } finally {
-    run("UPDATE relation_sync_control SET syncing=0 WHERE id=1");
+    await run("UPDATE relation_sync_control SET syncing=0 WHERE id=1");
   }
 }
 

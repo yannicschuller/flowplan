@@ -34,14 +34,15 @@ import {
 import { dayDoc, dayStart, dayTitle, hasOwnEntry, journalDate, rollJournal } from "./journal";
 import { dayTitle as localDayTitle } from "./journal-title";
 import type { Identity, Page, PageCounts } from "./types";
+import { filterAsync, flatMapAsync, someAsync } from "./each-async";
 
 const sha = (text: string) => createHash("sha256").update(text).digest("hex");
 
 // ---- Drafts ----
 
 // The id a day has before it exists; the same for everyone who opens it.
-export function ensureDraft(journalId: string, date: string) {
-  run(
+export async function ensureDraft(journalId: string, date: string) {
+  await run(
     "INSERT INTO journal_drafts(id,journal_id,date,created_at) VALUES(?,?,?,?) ON CONFLICT DO NOTHING",
     id(),
     journalId,
@@ -49,11 +50,11 @@ export function ensureDraft(journalId: string, date: string) {
     Date.now(),
   );
   // Drafts of days long gone are of no use any more.
-  run("DELETE FROM journal_drafts WHERE journal_id=? AND date<?", journalId, shiftDay(date, -7));
-  return one<{ id: string }>("SELECT id FROM journal_drafts WHERE journal_id=? AND date=?", journalId, date)!.id;
+  await run("DELETE FROM journal_drafts WHERE journal_id=? AND date<?", journalId, shiftDay(date, -7));
+  return (await one<{ id: string }>("SELECT id FROM journal_drafts WHERE journal_id=? AND date=?", journalId, date))!.id;
 }
-export function draftId(journalId: string, date: string) {
-  return one<{ id: string }>("SELECT id FROM journal_drafts WHERE journal_id=? AND date=?", journalId, date)?.id || null;
+export async function draftId(journalId: string, date: string) {
+  return (await one<{ id: string }>("SELECT id FROM journal_drafts WHERE journal_id=? AND date=?", journalId, date))?.id || null;
 }
 function shiftDay(date: string, days: number) {
   const d = new Date(`${date}T00:00:00Z`);
@@ -75,11 +76,11 @@ export function seededDayState(pageId: string, doc: PMNode) {
 // ---- Template versions ----
 
 // The current template, kept by its hash; "" without a template.
-export function rememberTemplate(journalId: string) {
-  const html = journalSettings(journalId).template;
+export async function rememberTemplate(journalId: string) {
+  const html = (await journalSettings(journalId)).template;
   if (!html) return "";
   const hash = sha(html).slice(0, 16);
-  run(
+  await run(
     "INSERT INTO journal_templates(journal_id,hash,html,created_at) VALUES(?,?,?,?) ON CONFLICT DO NOTHING",
     journalId,
     hash,
@@ -88,8 +89,8 @@ export function rememberTemplate(journalId: string) {
   );
   return hash;
 }
-export function rememberDay(pageId: string, journalId: string, templateHash: string, baseHash: string) {
-  run(
+export async function rememberDay(pageId: string, journalId: string, templateHash: string, baseHash: string) {
+  await run(
     "INSERT INTO journal_day_meta(page_id,journal_id,template_hash,base_hash,created_at) VALUES(?,?,?,?,?) ON CONFLICT(page_id) DO UPDATE SET journal_id=excluded.journal_id,template_hash=excluded.template_hash,base_hash=excluded.base_hash,created_at=excluded.created_at",
     pageId,
     journalId,
@@ -100,19 +101,19 @@ export function rememberDay(pageId: string, journalId: string, templateHash: str
 }
 // The template HTML a day was created from: "" for none, null when unknown
 // (days from before this was recorded).
-export function dayTemplateHtml(pageId: string): string | null {
-  const meta = one<{ journal_id: string; template_hash: string }>(
+export async function dayTemplateHtml(pageId: string): Promise<string | null> {
+  const meta = await one<{ journal_id: string; template_hash: string }>(
     "SELECT journal_id,template_hash FROM journal_day_meta WHERE page_id=?",
     pageId,
   );
   if (!meta) return null;
   if (!meta.template_hash) return "";
   return (
-    one<{ html: string }>(
+    (await one<{ html: string }>(
       "SELECT html FROM journal_templates WHERE journal_id=? AND hash=?",
       meta.journal_id,
       meta.template_hash,
-    )?.html ?? null
+    ))?.html ?? null
   );
 }
 
@@ -121,13 +122,13 @@ export function dayTemplateHtml(pageId: string): string | null {
 export type DraftResult =
   | { existing: string }
   | { data: Record<string, unknown> };
-export function journalDraftPage(user: Identity, pageId: string, now = new Date().toISOString().slice(0, 10)): DraftResult | null {
-  const row = one<{ id: string; journal_id: string; date: string }>("SELECT * FROM journal_drafts WHERE id=?", pageId);
+export async function journalDraftPage(user: Identity, pageId: string, now = new Date().toISOString().slice(0, 10)): Promise<DraftResult | null> {
+  const row = await one<{ id: string; journal_id: string; date: string }>("SELECT * FROM journal_drafts WHERE id=?", pageId);
   if (!row) return null;
-  const journal = one<Page>("SELECT * FROM pages WHERE id=? AND kind='journal' AND deleted_at IS NULL", row.journal_id);
-  const role = journal ? pageRole(user, journal) : null;
+  const journal = await one<Page>("SELECT * FROM pages WHERE id=? AND kind='journal' AND deleted_at IS NULL", row.journal_id);
+  const role = journal ? (await pageRole(user, journal)) : null;
   if (!journal || !role) throw new HttpError(404, "Seite nicht gefunden.");
-  const day = one<{ id: string }>(
+  const day = await one<{ id: string }>(
     "SELECT id FROM pages WHERE parent_id=? AND journal_date=? AND deleted_at IS NULL",
     journal.id,
     row.date,
@@ -157,15 +158,15 @@ export function journalDraftPage(user: Identity, pageId: string, now = new Date(
     synced: 0,
   };
   const empty = { comments: [], snapshots: [], present: [], backlinks: [], images: [], shareLinks: [] };
-  if (journalLocked(user, journal))
+  if (await journalLocked(user, journal))
     return { data: { page, role, locked: { journalId: journal.id }, ...empty, html: "", state: null, generation: "1" } };
-  if (isEncryptedPage(journal)) throw new HttpError(409, "Für verschlüsselte Seiten nicht verfügbar.");
-  const { before, doc } = dayStart(journal, row.date);
+  if (await isEncryptedPage(journal)) throw new HttpError(409, "Für verschlüsselte Seiten nicht verfügbar.");
+  const { before, doc } = await dayStart(journal, row.date);
   before?.ydoc.destroy();
   const seeded = seededDayState(row.id, doc);
   const state = Buffer.from(Y.encodeStateAsUpdate(seeded.ydoc)).toString("base64");
   seeded.ydoc.destroy();
-  const settings = journalSettings(journal.id);
+  const settings = await journalSettings(journal.id);
   return {
     data: {
       page,
@@ -187,13 +188,13 @@ export function journalDraftPage(user: Identity, pageId: string, now = new Date(
   };
 }
 // The journal and date behind a page id: a day, or a draft of one.
-export function dayOrDraft(user: Identity, pageId: string) {
-  const page = one<Page>("SELECT * FROM pages WHERE id=?", pageId);
+export async function dayOrDraft(user: Identity, pageId: string) {
+  const page = await one<Page>("SELECT * FROM pages WHERE id=?", pageId);
   if (page) return null;
-  const row = one<{ journal_id: string; date: string }>("SELECT journal_id,date FROM journal_drafts WHERE id=?", pageId);
+  const row = await one<{ journal_id: string; date: string }>("SELECT journal_id,date FROM journal_drafts WHERE id=?", pageId);
   if (!row) return null;
-  const journal = one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", row.journal_id);
-  if (!journal || !pageRole(user, journal)) return null;
+  const journal = await one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", row.journal_id);
+  if (!journal || !(await pageRole(user, journal))) return null;
   return { journal, date: row.date };
 }
 
@@ -201,13 +202,13 @@ export function dayOrDraft(user: Identity, pageId: string) {
 
 // The journal such a link goes to: the readable, unlocked journal in the
 // space of the page being written in, else the one written in last.
-export function linkJournal(user: Identity, workspaceId: string, fromPageId?: string | null) {
-  const from = fromPageId ? one<Page>("SELECT * FROM pages WHERE id=?", fromPageId) : undefined;
-  const journals = all<Page & { last: string | null }>(
+export async function linkJournal(user: Identity, workspaceId: string, fromPageId?: string | null) {
+  const from = fromPageId ? (await one<Page>("SELECT * FROM pages WHERE id=?", fromPageId)) : undefined;
+  const journals = await filterAsync(await all<Page & { last: string | null }>(
     `SELECT p.*,(SELECT MAX(journal_date) FROM pages d WHERE d.parent_id=p.id AND d.deleted_at IS NULL) last
      FROM pages p WHERE p.workspace_id=? AND p.kind='journal' AND p.deleted_at IS NULL`,
     workspaceId,
-  ).filter((j) => pageRole(user, j) && !journalLocked(user, j) && !isEncryptedPage(j));
+  ), async (j) => await pageRole(user, j) && !(await journalLocked(user, j)) && !(await isEncryptedPage(j)));
   if (from?.kind === "journal" && journals.some((j) => j.id === from.id)) return journals.find((j) => j.id === from.id)!;
   if (from?.journal_date && from.parent_id && journals.some((j) => j.id === from.parent_id))
     return journals.find((j) => j.id === from.parent_id)!;
@@ -218,7 +219,7 @@ export function linkJournal(user: Identity, workspaceId: string, fromPageId?: st
 // What "@heute" and friends insert: the day's page, today's draft (a
 // journal set to "beim ersten Schreiben") or nothing for a day without an
 // entry. Today follows what opening the journal does: it may create the day.
-export function journalDayLink(
+export async function journalDayLink(
   user: Identity,
   workspaceId: string,
   input: { date: string; today: string; fromPageId?: string | null },
@@ -226,9 +227,9 @@ export function journalDayLink(
 ) {
   const date = journalDate.parse(input.date);
   const today = journalDate.parse(input.today);
-  const journal = linkJournal(user, workspaceId, input.fromPageId);
+  const journal = await linkJournal(user, workspaceId, input.fromPageId);
   if (!journal) throw new HttpError(404, "Kein Journal gefunden.");
-  const day = one<Page>(
+  const day = await one<Page>(
     "SELECT * FROM pages WHERE parent_id=? AND journal_date=? AND deleted_at IS NULL",
     journal.id,
     date,
@@ -241,14 +242,14 @@ export function journalDayLink(
     title,
     draft,
   });
-  if (day && pageRole(user, day)) return answer(day.id, day.title);
-  const role = pageRole(user, journal);
+  if (day && await pageRole(user, day)) return answer(day.id, day.title);
+  const role = await pageRole(user, journal);
   if (date !== today || (role !== "editor" && role !== "owner"))
     throw new HttpError(404, "Für diesen Tag gibt es keinen Eintrag.");
-  const rolled = rollJournal(user, journal, today, now);
+  const rolled = await rollJournal(user, journal, today, now);
   if (rolled.draft) return answer(rolled.dayId, dayTitle(date), true);
   if (rolled.trashed) throw new HttpError(404, "Für diesen Tag gibt es keinen Eintrag.");
-  return answer(rolled.dayId, String(one<{ title: string }>("SELECT title FROM pages WHERE id=?", rolled.dayId)?.title || dayTitle(date)));
+  return answer(rolled.dayId, String((await one<{ title: string }>("SELECT title FROM pages WHERE id=?", rolled.dayId))?.title || dayTitle(date)));
 }
 
 // ---- "Leere Tage entfernen" ----
@@ -266,34 +267,34 @@ const like = (value: string) => `%${value.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
 // template (the one it was created from or today's), no open task of its
 // own, no tracker value or place, title and icon as created, no cover,
 // files, comments, sub pages, links to it, favourites or sharing.
-function emptyDay(day: Page, today: string) {
+async function emptyDay(day: Page, today: string) {
   if (!day.journal_date || day.journal_date >= today || day.deleted_at) return false;
   if (day.locked || day.public_token || day.cover || day.icon !== "day") return false;
   if (!automaticTitle(day.title, day.journal_date)) return false;
-  if (hasEntryData(day.id)) return false;
-  const used = (sql: string, ...args: string[]) => !!one(sql, ...args);
+  if (await hasEntryData(day.id)) return false;
+  const used = async (sql: string, ...args: string[]) => !!(await one(sql, ...args));
   if (
-    used("SELECT 1 FROM pages WHERE parent_id=? LIMIT 1", day.id) ||
-    used("SELECT 1 FROM comments WHERE page_id=? LIMIT 1", day.id) ||
-    used("SELECT 1 FROM inline_threads WHERE page_id=? LIMIT 1", day.id) ||
-    used("SELECT 1 FROM files WHERE page_id=? LIMIT 1", day.id) ||
-    used("SELECT 1 FROM favorites WHERE page_id=? LIMIT 1", day.id) ||
-    used("SELECT 1 FROM share_links WHERE root_id=? LIMIT 1", day.id) ||
-    used("SELECT 1 FROM share_link_pages WHERE page_id=? LIMIT 1", day.id) ||
-    used("SELECT 1 FROM publications WHERE page_id=? LIMIT 1", day.id) ||
-    used("SELECT 1 FROM publication_pages WHERE page_id=? LIMIT 1", day.id)
+    await used("SELECT 1 FROM pages WHERE parent_id=? LIMIT 1", day.id) ||
+    await used("SELECT 1 FROM comments WHERE page_id=? LIMIT 1", day.id) ||
+    await used("SELECT 1 FROM inline_threads WHERE page_id=? LIMIT 1", day.id) ||
+    await used("SELECT 1 FROM files WHERE page_id=? LIMIT 1", day.id) ||
+    await used("SELECT 1 FROM favorites WHERE page_id=? LIMIT 1", day.id) ||
+    await used("SELECT 1 FROM share_links WHERE root_id=? LIMIT 1", day.id) ||
+    await used("SELECT 1 FROM share_link_pages WHERE page_id=? LIMIT 1", day.id) ||
+    await used("SELECT 1 FROM publications WHERE page_id=? LIMIT 1", day.id) ||
+    await used("SELECT 1 FROM publication_pages WHERE page_id=? LIMIT 1", day.id)
   )
     return false;
   // Linked from anywhere in the workspace (whatever the person may read).
   const needle = like(`#page=${day.id}`);
   if (
-    used(
+    await used(
       "SELECT 1 FROM documents d JOIN pages p ON p.id=d.page_id WHERE p.workspace_id=? AND p.id!=? AND d.html LIKE ? ESCAPE '\\' LIMIT 1",
       day.workspace_id,
       day.id,
       needle,
     ) ||
-    used(
+    await used(
       "SELECT 1 FROM rows r JOIN pages p ON p.id=r.page_id LEFT JOIN row_documents rd ON rd.row_id=r.id WHERE p.workspace_id=? AND (COALESCE(rd.html,'') LIKE ? ESCAPE '\\' OR COALESCE(r.content,'') LIKE ? ESCAPE '\\' OR r.cells LIKE ? ESCAPE '\\') LIMIT 1",
       day.workspace_id,
       needle,
@@ -302,38 +303,37 @@ function emptyDay(day: Page, today: string) {
     )
   )
     return false;
-  const doc = dayDoc(day.id);
-  const created = dayTemplateHtml(day.id);
-  const templates = [templateNodesOf(journalSettings(day.parent_id!).template), ...(created ? [templateNodesOf(created)] : [])];
+  const doc = await dayDoc(day.id);
+  const created = await dayTemplateHtml(day.id);
+  const templates = [templateNodesOf((await journalSettings(day.parent_id!)).template), ...(created ? [templateNodesOf(created)] : [])];
   // Open tasks that are not the template's own would get lost.
-  const daily = new Set(templates.flatMap((nodes) => [...templateTaskTexts(day.parent_id!, nodes)]));
+  const daily = new Set(await flatMapAsync(templates, async (nodes) => [...await templateTaskTexts(day.parent_id!, nodes)]));
   let openTask = false;
   doc.descendants((node) => {
     if (node.type.name === "taskItem" && !node.attrs.checked && !daily.has(node.textContent.trim())) openTask = true;
     return !openTask;
   });
   if (openTask) return false;
-  return !hasOwnEntry(doc, day.journal_date) || templates.some((nodes) => onlyTemplate(day.parent_id!, doc, day.journal_date!, nodes));
+  return !hasOwnEntry(doc, day.journal_date) || await someAsync(templates, async (nodes) => await onlyTemplate(day.parent_id!, doc, day.journal_date!, nodes));
 }
-export function emptyJournalDays(journal: Page, today: string) {
+export async function emptyJournalDays(journal: Page, today: string) {
   if (journal.kind !== "journal") throw new HttpError(400, "Diese Seite ist kein Journal.");
   journalDate.parse(today);
-  return all<Page>(
+  return (await filterAsync(await all<Page>(
     "SELECT * FROM pages WHERE parent_id=? AND journal_date IS NOT NULL AND deleted_at IS NULL ORDER BY journal_date DESC",
     journal.id,
-  )
-    .filter((day) => emptyDay(day, today))
+  ), async (day) => await emptyDay(day, today)))
     .map((day) => ({ id: day.id, date: day.journal_date!, title: day.title }));
 }
 // Moves the chosen days to the trash – only those still empty; never
 // automatically, always from the preview a person confirmed.
-export function removeEmptyJournalDays(user: Identity, journal: Page, ids: string[], today: string) {
+export async function removeEmptyJournalDays(user: Identity, journal: Page, ids: string[], today: string) {
   const wanted = new Set(ids);
-  const removed = emptyJournalDays(journal, today).filter((day) => wanted.has(day.id));
+  const removed = (await emptyJournalDays(journal, today)).filter((day) => wanted.has(day.id));
   for (const day of removed) {
-    run("UPDATE pages SET deleted_at=?,public_token=NULL WHERE id=?", nowText(), day.id);
+    await run("UPDATE pages SET deleted_at=?,public_token=NULL WHERE id=?", nowText(), day.id);
   }
-  if (removed.length) audit(user.id, "journal.removeEmpty", journal.id, String(removed.length));
+  if (removed.length) await audit(user.id, "journal.removeEmpty", journal.id, String(removed.length));
   return { removed: removed.length, ids: removed.map((day) => day.id) };
 }
 
@@ -341,8 +341,8 @@ export function removeEmptyJournalDays(user: Identity, journal: Page, ids: strin
 
 // Pages and journal days apart, of the pages a person sees (bootstrap);
 // days behind a PIN that was not entered stay out of the count.
-export function pageCounts(user: Identity, workspaceId: string, pages: Page[]): PageCounts {
-  const locked = lockedPageIds(user, workspaceId);
+export async function pageCounts(user: Identity, workspaceId: string, pages: Page[]): Promise<PageCounts> {
+  const locked = await lockedPageIds(user, workspaceId);
   const counts: PageCounts = { pages: 0, days: 0, spaces: {} };
   for (const page of pages) {
     if (page.deleted_at || page.synced) continue;

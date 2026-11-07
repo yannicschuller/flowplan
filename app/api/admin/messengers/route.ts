@@ -31,13 +31,13 @@ const actionSchema = z.object({ action: z.enum(["save", "bot", "bot.remove"]) })
 
 export const POST = withRequestLocale(async (req: Request) => {
   try {
-    checkOrigin(req);
+    await checkOrigin(req);
     const user = requireOpsAdmin(await requireUser());
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
     const { action } = actionSchema.parse(body);
-    if (action === "save") return Response.json(saveMessengerAdmin(user, body), noStore);
+    if (action === "save") return Response.json(await saveMessengerAdmin(user, body), noStore);
     if (action === "bot") return Response.json(await saveMessengerBot(user, body), noStore);
-    return Response.json(removeMessengerBot(user), noStore);
+    return Response.json(await removeMessengerBot(user), noStore);
   } catch (e) {
     return failure(e);
   }

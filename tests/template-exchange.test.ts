@@ -12,9 +12,9 @@ const { exportTemplate, importTemplate } =
   await import("../lib/template-exchange");
 const { readZip, writeZip } = await import("../lib/archive");
 
-function account(name: string) {
+async function account(name: string) {
   const uid = id();
-  run(
+  await run(
     "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
     uid,
     uid,
@@ -31,26 +31,26 @@ function account(name: string) {
     created_at: "",
   } as Identity;
 }
-const owner = account("tpl-owner"),
-  other = account("tpl-other");
-const source = createWorkspace(owner.id, "Quelle"),
-  target = createWorkspace(other.id, "Ziel");
-const space = bootstrap(owner, source).spaces[0].id;
-const act = (input: Record<string, unknown>, as = owner) =>
-  command(as, input) as { id: string };
+const owner = await account("tpl-owner"),
+  other = await account("tpl-other");
+const source = await createWorkspace(owner.id, "Quelle"),
+  target = await createWorkspace(other.id, "Ziel");
+const space = (await bootstrap(owner, source)).spaces[0].id;
+const act = async (input: Record<string, unknown>, as = owner) =>
+  (await command(as, input)) as { id: string };
 
 test("templates round-trip between instances with attachments and stay validated", async () => {
-  const page = act({
+  const page = (await act({
     action: "page.create",
     workspaceId: source,
     spaceId: space,
     title: "Protokoll",
-  }).id;
+  })).id;
   const fid = id(),
     dir = join(process.env.FLOWPLAN_DATA_DIR!, "uploads");
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, fid), "PDF");
-  run(
+  await run(
     "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
     fid,
     page,
@@ -59,16 +59,16 @@ test("templates round-trip between instances with attachments and stay validated
     3,
     owner.id,
   );
-  run(
+  await run(
     "UPDATE documents SET html=? WHERE page_id=?",
     `<p>Agenda</p><p><a href="/api/files/${fid}">Anlage</a></p>`,
     page,
   );
-  const template = act({
+  const template = (await act({
     action: "template.save",
     pageId: page,
     name: "Meeting-Protokoll",
-  }).id;
+  })).id;
   const exported = await exportTemplate(owner, source, template);
   assert.equal(exported.name, "Meeting-Protokoll");
   const imported = await importTemplate(
@@ -77,41 +77,41 @@ test("templates round-trip between instances with attachments and stay validated
     exported.zip,
     "workspace",
   );
-  const stored = one<{ name: string; kind: string; created_by: string }>(
+  const stored = (await one<{ name: string; kind: string; created_by: string }>(
     "SELECT name,kind,created_by FROM templates WHERE id=?",
     imported.id,
-  )!;
+  ))!;
   assert.deepEqual(
     [stored.name, stored.kind, stored.created_by],
     ["Meeting-Protokoll", "document", other.id],
   );
   assert.equal(
-    all("SELECT id FROM template_files WHERE template_id=?", imported.id)
+    (await all("SELECT id FROM template_files WHERE template_id=?", imported.id))
       .length,
     1,
   );
   // Using the imported template creates the page with its own attachment copy.
-  const created = act(
+  const created = (await act(
     {
       action: "page.create",
       workspaceId: target,
-      spaceId: bootstrap(other, target).spaces[0].id,
+      spaceId: (await bootstrap(other, target)).spaces[0].id,
       title: "Neu",
       templateId: imported.id,
     },
     other,
-  ).id;
-  const html = one<{ html: string }>(
+  )).id;
+  const html = (await one<{ html: string }>(
     "SELECT html FROM documents WHERE page_id=?",
     created,
-  )!.html;
+  ))!.html;
   assert.match(html, /Agenda/);
   assert.doesNotMatch(html, new RegExp(fid));
   assert.equal(
-    one<{ page_id: string }>(
+    (await one<{ page_id: string }>(
       "SELECT page_id FROM files WHERE name='anlage.pdf' AND page_id=?",
       created,
-    )?.page_id,
+    ))?.page_id,
     created,
   );
 
@@ -147,38 +147,38 @@ test("templates round-trip between instances with attachments and stay validated
 });
 
 test("database templates keep records and views after import", async () => {
-  const db = act({
+  const db = (await act({
     action: "page.create",
     workspaceId: source,
     spaceId: space,
     title: "Checkliste",
     kind: "database",
-  }).id;
-  act({ action: "row.create", pageId: db, cells: { title: "Punkt 1" } });
-  const template = act({
+  })).id;
+  await act({ action: "row.create", pageId: db, cells: { title: "Punkt 1" } });
+  const template = (await act({
     action: "template.save",
     pageId: db,
     name: "Checkliste",
-  }).id;
+  })).id;
   const imported = await importTemplate(
     other,
     target,
     (await exportTemplate(owner, source, template)).zip,
     "private",
   );
-  const created = act(
+  const created = (await act(
     {
       action: "page.create",
       workspaceId: target,
-      spaceId: bootstrap(other, target).spaces[0].id,
+      spaceId: (await bootstrap(other, target)).spaces[0].id,
       title: "Aus Datei",
       kind: "database",
       templateId: imported.id,
     },
     other,
-  ).id;
+  )).id;
   assert.deepEqual(
-    rows(created).map((r) => r.cells.title),
+    (await rows(created)).map((r) => r.cells.title),
     ["Punkt 1"],
   );
 });

@@ -17,9 +17,9 @@ export async function register() {
     const { startPushWorker, dispatchPush } = await import("./lib/push");
     startPushWorker();
     const { startReminderWorker } = await import("./lib/date-reminders");
-    startReminderWorker(() => void dispatchPush());
+    await startReminderWorker(() => void dispatchPush());
     const { startTaskWorker } = await import("./lib/doc-tasks");
-    startTaskWorker(() => void dispatchPush());
+    await startTaskWorker(() => void dispatchPush());
     const { startAutomationWorker } = await import("./lib/automations");
     startAutomationWorker(() => void dispatchPush());
     // Page owners are reminded once a review date has passed.
@@ -30,7 +30,7 @@ export async function register() {
     const { startFileTextWorker } = await import("./lib/file-text");
     startFileTextWorker();
     const { startRetentionWorker } = await import("./lib/version-history");
-    startRetentionWorker();
+    await startRetentionWorker();
     const { startMailWorker } = await import("./lib/mail");
     startMailWorker();
     // Chat apps (Telegram, Gotify, ntfy, Matrix) and the Telegram bot's

@@ -25,5 +25,5 @@ export function localeOfRequest(req: Request): Locale {
 export function withRequestLocale<A extends unknown[], R>(
   handler: (req: Request, ...rest: A) => Promise<R>,
 ) {
-  return (req: Request, ...rest: A) => withContentLocale(localeOfRequest(req), () => withReadMemo(() => handler(req, ...rest)));
+  return async (req: Request, ...rest: A) => await withContentLocale(localeOfRequest(req), async () => await withReadMemo(() => handler(req, ...rest)));
 }

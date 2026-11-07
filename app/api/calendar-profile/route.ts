@@ -27,7 +27,7 @@ async function handleGET(req: Request) {
   try {
     const token = new URL(req.url).searchParams.get("token");
     if (token !== null) {
-      const profile = redeemProfileLink(token);
+      const profile = await redeemProfileLink(token);
       if (!profile)
         return new NextResponse("Dieser Link ist abgelaufen oder wurde schon benutzt. / This link has expired or was already used.", {
           status: 410,
@@ -43,7 +43,7 @@ async function handleGET(req: Request) {
     }
     const user = await activeUser();
     if (!user) throw new HttpError(401, "Bitte melde dich an.");
-    return NextResponse.json({ calendars: profileCalendars(user) }, { headers });
+    return NextResponse.json({ calendars: await profileCalendars(user) }, { headers });
   } catch (e) {
     return failure(e);
   }
@@ -52,12 +52,12 @@ async function handleGET(req: Request) {
 export const POST = withRequestLocale(handlePOST);
 async function handlePOST(req: Request) {
   try {
-    checkOrigin(req);
+    await checkOrigin(req);
     const user = await activeUser();
     if (!user) throw new HttpError(401, "Bitte melde dich an.");
     const text = await req.text();
     if (text.length > 10_000) throw new HttpError(413, "Anfrage zu groß.");
-    return NextResponse.json(createProfileLink(user, JSON.parse(text || "{}")), { headers });
+    return NextResponse.json(await createProfileLink(user, JSON.parse(text || "{}")), { headers });
   } catch (e) {
     return failure(e);
   }

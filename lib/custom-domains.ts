@@ -62,13 +62,13 @@ type DomainRow = {
   checked_at: number | null;
   last_error: string | null;
 };
-function requireEnabled() {
-  if (!instanceSettings().customDomains)
+async function requireEnabled() {
+  if (!(await instanceSettings()).customDomains)
     throw new HttpError(403, "Eigene Domains sind auf dieser Instanz nicht freigeschaltet.");
 }
 // A publication that can be shown under a domain: published, no password.
-function requirePublished(pageId: string) {
-  const row = one<{ public_token: string | null; published: number; password: number }>(
+async function requirePublished(pageId: string) {
+  const row = await one<{ public_token: string | null; published: number; password: number }>(
     "SELECT p.public_token,pub.page_id IS NOT NULL published,pub.password_hash IS NOT NULL password FROM pages p LEFT JOIN publications pub ON pub.page_id=p.id WHERE p.id=? AND p.deleted_at IS NULL",
     pageId,
   );
@@ -93,8 +93,8 @@ export const publicationThemeSchema = z.object({
   hideBranding: z.boolean().optional(),
 });
 export type PublicationTheme = z.infer<typeof publicationThemeSchema>;
-export function publicationTheme(pageId: string): PublicationTheme {
-  const row = one<{ theme: string }>("SELECT theme FROM publication_themes WHERE page_id=?", pageId);
+export async function publicationTheme(pageId: string): Promise<PublicationTheme> {
+  const row = await one<{ theme: string }>("SELECT theme FROM publication_themes WHERE page_id=?", pageId);
   if (!row) return {};
   try {
     const parsed = publicationThemeSchema.safeParse(JSON.parse(row.theme));
@@ -103,38 +103,38 @@ export function publicationTheme(pageId: string): PublicationTheme {
     return {};
   }
 }
-export function savePublicationTheme(user: Identity, input: Record<string, unknown>) {
-  const page = requirePage(user, uuid.parse(input.pageId), true);
-  requirePublished(page.id);
+export async function savePublicationTheme(user: Identity, input: Record<string, unknown>) {
+  const page = await requirePage(user, uuid.parse(input.pageId), true);
+  await requirePublished(page.id);
   const theme = publicationThemeSchema.parse(input.theme ?? {});
-  run(
+  await run(
     "INSERT INTO publication_themes(page_id,theme,updated_at) VALUES(?,?,?) ON CONFLICT(page_id) DO UPDATE SET theme=excluded.theme,updated_at=excluded.updated_at",
     page.id,
     JSON.stringify(theme),
     Date.now(),
   );
-  audit(user.id, "publication.theme", page.id);
-  return domainSettings(user, page.id);
+  await audit(user.id, "publication.theme", page.id);
+  return await domainSettings(user, page.id);
 }
 
 // The look as a published page uses it: uploaded images through the
 // publication's own file address (only when the publication serves them).
-export function renderedTheme(token: string, pageId: string) {
-  const theme = publicationTheme(pageId);
-  const image = (value: string | undefined) => {
+export async function renderedTheme(token: string, pageId: string) {
+  const theme = await publicationTheme(pageId);
+  const image = async (value: string | undefined) => {
     if (!value) return undefined;
     const file = /^\/api\/files\/([0-9a-f-]{36})$/i.exec(value);
     if (!file) return value;
     try {
-      publicFile(token, file[1]);
+      await publicFile(token, file[1]);
       return `/api/share/${token}/files/${file[1]}`;
     } catch {
       return undefined;
     }
   };
   return {
-    logo: image(theme.logo),
-    favicon: image(theme.favicon),
+    logo: await image(theme.logo),
+    favicon: await image(theme.favicon),
     accent: theme.accent || undefined,
     footer: theme.footer || "",
     hideBranding: !!theme.hideBranding,
@@ -143,11 +143,11 @@ export function renderedTheme(token: string, pageId: string) {
 
 // ---- Domains ----
 
-export function domainSettings(user: Identity, pageId: string) {
-  const page = requirePage(user, uuid.parse(pageId));
-  const row = one<DomainRow>("SELECT * FROM custom_domains WHERE page_id=?", page.id);
+export async function domainSettings(user: Identity, pageId: string) {
+  const page = await requirePage(user, uuid.parse(pageId));
+  const row = await one<DomainRow>("SELECT * FROM custom_domains WHERE page_id=?", page.id);
   return {
-    enabled: instanceSettings().customDomains,
+    enabled: (await instanceSettings()).customDomains,
     appHost: appHost(),
     domain: row
       ? {
@@ -160,21 +160,21 @@ export function domainSettings(user: Identity, pageId: string) {
           file: { url: `https://${row.host}${VERIFY_PATH}`, content: row.token },
         }
       : null,
-    theme: publicationTheme(page.id),
+    theme: await publicationTheme(page.id),
   };
 }
-export function addDomain(user: Identity, input: Record<string, unknown>) {
-  requireEnabled();
-  const page = requirePage(user, uuid.parse(input.pageId), true);
+export async function addDomain(user: Identity, input: Record<string, unknown>) {
+  await requireEnabled();
+  const page = await requirePage(user, uuid.parse(input.pageId), true);
   if (user.demo) throw new HttpError(403, "In der Demo nicht verfügbar. Registriere dich, um das zu nutzen.");
-  requirePublished(page.id);
+  await requirePublished(page.id);
   const host = normalizeHost(input.host);
-  const taken = one<{ page_id: string }>("SELECT page_id FROM custom_domains WHERE host=?", host);
+  const taken = await one<{ page_id: string }>("SELECT page_id FROM custom_domains WHERE host=?", host);
   if (taken && taken.page_id !== page.id) throw new HttpError(409, "Diese Domain wird bereits verwendet.");
-  const current = one<DomainRow>("SELECT * FROM custom_domains WHERE page_id=?", page.id);
+  const current = await one<DomainRow>("SELECT * FROM custom_domains WHERE page_id=?", page.id);
   if (current?.host !== host) {
-    run("DELETE FROM custom_domains WHERE page_id=?", page.id);
-    run(
+    await run("DELETE FROM custom_domains WHERE page_id=?", page.id);
+    await run(
       "INSERT INTO custom_domains(host,page_id,token,created_by,created_at) VALUES(?,?,?,?,?)",
       host,
       page.id,
@@ -182,18 +182,18 @@ export function addDomain(user: Identity, input: Record<string, unknown>) {
       user.id,
       Date.now(),
     );
-    audit(user.id, "domain.add", page.id, host);
+    await audit(user.id, "domain.add", page.id, host);
   }
-  return domainSettings(user, page.id);
+  return await domainSettings(user, page.id);
 }
-export function removeDomain(user: Identity, input: Record<string, unknown>) {
-  const page = requirePage(user, uuid.parse(input.pageId), true);
-  const row = one<DomainRow>("SELECT * FROM custom_domains WHERE page_id=?", page.id);
+export async function removeDomain(user: Identity, input: Record<string, unknown>) {
+  const page = await requirePage(user, uuid.parse(input.pageId), true);
+  const row = await one<DomainRow>("SELECT * FROM custom_domains WHERE page_id=?", page.id);
   if (row) {
-    run("DELETE FROM custom_domains WHERE page_id=?", page.id);
-    audit(user.id, "domain.remove", page.id, row.host);
+    await run("DELETE FROM custom_domains WHERE page_id=?", page.id);
+    await audit(user.id, "domain.remove", page.id, row.host);
   }
-  return domainSettings(user, page.id);
+  return await domainSettings(user, page.id);
 }
 
 type HttpCheck = (url: string) => Promise<{ status: number; body: string }>;
@@ -206,10 +206,10 @@ export function setDomainHttpCheck(next: HttpCheck | null) {
 // Checks the TXT record, then the verification file. A domain once verified
 // stays verified until it is removed; failed checks only note the reason.
 export async function verifyDomain(user: Identity, input: Record<string, unknown>) {
-  requireEnabled();
+  await requireEnabled();
   const pageId = uuid.parse(input.pageId);
-  requirePage(user, pageId, true);
-  const row = one<DomainRow>("SELECT * FROM custom_domains WHERE page_id=?", pageId);
+  await requirePage(user, pageId, true);
+  const row = await one<DomainRow>("SELECT * FROM custom_domains WHERE page_id=?", pageId);
   if (!row) throw new HttpError(404, "Für diese Veröffentlichung ist keine Domain eingetragen.");
   let method: "dns" | "http" | null = null;
   let reason = "";
@@ -225,30 +225,30 @@ export async function verifyDomain(user: Identity, input: Record<string, unknown
     } catch {}
   }
   // Rights and the row may have changed while the checks ran.
-  requirePage(user, pageId, true);
-  const still = one<DomainRow>("SELECT * FROM custom_domains WHERE page_id=? AND host=?", pageId, row.host);
+  await requirePage(user, pageId, true);
+  const still = await one<DomainRow>("SELECT * FROM custom_domains WHERE page_id=? AND host=?", pageId, row.host);
   if (!still) throw new HttpError(404, "Für diese Veröffentlichung ist keine Domain eingetragen.");
   const now = Date.now();
   if (method) {
-    run("UPDATE custom_domains SET verified_at=COALESCE(verified_at,?),checked_at=?,last_error=NULL WHERE host=?", now, now, row.host);
-    audit(user.id, "domain.verify", pageId, `${row.host} ${method}`);
+    await run("UPDATE custom_domains SET verified_at=COALESCE(verified_at,?),checked_at=?,last_error=NULL WHERE host=?", now, now, row.host);
+    await audit(user.id, "domain.verify", pageId, `${row.host} ${method}`);
   } else
-    run(
+    await run(
       "UPDATE custom_domains SET checked_at=?,last_error=? WHERE host=?",
       now,
       (reason || "Weder TXT-Eintrag noch Prüfdatei gefunden.").slice(0, 300),
       row.host,
     );
-  return { ...domainSettings(user, pageId), method };
+  return { ...(await domainSettings(user, pageId)), method };
 }
 
 // ---- Serving ----
 
 // What the proxy does with a request for `host` (lib/custom-domain-routing.ts).
-export function hostState(rawHost: string): HostState {
+export async function hostState(rawHost: string): Promise<HostState> {
   const host = rawHost.toLowerCase().replace(/:\d+$/, "").replace(/\.$/, "");
-  if (!host || host === appHost() || !instanceSettings().customDomains) return { status: "none" };
-  const row = one<DomainRow & { public_token: string | null; deleted_at: string | null; published: number | null; password: number | null }>(
+  if (!host || host === appHost() || !(await instanceSettings()).customDomains) return { status: "none" };
+  const row = await one<DomainRow & { public_token: string | null; deleted_at: string | null; published: number | null; password: number | null }>(
     "SELECT d.*,p.public_token,p.deleted_at,pub.page_id IS NOT NULL published,pub.password_hash IS NOT NULL password FROM custom_domains d JOIN pages p ON p.id=d.page_id LEFT JOIN publications pub ON pub.page_id=d.page_id WHERE d.host=?",
     host,
   );
@@ -258,33 +258,33 @@ export function hostState(rawHost: string): HostState {
   return { status: "verified", verifyToken: row.token, token: row.public_token };
 }
 // Caddy's on-demand TLS asks before it requests a certificate.
-export function domainAllowed(rawHost: unknown) {
+export async function domainAllowed(rawHost: unknown) {
   try {
-    return hostState(normalizeHost(rawHost)).status === "verified";
+    return (await hostState(normalizeHost(rawHost))).status === "verified";
   } catch {
     return false;
   }
 }
 // The verified domain of a publication (canonical addresses).
-export function publicationHost(pageId: string) {
-  if (!instanceSettings().customDomains) return null;
-  return one<{ host: string }>("SELECT host FROM custom_domains WHERE page_id=? AND verified_at IS NOT NULL", pageId)?.host || null;
+export async function publicationHost(pageId: string) {
+  if (!(await instanceSettings()).customDomains) return null;
+  return (await one<{ host: string }>("SELECT host FROM custom_domains WHERE page_id=? AND verified_at IS NOT NULL", pageId))?.host || null;
 }
 // The host a request came in on, when it is the verified domain of the
 // publication behind `token`.
-export function customHostFor(rawHost: string | null | undefined, token: string) {
+export async function customHostFor(rawHost: string | null | undefined, token: string) {
   if (!rawHost) return null;
-  const state = hostState(rawHost);
+  const state = await hostState(rawHost);
   return state.status === "verified" && state.token === token ? rawHost.toLowerCase().replace(/:\d+$/, "") : null;
 }
 
 const xml = (text: string) =>
   text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
-export function domainSitemap(rawHost: string) {
-  const state = hostState(rawHost);
+export async function domainSitemap(rawHost: string) {
+  const state = await hostState(rawHost);
   if (state.status !== "verified") return null;
   const host = rawHost.toLowerCase().replace(/:\d+$/, "");
-  const { root, pages } = publicTree(state.token);
+  const { root, pages } = await publicTree(state.token);
   const urls = pages.map((page) => {
     const loc = `https://${host}/${page.id === root.id ? "" : page.id}`;
     const lastmod = page.updated_at ? `<lastmod>${xml(new Date(page.updated_at.replace(" ", "T") + "Z").toISOString().slice(0, 10))}</lastmod>` : "";
@@ -292,8 +292,8 @@ export function domainSitemap(rawHost: string) {
   });
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join("\n")}\n</urlset>\n`;
 }
-export function domainRobots(rawHost: string) {
-  const state = hostState(rawHost);
+export async function domainRobots(rawHost: string) {
+  const state = await hostState(rawHost);
   if (state.status !== "verified") return null;
   const host = rawHost.toLowerCase().replace(/:\d+$/, "");
   return `User-agent: *\nAllow: /\nDisallow: /api/\nSitemap: https://${host}/sitemap.xml\n`;

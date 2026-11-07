@@ -13,7 +13,7 @@ import { doneRule, isDone, type Sprint } from "./database-settings-schema";
 import type { Field, Identity, Page, View } from "./types";
 
 const day = /^\d{4}-\d{2}-\d{2}$/;
-const fieldsOf = (pageId: string) => JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId)!.fields) as Field[];
+const fieldsOf = async (pageId: string) => JSON.parse((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId))!.fields) as Field[];
 export const sprintField = (fields: Field[]) => fields.find((f) => f.type === "sprint");
 const addDays = (date: string, days: number) => {
   const d = new Date(`${date}T12:00:00Z`);
@@ -22,8 +22,8 @@ const addDays = (date: string, days: number) => {
 };
 const today = () => new Date().toISOString().slice(0, 10);
 
-function rowsOf(pageId: string) {
-  return all<{ id: string; cells: string }>("SELECT id,cells FROM rows WHERE page_id=?", pageId).map((r) => ({ id: r.id, cells: JSON.parse(r.cells) as Record<string, unknown> }));
+async function rowsOf(pageId: string) {
+  return (await all<{ id: string; cells: string }>("SELECT id,cells FROM rows WHERE page_id=?", pageId)).map((r) => ({ id: r.id, cells: JSON.parse(r.cells) as Record<string, unknown> }));
 }
 function points(fields: Field[], pointsField: string | undefined, cells: Record<string, unknown>) {
   if (!pointsField) return 1;
@@ -31,11 +31,11 @@ function points(fields: Field[], pointsField: string | undefined, cells: Record<
   return Number.isFinite(v) && v > 0 ? v : 0;
 }
 
-export function sprintCommand(user: Identity, page: Page, action: string, b: Record<string, unknown>) {
-  const settings = databaseSettings(page.id);
+export async function sprintCommand(user: Identity, page: Page, action: string, b: Record<string, unknown>) {
+  const settings = await databaseSettings(page.id);
   const sprints = [...(settings.sprints || [])];
-  let fields = fieldsOf(page.id);
-  const save = () => storeSettings(page.id, { ...settings, sprints });
+  let fields = await fieldsOf(page.id);
+  const save = async () => await storeSettings(page.id, { ...settings, sprints });
   const find = (sprintId: unknown) => {
     const s = sprints.find((x) => x.id === sprintId);
     if (!s) throw new HttpError(404, "Sprint nicht gefunden.");
@@ -45,18 +45,18 @@ export function sprintCommand(user: Identity, page: Page, action: string, b: Rec
     // First use: a "Sprint" property, a planning view and the first sprint.
     if (!sprintField(fields)) {
       fields = [...fields, { id: id(), name: "Sprint", type: "sprint" }];
-      run("UPDATE databases SET fields=?,version=version+1 WHERE page_id=?", JSON.stringify(fields), page.id);
+      await run("UPDATE databases SET fields=?,version=version+1 WHERE page_id=?", JSON.stringify(fields), page.id);
     }
-    const views = JSON.parse(one<{ views: string }>("SELECT views FROM databases WHERE page_id=?", page.id)!.views) as View[];
+    const views = JSON.parse((await one<{ views: string }>("SELECT views FROM databases WHERE page_id=?", page.id))!.views) as View[];
     let viewId = views.find((v) => v.type === "sprint")?.id;
     if (!viewId) {
       viewId = id();
       views.push({ id: viewId, name: z.string().trim().min(1).max(80).catch("Sprints").parse(b.viewName), type: "sprint", filters: [], sorts: [] });
-      run("UPDATE databases SET views=?,version=version+1 WHERE page_id=?", JSON.stringify(views), page.id);
+      await run("UPDATE databases SET views=?,version=version+1 WHERE page_id=?", JSON.stringify(views), page.id);
     }
     if (!sprints.length) {
       sprints.push({ id: id(), name: "Sprint 1", start: today(), end: addDays(today(), 13), goal: "", state: "planned" });
-      save();
+      await save();
     }
     return { viewId };
   }
@@ -66,7 +66,7 @@ export function sprintCommand(user: Identity, page: Page, action: string, b: Rec
     const length = last ? Math.max(1, Math.round((Date.parse(last.end) - Date.parse(last.start)) / 86_400_000)) : 13;
     const sprint: Sprint = { id: id(), name: `Sprint ${sprints.length + 1}`, start, end: addDays(start, length), goal: "", state: "planned" };
     sprints.push(sprint);
-    save();
+    await save();
     return sprint;
   }
   if (action === "sprint.update") {
@@ -81,14 +81,14 @@ export function sprintCommand(user: Identity, page: Page, action: string, b: Rec
       .parse(b);
     if (input.end < input.start) throw new HttpError(400, "Das Ende liegt vor dem Start.");
     Object.assign(s, input);
-    save();
+    await save();
     return s;
   }
   if (action === "sprint.start") {
     const s = find(b.sprintId);
     if (sprints.some((x) => x.state === "active" && x.id !== s.id)) throw new HttpError(409, "Es läuft schon ein Sprint. Schließe ihn zuerst ab.");
     s.state = "active";
-    save();
+    await save();
     return s;
   }
   if (action === "sprint.complete") {
@@ -101,7 +101,7 @@ export function sprintCommand(user: Identity, page: Page, action: string, b: Rec
       committed = 0,
       moved = 0;
     if (field)
-      for (const r of rowsOf(page.id)) {
+      for (const r of await rowsOf(page.id)) {
         if (r.cells[field.id] !== s.id) continue;
         const p = points(fields, settings.pointsField, r.cells);
         committed += p;
@@ -110,49 +110,49 @@ export function sprintCommand(user: Identity, page: Page, action: string, b: Rec
           continue;
         }
         r.cells[field.id] = target?.id ?? "";
-        run("UPDATE rows SET cells=?,version=version+1,updated_at=?,updated_by=? WHERE id=?", JSON.stringify(r.cells), nowText(), user.id, r.id);
+        await run("UPDATE rows SET cells=?,version=version+1,updated_at=?,updated_by=? WHERE id=?", JSON.stringify(r.cells), nowText(), user.id, r.id);
         moved++;
       }
     Object.assign(s, { state: "closed", completed, committed, closedAt: new Date().toISOString() });
-    save();
+    await save();
     return { sprint: s, moved, movedTo: target?.name ?? null };
   }
   if (action === "sprint.delete") {
     const s = find(b.sprintId);
     const field = sprintField(fields);
     if (field)
-      for (const r of rowsOf(page.id))
+      for (const r of await rowsOf(page.id))
         if (r.cells[field.id] === s.id) {
           r.cells[field.id] = "";
-          run("UPDATE rows SET cells=?,version=version+1 WHERE id=?", JSON.stringify(r.cells), r.id);
+          await run("UPDATE rows SET cells=?,version=version+1 WHERE id=?", JSON.stringify(r.cells), r.id);
         }
     sprints.splice(sprints.indexOf(s), 1);
-    save();
+    await save();
     return { ok: true };
   }
   if (action === "sprint.points") {
     const pointsField = z.string().max(500).nullable().parse(b.pointsField ?? null);
     if (pointsField && !fields.some((f) => f.id === pointsField && f.type === "number")) throw new HttpError(400, "Story Points brauchen eine Zahl-Eigenschaft.");
-    storeSettings(page.id, { ...settings, sprints, pointsField: pointsField || undefined });
+    await storeSettings(page.id, { ...settings, sprints, pointsField: pointsField || undefined });
     return { ok: true };
   }
   throw new HttpError(400, "Unbekannte Aktion.");
 }
 
 // Burndown of a sprint: work remaining per day, against the ideal line.
-export function sprintCharts(user: Identity, pageId: string, sprintId: string) {
-  const page = requirePage(user, pageId);
-  requireUnlocked(user, page);
-  const settings = databaseSettings(pageId);
+export async function sprintCharts(user: Identity, pageId: string, sprintId: string) {
+  const page = await requirePage(user, pageId);
+  await requireUnlocked(user, page);
+  const settings = await databaseSettings(pageId);
   const sprint = settings.sprints?.find((s) => s.id === sprintId);
   if (!sprint) throw new HttpError(404, "Sprint nicht gefunden.");
-  const fields = fieldsOf(pageId);
+  const fields = await fieldsOf(pageId);
   const field = sprintField(fields);
   const rule = doneRule(fields, settings);
-  const hidden = hiddenRowIds(user, page);
-  const rows = rowsOf(pageId).filter((r) => field && r.cells[field.id] === sprint.id && !hidden.has(r.id));
+  const hidden = await hiddenRowIds(user, page);
+  const rows = (await rowsOf(pageId)).filter((r) => field && r.cells[field.id] === sprint.id && !hidden.has(r.id));
   const doneAt = new Map<string, number>();
-  for (const e of all<{ row_id: string; done: number; at: number }>("SELECT row_id,done,at FROM row_status_log WHERE page_id=? ORDER BY at", pageId))
+  for (const e of await all<{ row_id: string; done: number; at: number }>("SELECT row_id,done,at FROM row_status_log WHERE page_id=? ORDER BY at", pageId))
     if (e.done) doneAt.set(e.row_id, e.at);
     else doneAt.delete(e.row_id);
   const total = rows.reduce((s, r) => s + points(fields, settings.pointsField, r.cells), 0);

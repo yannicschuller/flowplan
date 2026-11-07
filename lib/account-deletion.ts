@@ -11,6 +11,7 @@ import { localLoginEnabled } from "./local-auth";
 import { ssoOnlyAccount } from "./identities";
 import { keepSpaceTemplates, purgePages, purgeWorkspace } from "./workspace-lifecycle";
 import type { Identity, Page } from "./types";
+import { mapAsync } from "./each-async";
 
 type Plan = {
   name: string;
@@ -91,27 +92,27 @@ const PERSONAL = [
 // Disabling an account (Administration → Users, SCIM "active": false, the
 // LDAP sync): it loses every session at once; API tokens stop working
 // because they check the flag. Enabling only clears the flag.
-export function setUserDisabled(userId: string, disabled: boolean) {
-  run("UPDATE users SET disabled=? WHERE id=?", disabled ? 1 : 0, userId);
-  if (disabled) run("DELETE FROM sessions WHERE user_id=?", userId);
+export async function setUserDisabled(userId: string, disabled: boolean) {
+  await run("UPDATE users SET disabled=? WHERE id=?", disabled ? 1 : 0, userId);
+  if (disabled) await run("DELETE FROM sessions WHERE user_id=?", userId);
   // Enabled again by an admin: the account is wanted, a pending deletion
   // ends and the days without use count from now (lib/inactive-accounts.ts).
-  else run("UPDATE users SET last_active_at=?,deletion_notice_at=NULL,deletion_reminder_at=NULL,deletion_due_at=NULL WHERE id=?", Date.now(), userId);
+  else await run("UPDATE users SET last_active_at=?,deletion_notice_at=NULL,deletion_reminder_at=NULL,deletion_due_at=NULL WHERE id=?", Date.now(), userId);
 }
 
-export function deletionPlan(userId: string): Plan {
-  const user = one<{ name: string }>("SELECT name FROM users WHERE id=?", userId);
+export async function deletionPlan(userId: string): Promise<Plan> {
+  const user = await one<{ name: string }>("SELECT name FROM users WHERE id=?", userId);
   if (!user) throw new HttpError(404, "Benutzer nicht gefunden.");
   const removed: Plan["removed"] = [],
     handedOver: Plan["handedOver"] = [],
     kept: Plan["kept"] = [];
-  for (const w of all<{ id: string; name: string; role: string }>(
+  for (const w of await all<{ id: string; name: string; role: string }>(
     "SELECT w.id,w.name,m.role FROM workspaces w JOIN members m ON m.workspace_id=w.id WHERE m.user_id=?",
     userId,
   )) {
     // Active members first, so the longest-standing active owner/editor
     // takes over; deactivated ones only count as members who come back.
-    const others = all<{ user_id: string; role: string; name: string; disabled: number }>(
+    const others = await all<{ user_id: string; role: string; name: string; disabled: number }>(
       "SELECT m.user_id,m.role,u.name,u.disabled FROM members m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=? AND m.user_id<>? ORDER BY u.disabled, CASE m.role WHEN 'owner' THEN 0 WHEN 'editor' THEN 1 ELSE 2 END, u.created_at",
       w.id,
       userId,
@@ -121,36 +122,36 @@ export function deletionPlan(userId: string): Plan {
     else if (!active.length) kept.push({ id: w.id, name: w.name, disabled: others.length });
     else if (w.role === "owner" && !active.some((o) => o.role === "owner")) handedOver.push({ id: w.id, name: w.name, to: active[0].name });
   }
-  const privateSpaces = Number(one<{ n: number }>("SELECT count(*) n FROM spaces WHERE owner_id=? AND visibility='private'", userId)?.n || 0);
+  const privateSpaces = Number((await one<{ n: number }>("SELECT count(*) n FROM spaces WHERE owner_id=? AND visibility='private'", userId))?.n || 0);
   return { name: user.name, removed, handedOver, kept, privateSpaces };
 }
 
 // Inside the command's transaction.
-export function deleteAccount(admin: Identity, userId: string) {
+export async function deleteAccount(admin: Identity, userId: string) {
   if (userId === admin.id) throw new HttpError(400, "Das eigene Konto lässt sich hier nicht löschen.");
-  const target = one<{ disabled: number; demo_until: number | null }>("SELECT disabled,demo_until FROM users WHERE id=?", userId);
+  const target = await one<{ disabled: number; demo_until: number | null }>("SELECT disabled,demo_until FROM users WHERE id=?", userId);
   if (!target) throw new HttpError(404, "Benutzer nicht gefunden.");
   if (!target.disabled) throw new HttpError(409, "Bitte das Konto zuerst deaktivieren.");
-  if (lastAdmin(userId)) throw new HttpError(409, "Das letzte Admin-Konto lässt sich nicht löschen.");
-  const plan = deletionPlan(userId);
-  removeAccount(userId, plan.removed, {});
-  audit(admin.id, "admin.deleteUser", userId, plan.name);
+  if (await lastAdmin(userId)) throw new HttpError(409, "Das letzte Admin-Konto lässt sich nicht löschen.");
+  const plan = await deletionPlan(userId);
+  await removeAccount(userId, plan.removed, {});
+  await audit(admin.id, "admin.deleteUser", userId, plan.name);
   return plan;
 }
 
 // Deleted for inactivity (lib/inactive-accounts.ts): like an admin deletion,
 // without an admin. Returns what happened, for the activity log.
-export function deleteInactiveAccount(userId: string) {
-  const plan = deletionPlan(userId);
-  removeAccount(userId, plan.removed, {});
+export async function deleteInactiveAccount(userId: string) {
+  const plan = await deletionPlan(userId);
+  await removeAccount(userId, plan.removed, {});
   return plan;
 }
 
 // The last enabled administrator with e-mail and password.
-export function lastAdmin(userId: string) {
+export async function lastAdmin(userId: string) {
   return (
-    !!one("SELECT 1 FROM local_accounts WHERE user_id=? AND is_admin=1", userId) &&
-    !one("SELECT 1 FROM local_accounts a JOIN users u ON u.id=a.user_id WHERE a.is_admin=1 AND a.user_id<>? AND u.disabled=0", userId)
+    !!(await one("SELECT 1 FROM local_accounts WHERE user_id=? AND is_admin=1", userId)) &&
+    !(await one("SELECT 1 FROM local_accounts a JOIN users u ON u.id=a.user_id WHERE a.is_admin=1 AND a.user_id<>? AND u.disabled=0", userId))
   );
 }
 
@@ -166,23 +167,23 @@ type OwnPlan = Omit<Plan, "handedOver"> & {
   confirm: { kind: "password" | "text"; text: string };
   refusal?: string;
 };
-export function ownDeletionPlan(user: Identity): OwnPlan {
-  const plan = deletionPlan(user.id);
+export async function ownDeletionPlan(user: Identity): Promise<OwnPlan> {
+  const plan = await deletionPlan(user.id);
   const blocked: OwnPlan["blocked"] = plan.kept.map((w) => ({ id: w.id, name: w.name }));
-  const handedOver = plan.handedOver.map((w) => {
-    const candidates = all<{ id: string; name: string }>(
+  const handedOver = await mapAsync(plan.handedOver, async (w) => {
+    const candidates = await all<{ id: string; name: string }>(
       "SELECT u.id,u.name FROM members m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=? AND m.user_id<>? AND u.disabled=0 ORDER BY CASE m.role WHEN 'editor' THEN 0 ELSE 1 END, u.created_at",
       w.id,
       user.id,
     );
     return { ...w, toId: candidates[0].id, to: candidates[0].name, candidates };
   });
-  const row = one<{ email: string; demo_until: number | null }>("SELECT email,demo_until FROM users WHERE id=?", user.id);
-  const local = confirmsWithPassword(user.id);
+  const row = await one<{ email: string; demo_until: number | null }>("SELECT email,demo_until FROM users WHERE id=?", user.id);
+  const local = await confirmsWithPassword(user.id);
   const refusal =
     user.demo || row?.demo_until
       ? "Demo-Konten lassen sich nicht löschen – sie enden mit dem Abmelden von selbst."
-      : lastAdmin(user.id)
+      : (await lastAdmin(user.id))
         ? "Du bist das letzte Admin-Konto. Ernenne zuerst eine andere Person zum Admin."
         : blocked.length
           ? `„${blocked[0].name}“ hat außer dir nur deaktivierte Mitglieder und niemanden, der den Arbeitsbereich übernimmt. Bitte wende dich an die Admins.`
@@ -198,24 +199,24 @@ export function ownDeletionPlan(user: Identity): OwnPlan {
 
 // Only an account that still has a password (#101: it can be removed once
 // SSO is connected) and may use it (OIDC_LINKED_SSO_ONLY).
-export const confirmsWithPassword = (userId: string) =>
-  localLoginEnabled() && !!one("SELECT 1 FROM local_accounts WHERE user_id=? AND password_hash<>''", userId) && !ssoOnlyAccount(userId);
+export const confirmsWithPassword = async (userId: string) =>
+  localLoginEnabled() && !!(await one("SELECT 1 FROM local_accounts WHERE user_id=? AND password_hash<>''", userId)) && !(await ssoOnlyAccount(userId));
 
 // The person deletes their own account (command "account.delete"). The
 // confirmation is the account's e-mail address (or name without one); the
 // sign-in route checks the password first and passes the address on.
 // passwordChecked: set only by the sign-in route after checking the
 // password; accounts with a password cannot be deleted through a command.
-export function deleteOwnAccount(user: Identity, input: unknown, passwordChecked = false) {
+export async function deleteOwnAccount(user: Identity, input: unknown, passwordChecked = false) {
   if (user.apiScope) throw new HttpError(403, "Mit einem API-Token nicht erlaubt.");
-  if (!passwordChecked && !user.demo && confirmsWithPassword(user.id))
+  if (!passwordChecked && !user.demo && await confirmsWithPassword(user.id))
     throw new HttpError(403, "Bitte bestätige mit deinem Passwort.");
   const { confirm, successors = {} } = z
     .object({ confirm: z.string().max(300), successors: z.record(z.string(), z.string()).optional() })
     .parse(input);
-  const plan = ownDeletionPlan(user);
+  const plan = await ownDeletionPlan(user);
   if (plan.refusal) throw new HttpError(409, plan.refusal);
-  const expected = one<{ email: string }>("SELECT email FROM users WHERE id=?", user.id)?.email || plan.name;
+  const expected = (await one<{ email: string }>("SELECT email FROM users WHERE id=?", user.id))?.email || plan.name;
   if (confirm.trim().toLowerCase() !== expected.trim().toLowerCase())
     throw new HttpError(400, "Die Bestätigung stimmt nicht mit deinem Konto überein.");
   const chosen: Record<string, string> = {};
@@ -224,48 +225,48 @@ export function deleteOwnAccount(user: Identity, input: unknown, passwordChecked
     if (!w.candidates.some((c) => c.id === pick)) throw new HttpError(400, `Für „${w.name}“ bitte ein Mitglied als neuen Eigentümer wählen.`);
     chosen[w.id] = pick;
   }
-  removeAccount(user.id, plan.removed, chosen);
-  audit(user.id, "account.delete", user.id, plan.name);
+  await removeAccount(user.id, plan.removed, chosen);
+  await audit(user.id, "account.delete", user.id, plan.name);
   return { ok: true, removed: plan.removed, handedOver: plan.handedOver.map((w) => ({ id: w.id, name: w.name, to: w.candidates.find((c) => c.id === chosen[w.id])!.name })) };
 }
 
 // Removes the account; successors name the new owner per workspace, the
 // others get the longest-standing active editor (or member) – a workspace
 // kept for deactivated accounts only passes to one of them.
-function removeAccount(userId: string, removed: { id: string }[], successors: Record<string, string>) {
-  for (const w of removed) purgeWorkspace(w.id);
-  for (const w of all<{ id: string }>("SELECT workspace_id id FROM members WHERE user_id=? AND role='owner'", userId)) {
-    if (one("SELECT 1 FROM members m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=? AND m.user_id<>? AND m.role='owner' AND u.disabled=0", w.id, userId)) continue;
+async function removeAccount(userId: string, removed: { id: string }[], successors: Record<string, string>) {
+  for (const w of removed) await purgeWorkspace(w.id);
+  for (const w of await all<{ id: string }>("SELECT workspace_id id FROM members WHERE user_id=? AND role='owner'", userId)) {
+    if (await one("SELECT 1 FROM members m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=? AND m.user_id<>? AND m.role='owner' AND u.disabled=0", w.id, userId)) continue;
     const next =
       successors[w.id] ||
-      one<{ user_id: string }>(
+      (await one<{ user_id: string }>(
         "SELECT m.user_id FROM members m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=? AND m.user_id<>? ORDER BY u.disabled, CASE m.role WHEN 'owner' THEN 0 WHEN 'editor' THEN 1 ELSE 2 END, u.created_at LIMIT 1",
         w.id,
         userId,
-      )?.user_id;
-    if (next) run("UPDATE members SET role='owner' WHERE workspace_id=? AND user_id=?", w.id, next);
+      ))?.user_id;
+    if (next) await run("UPDATE members SET role='owner' WHERE workspace_id=? AND user_id=?", w.id, next);
   }
   // Private spaces: nobody else can see them, so they go too.
-  for (const space of all<{ id: string; workspace_id: string }>("SELECT id,workspace_id FROM spaces WHERE owner_id=? AND visibility='private'", userId)) {
-    purgePages(space.workspace_id, all<Page>("SELECT * FROM pages WHERE space_id=?", space.id));
-    run("DELETE FROM grants WHERE resource_id=?", space.id);
-    keepSpaceTemplates(space.id);
-    run("DELETE FROM spaces WHERE id=?", space.id);
+  for (const space of await all<{ id: string; workspace_id: string }>("SELECT id,workspace_id FROM spaces WHERE owner_id=? AND visibility='private'", userId)) {
+    await purgePages(space.workspace_id, await all<Page>("SELECT * FROM pages WHERE space_id=?", space.id));
+    await run("DELETE FROM grants WHERE resource_id=?", space.id);
+    await keepSpaceTemplates(space.id);
+    await run("DELETE FROM spaces WHERE id=?", space.id);
   }
   for (const table of PERSONAL)
     try {
-      inSavepoint(() => run(`DELETE FROM ${table} WHERE user_id=?`, userId));
+      await inSavepoint(async () => await run(`DELETE FROM ${table} WHERE user_id=?`, userId));
     } catch {}
   // Own collections (#86), shared ones too: they are queries of this person.
-  run("DELETE FROM collections WHERE owner_id=?", userId);
-  run("DELETE FROM grants WHERE user_id=?", userId);
-  run("DELETE FROM members WHERE user_id=?", userId);
-  run("UPDATE spaces SET owner_id=NULL WHERE owner_id=?", userId);
+  await run("DELETE FROM collections WHERE owner_id=?", userId);
+  await run("DELETE FROM grants WHERE user_id=?", userId);
+  await run("DELETE FROM members WHERE user_id=?", userId);
+  await run("UPDATE spaces SET owner_id=NULL WHERE owner_id=?", userId);
   try {
-    inSavepoint(() => run("DELETE FROM users WHERE id=?", userId));
+    await inSavepoint(async () => await run("DELETE FROM users WHERE id=?", userId));
   } catch {
     // Still named as author somewhere: the account stays as an empty shell.
-    run(
+    await run(
       "UPDATE users SET name='Gelöschtes Konto',email='',subject=?,disabled=1,locale=NULL,language=NULL,limits=NULL WHERE id=?",
       `deleted:${userId}`,
       userId,

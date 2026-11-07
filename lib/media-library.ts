@@ -37,16 +37,16 @@ const kindSql: Record<Exclude<MediaKind, "all">, string> = {
 };
 
 // Files of all pages the person can read in a workspace, newest first.
-export function mediaLibrary(
+export async function mediaLibrary(
   user: Identity,
   workspaceId: string,
   options: { kind?: MediaKind; query?: string; offset?: number } = {},
 ) {
-  requireMember(user, workspaceId);
+  await requireMember(user, workspaceId);
   const kind = options.kind || "all",
     query = (options.query || "").trim().slice(0, 200),
     offset = Math.max(0, Math.floor(options.offset || 0));
-  const rows = all<
+  const rows = await all<
     Page & {
       file_id: string;
       file_name: string;
@@ -66,12 +66,12 @@ export function mediaLibrary(
   );
   const readable = new Map<string, boolean>(),
     hiddenFiles = new Map<string, Set<string>>(),
-    locked = lockedPageIds(user, workspaceId);
+    locked = await lockedPageIds(user, workspaceId);
   const items: MediaItem[] = [];
   for (const row of rows) {
-    if (!readable.has(row.id)) readable.set(row.id, !locked.has(row.id) && !!pageRole(user, row));
+    if (!readable.has(row.id)) readable.set(row.id, !locked.has(row.id) && !!(await pageRole(user, row)));
     if (!readable.get(row.id)) continue;
-    if (!hiddenFiles.has(row.id)) hiddenFiles.set(row.id, hiddenFileIds(user, row));
+    if (!hiddenFiles.has(row.id)) hiddenFiles.set(row.id, await hiddenFileIds(user, row));
     if (hiddenFiles.get(row.id)!.has(row.file_id)) continue;
     items.push({
       id: row.file_id,

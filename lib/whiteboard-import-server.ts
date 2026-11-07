@@ -38,7 +38,7 @@ export async function readBoard(name: string, bytes: Buffer): Promise<ImportedBo
 // Inside a transaction: the board's pictures as files of the page; returns
 // their addresses by reference ("import:img1" → "/api/files/…"). Pictures
 // beyond the limits are left out (they become notes).
-export function storeBoardImages(
+export async function storeBoardImages(
   user: Identity,
   pageId: string,
   workspaceId: string,
@@ -47,19 +47,19 @@ export function storeBoardImages(
 ) {
   const urls = new Map<string, string>();
   if (!board.images.length) return urls;
-  const maxFile = maxUploadMbFor(user) * 1024 * 1024;
+  const maxFile = (await maxUploadMbFor(user)) * 1024 * 1024;
   const dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads");
   mkdirSync(dir, { recursive: true });
   for (const image of board.images) {
     const data = Buffer.from(image.data);
     if (data.length > maxFile || verifiedMime(image.mime, data) !== image.mime) continue;
-    enforceQuota(workspaceId, added.bytes + data.length);
-    enforceUserStorage(user, added.bytes + data.length);
+    await enforceQuota(workspaceId, added.bytes + data.length);
+    await enforceUserStorage(user, added.bytes + data.length);
     added.bytes += data.length;
     const fid = id();
     writeFileSync(resolve(dir, fid), data);
     onTransactionRollback(() => unlinkSync(resolve(dir, fid)));
-    run(
+    await run(
       "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
       fid,
       pageId,
@@ -114,12 +114,12 @@ export async function importWhiteboardFile(
 ) {
   const where = target.parse(raw);
   if ("pageId" in where) {
-    const page = requirePage(user, where.pageId, true);
+    const page = await requirePage(user, where.pageId, true);
     if (page.kind !== "whiteboard") throw new HttpError(400, "Kein Whiteboard.");
     if (page.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
     const board = await readBoard(name, bytes);
-    return transaction(() => {
-      const urls = storeBoardImages(user, page.id, page.workspace_id, board);
+    return await transaction(async () => {
+      const urls = await storeBoardImages(user, page.id, page.workspace_id, board);
       return {
         format: board.format,
         replaced: board.replaced,
@@ -127,24 +127,24 @@ export async function importWhiteboardFile(
       };
     }, user);
   }
-  requireMember(user, where.workspaceId, "editor");
-  const space = one<Space>(
+  await requireMember(user, where.workspaceId, "editor");
+  const space = await one<Space>(
     "SELECT * FROM spaces WHERE id=? AND workspace_id=? AND deleted_at IS NULL",
     where.spaceId,
     where.workspaceId,
   );
-  if (!space || !["editor", "owner"].includes(spaceRole(user, space) || ""))
+  if (!space || !["editor", "owner"].includes(await spaceRole(user, space) || ""))
     throw new HttpError(403, "Keine Schreibrechte im Zielbereich.");
   if (where.parentId) {
-    const parent = requirePage(user, where.parentId, true);
+    const parent = await requirePage(user, where.parentId, true);
     if (parent.space_id !== space.id)
       throw new HttpError(400, "Übergeordnete Seite liegt in anderem Bereich.");
   }
   const board = await readBoard(name, bytes);
-  return transaction(() => {
-    const pageId = createPage(where.workspaceId, space.id, user.id, boardTitle(name), "whiteboard", where.parentId || null);
-    const urls = storeBoardImages(user, pageId, where.workspaceId, board);
-    writeWhiteboard(pageId, boardState(board, urls));
+  return await transaction(async () => {
+    const pageId = await createPage(where.workspaceId, space.id, user.id, boardTitle(name), "whiteboard", where.parentId || null);
+    const urls = await storeBoardImages(user, pageId, where.workspaceId, board);
+    await writeWhiteboard(pageId, boardState(board, urls));
     return { pageId, format: board.format, replaced: board.replaced, items: board.items.length };
   }, user);
 }

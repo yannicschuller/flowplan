@@ -12,12 +12,12 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request, { params }: { params: Promise<{ token: string }> }) {
   try {
     // Not during an instance move (lib/instance-read-only.ts): the sender retries.
-    refuseWhileReadOnly(req);
+    await refuseWhileReadOnly(req);
     const { token } = await params;
     if (Number(req.headers.get("content-length") || 0) > 5_000_000) throw new HttpError(413, "Anfrage zu groß.");
     const body = await req.text();
     if (body.length > 5_000_000) throw new HttpError(413, "Anfrage zu groß.");
-    const result = receiveIssueWebhook(token, req.headers, body);
+    const result = await receiveIssueWebhook(token, req.headers, body);
     if (result.pages.length)
       after(async () => {
         for (const page of result.pages) await syncIssues(page).catch((error) => console.error("Issue sync failed", error));

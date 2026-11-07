@@ -30,7 +30,7 @@ import { forgetPen, onPencilAction, penOnlySetting, setPenOnly as storePenOnly }
 export type InkSelection = { page: string; ids: string[] };
 type Style = { color: string; width: number };
 
-export type InkEditor = ReturnType<typeof useInkEditor>;
+export type InkEditor = Awaited<ReturnType<typeof useInkEditor>>;
 
 export function useInkEditor(initial: InkDoc, { active = true }: { active?: boolean } = {}) {
   const [doc, setDocState] = useState(initial);

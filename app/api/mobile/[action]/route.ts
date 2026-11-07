@@ -49,9 +49,9 @@ async function handleGET(req: Request, { params }: { params: Promise<{ action: s
       // Checked on every call: the admin group of the device's session now.
       if (!isInstanceAdmin(user)) throw new HttpError(403, "Administrator-Gruppe erforderlich.");
       const update = await updateStatus().catch(() => null);
-      return NextResponse.json(mobileAdminSummary(Date.now(), update), { headers: { "Cache-Control": "no-store" } });
+      return NextResponse.json(await mobileAdminSummary(Date.now(), update), { headers: { "Cache-Control": "no-store" } });
     }
-    return NextResponse.json(mobileSummary(user, new URL(req.url).searchParams.get("today")), {
+    return NextResponse.json(await mobileSummary(user, new URL(req.url).searchParams.get("today")), {
       headers: { "Cache-Control": "no-store" },
     });
   } catch (e) {
@@ -66,13 +66,13 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ action: 
     // Browsers never send this header by themselves: no origin check needed.
     const authorization = (await headers()).get("authorization");
     if (action === "unregister" && authorization?.startsWith("Bearer fpd_"))
-      return NextResponse.json({ ok: unregisterByDeviceToken(authorization) });
+      return NextResponse.json({ ok: await unregisterByDeviceToken(authorization) });
     if (action === "live-activity") {
       const text = await req.text();
       if (text.length > 4_000) throw new HttpError(413, "Anfrage zu groß.");
-      return NextResponse.json(setLiveActivityToken(authorization, JSON.parse(text || "{}")), { headers: { "Cache-Control": "no-store" } });
+      return NextResponse.json(await setLiveActivityToken(authorization, JSON.parse(text || "{}")), { headers: { "Cache-Control": "no-store" } });
     }
-    checkOrigin(req);
+    await checkOrigin(req);
     const user = await activeUser();
     if (!user) throw new HttpError(401, "Bitte melde dich an.");
     const text = await req.text();
@@ -81,11 +81,11 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ action: 
     if (action === "register") {
       const sessionToken = hash((await cookies()).get(cookieName)?.value || "");
       return NextResponse.json(
-        { ...registerMobileDevice(user, sessionToken, body), pushAvailable: mobilePushEnabled(), pushRelay: pushRelayInfo() },
+        { ...(await registerMobileDevice(user, sessionToken, body)), pushAvailable: mobilePushEnabled(), pushRelay: pushRelayInfo() },
         { headers: { "Cache-Control": "no-store" } },
       );
     }
-    if (action === "unregister") return NextResponse.json(unregisterMobileDevice(user, body.installationId));
+    if (action === "unregister") return NextResponse.json(await unregisterMobileDevice(user, body.installationId));
     throw new HttpError(404, "Nicht gefunden");
   } catch (e) {
     return failure(e);

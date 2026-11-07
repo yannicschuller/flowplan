@@ -22,11 +22,11 @@ import { useLive } from "./use-live";
 import { ago, clock, dateTime, num } from "./monitoring-format";
 import { useDocs } from "./parts";
 
-type Overview = ReturnType<typeof securityOverview>;
-type EventPage = ReturnType<typeof securityEvents>;
+type Overview = Awaited<ReturnType<typeof securityOverview>>;
+type EventPage = Awaited<ReturnType<typeof securityEvents>>;
 type SecurityEventRow = EventPage["events"][number];
 type Incident = Overview["incidents"][number];
-type IncidentDetailData = ReturnType<typeof securityIncident>;
+type IncidentDetailData = Awaited<ReturnType<typeof securityIncident>>;
 type T = (de: string, en: string) => string;
 
 const URL = "/api/admin/security";

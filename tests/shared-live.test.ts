@@ -15,9 +15,9 @@ const { mutateSharedContent, sharedContent } =
   await import("../lib/shared-content");
 const { applyHtml } = await import("../lib/shared-live");
 const { htmlState, stateHtml } = await import("../lib/document-server");
-function user(name: string): Identity {
+async function user(name: string): Promise<Identity> {
   const uid = id();
-  run(
+  await run(
     "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
     uid,
     uid,
@@ -34,35 +34,35 @@ function user(name: string): Identity {
     created_at: "",
   };
 }
-const owner = user("owner"),
-  wid = createWorkspace(owner.id, "Live"),
-  boot = bootstrap(owner, wid);
+const owner = await user("owner"),
+  wid = await createWorkspace(owner.id, "Live"),
+  boot = await bootstrap(owner, wid);
 const b64 = (u: Uint8Array) => Buffer.from(u).toString("base64");
 const fails = (fn: () => unknown, status: number) =>
   assert.throws(fn, (e: any) => e.status === status);
 
-function setup(html: string) {
+async function setup(html: string) {
   const pid = (
-    command(owner, {
+    (await command(owner, {
       action: "page.create",
       workspaceId: wid,
       spaceId: boot.spaces[0].id,
       title: "Live",
-    }) as { id: string }
+    })) as { id: string }
   ).id;
-  run(
+  await run(
     "UPDATE documents SET state=?,html=? WHERE page_id=?",
     htmlState(html),
     html,
     pid,
   );
   const token = (
-    command(owner, {
+    (await command(owner, {
       action: "share.create",
       pageId: pid,
       role: "editor",
       name: "Gäste",
-    }) as { token: string }
+    })) as { token: string }
   ).token;
   return { pid, token };
 }
@@ -70,14 +70,14 @@ function setup(html: string) {
 function guest(token: string, pid: string) {
   const doc = new Y.Doc();
   let pgen = "";
-  const sync = (send = true) => {
-    const result = mutateSharedContent(token, {
+  const sync = async (send = true) => {
+    const result = (await mutateSharedContent(token, {
       action: "live",
       pageId: pid,
       pgen: pgen || undefined,
       vector: b64(Y.encodeStateVector(doc)),
       ...(send && pgen ? { update: b64(Y.encodeStateAsUpdate(doc)) } : {}),
-    }) as { pgen: string; update: string; reset: boolean };
+    })) as { pgen: string; update: string; reset: boolean };
     if (result.reset || !pgen) {
       doc
         .getXmlFragment("default")
@@ -89,18 +89,18 @@ function guest(token: string, pid: string) {
   };
   return { doc, sync, html: () => stateHtml(doc) };
 }
-const memberHtml = (pid: string) =>
-  String(one("SELECT html FROM documents WHERE page_id=?", pid)?.html);
+const memberHtml = async (pid: string) =>
+  String((await one("SELECT html FROM documents WHERE page_id=?", pid))?.html);
 // A member edit through the normal Yjs sync command.
-function memberEdit(pid: string, html: string) {
-  const d = one<{ state: Uint8Array; generation: string }>(
+async function memberEdit(pid: string, html: string) {
+  const d = (await one<{ state: Uint8Array; generation: string }>(
     "SELECT state,generation FROM documents WHERE page_id=?",
     pid,
-  )!;
+  ))!;
   const doc = new Y.Doc();
   Y.applyUpdate(doc, d.state);
   applyHtml(doc, html);
-  command(owner, {
+  await command(owner, {
     action: "document.sync",
     pageId: pid,
     generation: d.generation,
@@ -108,31 +108,31 @@ function memberEdit(pid: string, html: string) {
   });
 }
 
-test("guests and members edit the same document live without reloads", () => {
-  const { pid, token } = setup("<p>Anfang</p><p>Ende</p>");
-  const generation = one(
+test("guests and members edit the same document live without reloads", async () => {
+  const { pid, token } = await setup("<p>Anfang</p><p>Ende</p>");
+  const generation = (await one(
     "SELECT generation FROM documents WHERE page_id=?",
     pid,
-  )?.generation;
+  ))?.generation;
   const a = guest(token, pid),
     b = guest(token, pid);
-  a.sync();
-  b.sync();
+  await a.sync();
+  await b.sync();
   assert.equal(a.html(), "<p>Anfang</p><p>Ende</p>");
   // Guest A types; the member document changes without a new generation.
   applyHtml(a.doc, "<p>Anfang vom Gast</p><p>Ende</p>");
-  a.sync();
-  assert.equal(memberHtml(pid), "<p>Anfang vom Gast</p><p>Ende</p>");
+  await a.sync();
+  assert.equal(await memberHtml(pid), "<p>Anfang vom Gast</p><p>Ende</p>");
   assert.equal(
-    one("SELECT generation FROM documents WHERE page_id=?", pid)?.generation,
+    (await one("SELECT generation FROM documents WHERE page_id=?", pid))?.generation,
     generation,
   );
   // A member and guest B edit at the same time; everything merges.
-  memberEdit(pid, "<p>Anfang vom Gast</p><p>Ende</p><p>Mitglied</p>");
+  await memberEdit(pid, "<p>Anfang vom Gast</p><p>Ende</p><p>Mitglied</p>");
   applyHtml(b.doc, "<p>Anfang</p><p>Ende von B</p>");
-  b.sync();
-  a.sync(false);
-  const merged = memberHtml(pid);
+  await b.sync();
+  await a.sync(false);
+  const merged = await memberHtml(pid);
   assert.match(merged, /Anfang vom Gast/);
   assert.match(merged, /Ende von B/);
   assert.match(merged, /Mitglied/);
@@ -140,26 +140,26 @@ test("guests and members edit the same document live without reloads", () => {
   assert.equal(b.html(), merged);
 });
 
-test("live guest edits keep hidden links and mentions and refuse unshared references", () => {
+test("live guest edits keep hidden links and mentions and refuse unshared references", async () => {
   const secret = (
-    command(owner, {
+    (await command(owner, {
       action: "page.create",
       workspaceId: wid,
       spaceId: boot.spaces[0].id,
       title: "Geheim",
-    }) as { id: string }
+    })) as { id: string }
   ).id;
-  const { pid, token } = setup(
+  const { pid, token } = await setup(
     `<p><a href="#page=${secret}">Intern</a> und <span data-type="mention" data-mention="${owner.id}" data-label="owner">@owner</span></p>`,
   );
   const g = guest(token, pid);
-  g.sync();
+  await g.sync();
   // The guest sees neither the page id nor where the link goes.
   assert.doesNotMatch(g.html(), new RegExp(secret));
   assert.match(g.html(), /\/share\/[^"]+\/hidden\//);
   applyHtml(g.doc, g.html().replace("</p>", "</p><p>Neu</p>"));
-  g.sync();
-  const html = memberHtml(pid);
+  await g.sync();
+  const html = await memberHtml(pid);
   assert.match(html, new RegExp(`#page=${secret}`));
   assert.match(html, new RegExp(`data-mention="${owner.id}"`));
   assert.match(html, /Neu/);
@@ -168,15 +168,15 @@ test("live guest edits keep hidden links and mentions and refuse unshared refere
     g.doc,
     g.html() + `<p><a href="/share/${token}/${secret}">x</a></p>`,
   );
-  fails(() => g.sync(), 403);
-  assert.equal(memberHtml(pid), html);
+  fails(async () => await g.sync(), 403);
+  assert.equal(await memberHtml(pid), html);
 });
 
 test("a link may not grow a document without bound: size cap, daily byte budget, fat projections start afresh", async () => {
   const { MAX_GUEST_DOCUMENT } = await import("../lib/shared-content");
-  const { pid, token } = setup("<p>Start</p>");
+  const { pid, token } = await setup("<p>Start</p>");
   const g = guest(token, pid);
-  g.sync();
+  await g.sync();
   const type = (text: string) => {
     const frag = g.doc.getXmlFragment("default");
     const para = new Y.XmlElement("paragraph");
@@ -185,68 +185,68 @@ test("a link may not grow a document without bound: size cap, daily byte budget,
   };
   // A paste that would push the canonical HTML past the cap is refused …
   type("x".repeat(MAX_GUEST_DOCUMENT + 10));
-  fails(() => g.sync(), 413);
+  fails(async () => await g.sync(), 413);
   // … while members' larger documents stay editable (the check is on growth).
   const reset = guest(token, pid);
-  reset.sync();
+  await reset.sync();
   assert.equal(reset.html(), "<p>Start</p>");
   // The bytes of every accepted change count against the link's daily budget.
   const { anonymousBytesToday } = await import("../lib/anonymous-budget");
-  const before = anonymousBytesToday(`live:${token}`);
+  const before = await anonymousBytesToday(`live:${token}`);
   const g2 = guest(token, pid);
-  g2.sync();
+  await g2.sync();
   const frag = g2.doc.getXmlFragment("default");
   const para = new Y.XmlElement("paragraph");
   para.insert(0, [new Y.XmlText("Mehr")]);
   frag.insert(frag.length, [para]);
-  g2.sync();
-  assert.ok(anonymousBytesToday(`live:${token}`) > before);
-  run("INSERT INTO anonymous_uploads(scope,bytes,at) VALUES(?,?,?)", `live:${token}`, 100 * 1024 * 1024, Date.now());
+  await g2.sync();
+  assert.ok((await anonymousBytesToday(`live:${token}`)) > before);
+  await run("INSERT INTO anonymous_uploads(scope,bytes,at) VALUES(?,?,?)", `live:${token}`, 100 * 1024 * 1024, Date.now());
   const p2 = new Y.XmlElement("paragraph");
   p2.insert(0, [new Y.XmlText("Noch mehr")]);
   frag.insert(frag.length, [p2]);
-  fails(() => g2.sync(), 413);
-  run("DELETE FROM anonymous_uploads WHERE scope=?", `live:${token}`);
+  fails(async () => await g2.sync(), 413);
+  await run("DELETE FROM anonymous_uploads WHERE scope=?", `live:${token}`);
   // A stored projection past 8 MB is rebuilt: guests get a reset.
   const key = (await import("../lib/shared-live")).liveKey(token, pid);
-  run("UPDATE share_live SET state=? WHERE key=?", Buffer.alloc(8_000_001), key);
+  await run("UPDATE share_live SET state=? WHERE key=?", Buffer.alloc(8_000_001), key);
   const g3 = guest(token, pid);
-  g3.sync();
+  await g3.sync();
   assert.match(g3.html(), /Mehr/);
-  assert.ok((one<{ n: number }>("SELECT length(state) n FROM share_live WHERE key=?", key)?.n || 0) < 1_000_000);
+  assert.ok(((await one<{ n: number }>("SELECT length(state) n FROM share_live WHERE key=?", key))?.n || 0) < 1_000_000);
 });
 
-test("readers cannot edit live and a restored version resets guest projections", () => {
-  const { pid, token } = setup("<p>Text</p>");
+test("readers cannot edit live and a restored version resets guest projections", async () => {
+  const { pid, token } = await setup("<p>Text</p>");
   const reader = (
-    command(owner, {
+    (await command(owner, {
       action: "share.create",
       pageId: pid,
       role: "viewer",
       name: "Lesen",
-    }) as { token: string }
+    })) as { token: string }
   ).token;
   fails(
-    () => mutateSharedContent(reader, { action: "live", pageId: pid }),
+    async () => await mutateSharedContent(reader, { action: "live", pageId: pid }),
     403,
   );
   const g = guest(token, pid);
-  g.sync();
+  await g.sync();
   // A new document generation (e.g. a restored version) gives a new projection.
-  run("UPDATE documents SET generation=? WHERE page_id=?", id(), pid);
-  const result = g.sync(false);
+  await run("UPDATE documents SET generation=? WHERE page_id=?", id(), pid);
+  const result = await g.sync(false);
   assert.equal(result.reset, true);
   assert.equal(g.html(), "<p>Text</p>");
   // Saving the title alone keeps the live content.
-  mutateSharedContent(token, {
+  await mutateSharedContent(token, {
     action: "save",
     pageId: pid,
-    version: sharedContent(token, pid).version,
+    version: (await sharedContent(token, pid)).version,
     title: "Neuer Titel",
   });
   assert.equal(
-    one("SELECT title FROM pages WHERE id=?", pid)?.title,
+    (await one("SELECT title FROM pages WHERE id=?", pid))?.title,
     "Neuer Titel",
   );
-  assert.equal(memberHtml(pid), "<p>Text</p>");
+  assert.equal(await memberHtml(pid), "<p>Text</p>");
 });

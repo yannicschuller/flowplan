@@ -13,7 +13,7 @@ export default async function TicketPage({ params }: { params: Promise<{ token: 
   const locale = await requestLocale();
   const { token } = await params;
   try {
-    const ticket = withContentLocale(locale, () => customerTicket(token));
+    const ticket = await withContentLocale(locale, async () => await customerTicket(token));
     return <TicketClient token={token} initial={ticket} />;
   } catch (e) {
     return (

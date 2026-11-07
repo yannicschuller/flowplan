@@ -41,17 +41,17 @@ type RelayMessage = import("../lib/push-relay").RelayMessage;
 type RelayResult = import("../lib/push-relay").RelayResult;
 type ExpoMessage = import("../lib/push").ExpoMessage;
 
-function account(name: string, { groups = [] as string[], agent = "", locale = "de" } = {}) {
+async function account(name: string, { groups = [] as string[], agent = "", locale = "de" } = {}) {
   const uid = id(),
     token = id();
-  run("INSERT INTO users(id,subject,name,email,locale) VALUES(?,?,?,?,?)", uid, uid, name, `${name}@example.test`, locale);
-  run("INSERT INTO sessions(token,user_id,groups_json,expires,agent) VALUES(?,?,?,?,?)", token, uid, JSON.stringify(groups), Date.now() + 3600000, agent);
+  await run("INSERT INTO users(id,subject,name,email,locale) VALUES(?,?,?,?,?)", uid, uid, name, `${name}@example.test`, locale);
+  await run("INSERT INTO sessions(token,user_id,groups_json,expires,agent) VALUES(?,?,?,?,?)", token, uid, JSON.stringify(groups), Date.now() + 3600000, agent);
   const user = { id: uid, name, email: `${name}@example.test`, groups, isAdmin: false, disabled: 0, created_at: "" } as Identity;
   return { user, token };
 }
-function secondSession(user: Identity, agent: string) {
+async function secondSession(user: Identity, agent: string) {
   const token = id();
-  run("INSERT INTO sessions(token,user_id,groups_json,expires,agent) VALUES(?,?,?,?,?)", token, user.id, "[]", Date.now() + 3600000, agent);
+  await run("INSERT INTO sessions(token,user_id,groups_json,expires,agent) VALUES(?,?,?,?,?)", token, user.id, "[]", Date.now() + 3600000, agent);
   return token;
 }
 function webSubscription(host = "web.push.apple.com") {
@@ -108,56 +108,56 @@ async function quietly<T>(fn: () => Promise<T>) {
 }
 
 test("only for oneself: a live session of the person, never an API token; no devices → empty list", async () => {
-  const { user, token } = account("self");
+  const { user, token } = await account("self");
   await assert.rejects(sendTestPush({ ...user, apiScope: "write" }, token), (e: { status?: number }) => e.status === 403);
-  const other = account("other");
+  const other = await account("other");
   // Another person's session does not let anyone test their devices.
   await assert.rejects(sendTestPush(user, other.token), (e: { status?: number }) => e.status === 401);
-  run("UPDATE sessions SET expires=0 WHERE token=?", other.token);
+  await run("UPDATE sessions SET expires=0 WHERE token=?", other.token);
   await assert.rejects(sendTestPush(other.user, other.token), (e: { status?: number }) => e.status === 401);
   const { flush } = senders();
   const report = await sendTestPush(user, token, { flush });
   assert.deepEqual(report.targets, []);
   assert.equal(report.relay.enabled, true);
   // Somebody else's devices never show up.
-  subscribePush(other.user, secondSession(other.user, CHROME_MAC), webSubscription());
+  await subscribePush(other.user, await secondSession(other.user, CHROME_MAC), webSubscription());
   assert.deepEqual((await sendTestPush(user, token, { flush })).targets, []);
 });
 
 test("at most 5 tests per person in 10 minutes", async () => {
-  const { user, token } = account("limited");
+  const { user, token } = await account("limited");
   const { flush } = senders();
   for (let i = 0; i < 5; i++) await sendTestPush(user, token, { flush });
   await assert.rejects(sendTestPush(user, token, { flush }), (e: { status?: number; message?: string }) => e.status === 429 && /5/.test(e.message || ""));
   // Another person is not affected.
-  const other = account("not-limited");
+  const other = await account("not-limited");
   await sendTestPush(other.user, other.token, { flush });
 });
 
 test("every target through its real channel, the outcome per target, no inbox entry and no secrets", async () => {
-  const { user, token } = account("many", { agent: CHROME_MAC, locale: "en" });
+  const { user, token } = await account("many", { agent: CHROME_MAC, locale: "en" });
   // Push switched off for every kind and a Focus on: a test still goes.
   for (const kind of ["mention", "share", "comment", "reminder", "guest", "change", "automation", "security", "incident"])
-    run("INSERT INTO notification_prefs(user_id,kind,inbox,push) VALUES(?,?,0,0)", user.id, kind);
+    await run("INSERT INTO notification_prefs(user_id,kind,inbox,push) VALUES(?,?,0,0)", user.id, kind);
   const here = webSubscription("fcm.googleapis.com");
-  subscribePush(user, token, here);
+  await subscribePush(user, token, here);
   const firefox = webSubscription("updates.push.services.mozilla.com");
-  subscribePush(user, secondSession(user, FIREFOX_WIN), firefox);
+  await subscribePush(user, await secondSession(user, FIREFOX_WIN), firefox);
   const iphone = { relay: relayToken(), key: deviceKey() };
-  const { deviceToken } = registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios", name: "Anna's iPhone", relayToken: iphone.relay, publicKey: iphone.key });
+  const { deviceToken } = await registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios", name: "Anna's iPhone", relayToken: iphone.relay, publicKey: iphone.key });
   const pixel = { relay: relayToken(), key: deviceKey(), expo: expoToken() };
-  registerMobileDevice(user, token, { installationId: randomUUID(), platform: "android", name: "Pixel", relayToken: pixel.relay, publicKey: pixel.key, pushToken: pixel.expo });
+  await registerMobileDevice(user, token, { installationId: randomUUID(), platform: "android", name: "Pixel", relayToken: pixel.relay, publicKey: pixel.key, pushToken: pixel.expo });
   const ipad = { relay: relayToken(), key: deviceKey() };
-  registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios", name: "iPad", relayToken: ipad.relay, publicKey: ipad.key });
+  await registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios", name: "iPad", relayToken: ipad.relay, publicKey: ipad.key });
   const old = expoToken();
-  registerMobileDevice(user, token, { installationId: randomUUID(), platform: "android", name: "Old phone", pushToken: old });
+  await registerMobileDevice(user, token, { installationId: randomUUID(), platform: "android", name: "Old phone", pushToken: old });
   const gone = expoToken();
-  registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios", name: "Uninstalled", pushToken: gone });
-  registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios", name: "No permission" });
+  await registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios", name: "Uninstalled", pushToken: gone });
+  await registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios", name: "No permission" });
   // The iPhone has a Focus with a Flowplan filter on (another profile: all quiet).
-  setDeviceFocus(user, `Bearer ${deviceToken}`, { hide: true, workspaceId: null });
+  await setDeviceFocus(user, `Bearer ${deviceToken}`, { hide: true, workspaceId: null });
 
-  const inboxBefore = Number(one<{ n: number }>("SELECT COUNT(*) n FROM notifications WHERE user_id=?", user.id)!.n);
+  const inboxBefore = Number((await one<{ n: number }>("SELECT COUNT(*) n FROM notifications WHERE user_id=?", user.id))!.n);
   const { sent, flush } = senders({
     web: (endpoint) => (endpoint === firefox.endpoint ? { statusCode: 410 } : null),
     expo: (message) => (message.to === gone ? new PushGoneError("DeviceNotRegistered") : message.to === old ? new Error("MessageRateExceeded") : null),
@@ -172,7 +172,7 @@ test("every target through its real channel, the outcome per target, no inbox en
   const ff = report.targets.find((t) => t.name === "Firefox · Windows")!;
   assert.deepEqual([ff.status, ff.detail, ff.current], ["web-gone", "HTTP 410", false]);
   // As for every notification: the expired subscription went.
-  assert.equal(one("SELECT 1 FROM push_subscriptions WHERE endpoint=?", firefox.endpoint), undefined);
+  assert.equal(await one("SELECT 1 FROM push_subscriptions WHERE endpoint=?", firefox.endpoint), undefined);
 
   assert.deepEqual([by("Anna's iPhone").channel, by("Anna's iPhone").status, by("Anna's iPhone").focus], ["relay", "delivered", true]);
   // Refused by the relay: the Expo token takes over right away.
@@ -198,13 +198,13 @@ test("every target through its real channel, the outcome per target, no inbox en
   assert.ok(!JSON.stringify(iphoneMessage).includes("everything works"));
 
   // No inbox entry, no queued delivery, no rows left behind.
-  assert.equal(Number(one<{ n: number }>("SELECT COUNT(*) n FROM notifications WHERE user_id=?", user.id)!.n), inboxBefore);
-  assert.equal(one("SELECT 1 FROM push_deliveries d JOIN push_subscriptions s ON s.id=d.subscription_id WHERE s.user_id=?", user.id), undefined);
-  assert.deepEqual(all("SELECT * FROM push_tests"), []);
+  assert.equal(Number((await one<{ n: number }>("SELECT COUNT(*) n FROM notifications WHERE user_id=?", user.id))!.n), inboxBefore);
+  assert.equal(await one("SELECT 1 FROM push_deliveries d JOIN push_subscriptions s ON s.id=d.subscription_id WHERE s.user_id=?", user.id), undefined);
+  assert.deepEqual(await all("SELECT * FROM push_tests"), []);
 
   // Never a token, key, push address or internal id in the answer.
   const text = JSON.stringify(report);
-  const devices = all<{ id: string; push_subscription_id: string | null }>("SELECT id,push_subscription_id FROM mobile_devices WHERE user_id=?", user.id);
+  const devices = await all<{ id: string; push_subscription_id: string | null }>("SELECT id,push_subscription_id FROM mobile_devices WHERE user_id=?", user.id);
   for (const secret of [
     here.endpoint,
     here.keys.p256dh,
@@ -228,9 +228,9 @@ test("every target through its real channel, the outcome per target, no inbox en
 });
 
 test("relay failures of the whole request become actionable codes", async () => {
-  const { user, token } = account("relay-errors", { groups: ["flowplan-admins"] });
+  const { user, token } = await account("relay-errors", { groups: ["flowplan-admins"] });
   const device = { relay: relayToken(), key: deviceKey() };
-  registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios", name: "Phone", relayToken: device.relay, publicKey: device.key });
+  await registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios", name: "Phone", relayToken: device.relay, publicKey: device.key });
   // The real relay client against a local relay.
   const flush = () => flushPushQueue(async () => assert.fail("no Web Push"), async () => assert.fail("no Expo"), sendToRelay);
   const statusFor = async (answer: typeof relayAnswer) => {
@@ -250,11 +250,11 @@ test("relay failures of the whole request become actionable codes", async () => 
   // Apple or Google refused this one message.
   assert.equal((await statusFor({ status: 200, json: { results: [{ status: "error" }] } })).targets[0].status, "relay-upstream");
   // The registration survived all of these (whole-request errors drop nothing).
-  assert.ok(one("SELECT 1 FROM mobile_push_relay r JOIN mobile_devices d ON d.id=r.device_id WHERE d.user_id=?", user.id));
+  assert.ok(await one("SELECT 1 FROM mobile_push_relay r JOIN mobile_devices d ON d.id=r.device_id WHERE d.user_id=?", user.id));
 
   // Unreachable: nothing listens there.
-  const { user: u2, token: t2 } = account("relay-down");
-  registerMobileDevice(u2, t2, { installationId: randomUUID(), platform: "ios", name: "Phone", relayToken: relayToken(), publicKey: deviceKey() });
+  const { user: u2, token: t2 } = await account("relay-down");
+  await registerMobileDevice(u2, t2, { installationId: randomUUID(), platform: "ios", name: "Phone", relayToken: relayToken(), publicKey: deviceKey() });
   process.env.PUSH_RELAY_URL = "http://127.0.0.1:9";
   try {
     const down = await quietly(() => sendTestPush(u2, t2, { flush }));
@@ -265,10 +265,10 @@ test("relay failures of the whole request become actionable codes", async () => 
 });
 
 test("relay not configured: relay-only devices say why, Expo devices fall back", async () => {
-  const { user, token } = account("relay-off");
-  registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios", name: "Relay only", relayToken: relayToken(), publicKey: deviceKey() });
+  const { user, token } = await account("relay-off");
+  await registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios", name: "Relay only", relayToken: relayToken(), publicKey: deviceKey() });
   const expo = expoToken();
-  registerMobileDevice(user, token, { installationId: randomUUID(), platform: "android", name: "Both", relayToken: relayToken(), publicKey: deviceKey(), pushToken: expo });
+  await registerMobileDevice(user, token, { installationId: randomUUID(), platform: "android", name: "Both", relayToken: relayToken(), publicKey: deviceKey(), pushToken: expo });
   for (const [env, value, reason] of [
     ["PUSH_RELAY", "off", "off"],
     ["APP_URL", "http://flowplan.example.test", "instance-url"],
@@ -289,22 +289,22 @@ test("relay not configured: relay-only devices say why, Expo devices fall back",
     }
   }
   // The relay-only registration is kept for when the relay is back.
-  assert.ok(one("SELECT 1 FROM mobile_devices WHERE name='Relay only' AND push_subscription_id IS NOT NULL"));
+  assert.ok(await one("SELECT 1 FROM mobile_devices WHERE name='Relay only' AND push_subscription_id IS NOT NULL"));
 });
 
 test("no answer within the time: pending, and nothing stays queued", async () => {
-  const { user, token } = account("slow");
-  subscribePush(user, token, webSubscription());
+  const { user, token } = await account("slow");
+  await subscribePush(user, token, webSubscription());
   const report = await sendTestPush(user, token, { flush: () => new Promise(() => {}), timeoutMs: 200 });
   assert.equal(report.targets[0].status, "pending");
-  assert.deepEqual(all("SELECT * FROM push_tests"), []);
+  assert.deepEqual(await all("SELECT * FROM push_tests"), []);
 });
 
 test("MOBILE_PUSH=off: apps are listed with the reason", async () => {
-  const { user, token } = account("mobile-off");
+  const { user, token } = await account("mobile-off");
   process.env.MOBILE_PUSH = "off";
   try {
-    registerMobileDevice(user, token, { installationId: randomUUID(), platform: "android", name: "Phone", pushToken: expoToken() });
+    await registerMobileDevice(user, token, { installationId: randomUUID(), platform: "android", name: "Phone", pushToken: expoToken() });
     const report = await sendTestPush(user, token, { flush: senders().flush });
     assert.deepEqual(report.targets.map((t) => t.status), ["app-push-off"]);
   } finally {

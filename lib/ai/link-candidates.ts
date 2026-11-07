@@ -75,10 +75,10 @@ export function linkTerms(text: string, max: number = LINK_LIMITS.terms): string
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 // Pages whose (folded) title occurs in the text as whole words, the longest
 // titles first.
-function titleMatches(workspaceId: string, text: string): string[] {
+async function titleMatches(workspaceId: string, text: string): Promise<string[]> {
   const folded = fold(text);
   const found: { id: string; length: number }[] = [];
-  for (const page of all<{ id: string; title: string }>(
+  for (const page of await all<{ id: string; title: string }>(
     "SELECT id,title FROM pages WHERE workspace_id=? AND deleted_at IS NULL AND COALESCE(synced,0)=0 AND title<>'' ORDER BY updated_at DESC LIMIT ?",
     workspaceId,
     LINK_LIMITS.titlePages,
@@ -120,7 +120,7 @@ export type LinkCandidateInput = {
 // The pages to offer, numbered P1 … Pn; empty when "links" is not usable
 // for the person or nothing fits.
 export async function findLinkCandidates(user: Identity, input: LinkCandidateInput): Promise<LinkCandidates> {
-  if (!resolveAi(user, "links", { workspaceId: input.workspaceId }).ok) return NONE;
+  if (!(await resolveAi(user, "links", { workspaceId: input.workspaceId })).ok) return NONE;
   const query = input.query.slice(0, LINK_LIMITS.queryChars).trim();
   if (!query) return NONE;
   const max = input.local ? LINK_LIMITS.candidates.local : LINK_LIMITS.candidates.remote;
@@ -143,10 +143,10 @@ export async function findLinkCandidates(user: Identity, input: LinkCandidateInp
   ].filter((term) => !list || !LIST_TERMS.has(term));
   const scope = { pages: null };
   const pagesOf = (rows: { page_id: string; row_id: string }[]) => rows.filter((r) => !r.row_id).map((r) => r.page_id);
-  addList(pagesOf(textCandidates(input.workspaceId, terms, scope, 200)));
-  if (terms.length > 1) for (const term of terms) addList(pagesOf(textCandidates(input.workspaceId, [term], scope, 60)));
+  addList(pagesOf(await textCandidates(input.workspaceId, terms, scope, 200)));
+  if (terms.length > 1) for (const term of terms) addList(pagesOf(await textCandidates(input.workspaceId, [term], scope, 60)));
   // A title named in the text is the clearest sign.
-  addList(titleMatches(input.workspaceId, query), 3);
+  addList(await titleMatches(input.workspaceId, query), 3);
   if (input.semantic)
     try {
       const hits = await semanticCandidates(user, input.workspaceId, query.slice(0, 2000), { signal: input.signal, limited: true, limit: 40 });
@@ -161,14 +161,14 @@ export async function findLinkCandidates(user: Identity, input: LinkCandidateInp
   // What the AI may read – before any text of a candidate is loaded.
   const ranked = [...fused].sort((a, b) => b[1] - a[1]).map(([pageId]) => ({ pageId }));
   const indexMax = list ? (input.local ? LINK_LIMITS.index.local : LINK_LIMITS.index.remote) : 0;
-  const readable = aiFilter(user, ranked.slice(0, max * 6 + indexMax * 2));
+  const readable = await aiFilter(user, ranked.slice(0, max * 6 + indexMax * 2));
   const names = nameLookup();
   const prompt: PromptLink[] = [];
   const targets: LinkTarget[] = [];
   const index: string[] = [];
   for (const { pageId } of readable) {
     if (targets.length >= max && index.length >= indexMax) break;
-    const page = one<{ title: string; synced: number | null; workspace_id: string }>("SELECT title,synced,workspace_id FROM pages WHERE id=?", pageId);
+    const page = await one<{ title: string; synced: number | null; workspace_id: string }>("SELECT title,synced,workspace_id FROM pages WHERE id=?", pageId);
     // Synced blocks live inside other pages; untitled pages make poor links.
     if (!page || page.synced || page.workspace_id !== input.workspaceId || !page.title.trim()) continue;
     const title = page.title.replace(/\s+/g, " ").trim();
@@ -178,7 +178,7 @@ export async function findLinkCandidates(user: Identity, input: LinkCandidateInp
       if (!index.includes(short)) index.push(short);
       continue;
     }
-    const source = sourceText(pageId, null, names);
+    const source = await sourceText(pageId, null, names);
     if (!source) continue;
     const handle = linkHandle(targets.length + 1);
     prompt.push({ handle, title: title.slice(0, LINK_LIMITS.titleChars), excerpt: excerptOf(source.chunks, title, excerptChars) });
@@ -192,8 +192,8 @@ export async function findLinkCandidates(user: Identity, input: LinkCandidateInp
 // the same without spaces – and exactly one page the AI may read for the
 // person has it: two pages called "Notes" link neither. Never the page
 // being written, never synced blocks or pages of another workspace.
-export function resolveLinkTitles(user: Identity, input: { workspaceId: string; pageId: string; titles: string[] }): ResolvedTitle[] {
-  if (!resolveAi(user, "links", { workspaceId: input.workspaceId }).ok) return [];
+export async function resolveLinkTitles(user: Identity, input: { workspaceId: string; pageId: string; titles: string[] }): Promise<ResolvedTitle[]> {
+  if (!(await resolveAi(user, "links", { workspaceId: input.workspaceId })).ok) return [];
   const texts = [...new Set(input.titles.map((t) => String(t).slice(0, TITLE_LINK_LIMITS.titleChars)))].slice(0, TITLE_LINK_LIMITS.titles);
   const wanted = new Map<string, string[]>();
   const wantedCompact = new Map<string, string[]>();
@@ -208,7 +208,7 @@ export function resolveLinkTitles(user: Identity, input: { workspaceId: string; 
   const byExact = new Map<string, string[]>();
   const byCompact = new Map<string, string[]>();
   const titles = new Map<string, string>();
-  for (const page of all<{ id: string; title: string }>(
+  for (const page of await all<{ id: string; title: string }>(
     "SELECT id,title FROM pages WHERE workspace_id=? AND deleted_at IS NULL AND COALESCE(synced,0)=0 AND title<>'' AND id<>? ORDER BY updated_at DESC LIMIT ?",
     input.workspaceId,
     input.pageId,
@@ -223,7 +223,7 @@ export function resolveLinkTitles(user: Identity, input: { workspaceId: string; 
   }
   if (!titles.size) return [];
   // What the AI may read – titles of other pages never become links.
-  const readable = new Set(aiFilter(user, [...titles.keys()].map((pageId) => ({ pageId }))).map((p) => p.pageId));
+  const readable = new Set((await aiFilter(user, [...titles.keys()].map((pageId) => ({ pageId })))).map((p) => p.pageId));
   const only = (ids: string[] | undefined) => {
     const left = [...new Set(ids || [])].filter((id) => readable.has(id));
     return left.length === 1 ? left[0] : null;

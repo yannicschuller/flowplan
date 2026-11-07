@@ -98,9 +98,9 @@ const { command, database, rows, bootstrap, pageData } =
 const { createWorkspace } = await import("../lib/seed");
 const { replaceRowDocument } = await import("../lib/row-documents");
 const { exportArchive, importArchive } = await import("../lib/archive");
-function user(name: string): Identity {
+async function user(name: string): Promise<Identity> {
   const uid = id();
-  run(
+  await run(
     "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
     uid,
     uid,
@@ -117,58 +117,58 @@ function user(name: string): Identity {
     created_at: "",
   };
 }
-const owner = user("owner"),
-  viewer = user("viewer"),
-  stranger = user("stranger"),
-  wid = createWorkspace(owner.id, "Feed"),
-  boot = bootstrap(owner, wid);
-run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
-const act = (body: Record<string, unknown>, as = owner): any =>
-  command(as, body);
-function fixture() {
-  const page = act({
+const owner = await user("owner"),
+  viewer = await user("viewer"),
+  stranger = await user("stranger"),
+  wid = await createWorkspace(owner.id, "Feed"),
+  boot = await bootstrap(owner, wid);
+await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
+const act = async (body: Record<string, unknown>, as = owner): Promise<any> =>
+  await command(as, body);
+async function fixture() {
+  const page = (await act({
     action: "page.create",
     workspaceId: wid,
     spaceId: boot.spaces[0].id,
     kind: "database",
     title: "Feed database",
-  }).id;
-  act({
+  })).id;
+  await act({
     action: "database.update",
     pageId: page,
-    version: database(page).version,
+    version: (await database(page)).version,
     fields,
     views: [view],
   });
-  const row = act({
+  const row = (await act({
     action: "row.create",
     pageId: page,
     cells: { title: "Release", status: "Open" },
-  }).id;
-  replaceRowDocument(
+  })).id;
+  await replaceRowDocument(
     row,
     "<h2>Canonical document</h2><p>Searchable body</p>",
     owner.id,
   );
   return { page, row };
 }
-test("API previews prefer canonical documents, respect page permissions and never create or edit row documents on read", () => {
-  const { page, row } = fixture();
-  run("UPDATE rows SET content=? WHERE id=?", "Stale row text", row);
-  const legacy = act({
+test("API previews prefer canonical documents, respect page permissions and never create or edit row documents on read", async () => {
+  const { page, row } = await fixture();
+  await run("UPDATE rows SET content=? WHERE id=?", "Stale row text", row);
+  const legacy = (await act({
     action: "row.create",
     pageId: page,
     cells: { title: "Legacy" },
-  }).id;
-  run(
+  })).id;
+  await run(
     "UPDATE rows SET content=? WHERE id=?",
     '<p>Legacy</p><img src="x" onerror="alert(1)">',
     legacy,
   );
-  const count = () =>
-    one<{ n: number }>("SELECT COUNT(*) n FROM row_documents")!.n;
-  const before = count();
-  const data = pageData(viewer, page) as any;
+  const count = async () =>
+    (await one<{ n: number }>("SELECT COUNT(*) n FROM row_documents"))!.n;
+  const before = await count();
+  const data = (await pageData(viewer, page)) as any;
   assert.match(
     data.rows.find((r: Row) => r.id === row).preview.html,
     /Canonical document/,
@@ -177,68 +177,68 @@ test("API previews prefer canonical documents, respect page permissions and neve
     data.rows.find((r: Row) => r.id === legacy).preview.html,
     /onerror/,
   );
-  assert.equal(count(), before);
-  assert.equal(rows(page).find((r) => r.id === row)!.content, "Stale row text");
-  assert.throws(() => pageData(stranger, page), /Berechtigung/);
+  assert.equal(await count(), before);
+  assert.equal((await rows(page)).find((r) => r.id === row)!.content, "Stale row text");
+  await assert.rejects(async () => await pageData(stranger, page), /Berechtigung/);
   const update = {
     action: "database.update",
     pageId: page,
-    version: database(page).version,
+    version: (await database(page)).version,
     fields,
     views: [{ ...view, feed: defaultFeed }],
   };
-  assert.throws(() => act(update, viewer), /Berechtigung/);
-  assert.throws(() => act({ ...update, version: 0 }), /zwischenzeitlich/);
-  act({ action: "page.update", pageId: page, patch: { locked: true } });
-  assert.throws(() => act(update), /gesperrt/);
-  act({ action: "page.delete", pageId: page });
-  assert.throws(() => pageData(owner, page), /nicht gefunden/);
+  await assert.rejects(async () => await act(update, viewer), /Berechtigung/);
+  await assert.rejects(async () => await act({ ...update, version: 0 }), /zwischenzeitlich/);
+  await act({ action: "page.update", pageId: page, patch: { locked: true } });
+  await assert.rejects(async () => await act(update), /gesperrt/);
+  await act({ action: "page.delete", pageId: page });
+  await assert.rejects(async () => await pageData(owner, page), /nicht gefunden/);
 });
 test("feed preferences, rich previews, property visibility and contents survive copies, templates, ZIP and snapshots", async () => {
-  const { page } = fixture();
-  const check = (target: string) => {
-    const d = pageData(owner, target) as any;
+  const { page } = await fixture();
+  const check = async (target: string) => {
+    const d = (await pageData(owner, target)) as any;
     assert.deepEqual(d.database.views[0].feed, view.feed);
     assert.deepEqual(d.database.views[0].hiddenFields, ["status"]);
     assert.equal(d.rows[0].preview.text, "Canonical document Searchable body");
   };
-  act({ action: "page.snapshot", pageId: page });
-  check(act({ action: "page.duplicate", pageId: page }).id);
-  const template = act({
+  await act({ action: "page.snapshot", pageId: page });
+  await check((await act({ action: "page.duplicate", pageId: page })).id);
+  const template = (await act({
     action: "template.save",
     pageId: page,
     name: "Feed template",
-  }).id;
-  check(
-    act({
+  })).id;
+  await check(
+    (await act({
       action: "page.create",
       workspaceId: wid,
       spaceId: boot.spaces[0].id,
       title: "Feed copy",
       templateId: template,
-    }).id,
+    })).id,
   );
-  const destination = createWorkspace(owner.id, "Feed restore");
+  const destination = await createWorkspace(owner.id, "Feed restore");
   const imported = await importArchive(
     owner,
     destination,
     await exportArchive(owner, wid),
   );
   const restored = imported.pageIds[page];
-  check(restored);
-  const snapshot = one<{ id: string }>(
+  await check(restored);
+  const snapshot = (await one<{ id: string }>(
     "SELECT id FROM snapshots WHERE page_id=?",
     restored,
-  )!.id;
-  act({
+  ))!.id;
+  await act({
     action: "database.update",
     pageId: restored,
-    version: database(restored).version,
+    version: (await database(restored)).version,
     fields,
     views: [{ ...view, feed: defaultFeed }],
   });
-  act({ action: "snapshot.restore", pageId: restored, snapshotId: snapshot });
-  check(restored);
+  await act({ action: "snapshot.restore", pageId: restored, snapshotId: snapshot });
+  await check(restored);
 });
 
 test("previews come from a cache keyed by the source and are copies", () => {

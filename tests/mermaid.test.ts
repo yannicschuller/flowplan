@@ -79,7 +79,7 @@ const { sharedContent, mutateSharedContent } =
   await import("../lib/shared-content");
 const { replaceRowDocument } = await import("../lib/row-documents");
 const uid = id();
-run(
+await run(
   "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
   uid,
   uid,
@@ -95,91 +95,91 @@ const owner: Identity = {
   disabled: 0,
   created_at: "",
 };
-const wid = createWorkspace(uid, "Diagrams"),
-  boot = bootstrap(owner, wid);
-const act = (body: Record<string, unknown>): any => command(owner, body);
-const create = (kind = "document", extra = {}) =>
-  act({
+const wid = await createWorkspace(uid, "Diagrams"),
+  boot = await bootstrap(owner, wid);
+const act = async (body: Record<string, unknown>): Promise<any> => await command(owner, body);
+const create = async (kind = "document", extra = {}) =>
+  (await act({
     action: "page.create",
     workspaceId: wid,
     spaceId: boot.spaces[0].id,
     title: "Diagram fixture",
     kind,
     ...extra,
-  }).id as string;
+  })).id as string;
 test("diagram sources survive copies, templates, records, archives and snapshots with guest rights enforced", async () => {
-  const host = create();
-  run(
+  const host = await create();
+  await run(
     "UPDATE documents SET html=?,state=? WHERE page_id=?",
     html,
     htmlState(html),
     host,
   );
-  const check = (page: string) =>
-    assert.equal((pageData(owner, page) as any).html, html);
-  check(act({ action: "page.duplicate", pageId: host }).id);
-  check(
-    create("document", {
-      templateId: act({
+  const check = async (page: string) =>
+    assert.equal(((await pageData(owner, page)) as any).html, html);
+  await check((await act({ action: "page.duplicate", pageId: host })).id);
+  await check(
+    await create("document", {
+      templateId: (await act({
         action: "template.save",
         pageId: host,
         name: "Diagram",
-      }).id,
+      })).id,
     }),
   );
-  act({ action: "page.snapshot", pageId: host });
-  const database = create("database"),
-    row = act({
+  await act({ action: "page.snapshot", pageId: host });
+  const database = await create("database"),
+    row = (await act({
       action: "row.create",
       pageId: database,
       cells: { title: "Diagram entry" },
-    }).id;
-  replaceRowDocument(row, html, uid);
+    })).id;
+  await replaceRowDocument(row, html, uid);
   assert.equal(
     (
-      pageData(
+      (await pageData(
         owner,
-        act({ action: "page.duplicate", pageId: database }).id,
-      ) as any
+        (await act({ action: "page.duplicate", pageId: database })).id,
+      )) as any
     ).rows[0].preview.html,
     html,
   );
-  const destination = createWorkspace(uid, "Restored diagrams");
+  const destination = await createWorkspace(uid, "Restored diagrams");
   const restored = await importArchive(
     owner,
     destination,
     await exportArchive(owner, wid),
   );
-  check(restored.pageIds[host]);
-  const snapshot = one<{ id: string }>(
+  await check(restored.pageIds[host]);
+  const snapshot = (await one<{ id: string }>(
     "SELECT id FROM snapshots WHERE page_id=?",
     restored.pageIds[host],
-  )!.id;
-  run(
+  ))!.id;
+  await run(
     "UPDATE documents SET html=?,state=? WHERE page_id=?",
     "<p>changed</p>",
     htmlState("<p>changed</p>"),
     restored.pageIds[host],
   );
-  act({
+  await act({
     action: "snapshot.restore",
     pageId: restored.pageIds[host],
     snapshotId: snapshot,
   });
-  check(restored.pageIds[host]);
-  const token = act({
+  await check(restored.pageIds[host]);
+  const token = (await act({
     action: "share.create",
     pageId: host,
     role: "editor",
     name: "Edit diagrams",
-  }).token;
-  const read = act({
+  })).token;
+  const read = (await act({
     action: "share.create",
     pageId: host,
     role: "viewer",
     name: "View diagrams",
-  }).token;
-  const data = sharedContent(token),
+  })).token;
+  const data = await sharedContent(token),
     change = {
       action: "save",
       pageId: host,
@@ -187,8 +187,8 @@ test("diagram sources survive copies, templates, records, archives and snapshots
       version: data.version,
       html: html.replaceAll("Idee", "Start"),
     };
-  assert.throws(() => mutateSharedContent(read, change), /erlaubt/);
-  mutateSharedContent(token, change);
-  assert.match(sharedContent(read).html, /Start/);
-  assert.doesNotMatch(sharedContent(read).html, /<svg|<img/);
+  await assert.rejects(async () => await mutateSharedContent(read, change), /erlaubt/);
+  await mutateSharedContent(token, change);
+  assert.match((await sharedContent(read)).html, /Start/);
+  assert.doesNotMatch((await sharedContent(read)).html, /<svg|<img/);
 });

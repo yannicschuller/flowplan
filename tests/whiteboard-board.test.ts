@@ -335,20 +335,20 @@ test("template gallery: many templates, all valid, searchable, in both languages
   assert.ok(english.some((d) => d.text === "Customer segments"));
 });
 
-test("own templates: saved from a selection, listed, inserted with new ids, deleted; guests and viewers", () => {
-  const user = (name: string): Identity => {
+test("own templates: saved from a selection, listed, inserted with new ids, deleted; guests and viewers", async () => {
+  const user = async (name: string): Promise<Identity> => {
     const uid = id();
-    run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.com`);
+    await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.com`);
     return { id: uid, name, email: `${name}@example.com`, groups: [], isAdmin: false } as unknown as Identity;
   };
-  const owner = user("owner"),
-    editor = user("editor"),
-    viewer = user("viewer");
-  const wid = createWorkspace(owner.id, "Vorlagen");
-  run("INSERT INTO members VALUES(?,?,?)", wid, editor.id, "editor");
-  run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
-  const space = bootstrap(owner, wid).spaces[0].id;
-  const board = String((command(owner, { action: "page.create", workspaceId: wid, spaceId: space, title: "Board", kind: "whiteboard" }) as { id: string }).id);
+  const owner = await user("owner"),
+    editor = await user("editor"),
+    viewer = await user("viewer");
+  const wid = await createWorkspace(owner.id, "Vorlagen");
+  await run("INSERT INTO members VALUES(?,?,?)", wid, editor.id, "editor");
+  await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
+  const space = (await bootstrap(owner, wid)).spaces[0].id;
+  const board = String(((await command(owner, { action: "page.create", workspaceId: wid, spaceId: space, title: "Board", kind: "whiteboard" })) as { id: string }).id);
   const items = [
     item({ id: "a", x: 500, y: 300, text: "A", votes: { u: true }, author: "u", locked: true, groups: ["g1"], z: 2 }),
     item({ id: "b", x: 700, y: 300, text: "B", groups: ["g1"], z: 1 }),
@@ -366,18 +366,18 @@ test("own templates: saved from a selection, listed, inserted with new ids, dele
   const c = drafts.find((d) => d.id === "c")!;
   assert.equal(c.to?.id, undefined);
   assert.equal(c.from?.id, "a");
-  const saved = userTemplates.saveBoardTemplate(editor, board, { name: "Paar", items: drafts }) as { id: string };
-  userTemplates.saveBoardTemplate(owner, board, { name: "Geheim", items: drafts, private: true });
-  const listed = userTemplates.listBoardTemplates(editor, board);
+  const saved = (await userTemplates.saveBoardTemplate(editor, board, { name: "Paar", items: drafts })) as { id: string };
+  await userTemplates.saveBoardTemplate(owner, board, { name: "Geheim", items: drafts, private: true });
+  const listed = await userTemplates.listBoardTemplates(editor, board);
   assert.deepEqual(listed.map((t) => t.name), ["Paar"]);
   assert.equal(listed[0].items.length, 3);
-  assert.deepEqual(userTemplates.listBoardTemplates(owner, board).map((t) => t.name), ["Geheim", "Paar"]);
+  assert.deepEqual((await userTemplates.listBoardTemplates(owner, board)).map((t) => t.name), ["Geheim", "Paar"]);
   // Viewers see workspace templates but cannot save or delete.
-  assert.equal(userTemplates.listBoardTemplates(viewer, board).length, 1);
-  assert.throws(() => userTemplates.saveBoardTemplate(viewer, board, { name: "x", items: drafts }), (e: { status?: number }) => e.status === 403);
-  assert.throws(() => userTemplates.deleteBoardTemplate(viewer, board, saved.id), (e: { status?: number }) => e.status === 403);
+  assert.equal((await userTemplates.listBoardTemplates(viewer, board)).length, 1);
+  await assert.rejects(async () => await userTemplates.saveBoardTemplate(viewer, board, { name: "x", items: drafts }), (e: { status?: number }) => e.status === 403);
+  await assert.rejects(async () => await userTemplates.deleteBoardTemplate(viewer, board, saved.id), (e: { status?: number }) => e.status === 403);
   // Unsafe content never reaches a stored template.
-  assert.throws(() => userTemplates.saveBoardTemplate(editor, board, { name: "leer", items: [{ id: "x", type: "comment", x: 0, y: 0, w: 1, h: 1 }] }), (e: { status?: number }) => e.status === 400);
+  await assert.rejects(async () => await userTemplates.saveBoardTemplate(editor, board, { name: "leer", items: [{ id: "x", type: "comment", x: 0, y: 0, w: 1, h: 1 }] }), (e: { status?: number }) => e.status === 400);
   const cleaned = userTemplates.cleanTemplateItems([
     { id: "i", type: "image", x: 0, y: 0, w: 1, h: 1, src: "javascript:alert(1)" },
     { id: "e", type: "embed", x: 0, y: 0, w: 1, h: 1, src: "https://evil.example" },
@@ -395,16 +395,16 @@ test("own templates: saved from a selection, listed, inserted with new ids, dele
   assert.ok(placedA.groups?.[0].startsWith("ng"));
   assert.equal(placed.filter((p) => p.groups?.[0] === placedA.groups?.[0]).length, 2);
   // Deleting: the author or an owner.
-  userTemplates.deleteBoardTemplate(owner, board, saved.id);
-  assert.deepEqual(userTemplates.listBoardTemplates(editor, board).map((t) => t.name), []);
+  await userTemplates.deleteBoardTemplate(owner, board, saved.id);
+  assert.deepEqual((await userTemplates.listBoardTemplates(editor, board)).map((t) => t.name), []);
 });
 
-test("boards keep loading with the new properties; summary and search text", () => {
+test("boards keep loading with the new properties; summary and search text", async () => {
   const user = { id: id(), name: "x", email: "x@example.com", groups: [], isAdmin: false } as unknown as Identity;
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", user.id, user.id, "x", "x@example.com");
-  const wid = createWorkspace(user.id, "Neu");
-  const space = bootstrap(user, wid).spaces[0].id;
-  const board = String((command(user, { action: "page.create", workspaceId: wid, spaceId: space, title: "B", kind: "whiteboard" }) as { id: string }).id);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", user.id, user.id, "x", "x@example.com");
+  const wid = await createWorkspace(user.id, "Neu");
+  const space = (await bootstrap(user, wid)).spaces[0].id;
+  const board = String(((await command(user, { action: "page.create", workspaceId: wid, spaceId: space, title: "B", kind: "whiteboard" })) as { id: string }).id);
   const doc = new Y.Doc();
   const map = doc.getMap<Y.Map<unknown>>("items");
   for (const entry of [
@@ -416,7 +416,7 @@ test("boards keep loading with the new properties; summary and search text", () 
     for (const [k, v] of Object.entries(entry)) if (k !== "id") m.set(k, v);
     map.set(entry.id, m);
   }
-  writeWhiteboard(board, Y.encodeStateAsUpdate(doc));
+  await writeWhiteboard(board, Y.encodeStateAsUpdate(doc));
   const pageRow = { id: board } as Parameters<typeof whiteboardSnapshotItems>[0];
   void pageRow;
   const summary = whiteboardSummary(

@@ -37,7 +37,7 @@ async function withDevice(req: Request, handle: (user: Identity) => Promise<Resp
   const fallback = pickLocale(null, req.headers.get("accept-language"));
   const user = await widgetUser(req.headers.get("authorization"));
   if (!user) return failure(new HttpError(401, "Bitte melde dich an."), fallback);
-  const locale = widgetLocale(user, lang, req.headers.get("accept-language"));
+  const locale = await widgetLocale(user, lang, req.headers.get("accept-language"));
   return withContentLocale(locale, async () => {
     try {
       return await handle(user);
@@ -51,8 +51,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ action: 
   const { action } = await params;
   return withDevice(req, async (user) => {
     limitWidgets(user, "options");
-    if (action === "targets") return NextResponse.json(captureTargets(user), { headers });
-    if (action === "spotlight") return NextResponse.json(spotlightItems(user), { headers });
+    if (action === "targets") return NextResponse.json(await captureTargets(user), { headers });
+    if (action === "spotlight") return NextResponse.json(await spotlightItems(user), { headers });
     throw new HttpError(404, "Nicht gefunden");
   });
 }
@@ -70,7 +70,7 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ action: 
       return NextResponse.json(await saveCapture(user, JSON.parse(text || "{}")), { headers });
     }
     // Files: the size is known before anything is read.
-    requireBodySize(req, Math.min(MAX_REQUEST, maxUploadMbFor(user) * 1024 * 1024 * MAX_CAPTURE_FILES) + 1_000_000, "Anfrage zu groß.");
+    requireBodySize(req, Math.min(MAX_REQUEST, (await maxUploadMbFor(user)) * 1024 * 1024 * MAX_CAPTURE_FILES) + 1_000_000, "Anfrage zu groß.");
     limitWidgets(user, "upload");
     const form = await req.formData();
     const files: UploadFile[] = [];

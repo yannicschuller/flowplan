@@ -96,16 +96,16 @@ function databaseChanges(before: DatabaseState, after: DatabaseState) {
 
 // Changes from a saved version to the current state of the page, or to
 // another saved version (`against`).
-export function snapshotChanges(
+export async function snapshotChanges(
   user: Identity,
   pageId: string,
   snapshotId: string,
   against?: string,
-): DocumentChanges | { kind: "database"; changes: DatabaseChanges } {
-  const page = requirePage(user, pageId);
-  requireUnlocked(user, page);
-  const load = (sid: string) => {
-    const found = one<{ html: string | null }>(
+): Promise<DocumentChanges | { kind: "database"; changes: DatabaseChanges }> {
+  const page = await requirePage(user, pageId);
+  await requireUnlocked(user, page);
+  const load = async (sid: string) => {
+    const found = await one<{ html: string | null }>(
       "SELECT html FROM snapshots WHERE id=? AND page_id=?",
       sid,
       page.id,
@@ -113,14 +113,14 @@ export function snapshotChanges(
     if (!found) throw new HttpError(404, "Version nicht gefunden.");
     return found.html || "";
   };
-  const before = load(snapshotId);
+  const before = await load(snapshotId);
   if (page.kind === "database") {
     // Records hidden by their permissions stay out of the comparison.
-    const visible = rowRoleResolver(user, page);
+    const visible = await rowRoleResolver(user, page);
     // Properties hidden from this person (now or in that version) as well.
-    const hiddenNow = hiddenFieldsFor(user, page);
-    const withoutHidden = (state: DatabaseState): DatabaseState => {
-      const hidden = new Set([...hiddenNow, ...hiddenFieldsFor(user, page, state.database.fields)]);
+    const hiddenNow = await hiddenFieldsFor(user, page);
+    const withoutHidden = async (state: DatabaseState): Promise<DatabaseState> => {
+      const hidden = new Set([...hiddenNow, ...await hiddenFieldsFor(user, page, state.database.fields)]);
       return hidden.size
         ? {
             database: { ...state.database, fields: state.database.fields.filter((f) => !hidden.has(f.id)) },
@@ -128,23 +128,23 @@ export function snapshotChanges(
           }
         : state;
     };
-    const parse = (html: string): DatabaseState => {
+    const parse = async (html: string): Promise<DatabaseState> => {
       const parsed = JSON.parse(html || "{}") as Partial<DatabaseState>;
-      return withoutHidden({
+      return await withoutHidden({
         database: parsed.database || { fields: [] },
         rows: (parsed.rows || []).filter((r) => visible(r)),
       });
     };
-    const current = (): DatabaseState => ({
+    const current = async (): Promise<DatabaseState> => ({
       database: {
         fields: JSON.parse(
-          one<{ fields: string }>(
+          (await one<{ fields: string }>(
             "SELECT fields FROM databases WHERE page_id=?",
             page.id,
-          )!.fields,
+          ))!.fields,
         ),
       },
-      rows: all<{
+      rows: (await all<{
         id: string;
         cells: string;
         access: string;
@@ -152,37 +152,37 @@ export function snapshotChanges(
       }>(
         "SELECT id,cells,access,created_by FROM rows WHERE page_id=? ORDER BY position",
         page.id,
-      )
+      ))
         .filter((r) => visible(r))
         .map((r) => ({ id: r.id, cells: JSON.parse(r.cells) })),
     });
     return {
       kind: "database",
       changes: databaseChanges(
-        parse(before),
-        against ? parse(load(against)) : withoutHidden(current()),
+        await parse(before),
+        against ? (await parse(await load(against))) : (await withoutHidden(await current())),
       ),
     };
   }
   const after = against
-    ? load(against)
-    : one<{ html: string }>(
+    ? (await load(against))
+    : (await one<{ html: string }>(
         "SELECT html FROM documents WHERE page_id=?",
         page.id,
-      )?.html || "";
+      ))?.html || "";
   return documentChanges(before, after);
 }
 // Same comparison for record documents.
-export function rowSnapshotChanges(
+export async function rowSnapshotChanges(
   user: Identity,
   pageId: string,
   rowId: string,
   snapshotId: string,
   against?: string,
-): DocumentChanges {
-  const { row } = requireRow(user, pageId, rowId);
-  const load = (sid: string) => {
-    const found = one<{ html: string }>(
+): Promise<DocumentChanges> {
+  const { row } = await requireRow(user, pageId, rowId);
+  const load = async (sid: string) => {
+    const found = await one<{ html: string }>(
       "SELECT html FROM row_snapshots WHERE id=? AND row_id=?",
       sid,
       row.id,
@@ -190,40 +190,40 @@ export function rowSnapshotChanges(
     if (!found) throw new HttpError(404, "Version nicht gefunden.");
     return found.html;
   };
-  const after = against ? load(against) : ensureRowDocument(row).html;
-  return documentChanges(load(snapshotId), after);
+  const after = against ? (await load(against)) : (await ensureRowDocument(row)).html;
+  return documentChanges(await load(snapshotId), after);
 }
 
 // Retention: manual versions stay. Automatic versions are thinned to one per
 // page and day after a week and removed after the retention period
 // (FLOWPLAN_SNAPSHOT_RETENTION_DAYS, default 180, 0 keeps everything).
-export function retentionDays() {
-  const stored = instanceSettings().retentionDays;
+export async function retentionDays() {
+  const stored = (await instanceSettings()).retentionDays;
   if (stored !== null) return stored;
   const raw = process.env.FLOWPLAN_SNAPSHOT_RETENTION_DAYS;
   const value = raw === undefined || raw === "" ? 180 : Number(raw);
   return Number.isFinite(value) && value >= 0 ? Math.floor(value) : 180;
 }
-export function pruneSnapshots(days = retentionDays()) {
+export async function pruneSnapshots(days = (await retentionDays())) {
   let removed = 0;
-  transaction(() => {
+  await transaction(async () => {
     for (const [table, owner] of [
       ["snapshots", "page_id"],
       ["row_snapshots", "row_id"],
     ] as const) {
       removed += Number(
-        run(
+        (await run(
           `DELETE FROM ${table} WHERE kind='auto' AND created_at<? AND seq NOT IN (
              SELECT max(seq) FROM ${table} WHERE kind='auto' AND created_at<?
              GROUP BY ${owner}, substr(created_at,1,10))`, nowText(Date.now() - 604_800_000), nowText(Date.now() - 604_800_000),
-        ).changes,
+        )).changes,
       );
       if (days > 0)
         removed += Number(
-          run(
+          (await run(
             `DELETE FROM ${table} WHERE kind='auto' AND created_at<?`,
             daysAgoText(days),
-          ).changes,
+          )).changes,
         );
     }
   });
@@ -232,20 +232,20 @@ export function pruneSnapshots(days = retentionDays()) {
 const runtime = globalThis as typeof globalThis & {
   flowplanRetentionTimer?: ReturnType<typeof setInterval>;
 };
-export function startRetentionWorker() {
+export async function startRetentionWorker() {
   if (runtime.flowplanRetentionTimer) return;
-  const tick = () => {
+  const tick = async () => {
     try {
-      pruneSnapshots();
+      await pruneSnapshots();
       // Pages, spaces, records and templates after the trash period (#123).
-      expireTrash();
+      await expireTrash();
       // Old notifications (lib/notification-retention.ts).
-      pruneNotifications();
+      await pruneNotifications();
     } catch (error) {
       console.error("Snapshot retention failed", error);
     }
   };
   runtime.flowplanRetentionTimer = setInterval(tick, 6 * 3600 * 1000);
   runtime.flowplanRetentionTimer.unref();
-  tick();
+  await tick();
 }

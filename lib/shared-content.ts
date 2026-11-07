@@ -30,6 +30,7 @@ import {
 import { documentChanged } from "./document-live";
 import { rowChanged, rowCreated } from "./automations";
 import { GUEST_LIVE_MB, takeAnonymousBudget } from "./anonymous-budget";
+import { flatMapAsync, mapAsync } from "./each-async";
 
 // Properties with a read rule are never public (lib/field-access.ts).
 export const publicField = (f: Field) =>
@@ -108,28 +109,28 @@ export type SharedComment = {
   resolved: number;
   created_at: string;
 };
-function source(token: string, pageId?: string, rowId?: string) {
-  const context = publicPage(token, pageId);
+async function source(token: string, pageId?: string, rowId?: string) {
+  const context = await publicPage(token, pageId);
   const { page } = context;
   const row = rowId
-    ? one<Row>(
+    ? (await one<Row>(
         "SELECT * FROM rows WHERE id=? AND page_id=? AND access!='private'",
         rowId,
         page.id,
-      )
+      ))
     : undefined;
   if (rowId && !row) throw new HttpError(404, "Datensatz nicht gefunden.");
   const doc = row
-    ? ensureRowDocument(row)
-    : one<{ html: string; state: Uint8Array | null; generation: string }>(
+    ? (await ensureRowDocument(row))
+    : (await one<{ html: string; state: Uint8Array | null; generation: string }>(
         "SELECT * FROM documents WHERE page_id=?",
         page.id,
-      );
+      ));
   const fields: Field[] =
     page.kind === "database"
       ? JSON.parse(
           String(
-            one("SELECT fields FROM databases WHERE page_id=?", page.id)
+            (await one("SELECT fields FROM databases WHERE page_id=?", page.id))
               ?.fields || "[]",
           ),
         )
@@ -152,18 +153,18 @@ function source(token: string, pageId?: string, rowId?: string) {
   return { ...context, row, doc, fields, cells, version };
 }
 // Stored file references appear to guests as URLs of this share.
-function shareFileUrl(token: string, url: string) {
+async function shareFileUrl(token: string, url: string) {
   const fid = fileIdOf(url);
   if (!fid) return url;
   try {
-    publicFile(token, fid);
+    await publicFile(token, fid);
     return `/api/share/${token}/files/${fid}`;
   } catch {
     return "";
   }
 }
-export function sharedContent(token: string, pageId?: string, rowId?: string) {
-  const s = source(token, pageId, rowId);
+export async function sharedContent(token: string, pageId?: string, rowId?: string) {
+  const s = await source(token, pageId, rowId);
   const fields = guestFields(s.fields, s.pages);
   // Choices for relations: records of shared databases (title only).
   const related: Record<string, { id: string; cells: { title: string } }[]> =
@@ -173,14 +174,14 @@ export function sharedContent(token: string, pageId?: string, rowId?: string) {
       if (f.type === "relation" && f.relationPage && !related[f.relationPage]) {
         const target = JSON.parse(
           String(
-            one("SELECT fields FROM databases WHERE page_id=?", f.relationPage)
+            (await one("SELECT fields FROM databases WHERE page_id=?", f.relationPage))
               ?.fields || "[]",
           ),
         ) as Field[];
-        related[f.relationPage] = all<{ id: string; cells: string }>(
+        related[f.relationPage] = (await all<{ id: string; cells: string }>(
           "SELECT id,cells FROM rows WHERE page_id=? AND access!='private' ORDER BY position LIMIT 500",
           f.relationPage,
-        ).map((r) => ({
+        )).map((r) => ({
           id: r.id,
           cells: {
             title:
@@ -189,11 +190,11 @@ export function sharedContent(token: string, pageId?: string, rowId?: string) {
           },
         }));
       }
-  const files = all<{ id: string; name: string; mime: string }>(
+  const files = await flatMapAsync(await all<{ id: string; name: string; mime: string }>(
     "SELECT id,name,mime FROM files WHERE page_id=?",
     s.page.id,
-  ).flatMap((f) => {
-    const url = shareFileUrl(token, `/api/files/${f.id}`);
+  ), async (f) => {
+    const url = await shareFileUrl(token, `/api/files/${f.id}`);
     return url ? [{ url, name: f.name, mime: f.mime }] : [];
   });
   return {
@@ -234,11 +235,10 @@ export function sharedContent(token: string, pageId?: string, rowId?: string) {
       : [],
     cells: s.row
       ? Object.fromEntries(
-          fields.map((f) => [
+          await mapAsync(fields, async (f) => [
             f.id,
             f.type === "files"
-              ? fileUrls(s.cells[f.id])
-                  .map((url) => shareFileUrl(token, url))
+              ? (await mapAsync(fileUrls(s.cells[f.id]), async (url) => await shareFileUrl(token, url)))
                   .filter(Boolean)
               : (s.cells[f.id] ?? null),
           ]),
@@ -246,14 +246,14 @@ export function sharedContent(token: string, pageId?: string, rowId?: string) {
       : {},
     related,
     files,
-    comments: all<SharedComment>(
+    comments: await all<SharedComment>(
       "SELECT id,name,body,resolved,created_at FROM shared_comments WHERE page_id=? AND row_id IS NOT DISTINCT FROM ? ORDER BY created_at,id LIMIT 500",
       s.page.id,
       rowId || null,
     ),
   };
 }
-function validatedCells(
+async function validatedCells(
   input: unknown,
   fields: Field[],
   current: Record<string, unknown>,
@@ -274,11 +274,11 @@ function validatedCells(
       ];
       for (const rid of ids)
         if (
-          !one(
+          !(await one(
             "SELECT id FROM rows WHERE id=? AND page_id=? AND access!='private'",
             rid,
             f.relationPage!,
-          )
+          ))
         )
           throw new HttpError(400, "Verknüpfter Eintrag fehlt.");
       cells[key] = ids;
@@ -294,7 +294,7 @@ function validatedCells(
           `^/api/share/${share.token}/files/([0-9a-f-]{36})$`,
         ).exec(url);
         if (shared) {
-          const file = publicFile(share.token, shared[1]);
+          const file = await publicFile(share.token, shared[1]);
           if (file.page_id !== share.pageId)
             throw new HttpError(400, "Datei gehört nicht zu dieser Datenbank.");
           list.push(`/api/files/${shared[1]}`);
@@ -363,7 +363,7 @@ function writableHtml(
   const hidden = new Map<string, string>();
   publishedHtml(original, token, pages, hidden);
   const seen = new Set<string>();
-  return cleanHtml(html, (tagName, attribs) => {
+  return cleanHtml(html, async (tagName, attribs) => {
     let attrs = { ...attribs };
     if (attrs["data-linked-database"]) {
       const id = attrs["data-linked-database"];
@@ -393,7 +393,7 @@ function writableHtml(
         value,
       );
       if (file) {
-        publicFile(token, file[1]);
+        await publicFile(token, file[1]);
         attrs[attr] = `/api/files/${file[1]}`;
       } else if (value.startsWith(`/share/${token}`)) {
         const target =
@@ -411,34 +411,34 @@ function writableHtml(
   });
 }
 // At most 30 guest writes per link and minute.
-export function limitShareRequests(token: string) {
-  run("DELETE FROM share_requests WHERE created_at<?", Date.now() - 60000);
+export async function limitShareRequests(token: string) {
+  await run("DELETE FROM share_requests WHERE created_at<?", Date.now() - 60000);
   if (
-    (one<{ n: number }>(
+    ((await one<{ n: number }>(
       "SELECT count(*) n FROM share_requests WHERE token=?",
       token,
-    )?.n || 0) >= 30
+    ))?.n || 0) >= 30
   )
     throw new HttpError(429, "Zu viele Anfragen. Bitte warte eine Minute.");
-  run("INSERT INTO share_requests VALUES(?,?)", token, Date.now());
+  await run("INSERT INTO share_requests VALUES(?,?)", token, Date.now());
 }
 // What a guest may make of a document through a link: 3 MB of canonical
 // HTML, and a stored projection of at most 8 MB before it is rebuilt.
 export const MAX_GUEST_DOCUMENT = 3_000_000;
 const MAX_LIVE_STATE = 8_000_000;
 // Live edits have their own, larger budget (a change every half second).
-function limitLiveChanges(token: string) {
-  run("DELETE FROM share_live_requests WHERE created_at<?", Date.now() - 60000);
+async function limitLiveChanges(token: string) {
+  await run("DELETE FROM share_live_requests WHERE created_at<?", Date.now() - 60000);
   if (
-    (one<{ n: number }>(
+    ((await one<{ n: number }>(
       "SELECT count(*) n FROM share_live_requests WHERE token=?",
       token,
-    )?.n || 0) >= 120
+    ))?.n || 0) >= 120
   )
     throw new HttpError(429, "Zu viele Änderungen. Bitte warte kurz.");
-  run("INSERT INTO share_live_requests VALUES(?,?)", token, Date.now());
+  await run("INSERT INTO share_live_requests VALUES(?,?)", token, Date.now());
 }
-export function mutateSharedContent(token: string, input: unknown) {
+export async function mutateSharedContent(token: string, input: unknown) {
   const b = z
     .object({
       action: z.enum(["comment", "save", "create", "cells", "live"]),
@@ -447,20 +447,20 @@ export function mutateSharedContent(token: string, input: unknown) {
     })
     .passthrough()
     .parse(input);
-  return transaction(() => {
-    const s = source(token, b.pageId, b.rowId);
+  return await transaction(async () => {
+    const s = await source(token, b.pageId, b.rowId);
     if (s.role === "viewer" || (b.action !== "comment" && s.role !== "editor"))
       throw new HttpError(403, "Dieser Link erlaubt diese Aktion nicht.");
     if (s.page.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
     if (b.action !== "comment" && s.row?.access === "readonly")
       throw new HttpError(403, "Dieser Eintrag ist schreibgeschützt.");
-    if (b.action === "live") return liveSync(token, s, b);
-    limitShareRequests(token);
+    if (b.action === "live") return await liveSync(token, s, b);
+    await limitShareRequests(token);
     if (b.action === "create") {
       // New records by guests: only public, writable properties.
       if (s.page.kind !== "database" || s.row)
         throw new HttpError(400, "Neue Einträge nur in Datenbanken.");
-      const cells = validatedCells(
+      const cells = await validatedCells(
         b.cells ?? {},
         s.fields,
         {},
@@ -471,27 +471,27 @@ export function mutateSharedContent(token: string, input: unknown) {
         },
       );
       const rid = id();
-      run(
+      await run(
         "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by) VALUES(?,?,?,(SELECT COALESCE(MAX(position),0)+1 FROM rows WHERE page_id=?),NULL,NULL)",
         rid,
         s.page.id,
         JSON.stringify(cells),
         s.page.id,
       );
-      run(
+      await run(
         "UPDATE pages SET updated_at=? WHERE id=?", nowText(),
         s.page.id,
       );
-      run(
+      await run(
         "INSERT INTO notifications(id,user_id,body,page_id,kind) VALUES(?,?,?,?,'guest')",
         id(),
         s.page.created_by,
         `Neuer Gasteintrag in „${s.page.title}“`,
         s.page.id,
       );
-      rowCreated(null, s.page, rid);
-      audit("guest", "share.create", s.page.id, rid);
-      return { ...sharedContent(token, b.pageId), createdRowId: rid };
+      await rowCreated(null, s.page, rid);
+      await audit("guest", "share.create", s.page.id, rid);
+      return { ...(await sharedContent(token, b.pageId)), createdRowId: rid };
     }
     if (b.action === "cells") {
       // Single property changes, e.g. moving an entry in the calendar.
@@ -501,24 +501,24 @@ export function mutateSharedContent(token: string, input: unknown) {
           409,
           "Der Eintrag wurde inzwischen geändert. Bitte neu laden.",
         );
-      const cells = validatedCells(b.cells ?? {}, s.fields, s.cells, {
+      const cells = await validatedCells(b.cells ?? {}, s.fields, s.cells, {
         token,
         pages: s.pages,
         pageId: s.page.id,
       });
-      run(
+      await run(
         "UPDATE rows SET cells=?,version=version+1,updated_at=?,updated_by=NULL WHERE id=?",
         JSON.stringify(cells), nowText(),
         s.row.id,
       );
-      rowChanged(null, s.page, s.row.id, s.cells, cells, s.fields);
-      audit("guest", "share.cells", s.page.id, s.row.id);
-      return sharedContent(token, b.pageId, b.rowId);
+      await rowChanged(null, s.page, s.row.id, s.cells, cells, s.fields);
+      await audit("guest", "share.cells", s.page.id, s.row.id);
+      return await sharedContent(token, b.pageId, b.rowId);
     }
     if (b.action === "comment") {
       const name = z.string().trim().min(1).max(80).parse(b.name);
       const body = z.string().trim().min(1).max(5000).parse(b.body);
-      run(
+      await run(
         "INSERT INTO shared_comments(id,page_id,row_id,name,body) VALUES(?,?,?,?,?)",
         id(),
         s.page.id,
@@ -526,14 +526,14 @@ export function mutateSharedContent(token: string, input: unknown) {
         name,
         body,
       );
-      run(
+      await run(
         "INSERT INTO notifications(id,user_id,body,page_id,kind) VALUES(?,?,?,?,'guest')",
         id(),
         s.page.created_by,
         `Neuer Gastkommentar auf „${s.page.title}“`,
         s.page.id,
       );
-      audit("guest", "share.comment", s.page.id);
+      await audit("guest", "share.comment", s.page.id);
     } else {
       if (b.version !== s.version)
         throw new HttpError(
@@ -544,17 +544,17 @@ export function mutateSharedContent(token: string, input: unknown) {
       // Live editing saves the content continuously; saving then only
       // changes the title or the properties.
       if (b.html === undefined && s.row) {
-        const cells = validatedCells(b.cells ?? {}, s.fields, s.cells, {
+        const cells = await validatedCells(b.cells ?? {}, s.fields, s.cells, {
           token,
           pages: s.pages,
           pageId: s.page.id,
         });
-        run(
+        await run(
           "UPDATE rows SET cells=?,version=version+1,updated_at=?,updated_by=NULL WHERE id=?",
           JSON.stringify(cells), nowText(),
           s.row.id,
         );
-        rowChanged(null, s.page, s.row.id, s.cells, cells, s.fields);
+        await rowChanged(null, s.page, s.row.id, s.cells, cells, s.fields);
       } else if (
         b.html !== undefined &&
         (s.page.kind === "document" || s.row)
@@ -575,12 +575,12 @@ export function mutateSharedContent(token: string, input: unknown) {
           doc.destroy();
         }
         if (s.row) {
-          const cells = validatedCells(b.cells ?? {}, s.fields, s.cells, {
+          const cells = await validatedCells(b.cells ?? {}, s.fields, s.cells, {
             token,
             pages: s.pages,
             pageId: s.page.id,
           });
-          run(
+          await run(
             "INSERT INTO row_snapshots(id,row_id,state,html,created_by) VALUES(?,?,?,?,?)",
             id(),
             s.row.id,
@@ -588,7 +588,7 @@ export function mutateSharedContent(token: string, input: unknown) {
             s.doc!.html,
             "guest",
           );
-          run(
+          await run(
             "UPDATE row_documents SET state=?,html=?,generation=?,updated_at=? WHERE row_id=?",
             state,
             canonical,
@@ -596,15 +596,15 @@ export function mutateSharedContent(token: string, input: unknown) {
             s.row.id,
           );
           documentChanged(s.page.id, s.row.id);
-          run(
+          await run(
             "UPDATE rows SET cells=?,content=?,version=version+1,updated_at=?,updated_by=NULL WHERE id=?",
             JSON.stringify(cells),
             canonical, nowText(),
             s.row.id,
           );
-          rowChanged(null, s.page, s.row.id, s.cells, cells, s.fields);
+          await rowChanged(null, s.page, s.row.id, s.cells, cells, s.fields);
         } else {
-          run(
+          await run(
             "INSERT INTO snapshots(id,page_id,state,html,title,created_by) VALUES(?,?,?,?,?,?)",
             id(),
             s.page.id,
@@ -613,7 +613,7 @@ export function mutateSharedContent(token: string, input: unknown) {
             s.page.title,
             "guest",
           );
-          run(
+          await run(
             "UPDATE documents SET state=?,html=?,generation=?,updated_at=? WHERE page_id=?",
             state,
             canonical,
@@ -623,21 +623,21 @@ export function mutateSharedContent(token: string, input: unknown) {
           documentChanged(s.page.id);
         }
       }
-      run(
+      await run(
         "UPDATE pages SET title=?,updated_at=? WHERE id=?",
         s.row ? s.page.title : title, nowText(),
         s.page.id,
       );
-      audit("guest", "share.edit", s.page.id);
+      await audit("guest", "share.edit", s.page.id);
     }
-    return sharedContent(token, b.pageId, b.rowId);
+    return await sharedContent(token, b.pageId, b.rowId);
   });
 }
 
 // Live editing (see lib/shared-live.ts). Without `update` it only pulls.
-function liveSync(
+async function liveSync(
   token: string,
-  s: ReturnType<typeof source>,
+  s: Awaited<ReturnType<typeof source>>,
   input: Record<string, unknown>,
 ) {
   if (s.page.kind !== "document" && !s.row)
@@ -654,7 +654,7 @@ function liveSync(
     .parse(input);
   const pages = [s.root, ...s.pages.filter((p) => p.id !== s.root.id)];
   const member = s.row
-    ? ensureRowDocument(s.row)
+    ? (await ensureRowDocument(s.row))
     : (() => {
         const d = s.doc!;
         return {
@@ -664,7 +664,7 @@ function liveSync(
         };
       })();
   const key = liveKey(token, s.page.id, s.row?.id);
-  const stored = loadLive(key);
+  const stored = await loadLive(key);
   const projected = () => publishedHtml(member.html, token, s.pages, new Map());
   let doc: Y.Doc, pgen: string;
   // A projection that has grown fat with the history of guest edits (Yjs
@@ -685,12 +685,12 @@ function liveSync(
       Y.applyUpdate(doc, Buffer.from(b.update, "base64"));
       const after = stateHtml(doc);
       if (after !== before) {
-        limitLiveChanges(token);
+        await limitLiveChanges(token);
         // A link may grow a document only so far; what members wrote may
         // stay larger (the check is on growth, not on size).
         if (after.length > MAX_GUEST_DOCUMENT && after.length > before.length)
           throw new HttpError(413, "Das Dokument ist für die Bearbeitung über einen Link zu groß geworden.");
-        takeAnonymousBudget(`live:${token}`, Math.ceil((b.update.length * 3) / 4), GUEST_LIVE_MB);
+        await takeAnonymousBudget(`live:${token}`, Math.ceil((b.update.length * 3) / 4), GUEST_LIVE_MB);
         const safe = writableHtml(after, token, pages, member.html);
         const real = new Y.Doc();
         try {
@@ -701,12 +701,12 @@ function liveSync(
           if (html !== member.html) {
             if (s.row) {
               if (
-                !one(
+                !(await one(
                   "SELECT id FROM row_snapshots WHERE row_id=? AND created_at>?",
                   s.row.id, nowText(Date.now() - 300_000),
-                )
+                ))
               )
-                run(
+                await run(
                   "INSERT INTO row_snapshots(id,row_id,state,html,created_by) VALUES(?,?,?,?,?)",
                   id(),
                   s.row.id,
@@ -714,25 +714,25 @@ function liveSync(
                   member.html,
                   "guest",
                 );
-              run(
+              await run(
                 "UPDATE row_documents SET state=?,html=?,updated_at=? WHERE row_id=?",
                 state,
                 html, nowText(),
                 s.row.id,
               );
-              run(
+              await run(
                 "UPDATE rows SET content=?,updated_at=?,updated_by=NULL WHERE id=?",
                 html, nowText(),
                 s.row.id,
               );
             } else {
               if (
-                !one(
+                !(await one(
                   "SELECT id FROM snapshots WHERE page_id=? AND created_at>?",
                   s.page.id, nowText(Date.now() - 300_000),
-                )
+                ))
               )
-                run(
+                await run(
                   "INSERT INTO snapshots(id,page_id,state,html,title,created_by) VALUES(?,?,?,?,?,?)",
                   id(),
                   s.page.id,
@@ -741,14 +741,14 @@ function liveSync(
                   s.page.title,
                   "guest",
                 );
-              run(
+              await run(
                 "UPDATE documents SET state=?,html=?,updated_at=? WHERE page_id=?",
                 state,
                 html, nowText(),
                 s.page.id,
               );
             }
-            run(
+            await run(
               "UPDATE pages SET updated_at=? WHERE id=?", nowText(),
               s.page.id,
             );
@@ -761,7 +761,7 @@ function liveSync(
         }
       }
     }
-    saveLive(key, {
+    await saveLive(key, {
       state: Y.encodeStateAsUpdate(doc),
       source_html: sourceHtml,
       generation: member.generation,
@@ -777,7 +777,7 @@ function liveSync(
           b.vector && !reset ? Buffer.from(b.vector, "base64") : undefined,
         ),
       ).toString("base64"),
-      version: source(token, s.page.id, s.row?.id).version,
+      version: (await source(token, s.page.id, s.row?.id)).version,
     };
   } finally {
     doc.destroy();

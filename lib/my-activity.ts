@@ -25,6 +25,7 @@ import { lockedPageIds } from "./journal-extras";
 import { pageRole } from "./permissions";
 import type { ActivityPeriod } from "./home-layout-schema";
 import type { Identity, Page } from "./types";
+import { filterAsync } from "./each-async";
 
 export type PeriodRange = {
   // The period (first and last day) and today inside it.
@@ -101,7 +102,7 @@ const loggedEdits = () => [...editActions].filter((a) => !a.endsWith(".sync"));
 type PageDay = { page_id: string; day: string };
 
 // Pages created and page-days edited by the person in [from, until).
-export function activityDays(user: Identity, workspaceId: string, from: string, until: string, zone: string) {
+export async function activityDays(user: Identity, workspaceId: string, from: string, until: string, zone: string) {
   const created: PageDay[] = [];
   const edited: PageDay[] = [];
   const actions = loggedEdits();
@@ -109,7 +110,7 @@ export function activityDays(user: Identity, workspaceId: string, from: string, 
     const start = sqlTime(span.start),
       end = sqlTime(span.end);
     created.push(
-      ...all<PageDay>(
+      ...await all<PageDay>(
         `SELECT id page_id,${sql.dayOf("created_at")} AS day FROM pages
          WHERE created_by=? AND created_at>=? AND created_at<? AND workspace_id=? AND deleted_at IS NULL AND COALESCE(synced,0)=0`,
         span.offset,
@@ -121,7 +122,7 @@ export function activityDays(user: Identity, workspaceId: string, from: string, 
     );
     // UNION: one row per page and day, whichever source saw it.
     edited.push(
-      ...all<PageDay>(
+      ...await all<PageDay>(
         `SELECT e.page_id,e.day FROM (
            SELECT page_id,${sql.dayOf("created_at")} AS day FROM snapshots WHERE created_by=? AND created_at>=? AND created_at<? AND kind='auto'
            UNION SELECT resource_id,${sql.dayOf("created_at")} FROM audit WHERE actor_id=? AND created_at>=? AND created_at<? AND action IN (${actions.map(() => "?").join(",")})
@@ -146,25 +147,25 @@ export function activityDays(user: Identity, workspaceId: string, from: string, 
     );
   }
   // Only pages the person may still open.
-  const hidden = lockedPageIds(user, workspaceId);
+  const hidden = await lockedPageIds(user, workspaceId);
   const readable = new Map<string, boolean>();
-  const canRead = (pageId: string) => {
+  const canRead = async (pageId: string) => {
     if (!readable.has(pageId)) {
-      const page = hidden.has(pageId) ? undefined : one<Page>("SELECT * FROM pages WHERE id=?", pageId);
-      readable.set(pageId, !!page && !!pageRole(user, page));
+      const page = hidden.has(pageId) ? undefined : (await one<Page>("SELECT * FROM pages WHERE id=?", pageId));
+      readable.set(pageId, !!page && !!(await pageRole(user, page)));
     }
     return readable.get(pageId)!;
   };
-  const unique = (rows: PageDay[]) => {
+  const unique = async (rows: PageDay[]) => {
     const seen = new Set<string>();
-    return rows.filter((r) => {
+    return await filterAsync(rows, async (r) => {
       const key = `${r.page_id}|${r.day}`;
-      if (seen.has(key) || !canRead(r.page_id)) return false;
+      if (seen.has(key) || !(await canRead(r.page_id))) return false;
       seen.add(key);
       return true;
     });
   };
-  return { created: unique(created), edited: unique(edited) };
+  return { created: await unique(created), edited: await unique(edited) };
 }
 
 export type ActivityFigure = { total: number; previous: number; series: (number | null)[] };
@@ -174,10 +175,10 @@ export type MyActivity = PeriodRange & {
   edited: ActivityFigure;
 };
 
-export function myActivity(user: Identity, workspaceId: string, today: string, zone: string, period: ActivityPeriod): MyActivity {
+export async function myActivity(user: Identity, workspaceId: string, today: string, zone: string, period: ActivityPeriod): Promise<MyActivity> {
   const range = periodRange(today, period);
   const until = Temporal.PlainDate.from(range.today).add({ days: 1 }).toString();
-  const { created, edited } = activityDays(user, workspaceId, range.previousFrom, until, zone);
+  const { created, edited } = await activityDays(user, workspaceId, range.previousFrom, until, zone);
   const bucketOf = (day: string) => (range.unit === "month" ? day.slice(0, 7) : day);
   const now = bucketOf(range.today);
   const figure = (rows: PageDay[]): ActivityFigure => {

@@ -22,32 +22,32 @@ import type { Identity } from "../lib/types";
 
 async function person(name: string): Promise<Identity> {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name.toLowerCase()}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name.toLowerCase()}@example.test`);
   const token = randomBytes(16).toString("hex");
-  run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", createHash("sha256").update(token).digest("hex"), uid, "[]", Date.now() + 3600_000);
+  await run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", createHash("sha256").update(token).digest("hex"), uid, "[]", Date.now() + 3600_000);
   return (await identityFromToken(token))!;
 }
 const admin = { ...(await person("Ada")), isAdmin: true };
 const ben = await person("Ben");
-const wid = createWorkspace(admin.id, "Team");
-run("INSERT INTO members VALUES(?,?,?)", wid, ben.id, "editor");
-const space = one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid)!.id;
+const wid = await createWorkspace(admin.id, "Team");
+await run("INSERT INTO members VALUES(?,?,?)", wid, ben.id, "editor");
+const space = (await one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid))!.id;
 const mock = await startOllamaMock();
 after(() => mock.close());
-command(admin, {
+await command(admin, {
   action: "admin.ai",
   settings: { enabled: true, semanticSearch: true, provider: { kind: "ollama", baseUrl: mock.base, model: "chat", embeddingModel: "embed" } },
 });
-run("INSERT INTO ai_meta(key,value) VALUES('embed-config',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", `ollama|${mock.base.toLowerCase()}|embed`);
+await run("INSERT INTO ai_meta(key,value) VALUES('embed-config',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", `ollama|${mock.base.toLowerCase()}|embed`);
 
 const DIM = 256,
   VECTORS = 12_000;
 const pages: string[] = [];
-for (let i = 0; i < 40; i++) pages.push(createPage(wid, space, admin.id, `Seite ${i}`));
+for (let i = 0; i < 40; i++) pages.push(await createPage(wid, space, admin.id, `Seite ${i}`));
 const vector = (seed: number) => toVector(Array.from({ length: DIM }, (_, i) => Math.sin(seed * 31 + i)));
-transaction(() => {
+await transaction(async () => {
   for (let i = 0; i < VECTORS; i++)
-    run(
+    await run(
       "INSERT INTO ai_embeddings(page_id,row_id,chunk,workspace_id,hash,model,vector,created_at) VALUES(?,?,?,?,?,?,?,?)",
       pages[i % pages.length],
       "",

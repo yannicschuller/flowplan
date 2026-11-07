@@ -263,9 +263,9 @@ export function startPointerDrag(
     altKey: event.altKey,
     pointerType: event.pointerType,
   };
-  let preview: ReturnType<typeof makePreview> | null = null;
+  let preview: Awaited<ReturnType<typeof makePreview>> | null = null;
   let frame = 0;
-  let boxes: ReturnType<typeof scrollers> = { x: [], y: [] };
+  let boxes: Awaited<ReturnType<typeof scrollers>> = { x: [], y: [] };
   let timer = 0;
   let roamed = false;
 

@@ -11,6 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Identity, Space, Page, Field } from "../lib/types";
+import { mapAsync } from "../lib/each-async";
 process.env.FLOWPLAN_DATA_DIR = mkdtempSync(
   join(tmpdir(), "flowplan-space-copy-"),
 );
@@ -22,9 +23,9 @@ const { exportArchive, importArchive, readZip, writeZip } =
   await import("../lib/archive");
 const { relationPairs, validateRelationGraph } =
   await import("../lib/relation-sync");
-function user(): Identity {
+async function user(): Promise<Identity> {
   const uid = id();
-  run(
+  await run(
     "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
     uid,
     uid,
@@ -41,53 +42,53 @@ function user(): Identity {
     created_at: "",
   };
 }
-function act(actor: Identity, input: Record<string, unknown>): any {
-  return command(actor, input);
+async function act(actor: Identity, input: Record<string, unknown>): Promise<any> {
+  return await command(actor, input);
 }
-function fixture() {
-  const owner = user(),
-    editor = user(),
-    viewer = user(),
-    wid = createWorkspace(owner.id, "Copy checks");
-  run("INSERT INTO members VALUES(?,?,?)", wid, editor.id, "editor");
-  run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
-  const sid = act(owner, {
+async function fixture() {
+  const owner = await user(),
+    editor = await user(),
+    viewer = await user(),
+    wid = await createWorkspace(owner.id, "Copy checks");
+  await run("INSERT INTO members VALUES(?,?,?)", wid, editor.id, "editor");
+  await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
+  const sid = (await act(owner, {
     action: "space.create",
     workspaceId: wid,
     name: "Source",
     private: true,
     icon: "🧑🏽‍🚀",
     iconColor: "blue",
-  }).id;
-  const page = (title: string, kind = "document", parentId?: string) =>
-    act(owner, {
+  })).id;
+  const page = async (title: string, kind = "document", parentId?: string) =>
+    (await act(owner, {
       action: "page.create",
       workspaceId: wid,
       spaceId: sid,
       title,
       kind,
       parentId,
-    }).id as string;
-  const copy = (actor = owner, extra = {}) =>
-    act(actor, {
+    })).id as string;
+  const copy = async (actor = owner, extra = {}) =>
+    await act(actor, {
       action: "space.duplicate",
       spaceId: sid,
-      version: space(sid).version,
+      version: (await space(sid)).version,
       name: "Copied",
       visibility: "private",
       ...extra,
     });
   return { owner, editor, viewer, wid, sid, page, copy };
 }
-function space(sid: string) {
-  return one<Space>("SELECT * FROM spaces WHERE id=?", sid)!;
+async function space(sid: string) {
+  return (await one<Space>("SELECT * FROM spaces WHERE id=?", sid))!;
 }
-function upload(pid: string, actor: Identity) {
+async function upload(pid: string, actor: Identity) {
   const fid = id(),
     dir = join(process.env.FLOWPLAN_DATA_DIR!, "uploads");
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, fid), "Independent content " + fid);
-  run(
+  await run(
     "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
     fid,
     pid,
@@ -98,14 +99,14 @@ function upload(pid: string, actor: Identity) {
   );
   return fid;
 }
-function schema(
+async function schema(
   actor: Identity,
   pid: string,
   fields: Field[],
   relation?: unknown,
 ) {
-  const db = database(pid);
-  act(actor, {
+  const db = await database(pid);
+  await act(actor, {
     action: "database.update",
     pageId: pid,
     version: db.version,
@@ -115,10 +116,10 @@ function schema(
   });
 }
 
-test("space appearance validates values, protects roles and stale drafts, and preserves omitted appearance", () => {
-  const f = fixture();
-  assert.equal(space(f.sid).icon, "🧑🏽‍🚀");
-  assert.equal(space(f.sid).icon_color, "blue");
+test("space appearance validates values, protects roles and stale drafts, and preserves omitted appearance", async () => {
+  const f = await fixture();
+  assert.equal((await space(f.sid)).icon, "🧑🏽‍🚀");
+  assert.equal((await space(f.sid)).icon_color, "blue");
   const update = {
     action: "space.update",
     spaceId: f.sid,
@@ -128,59 +129,59 @@ test("space appearance validates values, protects roles and stale drafts, and pr
     icon: "🇩🇪",
     iconColor: "green",
   };
-  for (const actor of [f.editor, f.viewer, user()])
-    assert.throws(() => act(actor, update), /eigentümer/i);
+  for (const actor of [f.editor, f.viewer, await user()])
+    await assert.rejects(async () => await act(actor, update), /eigentümer/i);
   for (const value of ["url(test)", "", "BLUE"])
-    assert.throws(() => act(f.owner, { ...update, iconColor: value }));
-  assert.throws(() => act(f.owner, { ...update, icon: "a".repeat(31) }));
-  act(f.owner, update);
-  assert.throws(() => act(f.owner, update), /inzwischen/);
-  act(f.owner, {
+    await assert.rejects(async () => await act(f.owner, { ...update, iconColor: value }));
+  await assert.rejects(async () => await act(f.owner, { ...update, icon: "a".repeat(31) }));
+  await act(f.owner, update);
+  await assert.rejects(async () => await act(f.owner, update), /inzwischen/);
+  await act(f.owner, {
     action: "space.update",
     spaceId: f.sid,
     name: "Name only",
     private: true,
   });
-  assert.equal(space(f.sid).icon, "🇩🇪");
-  assert.equal(space(f.sid).icon_color, "green");
+  assert.equal((await space(f.sid)).icon, "🇩🇪");
+  assert.equal((await space(f.sid)).icon_color, "green");
   assert.equal(
-    bootstrap(f.owner, f.wid).spaces.find((s) => s.id === f.sid)?.icon_color,
+    (await bootstrap(f.owner, f.wid)).spaces.find((s) => s.id === f.sid)?.icon_color,
     "green",
   );
 });
 
-test("space copying remaps every root, nested pages, files, relations and views while preserving literal UUID text", () => {
-  const f = fixture(),
-    doc = f.page("Document"),
-    child = f.page("Child", "document", doc),
-    a = f.page("Tasks", "database"),
-    b = f.page("Projects", "database"),
-    trashed = f.page("Old trash");
-  const fid = upload(doc, f.owner);
-  schema(f.owner, a, [
+test("space copying remaps every root, nested pages, files, relations and views while preserving literal UUID text", async () => {
+  const f = await fixture(),
+    doc = await f.page("Document"),
+    child = await f.page("Child", "document", doc),
+    a = await f.page("Tasks", "database"),
+    b = await f.page("Projects", "database"),
+    trashed = await f.page("Old trash");
+  const fid = await upload(doc, f.owner);
+  await schema(f.owner, a, [
     { id: "title", name: "Text", type: "text" },
     { id: "links", name: "Projects", type: "relation", relationPage: b },
     { id: "file", name: "File", type: "files" },
   ]);
-  schema(f.owner, a, database(a).fields, {
+  await schema(f.owner, a, (await database(a)).fields, {
     fieldId: "links",
     enabled: true,
     name: "Tasks",
-    targetVersion: database(b).version,
+    targetVersion: (await database(b)).version,
   });
-  const pair = relationPairs(a)[0];
-  const rb = act(f.owner, {
+  const pair = (await relationPairs(a))[0];
+  const rb = (await act(f.owner, {
     action: "row.create",
     pageId: b,
     cells: { title: "Project" },
-  }).id;
-  const ra = act(f.owner, {
+  })).id;
+  const ra = (await act(f.owner, {
     action: "row.create",
     pageId: a,
     cells: { title: rb, links: [rb], file: `/api/files/${fid}` },
-  }).id;
-  const d = database(a);
-  act(f.owner, {
+  })).id;
+  const d = await database(a);
+  await act(f.owner, {
     action: "database.update",
     pageId: a,
     version: d.version,
@@ -203,25 +204,25 @@ test("space copying remaps every root, nested pages, files, relations and views 
     ],
   });
   const blockId = id(),
-    linkedViews = JSON.stringify(database(a).views)
+    linkedViews = JSON.stringify((await database(a)).views)
       .replaceAll("&", "&amp;")
       .replaceAll('"', "&quot;");
-  run(
+  await run(
     "UPDATE documents SET html=? WHERE page_id=?",
     `<p>${b} <a href="/#page=${b}">Project database</a><a href="/api/files/${fid}">File</a></p><div data-linked-database="${blockId}" data-linked-source="${a}" data-linked-version="1" data-linked-views="${linkedViews}">Linked</div>`,
     doc,
   );
-  run(
+  await run(
     "UPDATE pages SET cover=?,cover_position=23,locked=1 WHERE id=?",
     `/api/files/${fid}`,
     doc,
   );
-  run(
+  await run(
     "UPDATE rows SET content=? WHERE id=?",
     `<p>Row <a href="/#page=${child}">Child</a></p>`,
     ra,
   );
-  run(
+  await run(
     "INSERT INTO row_templates(id,page_id,name,cells,html,is_default,created_by) VALUES(?,?,?,?,?,1,?)",
     id(),
     a,
@@ -230,7 +231,7 @@ test("space copying remaps every root, nested pages, files, relations and views 
     `<p>${ra}</p>`,
     f.owner.id,
   );
-  act(f.owner, {
+  await act(f.owner, {
     action: "form.update",
     pageId: a,
     enabled: true,
@@ -243,26 +244,26 @@ test("space copying remaps every root, nested pages, files, relations and views 
       requiredFields: ["title"],
     },
   });
-  act(f.owner, { action: "page.publish", pageId: b, enabled: true });
-  act(f.owner, {
+  await act(f.owner, { action: "page.publish", pageId: b, enabled: true });
+  await act(f.owner, {
     action: "share.create",
     pageId: child,
     name: "Guest",
     role: "editor",
   });
-  act(f.owner, { action: "page.delete", pageId: trashed });
-  const copy = f.copy();
+  await act(f.owner, { action: "page.delete", pageId: trashed });
+  const copy = await f.copy();
   assert.equal(copy.pages, 4);
-  assert.equal(space(copy.id).icon, "🧑🏽‍🚀");
-  assert.equal(space(copy.id).icon_color, "blue");
-  const copied = all<Page>("SELECT * FROM pages WHERE space_id=?", copy.id);
+  assert.equal((await space(copy.id)).icon, "🧑🏽‍🚀");
+  assert.equal((await space(copy.id)).icon_color, "blue");
+  const copied = await all<Page>("SELECT * FROM pages WHERE space_id=?", copy.id);
   const next = (title: string) => copied.find((p) => p.title === title)!;
   assert.equal(next("Child").parent_id, next("Document").id);
   assert.equal(next("Tasks").parent_id, null);
-  const copiedFile = one<{ id: string }>(
+  const copiedFile = (await one<{ id: string }>(
     "SELECT id FROM files WHERE page_id=?",
     next("Document").id,
-  )!.id;
+  ))!.id;
   assert.notEqual(copiedFile, fid);
   assert.equal(
     readFileSync(
@@ -272,7 +273,7 @@ test("space copying remaps every root, nested pages, files, relations and views 
     "Independent content " + fid,
   );
   const html = String(
-    one("SELECT html FROM documents WHERE page_id=?", next("Document").id)!
+    (await one("SELECT html FROM documents WHERE page_id=?", next("Document").id))!
       .html,
   );
   assert.ok(html.includes(b)); // literal text is retained
@@ -280,9 +281,9 @@ test("space copying remaps every root, nested pages, files, relations and views 
   assert.ok(html.includes(`/api/files/${copiedFile}`));
   assert.equal(next("Document").cover, `/api/files/${copiedFile}`);
   assert.equal(next("Document").cover_position, 23);
-  const ca = rows(next("Tasks").id)[0],
-    cb = rows(next("Projects").id)[0],
-    cdb = database(next("Tasks").id);
+  const ca = (await rows(next("Tasks").id))[0],
+    cb = (await rows(next("Projects").id))[0],
+    cdb = await database(next("Tasks").id);
   assert.equal(ca.cells.title, rb);
   assert.deepEqual(ca.cells.links, [cb.id]);
   assert.equal(ca.cells.file, `/api/files/${copiedFile}`);
@@ -291,7 +292,7 @@ test("space copying remaps every root, nested pages, files, relations and views 
     cdb.fields.find((field) => field.id === "links")?.relationPage,
     next("Projects").id,
   );
-  const linked = linkedDatabaseData(f.owner, next("Document").id, blockId);
+  const linked = await linkedDatabaseData(f.owner, next("Document").id, blockId);
   assert.equal(linked.page.id, next("Tasks").id);
   assert.equal(linked.database.views[0].filters[0].value, cb.id);
   assert.equal(linked.database.views[0].name, rb);
@@ -302,56 +303,56 @@ test("space copying remaps every root, nested pages, files, relations and views 
     JSON.stringify(cb.id),
   ]);
   assert.deepEqual(cb.cells[pair.right_field], [ca.id]);
-  assert.equal(relationPairs(next("Tasks").id).length, 1);
+  assert.equal((await relationPairs(next("Tasks").id)).length, 1);
   validateRelationGraph(
-    relationPairs(next("Tasks").id),
+    await relationPairs(next("Tasks").id),
     new Map(
-      [next("Tasks").id, next("Projects").id].map((pid) => [
+      await mapAsync([next("Tasks").id, next("Projects").id], async (pid) => [
         pid,
-        { fields: database(pid).fields, rows: rows(pid) },
+        { fields: (await database(pid)).fields, rows: await rows(pid) },
       ]),
     ),
   );
-  const template = one<{ cells: string; html: string }>(
+  const template = (await one<{ cells: string; html: string }>(
     "SELECT cells,html FROM row_templates WHERE page_id=?",
     next("Tasks").id,
-  )!;
+  ))!;
   assert.deepEqual(JSON.parse(template.cells), { title: rb, links: [cb.id] });
   assert.ok(template.html.includes(ra));
-  const form = one<{ enabled: number; config: string; token: string }>(
+  const form = (await one<{ enabled: number; config: string; token: string }>(
     "SELECT * FROM forms WHERE page_id=?",
     next("Tasks").id,
-  )!;
+  ))!;
   assert.equal(form.enabled, 0);
   assert.equal(JSON.parse(form.config).title, "Copied form");
   assert.notEqual(
     form.token,
-    one("SELECT token FROM forms WHERE page_id=?", a)?.token,
+    (await one("SELECT token FROM forms WHERE page_id=?", a))?.token,
   );
   for (const page of copied) {
     assert.equal(page.public_token, null);
     assert.equal(
-      all("SELECT * FROM grants WHERE resource_id=?", page.id).length,
+      (await all("SELECT * FROM grants WHERE resource_id=?", page.id)).length,
       0,
     );
     assert.equal(
-      all("SELECT * FROM share_links WHERE root_id=?", page.id).length,
+      (await all("SELECT * FROM share_links WHERE root_id=?", page.id)).length,
       0,
     );
     assert.equal(
-      all("SELECT * FROM snapshots WHERE page_id=?", page.id).length,
+      (await all("SELECT * FROM snapshots WHERE page_id=?", page.id)).length,
       0,
     );
   }
-  act(f.owner, {
+  await act(f.owner, {
     action: "row.update",
     pageId: next("Tasks").id,
     rowId: ca.id,
     version: ca.version,
     cells: { links: [] },
   });
-  assert.deepEqual(rows(next("Projects").id)[0].cells[pair.right_field], []);
-  assert.deepEqual(rows(a)[0].cells.links, [rb]);
+  assert.deepEqual((await rows(next("Projects").id))[0].cells[pair.right_field], []);
+  assert.deepEqual((await rows(a))[0].cells.links, [rb]);
   unlinkSync(join(process.env.FLOWPLAN_DATA_DIR!, "uploads", fid));
   assert.ok(
     readFileSync(join(process.env.FLOWPLAN_DATA_DIR!, "uploads", copiedFile))
@@ -359,70 +360,70 @@ test("space copying remaps every root, nested pages, files, relations and views 
   );
 });
 
-test("duplication enforces private content access, ownership, versions and trash, and supports empty spaces", () => {
-  const f = fixture();
-  for (const actor of [f.editor, f.viewer, user()])
-    assert.throws(() => f.copy(actor), /eigentümer/i);
-  run("UPDATE spaces SET owner_id=? WHERE id=?", f.editor.id, f.sid);
-  assert.throws(() => f.copy(f.owner), /Zugriff/); // workspace admin metadata is not content access
-  const clone = f.copy(f.editor, { visibility: "team" });
+test("duplication enforces private content access, ownership, versions and trash, and supports empty spaces", async () => {
+  const f = await fixture();
+  for (const actor of [f.editor, f.viewer, await user()])
+    await assert.rejects(async () => await f.copy(actor), /eigentümer/i);
+  await run("UPDATE spaces SET owner_id=? WHERE id=?", f.editor.id, f.sid);
+  await assert.rejects(async () => await f.copy(f.owner), /Zugriff/); // workspace admin metadata is not content access
+  const clone = await f.copy(f.editor, { visibility: "team" });
   assert.equal(clone.pages, 0);
-  assert.equal(space(clone.id).owner_id, f.editor.id);
-  assert.equal(space(clone.id).visibility, "team");
-  assert.throws(() => f.copy(f.editor, { version: 0 }));
-  assert.throws(() => f.copy(f.editor, { version: 2 }), /inzwischen/);
-  assert.throws(() => f.copy(f.editor, { visibility: "public" }));
-  assert.throws(() => f.copy(f.editor, { name: "   " }));
-  run(
+  assert.equal((await space(clone.id)).owner_id, f.editor.id);
+  assert.equal((await space(clone.id)).visibility, "team");
+  await assert.rejects(async () => await f.copy(f.editor, { version: 0 }));
+  await assert.rejects(async () => await f.copy(f.editor, { version: 2 }), /inzwischen/);
+  await assert.rejects(async () => await f.copy(f.editor, { visibility: "public" }));
+  await assert.rejects(async () => await f.copy(f.editor, { name: "   " }));
+  await run(
     "UPDATE members SET role='viewer' WHERE workspace_id=? AND user_id=?",
     f.wid,
     f.editor.id,
   );
-  assert.throws(() => f.copy(f.editor), /eigentümer/i);
-  run(
+  await assert.rejects(async () => await f.copy(f.editor), /eigentümer/i);
+  await run(
     "UPDATE members SET role='editor' WHERE workspace_id=? AND user_id=?",
     f.wid,
     f.editor.id,
   );
-  act(f.editor, {
+  await act(f.editor, {
     action: "space.delete",
     spaceId: f.sid,
     version: 1,
     confirmName: "Source",
   });
-  assert.throws(() => f.copy(f.editor), /wiederherstellen/);
+  await assert.rejects(async () => await f.copy(f.editor), /wiederherstellen/);
 });
 
-test("failed or rolled-back space copies remove all new metadata and physical files", () => {
-  const f = fixture(),
-    doc = f.page("Uploads"),
-    first = upload(doc, f.owner),
-    missing = upload(doc, f.owner);
+test("failed or rolled-back space copies remove all new metadata and physical files", async () => {
+  const f = await fixture(),
+    doc = await f.page("Uploads"),
+    first = await upload(doc, f.owner),
+    missing = await upload(doc, f.owner);
   const dir = join(process.env.FLOWPLAN_DATA_DIR!, "uploads");
   unlinkSync(join(dir, missing));
   const beforeFiles = readdirSync(dir).sort(),
-    beforeSpaces = all("SELECT id FROM spaces WHERE workspace_id=?", f.wid),
-    beforePages = all("SELECT id FROM pages WHERE workspace_id=?", f.wid);
-  assert.throws(() => f.copy(), /ENOENT/);
+    beforeSpaces = await all("SELECT id FROM spaces WHERE workspace_id=?", f.wid),
+    beforePages = await all("SELECT id FROM pages WHERE workspace_id=?", f.wid);
+  await assert.rejects(async () => await f.copy(), /ENOENT/);
   assert.deepEqual(readdirSync(dir).sort(), beforeFiles);
   assert.deepEqual(
-    all("SELECT id FROM spaces WHERE workspace_id=?", f.wid),
+    await all("SELECT id FROM spaces WHERE workspace_id=?", f.wid),
     beforeSpaces,
   );
   assert.deepEqual(
-    all("SELECT id FROM pages WHERE workspace_id=?", f.wid),
+    await all("SELECT id FROM pages WHERE workspace_id=?", f.wid),
     beforePages,
   );
-  run("DELETE FROM files WHERE id=?", missing);
-  assert.throws(
-    () =>
-      transaction(() => {
-        command(
+  await run("DELETE FROM files WHERE id=?", missing);
+  await assert.rejects(
+    async () =>
+      await transaction(async () => {
+        await command(
           f.owner,
           {
             action: "space.duplicate",
             spaceId: f.sid,
-            version: space(f.sid).version,
+            version: (await space(f.sid)).version,
             name: "Rollback copy",
             visibility: "private",
           },
@@ -434,22 +435,22 @@ test("failed or rolled-back space copies remove all new metadata and physical fi
   );
   assert.deepEqual(readdirSync(dir).sort(), beforeFiles);
   assert.deepEqual(
-    all("SELECT id FROM spaces WHERE workspace_id=?", f.wid),
+    await all("SELECT id FROM spaces WHERE workspace_id=?", f.wid),
     beforeSpaces,
   );
   assert.ok(readFileSync(join(dir, first)).length);
 });
 
 test("space icon and color survive archive restoration; legacy archives default to no background", async () => {
-  const f = fixture();
-  f.page("Archived");
+  const f = await fixture();
+  await f.page("Archived");
   const bytes = await exportArchive(f.owner, f.wid),
-    destination = createWorkspace(f.owner.id, "Destination");
+    destination = await createWorkspace(f.owner.id, "Destination");
   const result = await importArchive(f.owner, destination, bytes);
-  const copied = all<Space>(
+  const copied = (await all<Space>(
     "SELECT * FROM spaces WHERE workspace_id=?",
     destination,
-  ).find((s) => s.name === "Source (Import)")!;
+  )).find((s) => s.name === "Source (Import)")!;
   assert.ok(result.spaces.some((sid) => sid === copied.id));
   assert.equal(copied.icon, "🧑🏽‍🚀");
   assert.equal(copied.icon_color, "blue");
@@ -458,13 +459,13 @@ test("space icon and color survive archive restoration; legacy archives default 
   const manifest = JSON.parse(entries.get(manifestKey)!.toString());
   for (const space of manifest.spaces) delete space.icon_color;
   entries.set(manifestKey, Buffer.from(JSON.stringify(manifest)));
-  const legacyDestination = createWorkspace(f.owner.id, "Legacy");
+  const legacyDestination = await createWorkspace(f.owner.id, "Legacy");
   await importArchive(f.owner, legacyDestination, await writeZip(entries));
   assert.equal(
-    all<Space>(
+    (await all<Space>(
       "SELECT * FROM spaces WHERE workspace_id=?",
       legacyDestination,
-    ).find((s) => s.name === "Source (Import)")?.icon_color,
+    )).find((s) => s.name === "Source (Import)")?.icon_color,
     "none",
   );
 });

@@ -60,18 +60,18 @@ const state = globalThis as unknown as {
 /* ---------- Addresses: network and keyed hash ---------- */
 
 // A secret of this instance for the hashes, made once.
-function pepper() {
+async function pepper() {
   if (state.flowplanSecurityPepper) return state.flowplanSecurityPepper;
-  const read = () => one<{ value: string }>("SELECT value FROM instance_settings WHERE key='securityPepper'")?.value;
-  let value = read();
+  const read = async () => (await one<{ value: string }>("SELECT value FROM instance_settings WHERE key='securityPepper'"))?.value;
+  let value = await read();
   if (!value) {
-    run("INSERT INTO instance_settings(key,value) VALUES('securityPepper',?) ON CONFLICT DO NOTHING", JSON.stringify(randomBytes(32).toString("hex")));
-    value = read();
+    await run("INSERT INTO instance_settings(key,value) VALUES('securityPepper',?) ON CONFLICT DO NOTHING", JSON.stringify(randomBytes(32).toString("hex")));
+    value = await read();
   }
   return (state.flowplanSecurityPepper = JSON.parse(value || '""') as string);
 }
-const keyed = (purpose: string, value: string) =>
-  createHmac("sha256", pepper()).update(`${purpose}:${value}`).digest("hex").slice(0, 32);
+const keyed = async (purpose: string, value: string) =>
+  createHmac("sha256", await pepper()).update(`${purpose}:${value}`).digest("hex").slice(0, 32);
 
 // "::ffff:203.0.113.7" → "203.0.113.7"; anything that is no address → "".
 export function normalAddress(address: string) {
@@ -92,9 +92,9 @@ export function networkOf(address: string) {
     .map((g) => g.replace(/^0+(?=.)/, ""))
     .join(":")}::/48`;
 }
-export const addressHash = (address: string) => {
+export const addressHash = async (address: string) => {
   const ip = normalAddress(address);
-  return ip ? keyed("address", ip) : "";
+  return ip ? (await keyed("address", ip)) : "";
 };
 // "maria@example.com" → "ma***@example.com"; names keep two letters.
 export function maskSubject(subject: string) {
@@ -103,7 +103,7 @@ export function maskSubject(subject: string) {
   if (at > 0) return `${value.slice(0, Math.min(2, at))}***${value.slice(at)}`;
   return value.length > 2 ? `${value.slice(0, 2)}***` : "***";
 }
-export const subjectHash = (subject: string) => (subject.trim() ? keyed("subject", subject.trim().toLowerCase()) : "");
+export const subjectHash = async (subject: string) => (subject.trim() ? (await keyed("subject", subject.trim().toLowerCase())) : "");
 
 // The country of the request, when the proxy in front says it
 // (FLOWPLAN_COUNTRY_HEADER, e.g. CF-IPCountry) – never from the client.
@@ -126,7 +126,7 @@ export function requestContext(h: Headers): Context {
 // write waits until it has ended (afterTransaction).
 export function securityEvent(kind: SecurityKind, input: SecurityInput = {}) {
   const at = input.at ?? Date.now();
-  const later = (context: Context) => queueMicrotask(() => afterTransaction(() => write(kind, { ...input, at }, context)));
+  const later = (context: Context) => queueMicrotask(() => afterTransaction(async () => await write(kind, { ...input, at }, context)));
   if (input.headers) return later({ ...requestContext(input.headers), ...(input.address !== undefined ? { address: input.address } : {}) });
   if (input.address !== undefined) return later({ ...NONE, address: input.address });
   // Inside a request: its address and device; elsewhere (workers, tests) none.
@@ -136,21 +136,21 @@ export function securityEvent(kind: SecurityKind, input: SecurityInput = {}) {
   } catch {}
   if (!pending) return later(NONE);
   pending.then(
-    (h) => afterTransaction(() => write(kind, { ...input, at }, requestContext(h))),
-    () => afterTransaction(() => write(kind, { ...input, at }, NONE)),
+    (h) => afterTransaction(async () => await write(kind, { ...input, at }, requestContext(h))),
+    () => afterTransaction(async () => await write(kind, { ...input, at }, NONE)),
   );
 }
 
-function write(kind: SecurityKind, input: SecurityInput, context: Context) {
+async function write(kind: SecurityKind, input: SecurityInput, context: Context) {
   const event: Omit<SecurityEvent, "id"> = {
     at: input.at ?? Date.now(),
     kind,
     severity: input.severity ?? securityKinds[kind].severity,
     actorId: input.actorId || null,
     subject: input.subject ? maskSubject(input.subject) : "",
-    subjectKey: input.subject ? subjectHash(input.subject) : "",
+    subjectKey: input.subject ? (await subjectHash(input.subject)) : "",
     network: networkOf(context.address),
-    addressKey: addressHash(context.address),
+    addressKey: await addressHash(context.address),
     country: context.country,
     device: context.agent ? deviceLabel(context.agent) : "",
     detail: (input.detail || "").replace(/\s+/g, " ").trim().slice(0, 500),
@@ -158,7 +158,7 @@ function write(kind: SecurityKind, input: SecurityInput, context: Context) {
   let rowId = 0;
   try {
     rowId = Number(
-      one<{ id: number }>(
+      (await one<{ id: number }>(
         "INSERT INTO security_events(at,kind,severity,actor_id,subject,subject_key,network,address_key,country,device,detail) VALUES(?,?,?,?,?,?,?,?,?,?,?) RETURNING id",
         event.at,
         event.kind,
@@ -171,7 +171,7 @@ function write(kind: SecurityKind, input: SecurityInput, context: Context) {
         event.country,
         event.device,
         event.detail,
-      )!.id,
+      ))!.id,
     );
   } catch (error) {
     console.error("Security event not stored", error);
@@ -183,7 +183,7 @@ function write(kind: SecurityKind, input: SecurityInput, context: Context) {
   logLine(event, normalAddress(context.address));
   exportOtlp(event, normalAddress(context.address));
   try {
-    detectSecurity({ ...event, id: rowId });
+    await detectSecurity({ ...event, id: rowId });
   } catch (error) {
     console.error("Security detection failed", error);
   }
@@ -311,10 +311,10 @@ export function noteDangerousHtml(html: string, input: { actorId?: string | null
 
 /* ---------- Blocked addresses and networks ---------- */
 
-function blocks(now = Date.now()) {
+async function blocks(now = Date.now()) {
   const cached = state.flowplanSecurityBlocks;
   if (cached && now - cached.at < 15_000) return cached;
-  const rows = all<{ kind: string; value: string }>("SELECT kind,value FROM security_blocks WHERE until IS NULL OR until>?", now);
+  const rows = await all<{ kind: string; value: string }>("SELECT kind,value FROM security_blocks WHERE until IS NULL OR until>?", now);
   return (state.flowplanSecurityBlocks = {
     at: now,
     addresses: new Set(rows.filter((r) => r.kind === "address").map((r) => r.value)),
@@ -325,26 +325,26 @@ export function invalidateSecurityBlocks() {
   state.flowplanSecurityBlocks = undefined;
 }
 // Whether the administrators blocked this address or its network.
-export function blockedAddress(address: string, now = Date.now()) {
+export async function blockedAddress(address: string, now = Date.now()) {
   const ip = normalAddress(address);
   if (!ip) return false;
   let current;
   try {
-    current = blocks(now);
+    current = await blocks(now);
   } catch {
     return false;
   }
   if (!current.addresses.size && !current.networks.size) return false;
-  return current.addresses.has(addressHash(ip)) || current.networks.has(networkOf(ip));
+  return current.addresses.has(await addressHash(ip)) || current.networks.has(networkOf(ip));
 }
 
 // A request from a blocked address: counts as not signed in. Recorded once
 // a minute per address, not for every request.
 const lastBlockedLog = new Map<string, number>();
-export function blockedRequest(h: Headers, now = Date.now()) {
+export async function blockedRequest(h: Headers, now = Date.now()) {
   const address = clientAddress(h);
-  if (!blockedAddress(address, now)) return false;
-  const key = addressHash(address);
+  if (!(await blockedAddress(address, now))) return false;
+  const key = await addressHash(address);
   if (now - (lastBlockedLog.get(key) || 0) >= 60_000) {
     if (lastBlockedLog.size > 5000) lastBlockedLog.clear();
     lastBlockedLog.set(key, now);
@@ -359,11 +359,11 @@ export function securityRetentionDays() {
   const days = Number.parseInt(process.env.FLOWPLAN_SECURITY_RETENTION_DAYS || "", 10);
   return Number.isFinite(days) && days >= 7 ? Math.min(days, 3650) : 90;
 }
-export function sweepSecurityEvents(now = Date.now()) {
+export async function sweepSecurityEvents(now = Date.now()) {
   const day = 86_400_000;
-  run("DELETE FROM security_events WHERE at<?", now - securityRetentionDays() * day);
-  run("DELETE FROM security_incidents WHERE resolved_at IS NOT NULL AND last_at<?", now - Math.max(365, securityRetentionDays()) * day);
-  if (run("DELETE FROM security_blocks WHERE until IS NOT NULL AND until<=?", now).changes) invalidateSecurityBlocks();
+  await run("DELETE FROM security_events WHERE at<?", now - securityRetentionDays() * day);
+  await run("DELETE FROM security_incidents WHERE resolved_at IS NOT NULL AND last_at<?", now - Math.max(365, securityRetentionDays()) * day);
+  if ((await run("DELETE FROM security_blocks WHERE until IS NOT NULL AND until<=?", now)).changes) invalidateSecurityBlocks();
 }
 
 /* ---------- From the activity log ---------- */

@@ -27,20 +27,20 @@ export function recordOpsEvent(kind: OpsEventKind, at = Date.now()) {
 
 // The last run of a background worker and its last error (kept until a
 // later run succeeds, with the time it happened).
-export function noteWorkerRun(name: string, error?: unknown, at = Date.now()) {
+export async function noteWorkerRun(name: string, error?: unknown, at = Date.now()) {
   // Frequent workers (every few seconds) write a success once a minute.
   const written = (state.flowplanOpsWorkers ??= new Map());
   if (error === undefined && at - (written.get(name) ?? -Infinity) < 60_000) return;
   written.set(name, error === undefined ? at : -Infinity);
   try {
     if (error === undefined)
-      run(
+      await run(
         "INSERT INTO ops_workers(name,last_run) VALUES(?,?) ON CONFLICT(name) DO UPDATE SET last_run=excluded.last_run,last_error=NULL,error_at=NULL",
         name,
         at,
       );
     else
-      run(
+      await run(
         "INSERT INTO ops_workers(name,last_run,last_error,error_at) VALUES(?,?,?,?) ON CONFLICT(name) DO UPDATE SET last_run=excluded.last_run,last_error=excluded.last_error,error_at=excluded.error_at",
         name,
         at,
@@ -52,12 +52,12 @@ export function noteWorkerRun(name: string, error?: unknown, at = Date.now()) {
   }
 }
 
-export function flushOpsEvents() {
+export async function flushOpsEvents() {
   state.flowplanOpsFlush = false;
   const pending = state.flowplanOpsPending?.splice(0) || [];
   for (const event of pending)
     try {
-      run("INSERT INTO ops_events(kind,at) VALUES(?,?)", event.kind, event.at);
+      await run("INSERT INTO ops_events(kind,at) VALUES(?,?)", event.kind, event.at);
     } catch {
       // Counting must never break the request that was refused.
     }

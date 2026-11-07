@@ -141,7 +141,7 @@ export { aiJson, extractJson } from "./json";
 // Vectors for the texts with the person's provider (rate-limited like a
 // prompt), or null without embedding support.
 export async function embedTexts(user: Identity, feature: AiFeature, texts: string[], options: AiRunOptions = {}) {
-  const resolved = requireAi(user, feature, options);
+  const resolved = await requireAi(user, feature, options);
   limitAi(user.id);
   return embed(resolved.config, texts, options.signal);
 }

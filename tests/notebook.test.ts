@@ -33,23 +33,23 @@ const { exportPrintHtml } = await import("../lib/export-pdf");
 const { readExportZip } = await import("./helpers/read-export-zip");
 const { withInkPictures } = await import("../lib/ink-export");
 
-function account(name: string) {
+async function account(name: string) {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
   return { id: uid, name, email: `${name}@example.test`, groups: [], isAdmin: false, disabled: 0, created_at: "" } as Identity;
 }
-const owner = account("nb-owner"),
-  editor = account("nb-editor"),
-  viewer = account("nb-viewer"),
-  stranger = account("nb-stranger");
-const wid = createWorkspace(owner.id, "Hefte");
-run("INSERT INTO members VALUES(?,?,?)", wid, editor.id, "editor");
-run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
-const team = bootstrap(owner, wid).spaces[0].id;
-const create = (title: string, kind = "notebook") =>
-  (command(owner, { action: "page.create", workspaceId: wid, spaceId: team, title, kind }) as { id: string }).id;
+const owner = await account("nb-owner"),
+  editor = await account("nb-editor"),
+  viewer = await account("nb-viewer"),
+  stranger = await account("nb-stranger");
+const wid = await createWorkspace(owner.id, "Hefte");
+await run("INSERT INTO members VALUES(?,?,?)", wid, editor.id, "editor");
+await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
+const team = (await bootstrap(owner, wid)).spaces[0].id;
+const create = async (title: string, kind = "notebook") =>
+  ((await command(owner, { action: "page.create", workspaceId: wid, spaceId: team, title, kind })) as { id: string }).id;
 type Sheets = { sheets: { id: string; position: number; paper: Record<string, string>; background: unknown }[]; created?: string[] };
-const nb = (user: Identity, data: Record<string, unknown>) => command(user, data) as Sheets;
+const nb = async (user: Identity, data: Record<string, unknown>) => (await command(user, data)) as Sheets;
 const pen = (n: number, extra: Partial<{ color: string }> = {}) => ({
   id: `s${n}`,
   type: "pen" as const,
@@ -65,7 +65,7 @@ test("paper templates: ruling, grid, dots, Cornell and staves stay on the sheet"
   const a4 = paper.paperSize({ size: "a4", orientation: "portrait" });
   assert.deepEqual(a4, { width: 595.28, height: 841.89 });
   assert.deepEqual(paper.paperSize({ size: "letter", orientation: "landscape" }), { width: 792, height: 612 });
-  const inside = (layout: ReturnType<typeof paper.paperLayout>) =>
+  const inside = (layout: Awaited<ReturnType<typeof paper.paperLayout>>) =>
     layout.shapes.every((s) =>
       s.type === "line"
         ? [s.x1, s.x2].every((x) => x >= 0 && x <= layout.width + 0.01) && [s.y1, s.y2].every((y) => y >= 0 && y <= layout.height + 0.01)
@@ -135,16 +135,16 @@ test("sheet order: insert after, move, same set", () => {
 
 // ---- Storage ----
 
-test("schema: notebook tables and the recognised text of PDF ink exist", () => {
+test("schema: notebook tables and the recognised text of PDF ink exist", async () => {
   for (const table of ["notebooks", "notebook_sheets", "page_ink", "page_ink_versions"])
-    assert.ok(tableNames().includes(table), table);
-  const columns = tableColumns("file_ink");
+    assert.ok((await tableNames()).includes(table), table);
+  const columns = await tableColumns("file_ink");
   assert.ok(columns.includes("recognized"));
 });
 
-test("a new notebook has one sheet; sheets are added, duplicated, reordered, re-papered and deleted", () => {
-  const pid = create("Physik");
-  const data = pageData(owner, pid) as { notebook: ReturnType<typeof notebookData>; page: { kind: string; icon: string } };
+test("a new notebook has one sheet; sheets are added, duplicated, reordered, re-papered and deleted", async () => {
+  const pid = await create("Physik");
+  const data = (await pageData(owner, pid)) as { notebook: Awaited<ReturnType<typeof notebookData>>; page: { kind: string; icon: string } };
   assert.equal(data.page.kind, "notebook");
   assert.equal(data.page.icon, "notebook");
   assert.equal(data.notebook.sheets.length, 1);
@@ -152,84 +152,84 @@ test("a new notebook has one sheet; sheets are added, duplicated, reordered, re-
   assert.equal(data.notebook.canEdit, true);
   const [first] = data.notebook.sheets;
 
-  const added = nb(editor, { action: "notebook.sheet.add", pageId: pid, after: null, paper: { template: "grid" } });
+  const added = await nb(editor, { action: "notebook.sheet.add", pageId: pid, after: null, paper: { template: "grid" } });
   const second = added.created![0];
   assert.deepEqual(added.sheets.map((s) => s.id), [first.id, second]);
   assert.deepEqual(added.sheets[1].paper, { template: "grid" });
   // After the first: between them.
-  const third = nb(owner, { action: "notebook.sheet.add", pageId: pid, after: first.id }).created![0];
-  assert.deepEqual(notebookSheets(pid).map((s) => s.id), [first.id, third, second]);
+  const third = (await nb(owner, { action: "notebook.sheet.add", pageId: pid, after: first.id })).created![0];
+  assert.deepEqual((await notebookSheets(pid)).map((s) => s.id), [first.id, third, second]);
 
   // Ink on the first, then a duplicate carries it.
-  store.writeSurface(pid, first.id, on(first.id, pen(1)), "", owner.id);
-  const dup = nb(owner, { action: "notebook.sheet.duplicate", pageId: pid, sheetId: first.id }) as Sheets & { ink: Record<string, { doc: { pages: Record<string, unknown[]> } }> };
+  await store.writeSurface(pid, first.id, on(first.id, pen(1)), "", owner.id);
+  const dup = (await nb(owner, { action: "notebook.sheet.duplicate", pageId: pid, sheetId: first.id })) as Sheets & { ink: Record<string, { doc: { pages: Record<string, unknown[]> } }> };
   const copy = dup.created![0];
   assert.deepEqual(dup.sheets.map((s) => s.id), [first.id, copy, third, second]);
   assert.equal(dup.ink[copy].doc.pages[copy].length, 1);
-  assert.equal(store.readPageInk(viewer, pid, copy).doc.pages[copy].length, 1);
+  assert.equal((await store.readPageInk(viewer, pid, copy)).doc.pages[copy].length, 1);
 
-  nb(owner, { action: "notebook.sheet.move", pageId: pid, order: [second, first.id, copy, third] });
-  assert.deepEqual(notebookSheets(pid).map((s) => s.id), [second, first.id, copy, third]);
+  await nb(owner, { action: "notebook.sheet.move", pageId: pid, order: [second, first.id, copy, third] });
+  assert.deepEqual((await notebookSheets(pid)).map((s) => s.id), [second, first.id, copy, third]);
   // Only a reorder of the same sheets.
-  assert.throws(() => nb(owner, { action: "notebook.sheet.move", pageId: pid, order: [second, first.id] }), { status: 409 });
+  await assert.rejects(async () => await nb(owner, { action: "notebook.sheet.move", pageId: pid, order: [second, first.id] }), { status: 409 });
 
-  nb(owner, { action: "notebook.sheet.paper", pageId: pid, sheetIds: [third], paper: { template: "music", orientation: "landscape" } });
-  assert.deepEqual(notebookSheets(pid).find((s) => s.id === third)!.paper, { template: "music", orientation: "landscape" });
-  nb(owner, { action: "notebook.sheet.paper", pageId: pid, sheetIds: [third], paper: null });
-  assert.deepEqual(notebookSheets(pid).find((s) => s.id === third)!.paper, {});
-  nb(owner, { action: "notebook.paper", pageId: pid, paper: { color: "dark", template: "dotted" }, all: true });
-  assert.equal((pageData(owner, pid) as { notebook: { paper: { color: string } } }).notebook.paper.color, "dark");
-  assert.deepEqual(notebookSheets(pid).find((s) => s.id === second)!.paper, {}, "for all sheets");
+  await nb(owner, { action: "notebook.sheet.paper", pageId: pid, sheetIds: [third], paper: { template: "music", orientation: "landscape" } });
+  assert.deepEqual((await notebookSheets(pid)).find((s) => s.id === third)!.paper, { template: "music", orientation: "landscape" });
+  await nb(owner, { action: "notebook.sheet.paper", pageId: pid, sheetIds: [third], paper: null });
+  assert.deepEqual((await notebookSheets(pid)).find((s) => s.id === third)!.paper, {});
+  await nb(owner, { action: "notebook.paper", pageId: pid, paper: { color: "dark", template: "dotted" }, all: true });
+  assert.equal(((await pageData(owner, pid)) as { notebook: { paper: { color: string } } }).notebook.paper.color, "dark");
+  assert.deepEqual((await notebookSheets(pid)).find((s) => s.id === second)!.paper, {}, "for all sheets");
 
-  nb(owner, { action: "notebook.sheet.delete", pageId: pid, sheetId: copy });
-  assert.equal(notebookSheets(pid).length, 3);
-  assert.equal(one("SELECT 1 FROM page_ink WHERE surface=?", copy), undefined, "its ink goes with it");
-  assert.deepEqual(notebookSheets(pid).map((s) => s.position), [0, 1, 2]);
+  await nb(owner, { action: "notebook.sheet.delete", pageId: pid, sheetId: copy });
+  assert.equal((await notebookSheets(pid)).length, 3);
+  assert.equal(await one("SELECT 1 FROM page_ink WHERE surface=?", copy), undefined, "its ink goes with it");
+  assert.deepEqual((await notebookSheets(pid)).map((s) => s.position), [0, 1, 2]);
 
   // Viewers read, strangers nothing.
-  assert.throws(() => nb(viewer, { action: "notebook.sheet.add", pageId: pid }), { status: 403 });
-  assert.throws(() => pageData(stranger, pid), { status: 403 });
-  assert.equal((pageData(viewer, pid) as { notebook: { canEdit: boolean } }).notebook.canEdit, false);
+  await assert.rejects(async () => await nb(viewer, { action: "notebook.sheet.add", pageId: pid }), { status: 403 });
+  await assert.rejects(async () => await pageData(stranger, pid), { status: 403 });
+  assert.equal(((await pageData(viewer, pid)) as { notebook: { canEdit: boolean } }).notebook.canEdit, false);
   // At least one sheet.
-  for (const s of notebookSheets(pid).slice(1)) nb(owner, { action: "notebook.sheet.delete", pageId: pid, sheetId: s.id });
-  assert.throws(() => nb(owner, { action: "notebook.sheet.delete", pageId: pid, sheetId: notebookSheets(pid)[0].id }), { status: 400 });
+  for (const s of (await notebookSheets(pid)).slice(1)) await nb(owner, { action: "notebook.sheet.delete", pageId: pid, sheetId: s.id });
+  await assert.rejects(async () => await nb(owner, { action: "notebook.sheet.delete", pageId: pid, sheetId: (await notebookSheets(pid))[0].id }), { status: 400 });
   assert.ok(MAX_SHEETS >= 500);
 });
 
-test("page ink: versions, three-way merge of concurrent saves, permissions, locked pages", () => {
-  const pid = create("Gemeinsam");
-  const sheet = notebookSheets(pid)[0].id;
-  assert.throws(() => store.savePageInk(viewer, pid, sheet, { base: 0, doc: on(sheet, pen(1)) }), { status: 403 });
-  assert.throws(() => store.savePageInk(owner, pid, "unknown-sheet", { base: 0, doc: on("unknown-sheet", pen(1)) }), { status: 404 });
-  assert.throws(() => store.savePageInk(owner, pid, "../x", { base: 0, doc: {} }), { status: 400 });
-  const a = store.savePageInk(owner, pid, sheet, { base: 0, doc: on(sheet, pen(1), pen(2)) });
+test("page ink: versions, three-way merge of concurrent saves, permissions, locked pages", async () => {
+  const pid = await create("Gemeinsam");
+  const sheet = (await notebookSheets(pid))[0].id;
+  await assert.rejects(async () => await store.savePageInk(viewer, pid, sheet, { base: 0, doc: on(sheet, pen(1)) }), { status: 403 });
+  await assert.rejects(async () => await store.savePageInk(owner, pid, "unknown-sheet", { base: 0, doc: on("unknown-sheet", pen(1)) }), { status: 404 });
+  await assert.rejects(async () => await store.savePageInk(owner, pid, "../x", { base: 0, doc: {} }), { status: 400 });
+  const a = await store.savePageInk(owner, pid, sheet, { base: 0, doc: on(sheet, pen(1), pen(2)) });
   assert.deepEqual(a, { version: 1, conflict: null });
   // Both start from version 1: the owner adds a stroke, the editor removes one and adds another.
-  const mine = store.savePageInk(owner, pid, sheet, { base: 1, doc: on(sheet, pen(1), pen(2), pen(3)) });
+  const mine = await store.savePageInk(owner, pid, sheet, { base: 1, doc: on(sheet, pen(1), pen(2), pen(3)) });
   assert.equal(mine.version, 2);
-  const theirs = store.savePageInk(editor, pid, sheet, { base: 1, doc: on(sheet, pen(2), pen(4)) });
+  const theirs = await store.savePageInk(editor, pid, sheet, { base: 1, doc: on(sheet, pen(2), pen(4)) });
   assert.equal(theirs.version, 3);
   assert.equal(theirs.conflict?.by, "nb-owner");
   assert.deepEqual(theirs.doc!.pages[sheet].map((i) => i.id), ["s2", "s3", "s4"]);
-  const now = store.readPageInk(viewer, pid, sheet);
+  const now = await store.readPageInk(viewer, pid, sheet);
   assert.deepEqual(now.doc.pages[sheet].map((i) => i.id), ["s2", "s3", "s4"]);
   assert.equal(now.canEdit, false);
-  assert.deepEqual(store.pageInkVersions(viewer, pid), { [sheet]: 3 });
-  assert.equal(store.pageInkHistory(owner, pid, sheet)[0].version, 3);
-  assert.deepEqual(store.pageInkVersion(owner, pid, sheet, 2).doc.pages[sheet].map((i) => i.id), ["s1", "s2", "s3"]);
+  assert.deepEqual(await store.pageInkVersions(viewer, pid), { [sheet]: 3 });
+  assert.equal((await store.pageInkHistory(owner, pid, sheet))[0].version, 3);
+  assert.deepEqual((await store.pageInkVersion(owner, pid, sheet, 2)).doc.pages[sheet].map((i) => i.id), ["s1", "s2", "s3"]);
   // Other page keys are not stored.
-  store.savePageInk(owner, pid, sheet, { base: 3, doc: { ...on(sheet, pen(5)), pages: { [sheet]: [pen(5)], other: [pen(6)] } } });
-  assert.deepEqual(Object.keys(store.readPageInk(owner, pid, sheet).doc.pages), [sheet]);
-  run("UPDATE pages SET locked=1 WHERE id=?", pid);
+  await store.savePageInk(owner, pid, sheet, { base: 3, doc: { ...on(sheet, pen(5)), pages: { [sheet]: [pen(5)], other: [pen(6)] } } });
+  assert.deepEqual(Object.keys((await store.readPageInk(owner, pid, sheet)).doc.pages), [sheet]);
+  await run("UPDATE pages SET locked=1 WHERE id=?", pid);
   try {
-    assert.equal(store.readPageInk(owner, pid, sheet).canEdit, false);
-    assert.throws(() => store.savePageInk(owner, pid, sheet, { base: 4, doc: on(sheet) }), { status: 409 });
+    assert.equal((await store.readPageInk(owner, pid, sheet)).canEdit, false);
+    await assert.rejects(async () => await store.savePageInk(owner, pid, sheet, { base: 4, doc: on(sheet) }), { status: 409 });
   } finally {
-    run("UPDATE pages SET locked=0 WHERE id=?", pid);
+    await run("UPDATE pages SET locked=0 WHERE id=?", pid);
   }
   // A database page has no surfaces.
-  const db = create("Tabelle", "database");
-  assert.throws(() => store.readPageInk(owner, db, "x"), { status: 400 });
+  const db = await create("Tabelle", "database");
+  await assert.rejects(async () => await store.readPageInk(owner, db, "x"), { status: 400 });
 });
 
 test("merge: additions on both sides, deletions, edits", () => {
@@ -245,58 +245,58 @@ test("merge: additions on both sides, deletions, edits", () => {
   assert.deepEqual(Object.keys(doc.pages).sort(), ["a", "b"]);
 });
 
-test("recognised text: cleaned and capped, stale answers dropped, found by search", () => {
+test("recognised text: cleaned and capped, stale answers dropped, found by search", async () => {
   assert.equal(cleanRecognizedText("  Hallo\u0000 <b>Welt</b>‮  \n\n\n\nzwei "), "Hallo <b>Welt</b>\n\nzwei");
   assert.equal(cleanRecognizedText(42), "");
   assert.equal(cleanRecognizedText("x".repeat(10000)).length, 4000);
   assert.deepEqual(cleanRecognizedMap({ "1": "eins", "../x": "no", "2": 5 }), { "1": "eins" });
 
-  const pid = create("Vorlesung");
-  const sheet = notebookSheets(pid)[0].id;
-  const saved = store.savePageInk(owner, pid, sheet, { base: 0, doc: on(sheet, pen(1)) });
-  assert.deepEqual(store.savePageRecognized(owner, pid, sheet, { version: saved.version, recognized: "Quantenverschränkung erklärt" }), { saved: true });
-  assert.throws(() => store.savePageRecognized(viewer, pid, sheet, { version: saved.version, recognized: "x" }), { status: 403 });
-  assert.ok(searchWorkspace(viewer, wid, "Quantenverschränkung").some((r) => r.id === pid));
+  const pid = await create("Vorlesung");
+  const sheet = (await notebookSheets(pid))[0].id;
+  const saved = await store.savePageInk(owner, pid, sheet, { base: 0, doc: on(sheet, pen(1)) });
+  assert.deepEqual(await store.savePageRecognized(owner, pid, sheet, { version: saved.version, recognized: "Quantenverschränkung erklärt" }), { saved: true });
+  await assert.rejects(async () => await store.savePageRecognized(viewer, pid, sheet, { version: saved.version, recognized: "x" }), { status: 403 });
+  assert.ok((await searchWorkspace(viewer, wid, "Quantenverschränkung")).some((r) => r.id === pid));
   // An answer for an older state is dropped.
-  const next = store.savePageInk(owner, pid, sheet, { base: saved.version, doc: on(sheet, pen(1), pen(2)) });
-  assert.deepEqual(store.savePageRecognized(owner, pid, sheet, { version: saved.version, recognized: "veraltet" }), { saved: false });
-  assert.equal(store.readPageInk(owner, pid, sheet).recognized, "Quantenverschränkung erklärt");
+  const next = await store.savePageInk(owner, pid, sheet, { base: saved.version, doc: on(sheet, pen(1), pen(2)) });
+  assert.deepEqual(await store.savePageRecognized(owner, pid, sheet, { version: saved.version, recognized: "veraltet" }), { saved: false });
+  assert.equal((await store.readPageInk(owner, pid, sheet)).recognized, "Quantenverschränkung erklärt");
   // Sent with the ink, it belongs to that state; ink gone, text gone.
-  store.savePageInk(owner, pid, sheet, { base: next.version, doc: on(sheet), recognized: "leer" });
-  assert.equal(store.readPageInk(owner, pid, sheet).recognized, "");
-  assert.equal(searchWorkspace(owner, wid, "Quantenverschränkung").filter((r) => r.id === pid).length, 0);
+  await store.savePageInk(owner, pid, sheet, { base: next.version, doc: on(sheet), recognized: "leer" });
+  assert.equal((await store.readPageInk(owner, pid, sheet)).recognized, "");
+  assert.equal((await searchWorkspace(owner, wid, "Quantenverschränkung")).filter((r) => r.id === pid).length, 0);
   // Text typed on a sheet is found too.
-  store.savePageInk(owner, pid, sheet, { base: next.version + 1, doc: on(sheet, { id: "t", type: "text", color: "#1f1f1f", size: 14, x: 1, y: 1, text: "Klausurtermin" }) });
-  assert.ok(searchWorkspace(owner, wid, "Klausurtermin").some((r) => r.id === pid));
-  assert.deepEqual(notebookText(pid), ["Klausurtermin"]);
+  await store.savePageInk(owner, pid, sheet, { base: next.version + 1, doc: on(sheet, { id: "t", type: "text", color: "#1f1f1f", size: 14, x: 1, y: 1, text: "Klausurtermin" }) });
+  assert.ok((await searchWorkspace(owner, wid, "Klausurtermin")).some((r) => r.id === pid));
+  assert.deepEqual(await notebookText(pid), ["Klausurtermin"]);
 });
 
-test("drawing blocks: ink keyed by the block, searched while the block is in the document, copies start from their source", () => {
-  const doc = create("Protokoll", "document");
+test("drawing blocks: ink keyed by the block, searched while the block is in the document, copies start from their source", async () => {
+  const doc = await create("Protokoll", "document");
   const html = `<p>Skizze:</p><div data-ink-block="ink-a1" data-ink-height="300" data-ink-paper="lined" data-ink-page="${doc}"></div>`;
-  run("UPDATE documents SET html=?,state=? WHERE page_id=?", cleanHtml(html), htmlState(html), doc);
-  assert.ok(String(one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", doc)?.html).includes('data-ink-block="ink-a1"'), "kept by the sanitizer");
-  const saved = store.savePageInk(editor, doc, "ink-a1", { base: 0, doc: on("ink-a1", pen(1)) });
-  store.savePageRecognized(editor, doc, "ink-a1", { version: saved.version, recognized: "Lieferkette" });
-  assert.ok(searchWorkspace(owner, wid, "Lieferkette").some((r) => r.id === doc));
+  await run("UPDATE documents SET html=?,state=? WHERE page_id=?", cleanHtml(html), htmlState(html), doc);
+  assert.ok(String((await one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", doc))?.html).includes('data-ink-block="ink-a1"'), "kept by the sanitizer");
+  const saved = await store.savePageInk(editor, doc, "ink-a1", { base: 0, doc: on("ink-a1", pen(1)) });
+  await store.savePageRecognized(editor, doc, "ink-a1", { version: saved.version, recognized: "Lieferkette" });
+  assert.ok((await searchWorkspace(owner, wid, "Lieferkette")).some((r) => r.id === doc));
   // Removed from the document: no longer found.
-  run("UPDATE documents SET html='<p>Skizze:</p>' WHERE page_id=?", doc);
-  assert.equal(searchWorkspace(owner, wid, "Lieferkette").filter((r) => r.id === doc).length, 0);
-  run("UPDATE documents SET html=? WHERE page_id=?", cleanHtml(html), doc);
+  await run("UPDATE documents SET html='<p>Skizze:</p>' WHERE page_id=?", doc);
+  assert.equal((await searchWorkspace(owner, wid, "Lieferkette")).filter((r) => r.id === doc).length, 0);
+  await run("UPDATE documents SET html=? WHERE page_id=?", cleanHtml(html), doc);
   // A pasted copy elsewhere: fresh id, starts with the source's ink until it saves its own.
-  const other = create("Anderes Dokument", "document");
-  const fresh = store.readPageInk(owner, other, "ink-b2", `${doc}/ink-a1`);
+  const other = await create("Anderes Dokument", "document");
+  const fresh = await store.readPageInk(owner, other, "ink-b2", `${doc}/ink-a1`);
   assert.equal(fresh.copied, true);
   assert.equal(fresh.version, 0);
   assert.deepEqual(fresh.doc.pages["ink-b2"].map((i) => i.id), ["s1"]);
   // Only from pages this person may read.
-  const secret = create("Geheim", "document");
-  run("INSERT INTO page_ink(page_id,surface,data,text,recognized,version,updated_by,updated_at) VALUES(?,?,?,?,?,?,?,?)", secret, "ink-s", JSON.stringify(on("ink-s", pen(9))), "", "", 1, owner.id, 1);
-  run("UPDATE pages SET parent_id=NULL WHERE id=?", secret);
-  assert.equal(store.readPageInk(viewer, other, "ink-c3", `${secret}/ink-s`).copied, true, "a viewer of the workspace may read it");
+  const secret = await create("Geheim", "document");
+  await run("INSERT INTO page_ink(page_id,surface,data,text,recognized,version,updated_by,updated_at) VALUES(?,?,?,?,?,?,?,?)", secret, "ink-s", JSON.stringify(on("ink-s", pen(9))), "", "", 1, owner.id, 1);
+  await run("UPDATE pages SET parent_id=NULL WHERE id=?", secret);
+  assert.equal((await store.readPageInk(viewer, other, "ink-c3", `${secret}/ink-s`)).copied, true, "a viewer of the workspace may read it");
   // A private page in a space the stranger cannot see: nothing copied.
-  assert.throws(() => store.readPageInk(stranger, other, "ink-c5", `${secret}/ink-s`), { status: 403 });
-  assert.equal(store.readPageInk(owner, other, "ink-c4", "not-a-ref").copied, undefined);
+  await assert.rejects(async () => await store.readPageInk(stranger, other, "ink-c5", `${secret}/ink-s`), { status: 403 });
+  assert.equal((await store.readPageInk(owner, other, "ink-c4", "not-a-ref")).copied, undefined);
 });
 
 test("pasting a drawing block gives it a fresh id and its source", async () => {
@@ -311,20 +311,20 @@ test("pasting a drawing block gives it a fresh id and its source", async () => {
   assert.equal(out.attrs.height, 400);
 });
 
-test("PDF ink: recognised text per page, kept with the page's ink, searched", () => {
-  const pid = create("Akten", "document");
+test("PDF ink: recognised text per page, kept with the page's ink, searched", async () => {
+  const pid = await create("Akten", "document");
   const fid = id();
-  run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fid, pid, "Akte.pdf", "application/pdf", 10, owner.id);
-  const saved = saveFileInk(owner, fid, { base: 0, doc: withPage(withPage(emptyInk(), "1", [pen(1)]), "2", [pen(2)]), recognized: { "1": "Erstbescheid" } });
-  assert.deepEqual(readFileInk(viewer, fid).recognized, { "1": "Erstbescheid" });
-  assert.deepEqual(saveFileRecognized(owner, fid, { version: saved.version, recognized: { "2": "Widerspruchsfrist" } }), { saved: true });
-  assert.deepEqual(readFileInk(owner, fid).recognized, { "1": "Erstbescheid", "2": "Widerspruchsfrist" });
-  assert.deepEqual(saveFileRecognized(owner, fid, { version: saved.version + 7, recognized: { "2": "alt" } }), { saved: false });
-  processSearchIndex(1000);
-  assert.ok(searchWorkspace(owner, wid, "Widerspruchsfrist").length > 0);
+  await run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fid, pid, "Akte.pdf", "application/pdf", 10, owner.id);
+  const saved = await saveFileInk(owner, fid, { base: 0, doc: withPage(withPage(emptyInk(), "1", [pen(1)]), "2", [pen(2)]), recognized: { "1": "Erstbescheid" } });
+  assert.deepEqual((await readFileInk(viewer, fid)).recognized, { "1": "Erstbescheid" });
+  assert.deepEqual(await saveFileRecognized(owner, fid, { version: saved.version, recognized: { "2": "Widerspruchsfrist" } }), { saved: true });
+  assert.deepEqual((await readFileInk(owner, fid)).recognized, { "1": "Erstbescheid", "2": "Widerspruchsfrist" });
+  assert.deepEqual(await saveFileRecognized(owner, fid, { version: saved.version + 7, recognized: { "2": "alt" } }), { saved: false });
+  await processSearchIndex(1000);
+  assert.ok((await searchWorkspace(owner, wid, "Widerspruchsfrist")).length > 0);
   // Page 2 erased: its text goes.
-  saveFileInk(owner, fid, { base: saved.version, doc: withPage(emptyInk(), "1", [pen(1)]) });
-  assert.deepEqual(readFileInk(owner, fid).recognized, { "1": "Erstbescheid" });
+  await saveFileInk(owner, fid, { base: saved.version, doc: withPage(emptyInk(), "1", [pen(1)]) });
+  assert.deepEqual((await readFileInk(owner, fid)).recognized, { "1": "Erstbescheid" });
 });
 
 test("recognition requests carry pen strokes only; answers are checked", () => {
@@ -343,27 +343,27 @@ test("recognition requests carry pen strokes only; answers are checked", () => {
 
 // ---- PDF import and export ----
 
-test("PDF import: each page becomes a sheet with that page as background", () => {
+test("PDF import: each page becomes a sheet with that page as background", async () => {
   assert.deepEqual(pdfImportSheets("00000000-0000-4000-8000-000000000001", [{ width: 612, height: 792 }, { width: 841.89, height: 595.28 }]), [
     { file: "00000000-0000-4000-8000-000000000001", page: 1, width: 612, height: 792 },
     { file: "00000000-0000-4000-8000-000000000001", page: 2, width: 841.89, height: 595.28 },
   ]);
-  const pid = create("Skript");
+  const pid = await create("Skript");
   const fid = id();
-  run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fid, pid, "Skript.pdf", "application/pdf", 10, owner.id);
-  const result = nb(owner, { action: "notebook.import", pageId: pid, fileId: fid, pages: [{ width: 612, height: 792 }, { width: 612, height: 792 }, { width: 792, height: 612 }], replaceEmpty: true });
+  await run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fid, pid, "Skript.pdf", "application/pdf", 10, owner.id);
+  const result = await nb(owner, { action: "notebook.import", pageId: pid, fileId: fid, pages: [{ width: 612, height: 792 }, { width: 612, height: 792 }, { width: 792, height: 612 }], replaceEmpty: true });
   // The empty first sheet made way for the PDF.
   assert.equal(result.sheets.length, 3);
   assert.deepEqual(result.sheets.map((s) => (s.background as { page: number }).page), [1, 2, 3]);
   // Appended after the second sheet.
-  const more = nb(owner, { action: "notebook.import", pageId: pid, fileId: fid, after: result.sheets[1].id, pages: [{ width: 300, height: 400 }] });
+  const more = await nb(owner, { action: "notebook.import", pageId: pid, fileId: fid, after: result.sheets[1].id, pages: [{ width: 300, height: 400 }] });
   assert.deepEqual(more.sheets.map((s) => (s.background as { page: number }).page), [1, 2, 1, 3]);
   // Only PDFs of this notebook.
   const image = id();
-  run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", image, pid, "Foto.png", "image/png", 10, owner.id);
-  assert.throws(() => nb(owner, { action: "notebook.import", pageId: pid, fileId: image, pages: [{ width: 1, height: 1 }] }), { status: 400 });
-  assert.throws(() => nb(owner, { action: "notebook.import", pageId: pid, fileId: id(), pages: [{ width: 612, height: 792 }] }), { status: 404 });
-  assert.throws(() => nb(owner, { action: "notebook.import", pageId: pid, fileId: fid, pages: [] }));
+  await run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", image, pid, "Foto.png", "image/png", 10, owner.id);
+  await assert.rejects(async () => await nb(owner, { action: "notebook.import", pageId: pid, fileId: image, pages: [{ width: 1, height: 1 }] }), { status: 400 });
+  await assert.rejects(async () => await nb(owner, { action: "notebook.import", pageId: pid, fileId: id(), pages: [{ width: 612, height: 792 }] }), { status: 404 });
+  await assert.rejects(async () => await nb(owner, { action: "notebook.import", pageId: pid, fileId: fid, pages: [] }));
 });
 
 test("PDF export: one page per sheet, paper and PDF backgrounds, ink as vectors", async () => {
@@ -403,49 +403,49 @@ test("PDF export: one page per sheet, paper and PDF backgrounds, ink as vectors"
 
 // ---- Copies and archives ----
 
-test("duplicating a notebook copies sheets, paper and ink; archives carry them", () => {
-  const pid = create("Original");
-  const [first] = notebookSheets(pid);
-  nb(owner, { action: "notebook.sheet.add", pageId: pid, paper: { template: "cornell" } });
-  store.writeSurface(pid, first.id, on(first.id, pen(1), pen(2)), "Handschrift", owner.id);
-  const page = one<import("../lib/types").Page>("SELECT * FROM pages WHERE id=?", pid)!;
-  const copy = (command(owner, { action: "page.duplicate", pageId: pid }) as { id?: string }).id ?? duplicatePageTree(owner, page).id;
-  const sheets = notebookSheets(copy);
+test("duplicating a notebook copies sheets, paper and ink; archives carry them", async () => {
+  const pid = await create("Original");
+  const [first] = await notebookSheets(pid);
+  await nb(owner, { action: "notebook.sheet.add", pageId: pid, paper: { template: "cornell" } });
+  await store.writeSurface(pid, first.id, on(first.id, pen(1), pen(2)), "Handschrift", owner.id);
+  const page = (await one<import("../lib/types").Page>("SELECT * FROM pages WHERE id=?", pid))!;
+  const copy = ((await command(owner, { action: "page.duplicate", pageId: pid })) as { id?: string }).id ?? (await duplicatePageTree(owner, page)).id;
+  const sheets = await notebookSheets(copy);
   assert.equal(sheets.length, 2);
   assert.notEqual(sheets[0].id, first.id);
   assert.deepEqual(sheets[1].paper, { template: "cornell" });
-  const ink = store.readPageInk(owner, copy, sheets[0].id);
+  const ink = await store.readPageInk(owner, copy, sheets[0].id);
   assert.equal(ink.doc.pages[sheets[0].id].length, 2);
   assert.equal(ink.recognized, "Handschrift");
 
-  const archive = notebookArchive(pid);
+  const archive = await notebookArchive(pid);
   assert.equal(archive.sheets.length, 2);
-  const target = create("Import");
-  importNotebook(target, JSON.parse(JSON.stringify(archive)), new Map(), owner.id);
-  const imported = notebookSheets(target);
+  const target = await create("Import");
+  await importNotebook(target, JSON.parse(JSON.stringify(archive)), new Map(), owner.id);
+  const imported = await notebookSheets(target);
   assert.equal(imported.length, 2);
-  assert.equal(store.readPageInk(owner, target, imported[0].id).doc.pages[imported[0].id].length, 2);
+  assert.equal((await store.readPageInk(owner, target, imported[0].id)).doc.pages[imported[0].id].length, 2);
 });
 
-test("a notebook saved as a template gives new notebooks its sheets, paper and handwriting", () => {
-  const pid = create("Vorlage Heft");
-  const [first] = notebookSheets(pid);
-  nb(owner, { action: "notebook.sheet.add", pageId: pid, paper: { template: "music" } });
-  store.writeSurface(pid, first.id, on(first.id, pen(1)), "", owner.id);
-  const template = (command(owner, { action: "template.save", pageId: pid, workspaceId: wid, name: "Übungsheft" }) as { id: string }).id;
-  const created = (command(owner, { action: "page.create", workspaceId: wid, spaceId: team, title: "Neu", templateId: template }) as { id: string }).id;
-  const sheets = notebookSheets(created);
-  assert.equal(one<{ kind: string }>("SELECT kind FROM pages WHERE id=?", created)?.kind, "notebook");
+test("a notebook saved as a template gives new notebooks its sheets, paper and handwriting", async () => {
+  const pid = await create("Vorlage Heft");
+  const [first] = await notebookSheets(pid);
+  await nb(owner, { action: "notebook.sheet.add", pageId: pid, paper: { template: "music" } });
+  await store.writeSurface(pid, first.id, on(first.id, pen(1)), "", owner.id);
+  const template = ((await command(owner, { action: "template.save", pageId: pid, workspaceId: wid, name: "Übungsheft" })) as { id: string }).id;
+  const created = ((await command(owner, { action: "page.create", workspaceId: wid, spaceId: team, title: "Neu", templateId: template })) as { id: string }).id;
+  const sheets = await notebookSheets(created);
+  assert.equal((await one<{ kind: string }>("SELECT kind FROM pages WHERE id=?", created))?.kind, "notebook");
   assert.equal(sheets.length, 2);
   assert.deepEqual(sheets[1].paper, { template: "music" });
-  assert.equal(store.readPageInk(owner, created, sheets[0].id).doc.pages[sheets[0].id].length, 1);
+  assert.equal((await store.readPageInk(owner, created, sheets[0].id)).doc.pages[sheets[0].id].length, 1);
 });
 
 test("exports: a notebook as PDF next to a Markdown stub; drawing blocks as pictures", async () => {
-  const pid = create("Laborbuch");
-  const [first] = notebookSheets(pid);
-  nb(owner, { action: "notebook.sheet.add", pageId: pid });
-  store.writeSurface(pid, first.id, on(first.id, pen(1), { id: "t", type: "text", color: "#1f1f1f", size: 12, x: 5, y: 5, text: "Messreihe A" }), "handschriftlich", owner.id);
+  const pid = await create("Laborbuch");
+  const [first] = await notebookSheets(pid);
+  await nb(owner, { action: "notebook.sheet.add", pageId: pid });
+  await store.writeSurface(pid, first.id, on(first.id, pen(1), { id: "t", type: "text", color: "#1f1f1f", size: 12, x: 5, y: 5, text: "Messreihe A" }), "handschriftlich", owner.id);
   const exported = await exportMarkdown(owner, { pageId: pid, format: "zip", includeSubpages: false });
   const zip = await readExportZip(exported.bytes);
   const index = zip.get("index.md")!.toString();
@@ -455,7 +455,7 @@ test("exports: a notebook as PDF next to a Markdown stub; drawing blocks as pict
   assert.ok(pdfPath.startsWith("assets/") && index.includes(pdfPath));
   assert.equal((await PDFDocument.load(zip.get(pdfPath)!)).getPageCount(), 2);
   // The print view (PDF export) shows each sheet as a picture.
-  const printedNotebook = exportPrintHtml(owner, { pageId: pid }).html;
+  const printedNotebook = (await exportPrintHtml(owner, { pageId: pid })).html;
   assert.equal(printedNotebook.match(/data:image\/svg\+xml;base64/g)?.length, 2);
   assert.match(printedNotebook, /Blatt 2|Sheet 2/);
   // One Markdown file alone: a link back to Flowplan.
@@ -463,18 +463,18 @@ test("exports: a notebook as PDF next to a Markdown stub; drawing blocks as pict
   assert.match(single, /#page=/);
 
   // A document with a drawing block: the print view and published pages show its picture.
-  const doc = create("Mit Skizze", "document");
+  const doc = await create("Mit Skizze", "document");
   const html = `<p>Vorher</p><div data-ink-block="ink-x1" data-ink-height="240" data-ink-paper="grid" data-ink-page="${doc}"></div>`;
-  run("UPDATE documents SET html=?,state=? WHERE page_id=?", cleanHtml(html), htmlState(html), doc);
-  store.writeSurface(doc, "ink-x1", on("ink-x1", pen(2)), "Skizzentext", owner.id);
-  const print = exportPrintHtml(owner, { pageId: doc }) as unknown as { html?: string } | string;
+  await run("UPDATE documents SET html=?,state=? WHERE page_id=?", cleanHtml(html), htmlState(html), doc);
+  await store.writeSurface(doc, "ink-x1", on("ink-x1", pen(2)), "Skizzentext", owner.id);
+  const print = (await exportPrintHtml(owner, { pageId: doc })) as unknown as { html?: string } | string;
   const printed = typeof print === "string" ? print : JSON.stringify(print);
   assert.match(printed, /data:image\/svg\+xml;base64/);
   assert.match(printed, /Skizzentext/);
   const published = withInkPictures(cleanHtml(html), { id: doc, kind: "document", title: "Mit Skizze" });
   assert.match(published, /<svg class="ink-block-picture"/);
   assert.match(published, /ink-block-static/);
-  const md = (await exportMarkdown(owner, { pageId: doc, format: "zip", includeSubpages: false }));
+  const md = await exportMarkdown(owner, { pageId: doc, format: "zip", includeSubpages: false });
   const mdZip = await readExportZip(md.bytes);
   assert.ok([...mdZip.keys()].some((k) => k.endsWith("ink-x1.svg")));
   assert.match(mdZip.get("index.md")!.toString(), /Skizzentext/);

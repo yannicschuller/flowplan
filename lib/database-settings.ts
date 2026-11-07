@@ -9,8 +9,8 @@ import type { Field, Identity, Page } from "./types";
 
 const TOKENS = new Set(["@today", "@now", "@actor", "@creator", "@clear"]);
 
-export function databaseSettings(pageId: string): DatabaseSettings {
-  const raw = one<{ settings: string }>("SELECT settings FROM databases WHERE page_id=?", pageId);
+export async function databaseSettings(pageId: string): Promise<DatabaseSettings> {
+  const raw = await one<{ settings: string }>("SELECT settings FROM databases WHERE page_id=?", pageId);
   try {
     return settingsSchema.parse(JSON.parse(raw?.settings || "{}"));
   } catch {
@@ -19,11 +19,11 @@ export function databaseSettings(pageId: string): DatabaseSettings {
 }
 
 // Changes some settings; the rest stays. `null` removes a setting.
-export function updateDatabaseSettings(user: Identity, page: Page, fields: Field[], input: unknown) {
+export async function updateDatabaseSettings(user: Identity, page: Page, fields: Field[], input: unknown) {
   const pageId = page.id;
   const patch = z.record(z.string(), z.unknown()).parse(input);
-  const current = databaseSettings(pageId) as Record<string, unknown>;
-  const previous = new Map((databaseSettings(pageId).automations || []).map((a) => [a.id, a]));
+  const current = (await databaseSettings(pageId)) as Record<string, unknown>;
+  const previous = new Map(((await databaseSettings(pageId)).automations || []).map((a) => [a.id, a]));
   for (const [key, value] of Object.entries(patch)) {
     if (!(key in settingsSchema.shape) || key === "git") throw new HttpError(400, "Unbekannte Einstellung.");
     if (value === null) delete current[key];
@@ -50,17 +50,17 @@ export function updateDatabaseSettings(user: Identity, page: Page, fields: Field
       if ((action.type === "create") !== scheduled)
         throw new HttpError(400, "Geplante Regeln legen nur Datensätze an; Datensätze anlegen nur geplante Regeln.");
       else if (action.type === "template") {
-        if (!one("SELECT 1 FROM row_templates WHERE id=? AND page_id=?", action.template, pageId))
+        if (!(await one("SELECT 1 FROM row_templates WHERE id=? AND page_id=?", action.template, pageId)))
           throw new HttpError(400, "Datensatzvorlage nicht gefunden.");
       } else if (action.type === "create") {
-        if (action.template && !one("SELECT 1 FROM row_templates WHERE id=? AND page_id=?", action.template, pageId))
+        if (action.template && !(await one("SELECT 1 FROM row_templates WHERE id=? AND page_id=?", action.template, pageId)))
           throw new HttpError(400, "Datensatzvorlage nicht gefunden.");
         for (const fieldId of Object.keys(action.dates))
           if (fields.find((f) => f.id === fieldId)?.type !== "date")
             throw new HttpError(400, "Einstellung verweist auf eine unbekannte Eigenschaft.");
         Object.keys(action.cells).forEach(check);
         try {
-          validateCellPatch(user, page, fields, action.cells);
+          await validateCellPatch(user, page, fields, action.cells);
         } catch {
           throw new HttpError(400, "Eine Regel setzt einen Wert, der nicht zur Eigenschaft passt.");
         }
@@ -69,7 +69,7 @@ export function updateDatabaseSettings(user: Identity, page: Page, fields: Field
         // A fixed value must be one the property accepts.
         if (!(typeof action.value === "string" && TOKENS.has(action.value)) && action.value !== "" && action.value !== null)
           try {
-            validateCellPatch(user, page, fields, { [action.field]: action.value });
+            await validateCellPatch(user, page, fields, { [action.field]: action.value });
           } catch {
             throw new HttpError(400, "Eine Regel setzt einen Wert, der nicht zur Eigenschaft passt.");
           }
@@ -79,7 +79,7 @@ export function updateDatabaseSettings(user: Identity, page: Page, fields: Field
     void status;
     ids.forEach(check);
   }
-  storeSettings(pageId, next);
+  await storeSettings(pageId, next);
   return next;
 }
 // Who a rule acts for and since when: kept while the rule stays the same
@@ -95,8 +95,8 @@ function stampAutomation(user: Identity, a: Automation, before: Automation | und
     a.since = new Date().toISOString();
   }
 }
-export function storeSettings(pageId: string, settings: DatabaseSettings) {
-  run("UPDATE databases SET settings=?,version=version+1 WHERE page_id=?", JSON.stringify(settings), pageId);
+export async function storeSettings(pageId: string, settings: DatabaseSettings) {
+  await run("UPDATE databases SET settings=?,version=version+1 WHERE page_id=?", JSON.stringify(settings), pageId);
 }
 // What clients see: whether Git is connected, never the token or secret
 // (those come from /api/git-config for people who may edit).

@@ -44,7 +44,7 @@ export function useDirectory(onError: (message: string) => void) {
   return { data, busy, act };
 }
 
-export function AdminDirectory({ directory }: { directory: ReturnType<typeof useDirectory> }) {
+export function AdminDirectory({ directory }: { directory: Awaited<ReturnType<typeof useDirectory>> }) {
   const t = useT();
   const { data, busy, act } = directory;
   const [created, setCreated] = useState("");

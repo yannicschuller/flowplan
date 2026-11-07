@@ -3,6 +3,7 @@ import { id, run, all, transaction } from "./db";
 import type { Field, View } from "./types";
 import { ct } from "./content-locale";
 import { contactsSetup } from "./contacts";
+import { forEachAsync } from "./each-async";
 // A new database starts as a task list, in the language of the request.
 export const defaultFields = (): Field[] => [
   { id: "title", name: ct("Aufgabe", "Task"), type: "text" },
@@ -86,7 +87,7 @@ export function databaseSetup(kind: DatabaseKind): { fields: Field[]; views: Vie
     };
   return { fields: defaultFields(), views: defaultViews() };
 }
-export function createPage(
+export async function createPage(
   workspace: string,
   space: string,
   user: string,
@@ -97,7 +98,7 @@ export function createPage(
   // A journal day written into before it existed keeps its draft id.
   pid: string = id(),
 ) {
-  run(
+  await run(
     "INSERT INTO pages(id,workspace_id,space_id,parent_id,title,kind,created_by,position,icon) VALUES(?,?,?,?,?,?,?,?,?)",
     pid,
     workspace,
@@ -111,18 +112,18 @@ export function createPage(
   );
   if (kind === "database") {
     const setup = databaseSetup(databaseKind);
-    run(
+    await run(
       "INSERT INTO databases(page_id,fields,views) VALUES(?,?,?)",
       pid,
       JSON.stringify(setup.fields),
       JSON.stringify(setup.views),
     );
     if (setup.recordLayout)
-      run("UPDATE databases SET record_layout=? WHERE page_id=?", JSON.stringify(setup.recordLayout), pid);
+      await run("UPDATE databases SET record_layout=? WHERE page_id=?", JSON.stringify(setup.recordLayout), pid);
     // Contacts are personal data: closed to the AI until a manager of the
     // page opens it ("Für KI gesperrt", lib/ai/access.ts).
     if (databaseKind === "contacts")
-      run(
+      await run(
         "INSERT INTO ai_blocks(target_id,kind,workspace_id,created_by,created_at) VALUES(?,?,?,?,?) ON CONFLICT(target_id) DO NOTHING",
         pid,
         "page",
@@ -131,33 +132,33 @@ export function createPage(
         Date.now(),
       );
   }
-  else run("INSERT INTO documents(page_id) VALUES(?)", pid);
-  if (kind === "dashboard") run("INSERT INTO dashboards(page_id) VALUES(?)", pid);
+  else await run("INSERT INTO documents(page_id) VALUES(?)", pid);
+  if (kind === "dashboard") await run("INSERT INTO dashboards(page_id) VALUES(?)", pid);
   // Notebooks start with one sheet of the default paper (lib/notebook.ts).
-  if (kind === "notebook") createNotebook(pid);
+  if (kind === "notebook") await createNotebook(pid);
   return pid;
 }
-export function createWorkspace(user: string, name: string, examples = false) {
-  return transaction(() => {
+export async function createWorkspace(user: string, name: string, examples = false) {
+  return await transaction(async () => {
     const wid = id(),
       sid = id();
-    run(
+    await run(
       "INSERT INTO workspaces(id,name,created_by) VALUES(?,?,?)",
       wid,
       name,
       user,
     );
-    run("INSERT INTO members VALUES(?,?,?)", wid, user, "owner");
-    run(
+    await run("INSERT INTO members VALUES(?,?,?)", wid, user, "owner");
+    await run(
       "INSERT INTO spaces(id,workspace_id,name,owner_id) VALUES(?,?,?,?)",
       sid,
       wid,
       "Teamspace",
       user,
     );
-    const home = createPage(wid, sid, user, ct("Willkommen bei Flowplan", "Welcome to Flowplan"));
-    run("UPDATE pages SET icon=? WHERE id=?", "hand", home);
-    run(
+    const home = await createPage(wid, sid, user, ct("Willkommen bei Flowplan", "Welcome to Flowplan"));
+    await run("UPDATE pages SET icon=? WHERE id=?", "hand", home);
+    await run(
       "UPDATE documents SET html=? WHERE page_id=?",
       ct(
         '<h2>Ein guter Ort für große Ideen.</h2><p>Hier kommen Wissen, Projekte und Menschen zusammen. Halte Gedanken fest, plane die nächsten Schritte und bringe gemeinsam mit deinem Team Dinge voran.</p><blockquote><p>Dein Arbeitsbereich. So flexibel wie deine Ideen.</p></blockquote><h2>Mach es zu deinem Flowplan</h2><ul data-type="taskList"><li data-type="taskItem" data-checked="false"><label><input type="checkbox"></label><div><p>Eine erste Seite schreiben</p></div></li><li data-type="taskItem" data-checked="false"><label><input type="checkbox"></label><div><p>Ein Projekt mit deinem Team planen</p></div></li></ul><h2>Alles an seinem Platz</h2><p>Nutze Seiten für Notizen und Dokumente. Datenbanken lassen sich als Tabelle, Board, Kalender, Galerie, Liste oder Timeline anzeigen.</p>',
@@ -166,8 +167,8 @@ export function createWorkspace(user: string, name: string, examples = false) {
       home,
     );
     if (examples) {
-      const project = createPage(wid, sid, user, ct("Produkt-Roadmap", "Product roadmap"), "database");
-      run("UPDATE pages SET icon=? WHERE id=?", "rocket", project);
+      const project = await createPage(wid, sid, user, ct("Produkt-Roadmap", "Product roadmap"), "database");
+      await run("UPDATE pages SET icon=? WHERE id=?", "rocket", project);
       const titles = [
         ct("Onboarding vereinfachen", "Simplify onboarding"),
         ct("Designsystem dokumentieren", "Document the design system"),
@@ -177,10 +178,10 @@ export function createWorkspace(user: string, name: string, examples = false) {
         ct("Dokumentation überarbeiten", "Revise the documentation"),
       ];
       const [status, priority] = [defaultFields()[1].options!, defaultFields()[2].options!];
-      titles.forEach((title, i) => {
+      await forEachAsync(titles, async (title, i) => {
         const date = new Date();
         date.setDate(date.getDate() + i * 2 - 2);
-        run(
+        await run(
           "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by) VALUES(?,?,?,?,?,?)",
           id(),
           project,
@@ -197,9 +198,9 @@ export function createWorkspace(user: string, name: string, examples = false) {
           user,
         );
       });
-      const notes = createPage(wid, sid, user, ct("Team-Handbuch", "Team handbook"));
-      run("UPDATE pages SET icon=? WHERE id=?", "book", notes);
-      run(
+      const notes = await createPage(wid, sid, user, ct("Team-Handbuch", "Team handbook"));
+      await run("UPDATE pages SET icon=? WHERE id=?", "book", notes);
+      await run(
         "UPDATE documents SET html=? WHERE page_id=?",
         ct(
           "<h2>So arbeiten wir zusammen</h2><p>Wir halten Entscheidungen schriftlich fest, teilen Wissen offen und schaffen Raum für konzentrierte Arbeit.</p><h3>Unser Wochenrhythmus</h3><ul><li>Montag: Prioritäten und Planung</li><li>Mittwoch: Offene Fragen und Feedback</li><li>Freitag: Rückblick auf die Woche</li></ul>",
@@ -207,12 +208,12 @@ export function createWorkspace(user: string, name: string, examples = false) {
         ),
         notes,
       );
-      createPage(wid, sid, user, ct("Meeting-Notizen", "Meeting notes"), "document", notes);
+      await createPage(wid, sid, user, ct("Meeting-Notizen", "Meeting notes"), "document", notes);
     }
     return wid;
   });
 }
-export function ensureWorkspace(user: string) {
-  if (!all("SELECT workspace_id FROM members WHERE user_id=?", user).length)
-    createWorkspace(user, ct("Mein Arbeitsbereich", "My workspace"), true);
+export async function ensureWorkspace(user: string) {
+  if (!(await all("SELECT workspace_id FROM members WHERE user_id=?", user)).length)
+    await createWorkspace(user, ct("Mein Arbeitsbereich", "My workspace"), true);
 }

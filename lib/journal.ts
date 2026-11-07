@@ -35,7 +35,7 @@ import {
 } from "./journal-days";
 
 // One schema instance: nodes of different instances cannot be combined.
-let cachedSchema: ReturnType<typeof documentSchema> | undefined;
+let cachedSchema: Awaited<ReturnType<typeof documentSchema>> | undefined;
 const schema = () => (cachedSchema ??= documentSchema());
 
 export const journalDate = z
@@ -128,8 +128,8 @@ export function dayDocument(tasks: PMNode[], template: PMNode[] = []) {
   ]);
 }
 
-function loadDocument(pageId: string) {
-  const row = one<{ state: Uint8Array | null; html: string }>(
+async function loadDocument(pageId: string) {
+  const row = await one<{ state: Uint8Array | null; html: string }>(
     "SELECT state,html FROM documents WHERE page_id=?",
     pageId,
   );
@@ -139,64 +139,64 @@ function loadDocument(pageId: string) {
   return { ydoc, doc };
 }
 // A day's document (read only).
-export function dayDoc(pageId: string) {
-  const { ydoc, doc } = loadDocument(pageId);
+export async function dayDoc(pageId: string) {
+  const { ydoc, doc } = await loadDocument(pageId);
   ydoc.destroy();
   return doc;
 }
 // Changes the stored Yjs document in place (a diff, no new generation), so
 // editors that have the page open merge the change on their next sync.
-function storeDocument(pageId: string, ydoc: Y.Doc, doc: PMNode) {
+async function storeDocument(pageId: string, ydoc: Y.Doc, doc: PMNode) {
   ydoc.transact(() =>
     updateYFragment(ydoc, ydoc.getXmlFragment("default"), doc, {
       mapping: new Map(),
       isOMark: new Map(),
     }),
   );
-  run(
+  await run(
     "UPDATE documents SET state=?,html=?,updated_at=? WHERE page_id=?",
     Y.encodeStateAsUpdate(ydoc),
     stateHtml(ydoc), nowText(),
     pageId,
   );
   documentChanged(pageId);
-  run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), pageId);
+  await run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), pageId);
 }
 // A page nobody touched: no own text, same title, no icon or cover set, no
 // comments, no sub pages and no files.
-function untouched(page: Page, doc: PMNode) {
+async function untouched(page: Page, doc: PMNode) {
   // Compared with the template the day was created from, so a later change
   // of the template does not keep untouched days (and with today's one).
-  const created = dayTemplateHtml(page.id);
+  const created = await dayTemplateHtml(page.id);
   if (
     hasOwnEntry(doc, page.journal_date!) &&
-    !onlyTemplate(page.parent_id!, doc, page.journal_date!) &&
-    !(created !== null && onlyTemplate(page.parent_id!, doc, page.journal_date!, templateNodesOf(created)))
+    !(await onlyTemplate(page.parent_id!, doc, page.journal_date!)) &&
+    !(created !== null && await onlyTemplate(page.parent_id!, doc, page.journal_date!, templateNodesOf(created)))
   )
     return false;
-  if (hasEntryData(page.id)) return false;
+  if (await hasEntryData(page.id)) return false;
   if (!isAutoDayTitle(page.title, page.journal_date!)) return false;
   if (page.icon !== "day" || page.cover) return false;
-  const used = (sql: string) => !!one(sql, page.id);
+  const used = async (sql: string) => !!(await one(sql, page.id));
   return !(
-    used("SELECT 1 FROM pages WHERE parent_id=? LIMIT 1") ||
-    used("SELECT 1 FROM comments WHERE page_id=? LIMIT 1") ||
-    used("SELECT 1 FROM files WHERE page_id=? LIMIT 1") ||
-    used(
+    await used("SELECT 1 FROM pages WHERE parent_id=? LIMIT 1") ||
+    await used("SELECT 1 FROM comments WHERE page_id=? LIMIT 1") ||
+    await used("SELECT 1 FROM files WHERE page_id=? LIMIT 1") ||
+    await used(
       "SELECT 1 FROM inline_threads WHERE page_id=? LIMIT 1",
     )
   );
 }
-function removeDay(page: Page) {
-  run("DELETE FROM notifications WHERE page_id=?", page.id);
-  run("DELETE FROM presence WHERE page_id=?", page.id);
-  run("DELETE FROM editor_presence WHERE page_id=?", page.id);
-  run("DELETE FROM favorites WHERE page_id=?", page.id);
+async function removeDay(page: Page) {
+  await run("DELETE FROM notifications WHERE page_id=?", page.id);
+  await run("DELETE FROM presence WHERE page_id=?", page.id);
+  await run("DELETE FROM editor_presence WHERE page_id=?", page.id);
+  await run("DELETE FROM favorites WHERE page_id=?", page.id);
   try {
-    inSavepoint(() => run("DELETE FROM pages WHERE id=?", page.id));
+    await inSavepoint(async () => await run("DELETE FROM pages WHERE id=?", page.id));
   } catch {
     // Still referenced somewhere: move it to the trash instead.
-    run(
+    await run(
       "UPDATE pages SET deleted_at=?,public_token=NULL WHERE id=?", nowText(),
       page.id,
     );
@@ -206,23 +206,23 @@ function removeDay(page: Page) {
 // What a new day starts with: the open tasks of the last day before it
 // (without the template's own tasks, which come back by themselves) and
 // the template. Reads only; rollJournal moves the tasks.
-export function dayStart(journal: Page, today: string) {
-  const previous = one<Page>(
+export async function dayStart(journal: Page, today: string) {
+  const previous = await one<Page>(
     "SELECT * FROM pages WHERE parent_id=? AND journal_date<? AND deleted_at IS NULL ORDER BY journal_date DESC LIMIT 1",
     journal.id,
     today,
   );
-  const daily = templateTaskTexts(journal.id);
+  const daily = await templateTaskTexts(journal.id);
   let carried: PMNode[] = [];
   let before: { ydoc: Y.Doc; doc: PMNode } | null = null;
   if (previous) {
-    before = loadDocument(previous.id);
+    before = await loadDocument(previous.id);
     carried = carryTasks(
       openTasks(before.doc).filter((task) => !daily.has(task.textContent.trim())),
       previous.journal_date!,
     );
   }
-  const doc = dayDocument(carried, templateNodes(journal.id, schema()));
+  const doc = dayDocument(carried, await templateNodes(journal.id, schema()));
   return { previous, before, carried, daily, doc };
 }
 
@@ -231,7 +231,7 @@ export function dayStart(journal: Page, today: string) {
 // A journal set to "beim ersten Schreiben" (lib/journal-days.ts) only gets
 // the page with `write` (the first keystroke, task, tracker value or file);
 // until then the answer names the draft that stands in for it.
-export function rollJournal(
+export async function rollJournal(
   user: Identity,
   journal: Page,
   today: string,
@@ -239,7 +239,7 @@ export function rollJournal(
   // Today's page is in the trash and a fresh one is wanted.
   recreate = false,
   options: { write?: boolean } = {},
-): {
+): Promise<{
   // Today's page – or, while it is a draft, the draft's id (it opens like
   // a page, GET /api/pages/<id>).
   dayId: string;
@@ -247,53 +247,53 @@ export function rollJournal(
   trashed?: boolean;
   draft?: boolean;
   generation?: string;
-} {
+}> {
   if (journal.kind !== "journal")
     throw new HttpError(400, "Diese Seite ist kein Journal.");
   // A client clock far off the server's would create the wrong days.
   if (today < shiftDay(now, -1) || today > shiftDay(now, 1))
     throw new HttpError(400, "Das Datum passt nicht zur Serverzeit.");
-  const existing = one<Page>(
+  const existing = await one<Page>(
     // Also a day moved to the trash: that was a decision, not a gap.
     "SELECT * FROM pages WHERE parent_id=? AND journal_date=?",
     journal.id,
     today,
   );
-  const generationOf = (pageId: string) =>
-    String(one<{ generation: string }>("SELECT generation FROM documents WHERE page_id=?", pageId)?.generation || "1");
+  const generationOf = async (pageId: string) =>
+    String((await one<{ generation: string }>("SELECT generation FROM documents WHERE page_id=?", pageId))?.generation || "1");
   if (existing && existing.deleted_at && recreate) {
     // The deleted page stays in the trash as an ordinary page.
-    run("UPDATE pages SET journal_date=NULL WHERE id=?", existing.id);
+    await run("UPDATE pages SET journal_date=NULL WHERE id=?", existing.id);
   } else if (existing)
     return {
       dayId: existing.id,
       changed: false,
       trashed: !!existing.deleted_at,
-      ...(options.write ? { generation: generationOf(existing.id) } : {}),
+      ...(options.write ? { generation: await generationOf(existing.id) } : {}),
     };
   // Created on the first write: nothing is stored yet, carried tasks stay
   // where they are; the draft id is the same for every device.
-  if (!options.write && journalSettings(journal.id).options.create === "write")
-    return { dayId: ensureDraft(journal.id, today), changed: false, draft: true };
-  const { previous, before, carried, daily, doc } = dayStart(journal, today);
+  if (!options.write && (await journalSettings(journal.id)).options.create === "write")
+    return { dayId: await ensureDraft(journal.id, today), changed: false, draft: true };
+  const { previous, before, carried, daily, doc } = await dayStart(journal, today);
   if (previous && before) {
     const { ydoc, doc: previousDoc } = before;
-    if (untouched(previous, previousDoc)) removeDay(previous);
+    if (await untouched(previous, previousDoc)) await removeDay(previous);
     else if (carried.length) {
-      storeDocument(
+      await storeDocument(
         previous.id,
         ydoc,
         withoutOpenTasks(previousDoc, (task) => daily.has(task.textContent.trim())),
       );
       // The moved tasks now live in the new day ("Meine Aufgaben").
-      indexPageTasks(previous.id, false);
+      await indexPageTasks(previous.id, false);
     }
     ydoc.destroy();
   }
   // A day that was a draft keeps its id and gets exactly the state the
   // draft showed (lib/journal-days.ts), so what was typed there merges.
-  const draft = journalDraftId(journal.id, today);
-  const dayId = createPage(
+  const draft = await journalDraftId(journal.id, today);
+  const dayId = await createPage(
     journal.workspace_id,
     journal.space_id,
     user.id,
@@ -301,41 +301,41 @@ export function rollJournal(
     "document",
     journal.id,
     undefined,
-    ...(draft && !one("SELECT 1 FROM pages WHERE id=?", draft) ? [draft] : []),
+    ...(draft && !(await one("SELECT 1 FROM pages WHERE id=?", draft)) ? [draft] : []),
   );
   const seeded = seededDayState(dayId, doc);
   // Newest day first in the page tree.
-  run(
+  await run(
     "UPDATE pages SET journal_date=?,icon='day',position=? WHERE id=?",
     today,
     -Number(today.replaceAll("-", "")),
     dayId,
   );
-  run(
+  await run(
     "UPDATE documents SET state=?,html=?,generation=? WHERE page_id=?",
     Y.encodeStateAsUpdate(seeded.ydoc),
     stateHtml(seeded.ydoc),
     seeded.generation,
     dayId,
   );
-  if (draft) run("DELETE FROM journal_drafts WHERE journal_id=? AND date=?", journal.id, today);
-  rememberDay(dayId, journal.id, rememberTemplate(journal.id), seeded.hash);
+  if (draft) await run("DELETE FROM journal_drafts WHERE journal_id=? AND date=?", journal.id, today);
+  await rememberDay(dayId, journal.id, await rememberTemplate(journal.id), seeded.hash);
   documentChanged(dayId);
   seeded.ydoc.destroy();
-  indexPageTasks(dayId, false);
+  await indexPageTasks(dayId, false);
   return { dayId, changed: true, ...(options.write ? { generation: seeded.generation } : {}) };
 }
 // All journals of a workspace the user may edit.
-export function rollJournals(user: Identity, workspaceId: string, today: string) {
+export async function rollJournals(user: Identity, workspaceId: string, today: string) {
   let changed = false;
-  for (const journal of all<Page>(
+  for (const journal of await all<Page>(
     "SELECT * FROM pages WHERE workspace_id=? AND kind='journal' AND deleted_at IS NULL",
     workspaceId,
   )) {
-    const role = pageRole(user, journal);
+    const role = await pageRole(user, journal);
     if (role !== "editor" && role !== "owner") continue;
     // Journals that create a day on the first write wait for it.
-    if (rollJournal(user, journal, today).changed) changed = true;
+    if ((await rollJournal(user, journal, today)).changed) changed = true;
   }
   return changed;
 }

@@ -17,14 +17,14 @@ const { customHostRoute, customHostPolicy, VERIFY_PATH, CUSTOM_HOST_HEADER } = a
 const { NextRequest } = await import("next/server");
 const { proxy } = await import("../proxy");
 
-function person(name: string): Identity {
+async function person(name: string): Promise<Identity> {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
   return { id: uid, name, email: `${name}@example.test`, groups: [], isAdmin: false, disabled: 0, created_at: "" } as Identity;
 }
-const status = (fn: () => unknown) => {
+const status = async (fn: () => unknown) => {
   try {
-    fn();
+    await fn();
   } catch (error) {
     return (error as { status?: number }).status ?? 400;
   }
@@ -33,17 +33,17 @@ const status = (fn: () => unknown) => {
 async function rejectsWith(fn: () => Promise<unknown>, code: number) {
   await assert.rejects(fn, (error: { status?: number }) => error.status === code);
 }
-const owner = person("domain-owner"),
-  viewer = person("domain-viewer");
-const wid = createWorkspace(owner.id, "Wiki");
-run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
-const space = one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid)!.id;
-const create = (title: string, parentId?: string) =>
-  (command(owner, { action: "page.create", workspaceId: wid, spaceId: space, title, parentId }) as { id: string }).id;
-const root = create("Handbuch");
-const child = create("Kapitel 1", root);
-const other = create("Anderes");
-const token = () => one<{ public_token: string }>("SELECT public_token FROM pages WHERE id=?", root)!.public_token;
+const owner = await person("domain-owner"),
+  viewer = await person("domain-viewer");
+const wid = await createWorkspace(owner.id, "Wiki");
+await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
+const space = (await one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid))!.id;
+const create = async (title: string, parentId?: string) =>
+  ((await command(owner, { action: "page.create", workspaceId: wid, spaceId: space, title, parentId })) as { id: string }).id;
+const root = await create("Handbuch");
+const child = await create("Kapitel 1", root);
+const other = await create("Anderes");
+const token = async () => (await one<{ public_token: string }>("SELECT public_token FROM pages WHERE id=?", root))!.public_token;
 
 // DNS answers for the tests.
 const txt = new Map<string, string[][]>();
@@ -62,34 +62,34 @@ test("host names: normalised, no IPs, ports, local names or the instance itself"
     assert.throws(() => domains.normalizeHost(bad), Error, bad);
 });
 
-test("adding a domain: switched on by admins, published pages, editors only", () => {
-  assert.equal(status(() => command(owner, { action: "domain.add", pageId: root, host: "docs.example.org" })), 403);
-  saveInstanceSettings({ customDomains: true });
-  assert.equal(status(() => command(owner, { action: "domain.add", pageId: root, host: "docs.example.org" })), 400, "not published");
-  command(owner, { action: "page.publish", pageId: root, enabled: true, includeChildren: true });
-  assert.equal(status(() => command(viewer, { action: "domain.add", pageId: root, host: "docs.example.org" })), 403);
-  const added = command(owner, { action: "domain.add", pageId: root, host: "Docs.Example.org" }) as ReturnType<typeof domains.domainSettings>;
+test("adding a domain: switched on by admins, published pages, editors only", async () => {
+  assert.equal(await status(async () => await command(owner, { action: "domain.add", pageId: root, host: "docs.example.org" })), 403);
+  await saveInstanceSettings({ customDomains: true });
+  assert.equal(await status(async () => await command(owner, { action: "domain.add", pageId: root, host: "docs.example.org" })), 400, "not published");
+  await command(owner, { action: "page.publish", pageId: root, enabled: true, includeChildren: true });
+  assert.equal(await status(async () => await command(viewer, { action: "domain.add", pageId: root, host: "docs.example.org" })), 403);
+  const added = (await command(owner, { action: "domain.add", pageId: root, host: "Docs.Example.org" })) as Awaited<ReturnType<typeof domains.domainSettings>>;
   assert.equal(added.domain?.host, "docs.example.org");
   assert.equal(added.domain?.verified, false);
   assert.equal(added.domain?.record.name, "_flowplan-verify.docs.example.org");
   assert.match(added.domain!.record.value, /^flowplan-verify-[0-9a-f]{32}$/);
   // Another publication cannot take the same host.
-  command(owner, { action: "page.publish", pageId: other, enabled: true });
-  assert.equal(status(() => command(owner, { action: "domain.add", pageId: other, host: "docs.example.org" })), 409);
+  await command(owner, { action: "page.publish", pageId: other, enabled: true });
+  assert.equal(await status(async () => await command(owner, { action: "domain.add", pageId: other, host: "docs.example.org" })), 409);
   // Password-protected publications stay off custom domains.
-  command(owner, { action: "publication.protect", pageId: other, password: "geheim-12345" });
-  assert.equal(status(() => command(owner, { action: "domain.add", pageId: other, host: "other.example.org" })), 400);
+  await command(owner, { action: "publication.protect", pageId: other, password: "geheim-12345" });
+  assert.equal(await status(async () => await command(owner, { action: "domain.add", pageId: other, host: "other.example.org" })), 400);
   // Viewers see the status, without changing anything.
-  assert.equal(domains.domainSettings(viewer, root).domain?.host, "docs.example.org");
+  assert.equal((await domains.domainSettings(viewer, root)).domain?.host, "docs.example.org");
 });
 
 test("verification: TXT record (chunked) or the verification file", async () => {
-  const value = domains.domainSettings(owner, root).domain!.record.value;
+  const value = (await domains.domainSettings(owner, root)).domain!.record.value;
   // Unverified: only the verification file is served under the host.
-  assert.deepEqual(domains.hostState("docs.example.org"), { status: "pending", verifyToken: value });
-  assert.deepEqual(customHostRoute(domains.hostState("docs.example.org"), VERIFY_PATH, "GET"), { kind: "text", body: value });
-  assert.deepEqual(customHostRoute(domains.hostState("docs.example.org"), "/", "GET"), { kind: "notFound" });
-  assert.equal(domains.domainAllowed("docs.example.org"), false);
+  assert.deepEqual(await domains.hostState("docs.example.org"), { status: "pending", verifyToken: value });
+  assert.deepEqual(customHostRoute(await domains.hostState("docs.example.org"), VERIFY_PATH, "GET"), { kind: "text", body: value });
+  assert.deepEqual(customHostRoute(await domains.hostState("docs.example.org"), "/", "GET"), { kind: "notFound" });
+  assert.equal(await domains.domainAllowed("docs.example.org"), false);
   await rejectsWith(() => domains.verifyDomain(viewer, { pageId: root }), 403);
   txt.set("_flowplan-verify.docs.example.org", [["something-else"]]);
   const failed = await domains.verifyDomain(owner, { pageId: root });
@@ -100,25 +100,25 @@ test("verification: TXT record (chunked) or the verification file", async () => 
   const verified = await domains.verifyDomain(owner, { pageId: root });
   assert.equal(verified.method, "dns");
   assert.equal(verified.domain?.verified, true);
-  assert.equal(domains.domainAllowed("docs.example.org"), true);
-  assert.equal(domains.domainAllowed("DOCS.example.org"), true);
-  assert.equal(domains.domainAllowed("unknown.example.org"), false);
-  assert.equal(domains.domainAllowed("app.example.org"), false);
-  assert.equal(domains.domainAllowed(""), false);
+  assert.equal(await domains.domainAllowed("docs.example.org"), true);
+  assert.equal(await domains.domainAllowed("DOCS.example.org"), true);
+  assert.equal(await domains.domainAllowed("unknown.example.org"), false);
+  assert.equal(await domains.domainAllowed("app.example.org"), false);
+  assert.equal(await domains.domainAllowed(""), false);
   // The verification file works as well.
-  command(owner, { action: "publication.protect", pageId: other, password: null });
-  command(owner, { action: "domain.add", pageId: other, host: "other.example.org" });
-  const otherValue = domains.domainSettings(owner, other).domain!.record.value;
+  await command(owner, { action: "publication.protect", pageId: other, password: null });
+  await command(owner, { action: "domain.add", pageId: other, host: "other.example.org" });
+  const otherValue = (await domains.domainSettings(owner, other)).domain!.record.value;
   files.set(`https://other.example.org${VERIFY_PATH}`, `${otherValue}\n`);
   assert.equal((await domains.verifyDomain(owner, { pageId: other })).method, "http");
-  command(owner, { action: "domain.remove", pageId: other });
-  assert.equal(domains.hostState("other.example.org").status, "none");
+  await command(owner, { action: "domain.remove", pageId: other });
+  assert.equal((await domains.hostState("other.example.org")).status, "none");
 });
 
-test("routing under a verified domain: the publication and nothing else", () => {
-  const state = domains.hostState("docs.example.org");
+test("routing under a verified domain: the publication and nothing else", async () => {
+  const state = await domains.hostState("docs.example.org");
   assert.equal(state.status, "verified");
-  const t = token();
+  const t = await token();
   const route = (path: string, method = "GET") => customHostRoute(state, path, method);
   assert.deepEqual(route("/"), { kind: "rewrite", path: `/share/${t}` });
   assert.deepEqual(route(`/${child}`), { kind: "rewrite", path: `/share/${t}/${child}` });
@@ -164,7 +164,7 @@ test("the proxy: Host spoofing never reaches the app, no cookies or credentials 
   }
   const page = await proxy(request("/", { cookie: "flowplan_session=abc", authorization: "Bearer fp_x" }));
   assert.equal(page.status, 200);
-  assert.match(page.headers.get("x-middleware-rewrite") || "", new RegExp(`/share/${token()}$`));
+  assert.match(page.headers.get("x-middleware-rewrite") || "", new RegExp(`/share/${await token()}$`));
   assert.match(page.headers.get("Content-Security-Policy") || "", /frame-ancestors 'none'/);
   assert.equal(page.headers.get("X-Frame-Options"), "DENY");
   const overridden = (page.headers.get("x-middleware-override-headers") || "").split(",");
@@ -182,32 +182,32 @@ test("the proxy: Host spoofing never reaches the app, no cookies or credentials 
   assert.notEqual(unknown.status, 404);
 });
 
-test("sitemap, robots and canonical addresses for the custom host", () => {
-  const sitemap = domains.domainSitemap("docs.example.org")!;
+test("sitemap, robots and canonical addresses for the custom host", async () => {
+  const sitemap = (await domains.domainSitemap("docs.example.org"))!;
   assert.match(sitemap, /<loc>https:\/\/docs\.example\.org\/<\/loc>/);
   assert.ok(sitemap.includes(`<loc>https://docs.example.org/${child}</loc>`));
-  assert.ok(!sitemap.includes(token()), "no share token in the sitemap");
-  assert.match(domains.domainRobots("docs.example.org")!, /Sitemap: https:\/\/docs\.example\.org\/sitemap\.xml/);
-  assert.equal(domains.domainSitemap("app.example.org"), null);
-  assert.equal(domains.domainRobots("unknown.example.org"), null);
-  assert.equal(domains.publicationHost(root), "docs.example.org");
-  assert.equal(domains.customHostFor("docs.example.org", token()), "docs.example.org");
-  assert.equal(domains.customHostFor("docs.example.org", "another-token"), null);
-  assert.equal(domains.customHostFor(null, token()), null);
+  assert.ok(!sitemap.includes(await token()), "no share token in the sitemap");
+  assert.match((await domains.domainRobots("docs.example.org"))!, /Sitemap: https:\/\/docs\.example\.org\/sitemap\.xml/);
+  assert.equal(await domains.domainSitemap("app.example.org"), null);
+  assert.equal(await domains.domainRobots("unknown.example.org"), null);
+  assert.equal(await domains.publicationHost(root), "docs.example.org");
+  assert.equal(await domains.customHostFor("docs.example.org", await token()), "docs.example.org");
+  assert.equal(await domains.customHostFor("docs.example.org", "another-token"), null);
+  assert.equal(await domains.customHostFor(null, await token()), null);
 });
 
-test("the look of a publication: validated, files only when published", () => {
-  assert.equal(status(() => command(owner, { action: "publication.theme", pageId: root, theme: { accent: "red" } })), 400);
-  assert.equal(status(() => command(owner, { action: "publication.theme", pageId: root, theme: { logo: "javascript:alert(1)" } })), 400);
-  assert.equal(status(() => command(owner, { action: "publication.theme", pageId: root, theme: { logo: "http://example.org/a.png" } })), 400);
-  assert.equal(status(() => command(viewer, { action: "publication.theme", pageId: root, theme: {} })), 403);
+test("the look of a publication: validated, files only when published", async () => {
+  assert.equal(await status(async () => await command(owner, { action: "publication.theme", pageId: root, theme: { accent: "red" } })), 400);
+  assert.equal(await status(async () => await command(owner, { action: "publication.theme", pageId: root, theme: { logo: "javascript:alert(1)" } })), 400);
+  assert.equal(await status(async () => await command(owner, { action: "publication.theme", pageId: root, theme: { logo: "http://example.org/a.png" } })), 400);
+  assert.equal(await status(async () => await command(viewer, { action: "publication.theme", pageId: root, theme: {} })), 403);
   const fileId = id();
-  command(owner, {
+  await command(owner, {
     action: "publication.theme",
     pageId: root,
     theme: { accent: "#ff6600", logo: `/api/files/${fileId}`, favicon: "https://example.org/icon.png", footer: "© Beispiel", hideBranding: true },
   });
-  const theme = domains.renderedTheme(token(), root);
+  const theme = await domains.renderedTheme(await token(), root);
   assert.equal(theme.accent, "#ff6600");
   assert.equal(theme.logo, undefined, "an unpublished file is not shown");
   assert.equal(theme.favicon, "https://example.org/icon.png");
@@ -215,15 +215,15 @@ test("the look of a publication: validated, files only when published", () => {
   assert.equal(theme.hideBranding, true);
 });
 
-test("ending the publication or switching the feature off ends the domain", () => {
-  command(owner, { action: "page.publish", pageId: root, enabled: false });
-  assert.equal(domains.hostState("docs.example.org").status, "gone");
-  assert.deepEqual(customHostRoute(domains.hostState("docs.example.org"), "/", "GET"), { kind: "notFound" });
-  assert.equal(domains.domainAllowed("docs.example.org"), false);
-  command(owner, { action: "page.publish", pageId: root, enabled: true });
-  assert.equal(domains.hostState("docs.example.org").status, "verified");
-  saveInstanceSettings({ customDomains: false });
-  assert.equal(domains.hostState("docs.example.org").status, "none");
-  assert.equal(domains.domainAllowed("docs.example.org"), false);
-  saveInstanceSettings({ customDomains: true });
+test("ending the publication or switching the feature off ends the domain", async () => {
+  await command(owner, { action: "page.publish", pageId: root, enabled: false });
+  assert.equal((await domains.hostState("docs.example.org")).status, "gone");
+  assert.deepEqual(customHostRoute(await domains.hostState("docs.example.org"), "/", "GET"), { kind: "notFound" });
+  assert.equal(await domains.domainAllowed("docs.example.org"), false);
+  await command(owner, { action: "page.publish", pageId: root, enabled: true });
+  assert.equal((await domains.hostState("docs.example.org")).status, "verified");
+  await saveInstanceSettings({ customDomains: false });
+  assert.equal((await domains.hostState("docs.example.org")).status, "none");
+  assert.equal(await domains.domainAllowed("docs.example.org"), false);
+  await saveInstanceSettings({ customDomains: true });
 });

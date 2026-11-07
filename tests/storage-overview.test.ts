@@ -40,22 +40,22 @@ const { createWorkspace, createPage } = await import("../lib/seed");
 const { storageOverview } = await import("../lib/storage-overview");
 
 const user = id();
-run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", user, user, "A", "a@example.test");
-const wid = createWorkspace(user, "Übersicht");
-const space = String(one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid)!.id);
-const doc = createPage(wid, space, user, "Notizen");
-createPage(wid, space, user, "Tabelle", "database");
-createPage(wid, space, user, "Board", "whiteboard");
+await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", user, user, "A", "a@example.test");
+const wid = await createWorkspace(user, "Übersicht");
+const space = String((await one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid))!.id);
+const doc = await createPage(wid, space, user, "Notizen");
+await createPage(wid, space, user, "Tabelle", "database");
+await createPage(wid, space, user, "Board", "whiteboard");
 mkdirSync(join(dir, "uploads"), { recursive: true });
-const file = (mime: string, size: number) => {
+const file = async (mime: string, size: number) => {
   const fid = id();
   writeFileSync(join(dir, "uploads", fid), Buffer.alloc(size));
-  run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fid, doc, "f", mime, size, user);
+  await run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fid, doc, "f", mime, size, user);
   return fid;
 };
-const photo = file("image/png", 3000),
-  clip = file("video/mp4", 9000),
-  pdf = file("application/pdf", 500);
+const photo = await file("image/png", 3000),
+  clip = await file("video/mp4", 9000),
+  pdf = await file("application/pdf", 500);
 
 test("counts, local breakdown and the bucket by media type", async () => {
   listing = [

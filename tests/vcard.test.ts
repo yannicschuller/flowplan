@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { emptyContact, escapeText, foldLine, parseVCards, serializeVCard, serializeVCards, unescapeText } from "../lib/vcard";
 
-const sample = (over: Partial<ReturnType<typeof emptyContact>> = {}) => ({
+const sample = (over: Partial<Awaited<ReturnType<typeof emptyContact>>> = {}) => ({
   ...emptyContact(),
   uid: "3f1c7a52-6b9e-4c55-9d3e-2a6f0c1d8e77",
   firstName: "Zoë",

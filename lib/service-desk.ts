@@ -24,8 +24,8 @@ type Message = { id: string; author_id: string | null; author_name: string; body
 const appUrl = () => (process.env.APP_URL || "http://localhost:3000").replace(/\/$/, "");
 const ticketUrl = (token: string) => `${appUrl()}/ticket/${token}`;
 export const messageBody = z.string().trim().min(1).max(5000);
-const fieldsOf = (pageId: string): Field[] =>
-  JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId)?.fields || "[]");
+const fieldsOf = async (pageId: string): Promise<Field[]> =>
+  JSON.parse((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId))?.fields || "[]");
 // The record's title: its first property.
 const rowTitle = (fields: Field[], cells: Record<string, unknown>) => cellText(cells[fields[0]?.id || "title"]).slice(0, 200);
 function display(field: Field, value: unknown, locale: Locale) {
@@ -41,7 +41,7 @@ function display(field: Field, value: unknown, locale: Locale) {
 
 // After a form answer was saved (inside the same transaction).
 // `mail: false` when the form's confirmation e-mail carries the link.
-export function createTicket(input: { pageId: string; rowId: string; title: string; fields: Field[]; cells: Record<string, unknown>; mail?: boolean }) {
+export async function createTicket(input: { pageId: string; rowId: string; title: string; fields: Field[]; cells: Record<string, unknown>; mail?: boolean }) {
   const token = randomBytes(24).toString("base64url");
   const locale = contentLocale();
   // The first e-mail question answered is where the link goes.
@@ -50,7 +50,7 @@ export function createTicket(input: { pageId: string; rowId: string; title: stri
       .filter((f) => f.type === "email")
       .map((f) => String(input.cells[f.id] || "").trim())
       .find((v) => /^[^\s@]+@[^\s@]+$/.test(v)) || null;
-  run(
+  await run(
     "INSERT INTO tickets(token,row_id,page_id,email,locale,created_at) VALUES(?,?,?,?,?,?)",
     token,
     input.rowId,
@@ -59,13 +59,13 @@ export function createTicket(input: { pageId: string; rowId: string; title: stri
     locale,
     Date.now(),
   );
-  const mailed = !!email && input.mail !== false && mailTicketLink({ token, email, title: input.title, locale });
+  const mailed = !!email && input.mail !== false && await mailTicketLink({ token, email, title: input.title, locale });
   return { token, mailed, email, url: ticketUrl(token) };
 }
 // The e-mail with the private link of a new request.
-export function mailTicketLink(input: { token: string; email: string; title: string; locale: Locale }) {
+export async function mailTicketLink(input: { token: string; email: string; title: string; locale: Locale }) {
   const t = translate(input.locale);
-  return queueCustomerMail({
+  return await queueCustomerMail({
     to: input.email,
     locale: input.locale,
     subject: t(`Deine Anfrage: ${input.title}`, `Your request: ${input.title}`),
@@ -82,9 +82,9 @@ export function mailTicketLink(input: { token: string; email: string; title: str
   });
 }
 
-function ticketRecord(token: string) {
+async function ticketRecord(token: string) {
   if (!/^[A-Za-z0-9_-]{20,64}$/.test(token)) throw new HttpError(404, "Anfrage nicht gefunden.");
-  const ticket = one<Ticket & { cells: string; title: string; config: string; enabled: number }>(
+  const ticket = await one<Ticket & { cells: string; title: string; config: string; enabled: number }>(
     "SELECT t.*,r.cells,p.title,f.config,f.enabled FROM tickets t JOIN rows r ON r.id=t.row_id AND r.page_id=t.page_id JOIN pages p ON p.id=t.page_id AND p.deleted_at IS NULL JOIN forms f ON f.page_id=t.page_id WHERE t.token=?",
     token,
   );
@@ -95,18 +95,18 @@ function ticketRecord(token: string) {
   return { ticket, config };
 }
 // The link checked on its own – before a reply's body is read.
-export function requireTicketLink(token: string) {
-  ticketRecord(token);
+export async function requireTicketLink(token: string) {
+  await ticketRecord(token);
 }
-const messages = (rowId: string) =>
-  all<Message>("SELECT id,author_id,author_name,body,created_at FROM ticket_messages WHERE row_id=? ORDER BY created_at,id", rowId);
+const messages = async (rowId: string) =>
+  await all<Message>("SELECT id,author_id,author_name,body,created_at FROM ticket_messages WHERE row_id=? ORDER BY created_at,id", rowId);
 
 // What the customer sees.
-export function customerTicket(token: string) {
-  const { ticket, config } = ticketRecord(token);
+export async function customerTicket(token: string) {
+  const { ticket, config } = await ticketRecord(token);
   const locale: Locale = isLocale(contentLocale()) ? contentLocale() : "de";
   // Properties with a read rule never reach the customer (lib/field-access.ts).
-  const every = fieldsOf(ticket.page_id),
+  const every = await fieldsOf(ticket.page_id),
     hidden = publicHiddenFieldIds(every),
     fields = every.filter((f) => !hidden.has(f.id));
   const cells = JSON.parse(ticket.cells) as Record<string, unknown>;
@@ -122,7 +122,7 @@ export function customerTicket(token: string) {
     created_at: ticket.created_at,
     status,
     answers: orderedFormFields(fields, config, false).map(show).filter((a) => a.value !== ""),
-    messages: messages(ticket.row_id).map((m) => ({
+    messages: (await messages(ticket.row_id)).map((m) => ({
       id: m.id,
       team: !!m.author_id,
       name: m.author_id ? m.author_name : "",
@@ -133,41 +133,41 @@ export function customerTicket(token: string) {
 }
 
 // A reply from the customer: notifies the people who handle the record.
-export function customerReply(token: string, input: unknown) {
-  const { ticket } = ticketRecord(token);
+export async function customerReply(token: string, input: unknown) {
+  const { ticket } = await ticketRecord(token);
   const body = messageBody.parse(z.object({ body: z.string() }).parse(input).body);
   const recent =
-    one<{ n: number }>(
+    (await one<{ n: number }>(
       "SELECT count(*) n FROM ticket_messages WHERE row_id=? AND author_id IS NULL AND created_at>?",
       ticket.row_id,
       Date.now() - 3600_000,
-    )?.n || 0;
+    ))?.n || 0;
   if (recent >= 20) throw new HttpError(429, "Zu viele Nachrichten. Bitte später erneut versuchen.");
-  run(
+  await run(
     "INSERT INTO ticket_messages(id,row_id,author_id,author_name,body,created_at) VALUES(?,?,NULL,'',?,?)",
     id(),
     ticket.row_id,
     body,
     Date.now(),
   );
-  const page = one<Page>("SELECT * FROM pages WHERE id=?", ticket.page_id)!;
-  const fields = fieldsOf(page.id);
+  const page = (await one<Page>("SELECT * FROM pages WHERE id=?", ticket.page_id))!;
+  const fields = await fieldsOf(page.id);
   const cells = JSON.parse(ticket.cells) as Record<string, unknown>;
   // People on the record, whoever answered before, and the database's owner.
   const people = fields
     .filter((f) => f.type === "person")
     .flatMap((f) => (Array.isArray(cells[f.id]) ? (cells[f.id] as unknown[]) : [cells[f.id]]))
     .filter((v): v is string => typeof v === "string");
-  const answered = all<{ author_id: string }>(
+  const answered = (await all<{ author_id: string }>(
     "SELECT DISTINCT author_id FROM ticket_messages WHERE row_id=? AND author_id IS NOT NULL",
     ticket.row_id,
-  ).map((m) => m.author_id);
+  )).map((m) => m.author_id);
   const subject = rowTitle(fields, cells) || page.title;
   for (const uid of new Set([...people, ...answered, page.created_by].filter(Boolean) as string[])) {
-    const member = one<Identity>("SELECT * FROM users WHERE id=? AND disabled=0", uid);
-    if (!member || !pageRole({ ...member, groups: [], isAdmin: false } as Identity, page)) continue;
-    if (hiddenRowIds({ ...member, groups: [], isAdmin: false } as Identity, page).has(ticket.row_id)) continue;
-    run(
+    const member = await one<Identity>("SELECT * FROM users WHERE id=? AND disabled=0", uid);
+    if (!member || !(await pageRole({ ...member, groups: [], isAdmin: false } as Identity, page))) continue;
+    if ((await hiddenRowIds({ ...member, groups: [], isAdmin: false } as Identity, page)).has(ticket.row_id)) continue;
+    await run(
       "INSERT INTO notifications(id,user_id,body,page_id,row_id,kind) VALUES(?,?,?,?,?,'guest')",
       id(),
       uid,
@@ -176,16 +176,16 @@ export function customerReply(token: string, input: unknown) {
       ticket.row_id,
     );
   }
-  return customerTicket(token);
+  return await customerTicket(token);
 }
 
 // The conversation inside the record, for the team.
-export function teamThread(user: Identity, pageId: string, rowId: string) {
-  requireRow(user, pageId, rowId);
-  const ticket = one<Ticket>("SELECT * FROM tickets WHERE row_id=? AND page_id=?", rowId, pageId);
+export async function teamThread(user: Identity, pageId: string, rowId: string) {
+  await requireRow(user, pageId, rowId);
+  const ticket = await one<Ticket>("SELECT * FROM tickets WHERE row_id=? AND page_id=?", rowId, pageId);
   if (!ticket) return { ticket: null, messages: [] };
-  const page = requirePage(user, pageId);
-  const canWrite = pageRole(user, page) === "owner" || pageRole(user, page) === "editor";
+  const page = await requirePage(user, pageId);
+  const canWrite = (await pageRole(user, page)) === "owner" || (await pageRole(user, page)) === "editor";
   return {
     ticket: {
       email: ticket.email,
@@ -193,17 +193,17 @@ export function teamThread(user: Identity, pageId: string, rowId: string) {
       // Only people who may answer can pass the link on.
       url: canWrite ? ticketUrl(ticket.token) : null,
     },
-    messages: messages(rowId).map((m) => ({ ...m, team: !!m.author_id })),
+    messages: (await messages(rowId)).map((m) => ({ ...m, team: !!m.author_id })),
   };
 }
 
 // A reply from the team: e-mailed to the customer in their language.
-export function teamReply(user: Identity, pageId: string, rowId: string, input: unknown) {
-  const { row } = requireRow(user, pageId, rowId, true);
-  const ticket = one<Ticket>("SELECT * FROM tickets WHERE row_id=? AND page_id=?", rowId, pageId);
+export async function teamReply(user: Identity, pageId: string, rowId: string, input: unknown) {
+  const { row } = await requireRow(user, pageId, rowId, true);
+  const ticket = await one<Ticket>("SELECT * FROM tickets WHERE row_id=? AND page_id=?", rowId, pageId);
   if (!ticket) throw new HttpError(404, "Zu diesem Eintrag gibt es keine Kundenanfrage.");
   const body = messageBody.parse(input);
-  run(
+  await run(
     "INSERT INTO ticket_messages(id,row_id,author_id,author_name,body,created_at) VALUES(?,?,?,?,?,?)",
     id(),
     rowId,
@@ -215,10 +215,10 @@ export function teamReply(user: Identity, pageId: string, rowId: string, input: 
   if (ticket.email) {
     const locale: Locale = isLocale(ticket.locale) ? ticket.locale : "de";
     const t = translate(locale);
-    const fields = fieldsOf(pageId);
+    const fields = await fieldsOf(pageId);
     const cells = typeof row.cells === "string" ? JSON.parse(row.cells) : row.cells;
     const subject = rowTitle(fields, cells as Record<string, unknown>);
-    queueCustomerMail({
+    await queueCustomerMail({
       to: ticket.email,
       locale,
       subject: t(`Neue Antwort zu deiner Anfrage${subject ? ` „${subject}“` : ""}`, `New reply to your request${subject ? ` “${subject}”` : ""}`),
@@ -228,5 +228,5 @@ export function teamReply(user: Identity, pageId: string, rowId: string, input: 
       url: ticketUrl(ticket.token),
     });
   }
-  return teamThread(user, pageId, rowId);
+  return await teamThread(user, pageId, rowId);
 }

@@ -18,16 +18,17 @@ import { contentLocale, withRequestLocale } from "@/lib/content-locale";
 import { createTicket, mailTicketLink } from "@/lib/service-desk";
 import { surveyClosed } from "@/lib/survey";
 import { readTextLimited } from "@/lib/request-body";
+import { mapAsync } from "../../../../lib/each-async";
 
 async function handlePOST(
   req: Request,
   { params }: { params: Promise<{ token: string }> },
 ) {
   try {
-    checkOrigin(req);
+    await checkOrigin(req);
     const { token } = await params;
     const user = await activeUser(),
-      form = getForm(token, user);
+      form = await getForm(token, user);
     const FORM_ANSWERS_PER_HOUR = 1000;
     const fileFields = form.fields.filter((f) => f.type === "files");
     let raw: string;
@@ -55,7 +56,7 @@ async function handlePOST(
       }
       if (total > FORM_TOTAL_BYTES)
         throw new HttpError(413, "Maximal 25 MB Dateien je Antwort.");
-      if (total) enforceQuota(form.workspace_id, total);
+      if (total) await enforceQuota(form.workspace_id, total);
     } else raw = await readTextLimited(req, 400_000, "Antwort zu groß.");
     if (raw.length > 100_000) throw new HttpError(413, "Antwort zu groß.");
     const input = z
@@ -84,23 +85,23 @@ async function handlePOST(
     const fingerprint = hash(`${token}|${user?.id || address || "?"}`);
     // Assigned inside the transaction.
     let ticket = null as { token: string; mailed: boolean } | null;
-    transaction(() => {
+    await transaction(async () => {
       // Surveys: closing date, response limit, one answer per person.
       const survey = form.config.survey?.enabled ? form.config.survey : null;
       if (survey) {
-        const total = one<{ n: number }>("SELECT count(*) n FROM form_submissions WHERE form_token=?", token)?.n || 0;
+        const total = (await one<{ n: number }>("SELECT count(*) n FROM form_submissions WHERE form_token=?", token))?.n || 0;
         const closed = surveyClosed(survey, total);
         if (closed) throw new HttpError(410, closed === "full" ? "Diese Umfrage hat genug Antworten." : "Diese Umfrage ist geschlossen.");
-        if (survey.onePerPerson && known && one("SELECT 1 FROM form_submissions WHERE form_token=? AND fingerprint=?", token, fingerprint))
+        if (survey.onePerPerson && known && await one("SELECT 1 FROM form_submissions WHERE form_token=? AND fingerprint=?", token, fingerprint))
           throw new HttpError(409, "Du hast an dieser Umfrage schon teilgenommen.");
       }
       const count = known
-        ? one<{ n: number }>(
+        ? (await one<{ n: number }>(
             "SELECT count(*) n FROM form_submissions WHERE form_token=? AND fingerprint=? AND created_at>?",
             token,
             fingerprint,
             Date.now() - 3600000,
-          )?.n || 0
+          ))?.n || 0
         : 0;
       if (count >= 30)
         throw new HttpError(
@@ -110,18 +111,18 @@ async function handlePOST(
       // The form as a whole: a cap no crowd of real people reaches, which
       // stops scripts that rotate addresses.
       const perForm =
-        one<{ n: number }>("SELECT count(*) n FROM form_submissions WHERE form_token=? AND created_at>?", token, Date.now() - 3600000)?.n || 0;
+        (await one<{ n: number }>("SELECT count(*) n FROM form_submissions WHERE form_token=? AND created_at>?", token, Date.now() - 3600000))?.n || 0;
       if (perForm >= FORM_ANSWERS_PER_HOUR)
         throw new HttpError(429, "Dieses Formular hat gerade viele Antworten erhalten. Bitte später erneut versuchen.");
       // Files from anonymous answers draw on the form's daily budget, since
       // nobody's personal storage limit applies to them.
       let bytes = 0;
       for (const files of buffers.values()) for (const { data } of files) bytes += data.length;
-      if (bytes && !user) takeAnonymousBudget(`form:${token}`, bytes);
+      if (bytes && !user) await takeAnonymousBudget(`form:${token}`, bytes);
       const dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads");
       if (buffers.size) mkdirSync(dir, { recursive: true });
       for (const [fieldId, files] of buffers) {
-        cells[fieldId] = files.map(({ file, data: raw }) => {
+        cells[fieldId] = await mapAsync(files, async ({ file, data: raw }) => {
           const fid = id(),
             path = resolve(dir, fid);
           // The type must match the content; photos lose their location.
@@ -129,7 +130,7 @@ async function handlePOST(
           const data = stripLocation(raw, mime);
           writeFileSync(path, data);
           onTransactionRollback(() => unlinkSync(path));
-          run(
+          await run(
             "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
             fid,
             form.page_id,
@@ -143,19 +144,19 @@ async function handlePOST(
       }
       const sender = user?.id || address;
       const confirm = form.config.confirmation.enabled;
-      const saved = saveFormSubmission(form.page_id, user, cells, false, { confirm: !form.config.portal, sender });
+      const saved = await saveFormSubmission(form.page_id, user, cells, false, { confirm: !form.config.portal, sender });
       // Customer portal: a private link to follow the request. With a
       // confirmation e-mail the link goes out in that mail instead.
       if (form.config.portal) {
-        const created = createTicket({ pageId: form.page_id, rowId: saved.id, title: form.title, fields: form.fields, cells: saved.cells, mail: !confirm });
+        const created = await createTicket({ pageId: form.page_id, rowId: saved.id, title: form.title, fields: form.fields, cells: saved.cells, mail: !confirm });
         let mailed = created.mailed;
         if (confirm) {
-          mailed = confirmFormAnswer(form.page_id, user, saved.cells, { sender, anonymous: !!form.anonymous, ticketUrl: created.url });
-          if (!mailed && created.email) mailed = mailTicketLink({ token: created.token, email: created.email, title: form.title, locale: contentLocale() });
+          mailed = await confirmFormAnswer(form.page_id, user, saved.cells, { sender, anonymous: !!form.anonymous, ticketUrl: created.url });
+          if (!mailed && created.email) mailed = await mailTicketLink({ token: created.token, email: created.email, title: form.title, locale: contentLocale() });
         }
         ticket = { token: created.token, mailed };
       }
-      run(
+      await run(
         "INSERT INTO form_submissions VALUES(?,?,?,?)",
         id(),
         token,
@@ -192,15 +193,15 @@ export const POST = withRequestLocale(handlePOST);
 function draftHandler(kind: "get" | "put" | "delete") {
   return async (req: Request, { params }: { params: Promise<{ token: string }> }) => {
     try {
-      if (kind !== "get") checkOrigin(req);
+      if (kind !== "get") await checkOrigin(req);
       const { token } = await params;
       const user = await activeUser();
-      if (kind === "get") return NextResponse.json({ draft: formDraft(token, user) });
-      if (kind === "delete") return NextResponse.json(deleteFormDraft(token, user));
+      if (kind === "get") return NextResponse.json({ draft: await formDraft(token, user) });
+      if (kind === "delete") return NextResponse.json(await deleteFormDraft(token, user));
       requireBodySize(req, 110_000, "Entwurf zu groß.");
       const raw = await readTextLimited(req, 110_000, "Entwurf zu groß.");
       if (raw.length > 110_000) throw new HttpError(413, "Entwurf zu groß.");
-      return NextResponse.json(saveFormDraft(token, user, JSON.parse(raw)));
+      return NextResponse.json(await saveFormDraft(token, user, JSON.parse(raw)));
     } catch (e) {
       const known = e instanceof HttpError,
         input = e instanceof z.ZodError || e instanceof SyntaxError;

@@ -34,6 +34,7 @@ import { localizedMessage } from "./i18n-errors";
 import { contentLocale } from "./content-locale";
 import { buildInfo } from "./build-info";
 import type { Field, Identity, Page, Row, Space, View } from "./types";
+import { filterAsync, flatMapAsync, mapAsync } from "./each-async";
 
 export const MCP_PROTOCOL_VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"];
 // Answers longer than this are cut, so one call cannot flood the client.
@@ -60,44 +61,42 @@ const pageLink = (id: string) => `${appUrl().replace(/\/$/, "")}/#page=${id}`;
 
 // ---- Reading ----
 
-function workspaces(user: Identity) {
-  return all<{ id: string; name: string; role: string; guest: number }>(
+async function workspaces(user: Identity) {
+  return await mapAsync(await all<{ id: string; name: string; role: string; guest: number }>(
     `SELECT w.id,w.name,m.role,EXISTS(SELECT 1 FROM workspace_guests g WHERE g.workspace_id=w.id AND g.user_id=m.user_id) guest
      FROM workspaces w JOIN members m ON m.workspace_id=w.id WHERE m.user_id=? ORDER BY w.created_at`,
     user.id,
-  ).map((w) => {
-    const visible = new Set(readablePages(user, w.id).map((p) => p.space_id));
+  ), async (w) => {
+    const visible = new Set((await readablePages(user, w.id)).map((p) => p.space_id));
     return {
       id: w.id,
       name: w.name,
       role: w.role,
       guest: !!w.guest,
-      spaces: all<Space>(
+      spaces: await mapAsync(await filterAsync(await all<Space>(
         "SELECT * FROM spaces WHERE workspace_id=? AND deleted_at IS NULL ORDER BY lower(name)",
         w.id,
-      )
-        .filter((s) => spaceRole(user, s) || visible.has(s.id))
-        .map((s) => ({
+      ), async (s) => await spaceRole(user, s) || visible.has(s.id)), async (s) => ({
           id: s.id,
           name: s.name,
           visibility: s.visibility,
-          role: spaceRole(user, s) || "viewer",
+          role: await spaceRole(user, s) || "viewer",
         })),
     };
   });
 }
-function readablePages(user: Identity, workspaceId: string) {
-  return all<Page>(
+async function readablePages(user: Identity, workspaceId: string) {
+  return await filterAsync(await all<Page>(
     "SELECT * FROM pages WHERE workspace_id=? AND deleted_at IS NULL AND synced=0 ORDER BY position,id",
     workspaceId,
-  ).filter((p) => pageRole(user, p));
+  ), async (p) => await pageRole(user, p));
 }
-function listPages(
+async function listPages(
   user: Identity,
   args: { workspaceId: string; spaceId?: string; parentId?: string },
 ) {
-  requireMember(user, args.workspaceId);
-  const pages = readablePages(user, args.workspaceId).filter(
+  await requireMember(user, args.workspaceId);
+  const pages = (await readablePages(user, args.workspaceId)).filter(
     (p) =>
       (!args.spaceId || p.space_id === args.spaceId) &&
       (args.parentId === undefined || p.parent_id === args.parentId),
@@ -116,9 +115,9 @@ function listPages(
     truncated: pages.length > 500,
   };
 }
-function readable(user: Identity, pageId: string) {
-  const page = requirePage(user, pageId);
-  requireUnlocked(user, page);
+async function readable(user: Identity, pageId: string) {
+  const page = await requirePage(user, pageId);
+  await requireUnlocked(user, page);
   return page;
 }
 // Code blocks highlight every language Shiki bundles (lib/code-languages.ts).
@@ -126,7 +125,7 @@ const CODE_FENCES =
   "Code blocks: fenced with a language id as in VS Code/Shiki (```python, ```typescript, ```terraform, ```svelte …; aliases such as js, ts, py, sh, yml are understood). After the language: {3-5} highlights lines, showLineNumbers and startLine=10 number them, view=preview|split shows the rendering of html, svg, markdown, mermaid, latex and typst blocks (```mermaid shows its diagram by default), collapsed folds a long block.";
 
 async function pageMarkdown(user: Identity, pageId: string) {
-  const page = readable(user, pageId);
+  const page = await readable(user, pageId);
   const { bytes } = await exportMarkdown(user, {
     pageId: page.id,
     format: "markdown",
@@ -149,17 +148,17 @@ const plainLinks: MarkdownContext = {
   },
   linked: () => null,
 };
-function members(workspaceId: string) {
-  return all<{ id: string; name: string; email: string }>(
+async function members(workspaceId: string) {
+  return await all<{ id: string; name: string; email: string }>(
     "SELECT u.id,u.name,u.email FROM users u JOIN members m ON m.user_id=u.id WHERE m.workspace_id=?",
     workspaceId,
   );
 }
-function databaseOf(user: Identity, databaseId: string) {
-  const page = readable(user, databaseId);
+async function databaseOf(user: Identity, databaseId: string) {
+  const page = await readable(user, databaseId);
   if (page.kind !== "database") throw new HttpError(400, "Keine Datenbank.");
   // Properties hidden from this person are left out (lib/field-access.ts).
-  return { page, schema: readableDatabase(user, page, database(page.id)) };
+  return { page, schema: await readableDatabase(user, page, await database(page.id)) };
 }
 const fieldInfo = (f: Field, _: number, fields: Field[]) => ({
   id: f.id,
@@ -187,21 +186,21 @@ function recordProperties(cells: Record<string, unknown>, fields: Field[], peopl
   }
   return out;
 }
-function queryDatabase(
+async function queryDatabase(
   user: Identity,
   args: { databaseId: string; query?: string; viewId?: string; limit?: number; offset?: number },
 ) {
-  const { page, schema } = databaseOf(user, args.databaseId);
+  const { page, schema } = await databaseOf(user, args.databaseId);
   const view: View = args.viewId
     ? schema.views.find((v) => v.id === args.viewId) ||
       (() => {
         throw new HttpError(404, "Ansicht nicht gefunden.");
       })()
     : ({ id: "", name: "", type: "table", filters: [], sorts: [] } as unknown as View);
-  const { related, relatedSchemas } = relatedData(user, page);
+  const { related, relatedSchemas } = await relatedData(user, page);
   const found = queryRows(
     // The database's own records, as relatedData read them for relations to itself.
-    related[page.id] ?? visibleRows(user, page, rows(page.id)),
+    related[page.id] ?? await visibleRows(user, page, await rows(page.id)),
     schema.fields,
     view,
     (args.query || "").slice(0, 200),
@@ -210,7 +209,7 @@ function queryDatabase(
   );
   const offset = args.offset || 0,
     limit = args.limit || 50;
-  const people = new Map(members(page.workspace_id).map((m) => [m.id, m.name]));
+  const people = new Map((await members(page.workspace_id)).map((m) => [m.id, m.name]));
   return {
     database: { id: page.id, title: page.title, url: pageLink(page.id) },
     fields: schema.fields.map(fieldInfo),
@@ -226,17 +225,17 @@ function queryDatabase(
     })),
   };
 }
-function getRecord(user: Identity, args: { databaseId: string; recordId: string }) {
-  const { page, row } = requireRow(user, args.databaseId, args.recordId);
-  requireUnlocked(user, page);
-  const schema = readableDatabase(user, page, database(page.id));
-  const { related, relatedSchemas } = relatedData(user, page);
-  const [parsed] = stripHiddenCells(user, page, [
+async function getRecord(user: Identity, args: { databaseId: string; recordId: string }) {
+  const { page, row } = await requireRow(user, args.databaseId, args.recordId);
+  await requireUnlocked(user, page);
+  const schema = await readableDatabase(user, page, await database(page.id));
+  const { related, relatedSchemas } = await relatedData(user, page);
+  const [parsed] = await stripHiddenCells(user, page, [
     { ...row, cells: typeof row.cells === "string" ? JSON.parse(row.cells) : row.cells } as Row,
   ]);
   const cells = computedCells(parsed, schema.fields, related, relatedSchemas);
-  const html = one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", row.id)?.html || row.content || "";
-  const people = new Map(members(page.workspace_id).map((m) => [m.id, m.name]));
+  const html = (await one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", row.id))?.html || row.content || "";
+  const people = new Map((await members(page.workspace_id)).map((m) => [m.id, m.name]));
   return {
     id: row.id,
     databaseId: page.id,
@@ -248,14 +247,14 @@ function getRecord(user: Identity, args: { databaseId: string; recordId: string 
     url: `${pageLink(page.id)}&row=${row.id}`,
   };
 }
-function search(user: Identity, args: { workspaceId: string; query: string; kind?: string; spaceId?: string }) {
-  requireMember(user, args.workspaceId);
+async function search(user: Identity, args: { workspaceId: string; query: string; kind?: string; spaceId?: string }) {
+  await requireMember(user, args.workspaceId);
   const marks = new RegExp(`[${MARK_START}${MARK_END}]`, "g");
   return {
-    results: searchWorkspace(user, args.workspaceId, args.query, {
+    results: (await searchWorkspace(user, args.workspaceId, args.query, {
       kind: args.kind as never,
       spaceId: args.spaceId,
-    }).map((r) => ({
+    })).map((r) => ({
       kind: r.kind,
       pageId: r.id,
       recordId: r.rowId,
@@ -266,12 +265,12 @@ function search(user: Identity, args: { workspaceId: string; query: string; kind
   };
 }
 // Collections (#86): saved queries, run with the person's own rights.
-function collections(user: Identity, args: { workspaceId: string }) {
-  requireMember(user, args.workspaceId);
-  return { collections: listCollections(user, args.workspaceId) };
+async function collections(user: Identity, args: { workspaceId: string }) {
+  await requireMember(user, args.workspaceId);
+  return { collections: await listCollections(user, args.workspaceId) };
 }
-function collectionResults(user: Identity, args: { collectionId: string; timeZone?: string }) {
-  const result = runCollection(user, args.collectionId, { timeZone: args.timeZone });
+async function collectionResults(user: Identity, args: { collectionId: string; timeZone?: string }) {
+  const result = await runCollection(user, args.collectionId, { timeZone: args.timeZone });
   return {
     collection: result.collection,
     total: result.total,
@@ -281,26 +280,26 @@ function collectionResults(user: Identity, args: { collectionId: string; timeZon
   };
 }
 type CollectionArgs = { workspaceId?: string; collectionId?: string; name?: string; query?: string; icon?: string; shared?: boolean };
-function saveCollection(user: Identity, args: CollectionArgs) {
+async function saveCollection(user: Identity, args: CollectionArgs) {
   if (args.collectionId) {
     const { workspaceId: _ignored, ...rest } = args;
-    return command(user, { action: "collection.update", ...rest });
+    return await command(user, { action: "collection.update", ...rest });
   }
-  return command(user, { action: "collection.create", ...args });
+  return await command(user, { action: "collection.create", ...args });
 }
-function removeCollection(user: Identity, args: { collectionId: string }) {
-  return command(user, { action: "collection.delete", collectionId: args.collectionId });
+async function removeCollection(user: Identity, args: { collectionId: string }) {
+  return await command(user, { action: "collection.delete", collectionId: args.collectionId });
 }
-function tasks(user: Identity, args: { workspaceId?: string; includeDone?: boolean }) {
+async function tasks(user: Identity, args: { workspaceId?: string; includeDone?: boolean }) {
   const ids = args.workspaceId
     ? [args.workspaceId]
-    : all<{ workspace_id: string }>("SELECT workspace_id FROM members WHERE user_id=?", user.id).map(
+    : (await all<{ workspace_id: string }>("SELECT workspace_id FROM members WHERE user_id=?", user.id)).map(
         (m) => m.workspace_id,
       );
   return {
-    tasks: ids.flatMap((wid) => {
-      requireMember(user, wid);
-      return myTasks(user, wid, !!args.includeDone).map((t) => ({
+    tasks: await flatMapAsync(ids, async (wid) => {
+      await requireMember(user, wid);
+      return (await myTasks(user, wid, !!args.includeDone)).map((t) => ({
         text: t.text,
         done: t.checked,
         due: t.due,
@@ -319,15 +318,15 @@ function tasks(user: Identity, args: { workspaceId?: string; includeDone?: boole
 // Markdown appended to a stored document as one change, sent like an edit
 // from the editor ("document.sync"), so versions, mentions, tasks, the
 // activity and webhooks behave the same.
-export function appendToPage(user: Identity, args: { pageId: string; markdown: string }) {
-  return appendHtmlToPage(user, { pageId: args.pageId, html: markdownToHtml(args.markdown) });
+export async function appendToPage(user: Identity, args: { pageId: string; markdown: string }) {
+  return await appendHtmlToPage(user, { pageId: args.pageId, html: markdownToHtml(args.markdown) });
 }
 // The same for HTML (highlights from the browser extension, lib/clipper.ts).
-export function appendHtmlToPage(user: Identity, args: { pageId: string; html: string }) {
-  const page = requirePage(user, args.pageId, true);
-  requireUnlocked(user, page);
+export async function appendHtmlToPage(user: Identity, args: { pageId: string; html: string }) {
+  const page = await requirePage(user, args.pageId, true);
+  await requireUnlocked(user, page);
   if (page.kind !== "document") throw new HttpError(400, "Kein Dokument.");
-  const stored = one<{ state: Uint8Array | null; html: string; generation: string }>(
+  const stored = await one<{ state: Uint8Array | null; html: string; generation: string }>(
     "SELECT state,html,generation FROM documents WHERE page_id=?",
     page.id,
   );
@@ -350,7 +349,7 @@ export function appendHtmlToPage(user: Identity, args: { pageId: string; html: s
     );
     // Without a stored state the server takes the full state, not a diff.
     const update = stored.state ? Y.encodeStateAsUpdate(ydoc, before) : Y.encodeStateAsUpdate(ydoc);
-    command(user, {
+    await command(user, {
       action: "document.sync",
       pageId: page.id,
       generation: stored.generation,
@@ -361,27 +360,27 @@ export function appendHtmlToPage(user: Identity, args: { pageId: string; html: s
   }
   return { ok: true, pageId: page.id, url: pageLink(page.id) };
 }
-function createPage(
+async function createPage(
   user: Identity,
   args: { workspaceId: string; spaceId: string; parentId?: string; title: string; kind?: string; markdown?: string },
 ) {
   const kind = args.kind || "document";
   if (args.markdown && kind !== "document") throw new HttpError(400, "Inhalt nur für Dokumente.");
-  const { id } = command(user, {
+  const { id } = (await command(user, {
     action: "page.create",
     workspaceId: args.workspaceId,
     spaceId: args.spaceId,
     parentId: args.parentId,
     title: args.title,
     kind,
-  }) as { id: string };
-  if (args.markdown) appendToPage(user, { pageId: id, markdown: args.markdown });
+  })) as { id: string };
+  if (args.markdown) await appendToPage(user, { pageId: id, markdown: args.markdown });
   return { id, kind, url: pageLink(id) };
 }
 // Properties by name or id; people by e-mail or name, lists from one value.
-function cellPatch(user: Identity, page: Page, fields: Field[], input: Record<string, unknown>) {
+async function cellPatch(user: Identity, page: Page, fields: Field[], input: Record<string, unknown>) {
   const patch: Record<string, unknown> = {};
-  const people = members(page.workspace_id);
+  const people = await members(page.workspace_id);
   for (const [key, raw] of Object.entries(input)) {
     const f =
       fields.find((f) => f.id === key) ||
@@ -401,24 +400,24 @@ function cellPatch(user: Identity, page: Page, fields: Field[], input: Record<st
       value = Number(value);
     patch[f.id] = value;
   }
-  return validateCellPatch(user, page, fields, patch);
+  return await validateCellPatch(user, page, fields, patch);
 }
-function createRecord(user: Identity, args: { databaseId: string; properties: Record<string, unknown> }) {
-  const page = requirePage(user, args.databaseId, true);
-  requireUnlocked(user, page);
+async function createRecord(user: Identity, args: { databaseId: string; properties: Record<string, unknown> }) {
+  const page = await requirePage(user, args.databaseId, true);
+  await requireUnlocked(user, page);
   if (page.kind !== "database") throw new HttpError(400, "Keine Datenbank.");
-  const cells = cellPatch(user, page, readableDatabase(user, page, database(page.id)).fields, args.properties);
-  const { id } = command(user, { action: "row.create", pageId: page.id, cells }) as { id: string };
+  const cells = await cellPatch(user, page, (await readableDatabase(user, page, await database(page.id))).fields, args.properties);
+  const { id } = (await command(user, { action: "row.create", pageId: page.id, cells })) as { id: string };
   return { id, databaseId: page.id, url: `${pageLink(page.id)}&row=${id}` };
 }
-function updateRecord(
+async function updateRecord(
   user: Identity,
   args: { databaseId: string; recordId: string; properties: Record<string, unknown>; version?: number },
 ) {
-  const { page, row } = requireRow(user, args.databaseId, args.recordId, true);
-  requireUnlocked(user, page);
-  const cells = cellPatch(user, page, readableDatabase(user, page, database(page.id)).fields, args.properties);
-  command(user, {
+  const { page, row } = await requireRow(user, args.databaseId, args.recordId, true);
+  await requireUnlocked(user, page);
+  const cells = await cellPatch(user, page, (await readableDatabase(user, page, await database(page.id))).fields, args.properties);
+  await command(user, {
     action: "row.update",
     pageId: page.id,
     rowId: row.id,
@@ -440,7 +439,7 @@ const tools: Tool[] = [
       "Lists the Flowplan workspaces you are a member of, with your role and the spaces you can see. Start here to find workspace and space IDs.",
     input: z.object({}),
     write: false,
-    run: (user) => ({ workspaces: workspaces(user) }),
+    run: async (user) => ({ workspaces: await workspaces(user) }),
   },
   {
     name: "list_pages",
@@ -693,11 +692,10 @@ async function dispatch(user: Identity, method: string, params: Record<string, u
       return callTool(user, params.name, params.arguments);
     case "resources/list":
       return {
-        resources: all<Page>(
+        resources: (await filterAsync(await all<Page>(
           "SELECT p.* FROM favorites f JOIN pages p ON p.id=f.page_id WHERE f.user_id=? AND p.deleted_at IS NULL LIMIT 100",
           user.id,
-        )
-          .filter((p) => pageRole(user, p) && !lockedPageIds(user, p.workspace_id).has(p.id))
+        ), async (p) => await pageRole(user, p) && !(await lockedPageIds(user, p.workspace_id)).has(p.id)))
           .map((p) => ({ uri: `flowplan://page/${p.id}`, name: p.title || "Untitled", mimeType: "text/markdown" })),
       };
     case "resources/templates/list":

@@ -15,65 +15,65 @@ const { commandActionNames, commandActions } = await import("../lib/openapi");
 const { isBarCollapsed, summaryTags, propertyCountLabel, visibleProperties, COLLAPSE_AFTER } = await import("../lib/page-properties");
 const { deleteInactiveAccount } = await import("../lib/account-deletion");
 
-function account(name: string) {
+async function account(name: string) {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
   return { id: uid, name, email: `${name}@example.test`, groups: [], isAdmin: false, disabled: 0, created_at: "" } as Identity;
 }
-const owner = account("Olga"),
-  viewer = account("Vera"),
-  stranger = account("Sven");
-const wid = createWorkspace(owner.id, "Agentur");
-run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
-const team = bootstrap(owner, wid).spaces[0].id;
-const act = (input: Record<string, unknown>, as = owner) => command(as, input) as Record<string, unknown>;
-const page = (title: string) => (act({ action: "page.create", workspaceId: wid, spaceId: team, title, kind: "document" }) as { id: string }).id;
-const choice = (pageId: string, as = owner) => (pageData(as, pageId) as { propertiesCollapsed?: boolean | null }).propertiesCollapsed;
+const owner = await account("Olga"),
+  viewer = await account("Vera"),
+  stranger = await account("Sven");
+const wid = await createWorkspace(owner.id, "Agentur");
+await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
+const team = (await bootstrap(owner, wid)).spaces[0].id;
+const act = async (input: Record<string, unknown>, as = owner) => (await command(as, input)) as Record<string, unknown>;
+const page = async (title: string) => ((await act({ action: "page.create", workspaceId: wid, spaceId: team, title, kind: "document" })) as { id: string }).id;
+const choice = async (pageId: string, as = owner) => ((await pageData(as, pageId)) as { propertiesCollapsed?: boolean | null }).propertiesCollapsed;
 
-const angebot = page("Angebot");
-const protokoll = page("Protokoll");
+const angebot = await page("Angebot");
+const protokoll = await page("Protokoll");
 
-test("schema 83: the table exists", () => {
-  assert.ok(tableNames().includes("page_view_prefs"));
+test("schema 83: the table exists", async () => {
+  assert.ok((await tableNames()).includes("page_view_prefs"));
 });
 
-test("stored per person and per page, in the account", () => {
-  assert.equal(choice(angebot), null);
-  assert.deepEqual(act({ action: "page.collapseProperties", pageId: angebot, collapsed: true }), { collapsed: true });
-  assert.equal(choice(angebot), true);
+test("stored per person and per page, in the account", async () => {
+  assert.equal(await choice(angebot), null);
+  assert.deepEqual(await act({ action: "page.collapseProperties", pageId: angebot, collapsed: true }), { collapsed: true });
+  assert.equal(await choice(angebot), true);
   // Another page and another person are untouched.
-  assert.equal(choice(protokoll), null);
-  assert.equal(choice(angebot, viewer), null);
+  assert.equal(await choice(protokoll), null);
+  assert.equal(await choice(angebot, viewer), null);
   // Readers choose for themselves too.
-  act({ action: "page.collapseProperties", pageId: angebot, collapsed: false }, viewer);
-  assert.equal(choice(angebot, viewer), false);
-  assert.equal(choice(angebot), true);
+  await act({ action: "page.collapseProperties", pageId: angebot, collapsed: false }, viewer);
+  assert.equal(await choice(angebot, viewer), false);
+  assert.equal(await choice(angebot), true);
   // Open again; null forgets the choice.
-  act({ action: "page.collapseProperties", pageId: angebot, collapsed: false });
-  assert.equal(choice(angebot), false);
-  act({ action: "page.collapseProperties", pageId: angebot, collapsed: null });
-  assert.equal(choice(angebot), null);
-  assert.equal(one<{ n: number }>("SELECT COUNT(*) n FROM page_view_prefs WHERE user_id=?", owner.id)!.n, 0);
+  await act({ action: "page.collapseProperties", pageId: angebot, collapsed: false });
+  assert.equal(await choice(angebot), false);
+  await act({ action: "page.collapseProperties", pageId: angebot, collapsed: null });
+  assert.equal(await choice(angebot), null);
+  assert.equal((await one<{ n: number }>("SELECT COUNT(*) n FROM page_view_prefs WHERE user_id=?", owner.id))!.n, 0);
 });
 
-test("only for pages one may open; bad input is refused", () => {
-  assert.throws(() => act({ action: "page.collapseProperties", pageId: angebot, collapsed: true }, stranger), /Seite|Berechtigung/);
-  assert.equal(one("SELECT 1 FROM page_view_prefs WHERE user_id=?", stranger.id), undefined);
-  assert.throws(() => act({ action: "page.collapseProperties", pageId: angebot, collapsed: "yes" }));
-  assert.throws(() => act({ action: "page.collapseProperties", pageId: "nope", collapsed: true }));
+test("only for pages one may open; bad input is refused", async () => {
+  await assert.rejects(async () => await act({ action: "page.collapseProperties", pageId: angebot, collapsed: true }, stranger), /Seite|Berechtigung/);
+  assert.equal(await one("SELECT 1 FROM page_view_prefs WHERE user_id=?", stranger.id), undefined);
+  await assert.rejects(async () => await act({ action: "page.collapseProperties", pageId: angebot, collapsed: "yes" }));
+  await assert.rejects(async () => await act({ action: "page.collapseProperties", pageId: "nope", collapsed: true }));
 });
 
-test("gone with the page and with the account", () => {
-  const notes = page("Notizen");
-  act({ action: "page.collapseProperties", pageId: notes, collapsed: true });
-  act({ action: "page.collapseProperties", pageId: notes, collapsed: true }, viewer);
-  run("DELETE FROM pages WHERE id=?", notes);
-  assert.equal(one("SELECT 1 FROM page_view_prefs WHERE page_id=?", notes), undefined);
-  const temp = account("Tim");
-  run("INSERT INTO members VALUES(?,?,?)", wid, temp.id, "editor");
-  act({ action: "page.collapseProperties", pageId: protokoll, collapsed: true }, temp);
-  deleteInactiveAccount(temp.id);
-  assert.equal(one("SELECT 1 FROM page_view_prefs WHERE user_id=?", temp.id), undefined);
+test("gone with the page and with the account", async () => {
+  const notes = await page("Notizen");
+  await act({ action: "page.collapseProperties", pageId: notes, collapsed: true });
+  await act({ action: "page.collapseProperties", pageId: notes, collapsed: true }, viewer);
+  await run("DELETE FROM pages WHERE id=?", notes);
+  assert.equal(await one("SELECT 1 FROM page_view_prefs WHERE page_id=?", notes), undefined);
+  const temp = await account("Tim");
+  await run("INSERT INTO members VALUES(?,?,?)", wid, temp.id, "editor");
+  await act({ action: "page.collapseProperties", pageId: protokoll, collapsed: true }, temp);
+  await deleteInactiveAccount(temp.id);
+  assert.equal(await one("SELECT 1 FROM page_view_prefs WHERE user_id=?", temp.id), undefined);
 });
 
 test("listed for the API", () => {

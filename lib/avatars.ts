@@ -26,9 +26,9 @@ export function sniffImage(data: Uint8Array): string | null {
   return null;
 }
 
-function removeAvatar(userId: string) {
-  run("DELETE FROM user_avatars WHERE user_id=?", userId);
-  run("UPDATE users SET avatar=NULL WHERE id=? AND avatar IS NOT NULL", userId);
+async function removeAvatar(userId: string) {
+  await run("DELETE FROM user_avatars WHERE user_id=?", userId);
+  await run("UPDATE users SET avatar=NULL WHERE id=? AND avatar IS NOT NULL", userId);
 }
 
 // Takes the `picture` claim after sign-in. Never throws: a picture that
@@ -37,7 +37,7 @@ export async function syncAvatar(userId: string, picture: unknown) {
   if (process.env.OIDC_PICTURE === "off") return;
   try {
     if (typeof picture !== "string" || !picture.trim()) {
-      removeAvatar(userId);
+      await removeAvatar(userId);
       return;
     }
     // Same protection as link previews: public HTTPS only, no internal
@@ -53,8 +53,8 @@ export async function syncAvatar(userId: string, picture: unknown) {
     const mime = sniffImage(data);
     if (!mime) return;
     const version = createHash("sha256").update(data).digest("hex").slice(0, 16);
-    if (one("SELECT 1 FROM users WHERE id=? AND avatar=?", userId, version)) return;
-    run(
+    if (await one("SELECT 1 FROM users WHERE id=? AND avatar=?", userId, version)) return;
+    await run(
       // A new picture gets its placeholder when first asked for
       // (lib/image-placeholders.ts).
       "INSERT INTO user_avatars(user_id,mime,data) VALUES(?,?,?) ON CONFLICT(user_id) DO UPDATE SET mime=excluded.mime,data=excluded.data,width=NULL,height=NULL,thumbhash=NULL",
@@ -62,7 +62,7 @@ export async function syncAvatar(userId: string, picture: unknown) {
       mime,
       data,
     );
-    run("UPDATE users SET avatar=? WHERE id=?", version, userId);
+    await run("UPDATE users SET avatar=? WHERE id=?", version, userId);
   } catch (error) {
     console.error(
       "Profilbild konnte nicht geladen werden:",
@@ -72,18 +72,18 @@ export async function syncAvatar(userId: string, picture: unknown) {
 }
 
 // Pictures are visible to people who share a workspace with the person.
-export function avatarFor(viewer: Identity, userId: string) {
+export async function avatarFor(viewer: Identity, userId: string) {
   const shared =
     viewer.id === userId ||
     viewer.isAdmin ||
-    !!one(
+    !!(await one(
       "SELECT 1 FROM members a JOIN members b ON a.workspace_id=b.workspace_id WHERE a.user_id=? AND b.user_id=? LIMIT 1",
       viewer.id,
       userId,
-    );
+    ));
   if (!shared) return null;
   return (
-    one<{ mime: string; data: Uint8Array }>(
+    await one<{ mime: string; data: Uint8Array }>(
       "SELECT mime,data FROM user_avatars WHERE user_id=?",
       userId,
     ) || null

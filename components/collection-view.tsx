@@ -16,7 +16,7 @@ import type { Bootstrap } from "@/lib/types";
 
 type Results = { collection: CollectionInfo; items: CollectionItem[]; total: number; truncated: boolean; encryptedLeftOut: boolean };
 type SortKey = "title" | "type" | "space" | "tags" | "updated" | "creator";
-type T = ReturnType<typeof useT>;
+type T = Awaited<ReturnType<typeof useT>>;
 
 const zone = () => {
   try {

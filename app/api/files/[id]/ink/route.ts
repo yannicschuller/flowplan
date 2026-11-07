@@ -32,10 +32,10 @@ export const GET = withRequestLocale(async (req: Request, { params }: Context) =
     const user = await requireUser();
     const fileId = z.uuid().parse((await params).id);
     const url = new URL(req.url);
-    if (url.searchParams.has("versions")) return NextResponse.json({ versions: fileInkVersions(user, fileId) }, noStore);
+    if (url.searchParams.has("versions")) return NextResponse.json({ versions: await fileInkVersions(user, fileId) }, noStore);
     const version = url.searchParams.get("version");
-    if (version !== null) return NextResponse.json(fileInkVersion(user, fileId, z.coerce.number().int().min(1).parse(version)), noStore);
-    return NextResponse.json(readFileInk(user, fileId), noStore);
+    if (version !== null) return NextResponse.json(await fileInkVersion(user, fileId, z.coerce.number().int().min(1).parse(version)), noStore);
+    return NextResponse.json(await readFileInk(user, fileId), noStore);
   } catch (e) {
     return failure(e);
   }
@@ -43,7 +43,7 @@ export const GET = withRequestLocale(async (req: Request, { params }: Context) =
 
 async function save(req: Request, { params }: Context) {
   try {
-    checkOrigin(req);
+    await checkOrigin(req);
     if (Number(req.headers.get("content-length") || 0) > INK_LIMITS.bytes * 2) throw new HttpError(413, "Anfrage zu groß.");
     const user = await requireUser();
     if (user.apiScope === "read") throw new HttpError(403, "Dieses API-Token darf nur lesen.");
@@ -52,8 +52,8 @@ async function save(req: Request, { params }: Context) {
     if (text.length > INK_LIMITS.bytes * 2) throw new HttpError(413, "Anfrage zu groß.");
     const body = JSON.parse(text);
     if (body && typeof body === "object" && body.doc === undefined && body.recognized !== undefined)
-      return NextResponse.json(saveFileRecognized(user, fileId, body), noStore);
-    return NextResponse.json(saveFileInk(user, fileId, body), noStore);
+      return NextResponse.json(await saveFileRecognized(user, fileId, body), noStore);
+    return NextResponse.json(await saveFileInk(user, fileId, body), noStore);
   } catch (e) {
     return failure(e);
   }

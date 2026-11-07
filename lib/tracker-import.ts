@@ -13,6 +13,7 @@ import { htmlState, escaped } from "./document-server";
 import { markdownToHtml } from "./markdown-import";
 import { ct } from "./content-locale";
 import type { Field, Identity, Space, View } from "./types";
+import { forEachAsync } from "./each-async";
 
 const MAX_ROWS = 5000;
 type Record_ = {
@@ -217,12 +218,12 @@ function finish(title: string, fields: Field[], records: Record_[], status: Fiel
 
 // Creates the database from a draft. People are matched to members by name
 // or e-mail: when all match, the property becomes a person property.
-export function importTracker(user: Identity, workspaceId: string, spaceId: string, kind: "jira" | "trello", text: string, fileName = "") {
-  requireMember(user, workspaceId, "editor");
-  const space = one<Space>("SELECT * FROM spaces WHERE id=? AND workspace_id=? AND deleted_at IS NULL", spaceId, workspaceId);
-  if (!space || !["editor", "owner"].includes(spaceRole(user, space) || "")) throw new HttpError(403, "Keine Schreibrechte im Zielbereich.");
+export async function importTracker(user: Identity, workspaceId: string, spaceId: string, kind: "jira" | "trello", text: string, fileName = "") {
+  await requireMember(user, workspaceId, "editor");
+  const space = await one<Space>("SELECT * FROM spaces WHERE id=? AND workspace_id=? AND deleted_at IS NULL", spaceId, workspaceId);
+  if (!space || !["editor", "owner"].includes(await spaceRole(user, space) || "")) throw new HttpError(403, "Keine Schreibrechte im Zielbereich.");
   const draft = kind === "jira" ? parseJira(text, fileName.replace(/\.csv$/i, "") || "Jira") : parseTrello(text);
-  const members = all<{ id: string; name: string; email: string }>(
+  const members = await all<{ id: string; name: string; email: string }>(
     "SELECT u.id,u.name,u.email FROM users u JOIN members m ON m.user_id=u.id WHERE m.workspace_id=?",
     workspaceId,
   );
@@ -235,20 +236,20 @@ export function importTracker(user: Identity, workspaceId: string, spaceId: stri
       for (const r of draft.records) r.cells[fid] = r.cells[fid] ? match(String(r.cells[fid]))!.id : "";
     }
   }
-  return transaction(() => {
-    const pageId = createPage(workspaceId, spaceId, user.id, draft.title.slice(0, 200) || "Import", "database");
+  return await transaction(async () => {
+    const pageId = await createPage(workspaceId, spaceId, user.id, draft.title.slice(0, 200) || "Import", "database");
     for (const f of draft.fields) if (f.parent) f.relationPage = pageId;
-    run("UPDATE databases SET fields=?,views=? WHERE page_id=?", JSON.stringify(draft.fields), JSON.stringify(draft.views), pageId);
+    await run("UPDATE databases SET fields=?,views=? WHERE page_id=?", JSON.stringify(draft.fields), JSON.stringify(draft.views), pageId);
     const ids = new Map<string, string>();
     const parentField = draft.fields.find((f) => f.parent);
-    draft.records.forEach((r, i) => {
+    await forEachAsync(draft.records, async (r, i) => {
       const rid = id();
       if (r.ref) ids.set(r.ref, rid);
       if (r.key) ids.set(r.key, rid);
       // Jira and Trello values are plain text; formatted text properties
       // (#126) keep "*" and "_" as written.
       const cells = escapeFormattedCells(Object.fromEntries(Object.entries(r.cells).filter(([k]) => draft.fields.some((f) => f.id === k))), draft.fields).cells;
-      run(
+      await run(
         "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content) VALUES(?,?,?,?,?,?,?)",
         rid,
         pageId,
@@ -258,10 +259,10 @@ export function importTracker(user: Identity, workspaceId: string, spaceId: stri
         user.id,
         r.html,
       );
-      if (r.html) run("INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?)", rid, htmlState(r.html), r.html, id());
+      if (r.html) await run("INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?)", rid, htmlState(r.html), r.html, id());
       for (const c of r.comments.slice(0, 200)) {
         const prefix = [c.author, c.at].filter(Boolean).join(", ");
-        run(
+        await run(
           "INSERT INTO comments(id,page_id,row_id,author_id,body) VALUES(?,?,?,?,?)",
           id(),
           pageId,
@@ -273,12 +274,12 @@ export function importTracker(user: Identity, workspaceId: string, spaceId: stri
     });
     // Parents after all records exist (Jira lists children before parents).
     if (parentField)
-      draft.records.forEach((r) => {
+      await forEachAsync(draft.records, async (r) => {
         const child = ids.get(r.ref || r.key);
         const parent = r.parentRef ? ids.get(r.parentRef) : undefined;
         if (!child || !parent || child === parent) return;
-        const row = one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", child)!;
-        run("UPDATE rows SET cells=? WHERE id=?", JSON.stringify({ ...JSON.parse(row.cells), [parentField.id]: [parent] }), child);
+        const row = (await one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", child))!;
+        await run("UPDATE rows SET cells=? WHERE id=?", JSON.stringify({ ...JSON.parse(row.cells), [parentField.id]: [parent] }), child);
       });
     return { pageId, rows: draft.records.length, comments: draft.records.reduce((s, r) => s + r.comments.length, 0) };
   });

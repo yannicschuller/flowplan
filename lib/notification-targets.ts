@@ -30,12 +30,12 @@ export type TaskTarget = z.infer<typeof targetSchema>;
 
 
 // Right after the reminder's notification was written.
-export function rememberTaskTarget(notificationId: string, target: TaskTarget) {
-  run("INSERT INTO notification_targets(notification_id,target) VALUES(?,?) ON CONFLICT(notification_id) DO UPDATE SET target=excluded.target", notificationId, JSON.stringify(targetSchema.parse(target)));
+export async function rememberTaskTarget(notificationId: string, target: TaskTarget) {
+  await run("INSERT INTO notification_targets(notification_id,target) VALUES(?,?) ON CONFLICT(notification_id) DO UPDATE SET target=excluded.target", notificationId, JSON.stringify(targetSchema.parse(target)));
 }
 
-export function taskTarget(notificationId: string): TaskTarget | null {
-  const raw = one<{ target: string }>("SELECT target FROM notification_targets WHERE notification_id=?", notificationId)?.target;
+export async function taskTarget(notificationId: string): Promise<TaskTarget | null> {
+  const raw = (await one<{ target: string }>("SELECT target FROM notification_targets WHERE notification_id=?", notificationId))?.target;
   if (!raw) return null;
   try {
     const parsed = targetSchema.safeParse(JSON.parse(raw));
@@ -45,8 +45,8 @@ export function taskTarget(notificationId: string): TaskTarget | null {
   }
 }
 
-export function hasDoneState(pageId: string) {
-  const stored = one<{ fields: string; settings: string | null }>("SELECT fields,settings FROM databases WHERE page_id=?", pageId);
+export async function hasDoneState(pageId: string) {
+  const stored = await one<{ fields: string; settings: string | null }>("SELECT fields,settings FROM databases WHERE page_id=?", pageId);
   if (!stored) return false;
   return !!doneRule(JSON.parse(stored.fields) as Field[], stored.settings ? JSON.parse(stored.settings) : undefined);
 }
@@ -56,12 +56,12 @@ export type CategoryInput = { id: string; kind: string | null; page_id: string |
 // The buttons a notification gets. Without its text on the lock screen
 // (MOBILE_PUSH_CONTENT off, lib/push.ts) nobody could tell which task
 // "Done" would tick off or what "Reply" answers: then only "Mark as read".
-export function notificationCategory(notification: CategoryInput, withContent: boolean): NotificationCategory {
+export async function notificationCategory(notification: CategoryInput, withContent: boolean): Promise<NotificationCategory> {
   if (!withContent) return NOTIFICATION_CATEGORIES.read;
   if (notification.kind === "reminder") {
-    const target = taskTarget(notification.id);
+    const target = await taskTarget(notification.id);
     // A record's date: only where its database knows "done".
-    if (target && (target.type === "doc" || hasDoneState(target.pageId))) return NOTIFICATION_CATEGORIES.task;
+    if (target && (target.type === "doc" || await hasDoneState(target.pageId))) return NOTIFICATION_CATEGORIES.task;
     return NOTIFICATION_CATEGORIES.read;
   }
   // Comment threads (also mentions in them) and comments on pages and records.

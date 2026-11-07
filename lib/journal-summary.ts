@@ -41,31 +41,31 @@ export function summaryTitle(month: string) {
 }
 
 // The summary page of a month, when it still exists and the person may open it.
-export function existingSummary(user: Identity, journal: Page, month: string): string | null {
-  const row = one<{ page_id: string }>(
+export async function existingSummary(user: Identity, journal: Page, month: string): Promise<string | null> {
+  const row = await one<{ page_id: string }>(
     "SELECT page_id FROM meeting_notes WHERE journal_id=? AND event_key=?",
     journal.id,
     summaryKey(month),
   );
   if (!row) return null;
-  const page = one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", row.page_id);
-  return page && pageRole(user, page) ? page.id : null;
+  const page = await one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", row.page_id);
+  return page && await pageRole(user, page) ? page.id : null;
 }
 
-let cachedSchema: ReturnType<typeof documentSchema> | undefined;
+let cachedSchema: Awaited<ReturnType<typeof documentSchema>> | undefined;
 const schema = () => (cachedSchema ??= documentSchema());
 
 // Tasks written down up to the month's end that are still open now. Open
 // tasks move on to each new day (lib/journal.ts), so they live on the
 // journal's latest day, marked with the day they were first written.
-export function stillOpenTasks(journal: Page, from: string, to: string) {
-  const latest = one<Page>(
+export async function stillOpenTasks(journal: Page, from: string, to: string) {
+  const latest = await one<Page>(
     "SELECT * FROM pages WHERE parent_id=? AND journal_date>=? AND deleted_at IS NULL ORDER BY journal_date DESC LIMIT 1",
     journal.id,
     from,
   );
   if (!latest) return [];
-  const row = one<{ state: Uint8Array | null; html: string }>("SELECT state,html FROM documents WHERE page_id=?", latest.id);
+  const row = await one<{ state: Uint8Array | null; html: string }>("SELECT state,html FROM documents WHERE page_id=?", latest.id);
   const ydoc = new Y.Doc();
   Y.applyUpdate(ydoc, row?.state || htmlState(row?.html || ""));
   const doc = PMNode.fromJSON(schema(), yDocToProsemirrorJSON(ydoc, "default"));
@@ -81,9 +81,9 @@ const number = (value: number) =>
   value.toLocaleString(localeTag(contentLocale()), { maximumFractionDigits: 1 });
 
 // The page's content as document HTML.
-export function summaryHtml(journal: Page, month: string) {
+export async function summaryHtml(journal: Page, month: string) {
   const { from, to } = monthRange(month);
-  const review = journalReview(journal, from, to);
+  const review = await journalReview(journal, from, to);
   const tag = localeTag(contentLocale());
   const dayName = new Intl.DateTimeFormat(tag, { weekday: "short", day: "numeric", month: "long", timeZone: "UTC" });
   const dayLabel = (date: string) => dayName.format(new Date(`${date}T00:00:00Z`));
@@ -91,7 +91,7 @@ export function summaryHtml(journal: Page, month: string) {
   const list = (items: string[]) => `<ul>${items.map((item) => `<li><p>${item}</p></li>`).join("")}</ul>`;
   const parts: string[] = [];
   const days = review.days.length;
-  const open = days ? stillOpenTasks(journal, from, to) : [];
+  const open = days ? (await stillOpenTasks(journal, from, to)) : [];
   parts.push(
     `<p><strong>${escaped(days === 1 ? ct("1 Tag", "1 day") : ct(`${days} Tage`, `${days} days`))}</strong> · ${escaped(
       ct(`${number(review.words)} Wörter`, `${number(review.words)} words`),
@@ -152,7 +152,7 @@ export function summaryHtml(journal: Page, month: string) {
   parts.push(`<h2>${escaped(ct("Tage", "Days"))}</h2>`);
   const excerpts = new Map<string, string>();
   for (const day of review.days) {
-    const html = one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", day.id)?.html || "";
+    const html = (await one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", day.id))?.html || "";
     const text = plainText(html);
     excerpts.set(day.id, text.length > 140 ? `${text.slice(0, 140).trimEnd()} …` : text);
   }
@@ -168,16 +168,16 @@ export function summaryHtml(journal: Page, month: string) {
 }
 
 // Creates the summary, or names the one already there.
-export function createMonthSummary(user: Identity, journal: Page, input: unknown) {
+export async function createMonthSummary(user: Identity, journal: Page, input: unknown) {
   if (journal.kind !== "journal") throw new HttpError(400, "Diese Seite ist kein Journal.");
   const { month, again } = summaryInput.parse(input);
-  const existing = existingSummary(user, journal, month);
+  const existing = await existingSummary(user, journal, month);
   if (existing && !again) return { id: existing, existing: true };
-  const html = summaryHtml(journal, month);
-  const created = createPage(journal.workspace_id, journal.space_id, user.id, summaryTitle(month), "document", journal.id);
-  run("UPDATE pages SET icon=? WHERE id=?", "📊", created);
-  run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), created);
-  run(
+  const html = await summaryHtml(journal, month);
+  const created = await createPage(journal.workspace_id, journal.space_id, user.id, summaryTitle(month), "document", journal.id);
+  await run("UPDATE pages SET icon=? WHERE id=?", "📊", created);
+  await run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), created);
+  await run(
     "INSERT INTO meeting_notes(journal_id,event_key,page_id,created_by,created_at) VALUES(?,?,?,?,?) ON CONFLICT(journal_id,event_key) DO UPDATE SET page_id=excluded.page_id,created_by=excluded.created_by,created_at=excluded.created_at",
     journal.id,
     summaryKey(month),

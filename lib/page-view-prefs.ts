@@ -13,8 +13,8 @@ import { requirePage } from "./permissions";
 import type { Identity } from "./types";
 
 // The person's choice for the page's property bar (null: none yet).
-export function propertiesCollapsed(user: Pick<Identity, "id">, pageId: string): boolean | null {
-  const row = one<{ properties_collapsed: number | null }>(
+export async function propertiesCollapsed(user: Pick<Identity, "id">, pageId: string): Promise<boolean | null> {
+  const row = await one<{ properties_collapsed: number | null }>(
     "SELECT properties_collapsed FROM page_view_prefs WHERE user_id=? AND page_id=?",
     user.id,
     pageId,
@@ -26,12 +26,12 @@ const input = z.object({ pageId: z.string().uuid(), collapsed: z.boolean().nulla
 
 // The command `page.collapseProperties`: { pageId, collapsed } – null
 // forgets the choice (the default applies again).
-export function setPropertiesCollapsed(user: Identity, body: unknown): { collapsed: boolean | null } {
+export async function setPropertiesCollapsed(user: Identity, body: unknown): Promise<{ collapsed: boolean | null }> {
   const b = input.parse(body);
-  const page = requirePage(user, b.pageId);
-  if (b.collapsed === null) run("DELETE FROM page_view_prefs WHERE user_id=? AND page_id=?", user.id, page.id);
+  const page = await requirePage(user, b.pageId);
+  if (b.collapsed === null) await run("DELETE FROM page_view_prefs WHERE user_id=? AND page_id=?", user.id, page.id);
   else
-    run(
+    await run(
       `INSERT INTO page_view_prefs(user_id,page_id,properties_collapsed,updated_at) VALUES(?,?,?,?)
        ON CONFLICT(user_id,page_id) DO UPDATE SET properties_collapsed=excluded.properties_collapsed,updated_at=excluded.updated_at`,
       user.id,

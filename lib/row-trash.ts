@@ -9,6 +9,7 @@ import { roleWithGrants, rowGrants, type RowGrant } from "./row-access";
 import { cellText } from "./cell-text";
 import { ct } from "./content-locale";
 import type { Field, Identity, Page } from "./types";
+import { filterAsync } from "./each-async";
 
 // Deleted records keep their content, document and comments in the trash so
 // they can be restored under the same id (relations pointing at them work
@@ -20,8 +21,8 @@ type Payload = {
   comments: Record<string, unknown>[];
   grants?: RowGrant[];
 };
-export const trashedRole = (user: Identity, page: Page, payload: Payload) =>
-  roleWithGrants(
+export const trashedRole = async (user: Identity, page: Page, payload: Payload) =>
+  await roleWithGrants(
     user,
     page,
     {
@@ -32,22 +33,22 @@ export const trashedRole = (user: Identity, page: Page, payload: Payload) =>
     payload.grants || [],
   );
 // Called inside the command transaction instead of deleting a record directly.
-export function trashRow(user: Identity, page: Page, rowId: string) {
-  const row = one<Record<string, unknown> & { cells: string }>(
+export async function trashRow(user: Identity, page: Page, rowId: string) {
+  const row = await one<Record<string, unknown> & { cells: string }>(
     "SELECT * FROM rows WHERE id=? AND page_id=?",
     rowId,
     page.id,
   );
   if (!row) return;
-  const doc = one<{ state: Uint8Array; html: string; generation: string }>(
+  const doc = await one<{ state: Uint8Array; html: string; generation: string }>(
     "SELECT state,html,generation FROM row_documents WHERE row_id=?",
     rowId,
   );
   const fields = JSON.parse(
-    one<{ fields: string }>(
+    (await one<{ fields: string }>(
       "SELECT fields FROM databases WHERE page_id=?",
       page.id,
-    )?.fields || "[]",
+    ))?.fields || "[]",
   ) as Field[];
   const payload: Payload = {
     row,
@@ -58,14 +59,14 @@ export function trashRow(user: Identity, page: Page, rowId: string) {
           generation: doc.generation,
         }
       : null,
-    comments: all(
+    comments: await all(
       "SELECT * FROM comments WHERE page_id=? AND row_id=?",
       page.id,
       rowId,
     ),
-    grants: rowGrants(rowId),
+    grants: await rowGrants(rowId),
   };
-  run(
+  await run(
     "INSERT INTO row_trash(id,page_id,workspace_id,title,payload,deleted_by) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET page_id=excluded.page_id,workspace_id=excluded.workspace_id,title=excluded.title,payload=excluded.payload,deleted_by=excluded.deleted_by,deleted_at=excluded.deleted_at",
     rowId,
     page.id,
@@ -75,14 +76,14 @@ export function trashRow(user: Identity, page: Page, rowId: string) {
     JSON.stringify(payload),
     user.id,
   );
-  run("DELETE FROM comments WHERE page_id=? AND row_id=?", page.id, rowId);
-  run("DELETE FROM rows WHERE id=? AND page_id=?", rowId, page.id);
+  await run("DELETE FROM comments WHERE page_id=? AND row_id=?", page.id, rowId);
+  await run("DELETE FROM rows WHERE id=? AND page_id=?", rowId, page.id);
 }
 
-export function listRowTrash(user: Identity, workspaceId: string) {
+export async function listRowTrash(user: Identity, workspaceId: string) {
   // Not even the titles of records behind a journal PIN.
-  const locked = lockedPageIds(user, workspaceId);
-  return all<
+  const locked = await lockedPageIds(user, workspaceId);
+  return (await filterAsync(await all<
     Page & {
       trash_id: string;
       trash_title: string;
@@ -94,13 +95,12 @@ export function listRowTrash(user: Identity, workspaceId: string) {
      JOIN pages p ON p.id=t.page_id WHERE t.workspace_id=? AND p.deleted_at IS NULL
      ORDER BY t.deleted_at DESC LIMIT 500`,
     workspaceId,
-  )
-    .filter(
-      (p) =>
-        pageRole(user, p) &&
+  ), 
+      async (p) =>
+        await pageRole(user, p) &&
         !locked.has(p.id) &&
-        trashedRole(user, p, JSON.parse(p.payload)),
-    )
+        await trashedRole(user, p, JSON.parse(p.payload)),
+    ))
     .map((p) => ({
       id: p.trash_id,
       title: p.trash_title,
@@ -111,32 +111,32 @@ export function listRowTrash(user: Identity, workspaceId: string) {
 }
 
 const input = z.object({ trashId: z.string().uuid() });
-function entry(user: Identity, raw: unknown) {
+async function entry(user: Identity, raw: unknown) {
   const { trashId } = input.parse(raw);
-  const found = one<{ page_id: string; payload: string }>(
+  const found = await one<{ page_id: string; payload: string }>(
     "SELECT page_id,payload FROM row_trash WHERE id=?",
     trashId,
   );
   if (!found) throw new HttpError(404, "Eintrag nicht im Papierkorb.");
-  const page = requirePage(user, found.page_id, true);
+  const page = await requirePage(user, found.page_id, true);
   if (page.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
-  requireUnlocked(user, page);
+  await requireUnlocked(user, page);
   const payload = JSON.parse(found.payload) as Payload;
-  const role = trashedRole(user, page, payload);
+  const role = await trashedRole(user, page, payload);
   if (!role) throw new HttpError(404, "Eintrag nicht im Papierkorb.");
   if (role === "viewer")
     throw new HttpError(403, "Dieser Eintrag ist für dich schreibgeschützt.");
   return { trashId, page, payload };
 }
-export function restoreTrashedRow(user: Identity, raw: unknown) {
-  const { trashId, page, payload } = entry(user, raw);
-  if (one("SELECT 1 FROM rows WHERE id=?", trashId))
+export async function restoreTrashedRow(user: Identity, raw: unknown) {
+  const { trashId, page, payload } = await entry(user, raw);
+  if (await one("SELECT 1 FROM rows WHERE id=?", trashId))
     throw new HttpError(
       409,
       "Ein Eintrag mit dieser Kennung existiert bereits.",
     );
   const r = payload.row;
-  run(
+  await run(
     // The ticket number comes back too (unless another record took it).
     "INSERT INTO rows(id,page_id,cells,position,created_at,updated_at,created_by,updated_by,content,icon,cover,recurrence,access,number,repeat) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
     trashId,
@@ -153,13 +153,13 @@ export function restoreTrashedRow(user: Identity, raw: unknown) {
     ["readonly", "private"].includes(String(r.access))
       ? String(r.access)
       : "inherit",
-    Number.isInteger(r.number) && !one("SELECT 1 FROM rows WHERE page_id=? AND number=?", page.id, r.number as number)
+    Number.isInteger(r.number) && !(await one("SELECT 1 FROM rows WHERE page_id=? AND number=?", page.id, r.number as number))
       ? (r.number as number)
       : null,
     String(r.repeat || ""),
   );
   for (const g of payload.grants || [])
-    run(
+    await run(
       "INSERT INTO row_grants(row_id,user_id,group_id,role) VALUES(?,?,?,?) ON CONFLICT DO NOTHING",
       trashId,
       g.user_id,
@@ -167,7 +167,7 @@ export function restoreTrashedRow(user: Identity, raw: unknown) {
       g.role,
     );
   if (payload.document)
-    run(
+    await run(
       "INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?)",
       trashId,
       Buffer.from(payload.document.state, "base64"),
@@ -175,7 +175,7 @@ export function restoreTrashedRow(user: Identity, raw: unknown) {
       id(),
     );
   for (const c of payload.comments)
-    run(
+    await run(
       "INSERT INTO comments(id,page_id,row_id,author_id,body,resolved,created_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT DO NOTHING",
       String(c.id),
       page.id,
@@ -185,22 +185,22 @@ export function restoreTrashedRow(user: Identity, raw: unknown) {
       Number(c.resolved) || 0,
       String(c.created_at || ""),
     );
-  run("DELETE FROM row_trash WHERE id=?", trashId);
-  maintainRowOrders(page.id);
+  await run("DELETE FROM row_trash WHERE id=?", trashId);
+  await maintainRowOrders(page.id);
   // Its tasks went with it (lib/db.ts, schema 76): back into "My tasks".
-  reindexRowTasks(user, page, [trashId]);
+  await reindexRowTasks(user, page, [trashId]);
   return { ok: true, pageId: page.id, rowId: trashId };
 }
-export function purgeTrashedRow(user: Identity, raw: unknown) {
-  const { trashId } = entry(user, raw);
-  run("DELETE FROM row_trash WHERE id=?", trashId);
+export async function purgeTrashedRow(user: Identity, raw: unknown) {
+  const { trashId } = await entry(user, raw);
+  await run("DELETE FROM row_trash WHERE id=?", trashId);
   return { ok: true };
 }
-export function expireRowTrash(days = ROW_TRASH_DAYS) {
+export async function expireRowTrash(days = ROW_TRASH_DAYS) {
   return Number(
-    run(
+    (await run(
       "DELETE FROM row_trash WHERE deleted_at<?",
       daysAgoText(days),
-    ).changes,
+    )).changes,
   );
 }

@@ -26,21 +26,21 @@ export async function GET(req: Request, { params }: { params: Promise<{ path: st
     const { path } = await params;
     const what = path.join("/");
     if (what === "manifest") {
-      authorizeMove(req, "manifest");
+      await authorizeMove(req, "manifest");
       return Response.json(await moveManifest(), { headers });
     }
     if (what === "env") {
-      const { token } = authorizeMove(req, "env");
-      return Response.json(envReport(token), { headers });
+      const { token } = await authorizeMove(req, "env");
+      return Response.json(await envReport(token), { headers });
     }
     if (what === "database") {
-      authorizeMove(req, "file");
+      await authorizeMove(req, "file");
       const file = snapshotPath(new URL(req.url).searchParams.get("snapshot") || "");
       if (!file) throw new HttpError(404, "Dieser Datenbankstand ist nicht mehr vorhanden – bitte die Übertragung neu starten.");
       return serveMoveFile(file, req.headers.get("range"));
     }
     if (path.length === 2 && (path[0] === "file" || path[0] === "extra")) {
-      authorizeMove(req, "file");
+      await authorizeMove(req, "file");
       const file = movePath(path[0], path[1]);
       if (!file) throw new HttpError(404, "Datei nicht gefunden.");
       return serveMoveFile(file, req.headers.get("range"));
@@ -57,12 +57,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ path: s
     const what = path.join("/");
     if (Number(req.headers.get("content-length") || 0) > 10_000) throw new HttpError(413, "Anfrage zu groß.");
     if (what === "freeze") {
-      const { state } = authorizeMove(req, "freeze");
-      return Response.json(freezeSource(state), { headers });
+      const { state } = await authorizeMove(req, "freeze");
+      return Response.json(await freezeSource(state), { headers });
     }
     if (what === "finish") {
-      const { state } = authorizeMove(req, "finish");
-      return Response.json(finishSource(state, await req.json().catch(() => ({}))), { headers });
+      const { state } = await authorizeMove(req, "finish");
+      return Response.json(await finishSource(state, await req.json().catch(() => ({}))), { headers });
     }
     throw new HttpError(404, "Nicht gefunden.");
   } catch (e) {

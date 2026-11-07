@@ -25,6 +25,7 @@ import { aliasField, aliasList, frontmatterAliases } from "./aliases";
 import { computedTypes } from "./markdown-export";
 import { exportTitle, importDate } from "./zip-import";
 import type { Field, Identity, Page } from "./types";
+import { forEachAsync, mapAsync } from "./each-async";
 
 export const MAX_MARKDOWN_RECORDS = 5000;
 const mimeTypes: Record<string, string> = {
@@ -116,14 +117,14 @@ export type MarkdownImportPlan = {
 };
 
 export type MarkdownImportResult = MarkdownImportPlan & { created?: number; updated?: number; fieldsCreated?: string[]; files?: number };
-export function importMarkdownRecords(
+export async function importMarkdownRecords(
   user: Identity,
   pageId: string,
   entries: Map<string, Buffer>,
   options: { dryRun?: boolean; createMissing?: boolean; updateExisting?: boolean } = {},
-): MarkdownImportResult {
-  const page = requirePage(user, pageId, true);
-  requireUnlocked(user, page);
+): Promise<MarkdownImportResult> {
+  const page = await requirePage(user, pageId, true);
+  await requireUnlocked(user, page);
   if (page.kind !== "database") throw new HttpError(400, "Nur in eine Datenbank.");
   if (page.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
   let paths = [...entries.keys()].filter((p) => /\.(md|markdown)$/i.test(p) && !p.split("/").some((part) => part.startsWith(".")));
@@ -131,7 +132,7 @@ export function importMarkdownRecords(
   if (paths.some((p) => p.startsWith("records/"))) paths = paths.filter((p) => p.startsWith("records/"));
   if (!paths.length) throw new HttpError(400, "Keine Markdown-Dateien gefunden.");
   if (paths.length > MAX_MARKDOWN_RECORDS) throw new HttpError(413, `Maximal ${MAX_MARKDOWN_RECORDS} Einträge je Import.`);
-  const raw = one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", page.id)!;
+  const raw = (await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", page.id))!;
   const fields = JSON.parse(raw.fields) as Field[];
   const titleField = fields[0];
   const parsed = paths
@@ -155,14 +156,14 @@ export function importMarkdownRecords(
   const existing = new Map<string, { id: string; access: string; created_by: string }>();
   for (const file of parsed) {
     if (!file.flowplanId) continue;
-    const row = one<{ id: string; access: string; created_by: string }>(
+    const row = await one<{ id: string; access: string; created_by: string }>(
       "SELECT id,access,created_by FROM rows WHERE id=? AND page_id=?",
       file.flowplanId,
       page.id,
     );
     if (!row) continue;
     try {
-      assertRowAccess(user, page, row, true);
+      await assertRowAccess(user, page, row, true);
       existing.set(file.path, row);
     } catch {}
   }
@@ -175,8 +176,8 @@ export function importMarkdownRecords(
   }
   if (options.dryRun) return plan;
 
-  return transaction(() => {
-    autoDatabaseSnapshot(user, page);
+  return await transaction(async () => {
+    await autoDatabaseSnapshot(user, page);
     const next = structuredClone(fields);
     current = next;
     byName.clear();
@@ -193,13 +194,13 @@ export function importMarkdownRecords(
       }
     // Records of related databases, by title, as far as the person may read them.
     const related = new Map<string, Map<string, string>>();
-    const relatedTitles = (target: string) => {
+    const relatedTitles = async (target: string) => {
       if (!related.has(target)) {
         const map = new Map<string, string>();
-        const targetPage = one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", target);
-        if (targetPage && pageRole(user, targetPage)) {
-          const targetFields = JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", target)?.fields || "[]") as Field[];
-          for (const row of all<{ id: string; cells: string }>("SELECT id,cells FROM rows WHERE page_id=? ORDER BY position", target)) {
+        const targetPage = await one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", target);
+        if (targetPage && await pageRole(user, targetPage)) {
+          const targetFields = JSON.parse((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", target))?.fields || "[]") as Field[];
+          for (const row of await all<{ id: string; cells: string }>("SELECT id,cells FROM rows WHERE page_id=? ORDER BY position", target)) {
             const name = lower(cellText((JSON.parse(row.cells) as Record<string, unknown>)[targetFields[0]?.id || "title"]));
             if (name && !map.has(name)) map.set(name, row.id);
           }
@@ -208,7 +209,7 @@ export function importMarkdownRecords(
       }
       return related.get(target)!;
     };
-    const members = all<{ id: string; name: string; email: string }>(
+    const members = await all<{ id: string; name: string; email: string }>(
       "SELECT u.id,u.name,u.email FROM users u JOIN members m ON m.user_id=u.id WHERE m.workspace_id=?",
       page.workspace_id,
     );
@@ -223,7 +224,7 @@ export function importMarkdownRecords(
       field.options = [...(field.options || []), value];
       return value;
     };
-    const cellOf = (field: Field, value: FrontmatterValue): unknown => {
+    const cellOf = async (field: Field, value: FrontmatterValue): Promise<unknown> => {
       const list = (isList(value) ? value : [value]).map(asText).map((v) => v.trim()).filter(Boolean);
       const text = asText(value).trim();
       switch (field.type) {
@@ -240,7 +241,7 @@ export function importMarkdownRecords(
         case "multiselect":
           // The workspace's tags: missing ones created where allowed (#79).
           if (isTagField(field))
-            return tagCells(user, page, [field], { [field.id]: list.flatMap((v) => (isList(value) ? [v] : v.split(",").map((x) => x.trim()))) }, false)[field.id];
+            return (await tagCells(user, page, [field], { [field.id]: list.flatMap((v) => (isList(value) ? [v] : v.split(",").map((x) => x.trim()))) }, false))[field.id];
           return [...new Set(list.flatMap((v) => (isList(value) ? [v] : v.split(",").map((x) => x.trim()))).map((v) => option(field, v)).filter((v): v is string => !!v))];
         case "person": {
           const ids = list.map(member).filter((v): v is string => !!v);
@@ -248,7 +249,7 @@ export function importMarkdownRecords(
         }
         case "relation": {
           if (!field.relationPage) return undefined;
-          const titles = relatedTitles(field.relationPage);
+          const titles = await relatedTitles(field.relationPage);
           const ids = [...new Set(list.map((v) => titles.get(lower(linkTitle(v)))).filter((v): v is string => !!v))];
           return field.parent ? ids.slice(0, 1) : ids.slice(0, 500);
         }
@@ -276,7 +277,7 @@ export function importMarkdownRecords(
     const dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads");
     const uploaded = new Map<string, string>();
     let bytesAdded = 0;
-    const resolver = (from: string) => (href: string, kind: "link" | "image") => {
+    const resolver = (from: string) => async (href: string, kind: "link" | "image") => {
       if (/^(https?:|mailto:)/i.test(href)) return href;
       if (/^[a-z]+:/i.test(href) || href.startsWith("#")) return null;
       let target: string;
@@ -293,12 +294,12 @@ export function importMarkdownRecords(
       const fid = id(),
         ext = target.split(".").pop()!.toLowerCase();
       bytesAdded += data.length;
-      enforceQuota(page.workspace_id, bytesAdded);
-      enforceUserStorage(user, bytesAdded);
+      await enforceQuota(page.workspace_id, bytesAdded);
+      await enforceUserStorage(user, bytesAdded);
       mkdirSync(dir, { recursive: true });
       writeFileSync(resolve(dir, fid), data);
       onTransactionRollback(() => unlinkSync(resolve(dir, fid)));
-      run(
+      await run(
         "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
         fid,
         page.id,
@@ -313,39 +314,39 @@ export function importMarkdownRecords(
     };
     const start = Date.now();
     const created: string[] = [];
-    const rows = parsed.map((file) => {
+    const rows = await mapAsync(parsed, async (file) => {
       const cells: Record<string, unknown> = { [titleField?.id || "title"]: file.title };
       for (const [key, value] of file.values) {
         const field = fieldFor(key);
         if (!field || field === titleField || computedTypes.includes(field.type) || field.type === "sprint") continue;
-        const cell = cellOf(field, value);
+        const cell = await cellOf(field, value);
         if (cell !== undefined && !(Array.isArray(cell) && !cell.length && field.type !== "multiselect")) cells[field.id] = cell;
       }
       return { file, cells };
     });
     // Properties this person may not change (lib/field-access.ts).
-    assertFieldsWritable(user, page, next, new Set(rows.flatMap((r) => Object.keys(r.cells))));
+    await assertFieldsWritable(user, page, next, new Set(rows.flatMap((r) => Object.keys(r.cells))));
     if (JSON.stringify(next) !== raw.fields)
-      run("UPDATE databases SET fields=?,version=version+1 WHERE page_id=?", JSON.stringify(next), page.id);
-    syncTagFieldOptions(page.workspace_id);
+      await run("UPDATE databases SET fields=?,version=version+1 WHERE page_id=?", JSON.stringify(next), page.id);
+    await syncTagFieldOptions(page.workspace_id);
     let updated = 0;
-    rows.forEach(({ file, cells }, i) => {
+    await forEachAsync(rows, async ({ file, cells }, i) => {
       const rid = rowIds.get(file.path)!;
       const html = file.body ? markdownToHtml(file.body, resolver(file.path)) : "";
       // Round trip: the exported record gets the file's values and text.
       if (update(file)) {
-        const before = JSON.parse(one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", rid)!.cells) as Record<string, unknown>;
+        const before = JSON.parse((await one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", rid))!.cells) as Record<string, unknown>;
         const merged = JSON.stringify({ ...before, ...cells });
         if (merged.length > 200000) throw new HttpError(413, `${file.path}: Datensatz zu groß.`);
-        run("UPDATE rows SET cells=?,version=version+1,updated_at=?,updated_by=? WHERE id=?", merged, nowText(), user.id, rid);
-        snapshotRow(user, page.id, rid);
-        replaceRowDocument(rid, html, user.id);
+        await run("UPDATE rows SET cells=?,version=version+1,updated_at=?,updated_by=? WHERE id=?", merged, nowText(), user.id, rid);
+        await snapshotRow(user, page.id, rid);
+        await replaceRowDocument(rid, html, user.id);
         updated++;
         return;
       }
       const serialized = JSON.stringify(cells);
       if (serialized.length > 200000) throw new HttpError(413, `${file.path}: Datensatz zu groß.`);
-      run(
+      await run(
         "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content) VALUES(?,?,?,?,?,?,?)",
         rid,
         page.id,
@@ -355,11 +356,11 @@ export function importMarkdownRecords(
         user.id,
         html,
       );
-      if (html) run("INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?)", rid, htmlState(html), html, id());
+      if (html) await run("INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?)", rid, htmlState(html), html, id());
       created.push(rid);
     });
-    run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), page.id);
-    for (const rid of created) rowCreated(user, page, rid);
+    await run("UPDATE pages SET updated_at=? WHERE id=?", nowText(), page.id);
+    for (const rid of created) await rowCreated(user, page, rid);
     return {
       ...plan,
       created: created.length,

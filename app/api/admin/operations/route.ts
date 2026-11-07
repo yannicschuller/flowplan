@@ -29,7 +29,7 @@ export const GET = withRequestLocale(async (req: Request) => {
     await admin();
     const url = new URL(req.url);
     if (url.searchParams.get("export") === "audit") {
-      const file = auditExport({
+      const file = await auditExport({
         from: url.searchParams.get("from") || undefined,
         to: url.searchParams.get("to") || undefined,
         format: url.searchParams.get("format") || undefined,
@@ -38,7 +38,7 @@ export const GET = withRequestLocale(async (req: Request) => {
         headers: { "Content-Type": file.type, "Content-Disposition": `attachment; filename="${file.name}"`, "Cache-Control": "no-store" },
       });
     }
-    return Response.json(opsOverview(), { headers: { "Cache-Control": "no-store" } });
+    return Response.json(await opsOverview(), { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     return failure(e);
   }
@@ -46,47 +46,47 @@ export const GET = withRequestLocale(async (req: Request) => {
 
 export const POST = withRequestLocale(async (req: Request) => {
   try {
-    checkOrigin(req);
+    await checkOrigin(req);
     const user = await admin();
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
     switch (body.action) {
       case "alerts.save":
-        saveAlertSettings(user.id, body);
+        await saveAlertSettings(user.id, body);
         break;
       case "alerts.test":
-        return Response.json({ test: await sendTestAlert(user.id), ...opsOverview() });
+        return Response.json({ test: await sendTestAlert(user.id), ...(await opsOverview()) });
       case "alerts.check":
-        return Response.json({ sent: await checkHealthAlerts(), ...opsOverview() });
+        return Response.json({ sent: await checkHealthAlerts(), ...(await opsOverview()) });
       case "maintenance.save":
-        saveMaintenance(user.id, body.notice ?? null);
+        await saveMaintenance(user.id, body.notice ?? null);
         break;
       // Banners people click away once (lib/instance-banners.ts).
       case "banners.list":
-        return Response.json({ banners: listBanners(user) }, { headers: { "Cache-Control": "no-store" } });
+        return Response.json({ banners: await listBanners(user) }, { headers: { "Cache-Control": "no-store" } });
       case "banners.save": {
-        const saved = saveBanner(user, body.banner);
-        return Response.json({ id: saved, banners: listBanners(user) }, { headers: { "Cache-Control": "no-store" } });
+        const saved = await saveBanner(user, body.banner);
+        return Response.json({ id: saved, banners: await listBanners(user) }, { headers: { "Cache-Control": "no-store" } });
       }
       case "banners.delete":
-        deleteBanner(user, z.string().uuid().parse(body.id));
-        return Response.json({ banners: listBanners(user) }, { headers: { "Cache-Control": "no-store" } });
+        await deleteBanner(user, z.string().uuid().parse(body.id));
+        return Response.json({ banners: await listBanners(user) }, { headers: { "Cache-Control": "no-store" } });
       case "banners.reset":
-        showBannerAgain(user, z.string().uuid().parse(body.id));
-        return Response.json({ banners: listBanners(user) }, { headers: { "Cache-Control": "no-store" } });
+        await showBannerAgain(user, z.string().uuid().parse(body.id));
+        return Response.json({ banners: await listBanners(user) }, { headers: { "Cache-Control": "no-store" } });
       // The push relay's signing key: list, or replace with a grace period
       // for the old one (immediate: the old one goes at once).
       case "pushRelay.keys":
-        return Response.json({ keys: pushIdentityStatus() }, { headers: { "Cache-Control": "no-store" } });
+        return Response.json({ keys: await pushIdentityStatus() }, { headers: { "Cache-Control": "no-store" } });
       case "pushRelay.rotate": {
         const b = z.object({ immediate: z.boolean().default(false), graceDays: z.number().int().min(0).max(90).default(7) }).parse(body);
-        const rotated = rotatePushIdentity({ immediate: b.immediate, graceMs: b.graceDays * 86_400_000 });
-        audit(user.id, "admin.push.rotate", "instance", b.immediate ? "immediate" : `grace ${b.graceDays} d`);
-        return Response.json({ rotated, keys: pushIdentityStatus() }, { headers: { "Cache-Control": "no-store" } });
+        const rotated = await rotatePushIdentity({ immediate: b.immediate, graceMs: b.graceDays * 86_400_000 });
+        await audit(user.id, "admin.push.rotate", "instance", b.immediate ? "immediate" : `grace ${b.graceDays} d`);
+        return Response.json({ rotated, keys: await pushIdentityStatus() }, { headers: { "Cache-Control": "no-store" } });
       }
       default:
         throw new HttpError(400, "Unbekannte Aktion.");
     }
-    return Response.json(opsOverview(), { headers: { "Cache-Control": "no-store" } });
+    return Response.json(await opsOverview(), { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     return failure(e);
   }

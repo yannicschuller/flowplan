@@ -12,14 +12,14 @@ const { bootstrap, database, rows } = await import("../lib/api");
 const { createWorkspace } = await import("../lib/seed");
 const { importTracker, parseJira } = await import("../lib/tracker-import");
 
-function user(name: string, email: string): Identity {
+async function user(name: string, email: string): Promise<Identity> {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, email);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, email);
   return { id: uid, name, email, groups: [], isAdmin: false, disabled: 0, created_at: "" };
 }
-const owner = user("Ada Lovelace", "ada@test.invalid");
-const wid = createWorkspace(owner.id, "Import"),
-  boot = bootstrap(owner, wid);
+const owner = await user("Ada Lovelace", "ada@test.invalid");
+const wid = await createWorkspace(owner.id, "Import"),
+  boot = await bootstrap(owner, wid);
 const space = boot.spaces[0].id;
 
 // Jira repeats columns (Labels, Comment, Attachment, Sprint).
@@ -29,16 +29,16 @@ const jira = Papa.unparse([
   ["Reset password", "WEB-2", "101", "100", "Story", "Done", "Medium", "Ada Lovelace", "Bob", "2026-10-07 09:00", "20/Oct/26", "auth", "mail", "Sprint 3", "3", "Send a mail", "", "07/Oct/26;bob;spec.pdf;https://jira.example/secure/attachment/1/spec.pdf"],
 ]);
 
-test("Jira CSV: properties, subtasks, comments, attachments", () => {
+test("Jira CSV: properties, subtasks, comments, attachments", async () => {
   const draft = parseJira(jira, "Web");
   assert.deepEqual(
     draft.fields.map((f) => f.name),
     ["Titel", "Jira-Schlüssel", "Typ", "Status", "Priorität", "Zuständig", "Gemeldet von", "Labels", "Sprint", "Story Points", "Erstellt", "Fällig", "Übergeordnet"],
   );
-  const result = importTracker(owner, wid, space, "jira", jira, "Web.csv");
+  const result = await importTracker(owner, wid, space, "jira", jira, "Web.csv");
   assert.deepEqual([result.rows, result.comments], [2, 1]);
-  const db = database(result.pageId);
-  const stored = rows(result.pageId);
+  const db = await database(result.pageId);
+  const stored = await rows(result.pageId);
   const byKey = (k: string) => stored.find((r) => r.cells[db.fields[1].id] === k)!;
   const field = (name: string) => db.fields.find((f) => f.name === name)!;
   // All assignees are members: a person property.
@@ -50,12 +50,12 @@ test("Jira CSV: properties, subtasks, comments, attachments", () => {
   assert.equal(byKey("WEB-2").cells[field("Fällig").id], "2026-10-20");
   assert.deepEqual(byKey("WEB-2").cells[field("Übergeordnet").id], [byKey("WEB-1").id]);
   assert.match(String(byKey("WEB-2").content), /spec\.pdf<\/a>/);
-  const comment = one<{ body: string }>("SELECT body FROM comments WHERE row_id=?", byKey("WEB-1").id)!;
+  const comment = (await one<{ body: string }>("SELECT body FROM comments WHERE row_id=?", byKey("WEB-1").id))!;
   assert.equal(comment.body, "557058:x, 2026-10-06: Looks good");
   assert.ok(db.views.some((v) => v.type === "board"));
 });
 
-test("Trello JSON: lists, labels, checklists, comments", () => {
+test("Trello JSON: lists, labels, checklists, comments", async () => {
   const board = {
     name: "Marketing",
     lists: [{ id: "l1", name: "To do" }, { id: "l2", name: "Done" }],
@@ -67,17 +67,17 @@ test("Trello JSON: lists, labels, checklists, comments", () => {
     checklists: [{ idCard: "c1", checkItems: [{ name: "Text", state: "complete" }, { name: "Images", state: "incomplete" }] }],
     actions: [{ type: "commentCard", date: "2026-10-01T08:00:00Z", data: { card: { id: "c1" }, text: "Go!" }, memberCreator: { fullName: "Someone Else" } }],
   };
-  const result = importTracker(owner, wid, space, "trello", JSON.stringify(board));
+  const result = await importTracker(owner, wid, space, "trello", JSON.stringify(board));
   assert.equal(result.rows, 1);
-  const db = database(result.pageId);
-  const [card] = rows(result.pageId);
+  const db = await database(result.pageId);
+  const [card] = await rows(result.pageId);
   const field = (name: string) => db.fields.find((f) => f.name === name)!;
   assert.equal(card.cells[field("Liste").id], "To do");
   assert.equal(field("Mitglieder").type, "text");
   assert.equal(card.cells[field("Mitglieder").id], "Someone Else");
   assert.deepEqual(card.cells[field("Checkliste").id], [{ text: "Text", done: true }, { text: "Images", done: false }]);
   assert.match(String(card.content), /<strong>Draft<\/strong>/);
-  assert.equal(all("SELECT 1 FROM comments WHERE row_id=?", card.id).length, 1);
-  assert.throws(() => importTracker(owner, wid, space, "trello", "{}"), /Trello-Export/);
-  assert.throws(() => importTracker(owner, wid, space, "jira", "a,b\n1,2"), /Jira-CSV/);
+  assert.equal((await all("SELECT 1 FROM comments WHERE row_id=?", card.id)).length, 1);
+  await assert.rejects(async () => await importTracker(owner, wid, space, "trello", "{}"), /Trello-Export/);
+  await assert.rejects(async () => await importTracker(owner, wid, space, "jira", "a,b\n1,2"), /Jira-CSV/);
 });

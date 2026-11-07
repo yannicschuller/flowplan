@@ -216,7 +216,7 @@ export function calendarDays(
     },
   );
 }
-export type CalendarDay = ReturnType<typeof calendarDays>[number];
+export type CalendarDay = Awaited<ReturnType<typeof calendarDays>>[number];
 export function rangeOnDay(range: CalendarRange, day: CalendarDay) {
   return range.timed
     ? range.startMs < day.end && range.endMs > day.start

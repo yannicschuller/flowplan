@@ -17,17 +17,17 @@ const { identityFromToken } = await import("../lib/auth");
 const { identityFromApiToken } = await import("../lib/api-tokens");
 
 const uid = id();
-run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, "owner", "owner@test.invalid");
+await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, "owner", "owner@test.invalid");
 const st = randomBytes(16).toString("hex");
-run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", createHash("sha256").update(st).digest("hex"), uid, "[]", Date.now() + 3600_000);
+await run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", createHash("sha256").update(st).digest("hex"), uid, "[]", Date.now() + 3600_000);
 const owner = (await identityFromToken(st))!;
-const wid = createWorkspace(owner.id, "Cal"),
-  boot = bootstrap(owner, wid);
-const pageId = (command(owner, { action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, kind: "database", title: "Termine" }) as { id: string }).id;
-command(owner, {
+const wid = await createWorkspace(owner.id, "Cal"),
+  boot = await bootstrap(owner, wid);
+const pageId = ((await command(owner, { action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, kind: "database", title: "Termine" })) as { id: string }).id;
+await command(owner, {
   action: "database.update",
   pageId,
-  version: database(pageId).version,
+  version: (await database(pageId)).version,
   fields: [
     { id: "title", name: "Title", type: "text" },
     { id: "start", name: "Start", type: "date" },
@@ -36,18 +36,18 @@ command(owner, {
 });
 
 test("a write API token cannot create a CalDAV access or a calendar feed", async () => {
-  const minted = command(owner, { action: "token.create", name: "script", scope: "write" }) as { id: string; token: string };
+  const minted = (await command(owner, { action: "token.create", name: "script", scope: "write" })) as { id: string; token: string };
   const tokenUser = (await identityFromApiToken(`Bearer ${minted.token}`))!;
   assert.equal(tokenUser.apiScope, "write");
   for (const action of ["calendar.caldav", "calendar.feed"])
-    assert.throws(
-      () => command(tokenUser, { action, pageId, viewId: "cal" }),
+    await assert.rejects(
+      async () => await command(tokenUser, { action, pageId, viewId: "cal" }),
       (e: { status?: number }) => e.status === 403,
       action,
     );
-  assert.equal(one("SELECT 1 x FROM caldav_accesses WHERE page_id=?", pageId), undefined);
-  assert.equal(one("SELECT 1 x FROM calendar_feeds WHERE page_id=?", pageId), undefined);
+  assert.equal(await one("SELECT 1 x FROM caldav_accesses WHERE page_id=?", pageId), undefined);
+  assert.equal(await one("SELECT 1 x FROM calendar_feeds WHERE page_id=?", pageId), undefined);
   // Signed in in the browser it still works.
-  assert.ok((command(owner, { action: "calendar.caldav", pageId, viewId: "cal" }) as { password: string }).password);
-  assert.match((command(owner, { action: "calendar.feed", pageId, viewId: "cal" }) as { url: string }).url, /\/api\/calendar\/.+\.ics$/);
+  assert.ok(((await command(owner, { action: "calendar.caldav", pageId, viewId: "cal" })) as { password: string }).password);
+  assert.match(((await command(owner, { action: "calendar.feed", pageId, viewId: "cal" })) as { url: string }).url, /\/api\/calendar\/.+\.ics$/);
 });

@@ -46,6 +46,7 @@ import { aiPageMarkdown } from "./content";
 import { semanticCandidates, semanticQueryVector } from "./semantic";
 import { nameLookup, pageSubtree, sourceText } from "./sources";
 import { databaseContext, type DatabaseData } from "./database-context";
+import { filterAsync, forEachAsync, mapAsync } from "../each-async";
 
 export const ASK_LIMITS = {
   questionChars: 2000,
@@ -132,38 +133,37 @@ type Candidate = { pageId: string; rowId: string; fused: number; chunks: Map<num
 const key = (pageId: string, rowId: string) => `${pageId}/${rowId}`;
 
 // Which pages the question may look at (null: the whole workspace).
-function scopePages(user: Identity, workspaceId: string, scope: z.infer<typeof askInput>["scope"]): { pages: Set<string> | null; spaceId?: string } {
+async function scopePages(user: Identity, workspaceId: string, scope: z.infer<typeof askInput>["scope"]): Promise<{ pages: Set<string> | null; spaceId?: string }> {
   if (scope.kind === "page") {
-    const page = requirePage(user, scope.pageId);
+    const page = await requirePage(user, scope.pageId);
     if (page.workspace_id !== workspaceId) throw new HttpError(404, "Seite nicht gefunden.");
-    return { pages: new Set(pageSubtree(page.id)) };
+    return { pages: new Set(await pageSubtree(page.id)) };
   }
   if (scope.kind === "space") {
-    const space = one<Space>("SELECT * FROM spaces WHERE id=? AND workspace_id=?", scope.spaceId, workspaceId);
-    if (!space || !spaceRole(user, space)) throw new HttpError(403, "Keine Berechtigung für diesen Bereich.");
-    return { pages: new Set(all<{ id: string }>("SELECT id FROM pages WHERE space_id=? AND deleted_at IS NULL", space.id).map((r) => r.id)), spaceId: space.id };
+    const space = await one<Space>("SELECT * FROM spaces WHERE id=? AND workspace_id=?", scope.spaceId, workspaceId);
+    if (!space || !(await spaceRole(user, space))) throw new HttpError(403, "Keine Berechtigung für diesen Bereich.");
+    return { pages: new Set((await all<{ id: string }>("SELECT id FROM pages WHERE space_id=? AND deleted_at IS NULL", space.id)).map((r) => r.id)), spaceId: space.id };
   }
   return { pages: null };
 }
 
 // The workspaces a question across workspaces looks at: the current one
 // first, then every other one where "ask" resolves for the person.
-export function askWorkspaces(user: Identity, current: string): { id: string; name: string }[] {
-  const list = all<{ id: string; name: string }>(
+export async function askWorkspaces(user: Identity, current: string): Promise<{ id: string; name: string }[]> {
+  const list = await all<{ id: string; name: string }>(
     "SELECT w.id,w.name FROM workspaces w JOIN members m ON m.workspace_id=w.id WHERE m.user_id=? ORDER BY lower(w.name)",
     user.id,
   );
-  return [...list.filter((w) => w.id === current), ...list.filter((w) => w.id !== current)]
-    .filter((w) => resolveAi(user, "ask", { workspaceId: w.id }).ok)
+  return (await filterAsync([...list.filter((w) => w.id === current), ...list.filter((w) => w.id !== current)], async (w) => (await resolveAi(user, "ask", { workspaceId: w.id })).ok))
     .slice(0, ASK_MAX_WORKSPACES);
 }
 
 // Full-text candidates: pages and records (not comments or files) that
 // contain any of the terms, best first (also lib/ai/link-candidates.ts).
-export function textCandidates(workspaceId: string, terms: string[], scope: { pages: Set<string> | null; spaceId?: string }, limit = 400) {
+export async function textCandidates(workspaceId: string, terms: string[], scope: { pages: Set<string> | null; spaceId?: string }, limit = 400) {
   if (!terms.length) return [];
-  refreshSearchIndex();
-  return termMatches(workspaceId, terms, { spaceId: scope.spaceId, limit }).filter((r) => !/^[cmf]:/.test(r.row_id) && (!scope.pages || scope.pages.has(r.page_id)));
+  await refreshSearchIndex();
+  return (await termMatches(workspaceId, terms, { spaceId: scope.spaceId, limit })).filter((r) => !/^[cmf]:/.test(r.row_id) && (!scope.pages || scope.pages.has(r.page_id)));
 }
 
 // Earlier turns: alternating, starting with a question, shortened.
@@ -189,7 +189,7 @@ const ANSWER_TOKENS = { plain: 1500, data: 4000 } as const;
 // Everything for the answer; the prompt contains only what aiFilter let through.
 export async function prepareAsk(user: Identity, raw: AskInput, signal?: AbortSignal): Promise<PreparedAsk> {
   const input = askInput.parse(raw);
-  const resolved = requireAi(user, "ask", { workspaceId: input.workspaceId });
+  const resolved = await requireAi(user, "ask", { workspaceId: input.workspaceId });
   // The question takes its slot of the AI rate limit before any work – the
   // embedding call, the vector scan and the full-text search – also when
   // nothing is found. The answer does not count again (charged: true).
@@ -197,7 +197,7 @@ export async function prepareAsk(user: Identity, raw: AskInput, signal?: AbortSi
   // "Diese Seite": read rights and the AI's rules checked like everywhere.
   let current: { page: Page; markdown: string; truncated: boolean } | null = null;
   if (input.page) {
-    const page = requirePage(user, input.page.pageId);
+    const page = await requirePage(user, input.page.pageId);
     if (page.workspace_id !== input.workspaceId) throw new HttpError(404, "Seite nicht gefunden.");
     const limit = resolved.config.kind === "ollama" || isLocalProvider(resolved.config) ? ASK_LIMITS.pageChars.local : ASK_LIMITS.pageChars.remote;
     const markdown = await aiPageMarkdown(user, page);
@@ -207,10 +207,10 @@ export async function prepareAsk(user: Identity, raw: AskInput, signal?: AbortSi
   const across = input.scope.kind === "all";
   const onlyHelp = input.scope.kind === "help";
   const withHelp = onlyHelp || across || input.scope.kind === "workspace";
-  const workspaces = onlyHelp ? [] : across ? askWorkspaces(user, input.workspaceId) : [{ id: input.workspaceId, name: "" }];
+  const workspaces = onlyHelp ? [] : across ? (await askWorkspaces(user, input.workspaceId)) : [{ id: input.workspaceId, name: "" }];
   const workspaceNames = new Map(workspaces.map((w) => [w.id, w.name]));
   const scope: { pages: Set<string> | null; spaceId?: string } =
-    input.scope.kind === "all" || input.scope.kind === "help" ? { pages: null } : scopePages(user, input.workspaceId, input.scope);
+    input.scope.kind === "all" || input.scope.kind === "help" ? { pages: null } : (await scopePages(user, input.workspaceId, input.scope));
   const previous = history(input.history);
   let terms = questionTerms(input.question);
   // A short follow-up ("und wann?") borrows the terms of the last question.
@@ -235,7 +235,7 @@ export async function prepareAsk(user: Identity, raw: AskInput, signal?: AbortSi
   const recent = asksForRecent(terms);
   const searchTerms = terms.filter((t) => !RECENT_WORDS.has(t));
   for (const workspace of workspaces) {
-    const lists = [textCandidates(workspace.id, searchTerms, scope), ...(searchTerms.length > 1 ? searchTerms.map((term) => textCandidates(workspace.id, [term], scope, 60)) : [])];
+    const lists = [await textCandidates(workspace.id, searchTerms, scope), ...(searchTerms.length > 1 ? (await mapAsync(searchTerms, async (term) => await textCandidates(workspace.id, [term], scope, 60))) : [])];
     for (const list of lists) {
       const seen = new Set<string>();
       list.forEach((r) => {
@@ -273,18 +273,18 @@ export async function prepareAsk(user: Identity, raw: AskInput, signal?: AbortSi
 
   // What the AI may read – before any text is loaded.
   const ranked = [...candidates.values()].sort((a, b) => b.fused - a.fused);
-  const readable = aiFilter(
+  const readable = (await aiFilter(
     user,
     // The open page is there in full already.
     ranked.filter((c) => !(current && c.pageId === current.page.id && !c.rowId)).map((c) => ({ ...c, rowId: c.rowId || null })),
-  ).slice(0, ASK_LIMITS.candidates);
+  )).slice(0, ASK_LIMITS.candidates);
 
   // Dates of journal days: in the source label, and for "the last …" the
   // newest days rank first.
   const dates = new Map<string, string>();
   for (const c of readable)
     if (!c.rowId) {
-      const date = one<{ journal_date: string | null }>("SELECT journal_date FROM pages WHERE id=?", c.pageId)?.journal_date;
+      const date = (await one<{ journal_date: string | null }>("SELECT journal_date FROM pages WHERE id=?", c.pageId))?.journal_date;
       if (date) dates.set(c.pageId, date);
     }
   const byDate = [...new Set(dates.values())].sort().reverse();
@@ -295,23 +295,23 @@ export async function prepareAsk(user: Identity, raw: AskInput, signal?: AbortSi
   const names = nameLookup();
   const passages: Passage[] = [];
   const meta = new Map<string, Omit<AskSource, "n">>();
-  readable.forEach((c, rank) => {
-    const source = sourceText(c.pageId, c.rowId || null, names);
+  await forEachAsync(readable, async (c, rank) => {
+    const source = await sourceText(c.pageId, c.rowId || null, names);
     if (!source) return;
     const k = key(c.pageId, c.rowId || "");
     // Synced blocks lead to the page they were created on.
     let linkPage = c.pageId,
       title = source.title;
     if (!c.rowId) {
-      const page = one<Page>("SELECT * FROM pages WHERE id=?", c.pageId);
+      const page = await one<Page>("SELECT * FROM pages WHERE id=?", c.pageId);
       if (page?.synced && page.parent_id) {
-        const origin = one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", page.parent_id);
-        if (!origin || !pageRole(user, origin)) return;
+        const origin = await one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", page.parent_id);
+        if (!origin || !(await pageRole(user, origin))) return;
         linkPage = origin.id;
         title = origin.title;
       }
     }
-    const workspaceId = across ? one<{ workspace_id: string }>("SELECT workspace_id FROM pages WHERE id=?", linkPage)?.workspace_id : undefined;
+    const workspaceId = across ? (await one<{ workspace_id: string }>("SELECT workspace_id FROM pages WHERE id=?", linkPage))?.workspace_id : undefined;
     meta.set(k, {
       pageId: linkPage,
       ...(c.rowId ? { rowId: c.rowId } : {}),
@@ -348,7 +348,7 @@ export async function prepareAsk(user: Identity, raw: AskInput, signal?: AbortSi
   // workspace.
   const data: DatabaseData[] = onlyHelp
     ? []
-    : databaseContext(user, {
+    : (await databaseContext(user, {
         workspaceId: input.workspaceId,
         instruction: input.question,
         within: scope.pages,
@@ -356,7 +356,7 @@ export async function prepareAsk(user: Identity, raw: AskInput, signal?: AbortSi
           ...(input.scope.kind === "page" ? [input.scope.pageId] : []),
           ...useful.filter((p) => !help.has(p.key) && meta.get(p.key)?.kind === "database" && !meta.get(p.key)?.rowId).map((p) => meta.get(p.key)!.pageId),
         ],
-      });
+      }));
   if (!useful.length && !data.length && !current) return { sources: [], system: askSystem(), messages: [], nothing: true, semantic, maxTokens: ANSWER_TOKENS.plain };
 
   // Numbered in the order of their best passage; passages of a source in

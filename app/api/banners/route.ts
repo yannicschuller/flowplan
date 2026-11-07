@@ -15,7 +15,7 @@ function failure(e: unknown) {
 
 export async function GET() {
   try {
-    return Response.json({ banners: bannersFor(await requireUser()) }, { headers: { "Cache-Control": "no-store" } });
+    return Response.json({ banners: await bannersFor(await requireUser()) }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     return failure(e);
   }
@@ -23,10 +23,10 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    checkOrigin(req);
+    await checkOrigin(req);
     const user = await requireUser();
     const body = z.object({ action: z.literal("dismiss"), id: z.string().uuid(), clicked: z.boolean().default(false) }).parse(await req.json().catch(() => ({})));
-    return Response.json(dismissBanner(user, body.id, body.clicked));
+    return Response.json(await dismissBanner(user, body.id, body.clicked));
   } catch (e) {
     return failure(e);
   }

@@ -46,6 +46,7 @@ import { foldName, isComputedProperty, isTagField, matchesPropertyFilter, proper
 import { workspaceProperties, workspaceTags } from "./page-properties-server";
 import { inScope } from "./page-properties";
 import type { Field, Identity, Page, Space } from "./types";
+import { everyAsync, filterAsync, forEachAsync, mapAsync, someAsync } from "./each-async";
 
 export const MAX_COLLECTIONS = 100,
   MAX_SHARED_COLLECTIONS = 100,
@@ -95,35 +96,35 @@ type Row = { id: string; workspace_id: string; owner_id: string; name: string; i
 // ---- Reading ----
 
 // `owner`: the reader is an owner of the workspace (not a guest).
-function canEditRow(user: Identity, c: Row, owner = memberRole(user, c.workspace_id) === "owner" && !isGuest(user, c.workspace_id)) {
+async function canEditRow(user: Identity, c: Row, owner = (await memberRole(user, c.workspace_id)) === "owner" && !(await isGuest(user, c.workspace_id))) {
   if (user.apiScope === "read") return false;
   if (c.owner_id === user.id) return true;
   return !!c.shared && owner;
 }
-function canSee(user: Identity, c: Row) {
-  if (c.owner_id === user.id) return !!memberRole(user, c.workspace_id);
-  return !!c.shared && !!memberRole(user, c.workspace_id) && !isGuest(user, c.workspace_id);
+async function canSee(user: Identity, c: Row) {
+  if (c.owner_id === user.id) return !!(await memberRole(user, c.workspace_id));
+  return !!c.shared && !!(await memberRole(user, c.workspace_id)) && !(await isGuest(user, c.workspace_id));
 }
-const info = (user: Identity, c: Row & { owner_name: string | null }, owner?: boolean): CollectionInfo => ({
+const info = async (user: Identity, c: Row & { owner_name: string | null }, owner?: boolean): Promise<CollectionInfo> => ({
   id: c.id,
   name: c.name,
   icon: c.icon,
   query: c.query,
   shared: !!c.shared,
   mine: c.owner_id === user.id,
-  canEdit: canEditRow(user, c, owner),
+  canEdit: await canEditRow(user, c, owner),
   ownerName: c.owner_name ?? "",
 });
 
 // The collections a person sees in a workspace: their own and the shared
 // ones (not for guests), in their order.
-export function listCollections(user: Identity, workspaceId: string): CollectionInfo[] {
-  const role = memberRole(user, workspaceId);
+export async function listCollections(user: Identity, workspaceId: string): Promise<CollectionInfo[]> {
+  const role = await memberRole(user, workspaceId);
   if (!role) return [];
-  run("DELETE FROM collections WHERE deleted_at IS NOT NULL AND deleted_at<?", Date.now() - COLLECTION_TRASH_DAYS * 86_400_000);
-  const guest = isGuest(user, workspaceId);
+  await run("DELETE FROM collections WHERE deleted_at IS NOT NULL AND deleted_at<?", Date.now() - COLLECTION_TRASH_DAYS * 86_400_000);
+  const guest = await isGuest(user, workspaceId);
   const owner = role === "owner" && !guest;
-  return all<Row & { owner_name: string | null }>(
+  return await mapAsync(await all<Row & { owner_name: string | null }>(
     `SELECT c.*,u.name owner_name FROM collections c LEFT JOIN users u ON u.id=c.owner_id
      LEFT JOIN collection_order o ON o.collection_id=c.id AND o.user_id=?
      WHERE c.workspace_id=? AND c.deleted_at IS NULL AND (c.owner_id=?${guest ? "" : " OR c.shared=1"})
@@ -131,18 +132,18 @@ export function listCollections(user: Identity, workspaceId: string): Collection
     user.id,
     workspaceId,
     user.id,
-  ).map((c) => info(user, c, owner));
+  ), async (c) => await info(user, c, owner));
 }
-function requireCollection(user: Identity, collectionId: string, edit = false, deleted = false): Row {
-  const c = one<Row>(`SELECT * FROM collections WHERE id=? AND deleted_at IS ${deleted ? "NOT " : ""}NULL`, collectionId);
-  if (!c || !canSee(user, c)) throw new HttpError(404, "Sammlung nicht gefunden.");
-  if (edit && !canEditRow(user, c))
+async function requireCollection(user: Identity, collectionId: string, edit = false, deleted = false): Promise<Row> {
+  const c = await one<Row>(`SELECT * FROM collections WHERE id=? AND deleted_at IS ${deleted ? "NOT " : ""}NULL`, collectionId);
+  if (!c || !(await canSee(user, c))) throw new HttpError(404, "Sammlung nicht gefunden.");
+  if (edit && !(await canEditRow(user, c)))
     throw new HttpError(403, "Diese Sammlung ändern nur die Person, die sie angelegt hat, und Eigentümer des Arbeitsbereichs.");
   return c;
 }
-export function getCollection(user: Identity, collectionId: string): CollectionInfo {
-  const c = requireCollection(user, collectionId);
-  return info(user, { ...c, owner_name: one<{ name: string }>("SELECT name FROM users WHERE id=?", c.owner_id)?.name ?? null });
+export async function getCollection(user: Identity, collectionId: string): Promise<CollectionInfo> {
+  const c = await requireCollection(user, collectionId);
+  return await info(user, { ...c, owner_name: (await one<{ name: string }>("SELECT name FROM users WHERE id=?", c.owner_id))?.name ?? null });
 }
 
 // ---- Changing ----
@@ -156,38 +157,38 @@ function cleanQuery(raw: string) {
   if (query.length > 1000) throw new HttpError(400, "Die Abfrage der Sammlung ist zu lang.");
   return query;
 }
-function checkLimits(user: Identity, workspaceId: string, shared: boolean, except?: string) {
+async function checkLimits(user: Identity, workspaceId: string, shared: boolean, except?: string) {
   const own = Number(
-    one<{ n: number }>("SELECT COUNT(*) n FROM collections WHERE owner_id=? AND workspace_id=? AND deleted_at IS NULL AND id!=?", user.id, workspaceId, except ?? "")?.n || 0,
+    (await one<{ n: number }>("SELECT COUNT(*) n FROM collections WHERE owner_id=? AND workspace_id=? AND deleted_at IS NULL AND id!=?", user.id, workspaceId, except ?? ""))?.n || 0,
   );
   if (own >= MAX_COLLECTIONS) throw new HttpError(409, `Höchstens ${MAX_COLLECTIONS} Sammlungen je Person und Arbeitsbereich.`);
   if (!shared) return;
-  if (isGuest(user, workspaceId)) throw new HttpError(403, "Gäste können keine Sammlungen teilen.");
+  if (await isGuest(user, workspaceId)) throw new HttpError(403, "Gäste können keine Sammlungen teilen.");
   const sharedCount = Number(
-    one<{ n: number }>("SELECT COUNT(*) n FROM collections WHERE workspace_id=? AND shared=1 AND deleted_at IS NULL AND id!=?", workspaceId, except ?? "")?.n || 0,
+    (await one<{ n: number }>("SELECT COUNT(*) n FROM collections WHERE workspace_id=? AND shared=1 AND deleted_at IS NULL AND id!=?", workspaceId, except ?? ""))?.n || 0,
   );
   if (sharedCount >= MAX_SHARED_COLLECTIONS) throw new HttpError(409, `Höchstens ${MAX_SHARED_COLLECTIONS} geteilte Sammlungen je Arbeitsbereich.`);
 }
-function append(userId: string, collectionId: string, workspaceId: string) {
-  lockFor(`collection-order:${userId}`);
-  const last = one<{ p: number | null }>(
+async function append(userId: string, collectionId: string, workspaceId: string) {
+  await lockFor(`collection-order:${userId}`);
+  const last = (await one<{ p: number | null }>(
     "SELECT MAX(o.position) p FROM collection_order o JOIN collections c ON c.id=o.collection_id WHERE o.user_id=? AND c.workspace_id=?",
     userId,
     workspaceId,
-  )?.p;
-  run("INSERT INTO collection_order(user_id,collection_id,position) VALUES(?,?,?) ON CONFLICT(user_id,collection_id) DO UPDATE SET position=excluded.position", userId, collectionId, (last ?? 0) + 1);
+  ))?.p;
+  await run("INSERT INTO collection_order(user_id,collection_id,position) VALUES(?,?,?) ON CONFLICT(user_id,collection_id) DO UPDATE SET position=excluded.position", userId, collectionId, (last ?? 0) + 1);
 }
-export function createCollection(user: Identity, raw: unknown) {
+export async function createCollection(user: Identity, raw: unknown) {
   const b = z
     .object({ workspaceId: z.uuid(), name: nameSchema, query: z.string(), icon: iconSchema.optional(), shared: z.boolean().optional() })
     .parse(raw);
-  requireMember(user, b.workspaceId);
+  await requireMember(user, b.workspaceId);
   const query = cleanQuery(b.query);
-  checkLimits(user, b.workspaceId, !!b.shared);
+  await checkLimits(user, b.workspaceId, !!b.shared);
   const cid = id();
   const now = Date.now();
   {
-    run(
+    await run(
       "INSERT INTO collections(id,workspace_id,owner_id,name,icon,query,shared,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
       cid,
       b.workspaceId,
@@ -199,24 +200,24 @@ export function createCollection(user: Identity, raw: unknown) {
       now,
       now,
     );
-    append(user.id, cid, b.workspaceId);
+    await append(user.id, cid, b.workspaceId);
   }
-  if (b.shared) audit(user.id, "collection.share", cid, b.name);
+  if (b.shared) await audit(user.id, "collection.share", cid, b.name);
   return { id: cid, query };
 }
-export function updateCollection(user: Identity, raw: unknown) {
+export async function updateCollection(user: Identity, raw: unknown) {
   const b = z
     .object({ collectionId: z.uuid(), name: nameSchema.optional(), query: z.string().optional(), icon: iconSchema.optional(), shared: z.boolean().optional() })
     .parse(raw);
-  const c = requireCollection(user, b.collectionId, true);
+  const c = await requireCollection(user, b.collectionId, true);
   const query = b.query === undefined ? c.query : cleanQuery(b.query);
   if (b.shared !== undefined && b.shared !== !!c.shared) {
     // Only its creator shares or unshares a collection.
     if (c.owner_id !== user.id) throw new HttpError(403, "Nur die Person, die die Sammlung angelegt hat, kann sie teilen.");
-    if (b.shared) checkLimits(user, c.workspace_id, true, c.id);
-    audit(user.id, b.shared ? "collection.share" : "collection.unshare", c.id, c.name);
+    if (b.shared) await checkLimits(user, c.workspace_id, true, c.id);
+    await audit(user.id, b.shared ? "collection.share" : "collection.unshare", c.id, c.name);
   }
-  run(
+  await run(
     "UPDATE collections SET name=?,icon=?,query=?,shared=?,updated_at=? WHERE id=?",
     b.name ?? c.name,
     b.icon ?? c.icon,
@@ -227,33 +228,32 @@ export function updateCollection(user: Identity, raw: unknown) {
   );
   return { id: c.id, query };
 }
-export function deleteCollection(user: Identity, collectionId: unknown) {
-  const c = requireCollection(user, z.uuid().parse(collectionId), true);
-  run("UPDATE collections SET deleted_at=? WHERE id=?", Date.now(), c.id);
+export async function deleteCollection(user: Identity, collectionId: unknown) {
+  const c = await requireCollection(user, z.uuid().parse(collectionId), true);
+  await run("UPDATE collections SET deleted_at=? WHERE id=?", Date.now(), c.id);
   return { id: c.id };
 }
-export function restoreCollection(user: Identity, collectionId: unknown) {
-  const c = requireCollection(user, z.uuid().parse(collectionId), true, true);
-  checkLimits(user, c.workspace_id, !!c.shared && c.owner_id === user.id, c.id);
-  run("UPDATE collections SET deleted_at=NULL WHERE id=?", c.id);
+export async function restoreCollection(user: Identity, collectionId: unknown) {
+  const c = await requireCollection(user, z.uuid().parse(collectionId), true, true);
+  await checkLimits(user, c.workspace_id, !!c.shared && c.owner_id === user.id, c.id);
+  await run("UPDATE collections SET deleted_at=NULL WHERE id=?", c.id);
   return { id: c.id };
 }
-export function duplicateCollection(user: Identity, raw: unknown) {
+export async function duplicateCollection(user: Identity, raw: unknown) {
   const b = z.object({ collectionId: z.uuid(), name: nameSchema.optional() }).parse(raw);
-  const c = requireCollection(user, b.collectionId);
-  return createCollection(user, { workspaceId: c.workspace_id, name: b.name ?? c.name, query: c.query, icon: c.icon, shared: false });
+  const c = await requireCollection(user, b.collectionId);
+  return await createCollection(user, { workspaceId: c.workspace_id, name: b.name ?? c.name, query: c.query, icon: c.icon, shared: false });
 }
 // The person's order of the collections they see.
-export function reorderCollections(user: Identity, raw: unknown) {
+export async function reorderCollections(user: Identity, raw: unknown) {
   const b = z.object({ workspaceId: z.uuid(), order: z.array(z.uuid()).max(MAX_COLLECTIONS + MAX_SHARED_COLLECTIONS + 50) }).parse(raw);
-  const visible = new Set(listCollections(user, b.workspaceId).map((c) => c.id));
+  const visible = new Set((await listCollections(user, b.workspaceId)).map((c) => c.id));
   // (command() runs this in its transaction.)
-  b.order
-    .filter((cid) => visible.has(cid))
-    .forEach((cid, i) => run("INSERT INTO collection_order(user_id,collection_id,position) VALUES(?,?,?) ON CONFLICT(user_id,collection_id) DO UPDATE SET position=excluded.position", user.id, cid, i + 1));
+  await forEachAsync(b.order
+    .filter((cid) => visible.has(cid)), async (cid, i) => await run("INSERT INTO collection_order(user_id,collection_id,position) VALUES(?,?,?) ON CONFLICT(user_id,collection_id) DO UPDATE SET position=excluded.position", user.id, cid, i + 1));
 }
 // search.save (before #86): the kind and the space become part of the query.
-export function saveSearchAsCollection(user: Identity, raw: unknown) {
+export async function saveSearchAsCollection(user: Identity, raw: unknown) {
   const b = z
     .object({
       workspaceId: z.uuid(),
@@ -263,15 +263,15 @@ export function saveSearchAsCollection(user: Identity, raw: unknown) {
       spaceId: z.uuid().nullish(),
     })
     .parse(raw);
-  requireMember(user, b.workspaceId);
+  await requireMember(user, b.workspaceId);
   let query = b.query;
   if (["document", "database", "whiteboard", "row"].includes(b.kind)) query += ` type:${b.kind === "row" ? "record" : b.kind}`;
   if (b.spaceId) {
-    const space = one<Space>("SELECT * FROM spaces WHERE id=? AND workspace_id=? AND deleted_at IS NULL", b.spaceId, b.workspaceId);
-    if (!space || !spaceRole(user, space)) throw new HttpError(404, "Bereich nicht gefunden.");
+    const space = await one<Space>("SELECT * FROM spaces WHERE id=? AND workspace_id=? AND deleted_at IS NULL", b.spaceId, b.workspaceId);
+    if (!space || !(await spaceRole(user, space))) throw new HttpError(404, "Bereich nicht gefunden.");
     query += ` in:"${space.name.replace(/"/g, "")}"`;
   }
-  return createCollection(user, { workspaceId: b.workspaceId, name: b.name, query });
+  return await createCollection(user, { workspaceId: b.workspaceId, name: b.name, query });
 }
 
 // ---- Evaluating ----
@@ -302,11 +302,11 @@ const typeMatches = (item: ItemType, wanted: ItemType | null) =>
 
 // The keys ("pageId" or "pageId:rowId") whose indexed title and text
 // contain a phrase.
-function textMatches(workspaceId: string, phrase: string): Set<string> {
+async function textMatches(workspaceId: string, phrase: string): Promise<Set<string>> {
   const query = phrase.trim().slice(0, 200);
   const short = [...query].length < 3;
   const rows = short
-    ? all<{ page_id: string; row_id: string }>(
+    ? (await all<{ page_id: string; row_id: string }>(
         `SELECT s.page_id,s.row_id FROM search_index s JOIN pages p ON p.id=s.page_id
          WHERE p.workspace_id=? AND (${sql.ilike("s.title")} ESCAPE '\\' OR ${sql.ilike("s.body")} ESCAPE '\\') LIMIT 50000`,
         workspaceId,
@@ -314,10 +314,10 @@ function textMatches(workspaceId: string, phrase: string): Set<string> {
           const like = `%${query.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
           return [like, like];
         })(),
-      )
-    : (() => {
+      ))
+    : (async () => {
         const match = textMatch([query]);
-        return all<{ page_id: string; row_id: string }>(
+        return await all<{ page_id: string; row_id: string }>(
           `SELECT s.page_id,s.row_id FROM search_index s JOIN pages p ON p.id=s.page_id
          WHERE ${match.where} AND p.workspace_id=? LIMIT 50000`,
           ...match.whereArgs,
@@ -329,50 +329,50 @@ function textMatches(workspaceId: string, phrase: string): Set<string> {
 
 // The pages and records of a workspace that match a query, as the person
 // may read them, latest change first.
-export function evaluateQuery(user: Identity, workspaceId: string, input: string | QueryNode | null, options: EvalOptions = {}): CollectionResults {
+export async function evaluateQuery(user: Identity, workspaceId: string, input: string | QueryNode | null, options: EvalOptions = {}): Promise<CollectionResults> {
   const node = typeof input === "string" ? parseQuery(input).node : input;
   const timeZone = validZone(options.timeZone);
   const now = options.now ?? new Date();
   const limit = options.limit ?? COLLECTION_RESULTS;
   // Keep the index current for this request (as the search does).
-  refreshSearchIndex();
+  await refreshSearchIndex();
   const conds = conditions(node);
   // Names mean the tag or definition of a page's context: the workspace's
   // or its space's (#136); one name may stand for one per space.
-  const tags = workspaceTags(workspaceId);
+  const tags = await workspaceTags(workspaceId);
   const tagsByName = new Map<string, string[]>();
   for (const t of tags) tagsByName.set(foldName(t.name), [...(tagsByName.get(foldName(t.name)) ?? []), t.id]);
   const tagIn = (spaceId: string, name: string) => tags.find((t) => inScope(t, spaceId) && foldName(t.name) === name)?.id;
-  const defs = workspaceProperties(workspaceId);
+  const defs = await workspaceProperties(workspaceId);
   const defByName = new Map(defs.map((d) => [foldName(d.name), d]));
   const defIn = (spaceId: string, name: string) => defs.find((d) => inScope(d, spaceId) && foldName(d.name) === name);
   const members = new Map(
-    all<{ id: string; name: string }>("SELECT u.id,u.name FROM users u WHERE u.id IN (SELECT user_id FROM members WHERE workspace_id=?) OR u.id IN (SELECT created_by FROM pages WHERE workspace_id=?)", workspaceId, workspaceId).map(
+    (await all<{ id: string; name: string }>("SELECT u.id,u.name FROM users u WHERE u.id IN (SELECT user_id FROM members WHERE workspace_id=?) OR u.id IN (SELECT created_by FROM pages WHERE workspace_id=?)", workspaceId, workspaceId)).map(
       (u) => [u.id, u.name],
     ),
   );
   const people = (uid: string) => members.get(uid);
-  const spaces = all<Space>("SELECT * FROM spaces WHERE workspace_id=? AND deleted_at IS NULL", workspaceId);
+  const spaces = await all<Space>("SELECT * FROM spaces WHERE workspace_id=? AND deleted_at IS NULL", workspaceId);
   const spaceName = new Map(spaces.map((s) => [s.id, s.name]));
   // Which kinds of items can match at all.
   const allowedTypes = possibleTypes(node);
   const wantType = (t: ItemType) =>
     (!allowedTypes || [...allowedTypes].some((w) => typeMatches(t, w))) && (!options.types || options.types.some((w) => typeMatches(t, w)));
-  const locked = lockedPageIds(user, workspaceId);
+  const locked = await lockedPageIds(user, workspaceId);
   let encryptedLeftOut = false;
-  const pages = all<Page & { created: string | null }>(
+  const pages = await all<Page & { created: string | null }>(
     `SELECT p.*,COALESCE(p.created_at,(SELECT MIN(s.created_at) FROM snapshots s WHERE s.page_id=p.id),p.updated_at) created
      FROM pages p WHERE p.workspace_id=? AND p.deleted_at IS NULL AND COALESCE(p.synced,0)=0${options.spaceId ? " AND p.space_id=?" : ""}`,
     workspaceId,
     ...(options.spaceId ? [options.spaceId] : []),
   );
-  const roles = new Map<string, ReturnType<typeof pageRole>>();
-  const readable = pages.filter((p) => {
+  const roles = new Map<string, Awaited<ReturnType<typeof pageRole>>>();
+  const readable = await filterAsync(pages, async (p) => {
     if (locked.has(p.id)) return false;
-    const role = pageRole(user, p);
+    const role = await pageRole(user, p);
     roles.set(p.id, role);
     if (!role) return false;
-    if (isEncryptedPage(p)) {
+    if (await isEncryptedPage(p)) {
       encryptedLeftOut = true;
       return false;
     }
@@ -380,7 +380,7 @@ export function evaluateQuery(user: Identity, workspaceId: string, input: string
   });
   // Tags of pages, the last editor of each page.
   const pageTags = new Map<string, string[]>();
-  for (const link of all<{ page_id: string; tag_id: string }>(
+  for (const link of await all<{ page_id: string; tag_id: string }>(
     "SELECT l.page_id,l.tag_id FROM page_tag_links l JOIN page_tags t ON t.id=l.tag_id WHERE t.workspace_id=? ORDER BY l.position,t.position",
     workspaceId,
   ))
@@ -388,7 +388,7 @@ export function evaluateQuery(user: Identity, workspaceId: string, input: string
   const needsEditor = conds.some((c) => c.type === "editor" || (c.type === "prop" && defByName.get(foldName(c.name ?? ""))?.type === "updated_by"));
   const editors = new Map<string, string>();
   if (needsEditor)
-    for (const e of all<{ page_id: string; user_id: string }>(
+    for (const e of await all<{ page_id: string; user_id: string }>(
       `SELECT e.page_id,e.user_id FROM page_edits e JOIN pages p ON p.id=e.page_id WHERE p.workspace_id=? ORDER BY e.at`,
       workspaceId,
     ))
@@ -418,16 +418,16 @@ export function evaluateQuery(user: Identity, workspaceId: string, input: string
   if (wantType("record")) {
     for (const p of readable) {
       if (p.kind !== "database") continue;
-      const stored = one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", p.id);
+      const stored = await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", p.id);
       if (!stored) continue;
       const fields = JSON.parse(stored.fields) as Field[];
       const role = roles.get(p.id)!;
-      const hidden = hiddenFieldsFor(user, p, fields, role);
+      const hidden = await hiddenFieldsFor(user, p, fields, role);
       const shown = hidden.size ? fields.filter((f) => !hidden.has(f.id)) : fields;
       const titleField = fields[0] && !hidden.has(fields[0].id) ? fields[0].id : null;
       const tagFields = shown.filter(isTagField);
-      const resolve = rowRoleResolver(user, p, role);
-      for (const row of all<{ id: string; cells: string; access: string; created_by: string | null; updated_by: string | null; created_at: string; updated_at: string; icon: string | null }>(
+      const resolve = await rowRoleResolver(user, p, role);
+      for (const row of await all<{ id: string; cells: string; access: string; created_by: string | null; updated_by: string | null; created_at: string; updated_at: string; icon: string | null }>(
         "SELECT id,cells,access,created_by,updated_by,created_at,updated_at,icon FROM rows WHERE page_id=?",
         p.id,
       )) {
@@ -466,15 +466,15 @@ export function evaluateQuery(user: Identity, workspaceId: string, input: string
   }
   // Text conditions: one look into the index each.
   const texts = new Map<string, Set<string>>();
-  for (const c of conds) if (c.type === "text" && !texts.has(c.value)) texts.set(c.value, textMatches(workspaceId, c.value));
+  for (const c of conds) if (c.type === "text" && !texts.has(c.value)) texts.set(c.value, await textMatches(workspaceId, c.value));
   // Page property values, by property.
   const values = new Map<string, Map<string, unknown>>();
-  const valuesOf = (def: PagePropertyDef) => {
+  const valuesOf = async (def: PagePropertyDef) => {
     if (!values.has(def.id))
       values.set(
         def.id,
         new Map(
-          all<{ page_id: string; value: string }>("SELECT page_id,value FROM page_property_values WHERE property_id=?", def.id).map((v) => {
+          (await all<{ page_id: string; value: string }>("SELECT page_id,value FROM page_property_values WHERE property_id=?", def.id)).map((v) => {
             let value: unknown = null;
             try {
               value = JSON.parse(v.value);
@@ -491,13 +491,13 @@ export function evaluateQuery(user: Identity, workspaceId: string, input: string
     if (isMe(value)) return uid === user.id;
     return fold(people(uid) ?? "").includes(fold(value.trim()));
   };
-  const ranges = new Map<string, ReturnType<typeof dateRange>>();
+  const ranges = new Map<string, Awaited<ReturnType<typeof dateRange>>>();
   const rangeOf = (value: string) => {
     if (!ranges.has(value)) ranges.set(value, dateRange(value, now, timeZone));
     return ranges.get(value)!;
   };
   const spaceMatches = (spaceId: string, value: string) => spaceId === value || foldName(spaceName.get(spaceId) ?? "") === foldName(value);
-  const propMatches = (item: Item, c: Cond): boolean | null => {
+  const propMatches = async (item: Item, c: Cond): Promise<boolean | null> => {
     const name = foldName(c.name ?? "");
     // A record's own property of that name first.
     const field = item.fields?.find((f) => foldName(f.name) === name);
@@ -517,7 +517,7 @@ export function evaluateQuery(user: Identity, workspaceId: string, input: string
         ? { created_at: page.created ?? null, updated_at: page.updated_at, created_by: page.created_by ?? null, updated_by: editors.get(page.id) ?? page.created_by ?? null }
         : { created_at: item.createdAt, updated_at: item.updatedAt, created_by: item.createdBy, updated_by: item.updatedBy };
       value = of[def.type as keyof typeof of];
-    } else value = valuesOf(def).get(item.pageId);
+    } else value = (await valuesOf(def)).get(item.pageId);
     return valueMatches(def, value, c);
   };
   const valueMatches = (def: Pick<PagePropertyDef, "type">, value: unknown, c: Cond) => {
@@ -533,9 +533,9 @@ export function evaluateQuery(user: Identity, workspaceId: string, input: string
     const plain = type === "text" && value !== null && typeof value === "object" && !Array.isArray(value) ? cellText(value) : value;
     return matchesPropertyFilter({ type }, plain, filter, people, user.id);
   };
-  const test = (item: Item, n: QueryNode): boolean => {
+  const test = async (item: Item, n: QueryNode): Promise<boolean> => {
     let result: boolean;
-    if (isGroup(n)) result = n.type === "and" ? n.items.every((x) => test(item, x)) : n.items.some((x) => test(item, x));
+    if (isGroup(n)) result = n.type === "and" ? (await everyAsync(n.items, async (x) => await test(item, x))) : (await someAsync(n.items, async (x) => await test(item, x)));
     else
       switch (n.type) {
         case "text":
@@ -548,7 +548,7 @@ export function evaluateQuery(user: Identity, workspaceId: string, input: string
           const tagIds = tagsByName.get(foldName(n.value));
           if (!tagIds) {
             // An unknown tag is searched as a word, as before.
-            result = textMatchesNow(`#${n.value}`, item.key);
+            result = await textMatchesNow(`#${n.value}`, item.key);
             break;
           }
           // Records also carry their database's tags (#79).
@@ -556,8 +556,8 @@ export function evaluateQuery(user: Identity, workspaceId: string, input: string
           break;
         }
         case "prop": {
-          const m = propMatches(item, n);
-          result = m === null ? textMatchesNow(`${n.name}:${n.value}`, item.key) : m;
+          const m = await propMatches(item, n);
+          result = m === null ? (await textMatchesNow(`${n.name}:${n.value}`, item.key)) : m;
           break;
         }
         case "creator":
@@ -583,11 +583,11 @@ export function evaluateQuery(user: Identity, workspaceId: string, input: string
       }
     return n.not ? !result : result;
   };
-  const textMatchesNow = (phrase: string, key: string) => {
-    if (!texts.has(phrase)) texts.set(phrase, textMatches(workspaceId, phrase));
+  const textMatchesNow = async (phrase: string, key: string) => {
+    if (!texts.has(phrase)) texts.set(phrase, await textMatches(workspaceId, phrase));
     return texts.get(phrase)!.has(key);
   };
-  const matched = node ? items.filter((item) => test(item, node)) : items;
+  const matched = node ? (await filterAsync(items, async (item) => await test(item, node))) : items;
   matched.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
   return {
     items: matched.slice(0, limit).map(
@@ -614,13 +614,13 @@ export function evaluateQuery(user: Identity, workspaceId: string, input: string
 }
 
 // GET /api/collections/{id}: a collection with its current results.
-export function runCollection(user: Identity, collectionId: string, options: EvalOptions = {}) {
-  const collection = getCollection(user, collectionId);
-  const c = one<Row>("SELECT * FROM collections WHERE id=?", collectionId)!;
-  return { collection, ...evaluateQuery(user, c.workspace_id, collection.query, options) };
+export async function runCollection(user: Identity, collectionId: string, options: EvalOptions = {}) {
+  const collection = await getCollection(user, collectionId);
+  const c = (await one<Row>("SELECT * FROM collections WHERE id=?", collectionId))!;
+  return { collection, ...(await evaluateQuery(user, c.workspace_id, collection.query, options)) };
 }
 // The results of a query not saved yet (the editor's preview).
-export function previewQuery(user: Identity, workspaceId: string, query: string, options: EvalOptions = {}) {
-  requireMember(user, workspaceId);
-  return { query: normalizeQuery(query.slice(0, 1000)), ...evaluateQuery(user, workspaceId, query.slice(0, 1000), { ...options, limit: Math.min(options.limit ?? 50, 50) }) };
+export async function previewQuery(user: Identity, workspaceId: string, query: string, options: EvalOptions = {}) {
+  await requireMember(user, workspaceId);
+  return { query: normalizeQuery(query.slice(0, 1000)), ...(await evaluateQuery(user, workspaceId, query.slice(0, 1000), { ...options, limit: Math.min(options.limit ?? 50, 50) })) };
 }

@@ -105,9 +105,9 @@ test("occurrences follow the rule, skip ahead, clamp month ends and stop at limi
   );
 });
 
-function account(name: string) {
+async function account(name: string) {
   const uid = id();
-  run(
+  await run(
     "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
     uid,
     uid,
@@ -126,33 +126,33 @@ function account(name: string) {
 }
 
 test("rules are versioned record edits and survive copies and archives", async () => {
-  const owner = account("rec-owner"),
-    viewer = account("rec-viewer");
-  const wid = createWorkspace(owner.id, "Wiederholung");
-  run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
+  const owner = await account("rec-owner"),
+    viewer = await account("rec-viewer");
+  const wid = await createWorkspace(owner.id, "Wiederholung");
+  await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
   const page = (
-    command(owner, {
+    (await command(owner, {
       action: "page.create",
       workspaceId: wid,
-      spaceId: bootstrap(owner, wid).spaces[0].id,
+      spaceId: (await bootstrap(owner, wid)).spaces[0].id,
       title: "Termine",
       kind: "database",
-    }) as { id: string }
+    })) as { id: string }
   ).id;
   const row = (
-    command(owner, {
+    (await command(owner, {
       action: "row.create",
       pageId: page,
       cells: { title: "Jour fixe" },
-    }) as {
+    })) as {
       id: string;
     }
   ).id;
-  const version = () =>
-    one<{ version: number }>("SELECT version FROM rows WHERE id=?", row)!
+  const version = async () =>
+    (await one<{ version: number }>("SELECT version FROM rows WHERE id=?", row))!
       .version;
-  const set = (recurrence: unknown, as = owner, v = version()) =>
-    command(as, {
+  const set = async (recurrence: unknown, as = owner, v = (await version())) =>
+    await command(as, {
       action: "row.recurrence",
       pageId: page,
       rowId: row,
@@ -160,29 +160,29 @@ test("rules are versioned record edits and survive copies and archives", async (
       recurrence,
     });
   const rule = { freq: "weekly", interval: 1 };
-  assert.throws(() => set(rule, viewer), /Berechtigung/);
-  assert.throws(() => set(rule, owner, version() + 1), /geändert/);
-  assert.throws(() => set({ freq: "weekly", interval: 0 }));
-  const before = version();
-  set(rule);
-  assert.equal(version(), before + 1);
-  assert.deepEqual(parseRecurrence(rows(page)[0].recurrence), rule);
+  await assert.rejects(async () => await set(rule, viewer), /Berechtigung/);
+  await assert.rejects(async () => await set(rule, owner, (await version()) + 1), /geändert/);
+  await assert.rejects(async () => await set({ freq: "weekly", interval: 0 }));
+  const before = await version();
+  await set(rule);
+  assert.equal(await version(), before + 1);
+  assert.deepEqual(parseRecurrence((await rows(page))[0].recurrence), rule);
   const copy = (
-    command(owner, { action: "page.duplicate", pageId: page }) as { id: string }
+    (await command(owner, { action: "page.duplicate", pageId: page })) as { id: string }
   ).id;
-  assert.deepEqual(parseRecurrence(rows(copy)[0].recurrence), rule);
-  const destination = createWorkspace(owner.id, "Wiederholung Import");
+  assert.deepEqual(parseRecurrence((await rows(copy))[0].recurrence), rule);
+  const destination = await createWorkspace(owner.id, "Wiederholung Import");
   const imported = await importArchive(
     owner,
     destination,
     await exportArchive(owner, wid),
   );
   assert.deepEqual(
-    parseRecurrence(rows(imported.pageIds[page])[0].recurrence),
+    parseRecurrence((await rows(imported.pageIds[page]))[0].recurrence),
     rule,
   );
-  set(null);
-  assert.equal(rows(page)[0].recurrence, "");
+  await set(null);
+  assert.equal((await rows(page))[0].recurrence, "");
 });
 
 test("skipped occurrences disappear and repeating reminders fire once per occurrence", async () => {
@@ -196,19 +196,19 @@ test("skipped occurrences disappear and repeating reminders fire once per occurr
     ["2026-01-08", "2026-01-22", "2026-01-29"],
   );
   const { processDateReminders } = await import("../lib/date-reminders");
-  const owner = account("rec-reminder");
-  const wid = createWorkspace(owner.id, "Serienerinnerung");
+  const owner = await account("rec-reminder");
+  const wid = await createWorkspace(owner.id, "Serienerinnerung");
   const page = (
-    command(owner, {
+    (await command(owner, {
       action: "page.create",
       workspaceId: wid,
-      spaceId: bootstrap(owner, wid).spaces[0].id,
+      spaceId: (await bootstrap(owner, wid)).spaces[0].id,
       title: "Serie",
       kind: "database",
-    }) as { id: string }
+    })) as { id: string }
   ).id;
-  const d = (await import("../lib/api")).database(page);
-  command(owner, {
+  const d = await (await import("../lib/api")).database(page);
+  await command(owner, {
     action: "database.update",
     pageId: page,
     version: d.version,
@@ -222,27 +222,27 @@ test("skipped occurrences disappear and repeating reminders fire once per occurr
   const iso = (ms: number) =>
     new Date(ms).toISOString().replace(/\.\d+Z$/, "Z");
   const row = (
-    command(owner, {
+    (await command(owner, {
       action: "row.create",
       pageId: page,
       cells: { title: "Stand-up", due: iso(start) },
-    }) as { id: string }
+    })) as { id: string }
   ).id;
-  command(owner, {
+  await command(owner, {
     action: "row.recurrence",
     pageId: page,
     rowId: row,
-    version: one<{ version: number }>(
+    version: (await one<{ version: number }>(
       "SELECT version FROM rows WHERE id=?",
       row,
-    )!.version,
+    ))!.version,
     recurrence: {
       freq: "daily",
       interval: 1,
       exclude: [iso(start + 2 * 86400000).slice(0, 10)],
     },
   });
-  command(owner, {
+  await command(owner, {
     action: "reminder.set",
     pageId: page,
     rowId: row,
@@ -250,48 +250,48 @@ test("skipped occurrences disappear and repeating reminders fire once per occurr
     offset: 0,
     timeZone: "UTC",
   });
-  const count = () =>
-    one<{ n: number }>(
+  const count = async () =>
+    (await one<{ n: number }>(
       "SELECT COUNT(*) n FROM notifications WHERE user_id=? AND body LIKE 'Erinnerung:%'",
       owner.id,
-    )!.n;
-  assert.equal(processDateReminders(start + 60000), 1);
-  assert.equal(processDateReminders(start + 120000), 0);
+    ))!.n;
+  assert.equal(await processDateReminders(start + 60000), 1);
+  assert.equal(await processDateReminders(start + 120000), 0);
   // The next day's occurrence fires once more.
-  assert.equal(processDateReminders(start + 86400000 + 60000), 1);
+  assert.equal(await processDateReminders(start + 86400000 + 60000), 1);
   // The skipped day stays silent.
-  assert.equal(processDateReminders(start + 2 * 86400000 + 60000), 0);
-  assert.equal(processDateReminders(start + 3 * 86400000 + 60000), 1);
-  assert.equal(count(), 3);
+  assert.equal(await processDateReminders(start + 2 * 86400000 + 60000), 0);
+  assert.equal(await processDateReminders(start + 3 * 86400000 + 60000), 1);
+  assert.equal(await count(), 3);
 });
 
-test("a single occurrence can be detached into its own record", () => {
-  const owner = account("rec-detach"),
-    viewer = account("rec-detach-viewer");
-  const wid = createWorkspace(owner.id, "Einzeltermin");
-  run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
+test("a single occurrence can be detached into its own record", async () => {
+  const owner = await account("rec-detach"),
+    viewer = await account("rec-detach-viewer");
+  const wid = await createWorkspace(owner.id, "Einzeltermin");
+  await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
   const page = (
-    command(owner, {
+    (await command(owner, {
       action: "page.create",
       workspaceId: wid,
-      spaceId: bootstrap(owner, wid).spaces[0].id,
+      spaceId: (await bootstrap(owner, wid)).spaces[0].id,
       title: "Serie",
       kind: "database",
-    }) as { id: string }
+    })) as { id: string }
   ).id;
-  command(owner, {
+  await command(owner, {
     action: "database.update",
     pageId: page,
-    version: database(page).version,
+    version: (await database(page)).version,
     fields: [
       { id: "title", name: "Name", type: "text" },
       { id: "start", name: "Beginn", type: "date" },
       { id: "end", name: "Ende", type: "date" },
     ],
-    views: database(page).views,
+    views: (await database(page)).views,
   });
   const row = (
-    command(owner, {
+    (await command(owner, {
       action: "row.create",
       pageId: page,
       cells: {
@@ -299,27 +299,27 @@ test("a single occurrence can be detached into its own record", () => {
         start: "2026-03-02T09:00",
         end: "2026-03-02T10:00",
       },
-    }) as { id: string }
+    })) as { id: string }
   ).id;
-  const version = () =>
-    one<{ version: number }>("SELECT version FROM rows WHERE id=?", row)!
+  const version = async () =>
+    (await one<{ version: number }>("SELECT version FROM rows WHERE id=?", row))!
       .version;
-  command(owner, {
+  await command(owner, {
     action: "row.recurrence",
     pageId: page,
     rowId: row,
-    version: version(),
+    version: await version(),
     recurrence: { freq: "weekly", interval: 1 },
   });
-  run(
+  await run(
     "INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?) ON CONFLICT(row_id) DO UPDATE SET html=excluded.html",
     row,
     new Uint8Array(),
     "<p>Agenda</p>",
     id(),
   );
-  const detach = (date: string, as = owner, v = version()) =>
-    command(as, {
+  const detach = async (date: string, as = owner, v = (await version())) =>
+    (await command(as, {
       action: "row.detachOccurrence",
       pageId: page,
       rowId: row,
@@ -327,34 +327,34 @@ test("a single occurrence can be detached into its own record", () => {
       date,
       startField: "start",
       endField: "end",
-    }) as { id: string };
-  assert.throws(() => detach("2026-03-16", viewer), /Berechtigung/);
-  assert.throws(() => detach("2026-03-16", owner, version() + 1), /geändert/);
+    })) as { id: string };
+  await assert.rejects(async () => await detach("2026-03-16", viewer), /Berechtigung/);
+  await assert.rejects(async () => await detach("2026-03-16", owner, (await version()) + 1), /geändert/);
   // Not an occurrence: wrong weekday, or the first (stored) date.
-  assert.throws(() => detach("2026-03-17"), /gibt es/);
-  assert.throws(() => detach("2026-03-02"), /gibt es/);
-  const single = detach("2026-03-16").id;
-  const created = rows(page).find((r) => r.id === single)!;
+  await assert.rejects(async () => await detach("2026-03-17"), /gibt es/);
+  await assert.rejects(async () => await detach("2026-03-02"), /gibt es/);
+  const single = (await detach("2026-03-16")).id;
+  const created = (await rows(page)).find((r) => r.id === single)!;
   assert.deepEqual(
     [created.cells.title, created.cells.start, created.cells.end],
     ["Team-Termin", "2026-03-16T09:00", "2026-03-16T10:00"],
   );
   assert.equal(created.recurrence, "");
   assert.match(
-    one<{ html: string }>(
+    (await one<{ html: string }>(
       "SELECT html FROM row_documents WHERE row_id=?",
       single,
-    )!.html,
+    ))!.html,
     /Agenda/,
   );
   // The series skips that date and cannot detach it twice.
   assert.deepEqual(
-    parseRecurrence(rows(page).find((r) => r.id === row)!.recurrence)?.exclude,
+    parseRecurrence((await rows(page)).find((r) => r.id === row)!.recurrence)?.exclude,
     ["2026-03-16"],
   );
-  assert.throws(() => detach("2026-03-16"), /gibt es/);
+  await assert.rejects(async () => await detach("2026-03-16"), /gibt es/);
   // Editing the detached record leaves the series unchanged.
-  command(owner, {
+  await command(owner, {
     action: "row.update",
     pageId: page,
     rowId: single,
@@ -362,42 +362,42 @@ test("a single occurrence can be detached into its own record", () => {
     cells: { start: "2026-03-17T14:00", end: "2026-03-17T15:00" },
   });
   assert.equal(
-    rows(page).find((r) => r.id === row)!.cells.start,
+    (await rows(page)).find((r) => r.id === row)!.cells.start,
     "2026-03-02T09:00",
   );
 });
 
-test("a series splits at an occurrence into two series", () => {
-  const owner = account("rec-split");
-  const wid = createWorkspace(owner.id, "Serienteilung");
+test("a series splits at an occurrence into two series", async () => {
+  const owner = await account("rec-split");
+  const wid = await createWorkspace(owner.id, "Serienteilung");
   const page = (
-    command(owner, {
+    (await command(owner, {
       action: "page.create",
       workspaceId: wid,
-      spaceId: bootstrap(owner, wid).spaces[0].id,
+      spaceId: (await bootstrap(owner, wid)).spaces[0].id,
       title: "Serie",
       kind: "database",
-    }) as { id: string }
+    })) as { id: string }
   ).id;
-  command(owner, {
+  await command(owner, {
     action: "database.update",
     pageId: page,
-    version: database(page).version,
+    version: (await database(page)).version,
     fields: [
       { id: "title", name: "Name", type: "text" },
       { id: "start", name: "Beginn", type: "date" },
     ],
-    views: database(page).views,
+    views: (await database(page)).views,
   });
-  const create = (recurrence: Record<string, unknown>) => {
+  const create = async (recurrence: Record<string, unknown>) => {
     const rid = (
-      command(owner, {
+      (await command(owner, {
         action: "row.create",
         pageId: page,
         cells: { title: "Sprint", start: "2026-01-05" },
-      }) as { id: string }
+      })) as { id: string }
     ).id;
-    command(owner, {
+    await command(owner, {
       action: "row.recurrence",
       pageId: page,
       rowId: rid,
@@ -406,59 +406,59 @@ test("a series splits at an occurrence into two series", () => {
     });
     return rid;
   };
-  const split = (rid: string, date: string) =>
+  const split = async (rid: string, date: string) =>
     (
-      command(owner, {
+      (await command(owner, {
         action: "row.detachOccurrence",
         pageId: page,
         rowId: rid,
-        version: one<{ version: number }>(
+        version: (await one<{ version: number }>(
           "SELECT version FROM rows WHERE id=?",
           rid,
-        )!.version,
+        ))!.version,
         date,
         startField: "start",
         mode: "following",
-      }) as { id: string }
+      })) as { id: string }
     ).id;
-  const rule = (rid: string) =>
-    parseRecurrence(rows(page).find((r) => r.id === rid)!.recurrence);
+  const rule = async (rid: string) =>
+    parseRecurrence((await rows(page)).find((r) => r.id === rid)!.recurrence);
   // Open-ended weekly series with exclusions on both sides.
-  const open = create({
+  const open = await create({
     freq: "weekly",
     interval: 1,
     exclude: ["2026-01-12", "2026-02-09"],
   });
-  const tail = split(open, "2026-01-26");
-  assert.deepEqual(rule(open), {
+  const tail = await split(open, "2026-01-26");
+  assert.deepEqual(await rule(open), {
     freq: "weekly",
     interval: 1,
     until: "2026-01-25",
     exclude: ["2026-01-12"],
   });
-  assert.deepEqual(rule(tail), {
+  assert.deepEqual(await rule(tail), {
     freq: "weekly",
     interval: 1,
     exclude: ["2026-02-09"],
   });
   assert.equal(
-    rows(page).find((r) => r.id === tail)!.cells.start,
+    (await rows(page)).find((r) => r.id === tail)!.cells.start,
     "2026-01-26",
   );
   // Counted series: 5 occurrences split after the second one → 2 + 3.
-  const counted = create({ freq: "weekly", interval: 1, count: 5 });
-  const rest = split(counted, "2026-01-19");
-  assert.equal(rule(counted)?.count, 2);
-  assert.equal(rule(rest)?.count, 3);
+  const counted = await create({ freq: "weekly", interval: 1, count: 5 });
+  const rest = await split(counted, "2026-01-19");
+  assert.equal((await rule(counted))?.count, 2);
+  assert.equal((await rule(rest))?.count, 3);
   // Splitting at the last occurrence leaves a single record without rule.
-  const last = split(rest, "2026-02-02");
-  assert.equal(rule(last), null);
-  assert.equal(rule(rest)?.count, 2);
+  const last = await split(rest, "2026-02-02");
+  assert.equal(await rule(last), null);
+  assert.equal((await rule(rest))?.count, 2);
   // Splitting at the second occurrence leaves the first alone.
-  const pair = create({ freq: "daily", interval: 1 });
-  const after = split(pair, "2026-01-06");
-  assert.equal(rows(page).find((r) => r.id === pair)!.recurrence, "");
-  assert.deepEqual(rule(after), { freq: "daily", interval: 1 });
+  const pair = await create({ freq: "daily", interval: 1 });
+  const after = await split(pair, "2026-01-06");
+  assert.equal((await rows(page)).find((r) => r.id === pair)!.recurrence, "");
+  assert.deepEqual(await rule(after), { freq: "daily", interval: 1 });
 });
 
 test("next occurrence of a repeating record: intervals, weekdays, month ends, leap years", () => {
@@ -488,63 +488,63 @@ test("next occurrence of a repeating record: intervals, weekdays, month ends, le
   assert.equal(nextOccurrence("2024-02-29", { freq: "yearly", interval: 4 }), "2028-02-29");
 });
 
-test("a repeating record creates its successor once it is done", () => {
-  const owner = account("repeat-owner"),
-    viewer = account("repeat-viewer");
-  const wid = createWorkspace(owner.id, "Wiederkehrend");
-  run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
+test("a repeating record creates its successor once it is done", async () => {
+  const owner = await account("repeat-owner"),
+    viewer = await account("repeat-viewer");
+  const wid = await createWorkspace(owner.id, "Wiederkehrend");
+  await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
   const page = (
-    command(owner, {
+    (await command(owner, {
       action: "page.create",
       workspaceId: wid,
-      spaceId: bootstrap(owner, wid).spaces[0].id,
+      spaceId: (await bootstrap(owner, wid)).spaces[0].id,
       title: "Aufgaben",
       kind: "database",
       databaseKind: "empty",
-    }) as { id: string }
+    })) as { id: string }
   ).id;
-  command(owner, {
+  await command(owner, {
     action: "database.update",
     pageId: page,
-    version: database(page).version,
+    version: (await database(page)).version,
     fields: [
       { id: "title", name: "Name", type: "text" },
       { id: "status", name: "Status", type: "select", options: ["Offen", "Erledigt"] },
       { id: "due", name: "Fällig", type: "date" },
       { id: "start", name: "Beginn", type: "date" },
     ],
-    views: database(page).views,
+    views: (await database(page)).views,
   });
   const rid = (
-    command(owner, {
+    (await command(owner, {
       action: "row.create",
       pageId: page,
       cells: { title: "Miete", status: "Offen", due: "2026-01-31", start: "2026-01-29" },
-    }) as { id: string }
+    })) as { id: string }
   ).id;
-  const stored = (r: string) => one<{ version: number; cells: string; repeat: string }>("SELECT version,cells,repeat FROM rows WHERE id=?", r)!;
-  const setRepeat = (repeat: unknown, as = owner) =>
-    command(as, { action: "row.repeat", pageId: page, rowId: rid, version: stored(rid).version, repeat });
-  assert.throws(() => setRepeat({ freq: "monthly", interval: 1, field: "due" }, viewer), /Berechtigung/);
-  assert.throws(() => setRepeat({ freq: "monthly", interval: 1, field: "title" }), /Datumseigenschaft/);
-  setRepeat({ freq: "monthly", interval: 1, field: "due" });
+  const stored = async (r: string) => (await one<{ version: number; cells: string; repeat: string }>("SELECT version,cells,repeat FROM rows WHERE id=?", r))!;
+  const setRepeat = async (repeat: unknown, as = owner) =>
+    await command(as, { action: "row.repeat", pageId: page, rowId: rid, version: (await stored(rid)).version, repeat });
+  await assert.rejects(async () => await setRepeat({ freq: "monthly", interval: 1, field: "due" }, viewer), /Berechtigung/);
+  await assert.rejects(async () => await setRepeat({ freq: "monthly", interval: 1, field: "title" }), /Datumseigenschaft/);
+  await setRepeat({ freq: "monthly", interval: 1, field: "due" });
   // The day of the month is taken from the date.
-  assert.equal(recurrenceModule.parseRepeat(stored(rid).repeat)?.day, 31);
-  const count = () => one<{ n: number }>("SELECT COUNT(*) n FROM rows WHERE page_id=?", page)!.n;
-  const done = (r: string, status = "Erledigt") =>
-    command(owner, { action: "row.update", pageId: page, rowId: r, version: stored(r).version, cells: { status } });
-  done(rid);
-  assert.equal(count(), 2);
-  assert.equal(stored(rid).repeat, "");
-  const next = one<{ id: string }>("SELECT id FROM rows WHERE page_id=? AND id!=?", page, rid)!.id;
-  assert.deepEqual(JSON.parse(stored(next).cells), { title: "Miete", status: "Offen", due: "2026-02-28", start: "2026-02-26" });
-  assert.equal(recurrenceModule.parseRepeat(stored(next).repeat)?.freq, "monthly");
+  assert.equal(recurrenceModule.parseRepeat((await stored(rid)).repeat)?.day, 31);
+  const count = async () => (await one<{ n: number }>("SELECT COUNT(*) n FROM rows WHERE page_id=?", page))!.n;
+  const done = async (r: string, status = "Erledigt") =>
+    await command(owner, { action: "row.update", pageId: page, rowId: r, version: (await stored(r)).version, cells: { status } });
+  await done(rid);
+  assert.equal(await count(), 2);
+  assert.equal((await stored(rid)).repeat, "");
+  const next = (await one<{ id: string }>("SELECT id FROM rows WHERE page_id=? AND id!=?", page, rid))!.id;
+  assert.deepEqual(JSON.parse((await stored(next)).cells), { title: "Miete", status: "Offen", due: "2026-02-28", start: "2026-02-26" });
+  assert.equal(recurrenceModule.parseRepeat((await stored(next)).repeat)?.freq, "monthly");
   // Reopening and closing the old record again creates nothing more.
-  done(rid, "Offen");
-  done(rid);
-  assert.equal(count(), 2);
+  await done(rid, "Offen");
+  await done(rid);
+  assert.equal(await count(), 2);
   // The successor keeps the day: 28 Feb → 31 Mar.
-  done(next);
-  const third = one<{ cells: string }>("SELECT cells FROM rows WHERE page_id=? AND id NOT IN (?,?)", page, rid, next)!;
+  await done(next);
+  const third = (await one<{ cells: string }>("SELECT cells FROM rows WHERE page_id=? AND id NOT IN (?,?)", page, rid, next))!;
   assert.equal(JSON.parse(third.cells).due, "2026-03-31");
 });

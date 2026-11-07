@@ -17,7 +17,7 @@ export async function GET(request: Request) {
       { error: "Ungültiges Metrik-Token." },
       { status: 401, headers: { "WWW-Authenticate": "Bearer" } },
     );
-  return new NextResponse(prometheusMetrics(), {
+  return new NextResponse(await prometheusMetrics(), {
     headers: {
       "Content-Type": "text/plain; version=0.0.4; charset=utf-8",
       "Cache-Control": "no-store",

@@ -16,9 +16,9 @@ const { MANIFEST_LIMIT, MANIFEST_LIMIT_MB, MANIFEST_TOO_LARGE } = await import("
 const { localizedMessage } = await import("../lib/i18n-errors");
 
 const uid = id();
-run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, "Olga", "olga@example.test");
+await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, "Olga", "olga@example.test");
 const owner = { id: uid, name: "Olga", email: "olga@example.test", disabled: 0, created_at: "", groups: [], isAdmin: false } as Identity;
-const wid = createWorkspace(owner.id, "Archiv");
+const wid = await createWorkspace(owner.id, "Archiv");
 // A manifest of the given size (valid JSON, compresses to almost nothing).
 const manifest = (bytes: number) => Buffer.from(`{"pad":"${" ".repeat(bytes - 10)}"}`);
 

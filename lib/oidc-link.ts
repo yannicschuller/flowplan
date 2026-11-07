@@ -38,30 +38,30 @@ export const PENDING_LINK_SECONDS = 600;
 const disabledError = (locale: Locale) => new HttpError(403, translate(locale)("Dieses Konto ist deaktiviert.", "This account is disabled."));
 
 // The account of a known identity (SCIM claim included), or null.
-export function knownAccount(p: OidcProfile, locale: Locale) {
-  claimProvisionedAccount(subjectKey(p.issuer, p.subject), p.subject, p.email, p.emailVerified);
-  const userId = identityOwner(p.issuer, p.subject);
+export async function knownAccount(p: OidcProfile, locale: Locale) {
+  await claimProvisionedAccount(subjectKey(p.issuer, p.subject), p.subject, p.email, p.emailVerified);
+  const userId = await identityOwner(p.issuer, p.subject);
   if (!userId) return null;
-  const user = one<{ disabled: number }>("SELECT disabled FROM users WHERE id=?", userId);
+  const user = await one<{ disabled: number }>("SELECT disabled FROM users WHERE id=?", userId);
   if (!user) return null;
   if (user.disabled) throw disabledError(locale);
   // SSO accounts take name and address from the provider; an account with
   // e-mail and password keeps its own (it was linked, #101).
-  if (!isLocalAccount(userId)) run("UPDATE users SET name=?,email=? WHERE id=?", p.name, p.email, userId);
-  touchIdentity(p.issuer, p.subject, p.email);
+  if (!(await isLocalAccount(userId))) await run("UPDATE users SET name=?,email=? WHERE id=?", p.name, p.email, userId);
+  await touchIdentity(p.issuer, p.subject, p.email);
   return userId;
 }
 
 export type OidcResolution = { kind: "account"; userId: string; created: boolean } | { kind: "link"; candidateId: string };
-export function resolveOidcSignIn(p: OidcProfile, locale: Locale): OidcResolution {
-  const known = knownAccount(p, locale);
+export async function resolveOidcSignIn(p: OidcProfile, locale: Locale): Promise<OidcResolution> {
+  const known = await knownAccount(p, locale);
   if (known) return { kind: "account", userId: known, created: false };
-  const candidate = p.emailVerified === true ? linkCandidate(p.email) : null;
+  const candidate = p.emailVerified === true ? (await linkCandidate(p.email)) : null;
   if (candidate) return { kind: "link", candidateId: candidate };
-  return { kind: "account", userId: createSsoAccount(p, locale), created: true };
+  return { kind: "account", userId: await createSsoAccount(p, locale), created: true };
 }
 
-export function createSsoAccount(p: OidcProfile, locale: Locale) {
+export async function createSsoAccount(p: OidcProfile, locale: Locale) {
   if (!ssoNewAccounts())
     throw new HttpError(
       403,
@@ -70,11 +70,11 @@ export function createSsoAccount(p: OidcProfile, locale: Locale) {
         "There is no Flowplan account for this SSO identity yet. Please contact the administrators.",
       ),
     );
-  return transaction(() => {
+  return await transaction(async () => {
     const uid = id();
-    const subject = one("SELECT 1 FROM users WHERE subject=?", subjectKey(p.issuer, p.subject)) ? `user:${uid}` : subjectKey(p.issuer, p.subject);
-    run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, subject, p.name, p.email);
-    attachIdentity(uid, p.issuer, p.subject, p.email, locale);
+    const subject = (await one("SELECT 1 FROM users WHERE subject=?", subjectKey(p.issuer, p.subject))) ? `user:${uid}` : subjectKey(p.issuer, p.subject);
+    await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, subject, p.name, p.email);
+    await attachIdentity(uid, p.issuer, p.subject, p.email, locale);
     return uid;
   });
 }
@@ -95,10 +95,10 @@ type PendingRow = {
   second_factor: string | null;
   expires: number;
 };
-export function startPendingLink(candidateId: string, p: OidcProfile, options: { remember: boolean; returnTo: string }, now = Date.now()) {
+export async function startPendingLink(candidateId: string, p: OidcProfile, options: { remember: boolean; returnTo: string }, now = Date.now()) {
   const token = randomBytes(32).toString("base64url");
-  run("DELETE FROM oidc_pending_links WHERE expires<?", now);
-  run(
+  await run("DELETE FROM oidc_pending_links WHERE expires<?", now);
+  await run(
     "INSERT INTO oidc_pending_links(id,user_id,issuer,subject,email,name,picture,groups_json,remember,return_to,expires,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
     hash(token),
     candidateId,
@@ -115,13 +115,13 @@ export function startPendingLink(candidateId: string, p: OidcProfile, options: {
   );
   return token;
 }
-function pendingRow(token: string | undefined, now = Date.now()) {
+async function pendingRow(token: string | undefined, now = Date.now()) {
   if (!token) return null;
-  const row = one<PendingRow>("SELECT * FROM oidc_pending_links WHERE id=?", hash(token));
+  const row = await one<PendingRow>("SELECT * FROM oidc_pending_links WHERE id=?", hash(token));
   return row && row.expires >= now ? row : null;
 }
-export function requirePending(token: string | undefined, locale: Locale) {
-  const row = pendingRow(token);
+export async function requirePending(token: string | undefined, locale: Locale) {
+  const row = await pendingRow(token);
   if (!row)
     throw new HttpError(400, translate(locale)("Die Anmeldung ist abgelaufen. Bitte noch einmal mit SSO anmelden.", "The sign-in has expired. Please sign in with SSO again."));
   return row;
@@ -144,34 +144,34 @@ const profileOf = (row: PendingRow): OidcProfile => ({
 });
 
 // What the page shows: the address (partly hidden) and the ways to prove it.
-export function pendingLinkInfo(token: string | undefined) {
-  const row = pendingRow(token);
+export async function pendingLinkInfo(token: string | undefined) {
+  const row = await pendingRow(token);
   if (!row) return null;
-  const local = one<{ password_hash: string; email: string }>("SELECT password_hash,email FROM local_accounts WHERE user_id=?", row.user_id);
-  const ldap = one<{ username: string }>("SELECT username FROM ldap_accounts WHERE user_id=?", row.user_id);
+  const local = await one<{ password_hash: string; email: string }>("SELECT password_hash,email FROM local_accounts WHERE user_id=?", row.user_id);
+  const ldap = await one<{ username: string }>("SELECT username FROM ldap_accounts WHERE user_id=?", row.user_id);
   return {
     email: row.email,
     password: !!local?.password_hash || !!ldap,
     ldap: !local && !!ldap,
-    passkey: !!one("SELECT 1 FROM passkeys WHERE user_id=?", row.user_id),
+    passkey: !!(await one("SELECT 1 FROM passkeys WHERE user_id=?", row.user_id)),
     secondFactor: !!row.second_factor,
     separate: ssoNewAccounts(),
   };
 }
-export type PendingLinkInfo = NonNullable<ReturnType<typeof pendingLinkInfo>>;
+export type PendingLinkInfo = NonNullable<Awaited<ReturnType<typeof pendingLinkInfo>>>;
 
 // The sign-in name the candidate's password is checked with: the address of
 // an account with e-mail and password, else the LDAP name.
-function pendingIdentifier(row: PendingRow) {
-  const local = one<{ email: string; password_hash: string }>("SELECT email,password_hash FROM local_accounts WHERE user_id=?", row.user_id);
+async function pendingIdentifier(row: PendingRow) {
+  const local = await one<{ email: string; password_hash: string }>("SELECT email,password_hash FROM local_accounts WHERE user_id=?", row.user_id);
   if (local?.password_hash) return { kind: "local" as const, name: local.email };
-  const ldap = one<{ username: string; dn: string }>("SELECT username,dn FROM ldap_accounts WHERE user_id=?", row.user_id);
+  const ldap = await one<{ username: string; dn: string }>("SELECT username,dn FROM ldap_accounts WHERE user_id=?", row.user_id);
   if (ldap) return { kind: "ldap" as const, name: ldap.username || row.email };
   return null;
 }
 // The password was right, a code follows: kept with the waiting sign-in.
-function notePendingSecondFactor(row: PendingRow, pending: string) {
-  run("UPDATE oidc_pending_links SET second_factor=? WHERE id=?", pending, row.id);
+async function notePendingSecondFactor(row: PendingRow, pending: string) {
+  await run("UPDATE oidc_pending_links SET second_factor=? WHERE id=?", pending, row.id);
 }
 type Proof = { userId: string } | { twoFactor: true };
 // The proofs, with the limits and lockouts of the sign-in form (failures
@@ -180,57 +180,57 @@ type Proof = { userId: string } | { twoFactor: true };
 export async function provePendingPassword(row: PendingRow, input: unknown, address: string, locale: Locale): Promise<Proof> {
   const t = translate(locale);
   const { password } = z.object({ password: z.string().max(200) }).parse(input);
-  const who = pendingIdentifier(row);
+  const who = await pendingIdentifier(row);
   if (!who) throw new HttpError(400, t("Dieses Konto hat kein Passwort – bitte mit dem Passkey bestätigen.", "This account has no password – please confirm with its passkey."));
   const { userId } = who.kind === "local" ? await passwordLogin({ email: who.name, password }, address, locale) : await ldapPasswordLogin(who.name, password, address, locale);
   if (userId !== row.user_id) return { userId };
-  const next = afterPassword(userId, false, locale);
+  const next = await afterPassword(userId, false, locale);
   if ("pending" in next) {
-    notePendingSecondFactor(row, next.pending);
+    await notePendingSecondFactor(row, next.pending);
     return { twoFactor: true };
   }
   return { userId };
 }
-export function provePendingCode(row: PendingRow, input: unknown, address: string, locale: Locale): Proof {
+export async function provePendingCode(row: PendingRow, input: unknown, address: string, locale: Locale): Promise<Proof> {
   if (!row.second_factor) throw new HttpError(400, translate(locale)("Bitte zuerst das Passwort eingeben.", "Please enter the password first."));
-  return { userId: completeSignIn(row.second_factor, input, address, locale).userId };
+  return { userId: (await completeSignIn(row.second_factor, input, address, locale)).userId };
 }
 export async function provePendingPasskey(row: PendingRow, challengeToken: string | undefined, input: unknown, address: string, locale: Locale): Promise<Proof> {
   const { userId } = await passkeyLogin(challengeToken, input, address, locale);
   if (userId !== row.user_id) return { userId };
-  const next = afterPasskey(userId, false);
+  const next = await afterPasskey(userId, false);
   if ("pending" in next) {
-    notePendingSecondFactor(row, next.pending);
+    await notePendingSecondFactor(row, next.pending);
     return { twoFactor: true };
   }
   return { userId };
 }
 
 // Proven: the identity joins the account. Returns who signs in now.
-export function completePendingLink(row: PendingRow, provenUserId: string, locale: Locale) {
+export async function completePendingLink(row: PendingRow, provenUserId: string, locale: Locale) {
   if (provenUserId !== row.user_id) {
     securityEvent("account.sso_link_refused", { actorId: provenUserId, detail: "proof for another account" });
     throw new HttpError(403, translate(locale)("Das gehört zu einem anderen Konto.", "That belongs to another account."));
   }
-  const user = one<{ disabled: number }>("SELECT disabled FROM users WHERE id=?", row.user_id);
+  const user = await one<{ disabled: number }>("SELECT disabled FROM users WHERE id=?", row.user_id);
   if (!user || user.disabled) throw disabledError(locale);
-  transaction(() => {
-    attachIdentity(row.user_id, row.issuer, row.subject, row.email, locale);
-    run("DELETE FROM oidc_pending_links WHERE id=? OR (issuer=? AND subject=?)", row.id, row.issuer, row.subject);
-    audit(row.user_id, "account.sso.link", row.user_id, row.issuer);
+  await transaction(async () => {
+    await attachIdentity(row.user_id, row.issuer, row.subject, row.email, locale);
+    await run("DELETE FROM oidc_pending_links WHERE id=? OR (issuer=? AND subject=?)", row.id, row.issuer, row.subject);
+    await audit(row.user_id, "account.sso.link", row.user_id, row.issuer);
   });
   securityEvent("account.sso_linked", { actorId: row.user_id, detail: `first sign-in ${hostOf(row.issuer)}` });
   return { userId: row.user_id, profile: profileOf(row), remember: !!row.remember, returnTo: row.return_to };
 }
 // "Create a separate account instead".
-export function separateFromPending(row: PendingRow, locale: Locale) {
+export async function separateFromPending(row: PendingRow, locale: Locale) {
   const profile = profileOf(row);
-  const userId = knownAccount(profile, locale) || createSsoAccount(profile, locale);
-  run("DELETE FROM oidc_pending_links WHERE id=?", row.id);
+  const userId = await knownAccount(profile, locale) || await createSsoAccount(profile, locale);
+  await run("DELETE FROM oidc_pending_links WHERE id=?", row.id);
   return { userId, profile, remember: !!row.remember, returnTo: row.return_to };
 }
-export function cancelPending(token: string | undefined) {
-  if (token) run("DELETE FROM oidc_pending_links WHERE id=?", hash(token));
+export async function cancelPending(token: string | undefined) {
+  if (token) await run("DELETE FROM oidc_pending_links WHERE id=?", hash(token));
 }
 
 // "Connect SSO" from the account settings: the callback belongs to the flow
@@ -244,14 +244,14 @@ export async function linkFlowOwner(flow: { link_user_id: string | null; link_se
 
 // "Connect SSO" from the account settings, after its callback: the flow
 // was started by this account in this session.
-export function linkFromSettings(userId: string, p: OidcProfile, locale: Locale) {
+export async function linkFromSettings(userId: string, p: OidcProfile, locale: Locale) {
   try {
-    const added = transaction(() => {
-      const fresh = attachIdentity(userId, p.issuer, p.subject, p.email, locale);
-      if (fresh) audit(userId, "account.sso.link", userId, p.issuer);
+    const added = await transaction(async () => {
+      const fresh = await attachIdentity(userId, p.issuer, p.subject, p.email, locale);
+      if (fresh) await audit(userId, "account.sso.link", userId, p.issuer);
       return fresh;
     });
-    touchIdentity(p.issuer, p.subject, p.email);
+    await touchIdentity(p.issuer, p.subject, p.email);
     if (added) securityEvent("account.sso_linked", { actorId: userId, detail: hostOf(p.issuer) });
     return added;
   } catch (e) {

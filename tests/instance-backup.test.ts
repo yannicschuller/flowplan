@@ -31,7 +31,7 @@ const { applyPendingRestore } = await import("../lib/instance-restore-apply");
 
 test("instance backups restore database and uploads on the next start", async () => {
   const uid = id();
-  run(
+  await run(
     "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
     uid,
     uid,
@@ -47,22 +47,22 @@ test("instance backups restore database and uploads on the next start", async ()
     disabled: 0,
     created_at: "",
   } as Identity;
-  const wid = createWorkspace(owner.id, "Gesichert");
+  const wid = await createWorkspace(owner.id, "Gesichert");
   const page = (
-    command(owner, {
+    (await command(owner, {
       action: "page.create",
       workspaceId: wid,
-      spaceId: bootstrap(owner, wid).spaces[0].id,
+      spaceId: (await bootstrap(owner, wid)).spaces[0].id,
       title: "Vor der Sicherung",
-    }) as { id: string }
+    })) as { id: string }
   ).id;
   mkdirSync(join(dir, "uploads"), { recursive: true });
   const fid = id();
   writeFileSync(join(dir, "uploads", fid), "Anhang");
   const backup = join(tmpdir(), `backup-${id()}.zip`);
-  await pipeline(instanceBackupStream(), createWriteStream(backup));
+  await pipeline(await instanceBackupStream(), createWriteStream(backup));
   // Changes after the backup are gone after the restore.
-  command(owner, {
+  await command(owner, {
     action: "page.update",
     pageId: page,
     patch: { title: "Nach der Sicherung" },

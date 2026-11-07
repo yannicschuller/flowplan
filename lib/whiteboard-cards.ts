@@ -22,28 +22,28 @@ export type RowCardProp = {
 };
 export type RowCardData = { title: string; database: string; props: RowCardProp[] };
 
-export function whiteboardRowCards(user: Identity, refs: { pageId: string; rowId: string }[]) {
+export async function whiteboardRowCards(user: Identity, refs: { pageId: string; rowId: string }[]) {
   const out: Record<string, RowCardData> = {};
   const pages = new Map<string, { page: Page; fields: Field[]; hidden: Set<unknown> } | null>();
-  const names = new Map(all<{ id: string; name: string }>("SELECT id,name FROM users").map((u) => [u.id, u.name]));
+  const names = new Map((await all<{ id: string; name: string }>("SELECT id,name FROM users")).map((u) => [u.id, u.name]));
   for (const ref of refs.slice(0, 200)) {
     if (!pages.has(ref.pageId)) {
-      const page = one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL AND kind='database'", ref.pageId);
+      const page = await one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL AND kind='database'", ref.pageId);
       pages.set(
         ref.pageId,
-        page && pageRole(user, page) && !journalLocked(user, page)
+        page && await pageRole(user, page) && !(await journalLocked(user, page))
           ? {
               page,
               // Without properties hidden from this person (lib/field-access.ts).
-              fields: visibleFields(user, page, JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", page.id)?.fields || "[]")),
-              hidden: hiddenRowIds(user, page),
+              fields: await visibleFields(user, page, JSON.parse((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", page.id))?.fields || "[]")),
+              hidden: await hiddenRowIds(user, page),
             }
           : null,
       );
     }
     const db = pages.get(ref.pageId);
     if (!db || db.hidden.has(ref.rowId)) continue;
-    const row = one<{ cells: string }>("SELECT cells FROM rows WHERE id=? AND page_id=?", ref.rowId, ref.pageId);
+    const row = await one<{ cells: string }>("SELECT cells FROM rows WHERE id=? AND page_id=?", ref.rowId, ref.pageId);
     if (!row) continue;
     const cells = JSON.parse(row.cells) as Record<string, unknown>;
     const [titleField, ...rest] = db.fields;

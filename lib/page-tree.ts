@@ -21,14 +21,15 @@ import { copyPageInk } from "./page-ink-store";
 import { copyPageMeta } from "./page-properties-server";
 import { readableTemplateCells } from "./row-documents";
 import type { Identity, Page, Field, Row } from "./types";
+import { flatMapAsync, forEachAsync } from "./each-async";
 // Called inside the command transaction. Permission-check the complete source
 // tree before copying anything; never silently copy a restricted descendant.
-export function duplicatePageTree(user: Identity, root: Page) {
-  const tree = all<Page & { depth: number }>(
+export async function duplicatePageTree(user: Identity, root: Page) {
+  const tree = await all<Page & { depth: number }>(
     `WITH RECURSIVE tree(id,depth) AS (SELECT id,0 FROM pages WHERE id=? UNION ALL SELECT p.id,t.depth+1 FROM pages p JOIN tree t ON p.parent_id=t.id WHERE p.deleted_at IS NULL) SELECT p.*,t.depth FROM pages p JOIN tree t ON p.id=t.id ORDER BY t.depth,p.position`,
     root.id,
   );
-  const copied = duplicatePages(
+  const copied = await duplicatePages(
     user,
     tree,
     root.workspace_id,
@@ -39,7 +40,7 @@ export function duplicatePageTree(user: Identity, root: Page) {
 }
 // All roots share one reference map, so links and relations between roots also copy.
 // The caller owns the destination and SQL transaction; every source is read-checked.
-export function duplicatePages(
+export async function duplicatePages(
   user: Identity,
   tree: Page[],
   workspaceId: string,
@@ -47,9 +48,9 @@ export function duplicatePages(
   root?: Page,
 ) {
   // Every page must be readable, journals behind a PIN unlocked.
-  tree.forEach((p) => requireUnlocked(user, requirePage(user, p.id)));
-  const hiddenFiles = new Set(tree.flatMap((p) => [...hiddenFileIds(user, p)]));
-  const quota = quotaCheckpoint(workspaceId);
+  await forEachAsync(tree, async (p) => await requireUnlocked(user, await requirePage(user, p.id)));
+  const hiddenFiles = new Set(await flatMapAsync(tree, async (p) => [...await hiddenFileIds(user, p)]));
+  const quota = await quotaCheckpoint(workspaceId);
   const pageIds = new Map<string, string>(),
     rowIds = new Map<string, string>(),
     fileIds = new Map<string, string>(),
@@ -61,7 +62,7 @@ export function duplicatePages(
   for (const p of tree) {
     pageIds.set(
       p.id,
-      createPage(
+      await createPage(
         workspaceId,
         spaceId,
         user.id,
@@ -70,19 +71,19 @@ export function duplicatePages(
       ),
     );
     // Tags and property values (lib/page-properties-server.ts).
-    copyPageMeta(user, p.id, { id: pageIds.get(p.id)!, workspace_id: workspaceId, space_id: spaceId });
+    await copyPageMeta(user, p.id, { id: pageIds.get(p.id)!, workspace_id: workspaceId, space_id: spaceId });
     if (p.journal_date)
-      run(
+      await run(
         "UPDATE pages SET journal_date=? WHERE id=?",
         p.journal_date,
         pageIds.get(p.id)!,
       );
     if (p.kind === "database") {
       // Records hidden from the copier are not copied.
-      const rs = visibleRows(
+      const rs = await visibleRows(
         user,
         p,
-        all<Omit<Row, "cells"> & { cells: string }>(
+        await all<Omit<Row, "cells"> & { cells: string }>(
           "SELECT * FROM rows WHERE page_id=? ORDER BY position",
           p.id,
         ),
@@ -90,7 +91,7 @@ export function duplicatePages(
       sourceRows.set(p.id, rs);
       for (const r of rs) rowIds.set(r.id, id());
     }
-    for (const f of all<{ id: string }>(
+    for (const f of await all<{ id: string }>(
       "SELECT id FROM files WHERE page_id=?",
       p.id,
     ))
@@ -117,13 +118,13 @@ export function duplicatePages(
       ),
     );
   const rewriteHtml = (value: string) =>
-    cleanHtml(value, (tagName, attributes) => {
-      const attribs = remapLinkedAttributes(
+    cleanHtml(value, async (tagName, attributes) => {
+      const attribs = await remapLinkedAttributes(
         { ...attributes },
         pageIds,
         rowIds,
-        (source) => {
-          const d = one<{ fields: string }>(
+        async (source) => {
+          const d = await one<{ fields: string }>(
             "SELECT fields FROM databases WHERE page_id=?",
             source,
           );
@@ -149,7 +150,7 @@ export function duplicatePages(
   try {
     for (const p of tree) {
       const target = pageIds.get(p.id)!;
-      run(
+      await run(
         "UPDATE pages SET parent_id=?,icon=?,cover=?,cover_position=?,position=?,full_width=?,caption_numbers=?,font=?,icon_size=? WHERE id=?",
         p.id === root?.id ? root.parent_id : pageIds.get(p.parent_id!) || null,
         rewrite(p.icon),
@@ -162,7 +163,7 @@ export function duplicatePages(
         p.icon_size || "",
         target,
       );
-      for (const f of all<{
+      for (const f of await all<{
         id: string;
         name: string;
         mime: string;
@@ -175,7 +176,7 @@ export function duplicatePages(
         const destination = resolve(dir, fid);
         copyFileSync(resolve(dir, f.id), destination);
         createdFiles.push(destination);
-        run(
+        await run(
           "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
           fid,
           target,
@@ -186,44 +187,44 @@ export function duplicatePages(
         );
       }
       if (p.kind === "whiteboard") {
-        copyWhiteboard(p.id, target, pageIds, rewrite);
+        await copyWhiteboard(p.id, target, pageIds, rewrite);
       } else if (p.kind === "dashboard") {
-        copyDashboard(dashboardTiles(p.id), target, pageIds);
+        await copyDashboard(await dashboardTiles(p.id), target, pageIds);
         // Tile titles and texts for search, as saved with the tiles.
-        run("UPDATE documents SET html=(SELECT html FROM documents WHERE page_id=?) WHERE page_id=?", p.id, target);
+        await run("UPDATE documents SET html=(SELECT html FROM documents WHERE page_id=?) WHERE page_id=?", p.id, target);
       } else if (p.kind === "notebook") {
         // Sheets, paper and ink; PDF backgrounds point to the copied files.
-        copyNotebook(p.id, target, fileIds, user.id);
+        await copyNotebook(p.id, target, fileIds, user.id);
       } else if (p.kind === "document" || p.kind === "journal") {
-        const source = one<{ html: string }>(
+        const source = await one<{ html: string }>(
           "SELECT html FROM documents WHERE page_id=?",
           p.id,
         );
         const html = rewriteHtml(source?.html || "");
-        run(
+        await run(
           "UPDATE documents SET html=?,state=? WHERE page_id=?",
           html,
           htmlState(html),
           target,
         );
         // Drawing blocks keep their ids: the copy gets their ink.
-        copyPageInk(p.id, target, undefined, user.id);
+        await copyPageInk(p.id, target, undefined, user.id);
       } else {
-        const source = one<{
+        const source = (await one<{
           fields: string;
           views: string;
           record_layout: string;
         }>(
           "SELECT fields,views,record_layout FROM databases WHERE page_id=?",
           p.id,
-        )!;
-        run(
+        ))!;
+        await run(
           "UPDATE databases SET record_layout=? WHERE page_id=?",
           source.record_layout || "{}",
           target,
         );
         const fields = JSON.parse(source.fields) as Field[];
-        run(
+        await run(
           "UPDATE databases SET fields=?,views=? WHERE page_id=?",
           JSON.stringify(
             fields.map((f) => ({
@@ -246,7 +247,7 @@ export function duplicatePages(
           target,
         );
         for (const r of sourceRows.get(p.id) || []) {
-          run(
+          await run(
             "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content,icon,cover,recurrence,access,repeat) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
             rowIds.get(r.id)!,
             target,
@@ -262,38 +263,38 @@ export function duplicatePages(
             r.repeat || "",
           );
           if (workspaceId === p.workspace_id)
-            run(
+            await run(
               "INSERT INTO row_grants(row_id,user_id,group_id,role) SELECT ?,user_id,group_id,role FROM row_grants WHERE row_id=?",
               rowIds.get(r.id)!,
               r.id,
             );
         }
-        for (const t of all<{
+        for (const t of await all<{
           name: string;
           cells: string;
           html: string;
           is_default: number;
         }>("SELECT * FROM row_templates WHERE page_id=?", p.id))
-          run(
+          await run(
             "INSERT INTO row_templates(id,page_id,name,cells,html,is_default,created_by) VALUES(?,?,?,?,?,?,?)",
             id(),
             target,
             t.name,
             // Without the values of properties hidden from the copier.
-            rewriteCells(JSON.stringify(readableTemplateCells(user, p, t.cells)), fields),
+            rewriteCells(JSON.stringify(await readableTemplateCells(user, p, t.cells)), fields),
             rewriteHtml(t.html),
             t.is_default,
             user.id,
           );
         // Copied into another workspace: tag-backed properties use its tags (#79).
-        if (workspaceId !== p.workspace_id) reconcileTagFields(user, target);
-        const form = one<{
+        if (workspaceId !== p.workspace_id) await reconcileTagFields(user, target);
+        const form = await one<{
           config: string;
           internal: number;
           anonymous: number;
         }>("SELECT config,internal,anonymous FROM forms WHERE page_id=?", p.id);
         if (form)
-          run(
+          await run(
             "INSERT INTO forms(page_id,token,enabled,internal,anonymous,config) VALUES(?,?,0,?,?,?)",
             target,
             id(),
@@ -303,7 +304,7 @@ export function duplicatePages(
           );
       }
     }
-    for (const pair of relationPairs())
+    for (const pair of await relationPairs())
       if (pageIds.has(pair.left_page) && pageIds.has(pair.right_page)) {
         const copied = {
           ...pair,
@@ -311,7 +312,7 @@ export function duplicatePages(
           left_page: pageIds.get(pair.left_page)!,
           right_page: pageIds.get(pair.right_page)!,
         };
-        insertRelationPair(copied);
+        await insertRelationPair(copied);
       }
     quota();
     return { pageIds, pages: tree.length };

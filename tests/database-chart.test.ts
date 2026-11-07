@@ -244,9 +244,9 @@ const { id, run, one } = await import("../lib/db");
 const { command, database, rows, bootstrap } = await import("../lib/api");
 const { createWorkspace } = await import("../lib/seed");
 const { exportArchive, importArchive } = await import("../lib/archive");
-function user(name: string): Identity {
+async function user(name: string): Promise<Identity> {
   const uid = id();
-  run(
+  await run(
     "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
     uid,
     uid,
@@ -263,35 +263,35 @@ function user(name: string): Identity {
     created_at: "",
   };
 }
-const owner = user("owner"),
-  viewer = user("viewer"),
-  wid = createWorkspace(owner.id, "Charts"),
-  boot = bootstrap(owner, wid);
-run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
-const act = (body: Record<string, unknown>, as = owner): any =>
-  command(as, body);
-function fixture() {
-  const page = act({
+const owner = await user("owner"),
+  viewer = await user("viewer"),
+  wid = await createWorkspace(owner.id, "Charts"),
+  boot = await bootstrap(owner, wid);
+await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
+const act = async (body: Record<string, unknown>, as = owner): Promise<any> =>
+  await command(as, body);
+async function fixture() {
+  const page = (await act({
     action: "page.create",
     workspaceId: wid,
     spaceId: boot.spaces[0].id,
     kind: "database",
     title: "Chart source",
-  }).id;
-  act({
+  })).id;
+  await act({
     action: "database.update",
     pageId: page,
-    version: database(page).version,
+    version: (await database(page)).version,
     fields,
     views: [view],
   });
   for (const r of samples)
-    act({ action: "row.create", pageId: page, cells: r.cells });
+    await act({ action: "row.create", pageId: page, cells: r.cells });
   return page as string;
 }
-test("chart configuration persists with version, role and lock guards; rejected saves do not mutate schema", () => {
-  const page = fixture(),
-    d = database(page);
+test("chart configuration persists with version, role and lock guards; rejected saves do not mutate schema", async () => {
+  const page = await fixture(),
+    d = await database(page);
   const update = {
     action: "database.update",
     pageId: page,
@@ -299,34 +299,34 @@ test("chart configuration persists with version, role and lock guards; rejected 
     fields,
     views: [{ ...view, chart: { ...config, kind: "donut" } }],
   };
-  assert.throws(() => act(update, viewer), /Berechtigung/);
-  assert.throws(
-    () => act({ ...update, version: d.version - 1 }),
+  await assert.rejects(async () => await act(update, viewer), /Berechtigung/);
+  await assert.rejects(
+    async () => await act({ ...update, version: d.version - 1 }),
     /zwischenzeitlich/,
   );
-  assert.throws(() =>
-    act({
+  await assert.rejects(async () =>
+    await act({
       ...update,
       views: [{ ...view, chart: { ...config, aggregate: "sql" } }],
     }),
   );
-  assert.deepEqual(database(page), d);
-  act(update);
-  assert.equal(database(page).views[0].chart?.kind, "donut");
-  act({ action: "page.update", pageId: page, patch: { locked: true } });
-  assert.throws(
-    () => act({ ...update, version: database(page).version }),
+  assert.deepEqual(await database(page), d);
+  await act(update);
+  assert.equal((await database(page)).views[0].chart?.kind, "donut");
+  await act({ action: "page.update", pageId: page, patch: { locked: true } });
+  await assert.rejects(
+    async () => await act({ ...update, version: (await database(page)).version }),
     /gesperrt/,
   );
 });
 test("chart configuration and results survive duplication, templates, JSON/ZIP and restored snapshots", async () => {
-  const page = fixture();
-  const check = (target: string) => {
-    const d = database(target);
+  const page = await fixture();
+  const check = async (target: string) => {
+    const d = await database(target);
     assert.deepEqual(d.views[0].chart, config);
     assert.deepEqual(
       chartPoints(
-        queryRows(rows(target), d.fields, d.views[0]),
+        queryRows(await rows(target), d.fields, d.views[0]),
         d.fields,
         d.views[0].chart!,
       ).map((p) => [p.label, p.value]),
@@ -336,24 +336,24 @@ test("chart configuration and results survive duplication, templates, JSON/ZIP a
       ],
     );
   };
-  act({ action: "page.snapshot", pageId: page });
-  check(act({ action: "page.duplicate", pageId: page }).id);
-  const template = act({
+  await act({ action: "page.snapshot", pageId: page });
+  await check((await act({ action: "page.duplicate", pageId: page })).id);
+  const template = (await act({
     action: "template.save",
     pageId: page,
     name: "Chart template",
-  }).id;
-  check(
-    act({
+  })).id;
+  await check(
+    (await act({
       action: "page.create",
       workspaceId: wid,
       spaceId: boot.spaces[0].id,
       title: "Chart instance",
       templateId: template,
-    }).id,
+    })).id,
   );
-  check(
-    act({
+  await check(
+    (await act({
       action: "workspace.import",
       workspaceId: wid,
       spaceId: boot.spaces[0].id,
@@ -365,33 +365,33 @@ test("chart configuration and results survive duplication, templates, JSON/ZIP a
             parent_id: null,
             title: "Chart JSON",
             kind: "database",
-            data: { database: database(page), rows: rows(page) },
+            data: { database: await database(page), rows: await rows(page) },
           },
         ],
       },
-    }).pageIds[page],
+    })).pageIds[page],
   );
-  const dest = createWorkspace(owner.id, "Chart restore"),
+  const dest = await createWorkspace(owner.id, "Chart restore"),
     imported = await importArchive(
       owner,
       dest,
       await exportArchive(owner, wid),
     ),
     restored = imported.pageIds[page];
-  check(restored);
-  const snapshot = one<{ id: string }>(
+  await check(restored);
+  const snapshot = (await one<{ id: string }>(
     "SELECT id FROM snapshots WHERE page_id=?",
     restored,
-  )!.id;
-  act({
+  ))!.id;
+  await act({
     action: "database.update",
     pageId: restored,
-    version: database(restored).version,
+    version: (await database(restored)).version,
     fields,
     views: [{ ...view, chart: { ...config, kind: "line" } }],
   });
-  act({ action: "snapshot.restore", pageId: restored, snapshotId: snapshot });
-  check(restored);
+  await act({ action: "snapshot.restore", pageId: restored, snapshotId: snapshot });
+  await check(restored);
 });
 
 test("data series split groups, merge long tails, keep multi-values per series and validate configuration", async () => {

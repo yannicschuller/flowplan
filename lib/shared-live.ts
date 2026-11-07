@@ -22,14 +22,14 @@ export const liveKey = (token: string, pageId: string, rowId = "") =>
   createHash("sha256")
     .update(`${token}\u0000${pageId}\u0000${rowId}`)
     .digest("hex");
-export function loadLive(key: string) {
-  return one<LiveEntry>(
+export async function loadLive(key: string) {
+  return await one<LiveEntry>(
     "SELECT state,source_html,generation,pgen FROM share_live WHERE key=?",
     key,
   );
 }
-export function saveLive(key: string, entry: LiveEntry) {
-  run(
+export async function saveLive(key: string, entry: LiveEntry) {
+  await run(
     `INSERT INTO share_live(key,state,source_html,generation,pgen,updated_at) VALUES(?,?,?,?,?,?)
      ON CONFLICT(key) DO UPDATE SET state=excluded.state,source_html=excluded.source_html,
      generation=excluded.generation,pgen=excluded.pgen,updated_at=excluded.updated_at`,
@@ -41,7 +41,7 @@ export function saveLive(key: string, entry: LiveEntry) {
     Date.now(),
   );
   // Projections of links nobody used for a month are rebuilt when needed.
-  run("DELETE FROM share_live WHERE updated_at<?", Date.now() - 30 * 86400000);
+  await run("DELETE FROM share_live WHERE updated_at<?", Date.now() - 30 * 86400000);
 }
 // Replaces the content of `doc` with `html`, changing only what differs.
 export function applyHtml(doc: Y.Doc, html: string) {

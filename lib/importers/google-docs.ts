@@ -24,7 +24,7 @@ export function unwrapGoogleLink(href: string) {
 
 // Class → marks from the <style> of a Google Docs export.
 function classMarks(css: string) {
-  const marks = new Map<string, ReturnType<typeof styleMarks>>();
+  const marks = new Map<string, Awaited<ReturnType<typeof styleMarks>>>();
   for (const rule of css.matchAll(/\.([A-Za-z0-9_-]+)\s*\{([^}]*)\}/g)) marks.set(rule[1], styleMarks(rule[2]));
   return marks;
 }
@@ -73,7 +73,7 @@ export function googleHtmlToHtml(source: string, path: string, entries: Map<stri
   const options = {
     rule,
     marks: (el: Element) => {
-      const result: ReturnType<typeof styleMarks> = {};
+      const result: Awaited<ReturnType<typeof styleMarks>> = {};
       for (const name of (el.attribs.class || "").split(/\s+/)) {
         const m = marks.get(name);
         if (m) for (const [k, v] of Object.entries(m)) if (v) result[k as keyof typeof result] = true;

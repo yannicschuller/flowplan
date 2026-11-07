@@ -122,8 +122,8 @@ export function cleanHtml(html: string, transform?: sanitize.Transformer) {
     transformTags: {
       // A draw.io block's picture is cleaned as SVG (lib/drawio-svg.ts),
       // its diagram kept only within the limit.
-      "*": (tagName, attribs) => {
-        const result = transform ? transform(tagName, attribs) : { tagName, attribs };
+      "*": async (tagName, attribs) => {
+        const result = transform ? (await transform(tagName, attribs)) : { tagName, attribs };
         return "data-drawio" in result.attribs || "data-drawio-svg" in result.attribs ? drawioAttributes(result) : result;
       },
       // Only the known providers' player URLs survive, not any page on

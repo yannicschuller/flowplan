@@ -29,14 +29,14 @@ export async function GET(request: Request) {
   let backlog = 0,
     failedPush = 0;
   try {
-    one("SELECT 1");
+    await one("SELECT 1");
     backlog = Number(
-      one<{ n: number }>("SELECT COUNT(*) n FROM search_dirty")?.n || 0,
+      (await one<{ n: number }>("SELECT COUNT(*) n FROM search_dirty"))?.n || 0,
     );
     failedPush = Number(
-      one<{ n: number }>(
+      (await one<{ n: number }>(
         "SELECT COUNT(*) n FROM push_deliveries WHERE delivered_at IS NULL AND attempts>=5",
-      )?.n || 0,
+      ))?.n || 0,
     );
     checks.database = "ok";
   } catch {
@@ -62,9 +62,9 @@ export async function GET(request: Request) {
   const verdict = { service: "flowplan", status: healthy ? "ok" : "error" } as const;
   if (!(await detailsAllowed(request))) return NextResponse.json(verdict, init);
   const build = buildInfo();
-  let mirror: ReturnType<typeof storageStatus> = { enabled: false };
+  let mirror: Awaited<ReturnType<typeof storageStatus>> = { enabled: false };
   try {
-    mirror = storageStatus();
+    mirror = await storageStatus();
   } catch {}
   return NextResponse.json(
     {

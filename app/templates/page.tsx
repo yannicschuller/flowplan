@@ -27,7 +27,7 @@ export default async function Templates({
   const t = await serverT();
   const { category } = await searchParams;
   const active = category && category in templateCategories ? category : "";
-  const list = publicTemplates(active || undefined);
+  const list = await publicTemplates(active || undefined);
   // Templates that come with Flowplan, then those admins published.
   const builtIn = Object.entries(catalogFor(await requestLocale())).filter(([, t]) => !active || t.category === active);
   return (

@@ -9,6 +9,7 @@ import { emojiPresentation } from "./emoji-presentation";
 import { withCommentDocument } from "./inline-comments";
 import { commentAnchor, commentQuote, commentRange } from "./comment-positions";
 import type { CommentAnchor } from "./inline-comment-types";
+import { mapAsync } from "./each-async";
 export const archivedThreadsSchema = z
   .array(
     z.object({
@@ -61,8 +62,8 @@ export const archivedThreadsSchema = z
   .max(10000);
 export type ArchivedThreads = z.infer<typeof archivedThreadsSchema>;
 // Call only after the containing page's export permission has been checked.
-export function exportInlineComments(pageId: string): ArchivedThreads {
-  const threads = all<{
+export async function exportInlineComments(pageId: string): Promise<ArchivedThreads> {
+  const threads = await all<{
     id: string;
     row_id: string | null;
     anchor: string;
@@ -76,7 +77,7 @@ export function exportInlineComments(pageId: string): ArchivedThreads {
   // Decode each document once, even when hundreds of threads share it.
   for (const rowId of new Set(threads.map((t) => t.row_id))) {
     try {
-      withCommentDocument(pageId, rowId, (binding, generation) => {
+      await withCommentDocument(pageId, rowId, (binding, generation) => {
         for (const t of threads.filter((t) => t.row_id === rowId)) {
           const r = commentRange(binding, JSON.parse(t.anchor), generation),
             text = r ? commentQuote(binding.content, r.from, r.to) : "";
@@ -87,7 +88,7 @@ export function exportInlineComments(pageId: string): ArchivedThreads {
       /* Missing documents retain their quoted discussions as detached. */
     }
   }
-  return threads.map((t) => {
+  return await mapAsync(threads, async (t) => {
     const anchor = JSON.parse(t.anchor) as CommentAnchor;
     return {
       row_id: t.row_id,
@@ -95,7 +96,7 @@ export function exportInlineComments(pageId: string): ArchivedThreads {
       range: ranges.get(t.id) || null,
       resolved: t.resolved,
       created_at: t.created_at,
-      messages: all<{
+      messages: await mapAsync(await all<{
         id: string;
         name: string;
         body: string;
@@ -107,8 +108,8 @@ export function exportInlineComments(pageId: string): ArchivedThreads {
       }>(
         "SELECT m.*,COALESCE(u.name,m.author_name) name FROM inline_messages m LEFT JOIN users u ON u.id=m.author_id WHERE thread_id=? ORDER BY m.created_at,m.seq",
         t.id,
-      ).map((m) => {
-        const live = all<{ emoji: string; name: string }>(
+      ), async (m) => {
+        const live = await all<{ emoji: string; name: string }>(
           "SELECT r.emoji,u.name FROM inline_reactions r JOIN users u ON u.id=r.user_id WHERE message_id=? ORDER BY r.emoji,u.name",
           m.id,
         );
@@ -145,7 +146,7 @@ export function exportInlineComments(pageId: string): ArchivedThreads {
     };
   });
 }
-export function importInlineComments(
+export async function importInlineComments(
   pageId: string,
   threads: ArchivedThreads,
   rowMap: Map<string, string>,
@@ -160,7 +161,7 @@ export function importInlineComments(
     };
     if (t.range)
       try {
-        anchor = withCommentDocument(pageId, rowId, (binding, generation) => {
+        anchor = await withCommentDocument(pageId, rowId, (binding, generation) => {
           const r = t.range!;
           if (
             r.from >= r.to ||
@@ -177,7 +178,7 @@ export function importInlineComments(
         /* Never guess an anchor in changed import content. */
       }
     const tid = id();
-    run(
+    await run(
       "INSERT INTO inline_threads(id,page_id,row_id,author_id,anchor,resolved,created_at) VALUES(?,?,?,?,?,?,?)",
       tid,
       pageId,
@@ -188,7 +189,7 @@ export function importInlineComments(
       t.created_at,
     );
     for (const m of t.messages)
-      run(
+      await run(
         "INSERT INTO inline_messages(id,thread_id,author_id,author_name,body,deleted,created_at,edited_at,imported_reactions,rich_body) VALUES(?,?,NULL,?,?,?,?,?,?,?)",
         id(),
         tid,
@@ -201,7 +202,7 @@ export function importInlineComments(
         m.deleted || !m.content
           ? null
           : JSON.stringify(
-              mapCommentMentions(m.content, (_id, label) => ({
+              await mapCommentMentions(m.content, (_id, label) => ({
                 userId: null,
                 label,
               })),

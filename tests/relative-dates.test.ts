@@ -232,9 +232,9 @@ const { id, run, one } = await import("../lib/db");
 const { command, database, rows, bootstrap } = await import("../lib/api");
 const { createWorkspace } = await import("../lib/seed");
 const { exportArchive, importArchive } = await import("../lib/archive");
-function user(name: string): Identity {
+async function user(name: string): Promise<Identity> {
   const uid = id();
-  run(
+  await run(
     "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
     uid,
     uid,
@@ -251,21 +251,21 @@ function user(name: string): Identity {
     created_at: "",
   };
 }
-const owner = user("owner"),
-  viewer = user("viewer"),
-  wid = createWorkspace(owner.id, "Relative dates"),
-  boot = bootstrap(owner, wid);
-run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
-const act = (body: Record<string, unknown>, as = owner): any =>
-  command(as, body);
+const owner = await user("owner"),
+  viewer = await user("viewer"),
+  wid = await createWorkspace(owner.id, "Relative dates"),
+  boot = await bootstrap(owner, wid);
+await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
+const act = async (body: Record<string, unknown>, as = owner): Promise<any> =>
+  await command(as, body);
 test("relative settings survive copies, templates, JSON, ZIP and snapshots with rights and optimistic versions intact", async () => {
-  const page = act({
+  const page = (await act({
     action: "page.create",
     workspaceId: wid,
     spaceId: boot.spaces[0].id,
     title: "Relative dates",
     kind: "database",
-  }).id;
+  })).id;
   const tree: FilterGroup = {
     kind: "group",
     join: "and",
@@ -274,40 +274,40 @@ test("relative settings survive copies, templates, JSON, ZIP and snapshots with 
   const update = {
     action: "database.update",
     pageId: page,
-    version: database(page).version,
+    version: (await database(page)).version,
     fields,
     views: [{ ...view, filterGroup: tree }],
   };
-  assert.throws(() => act(update, viewer), /Berechtigung/);
-  act(update);
-  assert.throws(() => act(update), /zwischenzeitlich/);
-  assert.throws(() =>
-    act({
+  await assert.rejects(async () => await act(update, viewer), /Berechtigung/);
+  await act(update);
+  await assert.rejects(async () => await act(update), /zwischenzeitlich/);
+  await assert.rejects(async () =>
+    await act({
       ...update,
-      version: database(page).version,
+      version: (await database(page)).version,
       views: [{ ...view, filters: [relative("today", { timeZone: "x" })] }],
     }),
   );
-  const check = (target: string) =>
-    assert.deepEqual(database(target).views[0].filterGroup, tree);
-  act({ action: "page.snapshot", pageId: page });
-  check(act({ action: "page.duplicate", pageId: page }).id);
-  const template = act({
+  const check = async (target: string) =>
+    assert.deepEqual((await database(target)).views[0].filterGroup, tree);
+  await act({ action: "page.snapshot", pageId: page });
+  await check((await act({ action: "page.duplicate", pageId: page })).id);
+  const template = (await act({
     action: "template.save",
     pageId: page,
     name: "Relative template",
-  }).id;
-  check(
-    act({
+  })).id;
+  await check(
+    (await act({
       action: "page.create",
       workspaceId: wid,
       spaceId: boot.spaces[0].id,
       title: "Relative copy",
       templateId: template,
-    }).id,
+    })).id,
   );
-  check(
-    act({
+  await check(
+    (await act({
       action: "workspace.import",
       workspaceId: wid,
       spaceId: boot.spaces[0].id,
@@ -319,31 +319,31 @@ test("relative settings survive copies, templates, JSON, ZIP and snapshots with 
             parent_id: null,
             title: "Relative JSON",
             kind: "database",
-            data: { database: database(page), rows: rows(page) },
+            data: { database: await database(page), rows: await rows(page) },
           },
         ],
       },
-    }).pageIds[page],
+    })).pageIds[page],
   );
-  const dest = createWorkspace(owner.id, "Restored relative"),
+  const dest = await createWorkspace(owner.id, "Restored relative"),
     imported = await importArchive(
       owner,
       dest,
       await exportArchive(owner, wid),
     ),
     restored = imported.pageIds[page];
-  check(restored);
-  const snapshot = one<{ id: string }>(
+  await check(restored);
+  const snapshot = (await one<{ id: string }>(
     "SELECT id FROM snapshots WHERE page_id=?",
     restored,
-  )!.id;
-  act({
+  ))!.id;
+  await act({
     action: "database.update",
     pageId: restored,
-    version: database(restored).version,
+    version: (await database(restored)).version,
     fields,
     views: [view],
   });
-  act({ action: "snapshot.restore", pageId: restored, snapshotId: snapshot });
-  check(restored);
+  await act({ action: "snapshot.restore", pageId: restored, snapshotId: snapshot });
+  await check(restored);
 });

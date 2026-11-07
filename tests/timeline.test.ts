@@ -20,9 +20,9 @@ const { id, run, one, all } = await import("../lib/db");
 const { command, database, rows, bootstrap } = await import("../lib/api");
 const { createWorkspace } = await import("../lib/seed");
 const { exportArchive, importArchive } = await import("../lib/archive");
-function user(): Identity {
+async function user(): Promise<Identity> {
   const uid = id();
-  run(
+  await run(
     "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
     uid,
     uid,
@@ -39,13 +39,13 @@ function user(): Identity {
     groups: [],
   };
 }
-const owner = user(),
-  editor = user(),
-  viewer = user(),
-  wid = createWorkspace(owner.id, "Timeline tests"),
-  sid = bootstrap(owner, wid).spaces[0].id;
-run("INSERT INTO members VALUES(?,?,?)", wid, editor.id, "editor");
-run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
+const owner = await user(),
+  editor = await user(),
+  viewer = await user(),
+  wid = await createWorkspace(owner.id, "Timeline tests"),
+  sid = (await bootstrap(owner, wid)).spaces[0].id;
+await run("INSERT INTO members VALUES(?,?,?)", wid, editor.id, "editor");
+await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
 const fields: Field[] = [
   { id: "title", name: "Name", type: "text" },
   { id: "start", name: "Beginn", type: "date" },
@@ -61,27 +61,27 @@ const view: View = {
   endDateField: "end",
   timeline: { scale: "quarter", showWeekends: false },
 };
-const act = (input: Record<string, unknown>, actor = owner): any =>
-  command(actor, input);
-function create(kind = "database") {
-  return act({
+const act = async (input: Record<string, unknown>, actor = owner): Promise<any> =>
+  await command(actor, input);
+async function create(kind = "database") {
+  return (await act({
     action: "page.create",
     workspaceId: wid,
     spaceId: sid,
     title: "Timeline fixture",
     kind,
-  }).id as string;
+  })).id as string;
 }
-function fixture() {
-  const pid = create();
-  act({
+async function fixture() {
+  const pid = await create();
+  await act({
     action: "database.update",
     pageId: pid,
     version: 1,
     fields,
     views: [view, { ...view, id: "calendar", type: "calendar" }],
   });
-  const rid = act({
+  const rid = (await act({
     action: "row.create",
     pageId: pid,
     cells: {
@@ -89,24 +89,24 @@ function fixture() {
       start: "2026-03-28T09:30:00+01:00",
       end: "2026-03-30T17:15:00+02:00",
     },
-  }).id as string;
+  })).id as string;
   return { pid, rid };
 }
-function schedule(
+async function schedule(
   pid: string,
   rid: string,
   change: unknown,
   extra = {},
   actor = owner,
 ) {
-  return act(
+  return await act(
     {
       action: "row.schedule",
       pageId: pid,
       viewId: "timeline",
-      version: database(pid).version,
+      version: (await database(pid)).version,
       rowId: rid,
-      rowVersion: rows(pid).find((r) => r.id === rid)?.version ?? 1,
+      rowVersion: (await rows(pid)).find((r) => r.id === rid)?.version ?? 1,
       change,
       ...extra,
     },
@@ -216,219 +216,219 @@ test("timeline periods and clipping use exact day boundaries at all scales", () 
   });
   assert.equal(clipRange(week.end, week.end + 1, week), null);
 });
-test("scheduling changes both dates atomically and enforces row, view, membership and lock constraints", () => {
-  const { pid, rid } = fixture();
+test("scheduling changes both dates atomically and enforces row, view, membership and lock constraints", async () => {
+  const { pid, rid } = await fixture();
   const move = { operation: "move", days: 3 },
-    before = rows(pid)[0];
-  for (const actor of [viewer, user()])
-    assert.throws(() => schedule(pid, rid, move, {}, actor), /Berechtigung/);
-  assert.throws(() => schedule(pid, rid, move, { version: 1 }), /Ansicht/);
-  assert.throws(() => schedule(pid, rid, move, { rowVersion: 0 }), /Datensatz/);
-  assert.throws(
-    () => schedule(pid, rid, move, { viewId: "missing" }),
+    before = (await rows(pid))[0];
+  for (const actor of [viewer, await user()])
+    await assert.rejects(async () => await schedule(pid, rid, move, {}, actor), /Berechtigung/);
+  await assert.rejects(async () => await schedule(pid, rid, move, { version: 1 }), /Ansicht/);
+  await assert.rejects(async () => await schedule(pid, rid, move, { rowVersion: 0 }), /Datensatz/);
+  await assert.rejects(
+    async () => await schedule(pid, rid, move, { viewId: "missing" }),
     /Ansicht/,
   );
-  assert.throws(
-    () =>
-      schedule(pid, rid, {
+  await assert.rejects(
+    async () =>
+      await schedule(pid, rid, {
         operation: "set",
         start: "2026-02-01",
         end: "2026-01-01",
       }),
     /Ende/,
   );
-  assert.deepEqual(rows(pid)[0], before);
-  run("UPDATE pages SET locked=1 WHERE id=?", pid);
-  assert.throws(() => schedule(pid, rid, move), /gesperrt/);
-  run("UPDATE pages SET locked=0 WHERE id=?", pid);
-  schedule(pid, rid, move, {}, editor);
-  const next = rows(pid)[0];
+  assert.deepEqual((await rows(pid))[0], before);
+  await run("UPDATE pages SET locked=1 WHERE id=?", pid);
+  await assert.rejects(async () => await schedule(pid, rid, move), /gesperrt/);
+  await run("UPDATE pages SET locked=0 WHERE id=?", pid);
+  await schedule(pid, rid, move, {}, editor);
+  const next = (await rows(pid))[0];
   assert.equal(next.cells.start, "2026-03-31T09:30:00+01:00");
   assert.equal(next.cells.end, "2026-04-02T17:15:00+02:00");
   assert.equal(next.version, before.version + 1);
   assert.equal(next.updated_by, editor.id);
   assert.equal(next.cells.title, "A");
-  schedule(pid, rid, { operation: "resize-end", days: 2 });
-  assert.equal(rows(pid)[0].cells.end, "2026-04-04T17:15:00+02:00");
-  schedule(pid, rid, { operation: "move", days: -2 }, { viewId: "calendar" });
-  assert.equal(rows(pid)[0].cells.start, "2026-03-29T09:30:00+01:00");
-  assert.equal(rows(pid)[0].cells.end, "2026-04-02T17:15:00+02:00");
-  const foreign = fixture();
-  assert.throws(
-    () => schedule(pid, foreign.rid, move, { rowVersion: 1 }),
+  await schedule(pid, rid, { operation: "resize-end", days: 2 });
+  assert.equal((await rows(pid))[0].cells.end, "2026-04-04T17:15:00+02:00");
+  await schedule(pid, rid, { operation: "move", days: -2 }, { viewId: "calendar" });
+  assert.equal((await rows(pid))[0].cells.start, "2026-03-29T09:30:00+01:00");
+  assert.equal((await rows(pid))[0].cells.end, "2026-04-02T17:15:00+02:00");
+  const foreign = await fixture();
+  await assert.rejects(
+    async () => await schedule(pid, foreign.rid, move, { rowVersion: 1 }),
     /Datensatz/,
   );
 });
-test("missing, identical and non-date fields cannot be changed; empty ranges can be scheduled explicitly", () => {
-  const { pid, rid } = fixture(),
-    initial = rows(pid)[0];
+test("missing, identical and non-date fields cannot be changed; empty ranges can be scheduled explicitly", async () => {
+  const { pid, rid } = await fixture(),
+    initial = (await rows(pid))[0];
   for (const patch of [
     { dateField: "title" },
     { dateField: "missing" },
     { endDateField: "start" },
     { endDateField: "missing" },
   ]) {
-    const d = database(pid);
-    act({
+    const d = await database(pid);
+    await act({
       action: "database.update",
       pageId: pid,
       version: d.version,
       fields,
       views: [{ ...view, ...patch }],
     });
-    assert.throws(
-      () => schedule(pid, rid, { operation: "move", days: 1 }),
+    await assert.rejects(
+      async () => await schedule(pid, rid, { operation: "move", days: 1 }),
       /Datumsfelder/,
     );
-    assert.deepEqual(rows(pid)[0], initial);
+    assert.deepEqual((await rows(pid))[0], initial);
   }
-  let d = database(pid);
-  act({
+  let d = await database(pid);
+  await act({
     action: "database.update",
     pageId: pid,
     version: d.version,
     fields,
     views: [{ ...view, dateField: undefined, endDateField: undefined }],
   });
-  assert.throws(
-    () => schedule(pid, rid, { operation: "resize-end", days: 1 }),
+  await assert.rejects(
+    async () => await schedule(pid, rid, { operation: "resize-end", days: 1 }),
     /Enddatumsfeld/,
   );
-  assert.throws(
-    () =>
-      schedule(pid, rid, {
+  await assert.rejects(
+    async () =>
+      await schedule(pid, rid, {
         operation: "set",
         start: "2026-01-01",
         end: "2026-01-03",
       }),
     /Enddatumsfeld/,
   );
-  act({
+  await act({
     action: "row.update",
     pageId: pid,
     rowId: rid,
     version: initial.version,
     cells: { start: "", end: "" },
   });
-  assert.throws(
-    () => schedule(pid, rid, { operation: "move", days: 1 }),
+  await assert.rejects(
+    async () => await schedule(pid, rid, { operation: "move", days: 1 }),
     /gültigen Zeitraum/,
   );
-  schedule(pid, rid, { operation: "set", start: "2026-01-02", end: "" });
-  assert.equal(rows(pid)[0].cells.start, "2026-01-02");
+  await schedule(pid, rid, { operation: "set", start: "2026-01-02", end: "" });
+  assert.equal((await rows(pid))[0].cells.start, "2026-01-02");
 });
-test("linked timelines use their own field mapping and reject stale source, host and row state", () => {
-  const { pid, rid } = fixture(),
-    host = create("document"),
+test("linked timelines use their own field mapping and reject stale source, host and row state", async () => {
+  const { pid, rid } = await fixture(),
+    host = await create("document"),
     blockId = id(),
     linkedView = { ...view, dateField: "end", endDateField: undefined };
   const html = `<div data-linked-database="${blockId}" data-linked-source="${pid}" data-linked-version="1" data-linked-views="${escaped(JSON.stringify([linkedView]))}">Linked</div>`;
-  run(
+  await run(
     "UPDATE documents SET html=?,state=? WHERE page_id=?",
     html,
     htmlState(html),
     host,
   );
-  const mutation = () => ({
+  const mutation = async () => ({
     action: "row.schedule",
     viewId: view.id,
     version: 1,
     rowId: rid,
-    rowVersion: rows(pid)[0].version,
+    rowVersion: (await rows(pid))[0].version,
     change: { operation: "move", days: 1 },
   });
-  const linked = (extra = {}, actor = owner) =>
-    act(
+  const linked = async (extra = {}, actor = owner) =>
+    await act(
       {
         action: "linked.command",
         pageId: host,
         blockId,
         generation: "1",
-        sourceVersion: database(pid).version,
-        mutation: mutation(),
+        sourceVersion: (await database(pid)).version,
+        mutation: await mutation(),
         ...extra,
       },
       actor,
     );
-  const before = rows(pid)[0];
-  assert.throws(() => linked({ sourceVersion: 0 }), /Datenquelle/);
-  assert.throws(
-    () => linked({ mutation: { ...mutation(), version: 2 } }),
+  const before = (await rows(pid))[0];
+  await assert.rejects(async () => await linked({ sourceVersion: 0 }), /Datenquelle/);
+  await assert.rejects(
+    async () => await linked({ mutation: { ...(await mutation()), version: 2 } }),
     /Einbettung/,
   );
-  assert.throws(() => linked({ generation: "wrong" }), /Dokumentversion/);
-  assert.throws(() => linked({}, viewer), /Berechtigung/);
-  assert.deepEqual(rows(pid)[0], before);
-  run("UPDATE pages SET locked=1 WHERE id=?", host);
-  linked();
-  run("UPDATE pages SET locked=0 WHERE id=?", host);
-  assert.equal(rows(pid)[0].cells.start, before.cells.start);
-  assert.equal(rows(pid)[0].cells.end, "2026-03-31T17:15:00+02:00");
-  run("UPDATE pages SET locked=1 WHERE id=?", pid);
-  assert.throws(() => linked(), /gesperrt/);
+  await assert.rejects(async () => await linked({ generation: "wrong" }), /Dokumentversion/);
+  await assert.rejects(async () => await linked({}, viewer), /Berechtigung/);
+  assert.deepEqual((await rows(pid))[0], before);
+  await run("UPDATE pages SET locked=1 WHERE id=?", host);
+  await linked();
+  await run("UPDATE pages SET locked=0 WHERE id=?", host);
+  assert.equal((await rows(pid))[0].cells.start, before.cells.start);
+  assert.equal((await rows(pid))[0].cells.end, "2026-03-31T17:15:00+02:00");
+  await run("UPDATE pages SET locked=1 WHERE id=?", pid);
+  await assert.rejects(async () => await linked(), /gesperrt/);
 });
 test("timeline configuration survives page and space copies, templates, snapshots and ZIP restoration", async () => {
-  const { pid } = fixture(),
-    expected = database(pid).views[0].timeline;
-  const check = (p: string) =>
-    assert.deepEqual(database(p).views[0].timeline, expected);
-  check(act({ action: "page.duplicate", pageId: pid }).id);
-  const template = act({
+  const { pid } = await fixture(),
+    expected = (await database(pid)).views[0].timeline;
+  const check = async (p: string) =>
+    assert.deepEqual((await database(p)).views[0].timeline, expected);
+  await check((await act({ action: "page.duplicate", pageId: pid })).id);
+  const template = (await act({
     action: "template.save",
     pageId: pid,
     name: "Timeline template",
-  }).id;
-  check(
-    act({
+  })).id;
+  await check(
+    (await act({
       action: "page.create",
       workspaceId: wid,
       spaceId: sid,
       title: "From template",
       templateId: template,
-    }).id,
+    })).id,
   );
-  act({ action: "page.snapshot", pageId: pid });
-  const snapshot = one<{ id: string }>(
+  await act({ action: "page.snapshot", pageId: pid });
+  const snapshot = (await one<{ id: string }>(
     "SELECT id FROM snapshots WHERE page_id=? ORDER BY seq DESC",
     pid,
-  )!.id;
-  const d = database(pid);
-  act({
+  ))!.id;
+  const d = await database(pid);
+  await act({
     action: "database.update",
     pageId: pid,
     version: d.version,
     fields,
     views: [{ ...view, timeline: { scale: "year", showWeekends: true } }],
   });
-  act({ action: "snapshot.restore", pageId: pid, snapshotId: snapshot });
-  check(pid);
-  const destination = createWorkspace(owner.id, "Timeline restore"),
+  await act({ action: "snapshot.restore", pageId: pid, snapshotId: snapshot });
+  await check(pid);
+  const destination = await createWorkspace(owner.id, "Timeline restore"),
     result = await importArchive(
       owner,
       destination,
       await exportArchive(owner, wid),
     );
-  check(result.pageIds[pid]);
-  const area = act({
+  await check(result.pageIds[pid]);
+  const area = (await act({
     action: "space.create",
     workspaceId: wid,
     name: "Timeline area",
     private: true,
-  }).id;
-  run("UPDATE pages SET space_id=? WHERE id=?", area, pid);
-  const clone = act({
+  })).id;
+  await run("UPDATE pages SET space_id=? WHERE id=?", area, pid);
+  const clone = await act({
     action: "space.duplicate",
     spaceId: area,
     version: 1,
     name: "Timeline area copy",
     visibility: "private",
   });
-  check(
-    one<{ id: string }>("SELECT id FROM pages WHERE space_id=?", clone.id)!.id,
+  await check(
+    (await one<{ id: string }>("SELECT id FROM pages WHERE space_id=?", clone.id))!.id,
   );
-  const current = database(pid);
-  assert.throws(() =>
-    act({
+  const current = await database(pid);
+  await assert.rejects(async () =>
+    await act({
       action: "database.update",
       pageId: pid,
       version: current.version,
@@ -515,22 +515,22 @@ test("timeline dependencies compute finish-to-start shifts, cycles and survive p
   );
 
   // A copied database points its self-relation and dependency at the copy.
-  const owner = user();
-  const wid = createWorkspace(owner.id, "Dependencies");
-  const space = bootstrap(owner, wid).spaces[0];
-  const act = (input: Record<string, unknown>) =>
-    command(owner, input) as { id: string };
-  const pid = act({
+  const owner = await user();
+  const wid = await createWorkspace(owner.id, "Dependencies");
+  const space = (await bootstrap(owner, wid)).spaces[0];
+  const act = async (input: Record<string, unknown>) =>
+    (await command(owner, input)) as { id: string };
+  const pid = (await act({
     action: "page.create",
     workspaceId: wid,
     spaceId: space.id,
     title: "Plan",
     kind: "database",
-  }).id;
-  command(owner, {
+  })).id;
+  await command(owner, {
     action: "database.update",
     pageId: pid,
-    version: database(pid).version,
+    version: (await database(pid)).version,
     fields: fields
       .slice(0, 4)
       .map((f) => (f.id === "after" ? { ...f, relationPage: pid } : f)),
@@ -547,12 +547,12 @@ test("timeline dependencies compute finish-to-start shifts, cycles and survive p
       },
     ],
   });
-  const first = act({
+  const first = (await act({
     action: "row.create",
     pageId: pid,
     cells: { title: "A", start: "2026-02-01", end: "2026-02-05" },
-  }).id;
-  act({
+  })).id;
+  await act({
     action: "row.create",
     pageId: pid,
     cells: {
@@ -562,14 +562,14 @@ test("timeline dependencies compute finish-to-start shifts, cycles and survive p
       after: [first],
     },
   });
-  const copy = act({ action: "page.duplicate", pageId: pid }).id;
-  const copied = database(copy);
+  const copy = (await act({ action: "page.duplicate", pageId: pid })).id;
+  const copied = await database(copy);
   const view = copied.views[0];
   const relation = dependencyFields(copied.fields, copy).find(
     (f) => f.id === view.timeline?.dependencyField,
   );
   assert.ok(relation, "dependency field resolves in the copy");
-  const copiedRows = rows(copy);
+  const copiedRows = await rows(copy);
   const deps = timelineDependencies(
     copiedRows,
     relation,
@@ -618,21 +618,21 @@ test("cascading shifts push whole dependency chains after their predecessors", a
     null,
   );
 
-  const owner = user();
-  const wid = createWorkspace(owner.id, "Kaskade");
-  const act = (input: Record<string, unknown>) =>
-    command(owner, input) as { id: string };
-  const pid = act({
+  const owner = await user();
+  const wid = await createWorkspace(owner.id, "Kaskade");
+  const act = async (input: Record<string, unknown>) =>
+    (await command(owner, input)) as { id: string };
+  const pid = (await act({
     action: "page.create",
     workspaceId: wid,
-    spaceId: bootstrap(owner, wid).spaces[0].id,
+    spaceId: (await bootstrap(owner, wid)).spaces[0].id,
     title: "Plan",
     kind: "database",
-  }).id;
-  command(owner, {
+  })).id;
+  await command(owner, {
     action: "database.update",
     pageId: pid,
-    version: database(pid).version,
+    version: (await database(pid)).version,
     fields: fields.map((f) =>
       f.id === "after" ? { ...f, relationPage: pid } : f,
     ),
@@ -653,12 +653,12 @@ test("cascading shifts push whole dependency chains after their predecessors", a
       },
     ],
   });
-  const a = act({
+  const a = (await act({
     action: "row.create",
     pageId: pid,
     cells: { title: "A", start: "2026-03-01", end: "2026-03-04" },
-  }).id;
-  const b = act({
+  })).id;
+  const b = (await act({
     action: "row.create",
     pageId: pid,
     cells: {
@@ -667,9 +667,9 @@ test("cascading shifts push whole dependency chains after their predecessors", a
       end: "2026-03-03T17:00",
       after: [a],
     },
-  }).id;
+  })).id;
   // Shifted records change like any edit: automations see them.
-  command(owner, {
+  await command(owner, {
     action: "database.settings",
     pageId: pid,
     settings: {
@@ -678,25 +678,25 @@ test("cascading shifts push whole dependency chains after their predecessors", a
       ],
     },
   });
-  command(owner, {
+  await command(owner, {
     action: "timeline.cascade",
     pageId: pid,
     viewId: "t",
-    version: database(pid).version,
+    version: (await database(pid)).version,
   });
-  const moved = rows(pid).find((x) => x.id === b)!;
+  const moved = (await rows(pid)).find((x) => x.id === b)!;
   // Times of day are kept.
   assert.deepEqual(
     [moved.cells.start, moved.cells.end],
     ["2026-03-05T09:00", "2026-03-06T17:00"],
   );
   assert.deepEqual(
-    all<{ row_id: string }>("SELECT row_id FROM notifications WHERE user_id=? AND kind='automation'", owner.id).map((n) => n.row_id),
+    (await all<{ row_id: string }>("SELECT row_id FROM notifications WHERE user_id=? AND kind='automation'", owner.id)).map((n) => n.row_id),
     [b],
   );
-  assert.throws(
-    () =>
-      command(owner, {
+  await assert.rejects(
+    async () =>
+      await command(owner, {
         action: "timeline.cascade",
         pageId: pid,
         viewId: "t",
@@ -803,27 +803,27 @@ test("successors, circles and the critical path follow the dependency field", as
 });
 
 test("dragging a bar onto another links them; successors can move along", async () => {
-  const owner = user();
-  const wid = createWorkspace(owner.id, "Gantt");
-  const act = (input: Record<string, unknown>) => command(owner, input) as { id: string };
-  const pid = act({
+  const owner = await user();
+  const wid = await createWorkspace(owner.id, "Gantt");
+  const act = async (input: Record<string, unknown>) => (await command(owner, input)) as { id: string };
+  const pid = (await act({
     action: "page.create",
     workspaceId: wid,
-    spaceId: bootstrap(owner, wid).spaces[0].id,
+    spaceId: (await bootstrap(owner, wid)).spaces[0].id,
     title: "Plan",
     kind: "database",
-  }).id;
+  })).id;
   const fields: Field[] = [
     { id: "title", name: "Name", type: "text" },
     { id: "start", name: "Beginn", type: "date" },
     { id: "end", name: "Ende", type: "date" },
     { id: "after", name: "Wartet auf", type: "relation", relationPage: pid },
   ];
-  const timeline = (extra: Record<string, unknown> = {}) =>
-    command(owner, {
+  const timeline = async (extra: Record<string, unknown> = {}) =>
+    await command(owner, {
       action: "database.update",
       pageId: pid,
-      version: database(pid).version,
+      version: (await database(pid)).version,
       fields,
       views: [
         {
@@ -838,88 +838,88 @@ test("dragging a bar onto another links them; successors can move along", async 
         },
       ],
     });
-  timeline();
-  const row = (title: string, start: string, end: string) =>
-    act({ action: "row.create", pageId: pid, cells: { title, start, end } }).id;
-  const a = row("A", "2026-03-01", "2026-03-04"),
-    b = row("B", "2026-03-05", "2026-03-06"),
-    c = row("C", "2026-03-07", "2026-03-09"),
-    other = row("Andere", "2026-03-01", "2026-03-02");
-  const link = (from: string, to: string, version = database(pid).version) =>
-    command(owner, { action: "timeline.link", pageId: pid, viewId: "t", version, from, to }) as { added: boolean };
-  assert.equal(link(a, b).added, true);
-  assert.equal(link(a, b).added, false);
-  assert.equal(link(b, c).added, true);
-  assert.deepEqual(rows(pid).find((x) => x.id === c)!.cells.after, [b]);
+  await timeline();
+  const row = async (title: string, start: string, end: string) =>
+    (await act({ action: "row.create", pageId: pid, cells: { title, start, end } })).id;
+  const a = await row("A", "2026-03-01", "2026-03-04"),
+    b = await row("B", "2026-03-05", "2026-03-06"),
+    c = await row("C", "2026-03-07", "2026-03-09"),
+    other = await row("Andere", "2026-03-01", "2026-03-02");
+  const link = async (from: string, to: string, version = (await database(pid)).version) =>
+    (await command(owner, { action: "timeline.link", pageId: pid, viewId: "t", version, from, to })) as { added: boolean };
+  assert.equal((await link(a, b)).added, true);
+  assert.equal((await link(a, b)).added, false);
+  assert.equal((await link(b, c)).added, true);
+  assert.deepEqual((await rows(pid)).find((x) => x.id === c)!.cells.after, [b]);
   // A link back would close a circle.
-  assert.throws(() => link(c, a), /Kreis/);
-  assert.throws(() => link(a, a), /Kreis/);
-  assert.throws(() => link(a, b, 0), /geändert/);
+  await assert.rejects(async () => await link(c, a), /Kreis/);
+  await assert.rejects(async () => await link(a, a), /Kreis/);
+  await assert.rejects(async () => await link(a, b, 0), /geändert/);
   // A reader may not add links.
-  const reader = user();
-  run("INSERT INTO members VALUES(?,?,?)", wid, reader.id, "viewer");
-  assert.throws(() => command(reader, { action: "timeline.link", pageId: pid, viewId: "t", version: database(pid).version, from: a, to: other }));
+  const reader = await user();
+  await run("INSERT INTO members VALUES(?,?,?)", wid, reader.id, "viewer");
+  await assert.rejects(async () => await command(reader, { action: "timeline.link", pageId: pid, viewId: "t", version: (await database(pid)).version, from: a, to: other }));
 
-  const schedule = (rid: string, days: number) =>
-    command(owner, {
+  const schedule = async (rid: string, days: number) =>
+    (await command(owner, {
       action: "row.schedule",
       pageId: pid,
       viewId: "t",
-      version: database(pid).version,
+      version: (await database(pid)).version,
       rowId: rid,
-      rowVersion: rows(pid).find((x) => x.id === rid)!.version,
+      rowVersion: (await rows(pid)).find((x) => x.id === rid)!.version,
       change: { operation: "move", days },
-    }) as { moved: number };
-  const period = (rid: string) => {
-    const cells = rows(pid).find((x) => x.id === rid)!.cells;
+    })) as { moved: number };
+  const period = async (rid: string) => {
+    const cells = (await rows(pid)).find((x) => x.id === rid)!.cells;
     return [cells.start, cells.end];
   };
   // Without the setting only the dragged record moves.
-  assert.equal(schedule(a, 2).moved, 0);
-  assert.deepEqual(period(b), ["2026-03-05", "2026-03-06"]);
+  assert.equal((await schedule(a, 2)).moved, 0);
+  assert.deepEqual(await period(b), ["2026-03-05", "2026-03-06"]);
   // With "Nachfolger mitverschieben" the whole chain follows, both ways.
-  timeline({ moveSuccessors: true });
-  assert.equal(schedule(a, 3).moved, 2);
-  assert.deepEqual([period(a), period(b), period(c), period(other)], [
+  await timeline({ moveSuccessors: true });
+  assert.equal((await schedule(a, 3)).moved, 2);
+  assert.deepEqual([await period(a), await period(b), await period(c), await period(other)], [
     ["2026-03-06", "2026-03-09"],
     ["2026-03-08", "2026-03-09"],
     ["2026-03-10", "2026-03-12"],
     ["2026-03-01", "2026-03-02"],
   ]);
-  assert.equal(schedule(b, -1).moved, 1);
-  assert.deepEqual([period(b), period(c)], [["2026-03-07", "2026-03-08"], ["2026-03-09", "2026-03-11"]]);
+  assert.equal((await schedule(b, -1)).moved, 1);
+  assert.deepEqual([await period(b), await period(c)], [["2026-03-07", "2026-03-08"], ["2026-03-09", "2026-03-11"]]);
   // Links on the end (fs): the end pushes successors, the start alone does not.
-  const resize = (rid: string, operation: "resize-start" | "resize-end", days: number) =>
-    command(owner, {
+  const resize = async (rid: string, operation: "resize-start" | "resize-end", days: number) =>
+    (await command(owner, {
       action: "row.schedule",
       pageId: pid,
       viewId: "t",
-      version: database(pid).version,
+      version: (await database(pid)).version,
       rowId: rid,
-      rowVersion: rows(pid).find((x) => x.id === rid)!.version,
+      rowVersion: (await rows(pid)).find((x) => x.id === rid)!.version,
       change: { operation, days },
-    }) as { moved: number };
-  assert.equal(resize(b, "resize-start", -1).moved, 0);
-  assert.deepEqual([period(b), period(c)], [["2026-03-06", "2026-03-08"], ["2026-03-09", "2026-03-11"]]);
-  assert.equal(resize(b, "resize-end", 1).moved, 1);
-  assert.deepEqual([period(b), period(c)], [["2026-03-06", "2026-03-09"], ["2026-03-10", "2026-03-12"]]);
+    })) as { moved: number };
+  assert.equal((await resize(b, "resize-start", -1)).moved, 0);
+  assert.deepEqual([await period(b), await period(c)], [["2026-03-06", "2026-03-08"], ["2026-03-09", "2026-03-11"]]);
+  assert.equal((await resize(b, "resize-end", 1)).moved, 1);
+  assert.deepEqual([await period(b), await period(c)], [["2026-03-06", "2026-03-09"], ["2026-03-10", "2026-03-12"]]);
   // Links on the start (ss, sf): the start moves successors, the end does not.
-  timeline({ moveSuccessors: true, dependencyType: "ss" });
-  assert.equal(resize(b, "resize-end", 1).moved, 0);
-  assert.deepEqual([period(b), period(c)], [["2026-03-06", "2026-03-10"], ["2026-03-10", "2026-03-12"]]);
-  assert.equal(resize(b, "resize-start", 2).moved, 1);
-  assert.deepEqual([period(b), period(c)], [["2026-03-08", "2026-03-10"], ["2026-03-12", "2026-03-14"]]);
-  timeline({ moveSuccessors: true, dependencyType: "sf" });
-  assert.equal(resize(b, "resize-start", -1).moved, 1);
-  assert.deepEqual([period(b), period(c)], [["2026-03-07", "2026-03-10"], ["2026-03-11", "2026-03-13"]]);
+  await timeline({ moveSuccessors: true, dependencyType: "ss" });
+  assert.equal((await resize(b, "resize-end", 1)).moved, 0);
+  assert.deepEqual([await period(b), await period(c)], [["2026-03-06", "2026-03-10"], ["2026-03-10", "2026-03-12"]]);
+  assert.equal((await resize(b, "resize-start", 2)).moved, 1);
+  assert.deepEqual([await period(b), await period(c)], [["2026-03-08", "2026-03-10"], ["2026-03-12", "2026-03-14"]]);
+  await timeline({ moveSuccessors: true, dependencyType: "sf" });
+  assert.equal((await resize(b, "resize-start", -1)).moved, 1);
+  assert.deepEqual([await period(b), await period(c)], [["2026-03-07", "2026-03-10"], ["2026-03-11", "2026-03-13"]]);
   // Links on the end again (ff): whole moves shift either way.
-  timeline({ moveSuccessors: true, dependencyType: "ff" });
-  assert.equal(resize(b, "resize-start", 1).moved, 0);
-  assert.equal(schedule(b, 1).moved, 1);
-  assert.deepEqual([period(b), period(c)], [["2026-03-09", "2026-03-11"], ["2026-03-12", "2026-03-14"]]);
-  timeline({ moveSuccessors: true });
+  await timeline({ moveSuccessors: true, dependencyType: "ff" });
+  assert.equal((await resize(b, "resize-start", 1)).moved, 0);
+  assert.equal((await schedule(b, 1)).moved, 1);
+  assert.deepEqual([await period(b), await period(c)], [["2026-03-09", "2026-03-11"], ["2026-03-12", "2026-03-14"]]);
+  await timeline({ moveSuccessors: true });
   // Circular data (written elsewhere) is refused instead of moved forever.
-  const cyclic = JSON.parse(one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", a)!.cells);
-  run("UPDATE rows SET cells=? WHERE id=?", JSON.stringify({ ...cyclic, after: [c] }), a);
-  assert.throws(() => schedule(a, 1), /Zyklische/);
+  const cyclic = JSON.parse((await one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", a))!.cells);
+  await run("UPDATE rows SET cells=? WHERE id=?", JSON.stringify({ ...cyclic, after: [c] }), a);
+  await assert.rejects(async () => await schedule(a, 1), /Zyklische/);
 });

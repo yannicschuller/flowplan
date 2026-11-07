@@ -13,6 +13,7 @@ import { indexPageTasks } from "./doc-tasks";
 import { ct } from "./content-locale";
 import type { Field, View } from "./types";
 import type { WhiteboardItem } from "./whiteboard-model";
+import { mapAsync } from "./each-async";
 
 const day = (offset: number) => {
   const d = new Date();
@@ -34,17 +35,17 @@ const task = (text: string, done = false) =>
 const view = (vid: string, name: string, type: View["type"], extra: Record<string, unknown> = {}) =>
   ({ id: vid, name, type, filters: [], sorts: [], ...extra }) as View;
 
-function setDocument(pageId: string, html: string, icon?: string) {
-  run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), pageId);
-  if (icon) run("UPDATE pages SET icon=? WHERE id=?", icon, pageId);
+async function setDocument(pageId: string, html: string, icon?: string) {
+  await run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), pageId);
+  if (icon) await run("UPDATE pages SET icon=? WHERE id=?", icon, pageId);
 }
-function setDatabase(pageId: string, fields: Field[], views: View[], icon: string) {
-  run("UPDATE databases SET fields=?,views=? WHERE page_id=?", JSON.stringify(fields), JSON.stringify(views), pageId);
-  run("UPDATE pages SET icon=? WHERE id=?", icon, pageId);
+async function setDatabase(pageId: string, fields: Field[], views: View[], icon: string) {
+  await run("UPDATE databases SET fields=?,views=? WHERE page_id=?", JSON.stringify(fields), JSON.stringify(views), pageId);
+  await run("UPDATE pages SET icon=? WHERE id=?", icon, pageId);
 }
-function addRow(pageId: string, user: string, position: number, cells: Record<string, unknown>, content = "") {
+async function addRow(pageId: string, user: string, position: number, cells: Record<string, unknown>, content = "") {
   const rid = id();
-  run(
+  await run(
     "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content) VALUES(?,?,?,?,?,?,?)",
     rid,
     pageId,
@@ -58,7 +59,7 @@ function addRow(pageId: string, user: string, position: number, cells: Record<st
 }
 
 // Whiteboard items from drafts with local ids (connectors refer to them).
-function setBoard(pageId: string, drafts: (Partial<WhiteboardItem> & { id: string; type: WhiteboardItem["type"] })[]) {
+async function setBoard(pageId: string, drafts: (Partial<WhiteboardItem> & { id: string; type: WhiteboardItem["type"] })[]) {
   const ids = new Map(drafts.map((d) => [d.id, randomUUID()]));
   const doc = new Y.Doc();
   const items = doc.getMap<Y.Map<unknown>>("items");
@@ -74,14 +75,14 @@ function setBoard(pageId: string, drafts: (Partial<WhiteboardItem> & { id: strin
         );
     items.set(ids.get(draft.id)!, map);
   });
-  writeWhiteboard(pageId, Y.encodeStateAsUpdate(doc));
+  await writeWhiteboard(pageId, Y.encodeStateAsUpdate(doc));
   doc.destroy();
 }
 
-export function seedDemoShowcase(workspace: string, space: string, user: string) {
+export async function seedDemoShowcase(workspace: string, space: string, user: string) {
   // ---- Team (relation target) -------------------------------------------
-  const team = createPage(workspace, space, user, "Team", "database");
-  setDatabase(
+  const team = await createPage(workspace, space, user, "Team", "database");
+  await setDatabase(
     team,
     [
       { id: "title", name: "Name", type: "text" },
@@ -92,14 +93,14 @@ export function seedDemoShowcase(workspace: string, space: string, user: string)
     [view("gallery", ct("Karten", "Cards"), "gallery", { gallery: { cover: "none", fit: "cover", size: "medium" } }), view("table", ct("Tabelle", "Table"), "table")],
     "👥",
   );
-  const people = [
+  const people = await mapAsync([
     ["Mara Klein", "Design", 85, "mara@example.com"],
     ["Jonas Weber", ct("Entwicklung", "Engineering"), 95, "jonas@example.com"],
     ["Aylin Demir", ct("Produkt", "Product"), 90, "aylin@example.com"],
-  ].map(([name, role, rate, email], i) => addRow(team, user, i, { title: name, role, rate, email }));
+  ], async ([name, role, rate, email], i) => await addRow(team, user, i, { title: name, role, rate, email }));
 
   // ---- Projects: every view, relation, rollup, formula --------------------
-  const projects = createPage(workspace, space, user, ct("Projekte", "Projects"), "database");
+  const projects = await createPage(workspace, space, user, ct("Projekte", "Projects"), "database");
   const [idea, doing, review, done] = [ct("Idee", "Idea"), ct("In Arbeit", "In progress"), "Review", ct("Erledigt", "Done")];
   const [high, medium, low] = [ct("Hoch", "High"), ct("Mittel", "Medium"), ct("Niedrig", "Low")];
   const tech = ct("Technik", "Engineering");
@@ -119,7 +120,7 @@ export function seedDemoShowcase(workspace: string, space: string, user: string)
     { id: "cost", name: ct("Kosten", "Cost"), type: "formula", formula: ct('round(prop("Aufwand (h)") * prop("Stundensatz Team"), 0)', 'round(prop("Effort (h)") * prop("Team hourly rate"), 0)'), format: "eur" },
     { id: "files", name: ct("Anhänge", "Attachments"), type: "files" },
   ];
-  setDatabase(
+  await setDatabase(
     projects,
     fields,
     [
@@ -158,8 +159,8 @@ export function seedDemoShowcase(workspace: string, space: string, user: string)
     [ct("Offline-Modus testen", "Test offline mode"), doing, low, -1, 9, [tech], 8, false, [1], ""],
     [ct("Preisseite überarbeiten", "Rework the pricing page"), idea, low, 10, 20, ["Marketing", "Design"], 10, false, [0, 2], ""],
   ];
-  const projectIds = projectRows.map(([title, status, priority, start, due, tags, hours, done, members, content], i) =>
-    addRow(
+  const projectIds = await mapAsync(projectRows, async ([title, status, priority, start, due, tags, hours, done, members, content], i) =>
+    await addRow(
       projects,
       user,
       i,
@@ -168,9 +169,9 @@ export function seedDemoShowcase(workspace: string, space: string, user: string)
     ),
   );
   // A repeating entry shows series in calendar and timeline.
-  const weekly = addRow(projects, user, projectRows.length, { title: ct("Wochenplanung", "Weekly planning"), status: doing, priority: medium, start: day(0), due: day(0), tags: [], hours: 1 });
-  run("UPDATE rows SET recurrence=? WHERE id=?", JSON.stringify({ freq: "weekly", interval: 1, count: 8 }), weekly);
-  run(
+  const weekly = await addRow(projects, user, projectRows.length, { title: ct("Wochenplanung", "Weekly planning"), status: doing, priority: medium, start: day(0), due: day(0), tags: [], hours: 1 });
+  await run("UPDATE rows SET recurrence=? WHERE id=?", JSON.stringify({ freq: "weekly", interval: 1, count: 8 }), weekly);
+  await run(
     "UPDATE databases SET fields=? WHERE page_id=?",
     JSON.stringify(fields),
     projects,
@@ -178,9 +179,9 @@ export function seedDemoShowcase(workspace: string, space: string, user: string)
   void projectIds;
 
   // ---- Whiteboard ----------------------------------------------------------
-  const board = createPage(workspace, space, user, ct("Whiteboard: Ideen sammeln", "Whiteboard: collect ideas"), "whiteboard");
-  run("UPDATE pages SET icon=? WHERE id=?", "🧠", board);
-  setBoard(board, [
+  const board = await createPage(workspace, space, user, ct("Whiteboard: Ideen sammeln", "Whiteboard: collect ideas"), "whiteboard");
+  await run("UPDATE pages SET icon=? WHERE id=?", "🧠", board);
+  await setBoard(board, [
     { id: "f1", type: "frame", x: 0, y: 0, w: 520, h: 420, text: ct("Was wünschen sich Nutzer?", "What do users want?"), fill: "#e7f5ff" },
     { id: "f2", type: "frame", x: 580, y: 0, w: 520, h: 420, text: ct("Was bauen wir zuerst?", "What do we build first?"), fill: "#ebfbee" },
     { id: "n1", type: "sticky", x: 30, y: 60, w: 180, h: 160, text: ct("Schnellere Suche", "Faster search"), fill: "#fff6b6", fontSize: 16 },
@@ -208,10 +209,10 @@ export function seedDemoShowcase(workspace: string, space: string, user: string)
   ]);
 
   // ---- Journal with yesterday's open tasks --------------------------------
-  const journal = createPage(workspace, space, user, "Journal", "journal");
-  const yesterday = createPage(workspace, space, user, dayTitle(day(-1)), "document", journal);
-  run("UPDATE pages SET journal_date=?,icon='day',position=? WHERE id=?", day(-1), -Number(day(-1).replaceAll("-", "")), yesterday);
-  setDocument(
+  const journal = await createPage(workspace, space, user, "Journal", "journal");
+  const yesterday = await createPage(workspace, space, user, dayTitle(day(-1)), "document", journal);
+  await run("UPDATE pages SET journal_date=?,icon='day',position=? WHERE id=?", day(-1), -Number(day(-1).replaceAll("-", "")), yesterday);
+  await setDocument(
     yesterday,
     ct("<p>Gestern: Onboarding-Entwürfe besprochen, Feedback eingearbeitet.</p>", "<p>Yesterday: discussed the onboarding drafts, worked in the feedback.</p>") +
       "<ul data-type=\"taskList\">" +
@@ -222,7 +223,7 @@ export function seedDemoShowcase(workspace: string, space: string, user: string)
   );
   // Template, trackers and a few earlier days: streak, heatmap, trends and
   // "An diesem Tag" have something to show.
-  run(
+  await run(
     "INSERT INTO journal_settings(page_id,template,trackers) VALUES(?,?,?)",
     journal,
     ct(
@@ -235,9 +236,9 @@ export function seedDemoShowcase(workspace: string, space: string, user: string)
       { id: "sport", name: ct("Sport", "Exercise"), kind: "check" },
     ]),
   );
-  const entry = (pageId: string, values: Record<string, unknown>, place = "") =>
-    run("INSERT INTO journal_entries(page_id,data,place,updated_at) VALUES(?,?,?,?)", pageId, JSON.stringify(values), place, Date.now());
-  entry(yesterday, { mood: 4, sleep: 7, sport: true }, ct("Büro", "Office"));
+  const entry = async (pageId: string, values: Record<string, unknown>, place = "") =>
+    await run("INSERT INTO journal_entries(page_id,data,place,updated_at) VALUES(?,?,?,?)", pageId, JSON.stringify(values), place, Date.now());
+  await entry(yesterday, { mood: 4, sleep: 7, sport: true }, ct("Büro", "Office"));
   const earlier: [number, string, Record<string, unknown>, string][] = [
     [-2, ct("<h3>Dankbar für</h3><p>Den Kaffee mit Jana und die ruhige Zugfahrt.</p><h3>Rückblick am Abend</h3><p>Die Roadmap steht, das Team ist zufrieden.</p>", "<h3>Grateful for</h3><p>Coffee with Jana and the quiet train ride.</p><h3>Evening review</h3><p>The roadmap is done, the team is happy.</p>"), { mood: 5, sleep: 8, sport: false }, "Hamburg"],
     [-3, ct("<p>Langer Workshop-Tag. Viele Ideen auf dem Whiteboard gesammelt.</p>", "<p>Long workshop day. Collected lots of ideas on the whiteboard.</p>"), { mood: 3, sleep: 6, sport: true }, ct("Büro", "Office")],
@@ -247,19 +248,19 @@ export function seedDemoShowcase(workspace: string, space: string, user: string)
     [monthAgo(), ct("<p>Kick-off für das neue Projekt. Aufregend!</p>", "<p>Kick-off for the new project. Exciting!</p>"), { mood: 5, sleep: 8, sport: true }, "Berlin"],
   ];
   for (const [offset, html, values, place] of earlier) {
-    const past = createPage(workspace, space, user, dayTitle(day(offset)), "document", journal);
-    run("UPDATE pages SET journal_date=?,icon='day',position=? WHERE id=?", day(offset), -Number(day(offset).replaceAll("-", "")), past);
-    setDocument(past, html);
-    entry(past, values, place);
+    const past = await createPage(workspace, space, user, dayTitle(day(offset)), "document", journal);
+    await run("UPDATE pages SET journal_date=?,icon='day',position=? WHERE id=?", day(offset), -Number(day(offset).replaceAll("-", "")), past);
+    await setDocument(past, html);
+    await entry(past, values, place);
   }
 
   // ---- Knowledge with sub pages from templates -----------------------------
-  const knowledge = createPage(workspace, space, user, ct("Wissen", "Knowledge"), "document");
-  const faq = createPage(workspace, space, user, "FAQ", "document", knowledge);
-  applyStarterTemplate(faq, user, "faq");
-  const howto = createPage(workspace, space, user, ct("Anleitung", "How-to guide"), "document", knowledge);
-  applyStarterTemplate(howto, user, "howto");
-  setDocument(
+  const knowledge = await createPage(workspace, space, user, ct("Wissen", "Knowledge"), "document");
+  const faq = await createPage(workspace, space, user, "FAQ", "document", knowledge);
+  await applyStarterTemplate(faq, user, "faq");
+  const howto = await createPage(workspace, space, user, ct("Anleitung", "How-to guide"), "document", knowledge);
+  await applyStarterTemplate(howto, user, "howto");
+  await setDocument(
     knowledge,
     ct(
       `<p>Wissen wächst als Seitenbaum: ${link(faq, "FAQ")} und ${link(howto, "Anleitung")} sind Unterseiten dieser Seite und stammen aus der Vorlagengalerie.</p>`,
@@ -269,11 +270,11 @@ export function seedDemoShowcase(workspace: string, space: string, user: string)
   );
 
   // ---- Editor tour: every block ---------------------------------------------
-  const tour = createPage(workspace, space, user, ct("Editor-Rundgang", "Editor tour"), "document");
+  const tour = await createPage(workspace, space, user, ct("Editor-Rundgang", "Editor tour"), "document");
   // A synced block: the same content here and on the welcome page.
-  const synced = createPage(workspace, space, user, ct("Synchronisierter Block", "Synced block"), "document", tour);
-  run("UPDATE pages SET synced=1 WHERE id=?", synced);
-  setDocument(
+  const synced = await createPage(workspace, space, user, ct("Synchronisierter Block", "Synced block"), "document", tour);
+  await run("UPDATE pages SET synced=1 WHERE id=?", synced);
+  await setDocument(
     synced,
     ct(
       "<p>📌 <strong>Synchronisiert:</strong> Dieser Hinweis steht im Editor-Rundgang und auf der Willkommensseite. Ändere ihn an einer Stelle – er ändert sich überall.</p>",
@@ -284,7 +285,7 @@ export function seedDemoShowcase(workspace: string, space: string, user: string)
   const guest = ct("Demo-Gast", "Demo guest");
   const suggestion = (kind: "delete" | "insert", text: string) =>
     `<span data-suggestion="${kind}" data-suggestion-id="demo1" data-suggestion-author="${esc(user)}" data-suggestion-name="${guest}" data-suggestion-at="${Date.now()}">${text}</span>`;
-  setDocument(
+  await setDocument(
     tour,
     [
       ct(
@@ -363,15 +364,15 @@ export function seedDemoShowcase(workspace: string, space: string, user: string)
   );
 
   // ---- Welcome page, first in the tree --------------------------------------
-  const welcome = createPage(workspace, space, user, ct("Willkommen in der Demo", "Welcome to the demo"), "document");
-  run("UPDATE pages SET position=-1 WHERE id=?", welcome);
+  const welcome = await createPage(workspace, space, user, ct("Willkommen in der Demo", "Welcome to the demo"), "document");
+  await run("UPDATE pages SET position=-1 WHERE id=?", welcome);
   const [tourName, projectsName, journalName, knowledgeName] = [
     ct("Editor-Rundgang", "Editor tour"),
     ct("Projekte", "Projects"),
     "Journal",
     ct("Wissen", "Knowledge"),
   ];
-  setDocument(
+  await setDocument(
     welcome,
     ct(
       "<p>Das ist dein eigener Demo-Arbeitsbereich. Probiere alles aus – er wird gelöscht, sobald du die Demo beendest.</p>",
@@ -395,6 +396,6 @@ export function seedDemoShowcase(workspace: string, space: string, user: string)
     "👋",
   );
   // "Meine Aufgaben" shows the tasks of the tour right away.
-  indexPageTasks(tour);
+  await indexPageTasks(tour);
   return welcome;
 }

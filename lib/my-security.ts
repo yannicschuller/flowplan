@@ -26,18 +26,18 @@ export type SecurityCheck = {
 
 const sessionId = (tokenHash: string) => createHash("sha256").update(`session:${tokenHash}`).digest("hex").slice(0, 20);
 
-export function mySecurity(user: Identity, currentToken: string | undefined, now = Date.now()) {
+export async function mySecurity(user: Identity, currentToken: string | undefined, now = Date.now()) {
   if (user.apiScope) throw new HttpError(403, "Mit einem API-Token nicht möglich.");
   if (user.demo) throw new HttpError(403, "In der Demo nicht verfügbar.");
-  const local = isLocalAccount(user.id);
-  const ldap = isLdapAccount(user.id);
-  const factor = local ? twoFactorStatus(user.id) : null;
-  const passkeys = local ? Number(one<{ n: number }>("SELECT COUNT(*) n FROM passkeys WHERE user_id=?", user.id)?.n || 0) : 0;
-  const unconfirmed = local && !!one("SELECT 1 FROM local_accounts WHERE user_id=? AND email_verified=0", user.id);
+  const local = await isLocalAccount(user.id);
+  const ldap = await isLdapAccount(user.id);
+  const factor = local ? (await twoFactorStatus(user.id)) : null;
+  const passkeys = local ? Number((await one<{ n: number }>("SELECT COUNT(*) n FROM passkeys WHERE user_id=?", user.id))?.n || 0) : 0;
+  const unconfirmed = local && !!(await one("SELECT 1 FROM local_accounts WHERE user_id=? AND email_verified=0", user.id));
 
   // Devices: how many, and which have not been used for a month.
   const current = currentToken ? hash(currentToken) : "";
-  const sessions = all<{ token: string; created_at: number | null; last_seen: number | null; agent: string }>(
+  const sessions = await all<{ token: string; created_at: number | null; last_seen: number | null; agent: string }>(
     "SELECT token,created_at,last_seen,agent FROM sessions WHERE user_id=? AND expires>?",
     user.id,
     now,
@@ -45,7 +45,7 @@ export function mySecurity(user: Identity, currentToken: string | undefined, now
   const stale = sessions.filter((s) => s.token !== current && (s.last_seen ?? s.created_at ?? 0) < now - 30 * DAY);
 
   // API tokens: without end, or not used for three months.
-  const tokens = all<{ id: string; name: string; scope: string; created_at: number; last_used_at: number | null; expires_at: number | null }>(
+  const tokens = await all<{ id: string; name: string; scope: string; created_at: number; last_used_at: number | null; expires_at: number | null }>(
     "SELECT id,name,scope,created_at,last_used_at,expires_at FROM api_tokens WHERE user_id=? AND (expires_at IS NULL OR expires_at>?)",
     user.id,
     now,
@@ -54,7 +54,7 @@ export function mySecurity(user: Identity, currentToken: string | undefined, now
   const endlessTokens = tokens.filter((t) => !t.expires_at);
 
   // What this person shared.
-  const links = all<{ token: string; name: string; role: string; root_id: string; title: string; created_at: string; include_children: number; password: number; expires_at: number | null }>(
+  const links = await all<{ token: string; name: string; role: string; root_id: string; title: string; created_at: string; include_children: number; password: number; expires_at: number | null }>(
     `SELECT l.token,l.name,l.role,l.root_id,p.title,l.created_at,l.include_children,l.password_hash IS NOT NULL password,l.expires_at
      FROM share_links l JOIN pages p ON p.id=l.root_id WHERE l.created_by=? AND p.deleted_at IS NULL AND (l.expires_at IS NULL OR l.expires_at>?)
      ORDER BY l.created_at DESC LIMIT 200`,
@@ -62,30 +62,30 @@ export function mySecurity(user: Identity, currentToken: string | undefined, now
     now,
   );
   const openEditorLinks = links.filter((l) => l.role === "editor" && !l.password && !l.expires_at);
-  const published = all<{ id: string; title: string; updated_at: string }>(
+  const published = await all<{ id: string; title: string; updated_at: string }>(
     "SELECT id,title,updated_at FROM pages WHERE created_by=? AND public_token IS NOT NULL AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT 200",
     user.id,
   );
   // People (and pending invitations) with their own access to pages this
   // person created – not the whole workspace.
   const people = [
-    ...all<{ page_id: string; title: string; user_id: string; name: string; email: string; role: string; guest: number }>(
+    ...(await all<{ page_id: string; title: string; user_id: string; name: string; email: string; role: string; guest: number }>(
       `SELECT p.id page_id,p.title,u.id user_id,u.name,u.email,g.role,EXISTS(SELECT 1 FROM workspace_guests wg WHERE wg.workspace_id=p.workspace_id AND wg.user_id=u.id) guest
        FROM grants g JOIN pages p ON p.id=g.resource_id JOIN users u ON u.id=g.user_id
        WHERE p.created_by=? AND g.group_id='' AND g.user_id<>? AND p.deleted_at IS NULL ORDER BY p.title LIMIT 300`,
       user.id,
       user.id,
-    ).map((r) => ({ pageId: r.page_id, page: r.title, userId: r.user_id, email: r.email, name: r.name, role: r.role, guest: !!r.guest, pending: false })),
-    ...all<{ page_id: string; title: string; email: string; role: string }>(
+    )).map((r) => ({ pageId: r.page_id, page: r.title, userId: r.user_id, email: r.email, name: r.name, role: r.role, guest: !!r.guest, pending: false })),
+    ...(await all<{ page_id: string; title: string; email: string; role: string }>(
       `SELECT p.id page_id,p.title,i.email,i.role FROM invite_grants i JOIN pages p ON p.id=i.resource_id
        WHERE p.created_by=? AND p.deleted_at IS NULL ORDER BY p.title LIMIT 100`,
       user.id,
-    ).map((r) => ({ pageId: r.page_id, page: r.title, userId: "", email: r.email, name: "", role: r.role, guest: true, pending: true })),
+    )).map((r) => ({ pageId: r.page_id, page: r.title, userId: "", email: r.email, name: "", role: r.role, guest: true, pending: true })),
   ];
 
   // Sign-ins and changes of the account, and failed attempts with its address.
-  const subject = subjectHash(user.email || "");
-  const activity = all<{ id: number; at: number; kind: string; network: string; country: string; device: string; detail: string }>(
+  const subject = await subjectHash(user.email || "");
+  const activity = await all<{ id: number; at: number; kind: string; network: string; country: string; device: string; detail: string }>(
     `SELECT id,at,kind,network,country,device,detail FROM security_events
      WHERE at>=? AND (actor_id=? OR (subject_key<>'' AND subject_key=?))
        AND kind IN ('login.success','login.failure','login.refused','login.new_device','session.revoked','account.password','account.password_reset','account.passkey_added','account.passkey_removed','account.2fa_on','account.2fa_off','account.token_created','account.token_revoked','account.messenger_added','account.messenger_removed','admin.granted','admin.revoked','share.public','data.export')
@@ -95,14 +95,14 @@ export function mySecurity(user: Identity, currentToken: string | undefined, now
     subject,
   );
   const failures = Number(
-    one<{ n: number }>(
+    (await one<{ n: number }>(
       "SELECT COUNT(*) n FROM security_events WHERE subject_key<>'' AND subject_key=? AND kind IN ('login.failure','login.refused') AND at>=?",
       subject,
       now - 30 * DAY,
-    )?.n || 0,
+    ))?.n || 0,
   );
 
-  const prefs = notificationPrefs(user).security;
+  const prefs = (await notificationPrefs(user)).security;
   const secondFactor = !!factor && (factor.enabled || factor.passkey);
   const checks: SecurityCheck[] = [];
   if (local) {
@@ -148,4 +148,4 @@ export function mySecurity(user: Identity, currentToken: string | undefined, now
     activity,
   };
 }
-export type MySecurity = ReturnType<typeof mySecurity>;
+export type MySecurity = Awaited<ReturnType<typeof mySecurity>>;

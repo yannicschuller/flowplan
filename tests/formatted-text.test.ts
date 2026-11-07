@@ -25,15 +25,15 @@ const { escapeFormattedCells, FORMATTED_TEXT_MIGRATION } = await import("../lib/
 const { parseImport } = await import("../lib/importers");
 const { affineFileV2, note, page, para, text } = await import("./helpers/affine-fixture");
 
-function account(name: string) {
+async function account(name: string) {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
   return { id: uid, name, email: `${name}@example.test`, groups: [], isAdmin: false, disabled: 0, created_at: "" } as Identity;
 }
-const owner = account("Olga");
-const wid = createWorkspace(owner.id, "Formatiert");
-const space = bootstrap(owner, wid).spaces[0].id;
-const act = (input: Record<string, unknown>) => command(owner, input) as Record<string, unknown>;
+const owner = await account("Olga");
+const wid = await createWorkspace(owner.id, "Formatiert");
+const space = (await bootstrap(owner, wid)).spaces[0].id;
+const act = async (input: Record<string, unknown>) => (await command(owner, input)) as Record<string, unknown>;
 
 const FIELDS: Field[] = [
   { id: "title", name: "Name", type: "text" },
@@ -42,33 +42,33 @@ const FIELDS: Field[] = [
   { id: "n", name: "Zahl", type: "number" },
   { id: "f", name: "Formel", type: "formula", formula: 'prop("Notiz") + "!"' },
 ];
-function newDatabase(title: string, fields: Field[] = FIELDS) {
-  const pageId = (act({ action: "page.create", workspaceId: wid, spaceId: space, title, kind: "database", databaseKind: "empty" }) as { id: string }).id;
+async function newDatabase(title: string, fields: Field[] = FIELDS) {
+  const pageId = ((await act({ action: "page.create", workspaceId: wid, spaceId: space, title, kind: "database", databaseKind: "empty" })) as { id: string }).id;
   const views: View[] = [{ id: "v", name: "Tabelle", type: "table", filters: [], sorts: [] } as unknown as View];
-  run("UPDATE databases SET fields=?,views=? WHERE page_id=?", JSON.stringify(fields), JSON.stringify(views), pageId);
+  await run("UPDATE databases SET fields=?,views=? WHERE page_id=?", JSON.stringify(fields), JSON.stringify(views), pageId);
   return pageId;
 }
-const cellsOf = (pageId: string) => all<{ cells: string }>("SELECT cells FROM rows WHERE page_id=? ORDER BY position", pageId).map((r) => JSON.parse(r.cells));
+const cellsOf = async (pageId: string) => (await all<{ cells: string }>("SELECT cells FROM rows WHERE page_id=? ORDER BY position", pageId)).map((r) => JSON.parse(r.cells));
 
-test("schema 90: existing text values are escaped once, titles and other types stay", { skip: sqliteOnly }, () => {
-  const pageId = newDatabase("Alt");
+test("schema 90: existing text values are escaped once, titles and other types stay", { skip: sqliteOnly }, async () => {
+  const pageId = await newDatabase("Alt");
   // Values as they were stored before #126 (plain strings).
-  const insert = (cells: Record<string, unknown>, position: number) => {
+  const insert = async (cells: Record<string, unknown>, position: number) => {
     const rid = id();
-    run("INSERT INTO rows(id,page_id,cells,position) VALUES(?,?,?,?)", rid, pageId, JSON.stringify(cells), position);
+    await run("INSERT INTO rows(id,page_id,cells,position) VALUES(?,?,?,?)", rid, pageId, JSON.stringify(cells), position);
     return rid;
   };
-  const a = insert({ title: "*Titel* bleibt", notes: "*stars* and snake_case [x](https://x.test) \\ back", kind: "a_b", n: 3 }, 1);
-  insert({ title: "B", notes: "nothing special" }, 2);
-  run("INSERT INTO row_templates(id,page_id,name,cells,html) VALUES(?,?,?,?,?)", id(), pageId, "T", JSON.stringify({ notes: "**fett?**" }), "");
-  run(
+  const a = await insert({ title: "*Titel* bleibt", notes: "*stars* and snake_case [x](https://x.test) \\ back", kind: "a_b", n: 3 }, 1);
+  await insert({ title: "B", notes: "nothing special" }, 2);
+  await run("INSERT INTO row_templates(id,page_id,name,cells,html) VALUES(?,?,?,?,?)", id(), pageId, "T", JSON.stringify({ notes: "**fett?**" }), "");
+  await run(
     "INSERT INTO snapshots(id,page_id,html,title) VALUES(?,?,?,?)",
     id(),
     pageId,
     JSON.stringify({ database: { fields: FIELDS, views: [] }, rows: [{ id: a, cells: { title: "*t*", notes: "_v_" } }], rowTemplates: [] }),
     "Alt",
   );
-  run(
+  await run(
     "INSERT INTO row_trash(id,page_id,workspace_id,title,payload) VALUES(?,?,?,?,?)",
     id(),
     pageId,
@@ -77,36 +77,36 @@ test("schema 90: existing text values are escaped once, titles and other types s
     JSON.stringify({ row: { id: id(), cells: JSON.stringify({ title: "*weg*", notes: "~~nicht~~" }) }, document: null, comments: [] }),
   );
   // The migration runs again as on a server that has not had it yet.
-  run("DELETE FROM data_migrations WHERE name=?", FORMATTED_TEXT_MIGRATION);
+  await run("DELETE FROM data_migrations WHERE name=?", FORMATTED_TEXT_MIGRATION);
   (globalThis as { flowplanSchema?: number }).flowplanSchema = undefined;
   db();
   assert.ok(((globalThis as { flowplanSchema?: number }).flowplanSchema ?? 0) >= 90);
-  const [first, second] = cellsOf(pageId);
+  const [first, second] = await cellsOf(pageId);
   assert.equal(first.title, "*Titel* bleibt", "titles stay plain text");
   assert.equal(first.notes, "\\*stars\\* and snake\\_case \\[x\\](https://x.test) \\\\ back");
   assert.equal(first.kind, "a_b");
   assert.equal(first.n, 3);
   assert.equal(second.notes, "nothing special");
-  assert.equal(JSON.parse(one<{ cells: string }>("SELECT cells FROM row_templates WHERE page_id=?", pageId)!.cells).notes, "\\*\\*fett?\\*\\*");
-  const snapshot = JSON.parse(one<{ html: string }>("SELECT html FROM snapshots WHERE page_id=? ORDER BY seq DESC", pageId)!.html);
+  assert.equal(JSON.parse((await one<{ cells: string }>("SELECT cells FROM row_templates WHERE page_id=?", pageId))!.cells).notes, "\\*\\*fett?\\*\\*");
+  const snapshot = JSON.parse((await one<{ html: string }>("SELECT html FROM snapshots WHERE page_id=? ORDER BY seq DESC", pageId))!.html);
   assert.deepEqual(snapshot.rows[0].cells, { title: "*t*", notes: "\\_v\\_" });
-  const trashed = JSON.parse(one<{ payload: string }>("SELECT payload FROM row_trash WHERE page_id=?", pageId)!.payload);
+  const trashed = JSON.parse((await one<{ payload: string }>("SELECT payload FROM row_trash WHERE page_id=?", pageId))!.payload);
   assert.deepEqual(JSON.parse(trashed.row.cells), { title: "*weg*", notes: "\\~\\~nicht\\~\\~" });
   // Shown as before: the plain text is the old value.
-  const row = rows(pageId)[0];
+  const row = (await rows(pageId))[0];
   assert.equal(computedCells(row, FIELDS).f, "*stars* and snake_case [x](https://x.test) \\ back!", "formulas read plain text");
   // Only once: a second start changes nothing.
   (globalThis as { flowplanSchema?: number }).flowplanSchema = undefined;
   db();
-  assert.equal(cellsOf(pageId)[0].notes, first.notes);
+  assert.equal((await cellsOf(pageId))[0].notes, first.notes);
 });
 
-test("search, filters, sorting, groups, copying and formulas read plain text", () => {
-  const pageId = newDatabase("Lesen");
-  act({ action: "row.create", pageId, cells: { title: "Eins", notes: "**Wichtig**: bitte _heute_ lesen", n: 1 } });
-  act({ action: "row.create", pageId, cells: { title: "Zwei", notes: "[Anleitung](https://docs.test/a) zum ~~Lesen~~", n: 2 } });
-  act({ action: "row.create", pageId, cells: { title: "Drei", notes: "\\*sternchen\\*", n: 3 } });
-  const all = rows(pageId);
+test("search, filters, sorting, groups, copying and formulas read plain text", async () => {
+  const pageId = await newDatabase("Lesen");
+  await act({ action: "row.create", pageId, cells: { title: "Eins", notes: "**Wichtig**: bitte _heute_ lesen", n: 1 } });
+  await act({ action: "row.create", pageId, cells: { title: "Zwei", notes: "[Anleitung](https://docs.test/a) zum ~~Lesen~~", n: 2 } });
+  await act({ action: "row.create", pageId, cells: { title: "Drei", notes: "\\*sternchen\\*", n: 3 } });
+  const all = await rows(pageId);
   const view = (patch: Partial<View>) => ({ id: "v", name: "T", type: "table", filters: [], sorts: [], ...patch }) as unknown as View;
   const names = (list: Row[]) => list.map((r) => r.cells.title);
   // "Wichtig: bitte" spans the formatting.
@@ -123,29 +123,29 @@ test("search, filters, sorting, groups, copying and formulas read plain text", (
   assert.deepEqual(copied.rows.map((r) => r[1]), ["Wichtig: bitte heute lesen", "Anleitung zum Lesen", "*sternchen*"]);
   assert.equal(computedCells(all[1], FIELDS).f, "Anleitung zum Lesen!");
   // The workspace search finds the words, not the Markdown.
-  const hits = searchWorkspace(owner, wid, "Anleitung zum Lesen");
+  const hits = await searchWorkspace(owner, wid, "Anleitung zum Lesen");
   assert.ok(hits.some((h) => (h as { rowId?: string }).rowId === all[1].id || JSON.stringify(h).includes(all[1].id)));
 });
 
-test("the API writes and reads inline Markdown as given", () => {
-  const pageId = newDatabase("API");
-  const created = act({ action: "row.create", pageId, cells: { title: "**Titel**", notes: "Zeile 1\n**fett** [x](https://x.test)" } }) as { id: string };
-  const row = rows(pageId).find((r) => r.id === created.id)!;
+test("the API writes and reads inline Markdown as given", async () => {
+  const pageId = await newDatabase("API");
+  const created = (await act({ action: "row.create", pageId, cells: { title: "**Titel**", notes: "Zeile 1\n**fett** [x](https://x.test)" } })) as { id: string };
+  const row = (await rows(pageId)).find((r) => r.id === created.id)!;
   assert.equal(row.cells.notes, "Zeile 1\n**fett** [x](https://x.test)");
   assert.equal(row.cells.title, "**Titel**");
-  act({ action: "row.update", pageId, rowId: created.id, version: row.version, cells: { notes: "_neu_" } });
-  assert.equal(rows(pageId).find((r) => r.id === created.id)!.cells.notes, "_neu_");
+  await act({ action: "row.update", pageId, rowId: created.id, version: row.version, cells: { notes: "_neu_" } });
+  assert.equal((await rows(pageId)).find((r) => r.id === created.id)!.cells.notes, "_neu_");
 });
 
-test("a type change keeps the text: escaped into, plain out of formatted text", () => {
-  const pageId = newDatabase("Typen");
-  act({ action: "row.create", pageId, cells: { title: "A", notes: "**fett** und \\*", kind: "*x*" } });
-  const before = database(pageId);
+test("a type change keeps the text: escaped into, plain out of formatted text", async () => {
+  const pageId = await newDatabase("Typen");
+  await act({ action: "row.create", pageId, cells: { title: "A", notes: "**fett** und \\*", kind: "*x*" } });
+  const before = await database(pageId);
   const next = before.fields.map((f) =>
     f.id === "notes" ? { ...f, type: "select" as const, options: ["fett und *"] } : f.id === "kind" ? { ...f, type: "text" as const, options: undefined } : f,
   );
-  act({ action: "database.update", pageId, version: before.version, fields: next, views: before.views });
-  const [cells] = cellsOf(pageId);
+  await act({ action: "database.update", pageId, version: before.version, fields: next, views: before.views });
+  const [cells] = await cellsOf(pageId);
   assert.equal(cells.notes, "fett und *", "a select takes the plain text");
   assert.equal(cells.kind, "\\*x\\*", "formatted text keeps the stars of the option");
 });
@@ -153,17 +153,17 @@ test("a type change keeps the text: escaped into, plain out of formatted text", 
 test("CSV (Notion) imports are plain text: stars stay stars", async () => {
   const bytes = await writeZip(new Map([["Notizen.csv", Buffer.from("Name,Notiz\n*Eins*,*stars* and _x_\nZwei,plain\n")]]));
   await importZip(owner, wid, space, bytes);
-  const pageId = one<{ id: string }>("SELECT id FROM pages WHERE workspace_id=? AND title='Notizen' AND kind='database'", wid)!.id;
-  const cells = cellsOf(pageId);
+  const pageId = (await one<{ id: string }>("SELECT id FROM pages WHERE workspace_id=? AND title='Notizen' AND kind='database'", wid))!.id;
+  const cells = await cellsOf(pageId);
   assert.equal(cells[0].title, "*Eins*");
   assert.equal(cells[0].f1, "\\*stars\\* and \\_x\\_");
   assert.equal(cells[1].f1, "plain");
 });
 
-test("form answers are plain text: escaped when stored", () => {
-  const pageId = newDatabase("Formular");
-  saveFormSubmission(pageId, owner, { title: "*Frage*", notes: "a_b *c*" }, true, { confirm: false });
-  const [cells] = cellsOf(pageId);
+test("form answers are plain text: escaped when stored", async () => {
+  const pageId = await newDatabase("Formular");
+  await saveFormSubmission(pageId, owner, { title: "*Frage*", notes: "a_b *c*" }, true, { confirm: false });
+  const [cells] = await cellsOf(pageId);
   assert.equal(cells.title, "*Frage*");
   assert.equal(cells.notes, "a\\_b \\*c\\*");
 });

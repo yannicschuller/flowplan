@@ -64,25 +64,25 @@ const useKey = (current?: string, previous?: string) => {
 };
 
 const uid = id();
-run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, "Ada", "ada@example.test");
+await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, "Ada", "ada@example.test");
 const admin = { id: uid, name: "Ada", email: "ada@example.test", groups: [], isAdmin: true, disabled: 0, created_at: "" } as unknown as Identity;
-const workspace = createWorkspace(uid, "Tresor");
-const space = String(one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", workspace)!.id);
-const page = createPage(workspace, space, uid, "Unterlagen");
+const workspace = await createWorkspace(uid, "Tresor");
+const space = String((await one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", workspace))!.id);
+const page = await createPage(workspace, space, uid, "Unterlagen");
 const uploads = join(dir, "uploads");
 mkdirSync(uploads, { recursive: true });
 const object = (key: string) => `/bucket/flowplan/uploads/${key}`;
 const until = async (check: () => boolean, label: string) => {
   for (let i = 0; i < 250; i++) {
-    if (check()) return;
+    if (await check()) return;
     await new Promise((r) => setTimeout(r, 20));
   }
   assert.fail(`timed out: ${label}`);
 };
-function addFile(content: string) {
+async function addFile(content: string) {
   const fid = id();
   writeFileSync(join(uploads, fid), content);
-  run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fid, page, "a.txt", "text/plain", content.length, uid);
+  await run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fid, page, "a.txt", "text/plain", content.length, uid);
   return fid;
 }
 
@@ -114,18 +114,18 @@ test("encrypt and decrypt: round trip, plain data passes, wrong or earlier keys"
 
 test("objects in the bucket: plain ones stay readable, new ones are encrypted, existing ones catch up", async () => {
   useKey();
-  const old = addFile("vorher");
+  const old = await addFile("vorher");
   await until(() => objects.has(object(old)), "plain upload");
   assert.equal(objects.get(object(old))!.toString(), "vorher");
 
   useKey(first);
-  const fresh = addFile("nachher");
+  const fresh = await addFile("nachher");
   await until(() => objects.has(object(fresh)), "encrypted upload");
   assert.ok(isEncrypted(objects.get(object(fresh))!));
   // The upload is recorded once the bucket has answered, a moment after the
   // object arrived there.
-  await until(() => storageEncryption()?.behind === 1, "upload recorded");
-  assert.deepEqual(storageEncryption(), { files: 2, behind: 1 });
+  await until(async () => (await storageEncryption())?.behind === 1, "upload recorded");
+  assert.deepEqual(await storageEncryption(), { files: 2, behind: 1 });
   // A new host without local files reads both kinds.
   rmSync(join(uploads, old));
   rmSync(join(uploads, fresh));
@@ -133,23 +133,23 @@ test("objects in the bucket: plain ones stay readable, new ones are encrypted, e
   assert.equal(await ensureLocal(fresh), true);
   assert.equal(readFileSync(join(uploads, fresh), "utf8"), "nachher");
 
-  assert.equal(encryptExistingObjects(), 1);
+  assert.equal(await encryptExistingObjects(), 1);
   await until(() => isEncrypted(objects.get(object(old)) || Buffer.alloc(0)), "existing object encrypted");
-  await until(() => storageEncryption()?.behind === 0, "nothing behind");
+  await until(async () => (await storageEncryption())?.behind === 0, "nothing behind");
 
   // Rotation: everything is behind the new key, the earlier one still reads.
   useKey(second, first);
-  assert.equal(storageEncryption()?.behind, 2);
+  assert.equal((await storageEncryption())?.behind, 2);
   rmSync(join(uploads, old));
   assert.equal(await ensureLocal(old), true);
-  assert.equal(encryptExistingObjects(), 2);
-  await until(() => storageEncryption()?.behind === 0, "re-encrypted with the new key");
+  assert.equal(await encryptExistingObjects(), 2);
+  await until(async () => (await storageEncryption())?.behind === 0, "re-encrypted with the new key");
   // Without the right key the file is not written (and no garbage is).
   useKey(randomBytes(32).toString("base64"));
   rmSync(join(uploads, fresh));
   assert.equal(await ensureLocal(fresh), false);
   assert.throws(() => readFileSync(join(uploads, fresh)));
-  const overview = encryptionOverview();
+  const overview = await encryptionOverview();
   assert.equal(overview.enabled, true);
   assert.equal(overview.git, false);
 });
@@ -162,7 +162,7 @@ test("scheduled backups and Markdown exports are encrypted; the emergency script
   const stored = objects.get(`/bucket/flowplan/backups/${result.name}`)!;
   assert.ok(isEncrypted(stored));
   // Old plain and new encrypted copies count together when cleaning up.
-  run("INSERT INTO instance_settings(key,value) VALUES('backupKeep','2') ON CONFLICT(key) DO UPDATE SET value=excluded.value");
+  await run("INSERT INTO instance_settings(key,value) VALUES('backupKeep','2') ON CONFLICT(key) DO UPDATE SET value=excluded.value");
   objects.set("/bucket/flowplan/backups/flowplan-2026-09-01-03-00.sqlite", Buffer.from("alt"));
   await runScheduledBackup(Date.UTC(2026, 9, 2, 3));
   assert.deepEqual(
@@ -183,7 +183,7 @@ test("scheduled backups and Markdown exports are encrypted; the emergency script
   assert.equal(wrong.status, 1);
   assert.match(String(wrong.stderr), /mit dem Schlüssel [0-9a-f]{16}/);
 
-  setMarkdownExport(admin, [page]);
+  await setMarkdownExport(admin, [page]);
   const [exported] = await runMarkdownExports(Date.UTC(2026, 9, 2, 3));
   assert.equal(exported.error, null);
   assert.match(exported.name, /\.zip\.enc$/);
@@ -195,7 +195,7 @@ test("an encrypted instance backup restores with the key", async () => {
   useKey(first);
   const file = join(dir, "tmp", "instance.zip.enc");
   mkdirSync(join(dir, "tmp"), { recursive: true });
-  await pipeline(instanceBackupStream().pipe(sealStream()), createWriteStream(file));
+  await pipeline((await instanceBackupStream()).pipe(sealStream()), createWriteStream(file));
   assert.ok(isEncrypted(readFileSync(file).subarray(0, 40)));
   // The ZIP itself is not recognised without decrypting.
   await assert.rejects(stageInstanceRestore(file), /ZIP/);

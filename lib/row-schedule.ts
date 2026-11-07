@@ -37,15 +37,15 @@ export function linkedDelta(
   return type === "ss" || type === "sf" ? after.start - before.start : after.end - before.end;
 }
 // Executes inside the command transaction, including linked-view mutations.
-export function scheduleRow(
+export async function scheduleRow(
   user: Identity,
   pageId: string,
   input: Record<string, unknown>,
   context?: { fields: Field[]; views: View[]; version: number },
 ) {
-  const page = requirePage(user, pageId, true);
+  const page = await requirePage(user, pageId, true);
   if (page.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
-  const stored = one<{ fields: string; views: string; version: number }>(
+  const stored = await one<{ fields: string; views: string; version: number }>(
     "SELECT * FROM databases WHERE page_id=?",
     pageId,
   );
@@ -64,13 +64,13 @@ export function scheduleRow(
   if (!view || !["timeline", "calendar"].includes(view.type))
     throw new HttpError(400, "Kalender- oder Timeline-Ansicht fehlt.");
   const rid = z.string().uuid().parse(input.rowId),
-    row = one<{ id: string; cells: string; version: number }>(
+    row = await one<{ id: string; cells: string; version: number }>(
       "SELECT id,cells,version,access,created_by FROM rows WHERE id=? AND page_id=?",
       rid,
       pageId,
     );
   if (!row) throw new HttpError(404, "Datensatz fehlt.");
-  assertRowAccess(user, page, row, true);
+  await assertRowAccess(user, page, row, true);
   if (input.rowVersion !== row.version)
     throw new HttpError(
       409,
@@ -102,48 +102,48 @@ export function scheduleRow(
       after = rowRange({ cells: JSON.parse(nextCells) }, start, end);
     const days = before && after ? linkedDelta(view.timeline.dependencyType, before, after) : 0;
     if (field && days) {
-      const rows = all<{ id: string; cells: string }>(
+      const rows = (await all<{ id: string; cells: string }>(
         "SELECT id,cells FROM rows WHERE page_id=?",
         pageId,
-      ).map((r) => ({ id: r.id, cells: JSON.parse(r.cells) as Record<string, unknown> }));
+      )).map((r) => ({ id: r.id, cells: JSON.parse(r.cells) as Record<string, unknown> }));
       const shifts = successorShifts(rows, field, start, end, rid, days);
       if (!shifts)
         throw new HttpError(409, "Zyklische Abhängigkeiten lassen sich nicht auflösen.");
-      assertRowsWritable(user, page, shifts.keys());
+      await assertRowsWritable(user, page, shifts.keys());
       for (const [sid, shift] of shifts) {
         const successor = rows.find((r) => r.id === sid)!;
         const next = { ...successor.cells, ...schedulePatch(successor, db.fields, view, { operation: "move", days: shift }) };
-        run(
+        await run(
           "UPDATE rows SET cells=?,version=version+1,updated_at=?,updated_by=? WHERE id=?",
           JSON.stringify(next), nowText(),
           user.id,
           sid,
         );
-        rowChanged(user, page, sid, successor.cells, next, db.fields);
+        await rowChanged(user, page, sid, successor.cells, next, db.fields);
       }
       moved = shifts.size;
     }
   }
-  run(
+  await run(
     "UPDATE rows SET cells=?,version=version+1,updated_at=?,updated_by=? WHERE id=?",
     nextCells, nowText(),
     user.id,
     rid,
   );
-  rowChanged(user, page, rid, cells, JSON.parse(nextCells), db.fields);
+  await rowChanged(user, page, rid, cells, JSON.parse(nextCells), db.fields);
   return { ok: true, moved };
 }
 
 // Dragging from the end of one bar onto another: the other waits for the
 // first. Refused when it would close a circle.
-export function linkTimeline(
+export async function linkTimeline(
   user: Identity,
   pageId: string,
   input: Record<string, unknown>,
 ) {
-  const page = requirePage(user, pageId, true);
+  const page = await requirePage(user, pageId, true);
   if (page.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
-  const stored = one<{ fields: string; views: string; version: number }>(
+  const stored = await one<{ fields: string; views: string; version: number }>(
     "SELECT * FROM databases WHERE page_id=?",
     pageId,
   );
@@ -157,15 +157,15 @@ export function linkTimeline(
   if (!field) throw new HttpError(400, "Keine Abhängigkeiten eingerichtet.");
   const from = z.string().uuid().parse(input.from),
     to = z.string().uuid().parse(input.to);
-  const rows = all<{ id: string; cells: string; version: number; access: string; created_by: string }>(
+  const rows = await all<{ id: string; cells: string; version: number; access: string; created_by: string }>(
     "SELECT id,cells,version,access,created_by FROM rows WHERE page_id=?",
     pageId,
   );
   const source = rows.find((r) => r.id === from),
     target = rows.find((r) => r.id === to);
   if (!source || !target) throw new HttpError(404, "Datensatz fehlt.");
-  assertRowAccess(user, page, source, false);
-  assertRowAccess(user, page, target, true);
+  await assertRowAccess(user, page, source, false);
+  await assertRowAccess(user, page, target, true);
   const parsed = rows.map((r) => ({ id: r.id, cells: JSON.parse(r.cells) as Record<string, unknown> }));
   if (createsCycle(parsed, field, from, to))
     throw new HttpError(409, "Diese Abhängigkeit würde einen Kreis bilden.");
@@ -174,25 +174,25 @@ export function linkTimeline(
   if (current.includes(from)) return { ok: true, added: false };
   if (current.length >= 500) throw new HttpError(413, "Zu viele Abhängigkeiten.");
   const next = { ...cells, [field.id]: [...current, from] };
-  run(
+  await run(
     "UPDATE rows SET cells=?,version=version+1,updated_at=?,updated_by=? WHERE id=?",
     JSON.stringify(next), nowText(),
     user.id,
     to,
   );
-  rowChanged(user, page, to, cells, next, fields);
+  await rowChanged(user, page, to, cells, next, fields);
   return { ok: true, added: true };
 }
 
 // Resolves every dependency conflict of a timeline view in one transaction.
-export function cascadeTimeline(
+export async function cascadeTimeline(
   user: Identity,
   pageId: string,
   input: Record<string, unknown>,
 ) {
-  const page = requirePage(user, pageId, true);
+  const page = await requirePage(user, pageId, true);
   if (page.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
-  const stored = one<{ fields: string; views: string; version: number }>(
+  const stored = await one<{ fields: string; views: string; version: number }>(
     "SELECT * FROM databases WHERE page_id=?",
     pageId,
   );
@@ -212,10 +212,10 @@ export function cascadeTimeline(
     (f) => f.id === view.timeline?.dependencyField,
   );
   if (!field) throw new HttpError(400, "Keine Abhängigkeiten eingerichtet.");
-  const rows = all<{ id: string; cells: string }>(
+  const rows = (await all<{ id: string; cells: string }>(
     "SELECT id,cells FROM rows WHERE page_id=?",
     pageId,
-  ).map((r) => ({
+  )).map((r) => ({
     id: r.id,
     cells: JSON.parse(r.cells) as Record<string, unknown>,
   }));
@@ -232,17 +232,17 @@ export function cascadeTimeline(
       409,
       "Zyklische Abhängigkeiten lassen sich nicht auflösen.",
     );
-  assertRowsWritable(user, page, shifts.keys());
+  await assertRowsWritable(user, page, shifts.keys());
   for (const [rid, days] of shifts) {
     const row = rows.find((r) => r.id === rid)!;
     const next = { ...row.cells, ...schedulePatch(row, fields, view, { operation: "move", days }) };
-    run(
+    await run(
       "UPDATE rows SET cells=?,version=version+1,updated_at=?,updated_by=? WHERE id=?",
       JSON.stringify(next), nowText(),
       user.id,
       rid,
     );
-    rowChanged(user, page, rid, row.cells, next, fields);
+    await rowChanged(user, page, rid, row.cells, next, fields);
   }
   return { ok: true, moved: shifts.size };
 }

@@ -26,32 +26,32 @@ const roundTrip = (html: string) => {
 const { htmlToMarkdown } = await import("../lib/markdown");
 const { documentText } = await import("../lib/search-index");
 
-function person(name: string): Identity {
+async function person(name: string): Promise<Identity> {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
   return { id: uid, name, email: `${name}@example.test`, groups: [], isAdmin: false, disabled: 0, created_at: "" } as Identity;
 }
 async function fails(fn: () => unknown, status: number) {
   await assert.rejects(async () => fn(), (error: { status?: number }) => error.status === status);
 }
-const owner = person("plugin-owner"),
-  editor = person("plugin-editor"),
-  viewer = person("plugin-viewer"),
-  stranger = person("plugin-stranger");
-const wid = createWorkspace(owner.id, "Plugins");
-run("INSERT INTO members VALUES(?,?,?)", wid, editor.id, "editor");
-run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
-const otherWorkspace = createWorkspace(stranger.id, "Fremd");
-const space = one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid)!.id;
-const create = (title: string, kind = "document", ws = wid, sp = space, who = owner) =>
-  (command(who, { action: "page.create", workspaceId: ws, spaceId: sp, title, kind }) as { id: string }).id;
-const doc = create("Seite mit Block");
-const db = create("Aufgaben", "database");
-const foreignDb = create(
+const owner = await person("plugin-owner"),
+  editor = await person("plugin-editor"),
+  viewer = await person("plugin-viewer"),
+  stranger = await person("plugin-stranger");
+const wid = await createWorkspace(owner.id, "Plugins");
+await run("INSERT INTO members VALUES(?,?,?)", wid, editor.id, "editor");
+await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
+const otherWorkspace = await createWorkspace(stranger.id, "Fremd");
+const space = (await one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid))!.id;
+const create = async (title: string, kind = "document", ws = wid, sp = space, who = owner) =>
+  ((await command(who, { action: "page.create", workspaceId: ws, spaceId: sp, title, kind })) as { id: string }).id;
+const doc = await create("Seite mit Block");
+const db = await create("Aufgaben", "database");
+const foreignDb = await create(
   "Fremde Datenbank",
   "database",
   otherWorkspace,
-  one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", otherWorkspace)!.id,
+  (await one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", otherWorkspace))!.id,
   stranger,
 );
 const example = JSON.parse(readFileSync("examples/plugin-hello/flowplan-plugin.json", "utf8"));
@@ -129,26 +129,26 @@ test("registration: owners only, allowed origins only, no redirects elsewhere", 
   const again = await plugins.registerPlugin(owner, input);
   assert.equal(again.id, pluginId);
   // Any origin once the administration allows it.
-  saveInstanceSettings({ pluginsAnyOrigin: true });
+  await saveInstanceSettings({ pluginsAnyOrigin: true });
   const other = await plugins.registerPlugin(owner, { workspaceId: wid, url: "https://other.example.net/hello/" });
   assert.equal(other.origin, "https://other.example.net");
-  saveInstanceSettings({ pluginsAnyOrigin: false });
-  assert.ok(pluginFrameOrigins().includes("https://other.example.net"));
-  command(owner, { action: "plugin.delete", pluginId: other.id });
-  assert.ok(!pluginFrameOrigins().includes("https://other.example.net"));
+  await saveInstanceSettings({ pluginsAnyOrigin: false });
+  assert.ok((await pluginFrameOrigins()).includes("https://other.example.net"));
+  await command(owner, { action: "plugin.delete", pluginId: other.id });
+  assert.ok(!(await pluginFrameOrigins()).includes("https://other.example.net"));
   // Members see enabled plugins; the editor menu gets them by page.
-  assert.equal(plugins.listPlugins(viewer, wid).plugins.length, 1);
-  assert.equal(plugins.listPlugins(viewer, wid).canManage, false);
-  assert.equal(plugins.pluginsForPage(editor, doc).plugins[0].id, pluginId);
-  assert.throws(() => plugins.listPlugins(stranger, wid), (e: { status?: number }) => e.status === 403);
+  assert.equal((await plugins.listPlugins(viewer, wid)).plugins.length, 1);
+  assert.equal((await plugins.listPlugins(viewer, wid)).canManage, false);
+  assert.equal((await plugins.pluginsForPage(editor, doc)).plugins[0].id, pluginId);
+  await assert.rejects(async () => await plugins.listPlugins(stranger, wid), (e: { status?: number }) => e.status === 403);
   // Only owners change or remove a plugin.
-  assert.throws(() => command(editor, { action: "plugin.update", pluginId, public: true }), (e: { status?: number }) => e.status === 403);
-  assert.throws(() => command(editor, { action: "plugin.delete", pluginId }), (e: { status?: number }) => e.status === 403);
-  command(owner, { action: "plugin.update", pluginId, enabled: false });
-  assert.equal(plugins.pluginsForPage(editor, doc).plugins.length, 0);
-  assert.equal(plugins.listPlugins(owner, wid).plugins.length, 1);
-  command(owner, { action: "plugin.update", pluginId, enabled: true, settings: { step: 3 } });
-  assert.deepEqual(plugins.pluginsForPage(editor, doc).plugins[0].settings, { step: 3 });
+  await assert.rejects(async () => await command(editor, { action: "plugin.update", pluginId, public: true }), (e: { status?: number }) => e.status === 403);
+  await assert.rejects(async () => await command(editor, { action: "plugin.delete", pluginId }), (e: { status?: number }) => e.status === 403);
+  await command(owner, { action: "plugin.update", pluginId, enabled: false });
+  assert.equal((await plugins.pluginsForPage(editor, doc)).plugins.length, 0);
+  assert.equal((await plugins.listPlugins(owner, wid)).plugins.length, 1);
+  await command(owner, { action: "plugin.update", pluginId, enabled: true, settings: { step: 3 } });
+  assert.deepEqual((await plugins.pluginsForPage(editor, doc)).plugins[0].settings, { step: 3 });
 });
 
 test("database permissions: only databases of the workspace, granted by an owner", async () => {
@@ -159,16 +159,16 @@ test("database permissions: only databases of the workspace, granted by an owner
   served.set("https://plugins.example.org/any/flowplan-plugin.json", { body: { ...example, permissions: ["read:database"] } });
   const any = await plugins.registerPlugin(owner, { workspaceId: wid, url: "https://plugins.example.org/any/", databases: [db] });
   assert.deepEqual(any.permissions, [`read:database:${db}`]);
-  assert.throws(
-    () => command(owner, { action: "plugin.update", pluginId: any.id, databases: [foreignDb] }),
+  await assert.rejects(
+    async () => await command(owner, { action: "plugin.update", pluginId: any.id, databases: [foreignDb] }),
     (e: { status?: number }) => e.status === 400,
   );
   // Without "read:database" no database can be granted.
-  assert.throws(
-    () => command(owner, { action: "plugin.update", pluginId, databases: [db] }),
+  await assert.rejects(
+    async () => await command(owner, { action: "plugin.update", pluginId, databases: [db] }),
     (e: { status?: number }) => e.status === 400,
   );
-  command(owner, { action: "plugin.delete", pluginId: any.id });
+  await command(owner, { action: "plugin.delete", pluginId: any.id });
 });
 
 test("the protocol: shape, nonce and source are checked", () => {
@@ -255,41 +255,41 @@ test("query: granted databases only, with the reader's own rights", async () => 
     { id: "title", name: "Name", type: "text" },
     { id: "secret", name: "Geheim", type: "text", access: { read: "owners", write: "owners" } },
   ];
-  command(owner, { action: "database.update", pageId: db, version: database(db).version, fields, views: database(db).views });
-  const shared = (command(owner, { action: "row.create", pageId: db, cells: { title: "Offen", secret: "xyz-geheim" } }) as { id: string }).id;
-  const hidden = (command(owner, { action: "row.create", pageId: db, cells: { title: "Privat" } }) as { id: string }).id;
-  command(owner, { action: "row.access", pageId: db, rowId: hidden, access: "private", grants: [] });
-  const ask = (who: Identity, databaseId = db, pid = pluginId) =>
-    plugins.queryPluginDatabase(who, { pluginId: pid, pageId: doc, databaseId });
+  await command(owner, { action: "database.update", pageId: db, version: (await database(db)).version, fields, views: (await database(db)).views });
+  const shared = ((await command(owner, { action: "row.create", pageId: db, cells: { title: "Offen", secret: "xyz-geheim" } })) as { id: string }).id;
+  const hidden = ((await command(owner, { action: "row.create", pageId: db, cells: { title: "Privat" } })) as { id: string }).id;
+  await command(owner, { action: "row.access", pageId: db, rowId: hidden, access: "private", grants: [] });
+  const ask = async (who: Identity, databaseId = db, pid = pluginId) =>
+    await plugins.queryPluginDatabase(who, { pluginId: pid, pageId: doc, databaseId });
   // Not granted yet.
-  assert.throws(() => ask(owner), (e: { status?: number }) => e.status === 403);
+  await assert.rejects(async () => await ask(owner), (e: { status?: number }) => e.status === 403);
   served.set("https://plugins.example.org/reader/flowplan-plugin.json", {
     body: { ...example, permissions: ["write:block", `read:database:${db}`] },
   });
   const reader = await plugins.registerPlugin(owner, { workspaceId: wid, url: "https://plugins.example.org/reader/" });
-  const all = ask(owner, db, reader.id);
+  const all = await ask(owner, db, reader.id);
   assert.deepEqual(all.rows.map((r) => r.id).sort(), [shared, hidden].sort());
   assert.equal(all.rows.find((r) => r.id === shared)!.cells.secret, "xyz-geheim");
-  const limited = ask(viewer, db, reader.id);
+  const limited = await ask(viewer, db, reader.id);
   assert.deepEqual(limited.rows.map((r) => r.id), [shared]);
   assert.equal(limited.rows[0].cells.secret, undefined);
   assert.deepEqual(limited.fields.map((f) => f.id), ["title"]);
   assert.ok(!JSON.stringify(limited).includes("xyz-geheim"));
   // Other databases, other workspaces and outsiders get nothing.
-  assert.throws(() => ask(owner, foreignDb, reader.id), (e: { status?: number }) => e.status === 403);
-  assert.throws(() => ask(stranger, db, reader.id), (e: { status?: number }) => e.status === 403);
+  await assert.rejects(async () => await ask(owner, foreignDb, reader.id), (e: { status?: number }) => e.status === 403);
+  await assert.rejects(async () => await ask(stranger, db, reader.id), (e: { status?: number }) => e.status === 403);
   // A switched-off plugin answers nothing.
-  command(owner, { action: "plugin.update", pluginId: reader.id, enabled: false });
-  assert.throws(() => ask(owner, db, reader.id), (e: { status?: number }) => e.status === 404);
+  await command(owner, { action: "plugin.update", pluginId: reader.id, enabled: false });
+  await assert.rejects(async () => await ask(owner, db, reader.id), (e: { status?: number }) => e.status === 404);
 });
 
-test("published pages show a plugin only when its owner allowed it", () => {
-  command(owner, { action: "page.publish", pageId: doc, enabled: true });
-  const token = one<{ public_token: string }>("SELECT public_token FROM pages WHERE id=?", doc)!.public_token;
-  assert.throws(() => plugins.publicPlugin(token, pluginId), (e: { status?: number }) => e.status === 404);
-  command(owner, { action: "plugin.update", pluginId, public: true });
-  const shown = plugins.publicPlugin(token, pluginId);
+test("published pages show a plugin only when its owner allowed it", async () => {
+  await command(owner, { action: "page.publish", pageId: doc, enabled: true });
+  const token = (await one<{ public_token: string }>("SELECT public_token FROM pages WHERE id=?", doc))!.public_token;
+  await assert.rejects(async () => await plugins.publicPlugin(token, pluginId), (e: { status?: number }) => e.status === 404);
+  await command(owner, { action: "plugin.update", pluginId, public: true });
+  const shown = await plugins.publicPlugin(token, pluginId);
   assert.equal(shown.id, pluginId);
   assert.ok(!shown.permissions.some((p) => p.startsWith("read:database")));
-  assert.ok(plugins.publicPluginIds(wid).has(pluginId));
+  assert.ok((await plugins.publicPluginIds(wid)).has(pluginId));
 });

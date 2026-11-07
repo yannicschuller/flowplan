@@ -59,20 +59,20 @@ async function body(req: Request, limit: number) {
     throw new HttpError(400, "Ungültige Eingabe.");
   }
 }
-function built(result: ReturnType<typeof instanceProviderConfig>) {
+function built(result: Awaited<ReturnType<typeof instanceProviderConfig>>) {
   if (!result.ok) throw new HttpError(409, AI_REASON_TEXT[result.reason][0]);
   return result.config;
 }
 
 // What the settings page shows: the person's choices, their own provider
 // without its key (only "stored · …abcd"), their rules and the status.
-function settingsView(user: Identity, workspaceId: string | null) {
-  const instance = instanceAiSettings();
+async function settingsView(user: Identity, workspaceId: string | null) {
+  const instance = await instanceAiSettings();
   return {
-    settings: userAiSettings(user.id),
-    key: userKeyInfo(user.id),
-    rules: aiRules(user, workspaceId || undefined),
-    status: aiStatus(user, workspaceId || undefined),
+    settings: await userAiSettings(user.id),
+    key: await userKeyInfo(user.id),
+    rules: await aiRules(user, workspaceId || undefined),
+    status: await aiStatus(user, workspaceId || undefined),
     instance: {
       enabled: instance.enabled,
       userProviders: instance.userProviders,
@@ -91,29 +91,29 @@ async function handleGET(req: Request, { params }: { params: Promise<{ path: str
     const user = await signedIn();
     if (path.length === 1 && path[0] === "settings") {
       const workspace = url.searchParams.get("workspace");
-      if (workspace) requireMember(user, z.uuid().parse(workspace));
-      return NextResponse.json(settingsView(user, workspace), noStore);
+      if (workspace) await requireMember(user, z.uuid().parse(workspace));
+      return NextResponse.json(await settingsView(user, workspace), noStore);
     }
     if (path.length === 1 && path[0] === "access") {
       const row = url.searchParams.get("row");
-      return NextResponse.json(aiPageAccess(user, z.uuid().parse(url.searchParams.get("page")), row ? z.uuid().parse(row) : null), noStore);
+      return NextResponse.json(await aiPageAccess(user, z.uuid().parse(url.searchParams.get("page")), row ? z.uuid().parse(row) : null), noStore);
     }
     if (path.length === 1 && path[0] === "block")
       return NextResponse.json(
         {
-          ...aiBlockInfo(user, z.uuid().parse(url.searchParams.get("target")), z.enum(["page", "space"]).parse(url.searchParams.get("kind"))),
-          enabled: instanceAiSettings().enabled,
+          ...(await aiBlockInfo(user, z.uuid().parse(url.searchParams.get("target")), z.enum(["page", "space"]).parse(url.searchParams.get("kind")))),
+          enabled: (await instanceAiSettings()).enabled,
         },
         noStore,
       );
     if (path.length === 1 && path[0] === "admin") {
       requireAdmin(user);
-      return NextResponse.json({ ...adminAiView(), semantic: semanticStats() }, noStore);
+      return NextResponse.json({ ...(await adminAiView()), semantic: await semanticStats() }, noStore);
     }
     // AI in a database: values waiting to be computed, and when and with
     // which model each value was computed.
     if (path.length === 2 && path[0] === "database" && path[1] === "status")
-      return NextResponse.json(aiDatabaseStatus(user, z.uuid().parse(url.searchParams.get("page"))), noStore);
+      return NextResponse.json(await aiDatabaseStatus(user, z.uuid().parse(url.searchParams.get("page"))), noStore);
     throw new HttpError(404, "Nicht gefunden.");
   } catch (e) {
     return error(e);
@@ -134,7 +134,7 @@ const runInput = z.object({
 export const POST = withRequestLocale(handlePOST);
 async function handlePOST(req: Request, { params }: { params: Promise<{ path: string[] }> }) {
   try {
-    checkOrigin(req);
+    await checkOrigin(req);
     const { path } = await params;
     const user = await signedIn();
     // A prompt for a feature, answered as a text stream. The text is the
@@ -144,7 +144,7 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ path: st
     // client that sends page content names the page.
     if (path.length === 1 && path[0] === "run") {
       const b = runInput.parse(await body(req, AI_LIMITS.maxPromptChars * 4 + 100_000));
-      requireMember(user, b.workspaceId);
+      await requireMember(user, b.workspaceId);
       return await aiStreamResponse(
         user,
         b.feature as (typeof AI_FEATURE_IDS)[number],
@@ -156,7 +156,7 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ path: st
     // a text stream like /api/ai/run.
     if (path.length === 1 && path[0] === "ask") {
       const b = askInput.parse(await body(req, 200_000));
-      requireMember(user, b.workspaceId);
+      await requireMember(user, b.workspaceId);
       const prepared = await prepareAsk(user, b, req.signal);
       const sources = Buffer.from(JSON.stringify(prepared.sources)).toString("base64");
       if (prepared.nothing)
@@ -179,7 +179,7 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ path: st
     // (#135, lib/ai/page-edit.ts): only with edit rights.
     if (path.length === 2 && path[0] === "ask" && path[1] === "suggest") {
       const b = await body(req, 400_000);
-      requireMember(user, z.object({ workspaceId: z.uuid() }).parse(b).workspaceId);
+      await requireMember(user, z.object({ workspaceId: z.uuid() }).parse(b).workspaceId);
       return NextResponse.json(await suggestPageEdits(user, b, req.signal), noStore);
     }
     // Page titles an answer of the writing assistant names as plain list
@@ -188,16 +188,16 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ path: st
       const b = z
         .object({ pageId: z.uuid(), titles: z.array(z.string().max(TITLE_LINK_LIMITS.titleChars * 2)).max(TITLE_LINK_LIMITS.titles) })
         .parse(await body(req, 100_000));
-      const page = requirePage(user, b.pageId);
+      const page = await requirePage(user, b.pageId);
       limitAiLookup(user.id);
-      return NextResponse.json({ resolved: resolveLinkTitles(user, { workspaceId: page.workspace_id, pageId: page.id, titles: b.titles }) }, noStore);
+      return NextResponse.json({ resolved: await resolveLinkTitles(user, { workspaceId: page.workspace_id, pageId: page.id, titles: b.titles }) }, noStore);
     }
     // AI actions: a checked preview of what the model proposes, then the
     // confirmed actions run as the person (lib/ai/actions.ts).
     if (path.length === 2 && path[0] === "actions") {
       if (path[1] === "propose")
         return NextResponse.json(await proposeActions(user, (await body(req, ACTION_LIMITS.context * 4 + 100_000)) as ProposeInput, req.signal), noStore);
-      if (path[1] === "run") return NextResponse.json(runActions(user, await body(req, 2_000_000)), noStore);
+      if (path[1] === "run") return NextResponse.json(await runActions(user, await body(req, 2_000_000)), noStore);
     }
     // Quick capture (desktop app): where a text belongs, as chips to accept
     // – from the instance's AI, or the prompt for the Mac's on-device model
@@ -227,7 +227,7 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ path: st
           .parse(await body(req, 10_000));
         return NextResponse.json(await runAiCell(user, b.pageId, b.fieldId, b.rowId, b.mode, req.signal), noStore);
       }
-      if (path[1] === "queue") return NextResponse.json(queueAiCells(user, await body(req, 100_000)), noStore);
+      if (path[1] === "queue") return NextResponse.json(await queueAiCells(user, await body(req, 100_000)), noStore);
     }
     // The writing assistant: an action on the selection or a free prompt;
     // the prompt is built on the server (lib/ai/write.ts).
@@ -240,7 +240,7 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ path: st
     // The person's own provider (as saved): test it, list its models.
     if (path.length === 1 && (path[0] === "test" || path[0] === "models")) {
       limitAiSetup(user.id);
-      const config = built(userProviderConfig(user));
+      const config = built(await userProviderConfig(user));
       if (path[0] === "models") return NextResponse.json({ models: await listModels(config, req.signal) }, noStore);
       return NextResponse.json(await testConnection(config, req.signal), noStore);
     }
@@ -248,7 +248,7 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ path: st
     if (path.length === 2 && path[0] === "admin") {
       requireAdmin(user);
       limitAiSetup(user.id);
-      const config = built(instanceProviderConfig());
+      const config = built(await instanceProviderConfig());
       if (path[1] === "test") return NextResponse.json(await testConnection(config, req.signal), noStore);
       if (path[1] === "models") return NextResponse.json({ models: await listModels(config, req.signal) }, noStore);
       // Downloading a model into Ollama: progress as JSON lines.

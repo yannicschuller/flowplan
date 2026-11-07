@@ -29,15 +29,15 @@ const { hashPassword } = await import("../lib/local-auth");
 const route = await import("../app/api/move/[...path]/route");
 const { handleCalDav } = await import("../lib/caldav");
 
-function admin(name = "admin"): Identity {
+async function admin(name = "admin"): Promise<Identity> {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, `${name}:${uid}`, name, `${uid}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, `${name}:${uid}`, name, `${uid}@example.test`);
   return { id: uid, name, email: `${uid}@example.test`, groups: ["flowplan-admins"], isAdmin: true, disabled: 0, created_at: "" } as Identity;
 }
-const owner = admin("owner");
-const wid = createWorkspace(owner.id, "Umzug");
-const space = bootstrap(owner, wid).spaces[0].id;
-const pageId = (command(owner, { action: "page.create", workspaceId: wid, spaceId: space, title: "Vor dem Umzug" }) as { id: string }).id;
+const owner = await admin("owner");
+const wid = await createWorkspace(owner.id, "Umzug");
+const space = (await bootstrap(owner, wid)).spaces[0].id;
+const pageId = ((await command(owner, { action: "page.create", workspaceId: wid, spaceId: space, title: "Vor dem Umzug" })) as { id: string }).id;
 const uploads = join(dir, "uploads");
 mkdirSync(uploads, { recursive: true });
 const big = Buffer.alloc(300_000, 7);
@@ -83,45 +83,45 @@ const call = (method: "GET" | "POST", path: string, token = "", extra: Record<st
   );
 
 test("move tokens: stored only as hash, one at a time, expire, revocable, used up by the move", async () => {
-  const first = move.prepareMove(owner);
+  const first = await move.prepareMove(owner);
   assert.match(first.token, /^fpmove_[A-Za-z0-9_-]{43}$/);
   assert.equal(first.url, "https://old.example.test");
-  const stored = one<{ value: string }>("SELECT value FROM instance_settings WHERE key=?", MOVE_KEY)!.value;
+  const stored = (await one<{ value: string }>("SELECT value FROM instance_settings WHERE key=?", MOVE_KEY))!.value;
   assert.ok(!stored.includes(first.token), "the token itself is never stored");
   assert.equal(JSON.parse(stored).hash, hash(first.token));
-  assert.ok(one("SELECT 1 FROM audit WHERE action='instance.move.prepare'"), "audit log entry");
+  assert.ok(await one("SELECT 1 FROM audit WHERE action='instance.move.prepare'"), "audit log entry");
   assert.equal((await call("GET", "env", first.token)).status, 200);
   // A new token replaces the earlier one.
-  const second = move.prepareMove(owner);
+  const second = await move.prepareMove(owner);
   assert.equal((await call("GET", "env", first.token, { "x-forwarded-for": "198.51.100.1" })).status, 401);
   assert.equal((await call("GET", "env", second.token)).status, 200);
   // Expiry: 24 hours.
-  const state = JSON.parse(one<{ value: string }>("SELECT value FROM instance_settings WHERE key=?", MOVE_KEY)!.value);
+  const state = JSON.parse((await one<{ value: string }>("SELECT value FROM instance_settings WHERE key=?", MOVE_KEY))!.value);
   assert.equal(state.expiresAt - state.createdAt, 24 * 3_600_000);
-  assert.throws(() => move.authorizeMove(new Request("http://x/", { headers: { authorization: `Bearer ${second.token}`, "x-forwarded-for": "198.51.100.2" } }), "env", state.expiresAt + 1), /abgelaufen/);
+  await assert.rejects(async () => await move.authorizeMove(new Request("http://x/", { headers: { authorization: `Bearer ${second.token}`, "x-forwarded-for": "198.51.100.2" } }), "env", state.expiresAt + 1), /abgelaufen/);
   // Revocation.
-  move.revokeMove(owner);
+  await move.revokeMove(owner);
   assert.equal((await call("GET", "env", second.token, { "x-forwarded-for": "198.51.100.3" })).status, 401);
-  assert.equal(move.moveSourceStatus().token!.active, false);
+  assert.equal((await move.moveSourceStatus()).token!.active, false);
   // Used up by the move.
-  const third = move.prepareMove(owner);
+  const third = await move.prepareMove(owner);
   const finished = await call("POST", "finish", third.token, { "content-type": "application/json" }, JSON.stringify({ target: "https://new.example.test/path" }));
   assert.equal(finished.status, 200);
-  assert.equal(readOnlyState().movedTo, "https://new.example.test");
+  assert.equal((await readOnlyState()).movedTo, "https://new.example.test");
   assert.equal((await call("GET", "manifest", third.token, { "x-forwarded-for": "198.51.100.4" })).status, 401);
-  move.unfreezeSource(owner);
-  assert.equal(readOnlyState().readOnly, false);
+  await move.unfreezeSource(owner);
+  assert.equal((await readOnlyState()).readOnly, false);
 });
 
 test("move endpoints answer only to a valid move token and lock out guessing", async () => {
-  const { token } = move.prepareMove(owner);
+  const { token } = await move.prepareMove(owner);
   for (const path of ["manifest", "env", `file/${smallId}`, "extra/web-push-keys.json", "database?snapshot=00000000-0000-0000-0000-000000000000"]) {
     assert.equal((await call("GET", path, "", { "x-forwarded-for": "203.0.113.50" })).status, 401, path);
     // A session cookie or an API token is no move token.
     assert.equal((await call("GET", path, "", { cookie: "flowplan_session=abc", authorization: "Bearer fp_123", "x-forwarded-for": "203.0.113.51" })).status, 401, path);
   }
   assert.equal((await call("POST", "freeze", "fpmove_wrong", { "x-forwarded-for": "203.0.113.52" })).status, 401);
-  assert.equal(readOnlyState().readOnly, false);
+  assert.equal((await readOnlyState()).readOnly, false);
   // Ten failures from one address within 15 minutes: refused even with the right token.
   for (let i = 0; i < 10; i++) await call("GET", "env", `fpmove_guess${i}`, { "x-forwarded-for": "203.0.113.60" });
   assert.equal((await call("GET", "env", token, { "x-forwarded-for": "203.0.113.60" })).status, 429);
@@ -131,14 +131,14 @@ test("move endpoints answer only to a valid move token and lock out guessing", a
   assert.equal((await call("GET", "file/..%2Fflowplan.sqlite", token)).status, 404);
   assert.equal((await call("GET", "file/does-not-exist", token)).status, 404);
   // Manifests per hour are limited.
-  const s = JSON.parse(one<{ value: string }>("SELECT value FROM instance_settings WHERE key=?", MOVE_KEY)!.value);
+  const s = JSON.parse((await one<{ value: string }>("SELECT value FROM instance_settings WHERE key=?", MOVE_KEY))!.value);
   const req = () => new Request("http://x/", { headers: { authorization: `Bearer ${token}`, "x-forwarded-for": "203.0.113.70" } });
-  for (let i = 0; i < 30; i++) move.authorizeMove(req(), "manifest", s.createdAt + 1000);
-  assert.throws(() => move.authorizeMove(req(), "manifest", s.createdAt + 1000), (e: unknown) => e instanceof HttpError && e.status === 429);
+  for (let i = 0; i < 30; i++) await move.authorizeMove(req(), "manifest", s.createdAt + 1000);
+  await assert.rejects(async () => await move.authorizeMove(req(), "manifest", s.createdAt + 1000), (e: unknown) => e instanceof HttpError && e.status === 429);
 });
 
 test("files are served with ranges; the transfer resumes and checks every checksum", async () => {
-  const { token } = move.prepareMove(owner);
+  const { token } = await move.prepareMove(owner);
   const ranged = await call("GET", `file/${bigId}`, token, { range: "bytes=1000-" });
   assert.equal(ranged.status, 206);
   assert.equal(ranged.headers.get("content-range"), `bytes 1000-${big.length - 1}/${big.length}`);
@@ -170,7 +170,7 @@ test("files are served with ranges; the transfer resumes and checks every checks
 });
 
 test("the whole pull: snapshot without the move state, resumable, final sync fetches only what changed", async () => {
-  const { token } = move.prepareMove(owner);
+  const { token } = await move.prepareMove(owner);
   const served = await serve();
   const staging = mkdtempSync(join(tmpdir(), "flowplan-move-staging-"));
   try {
@@ -196,12 +196,12 @@ test("the whole pull: snapshot without the move state, resumable, final sync fet
     served.requests.length = 0;
     // The source becomes read-only for the final sync; meanwhile one file
     // was added and one removed.
-    command(owner, { action: "page.update", pageId, patch: { title: "Kurz vor dem Umzug" } });
+    await command(owner, { action: "page.update", pageId, patch: { title: "Kurz vor dem Umzug" } });
     const newId = id();
     writeFileSync(join(uploads, newId), "neu");
     rmSync(join(uploads, smallId));
     assert.equal((await call("POST", "freeze", token)).status, 200);
-    assert.equal(readOnlyState().readOnly, true);
+    assert.equal((await readOnlyState()).readOnly, true);
     const final = await pull.pullInstance(asSource(served.url, token), staging);
     const fetched = served.requests.filter((r) => r.path.startsWith("/api/move/file/")).map((r) => [r.path.slice(15), r.range]);
     assert.deepEqual(fetched.sort(), [[bigId, "bytes=120000-"], [newId, ""]].sort());
@@ -233,7 +233,7 @@ test("the whole pull: snapshot without the move state, resumable, final sync fet
   } finally {
     rmSync(join(uploads, readdirSync(uploads).find((n) => n !== bigId) || "none"), { force: true });
     writeFileSync(join(uploads, smallId), "Anhang");
-    move.unfreezeSource(owner);
+    await move.unfreezeSource(owner);
     rmSync(staging, { recursive: true, force: true });
     await served.close();
   }
@@ -247,7 +247,7 @@ test("the configuration report holds names and keyed hashes – never a value", 
   for (const k of ["log", "warn", "error"] as const) console[k] = (...a: unknown[]) => void logs.push(a.map(String).join(" "));
   let report;
   try {
-    report = move.envReport("fpmove_one", env);
+    report = await move.envReport("fpmove_one", env);
   } finally {
     Object.assign(console, original);
   }
@@ -260,9 +260,9 @@ test("the configuration report holds names and keyed hashes – never a value", 
   assert.ok(!("SESSION_INGRESS_URL" in report.vars) && !("HOME" in report.vars), "other variables of the container are left out");
   assert.match(report.vars.S3_SECRET_ACCESS_KEY!, /^[A-Za-z0-9_-]{43}$/);
   // Keyed with the token: another move gives other hashes.
-  assert.notEqual(move.envReport("fpmove_two", env).vars.S3_SECRET_ACCESS_KEY, report.vars.S3_SECRET_ACCESS_KEY);
+  assert.notEqual((await move.envReport("fpmove_two", env)).vars.S3_SECRET_ACCESS_KEY, report.vars.S3_SECRET_ACCESS_KEY);
   // Through the endpoint as well.
-  const { token } = move.prepareMove(owner);
+  const { token } = await move.prepareMove(owner);
   process.env.SMTP_PASSWORD = secret;
   try {
     const answer = await (await call("GET", "env", token)).text();
@@ -272,90 +272,90 @@ test("the configuration report holds names and keyed hashes – never a value", 
   }
 });
 
-test("the pre-flight check flags keys, address, missing settings and a shared bucket", () => {
+test("the pre-flight check flags keys, address, missing settings and a shared bucket", async () => {
   const key = Buffer.alloc(32, 1).toString("base64"),
     other = Buffer.alloc(32, 2).toString("base64");
   const base = { APP_URL: "https://flowplan.example.test", S3_BUCKET: "b", S3_ENDPOINT: "https://e", OIDC_ISSUER: "https://id", OIDC_CLIENT_ID: "c" };
-  const report = (env: Record<string, string>) => {
+  const report = async (env: Record<string, string>) => {
     const saved = { ...process.env };
     Object.assign(process.env, env);
     for (const k of ["FLOWPLAN_ENCRYPTION_KEY", "FLOWPLAN_ENCRYPTION_KEY_PREVIOUS"]) if (!(k in env)) delete process.env[k];
     try {
-      return move.envReport("fpmove_x", env);
+      return await move.envReport("fpmove_x", env);
     } finally {
       process.env = saved;
     }
   };
-  const level = (items: ReturnType<typeof move.comparePreflight>, id: string) => items.find((i) => i.id === id);
-  const same = move.comparePreflight(report({ ...base, FLOWPLAN_ENCRYPTION_KEY: key }), report({ ...base, FLOWPLAN_ENCRYPTION_KEY: key }));
+  const level = (items: Awaited<ReturnType<typeof move.comparePreflight>>, id: string) => items.find((i) => i.id === id);
+  const same = move.comparePreflight(await report({ ...base, FLOWPLAN_ENCRYPTION_KEY: key }), await report({ ...base, FLOWPLAN_ENCRYPTION_KEY: key }));
   assert.equal(level(same, "encryption")!.code, "encryption.same");
   assert.equal(level(same, "secrets")!.level, "ok");
   assert.equal(level(same, "url")!.code, "url.same");
   assert.equal(level(same, "s3.bucket")!.level, "warn", "same bucket and prefix on both sides");
-  const missing = move.comparePreflight(report({ ...base, FLOWPLAN_ENCRYPTION_KEY: key }), report({ APP_URL: "https://new.example.test" }));
+  const missing = move.comparePreflight(await report({ ...base, FLOWPLAN_ENCRYPTION_KEY: key }), await report({ APP_URL: "https://new.example.test" }));
   assert.deepEqual([level(missing, "encryption")!.level, level(missing, "encryption")!.code], ["error", "encryption.missing"]);
   assert.deepEqual([level(missing, "secrets")!.level, level(missing, "secrets")!.code], ["error", "secrets.missing"]);
   assert.deepEqual([level(missing, "url")!.level, level(missing, "url")!.target], ["warn", "https://new.example.test"]);
   assert.equal(level(missing, "env.oidc")!.level, "error");
   assert.deepEqual(level(missing, "env.s3")!.missing, ["S3_BUCKET", "S3_ENDPOINT"]);
-  const differs = move.comparePreflight(report({ ...base, FLOWPLAN_ENCRYPTION_KEY: key }), report({ ...base, FLOWPLAN_ENCRYPTION_KEY: other }));
+  const differs = move.comparePreflight(await report({ ...base, FLOWPLAN_ENCRYPTION_KEY: key }), await report({ ...base, FLOWPLAN_ENCRYPTION_KEY: other }));
   assert.equal(level(differs, "encryption")!.code, "encryption.differs");
-  const rotated = move.comparePreflight(report({ ...base, FLOWPLAN_ENCRYPTION_KEY: key }), report({ ...base, FLOWPLAN_ENCRYPTION_KEY: other, FLOWPLAN_ENCRYPTION_KEY_PREVIOUS: key }));
+  const rotated = move.comparePreflight(await report({ ...base, FLOWPLAN_ENCRYPTION_KEY: key }), await report({ ...base, FLOWPLAN_ENCRYPTION_KEY: other, FLOWPLAN_ENCRYPTION_KEY_PREVIOUS: key }));
   assert.equal(level(rotated, "encryption")!.code, "encryption.previous");
   // The generated secrets.key moves along, so stored secrets stay readable.
-  const fileKey = move.comparePreflight(report(base), report(base));
+  const fileKey = move.comparePreflight(await report(base), await report(base));
   assert.equal(level(fileKey, "secrets")!.level, "ok");
   // A database from newer code than the target's.
-  const a = report(base),
-    b = report(base);
+  const a = await report(base),
+    b = await report(base);
   assert.equal(move.comparePreflight({ ...a, schema: b.schema + 1 }, b).find((i) => i.id === "schema")!.level, "error");
 });
 
 test("read-only mode refuses changes with 423 and lets reads and sign-in through", async () => {
-  const { token } = move.prepareMove(owner);
-  assert.equal(readOnlyRefusal("/api/command"), null);
+  const { token } = await move.prepareMove(owner);
+  assert.equal(await readOnlyRefusal("/api/command"), null);
   await call("POST", "freeze", token);
-  assert.match(readOnlyRefusal("/api/command")!, /schreibgeschützt/);
-  for (const free of ["/api/auth/login", "/api/auth/logout", "/api/auth/callback", "/api/admin/instance-move", "/api/move/finish", "/api/presence"]) assert.equal(readOnlyRefusal(free), null, free);
-  for (const blocked of ["/api/auth/password-change", "/api/files", "/api/forms/x", "/api/mobile/capture/save"]) assert.ok(readOnlyRefusal(blocked), blocked);
+  assert.match((await readOnlyRefusal("/api/command"))!, /schreibgeschützt/);
+  for (const free of ["/api/auth/login", "/api/auth/logout", "/api/auth/callback", "/api/admin/instance-move", "/api/move/finish", "/api/presence"]) assert.equal(await readOnlyRefusal(free), null, free);
+  for (const blocked of ["/api/auth/password-change", "/api/files", "/api/forms/x", "/api/mobile/capture/save"]) assert.ok(await readOnlyRefusal(blocked), blocked);
   const request = (path: string, headers: Record<string, string> = { origin: "https://old.example.test" }) => new Request(`https://old.example.test${path}`, { method: "POST", headers });
-  assert.throws(() => checkOrigin(request("/api/command")), (e: unknown) => e instanceof HttpError && e.status === 423);
+  await assert.rejects(async () => await checkOrigin(request("/api/command")), (e: unknown) => e instanceof HttpError && e.status === 423);
   // API tokens too.
-  assert.throws(() => checkOrigin(request("/api/command", { authorization: "Bearer fp_x" })), (e: unknown) => e instanceof HttpError && e.status === 423);
-  assert.doesNotThrow(() => checkOrigin(request("/api/auth/login")));
+  await assert.rejects(async () => await checkOrigin(request("/api/command", { authorization: "Bearer fp_x" })), (e: unknown) => e instanceof HttpError && e.status === 423);
+  await assert.doesNotReject(async () => await checkOrigin(request("/api/auth/login")));
   // Reads still work.
-  assert.equal(bootstrap(owner, wid).spaces.length > 0, true);
+  assert.equal((await bootstrap(owner, wid)).spaces.length > 0, true);
   // Calendar apps cannot write.
   const caldav = await handleCalDav(new Request("https://old.example.test/api/caldav/calendars/x/y.ics", { method: "PUT", headers: { authorization: "Basic " + Buffer.from("a:b").toString("base64") }, body: "BEGIN:VCALENDAR" }));
   assert.ok(caldav.status === 401 || caldav.status === 403);
   // After the move: the message names the new address.
   await call("POST", "finish", token, {}, JSON.stringify({ target: "https://new.example.test" }));
-  assert.match(readOnlyRefusal("/api/command")!, /umgezogen nach https:\/\/new\.example\.test/);
-  move.setMoveRedirect(owner, true);
-  assert.equal(readOnlyState().redirect, true);
-  move.unfreezeSource(owner);
-  assert.deepEqual(readOnlyState(), { readOnly: false, movedTo: null, redirect: false });
-  assert.doesNotThrow(() => checkOrigin(request("/api/command")));
+  assert.match((await readOnlyRefusal("/api/command"))!, /umgezogen nach https:\/\/new\.example\.test/);
+  await move.setMoveRedirect(owner, true);
+  assert.equal((await readOnlyState()).redirect, true);
+  await move.unfreezeSource(owner);
+  assert.deepEqual(await readOnlyState(), { readOnly: false, movedTo: null, redirect: false });
+  await assert.doesNotReject(async () => await checkOrigin(request("/api/command")));
 });
 
 test("step-up: password for password accounts, a fresh sign-in for SSO, never an API token", async () => {
-  const local = admin("local");
-  run("INSERT INTO local_accounts(user_id,email,password_hash,is_admin,email_verified,created_at) VALUES(?,?,?,?,?,?)", local.id, local.email, await hashPassword("korrekt-pferd-batterie"), 1, 1, Date.now());
+  const local = await admin("local");
+  await run("INSERT INTO local_accounts(user_id,email,password_hash,is_admin,email_verified,created_at) VALUES(?,?,?,?,?,?)", local.id, local.email, await hashPassword("korrekt-pferd-batterie"), 1, 1, Date.now());
   const req = (cookie = "") => new Request("https://old.example.test/api/admin/instance-move", { headers: cookie ? { cookie } : {} });
   await assert.rejects(move.requireStepUp(local, req(), "", "de"), /Passwort/);
   await assert.rejects(move.requireStepUp(local, req(), "falsch", "de"), (e: unknown) => e instanceof HttpError && e.status === 401);
   assert.equal(await move.requireStepUp(local, req(), "korrekt-pferd-batterie", "de"), "password");
-  assert.equal(move.stepUpKind(local), "password");
-  const sso = admin("sso");
-  assert.equal(move.stepUpKind(sso), "recent-sign-in");
-  const session = (created: number) => {
+  assert.equal(await move.stepUpKind(local), "password");
+  const sso = await admin("sso");
+  assert.equal(await move.stepUpKind(sso), "recent-sign-in");
+  const session = async (created: number) => {
     const token = id();
-    run("INSERT INTO sessions(token,user_id,groups_json,expires,created_at) VALUES(?,?,?,?,?)", hash(token), sso.id, "[]", Date.now() + 3_600_000, created);
+    await run("INSERT INTO sessions(token,user_id,groups_json,expires,created_at) VALUES(?,?,?,?,?)", hash(token), sso.id, "[]", Date.now() + 3_600_000, created);
     return `flowplan_session=${token}`;
   };
-  await assert.rejects(move.requireStepUp(sso, req(session(Date.now() - 20 * 60_000)), "", "de"), /erneut an/);
-  assert.equal(await move.requireStepUp(sso, req(session(Date.now() - 60_000)), "", "de"), "recent-sign-in");
-  await assert.rejects(move.requireStepUp({ ...sso, apiScope: "write" }, req(session(Date.now())), "", "de"), /API-Token/);
+  await assert.rejects(move.requireStepUp(sso, req(await session(Date.now() - 20 * 60_000)), "", "de"), /erneut an/);
+  assert.equal(await move.requireStepUp(sso, req(await session(Date.now() - 60_000)), "", "de"), "recent-sign-in");
+  await assert.rejects(move.requireStepUp({ ...sso, apiScope: "write" }, req(await session(Date.now())), "", "de"), /API-Token/);
 });
 
 test("the target refuses internal addresses unless FLOWPLAN_MOVE_ALLOW_PRIVATE=true, and runs the whole move from another instance", async () => {
@@ -370,7 +370,7 @@ test("the target refuses internal addresses unless FLOWPLAN_MOVE_ALLOW_PRIVATE=t
     child.once("exit", (code) => fail(new Error(`source exited with ${code}`)));
   });
   const sourceState = async () => (await (await fetch(`${other.url}/state`)).json()) as { readOnly: boolean; movedTo: string | null };
-  const target = admin("target");
+  const target = await admin("target");
   try {
     delete process.env.FLOWPLAN_MOVE_ALLOW_PRIVATE;
     await assert.rejects(move.startIncoming(target, { url: other.url, token: other.token, confirm: true }), /https:\/\//);
@@ -381,17 +381,17 @@ test("the target refuses internal addresses unless FLOWPLAN_MOVE_ALLOW_PRIVATE=t
     await assert.rejects(move.startIncoming(target, { url: "https://localhost:1", token: other.token, confirm: true }), /Interne Adressen/);
     process.env.FLOWPLAN_MOVE_ALLOW_PRIVATE = "true";
     // Not an empty instance: only with confirmation.
-    assert.equal(move.instanceContent().fresh, false);
+    assert.equal((await move.instanceContent()).fresh, false);
     await assert.rejects(move.startIncoming(target, { url: other.url, token: other.token }), /bestätige/);
     await assert.rejects(move.startIncoming(target, { url: other.url, token: "fpmove_" + "x".repeat(43), confirm: true }), /Umzugstoken/);
     // This instance's own token: it would pull from itself.
-    const own = move.prepareMove(owner);
+    const own = await move.prepareMove(owner);
     await assert.rejects(move.startIncoming(target, { url: "https://old.example.test", token: own.token, confirm: true }), /dieser Instanz/);
-    move.revokeMove(owner);
+    await move.revokeMove(owner);
     // The whole move.
     await move.startIncoming(target, { url: other.url, token: other.token, confirm: true });
     await move.moveJobDone();
-    const status = move.moveTargetStatus();
+    const status = await move.moveTargetStatus();
     assert.ok(status.incoming!.firstCopyAt, status.incoming!.error || "");
     await assert.rejects(move.applyIncoming(target), /letzten Stand/);
     const report = await move.preflight();
@@ -401,9 +401,9 @@ test("the target refuses internal addresses unless FLOWPLAN_MOVE_ALLOW_PRIVATE=t
     assert.equal((await sourceState()).readOnly, false);
     await move.finalSync(target);
     assert.equal((await sourceState()).readOnly, true, "the source is read-only for the final sync");
-    assert.equal(readOnlyState().readOnly, false, "the target is not");
+    assert.equal((await readOnlyState()).readOnly, false, "the target is not");
     await move.moveJobDone();
-    assert.ok(move.moveTargetStatus().incoming!.finalAt);
+    assert.ok((await move.moveTargetStatus()).incoming!.finalAt);
     const applied = await move.applyIncoming(target);
     assert.equal(applied.notified, true);
     assert.deepEqual([applied.summary.pages >= 1, applied.summary.files], [true, 1]);
@@ -413,13 +413,13 @@ test("the target refuses internal addresses unless FLOWPLAN_MOVE_ALLOW_PRIVATE=t
     assert.equal((staged.prepare("SELECT title FROM pages WHERE id=?").get(other.pageId) as { title: string }).title, "Auf der Quelle");
     staged.close();
     assert.equal((await sourceState()).movedTo, "https://old.example.test", "the source learnt the target's address");
-    assert.ok(one("SELECT 1 FROM audit WHERE action='instance.move.applied'"));
+    assert.ok(await one("SELECT 1 FROM audit WHERE action='instance.move.applied'"));
     // The token is used up.
     await assert.rejects(pull.moveJson(asSource(other.url, other.token), "/api/move/env"), /Umzugstoken/);
   } finally {
     delete process.env.FLOWPLAN_MOVE_ALLOW_PRIVATE;
     rmSync(join(dir, "restore-pending"), { recursive: true, force: true });
-    move.cancelIncoming(target);
+    await move.cancelIncoming(target);
     child.kill("SIGTERM");
   }
 });

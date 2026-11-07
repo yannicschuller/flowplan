@@ -14,9 +14,9 @@ const { sharedContent, mutateSharedContent } =
   await import("../lib/shared-content");
 const { publicPage, publicFile } = await import("../lib/publication");
 const { listShareLinks } = await import("../lib/share-links");
-function user(name: string): Identity {
+async function user(name: string): Promise<Identity> {
   const uid = id();
-  run(
+  await run(
     "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
     uid,
     uid,
@@ -33,41 +33,41 @@ function user(name: string): Identity {
     created_at: "",
   };
 }
-const owner = user("owner"),
-  viewer = user("viewer"),
-  wid = createWorkspace(owner.id, "Sharing"),
-  boot = bootstrap(owner, wid);
-run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
-function page(extra = {}) {
+const owner = await user("owner"),
+  viewer = await user("viewer"),
+  wid = await createWorkspace(owner.id, "Sharing"),
+  boot = await bootstrap(owner, wid);
+await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
+async function page(extra = {}) {
   return (
-    command(owner, {
+    (await command(owner, {
       action: "page.create",
       workspaceId: wid,
       spaceId: boot.spaces[0].id,
       title: "Shared",
       ...extra,
-    }) as { id: string }
+    })) as { id: string }
   ).id;
 }
-function link(pageId: string, role = "viewer", includeChildren = false) {
+async function link(pageId: string, role = "viewer", includeChildren = false) {
   return (
-    command(owner, {
+    (await command(owner, {
       action: "share.create",
       pageId,
       role,
       includeChildren,
       name: role,
-    }) as { token: string }
+    })) as { token: string }
   ).token;
 }
-function save(
+async function save(
   token: string,
   pageId: string,
   html = "<p>Changed</p>",
   extra = {},
 ) {
-  const data = sharedContent(token, pageId);
-  return mutateSharedContent(token, {
+  const data = await sharedContent(token, pageId);
+  return await mutateSharedContent(token, {
     action: "save",
     pageId,
     version: data.version,
@@ -80,18 +80,18 @@ function fails(fn: () => unknown, status: number) {
   assert.throws(fn, (e: any) => e.status === status);
 }
 
-test("independent links enforce read, comment and edit rights, hide tokens and revoke immediately", () => {
-  const pid = page(),
-    read = link(pid),
-    comment = link(pid, "commenter"),
-    edit = link(pid, "editor");
+test("independent links enforce read, comment and edit rights, hide tokens and revoke immediately", async () => {
+  const pid = await page(),
+    read = await link(pid),
+    comment = await link(pid, "commenter"),
+    edit = await link(pid, "editor");
   assert.equal(new Set([read, comment, edit]).size, 3);
-  assert.equal(listShareLinks(owner, pid).length, 3);
-  assert.deepEqual(pageData(viewer, pid).shareLinks, []);
-  fails(() => listShareLinks(viewer, pid), 403);
+  assert.equal((await listShareLinks(owner, pid)).length, 3);
+  assert.deepEqual((await pageData(viewer, pid)).shareLinks, []);
+  fails(async () => await listShareLinks(viewer, pid), 403);
   fails(
-    () =>
-      command(viewer, {
+    async () =>
+      await command(viewer, {
         action: "share.create",
         pageId: pid,
         name: "Bad",
@@ -99,11 +99,11 @@ test("independent links enforce read, comment and edit rights, hide tokens and r
       }),
     403,
   );
-  fails(() => save(read, pid), 403);
-  fails(() => save(comment, pid), 403);
+  fails(async () => await save(read, pid), 403);
+  fails(async () => await save(comment, pid), 403);
   fails(
-    () =>
-      mutateSharedContent(read, {
+    async () =>
+      await mutateSharedContent(read, {
         action: "comment",
         pageId: pid,
         name: "Guest",
@@ -111,38 +111,38 @@ test("independent links enforce read, comment and edit rights, hide tokens and r
       }),
     403,
   );
-  run(
+  await run(
     "INSERT INTO comments(id,page_id,author_id,body) VALUES(?,?,?,?)",
     id(),
     pid,
     owner.id,
     "Private internal comment",
   );
-  mutateSharedContent(comment, {
+  await mutateSharedContent(comment, {
     action: "comment",
     pageId: pid,
     name: "Guest",
     body: "Public feedback",
   });
-  assert.equal(sharedContent(read, pid).comments.length, 1);
-  assert.equal(sharedContent(read, pid).comments[0].body, "Public feedback");
-  assert.equal(pageData(owner, pid).comments.length, 2);
-  save(
+  assert.equal((await sharedContent(read, pid)).comments.length, 1);
+  assert.equal((await sharedContent(read, pid)).comments[0].body, "Public feedback");
+  assert.equal((await pageData(owner, pid)).comments.length, 2);
+  await save(
     edit,
     pid,
     "<p>Edited <strong>content</strong><script>alert(1)</script></p>",
   );
   assert.match(
-    String(one("SELECT html FROM documents WHERE page_id=?", pid)?.html),
+    String((await one("SELECT html FROM documents WHERE page_id=?", pid))?.html),
     /Edited/,
   );
-  assert.doesNotMatch(sharedContent(read, pid).html, /<script/);
-  assert.equal(all("SELECT * FROM snapshots WHERE page_id=?", pid).length, 1);
-  command(owner, { action: "share.revoke", pageId: pid, token: edit });
-  fails(() => sharedContent(edit, pid), 404);
-  fails(() => save(edit, pid), 404);
-  assert.equal(sharedContent(read, pid).role, "viewer");
-  mutateSharedContent(comment, {
+  assert.doesNotMatch((await sharedContent(read, pid)).html, /<script/);
+  assert.equal((await all("SELECT * FROM snapshots WHERE page_id=?", pid)).length, 1);
+  await command(owner, { action: "share.revoke", pageId: pid, token: edit });
+  fails(async () => await sharedContent(edit, pid), 404);
+  fails(async () => await save(edit, pid), 404);
+  assert.equal((await sharedContent(read, pid)).role, "viewer");
+  await mutateSharedContent(comment, {
     action: "comment",
     pageId: pid,
     name: "Guest",
@@ -150,16 +150,16 @@ test("independent links enforce read, comment and edit rights, hide tokens and r
   });
 });
 
-test("guest edits enforce version, locks, selected subtree and file boundaries", () => {
-  const pid = page(),
-    child = page({ parentId: pid }),
-    other = page(),
-    token = link(pid, "editor", true);
-  const fresh = sharedContent(token, pid);
-  save(token, pid);
+test("guest edits enforce version, locks, selected subtree and file boundaries", async () => {
+  const pid = await page(),
+    child = await page({ parentId: pid }),
+    other = await page(),
+    token = await link(pid, "editor", true);
+  const fresh = await sharedContent(token, pid);
+  await save(token, pid);
   fails(
-    () =>
-      mutateSharedContent(token, {
+    async () =>
+      await mutateSharedContent(token, {
         action: "save",
         pageId: pid,
         version: fresh.version,
@@ -168,17 +168,17 @@ test("guest edits enforce version, locks, selected subtree and file boundaries",
       }),
     409,
   );
-  assert.equal(publicPage(token, child).page.id, child);
-  const later = page({ parentId: pid });
-  fails(() => publicPage(token, later), 404);
-  fails(() => save(token, other), 404);
-  run("UPDATE pages SET locked=1 WHERE id=?", pid);
-  fails(() => save(token, pid), 409);
-  run("UPDATE pages SET locked=0 WHERE id=?", pid);
+  assert.equal((await publicPage(token, child)).page.id, child);
+  const later = await page({ parentId: pid });
+  fails(async () => await publicPage(token, later), 404);
+  fails(async () => await save(token, other), 404);
+  await run("UPDATE pages SET locked=1 WHERE id=?", pid);
+  fails(async () => await save(token, pid), 409);
+  await run("UPDATE pages SET locked=0 WHERE id=?", pid);
   const fid = id(),
     hidden = id();
   for (const f of [fid, hidden])
-    run(
+    await run(
       "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
       f,
       pid,
@@ -187,25 +187,25 @@ test("guest edits enforce version, locks, selected subtree and file boundaries",
       1,
       owner.id,
     );
-  run(
+  await run(
     "UPDATE documents SET html=? WHERE page_id=?",
     `<p><a href="/api/files/${fid}">Allowed file</a></p>`,
     pid,
   );
-  assert.equal(publicFile(token, fid).id, fid);
-  fails(() => publicFile(token, hidden), 404);
-  save(
+  assert.equal((await publicFile(token, fid)).id, fid);
+  fails(async () => await publicFile(token, hidden), 404);
+  await save(
     token,
     pid,
     `<p><a href="/api/share/${token}/files/${fid}">Still allowed</a></p>`,
   );
   assert.match(
-    String(one("SELECT html FROM documents WHERE page_id=?", pid)?.html),
+    String((await one("SELECT html FROM documents WHERE page_id=?", pid))?.html),
     new RegExp(`/api/files/${fid}`),
   );
   fails(
-    () =>
-      save(
+    async () =>
+      await save(
         token,
         pid,
         `<p><a href="/api/files/${hidden}">Private file</a></p>`,
@@ -213,39 +213,39 @@ test("guest edits enforce version, locks, selected subtree and file boundaries",
     403,
   );
   fails(
-    () =>
-      save(
+    async () =>
+      await save(
         token,
         pid,
         `<p><a href="/api/share/${token}/files/${hidden}">Hidden file</a></p>`,
       ),
     404,
   );
-  run("UPDATE pages SET parent_id=NULL WHERE id=?", child);
-  fails(() => publicPage(token, child), 404);
-  command(owner, { action: "page.delete", pageId: pid });
-  fails(() => publicPage(token), 404);
-  command(owner, { action: "page.restore", pageId: pid });
-  fails(() => publicPage(token), 404);
+  await run("UPDATE pages SET parent_id=NULL WHERE id=?", child);
+  fails(async () => await publicPage(token, child), 404);
+  await command(owner, { action: "page.delete", pageId: pid });
+  fails(async () => await publicPage(token), 404);
+  await command(owner, { action: "page.restore", pageId: pid });
+  fails(async () => await publicPage(token), 404);
 });
 
-test("database guest edits preserve private fields and reject unauthorized row and field access", () => {
-  const pid = page({ kind: "database" }),
-    token = link(pid, "editor"),
-    other = page({ kind: "database" });
+test("database guest edits preserve private fields and reject unauthorized row and field access", async () => {
+  const pid = await page({ kind: "database" }),
+    token = await link(pid, "editor"),
+    other = await page({ kind: "database" });
   const fields = [
     { id: "title", name: "Name", type: "text" },
     { id: "secret", name: "Person", type: "person" },
     { id: "done", name: "Done", type: "checkbox" },
   ];
-  run(
+  await run(
     "UPDATE databases SET fields=? WHERE page_id=?",
     JSON.stringify(fields),
     pid,
   );
   const rowId = id(),
     otherRow = id();
-  run(
+  await run(
     "INSERT INTO rows(id,page_id,cells,content,created_by,updated_by) VALUES(?,?,?,?,?,?)",
     rowId,
     pid,
@@ -254,14 +254,14 @@ test("database guest edits preserve private fields and reject unauthorized row a
     owner.id,
     owner.id,
   );
-  run(
+  await run(
     "INSERT INTO rows(id,page_id,cells,created_by) VALUES(?,?,?,?)",
     otherRow,
     other,
     "{}",
     owner.id,
   );
-  const data = sharedContent(token, pid, rowId);
+  const data = await sharedContent(token, pid, rowId);
   assert.equal(data.cells.secret, undefined);
   assert.ok(!data.fields.some((f) => f.id === "secret"));
   const mutation = {
@@ -274,15 +274,15 @@ test("database guest edits preserve private fields and reject unauthorized row a
     cells: { title: "After", done: true },
   };
   fails(
-    () =>
-      mutateSharedContent(token, { ...mutation, cells: { secret: viewer.id } }),
+    async () =>
+      await mutateSharedContent(token, { ...mutation, cells: { secret: viewer.id } }),
     403,
   );
-  mutateSharedContent(token, mutation);
-  const row = one<{ cells: string; content: string; version: number }>(
+  await mutateSharedContent(token, mutation);
+  const row = (await one<{ cells: string; content: string; version: number }>(
     "SELECT * FROM rows WHERE id=?",
     rowId,
-  )!;
+  ))!;
   assert.deepEqual(JSON.parse(row.cells), {
     title: "After",
     secret: owner.id,
@@ -291,15 +291,15 @@ test("database guest edits preserve private fields and reject unauthorized row a
   assert.equal(row.content, "<p>New details</p>");
   assert.equal(row.version, 2);
   assert.equal(
-    all("SELECT * FROM row_snapshots WHERE row_id=?", rowId).length,
+    (await all("SELECT * FROM row_snapshots WHERE row_id=?", rowId)).length,
     1,
   );
-  fails(() => sharedContent(token, pid, otherRow), 404);
+  fails(async () => await sharedContent(token, pid, otherRow), 404);
 });
 
-test("guests with edit links add records with public properties only", () => {
-  const pid = page({ kind: "database" });
-  run(
+test("guests with edit links add records with public properties only", async () => {
+  const pid = await page({ kind: "database" });
+  await run(
     "UPDATE databases SET fields=? WHERE page_id=?",
     JSON.stringify([
       { id: "title", name: "Name", type: "text" },
@@ -308,35 +308,35 @@ test("guests with edit links add records with public properties only", () => {
     ]),
     pid,
   );
-  const editor = link(pid, "editor"),
-    commenter = link(pid, "commenter");
-  assert.equal(sharedContent(editor, pid).titleField, "title");
-  const create = (token: string, cells: Record<string, unknown>) =>
-    mutateSharedContent(token, { action: "create", pageId: pid, cells }) as {
+  const editor = await link(pid, "editor"),
+    commenter = await link(pid, "commenter");
+  assert.equal((await sharedContent(editor, pid)).titleField, "title");
+  const create = async (token: string, cells: Record<string, unknown>) =>
+    (await mutateSharedContent(token, { action: "create", pageId: pid, cells })) as {
       createdRowId?: string;
     };
-  fails(() => create(commenter, { title: "Nein" }), 403);
-  fails(() => create(editor, { owner: owner.id }), 403);
-  const rid = create(editor, { title: "Gastidee", done: true }).createdRowId!;
-  const row = one<{ cells: string; created_by: string | null }>(
+  fails(async () => await create(commenter, { title: "Nein" }), 403);
+  fails(async () => await create(editor, { owner: owner.id }), 403);
+  const rid = (await create(editor, { title: "Gastidee", done: true })).createdRowId!;
+  const row = (await one<{ cells: string; created_by: string | null }>(
     "SELECT cells,created_by FROM rows WHERE id=? AND page_id=?",
     rid,
     pid,
-  )!;
+  ))!;
   assert.deepEqual(JSON.parse(row.cells), { title: "Gastidee", done: true });
   assert.equal(row.created_by, null);
   // The new record can be edited through the same link.
-  assert.equal(sharedContent(editor, pid, rid).cells.title, "Gastidee");
-  run("UPDATE pages SET locked=1 WHERE id=?", pid);
-  fails(() => create(editor, { title: "Gesperrt" }), 409);
+  assert.equal((await sharedContent(editor, pid, rid)).cells.title, "Gastidee");
+  await run("UPDATE pages SET locked=1 WHERE id=?", pid);
+  fails(async () => await create(editor, { title: "Gesperrt" }), 409);
 });
 
 test("guest uploads are checked, readable only through their link until used, and cleaned up", async () => {
   const { guestUpload, purgeUnusedGuestUploads } =
     await import("../lib/shared-uploads");
-  const pid = page(),
-    editor = link(pid, "editor"),
-    reader = link(pid, "viewer");
+  const pid = await page(),
+    editor = await link(pid, "editor"),
+    reader = await link(pid, "viewer");
   const png = new File(
     [
       Buffer.from(
@@ -370,39 +370,39 @@ test("guest uploads are checked, readable only through their link until used, an
   const fid = uploaded.url.split("/").pop()!;
   assert.equal(uploaded.url, `/api/share/${editor}/files/${fid}`);
   // Only the uploading link reads the unused file.
-  assert.equal(publicFile(editor, fid).id, fid);
-  fails(() => publicFile(reader, fid), 404);
-  save(editor, pid, `<p><img src="${uploaded.url}" alt="bild.png"></p>`);
+  assert.equal((await publicFile(editor, fid)).id, fid);
+  fails(async () => await publicFile(reader, fid), 404);
+  await save(editor, pid, `<p><img src="${uploaded.url}" alt="bild.png"></p>`);
   assert.match(
-    String(one("SELECT html FROM documents WHERE page_id=?", pid)?.html),
+    String((await one("SELECT html FROM documents WHERE page_id=?", pid))?.html),
     new RegExp(`/api/files/${fid}`),
   );
-  assert.equal(publicFile(reader, fid).id, fid);
+  assert.equal((await publicFile(reader, fid)).id, fid);
   // Uploads draw on the link's daily budget, whatever the workspace quota.
   const { anonymousBytesToday } = await import("../lib/anonymous-budget");
-  assert.ok(anonymousBytesToday(`share:${editor}`) > 0);
-  run("INSERT INTO anonymous_uploads(scope,bytes,at) VALUES(?,?,?)", `share:${editor}`, 200 * 1024 * 1024, Date.now());
+  assert.ok((await anonymousBytesToday(`share:${editor}`)) > 0);
+  await run("INSERT INTO anonymous_uploads(scope,bytes,at) VALUES(?,?,?)", `share:${editor}`, 200 * 1024 * 1024, Date.now());
   await rejects(guestUpload(editor, pid, png), 413);
-  run("DELETE FROM anonymous_uploads WHERE scope=?", `share:${editor}`);
+  await run("DELETE FROM anonymous_uploads WHERE scope=?", `share:${editor}`);
   // And on a count per ten minutes.
   const { GUEST_UPLOADS_PER_10_MIN } = await import("../lib/shared-uploads");
   const fillers: string[] = [];
   for (let i = 0; i < GUEST_UPLOADS_PER_10_MIN; i++) {
     const filler = id();
     fillers.push(filler);
-    run("INSERT INTO files(id,page_id,name,mime,size) VALUES(?,?,?,?,?)", filler, pid, "f.png", "image/png", 1);
-    run("INSERT INTO share_uploads(file_id,token,created_at) VALUES(?,?,?)", filler, editor, Date.now());
+    await run("INSERT INTO files(id,page_id,name,mime,size) VALUES(?,?,?,?,?)", filler, pid, "f.png", "image/png", 1);
+    await run("INSERT INTO share_uploads(file_id,token,created_at) VALUES(?,?,?)", filler, editor, Date.now());
   }
   await rejects(guestUpload(editor, pid, png), 429);
-  for (const filler of fillers) run("DELETE FROM files WHERE id=?", filler);
+  for (const filler of fillers) await run("DELETE FROM files WHERE id=?", filler);
   // After a day: used uploads stay, unused ones are removed.
   const unused = await guestUpload(editor, pid, png);
   const unusedId = unused.url.split("/").pop()!;
-  purgeUnusedGuestUploads(Date.now() + 2 * 86400000);
-  assert.ok(one("SELECT 1 FROM files WHERE id=?", fid));
-  assert.equal(one("SELECT 1 FROM files WHERE id=?", unusedId), undefined);
+  await purgeUnusedGuestUploads(Date.now() + 2 * 86400000);
+  assert.ok(await one("SELECT 1 FROM files WHERE id=?", fid));
+  assert.equal(await one("SELECT 1 FROM files WHERE id=?", unusedId), undefined);
   assert.equal(
-    one("SELECT 1 FROM share_uploads WHERE file_id=?", fid),
+    await one("SELECT 1 FROM share_uploads WHERE file_id=?", fid),
     undefined,
   );
 });
@@ -411,11 +411,11 @@ test("public pages render linked views of published databases with public proper
   const { withPublicEmbeds } = await import("../lib/public-embeds");
   const { publishedHtml } = await import("../lib/publication");
   const { escaped } = await import("../lib/document-server");
-  const host = page(),
-    inside = page({ kind: "database", parentId: host }),
-    outside = page({ kind: "database" });
+  const host = await page(),
+    inside = await page({ kind: "database", parentId: host }),
+    outside = await page({ kind: "database" });
   for (const db of [inside, outside])
-    run(
+    await run(
       "UPDATE databases SET fields=? WHERE page_id=?",
       JSON.stringify([
         { id: "title", name: "Name", type: "text" },
@@ -424,7 +424,7 @@ test("public pages render linked views of published databases with public proper
       ]),
       db,
     );
-  run(
+  await run(
     "INSERT INTO rows(id,page_id,cells,created_by) VALUES(?,?,?,?)",
     id(),
     inside,
@@ -441,18 +441,18 @@ test("public pages render linked views of published databases with public proper
   const block = (source: string, blockId = id()) =>
     `<div data-linked-database="${blockId}" data-linked-source="${source}" data-linked-version="1" data-linked-views="${escaped(views)}">Platzhalter</div>`;
   const html = `<p>Start</p>${block(inside)}${block(outside)}`;
-  run("UPDATE documents SET html=? WHERE page_id=?", html, host);
-  command(owner, {
+  await run("UPDATE documents SET html=? WHERE page_id=?", html, host);
+  await command(owner, {
     action: "page.publish",
     pageId: host,
     enabled: true,
     includeChildren: true,
   });
-  const token = one<{ public_token: string }>(
+  const token = (await one<{ public_token: string }>(
     "SELECT public_token FROM pages WHERE id=?",
     host,
-  )!.public_token;
-  const { pages } = publicPage(token);
+  ))!.public_token;
+  const { pages } = await publicPage(token);
   const rendered = withPublicEmbeds(
     publishedHtml(html, token, pages),
     html,
@@ -471,11 +471,11 @@ test("public pages render linked views of published databases with public proper
 
 test("guests edit relations into shared databases, files and single properties", async () => {
   const { guestUpload } = await import("../lib/shared-uploads");
-  const host = page(),
-    tasks = page({ kind: "database", parentId: host }),
-    people = page({ kind: "database", parentId: host }),
-    hidden = page({ kind: "database" });
-  run(
+  const host = await page(),
+    tasks = await page({ kind: "database", parentId: host }),
+    people = await page({ kind: "database", parentId: host }),
+    hidden = await page({ kind: "database" });
+  await run(
     "UPDATE databases SET fields=? WHERE page_id=?",
     JSON.stringify([
       { id: "title", name: "Name", type: "text" },
@@ -489,30 +489,30 @@ test("guests edit relations into shared databases, files and single properties",
   const ada = id(),
     foreign = id(),
     task = id();
-  run(
+  await run(
     "INSERT INTO rows(id,page_id,cells,created_by) VALUES(?,?,?,?)",
     ada,
     people,
     JSON.stringify({ title: "Ada" }),
     owner.id,
   );
-  run(
+  await run(
     "INSERT INTO rows(id,page_id,cells,created_by) VALUES(?,?,?,?)",
     foreign,
     hidden,
     JSON.stringify({ title: "Geheim" }),
     owner.id,
   );
-  run(
+  await run(
     "INSERT INTO rows(id,page_id,cells,created_by) VALUES(?,?,?,?)",
     task,
     tasks,
     JSON.stringify({ title: "Aufgabe", secret: [foreign], due: "2026-09-01" }),
     owner.id,
   );
-  const editor = link(host, "editor", true),
-    reader = link(host, "viewer", true);
-  const data = sharedContent(editor, tasks, task);
+  const editor = await link(host, "editor", true),
+    reader = await link(host, "viewer", true);
+  const data = await sharedContent(editor, tasks, task);
   // Relations into databases outside the share stay hidden.
   assert.deepEqual(
     data.fields.map((f) => f.id),
@@ -522,22 +522,22 @@ test("guests edit relations into shared databases, files and single properties",
     { id: ada, cells: { title: "Ada" } },
   ]);
   assert.equal(data.related[hidden], undefined);
-  const cells = (patch: Record<string, unknown>, token = editor) =>
-    mutateSharedContent(token, {
+  const cells = async (patch: Record<string, unknown>, token = editor) =>
+    await mutateSharedContent(token, {
       action: "cells",
       pageId: tasks,
       rowId: task,
-      version: sharedContent(editor, tasks, task).version,
+      version: (await sharedContent(editor, tasks, task)).version,
       cells: patch,
     });
-  fails(() => cells({ due: "2026-09-02" }, reader), 403);
-  fails(() => cells({ secret: [] }), 403);
-  fails(() => cells({ who: [foreign] }), 400);
-  cells({ who: [ada], due: "2026-09-03" });
+  fails(async () => await cells({ due: "2026-09-02" }, reader), 403);
+  fails(async () => await cells({ secret: [] }), 403);
+  fails(async () => await cells({ who: [foreign] }), 400);
+  await cells({ who: [ada], due: "2026-09-03" });
   // Stale versions are rejected.
   fails(
-    () =>
-      mutateSharedContent(editor, {
+    async () =>
+      await mutateSharedContent(editor, {
         action: "cells",
         pageId: tasks,
         rowId: task,
@@ -553,10 +553,10 @@ test("guests edit relations into shared databases, files and single properties",
     new File(["Protokoll"], "notiz.txt", { type: "text/plain" }),
   );
   const fid = upload.url.split("/").pop()!;
-  fails(() => cells({ docs: ["/api/files/" + id()] }), 400);
-  cells({ docs: [upload.url, "https://example.com/plan.pdf"] });
+  fails(async () => await cells({ docs: ["/api/files/" + id()] }), 400);
+  await cells({ docs: [upload.url, "https://example.com/plan.pdf"] });
   const row = JSON.parse(
-    String(one("SELECT cells FROM rows WHERE id=?", task)?.cells),
+    String((await one("SELECT cells FROM rows WHERE id=?", task))?.cells),
   );
   assert.deepEqual(row.who, [ada]);
   assert.deepEqual(row.secret, [foreign]);
@@ -566,8 +566,8 @@ test("guests edit relations into shared databases, files and single properties",
     "https://example.com/plan.pdf",
   ]);
   // The attached file is now readable through every link of the share.
-  assert.equal(publicFile(reader, fid).id, fid);
-  assert.deepEqual(sharedContent(reader, tasks, task).cells.docs, [
+  assert.equal((await publicFile(reader, fid)).id, fid);
+  assert.deepEqual((await sharedContent(reader, tasks, task)).cells.docs, [
     `/api/share/${reader}/files/${fid}`,
     "https://example.com/plan.pdf",
   ]);

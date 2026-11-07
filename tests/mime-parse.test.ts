@@ -81,7 +81,7 @@ test("crafted headers are parsed in linear time (no ReDoS)", () => {
   for (const value of ["(".repeat(100_000), "a".repeat(100_000), '"\\"'.repeat(33_000), "<".repeat(100_000), "<a@".repeat(33_000)]) {
     assert.ok(timed(() => addresses(value)) < 100, value.slice(0, 5));
     const mail = `From: ${value}\r\nTo: ${value}\r\nDate: Mon (${value}\r\nSubject: x\r\n\r\nText`;
-    let parsed: ReturnType<typeof parseMime> | undefined;
+    let parsed: Awaited<ReturnType<typeof parseMime>> | undefined;
     assert.ok(timed(() => (parsed = parseMime(mail))) < 100, value.slice(0, 5));
     assert.ok(parsed!.headers.get("to")![0].length <= 8192);
   }

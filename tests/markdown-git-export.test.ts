@@ -15,23 +15,23 @@ const { exportMarkdown } = await import("../lib/markdown-export");
 const { setMarkdownExport, runMarkdownExports, markdownExportStatus, exportablePages } = await import("../lib/scheduled-markdown-export");
 const { readExportZip } = await import("./helpers/read-export-zip");
 
-function person(name: string, admin = false): Identity {
+async function person(name: string, admin = false): Promise<Identity> {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
   return { id: uid, name, email: `${name}@example.test`, groups: [], isAdmin: admin, disabled: 0, created_at: "" } as Identity;
 }
-const admin = person("Ada", true);
-const wid = createWorkspace(admin.id, "Familie");
-const space = bootstrap(admin, wid).spaces[0].id;
-const act = (b: Record<string, unknown>) => command(admin, { workspaceId: wid, ...b }) as Record<string, unknown>;
-const house = String(act({ action: "page.create", spaceId: space, title: "Haus", kind: "document" }).id);
-const write = (pageId: string, html: string) => run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), pageId);
-write(house, "<p>Heizung im Keller.</p>");
-act({ action: "page.snapshot", pageId: house });
-write(house, "<p>Heizung im Keller, Wartung im Herbst.</p>");
-act({ action: "comment.create", pageId: house, body: "Termin vereinbaren" });
-const notes = String(act({ action: "page.create", spaceId: space, title: "Notizen", kind: "database", databaseKind: "documents", parentId: house }).id);
-const record = String(act({ action: "row.create", pageId: notes, cells: { title: "Versicherung" } }).id);
+const admin = await person("Ada", true);
+const wid = await createWorkspace(admin.id, "Familie");
+const space = (await bootstrap(admin, wid)).spaces[0].id;
+const act = async (b: Record<string, unknown>) => (await command(admin, { workspaceId: wid, ...b })) as Record<string, unknown>;
+const house = String((await act({ action: "page.create", spaceId: space, title: "Haus", kind: "document" })).id);
+const write = async (pageId: string, html: string) => await run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), pageId);
+await write(house, "<p>Heizung im Keller.</p>");
+await act({ action: "page.snapshot", pageId: house });
+await write(house, "<p>Heizung im Keller, Wartung im Herbst.</p>");
+await act({ action: "comment.create", pageId: house, body: "Termin vereinbaren" });
+const notes = String((await act({ action: "page.create", spaceId: space, title: "Notizen", kind: "database", databaseKind: "documents", parentId: house })).id);
+const record = String((await act({ action: "row.create", pageId: notes, cells: { title: "Versicherung" } })).id);
 
 test("the ZIP export can carry comments and earlier versions", async () => {
   const { bytes } = await exportMarkdown(admin, { pageId: house, format: "zip", includeSubpages: true, history: true });
@@ -48,12 +48,12 @@ test("the ZIP export can carry comments and earlier versions", async () => {
 });
 
 test("the scheduled export writes ZIPs next to the backups and keeps as many", async () => {
-  const member = person("Ben");
-  assert.throws(() => setMarkdownExport(member, [house]), /Administrator/);
-  assert.ok(exportablePages(admin).some((p) => p.id === house));
-  setMarkdownExport(admin, [house]);
-  assert.equal(markdownExportStatus().owner, "Ada");
-  run("INSERT INTO instance_settings(key,value) VALUES('backupKeep','2') ON CONFLICT(key) DO UPDATE SET value=excluded.value");
+  const member = await person("Ben");
+  await assert.rejects(async () => await setMarkdownExport(member, [house]), /Administrator/);
+  assert.ok((await exportablePages(admin)).some((p) => p.id === house));
+  await setMarkdownExport(admin, [house]);
+  assert.equal((await markdownExportStatus()).owner, "Ada");
+  await run("INSERT INTO instance_settings(key,value) VALUES('backupKeep','2') ON CONFLICT(key) DO UPDATE SET value=excluded.value");
   for (const day of [1, 2, 3]) {
     const [result] = await runMarkdownExports(Date.UTC(2026, 9, day, 3));
     assert.equal(result.error, null);
@@ -62,25 +62,25 @@ test("the scheduled export writes ZIPs next to the backups and keeps as many", a
   const zips = readdirSync(folder).sort();
   assert.equal(zips.length, 2);
   assert.match(zips[1], /^Haus-[0-9a-f]{8}-2026-10-03-03-00\.zip$/);
-  assert.equal(markdownExportStatus().runs[0].error, null);
+  assert.equal((await markdownExportStatus()).runs[0].error, null);
 });
 
-test("a chosen page that went to the trash drops out of the choice instead of blocking it (#38)", () => {
-  const second = act({ action: "page.create", spaceId: space, title: "Garten" }).id as string;
-  setMarkdownExport(admin, [house, second]);
-  act({ action: "page.delete", pageId: second });
+test("a chosen page that went to the trash drops out of the choice instead of blocking it (#38)", async () => {
+  const second = (await act({ action: "page.create", spaceId: space, title: "Garten" })).id as string;
+  await setMarkdownExport(admin, [house, second]);
+  await act({ action: "page.delete", pageId: second });
   // The status still lists it, without a title.
   assert.deepEqual(
-    markdownExportStatus().pages.map((p) => [p.id, p.title]),
+    (await markdownExportStatus()).pages.map((p) => [p.id, p.title]),
     [[house, "Haus"], [second, null]],
   );
   // Saving the old choice again works and keeps only the page that exists.
-  setMarkdownExport(admin, [house, second]);
-  assert.deepEqual(markdownExportStatus().pages.map((p) => p.id), [house]);
+  await setMarkdownExport(admin, [house, second]);
+  assert.deepEqual((await markdownExportStatus()).pages.map((p) => p.id), [house]);
   // An empty choice is possible too.
-  setMarkdownExport(admin, [second]);
-  assert.deepEqual(markdownExportStatus().pages, []);
-  setMarkdownExport(admin, [house]);
+  await setMarkdownExport(admin, [second]);
+  assert.deepEqual((await markdownExportStatus()).pages, []);
+  await setMarkdownExport(admin, [house]);
 });
 
 // A Git server for the test, in a process of its own (needs git's
@@ -103,7 +103,7 @@ test("exports are pushed to Git, and changes made there come back", { skip: !exi
   process.env.EXPORT_GIT_IMPORT = "true";
   process.env.FLOWPLAN_GIT_ALLOW_HTTP = "1";
   await runMarkdownExports(Date.UTC(2026, 9, 4, 3));
-  const status = markdownExportStatus().git;
+  const status = (await markdownExportStatus()).git;
   assert.equal(status.last?.error, null, String(status.last?.error));
   assert.equal(status.last?.pushed, true);
   // A person edits the copy in Git: the record and the page.
@@ -120,13 +120,13 @@ test("exports are pushed to Git, and changes made there come back", { skip: !exi
   execFileSync("git", ["-C", clone, "push", "-q", "origin", "HEAD:main"]);
 
   await runMarkdownExports(Date.UTC(2026, 9, 5, 3));
-  const second = markdownExportStatus().git.last!;
+  const second = (await markdownExportStatus()).git.last!;
   assert.equal(second.error, null, String(second.error));
   assert.equal(second.imported, 2);
-  assert.match(one<{ content: string }>("SELECT content FROM rows WHERE id=?", record)!.content, /Police Nr\. 42/);
-  assert.match(one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", house)!.html, /Wartung im Frühjahr/);
+  assert.match((await one<{ content: string }>("SELECT content FROM rows WHERE id=?", record))!.content, /Police Nr\. 42/);
+  assert.match((await one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", house))!.html, /Wartung im Frühjahr/);
   // The previous text stays as a version.
-  assert.ok(one("SELECT 1 FROM snapshots WHERE page_id=? AND html LIKE '%Wartung im Herbst%'", house));
+  assert.ok(await one("SELECT 1 FROM snapshots WHERE page_id=? AND html LIKE '%Wartung im Herbst%'", house));
   // The remote history has both: Flowplan's export and the person's edit.
   execFileSync("git", ["-C", clone, "pull", "-q", "origin", "main"]);
   const log = execFileSync("git", ["-C", clone, "log", "--format=%s"]).toString();
@@ -135,10 +135,10 @@ test("exports are pushed to Git, and changes made there come back", { skip: !exi
 });
 
 test("a repository cannot read server files or reach pages it was not given", { skip: !existsSync(backend) && "git http-backend missing" }, async () => {
-  const other = String(act({ action: "page.create", spaceId: space, title: "Nicht exportiert", kind: "document" }).id);
-  write(other, "<p>Bleibt so.</p>");
-  const otherDb = String(act({ action: "page.create", spaceId: space, title: "Andere Datenbank", kind: "database" }).id);
-  const before = one<{ n: number }>("SELECT count(*) n FROM rows WHERE page_id=?", otherDb)!.n;
+  const other = String((await act({ action: "page.create", spaceId: space, title: "Nicht exportiert", kind: "document" })).id);
+  await write(other, "<p>Bleibt so.</p>");
+  const otherDb = String((await act({ action: "page.create", spaceId: space, title: "Andere Datenbank", kind: "database" })).id);
+  const before = (await one<{ n: number }>("SELECT count(*) n FROM rows WHERE page_id=?", otherDb))!.n;
   const clone = mkdtempSync(join(tmpdir(), "flowplan-git-attack-"));
   execFileSync("git", ["clone", "-q", `http://flowplan:secret-token@127.0.0.1:${port}/notes.git`, clone]);
   const folder = readdirSync(clone).find((f) => f.startsWith("Haus-"))!;
@@ -156,7 +156,7 @@ test("a repository cannot read server files or reach pages it was not given", { 
   execFileSync("git", ["-C", clone, "-c", "user.name=Eve", "-c", "user.email=eve@example.test", "commit", "-qm", "Attack"]);
   execFileSync("git", ["-C", clone, "push", "-q", "origin", "HEAD:main"]);
   await runMarkdownExports(Date.UTC(2026, 9, 6, 3));
-  assert.doesNotMatch(one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", house)!.html, /TOP-SECRET-ENV/);
-  assert.match(one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", other)!.html, /Bleibt so/);
-  assert.equal(one<{ n: number }>("SELECT count(*) n FROM rows WHERE page_id=?", otherDb)!.n, before);
+  assert.doesNotMatch((await one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", house))!.html, /TOP-SECRET-ENV/);
+  assert.match((await one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", other))!.html, /Bleibt so/);
+  assert.equal((await one<{ n: number }>("SELECT count(*) n FROM rows WHERE page_id=?", otherDb))!.n, before);
 });

@@ -708,7 +708,7 @@ function DeviceAiSettings({
 }: {
   view: UserView;
   command: (b: Record<string, unknown>) => Promise<boolean>;
-  saving: ReturnType<typeof useSaveState>[0];
+  saving: Awaited<ReturnType<typeof useSaveState>>[0];
   readOnly?: boolean;
 }) {
   const t = useT();
@@ -842,7 +842,7 @@ function OwnProvider({ view, command, onError }: { view: UserView; command: (b: 
 
 // "Worauf die KI zugreifen darf": everything I may see, or only what I
 // include; plus rules for the workspace, spaces, pages and databases.
-function AiAccessRules({ boot, view, command, saving }: { boot: Bootstrap; view: UserView; command: (b: Record<string, unknown>) => Promise<boolean>; saving: ReturnType<typeof useSaveState>[0] }) {
+function AiAccessRules({ boot, view, command, saving }: { boot: Bootstrap; view: UserView; command: (b: Record<string, unknown>) => Promise<boolean>; saving: Awaited<ReturnType<typeof useSaveState>>[0] }) {
   const t = useT();
   const [target, setTarget] = useState(""),
     [mode, setMode] = useState<"include" | "exclude">("exclude");

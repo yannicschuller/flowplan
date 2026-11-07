@@ -33,6 +33,7 @@ import { recordOpsEvent } from "./ops-events";
 import { blockedAddress, securityEvent } from "./security-events";
 import { translate, type Locale } from "./i18n";
 import { ldapConfigured } from "./ldap";
+import { mapAsync, someAsync } from "./each-async";
 
 const scrypt = promisify(scryptCb) as (password: string, salt: Buffer, length: number, options: object) => Promise<Buffer>;
 const SCRYPT = { N: 1 << 15, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
@@ -82,7 +83,7 @@ const tr = (locale: Locale): Tr => translate(locale);
 // ---- Accounts ----
 
 type Account = { user_id: string; email: string; password_hash: string; is_admin: number; email_verified: number; verify_required: number };
-const accountOf = (userId: string) => one<Account>("SELECT * FROM local_accounts WHERE user_id=?", userId);
+const accountOf = async (userId: string) => await one<Account>("SELECT * FROM local_accounts WHERE user_id=?", userId);
 // The address ignoring case (SQLite: COLLATE NOCASE as the column's
 // unique key; Postgres: lower() on both sides, a unique index on lower(email)).
 const accountByEmail = (email: string) =>
@@ -142,15 +143,15 @@ export async function invitedEmail(token?: string) {
 export async function signupOpen(setup?: string, invite?: string) {
   return (
     localLoginEnabled() &&
-    ((await firstAccount() && setupAllowed(setup)) || instanceSettings().allowSignup || (await invitedEmail(invite)) !== null)
+    ((await firstAccount() && setupAllowed(setup)) || (await instanceSettings()).allowSignup || (await invitedEmail(invite)) !== null)
   );
 }
 // The groups a local account signs in with (administrators).
-export function localGroups(userId: string) {
-  return accountOf(userId)?.is_admin ? [adminGroup()] : [];
+export async function localGroups(userId: string) {
+  return (await accountOf(userId))?.is_admin ? [adminGroup()] : [];
 }
-export function isLocalAccount(userId: string) {
-  return !!accountOf(userId);
+export async function isLocalAccount(userId: string) {
+  return !!(await accountOf(userId));
 }
 
 const registerSchema = z.object({
@@ -182,13 +183,13 @@ export async function register(input: unknown, locale: Locale, address = "") {
   // Without e-mail, an address alone (no link) is no proof of owning it.
   const linked = !!parsed.data.invite && (await invitedEmail(parsed.data.invite))?.toLowerCase() === email.toLowerCase();
   const byAddress = await invited(email) && !!mailConfig();
-  if (!first && !instanceSettings().allowSignup && !byAddress && !linked)
+  if (!first && !(await instanceSettings()).allowSignup && !byAddress && !linked)
     throw new HttpError(403, t("Neue Konten legen hier nur Admins an – oder du wirst eingeladen.", "Only administrators create new accounts here – or you get invited."));
   const passwordHash = await hashPassword(password.data);
   if (await accountByEmail(email) || await db.one("SELECT 1 FROM users WHERE lower(email)=lower(?) AND subject LIKE 'local:%'", email)) {
     // With e-mail set up, the answer does not tell whether the address has an
     // account: its owner gets a note instead of a confirmation link.
-    if (mailConfig()) noteExistingAccount(email, locale);
+    if (mailConfig()) await noteExistingAccount(email, locale);
     throw new AccountExists(t("Für diese E-Mail-Adresse gibt es schon ein Konto.", "There already is an account for this e-mail address."), email, !!mailConfig());
   }
   const uid = id();
@@ -220,7 +221,7 @@ export async function register(input: unknown, locale: Locale, address = "") {
     { lock: "flowplan:first-account" },
   );
   const user = (await db.one<User>("SELECT * FROM users WHERE id=?", uid))!;
-  if (confirm) sendVerification(user, locale);
+  if (confirm) await sendVerification(user, locale);
   return { user, groups: first ? [adminGroup()] : [], pending: confirm };
 }
 // The address already has an account. With e-mail set up, the sign-up page
@@ -233,13 +234,13 @@ export class AccountExists extends HttpError {
 }
 // At most one note per address and quarter of an hour.
 const noted = new Map<string, number>();
-function noteExistingAccount(email: string, locale: Locale) {
+async function noteExistingAccount(email: string, locale: Locale) {
   const now = Date.now();
   for (const [key, at] of noted) if (at < now - WINDOW) noted.delete(key);
   if (noted.has(email)) return;
   noted.set(email, now);
   const t = tr(locale);
-  queueLinkMail({
+  await queueLinkMail({
     to: email,
     subject: t("Du hast schon ein Konto", "You already have an account"),
     title: t("Du hast schon ein Konto", "You already have an account"),
@@ -279,42 +280,42 @@ function counters(keys: string[]): { key: string; limit: number }[] {
     ];
   });
 }
-const failuresOf = (key: string, since: number) => Number(one<{ n: number }>("SELECT COUNT(*) n FROM login_failures WHERE key=? AND at>=?", key, since)?.n || 0);
+const failuresOf = async (key: string, since: number) => Number((await one<{ n: number }>("SELECT COUNT(*) n FROM login_failures WHERE key=? AND at>=?", key, since))?.n || 0);
 // Whether one of the keys had too many failures in the last 15 minutes.
-export function limited(keys: string[]) {
+export async function limited(keys: string[]) {
   const attempt = failureOf(keys);
   // An address or network the administrators blocked (Administration →
   // Sicherheit) does not get to try at all.
-  if (attempt.address && blockedAddress(attempt.address)) {
+  if (attempt.address && await blockedAddress(attempt.address)) {
     securityEvent("login.refused", { ...attempt, detail: `blocked ${attempt.detail}` });
     return true;
   }
   const since = Date.now() - WINDOW;
-  pruneLoginFailures(since);
-  const over = counters(keys).some(({ key, limit }) => failuresOf(key, since) >= limit);
+  await pruneLoginFailures(since);
+  const over = await someAsync(counters(keys), async ({ key, limit }) => (await failuresOf(key, since)) >= limit);
   if (over) securityEvent("login.refused", { ...attempt, detail: `limit ${attempt.detail}` });
   return over;
 }
-export function failed(keys: string[]) {
+export async function failed(keys: string[]) {
   recordOpsEvent("login_failure");
   securityEvent("login.failure", failureOf(keys));
   const now = Date.now();
-  for (const { key } of counters(keys)) run("INSERT INTO login_failures(key,at) VALUES(?,?)", key, now);
+  for (const { key } of counters(keys)) await run("INSERT INTO login_failures(key,at) VALUES(?,?)", key, now);
 }
 // A successful sign-in clears the failures of the name, from every address.
-export function clearFailures(key: string) {
-  run("DELETE FROM login_failures WHERE key=? OR (key>=? AND key<?)", key, `${key}|`, `${key}}`);
+export async function clearFailures(key: string) {
+  await run("DELETE FROM login_failures WHERE key=? OR (key>=? AND key<?)", key, `${key}|`, `${key}}`);
 }
 // The wait before checking a password for a name that collected many
 // failures in the last 15 minutes (from any address): 250 ms more for each
 // one beyond 10, at most five seconds. Everyone waits, also with the right
 // password, so the delay does not tell a hit from a miss.
-export function failureDelay(keys: string[], now = Date.now()) {
-  const n = Math.max(0, ...keys.filter(nameKey).map((key) => failuresOf(key, now - WINDOW)));
+export async function failureDelay(keys: string[], now = Date.now()) {
+  const n = Math.max(0, ...await mapAsync(keys.filter(nameKey), async (key) => await failuresOf(key, now - WINDOW)));
   return n <= LIMITS.slowFrom ? 0 : Math.min(LIMITS.slowMaxMs, (n - LIMITS.slowFrom) * LIMITS.slowStepMs);
 }
 export async function slowDown(keys: string[]) {
-  const ms = failureDelay(keys);
+  const ms = await failureDelay(keys);
   if (ms) await new Promise((resolve) => setTimeout(resolve, ms));
 }
 // The address and the account of an attempt, from its limit keys
@@ -328,8 +329,8 @@ function failureOf(keys: string[]) {
   return { address, ...(value ? { subject: value } : {}), detail: type === "email" ? "password" : type || "passkey" };
 }
 // Failures within `windowMs` under `key` (for limits with their own windows).
-export function failuresSince(key: string, windowMs: number, now = Date.now()) {
-  return Number(one<{ n: number }>("SELECT COUNT(*) n FROM login_failures WHERE key=? AND at>=?", key, now - windowMs)?.n || 0);
+export async function failuresSince(key: string, windowMs: number, now = Date.now()) {
+  return Number((await one<{ n: number }>("SELECT COUNT(*) n FROM login_failures WHERE key=? AND at>=?", key, now - windowMs))?.n || 0);
 }
 
 export async function passwordLogin(input: unknown, address: string, locale: Locale) {
@@ -339,19 +340,19 @@ export async function passwordLogin(input: unknown, address: string, locale: Loc
     .object({ email: z.string().trim().max(200), password: z.string().max(200) })
     .parse(input);
   const keys = [...addressKey("ip", address), `email:${email.toLowerCase()}`];
-  if (limited(keys)) throw new HttpError(429, t("Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.", "Too many attempts. Please try again in 15 minutes."));
+  if (await limited(keys)) throw new HttpError(429, t("Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.", "Too many attempts. Please try again in 15 minutes."));
   await slowDown(keys);
   const account = await accountByEmail(email);
   // The same work and the same answer whether the account exists or not.
   const ok = await verifyPassword(password, account?.password_hash || DUMMY_HASH);
   if (!account || !ok) {
-    failed(keys);
+    await failed(keys);
     throw new HttpError(401, t("E-Mail-Adresse oder Passwort stimmt nicht.", "E-mail address or password is wrong."));
   }
   if (account.disabled) throw new HttpError(403, t("Dieses Konto ist deaktiviert.", "This account is disabled."));
   if (awaitsConfirmation(account)) {
     const user = await db.one<User>("SELECT * FROM users WHERE id=?", account.user_id);
-    if (user && !recentlySent(account.user_id)) sendVerification(user, locale);
+    if (user && !(await recentlySent(account.user_id))) await sendVerification(user, locale);
     throw new HttpError(
       403,
       t(
@@ -360,20 +361,20 @@ export async function passwordLogin(input: unknown, address: string, locale: Loc
       ),
     );
   }
-  clearFailures(`email:${email.toLowerCase()}`);
+  await clearFailures(`email:${email.toLowerCase()}`);
   return { userId: account.user_id, groups: account.is_admin ? [adminGroup()] : [] };
 }
 
 export async function changePassword(userId: string, input: unknown, locale: Locale) {
   const t = tr(locale);
-  const account = accountOf(userId);
+  const account = await accountOf(userId);
   if (!account) throw new HttpError(400, t("Dieses Konto meldet sich über SSO an.", "This account signs in with SSO."));
   const { current, next } = z.object({ current: z.string().max(200), next: z.string() }).parse(input);
   if (!(await verifyPassword(current, account.password_hash)))
     throw new HttpError(401, t("Das bisherige Passwort stimmt nicht.", "The current password is wrong."));
   const password = passwordSchema(t).safeParse(next);
   if (!password.success) throw new HttpError(400, password.error.issues[0].message);
-  run("UPDATE local_accounts SET password_hash=? WHERE user_id=?", await hashPassword(password.data), userId);
+  await run("UPDATE local_accounts SET password_hash=? WHERE user_id=?", await hashPassword(password.data), userId);
   securityEvent("account.password", { actorId: userId });
 }
 
@@ -381,44 +382,44 @@ export async function changePassword(userId: string, input: unknown, locale: Loc
 // removed (SSO only, #101), after the route confirmed the step (lib/step-up.ts).
 export async function setNewPassword(userId: string, next: unknown, locale: Locale) {
   const t = tr(locale);
-  const account = accountOf(userId);
+  const account = await accountOf(userId);
   if (!account) throw new HttpError(400, t("Dieses Konto meldet sich über SSO an.", "This account signs in with SSO."));
   if (account.password_hash) throw new HttpError(409, t("Dieses Konto hat schon ein Passwort.", "This account already has a password."));
   const password = passwordSchema(t).safeParse(next);
   if (!password.success) throw new HttpError(400, password.error.issues[0].message);
-  run("UPDATE local_accounts SET password_hash=? WHERE user_id=?", await hashPassword(password.data), userId);
+  await run("UPDATE local_accounts SET password_hash=? WHERE user_id=?", await hashPassword(password.data), userId);
   securityEvent("account.password", { actorId: userId });
 }
 
 // Name of a local account (SSO accounts take it from the provider).
-export function updateLocalProfile(userId: string, input: unknown, locale: Locale) {
+export async function updateLocalProfile(userId: string, input: unknown, locale: Locale) {
   const t = tr(locale);
-  if (!accountOf(userId)) throw new HttpError(400, t("Dein Name kommt von deinem Anmeldeanbieter.", "Your name comes from your sign-in provider."));
+  if (!(await accountOf(userId))) throw new HttpError(400, t("Dein Name kommt von deinem Anmeldeanbieter.", "Your name comes from your sign-in provider."));
   const parsed = z.object({ name: z.string().trim().min(1).max(80) }).safeParse(input);
   if (!parsed.success) throw new HttpError(400, t("Bitte einen Namen angeben.", "Please enter a name."));
-  run("UPDATE users SET name=? WHERE id=?", parsed.data.name, userId);
+  await run("UPDATE users SET name=? WHERE id=?", parsed.data.name, userId);
 }
 
 // ---- Links by e-mail: confirm the address, reset the password ----
 
 const TOKEN_HOURS = { verify: 72, reset: 2 } as const;
-function issueToken(userId: string, kind: keyof typeof TOKEN_HOURS) {
+async function issueToken(userId: string, kind: keyof typeof TOKEN_HOURS) {
   const token = randomBytes(32).toString("base64url");
-  run("DELETE FROM auth_tokens WHERE (user_id=? AND kind=?) OR expires<?", userId, kind, Date.now());
-  run("INSERT INTO auth_tokens(id,user_id,kind,expires) VALUES(?,?,?,?)", hash(token), userId, kind, Date.now() + TOKEN_HOURS[kind] * 3600_000);
+  await run("DELETE FROM auth_tokens WHERE (user_id=? AND kind=?) OR expires<?", userId, kind, Date.now());
+  await run("INSERT INTO auth_tokens(id,user_id,kind,expires) VALUES(?,?,?,?)", hash(token), userId, kind, Date.now() + TOKEN_HOURS[kind] * 3600_000);
   return token;
 }
-function takeToken(token: string, kind: keyof typeof TOKEN_HOURS) {
-  const row = one<{ user_id: string; expires: number }>("SELECT user_id,expires FROM auth_tokens WHERE id=? AND kind=?", hash(token), kind);
+async function takeToken(token: string, kind: keyof typeof TOKEN_HOURS) {
+  const row = await one<{ user_id: string; expires: number }>("SELECT user_id,expires FROM auth_tokens WHERE id=? AND kind=?", hash(token), kind);
   if (!row || row.expires < Date.now()) return null;
-  run("DELETE FROM auth_tokens WHERE id=?", hash(token));
+  await run("DELETE FROM auth_tokens WHERE id=?", hash(token));
   return row.user_id;
 }
-function sendVerification(user: User, locale: Locale) {
+async function sendVerification(user: User, locale: Locale) {
   if (!mailConfig()) return false;
   const t = tr(locale);
-  const url = `${appUrl().replace(/\/$/, "")}/api/auth/verify?token=${issueToken(user.id, "verify")}`;
-  return queueLinkMail({
+  const url = `${appUrl().replace(/\/$/, "")}/api/auth/verify?token=${await issueToken(user.id, "verify")}`;
+  return await queueLinkMail({
     to: user.email,
     subject: t("E-Mail-Adresse bestätigen", "Confirm your e-mail address"),
     title: t("Bitte bestätige deine E-Mail-Adresse", "Please confirm your e-mail address"),
@@ -436,30 +437,30 @@ function awaitsConfirmation(account: Account) {
   return !!account.verify_required && !account.email_verified && !!mailConfig();
 }
 // A confirmation link went out in the last five minutes.
-function recentlySent(userId: string) {
-  const expires = one<{ expires: number }>("SELECT expires FROM auth_tokens WHERE user_id=? AND kind='verify'", userId)?.expires;
+async function recentlySent(userId: string) {
+  const expires = (await one<{ expires: number }>("SELECT expires FROM auth_tokens WHERE user_id=? AND kind='verify'", userId))?.expires;
   return !!expires && expires - TOKEN_HOURS.verify * 3600_000 > Date.now() - 5 * 60_000;
 }
-export function confirmAddress(userId: string) {
-  run("UPDATE local_accounts SET email_verified=1 WHERE user_id=?", userId);
-  run("UPDATE users SET email_verified=1 WHERE id=?", userId);
-  const user = one<User>("SELECT * FROM users WHERE id=?", userId);
-  if (user) acceptInvites(user, true);
+export async function confirmAddress(userId: string) {
+  await run("UPDATE local_accounts SET email_verified=1 WHERE user_id=?", userId);
+  await run("UPDATE users SET email_verified=1 WHERE id=?", userId);
+  const user = await one<User>("SELECT * FROM users WHERE id=?", userId);
+  if (user) await acceptInvites(user, true);
 }
 // The link from the e-mail: confirms the address; returns who it was.
-export function verifyEmail(token: string) {
-  const userId = takeToken(token, "verify");
+export async function verifyEmail(token: string) {
+  const userId = await takeToken(token, "verify");
   if (!userId) return null;
-  confirmAddress(userId);
+  await confirmAddress(userId);
   return userId;
 }
 // The link once more, for "Link erneut senden" (same answer for every address).
 export async function resendVerification(input: unknown, locale: Locale) {
   const parsed = z.object({ email: z.string().trim().max(200) }).safeParse(input);
   const account = parsed.success ? await accountByEmail(parsed.data.email) : undefined;
-  if (account && awaitsConfirmation(account) && !recentlySent(account.user_id)) {
+  if (account && awaitsConfirmation(account) && !(await recentlySent(account.user_id))) {
     const user = await db.one<User>("SELECT * FROM users WHERE id=?", account.user_id);
-    if (user) sendVerification(user, locale);
+    if (user) await sendVerification(user, locale);
   }
 }
 // Always the same answer, so it does not tell which addresses have accounts.
@@ -473,8 +474,8 @@ export async function requestPasswordReset(input: unknown, locale: Locale, addre
   // One link per address every few minutes: more would flood the inbox and
   // keep replacing the link. The answer stays the same either way.
   if (account && !account.disabled && allow(`reset:${email.toLowerCase()}`, 1, 5 * 60_000)) {
-    const url = `${appUrl().replace(/\/$/, "")}/reset?token=${issueToken(account.user_id, "reset")}`;
-    queueLinkMail({
+    const url = `${appUrl().replace(/\/$/, "")}/reset?token=${await issueToken(account.user_id, "reset")}`;
+    await queueLinkMail({
       to: account.email,
       subject: t("Passwort zurücksetzen", "Reset your password"),
       title: t("Neues Passwort festlegen", "Set a new password"),
@@ -488,41 +489,41 @@ export async function requestPasswordReset(input: unknown, locale: Locale, addre
   }
 }
 // A reset link an administrator hands over (instances without e-mail).
-export function adminResetLink(userId: string) {
-  if (!accountOf(userId)) throw new HttpError(400, "Dieses Konto meldet sich über SSO an.");
-  return `${appUrl().replace(/\/$/, "")}/reset?token=${issueToken(userId, "reset")}`;
+export async function adminResetLink(userId: string) {
+  if (!(await accountOf(userId))) throw new HttpError(400, "Dieses Konto meldet sich über SSO an.");
+  return `${appUrl().replace(/\/$/, "")}/reset?token=${await issueToken(userId, "reset")}`;
 }
 export async function resetPassword(input: unknown, locale: Locale) {
   const t = tr(locale);
   const { token, password } = z.object({ token: z.string().max(200), password: z.string() }).parse(input);
   const valid = passwordSchema(t).safeParse(password);
   if (!valid.success) throw new HttpError(400, valid.error.issues[0].message);
-  const userId = takeToken(token, "reset");
+  const userId = await takeToken(token, "reset");
   if (!userId) throw new HttpError(400, t("Der Link ist abgelaufen. Bitte fordere einen neuen an.", "The link has expired. Please ask for a new one."));
-  run("UPDATE local_accounts SET password_hash=? WHERE user_id=?", await hashPassword(valid.data), userId);
+  await run("UPDATE local_accounts SET password_hash=? WHERE user_id=?", await hashPassword(valid.data), userId);
   // The link came by e-mail (or from an admin): the address counts as confirmed.
-  if (one("SELECT 1 FROM local_accounts WHERE user_id=? AND email_verified=0", userId)) confirmAddress(userId);
+  if (await one("SELECT 1 FROM local_accounts WHERE user_id=? AND email_verified=0", userId)) await confirmAddress(userId);
   // Whoever knew the old password is signed out everywhere.
-  run("DELETE FROM sessions WHERE user_id=?", userId);
+  await run("DELETE FROM sessions WHERE user_id=?", userId);
   securityEvent("account.password_reset", { actorId: userId });
   return userId;
 }
 
 // ---- Administration ----
 
-export function setLocalAdmin(userId: string, admin: boolean) {
-  if (!accountOf(userId)) throw new HttpError(400, "Dieses Konto meldet sich über SSO an; Admin ist, wer in der Admin-Gruppe ist.");
-  if (!admin && Number(one<{ n: number }>("SELECT COUNT(*) n FROM local_accounts WHERE is_admin=1 AND user_id<>?", userId)?.n || 0) === 0 && !process.env.OIDC_ISSUER)
+export async function setLocalAdmin(userId: string, admin: boolean) {
+  if (!(await accountOf(userId))) throw new HttpError(400, "Dieses Konto meldet sich über SSO an; Admin ist, wer in der Admin-Gruppe ist.");
+  if (!admin && Number((await one<{ n: number }>("SELECT COUNT(*) n FROM local_accounts WHERE is_admin=1 AND user_id<>?", userId))?.n || 0) === 0 && !process.env.OIDC_ISSUER)
     throw new HttpError(409, "Es muss mindestens eine Person die Instanz verwalten.");
-  run("UPDATE local_accounts SET is_admin=? WHERE user_id=?", admin ? 1 : 0, userId);
+  await run("UPDATE local_accounts SET is_admin=? WHERE user_id=?", admin ? 1 : 0, userId);
   // The admin right lives in the session: sign in again.
-  run("DELETE FROM sessions WHERE user_id=?", userId);
+  await run("DELETE FROM sessions WHERE user_id=?", userId);
 }
-export function localAccountInfo() {
+export async function localAccountInfo() {
   return Object.fromEntries(
-    all<{ user_id: string; is_admin: number; email_verified: number; passkeys: number; totp: number; password: number }>(
+    (await all<{ user_id: string; is_admin: number; email_verified: number; passkeys: number; totp: number; password: number }>(
       "SELECT a.user_id,a.is_admin,a.email_verified,(SELECT COUNT(*) FROM passkeys p WHERE p.user_id=a.user_id) passkeys,EXISTS(SELECT 1 FROM user_totp t WHERE t.user_id=a.user_id AND t.enabled=1) totp,a.password_hash<>'' password FROM local_accounts a",
-    ).map((a) => [a.user_id, { admin: !!a.is_admin, verified: !!a.email_verified, passkeys: Number(a.passkeys), totp: !!a.totp, password: !!a.password }]),
+    )).map((a) => [a.user_id, { admin: !!a.is_admin, verified: !!a.email_verified, passkeys: Number(a.passkeys), totp: !!a.totp, password: !!a.password }]),
   );
 }
 
@@ -533,47 +534,47 @@ const rp = () => {
   return { id: url.hostname, origin: url.origin };
 };
 type ChallengeKind = "register" | "login" | "confirm";
-function storeChallenge(challenge: string, kind: ChallengeKind, userId: string | null) {
+async function storeChallenge(challenge: string, kind: ChallengeKind, userId: string | null) {
   const token = randomBytes(32).toString("base64url");
-  run("DELETE FROM auth_challenges WHERE expires<?", Date.now());
-  run("INSERT INTO auth_challenges(id,challenge,user_id,kind,expires) VALUES(?,?,?,?,?)", hash(token), challenge, userId, kind, Date.now() + 5 * 60_000);
+  await run("DELETE FROM auth_challenges WHERE expires<?", Date.now());
+  await run("INSERT INTO auth_challenges(id,challenge,user_id,kind,expires) VALUES(?,?,?,?,?)", hash(token), challenge, userId, kind, Date.now() + 5 * 60_000);
   return token;
 }
-function takeChallenge(token: string | undefined, kind: ChallengeKind) {
+async function takeChallenge(token: string | undefined, kind: ChallengeKind) {
   if (!token) return null;
-  const row = one<{ challenge: string; user_id: string | null; expires: number }>(
+  const row = await one<{ challenge: string; user_id: string | null; expires: number }>(
     "SELECT challenge,user_id,expires FROM auth_challenges WHERE id=? AND kind=?",
     hash(token),
     kind,
   );
-  run("DELETE FROM auth_challenges WHERE id=?", hash(token));
+  await run("DELETE FROM auth_challenges WHERE id=?", hash(token));
   return row && row.expires >= Date.now() ? row : null;
 }
-export function listPasskeys(userId: string) {
-  return all<{ id: string; name: string; created_at: number; last_used_at: number | null }>(
+export async function listPasskeys(userId: string) {
+  return await all<{ id: string; name: string; created_at: number; last_used_at: number | null }>(
     "SELECT id,name,created_at,last_used_at FROM passkeys WHERE user_id=? ORDER BY created_at",
     userId,
   );
 }
 export async function passkeyRegistrationOptions(user: User, locale: Locale) {
   const t = tr(locale);
-  if (!accountOf(user.id)) throw new HttpError(400, t("Passkeys gibt es für Konten mit E-Mail und Passwort; SSO-Konten melden sich beim Anbieter an.", "Passkeys are for accounts with e-mail and password; SSO accounts sign in with their provider."));
+  if (!(await accountOf(user.id))) throw new HttpError(400, t("Passkeys gibt es für Konten mit E-Mail und Passwort; SSO-Konten melden sich beim Anbieter an.", "Passkeys are for accounts with e-mail and password; SSO accounts sign in with their provider."));
   const options = await generateRegistrationOptions({
-    rpName: instanceSettings().name || "Flowplan",
+    rpName: (await instanceSettings()).name || "Flowplan",
     rpID: rp().id,
     userName: user.email,
     userDisplayName: user.name,
     userID: new TextEncoder().encode(user.id),
     attestationType: "none",
-    excludeCredentials: listPasskeys(user.id).map((p) => ({ id: p.id })),
+    excludeCredentials: (await listPasskeys(user.id)).map((p) => ({ id: p.id })),
     authenticatorSelection: { residentKey: "required", userVerification: "preferred" },
   });
-  return { options, token: storeChallenge(options.challenge, "register", user.id) };
+  return { options, token: await storeChallenge(options.challenge, "register", user.id) };
 }
 export async function finishPasskeyRegistration(user: User, token: string | undefined, input: unknown, locale: Locale) {
   const t = tr(locale);
   const { response, name } = z.object({ response: z.unknown(), name: z.string().trim().max(60).optional() }).parse(input);
-  const challenge = takeChallenge(token, "register");
+  const challenge = await takeChallenge(token, "register");
   if (!challenge || challenge.user_id !== user.id) throw new HttpError(400, t("Die Anfrage ist abgelaufen. Bitte erneut versuchen.", "The request has expired. Please try again."));
   const { verified, registrationInfo } = await verifyRegistrationResponse({
     response: response as RegistrationResponseJSON,
@@ -584,7 +585,7 @@ export async function finishPasskeyRegistration(user: User, token: string | unde
   }).catch(() => ({ verified: false, registrationInfo: undefined }));
   if (!verified || !registrationInfo) throw new HttpError(400, t("Der Passkey konnte nicht geprüft werden.", "The passkey could not be verified."));
   const credential = registrationInfo.credential;
-  run(
+  await run(
     "INSERT INTO passkeys(id,user_id,public_key,counter,transports,name,created_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET user_id=excluded.user_id,public_key=excluded.public_key,counter=excluded.counter,transports=excluded.transports,name=excluded.name,created_at=excluded.created_at,last_used_at=excluded.last_used_at",
     credential.id,
     user.id,
@@ -598,21 +599,21 @@ export async function finishPasskeyRegistration(user: User, token: string | unde
   return credential.id;
 }
 // Whether a passkey was removed (the route then ends the other sessions).
-export function deletePasskey(userId: string, passkeyId: string) {
-  if (!run("DELETE FROM passkeys WHERE id=? AND user_id=?", passkeyId, userId).changes) return false;
+export async function deletePasskey(userId: string, passkeyId: string) {
+  if (!(await run("DELETE FROM passkeys WHERE id=? AND user_id=?", passkeyId, userId)).changes) return false;
   securityEvent("account.passkey_removed", { actorId: userId });
   return true;
 }
 export async function passkeyLoginOptions() {
   if (!localLoginEnabled()) throw new HttpError(403, "Passkeys sind ausgeschaltet.");
   const options = await generateAuthenticationOptions({ rpID: rp().id, userVerification: "preferred" });
-  return { options, token: storeChallenge(options.challenge, "login", null) };
+  return { options, token: await storeChallenge(options.challenge, "login", null) };
 }
 type StoredPasskey = { id: string; user_id: string; public_key: Uint8Array; counter: number; transports: string };
 // Checks a passkey's answer to a challenge; the passkey on success (its
 // counter and last use are updated), else null.
 async function verifyAssertion(challenge: string, response: AuthenticationResponseJSON) {
-  const passkey = one<StoredPasskey>("SELECT * FROM passkeys WHERE id=?", response.id);
+  const passkey = await one<StoredPasskey>("SELECT * FROM passkeys WHERE id=?", response.id);
   if (!passkey) return null;
   const result = await verifyAuthenticationResponse({
     response,
@@ -628,36 +629,36 @@ async function verifyAssertion(challenge: string, response: AuthenticationRespon
     requireUserVerification: false,
   }).catch(() => null);
   if (!result?.verified) return null;
-  run("UPDATE passkeys SET counter=?,last_used_at=? WHERE id=?", result.authenticationInfo.newCounter, Date.now(), passkey.id);
+  await run("UPDATE passkeys SET counter=?,last_used_at=? WHERE id=?", result.authenticationInfo.newCounter, Date.now(), passkey.id);
   return passkey;
 }
 export async function passkeyLogin(token: string | undefined, input: unknown, address: string, locale: Locale) {
   const t = tr(locale);
   const keys = addressKey("ip", address);
-  if (limited(keys)) throw new HttpError(429, t("Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.", "Too many attempts. Please try again in 15 minutes."));
+  if (await limited(keys)) throw new HttpError(429, t("Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.", "Too many attempts. Please try again in 15 minutes."));
   const response = z.object({ id: z.string().max(1000) }).passthrough().parse(input) as unknown as AuthenticationResponseJSON;
-  const challenge = takeChallenge(token, "login");
+  const challenge = await takeChallenge(token, "login");
   if (!challenge) throw new HttpError(400, t("Die Anfrage ist abgelaufen. Bitte erneut versuchen.", "The request has expired. Please try again."));
   const passkey = await verifyAssertion(challenge.challenge, response);
   if (!passkey) {
-    failed(keys);
+    await failed(keys);
     throw new HttpError(401, t("Dieser Passkey ist hier nicht bekannt.", "This passkey is not known here."));
   }
-  const account = one<{ disabled: number }>("SELECT disabled FROM users WHERE id=?", passkey.user_id);
+  const account = await one<{ disabled: number }>("SELECT disabled FROM users WHERE id=?", passkey.user_id);
   if (!account || account.disabled) throw new HttpError(403, t("Dieses Konto ist deaktiviert.", "This account is disabled."));
-  return { userId: passkey.user_id, groups: localGroups(passkey.user_id) };
+  return { userId: passkey.user_id, groups: await localGroups(passkey.user_id) };
 }
 
 // Confirming a sensitive step with one of the account's own passkeys
 // (lib/step-up.ts): a challenge bound to the account, five minutes.
 export async function passkeyConfirmOptions(userId: string, locale: Locale) {
-  const passkeys = listPasskeys(userId);
+  const passkeys = await listPasskeys(userId);
   if (!passkeys.length) throw new HttpError(400, tr(locale)("Für dieses Konto gibt es keinen Passkey.", "This account has no passkey."));
   const options = await generateAuthenticationOptions({ rpID: rp().id, userVerification: "preferred", allowCredentials: passkeys.map((p) => ({ id: p.id })) });
-  return { options, token: storeChallenge(options.challenge, "confirm", userId) };
+  return { options, token: await storeChallenge(options.challenge, "confirm", userId) };
 }
 export async function passkeyConfirm(userId: string, token: string | undefined, input: unknown) {
-  const challenge = takeChallenge(token, "confirm");
+  const challenge = await takeChallenge(token, "confirm");
   if (!challenge || challenge.user_id !== userId) return false;
   const parsed = z.object({ id: z.string().max(1000) }).passthrough().safeParse(input);
   if (!parsed.success) return false;
@@ -681,7 +682,7 @@ export async function loginOptions(setup?: string, invite?: string) {
     mail: !!mailConfig(),
     demo: process.env.NODE_ENV !== "production",
     // "Stay signed in on this device" (SESSION_REMEMBER=true).
-    remember: !!rememberPolicy(),
+    remember: !!(await rememberPolicy()),
     // The password form also signs in with the LDAP directory (LDAP_URL).
     ldap: ldapConfigured(),
     // APP_URL is plain http on another machine: a calm note about HTTPS (#62).
@@ -692,6 +693,6 @@ export type LoginOptions = Awaited<ReturnType<typeof loginOptions>>;
 
 // Old failures go – but journal PIN counters (pin:…, lib/journal-extras.ts)
 // count over a whole day, so they keep a day.
-export function pruneLoginFailures(before: number, now = Date.now()) {
-  run("DELETE FROM login_failures WHERE (key NOT LIKE 'pin:%' AND at<?) OR at<?", before, now - 24 * 60 * 60 * 1000);
+export async function pruneLoginFailures(before: number, now = Date.now()) {
+  await run("DELETE FROM login_failures WHERE (key NOT LIKE 'pin:%' AND at<?) OR at<?", before, now - 24 * 60 * 60 * 1000);
 }

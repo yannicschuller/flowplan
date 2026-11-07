@@ -62,7 +62,7 @@ export type SummaryPlan = {
 export async function reduceContent(
   plan: SummaryPlan,
   chunkChars: number,
-  complete: (input: ReturnType<typeof chunkSummaryPrompt>) => Promise<string>,
+  complete: (input: Awaited<ReturnType<typeof chunkSummaryPrompt>>) => Promise<string>,
 ) {
   const language = summaryLanguage(plan.content, plan.locale);
   let content = plan.content.trim();
@@ -116,11 +116,11 @@ const input = z.object({
 // with X-Flowplan-AI-* headers: records included/asked for, parts.
 export async function aiSummaryResponse(user: Identity, raw: unknown, signal: AbortSignal): Promise<Response> {
   const b = input.parse(raw);
-  const page = requirePage(user, b.pageId);
-  if (b.rowId) requireRow(user, b.pageId, b.rowId);
+  const page = await requirePage(user, b.pageId);
+  if (b.rowId) await requireRow(user, b.pageId, b.rowId);
   const options: AiRunOptions = { workspaceId: page.workspace_id, pageId: page.id, rowId: b.rowId, signal };
   // Feature, person, provider and whether the AI may read the page/record.
-  const resolved = requireAi(user, "summarize", options);
+  const resolved = await requireAi(user, "summarize", options);
   const local = resolved.config.kind === "ollama" || isLocalProvider(resolved.config);
   const chunkChars = local ? SUMMARY_LIMITS.chunkChars.local : SUMMARY_LIMITS.chunkChars.remote;
   let plan: SummaryPlan;
@@ -130,7 +130,7 @@ export async function aiSummaryResponse(user: Identity, raw: unknown, signal: Ab
   } else if (b.rowId) {
     plan = { kind: "record", content: await aiPageMarkdown(user, page, b.rowId), locale: b.locale };
   } else if (page.kind === "database") {
-    const data = aiDatabaseText(user, page, b.rowIds, {
+    const data = await aiDatabaseText(user, page, b.rowIds, {
       maxRecords: SUMMARY_LIMITS.maxRecords,
       maxChars: chunkChars * SUMMARY_LIMITS.maxChunks,
       documentChars: SUMMARY_LIMITS.recordDocumentChars,

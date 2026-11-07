@@ -34,39 +34,39 @@ export function whiteboardSummary(items: WhiteboardItem[]) {
     .join("")
     .slice(0, 400000);
 }
-function stored(page: Page): Stored {
-  let row = one<Stored>(
+async function stored(page: Page): Promise<Stored> {
+  let row = await one<Stored>(
     "SELECT state,generation FROM whiteboards WHERE page_id=?",
     page.id,
   );
   if (!row) {
     const doc = new Y.Doc();
     doc.getMap("items");
-    run(
+    await run(
       "INSERT INTO whiteboards(page_id,state,generation) VALUES(?,?,?) ON CONFLICT DO NOTHING",
       page.id,
       Y.encodeStateAsUpdate(doc),
       id(),
     );
     doc.destroy();
-    row = one<Stored>(
+    row = (await one<Stored>(
       "SELECT state,generation FROM whiteboards WHERE page_id=?",
       page.id,
-    )!;
+    ))!;
   }
   return row;
 }
-export function whiteboardData(page: Page) {
-  const s = stored(page);
+export async function whiteboardData(page: Page) {
+  const s = await stored(page);
   return {
     state: Buffer.from(s.state).toString("base64"),
     generation: s.generation,
   };
 }
-export function whiteboardSnapshotItems(page: Page) {
+export async function whiteboardSnapshotItems(page: Page) {
   const doc = new Y.Doc();
   try {
-    Y.applyUpdate(doc, stored(page).state);
+    Y.applyUpdate(doc, (await stored(page)).state);
     return whiteboardItems(doc);
   } finally {
     doc.destroy();
@@ -81,12 +81,12 @@ const syncInput = z.object({
     .nullable()
     .optional(),
 });
-export function syncWhiteboard(user: Identity, raw: unknown) {
+export async function syncWhiteboard(user: Identity, raw: unknown) {
   const b = syncInput.parse(raw);
-  const page = requirePage(user, b.pageId, !!b.update);
+  const page = await requirePage(user, b.pageId, !!b.update);
   if (page.kind !== "whiteboard") throw new HttpError(400, "Kein Whiteboard.");
-  requireUnlocked(user, page);
-  const s = stored(page);
+  await requireUnlocked(user, page);
+  const s = await stored(page);
   if (b.generation !== s.generation)
     throw new HttpError(
       409,
@@ -98,39 +98,39 @@ export function syncWhiteboard(user: Identity, raw: unknown) {
     if (b.update) {
       if (page.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
       const before = Y.encodeStateVector(doc);
-      Y.applyUpdate(doc, withoutPrivateChanges(page.id, Buffer.from(b.update, "base64")));
-      assertNoPrivateGap(page.id, doc);
+      Y.applyUpdate(doc, await withoutPrivateChanges(page.id, Buffer.from(b.update, "base64")));
+      await assertNoPrivateGap(page.id, doc);
       const changed = Y.encodeStateAsUpdate(doc, before).length > 2;
       if (changed) {
         const items = whiteboardItems(doc);
         if (items.length > 5000)
           throw new HttpError(413, "Zu viele Elemente auf dem Whiteboard.");
         if (
-          !one(
+          !(await one(
             "SELECT id FROM snapshots WHERE page_id=? AND created_at>?",
             page.id, nowText(Date.now() - 300_000),
-          )
+          ))
         )
-          run(
+          await run(
             "INSERT INTO snapshots(id,page_id,state,html,title,created_by) VALUES(?,?,?,?,?,?)",
             id(),
             page.id,
             s.state,
-            whiteboardSummary(whiteboardSnapshotItems(page)),
+            whiteboardSummary(await whiteboardSnapshotItems(page)),
             page.title,
             user.id,
           );
-        run(
+        await run(
           "UPDATE whiteboards SET state=?,updated_at=? WHERE page_id=?",
           Y.encodeStateAsUpdate(doc), nowText(),
           page.id,
         );
-        run(
+        await run(
           "UPDATE documents SET html=?,updated_at=? WHERE page_id=?",
           whiteboardSummary(items), nowText(),
           page.id,
         );
-        run(
+        await run(
           "UPDATE pages SET updated_at=? WHERE id=?", nowText(),
           page.id,
         );
@@ -138,7 +138,7 @@ export function syncWhiteboard(user: Identity, raw: unknown) {
     }
     if (b.cursor !== undefined)
       if (b.cursor)
-        run(
+        await run(
           `INSERT INTO whiteboard_presence(page_id,user_id,name,x,y,seen) VALUES(?,?,?,?,?,?)
            ON CONFLICT(page_id,user_id) DO UPDATE SET name=excluded.name,x=excluded.x,y=excluded.y,seen=excluded.seen`,
           page.id,
@@ -149,14 +149,14 @@ export function syncWhiteboard(user: Identity, raw: unknown) {
           Date.now(),
         );
       else
-        run(
+        await run(
           "DELETE FROM whiteboard_presence WHERE page_id=? AND user_id=?",
           page.id,
           user.id,
         );
     return {
       state: Buffer.from(Y.encodeStateAsUpdate(doc)).toString("base64"),
-      presence: all<{ user_id: string; name: string; x: number; y: number }>(
+      presence: await all<{ user_id: string; name: string; x: number; y: number }>(
         "SELECT user_id,name,x,y FROM whiteboard_presence WHERE page_id=? AND user_id!=? AND seen>?",
         page.id,
         user.id,
@@ -169,21 +169,21 @@ export function syncWhiteboard(user: Identity, raw: unknown) {
 }
 // Copies (page duplicates, templates, archives) get the same board with a
 // new identity; ids of pages on cards are mapped when copied along.
-export function copyWhiteboard(
+export async function copyWhiteboard(
   source: string,
   target: string,
   pageIds?: Map<string, string>,
   rewrite: (value: string) => string = (value) => value,
 ) {
-  const s = one<Stored>(
+  const s = await one<Stored>(
     "SELECT state,generation FROM whiteboards WHERE page_id=?",
     source,
   );
-  if (s) writeWhiteboard(target, s.state, pageIds, rewrite);
+  if (s) await writeWhiteboard(target, s.state, pageIds, rewrite);
 }
 // Stores a board for a new page from another board's state (copies,
 // archives), with page ids on cards and image addresses mapped.
-export function writeWhiteboard(
+export async function writeWhiteboard(
   target: string,
   state: Uint8Array,
   pageIds?: Map<string, string>,
@@ -212,14 +212,14 @@ export function writeWhiteboard(
           );
       items.set(item.id, map);
     }
-    run(
+    await run(
       "INSERT INTO whiteboards(page_id,state,generation) VALUES(?,?,?) ON CONFLICT(page_id) DO UPDATE SET state=excluded.state,generation=excluded.generation,updated_at=excluded.updated_at",
       target,
       Y.encodeStateAsUpdate(to),
       id(),
     );
     const summary = whiteboardSummary(whiteboardItems(to));
-    run(
+    await run(
       "INSERT INTO documents(page_id,html) VALUES(?,?) ON CONFLICT(page_id) DO UPDATE SET html=excluded.html",
       target,
       summary,
@@ -229,8 +229,8 @@ export function writeWhiteboard(
     to.destroy();
   }
 }
-export function restoreWhiteboardSnapshot(page: Page, state: Uint8Array) {
-  run(
+export async function restoreWhiteboardSnapshot(page: Page, state: Uint8Array) {
+  await run(
     "UPDATE whiteboards SET state=?,generation=?,updated_at=? WHERE page_id=?",
     state,
     id(), nowText(),
@@ -239,7 +239,7 @@ export function restoreWhiteboardSnapshot(page: Page, state: Uint8Array) {
   const doc = new Y.Doc();
   try {
     Y.applyUpdate(doc, state);
-    run(
+    await run(
       "UPDATE documents SET html=? WHERE page_id=?",
       whiteboardSummary(whiteboardItems(doc)),
       page.id,

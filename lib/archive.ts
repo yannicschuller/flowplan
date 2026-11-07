@@ -89,6 +89,7 @@ import { field, view } from "./database-schema";
 import { cleanHtml, htmlState } from "./document-server";
 import type { Identity, Page, Field, Space } from "./types";
 import { MANIFEST_LIMIT, MANIFEST_TOO_LARGE, MAX_ARCHIVE_ROWS } from "./archive-limits";
+import { filterAsync, flatMapAsync, mapAsync } from "./each-async";
 
 export const ARCHIVE_LIMIT = 100 * 1024 * 1024;
 // Workspace archives stream files from and to disk, so they may be large.
@@ -123,8 +124,8 @@ const entryHash = (e: ArchiveEntry) =>
 const entryBytes = (e: ArchiveEntry) =>
   Buffer.isBuffer(e) ? e : readFileSync(e.path);
 // Per file inside an archive: at least 10 MB, otherwise the upload limit.
-function archiveFileLimit() {
-  return Math.max(10, instanceSettings().maxUploadMb) * 1024 * 1024;
+async function archiveFileLimit() {
+  return Math.max(10, (await instanceSettings()).maxUploadMb) * 1024 * 1024;
 }
 const str = z.string().max(500),
   uid = z.string().uuid(),
@@ -185,11 +186,11 @@ const databaseSchema = z.object({
   ...databaseExtrasShape,
 });
 // The handwriting of a document's drawing blocks still in it.
-function inkBlocksArchive(pageId: string) {
-  const html = one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", pageId)?.html || "";
+async function inkBlocksArchive(pageId: string) {
+  const html = (await one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", pageId))?.html || "";
   const blocks = new Set(inkBlockIds(html));
   const inkBlocks: Record<string, { ink: string; recognized?: string }> = {};
-  for (const [surface, ink] of pageInkDocs(pageId))
+  for (const [surface, ink] of await pageInkDocs(pageId))
     if (blocks.has(surface) && hasInk(ink.doc)) inkBlocks[surface] = { ink: serializeInk(ink.doc), ...(ink.recognized ? { recognized: ink.recognized } : {}) };
   return Object.keys(inkBlocks).length ? { inkBlocks } : {};
 }
@@ -368,7 +369,7 @@ const archivedVersion = (s: StoredVersion): ArchivedVersion => ({
 // archive. Versions go in newest first (across all databases) while
 // flowplan.json stays within MANIFEST_LIMIT; older ones stay behind, the
 // current records always go. Only the chosen versions are read.
-function addDatabaseVersions(
+async function addDatabaseVersions(
   manifest: { pages: { id: string; snapshots: ArchivedVersion[] }[] },
   versions: VersionSize[],
 ) {
@@ -378,7 +379,7 @@ function addDatabaseVersions(
   let room = MANIFEST_LIMIT - Buffer.byteLength(JSON.stringify(manifest)) - 1024 * 1024;
   for (const v of [...versions].sort((a, b) => b.created_at.localeCompare(a.created_at))) {
     if (v.bytes + 1024 > room) continue;
-    const stored = one<StoredVersion>("SELECT html,title,created_at,appearance FROM snapshots WHERE id=?", v.id);
+    const stored = await one<StoredVersion>("SELECT html,title,created_at,appearance FROM snapshots WHERE id=?", v.id);
     if (!stored) continue;
     const version = archivedVersion(stored);
     const cost = Buffer.byteLength(JSON.stringify(version)) + 16;
@@ -391,17 +392,17 @@ function addDatabaseVersions(
 function digest(bytes: Buffer) {
   return createHash("sha256").update(bytes).digest("hex");
 }
-function snapshotFor(user: Identity, wid: string) {
-  requireMember(user, wid);
+async function snapshotFor(user: Identity, wid: string) {
+  await requireMember(user, wid);
   // Readable pages; journals behind a PIN stay out until unlocked.
-  const locked = lockedPageIds(user, wid);
-  const pages = all<Page>(
+  const locked = await lockedPageIds(user, wid);
+  const pages = await filterAsync(await all<Page>(
     "SELECT * FROM pages WHERE workspace_id=? ORDER BY position",
     wid,
-  ).filter((p) => !locked.has(p.id) && pageRole(user, p));
+  ), async (p) => !locked.has(p.id) && await pageRole(user, p));
   // Records hidden from this person (private records), and files only they use.
-  const hiddenRows = new Map(pages.map((p) => [p.id, p.kind === "database" ? hiddenRowIds(user, p) : new Set<string>()]));
-  const hiddenFiles = new Set(pages.flatMap((p) => [...hiddenFileIds(user, p)]));
+  const hiddenRows = new Map(await mapAsync(pages, async (p) => [p.id, p.kind === "database" ? (await hiddenRowIds(user, p)) : new Set<string>()]));
+  const hiddenFiles = new Set(await flatMapAsync(pages, async (p) => [...await hiddenFileIds(user, p)]));
   const shown = (pageId: string, rowId: string | null | undefined) => !rowId || !hiddenRows.get(pageId)?.has(rowId);
   const pageIds = new Set(pages.map((p) => p.id));
   const spaceIds = new Set(pages.map((p) => p.space_id));
@@ -409,50 +410,50 @@ function snapshotFor(user: Identity, wid: string) {
   let bytes = 0;
   // Space-scoped tags, definitions and templates (#136) only of spaces the
   // person may open – as in the tag picker and the template gallery.
-  const owner = canManageTaxonomy(user, wid);
+  const owner = await canManageTaxonomy(user, wid);
   const spaceVisible = new Map<string, boolean>();
-  const canOpenSpace = (spaceId: string | null | undefined) => {
+  const canOpenSpace = async (spaceId: string | null | undefined) => {
     if (!spaceId || owner) return true;
     if (!spaceVisible.has(spaceId)) {
-      const space = one<Space>("SELECT * FROM spaces WHERE id=?", spaceId);
-      spaceVisible.set(spaceId, !!space && !space.deleted_at && !!spaceRole(user, space));
+      const space = await one<Space>("SELECT * FROM spaces WHERE id=?", spaceId);
+      spaceVisible.set(spaceId, !!space && !space.deleted_at && !!(await spaceRole(user, space)));
     }
     return spaceVisible.get(spaceId)!;
   };
   const databaseVersions: VersionSize[] = [];
-  const laterVersions = (p: Page): ArchivedVersion[] => {
-    if (pageRole(user, p) === "owner")
+  const laterVersions = async (p: Page): Promise<ArchivedVersion[]> => {
+    if ((await pageRole(user, p)) === "owner")
       databaseVersions.push(
-        ...all<VersionSize>(`SELECT id,page_id,${sql.byteLength("html")} bytes,created_at FROM snapshots WHERE page_id=?`, p.id),
+        ...await all<VersionSize>(`SELECT id,page_id,${sql.byteLength("html")} bytes,created_at FROM snapshots WHERE page_id=?`, p.id),
       );
     return [];
   };
   const manifest = {
     format: "flowplan-2",
     formattedText: true,
-    relationPairs: relationPairs().filter(
+    relationPairs: (await relationPairs()).filter(
       (p) => pageIds.has(p.left_page) && pageIds.has(p.right_page),
     ),
     exportedAt: new Date().toISOString(),
     exportedBy: user.id,
-    workspace: one("SELECT name,icon FROM workspaces WHERE id=?", wid),
+    workspace: await one("SELECT name,icon FROM workspaces WHERE id=?", wid),
     // Guests export only what their pages carry.
-    ...(isGuest(user, wid)
+    ...((await isGuest(user, wid))
       ? {}
       : {
           pageTaxonomy: {
-            tags: workspaceTags(wid).filter((t) => canOpenSpace(t.spaceId)).map((t) => ({ name: t.name, color: t.color, ...(t.spaceId ? { spaceId: t.spaceId } : {}) })),
-            properties: workspaceProperties(wid).filter((d) => canOpenSpace(d.spaceId)).map((d) => ({ name: d.name, type: d.type, ...(d.options.length ? { options: d.options } : {}), ...(d.spaceId ? { spaceId: d.spaceId } : {}) })),
+            tags: (await filterAsync(await workspaceTags(wid), async (t) => await canOpenSpace(t.spaceId))).map((t) => ({ name: t.name, color: t.color, ...(t.spaceId ? { spaceId: t.spaceId } : {}) })),
+            properties: (await filterAsync(await workspaceProperties(wid), async (d) => await canOpenSpace(d.spaceId))).map((d) => ({ name: d.name, type: d.type, ...(d.options.length ? { options: d.options } : {}), ...(d.spaceId ? { spaceId: d.spaceId } : {}) })),
           },
         }),
-    ...exportHomeLayout(user.id, wid),
-    favorites: all<{ page_id: string }>(
+    ...(await exportHomeLayout(user.id, wid)),
+    favorites: (await all<{ page_id: string }>(
       "SELECT page_id FROM favorites WHERE user_id=?",
       user.id,
-    )
+    ))
       .filter((f) => pageIds.has(f.page_id))
       .map((f) => f.page_id),
-    templates: all<{
+    templates: await mapAsync(await filterAsync(await all<{
       id: string;
       name: string;
       kind: string;
@@ -464,20 +465,17 @@ function snapshotFor(user: Identity, wid: string) {
       // Templates of kinds an archive carries (not whiteboards or dashboards).
       "SELECT id,name,kind,payload,deleted_at,space_id,created_by FROM templates WHERE workspace_id=? AND kind IN ('document','database','notebook') AND ((visibility='workspace' AND ?=0) OR created_by=?)",
       wid,
-      isGuest(user, wid) ? 1 : 0,
+      (await isGuest(user, wid)) ? 1 : 0,
       user.id,
-    )
-      // A space's templates only for who may open the space (as listPageTemplates).
-      .filter((t) => t.created_by === user.id || canOpenSpace(t.space_id))
-      .map(({ space_id: _space, created_by: _by, ...t }) => ({
+    ), async (t) => t.created_by === user.id || await canOpenSpace(t.space_id)), async ({ space_id: _space, created_by: _by, ...t }) => ({
       ...t,
-      files: all<{
+      files: (await all<{
         id: string;
         original_id: string;
         name: string;
         mime: string;
         data: Uint8Array;
-      }>("SELECT * FROM template_files WHERE template_id=?", t.id).map((f) => {
+      }>("SELECT * FROM template_files WHERE template_id=?", t.id)).map((f) => {
         const data = Buffer.from(f.data);
         bytes += data.length;
         if (bytes > EXPANDED_LIMIT)
@@ -497,8 +495,7 @@ function snapshotFor(user: Identity, wid: string) {
       }),
     })),
     // In the workspace's order; `position` keeps it on import.
-    spaces: all<Space & { position: number | null }>(`SELECT * FROM spaces WHERE workspace_id=? ORDER BY ${SPACE_ORDER}`, wid)
-      .filter((s) => spaceRole(user, s) || spaceIds.has(s.id))
+    spaces: (await filterAsync(await all<Space & { position: number | null }>(`SELECT * FROM spaces WHERE workspace_id=? ORDER BY ${SPACE_ORDER}`, wid), async (s) => await spaceRole(user, s) || spaceIds.has(s.id)))
       .map((s, i) => ({
         id: s.id,
         name: s.name,
@@ -507,13 +504,13 @@ function snapshotFor(user: Identity, wid: string) {
         visibility: s.visibility,
         position: i + 1,
       })),
-    pages: pages.map((p) => {
+    pages: await mapAsync(pages, async (p) => {
       const db =
         p.kind === "database"
-          ? one<{ fields: string; views: string; record_layout: string }>(
+          ? (await one<{ fields: string; views: string; record_layout: string }>(
               "SELECT fields,views,record_layout FROM databases WHERE page_id=?",
               p.id,
-            )
+            ))
           : null;
       return {
         id: p.id,
@@ -525,20 +522,20 @@ function snapshotFor(user: Identity, wid: string) {
         cover_position: p.cover_position ?? 50,
         kind: p.kind,
         journal_date: p.journal_date ?? null,
-        ...exportPageExtras(p),
+        ...(await exportPageExtras(p)),
         position: p.position,
         deleted_at: p.deleted_at,
         updated_at: p.updated_at,
         review_at: p.review_at ?? null,
         review_every_days: p.review_every_days ?? null,
         ...(pageAliases(p).length ? { aliases: pageAliases(p) } : {}),
-        ...(portableMeta(p.id) ? { meta: portableMeta(p.id) } : {}),
+        ...((await portableMeta(p.id)) ? { meta: await portableMeta(p.id) } : {}),
         locked: p.locked,
         full_width: p.full_width,
         ...(p.caption_numbers ? { caption_numbers: 1 } : {}),
         font: p.font,
-        form: (() => {
-          const form = one<{
+        form: (async () => {
+          const form = await one<{
             internal: number;
             anonymous: number;
             config: string;
@@ -557,13 +554,13 @@ function snapshotFor(user: Identity, wid: string) {
           ? {
               database: {
                 // Without the properties hidden from this person.
-                fields: visibleFields(user, p, JSON.parse(db.fields)),
+                fields: await visibleFields(user, p, JSON.parse(db.fields)),
                 views: JSON.parse(db.views),
                 recordLayout: parseRecordLayout(db.record_layout),
-                rows: visibleRows(
+                rows: await mapAsync(await visibleRows(
                   user,
                   p,
-                  all<{
+                  await all<{
                     id: string;
                     cells: string;
                     content: string;
@@ -576,21 +573,21 @@ function snapshotFor(user: Identity, wid: string) {
                     "SELECT id,cells,content,position,icon,cover,recurrence,repeat,created_at,updated_at,access,created_by FROM rows WHERE page_id=? ORDER BY position",
                     p.id,
                   ),
-                ).map(
-                  ({
+                ), 
+                  async ({
                     created_by: _by,
                     role: _role,
                     ...r
                   }) => ({
                     ...r,
                     cells: JSON.parse(r.cells),
-                    snapshots: all(
+                    snapshots: await all(
                       "SELECT html,created_at FROM row_snapshots WHERE row_id=? ORDER BY created_at",
                       r.id,
                     ),
                   }),
                 ),
-                templates: all<{
+                templates: await mapAsync(await all<{
                   id: string;
                   name: string;
                   cells: string;
@@ -600,40 +597,40 @@ function snapshotFor(user: Identity, wid: string) {
                   "SELECT id,name,cells,html,is_default FROM row_templates WHERE page_id=?",
                   p.id,
                   // Without the values of properties hidden from this person.
-                ).map((t) => ({ ...t, cells: readableTemplateCells(user, p, t.cells) })),
-                ...exportDatabaseExtras(p.id, new Set(visibleRows(user, p, all<{ id: string; access: string; created_by: string }>("SELECT id,access,created_by FROM rows WHERE page_id=?", p.id)).map((r) => r.id))),
+                ), async (t) => ({ ...t, cells: await readableTemplateCells(user, p, t.cells) })),
+                ...(await exportDatabaseExtras(p.id, new Set((await visibleRows(user, p, await all<{ id: string; access: string; created_by: string }>("SELECT id,access,created_by FROM rows WHERE page_id=?", p.id))).map((r) => r.id)))),
               },
             }
           : {
               html:
-                one("SELECT html FROM documents WHERE page_id=?", p.id)?.html ||
+                (await one("SELECT html FROM documents WHERE page_id=?", p.id))?.html ||
                 "",
               ...(p.kind === "whiteboard"
-                ? { whiteboard: whiteboardData(p).state }
+                ? { whiteboard: (await whiteboardData(p)).state }
                 : {}),
-              ...(p.kind === "dashboard" ? { dashboard: dashboardTiles(p.id) } : {}),
-              ...(p.kind === "notebook" ? { notebook: notebookArchive(p.id) } : {}),
-              ...(p.kind === "document" || p.kind === "journal" ? inkBlocksArchive(p.id) : {}),
+              ...(p.kind === "dashboard" ? { dashboard: await dashboardTiles(p.id) } : {}),
+              ...(p.kind === "notebook" ? { notebook: await notebookArchive(p.id) } : {}),
+              ...(p.kind === "document" || p.kind === "journal" ? (await inkBlocksArchive(p.id)) : {}),
             }),
         // Versions of a database hold all its records: only for those who
         // see every record anyway, and added below as far as they fit.
         snapshots: p.kind === "database"
-          ? laterVersions(p)
-          : all<StoredVersion>(
+          ? (await laterVersions(p))
+          : (await all<StoredVersion>(
               "SELECT html,title,created_at,appearance FROM snapshots WHERE page_id=? ORDER BY created_at",
               p.id,
-            ).map(archivedVersion),
-        inlineThreads: exportInlineComments(p.id).filter((t) => shown(p.id, t.row_id)),
-        comments: all<{ row_id: string | null }>(
+            )).map(archivedVersion),
+        inlineThreads: (await exportInlineComments(p.id)).filter((t) => shown(p.id, t.row_id)),
+        comments: (await all<{ row_id: string | null }>(
           `SELECT c.row_id,COALESCE(u.name,'Unbekannt') author,c.body,c.resolved,c.created_at FROM comments c LEFT JOIN users u ON u.id=c.author_id WHERE c.page_id=?
            UNION ALL SELECT row_id,name || ' (Gast)' author,body,resolved,created_at FROM shared_comments WHERE page_id=? ORDER BY created_at`,
           p.id,
           p.id,
-        ).filter((c) => shown(p.id, c.row_id)),
+        )).filter((c) => shown(p.id, c.row_id)),
       };
     }),
-    files: pages.flatMap((p) =>
-      all<{
+    files: await flatMapAsync(pages, async (p) =>
+      await mapAsync((await all<{
         id: string;
         page_id: string;
         name: string;
@@ -642,7 +639,7 @@ function snapshotFor(user: Identity, wid: string) {
       }>(
         "SELECT id,page_id,name,mime,size FROM files WHERE page_id=?",
         p.id,
-      ).filter((f) => !hiddenFiles.has(f.id)).map((f) => {
+      )).filter((f) => !hiddenFiles.has(f.id)), async (f) => {
         const path = resolve(
           process.env.FLOWPLAN_DATA_DIR || "./data",
           "uploads",
@@ -666,13 +663,13 @@ function snapshotFor(user: Identity, wid: string) {
         // Files are streamed into the ZIP; only their checksum is computed here.
         const data: Spooled = { path, size, sha256: fileDigest(path) };
         binaries.set(`files/${f.id}`, data);
-        return { ...f, size: data.size, sha256: data.sha256, ...exportFileInk(f.id) };
+        return { ...f, size: data.size, sha256: data.sha256, ...(await exportFileInk(f.id)) };
       }),
     ),
   };
   if (binaries.size > MAX_ARCHIVE_FILES)
     throw new HttpError(413, "Höchstens 20.000 Dateien pro Inhaltsarchiv.");
-  addDatabaseVersions(manifest, databaseVersions);
+  await addDatabaseVersions(manifest, databaseVersions);
   const validated = archiveSchema.parse(manifest);
   const encoded = Buffer.from(JSON.stringify(validated));
   if (encoded.length > MANIFEST_LIMIT) throw new HttpError(413, MANIFEST_TOO_LARGE);
@@ -710,15 +707,15 @@ export async function writeZip(entries: Map<string, ArchiveEntry>) {
   });
 }
 // Streams a workspace archive without holding its files in memory.
-export function exportArchiveStream(user: Identity, wid: string) {
-  const entries = transaction(() => snapshotFor(user, wid));
-  audit(user.id, "workspace.archive.export", wid);
+export async function exportArchiveStream(user: Identity, wid: string) {
+  const entries = await transaction(async () => await snapshotFor(user, wid));
+  await audit(user.id, "workspace.archive.export", wid);
   return zipFile(entries).outputStream as Readable;
 }
 export async function exportArchive(user: Identity, wid: string) {
-  const entries = transaction(() => snapshotFor(user, wid));
+  const entries = await transaction(async () => await snapshotFor(user, wid));
   const bytes = await writeZip(entries);
-  audit(user.id, "workspace.archive.export", wid);
+  await audit(user.id, "workspace.archive.export", wid);
   return bytes;
 }
 // Foreign exports (Notion, AppFlowy, Markdown) use arbitrary names; they only
@@ -859,7 +856,7 @@ export async function readArchiveFile(
   if (statSync(path).size > LARGE_ARCHIVE_LIMIT)
     throw new HttpError(413, "ZIP darf maximal 2 GB groß sein.");
   mkdirSync(spoolDir, { recursive: true });
-  const perFile = archiveFileLimit();
+  const perFile = await archiveFileLimit();
   return new Promise((finish, reject) =>
     openZip(
       path,
@@ -1069,7 +1066,7 @@ export async function importArchive(
   wid: string,
   source: Buffer | string,
 ) {
-  requireMember(user, wid, "editor");
+  await requireMember(user, wid, "editor");
   const spool = resolve(
     process.env.FLOWPLAN_DATA_DIR || "./data",
     "tmp",
@@ -1104,9 +1101,9 @@ async function importEntries(
   const data = validateArchive(raw, entries),
     written: string[] = [];
   try {
-    return transaction(() => {
-      requireMember(user, wid, "editor");
-      const quota = quotaCheckpoint(wid);
+    return await transaction(async () => {
+      await requireMember(user, wid, "editor");
+      const quota = await quotaCheckpoint(wid);
       const pageMap = new Map(data.pages.map((p) => [p.id, id()])),
         rowMap = new Map(
           data.pages.flatMap(
@@ -1161,10 +1158,10 @@ async function importEntries(
               if (!rowMap.has(row.id)) rowMap.set(row.id, id());
           }
       const members = new Set(
-        all<{ user_id: string }>(
+        (await all<{ user_id: string }>(
           "SELECT user_id FROM members WHERE workspace_id=?",
           wid,
-        ).map((m) => m.user_id),
+        )).map((m) => m.user_id),
       );
       // An archive from elsewhere: the exporter's own references (their
       // assignments, mentions) become the importer's. Within the same
@@ -1186,8 +1183,8 @@ async function importEntries(
             rowMap.has(rid) ? prefix + rowMap.get(rid) : match,
           );
       const rewriteHtml = (value: string) =>
-        cleanHtml(value, (tagName, attribs) => {
-          const attrs = remapLinkedAttributes(
+        cleanHtml(value, async (tagName, attribs) => {
+          const attrs = await remapLinkedAttributes(
             { ...attribs },
             pageMap,
             rowMap,
@@ -1251,7 +1248,7 @@ async function importEntries(
         ? [...data.spaces].sort((a, b) => a.position! - b.position!)
         : data.spaces;
       for (const s of spacesInOrder)
-        run(
+        await run(
           "INSERT INTO spaces(id,workspace_id,name,icon,visibility,owner_id,icon_color) VALUES(?,?,?,?,?,?,?)",
           spaceMap.get(s.id)!,
           wid,
@@ -1262,7 +1259,7 @@ async function importEntries(
           s.icon_color,
         );
       for (const p of data.pages)
-        run(
+        await run(
           "INSERT INTO pages(id,workspace_id,space_id,title,icon,cover,cover_position,kind,position,deleted_at,created_by,updated_at,locked,full_width,font,journal_date) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
           pageMap.get(p.id)!,
           wid,
@@ -1282,19 +1279,19 @@ async function importEntries(
           p.journal_date ?? null,
         );
       for (const p of data.pages)
-        if (p.caption_numbers) run("UPDATE pages SET caption_numbers=1 WHERE id=?", pageMap.get(p.id)!);
+        if (p.caption_numbers) await run("UPDATE pages SET caption_numbers=1 WHERE id=?", pageMap.get(p.id)!);
       // Tags and property definitions (#70): definitions only by workspace
       // owners, tags by members who may create them.
-      const manageTaxonomy = canManageTaxonomy(user, wid);
-      importTaxonomy(user, wid, data.pageTaxonomy, manageTaxonomy, spaceMap);
+      const manageTaxonomy = await canManageTaxonomy(user, wid);
+      await importTaxonomy(user, wid, data.pageTaxonomy, manageTaxonomy, spaceMap);
       for (const p of data.pages) {
         const pid = pageMap.get(p.id)!;
         if (p.review_at || p.review_every_days)
-          run("UPDATE pages SET review_at=?,review_every_days=? WHERE id=?", p.review_at ?? null, p.review_every_days ?? null, pid);
-        if (p.aliases?.length) run("UPDATE pages SET aliases=? WHERE id=?", storedAliases(aliasList(p.aliases)), pid);
-        applyPortableMeta(user, { id: pid, workspace_id: wid, space_id: spaceMap.get(p.space_id)! }, p.meta, { createDefinitions: manageTaxonomy, definitionsScope: "marked" });
+          await run("UPDATE pages SET review_at=?,review_every_days=? WHERE id=?", p.review_at ?? null, p.review_every_days ?? null, pid);
+        if (p.aliases?.length) await run("UPDATE pages SET aliases=? WHERE id=?", storedAliases(aliasList(p.aliases)), pid);
+        await applyPortableMeta(user, { id: pid, workspace_id: wid, space_id: spaceMap.get(p.space_id)! }, p.meta, { createDefinitions: manageTaxonomy, definitionsScope: "marked" });
         if (p.form && p.kind === "database")
-          run(
+          await run(
             "INSERT INTO forms(page_id,token,enabled,internal,anonymous,config) VALUES(?,?,0,?,?,?)",
             pid,
             id(),
@@ -1303,14 +1300,14 @@ async function importEntries(
             JSON.stringify(p.form.config || formConfigSchema.parse({})),
           );
         if (p.parent_id)
-          run(
+          await run(
             "UPDATE pages SET parent_id=? WHERE id=?",
             pageMap.get(p.parent_id)!,
             pid,
           );
         if (p.database) {
           const d = p.database;
-          run(
+          await run(
             "INSERT INTO databases(page_id,fields,views,record_layout) VALUES(?,?,?,?)",
             pid,
             JSON.stringify(rewriteFields(d.fields)),
@@ -1329,7 +1326,7 @@ async function importEntries(
           for (const r of d.rows) {
             const rid = rowMap.get(r.id)!,
               content = rewriteHtml(r.content);
-            run(
+            await run(
               "INSERT INTO rows(id,page_id,cells,position,created_at,updated_at,created_by,updated_by,content,icon,cover,recurrence,repeat,access) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
               rid,
               pid,
@@ -1347,7 +1344,7 @@ async function importEntries(
               r.access,
             );
             if (threadRows.has(r.id))
-              run(
+              await run(
                 "INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?)",
                 rid,
                 htmlState(content),
@@ -1356,7 +1353,7 @@ async function importEntries(
               );
             for (const snap of r.snapshots) {
               const html = rewriteHtml(snap.html);
-              run(
+              await run(
                 // Restored history is kept like manually saved versions.
                 "INSERT INTO row_snapshots(id,row_id,state,html,created_by,created_at,kind) VALUES(?,?,?,?,?,?,'manual')",
                 id(),
@@ -1372,7 +1369,7 @@ async function importEntries(
           for (const t of d.templates) {
             const tid = id();
             if (t.id) templateIds.set(t.id, tid);
-            run(
+            await run(
               "INSERT INTO row_templates(id,page_id,name,cells,html,is_default,created_by) VALUES(?,?,?,?,?,?,?)",
               tid,
               pid,
@@ -1383,12 +1380,12 @@ async function importEntries(
               user.id,
             );
           }
-          importDatabaseSettings(pid, d.settings, { user: user.id, fields: d.fields, members, templates: templateIds, person });
-          importDatabaseHistory(pid, d, { user: user.id, rows: rowMap, fields: d.fields });
+          await importDatabaseSettings(pid, d.settings, { user: user.id, fields: d.fields, members, templates: templateIds, person });
+          await importDatabaseHistory(pid, d, { user: user.id, rows: rowMap, fields: d.fields });
           // Tag-backed properties use this workspace's tags (#79).
-          reconcileTagFields(user, pid);
+          await reconcileTagFields(user, pid);
         } else if (p.kind === "whiteboard") {
-          writeWhiteboard(
+          await writeWhiteboard(
             pid,
             Buffer.from(p.whiteboard!, "base64"),
             pageMap,
@@ -1397,7 +1394,7 @@ async function importEntries(
           );
         } else {
           const html = rewriteHtml(p.html!);
-          run(
+          await run(
             "INSERT INTO documents(page_id,state,html,generation) VALUES(?,?,?,?)",
             pid,
             htmlState(html),
@@ -1405,19 +1402,19 @@ async function importEntries(
             id(),
           );
           // Tasks in the text show up in "My tasks" right away.
-          if ((p.kind === "document" || p.kind === "journal") && !p.deleted_at && html.includes('data-type="taskItem"')) indexPageTasks(pid, false);
+          if ((p.kind === "document" || p.kind === "journal") && !p.deleted_at && html.includes('data-type="taskItem"')) await indexPageTasks(pid, false);
           if (p.kind === "dashboard")
-            copyDashboard(parseTiles(JSON.stringify(p.dashboard || [])), pid, pageMap);
-          if (p.kind === "notebook") importNotebook(pid, p.notebook!, fileMap, user.id);
+            await copyDashboard(parseTiles(JSON.stringify(p.dashboard || [])), pid, pageMap);
+          if (p.kind === "notebook") await importNotebook(pid, p.notebook!, fileMap, user.id);
           for (const [block, entry] of Object.entries(p.inkBlocks || {})) {
             const items = Object.values(parseInk(entry.ink).pages)[0] || [];
-            if (items.length) writeSurface(pid, block, { ...emptyInk(), pages: { [block]: items } }, entry.recognized || "", user.id);
+            if (items.length) await writeSurface(pid, block, { ...emptyInk(), pages: { [block]: items } }, entry.recognized || "", user.id);
           }
         }
-        importPageExtras(pid, p, rewriteHtml);
-        importInlineComments(pid, p.inlineThreads, rowMap, user.id);
+        await importPageExtras(pid, p, rewriteHtml);
+        await importInlineComments(pid, p.inlineThreads, rowMap, user.id);
         for (const c of p.comments)
-          run(
+          await run(
             "INSERT INTO comments(id,page_id,row_id,author_id,body,resolved,created_at) VALUES(?,?,?,?,?,?,?)",
             id(),
             pid,
@@ -1512,7 +1509,7 @@ async function importEntries(
             }
           }
           const snapshotId = id();
-          run(
+          await run(
             "INSERT INTO snapshots(id,page_id,state,html,title,created_by,created_at,appearance,kind) VALUES(?,?,?,?,?,?,?,?,'manual')",
             snapshotId,
             pid,
@@ -1530,11 +1527,11 @@ async function importEntries(
           );
           // Old archives did not record historical covers; do not infer one from today's page.
           if (!snap.appearance)
-            run("UPDATE snapshots SET appearance=NULL WHERE id=?", snapshotId);
+            await run("UPDATE snapshots SET appearance=NULL WHERE id=?", snapshotId);
         }
       }
       for (const f of data.files)
-        run(
+        await run(
           "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
           fileMap.get(f.id)!,
           pageMap.get(f.page_id)!,
@@ -1543,25 +1540,25 @@ async function importEntries(
           f.size,
           user.id,
         );
-      for (const f of data.files) importFileInk(fileMap.get(f.id)!, f.ink, user.id);
+      for (const f of data.files) await importFileInk(fileMap.get(f.id)!, f.ink, user.id);
       for (const p of data.pages) {
-        validateCover(pageMap.get(p.id)!, rewriteUrl(p.cover));
-        validateIcon(pageMap.get(p.id)!, rewriteUrl(p.icon));
+        await validateCover(pageMap.get(p.id)!, rewriteUrl(p.cover));
+        await validateIcon(pageMap.get(p.id)!, rewriteUrl(p.icon));
         // Record images must be files of their own database page.
         for (const r of p.database?.rows || []) {
-          validateIcon(pageMap.get(p.id)!, rewriteUrl(r.icon));
-          validateCover(pageMap.get(p.id)!, rewriteUrl(r.cover));
+          await validateIcon(pageMap.get(p.id)!, rewriteUrl(r.icon));
+          await validateCover(pageMap.get(p.id)!, rewriteUrl(r.cover));
         }
         for (const snap of p.snapshots)
           if (snap.appearance)
-            validateCover(
+            await validateCover(
               pageMap.get(p.id)!,
               rewriteUrl(snap.appearance.cover),
             );
       }
       for (const favorite of data.favorites)
         if (pageMap.has(favorite))
-          run(
+          await run(
             "INSERT INTO favorites(user_id,page_id) VALUES(?,?)",
             user.id,
             pageMap.get(favorite)!,
@@ -1650,7 +1647,7 @@ async function importEntries(
           throw new HttpError(400, "Ungültige Seitenvorlage im Archiv.");
         }
         const templateId = id();
-        run(
+        await run(
           "INSERT INTO templates(id,workspace_id,name,kind,payload,created_by,visibility,deleted_at) VALUES(?,?,?,?,?,?,'private',?)",
           templateId,
           wid,
@@ -1661,7 +1658,7 @@ async function importEntries(
           template.deleted_at || null,
         );
         for (const f of template.files)
-          run(
+          await run(
             "INSERT INTO template_files(id,template_id,original_id,name,mime,data) VALUES(?,?,?,?,?,?)",
             id(),
             templateId,
@@ -1672,9 +1669,9 @@ async function importEntries(
           );
       }
       for (const pair of remapPairs(data.relationPairs))
-        insertRelationPair(pair);
-      importHomeLayout(user.id, wid, data.home, { pages: pageMap, rows: rowMap, spaces: spaceMap, rewriteUrl });
-      audit(
+        await insertRelationPair(pair);
+      await importHomeLayout(user.id, wid, data.home, { pages: pageMap, rows: rowMap, spaces: spaceMap, rewriteUrl });
+      await audit(
         user.id,
         "workspace.archive.import",
         wid,

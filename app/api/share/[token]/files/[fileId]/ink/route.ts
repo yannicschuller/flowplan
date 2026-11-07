@@ -10,7 +10,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   try {
     const { token, fileId } = await params;
     return NextResponse.json(
-      withShareRequest(req, () => publicFileInk(token, fileId)),
+      await withShareRequest(req, async () => await publicFileInk(token, fileId)),
       { headers: { "Cache-Control": "private, no-store" } },
     );
   } catch (e) {

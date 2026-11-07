@@ -27,11 +27,11 @@ export const GET = withRequestLocale(async (req: Request) => {
     const user = await requireUser();
     const url = new URL(req.url);
     const workspace = url.searchParams.get("workspace");
-    if (workspace) return NextResponse.json(issueSyncOverview(user, z.uuid().parse(workspace)), noStore);
+    if (workspace) return NextResponse.json(await issueSyncOverview(user, z.uuid().parse(workspace)), noStore);
     const page = z.uuid().parse(url.searchParams.get("page"));
     const row = url.searchParams.get("row");
-    if (row) return NextResponse.json(issueLinkOf(user, page, z.uuid().parse(row)), noStore);
-    return NextResponse.json(issueSyncDatabase(user, page), noStore);
+    if (row) return NextResponse.json(await issueLinkOf(user, page, z.uuid().parse(row)), noStore);
+    return NextResponse.json(await issueSyncDatabase(user, page), noStore);
   } catch (e) {
     return failure(e);
   }
@@ -42,7 +42,7 @@ export const GET = withRequestLocale(async (req: Request) => {
 export const POST = withRequestLocale(
   withIdempotency(async (req: Request) => {
     try {
-      checkOrigin(req);
+      await checkOrigin(req);
       const user = await requireUser();
       if (user.apiScope === "read") throw new HttpError(403, "Dieses API-Token darf nur lesen.");
       const text = await req.text();

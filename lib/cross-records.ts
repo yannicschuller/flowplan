@@ -26,12 +26,12 @@ const MAX = 500;
 const dueField = (fields: Field[]) =>
   fields.find((f) => f.type === "date" && /fällig|due|deadline|frist|termin|bis/i.test(f.name)) || fields.find((f) => f.type === "date");
 
-export function crossRecords(user: Identity, workspaceId: string, input: unknown) {
-  requireMember(user, workspaceId);
+export async function crossRecords(user: Identity, workspaceId: string, input: unknown) {
+  await requireMember(user, workspaceId);
   const filter = crossFilterSchema.parse(input ?? {});
   const today = new Date().toISOString().slice(0, 10);
   const week = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
-  const pages = all<Page>("SELECT * FROM pages WHERE workspace_id=? AND kind='database' AND deleted_at IS NULL", workspaceId).filter(
+  const pages = (await all<Page>("SELECT * FROM pages WHERE workspace_id=? AND kind='database' AND deleted_at IS NULL", workspaceId)).filter(
     (p) => !filter.databases.length || filter.databases.includes(p.id),
   );
   const out: {
@@ -47,29 +47,29 @@ export function crossRecords(user: Identity, workspaceId: string, input: unknown
   }[] = [];
   const databases: { id: string; title: string }[] = [];
   // Databases behind a journal PIN the person has not entered stay out.
-  const locked = lockedPageIds(user, workspaceId);
+  const locked = await lockedPageIds(user, workspaceId);
   for (const page of pages) {
     try {
-      requirePage(user, page.id);
+      await requirePage(user, page.id);
     } catch {
       continue;
     }
     if (locked.has(page.id)) continue;
-    const raw = one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", page.id);
+    const raw = await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", page.id);
     if (!raw) continue;
     const fields = JSON.parse(raw.fields) as Field[];
     const people = fields.filter((f) => f.type === "person");
     // "Mine" needs a person property; such databases are skipped then.
     if (filter.mine && !people.length) continue;
     databases.push({ id: page.id, title: page.title });
-    const rule = doneRule(fields, databaseSettings(page.id));
+    const rule = doneRule(fields, await databaseSettings(page.id));
     const due = dueField(fields);
     const idField = fields.find((f) => f.type === "id");
-    const rows = visibleRows(
+    const rows = (await visibleRows(
       user,
       page,
-      all<Row & { cells: string }>("SELECT * FROM rows WHERE page_id=? ORDER BY position", page.id),
-    ).map((r) => ({ ...r, cells: JSON.parse(r.cells as unknown as string) as Record<string, unknown> }));
+      await all<Row & { cells: string }>("SELECT * FROM rows WHERE page_id=? ORDER BY position", page.id),
+    )).map((r) => ({ ...r, cells: JSON.parse(r.cells as unknown as string) as Record<string, unknown> }));
     for (const r of rows) {
       if (filter.mine && !people.some((f) => r.cells[f.id] === user.id || (Array.isArray(r.cells[f.id]) && (r.cells[f.id] as unknown[]).includes(user.id)))) continue;
       const done = isDone(rule, r.cells);
@@ -103,24 +103,24 @@ export function crossRecords(user: Identity, workspaceId: string, input: unknown
 
 /* ---------- Saved views ---------- */
 
-export function recordViews(user: Identity, workspaceId: string) {
-  return all<{ id: string; name: string; config: string }>(
+export async function recordViews(user: Identity, workspaceId: string) {
+  return (await all<{ id: string; name: string; config: string }>(
     "SELECT id,name,config FROM record_views WHERE user_id=? AND workspace_id=? ORDER BY created_at",
     user.id,
     workspaceId,
-  ).map((v) => ({ id: v.id, name: v.name, filter: crossFilterSchema.parse(JSON.parse(v.config)) }));
+  )).map((v) => ({ id: v.id, name: v.name, filter: crossFilterSchema.parse(JSON.parse(v.config)) }));
 }
-export function saveRecordView(user: Identity, input: unknown) {
+export async function saveRecordView(user: Identity, input: unknown) {
   const b = z.object({ workspaceId: z.uuid(), name: z.string().trim().min(1).max(80), filter: crossFilterSchema }).parse(input);
-  requireMember(user, b.workspaceId);
-  if ((one<{ n: number }>("SELECT count(*) n FROM record_views WHERE user_id=? AND workspace_id=?", user.id, b.workspaceId)?.n || 0) >= 30)
+  await requireMember(user, b.workspaceId);
+  if (((await one<{ n: number }>("SELECT count(*) n FROM record_views WHERE user_id=? AND workspace_id=?", user.id, b.workspaceId))?.n || 0) >= 30)
     throw new HttpError(400, "Höchstens 30 gespeicherte Ansichten.");
   const vid = id();
-  run("INSERT INTO record_views(id,user_id,workspace_id,name,config,created_at) VALUES(?,?,?,?,?,?)", vid, user.id, b.workspaceId, b.name, JSON.stringify(b.filter), Date.now());
+  await run("INSERT INTO record_views(id,user_id,workspace_id,name,config,created_at) VALUES(?,?,?,?,?,?)", vid, user.id, b.workspaceId, b.name, JSON.stringify(b.filter), Date.now());
   return { id: vid };
 }
-export function deleteRecordView(user: Identity, input: unknown) {
+export async function deleteRecordView(user: Identity, input: unknown) {
   const viewId = z.uuid().parse((input as { viewId?: unknown })?.viewId);
-  run("DELETE FROM record_views WHERE id=? AND user_id=?", viewId, user.id);
+  await run("DELETE FROM record_views WHERE id=? AND user_id=?", viewId, user.id);
   return { ok: true };
 }

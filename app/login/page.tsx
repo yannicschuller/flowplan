@@ -28,7 +28,7 @@ export default async function LoginPage({
         legal={legalLinks()}
       {...await loginOptions()}
       error={(await searchParams).authError}
-      instanceName={instanceSettings().name}
+      instanceName={(await instanceSettings()).name}
       sourceUrl={sourceUrl()}
     />
   );

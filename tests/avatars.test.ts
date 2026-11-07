@@ -36,17 +36,17 @@ const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
 // server gone. unref() lets the process end without it.
 server.unref();
 
-function person(name: string) {
+async function person(name: string) {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${uid}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${uid}@example.test`);
   return { id: uid, name, email: "", disabled: 0, created_at: "", groups: [], isAdmin: false } as Identity;
 }
-const ana = person("Ana"),
-  ben = person("Ben"),
-  stranger = person("Fremd");
-const wid = createWorkspace(ana.id, "Team");
-run("INSERT INTO members VALUES(?,?,?)", wid, ben.id, "editor");
-const version = () => one<{ avatar: string | null }>("SELECT avatar FROM users WHERE id=?", ana.id)?.avatar;
+const ana = await person("Ana"),
+  ben = await person("Ben"),
+  stranger = await person("Fremd");
+const wid = await createWorkspace(ana.id, "Team");
+await run("INSERT INTO members VALUES(?,?,?)", wid, ben.id, "editor");
+const version = async () => (await one<{ avatar: string | null }>("SELECT avatar FROM users WHERE id=?", ana.id))?.avatar;
 
 test("only real raster images are recognised", () => {
   assert.equal(sniffImage(png), "image/png");
@@ -55,25 +55,25 @@ test("only real raster images are recognised", () => {
 
 test("the picture claim is stored once, shared with co-members only, and removed with the claim", async () => {
   await syncAvatar(ana.id, `${base}/me.png`);
-  const first = version();
+  const first = await version();
   assert.match(String(first), /^[0-9a-f]{16}$/);
-  assert.deepEqual(Buffer.from(avatarFor(ben, ana.id)!.data), png);
-  assert.equal(avatarFor(ben, ana.id)!.mime, "image/png");
-  assert.equal(avatarFor(stranger, ana.id), null, "no shared workspace");
+  assert.deepEqual(Buffer.from((await avatarFor(ben, ana.id))!.data), png);
+  assert.equal((await avatarFor(ben, ana.id))!.mime, "image/png");
+  assert.equal(await avatarFor(stranger, ana.id), null, "no shared workspace");
   // A failing or unsafe picture keeps the previous one.
   await syncAvatar(ana.id, `${base}/evil.svg`);
   await syncAvatar(ana.id, `${base}/huge.png`);
   await syncAvatar(ana.id, `${base}/missing.png`);
   await syncAvatar(ana.id, "javascript:alert(1)");
-  assert.equal(version(), first);
+  assert.equal(await version(), first);
   // The provider stops sending a picture: back to initials.
   await syncAvatar(ana.id, undefined);
-  assert.equal(version(), null);
-  assert.equal(avatarFor(ben, ana.id), null);
+  assert.equal(await version(), null);
+  assert.equal(await avatarFor(ben, ana.id), null);
 });
 
 test("pictures from internal addresses are refused without the local test switch", async () => {
-  const before = version();
+  const before = await version();
   let requests = 0;
   const probe = createServer((_req, res) => {
     requests++;
@@ -92,5 +92,5 @@ test("pictures from internal addresses are refused without the local test switch
     probe.close();
   }
   assert.equal(requests, 0, "no request reached the internal server");
-  assert.equal(version(), before);
+  assert.equal(await version(), before);
 });

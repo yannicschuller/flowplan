@@ -54,11 +54,11 @@ export async function aiWriteResponse(user: Identity, raw: unknown, signal: Abor
   if (b.action !== "prompt" && !b.text?.trim()) throw new HttpError(400, "Bitte zuerst Text auswählen.");
   if ((b.action === "custom" || b.action === "prompt") && !b.instruction?.trim())
     throw new HttpError(400, "Bitte beschreiben, was die KI tun soll.");
-  const page = requirePage(user, b.pageId);
-  if (b.rowId) requireRow(user, b.pageId, b.rowId);
+  const page = await requirePage(user, b.pageId);
+  if (b.rowId) await requireRow(user, b.pageId, b.rowId);
   const options = { workspaceId: page.workspace_id, pageId: page.id, rowId: b.rowId, signal };
   // The selection is page content too: refused when the AI may not read it.
-  const resolved = requireAi(user, "write", options);
+  const resolved = await requireAi(user, "write", options);
   const local = resolved.config.kind === "ollama" || isLocalProvider(resolved.config);
   let context: { title: string; markdown: string } | null = null;
   if (b.context && b.action === "prompt") {
@@ -71,13 +71,13 @@ export async function aiWriteResponse(user: Identity, raw: unknown, signal: Abor
   // page goes along as context and the instruction speaks of a table.
   const data =
     b.action === "prompt" || b.action === "custom"
-      ? databaseContext(user, {
+      ? (await databaseContext(user, {
           workspaceId: page.workspace_id,
           instruction: b.instruction || "",
           texts: [b.text],
-          document: b.context && b.action === "prompt" ? storedHtml(page.id, b.rowId) : null,
+          document: b.context && b.action === "prompt" ? (await storedHtml(page.id, b.rowId)) : null,
           maxChars: local ? WRITE_LIMITS.contextChars.local : WRITE_LIMITS.contextChars.remote,
-        })
+        }))
       : [];
   // Pages to link: found with the instruction, the selection and the page's title.
   const links = b.links
@@ -115,8 +115,8 @@ export async function aiWriteResponse(user: Identity, raw: unknown, signal: Abor
 }
 
 // The open page's or record's stored document (its links to databases).
-function storedHtml(pageId: string, rowId?: string) {
+async function storedHtml(pageId: string, rowId?: string) {
   return rowId
-    ? one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", rowId)?.html || null
-    : one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", pageId)?.html || null;
+    ? (await one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", rowId))?.html || null
+    : (await one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", pageId))?.html || null;
 }

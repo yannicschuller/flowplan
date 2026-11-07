@@ -62,19 +62,19 @@ const info = (row: { width: number | null; height: number | null; thumbhash: str
 
 // Plaintext images only: an encrypted space's files (and anything stored as
 // a plain download) are skipped without being read.
-function eligible(file: Pick<FileRow, "mime" | "page_id">) {
+async function eligible(file: Pick<FileRow, "mime" | "page_id">) {
   if (!PLACEHOLDER_TYPES.includes(file.mime) || !file.page_id) return false;
-  const page = one<Pick<Page, "space_id">>("SELECT space_id FROM pages WHERE id=?", file.page_id);
-  return !!page && !isEncryptedPage(page);
+  const page = await one<Pick<Page, "space_id">>("SELECT space_id FROM pages WHERE id=?", file.page_id);
+  return !!page && !(await isEncryptedPage(page));
 }
 
 /** Stores what an upload computed (its bytes are at hand already). */
-export function storePlaceholder(fileId: string, placeholder: Placeholder | null) {
+export async function storePlaceholder(fileId: string, placeholder: Placeholder | null) {
   // Checked again on storing: the space may have been encrypted meanwhile.
-  const file = one<FileRow>("SELECT id,page_id,mime FROM files WHERE id=?", fileId);
+  const file = await one<FileRow>("SELECT id,page_id,mime FROM files WHERE id=?", fileId);
   if (!file) return;
-  const keep = placeholder && eligible(file) ? placeholder : null;
-  run(
+  const keep = placeholder && await eligible(file) ? placeholder : null;
+  await run(
     "UPDATE files SET width=?,height=?,thumbhash=? WHERE id=?",
     keep?.width ?? null,
     keep?.height ?? null,
@@ -87,13 +87,13 @@ export function storePlaceholder(fileId: string, placeholder: Placeholder | null
  *  Never throws: an upload does not fail for its placeholder. */
 export async function placeholderForUpload(fileId: string, mime: string, pageId: string, data: Uint8Array): Promise<PlaceholderInfo | null> {
   try {
-    const wanted = eligible({ mime, page_id: pageId }) && data.length <= MAX_BYTES;
-    storePlaceholder(fileId, wanted ? await computePlaceholder(data) : null);
+    const wanted = await eligible({ mime, page_id: pageId }) && data.length <= MAX_BYTES;
+    await storePlaceholder(fileId, wanted ? await computePlaceholder(data) : null);
   } catch (error) {
     console.error("Platzhalter konnte nicht berechnet werden:", (error as Error).message);
     return null;
   }
-  const row = one<FileRow>("SELECT width,height,thumbhash FROM files WHERE id=?", fileId);
+  const row = await one<FileRow>("SELECT width,height,thumbhash FROM files WHERE id=?", fileId);
   return row ? info(row) : null;
 }
 
@@ -107,13 +107,13 @@ function queueState() {
 }
 
 async function backfillFile(fileId: string) {
-  const file = one<FileRow>("SELECT id,page_id,mime,size,thumbhash FROM files WHERE id=?", fileId);
+  const file = await one<FileRow>("SELECT id,page_id,mime,size,thumbhash FROM files WHERE id=?", fileId);
   if (!file || file.thumbhash !== null) return;
-  if (!eligible(file) || file.size > MAX_BYTES) return storePlaceholder(file.id, null);
+  if (!(await eligible(file)) || file.size > MAX_BYTES) return await storePlaceholder(file.id, null);
   // Not here: gone for good, unless the bucket may still have it (asked again later).
-  if (!(await ensureLocal(file.id))) return storageConfig() ? undefined : storePlaceholder(file.id, null);
+  if (!(await ensureLocal(file.id))) return storageConfig() ? undefined : (await storePlaceholder(file.id, null));
   const data = await readFile(resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads", file.id));
-  storePlaceholder(file.id, await computePlaceholder(data));
+  await storePlaceholder(file.id, await computePlaceholder(data));
 }
 
 /** Computes the placeholder of a file without one, one file at a time;
@@ -124,10 +124,10 @@ export function backfillPlaceholder(fileId: string): Promise<void> {
   if (running) return running;
   const job = s.queue
     .then(() => backfillFile(fileId))
-    .catch((error) => {
+    .catch(async (error) => {
       console.error("Platzhalter konnte nicht berechnet werden:", (error as Error).message);
       try {
-        storePlaceholder(fileId, null);
+        await storePlaceholder(fileId, null);
       } catch {
         /* the file is gone */
       }
@@ -143,11 +143,11 @@ export function backfillPlaceholder(fileId: string): Promise<void> {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Ids of the given files this person may open (as GET /api/files/<id>). */
-export function readableFileIds(user: Identity, ids: string[]): Map<string, FileRow> {
+export async function readableFileIds(user: Identity, ids: string[]): Promise<Map<string, FileRow>> {
   const wanted = [...new Set(ids.filter((x) => UUID.test(x)))].slice(0, MAX_PLACEHOLDER_IDS);
   const readable = new Map<string, FileRow>();
   if (!wanted.length) return readable;
-  const files = all<FileRow>(
+  const files = await all<FileRow>(
     `SELECT id,page_id,mime,size,thumbhash,width,height FROM files WHERE id IN (${wanted.map(() => "?").join(",")})`,
     ...wanted,
   );
@@ -156,14 +156,14 @@ export function readableFileIds(user: Identity, ids: string[]): Map<string, File
   for (const [pageId, list] of byPage) {
     let page: Page;
     try {
-      page = requirePage(user, pageId);
-      requireUnlocked(user, page);
+      page = await requirePage(user, pageId);
+      await requireUnlocked(user, page);
     } catch {
       continue;
     }
     // Encrypted spaces: nothing, not even the size.
-    if (isEncryptedPage(page)) continue;
-    const hidden = hiddenFileIds(user, page);
+    if (await isEncryptedPage(page)) continue;
+    const hidden = await hiddenFileIds(user, page);
     for (const file of list) if (!hidden.has(file.id)) readable.set(file.id, file);
   }
   return readable;
@@ -175,14 +175,14 @@ export function readableFileIds(user: Identity, ids: string[]): Map<string, File
 export async function placeholdersFor(user: Identity, keys: string[], waitMs = WAIT_MS) {
   const fileKeys = keys.filter((k) => !k.startsWith("avatar:"));
   const avatarKeys = keys.filter((k) => k.startsWith("avatar:")).slice(0, MAX_PLACEHOLDER_IDS);
-  let files = readableFileIds(user, fileKeys);
+  let files = await readableFileIds(user, fileKeys);
   const missing = [...files.values()].filter((f) => f.thumbhash === null).map((f) => backfillPlaceholder(f.id));
   if (missing.length) {
     let timer: ReturnType<typeof setTimeout> | undefined;
     await Promise.race([Promise.all(missing), new Promise((done) => (timer = setTimeout(done, waitMs)))]);
     clearTimeout(timer);
     // Read again, with the same rules (they may have changed meanwhile).
-    files = readableFileIds(user, fileKeys);
+    files = await readableFileIds(user, fileKeys);
   }
   const result: Record<string, PlaceholderInfo> = {};
   for (const [fileId, file] of files) {
@@ -191,13 +191,13 @@ export async function placeholdersFor(user: Identity, keys: string[], waitMs = W
   }
   for (const key of avatarKeys) {
     const userId = key.slice("avatar:".length);
-    if (!UUID.test(userId) || !avatarFor(user, userId)) continue;
-    const row = one<{ width: number | null; height: number | null; thumbhash: string | null }>(
+    if (!UUID.test(userId) || !(await avatarFor(user, userId))) continue;
+    const row = await one<{ width: number | null; height: number | null; thumbhash: string | null }>(
       "SELECT width,height,thumbhash FROM user_avatars WHERE user_id=?",
       userId,
     );
     if (row && row.thumbhash === null) await avatarPlaceholder(userId);
-    const fresh = one<{ width: number | null; height: number | null; thumbhash: string | null }>(
+    const fresh = await one<{ width: number | null; height: number | null; thumbhash: string | null }>(
       "SELECT width,height,thumbhash FROM user_avatars WHERE user_id=?",
       userId,
     );
@@ -209,7 +209,7 @@ export async function placeholdersFor(user: Identity, keys: string[], waitMs = W
 
 /** The placeholder of a profile picture (small images: computed at once). */
 export async function avatarPlaceholder(userId: string) {
-  const row = one<{ data: Uint8Array }>("SELECT data FROM user_avatars WHERE user_id=?", userId);
+  const row = await one<{ data: Uint8Array }>("SELECT data FROM user_avatars WHERE user_id=?", userId);
   if (!row) return;
   let placeholder: Placeholder | null = null;
   try {
@@ -217,7 +217,7 @@ export async function avatarPlaceholder(userId: string) {
   } catch {
     placeholder = null;
   }
-  run(
+  await run(
     "UPDATE user_avatars SET width=?,height=?,thumbhash=? WHERE user_id=?",
     placeholder?.width ?? null,
     placeholder?.height ?? null,

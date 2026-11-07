@@ -5,33 +5,33 @@ import { hiddenRowIds } from "./row-access";
 import { htmlText } from "./search-index";
 
 // Small summary for hover cards; the full page is loaded only on click.
-export function pagePreview(
+export async function pagePreview(
   user: Parameters<typeof requirePage>[0],
   pageId: string,
 ) {
-  const page = requirePage(user, pageId);
-  const space = one<{ name: string }>(
+  const page = await requirePage(user, pageId);
+  const space = await one<{ name: string }>(
     "SELECT name FROM spaces WHERE id=?",
     page.space_id,
   );
   const html =
-    page.kind === "document" && !journalLocked(user, page)
-      ? one<{ html: string }>(
+    page.kind === "document" && !(await journalLocked(user, page))
+      ? (await one<{ html: string }>(
           "SELECT html FROM documents WHERE page_id=?",
           page.id,
-        )?.html || ""
+        ))?.html || ""
       : "";
   // Only the records this person sees count (none behind a journal PIN).
   const rows =
-    page.kind === "database" && !journalLocked(user, page)
+    page.kind === "database" && !(await journalLocked(user, page))
       ? Math.max(
           0,
           Number(
-            one<{ n: number }>(
+            (await one<{ n: number }>(
               "SELECT COUNT(*) n FROM rows WHERE page_id=?",
               page.id,
-            )?.n || 0,
-          ) - hiddenRowIds(user, page).size,
+            ))?.n || 0,
+          ) - (await hiddenRowIds(user, page)).size,
         )
       : 0;
   const text = htmlText(html);

@@ -21,9 +21,9 @@ const { exportArchive, importArchive, readZip, writeZip } =
 const { replaceRowDocument, rowDocumentData } =
   await import("../lib/row-documents");
 const { htmlState } = await import("../lib/document-server");
-function user(name: string): Identity {
+async function user(name: string): Promise<Identity> {
   const uid = id();
-  run(
+  await run(
     "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
     uid,
     uid,
@@ -40,40 +40,40 @@ function user(name: string): Identity {
     isAdmin: false,
   };
 }
-const owner = user("Archiver"),
-  viewer = user("Reader"),
-  wid = createWorkspace(owner.id, "Archive source");
-run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
-const space = one<{ id: string }>(
+const owner = await user("Archiver"),
+  viewer = await user("Reader"),
+  wid = await createWorkspace(owner.id, "Archive source");
+await run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
+const space = (await one<{ id: string }>(
   "SELECT id FROM spaces WHERE workspace_id=?",
   wid,
-)!;
-const page = command(owner, {
+))!;
+const page = (await command(owner, {
   action: "page.create",
   workspaceId: wid,
   spaceId: space.id,
   title: "Guide",
-}) as { id: string };
-const table = command(owner, {
+})) as { id: string };
+const table = (await command(owner, {
   action: "page.create",
   workspaceId: wid,
   spaceId: space.id,
   parentId: page.id,
   title: "Project",
   kind: "database",
-}) as { id: string };
-const a = command(owner, {
+})) as { id: string };
+const a = (await command(owner, {
   action: "row.create",
   pageId: table.id,
   cells: { title: "First" },
-}) as { id: string };
-const b = command(owner, {
+})) as { id: string };
+const b = (await command(owner, {
   action: "row.create",
   pageId: table.id,
   cells: { title: "Second", related: [a.id], notes: `Literal ID ${a.id}` },
-}) as { id: string };
-const db = database(table.id);
-command(owner, {
+})) as { id: string };
+const db = await database(table.id);
+await command(owner, {
   action: "database.update",
   pageId: table.id,
   version: db.version,
@@ -93,7 +93,7 @@ const fid = id(),
   bytes = Buffer.from("Original binary content \0 ü");
 mkdirSync(join(process.env.FLOWPLAN_DATA_DIR!, "uploads"), { recursive: true });
 writeFileSync(join(process.env.FLOWPLAN_DATA_DIR!, "uploads", fid), bytes);
-run(
+await run(
   "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
   fid,
   page.id,
@@ -103,46 +103,46 @@ run(
   owner.id,
 );
 const html = `<h2>My guide</h2><p><a href="/#page=${table.id}">Project</a><a href="/api/files/${fid}">Attachment</a></p>`;
-run(
+await run(
   "UPDATE documents SET html=?,state=? WHERE page_id=?",
   html,
   htmlState(html),
   page.id,
 );
-replaceRowDocument(a.id, "<h2>Rich record</h2>", owner.id);
-command(owner, { action: "row.snapshot", pageId: table.id, rowId: a.id });
-command(owner, {
+await replaceRowDocument(a.id, "<h2>Rich record</h2>", owner.id);
+await command(owner, { action: "row.snapshot", pageId: table.id, rowId: a.id });
+await command(owner, {
   action: "row.template.save",
   pageId: table.id,
   rowId: b.id,
   name: "Related task",
 });
-command(owner, { action: "page.snapshot", pageId: page.id });
-command(owner, {
+await command(owner, { action: "page.snapshot", pageId: page.id });
+await command(owner, {
   action: "comment.create",
   pageId: table.id,
   rowId: a.id,
   body: "Preserve discussion",
 });
-command(owner, { action: "page.snapshot", pageId: table.id });
-command(owner, {
+await command(owner, { action: "page.snapshot", pageId: table.id });
+await command(owner, {
   action: "page.publish",
   pageId: page.id,
   enabled: true,
   includeChildren: true,
 });
-command(owner, {
+await command(owner, {
   action: "template.save",
   pageId: page.id,
   name: "Guide template",
 });
-command(owner, {
+await command(owner, {
   action: "template.save",
   pageId: table.id,
   name: "Database template",
 });
-command(owner, { action: "favorite", pageId: page.id, value: true });
-command(owner, {
+await command(owner, { action: "favorite", pageId: page.id, value: true });
+await command(owner, {
   action: "form.update",
   pageId: table.id,
   enabled: true,
@@ -154,7 +154,7 @@ command(owner, {
     successMessage: "Received",
   },
 });
-command(owner, {
+await command(owner, {
   action: "space.create",
   workspaceId: wid,
   name: "Empty area",
@@ -162,7 +162,7 @@ command(owner, {
 });
 let exported: Buffer;
 test("ZIP round trip preserves nested content, binary files, relations, templates and versions with new identities", async () => {
-  run(
+  await run(
     "INSERT INTO shared_comments(id,page_id,name,body) VALUES(?,?,?,?)",
     id(),
     page.id,
@@ -170,12 +170,12 @@ test("ZIP round trip preserves nested content, binary files, relations, template
     "Gastfeedback für das Archiv",
   );
   exported = await exportArchive(owner, wid);
-  const destination = createWorkspace(owner.id, "Restored");
+  const destination = await createWorkspace(owner.id, "Restored");
   const result = await importArchive(owner, destination, exported);
   assert.equal(result.files, 1);
   assert.equal(result.spaces.length, 2);
   assert.ok(
-    one(
+    await one(
       "SELECT id FROM spaces WHERE workspace_id=? AND name=?",
       destination,
       "Empty area (Import)",
@@ -183,184 +183,184 @@ test("ZIP round trip preserves nested content, binary files, relations, template
   );
   assert.equal(result.pages, 3);
   assert.equal(result.omittedRelations, 0);
-  const copiedPage = one<Page>(
+  const copiedPage = (await one<Page>(
       "SELECT * FROM pages WHERE id=?",
       result.pageIds[page.id],
-    )!,
-    copiedTable = one<Page>(
+    ))!,
+    copiedTable = (await one<Page>(
       "SELECT * FROM pages WHERE id=?",
       result.pageIds[table.id],
-    )!;
+    ))!;
   assert.equal(copiedTable.parent_id, copiedPage.id);
   assert.equal(copiedPage.public_token, null);
-  const guestComment = one<{ body: string }>(
+  const guestComment = await one<{ body: string }>(
     "SELECT body FROM comments WHERE page_id=? AND body LIKE ?",
     copiedPage.id,
     "%Gastfeedback für das Archiv%",
   );
   assert.match(guestComment!.body, /Externer Gast \(Gast\)/);
   assert.equal(
-    one<{ visibility: string }>(
+    (await one<{ visibility: string }>(
       "SELECT visibility FROM spaces WHERE id=?",
       copiedPage.space_id,
-    )!.visibility,
+    ))!.visibility,
     "private",
   );
-  const importedTemplate = one<{
+  const importedTemplate = (await one<{
     id: string;
     visibility: string;
     payload: string;
   }>(
     "SELECT id,visibility,payload FROM templates WHERE workspace_id=? AND name='Guide template'",
     destination,
-  )!;
+  ))!;
   assert.equal(importedTemplate.visibility, "private");
   assert.match(importedTemplate.payload, new RegExp(copiedTable.id));
-  const dbTemplate = one<{ id: string; payload: string }>(
+  const dbTemplate = (await one<{ id: string; payload: string }>(
     "SELECT id,payload FROM templates WHERE workspace_id=? AND name='Database template'",
     destination,
-  )!;
+  ))!;
   assert.equal(JSON.parse(dbTemplate.payload).rows.length, 2);
-  const fromTemplate = command(owner, {
+  const fromTemplate = (await command(owner, {
     action: "page.create",
     workspaceId: destination,
     spaceId: copiedTable.space_id,
     title: "Restored template instance",
     templateId: dbTemplate.id,
-  }) as { id: string };
-  const templateRows = rows(fromTemplate.id);
+  })) as { id: string };
+  const templateRows = await rows(fromTemplate.id);
   const templateFirst = templateRows.find((r) => r.cells.title === "First")!;
   const templateSecond = templateRows.find((r) => r.cells.title === "Second")!;
   assert.deepEqual(templateSecond.cells.related, [templateFirst.id]);
   assert.notEqual(
     templateFirst.id,
-    rows(copiedTable.id).find((r) => r.cells.title === "First")!.id,
+    (await rows(copiedTable.id)).find((r) => r.cells.title === "First")!.id,
   );
   assert.match(
-    rowDocumentData(owner, fromTemplate.id, templateFirst.id).html,
+    (await rowDocumentData(owner, fromTemplate.id, templateFirst.id)).html,
     /Rich record/,
   );
   assert.ok(
-    one("SELECT id FROM row_templates WHERE page_id=?", fromTemplate.id),
+    await one("SELECT id FROM row_templates WHERE page_id=?", fromTemplate.id),
   );
 
-  const form = one<{ enabled: number; anonymous: number }>(
+  const form = (await one<{ enabled: number; anonymous: number }>(
     "SELECT enabled,anonymous FROM forms WHERE page_id=?",
     copiedTable.id,
-  )!;
+  ))!;
   assert.equal(form.enabled, 0);
   assert.equal(form.anonymous, 1);
-  const restoredForm = (await import("../lib/forms")).formSettings(
+  const restoredForm = (await (await import("../lib/forms")).formSettings(
     copiedTable.id,
-  )!;
+  ))!;
   assert.equal(restoredForm.config.title, "Restored form");
   assert.deepEqual(restoredForm.config.requiredFields, ["title"]);
   assert.ok(
-    one(
+    await one(
       "SELECT page_id FROM favorites WHERE user_id=? AND page_id=?",
       owner.id,
       copiedPage.id,
     ),
   );
-  run("INSERT INTO members VALUES(?,?,?)", destination, viewer.id, "editor");
-  const target = one<Page>(
+  await run("INSERT INTO members VALUES(?,?,?)", destination, viewer.id, "editor");
+  const target = (await one<Page>(
     "SELECT * FROM pages WHERE workspace_id=? AND title=?",
     destination,
     "Willkommen bei Flowplan",
-  )!;
-  assert.throws(
-    () =>
-      command(viewer, {
+  ))!;
+  await assert.rejects(
+    async () =>
+      await command(viewer, {
         action: "template.apply",
         pageId: target.id,
         templateId: importedTemplate.id,
       }),
     /Private Vorlage/,
   );
-  const copiedRows = rows(copiedTable.id),
+  const copiedRows = await rows(copiedTable.id),
     first = copiedRows.find((r) => r.cells.title === "First")!,
     second = copiedRows.find((r) => r.cells.title === "Second")!;
   assert.notEqual(first.id, a.id);
   assert.deepEqual(second.cells.related, [first.id]);
   assert.equal(second.cells.notes, `Literal ID ${a.id}`);
   assert.match(
-    rowDocumentData(owner, copiedTable.id, first.id).html,
+    (await rowDocumentData(owner, copiedTable.id, first.id)).html,
     /<h2>Rich record<\/h2>/,
   );
   assert.equal(
-    rowDocumentData(owner, copiedTable.id, first.id).snapshots.length,
+    (await rowDocumentData(owner, copiedTable.id, first.id)).snapshots.length,
     1,
   );
   assert.equal(
-    database(copiedTable.id).fields.find((f) => f.id === "related")!
+    (await database(copiedTable.id)).fields.find((f) => f.id === "related")!
       .relationPage,
     copiedTable.id,
   );
-  const file = one<{ id: string }>(
+  const file = (await one<{ id: string }>(
     "SELECT id FROM files WHERE page_id=?",
     copiedPage.id,
-  )!;
+  ))!;
   assert.notEqual(file.id, fid);
   assert.deepEqual(
     readFileSync(join(process.env.FLOWPLAN_DATA_DIR!, "uploads", file.id)),
     bytes,
   );
-  const doc = pageData(owner, copiedPage.id);
+  const doc = await pageData(owner, copiedPage.id);
   assert.match(doc.html!, new RegExp(`/api/files/${file.id}`));
   assert.match(doc.html!, new RegExp(copiedTable.id));
-  const template = one<{ cells: string }>(
+  const template = (await one<{ cells: string }>(
     "SELECT cells FROM row_templates WHERE page_id=?",
     copiedTable.id,
-  )!;
+  ))!;
   assert.deepEqual(JSON.parse(template.cells).related, [first.id]);
-  const comment = one<{ body: string; row_id: string }>(
+  const comment = (await one<{ body: string; row_id: string }>(
     "SELECT body,row_id FROM comments WHERE page_id=?",
     copiedTable.id,
-  )!;
+  ))!;
   assert.equal(comment.row_id, first.id);
   assert.match(comment.body, /Import · Archiver/);
-  const snapshot = one<{ id: string }>(
+  const snapshot = (await one<{ id: string }>(
     "SELECT id FROM snapshots WHERE page_id=?",
     copiedTable.id,
-  )!;
-  command(owner, {
+  ))!;
+  await command(owner, {
     action: "row.delete",
     pageId: copiedTable.id,
     rowId: first.id,
   });
-  command(owner, {
+  await command(owner, {
     action: "snapshot.restore",
     pageId: copiedTable.id,
     snapshotId: snapshot.id,
   });
   assert.deepEqual(
-    rows(copiedTable.id).find((r) => r.id === second.id)!.cells.related,
+    (await rows(copiedTable.id)).find((r) => r.id === second.id)!.cells.related,
     [first.id],
   );
   assert.equal(
-    rows(copiedTable.id).find((r) => r.id === first.id)!.cells.title,
+    (await rows(copiedTable.id)).find((r) => r.id === first.id)!.cells.title,
     "First",
   );
-  const restoredComment = one<{ body: string; row_id: string }>(
+  const restoredComment = (await one<{ body: string; row_id: string }>(
     "SELECT body,row_id FROM comments WHERE page_id=?",
     copiedTable.id,
-  )!;
+  ))!;
   assert.equal(restoredComment.row_id, first.id);
   assert.match(restoredComment.body, /Preserve discussion/);
 });
 test("archive exports respect private page access and restore requires write membership", async () => {
-  const privateSpace = command(owner, {
+  const privateSpace = (await command(owner, {
     action: "space.create",
     workspaceId: wid,
     name: "Secret",
     private: true,
-  }) as { id: string };
-  const secret = command(owner, {
+  })) as { id: string };
+  const secret = (await command(owner, {
     action: "page.create",
     workspaceId: wid,
     spaceId: privateSpace.id,
     title: "Do not export to reader",
-  }) as { id: string };
+  })) as { id: string };
   const entries = await readZip(await exportArchive(viewer, wid));
   const manifest = JSON.parse(entries.get("flowplan.json")!.toString());
   assert.equal(
@@ -370,9 +370,9 @@ test("archive exports respect private page access and restore requires write mem
   await assert.rejects(importArchive(viewer, wid, exported), /Berechtigung/);
 });
 test("invalid checksums, tree cycles, unknown entries and late failures leave no partial imports", async () => {
-  const beforePages = one<{ count: number }>(
+  const beforePages = (await one<{ count: number }>(
       "SELECT count(*) count FROM pages",
-    )!.count,
+    ))!.count,
     beforeFiles = readdirSync(
       join(process.env.FLOWPLAN_DATA_DIR!, "uploads"),
     ).sort();
@@ -416,7 +416,7 @@ test("invalid checksums, tree cycles, unknown entries and late failures leave no
     /Seitenvorlage/,
   );
   assert.equal(
-    one<{ count: number }>("SELECT count(*) count FROM pages")!.count,
+    (await one<{ count: number }>("SELECT count(*) count FROM pages"))!.count,
     beforePages,
   );
   assert.deepEqual(
@@ -427,20 +427,20 @@ test("invalid checksums, tree cycles, unknown entries and late failures leave no
 });
 
 test("archived database templates retain self-relations after the source page is removed", async () => {
-  const sourceWorkspace = createWorkspace(owner.id, "Template-only archive");
-  const space = one<{ id: string }>(
+  const sourceWorkspace = await createWorkspace(owner.id, "Template-only archive");
+  const space = (await one<{ id: string }>(
     "SELECT id FROM spaces WHERE workspace_id=?",
     sourceWorkspace,
-  )!;
-  const source = command(owner, {
+  ))!;
+  const source = (await command(owner, {
     action: "page.create",
     workspaceId: sourceWorkspace,
     spaceId: space.id,
     title: "Removed source",
     kind: "database",
-  }) as { id: string };
-  const schema = database(source.id);
-  command(owner, {
+  })) as { id: string };
+  const schema = await database(source.id);
+  await command(owner, {
     action: "database.update",
     pageId: source.id,
     version: schema.version,
@@ -455,47 +455,47 @@ test("archived database templates retain self-relations after the source page is
     ],
     views: schema.views,
   });
-  const first = command(owner, {
+  const first = (await command(owner, {
     action: "row.create",
     pageId: source.id,
     cells: { title: "First archived template row" },
-  }) as { id: string };
-  command(owner, {
+  })) as { id: string };
+  await command(owner, {
     action: "row.create",
     pageId: source.id,
     cells: { title: "Second archived template row", self: [first.id] },
   });
-  replaceRowDocument(
+  await replaceRowDocument(
     first.id,
     `<p>Original source: ${source.id}</p><p><a href="/#page=${source.id}">This project</a></p>`,
     owner.id,
   );
-  command(owner, {
+  await command(owner, {
     action: "template.save",
     pageId: source.id,
     name: "Surviving template",
   });
-  run("DELETE FROM pages WHERE id=?", source.id);
+  await run("DELETE FROM pages WHERE id=?", source.id);
   const bytes = await exportArchive(owner, sourceWorkspace);
-  const targetWorkspace = createWorkspace(owner.id, "Template destination");
+  const targetWorkspace = await createWorkspace(owner.id, "Template destination");
   await importArchive(owner, targetWorkspace, bytes);
-  const template = one<{ id: string }>(
+  const template = (await one<{ id: string }>(
     "SELECT id FROM templates WHERE workspace_id=? AND name=?",
     targetWorkspace,
     "Surviving template",
-  )!;
-  const targetSpace = one<{ id: string }>(
+  ))!;
+  const targetSpace = (await one<{ id: string }>(
     "SELECT id FROM spaces WHERE workspace_id=?",
     targetWorkspace,
-  )!;
-  const target = command(owner, {
+  ))!;
+  const target = (await command(owner, {
     action: "page.create",
     workspaceId: targetWorkspace,
     spaceId: targetSpace.id,
     title: "Restored surviving template",
     templateId: template.id,
-  }) as { id: string };
-  const restoredRows = rows(target.id);
+  })) as { id: string };
+  const restoredRows = await rows(target.id);
   const restoredFirst = restoredRows.find(
     (r) => r.cells.title === "First archived template row",
   )!;
@@ -505,54 +505,54 @@ test("archived database templates retain self-relations after the source page is
     [restoredFirst.id],
   );
   assert.equal(
-    database(target.id).fields.find((f) => f.id === "self")!.relationPage,
+    (await database(target.id)).fields.find((f) => f.id === "self")!.relationPage,
     target.id,
   );
-  const html = rowDocumentData(owner, target.id, restoredFirst.id).html;
+  const html = (await rowDocumentData(owner, target.id, restoredFirst.id)).html;
   assert.match(html, new RegExp(`href="/#page=${target.id}"`));
   assert.match(html, new RegExp(`Original source: ${source.id}`));
 });
 test("archives with unusable linked database blocks restore them as placeholders", async () => {
-  const sourceWorkspace = createWorkspace(owner.id, "Broken linked blocks");
-  const space = one<{ id: string }>(
+  const sourceWorkspace = await createWorkspace(owner.id, "Broken linked blocks");
+  const space = (await one<{ id: string }>(
     "SELECT id FROM spaces WHERE workspace_id=?",
     sourceWorkspace,
-  )!;
-  const source = command(owner, {
+  ))!;
+  const source = (await command(owner, {
     action: "page.create",
     workspaceId: sourceWorkspace,
     spaceId: space.id,
     title: "Linked source",
     kind: "database",
-  }) as { id: string };
-  const row = command(owner, {
+  })) as { id: string };
+  const row = (await command(owner, {
     action: "row.create",
     pageId: source.id,
     cells: { title: "Row with embed" },
-  }) as { id: string };
-  const doc = command(owner, {
+  })) as { id: string };
+  const doc = (await command(owner, {
     action: "page.create",
     workspaceId: sourceWorkspace,
     spaceId: space.id,
     title: "Host",
-  }) as { id: string };
+  })) as { id: string };
   const block = (views: string) =>
     `<div data-linked-database="${id()}" data-linked-source="${source.id}" data-linked-views="${views}" data-linked-version="1">Linked</div>`;
-  const valid = JSON.stringify(database(source.id).views).replaceAll(
+  const valid = JSON.stringify((await database(source.id)).views).replaceAll(
     '"',
     "&quot;",
   );
   // An empty views list, as a block without stored views is parsed.
-  replaceRowDocument(row.id, `<p>Row text</p>${block("[]")}`, owner.id);
-  command(owner, {
+  await replaceRowDocument(row.id, `<p>Row text</p>${block("[]")}`, owner.id);
+  await command(owner, {
     action: "document.sync",
     pageId: doc.id,
-    generation: (pageData(owner, doc.id) as { generation: string }).generation,
+    generation: ((await pageData(owner, doc.id)) as { generation: string }).generation,
     update: Buffer.from(
       htmlState(`<p>Host text</p>${block("[")}${block(valid)}`),
     ).toString("base64"),
   });
-  const target = createWorkspace(owner.id, "Broken linked destination");
+  const target = await createWorkspace(owner.id, "Broken linked destination");
   const result = await importArchive(
     owner,
     target,
@@ -560,7 +560,7 @@ test("archives with unusable linked database blocks restore them as placeholders
   );
   const newSource = result.pageIds[source.id],
     newDoc = result.pageIds[doc.id];
-  const host = (pageData(owner, newDoc) as { html: string }).html;
+  const host = ((await pageData(owner, newDoc)) as { html: string }).html;
   assert.match(host, /Host text/);
   const blocks = [...host.matchAll(/<div[^>]*data-linked-database[^>]*>/g)].map(
     (m) => m[0],
@@ -568,8 +568,8 @@ test("archives with unusable linked database blocks restore them as placeholders
   assert.equal(blocks.length, 2);
   assert.doesNotMatch(blocks[0], /data-linked-source|data-linked-views/);
   assert.match(blocks[1], new RegExp(`data-linked-source="${newSource}"`));
-  const restoredRow = rows(newSource)[0];
-  const rowHtml = rowDocumentData(owner, newSource, restoredRow.id).html;
+  const restoredRow = (await rows(newSource))[0];
+  const rowHtml = (await rowDocumentData(owner, newSource, restoredRow.id)).html;
   assert.match(rowHtml, /Row text/);
   assert.match(rowHtml, /data-linked-database/);
   assert.doesNotMatch(rowHtml, new RegExp(source.id));

@@ -15,6 +15,7 @@ import { formatNumber } from "./field-format";
 import { contentLocale } from "./content-locale";
 import { localeTag } from "./i18n";
 import type { Field, Identity, Row, View } from "./types";
+import { flatMapAsync, mapAsync } from "./each-async";
 
 export const metricSchema = z.object({
   source: z.string().uuid(),
@@ -24,21 +25,21 @@ export const metricSchema = z.object({
 });
 export type MetricQuery = z.infer<typeof metricSchema>;
 
-export function computeMetric(user: Identity, query: MetricQuery) {
-  const page = requirePage(user, query.source);
+export async function computeMetric(user: Identity, query: MetricQuery) {
+  const page = await requirePage(user, query.source);
   if (page.kind !== "database") throw new HttpError(400, "Keine Datenbank.");
-  requireUnlocked(user, page);
-  const raw = one<{ fields: string; views: string }>("SELECT fields,views FROM databases WHERE page_id=?", page.id);
+  await requireUnlocked(user, page);
+  const raw = await one<{ fields: string; views: string }>("SELECT fields,views FROM databases WHERE page_id=?", page.id);
   if (!raw) throw new HttpError(404, "Datenbank nicht gefunden.");
   const fields: Field[] = JSON.parse(raw.fields);
   const views: View[] = JSON.parse(raw.views);
   const view = views.find((v) => v.id === query.view);
-  const rows = all<Row & { cells: string }>("SELECT * FROM rows WHERE page_id=?", page.id).map(
+  const rows = (await all<Row & { cells: string }>("SELECT * FROM rows WHERE page_id=?", page.id)).map(
     (r) => ({ ...r, cells: JSON.parse(r.cells as unknown as string) }) as Row,
   );
-  const { related, relatedSchemas } = relatedData(user, page);
+  const { related, relatedSchemas } = await relatedData(user, page);
   const shown = queryRows(
-    visibleRows(user, page, rows),
+    await visibleRows(user, page, rows),
     fields,
     view || ({ id: "all", name: "", type: "table", filters: [], sorts: [] } as View),
     "",
@@ -46,7 +47,7 @@ export function computeMetric(user: Identity, query: MetricQuery) {
     relatedSchemas,
   );
   // Only a property this person may read (lib/field-access.ts).
-  const field = visibleFields(user, page, fields).find((f) => f.id === query.field);
+  const field = (await visibleFields(user, page, fields)).find((f) => f.id === query.field);
   let value: number | null = shown.length;
   if (query.aggregate !== "count") {
     if (!field) throw new HttpError(400, "Eigenschaft fehlt.");
@@ -82,26 +83,24 @@ export function computeMetric(user: Identity, query: MetricQuery) {
 }
 
 // Databases and their views and number properties, for choosing a source.
-export function metricSources(user: Identity, workspaceId: string) {
-  return all<{ id: string; title: string; fields: string; views: string }>(
+export async function metricSources(user: Identity, workspaceId: string) {
+  return await mapAsync(await flatMapAsync(await all<{ id: string; title: string; fields: string; views: string }>(
     "SELECT p.id,p.title,d.fields,d.views FROM pages p JOIN databases d ON d.page_id=p.id WHERE p.workspace_id=? AND p.deleted_at IS NULL AND p.kind='database' ORDER BY p.title",
     workspaceId,
-  )
-    .flatMap((p) => {
+  ), async (p) => {
       try {
-        const page = requirePage(user, p.id);
+        const page = await requirePage(user, p.id);
         // Databases below a journal behind a PIN are no source.
-        return journalLocked(user, page) ? [] : [{ ...p, page }];
+        return (await journalLocked(user, page)) ? [] : [{ ...p, page }];
       } catch {
         return [];
       }
-    })
-    .map((p) => ({
+    }), async (p) => ({
       id: p.id,
       title: p.title,
       views: (JSON.parse(p.views) as View[]).filter((v) => v.type !== "form").map((v) => ({ id: v.id, name: v.name })),
       // Without properties hidden from this person.
-      numbers: visibleFields(user, p.page, JSON.parse(p.fields) as Field[])
+      numbers: (await visibleFields(user, p.page, JSON.parse(p.fields) as Field[]))
         .filter((f) => ["number", "formula", "rollup"].includes(f.type))
         .map((f) => ({ id: f.id, name: f.name })),
     }));

@@ -12,13 +12,13 @@ export { deviceName };
 // can neither sign in nor be turned back into the hash.
 const publicId = (tokenHash: string) => createHash("sha256").update(`session:${tokenHash}`).digest("hex").slice(0, 20);
 
-export function mySessions(user: Identity, currentToken: string | undefined) {
+export async function mySessions(user: Identity, currentToken: string | undefined) {
   const current = currentToken ? hash(currentToken) : "";
-  return all<{ token: string; created_at: number | null; last_seen: number | null; expires: number; remember: number; agent: string }>(
+  return (await all<{ token: string; created_at: number | null; last_seen: number | null; expires: number; remember: number; agent: string }>(
     "SELECT token,created_at,last_seen,expires,remember,agent FROM sessions WHERE user_id=? AND expires>? ORDER BY COALESCE(last_seen,created_at,0) DESC",
     user.id,
     Date.now(),
-  ).map((s) => ({
+  )).map((s) => ({
     id: publicId(s.token),
     current: s.token === current,
     ...deviceName(s.agent),
@@ -30,15 +30,15 @@ export function mySessions(user: Identity, currentToken: string | undefined) {
 }
 
 // Signs out one device, or all but the current one.
-export function endMySessions(user: Identity, currentToken: string | undefined, target: { id?: unknown; others?: unknown }) {
+export async function endMySessions(user: Identity, currentToken: string | undefined, target: { id?: unknown; others?: unknown }) {
   if (user.apiScope) throw new HttpError(403, "Mit einem API-Token nicht möglich.");
   const current = currentToken ? hash(currentToken) : "";
-  const sessions = all<{ token: string }>("SELECT token FROM sessions WHERE user_id=?", user.id);
+  const sessions = await all<{ token: string }>("SELECT token FROM sessions WHERE user_id=?", user.id);
   const ended = sessions.filter((s) =>
     target.others === true ? s.token !== current : typeof target.id === "string" && publicId(s.token) === target.id,
   );
   if (!ended.length && target.others !== true) throw new HttpError(404, "Diese Sitzung gibt es nicht mehr.");
-  for (const s of ended) run("DELETE FROM sessions WHERE token=? AND user_id=?", s.token, user.id);
+  for (const s of ended) await run("DELETE FROM sessions WHERE token=? AND user_id=?", s.token, user.id);
   if (ended.length) securityEvent("session.revoked", { actorId: user.id, severity: "info", detail: target.others === true ? `${ended.length} other sessions` : "one session" });
   return { ended: ended.length, current: ended.some((s) => s.token === current) };
 }

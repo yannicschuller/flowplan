@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 // browser turns it into a PDF (components/print-page.ts, printDocument);
 // opened directly, it is a plain page without scripts.
 export const GET = exportRoute(async (user, query) => {
-  const result = exportPrintHtml(user, selection(query));
+  const result = await exportPrintHtml(user, selection(query));
   const name = encodeURIComponent(result.name).replace(/[!'()*]/g, (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase());
   return new Response(result.html, {
     headers: {

@@ -14,9 +14,9 @@ const { createWorkspace } = await import("../lib/seed");
 const { searchWorkspace } = await import("../lib/search-index");
 const { exportArchive, importArchive } = await import("../lib/archive");
 const { whiteboardSnapshotItems } = await import("../lib/whiteboard");
-function user(name: string): Identity {
+async function user(name: string): Promise<Identity> {
   const uid = id();
-  run(
+  await run(
     "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
     uid,
     uid,
@@ -33,27 +33,27 @@ function user(name: string): Identity {
     created_at: "",
   };
 }
-const owner = user("owner"),
-  reader = user("reader"),
-  wid = createWorkspace(owner.id, "Boards"),
-  boot = bootstrap(owner, wid);
-run("INSERT INTO members VALUES(?,?,?)", wid, reader.id, "viewer");
+const owner = await user("owner"),
+  reader = await user("reader"),
+  wid = await createWorkspace(owner.id, "Boards"),
+  boot = await bootstrap(owner, wid);
+await run("INSERT INTO members VALUES(?,?,?)", wid, reader.id, "viewer");
 const b64 = (u: Uint8Array) => Buffer.from(u).toString("base64");
 const fails = (fn: () => unknown, status: number) =>
   assert.throws(fn, (e: any) => e.status === status);
-const create = (title: string, kind = "whiteboard") =>
+const create = async (title: string, kind = "whiteboard") =>
   (
-    command(owner, {
+    (await command(owner, {
       action: "page.create",
       workspaceId: wid,
       spaceId: boot.spaces[0].id,
       title,
       kind,
-    }) as { id: string }
+    })) as { id: string }
   ).id;
 // A client adds items to its own copy and sends the difference.
-function client(pageId: string, who = owner) {
-  const data = pageData(who, pageId) as any;
+async function client(pageId: string, who = owner) {
+  const data = (await pageData(who, pageId)) as any;
   const doc = new Y.Doc();
   Y.applyUpdate(doc, Buffer.from(data.whiteboard.state, "base64"));
   let vector = Y.encodeStateVector(doc);
@@ -67,26 +67,26 @@ function client(pageId: string, who = owner) {
       doc.getMap("items").set(key, map);
       return key;
     },
-    sync(cursor?: { x: number; y: number }) {
+    async sync(cursor?: { x: number; y: number }) {
       const update = Y.encodeStateAsUpdate(doc, vector);
       vector = Y.encodeStateVector(doc);
-      const result = command(who, {
+      const result = (await command(who, {
         action: "whiteboard.sync",
         pageId,
         generation: this.generation,
         update: b64(update),
         ...(cursor ? { cursor } : {}),
-      }) as { state: string; presence: { name: string }[] };
+      })) as { state: string; presence: { name: string }[] };
       Y.applyUpdate(doc, Buffer.from(result.state, "base64"));
       return result;
     },
   };
 }
 
-test("whiteboards merge edits of several people and are searchable", () => {
-  const board = create("Retro");
-  const a = client(board),
-    b = client(board);
+test("whiteboards merge edits of several people and are searchable", async () => {
+  const board = await create("Retro");
+  const a = await client(board),
+    b = await client(board);
   a.add({
     type: "sticky",
     x: 0,
@@ -106,31 +106,31 @@ test("whiteboards merge edits of several people and are searchable", () => {
     z: 2,
     text: "Kundenfeedback",
   });
-  a.sync({ x: 10, y: 20 });
+  await a.sync({ x: 10, y: 20 });
   // Own cursors are not reported back.
-  assert.deepEqual(b.sync().presence, []);
-  a.sync();
-  const texts = whiteboardSnapshotItems(
-    one<any>("SELECT * FROM pages WHERE id=?", board),
-  ).map((i) => i.text);
+  assert.deepEqual((await b.sync()).presence, []);
+  await a.sync();
+  const texts = (await whiteboardSnapshotItems(
+    await one<any>("SELECT * FROM pages WHERE id=?", board),
+  )).map((i) => i.text);
   assert.deepEqual(texts.sort(), ["Kundenfeedback", "Was lief gut"]);
   assert.equal(a.doc.getMap("items").size, 2);
   assert.ok(
-    searchWorkspace(owner, wid, "Kundenfeedback").some((r) => r.id === board),
+    (await searchWorkspace(owner, wid, "Kundenfeedback")).some((r) => r.id === board),
   );
   // Readers see the board but cannot change it; stale generations are refused.
-  const r = client(board, reader);
+  const r = await client(board, reader);
   r.add({ type: "text", x: 0, y: 0, w: 10, h: 10, z: 3, text: "Nein" });
-  fails(() => r.sync(), 403);
-  const stale = client(board);
+  fails(async () => await r.sync(), 403);
+  const stale = await client(board);
   stale.generation = "old";
-  fails(() => stale.sync(), 409);
+  fails(async () => await stale.sync(), 409);
 });
 
 test("whiteboards are copied, archived and restored with their items", async () => {
-  const doc = create("Ziel", "document");
-  const board = create("Plan");
-  const c = client(board);
+  const doc = await create("Ziel", "document");
+  const board = await create("Plan");
+  const c = await client(board);
   c.add({ type: "card", pageId: doc, x: 0, y: 0, w: 280, h: 80, z: 1 });
   c.add({
     type: "sticky",
@@ -141,50 +141,50 @@ test("whiteboards are copied, archived and restored with their items", async () 
     z: 2,
     text: "Schritt 1",
   });
-  c.sync();
+  await c.sync();
   // Page copies keep the board.
   const copy = (
-    command(owner, { action: "page.duplicate", pageId: board }) as {
+    (await command(owner, { action: "page.duplicate", pageId: board })) as {
       id: string;
     }
   ).id;
-  const copied = whiteboardSnapshotItems(
-    one<any>("SELECT * FROM pages WHERE id=?", copy),
+  const copied = await whiteboardSnapshotItems(
+    await one<any>("SELECT * FROM pages WHERE id=?", copy),
   );
   assert.equal(copied.length, 2);
   assert.ok(copied.some((i) => i.text === "Schritt 1"));
   // Archives carry the board and map linked pages.
-  const dest = createWorkspace(owner.id, "Kopie");
+  const dest = await createWorkspace(owner.id, "Kopie");
   const imported = await importArchive(
     owner,
     dest,
     await exportArchive(owner, wid),
   );
   const restored = imported.pageIds[board];
-  const items = whiteboardSnapshotItems(
-    one<any>("SELECT * FROM pages WHERE id=?", restored),
+  const items = await whiteboardSnapshotItems(
+    await one<any>("SELECT * FROM pages WHERE id=?", restored),
   );
   assert.equal(
     items.find((i) => i.type === "card")?.pageId,
     imported.pageIds[doc],
   );
   // A saved version brings the old state back under a new generation.
-  const before = (pageData(owner, board) as any).whiteboard.generation;
-  run("DELETE FROM snapshots WHERE page_id=?", board);
+  const before = ((await pageData(owner, board)) as any).whiteboard.generation;
+  await run("DELETE FROM snapshots WHERE page_id=?", board);
   c.add({ type: "sticky", x: 0, y: 500, w: 200, h: 200, z: 3, text: "Später" });
-  c.sync();
-  const snapshot = one<{ id: string }>(
+  await c.sync();
+  const snapshot = (await one<{ id: string }>(
     "SELECT id FROM snapshots WHERE page_id=?",
     board,
-  )!;
-  command(owner, {
+  ))!;
+  await command(owner, {
     action: "snapshot.restore",
     pageId: board,
     snapshotId: snapshot.id,
   });
-  const after = pageData(owner, board) as any;
+  const after = (await pageData(owner, board)) as any;
   assert.notEqual(after.whiteboard.generation, before);
   assert.ok(
-    !whiteboardSnapshotItems(after.page).some((i) => i.text === "Später"),
+    !(await whiteboardSnapshotItems(after.page)).some((i) => i.text === "Später"),
   );
 });

@@ -104,7 +104,7 @@ export function useBoardAi(ctl: BoardAiControl) {
     if (kind === "notes") return { items: items.filter((i) => centreIn(i, ctl.visibleRect())), where: "view" as const, name: "" };
     return { items, where: "board" as const, name: "" };
   }
-  const scopeText = (s: ReturnType<typeof scope>, count: string) =>
+  const scopeText = (s: Awaited<ReturnType<typeof scope>>, count: string) =>
     s.where === "frame"
       ? t(`${count} im Rahmen „${s.name || "Rahmen"}“`, `${count} in the frame “${s.name || "Frame"}”`)
       : s.where === "selection"

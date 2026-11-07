@@ -68,9 +68,9 @@ function scheduleCleanup() {
   const g = globalThis as unknown as { flowplanDemoCleanup?: boolean };
   if (g.flowplanDemoCleanup) return;
   g.flowplanDemoCleanup = true;
-  cleanupTimer = setInterval(() => {
+  cleanupTimer = setInterval(async () => {
     try {
-      cleanupDemos();
+      await cleanupDemos();
     } catch (error) {
       console.error("Demo-Aufräumen fehlgeschlagen", error);
     }
@@ -79,33 +79,33 @@ function scheduleCleanup() {
 }
 
 // A public demo: switched on in the administration.
-export function demoEnabled() {
-  return instanceSettings().publicDemo;
+export async function demoEnabled() {
+  return (await instanceSettings()).publicDemo;
 }
 
-export function startDemo(address: string) {
-  if (!demoEnabled()) throw new HttpError(403, "Die Demo ist auf dieser Instanz ausgeschaltet.");
+export async function startDemo(address: string) {
+  if (!(await demoEnabled())) throw new HttpError(403, "Die Demo ist auf dieser Instanz ausgeschaltet.");
   scheduleCleanup();
-  cleanupDemos();
+  await cleanupDemos();
   const now = Date.now();
   const key = createHash("sha256").update(`demo:${address}`).digest("hex");
-  run("DELETE FROM demo_starts WHERE at<?", now - 3600_000);
+  await run("DELETE FROM demo_starts WHERE at<?", now - 3600_000);
   // An unknown address (no proxy header) is not counted against everyone;
   // the cap on running demos below still holds.
-  const recent = address ? Number(one<{ n: number }>("SELECT COUNT(*) n FROM demo_starts WHERE address=?", key)?.n || 0) : 0;
+  const recent = address ? Number((await one<{ n: number }>("SELECT COUNT(*) n FROM demo_starts WHERE address=?", key))?.n || 0) : 0;
   if (recent >= MAX_PER_ADDRESS_PER_HOUR)
     throw new HttpError(429, "Zu viele Demos von dieser Adresse. Bitte später erneut versuchen.");
   const active = Number(
-    one<{ n: number }>("SELECT COUNT(*) n FROM users WHERE demo_until IS NOT NULL")?.n || 0,
+    (await one<{ n: number }>("SELECT COUNT(*) n FROM users WHERE demo_until IS NOT NULL"))?.n || 0,
   );
   if (active >= MAX_ACTIVE)
     throw new HttpError(503, "Gerade laufen zu viele Demos. Bitte in ein paar Minuten erneut versuchen.");
-  run("INSERT INTO demo_starts(address,at) VALUES(?,?)", key, now);
-  run(
+  await run("INSERT INTO demo_starts(address,at) VALUES(?,?)", key, now);
+  await run(
     "INSERT INTO counters(name,value) VALUES('demos_started',1) ON CONFLICT(name) DO UPDATE SET value=counters.value+1",
   );
   const uid = randomUUID();
-  run(
+  await run(
     "INSERT INTO users(id,subject,name,email,demo_until) VALUES(?,?,?,?,?)",
     uid,
     `demo:${uid}`,
@@ -113,17 +113,17 @@ export function startDemo(address: string) {
     "",
     now + DEMO_MAX_MS,
   );
-  const workspace = createWorkspace(uid, ct("Demo-Arbeitsbereich", "Demo workspace"));
+  const workspace = await createWorkspace(uid, ct("Demo-Arbeitsbereich", "Demo workspace"));
   // Instead of the plain welcome page: pages that show every feature.
-  transaction(() => {
-    const space = one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", workspace)!.id;
-    for (const page of all<{ id: string }>("SELECT id FROM pages WHERE workspace_id=?", workspace)) {
-      run("DELETE FROM documents WHERE page_id=?", page.id);
-      run("DELETE FROM pages WHERE id=?", page.id);
+  await transaction(async () => {
+    const space = (await one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", workspace))!.id;
+    for (const page of await all<{ id: string }>("SELECT id FROM pages WHERE workspace_id=?", workspace)) {
+      await run("DELETE FROM documents WHERE page_id=?", page.id);
+      await run("DELETE FROM pages WHERE id=?", page.id);
     }
-    seedDemoShowcase(workspace, space, uid);
+    await seedDemoShowcase(workspace, space, uid);
   });
-  run("UPDATE workspaces SET quota_mb=? WHERE id=?", DEMO_QUOTA_MB, workspace);
+  await run("UPDATE workspaces SET quota_mb=? WHERE id=?", DEMO_QUOTA_MB, workspace);
   return uid;
 }
 
@@ -133,29 +133,29 @@ export function demoSessionExpiry(demoUntil: number) {
 }
 
 // Removes one demo account with everything it created.
-export function endDemo(userId: string) {
-  const user = one<{ demo_until: number | null }>("SELECT demo_until FROM users WHERE id=?", userId);
+export async function endDemo(userId: string) {
+  const user = await one<{ demo_until: number | null }>("SELECT demo_until FROM users WHERE id=?", userId);
   if (!user?.demo_until) return false;
-  transaction(() => {
-    for (const w of all<{ id: string }>(
+  await transaction(async () => {
+    for (const w of await all<{ id: string }>(
       "SELECT workspace_id id FROM members WHERE user_id=? AND role='owner'",
       userId,
     ))
-      purgeWorkspace(w.id);
+      await purgeWorkspace(w.id);
     for (const table of ["notifications", "favorites", "row_favorites", "push_subscriptions", "saved_searches", "collection_order", "notification_prefs"])
       try {
-        inSavepoint(() => run(`DELETE FROM ${table} WHERE user_id=?`, userId));
+        await inSavepoint(async () => await run(`DELETE FROM ${table} WHERE user_id=?`, userId));
       } catch {}
-    run("DELETE FROM collections WHERE owner_id=?", userId);
+    await run("DELETE FROM collections WHERE owner_id=?", userId);
     // What the demo did is no activity of the instance.
-    run("DELETE FROM audit WHERE actor_id=?", userId);
-    run("DELETE FROM sessions WHERE user_id=?", userId);
-    run("DELETE FROM members WHERE user_id=?", userId);
+    await run("DELETE FROM audit WHERE actor_id=?", userId);
+    await run("DELETE FROM sessions WHERE user_id=?", userId);
+    await run("DELETE FROM members WHERE user_id=?", userId);
     try {
-      run("DELETE FROM users WHERE id=?", userId);
+      await run("DELETE FROM users WHERE id=?", userId);
     } catch {
       // Still referenced somewhere: lock it for good instead.
-      run("UPDATE users SET disabled=1,demo_until=NULL,name='Demo (beendet)' WHERE id=?", userId);
+      await run("UPDATE users SET disabled=1,demo_until=NULL,name='Demo (beendet)' WHERE id=?", userId);
     }
   });
   return true;
@@ -163,31 +163,31 @@ export function endDemo(userId: string) {
 
 // Running demos (a valid session, not past their end) and all demos ever
 // started on this instance.
-export function demoCounts() {
+export async function demoCounts() {
   const now = Date.now();
   const active = Number(
-    one<{ n: number }>(
+    (await one<{ n: number }>(
       `SELECT COUNT(*) n FROM users u WHERE u.demo_until>? AND EXISTS
          (SELECT 1 FROM sessions s WHERE s.user_id=u.id AND s.expires>?)`,
       now,
       now,
-    )?.n || 0,
+    ))?.n || 0,
   );
   const started = Number(
-    one<{ value: number }>("SELECT value FROM counters WHERE name='demos_started'")?.value || 0,
+    (await one<{ value: number }>("SELECT value FROM counters WHERE name='demos_started'"))?.value || 0,
   );
   return { active, started };
 }
 
 // Demos past their end, or without an active session, are deleted.
-export function cleanupDemos() {
+export async function cleanupDemos() {
   const now = Date.now();
-  const stale = all<{ id: string }>(
+  const stale = await all<{ id: string }>(
     `SELECT u.id FROM users u WHERE u.demo_until IS NOT NULL AND (
        u.demo_until<? OR NOT EXISTS (SELECT 1 FROM sessions s WHERE s.user_id=u.id AND s.expires>?))`,
     now,
     now,
   );
-  for (const u of stale) endDemo(u.id);
+  for (const u of stale) await endDemo(u.id);
   return stale.length;
 }

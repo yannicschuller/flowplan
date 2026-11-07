@@ -9,9 +9,9 @@ const { run, id, all } = await import("../lib/db");
 const { createWorkspace } = await import("../lib/seed");
 const { command } = await import("../lib/api");
 
-function account(name: string) {
+async function account(name: string) {
   const uid = id();
-  run(
+  await run(
     "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
     uid,
     uid,
@@ -28,12 +28,12 @@ function account(name: string) {
     created_at: "",
   } as Identity;
 }
-const me = account("notify-me"),
-  other = account("notify-other");
-createWorkspace(me.id, "Benachrichtigungen");
-const notify = (user: Identity, body: string) => {
+const me = await account("notify-me"),
+  other = await account("notify-other");
+await createWorkspace(me.id, "Benachrichtigungen");
+const notify = async (user: Identity, body: string) => {
   const nid = id();
-  run(
+  await run(
     "INSERT INTO notifications(id,user_id,body) VALUES(?,?,?)",
     nid,
     user.id,
@@ -41,55 +41,55 @@ const notify = (user: Identity, body: string) => {
   );
   return nid;
 };
-const state = (user: Identity) =>
+const state = async (user: Identity) =>
   Object.fromEntries(
-    all<{ body: string; read_at: string | null }>(
+    (await all<{ body: string; read_at: string | null }>(
       "SELECT body,read_at FROM notifications WHERE user_id=?",
       user.id,
-    ).map((n) => [n.body, !!n.read_at]),
+    )).map((n) => [n.body, !!n.read_at]),
   );
 
-test("single notifications are marked, unmarked and removed by their owner only", () => {
-  const a = notify(me, "A"),
-    b = notify(me, "B"),
-    foreign = notify(other, "Fremd");
-  command(me, { action: "notification.mark", notificationId: a, read: true });
-  assert.deepEqual(state(me), { A: true, B: false });
-  command(me, { action: "notification.mark", notificationId: a, read: false });
-  assert.deepEqual(state(me), { A: false, B: false });
-  assert.throws(
-    () =>
-      command(me, {
+test("single notifications are marked, unmarked and removed by their owner only", async () => {
+  const a = await notify(me, "A"),
+    b = await notify(me, "B"),
+    foreign = await notify(other, "Fremd");
+  await command(me, { action: "notification.mark", notificationId: a, read: true });
+  assert.deepEqual(await state(me), { A: true, B: false });
+  await command(me, { action: "notification.mark", notificationId: a, read: false });
+  assert.deepEqual(await state(me), { A: false, B: false });
+  await assert.rejects(
+    async () =>
+      await command(me, {
         action: "notification.mark",
         notificationId: foreign,
         read: true,
       }),
     /nicht gefunden/,
   );
-  assert.throws(
-    () =>
-      command(me, { action: "notification.delete", notificationId: foreign }),
+  await assert.rejects(
+    async () =>
+      await command(me, { action: "notification.delete", notificationId: foreign }),
     /nicht gefunden/,
   );
-  assert.deepEqual(state(other), { Fremd: false });
-  command(me, { action: "notification.delete", notificationId: b });
-  assert.deepEqual(state(me), { A: false });
-  command(me, { action: "notification.read" });
-  assert.deepEqual(state(me), { A: true });
-  assert.deepEqual(state(other), { Fremd: false });
+  assert.deepEqual(await state(other), { Fremd: false });
+  await command(me, { action: "notification.delete", notificationId: b });
+  assert.deepEqual(await state(me), { A: false });
+  await command(me, { action: "notification.read" });
+  assert.deepEqual(await state(me), { A: true });
+  assert.deepEqual(await state(other), { Fremd: false });
 });
 
-test("notification kinds can be switched off for the inbox or for push", () => {
-  const person = account("notify-prefs");
+test("notification kinds can be switched off for the inbox or for push", async () => {
+  const person = await account("notify-prefs");
   const token = id();
-  run(
+  await run(
     "INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)",
     token,
     person.id,
     "[]",
     Date.now() + 600000,
   );
-  run(
+  await run(
     "INSERT INTO push_subscriptions(id,user_id,session_token,endpoint,p256dh,auth) VALUES(?,?,?,?,?,?)",
     id(),
     person.id,
@@ -98,51 +98,51 @@ test("notification kinds can be switched off for the inbox or for push", () => {
     "key",
     "auth",
   );
-  const add = (kind: string, body: string) =>
-    run(
+  const add = async (kind: string, body: string) =>
+    await run(
       "INSERT INTO notifications(id,user_id,body,kind) VALUES(?,?,?,?)",
       id(),
       person.id,
       body,
       kind,
     );
-  const pushed = () =>
-    all<{ body: string }>(
+  const pushed = async () =>
+    (await all<{ body: string }>(
       "SELECT n.body FROM push_deliveries d JOIN notifications n ON n.id=d.notification_id WHERE n.user_id=?",
       person.id,
-    ).map((n) => n.body);
-  command(person, {
+    )).map((n) => n.body);
+  await command(person, {
     action: "notification.prefs",
     kind: "mention",
     inbox: false,
     push: true,
   });
-  command(person, {
+  await command(person, {
     action: "notification.prefs",
     kind: "comment",
     inbox: true,
     push: false,
   });
-  add("mention", "Erwähnung");
-  add("comment", "Kommentar");
-  add("reminder", "Erinnerung");
-  assert.deepEqual(Object.keys(state(person)).sort(), [
+  await add("mention", "Erwähnung");
+  await add("comment", "Kommentar");
+  await add("reminder", "Erinnerung");
+  assert.deepEqual(Object.keys(await state(person)).sort(), [
     "Erinnerung",
     "Kommentar",
   ]);
-  assert.deepEqual(pushed(), ["Erinnerung"]);
+  assert.deepEqual(await pushed(), ["Erinnerung"]);
   // Push without inbox is not possible; defaults stay on.
-  const prefs = command(person, {
+  const prefs = (await command(person, {
     action: "notification.prefs",
     kind: "reminder",
     inbox: false,
     push: true,
-  }) as Record<string, { inbox: boolean; push: boolean }>;
+  })) as Record<string, { inbox: boolean; push: boolean }>;
   assert.deepEqual(prefs.reminder, { inbox: false, push: false, email: false, messenger: false });
   // Untouched kinds follow the defaults (guest comments: no e-mail, no chat apps).
   assert.deepEqual(prefs.guest, { inbox: true, push: true, email: false, messenger: false });
-  assert.throws(() =>
-    command(person, {
+  await assert.rejects(async () =>
+    await command(person, {
       action: "notification.prefs",
       kind: "spam",
       inbox: true,

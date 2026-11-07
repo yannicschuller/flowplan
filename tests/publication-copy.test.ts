@@ -11,9 +11,9 @@ const { all, one, run, id } = await import("../lib/db");
 const { createWorkspace } = await import("../lib/seed");
 const { command, bootstrap, database, rows } = await import("../lib/api");
 
-function account(name: string) {
+async function account(name: string) {
   const uid = id();
-  run(
+  await run(
     "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
     uid,
     uid,
@@ -30,29 +30,29 @@ function account(name: string) {
     created_at: "",
   } as Identity;
 }
-const owner = account("pub-owner"),
-  visitor = account("pub-visitor");
-const wid = createWorkspace(owner.id, "Quelle"),
-  space = bootstrap(owner, wid).spaces[0].id;
-const visitorWorkspace = createWorkspace(visitor.id, "Besucher"),
-  visitorSpace = bootstrap(visitor, visitorWorkspace).spaces[0].id;
-const act = (input: Record<string, unknown>, as = owner) =>
-  command(as, input) as { id: string; token?: string };
-const create = (title: string, kind = "document", parentId?: string) =>
-  act({
+const owner = await account("pub-owner"),
+  visitor = await account("pub-visitor");
+const wid = await createWorkspace(owner.id, "Quelle"),
+  space = (await bootstrap(owner, wid)).spaces[0].id;
+const visitorWorkspace = await createWorkspace(visitor.id, "Besucher"),
+  visitorSpace = (await bootstrap(visitor, visitorWorkspace)).spaces[0].id;
+const act = async (input: Record<string, unknown>, as = owner) =>
+  (await command(as, input)) as { id: string; token?: string };
+const create = async (title: string, kind = "document", parentId?: string) =>
+  (await act({
     action: "page.create",
     workspaceId: wid,
     spaceId: space,
     title,
     kind,
     parentId,
-  }).id;
-function file(pageId: string, name: string) {
+  })).id;
+async function file(pageId: string, name: string) {
   const fid = id(),
     dir = join(process.env.FLOWPLAN_DATA_DIR!, "uploads");
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, fid), name);
-  run(
+  await run(
     "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
     fid,
     pageId,
@@ -64,18 +64,18 @@ function file(pageId: string, name: string) {
   return `/api/files/${fid}`;
 }
 
-const root = create("Handbuch"),
-  child = create("Kapitel", "document", root),
-  table = create("Kontakte", "database", root);
-const shown = file(root, "shown.png"),
-  hidden = file(root, "hidden.png");
-run(
+const root = await create("Handbuch"),
+  child = await create("Kapitel", "document", root),
+  table = await create("Kontakte", "database", root);
+const shown = await file(root, "shown.png"),
+  hidden = await file(root, "hidden.png");
+await run(
   "UPDATE documents SET html=? WHERE page_id=?",
   `<p>Siehe <a href="/#page=${child}">Kapitel</a> und <a href="/#page=${wid}">fremd</a></p><p><img src="${shown}"></p><div data-linked-database="1" data-linked-source="${table}"></div>`,
   root,
 );
-const d = database(table);
-command(owner, {
+const d = await database(table);
+await command(owner, {
   action: "database.update",
   pageId: table,
   version: d.version,
@@ -87,34 +87,34 @@ command(owner, {
   ],
   views: d.views,
 });
-act({
+await act({
   action: "row.create",
   pageId: table,
   cells: { title: "Kim", phone: "123", who: owner.id },
 });
-const token = () =>
-  one<{ public_token: string }>(
+const token = async () =>
+  (await one<{ public_token: string }>(
     "SELECT public_token FROM pages WHERE id=?",
     root,
-  )!.public_token;
+  ))!.public_token;
 
-test("visitors copy only the published pages, public properties and published files", () => {
-  act({
+test("visitors copy only the published pages, public properties and published files", async () => {
+  await act({
     action: "page.publish",
     pageId: root,
     enabled: true,
     includeChildren: true,
   });
-  const copy = act(
+  const copy = (await act(
     {
       action: "publication.copy",
-      token: token(),
+      token: await token(),
       workspaceId: visitorWorkspace,
       spaceId: visitorSpace,
     },
     visitor,
-  ).id;
-  const copied = all<{
+  )).id;
+  const copied = await all<{
     id: string;
     title: string;
     parent_id: string | null;
@@ -127,14 +127,14 @@ test("visitors copy only the published pages, public properties and published fi
   const copiedChild = copied.find((p) => p.title === "Kapitel")!;
   const copiedTable = copied.find((p) => p.title === "Kontakte")!;
   assert.equal(copiedChild.parent_id, copy);
-  const html = one<{ html: string }>(
+  const html = (await one<{ html: string }>(
     "SELECT html FROM documents WHERE page_id=?",
     copy,
-  )!.html;
+  ))!.html;
   assert.match(html, new RegExp(`#page=${copiedChild.id}`));
   assert.doesNotMatch(html, new RegExp(wid));
   assert.doesNotMatch(html, new RegExp(table));
-  const files = all<{ name: string; id: string }>(
+  const files = await all<{ name: string; id: string }>(
     "SELECT id,name FROM files WHERE page_id=?",
     copy,
   );
@@ -146,13 +146,13 @@ test("visitors copy only the published pages, public properties and published fi
     existsSync(join(process.env.FLOWPLAN_DATA_DIR!, "uploads", files[0].id)),
   );
   assert.match(html, new RegExp(files[0].id));
-  const fields = database(copiedTable.id).fields.map((f) => f.id);
+  const fields = (await database(copiedTable.id)).fields.map((f) => f.id);
   assert.deepEqual(fields, ["title", "phone"]);
-  const [row] = rows(copiedTable.id);
+  const [row] = await rows(copiedTable.id);
   assert.deepEqual(row.cells, { title: "Kim", phone: "123" });
   assert.equal(row.created_by, visitor.id);
   // The visitor can work with the copy.
-  command(visitor, {
+  await command(visitor, {
     action: "page.update",
     pageId: copy,
     patch: { title: "Mein Handbuch" },
@@ -160,63 +160,63 @@ test("visitors copy only the published pages, public properties and published fi
   void hidden;
 });
 
-test("copying requires a publication that allows it and write access to the target", () => {
+test("copying requires a publication that allows it and write access to the target", async () => {
   const input = {
     action: "publication.copy",
     workspaceId: visitorWorkspace,
     spaceId: visitorSpace,
   };
-  act({
+  await act({
     action: "page.publish",
     pageId: root,
     enabled: true,
     includeChildren: true,
     allowCopy: false,
   });
-  assert.throws(
-    () => act({ ...input, token: token() }, visitor),
+  await assert.rejects(
+    async () => await act({ ...input, token: await token() }, visitor),
     /nicht kopiert/,
   );
-  act({
+  await act({
     action: "page.publish",
     pageId: root,
     enabled: true,
     includeChildren: false,
   });
   // Without children only the root page is copied.
-  const before = one<{ n: number }>(
+  const before = (await one<{ n: number }>(
     "SELECT COUNT(*) n FROM pages WHERE workspace_id=?",
     visitorWorkspace,
-  )!.n;
-  act({ ...input, token: token() }, visitor);
+  ))!.n;
+  await act({ ...input, token: await token() }, visitor);
   assert.equal(
-    one<{ n: number }>(
+    (await one<{ n: number }>(
       "SELECT COUNT(*) n FROM pages WHERE workspace_id=?",
       visitorWorkspace,
-    )!.n,
+    ))!.n,
     before + 1,
   );
-  assert.throws(
-    () =>
-      act(
-        { ...input, token: token(), workspaceId: wid, spaceId: space },
+  await assert.rejects(
+    async () =>
+      await act(
+        { ...input, token: await token(), workspaceId: wid, spaceId: space },
         visitor,
       ),
     /Berechtigung|Mitglied|Zugriff/i,
   );
-  const share = act({
+  const share = await act({
     action: "share.create",
     pageId: root,
     name: "Link",
     role: "viewer",
   });
-  assert.throws(
-    () => act({ ...input, token: share.token! }, visitor),
+  await assert.rejects(
+    async () => await act({ ...input, token: share.token! }, visitor),
     /nicht kopiert/,
   );
-  act({ action: "page.publish", pageId: root, enabled: false });
-  assert.throws(
-    () => act({ ...input, token: "missing" }, visitor),
+  await act({ action: "page.publish", pageId: root, enabled: false });
+  await assert.rejects(
+    async () => await act({ ...input, token: "missing" }, visitor),
     /nicht kopiert/,
   );
 });

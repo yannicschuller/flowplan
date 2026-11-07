@@ -15,7 +15,7 @@ export async function requestLocale(): Promise<Locale> {
 async function profileLanguage() {
   try {
     const user = await currentUser();
-    return user && !user.demo ? fixedLanguage(user.id) : null;
+    return user && !user.demo ? (await fixedLanguage(user.id)) : null;
   } catch {
     return null;
   }

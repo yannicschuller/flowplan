@@ -15,10 +15,10 @@ export function envPluginOrigins(raw = process.env.PLUGIN_ALLOWED_ORIGINS || "")
 }
 // Everything frames may come from: the listed origins and those of the
 // registered plugins.
-export function pluginFrameOrigins(): string[] {
+export async function pluginFrameOrigins(): Promise<string[]> {
   const out = new Set(envPluginOrigins());
   try {
-    for (const row of all<{ origin: string }>("SELECT DISTINCT origin FROM plugins WHERE enabled=1"))
+    for (const row of await all<{ origin: string }>("SELECT DISTINCT origin FROM plugins WHERE enabled=1"))
       if (/^https:\/\/[a-z0-9.-]+(:\d+)?$/i.test(row.origin)) out.add(row.origin);
   } catch {}
   return [...out].sort();

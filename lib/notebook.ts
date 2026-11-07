@@ -17,6 +17,7 @@ import { emptyInk, hasInk, inkText, parseInk, serializeInk, type InkDoc } from "
 import { cleanRecognizedText } from "./ink/recognized";
 import { isPdfFile } from "./ink-store";
 import type { Identity, Page } from "./types";
+import { forEachAsync } from "./each-async";
 
 export const MAX_SHEETS = 1000;
 // Pages one PDF import may bring.
@@ -50,18 +51,18 @@ const parsePaper = (value: string | null | undefined): PaperOverride => {
   }
 };
 
-export function notebookPaper(pageId: string): Paper {
-  return fullPaper(JSON.parse(one<{ paper: string }>("SELECT paper FROM notebooks WHERE page_id=?", pageId)?.paper || "{}"));
+export async function notebookPaper(pageId: string): Promise<Paper> {
+  return fullPaper(JSON.parse((await one<{ paper: string }>("SELECT paper FROM notebooks WHERE page_id=?", pageId))?.paper || "{}"));
 }
-export function notebookSheets(pageId: string): NotebookSheet[] {
-  return all<{ id: string; position: number; paper: string; background: string | null }>(
+export async function notebookSheets(pageId: string): Promise<NotebookSheet[]> {
+  return (await all<{ id: string; position: number; paper: string; background: string | null }>(
     "SELECT id,position,paper,background FROM notebook_sheets WHERE page_id=? ORDER BY position,created_at",
     pageId,
-  ).map((s) => ({ id: s.id, position: s.position, paper: parsePaper(s.paper), background: parseBackground(s.background) }));
+  )).map((s) => ({ id: s.id, position: s.position, paper: parsePaper(s.paper), background: parseBackground(s.background) }));
 }
 
-function insertSheet(pageId: string, paper: PaperOverride = {}, background: NotebookBackground | null = null, sheetId = id()) {
-  run(
+async function insertSheet(pageId: string, paper: PaperOverride = {}, background: NotebookBackground | null = null, sheetId = id()) {
+  await run(
     "INSERT INTO notebook_sheets(id,page_id,position,paper,background,created_at) VALUES(?,?,?,?,?,?)",
     sheetId,
     pageId,
@@ -72,26 +73,26 @@ function insertSheet(pageId: string, paper: PaperOverride = {}, background: Note
   );
   return sheetId;
 }
-function writeOrder(pageId: string, ids: string[]) {
-  ids.forEach((sheetId, index) => run("UPDATE notebook_sheets SET position=? WHERE id=? AND page_id=?", index, sheetId, pageId));
+async function writeOrder(pageId: string, ids: string[]) {
+  await forEachAsync(ids, async (sheetId, index) => await run("UPDATE notebook_sheets SET position=? WHERE id=? AND page_id=?", index, sheetId, pageId));
 }
-const order = (pageId: string) => notebookSheets(pageId).map((s) => s.id);
+const order = async (pageId: string) => (await notebookSheets(pageId)).map((s) => s.id);
 
 // A new notebook with its first sheet (lib/seed.ts createPage).
-export function createNotebook(pageId: string, paper: Partial<Paper> = {}) {
-  run("INSERT INTO notebooks(page_id,paper,updated_at) VALUES(?,?,?) ON CONFLICT DO NOTHING", pageId, JSON.stringify({ ...DEFAULT_PAPER, ...cleanPaper(paper) }), Date.now());
-  if (!one("SELECT 1 FROM notebook_sheets WHERE page_id=?", pageId)) insertSheet(pageId);
+export async function createNotebook(pageId: string, paper: Partial<Paper> = {}) {
+  await run("INSERT INTO notebooks(page_id,paper,updated_at) VALUES(?,?,?) ON CONFLICT DO NOTHING", pageId, JSON.stringify({ ...DEFAULT_PAPER, ...cleanPaper(paper) }), Date.now());
+  if (!(await one("SELECT 1 FROM notebook_sheets WHERE page_id=?", pageId))) await insertSheet(pageId);
 }
 
-export function notebookData(user: Identity, page: Page): NotebookPayload {
-  const inks = pageInkDocs(page.id);
+export async function notebookData(user: Identity, page: Page): Promise<NotebookPayload> {
+  const inks = await pageInkDocs(page.id);
   return {
-    paper: notebookPaper(page.id),
-    sheets: notebookSheets(page.id).map((sheet) => {
+    paper: await notebookPaper(page.id),
+    sheets: (await notebookSheets(page.id)).map((sheet) => {
       const ink = inks.get(sheet.id);
       return { ...sheet, ink: ink?.doc ?? emptyInk(), version: ink?.version ?? 0 };
     }),
-    canEdit: mayEditInk(user, page),
+    canEdit: await mayEditInk(user, page),
   };
 }
 
@@ -107,79 +108,79 @@ const sheetId = z.string().regex(/^[\w-]{1,40}$/);
 const after = sheetId.nullable().optional();
 
 // The notebook commands (lib/api.ts); `page` is checked for editing.
-export function notebookCommand(user: Identity, page: Page, action: string, b: Record<string, unknown>) {
+export async function notebookCommand(user: Identity, page: Page, action: string, b: Record<string, unknown>) {
   if (page.kind !== "notebook") throw new HttpError(400, "Kein Notizbuch.");
-  createNotebook(page.id);
-  const touch = () => run("UPDATE notebooks SET updated_at=? WHERE page_id=?", Date.now(), page.id);
-  const known = (sid: string) => {
-    if (!one("SELECT 1 FROM notebook_sheets WHERE id=? AND page_id=?", sid, page.id)) throw new HttpError(404, "Blatt nicht gefunden.");
+  await createNotebook(page.id);
+  const touch = async () => await run("UPDATE notebooks SET updated_at=? WHERE page_id=?", Date.now(), page.id);
+  const known = async (sid: string) => {
+    if (!(await one("SELECT 1 FROM notebook_sheets WHERE id=? AND page_id=?", sid, page.id))) throw new HttpError(404, "Blatt nicht gefunden.");
     return sid;
   };
-  const room = (count: number) => {
-    const n = one<{ n: number }>("SELECT COUNT(*) n FROM notebook_sheets WHERE page_id=?", page.id)?.n ?? 0;
+  const room = async (count: number) => {
+    const n = (await one<{ n: number }>("SELECT COUNT(*) n FROM notebook_sheets WHERE page_id=?", page.id))?.n ?? 0;
     if (n + count > MAX_SHEETS) throw new HttpError(413, `Ein Notizbuch hat höchstens ${MAX_SHEETS} Blätter.`);
   };
   const result: Record<string, unknown> = {};
   switch (action) {
     case "notebook.paper": {
-      const paper = { ...notebookPaper(page.id), ...cleanPaper(b.paper) };
-      run("UPDATE notebooks SET paper=? WHERE page_id=?", JSON.stringify(paper), page.id);
+      const paper = { ...(await notebookPaper(page.id)), ...cleanPaper(b.paper) };
+      await run("UPDATE notebooks SET paper=? WHERE page_id=?", JSON.stringify(paper), page.id);
       // "For all sheets": their own choices go.
-      if (b.all === true) run("UPDATE notebook_sheets SET paper='{}' WHERE page_id=? AND background IS NULL", page.id);
+      if (b.all === true) await run("UPDATE notebook_sheets SET paper='{}' WHERE page_id=? AND background IS NULL", page.id);
       break;
     }
     case "notebook.sheet.add": {
       const count = z.number().int().min(1).max(50).default(1).parse(b.count ?? undefined);
-      room(count);
+      await room(count);
       let previous = after.parse(b.after ?? null) ?? null;
-      if (previous) known(previous);
-      let ids = order(page.id);
+      if (previous) await known(previous);
+      let ids = await order(page.id);
       const created: string[] = [];
       for (let i = 0; i < count; i++) {
-        const sid = insertSheet(page.id, cleanPaper(b.paper));
+        const sid = await insertSheet(page.id, cleanPaper(b.paper));
         ids = insertAfter(ids, sid, previous);
         previous = sid;
         created.push(sid);
       }
-      writeOrder(page.id, ids);
+      await writeOrder(page.id, ids);
       result.created = created;
       break;
     }
     case "notebook.sheet.duplicate": {
-      const source = known(sheetId.parse(b.sheetId));
-      room(1);
-      const row = one<{ paper: string; background: string | null }>("SELECT paper,background FROM notebook_sheets WHERE id=?", source)!;
-      const sid = insertSheet(page.id, parsePaper(row.paper), parseBackground(row.background));
-      copyPageInk(page.id, page.id, new Map([[source, sid]]), user.id);
-      writeOrder(page.id, insertAfter(order(page.id), sid, source));
+      const source = await known(sheetId.parse(b.sheetId));
+      await room(1);
+      const row = (await one<{ paper: string; background: string | null }>("SELECT paper,background FROM notebook_sheets WHERE id=?", source))!;
+      const sid = await insertSheet(page.id, parsePaper(row.paper), parseBackground(row.background));
+      await copyPageInk(page.id, page.id, new Map([[source, sid]]), user.id);
+      await writeOrder(page.id, insertAfter(await order(page.id), sid, source));
       result.created = [sid];
-      const ink = pageInkDocs(page.id).get(sid);
+      const ink = (await pageInkDocs(page.id)).get(sid);
       result.ink = { [sid]: { doc: ink?.doc ?? emptyInk(), version: ink?.version ?? 0 } };
       break;
     }
     case "notebook.sheet.delete": {
-      const sid = known(sheetId.parse(b.sheetId));
-      if (order(page.id).length <= 1) throw new HttpError(400, "Ein Notizbuch braucht mindestens ein Blatt.");
-      run("DELETE FROM notebook_sheets WHERE id=? AND page_id=?", sid, page.id);
-      deleteSurface(page.id, sid);
-      writeOrder(page.id, order(page.id));
+      const sid = await known(sheetId.parse(b.sheetId));
+      if ((await order(page.id)).length <= 1) throw new HttpError(400, "Ein Notizbuch braucht mindestens ein Blatt.");
+      await run("DELETE FROM notebook_sheets WHERE id=? AND page_id=?", sid, page.id);
+      await deleteSurface(page.id, sid);
+      await writeOrder(page.id, await order(page.id));
       break;
     }
     case "notebook.sheet.move": {
       const next = z.array(sheetId).max(MAX_SHEETS).parse(b.order);
-      if (!sameSheets(order(page.id), next)) throw new HttpError(409, "Die Blätter haben sich inzwischen geändert.");
-      writeOrder(page.id, next);
+      if (!sameSheets(await order(page.id), next)) throw new HttpError(409, "Die Blätter haben sich inzwischen geändert.");
+      await writeOrder(page.id, next);
       break;
     }
     case "notebook.sheet.paper": {
       const ids = z.array(sheetId).min(1).max(MAX_SHEETS).parse(b.sheetIds);
       const paper = b.paper === null ? {} : cleanPaper(b.paper);
-      for (const sid of ids) run("UPDATE notebook_sheets SET paper=? WHERE id=? AND page_id=?", JSON.stringify(paper), known(sid), page.id);
+      for (const sid of ids) await run("UPDATE notebook_sheets SET paper=? WHERE id=? AND page_id=?", JSON.stringify(paper), await known(sid), page.id);
       break;
     }
     case "notebook.import": {
       const fileId = z.uuid().parse(b.fileId);
-      const file = one<{ id: string; name: string; mime: string }>("SELECT id,name,mime FROM files WHERE id=? AND page_id=?", fileId, page.id);
+      const file = await one<{ id: string; name: string; mime: string }>("SELECT id,name,mime FROM files WHERE id=? AND page_id=?", fileId, page.id);
       if (!file) throw new HttpError(404, "Datei fehlt.");
       if (!isPdfFile(file)) throw new HttpError(400, "Nur PDFs lassen sich als Notizbuch öffnen.");
       const sizes = z
@@ -187,54 +188,54 @@ export function notebookCommand(user: Identity, page: Page, action: string, b: R
         .min(1)
         .max(MAX_IMPORT_PAGES)
         .parse(b.pages);
-      room(sizes.length);
+      await room(sizes.length);
       const backgrounds = pdfImportSheets(file.id, sizes);
       let previous = after.parse(b.after ?? null) ?? null;
-      if (previous) known(previous);
+      if (previous) await known(previous);
       // A fresh notebook (one empty sheet) becomes the PDF.
-      const sheets = notebookSheets(page.id);
-      const replace = b.replaceEmpty === true && sheets.length === 1 && !sheets[0].background && !hasInk(pageInkDocs(page.id).get(sheets[0].id)?.doc);
-      let ids = order(page.id);
+      const sheets = await notebookSheets(page.id);
+      const replace = b.replaceEmpty === true && sheets.length === 1 && !sheets[0].background && !hasInk((await pageInkDocs(page.id)).get(sheets[0].id)?.doc);
+      let ids = await order(page.id);
       const created: string[] = [];
       for (const background of backgrounds) {
-        const sid = insertSheet(page.id, {}, background);
+        const sid = await insertSheet(page.id, {}, background);
         ids = insertAfter(ids, sid, previous);
         previous = sid;
         created.push(sid);
       }
       if (replace) {
-        run("DELETE FROM notebook_sheets WHERE id=?", sheets[0].id);
-        deleteSurface(page.id, sheets[0].id);
+        await run("DELETE FROM notebook_sheets WHERE id=?", sheets[0].id);
+        await deleteSurface(page.id, sheets[0].id);
         ids = ids.filter((x) => x !== sheets[0].id);
       }
-      writeOrder(page.id, ids);
+      await writeOrder(page.id, ids);
       result.created = created;
       break;
     }
     default:
       throw new HttpError(400, "Unbekannte Aktion.");
   }
-  touch();
-  return { ...result, paper: notebookPaper(page.id), sheets: notebookSheets(page.id) };
+  await touch();
+  return { ...result, paper: await notebookPaper(page.id), sheets: await notebookSheets(page.id) };
 }
 
 // ---- Copies, archives, exports ----
 
 // Copies a notebook onto a new page (duplicate). `files` maps the source's
 // attachments to the copies (PDF backgrounds).
-export function copyNotebook(fromPage: string, toPage: string, files: Map<string, string> = new Map(), by: string | null = null) {
-  run("DELETE FROM notebook_sheets WHERE page_id=?", toPage);
-  run("INSERT INTO notebooks(page_id,paper,updated_at) VALUES(?,?,?) ON CONFLICT(page_id) DO UPDATE SET paper=excluded.paper", toPage, JSON.stringify(notebookPaper(fromPage)), Date.now());
+export async function copyNotebook(fromPage: string, toPage: string, files: Map<string, string> = new Map(), by: string | null = null) {
+  await run("DELETE FROM notebook_sheets WHERE page_id=?", toPage);
+  await run("INSERT INTO notebooks(page_id,paper,updated_at) VALUES(?,?,?) ON CONFLICT(page_id) DO UPDATE SET paper=excluded.paper", toPage, JSON.stringify(await notebookPaper(fromPage)), Date.now());
   const surfaces = new Map<string, string>();
-  for (const sheet of notebookSheets(fromPage)) {
+  for (const sheet of await notebookSheets(fromPage)) {
     const background = sheet.background ? (files.get(sheet.background.file) ? { ...sheet.background, file: files.get(sheet.background.file)! } : null) : null;
     // A background the copy cannot have becomes plain paper of its size.
-    const sid = insertSheet(toPage, sheet.background && !background ? { template: "blank" } : sheet.paper, background);
-    run("UPDATE notebook_sheets SET position=? WHERE id=?", sheet.position, sid);
+    const sid = await insertSheet(toPage, sheet.background && !background ? { template: "blank" } : sheet.paper, background);
+    await run("UPDATE notebook_sheets SET position=? WHERE id=?", sheet.position, sid);
     surfaces.set(sheet.id, sid);
   }
-  if (!surfaces.size) insertSheet(toPage);
-  copyPageInk(fromPage, toPage, surfaces, by);
+  if (!surfaces.size) await insertSheet(toPage);
+  await copyPageInk(fromPage, toPage, surfaces, by);
 }
 
 export const notebookArchiveSchema = z.object({
@@ -252,11 +253,11 @@ export const notebookArchiveSchema = z.object({
     .max(MAX_SHEETS),
 });
 export type NotebookArchive = z.infer<typeof notebookArchiveSchema>;
-export function notebookArchive(pageId: string): NotebookArchive {
-  const inks = pageInkDocs(pageId);
+export async function notebookArchive(pageId: string): Promise<NotebookArchive> {
+  const inks = await pageInkDocs(pageId);
   return {
-    paper: notebookPaper(pageId),
-    sheets: notebookSheets(pageId).map((sheet) => {
+    paper: await notebookPaper(pageId),
+    sheets: (await notebookSheets(pageId)).map((sheet) => {
       const ink = inks.get(sheet.id);
       return {
         paper: sheet.paper,
@@ -268,29 +269,29 @@ export function notebookArchive(pageId: string): NotebookArchive {
 }
 // Restores a notebook from an archive onto a new page; `files` maps the
 // archive's file ids to the imported ones.
-export function importNotebook(pageId: string, data: NotebookArchive, files: Map<string, string>, by: string | null) {
-  run("DELETE FROM notebook_sheets WHERE page_id=?", pageId);
-  run("INSERT INTO notebooks(page_id,paper,updated_at) VALUES(?,?,?) ON CONFLICT(page_id) DO UPDATE SET paper=excluded.paper", pageId, JSON.stringify(fullPaper(data.paper)), Date.now());
-  data.sheets.forEach((sheet, index) => {
+export async function importNotebook(pageId: string, data: NotebookArchive, files: Map<string, string>, by: string | null) {
+  await run("DELETE FROM notebook_sheets WHERE page_id=?", pageId);
+  await run("INSERT INTO notebooks(page_id,paper,updated_at) VALUES(?,?,?) ON CONFLICT(page_id) DO UPDATE SET paper=excluded.paper", pageId, JSON.stringify(fullPaper(data.paper)), Date.now());
+  await forEachAsync(data.sheets, async (sheet, index) => {
     const raw = sheet.background ? backgroundSchema.safeParse(sheet.background) : null;
     const file = raw?.success ? files.get(raw.data.file) : undefined;
     const background = raw?.success && file ? { ...raw.data, file } : null;
-    const sid = insertSheet(pageId, raw?.success && !background ? { template: "blank" } : cleanPaper(sheet.paper), background);
-    run("UPDATE notebook_sheets SET position=? WHERE id=?", index, sid);
+    const sid = await insertSheet(pageId, raw?.success && !background ? { template: "blank" } : cleanPaper(sheet.paper), background);
+    await run("UPDATE notebook_sheets SET position=? WHERE id=?", index, sid);
     if (sheet.ink) {
       // The archive's page key was the old sheet id: the only page is this sheet.
       const doc = parseInk(sheet.ink);
       const items = Object.values(doc.pages)[0] || [];
-      if (items.length) writeSurface(pageId, sid, { ...emptyInk(), pages: { [sid]: items } }, cleanRecognizedText(sheet.recognized), by);
+      if (items.length) await writeSurface(pageId, sid, { ...emptyInk(), pages: { [sid]: items } }, cleanRecognizedText(sheet.recognized), by);
     }
   });
-  if (!data.sheets.length) insertSheet(pageId);
+  if (!data.sheets.length) await insertSheet(pageId);
 }
 
 // Typed and recognised text of all sheets, in order (exports, summaries).
-export function notebookText(pageId: string) {
-  const inks = pageInkDocs(pageId);
-  return notebookSheets(pageId)
+export async function notebookText(pageId: string) {
+  const inks = await pageInkDocs(pageId);
+  return (await notebookSheets(pageId))
     .map((sheet) => {
       const ink = inks.get(sheet.id);
       return [ink ? inkText(ink.doc) : "", ink?.recognized || ""].filter(Boolean).join("\n");

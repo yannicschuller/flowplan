@@ -19,13 +19,13 @@ type AccessRow = { id: string; access?: string; created_by?: string | null };
 const rank: Record<Role, number> = { viewer: 1, editor: 2, owner: 3 };
 const lower = (a: Role, b: Role) => (rank[a] < rank[b] ? a : b);
 
-export function rowRoleResolver(
+export async function rowRoleResolver(
   user: Identity,
   page: Page,
-  role = pageRole(user, page),
+  role = (await pageRole(user, page)),
 ) {
   const restricted = new Map<string, RowGrant[]>();
-  for (const g of all<RowGrant & { row_id: string }>(
+  for (const g of await all<RowGrant & { row_id: string }>(
     `SELECT g.row_id,g.user_id,g.group_id,g.role FROM row_grants g JOIN rows r ON r.id=g.row_id
      WHERE r.page_id=? AND r.access!='inherit' AND (g.user_id=? OR g.group_id IN (SELECT group_id FROM group_members WHERE user_id=?))`,
     page.id,
@@ -58,81 +58,81 @@ function combine(
 }
 // Role for a record outside the rows table (e.g. in the trash) with its
 // stored grants.
-export function roleWithGrants(
+export async function roleWithGrants(
   user: Identity,
   page: Page,
   row: AccessRow,
   grants: RowGrant[],
 ) {
   const groups = new Set(
-    all<{ group_id: string }>(
+    (await all<{ group_id: string }>(
       "SELECT group_id FROM group_members WHERE user_id=?",
       user.id,
-    ).map((g) => g.group_id),
+    )).map((g) => g.group_id),
   );
   return combine(
     user,
-    pageRole(user, page),
+    await pageRole(user, page),
     row,
     grants.filter(
       (g) => g.user_id === user.id || (!!g.group_id && groups.has(g.group_id)),
     ),
   );
 }
-export function rowRole(user: Identity, page: Page, row: AccessRow) {
-  return rowRoleResolver(user, page)(row);
+export async function rowRole(user: Identity, page: Page, row: AccessRow) {
+  return (await rowRoleResolver(user, page))(row);
 }
 // Rows a person may see, each with the role they have on it, without the
 // cells of properties hidden from them (lib/field-access.ts).
-export function visibleRows<T extends AccessRow>(
+export async function visibleRows<T extends AccessRow>(
   user: Identity,
   page: Page,
   rows: T[],
 ) {
-  const role = pageRole(user, page);
-  const resolve = rowRoleResolver(user, page, role);
+  const role = await pageRole(user, page);
+  const resolve = await rowRoleResolver(user, page, role);
   const shown = rows.flatMap((r) => {
     const rowRole = resolve(r);
     return rowRole ? [{ ...r, role: rowRole }] : [];
   });
   if (!shown.some((r) => "cells" in r)) return shown;
-  const hidden = hiddenFieldsFor(user, page, undefined, role);
+  const hidden = await hiddenFieldsFor(user, page, undefined, role);
   return hidden.size
     ? shown.map((r) => ("cells" in r ? { ...r, cells: stripCells((r as { cells: unknown }).cells, hidden) } : r))
     : shown;
 }
 // Ids of records hidden from a person in a database (for filters in queries).
-export function hiddenRowIds(user: Identity, page: Page) {
-  const resolve = rowRoleResolver(user, page);
+export async function hiddenRowIds(user: Identity, page: Page) {
+  const resolve = await rowRoleResolver(user, page);
   return new Set(
-    all<AccessRow>(
+    (await all<AccessRow>(
       "SELECT id,access,created_by FROM rows WHERE page_id=? AND access='private'",
       page.id,
-    )
+    ))
       .filter((r) => !resolve(r))
       .map((r) => r.id),
   );
 }
-export function assertRowAccess(
+export async function assertRowAccess(
   user: Identity,
   page: Page,
   row: AccessRow,
   write: boolean,
 ) {
-  const role = rowRole(user, page, row);
+  const role = await rowRole(user, page, row);
   if (!role) throw new HttpError(404, "Datensatz nicht gefunden.");
   if (write && rank[role] < 2)
     throw new HttpError(403, "Dieser Eintrag ist für dich schreibgeschützt.");
   return role;
 }
-export function assertRowsWritable(
+export async function assertRowsWritable(
   user: Identity,
   page: Page,
   rowIds: Iterable<string>,
 ) {
-  const resolve = rowRoleResolver(user, page);
+  const resolve = await rowRoleResolver(user, page);
   for (const rowId of rowIds) {
-    const row = one<AccessRow>(
+    const row = await one<AccessRow>(
       "SELECT id,access,created_by FROM rows WHERE id=? AND page_id=?",
       rowId,
       page.id,
@@ -144,14 +144,14 @@ export function assertRowsWritable(
       throw new HttpError(403, "Dieser Eintrag ist für dich schreibgeschützt.");
   }
 }
-export function rowGrants(rowId: string) {
-  return all<RowGrant>(
+export async function rowGrants(rowId: string) {
+  return await all<RowGrant>(
     "SELECT user_id,group_id,role FROM row_grants WHERE row_id=? ORDER BY user_id,group_id",
     rowId,
   );
 }
-export function canManageRow(user: Identity, page: Page, row: AccessRow) {
-  const role = pageRole(user, page);
+export async function canManageRow(user: Identity, page: Page, row: AccessRow) {
+  const role = await pageRole(user, page);
   return role === "owner" || (role === "editor" && row.created_by === user.id);
 }
 const accessInput = z.object({
@@ -168,17 +168,17 @@ const accessInput = z.object({
     )
     .max(200),
 });
-export function setRowAccess(user: Identity, raw: unknown) {
+export async function setRowAccess(user: Identity, raw: unknown) {
   const b = accessInput.parse(raw);
-  const page = requirePage(user, b.pageId, true);
+  const page = await requirePage(user, b.pageId, true);
   if (page.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
-  const row = one<AccessRow>(
+  const row = await one<AccessRow>(
     "SELECT id,access,created_by FROM rows WHERE id=? AND page_id=?",
     b.rowId,
     page.id,
   );
   if (!row) throw new HttpError(404, "Datensatz nicht gefunden.");
-  if (!canManageRow(user, page, row))
+  if (!(await canManageRow(user, page, row)))
     throw new HttpError(
       403,
       "Nur Besitzer der Datenbank und wer den Eintrag angelegt hat, ändern seine Rechte.",
@@ -192,33 +192,33 @@ export function setRowAccess(user: Identity, raw: unknown) {
     seen.add(key);
     if (
       g.userId &&
-      !one(
+      !(await one(
         "SELECT 1 FROM members WHERE workspace_id=? AND user_id=?",
         page.workspace_id,
         g.userId,
-      )
+      ))
     )
       throw new HttpError(400, "Mitglied fehlt.");
     if (
       g.groupId &&
-      !one(
+      !(await one(
         "SELECT 1 FROM groups WHERE id=? AND workspace_id=?",
         g.groupId,
         page.workspace_id,
-      )
+      ))
     )
       throw new HttpError(400, "Gruppe fehlt.");
   }
-  run("UPDATE rows SET access=? WHERE id=?", b.access, row.id);
-  run("DELETE FROM row_grants WHERE row_id=?", row.id);
+  await run("UPDATE rows SET access=? WHERE id=?", b.access, row.id);
+  await run("DELETE FROM row_grants WHERE row_id=?", row.id);
   for (const g of b.grants)
-    run(
+    await run(
       "INSERT INTO row_grants(row_id,user_id,group_id,role) VALUES(?,?,?,?)",
       row.id,
       g.userId || "",
       g.groupId || "",
       g.role,
     );
-  audit(user.id, "row.access", page.id, `${row.id}:${b.access}`);
-  return { access: b.access, grants: rowGrants(row.id) };
+  await audit(user.id, "row.access", page.id, `${row.id}:${b.access}`);
+  return { access: b.access, grants: await rowGrants(row.id) };
 }

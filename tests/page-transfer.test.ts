@@ -12,59 +12,59 @@ const { aiMayRead, aiBlockInfo, setAiBlock, aiRules } = await import("../lib/ai/
 const { listRowTrash } = await import("../lib/row-trash");
 const { myTasks } = await import("../lib/doc-tasks");
 
-function account(name: string) {
+async function account(name: string) {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${uid}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${uid}@example.test`);
   return { id: uid, name, email: "", disabled: 0, created_at: "", groups: [], isAdmin: false } as Identity;
 }
-const owner = account("Olga"),
-  colleague = account("Carl"),
-  stranger = account("Sven");
-const from = createWorkspace(owner.id, "Alt"),
-  to = createWorkspace(owner.id, "Neu");
-run("INSERT INTO members VALUES(?,?,?)", from, colleague.id, "editor");
-run("INSERT INTO members VALUES(?,?,?)", from, stranger.id, "editor");
-run("INSERT INTO members VALUES(?,?,?)", to, colleague.id, "editor");
-const fromSpace = bootstrap(owner, from).spaces[0].id,
-  toSpace = bootstrap(owner, to).spaces[0].id;
-const create = (title: string, kind = "document", parentId?: string) =>
-  (command(owner, { action: "page.create", workspaceId: from, spaceId: fromSpace, title, kind, parentId }) as { id: string }).id;
-const page = (pid: string) => one<Page>("SELECT * FROM pages WHERE id=?", pid)!;
+const owner = await account("Olga"),
+  colleague = await account("Carl"),
+  stranger = await account("Sven");
+const from = await createWorkspace(owner.id, "Alt"),
+  to = await createWorkspace(owner.id, "Neu");
+await run("INSERT INTO members VALUES(?,?,?)", from, colleague.id, "editor");
+await run("INSERT INTO members VALUES(?,?,?)", from, stranger.id, "editor");
+await run("INSERT INTO members VALUES(?,?,?)", to, colleague.id, "editor");
+const fromSpace = (await bootstrap(owner, from)).spaces[0].id,
+  toSpace = (await bootstrap(owner, to)).spaces[0].id;
+const create = async (title: string, kind = "document", parentId?: string) =>
+  ((await command(owner, { action: "page.create", workspaceId: from, spaceId: fromSpace, title, kind, parentId })) as { id: string }).id;
+const page = async (pid: string) => (await one<Page>("SELECT * FROM pages WHERE id=?", pid))!;
 
-test("a page moves with its sub pages; rights and favourites of the old workspace go", () => {
-  const top = create("Projekt"),
-    child = create("Unterseite", "document", top);
+test("a page moves with its sub pages; rights and favourites of the old workspace go", async () => {
+  const top = await create("Projekt"),
+    child = await create("Unterseite", "document", top);
   const group = id();
-  run("INSERT INTO groups(id,workspace_id,name) VALUES(?,?,?)", group, from, "Team Alt");
-  run("INSERT INTO grants(resource_id,user_id,group_id,role) VALUES(?,?,?,?)", top, null, group, "editor");
-  run("INSERT INTO grants(resource_id,user_id,group_id,role) VALUES(?,?,?,?)", top, stranger.id, null, "viewer");
-  run("INSERT INTO grants(resource_id,user_id,group_id,role) VALUES(?,?,?,?)", top, colleague.id, null, "viewer");
-  run("INSERT INTO favorites(user_id,page_id) VALUES(?,?)", stranger.id, child);
-  run("INSERT INTO favorites(user_id,page_id) VALUES(?,?)", colleague.id, child);
-  command(owner, { action: "page.move", workspaceId: from, pageId: top, spaceId: toSpace, parentId: null });
+  await run("INSERT INTO groups(id,workspace_id,name) VALUES(?,?,?)", group, from, "Team Alt");
+  await run("INSERT INTO grants(resource_id,user_id,group_id,role) VALUES(?,?,?,?)", top, null, group, "editor");
+  await run("INSERT INTO grants(resource_id,user_id,group_id,role) VALUES(?,?,?,?)", top, stranger.id, null, "viewer");
+  await run("INSERT INTO grants(resource_id,user_id,group_id,role) VALUES(?,?,?,?)", top, colleague.id, null, "viewer");
+  await run("INSERT INTO favorites(user_id,page_id) VALUES(?,?)", stranger.id, child);
+  await run("INSERT INTO favorites(user_id,page_id) VALUES(?,?)", colleague.id, child);
+  await command(owner, { action: "page.move", workspaceId: from, pageId: top, spaceId: toSpace, parentId: null });
   for (const pid of [top, child]) {
-    assert.equal(page(pid).workspace_id, to);
-    assert.equal(page(pid).space_id, toSpace);
+    assert.equal((await page(pid)).workspace_id, to);
+    assert.equal((await page(pid)).space_id, toSpace);
   }
-  assert.equal(page(child).parent_id, top, "the tree stays intact");
-  const grants = all<{ user_id: string | null; group_id: string | null }>("SELECT user_id,group_id FROM grants WHERE resource_id=?", top);
+  assert.equal((await page(child)).parent_id, top, "the tree stays intact");
+  const grants = await all<{ user_id: string | null; group_id: string | null }>("SELECT user_id,group_id FROM grants WHERE resource_id=?", top);
   assert.deepEqual(grants.map((g) => g.user_id), [colleague.id]);
   assert.deepEqual(
-    all<{ user_id: string }>("SELECT user_id FROM favorites WHERE page_id=?", child).map((f) => f.user_id),
+    (await all<{ user_id: string }>("SELECT user_id FROM favorites WHERE page_id=?", child)).map((f) => f.user_id),
     [colleague.id],
   );
   // Carl is in both workspaces and still reads it; Sven only in the old one.
-  assert.ok(pageData(colleague, child));
-  assert.throws(() => pageData(stranger, child), /Keine Berechtigung|nicht gefunden/);
-  assert.ok(bootstrap(owner, to).pages.some((p: Page) => p.id === top));
-  assert.ok(!bootstrap(owner, from).pages.some((p: Page) => p.id === top));
+  assert.ok(await pageData(colleague, child));
+  await assert.rejects(async () => await pageData(stranger, child), /Keine Berechtigung|nicht gefunden/);
+  assert.ok((await bootstrap(owner, to)).pages.some((p: Page) => p.id === top));
+  assert.ok(!(await bootstrap(owner, from)).pages.some((p: Page) => p.id === top));
 });
 
-test("relations to databases staying behind block the move; moving both together works", () => {
-  const target = create("Kunden", "database"),
-    source = create("Aufträge", "database");
-  const d = one<{ views: string; version: number }>("SELECT views,version FROM databases WHERE page_id=?", source)!;
-  command(owner, {
+test("relations to databases staying behind block the move; moving both together works", async () => {
+  const target = await create("Kunden", "database"),
+    source = await create("Aufträge", "database");
+  const d = (await one<{ views: string; version: number }>("SELECT views,version FROM databases WHERE page_id=?", source))!;
+  await command(owner, {
     action: "database.update",
     pageId: source,
     version: d.version,
@@ -74,43 +74,43 @@ test("relations to databases staying behind block the move; moving both together
     ],
     views: JSON.parse(d.views),
   });
-  assert.throws(
-    () => command(owner, { action: "page.move", workspaceId: from, pageId: source, spaceId: toSpace }),
+  await assert.rejects(
+    async () => await command(owner, { action: "page.move", workspaceId: from, pageId: source, spaceId: toSpace }),
     /Kunde.*nicht mitverschoben/,
   );
-  assert.equal(page(source).workspace_id, from, "nothing changed");
+  assert.equal((await page(source)).workspace_id, from, "nothing changed");
   // With the related database inside the moved tree it is fine.
-  const folder = create("Vertrieb");
-  command(owner, { action: "page.move", workspaceId: from, pageId: source, parentId: folder });
-  command(owner, { action: "page.move", workspaceId: from, pageId: target, parentId: folder });
-  command(owner, { action: "page.move", workspaceId: from, pageId: folder, spaceId: toSpace });
-  assert.equal(page(source).workspace_id, to);
-  assert.equal(page(target).workspace_id, to);
+  const folder = await create("Vertrieb");
+  await command(owner, { action: "page.move", workspaceId: from, pageId: source, parentId: folder });
+  await command(owner, { action: "page.move", workspaceId: from, pageId: target, parentId: folder });
+  await command(owner, { action: "page.move", workspaceId: from, pageId: folder, spaceId: toSpace });
+  assert.equal((await page(source)).workspace_id, to);
+  assert.equal((await page(target)).workspace_id, to);
 });
 
-test("'Für KI gesperrt' and personal AI rules stay with a page that moves", () => {
-  const folder = create("Vertraulich"),
-    secret = create("Geheim", "document", folder);
-  setAiBlock(owner, { targetId: secret, kind: "page", blocked: true });
-  command(owner, { action: "ai.rule", targetId: folder, mode: "exclude" });
-  assert.equal(aiMayRead(owner, secret), false);
-  assert.equal(aiMayRead(owner, folder), false);
-  command(owner, { action: "page.move", workspaceId: from, pageId: folder, spaceId: toSpace, parentId: null });
-  assert.equal(page(secret).workspace_id, to);
-  assert.equal(aiMayRead(owner, secret), false, "still blocked after the move");
-  assert.equal(aiMayRead(colleague, secret), false, "for everyone");
-  assert.equal(aiBlockInfo(owner, secret, "page").blocked, true);
-  assert.equal(one<{ workspace_id: string }>("SELECT workspace_id FROM ai_blocks WHERE target_id=?", secret)!.workspace_id, to);
+test("'Für KI gesperrt' and personal AI rules stay with a page that moves", async () => {
+  const folder = await create("Vertraulich"),
+    secret = await create("Geheim", "document", folder);
+  await setAiBlock(owner, { targetId: secret, kind: "page", blocked: true });
+  await command(owner, { action: "ai.rule", targetId: folder, mode: "exclude" });
+  assert.equal(await aiMayRead(owner, secret), false);
+  assert.equal(await aiMayRead(owner, folder), false);
+  await command(owner, { action: "page.move", workspaceId: from, pageId: folder, spaceId: toSpace, parentId: null });
+  assert.equal((await page(secret)).workspace_id, to);
+  assert.equal(await aiMayRead(owner, secret), false, "still blocked after the move");
+  assert.equal(await aiMayRead(colleague, secret), false, "for everyone");
+  assert.equal((await aiBlockInfo(owner, secret, "page")).blocked, true);
+  assert.equal((await one<{ workspace_id: string }>("SELECT workspace_id FROM ai_blocks WHERE target_id=?", secret))!.workspace_id, to);
   // The personal rule is listed with the new workspace and keeps excluding.
-  assert.equal(aiMayRead(owner, folder), false);
-  assert.deepEqual(aiRules(owner, to).map((r) => r.targetId), [folder]);
-  assert.deepEqual(aiRules(owner, from), []);
+  assert.equal(await aiMayRead(owner, folder), false);
+  assert.deepEqual((await aiRules(owner, to)).map((r) => r.targetId), [folder]);
+  assert.deepEqual(await aiRules(owner, from), []);
 });
 
-test("document tasks and trashed records are listed in the new workspace", () => {
-  const notes = create("Notizen"),
-    orders = create("Bestellungen", "database", notes);
-  run(
+test("document tasks and trashed records are listed in the new workspace", async () => {
+  const notes = await create("Notizen"),
+    orders = await create("Bestellungen", "database", notes);
+  await run(
     "INSERT INTO doc_tasks(id,page_id,row_id,idx,text,checked,assignee,due,workspace_id,updated_by,updated_at) VALUES(?,?,'',0,'Rechnung prüfen',0,?,NULL,?,?,?)",
     id(),
     notes,
@@ -119,30 +119,30 @@ test("document tasks and trashed records are listed in the new workspace", () =>
     owner.id,
     Date.now(),
   );
-  const rowId = (command(owner, { action: "row.create", pageId: orders, cells: { title: "Schrauben" } }) as { id: string }).id;
-  command(owner, { action: "row.delete", pageId: orders, rowId });
-  assert.equal(myTasks(owner, from).length, 1);
-  assert.equal(listRowTrash(owner, from).length, 1);
-  command(owner, { action: "page.move", workspaceId: from, pageId: notes, spaceId: toSpace, parentId: null });
+  const rowId = ((await command(owner, { action: "row.create", pageId: orders, cells: { title: "Schrauben" } })) as { id: string }).id;
+  await command(owner, { action: "row.delete", pageId: orders, rowId });
+  assert.equal((await myTasks(owner, from)).length, 1);
+  assert.equal((await listRowTrash(owner, from)).length, 1);
+  await command(owner, { action: "page.move", workspaceId: from, pageId: notes, spaceId: toSpace, parentId: null });
   assert.deepEqual(
-    myTasks(owner, to).map((t) => t.text),
+    (await myTasks(owner, to)).map((t) => t.text),
     ["Rechnung prüfen"],
   );
-  assert.equal(myTasks(owner, from).length, 0);
+  assert.equal((await myTasks(owner, from)).length, 0);
   assert.deepEqual(
-    listRowTrash(owner, to).map((t) => t.title),
+    (await listRowTrash(owner, to)).map((t) => t.title),
     ["Schrauben"],
   );
-  assert.equal(listRowTrash(owner, from).length, 0);
+  assert.equal((await listRowTrash(owner, from)).length, 0);
 });
 
-test("moving needs write access in the target workspace", () => {
-  const mine = (command(colleague, { action: "page.create", workspaceId: from, spaceId: fromSpace, title: "Carls Seite", kind: "document" }) as { id: string }).id;
-  const foreign = createWorkspace(stranger.id, "Fremd");
-  const foreignSpace = bootstrap(stranger, foreign).spaces[0].id;
-  assert.throws(
-    () => command(colleague, { action: "page.move", workspaceId: from, pageId: mine, spaceId: foreignSpace }),
+test("moving needs write access in the target workspace", async () => {
+  const mine = ((await command(colleague, { action: "page.create", workspaceId: from, spaceId: fromSpace, title: "Carls Seite", kind: "document" })) as { id: string }).id;
+  const foreign = await createWorkspace(stranger.id, "Fremd");
+  const foreignSpace = (await bootstrap(stranger, foreign)).spaces[0].id;
+  await assert.rejects(
+    async () => await command(colleague, { action: "page.move", workspaceId: from, pageId: mine, spaceId: foreignSpace }),
     /Keine Schreibrechte|Berechtigung/,
   );
-  assert.equal(page(mine).workspace_id, from);
+  assert.equal((await page(mine)).workspace_id, from);
 });

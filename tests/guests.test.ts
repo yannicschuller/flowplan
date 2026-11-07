@@ -12,9 +12,9 @@ const { acceptInvites } = await import("../lib/auth");
 const { requirePage } = await import("../lib/permissions");
 const { searchWorkspace } = await import("../lib/search-index");
 
-function account(name: string) {
+async function account(name: string) {
   const uid = id();
-  run(
+  await run(
     "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
     uid,
     uid,
@@ -31,54 +31,54 @@ function account(name: string) {
     created_at: "",
   } as Identity;
 }
-const owner = account("guest-owner"),
-  guest = account("guest-user"),
-  member = account("guest-member");
-const wid = createWorkspace(owner.id, "Kundenprojekt");
-run("INSERT INTO members VALUES(?,?,?)", wid, guest.id, "editor");
-run("INSERT INTO members VALUES(?,?,?)", wid, member.id, "editor");
-const space = bootstrap(owner, wid).spaces[0].id;
-const act = (input: Record<string, unknown>, as = owner) =>
-  command(as, input) as { id: string };
-const page = (title: string, parentId?: string) =>
-  act({
+const owner = await account("guest-owner"),
+  guest = await account("guest-user"),
+  member = await account("guest-member");
+const wid = await createWorkspace(owner.id, "Kundenprojekt");
+await run("INSERT INTO members VALUES(?,?,?)", wid, guest.id, "editor");
+await run("INSERT INTO members VALUES(?,?,?)", wid, member.id, "editor");
+const space = (await bootstrap(owner, wid)).spaces[0].id;
+const act = async (input: Record<string, unknown>, as = owner) =>
+  (await command(as, input)) as { id: string };
+const page = async (title: string, parentId?: string) =>
+  (await act({
     action: "page.create",
     workspaceId: wid,
     spaceId: space,
     title,
     parentId,
-  }).id;
+  })).id;
 
-test("guests only reach pages shared with them, capped by their role", () => {
-  const internal = page("Interne Kalkulation"),
-    shared = page("Abstimmung mit Kunde"),
-    child = page("Protokoll", shared);
-  run(
+test("guests only reach pages shared with them, capped by their role", async () => {
+  const internal = await page("Interne Kalkulation"),
+    shared = await page("Abstimmung mit Kunde"),
+    child = await page("Protokoll", shared);
+  await run(
     "UPDATE documents SET html='<p>Freigabetermin im Oktober</p>' WHERE page_id=?",
     shared,
   );
-  run(
+  await run(
     "UPDATE documents SET html='<p>Marge 40 Prozent</p>' WHERE page_id=?",
     internal,
   );
-  act({
+  await act({
     action: "member.guest",
     workspaceId: wid,
     userId: guest.id,
     guest: true,
   });
   // Without a grant, a guest sees nothing of the team space.
-  assert.throws(() => requirePage(guest, shared), /Berechtigung/);
-  act({
+  await assert.rejects(async () => await requirePage(guest, shared), /Berechtigung/);
+  await act({
     action: "grant.set",
     resourceId: shared,
     userId: guest.id,
     role: "editor",
   });
-  assert.equal(requirePage(guest, shared, true).id, shared);
-  assert.equal(requirePage(guest, child).id, child);
-  assert.throws(() => requirePage(guest, internal), /Berechtigung/);
-  const boot = bootstrap(guest, wid);
+  assert.equal((await requirePage(guest, shared, true)).id, shared);
+  assert.equal((await requirePage(guest, child)).id, child);
+  await assert.rejects(async () => await requirePage(guest, internal), /Berechtigung/);
+  const boot = await bootstrap(guest, wid);
   assert.equal(boot.workspace.guest, 1);
   assert.deepEqual(boot.pages.map((p) => p.title).sort(), [
     "Abstimmung mit Kunde",
@@ -94,31 +94,31 @@ test("guests only reach pages shared with them, capped by their role", () => {
   );
   // Members still see the whole member list including the guest flag.
   assert.equal(
-    bootstrap(member, wid).members.find((m) => m.id === guest.id)?.guest,
+    (await bootstrap(member, wid)).members.find((m) => m.id === guest.id)?.guest,
     1,
   );
   // Search follows the same boundary.
-  const hits = (q: string) =>
-    searchWorkspace(guest, wid, q).map((r) => r.title);
-  assert.deepEqual(hits("Freigabetermin"), ["Abstimmung mit Kunde"]);
-  assert.deepEqual(hits("Marge"), []);
+  const hits = async (q: string) =>
+    (await searchWorkspace(guest, wid, q)).map((r) => r.title);
+  assert.deepEqual(await hits("Freigabetermin"), ["Abstimmung mit Kunde"]);
+  assert.deepEqual(await hits("Marge"), []);
   // Workspace-wide actions need full membership.
-  assert.throws(
-    () =>
-      act(
+  await assert.rejects(
+    async () =>
+      await act(
         { action: "page.create", workspaceId: wid, spaceId: space, title: "x" },
         guest,
       ),
     /Gäste|Berechtigung/,
   );
-  assert.throws(
-    () =>
-      act({ action: "space.create", workspaceId: wid, name: "Eigener" }, guest),
+  await assert.rejects(
+    async () =>
+      await act({ action: "space.create", workspaceId: wid, name: "Eigener" }, guest),
     /Gäste|Berechtigung/,
   );
-  assert.throws(
-    () =>
-      act(
+  await assert.rejects(
+    async () =>
+      await act(
         {
           action: "member.invite",
           workspaceId: wid,
@@ -130,22 +130,22 @@ test("guests only reach pages shared with them, capped by their role", () => {
     /Gäste|Berechtigung/,
   );
   // Editing the shared page works; the stored role caps grants.
-  act(
+  await act(
     { action: "page.update", pageId: shared, patch: { title: "Abstimmung" } },
     guest,
   );
-  assert.equal(pageData(guest, shared).page.title, "Abstimmung");
-  act({
+  assert.equal((await pageData(guest, shared)).page.title, "Abstimmung");
+  await act({
     action: "member.role",
     workspaceId: wid,
     userId: guest.id,
     role: "viewer",
   });
-  assert.throws(() => requirePage(guest, shared, true), /Berechtigung/);
+  await assert.rejects(async () => await requirePage(guest, shared, true), /Berechtigung/);
   // Guests cannot become owners, owners cannot become guests.
-  assert.throws(
-    () =>
-      act({
+  await assert.rejects(
+    async () =>
+      await act({
         action: "member.role",
         workspaceId: wid,
         userId: guest.id,
@@ -153,9 +153,9 @@ test("guests only reach pages shared with them, capped by their role", () => {
       }),
     /Gäste zuerst/,
   );
-  assert.throws(
-    () =>
-      act({
+  await assert.rejects(
+    async () =>
+      await act({
         action: "member.guest",
         workspaceId: wid,
         userId: owner.id,
@@ -164,47 +164,47 @@ test("guests only reach pages shared with them, capped by their role", () => {
     /Eigentümer/,
   );
   // Turning a guest into a member opens the team space.
-  act({
+  await act({
     action: "member.guest",
     workspaceId: wid,
     userId: guest.id,
     guest: false,
   });
-  assert.equal(requirePage(guest, internal).id, internal);
+  assert.equal((await requirePage(guest, internal)).id, internal);
 });
 
-test("guest invitations add guests without downgrading existing members", () => {
-  const invited = account("invited-guest");
-  act({
+test("guest invitations add guests without downgrading existing members", async () => {
+  const invited = await account("invited-guest");
+  await act({
     action: "member.invite",
     workspaceId: wid,
     email: invited.email,
     role: "editor",
     guest: true,
   });
-  act({
+  await act({
     action: "member.invite",
     workspaceId: wid,
     email: member.email,
     role: "viewer",
     guest: true,
   });
-  acceptInvites(invited as never, true);
-  acceptInvites(member as never, true);
-  const guestRow = (uid: string) =>
-    one(
+  await acceptInvites(invited as never, true);
+  await acceptInvites(member as never, true);
+  const guestRow = async (uid: string) =>
+    await one(
       "SELECT 1 FROM workspace_guests WHERE workspace_id=? AND user_id=?",
       wid,
       uid,
     );
-  assert.ok(guestRow(invited.id));
-  assert.equal(guestRow(member.id), undefined);
+  assert.ok(await guestRow(invited.id));
+  assert.equal(await guestRow(member.id), undefined);
   // Removing a guest also clears the guest mark.
-  act({
+  await act({
     action: "member.role",
     workspaceId: wid,
     userId: invited.id,
     role: "remove",
   });
-  assert.equal(guestRow(invited.id), undefined);
+  assert.equal(await guestRow(invited.id), undefined);
 });

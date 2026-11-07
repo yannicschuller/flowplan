@@ -17,7 +17,7 @@ export async function POST(
   { params }: { params: Promise<{ token: string }> },
 ) {
   try {
-    checkOrigin(req);
+    await checkOrigin(req);
     requireBodySize(req, MAX_GUEST_UPLOAD + 100000, "Gäste können Dateien bis 10 MB hochladen.");
     const { token } = await params,
       form = await req.formData(),

@@ -15,7 +15,7 @@ async function handle(req: Request, { params }: { params: Promise<{ path: string
       { schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"], status: "413", detail: "Request too large." },
       { status: 413, headers: { "Content-Type": SCIM_CONTENT_TYPE } },
     );
-  const result = handleScim({
+  const result = await handleScim({
     method: req.method,
     path,
     query: new URL(req.url).searchParams,

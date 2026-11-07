@@ -11,7 +11,7 @@ export function AppProfilesLink() {
   const t = useT();
   // Known only in the page (the app's bridge and user agent): nothing on
   // the server's first render.
-  const [action, setAction] = useState<ReturnType<typeof appProfilesAction>>(null);
+  const [action, setAction] = useState<Awaited<ReturnType<typeof appProfilesAction>>>(null);
   useEffect(() => setAction(appProfilesAction()), []);
   if (!action) return null;
   const open = (event: MouseEvent<HTMLAnchorElement>) => {

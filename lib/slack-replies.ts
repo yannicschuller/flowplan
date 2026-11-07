@@ -35,8 +35,8 @@ export function slackToPlain(text: string) {
     .trim();
 }
 
-export function receiveSlackEvent(hookId: string, headers: Headers, body: string) {
-  const hook = one<{ id: string; format: string; credentials: string | null; created_by: string | null }>(
+export async function receiveSlackEvent(hookId: string, headers: Headers, body: string) {
+  const hook = await one<{ id: string; format: string; credentials: string | null; created_by: string | null }>(
     "SELECT id,format,credentials,created_by FROM webhooks WHERE id=?",
     hookId,
   );
@@ -62,30 +62,30 @@ export function receiveSlackEvent(hookId: string, headers: Headers, body: string
   // (lib/replay-guard.ts).
   if (payload.type === "event_callback") {
     if (typeof payload.event_id !== "string" || !payload.event_id) return { ok: true, ignored: "event" };
-    if (claimOnce(`slack:${hook.id}:${payload.event_id.slice(0, 100)}`, "", 10 * 60_000) !== "new") return { ok: true, ignored: "retry" };
+    if ((await claimOnce(`slack:${hook.id}:${payload.event_id.slice(0, 100)}`, "", 10 * 60_000)) !== "new") return { ok: true, ignored: "retry" };
   }
   const event = payload.event;
   if (payload.type !== "event_callback" || event?.type !== "message" || event.subtype || event.bot_id) return { ok: true, ignored: "event" };
   if (!event.thread_ts || event.thread_ts === event.ts || typeof event.text !== "string") return { ok: true, ignored: "not a reply" };
-  const message = one<{ page_id: string; row_id: string | null }>(
+  const message = await one<{ page_id: string; row_id: string | null }>(
     "SELECT page_id,row_id FROM webhook_messages WHERE webhook_id=? AND ts=?",
     hook.id,
     event.thread_ts,
   );
   if (!message) return { ok: true, ignored: "unknown thread" };
-  const person = hook.created_by ? one<Identity>("SELECT * FROM users WHERE id=? AND disabled=0", hook.created_by) : undefined;
+  const person = hook.created_by ? (await one<Identity>("SELECT * FROM users WHERE id=? AND disabled=0", hook.created_by)) : undefined;
   if (!person) return { ok: true, ignored: "no author" };
   const identity: Identity = {
     ...person,
-    groups: all<{ group_id: string }>("SELECT group_id FROM group_members WHERE user_id=?", person.id).map((g) => g.group_id),
+    groups: (await all<{ group_id: string }>("SELECT group_id FROM group_members WHERE user_id=?", person.id)).map((g) => g.group_id),
     isAdmin: false,
   };
   const text = slackToPlain(event.text).slice(0, 4990);
   if (!text) return { ok: true, ignored: "empty" };
   // As a comment of the webhook's owner (rights checked as for them); the
   // Slack webhook itself gets no echo of its own thread.
-  quietly(hook.id, () =>
-    command(identity, { action: "comment.create", pageId: message.page_id, rowId: message.row_id || undefined, body: `Slack: ${text}` }, true),
+  await quietly(hook.id, async () =>
+    await command(identity, { action: "comment.create", pageId: message.page_id, rowId: message.row_id || undefined, body: `Slack: ${text}` }, true),
   );
   return { ok: true };
 }

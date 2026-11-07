@@ -9,41 +9,42 @@ import {
 import type { Identity } from "./types";
 import { documentKey } from "./document-live";
 import { presencePrefix, setTextPresence, textPeers } from "./text-presence";
+import { filterAsync } from "./each-async";
 
 // Tombstones outlive a lease so a delayed request cannot resurrect a departed tab.
 const RETENTION_MS = 300_000;
-export function editorPresence(
+export async function editorPresence(
   user: Identity,
   sessionToken: string,
   input: unknown,
   now = Date.now(),
 ) {
   const data = cursorRequestSchema.parse(input);
-  const session = one<{ user_id: string }>(
+  const session = await one<{ user_id: string }>(
     "SELECT s.user_id FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=? AND s.expires>? AND u.disabled=0",
     sessionToken,
     now,
   );
   if (session?.user_id !== user.id)
     throw new HttpError(401, "Bitte melde dich an.");
-  const page = requirePage(user, data.pageId);
+  const page = await requirePage(user, data.pageId);
   const document = data.rowId
-    ? one<{ generation: string }>(
+    ? (await one<{ generation: string }>(
         "SELECT d.generation FROM row_documents d JOIN rows r ON r.id=d.row_id WHERE r.id=? AND r.page_id=?",
         data.rowId,
         page.id,
-      )
+      ))
     : page.kind === "document"
-      ? one<{ generation: string }>(
+      ? (await one<{ generation: string }>(
           "SELECT generation FROM documents WHERE page_id=?",
           page.id,
-        )
+        ))
       : undefined;
   if (!document) throw new HttpError(404, "Dokument nicht gefunden.");
   if (document.generation !== data.generation)
     throw new HttpError(409, "Neue Dokumentversion verfügbar.");
-  run("DELETE FROM editor_presence WHERE seen<?", now - RETENTION_MS);
-  const previous = one<{
+  await run("DELETE FROM editor_presence WHERE seen<?", now - RETENTION_MS);
+  const previous = await one<{
     page_id: string;
     row_id: string | null;
     generation: string;
@@ -68,14 +69,14 @@ export function editorPresence(
   if (
     !previous &&
     Number(
-      one<{ n: number }>(
+      (await one<{ n: number }>(
         "SELECT count(*) n FROM editor_presence WHERE session_token=?",
         sessionToken,
-      )?.n,
+      ))?.n,
     ) >= 128
   )
     throw new HttpError(429, "Zu viele aktive Dokumentinstanzen.");
-  run(
+  await run(
     `INSERT INTO editor_presence(id,session_token,client_id,page_id,row_id,generation,sequence,cursor,seen) VALUES(?,?,?,?,?,?,?,?,?)
     ON CONFLICT(session_token,client_id) DO UPDATE SET sequence=excluded.sequence,cursor=excluded.cursor,seen=excluded.seen
     WHERE excluded.sequence>editor_presence.sequence`,
@@ -89,7 +90,7 @@ export function editorPresence(
     data.cursor ? JSON.stringify(data.cursor) : null,
     now,
   );
-  const peers = all<{
+  const peers = await all<{
     id: string;
     user_id: string;
     name: string;
@@ -131,8 +132,7 @@ export function editorPresence(
     clientId: data.clientId,
     peers: [
       ...guests,
-      ...peers
-      .filter((p) => pageRole({ ...user, id: p.user_id }, page))
+      ...(await filterAsync(peers, async (p) => await pageRole({ ...user, id: p.user_id }, page)))
       .map((p): CursorPeer => ({
         id: p.id,
         userId: p.user_id,

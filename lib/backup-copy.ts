@@ -28,10 +28,10 @@ export function copyPath() {
   return resolve(tmp, `backup-${id()}.sqlite`);
 }
 // A consistent copy of the database, encrypted when a key is set.
-export function databaseCopy(now: number, copy: string) {
+export async function databaseCopy(now: number, copy: string) {
   // Fails before anything is written when the key is wrong.
   const encrypted = encryptionEnabled();
-  snapshotDatabase(copy);
+  await snapshotDatabase(copy);
   if (encrypted) writeFileSync(copy, seal(readFileSync(copy)));
   return { copy, name: backupName(now, encrypted), encrypted, bytes: statSync(copy).size };
 }

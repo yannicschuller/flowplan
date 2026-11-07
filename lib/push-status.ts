@@ -224,7 +224,7 @@ export function relaySetup() {
     wellKnownUrl: instance ? `${instance}${WELL_KNOWN_PATH}` : null,
   };
 }
-export type RelaySetup = ReturnType<typeof relaySetup>;
+export type RelaySetup = Awaited<ReturnType<typeof relaySetup>>;
 
 function contentMode(): "default" | "on" | "off" {
   const v = process.env.MOBILE_PUSH_CONTENT || "";
@@ -241,22 +241,22 @@ function vapidSource(): "env" | "partial" | "file" | "pending" {
   return file ? "file" : "pending";
 }
 
-const count = (sql: string, ...args: (string | number)[]) => {
+const count = async (sql: string, ...args: (string | number)[]) => {
   try {
-    return Number(one<{ n: number }>(sql, ...args)?.n || 0);
+    return Number((await one<{ n: number }>(sql, ...args))?.n || 0);
   } catch {
     return 0;
   }
 };
-function devices(now: number) {
+async function devices(now: number) {
   return {
     // App installations; of them registered with the relay, with the relay
     // only (no Expo token), and with an Expo token.
-    apps: count("SELECT COUNT(*) n FROM mobile_devices"),
-    relay: count("SELECT COUNT(*) n FROM mobile_push_relay"),
-    relayOnly: count(`SELECT COUNT(*) n FROM push_subscriptions WHERE endpoint LIKE '${RELAY_ENDPOINT}%'`),
-    expo: count(`SELECT COUNT(*) n FROM push_subscriptions WHERE endpoint LIKE '${EXPO_ENDPOINT}%'`),
-    web: count(
+    apps: await count("SELECT COUNT(*) n FROM mobile_devices"),
+    relay: await count("SELECT COUNT(*) n FROM mobile_push_relay"),
+    relayOnly: await count(`SELECT COUNT(*) n FROM push_subscriptions WHERE endpoint LIKE '${RELAY_ENDPOINT}%'`),
+    expo: await count(`SELECT COUNT(*) n FROM push_subscriptions WHERE endpoint LIKE '${EXPO_ENDPOINT}%'`),
+    web: await count(
       `SELECT COUNT(*) n FROM push_subscriptions s JOIN sessions se ON se.token=s.session_token WHERE se.expires>? AND s.endpoint NOT LIKE '${EXPO_ENDPOINT}%' AND s.endpoint NOT LIKE '${RELAY_ENDPOINT}%'`,
       now,
     ),
@@ -289,7 +289,7 @@ export type PushStatusOptions = { force?: boolean; now?: number; timeoutMs?: num
 export async function pushStatus(options: PushStatusOptions = {}) {
   const now = options.now ?? Date.now();
   const relay = relaySetup();
-  const keys = relay.enabled ? pushIdentityStatus(now) : [];
+  const keys = relay.enabled ? (await pushIdentityStatus(now)) : [];
   const signing = keys.find((k) => k.signing)?.id ?? null;
   let health: Probe | null = null,
     self: Probe | null = null;
@@ -304,7 +304,7 @@ export async function pushStatus(options: PushStatusOptions = {}) {
         cachedProbe(selfKey(instance), () => checkWellKnown(instance, signing, { timeoutMs: options.timeoutMs }), !!options.force, now),
       ]);
   }
-  const deliveries = pushDeliveries(now);
+  const deliveries = await pushDeliveries(now);
   return {
     at: now,
     tone: pushTone({ relay, health, self, deliveries }, now),
@@ -318,10 +318,10 @@ export async function pushStatus(options: PushStatusOptions = {}) {
     },
     mobile: { enabled: mobilePushEnabled(), content: contentMode() },
     web: { vapid: vapidSource(), subject: !!process.env.WEB_PUSH_SUBJECT?.trim() },
-    devices: devices(now),
+    devices: await devices(now),
     queue: {
-      pending: count("SELECT COUNT(*) n FROM push_deliveries WHERE delivered_at IS NULL AND attempts<5"),
-      givenUp: count("SELECT COUNT(*) n FROM push_deliveries WHERE delivered_at IS NULL AND attempts>=5"),
+      pending: await count("SELECT COUNT(*) n FROM push_deliveries WHERE delivered_at IS NULL AND attempts<5"),
+      givenUp: await count("SELECT COUNT(*) n FROM push_deliveries WHERE delivered_at IS NULL AND attempts>=5"),
     },
     deliveries,
   };
@@ -344,11 +344,11 @@ export async function pushStatusFor(user: Identity, options: { force?: boolean }
 
 // For the tiles (lib/admin-summary.ts, lib/admin-monitoring.ts): what is
 // known now, without a network request and without creating a key.
-export function pushSummary(now = Date.now()) {
+export async function pushSummary(now = Date.now()) {
   const relay = relaySetup();
   const health = relay.enabled && relay.url ? knownProbe(healthKey(relay.url), now) : null;
   const self = relay.enabled && relay.instance ? knownProbe(selfKey(relay.instance), now) : null;
-  const deliveries = pushDeliveries(now);
+  const deliveries = await pushDeliveries(now);
   const sum = (result: "ok" | "error") =>
     Object.values(deliveries.totals).reduce((a, c) => a + (result === "ok" ? c.ok : c.error + c.forbidden + c.invalid + c.rate_limited), 0);
   return {
@@ -365,7 +365,7 @@ export function pushSummary(now = Date.now()) {
     hourly: deliveries.collecting ? deliveries.hourly.map((h) => h.ok) : null,
   };
 }
-export type PushSummary = ReturnType<typeof pushSummary>;
+export type PushSummary = Awaited<ReturnType<typeof pushSummary>>;
 
 // Runs the live checks for the tiles, waiting at most `budgetMs`; what is
 // not done by then shows on the next load.

@@ -52,6 +52,7 @@ import { reduceContent } from "./summarize";
 import { isLocalProvider } from "./resolve";
 import { aiComplete, requireAi } from "./run";
 import { cellPlain, nameLookup } from "./sources";
+import { filterAsync, mapAsync } from "../each-async";
 
 type Locale = "de" | "en" | "fr" | "zh";
 const LANGUAGE: Record<Locale, string> = { de: "German", en: "English", fr: "French", zh: "Chinese" };
@@ -67,15 +68,15 @@ const localeSchema = z.enum(["de", "en", "fr", "zh"]).default("de");
 const itemId = z.string().min(1).max(100);
 
 // The board as an editor whose AI may read it.
-function boardFor(user: Identity, pageId: string) {
-  const page = requirePage(user, pageId, true);
+async function boardFor(user: Identity, pageId: string) {
+  const page = await requirePage(user, pageId, true);
   if (page.kind !== "whiteboard") throw new HttpError(400, "Kein Whiteboard.");
   if (page.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
-  requireUnlocked(user, page);
-  const resolved = requireAi(user, "whiteboard", { workspaceId: page.workspace_id, pageId: page.id });
+  await requireUnlocked(user, page);
+  const resolved = await requireAi(user, "whiteboard", { workspaceId: page.workspace_id, pageId: page.id });
   return { page, resolved };
 }
-const visibleItems = (page: Page) => whiteboardSnapshotItems(page).filter((i) => !i.covered);
+const visibleItems = async (page: Page) => (await whiteboardSnapshotItems(page)).filter((i) => !i.covered);
 const fence = (tag: string, text: string) => `<${tag}>\n${text.replaceAll(`</${tag}>`, "")}\n</${tag}>`;
 const oneLine = (text: string, max: number) => text.replace(/\s+/g, " ").trim().slice(0, max);
 
@@ -96,9 +97,9 @@ export const CLUSTER_SYSTEM = [
 
 export async function clusterNotes(user: Identity, raw: unknown, signal?: AbortSignal): Promise<{ groups: ThemeGroup[]; sent: number; skipped: number }> {
   const b = clusterInput.parse(raw);
-  const { page } = boardFor(user, b.pageId);
+  const { page } = await boardFor(user, b.pageId);
   const wanted = new Set(b.ids);
-  const notes = visibleItems(page).filter((i) => wanted.has(i.id) && i.type === "sticky");
+  const notes = (await visibleItems(page)).filter((i) => wanted.has(i.id) && i.type === "sticky");
   const withText = notes.filter((i) => (i.text || "").trim());
   const sent = withText.slice(0, WB_AI_LIMITS.notes);
   if (sent.length < 2) throw new HttpError(400, "Zu wenige Notizzettel mit Text zum Gruppieren.");
@@ -126,7 +127,7 @@ export async function clusterNotes(user: Identity, raw: unknown, signal?: AbortS
     if (other) other.ids.push(...unsent);
     else groups.push({ label: rest, ids: unsent });
   }
-  audit(user.id, "ai.whiteboard", page.id, `cluster:${sent.length}`);
+  await audit(user.id, "ai.whiteboard", page.id, `cluster:${sent.length}`);
   return { groups, sent: sent.length, skipped: notes.length - sent.length };
 }
 
@@ -167,22 +168,21 @@ const inside = (item: WhiteboardItem, frame: WhiteboardItem) => {
 // The board as text for the model: frames as sections (in reading order),
 // elements inside them as lines; notes with author and votes; linked pages
 // and records only when the AI may read them.
-export function boardText(user: Identity, items: WhiteboardItem[], limit: number = WB_AI_LIMITS.summaryItems) {
+export async function boardText(user: Identity, items: WhiteboardItem[], limit: number = WB_AI_LIMITS.summaryItems) {
   const names = nameLookup();
   const readable = items.filter((i) => !["connector", "pen", "image", "emoji"].includes(i.type) || (i.type === "connector" && i.text));
   const frames = readable.filter((i) => i.type === "frame").sort((a, b) => a.y - b.y || a.x - b.x);
-  const rows = readable
-    .filter((i) => i.type === "card" && i.rowId && i.pageId && aiMayRead(user, i.pageId, i.rowId))
+  const rows = (await filterAsync(readable, async (i) => i.type === "card" && i.rowId && i.pageId && await aiMayRead(user, i.pageId, i.rowId)))
     .map((i) => ({ pageId: i.pageId!, rowId: i.rowId! }));
-  const cards = rows.length ? whiteboardRowCards(user, rows) : {};
-  const line = (item: WhiteboardItem): string | null => {
+  const cards = rows.length ? (await whiteboardRowCards(user, rows)) : {};
+  const line = async (item: WhiteboardItem): Promise<string | null> => {
     if (item.type === "card") {
-      if (!item.pageId || !aiMayRead(user, item.pageId, item.rowId)) return null;
+      if (!item.pageId || !(await aiMayRead(user, item.pageId, item.rowId))) return null;
       if (item.rowId) {
         const card = cards[item.rowId];
         return card ? `- [record in ${card.database}] ${card.title}${card.props.length ? ` (${card.props.map((p) => `${p.name}: ${p.value}`).join(", ")})` : ""}` : null;
       }
-      const title = all<{ title: string }>("SELECT title FROM pages WHERE id=? AND deleted_at IS NULL", item.pageId)[0]?.title;
+      const title = (await all<{ title: string }>("SELECT title FROM pages WHERE id=? AND deleted_at IS NULL", item.pageId))[0]?.title;
       return title ? `- [linked page] ${title}` : null;
     }
     const text = oneLine(itemText(item), 1500);
@@ -202,10 +202,10 @@ export function boardText(user: Identity, items: WhiteboardItem[], limit: number
   for (const frame of frames) {
     const members = order(readable.filter((i) => i.type !== "frame" && !used.has(i.id) && inside(i, frame)));
     members.forEach((i) => used.add(i.id));
-    sections.push({ title: oneLine(frame.text || "", 200) || "Frame", lines: members.map(line).filter((l): l is string => !!l) });
+    sections.push({ title: oneLine(frame.text || "", 200) || "Frame", lines: (await mapAsync(members, line)).filter((l): l is string => !!l) });
   }
   const loose = order(readable.filter((i) => i.type !== "frame" && !used.has(i.id)));
-  if (loose.length) sections.push({ title: frames.length ? "Outside frames" : "Board", lines: loose.map(line).filter((l): l is string => !!l) });
+  if (loose.length) sections.push({ title: frames.length ? "Outside frames" : "Board", lines: (await mapAsync(loose, line)).filter((l): l is string => !!l) });
   const total = sections.reduce((s, x) => s + x.lines.length, 0);
   let included = 0;
   const parts: string[] = [];
@@ -276,10 +276,10 @@ export function summaryHtml(
 
 export async function summarizeBoard(user: Identity, raw: unknown, signal?: AbortSignal) {
   const b = summarizeInput.parse(raw);
-  const { page, resolved } = boardFor(user, b.pageId);
+  const { page, resolved } = await boardFor(user, b.pageId);
   const wanted = b.ids ? new Set(b.ids) : null;
-  const items = visibleItems(page).filter((i) => !wanted || wanted.has(i.id));
-  const board = boardText(user, items);
+  const items = (await visibleItems(page)).filter((i) => !wanted || wanted.has(i.id));
+  const board = await boardText(user, items);
   if (!board.text.trim()) throw new HttpError(400, "Auf dem Whiteboard steht noch nichts, das sich zusammenfassen ließe.");
   const local = resolved.config.kind === "ollama" || isLocalProvider(resolved.config);
   const options = { workspaceId: page.workspace_id, pageId: page.id, signal };
@@ -316,19 +316,19 @@ export async function summarizeBoard(user: Identity, raw: unknown, signal?: Abor
   if (signal?.aborted) throw new HttpError(499, "Abgebrochen.");
   // Next to the board (under the same parent) when the person may add pages
   // there, else at the top of the space.
-  const parent = page.parent_id ? all<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", page.parent_id)[0] : undefined;
-  const parentOk = !!parent && ["editor", "owner"].includes(pageRole(user, parent) || "") && !parent.locked;
+  const parent = page.parent_id ? (await all<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", page.parent_id))[0] : undefined;
+  const parentOk = !!parent && ["editor", "owner"].includes(await pageRole(user, parent) || "") && !parent.locked;
   const w = WORDS[b.locale];
   const title = `${w.title}: ${page.title || "Whiteboard"}`.slice(0, 200);
-  const { id } = command(user, {
+  const { id } = (await command(user, {
     action: "page.create",
     workspaceId: page.workspace_id,
     spaceId: page.space_id,
     ...(parentOk ? { parentId: parent!.id } : {}),
     title,
     kind: "document",
-  }) as { id: string };
-  const members = all<{ id: string; name: string; email: string }>(
+  })) as { id: string };
+  const members = await all<{ id: string; name: string; email: string }>(
     "SELECT u.id,u.name,u.email FROM members m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=? AND u.disabled=0",
     page.workspace_id,
   );
@@ -338,8 +338,8 @@ export async function summarizeBoard(user: Identity, raw: unknown, signal?: Abor
       : reduced.truncated
         ? `${w.left}: …`
         : "";
-  appendHtml(user, id, summaryHtml(summary, { id: page.id, title: page.title }, { locale: b.locale, tasks: b.tasks, members, note: leftOut }));
-  audit(user.id, "ai.whiteboard", page.id, `summarize:${id}`);
+  await appendHtml(user, id, summaryHtml(summary, { id: page.id, title: page.title }, { locale: b.locale, tasks: b.tasks, members, note: leftOut }));
+  await audit(user.id, "ai.whiteboard", page.id, `summarize:${id}`);
   return {
     pageId: id,
     title,
@@ -376,11 +376,11 @@ export const GENERATE_SYSTEM: Record<(typeof GENERATE_KINDS)[number], string> = 
 
 export async function generateStructure(user: Identity, raw: unknown, signal?: AbortSignal): Promise<GeneratedStructure> {
   const b = generateInput.parse(raw);
-  const page = requirePage(user, b.pageId, true);
+  const page = await requirePage(user, b.pageId, true);
   if (page.kind !== "whiteboard") throw new HttpError(400, "Kein Whiteboard.");
   if (page.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
   // Only the description goes to the model, nothing of the board.
-  requireAi(user, "whiteboard", { workspaceId: page.workspace_id });
+  await requireAi(user, "whiteboard", { workspaceId: page.workspace_id });
   const input = {
     system: GENERATE_SYSTEM[b.kind],
     messages: [{ role: "user" as const, content: `Language: the language of the description (if unclear: ${LANGUAGE[b.locale]}).\n\n${fence("content", b.prompt)}` }],
@@ -391,7 +391,7 @@ export async function generateStructure(user: Identity, raw: unknown, signal?: A
     b.kind === "mindmap"
       ? mindmapStructure((await aiJson(user, "whiteboard", input, mindmapAnswerSchema, options)).root)
       : flowchartStructure(await aiJson(user, "whiteboard", input, flowchartAnswerSchema, options));
-  audit(user.id, "ai.whiteboard", page.id, `generate:${b.kind}:${structure.nodes.length}`);
+  await audit(user.id, "ai.whiteboard", page.id, `generate:${b.kind}:${structure.nodes.length}`);
   return structure;
 }
 
@@ -416,27 +416,27 @@ export const SPLIT_SYSTEM = [
 export type SplitRecord = { cells: Record<string, unknown>; view: { name: string; value: string }[]; problem?: string };
 export async function splitNotes(user: Identity, raw: unknown, signal?: AbortSignal): Promise<{ records: Record<string, SplitRecord> }> {
   const b = splitInput.parse(raw);
-  const { page } = boardFor(user, b.pageId);
-  const db = requirePage(user, b.databaseId, true);
+  const { page } = await boardFor(user, b.pageId);
+  const db = await requirePage(user, b.databaseId, true);
   if (db.kind !== "database") throw new HttpError(400, "Keine Datenbank.");
   if (db.workspace_id !== page.workspace_id) throw new HttpError(404, "Seite nicht gefunden.");
-  requireUnlocked(user, db);
-  if (!aiMayRead(user, db.id)) throw new HttpError(403, AI_BLOCKED_MESSAGE);
+  await requireUnlocked(user, db);
+  if (!(await aiMayRead(user, db.id))) throw new HttpError(403, AI_BLOCKED_MESSAGE);
   const wanted = new Set(b.ids);
-  const notes = visibleItems(page).filter((i) => wanted.has(i.id) && i.type === "sticky" && (i.text || "").trim());
+  const notes = (await visibleItems(page)).filter((i) => wanted.has(i.id) && i.type === "sticky" && (i.text || "").trim());
   if (!notes.length) throw new HttpError(400, "Keine Notizzettel mit Text ausgewählt.");
-  const fields = writableFields(user, db);
-  const allFields = database(db.id).fields;
+  const fields = await writableFields(user, db);
+  const allFields = (await database(db.id)).fields;
   const titleId = allFields[0]?.id;
   const catalog = fields
     .filter((f) => f.id !== titleId)
     .slice(0, 40)
     .map((f) => ({ name: f.name, type: f.type, ...(f.options?.length ? { options: f.options.slice(0, 30) } : {}) }));
   if (!catalog.length) throw new HttpError(400, "Diese Datenbank hat keine Eigenschaften, die die KI ausfüllen kann.");
-  const members = all<{ name: string }>(
+  const members = (await all<{ name: string }>(
     "SELECT u.name FROM members m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=? AND u.disabled=0 ORDER BY u.name LIMIT 150",
     db.workspace_id,
-  ).map((m) => m.name);
+  )).map((m) => m.name);
   const today = new Date().toISOString().slice(0, 10);
   const prompt = [
     `Today is ${today}. Database: ${db.title}.`,
@@ -469,7 +469,7 @@ export async function splitNotes(user: Identity, raw: unknown, signal?: AbortSig
     const problems: string[] = [];
     for (const [key, value] of Object.entries(given)) {
       try {
-        Object.assign(cells, cellPatch(user, db, { [key]: value }).cells);
+        Object.assign(cells, (await cellPatch(user, db, { [key]: value })).cells);
       } catch (error) {
         problems.push(error instanceof HttpError ? error.message : `${key}: ?`);
       }
@@ -484,6 +484,6 @@ export async function splitNotes(user: Identity, raw: unknown, signal?: AbortSig
       ...(problems.length ? { problem: problems.slice(0, 3).join(" ") } : {}),
     };
   }
-  audit(user.id, "ai.whiteboard", page.id, `split:${notes.length}`);
+  await audit(user.id, "ai.whiteboard", page.id, `split:${notes.length}`);
   return { records };
 }

@@ -36,7 +36,7 @@ const checks: [
 ] = [true, true, true];
 void checks;
 
-export type Facts = ReturnType<typeof facts>;
+export type Facts = Awaited<ReturnType<typeof facts>>;
 export function facts() {
   const languages = Object.keys(LANGUAGES) as (keyof typeof LANGUAGES)[];
   return {

@@ -849,7 +849,7 @@ export function parseAffine(ws: AWorkspace, fallbackTitle: string): ImportTree {
     // A template that is only a database becomes a database template; other
     // databases in templates are left out (a template has no pages below it).
     const databaseTemplate = template && docRoot ? onlyDatabase(docRoot) : null;
-    let templateDb: ReturnType<typeof convertDatabase> | null = null;
+    let templateDb: Awaited<ReturnType<typeof convertDatabase>> | null = null;
     const ctx: Ctx = {
       ws,
       warn: (m) => warnings.add(m),
@@ -892,7 +892,7 @@ export function parseAffine(ws: AWorkspace, fallbackTitle: string): ImportTree {
             }
     } else warnings.add("Ein Dokument ohne Inhalt wurde nur mit seinem Titel übernommen.");
     if (template) {
-      const db = templateDb as ReturnType<typeof convertDatabase> | null;
+      const db = templateDb as Awaited<ReturnType<typeof convertDatabase>> | null;
       templates.push({
         key,
         name: title,

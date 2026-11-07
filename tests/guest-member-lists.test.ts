@@ -16,36 +16,36 @@ const { command } = await import("../lib/api");
 const { inlineMentionCandidates } = await import("../lib/inline-comments");
 const { getForm } = await import("../lib/forms");
 
-function account(name: string) {
+async function account(name: string) {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email,email_verified) VALUES(?,?,?,?,1)", uid, uid, name, `${name}@example.test`);
+  await run("INSERT INTO users(id,subject,name,email,email_verified) VALUES(?,?,?,?,1)", uid, uid, name, `${name}@example.test`);
   return { id: uid, name, email: `${name}@example.test`, groups: [], isAdmin: false, disabled: 0, created_at: "" } as Identity;
 }
 type Result = { id: string } & Record<string, unknown>;
-const owner = account("Olga"),
-  colleague = account("Carla"),
-  guest = account("Gustav");
-const wid = createWorkspace(owner.id, "Firma");
-run("INSERT INTO members VALUES(?,?,?)", wid, colleague.id, "editor");
-const act = (input: Record<string, unknown>, as = owner) => command(as, input) as Result;
-const team = act({ action: "space.create", workspaceId: wid, name: "Team" }).id;
-const page = act({ action: "page.create", workspaceId: wid, spaceId: team, title: "Geteilt", kind: "document" }).id;
-act({ action: "page.share", pageId: page, email: guest.email, role: "editor" });
-assert.ok(one("SELECT 1 FROM workspace_guests WHERE user_id=?", guest.id));
+const owner = await account("Olga"),
+  colleague = await account("Carla"),
+  guest = await account("Gustav");
+const wid = await createWorkspace(owner.id, "Firma");
+await run("INSERT INTO members VALUES(?,?,?)", wid, colleague.id, "editor");
+const act = async (input: Record<string, unknown>, as = owner) => (await command(as, input)) as Result;
+const team = (await act({ action: "space.create", workspaceId: wid, name: "Team" })).id;
+const page = (await act({ action: "page.create", workspaceId: wid, spaceId: team, title: "Geteilt", kind: "document" })).id;
+await act({ action: "page.share", pageId: page, email: guest.email, role: "editor" });
+assert.ok(await one("SELECT 1 FROM workspace_guests WHERE user_id=?", guest.id));
 
-test("mention choices of a guest hold nobody but the guest", () => {
-  assert.deepEqual(inlineMentionCandidates(guest, page, undefined, "").map((m) => m.email), [guest.email]);
-  assert.deepEqual(inlineMentionCandidates(guest, page, undefined, "carla"), []);
+test("mention choices of a guest hold nobody but the guest", async () => {
+  assert.deepEqual((await inlineMentionCandidates(guest, page, undefined, "")).map((m) => m.email), [guest.email]);
+  assert.deepEqual(await inlineMentionCandidates(guest, page, undefined, "carla"), []);
   // Members still find their colleagues.
-  const forMember = inlineMentionCandidates(colleague, page, undefined, "").map((m) => m.name);
+  const forMember = (await inlineMentionCandidates(colleague, page, undefined, "")).map((m) => m.name);
   assert.deepEqual(forMember.sort(), ["Carla", "Gustav", "Olga"]);
 });
 
-test("an internal form lists no member names to a guest", () => {
-  const db = act({ action: "page.create", workspaceId: wid, spaceId: team, title: "Anfragen", kind: "database", databaseKind: "empty" }).id;
-  act({ action: "page.share", pageId: db, email: guest.email, role: "editor" });
-  act({ action: "form.update", pageId: db, enabled: true, internal: true });
-  const token = one<{ token: string }>("SELECT token FROM forms WHERE page_id=?", db)!.token;
-  assert.deepEqual(getForm(token, guest).members.map((m) => m.name), ["Gustav"]);
-  assert.deepEqual(getForm(token, colleague).members.map((m) => m.name), ["Carla", "Gustav", "Olga"]);
+test("an internal form lists no member names to a guest", async () => {
+  const db = (await act({ action: "page.create", workspaceId: wid, spaceId: team, title: "Anfragen", kind: "database", databaseKind: "empty" })).id;
+  await act({ action: "page.share", pageId: db, email: guest.email, role: "editor" });
+  await act({ action: "form.update", pageId: db, enabled: true, internal: true });
+  const token = (await one<{ token: string }>("SELECT token FROM forms WHERE page_id=?", db))!.token;
+  assert.deepEqual((await getForm(token, guest)).members.map((m) => m.name), ["Gustav"]);
+  assert.deepEqual((await getForm(token, colleague)).members.map((m) => m.name), ["Carla", "Gustav", "Olga"]);
 });

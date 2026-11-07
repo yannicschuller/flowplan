@@ -26,6 +26,7 @@ import { relayConfig } from "./push-relay";
 import { relaySetup } from "./push-status";
 import { dispatchPush, EXPO_ENDPOINT, RELAY_ENDPOINT } from "./push";
 import type { Identity } from "./types";
+import { mapAsync } from "./each-async";
 
 export const PUSH_TEST_LIMIT = { max: 5, windowMs: 10 * 60_000 };
 export const PUSH_TEST_TIMEOUT_MS = 10_000;
@@ -97,7 +98,7 @@ export type PushTestOptions = {
 
 export async function sendTestPush(user: Identity, sessionToken: string, options: PushTestOptions = {}): Promise<PushTestReport> {
   if (user.apiScope) throw new HttpError(403, ct("Mit einem API-Token nicht erlaubt.", "Not allowed with an API token."));
-  if (!one("SELECT 1 FROM sessions WHERE token=? AND user_id=? AND expires>?", sessionToken, user.id, Date.now()))
+  if (!(await one("SELECT 1 FROM sessions WHERE token=? AND user_id=? AND expires>?", sessionToken, user.id, Date.now())))
     throw new HttpError(401, ct("Sitzung abgelaufen.", "Session expired."));
   if (!allow(`push-test:${user.id}`, PUSH_TEST_LIMIT.max, PUSH_TEST_LIMIT.windowMs))
     throw new HttpError(429, ct("Höchstens 5 Testbenachrichtigungen in 10 Minuten. Bitte warte kurz.", "At most 5 test notifications in 10 minutes. Please wait a moment."));
@@ -109,7 +110,7 @@ export async function sendTestPush(user: Identity, sessionToken: string, options
   const targets: Pending[] = [];
 
   // Browsers (Web Push) of live sessions.
-  for (const s of all<{ id: string; endpoint: string; session_token: string; agent: string | null }>(
+  for (const s of await all<{ id: string; endpoint: string; session_token: string; agent: string | null }>(
     `SELECT s.id,s.endpoint,s.session_token,se.agent FROM push_subscriptions s JOIN sessions se ON se.token=s.session_token
      WHERE s.user_id=? AND se.expires>? AND s.endpoint NOT LIKE '${EXPO_ENDPOINT}%' AND s.endpoint NOT LIKE '${RELAY_ENDPOINT}%' ORDER BY s.created_at`,
     user.id,
@@ -126,7 +127,7 @@ export async function sendTestPush(user: Identity, sessionToken: string, options
       subscription: s.id,
     });
   // App installations, also those without push (permission not given).
-  for (const d of all<{ id: string; name: string; platform: string; push_subscription_id: string | null }>(
+  for (const d of await all<{ id: string; name: string; platform: string; push_subscription_id: string | null }>(
     `SELECT md.id,md.name,md.platform,s.id push_subscription_id FROM mobile_devices md JOIN sessions se ON se.token=md.session_token
      LEFT JOIN push_subscriptions s ON s.id=md.push_subscription_id WHERE md.user_id=? AND se.expires>? ORDER BY md.created_at`,
     user.id,
@@ -139,14 +140,14 @@ export async function sendTestPush(user: Identity, sessionToken: string, options
       platform: d.platform,
       service: null,
       current: false,
-      focus: focusActive(d.id, now),
+      focus: await focusActive(d.id, now),
       subscription: d.push_subscription_id,
       ...(d.push_subscription_id ? {} : { status: mobilePush ? ("push-disabled" as const) : ("app-push-off" as const) }),
     });
 
   for (const target of targets)
     if (target.subscription)
-      run(
+      await run(
         "INSERT INTO push_tests(id,run_id,user_id,subscription_id,created_at) VALUES(?,?,?,?,?)",
         target.key,
         runId,
@@ -155,37 +156,37 @@ export async function sendTestPush(user: Identity, sessionToken: string, options
         now,
       );
 
-  const waiting = () =>
-    !!one(
+  const waiting = async () =>
+    !!(await one(
       "SELECT 1 FROM push_tests t WHERE t.run_id=? AND (t.status='sending' OR (t.status IS NULL AND EXISTS(SELECT 1 FROM push_subscriptions s WHERE s.id=t.subscription_id)))",
       runId,
-    );
+    ));
   if (targets.some((t) => t.subscription)) {
     const flush = options.flush ?? dispatchPush;
     const deadline = now + (options.timeoutMs ?? PUSH_TEST_TIMEOUT_MS);
     // The worker may be busy with an earlier run: flush until this test's
     // rows are answered or the time is up.
-    while (waiting() && Date.now() < deadline) {
+    while (await waiting() && Date.now() < deadline) {
       let timer: ReturnType<typeof setTimeout> | undefined;
       await Promise.race([flush().catch(() => {}), new Promise((resolve) => (timer = setTimeout(resolve, Math.max(0, deadline - Date.now()))))]);
       clearTimeout(timer);
-      if (waiting() && Date.now() < deadline) await sleep(100);
+      if (await waiting() && Date.now() < deadline) await sleep(100);
     }
   }
   const rows = new Map(
-    all<{ id: string; status: string | null; channel: string | null; detail: string | null; note: string | null }>(
+    (await all<{ id: string; status: string | null; channel: string | null; detail: string | null; note: string | null }>(
       "SELECT id,status,channel,detail,note FROM push_tests WHERE run_id=?",
       runId,
-    ).map((r) => [r.id, r]),
+    )).map((r) => [r.id, r]),
   );
-  run("DELETE FROM push_tests WHERE run_id=?", runId);
+  await run("DELETE FROM push_tests WHERE run_id=?", runId);
 
   const report: PushTestReport = {
-    targets: targets.map(({ subscription, status, ...target }) => {
+    targets: await mapAsync(targets, async ({ subscription, status, ...target }) => {
       const row = rows.get(target.key);
       const answered = row?.status && row.status !== "sending" ? (row.status as PushTestStatus) : null;
       // Not answered and the subscription gone meanwhile (session ended).
-      const vanished = !!row && !row.status && !one("SELECT 1 FROM push_subscriptions WHERE id=?", subscription);
+      const vanished = !!row && !row.status && !(await one("SELECT 1 FROM push_subscriptions WHERE id=?", subscription));
       return {
         ...target,
         channel: (row?.channel as PushTestTarget["channel"]) ?? (target.kind === "browser" ? "web" : null),
