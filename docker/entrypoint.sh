@@ -5,7 +5,17 @@
 set -eu
 DATA="${FLOWPLAN_DATA_DIR:-/app/data}"
 DB="$DATA/flowplan.sqlite"
-mkdir -p "$DATA"
+mkdir -p "$DATA" 2>/dev/null || true
+# The image runs as the user node (UID 1000). A host folder mounted as the
+# data directory must belong to it; otherwise SQLite fails over and over with
+# "unable to open database file". Say so once and stop instead.
+if ! { [ -d "$DATA" ] && [ -w "$DATA" ] && touch "$DATA/.write-test" 2>/dev/null && rm -f "$DATA/.write-test"; }; then
+  echo "Flowplan cannot write to its data folder $DATA (running as UID $(id -u), GID $(id -g))." >&2
+  echo "A mounted host folder must belong to UID 1000, e.g.: sudo chown -R 1000:1000 /path/to/flowplan-data" >&2
+  echo "Or use a named Docker volume, which gets the right owner automatically." >&2
+  echo "See https://docs.flowplan.org/en/coolify-and-proxy#volume-permissions" >&2
+  exit 1
+fi
 
 # Same swap as lib/instance-restore-apply.ts, but before Litestream opens the
 # database. The previous state stays in pre-restore-<time>, after an
