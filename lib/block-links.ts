@@ -4,7 +4,6 @@
 // the block ids other texts link to (kept by the Markdown export).
 // Everything answers only with what the person may read; end-to-end
 // encrypted pages have no text on the server, so they have no preview.
-import { generateJSON } from "@tiptap/html/server";
 import * as Y from "yjs";
 import { Node as PMNode } from "@tiptap/pm/model";
 import { Transform } from "@tiptap/pm/transform";
@@ -16,15 +15,14 @@ import { journalLocked } from "./journal-extras";
 import { isEncryptedPage, PLAINTEXT_REFUSED } from "./e2ee-server";
 import { requireRow } from "./row-documents";
 import { cellText } from "./cell-text";
-import { documentExtensions } from "./document-schema";
-import { cleanHtml, htmlState, stateHtml } from "./document-server";
+import { cleanHtml, htmlState, stateHtml, htmlJson } from "./document-server";
 import { rewriteSchema } from "./document-rewrite";
 import { documentKey, documentChanged, publishDocumentUpdate } from "./document-live";
 import { searchWorkspace } from "./search-index";
 import { blockText, findBlock, linkableBlocks, newBlockId, validBlockId } from "./block-ids";
 import type { Field, Identity, Page } from "./types";
 
-const htmlDoc = (html: string) => PMNode.fromJSON(rewriteSchema(), generateJSON(cleanHtml(html || "<p></p>"), documentExtensions));
+const htmlDoc = (html: string) => PMNode.fromJSON(rewriteSchema(), htmlJson(cleanHtml(html || "<p></p>")));
 
 // The document a block link points to, if this person may read it.
 function readableDocument(user: Identity, pageId: string, rowId?: string | null) {

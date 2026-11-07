@@ -1725,6 +1725,11 @@ ImportSourceForm = TypedDict("ImportSourceForm", {
     "source": Literal["auto", "affine", "confluence", "evernote", "gdocs", "obsidian", "word"],
     "mode": Literal["pages", "database"],
     "dryRun": Literal["0", "1"],
+    "background": Literal["0", "1"],
+}, total=False)
+
+ImportSourceJobQuery = TypedDict("ImportSourceJobQuery", {
+    "id": Required[str],  # The `job` of the import
 }, total=False)
 
 ImportTrackerForm = TypedDict("ImportTrackerForm", {
@@ -2254,8 +2259,12 @@ class FlowplanClient:
         return self._json("POST", "/api/import/zip", form=dict(form), headers=headers, idempotent=True, idempotency_key=idempotency_key)
 
     def import_source(self, form: "ImportSourceForm", headers: Optional[dict[str, str]] = None, idempotency_key: Optional[str] = None) -> dict[str, Any]:
-        """Import from AFFiNE, Confluence, Evernote, Google Docs, Microsoft Word or Obsidian — AFFiNE workspace file (`.affine`) or snapshot ZIP, Confluence space export (HTML or XML ZIP), Evernote `.enex` (several in a ZIP), Google Takeout ZIP or a single `.html`/`.docx`, Microsoft Word `.docx` (several in a ZIP, folders become parent pages), Obsidian vault ZIP. Older Word files (`.doc`) and OneNote files (`.one`, `.onetoc2`, `.onepkg`) are refused with 400 and what to do instead (save as `.docx`; export from OneNote as a Word document); inside a ZIP they are skipped and listed in `warnings`. `source` defaults to `auto` (recognised from the file). `mode=database` creates one new database (tags, dates, folder, source as properties) instead of a page tree. `dryRun=1` only answers with the preview (counts and warnings). As a form the file may be up to 100 MB. Larger AFFiNE workspace files (up to the import limit: the person's largest upload, at least 100 MB, or `FLOWPLAN_IMPORT_MAX_MB`) go as the raw request body (`Content-Type: application/octet-stream` with `Content-Length`) with the fields and `name` (the file name) as query parameters; the server streams it to disk. A raw dry run answers with `upload` (an id): the import then passes `upload=<id>` without a body instead of sending the file again, `upload=<id>&discard=1` drops it (otherwise it is deleted after six hours). ZIP-based exports stay within 100 MB. (POST /api/import/source)"""
+        """Import from AFFiNE, Confluence, Evernote, Google Docs, Microsoft Word or Obsidian — AFFiNE workspace file (`.affine`) or snapshot ZIP, Confluence space export (HTML or XML ZIP), Evernote `.enex` (several in a ZIP), Google Takeout ZIP or a single `.html`/`.docx`, Microsoft Word `.docx` (several in a ZIP, folders become parent pages), Obsidian vault ZIP. Older Word files (`.doc`) and OneNote files (`.one`, `.onetoc2`, `.onepkg`) are refused with 400 and what to do instead (save as `.docx`; export from OneNote as a Word document); inside a ZIP they are skipped and listed in `warnings`. `source` defaults to `auto` (recognised from the file). `mode=database` creates one new database (tags, dates, folder, source as properties) instead of a page tree. `dryRun=1` only answers with the preview (counts and warnings). As a form the file may be up to 100 MB. Larger AFFiNE workspace files (up to the import limit: the person's largest upload, at least 100 MB, or `FLOWPLAN_IMPORT_MAX_MB`) go as the raw request body (`Content-Type: application/octet-stream` with `Content-Length`) with the fields and `name` (the file name) as query parameters; the server streams it to disk. A raw dry run answers with `upload` (an id): the import then passes `upload=<id>` without a body instead of sending the file again, `upload=<id>&discard=1` drops it (otherwise it is deleted after six hours). ZIP-based exports stay within 100 MB. `background=1` answers at once with 202 and `job` (an id) and runs the preview or import afterwards, so a large file does not outlast a reverse proxy's timeout; `GET /api/import/source/job?id=<job>` then reports it. Only one such import per person runs at a time (409). (POST /api/import/source)"""
         return self._json("POST", "/api/import/source", form=dict(form), headers=headers, idempotent=True, idempotency_key=idempotency_key)
+
+    def import_source_job(self, query: "ImportSourceJobQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """State of an import started with background=1 — `status` is `running` (with `progress`, 0–1 or null), `done` (with `result`: the preview or the result the import would have answered) or `failed` (with `error` and `code`, the status the import would have answered). 410 when the job is unknown: started by someone else, interrupted by a restart of the server, or finished more than an hour ago. (GET /api/import/source/job)"""
+        return self._json("GET", "/api/import/source/job", query=dict(query) if query else None, headers=headers)
 
     def import_tracker(self, form: "ImportTrackerForm", headers: Optional[dict[str, str]] = None, idempotency_key: Optional[str] = None) -> dict[str, Any]:
         """Jira (CSV) or Trello (JSON) into a new database (POST /api/import/tracker)"""

@@ -3,7 +3,8 @@
 // archives), exports (Markdown, archive) and the Git export of a space –
 // as small entries with a progress, so the mobile app can show them as a
 // Live Activity (lib/mobile-widgets.ts, kind "jobs"). The work itself runs
-// where it always ran (in its request); this only records that it runs.
+// where it always ran (in its request); this only records that it runs –
+// except work started with launchJob, which runs after its request answered.
 //
 // Progress is a share between 0 and 1, or null when the work cannot tell
 // (the app then shows an indeterminate bar). Code deep inside a job reports
@@ -12,7 +13,7 @@
 // interrupted; finished ones are kept for a day and then removed.
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
-import { all, db, run } from "./db";
+import { all, db, one, run } from "./db";
 import type { Identity } from "./types";
 
 export const jobKinds = ["import", "export", "archive", "git"] as const;
@@ -110,6 +111,59 @@ export async function trackJob<T>(user: Pick<Identity, "id">, kind: JobKind, lab
     finishJob(id, error);
     throw error;
   }
+}
+
+// Work that outlives its request (#163): a large import takes longer than a
+// reverse proxy waits for an answer (504). The request only starts it and
+// answers with the job's id; the work runs when `schedule` calls it (in a
+// route: after the response, next/server after()), and the page asks for
+// its progress and outcome (jobOutcome). Outcomes are kept in memory for an
+// hour – a restart ends the work anyway (the job counts as interrupted).
+type Outcome = { userId: string; kind: JobKind; at: number; done: boolean; value?: unknown; error?: unknown };
+const outcomes = new Map<string, Outcome>();
+const OUTCOME_MS = 3_600_000;
+export function launchJob<T>(
+  user: Pick<Identity, "id">,
+  kind: JobKind,
+  label: string,
+  work: () => T | Promise<T>,
+  schedule: (task: () => Promise<void>) => void = (task) => void setImmediate(task),
+) {
+  const now = Date.now();
+  for (const [id, outcome] of outcomes) if (outcome.done && now - outcome.at > OUTCOME_MS) outcomes.delete(id);
+  const jobId = startJob(user, kind, label);
+  const outcome: Outcome = { userId: user.id, kind, at: now, done: false };
+  outcomes.set(jobId, outcome);
+  schedule(async () => {
+    try {
+      outcome.value = await current.run({ id: jobId, reported: 0 }, work);
+      finishJob(jobId);
+    } catch (error) {
+      outcome.error = error;
+      finishJob(jobId, error);
+    } finally {
+      outcome.done = true;
+      outcome.at = Date.now();
+    }
+  });
+  return jobId;
+}
+// A job of this kind the person started with launchJob that still runs.
+export const runningJob = (user: Pick<Identity, "id">, kind: JobKind) =>
+  [...outcomes.values()].some((outcome) => outcome.userId === user.id && outcome.kind === kind && !outcome.done);
+// The state of a launched job of the person: running (with its progress),
+// done (with the work's result) or failed (with the error thrown); null when
+// it is not theirs or no longer known (a restart, or more than an hour ago).
+export function jobOutcome(
+  user: Pick<Identity, "id">,
+  jobId: string,
+): { status: "running"; progress: number | null } | { status: "done"; value: unknown } | { status: "failed"; error: unknown } | null {
+  const outcome = outcomes.get(jobId);
+  if (!outcome || outcome.userId !== user.id) return null;
+  if (outcome.done) return outcome.error === undefined ? { status: "done", value: outcome.value } : { status: "failed", error: outcome.error };
+  ensure();
+  const row = one<{ progress: number | null }>("SELECT progress FROM background_jobs WHERE id=? AND user_id=?", jobId, user.id);
+  return { status: "running", progress: row?.progress == null ? null : Math.round(row.progress * 100) / 100 };
 }
 
 // A download that is produced while it streams: the job ends with the stream.

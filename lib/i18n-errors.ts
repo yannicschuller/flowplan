@@ -1078,6 +1078,9 @@ const exact: Record<string, string> = {
   "ZIP- und andere Exporte dürfen höchstens 100 MB groß sein; größer darf nur die AFFiNE-Arbeitsbereichsdatei (.affine) sein.": "ZIP and other exports may be at most 100 MB; only the AFFiNE workspace file (.affine) may be larger.",
   "Die Datei konnte nicht hochgeladen werden.": "The file could not be uploaded.",
   "Die hochgeladene Datei ist nicht mehr vorhanden. Bitte wähle sie erneut aus.": "The uploaded file is no longer there. Please choose it again.",
+  // Imports in the background (#163).
+  "Es läuft schon ein Import. Bitte warte, bis er fertig ist.": "An import is already running. Please wait until it has finished.",
+  "Der Import wurde unterbrochen, zum Beispiel durch einen Neustart des Servers. Bitte starte ihn erneut.": "The import was interrupted, for example by a restart of the server. Please start it again.",
   "Ein Dokument konnte nicht gelesen werden.": "A document could not be read.",
   "Ein Dokument ist zu groß und wurde übersprungen.": "A document is too large and was skipped.",
   "Ein Dokument ohne Inhalt wurde nur mit seinem Titel übernommen.": "A document without content was imported with its title only.",
@@ -1284,6 +1287,10 @@ const patterns: [RegExp, string][] = [
   [/^(\d+) Datenbankeinträge nennen einen Journaltag oder das Dokument ihrer Datenbank; sie verlinken darauf\.$/, "$1 database records name a journal day or their database's own document; they link to it."],
   [/^(\d+) Dokumente in Datenbankeinträgen liegen in AFFiNE auch in Ordnern; die Ordner verlinken auf den Eintrag\.$/, "$1 documents in database records are also in folders in AFFiNE; the folders link to the record."],
   [/^Ein Journaltag konnte nicht ergänzt werden: (.+)$/, "A journal day could not be extended: $1"],
+  [
+    /^Für diesen AFFiNE-Arbeitsbereich reicht der Arbeitsspeicher des Servers nicht: der Import braucht etwa (\d+) MB, frei sind (\d+) MB\. Mehr Arbeitsspeicher für Flowplan \(NODE_OPTIONS=--max-old-space-size=…\) hilft, oder den Arbeitsbereich in AFFiNE aufteilen\.$/,
+    "The server does not have enough memory for this AFFiNE workspace: the import needs about $1 MB, $2 MB are free. More memory for Flowplan (NODE_OPTIONS=--max-old-space-size=…) helps, or split the workspace in AFFiNE.",
+  ],
   [/^Die Datei darf höchstens (\d+) MB groß sein \(FLOWPLAN_IMPORT_MAX_MB\)\.$/, "The file may be at most $1 MB (FLOWPLAN_IMPORT_MAX_MB)."],
   [/^Die Datei darf höchstens (\d+) MB groß sein\. Die Grenze folgt der größten Datei beim Hochladen \(Administration → Grenzen & Aufbewahrung\), mindestens 100 MB\.$/, "The file may be at most $1 MB. The limit follows “Largest upload” (Administration → Limits & retention), at least 100 MB."],
 ];

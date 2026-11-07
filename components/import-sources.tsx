@@ -3,6 +3,9 @@
 // Obsidian (lib/importers): the file is uploaded once – as the raw request body,
 // streamed to disk on the server (#76) – for a preview (counts and
 // warnings); the import then names that upload instead of sending it again.
+// Both run on the server as a background job (#163): the request answers at
+// once with the job, and the page asks for its progress until it is done –
+// a large workspace takes longer than a reverse proxy waits for an answer.
 import { useState } from "react";
 import { FileDoc, UploadSimple } from "@phosphor-icons/react";
 import { serverMessage } from "@/lib/i18n-errors";
@@ -63,6 +66,37 @@ function send(query: URLSearchParams, body: File | null, onProgress: (share: num
   });
 }
 
+// Asks for a background import's state until it is done (#163). While the
+// server writes a large import it may not answer for a while: a gateway
+// error of the reverse proxy (502–504) or a lost connection only means
+// asking again later, for up to half an hour without an answer.
+const PATIENCE_MS = 30 * 60_000;
+async function waitForJob(job: string, onProgress: (share: number | null) => void) {
+  let failures = 0,
+    lastAnswer = Date.now();
+  for (;;) {
+    await new Promise((resolve) => setTimeout(resolve, Math.min(10_000, 1000 * 2 ** failures)));
+    let response: Response | null = null;
+    try {
+      response = await fetch(`/api/import/source/job?id=${encodeURIComponent(job)}`, { cache: "no-store" });
+    } catch {
+      /* no connection right now */
+    }
+    if (!response || (response.status >= 502 && response.status <= 504)) {
+      if (Date.now() - lastAnswer > PATIENCE_MS) throw new Error("network");
+      failures = Math.min(failures + 1, 4);
+      continue;
+    }
+    failures = 0;
+    lastAnswer = Date.now();
+    const data = (await response.json().catch(() => null)) as { status?: string; progress?: number | null; result?: unknown; error?: string; code?: number } | null;
+    if (!response.ok) throw new Error(serverMessage(data?.error) || String(response.status));
+    if (data?.status === "done") return data.result;
+    if (data?.status === "failed") throw new Error(serverMessage(data.error) || String(data.code || 500));
+    onProgress(typeof data?.progress === "number" ? data.progress : null);
+  }
+}
+
 export function ImportSources({
   workspaceId,
   spaces,
@@ -87,7 +121,9 @@ export function ImportSources({
   const [mode, setMode] = useState<"pages" | "database">("pages");
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
-  const [progress, setProgress] = useState<{ phase: "upload" | "work"; share: number } | null>(null);
+  // Uploading (share of the file sent) or the server's work (its share
+  // done; null while it cannot tell).
+  const [progress, setProgress] = useState<{ phase: "upload" | "work"; share: number | null } | null>(null);
   const [done, setDone] = useState("");
   const names: Record<string, string> = {
     affine: "AFFiNE",
@@ -102,9 +138,12 @@ export function ImportSources({
     if (dryRun) query.set("dryRun", "1");
     // The import uses the upload of the preview.
     if (upload) query.set("upload", upload);
-    setProgress(upload ? { phase: "work", share: 1 } : { phase: "upload", share: 0 });
+    query.set("background", "1");
+    setProgress(upload ? { phase: "work", share: null } : { phase: "upload", share: 0 });
     try {
-      return await send(query, upload ? null : chosen, (share) => setProgress({ phase: share >= 1 ? "work" : "upload", share }));
+      const { job } = (await send(query, upload ? null : chosen, (share) => setProgress(share >= 1 ? { phase: "work", share: null } : { phase: "upload", share }))) as { job: string };
+      setProgress({ phase: "work", share: null });
+      return await waitForJob(job, (share) => setProgress({ phase: "work", share }));
     } finally {
       setProgress(null);
     }
@@ -226,11 +265,13 @@ export function ImportSources({
       )}
       {progress && (
         <div className="import-sources-progress" role="status">
-          <progress max={1} value={progress.phase === "upload" ? progress.share : undefined} />
+          <progress max={1} value={progress.share ?? undefined} />
           <span>
             {progress.phase === "upload"
-              ? t(`Hochladen … ${Math.round(progress.share * 100)} %`, `Uploading … ${Math.round(progress.share * 100)} %`)
-              : t("Wird verarbeitet …", "Processing …")}
+              ? t(`Hochladen … ${Math.round((progress.share || 0) * 100)} %`, `Uploading … ${Math.round((progress.share || 0) * 100)} %`)
+              : progress.share
+                ? t(`Wird verarbeitet … ${Math.round(progress.share * 100)} %`, `Processing … ${Math.round(progress.share * 100)} %`)
+                : t("Wird verarbeitet …", "Processing …")}
           </span>
         </div>
       )}
