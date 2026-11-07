@@ -1,13 +1,14 @@
 // Moves a Flowplan database between SQLite and PostgreSQL, both ways
-// (docs/architecture/database.md, "Migration tool"). Skeleton of the spike:
-// the tables of the sign-in/tags slice by default, every table with
-// --tables all.
+// (docs/architecture/database.md, §6 "Migration tool": the whole procedure
+// with downtime, files and checks). Every table by default; --tables slice
+// (the spike's sign-in/tags tables) or a list for tests.
 //
 //   node scripts/db-migrate.mjs --from sqlite:./data/flowplan.sqlite --to postgres://user@host:5432/flowplan
 //   node scripts/db-migrate.mjs --from postgres://user@host:5432/flowplan --to sqlite:./new/flowplan.sqlite
 //
-// Options: --tables slice|all|a,b,c   --batch 1000   --schema public (Postgres)
+// Options: --tables all|slice|a,b,c   --batch 1000   --schema public (Postgres)
 //          --verify-only (compare counts and checksums, copy nothing)
+//          --quiet (no progress lines)
 //
 // Stop Flowplan first (or use a copy of the database): the tool reads a
 // consistent state only when nothing writes. The schema comes from
@@ -19,10 +20,13 @@
 // keys are checked after the copy, triggers created after it (they would
 // fire for every copied row), identity sequences moved on, and every table
 // is compared by row count and an order-independent checksum of its
-// canonical values. The search index is not copied: Flowplan rebuilds it.
+// canonical values. Derived data is not copied but rebuilt by Flowplan at
+// its first start: the search index (FTS5 / the trigram table), pgvector's
+// table (from ai_embeddings, lib/ai/vector-store.ts).
 import { DatabaseSync } from "node:sqlite";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { dirname } from "node:path";
 import pg from "pg";
 import { ensurePostgresSchema, ensurePostgresTriggers, quoteIdent } from "../lib/db-driver/pg-ddl.mjs";
 
@@ -43,7 +47,8 @@ const batchSize = Number(option("batch", "1000"));
 const pgSchemaName = option("schema", "public");
 const verifyOnly = args.includes("--verify-only");
 const schema = JSON.parse(readFileSync(new URL("../lib/db-driver/postgres-schema.json", import.meta.url), "utf8"));
-const tablesOption = option("tables", "slice");
+const tablesOption = option("tables", "all");
+const quiet = args.includes("--quiet");
 // The search index (FTS5 in SQLite, a plain table in Postgres) is rebuilt.
 const wanted = (tablesOption === "all" ? schema.tables.map((t) => t.name) : tablesOption === "slice" ? SLICE : tablesOption.split(",")).filter((n) => n !== "search_index");
 const tables = schema.tables.filter((t) => wanted.includes(t.name));
@@ -163,24 +168,33 @@ async function* pgBatches(p, t) {
     offset += rows.length;
   }
 }
-async function collect(batches) {
-  const rows = [];
-  for await (const batch of batches) rows.push(...batch);
-  return rows;
+// Count and checksum batch by batch: memory stays bounded for large tables.
+async function summarise(batches, cols) {
+  let rows = 0,
+    sum = 0n;
+  for await (const batch of batches) {
+    rows += batch.length;
+    sum = (sum + BigInt(`0x${checksumOf(batch, cols)}`)) & 0xffffffffffffffffn;
+  }
+  return { rows, checksum: sum.toString(16).padStart(16, "0") };
 }
 async function compare(readSource, readTarget) {
   let ok = true;
   console.log(`\n${"table".padEnd(26)} ${"rows".padStart(8)} ${"source checksum".padStart(17)} ${"target checksum".padStart(17)}`);
-  for (const t of tables) {
+  // search_state is emptied on the target on purpose (the index is rebuilt).
+  for (const t of tables.filter((x) => verifyOnly || x.name !== "search_state")) {
     const cols = dataColumns(t);
-    const [a, b] = [await collect(readSource(t)), await collect(readTarget(t))];
-    const [ca, cb] = [checksumOf(a, cols), checksumOf(b, cols)];
-    const same = a.length === b.length && ca === cb;
+    const [a, b] = [await summarise(readSource(t), cols), await summarise(readTarget(t), cols)];
+    const same = a.rows === b.rows && a.checksum === b.checksum;
     ok &&= same;
-    console.log(`${t.name.padEnd(26)} ${String(a.length).padStart(8)} ${ca.padStart(17)} ${cb.padStart(17)}${same ? "" : `  DIFFERENT (target ${b.length} rows)`}`);
+    if (!quiet || !same)
+      console.log(`${t.name.padEnd(26)} ${String(a.rows).padStart(8)} ${a.checksum.padStart(17)} ${b.checksum.padStart(17)}${same ? "" : `  DIFFERENT (target ${b.rows} rows)`}`);
   }
   return ok;
 }
+const progress = (t, copied) => {
+  if (!quiet && process.stdout.isTTY) process.stdout.write(`\r${t.name.padEnd(26)} ${String(copied).padStart(8)} rows …`);
+};
 
 // ---- SQLite → Postgres ----
 
@@ -221,6 +235,7 @@ async function sqliteToPostgres(file, url) {
           const tuples = part.map((row, r) => `(${cols.map((c, k) => (values.push(toPg(row[c.name], c.type, `${t.name} ${JSON.stringify(t.primaryKey.map((k) => String(row[k])))}, ${c.name}`)), `$${r * cols.length + k + 1}`)).join(",")})`);
           await p.client.query(`INSERT INTO ${quoteIdent(t.name)}(${cols.map((c) => quoteIdent(c.name)).join(",")}) VALUES ${tuples.join(",")}`, values);
           copied += part.length;
+          progress(t, copied);
         }
       // Identity columns continue after the copied values.
       for (const c of t.columns.filter((c) => c.identity))
@@ -229,9 +244,10 @@ async function sqliteToPostgres(file, url) {
           [quoteIdent(t.name), c.name],
         );
       await p.client.query("COMMIT");
-      console.log(`${t.name.padEnd(26)} ${String(copied).padStart(8)} rows`);
+      if (!quiet) console.log(`\r${t.name.padEnd(26)} ${String(copied).padStart(8)} rows  `);
     }
-    await ensurePostgresSchema(p, schema, wanted, { triggers: false, seed: false });
+    // The search index's table (empty: Flowplan fills it) besides the copy.
+    await ensurePostgresSchema(p, schema, [...wanted, "search_index"], { triggers: false, seed: false });
     // Triggers last: they would have fired for every copied row.
     await ensurePostgresTriggers(p, schema, wanted);
     // The search index is built anew from the data.
@@ -239,7 +255,8 @@ async function sqliteToPostgres(file, url) {
     await p.client.query("INSERT INTO flowplan_meta(key,value) VALUES('migrated_from',$1) ON CONFLICT(key) DO UPDATE SET value=excluded.value", [
       JSON.stringify({ from: "sqlite", at: new Date().toISOString(), tables: wanted.length }),
     ]);
-    await p.client.query("ANALYZE");
+    // Statistics for the planner, of the copied tables (not the whole database).
+    for (const t of tables) await p.client.query(`ANALYZE ${quoteIdent(t.name)}`);
     console.log(`copied in ${((Date.now() - started) / 1000).toFixed(1)} s; foreign keys checked`);
   }
   const ok = await compare(readSqlite, readPg);
@@ -255,6 +272,7 @@ async function postgresToSqlite(url, file) {
   const stored = (await p.client.query("SELECT value FROM flowplan_meta WHERE key='sqlite_schema'").catch(() => ({ rows: [] }))).rows[0]?.value;
   if (stored && Number(stored) !== schema.sqliteVersion) throw new Error(`the Postgres database has schema ${stored}, this version ${schema.sqliteVersion}`);
   if (!verifyOnly && existsSync(file)) throw new Error(`${file} exists already: the way back writes a new file.`);
+  if (!verifyOnly) mkdirSync(dirname(file), { recursive: true });
   const d = new DatabaseSync(file);
   const readPg = (t) => pgBatches(p, t);
   const readSqlite = (t) => sqliteBatches(d, t);
@@ -273,8 +291,9 @@ async function postgresToSqlite(url, file) {
         for (const row of rows) insert.run(...cols.map((c) => (row[c.name] instanceof Buffer ? new Uint8Array(row[c.name]) : row[c.name] ?? null)));
         d.exec("COMMIT");
         copied += rows.length;
+        progress(t, copied);
       }
-      console.log(`${t.name.padEnd(26)} ${String(copied).padStart(8)} rows`);
+      if (!quiet) console.log(`\r${t.name.padEnd(26)} ${String(copied).padStart(8)} rows  `);
     }
     for (const o of schema.sqlite.filter((x) => x.type !== "table")) d.exec(o.sql);
     // The search index is not in Postgres: Flowplan rebuilds it on start.

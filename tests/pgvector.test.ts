@@ -114,7 +114,7 @@ test("FLOWPLAN_PGVECTOR=off: the scan, the trigger gone", { skip }, async () => 
   try {
     assert.equal(await store.ensureVectorStore(), false);
     assert.equal(await store.nearestVectors(workspaces[0], "embed", fromVector(vector(1)), 5), null);
-    assert.equal(await one("SELECT 1 FROM pg_trigger WHERE tgname='ai_embeddings_vector_sync'"), undefined);
+    assert.equal(await one("SELECT 1 FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid WHERE t.tgname='ai_embeddings_vector_sync' AND c.relnamespace=current_schema()::regnamespace"), undefined);
   } finally {
     delete process.env.FLOWPLAN_PGVECTOR;
   }

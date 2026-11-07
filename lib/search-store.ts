@@ -55,9 +55,9 @@ const likePattern = (phrase: string) => `%${escapeLike(foldText(phrase))}%`;
 // ---- PostgreSQL structures ----
 
 const runtime = globalThis as typeof globalThis & {
-  flowplanSearchStore?: { trigram: boolean; stats: { entries: number; avgLength: number; at: number } };
+  flowplanSearchStore?: { trigram: boolean; changed: number; stats: { entries: number; avgLength: number; at: number } };
 };
-const state = (runtime.flowplanSearchStore ??= { trigram: false, stats: { entries: 0, avgLength: 0, at: 0 } });
+const state = (runtime.flowplanSearchStore ??= { trigram: false, changed: 0, stats: { entries: 0, avgLength: 0, at: 0 } });
 
 // What the search needs in PostgreSQL besides the translated schema, made
 // when the database opens (lib/db.ts, dbContext.hooks.open) and after a
@@ -90,15 +90,18 @@ export async function ensureSearchStore(): Promise<boolean> {
   return state.trigram;
 }
 
-// BM25 needs the number of entries and their average length. Counted at
-// most every ten minutes by the indexer (refreshSearchStats, outside any
-// transaction); until then sensible defaults. Only the normalisation and the
-// IDF of several phrases depend on them.
+// BM25 needs the number of entries and their average length. Counted by
+// the indexer before it reads (refreshSearchStats, outside any transaction)
+// every ten minutes, and sooner when a tenth of the index changed since (a
+// rebuild); until the first count sensible defaults. Only the normalisation
+// and the IDF of several phrases depend on them.
 const STATS_TTL = 10 * 60_000;
 export async function refreshSearchStats(force = false) {
   if (sql.name === "sqlite" || inTransaction()) return;
-  if (!force && state.stats.at > Date.now() - STATS_TTL) return;
+  const stale = state.stats.at <= Date.now() - STATS_TTL || state.changed > Math.max(20, state.stats.entries / 10);
+  if (!force && !stale) return;
   state.stats.at = Date.now();
+  state.changed = 0;
   const row = await one<{ n: number; len: number | null }>("SELECT count(*) n,avg(doc_length)::float8 len FROM search_index");
   state.stats.entries = Number(row?.n || 0);
   state.stats.avgLength = Number(row?.len || 0);
@@ -118,7 +121,8 @@ export async function removeEntry(pageId: string, key: string) {
 }
 export async function addEntry(pageId: string, key: string, title: string, body: string) {
   if (sql.name === "sqlite") await run("INSERT INTO search_index(page_id,row_id,title,body) VALUES(?,?,?,?)", pageId, key, title, body);
-  else
+  else {
+    state.changed++;
     await run(
       "INSERT INTO search_index(page_id,row_id,title,body,title_folded,body_folded) VALUES(?,?,?,?,?,?)",
       pageId,
@@ -128,6 +132,7 @@ export async function addEntry(pageId: string, key: string, title: string, body:
       foldText(title),
       foldText(body),
     );
+  }
 }
 export async function clearIndex() {
   await run("DELETE FROM search_index");
@@ -140,6 +145,10 @@ export async function removePages(pageIds: string[]) {
 }
 
 // ---- Matching and ranking ----
+
+// The last key of an ORDER BY over search_index (alias s), for equal
+// ranks: the order the entries went in, as FTS5 returns them on SQLite.
+export const entryOrder = () => (sql.name === "sqlite" ? "" : ",s.id");
 
 // Entries (alias `s` of search_index) that contain one of the phrases
 // (any of them; three characters or more each). Build the query as
@@ -211,23 +220,69 @@ export function snippet(phrases: string[], start: string, end: string): { sql: s
     },
   };
 }
-// About 40 characters around the first hit (FTS5's snippet counts trigram
-// tokens, about one per character), with every hit inside it marked.
+// The window FTS5's snippet(…, 40) picks with the trigram tokenizer (one
+// token per character position, three characters each), ported from
+// fts5SnippetFunction: for each hit the 40 tokens centred on the hits they
+// hold, or the window starting at the sentence before it (a bonus of 100,
+// 120 at the start of the text); a window scores 1000 per phrase it holds
+// and 1 per further hit; the best wins, the first of equals. Every hit
+// inside it is marked; "…" where the text goes on.
+const WINDOW_TOKENS = 40;
 function cutSnippet(text: string, phrases: string[], start: string, end: string, cutBefore = false, cutAfter = false) {
   const { folded, map } = foldWithMap(text);
-  const wanted = phrases.map(foldText).filter(Boolean);
-  const hits: [number, number][] = [];
-  for (const w of wanted)
-    for (let at = folded.indexOf(w); at >= 0; at = folded.indexOf(w, at + w.length)) hits.push([at, at + w.length]);
+  const hits: { at: number; tokens: number; phrase: number }[] = [];
+  phrases.forEach((p, phrase) => {
+    const w = foldText(p);
+    if (w) for (let at = folded.indexOf(w); at >= 0; at = folded.indexOf(w, at + 1)) hits.push({ at, tokens: Math.max(1, [...w].length - 2), phrase });
+  });
   if (!hits.length) return "";
-  hits.sort((a, b) => a[0] - b[0]);
-  const first = hits[0][0];
-  const from = Math.max(0, first - 15);
-  const to = Math.min(folded.length, Math.max(from + 40, hits[0][1]));
+  hits.sort((a, b) => a.at - b.at);
+  // (Cut off after the window: the text goes on.)
+  const docTokens = cutAfter ? Number.MAX_SAFE_INTEGER : Math.max(0, folded.length - 2);
+  const score = (from: number) => {
+    const seen = new Set<number>();
+    let total = 0,
+      first = -1,
+      last = -1;
+    for (const h of hits)
+      if (h.at >= from && h.at < from + WINDOW_TOKENS) {
+        total += seen.has(h.phrase) ? 1 : 1000;
+        seen.add(h.phrase);
+        if (first < 0) first = h.at;
+        last = h.at + h.tokens - 1;
+      }
+    let adjusted = first - Math.floor((WINDOW_TOKENS - (last - first)) / 2);
+    if (adjusted + WINDOW_TOKENS > docTokens) adjusted = docTokens - WINDOW_TOKENS;
+    return { total, adjusted: Math.max(0, adjusted) };
+  };
+  // Sentence starts: after ".", ":" and white space, and the text's start.
+  const sentences = [0];
+  for (let i = 1; i < folded.length; i++)
+    if (/\s/.test(folded[i - 1]) && !/\s/.test(folded[i])) {
+      let k = i - 1;
+      while (k >= 0 && /\s/.test(folded[k])) k--;
+      if (k >= 0 && (folded[k] === "." || folded[k] === ":")) sentences.push(i);
+    }
+  let best = 0,
+    from = 0;
+  for (const h of hits) {
+    const centred = score(h.at);
+    if (centred.total > best) [best, from] = [centred.total, centred.adjusted];
+    let j = 0;
+    while (j < sentences.length - 1 && sentences[j + 1] <= h.at) j++;
+    if (sentences[j] < h.at) {
+      const sentence = score(sentences[j]).total + (sentences[j] === 0 ? 120 : 100);
+      if (sentence > best) [best, from] = [sentence, sentences[j]];
+    }
+  }
+  const to = Math.min(folded.length, from + WINDOW_TOKENS + 2);
   let out = from > 0 || cutBefore ? "…" : "";
   let cursor = from;
-  for (const [a, b] of hits) {
-    if (a < cursor || b > to) continue;
+  // A hit that crosses the window's edge is marked up to it (as FTS5 does).
+  for (const h of hits) {
+    const a = Math.max(h.at, cursor),
+      b = Math.min(h.at + h.tokens + 2, to);
+    if (a >= b) continue;
     out += text.slice(map[cursor], map[a]) + start + text.slice(map[a], map[b]) + end;
     cursor = b;
   }

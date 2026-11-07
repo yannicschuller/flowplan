@@ -72,6 +72,10 @@ export async function ensureVectorStore(): Promise<boolean> {
       await db.exec(
         `CREATE TABLE IF NOT EXISTS ${VECTOR_TABLE}(page_id text NOT NULL,row_id text NOT NULL,chunk bigint NOT NULL,hash text NOT NULL,model text NOT NULL,dims integer NOT NULL,embedding ${x}.vector NOT NULL,PRIMARY KEY(page_id,row_id,chunk))`,
       );
+      // No statistics on the vectors: ANALYZE (and autovacuum) would sort
+      // them, and pgvector refuses to compare vectors of different sizes
+      // (another model) – the table's other columns are analysed as usual.
+      await db.exec(`ALTER TABLE ${VECTOR_TABLE} ALTER COLUMN embedding SET STATISTICS 0`);
       await db.exec(FLOATS_SQL);
       await db.exec(`CREATE OR REPLACE FUNCTION flowplan_vector_sync() RETURNS trigger LANGUAGE plpgsql AS $f$
 BEGIN

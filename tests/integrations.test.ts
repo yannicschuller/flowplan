@@ -8,6 +8,9 @@ import { join } from "node:path";
 import { mapAsync } from "../lib/each-async";
 
 process.env.FLOWPLAN_DATA_DIR = mkdtempSync(join(tmpdir(), "flowplan-integrations-"));
+// The scheduled backups here are the portable SQLite copy on PostgreSQL too
+// (the pg_dump archives: tests/pg-backup.test.ts).
+process.env.FLOWPLAN_BACKUP_FORMAT = "sqlite";
 process.env.APP_URL = "https://flowplan.example.test";
 const { run, one, all, id } = await import("../lib/db");
 const { createWorkspace, createPage } = await import("../lib/seed");

@@ -9,13 +9,15 @@
 // triggers set aside meanwhile, identity sequences moved on. The search
 // index is rebuilt afterwards.
 import { DatabaseSync } from "node:sqlite";
-import { existsSync } from "node:fs";
+import { existsSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
-import { all, migrateFile, one, run, transaction } from "./db";
+import { SCHEMA_VERSION, all, migrateFile, one, run, transaction } from "./db";
+import { db } from "./db-driver";
+import { dumpDatabase, restoreDump } from "./pg-backup";
 import { snapshotDatabase } from "./db-snapshot";
 import { applyPendingRestore } from "./instance-restore-apply";
 import schemaJson from "./db-driver/postgres-schema.json";
-import type { PgSchema } from "./db-driver/pg-schema";
+import { ensurePostgresSchema, type PgSchema } from "./db-driver/pg-schema";
 import { foreignKeySql, quoteIdent } from "./db-driver/pg-ddl.mjs";
 
 type Param = string | number | null | Uint8Array;
@@ -26,11 +28,41 @@ export async function restorePendingIntoPostgres() {
   if (!existsSync(resolve(dir, "restore-pending", "READY"))) return null;
   const previous = applyPendingRestore(dir);
   if (!previous) return null;
-  // The state before, recoverable like the database file on SQLite.
-  if (!existsSync(resolve(previous, "flowplan.sqlite"))) await snapshotDatabase(resolve(previous, "flowplan.sqlite"));
-  await loadSqliteFile(resolve(dir, "flowplan.sqlite"));
+  const dump = resolve(dir, "flowplan.dump");
+  if (existsSync(dump)) {
+    // A pg_dump archive (a scheduled backup of a PostgreSQL instance).
+    await restorePgDump(dump, previous);
+    rmSync(dump, { force: true });
+  } else {
+    // The state before, recoverable like the database file on SQLite.
+    if (!existsSync(resolve(previous, "flowplan.sqlite"))) await snapshotDatabase(resolve(previous, "flowplan.sqlite"));
+    await loadSqliteFile(resolve(dir, "flowplan.sqlite"));
+  }
   console.log(`Instanz wiederhergestellt; vorheriger Stand in ${previous}`);
   return previous;
+}
+
+// pg_restore of a dump into the instance's schema (lib/pg-backup.ts). The
+// state before is kept as a dump in `previous` and put back should the
+// restore fail. Then the schema is brought to this version (a dump of an
+// older Flowplan lacks newer tables and columns; the data steps follow at
+// the opening) and the search index is rebuilt.
+export async function restorePgDump(path: string, previous: string) {
+  const before = resolve(previous, "flowplan.dump");
+  if (!existsSync(before)) await dumpDatabase(before);
+  try {
+    await restoreDump(path, { newestVersion: SCHEMA_VERSION });
+  } catch (error) {
+    console.error("Wiederherstellung fehlgeschlagen, der vorherige Stand wird zurückgeholt:", (error as Error)?.message);
+    await restoreDump(before, { newestVersion: Number.MAX_SAFE_INTEGER });
+    await afterDumpRestore();
+    throw error;
+  }
+  await afterDumpRestore();
+}
+async function afterDumpRestore() {
+  await ensurePostgresSchema(db, schemaJson as unknown as PgSchema);
+  await run("DELETE FROM search_state");
 }
 
 export async function loadSqliteFile(path: string) {

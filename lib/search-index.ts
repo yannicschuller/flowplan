@@ -3,7 +3,7 @@ import { lockedPageIds } from "./journal-extras";
 import { publicHiddenFieldIds } from "./field-access";
 import { hiddenFileIds } from "./row-files";
 import { all, one, run, sql, transaction } from "./db";
-import { addEntry, clearIndex, refreshSearchStats, removeEntry, snippet, textMatch } from "./search-store";
+import { addEntry, clearIndex, entryOrder, refreshSearchStats, removeEntry, snippet, textMatch } from "./search-store";
 import { pageRole } from "./permissions";
 import { hiddenRowIds } from "./row-access";
 import { ticketId } from "./ticket-ids";
@@ -181,10 +181,16 @@ export async function ensureSearchIndex() {
     });
   }
   if (!(await one("SELECT 1 FROM search_state WHERE id=1"))) {
+    // A rebuild (a new database, a restore, a migrated or moved instance:
+    // search_state emptied) indexes everything again – comments, messages
+    // and files too, whose marker (search_meta) came along with the data.
     await transaction(async () => {
       await clearIndex();
       await run("INSERT INTO search_dirty SELECT id,'' FROM pages WHERE true ON CONFLICT DO NOTHING");
       await run("INSERT INTO search_dirty SELECT page_id,id FROM rows WHERE true ON CONFLICT DO NOTHING");
+      await run("INSERT INTO search_dirty SELECT page_id,'c:'||id FROM comments WHERE true ON CONFLICT DO NOTHING");
+      await run("INSERT INTO search_dirty SELECT t.page_id,'m:'||m.id FROM inline_messages m JOIN inline_threads t ON t.id=m.thread_id WHERE true ON CONFLICT DO NOTHING");
+      await run("INSERT INTO search_dirty SELECT page_id,'f:'||id FROM files WHERE page_id IS NOT NULL ON CONFLICT DO NOTHING");
       await run("INSERT INTO search_state(id,built) VALUES(1,?)", Date.now());
     });
   }
@@ -195,7 +201,9 @@ export async function processSearchIndex(limit = BATCH) {
   // PostgreSQL's BM25 statistics, every few minutes (lib/search-store.ts).
   await refreshSearchStats();
   const dirty = await all<{ page_id: string; row_id: string }>(
-    "SELECT page_id,row_id FROM search_dirty LIMIT ?",
+    // In key order: a rebuild fills the index in the same order on both
+    // databases (equal ranks keep that order).
+    "SELECT page_id,row_id FROM search_dirty ORDER BY page_id,row_id LIMIT ?",
     limit,
   );
   if (!dirty.length) return 0;
@@ -249,7 +257,7 @@ export async function termMatches(
     ? (await all<{ page_id: string; row_id: string }>(
         `SELECT s.page_id,s.row_id FROM search_index s JOIN pages p ON p.id=s.page_id
          WHERE ${match.where} AND ${scope}
-         ORDER BY ${match.rank} LIMIT ${options.limit}`,
+         ORDER BY ${match.rank}${entryOrder()} LIMIT ${options.limit}`,
         ...match.whereArgs,
         ...scopeArgs,
         ...match.rankArgs,
@@ -471,11 +479,11 @@ export async function searchWorkspace(
     short
       ? `SELECT p.*,s.row_id,s.title hit_title,'' snippet FROM search_index s JOIN pages p ON p.id=s.page_id
          WHERE ${scope} AND (${titleLike} ESCAPE '\\' OR ${sql.ilike("s.body", "?")} ESCAPE '\\')
-         ORDER BY (CASE WHEN ${titleLike} ESCAPE '\\' THEN 1 ELSE 0 END) DESC,p.updated_at DESC LIMIT 1000`
+         ORDER BY (CASE WHEN ${titleLike} ESCAPE '\\' THEN 1 ELSE 0 END) DESC,p.updated_at DESC${entryOrder()} LIMIT 1000`
       : `SELECT p.*,s.row_id,s.title hit_title,${snip.sql} snippet
          FROM search_index s JOIN pages p ON p.id=s.page_id
          WHERE ${match.where} AND ${scope}
-         ORDER BY ${match.rank},p.updated_at DESC LIMIT 1000`,
+         ORDER BY ${match.rank},p.updated_at DESC${entryOrder()} LIMIT 1000`,
     ...(short
       ? (() => {
           const like = `%${query.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;

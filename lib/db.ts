@@ -1339,7 +1339,9 @@ dbContext.hooks.beforeCommit = (actor) => flushRelationChanges(actor as Identity
 dbContext.hooks.afterCommit = () => cleanDeletedFiles();
 dbContext.hooks.open = async (backend) => {
   if (backend === "postgres") {
-    await restorePendingIntoPostgres();
+    // A failed restore leaves the previous state (lib/db-restore.ts) and
+    // must not keep the remaining steps from running.
+    await restorePendingIntoPostgres().catch((error) => console.error("Wiederherstellung fehlgeschlagen", error));
     await setupStorage();
     // The search's trigram indexes and the vector index (when the server has
     // pg_trgm and pgvector): what the translated schema leaves to them.
@@ -1360,7 +1362,7 @@ export function db() {
     /* turbopackIgnore: true */ process.env.FLOWPLAN_DATA_DIR || "./data",
   );
   mkdirSync(dir, { recursive: true });
-  const restored = applyPendingRestore(dir);
+  const restored = applyPendingRestore(dir, { dumps: false });
   if (restored)
     console.log(`Instanz wiederhergestellt; vorheriger Stand in ${restored}`);
   const d = new DatabaseSync(resolve(dir, "flowplan.sqlite"));

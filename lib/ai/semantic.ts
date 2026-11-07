@@ -279,7 +279,7 @@ export async function semanticQueryVector(
 // keep the database connection busy for everyone else.
 const SCAN_SLICE = 2_000;
 const nextTurn = () => new Promise<void>((resolve) => setImmediate(resolve));
-async function nearestChunks(
+export async function nearestChunks(
   workspaceId: string,
   model: string,
   query: Float32Array,

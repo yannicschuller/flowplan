@@ -4,7 +4,7 @@
 
 // When a backup was made, from its name (minutes, UTC); null for others.
 export function backupTime(name: string) {
-  const m = /flowplan-(\d{4})-(\d{2})-(\d{2})-(\d{2})-(\d{2})\.sqlite(\.enc)?$/.exec(name);
+  const m = /flowplan-(\d{4})-(\d{2})-(\d{2})-(\d{2})-(\d{2})\.(sqlite|dump)(\.enc)?$/.exec(name);
   return m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) : null;
 }
 // The oldest backup still on the target (after old ones were removed).
