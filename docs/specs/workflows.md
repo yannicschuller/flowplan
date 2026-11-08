@@ -1,8 +1,8 @@
 # Workflows – visueller Workflow-Builder (Spezifikation)
 
-Status: **freigegeben**; Welle 1 (Serverteil) gebaut auf dem Branch
-`workflows` (Vertrag für die Oberfläche: Abschnitt 11.5). Die offenen Fragen
-(Abschnitt 18) sind entschieden.
+Status: **freigegeben**; Welle 1 und Welle 2 gebaut auf dem Branch
+`workflows` (Vertrag für die Oberfläche: Abschnitt 11.5, Ergänzungen der
+Welle 2: Abschnitt 11.6). Die offenen Fragen (Abschnitt 18) sind entschieden.
 Issue: [#168](https://github.com/yannicschuller/flowplan/issues/168) („Visual
 Workflow Builder / Native Automation Engine“). Stand des Codes: `main` bei
 Schema 95 (`lib/db.ts`, `SCHEMA_VERSION = 95`), Next.js 16.
@@ -1646,6 +1646,58 @@ Regel speichern“).
   Audit `workflow.paused`/`workflow.auto_paused`; die Benachrichtigung der
   Seitenverantwortlichen folgt mit `workflow_ops` in Welle 2. Auto-Pause nach
   10 Fehlschlägen in Folge ist da, die 50-%-Regel folgt in Welle 2.
+
+### 11.6 Welle 2 (Stand des Branches)
+
+Neue Befehle (`POST /api/command`): `workflow.run.retry {runId, fromNode?}`
+(nur ab dem fehlgeschlagenen Knoten), `workflow.approve {approvalId,
+decision, comment}` (nur angemeldet, nie mit Token/MCP), `workflow.hook
+{pageId, nodeId, rotate?}` → `{hook: {url, secret, …}}`,
+`workflow.credential.set {pageId, id?, name, kind, host, secret?}`,
+`workflow.credential.remove`. `workflow.test` nimmt zusätzlich `assume:
+"approved" | "rejected"` (Freigaben im Probelauf). Neue Lesewege:
+`GET /api/workflows/{id}/approvals|credentials|hooks|resources`,
+`GET /api/workflow-approvals[?workspaceId]` (meine offenen),
+`GET /api/workflow-approvals/{id}`; `…/runs` nimmt `q` (Suche in ID und
+Fehlern) und `status=waiting`; die Laufansicht liefert `errorKind` und
+`approvals`. Eingehender Webhook: `POST /api/workflow-hooks/{token}`
+(`lib/workflows/inbound.ts`). Schema 97 wächst um `workflow_mail_usage`,
+`workflow_notices` und `workflow_runs.error_kind`.
+
+Abweichungen und Präzisierungen der Welle 2 (bewusst):
+
+- **50-%-Regel**: beurteilt, sobald mindestens 10 Live-Läufe der letzten
+  Stunde fertig sind (von höchstens den letzten 20); Fehler der Art `limit`
+  zählen nicht.
+- **KI-Herkunft** (`aiMayRead`): statt Werte zur Laufzeit mit `sources` zu
+  markieren, wird die Herkunft über den Graphen verfolgt – jeder Knoten, von
+  dem ein Platzhalter des Prompts (auch über „Werte setzen“, `$item` oder
+  die Einstellungen eines HTTP-Knotens) abhängt, bringt alle Seiten und
+  Einträge seiner Ausgabe ein. Konservativ: eher mehr Quellen als weniger.
+- **`confidence`** von `ai.classify` ist sprachneutral `high`/`medium`/`low`
+  (gespeicherte Werte sind nie übersetzt, §13).
+- **`notify.email`** ohne `Reply-To` (die Mail-Warteschlange kennt keinen);
+  E-Mails an Mitglieder zählen nicht als „außerhalb“.
+- **E-Mail-Absenderprüfung**: ein `pass` zählt nur, wenn er zur
+  `From`-Domain passt (DMARC, sonst DKIM `header.d` bzw. SPF
+  `smtp.mailfrom` derselben Domain oder Elterndomain); es zählt nur der
+  oberste `Authentication-Results`-Header bzw. – mit
+  `INBOUND_MAIL_AUTHSERV_ID` – nur die des eigenen Servers. Über HTTP ohne
+  Signierschlüssel ist das Urteil immer `unknown`. Auslöser-Option `senders`:
+  `verified` / `not_failed` (Standard) / `any`.
+- **HTTP**: `http://` nur mit `FLOWPLAN_WORKFLOW_HTTP_ALLOW_PRIVATE`; der feste
+  Host wird so verglichen, wie eine URL ihn liest (`2130706433` = 127.0.0.1),
+  damit Schreibweisen nicht an der SSRF-Prüfung vorbeikommen; Gesamt-Zeitlimit
+  je Anfrage; Antworten, die ein Geheimnis zurückgeben (auch als Basic-base64
+  oder URL-kodiert), werden geschwärzt. Aufrufe der eigenen Workflow-Webhooks
+  tragen `X-Flowplan-Depth` (Kaskadentiefe).
+- **Webhook-Antwort** bei Drosselung oder Kaskadenstopp: `429` ohne Lauf;
+  Wiederholschutz der Signatur über `replay_guard`, Lieferkennung über
+  `dedupe_key` des (sofort verteilten) Ereignisses.
+- **Chips**: in mehrzeiligen Feldern als Ansicht neben dem Tippen (Klick
+  oder Enter wechselt zum Text), nicht als Inline-Knoten im Eingabefeld.
+- Die Benachrichtigung einer Freigabe öffnet die Workflow-Seite; hat die
+  Person dort eine offene Freigabe, ist der Reiter „Freigaben“ gewählt.
 
 ---
 
