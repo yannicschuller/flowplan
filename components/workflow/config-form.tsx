@@ -5,8 +5,8 @@
 // yes/no, a choice, a list, a group – and the properties that name
 // something in the workspace get the matching picker (database, property,
 // page, space, person, record template), conditions their own editor.
-import { useId, useMemo, useState, type ReactNode } from "react";
-import { Plus, Trash } from "@phosphor-icons/react";
+import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import { Plus, Trash, Copy, ArrowsClockwise, Warning } from "@phosphor-icons/react";
 import { z } from "zod";
 import { Select } from "../select";
 import { nodeSpec } from "@/lib/workflows/catalog";
@@ -14,7 +14,8 @@ import { operatorNames, operatorsFor, valuelessOperators } from "@/lib/database-
 import type { WorkflowNode } from "@/lib/workflows/graph";
 import type { Field } from "@/lib/types";
 import { TemplateInput, type PickerContext } from "./template-input";
-import { isUuid, recipientName, displayContext, type T, type Workspace, useStableT } from "./model";
+import { isUuid, recipientName, displayContext, type Credential, type Resources, type T, type Workspace, useStableT } from "./model";
+import { api, Modal } from "../ui";
 import type { DatabaseInfo } from "./use-databases";
 import { useLocale } from "../i18n";
 
@@ -58,8 +59,14 @@ export function initialConfig(type: string, context: { database?: string } = {})
   if (type === "action.page.tag") Object.assign(out, { page: "", tags: [] });
   if (type === "logic.if") out.condition = { kind: "group", join: "and", rules: [{ kind: "condition", left: "", op: "eq", value: "" }] };
   if (type === "action.record.find") out.filter = { kind: "group", join: "and", rules: [] };
+  if (type === "logic.switch") out.cases = [{ id: newCaseId(), label: "", op: "eq", value: "" }];
+  if (type === "logic.approval") out.approvers = ["@runner"];
+  if (type === "notify.email") out.to = ["@runner"];
+  if (type === "ai.classify") out.categories = [{ name: "", description: "" }];
+  if (type === "ai.extract") out.fields = [{ name: "name", type: "text", description: "" }];
   return out;
 }
+export const newCaseId = () => Math.random().toString(36).slice(2, 10);
 
 // i18n-table: 1 – [German, English] pairs (names of the settings)
 const KEY_TEXT: Record<string, [string, string]> = {
@@ -113,6 +120,61 @@ const KEY_TEXT: Record<string, [string, string]> = {
   position: ["Position", "Position"],
   link: ["Link in der Benachrichtigung", "Link in the notification"],
   channels: ["Kanäle", "Channels"],
+  cases: ["Fälle", "Cases"],
+  label: ["Bezeichnung", "Label"],
+  list: ["Liste", "List"],
+  parallel: ["Gleichzeitig höchstens", "At most at once"],
+  amount: ["Dauer", "Duration"],
+  unit: ["Einheit", "Unit"],
+  until: ["Bis (Datum oder Zeitpunkt)", "Until (date or moment)"],
+  weekdays: ["Nur an Werktagen", "Working days only"],
+  approvers: ["Freigebende", "Approvers"],
+  deadline: ["Frist", "Deadline"],
+  onTimeout: ["Nach Ablauf der Frist", "When the deadline passes"],
+  text: ["Text", "Text"],
+  length: ["Länge", "Length"],
+  language: ["Sprache", "Language"],
+  languageCode: ["Sprachcode (z. B. de, en, fr)", "Language code (e.g. de, en, fr)"],
+  source: ["Kategorien aus", "Categories from"],
+  categories: ["Kategorien", "Categories"],
+  description: ["Beschreibung", "Description"],
+  multiple: ["Mehrere Kategorien erlaubt", "Several categories allowed"],
+  unclear: ["Ausgang „unklar“, wenn keine passt", "Output “unclear” when none fits"],
+  options: ["Auswahlwerte", "Choices"],
+  system: ["Systemhinweis (optional)", "System hint (optional)"],
+  prompt: ["Anweisung", "Prompt"],
+  format: ["Antwort als", "Answer as"],
+  maxTokens: ["Höchstens Tokens", "At most tokens"],
+  temperature: ["Temperatur (0–2)", "Temperature (0–2)"],
+  method: ["Methode", "Method"],
+  url: ["Adresse (https://…, fester Host)", "Address (https://…, fixed host)"],
+  query: ["Query-Parameter", "Query parameters"],
+  headers: ["Header", "Headers"],
+  bodyKind: ["Inhalt", "Body"],
+  body: ["Inhalt", "Body"],
+  credential: ["Zugangsdaten", "Credential"],
+  timeoutSeconds: ["Zeitlimit (Sekunden)", "Time limit (seconds)"],
+  failOnStatus: ["Fehler bei Status ab 400", "Fail on status 400 and above"],
+  runInDry: ["Auch im Probelauf ausführen (nur GET)", "Also run in dry runs (GET only)"],
+  subject: ["Betreff", "Subject"],
+  webhook: ["Chat-Webhook", "Chat webhook"],
+  address: ["E-Mail-Adresse", "E-mail address"],
+  senders: ["Absender", "Senders"],
+  journal: ["Journal", "Journal"],
+};
+// Names that mean something else in another node.
+// i18n-table: 1 – [German, English] pairs (names per node type)
+const TYPE_KEY_TEXT: Record<string, [string, string]> = {
+  "ai.extract:fields": ["Felder", "Fields"],
+  "ai.prompt:fields": ["Felder der JSON-Antwort", "Fields of the JSON answer"],
+  "trigger.webhook:fields": ["Erwartete Felder (für die Platzhalter)", "Expected fields (for placeholders)"],
+  "trigger.webhook:mode": ["Absicherung", "Protection"],
+  "logic.wait:mode": ["Warten", "Wait"],
+  "logic.foreach:mode": ["Reihenfolge", "Order"],
+  "logic.foreach:limit": ["Höchstens Elemente", "At most items"],
+  "logic.switch:value": ["Wert", "Value"],
+  "ai.classify:field": ["Auswahleigenschaft", "Select property"],
+  "trigger.mail.received:address": ["E-Mail-Eingang", "Inbound address"],
 };
 // i18n-table: 1 – [German, English] pairs (choices)
 const ENUM_TEXT: Record<string, [string, string]> = {
@@ -163,6 +225,38 @@ const ENUM_TEXT: Record<string, [string, string]> = {
   "depth.all": ["Alles darunter", "Everything below"],
   "join.and": ["Alle Bedingungen", "All conditions"],
   "join.or": ["Eine der Bedingungen", "Any condition"],
+  "mode.sequential": ["Nacheinander", "One after the other"],
+  "mode.parallel": ["Parallel (bis 5)", "In parallel (up to 5)"],
+  "mode.duration": ["Eine Dauer", "For a duration"],
+  "mode.until": ["Bis zu einem Zeitpunkt", "Until a moment"],
+  "mode.next": ["Bis zur nächsten Uhrzeit", "Until the next time of day"],
+  "mode.signed": ["Signiert (empfohlen)", "Signed (recommended)"],
+  "mode.token": ["Nur Token", "Token only"],
+  "unit.minutes": ["Minuten", "Minutes"],
+  "unit.hours": ["Stunden", "Hours"],
+  "unit.days": ["Tage", "Days"],
+  "onTimeout.timeout": ["Ausgang „Frist abgelaufen“", "Output “timed out”"],
+  "onTimeout.rejected": ["Als abgelehnt", "As rejected"],
+  "length.sentence": ["Ein Satz", "One sentence"],
+  "length.short": ["Kurz (2–3 Sätze)", "Short (2–3 sentences)"],
+  "length.paragraph": ["Ein Absatz", "One paragraph"],
+  "length.bullets": ["Stichpunkte", "Bullet points"],
+  "language.auto": ["Wie der Text", "Like the text"],
+  "language.workflow": ["Sprache des Workflows", "The workflow’s language"],
+  "language.fixed": ["Feste Sprache", "A fixed language"],
+  "source.list": ["Eigener Liste", "A list of my own"],
+  "source.field": ["Optionen einer Auswahleigenschaft", "The options of a select property"],
+  "format.text": ["Text", "Text"],
+  "format.json": ["JSON mit Feldern", "JSON with fields"],
+  "type.select": ["Auswahl", "Choice"],
+  "type.object": ["Gruppe", "Group"],
+  "bodyKind.none": ["Kein Inhalt", "No body"],
+  "bodyKind.json": ["JSON", "JSON"],
+  "bodyKind.form": ["Formular", "Form"],
+  "bodyKind.text": ["Text", "Text"],
+  "senders.verified": ["Nur geprüfte Absender (SPF/DKIM/DMARC bestanden)", "Verified senders only (SPF/DKIM/DMARC passed)"],
+  "senders.not_failed": ["Alle außer durchgefallenen", "All but failed ones"],
+  "senders.any": ["Alle erlaubten Absender", "All allowed senders"],
 };
 // i18n-table: 1 – [German, English] pairs (page types)
 const KIND_TEXT: Record<string, [string, string]> = {
@@ -186,11 +280,17 @@ const WEEKDAYS: [string, string][] = [
 // Internal settings of database rules opened in the canvas: not shown.
 const HIDDEN = new Set(["notify.person:kind", "notify.person:ruleName"]);
 
-const keyLabel = (key: string, t: T) => (KEY_TEXT[key] ? t(KEY_TEXT[key][0], KEY_TEXT[key][1]) : key);
+const keyLabel = (key: string, t: T, type?: string) => {
+  const own = type ? TYPE_KEY_TEXT[`${type}:${key}`] : undefined;
+  if (own) return t(own[0], own[1]);
+  return KEY_TEXT[key] ? t(KEY_TEXT[key][0], KEY_TEXT[key][1]) : key;
+};
 const enumLabel = (key: string, value: string, t: T) => (ENUM_TEXT[`${key}.${value}`] ? t(ENUM_TEXT[`${key}.${value}`][0], ENUM_TEXT[`${key}.${value}`][1]) : value);
 const typeOf = (s: Schema) => (Array.isArray(s.type) ? s.type[0] : s.type);
 
 export type FormContext = {
+  // The workflow page (resources, credentials, webhook addresses).
+  pageId?: string;
   node: WorkflowNode;
   ws: Workspace;
   databases: Map<string, DatabaseInfo>;
@@ -223,13 +323,28 @@ function visible(type: string, key: string, c: Record<string, unknown>) {
   }
   if (type === "trigger.mention" && key === "people") return c.who === "people";
   if ((type === "action.record.update" || type === "action.record.template") && key === "database") return !!String(c.record || "").trim();
+  if (type === "logic.wait") {
+    if (key === "amount" || key === "unit") return (c.mode || "duration") === "duration";
+    if (key === "until") return c.mode === "until";
+    if (key === "time") return c.mode === "until" || c.mode === "next";
+    if (key === "weekdays") return c.mode === "next";
+  }
+  if (type === "logic.foreach" && key === "parallel") return c.mode === "parallel";
+  if (type === "logic.approval" && key === "onTimeout") return !!c.deadline;
+  if (type === "ai.summarize" && key === "languageCode") return c.language === "fixed";
+  if (type === "ai.classify") {
+    if (key === "categories") return c.source !== "field";
+    if (key === "database" || key === "field") return c.source === "field";
+  }
+  if (type === "ai.prompt" && key === "fields") return c.format === "json";
+  if (type === "http.request" && (key === "bodyKind" || key === "body")) return (c.method || "GET") !== "GET" && (key === "bodyKind" || (c.bodyKind && c.bodyKind !== "none"));
   return true;
 }
 
 function Property({ name, schema, value, onChange, ctx, config, required, t }: { name: string; schema: Schema; value: unknown; onChange: (v: unknown) => void; ctx: FormContext; config: Record<string, unknown>; required?: boolean; t: T }) {
   const id = useId();
-  const label = keyLabel(name, t) + (required ? " *" : "");
   const type = ctx.node.type;
+  const label = keyLabel(name, t, type) + (required ? " *" : "");
   const db = (typeof config.database === "string" && config.database) || ctx.triggerDatabase || "";
   const info = ctx.databases.get(db);
   // Pickers for references.
@@ -248,6 +363,30 @@ function Property({ name, schema, value, onChange, ctx, config, required, t }: {
       </Labeled>
     );
   if (name === "scope") return <ScopeEditor value={value as Scope} ws={ctx.ws} disabled={ctx.disabled} onChange={onChange} t={t} />;
+  // Wave 2 (§6): their own editors.
+  if (name === "cases" && type === "logic.switch") return <CasesEditor label={label} value={(value as Case[]) || []} ctx={ctx} onChange={onChange} t={t} />;
+  if (name === "approvers" && type === "logic.approval") return <Recipients label={label} value={(value as string[]) || []} ctx={ctx} fields={info?.fields || []} onChange={onChange} t={t} noActor={false} />;
+  if (name === "deadline" && type === "logic.approval") return <DeadlineEditor label={label} value={value as Deadline | undefined} disabled={ctx.disabled} onChange={onChange} t={t} />;
+  if (name === "to" && type === "notify.email") return <Recipients label={label} value={(value as string[]) || []} ctx={ctx} fields={info?.fields || []} onChange={onChange} t={t} addresses />;
+  if (name === "webhook" && type === "notify.chat") return <ResourceSelect id={id} label={label} kind="chatHooks" value={String(value || "")} ctx={ctx} onChange={onChange} t={t} />;
+  if (name === "address" && type === "trigger.mail.received") return <ResourceSelect id={id} label={label} kind="addresses" value={String(value || "")} ctx={ctx} onChange={onChange} t={t} />;
+  if (name === "journal" && type === "trigger.journal.day") return <ResourceSelect id={id} label={label} kind="journals" value={String(value || "")} ctx={ctx} onChange={onChange} t={t} />;
+  if (name === "credential" && type === "http.request") return <CredentialSelect id={id} label={label} value={String(value || "")} url={String(config.url || "")} ctx={ctx} onChange={onChange} t={t} />;
+  if (name === "mode" && type === "trigger.webhook")
+    return (
+      <>
+        <Generic name={name} label={label} schema={schema} value={value} ctx={ctx} onChange={onChange} t={t} />
+        {value === "token" && (
+          <p className="wf-warning small">
+            <Warning aria-hidden /> {t("Wer die Adresse kennt, kann den Workflow starten. Nur wählen, wenn der Sender nicht signieren kann; höchstens 10 Aufrufe je Minute.", "Anyone who knows the address can start the workflow. Choose it only when the sender cannot sign; at most 10 calls a minute.")}
+          </p>
+        )}
+        <HookBox ctx={ctx} t={t} mode={value === "token" ? "token" : "signed"} />
+      </>
+    );
+  if (name === "field" && type === "ai.classify")
+    return <Labeled id={id} label={label}><FieldSelect id={id} fields={(info?.fields || []).filter((f) => f.type === "select" || f.type === "multiselect")} value={String(value || "")} disabled={ctx.disabled} onChange={onChange} t={t} /></Labeled>;
+  if (name === "tags" && (type === "action.page.tag" || type === "trigger.page.tagged")) return <TagPicker label={keyLabel("tags", t).replace(/ \(IDs\)| \(ids\)/, "")} value={(value as string[]) || []} ctx={ctx} onChange={onChange} t={t} />;
   if (name === "kinds") return <CheckList label={label} options={Object.entries(KIND_TEXT).map(([k, v]) => [k, t(v[0], v[1])])} value={(value as string[]) || []} disabled={ctx.disabled} onChange={onChange} />;
   if (name === "people") return <CheckList label={label} options={ctx.ws.members.map((m) => [m.id, m.name])} value={(value as string[]) || []} disabled={ctx.disabled} onChange={onChange} />;
   if (name === "weekday")
@@ -351,7 +490,7 @@ function Generic({ name, label, schema, value, ctx, onChange, t }: { name: strin
   if (type === "string") {
     // Ids and short codes are plain fields, longer texts take placeholders.
     if ((schema.maxLength ?? 0) >= 500)
-      return <TemplateInput label={label} value={String(value ?? "")} picker={ctx.picker} disabled={ctx.disabled} multiline={name === "message" || name === "text" || name === "value"} onChange={onChange} />;
+      return <TemplateInput label={label} value={String(value ?? "")} picker={ctx.picker} disabled={ctx.disabled} multiline={["message", "text", "prompt", "body", "system"].includes(name) || (name === "value" && ctx.node.type !== "logic.switch")} onChange={onChange} />;
     return (
       <Labeled id={id} label={label}>
         <input id={id} type={name === "time" ? "time" : "text"} value={String(value ?? "")} disabled={ctx.disabled} onChange={(e) => onChange(e.target.value === "" && !schema.minLength ? undefined : e.target.value)} />
@@ -371,7 +510,7 @@ function Generic({ name, label, schema, value, ctx, onChange, t }: { name: strin
             {typeOf(item) === "object" ? (
               <div className="wf-group">
                 {Object.entries(item.properties || {}).map(([k, s]) => (
-                  <Generic key={k} name={k} label={keyLabel(k, t)} schema={s} value={(v as Record<string, unknown>)?.[k]} ctx={ctx} onChange={(x) => onChange(items.map((y, j) => (j === i ? { ...(y as object), [k]: x } : y)))} t={t} />
+                  <Generic key={k} name={k} label={keyLabel(k, t, ctx.node.type)} schema={s} value={(v as Record<string, unknown>)?.[k]} ctx={ctx} onChange={(x) => onChange(items.map((y, j) => (j === i ? { ...(y as object), [k]: x } : y)))} t={t} />
                 ))}
               </div>
             ) : (
@@ -560,33 +699,46 @@ function PageRef({ label, value, ctx, onChange, t }: { label: string; value: str
 
 type Condition = { kind: "condition"; left: string; op: string; value?: string; values?: string[] };
 type Group = { kind: "group"; join: "and" | "or"; rules: (Condition | Group)[] };
-// Conditions: one level is edited here; nested groups (from imports) stay
-// as they are and are named.
+// Conditions with groups inside (and/or, two levels below the top, as the
+// schema allows): each group has its own combination.
 function ConditionEditor({ label, value, fields, ctx, onChange, t }: { label: string; value: Group | undefined; fields: Field[] | null; ctx: FormContext; onChange: (v: Group) => void; t: T }) {
   const g: Group = value || { kind: "group", join: "and", rules: [] };
-  const set = (i: number, c: Condition) => onChange({ ...g, rules: g.rules.map((r, j) => (j === i ? c : r)) });
   return (
     <fieldset className="wf-group wf-conditions">
       <legend>{label}</legend>
-      {g.rules.length > 1 && (
-        <Select aria-label={t("Verknüpfung", "Combination")} value={g.join} disabled={ctx.disabled} onChange={(e) => onChange({ ...g, join: e.target.value as "and" | "or" })}>
-          <option value="and">{enumLabel("join", "and", t)}</option>
-          <option value="or">{enumLabel("join", "or", t)}</option>
-        </Select>
+      <GroupEditor group={g} depth={0} path={[]} fields={fields} ctx={ctx} onChange={onChange} t={t} />
+    </fieldset>
+  );
+}
+function GroupEditor({ group: g, depth, path, fields, ctx, onChange, onRemove, t }: { group: Group; depth: number; path: number[]; fields: Field[] | null; ctx: FormContext; onChange: (v: Group) => void; onRemove?: () => void; t: T }) {
+  const set = (i: number, c: Condition | Group) => onChange({ ...g, rules: g.rules.map((r, j) => (j === i ? c : r)) });
+  const name = (i: number) => [...path, i + 1].join(".");
+  return (
+    <div className={`wf-cond-group depth-${depth}`}>
+      {(g.rules.length > 1 || depth > 0) && (
+        <div className="wf-inline">
+          <Select aria-label={depth ? t(`Gruppe ${path.join(".")}: Verknüpfung`, `Group ${path.join(".")}: combination`) : t("Verknüpfung", "Combination")} value={g.join} disabled={ctx.disabled} onChange={(e) => onChange({ ...g, join: e.target.value as "and" | "or" })}>
+            <option value="and">{enumLabel("join", "and", t)}</option>
+            <option value="or">{enumLabel("join", "or", t)}</option>
+          </Select>
+          {onRemove && !ctx.disabled && (
+            <button type="button" className="icon-button" aria-label={t(`Gruppe ${path.join(".")} entfernen`, `Remove group ${path.join(".")}`)} onClick={onRemove}>
+              <Trash />
+            </button>
+          )}
+        </div>
       )}
       {g.rules.map((r, i) =>
         r.kind === "group" ? (
-          <p key={i} className="muted">
-            {t(`Gruppe mit ${r.rules.length} Bedingungen (unverändert)`, `Group of ${r.rules.length} conditions (unchanged)`)}
-          </p>
+          <GroupEditor key={i} group={r} depth={depth + 1} path={[...path, i + 1]} fields={fields} ctx={ctx} onChange={(x) => set(i, x)} onRemove={() => onChange({ ...g, rules: g.rules.filter((_, j) => j !== i) })} t={t} />
         ) : (
           <div key={i} className="wf-condition">
             {fields ? (
               <FieldSelect fields={fields} value={r.left} disabled={ctx.disabled} onChange={(left) => set(i, { ...r, left })} t={t} />
             ) : (
-              <TemplateInput label={t(`Bedingung ${i + 1}: Wert`, `Condition ${i + 1}: value`)} value={r.left} picker={ctx.picker} disabled={ctx.disabled} onChange={(left) => set(i, { ...r, left })} />
+              <TemplateInput label={t(`Bedingung ${name(i)}: Wert`, `Condition ${name(i)}: value`)} value={r.left} picker={ctx.picker} disabled={ctx.disabled} onChange={(left) => set(i, { ...r, left })} />
             )}
-            <Select aria-label={t(`Bedingung ${i + 1}: Vergleich`, `Condition ${i + 1}: comparison`)} value={r.op} disabled={ctx.disabled} onChange={(e) => set(i, { ...r, op: e.target.value })}>
+            <Select aria-label={t(`Bedingung ${name(i)}: Vergleich`, `Condition ${name(i)}: comparison`)} value={r.op} disabled={ctx.disabled} onChange={(e) => set(i, { ...r, op: e.target.value })}>
               {(fields ? operatorsFor(fields.find((f) => f.id === r.left)) : (Object.keys(operatorNames) as (keyof typeof operatorNames)[])).map((op) => (
                 <option key={op} value={op}>
                   {t(operatorNames[op])}
@@ -594,10 +746,10 @@ function ConditionEditor({ label, value, fields, ctx, onChange, t }: { label: st
               ))}
             </Select>
             {!valuelessOperators.has(r.op) && (
-              <TemplateInput label={t(`Bedingung ${i + 1}: Vergleichswert`, `Condition ${i + 1}: compared with`)} value={r.value || ""} picker={ctx.picker} disabled={ctx.disabled} onChange={(v) => set(i, { ...r, value: v })} />
+              <TemplateInput label={t(`Bedingung ${name(i)}: Vergleichswert`, `Condition ${name(i)}: compared with`)} value={r.value || ""} picker={ctx.picker} disabled={ctx.disabled} onChange={(v) => set(i, { ...r, value: v })} />
             )}
             {!ctx.disabled && (
-              <button type="button" className="icon-button" aria-label={t(`Bedingung ${i + 1} entfernen`, `Remove condition ${i + 1}`)} onClick={() => onChange({ ...g, rules: g.rules.filter((_, j) => j !== i) })}>
+              <button type="button" className="icon-button" aria-label={t(`Bedingung ${name(i)} entfernen`, `Remove condition ${name(i)}`)} onClick={() => onChange({ ...g, rules: g.rules.filter((_, j) => j !== i) })}>
                 <Trash />
               </button>
             )}
@@ -605,11 +757,18 @@ function ConditionEditor({ label, value, fields, ctx, onChange, t }: { label: st
         ),
       )}
       {!ctx.disabled && (
-        <button type="button" className="button compact" onClick={() => onChange({ ...g, rules: [...g.rules, { kind: "condition", left: "", op: "eq", value: "" }] })}>
-          <Plus /> {t("Bedingung", "Condition")}
-        </button>
+        <div className="wf-inline">
+          <button type="button" className="button compact" onClick={() => onChange({ ...g, rules: [...g.rules, { kind: "condition", left: "", op: "eq", value: "" }] })}>
+            <Plus /> {t("Bedingung", "Condition")}
+          </button>
+          {depth < 2 && (
+            <button type="button" className="button compact" onClick={() => onChange({ ...g, rules: [...g.rules, { kind: "group", join: g.join === "and" ? "or" : "and", rules: [{ kind: "condition", left: "", op: "eq", value: "" }] }] })}>
+              <Plus /> {t("Gruppe", "Group")}
+            </button>
+          )}
+        </div>
       )}
-    </fieldset>
+    </div>
   );
 }
 
@@ -684,8 +843,10 @@ function BlocksEditor({ label, value, ctx, onChange, t }: { label: string; value
   );
 }
 
-function Recipients({ label, value, ctx, fields, onChange, t }: { label: string; value: string[]; ctx: FormContext; fields: Field[]; onChange: (v: string[]) => void; t: T }) {
+function Recipients({ label, value, ctx, fields, onChange, t, addresses = false }: { label: string; value: string[]; ctx: FormContext; fields: Field[]; onChange: (v: string[]) => void; t: T; addresses?: boolean; noActor?: boolean }) {
   const locale = useLocale();
+  const [free, setFree] = useState("");
+  const freeId = useId();
   const dctx = useMemo(() => displayContext(ctx.picker.graph, locale, ctx.ws), [ctx.picker.graph, locale, ctx.ws]);
   const options: [string, string][] = [
     ["@actor", recipientName("@actor", ctx.ws, dctx, t)],
@@ -713,6 +874,369 @@ function Recipients({ label, value, ctx, fields, onChange, t }: { label: string;
         <Select aria-label={t("Empfänger hinzufügen", "Add a recipient")} value="" onChange={(e) => e.target.value && onChange([...value, e.target.value])}>
           <option value="">{t("+ Empfänger …", "+ Recipient …")}</option>
           {options.filter((o) => !value.includes(o[0])).map((o) => <option key={o[0]} value={o[0]}>{o[1]}</option>)}
+        </Select>
+      )}
+      {!ctx.disabled && (
+        // An address (e-mail) or a placeholder on people or addresses.
+        <div className="wf-inline">
+          <TemplateInput
+            id={freeId}
+            label={addresses ? t("Adresse oder Platzhalter", "Address or placeholder") : t("Oder aus Platzhalter", "Or from a placeholder")}
+            value={free}
+            picker={ctx.picker}
+            onChange={setFree}
+          />
+          <button type="button" className="button compact" disabled={!free.trim() || value.includes(free.trim())} onClick={() => (onChange([...value, free.trim()]), setFree(""))}>
+            <Plus /> {t("Hinzufügen", "Add")}
+          </button>
+        </div>
+      )}
+    </fieldset>
+  );
+}
+
+/* ---------- Wave 2 editors ---------- */
+
+type Case = { id: string; label: string; op: string; value: string };
+// The cases of "Switch": a label, a comparison and a value each, in order.
+function CasesEditor({ label, value, ctx, onChange, t }: { label: string; value: Case[]; ctx: FormContext; onChange: (v: Case[]) => void; t: T }) {
+  const set = (i: number, c: Case) => onChange(value.map((x, j) => (j === i ? c : x)));
+  return (
+    <fieldset className="wf-group">
+      <legend>{label}</legend>
+      {value.map((c, i) => (
+        <div key={c.id} className="wf-case">
+          <div className="wf-inline">
+            <input aria-label={t(`Fall ${i + 1}: Bezeichnung`, `Case ${i + 1}: label`)} placeholder={t(`Fall ${i + 1}`, `Case ${i + 1}`)} value={c.label} maxLength={60} disabled={ctx.disabled} onChange={(e) => set(i, { ...c, label: e.target.value })} />
+            <Select aria-label={t(`Fall ${i + 1}: Vergleich`, `Case ${i + 1}: comparison`)} value={c.op} disabled={ctx.disabled} onChange={(e) => set(i, { ...c, op: e.target.value })}>
+              {(Object.keys(operatorNames) as (keyof typeof operatorNames)[]).map((op) => (
+                <option key={op} value={op}>
+                  {t(operatorNames[op])}
+                </option>
+              ))}
+            </Select>
+            {!ctx.disabled && (
+              <button type="button" className="icon-button" aria-label={t(`Fall ${i + 1} entfernen`, `Remove case ${i + 1}`)} onClick={() => onChange(value.filter((_, j) => j !== i))}>
+                <Trash />
+              </button>
+            )}
+          </div>
+          {!valuelessOperators.has(c.op) && <TemplateInput label={t(`Fall ${i + 1}: Vergleichswert`, `Case ${i + 1}: compared with`)} value={c.value} picker={ctx.picker} disabled={ctx.disabled} onChange={(v) => set(i, { ...c, value: v })} />}
+        </div>
+      ))}
+      {!ctx.disabled && value.length < 20 && (
+        <button type="button" className="button compact" onClick={() => onChange([...value, { id: newCaseId(), label: "", op: "eq", value: "" }])}>
+          <Plus /> {t("Fall", "Case")}
+        </button>
+      )}
+      <p className="muted small">{t("Der erste passende Fall gewinnt; sonst geht es über „sonst“ weiter.", "The first matching case wins; otherwise it goes on through “otherwise”.")}</p>
+    </fieldset>
+  );
+}
+
+type Deadline = { amount: number; unit: "minutes" | "hours" | "days" };
+function DeadlineEditor({ label, value, disabled, onChange, t }: { label: string; value: Deadline | undefined; disabled: boolean; onChange: (v: Deadline | undefined) => void; t: T }) {
+  const id = useId();
+  return (
+    <fieldset className="wf-group">
+      <legend>{label}</legend>
+      <label className="wf-check">
+        <input type="checkbox" checked={!!value} disabled={disabled} onChange={(e) => onChange(e.target.checked ? { amount: 2, unit: "days" } : undefined)} />
+        <span>{t("Mit Frist", "With a deadline")}</span>
+      </label>
+      {value && (
+        <div className="wf-inline">
+          <input id={id} aria-label={t("Frist: Dauer", "Deadline: duration")} type="number" className="wf-number" min={1} value={value.amount} disabled={disabled} onChange={(e) => onChange({ ...value, amount: Math.max(1, Number(e.target.value) || 1) })} />
+          <Select aria-label={t("Frist: Einheit", "Deadline: unit")} value={value.unit} disabled={disabled} onChange={(e) => onChange({ ...value, unit: e.target.value as Deadline["unit"] })}>
+            {["minutes", "hours", "days"].map((u) => <option key={u} value={u}>{enumLabel("unit", u, t)}</option>)}
+          </Select>
+        </div>
+      )}
+    </fieldset>
+  );
+}
+
+// What the editor may pick, per workflow page (loaded once, refreshed on demand).
+const resourceCache = new Map<string, Promise<Resources>>();
+export function useResources(pageId: string | undefined) {
+  const [res, setRes] = useState<Resources | null>(null);
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (!pageId) return;
+    let live = true;
+    if (tick) resourceCache.delete(pageId);
+    if (!resourceCache.has(pageId)) resourceCache.set(pageId, api<Resources>(`/api/workflows/${pageId}/resources`).catch(() => ({ chatHooks: [], addresses: [], journals: [] })));
+    void resourceCache.get(pageId)!.then((r) => live && setRes(r));
+    return () => {
+      live = false;
+    };
+  }, [pageId, tick]);
+  return { res, reload: () => setTick((n) => n + 1) };
+}
+function ResourceSelect({ id, label, kind, value, ctx, onChange, t }: { id: string; label: string; kind: keyof Resources; value: string; ctx: FormContext; onChange: (v: string) => void; t: T }) {
+  const { res } = useResources(ctx.pageId);
+  const items: [string, string][] =
+    kind === "chatHooks"
+      ? (res?.chatHooks || []).map((h) => [h.id, `${h.format === "json" ? "JSON" : h.format[0].toUpperCase() + h.format.slice(1)} · ${h.host}`])
+      : kind === "addresses"
+        ? (res?.addresses || []).map((a) => [a.id, `${a.label || t("Ohne Namen", "Unnamed")}${a.signed ? "" : t(" · ohne Signierschlüssel", " · without signing key")}`])
+        : (res?.journals || []).filter((j) => !j.locked).map((j) => [j.id, j.title || t("Ohne Titel", "Untitled")]);
+  const empty =
+    kind === "journals" ? t("Jedes Journal, das du siehst", "Any journal you see") : kind === "chatHooks" ? t("Webhook wählen …", "Choose a webhook …") : t("Adresse wählen …", "Choose an address …");
+  return (
+    <Labeled id={id} label={label}>
+      <Select id={id} value={value} disabled={ctx.disabled} onChange={(e) => onChange(e.target.value)}>
+        <option value="">{empty}</option>
+        {value && !items.some((i) => i[0] === value) && <option value={value}>{t("Nicht (mehr) verfügbar", "Not available (any more)")}</option>}
+        {items.map(([v, text]) => <option key={v} value={v}>{text}</option>)}
+      </Select>
+      {res && !items.length && kind !== "journals" && (
+        <small className="muted">
+          {kind === "chatHooks"
+            ? t("Noch kein Webhook für Workflows freigegeben: Eigentümer tun das in den Einstellungen unter Webhooks.", "No webhook released for workflows yet: owners do that in the settings under Webhooks.")
+            : t("Noch keine Adresse, die an diesen Workflow geht: Eigentümer legen sie in den Einstellungen unter E-Mail-Eingang an (Ziel: diese Seite).", "No address goes to this workflow yet: owners create one in the settings under Inbound e-mail (target: this page).")}
+        </small>
+      )}
+    </Labeled>
+  );
+}
+
+// Credentials of the HTTP node: chosen by name; set and changed in a dialog,
+// never shown again (§9.5).
+function CredentialSelect({ id, label, value, url, ctx, onChange, t }: { id: string; label: string; value: string; url: string; ctx: FormContext; onChange: (v: string) => void; t: T }) {
+  const [list, setList] = useState<Credential[] | null>(null);
+  const [editing, setEditing] = useState<Credential | "new" | null>(null);
+  const load = async () => {
+    if (!ctx.pageId) return;
+    try {
+      setList((await api<{ credentials: Credential[] }>(`/api/workflows/${ctx.pageId}/credentials`)).credentials);
+    } catch {
+      setList([]);
+    }
+  };
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ctx.pageId]);
+  const host = /^https?:\/\/([^/?#{}]+)/i.exec(url.trim())?.[1]?.toLowerCase() || "";
+  const chosen = list?.find((c) => c.id === value);
+  return (
+    <Labeled id={id} label={label}>
+      <div className="wf-inline">
+        <Select id={id} value={value} disabled={ctx.disabled} onChange={(e) => onChange(e.target.value)}>
+          <option value="">{t("Keine", "None")}</option>
+          {value && list && !chosen && <option value={value}>{t("Nicht (mehr) da", "Gone")}</option>}
+          {(list || []).map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name} · {c.host}
+            </option>
+          ))}
+        </Select>
+        {!ctx.disabled && (
+          <button type="button" className="button compact" onClick={() => setEditing(chosen || "new")}>
+            {chosen ? t("Ändern", "Change") : t("Neu", "New")}
+          </button>
+        )}
+      </div>
+      {chosen && host && chosen.host !== host && <small className="wf-field-error">{t(`Diese Zugangsdaten gelten nur für ${chosen.host}.`, `This credential only applies to ${chosen.host}.`)}</small>}
+      {editing && (
+        <CredentialDialog
+          pageId={ctx.pageId!}
+          credential={editing === "new" ? null : editing}
+          host={host}
+          onClose={() => setEditing(null)}
+          onSaved={async (cid) => {
+            setEditing(null);
+            await load();
+            if (cid) onChange(cid);
+            else onChange("");
+          }}
+          t={t}
+        />
+      )}
+    </Labeled>
+  );
+}
+function CredentialDialog({ pageId, credential, host: suggested, onClose, onSaved, t }: { pageId: string; credential: Credential | null; host: string; onClose: () => void; onSaved: (id: string | null) => void; t: T }) {
+  const ids = { name: useId(), kind: useId(), host: useId(), a: useId(), b: useId() };
+  const [name, setName] = useState(credential?.name || "");
+  const [kind, setKind] = useState(credential?.kind || "bearer");
+  const [host, setHost] = useState(credential?.host || suggested);
+  const [a, setA] = useState("");
+  const [b, setB] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const hostChanged = !!credential && (credential.host !== host.trim().toLowerCase() || credential.kind !== kind);
+  const secret = kind === "bearer" ? { token: a } : kind === "basic" ? { username: a, password: b } : { name: a, value: b };
+  const filled = kind === "bearer" ? !!a : kind === "basic" ? !!(a || b) : !!(a && b);
+  const save = async () => {
+    setError(null);
+    try {
+      const r = await api<{ id: string }>("/api/command", { action: "workflow.credential.set", pageId, id: credential?.id, name, kind, host: host.trim().toLowerCase(), ...(filled ? { secret } : {}) });
+      onSaved(r.id);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+  return (
+    <Modal open onClose={onClose} title={credential ? t("Zugangsdaten ändern", "Change the credential") : t("Neue Zugangsdaten", "New credential")}>
+      <div className="wf-dialog">
+        <p className="muted small">{t("Wird versiegelt gespeichert und nur an diesen Host gesendet; niemand sieht das Geheimnis wieder. Ein neuer Host braucht das Geheimnis neu.", "Stored sealed and sent to this host only; nobody sees the secret again. A new host needs the secret again.")}</p>
+        <div className="wf-field">
+          <label className="wf-field-label" htmlFor={ids.name}>{t("Name", "Name")}</label>
+          <input id={ids.name} value={name} maxLength={80} onChange={(e) => setName(e.target.value)} />
+        </div>
+        <div className="wf-field">
+          <label className="wf-field-label" htmlFor={ids.kind}>{t("Art", "Kind")}</label>
+          <Select id={ids.kind} value={kind} onChange={(e) => setKind(e.target.value)}>
+            <option value="bearer">{t("Bearer-Token", "Bearer token")}</option>
+            <option value="basic">{t("Benutzer und Passwort (Basic)", "User and password (Basic)")}</option>
+            <option value="header">{t("Eigener Header", "Own header")}</option>
+            <option value="query">{t("Query-Parameter", "Query parameter")}</option>
+          </Select>
+        </div>
+        <div className="wf-field">
+          <label className="wf-field-label" htmlFor={ids.host}>{t("Host (z. B. api.github.com)", "Host (e.g. api.github.com)")}</label>
+          <input id={ids.host} value={host} maxLength={260} autoComplete="off" onChange={(e) => setHost(e.target.value)} />
+        </div>
+        <div className="wf-field">
+          <label className="wf-field-label" htmlFor={ids.a}>{kind === "bearer" ? t("Token", "Token") : kind === "basic" ? t("Benutzer", "User") : t("Name", "Name")}</label>
+          <input id={ids.a} type={kind === "bearer" ? "password" : "text"} value={a} autoComplete="off" placeholder={credential ? t("unverändert", "unchanged") : ""} onChange={(e) => setA(e.target.value)} />
+        </div>
+        {kind !== "bearer" && (
+          <div className="wf-field">
+            <label className="wf-field-label" htmlFor={ids.b}>{kind === "basic" ? t("Passwort", "Password") : t("Wert", "Value")}</label>
+            <input id={ids.b} type="password" value={b} autoComplete="new-password" placeholder={credential ? t("unverändert", "unchanged") : ""} onChange={(e) => setB(e.target.value)} />
+          </div>
+        )}
+        {error && <p className="wf-step-error">{error}</p>}
+        <div className="modal-actions">
+          {credential && (
+            <button
+              type="button"
+              className="button danger"
+              onClick={async () => {
+                try {
+                  await api("/api/command", { action: "workflow.credential.remove", pageId, id: credential.id });
+                  onSaved(null);
+                } catch (e) {
+                  setError((e as Error).message);
+                }
+              }}
+            >
+              {t("Entfernen", "Remove")}
+            </button>
+          )}
+          <button type="button" className="button" onClick={onClose}>{t("Abbrechen", "Cancel")}</button>
+          <button type="button" className="button primary" disabled={!name.trim() || !host.trim() || ((!credential || hostChanged) && !filled)} onClick={save}>
+            {t("Speichern", "Save")}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// The address of a webhook trigger, its signing secret and how to sign.
+function HookBox({ ctx, t, mode }: { ctx: FormContext; t: T; mode: "signed" | "token" }) {
+  const [hook, setHook] = useState<{ url: string | null; secret: string | null; lastUsedAt: number | null; lastError: string | null } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const call = async (rotate: boolean) => {
+    if (!ctx.pageId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      setHook((await api<{ hook: typeof hook }>("/api/command", { action: "workflow.hook", pageId: ctx.pageId, nodeId: ctx.node.id, rotate })).hook);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  useEffect(() => {
+    if (!ctx.disabled) void call(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ctx.node.id, ctx.pageId]);
+  const copy = (v: string) => void navigator.clipboard?.writeText(v).catch(() => {});
+  if (ctx.disabled) return null;
+  return (
+    <div className="wf-hookbox">
+      {error && <p className="wf-step-error">{error}</p>}
+      {hook?.url && (
+        <>
+          <div className="wf-field">
+            <span className="wf-field-label">{t("Adresse (POST)", "Address (POST)")}</span>
+            <div className="wf-copy">
+              <code>{hook.url}</code>
+              <button type="button" className="icon-button" aria-label={t("Adresse kopieren", "Copy the address")} onClick={() => copy(hook.url!)}>
+                <Copy />
+              </button>
+            </div>
+          </div>
+          {mode === "signed" && hook.secret && (
+            <div className="wf-field">
+              <span className="wf-field-label">{t("Signiergeheimnis", "Signing secret")}</span>
+              <div className="wf-copy">
+                <code className="wf-secret">{hook.secret}</code>
+                <button type="button" className="icon-button" aria-label={t("Geheimnis kopieren", "Copy the secret")} onClick={() => copy(hook.secret!)}>
+                  <Copy />
+                </button>
+              </div>
+              <small className="muted">
+                {t(
+                  "Header X-Flowplan-Timestamp (Unix-Sekunden) und X-Flowplan-Signature: sha256=HMAC-SHA256(Geheimnis, Zeitstempel + \".\" + Inhalt). Gilt nur aktiviert.",
+                  "Headers X-Flowplan-Timestamp (Unix seconds) and X-Flowplan-Signature: sha256=HMAC-SHA256(secret, timestamp + \".\" + body). Works once activated.",
+                )}
+              </small>
+            </div>
+          )}
+          <p className="muted small">
+            {hook.lastUsedAt ? t(`Zuletzt aufgerufen: ${new Date(hook.lastUsedAt).toLocaleString()}`, `Last called: ${new Date(hook.lastUsedAt).toLocaleString()}`) : t("Noch nicht aufgerufen.", "Not called yet.")}
+            {hook.lastError ? ` · ${hook.lastError}` : ""}
+          </p>
+          <button type="button" className="button compact" disabled={busy} onClick={() => void call(true)}>
+            <ArrowsClockwise /> {t("Adresse neu erzeugen (die alte gilt sofort nicht mehr)", "New address (the old one stops working at once)")}
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
+// Tags by name (stored by id).
+const tagCache = new Map<string, Promise<{ id: string; name: string }[]>>();
+function TagPicker({ label, value, ctx, onChange, t }: { label: string; value: string[]; ctx: FormContext; onChange: (v: string[]) => void; t: T }) {
+  const [tags, setTags] = useState<{ id: string; name: string }[]>([]);
+  const workspaceId = ctx.ws.workspaceId;
+  useEffect(() => {
+    if (!workspaceId) return;
+    let live = true;
+    if (!tagCache.has(workspaceId)) tagCache.set(workspaceId, api<{ tags: { id: string; name: string }[] }>(`/api/tags?workspaceId=${workspaceId}`).then((r) => r.tags || []).catch(() => []));
+    void tagCache.get(workspaceId)!.then((r) => live && setTags(r));
+    return () => {
+      live = false;
+    };
+  }, [workspaceId]);
+  const name = (id: string) => tags.find((x) => x.id === id)?.name || t("Tag ohne Zugriff", "Tag without access");
+  return (
+    <fieldset className="wf-group">
+      <legend>{label}</legend>
+      <ul className="wf-chips">
+        {value.map((id) => (
+          <li key={id}>
+            <span>{name(id)}</span>
+            {!ctx.disabled && (
+              <button type="button" className="icon-button" aria-label={t(`„${name(id)}“ entfernen`, `Remove “${name(id)}”`)} onClick={() => onChange(value.filter((x) => x !== id))}>
+                <Trash />
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      {!ctx.disabled && (
+        <Select aria-label={t("Tag hinzufügen", "Add a tag")} value="" onChange={(e) => e.target.value && onChange([...value, e.target.value])}>
+          <option value="">{t("+ Tag …", "+ Tag …")}</option>
+          {tags.filter((x) => !value.includes(x.id)).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
         </Select>
       )}
     </fieldset>

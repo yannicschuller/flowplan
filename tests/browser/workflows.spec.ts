@@ -159,3 +159,151 @@ test("a database rule opens in the canvas; once activated, the rule links to its
   await page.getByRole("menuitem", { name: /Automationen/ }).click();
   await expect(page.getByRole("button", { name: "Erweitert als Workflow → öffnen" })).toBeVisible();
 });
+
+/* ---------- Wave 2 ---------- */
+
+const n = (id: string, type: string, label: string, config: Record<string, unknown>, x = 0, y = 0) => ({ id, type, typeVersion: 1, label, note: "", position: { x, y }, disabled: false, config });
+const e = (id: string, from: string, to: string, port = "out") => ({ id, from: { node: from, port }, to: { node: to, port: "in" } });
+
+test("approvals: the request opens the approvals tab, the decision lets the run go on (desktop and phone)", async ({ page }, info) => {
+  test.setTimeout(120_000);
+  const { command, workflow } = await setup(page, `Approve ${info.project.name}`);
+  const boot = await (await page.request.get("/api/bootstrap")).json();
+  const graph = {
+    nodes: [n("n_start001", "trigger.manual", "Start", { inputs: [] }), n("n_ask00001", "logic.approval", "Freigabe", { approvers: [boot.user.id], message: "Darf der Bericht raus?" }, 300), n("n_done0001", "logic.set", "Danach", { values: [{ name: "ok", value: "ja", type: "text" }] }, 600)],
+    edges: [e("e_1", "n_start001", "n_ask00001"), e("e_2", "n_ask00001", "n_done0001", "approved")],
+  };
+  await command({ action: "workflow.draft", pageId: workflow, graph });
+  expect((await command({ action: "workflow.activate", pageId: workflow })).ok).toBe(true);
+  await command({ action: "workflow.run", pageId: workflow, inputs: {} });
+  // The request arrives as a notification of the kind workflow_ops.
+  await expect.poll(async () => JSON.stringify(await (await page.request.get("/api/notifications")).json()), { timeout: 20_000 }).toContain("Darf der Bericht raus?");
+  await open(page, workflow);
+  const tab = page.getByRole("tab", { name: /Freigaben 1/ });
+  await expect(tab).toHaveAttribute("aria-selected", "true", { timeout: 15_000 });
+  const card = page.locator(".wf-approval.open");
+  await expect(card).toContainText("Darf der Bericht raus?");
+  await card.getByLabel("Kommentar (optional)").fill("passt");
+  await card.getByRole("button", { name: "Genehmigen" }).click();
+  await expect(page.locator(".wf-approval").first()).toContainText("Genehmigt");
+  await expect(page.locator(".wf-approval").first()).toContainText("passt");
+  await page.getByRole("tab", { name: "Läufe" }).click();
+  await expect(page.locator(".wf-run-list li").first()).toContainText("Erfolgreich", { timeout: 20_000 });
+});
+
+test("the editor for wave 2: switch cases, nested conditions, chips with filters, custom test values, changes and versions", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "Editing is for tablets and computers.");
+  test.setTimeout(180_000);
+  const errors: string[] = [];
+  page.on("pageerror", (x) => errors.push(x.message));
+  const { command, workflow } = await setup(page, "Editor 2");
+  const graph = {
+    nodes: [
+      n("n_start001", "trigger.manual", "Start", { inputs: [{ name: "name", type: "text", required: true }] }),
+      n("n_if000001", "logic.if", "Wenn", { condition: { kind: "group", join: "and", rules: [{ kind: "condition", left: "{{n_start001.inputs.name}}", op: "notempty", value: "" }] } }, 300),
+      n("n_say00001", "logic.set", "Gruß", { values: [{ name: "text", value: "Hallo {{n_start001.inputs.name}}", type: "text" }] }, 600),
+    ],
+    edges: [e("e_1", "n_start001", "n_if000001"), e("e_2", "n_if000001", "n_say00001", "true")],
+  };
+  await command({ action: "workflow.draft", pageId: workflow, graph });
+  expect((await command({ action: "workflow.activate", pageId: workflow, note: "erste" })).ok).toBe(true);
+  await open(page, workflow);
+  const panel = page.locator(".wf-panel");
+
+  // A nested group in the conditions.
+  await page.locator(".react-flow__node", { hasText: "Wenn" }).click();
+  await panel.getByRole("button", { name: "Gruppe", exact: true }).click();
+  await expect(panel.locator(".wf-cond-group.depth-1")).toHaveCount(1);
+  await expect(panel.getByLabel("Gruppe 2: Verknüpfung")).toHaveValue("or");
+
+  // The draft's changes are marked on the canvas.
+  await page.getByRole("button", { name: /Entwurf · 1 Änderung seit Version 1/ }).click();
+  await expect(page.locator(".wf-card.wf-mark-changed")).toHaveCount(1);
+  await expect(page.locator(".wf-changesbar")).toContainText("Wenn");
+
+  // A switch from the palette, with a case.
+  await page.locator(".react-flow__node", { hasText: "Gruß" }).click();
+  await page.locator(".wf-side").getByRole("option", { name: "Unterscheiden" }).click();
+  await expect(panel.getByRole("heading", { name: "Unterscheiden" })).toBeVisible();
+  await panel.getByLabel("Fall 1: Bezeichnung").fill("Ada");
+  await expect(page.locator(".react-flow__node", { hasText: "Unterscheiden" }).locator(".wf-port-label", { hasText: "Ada" })).toBeVisible();
+
+  // Chips: the placeholder in the greeting, its filter popover.
+  await page.locator(".react-flow__node", { hasText: "Gruß" }).click();
+  const chip = panel.locator(".wf-chip").first();
+  await expect(chip).toContainText("Start");
+  await chip.click();
+  const pop = panel.getByRole("dialog", { name: /Filter von/ });
+  await pop.getByLabel("Filter hinzufügen").selectOption("upper");
+  await expect(chip).toContainText("| groß");
+  await pop.getByRole("button", { name: "Schließen" }).click();
+  await expect.poll(async () => JSON.stringify((await (await page.request.get(`/api/workflows/${workflow}`)).json()).draft.graph), { timeout: 10_000 }).toContain("| upper");
+
+  // A test run with own values in the trigger's form.
+  await page.getByRole("button", { name: "Probelauf", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Probelauf" });
+  await dialog.getByLabel("Daten des Auslösers").selectOption("custom");
+  await dialog.getByLabel("name *").fill("Ada");
+  await dialog.getByRole("button", { name: "Probelauf starten" }).click();
+  await expect(page.locator(".wf-testbar")).toContainText("erfolgreich", { timeout: 30_000 });
+
+  // Versions: the activated one, opened with its difference; restored as the draft.
+  await page.getByRole("tab", { name: "Versionen" }).click();
+  await page.getByRole("button", { name: /Version 1 · aktiv/ }).click();
+  await expect(page.locator(".wf-diff")).toContainText("Unterscheiden", { timeout: 15_000 });
+  await page.getByRole("button", { name: "Als Entwurf wiederherstellen" }).click();
+  await expect.poll(async () => (await (await page.request.get(`/api/workflows/${workflow}`)).json()).draft.changed, { timeout: 10_000 }).toBe(false);
+  expect(errors).toEqual([]);
+});
+
+test("runs: search, retry from the failed node, pause with cancelling", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "Desktop.");
+  test.setTimeout(120_000);
+  const { command, workflow, where } = await setup(page, "Retry");
+  const db = (await command({ action: "page.create", ...where, title: "Retry DB", kind: "database" })).id as string;
+  const graph = {
+    nodes: [
+      n("n_start001", "trigger.manual", "Start", { inputs: [{ name: "row", type: "text", required: false }] }),
+      n("n_upd00001", "action.record.update", "Ändern", { record: "{{n_start001.inputs.row}}", database: db, values: {} }, 300),
+    ],
+    edges: [e("e_1", "n_start001", "n_upd00001")],
+  };
+  await command({ action: "workflow.draft", pageId: workflow, graph });
+  expect((await command({ action: "workflow.activate", pageId: workflow })).ok).toBe(true);
+  await command({ action: "workflow.run", pageId: workflow, inputs: { row: "00000000-0000-4000-8000-00000000abcd" } });
+  await open(page, workflow);
+  await page.getByRole("tab", { name: "Läufe" }).click();
+  await expect(page.locator(".wf-run-list li").first()).toContainText("Fehlgeschlagen", { timeout: 20_000 });
+  await page.getByLabel("Läufe durchsuchen").fill("zzz-nichts");
+  await expect(page.getByText("Keine Läufe mit diesem Filter.")).toBeVisible();
+  await page.getByLabel("Läufe durchsuchen").fill("");
+  await page.locator(".wf-run-list button").first().click();
+  await page.getByRole("button", { name: "Wiederholen ab „Ändern“" }).click();
+  await expect(page.locator(".wf-timeline")).toContainText("Versuch 2", { timeout: 20_000 });
+  // Pause: the dialog offers to cancel open runs.
+  await page.getByRole("button", { name: "Pausieren" }).click();
+  const pause = page.getByRole("dialog", { name: "Workflow pausieren" });
+  await pause.getByRole("button", { name: "Pausieren", exact: true }).click();
+  await expect(page.locator(".wf-head .status-badge")).toHaveText("Pausiert");
+});
+
+test("tablets: connect by tapping an output, then the target", async ({ browser }, info) => {
+  test.skip(info.project.name !== "desktop", "A tablet context of its own.");
+  test.setTimeout(120_000);
+  const context = await browser.newContext({ viewport: { width: 1024, height: 768 }, hasTouch: true, isMobile: true, locale: "de-DE", extraHTTPHeaders: { "Accept-Language": "de-DE,de;q=0.9" } });
+  const page = await context.newPage();
+  const { command, workflow } = await setup(page, "Tablet");
+  const graph = {
+    nodes: [n("n_start001", "trigger.manual", "Start", { inputs: [] }), n("n_set00001", "logic.set", "Ziel", { values: [] }, 320, 120)],
+    edges: [],
+  };
+  await command({ action: "workflow.draft", pageId: workflow, graph });
+  await open(page, workflow);
+  await expect(page.locator(".react-flow__node")).toHaveCount(2);
+  await expect(page.locator(".react-flow__edge")).toHaveCount(0);
+  await page.locator(".react-flow__node", { hasText: "Start" }).getByRole("button", { name: "weiter" }).tap();
+  await expect(page.locator(".wf-tapbar")).toContainText("Ziel für „Start“");
+  await page.locator(".react-flow__node", { hasText: "Ziel" }).tap();
+  await expect(page.locator(".react-flow__edge")).toHaveCount(1);
+  await context.close();
+});

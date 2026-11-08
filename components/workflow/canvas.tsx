@@ -38,6 +38,8 @@ export type NodeStatus = { status: string; duration: string };
 export type CanvasProps = {
   graph: WorkflowGraph;
   ws: Workspace;
+  // Draft changes since the active version (§10.2), shown on the cards.
+  marks?: Map<string, "added" | "changed">;
   issues: Issue[];
   editable: boolean;
   selected: string | null;
@@ -89,6 +91,16 @@ function Flow(props: CanvasProps) {
   const locale = useLocale();
   const { graph, ws, issues, editable, selected, statuses } = props;
   const flow = useReactFlow();
+  // Tablets (§10.9): connect by tapping an output, then the target node.
+  const [touch, setTouch] = useState(false);
+  useEffect(() => {
+    const m = window.matchMedia("(pointer: coarse)");
+    const on = () => setTouch(m.matches);
+    on();
+    m.addEventListener("change", on);
+    return () => m.removeEventListener("change", on);
+  }, []);
+  const [pending, setPending] = useState<{ node: string; port: string } | null>(null);
   const ctx = useMemo(() => displayContext(graph, locale, ws), [graph, locale, ws]);
   const inline = useMemo(() => inlineNodes(graph), [graph]);
   const derived = useMemo<CardNode[]>(
@@ -123,12 +135,17 @@ function Flow(props: CanvasProps) {
             duration: st?.duration || "",
             inline: inline.has(n.id),
             inlineText: t("Sofortteil: läuft beim Speichern mit", "Immediate part: runs as the record is saved"),
-            ports: nodePorts(n).map((p) => ({ id: p, label: portLabel(p, t) })),
+            ports: nodePorts(n).map((p) => ({ id: p, label: portLabel(p, t, n) })),
             disabledText: t("abgeschaltet", "switched off"),
+            mark: props.marks?.get(n.id) || null,
+            markText: props.marks?.get(n.id) === "added" ? t("neu", "new") : props.marks?.get(n.id) === "changed" ? t("geändert", "changed") : "",
+            onPortTap: touch && editable ? (port: string) => setPending({ node: n.id, port }) : undefined,
+            pending: pending?.node === n.id ? pending.port : null,
           },
         };
       }),
-    [graph, ws, ctx, t, statuses, issues, selected, inline],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [graph, ws, ctx, t, statuses, issues, selected, inline, props.marks, touch, editable, pending],
   );
   const [nodes, setNodes] = useState<CardNode[]>(derived);
   useEffect(
@@ -213,6 +230,14 @@ function Flow(props: CanvasProps) {
   }, [nodes, flow]);
   return (
     <div className="wf-canvas" ref={wrapper} onKeyDown={key}>
+      {pending && (
+        <div className="wf-tapbar" role="status">
+          <span>{t(`Ziel für „${graph.nodes.find((n) => n.id === pending.node)?.label || ""}“ (${portLabel(pending.port, t, graph.nodes.find((n) => n.id === pending.node))}) antippen …`, `Tap the target for “${graph.nodes.find((n) => n.id === pending.node)?.label || ""}” (${portLabel(pending.port, t, graph.nodes.find((n) => n.id === pending.node))}) …`)}</span>
+          <button type="button" className="button compact" onClick={() => setPending(null)}>
+            {t("Abbrechen", "Cancel")}
+          </button>
+        </div>
+      )}
       <ReactFlow<CardNode>
         nodes={nodes}
         edges={edges}
@@ -221,6 +246,11 @@ function Flow(props: CanvasProps) {
         onNodesChange={onNodesChange}
         onEdgesChange={(changes) => {
           for (const c of changes) if (c.type === "select") setSelectedEdge((cur) => (c.selected ? c.id : cur === c.id ? null : cur));
+        }}
+        onNodeClick={(_e, n) => {
+          if (!pending) return;
+          if (n.id !== pending.node) props.onConnect(pending, n.id);
+          setPending(null);
         }}
         onNodeDragStop={(_e, _n, dragged) => editable && props.onMove(dragged.map((n) => ({ id: n.id, x: Math.round(n.position.x), y: Math.round(n.position.y) })))}
         onConnect={(c: Connection) => c.source && c.target && props.onConnect({ node: c.source, port: c.sourceHandle || "out" }, c.target)}

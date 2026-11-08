@@ -22,6 +22,11 @@ export type CardData = {
   inlineText: string;
   ports: { id: string; label: string }[];
   disabledText: string;
+  mark?: "added" | "changed" | null;
+  markText?: string;
+  // Tablets: tapping an output starts a connection (canvas.tsx).
+  onPortTap?: (port: string) => void;
+  pending?: string | null;
 };
 export type CardNode = Node<CardData, "wf">;
 
@@ -58,7 +63,8 @@ function NodeCardView({ data, selected }: NodeProps<CardNode>) {
   const trigger = isTrigger(node.type);
   const S = data.status ? STATUS_ICON[data.status] : null;
   return (
-    <div className={`wf-card wf-cat-${nodeSpec(node.type)?.category || "logic"}${selected ? " selected" : ""}${node.disabled ? " off" : ""}${data.status ? ` status-${data.status}` : ""}`}>
+    <div className={`wf-card wf-cat-${nodeSpec(node.type)?.category || "logic"}${selected ? " selected" : ""}${node.disabled ? " off" : ""}${data.status ? ` status-${data.status}` : ""}${data.mark ? ` wf-mark-${data.mark}` : ""}`}>
+      {data.mark && <span className="wf-card-mark">{data.markText}</span>}
       {!trigger && <Handle type="target" position={Position.Left} id="in" className="wf-handle-in" />}
       <div className="wf-card-head">
         <NodeIcon type={node.type} />
@@ -79,7 +85,13 @@ function NodeCardView({ data, selected }: NodeProps<CardNode>) {
       <div className="wf-card-ports">
         {data.ports.map((p, i) => (
           <div key={p.id} className="wf-port" style={{ top: data.ports.length > 1 ? `${((i + 1) / (data.ports.length + 1)) * 100}%` : undefined }}>
-            {data.ports.length > 1 || p.id !== "out" ? <span className="wf-port-label">{p.label}</span> : null}
+            {data.onPortTap ? (
+              <button type="button" className={`wf-port-label wf-port-tap nodrag${data.pending === p.id ? " pending" : ""}`} aria-pressed={data.pending === p.id} onClick={(e) => (e.stopPropagation(), data.onPortTap!(p.id))}>
+                {p.label}
+              </button>
+            ) : data.ports.length > 1 || p.id !== "out" ? (
+              <span className="wf-port-label">{p.label}</span>
+            ) : null}
             <Handle type="source" position={Position.Right} id={p.id} className={`wf-handle-out port-${p.id}`} />
           </div>
         ))}

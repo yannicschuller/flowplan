@@ -3,7 +3,7 @@
 // nodes (triggers first, then along the edges), labels, one-line summaries
 // and the output tree of the placeholder picker. Client-only helpers; the
 // graph model itself is lib/workflows/graph.ts.
-import { isTrigger, nodeSpec, NODE_TYPES, RECORD_OUTPUT, type NodeSpec, type OutputField } from "@/lib/workflows/catalog";
+import { aiFieldOutputs, isTrigger, nodeSpec, NODE_TYPES, RECORD_OUTPUT, type AiField, type NodeSpec, type OutputField } from "@/lib/workflows/catalog";
 import { nodePorts, outgoing, type GraphIssue, type WorkflowGraph, type WorkflowNode } from "@/lib/workflows/graph";
 import { toDisplay, type DisplayContext } from "@/lib/workflows/placeholders";
 import type { Field } from "@/lib/types";
@@ -55,8 +55,33 @@ export type RunDetail = RunSummary & {
   contentsVisible: boolean;
   origin: { runId: string; pageId: string; title: string | null } | null;
   aiTokens: number;
+  errorKind: string | null;
+  approvals: { id: string; stepId: string; decision: string | null; expiresAt: number | null; canDecide: boolean }[];
   timeline: TimelineStep[];
 };
+// An approval (GET /api/workflow-approvals…, lib/workflows/actions.ts).
+export type Approval = {
+  id: string;
+  pageId: string;
+  title: string;
+  runId: string;
+  message: string;
+  decision: string | null;
+  decidedBy: Person | null;
+  comment: string;
+  approvers: Person[];
+  canDecide: boolean;
+  expiresAt: number | null;
+  createdAt: number;
+  decidedAt: number | null;
+};
+// What the editor may pick (GET /api/workflows/{id}/resources).
+export type Resources = {
+  chatHooks: { id: string; format: string; host: string }[];
+  addresses: { id: string; label: string; signed: boolean; senders: string[] }[];
+  journals: { id: string; title: string; locked: boolean }[];
+};
+export type Credential = { id: string; name: string; kind: string; host: string; updatedAt: number; createdBy: Person | null };
 // GET /api/pages/{id} → workflow (lib/workflows/store.ts workflowState).
 export type WorkflowState = {
   pageId: string;
@@ -74,6 +99,7 @@ export type WorkflowState = {
 };
 // What the editor knows about the workspace (for pickers and names).
 export type Workspace = {
+  workspaceId?: string;
   pages: PageRef[];
   spaces: { id: string; name: string }[];
   members: Person[];
@@ -103,8 +129,20 @@ const PORT_TEXT: Record<string, [string, string]> = {
   item: ["Element", "Item"],
   done: ["fertig", "done"],
   default: ["sonst", "otherwise"],
+  approved: ["genehmigt", "approved"],
+  rejected: ["abgelehnt", "rejected"],
+  timeout: ["Frist abgelaufen", "timed out"],
+  unclear: ["unklar", "unclear"],
 };
-export const portLabel = (port: string, t: T) => (PORT_TEXT[port] ? t(PORT_TEXT[port][0], PORT_TEXT[port][1]) : port);
+// A port's name; a switch's cases by their label (or value).
+export const portLabel = (port: string, t: T, node?: WorkflowNode) => {
+  if (PORT_TEXT[port]) return t(PORT_TEXT[port][0], PORT_TEXT[port][1]);
+  if (port.startsWith("case:")) {
+    const kase = ((node?.config.cases as { id: string; label?: string; value?: string }[]) || []).find((c) => `case:${c.id}` === port);
+    return kase ? kase.label || kase.value || t("Fall", "Case") : t("Fall", "Case");
+  }
+  return port;
+};
 
 export const specName = (s: NodeSpec | undefined, t: T) => (s ? t(s.name[0], s.name[1]) : "?");
 export const typeName = (type: string, t: T) => specName(nodeSpec(type), t);
@@ -257,6 +295,46 @@ export function nodeSummary(node: WorkflowNode, ws: Workspace, ctx: DisplayConte
       return (((c.values as { name: string }[]) || []).map((v) => v.name).join(", ") || t("Werte festlegen", "Define values")).slice(0, 80);
     case "logic.stop":
       return c.result === "failed" ? t("als Fehler", "as failed") : t("erfolgreich", "succeeded");
+    case "logic.switch": {
+      const n = ((c.cases as unknown[]) || []).length;
+      return `${showText(String(c.value || ""), ctx).slice(0, 40) || "…"} · ${n === 1 ? t("1 Fall", "1 case") : t(`${n} Fälle`, `${n} cases`)}`;
+    }
+    case "logic.foreach":
+      return `${showText(String(c.list || ""), ctx).slice(0, 50) || t("Liste wählen", "Choose a list")}${c.mode === "parallel" ? t(" · parallel", " · in parallel") : ""}`;
+    case "logic.wait": {
+      const units: Record<string, [string, string]> = { minutes: ["Min.", "min"], hours: ["Std.", "h"], days: ["Tage", "days"] };
+      const u = units[String(c.unit || "hours")] || units.hours;
+      if (c.mode === "until") return t(`bis ${showText(String(c.until || ""), ctx) || "…"}`, `until ${showText(String(c.until || ""), ctx) || "…"}`) + (c.time ? ` ${c.time}` : "");
+      if (c.mode === "next") return t(`bis zum nächsten ${c.weekdays ? "Werktag" : "Tag"} ${c.time || "09:00"}`, `until the next ${c.weekdays ? "working day" : "day"} ${c.time || "09:00"}`);
+      return `${Number(c.amount || 1)} ${t(u[0], u[1])}`;
+    }
+    case "logic.approval": {
+      const to = (c.approvers as string[]) || [];
+      return to.length ? to.map((r) => recipientName(r, ws, ctx, t)).join(", ") : t("Freigebende wählen", "Choose approvers");
+    }
+    case "ai.summarize":
+    case "ai.extract":
+    case "ai.classify":
+      return showText(String(c.text || ""), ctx).slice(0, 60) || t("Text wählen", "Choose a text");
+    case "ai.prompt":
+      return showText(String(c.prompt || ""), ctx).slice(0, 60) || t("Anweisung schreiben", "Write a prompt");
+    case "http.request": {
+      const url = String(c.url || "");
+      const host = /^https?:\/\/([^/?#]+)/i.exec(url)?.[1] || "";
+      return host ? `${c.method || "GET"} ${host}` : t("Adresse eingeben", "Enter an address");
+    }
+    case "notify.email": {
+      const to = (c.to as string[]) || [];
+      return to.length ? to.map((r) => (r.includes("@") && !r.includes("{{") ? r : recipientName(r, ws, ctx, t))).join(", ").slice(0, 80) : t("Empfänger wählen", "Choose recipients");
+    }
+    case "notify.chat":
+      return c.webhook ? t("an einen Chat-Webhook", "to a chat webhook") : t("Webhook wählen", "Choose a webhook");
+    case "trigger.webhook":
+      return c.mode === "token" ? t("nur Token", "token only") : t("signiert", "signed");
+    case "trigger.mail.received":
+      return c.address ? t("an eine Workflow-Adresse", "to a workflow address") : t("Adresse wählen", "Choose an address");
+    case "trigger.journal.day":
+      return c.journal ? `„${page(c.journal)}“` : t("jedes Journal", "any journal");
   }
   return "";
 }
@@ -286,6 +364,17 @@ export function outputTree(node: WorkflowNode, ws: Workspace): OutputField[] {
     );
   if (node.type === "logic.set")
     return ((node.config.values as { name: string; type?: string }[]) || []).map((v) => ({ key: v.name, label: [v.name, v.name], type: v.type === "number" ? "number" : v.type === "boolean" ? "boolean" : "text" }));
+  // Typed AI fields, the expected fields of a webhook body.
+  if (node.type === "ai.extract")
+    return s.outputs.map((o) => (o.key === "fields" ? { ...o, children: aiFieldOutputs(node.config.fields as AiField[]) } : o));
+  if (node.type === "ai.prompt")
+    return s.outputs.map((o) => (o.key === "json" ? { ...o, children: aiFieldOutputs(node.config.fields as AiField[]) } : o));
+  if (node.type === "trigger.webhook")
+    return s.outputs.map((o) =>
+      o.key === "body"
+        ? { ...o, children: ((node.config.fields as { name: string; type: string }[]) || []).map((f) => ({ key: f.name, label: [f.name, f.name] as [string, string], type: (["text", "number", "boolean", "date", "object", "list"].includes(f.type) ? f.type : "text") as OutputField["type"] })) }
+        : o,
+    );
   return fill(s.outputs);
 }
 
@@ -309,3 +398,40 @@ export function useStableT(): T {
     return (de: string, en?: string) => (en === undefined ? translateLabel(de, locale) : pick(de, en));
   }, [locale]);
 }
+
+// The difference of two graphs (§10.2 draft changes, §10.5 versions):
+// nodes added, removed and changed (with the settings before and after),
+// connections added and removed. Positions and notes do not count.
+export type GraphDiff = {
+  added: WorkflowNode[];
+  removed: WorkflowNode[];
+  changed: { node: WorkflowNode; before: WorkflowNode; keys: { key: string; before: unknown; after: unknown }[] }[];
+  edgesAdded: number;
+  edgesRemoved: number;
+};
+export function graphDiff(before: WorkflowGraph, after: WorkflowGraph): GraphDiff {
+  const a = new Map(before.nodes.map((n) => [n.id, n]));
+  const b = new Map(after.nodes.map((n) => [n.id, n]));
+  const out: GraphDiff = { added: [], removed: [], changed: [], edgesAdded: 0, edgesRemoved: 0 };
+  for (const n of after.nodes) {
+    const old = a.get(n.id);
+    if (!old) {
+      out.added.push(n);
+      continue;
+    }
+    const keys: GraphDiff["changed"][number]["keys"] = [];
+    const cmp = (key: string, x: unknown, y: unknown) => JSON.stringify(x ?? null) !== JSON.stringify(y ?? null) && keys.push({ key, before: x, after: y });
+    cmp("label", old.label, n.label);
+    cmp("disabled", old.disabled, n.disabled);
+    cmp("onError", old.onError, n.onError);
+    for (const k of new Set([...Object.keys(old.config || {}), ...Object.keys(n.config || {})])) cmp(k, old.config?.[k], n.config?.[k]);
+    if (keys.length) out.changed.push({ node: n, before: old, keys });
+  }
+  for (const n of before.nodes) if (!b.has(n.id)) out.removed.push(n);
+  const ea = new Set(before.edges.map((e) => `${e.from.node}:${e.from.port}>${e.to.node}`));
+  const eb = new Set(after.edges.map((e) => `${e.from.node}:${e.from.port}>${e.to.node}`));
+  for (const e of eb) if (!ea.has(e)) out.edgesAdded++;
+  for (const e of ea) if (!eb.has(e)) out.edgesRemoved++;
+  return out;
+}
+export const diffSize = (d: GraphDiff) => d.added.length + d.removed.length + d.changed.length + d.edgesAdded + d.edgesRemoved;

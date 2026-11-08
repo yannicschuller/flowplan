@@ -15,6 +15,7 @@ import { runsInlineHere } from "./node-card";
 import type { DatabaseInfo } from "./use-databases";
 
 export function NodePanel({
+  pageId,
   graph,
   node,
   ws,
@@ -27,6 +28,7 @@ export function NodePanel({
   onDelete,
   onClose,
 }: {
+  pageId?: string;
   graph: WorkflowGraph;
   node: WorkflowNode;
   ws: Workspace;
@@ -110,7 +112,7 @@ export function NodePanel({
           )}
         </div>
         <ConfigForm
-          ctx={{ node, ws, databases, picker: { graph, nodeId: node.id, ws, values }, triggerDatabase: (trigger?.config.database as string) || null, disabled: !editable }}
+          ctx={{ pageId, node, ws, databases, picker: { graph, nodeId: node.id, ws, values }, triggerDatabase: (trigger?.config.database as string) || null, disabled: !editable }}
           onChange={(config) => onChange({ ...node, config })}
         />
         {!isTrigger(node.type) && (

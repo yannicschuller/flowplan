@@ -138,6 +138,25 @@ export function ActivateDialog({
                 <li className="muted">{t("Nichts, was Daten ändert.", "Nothing that changes data.")}</li>
               )}
             </ul>
+            {(() => {
+              // What leaves Flowplan (§9.1): hosts, e-mail, chat, AI.
+              const hosts = [...new Set(graph.nodes.filter((n) => n.type === "http.request" && !n.disabled).map((n) => /^https?:\/\/([^/?#{}]+)/i.exec(String(n.config.url || ""))?.[1] || "?"))];
+              const mails = graph.nodes.some((n) => n.type === "notify.email" && !n.disabled);
+              const chat = graph.nodes.some((n) => n.type === "notify.chat" && !n.disabled);
+              const ai = graph.nodes.some((n) => n.type.startsWith("ai.") && !n.disabled);
+              if (!hosts.length && !mails && !chat && !ai) return null;
+              return (
+                <>
+                  <h3>{t("Nach außen", "Outside")}</h3>
+                  <ul className="wf-summary">
+                    {hosts.length > 0 && <li>{t(`HTTP-Anfragen an ${hosts.join(", ")}`, `HTTP requests to ${hosts.join(", ")}`)}</li>}
+                    {mails && <li>{t("E-Mails (höchstens 100 je Tag)", "E-mails (at most 100 a day)")}</li>}
+                    {chat && <li>{t("Nachrichten in Chat-Webhooks", "Messages to chat webhooks")}</li>}
+                    {ai && <li>{t("KI: Texte gehen an den KI-Anbieter der Instanz (kostet Tokens des Workflows)", "AI: texts go to the instance's AI provider (uses the workflow's tokens)")}</li>}
+                  </ul>
+                </>
+              );
+            })()}
             <p className="wf-runs-as">
               {t(
                 `Läuft als du (${me.name}) – mit deinen Rechten. Er reagiert nur auf das, was du sehen darfst, und ändert nur, was du ändern darfst.`,
@@ -219,6 +238,9 @@ export function TestDialog({
   const [source, setSource] = useState<Source>("sample");
   const [target, setTarget] = useState("");
   const [json, setJson] = useState("{}");
+  // Own values in the trigger's own form (§10.3): its inputs, a mail, a webhook body.
+  const [form, setForm] = useState<Record<string, string>>({});
+  const [assume, setAssume] = useState<"approved" | "rejected">("approved");
   const [issues, setIssues] = useState<Issue[]>([]);
   const [busy, setBusy] = useState(false);
   const trigger = triggers.find((n) => n.id === nodeId) || triggers[0];
@@ -236,8 +258,27 @@ export function TestDialog({
     if (source === "page") data = { kind: "page", pageId: target };
     if (source === "record") data = { kind: "record", rowId: target };
     if (source === "custom") {
+      const type = trigger?.type;
       try {
-        data = { kind: "custom", output: JSON.parse(json) };
+        if (type === "trigger.manual") {
+          const inputs: Record<string, unknown> = {};
+          for (const f of (trigger!.config.inputs as { name: string; type: string }[]) || []) {
+            const v = form[`input:${f.name}`] ?? "";
+            if (v === "") continue;
+            inputs[f.name] = f.type === "number" ? Number(v) : f.type === "boolean" ? v === "true" : v;
+          }
+          data = { kind: "custom", output: { inputs, startedBy: null, source: "workflow" } };
+        } else if (type === "trigger.mail.received")
+          data = {
+            kind: "custom",
+            output: {
+              mail: { from: form.from || "", to: [], subject: form.subject || "", text: form.text || "", html: "", date: new Date().toISOString(), messageId: "test", attachments: [] },
+              authenticated: form.authenticated || "pass",
+            },
+          };
+        else if (type === "trigger.webhook") data = { kind: "custom", output: { body: JSON.parse(json || "null"), query: {}, headers: {}, receivedAt: new Date().toISOString() } };
+        else if (type === "trigger.schedule") data = { kind: "custom", output: { slot: { date: form.date || new Date().toISOString().slice(0, 10), time: String(trigger!.config.time || "09:00") } } };
+        else data = { kind: "custom", output: JSON.parse(json) };
       } catch {
         setIssues([{ level: "error", code: "json", message: t("Kein gültiges JSON.", "Not valid JSON.") }]);
         return;
@@ -246,7 +287,7 @@ export function TestDialog({
     setBusy(true);
     try {
       await flush();
-      const r = await api<{ ok: boolean; runId: string | null; issues: Issue[] }>("/api/command", { action: "workflow.test", pageId, mode, nodeId: trigger?.id, data });
+      const r = await api<{ ok: boolean; runId: string | null; issues: Issue[] }>("/api/command", { action: "workflow.test", pageId, mode, nodeId: trigger?.id, data, assume });
       if (r.ok && r.runId) onStarted(r.runId);
       else setIssues(r.issues);
     } catch (e) {
@@ -286,7 +327,7 @@ export function TestDialog({
                 <option value="last">{t("Letztes echtes Ereignis", "Last real event")}</option>
                 {pageTrigger && <option value="page">{t("Seite wählen …", "Choose a page …")}</option>}
                 {recordTrigger && <option value="record">{t("Eintrag wählen …", "Choose a record …")}</option>}
-                <option value="custom">{t("Eigene Werte (JSON)", "Own values (JSON)")}</option>
+                <option value="custom">{["trigger.manual", "trigger.mail.received", "trigger.schedule"].includes(trigger?.type || "") ? t("Eigene Werte", "Own values") : t("Eigene Werte (JSON)", "Own values (JSON)")}</option>
               </Select>
             </div>
             {source === "page" && (
@@ -308,12 +349,16 @@ export function TestDialog({
                 </Select>
               </div>
             )}
-            {source === "custom" && (
+            {source === "custom" && <CustomValues trigger={trigger!} form={form} setForm={setForm} json={json} setJson={setJson} jsonId={ids.json} t={t} />}
+            {mode === "dry" && graph.nodes.some((n) => n.type === "logic.approval") && (
               <div className="wf-field">
-                <label className="wf-field-label" htmlFor={ids.json}>
-                  {t("Ausgabe des Auslösers", "Output of the trigger")}
+                <label className="wf-field-label" htmlFor={`${ids.source}-assume`}>
+                  {t("Freigaben im Probelauf", "Approvals in the dry run")}
                 </label>
-                <textarea id={ids.json} className="wf-json" rows={6} value={json} onChange={(e) => setJson(e.target.value)} />
+                <Select id={`${ids.source}-assume`} value={assume} onChange={(e) => setAssume(e.target.value as "approved" | "rejected")}>
+                  <option value="approved">{t("Als genehmigt annehmen", "Assume approved")}</option>
+                  <option value="rejected">{t("Als abgelehnt annehmen", "Assume rejected")}</option>
+                </Select>
               </div>
             )}
           </>
@@ -367,7 +412,7 @@ export function ConnectDialog({ graph, nodeId, onConnect, onRemove, onClose }: {
               {t("Ausgang", "Output")}
             </label>
             <Select id={ids.port} value={port} onChange={(e) => setPort(e.target.value)}>
-              {ports.map((p) => <option key={p} value={p}>{portLabel(p, t)}</option>)}
+              {ports.map((p) => <option key={p} value={p}>{portLabel(p, t, node)}</option>)}
             </Select>
           </div>
         )}
@@ -402,3 +447,107 @@ export function AppendDialog({ open, title, triggers, onPick, onClose }: { open:
 }
 
 export const writesData = (type: string) => !!nodeSpec(type) && (type.startsWith("action.") || type.startsWith("notify."));
+
+// The trigger's own form for "own values" of a test run.
+function CustomValues({ trigger, form, setForm, json, setJson, jsonId, t }: { trigger: WorkflowGraph["nodes"][number]; form: Record<string, string>; setForm: (f: Record<string, string>) => void; json: string; setJson: (v: string) => void; jsonId: string; t: (de: string, en: string) => string }) {
+  const id = useId();
+  const field = (key: string, label: string, type = "text") => (
+    <div className="wf-field" key={key}>
+      <label className="wf-field-label" htmlFor={`${id}-${key}`}>
+        {label}
+      </label>
+      {type === "textarea" ? (
+        <textarea id={`${id}-${key}`} rows={4} value={form[key] || ""} onChange={(e) => setForm({ ...form, [key]: e.target.value })} />
+      ) : (
+        <input id={`${id}-${key}`} type={type} value={form[key] || ""} onChange={(e) => setForm({ ...form, [key]: e.target.value })} />
+      )}
+    </div>
+  );
+  if (trigger.type === "trigger.manual") {
+    const inputs = (trigger.config.inputs as { name: string; type: string; required?: boolean }[]) || [];
+    if (!inputs.length) return <p className="muted">{t("Dieser Auslöser hat keine Eingabefelder.", "This trigger has no input fields.")}</p>;
+    return <>{inputs.map((f) => field(`input:${f.name}`, `${f.name}${f.required ? " *" : ""}`, f.type === "number" ? "number" : f.type === "date" ? "date" : "text"))}</>;
+  }
+  if (trigger.type === "trigger.mail.received")
+    return (
+      <>
+        {field("from", t("Absender", "From"), "email")}
+        {field("subject", t("Betreff", "Subject"))}
+        {field("text", t("Text", "Text"), "textarea")}
+        <div className="wf-field">
+          <label className="wf-field-label" htmlFor={`${id}-auth`}>
+            {t("Absender geprüft", "Sender verified")}
+          </label>
+          <Select id={`${id}-auth`} value={form.authenticated || "pass"} onChange={(e) => setForm({ ...form, authenticated: e.target.value })}>
+            <option value="pass">{t("Bestanden", "Passed")}</option>
+            <option value="unknown">{t("Unbekannt", "Unknown")}</option>
+            <option value="fail">{t("Durchgefallen", "Failed")}</option>
+          </Select>
+        </div>
+      </>
+    );
+  if (trigger.type === "trigger.schedule") return field("date", t("Termin (Datum)", "Slot (date)"), "date");
+  return (
+    <div className="wf-field">
+      <label className="wf-field-label" htmlFor={jsonId}>
+        {trigger.type === "trigger.webhook" ? t("Inhalt des Aufrufs (JSON)", "Body of the call (JSON)") : t("Ausgabe des Auslösers", "Output of the trigger")}
+      </label>
+      <textarea id={jsonId} className="wf-json" rows={6} value={json} onChange={(e) => setJson(e.target.value)} />
+    </div>
+  );
+}
+
+// Pausing (§8.11, open question 8): open runs are held – or cancelled.
+export function PauseDialog({ open, pageId, onClose, onDone, onError }: { open: boolean; pageId: string; onClose: () => void; onDone: () => void; onError: (e: unknown) => void }) {
+  const t = useStableT();
+  const [cancel, setCancel] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [openRuns, setOpenRuns] = useState<number | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    setCancel(false);
+    setOpenRuns(null);
+    void api<{ runs: unknown[] }>(`/api/workflows/${pageId}/runs?status=open&mode=live&limit=200`)
+      .then((r) => setOpenRuns(r.runs.length))
+      .catch(() => setOpenRuns(0));
+  }, [open, pageId]);
+  return (
+    <Modal open={open} onClose={onClose} title={t("Workflow pausieren", "Pause the workflow")}>
+      <div className="wf-dialog">
+        <p>{t("Pausiert startet der Workflow keine neuen Läufe; Ereignisse in der Zwischenzeit werden nicht nachgeholt.", "While paused the workflow starts no new runs; events in the meantime are not made up for.")}</p>
+        {openRuns !== null && openRuns > 0 && (
+          <>
+            <p>{openRuns === 1 ? t("1 Lauf ist noch offen. Er wird angehalten und läuft nach dem Aktivieren weiter.", "1 run is still open. It is held and goes on after activating.") : t(`${openRuns} Läufe sind noch offen. Sie werden angehalten und laufen nach dem Aktivieren weiter.`, `${openRuns} runs are still open. They are held and go on after activating.`)}</p>
+            <label className="wf-check">
+              <input type="checkbox" checked={cancel} onChange={(e) => setCancel(e.target.checked)} />
+              <span>{t("Offene Läufe stattdessen abbrechen (auch wartende Freigaben)", "Cancel the open runs instead (waiting approvals too)")}</span>
+            </label>
+          </>
+        )}
+        <div className="modal-actions">
+          <button type="button" className="button" onClick={onClose}>
+            {t("Abbrechen", "Cancel")}
+          </button>
+          <button
+            type="button"
+            className="button primary"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                await api("/api/command", { action: "workflow.pause", pageId, cancelRuns: cancel });
+                onDone();
+              } catch (e) {
+                onError(e);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {cancel ? t("Pausieren und abbrechen", "Pause and cancel") : t("Pausieren", "Pause")}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}

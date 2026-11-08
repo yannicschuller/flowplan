@@ -35,7 +35,10 @@ import { databasesOf, useDatabases } from "./use-databases";
 import { Palette } from "./palette";
 import { NodePanel } from "./node-panel";
 import { ListView } from "./list-view";
-import { ActivateDialog, AppendDialog, ConnectDialog, TestDialog } from "./dialogs";
+import { ActivateDialog, AppendDialog, ConnectDialog, PauseDialog, TestDialog } from "./dialogs";
+import { ApprovalList, useApprovals } from "./approvals";
+import { DiffList, VersionsView } from "./versions";
+import { graphDiff } from "./model";
 import { initialConfig } from "./config-form";
 import { RunList, RunView, stepStatuses, useRun } from "./runs";
 import type { CanvasProps, NodeStatus } from "./canvas";
@@ -46,6 +49,7 @@ const Canvas = dynamic(() => import("./canvas"), { ssr: false, loading: () => <d
 
 export type WorkflowViewProps = {
   pageId: string;
+  workspaceId?: string;
   workflow: WorkflowState;
   // The page may be edited here (not read mode, not locked).
   editable: boolean;
@@ -93,9 +97,19 @@ export default function WorkflowView(props: WorkflowViewProps) {
   const t = useStableT();
   const { workflow: state, pageId } = props;
   const phone = useMedia("(max-width: 767px)");
-  const [tab, setTab] = useState<"editor" | "runs">("editor");
+  const [tab, setTab] = useState<"editor" | "runs" | "approvals" | "versions">("editor");
   const [runId, setRunId] = useState<string | null>(null);
   const [activating, setActivating] = useState(false);
+  const [pausing, setPausing] = useState(false);
+  const { approvals, reload: reloadApprovals } = useApprovals(pageId, props.onError);
+  const waitingForMe = (approvals || []).filter((a) => a.canDecide).length;
+  // Opened from an approval request: the approvals first.
+  const opened = useRef(false);
+  useEffect(() => {
+    if (opened.current || approvals === null) return;
+    opened.current = true;
+    if (waitingForMe) setTab("approvals");
+  }, [approvals, waitingForMe]);
   const [busy, setBusy] = useState(false);
   // The editor reports its live graph and how to save at once.
   const live = useRef<{ graph: WorkflowGraph; flush: () => Promise<void>; select: (id: string) => void } | null>(null);
@@ -105,7 +119,7 @@ export default function WorkflowView(props: WorkflowViewProps) {
   // The shell sends new arrays on every render: kept while their content is the same.
   const wsKey = JSON.stringify([props.pages, props.spaces, props.members]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const ws = useMemo(() => ({ pages: props.pages, spaces: props.spaces, members: props.members }), [wsKey]);
+  const ws = useMemo(() => ({ workspaceId: props.workspaceId, pages: props.pages, spaces: props.spaces, members: props.members }), [wsKey, props.workspaceId]);
   const shownGraph = state.draft?.graph || state.active?.graph || null;
   const status =
     state.status === "active"
@@ -115,17 +129,6 @@ export default function WorkflowView(props: WorkflowViewProps) {
         : state.status === "auto_paused"
           ? { tone: "error" as const, text: t("Automatisch pausiert", "Paused automatically") }
           : { tone: "off" as const, text: t("Entwurf", "Draft") };
-  const pause = async () => {
-    setBusy(true);
-    try {
-      await api("/api/command", { action: "workflow.pause", pageId });
-      props.onReload();
-    } catch (e) {
-      onError(e);
-    } finally {
-      setBusy(false);
-    }
-  };
   const openRun = (id: string) => {
     setRunId(id);
     setTab("runs");
@@ -133,6 +136,12 @@ export default function WorkflowView(props: WorkflowViewProps) {
   const renderGraph = (graph: WorkflowGraph, statuses: Map<string, NodeStatus>, selected: string | null, onSelect: (id: string | null) => void) => (
     <ReadOnlyGraph graph={graph} ws={ws} statuses={statuses} selected={selected} onSelect={onSelect} list={phone} />
   );
+  const tabs: { id: typeof tab; label: string }[] = [
+    { id: "editor", label: canEditDraft ? t("Editor", "Editor") : t("Ablauf", "Flow") },
+    { id: "runs", label: t("Läufe", "Runs") },
+    ...(approvals?.length ? [{ id: "approvals" as const, label: waitingForMe ? t(`Freigaben ${waitingForMe}`, `Approvals ${waitingForMe}`) : t("Freigaben", "Approvals") }] : []),
+    ...(!phone ? [{ id: "versions" as const, label: t("Versionen", "Versions") }] : []),
+  ];
   return (
     <div className={`workflow-page${phone ? " phone" : ""}`}>
       <header className="wf-head">
@@ -155,13 +164,13 @@ export default function WorkflowView(props: WorkflowViewProps) {
                   aria-checked={state.status === "active"}
                   aria-label={t("Workflow aktiv", "Workflow active")}
                   disabled={busy || (!state.draft && state.status !== "active")}
-                  onClick={() => (state.status === "active" ? void pause() : setActivating(true))}
+                  onClick={() => (state.status === "active" ? setPausing(true) : setActivating(true))}
                 >
                   <span aria-hidden />
                 </button>
               </label>
             ) : state.status === "active" ? (
-              <button type="button" className="button compact" disabled={busy} onClick={pause}>
+              <button type="button" className="button compact" disabled={busy} onClick={() => setPausing(true)}>
                 <Pause /> {t("Pausieren", "Pause")}
               </button>
             ) : null}
@@ -169,27 +178,40 @@ export default function WorkflowView(props: WorkflowViewProps) {
         )}
       </header>
       <div className="wf-tabs" role="tablist" aria-label={t("Ansicht", "View")}>
-        <button type="button" role="tab" id={`wf-tab-editor-${pageId}`} aria-selected={tab === "editor"} aria-controls={`wf-panel-${pageId}`} onClick={() => setTab("editor")}>
-          {canEditDraft ? t("Editor", "Editor") : t("Ablauf", "Flow")}
-        </button>
-        <button
-          type="button"
-          role="tab"
-          id={`wf-tab-runs-${pageId}`}
-          aria-selected={tab === "runs"}
-          aria-controls={`wf-panel-${pageId}`}
-          onClick={() => {
-            setTab("runs");
-            setRunId(null);
-          }}
-        >
-          {t("Läufe", "Runs")}
-        </button>
+        {tabs.map((x) => (
+          <button
+            key={x.id}
+            type="button"
+            role="tab"
+            id={`wf-tab-${x.id}-${pageId}`}
+            aria-selected={tab === x.id}
+            aria-controls={`wf-panel-${pageId}`}
+            className={x.id === "approvals" && waitingForMe ? "wf-tab-attention" : undefined}
+            onClick={() => {
+              setTab(x.id);
+              if (x.id === "runs") setRunId(null);
+            }}
+          >
+            {x.label}
+          </button>
+        ))}
       </div>
       <div className="wf-tab-panel" role="tabpanel" id={`wf-panel-${pageId}`} aria-labelledby={`wf-tab-${tab}-${pageId}`}>
-        {tab === "runs" ? (
+        {tab === "approvals" ? (
+          <ApprovalList approvals={approvals || []} onDecided={() => void reloadApprovals()} onOpenRun={openRun} onError={onError} />
+        ) : tab === "versions" ? (
+          <VersionsView
+            pageId={pageId}
+            current={shownGraph}
+            activeId={state.active?.id || null}
+            canRestore={manage && props.editable && !!state.draft}
+            onRestored={props.onReload}
+            onError={onError}
+            renderGraph={(graph) => renderGraph(graph, NO_STATUS, null, NOOP)}
+          />
+        ) : tab === "runs" ? (
           runId ? (
-            <RunView runId={runId} canEdit={manage} onBack={() => setRunId(null)} onError={onError} renderGraph={renderGraph} />
+            <RunView runId={runId} canEdit={manage} onBack={() => setRunId(null)} onError={onError} renderGraph={renderGraph} onApprovals={() => setTab("approvals")} />
           ) : (
             <RunList pageId={pageId} graph={shownGraph} onOpen={setRunId} onError={onError} />
           )
@@ -205,6 +227,16 @@ export default function WorkflowView(props: WorkflowViewProps) {
           </>
         )}
       </div>
+      <PauseDialog
+        open={pausing}
+        pageId={pageId}
+        onClose={() => setPausing(false)}
+        onDone={() => {
+          setPausing(false);
+          props.onReload();
+        }}
+        onError={onError}
+      />
       {manage && state.draft && (
         <ActivateDialog
           open={activating}
@@ -285,6 +317,7 @@ function Editor(props: EditorProps) {
   const [connect, setConnect] = useState<string | null>(null);
   const [testing, setTesting] = useState<"test" | "dry" | null>(null);
   const [testRunId, setTestRunId] = useState<string | null>(null);
+  const [showChanges, setShowChanges] = useState(false);
   const testRun = useRun(testRunId, onError);
   const narrow = useMedia("(max-width: 1100px)");
   useEffect(() => setPalette(!narrow), [narrow]);
@@ -318,6 +351,14 @@ function Editor(props: EditorProps) {
     if (!state.active) return null;
     return graphFingerprint(parsed(graph)) === graphFingerprint(parsed(state.active.graph)) ? 0 : changes(graph, state.active.graph);
   }, [graph, state.active]);
+  // The draft's changes since the active version, marked on the canvas.
+  const diff = useMemo(() => (showChanges && state.active ? graphDiff(parsed(state.active.graph), parsed(graph)) : null), [showChanges, state.active, graph]);
+  const marks = useMemo(() => {
+    const m = new Map<string, "added" | "changed">();
+    for (const n of diff?.added || []) m.set(n.id, "added");
+    for (const c of diff?.changed || []) m.set(c.node.id, "changed");
+    return m;
+  }, [diff]);
   const triggerDb = graph.nodes.find((n) => isTrigger(n.type) && typeof n.config.database === "string")?.config.database as string | undefined;
 
   /* ---------- Edits ---------- */
@@ -393,6 +434,7 @@ function Editor(props: EditorProps) {
   const canvasProps: CanvasProps = {
     graph,
     ws,
+    marks,
     issues,
     editable: props.editable,
     selected,
@@ -417,15 +459,15 @@ function Editor(props: EditorProps) {
     <div className="wf-editor" onKeyDown={key}>
       <div className="wf-draftbar">
         <div className="wf-draft-state">
-          <span>
-            {changed === null
-              ? t("Entwurf · noch nie aktiviert", "Draft · never activated")
-              : changed === 0
-                ? t(`Entwurf = Version ${state.active!.number}`, `Draft = version ${state.active!.number}`)
-                : changed === 1
-                  ? t(`Entwurf · 1 Änderung seit Version ${state.active!.number}`, `Draft · 1 change since version ${state.active!.number}`)
-                  : t(`Entwurf · ${changed} Änderungen seit Version ${state.active!.number}`, `Draft · ${changed} changes since version ${state.active!.number}`)}
-          </span>
+          {changed ? (
+            <button type="button" className="text-button wf-changes-toggle" aria-pressed={showChanges} onClick={() => setShowChanges(!showChanges)}>
+              {changed === 1
+                ? t(`Entwurf · 1 Änderung seit Version ${state.active!.number}`, `Draft · 1 change since version ${state.active!.number}`)
+                : t(`Entwurf · ${changed} Änderungen seit Version ${state.active!.number}`, `Draft · ${changed} changes since version ${state.active!.number}`)}
+            </button>
+          ) : (
+            <span>{changed === null ? t("Entwurf · noch nie aktiviert", "Draft · never activated") : t(`Entwurf = Version ${state.active!.number}`, `Draft = version ${state.active!.number}`)}</span>
+          )}
           <span className="muted" role="status">
             {saveText}
           </span>
@@ -471,6 +513,14 @@ function Editor(props: EditorProps) {
           )}
         </div>
       </div>
+      {diff && (
+        <div className="wf-changesbar">
+          <DiffList diff={diff} t={t} />
+          <button type="button" className="text-button" onClick={() => setShowChanges(false)}>
+            {t("Ausblenden", "Hide")}
+          </button>
+        </div>
+      )}
       {testRun && (
         <div className={`wf-testbar status-${testRun.status}`} role="status">
           <span>
@@ -522,6 +572,7 @@ function Editor(props: EditorProps) {
         </div>
         {selectedNode && (
           <NodePanel
+            pageId={pageId}
             graph={graph}
             node={selectedNode}
             ws={ws}

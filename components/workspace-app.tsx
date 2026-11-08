@@ -4243,6 +4243,7 @@ export default function WorkspaceApp({
                     <WorkflowView
                       key={`${data.page.id}-${data.workflow.draft?.generation || ""}`}
                       pageId={data.page.id}
+                      workspaceId={data.page.workspace_id}
                       workflow={data.workflow}
                       editable={editable && !data.page.locked}
                       pages={activePages.map((p) => ({ id: p.id, title: p.title, kind: p.kind, icon: p.icon, space_id: p.space_id, parent_id: p.parent_id }))}

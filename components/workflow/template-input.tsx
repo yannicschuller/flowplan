@@ -9,7 +9,8 @@ import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 
 import { BracketsCurly } from "@phosphor-icons/react";
 import { useLocale } from "../i18n";
 import { BUILTIN_ROOTS, formatTemplate, fromDisplay, type PathKey } from "@/lib/workflows/placeholders";
-import { upstreamNodes, type WorkflowGraph } from "@/lib/workflows/graph";
+import { innermostLoops, upstreamNodes, type WorkflowGraph } from "@/lib/workflows/graph";
+import { ChipText } from "./chips";
 import type { OutputField, OutputType } from "@/lib/workflows/catalog";
 import { displayContext, orderedNodes, outputTree, showText, type Workspace, useStableT } from "./model";
 
@@ -76,9 +77,18 @@ export function usePickerItems(ctx: PickerContext | null, query: string) {
       };
       walk(outputTree(node, ctx.ws), [], 0);
     }
+    // $item and $index only inside a For-each body.
+    const inLoop = innermostLoops(ctx.graph).has(ctx.nodeId);
     for (const [root, names] of Object.entries(BUILTIN_ROOTS)) {
-      if (root === "$item" || root === "$index") continue;
-      items.push({ id: root, group: t("Allgemein", "General"), label: `$${names[lang]}`, depth: 0, type: root === "$today" ? "date" : root === "$now" ? "datetime" : root === "$runner" ? "person" : "object", stored: `{{${root}}}` });
+      if ((root === "$item" || root === "$index") && !inLoop) continue;
+      items.push({
+        id: root,
+        group: root === "$item" || root === "$index" ? t("Für jedes", "For each") : t("Allgemein", "General"),
+        label: `$${names[lang]}`,
+        depth: 0,
+        type: root === "$today" ? "date" : root === "$now" ? "datetime" : root === "$runner" ? "person" : root === "$index" ? "number" : "object",
+        stored: `{{${root}}}`,
+      });
     }
     const q = query.trim().toLowerCase();
     return q ? items.filter((i) => `${i.group} ${i.label}`.toLowerCase().includes(q)) : items;
@@ -113,6 +123,8 @@ export function TemplateInput({
   const [text, setText] = useState(shown);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  // Longer texts show their placeholders as chips until one types in them.
+  const [editing, setEditing] = useState(false);
   const focused = useRef(false);
   const field = useRef<HTMLInputElement & HTMLTextAreaElement>(null);
   // From outside (another person, undo): shown again unless typing here.
@@ -156,10 +168,15 @@ export function TemplateInput({
     disabled,
     "aria-invalid": error ? true : undefined,
     "aria-describedby": error ? `${inputId}-error` : undefined,
-    onFocus: () => (focused.current = true),
-    onBlur: () => {
+    onFocus: () => {
+      focused.current = true;
+      setEditing(true);
+    },
+    onBlur: (e: { relatedTarget: EventTarget | null }) => {
       focused.current = false;
       if (!error) setText(shown);
+      // Back to chips unless the picker next to it took the focus.
+      if (!(e.relatedTarget as HTMLElement | null)?.closest?.(".wf-template")) setEditing(false);
     },
     onChange: (e: { target: { value: string; selectionStart: number | null } }) => {
       const next = e.target.value;
@@ -174,9 +191,34 @@ export function TemplateInput({
         {label}
       </label>
       <div className="wf-template-row">
-        {multiline ? <textarea {...props} rows={3} /> : <input {...props} type="text" autoComplete="off" />}
+        {multiline && picker && !editing && !open && !error && /(^|[^\\])\{\{/.test(value) ? (
+          <ChipText
+            value={value}
+            picker={picker}
+            disabled={disabled}
+            label={label}
+            onChange={onChange}
+            onEdit={() => {
+              setEditing(true);
+              requestAnimationFrame(() => field.current?.focus());
+            }}
+          />
+        ) : multiline ? (
+          <textarea {...props} rows={3} />
+        ) : (
+          <input {...props} type="text" autoComplete="off" />
+        )}
         {picker && !disabled && (
-          <button type="button" className="icon-button" aria-label={t(`Platzhalter einfügen in „${label}“`, `Insert a placeholder into “${label}”`)} aria-expanded={open} onClick={() => setOpen(!open)}>
+          <button
+            type="button"
+            className="icon-button"
+            aria-label={t(`Platzhalter einfügen in „${label}“`, `Insert a placeholder into “${label}”`)}
+            aria-expanded={open}
+            onClick={() => {
+              if (multiline) setEditing(true);
+              setOpen(!open);
+            }}
+          >
             <BracketsCurly />
           </button>
         )}
