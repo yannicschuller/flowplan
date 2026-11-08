@@ -30880,6 +30880,22 @@ label.ws-search input {
   color: var(--muted);
   font-size: 12.5px;
 }
+/* "Mit KI zusammenfassen" in the review (#170): the preview above the buttons. */
+.journal-ai-summary {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.journal-ai-summary h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+.journal-ai-summary h3 svg {
+  flex-shrink: 0;
+  color: var(--blue);
+}
 .journal-summary-exists {
   display: flex;
   flex-wrap: wrap;

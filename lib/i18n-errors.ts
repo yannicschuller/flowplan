@@ -777,6 +777,10 @@ const exact: Record<string, string> = {
   "Bitte zuerst Text auswählen.": "Please select some text first.",
   "Bitte beschreiben, was die KI tun soll.": "Please describe what the AI should do.",
   "Hier steht noch nichts, das sich zusammenfassen ließe.": "There is nothing here to summarise yet.",
+  // A journal's review summarised with AI (lib/ai/journal-summary.ts, #170).
+  "Nur eine Woche oder ein ganzer Monat lässt sich zusammenfassen.": "Only a week or a whole month can be summarised.",
+  "In diesem Zeitraum gibt es keine Einträge.": "There are no entries in this period.",
+  "Die Tage dieses Zeitraums sind für die KI gesperrt.": "The days of this period are closed to the AI.",
   "Höchstens 500 Regeln für den KI-Zugriff.": "At most 500 rules for AI access.",
   "Nur Eigentümer des Arbeitsbereichs oder des Bereichs dürfen das ändern.": "Only owners of the workspace or the space may change this.",
   "Eigene KI-Anbieter sind auf dieser Instanz nicht erlaubt.": "Own AI providers are not allowed on this instance.",

@@ -240,7 +240,7 @@ export function writePrompt(request: WriteRequest): AiRunInput {
 
 // ---- Summaries ----
 
-export type SummaryKind = "page" | "record" | "database" | "transcript";
+export type SummaryKind = "page" | "record" | "database" | "transcript" | "journal";
 
 export const SUMMARY_HEADINGS: Record<TextLanguage, { summary: string; points: string; tasks: string; none: string }> = {
   de: { summary: "Zusammenfassung", points: "Kernpunkte", tasks: "Offene Aufgaben", none: "Keine" },
@@ -254,6 +254,7 @@ const KIND_TEXT: Record<SummaryKind, string> = {
   record: "a database record (its properties and its document)",
   database: "records of a database (one view, with its filters)",
   transcript: "the transcript of a voice note",
+  journal: "the entries of a journal for one period (each day's text, completed tasks, trackers and tasks still open)",
 };
 const KIND_HINT: Record<SummaryKind, string> = {
   page: "",
@@ -261,6 +262,8 @@ const KIND_HINT: Record<SummaryKind, string> = {
   database:
     "Each record starts with ### and its title, followed by its properties. Describe the overall picture: what the records are about, states and numbers worth knowing, patterns, notable or overdue records (name them by title).",
   transcript: "The transcript comes from speech recognition and may contain recognition errors; correct obvious ones silently.",
+  journal:
+    "Sections about the whole period come first (completed tasks with their day, tracker averages, tasks still open); then each day starts with ### and its date, followed by its trackers and place and the day's text. Tasks marked [x] are done, [ ] still open.",
 };
 
 // The language of a summary: that of the content when clear, else the
@@ -314,6 +317,49 @@ export function summaryPrompt(request: SummaryRequest): AiRunInput {
     system,
     messages: [{ role: "user", content: (head ? head + "\n\n" : "") + pages + fence("content", request.content) }],
     maxTokens: 1500,
+    temperature: 0.2,
+  };
+}
+
+// "Mit KI zusammenfassen" in a journal's review (#170): the period's days,
+// completed tasks, trackers and open tasks as a narrative review – in the
+// person's interface language (a review is read like the interface, also
+// when days are written in another language).
+export const JOURNAL_SUMMARY_HEADINGS: Record<TextLanguage, { highlights: string; overview: string; open: string; none: string }> = {
+  de: { highlights: "Höhepunkte & Erfolge", overview: "Chronologischer Überblick", open: "Offene Punkte & nächste Schritte", none: "Keine" },
+  en: { highlights: "Highlights & achievements", overview: "Chronological overview", open: "Open items & follow-ups", none: "None" },
+  fr: { highlights: "Points forts et réussites", overview: "Aperçu chronologique", open: "Points ouverts et suites à donner", none: "Aucun" },
+  zh: { highlights: "亮点与成就", overview: "时间线概览", open: "待办与后续", none: "无" },
+};
+
+export function journalSummaryPrompt(request: { content: string; title?: string; period: string; language: TextLanguage; partial?: boolean; note?: string }): AiRunInput {
+  const h = JOURNAL_SUMMARY_HEADINGS[request.language];
+  const system = [
+    `You write a review of ${KIND_TEXT.journal} from Flowplan, a workspace for documents, databases and notes.`,
+    KIND_HINT.journal,
+    request.partial ? "The content consists of summaries of the consecutive parts of the period; treat them as one text." : "",
+    "",
+    `Answer in ${languageName(request.language)}, as Markdown with exactly these three sections, in this order and with these headings:`,
+    `## ${h.highlights}`,
+    "The main milestones, achievements and notable moments of the period as a bulleted list (at most 8 items); mention completed tasks that matter and what the trackers show when it is notable.",
+    `## ${h.overview}`,
+    "A short chronological overview of the period: a few sentences per day or group of days, in the order they happened, naming the day.",
+    `## ${h.open}`,
+    `Tasks still open, unfinished items and follow-ups for the next period, as a bulleted list. If there are none, write only "- ${h.none}".`,
+    "",
+    "Rules:",
+    "- Only what is in the content. Never invent facts, names, numbers or dates.",
+    "- Write about the person in the second person or neutrally, never in the first person.",
+    "- No preamble and no closing remark. No HTML.",
+    `- ${DATA_RULE}`,
+  ]
+    .filter((line, i, all) => line || all[i - 1])
+    .join("\n");
+  const head = [request.title ? `Journal: ${request.title}` : "", `Period: ${request.period}`, request.note || ""].filter(Boolean).join("\n");
+  return {
+    system,
+    messages: [{ role: "user", content: head + "\n\n" + fence("content", request.content) }],
+    maxTokens: 2000,
     temperature: 0.2,
   };
 }

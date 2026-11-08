@@ -31,7 +31,7 @@ import { deleteRecordView, saveRecordView } from "./cross-records";
 import { createCalDavAccess, revokeCalDavAccess } from "./caldav";
 import { deleteCalendarMapping, disconnectCalendar, saveCalendarMapping } from "./calendar-sync";
 import { createMeetingNote } from "./meeting-notes";
-import { createMonthSummary } from "./journal-summary";
+import { createMonthSummary, saveAiSummary } from "./journal-summary";
 import { restoreBlock } from "./restore-block";
 import { saveSurvey } from "./survey-server";
 import { transferRows } from "./row-transfer";
@@ -1604,6 +1604,11 @@ async function runCommand(
       case "journal.summary": {
         // A normal sub page with the month's review (lib/journal-summary.ts).
         result = await createMonthSummary(user, await write(), b);
+        break;
+      }
+      case "journal.aiSummary": {
+        // The review's AI summary, saved on request (#170, lib/journal-summary.ts).
+        result = await saveAiSummary(user, await write(), b);
         break;
       }
       case "journal.roll": {

@@ -462,8 +462,9 @@ export async function tasksHtml(tasks: { text: string; assignee?: string | null;
 
 // HTML appended to a stored document as one change, sent like an edit from
 // the editor ("document.sync"): versions, mentions, tasks, the activity and
-// webhooks behave the same.
-export async function appendHtml(user: Identity, pageId: string, html: string) {
+// webhooks behave the same. With `replace` the HTML takes the place of the
+// whole content (the previous one stays in the page's versions).
+export async function appendHtml(user: Identity, pageId: string, html: string, options: { replace?: boolean } = {}) {
   const stored = await one<{ state: Uint8Array | null; html: string; generation: string }>("SELECT state,html,generation FROM documents WHERE page_id=?", pageId);
   if (!stored) throw new HttpError(404, "Dokument nicht gefunden.");
   const schema = documentSchema();
@@ -474,7 +475,7 @@ export async function appendHtml(user: Identity, pageId: string, html: string) {
     const before = Y.encodeStateVector(ydoc);
     const doc = PMNode.fromJSON(schema, yDocToProsemirrorJSON(ydoc, "default"));
     const empty = doc.childCount === 1 && doc.firstChild!.type.name === "paragraph" && !doc.firstChild!.content.size;
-    const next = doc.type.create(doc.attrs, empty ? added.content : doc.content.append(added.content));
+    const next = doc.type.create(doc.attrs, empty || options.replace ? added.content : doc.content.append(added.content));
     ydoc.transact(() => updateYFragment(ydoc, ydoc.getXmlFragment("default"), next, { mapping: new Map(), isOMark: new Map() }));
     const update = stored.state ? Y.encodeStateAsUpdate(ydoc, before) : Y.encodeStateAsUpdate(ydoc);
     await command(user, { action: "document.sync", pageId, generation: stored.generation, update: Buffer.from(update).toString("base64") });

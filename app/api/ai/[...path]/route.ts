@@ -26,6 +26,7 @@ import { aiDatabaseStatus, proposeDatabase, queueAiCells, runAiCell } from "@/li
 import { ct } from "@/lib/content-locale";
 import { aiWriteResponse, WRITE_LIMITS } from "@/lib/ai/write";
 import { aiSummaryResponse, SUMMARY_LIMITS } from "@/lib/ai/summarize";
+import { aiJournalSummaryResponse } from "@/lib/ai/journal-summary";
 import { ACTION_LIMITS, proposeActions, runActions, type ProposeInput } from "@/lib/ai/actions";
 import { checkDeviceSuggestion, suggestCapture, SUGGEST_LIMITS } from "@/lib/ai/capture-suggest";
 import { clusterNotes, generateStructure, splitNotes, summarizeBoard } from "@/lib/ai/whiteboard";
@@ -237,6 +238,9 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ path: st
     // is loaded on the server (lib/ai/summarize.ts).
     if (path.length === 1 && path[0] === "summarize")
       return await aiSummaryResponse(user, await body(req, SUMMARY_LIMITS.maxText * 4 + 20_000 * 40), req.signal);
+    // A journal's week or month as a review (#170, lib/ai/journal-summary.ts);
+    // the days are loaded on the server.
+    if (path.length === 1 && path[0] === "journal-summary") return await aiJournalSummaryResponse(user, await body(req, 10_000), req.signal);
     // The person's own provider (as saved): test it, list its models.
     if (path.length === 1 && (path[0] === "test" || path[0] === "models")) {
       limitAiSetup(user.id);

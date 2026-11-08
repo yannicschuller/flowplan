@@ -16,12 +16,13 @@ import { documentSchema } from "./document-schema";
 import { HttpError } from "./auth";
 import { pageRole } from "./permissions";
 import { createPage } from "./seed";
-import { escaped, htmlState } from "./document-server";
+import { cleanHtml, escaped, htmlState } from "./document-server";
 import { openTasks } from "./journal";
 import { contentLocale, ct } from "./content-locale";
 import { localeTag } from "./i18n";
 import { journalReview, plainText } from "./journal-extras";
-import { monthPattern, monthRange, summaryKey } from "./journal-nav";
+import { aiSummaryKey, monthPattern, monthRange, reviewPeriod, summaryKey } from "./journal-nav";
+import { aiMarkdownToHtml } from "./ai/insert";
 import type { Identity, Page } from "./types";
 
 const moodFaces = ["😞", "🙁", "😐", "🙂", "😄"];
@@ -181,6 +182,82 @@ export async function createMonthSummary(user: Identity, journal: Page, input: u
     "INSERT INTO meeting_notes(journal_id,event_key,page_id,created_by,created_at) VALUES(?,?,?,?,?) ON CONFLICT(journal_id,event_key) DO UPDATE SET page_id=excluded.page_id,created_by=excluded.created_by,created_at=excluded.created_at",
     journal.id,
     summaryKey(month),
+    created,
+    user.id,
+    Date.now(),
+  );
+  return { id: created, existing: false };
+}
+
+// ---- The AI summary of a review period (#170) ----
+//
+// "Mit KI zusammenfassen" in the review streams a preview
+// (lib/ai/journal-summary.ts); only "Als Seite speichern" stores it – a
+// normal sub page of the journal like the month summary, one per journal
+// and period (a week or a month), remembered in meeting_notes under
+// "ai-summary:<period>". Asked again, the page there is offered: open it,
+// or replace its content (the old one stays in its versions).
+
+export const aiSummaryInput = z.object({
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  markdown: z.string().trim().min(1).max(100_000),
+  replace: z.boolean().optional(),
+});
+
+function periodOf(from: string, to: string) {
+  const period = reviewPeriod(from, to);
+  if (!period) throw new HttpError(400, "Nur eine Woche oder ein ganzer Monat lässt sich zusammenfassen.");
+  return period;
+}
+
+export function aiSummaryTitle(from: string, to: string) {
+  const period = periodOf(from, to);
+  if (period.kind === "month") {
+    const name = new Intl.DateTimeFormat(localeTag(contentLocale()), { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${from}T00:00:00Z`));
+    return ct(`KI-Zusammenfassung ${name}`, `AI summary ${name}`);
+  }
+  const date = new Intl.DateTimeFormat(localeTag(contentLocale()), { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+  const start = date.format(new Date(`${from}T00:00:00Z`)),
+    end = date.format(new Date(`${to}T00:00:00Z`));
+  return ct(`KI-Zusammenfassung ${start} – ${end}`, `AI summary ${start} – ${end}`);
+}
+
+// The AI summary page of a period, when it still exists and the person may open it.
+export async function existingAiSummary(user: Identity, journal: Page, from: string, to: string): Promise<string | null> {
+  const period = reviewPeriod(from, to);
+  if (!period) return null;
+  const row = await one<{ page_id: string }>("SELECT page_id FROM meeting_notes WHERE journal_id=? AND event_key=?", journal.id, aiSummaryKey(period.key));
+  if (!row) return null;
+  const page = await one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", row.page_id);
+  return page && (await pageRole(user, page)) ? page.id : null;
+}
+
+// Saves the previewed answer: a new page, the existing one named (without
+// `replace`) or its content replaced (with it).
+export async function saveAiSummary(user: Identity, journal: Page, input: unknown): Promise<{ id: string; existing: boolean; replaced?: boolean }> {
+  if (journal.kind !== "journal") throw new HttpError(400, "Diese Seite ist kein Journal.");
+  const { from, to, markdown, replace } = aiSummaryInput.parse(input);
+  const period = periodOf(from, to);
+  const html = cleanHtml(
+    `<p><em>${escaped(ct("Mit KI aus den Einträgen dieses Zeitraums zusammengefasst – bitte prüfen.", "Summarised from this period's entries with AI – please check."))}</em></p>${aiMarkdownToHtml(markdown)}`,
+  );
+  const existing = await existingAiSummary(user, journal, from, to);
+  if (existing && !replace) return { id: existing, existing: true };
+  if (existing) {
+    // Sent like an edit from the editor: open editors receive it, the
+    // previous content stays in the versions.
+    const { appendHtml } = await import("./ai/actions");
+    await appendHtml(user, existing, html, { replace: true });
+    return { id: existing, existing: false, replaced: true };
+  }
+  const created = await createPage(journal.workspace_id, journal.space_id, user.id, aiSummaryTitle(from, to), "document", journal.id);
+  await run("UPDATE pages SET icon=? WHERE id=?", "✨", created);
+  await run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), created);
+  await run(
+    "INSERT INTO meeting_notes(journal_id,event_key,page_id,created_by,created_at) VALUES(?,?,?,?,?) ON CONFLICT(journal_id,event_key) DO UPDATE SET page_id=excluded.page_id,created_by=excluded.created_by,created_at=excluded.created_at",
+    journal.id,
+    aiSummaryKey(period.key),
     created,
     user.id,
     Date.now(),
