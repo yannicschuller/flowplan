@@ -4,7 +4,7 @@ import { publicHiddenFieldIds } from "./field-access";
 import { hiddenFileIds } from "./row-files";
 import { all, one, run, sql, transaction } from "./db";
 import { addEntry, clearIndex, entryOrder, refreshSearchStats, removeEntry, snippet, textMatch } from "./search-store";
-import { pageRole } from "./permissions";
+import { isGuest, pageRole } from "./permissions";
 import { hiddenRowIds } from "./row-access";
 import { ticketId } from "./ticket-ids";
 import { isFormattedText, toPlain } from "./inline-markdown";
@@ -353,9 +353,11 @@ export async function searchWorkspace(
   const roles = new Map<string, boolean>();
   // Journals behind a PIN stay out of the results until unlocked.
   const locked = await lockedPageIds(user, workspaceId);
+  // Workflow pages are not for guests (#168).
+  const guest = await isGuest(user, workspaceId);
   const allowed = async (page: Page) => {
     if (!roles.has(page.id))
-      roles.set(page.id, !locked.has(page.id) && !!(await pageRole(user, page)));
+      roles.set(page.id, !locked.has(page.id) && !(guest && page.kind === "workflow") && !!(await pageRole(user, page)));
     return roles.get(page.id)!;
   };
   const hitKind = (page: Page, key: string) =>
@@ -365,7 +367,7 @@ export async function searchWorkspace(
         ? ("file" as const)
         : key
           ? ("row" as const)
-          : page.kind === "journal" || page.kind === "dashboard" || page.kind === "notebook"
+          : page.kind === "journal" || page.kind === "dashboard" || page.kind === "notebook" || page.kind === "workflow"
             ? ("document" as const)
             : page.kind;
   const matchesKind = (page: Page, key: string) =>

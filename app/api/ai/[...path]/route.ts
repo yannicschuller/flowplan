@@ -31,6 +31,7 @@ import { ACTION_LIMITS, proposeActions, runActions, type ProposeInput } from "@/
 import { checkDeviceSuggestion, suggestCapture, SUGGEST_LIMITS } from "@/lib/ai/capture-suggest";
 import { improveCapture, IMPROVE_LIMITS } from "@/lib/ai/capture-improve";
 import { clusterNotes, generateStructure, splitNotes, summarizeBoard } from "@/lib/ai/whiteboard";
+import { aiDraftWorkflow } from "@/lib/workflows/ai-builder";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -219,6 +220,8 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ path: st
       if (path[1] === "generate") return NextResponse.json(await generateStructure(user, b, req.signal), noStore);
       if (path[1] === "split") return NextResponse.json(await splitNotes(user, b, req.signal), noStore);
     }
+    // The workflow AI builder (lib/workflows/ai-builder.ts): a sentence → a draft graph to review.
+    if (path.length === 2 && path[0] === "workflow" && path[1] === "draft") return NextResponse.json(await aiDraftWorkflow(user, await body(req, 20_000), req.signal), noStore);
     // AI in databases.
     if (path.length === 2 && path[0] === "database") {
       if (path[1] === "propose") {

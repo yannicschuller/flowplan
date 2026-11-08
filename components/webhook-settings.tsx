@@ -72,6 +72,8 @@ type Draft = {
   timeZone: string;
   matrixRoom: string;
   slackChannel: string;
+  // Released for the "Chat message" node of workflows (#168).
+  workflows: boolean;
   token: string;
   signingSecret: string;
   dropCredentials: boolean;
@@ -87,6 +89,7 @@ const emptyDraft = (language: Locale): Draft => ({
   timeZone: localZone(),
   matrixRoom: "",
   slackChannel: "",
+  workflows: false,
   token: "",
   signingSecret: "",
   dropCredentials: false,
@@ -102,6 +105,7 @@ const draftOf = (hook: Hook): Draft => ({
   timeZone: hook.config.timeZone,
   matrixRoom: hook.config.matrixRoom || "",
   slackChannel: hook.config.slackChannel || "",
+  workflows: hook.config.workflows === true,
   token: "",
   signingSecret: "",
   dropCredentials: false,
@@ -357,6 +361,7 @@ function WebhookEditor({
         timeZone: draft.timeZone,
         ...(draft.format === "matrix" && draft.matrixRoom.trim() ? { matrixRoom: draft.matrixRoom.trim() } : {}),
         ...(draft.format === "slack" && draft.slackChannel.trim() ? { slackChannel: draft.slackChannel.trim() } : {}),
+        ...(draft.workflows ? { workflows: true } : {}),
       },
     };
     setBusy(true);
@@ -514,6 +519,18 @@ function WebhookEditor({
               </div>
             </div>
           ))}
+        </SettingGroup>
+
+        <SettingGroup id="workflows" title={t("Workflows", "Workflows")} description={t("Workflows des Arbeitsbereichs dürfen mit dem Knoten „Chat-Nachricht“ hierher posten.", "Workflows of the workspace may post here with the “Chat message” node.")}>
+          <div className="setting-row">
+            <div className="setting-text">
+              <span className="setting-label">{t("Für Workflows freigeben", "Release for workflows")}</span>
+              <small>{t("Jede Person, die einen Workflow bearbeiten darf, kann dann Nachrichten an diesen Webhook schicken.", "Everyone who may edit a workflow can then send messages to this webhook.")}</small>
+            </div>
+            <div className="setting-control">
+              <Switch label={t("Für Workflows freigeben", "Release for workflows")} checked={draft.workflows} onChange={(on) => set("workflows", on)} />
+            </div>
+          </div>
         </SettingGroup>
 
         {chat && (

@@ -96,6 +96,8 @@ export function prefetchPage(pageId: string) {
   const info = context?.page(pageId);
   if (!context || !info || info.kind === "notebook") return;
   context.preload?.(info.kind);
+  // Workflow pages are not kept for offline use: only their code loads ahead.
+  if (info.kind === "workflow") return;
   enqueue({ key: pageKey(pageId), url: `/api/pages/${pageId}`, policy: context.policy, version: info.version });
 }
 

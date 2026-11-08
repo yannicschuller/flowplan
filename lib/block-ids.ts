@@ -37,6 +37,7 @@ export const BLOCK_ID_TYPES = [
   "functionPlot",
   "metricBlock",
   "pluginBlock",
+  "workflowButton",
   "horizontalRule",
   "media",
   "linkCard",

@@ -30,6 +30,9 @@ export async function register() {
     await startTaskWorker(() => void dispatchPush());
     const { startAutomationWorker } = await import("./lib/automations");
     startAutomationWorker(() => void dispatchPush());
+    // Workflows (#168): the queue of steps, the event dispatcher, schedules.
+    const { startWorkflowWorker } = await import("./lib/workflows/queue");
+    startWorkflowWorker();
     // Page owners are reminded once a review date has passed.
     const { startReviewWorker } = await import("./lib/page-review");
     startReviewWorker(() => void dispatchPush());

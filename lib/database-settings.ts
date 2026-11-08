@@ -37,7 +37,16 @@ export async function updateDatabaseSettings(user: Identity, page: Page, fields:
   check(next.done?.field);
   check(next.workflow?.field);
   check(next.pointsField);
+  // Rules replaced by a workflow stay as they were (only removing them is
+  // possible); nobody marks a rule as replaced but the server.
+  next.automations = next.automations?.map((a) => {
+    const before = previous.get(a.id);
+    if (before?.workflow) return before;
+    const { workflow: _ignored, ...rest } = a;
+    return rest;
+  });
   for (const a of next.automations || []) {
+    if (a.workflow) continue;
     stampAutomation(user, a, previous.get(a.id));
     if (a.trigger.type === "changed" || a.trigger.type === "overdue") check(a.trigger.field);
     for (const c of a.conditions) check(c.field);

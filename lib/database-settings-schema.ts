@@ -75,6 +75,10 @@ export const automationSchema = z.object({
   // records as this person) and since when it applies (ISO time).
   createdBy: z.string().max(60).optional(),
   since: z.string().max(40).optional(),
+  // Set by the server: the rule was extended into this workflow page and
+  // replaced by it when it was activated (lib/workflows/store.ts); it stays
+  // switched off and is shown as a link (docs/specs/workflows.md §2).
+  workflow: z.string().max(60).optional(),
 });
 export type Automation = z.infer<typeof automationSchema>;
 export type AutomationAction = z.infer<typeof automationAction>;

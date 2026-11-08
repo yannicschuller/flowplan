@@ -13,6 +13,7 @@ import { tr } from "@/lib/locale-tag";
 import { emptyBibliography, renderReferences } from "./citation-views";
 import { finishDocumentHtml } from "@/lib/document-html";
 import { mountPluginBlock } from "./plugin-block";
+import { mountWorkflowButton } from "./workflow-button";
 import { decorateLinkIcons, setLinkTargetPages } from "./page-link-icons";
 // Callers provide server-sanitized HTML. Generated math is never stored as document content.
 export function ReadOnlyDocument({
@@ -210,9 +211,14 @@ export function ReadOnlyDocument({
         title: () => title,
       }),
     );
+    // Workflow buttons (#168): pressable in reading mode too, never on share links.
+    const workflowHandles = Array.from(root.querySelectorAll<HTMLElement>("[data-workflow-button]")).map((element) =>
+      mountWorkflowButton(element, { workflow: element.dataset.workflowButton || "", label: element.dataset.label || "", hostPageId: pageId, editable: false, shareToken }),
+    );
     return () => {
       undecorate();
       pluginHandles.forEach((handle) => handle.destroy());
+      workflowHandles.forEach((handle) => handle.destroy());
       codeHandles.forEach((stop) => stop());
       diagrams.forEach((cancel) => cancel());
       unmounted = true;

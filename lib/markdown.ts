@@ -169,6 +169,7 @@ const blockLabels: Record<string, () => string> = {
   functionPlot: () => tr("Funktionsgraph", "Function graph"),
   metricBlock: () => tr("Kennzahl", "Metric"),
   pluginBlock: () => tr("Erweiterung", "Extension"),
+  workflowButton: () => tr("Workflow-Knopf", "Workflow button"),
   columns: () => tr("Spalten", "Columns"),
   table: () => tr("Tabelle", "Table"),
   image: () => tr("Bild", "Image"),
@@ -481,6 +482,9 @@ export function htmlToMarkdown(
         const head = plugin ? markdownLink(label, plugin.url) : `*${markdownText(label)}*`;
         return text ? `${head}\n\n${markdownText(text)}` : head;
       }
+      // The button cannot work in Markdown: its label as a note.
+      case "workflowButton":
+        return `*${markdownText(`${ct("Workflow-Knopf", "Workflow button")}: ${String(node.attrs.label || "")}`.trim())}*`;
       case "linkedDatabase": {
         const linked = context.linked(String(node.attrs.source || ""));
         return linked

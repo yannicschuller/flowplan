@@ -156,6 +156,19 @@ export function fixedShortcutGroups(t: T, ai: boolean, mac: boolean): ShortcutGr
       ],
     },
     {
+      // The canvas of workflow pages (components/workflow/canvas.tsx).
+      title: t("Workflow-Fläche", "Workflow canvas"),
+      items: [
+        { label: t("Zwischen Knoten bewegen", "Move between nodes"), keys: ["Tab", k("Shift+Tab")] },
+        { label: t("Einstellungen des Knotens öffnen", "Open the node's settings"), keys: ["↵"] },
+        { label: t("Knoten verschieben (Umschalt: weiter)", "Move the node (Shift: further)"), keys: ["←", "→", "↑", "↓"] },
+        { label: t("Knoten dahinter anfügen / verbinden", "Append a node / connect"), keys: ["A", "C"] },
+        { label: t("Knoten duplizieren / löschen", "Duplicate / delete the node"), keys: [k("Mod+D"), t("Entf", "Delete")] },
+        { label: t("Liste / Ansicht einpassen", "List / fit the view"), keys: ["L", "F"] },
+        { label: t("Rückgängig / Wiederholen", "Undo / redo"), keys: [k("Mod+Z"), k("Mod+Y")] },
+      ],
+    },
+    {
       title: t("Geteilte Ansicht", "Split view"),
       items: [
         { label: t("Trennlinie verschieben (fokussiert)", "Move the divider (focused)"), keys: ["←", "→"] },

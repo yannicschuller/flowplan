@@ -310,11 +310,13 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
   );
   const workspace = workspaces.find((w) => w.id === wid) || workspaces[0];
   if (!workspace) throw new HttpError(404, "Kein Arbeitsbereich.");
+  // Workflow pages are not for guests (#168).
+  const guestHere = !!workspace.guest;
   const pages = await filterAsync(await all<Page>(
     // Synced blocks live inside the pages that show them, not in the tree.
     "SELECT * FROM pages WHERE workspace_id=? AND synced=0 ORDER BY position",
     workspace.id,
-  ), async (p) => await pageRole(user, p));
+  ), async (p) => !(guestHere && p.kind === "workflow") && !!(await pageRole(user, p)));
   const visibleSpaceIds = new Set(pages.map((p) => p.space_id));
   const lockedInbox = await lockedNotification();
   return {
@@ -554,6 +556,22 @@ async function pageContent(user: Identity, pid: string, options: { presence?: bo
       dashboard: await dashboardData(user, p, role),
       html: "",
     };
+  // Workflow pages (#168): their state, draft and check (lib/workflows/store.ts);
+  // never for guests, never shared or published.
+  if (p.kind === "workflow")
+    return {
+      page: p,
+      images: [],
+      publication: null,
+      shareLinks: [],
+      role,
+      comments,
+      snapshots,
+      present,
+      backlinks,
+      workflow: await workflowState(user, pid),
+      html: "",
+    };
   if (p.kind === "notebook")
     return {
       page: p,
@@ -742,6 +760,8 @@ async function runCommand(
   };
   // Work that must only happen once the transaction is committed.
   const afterCommit: (() => unknown)[] = [];
+  // Workflow events of a move, once the page is in its new place.
+  const afterMove: (() => Promise<unknown>)[] = [];
   const execute = async () => {
     let result: unknown = { ok: true };
     // Pages of encrypted spaces: only what works without plaintext.
@@ -1203,8 +1223,10 @@ async function runCommand(
         const kind =
           savedTemplate?.kind ||
           z
-            .enum(["document", "database", "whiteboard", "journal", "dashboard", "notebook"])
+            .enum(["document", "database", "whiteboard", "journal", "dashboard", "notebook", "workflow"])
             .parse(b.kind || "document");
+        // Workflows (#168): not when switched off on the instance.
+        if (kind === "workflow") await assertWorkflowsEnabled();
         const created = await createPage(
           wid(),
           sid,
@@ -1239,6 +1261,7 @@ async function runCommand(
           await applyStarterTemplate(created, user.id, key);
         }
         await afterEncryptedPageCreate(created, b);
+        await pageCreatedEvent(created, user.id);
         result = { id: created };
         break;
       }
@@ -1377,6 +1400,7 @@ async function runCommand(
       case "page.move": {
         const p = await write(),
           subtree = await descendants(p.id);
+        afterMove.push(async () => await pageMovedEvent(p.id, user.id, p.parent_id, (await one<Page>("SELECT parent_id FROM pages WHERE id=?", p.id))?.parent_id ?? null));
         const { placement, target, parent, destinationParent, sid, destination } = await moveDestination(user, p, b);
         if (
           !destination ||
@@ -1429,6 +1453,7 @@ async function runCommand(
         await forEachAsync(siblings, async (sibling, i) =>
           await run("UPDATE pages SET position=? WHERE id=?", i, sibling),
         );
+        for (const task of afterMove.splice(0)) await task();
         break;
       }
       case "task.update": {
@@ -1685,6 +1710,8 @@ async function runCommand(
             child,
           );
         }
+        // Workflow pages in the trash behave as paused (#168).
+        await trashWorkflows(subtree, user.id);
         break;
       }
       case "page.restore": {
@@ -1799,7 +1826,7 @@ async function runCommand(
                 `${user.name} hat dich in „${p.title}“ erwähnt`,
                 p.id,
               );
-              await mentionWebhook(p.workspace_id, p.id, null, uid, user.name);
+              await mentionWebhook(p.workspace_id, p.id, null, uid, user.name, user.id);
             }
           }
           await run(
@@ -1878,11 +1905,13 @@ async function runCommand(
           break;
         }
         const sid = id();
+        // Workflow pages: the draft's Yjs state (lib/workflows/store.ts).
+        const draft = p.kind === "workflow" ? await one<{ state: Uint8Array }>("SELECT state FROM workflow_drafts WHERE page_id=?", p.id) : undefined;
         await run(
           "INSERT INTO snapshots(id,page_id,state,html,title,created_by,kind) VALUES(?,?,?,?,?,?,'manual')",
           sid,
           p.id,
-          d?.state || null,
+          draft?.state || d?.state || null,
           d?.html || "",
           p.title,
           user.id,
@@ -1909,7 +1938,11 @@ async function runCommand(
         if (!s) throw new HttpError(404, "Version nicht gefunden.");
         const appearance = await snapshotAppearance(p.id, s.appearance);
         if (appearance) await applyAppearance(p.id, appearance);
-        if (p.kind === "whiteboard") {
+        if (p.kind === "workflow") {
+          // Back into the draft, never the active version (#168).
+          if (!s.state) throw new HttpError(400, "Version ohne Inhalt.");
+          result = await restoreVersion(user, { pageId: p.id, versionId: uuid.parse(b.snapshotId) });
+        } else if (p.kind === "whiteboard") {
           if (!s.state) throw new HttpError(400, "Version ohne Inhalt.");
           await restoreWhiteboardSnapshot(p, s.state);
         } else if (p.kind === "dashboard" || p.kind === "notebook") {
@@ -2516,6 +2549,26 @@ async function runCommand(
       case "whiteboard.sync":
         result = await syncWhiteboard(user, b);
         break;
+      // Workflows (#168, lib/workflows/commands.ts).
+      case "workflow.sync":
+      case "workflow.draft":
+      case "workflow.validate":
+      case "workflow.activate":
+      case "workflow.pause":
+      case "workflow.test":
+      case "workflow.run":
+      case "workflow.run.cancel":
+      case "workflow.restore":
+      case "workflow.fromRule":
+      case "workflow.run.retry":
+      case "workflow.approve":
+      case "workflow.hook":
+      case "workflow.credential.set":
+      case "workflow.credential.remove":
+      case "workflow.import":
+      case "admin.workflowLimits":
+        result = await workflowCommand(user, action, b);
+        break;
       // Sticky notes → database records (lib/whiteboard-to-records.ts).
       case "whiteboard.toRecords":
         result = await notesToRecords(user, b);
@@ -2637,6 +2690,7 @@ async function runCommand(
           body,
         );
         await emitWebhook(p.workspace_id, "comment.created", { pageId: p.id, rowId: b.rowId ? uuid.parse(b.rowId) : null, text: body }, user.name);
+        await commentEvent(p.id, b.rowId ? uuid.parse(b.rowId) : null, user.id, { id: null, text: body });
         if (b.rowId) await queueIssuePush(p.id, uuid.parse(b.rowId));
         // Followers, the owner, the record's people, earlier commenters and
         // whoever "@Name" names – not the whole workspace, and only who may
@@ -2655,7 +2709,7 @@ async function runCommand(
             commentRow,
             mention ? "mention" : "comment",
           );
-          if (mention) await mentionWebhook(p.workspace_id, p.id, commentRow, recipient, user.name);
+          if (mention) await mentionWebhook(p.workspace_id, p.id, commentRow, recipient, user.name, user.id);
         }
         break;
       }
@@ -3138,6 +3192,9 @@ async function runCommand(
       }
       case "template.save": {
         const p = await write();
+        // Workflows start from the gallery's templates (lib/workflows/templates.ts)
+        // or an export (lib/workflows/portable.ts), not from saved page templates.
+        if (p.kind === "workflow") throw new HttpError(409, "Workflow-Seiten lassen sich noch nicht als Vorlage speichern.");
         const payload =
           p.kind === "database"
             ? JSON.stringify({
@@ -3429,6 +3486,11 @@ async function runCommand(
     // Content changes: who edited, and followers are told.
     if (editActions.has(action) && typeof b.pageId === "string")
       await recordPageEdit(user, b.pageId);
+    // Workflows: a page's content or title changed (debounced, lib/workflows/hooks.ts).
+    if ((action === "document.sync" || action === "whiteboard.sync") && typeof b.pageId === "string" && b.update)
+      await pageChangedEvent(b.pageId, user.id, ["content"]);
+    if (action === "page.update" && typeof b.pageId === "string" && (b.patch as { title?: unknown } | undefined)?.title !== undefined)
+      await pageChangedEvent(b.pageId, user.id, ["title"]);
     // Whoever creates a page follows it.
     const createdId = (result as { id?: unknown } | null)?.id;
     if (action === "page.create" && typeof createdId === "string" && !user.apiScope)
@@ -3439,6 +3501,8 @@ async function runCommand(
         "document.markdown",
         "row.document.sync",
         "whiteboard.sync",
+        "workflow.sync",
+        "workflow.validate",
         "notification.read",
         "favorite",
       ].includes(action)
@@ -3680,6 +3744,9 @@ import { dashboardData, saveDashboard } from "./dashboard";
 import { notebookArchive, notebookCommand, notebookData } from "./notebook";
 import { quotaCheckpoint, setWorkspaceQuota } from "./instance-ops";
 import { rowChanged, rowCreated } from "./automations";
+import { workflowCommand } from "./workflows/commands";
+import { commentEvent, pageChangedEvent, pageCreatedEvent, pageMovedEvent } from "./workflows/hooks";
+import { assertWorkflowsEnabled, restoreVersion, trashWorkflows, workflowState } from "./workflows/store";
 import { applyDatabaseProposal, forgetAiFields, prepareAiFields } from "./ai/database-fields";
 import { ct } from "./content-locale";
 import { TABLE_DATABASE_LIMITS, tableToDatabase } from "./table-database";

@@ -112,7 +112,21 @@ export function safeSend(
   raw: string,
   body: string,
   headers: Record<string, string>,
-  { method = "POST", allowPrivate = false, timeout = 10_000, maxBytes = 0 }: { method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"; allowPrivate?: boolean; timeout?: number; maxBytes?: number } = {},
+  {
+    method = "POST",
+    allowPrivate = false,
+    timeout = 10_000,
+    maxBytes = 0,
+    totalTimeout = 0,
+  }: {
+    method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+    allowPrivate?: boolean;
+    timeout?: number;
+    maxBytes?: number;
+    // The whole exchange at most this long (`timeout` is per pause): a
+    // server trickling an endless answer cannot hold the caller (workflows).
+    totalTimeout?: number;
+  } = {},
 ) {
   return new Promise<{ status: number; body: string; headers: Record<string, string> }>((resolve, reject) => {
     const url = new URL(raw);
@@ -146,6 +160,11 @@ export function safeSend(
     );
     req.on("timeout", () => req.destroy(new Error("Zeitüberschreitung.")));
     req.on("error", reject);
+    if (totalTimeout) {
+      const timer = setTimeout(() => req.destroy(new Error("Zeitüberschreitung.")), totalTimeout);
+      timer.unref?.();
+      req.on("close", () => clearTimeout(timer));
+    }
     req.end(body);
   });
 }

@@ -148,7 +148,7 @@ export async function syncRowDocument(
               rowId,
             ),
           );
-          await mentionWebhook(page.workspace_id, pageId, rowId, uid, user.name);
+          await mentionWebhook(page.workspace_id, pageId, rowId, uid, user.name, user.id);
         } catch {}
       }
     }

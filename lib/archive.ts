@@ -1,4 +1,5 @@
 import { escapeInline, isFormattedText } from "./inline-markdown";
+import { importWorkflow, workflowArchive, workflowArchiveSchema } from "./workflows/archive";
 import { reconcileTagFields } from "./tag-fields";
 import { copyDashboard, dashboardTiles } from "./dashboard";
 import { importNotebook, notebookArchive, notebookArchiveSchema } from "./notebook";
@@ -271,7 +272,10 @@ export const archiveSchema = z.object({
         icon: pageIconSchema,
         cover: coverSchema,
         cover_position: z.number().finite().min(0).max(100).default(50),
-        kind: z.enum(["document", "database", "whiteboard", "journal", "dashboard", "notebook"]),
+        kind: z.enum(["document", "database", "whiteboard", "journal", "dashboard", "notebook", "workflow"]),
+        // Workflow pages (#168): the draft and the activated versions –
+        // no runs, no secrets (lib/workflows/archive.ts).
+        workflow: workflowArchiveSchema.optional(),
         journal_date: z
           .string()
           .regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -610,6 +614,7 @@ async function snapshotFor(user: Identity, wid: string) {
                 : {}),
               ...(p.kind === "dashboard" ? { dashboard: await dashboardTiles(p.id) } : {}),
               ...(p.kind === "notebook" ? { notebook: await notebookArchive(p.id) } : {}),
+              ...(p.kind === "workflow" ? { workflow: await workflowArchive(p.id) } : {}),
               ...(p.kind === "document" || p.kind === "journal" ? (await inkBlocksArchive(p.id)) : {}),
             }),
         // Versions of a database hold all its records: only for those who
@@ -979,6 +984,7 @@ function validateArchive(input: unknown, files: Map<string, ArchiveEntry>) {
       ((p.kind === "document" || p.kind === "journal" || p.kind === "dashboard" || p.kind === "notebook") &&
         p.html === undefined) ||
       (p.kind === "notebook" && !p.notebook) ||
+      (p.kind === "workflow" && !p.workflow) ||
       (p.kind === "whiteboard" && p.whiteboard === undefined)
     )
       throw new HttpError(400, "Seiteninhalt passt nicht zum Seitentyp.");
@@ -1406,6 +1412,7 @@ async function importEntries(
           if (p.kind === "dashboard")
             await copyDashboard(parseTiles(JSON.stringify(p.dashboard || [])), pid, pageMap);
           if (p.kind === "notebook") await importNotebook(pid, p.notebook!, fileMap, user.id);
+          if (p.kind === "workflow") await importWorkflow(pid, wid, p.workflow!, user.id, pageMap);
           for (const [block, entry] of Object.entries(p.inkBlocks || {})) {
             const items = Object.values(parseInk(entry.ink).pages)[0] || [];
             if (items.length) await writeSurface(pid, block, { ...emptyInk(), pages: { [block]: items } }, entry.recognized || "", user.id);
@@ -1426,7 +1433,7 @@ async function importEntries(
           );
         // Database snapshots use JSON payloads; remap their rows separately from current records.
         // Board versions hold only a text summary in archives.
-        for (const snap of p.kind === "whiteboard" || p.kind === "dashboard" || p.kind === "notebook" ? [] : p.snapshots) {
+        for (const snap of p.kind === "whiteboard" || p.kind === "dashboard" || p.kind === "notebook" || p.kind === "workflow" ? [] : p.snapshots) {
           let html = snap.html,
             state: Uint8Array | null = null;
           if (p.kind === "document" || p.kind === "journal") {

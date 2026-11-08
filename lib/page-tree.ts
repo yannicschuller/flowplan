@@ -1,3 +1,4 @@
+import { copyWorkflow } from "./workflows/store";
 import { reconcileTagFields } from "./tag-fields";
 import { ct } from "./content-locale";
 import { copyWhiteboard } from "./whiteboard";
@@ -183,7 +184,10 @@ export async function duplicatePages(
           user.id,
         );
       }
-      if (p.kind === "whiteboard") {
+      if (p.kind === "workflow") {
+        // The draft as a draft, never active (lib/workflows/store.ts).
+        await copyWorkflow(p.id, target, workspaceId, user.id);
+      } else if (p.kind === "whiteboard") {
         await copyWhiteboard(p.id, target, pageIds, rewrite);
       } else if (p.kind === "dashboard") {
         await copyDashboard(await dashboardTiles(p.id), target, pageIds);

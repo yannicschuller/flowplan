@@ -7,6 +7,7 @@ import { SettingGroup } from "../../settings-ui";
 import { useAdminData } from "../admin-context";
 import { AdminLoading } from "../shell";
 import { AdminStatus, InstanceNumber } from "./parts";
+import { WorkflowLimits } from "./workflow-limits";
 
 export default function LimitsSection() {
   const t = useT();
@@ -115,6 +116,7 @@ export default function LimitsSection() {
           placeholder="30"
         />
       </SettingGroup>
+      <WorkflowLimits />
     </>
   );
 }

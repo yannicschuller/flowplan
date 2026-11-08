@@ -39,9 +39,12 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 96;
+export const SCHEMA_VERSION = 97;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
+// Schema 97 (workflows): tables created with their seq column (and its
+// trigger) in migrateWorkflows.
+const WORKFLOW_SEQ_TABLES = ["workflow_events", "workflow_runs", "workflow_steps"] as const;
 export const SEQ_TABLES = [
   "snapshots",
   "row_snapshots",
@@ -1262,11 +1265,65 @@ function migrate(d: DatabaseSync) {
   // (page_view_prefs.completed_mine of the journal page; NULL: never
   // chosen, "Nur meine").
   migrateStatusLogUser(d);
+  // Schema 97 – workflows (#168, below).
+  migrateWorkflows(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
   forgetStatements(d);
   globalDb.flowplanSchema = SCHEMA_VERSION;
+}
+// Schema 97 – Workflows (#168, renumbered at the final merge, docs/specs/workflows.md §4): one workflow
+// per page of kind "workflow" (state, who runs it), its draft as a Yjs
+// document, the activated versions (immutable), the triggers of the active
+// version for a quick lookup, the event outbox, runs and their steps (the
+// queue and the history at once), approvals, inbound hook addresses,
+// credentials of HTTP nodes, the AI and e-mail use per day and the
+// throttled notices to the people responsible. One block, all
+// IF NOT EXISTS: test databases of earlier waves of the branch catch up.
+export function migrateWorkflows(d: DatabaseSync) {
+  d.exec(`CREATE TABLE IF NOT EXISTS workflows(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','active','paused','auto_paused')),active_version_id TEXT,runner_id TEXT REFERENCES users(id) ON DELETE SET NULL,activated_at INTEGER,paused_at INTEGER,paused_by TEXT,pause_reason TEXT NOT NULL DEFAULT '',settings TEXT NOT NULL DEFAULT '{}',failure_streak INTEGER NOT NULL DEFAULT 0,throttled INTEGER NOT NULL DEFAULT 0,last_events TEXT NOT NULL DEFAULT '{}',created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);
+    CREATE INDEX IF NOT EXISTS workflows_workspace ON workflows(workspace_id,status);
+    CREATE INDEX IF NOT EXISTS workflows_runner ON workflows(runner_id);
+    CREATE TABLE IF NOT EXISTS workflow_drafts(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,state BLOB NOT NULL,generation TEXT NOT NULL,updated_by TEXT,updated_at INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS workflow_versions(id TEXT PRIMARY KEY,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,number INTEGER NOT NULL,graph TEXT NOT NULL,graph_hash TEXT NOT NULL,activated_by TEXT,activated_at INTEGER NOT NULL,note TEXT NOT NULL DEFAULT '',UNIQUE(page_id,number));
+    CREATE TABLE IF NOT EXISTS workflow_triggers(page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,node_id TEXT NOT NULL,version_id TEXT NOT NULL,workspace_id TEXT NOT NULL,kind TEXT NOT NULL,scope_id TEXT NOT NULL DEFAULT '',config TEXT NOT NULL,inline INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(page_id,node_id));
+    CREATE INDEX IF NOT EXISTS workflow_triggers_lookup ON workflow_triggers(workspace_id,kind,scope_id);
+    CREATE INDEX IF NOT EXISTS workflow_triggers_kind ON workflow_triggers(kind);
+    CREATE TABLE IF NOT EXISTS workflow_events(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL,kind TEXT NOT NULL,scope_id TEXT NOT NULL DEFAULT '',page_id TEXT,row_id TEXT,payload TEXT NOT NULL,actor_id TEXT,origin_run_id TEXT,depth INTEGER NOT NULL DEFAULT 0,dedupe_key TEXT UNIQUE,due_at INTEGER NOT NULL,lease_until INTEGER NOT NULL DEFAULT 0,dispatched_at INTEGER,created_at INTEGER NOT NULL,seq INTEGER);
+    CREATE INDEX IF NOT EXISTS workflow_events_due ON workflow_events(dispatched_at,due_at,lease_until);
+    CREATE TABLE IF NOT EXISTS workflow_runs(id TEXT PRIMARY KEY,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,workspace_id TEXT NOT NULL,version_id TEXT NOT NULL,runner_id TEXT,mode TEXT NOT NULL DEFAULT 'live' CHECK(mode IN ('live','test','dry')),trigger_node_id TEXT NOT NULL,event_id TEXT,status TEXT NOT NULL CHECK(status IN ('queued','running','waiting','held','succeeded','failed','cancelled')),depth INTEGER NOT NULL DEFAULT 0,origin_run_id TEXT,steps INTEGER NOT NULL DEFAULT 0,ai_tokens INTEGER NOT NULL DEFAULT 0,failed_node_id TEXT,error TEXT,created_at INTEGER NOT NULL,started_at INTEGER,finished_at INTEGER,seq INTEGER);
+    CREATE INDEX IF NOT EXISTS workflow_runs_page ON workflow_runs(page_id,created_at);
+    CREATE INDEX IF NOT EXISTS workflow_runs_status ON workflow_runs(status,finished_at);
+    CREATE INDEX IF NOT EXISTS workflow_runs_origin ON workflow_runs(origin_run_id);
+    CREATE INDEX IF NOT EXISTS workflow_runs_workspace ON workflow_runs(workspace_id,created_at);
+    CREATE TABLE IF NOT EXISTS workflow_steps(id TEXT PRIMARY KEY,run_id TEXT NOT NULL REFERENCES workflow_runs(id) ON DELETE CASCADE,node_id TEXT NOT NULL,iteration TEXT NOT NULL DEFAULT '',via TEXT NOT NULL DEFAULT '',status TEXT NOT NULL CHECK(status IN ('queued','running','waiting','succeeded','failed','skipped','cancelled')),attempt INTEGER NOT NULL DEFAULT 0,due_at INTEGER NOT NULL,lease_until INTEGER NOT NULL DEFAULT 0,lease_token TEXT,claimed_by TEXT,open_children INTEGER NOT NULL DEFAULT 0,port TEXT,input TEXT,output TEXT,error TEXT,error_kind TEXT,started_at INTEGER,finished_at INTEGER,created_at INTEGER NOT NULL,seq INTEGER,UNIQUE(run_id,node_id,iteration,via));
+    CREATE INDEX IF NOT EXISTS workflow_steps_claim ON workflow_steps(status,due_at);
+    CREATE INDEX IF NOT EXISTS workflow_steps_run ON workflow_steps(run_id,seq);
+    CREATE TABLE IF NOT EXISTS workflow_approvals(id TEXT PRIMARY KEY,step_id TEXT NOT NULL UNIQUE REFERENCES workflow_steps(id) ON DELETE CASCADE,run_id TEXT NOT NULL REFERENCES workflow_runs(id) ON DELETE CASCADE,page_id TEXT NOT NULL,approvers TEXT NOT NULL,message TEXT NOT NULL,decision TEXT CHECK(decision IN ('approved','rejected','timeout','cancelled')),decided_by TEXT,comment TEXT NOT NULL DEFAULT '',expires_at INTEGER,created_at INTEGER NOT NULL,decided_at INTEGER);
+    CREATE INDEX IF NOT EXISTS workflow_approvals_open ON workflow_approvals(decision,expires_at);
+    CREATE INDEX IF NOT EXISTS workflow_approvals_page ON workflow_approvals(page_id,created_at);
+    CREATE TABLE IF NOT EXISTS workflow_hooks(id TEXT PRIMARY KEY,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,node_id TEXT NOT NULL,token_hash TEXT NOT NULL UNIQUE,sealed TEXT NOT NULL,mode TEXT NOT NULL DEFAULT 'signed' CHECK(mode IN ('signed','token')),created_at INTEGER NOT NULL,rotated_at INTEGER,last_used_at INTEGER,last_error TEXT,UNIQUE(page_id,node_id));
+    CREATE TABLE IF NOT EXISTS workflow_credentials(id TEXT PRIMARY KEY,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,name TEXT NOT NULL,kind TEXT NOT NULL CHECK(kind IN ('bearer','basic','header','query')),host TEXT NOT NULL,sealed TEXT NOT NULL,created_by TEXT,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);
+    CREATE INDEX IF NOT EXISTS workflow_credentials_page ON workflow_credentials(page_id);
+    CREATE TABLE IF NOT EXISTS workflow_ai_usage(page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,day TEXT NOT NULL,tokens INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(page_id,day));
+    CREATE TABLE IF NOT EXISTS workflow_mail_usage(page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,day TEXT NOT NULL,mails INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(page_id,day));
+    CREATE TABLE IF NOT EXISTS workflow_notices(page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,kind TEXT NOT NULL,sent_at INTEGER NOT NULL DEFAULT 0,pending INTEGER NOT NULL DEFAULT 0,detail TEXT NOT NULL DEFAULT '',PRIMARY KEY(page_id,kind));`);
+  // Wave 2: the kind of a run's failure (limit failures do not count towards the auto-pause).
+  if (!(d.prepare("PRAGMA table_info(workflow_runs)").all() as { name: string }[]).some((c) => c.name === "error_kind"))
+    d.exec("ALTER TABLE workflow_runs ADD COLUMN error_kind TEXT");
+  // "Approve" on the apps' push notifications (§11.8): the verifier of the
+  // installation's confirmation key – SHA-256 of a secret that only Face ID
+  // / Touch ID / the fingerprint opens on the phone (lib/mobile-devices.ts).
+  if (!(d.prepare("PRAGMA table_info(mobile_devices)").all() as { name: string }[]).some((c) => c.name === "approval_key"))
+    d.exec("ALTER TABLE mobile_devices ADD COLUMN approval_key TEXT");
+  // Insertion order (schema 94): created with seq above; databases from
+  // before seq existed on these tables get it like the others.
+  for (const table of WORKFLOW_SEQ_TABLES) {
+    if (!(d.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === "seq"))
+      d.exec(`ALTER TABLE ${table} ADD COLUMN seq INTEGER; UPDATE ${table} SET seq=rowid;`);
+    d.exec(`CREATE TRIGGER IF NOT EXISTS ${table}_seq AFTER INSERT ON ${table} WHEN NEW.seq IS NULL BEGIN UPDATE ${table} SET seq=NEW.rowid WHERE rowid=NEW.rowid; END;`);
+  }
 }
 // Schema 95: the wider CHECK of issue_connections.provider. SQLite changes
 // a CHECK only by copying the table; dropping the old one would delete the

@@ -40,7 +40,7 @@ export function InboundMailSettings({ workspaceId, pages, onError }: { workspace
   const [senders, setSenders] = useState("");
   const [secret, setSecret] = useState("");
   const [busy, setBusy] = useState(false);
-  const targets = pages.filter((p) => !p.deleted_at && !p.synced && !p.journal_date && (p.kind === "document" || p.kind === "database"));
+  const targets = pages.filter((p) => !p.deleted_at && !p.synced && !p.journal_date && (p.kind === "document" || p.kind === "database" || p.kind === "workflow"));
   const load = useCallback(async () => {
     setData(await api<Listing>(`/api/inbound-mail?workspace=${workspaceId}`));
   }, [workspaceId]);
@@ -89,11 +89,11 @@ export function InboundMailSettings({ workspaceId, pages, onError }: { workspace
           <option value="">{t("Ziel wählen …", "Choose a target …")}</option>
           {targets.map((p) => (
             <option key={p.id} value={p.id}>
-              {(p.kind === "database" ? t("Datenbank: ", "Database: ") : t("Seite: ", "Page: ")) + (p.title || t("Ohne Titel", "Untitled"))}
+              {(p.kind === "database" ? t("Datenbank: ", "Database: ") : p.kind === "workflow" ? t("Workflow: ", "Workflow: ") : t("Seite: ", "Page: ")) + (p.title || t("Ohne Titel", "Untitled"))}
             </option>
           ))}
         </Select>
-        <small>{t("E-Mails werden Unterseiten einer Seite oder Einträge einer Datenbank.", "E-mails become subpages of a page or records of a database.")}</small>
+        <small>{t("E-Mails werden Unterseiten einer Seite oder Einträge einer Datenbank – oder starten einen Workflow (Auslöser „E-Mail empfangen“).", "E-mails become subpages of a page or records of a database – or start a workflow (trigger “E-mail received”).")}</small>
       </div>
       <div className="ws-field">
         <label htmlFor="inbound-label">{t("Bezeichnung (optional)", "Label (optional)")}</label>
@@ -169,7 +169,7 @@ export function InboundMailSettings({ workspaceId, pages, onError }: { workspace
                   <code>{address}</code>
                   {data.imap && a.email && <code>{a.webhookUrl}</code>}
                   <small>
-                    {(a.target.kind === "database" ? t("Datenbank", "Database") : t("Seite", "Page")) + `: ${a.target.title || t("Ohne Titel", "Untitled")} · `}
+                    {(a.target.kind === "database" ? t("Datenbank", "Database") : a.target.kind === "workflow" ? t("Workflow", "Workflow") : t("Seite", "Page")) + `: ${a.target.title || t("Ohne Titel", "Untitled")} · `}
                     {t("Absender", "Senders")}: {a.senders.join(", ")}
                     {a.signed ? ` · ${t("signiert", "signed")}` : ""}
                   </small>

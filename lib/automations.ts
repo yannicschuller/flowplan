@@ -19,9 +19,9 @@ import { groupKey, groupingField } from "./database-groups";
 import type { Field, Identity, Page, Row, View } from "./types";
 import { latestSlot } from "./automation-schedule";
 import { spawnNextRecord } from "./repeat-records";
-import { replaceRowDocument, type RowTemplate } from "./row-documents";
-import { applyTemplate, auditApply, fillNewRecord } from "./record-template-apply";
 import { emitWebhook } from "./webhooks";
+import { runInlineWorkflows, runRuleAutomations, runScheduledRule } from "./workflows/inline";
+import { recordWorkflowEvents } from "./workflows/hooks";
 import { queueIssuePush } from "./issue-sync-queue";
 import { isLeader } from "./cluster/leader";
 
@@ -99,127 +99,13 @@ async function checkWipLimits(page: Page, fields: Field[], before: Cells, after:
 
 /* ---------- Automations ---------- */
 
-function triggered(a: Automation, event: Event, before: Cells | null, after: Cells, fields: Field[]) {
-  const t = a.trigger;
-  if (t.type === "created") return event === "created" || event === "form";
-  if (t.type === "form") return event === "form";
-  if (t.type === "overdue") return event === "overdue";
-  if (t.type === "schedule") return false;
-  if (event !== "updated" || !before) return false;
-  const field = fields.find((f) => f.id === t.field);
-  if (!field || text(before[field.id]) === text(after[field.id])) return false;
-  return !t.to || text(after[field.id]) === t.to;
-}
-
-function actionValue(action: Extract<AutomationAction, { type: "set" }>, field: Field, actor: Identity | null, row: Row) {
-  const v = action.value;
-  if (v === "@today") return today();
-  if (v === "@now") return new Date().toISOString().slice(0, 16) + "Z";
-  if (v === "@actor") return actor?.id ?? null;
-  if (v === "@creator") return row.created_by || null;
-  if (v === "@clear") return field.type === "checkbox" ? false : field.type === "multiselect" || field.type === "aliases" ? [] : "";
-  return v;
-}
-
-function recipients(to: string, actor: Identity | null, row: Row, cells: Cells) {
-  if (to === "@creator") return row.created_by ? [row.created_by] : [];
-  if (to === "@actor") return actor ? [actor.id] : [];
-  if (to.startsWith("field:")) {
-    const value = cells[to.slice(6)];
-    return (Array.isArray(value) ? value : [value]).filter((v): v is string => typeof v === "string" && !!v);
-  }
-  return [to];
-}
-
-// Runs the automations of a database for one record.
+// Runs the automations of a database for one record. Each rule is a small
+// workflow graph run by the workflow engine's immediate part
+// (lib/workflows/inline.ts, docs/specs/workflows.md §2) – with the same
+// results as always: the "set" values of all rules in one update, their
+// own changes trigger no further rules, templates last.
 export async function runAutomations(input: { page: Page; rowId: string; actor: Identity | null; event: Event; before?: Cells | null; only?: string }) {
-  const settings = await databaseSettings(input.page.id);
-  const automations = (settings.automations || []).filter((a) => a.enabled && (!input.only || a.id === input.only));
-  if (!automations.length) return 0;
-  const raw = await one<Row & { cells: string }>("SELECT * FROM rows WHERE id=? AND page_id=?", input.rowId, input.page.id);
-  if (!raw) return 0;
-  const row: Row = { ...raw, cells: JSON.parse(raw.cells) };
-  const fields = JSON.parse((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", input.page.id))!.fields) as Field[];
-  const cells = computedCells(row, fields);
-  const patch: Cells = {};
-  const templates: { rule: Automation; template: string; mode: "empty" | "append" }[] = [];
-  let fired = 0;
-  // For the status log: the person who set up the rule that set the done
-  // rule's field (null for a rule nobody set up).
-  const statusField = doneRule(fields, settings)?.field.id;
-  let setBy: string | null = null;
-  for (const a of automations) {
-    if (!triggered(a, input.event, input.before ?? null, row.cells, fields)) continue;
-    const group = { kind: "group" as const, join: "and" as const, rules: a.conditions.map((c) => ({ ...c, kind: "condition" as const })) };
-    if (a.conditions.length && !matchesFilterGroup(cells, group, fields)) continue;
-    fired++;
-    for (const action of a.actions) {
-      if (action.type === "set") {
-        const field = fields.find((f) => f.id === action.field);
-        if (field) {
-          patch[field.id] = actionValue(action, field, input.actor, row);
-          if (field.id === statusField) setBy = a.createdBy || null;
-        }
-      } else if (action.type === "notify") await notify(action, a, input, row, { ...cells, ...patch }, fields);
-      else if (action.type === "template") templates.push({ rule: a, template: action.template, mode: action.mode });
-    }
-  }
-  if (Object.keys(patch).length) {
-    await run(
-      "UPDATE rows SET cells=?,version=version+1,updated_at=? WHERE id=?",
-      JSON.stringify({ ...row.cells, ...patch }), nowText(),
-      row.id,
-    );
-    await recordStatusChange(input.page.id, row.id, fields, settings, row.cells, { ...row.cells, ...patch }, setBy);
-  }
-  // Templates last, so they see the values just set; each rule applies a
-  // template to a record only once (automation_runs).
-  for (const t of templates) await applyTemplateOnce(input.page, row.id, t.rule, t.template, t.mode, input.actor, fields, settings);
-  return fired;
-}
-
-async function applyTemplateOnce(page: Page, rowId: string, rule: Automation, templateId: string, mode: "empty" | "append", actor: Identity | null, fields: Field[], settings: DatabaseSettings) {
-  const template = await one<RowTemplate>("SELECT * FROM row_templates WHERE id=? AND page_id=?", templateId, page.id);
-  if (!template) return;
-  const fresh = await run(
-    "INSERT INTO automation_runs(automation_id,row_id,key,at) VALUES(?,?,?,?) ON CONFLICT DO NOTHING",
-    rule.id,
-    rowId,
-    `template:${templateId}`,
-    Date.now(),
-  );
-  if (!fresh.changes) return;
-  const raw = await one<Row & { cells: string }>("SELECT * FROM rows WHERE id=? AND page_id=?", rowId, page.id);
-  if (!raw) return;
-  const row: Row = { ...raw, cells: JSON.parse(raw.cells) };
-  const applied = await applyTemplate({ page, row, template, actor, mode });
-  if (Object.keys(applied.cells).length) {
-    const next = { ...row.cells, ...applied.cells };
-    await run("UPDATE rows SET cells=?,version=version+1,updated_at=? WHERE id=?", JSON.stringify(next), nowText(), row.id);
-    await recordStatusChange(page.id, row.id, fields, settings, row.cells, next, rule.createdBy || null);
-  }
-  await auditApply(actor?.id || "system", row.id, template, `${rule.name || "Automation"} · ${applied.document}`);
-}
-
-async function notify(action: Extract<AutomationAction, { type: "notify" }>, a: Automation, input: { page: Page; actor: Identity | null }, row: Row, cells: Cells, fields: Field[]) {
-  const title = cellText(cells[fields[0]?.id || "title"]) || "Ohne Titel";
-  const body = action.message
-    ? `${action.message} – „${title}“`
-    : `${a.name || "Automation"}: „${title}“ in „${input.page.title}“`;
-  for (const uid of new Set(recipients(action.to, input.actor, row, cells))) {
-    const member = await one<Identity>("SELECT * FROM users WHERE id=? AND disabled=0", uid);
-    if (!member) continue;
-    const who = { ...member, groups: [], isAdmin: false } as Identity;
-    if (!(await pageRole(who, input.page)) || (await hiddenRowIds(who, input.page)).has(row.id)) continue;
-    await run(
-      "INSERT INTO notifications(id,user_id,body,page_id,row_id,kind) VALUES(?,?,?,?,?,'automation')",
-      id(),
-      uid,
-      body.slice(0, 500),
-      input.page.id,
-      row.id,
-    );
-  }
+  return await runRuleAutomations(input);
 }
 
 /* ---------- Status history (burndown, velocity) ---------- */
@@ -254,19 +140,32 @@ export async function rowChanged(user: Identity | null | "system", page: Page, r
   await recordStatusChange(page.id, rowId, props, settings, before, after, user && user !== "system" ? user.id : null);
   // Webhooks: "record done" when it just became done.
   const rule = doneRule(props, settings);
-  if (rule && isDone(rule, after) && !isDone(rule, before))
+  const done = !!rule && isDone(rule, after) && !isDone(rule, before);
+  if (done)
     await emitWebhook(page.workspace_id, "row.done", { pageId: page.id, rowId, cells: after }, user && user !== "system" ? user.name : null);
+  // Workflows (#168): the event into the outbox, then the immediate parts.
+  await recordWorkflowEvents({ page, rowId, actor: user === "system" ? null : user, event: "updated", before, after, done });
   await runAutomations({ page, rowId, actor: user === "system" ? null : user, event: "updated", before });
+  await runInlineWorkflows({ page, rowId, actor: user === "system" ? null : user, event: "updated", before, after, done });
   // A repeating record that became done gets its successor.
   const actor = user === "system" ? null : user;
   const next = await spawnNextRecord(actor, page.id, rowId, props, settings, before, after);
-  if (next) await runAutomations({ page, rowId: next, actor, event: "created" });
+  if (next) await rowCreatedRules(actor, page, next);
   // The issue sync (lib/issue-sync.ts) pushes the change.
   await queueIssuePush(page.id, rowId);
 }
 export async function rowCreated(user: Identity | null, page: Page, rowId: string, viaForm = false) {
+  await recordWorkflowEvents({ page, rowId, actor: user, event: viaForm ? "form" : "created" });
   await runAutomations({ page, rowId, actor: user, event: viaForm ? "form" : "created" });
+  await runInlineWorkflows({ page, rowId, actor: user, event: viaForm ? "form" : "created" });
   await queueIssuePush(page.id, rowId);
+}
+
+// A follow-up record (repeating records): rules and workflows as for a new one.
+async function rowCreatedRules(actor: Identity | null, page: Page, rowId: string) {
+  await recordWorkflowEvents({ page, rowId, actor, event: "created" });
+  await runAutomations({ page, rowId, actor, event: "created" });
+  await runInlineWorkflows({ page, rowId, actor, event: "created" });
 }
 
 /* ---------- Overdue ---------- */
@@ -335,26 +234,9 @@ export async function processScheduledAutomations(now = Date.now()) {
         now,
       );
       if (!fresh.changes) continue;
-      for (const action of a.actions) {
-        if (action.type !== "create") continue;
-        const template = action.template
-          ? (await one<RowTemplate>("SELECT * FROM row_templates WHERE id=? AND page_id=?", action.template, page_id))
-          : undefined;
-        const cells: Cells = { ...(template ? JSON.parse(template.cells) : {}), ...action.cells };
-        // Dates relative to the run: "due three days later".
-        for (const [fieldId, days] of Object.entries(action.dates))
-          cells[fieldId] = Temporal.PlainDate.from(slot.date).add({ days }).toString();
-        const rid = id();
-        await run(
-          "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by) VALUES(?,?,?,?,?,?)",
-          rid,
-          page_id,
-          JSON.stringify(cells),
-          Date.now() + created,
-          who.id,
-          who.id,
-        );
-        if (template?.html) await replaceRowDocument(rid, await fillNewRecord({ page, rowId: rid, template, actor: who, zone: a.trigger.timeZone }), who.id);
+      // The rule's graph, run for its creator (lib/workflows/inline.ts).
+      const counter = { n: created, ids: [] as string[] };
+      for (const rid of await runScheduledRule(a, page, who, slot, counter)) {
         await runAutomations({ page, rowId: rid, actor: who, event: "created" });
         created++;
       }

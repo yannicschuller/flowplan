@@ -83,6 +83,8 @@ export function cleanHtml(html: string, transform?: sanitize.Transformer) {
         "data-plugin-type",
         "data-plugin-label",
         "data-plugin-data",
+        "data-workflow-button",
+        "data-label",
         "data-code-wrap",
         "data-code-view",
         "data-line-numbers",

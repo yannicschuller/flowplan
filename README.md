@@ -48,7 +48,7 @@
 
 ## At a glance
 
-- **Everything in one page tree** – documents, databases with ten views, whiteboards, notebooks for handwriting, a daily journal, projects with tickets and sprints, surveys.
+- **Everything in one page tree** – documents, databases with ten views, whiteboards, notebooks for handwriting, a daily journal, projects with tickets and sprints, surveys and workflows.
 - **Completely open source** under the AGPL-3.0 – no closed enterprise edition, no features behind a licence key.
 - **One container with SQLite** – nothing else to run, no external search service. For larger teams optionally [PostgreSQL](https://docs.flowplan.org/en/postgresql) and a [cluster](https://docs.flowplan.org/en/cluster) of several instances. Or hosted in Germany at [app.flowplan.org](https://app.flowplan.org).
 - **Optional AI** – off by default; admins switch it on per feature and per person, completely local with [Ollama](https://ollama.com) or with a key for OpenAI, Anthropic, Gemini or any OpenAI-compatible service. You decide which pages it may read.
@@ -157,6 +157,9 @@ More in the documentation: [Installation](https://docs.flowplan.org/en/installat
     <td valign="top">📱 <b><a href="https://docs.flowplan.org/en/offline-and-apps">Apps</a></b><br>An installable web app that works offline, desktop apps, and apps for iPhone, iPad and Android.</td>
     <td valign="top">🔐 <b><a href="https://docs.flowplan.org/en/sign-in">Security</a></b><br>SSO with OIDC, LDAP and SCIM, two-factor sign-in, passkeys and <a href="https://docs.flowplan.org/en/encrypted-spaces">end-to-end encrypted spaces</a>.</td>
     <td valign="top">💾 <b><a href="https://docs.flowplan.org/en/storage-and-backups">Self-hosting and backups</a></b><br>One container with SQLite or PostgreSQL and a cluster, continuous backup to S3 with Litestream, scheduled encrypted backups, a Helm chart.</td>
+  </tr>
+  <tr>
+    <td colspan="3" valign="top">🔀 <b><a href="https://docs.flowplan.org/en/workflows">Workflows</a></b><br>Flows of nodes on a canvas, without code: a trigger – a record, page, form, schedule, mention, webhook or e-mail – then conditions, loops, waits and approvals, and actions on records and pages, notifications, AI and HTTP. Test runs, run history, versions, templates and an AI builder; a workflow never does more than the person who activated it.</td>
   </tr>
 </table>
 

@@ -1,7 +1,8 @@
 "use client";
 import { useState } from "react";
-import { Lightning, Plus, Trash, PencilSimple } from "@phosphor-icons/react";
+import { Lightning, Plus, Trash, PencilSimple, FlowArrow, ArrowSquareOut } from "@phosphor-icons/react";
 import { useT } from "./i18n";
+import { api, reportError } from "./ui";
 import { Select } from "./select";
 import type { Automation, AutomationAction, DatabaseSettings } from "@/lib/database-settings-schema";
 import { doneRule } from "@/lib/database-settings-schema";
@@ -18,6 +19,8 @@ type Props = {
   save: (patch: Partial<DatabaseSettings> | Record<string, null>) => Promise<boolean>;
   // Record templates of the database, for scheduled rules.
   templates?: RowTemplateRef[];
+  // The database page: "Open in canvas" makes a workflow page next to it.
+  pageId?: string;
 };
 type Condition = Automation["conditions"][number];
 const newId = () => crypto.randomUUID().slice(0, 12);
@@ -35,7 +38,13 @@ const templateAction = (templates: RowTemplateRef[]): AutomationAction => ({
 
 // Rules of a database: "When …, only if …, then …". Each rule can be
 // switched off; suggestions fill in the usual cases.
-export function DatabaseAutomations({ fields, settings, members, editable, save, templates = [] }: Props) {
+// Opens a page of the workspace (the app follows the address).
+const openPage = (id: string) => {
+  window.dispatchEvent(new CustomEvent("flowplan:pages-changed"));
+  window.location.hash = `page=${id}`;
+};
+
+export function DatabaseAutomations({ fields, settings, members, editable, save, templates = [], pageId }: Props) {
   const t = useT();
   const rules = settings.automations || [];
   const [draft, setDraft] = useState<Automation | null>(null);
@@ -150,12 +159,17 @@ export function DatabaseAutomations({ fields, settings, members, editable, save,
         <ul className="automation-list">
           {rules.map((rule) => (
             <li key={rule.id} data-enabled={rule.enabled}>
-              <Lightning weight={rule.enabled ? "fill" : "regular"} aria-hidden />
+              {rule.workflow ? <FlowArrow aria-hidden /> : <Lightning weight={rule.enabled ? "fill" : "regular"} aria-hidden />}
               <div>
                 <strong>{rule.name || t("Regel", "Rule")}</strong>
                 <span>{describe(rule, fields, members, templates, t)}</span>
               </div>
-              {editable && (
+              {/* Replaced by a workflow when that was activated (docs/specs/workflows.md §2): only the link. */}
+              {rule.workflow ? (
+                <button type="button" className="button compact" onClick={() => openPage(rule.workflow!)}>
+                  <ArrowSquareOut /> {t("Erweitert als Workflow → öffnen", "Extended as a workflow → open")}
+                </button>
+              ) : editable && (
                 <>
                   <label className="switch" title={rule.enabled ? t("Ausschalten", "Switch off") : t("Einschalten", "Switch on")}>
                     <input
@@ -170,6 +184,28 @@ export function DatabaseAutomations({ fields, settings, members, editable, save,
                   <button type="button" className="icon-button" aria-label={t("Bearbeiten", "Edit")} onClick={() => setDraft(rule)}>
                     <PencilSimple />
                   </button>
+                  {pageId && (
+                    <button
+                      type="button"
+                      className="icon-button"
+                      aria-label={t(`„${rule.name || "Regel"}“ im Canvas öffnen und erweitern`, `Open “${rule.name || "Rule"}” in the canvas and extend it`)}
+                      title={t("Im Canvas öffnen", "Open in canvas")}
+                      disabled={busy}
+                      onClick={async () => {
+                        setBusy(true);
+                        try {
+                          const r = await api<{ id: string }>("/api/command", { action: "workflow.fromRule", pageId, automationId: rule.id, timeZone: browserZone() });
+                          openPage(r.id);
+                        } catch (e) {
+                          reportError(e);
+                        } finally {
+                          setBusy(false);
+                        }
+                      }}
+                    >
+                      <FlowArrow />
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="icon-button"

@@ -27,6 +27,7 @@ import { DrawioBlock } from "./drawio-node";
 import { FunctionPlot } from "./function-plot-node";
 import { MetricBlock } from "./metric-node";
 import { PluginBlock } from "./plugin-node";
+import { WorkflowButton } from "./workflow-button-node";
 import { FlowCodeBlock } from "./code-block";
 import { Bibliography, Citation } from "./citation-nodes";
 import { Footnote } from "./footnotes";
@@ -595,6 +596,7 @@ export const documentExtensions = [
   FunctionPlot,
   MetricBlock,
   PluginBlock,
+  WorkflowButton,
   TaskList,
   FlowTaskItem.configure({ nested: true }),
   ListTidy,

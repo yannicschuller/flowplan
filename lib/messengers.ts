@@ -472,6 +472,8 @@ const kindTitles: Record<NotificationKind, [string, string]> = {
   guest: ["Gast", "Guest"],
   change: ["Änderung", "Change"],
   automation: ["Automation", "Automation"],
+  workflow: ["Workflow", "Workflow"],
+  workflow_ops: ["Workflow", "Workflow"],
   security: ["Sicherheit", "Security"],
   incident: ["Sicherheitsvorfall", "Security incident"],
 };

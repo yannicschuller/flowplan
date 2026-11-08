@@ -18,6 +18,8 @@ export const NOTIFICATION_CATEGORIES = {
   comment: "flowplan.comment",
   // "Mark as read"
   read: "flowplan.read",
+  // "Approve", "Reject" on an open workflow approval (docs/specs/workflows.md §11.8)
+  workflowApproval: "flowplan.workflow-approval",
 } as const;
 export type NotificationCategory = (typeof NOTIFICATION_CATEGORIES)[keyof typeof NOTIFICATION_CATEGORIES];
 
@@ -45,6 +47,32 @@ export async function taskTarget(notificationId: string): Promise<TaskTarget | n
   }
 }
 
+// The workflow approval a notification asks for (lib/workflows/nodes/logic.ts
+// → opsNotify): stored like a reminder's task, so the buttons act on what
+// the notification is about, never on an id the phone names.
+const approvalSchema = z.object({ type: z.literal("approval"), approvalId: z.uuid() });
+export async function rememberApprovalTarget(notificationId: string, approvalId: string) {
+  await run("INSERT INTO notification_targets(notification_id,target) VALUES(?,?) ON CONFLICT(notification_id) DO UPDATE SET target=excluded.target", notificationId, JSON.stringify(approvalSchema.parse({ type: "approval", approvalId })));
+}
+export async function approvalTarget(notificationId: string): Promise<string | null> {
+  const raw = (await one<{ target: string }>("SELECT target FROM notification_targets WHERE notification_id=?", notificationId))?.target;
+  if (!raw) return null;
+  try {
+    const parsed = approvalSchema.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data.approvalId : null;
+  } catch {
+    return null;
+  }
+}
+// The approval behind a notification while it is still open (for the
+// buttons and the push's data); null otherwise.
+export async function openApprovalOf(notificationId: string): Promise<string | null> {
+  const approvalId = await approvalTarget(notificationId);
+  if (!approvalId) return null;
+  const open = await one<{ expires_at: number | null }>("SELECT expires_at FROM workflow_approvals WHERE id=? AND decision IS NULL", approvalId);
+  return open && (!open.expires_at || open.expires_at > Date.now()) ? approvalId : null;
+}
+
 export async function hasDoneState(pageId: string) {
   const stored = await one<{ fields: string; settings: string | null }>("SELECT fields,settings FROM databases WHERE page_id=?", pageId);
   if (!stored) return false;
@@ -64,6 +92,8 @@ export async function notificationCategory(notification: CategoryInput, withCont
     if (target && (target.type === "doc" || await hasDoneState(target.pageId))) return NOTIFICATION_CATEGORIES.task;
     return NOTIFICATION_CATEGORIES.read;
   }
+  // An open workflow approval: "Approve" (confirmed on the phone) and "Reject".
+  if (notification.kind === "workflow_ops" && (await openApprovalOf(notification.id))) return NOTIFICATION_CATEGORIES.workflowApproval;
   // Comment threads (also mentions in them) and comments on pages and records.
   if (notification.page_id && (notification.thread_id ? notification.kind === "comment" || notification.kind === "mention" : notification.kind === "comment"))
     return NOTIFICATION_CATEGORIES.comment;

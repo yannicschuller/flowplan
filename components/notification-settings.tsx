@@ -29,6 +29,8 @@ const kindHints: Record<NotificationKind, [string, string]> = {
   guest: ["Kommentare und Einträge über Freigabelinks und Formulare.", "Comments and records through share links and forms."],
   change: ["Jemand bearbeitet eine Seite, der du folgst – auch eigene Seiten, denen du beim Anlegen folgst.", "Someone edits a page you follow – also your own pages, which you follow when creating them."],
   automation: ["Benachrichtigungen aus Automationen in Datenbanken.", "Notifications from automations in databases."],
+  workflow: ["Was ein Workflow dir schickt.", "What a workflow sends you."],
+  workflow_ops: ["Wenn ein Workflow scheitert, pausiert oder auf deine Freigabe wartet.", "When a workflow fails, pauses or waits for your approval."],
   security: [
     "Zu deinem eigenen Konto: Anmeldung von einem neuen Gerät, falsche PIN für dein Journal, eine abgeschaltete Chat-App.",
     "About your own account: a sign-in from a new device, a wrong PIN for your journal, a chat app switched off.",

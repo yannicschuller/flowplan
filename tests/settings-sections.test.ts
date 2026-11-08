@@ -100,3 +100,11 @@ test("search targets of the personal and connection sections exist in their pane
       if (entry.anchor) assert.match(sources, new RegExp(`(id|anchor)="${entry.anchor}"`), `settings/${id}/${entry.anchor} has no target`);
   assert.equal(parseSettingsHash("#settings/webhooks/new")?.anchor, "new");
 });
+
+test("search targets of the limits section exist in its panel", () => {
+  // Administration → Grenzen & Aufbewahrung, with the workflow limits (#168).
+  const sources = ["components/settings/admin/limits.tsx", "components/settings/admin/workflow-limits.tsx"].map((file) => readFileSync(file, "utf8")).join("\n");
+  const entries = findSection("admin", "limits")?.entries || [];
+  assert.ok(entries.some((e) => e.anchor === "workflows"));
+  for (const entry of entries) if (entry.anchor) assert.match(sources, new RegExp(`id="${entry.anchor}"`), `admin/limits/${entry.anchor} has no target`);
+});

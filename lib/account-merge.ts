@@ -176,6 +176,16 @@ export const USER_REFERENCES: Record<string, MergeStrategy> = {
   "security_events.actor_id": "move",
   "security_incidents.actor_id": "move",
   "security_incidents.resolved_by": "move",
+  // Workflows (#168): who runs, paused, edited, activated, decided.
+  "workflows.runner_id": "move",
+  "workflows.paused_by": "move",
+  "workflow_drafts.updated_by": "move",
+  "workflow_versions.activated_by": "move",
+  "workflow_events.actor_id": "move",
+  "workflow_approvals.decided_by": "move",
+  "workflow_credentials.created_by": "move",
+  // The instance that claimed a step, not a person.
+  "workflow_steps.claimed_by": "none",
 };
 
 // Text columns that may hold account ids inside JSON or text (person

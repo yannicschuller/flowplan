@@ -49,6 +49,27 @@ await client.command({ action: "comment.create", pageId, body: "Done" }, { idemp
 await client.command({ action: "comment.create", pageId, body: "Done" }, { idempotencyKey: key });
 ```
 
+Workflows: create one from JSON, test it, activate it (a write token may; the MCP server never activates):
+
+```ts
+const { id: pageId } = await client.command({ action: "page.create", workspaceId, spaceId, kind: "workflow", title: "Tickets from the form" });
+const graph = {
+  nodes: [
+    { id: "n_trigger1", type: "trigger.manual", label: "Start", config: { inputs: [{ name: "Title", type: "text", required: true }] } },
+    { id: "n_create01", type: "action.record.create", label: "Create ticket", config: { database: databaseId, values: { [titleFieldId]: "{{n_trigger1.inputs.Title}}" } } },
+  ],
+  edges: [{ id: "e_1", from: { node: "n_trigger1", port: "out" }, to: { node: "n_create01", port: "in" } }],
+};
+const check = await client.saveWorkflowDraft(pageId, { graph });
+if (check.issues.some((i) => i.level === "error")) throw new Error(check.issues.map((i) => i.message).join("\n"));
+const test = await client.testWorkflow(pageId, { mode: "dry", data: { kind: "custom", output: { inputs: { Title: "Probe" } } } });
+const run = await client.getWorkflowRun(test.runId!); // when it has finished
+const { ok } = await client.activateWorkflow(pageId, { note: "Deployed by CI" });
+await client.runWorkflow(pageId, { inputs: { Title: "From the SDK" } });
+```
+
+`exportWorkflow` and `importWorkflow` move a workflow to another workspace or instance: references are matched by title, credentials never travel, and the import is always a draft.
+
 Anything not covered by a generated method goes through `client.request(method, path, { query, json, form, raw })`.
 
 See `example.ts` for a complete script, `/api/docs` on your instance for the reference and [docs.flowplan.org/api-and-webhooks](https://docs.flowplan.org/api-and-webhooks) for the guide.

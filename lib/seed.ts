@@ -1,3 +1,4 @@
+import { createWorkflowRecord } from "./workflows/store";
 import { createNotebook } from "./notebook";
 import { id, run, all, transaction } from "./db";
 import type { Field, View } from "./types";
@@ -108,7 +109,7 @@ export async function createPage(
     kind,
     user,
     Date.now(),
-    kind === "whiteboard" ? "whiteboard" : kind === "journal" ? "journal" : kind === "dashboard" ? "dashboard" : kind === "notebook" ? "notebook" : "file",
+    kind === "whiteboard" ? "whiteboard" : kind === "journal" ? "journal" : kind === "dashboard" ? "dashboard" : kind === "notebook" ? "notebook" : kind === "workflow" ? "workflow" : "file",
   );
   if (kind === "database") {
     const setup = databaseSetup(databaseKind);
@@ -136,6 +137,8 @@ export async function createPage(
   if (kind === "dashboard") await run("INSERT INTO dashboards(page_id) VALUES(?)", pid);
   // Notebooks start with one sheet of the default paper (lib/notebook.ts).
   if (kind === "notebook") await createNotebook(pid);
+  // Workflows (#168): the workflow row and an empty draft (lib/workflows/store.ts).
+  if (kind === "workflow") await createWorkflowRecord(pid, workspace, user);
   return pid;
 }
 export async function createWorkspace(user: string, name: string, examples = false) {

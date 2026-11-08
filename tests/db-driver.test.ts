@@ -241,8 +241,8 @@ test("a SQLite database at main's schema 93 (files in the trash, no seq) upgrade
   old.exec("PRAGMA user_version=93");
   legacy.migrateFile(old);
   const version = (old.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
-  assert.equal(version, 96);
-  assert.equal(legacy.SCHEMA_VERSION, 96);
+  assert.equal(version, legacy.SCHEMA_VERSION);
+  assert.equal(legacy.SCHEMA_VERSION, 97);
   for (const table of [...legacy.SEQ_TABLES, "pages"])
     assert.ok((old.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === "seq"), table);
   // Existing rows get their order, new ones one from the trigger.
@@ -282,7 +282,7 @@ test("schema 95: issue connections allow Forgejo/Gitea, mappings survive the cop
   assert.throws(() => insert("c2", "forgejo"), /CHECK/);
   old.exec("PRAGMA user_version=94");
   legacy.migrateFile(old);
-  assert.equal((old.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, 96);
+  assert.equal((old.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, legacy.SCHEMA_VERSION);
   assert.deepEqual({ ...(old.prepare("SELECT page_id,connection_id,created_at FROM issue_sync_maps").get() as object) }, { page_id: pid, connection_id: "c1", created_at: 7 });
   insert("c2", "forgejo");
   assert.throws(() => insert("c3", "bitbucket"), /CHECK/);
@@ -335,7 +335,7 @@ test("schema 96: the status log gets who completed, the view choices “Nur mein
   old.prepare("INSERT INTO page_view_prefs(user_id,page_id,properties_collapsed,updated_at) VALUES(?,?,1,7)").run(uid, pid);
   old.exec("PRAGMA user_version=95");
   legacy.migrateFile(old);
-  assert.equal((old.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, 96);
+  assert.equal((old.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, legacy.SCHEMA_VERSION);
   assert.deepEqual({ ...(old.prepare("SELECT row_id,done,at,user_id FROM row_status_log WHERE id='l95'").get() as object) }, { row_id: "r1", done: 1, at: 7, user_id: null });
   assert.deepEqual({ ...(old.prepare("SELECT properties_collapsed,completed_mine FROM page_view_prefs").get() as object) }, { properties_collapsed: 1, completed_mine: null });
   // Run again: nothing changes.
@@ -356,7 +356,7 @@ test("schema 96 on PostgreSQL: an existing database gets the new columns, old en
   await db.run("INSERT INTO row_status_log(id,page_id,row_id,done,at) VALUES('l95',?,'r1',1,7)", pid);
   await db.run("UPDATE flowplan_meta SET value='95' WHERE key='sqlite_schema'");
   const result = await ensureCurrentPostgresSchema(db);
-  assert.deepEqual({ from: result?.from, to: result?.to, applied: result?.applied }, { from: 95, to: 96, applied: true });
+  assert.deepEqual({ from: result?.from, to: result?.to, applied: result?.applied }, { from: 95, to: legacy.SCHEMA_VERSION, applied: true });
   assert.deepEqual(await db.one("SELECT row_id,user_id FROM row_status_log WHERE id='l95'"), { row_id: "r1", user_id: null });
   await db.run("INSERT INTO row_status_log(id,page_id,row_id,done,at,user_id) VALUES('l96',?,'r1',0,8,?)", pid, uid);
   assert.equal((await db.one<{ user_id: string }>("SELECT user_id FROM row_status_log WHERE id='l96'"))!.user_id, uid);

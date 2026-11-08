@@ -424,8 +424,37 @@ export function stageMove(dataDir: string, staging: string, summary: MoveSummary
   rmSync(resolve(staging, "extras"), { recursive: true, force: true });
   rmSync(resolve(staging, "state.json"), { force: true });
   rmSync(resolve(staging, "flowplan.sqlite.part"), { force: true });
+  pauseMovedWorkflows(resolve(staging, "flowplan.sqlite"));
   writeFileSync(resolve(staging, "MOVE"), summary.source);
   writeFileSync(resolve(staging, "READY"), JSON.stringify(summary));
   rmSync(pending, { recursive: true, force: true });
   renameSync(staging, pending);
+}
+
+// Workflows arrive paused (docs/specs/workflows.md §11.4): nothing starts on
+// the new instance before a person looks at it – the old one may still run
+// (a first copy) and webhooks, schedules and mails would happen twice. Open
+// runs are held and continue when the workflow is activated again.
+export function pauseMovedWorkflows(path: string, now = Date.now()) {
+  const db = new DatabaseSync(path);
+  try {
+    // sqlite-only: the moved file itself, before it is opened as the instance
+    if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='workflows'").get()) return 0;
+    db.exec("BEGIN");
+    const pages = (db.prepare("SELECT page_id FROM workflows WHERE status='active'").all() as { page_id: string }[]).map((r) => r.page_id);
+    for (const page of pages) {
+      db.prepare("UPDATE workflows SET status='paused',paused_at=?,paused_by=NULL,pause_reason=?,updated_at=? WHERE page_id=?").run(now, "Instanzumzug: bitte prüfen und wieder aktivieren.", now, page);
+      db.prepare("DELETE FROM workflow_triggers WHERE page_id=?").run(page);
+      db.prepare("UPDATE workflow_runs SET status='held' WHERE page_id=? AND mode='live' AND status IN ('queued','running','waiting')").run(page);
+    }
+    db.exec("COMMIT");
+    return pages.length;
+  } catch (error) {
+    try {
+      db.exec("ROLLBACK");
+    } catch {}
+    throw error;
+  } finally {
+    db.close();
+  }
 }

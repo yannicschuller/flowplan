@@ -168,6 +168,7 @@ import {
   PencilSimpleLine,
   CopySimple,
   ChartLine,
+  PlayCircle,
   FlowArrow,
   UsersThree,
   Note,
@@ -178,6 +179,7 @@ import {
 } from "@phosphor-icons/react";
 import { useSoftKeyboard } from "./mobile-tab-bar";
 import { PluginBlockView, pagePlugins, type PluginInfo } from "./plugin-block";
+import { WorkflowButtonView } from "./workflow-button";
 import { api, isTransient, Modal, PageIcon, sessionEnded } from "./ui";
 import { calloutDescriptions, calloutLabels } from "@/lib/callout-types";
 import { pageLocationHash } from "@/lib/page-location";
@@ -737,6 +739,8 @@ export default function DocumentEditor({
         FunctionPlotView,
         MetricView.configure({ pageId }),
         PluginBlockView.configure({ pageId, title: () => linkedContext.current?.pages.find((p) => p.id === pageId)?.title || "" }),
+        // The workflow button (#168): starts a workflow with a manual trigger.
+        WorkflowButtonView.configure({ pageId, workspaceId: () => linkedContext.current?.pages.find((p) => p.id === pageId)?.workspace_id || linkedContext.current?.pages[0]?.workspace_id || "" }),
         Mention,
         // The linked page's or record's own icon in front of the link (#96).
         PageLinkIcons,
@@ -1860,6 +1864,15 @@ export default function DocumentEditor({
           onError((error as Error).message);
         }
       },
+    },
+    {
+      id: "workflow-button",
+      group: "advanced",
+      name: t("Workflow-Knopf", "Workflow button"),
+      keywords: ["workflow", "knopf", "button", "automation", "starten", "run"],
+      description: t("Startet einen Workflow mit manuellem Auslöser", "Starts a workflow with a manual trigger"),
+      icon: PlayCircle,
+      run: () => editor?.chain().focus().insertContent({ type: "workflowButton", attrs: { workflow: "", label: "" } }).run(),
     },
     {
       id: "synced-insert",

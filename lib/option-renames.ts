@@ -56,7 +56,7 @@ export function mergesOf(renames: OptionRename[], optionsBefore: (field: string)
   );
 }
 
-// Whether an option has settings of its own under "Workflow and done"
+// Whether an option has settings of its own under "Status rules and done"
 // (counts as done, transitions, required properties, owners only), which
 // a merge into another option drops.
 export function hasOwnSettings(settings: DatabaseSettings | undefined, field: string, option: string) {

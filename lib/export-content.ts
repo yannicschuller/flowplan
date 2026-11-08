@@ -290,7 +290,7 @@ async function collect(user: Identity, options: ExportSelection): Promise<Collec
       };
     // A notebook: its sheets as pictures (drawing blocks the exporters draw).
     if (page.kind === "notebook") return { page, depth, title: page.title, html: await notebookExportHtml(page), svg: null, cover };
-    if (page.kind === "document" || page.kind === "journal")
+    if (page.kind === "document" || page.kind === "journal" || page.kind === "workflow")
       return { page, depth, title: page.title, html: (await one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", page.id))?.html || "", svg: null, cover };
     // A database: its records as a table, then every record's document.
     // Properties hidden from this person are left out (lib/field-access.ts).

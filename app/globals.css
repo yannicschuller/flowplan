@@ -4856,6 +4856,10 @@ mark[data-color] {
 .type-picker > .type-picker-template {
   grid-column: 1 / -1;
 }
+/* An odd number of page types: the template fills the gap beside the last. */
+.type-picker > :nth-child(odd):nth-last-child(2) + .type-picker-template {
+  grid-column: auto;
+}
 .type-picker .chosen {
   border-color: var(--blue);
   background: var(--blue-light);
@@ -32711,4 +32715,45 @@ label.ws-search input {
 html.native-app,
 html.native-app body {
   touch-action: pan-x pan-y;
+}
+
+/* The workflow button on a page (lib/workflow-button-node.ts, docs/specs/workflows.md §10.8); here, not in workflow.css, because it sits in documents. */
+.workflow-button-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 8px 0;
+}
+.workflow-button-block .wfb-change {
+  margin-left: 4px;
+}
+.workflow-button-block[data-state="hidden"] {
+  display: none;
+}
+.workflow-button-block .wfb-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.workflow-button-block .wfb-form input {
+  min-width: 0;
+  max-width: 220px;
+}
+.workflow-button-block .wfb-note {
+  color: var(--secondary);
+  font-size: 13px;
+}
+.workflow-button-block .wfb-note .text-button {
+  font-size: 13px;
+}
+.workflow-button-block .wfb-config {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  padding: 8px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
 }

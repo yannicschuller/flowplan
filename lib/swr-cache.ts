@@ -207,6 +207,9 @@ export function pageCachePolicy(
   for (let p = data.page.parent_id ? byId.get(data.page.parent_id) : undefined, depth = 0; p && depth < 64; p = p.parent_id ? byId.get(p.parent_id) : undefined, depth++)
     if (p.kind === "journal" || p.journal_date) return "none";
   if (data.encrypted || encryptedSpaces.includes(data.page.space_id)) return "memory";
+  // Workflow pages (#168) carry the live draft and need the server: never
+  // kept on the device.
+  if (data.page.kind === "workflow") return "memory";
   // Large databases stay in memory: writing them to storage after every
   // change would cost more than it saves.
   if ((data.rows?.length || 0) > LARGE_DATABASE_ROWS) return "memory";

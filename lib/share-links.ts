@@ -34,6 +34,7 @@ export async function manageShareLink(
   const root = await requirePage(user, pageId, true);
   // A journal behind a PIN is shared only by someone who has entered it.
   await requireUnlocked(user, root);
+  if (input.action !== "share.revoke" && root.kind === "workflow") throw new HttpError(409, "Workflow-Seiten lassen sich nicht veröffentlichen oder per Link teilen.");
   if (input.action === "share.revoke") {
     await run(
       "DELETE FROM share_links WHERE token=? AND root_id=?",
@@ -98,7 +99,8 @@ export async function manageShareLink(
     protection.password_hash ?? null,
     protection.expires_at ?? null,
   );
+  // Workflow pages are never shared by link (#168).
   for (const page of pages)
-    await run("INSERT INTO share_link_pages VALUES(?,?)", token, page.id);
+    if ((page as { kind?: string }).kind !== "workflow") await run("INSERT INTO share_link_pages VALUES(?,?)", token, page.id);
   return { token };
 }

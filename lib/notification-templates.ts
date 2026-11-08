@@ -29,7 +29,7 @@ export const placeholders = ["title", "actor", "page", "changes", "url", "text",
 export type NoticeItem = { title: string; page: string; due: string; url: string; overdue: boolean };
 // What happened, independent of the platform.
 export type Notice = {
-  event: NoticeEvent | "test";
+  event: NoticeEvent | "test" | "workflow.message";
   title: string;
   page: string;
   url: string;
@@ -60,6 +60,8 @@ export const hookConfigSchema = z.object({
   matrixRoom: z.string().trim().max(255).regex(/^[!#][^:\s]+:\S+$/).optional(),
   // Slack with a bot token: the channel ID (thread replies come back).
   slackChannel: z.string().trim().max(100).regex(/^[A-Z0-9]+$/).optional(),
+  // Released by an owner for the "Chat message" node of workflows (#168).
+  workflows: z.boolean().optional(),
 });
 export type HookConfig = z.infer<typeof hookConfigSchema>;
 export const TEMPLATE_MAX = 2000;
@@ -73,7 +75,7 @@ export function cap(text: string, max: number) {
   return chars.length <= max ? text : chars.slice(0, Math.max(0, max - 1)).join("").trimEnd() + "…";
 }
 
-export function eventLabel(event: NoticeEvent | "test", lang: Locale) {
+export function eventLabel(event: NoticeEvent | "test" | "workflow.message", lang: Locale) {
   const say = translate(lang);
   switch (event) {
     case "row.created":
@@ -92,12 +94,14 @@ export function eventLabel(event: NoticeEvent | "test", lang: Locale) {
       return say("Erwähnung", "Mention");
     case "digest.due":
       return say("Heute fällig", "Due today");
+    case "workflow.message":
+      return say("Workflow", "Workflow");
     default:
       return say("Testnachricht", "Test message");
   }
 }
 
-export function defaultTemplate(event: NoticeEvent | "test", lang: Locale) {
+export function defaultTemplate(event: NoticeEvent | "test" | "workflow.message", lang: Locale) {
   const say = translate(lang);
   switch (event) {
     case "row.created":
@@ -116,6 +120,9 @@ export function defaultTemplate(event: NoticeEvent | "test", lang: Locale) {
       return say("{actor} hat {text} in [{title}]({url}) erwähnt.", "{actor} mentioned {text} in [{title}]({url}).");
     case "digest.due":
       return say("**{count} fällige oder überfällige Einträge** am {date}:\n{changes}", "**{count} due or overdue records** on {date}:\n{changes}");
+    // What a workflow's chat node writes: its own text.
+    case "workflow.message":
+      return "{text}";
     default:
       return say("Flowplan ist verbunden: [{title}]({url})", "Flowplan is connected: [{title}]({url})");
   }
@@ -436,7 +443,7 @@ export type RenderOptions = { templates?: Templates; config?: Partial<HookConfig
 // their own (the template does not use {changes}).
 export function messageMarkdown(notice: Notice, options: RenderOptions = {}) {
   const lang = options.config?.language || "de";
-  const template = (notice.event !== "test" && options.templates?.[notice.event]?.trim()) || defaultTemplate(notice.event, lang);
+  const template = (notice.event !== "test" && notice.event !== "workflow.message" && options.templates?.[notice.event]?.trim()) || defaultTemplate(notice.event, lang);
   return {
     markdown: fillTemplate(template, notice, lang),
     structured: !template.includes("{changes}") && !notice.items && notice.changes.length > 0,
@@ -447,7 +454,7 @@ const unix = (iso: string) => Math.floor(new Date(iso).getTime() / 1000);
 const contextLine = (notice: Notice, lang: Locale, timeZone?: string) =>
   `${cap(notice.actor || "Flowplan", CAP.actor)} · ${formatDate(notice.at, lang, timeZone)}`;
 const header = (notice: Notice, lang: Locale) =>
-  notice.page && notice.event !== "digest.due" && notice.event !== "test" ? `${eventLabel(notice.event, lang)} · ${notice.page}` : eventLabel(notice.event, lang);
+  notice.page && notice.event !== "digest.due" && notice.event !== "test" ? `${notice.event === "workflow.message" && notice.title ? notice.title : eventLabel(notice.event, lang)} · ${notice.page}` : eventLabel(notice.event, lang);
 
 export function renderSlack(notice: Notice, options: RenderOptions = {}) {
   const lang = options.config?.language || "de";

@@ -50,7 +50,7 @@
 
 ## Auf einen Blick
 
-- **Alles in einem Seitenbaum** – Dokumente, Datenbanken mit zehn Ansichten, Whiteboards, Notizbücher für Handschrift, ein tägliches Journal, Projekte mit Tickets und Sprints, Umfragen.
+- **Alles in einem Seitenbaum** – Dokumente, Datenbanken mit zehn Ansichten, Whiteboards, Notizbücher für Handschrift, ein tägliches Journal, Projekte mit Tickets und Sprints, Umfragen und Workflows.
 - **Komplett Open Source** unter der AGPL-3.0 – keine geschlossene Enterprise-Version, keine Funktionen hinter einem Lizenzschlüssel.
 - **Ein Container mit SQLite** – nichts weiter zu betreiben, kein externer Suchdienst. Für größere Teams optional [PostgreSQL](https://docs.flowplan.org/de/postgresql) und ein [Cluster](https://docs.flowplan.org/de/cluster) aus mehreren Instanzen. Oder gehostet in Deutschland auf [app.flowplan.org](https://app.flowplan.org).
 - **Optionale KI** – standardmäßig aus; Admins schalten sie pro Funktion und Person ein, komplett lokal mit [Ollama](https://ollama.com) oder mit Schlüssel für OpenAI, Anthropic, Gemini oder jeden OpenAI-kompatiblen Dienst. Du bestimmst, welche Seiten sie lesen darf.
@@ -159,6 +159,9 @@ Mehr in der Dokumentation: [Installation](https://docs.flowplan.org/de/installat
     <td valign="top">📱 <b><a href="https://docs.flowplan.org/de/offline-and-apps">Apps</a></b><br>Eine installierbare Web-App, die offline funktioniert, Desktop-Apps und Apps für iPhone, iPad und Android.</td>
     <td valign="top">🔐 <b><a href="https://docs.flowplan.org/de/sign-in">Sicherheit</a></b><br>SSO mit OIDC, LDAP und SCIM, Zwei-Faktor-Anmeldung, Passkeys und <a href="https://docs.flowplan.org/de/encrypted-spaces">Ende-zu-Ende-verschlüsselte Bereiche</a>.</td>
     <td valign="top">💾 <b><a href="https://docs.flowplan.org/de/storage-and-backups">Selbst hosten und sichern</a></b><br>Ein Container mit SQLite oder PostgreSQL und ein Cluster, laufende Sicherung nach S3 mit Litestream, geplante verschlüsselte Sicherungen, ein Helm-Chart.</td>
+  </tr>
+  <tr>
+    <td colspan="3" valign="top">🔀 <b><a href="https://docs.flowplan.org/de/workflows">Workflows</a></b><br>Abläufe aus Knoten auf einer Fläche, ohne Code: ein Auslöser – Eintrag, Seite, Formular, Zeitplan, Erwähnung, Webhook oder E-Mail – dann Bedingungen, Schleifen, Wartezeiten und Freigaben und Aktionen an Einträgen und Seiten, Benachrichtigungen, KI und HTTP. Testläufe, Verlauf der Läufe, Versionen, Vorlagen und ein KI-Builder; ein Workflow kann nie mehr als die Person, die ihn aktiviert hat.</td>
   </tr>
 </table>
 

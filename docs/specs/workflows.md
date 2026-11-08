@@ -1,6 +1,8 @@
 # Workflows – visueller Workflow-Builder (Spezifikation)
 
-Status: **Entwurf zur Prüfung durch Yannic** – noch nichts gebaut.
+Status: **freigegeben**; Wellen 1–3 gebaut auf dem Branch
+`workflows` (Vertrag für die Oberfläche: Abschnitt 11.5, Ergänzungen der
+Welle 2: Abschnitt 11.6, Welle 3: Abschnitt 11.7). Die offenen Fragen (Abschnitt 18) sind entschieden.
 Issue: [#168](https://github.com/yannicschuller/flowplan/issues/168) („Visual
 Workflow Builder / Native Automation Engine“). Stand des Codes: `main` bei
 Schema 95 (`lib/db.ts`, `SCHEMA_VERSION = 95`), Next.js 16.
@@ -259,8 +261,11 @@ soll nichts Neues können müssen). Tabellen mit Einfügereihenfolge kommen in
 `SEQ_TABLES`.
 
 **Schemanummer**: das ganze Feature bekommt **eine** Nummer – die nächste
-freie beim Merge in `main` (Stand heute **96**: „Schema 96 – Workflows
-(#168)“). Auf dem Branch wächst der Block mit jeder Welle; alles ist
+freie beim Merge in `main`. `main` hat 96 inzwischen selbst vergeben
+(`row_status_log.user_id`, `page_view_prefs.completed_mine`); auf dem Branch
+steht der Block deshalb als **„Schema 97 – Workflows (#168)“**
+(`migrateWorkflows()` in `lib/db.ts`, eigenständig, damit er sich sauber auf
+96 setzen lässt). Auf dem Branch wächst der Block mit jeder Welle; alles ist
 `CREATE TABLE/INDEX IF NOT EXISTS`, Testdatenbanken früherer Wellen werden
 also nachgezogen. Hebt `main` vorher selbst auf 96, wird beim nächsten
 Merge auf 97 umnummeriert (Abschnitt 17).
@@ -1247,10 +1252,12 @@ Eingaben aus Webhooks, E-Mails, Formularen, Kommentaren und Seiten sind
   ausführende Person), `workflow.paused`/`resumed`/`auto_paused`,
   `workflow.runner_changed`, `workflow.credential.set`/`removed`,
   `workflow.hook.created`/`rotated`, `workflow.imported`, `workflow.approved`/
-  `rejected`, `workflow.run.cancelled`, `workflow.run.retried`.
+  `rejected` (aus der App mit `app:‹Geräte-ID›`, 11.8),
+  `workflow.run.cancelled`, `workflow.run.retried`.
 - Neue Arten in `lib/security-kinds.ts`: `workflow.hook.refused` (warn),
   `workflow.auto_paused` (info), `workflow.limit` (warn – Kaskade/Rate
-  dauerhaft am Limit). `blocked.ssrf` wird wiederverwendet.
+  dauerhaft am Limit), `workflow.approval.refused` (warn – Freigabe aus der
+  App abgewiesen, 11.8). `blocked.ssrf` wird wiederverwendet.
 
 ### 9.10 Missbrauch von Kontingenten
 
@@ -1541,6 +1548,294 @@ testen, aktivieren.
 - Archiv (`lib/archive.ts`) und Instanzumzug nehmen Workflows mit
   (Entwurf, Versionen, Status → nach Import **pausiert**, damit nichts auf
   einer neuen Instanz unbeabsichtigt loslegt), ohne Läufe und Geheimnisse.
+
+### 11.5 Vertrag Welle 1 (Server, für die Oberfläche)
+
+Stand des Branches `workflows`. Alle Befehle gehen an `POST /api/command`
+(`command()` in `lib/api.ts` → `lib/workflows/commands.ts`), alle Lesewege an
+`GET /api/…` (`app/api/[...path]/route.ts` → `workflowGet()`). Fehler wie
+überall: HTTP-Status + `{ error }` (deutscher Text, Übersetzung über
+`lib/i18n-errors.ts`). **Keine Fehler, sondern Antworten** sind ein nicht
+bestandener Prüflauf: `workflow.activate` und `workflow.test` antworten dann
+`{ ok: false, issues }` und schreiben nichts.
+
+**Prüfergebnis** (`issues`, überall gleich): `[{ level: "error" | "warning",
+code, nodeId?, edgeId?, params?, message }]` – `message` in der Sprache der
+Anfrage; die Codes stehen in `ISSUE_TEXT` (`lib/workflows/graph.ts`),
+`issueMessage(issue, locale)` ist client-safe.
+
+**Seite anlegen**: `page.create { kind: "workflow", workspaceId, spaceId,
+parentId?, title }` → `{ id }` (legt `workflows`-Zeile und leeren Entwurf an;
+Gäste, E2EE-Bereiche und `FLOWPLAN_WORKFLOWS=off` werden abgewiesen).
+`GET /api/pages/{id}` liefert für Workflow-Seiten `{ page, role, comments,
+snapshots, present, backlinks, workflow: <Zustand wie unten>, html: "" }`.
+
+| Befehl | Eingabe | Antwort |
+|---|---|---|
+| `workflow.sync` | `{ pageId, generation, update?: base64 Yjs, vector?: base64 Zustandsvektor, cursor?: {x,y} \| null }` | `{ state: base64 (nur was dem Vektor fehlt), generation, presence: [{user_id,name,x,y}] }`; 409 bei neuer `generation` (neu laden) |
+| `workflow.draft` | `{ pageId, graph }` (Graph-JSON §5.1) | `{ ok: true, issues }` – als Yjs-Änderung auf den Entwurf, verschmilzt mit Mitbearbeitung |
+| `workflow.validate` | `{ pageId, graph? }` (ohne: der Entwurf) | `{ issues }` – geprüft als rufende Person |
+| `workflow.activate` | `{ pageId, note? }` | `{ ok: true, versionId, number?, issues }` (unveränderter Entwurf behält seine Version) oder `{ ok: false, issues }` |
+| `workflow.pause` | `{ pageId, cancelRuns?: boolean, reason? }` | `{ ok: true }` – offene Läufe `held` bzw. `cancelled` |
+| `workflow.test` | `{ pageId, mode: "test" \| "dry", nodeId?, data: {kind:"sample"} \| {kind:"last"} \| {kind:"record",rowId} \| {kind:"page",pageId} \| {kind:"custom",output} }` | `{ ok: true, runId, issues }` oder `{ ok: false, runId: null, issues }`; 10/min je Person (429) |
+| `workflow.run` | `{ pageId, nodeId?, inputs, mode?: "live" \| "test" \| "dry", source?: "workflow" \| "block" \| "api" }` | live: `{ ok: true, eventId }` (Lauf entsteht über das Outbox); test/dry: wie `workflow.test` |
+| `workflow.run.cancel` | `{ runId }` | `{ ok: true, cancelled }` |
+| `workflow.restore` | `{ pageId, versionId }` (Version **oder** Entwurfs-Snapshot) | wie `workflow.draft` – immer in den Entwurf |
+| `workflow.fromRule` | `{ pageId: <Datenbank>, automationId, timeZone? }` | `{ id }` – Workflow-Seite neben der Datenbank, Regel als Entwurf; beim Aktivieren wird die Regel zu `{ …, enabled: false, workflow: <pageId> }` |
+| `admin.workflowLimits` | `{ limits: { runsPerMinute?: n \| null, … } }` (Schema `workflowLimitsSchema`, `null` = Umgebung) | wie `GET /api/admin/workflows` |
+
+| Lesen | Antwort |
+|---|---|
+| `GET /api/workflows?workspaceId=` | `{ workflows: [{ pageId, title, status, runner: Person \| null, lastRun }] }` (sichtbare, keine für Gäste) |
+| `GET /api/workflows/catalog` | `{ nodes: [{ type, category, name: [de,en], description: [de,en], icon, inline, event, ports, outputs, config: JSON Schema }] }` |
+| `GET /api/workflows/{pageId}` | `{ pageId, title, status, pauseReason, runner, activatedAt, pausedAt, throttled, canEdit, active: { id, number, graph, activatedBy, activatedAt, note } \| null, draft: { graph, generation, state, changed, issues } \| null (nur Bearbeitende), lastRun }` |
+| `GET /api/workflows/{pageId}/runs?status=failed\|succeeded\|cancelled\|open&mode=live\|test&limit&before` | `{ runs: [{ id, status, mode, version, triggerNodeId, steps, depth, originRunId, failedNodeId, error, createdAt, startedAt, finishedAt }] }` |
+| `GET /api/workflow-runs/{runId}` | `{ id, pageId, status, mode, versionId, graph (gepinnte Version bzw. Test-Entwurf), runner, contentsVisible, triggerNodeId, depth, origin, error, failedNodeId, steps, aiTokens, createdAt, startedAt, finishedAt, timeline: [{ id, nodeId, iteration, via, status, attempt, port, dueAt, startedAt, finishedAt, errorKind, error, input, output }] }` – `input`/`output` nur bei `contentsVisible` (sonst `null`, §9.3); `input` = `{ config (Platzhalter gerendert, gekürzt), warnings? }` |
+| `GET /api/workflows/{pageId}/versions` | `{ versions: [{ id, number, activatedBy, activated_at, note }], drafts: [{ id, createdAt, createdBy }] }` |
+| `GET /api/workflows/{pageId}/versions/{id}` | `{ …, graph }` einer Version oder (`draft: true`) eines Entwurfsstands |
+| `GET /api/admin/workflows` | `{ limits, stored, defaults, monitoring: { activeWorkflows, runsPerMinute, queuedSteps, runningSteps, waitingSteps, oldestDueMs, undispatchedEvents, failureRate, aiTokensToday, instance: {…Zähler} } }` (nur Admins) |
+
+Laufstatus: `queued → running → succeeded | failed | cancelled`, `held`
+(pausiert/Rechteverlust/Papierkorb). Schrittstatus: `queued`, `running`,
+`succeeded`, `skipped` (abgeschalteter Knoten), `failed`, `cancelled`.
+`logic.if` nimmt die Ausgänge `true`/`false`; eine Bedingung, deren linke
+Seite genau `{{<knoten>.record.fields.<feld>}}` ist, vergleicht wie ein
+Ansichtsfilter auf diesem Feld, jede andere als Wert ihres Typs.
+`action.record.find`: `left` einer Bedingung ist die **Feld-ID** der
+gewählten Datenbank. Empfänger von `notify.person`: User-IDs, `@actor`,
+`@creator`, `@runner`, `field:<feldId>` oder Platzhalter auf Personen.
+Datumswerte in **Text** erscheinen in der Sprache des Workflows
+(`05.03.2026`); ganze Platzhalter bleiben ISO; `| date: "yyyy-MM-dd"` gibt
+die Form vor.
+
+Der Yjs-Entwurf (`lib/workflows/draft.ts`, client-safe): `graphDoc()`,
+`writeGraph(doc, graph)` (als Änderungen), `draftGraph(doc)`; `message`,
+`text`, `prompt` einer Knotenkonfiguration sind `Y.Text`. Platzhalter:
+`toDisplay()`/`fromDisplay()` (`lib/workflows/placeholders.ts`, mit
+`keyName`/`keyId` für Ausgabe- und Feldnamen), Katalog und Ausgabeschemas in
+`lib/workflows/catalog.ts`, `legacy.ts` (`graphToAutomation` für „Als einfache
+Regel speichern“).
+
+#### Abweichungen in Welle 1 (bewusst)
+
+- **REST-Routen zum Schreiben** (`PUT …/draft`, `POST …/activate` usw. aus
+  11.1) gibt es noch nicht; dieselben Aktionen laufen über `POST
+  /api/command` (auch mit Schreib-Token). Die Leserouten oben gibt es; sie
+  stehen in Welle 3 mit OpenAPI-Pfaden/SDK-Methoden im Dokument. Die
+  Befehlsnamen sind bereits in `commandActionNames` (`lib/openapi.ts`).
+- **Testläufe** pinnen den Entwurf als `version_id = "test:<runId>"`; der
+  Graph liegt in `input` des Auslöserschritts (keine Spalte mehr nötig).
+- **Präsenz** im Entwurf nutzt die Tabelle `whiteboard_presence` (gleiche
+  Form: Seite, Person, x/y) statt einer eigenen.
+- **Sofortteil eines Workflows** läuft in einem Savepoint: scheitert ein
+  Knoten, wird nur der Teil dieses Workflows zurückgenommen (der Lauf ist
+  `failed`), der Schreibvorgang der Person bleibt. Regeln scheitern wie bisher
+  mit dem Originalfehler.
+- `page.changed` feuert für `document.sync`/`whiteboard.sync` (Inhalt) und
+  `page.update` mit Titel; Datensatzänderungen zählen nicht als
+  Seitenänderung. Beim Entprellen gewinnt die letzte Art der Änderung.
+- Grenzen außerhalb der Tabelle in §12 als zusätzliche Variablen:
+  `FLOWPLAN_WORKFLOW_TEST_RUNS_PER_MINUTE` (10), `…_PARALLEL_RUNS` (10),
+  `…_RUNS_KEPT` (10 000); für Tests `…_LEASE_MS`, `…_SWEEP_MS`, `…_POLL_MS`.
+- Admin-Grenzen liegen als `instance_settings.workflowLimits` (eigener
+  Befehl `admin.workflowLimits`), der Abschnitt in `lib/settings-sections.ts`
+  (Anker `workflows`) kommt mit der Oberfläche (der Test der Abschnitte
+  verlangt das Ziel-Element).
+- Kaskadenstopp und Drosselung zählen (`workflows.throttled`,
+  Monitoring-Zähler `cascade`/`throttled`); die Meldungen an die ausführende
+  Person (Art `workflow_ops`, stündlich) folgen mit Welle 2.
+- Rechte-/Fehlerpause: Status und Grund (`pause_reason`) werden gesetzt,
+  Audit `workflow.paused`/`workflow.auto_paused`; die Benachrichtigung der
+  Seitenverantwortlichen folgt mit `workflow_ops` in Welle 2. Auto-Pause nach
+  10 Fehlschlägen in Folge ist da, die 50-%-Regel folgt in Welle 2.
+
+### 11.6 Welle 2 (Stand des Branches)
+
+Neue Befehle (`POST /api/command`): `workflow.run.retry {runId, fromNode?}`
+(nur ab dem fehlgeschlagenen Knoten), `workflow.approve {approvalId,
+decision, comment}` (nur angemeldet, nie mit Token/MCP), `workflow.hook
+{pageId, nodeId, rotate?}` → `{hook: {url, secret, …}}`,
+`workflow.credential.set {pageId, id?, name, kind, host, secret?}`,
+`workflow.credential.remove`. `workflow.test` nimmt zusätzlich `assume:
+"approved" | "rejected"` (Freigaben im Probelauf). Neue Lesewege:
+`GET /api/workflows/{id}/approvals|credentials|hooks|resources`,
+`GET /api/workflow-approvals[?workspaceId]` (meine offenen),
+`GET /api/workflow-approvals/{id}`; `…/runs` nimmt `q` (Suche in ID und
+Fehlern) und `status=waiting`; die Laufansicht liefert `errorKind` und
+`approvals`. Eingehender Webhook: `POST /api/workflow-hooks/{token}`
+(`lib/workflows/inbound.ts`). Schema 97 wächst um `workflow_mail_usage`,
+`workflow_notices` und `workflow_runs.error_kind`.
+
+Abweichungen und Präzisierungen der Welle 2 (bewusst):
+
+- **50-%-Regel**: beurteilt, sobald mindestens 10 Live-Läufe der letzten
+  Stunde fertig sind (von höchstens den letzten 20); Fehler der Art `limit`
+  zählen nicht.
+- **KI-Herkunft** (`aiMayRead`): statt Werte zur Laufzeit mit `sources` zu
+  markieren, wird die Herkunft über den Graphen verfolgt – jeder Knoten, von
+  dem ein Platzhalter des Prompts (auch über „Werte setzen“, `$item` oder
+  die Einstellungen eines HTTP-Knotens) abhängt, bringt alle Seiten und
+  Einträge seiner Ausgabe ein. Konservativ: eher mehr Quellen als weniger.
+- **`confidence`** von `ai.classify` ist sprachneutral `high`/`medium`/`low`
+  (gespeicherte Werte sind nie übersetzt, §13).
+- **`notify.email`** ohne `Reply-To` (die Mail-Warteschlange kennt keinen);
+  E-Mails an Mitglieder zählen nicht als „außerhalb“.
+- **E-Mail-Absenderprüfung**: ein `pass` zählt nur, wenn er zur
+  `From`-Domain passt (DMARC, sonst DKIM `header.d` bzw. SPF
+  `smtp.mailfrom` derselben Domain oder Elterndomain); es zählt nur der
+  oberste `Authentication-Results`-Header bzw. – mit
+  `INBOUND_MAIL_AUTHSERV_ID` – nur die des eigenen Servers. Über HTTP ohne
+  Signierschlüssel ist das Urteil immer `unknown`. Auslöser-Option `senders`:
+  `verified` / `not_failed` (Standard) / `any`.
+- **HTTP**: `http://` nur mit `FLOWPLAN_WORKFLOW_HTTP_ALLOW_PRIVATE`; der feste
+  Host wird so verglichen, wie eine URL ihn liest (`2130706433` = 127.0.0.1),
+  damit Schreibweisen nicht an der SSRF-Prüfung vorbeikommen; Gesamt-Zeitlimit
+  je Anfrage; Antworten, die ein Geheimnis zurückgeben (auch als Basic-base64
+  oder URL-kodiert), werden geschwärzt. Aufrufe der eigenen Workflow-Webhooks
+  tragen `X-Flowplan-Depth` (Kaskadentiefe).
+- **Webhook-Antwort** bei Drosselung oder Kaskadenstopp: `429` ohne Lauf;
+  Wiederholschutz der Signatur über `replay_guard`, Lieferkennung über
+  `dedupe_key` des (sofort verteilten) Ereignisses.
+- **Chips**: in mehrzeiligen Feldern als Ansicht neben dem Tippen (Klick
+  oder Enter wechselt zum Text), nicht als Inline-Knoten im Eingabefeld.
+- Die Benachrichtigung einer Freigabe öffnet die Workflow-Seite; hat die
+  Person dort eine offene Freigabe, ist der Reiter „Freigaben“ gewählt.
+
+### 11.7 Welle 3 (Stand des Branches)
+
+- **Vorlagen** (`lib/workflows/templates.ts`, client-safe): die sechs aus
+  10.6 als Funktionen `build(answers, ctx)` mit Lücken (`page`, `database`,
+  `field` mit Typen, `option`, `routing` = Person je Option eines
+  Auswahlfelds, `person`, `chatHook`, `address`, `toggle`). Die Oberfläche
+  (`components/workflow/start.tsx`) zeigt auf leerem Entwurf „Leer
+  beginnen“, die Galerie, „Mit KI entwerfen“ und „Aus Datei importieren“;
+  das Ergebnis geht als **eine** Yjs-Änderung in den Entwurf (rückgängig
+  machbar). Eigentümer legen die E-Mail-Adresse der Mail-Vorlage direkt im
+  Assistenten an (`inbound.save`).
+- **KI-Builder**: `POST /api/ai/workflow/draft {pageId, prompt, locale}` →
+  `{graph, title, explanation, dropped, gaps, issues}` (`lib/workflows/
+  ai-builder.ts`); nur angemeldet (KI-Routen lehnen Tokens ab), KI-Funktion
+  `workflows`, persönliches Kontingent; schreibt nichts.
+- **REST** (`lib/workflows/rest.ts`): `POST /api/workflows/{id}/draft|
+  validate|activate|pause|run|test|restore`, `POST /api/workflow-runs/{id}/
+  retry|cancel`, `POST /api/workflow-approvals/{id}` (nie mit Token),
+  `GET /api/workflows/{id}/export`, `GET …/start?host=`, `POST /api/workflows/
+  import`; alle über `command()`. Neue Aktion `workflow.import {pageId, data,
+  mapping, preview, replace}` → `{unresolved, mapped?, issues}`.
+- **MCP** (`lib/workflows/mcp-tools.ts`): die acht Werkzeuge aus 11.2;
+  `save_workflow_draft` legt mit `workspaceId/spaceId/title` auch eine neue
+  Seite an; `get_workflow_catalog` liefert Ausgaben als Pfade.
+- **Export/Import** (`lib/workflows/portable.ts`): Referenzen nur mit Titel,
+  wenn die exportierende Person sie lesen darf; Eigenschaften werden nur
+  zugeordnet, wo der Graph sie nennt; Ungelöstes wird geleert (nie eine
+  fremde ID behalten).
+- **Workflow-Knopf**: Knoten `workflowButton` (`lib/workflow-button-node.ts`,
+  gespeichert als leeres `<div data-workflow-button data-label>`),
+  Darstellung `components/workflow-button.ts`; Start mit `workflow.run
+  {source:"block", host}`.
+- **Instanzumzug**: `pauseMovedWorkflows()` in `stageMove`
+  (`lib/instance-move-pull.ts`).
+
+Abweichungen der Welle 3 (bewusst):
+
+- `PUT …/draft` ist `POST …/draft` – das OpenAPI-Dokument kennt nur GET/POST
+  (`tests/openapi.test.ts`).
+- Die Vorlagengalerie steht auf der leeren Workflow-Seite statt als
+  Kategorie im allgemeinen Vorlagendialog; Workflow-Seiten lassen sich
+  weiterhin nicht als eigene Seitenvorlage speichern.
+- Vorlage 3 entscheidet „unklar“ und Kategorien ohne Zuständige per
+  Benachrichtigung an die Teamleitung (Bearbeitung), nicht per Freigabe.
+- „Mitglieder, die die Seite mit dem Knopf sehen“ heißt: die Seite ist
+  lesbar, im selben Arbeitsbereich, und ihr gespeichertes HTML enthält einen
+  Knopf für genau diesen Workflow. Knöpfe in Eintragsdokumenten zählen dafür
+  nicht (dort nur Bearbeitende des Workflows).
+- Gäste bekommen für Workflow-Seiten immer 404, bevor ein Recht geprüft
+  wird (vorher 403 bei Schreibbefehlen).
+- Instanzumzug: aktive Workflows kommen pausiert an (Grund
+  „Instanzumzug …“), offene Läufe `held`.
+- Der Docs-Anker `projects-and-tickets#workflows` heißt jetzt `#statusregeln`
+  (keine Weiterleitung möglich; nichts verlinkte ihn).
+- **Push-Knöpfe** „Genehmigen/Ablehnen“: Server und App siehe 11.8; bis
+  zum App-Release (`/app-release`) öffnet die Benachrichtigung die
+  Freigabeansicht.
+
+### 11.8 Freigaben aus der Push-Benachrichtigung (App)
+
+**Vertrag.** Eine Freigabe-Benachrichtigung (`opsNotify(…, approvalId)`)
+merkt sich ihre Freigabe in `notification_targets` (`{type:"approval",
+approvalId}`). Solange die Freigabe offen ist und vor ihrer Frist, bekommt
+ihr Push die Kategorie `flowplan.workflow-approval` (nur mit Inhalt auf dem
+Sperrbildschirm, `MOBILE_PUSH_CONTENT`; sonst `flowplan.read` – ohne Text
+wüsste niemand, was „Genehmigen“ genehmigt) und in `data` die `approvalId`
+(kein Geheimnis). Am Relay heißt die äußere Kategorie `default`; die Knöpfe
+kommen aus der verschlüsselten. Die App ruft – wie bei den anderen Knöpfen –
+`POST /api/mobile/notifications` mit `Authorization: Bearer fpd_…` (Geräte-
+Token) und `Idempotency-Key`:
+
+- `{action:"approve", notificationId, approvalId, confirmation}`
+- `{action:"reject", notificationId, approvalId?}`
+
+Antwort `{ok, action, decision, already?, unread}`; Fehler 401 (Gerät
+unbekannt, abgemeldet, entfernt), 400 (Benachrichtigung ohne Freigabe oder
+fremde `approvalId`), 403 (nicht eingetragen, Bestätigung fehlt/falsch,
+nicht eingerichtet, Gerät zu lange inaktiv), 404 (fremde Benachrichtigung),
+409 (entschieden, Frist abgelaufen), 429. Worum es geht, kommt aus der
+Benachrichtigung, nie vom Telefon; die `approvalId` muss dazu passen.
+Entschieden wird wie bei `workflow.approve` (`settleApproval`): nur
+Eingetragene, erste Entscheidung gewinnt, der Lauf geht als ausführende
+Person weiter; dieselbe Entscheidung derselben Person noch einmal gilt als
+erledigt (`already: true`), die andere ist 409. Neu für beide Wege: nach
+Ablauf der Frist wird nicht mehr entschieden (409), auch wenn der Worker die
+Frist noch nicht verarbeitet hat. Audit `workflow.approved`/`rejected` mit
+`‹approvalId› app:‹Geräte-ID›`.
+
+**Bestätigungsschlüssel.** Die App erzeugt je Profil ein Geheimnis (32
+Byte) im Schlüsselbund/Keystore mit `requireAuthentication` (iOS
+`biometryCurrentSet`, Android `BIOMETRIC_STRONG`, nur dieses Gerät) und
+schickt bei der Registrierung aus der Web-Ansicht (Sitzungs-Cookie)
+`approvalKey` = base64url(SHA-256(Geheimnis)); gespeichert in
+`mobile_devices.approval_key` (geht mit dem Eintrag). „Genehmigen“ öffnet
+die App (iOS `opensAppToForeground` + `authenticationRequired`), liest das
+Geheimnis – das fragt Face ID/Touch ID/Fingerabdruck – und schickt es als
+`confirmation`; der Server vergleicht den Hash zeitkonstant. Ohne Schlüssel
+(keine Biometrie, erster Versuch auf Android, Biometrie geändert) öffnet die
+App die Freigabeansicht; dort entscheidet die angemeldete Sitzung.
+
+**Bedrohungsmodell und Entscheidungen.**
+
+- *Gestohlener Geräte-Token* (Backup, Log, fremdes Gerät): der Token allein
+  genehmigt nichts – das Geheimnis liegt hinter Biometrie und verlässt das
+  Gerät nur nach ihr. Setzen kann den Schlüssel nur die Registrierung mit
+  Sitzung (wer die hat, kann ohnehin in der Web-Ansicht entscheiden); ein
+  Token kann ihn weder setzen noch ersetzen. Ein bloßes Flag „bestätigt“
+  hätte das nicht geleistet: der Server kann nur prüfen, was ein Angreifer
+  ohne die Biometrie nicht erzeugen kann.
+- *Entsperrtes, fremd benutztes Telefon*: Genehmigen braucht trotzdem die
+  Biometrie der Besitzerin (`biometryCurrentSet`: neu eingelernte Finger
+  oder Gesichter machen den Schlüssel ungültig).
+- *Widerrufenes oder vergessenes Gerät*: abgemeldet, in den Einstellungen
+  entfernt, Sitzung beendet oder Konto deaktiviert → der Token öffnet
+  nichts (401). Zuletzt vor mehr als 14 Tagen gesehen → 403 (die App öffnet
+  dann die Ansicht und registriert sich neu).
+- *Falsche Person, fremde IDs*: nur die eigene Benachrichtigung, nur
+  Eingetragene, `approvalId` muss die der Benachrichtigung sein.
+- *Raten*: höchstens 10 Genehmigungen je Gerät und 10 Minuten; abgewiesene
+  Versuche (fehlende/falsche Bestätigung, kein Schlüssel, inaktives Gerät)
+  sind Sicherheitsereignisse `workflow.approval.refused` (warn).
+- *API-Tokens und MCP* bleiben ausgeschlossen: der Endpunkt nimmt nur
+  Geräte-Token, `workflow.approve` lehnt Tokens weiter ab.
+- **Ablehnen ohne Biometrie** (bewusst): Ablehnen ist die sichere Richtung
+  – eine Freigabe hält etwas an; eine falsche Ablehnung ist sichtbar (Audit,
+  Lauf) und mit einem neuen Lauf behoben, eine falsche Genehmigung (Mail
+  versendet, Zahlung angestoßen) nicht. Ablehnen bleibt an Geräte-Token,
+  Gerätezustand und Eintragung gebunden; iOS verlangt dafür ein entsperrtes
+  Telefon (`authenticationRequired`) und beantwortet es im Hintergrund wie
+  die anderen Knöpfe (Swift), ohne die App zu öffnen.
+- *Nicht abgedeckt*: ein Angreifer mit entsperrtem Telefon **und** der
+  Biometrie der Person, oder ein kompromittiertes Betriebssystem; ohne
+  Plattform-Attestierung (App Attest/Play Integrity) lässt sich auch nicht
+  beweisen, dass die echte App fragt – der Schlüssel bindet an das Gerät,
+  nicht an die App-Binärdatei.
 
 ---
 
@@ -1873,7 +2168,7 @@ erst am Ende nach `main`.
 
 ---
 
-## 18. Offene Fragen
+## 18. Offene Fragen (entschieden)
 
 1. **Laufinhalte für Kolleginnen sichtbar?** Spezifiziert: Ein-/Ausgaben
    nur für die Person, als die der Lauf lief; andere sehen Status und
@@ -1881,32 +2176,41 @@ erst am Ende nach `main`.
    Debuggen, aber privat Gelesenes der ausführenden Person würde sichtbar).
    *Empfehlung: wie spezifiziert; Kolleginnen debuggen mit eigenem
    Testlauf.*
+   **Entschieden:** wie empfohlen – Ein-/Ausgaben sieht nur die Person, als die der Lauf lief (`contentsVisible` in der Laufansicht, 11.5).
 2. **Eingehender Webhook ohne Signatur („nur Token“) anbieten?** Viele
    Dienste können nicht mit unserem Schema signieren. *Empfehlung: ja, als
    bewusst gewählter Modus mit Warnung und strengerem Rate-Limit; signiert
    bleibt Standard. Später ggf. GitHub- (`X-Hub-Signature-256`) und
    Stripe-Format als weitere Modi.*
+   **Entschieden:** wie empfohlen – „nur Token“ als bewusst gewählter Modus mit Warnung und 10/min; signiert bleibt Standard (Welle 2).
 3. **E-Mails an beliebige Adressen?** Nötig für „Formular → Bestätigung“,
    aber Spam-/Abfluss-Risiko. *Empfehlung: erlauben mit 100/Tag je Workflow,
    Admin-Schalter `FLOWPLAN_WORKFLOW_EXTERNAL_MAIL`, Absender immer die
    Instanz, Audit je Versand an Fremdadresse nicht nötig (Zähler genügt).*
+   **Entschieden:** wie empfohlen – erlaubt, 100/Tag je Workflow (`FLOWPLAN_WORKFLOW_MAILS_PER_DAY`), Admin-Schalter `FLOWPLAN_WORKFLOW_EXTERNAL_MAIL` (beide in `lib/workflows/limits.ts`; der Knoten folgt in Welle 2).
 4. **Wer darf einen Workflow-Knopf auf einer Seite auslösen?**
    *Empfehlung: Standard „Bearbeitende des Workflows“, je Auslöser
    umschaltbar auf „alle Mitglieder, die die Seite mit dem Knopf sehen“ (nie
    Gäste); der Lauf läuft immer als ausführende Person.*
+   **Entschieden:** wie empfohlen – Standard „Bearbeitende des Workflows“, je Auslöser `who: "members"`, nie Gäste; der Lauf läuft als ausführende Person (`trigger.manual`, `workflow.run`).
 5. **Push-Knöpfe „Genehmigen/Ablehnen“ in der App** brauchen eine neue
    Kategorie in `flowplan-app` (App-Store-Release). *Empfehlung: in Welle 3
    mitliefern; bis dahin öffnet die Benachrichtigung die Freigabeansicht
    (funktioniert ohne App-Update).*
+   **Entschieden:** wie empfohlen – in Welle 3; bis dahin öffnet die Benachrichtigung die Freigabeansicht.
+   Umsetzung: 11.8 (Genehmigen nur nach Biometrie auf dem Gerät, Ablehnen ohne; Endpunkt mit dem Geräte-Token).
 6. **Aktivieren über MCP/API?** *Empfehlung: REST mit Schreib-Token ja
    (Automatisierung von Deployments), MCP nein (ein KI-Client soll keine
    Rechte-Entscheidung im Namen der Person treffen); Freigaben weder über
    MCP noch Token, nur angemeldet.*
+   **Entschieden:** wie empfohlen – über REST/`POST /api/command` mit Schreib-Token ja, über MCP nein; Freigaben nur angemeldet.
 7. **Namenskollision** mit „Workflow und Erledigt“ in den
    Datenbankwerkzeugen (`components/database-tools.tsx`). *Empfehlung: beim
    Merge umbenennen in „Statusregeln und Erledigt“ (Docs-Anker als
    Weiterleitung behalten).*
+   **Entschieden:** wie empfohlen – umbenannt in „Statusregeln und Erledigt“ (auf dem Branch schon umgesetzt, `components/database-tools.tsx`; Docs-Anker bleiben als Weiterleitung).
 8. **Pausieren: laufende Läufe anhalten oder weiterlaufen lassen?**
    *Empfehlung: anhalten (wie spezifiziert), im Dialog „abbrechen“
    anbieten; „weiterlaufen lassen“ nicht anbieten – Pausieren soll
    verlässlich stoppen.*
+   **Entschieden:** wie empfohlen – anhalten (`held`), der Dialog bietet „abbrechen“ an (`workflow.pause {cancelRuns: true}`); „weiterlaufen lassen“ gibt es nicht.
