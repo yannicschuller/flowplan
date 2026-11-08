@@ -1,7 +1,7 @@
 "use client";
 import { useT } from "./i18n";
 import { Select } from "./select";
-import { useState, useEffect, useRef, lazy, Suspense, type KeyboardEvent, type ReactNode } from "react";
+import { useState, useEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
 import { InlineText } from "./inline-text";
 import { ratingMax } from "@/lib/field-format";
 import DateInput from "./date-input";
@@ -21,8 +21,31 @@ import { LinkInput } from "./link-cell";
 import { TagCellInput } from "./tag-cell-input";
 export type CellFile = { url: string; name: string; mime: string };
 // The editor of formatted text (#126) loads with the first text cell that
-// is edited (TipTap is shared with the comment composer's chunk).
-const RichTextEditor = lazy(() => import("./rich-text-editor"));
+// is edited (TipTap is shared with the comment composer's chunk). Without a
+// connection it may not load (no offline copy on this device): the cell then
+// takes the plain text field instead of taking the whole view down, and the
+// next edit tries again.
+const loadRichTextEditor = () => import("./rich-text-editor");
+let richTextEditor: Awaited<ReturnType<typeof loadRichTextEditor>>["default"] | null = null;
+function useRichTextEditor(wanted: boolean) {
+  const [editor, setEditor] = useState(() => richTextEditor);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    if (!wanted || editor) return;
+    let live = true;
+    loadRichTextEditor().then(
+      (m) => {
+        richTextEditor = m.default;
+        if (live) setEditor(() => m.default);
+      },
+      () => live && setFailed(true),
+    );
+    return () => {
+      live = false;
+    };
+  }, [wanted, editor]);
+  return { editor, failed };
+}
 // The label around a CellInput – or, for a date, a group that looks the same:
 // a <label> passes taps on the date's buttons ("Datum entfernen", the time
 // switch) to the date input in WebKit, which opens the picker instead.
@@ -77,6 +100,7 @@ export function CellInput({
 }) {
   const t = useT();
   const sprints = useSprints();
+  const rich = useRichTextEditor(f.type === "text" && !!formatted);
   const [draft, setDraft] = useState(cellText(value));
   // What was typed into a plain field (commit "blur") and not saved yet.
   const unsaved = useRef<{ value: unknown } | null>(null);
@@ -297,21 +321,23 @@ export function CellInput({
       </div>
     );
   }
-  if (f.type === "text" && formatted)
-    return (
-      <Suspense fallback={<span className="rich-text-input loading"><InlineText value={value} links={false} /></span>}>
-        <RichTextEditor
-          value={typeof value === "string" ? value : cellText(value)}
-          label={f.name}
-          placeholder={placeholder ?? t("Leer", "Empty")}
-          disabled={disabled}
-          commit={commit}
-          multiline={multiline}
-          autoFocus={!!editing}
-          onChange={onChange}
-          onCancel={onCancel}
-        />
-      </Suspense>
+  if (f.type === "text" && formatted && !rich.failed)
+    return rich.editor ? (
+      <rich.editor
+        value={typeof value === "string" ? value : cellText(value)}
+        label={f.name}
+        placeholder={placeholder ?? t("Leer", "Empty")}
+        disabled={disabled}
+        commit={commit}
+        multiline={multiline}
+        autoFocus={!!editing}
+        onChange={onChange}
+        onCancel={onCancel}
+      />
+    ) : (
+      <span className="rich-text-input loading">
+        <InlineText value={value} links={false} />
+      </span>
     );
   if (links && isLinkField(f.type))
     return (

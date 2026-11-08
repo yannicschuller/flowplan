@@ -9,6 +9,8 @@ test("database records are edited offline and conflicts are resolved on reconnec
   page.on("pageerror", (e) => errors.push(e.message));
   const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
   await page.request.post("/api/auth/demo", { headers: { origin } });
+  // A new account would see the introduction first.
+  await page.request.post("/api/command", { headers: { origin }, data: { action: "profile.onboarded" } });
   const boot = await (await page.request.get("/api/bootstrap")).json();
   // A second device changes the same record while this one is offline.
   const other = await browser.newContext();
