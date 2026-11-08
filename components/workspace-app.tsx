@@ -5309,6 +5309,7 @@ export default function WorkspaceApp({
       {capture && (
         <QuickCapture
           workspaceId={boot.workspace.id}
+          online={online}
           onClose={() => setCapture(false)}
           mutate={mutate}
           notify={notify}

@@ -28,6 +28,7 @@ import { aiWriteResponse, WRITE_LIMITS } from "@/lib/ai/write";
 import { aiSummaryResponse, SUMMARY_LIMITS } from "@/lib/ai/summarize";
 import { ACTION_LIMITS, proposeActions, runActions, type ProposeInput } from "@/lib/ai/actions";
 import { checkDeviceSuggestion, suggestCapture, SUGGEST_LIMITS } from "@/lib/ai/capture-suggest";
+import { improveCapture, IMPROVE_LIMITS } from "@/lib/ai/capture-improve";
 import { clusterNotes, generateStructure, splitNotes, summarizeBoard } from "@/lib/ai/whiteboard";
 
 export const runtime = "nodejs";
@@ -205,6 +206,8 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ path: st
     if (path.length === 2 && path[0] === "capture") {
       if (path[1] === "suggest") return NextResponse.json(await suggestCapture(user, await body(req, SUGGEST_LIMITS.text * 4 + 10_000), req.signal), noStore);
       if (path[1] === "check") return NextResponse.json(await checkDeviceSuggestion(user, await body(req, 50_000)), noStore);
+      // "Text verbessern" with the shorthand kept (lib/ai/capture-improve.ts, #172).
+      if (path[1] === "improve") return NextResponse.json(await improveCapture(user, await body(req, IMPROVE_LIMITS.text * 3 * 4 + 10_000), req.signal), noStore);
     }
     // AI on whiteboards (lib/ai/whiteboard.ts): themes for notes, a summary
     // page, a mind map or flowchart from a description, notes → properties.

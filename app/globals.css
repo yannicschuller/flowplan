@@ -24016,6 +24016,48 @@ h3 .block-reactions {
 .ai-writer-job .ai-device-chip {
   margin-left: auto;
 }
+/* "Text verbessern" in quick capture (components/quick-capture.tsx): the
+   button under the text, the answer as a preview in the writing
+   assistant's style – as plain text, the way it is captured. */
+.quick-capture-ai-row {
+  display: flex;
+  margin-top: -2px;
+}
+.quick-capture-improve svg,
+.quick-capture-ai .ai-writer-job svg {
+  color: var(--blue);
+}
+.quick-capture-improve:disabled svg {
+  color: inherit;
+}
+.quick-capture-ai {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 12px;
+  background: var(--bg);
+  box-shadow: 0 0 0 1px var(--border);
+  animation: ai-panel-in 0.18s var(--ease-out, ease) both;
+}
+.quick-capture-ai .ai-preview {
+  max-height: min(34vh, 320px);
+}
+.ai-preview p.quick-capture-preview-title {
+  margin: 0 0 0.3em;
+  font-weight: 600;
+}
+.ai-preview p.quick-capture-preview-text {
+  margin: 0;
+  white-space: pre-wrap;
+}
+@media (max-width: 600px) {
+  .quick-capture-ai .ai-writer-buttons .button {
+    flex: 1 1 auto;
+    justify-content: center;
+    min-height: 40px;
+  }
+}
 .ai-summary-source {
   margin: 0 0 6px;
 }
