@@ -161,7 +161,10 @@ test("http: JSON bodies typed, headers without CR/LF, retries keep the Idempoten
     mock.timers.reset();
   }
   assert.equal((await one<{ status: string }>("SELECT status FROM workflow_runs WHERE id=?", r.id))!.status, "succeeded");
-  const [first, second] = api.seen.slice(-2);
+  // This run's requests only (by their key): exactly the failed and the retried one.
+  const mine = api.seen.filter((s) => String(s.headers["idempotency-key"] || "").startsWith(`${r.id}:`));
+  assert.equal(mine.length, 2);
+  const [first, second] = mine;
   assert.equal(first.headers["idempotency-key"], second.headers["idempotency-key"]);
   assert.deepEqual(JSON.parse(second.body), { n: 7, s: 'he said "hi"\r\nX-Evil: 1' });
   assert.equal(second.headers["x-note"], 'ahe said "hi"X-Evil: 1');

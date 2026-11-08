@@ -89,7 +89,12 @@ type Options = {
 const flatHeaders = (headers: Record<string, string | string[] | undefined>) =>
   Object.fromEntries(Object.entries(headers).map(([key, value]) => [key, Array.isArray(value) ? value.join(", ") : String(value ?? "")]));
 // DNS lookup that refuses internal addresses and hands the request the very
-// address it checked (no second lookup that could point elsewhere).
+// addresses it checked (no second lookup that could point elsewhere). When
+// the connection asks for all of them (Node's default "happy eyeballs",
+// autoSelectFamily), it gets every checked address, so a name with an IPv6
+// and an IPv4 address still connects when the server answers on one family
+// only (e.g. "localhost" → ::1 first, 127.0.0.1 second on GitHub's runners;
+// a host whose AAAA record is not reachable from here).
 export function pinnedLookup(allowPrivate: boolean) {
   return (host: string, options: object, callback: (...args: never[]) => void) =>
     dnsLookup(host, { all: true }, (error, addresses) => {
@@ -100,7 +105,7 @@ export function pinnedLookup(allowPrivate: boolean) {
         if (list.length) securityEvent("blocked.ssrf", { detail: `${host} → ${list[0].address}` });
         return done(new Error("Interne Adressen sind nicht erlaubt."), "", 4);
       }
-      if ((options as { all?: boolean }).all) return done(null, [list[0]]);
+      if ((options as { all?: boolean }).all) return done(null, list);
       done(null, list[0].address, list[0].family);
     });
 }
