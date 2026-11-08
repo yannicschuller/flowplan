@@ -85,7 +85,7 @@ export async function updateDatabaseSettings(user: Identity, page: Page, fields:
 // Who a rule acts for and since when: kept while the rule stays the same
 // (switching it on or off included), otherwise the person saving it takes
 // it over, so nobody can make a rule act with someone else's rights.
-function stampAutomation(user: Identity, a: Automation, before: Automation | undefined) {
+export function stampAutomation(user: Identity, a: Automation, before: Automation | undefined) {
   const essence = (x: Automation) => JSON.stringify({ ...x, enabled: undefined, createdBy: undefined, since: undefined });
   if (before?.createdBy && before.since && essence(before) === essence(a)) {
     a.createdBy = before.createdBy;

@@ -226,6 +226,7 @@ import * as Y from "yjs";
 import { all, one, run, id, transaction, transactionKeepingRefusals, audit, db, nowText, sql, lockMembership } from "./db";
 import { convertFormattedValues } from "./formatted-text";
 import { applyOptionRenames } from "./option-renames-server";
+import { restoreVersionSettings } from "./database-version-settings";
 import { securityEvent } from "./security-events";
 import { noteDangerousHtml } from "./security-events";
 import { HttpError, acceptPendingInvites, inviteToken } from "./auth";
@@ -2026,6 +2027,9 @@ async function runCommand(
               JSON.stringify(formConfigSchema.parse(data.formConfig)),
               p.id,
             );
+          // Done rule, workflow, automations and the issue sync's status
+          // mapping as they were with these options (#173).
+          await restoreVersionSettings(user, p.id, data);
           if (Array.isArray(data.comments))
             for (const c of data.comments)
               await run(
@@ -2138,7 +2142,7 @@ async function runCommand(
           await run("INSERT INTO search_dirty SELECT page_id,id FROM rows WHERE page_id=? ON CONFLICT DO NOTHING", pid());
         // Renamed options: records, views, settings and forms follow
         // (before the done rule is copied to progress properties).
-        await applyOptionRenames(user, await write(), d.fields, fields, views, b.optionRenames);
+        afterCommit.push(...(await applyOptionRenames(user, await write(), d.fields, fields, views, b.optionRenames)));
         prepareSubtaskFields(await write(), fields, await databaseSettings(pid()));
         // Multi-selects with the workspace's tags as options (#79).
         await prepareTagFields(user, await write(), fields, d.fields);
