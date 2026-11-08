@@ -19,10 +19,17 @@ export type CatalogTemplate = {
   fields?: Field[];
   views?: View[];
   rows?: CatalogRow[];
+  // The page starts in full width (Page menu → Full width).
+  fullWidth?: boolean;
+  // Opens draw.io for the page's empty diagram as soon as the new page
+  // shows (lib/drawio-prefs.ts, queueDrawioOpen).
+  openDiagram?: boolean;
 };
 
 export const task = (text: string, done = false) =>
   `<li data-type="taskItem" data-checked="${done}"><label><input type="checkbox"${done ? " checked" : ""}></label><div><p>${text}</p></div></li>`;
+// An empty draw.io diagram (lib/drawio-node.ts).
+export const drawio = '<div data-drawio="" data-drawio-svg="" class="drawio-block">draw.io</div>';
 export const tasks = (...items: string[]) => `<ul data-type="taskList">${items.join("")}</ul>`;
 export const callout = (html: string) => `<aside data-callout="true">${html}</aside>`;
 export const toggle = (title: string, html: string) => `<details><summary>${title}</summary><div>${html}</div></details>`;
@@ -231,6 +238,16 @@ export const templateCatalog: Record<string, CatalogTemplate> = {
       "<h2>Häufige Probleme</h2>" +
       toggle("Fehlermeldung „…“", "<p>Ursache und Lösung.</p>") +
       toggle("Es passiert nichts", "<p>Prüfen, ob …</p>"),
+  },
+  diagram: {
+    name: "Diagramm-Seite",
+    category: "knowledge",
+    icon: "🗺️",
+    kind: "document",
+    description: "Eine Seite in voller Breite für ein draw.io-Diagramm – der Editor öffnet sich gleich.",
+    html: drawio,
+    fullWidth: true,
+    openDiagram: true,
   },
   decisions: {
     name: "Entscheidungsprotokoll",

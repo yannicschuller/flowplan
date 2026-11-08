@@ -20,8 +20,19 @@ export type TestSftp = {
 
 const equal = (a: Buffer, b: Buffer) => a.length === b.length && timingSafeEqual(a, b);
 
+// ssh2 now and then generates an ed25519 key its own parser then refuses
+// ("Malformed OpenSSH private key" in new Server, seen in CI) – a fresh one
+// is taken until it parses.
+function hostKeyThatParses() {
+  for (let i = 0; i < 20; i++) {
+    const key = utils.generateKeyPairSync("ed25519").private;
+    if (!(utils.parseKey(key) instanceof Error)) return key;
+  }
+  throw new Error("ssh2 produced no usable test host key");
+}
+
 export async function startSftpServer(root: string, options: { user: string; password?: string; publicKey?: string; hostKey?: string }): Promise<TestSftp> {
-  const hostKey = options.hostKey ?? utils.generateKeyPairSync("ed25519").private;
+  const hostKey = options.hostKey ?? hostKeyThatParses();
   const allowedKey = options.publicKey ? utils.parseKey(options.publicKey) : null;
   if (allowedKey instanceof Error) throw allowedKey;
   const state = { logins: 0 };

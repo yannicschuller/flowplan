@@ -73,7 +73,7 @@ import {
 } from "./mermaid-editor";
 import { DEFAULT_DIAGRAM } from "@/lib/mermaid-source";
 import { drawioNodeView, DrawioEditorDialog, type DrawioTarget } from "./drawio-editor";
-import { drawioEditor } from "@/lib/drawio-prefs";
+import { drawioEditor, drawioOpenQueued, takeDrawioOpen } from "@/lib/drawio-prefs";
 import { DocumentBlockControls } from "./document-block-controls";
 import {
   BlockShortcuts,
@@ -945,6 +945,39 @@ export default function DocumentEditor({
   useEffect(() => {
     if (editor && !editor.isDestroyed) refreshCaptions(editor.view);
   }, [editor, numberCaptions]);
+  // A page just created from the "Diagramm-Seite" template: draw.io opens
+  // for its empty diagram as soon as the content is in the editor (the
+  // Yjs binding fills it a moment after the editor exists).
+  useEffect(() => {
+    if (!editor || editor.isDestroyed || !editable || rowId || embedded || !drawioEditor() || !drawioOpenQueued(pageId)) return;
+    const open = () => {
+      let found: number | undefined;
+      editor.state.doc.descendants((node, pos) => {
+        if (found !== undefined) return false;
+        if (node.type.name === "drawioBlock" && !node.attrs.xml) found = pos;
+        return found === undefined;
+      });
+      if (found === undefined) return false;
+      const at = found;
+      takeDrawioOpen(pageId);
+      setDrawio({ xml: "", getPos: () => at });
+      return true;
+    };
+    if (open()) return;
+    const check = () => {
+      if (open()) stop();
+    };
+    const timer = setTimeout(() => {
+      takeDrawioOpen(pageId);
+      stop();
+    }, 10_000);
+    const stop = () => {
+      clearTimeout(timer);
+      editor.off("transaction", check);
+    };
+    editor.on("transaction", check);
+    return stop;
+  }, [editor, editable, pageId, rowId, embedded]);
   // Who wrote what: the people behind the sessions, from the server (only
   // for people who may read the page); this session counts as oneself.
   const loadAuthors = useCallback(async () => {

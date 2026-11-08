@@ -12,7 +12,7 @@ const picture = (label: string) =>
 // The stand-in for draw.io: answers load and export like draw.io does.
 const js = (value: string) => JSON.stringify(value).replaceAll("<", "\\u003c");
 const STAND_IN = `<!doctype html><meta charset="utf-8"><body>
-<p id="loaded"></p><button id="save">Speichern und beenden</button><button id="exit">Beenden</button>
+<p id="loaded"></p><button id="save">Speichern und beenden</button><button id="exit">Beenden</button><button id="change">Ändern</button>
 <script>
 const FIRST = ${js(FIRST)}, SECOND = ${js(SECOND)};
 const PICTURES = { [FIRST]: ${js(picture("Erste Fassung"))}, [SECOND]: ${js(picture("Zweite Fassung"))} };
@@ -32,6 +32,7 @@ addEventListener("message", (event) => {
 });
 document.getElementById("save").onclick = () => send({ event: "save", xml: current, exit: true });
 document.getElementById("exit").onclick = () => send({ event: "exit", modified: false });
+document.getElementById("change").onclick = () => send({ event: "autosave", xml: current });
 send({ event: "init" });
 </script>`;
 
@@ -128,5 +129,149 @@ test("draw.io diagrams: insert, show the cleaned picture, edit, undo and delete"
   await expect.poll(async () => (await f.read()).html, { timeout: 20_000 }).not.toContain("data-drawio");
   expect(tracked).toEqual([]);
   expect(await page.evaluate(() => (window as unknown as { pwned?: number }).pwned)).toBeUndefined();
+  expect(errors).toEqual([]);
+});
+
+// draw.io at the default address answers with the stand-in.
+async function standIn(page: Page, origin: string) {
+  const opened: string[] = [];
+  await page.route(`${origin}/**`, (route) => {
+    opened.push(route.request().url());
+    return route.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body: STAND_IN });
+  });
+  // The development server's badge covers buttons at the bottom on phones.
+  await page.addInitScript(() =>
+    addEventListener("DOMContentLoaded", () => {
+      const style = document.createElement("style");
+      style.textContent = "nextjs-portal { display: none !important; }";
+      document.head.append(style);
+    }),
+  );
+  return opened;
+}
+
+// Follow-up to #110: the editor's dialog fills the window on request and
+// stays so on this device; phones always show it that way (no toggle).
+test("draw.io editor: maximize and restore, remembered on the device, changes kept", async ({ page }, info) => {
+  test.setTimeout(90_000);
+  const f = await fixture(page, `draw.io groß ${info.project.name} ${Date.now()}`);
+  test.skip(!f.drawio, "DRAWIO_URL is not usable on this server.");
+  const opened = await standIn(page, f.drawio.origin);
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto(`/#page=${f.host.id}`);
+  await page.getByRole("button", { name: "Block hinzufügen", exact: true }).click();
+  await page.locator(".slash-menu").getByRole("option", { name: /^draw\.io-Diagramm/ }).first().click();
+  const dialog = page.getByRole("dialog", { name: "draw.io-Diagramm", exact: true });
+  const frame = dialog.frameLocator("iframe");
+  await expect(frame.locator("#loaded")).toHaveText("neu");
+  const viewport = page.viewportSize()!;
+  const box = async () => (await dialog.boundingBox())!;
+  const toggle = dialog.getByRole("button", { name: "Maximieren", exact: true });
+
+  if (info.project.name === "mobile") {
+    // A phone shows draw.io on the whole screen already: no toggle.
+    await expect(toggle).toBeHidden();
+    expect((await box()).width).toBeGreaterThanOrEqual(viewport.width - 1);
+    expect((await box()).height).toBeGreaterThanOrEqual(viewport.height - 1);
+    await frame.getByRole("button", { name: "Speichern und beenden" }).click();
+    await expect(dialog).toHaveCount(0);
+    expect(errors).toEqual([]);
+    return;
+  }
+
+  // Not maximized at first: a margin around the dialog.
+  expect((await box()).width).toBeLessThan(viewport.width - 20);
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  // Unsaved changes in draw.io …
+  await frame.getByRole("button", { name: "Ändern" }).click();
+  // … the keyboard toggles: the whole window, draw.io is not reloaded.
+  await toggle.focus();
+  await page.keyboard.press("Enter");
+  const restore = dialog.getByRole("button", { name: "Verkleinern", exact: true });
+  await expect(restore).toHaveAttribute("aria-pressed", "true");
+  await expect(dialog).toHaveClass(/drawio-maximized/);
+  await expect.poll(async () => (await box()).width).toBeGreaterThanOrEqual(viewport.width - 1);
+  expect((await box()).height).toBeGreaterThanOrEqual(viewport.height - 1);
+  expect((await box()).x).toBeLessThanOrEqual(0.5);
+  expect(opened.length).toBe(1);
+  await expect(frame.locator("#loaded")).toHaveText("neu");
+  expect(await page.evaluate(() => localStorage.getItem("flowplan.drawio-maximized"))).toBe("1");
+  // Esc still asks before throwing the changes away; staying keeps them.
+  const asked: string[] = [];
+  page.once("dialog", (question) => {
+    asked.push(question.message());
+    void question.dismiss();
+  });
+  await restore.focus();
+  await page.keyboard.press("Escape");
+  await expect.poll(() => asked).toEqual(["Änderungen am Diagramm verwerfen?"]);
+  await expect(dialog).toBeVisible();
+  await expect(frame.locator("#loaded")).toHaveText("neu");
+  await frame.getByRole("button", { name: "Speichern und beenden" }).click();
+  await expect(dialog).toHaveCount(0);
+  const block = page.getByLabel("Dokumentinhalt", { exact: true }).locator(".drawio-block");
+  await expect(block).toHaveAttribute("data-drawio-state", "ready");
+
+  // The next diagram opens maximized, also after a reload; restoring sticks too.
+  await page.reload();
+  await block.dblclick();
+  await expect(frame.locator("#loaded")).toHaveText(`geladen: ${FIRST}`);
+  await expect(dialog).toHaveClass(/drawio-maximized/);
+  await restore.click();
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  await expect.poll(async () => (await box()).width).toBeLessThan(viewport.width - 20);
+  expect(await page.evaluate(() => localStorage.getItem("flowplan.drawio-maximized"))).toBeNull();
+  await frame.getByRole("button", { name: "Beenden", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+// The template "Diagramm-Seite": a full-width page with one empty diagram;
+// draw.io opens right away for it.
+test("the Diagramm-Seite template creates a full-width page with a diagram and opens draw.io", async ({ page }, info) => {
+  test.setTimeout(90_000);
+  const f = await fixture(page, `draw.io Vorlage ${info.project.name} ${Date.now()}`);
+  test.skip(!f.drawio, "DRAWIO_URL is not usable on this server.");
+  await standIn(page, f.drawio.origin);
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  const title = `Ablauf ${info.project.name} ${Date.now()}`;
+  if (info.project.name === "desktop") {
+    await page.goto("/#home");
+    await page.getByRole("button", { name: /Neue Seite/ }).first().click();
+    const create = page.getByRole("dialog", { name: "Neue Seite" });
+    await create.getByRole("button", { name: /Aus Vorlage/ }).click();
+    const gallery = page.getByRole("dialog", { name: "Vorlagen" });
+    await gallery.getByRole("button", { name: "Wissen & Dokumentation", exact: true }).click();
+    await gallery.locator(".template-grid > button", { hasText: "Diagramm-Seite" }).click();
+    await create.getByPlaceholder("Wie heißt deine Seite?").fill(title);
+    await create.getByRole("button", { name: "Seite erstellen" }).click();
+  } else {
+    // From the public gallery ("In meinem Arbeitsbereich verwenden").
+    await page.goto("/?useTemplate=starter:diagram");
+  }
+  const dialog = page.getByRole("dialog", { name: "draw.io-Diagramm", exact: true });
+  await expect(dialog).toBeVisible({ timeout: 20_000 });
+  const frame = dialog.frameLocator("iframe");
+  // The page's own empty diagram, not a new one below it.
+  await expect(frame.locator("#loaded")).toHaveText("neu");
+  await frame.getByRole("button", { name: "Speichern und beenden" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator(".page-content.full-width")).toBeVisible();
+  const blocks = page.getByLabel("Dokumentinhalt", { exact: true }).locator(".drawio-block");
+  await expect(blocks).toHaveCount(1);
+  await expect(blocks).toHaveAttribute("data-drawio-state", "ready");
+  const shown = /page=([^&]+)/.exec(page.url())![1];
+  const read = async () => (await page.request.get(`/api/pages/${shown}`)).json();
+  await expect.poll(async () => ((await read()).html as string).match(/data-drawio=/g)?.length, { timeout: 20_000 }).toBe(1);
+  expect((await read()).html).toContain("erste");
+  expect((await read()).page.full_width).toBe(1);
+  if (info.project.name === "desktop") expect((await read()).page.title).toBe(title);
+  // Opening the page again does not open draw.io again.
+  await page.reload();
+  await expect(blocks).toHaveAttribute("data-drawio-state", "ready");
+  await page.waitForTimeout(1000);
+  await expect(dialog).toHaveCount(0);
   expect(errors).toEqual([]);
 });

@@ -71,6 +71,39 @@ test("every template creates a valid page", async () => {
   }
 });
 
+test("the diagram page: full width, one empty draw.io diagram that opens right away (#110)", async () => {
+  const { templateCatalogEn } = await import("../lib/template-catalog-en");
+  for (const catalog of [templateCatalog, templateCatalogEn]) {
+    const t = catalog.diagram;
+    assert.equal(t.kind, "document");
+    assert.equal(t.fullWidth, true);
+    assert.equal(t.openDiagram, true);
+  }
+  assert.equal(templateCatalog.diagram.name, "Diagramm-Seite");
+  assert.equal(templateCatalogEn.diagram.name, "Diagram page");
+  // Only this template opens draw.io or changes the page width.
+  for (const [key, t] of Object.entries(templateCatalog))
+    if (key !== "diagram") assert.ok(!t.fullWidth && !t.openDiagram, key);
+  const { id: page } = (await command(ana, {
+    action: "page.create",
+    workspaceId: wid,
+    spaceId: space,
+    title: "Ablauf",
+    kind: "document",
+    starterTemplate: "diagram",
+  })) as { id: string };
+  const row = (await one<{ full_width: number; title: string }>("SELECT full_width,title FROM pages WHERE id=?", page))!;
+  assert.equal(row.full_width, 1);
+  assert.equal(row.title, "Ablauf");
+  const stored = await html(page);
+  // One diagram block, still empty (no diagram, no picture).
+  assert.equal(stored.match(/data-drawio[\s=>]/g)?.length, 1, stored);
+  assert.doesNotMatch(stored, /data-drawio="[^"]|data-drawio-svg="[^"]/, stored);
+  // Other templates keep the normal width.
+  const { id: other } = (await command(ana, { action: "page.create", workspaceId: wid, spaceId: space, title: "Wiki", kind: "document", starterTemplate: "wiki" })) as { id: string };
+  assert.equal((await one<{ full_width: number }>("SELECT full_width FROM pages WHERE id=?", other))!.full_width, 0);
+});
+
 test("the demo workspace shows every part of Flowplan", async () => {
   await saveInstanceSettings({ publicDemo: true });
   const demo = await startDemo("10.9.9.9");

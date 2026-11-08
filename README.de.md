@@ -52,7 +52,7 @@
 
 - **Alles in einem Seitenbaum** – Dokumente, Datenbanken mit zehn Ansichten, Whiteboards, Notizbücher für Handschrift, ein tägliches Journal, Projekte mit Tickets und Sprints, Umfragen und Workflows.
 - **Komplett Open Source** unter der AGPL-3.0 – keine geschlossene Enterprise-Version, keine Funktionen hinter einem Lizenzschlüssel.
-- **Ein Container mit SQLite** – kein Postgres, kein Redis, kein externer Suchdienst. Oder gehostet in Deutschland auf [app.flowplan.org](https://app.flowplan.org).
+- **Ein Container mit SQLite** – nichts weiter zu betreiben, kein externer Suchdienst. Für größere Teams optional [PostgreSQL](https://docs.flowplan.org/de/postgresql) und ein [Cluster](https://docs.flowplan.org/de/cluster) aus mehreren Instanzen. Oder gehostet in Deutschland auf [app.flowplan.org](https://app.flowplan.org).
 - **Optionale KI** – standardmäßig aus; Admins schalten sie pro Funktion und Person ein, komplett lokal mit [Ollama](https://ollama.com) oder mit Schlüssel für OpenAI, Anthropic, Gemini oder jeden OpenAI-kompatiblen Dienst. Du bestimmst, welche Seiten sie lesen darf.
 - **Datenschutz von Grund auf** – kein Tracking, Rechte bis auf den einzelnen Eintrag, Zwei-Faktor-Anmeldung, Verschlüsselung von Dateien und Sicherungen mit eigenem Schlüssel.
 - **Deine Daten bleiben mitnehmbar** – Markdown mit Frontmatter, CSV und ZIP, geplante Exporte nach S3 oder Git, Import aus Notion, AppFlowy, Obsidian, Jira und Trello.
@@ -113,10 +113,12 @@ docker compose up -d
 ```
 
 - **Lokale KI (optional):** `docker compose --profile ai up -d` startet Ollama neben Flowplan; `OLLAMA_URL=http://ollama:11434` setzen und unter **Administration → KI** ein Modell wählen ([KI](https://docs.flowplan.org/de/ai)).
-- **Kubernetes:** das Helm-Chart in [`deploy/helm/flowplan`](deploy/helm/flowplan/README.md) (ein Pod mit Volume, wie SQLite es braucht).
+- **Kubernetes:** das Helm-Chart in [`deploy/helm/flowplan`](deploy/helm/flowplan/README.md) (ein Pod mit Volume, wie SQLite es braucht; mehrere Pods im [Cluster-Modus](https://docs.flowplan.org/de/cluster#kubernetes-helm)).
 - **Single Sign-on:** beim OIDC-Anbieter einen vertraulichen Web-Client mit der Weiterleitungsadresse `https://<deine-domain>/api/auth/callback` anlegen ([Anmeldung](https://docs.flowplan.org/de/sign-in)).
 
-Alle Daten liegen im Volume unter `/app/data`. Pro Datenverzeichnis läuft **genau ein** Container (SQLite).
+- **Größere Teams:** Statt SQLite kann Flowplan [PostgreSQL](https://docs.flowplan.org/de/postgresql) nutzen (mit `pgvector` für die semantische Suche) – und mit PostgreSQL, Redis und S3 mehrere Instanzen hinter einem Load Balancer im [Cluster-Modus](https://docs.flowplan.org/de/cluster). Eine bestehende Instanz [wechselt zwischen SQLite und PostgreSQL](https://docs.flowplan.org/de/database-migration) in beide Richtungen; welcher Aufbau zu wie vielen Personen passt, steht unter [Dimensionierung](https://docs.flowplan.org/de/sizing).
+
+Alle Daten liegen im Volume unter `/app/data`. Mit SQLite läuft pro Datenverzeichnis **genau ein** Container.
 
 <details>
 <summary><b>Images und automatisches Ausrollen</b></summary>
@@ -156,7 +158,7 @@ Mehr in der Dokumentation: [Installation](https://docs.flowplan.org/de/installat
   <tr>
     <td valign="top">📱 <b><a href="https://docs.flowplan.org/de/offline-and-apps">Apps</a></b><br>Eine installierbare Web-App, die offline funktioniert, Desktop-Apps und Apps für iPhone, iPad und Android.</td>
     <td valign="top">🔐 <b><a href="https://docs.flowplan.org/de/sign-in">Sicherheit</a></b><br>SSO mit OIDC, LDAP und SCIM, Zwei-Faktor-Anmeldung, Passkeys und <a href="https://docs.flowplan.org/de/encrypted-spaces">Ende-zu-Ende-verschlüsselte Bereiche</a>.</td>
-    <td valign="top">💾 <b><a href="https://docs.flowplan.org/de/storage-and-backups">Selbst hosten und sichern</a></b><br>Ein Container mit SQLite, laufende Sicherung nach S3 mit Litestream, geplante verschlüsselte Sicherungen, ein Helm-Chart.</td>
+    <td valign="top">💾 <b><a href="https://docs.flowplan.org/de/storage-and-backups">Selbst hosten und sichern</a></b><br>Ein Container mit SQLite oder PostgreSQL und ein Cluster, laufende Sicherung nach S3 mit Litestream, geplante verschlüsselte Sicherungen, ein Helm-Chart.</td>
   </tr>
   <tr>
     <td colspan="3" valign="top">🔀 <b><a href="https://docs.flowplan.org/de/workflows">Workflows</a></b><br>Abläufe aus Knoten auf einer Fläche, ohne Code: ein Auslöser – Eintrag, Seite, Formular, Zeitplan, Erwähnung, Webhook oder E-Mail – dann Bedingungen, Schleifen, Wartezeiten und Freigaben und Aktionen an Einträgen und Seiten, Benachrichtigungen, KI und HTTP. Testläufe, Verlauf der Läufe, Versionen, Vorlagen und ein KI-Builder; ein Workflow kann nie mehr als die Person, die ihn aktiviert hat.</td>
@@ -381,7 +383,7 @@ Gleichzeitig bearbeiten mit Live-Cursorn (Yjs/CRDT), Kommentare und Textkommenta
   <img src=".github/assets/readme/architecture-de-light.png" alt="Architektur: Clients erreichen den Flowplan-Container über einen Reverse Proxy; SQLite und Uploads, optional nach S3 gesichert; optional OIDC/LDAP, SMTP, KI-Anbieter und Push-Relay" width="100%">
 </picture>
 
-Gestrichelte Linien sind optional. Alles, was Flowplan speichert, liegt in einem Datenverzeichnis (`/app/data`): die SQLite-Datenbank, Uploads und Schlüssel. Das [Push-Relay](https://github.com/yannicschuller/flowplan-push) trägt nur Benachrichtigungen an die mobilen Apps aus und sieht dabei nur Chiffretext.
+Gestrichelte Linien sind optional. Alles, was Flowplan speichert, liegt in einem Datenverzeichnis (`/app/data`): die SQLite-Datenbank, Uploads und Schlüssel. Mit [PostgreSQL](https://docs.flowplan.org/de/postgresql) wandert die Datenbank dorthin; im [Cluster-Modus](https://docs.flowplan.org/de/cluster) teilen sich mehrere Instanzen PostgreSQL, Redis und S3. Das [Push-Relay](https://github.com/yannicschuller/flowplan-push) trägt nur Benachrichtigungen an die mobilen Apps aus und sieht dabei nur Chiffretext.
 
 ### Systemanforderungen
 
@@ -390,11 +392,13 @@ Gestrichelte Linien sind optional. Alles, was Flowplan speichert, liegt in einem
 | **Arbeitsspeicher und CPU** | Für ein kleines Team sind die Vorgaben des Helm-Charts ein guter Anhaltspunkt: 256 MB RAM angefordert, bis zu 1 GB, ein Bruchteil einer CPU. Texterkennung für gescannte PDFs und große Importe brauchen kurz mehr CPU. |
 | **Plattformen** | Docker-Images für `linux/amd64` und `linux/arm64`; Kubernetes mit dem [Helm-Chart](deploy/helm/flowplan/README.md) |
 | **Speicher** | Ein dauerhaftes Volume (Block- oder lokaler Speicher, kein NFS – SQLite), optional S3-kompatibler Speicher |
+| **Datenbank** | SQLite im Container; optional PostgreSQL 16 oder neuer ([PostgreSQL](https://docs.flowplan.org/de/postgresql)) |
+| **Personen** | Ein Container mit SQLite trägt etwa 20 gleichzeitig arbeitende Personen, mit PostgreSQL etwa 30; darüber kommen Instanzen im Cluster-Modus dazu ([Dimensionierung](https://docs.flowplan.org/de/sizing)) |
 | **Netz** | Eine Domain mit HTTPS über einen Reverse Proxy; `http://` reicht zum Testen im eigenen Netz ([ohne HTTPS](https://docs.flowplan.org/de/installation#ohne-https)) |
 | **Browser** | Aktuelle Versionen von Chrome, Edge und Firefox (ab 111) sowie Safari ab 16.4 |
 | **Ohne Docker** | Node.js 22.13 oder neuer (das Image nutzt Node 26) |
 
-Pro Datenverzeichnis läuft **genau ein** Container – SQLite wird nicht zwischen Replikaten geteilt.
+Mit SQLite läuft pro Datenverzeichnis **genau ein** Container – SQLite wird nicht zwischen Replikaten geteilt. Mehrere Instanzen brauchen den [Cluster-Modus](https://docs.flowplan.org/de/cluster) mit PostgreSQL, Redis und S3.
 
 ### Sicherheit
 
@@ -417,6 +421,7 @@ Sicherheitslücken bitte vertraulich melden – wie, was dazugehört und welche 
 
 - Grenzen pro Arbeitsbereich und pro Person (Speicher, eigene Arbeitsbereiche, Uploadgröße)
 - Laufende Sicherung nach S3 mit Litestream, geplante Sicherungen und Markdown-Exporte nach S3 oder Git
+- Optional [PostgreSQL](https://docs.flowplan.org/de/postgresql) statt SQLite, [Wechsel](https://docs.flowplan.org/de/database-migration) in beide Richtungen, und der [Cluster-Modus](https://docs.flowplan.org/de/cluster) mit mehreren Instanzen, Redis und S3 – Updates ohne Ausfallzeit
 - Volltextsuche inklusive Texterkennung für gescannte PDFs und Office-Dateien
 - Prometheus-Metriken und Health-Endpunkt; **Einstellungen → Über Flowplan** zeigt laufende Version, Commit und Build-Datum und meldet Admins eine neuere Version
 - Eine ganze Instanz auf einen anderen Server umziehen unter **Administration → Speicher & Sicherung**: Der neue Server holt Datenbank, Dateien und Schlüssel direkt vom alten, mit kurzer Schlusssynchronisierung im Nur-Lesen-Modus
@@ -463,7 +468,7 @@ Flowplan lässt sich auf jedem Gerät aus dem Browser als App installieren. Desk
 <details>
 <summary><b>Wie sichere ich meine Daten?</b></summary>
 
-Sichere das Volume `/app/data` – oder lass Flowplan das erledigen: geplante Sicherungen und Markdown-Exporte nach S3 oder Git und, mit S3, eine laufende Kopie der Datenbank mit Litestream, auf Wunsch mit deinem eigenen Schlüssel verschlüsselt. Siehe [Speicher, S3 und Sicherungen](https://docs.flowplan.org/de/storage-and-backups).
+Sichere das Volume `/app/data` – oder lass Flowplan das erledigen: geplante Sicherungen und Markdown-Exporte nach S3 oder Git und, mit S3, eine laufende Kopie der Datenbank mit Litestream, auf Wunsch mit deinem eigenen Schlüssel verschlüsselt. Mit PostgreSQL sind geplante Sicherungen `pg_dump`-Archive. Siehe [Speicher, S3 und Sicherungen](https://docs.flowplan.org/de/storage-and-backups).
 
 </details>
 
@@ -511,7 +516,7 @@ Im Entwicklungsmodus gibt es zusätzlich **Lokalen Arbeitsbereich öffnen**, ein
 | `npm run quality` | Budgets für Barrierefreiheit und Leistung am Produktions-Build: Anmeldung und ein Arbeitsbereich mit Beispielinhalten bei 1280 und 390 px – keine ernsten axe-Befunde, nichts Fokussierbares in `aria-hidden`, kein waagerechtes Scrollen, JavaScript (gzip) und LCP im Budget |
 | `npm run test:visual` | Bildschirmfotos wichtiger Ansichten gegen die Vorlagen in `tests/visual/__screenshots__` (`npm run test:visual:update` schreibt neue); nicht Teil von `npm test` |
 
-Stack: Next.js 16 (App Router), React 19, TypeScript, SQLite (`node:sqlite`), TipTap/ProseMirror mit Yjs, Zod und Playwright. Die Dokumentation liegt in [flowplan-docs](https://github.com/yannicschuller/flowplan-docs) (docs.flowplan.org), die Website in [flowplan-website](https://github.com/yannicschuller/flowplan-website) (flowplan.org), die Desktop-Apps in [flowplan-desktop](https://github.com/yannicschuller/flowplan-desktop); dieses Repository enthält die App, das Helm-Chart (`deploy/helm`) und den n8n-Knoten (`integrations/n8n`).
+Stack: Next.js 16 (App Router), React 19, TypeScript, SQLite (`node:sqlite`) oder PostgreSQL (`pg`), TipTap/ProseMirror mit Yjs, Zod und Playwright. Die Dokumentation liegt in [flowplan-docs](https://github.com/yannicschuller/flowplan-docs) (docs.flowplan.org), die Website in [flowplan-website](https://github.com/yannicschuller/flowplan-website) (flowplan.org), die Desktop-Apps in [flowplan-desktop](https://github.com/yannicschuller/flowplan-desktop); dieses Repository enthält die App, das Helm-Chart (`deploy/helm`) und den n8n-Knoten (`integrations/n8n`).
 
 ## Community
 

@@ -3,6 +3,7 @@
 import type { View } from "./types";
 import {
   callout,
+  drawio,
   table,
   task,
   tasks,
@@ -210,6 +211,16 @@ export const templateCatalogEn: Record<TemplateKey, CatalogTemplate> = {
       "<h2>Common problems</h2>" +
       toggle("Error message “…”", "<p>Cause and solution.</p>") +
       toggle("Nothing happens", "<p>Check whether …</p>"),
+  },
+  diagram: {
+    name: "Diagram page",
+    category: "knowledge",
+    icon: "🗺️",
+    kind: "document",
+    description: "A full-width page for one draw.io diagram – the editor opens right away.",
+    html: drawio,
+    fullWidth: true,
+    openDiagram: true,
   },
   decisions: {
     name: "Decision log",

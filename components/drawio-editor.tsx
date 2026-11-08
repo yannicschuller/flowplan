@@ -12,7 +12,8 @@ import { beginUndoStep, nodeTargetPosition, openedNode } from "@/lib/node-target
 import { onEditableChange } from "./editor-editable";
 import { DrawioBlock } from "@/lib/drawio-node";
 import { mountDrawioPreview, drawioLabel } from "@/lib/drawio-preview";
-import { drawioEditor, useDrawioPrefs } from "@/lib/drawio-prefs";
+import { ArrowsIn, ArrowsOut } from "@phosphor-icons/react";
+import { drawioEditor, drawioMaximized, setDrawioMaximized, useDrawioPrefs } from "@/lib/drawio-prefs";
 import {
   MAX_DRAWIO_SVG,
   MAX_DRAWIO_XML,
@@ -242,12 +243,33 @@ export function DrawioEditorDialog({
     if (modified.current && !window.confirm(t("Änderungen am Diagramm verwerfen?", "Discard changes to the diagram?"))) return;
     onClose();
   };
+  // Maximized: the dialog fills the window (safe areas kept free); the
+  // choice stays on this device. Only the frame around draw.io changes –
+  // the iframe stays, so nothing in draw.io is reloaded or lost.
+  const [maximized, setMaximized] = useState(drawioMaximized);
+  const toggleSize = () => {
+    setDrawioMaximized(!maximized);
+    setMaximized(!maximized);
+  };
+  const sizeLabel = maximized ? t("Verkleinern", "Restore size") : t("Maximieren", "Maximize");
   return (
     <Modal
       open
       wide
-      className="drawio-dialog"
+      className={`drawio-dialog${maximized ? " drawio-maximized" : ""}`}
       title={t("draw.io-Diagramm", "draw.io diagram")}
+      actions={
+        <button
+          type="button"
+          className="icon-button drawio-size"
+          aria-pressed={maximized}
+          aria-label={sizeLabel}
+          title={sizeLabel}
+          onClick={toggleSize}
+        >
+          {maximized ? <ArrowsIn size={18} /> : <ArrowsOut size={18} />}
+        </button>
+      }
       onClose={dismiss}
       onCloseAutoFocus={(event) => {
         event.preventDefault();
