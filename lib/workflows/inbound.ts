@@ -82,7 +82,7 @@ export const hookSignature = (secret: string, timestamp: string, body: Buffer | 
 function refuse(hook: HookRow | undefined, reason: string, status = 401): never {
   securityEvent("workflow.hook.refused", { detail: `${hook ? hook.page_id : "?"}: ${reason}`.slice(0, 300) });
   if (hook) void run("UPDATE workflow_hooks SET last_error=? WHERE id=?", reason.slice(0, 300), hook.id).catch(() => {});
-  throw new HttpError(status, status === 401 ? "Signatur ungültig." : reason);
+  throw new HttpError(status, status === 401 ? "Signatur ungültig." : status === 404 ? "Webhook nicht gefunden." : status === 409 ? "Diese Signatur wurde schon verwendet." : reason);
 }
 
 // The body as data: JSON, a form, or text.

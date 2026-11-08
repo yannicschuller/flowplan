@@ -376,8 +376,9 @@ export const switchCaseSchema = z.object({ id: z.string().regex(/^[a-z0-9]{1,12}
 const duration = z.object({ amount: z.number().int().min(1).max(100_000), unit: z.enum(["minutes", "hours", "days"]).default("hours") });
 export const durationMs = (d: { amount: number; unit: string }) => d.amount * (d.unit === "minutes" ? 60_000 : d.unit === "hours" ? 3_600_000 : 86_400_000);
 // A URL whose scheme and host are fixed text (§6.6): no placeholder before the path.
+// (http:// only matters with FLOWPLAN_WORKFLOW_HTTP_ALLOW_PRIVATE, see nodes/http.ts.)
 export const fixedHost = (url: string) => {
-  const m = /^https:\/\/([^/?#{}\\@\s]+)(?:[/?#]|$)/i.exec(url.trim());
+  const m = /^https?:\/\/([^/?#{}\\@\s]+)(?:[/?#]|$)/i.exec(url.trim());
   return m ? m[1].toLowerCase() : null;
 };
 const nameValue = z.object({ name: z.string().trim().max(200), value: shortTmpl.default("") });

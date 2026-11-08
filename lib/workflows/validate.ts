@@ -142,6 +142,7 @@ async function waveTwoChecks(graph: WorkflowGraph, ctx: { workspaceId: string; r
     const c = n.config as Record<string, unknown>;
     if (n.type === "http.request") {
       if (!limits.http) issues.push({ level: "error", code: "http_off", nodeId: n.id });
+      if (typeof c.url === "string" && /^http:/i.test(c.url.trim()) && !limits.httpAllowPrivate) issues.push({ level: "error", code: "http_host", nodeId: n.id });
       const host = typeof c.url === "string" ? fixedHost(c.url) : null;
       const hostname = host?.replace(/:\d+$/, "") ?? "";
       if (host && limits.httpHosts.length && !limits.httpHosts.includes(hostname) && !limits.httpHosts.includes(host))

@@ -17,6 +17,7 @@ import { aiComplete, requireAi, AI_LIMITS, type AiRunOptions } from "../../ai/ru
 import { aiJson, AI_INVALID_JSON } from "../../ai/json";
 import { redactSecrets } from "../../ai/redact";
 import { estimateTokens } from "../../metrics";
+import { Temporal } from "../../date-values";
 import { LANGUAGES } from "../../i18n";
 import type { AiField } from "../catalog";
 import { workflowLimits } from "../limits";
@@ -176,7 +177,12 @@ export function typedValue(value: unknown, field: AiField): unknown {
       return null;
     case "date": {
       const s = String(value).trim();
-      if (/^\d{4}-\d{2}-\d{2}$/.test(s) && Number.isFinite(Date.parse(s))) return s;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s))
+        try {
+          return Temporal.PlainDate.from(s, { overflow: "reject" }).toString();
+        } catch {
+          return null;
+        }
       if (/^\d{4}-\d{2}-\d{2}T/.test(s) && Number.isFinite(Date.parse(s))) return new Date(s).toISOString();
       return null;
     }

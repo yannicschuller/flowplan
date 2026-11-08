@@ -662,6 +662,7 @@ export type Webhook = {
     timeZone?: string;
     matrixRoom?: string;
     slackChannel?: string;
+    workflows?: boolean;
   };
   /** Which credentials are stored (never their values) */
   credentials: {
@@ -701,6 +702,7 @@ export type WebhookCreate = {
     timeZone?: string;
     matrixRoom?: string;
     slackChannel?: string;
+    workflows?: boolean;
   };
   /** Stored encrypted, never returned */
   credentials?: {
@@ -729,6 +731,7 @@ export type WebhookUpdate = {
     timeZone?: string;
     matrixRoom?: string;
     slackChannel?: string;
+    workflows?: boolean;
   };
   /** Left out: unchanged; null: removed; given: the parts replace the stored ones */
   credentials?: {
@@ -850,7 +853,7 @@ export type CommandResult = Record<string, unknown>;
 
 /** Every other action the interface sends. The server validates the fields of each; see lib/api.ts command() in the source. */
 export type CommandOther = {
-  action: "workspace.update" | "workspace.delete" | "workspace.leave" | "workspace.import" | "profile.onboarded" | "profile.language" | "notification.reset" | "notification.email" | "home.reset" | "home.note" | "home.config" | "home.default" | "account.deletePlan" | "account.delete" | "space.update" | "space.delete" | "space.restore" | "space.purge" | "space.duplicate" | "space.gitExport" | "page.import" | "pages.bulk" | "page.snapshot" | "page.publish" | "page.share" | "page.shareUpdate" | "page.fromShare" | "page.toRecord" | "record.toPage" | "tag.delete" | "tag.merge" | "tag.reorder" | "property.delete" | "property.reorder" | "favorite.row" | "task.update" | "synced.create" | "table.toDatabase" | "mention.link" | "journal.settings" | "journal.lock" | "journal.unlock" | "journal.relock" | "journal.entry" | "journal.roll" | "journal.link" | "journal.removeEmpty" | "journal.summary" | "journal.aiSummary" | "linked.command" | "document.sync" | "document.markdown" | "document.markdown.apply" | "snapshot.restoreBlock" | "snapshot.restore" | "database.recordLayout" | "row.move" | "row.schedule" | "row.access" | "row.appearance" | "row.recurrence" | "row.detachOccurrence" | "row.document.sync" | "row.snapshot" | "row.snapshot.restore" | "row.template.save" | "row.template.default" | "row.template.delete" | "row.template.apply" | "row.trash.restore" | "row.trash.purge" | "rows.bulk" | "rows.transfer" | "timeline.cascade" | "timeline.link" | "citation.import" | "citation.remove" | "whiteboard.sync" | "notebook.paper" | "notebook.sheet.duplicate" | "notebook.sheet.delete" | "notebook.sheet.move" | "notebook.sheet.paper" | "notebook.import" | "search.save" | "search.delete" | "collection.delete" | "collection.restore" | "collection.duplicate" | "collection.reorder" | "thread.create" | "thread.reply" | "thread.resolve" | "thread.edit" | "thread.deleteMessage" | "thread.react" | "comment.react" | "reminder.set" | "notification.prefs" | "notification.read" | "notification.mark" | "notification.delete" | "share.create" | "share.revoke" | "share.protect" | "publication.protect" | "publication.copy" | "publication.theme" | "domain.add" | "domain.remove" | "plugin.update" | "plugin.delete" | "form.update" | "form.submit" | "survey.save" | "sprint.setup" | "sprint.create" | "sprint.update" | "sprint.start" | "sprint.complete" | "sprint.delete" | "sprint.points" | "recordView.save" | "recordView.delete" | "git.setup" | "git.disable" | "time.start" | "time.stop" | "time.add" | "time.delete" | "ticket.reply" | "invite.cancel" | "invite.resend" | "member.role" | "member.guest" | "sso.mapping.add" | "sso.mapping.delete" | "grant.set" | "group.create" | "group.member" | "template.save" | "template.update" | "template.delete" | "template.restore" | "template.apply" | "capture.record" | "capture.target" | "bookmarks.import" | "calendar.caldav" | "calendar.caldav.revoke" | "e2ee.identity.setup" | "e2ee.identity.update" | "e2ee.identity.reset" | "e2ee.member.add" | "e2ee.member.remove" | "e2ee.rotate" | "e2ee.compact" | "e2ee.title" | "workflow.sync" | "workflow.draft" | "workflow.validate" | "workflow.activate" | "workflow.pause" | "workflow.test" | "workflow.run" | "workflow.run.cancel" | "workflow.restore" | "workflow.fromRule";
+  action: "workspace.update" | "workspace.delete" | "workspace.leave" | "workspace.import" | "profile.onboarded" | "profile.language" | "notification.reset" | "notification.email" | "home.reset" | "home.note" | "home.config" | "home.default" | "account.deletePlan" | "account.delete" | "space.update" | "space.delete" | "space.restore" | "space.purge" | "space.duplicate" | "space.gitExport" | "page.import" | "pages.bulk" | "page.snapshot" | "page.publish" | "page.share" | "page.shareUpdate" | "page.fromShare" | "page.toRecord" | "record.toPage" | "tag.delete" | "tag.merge" | "tag.reorder" | "property.delete" | "property.reorder" | "favorite.row" | "task.update" | "synced.create" | "table.toDatabase" | "mention.link" | "journal.settings" | "journal.lock" | "journal.unlock" | "journal.relock" | "journal.entry" | "journal.roll" | "journal.link" | "journal.removeEmpty" | "journal.summary" | "journal.aiSummary" | "linked.command" | "document.sync" | "document.markdown" | "document.markdown.apply" | "snapshot.restoreBlock" | "snapshot.restore" | "database.recordLayout" | "row.move" | "row.schedule" | "row.access" | "row.appearance" | "row.recurrence" | "row.detachOccurrence" | "row.document.sync" | "row.snapshot" | "row.snapshot.restore" | "row.template.save" | "row.template.default" | "row.template.delete" | "row.template.apply" | "row.trash.restore" | "row.trash.purge" | "rows.bulk" | "rows.transfer" | "timeline.cascade" | "timeline.link" | "citation.import" | "citation.remove" | "whiteboard.sync" | "notebook.paper" | "notebook.sheet.duplicate" | "notebook.sheet.delete" | "notebook.sheet.move" | "notebook.sheet.paper" | "notebook.import" | "search.save" | "search.delete" | "collection.delete" | "collection.restore" | "collection.duplicate" | "collection.reorder" | "thread.create" | "thread.reply" | "thread.resolve" | "thread.edit" | "thread.deleteMessage" | "thread.react" | "comment.react" | "reminder.set" | "notification.prefs" | "notification.read" | "notification.mark" | "notification.delete" | "share.create" | "share.revoke" | "share.protect" | "publication.protect" | "publication.copy" | "publication.theme" | "domain.add" | "domain.remove" | "plugin.update" | "plugin.delete" | "form.update" | "form.submit" | "survey.save" | "sprint.setup" | "sprint.create" | "sprint.update" | "sprint.start" | "sprint.complete" | "sprint.delete" | "sprint.points" | "recordView.save" | "recordView.delete" | "git.setup" | "git.disable" | "time.start" | "time.stop" | "time.add" | "time.delete" | "ticket.reply" | "invite.cancel" | "invite.resend" | "member.role" | "member.guest" | "sso.mapping.add" | "sso.mapping.delete" | "grant.set" | "group.create" | "group.member" | "template.save" | "template.update" | "template.delete" | "template.restore" | "template.apply" | "capture.record" | "capture.target" | "bookmarks.import" | "calendar.caldav" | "calendar.caldav.revoke" | "e2ee.identity.setup" | "e2ee.identity.update" | "e2ee.identity.reset" | "e2ee.member.add" | "e2ee.member.remove" | "e2ee.rotate" | "e2ee.compact" | "e2ee.title" | "workflow.sync" | "workflow.draft" | "workflow.validate" | "workflow.activate" | "workflow.pause" | "workflow.test" | "workflow.run" | "workflow.run.cancel" | "workflow.restore" | "workflow.fromRule" | "workflow.run.retry" | "workflow.approve" | "workflow.hook" | "workflow.credential.set" | "workflow.credential.remove";
   [key: string]: unknown;
 };
 
@@ -3337,6 +3340,17 @@ export class FlowplanClient {
   /** Inbound e-mail addresses of a workspace — Owners only. Each address with its target, allowed senders, webhook URL, e-mail address (IMAP mode, when INBOUND_MAIL_DOMAIN is set) and the last delivery. Created, rotated and removed with `inbound.save`, `inbound.rotate` and `inbound.delete`. (GET /api/inbound-mail) */
   async listInboundMail(query: { workspace: string }, options?: RequestOptions): Promise<Record<string, unknown>> {
     return this.json<Record<string, unknown>>("GET", `/api/inbound-mail`, { query }, options);
+  }
+
+  /** Start a workflow through its inbound webhook — External: the secret token of the webhook trigger is the address; no bearer token. Signed mode (the default) needs `X-Flowplan-Timestamp: <unix seconds>` (at most 5 minutes off) and `X-Flowplan-Signature: sha256=<hex HMAC-SHA256(secret, timestamp + "." + body)>`; each signature counts once (a repeat with the same body answers 200 with the first run, another body 409). Token-only mode (chosen deliberately in the trigger) skips the signature and allows 10 calls a minute. `Idempotency-Key` or `X-Delivery-Id` makes a delivery count once. Body up to 256 KB, JSON, a form or text. Answers 202 with the run's id; 409 while the workflow is paused. (POST /api/workflow-hooks/{token}) */
+  async receiveWorkflowHook(token: string, body: Record<string, unknown>, options?: RequestOptions): Promise<{
+    runId?: string;
+    duplicate?: boolean;
+  }> {
+    return this.json<{
+    runId?: string;
+    duplicate?: boolean;
+  }>("POST", `/api/workflow-hooks/${encodeURIComponent(token)}`, { json: body }, options);
   }
 
   /** Receive an e-mail (for mail providers) — External: the secret token of the address is the authorization; no bearer token. Accepts the generic JSON format (`from`, `to`, `subject`, `text`, `html`, `messageId`, `date`, `attachments[]` with base64 `content`, or `raw` for a whole message), multipart/form-data with the same fields, Mailgun, Postmark and SendGrid Inbound Parse posts, and raw `message/rfc822`. With a signing key the request needs `X-Flowplan-Signature: sha256=<HMAC of the body>` or Mailgun's signature fields. 60 mails per address and hour (429). Answers 200 for stored, duplicate (same Message-ID) and rejected (sender not allowed) mail. (POST /api/inbound-mail/{token}) */

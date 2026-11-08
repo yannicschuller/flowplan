@@ -15,9 +15,13 @@
 
 export type MailVerdict = "pass" | "fail" | "unknown";
 
+// The domain of an address – or the value itself when it is a bare domain
+// (smtp.mailfrom may name only the domain).
 const domainOf = (address: string) => {
-  const at = address.trim().toLowerCase().lastIndexOf("@");
-  return at > 0 ? address.trim().toLowerCase().slice(at + 1).replace(/[>\s]+$/, "") : "";
+  const v = address.trim().toLowerCase().replace(/^<|[>\s]+$/g, "");
+  const at = v.lastIndexOf("@");
+  if (at >= 0) return v.slice(at + 1);
+  return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(v) ? v : "";
 };
 // Relaxed alignment (DMARC): the same domain, or one is a subdomain of the other.
 const aligned = (domain: string, from: string) => !!domain && !!from && (domain === from || from.endsWith(`.${domain}`) || domain.endsWith(`.${from}`));

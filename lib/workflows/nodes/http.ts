@@ -51,7 +51,7 @@ const retryAfter = (value: string | undefined) => {
 };
 
 // The URL: the fixed part as it is, placeholders after the host URL-encoded.
-export function renderUrl(template: string, ctx: Pick<NodeRun, "scope">): URL {
+export function renderUrl(template: string, ctx: Pick<NodeRun, "scope">, allowHttp = false): URL {
   const host = fixedHost(template);
   if (!host) throw new StepError("Die Adresse muss mit https:// und einem festen Host beginnen.", "validation");
   const rendered = String(renderTemplate(template.trim(), ctx.scope, { encode: encodeURIComponent }));
@@ -61,7 +61,15 @@ export function renderUrl(template: string, ctx: Pick<NodeRun, "scope">): URL {
   } catch {
     throw new StepError("Ungültige Adresse.", "validation");
   }
-  if (url.protocol !== "https:" || url.host.toLowerCase() !== host || url.username || url.password) throw new StepError("Die Adresse muss beim festen Host bleiben.", "validation");
+  if (!(url.protocol === "https:" || (allowHttp && url.protocol === "http:"))) throw new StepError("Nur HTTPS-Adressen sind erlaubt.", "validation");
+  // The fixed host as a URL reads it (2130706433 is 127.0.0.1): the request must stay there.
+  let fixed: string;
+  try {
+    fixed = new URL(`${url.protocol}//${host}/`).host.toLowerCase();
+  } catch {
+    throw new StepError("Ungültige Adresse.", "validation");
+  }
+  if (url.host.toLowerCase() !== fixed || url.username || url.password) throw new StepError("Die Adresse muss beim festen Host bleiben.", "validation");
   return url;
 }
 // A JSON body (§7.4): a whole placeholder becomes a JSON value, one inside
@@ -95,7 +103,7 @@ export const httpRequest: NodeImpl = async (ctx) => {
   };
   const limits = await workflowLimits();
   if (!limits.http) throw new StepError("HTTP-Anfragen sind auf dieser Instanz abgeschaltet.", "permission");
-  const url = renderUrl(c.url, ctx);
+  const url = renderUrl(c.url, ctx, limits.httpAllowPrivate);
   const host = url.host.toLowerCase();
   if (limits.httpHosts.length && !limits.httpHosts.includes(url.hostname.toLowerCase()) && !limits.httpHosts.includes(host))
     throw new StepError(`Der Host ${url.hostname} ist auf dieser Instanz nicht erlaubt.`, "permission");

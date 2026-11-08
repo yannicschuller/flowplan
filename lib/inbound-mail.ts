@@ -124,7 +124,7 @@ async function checkTarget(user: Identity, workspaceId: string, pageId: string) 
   const page = await one<Page>("SELECT * FROM pages WHERE id=?", pageId);
   if (!page || page.deleted_at || page.workspace_id !== workspaceId) throw new HttpError(404, "Seite nicht gefunden.");
   if (!targetKinds.has(page.kind) || page.synced || page.journal_date)
-    throw new HttpError(400, "E-Mails landen nur unter einer Seite, in einer Datenbank oder bei einem Workflow.");
+    throw new HttpError(400, "E-Mails landen nur unter einer Seite oder in einer Datenbank – oder bei einem Workflow.");
   const role = await pageRole(user, page);
   if (role !== "editor" && role !== "owner") throw new HttpError(403, "Keine Berechtigung für diese Seite.");
   return page;
