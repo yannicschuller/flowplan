@@ -50,7 +50,7 @@
 
 - **Everything in one page tree** – documents, databases with ten views, whiteboards, notebooks for handwriting, a daily journal, projects with tickets and sprints, surveys.
 - **Completely open source** under the AGPL-3.0 – no closed enterprise edition, no features behind a licence key.
-- **One container with SQLite** – no Postgres, no Redis, no external search service. Or hosted in Germany at [app.flowplan.org](https://app.flowplan.org).
+- **One container with SQLite** – nothing else to run, no external search service. For larger teams optionally [PostgreSQL](https://docs.flowplan.org/en/postgresql) and a [cluster](https://docs.flowplan.org/en/cluster) of several instances. Or hosted in Germany at [app.flowplan.org](https://app.flowplan.org).
 - **Optional AI** – off by default; admins switch it on per feature and per person, completely local with [Ollama](https://ollama.com) or with a key for OpenAI, Anthropic, Gemini or any OpenAI-compatible service. You decide which pages it may read.
 - **Private by design** – no tracking, permissions down to a single record, two-factor sign-in, encryption of files and backups with your own key.
 - **Your data stays portable** – Markdown with frontmatter, CSV and ZIP, scheduled exports to S3 or Git, import from Notion, AppFlowy, Obsidian, Jira and Trello.
@@ -111,10 +111,12 @@ docker compose up -d
 ```
 
 - **Local AI (optional):** `docker compose --profile ai up -d` starts Ollama next to Flowplan; set `OLLAMA_URL=http://ollama:11434` and choose a model under **Administration → AI** ([AI](https://docs.flowplan.org/en/ai)).
-- **Kubernetes:** the Helm chart in [`deploy/helm/flowplan`](deploy/helm/flowplan/README.md) (one pod with a volume, as SQLite needs).
+- **Kubernetes:** the Helm chart in [`deploy/helm/flowplan`](deploy/helm/flowplan/README.md) (one pod with a volume, as SQLite needs; several pods in [cluster mode](https://docs.flowplan.org/en/cluster#kubernetes-helm)).
 - **Single sign-on:** register a confidential web client at your OIDC provider with the redirect URI `https://<your-domain>/api/auth/callback` ([Sign-in](https://docs.flowplan.org/en/sign-in)).
 
-All data lives in the volume on `/app/data`. Run **exactly one** container per data directory (SQLite).
+- **Larger teams:** instead of SQLite, Flowplan can use [PostgreSQL](https://docs.flowplan.org/en/postgresql) (with `pgvector` for semantic search) – and with PostgreSQL, Redis and S3, several instances behind a load balancer in [cluster mode](https://docs.flowplan.org/en/cluster). An existing instance [switches between SQLite and PostgreSQL](https://docs.flowplan.org/en/database-migration) in both directions; [Sizing](https://docs.flowplan.org/en/sizing) says which setup fits how many people.
+
+All data lives in the volume on `/app/data`. With SQLite, run **exactly one** container per data directory.
 
 <details>
 <summary><b>Images and automatic deployment</b></summary>
@@ -154,7 +156,7 @@ More in the documentation: [Installation](https://docs.flowplan.org/en/installat
   <tr>
     <td valign="top">📱 <b><a href="https://docs.flowplan.org/en/offline-and-apps">Apps</a></b><br>An installable web app that works offline, desktop apps, and apps for iPhone, iPad and Android.</td>
     <td valign="top">🔐 <b><a href="https://docs.flowplan.org/en/sign-in">Security</a></b><br>SSO with OIDC, LDAP and SCIM, two-factor sign-in, passkeys and <a href="https://docs.flowplan.org/en/encrypted-spaces">end-to-end encrypted spaces</a>.</td>
-    <td valign="top">💾 <b><a href="https://docs.flowplan.org/en/storage-and-backups">Self-hosting and backups</a></b><br>One container with SQLite, continuous backup to S3 with Litestream, scheduled encrypted backups, a Helm chart.</td>
+    <td valign="top">💾 <b><a href="https://docs.flowplan.org/en/storage-and-backups">Self-hosting and backups</a></b><br>One container with SQLite or PostgreSQL and a cluster, continuous backup to S3 with Litestream, scheduled encrypted backups, a Helm chart.</td>
   </tr>
 </table>
 
@@ -376,7 +378,7 @@ Live editing with cursors (Yjs/CRDT), comments and inline threads, mentions, rea
   <img src=".github/assets/readme/architecture-en-light.png" alt="Architecture: clients reach the Flowplan container through a reverse proxy; SQLite and uploads, optionally backed up to S3; optional OIDC/LDAP, SMTP, AI provider and push relay" width="100%">
 </picture>
 
-Dashed lines are optional. Everything Flowplan stores lives in one data directory (`/app/data`): the SQLite database, uploads and keys. The [push relay](https://github.com/yannicschuller/flowplan-push) only carries notifications to the mobile apps; it sees ciphertext.
+Dashed lines are optional. Everything Flowplan stores lives in one data directory (`/app/data`): the SQLite database, uploads and keys. With [PostgreSQL](https://docs.flowplan.org/en/postgresql) the database moves there; in [cluster mode](https://docs.flowplan.org/en/cluster) several instances share PostgreSQL, Redis and S3. The [push relay](https://github.com/yannicschuller/flowplan-push) only carries notifications to the mobile apps; it sees ciphertext.
 
 ### System requirements
 
@@ -385,11 +387,13 @@ Dashed lines are optional. Everything Flowplan stores lives in one data director
 | **Memory and CPU** | The Helm chart's defaults are a good guide for a small team: 256 MB of RAM requested, up to 1 GB, a fraction of one CPU. Text recognition for scanned PDFs and large imports briefly need more CPU. |
 | **Platforms** | Docker images for `linux/amd64` and `linux/arm64`; Kubernetes with the [Helm chart](deploy/helm/flowplan/README.md) |
 | **Storage** | A persistent volume (block or local storage, not NFS – SQLite), optionally S3-compatible storage |
+| **Database** | SQLite in the container; optionally PostgreSQL 16 or newer ([PostgreSQL](https://docs.flowplan.org/en/postgresql)) |
+| **People** | One container with SQLite carries about 20 people working at the same time, about 30 with PostgreSQL; beyond that, add instances in cluster mode ([Sizing](https://docs.flowplan.org/en/sizing)) |
 | **Network** | A domain with HTTPS through a reverse proxy; `http://` works for a test in your own network ([without HTTPS](https://docs.flowplan.org/en/installation#without-https)) |
 | **Browsers** | Current Chrome, Edge and Firefox (111 or newer) and Safari 16.4 or newer |
 | **Without Docker** | Node.js 22.13 or newer (the image uses Node 26) |
 
-Run **exactly one** container per data directory – SQLite is not shared between replicas.
+With SQLite, run **exactly one** container per data directory – SQLite is not shared between replicas. Several instances need [cluster mode](https://docs.flowplan.org/en/cluster) with PostgreSQL, Redis and S3.
 
 ### Security
 
@@ -412,6 +416,7 @@ Please report vulnerabilities privately – see [SECURITY.md](SECURITY.md) for h
 
 - Limits per workspace and per person (storage, own workspaces, upload size)
 - Continuous backup to S3 with Litestream, scheduled backups and Markdown exports to S3 or Git
+- Optionally [PostgreSQL](https://docs.flowplan.org/en/postgresql) instead of SQLite, [switching](https://docs.flowplan.org/en/database-migration) in both directions, and [cluster mode](https://docs.flowplan.org/en/cluster) with several instances, Redis and S3 – updates without downtime
 - Full-text search including OCR for scanned PDFs and Office files
 - Prometheus metrics and a health endpoint; **Settings → About Flowplan** shows the running version, commit and build date, and tells admins about a newer release
 - Move a whole instance to another server from **Administration → Storage & backup**: the new server pulls the database, files and keys directly from the old one, with a short read-only final sync
@@ -458,7 +463,7 @@ Flowplan installs from the browser as an app on any device. Desktop apps for mac
 <details>
 <summary><b>How do I back up?</b></summary>
 
-Back up the `/app/data` volume, or let Flowplan do it: scheduled backups and Markdown exports to S3 or Git, and with S3 configured, continuous replication of the database with Litestream – all optionally encrypted with your own key. See [Storage, S3 and backups](https://docs.flowplan.org/en/storage-and-backups).
+Back up the `/app/data` volume, or let Flowplan do it: scheduled backups and Markdown exports to S3 or Git, and with S3 configured, continuous replication of the database with Litestream – all optionally encrypted with your own key. With PostgreSQL, scheduled backups are `pg_dump` archives. See [Storage, S3 and backups](https://docs.flowplan.org/en/storage-and-backups).
 
 </details>
 
@@ -506,7 +511,7 @@ Development mode also offers **Open local workspace**, a shared local example ac
 | `npm run quality` | Accessibility and performance budgets on the production build: sign-in and a seeded workspace at 1280 and 390 px – no serious axe findings, nothing focusable inside `aria-hidden`, no horizontal scrolling, JavaScript (gzip) and LCP within budget |
 | `npm run test:visual` | Screenshots of key screens against the baselines in `tests/visual/__screenshots__` (`npm run test:visual:update` writes new ones); not part of `npm test` |
 
-Stack: Next.js 16 (App Router), React 19, TypeScript, SQLite (`node:sqlite`), TipTap/ProseMirror with Yjs, Zod and Playwright. The documentation lives in [flowplan-docs](https://github.com/yannicschuller/flowplan-docs) (docs.flowplan.org), the website in [flowplan-website](https://github.com/yannicschuller/flowplan-website) (flowplan.org), the desktop apps in [flowplan-desktop](https://github.com/yannicschuller/flowplan-desktop); this repository contains the app, the Helm chart (`deploy/helm`) and the n8n node (`integrations/n8n`).
+Stack: Next.js 16 (App Router), React 19, TypeScript, SQLite (`node:sqlite`) or PostgreSQL (`pg`), TipTap/ProseMirror with Yjs, Zod and Playwright. The documentation lives in [flowplan-docs](https://github.com/yannicschuller/flowplan-docs) (docs.flowplan.org), the website in [flowplan-website](https://github.com/yannicschuller/flowplan-website) (flowplan.org), the desktop apps in [flowplan-desktop](https://github.com/yannicschuller/flowplan-desktop); this repository contains the app, the Helm chart (`deploy/helm`) and the n8n node (`integrations/n8n`).
 
 ## Community
 
