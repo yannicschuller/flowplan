@@ -11,6 +11,8 @@ test("links and mentions in the editor can be clicked", async ({
   const dir = process.env.FLOWPLAN_DATA_DIR;
   test.skip(!dir || dir === "./data", "Braucht einen eigenen Datenordner.");
   await page.request.post("/api/auth/demo", { headers: { origin } });
+  // A new account would see the introduction first.
+  await page.request.post("/api/command", { headers: { origin }, data: { action: "profile.onboarded" } });
   const boot = await (await page.request.get("/api/bootstrap")).json();
   const command = async (data: Record<string, unknown>) => {
     const r = await page.request.post("/api/command", {

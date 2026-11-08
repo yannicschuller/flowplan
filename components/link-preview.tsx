@@ -209,8 +209,17 @@ export function LinkPreview({
       }
       if (!target.closest('[contenteditable="true"]')) return;
       const selection = window.getSelection();
-      // Ctrl/⌘-click makes the editor select the clicked node: still a link click.
-      if (selection && !selection.isCollapsed && !(event.metaKey || event.ctrlKey)) return;
+      // Text selected in the link is no click on it. Ctrl/⌘-click makes the
+      // editor select the clicked node: still a link click. A selection
+      // elsewhere (a mention clicked before) stays when the click lands on
+      // the link's icon, which the editor does not place the caret in.
+      if (
+        selection &&
+        !selection.isCollapsed &&
+        selection.containsNode(target, true) &&
+        !(event.metaKey || event.ctrlKey)
+      )
+        return;
       event.preventDefault();
       openReference(target.getAttribute("href") || "", event);
     };
