@@ -94,7 +94,8 @@ export function ChipText({ value, picker, disabled, onChange, onEdit, label }: {
         )}
         {!segments.length && <span className="muted">{t("Leer", "Empty")}</span>}
       </div>
-      {open !== null && typeof segments[open] !== "string" && (
+      {/* A chip whose text changed under an open popover may be gone: only an existing placeholder opens it. */}
+      {open !== null && segments[open] !== undefined && typeof segments[open] !== "string" && (
         <FilterPopover
           placeholder={segments[open] as Placeholder}
           title={chipName(segments[open] as Placeholder)}
