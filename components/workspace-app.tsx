@@ -262,6 +262,7 @@ import {
   type DayEntry,
   type JournalSettings,
 } from "./journal-parts";
+import { JournalCompleted } from "./journal-completed";
 import type { ShareLink } from "@/lib/share-links";
 import { catalogFor } from "@/lib/template-catalogs";
 import { templateCategories } from "@/lib/template-categories";
@@ -307,7 +308,7 @@ type PageData = DatabaseData & {
     journalId: string;
     date: string;
     trackers: JournalSettings["trackers"];
-    options?: { place: boolean; events: boolean };
+    options?: { place: boolean; events: boolean; completed?: boolean };
     entry: DayEntry;
   };
   // Behind a journal PIN that was not entered yet.
@@ -4296,6 +4297,9 @@ export default function WorkspaceApp({
                       }
                       onSourceClose={() => setSourcePage(null)}
                     />
+                    )}
+                    {data.journalDay && data.journalDay.options?.completed !== false && (
+                      <JournalCompleted key={`completed-${data.page.id}`} pageId={data.page.id} />
                     )}
                     </>
                   )}

@@ -56,6 +56,8 @@ type SettingsRow = {
 export const journalOptionsSchema = z.object({
   place: z.boolean().default(true),
   events: z.boolean().default(true),
+  // "An diesem Tag erledigt" below each day (lib/journal-completed.ts).
+  completed: z.boolean().default(true),
   // "Seite des Tages anlegen": when the day starts (auto) or with the first
   // keystroke, ticked task, tracker value or file (write; lib/journal-days.ts).
   create: z.enum(["auto", "write"]).default("auto"),
@@ -75,7 +77,7 @@ export async function journalSettings(journalId: string) {
   try {
     if (row) trackers = z.array(trackerSchema).parse(JSON.parse(row.trackers));
   } catch {}
-  let options: JournalOptions = { place: true, events: true, create: "auto", sidebar: DEFAULT_SIDEBAR_MODE };
+  let options: JournalOptions = { place: true, events: true, completed: true, create: "auto", sidebar: DEFAULT_SIDEBAR_MODE };
   try {
     options = journalOptionsSchema.parse(JSON.parse(row?.options || "{}"));
   } catch {}
