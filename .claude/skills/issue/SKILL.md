@@ -1,6 +1,6 @@
 ---
 name: issue
-description: Triage and work through new GitHub issues, pull requests and new comments across all Flowplan repositories – ask the maintainer design questions first, judge feasibility and sense, implement with subagents in worktrees, test, document (DE + EN), push, build the beta image, answer the reporter in English, set the status labels and report back in one short German message. Use when the user types /issue or asks to "work through the issues like always".
+description: Triage and work through new GitHub issues, pull requests and new comments (also on old and closed issues) across all Flowplan repositories – ask the maintainer design questions first (proposing "won't implement" where it fits), judge feasibility and sense, implement with subagents in worktrees, test, document (DE + EN), push, build the beta image, answer the reporter in English, set the status labels and report back in one short German message. Use when the user types /issue or asks to "work through the issues like always".
 ---
 
 # /issue – Flowplan issues and PRs, the usual way
@@ -37,12 +37,20 @@ Every issue/PR always carries exactly one `status:` label plus one type label. W
 - `status: in progress` – being worked on
 - `status: awaiting approval` – done on our side, waiting for Yannic's OK (e.g. a PR to merge)
 - `status: done` – fixed and answered; close the issue (`state_reason: completed`)
-- `status: wontfix` – **only with Yannic's explicit OK**; close as `not_planned`
+- `status: wontfix` – "won't implement": **only with Yannic's explicit OK**; close as `not_planned`. You may and should **propose** it yourself (see Step 2) – proposing is fine, setting it without his OK is not.
 
 ## Step 1 – Collect (all repos, in parallel)
 
 1. Open issues and open PRs per repo (`list_issues` state OPEN, `list_pull_requests`), sorted by update.
-2. **New comments on handled issues:** issues updated recently (closed ones too, `orderBy UPDATED_AT`) – read the comments and find any whose last comment is **not** ours (ours end with the Claude Code footer or come from `yannicschuller`). A reporter saying "it still happens" reopens the work.
+2. **New comments on old issues – open and closed, any age:** a reporter often answers weeks after we closed or asked. Per repo, list issues **and PRs** with `state` ALL (open and closed), `orderBy UPDATED_AT`, `direction DESC`, and page through until `updated_at` is older than the last `/issue` run (unknown → 90 days). For every item in that window, read the comments and check the **last** one:
+   - Ours (ends with the Claude Code footer, or from `yannicschuller`) → nothing new, skip. (Label changes also bump `updated_at` – that alone is not new activity.)
+   - Someone else's → new activity; handle it like a new item:
+     - "it still happens" / a new error / a regression → reopen (closed issues), `status: in progress`, back into Step 2.
+     - The info we asked for (`status: needs reporter info`) → continue the work with it.
+     - "works now" / confirmation → thank them briefly, `status: done`, close (completed).
+     - Just "thanks" or an emoji → no reply needed, keep the state.
+     - A new, unrelated request in an old thread → answer briefly and suggest a new issue (or open one if Yannic wants).
+   - Also look at `status: needs reporter info` issues with **no** answer for more than 30 days and list them in the report (Yannic decides whether to close them as stale).
 3. Skip: our own comments, duplicates of things already handled, Dependabot PRs unless asked (list them in the summary).
 4. Read every new item fully, including screenshots (images in the body) and linked issues. Look at the relevant code before judging.
 
@@ -53,7 +61,12 @@ For each item decide, in a few words:
 - **Sense:** does it fit Flowplan (open source, self-hosted, privacy, no tracking, one container with SQLite)? Is it a real bug or a misunderstanding / config question? Duplicate of an existing feature?
 - **Design decisions** that are Yannic's to make.
 
-Then ask Yannic **one** `AskUserQuestion` round (max 4 questions, recommended option first with "(Recommended)", each question self-contained with the issue number and the cause you found). Small, clear bugs with an obvious fix need no question – just say you'll fix them. Never ask about `wontfix` silently: propose it as an option.
+Then ask Yannic **one** `AskUserQuestion` round (max 4 questions, recommended option first with "(Recommended)", each question self-contained with the issue number and the cause you found). Small, clear bugs with an obvious fix need no question – just say you'll fix them.
+
+**Proposing "won't implement" (`status: wontfix`)** – do this actively, whenever it is the honest recommendation:
+- when to propose it: the request doesn't fit Flowplan (tracking, cloud lock-in, against privacy or self-hosting), the cost or risk is far out of proportion to the benefit for most users, it duplicates an existing feature, it belongs in another tool or an integration, or it can't be done well (platform limits).
+- how: as an option in the `AskUserQuestion` round, with a one-line reason, e.g. "#123 Won't implement (Recommended) – reason". Make it the recommended option only if you really think so; otherwise list it as an alternative next to implementing it.
+- set the label or close only after Yannic chose it. Until then the item stays `status: needs maintainer input`.
 
 Set labels now – the type label (categorise if missing, see Labels) plus the status: being worked → `status: in progress`; question to Yannic still open → `status: needs maintainer input`; needs info from reporter → `status: needs reporter info` and post an English question to the reporter.
 
@@ -94,10 +107,14 @@ _Generated by [Claude Code](https://claude.ai/code)_
 
 Then labels → `status: done` and close (completed). Issues waiting on a device test/app update by the reporter → `status: needs reporter info`, keep open.
 
+**Won't implement** (only after Yannic chose it): a friendly English comment that thanks the reporter. Give the reason honestly and briefly, plus an alternative if one exists (existing feature, workaround, integration, docs link), and say that a later change of plan stays possible. Then labels → type + `status: wontfix`, close with `state_reason: not_planned`.
+
 ## Step 7 – Report to Yannic (one short German message)
 
 - Per item: number, title, one line what was done or why not, status label.
-- New comments found and how they were handled.
+- New comments found on old/closed issues and how they were handled (reopened, closed after confirmation, answered, or nothing to do).
+- `status: needs reporter info` issues without an answer for more than 30 days (stale – close or keep?).
+- Proposed "won't implement" items and what he chose.
 - Builds/runs and their result; anything he must do himself (set an env var in Coolify, approve a PR, answer a question).
 - Open decisions.
 
