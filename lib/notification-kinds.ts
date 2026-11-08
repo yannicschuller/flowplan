@@ -7,6 +7,10 @@ export const notificationKinds = {
   guest: "Gastkommentare und Gasteinträge",
   change: "Änderungen an Seiten, denen du folgst",
   automation: "Automationen in Datenbanken",
+  // Workflows (#168): what a workflow sends (notify.person), and its own
+  // errors, pauses and approvals – muted separately (docs/specs/workflows.md §6.4).
+  workflow: "Nachrichten von Workflows",
+  workflow_ops: "Fehler, Pausen und Freigaben von Workflows",
   security: "Sicherheitshinweise zu deinem Konto und deinen Seiten",
   // Incidents of the detection rules (lib/security-detect.ts): only for
   // administrators, see adminOnlyKinds.
@@ -33,6 +37,8 @@ export const notificationDefaults: Record<NotificationKind, NotificationChannels
   guest: { inbox: true, push: true, email: false, messenger: false },
   change: { inbox: true, push: false, email: false, messenger: false },
   automation: { inbox: true, push: false, email: false, messenger: false },
+  workflow: { inbox: true, push: true, email: true, messenger: true },
+  workflow_ops: { inbox: true, push: true, email: true, messenger: true },
   security: { inbox: true, push: true, email: true, messenger: true },
   incident: { inbox: true, push: true, email: true, messenger: true },
 };

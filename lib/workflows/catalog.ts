@@ -112,9 +112,18 @@ export const RECORD_OUTPUT: OutputField[] = [
   { key: "createdBy", label: ["Angelegt von", "Created by"], type: "person", children: person },
   { key: "updatedAt", label: ["Geändert am", "Updated at"], type: "datetime" },
 ];
-const recordOut = (key = "record"): OutputField => ({ key, label: key === "record" ? ["Eintrag", "Record"] : ["Erster", "First"], type: "record", children: RECORD_OUTPUT });
-const pageOut = (key = "page", label: [string, string] = ["Seite", "Page"]): OutputField => ({ key, label, type: "page", children: PAGE_OUTPUT });
-const actorOut: OutputField = { key: "actor", label: ["Ausgelöst von", "Triggered by"], type: "person", children: person };
+// i18n-table: 1 – [German, English] pairs
+const OUTPUT_LABELS: Record<string, [string, string]> = {
+  record: ["Eintrag", "Record"],
+  first: ["Erster", "First"],
+  page: ["Seite", "Page"],
+  actor: ["Ausgelöst von", "Triggered by"],
+  from: ["Von", "From"],
+  to: ["Nach", "To"],
+};
+const recordOut = (key = "record"): OutputField => ({ key, label: OUTPUT_LABELS[key], type: "record", children: RECORD_OUTPUT });
+const pageOut = (key = "page", label: [string, string] = OUTPUT_LABELS.page): OutputField => ({ key, label, type: "page", children: PAGE_OUTPUT });
+const actorOut: OutputField = { key: "actor", label: OUTPUT_LABELS.actor, type: "person", children: person };
 
 export type NodeSpec = {
   type: string;
@@ -132,29 +141,155 @@ export type NodeSpec = {
   event?: string;
 };
 
+// i18n-table: 1 – [German, English] pairs
+const NODE_TEXT: Record<string, { name: [string, string]; description: [string, string] }> = {
+  "trigger.record.created": {
+    name: ["Neuer Eintrag", "New record"],
+    description: ["Ein Eintrag wird in einer Datenbank angelegt.", "A record is created in a database."],
+  },
+  "trigger.record.changed": {
+    name: ["Eintrag geändert", "Record changed"],
+    description: ["Eigenschaften eines Eintrags ändern sich.", "Properties of a record change."],
+  },
+  "trigger.record.done": {
+    name: ["Eintrag erledigt", "Record done"],
+    description: ["Ein Eintrag wird erledigt.", "A record becomes done."],
+  },
+  "trigger.record.date": {
+    name: ["Datum erreicht", "Date reached"],
+    description: ["Ein Datum eines Eintrags ist erreicht oder überfällig.", "A date of a record is reached or overdue."],
+  },
+  "trigger.form.submitted": {
+    name: ["Formularantwort", "Form answer"],
+    description: ["Jemand schickt das Formular einer Datenbank ab.", "Someone submits a database's form."],
+  },
+  "trigger.schedule": {
+    name: ["Zeitplan", "Schedule"],
+    description: ["Täglich, wöchentlich oder monatlich zu einer Uhrzeit.", "Daily, weekly or monthly at a time."],
+  },
+  "trigger.page.created": {
+    name: ["Neue Seite", "New page"],
+    description: ["Eine Seite wird angelegt.", "A page is created."],
+  },
+  "trigger.page.changed": {
+    name: ["Seite geändert", "Page changed"],
+    description: ["Titel oder Inhalt einer Seite ändert sich (2 Minuten nach der letzten Änderung).", "A page's title or content changes (2 minutes after the last change)."],
+  },
+  "trigger.page.moved": {
+    name: ["Seite verschoben", "Page moved"],
+    description: ["Eine Seite bekommt eine neue Elternseite oder einen neuen Bereich.", "A page gets a new parent or space."],
+  },
+  "trigger.page.tagged": {
+    name: ["Tag hinzugefügt", "Tag added"],
+    description: ["Eine Seite bekommt einen Tag.", "A page gets a tag."],
+  },
+  "trigger.comment.created": {
+    name: ["Neuer Kommentar", "New comment"],
+    description: ["Jemand kommentiert eine Seite oder einen Eintrag.", "Someone comments on a page or record."],
+  },
+  "trigger.mention": {
+    name: ["Erwähnung", "Mention"],
+    description: ["Jemand wird in einer Seite, einem Eintrag oder Kommentar erwähnt.", "Someone is mentioned in a page, record or comment."],
+  },
+  "trigger.manual": {
+    name: ["Manuell starten", "Start manually"],
+    description: ["Startet über „Ausführen“, die API oder einen Knopf.", "Starts with “Run”, the API or a button."],
+  },
+  "logic.if": {
+    name: ["Wenn", "If"],
+    description: ["Verzweigt nach Bedingungen.", "Branches on conditions."],
+  },
+  "logic.set": {
+    name: ["Werte setzen", "Set values"],
+    description: ["Benannte Werte für spätere Knoten.", "Named values for later nodes."],
+  },
+  "logic.stop": {
+    name: ["Beenden", "Stop"],
+    description: ["Beendet den Lauf erfolgreich oder als Fehler.", "Ends the run as succeeded or failed."],
+  },
+  "action.record.create": {
+    name: ["Eintrag anlegen", "Create record"],
+    description: ["Legt einen Eintrag in einer Datenbank an.", "Creates a record in a database."],
+  },
+  "action.record.update": {
+    name: ["Eintrag ändern", "Update record"],
+    description: ["Ändert Eigenschaften eines Eintrags.", "Changes properties of a record."],
+  },
+  "action.record.find": {
+    name: ["Einträge finden", "Find records"],
+    description: ["Sucht Einträge nach Bedingungen.", "Finds records by conditions."],
+  },
+  "action.record.template": {
+    name: ["Vorlage anwenden", "Apply template"],
+    description: ["Wendet eine Eintragsvorlage auf einen Eintrag an.", "Applies a record template to a record."],
+  },
+  "action.page.create": {
+    name: ["Seite anlegen", "Create page"],
+    description: ["Legt eine Seite unter einer Elternseite an.", "Creates a page below a parent page."],
+  },
+  "action.page.append": {
+    name: ["An Seite anhängen", "Append to page"],
+    description: ["Fügt Blöcke am Ende, am Anfang oder unter einer Überschrift ein.", "Adds blocks at the end, the start or below a heading."],
+  },
+  "action.page.tag": {
+    name: ["Seite taggen", "Tag page"],
+    description: ["Fügt einer Seite Tags hinzu oder entfernt sie.", "Adds tags to a page or removes them."],
+  },
+  "action.page.move": {
+    name: ["Seite verschieben", "Move page"],
+    description: ["Verschiebt eine Seite unter eine neue Elternseite.", "Moves a page below a new parent."],
+  },
+  "notify.person": {
+    name: ["Person benachrichtigen", "Notify person"],
+    description: ["Benachrichtigung in der App, per Push, E-Mail oder Chat-App.", "A notification in the app, by push, email or chat app."],
+  },
+};
+
 const out = () => ["out"];
-const spec = (s: NodeSpec) => s;
+const spec = (s: Omit<NodeSpec, "name" | "description">): NodeSpec => ({ ...s, ...NODE_TEXT[s.type] });
 
 // i18n-table: 1 – [German, English] pairs
+const OUT: Record<string, [string, string]> = {
+  via: ["Über", "Via"],
+  before: ["Vorher", "Before"],
+  changed: ["Geänderte Felder", "Changed fields"],
+  date: ["Datum", "Date"],
+  answers: ["Antworten", "Answers"],
+  respondent: ["Absender", "Respondent"],
+  slot: ["Termin", "Slot"],
+  time: ["Uhrzeit", "Time"],
+  changes: ["Änderungen", "Changes"],
+  tag: ["Tag", "Tag"],
+  comment: ["Kommentar", "Comment"],
+  id: ["ID", "ID"],
+  text: ["Text", "Text"],
+  url: ["Adresse", "URL"],
+  mentioned: ["Erwähnt", "Mentioned"],
+  inputs: ["Eingaben", "Inputs"],
+  startedBy: ["Gestartet von", "Started by"],
+  source: ["Quelle", "Source"],
+  matched: ["Erfüllt", "Matched"],
+  records: ["Einträge", "Records"],
+  count: ["Anzahl", "Count"],
+  appended: ["Angehängt", "Appended"],
+  notified: ["Benachrichtigt", "Notified"],
+};
+
 export const NODE_TYPES: NodeSpec[] = [
   /* ---------- Triggers ---------- */
   spec({
     type: "trigger.record.created",
     category: "trigger",
-    name: ["Neuer Eintrag", "New record"],
-    description: ["Ein Eintrag wird in einer Datenbank angelegt.", "A record is created in a database."],
     icon: "PlusCircle",
     inline: true,
     event: "record.created",
     config: z.object({ database: id, includeForm: z.boolean().default(true) }),
     ports: out,
-    outputs: [recordOut(), actorOut, { key: "via", label: ["Über", "Via"], type: "text" }],
+    outputs: [recordOut(), actorOut, { key: "via", label: OUT.via, type: "text" }],
   }),
   spec({
     type: "trigger.record.changed",
     category: "trigger",
-    name: ["Eintrag geändert", "Record changed"],
-    description: ["Eigenschaften eines Eintrags ändern sich.", "Properties of a record change."],
     icon: "PencilSimple",
     inline: true,
     event: "record.changed",
@@ -162,16 +297,14 @@ export const NODE_TYPES: NodeSpec[] = [
     ports: out,
     outputs: [
       recordOut(),
-      { key: "before", label: ["Vorher", "Before"], type: "object" },
-      { key: "changed", label: ["Geänderte Felder", "Changed fields"], type: "list", item: "text" },
+      { key: "before", label: OUT.before, type: "object" },
+      { key: "changed", label: OUT.changed, type: "list", item: "text" },
       actorOut,
     ],
   }),
   spec({
     type: "trigger.record.done",
     category: "trigger",
-    name: ["Eintrag erledigt", "Record done"],
-    description: ["Ein Eintrag wird erledigt.", "A record becomes done."],
     icon: "CheckCircle",
     inline: true,
     event: "record.done",
@@ -182,8 +315,6 @@ export const NODE_TYPES: NodeSpec[] = [
   spec({
     type: "trigger.record.date",
     category: "trigger",
-    name: ["Datum erreicht", "Date reached"],
-    description: ["Ein Datum eines Eintrags ist erreicht oder überfällig.", "A date of a record is reached or overdue."],
     icon: "CalendarCheck",
     inline: false,
     event: "record.date",
@@ -195,13 +326,11 @@ export const NODE_TYPES: NodeSpec[] = [
       mode: z.enum(["reached", "overdue"]).default("reached"),
     }),
     ports: out,
-    outputs: [recordOut(), { key: "date", label: ["Datum", "Date"], type: "date" }],
+    outputs: [recordOut(), { key: "date", label: OUT.date, type: "date" }],
   }),
   spec({
     type: "trigger.form.submitted",
     category: "trigger",
-    name: ["Formularantwort", "Form answer"],
-    description: ["Jemand schickt das Formular einer Datenbank ab.", "Someone submits a database's form."],
     icon: "ClipboardText",
     inline: true,
     event: "form.submitted",
@@ -209,15 +338,13 @@ export const NODE_TYPES: NodeSpec[] = [
     ports: out,
     outputs: [
       recordOut(),
-      { key: "answers", label: ["Antworten", "Answers"], type: "object" },
-      { key: "respondent", label: ["Absender", "Respondent"], type: "person", children: person },
+      { key: "answers", label: OUT.answers, type: "object" },
+      { key: "respondent", label: OUT.respondent, type: "person", children: person },
     ],
   }),
   spec({
     type: "trigger.schedule",
     category: "trigger",
-    name: ["Zeitplan", "Schedule"],
-    description: ["Täglich, wöchentlich oder monatlich zu einer Uhrzeit.", "Daily, weekly or monthly at a time."],
     icon: "Clock",
     inline: false,
     event: "schedule",
@@ -230,13 +357,11 @@ export const NODE_TYPES: NodeSpec[] = [
       timeZone: z.string().min(1).max(100).optional(),
     }),
     ports: out,
-    outputs: [{ key: "slot", label: ["Termin", "Slot"], type: "object", children: [{ key: "date", label: ["Datum", "Date"], type: "date" }, { key: "time", label: ["Uhrzeit", "Time"], type: "text" }] }],
+    outputs: [{ key: "slot", label: OUT.slot, type: "object", children: [{ key: "date", label: OUT.date, type: "date" }, { key: "time", label: OUT.time, type: "text" }] }],
   }),
   spec({
     type: "trigger.page.created",
     category: "trigger",
-    name: ["Neue Seite", "New page"],
-    description: ["Eine Seite wird angelegt.", "A page is created."],
     icon: "FilePlus",
     inline: false,
     event: "page.created",
@@ -247,51 +372,43 @@ export const NODE_TYPES: NodeSpec[] = [
   spec({
     type: "trigger.page.changed",
     category: "trigger",
-    name: ["Seite geändert", "Page changed"],
-    description: ["Titel oder Inhalt einer Seite ändert sich (2 Minuten nach der letzten Änderung).", "A page's title or content changes (2 minutes after the last change)."],
     icon: "NotePencil",
     inline: false,
     event: "page.changed",
     config: z.object({ scope, what: z.array(z.enum(["title", "content"])).min(1).max(2).default(["title", "content"]) }),
     ports: out,
-    outputs: [pageOut(), actorOut, { key: "changes", label: ["Änderungen", "Changes"], type: "list", item: "text" }],
+    outputs: [pageOut(), actorOut, { key: "changes", label: OUT.changes, type: "list", item: "text" }],
   }),
   spec({
     type: "trigger.page.moved",
     category: "trigger",
-    name: ["Seite verschoben", "Page moved"],
-    description: ["Eine Seite bekommt eine neue Elternseite oder einen neuen Bereich.", "A page gets a new parent or space."],
     icon: "ArrowsOutCardinal",
     inline: false,
     event: "page.moved",
     config: z.object({ scope, to: id.optional() }),
     ports: out,
-    outputs: [pageOut(), pageOut("from", ["Von", "From"]), pageOut("to", ["Nach", "To"]), actorOut],
+    outputs: [pageOut(), pageOut("from", OUTPUT_LABELS.from), pageOut("to", OUTPUT_LABELS.to), actorOut],
   }),
   spec({
     type: "trigger.page.tagged",
     category: "trigger",
-    name: ["Tag hinzugefügt", "Tag added"],
-    description: ["Eine Seite bekommt einen Tag.", "A page gets a tag."],
     icon: "Tag",
     inline: false,
     event: "page.tagged",
     config: z.object({ scope, tags: z.array(id).max(50).default([]) }),
     ports: out,
-    outputs: [pageOut(), { key: "tag", label: ["Tag", "Tag"], type: "text" }, actorOut],
+    outputs: [pageOut(), { key: "tag", label: OUT.tag, type: "text" }, actorOut],
   }),
   spec({
     type: "trigger.comment.created",
     category: "trigger",
-    name: ["Neuer Kommentar", "New comment"],
-    description: ["Jemand kommentiert eine Seite oder einen Eintrag.", "Someone comments on a page or record."],
     icon: "ChatCircle",
     inline: false,
     event: "comment.created",
     config: z.object({ scope, on: z.array(z.enum(["pages", "records"])).min(1).max(2).default(["pages", "records"]), inline: z.boolean().default(true) }),
     ports: out,
     outputs: [
-      { key: "comment", label: ["Kommentar", "Comment"], type: "object", children: [{ key: "id", label: ["ID", "ID"], type: "text" }, { key: "text", label: ["Text", "Text"], type: "text" }, { key: "url", label: ["Adresse", "URL"], type: "text" }] },
+      { key: "comment", label: OUT.comment, type: "object", children: [{ key: "id", label: OUT.id, type: "text" }, { key: "text", label: OUT.text, type: "text" }, { key: "url", label: OUT.url, type: "text" }] },
       pageOut(),
       recordOut(),
       actorOut,
@@ -300,20 +417,16 @@ export const NODE_TYPES: NodeSpec[] = [
   spec({
     type: "trigger.mention",
     category: "trigger",
-    name: ["Erwähnung", "Mention"],
-    description: ["Jemand wird in einer Seite, einem Eintrag oder Kommentar erwähnt.", "Someone is mentioned in a page, record or comment."],
     icon: "At",
     inline: false,
     event: "mention",
     config: z.object({ scope, who: z.enum(["any", "me", "people"]).default("any"), people: z.array(id).max(50).default([]) }),
     ports: out,
-    outputs: [pageOut(), recordOut(), { key: "mentioned", label: ["Erwähnt", "Mentioned"], type: "person", children: person }, actorOut],
+    outputs: [pageOut(), recordOut(), { key: "mentioned", label: OUT.mentioned, type: "person", children: person }, actorOut],
   }),
   spec({
     type: "trigger.manual",
     category: "trigger",
-    name: ["Manuell starten", "Start manually"],
-    description: ["Startet über „Ausführen“, die API oder einen Knopf.", "Starts with “Run”, the API or a button."],
     icon: "Play",
     inline: false,
     event: "manual",
@@ -328,28 +441,24 @@ export const NODE_TYPES: NodeSpec[] = [
     }),
     ports: out,
     outputs: [
-      { key: "inputs", label: ["Eingaben", "Inputs"], type: "object" },
-      { key: "startedBy", label: ["Gestartet von", "Started by"], type: "person", children: person },
-      { key: "source", label: ["Quelle", "Source"], type: "text" },
+      { key: "inputs", label: OUT.inputs, type: "object" },
+      { key: "startedBy", label: OUT.startedBy, type: "person", children: person },
+      { key: "source", label: OUT.source, type: "text" },
     ],
   }),
   /* ---------- Logic ---------- */
   spec({
     type: "logic.if",
     category: "logic",
-    name: ["Wenn", "If"],
-    description: ["Verzweigt nach Bedingungen.", "Branches on conditions."],
     icon: "GitFork",
     inline: true,
     config: z.object({ condition: conditionGroupSchema }),
     ports: () => ["true", "false"],
-    outputs: [{ key: "matched", label: ["Erfüllt", "Matched"], type: "boolean" }],
+    outputs: [{ key: "matched", label: OUT.matched, type: "boolean" }],
   }),
   spec({
     type: "logic.set",
     category: "logic",
-    name: ["Werte setzen", "Set values"],
-    description: ["Benannte Werte für spätere Knoten.", "Named values for later nodes."],
     icon: "Equals",
     inline: true,
     config: z.object({
@@ -365,8 +474,6 @@ export const NODE_TYPES: NodeSpec[] = [
   spec({
     type: "logic.stop",
     category: "logic",
-    name: ["Beenden", "Stop"],
-    description: ["Beendet den Lauf erfolgreich oder als Fehler.", "Ends the run as succeeded or failed."],
     icon: "StopCircle",
     inline: true,
     config: z.object({ result: z.enum(["succeeded", "failed"]).default("succeeded"), message: shortTmpl.default("") }),
@@ -377,8 +484,6 @@ export const NODE_TYPES: NodeSpec[] = [
   spec({
     type: "action.record.create",
     category: "records",
-    name: ["Eintrag anlegen", "Create record"],
-    description: ["Legt einen Eintrag in einer Datenbank an.", "Creates a record in a database."],
     icon: "Rows",
     inline: false,
     config: z.object({ database: id, values, template: z.string().max(60).default("") }),
@@ -388,8 +493,6 @@ export const NODE_TYPES: NodeSpec[] = [
   spec({
     type: "action.record.update",
     category: "records",
-    name: ["Eintrag ändern", "Update record"],
-    description: ["Ändert Eigenschaften eines Eintrags.", "Changes properties of a record."],
     icon: "PencilLine",
     // Inline only on the triggering record (lib/workflows/inline.ts).
     inline: true,
@@ -401,13 +504,11 @@ export const NODE_TYPES: NodeSpec[] = [
       onlyEmpty: z.boolean().default(false),
     }),
     ports: out,
-    outputs: [recordOut(), { key: "before", label: ["Vorher", "Before"], type: "object" }],
+    outputs: [recordOut(), { key: "before", label: OUT.before, type: "object" }],
   }),
   spec({
     type: "action.record.find",
     category: "records",
-    name: ["Einträge finden", "Find records"],
-    description: ["Sucht Einträge nach Bedingungen.", "Finds records by conditions."],
     icon: "MagnifyingGlass",
     inline: false,
     config: z.object({
@@ -419,16 +520,14 @@ export const NODE_TYPES: NodeSpec[] = [
     }),
     ports: out,
     outputs: [
-      { key: "records", label: ["Einträge", "Records"], type: "list", item: "record" },
+      { key: "records", label: OUT.records, type: "list", item: "record" },
       recordOut("first"),
-      { key: "count", label: ["Anzahl", "Count"], type: "number" },
+      { key: "count", label: OUT.count, type: "number" },
     ],
   }),
   spec({
     type: "action.record.template",
     category: "records",
-    name: ["Vorlage anwenden", "Apply template"],
-    description: ["Wendet eine Eintragsvorlage auf einen Eintrag an.", "Applies a record template to a record."],
     icon: "Stamp",
     inline: true,
     config: z.object({ record: shortTmpl.default(""), database: id.optional(), template: z.string().min(1).max(60), mode: z.enum(["empty", "append"]).default("empty") }),
@@ -439,8 +538,6 @@ export const NODE_TYPES: NodeSpec[] = [
   spec({
     type: "action.page.create",
     category: "pages",
-    name: ["Seite anlegen", "Create page"],
-    description: ["Legt eine Seite unter einer Elternseite an.", "Creates a page below a parent page."],
     icon: "FilePlus",
     inline: false,
     config: z.object({
@@ -456,8 +553,6 @@ export const NODE_TYPES: NodeSpec[] = [
   spec({
     type: "action.page.append",
     category: "pages",
-    name: ["An Seite anhängen", "Append to page"],
-    description: ["Fügt Blöcke am Ende, am Anfang oder unter einer Überschrift ein.", "Adds blocks at the end, the start or below a heading."],
     icon: "ListPlus",
     inline: false,
     config: z.object({
@@ -468,13 +563,11 @@ export const NODE_TYPES: NodeSpec[] = [
       noDuplicate: z.boolean().default(false),
     }),
     ports: out,
-    outputs: [pageOut(), { key: "appended", label: ["Angehängt", "Appended"], type: "number" }],
+    outputs: [pageOut(), { key: "appended", label: OUT.appended, type: "number" }],
   }),
   spec({
     type: "action.page.tag",
     category: "pages",
-    name: ["Seite taggen", "Tag page"],
-    description: ["Fügt einer Seite Tags hinzu oder entfernt sie.", "Adds tags to a page or removes them."],
     icon: "Tag",
     inline: false,
     config: z.object({ page: shortTmpl, op: z.enum(["add", "remove"]).default("add"), tags: z.array(id).min(1).max(30) }),
@@ -484,8 +577,6 @@ export const NODE_TYPES: NodeSpec[] = [
   spec({
     type: "action.page.move",
     category: "pages",
-    name: ["Seite verschieben", "Move page"],
-    description: ["Verschiebt eine Seite unter eine neue Elternseite.", "Moves a page below a new parent."],
     icon: "ArrowBendDownRight",
     inline: false,
     config: z.object({ page: shortTmpl, parent: shortTmpl, position: z.enum(["start", "end"]).default("end") }),
@@ -496,8 +587,6 @@ export const NODE_TYPES: NodeSpec[] = [
   spec({
     type: "notify.person",
     category: "notify",
-    name: ["Person benachrichtigen", "Notify person"],
-    description: ["Benachrichtigung in der App, per Push, E-Mail oder Chat-App.", "A notification in the app, by push, email or chat app."],
     icon: "Bell",
     inline: true,
     config: z.object({
@@ -515,7 +604,7 @@ export const NODE_TYPES: NodeSpec[] = [
       ruleName: z.string().max(120).optional(),
     }),
     ports: out,
-    outputs: [{ key: "notified", label: ["Benachrichtigt", "Notified"], type: "number" }],
+    outputs: [{ key: "notified", label: OUT.notified, type: "number" }],
   }),
 ];
 

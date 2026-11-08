@@ -101,6 +101,8 @@ const labels: Record<string, string> = {
   "Kommentare und Antworten": "Comments and replies",
   "Datums-Erinnerungen": "Date reminders",
   "Automationen in Datenbanken": "Database automations",
+  "Nachrichten von Workflows": "Messages from workflows",
+  "Fehler, Pausen und Freigaben von Workflows": "Errors, pauses and approvals of workflows",
   "Gastkommentare und Gasteinträge": "Guest comments and guest records",
   "Mit dir geteilte Seiten": "Pages shared with you",
   "Änderungen an Seiten, denen du folgst": "Changes to pages you follow",

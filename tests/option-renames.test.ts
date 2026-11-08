@@ -33,7 +33,7 @@ test("the options text: renames and merges in place; additions, removals and mov
   assert.deepEqual(optionRenames(list, ["Offen", "In Arbeit", "Erledigt", ""]), []);
   assert.deepEqual(cleanOptions(["Offen", " Offen", "", "Erledigt "]), ["Offen", "Erledigt"]);
   // What the confirmation calls a merge, and when it says the merged
-  // option's own "Workflow and done" settings go.
+  // option's own "Status rules and done" settings go.
   const renames = [
     { field: "status", from: "Offen", to: "Neu" },
     { field: "status", from: "In Arbeit", to: "Neu" },

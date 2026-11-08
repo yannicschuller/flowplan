@@ -31,8 +31,8 @@ for await (const line of createInterface({ input: process.stdin })) {
   const reply = (data: object) => say({ id: c.id, ...data });
   try {
     if (c.op === "run") {
-      const user = (await one<Record<string, unknown>>("SELECT * FROM users WHERE id=?", c.userId))!;
-      reply(await command({ ...user, groups: [], isAdmin: false } as never, { action: "workflow.run", pageId: c.pageId, inputs: c.inputs || {} }));
+      const user = (await one<Record<string, unknown>>("SELECT * FROM users WHERE id=?", String(c.userId)))!;
+      reply((await command({ ...user, groups: [], isAdmin: false } as never, { action: "workflow.run", pageId: c.pageId, inputs: c.inputs || {} })) as object);
     } else if (c.op === "tick") reply({ emitted: await processWorkflowSchedules(c.now) });
     else if (c.op === "stop") {
       await stopWorkflowWorker();

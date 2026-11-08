@@ -30,7 +30,6 @@ export const BUILTIN_ROOTS: Record<string, [string, string, string]> = {
   $now: ["Jetzt", "Now", "Maintenant"],
 };
 // Filters: stored (English) name → German name (both are accepted when typed).
-// i18n-table: 1 – [stored, German]
 export const FILTERS: Record<string, string> = {
   date: "datum",
   add_days: "plus_tage",

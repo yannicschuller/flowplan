@@ -5435,7 +5435,7 @@ export default function DatabaseView({
                             : t(`„${from}“ in „${to}“ umbenennen (${n} Einträge).`, `Rename “${from}” to “${to}” in ${n} records.`)}
                         {merges.has(r) &&
                           hasOwnSettings(data.database.settings, r.field, from) &&
-                          ` ${t(`„${from}“ verliert seine eigenen Einstellungen unter „Workflow und Erledigt“.`, `“${from}” loses its own settings under “Workflow and done”.`)}`}
+                          ` ${t(`„${from}“ verliert seine eigenen Einstellungen unter „Statusregeln und Erledigt“.`, `“${from}” loses its own settings under “Status rules and done”.`)}`}
                       </li>
                     );
                   });

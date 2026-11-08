@@ -93,7 +93,7 @@ test("renaming a select option keeps its records and filters", async ({ page }, 
   await dialog.getByRole("button", { name: "Speichern", exact: true }).click();
   // "Offen" is owners-only in the workflow: the merge drops that.
   await expect(confirm.getByRole("listitem")).toHaveText([
-    "„Offen“ mit „Erledigt“ zusammenführen (1 Eintrag). „Offen“ verliert seine eigenen Einstellungen unter „Workflow und Erledigt“.",
+    "„Offen“ mit „Erledigt“ zusammenführen (1 Eintrag). „Offen“ verliert seine eigenen Einstellungen unter „Statusregeln und Erledigt“.",
   ]);
   await confirm.getByRole("button", { name: "Einträge anpassen" }).click();
   await expect(dialog).toBeHidden();

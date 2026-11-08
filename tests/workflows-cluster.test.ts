@@ -134,7 +134,7 @@ test("three instances, one killed hard: every run ends, every effect exactly onc
   const titles = (await all<{ cells: string }>("SELECT cells FROM rows WHERE page_id=?", db)).map((r) => JSON.parse(r.cells).title as string);
   assert.equal(titles.length, RUNS, "one record per run");
   assert.equal(new Set(titles).size, RUNS);
-  assert.ok(titles.every((t) => /^R\d+-b-c done$/.test(t)), titles.find((t) => !/done$/.test(t)));
+  assert.ok(titles.every((t) => /^R\d+-b-c done$/.test(t)), String(titles.find((t) => !/done$/.test(t))));
   const perNode = await all<{ node_id: string; n: number }>("SELECT s.node_id,COUNT(*) n FROM workflow_steps s JOIN workflow_runs r ON r.id=s.run_id WHERE r.page_id=? GROUP BY s.node_id", pageId);
   assert.ok(perNode.every((s) => Number(s.n) === RUNS), JSON.stringify(perNode));
   const byInstance = await all<{ claimed_by: string; n: number }>("SELECT claimed_by,COUNT(*) n FROM workflow_steps WHERE claimed_by IS NOT NULL GROUP BY claimed_by ORDER BY claimed_by");

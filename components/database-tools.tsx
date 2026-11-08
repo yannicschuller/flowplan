@@ -61,7 +61,7 @@ export function DatabaseTools({
             {item(<Copy />, t("Datensatzvorlagen", "Record templates"), onTemplates)}
             <Dropdown.Separator className="dropdown-separator" />
             {item(<Lightning />, t("Automationen", "Automations"), () => setPanel("automations"), rules ? String(rules) : undefined)}
-            {item(<FlowArrow />, t("Workflow und Erledigt", "Workflow and done"), () => setPanel("workflow"), settings.workflow ? "✓" : undefined)}
+            {item(<FlowArrow />, t("Statusregeln und Erledigt", "Status rules and done"), () => setPanel("workflow"), settings.workflow ? "✓" : undefined)}
             {database.fields.some((f) => f.type === "time") && item(<Timer />, t("Zeiten auswerten", "Time report"), () => setPanel("time"))}
             {editable && item(<GitBranch />, t("Git-Anbindung", "Git connection"), () => setPanel("git"), settings.git ? "✓" : undefined)}
             <IssueSyncMenuItem pageId={page.id} />
@@ -78,7 +78,7 @@ export function DatabaseTools({
       <Modal open={panel === "time"} onClose={() => setPanel(null)} title={t(`Zeiten · ${page.title}`, `Time · ${page.title}`)} wide>
         {panel === "time" && <TimeReport pageId={page.id} workspaceId={page.workspace_id} title={page.title} />}
       </Modal>
-      <Modal open={panel === "workflow"} onClose={() => setPanel(null)} title={t("Workflow und Erledigt", "Workflow and done")} wide>
+      <Modal open={panel === "workflow"} onClose={() => setPanel(null)} title={t("Statusregeln und Erledigt", "Status rules and done")} wide>
         <DatabaseWorkflow
           key={String(database.version)}
           fields={database.fields}
