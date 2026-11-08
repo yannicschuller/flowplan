@@ -178,6 +178,7 @@ import {
   CaretDown,
 } from "@phosphor-icons/react";
 import { useSoftKeyboard } from "./mobile-tab-bar";
+import { followKeyboard, keepCaretAboveKeyboard } from "./keep-caret";
 import { PluginBlockView, pagePlugins, type PluginInfo } from "./plugin-block";
 import { WorkflowButtonView } from "./workflow-button";
 import { api, isTransient, Modal, PageIcon, sessionEnded } from "./ui";
@@ -780,6 +781,9 @@ export default function DocumentEditor({
           class: "document-editor",
           "aria-label": t("Dokumentinhalt", "Document content"),
         },
+        // With the on-screen keyboard docked, the caret stays above it and
+        // its toolbar (#181, components/keep-caret.ts).
+        handleScrollToSelection: (view) => keepCaretAboveKeyboard(view),
         // Images and files from the clipboard or dropped on the page are
         // uploaded and inserted where the caret is.
         handlePaste: (_view, event) => {
@@ -945,6 +949,11 @@ export default function DocumentEditor({
   useEffect(() => {
     if (editor && !editor.isDestroyed) refreshCaptions(editor.view);
   }, [editor, numberCaptions]);
+  // The caret follows the keyboard as it comes up and moves (#181).
+  useEffect(() => {
+    if (!editor || editor.isDestroyed || !editable || !keyboardOpen) return;
+    return followKeyboard(editor.view);
+  }, [editor, editable, keyboardOpen]);
   // A page just created from the "Diagramm-Seite" template: draw.io opens
   // for its empty diagram as soon as the content is in the editor (the
   // Yjs binding fills it a moment after the editor exists).

@@ -6,6 +6,7 @@
 import { Bell, House, List, MagnifyingGlass, Plus, X } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { useT } from "./i18n";
+import { coveredBelow } from "@/lib/keyboard-caret";
 
 const TEXT_INPUT = /^(text|search|email|url|tel|password|number|date|datetime-local|month|time|week)$/;
 // Whether a text field has the focus (the on-screen keyboard is up for it).
@@ -37,8 +38,25 @@ const viewport =
 //   viewport: bottom: 0 lies behind the keyboard, the inset lifts it out.
 // - A web view the app resizes itself (Android) or a browser that resizes
 //   the page: the layout viewport ends at the keyboard, the inset is 0.
+// The pane the focused field scrolls in also gets --keyboard-cover on <html>:
+// how far the keyboard reaches into that pane, measured against the pane
+// itself (#181) – the inset above comes from innerHeight, which iOS 26
+// shortens by what it moved the visible area down the page, so there it is
+// often 0 while the keyboard covers the end of the pane.
 // One shared listener for every component that asks.
 let keyboardOpen = false;
+let measureKeyboard: (() => void) | null = null;
+// Measures at once (before scrolling the caret into view, #181).
+export function remeasureKeyboard() {
+  measureKeyboard?.();
+}
+const SCROLLING = /^(auto|scroll|overlay)$/;
+// The nearest element around `from` that scrolls vertically.
+export function scrollPane(from: Element | null): HTMLElement | null {
+  for (let el = from?.parentElement ?? null; el && el !== document.body; el = el.parentElement)
+    if (SCROLLING.test(getComputedStyle(el).overflowY)) return el;
+  return null;
+}
 const keyboardListeners = new Set<(open: boolean) => void>();
 let stopKeyboardWatch: (() => void) | null = null;
 function watchKeyboard() {
@@ -51,6 +69,7 @@ function watchKeyboard() {
   }
   let frame = 0;
   let inset = -1;
+  let cover = -1;
   let visibleEnd = -1;
   const measure = () => {
     const height = vv?.height ?? window.innerHeight;
@@ -80,6 +99,13 @@ function watchKeyboard() {
     // html.keyboard-docked); where both agree (Android, desktop browsers) it
     // lands at the same spot.
     const end = vv && open && vv.scale < 1.01 ? Math.round(vv.offsetTop + vv.height) : 0;
+    const pane = vv && end ? scrollPane(document.activeElement) : null;
+    const covered = pane ? coveredBelow(pane.getBoundingClientRect().bottom, vv!) : 0;
+    if (covered !== cover) {
+      cover = covered;
+      if (covered) root.style.setProperty("--keyboard-cover", `${covered}px`);
+      else root.style.removeProperty("--keyboard-cover");
+    }
     if (end !== visibleEnd) {
       visibleEnd = end;
       if (end) {
@@ -116,7 +142,9 @@ function watchKeyboard() {
   document.addEventListener("focusin", settle);
   document.addEventListener("focusout", settle);
   measure();
+  measureKeyboard = measure;
   return () => {
+    measureKeyboard = null;
     cancelAnimationFrame(frame);
     for (const t of followUps) clearTimeout(t);
     vv?.removeEventListener("resize", settle);
@@ -127,6 +155,7 @@ function watchKeyboard() {
     document.removeEventListener("focusout", settle);
     root.style.removeProperty("--keyboard-inset");
     root.style.removeProperty("--keyboard-visible-end");
+    root.style.removeProperty("--keyboard-cover");
     root.classList.remove("keyboard-docked");
     keyboardOpen = false;
   };

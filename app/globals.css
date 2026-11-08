@@ -6079,9 +6079,11 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
       8px 0 0 var(--bg);
   }
   /* Room for the toolbar – and for a keyboard that only covers the page –
-     so the end of the text still scrolls into view. */
+     so the end of the text still scrolls into view. --keyboard-cover is how
+     far the keyboard reaches into the pane (#181: on iOS 26 the inset is
+     often 0 once iOS has moved the visible area). */
   .page-layout .editor-wrapper {
-    padding-bottom: calc(56px + var(--keyboard-inset, 0px));
+    padding-bottom: calc(56px + max(var(--keyboard-inset, 0px), var(--keyboard-cover, 0px)));
   }
   .mobile-menu {
     display: flex;
@@ -26726,7 +26728,7 @@ tr:hover .row-open-mark,
   /* Room for the docked toolbar – and for a keyboard that only covers the
      page – so the end of the record's text still scrolls into view. */
   html.keyboard-docked .row-document .editor-wrapper:focus-within {
-    padding-bottom: calc(56px + var(--keyboard-inset, 0px));
+    padding-bottom: calc(56px + max(var(--keyboard-inset, 0px), var(--keyboard-cover, 0px)));
   }
   /* "Hide keyboard" for every other text field (components/
      hide-keyboard-button.tsx): a round button at the right edge, right
