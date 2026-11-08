@@ -518,6 +518,8 @@
   width: 12px;
   height: 12px;
   border: 2px solid var(--bg);
+  /* base.css of xyflow leaves the shape to the app: round, not a square. */
+  border-radius: 50%;
   background: var(--secondary);
   box-shadow: 0 0 0 1px var(--muted);
 }
