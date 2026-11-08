@@ -53,6 +53,7 @@ Every issue/PR always carries exactly one `status:` label plus one type label. W
    - Also look at `status: needs reporter info` issues with **no** answer for more than 30 days and list them in the report (Yannic decides whether to close them as stale).
 3. Skip: our own comments, duplicates of things already handled, Dependabot PRs unless asked (list them in the summary).
 4. Read every new item fully, including screenshots (images in the body) and linked issues. Look at the relevant code before judging.
+   - Images from `github.com/user-attachments/...` often can't be downloaded in the session (the download returns JSON or an error, not the image). Then **ask Yannic for the pictures**: name the issue number, say how many images and where they are (e.g. "#171, the screenshot under 'Describe the solution'"), and ask him to paste them into the chat. Don't guess what a screenshot shows; if it matters for judging the item, wait for it or ask the reporter.
 
 ## Step 2 – Judge and ask (before any code)
 
