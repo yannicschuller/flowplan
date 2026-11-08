@@ -15243,6 +15243,30 @@ li[data-journal-since] > label::after {
   font-variant-numeric: tabular-nums;
   font-weight: 500;
 }
+/* "Alle / Nur meine": a small segmented control at the end of the header. */
+.journal-completed .journal-completed-filter {
+  margin-left: auto;
+  padding: 2px;
+  border-radius: 8px;
+}
+.journal-completed .journal-completed-filter label {
+  padding: 3px 9px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.journal-completed .journal-completed-filter label:has(input:focus-visible) {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+.journal-completed-empty {
+  margin: 0;
+  color: var(--muted);
+}
+@media print {
+  .journal-completed-filter {
+    display: none !important;
+  }
+}
 .journal-completed ul {
   list-style: none;
   margin: 0;
@@ -24076,6 +24100,54 @@ h3 .block-reactions {
 .ai-writer-job .ai-device-chip {
   margin-left: auto;
 }
+/* "Text verbessern" in quick capture (components/quick-capture.tsx): the
+   button under the text, the answer as a preview in the writing
+   assistant's style – as plain text, the way it is captured. */
+.quick-capture-ai-row {
+  display: flex;
+  margin-top: -2px;
+}
+.quick-capture-improve svg,
+.quick-capture-ai .ai-writer-job svg {
+  color: var(--blue);
+}
+.quick-capture-improve:disabled svg {
+  color: inherit;
+}
+.quick-capture-ai {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 12px;
+  background: var(--bg);
+  box-shadow: 0 0 0 1px var(--border);
+  animation: ai-panel-in 0.18s var(--ease-out, ease) both;
+}
+.quick-capture-ai .ai-preview {
+  max-height: min(34vh, 320px);
+}
+.ai-preview p.quick-capture-preview-title {
+  margin: 0 0 0.3em;
+  font-weight: 600;
+}
+.ai-preview p.quick-capture-preview-text {
+  margin: 0;
+  white-space: pre-wrap;
+}
+/* Shorthand or links the AI changed (#172): a warning, not an error. */
+.ai-preview p.quick-capture-lost {
+  margin: 0.5em 0 0;
+  font-size: 0.9em;
+  color: var(--secondary);
+}
+@media (max-width: 600px) {
+  .quick-capture-ai .ai-writer-buttons .button {
+    flex: 1 1 auto;
+    justify-content: center;
+    min-height: 40px;
+  }
+}
 .ai-summary-source {
   margin: 0 0 6px;
 }
@@ -31257,6 +31329,11 @@ label.ws-search input {
   gap: 6px;
   overflow-x: auto;
   scrollbar-width: none;
+  /* A scrolling row clips on both axes: room for the pills' borders and
+     focus ring (on iPhone the bottom edge was cut by a fraction of a
+     pixel), taken back from the layout by the negative margin. */
+  padding: 3px 2px;
+  margin: -3px -2px;
 }
 .admin-user-filters::-webkit-scrollbar {
   display: none;

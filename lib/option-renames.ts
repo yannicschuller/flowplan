@@ -3,7 +3,7 @@
 // and the server carries everything that stores the old name over to the
 // new one (lib/option-renames-server.ts). Client-safe (no server imports).
 import { z } from "zod";
-import { groupKey } from "./database-groups";
+import { groupKey, pathCollapseKey } from "./database-groups";
 import { MAX_ORDERED_ROWS } from "./row-order";
 import type { DatabaseSettings } from "./database-settings-schema";
 import type { FilterGroup, FilterNode, View } from "./types";
@@ -148,20 +148,44 @@ function renameRecord<V>(entries: Record<string, V>, map: Map<string, string>, m
   return out;
 }
 
-// Filters, filter groups and the grouping state of the views; changes the
-// views in place.
+// Collapsed nested groups are addressed by the keys of all their levels
+// (["sub", level 1, level 2, …]; swimlanes ["sub", "lane", subgroup]),
+// each renamed with the property of its level.
+function renamePathKey(key: string, levels: (Map<string, string> | undefined)[]) {
+  let value: unknown;
+  try {
+    value = JSON.parse(key);
+  } catch {
+    return key;
+  }
+  if (!Array.isArray(value) || value[0] !== "sub") return key;
+  const lane = value[1] === "lane",
+    path = value.slice(lane ? 2 : 1);
+  if (!path.every((part) => typeof part === "string")) return key;
+  const next = (path as string[]).map((part, i) => {
+    const map = levels[i + (lane ? 1 : 0)];
+    return map ? renameKey(part, map) : part;
+  });
+  return next.some((part, i) => part !== path[i]) ? pathCollapseKey([...(lane ? ["lane"] : []), ...next]) : key;
+}
+
+// Filters, filter groups and the grouping state of the views (on every
+// grouping level); changes the views in place.
 export function renameInViews(views: View[], maps: RenameMaps) {
   for (const v of views) {
     v.filters = v.filters.map((f) => renameCondition(f, maps));
     if (v.filterGroup) v.filterGroup = renameGroup(v.filterGroup, maps);
-    const map = v.groupBy ? maps.get(v.groupBy) : undefined;
-    if (!map) continue;
+    const levels = [v.groupBy, v.subGroupBy, ...(v.groupLevels || [])].map((fid) => (fid ? maps.get(fid) : undefined));
+    if (!levels.some(Boolean)) continue;
+    // Columns, their order, limits and card order belong to the first level.
+    const map = levels[0];
     if (v.groupSettings)
       v.groupSettings = {
         ...v.groupSettings,
-        collapsed: renameKeys(v.groupSettings.collapsed, map),
-        ...(v.groupSettings.order ? { order: renameKeys(v.groupSettings.order, map) } : {}),
+        collapsed: [...new Set(v.groupSettings.collapsed.map((k) => renamePathKey(map ? renameKey(k, map) : k, levels)))],
+        ...(map && v.groupSettings.order ? { order: renameKeys(v.groupSettings.order, map) } : {}),
       };
+    if (!map) continue;
     if (v.wip) v.wip = renameRecord(v.wip, map);
     if (v.groupRowOrder)
       v.groupRowOrder = renameRecord(v.groupRowOrder, map, (a, b) => [...new Set([...a, ...b])].slice(0, MAX_ORDERED_ROWS));

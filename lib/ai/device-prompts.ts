@@ -6,7 +6,7 @@
 // JSON, turned into the same Markdown the server's summaries have.
 //
 // Plain functions, no server imports: everything here runs in the browser.
-import { guessLanguage, SUMMARY_HEADINGS, WRITE_LANGUAGES, type AiLocale, type WriteRequest } from "./prompts";
+import { CAPTURE_RULES, guessLanguage, SUMMARY_HEADINGS, WRITE_LANGUAGES, type AiLocale, type WriteRequest } from "./prompts";
 
 export const DEVICE_LIMITS = {
   // The model's context (tokens): instructions, text and answer together.
@@ -178,7 +178,7 @@ export function deviceWritePrompt(request: WriteRequest): DevicePrompt {
   const long = ["expand", "prompt", "table", "list"].includes(request.action);
   const answer = Math.ceil(deviceTokens(text) * (request.action === "expand" ? 2.2 : request.action === "shorten" ? 0.7 : 1.2)) + 200;
   return {
-    instructions: [x.role, task, x.rules, language].join(" "),
+    instructions: [x.role, task, x.rules, language, ...(request.capture ? CAPTURE_RULES : [])].join(" "),
     prompt: parts.join("\n\n"),
     maxTokens: Math.min(long ? 2000 : 1500, Math.max(long ? 800 : 300, answer)),
     temperature: request.action === "improve" ? 0.1 : request.action === "translate" ? 0.2 : request.action === "prompt" ? 0.7 : 0.5,

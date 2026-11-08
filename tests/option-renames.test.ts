@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Field, Identity, View } from "../lib/types";
 import { cleanOptions, hasOwnSettings, mergesOf, optionRenames } from "../lib/option-renames";
-import { groupKey } from "../lib/database-groups";
+import { groupKey, pathCollapseKey } from "../lib/database-groups";
 
 test("the options text: renames and merges in place; additions, removals and moves stay what they are", () => {
   const list = ["Offen", "In Arbeit", "Erledigt"];
@@ -267,4 +267,170 @@ test("a merge gives the merged option's rules up to the target's; editors stay w
     /nur für bestimmte Personen/,
   );
   assert.deepEqual((await cells(working)).labels, ["Rot", "Blau"]);
+});
+
+const rowVersion = async (rowId: string) => (await one<{ version: number }>("SELECT version FROM rows WHERE id=?", rowId))!.version;
+const latestVersion = async (pageId: string) =>
+  (await one<{ id: string; html: string }>("SELECT id,html FROM snapshots WHERE page_id=? ORDER BY created_at DESC,seq DESC LIMIT 1", pageId))!;
+
+test("restoring the version from before a rename brings the settings back with the options", async () => {
+  const { pageId, working } = await setup();
+  await act({ action: "row.update", pageId, rowId: working, version: await rowVersion(working), cells: { status: "Erledigt" } });
+  await act({
+    action: "database.settings",
+    pageId,
+    settings: {
+      done: { field: "status", values: ["Erledigt"] },
+      workflow: { field: "status", transitions: { "In Arbeit": ["Erledigt"] }, required: { Erledigt: ["labels"] }, ownersOnly: [] },
+      automations: [{ id: "a1", trigger: { type: "changed", field: "status", to: "Erledigt" }, conditions: [], actions: [{ type: "set", field: "labels", value: ["Grün"] }] }],
+    },
+  });
+  // An issue sync mapping the status (the connection does not matter here).
+  const connection = id();
+  await run(
+    "INSERT INTO issue_connections(id,workspace_id,provider,token,hook_token,hook_secret,created_by,created_at) VALUES(?,?,?,?,?,?,?,?)",
+    connection,
+    wid,
+    "github",
+    "x",
+    id(),
+    "x",
+    owner.id,
+    Date.now(),
+  );
+  const mapping = [
+    { value: "Offen", state: "open", label: "" },
+    { value: "Erledigt", state: "closed", label: "" },
+  ];
+  await run(
+    "INSERT INTO issue_sync_maps(page_id,connection_id,repo,config,created_at) VALUES(?,?,?,?,?)",
+    pageId,
+    connection,
+    "acme/app",
+    JSON.stringify({ title: "title", status: { field: "status", map: mapping } }),
+    Date.now(),
+  );
+  const syncStatus = async () => JSON.parse((await one<{ config: string }>("SELECT config FROM issue_sync_maps WHERE page_id=?", pageId))!.config).status;
+  const before = await databaseSettings(pageId);
+
+  await rename(pageId, withOptions("status", ["Offen", "In Arbeit", "Fertig"]), [{ field: "status", from: "Erledigt", to: "Fertig" }]);
+  assert.deepEqual((await databaseSettings(pageId)).done!.values, ["Fertig"]);
+  assert.equal((await syncStatus()).map[1].value, "Fertig");
+  // Meanwhile a sprint is planned: not part of the version.
+  await act({ action: "database.settings", pageId, settings: { sprints: [{ id: "s1", name: "Sprint 1", start: "2026-11-02", end: "2026-11-13" }] } });
+
+  await act({ action: "snapshot.restore", pageId, snapshotId: (await latestVersion(pageId)).id }, editor);
+  assert.deepEqual((await database(pageId)).fields.find((f) => f.id === "status")!.options, ["Offen", "In Arbeit", "Erledigt"]);
+  assert.equal((await cells(working)).status, "Erledigt");
+  const restored = await databaseSettings(pageId);
+  assert.deepEqual(restored.done, before.done);
+  assert.deepEqual(restored.workflow, before.workflow);
+  assert.equal((restored.automations![0].trigger as { to?: string }).to, "Erledigt");
+  // The rule comes back changed: it acts for the person who restored it.
+  assert.equal(restored.automations![0].createdBy, editor.id);
+  assert.deepEqual(restored.sprints!.map((s) => s.id), ["s1"]);
+  assert.deepEqual(await syncStatus(), { field: "status", map: mapping });
+
+  // A merge is undone as well: the merged option's own rules return.
+  await rename(pageId, withOptions("status", ["Offen", "In Arbeit"]), [{ field: "status", from: "Erledigt", to: "In Arbeit" }]);
+  assert.deepEqual((await databaseSettings(pageId)).done!.values, []);
+  await act({ action: "snapshot.restore", pageId, snapshotId: (await latestVersion(pageId)).id });
+  assert.deepEqual((await databaseSettings(pageId)).done, before.done);
+  assert.deepEqual((await databaseSettings(pageId)).workflow, before.workflow);
+  assert.deepEqual(await syncStatus(), { field: "status", map: mapping });
+
+  // A version from before settings were kept leaves them as they are.
+  await rename(pageId, withOptions("status", ["Offen", "In Arbeit", "Fertig"]), [{ field: "status", from: "Erledigt", to: "Fertig" }]);
+  const old = await latestVersion(pageId);
+  const { settings: _settings, issueSyncStatus: _status, ...withoutSettings } = JSON.parse(old.html);
+  void _settings;
+  void _status;
+  await run("UPDATE snapshots SET html=? WHERE id=?", JSON.stringify(withoutSettings), old.id);
+  await act({ action: "snapshot.restore", pageId, snapshotId: old.id });
+  assert.equal((await cells(working)).status, "Erledigt");
+  assert.deepEqual((await databaseSettings(pageId)).done!.values, ["Fertig"]);
+});
+
+test("linked views on other pages and in records follow, also where the renaming person cannot edit", async () => {
+  const { escaped, htmlState } = await import("../lib/document-server");
+  const { replaceRowDocument } = await import("../lib/row-documents");
+  const { linkedDatabaseData } = await import("../lib/linked-databases");
+  const { pageId, working } = await setup();
+  const linked: View = {
+    id: "linked",
+    name: "Verknüpft",
+    type: "board",
+    groupBy: "phase",
+    subGroupBy: "status",
+    filters: [{ field: "status", op: "eq", value: "In Arbeit" }],
+    sorts: [],
+    groupSettings: { hideEmpty: false, sort: "manual", collapsed: [pathCollapseKey(["lane", groupKey("In Arbeit")])] },
+  };
+  const blockHtml = (blockId: string, source = pageId) =>
+    `<div data-linked-database="${blockId}" data-linked-source="${source}" data-linked-version="1" data-linked-views="${escaped(JSON.stringify([linked]))}"></div>`;
+  // Another database with the same option name.
+  const other = (await act({ action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, title: "Andere", kind: "database" })).id as string;
+  await act({ action: "database.update", pageId: other, version: (await database(other)).version, fields, views: [table] });
+  const host = (await act({ action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, title: "Übersicht", kind: "document" })).id as string;
+  const pageBlock = id(),
+    otherBlock = id(),
+    rowBlock = id();
+  const html = `<p>Stand</p>${blockHtml(pageBlock)}${blockHtml(otherBlock, other)}`;
+  await run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), host);
+  await replaceRowDocument(working, `<p>Notiz</p>${blockHtml(rowBlock)}`, owner.id);
+  // The editor may not change the host page.
+  await run("UPDATE pages SET locked=1 WHERE id=?", host);
+
+  await rename(pageId, withOptions("status", ["Offen", "In Bearbeitung", "Erledigt"]), [{ field: "status", from: "In Arbeit", to: "In Bearbeitung" }], undefined, editor);
+  for (const data of [(await linkedDatabaseData(owner, host, pageBlock)).database, (await linkedDatabaseData(owner, pageId, rowBlock, working)).database]) {
+    assert.deepEqual(data.views[0].filters, [{ field: "status", op: "eq", value: "In Bearbeitung" }]);
+    assert.deepEqual(data.views[0].groupSettings!.collapsed, [pathCollapseKey(["lane", groupKey("In Bearbeitung")])]);
+    // A linked view open elsewhere reloads before saving its views.
+    assert.equal(data.version, 2);
+  }
+  // The same name in another database's block stays, and so does the text.
+  const untouched = (await linkedDatabaseData(owner, host, otherBlock)).database;
+  assert.deepEqual(untouched.views[0].filters, [{ field: "status", op: "eq", value: "In Arbeit" }]);
+  assert.equal(untouched.version, 1);
+  assert.match((await one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", host))!.html, /<p>Stand<\/p>/);
+});
+
+test("collapsed groups below the first level follow with the property of their level", async () => {
+  const { renameInViews, renameMaps } = await import("../lib/option-renames");
+  const view: View = {
+    id: "v",
+    name: "V",
+    type: "table",
+    groupBy: "phase",
+    subGroupBy: "status",
+    groupLevels: ["labels"],
+    filters: [],
+    sorts: [],
+    groupSettings: {
+      hideEmpty: false,
+      sort: "manual",
+      collapsed: [
+        groupKey("In Arbeit"),
+        pathCollapseKey([groupKey("In Arbeit"), groupKey("In Arbeit")]),
+        pathCollapseKey([groupKey("Fertig"), groupKey("Offen"), groupKey("Rot")]),
+        pathCollapseKey(["lane", groupKey("In Arbeit")]),
+      ],
+      order: [groupKey("In Arbeit")],
+    },
+  };
+  renameInViews(
+    [view],
+    renameMaps([
+      { field: "status", from: "In Arbeit", to: "Aktiv" },
+      { field: "labels", from: "Rot", to: "Dringend" },
+    ]),
+  );
+  assert.deepEqual(view.groupSettings!.collapsed, [
+    // The first level groups by "phase", whose "In Arbeit" stays.
+    groupKey("In Arbeit"),
+    pathCollapseKey([groupKey("In Arbeit"), groupKey("Aktiv")]),
+    pathCollapseKey([groupKey("Fertig"), groupKey("Offen"), groupKey("Dringend")]),
+    pathCollapseKey(["lane", groupKey("Aktiv")]),
+  ]);
+  assert.deepEqual(view.groupSettings!.order, [groupKey("In Arbeit")]);
 });

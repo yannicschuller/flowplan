@@ -184,6 +184,8 @@ export async function databaseSnapshot(user: Identity, page: Page) {
             "{}",
         ),
       ),
+      // The settings that name options, restored with them (#173).
+      ...(await versionSettings(page.id)),
     }),
     page.title,
     user.id,
@@ -304,5 +306,6 @@ export async function bulkRows(
 import { exportInlineComments } from "./inline-comment-archive";
 import { rowChanged } from "./automations";
 import { databaseSettings } from "./database-settings";
+import { versionSettings } from "./database-version-settings";
 import { isTagField, tagCell } from "./tag-fields";
 import { mapAsync } from "./each-async";

@@ -22,7 +22,10 @@ export type InlineBatch = {
   row: { id: string; created_by: string | null; cells: Record<string, unknown> };
   cells: Record<string, unknown>;
   patch: Record<string, unknown>;
-  templates: { key: string; template: string; mode: "empty" | "append"; label: string }[];
+  // Who set each patched field, for the status log (schema 96): a rule's
+  // creator, a workflow's runner; null for nobody.
+  setBy: Record<string, string | null>;
+  templates: { key: string; template: string; mode: "empty" | "append"; label: string; by: string | null }[];
 };
 
 export type NodeRun = {
@@ -41,7 +44,7 @@ export type NodeRun = {
   inline?: InlineBatch;
   // A database rule (not a workflow): its exact old behaviour; `created`
   // counts the records scheduled rules made in this round (their order).
-  legacy?: { ruleId: string; ruleName: string; created: { n: number; ids: string[] } };
+  legacy?: { ruleId: string; ruleName: string; createdBy: string | null; created: { n: number; ids: string[] } };
   warn: (message: string) => void;
   attempt: number;
   iteration: string;

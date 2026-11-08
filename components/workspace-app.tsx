@@ -4299,7 +4299,7 @@ export default function WorkspaceApp({
                     />
                     )}
                     {data.journalDay && data.journalDay.options?.completed !== false && (
-                      <JournalCompleted key={`completed-${data.page.id}`} pageId={data.page.id} />
+                      <JournalCompleted key={`completed-${data.page.id}`} pageId={data.page.id} journalId={data.journalDay.journalId} />
                     )}
                     </>
                   )}
@@ -5313,6 +5313,7 @@ export default function WorkspaceApp({
       {capture && (
         <QuickCapture
           workspaceId={boot.workspace.id}
+          online={online}
           onClose={() => setCapture(false)}
           mutate={mutate}
           notify={notify}

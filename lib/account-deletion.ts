@@ -266,6 +266,8 @@ async function removeAccount(userId: string, removed: { id: string }[], successo
   await run("DELETE FROM grants WHERE user_id=?", userId);
   await run("DELETE FROM members WHERE user_id=?", userId);
   await run("UPDATE spaces SET owner_id=NULL WHERE owner_id=?", userId);
+  // Who made records done (schema 96): nobody any more.
+  await run("UPDATE row_status_log SET user_id=NULL WHERE user_id=?", userId);
   try {
     await inSavepoint(async () => await run("DELETE FROM users WHERE id=?", userId));
   } catch {

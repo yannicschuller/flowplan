@@ -110,14 +110,19 @@ export async function runAutomations(input: { page: Page; rowId: string; actor: 
 
 /* ---------- Status history (burndown, velocity) ---------- */
 
-// When a record became done or open again, for sprint charts.
-export async function recordStatusChange(pageId: string, rowId: string, fields: Field[], settings: DatabaseSettings, before: Cells, after: Cells) {
+// When a record became done or open again, for sprint charts, and who did
+// it (schema 96, "Nur meine" below a journal day, lib/journal-completed.ts):
+// the acting person; for an automation the person who set the rule up;
+// null for share links, the Git connection and rules nobody set up. An
+// account that no longer exists counts as nobody.
+export async function recordStatusChange(pageId: string, rowId: string, fields: Field[], settings: DatabaseSettings, before: Cells, after: Cells, userId: string | null = null) {
   const rule = doneRule(fields, settings);
   if (!rule) return;
   const was = isDone(rule, before),
     now = isDone(rule, after);
-  if (was !== now)
-    await run("INSERT INTO row_status_log(id,page_id,row_id,done,at) VALUES(?,?,?,?,?)", id(), pageId, rowId, now ? 1 : 0, Date.now());
+  if (was === now) return;
+  const by = userId && (await one<{ id: string }>("SELECT id FROM users WHERE id=?", userId)) ? userId : null;
+  await run("INSERT INTO row_status_log(id,page_id,row_id,done,at,user_id) VALUES(?,?,?,?,?,?)", id(), pageId, rowId, now ? 1 : 0, Date.now(), by);
 }
 
 /* ---------- Hooks for every write path ---------- */
@@ -132,7 +137,7 @@ export async function rowChanged(user: Identity | null | "system", page: Page, r
   await checkParent(page, rowId, props, before, after);
   await checkWipLimits(page, props, before, after);
   await checkWorkflow(user, page, props, settings, before, after);
-  await recordStatusChange(page.id, rowId, props, settings, before, after);
+  await recordStatusChange(page.id, rowId, props, settings, before, after, user && user !== "system" ? user.id : null);
   // Webhooks: "record done" when it just became done.
   const rule = doneRule(props, settings);
   const done = !!rule && isDone(rule, after) && !isDone(rule, before);

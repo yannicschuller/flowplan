@@ -45,7 +45,10 @@ const input = z.object({
   context: z.boolean().optional(),
   // Link relevant existing pages in the answer.
   links: z.boolean().optional(),
-  locale: z.enum(["de", "en", "fr"]).default("de"),
+  // A quick capture (#172): its shorthand (#tag @person !priority dates)
+  // stays as typed (lib/ai/prompts.ts CAPTURE_RULES).
+  capture: z.boolean().optional(),
+  locale: z.enum(["de", "en", "fr", "zh"]).default("de"),
 });
 
 // POST /api/ai/write → the answer as a text stream (lib/ai/run.ts).
@@ -106,6 +109,7 @@ export async function aiWriteResponse(user: Identity, raw: unknown, signal: Abor
       links: links?.prompt,
       index: links?.index,
       databases: data.length ? data.map((d) => d.block).join("\n\n") : null,
+      capture: b.capture,
     }),
     options,
   );

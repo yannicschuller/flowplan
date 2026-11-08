@@ -11,7 +11,7 @@ import { all, nowText, one, run } from "../db";
 import { cellText } from "../cell-text";
 import { computedCells } from "../database";
 import { databaseSettings } from "../database-settings";
-import type { Automation } from "../database-settings-schema";
+import { doneRule, type Automation } from "../database-settings-schema";
 import type { Field, Identity, Page, Row } from "../types";
 import { userLocale } from "../user-locale";
 import { recordStatusChange } from "../automations";
@@ -114,7 +114,7 @@ async function batchFor(page: Page, rowId: string): Promise<InlineBatch | null> 
   if (!raw) return null;
   const row: Row = { ...raw, cells: JSON.parse(raw.cells) };
   const fields = JSON.parse((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", page.id))!.fields) as Field[];
-  return { databasePage: page, rowId, fields, row: { id: row.id, created_by: row.created_by || null, cells: row.cells }, cells: computedCells(row, fields), patch: {}, templates: [] };
+  return { databasePage: page, rowId, fields, row: { id: row.id, created_by: row.created_by || null, cells: row.cells }, cells: computedCells(row, fields), patch: {}, setBy: {}, templates: [] };
 }
 // The collected writes: one update, the status history, then the templates
 // (they see the values just set).
@@ -122,9 +122,12 @@ async function flush(batch: InlineBatch, actor: Identity | null) {
   if (Object.keys(batch.patch).length) {
     const settings = await databaseSettings(batch.databasePage.id);
     await run("UPDATE rows SET cells=?,version=version+1,updated_at=? WHERE id=?", JSON.stringify({ ...batch.row.cells, ...batch.patch }), nowText(), batch.rowId);
-    await recordStatusChange(batch.databasePage.id, batch.rowId, batch.fields, settings, batch.row.cells, { ...batch.row.cells, ...batch.patch });
+    // Who set the done rule's field counts (a rule's creator, a workflow's runner).
+    const status = doneRule(batch.fields, settings)?.field.id;
+    const by = status && status in batch.setBy ? batch.setBy[status] : null;
+    await recordStatusChange(batch.databasePage.id, batch.rowId, batch.fields, settings, batch.row.cells, { ...batch.row.cells, ...batch.patch }, by);
   }
-  for (const t of batch.templates) await applyTemplateOnce(batch.databasePage, batch.rowId, t.key, t.label, t.template, t.mode, actor, batch.fields);
+  for (const t of batch.templates) await applyTemplateOnce(batch.databasePage, batch.rowId, t.key, t.label, t.template, t.mode, actor, batch.fields, t.by);
 }
 
 const scopeOf = (values: Record<string, unknown>, timeZone: string, locale: RenderScope["locale"]): RenderScope => ({
@@ -170,7 +173,7 @@ export async function runRuleAutomations(input: { page: Page; rowId: string; act
         workflowPage: null,
         trigger: { pageId: input.page.id, rowId: input.rowId },
         inline: batch,
-        legacy: { ruleId: a.id, ruleName: a.name, created: { n: 0, ids: [] } },
+        legacy: { ruleId: a.id, ruleName: a.name, createdBy: a.createdBy || null, created: { n: 0, ids: [] } },
         warn: () => {},
       },
       record: (node, port) => {
@@ -208,7 +211,7 @@ export async function runScheduledRule(a: Automation, page: Page, who: Identity,
       run: { id: "", pageId: page.id, workspaceId: page.workspace_id, mode: "live", depth: 0, triggerNodeId: trigger.id },
       workflowPage: null,
       trigger: { pageId: page.id, rowId: null },
-      legacy: { ruleId: a.id, ruleName: a.name, created },
+      legacy: { ruleId: a.id, ruleName: a.name, createdBy: a.createdBy || null, created },
       warn: () => {},
     },
   };

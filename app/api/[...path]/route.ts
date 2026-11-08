@@ -550,7 +550,11 @@ async function handleGET(
     // (lib/journal-completed.ts), for a stored day and for today's draft.
     if (path.length === 3 && path[0] === "journals" && path[2] === "completed") {
       const zone = z.string().max(100).catch("UTC").parse(url.searchParams.get("zone") || "UTC");
-      return NextResponse.json(await journalDayCompleted(user, z.uuid().parse(path[1]), zone), {
+      // mine=1 "Nur meine", mine=0 "Alle"; without it the reader's choice
+      // for the journal, "Nur meine" when they never chose.
+      const mineParam = url.searchParams.get("mine");
+      const mine = mineParam === null ? undefined : !["0", "false"].includes(mineParam);
+      return NextResponse.json(await journalDayCompleted(user, z.uuid().parse(path[1]), zone, mine), {
         headers: { "Cache-Control": "no-store" },
       });
     }

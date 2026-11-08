@@ -160,7 +160,18 @@ export type WriteRequest = {
   index?: string[] | null;
   // Records of referenced databases as <daten> blocks (already checked and cut).
   databases?: string | null;
+  // A quick capture (#172): its inline shorthand stays exactly as typed.
+  capture?: boolean;
 };
+
+// Quick capture's shorthand (lib/capture-parse.ts): "#kunde @anna !hoch
+// morgen 15 Uhr" fills properties when the capture is saved, so the
+// improved text must keep every such token character for character.
+export const CAPTURE_RULES = [
+  "The text is a quick capture note. It may contain inline shorthand that Flowplan turns into properties when saving: #tags, @people, a priority such as !hoch, !high, !! or !p1, and dates or times such as \"morgen 15 Uhr\", \"next friday\" or \"24.12.\".",
+  "Copy every #tag, @person, !priority, date, time and link exactly as written – same spelling, same case, no added or removed characters, never translated – and keep them in the text.",
+  "Do not add headings, lists, bold or other formatting the note did not have; keep it a short note.",
+];
 
 const TASKS: Record<Exclude<WriteAction, "custom" | "prompt" | "tone" | "translate">, string> = {
   improve:
@@ -221,6 +232,7 @@ export function writePrompt(request: WriteRequest): AiRunInput {
     ...(request.links?.length ? LINK_RULES.map((r) => `- ${r}`) : []),
     ...(request.links?.length && request.index?.length ? INDEX_RULES.map((r) => `- ${r}`) : []),
     ...(request.databases ? [`- ${DATABASE_RULE}`] : []),
+    ...(request.capture ? CAPTURE_RULES.map((r) => `- ${r}`) : []),
   ].join("\n");
   const parts: string[] = [];
   if (request.action === "custom" || request.action === "prompt") parts.push(fence("instruction", instruction));

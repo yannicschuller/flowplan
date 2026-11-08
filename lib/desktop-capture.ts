@@ -44,6 +44,7 @@ import { transcribe, transcriptionEnabled } from "./transcribe";
 import { enforceUserStorage, maxUploadMbFor } from "./user-limits";
 import { parseCapture, type CaptureMember, type CaptureProperty } from "./capture-parse";
 import { captureSuggestMode } from "./ai/capture-suggest";
+import { captureImproveMode } from "./ai/capture-improve";
 import type { Field, Identity, Page } from "./types";
 import { mapAsync } from "./each-async";
 
@@ -98,6 +99,8 @@ export async function desktopCaptureTargets(user: Identity) {
     encryptedExcluded: await encryptedCount(user),
     voice: transcriptionEnabled(),
     suggest: await captureSuggestMode(user),
+    // "Text verbessern" (#172): POST /api/ai/capture/improve.
+    improve: await captureImproveMode(user),
     maxFiles: MAX_CAPTURE_FILES,
     maxUploadMb: await maxUploadMbFor(user),
   };

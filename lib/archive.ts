@@ -1495,6 +1495,10 @@ async function importEntries(
                   }));
               if (payload.formConfig)
                 payload.formConfig = formConfigSchema.parse(payload.formConfig);
+              // Settings kept in a version name another workspace's people
+              // and templates: an imported version leaves them as they are.
+              delete payload.settings;
+              delete payload.issueSyncStatus;
               if (Array.isArray(payload.comments))
                 payload.comments = payload.comments.map(
                   (c: Record<string, unknown>) => ({

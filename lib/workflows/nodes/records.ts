@@ -88,6 +88,8 @@ async function targetRecord(ctx: NodeRun, ref: unknown) {
   if (!row) throw new StepError("Den Eintrag gibt es nicht (mehr).", "validation");
   return row;
 }
+// Who a write on the triggering record counts as in the status log.
+const setter = (ctx: NodeRun) => (ctx.legacy ? ctx.legacy.createdBy : ctx.runner?.id ?? null);
 const isTriggerRecord = (ctx: NodeRun, ref: unknown) => !(typeof ref === "string" && ref.trim()) && !!ctx.inline && ctx.inline.rowId === ctx.trigger.rowId;
 
 export const recordUpdate: NodeImpl = async (ctx) => {
@@ -104,6 +106,7 @@ export const recordUpdate: NodeImpl = async (ctx) => {
     if (c.onlyEmpty) values = Object.fromEntries(Object.entries(values).filter(([k]) => isEmpty({ ...batch.row.cells, ...batch.patch }[k])));
     const before = Object.fromEntries(Object.keys(values).map((k) => [k, { ...batch.row.cells, ...batch.patch }[k] ?? null]));
     Object.assign(batch.patch, values);
+    for (const k of Object.keys(values)) batch.setBy[k] = setter(ctx);
     if (ctx.legacy) return { port: "out", output: { updated: Object.keys(values) } };
     return { port: "out", output: { record: await recordValue(ctx.runner, batch.rowId, batch.patch), before } };
   }
@@ -185,6 +188,7 @@ export const recordTemplate: NodeImpl = async (ctx) => {
       template: c.template,
       mode: c.mode,
       label: ctx.legacy ? ctx.legacy.ruleName || "Automation" : ctx.workflowPage?.title || "Workflow",
+      by: setter(ctx),
     });
     return { port: "out", output: ctx.legacy ? {} : { record: await recordValue(ctx.runner, batch.rowId, batch.patch) } };
   }
@@ -205,7 +209,7 @@ export const recordTemplate: NodeImpl = async (ctx) => {
 
 // A template on the triggering record, once per rule (or node) and record:
 // the rules' applyTemplateOnce, unchanged.
-export async function applyTemplateOnce(page: Page, rowId: string, key: string, label: string, templateId: string, mode: "empty" | "append", actor: Identity | null, fields: Field[]) {
+export async function applyTemplateOnce(page: Page, rowId: string, key: string, label: string, templateId: string, mode: "empty" | "append", actor: Identity | null, fields: Field[], by: string | null = null) {
   const settings = await databaseSettings(page.id);
   const template = await one<RowTemplate>("SELECT * FROM row_templates WHERE id=? AND page_id=?", templateId, page.id);
   if (!template) return;
@@ -218,7 +222,7 @@ export async function applyTemplateOnce(page: Page, rowId: string, key: string, 
   if (Object.keys(applied.cells).length) {
     const next = { ...row.cells, ...applied.cells };
     await run("UPDATE rows SET cells=?,version=version+1,updated_at=? WHERE id=?", JSON.stringify(next), nowText(), row.id);
-    await recordStatusChange(page.id, row.id, fields, settings, row.cells, next);
+    await recordStatusChange(page.id, row.id, fields, settings, row.cells, next, by);
   }
   await auditApply(actor?.id || "system", row.id, template, `${label} · ${applied.document}`);
 }
