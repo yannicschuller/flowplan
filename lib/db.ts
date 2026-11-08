@@ -42,6 +42,8 @@ function outsideAsyncTransaction(write: boolean) {
 export const SCHEMA_VERSION = 97;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
+// Schema 97 (workflows): tables created with their seq column (and its
+// trigger) in migrateWorkflows.
 const WORKFLOW_SEQ_TABLES = ["workflow_events", "workflow_runs", "workflow_steps"] as const;
 export const SEQ_TABLES = [
   "snapshots",
@@ -58,8 +60,6 @@ export const SEQ_TABLES = [
   "mail_queue",
   "webhook_deliveries",
   "spaces",
-  // Schema 97 (workflows): created with their seq column in migrateWorkflows.
-  ...WORKFLOW_SEQ_TABLES,
 ] as const;
 function migrate(d: DatabaseSync) {
   if (globalDb.flowplanSchema === SCHEMA_VERSION) return;
@@ -1240,10 +1240,10 @@ function migrate(d: DatabaseSync) {
   // explicit `seq`: SQLite fills it with the rowid (existing rows once, new
   // ones by a trigger), PostgreSQL makes it an identity column.
   for (const table of SEQ_TABLES)
-    if (!(WORKFLOW_SEQ_TABLES as readonly string[]).includes(table) && !(d.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === "seq"))
+    if (!(d.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === "seq"))
       d.exec(`ALTER TABLE ${table} ADD COLUMN seq INTEGER; UPDATE ${table} SET seq=rowid;`);
   for (const table of SEQ_TABLES)
-    if (!(WORKFLOW_SEQ_TABLES as readonly string[]).includes(table)) d.exec(`CREATE TRIGGER IF NOT EXISTS ${table}_seq AFTER INSERT ON ${table} WHEN NEW.seq IS NULL BEGIN UPDATE ${table} SET seq=NEW.rowid WHERE rowid=NEW.rowid; END;`);
+    d.exec(`CREATE TRIGGER IF NOT EXISTS ${table}_seq AFTER INSERT ON ${table} WHEN NEW.seq IS NULL BEGIN UPDATE ${table} SET seq=NEW.rowid WHERE rowid=NEW.rowid; END;`);
   // Pages too, in the update that already gives a new page its created_at
   // (one statement per insert, as before).
   if (!(d.prepare("PRAGMA table_info(pages)").all() as { name: string }[]).some((c) => c.name === "seq"))

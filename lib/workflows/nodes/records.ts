@@ -5,7 +5,6 @@
 // click in the browser. In the immediate part (and for the database rules)
 // writes on the triggering record are collected (lib/workflows/inline.ts).
 import { all, id, one, run, nowText } from "../../db";
-import { command } from "../../api";
 import { requirePage } from "../../permissions";
 import { visibleRows } from "../../row-access";
 import { unwritableFieldIds } from "../../field-access";
@@ -120,11 +119,16 @@ export const recordUpdate: NodeImpl = async (ctx) => {
   return { port: "out", output: { record: await recordValue(ctx.runner, row.id), before } };
 };
 
+// lib/api.ts is loaded lazily: it imports nearly everything, and this
+// module is reached from low-level ones (lib/automations.ts) – a static
+// import would make an import cycle that breaks module initialisation. The
+// promise starts now, so inside a transaction it is long resolved.
+const api = import("../../api");
 // A command as the run's person, inside the step's transaction.
 export async function asCommand(ctx: NodeRun, body: Record<string, unknown>) {
   if (!ctx.runner) throw new StepError("Keine ausführende Person.", "permission");
   try {
-    return await command(ctx.runner, body, true);
+    return await (await api).command(ctx.runner, body, true);
   } catch (e) {
     const status = (e as { status?: number }).status;
     if (status === 403 || status === 423) throw new StepError((e as Error).message, "permission");

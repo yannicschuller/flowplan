@@ -1,6 +1,8 @@
 # Workflows – visueller Workflow-Builder (Spezifikation)
 
-Status: **Entwurf zur Prüfung durch Yannic** – noch nichts gebaut.
+Status: **freigegeben**; Welle 1 (Serverteil) gebaut auf dem Branch
+`workflows` (Vertrag für die Oberfläche: Abschnitt 11.5). Die offenen Fragen
+(Abschnitt 18) sind entschieden.
 Issue: [#168](https://github.com/yannicschuller/flowplan/issues/168) („Visual
 Workflow Builder / Native Automation Engine“). Stand des Codes: `main` bei
 Schema 95 (`lib/db.ts`, `SCHEMA_VERSION = 95`), Next.js 16.
@@ -259,8 +261,11 @@ soll nichts Neues können müssen). Tabellen mit Einfügereihenfolge kommen in
 `SEQ_TABLES`.
 
 **Schemanummer**: das ganze Feature bekommt **eine** Nummer – die nächste
-freie beim Merge in `main` (Stand heute **96**: „Schema 96 – Workflows
-(#168)“). Auf dem Branch wächst der Block mit jeder Welle; alles ist
+freie beim Merge in `main`. `main` hat 96 inzwischen selbst vergeben
+(`row_status_log.user_id`, `page_view_prefs.completed_mine`); auf dem Branch
+steht der Block deshalb als **„Schema 97 – Workflows (#168)“**
+(`migrateWorkflows()` in `lib/db.ts`, eigenständig, damit er sich sauber auf
+96 setzen lässt). Auf dem Branch wächst der Block mit jeder Welle; alles ist
 `CREATE TABLE/INDEX IF NOT EXISTS`, Testdatenbanken früherer Wellen werden
 also nachgezogen. Hebt `main` vorher selbst auf 96, wird beim nächsten
 Merge auf 97 umnummeriert (Abschnitt 17).
@@ -1542,6 +1547,106 @@ testen, aktivieren.
   (Entwurf, Versionen, Status → nach Import **pausiert**, damit nichts auf
   einer neuen Instanz unbeabsichtigt loslegt), ohne Läufe und Geheimnisse.
 
+### 11.5 Vertrag Welle 1 (Server, für die Oberfläche)
+
+Stand des Branches `workflows`. Alle Befehle gehen an `POST /api/command`
+(`command()` in `lib/api.ts` → `lib/workflows/commands.ts`), alle Lesewege an
+`GET /api/…` (`app/api/[...path]/route.ts` → `workflowGet()`). Fehler wie
+überall: HTTP-Status + `{ error }` (deutscher Text, Übersetzung über
+`lib/i18n-errors.ts`). **Keine Fehler, sondern Antworten** sind ein nicht
+bestandener Prüflauf: `workflow.activate` und `workflow.test` antworten dann
+`{ ok: false, issues }` und schreiben nichts.
+
+**Prüfergebnis** (`issues`, überall gleich): `[{ level: "error" | "warning",
+code, nodeId?, edgeId?, params?, message }]` – `message` in der Sprache der
+Anfrage; die Codes stehen in `ISSUE_TEXT` (`lib/workflows/graph.ts`),
+`issueMessage(issue, locale)` ist client-safe.
+
+**Seite anlegen**: `page.create { kind: "workflow", workspaceId, spaceId,
+parentId?, title }` → `{ id }` (legt `workflows`-Zeile und leeren Entwurf an;
+Gäste, E2EE-Bereiche und `FLOWPLAN_WORKFLOWS=off` werden abgewiesen).
+`GET /api/pages/{id}` liefert für Workflow-Seiten `{ page, role, comments,
+snapshots, present, backlinks, workflow: <Zustand wie unten>, html: "" }`.
+
+| Befehl | Eingabe | Antwort |
+|---|---|---|
+| `workflow.sync` | `{ pageId, generation, update?: base64 Yjs, vector?: base64 Zustandsvektor, cursor?: {x,y} \| null }` | `{ state: base64 (nur was dem Vektor fehlt), generation, presence: [{user_id,name,x,y}] }`; 409 bei neuer `generation` (neu laden) |
+| `workflow.draft` | `{ pageId, graph }` (Graph-JSON §5.1) | `{ ok: true, issues }` – als Yjs-Änderung auf den Entwurf, verschmilzt mit Mitbearbeitung |
+| `workflow.validate` | `{ pageId, graph? }` (ohne: der Entwurf) | `{ issues }` – geprüft als rufende Person |
+| `workflow.activate` | `{ pageId, note? }` | `{ ok: true, versionId, number?, issues }` (unveränderter Entwurf behält seine Version) oder `{ ok: false, issues }` |
+| `workflow.pause` | `{ pageId, cancelRuns?: boolean, reason? }` | `{ ok: true }` – offene Läufe `held` bzw. `cancelled` |
+| `workflow.test` | `{ pageId, mode: "test" \| "dry", nodeId?, data: {kind:"sample"} \| {kind:"last"} \| {kind:"record",rowId} \| {kind:"page",pageId} \| {kind:"custom",output} }` | `{ ok: true, runId, issues }` oder `{ ok: false, runId: null, issues }`; 10/min je Person (429) |
+| `workflow.run` | `{ pageId, nodeId?, inputs, mode?: "live" \| "test" \| "dry", source?: "workflow" \| "block" \| "api" }` | live: `{ ok: true, eventId }` (Lauf entsteht über das Outbox); test/dry: wie `workflow.test` |
+| `workflow.run.cancel` | `{ runId }` | `{ ok: true, cancelled }` |
+| `workflow.restore` | `{ pageId, versionId }` (Version **oder** Entwurfs-Snapshot) | wie `workflow.draft` – immer in den Entwurf |
+| `workflow.fromRule` | `{ pageId: <Datenbank>, automationId, timeZone? }` | `{ id }` – Workflow-Seite neben der Datenbank, Regel als Entwurf; beim Aktivieren wird die Regel zu `{ …, enabled: false, workflow: <pageId> }` |
+| `admin.workflowLimits` | `{ limits: { runsPerMinute?: n \| null, … } }` (Schema `workflowLimitsSchema`, `null` = Umgebung) | wie `GET /api/admin/workflows` |
+
+| Lesen | Antwort |
+|---|---|
+| `GET /api/workflows?workspaceId=` | `{ workflows: [{ pageId, title, status, runner: Person \| null, lastRun }] }` (sichtbare, keine für Gäste) |
+| `GET /api/workflows/catalog` | `{ nodes: [{ type, category, name: [de,en], description: [de,en], icon, inline, event, ports, outputs, config: JSON Schema }] }` |
+| `GET /api/workflows/{pageId}` | `{ pageId, title, status, pauseReason, runner, activatedAt, pausedAt, throttled, canEdit, active: { id, number, graph, activatedBy, activatedAt, note } \| null, draft: { graph, generation, state, changed, issues } \| null (nur Bearbeitende), lastRun }` |
+| `GET /api/workflows/{pageId}/runs?status=failed\|succeeded\|cancelled\|open&mode=live\|test&limit&before` | `{ runs: [{ id, status, mode, version, triggerNodeId, steps, depth, originRunId, failedNodeId, error, createdAt, startedAt, finishedAt }] }` |
+| `GET /api/workflow-runs/{runId}` | `{ id, pageId, status, mode, versionId, graph (gepinnte Version bzw. Test-Entwurf), runner, contentsVisible, triggerNodeId, depth, origin, error, failedNodeId, steps, aiTokens, createdAt, startedAt, finishedAt, timeline: [{ id, nodeId, iteration, via, status, attempt, port, dueAt, startedAt, finishedAt, errorKind, error, input, output }] }` – `input`/`output` nur bei `contentsVisible` (sonst `null`, §9.3); `input` = `{ config (Platzhalter gerendert, gekürzt), warnings? }` |
+| `GET /api/workflows/{pageId}/versions` | `{ versions: [{ id, number, activatedBy, activated_at, note }], drafts: [{ id, createdAt, createdBy }] }` |
+| `GET /api/workflows/{pageId}/versions/{id}` | `{ …, graph }` einer Version oder (`draft: true`) eines Entwurfsstands |
+| `GET /api/admin/workflows` | `{ limits, stored, defaults, monitoring: { activeWorkflows, runsPerMinute, queuedSteps, runningSteps, waitingSteps, oldestDueMs, undispatchedEvents, failureRate, aiTokensToday, instance: {…Zähler} } }` (nur Admins) |
+
+Laufstatus: `queued → running → succeeded | failed | cancelled`, `held`
+(pausiert/Rechteverlust/Papierkorb). Schrittstatus: `queued`, `running`,
+`succeeded`, `skipped` (abgeschalteter Knoten), `failed`, `cancelled`.
+`logic.if` nimmt die Ausgänge `true`/`false`; eine Bedingung, deren linke
+Seite genau `{{<knoten>.record.fields.<feld>}}` ist, vergleicht wie ein
+Ansichtsfilter auf diesem Feld, jede andere als Wert ihres Typs.
+`action.record.find`: `left` einer Bedingung ist die **Feld-ID** der
+gewählten Datenbank. Empfänger von `notify.person`: User-IDs, `@actor`,
+`@creator`, `@runner`, `field:<feldId>` oder Platzhalter auf Personen.
+Datumswerte in **Text** erscheinen in der Sprache des Workflows
+(`05.03.2026`); ganze Platzhalter bleiben ISO; `| date: "yyyy-MM-dd"` gibt
+die Form vor.
+
+Der Yjs-Entwurf (`lib/workflows/draft.ts`, client-safe): `graphDoc()`,
+`writeGraph(doc, graph)` (als Änderungen), `draftGraph(doc)`; `message`,
+`text`, `prompt` einer Knotenkonfiguration sind `Y.Text`. Platzhalter:
+`toDisplay()`/`fromDisplay()` (`lib/workflows/placeholders.ts`, mit
+`keyName`/`keyId` für Ausgabe- und Feldnamen), Katalog und Ausgabeschemas in
+`lib/workflows/catalog.ts`, `legacy.ts` (`graphToAutomation` für „Als einfache
+Regel speichern“).
+
+#### Abweichungen in Welle 1 (bewusst)
+
+- **REST-Routen zum Schreiben** (`PUT …/draft`, `POST …/activate` usw. aus
+  11.1) gibt es noch nicht; dieselben Aktionen laufen über `POST
+  /api/command` (auch mit Schreib-Token). Die Leserouten oben gibt es; sie
+  stehen in Welle 3 mit OpenAPI-Pfaden/SDK-Methoden im Dokument. Die
+  Befehlsnamen sind bereits in `commandActionNames` (`lib/openapi.ts`).
+- **Testläufe** pinnen den Entwurf als `version_id = "test:<runId>"`; der
+  Graph liegt in `input` des Auslöserschritts (keine Spalte mehr nötig).
+- **Präsenz** im Entwurf nutzt die Tabelle `whiteboard_presence` (gleiche
+  Form: Seite, Person, x/y) statt einer eigenen.
+- **Sofortteil eines Workflows** läuft in einem Savepoint: scheitert ein
+  Knoten, wird nur der Teil dieses Workflows zurückgenommen (der Lauf ist
+  `failed`), der Schreibvorgang der Person bleibt. Regeln scheitern wie bisher
+  mit dem Originalfehler.
+- `page.changed` feuert für `document.sync`/`whiteboard.sync` (Inhalt) und
+  `page.update` mit Titel; Datensatzänderungen zählen nicht als
+  Seitenänderung. Beim Entprellen gewinnt die letzte Art der Änderung.
+- Grenzen außerhalb der Tabelle in §12 als zusätzliche Variablen:
+  `FLOWPLAN_WORKFLOW_TEST_RUNS_PER_MINUTE` (10), `…_PARALLEL_RUNS` (10),
+  `…_RUNS_KEPT` (10 000); für Tests `…_LEASE_MS`, `…_SWEEP_MS`, `…_POLL_MS`.
+- Admin-Grenzen liegen als `instance_settings.workflowLimits` (eigener
+  Befehl `admin.workflowLimits`), der Abschnitt in `lib/settings-sections.ts`
+  (Anker `workflows`) kommt mit der Oberfläche (der Test der Abschnitte
+  verlangt das Ziel-Element).
+- Kaskadenstopp und Drosselung zählen (`workflows.throttled`,
+  Monitoring-Zähler `cascade`/`throttled`); die Meldungen an die ausführende
+  Person (Art `workflow_ops`, stündlich) folgen mit Welle 2.
+- Rechte-/Fehlerpause: Status und Grund (`pause_reason`) werden gesetzt,
+  Audit `workflow.paused`/`workflow.auto_paused`; die Benachrichtigung der
+  Seitenverantwortlichen folgt mit `workflow_ops` in Welle 2. Auto-Pause nach
+  10 Fehlschlägen in Folge ist da, die 50-%-Regel folgt in Welle 2.
+
 ---
 
 ## 12. Grenzen und Einstellungen
@@ -1873,7 +1978,7 @@ erst am Ende nach `main`.
 
 ---
 
-## 18. Offene Fragen
+## 18. Offene Fragen (entschieden)
 
 1. **Laufinhalte für Kolleginnen sichtbar?** Spezifiziert: Ein-/Ausgaben
    nur für die Person, als die der Lauf lief; andere sehen Status und
@@ -1881,32 +1986,40 @@ erst am Ende nach `main`.
    Debuggen, aber privat Gelesenes der ausführenden Person würde sichtbar).
    *Empfehlung: wie spezifiziert; Kolleginnen debuggen mit eigenem
    Testlauf.*
+   **Entschieden:** wie empfohlen – Ein-/Ausgaben sieht nur die Person, als die der Lauf lief (`contentsVisible` in der Laufansicht, 11.5).
 2. **Eingehender Webhook ohne Signatur („nur Token“) anbieten?** Viele
    Dienste können nicht mit unserem Schema signieren. *Empfehlung: ja, als
    bewusst gewählter Modus mit Warnung und strengerem Rate-Limit; signiert
    bleibt Standard. Später ggf. GitHub- (`X-Hub-Signature-256`) und
    Stripe-Format als weitere Modi.*
+   **Entschieden:** wie empfohlen – „nur Token“ als bewusst gewählter Modus mit Warnung und 10/min; signiert bleibt Standard (Welle 2).
 3. **E-Mails an beliebige Adressen?** Nötig für „Formular → Bestätigung“,
    aber Spam-/Abfluss-Risiko. *Empfehlung: erlauben mit 100/Tag je Workflow,
    Admin-Schalter `FLOWPLAN_WORKFLOW_EXTERNAL_MAIL`, Absender immer die
    Instanz, Audit je Versand an Fremdadresse nicht nötig (Zähler genügt).*
+   **Entschieden:** wie empfohlen – erlaubt, 100/Tag je Workflow (`FLOWPLAN_WORKFLOW_MAILS_PER_DAY`), Admin-Schalter `FLOWPLAN_WORKFLOW_EXTERNAL_MAIL` (beide in `lib/workflows/limits.ts`; der Knoten folgt in Welle 2).
 4. **Wer darf einen Workflow-Knopf auf einer Seite auslösen?**
    *Empfehlung: Standard „Bearbeitende des Workflows“, je Auslöser
    umschaltbar auf „alle Mitglieder, die die Seite mit dem Knopf sehen“ (nie
    Gäste); der Lauf läuft immer als ausführende Person.*
+   **Entschieden:** wie empfohlen – Standard „Bearbeitende des Workflows“, je Auslöser `who: "members"`, nie Gäste; der Lauf läuft als ausführende Person (`trigger.manual`, `workflow.run`).
 5. **Push-Knöpfe „Genehmigen/Ablehnen“ in der App** brauchen eine neue
    Kategorie in `flowplan-app` (App-Store-Release). *Empfehlung: in Welle 3
    mitliefern; bis dahin öffnet die Benachrichtigung die Freigabeansicht
    (funktioniert ohne App-Update).*
+   **Entschieden:** wie empfohlen – in Welle 3; bis dahin öffnet die Benachrichtigung die Freigabeansicht.
 6. **Aktivieren über MCP/API?** *Empfehlung: REST mit Schreib-Token ja
    (Automatisierung von Deployments), MCP nein (ein KI-Client soll keine
    Rechte-Entscheidung im Namen der Person treffen); Freigaben weder über
    MCP noch Token, nur angemeldet.*
+   **Entschieden:** wie empfohlen – über REST/`POST /api/command` mit Schreib-Token ja, über MCP nein; Freigaben nur angemeldet.
 7. **Namenskollision** mit „Workflow und Erledigt“ in den
    Datenbankwerkzeugen (`components/database-tools.tsx`). *Empfehlung: beim
    Merge umbenennen in „Statusregeln und Erledigt“ (Docs-Anker als
    Weiterleitung behalten).*
+   **Entschieden:** wie empfohlen – umbenannt in „Statusregeln und Erledigt“ (auf dem Branch schon umgesetzt, `components/database-tools.tsx`; Docs-Anker bleiben als Weiterleitung).
 8. **Pausieren: laufende Läufe anhalten oder weiterlaufen lassen?**
    *Empfehlung: anhalten (wie spezifiziert), im Dialog „abbrechen“
    anbieten; „weiterlaufen lassen“ nicht anbieten – Pausieren soll
    verlässlich stoppen.*
+   **Entschieden:** wie empfohlen – anhalten (`held`), der Dialog bietet „abbrechen“ an (`workflow.pause {cancelRuns: true}`); „weiterlaufen lassen“ gibt es nicht.

@@ -1899,11 +1899,13 @@ async function runCommand(
           break;
         }
         const sid = id();
+        // Workflow pages: the draft's Yjs state (lib/workflows/store.ts).
+        const draft = p.kind === "workflow" ? await one<{ state: Uint8Array }>("SELECT state FROM workflow_drafts WHERE page_id=?", p.id) : undefined;
         await run(
           "INSERT INTO snapshots(id,page_id,state,html,title,created_by,kind) VALUES(?,?,?,?,?,?,'manual')",
           sid,
           p.id,
-          d?.state || null,
+          draft?.state || d?.state || null,
           d?.html || "",
           p.title,
           user.id,
@@ -1930,7 +1932,11 @@ async function runCommand(
         if (!s) throw new HttpError(404, "Version nicht gefunden.");
         const appearance = await snapshotAppearance(p.id, s.appearance);
         if (appearance) await applyAppearance(p.id, appearance);
-        if (p.kind === "whiteboard") {
+        if (p.kind === "workflow") {
+          // Back into the draft, never the active version (#168).
+          if (!s.state) throw new HttpError(400, "Version ohne Inhalt.");
+          result = await restoreVersion(user, { pageId: p.id, versionId: uuid.parse(b.snapshotId) });
+        } else if (p.kind === "whiteboard") {
           if (!s.state) throw new HttpError(400, "Version ohne Inhalt.");
           await restoreWhiteboardSnapshot(p, s.state);
         } else if (p.kind === "dashboard" || p.kind === "notebook") {
@@ -3723,7 +3729,7 @@ import { quotaCheckpoint, setWorkspaceQuota } from "./instance-ops";
 import { rowChanged, rowCreated } from "./automations";
 import { workflowCommand } from "./workflows/commands";
 import { commentEvent, pageChangedEvent, pageCreatedEvent, pageMovedEvent } from "./workflows/hooks";
-import { assertWorkflowsEnabled, trashWorkflows, workflowState } from "./workflows/store";
+import { assertWorkflowsEnabled, restoreVersion, trashWorkflows, workflowState } from "./workflows/store";
 import { applyDatabaseProposal, forgetAiFields, prepareAiFields } from "./ai/database-fields";
 import { ct } from "./content-locale";
 import { TABLE_DATABASE_LIMITS, tableToDatabase } from "./table-database";

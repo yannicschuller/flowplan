@@ -435,3 +435,35 @@ test("retention removes finished runs after the period, keeps open ones", async 
   assert.equal(Number((await one<{ n: number }>("SELECT COUNT(*) n FROM workflow_runs WHERE status NOT IN ('succeeded','failed','cancelled')"))!.n), open);
   assert.equal(Number((await one<{ n: number }>("SELECT COUNT(*) n FROM workflow_steps s WHERE NOT EXISTS(SELECT 1 FROM workflow_runs r WHERE r.id=s.run_id)"))!.n), 0);
 });
+
+test("archives carry draft and versions (imported paused), never runs; exports and snapshots", async () => {
+  const { exportArchive, importArchive } = await import("../lib/archive");
+  const trigger = node("trigger.record.created", { database: dbId });
+  const set = node("logic.set", { values: [{ name: "x", value: "1" }] }, "Archived set");
+  const { pageId } = await workflow("Archived", chain(trigger, set));
+  await act({ action: "row.create", pageId: dbId, cells: { title: "for the archive" } });
+  await drainWorkflows();
+  const target = await createWorkspace(owner.id, "Target");
+  await importArchive(owner, target, await exportArchive(owner, wid));
+  const copy = await one<{ id: string }>("SELECT id FROM pages WHERE workspace_id=? AND kind='workflow' AND title='Archived'", target);
+  assert.ok(copy);
+  const wf = await one<{ status: string; active_version_id: string; runner_id: string | null }>("SELECT status,active_version_id,runner_id FROM workflows WHERE page_id=?", copy!.id);
+  assert.equal(wf!.status, "paused");
+  assert.ok(wf!.active_version_id);
+  assert.equal(wf!.runner_id, null);
+  assert.equal(Number((await one<{ n: number }>("SELECT COUNT(*) n FROM workflow_runs WHERE page_id=?", copy!.id))!.n), 0);
+  // The database it reacts to came along: the ids follow.
+  const version = JSON.parse((await one<{ graph: string }>("SELECT graph FROM workflow_versions WHERE id=?", wf!.active_version_id))!.graph);
+  const newDb = await one<{ id: string }>("SELECT id FROM pages WHERE workspace_id=? AND kind='database' AND title='Tickets'", target);
+  assert.equal(version.nodes[0].config.database, newDb!.id);
+  // A manual version and its restore go into the draft.
+  const snap = (await act({ action: "page.snapshot", pageId })).id;
+  await act({ action: "workflow.draft", pageId, graph: chain(trigger) });
+  await act({ action: "snapshot.restore", pageId, snapshotId: snap });
+  assert.equal((await get(`workflows/${pageId}`)).draft.graph.nodes.length, 2);
+  // Search finds it by its node labels; the Markdown export lists them.
+  const { exportMarkdown } = await import("../lib/markdown-export");
+  const md = await exportMarkdown(owner, { pageId, format: "markdown", includeSubpages: false });
+  assert.match(Buffer.from(md.bytes as Uint8Array).toString("utf8"), /- Archived set/);
+  await act({ action: "workflow.pause", pageId });
+});
