@@ -11,6 +11,7 @@ import { ArrowRight, DownloadSimple, UploadSimple } from "@phosphor-icons/react"
 import { serverMessage } from "@/lib/i18n-errors";
 import { useT } from "../../i18n";
 import { api, download, downloadBlob } from "../../ui";
+import { showToast } from "../../toast";
 import { Select } from "../../select";
 import { SpaceExportDialog } from "../../space-export";
 import { ImportSources } from "../../import-sources";
@@ -152,7 +153,7 @@ export default function DataSection() {
                   if (!response.ok) throw new Error(serverMessage(result.error) || t("Import fehlgeschlagen.", "Import failed."));
                   await onRefresh();
                   // The new database opens: the note goes with it.
-                  onError(t(`${result.rows} Einträge und ${result.comments} Kommentare importiert.`, `${result.rows} records and ${result.comments} comments imported.`));
+                  showToast({ text: t(`${result.rows} Einträge und ${result.comments} Kommentare importiert.`, `${result.rows} records and ${result.comments} comments imported.`) });
                   location.hash = `#page=${result.pageId}`;
                 } catch (e) {
                   fail("tracker")(e);

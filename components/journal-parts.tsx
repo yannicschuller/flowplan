@@ -24,7 +24,7 @@ import {
   Sparkle,
   Trash,
 } from "@phosphor-icons/react";
-import { api, Modal } from "./ui";
+import { api, Modal, showNotice } from "./ui";
 import { post, StepUpDialog, type Pending } from "./sign-in-methods";
 import type { StepUpMethods } from "@/lib/step-up";
 import { DEFAULT_SIDEBAR_MODE, SIDEBAR_MODES, type SidebarMode } from "@/lib/journal-nav";
@@ -159,7 +159,7 @@ export function JournalSettingsDialog({
       // order of keys too), so "Nicht gespeichert" goes away.
       if (body.trackers) setTrackers(next.trackers);
       await onChanged();
-      if (done) onError(done);
+      if (done) showNotice(done);
       return true;
     } catch (e) {
       onError(message(e));
@@ -205,7 +205,7 @@ export function JournalSettingsDialog({
       // Setting the PIN ended the journal's share links, publications and
       // public forms (lib/journal-extras.ts).
       const revoked = result?.revoked || 0;
-      onError(
+      showNotice(
         next === null
           ? t("Sperre entfernt.", "Lock removed.")
           : revoked === 1
@@ -839,7 +839,7 @@ export function JournalReview({
               onClick={async () => {
                 try {
                   await navigator.clipboard.writeText(reviewText(review, label));
-                  onError(t("Rückblick als Markdown kopiert.", "Review copied as Markdown."));
+                  showNotice(t("Rückblick als Markdown kopiert.", "Review copied as Markdown."));
                 } catch {
                   onError(t("Kopieren nicht möglich.", "Copying is not possible."));
                 }

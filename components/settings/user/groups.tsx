@@ -6,6 +6,7 @@ import { MagnifyingGlass, Plus, ShieldCheck, Users } from "@phosphor-icons/react
 import type { Space } from "@/lib/types";
 import { useT } from "../../i18n";
 import { Avatar, Modal } from "../../ui";
+import { showToast } from "../../toast";
 import { Select } from "../../select";
 import { SsoMappings } from "../../sso-mappings";
 import { CONTROL, EmptyState, SaveState, SettingGroup, SettingRow, useSaveState } from "../../settings-ui";
@@ -194,7 +195,7 @@ export default function GroupsSection() {
                   checked={!!settings?.groupMembers.some((g) => g.group_id === groupId && g.user_id === m.id)}
                   onChange={async (e) => {
                     const changed = await act({ action: "group.member", groupId, userId: m.id, enabled: e.target.checked });
-                    if (changed && groupId && ssoVia(m.id, groupId)) onError(ssoNotice);
+                    if (changed && groupId && ssoVia(m.id, groupId)) showToast({ text: ssoNotice });
                   }}
                 />
                 <Avatar name={m.name} userId={m.id} />

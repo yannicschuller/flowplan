@@ -26299,7 +26299,8 @@ tr:hover .row-open-mark,
 }
 /* ===================================================================   Unified error presentation and the mobile shell
    - .error-alert: inline alert at the top of an open dialog (ErrorAlert in
-     components/ui.tsx), the same copy as the error toast.
+     components/ui.tsx), the same copy as the error toast; .dialog-notice
+     the neutral confirmation in the same place (showNotice).
    - .toast-text / .toast-action: error toast with a detail line and "Retry".
    - .mobile-tab-bar: bottom bar on phones (components/mobile-tab-bar.tsx);
      --tab-bar-space is the room it takes (0 while the keyboard is open).
@@ -26366,6 +26367,22 @@ tr:hover .row-open-mark,
   background: #2a1416;
   border-color: #6d343a;
   color: #ffd9db;
+}
+/* A confirmation in the open dialog (showNotice): the alert's layout in the
+   neutral colours of .callout, for light and dark alike. */
+.error-alert.dialog-notice,
+[data-theme="dark"] .error-alert.dialog-notice {
+  background: var(--blue-light);
+  border-color: transparent;
+  color: var(--text);
+}
+.error-alert.dialog-notice > svg,
+[data-theme="dark"] .error-alert.dialog-notice > svg {
+  color: var(--blue);
+}
+.error-alert.dialog-notice .error-alert-text span,
+[data-theme="dark"] .error-alert.dialog-notice .error-alert-text span {
+  color: inherit;
 }
 .toast-text {
   display: flex;
