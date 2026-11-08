@@ -511,10 +511,15 @@
 .wf-card.status-cancelled {
   box-shadow: 0 0 0 2px var(--muted);
 }
+/* Connection points: a filled dot with a ring in the page colour, so they
+   stand out on the card edge in light and dark (#168 – in dark mode the
+   outlined dot on --bg was nearly invisible). */
 .wf-card .react-flow__handle {
-  width: 10px;
-  height: 10px;
-  border-width: 1.5px;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--bg);
+  background: var(--secondary);
+  box-shadow: 0 0 0 1px var(--muted);
 }
 .wf-card .react-flow__handle:hover,
 .wf-card .react-flow__handle.connectingfrom,
