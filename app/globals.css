@@ -4856,6 +4856,10 @@ mark[data-color] {
 .type-picker > .type-picker-template {
   grid-column: 1 / -1;
 }
+/* An odd number of page types: the template fills the gap beside the last. */
+.type-picker > :nth-child(odd):nth-last-child(2) + .type-picker-template {
+  grid-column: auto;
+}
 .type-picker .chosen {
   border-color: var(--blue);
   background: var(--blue-light);

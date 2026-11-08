@@ -67,6 +67,22 @@ test("the issue's example: built on the canvas, tested, activated, a new sub-pag
   await expect(nodes).toHaveCount(2);
   await expect(page.locator(".react-flow__edge")).toHaveCount(1);
   await expect(nodes.first()).toHaveAttribute("aria-label", /Neue Seite: Neue Compose-Seite/);
+  // Keyboard: C connects, Ctrl+D duplicates and Ctrl+Z takes it back, L shows the list.
+  await nodes.first().focus();
+  await page.keyboard.press("c");
+  await expect(page.getByRole("dialog", { name: "„Neue Compose-Seite“ verbinden" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await nodes.nth(1).focus();
+  await page.keyboard.press("Control+d");
+  await expect(nodes).toHaveCount(3);
+  await page.locator(".react-flow__node").nth(2).focus();
+  await page.keyboard.press("Control+z");
+  await expect(nodes).toHaveCount(2);
+  await nodes.first().focus();
+  await page.keyboard.press("l");
+  await expect(page.getByRole("list", { name: "Ablauf als Liste" }).getByRole("button")).toHaveCount(2);
+  await page.getByRole("list", { name: "Ablauf als Liste" }).getByRole("button").first().press("l");
+  await expect(nodes).toHaveCount(2);
 
   // 3. A test run with an existing sub-page: real, as me.
   await page.getByRole("button", { name: "Testlauf", exact: true }).click();

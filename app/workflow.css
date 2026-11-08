@@ -7,7 +7,7 @@
   max-width: none;
   padding: 36px 32px 40px;
 }
-.workflow-page {
+:is(.workflow-page, .wf-dialog) {
   --wf-ok: #3f7a55;
   --wf-ok-bg: #e8f3ec;
   --wf-error: #b2393e;
@@ -15,11 +15,13 @@
   --wf-warn: #7a6113;
   --wf-warn-bg: #fbf1dc;
   --wf-run: var(--blue);
+}
+.workflow-page {
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
-[data-theme="dark"] .workflow-page {
+[data-theme="dark"] :is(.workflow-page, .wf-dialog) {
   --wf-ok: #8fd0a8;
   --wf-ok-bg: rgba(90, 170, 120, 0.18);
   --wf-error: #f19b9e;

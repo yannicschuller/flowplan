@@ -41,10 +41,9 @@ export function useWorkflowDraft(input: { pageId: string; state: string; generat
   const dirty = useRef(false),
     inflight = useRef(false),
     lastVector = useRef<Uint8Array>(Y.encodeStateVector(doc));
-  const undo = useMemo(
-    () => new Y.UndoManager([doc.getMap("nodes"), doc.getMap("edges"), doc.getMap("settings")], { trackedOrigins: new Set([LOCAL]), captureTimeout: 400 }),
-    [doc],
-  );
+  // Made in an effect (not during render): React may run effects twice and
+  // a destroyed manager would track nothing.
+  const undoRef = useRef<Y.UndoManager | null>(null);
   useEffect(() => {
     let frame = 0;
     const update = () => {
@@ -58,6 +57,8 @@ export function useWorkflowDraft(input: { pageId: string; state: string; generat
         setSave("pending");
       }
     };
+    const undo = new Y.UndoManager([doc.getMap("nodes"), doc.getMap("edges"), doc.getMap("settings")], { trackedOrigins: new Set([LOCAL]), captureTimeout: 400 });
+    undoRef.current = undo;
     const stack = () => setHistory({ undo: undo.undoStack.length > 0, redo: undo.redoStack.length > 0 });
     doc.on("update", onUpdate);
     undo.on("stack-item-added", stack);
@@ -65,11 +66,10 @@ export function useWorkflowDraft(input: { pageId: string; state: string; generat
     return () => {
       cancelAnimationFrame(frame);
       doc.off("update", onUpdate);
-      undo.off("stack-item-added", stack);
-      undo.off("stack-item-popped", stack);
+      undo.destroy();
+      if (undoRef.current === undo) undoRef.current = null;
     };
-  }, [doc, undo]);
-  useEffect(() => () => undo.destroy(), [undo]);
+  }, [doc]);
 
   const sync = useCallback(async () => {
     if (inflight.current) return;
@@ -149,10 +149,10 @@ export function useWorkflowDraft(input: { pageId: string; state: string; generat
     flush,
     canUndo: history.undo,
     canRedo: history.redo,
-    undo: () => undo.undo(),
-    redo: () => undo.redo(),
-    // Merges a following edit into the last undo step (dragging, typing).
-    stopCapturing: () => undo.stopCapturing(),
+    undo: () => void undoRef.current?.undo(),
+    redo: () => void undoRef.current?.redo(),
+    // Starts a new undo step for the next edit.
+    stopCapturing: () => undoRef.current?.stopCapturing(),
   };
 }
 export type Draft = ReturnType<typeof useWorkflowDraft>;
