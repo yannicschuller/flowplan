@@ -119,3 +119,27 @@ test("phones: the flow as a list, the switch and the runs, no editor", async ({ 
   await page.getByRole("tab", { name: "Läufe" }).click();
   await expect(page.getByText(/Noch keine Läufe/)).toBeVisible();
 });
+
+test("a database rule opens in the canvas; once activated, the rule links to its workflow", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "Editing is for tablets and computers.");
+  test.setTimeout(120_000);
+  const { command, where } = await setup(page, "Rule");
+  const db = (await command({ action: "page.create", ...where, title: "Tickets Rule", kind: "database" })).id as string;
+  const rule = { id: "rule1", name: "Neue Tickets melden", enabled: true, trigger: { type: "created" }, conditions: [], actions: [{ type: "notify", to: "@creator", message: "Neu" }] };
+  await command({ action: "database.settings", pageId: db, settings: { automations: [rule] } });
+  await open(page, db);
+  await page.getByRole("button", { name: "Weitere Werkzeuge" }).click();
+  await page.getByRole("menuitem", { name: /Automationen/ }).click();
+  await page.getByRole("button", { name: "„Neue Tickets melden“ im Canvas öffnen und erweitern" }).click();
+  // The workflow page next to the database, the rule as its draft.
+  await expect(page.locator(".react-flow__node")).toHaveCount(2, { timeout: 20_000 });
+  await expect(page.locator(".react-flow__node").first()).toHaveAttribute("aria-label", /Neuer Eintrag/);
+  await page.getByRole("button", { name: "Aktivieren", exact: true }).click();
+  const activate = page.getByRole("dialog", { name: "Workflow aktivieren" });
+  await activate.getByRole("button", { name: "Aktivieren", exact: true }).click();
+  await expect(page.locator(".wf-head .status-badge")).toHaveText("Aktiv");
+  await open(page, db);
+  await page.getByRole("button", { name: "Weitere Werkzeuge" }).click();
+  await page.getByRole("menuitem", { name: /Automationen/ }).click();
+  await expect(page.getByRole("button", { name: "Erweitert als Workflow → öffnen" })).toBeVisible();
+});

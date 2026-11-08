@@ -23,6 +23,7 @@ import {
   type Edge,
   type EdgeProps,
   type NodeChange,
+  type NodeSelectionChange,
 } from "@xyflow/react";
 import { Plus } from "@phosphor-icons/react";
 import { useLocale } from "../i18n";
@@ -162,7 +163,7 @@ function Flow(props: CanvasProps) {
     (changes: NodeChange<CardNode>[]) => {
       setNodes((ns) => applyNodeChanges(changes, ns));
       // Selection by the person (click, Enter, Esc, the pane): the panel follows.
-      const picked = changes.find((c) => c.type === "select" && c.selected);
+      const picked = changes.find((c): c is NodeSelectionChange => c.type === "select" && c.selected);
       if (picked) props.onSelect(picked.id);
       else if (changes.some((c) => c.type === "select" && !c.selected && c.id === selected)) props.onSelect(null);
       const moves = changes.flatMap((c) => (c.type === "position" && c.position && !c.dragging ? [{ id: c.id, x: Math.round(c.position.x), y: Math.round(c.position.y) }] : []));
@@ -272,7 +273,7 @@ function Flow(props: CanvasProps) {
       >
         <Background gap={20} size={1} />
         <Controls showInteractive={false} position="bottom-left" />
-        <MiniMap pannable zoomable position="bottom-right" className="wf-minimap" nodeStrokeWidth={2} />
+        <MiniMap pannable zoomable position="bottom-right" className="wf-minimap" nodeStrokeWidth={2} style={{ width: 160, height: 100 }} />
       </ReactFlow>
     </div>
   );

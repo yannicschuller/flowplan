@@ -266,6 +266,23 @@ function Property({ name, schema, value, onChange, ctx, config, required, t }: {
   if (name === "to" && type === "notify.person") return <Recipients label={label} value={(value as string[]) || []} ctx={ctx} fields={info?.fields || []} onChange={onChange} t={t} />;
   if ((name === "page" || name === "parent") && typeOf(schema) === "string")
     return <PageRef label={label} value={String(value ?? "")} ctx={ctx} onChange={onChange} t={t} />;
+  if (name === "where" && type === "action.page.append") {
+    const w = (value as { kind?: string; heading?: string } | undefined) || { kind: "end" };
+    return (
+      <>
+        <Labeled id={id} label={label}>
+          <Select id={id} value={w.kind || "end"} disabled={ctx.disabled} onChange={(e) => onChange({ ...w, kind: e.target.value })}>
+            {["end", "start", "heading"].map((k) => <option key={k} value={k}>{enumLabel("kind", k, t)}</option>)}
+          </Select>
+        </Labeled>
+        {w.kind === "heading" && (
+          <Labeled id={`${id}-heading`} label={keyLabel("heading", t)}>
+            <input id={`${id}-heading`} type="text" value={w.heading || ""} maxLength={200} disabled={ctx.disabled} onChange={(e) => onChange({ ...w, heading: e.target.value })} />
+          </Labeled>
+        )}
+      </>
+    );
+  }
   if (name === "sort" && type === "action.record.find") {
     const s = (value as { field?: string; direction?: string } | undefined) || undefined;
     return (

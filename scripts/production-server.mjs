@@ -186,5 +186,19 @@ export async function seedAccount(request, origin) {
   });
   for (const [title, status, priority, date, tags] of ROWS)
     await command({ action: "row.create", pageId: db.id, cells: { title, status, priority, date, tags } });
-  return { workspaceId, documentId: doc.id, databaseId: db.id };
+  // A workflow page (#168): the issue's example as its draft.
+  const workflow = await command({ action: "page.create", workspaceId, spaceId, title: "Projektseiten verlinken", kind: "workflow" });
+  const node = (id, type, label, x, config) => ({ id, type, typeVersion: 1, label, note: "", position: { x, y: 0 }, disabled: false, config });
+  await command({
+    action: "workflow.draft",
+    pageId: workflow.id,
+    graph: {
+      nodes: [
+        node("n_quality1", "trigger.page.created", "Neue Projektseite", 0, { scope: { kind: "below", pageId: doc.id, depth: "children" } }),
+        node("n_quality2", "action.page.append", "Auf Briefing eintragen", 300, { page: "{{n_quality1.page.parent}}", blocks: [{ type: "bullet", text: "{{n_quality1.page.link}}" }], noDuplicate: true }),
+      ],
+      edges: [{ id: "e_1", from: { node: "n_quality1", port: "out" }, to: { node: "n_quality2", port: "in" } }],
+    },
+  });
+  return { workspaceId, documentId: doc.id, databaseId: db.id, workflowId: workflow.id };
 }

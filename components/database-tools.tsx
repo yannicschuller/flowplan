@@ -69,7 +69,7 @@ export function DatabaseTools({
         </Dropdown.Portal>
       </Dropdown.Root>
       <Modal open={panel === "automations"} onClose={() => setPanel(null)} title={t(`Automationen · ${page.title}`, `Automations · ${page.title}`)} wide>
-        <DatabaseAutomations fields={database.fields} settings={settings} members={members} editable={editable} save={save} templates={templates} />
+        <DatabaseAutomations fields={database.fields} settings={settings} members={members} editable={editable} save={save} templates={templates} pageId={page.id} />
       </Modal>
       <Modal open={panel === "git"} onClose={() => setPanel(null)} title={t("Git-Anbindung", "Git connection")} wide>
         {panel === "git" && <GitSettings pageId={page.id} hasIds={database.fields.some((f) => f.type === "id")} editable={editable} act={act} />}

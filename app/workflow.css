@@ -146,8 +146,9 @@
   position: relative;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  height: calc(100dvh - 270px);
-  min-height: 460px;
+  /* Below the page title: the editor fits the window, the page scrolls
+     only on short windows. */
+  height: max(480px, calc(100dvh - 400px));
   border: 1px solid var(--border);
   border-radius: 12px;
   overflow: hidden;
@@ -564,6 +565,24 @@
   gap: 4px;
   min-width: 0;
 }
+/* The global label is a column with a margin below (app/globals.css). */
+:is(.workflow-page, .wf-dialog) label {
+  margin: 0;
+  font-weight: inherit;
+}
+:is(.workflow-page, .wf-dialog) label.wf-field-label {
+  display: block;
+}
+:is(.wf-check, .wf-segmented label, .wf-onoff) {
+  flex-direction: row !important;
+}
+:is(.wf-check, .wf-segmented label) input {
+  width: auto;
+}
+.wf-panel textarea,
+.wf-dialog textarea {
+  min-height: 0;
+}
 .wf-field-label,
 .wf-group > legend,
 .wf-list > legend,
@@ -900,6 +919,7 @@
   background: var(--hover);
 }
 .wf-list-node.selected {
+  background: var(--bg);
   border-color: var(--blue);
   box-shadow: 0 0 0 1px var(--blue);
 }
@@ -920,6 +940,7 @@
   overflow-wrap: anywhere;
 }
 .wf-list-text .muted {
+  color: var(--secondary);
   font-size: 12.5px;
   overflow-wrap: anywhere;
 }

@@ -32,6 +32,9 @@ const PAGES = [
   { path: "/register", jsKb: 290 },
   { path: (ids) => `/#page=${ids.documentId}`, name: "document", signedIn: true, jsKb: 2220 },
   { path: (ids) => `/#page=${ids.databaseId}`, name: "database", signedIn: true, jsKb: 1690 },
+  // A workflow page with its canvas (@xyflow/react, components/workflow):
+  // at most a database page + 120 KB (docs/specs/workflows.md §10.1).
+  { path: (ids) => `/#page=${ids.workflowId}`, name: "workflow", signedIn: true, jsKb: 1810, ready: ".react-flow__node, .wf-list-node" },
   // The landing pages of the settings and the administration (tiles), and a
   // settings section on a phone (components/settings/shell.tsx).
   // The start page with its widgets; customizing loads on demand

@@ -38,7 +38,8 @@ test("automations and workflow from the database menu", async ({ page }, info) =
   await page.keyboard.press("Escape");
 
   await page.getByRole("button", { name: "Weitere Werkzeuge" }).click();
-  await page.getByRole("menuitem", { name: /Workflow/ }).click();
+  // The tool is "Statusregeln und Erledigt" since workflows came (#168).
+  await page.getByRole("menuitem", { name: /Statusregeln und Erledigt/ }).click();
   await dialog.getByLabel("Erlaubte Wechsel und Pflichtfelder festlegen").check();
   await dialog.getByLabel("Von Offen nach Erledigt").uncheck();
   await dialog.getByRole("button", { name: "Speichern" }).click();
