@@ -1,11 +1,14 @@
 import { test, expect } from "@playwright/test";
 
-// When the session ends, the app goes to the sign-in page (keeping the page
-// address) instead of showing "Bitte melde dich an.".
+// When the session ends, the app keeps the open page and shows a banner (so
+// unsaved changes are not lost by a reload); its link leads to the sign-in
+// page, keeping the page address, never to "Bitte melde dich an.".
 test("an ended session leads to the sign-in page", async ({ page, context }) => {
   test.setTimeout(90_000);
   const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
   await page.request.post("/api/auth/demo", { headers: { origin } });
+  // A new account would see the introduction first.
+  await page.request.post("/api/command", { headers: { origin }, data: { action: "profile.onboarded" } });
   const boot = await (await page.request.get("/api/bootstrap")).json();
   const created = await page.request.post("/api/command", {
     headers: { origin },
@@ -17,8 +20,11 @@ test("an ended session leads to the sign-in page", async ({ page, context }) => 
   await context.clearCookies();
   // Any request now fails with 401: e.g. adding a favourite.
   // The next request of the app fails with 401 – a background request may
-  // already have started the switch to the sign-in page.
+  // already have shown the banner.
   await page.evaluate(() => fetch("/api/bootstrap").catch(() => {})).catch(() => {});
+  const banner = page.getByRole("alert").filter({ hasText: "Du wurdest abgemeldet" });
+  await expect(banner).toBeVisible({ timeout: 15_000 });
+  await banner.getByRole("link", { name: "Anmelden" }).click();
   await expect(page.locator("input[type=password], a[href^='/api/auth/login']").first()).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText("Bitte melde dich an.")).toHaveCount(0);
   expect(page.url()).toContain(`#page=${pageId}`);

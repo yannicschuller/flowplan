@@ -40,6 +40,8 @@ async function fixture(page: Page, kind: string) {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.request.post("/api/auth/demo", { headers: { origin } });
+  // A new account would see the introduction first.
+  await page.request.post("/api/command", { headers: { origin }, data: { action: "profile.onboarded" } });
   const boot = await (await page.request.get("/api/bootstrap")).json();
   const command = async (data: Record<string, unknown>) => {
     const r = await page.request.post("/api/command", {
@@ -287,7 +289,9 @@ test("formula conflicts preserve the draft and never overwrite a concurrent prop
   );
   await edit.getByRole("button", { name: "Speichern", exact: true }).click();
   expect((await response).status()).toBe(409);
-  await expect(edit.getByRole("alert")).toContainText(
+  // The server's conflict shows at the dialog's top; the form says the
+  // draft is kept.
+  await expect(edit.locator("form").getByRole("alert")).toContainText(
     "Entwurf bleibt erhalten",
   );
   await expect(edit.getByLabel("Formel", { exact: true })).toHaveValue(

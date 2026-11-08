@@ -16,7 +16,7 @@ test("a space is exported as Markdown from the sidebar", async ({ page }, info) 
   const space = boot.spaces[0];
   await page.goto("/");
   await page.getByRole("button", { name: `${space.name} als Markdown exportieren` }).click();
-  const dialog = page.getByRole("dialog", { name: "Bereich als Markdown exportieren" });
+  const dialog = page.getByRole("dialog", { name: "Bereich exportieren" });
   await expect(dialog).toContainText(`"spaceId":"${space.id}"`);
   await dialog.getByLabel("Kommentare und frühere Versionen einschließen").check();
   await page.screenshot({ path: "test-results/space-export.png" });

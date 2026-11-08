@@ -7,6 +7,8 @@ test("sprint planning from the backlog to completion", async ({ page }, info) =>
   page.on("pageerror", (e) => errors.push(e.message));
   const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
   await page.request.post("/api/auth/demo", { headers: { origin } });
+  // A new account would see the introduction first.
+  await page.request.post("/api/command", { headers: { origin }, data: { action: "profile.onboarded" } });
   const boot = await (await page.request.get("/api/bootstrap")).json();
   const command = async (data: Record<string, unknown>) => {
     const response = await page.request.post("/api/command", { headers: { origin }, data });
@@ -28,7 +30,9 @@ test("sprint planning from the backlog to completion", async ({ page }, info) =>
   await command({ action: "row.create", pageId: db.id, cells: { title: "Login bauen", status: "Offen" } });
   await command({ action: "row.create", pageId: db.id, cells: { title: "Doku", status: "Erledigt" } });
   await page.goto(`/#page=${db.id}`);
-  await page.getByRole("tab", { name: /Planung/ }).or(page.getByRole("button", { name: /Planung/ })).first().click();
+  // A new database has several views: the ones beyond the fifth are under "Weitere".
+  await page.getByRole("button", { name: /^Weitere Ansichten/ }).click();
+  await page.getByRole("menuitem", { name: "Planung" }).click();
   await page.getByRole("button", { name: "Sprints einrichten" }).click();
   const sprint = page.getByRole("region", { name: "Sprint 1" });
   await expect(sprint).toBeVisible({ timeout: 30_000 });

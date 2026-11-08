@@ -7,6 +7,8 @@ test("sidebar selects several pages for moving, duplicating and trashing and dra
   page.on("pageerror", (e) => errors.push(e.message));
   const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
   await page.request.post("/api/auth/demo", { headers: { origin } });
+  // A new account would see the introduction first.
+  await page.request.post("/api/command", { headers: { origin }, data: { action: "profile.onboarded" } });
   const boot = await (await page.request.get("/api/bootstrap")).json();
   const command = async (data: Record<string, unknown>) => {
     const response = await page.request.post("/api/command", {
@@ -48,7 +50,9 @@ test("sidebar selects several pages for moving, duplicating and trashing and dra
     await nav.getByRole("checkbox", { name: `Alpha ${tag} auswählen` }).check();
     await nav.getByRole("checkbox", { name: `Beta ${tag} auswählen` }).check();
   } else {
-    await title(`Alpha ${tag}`).click({ modifiers: ["ControlOrMeta"] });
+    // Shift-click starts a selection (Ctrl/⌘-click alone opens the split
+    // view); while selecting, Ctrl/⌘-click adds a page.
+    await title(`Alpha ${tag}`).click({ modifiers: ["Shift"] });
     await title(`Beta ${tag}`).click({ modifiers: ["ControlOrMeta"] });
   }
   const bar = nav.getByRole("toolbar", { name: "Seitenauswahl" });
@@ -68,12 +72,19 @@ test("sidebar selects several pages for moving, duplicating and trashing and dra
 
   // Range selection with Shift on desktop, checkboxes on touch.
   await openNav();
+  // Tree pages start folded (#97): unfold the target the pages went into.
+  const fold = nav
+    .locator(`.page-nav[data-page-id="${target}"]`)
+    .getByRole("button", { name: /^Unterseiten (öffnen|schließen)$/ });
+  await expect(fold).toBeVisible();
+  if ((await fold.getAttribute("aria-label")) === "Unterseiten öffnen")
+    await fold.click();
   if (mobile) {
     await nav.getByRole("button", { name: "Seiten auswählen" }).first().click();
     await nav.getByRole("checkbox", { name: `Alpha ${tag} auswählen` }).check();
     await nav.getByRole("checkbox", { name: `Beta ${tag} auswählen` }).check();
   } else {
-    await title(`Alpha ${tag}`).click({ modifiers: ["ControlOrMeta"] });
+    await title(`Alpha ${tag}`).click({ modifiers: ["Shift"] });
     await title(`Beta ${tag}`).click({ modifiers: ["Shift"] });
     await expect(bar).toContainText("2 ausgewählt");
   }

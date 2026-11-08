@@ -218,6 +218,11 @@ test("board cards move between columns, gallery cards reorder, the calendar move
   await settled(page);
   const chip = page.locator(`.calendar-day[data-day="${month}-11"] .calendar-event`, { hasText: "Beta" });
   await expect(chip).toBeVisible();
+  // The target day in the middle of the window: near its edge the drag
+  // scrolls the page (and the pointer would be over another day).
+  await page
+    .locator(`.calendar-day[data-day="${month}-18"]`)
+    .evaluate((el) => el.scrollIntoView({ block: "center" }));
   const c = (await chip.boundingBox())!;
   const day = await center(page, `.calendar-day[data-day="${month}-18"]`);
   await page.mouse.move(c.x + c.width / 2, c.y + c.height / 2);

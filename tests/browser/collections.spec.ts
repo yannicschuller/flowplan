@@ -7,6 +7,8 @@ test("quick search saves a collection that lists matching pages live", async ({ 
   page.on("pageerror", (e) => errors.push(e.message));
   const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
   await page.request.post("/api/auth/demo", { headers: { origin } });
+  // A new account would see the introduction first.
+  await page.request.post("/api/command", { headers: { origin }, data: { action: "profile.onboarded" } });
   const boot = await (await page.request.get("/api/bootstrap")).json();
   const tag = `${testInfo.project.name}${Date.now()}`;
   const create = async (title: string) =>
@@ -32,7 +34,7 @@ test("quick search saves a collection that lists matching pages live", async ({ 
   await expect(page.getByRole("heading", { name: `Sammlung ${tag}` })).toBeVisible();
   await expect(page.getByRole("link", { name: new RegExp(`Gespeichert ${tag}`) })).toBeVisible();
   const nav = page.getByRole("region", { name: "Sammlungen" });
-  await expect(nav.getByRole("button", { name: `Sammlung ${tag}` })).toBeVisible();
+  await expect(nav.getByRole("button", { name: `Sammlung ${tag}`, exact: true })).toBeVisible();
 
   // A new matching page appears by itself.
   await create(`Neu ${tag}`);
@@ -40,8 +42,8 @@ test("quick search saves a collection that lists matching pages live", async ({ 
 
   // Deleted, then back with undo.
   await page.getByRole("button", { name: "Löschen", exact: true }).click();
-  await expect(nav.getByRole("button", { name: `Sammlung ${tag}` })).toHaveCount(0);
+  await expect(nav.getByRole("button", { name: `Sammlung ${tag}`, exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Rückgängig" }).click();
-  await expect(nav.getByRole("button", { name: `Sammlung ${tag}` })).toBeVisible();
+  await expect(nav.getByRole("button", { name: `Sammlung ${tag}`, exact: true })).toBeVisible();
   expect(errors).toEqual([]);
 });
