@@ -102,20 +102,28 @@ test("opening a page from the tree: the pane cross-fades, icon and title fly to 
 
   await (await treeEntry(page, `Zweite ${stamp}`, mobile)).click();
   await expect(pageTitle(page)).toHaveValue(`Zweite ${stamp}`);
-  await expect.poll(async () => (await seen(page)).length).toBe(1);
-  const [transition] = await seen(page);
-  expect(transition.kind).toBe("page");
-  expect(transition.main).toBe("fp-main");
-  // Old view: the tree entry's icon and title; new view: the page header's.
-  expect(transition.old).toEqual(expect.arrayContaining([expect.stringMatching(/^fp-page-title:span\.page-nav-label/), expect.stringMatching(/^fp-page-icon:/)]));
-  await expect.poll(async () => (await seen(page))[0].fresh).toEqual(
-    expect.arrayContaining([expect.stringMatching(/^fp-page-title:input\.page-title/), expect.stringMatching(/^fp-page-icon:button\.large-page-icon/)]),
-  );
-  expect((await seen(page))[0].fresh!.some((name) => name.includes("page-nav-label"))).toBe(false);
-  // Afterwards nothing stays named.
-  await expect.poll(async () => (await seen(page))[0].done).toBe(true);
-  expect(await page.evaluate(() => document.documentElement.dataset.viewTransition)).toBeUndefined();
-  expect(await page.evaluate(() => [...document.querySelectorAll<HTMLElement>("*")].filter((el) => el.style?.viewTransitionName).length)).toBe(0);
+  if (mobile) {
+    // On phones the tree is in the navigation drawer, which holds view
+    // transitions while it is open and slides (7df2aba, WebKit): the page
+    // comes at once.
+    await expect(page.locator(".app-shell.nav-open")).toHaveCount(0);
+    expect(await seen(page)).toEqual([]);
+  } else {
+    await expect.poll(async () => (await seen(page)).length).toBe(1);
+    const [transition] = await seen(page);
+    expect(transition.kind).toBe("page");
+    expect(transition.main).toBe("fp-main");
+    // Old view: the tree entry's icon and title; new view: the page header's.
+    expect(transition.old).toEqual(expect.arrayContaining([expect.stringMatching(/^fp-page-title:span\.page-nav-label/), expect.stringMatching(/^fp-page-icon:/)]));
+    await expect.poll(async () => (await seen(page))[0].fresh).toEqual(
+      expect.arrayContaining([expect.stringMatching(/^fp-page-title:input\.page-title/), expect.stringMatching(/^fp-page-icon:button\.large-page-icon/)]),
+    );
+    expect((await seen(page))[0].fresh!.some((name) => name.includes("page-nav-label"))).toBe(false);
+    // Afterwards nothing stays named.
+    await expect.poll(async () => (await seen(page))[0].done).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.dataset.viewTransition)).toBeUndefined();
+    expect(await page.evaluate(() => [...document.querySelectorAll<HTMLElement>("*")].filter((el) => el.style?.viewTransitionName).length)).toBe(0);
+  }
   // Screens without a page take part too.
   await page.waitForTimeout(400);
   await forget(page);

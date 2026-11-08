@@ -61,7 +61,9 @@ export function healStep(kind: HealKind, page: string, server: { build: string |
 // - "later": a script or style sheet of the app failing after "load", a
 //   ChunkLoadError, STALE_CHUNK_EVENT, a page from the back/forward cache,
 //   and once after "load" a page a service worker answered.
-// - The live server's build comes from the health check's BUILD_HEADER.
+// - The live server's build comes from the health check's BUILD_HEADER;
+//   its body is not needed and is cancelled (unread, in a page a service
+//   worker controls, the request would stay open).
 //   The reload drops the stored "/" of the service worker's copy when it is
 //   of another build ("Clear cache": the copy's files as well), asks
 //   registered workers to update and loads the address with FRESH_PARAM;
@@ -86,7 +88,7 @@ var initial=[];addEventListener("DOMContentLoaded",function(){initial=[].slice.c
 var inline=function(l){try{var u=new URL(l.href);return !!document.querySelector('style[data-flowplan-href="'+CSS.escape(u.pathname+u.search)+'"]')}catch(e){return false}};
 var sheetsLoaded=function(){for(var i=0;i<initial.length;i++){var l=initial[i];if(l.isConnected&&appFile(l)&&!l.sheet&&!inline(l))return false}return true};
 var canStore=function(){try{sessionStorage.setItem(KEY+"-test","1");sessionStorage.removeItem(KEY+"-test");return true}catch(e){return false}};
-var server=function(){return new Promise(function(done){var timer=setTimeout(function(){done(null)},5000);fetch("/api/health?"+PARAM+"="+Date.now(),{cache:"no-store",credentials:"omit"}).then(function(r){clearTimeout(timer);done({build:r.headers.get(${JSON.stringify(BUILD_HEADER)})})},function(){clearTimeout(timer);done(null)})})};
+var server=function(){return new Promise(function(done){var timer=setTimeout(function(){done(null)},5000);fetch("/api/health?"+PARAM+"="+Date.now(),{cache:"no-store",credentials:"omit"}).then(function(r){clearTimeout(timer);done({build:r.headers.get(${JSON.stringify(BUILD_HEADER)})});try{r.body&&r.body.cancel().catch(function(){})}catch(e){}},function(){clearTimeout(timer);done(null)})})};
 var step=function(kind,page,answer,recent){if(kind==="later"){var newer=!!(answer&&answer.build)&&!!page&&answer.build!==page;return newer&&!recent?"reload":"none"}if(!answer)return "message";return recent?"message":"reload"};
 var drop=function(all,shell){var jobs=[];try{if(window.caches)jobs.push(caches.keys().then(function(names){return Promise.all(names.map(function(n){if(n==="flowplan-data-v1"&&(all||shell))return caches.open(n).then(function(c){return c.delete("/")});if(all&&n.indexOf("flowplan-static-")===0)return caches.delete(n)}))}));if(navigator.serviceWorker)jobs.push(navigator.serviceWorker.getRegistrations().then(function(list){return Promise.all(list.map(function(r){return r.update()}))}))}catch(e){}return Promise.race([Promise.all(jobs).catch(function(){}),new Promise(function(r){setTimeout(r,3000)})])};
 var reload=function(all,shell){try{sessionStorage.setItem(KEY,String(Date.now()))}catch(e){}post({type:"staleCopy",build:BUILD,clear:!!all});drop(all,shell).then(function(){var u=new URL(location.href);u.searchParams.set(PARAM,String(Date.now()));location.replace(u.href)})};

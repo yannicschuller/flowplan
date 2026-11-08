@@ -2173,6 +2173,11 @@ export default function WorkspaceApp({
       clearTimeout(press.current?.timer);
       press.current = null;
     },
+    // Nor may its mousedown move the focus to the entry: the menu would
+    // close again (focus outside).
+    onMouseDownCapture: (e: React.MouseEvent) => {
+      if (press.current?.opened) e.preventDefault();
+    },
     // The tap that ends a long press must not also open the page.
     onClickCapture: (e: React.MouseEvent) => {
       if (press.current?.opened) {
