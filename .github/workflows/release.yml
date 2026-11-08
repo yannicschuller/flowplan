@@ -60,12 +60,16 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
       - name: Changelog from the commits since the last release
         run: node scripts/release-notes.mjs "${{ steps.version.outputs.version }}" --changelog > "$RUNNER_TEMP/notes.md"
+      - name: Contributors in the README (merged pull requests, no bots)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/contributors.mjs
       - name: Commit, tag and push
         run: |
           version="${{ steps.version.outputs.version }}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package.json package-lock.json CHANGELOG.md deploy/helm/flowplan/Chart.yaml
+          git add package.json package-lock.json CHANGELOG.md deploy/helm/flowplan/Chart.yaml README.md README.de.md
           git diff --cached --quiet || git commit -m "Release v$version"
           git tag "v$version"
           git push origin main "v$version"

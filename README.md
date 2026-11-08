@@ -537,9 +537,13 @@ Flowplan speaks German and English natively; every other language is a JSON cata
 
 ### Contributors
 
-<a href="https://github.com/yannicschuller/flowplan/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=yannicschuller/flowplan" alt="Contributors to Flowplan">
-</a>
+<!-- contributors:start -->
+<p>
+  <a href="https://github.com/yannicschuller" title="yannicschuller"><img src="https://github.com/yannicschuller.png?size=96" width="48" height="48" alt="yannicschuller"></a>
+  <a href="https://github.com/timthinks" title="timthinks"><img src="https://github.com/timthinks.png?size=96" width="48" height="48" alt="timthinks"></a>
+  <a href="https://github.com/scudong" title="scudong"><img src="https://github.com/scudong.png?size=96" width="48" height="48" alt="scudong"></a>
+</p>
+<!-- contributors:end -->
 
 ### Star history
 
