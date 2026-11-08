@@ -2,16 +2,31 @@
 // properties renamed (or merged into another option). Records, record
 // templates, records in the trash, unsent form answers, the views'
 // filters and groups, the done rule, workflow, automations, form
-// conditions and the issue sync's status mapping follow the new name. Runs
-// in the command's transaction, before the schema is stored.
-import { all, nowText, one, run } from "./db";
+// conditions, the issue sync's status mapping and linked views of the
+// database on other pages follow the new name. Runs in the command's
+// transaction, before the schema is stored.
+import { Transform } from "@tiptap/pm/transform";
+import type { Node as PMNode } from "@tiptap/pm/model";
+import { all, nowText, one, run, sql } from "./db";
 import { HttpError } from "./auth";
 import { databaseSnapshot } from "./database-operations";
 import { databaseSettings } from "./database-settings";
 import { assertFieldsWritable } from "./field-access";
 import { isTagField } from "./page-properties";
 import { pageRole } from "./permissions";
-import { mergesOf, optionRenamesSchema, renameCells, renameInFormConfig, renameInSettings, renameInViews, renameMaps, type OptionRename } from "./option-renames";
+import { rewriteDocument } from "./document-rewrite";
+import { linkedViewsSchema } from "./linked-views";
+import {
+  mergesOf,
+  optionRenamesSchema,
+  renameCells,
+  renameInFormConfig,
+  renameInSettings,
+  renameInViews,
+  renameMaps,
+  type OptionRename,
+  type RenameMaps,
+} from "./option-renames";
 import type { Field, Identity, Page, View } from "./types";
 
 const choice = (f: Field | undefined) => !!f && (f.type === "select" || f.type === "multiselect") && !isTagField(f);
@@ -41,9 +56,18 @@ function validRenames(input: unknown, before: Field[], after: Field[]): OptionRe
   return renames;
 }
 
-export async function applyOptionRenames(user: Identity, page: Page, before: Field[], after: Field[], views: View[], input: unknown) {
+// Returns the updates of host documents to send to open editors once the
+// transaction is stored.
+export async function applyOptionRenames(
+  user: Identity,
+  page: Page,
+  before: Field[],
+  after: Field[],
+  views: View[],
+  input: unknown,
+): Promise<(() => void)[]> {
   const renames = validRenames(input, before, after);
-  if (!renames.length) return;
+  if (!renames.length) return [];
   // The values change as if each record were edited: only people who may
   // write the property, and statuses only owners set stay theirs.
   await assertFieldsWritable(user, page, before, new Set(renames.map((r) => r.field)));
@@ -114,4 +138,57 @@ export async function applyOptionRenames(user: Identity, page: Page, before: Fie
       await run("UPDATE issue_sync_maps SET config=? WHERE page_id=?", JSON.stringify(config), page.id);
     }
   }
+  return await renameInLinkedViews(user, page, maps);
+}
+
+// Linked views of the database (lib/linked-views.ts) keep views of their
+// own in the block of their host page or record. Their filters and groups
+// name the database's options, so they are part of the database like its
+// records: they follow in every host of the workspace, also in pages and
+// records the renaming person cannot open or edit (as records they cannot
+// see follow). Nothing else of the host changes. The block's version goes
+// up, so a linked view open elsewhere reloads before it saves its views.
+export function renameLinkedBlocks(doc: PMNode, source: string, maps: RenameMaps): PMNode | null {
+  const changes: { pos: number; attrs: Record<string, unknown> }[] = [];
+  doc.descendants((node, pos) => {
+    if (node.type.name !== "linkedDatabase") return true;
+    if (node.attrs.source !== source) return false;
+    let views;
+    try {
+      views = linkedViewsSchema.parse(JSON.parse(String(node.attrs.views)));
+    } catch {
+      return false;
+    }
+    const unchanged = JSON.stringify(views);
+    renameInViews(views, maps);
+    if (JSON.stringify(views) !== unchanged)
+      changes.push({ pos, attrs: { ...node.attrs, views: JSON.stringify(views), version: String((Number(node.attrs.version) || 1) + 1) } });
+    return false;
+  });
+  if (!changes.length) return null;
+  const tr = new Transform(doc);
+  for (const { pos, attrs } of changes) tr.setNodeMarkup(pos, undefined, attrs);
+  return tr.doc;
+}
+async function renameInLinkedViews(user: Identity, page: Page, maps: RenameMaps) {
+  const needle = `data-linked-source="${page.id}"`;
+  const hosts = [
+    ...(await all<{ page_id: string; row_id: null }>(
+      `SELECT d.page_id,NULL row_id FROM documents d JOIN pages p ON p.id=d.page_id WHERE p.workspace_id=? AND ${sql.instr("d.html", "?")}>0`,
+      page.workspace_id,
+      needle,
+    )),
+    ...(await all<{ page_id: string; row_id: string }>(
+      `SELECT r.page_id,r.id row_id FROM row_documents d JOIN rows r ON r.id=d.row_id JOIN pages p ON p.id=r.page_id
+       WHERE p.workspace_id=? AND ${sql.instr("d.html", "?")}>0`,
+      page.workspace_id,
+      needle,
+    )),
+  ];
+  const publish: (() => void)[] = [];
+  for (const host of hosts) {
+    const result = await rewriteDocument(host.page_id, host.row_id, user.id, (doc) => renameLinkedBlocks(doc, page.id, maps));
+    if (result) publish.push(result.publish);
+  }
+  return publish;
 }
