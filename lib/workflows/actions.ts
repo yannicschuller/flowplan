@@ -3,9 +3,13 @@
 // the credentials of HTTP nodes (sealed, bound to a host, never read back)
 // and the addresses of webhook triggers, and what the editor may pick
 // (released chat webhooks, inbound addresses to this workflow).
+import { createHash, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { all, audit, id, one, run } from "../db";
 import { HttpError } from "../auth";
+import { allow } from "../action-limits";
+import { securityEvent } from "../security-events";
+import type { MobileDevice } from "../mobile-devices";
 import { pageRole } from "../permissions";
 import { sealWorkflowCredential } from "../sealed-values";
 import { workflowChatHooks } from "../webhooks";
@@ -119,12 +123,22 @@ export async function approvalDetail(user: Identity, approvalId: string) {
 export async function decideApproval(user: Identity, raw: unknown) {
   if (user.apiScope) throw new HttpError(403, "Freigaben werden nur angemeldet entschieden, nicht mit einem API-Token.");
   const b = z.object({ approvalId: uuid, decision: z.enum(["approved", "rejected"]), comment: z.string().trim().max(2000).default("") }).parse(raw);
-  const a = await one<ApprovalRow>("SELECT * FROM workflow_approvals WHERE id=?", b.approvalId);
+  return await settleApproval(user, b.approvalId, b.decision, b.comment, "");
+}
+
+// The decision itself, for a person already identified as themselves (a
+// signed-in session, or the app's device after its checks, §11.8): only
+// an approver, only while open and within its deadline; the same decision
+// by the same person again is answered as done (a retried button).
+async function settleApproval(user: Identity, approvalId: string, decision: "approved" | "rejected", comment: string, via: string) {
+  const a = await one<ApprovalRow>("SELECT * FROM workflow_approvals WHERE id=?", approvalId);
   if (!a) throw new HttpError(404, "Freigabe nicht gefunden.");
   const page = await requireWorkflow(user, a.page_id);
   if (!(JSON.parse(a.approvers) as string[]).includes(user.id)) throw new HttpError(403, "Du bist für diese Freigabe nicht eingetragen.");
+  if (a.decision === decision && a.decided_by === user.id) return { ok: true, decision, already: true };
   const now = Date.now();
-  const decided = await run("UPDATE workflow_approvals SET decision=?,decided_by=?,comment=?,decided_at=? WHERE id=? AND decision IS NULL", b.decision, user.id, b.comment, now, a.id);
+  if (!a.decision && a.expires_at && a.expires_at <= now) throw new HttpError(409, "Die Frist dieser Freigabe ist abgelaufen.");
+  const decided = await run("UPDATE workflow_approvals SET decision=?,decided_by=?,comment=?,decided_at=? WHERE id=? AND decision IS NULL AND (expires_at IS NULL OR expires_at>?)", decision, user.id, comment, now, a.id, now);
   if (!decided.changes) throw new HttpError(409, "Diese Freigabe ist schon entschieden oder nicht mehr nötig.");
   const runRow = await one<RunRow>("SELECT * FROM workflow_runs WHERE id=?", a.run_id);
   const step = await one<{ id: string; node_id: string; iteration: string; via: string; status: string }>("SELECT id,node_id,iteration,via,status FROM workflow_steps WHERE id=?", a.step_id);
@@ -142,9 +156,50 @@ export async function decideApproval(user: Identity, raw: unknown) {
       }
     }
   }
-  await audit(user.id, b.decision === "approved" ? "workflow.approved" : "workflow.rejected", a.page_id, a.id);
+  await audit(user.id, decision === "approved" ? "workflow.approved" : "workflow.rejected", a.page_id, via ? `${a.id} ${via}` : a.id);
   wakeAfterCommit();
-  return { ok: true, decision: b.decision };
+  return { ok: true, decision };
+}
+
+/* ---------- Approvals on the apps' push notifications (§11.8) ---------- */
+
+// A device unused for longer than this decides nothing from a notification
+// (the app opens the approval view instead and registers again).
+export const DEVICE_APPROVAL_IDLE_MS = 14 * 86_400_000;
+const digestKey = (secret: string) => createHash("sha256").update(secret).digest("base64url");
+const refuse = (user: Identity, device: MobileDevice, reason: string, approvalId: string, status: number, message: string) => {
+  securityEvent("workflow.approval.refused", { actorId: user.id, detail: `${reason} ${approvalId} device ${device.id}` });
+  return new HttpError(status, message);
+};
+
+// "Approve" / "Reject" tapped on a push notification: the person behind the
+// device token (lib/mobile-devices.ts deviceFromToken), on the approval the
+// notification asks for. The device must be registered for a living
+// session (the token lookup), seen within DEVICE_APPROVAL_IDLE_MS before
+// this request, and – to approve – bring the secret of its confirmation
+// key, which the phone opens only with Face ID / Touch ID / the fingerprint.
+// Rejecting needs no confirmation: it is the safe direction (§11.8).
+export async function decideApprovalOnDevice(
+  user: Identity,
+  device: MobileDevice,
+  input: { approvalId: string; decision: "approved" | "rejected"; confirmation?: string },
+  now = Date.now(),
+) {
+  if (now - device.lastSeenAt > DEVICE_APPROVAL_IDLE_MS)
+    throw refuse(user, device, "idle", input.approvalId, 403, "Dieses Gerät war zu lange nicht aktiv. Bitte in Flowplan öffnen.");
+  if (input.decision === "approved") {
+    const given = input.confirmation ? Buffer.from(digestKey(input.confirmation)) : null;
+    const stored = device.approvalKey ? Buffer.from(device.approvalKey) : null;
+    if (!stored) throw refuse(user, device, "no-key", input.approvalId, 403, "Freigeben auf diesem Gerät ist nicht eingerichtet. Bitte in Flowplan öffnen.");
+    // Ten approvals per device and ten minutes, confirmed or not.
+    if (!allow(`device-approval:${device.id}`, 10, 600_000)) throw new HttpError(429, "Zu viele Versuche. Bitte später in Flowplan öffnen.");
+    if (!given || given.length !== stored.length || !timingSafeEqual(given, stored))
+      throw refuse(user, device, "confirmation", input.approvalId, 403, "Die Bestätigung auf dem Gerät fehlt. Bitte in Flowplan öffnen.");
+  }
+  // The person themselves, not the device token's reading rights: the
+  // checks above stand in for the signed-in session.
+  const person: Identity = { ...user, apiScope: undefined };
+  return await settleApproval(person, input.approvalId, input.decision, "", `app:${device.id}`);
 }
 
 /* ---------- Credentials (§9.5) ---------- */

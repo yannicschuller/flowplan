@@ -1,6 +1,7 @@
 // Buttons on the push notifications of the apps (flowplan-app): "Done" and
 // "Tomorrow" on a task that is due, "Reply" (with text) and "Mark as read"
-// on comments and mentions. lib/push.ts names a category per notification
+// on comments and mentions, "Approve" and "Reject" on a workflow approval
+// (docs/specs/workflows.md §11.8). lib/push.ts names a category per notification
 // (lib/notification-targets.ts; the app registers the categories with their
 // buttons in the person's language). A button calls
 // POST /api/mobile/notifications with the installation's device token
@@ -23,7 +24,8 @@ import { ct } from "./content-locale";
 import { validDateValue } from "./date-values";
 import { taskKey } from "./doc-tasks";
 import { widgetAction } from "./mobile-widget-actions";
-import { taskTarget, type CategoryInput, type TaskTarget } from "./notification-targets";
+import { approvalTarget, taskTarget, type CategoryInput, type TaskTarget } from "./notification-targets";
+import type { MobileDevice } from "./mobile-devices";
 import type { Identity } from "./types";
 
 const notificationId = z.string().min(1).max(100);
@@ -34,6 +36,12 @@ export const notificationActionSchema = z.discriminatedUnion("action", [
   // `today`: the phone's day, so "tomorrow" is the person's tomorrow.
   z.object({ action: z.literal("tomorrow"), notificationId, today: day.optional() }),
   z.object({ action: z.literal("reply"), notificationId, text: z.string().trim().min(1).max(5000) }),
+  // A workflow approval (docs/specs/workflows.md §11.8). `approvalId` from
+  // the push's data must name the notification's own approval;
+  // `confirmation`: the secret the phone opened with Face ID / Touch ID /
+  // the fingerprint – only "approve" needs it.
+  z.object({ action: z.literal("approve"), notificationId, approvalId: z.uuid(), confirmation: z.string().min(1).max(200).optional() }),
+  z.object({ action: z.literal("reject"), notificationId, approvalId: z.uuid().optional() }),
 ]);
 
 const writerOf = (user: Identity): Identity => ({ ...user, apiScope: "write" });
@@ -102,20 +110,41 @@ async function reply(user: Identity, notification: CategoryInput, text: string) 
   else throw new HttpError(400, ct("Auf diese Benachrichtigung kann man nicht antworten.", "This notification cannot be answered."));
 }
 
-export async function notificationAction(user: Identity, input: unknown) {
+// The approval a notification asks for; the phone's id must be that one.
+async function approvalOf(notification: CategoryInput, named?: string) {
+  const approvalId = notification.kind === "workflow_ops" ? await approvalTarget(notification.id) : null;
+  if (!approvalId || (named && named !== approvalId))
+    throw new HttpError(400, ct("Diese Benachrichtigung gehört zu keiner Freigabe.", "This notification belongs to no approval."));
+  return approvalId;
+}
+
+// `device`: the installation behind the device token (lib/mobile-devices.ts
+// deviceFromToken); approvals are decided only with it.
+export async function notificationAction(user: Identity, input: unknown, device?: MobileDevice) {
   // As often as the widgets' buttons.
   if (!allow(`notification-actions:${user.id}`, 30, 60_000))
     throw new HttpError(429, ct("Zu viele Anfragen in kurzer Zeit. Bitte später erneut versuchen.", "Too many requests in a short time. Please try again later."));
   const body = notificationActionSchema.parse(input);
   const notification = await one<CategoryInput>("SELECT id,kind,page_id,row_id,thread_id FROM notifications WHERE id=? AND user_id=?", body.notificationId, user.id);
   if (!notification) throw gone();
-  let result: { due?: string } = {};
+  let result: { due?: string; decision?: string; already?: boolean } = {};
   if (body.action === "done" || body.action === "tomorrow") {
     const target = notification.kind === "reminder" ? (await taskTarget(notification.id)) : null;
     if (!target) throw new HttpError(400, ct("Diese Benachrichtigung gehört zu keiner Aufgabe.", "This notification belongs to no task."));
     if (body.action === "done") await complete(user, target);
     else result = { due: await postpone(user, target, body.today) };
   } else if (body.action === "reply") await reply(user, notification, body.text);
+  else if (body.action === "approve" || body.action === "reject") {
+    if (!device) throw new HttpError(403, ct("Freigaben aus der App nur mit dem Gerät.", "Approvals from the app only with the device."));
+    const approvalId = await approvalOf(notification, body.approvalId);
+    const { decideApprovalOnDevice } = await import("./workflows/actions");
+    const decided = await decideApprovalOnDevice(user, device, {
+      approvalId,
+      decision: body.action === "approve" ? "approved" : "rejected",
+      confirmation: body.action === "approve" ? body.confirmation : undefined,
+    });
+    result = { decision: decided.decision, ...("already" in decided ? { already: true } : {}) };
+  }
   // Whatever the button did, the notification has been dealt with.
   await run("UPDATE notifications SET read_at=COALESCE(read_at,?) WHERE id=? AND user_id=?", nowText(), notification.id, user.id);
   return { ok: true, action: body.action, ...result, unread: await unread(user) };

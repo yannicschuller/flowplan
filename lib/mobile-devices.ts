@@ -92,6 +92,11 @@ const registration = z
     // The texts of the app's Live Activity views (above); an invalid one is
     // left out rather than refusing the registration.
     liveActivityLabels: z.unknown().optional(),
+    // "Approve" on a push notification (docs/specs/workflows.md §11.8):
+    // base64url of SHA-256 of the installation's confirmation secret, which
+    // the phone keeps behind Face ID / Touch ID / the fingerprint. Only from
+    // the web view (the session cookie): a device token alone never sets it.
+    approvalKey: z.string().regex(/^[A-Za-z0-9_-]{43}$/).nullable().optional(),
   })
   .refine((b) => !b.relayToken === !b.publicKey, { message: "relayToken and publicKey belong together" });
 
@@ -185,7 +190,7 @@ export async function registerMobileDevice(user: Identity, sessionToken: string,
     const token = `fpd_${randomBytes(30).toString("base64url")}`;
     const now = Date.now();
     await run(
-      "INSERT INTO mobile_devices(id,user_id,installation_id,session_token,platform,name,app_version,token_hash,push_subscription_id,created_at,last_seen_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+      "INSERT INTO mobile_devices(id,user_id,installation_id,session_token,platform,name,app_version,token_hash,push_subscription_id,created_at,last_seen_at,approval_key) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
       deviceId,
       user.id,
       b.installationId,
@@ -197,6 +202,7 @@ export async function registerMobileDevice(user: Identity, sessionToken: string,
       subscription,
       now,
       now,
+      b.approvalKey ?? null,
     );
     if (withRelay && subscription) {
       const relayHash = hashToken(b.relayToken!);
@@ -225,6 +231,9 @@ export async function registerMobileDevice(user: Identity, sessionToken: string,
       // Whether notifications go through the relay, end-to-end encrypted.
       relay: withRelay && !!subscription,
       liveActivities: await liveKinds(deviceId),
+      // Whether "Approve" on push notifications can be confirmed on this
+      // installation (its confirmation key was registered, §11.8).
+      approvals: !!b.approvalKey,
     };
   }, user);
 }
@@ -308,13 +317,15 @@ export async function unregisterByDeviceToken(header: string | null) {
   return true;
 }
 
-// The person behind "Authorization: Bearer fpd_…", while their session lasts.
-export async function identityFromDeviceToken(header: string | null): Promise<Identity | null> {
+// The installation behind "Authorization: Bearer fpd_…" and its person,
+// while their session lasts. `lastSeenAt` is the time before this request.
+export type MobileDevice = { id: string; platform: string; lastSeenAt: number; createdAt: number; approvalKey: string | null };
+export async function deviceFromToken(header: string | null): Promise<{ user: Identity; device: MobileDevice } | null> {
   const match = header?.match(/^Bearer\s+(fpd_[A-Za-z0-9_-]{20,80})$/);
   if (!match) return null;
   const now = Date.now();
-  const row = await one<User & { device_id: string; last_seen_at: number; groups_json: string; session_token: string; expires: number; session_created: number | null; remember: number; sso: number; app: number; last_seen: number | null }>(
-    `SELECT u.*,d.id device_id,d.last_seen_at,d.session_token,s.groups_json,s.expires,s.created_at session_created,s.remember,s.sso,s.app,s.last_seen FROM mobile_devices d
+  const row = await one<User & { device_id: string; device_platform: string; device_created: number; approval_key: string | null; last_seen_at: number; groups_json: string; session_token: string; expires: number; session_created: number | null; remember: number; sso: number; app: number; last_seen: number | null }>(
+    `SELECT u.*,d.id device_id,d.platform device_platform,d.created_at device_created,d.approval_key,d.last_seen_at,d.session_token,s.groups_json,s.expires,s.created_at session_created,s.remember,s.sso,s.app,s.last_seen FROM mobile_devices d
        JOIN users u ON u.id=d.user_id JOIN sessions s ON s.token=d.session_token
      WHERE d.token_hash=? AND s.expires>? AND u.disabled=0`,
     hashToken(match[1]),
@@ -334,19 +345,27 @@ export async function identityFromDeviceToken(header: string | null): Promise<Id
     groups = JSON.parse(row.groups_json);
   } catch {}
   return {
-    id: row.id,
-    name: row.name,
-    email: row.email,
-    disabled: row.disabled,
-    created_at: row.created_at,
-    avatar: row.avatar,
-    demo_until: row.demo_until ?? null,
-    demo: !!row.demo_until,
-    groups,
-    // Rights stay those of the person; administration never comes along.
-    isAdmin: false,
-    apiScope: "read",
+    user: {
+      id: row.id,
+      name: row.name,
+      email: row.email,
+      disabled: row.disabled,
+      created_at: row.created_at,
+      avatar: row.avatar,
+      demo_until: row.demo_until ?? null,
+      demo: !!row.demo_until,
+      groups,
+      // Rights stay those of the person; administration never comes along.
+      isAdmin: false,
+      apiScope: "read",
+    },
+    device: { id: row.device_id, platform: row.device_platform, lastSeenAt: row.last_seen_at, createdAt: row.device_created, approvalKey: row.approval_key },
   };
+}
+
+// The person behind "Authorization: Bearer fpd_…", while their session lasts.
+export async function identityFromDeviceToken(header: string | null): Promise<Identity | null> {
+  return (await deviceFromToken(header))?.user ?? null;
 }
 
 const day = z

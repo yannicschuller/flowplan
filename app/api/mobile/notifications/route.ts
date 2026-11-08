@@ -4,7 +4,7 @@ import { HttpError } from "@/lib/auth";
 import { withContentLocale } from "@/lib/content-locale";
 import { localizedMessage } from "@/lib/i18n-errors";
 import { pickLocale, type Locale } from "@/lib/i18n";
-import { identityFromDeviceToken } from "@/lib/mobile-devices";
+import { deviceFromToken } from "@/lib/mobile-devices";
 import { notificationAction } from "@/lib/notification-actions";
 import { widgetLocale } from "@/lib/mobile-widgets";
 import { withIdempotency } from "@/lib/idempotency";
@@ -15,6 +15,9 @@ export const dynamic = "force-dynamic";
 // The buttons on the apps' push notifications (lib/notification-actions.ts),
 // only with the device token (Bearer fpd_…):
 // POST /api/mobile/notifications  { action: "done" | "tomorrow" | "reply" | "read", notificationId, text?, today? }
+//                                 { action: "approve", notificationId, approvalId, confirmation }
+//                                 { action: "reject", notificationId, approvalId? }
+// (workflow approvals, docs/specs/workflows.md §11.8)
 const headers = { "Cache-Control": "no-store" };
 
 function failure(e: unknown, locale: Locale) {
@@ -30,14 +33,15 @@ async function handlePOST(req: Request) {
   const query = new URL(req.url).searchParams;
   const fallback = pickLocale(null, req.headers.get("accept-language"));
   // Browsers never send this header by themselves: no origin check needed.
-  const user = await identityFromDeviceToken(req.headers.get("authorization"));
-  if (!user) return failure(new HttpError(401, "Bitte melde dich an."), fallback);
+  const found = await deviceFromToken(req.headers.get("authorization"));
+  if (!found) return failure(new HttpError(401, "Bitte melde dich an."), fallback);
+  const { user, device } = found;
   const locale = await widgetLocale(user, query.get("lang"), req.headers.get("accept-language"));
   return withContentLocale(locale, async () => {
     try {
       const text = await req.text();
       if (text.length > 10_000) throw new HttpError(413, "Anfrage zu groß.");
-      return NextResponse.json(await notificationAction(user, JSON.parse(text || "{}")), { headers });
+      return NextResponse.json(await notificationAction(user, JSON.parse(text || "{}"), device), { headers });
     } catch (e) {
       return failure(e, locale);
     }
