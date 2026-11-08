@@ -620,6 +620,36 @@ function SearchChip({ query, onQuery }: { query: string; onQuery: (query: string
   useEffect(() => {
     if (open) input.current?.focus();
   }, [open]);
+  // An empty field folds back into the chip when it loses focus. When a
+  // press elsewhere took the focus, it folds only once the press is over:
+  // on a narrow screen the open field takes a row of the toolbar, and
+  // folding it right at the press would move what was pressed away from
+  // under the pointer before the click.
+  const pressing = useRef(false);
+  const foldAfterPress = useRef(false);
+  useEffect(() => {
+    if (!expanded) return;
+    const down = () => {
+      pressing.current = true;
+    };
+    const up = () => {
+      pressing.current = false;
+      if (!foldAfterPress.current) return;
+      foldAfterPress.current = false;
+      // After the click that belongs to this press.
+      setTimeout(() => {
+        if (document.activeElement !== input.current && !input.current?.value) setOpen(false);
+      });
+    };
+    document.addEventListener("pointerdown", down, true);
+    document.addEventListener("pointerup", up, true);
+    document.addEventListener("pointercancel", up, true);
+    return () => {
+      document.removeEventListener("pointerdown", down, true);
+      document.removeEventListener("pointerup", up, true);
+      document.removeEventListener("pointercancel", up, true);
+    };
+  }, [expanded]);
   if (!expanded)
     return (
       <button type="button" className="toolbar-chip" onClick={() => setOpen(true)}>
@@ -637,7 +667,9 @@ function SearchChip({ query, onQuery }: { query: string; onQuery: (query: string
         value={query}
         onChange={(e) => onQuery(e.target.value)}
         onBlur={() => {
-          if (!query) setOpen(false);
+          if (query) return;
+          if (pressing.current) foldAfterPress.current = true;
+          else setOpen(false);
         }}
         onKeyDown={(e) => {
           if (e.key === "Escape") {
