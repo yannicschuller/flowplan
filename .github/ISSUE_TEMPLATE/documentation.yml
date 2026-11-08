@@ -1,0 +1,47 @@
+name: Documentation
+description: Something in the documentation or the in-app help is missing, wrong or unclear
+labels: ["documentation", "status: triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping to improve the docs! Small fixes can also go straight to a pull request in [flowplan-docs](https://github.com/yannicschuller/flowplan-docs) – every page has an "Edit on GitHub" link.
+  - type: checkboxes
+    id: searched
+    attributes:
+      label: Before you start
+      options:
+        - label: I searched the [existing issues](https://github.com/yannicschuller/flowplan/issues?q=is%3Aissue) and this has not been reported yet.
+          required: true
+  - type: input
+    id: page
+    attributes:
+      label: Page
+      description: The address of the page, or where the help appears in Flowplan.
+      placeholder: "https://docs.flowplan.org/en/installation"
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What kind of problem?
+      options:
+        - Something is wrong or outdated
+        - Something is missing
+        - Something is hard to understand
+        - Typo or broken link
+        - Translation (German / English / other language)
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What's wrong?
+      description: Quote the passage if you can.
+    validations:
+      required: true
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggestion
+      description: How should it read, or what should the page explain?

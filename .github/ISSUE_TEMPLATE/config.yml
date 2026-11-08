@@ -1,8 +1,11 @@
 blank_issues_enabled: false
 contact_links:
   - name: Documentation
-    url: https://docs.flowplan.org
-    about: Guides for using and self-hosting Flowplan.
+    url: https://docs.flowplan.org/en
+    about: Guides for using, self-hosting and configuring Flowplan.
+  - name: Discord community
+    url: https://discord.gg/bCEdB6MPrR
+    about: Quick questions, ideas and news – chat with other Flowplan users.
   - name: Security issue
     url: https://github.com/yannicschuller/flowplan/security/advisories/new
-    about: Please report vulnerabilities privately.
+    about: Please report vulnerabilities privately, never in a public issue.

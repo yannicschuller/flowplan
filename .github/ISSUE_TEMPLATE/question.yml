@@ -1,0 +1,53 @@
+name: Question
+description: How do I …? Help with using, setting up or configuring Flowplan
+labels: ["question", "status: triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Many answers are already in the [documentation](https://docs.flowplan.org/en) – for example [Installation](https://docs.flowplan.org/en/installation), [Configuration](https://docs.flowplan.org/en/configuration) and [Sign-in](https://docs.flowplan.org/en/sign-in).
+        For quick questions and chat, join our [Discord](https://discord.gg/bCEdB6MPrR).
+  - type: checkboxes
+    id: searched
+    attributes:
+      label: Before you start
+      options:
+        - label: I looked in the [documentation](https://docs.flowplan.org/en) and searched the [existing issues](https://github.com/yannicschuller/flowplan/issues?q=is%3Aissue).
+          required: true
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+      description: What do you want to achieve?
+    validations:
+      required: true
+  - type: textarea
+    id: tried
+    attributes:
+      label: What have you tried?
+      description: Settings, commands or configuration (remove passwords and secrets).
+  - type: input
+    id: version
+    attributes:
+      label: Flowplan version
+      description: "In Flowplan under **Settings → About Flowplan**, or the image tag."
+      placeholder: "0.9.0"
+  - type: dropdown
+    id: hosting
+    attributes:
+      label: Where does it run?
+      options:
+        - flowplan.org (hosted)
+        - Self-hosted with Docker / Docker Compose
+        - Self-hosted on Kubernetes (Helm chart)
+        - Self-hosted without Docker (Node.js)
+        - Not installed yet
+  - type: dropdown
+    id: database
+    attributes:
+      label: Database
+      options:
+        - SQLite (default)
+        - PostgreSQL
+        - Cluster (PostgreSQL, Redis and S3, several instances)
+        - I don't know / not relevant

@@ -1,30 +1,102 @@
 name: Bug report
-description: Something does not work as expected
-labels: [bug]
+description: Something in Flowplan does not work as expected
+labels: ["bug", "status: triage"]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please write in English if you can.
+        **Security problems:** please don't open an issue – report them privately (see the link on the previous page).
+        Problems that only happen in the [iPhone/Android app](https://github.com/yannicschuller/flowplan-app/issues) or the [desktop app](https://github.com/yannicschuller/flowplan-desktop/issues) are welcome in their repositories – if you are unsure, report them here.
+  - type: checkboxes
+    id: searched
+    attributes:
+      label: Before you start
+      options:
+        - label: I searched the [existing issues](https://github.com/yannicschuller/flowplan/issues?q=is%3Aissue) (open and closed) and this has not been reported yet.
+          required: true
   - type: textarea
     id: what
     attributes:
       label: What happened?
-      description: Steps to reproduce, what you expected and what happened instead.
+      description: A clear description of the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The shortest way to make it happen again.
+      placeholder: |
+        1. Open a database in board view
+        2. Drag a card to another column
+        3. …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
     validations:
       required: true
   - type: input
     id: version
     attributes:
-      label: Version
-      description: Image tag or commit (e.g. ghcr.io/yannicschuller/flowplan:1.2.3), or "flowplan.org".
+      label: Flowplan version
+      description: "In Flowplan under **Settings → About Flowplan** (e.g. 0.9.0), or the image tag. On flowplan.org you can write \"flowplan.org\"."
+      placeholder: "0.9.0"
+    validations:
+      required: true
   - type: dropdown
     id: hosting
     attributes:
       label: Where does it run?
-      options: [flowplan.org, Self-hosted with Docker, Self-hosted without Docker, Development]
-  - type: input
-    id: browser
+      options:
+        - flowplan.org (hosted)
+        - Self-hosted with Docker / Docker Compose
+        - Self-hosted on Kubernetes (Helm chart)
+        - Self-hosted without Docker (Node.js)
+        - Development (npm run dev)
+    validations:
+      required: true
+  - type: dropdown
+    id: database
     attributes:
-      label: Browser and device
+      label: Database
+      description: Self-hosted only. SQLite is the default.
+      options:
+        - SQLite (default)
+        - PostgreSQL
+        - Cluster (PostgreSQL, Redis and S3, several instances)
+        - I don't know / hosted on flowplan.org
+  - type: dropdown
+    id: client
+    attributes:
+      label: Where do you see the problem?
+      multiple: true
+      options:
+        - Browser on a computer
+        - Browser on a phone or tablet
+        - iPhone / iPad app
+        - Android app
+        - Desktop app – macOS
+        - Desktop app – Windows
+        - Desktop app – Linux
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Browser, device and operating system
+      placeholder: "Firefox 140 on Windows 11 · Safari on iPhone 15, iOS 26"
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots or recordings
+      description: Drag images or videos in here. They help a lot.
   - type: textarea
     id: logs
     attributes:
-      label: Logs or screenshots
+      label: Logs
+      description: "Server logs (`docker compose logs flowplan`) or the browser console – please remove anything private."
       render: text

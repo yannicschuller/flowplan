@@ -1,11 +1,66 @@
 name: Feature request
-description: Suggest an idea for Flowplan
-labels: [enhancement]
+description: Suggest an idea or an improvement for Flowplan
+labels: ["enhancement", "status: triage"]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea! The best requests start with the problem: what you want to get done and what gets in the way today.
+  - type: checkboxes
+    id: searched
+    attributes:
+      label: Before you start
+      options:
+        - label: I searched the [existing issues](https://github.com/yannicschuller/flowplan/issues?q=is%3Aissue) (open and closed) and the [documentation](https://docs.flowplan.org/en), and this does not exist yet.
+          required: true
   - type: textarea
     id: problem
     attributes:
       label: What would you like to do?
-      description: Describe the problem or the use case first, then your idea.
+      description: Describe the problem or the use case first.
+      placeholder: "When I plan a sprint, I want to …, but today I have to …"
     validations:
       required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Your idea
+      description: How could Flowplan solve it? Mockups and examples from other tools are welcome.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives and workarounds
+      description: What do you do today instead? Have you considered other solutions?
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - Documents and editor
+        - Databases and views
+        - Whiteboards
+        - Journal
+        - Projects and sprints
+        - Forms and surveys
+        - Workflows
+        - AI
+        - Search and notifications
+        - Import and export
+        - Apps (mobile, desktop, offline)
+        - Sign-in, permissions and security
+        - Self-hosting and administration
+        - Something else
+  - type: dropdown
+    id: hosting
+    attributes:
+      label: How do you use Flowplan?
+      options:
+        - flowplan.org (hosted)
+        - Self-hosted
+        - Not yet – evaluating
+  - type: textarea
+    id: context
+    attributes:
+      label: Anything else?
+      description: Screenshots, links or other context.
