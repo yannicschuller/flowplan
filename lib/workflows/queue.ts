@@ -11,6 +11,7 @@ import { all, one, run, sql } from "../db";
 import { instanceId } from "../cluster/config";
 import { onBus, publish } from "../cluster/bus";
 import { onShutdown } from "../cluster/runtime";
+import { afterTransaction } from "../db-driver/context";
 import { backoff, executeStep, LEASE_MS, type StepRow } from "./engine";
 import { dispatchEvents } from "./events";
 import { workflowLimits } from "./limits";
@@ -143,11 +144,16 @@ export function wake() {
   if (!s.started || s.stopping) return;
   setTimeout(() => void pump(), 0).unref?.();
 }
-// After a write that queued something: this instance and the others.
+// After a write that queued something: this instance and the others – once
+// the caller's transaction has ended (right away without one). Sent before
+// the COMMIT, the others would claim before the row is visible, find
+// nothing and sleep until their next poll.
 export function wakeAfterCommit() {
-  const s = state();
-  if (s.started) setTimeout(() => void pump(), 20).unref?.();
-  publish("workflow:wake", 1);
+  afterTransaction(() => {
+    const s = state();
+    if (s.started) setTimeout(() => void pump(), 0).unref?.();
+    publish("workflow:wake", 1);
+  });
 }
 
 export function startWorkflowWorker() {
