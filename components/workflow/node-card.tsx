@@ -63,7 +63,7 @@ function NodeCardView({ data, selected }: NodeProps<CardNode>) {
   const trigger = isTrigger(node.type);
   const S = data.status ? STATUS_ICON[data.status] : null;
   return (
-    <div className={`wf-card wf-cat-${nodeSpec(node.type)?.category || "logic"}${selected ? " selected" : ""}${node.disabled ? " off" : ""}${data.status ? ` status-${data.status}` : ""}${data.mark ? ` wf-mark-${data.mark}` : ""}`}>
+    <div className={`wf-card wf-cat-${nodeSpec(node.type)?.category || "logic"}${selected ? " selected" : ""}${node.disabled ? " off" : ""}${data.status ? ` status-${data.status}` : ""}${data.mark ? ` wf-mark-${data.mark}` : ""}${data.ports.length > 1 ? " many-ports" : ""}`}>
       {data.mark && <span className="wf-card-mark">{data.markText}</span>}
       {!trigger && <Handle type="target" position={Position.Left} id="in" className="wf-handle-in" />}
       <div className="wf-card-head">

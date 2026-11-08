@@ -476,7 +476,7 @@ function Editor(props: EditorProps) {
               <Users aria-hidden /> {t(`${draft.presence.map((p) => p.name).join(", ")} bearbeitet mit`, `${draft.presence.map((p) => p.name).join(", ")} editing too`)}
             </span>
           )}
-          <span className={`wf-check-state${errors ? " error" : warnings ? " warning" : ""}`}>
+          <span className={`wf-check-state${errors ? " is-error" : warnings ? " is-warning" : ""}`}>
             {errors ? (errors === 1 ? t("1 Fehler", "1 error") : t(`${errors} Fehler`, `${errors} errors`)) : warnings ? (warnings === 1 ? t("1 Warnung", "1 warning") : t(`${warnings} Warnungen`, `${warnings} warnings`)) : t("Keine Probleme", "No problems")}
           </span>
         </div>

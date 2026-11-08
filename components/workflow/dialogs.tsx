@@ -21,7 +21,7 @@ function IssueList({ issues, labels, onPick }: { issues: Issue[]; labels: Map<st
   return (
     <ul className="wf-issues">
       {issues.map((i, n) => (
-        <li key={n} className={i.level}>
+        <li key={n} className={`is-${i.level}`}>
           {i.level === "error" ? <WarningCircle weight="fill" aria-hidden /> : <Warning aria-hidden />}
           <span>
             <span className="sr-only">{i.level === "error" ? t("Fehler: ", "Error: ") : t("Warnung: ", "Warning: ")}</span>

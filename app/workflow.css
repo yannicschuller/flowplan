@@ -21,6 +21,16 @@
   flex-direction: column;
   gap: 10px;
 }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) :is(.workflow-page, .wf-dialog) {
+    --wf-ok: #8fd0a8;
+    --wf-ok-bg: rgba(90, 170, 120, 0.18);
+    --wf-error: #f19b9e;
+    --wf-error-bg: rgba(220, 90, 95, 0.2);
+    --wf-warn: #e8c770;
+    --wf-warn-bg: rgba(220, 180, 70, 0.18);
+  }
+}
 [data-theme="dark"] :is(.workflow-page, .wf-dialog) {
   --wf-ok: #8fd0a8;
   --wf-ok-bg: rgba(90, 170, 120, 0.18);
@@ -103,10 +113,10 @@
   color: var(--wf-ok);
   font-weight: 550;
 }
-.wf-check-state.error {
+.wf-check-state.is-error {
   color: var(--wf-error);
 }
-.wf-check-state.warning {
+.wf-check-state.is-warning {
   color: var(--wf-warn);
 }
 .wf-actions {
@@ -389,6 +399,13 @@
 }
 .wf-card.wf-cat-http {
   --wf-edge: var(--text);
+}
+/* Several labelled outputs: the text keeps clear of their labels. */
+.wf-card.many-ports .wf-card-label,
+.wf-card.many-ports .wf-card-summary {
+  padding-inline-end: 58px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 /* Draft changes since the active version (wave 2). */
 .wf-card.wf-mark-added {
@@ -801,7 +818,7 @@
   background: var(--wf-warn-bg);
   color: var(--text);
 }
-.wf-issues li.error {
+.wf-issues li.is-error {
   background: var(--wf-error-bg);
 }
 .wf-issues li > svg {
@@ -809,7 +826,7 @@
   margin-top: 2px;
   color: var(--wf-warn);
 }
-.wf-issues li.error > svg {
+.wf-issues li.is-error > svg {
   color: var(--wf-error);
 }
 .link-button {
@@ -1187,11 +1204,7 @@
   color: var(--muted);
 }
 .wf-filter-pop {
-  position: absolute;
-  z-index: 30;
-  top: calc(100% + 6px);
-  inset-inline-start: 0;
-  width: min(330px, 80vw);
+  margin-top: 6px;
   display: flex;
   flex-direction: column;
   gap: 8px;

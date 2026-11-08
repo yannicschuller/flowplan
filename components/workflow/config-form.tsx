@@ -175,6 +175,8 @@ const TYPE_KEY_TEXT: Record<string, [string, string]> = {
   "logic.switch:value": ["Wert", "Value"],
   "ai.classify:field": ["Auswahleigenschaft", "Select property"],
   "trigger.mail.received:address": ["E-Mail-Eingang", "Inbound address"],
+  "notify.email:to": ["An", "To"],
+  "notify.person:to": ["Empfänger", "Recipients"],
 };
 // i18n-table: 1 – [German, English] pairs (choices)
 const ENUM_TEXT: Record<string, [string, string]> = {

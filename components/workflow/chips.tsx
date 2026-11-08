@@ -89,25 +89,26 @@ export function ChipText({ value, picker, disabled, onChange, onEdit, label }: {
                 {chipName(s)}
                 {s.filters.length > 0 && <span className="wf-chip-filters">{s.filters.map((f) => ` | ${filterName(f.name, locale)}`).join("")}</span>}
               </button>
-              {open === i && (
-                <FilterPopover
-                  placeholder={s}
-                  title={chipName(s)}
-                  picker={picker}
-                  onClose={() => setOpen(null)}
-                  onChange={(p) => onChange(formatTemplate(segments.map((x, j) => (j === i ? p : x))))}
-                  onRemove={() => {
-                    setOpen(null);
-                    onChange(formatTemplate(segments.filter((_, j) => j !== i)));
-                  }}
-                  t={t}
-                />
-              )}
             </span>
           ),
         )}
         {!segments.length && <span className="muted">{t("Leer", "Empty")}</span>}
       </div>
+      {open !== null && typeof segments[open] !== "string" && (
+        <FilterPopover
+          placeholder={segments[open] as Placeholder}
+          title={chipName(segments[open] as Placeholder)}
+          picker={picker}
+          onClose={() => setOpen(null)}
+          onChange={(p) => onChange(formatTemplate(segments.map((x, j) => (j === open ? p : x))))}
+          onRemove={() => {
+            const at = open;
+            setOpen(null);
+            onChange(formatTemplate(segments.filter((_, j) => j !== at)));
+          }}
+          t={t}
+        />
+      )}
     </div>
   );
 }
