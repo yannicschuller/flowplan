@@ -34,7 +34,6 @@ import { applyTitleLinks, listTitleCandidates } from "@/lib/ai/title-links";
 import { DeviceAiError, deviceErrorText, deviceSummary, deviceSummaryFits, runOnDevice, runRouted } from "@/lib/ai/device";
 import { DEVICE_LIMITS, deviceWriteFits, deviceWritePrompt } from "@/lib/ai/device-prompts";
 import type { WriteRequest } from "@/lib/ai/prompts";
-import { Lightning } from "@phosphor-icons/react";
 import { Select } from "./select";
 
 export type AiWriterRequest =
@@ -510,7 +509,7 @@ export function AiWriter({
                       })
                     }
                   >
-                    <Lightning size={14} /> {t("Aktionen vorschlagen", "Propose actions")}
+                    <Sparkle size={14} weight="fill" aria-hidden /> {t("Aktionen vorschlagen", "Propose actions")}
                   </button>
                 )}
                 {request.kind !== "transcript" && (

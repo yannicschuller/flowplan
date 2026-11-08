@@ -15,7 +15,7 @@
 // put it in as suggested changes ("Als Änderungsvorschlag einfügen",
 // lib/ai/page-edit.ts) – accepted or rejected one by one in the document.
 import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import { ArrowClockwise, ArrowSquareOut, CaretDown, ChatCircleDots, Check, Copy, FileText, Lifebuoy, Lightning, MagnifyingGlass, PaperPlaneRight, PencilLine, PushPin, PushPinSlash, Sparkle, Stop, X } from "@phosphor-icons/react";
+import { ArrowClockwise, ArrowSquareOut, CaretDown, ChatCircleDots, Check, Copy, FileText, Lifebuoy, MagnifyingGlass, PaperPlaneRight, PencilLine, PushPin, PushPinSlash, Sparkle, Stop, X } from "@phosphor-icons/react";
 import { useT } from "./i18n";
 import { PageIcon } from "./ui";
 import { Select } from "./select";
@@ -25,7 +25,7 @@ import { SidebarResize } from "./sidebar-resize";
 import { SHEET_HANDLE, useSheetDrag } from "./sheet-drag";
 import { addBackCloser } from "@/lib/app-back";
 import { ASK_DEFAULT, ASK_MIN, ASK_OVERLAY_MEDIA, ASK_SHEET_BELOW, askMax, clampAsk } from "@/lib/ask-panel";
-import { askAi, aiPageReadable, aiProviderLabel, aiUsable, citationParts, helpSourceUrl, suggestPageChanges, type AskScope, type AskSource } from "@/lib/ai/client";
+import { askAi, aiPageReadable, aiProviderLabel, aiUsable, citationParts, helpSourceUrl, splitSources, suggestPageChanges, type AskScope, type AskSource } from "@/lib/ai/client";
 import type { AiStatus } from "@/lib/ai/features";
 import type { Space } from "@/lib/types";
 
@@ -478,22 +478,7 @@ export function AskPanel({
                   <AnswerText text={m.content} sources={m.sources || []} onOpen={openSource} streaming={!!m.streaming} />
                 )}
                 {!!m.sources?.length && !m.error && (
-                  <ol className="ai-ask-sources" aria-label={t("Quellen", "Sources")}>
-                    {m.sources.map((s, n) => (
-                      <li key={s.n} style={{ animationDelay: `${n * 40}ms` }}>
-                        <button type="button" className={`ai-source-chip${s.kind === "help" ? " help" : ""}`} onClick={() => openSource(s)} title={s.pageTitle ? t(`Eintrag in ${s.pageTitle}`, `Record in ${s.pageTitle}`) : s.kind === "help" ? t("In der Flowplan-Hilfe öffnen", "Open in the Flowplan help") : undefined}>
-                          <span className="ai-cite-number">{s.n}</span>
-                          {s.kind === "help" ? <Lifebuoy size={14} aria-hidden="true" /> : <PageIcon name={s.kind === "row" ? "file" : s.kind === "database" ? "table" : "file"} />}
-                          <span className="ai-source-title">{s.title}</span>
-                          {s.pageTitle && <small>{s.pageTitle}</small>}
-                          {s.workspaceName && s.workspaceId !== workspaceId && <small className="ai-source-workspace">{s.workspaceName}</small>}
-                          {s.kind === "help" && <small className="ai-source-workspace">{t("Flowplan-Hilfe", "Flowplan help")}</small>}
-                          {s.kind === "page" && <small className="ai-source-workspace">{t("Diese Seite", "This page")}</small>}
-                          <ArrowSquareOut size={13} />
-                        </button>
-                      </li>
-                    ))}
-                  </ol>
+                  <SourceList text={m.content} sources={m.sources} workspaceId={workspaceId} onOpen={openSource} />
                 )}
                 {!m.streaming && !m.error && m.page?.truncated && (
                   <p className="muted ai-ask-page-note">
@@ -534,7 +519,7 @@ export function AskPanel({
                           })
                         }
                       >
-                        <Lightning size={14} /> {t("Aktionen vorschlagen", "Propose actions")}
+                        <Sparkle size={14} weight="fill" aria-hidden="true" /> {t("Aktionen vorschlagen", "Propose actions")}
                       </button>
                     )}
                     {!m.error && m.content && m.page && currentPage?.id === m.page.id && currentPage.editable && (
@@ -635,6 +620,49 @@ export function AskPanel({
         </button>
       )}
     </>
+  );
+}
+
+// The sources under an answer: the ones the answer cites as chips, the
+// others behind a toggle so a long list doesn't push the answer out of the
+// panel (#180, lib/ai/client.ts splitSources). Expanded, all of them in
+// their [n] order. A citation in the text opens its source directly either way.
+function SourceList({ text, sources, workspaceId, onOpen }: { text: string; sources: AskSource[]; workspaceId: string; onOpen: (source: AskSource) => void }) {
+  const t = useT();
+  const [expanded, setExpanded] = useState(false);
+  const listId = useId();
+  const { shown, hidden } = splitSources(text, sources);
+  const list = expanded ? sources : shown;
+  return (
+    <div className="ai-ask-sources-wrap">
+      <ol id={listId} className="ai-ask-sources" aria-label={t("Quellen", "Sources")}>
+        {list.map((s, n) => (
+          // Revealed chips stagger from the toggle on; the others as before.
+          <li key={s.n} style={{ animationDelay: `${(hidden.includes(s) ? hidden.indexOf(s) : n) * 40}ms` }}>
+            <button type="button" className={`ai-source-chip${s.kind === "help" ? " help" : ""}`} onClick={() => onOpen(s)} title={s.pageTitle ? t(`Eintrag in ${s.pageTitle}`, `Record in ${s.pageTitle}`) : s.kind === "help" ? t("In der Flowplan-Hilfe öffnen", "Open in the Flowplan help") : undefined}>
+              <span className="ai-cite-number">{s.n}</span>
+              {s.kind === "help" ? <Lifebuoy size={14} aria-hidden="true" /> : <PageIcon name={s.kind === "row" ? "file" : s.kind === "database" ? "table" : "file"} />}
+              <span className="ai-source-title">{s.title}</span>
+              {s.pageTitle && <small>{s.pageTitle}</small>}
+              {s.workspaceName && s.workspaceId !== workspaceId && <small className="ai-source-workspace">{s.workspaceName}</small>}
+              {s.kind === "help" && <small className="ai-source-workspace">{t("Flowplan-Hilfe", "Flowplan help")}</small>}
+              {s.kind === "page" && <small className="ai-source-workspace">{t("Diese Seite", "This page")}</small>}
+              <ArrowSquareOut size={13} />
+            </button>
+          </li>
+        ))}
+      </ol>
+      {hidden.length > 0 && (
+        <button type="button" className="ai-ask-sources-toggle" aria-expanded={expanded} aria-controls={listId} onClick={() => setExpanded((v) => !v)}>
+          {expanded
+            ? t("Weniger Quellen", "Fewer sources")
+            : hidden.length === 1
+              ? t("1 weitere Quelle", "1 more source")
+              : t(`${hidden.length} weitere Quellen`, `${hidden.length} more sources`)}
+          <CaretDown size={12} aria-hidden="true" />
+        </button>
+      )}
+    </div>
   );
 }
 

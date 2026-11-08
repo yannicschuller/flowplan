@@ -19,7 +19,7 @@ const { prepareAsk, citedSources, ASK_LIMITS } = await import("../lib/ai/ask");
 const { aiComplete } = await import("../lib/ai/run");
 const { htmlParagraphs, chunkHtml, chunkParagraphs, questionTerms, rankPassages, selectPassages, ftsQuery, CHUNK_MAX } = await import("../lib/ai/chunks");
 const { extractJson, parseJsonAnswer } = await import("../lib/ai/json");
-const { citationParts } = await import("../lib/ai/client");
+const { citationParts, splitSources } = await import("../lib/ai/client");
 const { processEmbeddings, semanticCandidates, semanticFor, semanticStats, toVector, fromVector } = await import("../lib/ai/semantic");
 const { startOllamaMock } = await import("./helpers/ai-mock");
 import type { Identity } from "../lib/types";
@@ -175,6 +175,20 @@ test("citations link only to existing sources", () => {
     { text: "." },
   ]);
   assert.deepEqual(citedSources("x [2] y [9]", sources), [2]);
+});
+
+test("the chips under an answer: cited sources in view, the rest behind the toggle (#180)", () => {
+  const sources = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => ({ n, pageId: `p${n}`, title: `S${n}`, kind: "help" as const }));
+  const ns = (list: { n: number }[]) => list.map((s) => s.n);
+  // Cited ones stay in view, in their [n] order.
+  let split = splitSources("Als Codeblock [3]. Siehe auch [7][3].", sources);
+  assert.deepEqual([ns(split.shown), ns(split.hidden)], [[3, 7], [1, 2, 4, 5, 6, 8]]);
+  // Nothing cited (or only unknown numbers): the first three.
+  split = splitSources("Keine Quelle [12].", sources);
+  assert.deepEqual([ns(split.shown), ns(split.hidden)], [[1, 2, 3], [4, 5, 6, 7, 8]]);
+  // Three or fewer: all in view, no toggle.
+  split = splitSources("[1]", sources.slice(0, 3));
+  assert.deepEqual([ns(split.shown), ns(split.hidden)], [[1, 2, 3], []]);
 });
 
 test("vectors are stored normalized as 32-bit floats", () => {

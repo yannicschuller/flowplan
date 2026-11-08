@@ -178,6 +178,17 @@ export function citationParts(text: string, sources: AskSource[]): ({ text: stri
   return parts;
 }
 
+// The chips under an answer (#180): the sources the answer cites stay in
+// view, the others go behind a toggle; an answer that cites none shows the
+// first few. Both keep the order (and so the [n] numbers) of the sources.
+export const SOURCES_SHOWN = 3;
+export function splitSources(text: string, sources: AskSource[]): { shown: AskSource[]; hidden: AskSource[] } {
+  if (sources.length <= SOURCES_SHOWN) return { shown: sources, hidden: [] };
+  const cited = new Set(citationParts(text, sources).flatMap((p) => ("cite" in p ? [p.cite] : [])));
+  const visible = cited.size ? (s: AskSource) => cited.has(s.n) : (_: AskSource, i: number) => i < SOURCES_SHOWN;
+  return { shown: sources.filter(visible), hidden: sources.filter((s, i) => !visible(s, i)) };
+}
+
 // ---- AI actions (POST /api/ai/actions/{propose,run}, lib/ai/actions.ts) ----
 
 export type { ActionPreview, ActionResult } from "./actions";
