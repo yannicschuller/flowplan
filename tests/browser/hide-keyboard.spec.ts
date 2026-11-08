@@ -345,14 +345,16 @@ test("iOS: titles and other fields get a floating hide button above the keyboard
   await expect(recordTitle).toHaveValue("Steuer");
   await keyboard(page, 0);
 
-  const note = dialog.getByLabel("Notiz", { exact: true });
+  // A text property is a small formatted-text field (#126), not an input.
+  const note = dialog.getByRole("textbox", { name: "Notiz", exact: true });
   await note.tap();
+  await expect.poll(() => note.evaluate((el) => el.contains(document.activeElement))).toBe(true);
   await keyboard(page, KEYBOARD);
   await expectFabAboveKeyboard(page, visibleBottom);
   await fab(page).tap();
-  await expect.poll(() => page.evaluate(() => document.activeElement?.tagName)).not.toBe("INPUT");
+  await expect.poll(() => note.evaluate((el) => el.contains(document.activeElement))).toBe(false);
   await expect(dialog).toBeVisible();
-  await expect(note).toHaveValue("Belege");
+  await expect(note).toHaveText("Belege");
   await keyboard(page, 0);
   await expect(fab(page)).toHaveCount(0);
 });
