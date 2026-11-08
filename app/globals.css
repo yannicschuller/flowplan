@@ -31329,6 +31329,11 @@ label.ws-search input {
   gap: 6px;
   overflow-x: auto;
   scrollbar-width: none;
+  /* A scrolling row clips on both axes: room for the pills' borders and
+     focus ring (on iPhone the bottom edge was cut by a fraction of a
+     pixel), taken back from the layout by the negative margin. */
+  padding: 3px 2px;
+  margin: -3px -2px;
 }
 .admin-user-filters::-webkit-scrollbar {
   display: none;
