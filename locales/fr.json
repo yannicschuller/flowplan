@@ -2334,6 +2334,7 @@
   "Date that moves on": "Date qui avance",
   "dateAdd(date, amount, unit, time zone?)": "dateAdd(date, quantité, unité, fuseau horaire?)",
   "dateBetween(end, start, unit?)": "dateBetween(fin, début, unité?)",
+  "Dates without a time stay calendar days; timestamps count for the day they fall on in the chosen time zone.": "Les dates sans heure restent des jours calendaires ; les horodatages comptent pour le jour où ils tombent dans le fuseau horaire choisi.",
   "dateSubtract(date, amount, unit, time zone?)": "dateSubtract(date, quantité, unité, fuseau horaire?)",
   "Dawn": "Aube",
   "day": "jour",

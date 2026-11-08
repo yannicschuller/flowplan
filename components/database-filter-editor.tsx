@@ -8,14 +8,17 @@ import {
   relativeWindowLabel,
 } from "@/lib/relative-dates";
 import { useFilterClock } from "./use-filter-clock";
+import { browserZone } from "@/lib/date-values";
 import { hasClockFormulas } from "@/lib/formula";
 import { Plus, Trash } from "@phosphor-icons/react";
 import {
+  conditionTimeZone,
   effectiveFilterGroup,
   filterCount,
   filterGroupSchema,
   filterNodeCount,
   hasRelativeFilters,
+  isZonedDateCondition,
   MAX_FILTER_DEPTH,
   MAX_FILTER_NODES,
   operatorNames,
@@ -35,11 +38,14 @@ import type {
 } from "@/lib/types";
 // A fresh condition on the first property, with its first operator.
 export function newFilterCondition(fields: Field[]): Filter & { kind: "condition" } {
+  const op = operatorsFor(fields[0])[0],
+    timeZone = conditionTimeZone({ op }, fields[0], browserZone());
   return {
     kind: "condition",
     field: fields[0].id,
-    op: operatorsFor(fields[0])[0],
+    op,
     value: "",
+    ...(timeZone ? { timeZone } : {}),
   };
 }
 // Time zones for relative conditions: the browser's and UTC first.
@@ -67,7 +73,7 @@ export function FilterConditionFields({
   members,
   zones,
   filterNow,
-  patch,
+  patch: patchNode,
   remove,
   compact = false,
 }: {
@@ -82,7 +88,21 @@ export function FilterConditionFields({
   compact?: boolean;
 }) {
   const t = useT();
+  // Relative conditions and date conditions on date properties keep a time
+  // zone, the browser's unless one is chosen (#176); others keep none.
+  const patch = (values: Partial<Filter>) => {
+    const next = { ...node, ...values };
+    patchNode({
+      ...values,
+      timeZone: conditionTimeZone(
+        next,
+        fields.find((f) => f.id === next.field),
+        browserZone(),
+      ),
+    });
+  };
   const field = fields.find((f) => f.id === node.field),
+    zoned = isZonedDateCondition(node, field),
     isEmpty = valuelessOperators.has(node.op),
     multi = multiValueOperators.has(node.op),
     operators = operatorsFor(field);
@@ -158,12 +178,9 @@ export function FilterConditionFields({
               ...(isRelativeOperator(op)
                 ? {
                     value: isRelativeOperator(node.op) ? node.value : "today",
-                    timeZone:
-                      node.timeZone ||
-                      Intl.DateTimeFormat().resolvedOptions().timeZone,
                   }
                 : isRelativeOperator(node.op)
-                  ? { value: "", timeZone: undefined, days: undefined }
+                  ? { value: "", days: undefined }
                   : {}),
             });
           }}
@@ -279,9 +296,9 @@ export function FilterConditionFields({
           />,
         )}
       {remove}
-      {isRelativeOperator(node.op) && (
+      {(isRelativeOperator(node.op) || zoned) && (
         <div className="relative-filter-options">
-          {["past_days", "next_days"].includes(node.value) && (
+          {isRelativeOperator(node.op) && ["past_days", "next_days"].includes(node.value) && (
             <label>
               {t("Anzahl Tage", "Number of days")}
               <input
@@ -318,15 +335,21 @@ export function FilterConditionFields({
               ))}
             </Select>
           </label>
-          <p className="muted">
-            {relativeWindowLabel(
-              node.value,
-              node.timeZone || "UTC",
-              node.days,
-              new Date(filterNow),
-            )}
-            {t(". Wochen beginnen montags. Datumswerte ohne Uhrzeit bleiben Kalendertage; Zeitstempel werden in der gewählten Zeitzone ausgewertet.", ". Weeks start on Monday. Dates without a time stay calendar days; timestamps are evaluated in the chosen time zone.")}
-          </p>
+          {isRelativeOperator(node.op) ? (
+            <p className="muted">
+              {relativeWindowLabel(
+                node.value,
+                node.timeZone || "UTC",
+                node.days,
+                new Date(filterNow),
+              )}
+              {t(". Wochen beginnen montags. Datumswerte ohne Uhrzeit bleiben Kalendertage; Zeitstempel werden in der gewählten Zeitzone ausgewertet.", ". Weeks start on Monday. Dates without a time stay calendar days; timestamps are evaluated in the chosen time zone.")}
+            </p>
+          ) : (
+            <p className="muted">
+              {t("Datumswerte ohne Uhrzeit bleiben Kalendertage; Zeitstempel zählen für den Tag, auf den sie in der gewählten Zeitzone fallen.", "Dates without a time stay calendar days; timestamps count for the day they fall on in the chosen time zone.")}
+            </p>
+          )}
         </div>
       )}
     </>

@@ -6,6 +6,7 @@ import { Select } from "./select";
 import type { Automation, AutomationAction, DatabaseSettings } from "@/lib/database-settings-schema";
 import { doneRule } from "@/lib/database-settings-schema";
 import { browserZone } from "@/lib/date-values";
+import { conditionTimeZone } from "@/lib/database-filters";
 import type { Field, User } from "@/lib/types";
 import { ScheduleFields, CreateActionFields, scheduleLabel, scheduledTrigger, createAction, type RowTemplateRef } from "./automation-schedule";
 
@@ -278,7 +279,11 @@ function AutomationEditor({
   const triggerField = "field" in trigger ? fields.find((f) => f.id === trigger.field) : undefined;
   const watchable = fields.filter((f) => !["created_at", "updated_at", "created_by", "updated_by", "id", "formula", "rollup"].includes(f.type));
   const setAction = (i: number, a: AutomationAction) => setR({ ...r, actions: r.actions.map((x, j) => (j === i ? a : x)) });
-  const setCondition = (i: number, c: Condition) => setR({ ...r, conditions: r.conditions.map((x, j) => (j === i ? c : x)) });
+  // "is" on a date property keeps the browser's time zone for timestamps (#176).
+  const setCondition = (i: number, c: Condition) => {
+    const zoned = { ...c, timeZone: conditionTimeZone(c, fields.find((f) => f.id === c.field), browserZone()) };
+    setR({ ...r, conditions: r.conditions.map((x, j) => (j === i ? zoned : x)) });
+  };
   return (
     <form
       className="automation-editor"

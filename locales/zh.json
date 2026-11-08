@@ -2334,6 +2334,7 @@
   "Date that moves on": "顺延的日期",
   "dateAdd(date, amount, unit, time zone?)": "dateAdd(日期, 数量, 单位, 时区?)",
   "dateBetween(end, start, unit?)": "dateBetween(结束, 开始, 单位?)",
+  "Dates without a time stay calendar days; timestamps count for the day they fall on in the chosen time zone.": "没有时间的日期保持为日历日；时间戳按其在所选时区中所落的日期计算。",
   "dateSubtract(date, amount, unit, time zone?)": "dateSubtract(日期, 数量, 单位, 时区?)",
   "Dawn": "黎明",
   "day": "天",

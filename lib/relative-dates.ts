@@ -85,6 +85,25 @@ export function relativeCellDay(value: unknown, timeZone: string): number {
     return NaN;
   }
 }
+// The calendar day of a written date ("2026-11-06", or the date part of a
+// longer value), without a time zone.
+export function calendarDay(value: unknown): number {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}(?:$|[T ])/.test(value))
+    return NaN;
+  return ordinal(value.slice(0, 10));
+}
+// The day a cell falls on for the absolute date conditions (is, before,
+// after, between; #176): a timestamp is an instant, read in the condition's
+// time zone like relative conditions do; a date stays its calendar day.
+// Without a zone (conditions saved before #176) the written date part
+// counts, which for stored timestamps is the UTC day.
+export function filterCellDay(value: unknown, timeZone?: string): number {
+  if (timeZone && typeof value === "string" && value.length > 10) {
+    const zoned = relativeCellDay(value, timeZone);
+    if (Number.isFinite(zoned)) return zoned;
+  }
+  return calendarDay(value);
+}
 export type RelativeWindow = { start: number; end: number };
 const windows = new WeakMap<Date, Map<string, RelativeWindow | null>>();
 export function relativeDateWindow(

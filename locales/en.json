@@ -2334,6 +2334,7 @@
   "Date that moves on": "Date that moves on",
   "dateAdd(date, amount, unit, time zone?)": "dateAdd(date, amount, unit, time zone?)",
   "dateBetween(end, start, unit?)": "dateBetween(end, start, unit?)",
+  "Dates without a time stay calendar days; timestamps count for the day they fall on in the chosen time zone.": "Dates without a time stay calendar days; timestamps count for the day they fall on in the chosen time zone.",
   "dateSubtract(date, amount, unit, time zone?)": "dateSubtract(date, amount, unit, time zone?)",
   "Dawn": "Dawn",
   "day": "day",

@@ -1,4 +1,6 @@
 import {
+  calendarDay,
+  filterCellDay,
   isRelativeOperator,
   relativeDateNames,
   relativeDateWindow,
@@ -181,14 +183,38 @@ export function transformFilterGroup(
     }),
   };
 }
-function day(value: unknown) {
-  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}(?:$|[T ])/.test(value))
-    return NaN;
-  const key = value.slice(0, 10),
-    n = Date.parse(key);
-  return Number.isFinite(n) && new Date(n).toISOString().slice(0, 10) === key
-    ? n
-    : NaN;
+const dateTypes = ["date", "created_at", "updated_at"];
+// Conditions that compare a date property by calendar day. On timestamps
+// (Created time, Edited time, dates with a time) the day is taken in the
+// condition's time zone (#176).
+export const absoluteDateOperators = new Set<string>([
+  "eq",
+  "neq",
+  "before",
+  "after",
+  "on_or_before",
+  "on_or_after",
+  "between",
+]);
+export function isZonedDateCondition(
+  f: Pick<Filter, "op">,
+  field?: Pick<Field, "type">,
+) {
+  return (
+    !!field && dateTypes.includes(field.type) && absoluteDateOperators.has(f.op)
+  );
+}
+// The time zone a condition keeps once it is set or edited: its own, or
+// `fallback` (the browser's) for relative conditions and date conditions on
+// date properties; none for every other condition.
+export function conditionTimeZone(
+  f: Pick<Filter, "op" | "timeZone">,
+  field: Pick<Field, "type"> | undefined,
+  fallback: string,
+): string | undefined {
+  return isRelativeOperator(f.op) || isZonedDateCondition(f, field)
+    ? f.timeZone || fallback
+    : undefined;
 }
 export function matches(
   cells: Record<string, unknown>,
@@ -227,11 +253,14 @@ export function matches(
     return f.op === "complete" ? complete : !complete;
   }
   if (f.op === "between") {
-    const dateField =
-      !!field && ["date", "created_at", "updated_at"].includes(field.type);
+    const dateField = !!field && dateTypes.includes(field.type);
     const [a, b, x] =
-      dateField || (!field && Number.isFinite(day(f.value)))
-        ? [day(f.value), day(f.to), day(raw)]
+      dateField || (!field && Number.isFinite(calendarDay(f.value)))
+        ? [
+            calendarDay(f.value),
+            calendarDay(f.to),
+            filterCellDay(raw, f.timeZone),
+          ]
         : [Number(f.value), Number(f.to), s.trim() ? Number(s) : NaN];
     if (![a, b, x].every(Number.isFinite)) return false;
     return x >= Math.min(a, b) && x <= Math.max(a, b);
@@ -261,9 +290,9 @@ export function matches(
     case "neq": {
       if (
         field &&
-        ["date", "created_at", "updated_at"].includes(field.type) &&
+        dateTypes.includes(field.type) &&
         v &&
-        !Number.isFinite(day(v))
+        !Number.isFinite(calendarDay(v))
       )
         return false;
       const numeric = field?.type === "number" || typeof raw === "number";
@@ -273,10 +302,8 @@ export function matches(
             Number.isFinite(Number(s)) &&
             Number.isFinite(Number(v)) &&
             Number(s) === Number(v)
-          : field &&
-              ["date", "created_at", "updated_at"].includes(field.type) &&
-              v
-            ? Number.isFinite(day(raw)) && day(raw) === day(v)
+          : field && dateTypes.includes(field.type) && v
+            ? filterCellDay(raw, f.timeZone) === calendarDay(v)
             : s === v;
       return f.op === "eq" ? equal : !equal;
     }
@@ -300,8 +327,8 @@ export function matches(
     case "after":
     case "on_or_before":
     case "on_or_after": {
-      const a = day(raw),
-        b = day(f.value);
+      const a = filterCellDay(raw, f.timeZone),
+        b = calendarDay(f.value);
       if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
       return f.op === "before"
         ? a < b
