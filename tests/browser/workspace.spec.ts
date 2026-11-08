@@ -1410,7 +1410,7 @@ test("rollup property picker, progress display and relation board groups work on
   await expect(
     page.getByRole("progressbar", { name: "Gesamtstunden", exact: true }),
   ).toHaveAttribute("aria-valuemax", "20");
-  await page.getByRole("cell", { name: "Website", exact: true }).click();
+  await page.getByRole("button", { name: "Eintrag öffnen: Website", exact: true }).click();
   const record = page.getByRole("dialog", { name: "Eintrag", exact: true });
   await record
     .getByRole("searchbox", { name: "Aufgaben: Einträge suchen", exact: true })
@@ -1536,7 +1536,7 @@ test("bidirectional relations create an inverse property and synchronize both ed
     .getByRole("button", { name: "Speichern", exact: true })
     .click();
   await expect(property).not.toBeVisible();
-  await page.getByRole("cell", { name: "Website", exact: true }).click();
+  await page.getByRole("button", { name: "Eintrag öffnen: Website", exact: true }).click();
   const record = page.getByRole("dialog", { name: "Eintrag", exact: true });
   await record.getByRole("checkbox", { name: "Analyse", exact: true }).check();
   await expect
@@ -1554,7 +1554,7 @@ test("bidirectional relations create an inverse property and synchronize both ed
     .toEqual([a.id]);
   await record.getByRole("button", { name: "Schließen", exact: true }).click();
   await page.goto(`/#page=${target.id}`);
-  await page.getByRole("cell", { name: "Analyse", exact: true }).click();
+  await page.getByRole("button", { name: "Eintrag öffnen: Analyse", exact: true }).click();
   await expect(
     record.getByRole("checkbox", { name: "Website", exact: true }),
   ).toBeChecked();
