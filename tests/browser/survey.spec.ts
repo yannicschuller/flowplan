@@ -7,6 +7,8 @@ test("survey builder, public survey and results", async ({ page, browser }, info
   page.on("pageerror", (e) => errors.push(e.message));
   const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
   await page.request.post("/api/auth/demo", { headers: { origin } });
+  // A new account would see the introduction first.
+  await page.request.post("/api/command", { headers: { origin }, data: { action: "profile.onboarded" } });
   const boot = await (await page.request.get("/api/bootstrap")).json();
   const created = await page.request.post("/api/command", {
     headers: { origin, "accept-language": "de" },
