@@ -15243,6 +15243,30 @@ li[data-journal-since] > label::after {
   font-variant-numeric: tabular-nums;
   font-weight: 500;
 }
+/* "Alle / Nur meine": a small segmented control at the end of the header. */
+.journal-completed .journal-completed-filter {
+  margin-left: auto;
+  padding: 2px;
+  border-radius: 8px;
+}
+.journal-completed .journal-completed-filter label {
+  padding: 3px 9px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.journal-completed .journal-completed-filter label:has(input:focus-visible) {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+.journal-completed-empty {
+  margin: 0;
+  color: var(--muted);
+}
+@media print {
+  .journal-completed-filter {
+    display: none !important;
+  }
+}
 .journal-completed ul {
   list-style: none;
   margin: 0;

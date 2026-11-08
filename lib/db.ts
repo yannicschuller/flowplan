@@ -39,7 +39,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 95;
+export const SCHEMA_VERSION = 96;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 export const SEQ_TABLES = [
@@ -1254,6 +1254,14 @@ function migrate(d: DatabaseSync) {
   // issue_connections.provider allows 'forgejo' (migrateIssueProviders; on
   // PostgreSQL the data step "issue-providers-95", lib/data-steps.ts). An
   // older version could not read such a connection, hence the new number.
+  // Schema 96 – "Nur meine" below a journal day (#169, lib/journal-completed.ts):
+  // the status log records who made a record done or open again
+  // (row_status_log.user_id; NULL for share links, the Git connection,
+  // rules nobody set up and every entry written before). The choice
+  // "Alle / Nur meine" is the person's, per journal
+  // (page_view_prefs.completed_mine of the journal page; NULL: never
+  // chosen, "Nur meine").
+  migrateStatusLogUser(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
@@ -1284,6 +1292,12 @@ export function migrateIssueProviders(d: DatabaseSync) {
     throw error;
   }
   d.exec("RELEASE issue_providers");
+}
+export function migrateStatusLogUser(d: DatabaseSync) {
+  if (!(d.prepare("PRAGMA table_info(row_status_log)").all() as { name: string }[]).some((c) => c.name === "user_id"))
+    d.exec("ALTER TABLE row_status_log ADD COLUMN user_id TEXT");
+  if (!(d.prepare("PRAGMA table_info(page_view_prefs)").all() as { name: string }[]).some((c) => c.name === "completed_mine"))
+    d.exec("ALTER TABLE page_view_prefs ADD COLUMN completed_mine INTEGER");
 }
 export function migrateFileTrash(d: DatabaseSync) {
   const columns = (d.prepare("PRAGMA table_info(files)").all() as { name: string }[]).map((c) => c.name);

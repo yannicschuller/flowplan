@@ -59,7 +59,7 @@ export const commandActionNames = [
   "pages.bulk", "page.follow", "page.collapseProperties", "sidebar.state", "page.snapshot", "page.publish", "page.share", "page.shareUpdate", "page.fromShare",
   "page.toRecord", "record.toPage", "page.owner", "page.review", "page.aliases",
   "page.properties", "pages.tag", "tag.save", "tag.delete", "tag.merge", "tag.reorder", "tag.scope", "property.save", "property.delete", "property.reorder", "property.scope", "meta.usage", "favorite", "favorite.row", "task.update", "synced.create", "table.toDatabase", "mention.link",
-  "journal.settings", "journal.lock", "journal.unlock", "journal.relock", "journal.entry", "journal.roll", "journal.link", "journal.removeEmpty", "journal.summary", "block.ids",
+  "journal.settings", "journal.lock", "journal.unlock", "journal.relock", "journal.entry", "journal.roll", "journal.link", "journal.removeEmpty", "journal.summary", "journal.completedMine", "block.ids",
   "linked.command", "document.sync", "document.markdown", "document.markdown.apply",
   "snapshot.restoreBlock", "snapshot.restore",
   "database.update", "database.settings", "database.recordLayout",
@@ -568,6 +568,13 @@ export const commandActions: ActionDoc[] = [
     summary: "Collapse or open the bar with tags and properties of a page, for yourself on all devices (null: back to the default)",
     input: z.object({ action: z.literal("page.collapseProperties"), pageId: uuid, collapsed: z.boolean().nullable() }),
     result: z.object({ collapsed: z.boolean().nullable() }),
+  },
+  {
+    action: "journal.completedMine",
+    summary: "Choose \"Only mine\" or \"All\" for the records completed below the days of a journal, for yourself on all devices",
+    description: "`pageId` is the journal. GET /api/journals/{dayId}/completed without `mine` then answers with this choice (\"Only mine\" until one is made).",
+    input: z.object({ action: z.literal("journal.completedMine"), pageId: uuid, mine: z.boolean() }),
+    result: z.object({ mine: z.boolean() }),
   },
   {
     action: "sidebar.state",
@@ -1455,7 +1462,7 @@ const operations: { path: string; method: "get" | "post"; op: Op }[] = [
   // Journal
   { path: "/api/journals/{journalId}/review", method: "get", op: { id: "journalReview", tag: "Journal", summary: "Review of a period", params: [p("journalId", "Page ID of the journal"), q("from", "YYYY-MM-DD", { type: "string", format: "date" }, true), q("to", "YYYY-MM-DD", { type: "string", format: "date" }, true)], ok: { schema: { type: "object", additionalProperties: true }, description: "Days, trackers and entries" }, errors: [400, 401, 403, 404] } },
   { path: "/api/journals/{dayId}/events", method: "get", op: { id: "journalEvents", tag: "Journal", summary: "Appointments of a journal day", params: [p("dayId", "Page ID of the day page"), q("zone", "IANA time zone, default UTC")], ok: { schema: { type: "object", additionalProperties: true }, description: "Events" }, errors: [400, 401, 403, 404] } },
-  { path: "/api/journals/{dayId}/completed", method: "get", op: { id: "journalCompleted", tag: "Journal", summary: "Records completed on a journal day", description: "Database records whose latest change to done (by their database's done rule) falls on the day in the given time zone and that are still done; only records the caller may read. Empty when the journal switched the list off (option `completed`).", params: [p("dayId", "Page ID of the day page"), q("zone", "IANA time zone, default UTC")], ok: { schema: { type: "object", additionalProperties: true }, description: "items (pageId, rowId, title, database, icon, at in ms) and more (how many beyond the first 100)" }, errors: [400, 401, 403, 404, 423] } },
+  { path: "/api/journals/{dayId}/completed", method: "get", op: { id: "journalCompleted", tag: "Journal", summary: "Records completed on a journal day", description: "Database records whose latest change to done (by their database's done rule) falls on the day in the given time zone and that are still done; only records the caller may read. With `mine=1` (\"Only mine\") only the caller's: records they made done themselves (an automation counts for the person who set it up) and records a person property assigns to them, whoever completed them; changes recorded before Flowplan knew who made them count only by the assignment. Without `mine` the caller's choice for the journal (command `journal.completedMine`), `1` until they made one. Empty when the journal switched the list off (option `completed`).", params: [p("dayId", "Page ID of the day page"), q("zone", "IANA time zone, default UTC"), q("mine", "1: only mine, 0: all; default: your choice for the journal, else 1", { type: "string", enum: ["0", "1"] })], ok: { schema: { type: "object", additionalProperties: true }, description: "items (pageId, rowId, title, database, icon, at in ms), more (how many beyond the first 100), mine (whether the list is only mine) and all (how many the list would have with mine=0)" }, errors: [400, 401, 403, 404, 423] } },
   // End-to-end encrypted spaces: ciphertext only
   { path: "/api/e2ee/identity", method: "get", op: { id: "e2eeIdentity", tag: "Encryption", summary: "My key pair as stored on the server", description: "The public key and the private key wrapped with the passphrase and with the recovery key (opaque to the server); null before setup.", ok: { schema: { type: "object", additionalProperties: true }, description: "Identity" }, errors: [401] } },
   { path: "/api/e2ee/spaces/{spaceId}", method: "get", op: { id: "e2eeSpaceKeys", tag: "Encryption", summary: "Sealed keys and key holders of an encrypted space", params: [p("spaceId", "Space ID")], ok: { schema: { type: "object", additionalProperties: true }, description: "Key version, my sealed keys, members holding the key" }, errors: [401, 403, 404] } },
