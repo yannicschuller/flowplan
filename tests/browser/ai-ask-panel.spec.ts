@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { createServer, type Server } from "node:http";
@@ -12,7 +12,8 @@ import { join } from "node:path";
 // opens in the main area with the panel still open, Escape closes and focus
 // goes back, ⌃⌥A / ⌘⌥A opens again with the conversation kept, comments and
 // the panel take turns, focus mode hides it. On phones: a bottom sheet that
-// is minimised to a pill above the tab bar while the answer goes on.
+// is minimised to a pill above the tab bar while the answer goes on. Many
+// sources (#180): the cited ones as chips, the others behind a toggle.
 
 const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
 const shots = process.env.ASK_PANEL_SCREENSHOTS || "";
@@ -20,9 +21,9 @@ test.setTimeout(180_000);
 
 const ANSWER = ["Der Betriebsausflug ", "findet am ", "12. Juni ", "in Hamburg ", "statt [1]. ", "Treffpunkt ", "ist der ", "Hauptbahnhof ", "um 9 Uhr [1]."];
 
-type Mock = { base: string; delay: number; close: () => Promise<void> };
+type Mock = { base: string; delay: number; answer: string[]; close: () => Promise<void> };
 async function startMock(): Promise<Mock> {
-  const mock: Mock = { base: "", delay: 1500, close: async () => {} };
+  const mock: Mock = { base: "", delay: 1500, answer: ANSWER, close: async () => {} };
   const server: Server = createServer((req, res) => {
     const chunks: Buffer[] = [];
     req.on("data", (c) => chunks.push(c));
@@ -34,7 +35,7 @@ async function startMock(): Promise<Mock> {
       res.writeHead(200, { "content-type": "text/event-stream" });
       // Piece by piece, so the answer is still coming in while the test
       // writes and navigates.
-      for (const piece of ANSWER) {
+      for (const piece of mock.answer) {
         if (res.destroyed) return;
         res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: piece } }] })}\n\n`);
         await new Promise((r) => setTimeout(r, mock.delay));
@@ -57,6 +58,14 @@ function write(id: string, title: string, html: string) {
   d.prepare("DELETE FROM search_index WHERE page_id=? AND row_id=''").run(id);
   d.prepare("INSERT INTO search_index(page_id,row_id,title,body) VALUES(?,?,?,?)").run(id, "", title, html.replace(/<[^>]+>/g, " "));
   d.close();
+}
+
+// A source chip of the last answer; uncited sources sit behind the toggle
+// (#180), which opens first then.
+async function sourceChip(panel: Locator, title: string) {
+  const toggle = panel.locator(".ai-ask-answer").last().locator('.ai-ask-sources-toggle[aria-expanded="false"]');
+  if (await toggle.count()) await toggle.click();
+  return panel.locator(".ai-ask-answer").last().locator(".ai-ask-sources").getByRole("button", { name: new RegExp(title) });
 }
 
 async function setup(page: Page, tag: string) {
@@ -126,8 +135,7 @@ test("Ask AI is a side panel: the page stays usable while the answer streams", a
     await expect(answer.getByRole("button", { name: "Kopieren" })).toBeVisible();
 
     // A source opens in the main area; the panel stays open.
-    const source = panel.locator(".ai-ask-sources").getByRole("button", { name: new RegExp(`Betriebsausflug ${tag}`) });
-    await source.click();
+    await (await sourceChip(panel, `Betriebsausflug ${tag}`)).click();
     await expect(page.locator(".breadcrumb")).toContainText(`Betriebsausflug ${tag}`);
     await expect(panel).toBeVisible();
     expect(page.url()).toContain(trip.id);
@@ -243,7 +251,7 @@ test("Ask AI on phones: a bottom sheet minimised to a pill while the answer goes
     await expect(panel).toBeVisible();
     await expect(answer).toContainText("Hauptbahnhof um 9 Uhr");
     // A source opens the page and makes room (the sheet becomes the pill).
-    await panel.locator(".ai-ask-sources").getByRole("button", { name: new RegExp(`Betriebsausflug ${tag}`) }).click();
+    await (await sourceChip(panel, `Betriebsausflug ${tag}`)).click();
     await expect(page.locator(".breadcrumb")).toContainText(`Betriebsausflug ${tag}`);
     await expect(panel).toBeHidden();
     await expect(pill).toBeVisible();
@@ -251,6 +259,72 @@ test("Ask AI on phones: a bottom sheet minimised to a pill while the answer goes
     await panel.getByRole("button", { name: "„KI fragen“ schließen" }).click();
     await expect(panel).toBeHidden();
     await expect(pill).toBeHidden();
+    expect(errors).toEqual([]);
+  } finally {
+    await mock.close();
+  }
+});
+
+// The chips' stagger and the caret's turn finished (for the screenshots).
+const settled = (el: Locator) => el.evaluate((node) => Promise.all(node.getAnimations({ subtree: true }).map((a) => a.finished)));
+
+test("Many sources: the cited ones in view, the others behind a toggle (#180)", async ({ page }, info) => {
+  test.skip(!process.env.FLOWPLAN_DATA_DIR, "Needs the isolated test data directory");
+  const phone = info.project.name === "mobile";
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const tag = `${Date.now()}`;
+  const { mock, boot, notes } = await setup(page, tag);
+  // Seven more pages the question finds, so the answer has many sources.
+  for (let i = 1; i <= 7; i++) {
+    const r = await page.request.post("/api/command", { headers: { origin }, data: { workspaceId: boot.workspace.id, action: "page.create", spaceId: boot.spaces[0].id, title: `Betriebsausflug ${tag} Teil ${i}`, kind: "document" } });
+    expect(r.ok(), await r.text()).toBe(true);
+    const created = await r.json();
+    write(created.id, `Betriebsausflug ${tag} Teil ${i}`, `<p>Betriebsausflug ${tag}: Teil ${i} der Planung, Hamburg im Juni.</p>`);
+  }
+  mock.delay = 50;
+  mock.answer = ["Der Betriebsausflug ", "findet im Juni ", "in Hamburg statt [2]. ", "Mehr dazu in der Planung [2]."];
+  try {
+    await page.goto(`/#page=${notes.id}`);
+    await expect(page.locator(".page-content .ProseMirror").first()).toBeVisible({ timeout: 60_000 });
+    if (phone) await page.locator(".mobile-tab-bar").getByRole("button", { name: /Navigation öffnen|Menü/ }).click();
+    await page.locator(".main-nav").getByRole("button", { name: "KI fragen" }).click();
+    const panel = page.getByRole("complementary", { name: "KI fragen" });
+    const field = panel.getByLabel("Deine Frage");
+    await field.fill(`Wann ist der Betriebsausflug ${tag}?`);
+    await panel.getByRole("button", { name: "Fragen", exact: true }).click();
+    const answer = panel.locator(".ai-ask-answer").last();
+    await expect(answer).toContainText("Mehr dazu in der Planung", { timeout: 45_000 });
+    await expect(answer).not.toHaveClass(/streaming/, { timeout: 30_000 });
+    if (phone) await field.blur();
+
+    const chips = answer.locator(".ai-ask-sources > li");
+    const toggle = answer.locator(".ai-ask-sources-toggle");
+    // Only the cited source [2] is in view; the toggle counts the others.
+    await expect(chips).toHaveCount(1);
+    await expect(chips.first().locator(".ai-cite-number")).toHaveText("2");
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(toggle).toHaveText(/^\d+ weitere Quellen$/);
+    const hidden = Number((await toggle.textContent())!.match(/\d+/)![0]);
+    expect(hidden).toBeGreaterThanOrEqual(3);
+    if (shots) await settled(answer);
+    if (shots) await page.screenshot({ path: `${shots}/${phone ? "phone" : "desktop"}-sources-collapsed.png` });
+
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(toggle).toHaveText("Weniger Quellen");
+    await expect(chips).toHaveCount(hidden + 1);
+    // All in their [n] order, so the numbers still match the text.
+    const numbers = await chips.locator(".ai-cite-number").allTextContents();
+    expect(numbers).toEqual(numbers.map((_, i) => String(i + 1)));
+    if (shots) await settled(answer);
+    if (shots) await page.screenshot({ path: `${shots}/${phone ? "phone" : "desktop"}-sources-expanded.png` });
+    await toggle.click();
+    await expect(chips).toHaveCount(1);
+
+    // A citation opens its source, as before.
+    await answer.locator(".ai-cite").first().click();
+    await expect(page.locator(".breadcrumb")).toContainText(`Betriebsausflug ${tag}`);
     expect(errors).toEqual([]);
   } finally {
     await mock.close();
