@@ -287,7 +287,7 @@ export async function importCommand(user: Identity, raw: unknown) {
   const resolved = await resolveReferences(user, page.workspace_id, data, b.mapping);
   const graph = applyReferences(resolved.graph, resolved.map, resolved.fieldMap, resolved.dropFields, resolved.unresolved);
   const unresolved = resolved.unresolved;
-  if (b.preview) return { ok: true, preview: true, unresolved, references: data.references, title: data.title || null };
+  if (b.preview) return { ok: true, preview: true, unresolved, mapped: Object.fromEntries(resolved.map), references: data.references, title: data.title || null };
   if (!b.replace && (await draftOf(page)).nodes.length) throw new HttpError(409, "Der Entwurf ist nicht leer.");
   const saved = (await replaceDraft(user, { pageId: page.id, graph })) as { issues: unknown[] };
   await audit(user.id, "workflow.imported", page.id, JSON.stringify({ from: data.source?.instance || null, unresolved: unresolved.length }).slice(0, 500));

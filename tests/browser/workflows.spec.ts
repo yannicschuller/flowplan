@@ -37,7 +37,7 @@ test("the issue's example: built on the canvas, tested, activated, a new sub-pag
   await open(page, workflow);
 
   // 1. The trigger: a new page directly below the overview.
-  await page.getByRole("button", { name: "Auslöser wählen" }).click();
+  await page.getByRole("button", { name: "Leer beginnen" }).click();
   const add = page.getByRole("dialog", { name: "Knoten hinzufügen" });
   await add.getByRole("combobox", { name: "Knoten suchen" }).fill("Neue Seite");
   await add.getByRole("combobox", { name: "Knoten suchen" }).press("Enter");

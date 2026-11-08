@@ -9,7 +9,6 @@ const exact: Record<string, string> = {
   "Der Entwurf ist nicht leer.": "The draft is not empty.",
   "Dieser Workflow wurde noch nicht aktiviert.": "This workflow has not been activated yet.",
   "Keine Workflow-Datei.": "Not a workflow file.",
-  "Die Datei ist zu groß.": "The file is too large.",
   "Die KI hat keinen brauchbaren Workflow vorgeschlagen. Bitte anders beschreiben.": "The AI did not suggest a usable workflow. Please describe it differently.",
   "Instanzumzug: bitte prüfen und wieder aktivieren.": "Instance move: please check and activate again.",
   // Workflows wave 2 (#168): approvals, credentials, webhooks, HTTP, AI, e-mail.

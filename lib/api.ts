@@ -3192,7 +3192,8 @@ async function runCommand(
       }
       case "template.save": {
         const p = await write();
-        // Workflow templates come with wave 3 (docs/specs/workflows.md §10.6).
+        // Workflows start from the gallery's templates (lib/workflows/templates.ts)
+        // or an export (lib/workflows/portable.ts), not from saved page templates.
         if (p.kind === "workflow") throw new HttpError(409, "Workflow-Seiten lassen sich noch nicht als Vorlage speichern.");
         const payload =
           p.kind === "database"

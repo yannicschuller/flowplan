@@ -73,8 +73,10 @@
   margin-bottom: -1px;
   border-radius: 6px 6px 0 0;
 }
-.wf-tabs [role="tab"]:hover {
-  background: var(--hover);
+@media (hover: hover) {
+  .wf-tabs [role="tab"]:hover {
+    background: var(--hover);
+  }
 }
 .wf-tabs [role="tab"][aria-selected="true"] {
   color: var(--text);
@@ -1520,6 +1522,7 @@ p.wf-warning.small {
 }
 .wf-run-search {
   display: flex;
+  flex-direction: row;
   align-items: center;
   gap: 6px;
   padding: 0 8px;
@@ -1530,6 +1533,7 @@ p.wf-warning.small {
   min-width: 0;
 }
 .wf-run-search input {
+  width: auto;
   border: 0;
   background: transparent;
   padding: 6px 0;
@@ -1593,5 +1597,111 @@ p.wf-warning.small {
 @media (prefers-reduced-motion: reduce) {
   .wf-edge-add {
     transition: none;
+  }
+}
+
+/* The start screen of an empty draft: blank, AI, import and the templates (§10.6). */
+.wf-start {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  padding: 28px 24px;
+  background: var(--bg);
+}
+.wf-start-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.wf-start-head h2 {
+  margin: 0;
+  font-size: 18px;
+}
+.wf-start-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.wf-start-sub {
+  margin: 24px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.wf-templates {
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  margin-top: 10px;
+}
+.wf-templates > button > svg {
+  color: var(--secondary);
+}
+.wf-assistant .wf-form {
+  max-height: min(60vh, 560px);
+  overflow: auto;
+}
+.wf-route {
+  display: grid;
+  grid-template-columns: minmax(80px, 1fr) minmax(140px, 2fr);
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+.wf-gap-info {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  margin: 0;
+  color: var(--secondary);
+  font-size: 13px;
+}
+.wf-gap-info svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--wf-warn);
+}
+.wf-inline-create {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.wf-inline-create input {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+.wf-ai-builder textarea {
+  width: 100%;
+  resize: vertical;
+}
+.wf-ai-result {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-top: 10px;
+}
+.wf-ai-result h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+.wf-ai-nodes {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+.wf-ai-nodes li.has-gap .wf-gap-mark {
+  color: var(--wf-warn);
+}
+.wf-export {
+  margin-left: auto;
+}
+@media (max-width: 767px) {
+  .wf-start {
+    padding: 16px;
+  }
+  .wf-route {
+    grid-template-columns: 1fr;
   }
 }

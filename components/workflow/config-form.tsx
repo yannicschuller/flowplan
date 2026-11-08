@@ -443,7 +443,7 @@ function Property({ name, schema, value, onChange, ctx, config, required, t }: {
   return <Generic name={name} label={label} schema={schema} value={value} ctx={ctx} onChange={onChange} t={t} />;
 }
 
-function Labeled({ id, label, children }: { id: string; label: string; children: ReactNode }) {
+export function Labeled({ id, label, children }: { id: string; label: string; children: ReactNode }) {
   return (
     <div className="wf-field">
       <label className="wf-field-label" htmlFor={id}>
@@ -580,7 +580,7 @@ function CheckList({ label, options, value, disabled, onChange }: { label: strin
   );
 }
 
-function DatabaseSelect({ id, value, ws, disabled, onChange, t }: { id: string; value: string; ws: Workspace; disabled: boolean; onChange: (v: string) => void; t: T }) {
+export function DatabaseSelect({ id, value, ws, disabled, onChange, t }: { id: string; value: string; ws: Workspace; disabled: boolean; onChange: (v: string) => void; t: T }) {
   const dbs = ws.pages.filter((p) => p.kind === "database");
   return (
     <Select id={id} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
@@ -590,7 +590,7 @@ function DatabaseSelect({ id, value, ws, disabled, onChange, t }: { id: string; 
     </Select>
   );
 }
-function FieldSelect({ id, fields, value, disabled, onChange, t, empty }: { id?: string; fields: Field[]; value: string; disabled: boolean; onChange: (v: string) => void; t: T; empty?: string }) {
+export function FieldSelect({ id, fields, value, disabled, onChange, t, empty }: { id?: string; fields: Field[]; value: string; disabled: boolean; onChange: (v: string) => void; t: T; empty?: string }) {
   return (
     <Select id={id} aria-label={id ? undefined : t("Eigenschaft", "Property")} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
       <option value="">{empty || t("Eigenschaft wählen …", "Choose a property …")}</option>

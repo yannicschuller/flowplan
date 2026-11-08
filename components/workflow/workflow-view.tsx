@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent }
 import {
   ArrowClockwise,
   ArrowCounterClockwise,
+  DownloadSimple,
   Flask,
   Graph,
   ListBullets,
@@ -20,6 +21,7 @@ import {
   Play,
   Pause,
   SidebarSimple,
+  Sparkle,
   TreeStructure,
   Users,
 } from "@phosphor-icons/react";
@@ -41,6 +43,8 @@ import { DiffList, VersionsView } from "./versions";
 import { graphDiff } from "./model";
 import { initialConfig } from "./config-form";
 import { RunList, RunView, stepStatuses, useRun } from "./runs";
+import { AiBuilderDialog, StartScreen } from "./start";
+import { localizedMessage } from "@/lib/i18n-errors";
 import type { CanvasProps, NodeStatus } from "./canvas";
 
 const NO_STATUS = new Map<string, NodeStatus>();
@@ -95,6 +99,7 @@ const parsed = (g: WorkflowGraph) => {
 
 export default function WorkflowView(props: WorkflowViewProps) {
   const t = useStableT();
+  const locale = useLocale();
   const { workflow: state, pageId } = props;
   const phone = useMedia("(max-width: 767px)");
   const [tab, setTab] = useState<"editor" | "runs" | "approvals" | "versions">("editor");
@@ -147,11 +152,21 @@ export default function WorkflowView(props: WorkflowViewProps) {
       <header className="wf-head">
         <div className="wf-state">
           <StatusBadge tone={status.tone}>{status.text}</StatusBadge>
-          {state.status === "auto_paused" && state.pauseReason && <span className="muted">{state.pauseReason}</span>}
-          {state.status === "paused" && state.pauseReason && <span className="muted">{state.pauseReason}</span>}
+          {(state.status === "auto_paused" || state.status === "paused") && state.pauseReason && <span className="muted">{localizedMessage(state.pauseReason, locale)}</span>}
           {state.runner && state.status !== "draft" && <span className="muted">{t(`läuft als ${state.runner.name}`, `runs as ${state.runner.name}`)}</span>}
           {state.active && <span className="muted">{t(`Version ${state.active.number}`, `Version ${state.active.number}`)}</span>}
         </div>
+        {(manage || state.active) && (
+          <button
+            type="button"
+            className="icon-button wf-export"
+            aria-label={t("Als JSON exportieren", "Export as JSON")}
+            title={t("Als JSON exportieren", "Export as JSON")}
+            onClick={() => void downloadExport(pageId, onError)}
+          >
+            <DownloadSimple />
+          </button>
+        )}
         {manage && (
           <div className="wf-switch">
             {phone ? (
@@ -318,6 +333,7 @@ function Editor(props: EditorProps) {
   const [testing, setTesting] = useState<"test" | "dry" | null>(null);
   const [testRunId, setTestRunId] = useState<string | null>(null);
   const [showChanges, setShowChanges] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
   const testRun = useRun(testRunId, onError);
   const narrow = useMedia("(max-width: 1100px)");
   useEffect(() => setPalette(!narrow), [narrow]);
@@ -495,6 +511,11 @@ function Editor(props: EditorProps) {
               <TreeStructure /> {t("Aufräumen", "Tidy up")}
             </button>
           )}
+          {props.editable && (
+            <button type="button" className="button compact" onClick={() => setAiOpen(true)}>
+              <Sparkle /> {t("Mit KI", "With AI")}
+            </button>
+          )}
           <button type="button" className="button compact" onClick={() => setTesting("dry")}>
             <Flask /> {t("Probelauf", "Dry run")}
           </button>
@@ -561,14 +582,14 @@ function Editor(props: EditorProps) {
               onConnect={setConnect}
             />
           )}
-          {!graph.nodes.length && (
-            <div className="wf-empty-canvas">
-              <p>{t("Leg los mit einem Auslöser: wann soll der Workflow starten?", "Start with a trigger: when should the workflow start?")}</p>
-              <button type="button" className="button primary" onClick={() => setAppend({ after: null })}>
-                {t("Auslöser wählen", "Choose a trigger")}
-              </button>
-            </div>
-          )}
+          {!graph.nodes.length &&
+            (props.editable ? (
+              <StartScreen pageId={pageId} ws={ws} timeZone={graph.settings?.timeZone || "UTC"} onBlank={() => setAppend({ after: null })} onApply={(g) => change(() => g)} onAi={() => setAiOpen(true)} onError={onError} />
+            ) : (
+              <div className="wf-empty-canvas">
+                <p>{t("Noch keine Knoten.", "No nodes yet.")}</p>
+              </div>
+            ))}
         </div>
         {selectedNode && (
           <NodePanel
@@ -598,6 +619,17 @@ function Editor(props: EditorProps) {
           addNode(type, undefined, a?.after ? appendAfter(a.after) : null, a?.edge);
         }}
       />
+      <AiBuilderDialog
+        open={aiOpen}
+        pageId={pageId}
+        replaces={graph.nodes.length > 0}
+        onClose={() => setAiOpen(false)}
+        onApply={(g) => {
+          change(() => g);
+          setAiOpen(false);
+        }}
+        onError={onError}
+      />
       <ConnectDialog graph={graph} nodeId={connect} onClose={() => setConnect(null)} onConnect={(port, to) => connectNodes({ node: connect!, port }, to)} onRemove={(id) => change((g) => ({ ...g, edges: g.edges.filter((e) => e.id !== id) }))} />
       <TestDialog
         open={!!testing}
@@ -623,4 +655,19 @@ function statusWord(s: string, t: (de: string, en: string) => string) {
   if (s === "failed") return t("fehlgeschlagen", "failed");
   if (s === "cancelled") return t("abgebrochen", "cancelled");
   return t("läuft …", "running …");
+}
+
+// The workflow as a JSON file (GET /api/workflows/{id}/export): never secrets.
+async function downloadExport(pageId: string, onError: (e: unknown) => void) {
+  try {
+    const file = await api<{ title?: string }>(`/api/workflows/${pageId}/export`);
+    const blob = new Blob([JSON.stringify(file, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${(file.title || "workflow").replace(/[\\/:*?"<>|]+/g, "-").slice(0, 80)}.flowplan-workflow.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  } catch (e) {
+    onError(e);
+  }
 }
