@@ -7827,6 +7827,7 @@
   "The AFFiNE file contains no workspace.": "The AFFiNE file contains no workspace.",
   "The AFFiNE file is already closed.": "The AFFiNE file is already closed.",
   "The AFFiNE workspace is too large.": "The AFFiNE workspace is too large.",
+  "The AI changed or removed shorthand or links: {0}": "The AI changed or removed shorthand or links: {0}",
   "The AI did not answer anything.": "The AI did not answer anything.",
   "The AI did not give a usable answer. Please try again.": "The AI did not give a usable answer. Please try again.",
   "The AI did not propose any change to this page.": "The AI did not propose any change to this page.",

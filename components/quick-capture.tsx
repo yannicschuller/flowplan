@@ -13,7 +13,7 @@ import { textLocale } from "@/lib/i18n";
 import { streamAiFrom } from "@/lib/ai/client";
 import { DeviceAiError, deviceErrorText, runOnDevice, runRouted } from "@/lib/ai/device";
 import { deviceWriteFits, deviceWritePrompt } from "@/lib/ai/device-prompts";
-import { captureImprovable, captureImproveChanged, captureImproveSource, parseCaptureImprove, type CaptureText } from "@/lib/capture-improve";
+import { captureImprovable, captureImproveChanged, captureImproveSource, lostCaptureTokens, parseCaptureImprove, type CaptureText } from "@/lib/capture-improve";
 import { useLocale, useT } from "./i18n";
 import { Modal } from "./ui";
 import { AiProviderFooter, DeviceAiChip, useAiBlockedHint, useAiRoute } from "./ai-context";
@@ -45,6 +45,7 @@ export function QuickCapture({
   notify: (message: string) => void;
 }) {
   const t = useT();
+  const textLocaleNow = textLocale(useLocale());
   const [targets] = useCaptureTargets(workspaceId);
   const [database, setDatabase] = useState("");
   const [makeDefault, setMakeDefault] = useState(false);
@@ -95,6 +96,9 @@ export function QuickCapture({
   };
   const offlineFallback = targets && !targets.databases.length && database;
   const changed = !!improving && captureImproveChanged(improving.source, improving.result);
+  // Shorthand and links the AI changed or dropped (#172): the same check as
+  // the desktop capture window, shown before the text is taken.
+  const lost = improving?.phase === "done" && changed ? lostCaptureTokens(captureImproveSource(improving.source), captureImproveSource(improving.result), { today: localDay(), locale: textLocaleNow }) : [];
   return (
     <Modal open sheet onClose={onClose} title={t("Erfassen", "Capture")}>
       <form
@@ -158,6 +162,11 @@ export function QuickCapture({
                 <p className="muted">{improving.ranOn === "device" ? t("Die KI auf diesem Gerät schreibt …", "The on-device AI is writing …") : t("Die KI schreibt …", "The AI is writing …")}</p>
               ) : null}
               {improving.phase === "done" && !changed && <p className="muted small">{t("Die KI hat nichts zu verbessern gefunden.", "The AI found nothing to improve.")}</p>}
+              {lost.length > 0 && (
+                <p className="quick-capture-lost" role="alert">
+                  {t(`Die KI hat Kurzschreibweisen oder Links verändert oder entfernt: ${lost.join(" ")}`, `The AI changed or removed shorthand or links: ${lost.join(" ")}`)}
+                </p>
+              )}
               {improving.error && (
                 <p className="error" role="alert">
                   {improving.error}
@@ -294,4 +303,10 @@ function useImprove(database: string, online: boolean) {
     reset,
     stop: () => controller.current?.abort(),
   };
+}
+
+// Today on this device, as YYYY-MM-DD (dates in the capture are relative to it).
+function localDay() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 }

@@ -7827,6 +7827,7 @@
   "The AFFiNE file contains no workspace.": "Le fichier AFFiNE ne contient aucun espace de travail.",
   "The AFFiNE file is already closed.": "Le fichier AFFiNE est déjà fermé.",
   "The AFFiNE workspace is too large.": "L’espace de travail AFFiNE est trop volumineux.",
+  "The AI changed or removed shorthand or links: {0}": "L’IA a modifié ou supprimé des raccourcis ou des liens : {0}",
   "The AI did not answer anything.": "L’IA n’a rien répondu.",
   "The AI did not give a usable answer. Please try again.": "L’IA n’a pas fourni de réponse exploitable. Veuillez réessayer.",
   "The AI did not propose any change to this page.": "L’IA n’a proposé aucune modification de cette page.",

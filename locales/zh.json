@@ -7827,6 +7827,7 @@
   "The AFFiNE file contains no workspace.": "AFFiNE 文件不包含工作区。",
   "The AFFiNE file is already closed.": "AFFiNE 文件已经关闭。",
   "The AFFiNE workspace is too large.": "AFFiNE 工作区太大了。",
+  "The AI changed or removed shorthand or links: {0}": "AI 修改或删除了简写或链接：{0}",
   "The AI did not answer anything.": "AI 什么都没有回答。",
   "The AI did not give a usable answer. Please try again.": "AI 没有给出可用的答案。请再试一次。",
   "The AI did not propose any change to this page.": "AI 没有对此页面提出任何修改。",

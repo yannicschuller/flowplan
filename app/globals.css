@@ -24135,6 +24135,12 @@ h3 .block-reactions {
   margin: 0;
   white-space: pre-wrap;
 }
+/* Shorthand or links the AI changed (#172): a warning, not an error. */
+.ai-preview p.quick-capture-lost {
+  margin: 0.5em 0 0;
+  font-size: 0.9em;
+  color: var(--secondary);
+}
 @media (max-width: 600px) {
   .quick-capture-ai .ai-writer-buttons .button {
     flex: 1 1 auto;
