@@ -70,6 +70,9 @@ export async function sharePage(user: Identity, raw: unknown) {
     email,
   );
   if (target?.id === user.id) throw new HttpError(400, "Du hast bereits Zugriff.");
+  // Workflow pages: shared with full members only, never with guests (#168).
+  if (page.kind === "workflow" && (!target || !(await one("SELECT 1 FROM members WHERE workspace_id=? AND user_id=?", page.workspace_id, target.id)) || (await one("SELECT 1 FROM workspace_guests WHERE workspace_id=? AND user_id=?", page.workspace_id, target.id))))
+    throw new HttpError(409, "Workflow-Seiten lassen sich nur mit Mitgliedern teilen, nicht mit Gästen.");
   if (target) {
     const membership = await one<{ role: Role }>("SELECT role FROM members WHERE workspace_id=? AND user_id=?", page.workspace_id, target.id);
     const guest = !!(await one("SELECT 1 FROM workspace_guests WHERE workspace_id=? AND user_id=?", page.workspace_id, target.id));

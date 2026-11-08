@@ -1,4 +1,5 @@
 import { withLookups, type Awaitable } from "./resolve-ahead";
+import { workflowExportGraph } from "./workflows/archive";
 import { isFormattedText, toPlain } from "./inline-markdown";
 import { readableDatabase } from "./field-access";
 import { visibleRows } from "./row-access";
@@ -701,6 +702,18 @@ async function collect(user: Identity, options: MarkdownExportOptions) {
         markdown += markdownLink(ct("Notizbuch als PDF", "Notebook as PDF"), relative(path, pdfPath)) + "\n\n";
       } else markdown += markdownLink(ct("Notizbuch in Flowplan öffnen", "Open the notebook in Flowplan"), `${appUrl().replace(/\/$/, "")}/#page=${page.id}`) + "\n\n";
       for (const text of locked.has(page.id) ? [] : (await notebookText(page.id))) markdown += `${markdownText(text)}\n\n`;
+    } else if (page.kind === "workflow") {
+      // Workflows (#168): the nodes as a list; in a ZIP the draft as
+      // .flowplan-workflow.json next to it (no runs, no secrets).
+      const graph = await workflowExportGraph(page);
+      markdown += `*${markdownText(ct("Workflow", "Workflow"))}*\n\n`;
+      for (const n of graph.nodes) markdown += `- ${markdownText(n.label)}${n.note ? ` – ${markdownText(n.note)}` : ""}\n`;
+      if (graph.nodes.length) markdown += "\n";
+      if (zip) {
+        const jsonPath = `${prefix(page.id)}assets/${exportName(page.title)}-${page.id}.flowplan-workflow.json`;
+        pending.push({ path: jsonPath, build: async () => new TextEncoder().encode(JSON.stringify(graph, null, 2)) });
+        markdown += markdownLink(ct("Workflow als JSON", "Workflow as JSON"), relative(path, jsonPath)) + "\n\n";
+      }
     } else if (page.kind === "dashboard") {
       // A text summary: the data of the tiles depends on who looks.
       for (const tile of await dashboardSummary(user, page)) {

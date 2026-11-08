@@ -102,7 +102,7 @@ test("every filter of §7.2, German and English names", () => {
   assert.equal(r("{{n_x00000.list | count}}"), 3);
   assert.equal(r('{{n_x00000.text | trim | replace: "Welt", "Erde"}}'), "Hallo schöne Erde, wie geht es dir heute?");
   assert.equal(r('{{n_x00000.empty | default: "–"}}'), "–");
-  assert.equal(r('{{n_x00000.empty | standard: n_x00000.list}}').toString(), "eins,zwei,drei");
+  assert.equal(String(r('{{n_x00000.empty | standard: n_x00000.list}}')), "eins,zwei,drei");
   assert.equal(r("{{n_x00000.n | number: 2}}"), "1.234,57");
   assert.equal(renderTemplate("{{n_x00000.n | zahl: 0}}", { ...s, locale: "en" }, { whole: true }), "1,235");
   assert.equal(r("{{n_x00000.html | plain}}"), "A & B");

@@ -308,11 +308,13 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
   );
   const workspace = workspaces.find((w) => w.id === wid) || workspaces[0];
   if (!workspace) throw new HttpError(404, "Kein Arbeitsbereich.");
+  // Workflow pages are not for guests (#168).
+  const guestHere = !!workspace.guest;
   const pages = await filterAsync(await all<Page>(
     // Synced blocks live inside the pages that show them, not in the tree.
     "SELECT * FROM pages WHERE workspace_id=? AND synced=0 ORDER BY position",
     workspace.id,
-  ), async (p) => await pageRole(user, p));
+  ), async (p) => !(guestHere && p.kind === "workflow") && !!(await pageRole(user, p)));
   const visibleSpaceIds = new Set(pages.map((p) => p.space_id));
   const lockedInbox = await lockedNotification();
   return {
@@ -550,6 +552,22 @@ async function pageContent(user: Identity, pid: string, options: { presence?: bo
       present,
       backlinks,
       dashboard: await dashboardData(user, p, role),
+      html: "",
+    };
+  // Workflow pages (#168): their state, draft and check (lib/workflows/store.ts);
+  // never for guests, never shared or published.
+  if (p.kind === "workflow")
+    return {
+      page: p,
+      images: [],
+      publication: null,
+      shareLinks: [],
+      role,
+      comments,
+      snapshots,
+      present,
+      backlinks,
+      workflow: await workflowState(user, pid),
       html: "",
     };
   if (p.kind === "notebook")
@@ -3153,6 +3171,8 @@ async function runCommand(
       }
       case "template.save": {
         const p = await write();
+        // Workflow templates come with wave 3 (docs/specs/workflows.md §10.6).
+        if (p.kind === "workflow") throw new HttpError(409, "Workflow-Seiten lassen sich noch nicht als Vorlage speichern.");
         const payload =
           p.kind === "database"
             ? JSON.stringify({
@@ -3703,7 +3723,7 @@ import { quotaCheckpoint, setWorkspaceQuota } from "./instance-ops";
 import { rowChanged, rowCreated } from "./automations";
 import { workflowCommand } from "./workflows/commands";
 import { commentEvent, pageChangedEvent, pageCreatedEvent, pageMovedEvent } from "./workflows/hooks";
-import { assertWorkflowsEnabled, trashWorkflows } from "./workflows/store";
+import { assertWorkflowsEnabled, trashWorkflows, workflowState } from "./workflows/store";
 import { applyDatabaseProposal, forgetAiFields, prepareAiFields } from "./ai/database-fields";
 import { ct } from "./content-locale";
 import { TABLE_DATABASE_LIMITS, tableToDatabase } from "./table-database";

@@ -57,12 +57,14 @@ export async function publishPage(
   // publications, lib/journal-extras.ts); below a published page it stays
   // out with all its days.
   if (enabled && await inPinJournal(page)) throw new HttpError(423, PIN_JOURNAL_NOT_SHARED);
+  // Workflow pages are never published, not even below a published page (#168).
+  if (enabled && page.kind === "workflow") throw new HttpError(409, "Workflow-Seiten lassen sich nicht veröffentlichen oder per Link teilen.");
   const pinned = enabled && includeChildren ? (await pinJournalPageIds(page.workspace_id)) : new Set<string>();
   const pages = includeChildren
     ? (await all<Page>(
         `WITH RECURSIVE tree AS (SELECT * FROM pages WHERE id=? AND deleted_at IS NULL UNION ALL SELECT p.* FROM pages p JOIN tree t ON p.parent_id=t.id WHERE p.deleted_at IS NULL) SELECT * FROM tree`,
         page.id,
-      )).filter((p) => !pinned.has(p.id))
+      )).filter((p) => !pinned.has(p.id) && p.kind !== "workflow")
     : [page];
   if (enabled) {
     // Like share links: nothing below a journal whose PIN the person has not entered.
