@@ -14,6 +14,7 @@ import {
   cancelRunCommand,
   listRuns,
   listWorkflows,
+  manualStartInfo,
   pauseCommand,
   replaceDraft,
   requireWorkflow,
@@ -31,6 +32,7 @@ import {
 import { validateGraph } from "./validate";
 import { issueMessage, parseGraph } from "./graph";
 import { contentLocale } from "../content-locale";
+import { exportWorkflow, importCommand } from "./portable";
 import { approvalDetail, decideApproval, hookCommand, listApprovals, listCredentials, listHooks, removeCredential, retryRun, setCredential, workflowResources } from "./actions";
 
 export const WORKFLOW_ACTIONS = [
@@ -49,6 +51,7 @@ export const WORKFLOW_ACTIONS = [
   "workflow.hook",
   "workflow.credential.set",
   "workflow.credential.remove",
+  "workflow.import",
 ] as const;
 
 export async function workflowCommand(user: Identity, action: string, b: Record<string, unknown>): Promise<unknown> {
@@ -88,6 +91,8 @@ export async function workflowCommand(user: Identity, action: string, b: Record<
       return await setCredential(user, b);
     case "workflow.credential.remove":
       return await removeCredential(user, b);
+    case "workflow.import":
+      return await importCommand(user, b);
     case "admin.workflowLimits": {
       // Administration → Limits → Workflows (§12): null follows the environment.
       requireAdmin(user);
@@ -133,6 +138,8 @@ export async function workflowGet(user: Identity, path: string[], url: URL): Pro
     if (path.length === 3 && path[2] === "hooks") return await listHooks(user, pageId);
     if (path.length === 3 && path[2] === "resources") return await workflowResources(user, pageId);
     if (path.length === 3 && path[2] === "versions") return await workflowVersions(user, pageId);
+    if (path.length === 3 && path[2] === "export") return await exportWorkflow(user, pageId);
+    if (path.length === 3 && path[2] === "start") return await manualStartInfo(user, pageId, url.searchParams.get("host") || undefined);
     if (path.length === 4 && path[2] === "versions") return await workflowVersion(user, pageId, z.string().uuid().parse(path[3]));
   }
   if (path[0] === "workflow-runs" && path.length === 2) return await runDetail(user, path[1]);

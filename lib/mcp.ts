@@ -34,6 +34,7 @@ import { contentLocale } from "./content-locale";
 import { buildInfo } from "./build-info";
 import type { Field, Identity, Page, Row, Space, View } from "./types";
 import { filterAsync, flatMapAsync, mapAsync } from "./each-async";
+import { workflowTools } from "./workflows/mcp-tools";
 
 export const MCP_PROTOCOL_VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"];
 // Answers longer than this are cut, so one call cannot flood the client.
@@ -613,6 +614,8 @@ const tools: Tool[] = [
     write: true,
     run: updateRecord as Tool["run"],
   },
+  // Workflows (#168, lib/workflows/mcp-tools.ts): no activation, no approvals.
+  ...workflowTools,
 ];
 
 // ---- Protocol ----

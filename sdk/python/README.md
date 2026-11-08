@@ -48,6 +48,27 @@ client.command({"action": "comment.create", "pageId": page_id, "body": "Done"}, 
 client.command({"action": "comment.create", "pageId": page_id, "body": "Done"}, idempotency_key=key)
 ```
 
+Workflows: create one from JSON, test it, activate it (a write token may; the MCP server never activates):
+
+```python
+page_id = client.command({"action": "page.create", "workspaceId": workspace_id, "spaceId": space_id, "kind": "workflow", "title": "Tickets from the form"})["id"]
+graph = {
+    "nodes": [
+        {"id": "n_trigger1", "type": "trigger.manual", "label": "Start", "config": {"inputs": [{"name": "Title", "type": "text", "required": True}]}},
+        {"id": "n_create01", "type": "action.record.create", "label": "Create ticket", "config": {"database": database_id, "values": {title_field_id: "{{n_trigger1.inputs.Title}}"}}},
+    ],
+    "edges": [{"id": "e_1", "from": {"node": "n_trigger1", "port": "out"}, "to": {"node": "n_create01", "port": "in"}}],
+}
+check = client.save_workflow_draft(page_id, {"graph": graph})
+if any(i["level"] == "error" for i in check["issues"]):
+    raise SystemExit("\n".join(i["message"] for i in check["issues"]))
+client.test_workflow(page_id, {"mode": "dry", "data": {"kind": "custom", "output": {"inputs": {"Title": "Probe"}}}})
+client.activate_workflow(page_id, {"note": "Deployed by CI"})
+client.run_workflow(page_id, {"inputs": {"Title": "From the SDK"}})
+```
+
+`export_workflow` and `import_workflow` move a workflow to another workspace or instance: references are matched by title, credentials never travel, and the import is always a draft.
+
 Anything not covered by a generated method goes through `client.request(method, path, query=…, json_body=…, form=…, raw=…)`, which returns `(status, headers, body)`.
 
 See `example.py` for a complete script, `/api/docs` on your instance for the reference and [docs.flowplan.org/api-and-webhooks](https://docs.flowplan.org/api-and-webhooks) for the guide.

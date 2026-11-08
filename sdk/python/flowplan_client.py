@@ -594,7 +594,138 @@ CommandResult = dict[str, Any]
 
 # Every other action the interface sends. The server validates the fields of each; see lib/api.ts command() in the source.
 CommandOther = TypedDict("CommandOther", {
-    "action": Required[Literal["workspace.update", "workspace.delete", "workspace.leave", "workspace.import", "profile.onboarded", "profile.language", "notification.reset", "notification.email", "home.reset", "home.note", "home.config", "home.default", "account.deletePlan", "account.delete", "space.update", "space.delete", "space.restore", "space.purge", "space.duplicate", "space.gitExport", "page.import", "pages.bulk", "page.snapshot", "page.publish", "page.share", "page.shareUpdate", "page.fromShare", "page.toRecord", "record.toPage", "tag.delete", "tag.merge", "tag.reorder", "property.delete", "property.reorder", "favorite.row", "task.update", "synced.create", "table.toDatabase", "mention.link", "journal.settings", "journal.lock", "journal.unlock", "journal.relock", "journal.entry", "journal.roll", "journal.link", "journal.removeEmpty", "journal.summary", "journal.aiSummary", "linked.command", "document.sync", "document.markdown", "document.markdown.apply", "snapshot.restoreBlock", "snapshot.restore", "database.recordLayout", "row.move", "row.schedule", "row.access", "row.appearance", "row.recurrence", "row.detachOccurrence", "row.document.sync", "row.snapshot", "row.snapshot.restore", "row.template.save", "row.template.default", "row.template.delete", "row.template.apply", "row.trash.restore", "row.trash.purge", "rows.bulk", "rows.transfer", "timeline.cascade", "timeline.link", "citation.import", "citation.remove", "whiteboard.sync", "notebook.paper", "notebook.sheet.duplicate", "notebook.sheet.delete", "notebook.sheet.move", "notebook.sheet.paper", "notebook.import", "search.save", "search.delete", "collection.delete", "collection.restore", "collection.duplicate", "collection.reorder", "thread.create", "thread.reply", "thread.resolve", "thread.edit", "thread.deleteMessage", "thread.react", "comment.react", "reminder.set", "notification.prefs", "notification.read", "notification.mark", "notification.delete", "share.create", "share.revoke", "share.protect", "publication.protect", "publication.copy", "publication.theme", "domain.add", "domain.remove", "plugin.update", "plugin.delete", "form.update", "form.submit", "survey.save", "sprint.setup", "sprint.create", "sprint.update", "sprint.start", "sprint.complete", "sprint.delete", "sprint.points", "recordView.save", "recordView.delete", "git.setup", "git.disable", "time.start", "time.stop", "time.add", "time.delete", "ticket.reply", "invite.cancel", "invite.resend", "member.role", "member.guest", "sso.mapping.add", "sso.mapping.delete", "grant.set", "group.create", "group.member", "template.save", "template.update", "template.delete", "template.restore", "template.apply", "capture.record", "capture.target", "bookmarks.import", "calendar.caldav", "calendar.caldav.revoke", "e2ee.identity.setup", "e2ee.identity.update", "e2ee.identity.reset", "e2ee.member.add", "e2ee.member.remove", "e2ee.rotate", "e2ee.compact", "e2ee.title", "workflow.sync", "workflow.draft", "workflow.validate", "workflow.activate", "workflow.pause", "workflow.test", "workflow.run", "workflow.run.cancel", "workflow.restore", "workflow.fromRule", "workflow.run.retry", "workflow.approve", "workflow.hook", "workflow.credential.set", "workflow.credential.remove"]],
+    "action": Required[Literal["workspace.update", "workspace.delete", "workspace.leave", "workspace.import", "profile.onboarded", "profile.language", "notification.reset", "notification.email", "home.reset", "home.note", "home.config", "home.default", "account.deletePlan", "account.delete", "space.update", "space.delete", "space.restore", "space.purge", "space.duplicate", "space.gitExport", "page.import", "pages.bulk", "page.snapshot", "page.publish", "page.share", "page.shareUpdate", "page.fromShare", "page.toRecord", "record.toPage", "tag.delete", "tag.merge", "tag.reorder", "property.delete", "property.reorder", "favorite.row", "task.update", "synced.create", "table.toDatabase", "mention.link", "journal.settings", "journal.lock", "journal.unlock", "journal.relock", "journal.entry", "journal.roll", "journal.link", "journal.removeEmpty", "journal.summary", "journal.aiSummary", "linked.command", "document.sync", "document.markdown", "document.markdown.apply", "snapshot.restoreBlock", "snapshot.restore", "database.recordLayout", "row.move", "row.schedule", "row.access", "row.appearance", "row.recurrence", "row.detachOccurrence", "row.document.sync", "row.snapshot", "row.snapshot.restore", "row.template.save", "row.template.default", "row.template.delete", "row.template.apply", "row.trash.restore", "row.trash.purge", "rows.bulk", "rows.transfer", "timeline.cascade", "timeline.link", "citation.import", "citation.remove", "whiteboard.sync", "notebook.paper", "notebook.sheet.duplicate", "notebook.sheet.delete", "notebook.sheet.move", "notebook.sheet.paper", "notebook.import", "search.save", "search.delete", "collection.delete", "collection.restore", "collection.duplicate", "collection.reorder", "thread.create", "thread.reply", "thread.resolve", "thread.edit", "thread.deleteMessage", "thread.react", "comment.react", "reminder.set", "notification.prefs", "notification.read", "notification.mark", "notification.delete", "share.create", "share.revoke", "share.protect", "publication.protect", "publication.copy", "publication.theme", "domain.add", "domain.remove", "plugin.update", "plugin.delete", "form.update", "form.submit", "survey.save", "sprint.setup", "sprint.create", "sprint.update", "sprint.start", "sprint.complete", "sprint.delete", "sprint.points", "recordView.save", "recordView.delete", "git.setup", "git.disable", "time.start", "time.stop", "time.add", "time.delete", "ticket.reply", "invite.cancel", "invite.resend", "member.role", "member.guest", "sso.mapping.add", "sso.mapping.delete", "grant.set", "group.create", "group.member", "template.save", "template.update", "template.delete", "template.restore", "template.apply", "capture.record", "capture.target", "bookmarks.import", "calendar.caldav", "calendar.caldav.revoke", "e2ee.identity.setup", "e2ee.identity.update", "e2ee.identity.reset", "e2ee.member.add", "e2ee.member.remove", "e2ee.rotate", "e2ee.compact", "e2ee.title", "workflow.sync", "workflow.draft", "workflow.validate", "workflow.activate", "workflow.pause", "workflow.test", "workflow.run", "workflow.run.cancel", "workflow.restore", "workflow.fromRule", "workflow.run.retry", "workflow.approve", "workflow.hook", "workflow.credential.set", "workflow.credential.remove", "workflow.import"]],
+}, total=False)
+
+# A node: `type` from the catalogue (GET /api/workflows/catalog), `config` per its schema; ids n_ + 6–12 of [a-z0-9]; labels unique, without . | { } [ ].
+WorkflowNode = TypedDict("WorkflowNode", {
+    "id": Required[str],
+    "type": Required[str],
+    "typeVersion": int,
+    "label": Required[str],
+    "note": str,
+    "position": dict[str, Any],
+    "disabled": bool,
+    "config": dict[str, Any],
+    "onError": dict[str, Any],
+}, total=False)
+
+# A connection from a node's output port to another node's input.
+WorkflowEdge = TypedDict("WorkflowEdge", {
+    "id": Required[str],
+    "from": Required[dict[str, Any]],
+    "to": Required[dict[str, Any]],
+}, total=False)
+
+# A workflow graph (format flowplan.workflow, version 1): at least one trigger, at most 150 nodes, 300 edges and 1 MB; no cycles outside “For each”.
+WorkflowGraph = TypedDict("WorkflowGraph", {
+    "format": Literal["flowplan.workflow"],
+    "version": int,
+    "settings": dict[str, Any],
+    "nodes": Required[list["WorkflowNode"]],
+    "edges": Required[list["WorkflowEdge"]],
+}, total=False)
+
+WorkflowIssue = TypedDict("WorkflowIssue", {
+    "level": Required[Literal["error", "warning"]],
+    "code": Required[str],
+    "nodeId": str,
+    "edgeId": str,
+    "params": dict[str, Any],
+    "message": Required[str],
+}, total=False)
+
+WorkflowCheckResult = TypedDict("WorkflowCheckResult", {
+    "ok": Required[bool],
+    "issues": Required[list["WorkflowIssue"]],
+}, total=False)
+
+WorkflowSummary = TypedDict("WorkflowSummary", {
+    "pageId": Required[str],
+    "title": Required[str],
+    "status": Required[Literal["draft", "active", "paused", "auto_paused"]],
+    "runner": Optional[dict[str, Any]],
+    "manual": bool,
+    "lastRun": Optional[dict[str, Any]],
+}, total=False)
+
+WorkflowCatalogNode = TypedDict("WorkflowCatalogNode", {
+    "type": Required[str],
+    "category": Required[str],
+    "name": list[str],
+    "description": list[str],
+    "icon": str,
+    "inline": bool,
+    "event": Optional[str],
+    "ports": list[str],
+    "outputs": list[dict[str, Any]],
+    "config": Required[dict[str, Any]],
+}, total=False)
+
+WorkflowState = TypedDict("WorkflowState", {
+    "pageId": Required[str],
+    "title": str,
+    "status": Required[Literal["draft", "active", "paused", "auto_paused"]],
+    "pauseReason": Optional[str],
+    "runner": Optional[dict[str, Any]],
+    "canEdit": Required[bool],
+    "active": Optional[dict[str, Any]],
+    "draft": Optional[dict[str, Any]],
+    "lastRun": Optional[dict[str, Any]],
+}, total=False)
+
+WorkflowRun = TypedDict("WorkflowRun", {
+    "id": Required[str],
+    "status": Required[Literal["queued", "running", "waiting", "held", "succeeded", "failed", "cancelled"]],
+    "mode": Required[Literal["live", "test", "dry"]],
+    "version": Optional[int],
+    "triggerNodeId": str,
+    "steps": int,
+    "error": Optional[str],
+    "failedNodeId": Optional[str],
+    "createdAt": int,
+    "finishedAt": Optional[int],
+}, total=False)
+
+WorkflowStep = TypedDict("WorkflowStep", {
+    "id": Required[str],
+    "nodeId": Required[str],
+    "iteration": str,
+    "status": Required[str],
+    "attempt": int,
+    "port": Optional[str],
+    "errorKind": Optional[str],
+    "error": Optional[str],
+    "input": Any,
+    "output": Any,
+}, total=False)
+
+WorkflowRunDetail = TypedDict("WorkflowRunDetail", {
+    "id": Required[str],
+    "pageId": str,
+    "status": Required[str],
+    "mode": str,
+    "graph": "WorkflowGraph",
+    "runner": Optional[dict[str, Any]],
+    "contentsVisible": bool,
+    "timeline": Required[list["WorkflowStep"]],
+}, total=False)
+
+WorkflowUnresolved = TypedDict("WorkflowUnresolved", {
+    "id": Required[str],
+    "kind": Required[Literal["page", "database", "person", "chatHook", "address", "credential", "template", "tag", "field"]],
+    "title": str,
+    "of": str,
+}, total=False)
+
+WorkflowExport = TypedDict("WorkflowExport", {
+    "format": Required[Literal["flowplan.workflow"]],
+    "version": Required[int],
+    "exportedAt": str,
+    "source": dict[str, Any],
+    "title": str,
+    "graph": Required["WorkflowGraph"],
+    "references": dict[str, dict[str, Any]],
 }, total=False)
 
 # Create a workspace
@@ -1832,6 +1963,30 @@ MobileCaptureTargetsQuery = TypedDict("MobileCaptureTargetsQuery", {
     "lang": str,  # Language of the titles (de, en, fr); the profile's language wins
 }, total=False)
 
+ListWorkflowsQuery = TypedDict("ListWorkflowsQuery", {
+    "workspaceId": Required[str],  # Workspace ID
+}, total=False)
+
+WorkflowCatalogQuery = TypedDict("WorkflowCatalogQuery", {
+    "workspaceId": str,  # Optional: checks membership of this workspace
+}, total=False)
+
+ListWorkflowRunsQuery = TypedDict("ListWorkflowRunsQuery", {
+    "status": Literal["failed", "succeeded", "cancelled", "open", "waiting"],  # Only these
+    "mode": Literal["live", "test"],  # Live runs or tests
+    "q": str,  # Search in the run id and errors
+    "limit": int,  # 1–200, default 50
+    "before": int,  # Only runs created before this time (ms)
+}, total=False)
+
+WorkflowStartInfoQuery = TypedDict("WorkflowStartInfoQuery", {
+    "host": str,  # The page with the button
+}, total=False)
+
+MyWorkflowApprovalsQuery = TypedDict("MyWorkflowApprovalsQuery", {
+    "workspaceId": str,  # Only this workspace
+}, total=False)
+
 # ---- Client ----
 
 
@@ -2434,6 +2589,98 @@ class FlowplanClient:
     def mobile_spotlight(self, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Pages and open tasks for the phone's search — The 500 most recently changed pages the person may read (title, place, a short excerpt) and up to 200 open tasks, for the on-device search index (iOS Spotlight). Nothing of end-to-end encrypted spaces, pages behind a journal PIN or journal days. Answered with `Cache-Control: no-store`. (GET /api/mobile/capture/spotlight)"""
         return self._json("GET", "/api/mobile/capture/spotlight", headers=headers)
+
+    def list_workflows(self, query: "ListWorkflowsQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Workflows of a workspace — The workflow pages you can see (none for guests): `pageId`, `title`, `status` (draft, active, paused, auto_paused), `runner` (who it runs as), `manual` (has an active manual trigger) and `lastRun`. Answered with `Cache-Control: no-store`. (GET /api/workflows)"""
+        return self._json("GET", "/api/workflows", query=dict(query) if query else None, headers=headers)
+
+    def workflow_catalog(self, query: Optional["WorkflowCatalogQuery"] = None, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """The node catalogue — Every node type with names [de, en], category, symbol, whether it runs inside the writing transaction (`inline`), its trigger event, ports, output fields (for placeholders) and configuration as JSON Schema. (GET /api/workflows/catalog)"""
+        return self._json("GET", "/api/workflows/catalog", query=dict(query) if query else None, headers=headers)
+
+    def get_workflow(self, page_id: str, headers: Optional[dict[str, str]] = None) -> "WorkflowState":
+        """State, active version and draft of a workflow — `active` is the running version (graph, number, who activated it); `draft` (editors only, never for read tokens) holds the draft graph, whether it differs from the active version and its check (`issues`: errors keep it from being activated, warnings not). Answered with `Cache-Control: no-store`. (GET /api/workflows/{pageId})"""
+        return self._json("GET", "/api/workflows/" + _p(page_id), headers=headers)
+
+    def list_workflow_runs(self, page_id: str, query: Optional["ListWorkflowRunsQuery"] = None, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Runs of a workflow — Newest first. Answered with `Cache-Control: no-store`. (GET /api/workflows/{pageId}/runs)"""
+        return self._json("GET", "/api/workflows/" + _p(page_id) + "/runs", query=dict(query) if query else None, headers=headers)
+
+    def list_workflow_versions(self, page_id: str, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Activated versions and draft snapshots (GET /api/workflows/{pageId}/versions)"""
+        return self._json("GET", "/api/workflows/" + _p(page_id) + "/versions", headers=headers)
+
+    def get_workflow_version(self, page_id: str, version_id: str, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """One version (or draft snapshot) with its graph (GET /api/workflows/{pageId}/versions/{versionId})"""
+        return self._json("GET", "/api/workflows/" + _p(page_id) + "/versions/" + _p(version_id), headers=headers)
+
+    def list_workflow_approvals(self, page_id: str, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Approvals of a workflow — Decided only signed in, never with a token. (GET /api/workflows/{pageId}/approvals)"""
+        return self._json("GET", "/api/workflows/" + _p(page_id) + "/approvals", headers=headers)
+
+    def workflow_start_info(self, page_id: str, query: Optional["WorkflowStartInfoQuery"] = None, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """What a workflow button may start — The manual trigger's inputs and whether you may start it: editors of the workflow by default; with the trigger's `who: members` every full member who reads the workflow – or `host`, a page carrying its button. Never guests. (GET /api/workflows/{pageId}/start)"""
+        return self._json("GET", "/api/workflows/" + _p(page_id) + "/start", query=dict(query) if query else None, headers=headers)
+
+    def export_workflow(self, page_id: str, headers: Optional[dict[str, str]] = None) -> "WorkflowExport":
+        """Export a workflow as JSON — The draft (editors) or the active version (readers) with its references (`references`: kind and title of every page, database with its properties, person, chat webhook, address and credential the graph names). Never runs, secrets, webhook addresses or inbound tokens: a credential is only its name, kind and host, to link again after an import. (GET /api/workflows/{pageId}/export)"""
+        return self._json("GET", "/api/workflows/" + _p(page_id) + "/export", headers=headers)
+
+    def import_workflow(self, body: dict[str, Any], headers: Optional[dict[str, str]] = None, idempotency_key: Optional[str] = None) -> dict[str, Any]:
+        """Import a workflow as a new draft — Creates a workflow page from an export (or a bare graph) – always a draft, never active. References are matched by id in this workspace, by title (databases, pages), name (people, properties of a matched database) or `mapping` (`{"<id in the file>": "<id here>"}`, properties as `"<database id>:<property id>"`); what stays unmatched is cleared and listed in `unresolved`. `preview: true` only answers `unresolved`. Credentials are never imported: link them again. (POST /api/workflows/import)"""
+        return self._json("POST", "/api/workflows/import", json_body=body, headers=headers, idempotent=True, idempotency_key=idempotency_key)
+
+    def save_workflow_draft(self, page_id: str, body: dict[str, Any], headers: Optional[dict[str, str]] = None) -> "WorkflowCheckResult":
+        """Replace the draft by a graph — Merges into the live draft like an edit in the browser (people editing see it at once). Answers the check. Never activates. Same as the action `workflow.draft`. (POST /api/workflows/{pageId}/draft)"""
+        return self._json("POST", "/api/workflows/" + _p(page_id) + "/draft", json_body=body, headers=headers)
+
+    def validate_workflow(self, page_id: str, body: dict[str, Any], headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Check a graph or the draft — As the caller would run it: structure, references and rights. (POST /api/workflows/{pageId}/validate)"""
+        return self._json("POST", "/api/workflows/" + _p(page_id) + "/validate", json_body=body, headers=headers)
+
+    def activate_workflow(self, page_id: str, body: dict[str, Any], headers: Optional[dict[str, str]] = None, idempotency_key: Optional[str] = None) -> dict[str, Any]:
+        """Activate the draft — The draft becomes the next version and the caller the person it runs as (it never does more than they may). A draft with errors is not activated: `{ ok: false, issues }`. Write tokens may (for deployments); the MCP server may not. (POST /api/workflows/{pageId}/activate)"""
+        return self._json("POST", "/api/workflows/" + _p(page_id) + "/activate", json_body=body, headers=headers, idempotent=True, idempotency_key=idempotency_key)
+
+    def pause_workflow(self, page_id: str, body: dict[str, Any], headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Pause a workflow — No new runs; open runs are held (or cancelled with `cancelRuns`). (POST /api/workflows/{pageId}/pause)"""
+        return self._json("POST", "/api/workflows/" + _p(page_id) + "/pause", json_body=body, headers=headers)
+
+    def run_workflow(self, page_id: str, body: dict[str, Any], headers: Optional[dict[str, str]] = None, idempotency_key: Optional[str] = None) -> dict[str, Any]:
+        """Start a workflow with a manual trigger — `live` (default) starts the active version as the person it runs as (you are `startedBy`, source `api`) and answers the event; `test`/`dry` run the draft as you (editors) and answer the run. Who may start live runs: the trigger decides (editors, or all members who see it). (POST /api/workflows/{pageId}/run)"""
+        return self._json("POST", "/api/workflows/" + _p(page_id) + "/run", json_body=body, headers=headers, idempotent=True, idempotency_key=idempotency_key)
+
+    def test_workflow(self, page_id: str, body: dict[str, Any], headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Test or dry-run the draft — `dry` reports what every node would do; `test` really acts, as you. Data of the trigger: `sample`, `last` (the last real event), `record`, `page` or `custom`. 10 per person and minute. A draft with errors answers `{ ok: false, issues }`. (POST /api/workflows/{pageId}/test)"""
+        return self._json("POST", "/api/workflows/" + _p(page_id) + "/test", json_body=body, headers=headers)
+
+    def restore_workflow_version(self, page_id: str, body: dict[str, Any], headers: Optional[dict[str, str]] = None) -> "WorkflowCheckResult":
+        """A version or snapshot becomes the draft — Never the active version directly. (POST /api/workflows/{pageId}/restore)"""
+        return self._json("POST", "/api/workflows/" + _p(page_id) + "/restore", json_body=body, headers=headers)
+
+    def get_workflow_run(self, run_id: str, headers: Optional[dict[str, str]] = None) -> "WorkflowRunDetail":
+        """A run with its steps — `timeline` lists every step (attempts, ports, errors). Inputs and outputs only for the person the run ran as (`contentsVisible`). Answered with `Cache-Control: no-store`. (GET /api/workflow-runs/{runId})"""
+        return self._json("GET", "/api/workflow-runs/" + _p(run_id), headers=headers)
+
+    def retry_workflow_run(self, run_id: str, body: dict[str, Any], headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Retry a failed run from its failed node (POST /api/workflow-runs/{runId}/retry)"""
+        return self._json("POST", "/api/workflow-runs/" + _p(run_id) + "/retry", json_body=body, headers=headers)
+
+    def cancel_workflow_run(self, run_id: str, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Cancel an open run (POST /api/workflow-runs/{runId}/cancel)"""
+        return self._json("POST", "/api/workflow-runs/" + _p(run_id) + "/cancel", headers=headers)
+
+    def my_workflow_approvals(self, query: Optional["MyWorkflowApprovalsQuery"] = None, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Approvals waiting for me (GET /api/workflow-approvals)"""
+        return self._json("GET", "/api/workflow-approvals", query=dict(query) if query else None, headers=headers)
+
+    def get_workflow_approval(self, approval_id: str, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """One approval with its message and context (GET /api/workflow-approvals/{approvalId})"""
+        return self._json("GET", "/api/workflow-approvals/" + _p(approval_id), headers=headers)
+
+    def decide_workflow_approval(self, approval_id: str, body: dict[str, Any], headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Approve or reject (signed in only) — A person's decision: refused for every API token (403) and not offered over MCP. The first decision wins (409 afterwards). (POST /api/workflow-approvals/{approvalId})"""
+        return self._json("POST", "/api/workflow-approvals/" + _p(approval_id), json_body=body, headers=headers)
 
     def mcp(self, body: "McpRequest", headers: Optional[dict[str, str]] = None) -> "McpResponse":
         """MCP server (Streamable HTTP, JSON answers) — For AI assistants. Only API tokens sign in; read tokens get the reading tools, write tokens all. 120 calls per person and minute, then 429 with `Retry-After`. Tools: list_workspaces, list_pages, search, read_page, query_database, get_record, my_tasks, create_page, append_to_page, create_record, update_record. (POST /api/mcp)"""

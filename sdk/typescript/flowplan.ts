@@ -853,7 +853,195 @@ export type CommandResult = Record<string, unknown>;
 
 /** Every other action the interface sends. The server validates the fields of each; see lib/api.ts command() in the source. */
 export type CommandOther = {
-  action: "workspace.update" | "workspace.delete" | "workspace.leave" | "workspace.import" | "profile.onboarded" | "profile.language" | "notification.reset" | "notification.email" | "home.reset" | "home.note" | "home.config" | "home.default" | "account.deletePlan" | "account.delete" | "space.update" | "space.delete" | "space.restore" | "space.purge" | "space.duplicate" | "space.gitExport" | "page.import" | "pages.bulk" | "page.snapshot" | "page.publish" | "page.share" | "page.shareUpdate" | "page.fromShare" | "page.toRecord" | "record.toPage" | "tag.delete" | "tag.merge" | "tag.reorder" | "property.delete" | "property.reorder" | "favorite.row" | "task.update" | "synced.create" | "table.toDatabase" | "mention.link" | "journal.settings" | "journal.lock" | "journal.unlock" | "journal.relock" | "journal.entry" | "journal.roll" | "journal.link" | "journal.removeEmpty" | "journal.summary" | "journal.aiSummary" | "linked.command" | "document.sync" | "document.markdown" | "document.markdown.apply" | "snapshot.restoreBlock" | "snapshot.restore" | "database.recordLayout" | "row.move" | "row.schedule" | "row.access" | "row.appearance" | "row.recurrence" | "row.detachOccurrence" | "row.document.sync" | "row.snapshot" | "row.snapshot.restore" | "row.template.save" | "row.template.default" | "row.template.delete" | "row.template.apply" | "row.trash.restore" | "row.trash.purge" | "rows.bulk" | "rows.transfer" | "timeline.cascade" | "timeline.link" | "citation.import" | "citation.remove" | "whiteboard.sync" | "notebook.paper" | "notebook.sheet.duplicate" | "notebook.sheet.delete" | "notebook.sheet.move" | "notebook.sheet.paper" | "notebook.import" | "search.save" | "search.delete" | "collection.delete" | "collection.restore" | "collection.duplicate" | "collection.reorder" | "thread.create" | "thread.reply" | "thread.resolve" | "thread.edit" | "thread.deleteMessage" | "thread.react" | "comment.react" | "reminder.set" | "notification.prefs" | "notification.read" | "notification.mark" | "notification.delete" | "share.create" | "share.revoke" | "share.protect" | "publication.protect" | "publication.copy" | "publication.theme" | "domain.add" | "domain.remove" | "plugin.update" | "plugin.delete" | "form.update" | "form.submit" | "survey.save" | "sprint.setup" | "sprint.create" | "sprint.update" | "sprint.start" | "sprint.complete" | "sprint.delete" | "sprint.points" | "recordView.save" | "recordView.delete" | "git.setup" | "git.disable" | "time.start" | "time.stop" | "time.add" | "time.delete" | "ticket.reply" | "invite.cancel" | "invite.resend" | "member.role" | "member.guest" | "sso.mapping.add" | "sso.mapping.delete" | "grant.set" | "group.create" | "group.member" | "template.save" | "template.update" | "template.delete" | "template.restore" | "template.apply" | "capture.record" | "capture.target" | "bookmarks.import" | "calendar.caldav" | "calendar.caldav.revoke" | "e2ee.identity.setup" | "e2ee.identity.update" | "e2ee.identity.reset" | "e2ee.member.add" | "e2ee.member.remove" | "e2ee.rotate" | "e2ee.compact" | "e2ee.title" | "workflow.sync" | "workflow.draft" | "workflow.validate" | "workflow.activate" | "workflow.pause" | "workflow.test" | "workflow.run" | "workflow.run.cancel" | "workflow.restore" | "workflow.fromRule" | "workflow.run.retry" | "workflow.approve" | "workflow.hook" | "workflow.credential.set" | "workflow.credential.remove";
+  action: "workspace.update" | "workspace.delete" | "workspace.leave" | "workspace.import" | "profile.onboarded" | "profile.language" | "notification.reset" | "notification.email" | "home.reset" | "home.note" | "home.config" | "home.default" | "account.deletePlan" | "account.delete" | "space.update" | "space.delete" | "space.restore" | "space.purge" | "space.duplicate" | "space.gitExport" | "page.import" | "pages.bulk" | "page.snapshot" | "page.publish" | "page.share" | "page.shareUpdate" | "page.fromShare" | "page.toRecord" | "record.toPage" | "tag.delete" | "tag.merge" | "tag.reorder" | "property.delete" | "property.reorder" | "favorite.row" | "task.update" | "synced.create" | "table.toDatabase" | "mention.link" | "journal.settings" | "journal.lock" | "journal.unlock" | "journal.relock" | "journal.entry" | "journal.roll" | "journal.link" | "journal.removeEmpty" | "journal.summary" | "journal.aiSummary" | "linked.command" | "document.sync" | "document.markdown" | "document.markdown.apply" | "snapshot.restoreBlock" | "snapshot.restore" | "database.recordLayout" | "row.move" | "row.schedule" | "row.access" | "row.appearance" | "row.recurrence" | "row.detachOccurrence" | "row.document.sync" | "row.snapshot" | "row.snapshot.restore" | "row.template.save" | "row.template.default" | "row.template.delete" | "row.template.apply" | "row.trash.restore" | "row.trash.purge" | "rows.bulk" | "rows.transfer" | "timeline.cascade" | "timeline.link" | "citation.import" | "citation.remove" | "whiteboard.sync" | "notebook.paper" | "notebook.sheet.duplicate" | "notebook.sheet.delete" | "notebook.sheet.move" | "notebook.sheet.paper" | "notebook.import" | "search.save" | "search.delete" | "collection.delete" | "collection.restore" | "collection.duplicate" | "collection.reorder" | "thread.create" | "thread.reply" | "thread.resolve" | "thread.edit" | "thread.deleteMessage" | "thread.react" | "comment.react" | "reminder.set" | "notification.prefs" | "notification.read" | "notification.mark" | "notification.delete" | "share.create" | "share.revoke" | "share.protect" | "publication.protect" | "publication.copy" | "publication.theme" | "domain.add" | "domain.remove" | "plugin.update" | "plugin.delete" | "form.update" | "form.submit" | "survey.save" | "sprint.setup" | "sprint.create" | "sprint.update" | "sprint.start" | "sprint.complete" | "sprint.delete" | "sprint.points" | "recordView.save" | "recordView.delete" | "git.setup" | "git.disable" | "time.start" | "time.stop" | "time.add" | "time.delete" | "ticket.reply" | "invite.cancel" | "invite.resend" | "member.role" | "member.guest" | "sso.mapping.add" | "sso.mapping.delete" | "grant.set" | "group.create" | "group.member" | "template.save" | "template.update" | "template.delete" | "template.restore" | "template.apply" | "capture.record" | "capture.target" | "bookmarks.import" | "calendar.caldav" | "calendar.caldav.revoke" | "e2ee.identity.setup" | "e2ee.identity.update" | "e2ee.identity.reset" | "e2ee.member.add" | "e2ee.member.remove" | "e2ee.rotate" | "e2ee.compact" | "e2ee.title" | "workflow.sync" | "workflow.draft" | "workflow.validate" | "workflow.activate" | "workflow.pause" | "workflow.test" | "workflow.run" | "workflow.run.cancel" | "workflow.restore" | "workflow.fromRule" | "workflow.run.retry" | "workflow.approve" | "workflow.hook" | "workflow.credential.set" | "workflow.credential.remove" | "workflow.import";
+  [key: string]: unknown;
+};
+
+/** A node: `type` from the catalogue (GET /api/workflows/catalog), `config` per its schema; ids n_ + 6–12 of [a-z0-9]; labels unique, without . | { } [ ]. */
+export type WorkflowNode = {
+  id: string;
+  type: string;
+  typeVersion?: number;
+  label: string;
+  note?: string;
+  position?: {
+    x: number;
+    y: number;
+  };
+  disabled?: boolean;
+  config?: Record<string, unknown>;
+  onError?: {
+    retry?: number;
+    then?: "fail" | "port" | "continue";
+  };
+};
+
+/** A connection from a node's output port to another node's input. */
+export type WorkflowEdge = {
+  id: string;
+  from: {
+    node: string;
+    port: string;
+  };
+  to: {
+    node: string;
+    port?: "in";
+  };
+};
+
+/** A workflow graph (format flowplan.workflow, version 1): at least one trigger, at most 150 nodes, 300 edges and 1 MB; no cycles outside “For each”. */
+export type WorkflowGraph = {
+  format?: "flowplan.workflow";
+  version?: number;
+  settings?: {
+    timeZone?: string;
+    locale?: string;
+    triggerOnOwnChanges?: boolean;
+    limits?: {
+      runsPerMinute?: number;
+      stepsPerRun?: number;
+    };
+  };
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+};
+
+export type WorkflowIssue = {
+  level: "error" | "warning";
+  code: string;
+  nodeId?: string;
+  edgeId?: string;
+  params?: Record<string, unknown>;
+  message: string;
+  [key: string]: unknown;
+};
+
+export type WorkflowCheckResult = {
+  ok: boolean;
+  issues: WorkflowIssue[];
+  [key: string]: unknown;
+};
+
+export type WorkflowSummary = {
+  pageId: string;
+  title: string;
+  status: "draft" | "active" | "paused" | "auto_paused";
+  runner?: {
+    id?: string;
+    name?: string;
+    email?: string;
+  } | null;
+  manual?: boolean;
+  lastRun?: Record<string, unknown> | null;
+  [key: string]: unknown;
+};
+
+export type WorkflowCatalogNode = {
+  type: string;
+  category: string;
+  name?: string[];
+  description?: string[];
+  icon?: string;
+  inline?: boolean;
+  event?: string | null;
+  ports?: string[];
+  outputs?: Record<string, unknown>[];
+  config: Record<string, unknown>;
+  [key: string]: unknown;
+};
+
+export type WorkflowState = {
+  pageId: string;
+  title?: string;
+  status: "draft" | "active" | "paused" | "auto_paused";
+  pauseReason?: string | null;
+  runner?: {
+    id?: string;
+    name?: string;
+    email?: string;
+  } | null;
+  canEdit: boolean;
+  active?: {
+    id?: string;
+    number?: number;
+    graph?: WorkflowGraph;
+    note?: string;
+    [key: string]: unknown;
+  } | null;
+  draft?: {
+    graph?: WorkflowGraph;
+    changed?: boolean;
+    issues?: WorkflowIssue[];
+    [key: string]: unknown;
+  } | null;
+  lastRun?: Record<string, unknown> | null;
+  [key: string]: unknown;
+};
+
+export type WorkflowRun = {
+  id: string;
+  status: "queued" | "running" | "waiting" | "held" | "succeeded" | "failed" | "cancelled";
+  mode: "live" | "test" | "dry";
+  version?: number | null;
+  triggerNodeId?: string;
+  steps?: number;
+  error?: string | null;
+  failedNodeId?: string | null;
+  createdAt?: number;
+  finishedAt?: number | null;
+  [key: string]: unknown;
+};
+
+export type WorkflowStep = {
+  id: string;
+  nodeId: string;
+  iteration?: string;
+  status: string;
+  attempt?: number;
+  port?: string | null;
+  errorKind?: string | null;
+  error?: string | null;
+  input?: unknown;
+  output?: unknown;
+  [key: string]: unknown;
+};
+
+export type WorkflowRunDetail = {
+  id: string;
+  pageId?: string;
+  status: string;
+  mode?: string;
+  graph?: WorkflowGraph;
+  runner?: {
+    id?: string;
+    name?: string;
+    email?: string;
+  } | null;
+  contentsVisible?: boolean;
+  timeline: WorkflowStep[];
+  [key: string]: unknown;
+};
+
+export type WorkflowUnresolved = {
+  id: string;
+  kind: "page" | "database" | "person" | "chatHook" | "address" | "credential" | "template" | "tag" | "field";
+  title?: string;
+  of?: string;
+  [key: string]: unknown;
+};
+
+export type WorkflowExport = {
+  format: "flowplan.workflow";
+  version: number;
+  exportedAt?: string;
+  source?: Record<string, unknown>;
+  title?: string;
+  graph: WorkflowGraph;
+  references?: Record<string, {
+    kind?: string;
+    title?: string;
+    [key: string]: unknown;
+  }>;
   [key: string]: unknown;
 };
 
@@ -3585,6 +3773,254 @@ export class FlowplanClient {
     at?: number;
     [key: string]: unknown;
   }>("GET", `/api/mobile/capture/spotlight`, {}, options);
+  }
+
+  /** Workflows of a workspace — The workflow pages you can see (none for guests): `pageId`, `title`, `status` (draft, active, paused, auto_paused), `runner` (who it runs as), `manual` (has an active manual trigger) and `lastRun`. Answered with `Cache-Control: no-store`. (GET /api/workflows) */
+  async listWorkflows(query: { workspaceId: string }, options?: RequestOptions): Promise<{
+    workflows: WorkflowSummary[];
+  }> {
+    return this.json<{
+    workflows: WorkflowSummary[];
+  }>("GET", `/api/workflows`, { query }, options);
+  }
+
+  /** The node catalogue — Every node type with names [de, en], category, symbol, whether it runs inside the writing transaction (`inline`), its trigger event, ports, output fields (for placeholders) and configuration as JSON Schema. (GET /api/workflows/catalog) */
+  async workflowCatalog(query?: { workspaceId?: string }, options?: RequestOptions): Promise<{
+    nodes: WorkflowCatalogNode[];
+  }> {
+    return this.json<{
+    nodes: WorkflowCatalogNode[];
+  }>("GET", `/api/workflows/catalog`, { query }, options);
+  }
+
+  /** State, active version and draft of a workflow — `active` is the running version (graph, number, who activated it); `draft` (editors only, never for read tokens) holds the draft graph, whether it differs from the active version and its check (`issues`: errors keep it from being activated, warnings not). Answered with `Cache-Control: no-store`. (GET /api/workflows/{pageId}) */
+  async getWorkflow(pageId: string, options?: RequestOptions): Promise<WorkflowState> {
+    return this.json<WorkflowState>("GET", `/api/workflows/${encodeURIComponent(pageId)}`, {}, options);
+  }
+
+  /** Runs of a workflow — Newest first. Answered with `Cache-Control: no-store`. (GET /api/workflows/{pageId}/runs) */
+  async listWorkflowRuns(pageId: string, query?: { status?: "failed" | "succeeded" | "cancelled" | "open" | "waiting"; mode?: "live" | "test"; q?: string; limit?: number; before?: number }, options?: RequestOptions): Promise<{
+    runs: WorkflowRun[];
+  }> {
+    return this.json<{
+    runs: WorkflowRun[];
+  }>("GET", `/api/workflows/${encodeURIComponent(pageId)}/runs`, { query }, options);
+  }
+
+  /** Activated versions and draft snapshots (GET /api/workflows/{pageId}/versions) */
+  async listWorkflowVersions(pageId: string, options?: RequestOptions): Promise<{
+    versions: Record<string, unknown>[];
+    drafts: Record<string, unknown>[];
+  }> {
+    return this.json<{
+    versions: Record<string, unknown>[];
+    drafts: Record<string, unknown>[];
+  }>("GET", `/api/workflows/${encodeURIComponent(pageId)}/versions`, {}, options);
+  }
+
+  /** One version (or draft snapshot) with its graph (GET /api/workflows/{pageId}/versions/{versionId}) */
+  async getWorkflowVersion(pageId: string, versionId: string, options?: RequestOptions): Promise<{
+    id: string;
+    number?: number;
+    draft?: boolean;
+    graph: WorkflowGraph;
+    [key: string]: unknown;
+  }> {
+    return this.json<{
+    id: string;
+    number?: number;
+    draft?: boolean;
+    graph: WorkflowGraph;
+    [key: string]: unknown;
+  }>("GET", `/api/workflows/${encodeURIComponent(pageId)}/versions/${encodeURIComponent(versionId)}`, {}, options);
+  }
+
+  /** Approvals of a workflow — Decided only signed in, never with a token. (GET /api/workflows/{pageId}/approvals) */
+  async listWorkflowApprovals(pageId: string, options?: RequestOptions): Promise<Record<string, unknown>> {
+    return this.json<Record<string, unknown>>("GET", `/api/workflows/${encodeURIComponent(pageId)}/approvals`, {}, options);
+  }
+
+  /** What a workflow button may start — The manual trigger's inputs and whether you may start it: editors of the workflow by default; with the trigger's `who: members` every full member who reads the workflow – or `host`, a page carrying its button. Never guests. (GET /api/workflows/{pageId}/start) */
+  async workflowStartInfo(pageId: string, query?: { host?: string }, options?: RequestOptions): Promise<{
+    may?: boolean;
+    inputs?: Record<string, unknown>[];
+    title?: string | null;
+    status?: string;
+    [key: string]: unknown;
+  }> {
+    return this.json<{
+    may?: boolean;
+    inputs?: Record<string, unknown>[];
+    title?: string | null;
+    status?: string;
+    [key: string]: unknown;
+  }>("GET", `/api/workflows/${encodeURIComponent(pageId)}/start`, { query }, options);
+  }
+
+  /** Export a workflow as JSON — The draft (editors) or the active version (readers) with its references (`references`: kind and title of every page, database with its properties, person, chat webhook, address and credential the graph names). Never runs, secrets, webhook addresses or inbound tokens: a credential is only its name, kind and host, to link again after an import. (GET /api/workflows/{pageId}/export) */
+  async exportWorkflow(pageId: string, options?: RequestOptions): Promise<WorkflowExport> {
+    return this.json<WorkflowExport>("GET", `/api/workflows/${encodeURIComponent(pageId)}/export`, {}, options);
+  }
+
+  /** Import a workflow as a new draft — Creates a workflow page from an export (or a bare graph) – always a draft, never active. References are matched by id in this workspace, by title (databases, pages), name (people, properties of a matched database) or `mapping` (`{"<id in the file>": "<id here>"}`, properties as `"<database id>:<property id>"`); what stays unmatched is cleared and listed in `unresolved`. `preview: true` only answers `unresolved`. Credentials are never imported: link them again. (POST /api/workflows/import) */
+  async importWorkflow(body: {
+    workspaceId: string;
+    spaceId: string;
+    parentId?: string;
+    title?: string;
+    data: WorkflowExport;
+    mapping?: Record<string, string>;
+    preview?: boolean;
+  }, options?: RequestOptions): Promise<{
+    ok: boolean;
+    id?: string;
+    unresolved?: WorkflowUnresolved[];
+    issues?: WorkflowIssue[];
+    [key: string]: unknown;
+  }> {
+    return this.json<{
+    ok: boolean;
+    id?: string;
+    unresolved?: WorkflowUnresolved[];
+    issues?: WorkflowIssue[];
+    [key: string]: unknown;
+  }>("POST", `/api/workflows/import`, { json: body, idempotent: true }, options);
+  }
+
+  /** Replace the draft by a graph — Merges into the live draft like an edit in the browser (people editing see it at once). Answers the check. Never activates. Same as the action `workflow.draft`. (POST /api/workflows/{pageId}/draft) */
+  async saveWorkflowDraft(pageId: string, body: {
+    graph: WorkflowGraph;
+  }, options?: RequestOptions): Promise<WorkflowCheckResult> {
+    return this.json<WorkflowCheckResult>("POST", `/api/workflows/${encodeURIComponent(pageId)}/draft`, { json: body }, options);
+  }
+
+  /** Check a graph or the draft — As the caller would run it: structure, references and rights. (POST /api/workflows/{pageId}/validate) */
+  async validateWorkflow(pageId: string, body: {
+    graph?: WorkflowGraph;
+  }, options?: RequestOptions): Promise<{
+    issues: WorkflowIssue[];
+  }> {
+    return this.json<{
+    issues: WorkflowIssue[];
+  }>("POST", `/api/workflows/${encodeURIComponent(pageId)}/validate`, { json: body }, options);
+  }
+
+  /** Activate the draft — The draft becomes the next version and the caller the person it runs as (it never does more than they may). A draft with errors is not activated: `{ ok: false, issues }`. Write tokens may (for deployments); the MCP server may not. (POST /api/workflows/{pageId}/activate) */
+  async activateWorkflow(pageId: string, body: {
+    note?: string;
+  }, options?: RequestOptions): Promise<{
+    ok: boolean;
+    versionId?: string;
+    number?: number;
+    issues: WorkflowIssue[];
+  }> {
+    return this.json<{
+    ok: boolean;
+    versionId?: string;
+    number?: number;
+    issues: WorkflowIssue[];
+  }>("POST", `/api/workflows/${encodeURIComponent(pageId)}/activate`, { json: body, idempotent: true }, options);
+  }
+
+  /** Pause a workflow — No new runs; open runs are held (or cancelled with `cancelRuns`). (POST /api/workflows/{pageId}/pause) */
+  async pauseWorkflow(pageId: string, body: {
+    cancelRuns?: boolean;
+    reason?: string;
+  }, options?: RequestOptions): Promise<{
+    ok: boolean;
+  }> {
+    return this.json<{
+    ok: boolean;
+  }>("POST", `/api/workflows/${encodeURIComponent(pageId)}/pause`, { json: body }, options);
+  }
+
+  /** Start a workflow with a manual trigger — `live` (default) starts the active version as the person it runs as (you are `startedBy`, source `api`) and answers the event; `test`/`dry` run the draft as you (editors) and answer the run. Who may start live runs: the trigger decides (editors, or all members who see it). (POST /api/workflows/{pageId}/run) */
+  async runWorkflow(pageId: string, body: {
+    nodeId?: string;
+    inputs?: Record<string, unknown>;
+    mode?: "live" | "test" | "dry";
+  }, options?: RequestOptions): Promise<{
+    ok: boolean;
+    eventId?: string | null;
+    runId?: string | null;
+    [key: string]: unknown;
+  }> {
+    return this.json<{
+    ok: boolean;
+    eventId?: string | null;
+    runId?: string | null;
+    [key: string]: unknown;
+  }>("POST", `/api/workflows/${encodeURIComponent(pageId)}/run`, { json: body, idempotent: true }, options);
+  }
+
+  /** Test or dry-run the draft — `dry` reports what every node would do; `test` really acts, as you. Data of the trigger: `sample`, `last` (the last real event), `record`, `page` or `custom`. 10 per person and minute. A draft with errors answers `{ ok: false, issues }`. (POST /api/workflows/{pageId}/test) */
+  async testWorkflow(pageId: string, body: {
+    mode?: "test" | "dry";
+    nodeId?: string;
+    data?: Record<string, unknown>;
+    assume?: "approved" | "rejected";
+  }, options?: RequestOptions): Promise<{
+    ok: boolean;
+    runId?: string | null;
+    issues?: WorkflowIssue[];
+  }> {
+    return this.json<{
+    ok: boolean;
+    runId?: string | null;
+    issues?: WorkflowIssue[];
+  }>("POST", `/api/workflows/${encodeURIComponent(pageId)}/test`, { json: body }, options);
+  }
+
+  /** A version or snapshot becomes the draft — Never the active version directly. (POST /api/workflows/{pageId}/restore) */
+  async restoreWorkflowVersion(pageId: string, body: {
+    versionId: string;
+  }, options?: RequestOptions): Promise<WorkflowCheckResult> {
+    return this.json<WorkflowCheckResult>("POST", `/api/workflows/${encodeURIComponent(pageId)}/restore`, { json: body }, options);
+  }
+
+  /** A run with its steps — `timeline` lists every step (attempts, ports, errors). Inputs and outputs only for the person the run ran as (`contentsVisible`). Answered with `Cache-Control: no-store`. (GET /api/workflow-runs/{runId}) */
+  async getWorkflowRun(runId: string, options?: RequestOptions): Promise<WorkflowRunDetail> {
+    return this.json<WorkflowRunDetail>("GET", `/api/workflow-runs/${encodeURIComponent(runId)}`, {}, options);
+  }
+
+  /** Retry a failed run from its failed node (POST /api/workflow-runs/{runId}/retry) */
+  async retryWorkflowRun(runId: string, body: {
+    fromNode?: string;
+  }, options?: RequestOptions): Promise<Record<string, unknown>> {
+    return this.json<Record<string, unknown>>("POST", `/api/workflow-runs/${encodeURIComponent(runId)}/retry`, { json: body }, options);
+  }
+
+  /** Cancel an open run (POST /api/workflow-runs/{runId}/cancel) */
+  async cancelWorkflowRun(runId: string, options?: RequestOptions): Promise<{
+    ok: boolean;
+    cancelled?: boolean;
+  }> {
+    return this.json<{
+    ok: boolean;
+    cancelled?: boolean;
+  }>("POST", `/api/workflow-runs/${encodeURIComponent(runId)}/cancel`, {}, options);
+  }
+
+  /** Approvals waiting for me (GET /api/workflow-approvals) */
+  async myWorkflowApprovals(query?: { workspaceId?: string }, options?: RequestOptions): Promise<Record<string, unknown>> {
+    return this.json<Record<string, unknown>>("GET", `/api/workflow-approvals`, { query }, options);
+  }
+
+  /** One approval with its message and context (GET /api/workflow-approvals/{approvalId}) */
+  async getWorkflowApproval(approvalId: string, options?: RequestOptions): Promise<Record<string, unknown>> {
+    return this.json<Record<string, unknown>>("GET", `/api/workflow-approvals/${encodeURIComponent(approvalId)}`, {}, options);
+  }
+
+  /** Approve or reject (signed in only) — A person's decision: refused for every API token (403) and not offered over MCP. The first decision wins (409 afterwards). (POST /api/workflow-approvals/{approvalId}) */
+  async decideWorkflowApproval(approvalId: string, body: {
+    decision: "approved" | "rejected";
+    comment?: string;
+  }, options?: RequestOptions): Promise<{
+    ok: boolean;
+  }> {
+    return this.json<{
+    ok: boolean;
+  }>("POST", `/api/workflow-approvals/${encodeURIComponent(approvalId)}`, { json: body }, options);
   }
 
   /** MCP server (Streamable HTTP, JSON answers) — For AI assistants. Only API tokens sign in; read tokens get the reading tools, write tokens all. 120 calls per person and minute, then 429 with `Retry-After`. Tools: list_workspaces, list_pages, search, read_page, query_database, get_record, my_tasks, create_page, append_to_page, create_record, update_record. (POST /api/mcp) */

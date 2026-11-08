@@ -151,6 +151,7 @@ import {
 import { filterAsync, mapAsync } from "../../../lib/each-async";
 import { onShutdown } from "@/lib/cluster/runtime";
 import { workflowGet } from "@/lib/workflows/commands";
+import { workflowPost } from "@/lib/workflows/rest";
 import { withReadMemo } from "@/lib/read-memo";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -1208,6 +1209,11 @@ async function handlePOST(
     if (path.length === 1 && path[0] === "activity")
       return NextResponse.json(await recordActivity(user, await req.json().catch(() => null)), { headers: { "Cache-Control": "no-store" } });
     if (user.apiScope === "read") throw new HttpError(403, "Dieses API-Token darf nur lesen.");
+    // Workflows (#168, lib/workflows/rest.ts): the commands as REST routes.
+    if (path[0] === "workflows" || path[0] === "workflow-runs" || path[0] === "workflow-approvals") {
+      const answer = await workflowPost(user, path, await req.json().catch(() => ({})));
+      if (answer !== undefined) return NextResponse.json(answer, { headers: { "Cache-Control": "no-store" } });
+    }
     if (path.length === 2 && path[0] === "home" && path[1] === "action")
       return NextResponse.json(await homeAction(user, await req.json()), { headers: { "Cache-Control": "no-store" } });
     // Block extensions: the manifest is fetched and checked (lib/plugins.ts).

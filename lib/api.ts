@@ -2565,6 +2565,7 @@ async function runCommand(
       case "workflow.hook":
       case "workflow.credential.set":
       case "workflow.credential.remove":
+      case "workflow.import":
       case "admin.workflowLimits":
         result = await workflowCommand(user, action, b);
         break;

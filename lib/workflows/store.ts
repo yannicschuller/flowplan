@@ -64,8 +64,10 @@ export async function createWorkflowRecord(pageId: string, workspaceId: string, 
 // A workflow page for `user`: readable (never for guests – 404, §3) and,
 // for `write`, editable by a full member (requireMember editor).
 export async function requireWorkflow(user: Identity, pageId: string, write = false, allowDeleted = false): Promise<Page> {
-  const page = await requirePage(user, uuid.parse(pageId), write, allowDeleted);
-  if (page.kind !== "workflow" || (await isGuest(user, page.workspace_id))) throw new HttpError(404, "Seite nicht gefunden.");
+  // Guests learn nothing about workflow pages – not even that they exist.
+  const seen = await one<Page>("SELECT * FROM pages WHERE id=?", uuid.parse(pageId));
+  if (!seen || seen.kind !== "workflow" || (await isGuest(user, seen.workspace_id))) throw new HttpError(404, "Seite nicht gefunden.");
+  const page = await requirePage(user, seen.id, write, allowDeleted);
   if (write) await requireMember(user, page.workspace_id, "editor");
   if (!(await one("SELECT 1 FROM workflows WHERE page_id=?", page.id))) await createWorkflowRecord(page.id, page.workspace_id, user.id);
   return page;
@@ -371,8 +373,8 @@ export async function workflowState(user: Identity, pageId: string) {
 export async function listWorkflows(user: Identity, workspaceId: string) {
   await requireMember(user, uuid.parse(workspaceId));
   if (await isGuest(user, workspaceId)) return { workflows: [] };
-  const rows = await all<{ page_id: string; status: string; runner_id: string | null; title: string }>(
-    "SELECT w.page_id,w.status,w.runner_id,p.title FROM workflows w JOIN pages p ON p.id=w.page_id WHERE w.workspace_id=? AND p.deleted_at IS NULL ORDER BY p.title",
+  const rows = await all<{ page_id: string; status: string; runner_id: string | null; title: string; manual: number }>(
+    "SELECT w.page_id,w.status,w.runner_id,p.title,(SELECT COUNT(*) FROM workflow_triggers t WHERE t.page_id=w.page_id AND t.kind='manual') manual FROM workflows w JOIN pages p ON p.id=w.page_id WHERE w.workspace_id=? AND p.deleted_at IS NULL ORDER BY p.title",
     workspaceId,
   );
   const out = [];
@@ -384,6 +386,8 @@ export async function listWorkflows(user: Identity, workspaceId: string) {
       title: r.title,
       status: r.status,
       runner: await personValue(r.runner_id, workspaceId),
+      // Has an active manual trigger (a button can start it).
+      manual: Number(r.manual) > 0,
       lastRun: await one("SELECT id,status,created_at,finished_at FROM workflow_runs WHERE page_id=? AND mode='live' ORDER BY created_at DESC,seq DESC LIMIT 1", r.page_id),
     });
   }
@@ -606,12 +610,61 @@ export async function startTestRun(user: Identity, raw: unknown) {
   return { ok: true, runId, issues };
 }
 
-// workflow.run: starts a workflow with a manual trigger (§6.1, §10.8). Who
-// may: editors of the workflow, or – when the trigger says so – members who
-// see the page; never guests. `test`/`dry` run the draft as the starter.
+// Who may start a manual trigger (§10.8, open question 4 as decided):
+// editors of the workflow by default; with `who: "members"` every full
+// member who sees the workflow page – or the page that carries its button
+// (`host`: readable, in the same workspace, its document holds a button for
+// this workflow). Never guests, never read tokens. The run always runs as
+// the workflow's runner; the starter is `startedBy`.
+async function startRights(user: Identity, pageId: string, host?: string) {
+  const page = await one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", uuid.parse(pageId));
+  if (!page || page.kind !== "workflow" || (await isGuest(user, page.workspace_id))) throw new HttpError(404, "Seite nicht gefunden.");
+  await requireMember(user, page.workspace_id);
+  const role = await pageRole(user, page);
+  let viaHost = false;
+  if (!role && host) {
+    const hostPage = await one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", uuid.parse(host));
+    const html = hostPage && hostPage.workspace_id === page.workspace_id && (await pageRole(user, hostPage)) ? (await one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", hostPage.id))?.html || "" : "";
+    viaHost = html.includes(`data-workflow-button="${page.id}"`);
+  }
+  if (!role && !viaHost) throw new HttpError(404, "Seite nicht gefunden.");
+  const wf = await workflowRow(page.id);
+  const v = wf.status === "active" && wf.active_version_id ? await one<{ graph: string }>("SELECT graph FROM workflow_versions WHERE id=?", wf.active_version_id) : undefined;
+  const graph = v ? parseGraph(JSON.parse(v.graph)) : null;
+  const nodes = (graph?.nodes || []).filter((n) => n.type === "trigger.manual" && !n.disabled);
+  const may = (node: { config: Record<string, unknown> }) =>
+    user.apiScope !== "read" && (node.config.who === "members" ? true : !viaHost && (role === "editor" || role === "owner"));
+  return { page, wf, role, viaHost, nodes, may };
+}
+// GET /api/workflows/{id}/start?host=: what the button on a page shows.
+export async function manualStartInfo(user: Identity, pageId: string, host?: string) {
+  const r = await startRights(user, pageId, host);
+  const node = r.nodes[0];
+  return {
+    pageId: r.page.id,
+    // The workflow's own title only for those who may read it.
+    title: r.role ? r.page.title : null,
+    status: r.wf.status,
+    nodeId: node?.id ?? null,
+    inputs: node ? ((node.config.inputs as { name: string; type: string; required: boolean }[]) || []) : [],
+    may: !!node && r.may(node),
+    canEdit: r.role === "editor" || r.role === "owner",
+  };
+}
+
+// workflow.run: starts a workflow with a manual trigger (§6.1, §10.8).
+// `test`/`dry` run the draft as the starter (editors only).
 export async function startManualRun(user: Identity, raw: unknown) {
   const b = z
-    .object({ pageId: uuid, nodeId: z.string().max(40).optional(), inputs: z.record(z.string(), z.unknown()).default({}), mode: z.enum(["live", "test", "dry"]).default("live"), source: z.enum(["workflow", "block", "api"]).default("workflow") })
+    .object({
+      pageId: uuid,
+      nodeId: z.string().max(40).optional(),
+      inputs: z.record(z.string(), z.unknown()).default({}),
+      mode: z.enum(["live", "test", "dry"]).default("live"),
+      source: z.enum(["workflow", "block", "api"]).default("workflow"),
+      // The page with the button (source "block").
+      host: uuid.optional(),
+    })
     .parse(raw);
   if (b.mode !== "live") {
     const graph = await draftOf(await requireWorkflow(user, b.pageId, true));
@@ -619,17 +672,13 @@ export async function startManualRun(user: Identity, raw: unknown) {
     if (!node) throw new HttpError(400, "Kein manueller Auslöser.");
     return await startTestRun(user, { pageId: b.pageId, mode: b.mode, nodeId: node.id, data: { kind: "custom", output: { inputs: b.inputs, startedBy: await personValue(user.id), source: b.source } } });
   }
-  const page = await requireWorkflow(user, b.pageId);
   if (user.apiScope === "read") throw new HttpError(403, "Dieses API-Token darf nur lesen.");
-  const wf = await workflowRow(page.id);
-  if (wf.status !== "active" || !wf.active_version_id) throw new HttpError(409, "Der Workflow ist nicht aktiv.");
-  const v = await one<{ graph: string }>("SELECT graph FROM workflow_versions WHERE id=?", wf.active_version_id);
-  const graph = parseGraph(JSON.parse(v!.graph));
-  const node = graph.nodes.find((n) => n.type === "trigger.manual" && !n.disabled && (!b.nodeId || n.id === b.nodeId));
+  const r = await startRights(user, b.pageId, b.source === "block" ? b.host : undefined);
+  const page = r.page;
+  if (r.wf.status !== "active" || !r.wf.active_version_id) throw new HttpError(409, "Der Workflow ist nicht aktiv.");
+  const node = r.nodes.find((n) => !b.nodeId || n.id === b.nodeId);
   if (!node) throw new HttpError(400, "Kein manueller Auslöser.");
-  const role = await pageRole(user, page);
-  const may = node.config.who === "members" ? !!role : role === "editor" || role === "owner";
-  if (!may || (await isGuest(user, page.workspace_id))) throw new HttpError(403, "Keine Berechtigung, diesen Workflow zu starten.");
+  if (!r.may(node)) throw new HttpError(403, "Keine Berechtigung, diesen Workflow zu starten.");
   // Inputs: the trigger's fields, required ones present.
   const inputs: Record<string, unknown> = {};
   for (const field of (node.config.inputs as { name: string; type: string; required: boolean }[]) || []) {
