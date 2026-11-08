@@ -14,6 +14,7 @@ import { emitWorkflowEvent } from "./events";
 import { graphOf } from "./engine";
 import { databaseFields } from "./nodes/data";
 import { workflowRetention } from "./retention";
+import { flushNotices } from "./notices";
 
 type TriggerRow = { page_id: string; node_id: string; version_id: string; workspace_id: string; config: string; activated_at: number | null };
 
@@ -116,6 +117,7 @@ export function startWorkflowSchedules() {
     if (!isLeader()) return;
     try {
       await processWorkflowSchedules();
+      await flushNotices();
       const day = new Date().toISOString().slice(0, 10);
       if (holder.flowplanWorkflowRetentionDay !== day) {
         holder.flowplanWorkflowRetentionDay = day;

@@ -4,10 +4,12 @@
 // shape of its output (for the placeholder picker). Client-safe: schemas
 // and data only; the execution lives in lib/workflows/nodes/*.ts.
 //
-// Wave 1 has the record and page triggers, form, schedule, date, comment,
-// mention and manual triggers, the record and page actions, notify.person
-// and logic.if/set/stop. Further types (§6.3–6.6) come with later waves;
-// a graph naming a type that is not here is refused by the check.
+// Wave 1 brought the record and page triggers, form, schedule, date,
+// comment, mention and manual triggers, the record and page actions,
+// notify.person and logic.if/set/stop; wave 2 the inbound webhook, e-mail
+// and journal triggers, switch, for-each, wait and approval, the AI nodes,
+// http.request, notify.email and notify.chat. A graph naming a type that
+// is not here is refused by the check.
 import { z } from "zod";
 import { filterOperators } from "../database-filters";
 
@@ -195,6 +197,18 @@ const NODE_TEXT: Record<string, { name: [string, string]; description: [string, 
     name: ["Manuell starten", "Start manually"],
     description: ["Startet über „Ausführen“, die API oder einen Knopf.", "Starts with “Run”, the API or a button."],
   },
+  "trigger.webhook": {
+    name: ["Eingehender Webhook", "Inbound webhook"],
+    description: ["Ein anderer Dienst ruft die Adresse des Workflows auf.", "Another service calls the workflow’s address."],
+  },
+  "trigger.mail.received": {
+    name: ["E-Mail empfangen", "E-mail received"],
+    description: ["Eine E-Mail kommt an einer Adresse an, die an diesen Workflow geht.", "An e-mail arrives at an address that goes to this workflow."],
+  },
+  "trigger.journal.day": {
+    name: ["Neuer Journaltag", "New journal day"],
+    description: ["Die Seite eines Tages wird im Journal angelegt.", "A day’s page is created in a journal."],
+  },
   "logic.if": {
     name: ["Wenn", "If"],
     description: ["Verzweigt nach Bedingungen.", "Branches on conditions."],
@@ -206,6 +220,50 @@ const NODE_TEXT: Record<string, { name: [string, string]; description: [string, 
   "logic.stop": {
     name: ["Beenden", "Stop"],
     description: ["Beendet den Lauf erfolgreich oder als Fehler.", "Ends the run as succeeded or failed."],
+  },
+  "logic.switch": {
+    name: ["Unterscheiden", "Switch"],
+    description: ["Verzweigt nach dem ersten passenden Fall.", "Branches on the first matching case."],
+  },
+  "logic.foreach": {
+    name: ["Für jedes", "For each"],
+    description: ["Führt die folgenden Knoten für jedes Element einer Liste aus.", "Runs the following nodes for every item of a list."],
+  },
+  "logic.wait": {
+    name: ["Warten", "Wait"],
+    description: ["Wartet eine Dauer, bis zu einem Zeitpunkt oder bis zur nächsten Uhrzeit.", "Waits for a duration, until a point in time or until the next time of day."],
+  },
+  "logic.approval": {
+    name: ["Freigabe", "Approval"],
+    description: ["Wartet, bis eine Person genehmigt oder ablehnt.", "Waits until a person approves or rejects."],
+  },
+  "ai.summarize": {
+    name: ["KI: Zusammenfassen", "AI: Summarize"],
+    description: ["Fasst einen Text zusammen.", "Summarizes a text."],
+  },
+  "ai.classify": {
+    name: ["KI: Einordnen", "AI: Classify"],
+    description: ["Ordnet einen Text einer der Kategorien zu.", "Puts a text into one of the categories."],
+  },
+  "ai.extract": {
+    name: ["KI: Felder auslesen", "AI: Extract fields"],
+    description: ["Liest benannte Werte aus einem Text.", "Reads named values from a text."],
+  },
+  "ai.prompt": {
+    name: ["KI: Eigene Anweisung", "AI: Custom prompt"],
+    description: ["Eine eigene Anweisung, Antwort als Text oder JSON.", "A prompt of your own, answered as text or JSON."],
+  },
+  "http.request": {
+    name: ["HTTP-Anfrage", "HTTP request"],
+    description: ["Ruft eine HTTPS-Adresse auf (fester Host).", "Calls an HTTPS address (fixed host)."],
+  },
+  "notify.email": {
+    name: ["E-Mail senden", "Send e-mail"],
+    description: ["Schickt eine E-Mail an Personen oder Adressen.", "Sends an e-mail to people or addresses."],
+  },
+  "notify.chat": {
+    name: ["Chat-Nachricht", "Chat message"],
+    description: ["Postet in einen Chat-Webhook des Arbeitsbereichs (Slack, Matrix, Teams, Discord).", "Posts to a chat webhook of the workspace (Slack, Matrix, Teams, Discord)."],
   },
   "action.record.create": {
     name: ["Eintrag anlegen", "Create record"],
@@ -273,7 +331,56 @@ const OUT: Record<string, [string, string]> = {
   count: ["Anzahl", "Count"],
   appended: ["Angehängt", "Appended"],
   notified: ["Benachrichtigt", "Notified"],
+  body: ["Inhalt", "Body"],
+  query: ["Query-Parameter", "Query parameters"],
+  headers: ["Header", "Headers"],
+  receivedAt: ["Empfangen am", "Received at"],
+  mail: ["E-Mail", "E-mail"],
+  from: ["Absender", "From"],
+  to: ["Empfänger", "To"],
+  subject: ["Betreff", "Subject"],
+  html: ["HTML", "HTML"],
+  messageId: ["Message-ID", "Message ID"],
+  attachments: ["Anhänge", "Attachments"],
+  authenticated: ["Absender geprüft", "Sender verified"],
+  day: ["Tagesseite", "Day page"],
+  journal: ["Journal", "Journal"],
+  results: ["Ergebnisse", "Results"],
+  waitedUntil: ["Gewartet bis", "Waited until"],
+  decidedBy: ["Entschieden von", "Decided by"],
+  decidedAt: ["Entschieden am", "Decided at"],
+  summary: ["Zusammenfassung", "Summary"],
+  category: ["Kategorie", "Category"],
+  categories: ["Kategorien", "Categories"],
+  confidence: ["Sicherheit", "Confidence"],
+  fields: ["Felder", "Fields"],
+  missing: ["Fehlend", "Missing"],
+  json: ["JSON", "JSON"],
+  status: ["Status", "Status"],
+  sent: ["Gesendet", "Sent"],
+  item: ["Element", "Item"],
+  index: ["Index", "Index"],
 };
+
+// Typed fields that an AI answer fills (ai.extract, ai.prompt as JSON).
+export const aiFieldSchema = z.object({
+  name: z.string().trim().regex(/^[A-Za-z_][A-Za-z0-9_]{0,39}$/),
+  type: z.enum(["text", "number", "date", "boolean", "select"]).default("text"),
+  description: z.string().max(500).default(""),
+  options: z.array(z.string().max(100)).max(50).optional(),
+});
+export type AiField = z.infer<typeof aiFieldSchema>;
+const aiOutputType = (t: AiField["type"]): OutputType => (t === "select" ? "text" : t);
+// A switch case: an operator of the filters and a value (§6.3).
+export const switchCaseSchema = z.object({ id: z.string().regex(/^[a-z0-9]{1,12}$/), label: z.string().max(60).default(""), op: z.enum(filterOperators).default("eq"), value: shortTmpl.default("") });
+const duration = z.object({ amount: z.number().int().min(1).max(100_000), unit: z.enum(["minutes", "hours", "days"]).default("hours") });
+export const durationMs = (d: { amount: number; unit: string }) => d.amount * (d.unit === "minutes" ? 60_000 : d.unit === "hours" ? 3_600_000 : 86_400_000);
+// A URL whose scheme and host are fixed text (§6.6): no placeholder before the path.
+export const fixedHost = (url: string) => {
+  const m = /^https:\/\/([^/?#{}\\@\s]+)(?:[/?#]|$)/i.exec(url.trim());
+  return m ? m[1].toLowerCase() : null;
+};
+const nameValue = z.object({ name: z.string().trim().max(200), value: shortTmpl.default("") });
 
 export const NODE_TYPES: NodeSpec[] = [
   /* ---------- Triggers ---------- */
@@ -446,6 +553,68 @@ export const NODE_TYPES: NodeSpec[] = [
       { key: "source", label: OUT.source, type: "text" },
     ],
   }),
+  spec({
+    type: "trigger.webhook",
+    category: "trigger",
+    icon: "Broadcast",
+    inline: false,
+    event: "webhook",
+    config: z.object({
+      // "signed" (default) or "token" – only for senders that cannot sign (with a warning).
+      mode: z.enum(["signed", "token"]).default("signed"),
+      // Expected fields of the body (for the picker only).
+      fields: z.array(z.object({ name: z.string().trim().min(1).max(60), type: z.enum(["text", "number", "boolean", "date", "object", "list"]).default("text") })).max(50).default([]),
+    }),
+    ports: out,
+    outputs: [
+      { key: "body", label: OUT.body, type: "object" },
+      { key: "query", label: OUT.query, type: "object" },
+      { key: "headers", label: OUT.headers, type: "object" },
+      { key: "receivedAt", label: OUT.receivedAt, type: "datetime" },
+    ],
+  }),
+  spec({
+    type: "trigger.mail.received",
+    category: "trigger",
+    icon: "EnvelopeSimpleOpen",
+    inline: false,
+    event: "mail.received",
+    config: z.object({
+      // An inbound address (lib/inbound-mail.ts) whose target is this workflow page.
+      address: z.string().max(100).default(""),
+      // Which senders start runs: only verified (SPF/DKIM pass), all but failed (default), any.
+      senders: z.enum(["verified", "not_failed", "any"]).default("not_failed"),
+    }),
+    ports: out,
+    outputs: [
+      {
+        key: "mail",
+        label: OUT.mail,
+        type: "object",
+        children: [
+          { key: "from", label: OUT.from, type: "text" },
+          { key: "to", label: OUT.to, type: "list", item: "text" },
+          { key: "subject", label: OUT.subject, type: "text" },
+          { key: "text", label: OUT.text, type: "text" },
+          { key: "html", label: OUT.html, type: "text" },
+          { key: "date", label: OUT.date, type: "datetime" },
+          { key: "messageId", label: OUT.messageId, type: "text" },
+          { key: "attachments", label: OUT.attachments, type: "list", item: "file" },
+        ],
+      },
+      { key: "authenticated", label: OUT.authenticated, type: "text" },
+    ],
+  }),
+  spec({
+    type: "trigger.journal.day",
+    category: "trigger",
+    icon: "Notebook",
+    inline: false,
+    event: "journal.day",
+    config: z.object({ journal: z.string().max(100).default("") }),
+    ports: out,
+    outputs: [pageOut("day", OUT.day), { key: "date", label: OUT.date, type: "date" }, pageOut("journal", OUT.journal)],
+  }),
   /* ---------- Logic ---------- */
   spec({
     type: "logic.if",
@@ -479,6 +648,69 @@ export const NODE_TYPES: NodeSpec[] = [
     config: z.object({ result: z.enum(["succeeded", "failed"]).default("succeeded"), message: shortTmpl.default("") }),
     ports: () => [],
     outputs: [],
+  }),
+  spec({
+    type: "logic.switch",
+    category: "logic",
+    icon: "Signpost",
+    inline: true,
+    config: z.object({ value: shortTmpl.default(""), cases: z.array(switchCaseSchema).max(20).default([]) }),
+    ports: (c) => [...((c.cases as { id: string }[] | undefined) || []).map((x) => `case:${x.id}`), "default"],
+    outputs: [{ key: "case", label: OUT.category, type: "text" }],
+  }),
+  spec({
+    type: "logic.foreach",
+    category: "logic",
+    icon: "Repeat",
+    inline: false,
+    config: z.object({
+      list: shortTmpl.default(""),
+      limit: z.number().int().min(1).max(1000).default(100),
+      mode: z.enum(["sequential", "parallel"]).default("sequential"),
+      parallel: z.number().int().min(1).max(5).default(5),
+    }),
+    ports: () => ["item", "done"],
+    outputs: [
+      { key: "count", label: OUT.count, type: "number" },
+      { key: "results", label: OUT.results, type: "list", item: "object" },
+    ],
+  }),
+  spec({
+    type: "logic.wait",
+    category: "logic",
+    icon: "Hourglass",
+    inline: false,
+    config: z.object({
+      mode: z.enum(["duration", "until", "next"]).default("duration"),
+      amount: z.number().int().min(1).max(525_600).default(1),
+      unit: z.enum(["minutes", "hours", "days"]).default("hours"),
+      // "until": a placeholder on a date or date-time, optionally with a time of day.
+      until: shortTmpl.default(""),
+      time: time.optional(),
+      // "next": the next time of day, on working days only if asked.
+      weekdays: z.boolean().default(false),
+    }),
+    ports: out,
+    outputs: [{ key: "waitedUntil", label: OUT.waitedUntil, type: "datetime" }],
+  }),
+  spec({
+    type: "logic.approval",
+    category: "logic",
+    icon: "SealCheck",
+    inline: false,
+    config: z.object({
+      // User ids, "@runner", "@actor", "@creator", "field:<id>" or placeholders on people.
+      approvers: recipients.min(1),
+      message: z.string().max(2_000).default(""),
+      deadline: duration.optional(),
+      onTimeout: z.enum(["timeout", "rejected"]).default("timeout"),
+    }),
+    ports: (c) => ["approved", "rejected", ...(c.deadline && c.onTimeout !== "rejected" ? ["timeout"] : [])],
+    outputs: [
+      { key: "decidedBy", label: OUT.decidedBy, type: "person", children: person },
+      { key: "comment", label: OUT.comment, type: "text" },
+      { key: "decidedAt", label: OUT.decidedAt, type: "datetime" },
+    ],
   }),
   /* ---------- Records ---------- */
   spec({
@@ -606,7 +838,131 @@ export const NODE_TYPES: NodeSpec[] = [
     ports: out,
     outputs: [{ key: "notified", label: OUT.notified, type: "number" }],
   }),
+  spec({
+    type: "notify.email",
+    category: "notify",
+    icon: "EnvelopeSimple",
+    inline: false,
+    config: z.object({
+      // People (their address: ids, "@runner" …, placeholders) and addresses (also from placeholders).
+      to: recipients.min(1),
+      subject: shortTmpl.default(""),
+      message: z.string().max(10_000).default(""),
+    }),
+    ports: out,
+    outputs: [{ key: "sent", label: OUT.sent, type: "number" }],
+  }),
+  spec({
+    type: "notify.chat",
+    category: "notify",
+    icon: "ChatsCircle",
+    inline: false,
+    config: z.object({ webhook: z.string().max(60).default(""), title: shortTmpl.default(""), message: z.string().max(2_000).default("") }),
+    ports: out,
+    outputs: [{ key: "sent", label: OUT.sent, type: "number" }],
+  }),
+  /* ---------- AI ---------- */
+  spec({
+    type: "ai.summarize",
+    category: "ai",
+    icon: "Sparkle",
+    inline: false,
+    config: z.object({
+      text: tmpl.default(""),
+      length: z.enum(["sentence", "short", "paragraph", "bullets"]).default("sentence"),
+      language: z.enum(["auto", "workflow", "fixed"]).default("auto"),
+      languageCode: z.string().max(10).optional(),
+    }),
+    ports: out,
+    outputs: [{ key: "summary", label: OUT.summary, type: "text" }],
+  }),
+  spec({
+    type: "ai.classify",
+    category: "ai",
+    icon: "Tag",
+    inline: false,
+    config: z.object({
+      text: tmpl.default(""),
+      // The categories: a list, or the options of a select property.
+      source: z.enum(["list", "field"]).default("list"),
+      categories: z.array(z.object({ name: z.string().trim().min(1).max(100), description: z.string().max(300).default("") })).max(50).default([]),
+      database: id.optional(),
+      field: id.optional(),
+      multiple: z.boolean().default(false),
+      // An answer outside the categories (or low confidence) goes to the port "unclear".
+      unclear: z.boolean().default(true),
+    }),
+    ports: (c) => ["out", ...(c.unclear === false ? [] : ["unclear"])],
+    outputs: [
+      { key: "category", label: OUT.category, type: "text" },
+      { key: "categories", label: OUT.categories, type: "list", item: "text" },
+      { key: "confidence", label: OUT.confidence, type: "text" },
+    ],
+  }),
+  spec({
+    type: "ai.extract",
+    category: "ai",
+    icon: "ListMagnifyingGlass",
+    inline: false,
+    config: z.object({ text: tmpl.default(""), fields: z.array(aiFieldSchema).min(1).max(30) }),
+    ports: out,
+    outputs: [
+      { key: "fields", label: OUT.fields, type: "object" },
+      { key: "missing", label: OUT.missing, type: "list", item: "text" },
+    ],
+  }),
+  spec({
+    type: "ai.prompt",
+    category: "ai",
+    icon: "ChatTeardropText",
+    inline: false,
+    config: z.object({
+      system: z.string().max(10_000).default(""),
+      prompt: tmpl.default(""),
+      format: z.enum(["text", "json"]).default("text"),
+      fields: z.array(aiFieldSchema).max(30).default([]),
+      maxTokens: z.number().int().min(1).max(8192).default(1024),
+      temperature: z.number().min(0).max(2).default(0.3),
+    }),
+    ports: out,
+    outputs: [
+      { key: "text", label: OUT.text, type: "text" },
+      { key: "json", label: OUT.json, type: "object" },
+    ],
+  }),
+  /* ---------- HTTP ---------- */
+  spec({
+    type: "http.request",
+    category: "http",
+    icon: "Globe",
+    inline: false,
+    config: z.object({
+      method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]).default("GET"),
+      // Scheme and host are fixed text; path and query may hold placeholders (URL-encoded).
+      url: shortTmpl.default("https://"),
+      query: z.array(nameValue).max(30).default([]),
+      headers: z.array(nameValue).max(30).default([]),
+      bodyKind: z.enum(["none", "json", "form", "text"]).default("none"),
+      body: tmpl.default(""),
+      // A credential of this workflow (workflow_credentials), sent only to its host.
+      credential: z.string().max(60).default(""),
+      timeoutSeconds: z.number().int().min(1).max(30).default(15),
+      failOnStatus: z.boolean().default(true),
+      // Dry runs: GET requests only, and only when asked.
+      runInDry: z.boolean().default(false),
+    }),
+    ports: out,
+    outputs: [
+      { key: "status", label: OUT.status, type: "number" },
+      { key: "headers", label: OUT.headers, type: "object" },
+      { key: "body", label: OUT.body, type: "text" },
+      { key: "json", label: OUT.json, type: "object" },
+    ],
+  }),
 ];
+// What the typed AI fields give the picker.
+export const aiFieldOutputs = (fields: AiField[] | undefined): OutputField[] =>
+  (fields || []).map((f) => ({ key: f.name, label: [f.name, f.name], type: aiOutputType(f.type) }));
 
 export const nodeSpecs = new Map(NODE_TYPES.map((n) => [n.type, n]));
 export const nodeSpec = (type: string) => nodeSpecs.get(type);
@@ -614,6 +970,17 @@ export const isTrigger = (type: string) => type.startsWith("trigger.");
 export const TRIGGER_EVENTS = NODE_TYPES.filter((n) => n.event).map((n) => n.event!);
 // Triggers on one database: their scope is the database.
 export const RECORD_TRIGGERS = new Set(["trigger.record.created", "trigger.record.changed", "trigger.record.done", "trigger.form.submitted", "trigger.record.date"]);
+// The scope a trigger is looked up by (workflow_triggers.scope_id): the
+// database of record triggers, the address of the e-mail trigger, the
+// journal of the journal trigger ('' = all), else '' (the whole workspace).
+export function triggerScope(type: string, config: Record<string, unknown>): string {
+  if (RECORD_TRIGGERS.has(type)) return String(config.database || "");
+  if (type === "trigger.mail.received") return String(config.address || "");
+  if (type === "trigger.journal.day") return String(config.journal || "");
+  return "";
+}
+// Nodes that act outside Flowplan's database or wait (no immediate part).
+export const AI_TYPES = new Set(["ai.summarize", "ai.classify", "ai.extract", "ai.prompt"]);
 
 // The catalogue as JSON for the editor and GET /api/workflows/catalog:
 // config schemas as JSON Schema.

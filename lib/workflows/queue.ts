@@ -58,7 +58,7 @@ export async function claimSteps(limit: number, now = Date.now()): Promise<StepR
   );
   if (rows.length) {
     noteWorkflow("claimed", rows.length);
-    await run(`UPDATE workflow_runs SET status='running' WHERE status='queued' AND id IN ${sql.jsonValues()}`, JSON.stringify([...new Set(rows.map((r) => r.run_id))]));
+    await run(`UPDATE workflow_runs SET status='running' WHERE status IN ('queued','waiting') AND id IN ${sql.jsonValues()}`, JSON.stringify([...new Set(rows.map((r) => r.run_id))]));
   }
   return rows;
 }

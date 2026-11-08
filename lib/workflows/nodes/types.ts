@@ -48,7 +48,21 @@ export type NodeRun = {
   warn: (message: string) => void;
   attempt: number;
   iteration: string;
+  // The step (absent in the immediate part) and what it stored while it
+  // waited (a wait's target, an approval) – set when it is taken up again.
+  stepId?: string;
+  resume?: unknown;
+  // Test runs: how a dry run treats approvals (§10.3).
+  options?: { approval?: "approved" | "rejected" };
 };
-export type NodeResult = { port: string; output: unknown } | { stop: "succeeded" | "failed"; message: string; output?: unknown };
+export type NodeResult =
+  | { port: string; output: unknown }
+  | { stop: "succeeded" | "failed"; message: string; output?: unknown }
+  // The step waits until `until` (a wait, an approval): no worker holds it.
+  | { wait: number; state: unknown }
+  // logic.foreach: the items its body runs for (lib/workflows/loops.ts).
+  | { loop: unknown[]; warning?: string };
 export type NodeImpl = (ctx: NodeRun) => Promise<NodeResult>;
 export const dryRun = (ctx: NodeRun) => ctx.run.mode === "dry";
+// A waiting step nobody takes up by time (a For-each, an approval without a deadline).
+export const FAR = 8_000_000_000_000_000;

@@ -5,7 +5,7 @@
 // Client-safe.
 import { z } from "zod";
 import { translate, type Locale } from "../i18n";
-import { isTrigger, nodeSpec } from "./catalog";
+import { fixedHost, isTrigger, nodeSpec } from "./catalog";
 import { parseTemplate, placeholderRoots } from "./placeholders";
 
 export const GRAPH_FORMAT = "flowplan.workflow";
@@ -101,6 +101,41 @@ export function upstreamNodes(graph: WorkflowGraph, nodeId: string): Set<string>
   return seen;
 }
 
+// The bodies of the For-each nodes (§5.1): every node reachable from the
+// port `item`. And for every node in a body, its innermost loop.
+export function loopBodies(graph: WorkflowGraph): Map<string, Set<string>> {
+  const bodies = new Map<string, Set<string>>();
+  for (const n of graph.nodes) {
+    if (n.type !== "logic.foreach") continue;
+    const body = new Set<string>();
+    const stack = outgoing(graph, n.id, "item").map((e) => e.to.node);
+    while (stack.length) {
+      const id = stack.pop()!;
+      if (body.has(id) || id === n.id) continue;
+      body.add(id);
+      for (const e of outgoing(graph, id)) stack.push(e.to.node);
+    }
+    bodies.set(n.id, body);
+  }
+  return bodies;
+}
+export function innermostLoops(graph: WorkflowGraph, bodies = loopBodies(graph)): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const [loop, body] of bodies)
+    for (const id of body) {
+      const current = out.get(id);
+      // The inner loop is the one inside the other's body.
+      if (!current || bodies.get(current)?.has(loop)) out.set(id, loop);
+    }
+  return out;
+}
+// How many loops a node sits in.
+export function loopDepth(nodeId: string, bodies: Map<string, Set<string>>) {
+  let n = 0;
+  for (const body of bodies.values()) if (body.has(nodeId)) n++;
+  return n;
+}
+
 // Every text of a node's configuration (placeholders are looked for in them).
 export function configTexts(value: unknown, out: string[] = []): string[] {
   if (typeof value === "string") out.push(value);
@@ -153,7 +188,30 @@ export function checkGraph(graph: WorkflowGraph): GraphIssue[] {
     if (pairs.has(pair)) err("duplicate_edge", { edgeId: e.id });
     pairs.add(pair);
   }
-  // No cycles (there is no For-each in wave 1, so none at all).
+  // For-each bodies (§5.1): no edge leaves a body (except into a nested
+  // body, which is part of it) and none enters it from outside; at most
+  // two levels.
+  const bodies = loopBodies(graph);
+  for (const [loop, body] of bodies) {
+    for (const e of graph.edges) {
+      const fromIn = body.has(e.from.node),
+        toIn = body.has(e.to.node);
+      if (fromIn && !toIn) err("loop_exit", { edgeId: e.id, nodeId: e.from.node });
+      if (!fromIn && toIn && !(e.from.node === loop && e.from.port === "item")) err("loop_entry", { edgeId: e.id, nodeId: e.to.node });
+    }
+    if (loopDepth(loop, bodies) >= 2) err("loop_depth", { nodeId: loop });
+  }
+  // Wave 2 nodes: their own rules.
+  for (const n of graph.nodes) {
+    const c = n.config as Record<string, unknown>;
+    if (n.type === "logic.switch") {
+      const ids = ((c.cases as { id?: string }[]) || []).map((x) => x.id);
+      if (new Set(ids).size !== ids.length) err("duplicate_case", { nodeId: n.id });
+    }
+    if (n.type === "http.request" && typeof c.url === "string" && !fixedHost(c.url)) err("http_host", { nodeId: n.id });
+    if (n.type === "ai.classify" && c.source !== "field" && !((c.categories as unknown[]) || []).length) err("no_categories", { nodeId: n.id });
+  }
+  // No cycles (a For-each body ends; it never leads back).
   const state = new Map<string, 1 | 2>();
   const visit = (id: string): boolean => {
     if (state.get(id) === 2) return false;
@@ -178,7 +236,8 @@ export function checkGraph(graph: WorkflowGraph): GraphIssue[] {
     for (const e of outgoing(graph, id)) stack.push(e.to.node);
   }
   for (const n of graph.nodes) if (!reachable.has(n.id)) warn("orphan", { nodeId: n.id });
-  // Placeholders name only nodes before them, $item/$index only in a For-each body (none in wave 1).
+  // Placeholders name only nodes before them, $item/$index only in a For-each body.
+  const inLoop = innermostLoops(graph, bodies);
   for (const n of graph.nodes) {
     const before = upstreamNodes(graph, n.id);
     for (const text of configTexts(n.config)) {
@@ -190,7 +249,9 @@ export function checkGraph(graph: WorkflowGraph): GraphIssue[] {
         continue;
       }
       for (const root of placeholderRoots(parsed)) {
-        if (root === "$item" || root === "$index") err("item_outside_loop", { nodeId: n.id });
+        if (root === "$item" || root === "$index") {
+          if (!inLoop.has(n.id)) err("item_outside_loop", { nodeId: n.id });
+        }
         else if (root.startsWith("n_")) {
           if (!nodes.has(root)) err("placeholder_unknown_node", { nodeId: n.id, params: { node: root } });
           else if (!before.has(root)) err("placeholder_not_before", { nodeId: n.id, params: { node: nodes.get(root)!.label } });
@@ -231,6 +292,25 @@ const ISSUE_TEXT: Record<string, [string, string]> = {
   encrypted: ["Ende-zu-Ende-verschlüsselte Bereiche sind für Workflows gesperrt.", "End-to-end encrypted spaces are closed to workflows."],
   inline_target: ["Im Sofortteil nur auf dem auslösenden Eintrag.", "In the immediate part only on the triggering record."],
   no_record_trigger: ["Ohne Eintragsauslöser braucht es einen Eintrag.", "Without a record trigger a record is needed."],
+  loop_exit: ["Eine Verbindung verlässt den Körper von „Für jedes“ – dahinter geht es über „fertig“ weiter.", "A connection leaves the body of “For each” – continue after it from “done”."],
+  loop_entry: ["Eine Verbindung führt von außen in den Körper von „Für jedes“.", "A connection leads into the body of “For each” from outside."],
+  loop_depth: ["„Für jedes“ lässt sich höchstens zweimal verschachteln.", "“For each” nests at most two levels deep."],
+  duplicate_case: ["Ein Fall kommt doppelt vor.", "A case occurs twice."],
+  http_host: ["Die Adresse muss mit https:// und einem festen Host beginnen (ohne Platzhalter).", "The address must start with https:// and a fixed host (no placeholders)."],
+  no_categories: ["Mindestens eine Kategorie angeben.", "Give at least one category."],
+  unknown_credential: ["Die Zugangsdaten gibt es nicht (mehr).", "The credential does not exist (any more)."],
+  credential_host: ["Diese Zugangsdaten gelten nur für {host}.", "This credential only applies to {host}."],
+  http_off: ["HTTP-Anfragen sind auf dieser Instanz abgeschaltet.", "HTTP requests are switched off on this instance."],
+  http_host_not_allowed: ["Der Host {host} ist auf dieser Instanz nicht erlaubt.", "The host {host} is not allowed on this instance."],
+  ai_unavailable: ["KI steht der ausführenden Person nicht zur Verfügung.", "AI is not available to the person running it."],
+  unknown_webhook: ["Der Chat-Webhook gibt es nicht oder er ist nicht für Workflows freigegeben.", "The chat webhook does not exist or is not released for workflows."],
+  unknown_address: ["Die E-Mail-Adresse gibt es nicht oder sie geht nicht an diesen Workflow.", "The e-mail address does not exist or does not go to this workflow."],
+  external_mail_off: ["E-Mails an Adressen außerhalb der Mitglieder sind auf dieser Instanz abgeschaltet.", "E-mails to addresses outside the members are switched off on this instance."],
+  token_webhook: ["„Nur Token“: Wer die Adresse kennt, kann den Workflow starten. Signiert ist sicherer.", "“Token only”: anyone who knows the address can start the workflow. Signed is safer."],
+  ai_to_recipients: ["Eine KI-Ausgabe bestimmt hier die Empfänger – prüfen, ob das gewollt ist.", "An AI output decides the recipients here – check that this is intended."],
+  ai_to_url: ["Eine KI-Ausgabe bestimmt hier den URL-Pfad – prüfen, ob das gewollt ist.", "An AI output decides the URL path here – check that this is intended."],
+  ai_to_target: ["Eine KI-Ausgabe bestimmt hier das Ziel – prüfen, ob das gewollt ist.", "An AI output decides the target here – check that this is intended."],
+  unknown_journal: ["Das Journal gibt es nicht oder es hat eine PIN.", "The journal does not exist or has a PIN."],
 };
 export function issueMessage(issue: GraphIssue, locale: Locale) {
   const tr = translate(locale);

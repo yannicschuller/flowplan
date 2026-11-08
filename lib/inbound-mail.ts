@@ -13,6 +13,7 @@
 // attachments count against the workspace quota and a daily budget per
 // address, and a Message-ID is stored once.
 import { pageCreatedEvent } from "./workflows/hooks";
+import { emitWorkflowEvent } from "./workflows/events";
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -36,6 +37,7 @@ import { addresses, parseHeaders, parseMime, parseDate, type MimeAttachment } fr
 import { ImapClient, type ImapOptions } from "./imap";
 import type { Field, Identity, Page } from "./types";
 import { mapAsync } from "./each-async";
+import { mailVerdict, sendgridVerdict, type MailVerdict } from "./mail-auth";
 import { isLeader } from "./cluster/leader";
 
 export const INBOUND_MAILS_PER_HOUR = 60;
@@ -57,6 +59,8 @@ export type InboundMail = {
   messageId: string;
   date: Date | null;
   attachments: MimeAttachment[];
+  // The sender check of the receiving server or provider (lib/mail-auth.ts).
+  auth?: MailVerdict;
 };
 type AddressRow = {
   id: string;
@@ -114,12 +118,13 @@ export function senderAllowed(senders: string[], from: string) {
   return senders.some((s) => (s.includes("@") ? s === address : s === domain));
 }
 
-const targetKinds = new Set(["document", "database"]);
+// A workflow page as target: the mail starts its e-mail trigger (#168).
+const targetKinds = new Set(["document", "database", "workflow"]);
 async function checkTarget(user: Identity, workspaceId: string, pageId: string) {
   const page = await one<Page>("SELECT * FROM pages WHERE id=?", pageId);
   if (!page || page.deleted_at || page.workspace_id !== workspaceId) throw new HttpError(404, "Seite nicht gefunden.");
   if (!targetKinds.has(page.kind) || page.synced || page.journal_date)
-    throw new HttpError(400, "E-Mails landen nur unter einer Seite oder in einer Datenbank.");
+    throw new HttpError(400, "E-Mails landen nur unter einer Seite, in einer Datenbank oder bei einem Workflow.");
   const role = await pageRole(user, page);
   if (role !== "editor" && role !== "owner") throw new HttpError(403, "Keine Berechtigung für diese Seite.");
   return page;
@@ -289,7 +294,7 @@ const toAttachment = (filename: string, contentType: string, data: Buffer, conte
 });
 function fromMime(raw: Buffer | string): InboundMail {
   const m = parseMime(raw);
-  return { from: m.from, to: [...m.to, ...m.cc, ...envelopeRecipients(m.headers)], subject: m.subject, text: m.text, html: m.html, messageId: m.messageId, date: m.date, attachments: m.attachments };
+  return { from: m.from, to: [...m.to, ...m.cc, ...envelopeRecipients(m.headers)], subject: m.subject, text: m.text, html: m.html, messageId: m.messageId, date: m.date, attachments: m.attachments, auth: mailVerdict(m.headers, m.from) };
 }
 function envelopeRecipients(headers: Map<string, string[]>) {
   return ["delivered-to", "x-original-to", "envelope-to", "x-envelope-to"].flatMap((name) => (headers.get(name) || []).flatMap(addresses));
@@ -300,8 +305,10 @@ function postmark(b: Record<string, unknown>): InboundMail {
   const headers = Array.isArray(b.Headers) ? (b.Headers as { Name?: string; Value?: string }[]) : [];
   const head = (name: string) => headers.find((h) => str(h.Name).toLowerCase() === name)?.Value || "";
   const full = (v: unknown) => (Array.isArray(v) ? (v as { Email?: string }[]).map((x) => str(x.Email).toLowerCase()).filter(Boolean) : []);
+  const from = str((b.FromFull as { Email?: string } | undefined)?.Email).toLowerCase() || addresses(str(b.From))[0] || "";
   return {
-    from: str((b.FromFull as { Email?: string } | undefined)?.Email).toLowerCase() || addresses(str(b.From))[0] || "",
+    auth: mailVerdict(headers.map((h) => [str(h.Name), str(h.Value)] as [string, string]), from),
+    from,
     to: [...(full(b.ToFull).length ? full(b.ToFull) : list(b.To)), ...full(b.CcFull), ...list(b.OriginalRecipient)],
     subject: str(b.Subject),
     text: str(b.TextBody),
@@ -319,8 +326,10 @@ function postmark(b: Record<string, unknown>): InboundMail {
 function genericJson(b: Record<string, unknown>): InboundMail {
   if (typeof b.raw === "string" && b.raw) return fromMime(b.raw);
   if (typeof b.rawBase64 === "string" && b.rawBase64) return fromMime(fromBase64(b.rawBase64));
+  const from = addresses(str(b.from))[0] || "";
   return {
-    from: addresses(str(b.from))[0] || "",
+    auth: typeof b.authenticationResults === "string" ? mailVerdict([["authentication-results", b.authenticationResults]], from) : "unknown",
+    from,
     to: [...list(b.to), ...list(b.cc)],
     subject: str(b.subject),
     text: str(b.text),
@@ -367,8 +376,10 @@ async function mailgun(form: FormData): Promise<InboundMail> {
     if (!/^attachment-\d+$/.test(name) || typeof value === "string") continue;
     attachments.push(toAttachment(value.name, value.type, Buffer.from(await value.arrayBuffer()), byField.get(name) || ""));
   }
+  const from = addresses(formText(form, "from", "From", "sender"))[0] || "";
   return {
-    from: addresses(formText(form, "from", "From", "sender"))[0] || "",
+    auth: mailVerdict(headers.filter((h) => Array.isArray(h)).map((h) => [str(h[0]), str(h[1])] as [string, string]), from),
+    from,
     to: [...addresses(formText(form, "To", "to")), ...addresses(formText(form, "Cc", "cc")), ...addresses(formText(form, "recipient"))],
     subject: formText(form, "subject", "Subject"),
     text: formText(form, "body-plain", "stripped-text"),
@@ -404,8 +415,10 @@ async function sendgrid(form: FormData): Promise<InboundMail> {
       toAttachment(meta.filename || meta.name || value.name, meta.type || value.type, Buffer.from(await value.arrayBuffer()), cid(meta["content-id"])),
     );
   }
+  const from = addresses(formText(form, "from"))[0] || "";
   return {
-    from: addresses(formText(form, "from"))[0] || "",
+    auth: headers.get("authentication-results")?.length ? mailVerdict(headers, from) : sendgridVerdict(formText(form, "SPF"), formText(form, "dkim"), from),
+    from,
     to: [...addresses(formText(form, "to")), ...addresses(formText(form, "cc")), ...(envelope.to || []).flatMap((t) => addresses(str(t)))],
     subject: formText(form, "subject"),
     text: formText(form, "text"),
@@ -539,7 +552,10 @@ async function takeRate(addressId: string, now: number) {
 
 const sqlTime = (date: Date) => date.toISOString().slice(0, 19).replace("T", " ");
 
-export async function receiveInboundMail(token: string, mail: InboundMail, now = Date.now()): Promise<ReceiveResult> {
+// `via`: "imap" when the mail came from the own mailbox (its server's
+// verdict counts), else "http" – a provider's verdict only counts when the
+// delivery itself was signed (the address has a signing key).
+export async function receiveInboundMail(token: string, mail: InboundMail, now = Date.now(), via: "http" | "imap" = "http"): Promise<ReceiveResult> {
   const address = await inboundAddressByToken(token);
   if (!address) throw new HttpError(404, "E-Mail-Eingang nicht gefunden.");
   await takeRate(address.id, now);
@@ -553,6 +569,11 @@ export async function receiveInboundMail(token: string, mail: InboundMail, now =
   const messageId = (mail.messageId || "").trim().slice(0, 500) || `sha256:${hash([from, mail.subject, mail.date?.toISOString() || "", mail.text, mail.html].join("\n"))}`;
   if (await one("SELECT 1 FROM inbound_messages WHERE address_id=? AND message_id=?", address.id, messageId)) return { status: "duplicate" };
   try {
+    const target = await one<{ kind: string }>("SELECT kind FROM pages WHERE id=?", address.page_id);
+    if (target?.kind === "workflow") {
+      const verdict: MailVerdict = via === "imap" || address.secret ? (mail.auth ?? "unknown") : "unknown";
+      return await transaction(async () => await workflowMail(address, mail, from, messageId, verdict, now));
+    }
     return await transaction(async () => await storeMail(address, mail, from, messageId, now));
   } catch (error) {
     if (error instanceof HttpError) await noteError(address.id, error.message);
@@ -667,6 +688,69 @@ async function storeMail(address: AddressRow, mail: InboundMail, from: string, m
   return { status: "stored", pageId: owner, ...(rowId ? { rowId } : {}), files: stored.length, skipped };
 }
 
+// Mail to a workflow (#168, docs/specs/workflows.md §9.7): nothing is
+// filed – the workflow decides. Attachments become files of the workflow
+// page (against the quota); the event carries the mail and the sender
+// check. The sender is never mapped to an account: runs run as the person
+// the workflow runs as.
+async function workflowMail(address: AddressRow, mail: InboundMail, from: string, messageId: string, verdict: MailVerdict, now: number): Promise<ReceiveResult> {
+  const target = await one<Page>("SELECT * FROM pages WHERE id=?", address.page_id);
+  if (!target || target.deleted_at) throw new HttpError(409, "Das Ziel dieses E-Mail-Eingangs ist nicht mehr beschreibbar.");
+  const skipped: string[] = [];
+  const kept: (MimeAttachment & { mime: string })[] = [];
+  let total = 0;
+  for (const a of mail.attachments) {
+    const name = sanitizeFileName(a.filename, "Anhang");
+    if (kept.length >= INBOUND_MAX_ATTACHMENTS || a.data.length > INBOUND_FILE_BYTES || total + a.data.length > INBOUND_TOTAL_BYTES || !a.data.length) {
+      skipped.push(name);
+      continue;
+    }
+    const mime = verifiedMime(a.contentType, a.data);
+    const data = stripLocation(a.data, mime);
+    total += data.length;
+    kept.push({ ...a, filename: name, data, mime });
+  }
+  if (total) {
+    await enforceQuota(address.workspace_id, total);
+    await takeAnonymousBudget(`mail:${address.token}`, total, undefined, now);
+  }
+  const dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads");
+  if (kept.length) mkdirSync(dir, { recursive: true });
+  const files = await mapAsync(kept, async (a) => {
+    const fid = id(),
+      path = resolve(dir, fid);
+    writeFileSync(path, a.data);
+    onTransactionRollback(() => unlinkSync(path));
+    await run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fid, target.id, a.filename, a.mime, a.data.length, null);
+    return { name: a.filename, size: a.data.length, mime: a.mime, file: fid, url: `/api/files/${fid}` };
+  });
+  const date = mail.date && mail.date.getTime() <= now ? mail.date : new Date(now);
+  await emitWorkflowEvent("mail.received", {
+    workspaceId: address.workspace_id,
+    scopeId: address.id,
+    payload: {
+      workflow: target.id,
+      mail: {
+        from,
+        to: mail.to.slice(0, 50),
+        subject: mail.subject.replace(/\s+/g, " ").trim().slice(0, 500),
+        text: (mail.text || "").slice(0, 50_000),
+        html: mail.html ? mailBodyHtml(mail.html, new Map()).slice(0, 100_000) : "",
+        date: date.toISOString(),
+        messageId,
+        attachments: files,
+        skipped,
+      },
+      authenticated: verdict,
+    },
+    dedupeKey: `mail:${address.id}:${messageId}`.slice(0, 600),
+  });
+  await run("INSERT INTO inbound_messages(address_id,message_id,page_id,row_id,received_at) VALUES(?,?,?,?,?)", address.id, messageId, target.id, null, now);
+  await run("UPDATE inbound_addresses SET last_received_at=?,last_error=NULL,received=received+1 WHERE id=?", now, address.id);
+  await audit(address.created_by, "inbound.received", address.id, `${from} → workflow ${target.id} (${verdict})`);
+  return { status: "stored", pageId: target.id, files: files.length, skipped };
+}
+
 /* ---------- IMAP ---------- */
 
 export function imapOptionsFromEnv(): ImapOptions | null {
@@ -718,7 +802,7 @@ export async function pollInboundMailbox(options = imapOptionsFromEnv()) {
         continue;
       }
       try {
-        await receiveInboundMail(token, mail);
+        await receiveInboundMail(token, mail, Date.now(), "imap");
         processed++;
       } catch (error) {
         const status = error instanceof HttpError ? error.status : 500;

@@ -8,7 +8,11 @@ import { pageRole } from "../../permissions";
 import { hiddenRowIds } from "../../row-access";
 import { cellText } from "../../cell-text";
 import type { Identity, Page } from "../../types";
-import { isEmpty, renderText, renderValue } from "../placeholders";
+import { headerSafe, isEmpty, renderText, renderValue } from "../placeholders";
+import { mailConfig, mailEscape, mailLayout, queueMail } from "../../mail";
+import { queueWorkflowMessage } from "../../webhooks";
+import { recordUrl } from "../../notification-events";
+import { workflowLimits } from "../limits";
 import { refId } from "./data";
 import { dryRun, StepError, type NodeImpl, type NodeRun } from "./types";
 
@@ -110,3 +114,88 @@ export const notifyPerson: NodeImpl = async (ctx) => {
   return { port: "out", output: { notified } };
 };
 export const hasRecipients = (to: unknown) => Array.isArray(to) && to.some((v) => !isEmpty(v));
+
+/* ---------- Wave 2: e-mail and chat ---------- */
+
+const ADDRESS = /^[^\s@<>",;:()[\]\\]+@[^\s@<>",;:()[\]\\]+\.[^\s@<>",;:()[\]\\]+$/;
+const day = () => new Date().toISOString().slice(0, 10);
+// Recipients of an e-mail: people (their address, only members) and
+// addresses (also from placeholders: a person value, a text with "@").
+export async function mailRecipients(ctx: NodeRun, to: string[]) {
+  const trigger = ctx.scope.values[ctx.run.triggerNodeId] as { record?: { fields?: Record<string, unknown>; createdBy?: { id: string } } } | undefined;
+  const people = new Set<string>();
+  const addresses = new Set<string>();
+  const take = (v: unknown) => {
+    for (const x of Array.isArray(v) ? v : [v]) {
+      if (typeof x === "string" && x.includes("@")) addresses.add(x.trim().toLowerCase());
+      else if (x && typeof x === "object" && typeof (x as { id?: unknown }).id === "string") people.add((x as { id: string }).id);
+      else if (typeof x === "string" && /^[0-9a-f-]{36}$/i.test(x.trim())) people.add(x.trim());
+    }
+  };
+  for (const entry of to) {
+    if (entry === "@runner") ctx.runner && people.add(ctx.runner.id);
+    else if (entry === "@actor") ctx.actor && people.add(ctx.actor.id);
+    else if (entry === "@creator") trigger?.record?.createdBy?.id && people.add(trigger.record.createdBy.id);
+    else if (entry.startsWith("field:")) take(trigger?.record?.fields?.[entry.slice(6)]);
+    else if (entry.includes("{{")) take(renderValue(entry, ctx.scope));
+    else take(entry.trim());
+  }
+  const members = new Map<string, string>();
+  for (const uid of people) {
+    const u = await one<{ email: string }>("SELECT u.email FROM users u JOIN members m ON m.user_id=u.id AND m.workspace_id=? WHERE u.id=? AND u.disabled=0", ctx.run.workspaceId, uid);
+    if (u?.email) members.set(u.email.toLowerCase(), uid);
+  }
+  const list = [...new Set([...members.keys(), ...addresses])];
+  for (const a of list) if (a.length > 254 || !ADDRESS.test(a)) throw new StepError(`„${a.slice(0, 80)}“ ist keine E-Mail-Adresse.`, "validation");
+  // External: an address no member of the workspace has.
+  const external: string[] = [];
+  for (const a of list)
+    if (!members.has(a) && !(await one("SELECT 1 FROM users u JOIN members m ON m.user_id=u.id AND m.workspace_id=? WHERE lower(u.email)=?", ctx.run.workspaceId, a))) external.push(a);
+  return { list, external };
+}
+
+export const notifyEmail: NodeImpl = async (ctx) => {
+  const c = ctx.config as { to: string[]; subject: string; message: string };
+  const limits = await workflowLimits();
+  const { list, external } = await mailRecipients(ctx, c.to || []);
+  if (!list.length) throw new StepError("Keine Empfänger.", "validation");
+  if (list.length > MAX_RECIPIENTS) throw new StepError(`Höchstens ${MAX_RECIPIENTS} Empfänger je Schritt.`, "limit");
+  if (external.length && !limits.externalMail) throw new StepError("E-Mails an Adressen außerhalb der Mitglieder sind auf dieser Instanz abgeschaltet.", "permission");
+  const subject = headerSafe(renderText(c.subject || "", ctx.scope)).trim().slice(0, 200) || ctx.workflowPage?.title || "Workflow";
+  const text = renderText(c.message || "", ctx.scope).slice(0, 20_000);
+  if (dryRun(ctx)) return { port: "out", output: { wouldSend: list, subject } };
+  if (!mailConfig()) throw new StepError("Auf dieser Instanz ist kein E-Mail-Versand eingerichtet.", "permission");
+  // At most FLOWPLAN_WORKFLOW_MAILS_PER_DAY per workflow (counted in this
+  // step's transaction, so a retry never counts twice).
+  await run("INSERT INTO workflow_mail_usage(page_id,day,mails) VALUES(?,?,0) ON CONFLICT(page_id,day) DO NOTHING", ctx.run.pageId, day());
+  const taken = await run("UPDATE workflow_mail_usage SET mails=mails+? WHERE page_id=? AND day=? AND mails+?<=?", list.length, ctx.run.pageId, day(), list.length, limits.mailsPerDay);
+  if (!taken.changes) throw new StepError(`Höchstens ${limits.mailsPerDay} E-Mails je Workflow und Tag.`, "limit");
+  // The text becomes escaped HTML (§7.4): a value is never markup.
+  const paragraphs = text.split(/\n{2,}/).map((p) => mailEscape(p.trim()).replace(/\n/g, "<br>")).filter(Boolean);
+  const html = await mailLayout(subject, paragraphs.length ? paragraphs : [""]);
+  let sent = 0;
+  for (const to of list) if (await queueMail(to, subject, text, html)) sent++;
+  return { port: "out", output: { sent } };
+};
+
+export const notifyChat: NodeImpl = async (ctx) => {
+  const c = ctx.config as { webhook: string; title: string; message: string };
+  const text = renderText(c.message || "", ctx.scope).trim().slice(0, 2000);
+  const title = renderText(c.title || "", ctx.scope).trim().slice(0, 200);
+  if (!text && !title) throw new StepError("Keine Nachricht.", "validation");
+  if (dryRun(ctx)) return { port: "out", output: { wouldSend: { webhook: c.webhook, title, text } } };
+  const page = ctx.workflowPage;
+  const id = await queueWorkflowMessage({
+    hookId: c.webhook,
+    workspaceId: ctx.run.workspaceId,
+    pageId: page?.id || ctx.run.pageId,
+    page: page?.title || "Workflow",
+    title,
+    text,
+    url: recordUrl(page?.id || ctx.run.pageId),
+    actor: ctx.runner?.name || "Flowplan",
+    runId: ctx.run.id,
+  });
+  if (!id) throw new StepError("Der Chat-Webhook gibt es nicht oder er ist nicht für Workflows freigegeben.", "validation");
+  return { port: "out", output: { sent: 1 } };
+};

@@ -72,3 +72,9 @@ export const commentEvent = async (pageId: string, rowId: string | null, actorId
   await pageEvent("comment.created", pageId, actorId, { commentId: comment.id, text: comment.text.slice(0, 10_000), inline: !!comment.inline }, { rowId });
 export const mentionEvent = async (pageId: string, rowId: string | null, userId: string, actorId: string | null | undefined) =>
   await pageEvent("mention", pageId, actorId, { userId }, { rowId });
+// A journal got the page of a day (lib/journal.ts rollJournal): fires when
+// the day's page is created, not at midnight (§6.1).
+export async function journalDayEvent(dayId: string, journal: Page, date: string, actorId: string | null | undefined) {
+  if (!(await workflowListeners(journal.workspace_id, ["journal.day"], journal.id)).queued.has("journal.day")) return;
+  await emitWorkflowEvent("journal.day", { workspaceId: journal.workspace_id, scopeId: journal.id, pageId: dayId, actorId: actorId ?? null, payload: { date, journal: journal.id }, dedupeKey: `journal.day:${journal.id}:${date}`, checked: true });
+}

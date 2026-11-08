@@ -223,7 +223,7 @@ async function handleGET(
     if (path.length === 1 && path[0] === "tokens")
       return NextResponse.json(await listApiTokens(user));
     // Workflows (#168, lib/workflows/commands.ts): list, state, runs, versions, catalogue, administration.
-    if (path[0] === "workflows" || path[0] === "workflow-runs" || (path[0] === "admin" && path[1] === "workflows")) {
+    if (path[0] === "workflows" || path[0] === "workflow-runs" || path[0] === "workflow-approvals" || (path[0] === "admin" && path[1] === "workflows")) {
       const answer = await withReadMemo(async () => await workflowGet(user, path, url));
       if (answer !== undefined) return NextResponse.json(answer, { headers: { "Cache-Control": "no-store" } });
     }

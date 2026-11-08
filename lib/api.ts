@@ -2560,6 +2560,11 @@ async function runCommand(
       case "workflow.run.cancel":
       case "workflow.restore":
       case "workflow.fromRule":
+      case "workflow.run.retry":
+      case "workflow.approve":
+      case "workflow.hook":
+      case "workflow.credential.set":
+      case "workflow.credential.remove":
       case "admin.workflowLimits":
         result = await workflowCommand(user, action, b);
         break;

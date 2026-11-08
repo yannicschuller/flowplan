@@ -64,8 +64,19 @@ export async function triggerMatches(type: string, config: Payload, event: Workf
     case "trigger.record.date":
     case "trigger.schedule":
     case "trigger.manual":
+    case "trigger.webhook":
       // Aimed at one trigger (payload.workflow/node), checked by the dispatcher.
       return true;
+    case "trigger.journal.day":
+      // The scope (one journal or all) is the lookup's; PIN journals never (mayObserve).
+      return true;
+    case "trigger.mail.received": {
+      // Spoofing (§9.7): "verified" only with a passed check, "not_failed" not with a failed one.
+      const verdict = String(payload.authenticated || "unknown");
+      if (config.senders === "verified") return verdict === "pass";
+      if (config.senders === "any") return true;
+      return verdict !== "fail";
+    }
     case "trigger.page.created": {
       const kinds = (config.kinds as string[]) || [];
       if (kinds.length && !kinds.includes(String(payload.kind || ""))) return false;
@@ -159,6 +170,16 @@ export async function triggerOutput(type: string, event: Pick<WorkflowEvent, "wo
       };
     case "trigger.manual":
       return { inputs: payload.inputs || {}, startedBy: actor, source: payload.source || "workflow" };
+    case "trigger.webhook":
+      return { body: payload.body ?? null, query: payload.query || {}, headers: payload.headers || {}, receivedAt: payload.receivedAt || new Date().toISOString() };
+    case "trigger.mail.received":
+      return { mail: payload.mail || {}, authenticated: payload.authenticated || "unknown" };
+    case "trigger.journal.day":
+      return {
+        day: event.page_id ? await pageValue(event.page_id) : null,
+        date: payload.date ?? null,
+        journal: typeof payload.journal === "string" ? await pageValue(payload.journal, { text: false }) : null,
+      };
   }
   return {};
 }

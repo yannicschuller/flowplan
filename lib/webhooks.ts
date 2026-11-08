@@ -579,3 +579,29 @@ export function startWebhookWorker() {
   }, 30_000);
   runtime.flowplanHookTimer.unref?.();
 }
+
+// The chat webhooks an owner released for workflows (config.workflows,
+// docs/specs/workflows.md §6.4): what the "Chat message" node may post to.
+export async function workflowChatHooks(workspaceId: string) {
+  const rows = await all<{ id: string; format: string; config: string; url: string }>("SELECT id,format,config,url FROM webhooks WHERE workspace_id=? ORDER BY created_at", workspaceId);
+  return rows
+    .filter((r) => parseConfig(r.config).workflows === true)
+    .map((r) => {
+      let host = "";
+      try {
+        host = new URL(hookUrl(r as never)).hostname;
+      } catch {}
+      return { id: r.id, format: r.format, host };
+    });
+}
+// A workflow's message to a released chat webhook: delivered like every
+// other event (retries, sealed credentials, the platform's formatter).
+export async function queueWorkflowMessage(input: { hookId: string; workspaceId: string; pageId: string; page: string; title: string; text: string; url: string; actor: string; runId: string }) {
+  const hook = await one<{ id: string; format: string; config: string }>("SELECT id,format,config FROM webhooks WHERE id=? AND workspace_id=?", input.hookId, input.workspaceId);
+  if (!hook || parseConfig(hook.config).workflows !== true) return null;
+  const notice: Notice = { event: "workflow.message", title: input.title, page: input.page, url: input.url, actor: input.actor, at: new Date().toISOString(), changes: [], text: input.text };
+  const data = { pageId: input.pageId, runId: input.runId, title: input.title, text: input.text, url: input.url };
+  const deliveryId = await queueDelivery(hook, input.workspaceId, "workflow.message" as WebhookEvent, data, () => notice);
+  queueMicrotask(() => void dispatchWebhooks());
+  return deliveryId;
+}

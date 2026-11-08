@@ -143,6 +143,8 @@ async function dispatchOne(event: WorkflowEvent) {
     const graph = await graphOf({ id: "", version_id: t.version_id });
     const node = graph?.nodes.find((n) => n.id === t.node_id);
     if (!graph || !node || node.disabled) continue;
+    // Mail goes to the one workflow its address names.
+    if (event.kind === "mail.received" && payload.workflow !== t.page_id) continue;
     // Own changes do not trigger the own workflow (unless asked to).
     if (originPage === t.page_id && !graph.settings.triggerOnOwnChanges) continue;
     try {

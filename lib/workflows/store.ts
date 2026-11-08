@@ -15,7 +15,7 @@ import { createPage } from "../seed";
 import { databaseSettings, storeSettings } from "../database-settings";
 import type { Identity, Page } from "../types";
 import { contentLocale } from "../content-locale";
-import { isTrigger, nodeSpec, RECORD_TRIGGERS } from "./catalog";
+import { isTrigger, nodeSpec, triggerScope } from "./catalog";
 import { emptyGraph, graphFingerprint, issueMessage, outgoing, parseGraph, type GraphIssue, type WorkflowGraph } from "./graph";
 import { draftGraph, graphDoc, graphSummary, writeGraph } from "./draft";
 import { automationToGraph } from "./legacy";
@@ -29,6 +29,7 @@ import { workflowLimits } from "./limits";
 import { mayObserve, runnerIdentity } from "./runner";
 import { pageValue, personValue, recordValue } from "./nodes/data";
 import { sampleOutput, triggerOutput } from "./nodes/triggers";
+import { notePause } from "./notices";
 
 const uuid = z.string().uuid();
 
@@ -186,7 +187,7 @@ export async function replaceDraft(user: Identity, raw: unknown) {
   return { ok: true, issues: await checked(user, page, graph) };
 }
 async function checked(user: Identity, page: Page, graph: WorkflowGraph, runner: Identity | null = user) {
-  const issues = await validateGraph(graph, { workspaceId: page.workspace_id, runner });
+  const issues = await validateGraph(graph, { workspaceId: page.workspace_id, runner, pageId: page.id });
   const locale = contentLocale();
   return issues.map((i) => ({ ...i, message: issueMessage(i, locale) }));
 }
@@ -203,7 +204,7 @@ async function writeTriggers(page: Page, versionId: string, graph: WorkflowGraph
     const spec = nodeSpec(n.type);
     if (!spec?.event) continue;
     const c = n.config as Record<string, unknown>;
-    const scope = RECORD_TRIGGERS.has(n.type) ? String(c.database || "") : "";
+    const scope = triggerScope(n.type, c);
     // An immediate part: the trigger leads straight to a node that runs inline.
     const inline = spec.inline && outgoing(graph, n.id, "out").some((e) => {
       const next = graph.nodes.find((x) => x.id === e.to.node);
@@ -220,6 +221,8 @@ async function writeTriggers(page: Page, versionId: string, graph: WorkflowGraph
       JSON.stringify(c),
       inline ? 1 : 0,
     );
+    // A webhook trigger's address follows the active version's mode.
+    if (n.type === "trigger.webhook") await run("UPDATE workflow_hooks SET mode=? WHERE page_id=? AND node_id=?", c.mode === "token" ? "token" : "signed", page.id, n.id);
   }
 }
 
@@ -286,6 +289,8 @@ export async function activateWorkflow(user: Identity, raw: unknown) {
     }
   }
   await audit(user.id, "workflow.activated", page.id, JSON.stringify({ version: number || undefined, versionId, hash, runner: user.id }));
+  // Activated again on the same version after a pause.
+  if (!number && (wf.status === "paused" || wf.status === "auto_paused")) await audit(user.id, "workflow.resumed", page.id, versionId || "");
   if (runnerChanged) await audit(user.id, "workflow.runner_changed", page.id, `${wf.runner_id} → ${user.id}`);
   wakeAfterCommit();
   return { ok: true, versionId, number: number || undefined, issues };
@@ -309,8 +314,11 @@ export async function pauseWorkflow(pageId: string, options: { status: "paused" 
     Date.now(),
     pageId,
   );
-  if (changed.changes && wf.status === "active")
+  if (changed.changes && wf.status === "active") {
     await audit(options.by || "system", options.status === "auto_paused" ? "workflow.auto_paused" : "workflow.paused", pageId, options.reason.slice(0, 300));
+    // Paused by itself (rights lost, failures): the people responsible hear it.
+    if (!options.by) await notePause(pageId, options.status, options.reason);
+  }
   return !!changed.changes;
 }
 export async function pauseCommand(user: Identity, raw: unknown) {
@@ -421,7 +429,7 @@ type StepView = { id: string; node_id: string; iteration: string; via: string; s
 // The person a run ran as sees its inputs and outputs; others its status
 // and errors without data (§9.3, open question 1 as decided).
 const seesContents = (user: Identity, runRow: RunRow) => !!runRow.runner_id && runRow.runner_id === user.id;
-export async function listRuns(user: Identity, pageId: string, query: { status?: string; mode?: string; limit?: number; before?: number } = {}) {
+export async function listRuns(user: Identity, pageId: string, query: { status?: string; mode?: string; limit?: number; before?: number; q?: string } = {}) {
   const page = await requireWorkflow(user, pageId);
   const where = ["page_id=?"];
   const params: (string | number)[] = [page.id];
@@ -435,6 +443,14 @@ export async function listRuns(user: Identity, pageId: string, query: { status?:
     where.push("created_at<?");
     params.push(query.before);
   }
+  // Search: the run's id, its error, or a step's error (what the list shows).
+  const q = query.q?.trim().slice(0, 100).toLowerCase();
+  if (q) {
+    const like = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+    where.push("(lower(id) LIKE ? ESCAPE '\\' OR lower(COALESCE(error,'')) LIKE ? ESCAPE '\\' OR EXISTS(SELECT 1 FROM workflow_steps s WHERE s.run_id=workflow_runs.id AND lower(COALESCE(s.error,'')) LIKE ? ESCAPE '\\'))");
+    params.push(like, like, like);
+  }
+  if (query.status === "waiting") where.push("status='waiting'");
   const limit = Math.max(1, Math.min(200, query.limit || 50));
   const runs = await all<RunRow & { created_at: number; started_at: number | null; finished_at: number | null; failed_node_id: string | null }>(
     `SELECT * FROM workflow_runs WHERE ${where.join(" AND ")} ORDER BY created_at DESC,seq DESC LIMIT ${limit}`,
@@ -480,9 +496,13 @@ export async function runDetail(user: Identity, runId: string) {
     depth: r.depth,
     origin: origin ? { runId: r.origin_run_id, pageId: origin.page_id, title: (await pageRole(user, (await one<Page>("SELECT * FROM pages WHERE id=?", origin.page_id))!)) ? origin.title : null } : null,
     error: r.error,
+    errorKind: (r as { error_kind?: string | null }).error_kind ?? null,
     failedNodeId: r.failed_node_id,
     steps: r.steps,
     aiTokens: r.ai_tokens,
+    approvals: (
+      await all<{ id: string; step_id: string; decision: string | null; approvers: string; expires_at: number | null; decided_by: string | null }>("SELECT id,step_id,decision,approvers,expires_at,decided_by FROM workflow_approvals WHERE run_id=?", r.id)
+    ).map((a) => ({ id: a.id, stepId: a.step_id, decision: a.decision, expiresAt: a.expires_at, canDecide: !a.decision && (JSON.parse(a.approvers) as string[]).includes(user.id) })),
     createdAt: r.created_at,
     startedAt: r.started_at,
     finishedAt: r.finished_at,
@@ -532,6 +552,8 @@ const testInput = z.object({
       z.object({ kind: z.literal("custom"), output: z.record(z.string(), z.unknown()) }),
     ])
     .default({ kind: "sample" }),
+  // Dry runs: approvals assumed as approved (default) or rejected (§10.3).
+  assume: z.enum(["approved", "rejected"]).default("approved"),
 });
 // workflow.test: a test run (real effects, as the tester) or a dry run of
 // the draft. Test runs run as the person testing, never as the runner (§9.2).
@@ -578,6 +600,7 @@ export async function startTestRun(user: Identity, raw: unknown) {
     mode: b.mode,
     runnerId: user.id,
     testGraph: graph,
+    testOptions: { approval: b.assume },
   });
   wakeAfterCommit();
   return { ok: true, runId, issues };

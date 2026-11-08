@@ -12,11 +12,12 @@ import type { Identity, Page } from "../types";
 import { userLocale } from "../user-locale";
 import type { Locale } from "../i18n";
 import { nodeSpec } from "./catalog";
-import { configTexts, outgoing, parseGraph, type WorkflowGraph, type WorkflowNode } from "./graph";
+import { configTexts, innermostLoops, outgoing, parseGraph, type WorkflowGraph, type WorkflowNode } from "./graph";
 import { NODE_IMPLS, EXTERNAL_NODES } from "./nodes";
 import { personValue, recordValue } from "./nodes/data";
 import { triggerOutput, type WorkflowEvent } from "./nodes/triggers";
-import { StepError, type ErrorKind, type NodeResult, type NodeRun } from "./nodes/types";
+import { FAR, StepError, type ErrorKind, type NodeResult, type NodeRun } from "./nodes/types";
+export { FAR };
 import { PlaceholderError, renderText, type RenderScope } from "./placeholders";
 import { ValueError } from "./values";
 import { withinRun } from "./context";
@@ -26,6 +27,7 @@ import { builtins, flushInline, inlineBatch, walkInline } from "./inline";
 import { noteWorkflow } from "./monitoring";
 import { pauseWorkflow } from "./store";
 import { wakeAfterCommit } from "./queue";
+import { checkFailureRate, noteLimit, noteRunFailed } from "./notices";
 
 // The lease of a claimed step (§8.3); FLOWPLAN_WORKFLOW_LEASE_MS shortens it for tests.
 export const LEASE_MS = Number(process.env.FLOWPLAN_WORKFLOW_LEASE_MS) || 2 * 60_000;
@@ -75,6 +77,27 @@ class LeaseLost extends Error {}
 /* ---------- Graphs of versions (immutable, so cached) ---------- */
 
 const graphs = new Map<string, WorkflowGraph>();
+const loopsOf = new Map<WorkflowGraph, Map<string, string>>();
+// The innermost For-each of every node in a body (cached per graph).
+export function loopOf(graph: WorkflowGraph, nodeId: string) {
+  let m = loopsOf.get(graph);
+  if (!m) {
+    if (loopsOf.size > 500) loopsOf.clear();
+    m = innermostLoops(graph);
+    loopsOf.set(graph, m);
+  }
+  return m.get(nodeId);
+}
+// The options of a test run (kept with its trigger step, like its graph).
+async function testOptions(runRow: Pick<RunRow, "id" | "version_id">): Promise<NonNullable<NodeRun["options"]>> {
+  if (!runRow.version_id.startsWith("test:")) return {};
+  const raw = (await one<{ input: string }>("SELECT s.input FROM workflow_steps s JOIN workflow_runs r ON r.id=s.run_id WHERE s.run_id=? AND s.node_id=r.trigger_node_id", runRow.id))?.input;
+  try {
+    return (JSON.parse(raw || "{}").options as NodeRun["options"]) || {};
+  } catch {
+    return {};
+  }
+}
 export async function graphOf(run: Pick<RunRow, "id" | "version_id">): Promise<WorkflowGraph | null> {
   const cached = graphs.get(run.version_id);
   if (cached) return cached;
@@ -138,6 +161,15 @@ function inputPreview(config: Record<string, unknown>, scope: RenderScope, warni
 }
 
 type RunInfo = { id: string; page: Page; workspaceId: string; mode: RunRow["mode"]; depth: number; triggerNodeId: string; runner: Identity | null; graph: WorkflowGraph };
+// $item and $index of a step in a For-each body: its innermost loop's
+// items (on the loop's step, on this step's path) at the iteration's index.
+function loopValues(graph: WorkflowGraph, nodeId: string, iteration: string, values: Record<string, unknown>) {
+  const loop = loopOf(graph, nodeId);
+  if (!loop || !iteration) return {};
+  const index = Number(iteration.split(".").at(-1));
+  const state = values[loop] as { items?: unknown[] } | undefined;
+  return { $item: state?.items?.[index] ?? null, $index: index };
+}
 async function scopeFor(info: RunInfo, values: Record<string, unknown>, warnings: string[]): Promise<RenderScope> {
   const tz = info.graph.settings.timeZone || "UTC";
   const locale = (info.graph.settings.locale as Locale | undefined) || (info.runner ? await userLocale(info.runner.id) : "de");
@@ -216,20 +248,29 @@ export async function failRun(runId: string, nodeId: string | null, message: str
   if (!r) return;
   await cancelOpenSteps(runId, exceptStep);
   const changed = await run(
-    `UPDATE workflow_runs SET status='failed',failed_node_id=?,error=?,finished_at=? WHERE id=? AND status NOT IN ('succeeded','failed','cancelled')`,
+    `UPDATE workflow_runs SET status='failed',failed_node_id=?,error=?,error_kind=?,finished_at=? WHERE id=? AND status NOT IN ('succeeded','failed','cancelled')`,
     nodeId,
     message.slice(0, 2000),
+    kind,
     Date.now(),
     runId,
   );
   if (!changed.changes) return;
+  await run("UPDATE workflow_approvals SET decision='cancelled',decided_at=? WHERE run_id=? AND decision IS NULL", Date.now(), runId);
   noteWorkflow("failed");
   if (r.mode !== "live" || kind === "limit") return;
   await run("UPDATE workflows SET failure_streak=failure_streak+1 WHERE page_id=?", r.page_id);
   const wf = await one<{ failure_streak: number; status: string }>("SELECT failure_streak,status FROM workflows WHERE page_id=?", r.page_id);
+  // The person it runs as hears of it (§8.6): the first failure after a
+  // success, then at most once an hour with a summary.
+  await noteRunFailed(r.page_id, message, wf?.failure_streak === 1);
   if (wf && wf.status === "active" && wf.failure_streak >= 10) {
     await pauseWorkflow(r.page_id, { status: "auto_paused", reason: "10 Läufe in Folge fehlgeschlagen.", by: null });
+    return;
   }
+  // More than half of the last 20 runs within an hour failed.
+  if (wf && wf.status === "active" && (await checkFailureRate(r.page_id)))
+    await pauseWorkflow(r.page_id, { status: "auto_paused", reason: "Mehr als die Hälfte der letzten Läufe in einer Stunde ist fehlgeschlagen.", by: null });
 }
 
 export type StartRun = {
@@ -244,8 +285,9 @@ export type StartRun = {
   eventId?: string | null;
   depth?: number;
   originRunId?: string | null;
-  // Test runs: the draft graph, kept with the trigger step.
+  // Test runs: the draft graph, kept with the trigger step, and their options.
   testGraph?: WorkflowGraph;
+  testOptions?: NodeRun["options"];
   // The immediate part queues the successors itself.
   noSuccessors?: boolean;
 };
@@ -278,7 +320,7 @@ export async function createRun(s: StartRun): Promise<string> {
     runId,
     s.triggerNode.id,
     now,
-    s.testGraph ? JSON.stringify({ graph: s.testGraph }) : null,
+    s.testGraph ? JSON.stringify({ graph: s.testGraph, ...(s.testOptions ? { options: s.testOptions } : {}) }) : null,
     output,
     now,
     now,
@@ -304,6 +346,7 @@ export async function admitLiveRun(pageId: string, workspaceId: string, graph: W
   const limits = await workflowLimits();
   if (depth > limits.cascadeDepth) {
     noteWorkflow("cascade");
+    await noteLimit(pageId, "cascade");
     return "cascade";
   }
   await lockFor(`wf-rate:${pageId}`);
@@ -314,6 +357,7 @@ export async function admitLiveRun(pageId: string, workspaceId: string, graph: W
   if (Number(mine?.n || 0) >= perMinute || Number(all_?.n || 0) >= limits.workspaceRunsPerMinute) {
     await run("UPDATE workflows SET throttled=throttled+1 WHERE page_id=?", pageId);
     noteWorkflow("throttled");
+    await noteLimit(pageId, "throttled");
     return "throttled";
   }
   return "ok";
@@ -506,6 +550,8 @@ async function fence(step: StepRow, leaseMs = LEASE_MS) {
 }
 async function completeStep(step: StepRow, runRow: RunRow, graph: WorkflowGraph, node: WorkflowNode, result: NodeResult, input: string, status: "succeeded" | "skipped" = "succeeded") {
   const now = Date.now();
+  if ("wait" in result) return await waitStep(step, runRow, result, input);
+  if ("loop" in result) return await startLoop(step, runRow, graph, node, result, input);
   const output = JSON.stringify(("output" in result ? result.output : null) ?? {});
   if (output.length > OUTPUT_LIMIT) throw new StepError("Ausgabe zu groß.", "limit");
   const port = "port" in result ? result.port : "";
@@ -521,17 +567,167 @@ async function completeStep(step: StepRow, runRow: RunRow, graph: WorkflowGraph,
   );
   if (!done.changes) throw new LeaseLost();
   await run("UPDATE workflow_runs SET steps=steps+1 WHERE id=?", runRow.id);
+  await afterStep(step, runRow, graph, node, result, port);
+}
+// What follows a finished step (also an approval decided by a person): the
+// successors, the For-each bookkeeping, the end of the run.
+export async function afterStep(step: Pick<StepRow, "id" | "iteration" | "via">, runRow: RunRow, graph: WorkflowGraph, node: WorkflowNode, result: NodeResult, port: string) {
+  const now = Date.now();
+  const loop = loopOf(graph, node.id);
   if ("stop" in result) {
-    if (result.stop === "failed") await failRun(runRow.id, node.id, result.message || "Beendet.", "validation");
+    // In a For-each body a stop ends the iteration, not the run.
+    if (loop) await loopProgress(runRow, graph, step, node, -1, "output" in result ? result.output : { stopped: result.stop, message: result.message });
+    else if (result.stop === "failed") await failRun(runRow.id, node.id, result.message || "Beendet.", "validation");
     else {
       await cancelOpenSteps(runRow.id);
       await run("UPDATE workflow_runs SET status='succeeded',finished_at=?,error=? WHERE id=? AND status IN ('queued','running','waiting')", now, result.message || null, runRow.id);
     }
     return;
   }
-  await enqueueSuccessors(runRow.id, graph, node.id, port, step.id, step.iteration);
+  const n = await enqueueSuccessors(runRow.id, graph, node.id, port, step.id, step.iteration);
+  if (loop) await loopProgress(runRow, graph, step, node, n - 1, "output" in result ? result.output : null);
   await finishIfDone(runRow.id, runRow.mode === "live" ? { pageId: runRow.page_id } : null);
 }
+// A wait or an approval: the step waits, no worker holds it (§8.7).
+async function waitStep(step: StepRow, runRow: RunRow, result: { wait: number; state: unknown }, input: string) {
+  const state = JSON.stringify(result.state ?? {});
+  const done = await run(
+    "UPDATE workflow_steps SET status='waiting',due_at=?,input=?,output=?,error=NULL,error_kind=NULL,lease_token=NULL,lease_until=0,claimed_by=NULL WHERE id=? AND lease_token=? AND status='running'",
+    Math.round(result.wait),
+    input,
+    state,
+    step.id,
+    step.lease_token,
+  );
+  if (!done.changes) throw new LeaseLost();
+  await markWaiting(runRow.id);
+}
+// The run waits when none of its steps is queued or running.
+async function markWaiting(runId: string) {
+  await run(
+    "UPDATE workflow_runs SET status='waiting' WHERE id=? AND status='running' AND NOT EXISTS(SELECT 1 FROM workflow_steps WHERE run_id=? AND status IN ('queued','running'))",
+    runId,
+    runId,
+  );
+}
+
+/* ---------- For each (§8.7) ---------- */
+
+type LoopState = {
+  items: unknown[];
+  count: number;
+  mode: "sequential" | "parallel";
+  parallel: number;
+  // The next item to start, the open paths per running item, how many ended.
+  next: number;
+  open: Record<string, number>;
+  ended: number;
+  results: unknown[];
+  warning?: string;
+};
+const shortResult = (v: unknown) => {
+  const t = JSON.stringify(v ?? null);
+  return t.length > 4000 ? truncateValue(v) : v;
+};
+// Starts the iterations a loop may run now; returns the paths started.
+async function startIterations(runId: string, graph: WorkflowGraph, loopStep: Pick<StepRow, "id" | "iteration">, loopNode: string, state: LoopState) {
+  const prefix = loopStep.iteration ? `${loopStep.iteration}.` : "";
+  const edges = outgoing(graph, loopNode, "item");
+  const room = state.mode === "parallel" ? state.parallel : 1;
+  const now = Date.now();
+  while (state.next < state.count && Object.keys(state.open).length < room) {
+    const i = state.next++;
+    if (!edges.length) {
+      state.ended++;
+      continue;
+    }
+    state.open[String(i)] = edges.length;
+    for (const edge of edges)
+      await run(
+        "INSERT INTO workflow_steps(id,run_id,node_id,iteration,via,status,due_at,created_at) VALUES(?,?,?,?,?,'queued',?,?) ON CONFLICT(run_id,node_id,iteration,via) DO NOTHING",
+        id(),
+        runId,
+        edge.to.node,
+        `${prefix}${i}`,
+        loopStep.id,
+        now,
+        now,
+      );
+  }
+}
+async function startLoop(step: StepRow, runRow: RunRow, graph: WorkflowGraph, node: WorkflowNode, result: { loop: unknown[]; warning?: string }, input: string) {
+  const c = node.config as { mode?: "sequential" | "parallel"; parallel?: number };
+  const state: LoopState = {
+    items: result.loop,
+    count: result.loop.length,
+    mode: c.mode === "parallel" ? "parallel" : "sequential",
+    parallel: Math.max(1, Math.min(5, Number(c.parallel) || 5)),
+    next: 0,
+    open: {},
+    ended: 0,
+    results: [],
+    ...(result.warning ? { warning: result.warning } : {}),
+  };
+  await startIterations(runRow.id, graph, step, node.id, state);
+  const output = JSON.stringify(state);
+  if (output.length > OUTPUT_LIMIT) throw new StepError("Ausgabe zu groß.", "limit");
+  const done = await run(
+    "UPDATE workflow_steps SET status='waiting',due_at=?,input=?,output=?,open_children=?,error=NULL,error_kind=NULL,lease_token=NULL,lease_until=0,claimed_by=NULL WHERE id=? AND lease_token=? AND status='running'",
+    FAR,
+    input,
+    output,
+    Object.values(state.open).reduce((a, b) => a + b, 0),
+    step.id,
+    step.lease_token,
+  );
+  if (!done.changes) throw new LeaseLost();
+  await run("UPDATE workflow_runs SET steps=steps+1 WHERE id=?", runRow.id);
+  if (state.ended >= state.count) await endLoop(runRow, graph, step, node, state);
+}
+// A step in a loop body finished: `delta` paths more (successors − 1) for
+// its item. An item whose paths all ended frees a place for the next; when
+// every item ended, the loop goes on through "done".
+async function loopProgress(runRow: RunRow, graph: WorkflowGraph, step: Pick<StepRow, "id" | "iteration" | "via">, node: WorkflowNode, delta: number, output: unknown) {
+  const loopNode = loopOf(graph, node.id);
+  if (!loopNode || !step.iteration) return;
+  // The loop's step lies on this step's path.
+  let via = step.via;
+  let loopStep: { id: string; node_id: string; via: string; iteration: string } | undefined;
+  for (let hops = 0; via && hops < 2000; hops++) {
+    const s = await one<{ id: string; node_id: string; via: string; iteration: string }>("SELECT id,node_id,via,iteration FROM workflow_steps WHERE id=?", via);
+    if (!s) break;
+    if (s.node_id === loopNode) {
+      loopStep = s;
+      break;
+    }
+    via = s.via;
+  }
+  if (!loopStep) return;
+  // Locked until the commit: parallel items count one after the other.
+  await run("UPDATE workflow_steps SET open_children=open_children WHERE id=?", loopStep.id);
+  const row = await one<{ status: string; output: string }>("SELECT status,output FROM workflow_steps WHERE id=?", loopStep.id);
+  if (!row || row.status !== "waiting") return;
+  const state = JSON.parse(row.output) as LoopState;
+  const index = step.iteration.split(".").at(-1)!;
+  if (output !== null && output !== undefined) state.results[Number(index)] = shortResult(output);
+  state.open[index] = (state.open[index] ?? 0) + delta;
+  if (state.open[index] <= 0) {
+    delete state.open[index];
+    state.ended++;
+    await startIterations(runRow.id, graph, loopStep, loopNode, state);
+  }
+  const loopGraphNode = graph.nodes.find((n) => n.id === loopNode)!;
+  if (state.ended >= state.count && !Object.keys(state.open).length) return await endLoop(runRow, graph, loopStep, loopGraphNode, state);
+  await run("UPDATE workflow_steps SET output=?,open_children=? WHERE id=?", JSON.stringify(state), Object.values(state.open).reduce((a, b) => a + b, 0), loopStep.id);
+}
+async function endLoop(runRow: RunRow, graph: WorkflowGraph, loopStep: Pick<StepRow, "id" | "iteration" | "via">, node: WorkflowNode, state: LoopState) {
+  const output = { count: state.count, results: state.results.slice(0, state.count).map((r) => r ?? null), ...(state.warning ? { warning: state.warning } : {}) };
+  let text = JSON.stringify(output);
+  if (text.length > OUTPUT_LIMIT) text = JSON.stringify({ count: state.count, results: [], warning: "Ergebnisse zu groß." });
+  await run("UPDATE workflow_steps SET status='succeeded',port='done',output=?,open_children=0,finished_at=? WHERE id=? AND status='waiting'", text, Date.now(), loopStep.id);
+  await afterStep(loopStep, runRow, graph, node, { port: "done", output: JSON.parse(text) }, "done");
+}
+
 // Puts a claimed step back (paused workflow, held run): no attempt used.
 async function release(step: StepRow) {
   await run("UPDATE workflow_steps SET status='queued',lease_token=NULL,lease_until=0,claimed_by=NULL WHERE id=? AND lease_token=? AND status='running'", step.id, step.lease_token);
@@ -587,7 +783,12 @@ export async function executeStep(step: StepRow): Promise<void> {
   const info: RunInfo = { id: runRow.id, page, workspaceId: runRow.workspace_id, mode: runRow.mode, depth: runRow.depth, triggerNodeId: runRow.trigger_node_id, runner, graph };
   const warnings: string[] = [];
   const values = await pathValues(runRow.id, step.via);
-  const scope = await scopeFor(info, values, warnings);
+  const scope = await scopeFor(info, { ...values, ...loopValues(graph, node.id, step.iteration, values) }, warnings);
+  // A step taken up again after it waited: what it stored then.
+  // (Waits and approvals store their state with "$wait" in the output.)
+  const stored = await one<{ output: string | null }>("SELECT output FROM workflow_steps WHERE id=?", step.id);
+  const kept = stored?.output ? (JSON.parse(stored.output) as Record<string, unknown>) : null;
+  const resume = kept && kept.$wait ? kept : undefined;
   const triggerValue = values[runRow.trigger_node_id] as { record?: { id?: string; database?: { id: string } }; page?: { id?: string } } | undefined;
   const trigger = {
     pageId: triggerValue?.record?.database?.id ?? triggerValue?.page?.id ?? null,
@@ -614,6 +815,9 @@ export async function executeStep(step: StepRow): Promise<void> {
       warn: scope.warn!,
       attempt: step.attempt,
       iteration: step.iteration,
+      stepId: step.id,
+      resume,
+      options: runRow.mode === "live" ? {} : await testOptions(runRow),
     };
     const runContext = { runId: runRow.id, pageId: page.id, depth: runRow.depth, mode: runRow.mode };
     if (node.disabled) {
@@ -624,8 +828,16 @@ export async function executeStep(step: StepRow): Promise<void> {
       return;
     }
     if (EXTERNAL_NODES.has(node.type)) {
-      // Outside a transaction (no long write lock), then finished with the lease check.
-      const result = await withinRun(runContext, () => impl(ctx));
+      // Outside a transaction (no long write lock), then finished with the
+      // lease check; the lease is renewed every 30 s meanwhile (§8.3).
+      const renew = setInterval(() => void run("UPDATE workflow_steps SET lease_until=? WHERE id=? AND lease_token=? AND status='running'", Date.now() + LEASE_MS, step.id, step.lease_token).catch(() => {}), Math.min(30_000, LEASE_MS / 3));
+      renew.unref?.();
+      let result: NodeResult;
+      try {
+        result = await withinRun(runContext, () => impl(ctx));
+      } finally {
+        clearInterval(renew);
+      }
       await transaction(async () => {
         await fence(step);
         await completeStep(step, runRow, graph, node, result, inputPreview(node.config, scope, warnings));
@@ -662,6 +874,8 @@ async function handleFailure(step: StepRow, runRow: RunRow, graph: WorkflowGraph
     }
     const then = node.onError?.then ?? "fail";
     if (then === "port" || then === "continue") {
+      // An approval or a loop left by an error: nothing of it stays open.
+      await run("UPDATE workflow_approvals SET decision='cancelled',decided_at=? WHERE step_id=? AND decision IS NULL", Date.now(), step.id);
       await completeStep(step, runRow, graph, node, then === "port" ? { port: "error", output: { error: message, kind } } : { port: "out", output: {} }, input);
       await run("UPDATE workflow_steps SET error=?,error_kind=? WHERE id=?", message, kind, step.id);
       return;

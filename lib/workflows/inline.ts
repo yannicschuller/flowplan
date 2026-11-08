@@ -100,6 +100,8 @@ async function walk(w: Walk, fromNode: string, port: string): Promise<{ stopped?
       w.record?.(node, "", result.output ?? { message: result.message }, fromNode);
       return { stopped: { result: result.stop, message: result.message } };
     }
+    // Inline nodes never wait or loop.
+    if (!("port" in result)) throw new InlineFailure(node, new Error("Dieser Knoten kann nicht im Sofortteil laufen."), fromNode);
     w.values[node.id] = result.output;
     w.record?.(node, result.port, result.output, fromNode);
     const r = await walk(w, node.id, result.port);

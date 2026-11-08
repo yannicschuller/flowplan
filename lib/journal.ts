@@ -1,3 +1,4 @@
+import { journalDayEvent } from "./workflows/hooks";
 import { dayTitle as localDayTitle, isAutoDayTitle } from "./journal-title";
 import { contentLocale } from "./content-locale";
 // Journals: a page that keeps one sub page per day. When a new day starts,
@@ -323,6 +324,8 @@ export async function rollJournal(
   documentChanged(dayId);
   seeded.ydoc.destroy();
   await indexPageTasks(dayId, false);
+  // Workflows with a journal-day trigger (lib/workflows/hooks.ts).
+  await journalDayEvent(dayId, journal, today, user.id);
   return { dayId, changed: true, ...(options.write ? { generation: seeded.generation } : {}) };
 }
 // All journals of a workspace the user may edit.

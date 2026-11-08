@@ -31,6 +31,7 @@ import {
 import { validateGraph } from "./validate";
 import { issueMessage, parseGraph } from "./graph";
 import { contentLocale } from "../content-locale";
+import { approvalDetail, decideApproval, hookCommand, listApprovals, listCredentials, listHooks, removeCredential, retryRun, setCredential, workflowResources } from "./actions";
 
 export const WORKFLOW_ACTIONS = [
   "workflow.sync",
@@ -43,6 +44,11 @@ export const WORKFLOW_ACTIONS = [
   "workflow.run.cancel",
   "workflow.restore",
   "workflow.fromRule",
+  "workflow.run.retry",
+  "workflow.approve",
+  "workflow.hook",
+  "workflow.credential.set",
+  "workflow.credential.remove",
 ] as const;
 
 export async function workflowCommand(user: Identity, action: string, b: Record<string, unknown>): Promise<unknown> {
@@ -56,7 +62,7 @@ export async function workflowCommand(user: Identity, action: string, b: Record<
       const page = await requireWorkflow(user, z.string().parse(b.pageId), true);
       const graph = b.graph === undefined ? await draftOf(page) : parseGraph(b.graph);
       const locale = contentLocale();
-      return { issues: (await validateGraph(graph, { workspaceId: page.workspace_id, runner: user })).map((i) => ({ ...i, message: issueMessage(i, locale) })) };
+      return { issues: (await validateGraph(graph, { workspaceId: page.workspace_id, runner: user, pageId: page.id })).map((i) => ({ ...i, message: issueMessage(i, locale) })) };
     }
     case "workflow.activate":
       return await activateWorkflow(user, b);
@@ -72,6 +78,16 @@ export async function workflowCommand(user: Identity, action: string, b: Record<
       return await restoreVersion(user, b);
     case "workflow.fromRule":
       return await workflowFromRule(user, b);
+    case "workflow.run.retry":
+      return await retryRun(user, b);
+    case "workflow.approve":
+      return await decideApproval(user, b);
+    case "workflow.hook":
+      return await hookCommand(user, b);
+    case "workflow.credential.set":
+      return await setCredential(user, b);
+    case "workflow.credential.remove":
+      return await removeCredential(user, b);
     case "admin.workflowLimits": {
       // Administration → Limits → Workflows (§12): null follows the environment.
       requireAdmin(user);
@@ -110,11 +126,18 @@ export async function workflowGet(user: Identity, path: string[], url: URL): Pro
         mode: url.searchParams.get("mode") || undefined,
         limit: Number(url.searchParams.get("limit") || 50),
         before: Number(url.searchParams.get("before") || 0) || undefined,
+        q: url.searchParams.get("q") || undefined,
       });
+    if (path.length === 3 && path[2] === "approvals") return await listApprovals(user, { pageId });
+    if (path.length === 3 && path[2] === "credentials") return await listCredentials(user, pageId);
+    if (path.length === 3 && path[2] === "hooks") return await listHooks(user, pageId);
+    if (path.length === 3 && path[2] === "resources") return await workflowResources(user, pageId);
     if (path.length === 3 && path[2] === "versions") return await workflowVersions(user, pageId);
     if (path.length === 4 && path[2] === "versions") return await workflowVersion(user, pageId, z.string().uuid().parse(path[3]));
   }
   if (path[0] === "workflow-runs" && path.length === 2) return await runDetail(user, path[1]);
+  if (path[0] === "workflow-approvals" && path.length === 1) return await listApprovals(user, { mine: true, workspaceId: url.searchParams.get("workspaceId") || undefined });
+  if (path[0] === "workflow-approvals" && path.length === 2) return await approvalDetail(user, path[1]);
   if (path[0] === "admin" && path[1] === "workflows" && path.length === 2) return await adminWorkflows(user);
   return undefined;
 }

@@ -54,6 +54,15 @@ export const AI_FEATURES = [
       "Group notes by theme, summarise a board into a page, create mind maps and diagrams from a description.",
     ],
   },
+  {
+    // The AI nodes of workflows (lib/workflows/nodes/ai.ts): data only, never actions.
+    id: "workflows",
+    label: ["KI in Workflows", "AI in workflows"],
+    description: [
+      "Workflows fassen zusammen, ordnen ein und lesen Felder aus – die KI liefert nur Daten, was passiert, bestimmt der Workflow.",
+      "Workflows summarise, classify and extract fields – the AI only returns data, the workflow decides what happens.",
+    ],
+  },
 ] as const;
 
 export type AiFeature = (typeof AI_FEATURES)[number]["id"];

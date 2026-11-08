@@ -55,3 +55,27 @@ export function openGit(pageId: string, git: StoredGit | undefined) {
 // written) stays readable and is sealed at the next start. The step
 // itself: lib/data-steps.ts.
 export const SEALED_SECRETS_MIGRATION = "sealed-secrets-92";
+
+// Workflows (#168, docs/specs/workflows.md §9.5): the credentials of HTTP
+// nodes and the token and signing secret of inbound workflow webhooks,
+// each sealed to its own row. A webhook's token is found by its hash.
+export const workflowCredentialAad = (credentialId: string) => `workflow-credential:${credentialId}`;
+export const workflowHookAad = (hookId: string) => `workflow-hook:${hookId}`;
+export const workflowHookTokenHash = (token: string) => createHash("sha256").update(`flowplan-workflow-hook\0${token}`).digest("hex");
+export const sealWorkflowCredential = (credentialId: string, secret: Record<string, string>) => sealSecret(JSON.stringify(secret), workflowCredentialAad(credentialId));
+export function openWorkflowCredential(row: { id: string; sealed: string }): Record<string, string> | null {
+  try {
+    return JSON.parse(openSecret(row.sealed, workflowCredentialAad(row.id))) as Record<string, string>;
+  } catch {
+    return null;
+  }
+}
+export const sealWorkflowHook = (hookId: string, value: { token: string; secret: string }) => sealSecret(JSON.stringify(value), workflowHookAad(hookId));
+export function openWorkflowHook(row: { id: string; sealed: string }): { token: string; secret: string } | null {
+  try {
+    const v = JSON.parse(openSecret(row.sealed, workflowHookAad(row.id))) as { token?: unknown; secret?: unknown };
+    return typeof v.token === "string" && typeof v.secret === "string" ? { token: v.token, secret: v.secret } : null;
+  } catch {
+    return null;
+  }
+}

@@ -37,6 +37,9 @@ export type AiRunOptions = {
   // The request took its slot of the AI rate limit before its preparation
   // (lib/ai/ask.ts prepareAsk): not counted a second time.
   charged?: boolean;
+  // The tokens a request used (as reported, else estimated) – workflows
+  // count them against their own budget (lib/workflows/nodes/ai.ts).
+  onUsage?: (input: number, output: number) => void;
 };
 const inputSchema = z.object({
   system: z.string().max(AI_LIMITS.maxPromptChars).optional(),
@@ -79,8 +82,12 @@ export async function* aiStream(user: Identity, feature: AiFeature, raw: AiRunIn
     }
   } finally {
     // Only answered requests (a provider that was not reached used nothing).
-    if (written || usage.input !== undefined || usage.output !== undefined)
-      noteAiUsage(feature, usage.input ?? estimateTokens(size), usage.output ?? estimateTokens(written));
+    if (written || usage.input !== undefined || usage.output !== undefined) {
+      const tokensIn = usage.input ?? estimateTokens(size),
+        tokensOut = usage.output ?? estimateTokens(written);
+      noteAiUsage(feature, tokensIn, tokensOut);
+      options.onUsage?.(tokensIn, tokensOut);
+    }
     const left = (running.get(user.id) || 1) - 1;
     if (left > 0) running.set(user.id, left);
     else running.delete(user.id);

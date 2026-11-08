@@ -1278,7 +1278,8 @@ function migrate(d: DatabaseSync) {
 // document, the activated versions (immutable), the triggers of the active
 // version for a quick lookup, the event outbox, runs and their steps (the
 // queue and the history at once), approvals, inbound hook addresses,
-// credentials of HTTP nodes and the AI use per day. One block, all
+// credentials of HTTP nodes, the AI and e-mail use per day and the
+// throttled notices to the people responsible. One block, all
 // IF NOT EXISTS: test databases of earlier waves of the branch catch up.
 export function migrateWorkflows(d: DatabaseSync) {
   d.exec(`CREATE TABLE IF NOT EXISTS workflows(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','active','paused','auto_paused')),active_version_id TEXT,runner_id TEXT REFERENCES users(id) ON DELETE SET NULL,activated_at INTEGER,paused_at INTEGER,paused_by TEXT,pause_reason TEXT NOT NULL DEFAULT '',settings TEXT NOT NULL DEFAULT '{}',failure_streak INTEGER NOT NULL DEFAULT 0,throttled INTEGER NOT NULL DEFAULT 0,last_events TEXT NOT NULL DEFAULT '{}',created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);
@@ -1305,7 +1306,12 @@ export function migrateWorkflows(d: DatabaseSync) {
     CREATE TABLE IF NOT EXISTS workflow_hooks(id TEXT PRIMARY KEY,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,node_id TEXT NOT NULL,token_hash TEXT NOT NULL UNIQUE,sealed TEXT NOT NULL,mode TEXT NOT NULL DEFAULT 'signed' CHECK(mode IN ('signed','token')),created_at INTEGER NOT NULL,rotated_at INTEGER,last_used_at INTEGER,last_error TEXT,UNIQUE(page_id,node_id));
     CREATE TABLE IF NOT EXISTS workflow_credentials(id TEXT PRIMARY KEY,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,name TEXT NOT NULL,kind TEXT NOT NULL CHECK(kind IN ('bearer','basic','header','query')),host TEXT NOT NULL,sealed TEXT NOT NULL,created_by TEXT,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);
     CREATE INDEX IF NOT EXISTS workflow_credentials_page ON workflow_credentials(page_id);
-    CREATE TABLE IF NOT EXISTS workflow_ai_usage(page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,day TEXT NOT NULL,tokens INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(page_id,day));`);
+    CREATE TABLE IF NOT EXISTS workflow_ai_usage(page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,day TEXT NOT NULL,tokens INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(page_id,day));
+    CREATE TABLE IF NOT EXISTS workflow_mail_usage(page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,day TEXT NOT NULL,mails INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(page_id,day));
+    CREATE TABLE IF NOT EXISTS workflow_notices(page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,kind TEXT NOT NULL,sent_at INTEGER NOT NULL DEFAULT 0,pending INTEGER NOT NULL DEFAULT 0,detail TEXT NOT NULL DEFAULT '',PRIMARY KEY(page_id,kind));`);
+  // Wave 2: the kind of a run's failure (limit failures do not count towards the auto-pause).
+  if (!(d.prepare("PRAGMA table_info(workflow_runs)").all() as { name: string }[]).some((c) => c.name === "error_kind"))
+    d.exec("ALTER TABLE workflow_runs ADD COLUMN error_kind TEXT");
   // Insertion order (schema 94): created with seq above; databases from
   // before seq existed on these tables get it like the others.
   for (const table of WORKFLOW_SEQ_TABLES) {
