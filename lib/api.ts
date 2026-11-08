@@ -88,6 +88,7 @@ import {
   trackerSchema,
   unlockJournal,
 } from "./journal-extras";
+import { setCompletedMine } from "./journal-completed";
 import { transferPages } from "./page-transfer";
 import { demoAllows } from "./demo";
 import { adminResetLink, isLocalAccount, setLocalAdmin } from "./local-auth";
@@ -1541,6 +1542,10 @@ async function runCommand(
       // The bar with tags and properties, collapsed or open (#83).
       case "page.collapseProperties":
         result = await setPropertiesCollapsed(user, b);
+        break;
+      // "Alle / Nur meine" below a journal day (#169), the reader's choice.
+      case "journal.completedMine":
+        result = await setCompletedMine(user, b);
         break;
       case "page.follow": {
         const page = await requirePage(user, pid());

@@ -1068,6 +1068,17 @@ CommandPageCollapsePropertiesResult = TypedDict("CommandPageCollapsePropertiesRe
     "collapsed": Required[Optional[bool]],
 }, total=False)
 
+# Choose "Only mine" or "All" for the records completed below the days of a journal, for yourself on all devices. `pageId` is the journal. GET /api/journals/{dayId}/completed without `mine` then answers with this choice ("Only mine" until one is made).
+CommandJournalCompletedMine = TypedDict("CommandJournalCompletedMine", {
+    "action": Required[Literal["journal.completedMine"]],
+    "pageId": Required[str],
+    "mine": Required[bool],
+}, total=False)
+
+CommandJournalCompletedMineResult = TypedDict("CommandJournalCompletedMineResult", {
+    "mine": Required[bool],
+}, total=False)
+
 # Remember what you folded or unfolded in the sidebar of a workspace, for yourself on all devices. `changes` maps keys to true (set) or false (remove): `p:<pageId>` a page unfolded in the tree (pages start folded), `s:<spaceId>` a space folded, `g:favorites` / `g:collections` that group folded, `jo:<journalId>:<YYYY or YYYY-MM>` / `jc:…` a journal folder opened / closed by hand. Unknown keys are ignored; keys of deleted pages and spaces, and of pages without sub-pages, drop out. The answer is the stored list (the bootstrap sends it as `sidebar`).
 CommandSidebarState = TypedDict("CommandSidebarState", {
     "action": Required[Literal["sidebar.state"]],
@@ -1434,7 +1445,7 @@ CommandHomeSaveResult = TypedDict("CommandHomeSaveResult", {
 }, total=False)
 
 # One action of the interface, as sent by POST /api/command.
-Command = Union["CommandWorkspaceCreate", "CommandSpaceCreate", "CommandSpaceReorder", "CommandPageCreate", "CommandBlockIds", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandTagScope", "CommandPropertyScope", "CommandMetaUsage", "CommandPageMoveCheck", "CommandTemplateCopy", "CommandTemplateDependencies", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPagePurge", "CommandFileDelete", "CommandFilesDeleteUnused", "CommandFileRestore", "CommandFilePurge", "CommandTemplatePurge", "CommandTrashEmpty", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandSidebarState", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
+Command = Union["CommandWorkspaceCreate", "CommandSpaceCreate", "CommandSpaceReorder", "CommandPageCreate", "CommandBlockIds", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandTagScope", "CommandPropertyScope", "CommandMetaUsage", "CommandPageMoveCheck", "CommandTemplateCopy", "CommandTemplateDependencies", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPagePurge", "CommandFileDelete", "CommandFilesDeleteUnused", "CommandFileRestore", "CommandFilePurge", "CommandTemplatePurge", "CommandTrashEmpty", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandJournalCompletedMine", "CommandSidebarState", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
 
 # ---- Parameters of the operations ----
 
@@ -1676,6 +1687,7 @@ JournalEventsQuery = TypedDict("JournalEventsQuery", {
 
 JournalCompletedQuery = TypedDict("JournalCompletedQuery", {
     "zone": str,  # IANA time zone, default UTC
+    "mine": Literal["0", "1"],  # 1: only mine, 0: all; default: your choice for the journal, else 1
 }, total=False)
 
 E2eeLogQuery = TypedDict("E2eeLogQuery", {
@@ -2204,7 +2216,7 @@ class FlowplanClient:
         return self._json("GET", "/api/journals/" + _p(day_id) + "/events", query=dict(query) if query else None, headers=headers)
 
     def journal_completed(self, day_id: str, query: Optional["JournalCompletedQuery"] = None, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
-        """Records completed on a journal day — Database records whose latest change to done (by their database's done rule) falls on the day in the given time zone and that are still done; only records the caller may read. Empty when the journal switched the list off (option `completed`). (GET /api/journals/{dayId}/completed)"""
+        """Records completed on a journal day — Database records whose latest change to done (by their database's done rule) falls on the day in the given time zone and that are still done; only records the caller may read. With `mine=1` ("Only mine") only the caller's: records they made done themselves (an automation counts for the person who set it up) and records a person property assigns to them, whoever completed them; changes recorded before Flowplan knew who made them count only by the assignment. Without `mine` the caller's choice for the journal (command `journal.completedMine`), `1` until they made one. Empty when the journal switched the list off (option `completed`). (GET /api/journals/{dayId}/completed)"""
         return self._json("GET", "/api/journals/" + _p(day_id) + "/completed", query=dict(query) if query else None, headers=headers)
 
     def e2ee_identity(self, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:

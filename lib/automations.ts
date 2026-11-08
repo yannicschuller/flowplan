@@ -144,6 +144,10 @@ export async function runAutomations(input: { page: Page; rowId: string; actor: 
   const patch: Cells = {};
   const templates: { rule: Automation; template: string; mode: "empty" | "append" }[] = [];
   let fired = 0;
+  // For the status log: the person who set up the rule that set the done
+  // rule's field (null for a rule nobody set up).
+  const statusField = doneRule(fields, settings)?.field.id;
+  let setBy: string | null = null;
   for (const a of automations) {
     if (!triggered(a, input.event, input.before ?? null, row.cells, fields)) continue;
     const group = { kind: "group" as const, join: "and" as const, rules: a.conditions.map((c) => ({ ...c, kind: "condition" as const })) };
@@ -152,7 +156,10 @@ export async function runAutomations(input: { page: Page; rowId: string; actor: 
     for (const action of a.actions) {
       if (action.type === "set") {
         const field = fields.find((f) => f.id === action.field);
-        if (field) patch[field.id] = actionValue(action, field, input.actor, row);
+        if (field) {
+          patch[field.id] = actionValue(action, field, input.actor, row);
+          if (field.id === statusField) setBy = a.createdBy || null;
+        }
       } else if (action.type === "notify") await notify(action, a, input, row, { ...cells, ...patch }, fields);
       else if (action.type === "template") templates.push({ rule: a, template: action.template, mode: action.mode });
     }
@@ -163,7 +170,7 @@ export async function runAutomations(input: { page: Page; rowId: string; actor: 
       JSON.stringify({ ...row.cells, ...patch }), nowText(),
       row.id,
     );
-    await recordStatusChange(input.page.id, row.id, fields, settings, row.cells, { ...row.cells, ...patch });
+    await recordStatusChange(input.page.id, row.id, fields, settings, row.cells, { ...row.cells, ...patch }, setBy);
   }
   // Templates last, so they see the values just set; each rule applies a
   // template to a record only once (automation_runs).
@@ -189,7 +196,7 @@ async function applyTemplateOnce(page: Page, rowId: string, rule: Automation, te
   if (Object.keys(applied.cells).length) {
     const next = { ...row.cells, ...applied.cells };
     await run("UPDATE rows SET cells=?,version=version+1,updated_at=? WHERE id=?", JSON.stringify(next), nowText(), row.id);
-    await recordStatusChange(page.id, row.id, fields, settings, row.cells, next);
+    await recordStatusChange(page.id, row.id, fields, settings, row.cells, next, rule.createdBy || null);
   }
   await auditApply(actor?.id || "system", row.id, template, `${rule.name || "Automation"} · ${applied.document}`);
 }
@@ -217,14 +224,19 @@ async function notify(action: Extract<AutomationAction, { type: "notify" }>, a: 
 
 /* ---------- Status history (burndown, velocity) ---------- */
 
-// When a record became done or open again, for sprint charts.
-export async function recordStatusChange(pageId: string, rowId: string, fields: Field[], settings: DatabaseSettings, before: Cells, after: Cells) {
+// When a record became done or open again, for sprint charts, and who did
+// it (schema 96, "Nur meine" below a journal day, lib/journal-completed.ts):
+// the acting person; for an automation the person who set the rule up;
+// null for share links, the Git connection and rules nobody set up. An
+// account that no longer exists counts as nobody.
+export async function recordStatusChange(pageId: string, rowId: string, fields: Field[], settings: DatabaseSettings, before: Cells, after: Cells, userId: string | null = null) {
   const rule = doneRule(fields, settings);
   if (!rule) return;
   const was = isDone(rule, before),
     now = isDone(rule, after);
-  if (was !== now)
-    await run("INSERT INTO row_status_log(id,page_id,row_id,done,at) VALUES(?,?,?,?,?)", id(), pageId, rowId, now ? 1 : 0, Date.now());
+  if (was === now) return;
+  const by = userId && (await one<{ id: string }>("SELECT id FROM users WHERE id=?", userId)) ? userId : null;
+  await run("INSERT INTO row_status_log(id,page_id,row_id,done,at,user_id) VALUES(?,?,?,?,?,?)", id(), pageId, rowId, now ? 1 : 0, Date.now(), by);
 }
 
 /* ---------- Hooks for every write path ---------- */
@@ -239,7 +251,7 @@ export async function rowChanged(user: Identity | null | "system", page: Page, r
   await checkParent(page, rowId, props, before, after);
   await checkWipLimits(page, props, before, after);
   await checkWorkflow(user, page, props, settings, before, after);
-  await recordStatusChange(page.id, rowId, props, settings, before, after);
+  await recordStatusChange(page.id, rowId, props, settings, before, after, user && user !== "system" ? user.id : null);
   // Webhooks: "record done" when it just became done.
   const rule = doneRule(props, settings);
   if (rule && isDone(rule, after) && !isDone(rule, before))

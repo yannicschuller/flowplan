@@ -96,6 +96,7 @@ export const USER_REFERENCES: Record<string, MergeStrategy> = {
   "row_snapshots.created_by": "move",
   "row_templates.created_by": "move",
   "row_trash.deleted_by": "move",
+  "row_status_log.user_id": "move",
   "row_favorites.user_id": "move",
   "favorites.user_id": "move",
   "collections.owner_id": "move",
