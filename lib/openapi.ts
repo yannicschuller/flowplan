@@ -10,6 +10,7 @@ import { MAX_TILES, tileSizes, tileTypes } from "./dashboard-schema";
 import { PAPER_COLORS, PAPER_ORIENTATIONS, PAPER_SIZES, PAPER_TEMPLATES } from "./notebook-paper";
 import { z } from "zod";
 import { field, view } from "./database-schema";
+import { optionRenamesSchema } from "./option-renames";
 import { coverSchema, iconSizeSchema, pageIconSchema } from "./page-appearance";
 import { buildInfo } from "./build-info";
 import { disclosedVersion } from "./instance-disclosure";
@@ -591,13 +592,14 @@ export const commandActions: ActionDoc[] = [
     action: "database.update",
     summary: "Change the properties and views of a database",
     description:
-      "`version` must be the database's current version (optimistic locking, 409 otherwise). A multiselect with `tagOptions: true` offers the workspace's tags as its options (its `options` are set by the server); cells keep the tag names, and a new name creates the tag (members with edit rights, not guests). Switching an existing multiselect to `tagOptions` maps its options to tags (missing ones are created) and keeps the values; switching back makes the tags in use its own options. Not in end-to-end encrypted spaces (409).",
+      "`version` must be the database's current version (optimistic locking, 409 otherwise). A multiselect with `tagOptions: true` offers the workspace's tags as its options (its `options` are set by the server); cells keep the tag names, and a new name creates the tag (members with edit rights, not guests). Switching an existing multiselect to `tagOptions` maps its options to tags (missing ones are created) and keeps the values; switching back makes the tags in use its own options. Not in end-to-end encrypted spaces (409). `optionRenames` renames options of select and multiselect properties (not tag-backed ones): `from` must be one of the property's current options and missing from the new `options`, `to` one of the new `options`. Records, record templates, records in the trash, the views' filters and groups, the done rule, workflow, automations, form conditions and the issue sync's status mapping follow; a `to` that already was an option merges the two. Without `optionRenames`, changed options leave the records' values as they are.",
     input: z.object({
       action: z.literal("database.update"),
       pageId: uuid,
       version: z.number().int(),
       fields: z.array(field).min(1).max(80),
       views: z.array(view).min(1).max(30).optional(),
+      optionRenames: optionRenamesSchema.optional(),
     }),
     result: okResult,
   },
