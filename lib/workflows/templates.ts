@@ -332,7 +332,8 @@ export function workflowTemplates(t: T): WorkflowTemplate[] {
             to: ["{{n_trigger.mail.from}}"],
             subject: t("Eingegangen: {{n_trigger.mail.subject}}", "Received: {{n_trigger.mail.subject}}"),
             message: t("Danke, wir haben deine Nachricht erhalten und kümmern uns darum.", "Thank you, we have received your message and will take care of it."),
-          }),
+          // The ticket stands even when the confirmation cannot go out.
+          }, { onError: { retry: 1, then: "continue" } }),
         ];
         return finish(nodes, [link("n_trigger", "n_extract"), link("n_extract", "n_create"), link("n_create", "n_confirm")], ctx.timeZone);
       },

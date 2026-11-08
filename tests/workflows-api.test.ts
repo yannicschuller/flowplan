@@ -86,6 +86,9 @@ test("each of the six templates fills its gaps, checks without errors and activa
     assert.deepEqual(saved.issues.filter((i: { level: string }) => i.level === "error"), [], `${tpl.id}: ${JSON.stringify(saved.issues)}`);
     const dry = await act({ action: "workflow.test", pageId, mode: "dry", data: { kind: "sample" } });
     assert.equal(dry.ok, true, tpl.id);
+    await drainWorkflows();
+    const dryRun = await one<{ status: string; error: string | null }>("SELECT status,error FROM workflow_runs WHERE id=?", dry.runId);
+    assert.equal(dryRun!.status, "succeeded", `${tpl.id}: ${dryRun!.error} ${JSON.stringify(await stepsOf(dry.runId))}`);
     const activated = await act({ action: "workflow.activate", pageId });
     assert.equal(activated.ok, true, `${tpl.id}: ${JSON.stringify(activated.issues)}`);
   }

@@ -576,7 +576,12 @@ export async function startTestRun(user: Identity, raw: unknown) {
   let triggerValue: unknown;
   const d = b.data;
   if (d.kind === "custom") triggerValue = d.output;
-  else if (d.kind === "sample") triggerValue = sampleOutput(spec.outputs as never);
+  else if (d.kind === "sample") {
+    triggerValue = sampleOutput(spec.outputs as never);
+    // The webhook's expected fields (for the picker) fill the sample body.
+    if (node.type === "trigger.webhook")
+      (triggerValue as { body: Record<string, unknown> }).body = Object.fromEntries(((node.config.fields as { name: string; type: string }[]) || []).map((f) => [f.name, f.type === "number" ? 1 : f.type === "boolean" ? true : "…"]));
+  }
   else if (d.kind === "record") {
     const row = await one<{ id: string; page_id: string }>("SELECT id,page_id FROM rows WHERE id=?", d.rowId);
     if (!row || !(await mayObserve(tester, row.page_id, row.id))) throw new HttpError(404, "Eintrag nicht gefunden.");

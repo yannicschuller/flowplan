@@ -56,7 +56,8 @@ export async function evaluateConditions(group: WorkflowConditionGroup, scope: R
     } as Filter & { kind: "condition" };
     const target = conditionField(c.left);
     const record = target ? (scope.values[target.node] as { record?: { fields?: Record<string, unknown>; database?: { id: string } } } | undefined)?.record : undefined;
-    if (target && record?.database) {
+    // Sample data of a dry run has no real database behind it: compared as a value.
+    if (target && typeof record?.database?.id === "string") {
       const dbFields = fieldCache.get(record.database.id) ?? (await databaseFields(record.database.id));
       fieldCache.set(record.database.id, dbFields);
       const field = dbFields.find((f) => f.id === target.field);
