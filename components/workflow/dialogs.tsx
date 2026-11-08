@@ -152,7 +152,7 @@ export function ActivateDialog({
                     {hosts.length > 0 && <li>{t(`HTTP-Anfragen an ${hosts.join(", ")}`, `HTTP requests to ${hosts.join(", ")}`)}</li>}
                     {mails && <li>{t("E-Mails (höchstens 100 je Tag)", "E-mails (at most 100 a day)")}</li>}
                     {chat && <li>{t("Nachrichten in Chat-Webhooks", "Messages to chat webhooks")}</li>}
-                    {ai && <li>{t("KI: Texte gehen an den KI-Anbieter der Instanz (kostet Tokens des Workflows)", "AI: texts go to the instance's AI provider (uses the workflow's tokens)")}</li>}
+                    {ai && <li>{t("KI: Texte gehen an den KI-Anbieter der Instanz (kostet Tokens des Workflows)", "AI: texts go to the instance’s AI provider (uses the workflow’s tokens)")}</li>}
                   </ul>
                 </>
               );

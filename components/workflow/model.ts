@@ -305,7 +305,7 @@ export function nodeSummary(node: WorkflowNode, ws: Workspace, ctx: DisplayConte
       const units: Record<string, [string, string]> = { minutes: ["Min.", "min"], hours: ["Std.", "h"], days: ["Tage", "days"] };
       const u = units[String(c.unit || "hours")] || units.hours;
       if (c.mode === "until") return t(`bis ${showText(String(c.until || ""), ctx) || "…"}`, `until ${showText(String(c.until || ""), ctx) || "…"}`) + (c.time ? ` ${c.time}` : "");
-      if (c.mode === "next") return t(`bis zum nächsten ${c.weekdays ? "Werktag" : "Tag"} ${c.time || "09:00"}`, `until the next ${c.weekdays ? "working day" : "day"} ${c.time || "09:00"}`);
+      if (c.mode === "next") return c.weekdays ? t(`bis zum nächsten Werktag ${c.time || "09:00"}`, `until the next working day ${c.time || "09:00"}`) : t(`bis zum nächsten Tag ${c.time || "09:00"}`, `until the next day ${c.time || "09:00"}`);
       return `${Number(c.amount || 1)} ${t(u[0], u[1])}`;
     }
     case "logic.approval": {
