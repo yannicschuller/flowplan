@@ -421,6 +421,7 @@ function applyFilter(value: unknown, f: FilterCall, scope: RenderScope, label: s
   return value;
 }
 
+const TEXT_FILTERS = new Set(["date", "truncate", "upper", "lower", "trim", "replace", "join", "number", "plain", "json"]);
 // The value of one placeholder, its filters applied.
 export function evaluatePlaceholder(p: Placeholder, scope: RenderScope): unknown {
   let value = resolvePath(p.path, scope);
@@ -437,7 +438,10 @@ export function renderTemplate(text: string, scope: RenderScope, options: { whol
   return segments
     .map((s) => {
       if (typeof s === "string") return s;
-      const v = valueText(evaluatePlaceholder(s, scope), scope.locale, scope.timeZone);
+      const value = evaluatePlaceholder(s, scope);
+      // A filter that makes text (date, truncate …) is final: not formatted again.
+      const last = s.filters.at(-1)?.name;
+      const v = last && TEXT_FILTERS.has(last) && typeof value === "string" ? value : valueText(value, scope.locale, scope.timeZone);
       return options.encode ? options.encode(v) : v;
     })
     .join("");
