@@ -26,22 +26,30 @@ export function csvImportText(value: string) {
 // longest match wins. Anything else is split at every comma, as typed in a
 // spreadsheet.
 export function csvListValues(text: string, options: string[] = []) {
+  return csvListSplitter(options)(text);
+}
+
+// csvListValues for many cells with the same options: the options are read
+// once (a relation column has the titles of every linked record).
+export function csvListSplitter(options: readonly string[] = []) {
   const known = new Map(options.map((o) => [foldName(o), o]));
-  const parts = text.split(",");
-  const values: string[] = [];
   // A run never spans more parts than the longest option has: linear in the
   // number of commas instead of cubic (a 1,000-value cell froze the tab).
-  const span = Math.max(1, ...options.map((o) => o.split(",").length));
-  for (let i = 0; i < parts.length; ) {
-    let end = i + 1;
-    for (let j = Math.min(parts.length, i + span); j > end; j--)
-      if (known.has(foldName(parts.slice(i, j).join(",")))) {
-        end = j;
-        break;
-      }
-    const value = parts.slice(i, end).join(",").trim();
-    if (value) values.push(known.get(foldName(value)) ?? value);
-    i = end;
-  }
-  return values;
+  const span = options.reduce((max, o) => Math.max(max, o.split(",").length), 1);
+  return (text: string) => {
+    const parts = text.split(",");
+    const values: string[] = [];
+    for (let i = 0; i < parts.length; ) {
+      let end = i + 1;
+      for (let j = Math.min(parts.length, i + span); j > end; j--)
+        if (known.has(foldName(parts.slice(i, j).join(",")))) {
+          end = j;
+          break;
+        }
+      const value = parts.slice(i, end).join(",").trim();
+      if (value) values.push(known.get(foldName(value)) ?? value);
+      i = end;
+    }
+    return values;
+  };
 }
