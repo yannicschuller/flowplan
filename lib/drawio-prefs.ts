@@ -60,3 +60,22 @@ function subscribe(listener: () => void) {
 export function useDrawioPrefs(): Prefs {
   return useSyncExternalStore(subscribe, drawioPrefs, () => DEFAULTS);
 }
+
+// The editor's dialog maximized to the whole window (#110), remembered on
+// this device: the next diagram opens the way the last one was left.
+const MAXIMIZED = "flowplan.drawio-maximized";
+export const drawioMaximized = () => read(MAXIMIZED) === "1";
+export function setDrawioMaximized(value: boolean) {
+  try {
+    if (value) localStorage.setItem(MAXIMIZED, "1");
+    else localStorage.removeItem(MAXIMIZED);
+  } catch {}
+}
+
+// A page just created from a template that opens its diagram right away
+// (lib/template-catalog.ts, openDiagram): the editor opens draw.io for the
+// page's empty diagram once the page shows (components/editor.tsx).
+const openOnCreate = new Set<string>();
+export const queueDrawioOpen = (pageId: string) => void openOnCreate.add(pageId);
+export const drawioOpenQueued = (pageId: string) => openOnCreate.has(pageId);
+export const takeDrawioOpen = (pageId: string) => openOnCreate.delete(pageId);

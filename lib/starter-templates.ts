@@ -15,6 +15,7 @@ export type StarterTemplateKey = TemplateKey;
 export async function applyStarterTemplate(pageId: string, userId: string, key: StarterTemplateKey) {
   const template = catalogFor(contentLocale())[key];
   await run("UPDATE pages SET icon=? WHERE id=?", template.icon, pageId);
+  if (template.fullWidth) await run("UPDATE pages SET full_width=1 WHERE id=?", pageId);
   if (template.kind === "document") {
     const html = template.html || "";
     await run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), pageId);

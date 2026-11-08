@@ -9242,14 +9242,42 @@ tr.order-drop-after > td {
   height: 100%;
   border: 0;
 }
+/* Maximized (components/drawio-editor.tsx): the whole window, with the
+   heading and draw.io's own bars kept out of notch and home indicator.
+   Phones always show it like that, so they have no toggle. */
+.drawio-dialog.modal.drawio-maximized {
+  --modal-pad-top: calc(8px + var(--safe-top));
+  inset: 0;
+  width: 100%;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+  padding: var(--modal-pad-top) calc(8px + var(--safe-right)) calc(8px + var(--safe-bottom)) calc(8px + var(--safe-left));
+}
 @media (max-width: 600px) {
-  .drawio-dialog.modal {
-    --modal-pad-top: 8px;
+  .drawio-dialog.modal,
+  .drawio-dialog.modal.drawio-maximized {
+    --modal-pad-top: calc(8px + var(--safe-top));
+    inset: 0;
     width: 100%;
     height: 100dvh;
+    max-width: none;
+    border: 0;
     border-radius: 0;
-    padding: 8px;
+    padding: var(--modal-pad-top) calc(8px + var(--safe-right)) calc(8px + var(--safe-bottom)) calc(8px + var(--safe-left));
   }
+  .drawio-dialog .modal-heading-actions {
+    display: none;
+  }
+}
+/* A diagram page (template "Diagramm-Seite", full width): the empty
+   diagram is a large area to start in, not a thin strip. */
+.page-content.full-width .drawio-block[data-drawio-state="empty"] {
+  display: grid;
+  place-items: center;
+  min-height: min(60vh, 520px);
 }
 .mermaid-measure {
   position: fixed;

@@ -270,7 +270,7 @@ import { E2eeSetupDialog, E2eeUnlockDialog, EncryptedPage, EncryptedSpaceMembers
 import { createEncryptedSpace, encryptTitle, loadIdentity, openSpace, useE2ee } from "./e2ee-store";
 import { ENCRYPTED_TITLE } from "@/lib/e2ee";
 import { CalendarX, Compass, LockKey } from "@phosphor-icons/react";
-import { setDrawioEditor } from "@/lib/drawio-prefs";
+import { queueDrawioOpen, setDrawioEditor } from "@/lib/drawio-prefs";
 // Shown while the parts load (they use the reader's language).
 function Loading({ what }: { what: "emoji" | "document" | "whiteboard" }) {
   const t = useT();
@@ -1549,6 +1549,7 @@ export default function WorkspaceApp({
             kind: builtIn.kind,
             starterTemplate: key,
           });
+          if (created?.id && builtIn.openDiagram) queueDrawioOpen(String(created.id));
           if (created?.id) void openPage(String(created.id));
           return;
         }
@@ -5123,6 +5124,9 @@ export default function WorkspaceApp({
               }
             if (result?.id) {
               if (newKind === "notebook" && notebookPdf) queueNotebookImport(String(result.id), notebookPdf);
+              // "Diagramm-Seite": draw.io opens for the new page's diagram.
+              if (starterTemplate && catalogFor(LOCALE_TAG === "de-DE" ? "de" : "en")[starterTemplate]?.openDiagram)
+                queueDrawioOpen(String(result.id));
               setNotebookPdf(null);
               if (newKind === "database" && !starterTemplate && !aiCreate) rememberDatabaseKind(databaseChoice);
               setCreate(false);
