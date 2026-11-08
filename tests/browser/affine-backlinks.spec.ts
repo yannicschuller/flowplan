@@ -42,7 +42,9 @@ test("the AFFiNE preview counts documents with one link to them; switched off th
   await expect(preview).toContainText("bleiben auf der obersten Ebene");
   if (shots) await preview.screenshot({ path: `${shots}/affine-preview-off.png` });
   await preview.getByRole("button", { name: "Importieren", exact: true }).click();
-  await expect(page.getByRole("status").filter({ hasText: "importiert" })).toBeVisible({ timeout: 30000 });
+  // Once imported, the first imported page opens (its "… importiert" line
+  // in the settings shows only until then).
+  await expect(page).toHaveURL(/#page=/, { timeout: 30000 });
   const boot = await (await page.request.get("/api/bootstrap")).json();
   const byTitle = (title: string) => boot.pages.find((p: { title: string }) => p.title === title) as { id: string; parent_id: string | null };
   // Off: all four next to each other (four documents at the top, no wrapper).
