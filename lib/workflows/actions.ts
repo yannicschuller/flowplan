@@ -17,6 +17,7 @@ import { requireWorkflow, draftOf } from "./store";
 import { workflowLimits } from "./limits";
 import { wakeAfterCommit } from "./queue";
 import { ensureHook, hookCommandSchema, hookViews } from "./inbound";
+import { RESERVED_HEADERS } from "./nodes/http";
 
 const uuid = z.string().uuid();
 
@@ -163,7 +164,7 @@ const credentialInput = z.object({
 function secretFor(kind: string, s: NonNullable<z.infer<typeof credentialInput>["secret"]>): Record<string, string> {
   if (kind === "bearer" && s.token) return { token: s.token };
   if (kind === "basic" && (s.username || s.password)) return { username: s.username || "", password: s.password || "" };
-  if ((kind === "header" || kind === "query") && s.name && s.value && /^[A-Za-z0-9!#$%&'*+.^_`|~-]{1,100}$/.test(s.name)) return { name: s.name, value: s.value };
+  if ((kind === "header" || kind === "query") && s.name && s.value && /^[A-Za-z0-9!#$%&'*+.^_`|~-]{1,100}$/.test(s.name) && !(kind === "header" && RESERVED_HEADERS.has(s.name.toLowerCase()))) return { name: s.name, value: s.value };
   throw new HttpError(400, "Die Zugangsdaten sind unvollständig.");
 }
 export async function setCredential(user: Identity, raw: unknown) {

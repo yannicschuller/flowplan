@@ -57,7 +57,7 @@ function server(handler: (req: IncomingMessage, body: string, seen: Seen[]) => {
 }
 const other = await server(() => ({}));
 let flaky = 0;
-const api = await server((req) => {
+const api = await server((req): { status?: number; headers?: Record<string, string>; body?: string } => {
   if (req.url?.startsWith("/redirect")) return { status: 302, headers: { location: `http://localhost:${other.port}/landed` }, body: "" };
   if (req.url?.startsWith("/flaky")) return flaky++ === 0 ? { status: 503, headers: { "retry-after": "1" }, body: "busy" } : {};
   if (req.url?.startsWith("/missing")) return { status: 404, body: "nope" };
@@ -103,6 +103,16 @@ test("http: a credential goes to its host only, never into run data; redirects e
   const stored = JSON.stringify(await all("SELECT input,output,error FROM workflow_steps WHERE run_id=?", r.id));
   assert.ok(!stored.includes(TOKEN), "no secret in the run");
   assert.equal((await outputOf(r.id, h.id)).status, 200);
+  // Basic credentials: the base64 form an echo shows is redacted too.
+  const basic = (await act({ action: "workflow.credential.set", pageId, name: "Basic", kind: "basic", host, secret: { username: "ada", password: "pa55-w0rd-xyz" } })).id;
+  await act({ action: "workflow.draft", pageId, graph: chain(t, { ...h, config: { method: "GET", url: `${api.base}/basic`, credential: basic } }) });
+  await activate(pageId);
+  await manual(pageId);
+  await drainWorkflows();
+  const b64 = Buffer.from("ada:pa55-w0rd-xyz").toString("base64");
+  assert.equal(api.seen.at(-1)!.headers.authorization, `Basic ${b64}`);
+  const echoed = JSON.stringify(await all("SELECT output,error FROM workflow_steps WHERE run_id=?", (await lastRun(pageId)).id));
+  assert.ok(!echoed.includes(b64) && !echoed.includes("pa55-w0rd-xyz"), "no Basic secret in the run");
   // A redirect to another host: followed, without the credential.
   await act({ action: "workflow.draft", pageId, graph: chain(t, { ...h, config: { method: "GET", url: `${api.base}/redirect`, credential: cred } }) });
   await activate(pageId);
@@ -179,6 +189,30 @@ test("http: JSON bodies typed, headers without CR/LF, retries keep the Idempoten
   await drainWorkflows();
   assert.equal(api.seen.length, calls);
   assert.equal((await outputOf(dry.runId, h.id)).wouldRequest.method, "POST");
+});
+
+test("http: a server trickling an endless answer cannot hold the step past its time limit", async () => {
+  const trickle = createServer((_req, res) => {
+    res.writeHead(200, { "content-type": "text/plain" });
+    const timer = setInterval(() => res.write("."), 100);
+    res.on("close", () => clearInterval(timer));
+  });
+  await new Promise<void>((resolve) => trickle.listen(0, "127.0.0.1", () => resolve()));
+  try {
+    const port = (trickle.address() as AddressInfo).port;
+    const { pageId } = await httpWorkflow("Trickle", { url: `http://127.0.0.1:${port}/`, timeoutSeconds: 1 }, { retry: 0, then: "fail" });
+    await activate(pageId);
+    const started = Date.now();
+    await manual(pageId);
+    await drainWorkflows();
+    assert.ok(Date.now() - started < 5000);
+    const r = await lastRun(pageId);
+    assert.equal(r.status, "failed");
+    assert.match(r.error || "", /Zeitüberschreitung/);
+  } finally {
+    trickle.closeAllConnections();
+    trickle.close();
+  }
 });
 
 test("http: the host is fixed text; the switches FLOWPLAN_WORKFLOW_HTTP and the host list", async () => {
@@ -313,6 +347,10 @@ test("webhook, signed: valid → 202 with the run; wrong, old, missing → 401 a
   const fresh = await post(rotated.url.split("/").pop(), body, signed(rotated.secret, body));
   assert.equal(fresh.status, 202);
   assert.ok(await one("SELECT 1 FROM audit WHERE action='workflow.hook.rotated' AND resource_id=?", pageId));
+  // A call from a workflow of this instance carries its depth: beyond the limit no run.
+  const deep = await post(rotated.url.split("/").pop(), body, { ...signed(rotated.secret, body, Math.floor(Date.now() / 1000) + 3), "x-flowplan-depth": "6" });
+  assert.equal(deep.status, 429);
+  assert.equal(deep.runId, null);
   // Editors see the address, readers not.
   await assert.rejects(get(`workflows/${pageId}/hooks`, viewer), /Keine Berechtigung/);
 });

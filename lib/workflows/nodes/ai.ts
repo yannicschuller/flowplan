@@ -24,6 +24,7 @@ import { workflowLimits } from "../limits";
 import { noteAiBudget } from "../notices";
 import { formatTemplate, parseTemplate, renderText, resolvePath, type Placeholder, type RenderScope } from "../placeholders";
 import { toNumber } from "../values";
+import { configTexts, innermostLoops } from "../graph";
 import { databaseFields } from "./data";
 import { StepError, type NodeImpl, type NodeRun } from "./types";
 
@@ -75,8 +76,54 @@ function collectOne(v: unknown, out: Source[]) {
   if (isRecord(v)) out.push({ pageId: v.database.id, rowId: v.id });
   else if (isPage(v)) out.push({ pageId: v.id });
 }
+// Values pass through other nodes (a "Set values", a loop's $item, an
+// HTTP request built from a record): their sources go along. Every node a
+// placeholder of the prompt depends on – directly or through the
+// placeholders of that node's own settings – adds the pages and records of
+// its whole output (conservative: more sources, never fewer).
+export function tracedSources(texts: string[], scope: RenderScope, graph: NodeRun["graph"], nodeId: string): Source[] {
+  const out = sourcesOf(texts, scope);
+  const byId = new Map(graph.nodes.map((n) => [n.id, n]));
+  const loops = innermostLoops(graph);
+  const seen = new Set<string>();
+  const stack: string[] = [];
+  const rootsOf = (list: string[]) => {
+    for (const text of list)
+      try {
+        for (const segment of parseTemplate(text))
+          if (typeof segment !== "string") {
+            const roots = [segment.path.root, ...segment.filters.flatMap((f) => f.args.filter((a) => a.kind === "path").map((a) => (a as { value: { root: string } }).value.root))];
+            for (const r of roots) {
+              if (r === "$item" || r === "$index") {
+                // Every loop around the node (an outer $item reaches in too).
+                for (let l = loops.get(nodeId); l && !seen.has(`loop:${l}`); l = loops.get(l)) {
+                  seen.add(`loop:${l}`);
+                  stack.push(l);
+                }
+              } else if (r === "$trigger") stack.push(Object.keys(scope.values).find((k) => byId.get(k)?.type.startsWith("trigger.")) || "");
+              else stack.push(r);
+            }
+          }
+      } catch {}
+  };
+  rootsOf(texts);
+  while (stack.length) {
+    const id = stack.pop()!;
+    if (!id || seen.has(id) || !byId.has(id)) continue;
+    seen.add(id);
+    collect(scope.values[id], out);
+    if (id !== nodeId) rootsOf(configTexts(byId.get(id)!.config));
+  }
+  const unique = new Set<string>();
+  return out.filter((s) => {
+    const key = `${s.pageId}:${s.rowId || ""}`;
+    if (unique.has(key)) return false;
+    unique.add(key);
+    return true;
+  });
+}
 async function checkSources(ctx: NodeRun, texts: string[]) {
-  for (const s of sourcesOf(texts, ctx.scope)) if (!(await aiMayRead(ctx.runner!, s.pageId, s.rowId))) throw new StepError(AI_BLOCKED_MESSAGE, "permission");
+  for (const s of tracedSources(texts, ctx.scope, ctx.graph, ctx.node.id)) if (!(await aiMayRead(ctx.runner!, s.pageId, s.rowId))) throw new StepError(AI_BLOCKED_MESSAGE, "permission");
 }
 
 /* ---------- The call ---------- */
@@ -286,13 +333,14 @@ export const aiPrompt: NodeImpl = async (ctx) => {
   // marked block of its own, the builder's words stay outside.
   await checkSources(ctx, [c.prompt, c.system]);
   const mark = boundary();
-  const segments = parseTemplate(c.prompt || "");
-  const prompt = segments
-    .map((s) => (typeof s === "string" ? s : frame(renderText(`{{${placeholderText(s)}}}`, ctx.scope), mark).block))
-    .join("")
-    .slice(0, MAX_INPUT);
+  const framed = (template: string) =>
+    parseTemplate(template || "")
+      .map((s) => (typeof s === "string" ? s : frame(renderText(`{{${placeholderText(s)}}}`, ctx.scope), mark).block))
+      .join("");
+  const prompt = framed(c.prompt).slice(0, MAX_INPUT);
   if (!prompt.trim()) throw new StepError("Keine Anweisung für die KI.", "validation");
-  const system = [SYSTEM(mark), renderText(c.system || "", ctx.scope).slice(0, 10_000)].filter(Boolean).join("\n\n");
+  // Values in the system hint are foreign text as well: framed the same way.
+  const system = [SYSTEM(mark), framed(c.system).slice(0, 10_000)].filter(Boolean).join("\n\n");
   if (c.format === "json") {
     const fields = c.fields || [];
     const raw = await completeJson(ctx, {

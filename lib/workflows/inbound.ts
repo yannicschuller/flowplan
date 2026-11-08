@@ -147,6 +147,9 @@ export async function receiveWorkflowHook(req: HookRequest): Promise<{ status: n
   for (const [k, v] of req.query) if (Object.keys(query).length < 50) query[k.slice(0, 100)] = v.slice(0, 2000);
   const body = parseHookBody(req.headers.get("content-type") || "", req.body);
   const payload = { workflow: page.id, node: hook.node_id, body, query, headers, receivedAt: new Date(now).toISOString() };
+  // A workflow of this instance calling the hook (nodes/http.ts) says how deep its cascade is.
+  const depthHeader = Number(req.headers.get("x-flowplan-depth") || 0);
+  const depth = Number.isInteger(depthHeader) && depthHeader > 0 ? Math.min(depthHeader, 100) : 0;
   return await transaction(async () => {
     if (dedupe) {
       const earlier = await one<{ id: string }>("SELECT id FROM workflow_events WHERE dedupe_key=?", dedupe);
@@ -158,11 +161,12 @@ export async function receiveWorkflowHook(req: HookRequest): Promise<{ status: n
     // The event, dispatched at once (the run is answered with its id).
     const eventId = id();
     await run(
-      "INSERT INTO workflow_events(id,workspace_id,kind,scope_id,page_id,row_id,payload,actor_id,origin_run_id,depth,dedupe_key,due_at,dispatched_at,created_at) VALUES(?,?,'webhook',?,NULL,NULL,?,NULL,NULL,0,?,?,?,?)",
+      "INSERT INTO workflow_events(id,workspace_id,kind,scope_id,page_id,row_id,payload,actor_id,origin_run_id,depth,dedupe_key,due_at,dispatched_at,created_at) VALUES(?,?,'webhook',?,NULL,NULL,?,NULL,NULL,?,?,?,?,?)",
       eventId,
       page.workspace_id,
       page.id,
       JSON.stringify(payload).slice(0, 500_000),
+      depth,
       dedupe,
       now,
       now,
@@ -171,7 +175,7 @@ export async function receiveWorkflowHook(req: HookRequest): Promise<{ status: n
     const graph = await graphOf({ id: "", version_id: trigger.version_id });
     const node = graph?.nodes.find((n) => n.id === hook.node_id);
     if (!graph || !node) throw new HttpError(409, "Dieser Auslöser ist in der aktiven Version nicht (mehr) da.");
-    const event: Pick<WorkflowEvent, "id" | "workspace_id" | "page_id" | "row_id" | "actor_id" | "depth" | "origin_run_id"> = { id: eventId, workspace_id: page.workspace_id, page_id: null, row_id: null, actor_id: null, depth: 0, origin_run_id: null };
+    const event: Pick<WorkflowEvent, "id" | "workspace_id" | "page_id" | "row_id" | "actor_id" | "depth" | "origin_run_id"> = { id: eventId, workspace_id: page.workspace_id, page_id: null, row_id: null, actor_id: null, depth, origin_run_id: null };
     const runId = await startLiveRun({ workflow, page, graph, node, event, payload, skipObserve: true });
     await run("UPDATE workflow_hooks SET last_used_at=?,last_error=NULL WHERE id=?", now, hook.id);
     if (!runId) {

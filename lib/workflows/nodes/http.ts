@@ -8,6 +8,7 @@
 // never in the run's data (answers that echo it are redacted). The
 // Idempotency-Key is the same on every retry (§8.5).
 import { one } from "../../db";
+import { appUrl } from "../../auth";
 import { allow } from "../../action-limits";
 import { safeSend } from "../../safe-fetch";
 import { redactSecrets } from "../../ai/redact";
@@ -22,7 +23,7 @@ const MAX_REDIRECTS = 3;
 // Kept from an answer's headers (no cookies, no auth).
 const ANSWER_HEADERS = new Set(["content-type", "content-length", "date", "etag", "last-modified", "location", "retry-after", "x-request-id", "x-ratelimit-limit", "x-ratelimit-remaining", "x-ratelimit-reset"]);
 // Headers a node may not set itself.
-const RESERVED = new Set(["host", "content-length", "connection", "transfer-encoding", "cookie", "user-agent", "idempotency-key", "expect", "upgrade", "te", "trailer", "proxy-authorization", "keep-alive"]);
+export const RESERVED_HEADERS = new Set(["host", "content-length", "connection", "transfer-encoding", "cookie", "user-agent", "idempotency-key", "expect", "upgrade", "te", "trailer", "proxy-authorization", "keep-alive", "x-flowplan-depth"]);
 const HEADER_NAME = /^[A-Za-z0-9!#$%&'*+.^_`|~-]{1,100}$/;
 
 type Credential = { kind: string; host: string; secret: Record<string, string> };
@@ -34,13 +35,24 @@ async function credentialOf(ctx: NodeRun, credentialId: string): Promise<Credent
   if (!secret) throw new StepError("Die Zugangsdaten lassen sich auf dieser Instanz nicht öffnen.", "permission");
   return { kind: row.kind, host: row.host.toLowerCase(), secret };
 }
-const secretValues = (c: Credential | null) => (c ? Object.values(c.secret).filter((v) => v && v.length >= 4) : []);
+// What an answer that echoes the request must not show (§9.5): the
+// secret parts, and the forms they are sent in (a Basic header is base64,
+// a query value URL-encoded).
+function secretValues(c: Credential | null): string[] {
+  if (!c) return [];
+  const values = Object.entries(c.secret)
+    .filter(([k]) => k !== "name" && k !== "username")
+    .map(([, v]) => v)
+    .filter((v) => v && v.length >= 4);
+  if (c.kind === "basic") values.push(Buffer.from(`${c.secret.username ?? ""}:${c.secret.password ?? ""}`).toString("base64"));
+  return [...new Set([...values, ...values.map((v) => encodeURIComponent(v))])];
+}
 // Adds the credential to a request to its host.
 function withCredential(url: URL, headers: Record<string, string>, c: Credential | null) {
   if (!c || url.host.toLowerCase() !== c.host) return;
   if (c.kind === "bearer") headers.authorization = `Bearer ${c.secret.token}`;
   else if (c.kind === "basic") headers.authorization = `Basic ${Buffer.from(`${c.secret.username ?? ""}:${c.secret.password ?? ""}`).toString("base64")}`;
-  else if (c.kind === "header" && c.secret.name && HEADER_NAME.test(c.secret.name)) headers[c.secret.name.toLowerCase()] = headerSafe(c.secret.value ?? "");
+  else if (c.kind === "header" && c.secret.name && HEADER_NAME.test(c.secret.name) && !RESERVED_HEADERS.has(c.secret.name.toLowerCase())) headers[c.secret.name.toLowerCase()] = headerSafe(c.secret.value ?? "");
   else if (c.kind === "query" && c.secret.name) url.searchParams.set(c.secret.name, c.secret.value ?? "");
 }
 const retryAfter = (value: string | undefined) => {
@@ -111,7 +123,7 @@ export const httpRequest: NodeImpl = async (ctx) => {
   const headers: Record<string, string> = {};
   for (const h of c.headers || []) {
     const name = h.name.trim().toLowerCase();
-    if (!name || !HEADER_NAME.test(name) || RESERVED.has(name)) continue;
+    if (!name || !HEADER_NAME.test(name) || RESERVED_HEADERS.has(name)) continue;
     headers[name] = headerSafe(renderText(h.value || "", ctx.scope));
   }
   let body = "";
@@ -134,7 +146,12 @@ export const httpRequest: NodeImpl = async (ctx) => {
   if (credential && credential.host !== host) throw new StepError(`Diese Zugangsdaten gelten nur für ${credential.host}.`, "permission");
   // Load on others (§9.10): 60 a minute per workflow, 120 per host on the instance.
   if (!allow(`wf-http:${ctx.run.pageId}`, 60, 60_000) || !allow(`wf-http-host:${host}`, 120, 60_000)) throw new StepError("Zu viele HTTP-Anfragen in der letzten Minute.", "transient", 30_000);
-  const base = { "user-agent": "Flowplan-Workflow/1.0", "idempotency-key": `${ctx.run.id}:${ctx.node.id}:${ctx.iteration}`, accept: "application/json, text/*;q=0.9, */*;q=0.5" };
+  const base: Record<string, string> = { "user-agent": "Flowplan-Workflow/1.0", "idempotency-key": `${ctx.run.id}:${ctx.node.id}:${ctx.iteration}`, accept: "application/json, text/*;q=0.9, */*;q=0.5" };
+  // A call to this instance's own webhooks carries the cascade depth, so a
+  // workflow calling itself stops at the depth limit (§8.8).
+  try {
+    if (url.origin === new URL(appUrl()).origin) base["x-flowplan-depth"] = String(ctx.run.depth + 1);
+  } catch {}
   const secrets = secretValues(credential);
   let current = url;
   let method = c.method;
@@ -147,7 +164,7 @@ export const httpRequest: NodeImpl = async (ctx) => {
     // The credential only to its own host (a redirect elsewhere goes without it).
     withCredential(target, sent, credential);
     try {
-      answer = await safeSend(target.href, method === "GET" ? "" : payload, sent, { method, allowPrivate: limits.httpAllowPrivate, timeout: c.timeoutSeconds * 1000, maxBytes: MAX_BYTES + 1 });
+      answer = await safeSend(target.href, method === "GET" ? "" : payload, sent, { method, allowPrivate: limits.httpAllowPrivate, timeout: c.timeoutSeconds * 1000, totalTimeout: c.timeoutSeconds * 1000, maxBytes: MAX_BYTES + 1 });
     } catch (error) {
       const message = redactSecrets(String((error as Error)?.message || error), secrets);
       if (/Interne Adressen|Nur https/.test(message)) throw new StepError(message, "permission");

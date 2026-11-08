@@ -142,6 +142,14 @@ test("aiMayRead: a source closed to the AI fails the step (permission), no reque
   assert.equal(run_.error_kind, "permission");
   assert.match(run_.error, /für die KI gesperrt/);
   assert.equal(mock.chats.length, before);
+  // Laundered through "Set values": the source travels along.
+  const set = node("logic.set", { values: [{ name: "copy", value: `{{${t.id}.page.text}}`, type: "text" }] }, "Kopie");
+  const ai2 = node("ai.summarize", { text: `Zusammenfassung: {{${set.id}.copy}}`, length: "short", language: "auto" }, "Zusammenfassen 2");
+  await act({ action: "workflow.draft", pageId, graph: chain(t, set, ai2) });
+  const r2 = await act({ action: "workflow.test", pageId, mode: "dry", data: { kind: "page", pageId: secret } });
+  await drainWorkflows();
+  assert.equal((await one<{ error_kind: string }>("SELECT error_kind FROM workflow_runs WHERE id=?", r2.runId))!.error_kind, "permission");
+  assert.equal(mock.chats.length, before);
   // The sources of a placeholder: the page on the way to the value.
   const sources = sourcesOf([`{{${t.id}.page.text}}`], { values: { [t.id]: { page: { id: secret, url: "/#page=x", kind: "document", text: "…" } } }, timeZone: "UTC", locale: "de" });
   assert.deepEqual(sources, [{ pageId: secret }]);
