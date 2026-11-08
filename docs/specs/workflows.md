@@ -1,8 +1,8 @@
 # Workflows – visueller Workflow-Builder (Spezifikation)
 
-Status: **freigegeben**; Welle 1 und Welle 2 gebaut auf dem Branch
+Status: **freigegeben**; Wellen 1–3 gebaut auf dem Branch
 `workflows` (Vertrag für die Oberfläche: Abschnitt 11.5, Ergänzungen der
-Welle 2: Abschnitt 11.6). Die offenen Fragen (Abschnitt 18) sind entschieden.
+Welle 2: Abschnitt 11.6, Welle 3: Abschnitt 11.7). Die offenen Fragen (Abschnitt 18) sind entschieden.
 Issue: [#168](https://github.com/yannicschuller/flowplan/issues/168) („Visual
 Workflow Builder / Native Automation Engine“). Stand des Codes: `main` bei
 Schema 95 (`lib/db.ts`, `SCHEMA_VERSION = 95`), Next.js 16.
@@ -1698,6 +1698,69 @@ Abweichungen und Präzisierungen der Welle 2 (bewusst):
   oder Enter wechselt zum Text), nicht als Inline-Knoten im Eingabefeld.
 - Die Benachrichtigung einer Freigabe öffnet die Workflow-Seite; hat die
   Person dort eine offene Freigabe, ist der Reiter „Freigaben“ gewählt.
+
+### 11.7 Welle 3 (Stand des Branches)
+
+- **Vorlagen** (`lib/workflows/templates.ts`, client-safe): die sechs aus
+  10.6 als Funktionen `build(answers, ctx)` mit Lücken (`page`, `database`,
+  `field` mit Typen, `option`, `routing` = Person je Option eines
+  Auswahlfelds, `person`, `chatHook`, `address`, `toggle`). Die Oberfläche
+  (`components/workflow/start.tsx`) zeigt auf leerem Entwurf „Leer
+  beginnen“, die Galerie, „Mit KI entwerfen“ und „Aus Datei importieren“;
+  das Ergebnis geht als **eine** Yjs-Änderung in den Entwurf (rückgängig
+  machbar). Eigentümer legen die E-Mail-Adresse der Mail-Vorlage direkt im
+  Assistenten an (`inbound.save`).
+- **KI-Builder**: `POST /api/ai/workflow/draft {pageId, prompt, locale}` →
+  `{graph, title, explanation, dropped, gaps, issues}` (`lib/workflows/
+  ai-builder.ts`); nur angemeldet (KI-Routen lehnen Tokens ab), KI-Funktion
+  `workflows`, persönliches Kontingent; schreibt nichts.
+- **REST** (`lib/workflows/rest.ts`): `POST /api/workflows/{id}/draft|
+  validate|activate|pause|run|test|restore`, `POST /api/workflow-runs/{id}/
+  retry|cancel`, `POST /api/workflow-approvals/{id}` (nie mit Token),
+  `GET /api/workflows/{id}/export`, `GET …/start?host=`, `POST /api/workflows/
+  import`; alle über `command()`. Neue Aktion `workflow.import {pageId, data,
+  mapping, preview, replace}` → `{unresolved, mapped?, issues}`.
+- **MCP** (`lib/workflows/mcp-tools.ts`): die acht Werkzeuge aus 11.2;
+  `save_workflow_draft` legt mit `workspaceId/spaceId/title` auch eine neue
+  Seite an; `get_workflow_catalog` liefert Ausgaben als Pfade.
+- **Export/Import** (`lib/workflows/portable.ts`): Referenzen nur mit Titel,
+  wenn die exportierende Person sie lesen darf; Eigenschaften werden nur
+  zugeordnet, wo der Graph sie nennt; Ungelöstes wird geleert (nie eine
+  fremde ID behalten).
+- **Workflow-Knopf**: Knoten `workflowButton` (`lib/workflow-button-node.ts`,
+  gespeichert als leeres `<div data-workflow-button data-label>`),
+  Darstellung `components/workflow-button.ts`; Start mit `workflow.run
+  {source:"block", host}`.
+- **Instanzumzug**: `pauseMovedWorkflows()` in `stageMove`
+  (`lib/instance-move-pull.ts`).
+
+Abweichungen der Welle 3 (bewusst):
+
+- `PUT …/draft` ist `POST …/draft` – das OpenAPI-Dokument kennt nur GET/POST
+  (`tests/openapi.test.ts`).
+- Die Vorlagengalerie steht auf der leeren Workflow-Seite statt als
+  Kategorie im allgemeinen Vorlagendialog; Workflow-Seiten lassen sich
+  weiterhin nicht als eigene Seitenvorlage speichern.
+- Vorlage 3 entscheidet „unklar“ und Kategorien ohne Zuständige per
+  Benachrichtigung an die Teamleitung (Bearbeitung), nicht per Freigabe.
+- „Mitglieder, die die Seite mit dem Knopf sehen“ heißt: die Seite ist
+  lesbar, im selben Arbeitsbereich, und ihr gespeichertes HTML enthält einen
+  Knopf für genau diesen Workflow. Knöpfe in Eintragsdokumenten zählen dafür
+  nicht (dort nur Bearbeitende des Workflows).
+- Gäste bekommen für Workflow-Seiten immer 404, bevor ein Recht geprüft
+  wird (vorher 403 bei Schreibbefehlen).
+- Instanzumzug: aktive Workflows kommen pausiert an (Grund
+  „Instanzumzug …“), offene Läufe `held`.
+- Der Docs-Anker `projects-and-tickets#workflows` heißt jetzt `#statusregeln`
+  (keine Weiterleitung möglich; nichts verlinkte ihn).
+- **Push-Knöpfe** „Genehmigen/Ablehnen“ sind nicht gebaut (App-Release);
+  die Benachrichtigung öffnet die Freigabeansicht. Für die App nötig: eine
+  Kategorie `workflow-approval` in `lib/notification-actions.ts` und den
+  Push-Daten (`approvalId`), Aktionen in `flowplan-app` (iOS
+  `UNNotificationCategory` mit zwei Aktionen, Android Notification-Actions),
+  ein Endpunkt für die Entscheidung mit dem Geräte-Token (heute lehnt
+  `workflow.approve` jeden Token ab – bewusst nur mit frischer Sitzung bzw.
+  Bestätigung auf dem Gerät freigeben) und ein App-Release (`/app-release`).
 
 ---
 
