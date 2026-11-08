@@ -11,17 +11,25 @@ import { emptyGraph, GRAPH_FORMAT, GRAPH_VERSION, type WorkflowEdge, type Workfl
 export const TEXT_KEYS = new Set(["message", "text", "prompt"]);
 const NODE_KEYS = ["type", "typeVersion", "label", "note", "position", "disabled", "onError"] as const;
 
+// Only the changed middle of a text is replaced, so what someone else
+// typed meanwhile at another place of it stays.
+export function updateText(text: Y.Text, value: string) {
+  const old = text.toString();
+  if (old === value) return;
+  let start = 0;
+  while (start < old.length && start < value.length && old[start] === value[start]) start++;
+  let end = 0;
+  while (end < old.length - start && end < value.length - start && old[old.length - 1 - end] === value[value.length - 1 - end]) end++;
+  if (old.length - start - end) text.delete(start, old.length - start - end);
+  if (value.length - start - end) text.insert(start, value.slice(start, value.length - end));
+}
 function setConfig(map: Y.Map<unknown>, config: Record<string, unknown>) {
   for (const key of [...map.keys()]) if (!(key in config)) map.delete(key);
   for (const [key, value] of Object.entries(config)) {
     if (TEXT_KEYS.has(key) && typeof value === "string") {
       const current = map.get(key);
-      if (current instanceof Y.Text) {
-        if (current.toString() !== value) {
-          current.delete(0, current.length);
-          current.insert(0, value);
-        }
-      } else map.set(key, new Y.Text(value));
+      if (current instanceof Y.Text) updateText(current, value);
+      else map.set(key, new Y.Text(value));
     } else if (JSON.stringify(map.get(key)) !== JSON.stringify(value)) map.set(key, value);
   }
 }

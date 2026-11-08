@@ -37,7 +37,7 @@ export function newIdempotencyKey(): string {
 // Commands that are safe to repeat by nature (CRDT updates merge, the same
 // update twice changes nothing) and frequent – several a second while
 // someone types or draws. They go without a key, and the server ignores one.
-export const unkeyedActions: ReadonlySet<string> = new Set(["document.sync", "row.document.sync", "whiteboard.sync"]);
+export const unkeyedActions: ReadonlySet<string> = new Set(["document.sync", "row.document.sync", "whiteboard.sync", "workflow.sync", "workflow.validate"]);
 
 // The key of one logical action, bound to the request body it sends: the
 // same body object sent again (a retry, "Try again", a second submit of the

@@ -3495,6 +3495,7 @@ async function runCommand(
         "row.document.sync",
         "whiteboard.sync",
         "workflow.sync",
+        "workflow.validate",
         "notification.read",
         "favorite",
       ].includes(action)

@@ -146,6 +146,7 @@ import {
   Tray,
   PresentationChart,
   Gauge,
+  FlowArrow,
   NotePencil,
   Notebook,
   Lock,
@@ -295,12 +296,15 @@ const CollectionEditor = dynamic(() => loadView(() => import("./collection-edito
 const DashboardView = dynamic(() => loadView(() => import("./dashboard-view")), { ssr: false });
 // Notebooks bring the ink engine: loaded with the first notebook.
 const NotebookView = dynamic(() => loadView(() => import("./notebook/notebook-view")), { ssr: false, loading: () => <PageSkeleton compact /> });
+// Workflows bring the canvas (xyflow): loaded with the first workflow page.
+const WorkflowView = dynamic(() => loadView(() => import("./workflow/workflow-view")), { ssr: false, loading: () => <PageSkeleton compact /> });
 const Whiteboard = dynamic(() => loadView(() => import("./whiteboard/whiteboard")), {
   ssr: false,
   loading: () => <Loading what="whiteboard" />,
 });
 type PageData = DatabaseData & {
   whiteboard?: { state: string; generation: string };
+  workflow?: import("./workflow/model").WorkflowState;
   dashboard?: import("./dashboard-view").DashboardPayload;
   notebook?: import("@/lib/notebook").NotebookPayload;
   journal?: { days: JournalDay[]; settings?: JournalSettings };
@@ -964,7 +968,16 @@ export default function WorkspaceApp({
       },
       // The code of the view loads ahead too (the chunks next/dynamic loads).
       preload: (kind) => {
-        const load = kind === "whiteboard" ? () => import("./whiteboard/whiteboard") : kind === "dashboard" ? () => import("./dashboard-view") : kind === "document" ? () => import("./editor") : null;
+        const load =
+          kind === "whiteboard"
+            ? () => import("./whiteboard/whiteboard")
+            : kind === "dashboard"
+              ? () => import("./dashboard-view")
+              : kind === "workflow"
+                ? () => import("./workflow/workflow-view")
+                : kind === "document"
+                  ? () => import("./editor")
+                  : null;
         void load?.().catch(() => {});
       },
     });
@@ -2744,6 +2757,7 @@ export default function WorkspaceApp({
       run: () => void openJournalToday(journal.id),
     })),
     { label: t("Neues Notizbuch", "New notebook"), keywords: t("handschrift stift zeichnen heft goodnotes pdf", "handschrift stift zeichnen heft goodnotes pdf handwriting pencil notebook sketch"), icon: NotePencil, run: () => addPage("notebook") },
+    ...(boot.workspace.guest ? [] : [{ label: t("Neuer Workflow", "New workflow"), keywords: t("automation ablauf regel auslöser", "automation ablauf regel auslöser automation flow rule trigger workflow"), icon: FlowArrow, run: () => addPage("workflow") }]),
     { label: t("Neues Dashboard", "New dashboard"), keywords: t("übersicht kennzahlen kacheln", "übersicht kennzahlen kacheln overview metrics tiles dashboard"), icon: Gauge, run: () => addPage("dashboard") },
     { label: t("Auf der Seite suchen", "Find on page"), keywords: t("finden text treffer strg f", "finden text treffer strg f find text match ctrl f"), icon: MagnifyingGlass, run: () => setFind((f) => ({ open: true, key: f.key + 1 })) },
     { label: t("Einführung ansehen", "Show introduction"), keywords: t("onboarding tour hilfe willkommen", "onboarding tour hilfe willkommen help welcome"), icon: Sparkle, run: () => setOnboarding(true) },
@@ -4053,7 +4067,7 @@ export default function WorkspaceApp({
               <div className={`page-layout ${comments ? "with-comments" : ""}`}>
                 <article
                   data-revalidating={revalidating ? "true" : undefined}
-                  className={`page-content ${data.page.kind === "database" ? "database-page" : ""} ${data.page.kind === "whiteboard" ? "whiteboard-page" : ""} ${data.page.kind === "notebook" ? "notebook-page" : ""} ${data.page.full_width ? "full-width" : ""} font-${data.page.font}`}
+                  className={`page-content ${data.page.kind === "database" ? "database-page" : ""} ${data.page.kind === "whiteboard" ? "whiteboard-page" : ""} ${data.page.kind === "notebook" ? "notebook-page" : ""} ${data.page.kind === "workflow" ? "workflow-page-content" : ""} ${data.page.full_width ? "full-width" : ""} font-${data.page.font}`}
                 >
                   {data.page.cover && (
                     <CoverFrame
@@ -4225,6 +4239,19 @@ export default function WorkspaceApp({
                     <NotebookView key={data.page.id} pageId={data.page.id} title={data.page.title} notebook={data.notebook} editable={editable && !data.page.locked} onError={(message) => notifyError(message)} />
                   ) : data.page.kind === "dashboard" && data.dashboard ? (
                     <DashboardView key={data.page.id} pageId={data.page.id} dashboard={data.dashboard} editable={editable} userId={boot.user.id} members={boot.members} pages={activePages} onRefresh={refresh} onError={notifyError} />
+                  ) : data.page.kind === "workflow" && data.workflow ? (
+                    <WorkflowView
+                      key={`${data.page.id}-${data.workflow.draft?.generation || ""}`}
+                      pageId={data.page.id}
+                      workflow={data.workflow}
+                      editable={editable && !data.page.locked}
+                      pages={activePages.map((p) => ({ id: p.id, title: p.title, kind: p.kind, icon: p.icon, space_id: p.space_id, parent_id: p.parent_id }))}
+                      spaces={boot.spaces.map((s) => ({ id: s.id, name: s.name }))}
+                      members={[boot.user, ...boot.members.filter((m) => m.id !== boot.user.id)].map((m) => ({ id: m.id, name: m.name }))}
+                      me={{ id: boot.user.id, name: boot.user.name }}
+                      onReload={refresh}
+                      onError={notifyError}
+                    />
                   ) : data.page.kind === "whiteboard" && data.whiteboard ? (
                     <Whiteboard
                       key={`${data.page.id}-${data.whiteboard.generation}`}
@@ -5203,6 +5230,13 @@ export default function WorkspaceApp({
               <strong>{t("Notizbuch", "Notebook")}</strong>
               <small>{t("Handschrift auf Papier oder PDFs, mit Stift", "Handwriting on paper or PDFs, with a pen")}</small>
             </button>
+            {!boot.workspace.guest && (
+              <button type="button" className={!starterTemplate && newKind === "workflow" ? "chosen" : ""} onClick={() => { setNewKind("workflow"); setStarterTemplate(null); }}>
+                <FlowArrow size={26} />
+                <strong>{t("Workflow", "Workflow")}</strong>
+                <small>{t("Abläufe automatisch: wenn etwas passiert, dann …", "Automatic flows: when something happens, then …")}</small>
+              </button>
+            )}
             {/* From a template (#112): the gallery with the built-in and the saved templates. */}
             <button
               type="button"

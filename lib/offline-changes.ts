@@ -40,7 +40,8 @@ export async function readableOfflinePages(user: Identity, workspaceId: string) 
   return await filterAsync(await all<Page>(
     "SELECT * FROM pages WHERE workspace_id=? AND deleted_at IS NULL ORDER BY position",
     workspaceId,
-  ), async (p) => !locked.has(p.id) && await pageRole(user, p));
+  // Workflow pages are not offline (docs/specs/workflows.md §3).
+  ), async (p) => p.kind !== "workflow" && !locked.has(p.id) && await pageRole(user, p));
 }
 
 export async function offlineChanges(
