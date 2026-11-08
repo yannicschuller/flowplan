@@ -130,7 +130,7 @@ import {
   lockedPageIds,
 } from "@/lib/journal-extras";
 import { journalDayCompleted } from "@/lib/journal-completed";
-import { existingSummary } from "@/lib/journal-summary";
+import { existingAiSummary, existingSummary } from "@/lib/journal-summary";
 import { wholeMonth } from "@/lib/journal-nav";
 import { visibleRows } from "@/lib/row-access";
 import { readableDatabase } from "@/lib/field-access";
@@ -521,7 +521,12 @@ async function handleGET(
       // A whole month: its summary page, when there is one (lib/journal-summary.ts).
       const month = wholeMonth(from, to);
       return NextResponse.json(
-        { ...(await journalReview(journal, from, to)), ...(month ? { summaryId: await existingSummary(user, journal, month) } : {}) },
+        {
+          ...(await journalReview(journal, from, to)),
+          ...(month ? { summaryId: await existingSummary(user, journal, month) } : {}),
+          // The period's AI summary page, when one was saved (#170).
+          aiSummaryId: await existingAiSummary(user, journal, from, to),
+        },
         { headers: { "Cache-Control": "no-store" } },
       );
     }

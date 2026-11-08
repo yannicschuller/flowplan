@@ -191,6 +191,21 @@ export function wholeMonth(from: string, to: string): string | null {
   return range.from === from && range.to === to ? month : null;
 }
 
+// The periods the review offers (components/journal-parts.tsx): a week of
+// seven days or a whole month, else null. `key` names the period – the
+// month (YYYY-MM) or the week's first day (YYYY-MM-DD).
+export function reviewPeriod(from: string, to: string): { kind: "week" | "month"; key: string } | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) return null;
+  const month = wholeMonth(from, to);
+  if (month) return { kind: "month", key: month };
+  const start = Date.parse(`${from}T00:00:00Z`);
+  if (Number.isNaN(start) || new Date(start).toISOString().slice(0, 10) !== from) return null;
+  return new Date(start + 6 * 864e5).toISOString().slice(0, 10) === to ? { kind: "week", key: from } : null;
+}
+// The AI summary of a review period (#170): like the month summary, one
+// page per journal and period, remembered under this key.
+export const aiSummaryKey = (period: string) => `ai-summary:${period}`;
+
 // Lists of recently edited pages (the start page): of each journal only its
 // latest day, so a year of entries does not push every other page out.
 export function oneDayPerJournal<P extends { parent_id?: string | null; journal_date?: string | null }>(pages: P[]): P[] {

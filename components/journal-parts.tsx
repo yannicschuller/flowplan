@@ -4,6 +4,8 @@
 // appointments) and the lock screen.
 import { MeetingNoteButton } from "./meeting-note-button";
 import { JournalDaysPanel } from "./journal-days-settings";
+import { JournalAiSummary } from "./journal-ai-summary";
+import { useAiAvailability, useAiBlockedHint } from "./ai-context";
 import { useT } from "./i18n";
 import { LOCALE_TAG, tr } from "@/lib/locale-tag";
 import { useCallback, useEffect, useState } from "react";
@@ -19,6 +21,7 @@ import {
   LockKey,
   MapPin,
   Plus,
+  Sparkle,
   Trash,
 } from "@phosphor-icons/react";
 import { api, Modal } from "./ui";
@@ -561,6 +564,8 @@ type Review = {
   openTasks?: { text: string; date: string; dayId: string }[];
   // A whole month: its summary page, when one was made (lib/journal-summary.ts).
   summaryId?: string | null;
+  // The period's AI summary page, when one was saved (#170).
+  aiSummaryId?: string | null;
   images: { src: string; date: string; dayId: string }[];
   places: string[];
   trackers: (Tracker & {
@@ -630,6 +635,12 @@ export function JournalReview({
   const [review, setReview] = useState<Review | null>(null);
   const [creating, setCreating] = useState(false);
   const range = period(mode, anchor);
+  // "Mit KI zusammenfassen" (#170): the period as an AI review, shown here
+  // as a preview until it is saved or discarded.
+  const ai = useAiAvailability("summarize", pageId);
+  const aiBlockedHint = useAiBlockedHint();
+  const [aiOpen, setAiOpen] = useState<string | null>(null);
+  const aiPeriod = `${range.from}:${range.to}`;
   // "Monatszusammenfassung erstellen" (#49): once per month; asked again it
   // offers the page that is there (or, on purpose, a fresh one).
   const summarize = async (again = false) => {
@@ -781,7 +792,35 @@ export function JournalReview({
               </button>
             </p>
           )}
+          {aiOpen === aiPeriod && (
+            <JournalAiSummary
+              key={aiPeriod}
+              pageId={pageId}
+              from={range.from}
+              to={range.to}
+              label={label}
+              editable={editable}
+              existingId={review.aiSummaryId || null}
+              onSaved={async (id) => {
+                setReview((r) => (r ? { ...r, aiSummaryId: id } : r));
+                await onChanged?.();
+              }}
+              onOpen={onOpen}
+              onDiscard={() => setAiOpen(null)}
+            />
+          )}
           <div className="modal-actions">
+            {ai !== "hidden" && aiOpen !== aiPeriod && (
+              <button
+                type="button"
+                className="button"
+                disabled={ai === "blocked"}
+                title={ai === "blocked" ? aiBlockedHint : undefined}
+                onClick={() => setAiOpen(aiPeriod)}
+              >
+                <Sparkle size={16} weight="fill" /> {t("Mit KI zusammenfassen", "Summarise with AI")}
+              </button>
+            )}
             {mode === "month" &&
               (review.summaryId ? (
                 <button type="button" className="button primary" onClick={() => onOpen(review.summaryId!)}>
