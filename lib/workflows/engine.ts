@@ -27,7 +27,8 @@ import { noteWorkflow } from "./monitoring";
 import { pauseWorkflow } from "./store";
 import { wakeAfterCommit } from "./queue";
 
-export const LEASE_MS = 2 * 60_000;
+// The lease of a claimed step (§8.3); FLOWPLAN_WORKFLOW_LEASE_MS shortens it for tests.
+export const LEASE_MS = Number(process.env.FLOWPLAN_WORKFLOW_LEASE_MS) || 2 * 60_000;
 const OUTPUT_LIMIT = 256 * 1024;
 const OPEN = "('queued','running','waiting')";
 

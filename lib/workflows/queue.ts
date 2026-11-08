@@ -155,9 +155,9 @@ export function startWorkflowWorker() {
   if (s.started) return;
   s.started = true;
   onBus("workflow:wake", () => wake());
-  s.poll = setInterval(() => wake(), 5_000);
+  s.poll = setInterval(() => wake(), Number(process.env.FLOWPLAN_WORKFLOW_POLL_MS) || 5_000);
   s.poll.unref?.();
-  s.sweep = setInterval(() => void sweepLeases().catch(() => {}), 60_000);
+  s.sweep = setInterval(() => void sweepLeases().catch(() => {}), Number(process.env.FLOWPLAN_WORKFLOW_SWEEP_MS) || 60_000);
   s.sweep.unref?.();
   onShutdown(() => void stopWorkflowWorker());
   void import("./schedules").then((m) => m.startWorkflowSchedules());
