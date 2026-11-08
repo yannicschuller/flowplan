@@ -31,3 +31,10 @@ test("AI answers: plain text pieces go through the citation renderer", () => {
   assert.ok(seen.some((t) => t.includes("[1]")));
   assert.ok(seen.some((t) => t.includes("[2][3]")));
 });
+
+test("AI answers: a code block carries its own copy button (#171)", () => {
+  const out = html("Hier der Text:\n\n```markdown\n# GitHub Issue\n\n- [ ] Punkt\n```");
+  assert.match(out, /<div class="ai-md-code"><pre><code># GitHub Issue\n\n- \[ \] Punkt<\/code><\/pre><button type="button" class="icon-button ai-md-code-copy" aria-label="[^"]+"/);
+  // Inline code stays plain.
+  assert.ok(!html("Nur `inline`").includes("ai-md-code-copy"));
+});

@@ -3,8 +3,10 @@
 // code, quotes and links – rendered as React elements, never as HTML from
 // the answer. Plain text goes through `renderText`, which turns citations
 // like [1] into buttons (components/ai-ask.tsx).
-import { Fragment, type ReactNode } from "react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
+import { Check, Copy } from "@phosphor-icons/react";
 import { Marked, type Token, type Tokens } from "marked";
+import { useT } from "./i18n";
 
 const marked = new Marked({ gfm: true, breaks: true });
 
@@ -88,11 +90,7 @@ function blocks(tokens: Token[], renderText: TextRenderer, prefix: string): Reac
       case "blockquote":
         return <blockquote key={key}>{blocks((token as Tokens.Blockquote).tokens, renderText, key)}</blockquote>;
       case "code":
-        return (
-          <pre key={key}>
-            <code>{(token as Tokens.Code).text}</code>
-          </pre>
-        );
+        return <CodeBlock key={key} text={(token as Tokens.Code).text} />;
       case "hr":
         return <hr key={key} />;
       case "table": {
@@ -129,6 +127,39 @@ function blocks(tokens: Token[], renderText: TextRenderer, prefix: string): Reac
         return <p key={key}>{renderText(unescape(token.raw), key)}</p>;
     }
   });
+}
+
+// A code block with its own copy button (#171): answers often hold a text
+// to take along – an issue, a command, a snippet – inside a code block.
+function CodeBlock({ text }: { text: string }) {
+  const t = useT();
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = window.setTimeout(() => setCopied(false), 1500);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
+  return (
+    <div className="ai-md-code">
+      <pre>
+        <code>{text}</code>
+      </pre>
+      <button
+        type="button"
+        className="icon-button ai-md-code-copy"
+        aria-label={copied ? t("Kopiert", "Copied") : t("Code kopieren", "Copy code")}
+        title={copied ? t("Kopiert", "Copied") : t("Code kopieren", "Copy code")}
+        onClick={() => {
+          void navigator.clipboard?.writeText(text).then(
+            () => setCopied(true),
+            () => {},
+          );
+        }}
+      >
+        {copied ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
+      </button>
+    </div>
+  );
 }
 
 export function AiMarkdown({ text, renderText = (t) => t, after }: { text: string; renderText?: TextRenderer; after?: ReactNode }) {

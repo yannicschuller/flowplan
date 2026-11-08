@@ -24626,6 +24626,23 @@ h3 .block-reactions {
   padding: 0;
   background: none;
 }
+/* Code blocks in AI answers carry a copy button in their corner (#171). */
+.ai-md-code {
+  position: relative;
+}
+.ai-md-code pre {
+  padding-right: 40px;
+}
+.ai-md-code-copy {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  opacity: 0.75;
+}
+.ai-md-code-copy:hover,
+.ai-md-code-copy:focus-visible {
+  opacity: 1;
+}
 .ai-md blockquote {
   margin: 0 0 8px;
   padding: 2px 0 2px 12px;
