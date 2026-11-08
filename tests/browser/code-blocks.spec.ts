@@ -11,6 +11,8 @@ async function pickLanguage(scope: Locator, query: string) {
 async function fixture(page: Page, title: string, kind = "document") {
   const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
   await page.request.post("/api/auth/demo", { headers: { origin } });
+  // A new account would see the introduction first.
+  await page.request.post("/api/command", { headers: { origin }, data: { action: "profile.onboarded" } });
   const boot = await (await page.request.get("/api/bootstrap")).json();
   const command = async (data: Record<string, unknown>) => {
     const response = await page.request.post("/api/command", {
@@ -177,7 +179,10 @@ test("record code appears highlighted in feeds and public pages and remains edit
   const entry = page.getByRole("dialog", { name: "Eintrag", exact: true });
   await expect(languageButton(entry)).toHaveAccessibleName("Code-Sprache: Python");
   await pickLanguage(entry, "ruby");
+  // The new language applies (and re-highlights) before the code is replaced.
+  await expect(languageButton(entry)).toHaveAccessibleName("Code-Sprache: Ruby");
   await entry.locator("pre code").fill("");
+  await expect(entry.locator("pre code")).toHaveText("");
   await entry.locator("pre code").click();
   await page.keyboard.insertText("def greet(name)");
   await page.keyboard.press("Enter");

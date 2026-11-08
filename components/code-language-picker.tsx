@@ -208,7 +208,9 @@ export function CodeLanguagePicker({
               {!flat.length && <p className="code-language-empty">{t("Keine Sprache gefunden.", "No language found.")}</p>}
             </div>
           </div>,
-          document.body,
+          // Inside a dialog (a record) the list stays in it: the dialog's
+          // focus trap would otherwise take the focus from the search.
+          button.current?.closest<HTMLElement>("[role=dialog]") || document.body,
         )}
     </>
   );
