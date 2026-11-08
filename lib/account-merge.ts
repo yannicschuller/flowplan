@@ -183,6 +183,8 @@ export const USER_REFERENCES: Record<string, MergeStrategy> = {
   "workflow_events.actor_id": "move",
   "workflow_approvals.decided_by": "move",
   "workflow_credentials.created_by": "move",
+  // The instance that claimed a step, not a person.
+  "workflow_steps.claimed_by": "none",
 };
 
 // Text columns that may hold account ids inside JSON or text (person
