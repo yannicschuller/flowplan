@@ -3107,6 +3107,11 @@ export class FlowplanClient {
     return this.json<Record<string, unknown>>("GET", `/api/journals/${encodeURIComponent(dayId)}/events`, { query }, options);
   }
 
+  /** Records completed on a journal day — Database records whose latest change to done (by their database's done rule) falls on the day in the given time zone and that are still done; only records the caller may read. Empty when the journal switched the list off (option `completed`). (GET /api/journals/{dayId}/completed) */
+  async journalCompleted(dayId: string, query?: { zone?: string }, options?: RequestOptions): Promise<Record<string, unknown>> {
+    return this.json<Record<string, unknown>>("GET", `/api/journals/${encodeURIComponent(dayId)}/completed`, { query }, options);
+  }
+
   /** My key pair as stored on the server — The public key and the private key wrapped with the passphrase and with the recovery key (opaque to the server); null before setup. (GET /api/e2ee/identity) */
   async e2eeIdentity(options?: RequestOptions): Promise<Record<string, unknown>> {
     return this.json<Record<string, unknown>>("GET", `/api/e2ee/identity`, {}, options);

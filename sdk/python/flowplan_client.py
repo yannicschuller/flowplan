@@ -1673,6 +1673,10 @@ JournalEventsQuery = TypedDict("JournalEventsQuery", {
     "zone": str,  # IANA time zone, default UTC
 }, total=False)
 
+JournalCompletedQuery = TypedDict("JournalCompletedQuery", {
+    "zone": str,  # IANA time zone, default UTC
+}, total=False)
+
 E2eeLogQuery = TypedDict("E2eeLogQuery", {
     "after": int,  # Last sequence number already known
 }, total=False)
@@ -2197,6 +2201,10 @@ class FlowplanClient:
     def journal_events(self, day_id: str, query: Optional["JournalEventsQuery"] = None, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Appointments of a journal day (GET /api/journals/{dayId}/events)"""
         return self._json("GET", "/api/journals/" + _p(day_id) + "/events", query=dict(query) if query else None, headers=headers)
+
+    def journal_completed(self, day_id: str, query: Optional["JournalCompletedQuery"] = None, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Records completed on a journal day — Database records whose latest change to done (by their database's done rule) falls on the day in the given time zone and that are still done; only records the caller may read. Empty when the journal switched the list off (option `completed`). (GET /api/journals/{dayId}/completed)"""
+        return self._json("GET", "/api/journals/" + _p(day_id) + "/completed", query=dict(query) if query else None, headers=headers)
 
     def e2ee_identity(self, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """My key pair as stored on the server — The public key and the private key wrapped with the passphrase and with the recovery key (opaque to the server); null before setup. (GET /api/e2ee/identity)"""

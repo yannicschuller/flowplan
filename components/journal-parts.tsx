@@ -40,7 +40,8 @@ export type JournalSettings = {
   locked: boolean;
   icsUrl?: string;
   // create: "Seite des Tages anlegen" – when the day starts or on the first write.
-  options?: { place: boolean; events: boolean; create?: "auto" | "write"; sidebar?: SidebarMode };
+  // completed: "An diesem Tag erledigt" below each day (#169).
+  options?: { place: boolean; events: boolean; completed?: boolean; create?: "auto" | "write"; sidebar?: SidebarMode };
 };
 export type DayEntry = {
   values: Record<string, number | boolean>;
@@ -165,7 +166,7 @@ export function JournalSettingsDialog({
     }
   };
   // Switches move at once; a failed save puts them back.
-  const setOption = async (key: "place" | "events", value: boolean) => {
+  const setOption = async (key: "place" | "events" | "completed", value: boolean) => {
     const before = current;
     setCurrent({ ...current, options: { ...options, [key]: value } });
     if (!(await save({ options: { [key]: value } }))) setCurrent(before);
@@ -434,6 +435,23 @@ export function JournalSettingsDialog({
               </div>
             </div>
           )}
+          <label className="js-switch">
+            <input
+              type="checkbox"
+              role="switch"
+              checked={options.completed !== false}
+              onChange={(e) => setOption("completed", e.target.checked)}
+            />
+            <span>
+              <strong>{t("An diesem Tag erledigt", "Completed this day")}</strong>
+              <small>
+                {t(
+                  "Unter jedem Tag die Datensätze aus Datenbanken, die an diesem Tag erledigt wurden – nur solche, die du sehen darfst. Wird nicht in den Tag kopiert.",
+                  "Below each day the database records completed that day – only those you may see. Nothing is copied into the day.",
+                )}
+              </small>
+            </span>
+          </label>
         </section>
       )}
 

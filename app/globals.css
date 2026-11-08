@@ -15217,6 +15217,65 @@ li[data-journal-since] > label::after {
 .journal-daybar-events small {
   color: var(--muted);
 }
+/* Below a day page: records completed that day (#169). */
+.journal-completed {
+  margin: 26px 0 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  font-size: 13px;
+  color: var(--secondary);
+}
+.journal-completed h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.journal-completed h3 svg {
+  color: var(--blue);
+}
+.journal-completed-count {
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+.journal-completed ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.journal-completed li {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  min-width: 0;
+}
+.journal-completed time {
+  min-width: 48px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.journal-completed a {
+  color: var(--text);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.journal-completed small {
+  color: var(--muted);
+  white-space: nowrap;
+}
+.journal-completed-more {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
 /* Journal settings and review dialogs. */
 .journal-settings section,
 .journal-review section {
@@ -17037,7 +17096,8 @@ h3 .block-reactions {
   [data-mermaid],
   [data-drawio],
   .synced-block,
-  .journal-daybar {
+  .journal-daybar,
+  .journal-completed {
     break-inside: avoid;
   }
   pre,

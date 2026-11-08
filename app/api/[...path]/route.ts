@@ -129,6 +129,7 @@ import {
   requireUnlocked,
   lockedPageIds,
 } from "@/lib/journal-extras";
+import { journalDayCompleted } from "@/lib/journal-completed";
 import { existingSummary } from "@/lib/journal-summary";
 import { wholeMonth } from "@/lib/journal-nav";
 import { visibleRows } from "@/lib/row-access";
@@ -532,6 +533,14 @@ async function handleGET(
         { days: await emptyJournalDays(journal, journalDate.parse(url.searchParams.get("today"))) },
         { headers: { "Cache-Control": "no-store" } },
       );
+    }
+    // "An diesem Tag erledigt" (#169): records that became done on the day
+    // (lib/journal-completed.ts), for a stored day and for today's draft.
+    if (path.length === 3 && path[0] === "journals" && path[2] === "completed") {
+      const zone = z.string().max(100).catch("UTC").parse(url.searchParams.get("zone") || "UTC");
+      return NextResponse.json(await journalDayCompleted(user, z.uuid().parse(path[1]), zone), {
+        headers: { "Cache-Control": "no-store" },
+      });
     }
     if (path.length === 3 && path[0] === "journals" && path[2] === "events") {
       // A draft day (not stored yet) shows the appointments of its date too.
