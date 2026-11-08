@@ -129,6 +129,8 @@ test("touch targets are at least 44 × 44 px on a phone", async ({ page }, info)
   await page.goto(`/#page=${db.id}&row=${row.id}`);
   const record = page.getByRole("dialog", { name: "Eintrag", exact: true });
   await expect(record).toBeVisible();
+  // The formatting tools above the record's text come with its editor.
+  await expect(record.locator(".editor-toolbar")).toBeAttached();
   await page.waitForTimeout(400);
   found.push(...report("record", await smallTargets(page, '[role="dialog"]')));
   await page.keyboard.press("Escape");

@@ -353,8 +353,9 @@ label.hit-check {
   .row-detail > .button.danger {
     min-height: 44px;
   }
-  /* The formatting tools along the bottom edge. */
-  .page-layout .editor-toolbar button {
+  /* The formatting tools along the bottom edge, and above a record's
+     text. */
+  :is(.page-layout, .record-dialog) .editor-toolbar button {
     width: 44px;
     height: 44px;
   }
