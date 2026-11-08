@@ -55,10 +55,14 @@ function lookup(entries: [string, string][], placeholders: string[]): Lookup {
   return { split: csvListSplitter(entries.map(([name]) => name)), ids, known: new Set(entries.map(([, id]) => id)) };
 }
 const found = (l: Lookup, name: string) => (l.known.has(name) ? name : l.ids.get(foldName(name)) || undefined);
-// The first label that the import reads back as `id`, else the id itself:
-// people by name, else by e-mail; records, files and sprints by name.
-const label = (l: Lookup, id: string, names: string[]) =>
-  names.map((n) => n.trim()).find((n) => n && found(l, n) === id) ?? id;
+// The first label that the import reads back as `id`: people by name, else
+// by e-mail; records, files and sprints by name. A name that is not unique
+// (two records "Meeting", an untitled record) is still written as the table
+// shows it, never as an id (#174): the import then links nothing for it.
+const label = (l: Lookup, names: string[], fallback: string) => {
+  const shown = names.map((n) => n.trim()).filter(Boolean);
+  return (id: string) => shown.find((n) => found(l, n) === id) ?? shown[0] ?? fallback;
+};
 
 const peopleLookup = (ctx: CsvContext) =>
   lookup((ctx.members || []).flatMap((m): [string, string][] => [[m.name, m.id], [m.email, m.id]]), [ctx.unavailable]);
@@ -91,7 +95,8 @@ export function databaseCsv(fields: Field[], allFields: Field[], rows: Pick<Row,
     files = filesLookup(ctx),
     sprints = sprintsLookup(ctx);
   // Labels by id, worked out once per column.
-  const labels = (l: Lookup, items: [string, string[]][]) => new Map(items.map(([id, names]) => [id, label(l, id, names)]));
+  const labels = (l: Lookup, items: [string, string[]][], fallback = ctx.unavailable) =>
+    new Map(items.map(([id, names]) => [id, label(l, names, fallback)(id)]));
   const personLabels = labels(people, (ctx.members || []).map((m) => [m.id, [m.name, m.email]]));
   const fileLabels = labels(files, (ctx.files || []).map((f) => [f.url, [f.name]]));
   const sprintLabels = labels(sprints, (ctx.sprints || []).map((s) => [s.id, [s.name]]));
@@ -101,7 +106,7 @@ export function databaseCsv(fields: Field[], allFields: Field[], rows: Pick<Row,
       .map((f) => {
         const target = f.relationPage || "";
         const records = recordsLookup(ctx, target);
-        return [f.id, labels(records, (ctx.related?.[target] || []).map((r) => [r.id, [recordTitle(ctx, target, r)]]))];
+        return [f.id, labels(records, (ctx.related?.[target] || []).map((r) => [r.id, [recordTitle(ctx, target, r)]]), ctx.untitled)];
       }),
   );
   const ids = (value: unknown, names: ReadonlyMap<string, string> | undefined) =>

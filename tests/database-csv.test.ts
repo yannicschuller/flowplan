@@ -72,19 +72,20 @@ test("people, related records, files and sprints are exported by name", () => {
         count: -3,
       },
     },
-    { cells: { title: "B", owner: "u4", to: ["c3", "gone"], by: "removed", sprint: "old" } },
+    { cells: { title: "B", owner: "u4", to: ["c3", "c4", "gone"], by: "removed", sprint: "old" } },
     { cells: { title: "C", owner: "u5" } },
   ], ctx);
   assert.deepEqual(csv.split("\r\n"), [
     "Name,Zuständig,Stelle,Übergeordnet,Dateien,Sprint,Erstellt von,Erstellt,Notiz,Anzahl",
     // A name two members share is written as the e-mail address.
     'A,Dana Reyes,"Klinik Nord, Praxis Süd, Haus 2",Akte 1,"Befund.pdf, https://example.org/a.pdf",Sprint 12,sam.a@example.org,2026-11-05T17:39:02Z,fett,-3',
-    // An untitled record is written as its id (the import reads it back).
-    "B,nameless@example.org,\"c3, Not available\",,,Not available,Not available,,,",
+    // An untitled record and a title two records share are written as the
+    // table shows them, never as ids (#174).
+    "B,nameless@example.org,\"Untitled, Doppelt, Not available\",,,Not available,Not available,,,",
     // The formula guard still applies to names.
     "C,\"'=HYPERLINK(1)\",,,,,,,,",
   ]);
-  assert.doesNotMatch(csv, /\bu\d\b|\bc[1245]\b|\/api\/files/);
+  assert.doesNotMatch(csv, /\bu\d\b|\bc\d\b|\/api\/files/);
 });
 
 test("the import finds the same people, records, files and sprints again", () => {
@@ -144,7 +145,7 @@ test("names are read once per file: 5,000 records linked to 5,000 records", () =
 
 // Names that would come back as another record, file or person, or as nobody,
 // are written as ids (people as e-mail first), so nothing is lost on re-import.
-test("shared and empty titles, shared file names and clashing names are written as ids", () => {
+test("shared and empty titles, shared file names and clashing names are written by name; the import links nothing for them", () => {
   const scan = (n: number) => `/api/files/${n}1111111-2222-4333-8444-555555555555`;
   const clash: CsvContext = {
     ...ctx,
@@ -180,12 +181,20 @@ test("shared and empty titles, shared file names and clashing names are written 
   const csv = databaseCsv(writable, fields, originals.map((cells) => ({ cells })), clash);
   assert.deepEqual(csv.split("\r\n"), [
     "Name,Zuständig,Stelle,Dateien",
-    `A,Dana Reyes,"c4, c5","${scan(1)}, ${scan(2)}, Befund.pdf"`,
-    'B,other@example.org,"c3, Klinik Nord","https://example.org/a,b.pdf, Befund.pdf"',
-    'C,,"c6, c7, c8",',
+    'A,Dana Reyes,"Doppelt, Doppelt","scan.pdf, scan.pdf, Befund.pdf"',
+    'B,other@example.org,"Untitled, Klinik Nord","https://example.org/a,b.pdf, Befund.pdf"',
+    'C,,"Untitled, Not available, c1",',
   ]);
+  assert.doesNotMatch(csv, /\bc[2-8]\b|\/api\/files/);
+  // Unique names come back; shared ones and the placeholders link nobody.
   const result = parse(csv);
-  assert.deepEqual(result.data.map(csvImporter(writable, fields, clash)), originals);
+  assert.deepEqual(result.data.map(csvImporter(writable, fields, clash)), [
+    { title: "A", owner: "u1", to: [], docs: [scan(3)] },
+    { title: "B", owner: "u2", to: ["c1"], docs: ["https://example.org/a,b.pdf", scan(3)] },
+    // A title that reads like another record's id stays that record's (ids
+    // are UUIDs in practice, so a real title never does).
+    { title: "C", owner: "", to: ["c1"], docs: [] },
+  ]);
 });
 
 test("placeholders link nobody unless one real record has exactly that title", () => {
