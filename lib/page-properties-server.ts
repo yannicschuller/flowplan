@@ -1,3 +1,4 @@
+import { pageTaggedEvent } from "./workflows/hooks";
 // Tags and custom properties of pages (issue #70), server side: storage,
 // permissions, the commands, the search filter and the portable form that
 // templates, copies, archives and Markdown carry (lib/page-properties.ts has
@@ -399,10 +400,15 @@ async function setPageTags(user: Identity | null, page: Pick<Page, "id" | "works
     if (tagId && !ids.includes(tagId)) ids.push(tagId);
   }
   if (ids.length > MAX_TAGS_PER_PAGE) throw new HttpError(400, "Höchstens 50 Tags je Seite.");
+  const had = new Set((await all<{ tag_id: string }>("SELECT tag_id FROM page_tag_links WHERE page_id=?", page.id)).map((t) => t.tag_id));
   await run(`DELETE FROM page_tag_links WHERE page_id=? AND tag_id NOT IN ${d().jsonValues()}`, page.id, JSON.stringify(ids));
   await forEachAsync(ids, async (tagId, i) =>
     await run("INSERT INTO page_tag_links(page_id,tag_id,position) VALUES(?,?,?) ON CONFLICT(page_id,tag_id) DO UPDATE SET position=excluded.position", page.id, tagId, i),
   );
+  // Workflows with a "tag added" trigger (lib/workflows/hooks.ts).
+  const added = ids.filter((tagId) => !had.has(tagId));
+  if (added.length)
+    await pageTaggedEvent(page.id, user?.id ?? null, await all<{ id: string; name: string }>(`SELECT id,name FROM page_tags WHERE id IN ${d().jsonValues()}`, JSON.stringify(added)));
   return ids;
 }
 export async function setPageValue(pageId: string, propertyId: string, value: unknown) {

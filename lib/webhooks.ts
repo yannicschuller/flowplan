@@ -51,6 +51,7 @@ import {
 import { buildNotice, dueItems, localClock, recordUrl } from "./notification-events";
 import type { Identity, Page, User } from "./types";
 import { mapAsync } from "./each-async";
+import { mentionEvent } from "./workflows/hooks";
 
 export const webhookEvents = {
   "row.created": "Neuer Eintrag in einer Datenbank",
@@ -393,9 +394,11 @@ export async function emitWebhook(
 }
 
 // A person was mentioned in a page or record document.
-export async function mentionWebhook(workspaceId: string, pageId: string, rowId: string | null, userId: string, actor: string) {
+export async function mentionWebhook(workspaceId: string, pageId: string, rowId: string | null, userId: string, actor: string, actorId?: string) {
   const name = (await one<{ name: string }>("SELECT name FROM users WHERE id=?", userId))?.name || "";
   await emitWebhook(workspaceId, "mention", { pageId, rowId, userId, text: name }, actor);
+  // Workflows with a mention trigger (lib/workflows/hooks.ts).
+  await mentionEvent(pageId, rowId, userId, actorId);
 }
 
 type Delivery = HookRow & { delivery_id: string; body: string; attempts: number };

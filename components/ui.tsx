@@ -33,6 +33,7 @@ import {
   PresentationChart,
   Gauge,
   NotePencil,
+  FlowArrow,
   CalendarBlank,
   Kanban,
   SquaresFour,
@@ -68,6 +69,7 @@ const icons = {
   whiteboard: PresentationChart,
   dashboard: Gauge,
   notebook: NotePencil,
+  workflow: FlowArrow,
   journal: Notebook,
   day: CalendarBlank,
   // Records without an icon of their own (links to them, #96).

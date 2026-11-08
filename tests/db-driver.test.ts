@@ -241,8 +241,8 @@ test("a SQLite database at main's schema 93 (files in the trash, no seq) upgrade
   old.exec("PRAGMA user_version=93");
   legacy.migrateFile(old);
   const version = (old.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
-  assert.equal(version, 95);
-  assert.equal(legacy.SCHEMA_VERSION, 95);
+  assert.equal(version, legacy.SCHEMA_VERSION);
+  assert.equal(legacy.SCHEMA_VERSION, 97);
   for (const table of [...legacy.SEQ_TABLES, "pages"])
     assert.ok((old.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === "seq"), table);
   // Existing rows get their order, new ones one from the trigger.
@@ -282,7 +282,7 @@ test("schema 95: issue connections allow Forgejo/Gitea, mappings survive the cop
   assert.throws(() => insert("c2", "forgejo"), /CHECK/);
   old.exec("PRAGMA user_version=94");
   legacy.migrateFile(old);
-  assert.equal((old.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, 95);
+  assert.equal((old.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, legacy.SCHEMA_VERSION);
   assert.deepEqual({ ...(old.prepare("SELECT page_id,connection_id,created_at FROM issue_sync_maps").get() as object) }, { page_id: pid, connection_id: "c1", created_at: 7 });
   insert("c2", "forgejo");
   assert.throws(() => insert("c3", "bitbucket"), /CHECK/);

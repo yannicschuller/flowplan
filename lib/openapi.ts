@@ -90,6 +90,8 @@ export const commandActionNames = [
   "calendarSync.map", "calendarSync.unmap", "calendarSync.disconnect", "meeting.note",
   "e2ee.identity.setup", "e2ee.identity.update", "e2ee.identity.reset", "e2ee.member.add", "e2ee.member.remove", "e2ee.rotate",
   "e2ee.append", "e2ee.compact", "e2ee.title",
+  // Workflows (#168, lib/workflows/commands.ts).
+  "workflow.sync", "workflow.draft", "workflow.validate", "workflow.activate", "workflow.pause", "workflow.test", "workflow.run", "workflow.run.cancel", "workflow.restore", "workflow.fromRule",
 ] as const;
 // Prefixes command() refuses for every API token.
 export const tokenRefusedActionPrefixes = ["admin.", "token.", "ai."] as const;
@@ -160,7 +162,7 @@ export const commandActions: ActionDoc[] = [
       workspaceId: uuid,
       spaceId: uuid,
       title: str,
-      kind: z.enum(["document", "database", "whiteboard", "journal", "dashboard", "notebook"]).optional().describe("Default: document"),
+      kind: z.enum(["document", "database", "whiteboard", "journal", "dashboard", "notebook", "workflow"]).optional().describe("Default: document"),
       parentId: uuid.optional().describe("Parent page in the same space"),
       databaseKind: z.enum(["tasks", "documents", "contacts", "empty"]).optional(),
       templateId: z.string().max(100).optional().describe("A saved page template of the workspace"),
@@ -1041,7 +1043,7 @@ const schemas: Record<string, Json> = {
       icon: { type: "string" },
       cover: { type: "string" },
       cover_position: { type: "number" },
-      kind: { type: "string", enum: ["document", "database", "whiteboard", "journal", "dashboard", "notebook"] },
+      kind: { type: "string", enum: ["document", "database", "whiteboard", "journal", "dashboard", "notebook", "workflow"] },
       position: { type: "number" },
       deleted_at: { type: ["string", "null"] },
       created_by: { type: "string", format: "uuid" },

@@ -1,3 +1,4 @@
+import { commentEvent } from "./workflows/hooks";
 import { hiddenRowIds } from "./row-access";
 import { commentRecipients, mayHear } from "./comment-recipients";
 import { mentionWebhook } from "./webhooks";
@@ -256,7 +257,7 @@ async function notify(
         )).map((m) => m.author_id);
   for (const uid of new Set([...recipients, ...mentions]))
     if (uid !== user.id && await mayHear(uid, page, rowId)) {
-      if (mentions.includes(uid)) await mentionWebhook(page.workspace_id, page.id, rowId, uid, user.name);
+      if (mentions.includes(uid)) await mentionWebhook(page.workspace_id, page.id, rowId, uid, user.name, user.id);
       await run(
         "INSERT INTO notifications(id,user_id,body,page_id,row_id,thread_id,kind) VALUES(?,?,?,?,?,?,?)",
         id(),
@@ -355,6 +356,7 @@ export async function inlineCommentCommand(
       true,
       commentMentions(messageInputValue.content),
     );
+    await commentEvent(page.id, rowId || null, user.id, { id: messageId, text: body, inline: true });
     return { id: threadId };
   }
   const threadId = z.uuid().parse(input.threadId),
@@ -429,6 +431,7 @@ export async function inlineCommentCommand(
       false,
       commentMentions(messageInputValue.content),
     );
+    await commentEvent(page.id, thread.row_id || null, user.id, { id: messageId, text: body, inline: true });
   } else {
     const messageId = z.uuid().parse(input.messageId),
       message = await one<StoredMessage>(

@@ -740,6 +740,8 @@ async function runCommand(
   };
   // Work that must only happen once the transaction is committed.
   const afterCommit: (() => unknown)[] = [];
+  // Workflow events of a move, once the page is in its new place.
+  const afterMove: (() => Promise<unknown>)[] = [];
   const execute = async () => {
     let result: unknown = { ok: true };
     // Pages of encrypted spaces: only what works without plaintext.
@@ -1201,8 +1203,10 @@ async function runCommand(
         const kind =
           savedTemplate?.kind ||
           z
-            .enum(["document", "database", "whiteboard", "journal", "dashboard", "notebook"])
+            .enum(["document", "database", "whiteboard", "journal", "dashboard", "notebook", "workflow"])
             .parse(b.kind || "document");
+        // Workflows (#168): not when switched off on the instance.
+        if (kind === "workflow") await assertWorkflowsEnabled();
         const created = await createPage(
           wid(),
           sid,
@@ -1237,6 +1241,7 @@ async function runCommand(
           await applyStarterTemplate(created, user.id, key);
         }
         await afterEncryptedPageCreate(created, b);
+        await pageCreatedEvent(created, user.id);
         result = { id: created };
         break;
       }
@@ -1375,6 +1380,7 @@ async function runCommand(
       case "page.move": {
         const p = await write(),
           subtree = await descendants(p.id);
+        afterMove.push(async () => await pageMovedEvent(p.id, user.id, p.parent_id, (await one<Page>("SELECT parent_id FROM pages WHERE id=?", p.id))?.parent_id ?? null));
         const { placement, target, parent, destinationParent, sid, destination } = await moveDestination(user, p, b);
         if (
           !destination ||
@@ -1427,6 +1433,7 @@ async function runCommand(
         await forEachAsync(siblings, async (sibling, i) =>
           await run("UPDATE pages SET position=? WHERE id=?", i, sibling),
         );
+        for (const task of afterMove.splice(0)) await task();
         break;
       }
       case "task.update": {
@@ -1679,6 +1686,8 @@ async function runCommand(
             child,
           );
         }
+        // Workflow pages in the trash behave as paused (#168).
+        await trashWorkflows(subtree, user.id);
         break;
       }
       case "page.restore": {
@@ -1793,7 +1802,7 @@ async function runCommand(
                 `${user.name} hat dich in „${p.title}“ erwähnt`,
                 p.id,
               );
-              await mentionWebhook(p.workspace_id, p.id, null, uid, user.name);
+              await mentionWebhook(p.workspace_id, p.id, null, uid, user.name, user.id);
             }
           }
           await run(
@@ -2507,6 +2516,20 @@ async function runCommand(
       case "whiteboard.sync":
         result = await syncWhiteboard(user, b);
         break;
+      // Workflows (#168, lib/workflows/commands.ts).
+      case "workflow.sync":
+      case "workflow.draft":
+      case "workflow.validate":
+      case "workflow.activate":
+      case "workflow.pause":
+      case "workflow.test":
+      case "workflow.run":
+      case "workflow.run.cancel":
+      case "workflow.restore":
+      case "workflow.fromRule":
+      case "admin.workflowLimits":
+        result = await workflowCommand(user, action, b);
+        break;
       // Sticky notes → database records (lib/whiteboard-to-records.ts).
       case "whiteboard.toRecords":
         result = await notesToRecords(user, b);
@@ -2628,6 +2651,7 @@ async function runCommand(
           body,
         );
         await emitWebhook(p.workspace_id, "comment.created", { pageId: p.id, rowId: b.rowId ? uuid.parse(b.rowId) : null, text: body }, user.name);
+        await commentEvent(p.id, b.rowId ? uuid.parse(b.rowId) : null, user.id, { id: null, text: body });
         if (b.rowId) await queueIssuePush(p.id, uuid.parse(b.rowId));
         // Followers, the owner, the record's people, earlier commenters and
         // whoever "@Name" names – not the whole workspace, and only who may
@@ -2646,7 +2670,7 @@ async function runCommand(
             commentRow,
             mention ? "mention" : "comment",
           );
-          if (mention) await mentionWebhook(p.workspace_id, p.id, commentRow, recipient, user.name);
+          if (mention) await mentionWebhook(p.workspace_id, p.id, commentRow, recipient, user.name, user.id);
         }
         break;
       }
@@ -3420,6 +3444,11 @@ async function runCommand(
     // Content changes: who edited, and followers are told.
     if (editActions.has(action) && typeof b.pageId === "string")
       await recordPageEdit(user, b.pageId);
+    // Workflows: a page's content or title changed (debounced, lib/workflows/hooks.ts).
+    if ((action === "document.sync" || action === "whiteboard.sync") && typeof b.pageId === "string" && b.update)
+      await pageChangedEvent(b.pageId, user.id, ["content"]);
+    if (action === "page.update" && typeof b.pageId === "string" && (b.patch as { title?: unknown } | undefined)?.title !== undefined)
+      await pageChangedEvent(b.pageId, user.id, ["title"]);
     // Whoever creates a page follows it.
     const createdId = (result as { id?: unknown } | null)?.id;
     if (action === "page.create" && typeof createdId === "string" && !user.apiScope)
@@ -3430,6 +3459,7 @@ async function runCommand(
         "document.markdown",
         "row.document.sync",
         "whiteboard.sync",
+        "workflow.sync",
         "notification.read",
         "favorite",
       ].includes(action)
@@ -3671,6 +3701,9 @@ import { dashboardData, saveDashboard } from "./dashboard";
 import { notebookArchive, notebookCommand, notebookData } from "./notebook";
 import { quotaCheckpoint, setWorkspaceQuota } from "./instance-ops";
 import { rowChanged, rowCreated } from "./automations";
+import { workflowCommand } from "./workflows/commands";
+import { commentEvent, pageChangedEvent, pageCreatedEvent, pageMovedEvent } from "./workflows/hooks";
+import { assertWorkflowsEnabled, trashWorkflows } from "./workflows/store";
 import { applyDatabaseProposal, forgetAiFields, prepareAiFields } from "./ai/database-fields";
 import { ct } from "./content-locale";
 import { TABLE_DATABASE_LIMITS, tableToDatabase } from "./table-database";

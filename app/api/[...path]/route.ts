@@ -150,6 +150,8 @@ import {
 } from "@/lib/instance-ops";
 import { filterAsync, mapAsync } from "../../../lib/each-async";
 import { onShutdown } from "@/lib/cluster/runtime";
+import { workflowGet } from "@/lib/workflows/commands";
+import { withReadMemo } from "@/lib/read-memo";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 function error(e: unknown) {
@@ -220,6 +222,11 @@ async function handleGET(
     const user = await requireUser();
     if (path.length === 1 && path[0] === "tokens")
       return NextResponse.json(await listApiTokens(user));
+    // Workflows (#168, lib/workflows/commands.ts): list, state, runs, versions, catalogue, administration.
+    if (path[0] === "workflows" || path[0] === "workflow-runs" || (path[0] === "admin" && path[1] === "workflows")) {
+      const answer = await withReadMemo(async () => await workflowGet(user, path, url));
+      if (answer !== undefined) return NextResponse.json(answer, { headers: { "Cache-Control": "no-store" } });
+    }
     // An import started with background=1 (#163): running with its
     // progress, done with the preview or result, failed with the error as the
     // import would have answered it.

@@ -12,6 +12,7 @@
 // audit trail and dropped. Each address takes at most 60 mails per hour,
 // attachments count against the workspace quota and a daily budget per
 // address, and a Message-ID is stored once.
+import { pageCreatedEvent } from "./workflows/hooks";
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -651,6 +652,7 @@ async function storeMail(address: AddressRow, mail: InboundMail, from: string, m
     const safe = cleanHtml(html);
     await run("UPDATE documents SET html=?,state=?,updated_at=? WHERE page_id=?", safe, htmlState(safe), nowText(), owner);
     await emitWebhook(target.workspace_id, "page.created", { pageId: owner, title, parentId: target.id, source: "email" });
+    await pageCreatedEvent(owner, user.id);
   }
   await run(
     "INSERT INTO inbound_messages(address_id,message_id,page_id,row_id,received_at) VALUES(?,?,?,?,?)",

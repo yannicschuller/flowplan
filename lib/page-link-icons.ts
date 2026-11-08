@@ -13,10 +13,11 @@ const KIND_DEFAULTS: Record<string, string> = {
   journal: "journal",
   dashboard: "dashboard",
   notebook: "notebook",
+  workflow: "workflow",
   record: "record",
   row: "record",
 };
-const GENERIC = new Set(["", "file", "table", "whiteboard", "journal", "dashboard", "notebook", "record"]);
+const GENERIC = new Set(["", "file", "table", "whiteboard", "journal", "dashboard", "notebook", "workflow", "record"]);
 
 // The icon to draw for a page or record of `kind` whose stored icon is `icon`.
 export function shownPageIcon(icon: string | null | undefined, kind?: string | null): string {
