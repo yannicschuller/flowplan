@@ -1252,10 +1252,12 @@ Eingaben aus Webhooks, E-Mails, Formularen, Kommentaren und Seiten sind
   ausführende Person), `workflow.paused`/`resumed`/`auto_paused`,
   `workflow.runner_changed`, `workflow.credential.set`/`removed`,
   `workflow.hook.created`/`rotated`, `workflow.imported`, `workflow.approved`/
-  `rejected`, `workflow.run.cancelled`, `workflow.run.retried`.
+  `rejected` (aus der App mit `app:‹Geräte-ID›`, 11.8),
+  `workflow.run.cancelled`, `workflow.run.retried`.
 - Neue Arten in `lib/security-kinds.ts`: `workflow.hook.refused` (warn),
   `workflow.auto_paused` (info), `workflow.limit` (warn – Kaskade/Rate
-  dauerhaft am Limit). `blocked.ssrf` wird wiederverwendet.
+  dauerhaft am Limit), `workflow.approval.refused` (warn – Freigabe aus der
+  App abgewiesen, 11.8). `blocked.ssrf` wird wiederverwendet.
 
 ### 9.10 Missbrauch von Kontingenten
 
@@ -1753,14 +1755,87 @@ Abweichungen der Welle 3 (bewusst):
   „Instanzumzug …“), offene Läufe `held`.
 - Der Docs-Anker `projects-and-tickets#workflows` heißt jetzt `#statusregeln`
   (keine Weiterleitung möglich; nichts verlinkte ihn).
-- **Push-Knöpfe** „Genehmigen/Ablehnen“ sind nicht gebaut (App-Release);
-  die Benachrichtigung öffnet die Freigabeansicht. Für die App nötig: eine
-  Kategorie `workflow-approval` in `lib/notification-actions.ts` und den
-  Push-Daten (`approvalId`), Aktionen in `flowplan-app` (iOS
-  `UNNotificationCategory` mit zwei Aktionen, Android Notification-Actions),
-  ein Endpunkt für die Entscheidung mit dem Geräte-Token (heute lehnt
-  `workflow.approve` jeden Token ab – bewusst nur mit frischer Sitzung bzw.
-  Bestätigung auf dem Gerät freigeben) und ein App-Release (`/app-release`).
+- **Push-Knöpfe** „Genehmigen/Ablehnen“: Server und App siehe 11.8; bis
+  zum App-Release (`/app-release`) öffnet die Benachrichtigung die
+  Freigabeansicht.
+
+### 11.8 Freigaben aus der Push-Benachrichtigung (App)
+
+**Vertrag.** Eine Freigabe-Benachrichtigung (`opsNotify(…, approvalId)`)
+merkt sich ihre Freigabe in `notification_targets` (`{type:"approval",
+approvalId}`). Solange die Freigabe offen ist und vor ihrer Frist, bekommt
+ihr Push die Kategorie `flowplan.workflow-approval` (nur mit Inhalt auf dem
+Sperrbildschirm, `MOBILE_PUSH_CONTENT`; sonst `flowplan.read` – ohne Text
+wüsste niemand, was „Genehmigen“ genehmigt) und in `data` die `approvalId`
+(kein Geheimnis). Am Relay heißt die äußere Kategorie `default`; die Knöpfe
+kommen aus der verschlüsselten. Die App ruft – wie bei den anderen Knöpfen –
+`POST /api/mobile/notifications` mit `Authorization: Bearer fpd_…` (Geräte-
+Token) und `Idempotency-Key`:
+
+- `{action:"approve", notificationId, approvalId, confirmation}`
+- `{action:"reject", notificationId, approvalId?}`
+
+Antwort `{ok, action, decision, already?, unread}`; Fehler 401 (Gerät
+unbekannt, abgemeldet, entfernt), 400 (Benachrichtigung ohne Freigabe oder
+fremde `approvalId`), 403 (nicht eingetragen, Bestätigung fehlt/falsch,
+nicht eingerichtet, Gerät zu lange inaktiv), 404 (fremde Benachrichtigung),
+409 (entschieden, Frist abgelaufen), 429. Worum es geht, kommt aus der
+Benachrichtigung, nie vom Telefon; die `approvalId` muss dazu passen.
+Entschieden wird wie bei `workflow.approve` (`settleApproval`): nur
+Eingetragene, erste Entscheidung gewinnt, der Lauf geht als ausführende
+Person weiter; dieselbe Entscheidung derselben Person noch einmal gilt als
+erledigt (`already: true`), die andere ist 409. Neu für beide Wege: nach
+Ablauf der Frist wird nicht mehr entschieden (409), auch wenn der Worker die
+Frist noch nicht verarbeitet hat. Audit `workflow.approved`/`rejected` mit
+`‹approvalId› app:‹Geräte-ID›`.
+
+**Bestätigungsschlüssel.** Die App erzeugt je Profil ein Geheimnis (32
+Byte) im Schlüsselbund/Keystore mit `requireAuthentication` (iOS
+`biometryCurrentSet`, Android `BIOMETRIC_STRONG`, nur dieses Gerät) und
+schickt bei der Registrierung aus der Web-Ansicht (Sitzungs-Cookie)
+`approvalKey` = base64url(SHA-256(Geheimnis)); gespeichert in
+`mobile_devices.approval_key` (geht mit dem Eintrag). „Genehmigen“ öffnet
+die App (iOS `opensAppToForeground` + `authenticationRequired`), liest das
+Geheimnis – das fragt Face ID/Touch ID/Fingerabdruck – und schickt es als
+`confirmation`; der Server vergleicht den Hash zeitkonstant. Ohne Schlüssel
+(keine Biometrie, erster Versuch auf Android, Biometrie geändert) öffnet die
+App die Freigabeansicht; dort entscheidet die angemeldete Sitzung.
+
+**Bedrohungsmodell und Entscheidungen.**
+
+- *Gestohlener Geräte-Token* (Backup, Log, fremdes Gerät): der Token allein
+  genehmigt nichts – das Geheimnis liegt hinter Biometrie und verlässt das
+  Gerät nur nach ihr. Setzen kann den Schlüssel nur die Registrierung mit
+  Sitzung (wer die hat, kann ohnehin in der Web-Ansicht entscheiden); ein
+  Token kann ihn weder setzen noch ersetzen. Ein bloßes Flag „bestätigt“
+  hätte das nicht geleistet: der Server kann nur prüfen, was ein Angreifer
+  ohne die Biometrie nicht erzeugen kann.
+- *Entsperrtes, fremd benutztes Telefon*: Genehmigen braucht trotzdem die
+  Biometrie der Besitzerin (`biometryCurrentSet`: neu eingelernte Finger
+  oder Gesichter machen den Schlüssel ungültig).
+- *Widerrufenes oder vergessenes Gerät*: abgemeldet, in den Einstellungen
+  entfernt, Sitzung beendet oder Konto deaktiviert → der Token öffnet
+  nichts (401). Zuletzt vor mehr als 14 Tagen gesehen → 403 (die App öffnet
+  dann die Ansicht und registriert sich neu).
+- *Falsche Person, fremde IDs*: nur die eigene Benachrichtigung, nur
+  Eingetragene, `approvalId` muss die der Benachrichtigung sein.
+- *Raten*: höchstens 10 Genehmigungen je Gerät und 10 Minuten; abgewiesene
+  Versuche (fehlende/falsche Bestätigung, kein Schlüssel, inaktives Gerät)
+  sind Sicherheitsereignisse `workflow.approval.refused` (warn).
+- *API-Tokens und MCP* bleiben ausgeschlossen: der Endpunkt nimmt nur
+  Geräte-Token, `workflow.approve` lehnt Tokens weiter ab.
+- **Ablehnen ohne Biometrie** (bewusst): Ablehnen ist die sichere Richtung
+  – eine Freigabe hält etwas an; eine falsche Ablehnung ist sichtbar (Audit,
+  Lauf) und mit einem neuen Lauf behoben, eine falsche Genehmigung (Mail
+  versendet, Zahlung angestoßen) nicht. Ablehnen bleibt an Geräte-Token,
+  Gerätezustand und Eintragung gebunden; iOS verlangt dafür ein entsperrtes
+  Telefon (`authenticationRequired`) und beantwortet es im Hintergrund wie
+  die anderen Knöpfe (Swift), ohne die App zu öffnen.
+- *Nicht abgedeckt*: ein Angreifer mit entsperrtem Telefon **und** der
+  Biometrie der Person, oder ein kompromittiertes Betriebssystem; ohne
+  Plattform-Attestierung (App Attest/Play Integrity) lässt sich auch nicht
+  beweisen, dass die echte App fragt – der Schlüssel bindet an das Gerät,
+  nicht an die App-Binärdatei.
 
 ---
 
@@ -2123,6 +2198,7 @@ erst am Ende nach `main`.
    mitliefern; bis dahin öffnet die Benachrichtigung die Freigabeansicht
    (funktioniert ohne App-Update).*
    **Entschieden:** wie empfohlen – in Welle 3; bis dahin öffnet die Benachrichtigung die Freigabeansicht.
+   Umsetzung: 11.8 (Genehmigen nur nach Biometrie auf dem Gerät, Ablehnen ohne; Endpunkt mit dem Geräte-Token).
 6. **Aktivieren über MCP/API?** *Empfehlung: REST mit Schreib-Token ja
    (Automatisierung von Deployments), MCP nein (ein KI-Client soll keine
    Rechte-Entscheidung im Namen der Person treffen); Freigaben weder über

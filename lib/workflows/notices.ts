@@ -8,6 +8,7 @@
 import { all, id, one, run } from "../db";
 import { translate, type Locale } from "../i18n";
 import { pageRole } from "../permissions";
+import { rememberApprovalTarget } from "../notification-targets";
 import { securityEvent } from "../security-events";
 import { userLocale } from "../user-locale";
 import type { Identity, Page } from "../types";
@@ -16,7 +17,9 @@ const HOUR = 3_600_000;
 type Text = (tr: (de: string, en: string) => string) => string;
 
 // Inserts one notification per member (never a guest of the workspace).
-export async function opsNotify(userIds: (string | null | undefined)[], pageId: string, text: Text, rowId: string | null = null) {
+// `approvalId`: the notification asks for that approval – the apps show
+// "Approve" / "Reject" on its push (lib/notification-targets.ts, §11.8).
+export async function opsNotify(userIds: (string | null | undefined)[], pageId: string, text: Text, rowId: string | null = null, approvalId: string | null = null) {
   const page = await one<Page>("SELECT * FROM pages WHERE id=?", pageId);
   if (!page) return 0;
   let sent = 0;
@@ -24,7 +27,9 @@ export async function opsNotify(userIds: (string | null | undefined)[], pageId: 
     const member = await one("SELECT 1 FROM members m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=? AND m.user_id=? AND u.disabled=0 AND NOT EXISTS(SELECT 1 FROM workspace_guests g WHERE g.workspace_id=m.workspace_id AND g.user_id=m.user_id)", page.workspace_id, uid);
     if (!member) continue;
     const tr = translate((await userLocale(uid)) as Locale);
-    await run("INSERT INTO notifications(id,user_id,body,page_id,row_id,kind) VALUES(?,?,?,?,?,?)", id(), uid, text(tr).slice(0, 500), page.id, rowId, "workflow_ops");
+    const notificationId = id();
+    await run("INSERT INTO notifications(id,user_id,body,page_id,row_id,kind) VALUES(?,?,?,?,?,?)", notificationId, uid, text(tr).slice(0, 500), page.id, rowId, "workflow_ops");
+    if (approvalId) await rememberApprovalTarget(notificationId, approvalId);
     sent++;
   }
   return sent;

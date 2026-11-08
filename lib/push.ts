@@ -15,7 +15,7 @@ import { focusSilences } from "./mobile-focus";
 import { lockedNotification } from "./journal-extras";
 import { openSecret } from "./secret-box";
 import { notePushResult, type PushResult } from "./metrics";
-import { NOTIFICATION_CATEGORIES, notificationCategory, type NotificationCategory } from "./notification-targets";
+import { NOTIFICATION_CATEGORIES, notificationCategory, openApprovalOf, type NotificationCategory } from "./notification-targets";
 import { encryptForDevice, plaintextJson, pushContent, relayConfig, relayTokenAad, sendBatched, sendToRelay, type RelayCategory, type RelayMessage, type RelayResult, type RelaySender } from "./push-relay";
 import { forEachAsync } from "./each-async";
 const runtime = globalThis as unknown as {
@@ -158,7 +158,13 @@ const RELAY_CATEGORY: Record<NotificationCategory, RelayCategory> = {
   [NOTIFICATION_CATEGORIES.task]: "task",
   [NOTIFICATION_CATEGORIES.comment]: "comment",
   [NOTIFICATION_CATEGORIES.read]: "default",
+  // The relay knows only its three; the buttons come from the encrypted category.
+  [NOTIFICATION_CATEGORIES.workflowApproval]: "default",
 };
+// What the buttons of an approval need besides the notification's id: the
+// approval's id (never a secret; the instance acts on the notification's own).
+const approvalData = async (category: NotificationCategory, notificationId: string) =>
+  category === NOTIFICATION_CATEGORIES.workflowApproval ? await openApprovalOf(notificationId) : null;
 // The general text of a push notification, in the person's language.
 async function inboxNotice(userId: string) {
   const say = translate(await userLocale(userId));
@@ -169,8 +175,9 @@ export type ExpoMessage = {
   to: string;
   title: string;
   body: string;
-  // notificationId: for the buttons (lib/notification-actions.ts).
-  data: { url: string; notificationId?: string };
+  // notificationId: for the buttons (lib/notification-actions.ts);
+  // approvalId: on a workflow approval's notification.
+  data: { url: string; notificationId?: string; approvalId?: string };
   // The buttons the notification shows (lib/notification-targets.ts).
   categoryId?: NotificationCategory;
   sound: "default";
@@ -341,13 +348,15 @@ export async function flushPushQueue(
           // in plain text.
           const content = pushContent("expo"),
             locale = await userLocale(job.user_id),
-            unread = await unreadCount(job.user_id);
+            unread = await unreadCount(job.user_id),
+            categoryId = await notificationCategory({ ...job, id: job.notification_id }, content),
+            approvalId = await approvalData(categoryId, job.notification_id);
           await sendExpo({
             to: job.endpoint.slice(EXPO_ENDPOINT.length),
             title: "Flowplan",
             body: content && job.body && !(await (await lockedNotification())(job)) ? localizedMessage(job.body, locale).slice(0, 300) : (await inboxNotice(job.user_id)),
-            data: { url: notificationUrl(job), notificationId: job.notification_id },
-            categoryId: await notificationCategory({ ...job, id: job.notification_id }, content),
+            data: { url: notificationUrl(job), notificationId: job.notification_id, ...(approvalId ? { approvalId } : {}) },
+            categoryId,
             sound: "default",
             badge: unread,
             channelId: "inbox",
@@ -435,7 +444,8 @@ type RelayJob = {
 async function relayAlert(job: RelayJob, instance: string): Promise<RelayMessage> {
   const content = pushContent("relay"),
     locale = await userLocale(job.user_id),
-    category = await notificationCategory({ ...job, id: job.notification_id }, content);
+    category = await notificationCategory({ ...job, id: job.notification_id }, content),
+    approvalId = await approvalData(category, job.notification_id);
   const token = openSecret(job.relay_token!, relayTokenAad(job.device_id!));
   const plaintext = plaintextJson({
     title: "Flowplan",
@@ -444,7 +454,7 @@ async function relayAlert(job: RelayJob, instance: string): Promise<RelayMessage
     url: new URL(notificationUrl(job), `${instance}/`).toString(),
     id: job.notification_id,
     category,
-    data: job.kind ? { kind: job.kind } : null,
+    data: job.kind || approvalId ? { ...(job.kind ? { kind: job.kind } : {}), ...(approvalId ? { approvalId } : {}) } : null,
     sentAt: Math.floor(Date.now() / 1000),
   });
   return {

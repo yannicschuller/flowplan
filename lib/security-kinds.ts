@@ -50,6 +50,7 @@ export const securityKinds = {
   // Workflows (#168, docs/specs/workflows.md §9.9).
   "workflow.hook.refused": { severity: "warn", de: "Workflow-Webhook abgewiesen (Signatur oder Token)", en: "Workflow webhook refused (signature or token)" },
   "workflow.auto_paused": { severity: "info", de: "Workflow automatisch pausiert", en: "Workflow paused automatically" },
+  "workflow.approval.refused": { severity: "warn", de: "Freigabe aus der App abgewiesen (Bestätigung oder Gerät)", en: "Approval from the app refused (confirmation or device)" },
   "workflow.limit": { severity: "warn", de: "Workflow am Limit (Kaskade oder Rate)", en: "Workflow at its limit (cascade or rate)" },
 } as const satisfies Record<string, Kind>;
 export type SecurityKind = keyof typeof securityKinds;

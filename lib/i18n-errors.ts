@@ -5,6 +5,12 @@ import { PAGE_LOCALE } from "./locale-tag";
 import { securityRules } from "./security-kinds";
 
 const exact: Record<string, string> = {
+  // Workflows (#168, §11.8): approvals from the apps' push notifications.
+  "Die Frist dieser Freigabe ist abgelaufen.": "The deadline of this approval has passed.",
+  "Dieses Gerät war zu lange nicht aktiv. Bitte in Flowplan öffnen.": "This device has not been active for too long. Please open it in Flowplan.",
+  "Freigeben auf diesem Gerät ist nicht eingerichtet. Bitte in Flowplan öffnen.": "Approving is not set up on this device. Please open it in Flowplan.",
+  "Zu viele Versuche. Bitte später in Flowplan öffnen.": "Too many attempts. Please open it in Flowplan later.",
+  "Die Bestätigung auf dem Gerät fehlt. Bitte in Flowplan öffnen.": "The confirmation on the device is missing. Please open it in Flowplan.",
   // Workflows wave 3 (#168): templates, AI builder, export/import, button, instance move.
   "Der Entwurf ist nicht leer.": "The draft is not empty.",
   "Dieser Workflow wurde noch nicht aktiviert.": "This workflow has not been activated yet.",

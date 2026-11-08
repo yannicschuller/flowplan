@@ -1312,6 +1312,11 @@ export function migrateWorkflows(d: DatabaseSync) {
   // Wave 2: the kind of a run's failure (limit failures do not count towards the auto-pause).
   if (!(d.prepare("PRAGMA table_info(workflow_runs)").all() as { name: string }[]).some((c) => c.name === "error_kind"))
     d.exec("ALTER TABLE workflow_runs ADD COLUMN error_kind TEXT");
+  // "Approve" on the apps' push notifications (§11.8): the verifier of the
+  // installation's confirmation key – SHA-256 of a secret that only Face ID
+  // / Touch ID / the fingerprint opens on the phone (lib/mobile-devices.ts).
+  if (!(d.prepare("PRAGMA table_info(mobile_devices)").all() as { name: string }[]).some((c) => c.name === "approval_key"))
+    d.exec("ALTER TABLE mobile_devices ADD COLUMN approval_key TEXT");
   // Insertion order (schema 94): created with seq above; databases from
   // before seq existed on these tables get it like the others.
   for (const table of WORKFLOW_SEQ_TABLES) {
