@@ -7,7 +7,7 @@
 // keeps the height (#185). Both come from the same list, rendered by
 // components/workspace-app.tsx.
 import { useRef, useState } from "react";
-import { DotsThree, type Icon } from "@phosphor-icons/react";
+import { Toolbox, type Icon } from "@phosphor-icons/react";
 import { Modal } from "./ui";
 import { useT } from "./i18n";
 
@@ -64,7 +64,7 @@ export function SidebarMore({ tools }: { tools: SidebarTool[] }) {
           setOpen(true);
         }}
       >
-        <DotsThree size={20} weight="bold" aria-hidden />
+        <Toolbox size={20} aria-hidden />
         <span>{title}</span>
       </button>
       <Modal
