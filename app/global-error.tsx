@@ -4,6 +4,7 @@
 // browser's language and the look stays plain.
 import { useEffect } from "react";
 import { LOCALES, translate, type Locale } from "@/lib/i18n";
+import { CHECK_EVENT, STALE_CHUNK_EVENT } from "@/lib/stale-copy";
 
 function browserLocale(): Locale {
   if (typeof navigator === "undefined") return "en";
@@ -16,6 +17,10 @@ export default function GlobalError({ error, retry, reset }: { error: unknown; r
   const offline = typeof navigator !== "undefined" && navigator.onLine === false;
   useEffect(() => {
     console.error(error);
+    // Perhaps a page of an older build (lib/stale-copy.ts, #61, #182): it
+    // loads the live one once when the server runs a newer build.
+    const chunk = (error as { name?: unknown } | null)?.name === "ChunkLoadError";
+    window.dispatchEvent(new Event(chunk ? STALE_CHUNK_EVENT : CHECK_EVENT));
   }, [error]);
   return (
     <html lang={browserLocale()}>

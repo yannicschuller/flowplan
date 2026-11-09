@@ -8,7 +8,7 @@ import { createElement, useCallback, useEffect, useState, type ComponentType, ty
 import { catchError, type ErrorInfo } from "next/error";
 import { CloudSlash, WarningCircle } from "@phosphor-icons/react";
 import { useT } from "./i18n";
-import { STALE_CHUNK_EVENT } from "@/lib/stale-copy";
+import { CHECK_EVENT, STALE_CHUNK_EVENT } from "@/lib/stale-copy";
 
 const online = () => typeof navigator === "undefined" || navigator.onLine !== false;
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -103,6 +103,9 @@ export function loadView<M extends { default: ComponentType<never> }>(load: () =
 function Fallback(_props: object, { error, reset }: ErrorInfo) {
   useEffect(() => {
     console.error(error);
+    // A part of an older build than the server's may fail on newer data
+    // (#182): the page's check (lib/stale-copy.ts) loads the live one then.
+    window.dispatchEvent(new Event(CHECK_EVENT));
   }, [error]);
   return <ViewUnavailable onRetry={reset} />;
 }

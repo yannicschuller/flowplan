@@ -27,6 +27,31 @@ export const HEAL_KEY = "flowplan-heal";
 export const HEAL_WINDOW = 2 * 60_000;
 // Parts of the app that failed to load on demand (components/view-fallback.tsx).
 export const STALE_CHUNK_EVENT = "flowplan:stale-chunk";
+// An error the app caught (app/error.tsx, app/global-error.tsx,
+// components/view-fallback.tsx): perhaps the page is of an older build
+// than the server's (#182) – asked at most every CHECK_GAP.
+export const CHECK_EVENT = "flowplan:check-build";
+// An answer of the server named another build than the page's (api() in
+// components/ui.tsx, noticeBuild): right after loading the page loads the
+// live one; later, while someone works in it, at the next return to the
+// page (visibilitychange) or the next error.
+export const STALE_BUILD_EVENT = "flowplan:stale-build";
+export const CHECK_GAP = 30_000;
+// How long after loading a page of another build reloads right away.
+export const START_WINDOW = 20_000;
+// A page open for long asks again when one comes back to it (a window or
+// tab that stayed open across an update), at most this often.
+export const RETURN_GAP = 10 * 60_000;
+
+// The build of this page (BUILD_META), read once.
+let pageBuild: string | null | undefined;
+// Called with every answer of the server the app reads (components/ui.tsx).
+export function noticeBuild(headers: { get(name: string): string | null }) {
+  if (typeof document === "undefined") return;
+  if (pageBuild === undefined) pageBuild = document.querySelector<HTMLMetaElement>(`meta[name="${BUILD_META}"]`)?.content || null;
+  const live = headers.get(BUILD_HEADER);
+  if (live && pageBuild && live !== pageBuild) window.dispatchEvent(new Event(STALE_BUILD_EVENT));
+}
 
 export type HealKind =
   // The page's own style sheets and scripts did not load.
@@ -60,7 +85,12 @@ export function healStep(kind: HealKind, page: string, server: { build: string |
 //   page has none.
 // - "later": a script or style sheet of the app failing after "load", a
 //   ChunkLoadError, STALE_CHUNK_EVENT, a page from the back/forward cache,
-//   and once after "load" a page a service worker answered.
+//   and once after "load" a page a service worker answered. And (#182):
+//   STALE_BUILD_EVENT (right after loading, otherwise remembered), an error
+//   the app caught (CHECK_EVENT) or nobody caught (these at most every
+//   CHECK_GAP), the return to a page (visibilitychange) when a newer build
+//   was seen or the last check is RETURN_GAP ago, and "online" when the
+//   last check found no server. A page of the same build never reloads.
 // - The live server's build comes from the health check's BUILD_HEADER;
 //   its body is not needed and is cancelled (unread, in a page a service
 //   worker controls, the request would stay open).
@@ -68,7 +98,9 @@ export function healStep(kind: HealKind, page: string, server: { build: string |
 //   of another build ("Clear cache": the copy's files as well), asks
 //   registered workers to update and loads the address with FRESH_PARAM;
 //   the parameter goes again once the page works – unless sessionStorage is
-//   blocked, then it is the guard against a second reload.
+//   blocked, then it is the guard against a second reload. In the desktop
+//   app the window's HTTP cache goes as well (FlowplanDesktop.clearCache,
+//   flowplan-desktop web-cache.js).
 // - The stored copy of the iPhone and iPad app (meta flowplan-offline-copy)
 //   is left to the app: it hears { type: "staleCopy", copy: true }.
 export function selfHealScript(build: string) {
@@ -76,7 +108,7 @@ export function selfHealScript(build: string) {
 var BUILD=${JSON.stringify(build).replace(/</g, "\\u003c")},KEY=${JSON.stringify(HEAL_KEY)},PARAM=${JSON.stringify(FRESH_PARAM)},WINDOW=${HEAL_WINDOW};
 var de=/^de\\b/i.test(document.documentElement.lang||"");
 var say=function(d,e){return de?d:e};
-var loaded=false,busy=false,done=false;
+var loaded=false,busy=false,done=false,asked=0,retry=false,pending=false,loadedAt=0,hiddenAt=0;
 var isCopy=function(){return !!document.querySelector('meta[name="flowplan-offline-copy"]')};
 var post=function(m){try{window.ReactNativeWebView.postMessage(JSON.stringify(m));return true}catch(e){return false}};
 var fresh=function(){try{return new URL(location.href).searchParams.has(PARAM)}catch(e){return false}};
@@ -90,19 +122,24 @@ var sheetsLoaded=function(){for(var i=0;i<initial.length;i++){var l=initial[i];i
 var canStore=function(){try{sessionStorage.setItem(KEY+"-test","1");sessionStorage.removeItem(KEY+"-test");return true}catch(e){return false}};
 var server=function(){return new Promise(function(done){var timer=setTimeout(function(){done(null)},5000);fetch("/api/health?"+PARAM+"="+Date.now(),{cache:"no-store",credentials:"omit"}).then(function(r){clearTimeout(timer);done({build:r.headers.get(${JSON.stringify(BUILD_HEADER)})});try{r.body&&r.body.cancel().catch(function(){})}catch(e){}},function(){clearTimeout(timer);done(null)})})};
 var step=function(kind,page,answer,recent){if(kind==="later"){var newer=!!(answer&&answer.build)&&!!page&&answer.build!==page;return newer&&!recent?"reload":"none"}if(!answer)return "message";return recent?"message":"reload"};
-var drop=function(all,shell){var jobs=[];try{if(window.caches)jobs.push(caches.keys().then(function(names){return Promise.all(names.map(function(n){if(n==="flowplan-data-v1"&&(all||shell))return caches.open(n).then(function(c){return c.delete("/")});if(all&&n.indexOf("flowplan-static-")===0)return caches.delete(n)}))}));if(navigator.serviceWorker)jobs.push(navigator.serviceWorker.getRegistrations().then(function(list){return Promise.all(list.map(function(r){return r.update()}))}))}catch(e){}return Promise.race([Promise.all(jobs).catch(function(){}),new Promise(function(r){setTimeout(r,3000)})])};
+var drop=function(all,shell){var jobs=[];try{if(window.caches)jobs.push(caches.keys().then(function(names){return Promise.all(names.map(function(n){if(n==="flowplan-data-v1"&&(all||shell))return caches.open(n).then(function(c){return c.delete("/")});if(all&&n.indexOf("flowplan-static-")===0)return caches.delete(n)}))}));if(navigator.serviceWorker)jobs.push(navigator.serviceWorker.getRegistrations().then(function(list){return Promise.all(list.map(function(r){return r.update()}))}));var d=window.FlowplanDesktop;if(d&&typeof d.clearCache==="function")jobs.push(Promise.resolve(d.clearCache()).catch(function(){}))}catch(e){}return Promise.race([Promise.all(jobs).catch(function(){}),new Promise(function(r){setTimeout(r,3000)})])};
 var reload=function(all,shell){try{sessionStorage.setItem(KEY,String(Date.now()))}catch(e){}post({type:"staleCopy",build:BUILD,clear:!!all});drop(all,shell).then(function(){var u=new URL(location.href);u.searchParams.set(PARAM,String(Date.now()));location.replace(u.href)})};
 var message=function(offline){if(document.getElementById("flowplan-stale"))return;var box=document.createElement("div");box.id="flowplan-stale";box.setAttribute("role","alert");box.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;padding:24px;background:Canvas;color:CanvasText;color-scheme:light dark;font:16px/1.5 system-ui,-apple-system,sans-serif;text-align:center";
 var inner=document.createElement("div");inner.style.maxWidth="420px";var h=document.createElement("p");h.style.cssText="margin:0 0 8px;font-size:18px;font-weight:600";h.textContent=say("Flowplan konnte nicht vollständig geladen werden.","Flowplan could not be loaded completely.");
 var p=document.createElement("p");p.style.margin="0 0 20px";p.textContent=offline?say("Keine Verbindung – und die gespeicherte Kopie auf diesem Gerät ist unvollständig. Versuche es wieder, wenn du online bist.","No connection – and the copy stored on this device is incomplete. Try again when you are online."):say("Wahrscheinlich wurde Flowplan aktualisiert, während dieses Gerät noch eine ältere Kopie gespeichert hatte.","Flowplan was probably updated while this device still kept an older copy.");
 var button=function(text,all){var b=document.createElement("button");b.type="button";b.textContent=text;b.style.cssText="margin:4px;padding:8px 16px;font:inherit;border-radius:8px;cursor:pointer";b.addEventListener("click",function(){reload(all,true)});return b};
 inner.appendChild(h);inner.appendChild(p);inner.appendChild(button(say("Neu laden","Reload"),false));inner.appendChild(button(say("Zwischenspeicher leeren","Clear cache"),true));box.appendChild(inner);document.documentElement.appendChild(box)};
-var fail=function(kind){if(done||busy)return;if(isCopy()){if(kind==="boot"){done=true;post({type:"staleCopy",build:BUILD,copy:true});setTimeout(function(){message(navigator.onLine===false)},3000)}return}busy=true;server().then(function(answer){busy=false;var s=step(kind,BUILD,answer,recent());if(s==="none")return;done=true;if(s==="reload")reload(false,!!(answer&&answer.build&&answer.build!==BUILD));else message(!answer)})};
-addEventListener("error",function(e){if(appFile(e.target))fail(loaded?"later":"boot");else if(e.error&&e.error.name==="ChunkLoadError")fail("later")},true);
+var fail=function(kind){if(done||busy)return;if(isCopy()){if(kind==="boot"){done=true;post({type:"staleCopy",build:BUILD,copy:true});setTimeout(function(){message(navigator.onLine===false)},3000)}return}busy=true;asked=Date.now();server().then(function(answer){busy=false;retry=!answer;var s=step(kind,BUILD,answer,recent());if(s==="none")return;done=true;if(s==="reload")reload(false,!!(answer&&answer.build&&answer.build!==BUILD));else message(!answer)})};
+var check=function(gap){if(Date.now()-asked>=gap)fail("later")};
+addEventListener("error",function(e){if(appFile(e.target))fail(loaded?"later":"boot");else if(e.error&&e.error.name==="ChunkLoadError")fail("later");else if(loaded&&e.error)check(${CHECK_GAP})},true);
 addEventListener("unhandledrejection",function(e){if(e.reason&&e.reason.name==="ChunkLoadError")fail("later")});
 addEventListener(${JSON.stringify(STALE_CHUNK_EVENT)},function(){fail("later")});
+addEventListener(${JSON.stringify(CHECK_EVENT)},function(){check(${CHECK_GAP})});
+addEventListener(${JSON.stringify(STALE_BUILD_EVENT)},function(){if(!loadedAt||Date.now()-loadedAt<${START_WINDOW})check(${CHECK_GAP});else pending=true});
+addEventListener("visibilitychange",function(){if(document.visibilityState==="hidden"){hiddenAt=Date.now();return}if(hiddenAt&&(pending||Date.now()-asked>=${RETURN_GAP})){pending=false;fail("later")}});
+addEventListener("online",function(){if(retry)fail("later")});
 addEventListener("pageshow",function(e){if(e.persisted&&!isCopy())fail("later")});
-addEventListener("load",function(){setTimeout(function(){loaded=true;var copy=isCopy();if(!styled()||(!copy&&(!window.next||!sheetsLoaded()))){fail("boot");return}
+addEventListener("load",function(){setTimeout(function(){loaded=true;loadedAt=Date.now();var copy=isCopy();if(!styled()||(!copy&&(!window.next||!sheetsLoaded()))){fail("boot");return}
 if(fresh()&&canStore()){try{var u=new URL(location.href);u.searchParams.delete(PARAM);history.replaceState(history.state,"",u.pathname+u.search+u.hash)}catch(e){}}
 if(!copy&&navigator.serviceWorker&&navigator.serviceWorker.controller)fail("later")},300)});
 })()`;
