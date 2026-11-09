@@ -1,7 +1,9 @@
 "use client";
 // Password and end date of a share link or a publication
-// (lib/share-access.ts): the state as small chips, changes in a fold-out.
+// (lib/share-access.ts): the state as small badges, changes in two editors
+// the share dialog unfolds (components/share-dialog.tsx).
 import { LOCALE_TAG } from "@/lib/locale-tag";
+import { CalendarBlank, LockSimple } from "@phosphor-icons/react";
 import { useState } from "react";
 import { useT } from "./i18n";
 
@@ -22,104 +24,126 @@ export function ProtectionChips({ password, expiresAt }: { password: boolean; ex
   const t = useT();
   const [now] = useState(() => Date.now());
   const expired = !!expiresAt && expiresAt <= now;
-  if (!password && !expiresAt) return null;
   return (
-    <span className="link-protection-chips">
-      {password && <span className="status-chip">{t("Passwort", "Password")}</span>}
+    <>
+      {password && (
+        <span className="tag">
+          <LockSimple aria-hidden />
+          {t("Passwort", "Password")}
+        </span>
+      )}
       {expiresAt &&
         (expired ? (
-          <span className="status-chip warning-chip">{t("abgelaufen", "expired")}</span>
+          <span className="tag tag-red">{t("abgelaufen", "expired")}</span>
         ) : (
-          <span className="status-chip muted-chip">{t(`läuft ab am ${formatExpiry(expiresAt)}`, `expires on ${formatExpiry(expiresAt)}`)}</span>
+          <span className="tag">
+            <CalendarBlank aria-hidden />
+            {t(`läuft ab am ${formatExpiry(expiresAt)}`, `expires on ${formatExpiry(expiresAt)}`)}
+          </span>
         ))}
-    </span>
+    </>
   );
 }
 
-export function LinkProtection({
+// Saves one change; clears the field the change came from on success.
+function useSave(onSave: (patch: ProtectionPatch) => Promise<unknown>) {
+  const [busy, setBusy] = useState(false);
+  const save = async (patch: ProtectionPatch, done: () => void) => {
+    setBusy(true);
+    try {
+      if (await onSave(patch)) done();
+    } finally {
+      setBusy(false);
+    }
+  };
+  return { busy, save };
+}
+
+// Groups, no <label>s: WebKit passes taps on their buttons ("Kein Ablauf",
+// "Entfernen") to the first input, opening the date picker.
+export function PasswordEditor({
   label,
   password,
-  expiresAt,
   disabled,
   onSave,
 }: {
   label: string;
   password: boolean;
+  disabled?: boolean;
+  onSave: (patch: ProtectionPatch) => Promise<unknown>;
+}) {
+  const t = useT();
+  const [value, setValue] = useState("");
+  const { busy, save } = useSave(onSave);
+  const off = disabled || busy;
+  return (
+    <div className="field-group protection-field">
+      {password ? t("Neues Passwort", "New password") : t("Passwort", "Password")}
+      <span className="protection-row">
+        <input
+          type="password"
+          autoComplete="new-password"
+          aria-label={t(`Passwort für ${label}`, `Password for ${label}`)}
+          minLength={6}
+          maxLength={200}
+          placeholder={password ? t("Bleibt unverändert", "Stays unchanged") : t("Ohne Passwort", "No password")}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+        />
+        <button type="button" className="button compact" disabled={off || value.length < 6} onClick={() => void save({ password: value }, () => setValue(""))}>
+          {password ? t("Ändern", "Change") : t("Festlegen", "Set")}
+        </button>
+        {password && (
+          <button type="button" className="button compact" disabled={off} onClick={() => void save({ password: null }, () => setValue(""))}>
+            {t("Entfernen", "Remove")}
+          </button>
+        )}
+      </span>
+      <small className="muted">{t("Mindestens 6 Zeichen. Besucher geben es einmal pro Gerät ein.", "At least 6 characters. Visitors enter it once per device.")}</small>
+    </div>
+  );
+}
+
+export function ExpiryEditor({
+  label,
+  expiresAt,
+  disabled,
+  onSave,
+}: {
+  label: string;
   expiresAt: number | null;
   disabled?: boolean;
   onSave: (patch: ProtectionPatch) => Promise<unknown>;
 }) {
   const t = useT();
-  const [newPassword, setNewPassword] = useState(""),
-    [expiry, setExpiry] = useState(localInputValue(expiresAt)),
-    [busy, setBusy] = useState(false);
-  const save = async (patch: ProtectionPatch) => {
-    setBusy(true);
-    try {
-      const result = await onSave(patch);
-      if (result && patch.password !== undefined) setNewPassword("");
-      if (result && patch.expiresAt === null) setExpiry("");
-    } finally {
-      setBusy(false);
-    }
-  };
+  const [value, setValue] = useState(localInputValue(expiresAt));
+  const { busy, save } = useSave(onSave);
   const off = disabled || busy;
   return (
-    <details className="link-protection">
-      <summary>{t("Passwort und Ablaufdatum", "Password and expiry date")}</summary>
-      {/* Groups, no <label>s: WebKit passes taps on their buttons ("Kein
-          Ablauf", "Entfernen") to the first input, opening the date picker. */}
-      <div className="link-protection-body">
-        <div className="field-group">
-          {password ? t("Neues Passwort", "New password") : t("Passwort", "Password")}
-          <span className="link-protection-row">
-            <input
-              type="password"
-              autoComplete="new-password"
-              aria-label={t(`Passwort für ${label}`, `Password for ${label}`)}
-              minLength={6}
-              maxLength={200}
-              placeholder={password ? t("Bleibt unverändert", "Stays unchanged") : t("Ohne Passwort", "No password")}
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-            />
-            <button type="button" className="button compact" disabled={off || newPassword.length < 6} onClick={() => void save({ password: newPassword })}>
-              {password ? t("Ändern", "Change") : t("Festlegen", "Set")}
-            </button>
-            {password && (
-              <button type="button" className="button compact" disabled={off} onClick={() => void save({ password: null })}>
-                {t("Entfernen", "Remove")}
-              </button>
-            )}
-          </span>
-          <small className="muted">{t("Mindestens 6 Zeichen. Besucher geben es einmal pro Gerät ein.", "At least 6 characters. Visitors enter it once per device.")}</small>
-        </div>
-        <div className="field-group">
-          {t("Läuft ab am", "Expires on")}
-          <span className="link-protection-row">
-            <input
-              type="datetime-local"
-              aria-label={t(`Ablaufdatum für ${label}`, `Expiry date for ${label}`)}
-              value={expiry}
-              onChange={(e) => setExpiry(e.target.value)}
-            />
-            <button
-              type="button"
-              className="button compact"
-              disabled={off || !expiry || expiry === localInputValue(expiresAt)}
-              onClick={() => void save({ expiresAt: fromLocalInput(expiry) })}
-            >
-              {t("Speichern", "Save")}
-            </button>
-            {expiresAt && (
-              <button type="button" className="button compact" disabled={off} onClick={() => void save({ expiresAt: null })}>
-                {t("Kein Ablauf", "No expiry")}
-              </button>
-            )}
-          </span>
-          <small className="muted">{t("Danach zeigt der Link nur noch „abgelaufen“ – auch für Dateien.", "Afterwards the link only shows “expired” – files included.")}</small>
-        </div>
-      </div>
-    </details>
+    <div className="field-group protection-field">
+      {t("Läuft ab am", "Expires on")}
+      <span className="protection-row">
+        <input
+          type="datetime-local"
+          aria-label={t(`Ablaufdatum für ${label}`, `Expiry date for ${label}`)}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+        />
+        <button
+          type="button"
+          className="button compact"
+          disabled={off || !value || value === localInputValue(expiresAt)}
+          onClick={() => void save({ expiresAt: fromLocalInput(value) }, () => {})}
+        >
+          {t("Speichern", "Save")}
+        </button>
+        {expiresAt && (
+          <button type="button" className="button compact" disabled={off} onClick={() => void save({ expiresAt: null }, () => setValue(""))}>
+            {t("Kein Ablauf", "No expiry")}
+          </button>
+        )}
+      </span>
+      <small className="muted">{t("Danach zeigt der Link nur noch „abgelaufen“ – auch für Dateien.", "Afterwards the link only shows “expired” – files included.")}</small>
+    </div>
   );
 }

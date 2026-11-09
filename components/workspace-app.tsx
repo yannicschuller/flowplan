@@ -50,7 +50,6 @@ import { ActivityPing } from "./activity-ping";
 import { useDrawerSwipe } from "./drawer-swipe";
 import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { activeKeymap, matchAction, preferredCombo, setKeymapOverrides, shortcutHint, subscribeKeymap, type KeymapOverrides, type ShortcutAction } from "@/lib/keymap";
-import { PagePeople } from "./page-people";
 import { PageReview, openPageReview } from "./page-review";
 import { PagePropertyBar } from "./page-properties";
 import { TagView } from "./tag-view";
@@ -62,7 +61,7 @@ import { TagOptionsContext } from "./tag-options-context";
 import { contextOf, parseSearchTokens, tagToken } from "@/lib/page-properties";
 import { Tag as TagIcon } from "@phosphor-icons/react";
 import { openPageAliases, AliasIcon } from "./page-aliases";
-import { AiBlockToggle } from "./ai-settings";
+import { ShareDialog } from "./share-dialog";
 import { AskPanel, useMedia, type AskRequest } from "./ai-ask";
 import { ASK_OVERLAY_MEDIA, readAskPinned, readAskWidth, writeAskPinned, writeAskWidth } from "@/lib/ask-panel";
 import { AiDatabaseCreator, proposalPayload, type DatabaseProposal } from "./ai-database";
@@ -157,7 +156,6 @@ import {
   Scales,
   Sun,
   Moon,
-  Globe,
   Link as LinkIcon,
   SquaresFour,
   Flag,
@@ -214,9 +212,6 @@ import {
 import DatabaseView, { type DatabaseData } from "./database-view";
 import Settings from "./settings";
 import Admin from "./admin";
-import { ShareLinks } from "./share-links";
-import { PublicationDomain } from "./publication-domain";
-import { LinkProtection, ProtectionChips } from "./link-protection";
 import { MovePageDialog } from "./move-page-dialog";
 import { MetaResolveDialog, moveIntro, ScopeChoice } from "./meta-scope";
 import type { ForeignMeta, MetaPlan } from "@/lib/meta-scope";
@@ -1846,7 +1841,8 @@ export default function WorkspaceApp({
     editable = mayEdit && !reading,
     sourceOpen = !!data && data.page.kind === "document" && !data.locked && sourcePage === data.page.id,
     canCreate = boot.workspace.role !== "viewer" && !boot.workspace.guest,
-    favorites = activePages.filter((p) => boot.favorites.includes(p.id));
+    favorites = activePages.filter((p) => boot.favorites.includes(p.id)),
+    shareSpace = boot.spaces.find((s) => s.id === data?.page.space_id);
   // Links in documents show the icons of these pages (#96) and follow
   // their changes like titles do (components/page-link-icons.tsx).
   useEffect(() => setLinkTargetPages(activePages), [activePages]);
@@ -5374,143 +5370,31 @@ export default function WorkspaceApp({
         }
         resolve={offlineQueue.resolve}
       />
-      <Modal open={share} sheet onClose={() => setShare(false)} title={t("Seite teilen", "Share page")}>
-        {data && (
-          <>
-            <PagePeople
-              pageId={data.page.id}
-              workspaceId={boot.workspace.id}
-              members={boot.members.filter((m) => m.id !== boot.user.id)}
-              onChanged={() => void refresh().catch(() => {})}
-              onError={notifyError}
-            />
-            <AiBlockToggle targetId={data.page.id} kind="page" onError={notifyError} />
-            {data.role !== "viewer" && (
-              <ShareLinks
-                pageId={data.page.id}
-                links={data.shareLinks || []}
-                act={act}
-              />
-            )}
-            <div className="settings-section">
-              <h3>
-                <Globe size={18} />
-                {t("Im Web veröffentlichen", "Publish on the web")}
-              </h3>
-              <p>{t("Jeder mit dem Link kann den Inhalt dieser Seite lesen.", "Anyone with the link can read this page's content.")}</p>
-              <label className="checkbox-label">
-                <input
-                  type="checkbox"
-                  disabled={!editable}
-                  checked={!!data.page.public_token}
-                  onChange={(e) =>
-                    act({
-                      action: "page.publish",
-                      pageId,
-                      enabled: e.target.checked,
-                    })
-                  }
-                />
-                {t("Öffentlichen Link aktivieren", "Enable public link")}
-              </label>
-              {data.page.public_token && (
-                <div className="publication-options">
-                  <label className="checkbox-label">
-                    <input
-                      type="checkbox"
-                      disabled={!editable}
-                      checked={!!data.publication?.includeChildren}
-                      onChange={(e) =>
-                        act({
-                          action: "page.publish",
-                          pageId,
-                          enabled: true,
-                          includeChildren: e.target.checked,
-                          allowCopy: data.publication?.allowCopy !== false,
-                        })
-                      }
-                    />
-                    {t("Aktuell vorhandene Unterseiten mit veröffentlichen", "Also publish the current sub-pages")}
-                  </label>
-                  <label className="checkbox-label">
-                    <input
-                      type="checkbox"
-                      disabled={!editable}
-                      checked={data.publication?.allowCopy !== false}
-                      onChange={(e) =>
-                        act({
-                          action: "page.publish",
-                          pageId,
-                          enabled: true,
-                          includeChildren: !!data.publication?.includeChildren,
-                          allowCopy: e.target.checked,
-                        })
-                      }
-                    />
-                    {t("Besucher dürfen eine Kopie in ihren Arbeitsbereich übernehmen", "Visitors may copy it into their workspace")}
-                  </label>
-                  <ProtectionChips password={!!data.publication?.password} expiresAt={data.publication?.expiresAt ?? null} />
-                  {editable && (
-                    <LinkProtection
-                      label={t("öffentlichen Link", "public link")}
-                      password={!!data.publication?.password}
-                      expiresAt={data.publication?.expiresAt ?? null}
-                      onSave={(patch) => act({ action: "publication.protect", pageId, ...patch })}
-                    />
-                  )}
-                  {data.publication?.password && (
-                    <p className="muted">{t("Mit Passwort kann die Veröffentlichung nicht kopiert werden.", "With a password the publication cannot be copied.")}</p>
-                  )}
-                  <p className="muted">
-                    {t("Veröffentlichte Seiten:", "Published pages:")}{" "}{data.publication?.count || 1}{t(". Dokumente, Datensatzinhalte und darin verlinkte Uploads sind öffentlich. Kommentare und Mitgliederangaben bleiben privat.", ". Documents, record contents and uploads linked in them are public. Comments and member details stay private.")}
-                  </p>
-                  {data.publication?.includeChildren && editable && (
-                    <button
-                      className="button"
-                      onClick={() =>
-                        act({
-                          action: "page.publish",
-                          pageId,
-                          enabled: true,
-                          includeChildren: true,
-                          allowCopy: data.publication?.allowCopy !== false,
-                        })
-                      }
-                    >
-                      {t("Auswahl um neue Unterseiten ergänzen", "Add new sub-pages to the selection")}
-                    </button>
-                  )}
-                  <PublicationDomain
-                    pageId={data.page.id}
-                    editable={editable}
-                    password={!!data.publication?.password}
-                    onError={notifyError}
-                  />
-                </div>
-              )}
-              {data.page.public_token && (
-                <div className="copy-link">
-                  <input
-                    readOnly
-                    value={`${location.origin}/share/${data.page.public_token}`}
-                  />
-                  <button
-                    className="button"
-                    onClick={() => {
-                      void navigator.clipboard.writeText(
-                        `${location.origin}/share/${data.page.public_token}`,
-                      );
-                      notify(t("Link kopiert", "Link copied"));
-                    }}
-                  >
-                    <Copy />
-                  </button>
-                </div>
-              )}
-            </div>
-          </>
-        )}
-      </Modal>
+      <ShareDialog
+        open={share}
+        onClose={() => setShare(false)}
+        page={data?.page ?? null}
+        role={data?.role ?? "viewer"}
+        editable={editable}
+        shareLinks={data?.shareLinks}
+        publication={data?.publication}
+        workspaceId={boot.workspace.id}
+        me={boot.user}
+        members={boot.members.filter((m) => m.id !== boot.user.id)}
+        space={shareSpace}
+        spaceMembers={shareSpace?.visibility === "team" && !boot.workspace.guest ? boot.members.filter((m) => !m.guest).length : null}
+        onManageSpace={
+          shareSpace && (boot.workspace.role === "owner" || (canCreate && shareSpace.owner_id === boot.user.id))
+            ? () => {
+                setShare(false);
+                setSpaceManager({ space: shareSpace });
+              }
+            : undefined
+        }
+        act={act}
+        onChanged={() => void refresh().catch(() => {})}
+        onError={notifyError}
+      />
       <Modal
         open={history}
         onClose={() => setHistory(false)}
