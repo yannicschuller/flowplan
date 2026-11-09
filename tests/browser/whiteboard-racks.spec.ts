@@ -96,6 +96,32 @@ test("rack panels: typing in the middle of a text keeps the caret (#187)", async
   expect(errors).toEqual([]);
 });
 
+test("rack panels: pasting into a field goes into the field, not onto the board (#187)", async ({ page }, info) => {
+  test.skip(info.project.name === "mobile", "Desktop details panel");
+  const wb = await setup(page, `Rack-Einfügen ${Date.now()}`);
+  await rackWithDevices(page, wb);
+  const details = wb.getByRole("complementary", { name: "Details: Gerät" });
+  await details.locator(".wb-rack-where button").first().click();
+  const rackDetails = wb.getByRole("complementary", { name: "Details: Rack" });
+  const name = rackDetails.getByLabel("Name", { exact: true });
+  await name.fill("");
+  await name.blur();
+  const texts = await wb.locator("g.wb-text").count();
+  // A paste as the browser's context menu or Ctrl+V sends it.
+  const prevented = await name.evaluate((el: HTMLInputElement) => {
+    el.focus();
+    const data = new DataTransfer();
+    data.setData("text/plain", "Server Schrank Zuhause");
+    const event = new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true });
+    el.dispatchEvent(event);
+    return event.defaultPrevented;
+  });
+  // The board leaves the event alone, so the browser inserts the text.
+  expect(prevented).toBe(false);
+  await page.waitForTimeout(200);
+  await expect(wb.locator("g.wb-text")).toHaveCount(texts);
+});
+
 test("rack panels: roles, host name, IP and MAC addresses, port addresses (#187)", async ({ page, context }, info) => {
   test.skip(info.project.name === "mobile", "Desktop details panel");
   const errors: string[] = [];

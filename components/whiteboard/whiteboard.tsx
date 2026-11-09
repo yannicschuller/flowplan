@@ -2392,7 +2392,9 @@ export default function Whiteboard({
     }
   }
   function onPaste(e: React.ClipboardEvent) {
-    if (!editable || editing) return;
+    // Pasting into a field of a side panel (rack name, notes …) is the
+    // field's own business – as for keys in onKeyDown (#187).
+    if (!editable || editing || (e.target as HTMLElement).closest("input, textarea, select, [contenteditable=true]")) return;
     const file = [...e.clipboardData.files].find((f) =>
       f.type.startsWith("image/"),
     );
