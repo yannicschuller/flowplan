@@ -233,6 +233,16 @@ export class IssueRateLimit extends HttpError {
     super(429, "Der Git-Anbieter begrenzt gerade die Anfragen – die Synchronisierung macht später weiter.");
   }
 }
+// A refusal of the provider (502 to our caller) with the provider's own
+// HTTP status (the Git connection's back-link shows it).
+export class ProviderError extends HttpError {
+  constructor(
+    message: string,
+    public upstream: number,
+  ) {
+    super(502, message);
+  }
+}
 // How long to wait after a 403/429: Retry-After (seconds or a date), else
 // the reset time of the rate limit, else a minute; at most an hour.
 export function retryAfter(headers: Record<string, string>, now = Date.now()) {
@@ -275,16 +285,25 @@ async function request(client: Client, method: string, path: string, body?: unkn
     allowPrivate: client.endpoint.allowPrivate,
   });
   if (limited(response.status, response.headers)) throw new IssueRateLimit(retryAfter(response.headers));
-  if (response.status === 401) throw new HttpError(502, "Der Git-Anbieter lehnt das Token ab.");
-  if (response.status === 403) throw new HttpError(502, "Dem Token fehlt die Berechtigung für dieses Repository.");
-  if (response.status === 404) throw new HttpError(502, "Repository oder Issue nicht gefunden – oder das Token hat keinen Zugriff.");
-  if (response.status < 200 || response.status >= 300) throw new HttpError(502, `Der Git-Anbieter antwortet mit HTTP ${response.status}.`);
+  const refused = (message: string) => new ProviderError(message, response.status);
+  if (response.status === 401) throw refused("Der Git-Anbieter lehnt das Token ab.");
+  if (response.status === 403) throw refused("Dem Token fehlt die Berechtigung für dieses Repository.");
+  if (response.status === 404) throw refused("Repository oder Issue nicht gefunden – oder das Token hat keinen Zugriff.");
+  if (response.status < 200 || response.status >= 300) throw refused(`Der Git-Anbieter antwortet mit HTTP ${response.status}.`);
   const lower = Object.fromEntries(Object.entries(response.headers).map(([k, v]) => [k.toLowerCase(), v]));
   try {
     return { data: response.body ? JSON.parse(response.body) : null, headers: lower };
   } catch {
     throw new HttpError(502, `Der Git-Anbieter antwortet mit HTTP ${response.status}.`);
   }
+}
+
+// One authenticated call to a provider's API outside of the issue sync
+// (the back-link comments of the Git connection, lib/git-backlinks.ts):
+// the same transport, address checks and error handling.
+export type ProviderEndpoint = Endpoint;
+export async function providerCall(provider: IssueProvider, endpoint: Endpoint, token: string, method: string, path: string, body?: unknown): Promise<any> {
+  return await call({ provider, endpoint, token, repo: "" }, method, path, body);
 }
 
 // An issue as both providers describe it.

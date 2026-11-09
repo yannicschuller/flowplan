@@ -114,6 +114,17 @@ export const settingsSchema = z.object({
       createdAt: z.string().max(40),
       sealed: z.string().max(600).optional(),
       tokenHash: z.string().max(64).optional(),
+      // Optional access token for the back-link comments on pull/merge
+      // requests (#184, lib/git-backlinks.ts): sealed, bound to the
+      // provider's address it was entered for.
+      access: z
+        .object({
+          provider: z.enum(["github", "gitlab", "forgejo"]),
+          web: z.string().max(500),
+          sealed: z.string().max(4000),
+          setAt: z.string().max(40),
+        })
+        .optional(),
     })
     .optional(),
 });

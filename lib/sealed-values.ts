@@ -50,6 +50,19 @@ export function openGit(pageId: string, git: StoredGit | undefined) {
   }
 }
 
+// The access token of a Git connection for its back-link comments on pull
+// and merge requests (#184, databases.settings.git.access, lib/git-backlinks.ts),
+// sealed to the database; it is only ever sent to the address stored with it.
+const gitAccessAad = (pageId: string) => `database-git-access:${pageId}`;
+export const sealGitAccess = (pageId: string, token: string) => sealSecret(token, gitAccessAad(pageId));
+export function openGitAccess(pageId: string, sealed: string): string | null {
+  try {
+    return openSecret(sealed, gitAccessAad(pageId));
+  } catch {
+    return null;
+  }
+}
+
 // Schema 92: seals the values stored in plain text before, once
 // (data_migrations). A value that cannot be sealed now (no key can be
 // written) stays readable and is sealed at the next start. The step

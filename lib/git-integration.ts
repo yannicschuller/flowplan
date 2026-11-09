@@ -16,6 +16,8 @@ import { resolveTicket } from "./ticket-refs";
 import { rowChanged } from "./automations";
 import { TICKET_REF } from "./ticket-ids";
 import { gitTokenHash, openGit, sealGit } from "./sealed-values";
+import { issueSyncHosts } from "./issue-sync";
+import { backLinkTarget, gitBackLinkStatus, publicAccess, queueBackLink } from "./git-backlinks";
 import type { Field, Identity, Page } from "./types";
 
 type Item = { kind: "commit" | "pr"; ref: string; title: string; text: string; url: string; author: string; state: string; closes: boolean };
@@ -30,7 +32,9 @@ export async function gitSetup(page: Page, action: "git.setup" | "git.disable") 
     return { ok: true };
   }
   const git = { token: randomBytes(24).toString("base64url"), secret: randomBytes(24).toString("base64url"), createdAt: new Date().toISOString() };
-  await storeSettings(page.id, { ...settings, git: sealGit(page.id, git) });
+  // A new address and secret keep the access token of the back-links.
+  const access = settings.git?.access;
+  await storeSettings(page.id, { ...settings, git: { ...sealGit(page.id, git), ...(access ? { access } : {}) } });
   return git;
 }
 
@@ -155,8 +159,10 @@ export async function receiveGitWebhook(token: string, headers: Headers, body: s
   }
   let linked = 0,
     closed = 0;
+  const backLinks = !!(await databaseSettings(db.page_id)).git?.access;
   for (const item of items(source.provider, source.event, payload)) {
     if (!item.url || !/^https?:\/\//.test(item.url)) continue;
+    const records: string[] = [];
     const keys = new Set([...item.text.matchAll(TICKET_REF)].map((m) => m[0]));
     const closing = new Set([...item.text.matchAll(CLOSING)].map((m) => m[1].toUpperCase()));
     for (const key of keys) {
@@ -177,8 +183,13 @@ export async function receiveGitWebhook(token: string, headers: Headers, body: s
         Date.now(),
       );
       linked++;
+      records.push(ticket.rowId);
       if (item.closes && closing.has(key) && await closeRecord(ticket.pageId, ticket.rowId)) closed++;
     }
+    // The comment on the request, after the transaction (also when no
+    // ticket is named any more: an earlier comment then says so).
+    const target = backLinks && item.kind === "pr" ? backLinkTarget(source.provider, source.event, payload) : null;
+    if (target && target.url === item.url) queueBackLink({ pageId: db.page_id, target, rowIds: records });
   }
   return { ok: true, linked, closed };
 }
@@ -187,7 +198,10 @@ export async function receiveGitWebhook(token: string, headers: Headers, body: s
 // change the database (a reader with the secret could close records).
 export async function gitConfig(user: Identity, pageId: string) {
   await requirePage(user, pageId, true);
-  return openGit(pageId, (await databaseSettings(pageId)).git);
+  const settings = await databaseSettings(pageId);
+  const git = openGit(pageId, settings.git);
+  // The access token itself is never returned: only for which server.
+  return git && { ...git, access: publicAccess(settings.git?.access), backLink: await gitBackLinkStatus(pageId), allowedHosts: issueSyncHosts() };
 }
 
 export async function gitLinks(user: Identity, pageId: string, rowId: string) {

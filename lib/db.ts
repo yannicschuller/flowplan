@@ -39,7 +39,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 97;
+export const SCHEMA_VERSION = 98;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 // Schema 97 (workflows): tables created with their seq column (and its
@@ -1267,6 +1267,13 @@ function migrate(d: DatabaseSync) {
   migrateStatusLogUser(d);
   // Schema 97 – workflows (#168, below).
   migrateWorkflows(d);
+  // Schema 98 – back-link comments of the Git connection (#184,
+  // lib/git-backlinks.ts): per database and pull/merge request the one
+  // comment Flowplan wrote there (updated instead of posting another), the
+  // hash of its text and the outcome of the last attempt (the status shown
+  // in the connection's settings).
+  d.exec(`CREATE TABLE IF NOT EXISTS git_backlinks(page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,url TEXT NOT NULL,comment_id TEXT,body_hash TEXT NOT NULL DEFAULT '',status INTEGER,error TEXT,at INTEGER NOT NULL,PRIMARY KEY(page_id,url));
+    CREATE INDEX IF NOT EXISTS git_backlinks_at ON git_backlinks(page_id,at);`);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);

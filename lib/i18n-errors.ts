@@ -1039,6 +1039,13 @@ const exact: Record<string, string> = {
   "Der Git-Anbieter begrenzt gerade die Anfragen – die Synchronisierung macht später weiter.": "The Git provider is limiting requests right now – the sync continues later.",
   "Der Git-Anbieter lehnt das Token ab.": "The Git provider rejects the token.",
   "Dem Token fehlt die Berechtigung für dieses Repository.": "The token lacks permission for this repository.",
+  // Back-link comments of the Git connection (#184, lib/git-backlinks.ts).
+  "Bitte zuerst die Git-Anbindung einrichten.": "Please set up the Git connection first.",
+  "Der Webhook kommt von einem anderen Git-Anbieter als dem des Zugangstokens.": "The webhook comes from another Git provider than the access token’s.",
+  "Das Repository liegt auf einem anderen Server als dem des Zugangstokens.": "The repository is on another server than the access token’s.",
+  "Das Zugangstoken lässt sich auf dieser Instanz nicht öffnen.": "The access token cannot be opened on this instance.",
+  "Der Git-Anbieter hat keinen Kommentar angelegt.": "The Git provider did not create a comment.",
+  "Der Git-Anbieter ist nicht erreichbar.": "The Git provider cannot be reached.",
   "Repository oder Issue nicht gefunden – oder das Token hat keinen Zugriff.": "Repository or issue not found – or the token has no access.",
   "Nur Eigentümer des Arbeitsbereichs und Administratoren verbinden GitHub, GitLab oder Forgejo/Gitea.": "Only workspace owners and administrators connect GitHub, GitLab or Forgejo/Gitea.",
   "Für Forgejo / Gitea bitte die Adresse des Servers angeben.": "For Forgejo / Gitea, please enter the address of the server.",

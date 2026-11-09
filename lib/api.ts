@@ -25,6 +25,7 @@ import { prepareSubtaskFields } from "./subtasks-server";
 import { timeCommand } from "./time-tracking";
 import { sprintCommand } from "./sprints";
 import { gitSetup } from "./git-integration";
+import { gitAccessCommand } from "./git-backlinks";
 import { issueSyncCommand } from "./issue-sync";
 import { queueIssuePush } from "./issue-sync-queue";
 import { deleteRecordView, saveRecordView } from "./cross-records";
@@ -2901,6 +2902,10 @@ async function runCommand(
       case "git.setup":
       case "git.disable":
         result = await gitSetup(await write(), action);
+        break;
+      // Access token for the back-link comments (#184, lib/git-backlinks.ts).
+      case "git.token":
+        result = await gitAccessCommand(user, await write(), b);
         break;
       // GitHub/GitLab/Forgejo issue sync: connections and database mappings.
       case "issueSync.connect":

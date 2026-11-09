@@ -20658,9 +20658,38 @@ h3 .block-reactions {
 .record-git li[data-state="merged"] svg {
   color: var(--blue);
 }
-.record-git li span {
+.record-git li > span {
   grid-column: 2;
   font-size: 12px;
+}
+.record-git li .status-badge {
+  min-height: 18px;
+  padding: 0 7px;
+  font-size: 11px;
+}
+.git-backlink {
+  display: grid;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.git-backlink h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 14px;
+}
+.git-backlink p {
+  margin: 0;
+}
+.git-backlink-form {
+  display: grid;
+  gap: 12px;
+}
+.git-backlink-form label {
+  display: grid;
+  gap: 4px;
 }
 
 /* ---------- Records across databases (components/my-records.tsx) ---------- */

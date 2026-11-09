@@ -79,7 +79,7 @@ export const commandActionNames = [
   "domain.add", "domain.remove", "plugin.update", "plugin.delete",
   "form.update", "form.submit", "survey.save",
   "sprint.setup", "sprint.create", "sprint.update", "sprint.start", "sprint.complete", "sprint.delete", "sprint.points",
-  "recordView.save", "recordView.delete", "git.setup", "git.disable",
+  "recordView.save", "recordView.delete", "git.setup", "git.disable", "git.token",
   "time.start", "time.stop", "time.add", "time.delete", "ticket.reply",
   "member.invite", "invite.cancel", "invite.resend", "member.role", "member.guest",
   "sso.mapping.add", "sso.mapping.delete", "grant.set", "group.create", "group.member",
