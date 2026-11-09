@@ -12,6 +12,7 @@ import "./instance-move.css";
 import "./backup-restore.css";
 import "./admin-monitoring.css";
 import "./admin-users.css";
+import "./new-page-dialog.css";
 import "katex/dist/katex.min.css";
 import { requestLocale } from "@/lib/i18n-server";
 import { localeTag, translate } from "@/lib/i18n";

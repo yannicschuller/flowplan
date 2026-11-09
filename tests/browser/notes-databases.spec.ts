@@ -16,7 +16,7 @@ test("databases for notes: kind on creation, capture, share and Markdown import"
   await page.goto("/#new");
   const dialog = page.getByRole("dialog", { name: "Neue Seite" });
   await dialog.getByLabel("Name").fill(`Notizen ${stamp}`);
-  await dialog.getByRole("button", { name: /Datenbank/ }).click();
+  await dialog.getByRole("radio", { name: "Datenbank", exact: true }).click();
   const kinds = dialog.getByRole("group", { name: "Art der Datenbank" });
   await expect(kinds.getByRole("radio", { name: /Aufgaben/ })).toBeChecked();
   await kinds.getByText("Dokumente", { exact: true }).click();
@@ -28,7 +28,7 @@ test("databases for notes: kind on creation, capture, share and Markdown import"
   expect(schema.database.fields.map((f: { type: string }) => f.type)).toEqual(["text", "multiselect", "created_at", "updated_at"]);
   await page.goto("about:blank");
   await page.goto("/#new");
-  await dialog.getByRole("button", { name: /Datenbank/ }).click();
+  await dialog.getByRole("radio", { name: "Datenbank", exact: true }).click();
   await expect(kinds.getByRole("radio", { name: /Dokumente/ })).toBeChecked();
   await dialog.getByRole("button", { name: "Abbrechen" }).click();
 

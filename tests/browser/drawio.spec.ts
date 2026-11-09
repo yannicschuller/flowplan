@@ -241,7 +241,7 @@ test("the Diagramm-Seite template creates a full-width page with a diagram and o
     await page.goto("/#home");
     await page.getByRole("button", { name: /Neue Seite/ }).first().click();
     const create = page.getByRole("dialog", { name: "Neue Seite" });
-    await create.getByRole("button", { name: /Aus Vorlage/ }).click();
+    await create.getByRole("radio", { name: /Aus Vorlage/ }).click();
     const gallery = page.getByRole("dialog", { name: "Vorlagen" });
     await gallery.getByRole("button", { name: "Wissen & Dokumentation", exact: true }).click();
     await gallery.locator(".template-grid > button", { hasText: "Diagramm-Seite" }).click();

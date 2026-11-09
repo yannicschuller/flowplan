@@ -39,7 +39,7 @@ test("the New page dialog opens the template gallery and comes back to it", asyn
   await page.goto("/#home");
   await page.getByRole("button", { name: /Neue Seite/ }).first().click();
   const create = page.getByRole("dialog", { name: "Neue Seite" });
-  await create.getByRole("button", { name: /Aus Vorlage/ }).click();
+  await create.getByRole("radio", { name: /Aus Vorlage/ }).click();
   const gallery = page.getByRole("dialog", { name: "Vorlagen" });
   await expect(gallery).toBeVisible();
   await expect(create).toBeHidden();
@@ -47,10 +47,10 @@ test("the New page dialog opens the template gallery and comes back to it", asyn
   await page.keyboard.press("Escape");
   await expect(create).toBeVisible();
   // A template from the gallery: the dialog says so and creates the page from it.
-  await create.getByRole("button", { name: /Aus Vorlage/ }).click();
+  await create.getByRole("radio", { name: /Aus Vorlage/ }).click();
   await gallery.getByRole("button", { name: "Meetings", exact: true }).click();
   await gallery.locator(".template-grid > button", { hasText: "Retrospektive" }).click();
-  await expect(create.getByRole("button", { name: /Vorlage gewählt/ })).toBeVisible();
+  await expect(create.getByRole("radio", { name: /Vorlage gewählt/ })).toBeVisible();
   const title = `Retro ${Date.now()}`;
   await create.getByPlaceholder("Wie heißt deine Seite?").fill(title);
   await create.getByRole("button", { name: "Seite erstellen" }).click();

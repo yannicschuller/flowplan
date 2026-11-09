@@ -65,7 +65,7 @@ import { openPageAliases, AliasIcon } from "./page-aliases";
 import { AiBlockToggle } from "./ai-settings";
 import { AskPanel, useMedia, type AskRequest } from "./ai-ask";
 import { ASK_OVERLAY_MEDIA, readAskPinned, readAskWidth, writeAskPinned, writeAskWidth } from "@/lib/ask-panel";
-import { AiDatabaseCreator, proposalPayload, type DatabaseProposal } from "./ai-database";
+import { proposalPayload, type DatabaseProposal } from "./ai-database";
 import { AiProvider, useAiRoute } from "./ai-context";
 import { AiSummaryPanel, type AiSummaryTarget } from "./ai-summary";
 import { aiUsable } from "@/lib/ai/client";
@@ -242,14 +242,14 @@ import { printPage } from "./print-page";
 import { exportDocumentHtml } from "@/lib/document-html";
 import { PageToRecord } from "./page-to-record";
 import {
-  DatabaseKindPicker,
   databaseChoicePayload,
   rememberDatabaseKind,
   rememberedDatabaseKind,
   type DatabaseChoice,
 } from "./database-kind-picker";
 import { UnlinkedMentions } from "./unlinked-mentions";
-import { DuplicateHint, RelatedPages } from "./related-pages";
+import { RelatedPages } from "./related-pages";
+import { NewPageDialog } from "./new-page-dialog";
 import {
   FollowButton,
   ReadersButton,
@@ -5119,223 +5119,84 @@ export default function WorkspaceApp({
           }}
         />
       )}
-      <Modal open={create} sheet onClose={() => setCreate(false)} title={t("Neue Seite", "New page")}>
-        <form
-          onSubmit={async (e) => {
-            e.preventDefault();
-            // A failure shows inside this dialog, with "Retry" submitting again.
-            const form = e.currentTarget;
-            // Encrypted titles: the page starts with the placeholder, then
-            // gets its title encrypted in the browser.
-            const titleEncrypted = !!(boot.spaces.find((s) => s.id === spaceId) as { encrypt_titles?: number } | undefined)?.encrypt_titles;
-            if (titleEncrypted && !e2eeState.unlocked) return setE2eeDialog("unlock");
-            const result = await act({
-              action: "page.create",
-              workspaceId: boot.workspace.id,
-              spaceId,
-              parentId: parent,
-              title: titleEncrypted ? ENCRYPTED_TITLE : newTitle || t("Ohne Titel", "Untitled"),
-              kind: newKind,
-              starterTemplate,
-              ...(newKind === "database" && !starterTemplate
-                ? aiCreate && aiProposal
-                  ? { aiDatabase: proposalPayload(aiProposal) }
-                  : databaseChoicePayload(databaseChoice)
-                : {}),
-            }, () => form.requestSubmit());
-            if (result?.id && titleEncrypted && newTitle.trim())
-              try {
-                await openSpace(spaceId);
-                await act({ action: "e2ee.title", pageId: String(result.id), cipher: await encryptTitle(spaceId, String(result.id), newTitle.trim()) });
-              } catch (error) {
-                notifyError(error);
-              }
-            if (result?.id) {
-              if (newKind === "notebook" && notebookPdf) queueNotebookImport(String(result.id), notebookPdf);
-              // "Diagramm-Seite": draw.io opens for the new page's diagram.
-              if (starterTemplate && catalogFor(LOCALE_TAG === "de-DE" ? "de" : "en")[starterTemplate]?.openDiagram)
-                queueDrawioOpen(String(result.id));
-              setNotebookPdf(null);
-              if (newKind === "database" && !starterTemplate && !aiCreate) rememberDatabaseKind(databaseChoice);
-              setCreate(false);
-              setAiCreate(false);
-              setAiProposal(null);
-              focusTitleOf.current = String(result.id);
-              void openPage(String(result.id));
+      <NewPageDialog
+        open={create}
+        onClose={() => setCreate(false)}
+        boot={boot}
+        title={newTitle}
+        onTitle={setNewTitle}
+        kind={newKind}
+        onKind={(kind) => {
+          setNewKind(kind);
+          setStarterTemplate(null);
+        }}
+        starterTemplate={starterTemplate}
+        onTemplates={() => {
+          setTemplatesFor({ spaceId, parent });
+          setCreate(false);
+          setTemplates(true);
+        }}
+        databaseChoice={databaseChoice}
+        onDatabaseChoice={setDatabaseChoice}
+        aiCreate={aiCreate}
+        onAiCreate={setAiCreate}
+        aiProposal={aiProposal}
+        onAiProposal={setAiProposal}
+        onNotebookPdf={setNotebookPdf}
+        spaceId={spaceId}
+        onSpace={(id) => {
+          setSpaceId(id);
+          setParent(null);
+        }}
+        onOpenDuplicate={(id, rowId) => {
+          setCreate(false);
+          void openPage(id, rowId ? { pageId: id, rowId } : undefined);
+        }}
+        onError={notifyError}
+        onSubmit={async (e) => {
+          e.preventDefault();
+          // A failure shows inside this dialog, with "Retry" submitting again.
+          const form = e.currentTarget;
+          // Encrypted titles: the page starts with the placeholder, then
+          // gets its title encrypted in the browser.
+          const titleEncrypted = !!(boot.spaces.find((s) => s.id === spaceId) as { encrypt_titles?: number } | undefined)?.encrypt_titles;
+          if (titleEncrypted && !e2eeState.unlocked) return setE2eeDialog("unlock");
+          const result = await act({
+            action: "page.create",
+            workspaceId: boot.workspace.id,
+            spaceId,
+            parentId: parent,
+            title: titleEncrypted ? ENCRYPTED_TITLE : newTitle || t("Ohne Titel", "Untitled"),
+            kind: newKind,
+            starterTemplate,
+            ...(newKind === "database" && !starterTemplate
+              ? aiCreate && aiProposal
+                ? { aiDatabase: proposalPayload(aiProposal) }
+                : databaseChoicePayload(databaseChoice)
+              : {}),
+          }, () => form.requestSubmit());
+          if (result?.id && titleEncrypted && newTitle.trim())
+            try {
+              await openSpace(spaceId);
+              await act({ action: "e2ee.title", pageId: String(result.id), cipher: await encryptTitle(spaceId, String(result.id), newTitle.trim()) });
+            } catch (error) {
+              notifyError(error);
             }
-          }}
-        >
-          <label>
-            {t("Name", "Name")}
-            <input
-              autoFocus
-              value={newTitle}
-              onChange={(e) => setNewTitle(e.target.value)}
-              placeholder={t("Wie heißt deine Seite?", "What is your page called?")}
-            />
-          </label>
-          <DuplicateHint workspaceId={boot.workspace.id} title={newTitle} onOpen={(id, rowId) => { setCreate(false); void openPage(id, rowId ? { pageId: id, rowId } : undefined); }} />
-          <div className="type-picker">
-            <button
-              type="button"
-              className={!starterTemplate && newKind === "document" ? "chosen" : ""}
-              onClick={() => {
-                setNewKind("document");
-                setStarterTemplate(null);
-              }}
-            >
-              <FileText size={26} />
-              <strong>{t("Dokument", "Document")}</strong>
-              <small>{t("Notizen, Wissen und Ideen", "Notes, knowledge and ideas")}</small>
-            </button>
-            <button
-              type="button"
-              className={!starterTemplate && newKind === "database" ? "chosen" : ""}
-              onClick={() => {
-                if (newKind !== "database") setDatabaseChoice(rememberedDatabaseKind());
-                setNewKind("database");
-                setStarterTemplate(null);
-              }}
-            >
-              <Table size={26} />
-              <strong>{t("Datenbank", "Database")}</strong>
-              <small>{t("Aufgaben und strukturierte Daten", "Tasks and structured data")}</small>
-            </button>
-            <button
-              type="button"
-              className={!starterTemplate && newKind === "whiteboard" ? "chosen" : ""}
-              onClick={() => {
-                setNewKind("whiteboard");
-                setStarterTemplate(null);
-              }}
-            >
-              <PresentationChart size={26} />
-              <strong>{t("Whiteboard", "Whiteboard")}</strong>
-              <small>{t("Ideen, Diagramme und Workshops", "Ideas, diagrams and workshops")}</small>
-            </button>
-            <button
-              type="button"
-              className={!starterTemplate && newKind === "journal" ? "chosen" : ""}
-              onClick={() => {
-                setNewKind("journal");
-                setStarterTemplate(null);
-              }}
-            >
-              <Notebook size={26} />
-              <strong>{t("Journal", "Journal")}</strong>
-              <small>{t("Jeden Tag eine Seite, offene Aufgaben wandern mit", "A page every day, open tasks move along")}</small>
-            </button>
-            <button type="button" className={!starterTemplate && newKind === "dashboard" ? "chosen" : ""} onClick={() => { setNewKind("dashboard"); setStarterTemplate(null); }}>
-              <Gauge size={26} />
-              <strong>{t("Dashboard", "Dashboard")}</strong>
-              <small>{t("Kennzahlen, Diagramme und Aufgaben auf einen Blick", "Metrics, charts and tasks at a glance")}</small>
-            </button>
-            <button type="button" className={!starterTemplate && newKind === "notebook" ? "chosen" : ""} onClick={() => { setNewKind("notebook"); setStarterTemplate(null); }}>
-              <NotePencil size={26} />
-              <strong>{t("Notizbuch", "Notebook")}</strong>
-              <small>{t("Handschrift auf Papier oder PDFs, mit Stift", "Handwriting on paper or PDFs, with a pen")}</small>
-            </button>
-            {!boot.workspace.guest && (
-              <button type="button" className={!starterTemplate && newKind === "workflow" ? "chosen" : ""} onClick={() => { setNewKind("workflow"); setStarterTemplate(null); }}>
-                <FlowArrow size={26} />
-                <strong>{t("Workflow", "Workflow")}</strong>
-                <small>{t("Abläufe automatisch: wenn etwas passiert, dann …", "Automatic flows: when something happens, then …")}</small>
-              </button>
-            )}
-            {/* From a template (#112): the gallery with the built-in and the saved templates. */}
-            <button
-              type="button"
-              className={`type-picker-template${starterTemplate ? " chosen" : ""}`}
-              onClick={() => {
-                setTemplatesFor({ spaceId, parent });
-                setCreate(false);
-                setTemplates(true);
-              }}
-            >
-              <SquaresFour size={26} />
-              <strong>{starterTemplate ? t("Vorlage gewählt", "Template chosen") : t("Aus Vorlage", "From a template")}</strong>
-              <small>
-                {starterTemplate
-                  ? t("Tippe, um eine andere Vorlage zu wählen", "Tap to choose another template")
-                  : t("Besprechungsnotizen, Projektsteckbrief, Spezifikation … und deine gespeicherten Vorlagen", "Meeting notes, project brief, spec … and your saved templates")}
-              </small>
-            </button>
-          </div>
-          {newKind === "notebook" && (
-            <label className="new-notebook-pdf">
-              {t("PDF als Notizbuch öffnen (optional)", "Open a PDF as the notebook (optional)")}
-              <input type="file" accept="application/pdf,.pdf" onChange={(e) => {
-                const file = e.target.files?.[0] || null;
-                setNotebookPdf(file);
-                if (file && !newTitle) setNewTitle(file.name.replace(/\.pdf$/i, ""));
-              }} />
-            </label>
-          )}
-          {newKind === "database" && !starterTemplate && aiUsable(boot.ai, "database") && (
-            <div className="ai-create-switch" role="radiogroup" aria-label={t("Wie anlegen?", "How to create?")}>
-              <button type="button" role="radio" aria-checked={!aiCreate} className={`chip${!aiCreate ? " active" : ""}`} onClick={() => setAiCreate(false)}>
-                {t("Vorlage wählen", "Choose a template")}
-              </button>
-              <button type="button" role="radio" aria-checked={aiCreate} className={`chip${aiCreate ? " active" : ""}`} onClick={() => setAiCreate(true)}>
-                <Sparkle size={13} /> {t("Mit KI erstellen", "Create with AI")}
-              </button>
-            </div>
-          )}
-          {newKind === "database" && !starterTemplate && aiCreate && aiUsable(boot.ai, "database") && (
-            <AiDatabaseCreator
-              workspaceId={boot.workspace.id}
-              ai={boot.ai}
-              proposal={aiProposal}
-              onProposal={setAiProposal}
-              onTitle={(title) => {
-                if (!newTitle) setNewTitle(title);
-              }}
-              onError={notifyError}
-            />
-          )}
-          {newKind === "database" && !starterTemplate && !(aiCreate && aiUsable(boot.ai, "database")) && (
-            <DatabaseKindPicker
-              workspaceId={boot.workspace.id}
-              value={databaseChoice}
-              onChange={(choice, template) => {
-                setDatabaseChoice(choice);
-                if (template && !newTitle) setNewTitle(template.name);
-              }}
-            />
-          )}
-          <label>
-            {t("Bereich", "Space")}
-            <Select
-              value={spaceId}
-              onChange={(e) => {
-                setSpaceId(e.target.value);
-                setParent(null);
-              }}
-            >
-              {boot.spaces.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </Select>
-          </label>
-          <div className="modal-actions">
-            <button
-              type="button"
-              className="button"
-              onClick={() => setCreate(false)}
-            >
-              {t("Abbrechen", "Cancel")}
-            </button>
-            <button
-              className="button primary"
-              disabled={newKind === "database" && !starterTemplate && aiCreate && aiUsable(boot.ai, "database") && (!aiProposal || aiProposal.fields.some((f) => !f.name.trim()))}
-            >
-              {t("Seite erstellen", "Create page")}
-            </button>
-          </div>
-        </form>
-      </Modal>
+          if (result?.id) {
+            if (newKind === "notebook" && notebookPdf) queueNotebookImport(String(result.id), notebookPdf);
+            // "Diagramm-Seite": draw.io opens for the new page's diagram.
+            if (starterTemplate && catalogFor(LOCALE_TAG === "de-DE" ? "de" : "en")[starterTemplate]?.openDiagram)
+              queueDrawioOpen(String(result.id));
+            setNotebookPdf(null);
+            if (newKind === "database" && !starterTemplate && !aiCreate) rememberDatabaseKind(databaseChoice);
+            setCreate(false);
+            setAiCreate(false);
+            setAiProposal(null);
+            focusTitleOf.current = String(result.id);
+            void openPage(String(result.id));
+          }
+        }}
+      />
       {toRecord && pageId && (
         <PageToRecord
           pageId={pageId}
