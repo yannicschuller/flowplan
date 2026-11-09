@@ -10,6 +10,7 @@ import {
   type ErrorText,
 } from "@/lib/error-kinds";
 import { tr } from "@/lib/locale-tag";
+import { noticeBuild } from "@/lib/stale-copy";
 import { nativeApp, nativeRefresh, nativeSaveFile } from "@/lib/native-app";
 import { useT } from "./i18n";
 import { LibraryIcon } from "./library-icons";
@@ -578,6 +579,8 @@ export async function api<T = Record<string, unknown>>(
     await new Promise((done) => setTimeout(done, wait * 1000));
     r = await fetch(url, init);
   }
+  // The server may run a newer build than this page (#182, lib/stale-copy.ts).
+  noticeBuild(r.headers);
   let data;
   try {
     data = await r.json();

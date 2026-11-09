@@ -7,7 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
-import { BUILD_HEADER, FRESH_PARAM, HEAL_KEY, HEAL_WINDOW, STALE_CHUNK_EVENT, healStep, selfHealScript } from "../lib/stale-copy";
+import { BUILD_HEADER, BUILD_META, CHECK_EVENT, CHECK_GAP, FRESH_PARAM, HEAL_KEY, HEAL_WINDOW, RETURN_GAP, STALE_BUILD_EVENT, STALE_CHUNK_EVENT, START_WINDOW, healStep, noticeBuild, selfHealScript } from "../lib/stale-copy";
 
 test("the page reloads once when its files are gone, then shows a message", () => {
   const live = { build: "B" };
@@ -77,7 +77,13 @@ function page({
   storage = true,
   worker = false,
   caches = null as null | Map<string, Set<string>>,
+  desktop = false,
 } = {}) {
+  // The clock of the page (Date.now) and what the server answers can change
+  // while it is open.
+  const clock = { now: Date.now() };
+  const net = { server };
+  const desktopCleared: number[] = [];
   const listeners = new Map<string, ((event: unknown) => void)[]>();
   // Timers run when the test flushes; the 5 s limit of the server's answer
   // never comes first.
@@ -117,8 +123,9 @@ function page({
     },
     fetch: async (path: string) => {
       fetched.push(path);
-      if (server === null) throw new TypeError("offline");
-      return { headers: { get: (name: string) => (name.toLowerCase() === BUILD_HEADER.toLowerCase() ? server : null) } };
+      if (net.server === null) throw new TypeError("offline");
+      const build = net.server;
+      return { headers: { get: (name: string) => (name.toLowerCase() === BUILD_HEADER.toLowerCase() ? build : null) } };
     },
     navigator: {
       onLine: server !== null,
@@ -132,9 +139,11 @@ function page({
     Promise,
     Number,
     String,
-    Date,
+    Date: { now: () => clock.now },
     JSON,
+    ...(desktop ? { FlowplanDesktop: { clearCache: async () => (desktopCleared.push(clock.now), true) } } : {}),
     document: {
+      visibilityState: "visible",
       documentElement: root,
       querySelector: (selector: string) => (selector.includes("flowplan-offline-copy") ? (copy ? element("meta") : null) : null),
       querySelectorAll: (selector: string) => (selector.includes("stylesheet") ? [sheet] : []),
@@ -168,7 +177,12 @@ function page({
     await flush();
   };
   const message = () => root.children.find((child) => child.id === "flowplan-stale");
-  return { fire, flush, load, posted, replaced, fetched, stored, message, state, root };
+  const visibility = async (to: "hidden" | "visible") => {
+    (window.document as { visibilityState: string }).visibilityState = to;
+    fire("visibilitychange");
+    await flush();
+  };
+  return { fire, flush, load, posted, replaced, fetched, stored, message, state, root, clock, net, visibility, desktopCleared };
 }
 
 test("a page without its styles loads the live page once, past the stored copy", async () => {
@@ -282,6 +296,129 @@ test("later: parts of an older build reload the page, of the same build they do 
   restored.fire("pageshow", { persisted: true });
   await restored.flush();
   assert.equal(restored.replaced.length, 1);
+});
+
+test("#182: a page of an older build whose files all load reloads when the app sees the newer build", async () => {
+  // Right after loading (an outdated page that loaded completely – from a
+  // stored copy or a window open across an update): at once.
+  const start = page({ build: "A", server: "B" });
+  await start.load();
+  assert.equal(start.fetched.length, 0, "a working page asks nobody by itself");
+  start.fire(STALE_BUILD_EVENT);
+  await start.flush();
+  assert.equal(start.replaced.length, 1);
+  assert.ok(new URL(start.replaced[0]).searchParams.has(FRESH_PARAM));
+  // Later, while someone works in the page: not in the middle of it, but
+  // when they come back to it.
+  const working = page({ build: "A", server: "B" });
+  await working.load();
+  working.clock.now += START_WINDOW + 1000;
+  working.fire(STALE_BUILD_EVENT);
+  await working.flush();
+  assert.equal(working.fetched.length, 0);
+  await working.visibility("hidden");
+  assert.equal(working.replaced.length, 0);
+  await working.visibility("visible");
+  assert.equal(working.replaced.length, 1);
+  // Once: right after its own reload the page does not reload again.
+  const again = page({ build: "A", server: "B", lastHeal: Date.now() - 5000 });
+  await again.load();
+  again.fire(STALE_BUILD_EVENT);
+  await again.flush();
+  // Every answer of the app names the build: asked once, not for each.
+  again.fire(STALE_BUILD_EVENT);
+  await again.flush();
+  assert.equal(again.fetched.length, 1);
+  assert.equal(again.replaced.length, 0);
+  assert.equal(again.message(), undefined, "no message over a working page");
+});
+
+test("#182: errors ask the server – a newer build reloads, the same build does not, not on every error", async () => {
+  const older = page({ build: "A", server: "B" });
+  await older.load();
+  older.fire(CHECK_EVENT);
+  await older.flush();
+  assert.equal(older.replaced.length, 1);
+  // An error nobody caught (the white page) counts as well.
+  const uncaught = page({ build: "A", server: "B" });
+  await uncaught.load();
+  uncaught.fire("error", { target: {}, error: new TypeError("x is undefined") });
+  await uncaught.flush();
+  assert.equal(uncaught.replaced.length, 1);
+  // The same build: the error is the app's own, asked once in CHECK_GAP.
+  const same = page({ build: "B", server: "B" });
+  await same.load();
+  same.fire(CHECK_EVENT);
+  await same.flush();
+  same.fire(CHECK_EVENT);
+  same.fire("error", { target: {}, error: new TypeError("again") });
+  await same.flush();
+  assert.equal(same.fetched.length, 1);
+  same.clock.now += CHECK_GAP;
+  same.fire(CHECK_EVENT);
+  await same.flush();
+  assert.equal(same.fetched.length, 2);
+  assert.equal(same.replaced.length, 0);
+  assert.equal(same.message(), undefined);
+});
+
+test("#182: a page open for long asks again when one comes back to it", async () => {
+  const p = page({ build: "A", server: "A" });
+  await p.load();
+  await p.visibility("hidden");
+  await p.visibility("visible");
+  assert.equal(p.fetched.length, 1, "the first return asks");
+  await p.visibility("hidden");
+  await p.visibility("visible");
+  assert.equal(p.fetched.length, 1, "not again within RETURN_GAP");
+  // The server was updated meanwhile.
+  p.net.server = "B";
+  p.clock.now += RETURN_GAP;
+  await p.visibility("hidden");
+  await p.visibility("visible");
+  assert.equal(p.replaced.length, 1);
+});
+
+test("#182: a stored page shown without a connection asks again once it is back", async () => {
+  const p = page({ build: "A", server: null, worker: true });
+  await p.load();
+  assert.equal(p.fetched.length, 1);
+  assert.equal(p.replaced.length, 0);
+  p.net.server = "B";
+  p.fire("online");
+  await p.flush();
+  assert.equal(p.replaced.length, 1);
+});
+
+test("#182: in the desktop app the reload clears the window's HTTP cache first", async () => {
+  const p = page({ build: "A", server: "B", desktop: true });
+  await p.load();
+  p.fire(STALE_CHUNK_EVENT);
+  await p.flush();
+  assert.equal(p.desktopCleared.length, 1);
+  assert.equal(p.replaced.length, 1);
+});
+
+test("#182: the app's answers name the server's build", () => {
+  const events: string[] = [];
+  const saved = { document: globalThis.document, window: globalThis.window };
+  Object.assign(globalThis, {
+    document: { querySelector: (selector: string) => (selector === `meta[name="${BUILD_META}"]` ? { content: "A" } : null) },
+    window: { dispatchEvent: (event: Event) => events.push(event.type) },
+  });
+  try {
+    const answer = (build: string | null) => ({ get: (name: string) => (name === BUILD_HEADER ? build : null) });
+    noticeBuild(answer("A"));
+    noticeBuild(answer(null));
+    assert.deepEqual(events, []);
+    noticeBuild(answer("B"));
+    assert.deepEqual(events, [STALE_BUILD_EVENT]);
+  } finally {
+    Object.assign(globalThis, saved);
+  }
+  assert.match(readFileSync("components/ui.tsx", "utf8"), /noticeBuild\(r\.headers\);\n  let data;/);
+  for (const file of ["app/error.tsx", "app/global-error.tsx", "components/view-fallback.tsx"])
+    assert.match(readFileSync(file, "utf8"), /new Event\((chunk \? STALE_CHUNK_EVENT : )?CHECK_EVENT\)/, file);
 });
 
 test("the app's stored copy is the app's to replace", async () => {
