@@ -10,6 +10,7 @@ import { Plus, Trash } from "@phosphor-icons/react";
 import { useT } from "../i18n";
 import { Modal, api } from "../ui";
 import { Select } from "../select";
+import { DraftInput } from "./draft-field";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { todayKey } from "@/lib/database-timeline";
 import { parseTimeline, timelineScales, type TimelineData, type TimelineBar } from "@/lib/whiteboard-diagram-model";
@@ -251,7 +252,7 @@ export function TimelineEditor({ id, onClose }: { id: string; onClose: () => voi
         <div className="wb-timeline-grid">
           <label>
             {t("Titel", "Title")}
-            <input value={item.text || ""} onChange={(e) => board.transact(() => board.setProps(id, { text: e.target.value.slice(0, 200) }))} />
+            <DraftInput value={item.text || ""} onValue={(text) => board.transact(() => board.setProps(id, { text: text.slice(0, 200) }))} />
           </label>
           <label>
             {t("Zeitskala", "Time scale")}
@@ -353,10 +354,10 @@ export function TimelineEditor({ id, onClose }: { id: string; onClose: () => voi
               <div className="wb-timeline-rows" role="list" aria-label={t("Spuren", "Lanes")}>
                 {data.lanes.map((lane) => (
                   <div key={lane.id} role="listitem" className="wb-timeline-row">
-                    <input
+                    <DraftInput
                       aria-label={t("Name der Spur", "Lane name")}
                       value={lane.name}
-                      onChange={(e) => save((now) => ({ lanes: now.lanes.map((l) => (l.id === lane.id ? { ...l, name: e.target.value.slice(0, 120) } : l)) }))}
+                      onValue={(name) => save((now) => ({ lanes: now.lanes.map((l) => (l.id === lane.id ? { ...l, name: name.slice(0, 120) } : l)) }))}
                     />
                     <button
                       type="button"
@@ -380,7 +381,7 @@ export function TimelineEditor({ id, onClose }: { id: string; onClose: () => voi
               <div className="wb-timeline-rows" role="list" aria-label={t("Balken", "Bars")}>
                 {data.bars.map((bar) => (
                   <div key={bar.id} role="listitem" className="wb-timeline-row bar">
-                    <input aria-label={t("Titel des Balkens", "Bar title")} value={bar.title} onChange={(e) => setBar(bar, { title: e.target.value.slice(0, 200) })} />
+                    <DraftInput aria-label={t("Titel des Balkens", "Bar title")} value={bar.title} onValue={(title) => setBar(bar, { title: title.slice(0, 200) })} />
                     <Select aria-label={t("Spur", "Lane")} value={bar.lane} onChange={(e) => setBar(bar, { lane: e.target.value })}>
                       {data.lanes.map((l) => (
                         <option key={l.id} value={l.id}>

@@ -250,8 +250,9 @@ test("CSV: cable list and ports, quoted cells, formulas defused", () => {
   assert.equal(lines[0], "Label,Type,Colour,Length (m),From,To,VLAN,Notes");
   assert.equal(lines[1], 'L-1,OM4,#ae3ec9,2.5,a · 1,b · 2,,"line\nbreak"');
   assert.ok(csv.endsWith("\r\n"));
-  const ports = portsCsv([{ deviceId: "d", device: "SW", rack: "R", portId: "p1", port: "1", type: "rj45", category: "network", face: "front", label: "", connectedTo: "", cableId: "", cable: "", vlan: "10" }], t);
-  assert.equal(ports.split("\r\n")[1], "R,SW,1,RJ45,Vorne,,,,10");
+  const ports = portsCsv([{ deviceId: "d", device: "SW", rack: "R", portId: "p1", port: "1", type: "rj45", category: "network", face: "front", label: "", connectedTo: "", cableId: "", cable: "", vlan: "10", mac: "aa:bb:cc:dd:ee:01", ip: "10.0.0.1/24" }], t);
+  assert.equal(ports.split("\r\n")[0], "Rack,Gerät,Port,Typ,Seite,Bezeichnung,Verbunden mit,Kabel,VLAN,MAC,IP");
+  assert.equal(ports.split("\r\n")[1], "R,SW,1,RJ45,Vorne,,,,10,aa:bb:cc:dd:ee:01,10.0.0.1/24");
 });
 
 test("JSON: export and import keep racks, devices, ports and cables", () => {

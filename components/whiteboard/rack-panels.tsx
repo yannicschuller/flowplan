@@ -4,7 +4,7 @@
 // list, JSON import/export and the NetBox import. Racks, devices and cables
 // are ordinary board elements (lib/whiteboard-rack.ts), so everything here
 // is a normal, undoable board edit that collaborators see live.
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type DragEvent, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type DragEvent, type ReactNode } from "react";
 import { ArrowsDownUp, DownloadSimple, HardDrives, MagnifyingGlass, Plugs, Printer, Trash, UploadSimple, X, Warning, Plus, CloudArrowDown, FloppyDisk } from "@phosphor-icons/react";
 import { useT } from "../i18n";
 import { Modal, api } from "../ui";
@@ -30,6 +30,13 @@ import {
   cableTypeNames,
   cableTypes,
   cablesCsv,
+  cleanRoles,
+  MAX_IPS,
+  nicPort,
+  normalizeMac,
+  parseIps,
+  cleanIp,
+  roleSuggestions,
   deviceKinds,
   deviceOf,
   devicesIn,
@@ -66,6 +73,7 @@ import {
 } from "@/lib/whiteboard-rack";
 import { deviceItem, deviceKindNames, libraryGroups, rackItem, rackPresets, searchTemplates, templateDevice, type DeviceTemplate } from "@/lib/whiteboard-rack-library";
 import { deviceSvg, rackContext } from "@/lib/whiteboard-rack-svg";
+import { DraftInput, DraftTextarea, useDraft } from "./draft-field";
 
 type T = (de: string, en: string) => string;
 // Colours for devices (besides the colour of their kind).
@@ -210,8 +218,9 @@ const numberValue = (raw: string) => {
   return Number.isFinite(n) && n >= 0 ? n : undefined;
 };
 function NumberField({ label, value, onChange, min = 0, max, step = 1, suffix }: { label: string; value: number | undefined; onChange: (v: number | undefined) => void; min?: number; max?: number; step?: number; suffix?: string }) {
-  const [text, setText] = useState(value === undefined ? "" : String(value));
-  useEffect(() => setText(value === undefined ? "" : String(value)), [value]);
+  // What is typed stays while the field has the focus ("1." on the way to
+  // "1.5"); see draft-field.tsx.
+  const { draft: text, setDraft: setText, bind } = useDraft(value === undefined ? "" : String(value));
   return (
     <label className="wb-rack-field">
       <span>{label}</span>
@@ -223,6 +232,7 @@ function NumberField({ label, value, onChange, min = 0, max, step = 1, suffix }:
           max={max}
           step={step}
           value={text}
+          {...bind}
           onChange={(e) => {
             setText(e.target.value);
             const n = numberValue(e.target.value);
@@ -234,16 +244,118 @@ function NumberField({ label, value, onChange, min = 0, max, step = 1, suffix }:
     </label>
   );
 }
-function TextField({ label, value, onChange, max = 120, multiline = false, placeholder }: { label: string; value: string | undefined; onChange: (v: string) => void; max?: number; multiline?: boolean; placeholder?: string }) {
+function TextField({
+  label,
+  value,
+  onChange,
+  max = 120,
+  multiline = false,
+  placeholder,
+  validate,
+  inputMode,
+  spellCheck,
+}: {
+  label: string;
+  value: string | undefined;
+  onChange: (v: string) => void;
+  max?: number;
+  multiline?: boolean;
+  placeholder?: string;
+  validate?: (draft: string) => string | null;
+  inputMode?: "text" | "decimal";
+  spellCheck?: boolean;
+}) {
+  // The label stands apart from the field, so an error below the field is
+  // its description, not part of its name.
+  const id = useId();
   return (
-    <label className="wb-rack-field">
-      <span>{label}</span>
+    <div className="wb-rack-field text">
+      <label htmlFor={id} className="wb-rack-label">
+        {label}
+      </label>
       {multiline ? (
-        <textarea rows={3} maxLength={max} value={value || ""} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />
+        <DraftTextarea id={id} rows={3} maxLength={max} value={value || ""} placeholder={placeholder} onValue={onChange} validate={validate} />
       ) : (
-        <input type="text" maxLength={max} value={value || ""} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />
+        <DraftInput id={id} type="text" maxLength={max} value={value || ""} placeholder={placeholder} onValue={onChange} validate={validate} inputMode={inputMode} spellCheck={spellCheck} autoCapitalize={spellCheck === false ? "off" : undefined} />
       )}
-    </label>
+    </div>
+  );
+}
+// Checks for the network fields (#187): what cannot be saved says why.
+const ipsError = (t: T) => (draft: string) => {
+  const { invalid, tooMany } = parseIps(draft);
+  if (invalid.length) return t(`Keine gültige IP-Adresse: ${invalid[0]}`, `Not a valid IP address: ${invalid[0]}`);
+  return tooMany ? t(`Höchstens ${MAX_IPS} Adressen.`, `At most ${MAX_IPS} addresses.`) : null;
+};
+const ipError = (t: T) => (draft: string) => (!draft.trim() || cleanIp(draft) ? null : t("Keine gültige IP-Adresse (z. B. 10.0.0.5/24).", "Not a valid IP address (e.g. 10.0.0.5/24)."));
+const macError = (t: T) => (draft: string) => (!draft.trim() || normalizeMac(draft) ? null : t("Keine gültige MAC-Adresse (z. B. aa:bb:cc:dd:ee:ff).", "Not a valid MAC address (e.g. aa:bb:cc:dd:ee:ff)."));
+// Roles of a device as tags; suggestions in the person's language, a role
+// is kept as typed.
+function RoleField({ roles, onChange, t }: { roles: string[]; onChange: (roles: string[] | undefined) => void; t: T }) {
+  const [text, setText] = useState("");
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  const add = (raw: string) => {
+    if (raw.trim()) onChange(cleanRoles([...roles, ...raw.split(",")]));
+    setText("");
+  };
+  const q = text.trim().toLowerCase();
+  const suggestions = roleSuggestions
+    .map(([de, en]) => t(de, en))
+    .filter((s) => !roles.some((r) => r.toLowerCase() === s.toLowerCase()) && (!q || s.toLowerCase().includes(q)))
+    .slice(0, 8);
+  return (
+    <div className="wb-rack-field text">
+      <span id={`${id}-label`}>{t("Rollen", "Roles")}</span>
+      <div className="wb-rack-roles">
+        {roles.map((r) => (
+          <span key={r} className="wb-rack-role">
+            {r}
+            <button type="button" aria-label={t(`Rolle „${r}“ entfernen`, `Remove role “${r}”`)} onClick={() => onChange(cleanRoles(roles.filter((x) => x !== r)))}>
+              <X size={11} aria-hidden="true" />
+            </button>
+          </span>
+        ))}
+        <input
+          type="text"
+          aria-labelledby={`${id}-label`}
+          aria-describedby={open && suggestions.length ? `${id}-list` : undefined}
+          value={text}
+          maxLength={40}
+          placeholder={roles.length ? t("Weitere Rolle …", "Another role …") : t("z. B. Docker-Host, Hypervisor", "e.g. Docker host, hypervisor")}
+          onFocus={() => setOpen(true)}
+          onBlur={() => {
+            setOpen(false);
+            add(text);
+          }}
+          onChange={(e) => {
+            if (e.target.value.includes(",")) add(e.target.value);
+            else setText(e.target.value);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              add(text);
+            } else if (e.key === "Backspace" && !text && roles.length) onChange(cleanRoles(roles.slice(0, -1)));
+          }}
+        />
+      </div>
+      {open && !!suggestions.length && (
+        <div className="wb-rack-role-suggestions" id={`${id}-list`} aria-label={t("Vorschläge", "Suggestions")} role="group">
+          {suggestions.map((s) => (
+            <button
+              key={s}
+              type="button"
+              // Keeps the focus in the field (its blur would add the typed text).
+              onPointerDown={(e) => e.preventDefault()}
+              onClick={() => add(s)}
+            >
+              <Plus size={11} aria-hidden="true" /> {s}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 function Swatches({ colors, value, onChange, label, t, reset }: { colors: string[]; value?: string; onChange: (c: string | undefined) => void; label: string; t: T; reset?: boolean }) {
@@ -512,7 +624,8 @@ export function RackInspector({ board, sheet, onClose, beside }: { board: BoardA
   const heading = item.type === "rack" ? "Rack" : item.type === "device" ? t("Gerät", "Device") : t("Kabel", "Cable");
   const body = (
     <div className="wb-rack-form">
-      {item.type === "rack" ? <RackForm board={board} item={item} t={t} /> : item.type === "device" ? <DeviceForm board={board} item={item} t={t} /> : <CableForm board={board} item={item} t={t} />}
+      {/* One form per element, so no draft of one element's field reaches another (draft-field.tsx). */}
+      {item.type === "rack" ? <RackForm key={item.id} board={board} item={item} t={t} /> : item.type === "device" ? <DeviceForm key={item.id} board={board} item={item} t={t} /> : <CableForm key={item.id} board={board} item={item} t={t} />}
     </div>
   );
   if (sheet)
@@ -647,7 +760,10 @@ function DeviceForm({ board, item, t }: { board: BoardApi; item: WhiteboardItem;
   const focus = useRackFocus();
   const ro = !board.editable || !!item.locked;
   const setDevice = (patch: Partial<DeviceData>) => {
-    const next = { ...device, ...patch };
+    // From the shared document: the render state may lag a frame behind
+    // quick successive edits of several fields.
+    const live = board.live(item.id);
+    const next = { ...((live && deviceOf({ ...live, type: "device" })) || device), ...patch };
     for (const key of Object.keys(next) as (keyof DeviceData)[]) if (next[key] === undefined) delete next[key];
     set({ device: next });
   };
@@ -678,6 +794,23 @@ function DeviceForm({ board, item, t }: { board: BoardApi; item: WhiteboardItem;
         </label>
         <NumberField label={t("Höhe", "Height")} suffix={t("HE", "U")} min={1} max={RACK_MAX_U} value={device.height} onChange={(height) => height && setDevice({ height: Math.round(height) })} />
       </div>
+      <RoleField roles={device.roles || []} onChange={(roles) => setDevice({ roles })} t={t} />
+      <div className="wb-rack-row">
+        <TextField label={t("Hostname", "Host name")} value={device.hostname} onChange={(v) => setDevice({ hostname: v || undefined })} max={253} placeholder="srv-01.lan" spellCheck={false} />
+        <TextField label={t("MAC-Adresse", "MAC address")} value={device.mac} onChange={(v) => setDevice({ mac: normalizeMac(v) ?? undefined })} max={17} placeholder="aa:bb:cc:dd:ee:ff" validate={macError(t)} spellCheck={false} />
+      </div>
+      <TextField
+        label={t("IP-Adressen", "IP addresses")}
+        value={(device.ips || []).join(", ")}
+        onChange={(v) => {
+          const ips = parseIps(v).ips;
+          setDevice({ ips: ips.length ? ips : undefined });
+        }}
+        max={800}
+        placeholder="10.0.0.5/24, 2001:db8::5"
+        validate={ipsError(t)}
+        spellCheck={false}
+      />
       <div className="wb-rack-row">
         <TextField label={t("Hersteller", "Manufacturer")} value={device.manufacturer} onChange={(v) => setDevice({ manufacturer: v || undefined })} max={80} />
         <TextField label={t("Modell", "Model")} value={device.model} onChange={(v) => setDevice({ model: v || undefined })} max={80} />
@@ -821,15 +954,23 @@ function PortList({ board, item, device, setDevice, focus, t }: { board: BoardAp
     if (!focus) return;
     list.current?.querySelector(`[data-port-row="${CSS.escape(focus)}"]`)?.scrollIntoView({ block: "nearest" });
   }, [focus]);
-  const setPort = (id: string, patch: Partial<RackPort>) =>
+  const setPort = (id: string, patch: Partial<RackPort>) => {
+    const live = board.live(item.id);
+    const ports = (live && deviceOf({ ...live, type: "device" })?.ports) || device.ports;
     setDevice({
-      ports: device.ports.map((p) => {
+      ports: ports.map((p) => {
         if (p.id !== id) return p;
         const next = { ...p, ...patch };
-        for (const key of Object.keys(next) as (keyof RackPort)[]) if (next[key] === undefined || next[key] === "") if (key === "label" || key === "vlan") delete next[key];
+        for (const key of Object.keys(next) as (keyof RackPort)[]) if (next[key] === undefined || next[key] === "") if (key === "label" || key === "vlan" || key === "mac" || key === "ip") delete next[key];
+        // Only network interfaces have a MAC and an IP address.
+        if (!nicPort(next.type)) {
+          delete next.mac;
+          delete next.ip;
+        }
         return next;
       }),
     });
+  };
   if (!device.ports.length) return <p className="muted">{t("Dieses Gerät hat keine Ports.", "This device has no ports.")}</p>;
   return (
     <div className="wb-rack-field">
@@ -845,7 +986,7 @@ function PortList({ board, item, device, setDevice, focus, t }: { board: BoardAp
             <div key={port.id} role="listitem" data-port-row={port.id} className={`wb-rack-port-row${focus === port.id ? " focused" : ""}`} onFocus={() => setRackFocus({ device: item.id, port: port.id })}>
               <div className="wb-rack-port-main">
                 <span className={`wb-rack-port-dot ${portCategory(port.type)}`} style={cable ? { background: cableStyle(cable.cable).color } : undefined} aria-hidden="true" />
-                <input aria-label={t("Portname", "Port name")} value={port.name} maxLength={40} onChange={(e) => setPort(port.id, { name: e.target.value || port.id })} />
+                <DraftInput aria-label={t("Portname", "Port name")} value={port.name} maxLength={40} onValue={(name) => setPort(port.id, { name: name || port.id })} />
                 <Select aria-label={t("Porttyp", "Port type")} value={port.type} onChange={(e) => setPort(port.id, { type: e.target.value as PortType })}>
                   {portTypes.map((p) => (
                     <option key={p} value={p}>
@@ -883,9 +1024,37 @@ function PortList({ board, item, device, setDevice, focus, t }: { board: BoardAp
                 )}
               </div>
               <div className="wb-rack-port-extra">
-                <input aria-label={t("Bezeichnung", "Label")} placeholder={t("Bezeichnung", "Label")} value={port.label || ""} maxLength={80} onChange={(e) => setPort(port.id, { label: e.target.value })} />
-                <input aria-label="VLAN" placeholder="VLAN" value={port.vlan || ""} maxLength={40} onChange={(e) => setPort(port.id, { vlan: e.target.value })} className="vlan" />
+                <DraftInput aria-label={t("Bezeichnung", "Label")} placeholder={t("Bezeichnung", "Label")} value={port.label || ""} maxLength={80} onValue={(label) => setPort(port.id, { label })} />
+                <DraftInput aria-label="VLAN" placeholder="VLAN" value={port.vlan || ""} maxLength={40} onValue={(vlan) => setPort(port.id, { vlan })} className="vlan" />
               </div>
+              {nicPort(port.type) && (
+                <div className="wb-rack-port-extra net">
+                  <span>
+                    <DraftInput
+                      aria-label={t(`MAC-Adresse von ${port.name}`, `MAC address of ${port.name}`)}
+                      placeholder="MAC"
+                      value={port.mac || ""}
+                      maxLength={17}
+                      spellCheck={false}
+                      autoCapitalize="off"
+                      validate={macError(t)}
+                      onValue={(mac) => setPort(port.id, { mac: normalizeMac(mac) ?? undefined })}
+                    />
+                  </span>
+                  <span>
+                    <DraftInput
+                      aria-label={t(`IP-Adresse von ${port.name}`, `IP address of ${port.name}`)}
+                      placeholder="IP"
+                      value={port.ip || ""}
+                      maxLength={50}
+                      spellCheck={false}
+                      autoCapitalize="off"
+                      validate={ipError(t)}
+                      onValue={(ip) => setPort(port.id, { ip: cleanIp(ip) ?? undefined })}
+                    />
+                  </span>
+                </div>
+              )}
               <div className="wb-rack-port-link">
                 {cable ? (
                   <>
@@ -1088,7 +1257,7 @@ export function PortsAndCables({ board, onClose, title, tab: initial = "ports" }
   const collator = useMemo(() => new Intl.Collator(undefined, { numeric: true, sensitivity: "base" }), []);
   const shownPorts = ports
     .filter((p) => (!category || p.category === category) && (!state || (state === "connected" ? !!p.connectedTo : !p.connectedTo)))
-    .filter((p) => !q || [p.rack, p.device, p.port, p.label, p.connectedTo, p.cable, p.vlan, portTypeNames[p.type]].join(" ").toLowerCase().includes(q))
+    .filter((p) => !q || [p.rack, p.device, p.port, p.label, p.connectedTo, p.cable, p.vlan, p.ip, p.mac, portTypeNames[p.type]].join(" ").toLowerCase().includes(q))
     .sort((a, b) => (sort.desc ? -1 : 1) * (collator.compare(String(a[sort.key]), String(b[sort.key])) || collator.compare(a.device, b.device) || collator.compare(a.port, b.port)));
   const shownCables = cables
     .filter((c) => !category || (c.type === "power" ? "power" : ["om3", "om4", "om5", "os2", "aoc"].includes(c.type) ? "fibre" : "network") === category)
@@ -1126,7 +1295,7 @@ export function PortsAndCables({ board, onClose, title, tab: initial = "ports" }
       <div className="wb-rack-filters">
         <div className="wb-lib-search">
           <MagnifyingGlass size={16} aria-hidden="true" />
-          <input type="search" aria-label={t("Filtern", "Filter")} placeholder={t("Gerät, Port, VLAN, Beschriftung …", "Device, port, VLAN, label …")} value={query} onChange={(e) => setQuery(e.target.value)} />
+          <input type="search" aria-label={t("Filtern", "Filter")} placeholder={t("Gerät, Port, VLAN, IP, MAC, Beschriftung …", "Device, port, VLAN, IP, MAC, label …")} value={query} onChange={(e) => setQuery(e.target.value)} />
         </div>
         <Select aria-label={t("Kategorie", "Category")} value={category} onChange={(e) => setCategory(e.target.value as PortCategory | "")}>
           <option value="">{t("Alle Kategorien", "All categories")}</option>
@@ -1165,6 +1334,11 @@ export function PortsAndCables({ board, onClose, title, tab: initial = "ports" }
                     <td>
                       {p.port}
                       {p.label && <small> · {p.label}</small>}
+                      {(p.ip || p.mac) && (
+                        <small className="wb-rack-table-net">
+                          <bdi dir="ltr">{[p.ip, p.mac].filter(Boolean).join(" · ")}</bdi>
+                        </small>
+                      )}
                     </td>
                     <td>
                       <span className={`wb-rack-port-dot ${p.category}`} aria-hidden="true" /> {portTypeNames[p.type]}

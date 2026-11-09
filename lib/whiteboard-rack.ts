@@ -62,7 +62,12 @@ export const portTypeNames: Record<PortType, string> = {
   dc: "DC",
 };
 export type Face = "front" | "rear";
-export type RackPort = { id: string; name: string; type: PortType; face: Face; label?: string; vlan?: string };
+// A port of a network interface (copper or a transceiver cage) has its own
+// MAC address and may carry an IP address; patch panel connectors, console,
+// USB and power ports do not.
+export const nicPortTypes: readonly PortType[] = ["rj45", "sfp", "sfp+", "sfp28", "qsfp+", "qsfp28"];
+export const nicPort = (type: PortType) => nicPortTypes.includes(type);
+export type RackPort = { id: string; name: string; type: PortType; face: Face; label?: string; vlan?: string; mac?: string; ip?: string };
 export type RackData = {
   u: number;
   width: RackWidth;
@@ -89,6 +94,31 @@ export const deviceKindNames: Record<DeviceKind, [string, string]> = {
   shelf: ["Fachboden", "Shelf"],
   other: ["Sonstiges", "Other"],
 };
+// Suggestions for the roles of a device (#187); a role is stored as typed,
+// so these are only proposals in the person's language.
+// i18n-table: 1 – suggested device roles
+export const roleSuggestions: [string, string][] = [
+  ["Docker-Host", "Docker host"],
+  ["Hypervisor", "Hypervisor"],
+  ["Bare-Metal", "Bare metal"],
+  ["Kubernetes-Node", "Kubernetes node"],
+  ["Virtualisierung", "Virtualisation"],
+  ["NAS", "NAS"],
+  ["Storage", "Storage"],
+  ["Backup", "Backup"],
+  ["Datenbank", "Database"],
+  ["Webserver", "Web server"],
+  ["Mailserver", "Mail server"],
+  ["Router", "Router"],
+  ["Firewall", "Firewall"],
+  ["Access-Switch", "Access switch"],
+  ["Core-Switch", "Core switch"],
+  ["WLAN-Controller", "Wi-Fi controller"],
+  ["Monitoring", "Monitoring"],
+  ["Management", "Management"],
+  ["Test", "Test"],
+  ["Produktion", "Production"],
+];
 export type DeviceData = {
   kind: DeviceKind;
   // Height in units (0U devices: their length along the rack).
@@ -97,6 +127,14 @@ export type DeviceData = {
   depth?: "full" | "front" | "rear";
   // In the rails, or 0U in the left or right side channel (vertical PDUs).
   mount?: "rack" | "left" | "right";
+  // How the device is reached on the network (#187): its host name, one
+  // or more IP addresses (IPv4/IPv6, optionally with a prefix length) and
+  // the MAC address of its main interface (aa:bb:cc:dd:ee:ff).
+  hostname?: string;
+  ips?: string[];
+  mac?: string;
+  // What it does, as free tags (Docker-Host, Hypervisor, NAS …), kept as typed.
+  roles?: string[];
   manufacturer?: string;
   model?: string;
   serial?: string;
@@ -178,13 +216,108 @@ const compact = <T extends Record<string, unknown>>(o: T) => {
   return o;
 };
 export const MAX_PORTS = 200;
+export const MAX_IPS = 16;
+export const MAX_ROLES = 12;
+export const MAX_ROLE_LENGTH = 40;
+const IPV4 = /^(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/;
+const IPV6 = /^[0-9a-f:.]{2,45}$/i;
+function ipv6(text: string) {
+  if (!IPV6.test(text) || !text.includes(":")) return false;
+  // An IPv4 address at the end counts as the last two groups.
+  let rest = text;
+  const v4 = rest.match(/:(\d+\.\d+\.\d+\.\d+)$/);
+  if (v4) {
+    if (!IPV4.test(v4[1])) return false;
+    rest = `${rest.slice(0, -v4[1].length)}0:0`;
+  } else if (rest.includes(".")) return false;
+  const halves = rest.split("::");
+  if (halves.length > 2) return false;
+  const groups = (part: string) => (part ? part.split(":") : []);
+  const head = groups(halves[0]),
+    tail = halves.length === 2 ? groups(halves[1]) : [];
+  if ([...head, ...tail].some((g) => !/^[0-9a-f]{1,4}$/i.test(g))) return false;
+  const count = head.length + tail.length;
+  return halves.length === 2 ? count <= 7 : count === 8;
+}
+// An IPv4 or IPv6 address, optionally with a prefix length ("10.0.0.5/24",
+// "2001:db8::1/64"), trimmed – or null when it is none.
+export function cleanIp(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const text = raw.trim();
+  const [address, prefix, extra] = text.split("/");
+  if (extra !== undefined || !address) return null;
+  const v4 = IPV4.test(address);
+  if (!v4 && !ipv6(address)) return null;
+  if (prefix !== undefined && !(/^\d{1,3}$/.test(prefix) && Number(prefix) <= (v4 ? 32 : 128))) return null;
+  return text;
+}
+// IP addresses typed into one field: separated by commas, semicolons,
+// spaces or lines. `invalid` lists what is not an address.
+export function parseIps(text: string) {
+  const parts = text.split(/[\s,;]+/).filter(Boolean);
+  const ips: string[] = [],
+    invalid: string[] = [];
+  for (const part of parts) {
+    const ip = cleanIp(part);
+    if (!ip) invalid.push(part);
+    else if (!ips.some((i) => i.toLowerCase() === ip.toLowerCase())) ips.push(ip);
+  }
+  return { ips: ips.slice(0, MAX_IPS), invalid, tooMany: ips.length > MAX_IPS };
+}
+// A MAC address in any usual spelling (aa:bb:cc:dd:ee:ff, AA-BB-CC-DD-EE-FF,
+// aabb.ccdd.eeff, aabbccddeeff) as aa:bb:cc:dd:ee:ff – or null.
+export function normalizeMac(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const text = raw.trim();
+  if (!/^[0-9a-f]{2}([:-]?)[0-9a-f]{2}(?:\1[0-9a-f]{2}){4}$/i.test(text) && !/^[0-9a-f]{4}\.[0-9a-f]{4}\.[0-9a-f]{4}$/i.test(text)) return null;
+  const hex = text.replace(/[:.-]/g, "").toLowerCase();
+  return hex.match(/../g)!.join(":");
+}
+// Role tags: trimmed, without doubles (ignoring case), as typed otherwise.
+export function cleanRoles(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: string[] = [];
+  for (const r of raw) {
+    if (typeof r !== "string") continue;
+    const role = r.replace(/\s+/g, " ").trim().slice(0, MAX_ROLE_LENGTH);
+    if (role && !out.some((o) => o.toLowerCase() === role.toLowerCase())) out.push(role);
+    if (out.length >= MAX_ROLES) break;
+  }
+  return out.length ? out : undefined;
+}
+function cleanIps(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: string[] = [];
+  for (const r of raw) {
+    const ip = cleanIp(r);
+    if (ip && !out.some((o) => o.toLowerCase() === ip.toLowerCase())) out.push(ip);
+    if (out.length >= MAX_IPS) break;
+  }
+  return out.length ? out : undefined;
+}
 export function cleanPort(raw: unknown): RackPort | null {
   if (!raw || typeof raw !== "object") return null;
   const p = raw as Record<string, unknown>;
   const id = typeof p.id === "string" && ID.test(p.id) ? p.id : null;
   const type = pick(p.type, portTypes);
   if (!id || !type) return null;
-  return compact({ id, name: str(p.name, 40) ?? id, type, face: pick(p.face, ["front", "rear"] as const) ?? "front", label: str(p.label, 80), vlan: str(p.vlan, 40) });
+  const nic = nicPort(type);
+  return compact({
+    id,
+    name: str(p.name, 40) ?? id,
+    type,
+    face: pick(p.face, ["front", "rear"] as const) ?? "front",
+    label: str(p.label, 80),
+    vlan: str(p.vlan, 40),
+    mac: nic ? (normalizeMac(p.mac) ?? undefined) : undefined,
+    ip: nic ? (cleanIp(p.ip) ?? undefined) : undefined,
+  });
+}
+// A device as a library template: without what belongs to one machine only
+// (host name, IP and MAC addresses), so copies placed from it do not share them.
+export function withoutAddresses(device: DeviceData): DeviceData {
+  const { hostname: _h, ips: _i, mac: _m, ...rest } = device;
+  return { ...rest, ports: device.ports.map(({ mac: _pm, ip: _pi, ...port }) => port) };
 }
 export function cleanRack(raw: unknown): RackData | null {
   if (!raw || typeof raw !== "object") return null;
@@ -215,6 +348,10 @@ export function cleanDevice(raw: unknown): DeviceData | null {
     height: int(d.height, 1, RACK_MAX_U) ?? 1,
     depth: pick(d.depth, ["full", "front", "rear"] as const),
     mount: pick(d.mount, ["rack", "left", "right"] as const),
+    hostname: str(d.hostname, 253),
+    ips: cleanIps(d.ips),
+    mac: normalizeMac(d.mac) ?? undefined,
+    roles: cleanRoles(d.roles),
     manufacturer: str(d.manufacturer, 80),
     model: str(d.model, 80),
     serial: str(d.serial, 80),
@@ -725,6 +862,8 @@ export type PortRow = {
   category: PortCategory;
   face: Face;
   label: string;
+  mac: string;
+  ip: string;
   connectedTo: string;
   cableId: string;
   cable: string;
@@ -779,6 +918,8 @@ export function portRows(items: WhiteboardItem[], t: T): PortRow[] {
         category: portCategory(port.type),
         face: port.face,
         label: port.label || "",
+        mac: port.mac || "",
+        ip: port.ip || "",
         connectedTo: cable ? endName(other || null, t) + (ids.length > 1 ? ` (+${ids.length - 1})` : "") : "",
         cableId: cable?.item.id || "",
         cable: cable ? cable.cable.label || cableTypeNames[cable.cable.type] : "",
@@ -801,8 +942,8 @@ export function cablesCsv(rows: CableRow[], t: T) {
   return [head.map(csvCell).join(","), ...lines].join("\r\n") + "\r\n";
 }
 export function portsCsv(rows: PortRow[], t: T) {
-  const head = ["Rack", t("Gerät", "Device"), "Port", t("Typ", "Type"), t("Seite", "Side"), t("Bezeichnung", "Label"), t("Verbunden mit", "Connected to"), t("Kabel", "Cable"), "VLAN"];
-  const lines = rows.map((r) => [r.rack, r.device, r.port, portTypeNames[r.type], r.face === "front" ? t("Vorne", "Front") : t("Hinten", "Rear"), r.label, r.connectedTo, r.cable, r.vlan].map(csvCell).join(","));
+  const head = ["Rack", t("Gerät", "Device"), "Port", t("Typ", "Type"), t("Seite", "Side"), t("Bezeichnung", "Label"), t("Verbunden mit", "Connected to"), t("Kabel", "Cable"), "VLAN", "MAC", "IP"];
+  const lines = rows.map((r) => [r.rack, r.device, r.port, portTypeNames[r.type], r.face === "front" ? t("Vorne", "Front") : t("Hinten", "Rear"), r.label, r.connectedTo, r.cable, r.vlan, r.mac, r.ip].map(csvCell).join(","));
   return [head.map(csvCell).join(","), ...lines].join("\r\n") + "\r\n";
 }
 
@@ -961,10 +1102,31 @@ export function rackItemText(item: Partial<WhiteboardItem>): string[] {
   if (item.type === "device") {
     const d = cleanDevice(item.device);
     if (!d) return [];
-    return [d.manufacturer, d.model, d.serial, ...d.ports.flatMap((p) => [p.label, p.vlan])].filter(Boolean) as string[];
+    return [d.hostname, ...(d.ips || []), d.mac, ...(d.roles || []), d.manufacturer, d.model, d.serial, ...d.ports.flatMap((p) => [p.label, p.vlan, p.mac, p.ip])].filter(Boolean) as string[];
   }
   const c = item.type === "connector" ? cleanCable(item.cable) : null;
   return c ? ([c.label, c.vlan].filter(Boolean) as string[]) : [];
+}
+// One device in one line (AI sources, the board's text): name, place, kind
+// and roles, how it is reached, model, power, weight and its ports.
+export function deviceSummary(d: WhiteboardItem, t: T) {
+  const data = deviceOf(d);
+  if (!data) return deviceName(d, t);
+  const units = deviceUnits(d);
+  const where = units ? (zeroU(data) ? `0U ${data.mount}` : units.from === units.to ? `U${units.from}` : `U${units.from}–${units.to}`) : "";
+  const parts = [
+    t(...deviceKindNames[data.kind]) + (data.roles?.length ? ` (${data.roles.join(", ")})` : ""),
+    data.hostname ? `${t("Hostname", "host name")} ${data.hostname}` : "",
+    data.ips?.length ? `IP ${data.ips.join(", ")}` : "",
+    data.mac ? `MAC ${data.mac}` : "",
+    data.model || data.manufacturer ? [data.manufacturer, data.model].filter(Boolean).join(" ") : "",
+    data.powerW ? `${data.powerW} W` : "",
+    data.weightKg ? `${data.weightKg} kg` : "",
+    data.ports.length
+      ? `${t("Ports", "ports")}: ${data.ports.map((p) => `${p.name} ${portTypeNames[p.type]}${p.label ? ` "${p.label}"` : ""}${p.ip ? ` ${p.ip}` : ""}${p.mac ? ` ${p.mac}` : ""}`).join(", ")}`
+      : "",
+  ].filter(Boolean);
+  return `${deviceName(d, t)}${where ? ` (${where})` : ""}: ${parts.join(", ")}`;
 }
 export const hasRacks = (items: WhiteboardItem[]) => items.some((i) => i.type === "rack" || i.type === "device");
 // Racks, devices, ports and cables as plain text (AI sources).
@@ -973,12 +1135,7 @@ export function racksText(items: WhiteboardItem[], t: T) {
   const laid = applyRackLayout(items);
   const totals = rackTotals(laid);
   const lines: string[] = [];
-  const describe = (d: WhiteboardItem) => {
-    const data = deviceOf(d)!;
-    const units = deviceUnits(d);
-    const where = units ? (zeroU(data) ? `0U ${data.mount}` : units.from === units.to ? `U${units.from}` : `U${units.from}–${units.to}`) : "";
-    return `- ${deviceName(d, t)}${where ? ` (${where})` : ""}: ${t(...deviceKindNames[data.kind])}${data.model ? `, ${[data.manufacturer, data.model].filter(Boolean).join(" ")}` : ""}${data.powerW ? `, ${data.powerW} W` : ""}${data.weightKg ? `, ${data.weightKg} kg` : ""}${data.ports.length ? `, ${t("Ports", "ports")}: ${data.ports.map((p) => `${p.name} ${portTypeNames[p.type]}${p.label ? ` "${p.label}"` : ""}`).join(", ")}` : ""}`;
-  };
+  const describe = (d: WhiteboardItem) => `- ${deviceSummary(d, t)}`;
   for (const r of racksIn(laid)) {
     const data = rackOf(r)!,
       total = totals.get(r.id)!;
@@ -1014,9 +1171,17 @@ export function racksMarkdown(items: WhiteboardItem[], t: T, esc: (text: string)
       const data = deviceOf(d)!,
         units = deviceUnits(d);
       const where = units ? (zeroU(data) ? `0U (${data.mount === "left" ? t("links", "left") : t("rechts", "right")})` : units.from === units.to ? `U${units.from}` : `U${units.from}–${units.to}`) : "";
-      return [where, deviceName(d, t), kind(data), [data.manufacturer, data.model].filter(Boolean).join(" "), data.powerW ? formatPower(data.powerW) : "", data.weightKg ? formatWeight(data.weightKg) : ""];
+      return [
+        where,
+        deviceName(d, t),
+        kind(data) + (data.roles?.length ? ` (${data.roles.join(", ")})` : ""),
+        [data.hostname, ...(data.ips || []), data.mac].filter(Boolean).join(" · "),
+        [data.manufacturer, data.model].filter(Boolean).join(" "),
+        data.powerW ? formatPower(data.powerW) : "",
+        data.weightKg ? formatWeight(data.weightKg) : "",
+      ];
     });
-  const head = ["U", t("Gerät", "Device"), t("Art", "Kind"), t("Modell", "Model"), t("Leistung", "Power"), t("Gewicht", "Weight")];
+  const head = ["U", t("Gerät", "Device"), t("Art", "Kind"), t("Netzwerk", "Network"), t("Modell", "Model"), t("Leistung", "Power"), t("Gewicht", "Weight")];
   for (const r of racksIn(laid)) {
     const data = rackOf(r)!,
       total = totals.get(r.id)!;
@@ -1033,11 +1198,14 @@ export function racksMarkdown(items: WhiteboardItem[], t: T, esc: (text: string)
   }
   const loose = devicesIn(laid).filter((d) => !d.rackId);
   if (loose.length) out.push(`### ${esc(t("Geräte außerhalb von Racks", "Devices outside racks"))}`, table(head, deviceRows(loose)));
-  const ports = portRows(laid, t).filter((p) => p.connectedTo || p.label || p.vlan);
+  const ports = portRows(laid, t).filter((p) => p.connectedTo || p.label || p.vlan || p.ip || p.mac);
   if (ports.length)
     out.push(
       `### ${esc(t("Portbelegung", "Port assignments"))}`,
-      table([t("Gerät", "Device"), "Port", t("Typ", "Type"), t("Verbunden mit", "Connected to"), t("Kabel", "Cable"), "VLAN"], ports.map((p) => [p.device, p.port + (p.label ? ` (${p.label})` : ""), portTypeNames[p.type], p.connectedTo, p.cable, p.vlan])),
+      table(
+        [t("Gerät", "Device"), "Port", t("Typ", "Type"), t("Verbunden mit", "Connected to"), t("Kabel", "Cable"), "VLAN", "IP / MAC"],
+        ports.map((p) => [p.device, p.port + (p.label ? ` (${p.label})` : ""), portTypeNames[p.type], p.connectedTo, p.cable, p.vlan, [p.ip, p.mac].filter(Boolean).join(" · ")]),
+      ),
     );
   const cables = cableRows(laid, t);
   if (cables.length)

@@ -153,7 +153,9 @@ function portShape(x: number, y: number, w: number, h: number, type: string, cab
   return `<rect x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(h)}" rx="${f(rx)}" fill="${fill}" stroke="${stroke}" stroke-width="0.5"/>${inner}`;
 }
 
-export function deviceSvg(item: WhiteboardItem, items: Map<string, WhiteboardItem>, context: RackContext, t: T) {
+// `title`: the device's tooltip (exports); the board shows its own card
+// instead (components/whiteboard/rack-card.tsx).
+export function deviceSvg(item: WhiteboardItem, items: Map<string, WhiteboardItem>, context: RackContext, t: T, options: { title?: boolean } = {}) {
   const device = deviceOf(item);
   if (!device) return "";
   const rackItem = item.rackId ? items.get(item.rackId) : undefined;
@@ -168,6 +170,9 @@ export function deviceSvg(item: WhiteboardItem, items: Map<string, WhiteboardIte
   const parts: string[] = [];
   const tip = [
     name,
+    device.roles?.join(", ") || "",
+    device.hostname || "",
+    ...(device.ips || []),
     [device.manufacturer, device.model].filter(Boolean).join(" "),
     device.powerW ? formatPower(device.powerW) : "",
     device.weightKg ? formatWeight(device.weightKg) : "",
@@ -206,7 +211,7 @@ export function deviceSvg(item: WhiteboardItem, items: Map<string, WhiteboardIte
       const cable = context.ports.get(`${item.id}:${box.port.id}`);
       parts.push(
         `<g class="wb-rack-port" data-port="${esc(box.port.id)}">${portShape(box.x - item.x, box.y - item.y, box.w, box.h, box.port.type, cable)}<title>${esc(
-          `${name} · ${box.port.name} · ${portTypeNames[box.port.type]}${box.port.label ? ` · ${box.port.label}` : ""}`,
+          [name, box.port.name, portTypeNames[box.port.type], box.port.label, box.port.ip, box.port.mac].filter(Boolean).join(" · "),
         )}</title></g>`,
       );
     }
@@ -216,7 +221,7 @@ export function deviceSvg(item: WhiteboardItem, items: Map<string, WhiteboardIte
     parts.push(
       `<g class="wb-device-collision"><rect x="0" y="0" width="${w}" height="${h}" rx="2" fill="url(#wb-rack-clash)" stroke="#fa5252" stroke-width="2"/><circle cx="${w - 9}" cy="${Math.min(9, h / 2)}" r="6.5" fill="#e03131"/><text x="${w - 9}" y="${f(Math.min(9, h / 2) + 3.4)}" text-anchor="middle" font-family="${FONT}" font-size="9.5" font-weight="800" fill="#fff">!</text></g>`,
     );
-  parts.push(`<title>${esc(tip)}</title>`);
+  if (options.title !== false) parts.push(`<title>${esc(tip)}</title>`);
   return parts.join("");
 }
 // Pattern behind colliding devices (in every drawing's defs).
