@@ -13840,7 +13840,6 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
 }
 .mon-health ul {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
   margin: 0 0 14px;
   padding: 0;
@@ -13934,31 +13933,6 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
 [data-theme="dark"] :is(.mon-health-tile.info .mon-health-icon, .mon-event-icon.info) {
   background: rgba(110, 140, 240, 0.2);
   color: #b4c6f5;
-}
-.kpi-grid.cards {
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 10px;
-  margin-bottom: 14px;
-}
-.kpi-grid.cards .kpi {
-  padding: 12px 14px 10px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--bg);
-}
-.mon-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  align-items: start;
-  gap: 14px;
-  margin-bottom: 22px;
-}
-.mon-grid > .setting-group {
-  min-width: 0;
-  margin: 0;
-}
-.mon-card.wide {
-  grid-column: 1 / -1;
 }
 .mon-card-body {
   min-width: 0;
@@ -14207,12 +14181,6 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   font-variant-numeric: tabular-nums;
 }
 @container main (max-width: 875px) {
-  .mon-health ul {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .mon-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
   .live-strip {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -14300,11 +14268,6 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
     min-height: 44px;
   }
   .mon-storage {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-@container main (max-width: 340px) {
-  .mon-health ul {
     grid-template-columns: minmax(0, 1fr);
   }
 }

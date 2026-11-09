@@ -293,3 +293,25 @@ test("the summary carries the tiles' series", async () => {
 });
 
 after(async () => await metrics.clearMetrics());
+
+test("errors of the last 24 hours: per hour, and the day before only once it was counted", async () => {
+  await metrics.clearMetrics();
+  const now = Math.floor(Date.now() / MINUTE) * MINUTE;
+  const minute = (at: number, requests: number, errors: number) => run("INSERT INTO metrics_minute(at,requests,errors,hist) VALUES(?,?,?,'')", Math.floor(at / MINUTE) * MINUTE, requests, errors);
+  await minute(now - 2 * HOUR, 10, 2);
+  await minute(now - 30 * MINUTE, 5, 1);
+  // Collecting began 30 hours ago: no comparison with the day before.
+  await minute(now - 30 * HOUR, 4, 3);
+  let e = await metrics.errorsDay(now);
+  assert.equal(e.requests, 15);
+  assert.equal(e.errors, 3);
+  assert.equal(e.previous, null);
+  assert.equal(e.hourly.length, 24);
+  assert.equal(e.hourly.reduce<number>((a, n) => a + (n || 0), 0), 3);
+  // Counted for more than two days: the 24 hours before are compared.
+  await minute(now - 47 * HOUR, 1, 0);
+  await run("INSERT INTO metrics_hour(at,requests,errors,hist,active) VALUES(?,1,0,'',0) ON CONFLICT DO NOTHING", Math.floor((now - 3 * DAY) / HOUR) * HOUR);
+  e = await metrics.errorsDay(now);
+  assert.deepEqual(e.previous, { requests: 5, errors: 3 });
+  await metrics.clearMetrics();
+});
