@@ -58,6 +58,14 @@ export function scrollPane(from: Element | null): HTMLElement | null {
   return null;
 }
 const keyboardListeners = new Set<(open: boolean) => void>();
+// Told whenever a measurement moved the keyboard's edges or its reach into
+// the pane – also the late ones the follow-up timers below find, which iOS
+// reports without a resize or scroll event (#181: the caret follows).
+const keyboardMoveListeners = new Set<() => void>();
+export function onKeyboardMove(listener: () => void) {
+  keyboardMoveListeners.add(listener);
+  return () => void keyboardMoveListeners.delete(listener);
+}
 let stopKeyboardWatch: (() => void) | null = null;
 function watchKeyboard() {
   const vv = window.visualViewport;
@@ -102,7 +110,9 @@ function watchKeyboard() {
     const end = vv && open && vv.scale < 1.01 ? Math.round(vv.offsetTop + vv.height) : 0;
     const pane = vv && end ? scrollPane(document.activeElement) : null;
     const covered = pane ? coveredBelow(pane.getBoundingClientRect().bottom, vv!) : 0;
+    let moved = false;
     if (covered !== cover) {
+      moved = true;
       cover = covered;
       if (covered) root.style.setProperty("--keyboard-cover", `${covered}px`);
       else root.style.removeProperty("--keyboard-cover");
@@ -113,6 +123,7 @@ function watchKeyboard() {
     // its top (heading, name) above the screen, under the status bar.
     const start = end ? Math.max(0, Math.round(vv!.offsetTop)) : 0;
     if (end !== visibleEnd || start !== visibleTop) {
+      moved = true;
       visibleEnd = end;
       visibleTop = start;
       if (end) {
@@ -129,6 +140,7 @@ function watchKeyboard() {
       keyboardOpen = open;
       for (const listener of keyboardListeners) listener(open);
     }
+    if (moved && end) for (const listener of keyboardMoveListeners) listener();
   };
   const update = () => {
     cancelAnimationFrame(frame);

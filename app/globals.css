@@ -26392,6 +26392,11 @@ tr:hover .row-open-mark,
     top: var(--keyboard-visible-end);
     bottom: auto;
     transform: translateY(-100%);
+    /* On the keyboard there is no home indicator to keep clear of. The
+       padding above subtracts the inset from it, which is 0 on iOS 26 once
+       iOS has moved the visible area (#181): the toolbar grew by the home
+       indicator's room and covered that much more of the text. */
+    padding-bottom: 4px;
   }
   /* A record's content (the record dialog, which lives outside the shell,
      and records written inline in a feed) keeps its toolbar in place – until
