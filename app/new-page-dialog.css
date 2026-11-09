@@ -300,16 +300,22 @@
     -webkit-box-orient: vertical;
   }
   /* The on-screen keyboard is open (useSoftKeyboard, components/mobile-tab-
-     bar.tsx): the sheet reaches from just below the top down to the
-     keyboard – placed from the top like the docked toolbar, since iOS
-     resolves bottom: against the height from before the keyboard (#120).
-     The buttons stay right above the keyboard, the middle scrolls. */
+     bar.tsx): the sheet ends right at the keyboard and is as high as its
+     content, at most up to just below the status bar; then its middle
+     scrolls and the buttons stay right above the keyboard. Placed from the
+     top like the docked toolbar, since iOS resolves bottom: against the
+     height from before the keyboard (#120). Both edges are measured in the
+     frame position: fixed uses, where the visible area runs from
+     --keyboard-visible-top (what iOS moved it down the page) to
+     --keyboard-visible-end – a top limit from 0 put the heading and the name
+     above the screen and left a gap above the buttons. --np-height is the
+     sheet's own height (components/new-page-dialog.tsx). */
   html.keyboard-docked .modal.modal-sheet.np-dialog {
-    --np-top: max(calc(var(--safe-top, 0px) + 12px), calc(var(--keyboard-visible-end) - 92dvh));
-    top: var(--np-top);
+    --np-top-min: calc(var(--keyboard-visible-top, 0px) + var(--safe-top, 0px) + 12px);
+    top: max(var(--np-top-min), calc(var(--keyboard-visible-end) - var(--np-height, 100lvh)));
     bottom: auto;
-    height: calc(var(--keyboard-visible-end) - var(--np-top));
-    max-height: none;
+    height: auto;
+    max-height: max(120px, calc(var(--keyboard-visible-end) - var(--np-top-min)));
     padding-bottom: 20px;
   }
   html.keyboard-docked .np-dialog .np-footer {

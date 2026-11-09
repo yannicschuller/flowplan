@@ -71,6 +71,7 @@ function watchKeyboard() {
   let inset = -1;
   let cover = -1;
   let visibleEnd = -1;
+  let visibleTop = -1;
   const measure = () => {
     const height = vv?.height ?? window.innerHeight;
     // A rotation or a resized window starts over.
@@ -106,12 +107,20 @@ function watchKeyboard() {
       if (covered) root.style.setProperty("--keyboard-cover", `${covered}px`);
       else root.style.removeProperty("--keyboard-cover");
     }
-    if (end !== visibleEnd) {
+    // Where the visible area starts in the same frame: what iOS moved it
+    // down the page. Anything placed below the status bar while the
+    // keyboard is open starts there, not at 0 – a sheet placed from 0 had
+    // its top (heading, name) above the screen, under the status bar.
+    const start = end ? Math.max(0, Math.round(vv!.offsetTop)) : 0;
+    if (end !== visibleEnd || start !== visibleTop) {
       visibleEnd = end;
+      visibleTop = start;
       if (end) {
+        root.style.setProperty("--keyboard-visible-top", `${start}px`);
         root.style.setProperty("--keyboard-visible-end", `${end}px`);
         root.classList.add("keyboard-docked");
       } else {
+        root.style.removeProperty("--keyboard-visible-top");
         root.style.removeProperty("--keyboard-visible-end");
         root.classList.remove("keyboard-docked");
       }
@@ -154,6 +163,7 @@ function watchKeyboard() {
     document.removeEventListener("focusin", settle);
     document.removeEventListener("focusout", settle);
     root.style.removeProperty("--keyboard-inset");
+    root.style.removeProperty("--keyboard-visible-top");
     root.style.removeProperty("--keyboard-visible-end");
     root.style.removeProperty("--keyboard-cover");
     root.classList.remove("keyboard-docked");
