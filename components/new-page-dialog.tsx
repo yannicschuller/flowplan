@@ -3,7 +3,8 @@
 // group, arrow keys move through it), one line about the chosen kind, its
 // options in place below and the space as one row. The buttons stay at the
 // bottom edge of the dialog – on phones above the on-screen keyboard, the
-// sheet shrinks with it and its middle scrolls (app/new-page-dialog.css).
+// sheet ends at it, as high as its content, and its middle scrolls when the
+// content does not fit (app/new-page-dialog.css).
 import { useRef, type FormEvent, type KeyboardEvent } from "react";
 import {
   FileText,
@@ -28,6 +29,24 @@ import { aiUsable } from "@/lib/ai/client";
 import type { Bootstrap, PageKind } from "@/lib/types";
 
 type Choice = PageKind | "template";
+
+// The sheet's own height as --np-height: with the keyboard open the CSS puts
+// its lower edge at the keyboard from the top (iOS resolves bottom: against
+// the height from before the keyboard) and needs the height for it. Kept up
+// to date as the content or the room changes. A ref callback on the form;
+// React calls the returned cleanup when it goes.
+function trackSheetHeight(form: HTMLFormElement | null) {
+  const sheet = form?.closest<HTMLElement>(".modal");
+  if (!sheet || typeof ResizeObserver === "undefined") return;
+  const measure = () => sheet.style.setProperty("--np-height", `${Math.ceil(sheet.getBoundingClientRect().height)}px`);
+  const observer = new ResizeObserver(measure);
+  observer.observe(sheet);
+  measure();
+  return () => {
+    observer.disconnect();
+    sheet.style.removeProperty("--np-height");
+  };
+}
 // Up and down move by a row of tiles (app/new-page-dialog.css).
 const COLUMNS = 4;
 
@@ -159,7 +178,7 @@ export function NewPageDialog({
         name.current?.focus();
       }}
     >
-      <form className="np-form" data-type={chosen} onSubmit={onSubmit}>
+      <form className="np-form" data-type={chosen} onSubmit={onSubmit} ref={trackSheetHeight}>
         <label className="np-name">
           {t("Name", "Name")}
           <input
