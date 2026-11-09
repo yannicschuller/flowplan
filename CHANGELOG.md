@@ -2,6 +2,26 @@
 
 All releases of Flowplan, newest first. Generated from the commits by the release workflow.
 
+## v0.9.1 – 2026-11-09
+
+- Help docs: regenerated (redesigned dialogs and admin pages) ([38168e0](https://github.com/yannicschuller/flowplan/commit/38168e0c703129f3b8d60479b9c3a05461aa46fd))
+- Share dialog: summary line and tabs for people, links and web ([7f2ca2f](https://github.com/yannicschuller/flowplan/commit/7f2ca2fc8f18672baebe0502d9a723417812dee3))
+- New page dialog: compact type tiles, name first, buttons above the keyboard ([15324f8](https://github.com/yannicschuller/flowplan/commit/15324f8a369874d86fa2b9ac2e13ce2daaae0bb2))
+- Admin users: sortable, paged table with workspaces and a side panel ([bed1498](https://github.com/yannicschuller/flowplan/commit/bed149879ad7b7f1d6d79dde8f532deb2bb8bfe6))
+- Admin monitoring: KPI tiles with trends, two-column card layout ([9eaabbd](https://github.com/yannicschuller/flowplan/commit/9eaabbd72200a2a08bee96f394debbd3c6e321d9))
+- AI help: find 'how do I create a workflow' and short verb forms ([cd69642](https://github.com/yannicschuller/flowplan/commit/cd696424d2942360f71192314535e2fe20c3f71e))
+- Revert: happy-dom stays a runtime dependency ([84e28d3](https://github.com/yannicschuller/flowplan/commit/84e28d3859595f5fbb7976a88ed7061a0c4c3175))
+- Dependencies: happy-dom is only used by tests, move it to devDependencies ([7865257](https://github.com/yannicschuller/flowplan/commit/7865257fd506a1b451e8f9dc6ebb8fcc9324f40e))
+- Help docs: regenerated (Git back-link) ([dccf8b1](https://github.com/yannicschuller/flowplan/commit/dccf8b1fcbee03b34290dea8d2d40e101e883202))
+- Git connection: back-link comment on pull/merge requests (#184) ([ec65b64](https://github.com/yannicschuller/flowplan/commit/ec65b64a93f417d7c45a853c7c1f26a26a7976cf))
+- Workflows: the filter popover closes when its placeholder is gone ([ff78e90](https://github.com/yannicschuller/flowplan/commit/ff78e90c9c24591aabed2c289062e1dd42761ec1))
+- Bump happy-dom from 20.14.6 to 21.0.4 ([5d357cd](https://github.com/yannicschuller/flowplan/commit/5d357cdd2d954c1bc15596ff83297384f6b7b2df))
+- Workflows: connection points are round dots (#168) ([6a746c3](https://github.com/yannicschuller/flowplan/commit/6a746c3cecabb08d301f8b1e5614cd1c7ca4db82))
+- Phones: typing stays above the keyboard in a new document (#181) ([c4182c6](https://github.com/yannicschuller/flowplan/commit/c4182c6c7253c234015a9f124282e828ab761c9b))
+- Issue forms with triage labels, social preview image ([4edb9ad](https://github.com/yannicschuller/flowplan/commit/4edb9ad7cc40c87dc0a970c32d234617bf66a9fe))
+- Workflows: connection points stand out in dark mode (#168) ([0dab3f0](https://github.com/yannicschuller/flowplan/commit/0dab3f0d403a93f147843b9bc1d78979f43a06ee))
+- README: contributors from merged pull requests, without bots, Claude or the release bot ([5950216](https://github.com/yannicschuller/flowplan/commit/5950216883fd33646e3aa2a41d43f4122ae7a6ed))
+
 ## v0.9.0 – 2026-11-08
 
 - Safe fetch: hand every checked address to happy eyeballs ([9825f3a](https://github.com/yannicschuller/flowplan/commit/9825f3a17e4c2e01812b5ae0fa4073bb6501b6f6))
