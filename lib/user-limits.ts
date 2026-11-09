@@ -92,10 +92,19 @@ export async function assertMayCreateWorkspace(user: Pick<Identity, "id" | "isAd
 export async function usersUsage() {
   const bytes = new Map((await all<{ id: string; n: number }>("SELECT created_by id, SUM(size) n FROM files WHERE created_by IS NOT NULL GROUP BY created_by")).map((r) => [r.id, Number(r.n)]));
   const owned = new Map((await all<{ id: string; n: number }>("SELECT user_id id, count(*) n FROM members WHERE role='owner' GROUP BY user_id")).map((r) => [r.id, Number(r.n)]));
+  // Every workspace the person belongs to, in any role (the list shows the
+  // count, the account's panel the names).
+  const memberOf = new Map<string, string[]>();
+  for (const r of await all<{ id: string; w: string }>("SELECT user_id id, workspace_id w FROM members ORDER BY user_id, workspace_id")) {
+    const list = memberOf.get(r.id);
+    if (list) list.push(r.w);
+    else memberOf.set(r.id, [r.w]);
+  }
   return await mapAsync(await all<{ id: string }>("SELECT id FROM users WHERE demo_until IS NULL AND subject NOT LIKE 'deleted:%'"), async ({ id }) => ({
     id,
     bytes: bytes.get(id) || 0,
     workspaces: owned.get(id) || 0,
+    memberOf: memberOf.get(id) || [],
     limits: await storedUserLimits(id),
     effective: await effectiveUserLimits(id),
   }));

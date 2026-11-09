@@ -38,15 +38,20 @@ test("limits per person, shown to the person, and a fixed language", async ({ pa
   const admin = await open(adminSession.token);
   try {
     await admin.page.goto(`${origin}/#admin/users`);
+    // The list is paged: find the account first, then open it by its name.
+    await admin.page.getByRole("searchbox", { name: "Benutzer suchen" }).fill(name);
     const row = admin.page.locator(".user-row", { hasText: name });
-    await row.getByRole("button", { name: "Verwalten" }).click();
-    // The account opens in a side sheet (full screen on phones).
+    await row.getByRole("button", { name, exact: true }).click();
+    // The account opens in a side panel (a bottom sheet on phones).
     const sheet = admin.page.getByRole("dialog", { name, exact: true });
     await sheet.getByLabel(`Speicher für ${name}`).fill("200");
+    // The other limits are folded under "Weitere".
+    await sheet.locator("summary", { hasText: "Weitere" }).click();
     await sheet.getByLabel(`Eigene Arbeitsbereiche für ${name}`).fill("3");
     await sheet.getByRole("button", { name: "Grenzen speichern" }).click();
     await expect.poll(() => (db.prepare("SELECT limits FROM users WHERE id=?").get(person.uid) as { limits: string }).limits).toBe(JSON.stringify({ storageMb: 200, workspaces: 3 }));
-    await expect(sheet.locator(".usage-meter")).toHaveCount(2);
+    await expect(sheet.locator(".ux-usage")).toContainText("/ 200 MB");
+    await expect(row.locator(".ux-storage")).toContainText("/ 200 MB");
     await admin.page.screenshot({ path: `test-results/admin-verification/${info.project.name}-user-limits.png`, fullPage: true });
 
     // The person sees what applies to them.

@@ -19,6 +19,8 @@ export type AdminData = {
   // pages without journal days; days counted apart (#49).
   workspaces: { id: string; name: string; members: number; pages: number; days?: number; owners: { id: string; name: string; email: string | null }[] }[];
   sessions: number;
+  // Active sessions per account.
+  userSessions?: Record<string, number>;
   audit: { id: string; name: string; action: string; resource_id: string; created_at: string }[];
   adminGroup: string;
   build?: BuildInfo;
@@ -29,7 +31,9 @@ export type AdminData = {
   userUsage?: {
     id: string;
     bytes: number;
+    // Own workspaces (owner role) and every workspace the person is in.
     workspaces: number;
+    memberOf?: string[];
     limits: { storageMb?: number | null; workspaces?: number | null; uploadMb?: number | null };
     effective: { storageMb: number; workspaces: number; uploadMb: number };
   }[];

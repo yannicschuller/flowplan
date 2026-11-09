@@ -36,13 +36,17 @@ test("an admin deletes a disabled account after seeing what happens", async ({ b
     const page = await context.newPage();
     page.on("pageerror", (e) => errors.push(e.message));
     await page.goto(`${origin}/#admin/users`);
+    await page.getByRole("searchbox", { name: "Benutzer suchen" }).fill(name);
     const row = page.locator(".user-row", { hasText: name });
-    await row.getByRole("button", { name: "Verwalten" }).click();
+    // The whole row opens the account's panel.
+    await row.locator("td.state").click();
     const sheet = page.getByRole("dialog", { name, exact: true });
-    await expect(sheet.getByRole("button", { name: "Konto löschen …" })).toHaveCount(0);
-    await expect(sheet).toContainText("sobald das Konto deaktiviert ist");
-    await sheet.getByRole("button", { name: "Deaktivieren" }).click();
-    await sheet.getByRole("button", { name: "Konto löschen …" }).click();
+    // Deleting waits until the account is blocked.
+    await expect(sheet.getByRole("button", { name: "Löschen …" })).toBeDisabled();
+    await expect(sheet).toContainText("wenn das Konto gesperrt ist");
+    await sheet.getByRole("button", { name: "Sperren", exact: true }).click();
+    await expect(row.locator("td.state")).toContainText("Deaktiviert");
+    await sheet.getByRole("button", { name: "Löschen …" }).click();
     const dialog = page.getByRole("dialog", { name: `${name} löschen?` });
     await expect(dialog).toContainText("nur diese Person als Mitglied");
     await page.screenshot({ path: `test-results/admin-verification/delete-dialog.png` });

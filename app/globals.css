@@ -28280,142 +28280,6 @@ html.split-resizing * {
 .admin-users .settings-empty {
   margin: 0 22px 18px;
 }
-.admin-user-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13.5px;
-}
-.admin-user-table th {
-  padding: 9px 10px;
-  border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 550;
-  text-align: left;
-  background: var(--surface);
-}
-.admin-user-table td {
-  padding: 10px;
-  border-bottom: 1px solid var(--border);
-  vertical-align: middle;
-}
-.admin-user-table tr:last-child td {
-  border-bottom: 0;
-}
-.admin-user-table :is(th, td).check {
-  width: 44px;
-  padding-left: 22px;
-}
-.admin-user-table :is(th, td).end {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-.admin-user-table td.action {
-  padding-right: 22px;
-  text-align: right;
-}
-.admin-who {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-.admin-who > span {
-  display: grid;
-  min-width: 0;
-}
-.admin-who strong {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 8px;
-  font-weight: 550;
-}
-.admin-who small {
-  color: var(--secondary);
-  font-size: 12.5px;
-  overflow-wrap: anywhere;
-}
-.admin-user-table td.who {
-  min-width: 220px;
-}
-.admin-who small.signin {
-  color: var(--muted);
-}
-.admin-user-table td.last {
-  color: var(--secondary);
-}
-.admin-user-table :is(td.last, td.storage, td.state, td.action) {
-  white-space: nowrap;
-}
-@container main (min-width: 768px) {
-  .admin-users-tools {
-    flex-wrap: nowrap;
-  }
-}
-.admin-user-table tr.is-selected td {
-  background: color-mix(in srgb, var(--blue-light) 60%, transparent);
-}
-.admin-user-table tr.is-disabled td.who strong {
-  color: var(--secondary);
-}
-.admin-user-table input[type="checkbox"] {
-  width: 18px;
-  height: 18px;
-}
-/* One account in a side sheet (full screen on phones). */
-.modal.admin-user-sheet {
-  --modal-bg: var(--surface);
-  display: grid;
-  align-content: start;
-  gap: 16px;
-}
-/* The grid gap keeps the distance; the heading's bottom padding sits in it. */
-.modal.admin-user-sheet .modal-heading {
-  margin-bottom: -8px;
-}
-.modal.admin-user-sheet .setting-group {
-  margin: 0;
-}
-.admin-user-sheet-head {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-}
-.admin-user-sheet-head > span {
-  display: grid;
-  gap: 6px;
-  min-width: 0;
-}
-.admin-user-sheet-head small {
-  color: var(--secondary);
-  font-size: 13px;
-  overflow-wrap: anywhere;
-}
-.admin-user-badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.admin-user-note {
-  margin: 0;
-  padding: 10px 14px;
-  border-radius: 10px;
-  background: var(--blue-light);
-  color: var(--text);
-  font-size: 13px;
-}
-.admin-user-meters {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 14px 24px;
-}
-.admin-user-sheet .setting-control input[readonly] {
-  width: 100%;
-  font-family: var(--font-mono);
-  font-size: 12px;
-}
 /* Usage of a workspace: text and a small bar. */
 .admin-usage {
   display: grid;
@@ -28523,58 +28387,6 @@ html.split-resizing * {
   .admin-usage-bar {
     width: 120px;
   }
-  /* The user table becomes a list: check, person, presence, state, button. */
-  .admin-user-table thead {
-    display: none;
-  }
-  .admin-user-table,
-  .admin-user-table tbody {
-    display: block;
-  }
-  .admin-user-table tr {
-    display: grid;
-    grid-template-columns: 44px minmax(0, 1fr) auto;
-    grid-template-areas: "check who who" "check last last" "check state action";
-    align-items: center;
-    gap: 4px 8px;
-    padding: 12px 16px 12px 4px;
-    border-top: 1px solid var(--border);
-  }
-  .admin-user-table td {
-    padding: 0;
-    border: 0;
-  }
-  .admin-user-table td.check {
-    grid-area: check;
-    align-self: start;
-    display: flex;
-    justify-content: center;
-    width: 44px;
-    min-height: 44px;
-    padding: 0;
-    align-items: center;
-  }
-  .admin-user-table td.who {
-    grid-area: who;
-  }
-  .admin-user-table td.who {
-    min-width: 0;
-  }
-  /* Who is here stays visible on phones: under the name. */
-  .admin-user-table td.last {
-    grid-area: last;
-    font-size: 13px;
-  }
-  .admin-user-table td.storage {
-    display: none;
-  }
-  .admin-user-table td.state {
-    grid-area: state;
-  }
-  .admin-user-table td.action {
-    grid-area: action;
-    padding: 0;
-  }
 }
 .setting-text small a,
 .admin-status p a,
@@ -28592,15 +28404,6 @@ html.split-resizing * {
 .admin-status-badges > .status-badge {
   max-width: 100%;
   white-space: normal;
-}
-@media (max-width: 860px) {
-  .modal.admin-user-sheet :is(.button, input:not([type="checkbox"])) {
-    min-height: 44px;
-  }
-  .modal.admin-user-sheet .modal-heading .icon-button {
-    min-width: 44px;
-    min-height: 44px;
-  }
 }
 
 /* ===== Workspace settings (components/settings/user/workspace, members,
@@ -31404,10 +31207,6 @@ label.ws-search input {
   .presence-active > i {
     animation: none;
   }
-}
-.admin-user-sheet-head .presence {
-  margin: 2px 0;
-  font-size: 13px;
 }
 /* Administration → Users: the status filter as a row of buttons with their
    counts (scrolls sideways on phones). */
