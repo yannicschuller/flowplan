@@ -1,0 +1,883 @@
+/* Administration → Benutzer (components/settings/admin/users.tsx): a dense,
+   sortable and paged table of the accounts that scrolls sideways with the
+   person column held in place, a card list with a sort choice on phones,
+   and one account in a side panel (a bottom sheet on phones). Prefix ux-.
+   Kept apart from globals.css (loaded after it, app/layout.tsx). */
+
+/* ===== The section's own navigation as tabs above the heading: the eight
+   columns need the width the rail beside the page would take. ===== */
+.settings-detail[data-detail="users"] .settings-detail-layout {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+}
+.settings-detail[data-detail="users"] .settings-rail {
+  order: -1;
+  position: static;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  margin: 0 0 18px;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: none;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.settings-detail[data-detail="users"] .settings-rail::-webkit-scrollbar {
+  display: none;
+}
+.settings-detail[data-detail="users"] .settings-rail h2 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.settings-detail[data-detail="users"] .settings-rail ul {
+  display: flex;
+  gap: 4px;
+}
+.settings-detail[data-detail="users"] .settings-rail a {
+  margin-bottom: -1px;
+  padding: 9px 12px;
+  border-radius: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  white-space: nowrap;
+}
+.settings-detail[data-detail="users"] .settings-rail a:hover {
+  background: none;
+  border-bottom-color: var(--border);
+}
+.settings-detail[data-detail="users"] .settings-rail a[aria-current="page"] {
+  background: none;
+  border-bottom-color: var(--blue);
+}
+.settings-detail[data-detail="users"] .settings-rail a:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: -2px;
+}
+
+/* ===== The table ===== */
+.ux-sort-bar {
+  display: none;
+}
+.ux-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+/* More columns at the end: the last visible ones fade out. */
+.ux-scroll[data-end] {
+  mask-image: linear-gradient(to left, transparent, #000 28px);
+}
+.ux-scroll[data-end]:dir(rtl) {
+  mask-image: linear-gradient(to right, transparent, #000 28px);
+}
+.ux-table {
+  width: 100%;
+  min-width: 940px;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+}
+.ux-table th,
+.ux-table td {
+  white-space: nowrap;
+  text-align: start;
+  vertical-align: middle;
+  background: var(--bg);
+}
+.ux-table th {
+  height: 36px;
+  padding: 0 4px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 550;
+}
+.ux-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.ux-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.ux-table :is(th, td).check {
+  width: 40px;
+  padding-inline: 18px 4px;
+}
+.ux-table input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  vertical-align: middle;
+}
+/* Checkbox and person stay while the table scrolls sideways. */
+.ux-table :is(th, td):is(.check, .who) {
+  position: sticky;
+  z-index: 2;
+}
+.ux-table th:is(.check, .who) {
+  z-index: 3;
+}
+.ux-table :is(th, td).check {
+  inset-inline-start: 0;
+}
+.ux-table :is(th, td).who {
+  inset-inline-start: 40px;
+  width: 260px;
+  min-width: 240px;
+  max-width: 280px;
+  box-shadow: inset -1px 0 0 var(--border);
+}
+.ux-table :is(th, td).who:dir(rtl) {
+  box-shadow: inset 1px 0 0 var(--border);
+}
+.ux-scroll[data-start] .ux-table :is(th, td).who::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  inset-inline-end: -12px;
+  width: 12px;
+  pointer-events: none;
+  background: linear-gradient(to right, rgba(29, 26, 20, 0.09), transparent);
+}
+.ux-scroll[data-start] .ux-table :is(th, td).who:dir(rtl)::after {
+  background: linear-gradient(to left, rgba(29, 26, 20, 0.09), transparent);
+}
+[data-theme="dark"] .ux-scroll[data-start] .ux-table :is(th, td).who::after {
+  background: linear-gradient(to right, rgba(0, 0, 0, 0.4), transparent);
+}
+[data-theme="dark"] .ux-scroll[data-start] .ux-table :is(th, td).who:dir(rtl)::after {
+  background: linear-gradient(to left, rgba(0, 0, 0, 0.4), transparent);
+}
+
+/* Sortable headers: the whole label is the button; the arrow shows the
+   order (both arrows faintly where the column is not sorted). */
+.ux-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 550;
+  cursor: pointer;
+}
+.ux-sort:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.ux-sort:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+.ux-sort-ind {
+  flex: none;
+  opacity: 0.45;
+}
+.ux-table th.sorted .ux-sort {
+  color: var(--text);
+}
+.ux-table th.sorted .ux-sort-ind {
+  opacity: 1;
+  color: var(--blue);
+}
+.ux-table th.end {
+  text-align: end;
+}
+.ux-table th.end .ux-sort {
+  flex-direction: row-reverse;
+}
+
+/* Person: avatar, name (the button that opens the panel), badges, e-mail. */
+.admin-who {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+.admin-who > span {
+  display: grid;
+  min-width: 0;
+}
+.admin-who strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-weight: 550;
+}
+.admin-who small {
+  overflow: hidden;
+  color: var(--secondary);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ux-table .avatar {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  font-size: 10.5px;
+}
+.ux-name {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 550;
+  text-align: start;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.ux-name > span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ux-name:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.ux-name:focus-visible {
+  border-radius: 3px;
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+.admin-who strong .status-badge {
+  flex: none;
+  min-height: 18px;
+  padding: 0 7px;
+  font-size: 11px;
+}
+.admin-who strong .status-badge::before {
+  display: none;
+}
+.ux-table .status-badge {
+  min-height: 20px;
+  font-size: 11.5px;
+}
+
+/* The whole row opens the panel. Sticky cells need a solid background. */
+.ux-row {
+  cursor: pointer;
+}
+.ux-row:hover td {
+  background: var(--surface);
+}
+.ux-row.is-selected td {
+  background: color-mix(in srgb, var(--blue-light) 60%, var(--bg));
+}
+.ux-row.is-open td {
+  background: var(--blue-light);
+}
+.ux-row.is-open td.check {
+  box-shadow: inset 3px 0 0 var(--blue);
+}
+.ux-row.is-open td.check:dir(rtl) {
+  box-shadow: inset -3px 0 0 var(--blue);
+}
+.ux-row.is-disabled .ux-name {
+  color: var(--secondary);
+}
+.ux-table td.end {
+  text-align: end;
+}
+.ux-num {
+  padding-inline-end: 20px !important;
+  color: var(--secondary);
+  font-variant-numeric: tabular-nums;
+}
+.ux-card-icon,
+.ux-card-label {
+  display: none;
+}
+.ux-storage {
+  min-width: 150px;
+}
+.ux-storage-text {
+  display: block;
+  margin-top: 3px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.ux-bar {
+  display: block;
+  width: 120px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--hover);
+  overflow: hidden;
+}
+.ux-bar.wide {
+  width: 100%;
+  height: 6px;
+}
+.ux-bar b {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--blue);
+}
+.ux-bar.mid b {
+  background: #d9a32c;
+}
+.ux-bar.high b {
+  background: var(--signal);
+}
+.ux-table td.last {
+  font-size: 12.5px;
+}
+.ux-created {
+  color: var(--secondary);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+.ux-table .ux-menu {
+  width: 44px;
+  padding-inline: 4px 14px;
+  text-align: end;
+}
+.ux-menu .icon-button {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+}
+.ux-row:not(:hover, .is-open) .ux-menu .icon-button:not([data-state="open"], :focus-visible) {
+  color: var(--muted);
+}
+.ux-row:hover .ux-menu .icon-button {
+  background: var(--hover);
+}
+
+/* ===== Pages ===== */
+.ux-pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding: 10px 18px;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.ux-pages {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.ux-pages .icon-button {
+  width: 28px;
+  height: 28px;
+}
+.ux-pages .icon-button:disabled {
+  opacity: 0.35;
+}
+.ux-flip:dir(rtl) {
+  transform: scaleX(-1);
+}
+.ux-page {
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--secondary);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+.ux-page:hover {
+  background: var(--hover);
+}
+.ux-page.on {
+  background: var(--blue-light);
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+.ux-page:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+.ux-page-gap {
+  min-width: 20px;
+  color: var(--muted);
+  text-align: center;
+}
+.fp-select.ux-per-page {
+  padding: 5px 9px;
+  font-size: 13px;
+}
+
+/* ===== Phones: a card per account ===== */
+@container main (max-width: 767px) {
+  .ux-sort-bar {
+    display: flex;
+    flex: 1 1 100%;
+    align-items: center;
+    gap: 8px;
+  }
+  .ux-sort-label {
+    color: var(--secondary);
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  .ux-sort-bar .fp-select {
+    flex: 1;
+    min-width: 0;
+  }
+  .ux-scroll {
+    overflow: visible;
+  }
+  .ux-scroll[data-end] {
+    mask-image: none;
+  }
+  .ux-table,
+  .ux-table tbody {
+    display: block;
+    min-width: 0;
+  }
+  .ux-table thead {
+    display: none;
+  }
+  .ux-table tr {
+    position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 12px;
+    padding: 12px 52px 12px 48px;
+    border-top: 1px solid var(--border);
+    background: var(--bg);
+  }
+  .ux-table td,
+  .ux-table td:is(.check, .who) {
+    position: static;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+  }
+  .ux-row:hover td,
+  .ux-row.is-selected td,
+  .ux-row.is-open td {
+    background: none;
+  }
+  .ux-row:hover {
+    background: var(--surface);
+  }
+  .ux-row.is-selected {
+    background: color-mix(in srgb, var(--blue-light) 60%, var(--bg));
+  }
+  .ux-row.is-open {
+    background: var(--blue-light);
+  }
+  .ux-table td.check {
+    position: absolute;
+    top: 6px;
+    inset-inline-start: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+  }
+  .ux-table td.check input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+  }
+  .ux-table td.who {
+    flex: 1 1 100%;
+  }
+  .ux-table .admin-who small {
+    font-size: 12.5px;
+  }
+  .ux-table td.ux-menu {
+    position: absolute;
+    top: 8px;
+    inset-inline-end: 6px;
+    width: auto;
+  }
+  .ux-menu .icon-button {
+    width: 44px;
+    height: 44px;
+  }
+  .ux-table td.ux-num {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 !important;
+    font-size: 12.5px;
+  }
+  .ux-card-icon {
+    display: inline;
+    color: var(--muted);
+  }
+  .ux-card-label {
+    display: inline;
+  }
+  .ux-table td.ux-storage {
+    min-width: 0;
+  }
+  .ux-table td.ux-storage .ux-bar {
+    display: none;
+  }
+  .ux-table td.ux-storage .ux-storage-text {
+    margin: 0;
+    font-size: 12.5px;
+  }
+  .ux-table td.ux-created {
+    display: none;
+  }
+  .ux-pager {
+    justify-content: center;
+    padding: 12px 16px;
+  }
+  .ux-pager-count {
+    flex: 1 1 100%;
+    text-align: center;
+  }
+  .ux-page,
+  .ux-pages .icon-button {
+    min-width: 40px;
+    height: 40px;
+  }
+}
+
+/* ===== One account: the side panel ===== */
+.modal.ux-drawer {
+  --modal-pad-top: 0px;
+  display: flex;
+  flex-direction: column;
+  width: min(440px, 100vw);
+  padding: 0 0 var(--safe-bottom, 0px);
+  border-width: 0 0 0 1px;
+  box-shadow: -12px 0 40px rgba(29, 26, 20, 0.12);
+}
+/* The heading is the close button only (the name shows with the avatar),
+   held at the top while the panel scrolls. */
+.modal.ux-drawer > .modal-heading {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  height: 0;
+  margin: 0;
+  padding: 0;
+  justify-content: flex-end;
+  background: none;
+  box-shadow: none;
+}
+.modal.ux-drawer > .modal-heading h2 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.modal.ux-drawer > .modal-heading {
+  align-items: flex-start;
+}
+.modal.ux-drawer > .modal-heading .icon-button {
+  margin: 12px 12px 0;
+}
+/* A light veil instead of the blur: the list stays readable beside the panel. */
+.modal-overlay:has(+ .modal.ux-drawer) {
+  background: rgba(23, 36, 56, 0.15);
+  backdrop-filter: blur(0);
+}
+.modal.ux-drawer > .error-alert,
+.modal.ux-drawer > .dialog-notice {
+  margin: 12px 20px 0;
+}
+.ux-drawer-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 20px 56px 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.ux-drawer-head:dir(rtl) {
+  padding: 20px 20px 16px 56px;
+}
+.ux-drawer-head .avatar {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  font-size: 15px;
+}
+.ux-drawer-who {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+  min-width: 0;
+}
+.ux-drawer-who strong {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+.ux-drawer-who small {
+  color: var(--secondary);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.admin-user-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+.ux-drawer-who .admin-user-badges {
+  margin-top: 6px;
+  font-size: 12.5px;
+}
+.admin-user-note {
+  margin: 12px 20px 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--blue-light);
+  color: var(--text);
+  font-size: 13px;
+}
+.ux-facts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 16px;
+  margin: 0;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.ux-facts > div {
+  min-width: 0;
+}
+.ux-facts dt {
+  color: var(--muted);
+  font-size: 12px;
+}
+.ux-facts dd {
+  margin: 1px 0 0;
+  font-size: 13.5px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.ux-facts .muted {
+  font-weight: 400;
+}
+.ux-fact-note {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+.ux-block {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.ux-usage {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+.ux-usage > span {
+  color: var(--secondary);
+  font-weight: 500;
+}
+.ux-usage strong {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.ux-usage .muted {
+  font-weight: 400;
+}
+.ux-rows {
+  padding-top: 4px;
+  padding-bottom: 6px;
+}
+.ux-row-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 54px;
+  padding: 6px 0;
+  border-top: 1px solid var(--border);
+}
+.ux-rows > .ux-row-item:first-child,
+.ux-danger > .ux-row-item:first-child {
+  border-top: 0;
+}
+.ux-row-item.wide {
+  flex-wrap: wrap;
+}
+.ux-row-text {
+  display: grid;
+  align-content: center;
+  min-width: 0;
+}
+.ux-row-text :is(strong, label) {
+  font-size: 13.5px;
+  font-weight: 550;
+}
+.ux-row-text small {
+  color: var(--secondary);
+  font-size: 12px;
+}
+.ux-row-control {
+  display: flex;
+  flex: none;
+  align-items: center;
+  max-width: 60%;
+}
+.ux-row-item .button svg {
+  flex: none;
+}
+.fp-select.ux-select {
+  width: 150px;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+.ux-row-control .number-field {
+  width: 130px;
+}
+.ux-reset-link {
+  flex: 1 1 100%;
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.ux-more {
+  border-top: 1px solid var(--border);
+}
+.ux-more > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 0 8px;
+  color: var(--secondary);
+  font-size: 12.5px;
+  list-style: none;
+  cursor: pointer;
+}
+.ux-more > summary::-webkit-details-marker {
+  display: none;
+}
+.ux-more > summary:hover {
+  color: var(--text);
+}
+.ux-more > summary:focus-visible {
+  border-radius: 4px;
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+.ux-more-caret {
+  flex: none;
+  color: var(--muted);
+  transition: rotate 0.15s ease;
+}
+.ux-more[open] .ux-more-caret {
+  rotate: 90deg;
+}
+.ux-more[open] .ux-more-caret:dir(rtl) {
+  rotate: -90deg;
+}
+.ux-more-note {
+  margin: 0 0 6px;
+  font-size: 12px;
+}
+.ux-identities {
+  margin: 0 0 8px;
+}
+/* Changed limits: saved together, the button stays at the panel's edge. */
+.ux-save {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin: 6px -20px -6px;
+  padding: 10px 20px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+}
+.ux-danger {
+  margin-top: auto;
+  border-top: 1px solid var(--border);
+  border-bottom: 0;
+  background: color-mix(in srgb, #c43a3a 5%, var(--bg));
+}
+.ux-danger .ux-row-item {
+  border-top-color: color-mix(in srgb, #c43a3a 14%, var(--border));
+}
+.ux-danger .button:disabled {
+  opacity: 0.5;
+}
+[data-theme="dark"] .modal.ux-drawer {
+  box-shadow: -12px 0 40px rgba(0, 0, 0, 0.45);
+}
+
+/* Phones: a bottom sheet (Modal `sheet`, app/mobile-ux.css) as high as its
+   content; hit areas of 44 px. */
+@media (max-width: 600px) {
+  .modal.ux-drawer {
+    height: auto;
+    width: 100%;
+    padding: 0 0 var(--safe-bottom, 0px);
+    border-width: 1px 0 0;
+  }
+  .modal.ux-drawer > .sheet-handle {
+    margin: 0;
+  }
+  .modal.ux-drawer > .sheet-handle + .modal-heading {
+    top: 18px;
+    padding: 0;
+  }
+  .modal.ux-drawer > .modal-heading .icon-button {
+    min-width: 44px;
+    min-height: 44px;
+    margin: 4px 6px 0;
+  }
+  .ux-drawer-head {
+    padding-top: 8px;
+  }
+  .ux-row-item {
+    flex-wrap: wrap;
+  }
+  .ux-row-control {
+    max-width: 100%;
+  }
+  .modal.ux-drawer :is(.button, .number-field input, .fp-select) {
+    min-height: 44px;
+  }
+  .ux-danger {
+    margin-top: 0;
+  }
+}

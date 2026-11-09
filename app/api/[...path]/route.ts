@@ -1048,6 +1048,9 @@ async function handleGET(
           "SELECT count(*) count FROM sessions WHERE expires>?",
           Date.now(),
         ))?.count,
+        userSessions: Object.fromEntries(
+          (await all<{ id: string; n: number }>("SELECT user_id id, count(*) n FROM sessions WHERE expires>? GROUP BY user_id", Date.now())).map((r) => [r.id, Number(r.n)]),
+        ),
         audit: await all(
           "SELECT a.*,u.name FROM audit a LEFT JOIN users u ON u.id=a.actor_id ORDER BY a.created_at DESC LIMIT 100",
         ),

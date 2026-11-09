@@ -1,16 +1,39 @@
 "use client";
-// Administration → Benutzer: the accounts of the instance as a searchable
-// list with their state (active, inactive, disabled, admin), actions for
-// several at once, and one account's limits, sessions and actions in a side
-// sheet (full screen on phones). Registration is set under Anmeldung & SSO.
-import { useEffect, useMemo, useState } from "react";
-import { ArrowsMerge, ArrowsLeftRight, IdentificationCard, MagnifyingGlass, UserCircleMinus, Users } from "@phosphor-icons/react";
+// Administration → Benutzer: the accounts of the instance as a dense,
+// sortable and paged table (a card list on phones) with their state, their
+// workspaces, storage and activity; actions for several at once, a menu of
+// quick actions per row, and one account's details and every action in a
+// side panel (a bottom sheet on phones). Registration is set under
+// Anmeldung & SSO.
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import * as Dropdown from "@radix-ui/react-dropdown-menu";
+import {
+  ArrowDown,
+  ArrowsLeftRight,
+  ArrowsMerge,
+  ArrowUp,
+  CaretDown,
+  CaretLeft,
+  CaretRight,
+  CaretUp,
+  CaretUpDown,
+  DotsThree,
+  IdentificationCard,
+  Key,
+  LockOpen,
+  MagnifyingGlass,
+  Prohibit,
+  SignOut,
+  Stack,
+  Trash,
+  Users,
+} from "@phosphor-icons/react";
 import type { MergePreview } from "@/lib/account-merge";
 import type { User } from "@/lib/types";
-import type { InstanceSettings } from "@/lib/instance-settings";
 import { useT } from "../../i18n";
-import { Avatar, Modal } from "../../ui";
-import { DangerZone, EmptyState, NumberField, SaveState, SettingGroup, SettingRow, StatusBadge, UsageMeter, useSaveState, type Tone } from "../../settings-ui";
+import { Avatar, Modal, showNotice } from "../../ui";
+import { Select } from "../../select";
+import { EmptyState, NumberField, SaveState, StatusBadge, useSaveState, type Tone } from "../../settings-ui";
 import { AiUserSwitch } from "../../ai-settings";
 import { useAdminData, type AdminData } from "../admin-context";
 import { AdminLoading } from "../shell";
@@ -27,52 +50,109 @@ type Local = {
   password?: boolean;
 };
 type Usage = NonNullable<AdminData["userUsage"]>[number];
+type Activity = Pick<UserActivity, "openAt" | "activeAt">;
 type Filter = "all" | "here" | "active" | "inactive" | "disabled" | "admins";
+type SortKey = "name" | "status" | "workspaces" | "storage" | "last" | "created";
+type Sort = { key: SortKey; dir: "asc" | "desc" };
+// The direction a column starts with: names A–Z, the rest largest or newest first.
+const FIRST_DIR: Record<SortKey, Sort["dir"]> = { name: "asc", status: "asc", workspaces: "desc", storage: "desc", last: "desc", created: "desc" };
+const PAGE_SIZES = [25, 50, 100];
 // No sign-in for this long counts as inactive (the instance may disable such
 // accounts automatically after its own number of days).
 const INACTIVE_DAYS = 30;
 const DAY = 86_400_000;
+type State = { key: "active" | "inactive" | "disabled"; days: number };
 
+const createdAt = (u: User) => Date.parse(u.created_at.includes("T") ? u.created_at : `${u.created_at.replace(" ", "T")}Z`);
 // The state of one account, as a badge.
-function stateOf(u: User, now: number): { key: "active" | "inactive" | "disabled"; days: number } {
-  const last = u.last_login_at ?? Date.parse(u.created_at.includes("T") ? u.created_at : `${u.created_at.replace(" ", "T")}Z`);
+function stateOf(u: User, now: number): State {
+  const last = u.last_login_at ?? createdAt(u);
   const days = Number.isFinite(last) ? Math.floor((now - last) / DAY) : 0;
   if (u.disabled) return { key: "disabled", days };
   return { key: days >= INACTIVE_DAYS ? "inactive" : "active", days };
 }
+const dateText = (ms: number) => (Number.isFinite(ms) ? new Date(ms).toLocaleDateString(LOCALE_TAG, { day: "2-digit", month: "2-digit", year: "numeric" }) : "–");
+// Bytes as KB, MB or GB; a limit in MB likewise.
+const sizeText = (bytes: number) =>
+  bytes >= 1024 ** 3
+    ? `${(bytes / 1024 ** 3).toLocaleString(LOCALE_TAG, { maximumFractionDigits: 1 })} GB`
+    : bytes > 0 && bytes < 1024 * 1024
+      ? `${Math.max(1, Math.round(bytes / 1024)).toLocaleString(LOCALE_TAG)} KB`
+      : bytes === 0
+        ? "0 KB"
+        : mbText(bytes);
+const limitText = (mb: number) => (mb ? sizeText(mb * 1024 * 1024) : "∞");
+// The page buttons: all up to seven pages, else the first, the last and
+// the ones around the current page, gaps as null.
+function pageList(page: number, pages: number): (number | null)[] {
+  if (pages <= 7) return Array.from({ length: pages }, (_, i) => i + 1);
+  const around = [page - 1, page, page + 1].filter((p) => p > 1 && p < pages);
+  if (page <= 3) around.push(2, 3, 4);
+  if (page >= pages - 2) around.push(pages - 3, pages - 2, pages - 1);
+  const list = [...new Set([1, ...around, pages])].sort((a, b) => a - b);
+  return list.flatMap((p, i) => (i && p - list[i - 1] > 1 ? [null, p] : [p]));
+}
 
 export default function UsersSection() {
   const t = useT();
-  const { data, mutate, load, onError } = useAdminData();
+  const { data, mutate, load, act, onError } = useAdminData();
   const [query, setQuery] = useState(""),
     [filter, setFilter] = useState<Filter>("all"),
+    [sort, setSort] = useState<Sort>({ key: "last", dir: "desc" }),
+    [page, setPage] = useState(1),
+    [perPage, setPerPage] = useState(25),
     [selected, setSelected] = useState<Set<string>>(new Set()),
     [open, setOpen] = useState<string | null>(null),
     [bulk, setBulk] = useState(false);
   const now = useMemo(() => Date.now(), [data]);
   const live = useLiveActivity();
+  const scroll = useEdgeShadows();
   if (!data) return <AdminLoading />;
   // The live times (every 30 s) over the ones the page was loaded with.
-  const activityOf = (u: User): Pick<UserActivity, "openAt" | "activeAt"> =>
-    live.users.get(u.id) ?? { openAt: u.last_open_at ?? null, activeAt: u.last_active_at ?? null };
+  const activityOf = (u: User): Activity => live.users.get(u.id) ?? { openAt: u.last_open_at ?? null, activeAt: u.last_active_at ?? null };
   const liveNow = live.now || now;
   const local = data.localAccounts || {};
-  const ssoCount = new Map<string, number>();
-  for (const i of data.identities || []) ssoCount.set(i.user_id, (ssoCount.get(i.user_id) || 0) + 1);
-  const ldapIds = new Set(data.ldapAccounts || []);
   const admins = new Set(data.adminIds || []);
   const isAdmin = (id: string) => admins.has(id) || !!local[id]?.admin;
   const states = new Map(data.users.map((u) => [u.id, stateOf(u, now)]));
+  const usages = new Map((data.userUsage || []).map((x) => [x.id, x]));
   const count = (f: Filter) => data.users.filter((u) => matches(u, f)).length;
   function matches(u: User, f: Filter) {
     const s = states.get(u.id)!.key;
     if (f === "here") return ["active", "idle"].includes(activityState(activityOf(u), liveNow));
     return f === "all" || (f === "admins" ? isAdmin(u.id) : s === f);
   }
+  // What a column sorts by; ties by name.
+  const statusRank = (u: User) => (u.disabled ? 3 : u.deletion_due_at ? 2 : states.get(u.id)!.key === "inactive" ? 1 : 0);
+  const sortValue: Record<SortKey, (u: User) => number | string> = {
+    name: (u) => u.name.toLocaleLowerCase(LOCALE_TAG),
+    status: statusRank,
+    workspaces: (u) => usages.get(u.id)?.memberOf?.length ?? 0,
+    storage: (u) => usages.get(u.id)?.bytes ?? 0,
+    last: (u) => activityOf(u).activeAt ?? activityOf(u).openAt ?? 0,
+    created: (u) => createdAt(u) || 0,
+  };
   const needle = query.trim().toLocaleLowerCase();
-  const shown = data.users.filter((u) => matches(u, filter) && (!needle || `${u.name} ${u.email}`.toLocaleLowerCase().includes(needle)));
+  const shown = data.users
+    .filter((u) => matches(u, filter) && (!needle || `${u.name} ${u.email}`.toLocaleLowerCase().includes(needle)))
+    .map((u) => ({ u, v: sortValue[sort.key](u) }))
+    .sort((a, b) => {
+      const d = typeof a.v === "string" ? a.v.localeCompare(b.v as string, LOCALE_TAG) : a.v - (b.v as number);
+      return (sort.dir === "asc" ? d : -d) || a.u.name.localeCompare(b.u.name, LOCALE_TAG);
+    })
+    .map((x) => x.u);
+  const pages = Math.max(1, Math.ceil(shown.length / perPage));
+  const current = Math.min(page, pages);
+  const first = (current - 1) * perPage;
+  const rows = shown.slice(first, first + perPage);
+  // A new search, filter, order or page size starts on the first page.
+  const changeQuery = (q: string) => (setQuery(q), setPage(1));
+  const changeFilter = (f: Filter) => (setFilter(f), setPage(1));
+  const changeSort = (next: Sort) => (setSort(next), setPage(1));
+  const sortBy = (key: SortKey) => changeSort(sort.key === key ? { key, dir: sort.dir === "asc" ? "desc" : "asc" } : { key, dir: FIRST_DIR[key] });
   const chosen = data.users.filter((u) => selected.has(u.id));
-  const allShown = shown.length > 0 && shown.every((u) => selected.has(u.id));
+  const allRows = rows.length > 0 && rows.every((u) => selected.has(u.id));
+  const someRows = !allRows && rows.some((u) => selected.has(u.id));
   const toggle = (id: string, on: boolean) =>
     setSelected((prev) => {
       const next = new Set(prev);
@@ -95,6 +175,13 @@ export default function UsersSection() {
       await load();
       setBulk(false);
     }
+  };
+  const block = (u: User) => {
+    if (confirm(t(`${u.name} sperren? Alle Sitzungen enden; die Person kann sich nicht mehr anmelden.`, `Block ${u.name}? All sessions end; the person can no longer sign in.`)))
+      void act({ action: "admin.user", userId: u.id, disabled: true });
+  };
+  const signOut = async (u: User) => {
+    if ((await act({ action: "admin.revoke", userId: u.id })) !== undefined) showNotice(t(`${u.name} ist auf allen Geräten abgemeldet.`, `${u.name} is signed out on every device.`));
   };
   const inactive = count("inactive"),
     disabled = count("disabled"),
@@ -129,6 +216,14 @@ export default function UsersSection() {
           },
     );
   const person = data.users.find((u) => u.id === open) || null;
+  const columns: [SortKey, string, string?][] = [
+    ["name", t("Person", "Person"), "who"],
+    ["status", t("Status", "Status"), "state"],
+    ["workspaces", t("Arbeitsbereiche", "Workspaces"), "end"],
+    ["storage", t("Speicher", "Storage")],
+    ["last", t("Zuletzt aktiv", "Last active")],
+    ["created", t("Erstellt", "Created")],
+  ];
   return (
     <>
       <AdminStatus items={items} action={data.localLogin ? <FixLink href="#admin/signin/registration">{t("Registrierung einstellen", "Set up sign-up")}</FixLink> : undefined}>
@@ -148,7 +243,7 @@ export default function UsersSection() {
                 aria-label={t("Benutzer suchen", "Search users")}
                 placeholder={t("Name oder E-Mail suchen …", "Search name or email …")}
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onChange={(e) => changeQuery(e.target.value)}
               />
             </span>
           </div>
@@ -165,12 +260,34 @@ export default function UsersSection() {
                 ["admins", t("Admins", "Admins"), count("admins")],
               ] as [Filter, string, number][]
             ).map(([key, label, n]) => (
-              <button key={key} type="button" className={`admin-user-filter${filter === key ? " on" : ""}`} aria-pressed={filter === key} onClick={() => setFilter(key)}>
+              <button key={key} type="button" className={`admin-user-filter${filter === key ? " on" : ""}`} aria-pressed={filter === key} onClick={() => changeFilter(key)}>
                 {key === "here" && <i className="presence-dot" aria-hidden="true" />}
                 {label}
                 <span>{n}</span>
               </button>
             ))}
+          </div>
+          {/* Phones have no column headers: the order is chosen here. */}
+          <div className="ux-sort-bar">
+            <label className="ux-sort-label" htmlFor="admin-users-sort">
+              {t("Sortieren nach", "Sort by")}
+            </label>
+            <Select id="admin-users-sort" value={sort.key} onChange={(e) => changeSort({ key: e.target.value as SortKey, dir: FIRST_DIR[e.target.value as SortKey] })}>
+              {columns.map(([key, label]) => (
+                <option key={key} value={key}>
+                  {label}
+                </option>
+              ))}
+            </Select>
+            <button
+              type="button"
+              className="icon-button"
+              aria-label={sort.dir === "asc" ? t("Aufsteigend – absteigend sortieren", "Ascending – sort descending") : t("Absteigend – aufsteigend sortieren", "Descending – sort ascending")}
+              title={sort.dir === "asc" ? t("Aufsteigend", "Ascending") : t("Absteigend", "Descending")}
+              onClick={() => changeSort({ key: sort.key, dir: sort.dir === "asc" ? "desc" : "asc" })}
+            >
+              {sort.dir === "asc" ? <ArrowUp size={16} aria-hidden /> : <ArrowDown size={16} aria-hidden />}
+            </button>
           </div>
         </header>
         {chosen.length > 0 && (
@@ -181,7 +298,7 @@ export default function UsersSection() {
             </button>
             {chosen.some((u) => u.disabled) && (
               <button type="button" className="button" disabled={bulk} onClick={() => void runBulk((u) => (u.disabled ? { action: "admin.user", userId: u.id, disabled: false } : null))}>
-                {t("Aktivieren", "Enable")}
+                {t("Entsperren", "Unblock")}
               </button>
             )}
             {chosen.some((u) => !u.disabled) && (
@@ -191,7 +308,7 @@ export default function UsersSection() {
                 disabled={bulk}
                 onClick={() => {
                   const n = chosen.filter((u) => !u.disabled).length;
-                  if (confirm(t(`${n} Konten deaktivieren? Ihre Sitzungen enden, sie können sich nicht mehr anmelden.`, `Disable ${n} accounts? Their sessions end and they can no longer sign in.`)))
+                  if (confirm(t(`${n} Konten sperren? Ihre Sitzungen enden, sie können sich nicht mehr anmelden.`, `Block ${n} accounts? Their sessions end and they can no longer sign in.`)))
                     void runBulk((u) =>
                       u.disabled
                         ? null
@@ -203,7 +320,7 @@ export default function UsersSection() {
                     );
                 }}
               >
-                {t("Deaktivieren", "Disable")}
+                {t("Sperren", "Block||account")}
               </button>
             )}
             <button type="button" className="button" disabled={bulk} onClick={() => setSelected(new Set())}>
@@ -216,53 +333,146 @@ export default function UsersSection() {
             {t("Ändere die Suche oder den Status-Filter.", "Change the search or the status filter.")}
           </EmptyState>
         ) : (
-          <table className="admin-user-table" aria-label={t("Benutzer", "Users")}>
-            <thead>
-              <tr>
-                <th scope="col" className="check">
-                  <input
-                    type="checkbox"
-                    aria-label={t("Alle angezeigten auswählen", "Select all shown")}
-                    checked={allShown}
-                    onChange={(e) => setSelected(e.target.checked ? new Set([...selected, ...shown.map((u) => u.id)]) : new Set([...selected].filter((id) => !shown.some((u) => u.id === id))))}
-                  />
-                </th>
-                <th scope="col">{t("Person · Anmeldung", "Person · sign-in")}</th>
-                <th scope="col">{t("Zuletzt aktiv", "Last active")}</th>
-                <th scope="col" className="end">
-                  {t("Speicher", "Storage")}
-                </th>
-                <th scope="col">{t("Status", "Status")}</th>
-                <th scope="col">
-                  <span className="sr-only">{t("Aktionen", "Actions")}</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {shown.map((u) => (
-                <UserRow
-                  key={u.id}
-                  user={u}
-                  local={local[u.id]}
-                  sso={ssoCount.get(u.id) || 0}
-                  ldap={ldapIds.has(u.id)}
-                  admin={isAdmin(u.id)}
-                  usage={data.userUsage?.find((x) => x.id === u.id)}
-                  state={states.get(u.id)!}
-                  activity={activityOf(u)}
-                  now={liveNow}
-                  selected={selected.has(u.id)}
-                  onSelect={(on) => toggle(u.id, on)}
-                  onOpen={() => setOpen(u.id)}
-                />
-              ))}
-            </tbody>
-          </table>
+          <>
+            <div className="ux-scroll" ref={scroll.ref} data-start={scroll.start || undefined} data-end={scroll.end || undefined}>
+              <table className="admin-user-table ux-table" aria-label={t("Benutzer", "Users")} aria-rowcount={shown.length + 1}>
+                <thead>
+                  <tr>
+                    <th scope="col" className="check">
+                      <input
+                        type="checkbox"
+                        aria-label={t("Alle angezeigten auswählen", "Select all shown")}
+                        checked={allRows}
+                        ref={(el) => {
+                          if (el) el.indeterminate = someRows;
+                        }}
+                        onChange={(e) => setSelected(e.target.checked ? new Set([...selected, ...rows.map((u) => u.id)]) : new Set([...selected].filter((id) => !rows.some((u) => u.id === id))))}
+                      />
+                    </th>
+                    {columns.map(([key, label, cls]) => {
+                      const on = sort.key === key;
+                      const Icon = !on ? CaretUpDown : sort.dir === "asc" ? CaretUp : CaretDown;
+                      return (
+                        <th key={key} scope="col" className={`${cls || key}${on ? " sorted" : ""}`} aria-sort={on ? (sort.dir === "asc" ? "ascending" : "descending") : undefined}>
+                          <button type="button" className="ux-sort" onClick={() => sortBy(key)}>
+                            {label}
+                            <Icon size={11} weight="bold" aria-hidden className="ux-sort-ind" />
+                          </button>
+                        </th>
+                      );
+                    })}
+                    <th scope="col" className="ux-menu">
+                      <span className="sr-only">{t("Aktionen", "Actions")}</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((u, i) => (
+                    <UserRow
+                      key={u.id}
+                      index={first + i + 2}
+                      user={u}
+                      local={local[u.id]}
+                      admin={isAdmin(u.id)}
+                      usage={usages.get(u.id)}
+                      state={states.get(u.id)!}
+                      activity={activityOf(u)}
+                      now={liveNow}
+                      selected={selected.has(u.id)}
+                      opened={open === u.id}
+                      onSelect={(on) => toggle(u.id, on)}
+                      onOpen={() => setOpen(u.id)}
+                      onSignOut={() => void signOut(u)}
+                      onBlock={() => (u.disabled ? void act({ action: "admin.user", userId: u.id, disabled: false }) : block(u))}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <Pager total={shown.length} first={first} shown={rows.length} page={current} pages={pages} perPage={perPage} onPage={setPage} onPerPage={(n) => (setPerPage(n), setPage(1))} />
+          </>
         )}
       </section>
-      {person && <UserSheet key={person.id} user={person} data={data} state={states.get(person.id)!} activity={activityOf(person)} now={liveNow} onClose={() => setOpen(null)} />}
+      {person && <UserDrawer key={person.id} user={person} data={data} state={states.get(person.id)!} activity={activityOf(person)} now={liveNow} onClose={() => setOpen(null)} />}
     </>
   );
+}
+
+// "1–25 von 112", the pages and the page size.
+function Pager({ total, first, shown, page, pages, perPage, onPage, onPerPage }: { total: number; first: number; shown: number; page: number; pages: number; perPage: number; onPage: (p: number) => void; onPerPage: (n: number) => void }) {
+  const t = useT();
+  const from = (first + 1).toLocaleString(LOCALE_TAG),
+    to = (first + shown).toLocaleString(LOCALE_TAG),
+    all = total.toLocaleString(LOCALE_TAG);
+  return (
+    <footer className="ux-pager">
+      <span className="ux-pager-count muted" aria-live="polite">
+        {t(`${from}–${to} von ${all}`, `${from}–${to} of ${all}`)}
+      </span>
+      {pages > 1 && (
+        <nav className="ux-pages" aria-label={t("Seiten", "Pages")}>
+          <button type="button" className="icon-button" aria-label={t("Vorherige Seite", "Previous page")} disabled={page <= 1} onClick={() => onPage(page - 1)}>
+            <CaretLeft size={14} aria-hidden className="ux-flip" />
+          </button>
+          {pageList(page, pages).map((p, i) =>
+            p === null ? (
+              <span key={`gap${i}`} className="ux-page-gap" aria-hidden>
+                …
+              </span>
+            ) : (
+              <button
+                key={p}
+                type="button"
+                className={`ux-page${p === page ? " on" : ""}`}
+                aria-current={p === page ? "page" : undefined}
+                aria-label={t(`Seite ${p}`, `Page ${p}`)}
+                onClick={() => onPage(p)}
+              >
+                {p}
+              </button>
+            ),
+          )}
+          <button type="button" className="icon-button" aria-label={t("Nächste Seite", "Next page")} disabled={page >= pages} onClick={() => onPage(page + 1)}>
+            <CaretRight size={14} aria-hidden className="ux-flip" />
+          </button>
+        </nav>
+      )}
+      <Select className="ux-per-page" aria-label={t("Einträge pro Seite", "Rows per page")} value={String(perPage)} onChange={(e) => onPerPage(Number(e.target.value))}>
+        {PAGE_SIZES.map((n) => (
+          <option key={n} value={n}>
+            {t(`${n} pro Seite`, `${n} per page`)}
+          </option>
+        ))}
+      </Select>
+    </footer>
+  );
+}
+
+// The table scrolls sideways; a shadow shows on the side with more columns
+// (data-start: scrolled away from the start, data-end: more at the end).
+function useEdgeShadows() {
+  const [el, setEl] = useState<HTMLDivElement | null>(null);
+  const [edges, setEdges] = useState({ start: false, end: false });
+  useEffect(() => {
+    if (!el) return;
+    const measure = () => {
+      // Negative in right-to-left layouts.
+      const left = Math.abs(el.scrollLeft);
+      const next = { start: left > 1, end: left + el.clientWidth < el.scrollWidth - 1 };
+      setEdges((prev) => (prev.start === next.start && prev.end === next.end ? prev : next));
+    };
+    measure();
+    el.addEventListener("scroll", measure, { passive: true });
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
+    ro?.observe(el);
+    const table = el.firstElementChild;
+    if (table) ro?.observe(table);
+    return () => {
+      el.removeEventListener("scroll", measure);
+      ro?.disconnect();
+    };
+  }, [el]);
+  return { ref: setEl, ...edges };
 }
 
 // Who is here, refreshed every 30 seconds while the list is open.
@@ -296,17 +506,19 @@ function useLiveActivity() {
 }
 
 // Here and in use, open but idle (and for how long), or when last here.
-function Presence({ activity, now, long }: { activity: Pick<UserActivity, "openAt" | "activeAt">; now: number; long?: boolean }) {
+// Short (in the table): an idle account shows when it was last in use.
+function Presence({ activity, now, long }: { activity: Activity; now: number; long?: boolean }) {
   const t = useT();
   const state = activityState(activity, now);
   const idle = activity.activeAt ? duration(Math.max(60, (now - activity.activeAt) / 1000), t) : null;
+  const idleText = idle ? t(`Geöffnet · inaktiv seit ${idle}`, `Open · idle for ${idle}`) : t("Geöffnet · inaktiv", "Open · idle");
   const text =
     state === "active"
       ? t("Jetzt aktiv", "Active now")
       : state === "idle"
-        ? idle
-          ? t(`Geöffnet · inaktiv seit ${idle}`, `Open · idle for ${idle}`)
-          : t("Geöffnet · inaktiv", "Open · idle")
+        ? long || !activity.activeAt
+          ? idleText
+          : ago(activity.activeAt, t, now)
         : state === "offline"
           ? activity.activeAt
             ? long
@@ -315,7 +527,7 @@ function Presence({ activity, now, long }: { activity: Pick<UserActivity, "openA
             : t("offline", "offline")
           : t("noch nie da", "never here");
   return (
-    <span className={`presence presence-${state}`}>
+    <span className={`presence presence-${state}`} title={state === "idle" && !long ? idleText : undefined}>
       <i aria-hidden="true" />
       {text}
     </span>
@@ -323,21 +535,22 @@ function Presence({ activity, now, long }: { activity: Pick<UserActivity, "openA
 }
 
 // Inactive for too long: deleted on this day unless the person comes back
-// (or an admin enables a blocked account).
-function DeletionBadge({ due }: { due?: number | null }) {
+// (or an admin enables a blocked account). Short in the table.
+function DeletionBadge({ due, short }: { due?: number | null; short?: boolean }) {
   const t = useT();
   if (!due) return null;
   const date = new Date(due).toLocaleDateString(LOCALE_TAG, { day: "numeric", month: "short" });
+  const long = t(`Wird am ${date} gelöscht`, `Deleted on ${date}`);
   return (
-    <StatusBadge tone="error">
-      {t(`Wird am ${date} gelöscht`, `Deleted on ${date}`)}
+    <StatusBadge tone={short ? "warn" : "error"} title={short ? long : undefined}>
+      {short ? t(`Löschung ${date}`, `Deletion ${date}`) : long}
     </StatusBadge>
   );
 }
 
-function StateBadge({ state }: { state: Awaited<ReturnType<typeof stateOf>> }) {
+function StateBadge({ state }: { state: State }) {
   const t = useT();
-  const tone: Tone = state.key === "disabled" ? "error" : state.key === "inactive" ? "warn" : "ok";
+  const tone: Tone = state.key === "disabled" ? "error" : state.key === "inactive" ? "off" : "ok";
   return (
     <StatusBadge tone={tone}>
       {state.key === "disabled" ? t("Deaktiviert", "Disabled") : state.key === "inactive" ? t(`Inaktiv · ${state.days} T.`, `Inactive · ${state.days} d`) : t("Aktiv", "Active")}
@@ -352,7 +565,7 @@ function signIn(local: Local | undefined, t: (de: string, en: string) => string,
   const ssoText = sso ? (sso === 1 ? "SSO" : `SSO × ${sso}`) : null;
   if (!local) return [ssoText, ldap ? "LDAP" : null].filter(Boolean).join(" · ") || t("SSO / Verzeichnis", "SSO / directory");
   return [
-    local.password === false ? null : t("E-Mail", "E-mail"),
+    local.password === false ? null : t("E-Mail + Passwort", "E-mail + password"),
     ssoText,
     ldap ? "LDAP" : null,
     local.passkeys ? (local.passkeys === 1 ? "Passkey" : `${local.passkeys} Passkeys`) : null,
@@ -362,37 +575,66 @@ function signIn(local: Local | undefined, t: (de: string, en: string) => string,
     .join(" · ");
 }
 
+// Used storage against the limit: a thin bar, amber from 75 %, red from 90 %.
+function StorageBar({ usage, wide }: { usage: Usage; wide?: boolean }) {
+  const limit = usage.effective.storageMb * 1024 * 1024;
+  const share = limit ? Math.min(1, usage.bytes / limit) : 0;
+  const tone = share >= 0.9 ? " high" : share >= 0.75 ? " mid" : "";
+  return (
+    <span className={`ux-bar${wide ? " wide" : ""}${tone}`} aria-hidden>
+      <b style={{ width: `${limit ? Math.max(share * 100, usage.bytes ? 2 : 0) : usage.bytes ? 2 : 0}%` }} />
+    </span>
+  );
+}
+
 function UserRow({
+  index,
   user: u,
   local,
-  sso,
-  ldap,
   admin,
   usage,
   state,
   activity,
   now,
   selected,
+  opened,
   onSelect,
   onOpen,
+  onSignOut,
+  onBlock,
 }: {
+  index: number;
   user: User;
   local?: Local;
-  sso: number;
-  ldap: boolean;
   admin: boolean;
   usage?: Usage;
-  state: Awaited<ReturnType<typeof stateOf>>;
-  activity: Pick<UserActivity, "openAt" | "activeAt">;
+  state: State;
+  activity: Activity;
   now: number;
   selected: boolean;
+  opened: boolean;
   onSelect: (on: boolean) => void;
   onOpen: () => void;
+  onSignOut: () => void;
+  onBlock: () => void;
 }) {
   const t = useT();
-  const storage = usage?.effective.storageMb ?? 0;
+  const all = usage?.memberOf?.length ?? 0,
+    own = usage?.workspaces ?? 0;
+  const wsTitle =
+    (all === 1 ? t("1 Arbeitsbereich", "1 workspace") : t(`${all} Arbeitsbereiche`, `${all} workspaces`)) +
+    (own ? ` · ${own === 1 ? t("1 eigener", "1 own") : t(`${own} eigene`, `${own} own`)}` : "");
   return (
-    <tr className={`user-row${u.disabled ? " is-disabled" : ""}${selected ? " is-selected" : ""}`}>
+    <tr
+      className={`user-row ux-row${u.disabled ? " is-disabled" : ""}${selected ? " is-selected" : ""}${opened ? " is-open" : ""}`}
+      aria-rowindex={index}
+      onClick={(e) => {
+        // The whole row opens the panel, except its own controls.
+        if ((e.target as HTMLElement).closest("input, button, a, label, [role='menuitem']")) return;
+        if (window.getSelection()?.toString()) return;
+        onOpen();
+      }}
+    >
       <td className="check">
         <input type="checkbox" aria-label={t(`${u.name} auswählen`, `Select ${u.name}`)} checked={selected} onChange={(e) => onSelect(e.target.checked)} />
       </td>
@@ -401,53 +643,82 @@ function UserRow({
           <Avatar name={u.name} userId={u.id} />
           <span>
             <strong>
-              {u.name}
+              <button type="button" className="ux-name" aria-haspopup="dialog" onClick={onOpen} title={u.name}>
+                <span>{u.name}</span>
+              </button>
               {admin && <StatusBadge tone="info">{t("Admin", "Admin")}</StatusBadge>}
               {local && !local.verified && <StatusBadge tone="warn">{t("E-Mail unbestätigt", "E-mail unconfirmed")}</StatusBadge>}
-              <DeletionBadge due={u.deletion_due_at} />
             </strong>
-            <small>{u.email}</small>
-            <small className="signin">{signIn(local, t, sso, ldap)}</small>
+            <small title={u.email}>{u.email}</small>
           </span>
         </div>
       </td>
-      <td className="last" data-label={t("Zuletzt aktiv", "Last active")}>
+      <td className="state">{u.deletion_due_at && !u.disabled ? <DeletionBadge due={u.deletion_due_at} short /> : <StateBadge state={state} />}</td>
+      <td className="end ux-num" title={wsTitle}>
+        <Stack size={14} aria-hidden className="ux-card-icon" />
+        {all}
+        <span className="ux-card-label">{all === 1 ? t("Arbeitsbereich", "workspace") : t("Arbeitsbereiche", "workspaces")}</span>
+      </td>
+      <td className="ux-storage">
+        {usage ? (
+          <>
+            <StorageBar usage={usage} />
+            <span className="ux-storage-text">
+              {sizeText(usage.bytes)} <span className="muted">/ {limitText(usage.effective.storageMb)}</span>
+            </span>
+          </>
+        ) : (
+          "–"
+        )}
+      </td>
+      <td className="last">
         <Presence activity={activity} now={now} />
       </td>
-      <td className="storage end" data-label={t("Speicher", "Storage")}>
-        {usage ? `${mbText(usage.bytes)}${storage ? ` / ${storage} MB` : ""}` : "–"}
-      </td>
-      <td className="state">
-        <StateBadge state={state} />
-      </td>
-      <td className="action">
-        <button type="button" className="button compact" aria-haspopup="dialog" onClick={onOpen}>
-          {t("Verwalten", "Manage")}
-        </button>
+      <td className="ux-created">{dateText(createdAt(u))}</td>
+      <td className="ux-menu">
+        <Dropdown.Root modal={false}>
+          <Dropdown.Trigger className="icon-button" aria-label={t(`Aktionen für ${u.name}`, `Actions for ${u.name}`)}>
+            <DotsThree size={18} weight="bold" />
+          </Dropdown.Trigger>
+          <Dropdown.Portal>
+            <Dropdown.Content className="dropdown" align="end">
+              <Dropdown.Item className="dropdown-item" onSelect={onOpen}>
+                {t("Details und Einstellungen", "Details and settings")}
+              </Dropdown.Item>
+              <Dropdown.Item className="dropdown-item" onSelect={onSignOut}>
+                <SignOut size={16} aria-hidden /> {t("Überall abmelden", "Sign out everywhere")}
+              </Dropdown.Item>
+              <Dropdown.Separator className="dropdown-separator" />
+              <Dropdown.Item className={`dropdown-item${u.disabled ? "" : " danger"}`} onSelect={onBlock}>
+                {u.disabled ? <LockOpen size={16} aria-hidden /> : <Prohibit size={16} aria-hidden />} {u.disabled ? t("Entsperren", "Unblock") : t("Sperren …", "Block …")}
+              </Dropdown.Item>
+            </Dropdown.Content>
+          </Dropdown.Portal>
+        </Dropdown.Root>
       </td>
     </tr>
   );
 }
 
-// One account in a side sheet: usage, limits, access and – at the end – what
-// cannot be undone.
-function UserSheet({
-  user: u,
-  data,
-  state,
-  activity,
-  now,
-  onClose,
-}: {
-  user: User;
-  data: AdminData;
-  state: Awaited<ReturnType<typeof stateOf>>;
-  activity: Pick<UserActivity, "openAt" | "activeAt">;
-  now: number;
-  onClose: () => void;
-}) {
+// One row of the panel: what it is (with a hint) and its control.
+function PanelRow({ label, hint, children, htmlFor }: { label: string; hint?: ReactNode; children: ReactNode; htmlFor?: string }) {
+  return (
+    <div className="ux-row-item">
+      <span className="ux-row-text">
+        {htmlFor ? <label htmlFor={htmlFor}>{label}</label> : <strong>{label}</strong>}
+        {hint && <small>{hint}</small>}
+      </span>
+      <span className="ux-row-control">{children}</span>
+    </div>
+  );
+}
+
+// One account in a side panel (a bottom sheet on phones): facts, storage,
+// role, limits, sessions and password; further settings folded; blocking
+// and deleting at the end.
+function UserDrawer({ user: u, data, state, activity, now, onClose }: { user: User; data: AdminData; state: State; activity: Activity; now: number; onClose: () => void }) {
   const t = useT();
-  const { act, load } = useAdminData();
+  const { act, mutate, load } = useAdminData();
   const local = data.localAccounts?.[u.id];
   const identities = (data.identities || []).filter((i) => i.user_id === u.id);
   const ldap = !!data.ldapAccounts?.includes(u.id);
@@ -455,6 +726,9 @@ function UserSheet({
   const admin = !!local?.admin || !!data.adminIds?.includes(u.id);
   const usage = data.userUsage?.find((x) => x.id === u.id);
   const ai = data.aiPolicy?.enabled && data.aiPolicy.access === "selected" ? { allowed: data.aiPolicy.allowed.includes(u.id) } : null;
+  const sessions = data.userSessions?.[u.id] ?? 0;
+  const names = new Map(data.workspaces.map((w) => [w.id, w.name]));
+  const memberOf = (usage?.memberOf || []).map((id) => names.get(id)).filter((n): n is string => !!n);
   const [resetLink, setResetLink] = useState("");
   const [note, setNote] = useState("");
   const [plan, setPlan] = useState<{
@@ -464,54 +738,216 @@ function UserSheet({
     privateSpaces: number;
   } | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [limits, setLimits] = useState(usage?.limits || {});
+  const [saveStatus, save] = useSaveState();
+  const clean = (l: object) =>
+    JSON.stringify(
+      Object.entries(l)
+        .filter(([, v]) => v !== null && v !== undefined)
+        .sort(),
+    );
+  const limitsChanged = clean(limits) !== clean(usage?.limits || {});
+  const defaults = {
+    storage: data.settings.defaultUserStorageMb ? `${data.settings.defaultUserStorageMb} MB` : t("unbegrenzt", "unlimited"),
+    workspaces: data.settings.defaultUserWorkspaces ? String(data.settings.defaultUserWorkspaces) : t("unbegrenzt", "unlimited"),
+    upload: `${data.settings.maxUploadMb} MB`,
+  };
   const run = async (body: Record<string, unknown>, done?: string) => {
     setNote("");
     const result = await act(body);
     if (result !== undefined && done) setNote(done);
     return result;
   };
+  const more = [t("Grenzen", "limits"), ai ? t("KI-Zugang", "AI access") : null, local?.totp ? "2FA" : null, t("Anmeldemethoden", "sign-in methods"), t("Zusammenführen", "merging")].filter(Boolean).join(", ");
+  const storageMb = usage?.effective.storageMb ?? 0;
   return (
-    <Modal open onClose={onClose} title={u.name} className="modal-side admin-user-sheet">
-      <div className="admin-user-sheet-head">
+    <Modal open onClose={onClose} title={u.name} className="modal-side ux-drawer" sheet>
+      <header className="ux-drawer-head">
         <Avatar name={u.name} userId={u.id} />
-        <span>
+        <span className="ux-drawer-who">
+          <strong aria-hidden>{u.name}</strong>
           <small>{u.email}</small>
           <span className="admin-user-badges">
             <StateBadge state={state} />
             {admin && <StatusBadge tone="info">{t("Admin", "Admin")}</StatusBadge>}
             {local && !local.verified && <StatusBadge tone="warn">{t("E-Mail unbestätigt", "E-mail unconfirmed")}</StatusBadge>}
             <DeletionBadge due={u.deletion_due_at} />
+            <Presence activity={activity} now={now} long />
           </span>
-          <Presence activity={activity} now={now} long />
-          <small>
-            {signIn(local, t, identities.length, ldap)} · {u.last_login_at ? t(`zuletzt angemeldet ${ago(u.last_login_at, t)}`, `last signed in ${ago(u.last_login_at, t)}`) : t("noch nie angemeldet", "never signed in")}
-          </small>
         </span>
-      </div>
+      </header>
       {note && (
         <p className="admin-user-note" role="status">
           {note}
         </p>
       )}
-      <Limits user={u} usage={usage} settings={data.settings} />
-      <SettingGroup
-        title={t("Anmeldemethoden", "Sign-in methods")}
-        description={t("Womit sich die Person anmeldet. Verbinden und trennen kann sie SSO-Konten selbst unter Einstellungen → Konto.", "How the person signs in. They connect and disconnect SSO identities themselves under Settings → Account.")}
+      <dl className="ux-facts">
+        <div>
+          <dt>{t("Arbeitsbereiche", "Workspaces")}</dt>
+          <dd>
+            {memberOf.length || usage?.memberOf?.length || 0}
+            {memberOf.length > 0 && <span className="muted"> · {memberOf.join(", ")}</span>}
+            {!!usage?.workspaces && <small className="ux-fact-note">{usage.workspaces === 1 ? t("davon 1 eigener", "1 of them own") : t(`davon ${usage.workspaces} eigene`, `${usage.workspaces} of them own`)}</small>}
+          </dd>
+        </div>
+        <div>
+          <dt>{t("Zuletzt aktiv", "Last active")}</dt>
+          <dd>
+            {activity.activeAt ? ago(activity.activeAt, t, now) : t("noch nie", "never")}
+            {u.last_login_at ? <small className="ux-fact-note">{t(`angemeldet ${ago(u.last_login_at, t, now)}`, `signed in ${ago(u.last_login_at, t, now)}`)}</small> : null}
+          </dd>
+        </div>
+        <div>
+          <dt>{t("Erstellt", "Created")}</dt>
+          <dd>{dateText(createdAt(u))}</dd>
+        </div>
+        <div>
+          <dt>{t("Anmeldung", "Sign-in")}</dt>
+          <dd>{signIn(local, t, identities.length, ldap)}</dd>
+        </div>
+      </dl>
+      {usage && (
+        <section className="ux-block" aria-label={t("Speicher", "Storage")}>
+          <div className="ux-usage">
+            <span>{t("Speicher", "Storage")}</span>
+            <strong>
+              {sizeText(usage.bytes)} <span className="muted">/ {storageMb ? limitText(storageMb) : t("unbegrenzt", "unlimited")}</span>
+            </strong>
+          </div>
+          <StorageBar usage={usage} wide />
+        </section>
+      )}
+      <form
+        className="ux-block ux-rows"
+        aria-label={t(`Einstellungen für ${u.name}`, `Settings for ${u.name}`)}
+        onSubmit={(e) => {
+          e.preventDefault();
+          void save(async () => {
+            await mutate({ action: "admin.userLimits", userId: u.id, limits });
+            await load();
+          });
+        }}
       >
-        <SettingRow label={t("E-Mail und Passwort", "E-mail and password")}>
-          <StatusBadge tone={local && local.password !== false ? "ok" : "off"}>{local ? (local.password === false ? t("Passwort entfernt", "Password removed") : t("Aktiv", "Active")) : t("Keins", "None")}</StatusBadge>
-        </SettingRow>
-        {ldap && (
-          <SettingRow label={t("Verzeichnis (LDAP)", "Directory (LDAP)")}>
-            <StatusBadge tone="ok">{t("Aktiv", "Active")}</StatusBadge>
-          </SettingRow>
+        <PanelRow
+          label={t("Rolle", "Role")}
+          htmlFor={local ? `role-${u.id}` : undefined}
+          hint={local ? t("Admins verwalten die ganze Instanz.", "Admins manage the whole instance.") : t(`Vergeben über die Gruppe „${data.adminGroup}“ der Anmeldung.`, `Given by the sign-in group “${data.adminGroup}”.`)}
+        >
+          {local ? (
+            <Select id={`role-${u.id}`} className="ux-select" value={local.admin ? "admin" : "member"} onChange={(e) => void run({ action: "admin.localAdmin", userId: u.id, admin: e.target.value === "admin" })}>
+              <option value="member">{t("Mitglied", "Member")}</option>
+              <option value="admin">{t("Admin", "Admin")}</option>
+            </Select>
+          ) : (
+            <StatusBadge tone={admin ? "info" : "off"}>{admin ? t("Admin", "Admin") : t("Mitglied", "Member")}</StatusBadge>
+          )}
+        </PanelRow>
+        <PanelRow label={t("Speicherlimit", "Storage limit")} htmlFor={`limit-storage-${u.id}`} hint={t(`Standard der Instanz: ${defaults.storage}`, `Instance default: ${defaults.storage}`)}>
+          <NumberField id={`limit-storage-${u.id}`} label={t(`Speicher für ${u.name}`, `Storage for ${u.name}`)} value={limits.storageMb} unit="MB" placeholder={defaults.storage} onChange={(storageMb) => setLimits({ ...limits, storageMb })} />
+        </PanelRow>
+        <PanelRow
+          label={t("Sitzungen", "Sessions")}
+          hint={sessions === 0 ? t("Nirgends angemeldet", "Not signed in anywhere") : sessions === 1 ? t("1 Gerät angemeldet", "Signed in on 1 device") : t(`${sessions} Geräte angemeldet`, `Signed in on ${sessions} devices`)}
+        >
+          <button type="button" className="button compact" onClick={() => void run({ action: "admin.revoke", userId: u.id }, t("Alle Sitzungen beendet.", "All sessions ended."))}>
+            <SignOut size={15} aria-hidden /> {t("Abmelden", "Sign out")}
+          </button>
+        </PanelRow>
+        {local && (
+          <div className={`ux-row-item${resetLink ? " wide" : ""}`}>
+            <span className="ux-row-text">
+              <strong>{t("Passwort", "Password")}</strong>
+              <small>{t("Link zum Zurücksetzen, 2 Std. gültig – zum Weitergeben.", "Reset link, valid for 2 h – to hand over.")}</small>
+            </span>
+            {resetLink ? (
+              <input className="ux-reset-link" readOnly aria-label={t(`Link zum Zurücksetzen für ${u.name}`, `Reset link for ${u.name}`)} value={resetLink} onFocus={(e) => e.currentTarget.select()} />
+            ) : (
+              <button
+                type="button"
+                className="button compact"
+                onClick={async () => {
+                  const result = (await act({ action: "admin.resetLink", userId: u.id })) as { url?: string } | undefined;
+                  if (result?.url) setResetLink(result.url);
+                }}
+              >
+                <Key size={15} aria-hidden /> {t("Link erstellen", "Create link")}
+              </button>
+            )}
+          </div>
         )}
-        <SettingRow label={t("SSO-Konten", "SSO identities")}>
-          <StatusBadge tone={identities.length ? "ok" : "off"}>{identities.length ? String(identities.length) : t("Keine", "None")}</StatusBadge>
-        </SettingRow>
-        {identities.length > 0 && (
-          <div className="setting-row wide setting-sublist">
-            <ul className="passkey-list identity-list" aria-label={t(`SSO-Konten von ${u.name}`, `SSO identities of ${u.name}`)}>
+        {local && !local.verified && (
+          <PanelRow label={t("E-Mail-Adresse", "E-mail address")} hint={t("Die Person hat den Link aus der Bestätigungs-E-Mail noch nicht geöffnet.", "The person has not opened the link from the confirmation e-mail yet.")}>
+            <button type="button" className="button compact" onClick={() => void run({ action: "admin.confirmEmail", userId: u.id })}>
+              {t("Als bestätigt markieren", "Mark as confirmed")}
+            </button>
+          </PanelRow>
+        )}
+        <details className="ux-more">
+          <summary>
+            <CaretRight size={12} aria-hidden className="ux-more-caret ux-flip" />
+            {t(`Weitere: ${more}`, `More: ${more}`)}
+          </summary>
+          <PanelRow label={t("Eigene Arbeitsbereiche", "Own workspaces")} htmlFor={`limit-workspaces-${u.id}`} hint={t(`Standard: ${defaults.workspaces}`, `Default: ${defaults.workspaces}`)}>
+            <NumberField
+              id={`limit-workspaces-${u.id}`}
+              label={t(`Eigene Arbeitsbereiche für ${u.name}`, `Own workspaces for ${u.name}`)}
+              value={limits.workspaces}
+              max={10000}
+              placeholder={defaults.workspaces}
+              onChange={(workspaces) => setLimits({ ...limits, workspaces })}
+            />
+          </PanelRow>
+          <PanelRow label={t("Größte Datei", "Largest file")} htmlFor={`limit-upload-${u.id}`} hint={t(`Standard: ${defaults.upload}`, `Default: ${defaults.upload}`)}>
+            <NumberField
+              id={`limit-upload-${u.id}`}
+              label={t(`Größte Datei für ${u.name}`, `Largest file for ${u.name}`)}
+              value={limits.uploadMb}
+              min={1}
+              max={1024}
+              unit="MB"
+              placeholder={defaults.upload}
+              onChange={(uploadMb) => setLimits({ ...limits, uploadMb })}
+            />
+          </PanelRow>
+          <p className="ux-more-note muted">{t("Leer = Standard der Instanz, 0 = unbegrenzt. Für Admins gelten keine Grenzen.", "Empty = instance default, 0 = unlimited. Admins are not limited.")}</p>
+          {ai && (
+            <PanelRow label={t("KI-Funktionen", "AI features")} hint={t("Nur ausgewählte Personen dürfen KI nutzen (Administration → KI).", "Only selected people may use AI (Administration → AI).")}>
+              <AiUserSwitch userId={u.id} name={u.name} allowed={ai.allowed} onChange={() => void load()} />
+            </PanelRow>
+          )}
+          {local?.totp && (
+            <PanelRow label={t("Zwei-Faktor-Anmeldung", "Two-factor sign-in")} hint={t("Etwa bei verlorenem Telefon. Die Person wird per E-Mail informiert.", "E.g. for a lost phone. The person is told by e-mail.")}>
+              <button
+                type="button"
+                className="button compact"
+                onClick={() => {
+                  if (
+                    confirm(
+                      t(
+                        `Authenticator-App für ${u.name} ausschalten? Danach meldet sich ${u.name} nur mit Passwort (oder Passkey) an und kann sie neu einrichten.`,
+                        `Turn off the authenticator app for ${u.name}? ${u.name} then signs in with the password (or a passkey) and can set it up again.`,
+                      ),
+                    )
+                  )
+                    void run({ action: "admin.twoFactorReset", userId: u.id }, t("Zwei-Faktor zurückgesetzt.", "Two-factor reset."));
+                }}
+              >
+                {t("Zurücksetzen", "Reset")}
+              </button>
+            </PanelRow>
+          )}
+          <PanelRow
+            label={t("Anmeldemethoden", "Sign-in methods")}
+            hint={t("Verbinden und trennen kann die Person SSO-Konten selbst unter Einstellungen → Konto.", "The person connects and disconnects SSO identities under Settings → Account.")}
+          >
+            <span className="admin-user-badges">
+              <StatusBadge tone={local && local.password !== false ? "ok" : "off"}>{local ? (local.password === false ? t("Passwort entfernt", "Password removed") : t("Passwort", "Password")) : t("Kein Passwort", "No password")}</StatusBadge>
+              {ldap && <StatusBadge tone="ok">LDAP</StatusBadge>}
+              <StatusBadge tone={identities.length ? "ok" : "off"}>{identities.length ? `SSO × ${identities.length}` : t("Kein SSO", "No SSO")}</StatusBadge>
+            </span>
+          </PanelRow>
+          {identities.length > 0 && (
+            <ul className="passkey-list identity-list ux-identities" aria-label={t(`SSO-Konten von ${u.name}`, `SSO identities of ${u.name}`)}>
               {identities.map((i) => (
                 <li key={i.id}>
                   <IdentificationCard size={18} aria-hidden />
@@ -525,166 +961,51 @@ function UserSheet({
                 </li>
               ))}
             </ul>
+          )}
+          <PanelRow
+            label={t("Konten zusammenführen", "Merge accounts")}
+            hint={t("Zwei Konten derselben Person werden eines. Vorher siehst du, was übernommen wird.", "Two accounts of the same person become one. You see first what is taken over.")}
+          >
+            <button type="button" className="button compact danger" onClick={() => setMerging(true)}>
+              <ArrowsMerge size={15} aria-hidden /> {t("Zusammenführen …", "Merge …")}
+            </button>
+          </PanelRow>
+        </details>
+        {(limitsChanged || saveStatus.state !== "idle") && (
+          <div className="ux-save">
+            <SaveState status={saveStatus} />
+            <button className="button primary compact" disabled={!limitsChanged || saveStatus.state === "saving"}>
+              {t("Grenzen speichern", "Save limits")}
+            </button>
           </div>
         )}
-      </SettingGroup>
-      <SettingGroup title={t("Zugang", "Access")}>
-        {ai && (
-          <SettingRow
-            label={t("KI-Funktionen", "AI features")}
-            description={t("Nur ausgewählte Personen dürfen KI nutzen (Administration → KI).", "Only selected people may use AI (Administration → AI).")}
-          >
-            <AiUserSwitch userId={u.id} name={u.name} allowed={ai.allowed} onChange={() => void load()} />
-          </SettingRow>
-        )}
-        <SettingRow label={t("Sitzungen", "Sessions")} description={t("Meldet die Person auf allen Geräten ab.", "Signs the person out on every device.")}>
-          <button type="button" className="button" onClick={() => void run({ action: "admin.revoke", userId: u.id }, t("Alle Sitzungen beendet.", "All sessions ended."))}>
-            {t("Sitzungen beenden", "End sessions")}
-          </button>
-        </SettingRow>
-        {local && (
-          <>
-            <SettingRow
-              label={t("Administrator", "Administrator")}
-              description={
-                local.admin
-                  ? t("Darf diese Instanz verwalten.", "May administer this instance.")
-                  : t("Ein lokales Konto mit allen Rechten der Administration.", "A local account with all rights of the administration.")
-              }
-            >
-              <button
-                type="button"
-                className="button"
-                onClick={() =>
-                  void run({
-                    action: "admin.localAdmin",
-                    userId: u.id,
-                    admin: !local.admin,
-                  })
-                }
-              >
-                {local.admin ? t("Admin entziehen", "Revoke admin") : t("Zum Admin machen", "Make admin")}
-              </button>
-            </SettingRow>
-            <SettingRow
-              wide={!!resetLink}
-              label={t("Passwort", "Password")}
-              description={t("Ein Link zum Zurücksetzen, zwei Stunden gültig – zum Weitergeben.", "A reset link, valid for two hours – to hand over.")}
-            >
-              {resetLink ? (
-                <input readOnly aria-label={t(`Link zum Zurücksetzen für ${u.name}`, `Reset link for ${u.name}`)} value={resetLink} onFocus={(e) => e.currentTarget.select()} />
-              ) : (
-                <button
-                  type="button"
-                  className="button"
-                  onClick={async () => {
-                    const result = (await act({
-                      action: "admin.resetLink",
-                      userId: u.id,
-                    })) as { url?: string } | undefined;
-                    if (result?.url) setResetLink(result.url);
-                  }}
-                >
-                  {t("Link zum Zurücksetzen", "Reset link")}
-                </button>
-              )}
-            </SettingRow>
-            {local.totp && (
-              <SettingRow
-                label={t("Zwei-Faktor-Anmeldung", "Two-factor sign-in")}
-                description={t("Etwa bei verlorenem Telefon. Die Person wird per E-Mail informiert.", "E.g. for a lost phone. The person is told by e-mail.")}
-              >
-                <button
-                  type="button"
-                  className="button"
-                  onClick={() => {
-                    if (
-                      confirm(
-                        t(
-                          `Authenticator-App für ${u.name} ausschalten? Danach meldet sich ${u.name} nur mit Passwort (oder Passkey) an und kann sie neu einrichten.`,
-                          `Turn off the authenticator app for ${u.name}? ${u.name} then signs in with the password (or a passkey) and can set it up again.`,
-                        ),
-                      )
-                    )
-                      void run({ action: "admin.twoFactorReset", userId: u.id }, t("Zwei-Faktor zurückgesetzt.", "Two-factor reset."));
-                  }}
-                >
-                  {t("Zwei-Faktor zurücksetzen", "Reset two-factor")}
-                </button>
-              </SettingRow>
-            )}
-            {!local.verified && (
-              <SettingRow
-                label={t("E-Mail-Adresse", "E-mail address")}
-                description={t("Die Person hat den Link aus der Bestätigungs-E-Mail noch nicht geöffnet.", "The person has not opened the link from the confirmation e-mail yet.")}
-              >
-                <button type="button" className="button" onClick={() => void run({ action: "admin.confirmEmail", userId: u.id })}>
-                  {t("E-Mail als bestätigt markieren", "Mark e-mail as confirmed")}
-                </button>
-              </SettingRow>
-            )}
-          </>
-        )}
-      </SettingGroup>
-      <DangerZone>
-        <SettingRow
-          label={t("Konten zusammenführen", "Merge accounts")}
-          description={t(
-            "Zwei Konten derselben Person (etwa ein lokales Konto und ein SSO-Konto) werden eines. Vorher siehst du, was übernommen wird.",
-            "Two accounts of the same person (such as a local account and an SSO account) become one. You see first what is taken over.",
-          )}
+      </form>
+      <section className="ux-block ux-danger" aria-label={t("Sperren und Löschen", "Blocking and deleting")}>
+        <PanelRow
+          label={u.disabled ? t("Konto entsperren", "Unblock account") : t("Konto sperren", "Block account")}
+          hint={u.disabled ? t("Die Person kann sich wieder anmelden.", "The person can sign in again.") : t("Beendet alle Sitzungen, lässt sich rückgängig machen.", "Ends all sessions, can be undone.")}
         >
-          <button type="button" className="button danger" onClick={() => setMerging(true)}>
-            <ArrowsMerge size={16} aria-hidden /> {t("Zusammenführen …", "Merge …")}
+          <button type="button" className="button compact" onClick={() => void act({ action: "admin.user", userId: u.id, disabled: !u.disabled })}>
+            {u.disabled ? <LockOpen size={15} aria-hidden /> : <Prohibit size={15} aria-hidden />} {u.disabled ? t("Entsperren", "Unblock") : t("Sperren", "Block||account")}
           </button>
-        </SettingRow>
-        <SettingRow
-          label={u.disabled ? t("Konto aktivieren", "Enable account") : t("Konto deaktivieren", "Disable account")}
-          description={
-            u.disabled
-              ? t("Die Person kann sich wieder anmelden.", "The person can sign in again.")
-              : t("Beendet alle Sitzungen; die Person kann sich nicht mehr anmelden. Lässt sich rückgängig machen.", "Ends all sessions; the person can no longer sign in. Can be undone.")
-          }
+        </PanelRow>
+        <PanelRow
+          label={t("Konto löschen", "Delete account")}
+          hint={u.disabled ? t("Endgültig – vorher siehst du, was mit den Arbeitsbereichen geschieht.", "Permanent – you see first what happens to the workspaces.") : t("Erst möglich, wenn das Konto gesperrt ist.", "Only possible once the account is blocked.")}
         >
           <button
             type="button"
-            className={`button${u.disabled ? "" : " danger"}`}
-            onClick={() =>
-              void act({
-                action: "admin.user",
-                userId: u.id,
-                disabled: !u.disabled,
-              })
-            }
+            className="button compact danger"
+            disabled={!u.disabled}
+            onClick={async () => {
+              const result = (await act({ action: "admin.deletePlan", userId: u.id })) as typeof plan;
+              if (result) setPlan(result);
+            }}
           >
-            {u.disabled ? t("Aktivieren", "Enable") : t("Deaktivieren", "Disable")}
+            <Trash size={15} aria-hidden /> {t("Löschen …", "Delete …")}
           </button>
-        </SettingRow>
-        <SettingRow
-          label={t("Konto löschen", "Delete account")}
-          description={
-            u.disabled
-              ? t("Endgültig – vorher siehst du, was mit den Arbeitsbereichen geschieht.", "Permanent – you see first what happens to the workspaces.")
-              : t("Löschen ist möglich, sobald das Konto deaktiviert ist.", "Deleting is possible once the account is disabled.")
-          }
-        >
-          {!!u.disabled && (
-            <button
-              type="button"
-              className="button danger"
-              onClick={async () => {
-                const result = (await act({
-                  action: "admin.deletePlan",
-                  userId: u.id,
-                })) as typeof plan;
-                if (result) setPlan(result);
-              }}
-            >
-              <UserCircleMinus size={16} aria-hidden /> {t("Konto löschen …", "Delete account …")}
-            </button>
-          )}
-        </SettingRow>
-      </DangerZone>
+        </PanelRow>
+      </section>
       {merging && <MergeDialog user={u} users={data.users} onClose={() => setMerging(false)} onMerged={onClose} />}
       <Modal open={!!plan} onClose={() => !deleting && setPlan(null)} title={t(`${u.name} löschen?`, `Delete ${u.name}?`)}>
         {plan && (
@@ -751,90 +1072,6 @@ function UserSheet({
         )}
       </Modal>
     </Modal>
-  );
-}
-
-// Storage, own workspaces and largest file for this person; empty = the
-// instance default. Saved together.
-function Limits({ user: u, usage, settings }: { user: User; usage?: Usage; settings: InstanceSettings }) {
-  const t = useT();
-  const { mutate, load } = useAdminData();
-  const [limits, setLimits] = useState(usage?.limits || {});
-  const [status, run] = useSaveState();
-  const clean = (l: object) =>
-    JSON.stringify(
-      Object.entries(l)
-        .filter(([, v]) => v !== null && v !== undefined)
-        .sort(),
-    );
-  const changed = clean(limits) !== clean(usage?.limits || {});
-  const storage = usage?.effective.storageMb ?? 0;
-  const defaults = {
-    storage: settings.defaultUserStorageMb ? `${settings.defaultUserStorageMb} MB` : t("unbegrenzt", "unlimited"),
-    workspaces: settings.defaultUserWorkspaces ? String(settings.defaultUserWorkspaces) : t("unbegrenzt", "unlimited"),
-    upload: `${settings.maxUploadMb} MB`,
-  };
-  return (
-    <form
-      aria-label={t(`Grenzen für ${u.name}`, `Limits for ${u.name}`)}
-      onSubmit={(e) => {
-        e.preventDefault();
-        void run(async () => {
-          await mutate({ action: "admin.userLimits", userId: u.id, limits });
-          await load();
-        });
-      }}
-    >
-      <SettingGroup
-        title={t("Belegung und Grenzen", "Usage and limits")}
-        description={t("Leer = Standard der Instanz, 0 = unbegrenzt. Für Admins gelten keine Grenzen.", "Empty = instance default, 0 = unlimited. Admins are not limited.")}
-      >
-        {usage && (
-          <div className="setting-row wide admin-user-meters">
-            <UsageMeter label={t("Speicher", "Storage")} used={usage.bytes} limit={storage * 1024 * 1024} format={mbText} />
-            <UsageMeter label={t("Eigene Arbeitsbereiche", "Own workspaces")} used={usage.workspaces} limit={usage.effective.workspaces} format={(n) => String(n)} />
-          </div>
-        )}
-        <SettingRow id={`limit-storage-${u.id}`} label={t("Speicher", "Storage")} description={t(`Standard: ${defaults.storage}`, `Default: ${defaults.storage}`)}>
-          <NumberField
-            id={`limit-storage-${u.id}`}
-            label={t(`Speicher für ${u.name}`, `Storage for ${u.name}`)}
-            value={limits.storageMb}
-            unit="MB"
-            placeholder={defaults.storage}
-            onChange={(storageMb) => setLimits({ ...limits, storageMb })}
-          />
-        </SettingRow>
-        <SettingRow id={`limit-workspaces-${u.id}`} label={t("Eigene Arbeitsbereiche", "Own workspaces")} description={t(`Standard: ${defaults.workspaces}`, `Default: ${defaults.workspaces}`)}>
-          <NumberField
-            id={`limit-workspaces-${u.id}`}
-            label={t(`Eigene Arbeitsbereiche für ${u.name}`, `Own workspaces for ${u.name}`)}
-            value={limits.workspaces}
-            max={10000}
-            placeholder={defaults.workspaces}
-            onChange={(workspaces) => setLimits({ ...limits, workspaces })}
-          />
-        </SettingRow>
-        <SettingRow id={`limit-upload-${u.id}`} label={t("Größte Datei", "Largest file")} description={t(`Standard: ${defaults.upload}`, `Default: ${defaults.upload}`)}>
-          <NumberField
-            id={`limit-upload-${u.id}`}
-            label={t(`Größte Datei für ${u.name}`, `Largest file for ${u.name}`)}
-            value={limits.uploadMb}
-            min={1}
-            max={1024}
-            unit="MB"
-            placeholder={defaults.upload}
-            onChange={(uploadMb) => setLimits({ ...limits, uploadMb })}
-          />
-        </SettingRow>
-        <div className="setting-row admin-form-actions">
-          <SaveState status={status} />
-          <button className="button primary" disabled={!changed || status.state === "saving"}>
-            {t("Grenzen speichern", "Save limits")}
-          </button>
-        </div>
-      </SettingGroup>
-    </form>
   );
 }
 

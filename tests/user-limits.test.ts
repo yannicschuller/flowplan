@@ -70,3 +70,16 @@ test("only admins change limits", async () => {
   await command(admin, { action: "admin.userLimits", userId: user.id, limits: { storageMb: 10 } });
   assert.equal((await limits.effectiveUserLimits(user.id)).storageMb, 10);
 });
+
+test("the administration sees every workspace a person belongs to and the own ones", async () => {
+  const owner = await person();
+  const guest = await person();
+  const ws = ((await command(owner, { action: "workspace.create", name: "Gemeinsam" })) as { id: string }).id;
+  await run("INSERT INTO members(workspace_id,user_id,role) VALUES(?,?,'editor')", ws, guest.id);
+  const usage = await limits.usersUsage();
+  const of = (id: string) => usage.find((u) => u.id === id)!;
+  assert.equal(of(owner.id).workspaces, of(owner.id).memberOf.length);
+  assert.ok(of(owner.id).memberOf.includes(ws));
+  assert.deepEqual(of(guest.id).memberOf, [ws]);
+  assert.equal(of(guest.id).workspaces, 0);
+});

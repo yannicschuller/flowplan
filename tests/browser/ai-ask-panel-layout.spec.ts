@@ -198,8 +198,14 @@ test("Ask AI beside the page: the layout follows the room that is left", async (
     // The header's text keeps a readable width (not a word per line).
     const intro = await box(page.locator(".settings-detail-head p").first());
     expect(intro.width).toBeGreaterThan(250);
-    // The section list does not float over the content.
-    await expect(page.locator(".settings-rail")).toBeHidden();
+    // The section list does not float over the content: on the users page
+    // it is a row of tabs above the heading.
+    const rail = page.locator(".settings-rail");
+    if (await rail.isVisible()) {
+      const tabs = await box(rail);
+      expect(tabs.y + tabs.height).toBeLessThanOrEqual((await box(page.locator(".settings-detail-head"))).y + 1);
+      expect(overlaps(tabs, await box(page.locator(".admin-users")))).toBe(false);
+    }
     // "Registrierung einstellen" below the status text, not over it.
     const fix = page.locator(".admin-status").getByRole("link", { name: "Registrierung einstellen" });
     await expect(fix).toBeVisible();
