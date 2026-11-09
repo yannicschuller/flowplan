@@ -499,6 +499,83 @@ label.hit-check {
   }
 }
 
+/* ===== The sidebar's less used places on phones (#185,
+   components/sidebar-tools.tsx): in the drawer (up to 767 px, the phone
+   layout of app/globals.css) one labelled "Mehr" button in the profile row
+   replaces the row of symbols and opens them as a list in a sheet – the
+   bottom block is the profile row alone, the page tree keeps the height. ===== */
+.sidebar-more {
+  display: none;
+}
+@media (max-width: 767px) {
+  .sidebar-tools {
+    display: none;
+  }
+  .sidebar-bottom .profile {
+    border-top: 0;
+    gap: 6px;
+  }
+  .sidebar-bottom .profile > span:nth-child(2) {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .sidebar-bottom .profile > span:nth-child(2) small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .sidebar-more {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    min-height: 44px;
+    padding-block: 0;
+    padding-inline: 10px 14px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .sidebar-more[aria-expanded="true"] {
+    background: var(--hover);
+  }
+}
+.sidebar-more-list {
+  list-style: none;
+  /* The symbols in line with the sheet's title. */
+  margin: 0 -12px;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+.sidebar-more-list button {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 14px;
+  width: 100%;
+  min-height: 48px;
+  padding: 0 12px;
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 16px;
+  text-align: start;
+}
+.sidebar-more-list button > svg {
+  flex-shrink: 0;
+  color: var(--secondary);
+}
+.sidebar-more-list button.selected > svg {
+  color: inherit;
+}
+.sidebar-more-list button:focus-visible {
+  outline-offset: -2px;
+}
+
 /* ===== Nothing widens the page sideways on phones (#98). The panes below
    .main-scroll cut off what reaches past the screen's right edge; tables,
    boards, timelines and the calendar keep their own sideways scrollers.

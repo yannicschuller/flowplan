@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { openSidebarTool } from "./sidebar-tools";
 
 // The navigation drawer on phones, as the iOS app shows it: "Navigation" in
 // the bottom bar, then "Einstellungen" in the drawer, then "Navigation"
@@ -102,7 +103,7 @@ for (const inApp of [true, false]) {
 
       await menuTab(page).tap();
       await expectDrawer(page, true);
-      await drawer(page).getByRole("button", { name: "Einstellungen", exact: true }).tap();
+      await openSidebarTool(page, "Einstellungen", { tap: true });
       await expect(page.getByRole("heading", { name: "Einstellungen", level: 1 })).toBeVisible();
       await expectDrawer(page, false);
 
@@ -141,7 +142,7 @@ for (const inApp of [true, false]) {
         ["document", () => drawer(page).getByText(doc.title, { exact: true }).tap()],
         ["database", () => drawer(page).getByText(db.title, { exact: true }).tap()],
         ["whiteboard", () => drawer(page).getByText(board.title, { exact: true }).tap()],
-        ["Einstellungen", () => drawer(page).getByRole("button", { name: "Einstellungen", exact: true }).tap()],
+        ["Einstellungen", () => openSidebarTool(page, "Einstellungen", { tap: true })],
       ];
       for (const [, go] of fromDrawer) {
         await menuTab(page).tap();

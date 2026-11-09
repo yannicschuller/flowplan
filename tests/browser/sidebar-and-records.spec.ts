@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { openSidebarTool } from "./sidebar-tools";
 
 async function setup(page: Page, kind: string, title: string) {
   const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
@@ -133,9 +134,17 @@ test("the page filter in the sidebar finds nested pages and keeps their parents"
   await expect(sidebar.getByText("Keine Seite heißt so.")).toBeVisible();
   await sidebar.getByRole("searchbox", { name: "Seiten filtern" }).press("Escape");
   await expect(sidebar.locator(".page-nav").first()).toBeVisible();
-  // The less used places are still reachable by name.
+  // The less used places are still reachable by name (on phones behind
+  // "Mehr", #185).
+  const places = info.project.name === "mobile" ? page.getByRole("dialog", { name: "Mehr" }) : sidebar;
+  if (info.project.name === "mobile") {
+    // Escape in the filter closed the drawer.
+    if (!(await page.locator(".app-shell").getAttribute("class"))?.includes("nav-open"))
+      await page.locator(".topbar").getByRole("button", { name: "Navigation öffnen" }).click();
+    await sidebar.getByRole("button", { name: "Mehr", exact: true }).click();
+  }
   for (const name of ["Vorlagen", "Medien", "Papierkorb", "Einstellungen"])
-    await expect(sidebar.getByRole("button", { name, exact: true })).toBeVisible();
+    await expect(places.getByRole("button", { name, exact: true })).toBeVisible();
 });
 
 test("on phones a long press opens the page menu", async ({ page }, info) => {

@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { openSidebarTool } from "./sidebar-tools";
 import { randomUUID, randomBytes, createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
@@ -27,10 +28,7 @@ async function nav(page: Page, name: string, mobile: boolean) {
       .locator(".topbar")
       .getByRole("button", { name: "Navigation öffnen", exact: true })
       .click();
-  await page
-    .locator("aside.sidebar")
-    .getByRole("button", { name, exact: true })
-    .click();
+  await openSidebarTool(page, name);
 }
 async function switchWorkspace(page: Page, name: string, mobile: boolean) {
   if (mobile)

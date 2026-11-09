@@ -60,6 +60,7 @@ import type { CollectionInfo } from "@/lib/collections";
 import { TagOptionsContext } from "./tag-options-context";
 import { contextOf, parseSearchTokens, tagToken } from "@/lib/page-properties";
 import { Tag as TagIcon } from "@phosphor-icons/react";
+import { SidebarMore, SidebarToolRow, type SidebarTool } from "./sidebar-tools";
 import { openPageAliases, AliasIcon } from "./page-aliases";
 import { ShareDialog } from "./share-dialog";
 import { AskPanel, useMedia, type AskRequest } from "./ai-ask";
@@ -1499,8 +1500,10 @@ export default function WorkspaceApp({
     // combinations in the shortcut overlay). Combinations without Ctrl, ⌘ or
     // Alt ("?") do not count while typing.
     const key = (e: KeyboardEvent) => {
-      // The navigation drawer on small screens closes like a dialog.
-      if (e.key === "Escape") setMobile(false);
+      // The navigation drawer on small screens closes like a dialog – unless
+      // the Escape closed a dialog or menu above it ("Mehr", #185), which
+      // Radix marks handled.
+      if (e.key === "Escape" && !e.defaultPrevented) setMobile(false);
       if (e.isComposing || presentingRef.current) return;
       const action = matchAction(e, isTyping(e.target));
       if (!action) return;
@@ -2944,6 +2947,27 @@ export default function WorkspaceApp({
       {index === activeIndex && <kbd aria-hidden="true">↵</kbd>}
     </div>
   );
+  // The less used places at the sidebar's bottom: a row of symbols, on
+  // phones behind "Mehr" (components/sidebar-tools.tsx).
+  const sidebarTools: SidebarTool[] = [
+    { id: "templates", label: t("Vorlagen", "Templates"), icon: SquaresFour, onSelect: () => setTemplates(true) },
+    { id: "media", label: t("Medien", "Media"), icon: Images, selected: screen === "media", onSelect: () => go("media") },
+    { id: "tags", label: t("Tags", "Tags"), title: t("Seiten nach Tags", "Pages by tag"), icon: TagIcon, selected: screen === "tags", onSelect: () => go("tags") },
+    { id: "graph", label: t("Graph", "Graph"), title: t("Graph der Verlinkungen", "Graph of links"), icon: Graph, selected: screen === "graph", onSelect: () => go("graph") },
+    { id: "trash", label: t("Papierkorb", "Trash"), icon: Trash, selected: screen === "trash", onSelect: () => go("trash") },
+    { id: "settings", label: t("Einstellungen", "Settings"), icon: GearSix, selected: screen === "settings", onSelect: () => go("settings") },
+    {
+      id: "shortcuts",
+      label: t("Tastenkürzel", "Keyboard shortcuts"),
+      title: t("Tastenkürzel", "Keyboard shortcuts") + hint("shortcuts"),
+      icon: Question,
+      className: "sidebar-help",
+      onSelect: () => setShortcuts(true),
+    },
+    ...(boot.user.isAdmin
+      ? [{ id: "admin", label: t("Administration", "Administration"), icon: ShieldCheck, selected: screen === "admin", onSelect: () => go("admin") }]
+      : []),
+  ];
   return (
     <AiProvider status={boot.ai || null} workspaceId={boot.workspace.id}>
     <TagOptionsContext.Provider value={tagOptions}>
@@ -3407,81 +3431,16 @@ export default function WorkspaceApp({
           )}
         </div>
         <div className="sidebar-bottom">
-          {/* Less used places as one row of symbols: the page tree above
-              keeps the height. */}
-          <div className="sidebar-tools">
-            <button
-              aria-label={t("Vorlagen", "Templates")}
-              title={t("Vorlagen", "Templates")}
-              onClick={() => setTemplates(true)}
-            >
-              <SquaresFour size={18} />
-            </button>
-            <button
-              aria-label={t("Medien", "Media")}
-              title={t("Medien", "Media")}
-              className={screen === "media" ? "selected" : ""}
-              onClick={() => go("media")}
-            >
-              <Images size={18} />
-            </button>
-            <button
-              aria-label={t("Tags", "Tags")}
-              title={t("Seiten nach Tags", "Pages by tag")}
-              className={screen === "tags" ? "selected" : ""}
-              onClick={() => go("tags")}
-            >
-              <TagIcon size={18} />
-            </button>
-            <button
-              aria-label={t("Graph", "Graph")}
-              title={t("Graph der Verlinkungen", "Graph of links")}
-              className={screen === "graph" ? "selected" : ""}
-              onClick={() => go("graph")}
-            >
-              <Graph size={18} />
-            </button>
-            <button
-              aria-label={t("Papierkorb", "Trash")}
-              title={t("Papierkorb", "Trash")}
-              className={screen === "trash" ? "selected" : ""}
-              onClick={() => go("trash")}
-            >
-              <Trash size={18} />
-            </button>
-            <button
-              aria-label={t("Einstellungen", "Settings")}
-              title={t("Einstellungen", "Settings")}
-              className={screen === "settings" ? "selected" : ""}
-              onClick={() => go("settings")}
-            >
-              <GearSix size={18} />
-            </button>
-            <button
-              aria-label={t("Tastenkürzel", "Keyboard shortcuts")}
-              title={t("Tastenkürzel", "Keyboard shortcuts") + hint("shortcuts")}
-              className="sidebar-help"
-              onClick={() => setShortcuts(true)}
-            >
-              <Question size={18} />
-            </button>
-            {boot.user.isAdmin && (
-              <button
-                aria-label={t("Administration", "Administration")}
-                title={t("Administration", "Administration")}
-                className={screen === "admin" ? "selected" : ""}
-                onClick={() => go("admin")}
-              >
-                <ShieldCheck size={18} />
-              </button>
-            )}
-          </div>
+          {/* Less used places as one row of symbols (on phones behind
+              "Mehr" by the profile): the page tree above keeps the height. */}
+          <SidebarToolRow tools={sidebarTools} />
           <div className="profile">
             <Avatar name={boot.user.name} userId={boot.user.id} />
             <span>
               {boot.user.name}
               <small>{online ? t("Arbeitsbereich verbunden", "Workspace connected") : t("Offline", "Offline")}</small>
             </span>
+            <SidebarMore tools={sidebarTools} />
             <Dropdown.Root>
               <Dropdown.Trigger className="icon-button" aria-label={t("Kontomenü", "Account menu")}>
                 <DotsThree size={22} />

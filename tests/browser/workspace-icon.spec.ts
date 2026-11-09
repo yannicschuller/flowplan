@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test, expect } from "@playwright/test";
+import { openSidebarTool } from "./sidebar-tools";
 
 const png = readFileSync(join(process.cwd(), "tests/fixtures/scan.png"));
 
@@ -28,9 +29,7 @@ test("workspaces get an emoji or an image as their symbol", async ({
   await page.goto("/");
   if (await page.locator(".topbar").getByRole("button", { name: "Navigation öffnen" }).isVisible())
     await page.locator(".topbar").getByRole("button", { name: "Navigation öffnen" }).click();
-  await page
-    .getByRole("button", { name: "Einstellungen", exact: true })
-    .click();
+  await openSidebarTool(page, "Einstellungen");
   // Name and icon of the workspace: Settings → Arbeitsbereich → Allgemein.
   await page.getByRole("link", { name: /^Allgemein/ }).click();
   await page.getByRole("button", { name: "Emoji oder Symbol" }).click();
