@@ -378,6 +378,149 @@ button.page-tag:focus-visible,
   }
 }
 
+/* ---- The properties of a database record, foldable (#186) ----
+   The same way as the bar above (components/record-properties-fold.tsx):
+   open, a labelled chevron above the list; folded, one line of chips and
+   "+N Eigenschaften". The list stays in the page (no height, inert), so
+   printing – and the print view of the iPhone app – shows it in full. */
+.record-properties-body {
+  display: grid;
+  grid-template-rows: 1fr;
+}
+.record-properties-inner {
+  min-height: 0;
+  min-width: 0;
+}
+.record-properties.collapsed .record-properties-body {
+  grid-template-rows: 0fr;
+  visibility: hidden;
+}
+.record-properties.collapsed .record-properties-inner {
+  overflow: hidden;
+}
+.record-properties.animated .record-properties-body {
+  transition:
+    grid-template-rows 0.18s ease,
+    visibility 0s linear 0s;
+}
+.record-properties.animated.collapsed .record-properties-body {
+  transition:
+    grid-template-rows 0.18s ease,
+    visibility 0s linear 0.18s;
+}
+.record-properties.animated:not(.collapsed) .record-properties-inner {
+  animation: page-properties-clip 0.18s step-end;
+}
+.record-properties-toggle,
+.record-properties-summary {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 26px;
+  margin: 0 0 6px -6px;
+  padding: 0 8px 0 6px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: start;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.record-properties.collapsed .record-properties-summary {
+  margin-bottom: 0;
+}
+.record-properties-summary {
+  animation: page-properties-in 0.16s ease;
+}
+.record-properties:not(.animated) .record-properties-summary {
+  animation: none;
+}
+.record-properties-toggle .page-properties-caret {
+  transform: rotate(90deg);
+}
+.record-properties-toggle:hover,
+.record-properties-summary:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.record-properties-toggle:focus-visible,
+.record-properties-summary:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+.record-properties-label {
+  font-weight: 500;
+}
+.record-properties-chip {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 16ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.record-properties-chip:not(.tag) {
+  color: var(--text);
+}
+.record-properties-chip.tag {
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+}
+[dir="rtl"] .record-properties-summary .page-properties-caret {
+  transform: scaleX(-1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .record-properties.animated .record-properties-body,
+  .record-properties.animated.collapsed .record-properties-body {
+    transition: none;
+  }
+  .record-properties-summary,
+  .record-properties.animated:not(.collapsed) .record-properties-inner {
+    animation: none;
+  }
+}
+@media (max-width: 600px), (pointer: coarse) {
+  .record-properties-toggle,
+  .record-properties-summary {
+    min-height: 36px;
+  }
+  .record-properties-chip {
+    max-width: 12ch;
+  }
+}
+/* Printed (and the print view) as before: all properties, no fold. */
+@media print {
+  .record-properties-toggle,
+  .record-properties-summary {
+    display: none !important;
+  }
+  .record-properties.collapsed .record-properties-body {
+    grid-template-rows: 1fr;
+    visibility: visible;
+    transition: none;
+  }
+  .record-properties.collapsed .record-properties-inner {
+    overflow: visible;
+  }
+}
+.print-view :is(.record-properties-toggle, .record-properties-summary) {
+  display: none !important;
+}
+.print-view .record-properties.collapsed .record-properties-body {
+  grid-template-rows: 1fr;
+  visibility: visible;
+}
+.print-view .record-properties.collapsed .record-properties-inner {
+  overflow: visible;
+}
+
 /* ---- "+ Tag": the picker ---- */
 .tag-picker {
   position: relative;

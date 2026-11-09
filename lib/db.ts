@@ -39,7 +39,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 98;
+export const SCHEMA_VERSION = 99;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 // Schema 97 (workflows): tables created with their seq column (and its
@@ -1274,6 +1274,11 @@ function migrate(d: DatabaseSync) {
   // in the connection's settings).
   d.exec(`CREATE TABLE IF NOT EXISTS git_backlinks(page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,url TEXT NOT NULL,comment_id TEXT,body_hash TEXT NOT NULL DEFAULT '',status INTEGER,error TEXT,at INTEGER NOT NULL,PRIMARY KEY(page_id,url));
     CREATE INDEX IF NOT EXISTS git_backlinks_at ON git_backlinks(page_id,at);`);
+  // Schema 99 – the record properties folded or open (#186,
+  // lib/page-view-prefs.ts): the person's choice per database, separately
+  // for phones and larger screens (page_view_prefs of the database page;
+  // NULL: never chosen, the default applies).
+  migrateRecordPropertyPrefs(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
@@ -1362,6 +1367,11 @@ export function migrateStatusLogUser(d: DatabaseSync) {
     d.exec("ALTER TABLE row_status_log ADD COLUMN user_id TEXT");
   if (!(d.prepare("PRAGMA table_info(page_view_prefs)").all() as { name: string }[]).some((c) => c.name === "completed_mine"))
     d.exec("ALTER TABLE page_view_prefs ADD COLUMN completed_mine INTEGER");
+}
+export function migrateRecordPropertyPrefs(d: DatabaseSync) {
+  const columns = (d.prepare("PRAGMA table_info(page_view_prefs)").all() as { name: string }[]).map((c) => c.name);
+  if (!columns.includes("record_properties_phone")) d.exec("ALTER TABLE page_view_prefs ADD COLUMN record_properties_phone INTEGER");
+  if (!columns.includes("record_properties_desktop")) d.exec("ALTER TABLE page_view_prefs ADD COLUMN record_properties_desktop INTEGER");
 }
 export function migrateFileTrash(d: DatabaseSync) {
   const columns = (d.prepare("PRAGMA table_info(files)").all() as { name: string }[]).map((c) => c.name);

@@ -58,7 +58,7 @@ export const commandActionNames = [
   "account.deletePlan", "account.delete",
   "space.create", "space.update", "space.delete", "space.restore", "space.purge", "space.duplicate", "space.gitExport", "space.reorder",
   "page.create", "page.update", "page.delete", "page.restore", "page.purge", "trash.empty", "file.delete", "files.deleteUnused", "file.restore", "file.purge", "page.duplicate", "page.move", "page.moveCheck", "page.import",
-  "pages.bulk", "page.follow", "page.collapseProperties", "sidebar.state", "page.snapshot", "page.publish", "page.share", "page.shareUpdate", "page.fromShare",
+  "pages.bulk", "page.follow", "page.collapseProperties", "database.collapseRecordProperties", "sidebar.state", "page.snapshot", "page.publish", "page.share", "page.shareUpdate", "page.fromShare",
   "page.toRecord", "record.toPage", "page.owner", "page.review", "page.aliases",
   "page.properties", "pages.tag", "tag.save", "tag.delete", "tag.merge", "tag.reorder", "tag.scope", "property.save", "property.delete", "property.reorder", "property.scope", "meta.usage", "favorite", "favorite.row", "task.update", "synced.create", "table.toDatabase", "mention.link",
   "journal.settings", "journal.lock", "journal.unlock", "journal.relock", "journal.entry", "journal.roll", "journal.link", "journal.removeEmpty", "journal.summary", "journal.aiSummary", "journal.completedMine", "block.ids",
@@ -573,6 +573,13 @@ export const commandActions: ActionDoc[] = [
     summary: "Collapse or open the bar with tags and properties of a page, for yourself on all devices (null: back to the default)",
     input: z.object({ action: z.literal("page.collapseProperties"), pageId: uuid, collapsed: z.boolean().nullable() }),
     result: z.object({ collapsed: z.boolean().nullable() }),
+  },
+  {
+    action: "database.collapseRecordProperties",
+    summary: "Fold or open the properties of a database's records, for yourself – one choice for all records of the database, separately for phones and larger screens (null: back to the default)",
+    description: "`pageId` is the database. Without a choice records open with their properties shown, on phones folded when a record shows more than four. The page data of the database (GET /api/pages/{id}) carries the choices as `recordPropertiesCollapsed` ({ phone, desktop }).",
+    input: z.object({ action: z.literal("database.collapseRecordProperties"), pageId: uuid, device: z.enum(["phone", "desktop"]), collapsed: z.boolean().nullable() }),
+    result: z.object({ device: z.enum(["phone", "desktop"]), collapsed: z.boolean().nullable() }),
   },
   {
     action: "journal.completedMine",
