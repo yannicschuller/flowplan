@@ -242,7 +242,7 @@ test("a SQLite database at main's schema 93 (files in the trash, no seq) upgrade
   legacy.migrateFile(old);
   const version = (old.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
   assert.equal(version, legacy.SCHEMA_VERSION);
-  assert.equal(legacy.SCHEMA_VERSION, 98);
+  assert.equal(legacy.SCHEMA_VERSION, 99);
   for (const table of [...legacy.SEQ_TABLES, "pages"])
     assert.ok((old.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === "seq"), table);
   // Existing rows get their order, new ones one from the trigger.
@@ -363,4 +363,49 @@ test("schema 96 on PostgreSQL: an existing database gets the new columns, old en
   await db.run("INSERT INTO page_view_prefs(user_id,page_id,completed_mine,updated_at) VALUES(?,?,0,8)", uid, pid);
   assert.equal(Number((await db.one<{ completed_mine: number }>("SELECT completed_mine FROM page_view_prefs WHERE user_id=?", uid))!.completed_mine), 0);
   await db.run("DELETE FROM row_status_log WHERE page_id=?", pid);
+});
+
+test("schema 99: the record properties' choices per device; existing view choices stay", { skip: backend !== "sqlite" }, async () => {
+  const { DatabaseSync } = await import("node:sqlite");
+  const file = join(mkdtempSync(join(tmpdir(), "flowplan-schema98-")), "old.sqlite");
+  legacy.db().exec(`VACUUM INTO '${file.replace(/'/g, "''")}'`); // sqlite-only
+  const old = new DatabaseSync(file);
+  old.exec("ALTER TABLE page_view_prefs DROP COLUMN record_properties_phone; ALTER TABLE page_view_prefs DROP COLUMN record_properties_desktop;");
+  const uid = legacy.id(),
+    wid = legacy.id(),
+    pid = legacy.id();
+  old.prepare("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)").run(uid, uid, "Old", "old98@test.invalid");
+  old.prepare("INSERT INTO workspaces(id,name) VALUES(?,?)").run(wid, "Old");
+  old.prepare("INSERT INTO pages(id,workspace_id,title,kind) VALUES(?,?,?,?)").run(pid, wid, "Aufgaben", "database");
+  old.prepare("INSERT INTO page_view_prefs(user_id,page_id,properties_collapsed,updated_at) VALUES(?,?,1,7)").run(uid, pid);
+  old.exec("PRAGMA user_version=98");
+  legacy.migrateFile(old);
+  assert.equal((old.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, legacy.SCHEMA_VERSION);
+  assert.deepEqual(
+    { ...(old.prepare("SELECT properties_collapsed,record_properties_phone,record_properties_desktop FROM page_view_prefs WHERE user_id=?").get(uid) as object) },
+    { properties_collapsed: 1, record_properties_phone: null, record_properties_desktop: null },
+  );
+  legacy.migrateFile(old);
+  assert.equal((old.prepare("PRAGMA table_info(page_view_prefs)").all() as { name: string }[]).filter((c) => c.name.startsWith("record_properties_")).length, 2);
+  old.close();
+});
+
+test("schema 99 on PostgreSQL: an existing database gets the new columns", { skip: backend !== "postgres" }, async () => {
+  const { ensureCurrentPostgresSchema } = await import("../lib/db-driver/pg-current");
+  const uid = await user("Fold");
+  const wid = await createWorkspace(uid, "Fold");
+  const pid = legacy.id();
+  await db.run("INSERT INTO pages(id,workspace_id,title,kind) VALUES(?,?,?,?)", pid, wid, "Aufgaben", "database");
+  await db.run("ALTER TABLE page_view_prefs DROP COLUMN record_properties_phone");
+  await db.run("ALTER TABLE page_view_prefs DROP COLUMN record_properties_desktop");
+  await db.run("INSERT INTO page_view_prefs(user_id,page_id,properties_collapsed,updated_at) VALUES(?,?,1,7)", uid, pid);
+  await db.run("UPDATE flowplan_meta SET value='98' WHERE key='sqlite_schema'");
+  const result = await ensureCurrentPostgresSchema(db);
+  assert.deepEqual({ from: result?.from, to: result?.to, applied: result?.applied }, { from: 98, to: legacy.SCHEMA_VERSION, applied: true });
+  assert.deepEqual(
+    await db.one("SELECT record_properties_phone,record_properties_desktop FROM page_view_prefs WHERE user_id=?", uid),
+    { record_properties_phone: null, record_properties_desktop: null },
+  );
+  await db.run("UPDATE page_view_prefs SET record_properties_phone=1 WHERE user_id=?", uid);
+  assert.equal(Number((await db.one<{ record_properties_phone: number }>("SELECT record_properties_phone FROM page_view_prefs WHERE user_id=?", uid))!.record_properties_phone), 1);
 });

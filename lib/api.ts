@@ -47,7 +47,7 @@ import { journalDayLink, pageCounts, removeEmptyJournalDays } from "./journal-da
 import { recentVisits, recordPageEdit, setFollowing } from "./page-activity";
 import { commentRecipients, commentTextMentions } from "./comment-recipients";
 import { MAX_ARCHIVE_ROWS } from "./archive-limits";
-import { propertiesCollapsed, setPropertiesCollapsed } from "./page-view-prefs";
+import { propertiesCollapsed, recordPropertiesCollapsed, setPropertiesCollapsed, setRecordPropertiesCollapsed } from "./page-view-prefs";
 import { saveSidebarState, sidebarState } from "./sidebar-state";
 import { changeDocTask, dueTaskCount, indexPageTasks, reindexRowTasks, syncDocTasks } from "./doc-tasks";
 import { syncedUsage } from "./synced-blocks";
@@ -436,10 +436,13 @@ export async function pageData(user: Identity, pid: string, options: { presence?
   // Tags and property values (#70); none behind a journal PIN or for
   // encrypted pages.
   if ((data as { locked?: unknown }).locked) return data;
+  // Whether this person folds the properties of the records (#186), per
+  // kind of device, so a record opens in the right state without a jump.
+  const records = "database" in data && data.database ? { recordPropertiesCollapsed: await recordPropertiesCollapsed(user, data.page.id) } : {};
   const properties = await pageMetaFor(data.page);
   // Whether this person collapsed the bar (#83; null: the default applies),
   // so the bar opens in the right state without a jump.
-  return properties ? { ...data, properties, propertiesCollapsed: await propertiesCollapsed(user, data.page.id) } : data;
+  return properties ? { ...data, ...records, properties, propertiesCollapsed: await propertiesCollapsed(user, data.page.id) } : { ...data, ...records };
 }
 async function pageContent(user: Identity, pid: string, options: { presence?: boolean } = {}) {
   const p = await requirePage(user, pid);
@@ -1568,6 +1571,10 @@ async function runCommand(
       // The bar with tags and properties, collapsed or open (#83).
       case "page.collapseProperties":
         result = await setPropertiesCollapsed(user, b);
+        break;
+      // The properties of a database's records, folded or open (#186).
+      case "database.collapseRecordProperties":
+        result = await setRecordPropertiesCollapsed(user, b);
         break;
       // "Alle / Nur meine" below a journal day (#169), the reader's choice.
       case "journal.completedMine":

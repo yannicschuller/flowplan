@@ -37,6 +37,10 @@ import { isTagField } from "@/lib/page-properties";
 import { cleanOptions, hasOwnSettings, mergesOf, optionRenames, type OptionRename } from "@/lib/option-renames";
 import { SprintContext } from "./sprint-context";
 import { RecordLayoutEditor } from "./record-layout-editor";
+import { RecordPropertiesFold, useRecordDevice } from "./record-properties-fold";
+import { summaryFields, SUMMARY_VALUES, SUMMARY_VALUES_NARROW } from "@/lib/record-properties";
+import { doneRule } from "@/lib/database-settings-schema";
+import type { RecordPropertiesChoice } from "@/lib/page-view-prefs";
 import {
   defaultRecordLayout,
   emptyCell,
@@ -259,6 +263,9 @@ export type DatabaseData = {
   readOnlyFields?: string[];
   // Contacts databases: records the LDAP directory keeps (lib/contacts.ts).
   contacts?: ContactsData;
+  // Whether this person folds the records' properties, on phones and on
+  // larger screens (#186; null: the default applies).
+  recordPropertiesCollapsed?: RecordPropertiesChoice;
 };
 // i18n-table: 1 – [German, English] pairs
 const fieldNames: Record<FieldType, [string, string]> = {
@@ -968,6 +975,16 @@ export default function DatabaseView({
     showEmpty ? layoutFields : layoutFields.filter((f) => !emptyFields.has(f.id))
   ).filter((f) => f.id !== fields[0]?.id);
   const emptyHidden = emptyFields.size;
+  // The folded properties (#186): a few values as chips, most telling first.
+  const recordDevice = useRecordDevice();
+  const recordSummary = selected
+    ? summaryFields(
+        recordFields.filter((f) => !computedTypes.includes(f.type) && !isFormattedText(f, fields)),
+        selected.cells,
+        recordDevice === "phone" ? SUMMARY_VALUES_NARROW : SUMMARY_VALUES,
+        doneRule(fields, data.database.settings)?.field.id,
+      )
+    : null;
   useEffect(() => {
     if (rowId && !selected)
       onError(t("Dieser Datensatz ist nicht mehr verfügbar.", "This record is no longer available."));
@@ -1924,6 +1941,29 @@ export default function DatabaseView({
   // Chips of options; the workspace's tags with their colours (#79).
   function chipClass(f: Field | undefined, value: string) {
     return f && isTagField(f) ? `tag tag-from-tags page-tag-${tagByName(tagOptions.tags, value).color}` : `tag tag-${tagColor(value)}`;
+  }
+  // A value of the folded record properties (#186): a small chip, named
+  // for screen readers.
+  function summaryChip(r: Row, f: Field) {
+    const v = r.cells[f.id];
+    let text = "";
+    let className = "record-properties-chip";
+    if (f.type === "select" || f.type === "multiselect") {
+      const values = (Array.isArray(v) ? v : [v]).filter((x) => x !== null && x !== undefined && String(x).trim());
+      text = values.length > 1 ? `${values[0]} +${values.length - 1}` : String(values[0] ?? "");
+      className = `${chipClass(f, String(values[0] ?? ""))} page-tag-small record-properties-chip`;
+    } else if (f.type === "date") text = typeof v === "string" ? formatFieldDate(v, f) : "";
+    else if (f.type === "person") {
+      const ids = Array.isArray(v) ? v : [v];
+      text = ids.map((uid) => members.find((m) => m.id === uid)?.name).filter(Boolean).join(", ");
+    } else if (f.type === "sprint") text = data.database.settings?.sprints?.find((x) => x.id === v)?.name || "";
+    if (!text) return null;
+    return (
+      <span key={f.id} className={className} title={`${f.name}: ${text}`}>
+        <span className="sr-only">{f.name}: </span>
+        {text}
+      </span>
+    );
   }
   // `place`: a table cell (links open, line breaks as spaces), a card or
   // list entry (a button: no links inside, line breaks as spaces) or a
@@ -5825,82 +5865,92 @@ export default function DatabaseView({
               className={`row-columns${recordLayout.properties === "side" ? " properties-side" : ""}`}
             >
               <div className="row-properties">
-                {recordFields.map((f) => (
-                  <Fragment key={`${selected.id}-${f.id}`}>
-                    <PropertyRow group={f.type === "files" || f.type === "date" || isTagField(f)}>
-                      <span>
-                        {f.name}
-                        {contactLocked(data.contacts, selected.id, f.id) && <LdapMarker />}
-                      </span>
-                      {computedTypes.includes(f.type) ? (
+                <RecordPropertiesFold
+                  databaseId={page.id}
+                  rowId={selected.id}
+                  count={recordFields.length}
+                  choice={data.recordPropertiesCollapsed}
+                  device={recordDevice}
+                  fresh={freshRowId === selected.id}
+                  summary={(recordSummary?.shown || []).map((f) => summaryChip(selected, f)).filter((x) => x !== null)}
+                >
+                  {recordFields.map((f) => (
+                    <Fragment key={`${selected.id}-${f.id}`}>
+                      <PropertyRow group={f.type === "files" || f.type === "date" || isTagField(f)}>
                         <span>
-                          {display(
-                            {
-                              ...selected,
-                              cells: computedCells(
-                                selected,
-                                fields,
-                                related,
-                                data.relatedSchemas,
-                              ),
-                            },
-                            f,
-                          )}
+                          {f.name}
+                          {contactLocked(data.contacts, selected.id, f.id) && <LdapMarker />}
                         </span>
-                      ) : (
-                        <span title={lockedTitle(f, selected)}>
-                          <CellInput
-                            field={f}
-                            value={selected.cells[f.id]}
-                            members={members}
-                            related={related}
-                            disabled={!selectedEditable || fieldLocked(selected, f)}
-                            links
-                            formatted={isFormattedText(f, fields)}
-                            multiline
-                            onChange={(v) => updateCell(selected, f, v)}
-                            upload={selectedEditable && !fieldLocked(selected, f) ? uploadFile : undefined}
-                            files={data.files}
-                          />
-                        </span>
+                        {computedTypes.includes(f.type) ? (
+                          <span>
+                            {display(
+                              {
+                                ...selected,
+                                cells: computedCells(
+                                  selected,
+                                  fields,
+                                  related,
+                                  data.relatedSchemas,
+                                ),
+                              },
+                              f,
+                            )}
+                          </span>
+                        ) : (
+                          <span title={lockedTitle(f, selected)}>
+                            <CellInput
+                              field={f}
+                              value={selected.cells[f.id]}
+                              members={members}
+                              related={related}
+                              disabled={!selectedEditable || fieldLocked(selected, f)}
+                              links
+                              formatted={isFormattedText(f, fields)}
+                              multiline
+                              onChange={(v) => updateCell(selected, f, v)}
+                              upload={selectedEditable && !fieldLocked(selected, f) ? uploadFile : undefined}
+                              files={data.files}
+                            />
+                          </span>
+                        )}
+                      </PropertyRow>
+                      {f.ai && (
+                        <AiCellControl
+                          pageId={page.id}
+                          field={f}
+                          rowId={selected.id}
+                          meta={aiStatus.status?.meta[selected.id]?.[f.id]}
+                          editable={canAi && !!selectedEditable && aiPageReadable(ai, page.id)}
+                          onDone={() => {
+                            void onRefresh().catch(() => {});
+                            void aiStatus.reload();
+                          }}
+                          onError={onError}
+                        />
                       )}
-                    </PropertyRow>
-                    {f.ai && (
-                      <AiCellControl
-                        pageId={page.id}
-                        field={f}
-                        rowId={selected.id}
-                        meta={aiStatus.status?.meta[selected.id]?.[f.id]}
-                        editable={canAi && !!selectedEditable && aiPageReadable(ai, page.id)}
-                        onDone={() => {
-                          void onRefresh().catch(() => {});
-                          void aiStatus.reload();
-                        }}
-                        onError={onError}
-                      />
-                    )}
-                    {f.type === "date" && reminderControl(selected, f)}
-                    {f.type === "date" &&
-                      f.id === fields.find((x) => x.type === "date")?.id &&
-                      recurrenceControl(selected)}
-                    {f.type === "date" && f.id === fields.find((x) => x.type === "date")?.id && (
-                      <RecordRepeat row={selected} fields={fields} editable={!!rowEditable(selected)} act={act} />
-                    )}
-                  </Fragment>
-                ))}
-                {emptyHidden > 0 && (
-                  <button
-                    className="text-button"
-                    aria-expanded={showEmpty}
-                    onClick={() => setShowEmpty((v) => !v)}
-                  >
-                    {showEmpty
-                      ? t("Leere Eigenschaften ausblenden", "Hide empty properties")
-                      : emptyHidden === 1
-                        ? t("1 leere Eigenschaft anzeigen", "Show 1 empty property")
-                        : t(`${emptyHidden} leere Eigenschaften anzeigen`, `Show ${emptyHidden} empty properties`)}
-                  </button>
-                )}
+                      {f.type === "date" && reminderControl(selected, f)}
+                      {f.type === "date" &&
+                        f.id === fields.find((x) => x.type === "date")?.id &&
+                        recurrenceControl(selected)}
+                      {f.type === "date" && f.id === fields.find((x) => x.type === "date")?.id && (
+                        <RecordRepeat row={selected} fields={fields} editable={!!rowEditable(selected)} act={act} />
+                      )}
+                    </Fragment>
+                  ))}
+                  {emptyHidden > 0 && (
+                    <button
+                      className="text-button"
+                      aria-expanded={showEmpty}
+                      onClick={() => setShowEmpty((v) => !v)}
+                    >
+                      {showEmpty
+                        ? t("Leere Eigenschaften ausblenden", "Hide empty properties")
+                        : emptyHidden === 1
+                          ? t("1 leere Eigenschaft anzeigen", "Show 1 empty property")
+                          : t(`${emptyHidden} leere Eigenschaften anzeigen`, `Show ${emptyHidden} empty properties`)}
+                    </button>
+                  )}
+                </RecordPropertiesFold>
                 <RelationBacklinks
                   key={`backlinks-${selected.id}-${selected.version}`}
                   pageId={page.id}
