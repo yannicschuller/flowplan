@@ -1,0 +1,738 @@
+/* "Seite teilen" (components/share-dialog.tsx and the tabs' parts:
+   page-people, share-links, link-protection, publication-domain,
+   share-hint). A summary line, three tabs, compact rows with switches,
+   long explanations behind a small (i), and a footer that stays at the
+   bottom while the content scrolls. App tokens and controls only (.segmented,
+   .switch, .fp-select, .button, .tag, .avatar, .icon-button). */
+.modal.share-dialog {
+  --sh-pad: 23px;
+  --sh-green: #2f7a4c;
+  --sh-green-dot: #3f9d63;
+  width: min(540px, calc(100% - 32px));
+}
+[data-theme="dark"] .modal.share-dialog {
+  --sh-green: #7fcf9c;
+  --sh-green-dot: #5fbf82;
+}
+.modal.share-dialog > .modal-heading {
+  margin-bottom: 0;
+}
+.sh-root {
+  display: flex;
+  flex-direction: column;
+  font-size: 13.5px;
+}
+.sh-root svg {
+  flex-shrink: 0;
+}
+/* The same width for every field; no pale, half-transparent primary
+   buttons while they wait for input. */
+.sh-root :is(input:not([type="color"], [type="checkbox"], [type="radio"]), .fp-select) {
+  width: 100%;
+  min-width: 0;
+}
+.sh-root .button.primary:disabled {
+  opacity: 1;
+  background: var(--hover);
+  border-color: var(--border);
+  color: var(--muted);
+}
+
+/* Summary line right below the title. */
+.sh-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 0;
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.sh-summary-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+/* The separator ends the item before it: a wrapped line never starts
+   with one. */
+.sh-summary-item:not(:last-child)::after {
+  content: "·";
+  margin-inline: 2px 7px;
+  opacity: 0.6;
+  color: var(--muted);
+  font-weight: 400;
+}
+.sh-summary-item svg {
+  width: 14px;
+  height: 14px;
+}
+.sh-pub-on {
+  color: var(--sh-green);
+  font-weight: 550;
+}
+.sh-live,
+.sh-tab-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--sh-green-dot);
+}
+
+/* Tabs: the app's segmented control at full width. */
+.sh-tabs {
+  width: 100%;
+  margin-bottom: 18px;
+}
+.sh-tabs [role="tab"] {
+  flex: 1;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--secondary);
+  white-space: nowrap;
+}
+.sh-tabs [role="tab"][aria-selected="true"] {
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: 0 1px 3px #1d1a1426;
+}
+.sh-tabs [role="tab"]:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: -2px;
+}
+.sh-tabs [role="tab"] svg {
+  width: 15px;
+  height: 15px;
+}
+.sh-count {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--border);
+  font-size: 11px;
+  line-height: 17px;
+  text-align: center;
+  color: var(--secondary);
+  font-variant-numeric: tabular-nums;
+}
+.sh-tabs [aria-selected="true"] .sh-count {
+  background: var(--blue-light);
+  color: var(--accent-strong);
+}
+
+.sh-panel[hidden] {
+  display: none;
+}
+.sh-panel {
+  min-height: 260px;
+  outline: none;
+}
+.sh-panel:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+
+/* Section label with a small (i) instead of a paragraph. */
+.sh-label-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--secondary);
+}
+.sh-hint {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 50%;
+  color: var(--muted);
+  vertical-align: middle;
+}
+.sh-hint svg {
+  width: 15px;
+  height: 15px;
+}
+.sh-hint:is(:hover, [data-open]) {
+  color: var(--blue);
+  background: var(--blue-light);
+}
+.sh-hint:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+.sh-tip:not([hidden]) {
+  display: block;
+}
+.sh-tip {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  inset-inline-start: 0;
+  width: min(320px, 100%);
+  padding: 9px 11px;
+  border-radius: 8px;
+  background: var(--text);
+  color: var(--bg);
+  font-size: 12px;
+  font-weight: 450;
+  line-height: 1.45;
+  text-align: start;
+  white-space: normal;
+  box-shadow: var(--shadow);
+  pointer-events: none;
+}
+
+/* Personen */
+.page-people-add {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 128px auto;
+  gap: 8px;
+}
+.page-people-add input,
+.page-people-add .fp-select,
+.page-people-add .button {
+  height: 38px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.page-people-add .fp-select {
+  display: flex;
+  align-items: center;
+}
+.sh-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+.sh-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 7px 6px;
+  margin: 0 -6px;
+  border-radius: 8px;
+}
+@media (hover: hover) {
+  .sh-list .sh-row:hover {
+    background: var(--surface);
+  }
+}
+.sh-people .avatar {
+  width: 32px;
+  height: 32px;
+}
+.sh-who {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.sh-who strong {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  font-size: 13.5px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.sh-you {
+  font-weight: 450;
+}
+.sh-who small {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+/* The role of a person: a quiet select that looks like text with a caret. */
+.sh-root .fp-select.sh-role {
+  width: auto;
+  flex: none;
+  padding: 5px 8px;
+  border-color: transparent;
+  background: transparent;
+  font-size: 13px;
+  color: var(--secondary);
+  box-shadow: none;
+}
+.sh-root .fp-select.sh-role:is(:hover, :focus-within) {
+  background: var(--hover);
+}
+.sh-root .fp-select.sh-role:focus-within {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+.sh-role-fixed {
+  flex: none;
+  padding: 5px 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.sh-note,
+.sh-empty {
+  position: relative;
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.sh-empty {
+  padding: 14px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  text-align: center;
+}
+.sh-inherit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 13px;
+  color: var(--secondary);
+}
+.sh-inherit svg {
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+}
+.sh-inherit span {
+  flex: 1;
+  min-width: 0;
+}
+.sh-link-button {
+  padding: 2px 4px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--blue);
+}
+.sh-link-button:hover {
+  text-decoration: underline;
+}
+.sh-root .ai-block {
+  margin: 12px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.sh-root .ai-block .checkbox-label {
+  margin: 0;
+  font-weight: 500;
+}
+.sh-root .ai-block small {
+  display: block;
+  margin-top: 2px;
+  font-weight: 400;
+}
+
+/* Links */
+.sh-link-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--secondary);
+}
+.sh-link-icon svg {
+  width: 16px;
+  height: 16px;
+}
+.sh-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin-top: 3px;
+}
+.sh-badges .tag {
+  gap: 4px;
+  padding: 0 6px;
+}
+.sh-badges .tag svg {
+  width: 11px;
+  height: 11px;
+}
+.sh-perm {
+  margin-inline-end: 2px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--secondary);
+}
+.sh-row .icon-button svg {
+  width: 18px;
+  height: 18px;
+}
+.sh-new-link {
+  align-self: flex-start;
+  margin-top: 12px;
+  gap: 6px;
+}
+.sh-new-link svg {
+  width: 14px;
+  height: 14px;
+}
+.sh-panel-box {
+  margin: 8px 0 4px;
+  padding: 12px 14px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.sh-link-form {
+  margin-top: 12px;
+}
+.sh-box-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 13.5px;
+}
+.sh-box-head .icon-button {
+  width: 26px;
+  height: 26px;
+  padding: 4px;
+}
+.sh-box-head .icon-button svg {
+  width: 16px;
+  height: 16px;
+}
+.sh-grid-2 {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+}
+.sh-root :is(.sh-grid-2, .sh-panel-box, .sh-appearance-body) :is(label, .field-group) {
+  margin-bottom: 10px;
+  gap: 5px;
+  font-size: 12.5px;
+  color: var(--secondary);
+}
+.sh-root :is(.sh-panel-box, .sh-appearance-body, .sh-opt-panel) :is(input, .fp-select) {
+  padding: 7px 10px;
+  font-size: 13.5px;
+  color: var(--text);
+}
+.sh-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 2px;
+}
+/* Password or end date of a link or the publication. */
+.protection-field {
+  margin: 0 0 10px;
+}
+.protection-field:last-child {
+  margin-bottom: 0;
+}
+.protection-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.sh-root .protection-row input {
+  flex: 1 1 180px;
+  width: auto;
+}
+
+/* Web */
+.sh-publish {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.sh-root[data-published] .sh-publish {
+  border-color: color-mix(in srgb, var(--blue) 35%, var(--border));
+  background: var(--blue-light);
+}
+.sh-publish small {
+  color: var(--secondary);
+  white-space: normal;
+}
+.sh-publish-icon {
+  display: inline-flex;
+  color: var(--blue);
+}
+.sh-publish-icon svg {
+  width: 22px;
+  height: 22px;
+}
+.sh-url {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin: 10px 0 0;
+}
+.sh-panel-box .sh-url {
+  margin: 0 0 10px;
+}
+.sh-root .sh-url input {
+  flex: 1;
+  padding: 7px 10px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--secondary);
+}
+.sh-url .button {
+  flex: none;
+  gap: 6px;
+}
+.sh-url .button svg {
+  width: 15px;
+  height: 15px;
+}
+.sh-url a.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+}
+.sh-url a.icon-button:hover {
+  background: var(--hover);
+}
+.sh-opts {
+  margin-top: 10px;
+}
+.sh-opt {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 42px;
+  padding: 4px 0;
+}
+.sh-opts > .sh-opt,
+.sh-opts > .sh-opt-block {
+  border-bottom: 1px solid var(--border);
+}
+/* Running text: a wrapped label keeps its (i) at the end of the last line. */
+.sh-opt-label {
+  min-width: 0;
+}
+.sh-opt-label .sh-hint {
+  margin-inline-start: 2px;
+  vertical-align: -5px;
+}
+.sh-opt-panel:not([hidden]) {
+  display: block;
+}
+.sh-opt-panel {
+  padding: 2px 0 12px;
+}
+.sh-link-form .sh-opt {
+  margin: 0 0 6px;
+}
+.sh-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 60%;
+  padding: 4px 6px;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: end;
+  overflow-wrap: anywhere;
+}
+button.sh-value:hover {
+  background: var(--hover);
+}
+.sh-value-note {
+  font-size: 12px;
+}
+.sh-caret {
+  width: 12px;
+  height: 12px;
+  transition: transform 0.15s var(--ease-out, ease);
+}
+[dir="rtl"] .sh-caret {
+  transform: scaleX(-1);
+}
+.sh-value[aria-expanded="true"] .sh-caret,
+.sh-appearance[open] > summary .sh-caret {
+  transform: rotate(90deg);
+}
+.publication-domain p {
+  margin: 0 0 8px;
+}
+.publication-domain .domain-add,
+.publication-domain .domain-actions {
+  margin: 6px 0 0;
+}
+.sh-root .domain-add input {
+  flex: 1 1 200px;
+  width: auto;
+}
+.sh-appearance {
+  border-bottom: 1px solid var(--border);
+}
+.sh-appearance > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  list-style: none;
+  cursor: pointer;
+  font-size: 13.5px;
+}
+.sh-appearance > summary::-webkit-details-marker {
+  display: none;
+}
+.sh-appearance > summary:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.sh-appearance > summary .sh-caret {
+  color: var(--muted);
+}
+.sh-appearance > summary strong {
+  font-weight: 500;
+}
+.sh-appearance > summary small {
+  margin-inline-start: auto;
+  text-align: end;
+}
+.sh-appearance-body {
+  padding: 2px 0 12px;
+}
+.sh-appearance-body .publication-theme-field {
+  display: flex;
+}
+.sh-appearance-body .sh-opt {
+  margin-bottom: 8px;
+}
+/* The accent colour: a swatch of fixed size beside its value (the native
+   colour input took the whole width and drew a line). */
+.sh-color {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+}
+.sh-color input[type="color"] {
+  width: 44px;
+  height: 34px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  cursor: pointer;
+}
+.sh-color input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+.sh-color input[type="color"]::-webkit-color-swatch {
+  border: 0;
+  border-radius: 4px;
+}
+.sh-color input[type="color"]::-moz-color-swatch {
+  border: 0;
+  border-radius: 4px;
+}
+.sh-color code {
+  font-size: 12.5px;
+  color: var(--secondary);
+}
+.sh-web-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 4px;
+  margin-top: 12px;
+}
+
+/* Footer: stays at the dialog's bottom edge. */
+.sh-footer {
+  position: sticky;
+  bottom: calc(-1 * var(--sh-pad));
+  z-index: 5;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 20px calc(-1 * var(--sh-pad)) calc(-1 * var(--sh-pad));
+  padding: 12px var(--sh-pad) var(--sh-pad);
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+}
+.sh-footer .button {
+  gap: 7px;
+}
+.sh-footer .button svg {
+  width: 15px;
+  height: 15px;
+}
+
+@media (max-width: 767px) {
+  .modal.share-dialog {
+    --sh-pad: 20px;
+  }
+}
+@media (max-width: 600px) {
+  .modal.modal-sheet.share-dialog {
+    width: 100%;
+  }
+  .sh-footer {
+    bottom: calc(-20px - var(--safe-bottom, 0px));
+    margin: 20px calc(-20px - var(--safe-right, 0px)) calc(-20px - var(--safe-bottom, 0px)) calc(-20px - var(--safe-left, 0px));
+    padding: 12px calc(20px + var(--safe-right, 0px)) calc(14px + var(--safe-bottom, 0px)) calc(20px + var(--safe-left, 0px));
+  }
+  .sh-footer .button {
+    flex: 1;
+    padding: 10px 12px;
+    font-size: 14px;
+  }
+  .page-people-add {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .page-people-add input {
+    grid-column: 1 / -1;
+  }
+  .page-people-add input,
+  .page-people-add .fp-select,
+  .page-people-add .button {
+    height: 44px;
+  }
+  .sh-tabs [role="tab"] {
+    padding: 7px 6px;
+  }
+  .sh-grid-2 {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  .sh-panel {
+    min-height: 0;
+  }
+  .sh-value {
+    max-width: 55%;
+  }
+  .sh-appearance > summary small {
+    display: none;
+  }
+}

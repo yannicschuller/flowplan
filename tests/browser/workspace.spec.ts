@@ -1149,24 +1149,29 @@ test("independent guest links provide read, comment and edit access with revocat
     exact: true,
   });
   const tokens: Record<string, string> = {};
+  await dialog.getByRole("tab", { name: /^Links/ }).click();
   for (const [role, name] of [
     ["viewer", "Leselink"],
     ["commenter", "Feedbacklink"],
     ["editor", "Bearbeitungslink"],
   ]) {
+    await dialog.getByRole("button", { name: "Neuer Link", exact: true }).click();
     await dialog.getByLabel("Linkname", { exact: true }).fill(name);
     await dialog
       .getByLabel("Linkberechtigung", { exact: true })
       .selectOption(role);
     await dialog
-      .getByRole("button", { name: "Freigabelink erstellen", exact: true })
+      .getByRole("button", { name: "Link erstellen", exact: true })
       .click();
+    // The new link's row; its address shows when it is unfolded.
+    await dialog.getByRole("button", { name: `Mehr zu ${name}`, exact: true }).click();
+    await page.getByRole("menuitem", { name: "Passwort und Ablaufdatum" }).click();
     const input = dialog.getByLabel(`Link ${name}`, { exact: true });
     await expect(input).toBeVisible();
     tokens[role] = (await input.inputValue()).split("/").pop()!;
   }
   // Close the member editor so its initial CRDT normalization does not race the guest draft.
-  await dialog.getByRole("button", { name: "Schließen", exact: true }).click();
+  await dialog.getByRole("button", { name: "Fertig", exact: true }).click();
   await page.goto("/#home");
   const guestContext = await browser.newContext({
     viewport: page.viewportSize()!,
@@ -1263,14 +1268,13 @@ test("independent guest links provide read, comment and edit access with revocat
     });
     await page.goto(`/#page=${created.id}`);
     await page.getByRole("button", { name: "Teilen", exact: true }).click();
+    await dialog.getByRole("tab", { name: /^Links/ }).click();
     await dialog
-      .getByRole("button", {
-        name: "Widerrufen: Bearbeitungslink",
-        exact: true,
-      })
+      .getByRole("button", { name: "Mehr zu Bearbeitungslink", exact: true })
       .click();
+    await page.getByRole("menuitem", { name: "Widerrufen", exact: true }).click();
     await expect(
-      dialog.getByLabel("Link Bearbeitungslink", { exact: true }),
+      dialog.getByRole("button", { name: "Link Bearbeitungslink kopieren", exact: true }),
     ).toHaveCount(0);
     expect(
       (

@@ -30,7 +30,7 @@ test("a page is shared with an existing account without the whole workspace", as
   });
   await dialog.getByRole("button", { name: "Hinzufügen" }).click();
   await expect(dialog.locator(".page-people [role=status]")).toContainText("hat jetzt Zugriff");
-  await expect(dialog.locator(".page-people .member-row")).toContainText("Gast");
+  await expect(dialog.locator(".page-people li").filter({ hasText: process.env.TEST_OTHER_EMAIL! })).toContainText("Gast");
   await owner.screenshot({ path: "test-results/page-share.png" });
 
   const guest = await (await browser.newContext({ locale: "de-DE" })).newPage();
