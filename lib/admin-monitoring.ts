@@ -31,6 +31,7 @@ import {
   collectingSince,
   dataDir,
   diskUsage,
+  errorsDay,
   liveNumbers,
   localDay,
   metricsSetting,
@@ -139,6 +140,8 @@ export async function monitoringLive(now = Date.now(), range: RequestRange = "24
       ...live,
       signinsToday: await events("login_success", midnight(now)),
       activeToday: await activeSince(midnight(now)),
+      // Different people of the last 24 hours (the KPI row of the monitoring).
+      active24h: await activeSince(now - DAY),
       failedSigninsToday: await events("login_failure", midnight(now)),
     },
     requests: await requestSeries(range, now),
@@ -340,6 +343,8 @@ export async function monitoringOverview(now = Date.now(), range: RequestRange =
       totals: refusals.totals,
       anonymousBytesToday: refusals.anonymousBytesToday,
     },
+    // 5xx of the last 24 hours and the 24 before (the error KPI).
+    errorsDay: await errorsDay(now),
     storage: await monitoringStorage(now),
     deliveries: await deliveries(now, 7),
     ai: await aiUsage(now, 14),

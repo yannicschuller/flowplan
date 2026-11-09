@@ -20,10 +20,14 @@ import {
   EnvelopeSimple,
   FolderSimple,
   Gear,
+  HardDrives,
   Info,
   Megaphone,
   PaperPlaneTilt,
   Sparkle,
+  TrendDown,
+  TrendUp,
+  Users,
   WarningCircle,
   XCircle,
   type Icon,
@@ -41,7 +45,7 @@ import { DangerZone, EmptyState, ResponsiveTable, SaveState, SettingGroup, Setti
 import { AlertsForm } from "../../admin-operations";
 import { useAdmin, useAdminData } from "../admin-context";
 import { AdminLoading } from "../shell";
-import { LiveBadge, Kpi, RequestsChart, rangeLabel } from "./live";
+import { LiveBadge, RequestsChart, rangeLabel } from "./live";
 import { useLive } from "./use-live";
 import { ago, bytes, clock, compact, dateTime, dayAt, longDay, ms, num, percent, shortDay, uptime, weekday } from "./monitoring-format";
 import { pushTile, relayHost } from "./push-format";
@@ -88,19 +92,23 @@ export default function MonitoringSection() {
           )}
           <Health d={d} />
           <Kpis d={d} />
-          <div className="mon-grid">
-            <Traffic d={d} />
-            <People d={d} />
-            <Signins d={d} />
-            <Refused d={d} />
-            <Storage d={d} />
-            <Deliveries d={d} />
-            <AiUsage d={d} />
-            <Queues d={d} />
-          </div>
-          <div className="mon-grid">
-            <Events events={d.events} />
-            <Actions d={d} ops={ops} reload={() => void live.reload()} />
+          <Traffic d={d} />
+          {/* Two stacks of cards that never leave holes (one stack on narrow
+              screens); each card stays in its column when it grows. */}
+          <div className="mon-columns">
+            <div className="mon-column">
+              <People d={d} />
+              <Signins d={d} />
+              <Storage d={d} />
+              <Refused d={d} />
+            </div>
+            <div className="mon-column">
+              <Queues d={d} />
+              <Deliveries d={d} />
+              <AiUsage d={d} />
+              <Events events={d.events} />
+              <Actions d={d} ops={ops} reload={() => void live.reload()} />
+            </div>
           </div>
         </>
       )}
@@ -149,9 +157,9 @@ type Ops = Awaited<ReturnType<typeof useOps>>;
 
 /* ---------- Building blocks ---------- */
 
-function Card({ id, title, description, actions, children, wide }: { id: string; title: string; description?: ReactNode; actions?: ReactNode; children: ReactNode; wide?: boolean }) {
+function Card({ id, title, description, actions, children }: { id: string; title: string; description?: ReactNode; actions?: ReactNode; children: ReactNode }) {
   return (
-    <section className={`setting-group mon-card${wide ? " wide" : ""}`} id={id} aria-labelledby={`${id}-title`}>
+    <section className="setting-group mon-card" id={id} aria-labelledby={`${id}-title`}>
       <header>
         <div>
           <h2 id={`${id}-title`}>{title}</h2>
@@ -310,36 +318,148 @@ function Health({ d }: { d: MonitoringOverview }) {
 
 /* ---------- KPIs ---------- */
 
+// Five tiles: the value, a change against the period before where the data
+// has one (no comparison is invented: deliveries are kept only 7 days, the
+// people of a past day are not stored), and a small trend or meter. Each
+// tile links to its card below; the trends are there as a table too.
 function Kpis({ d }: { d: MonitoringOverview }) {
   const t = useT();
   const k = d.kpis;
   const on = d.collecting.enabled;
-  const perMinute = d.requests.bucketMs / 60_000;
-  const trend = d.storage.trend.map((p) => p.bytes);
+  const since = d.collecting.since;
+  const disk = d.storage.disk;
+  const diskShare = disk ? 1 - disk.free / disk.total : null;
+  const [storageValue, storageUnit] = splitUnit(bytes(d.storage.total));
+  const delivered = d.deliveries.days.map((x) => x.webhooks + x.push + x.mail);
+  const tokens = d.ai.days.map((x) => x.tokensIn + x.tokensOut);
+  const tokensTotal = tokens.reduce((a, n) => a + n, 0);
+  // This week against the week before – only when both were counted.
+  const tokensDelta = since !== null && d.ai.days.length === 14 && since <= dayAt(d.ai.days[0].day) - 12 * 3_600_000 ? sum(tokens.slice(7)) - sum(tokens.slice(0, 7)) : null;
+  const e = d.errorsDay;
+  const errorsDelta = e.previous ? e.errors - e.previous.errors : null;
+  const sign = (n: number) => (n > 0 ? "+" : n < 0 ? "−" : "±");
   return (
-    <div className="kpi-grid cards" role="group" aria-label={t("Kennzahlen", "Key figures")}>
-      <Kpi label={t("gerade aktiv", "active now")} value={num(k.activeNow)} note={t("Personen in den letzten 5 Minuten", "people in the last 5 minutes")}>
-        <Sparkline values={d.active.slice(-24).map((p) => p.people)} label={t("Aktive Personen je Stunde, 24 Std.", "Active people per hour, 24 h")} />
-      </Kpi>
-      <Kpi label={t("heute aktiv", "active today")} value={num(k.activeToday)} note={t("verschiedene Personen seit Mitternacht", "different people since midnight")} />
-      <Kpi
-        label={t("Anfragen/Min.", "Requests/min")}
-        value={on ? num(k.requestsPerMinute) : "–"}
-        note={on ? t(`Fehlerquote ${percent(k.errorRate)} · p95 ${ms(k.p95)}`, `error rate ${percent(k.errorRate)} · p95 ${ms(k.p95)}`) : t("Statistik aus", "statistics off")}
+    <div className="mon-kpis" role="group" aria-label={t("Kennzahlen", "Key figures")}>
+      <KpiTile
+        href="#admin/monitoring/people"
+        icon={Users}
+        label={t("Aktiv 24 Std.", "Active 24 h")}
+        value={num(k.active24h)}
+        unit={k.active24h === 1 ? t("Person", "person") : t("Personen", "people")}
+        note={t(`${num(k.activeNow)} gerade aktiv · ${num(k.activeToday)} seit Mitternacht`, `${num(k.activeNow)} active now · ${num(k.activeToday)} since midnight`)}
       >
-        <Sparkline values={d.requests.points.map((p) => (p.requests === null ? null : p.requests / perMinute))} label={t(`Anfragen pro Minute, ${rangeLabel(d.requests.range, t)}`, `Requests per minute, ${rangeLabel(d.requests.range, t)}`)} />
-      </Kpi>
-      <Kpi label={t("Anmeldungen heute", "Sign-ins today")} value={num(k.signinsToday)} note={t(`${num(k.failedSigninsToday)} fehlgeschlagen`, `${num(k.failedSigninsToday)} failed`)}>
-        <Sparkline values={d.signins.map((s) => s.ok)} label={t("Anmeldungen je Tag, 14 Tage", "Sign-ins per day, 14 days")} />
-      </Kpi>
-      <Kpi
+        <Sparkline values={d.active.slice(-24).map((p) => p.people)} label={t("Aktive Personen je Stunde, 24 Std.", "Active people per hour, 24 h")} height={26} />
+      </KpiTile>
+      <KpiTile
+        href="#admin/monitoring/storage"
+        icon={HardDrives}
         label={t("Speicher", "Storage")}
-        value={bytes(d.storage.total)}
-        note={d.storage.weekDelta === null ? t("Verlauf ab heute", "history from today on") : t(`${d.storage.weekDelta >= 0 ? "+" : "−"}${bytes(Math.abs(d.storage.weekDelta))} in 7 Tagen`, `${d.storage.weekDelta >= 0 ? "+" : "−"}${bytes(Math.abs(d.storage.weekDelta))} in 7 days`)}
+        value={storageValue}
+        unit={storageUnit}
+        delta={
+          d.storage.weekDelta === null ? undefined : (
+            <Delta direction={d.storage.weekDelta > 0 ? "up" : d.storage.weekDelta < 0 ? "down" : "same"}>
+              {t(`${d.storage.weekDelta >= 0 ? "+" : "−"}${bytes(Math.abs(d.storage.weekDelta))} in 7 Tagen`, `${d.storage.weekDelta >= 0 ? "+" : "−"}${bytes(Math.abs(d.storage.weekDelta))} in 7 days`)}
+            </Delta>
+          )
+        }
+        note={diskShare === null ? undefined : <span className={diskShare >= 0.9 ? "mon-kpi-bad" : undefined}>{t(`Datenträger ${percent(diskShare)} belegt`, `disk ${percent(diskShare)} used`)}</span>}
       >
-        <Sparkline values={trend} label={t("Speicher je Tag, 30 Tage", "Storage per day, 30 days")} />
-      </Kpi>
+        {diskShare !== null ? (
+          <span className={`mon-kpi-meter${diskShare >= 0.9 ? " bad" : ""}`} aria-hidden>
+            <b style={{ width: `${Math.min(100, diskShare * 100)}%` }} />
+          </span>
+        ) : (
+          <Sparkline values={d.storage.trend.map((p) => p.bytes)} label={t("Speicher je Tag, 30 Tage", "Storage per day, 30 days")} height={26} />
+        )}
+      </KpiTile>
+      <KpiTile
+        href="#admin/monitoring/deliveries"
+        icon={PaperPlaneTilt}
+        label={t("Zustellungen 7 Tage", "Deliveries 7 days")}
+        value={num(sum(delivered))}
+        note={<span className={d.deliveries.failed ? "mon-kpi-bad" : undefined}>{t(`${num(d.deliveries.failed)} aufgegeben`, `${num(d.deliveries.failed)} given up`)}</span>}
+      >
+        <Sparkline values={delivered} label={t("Zustellungen je Tag, 7 Tage", "Deliveries per day, 7 days")} height={26} />
+      </KpiTile>
+      <KpiTile
+        href="#admin/monitoring/ai"
+        icon={Sparkle}
+        label={t("KI-Tokens 14 Tage", "AI tokens 14 days")}
+        value={compact(tokensTotal)}
+        delta={
+          tokensDelta === null ? undefined : (
+            <Delta direction={tokensDelta > 0 ? "up" : tokensDelta < 0 ? "down" : "same"} title={t("Letzte 7 Tage im Vergleich zu den 7 Tagen davor", "Last 7 days compared with the 7 days before")}>
+              {t(`${sign(tokensDelta)}${compact(Math.abs(tokensDelta))} zur Vorwoche`, `${sign(tokensDelta)}${compact(Math.abs(tokensDelta))} vs. last week`)}
+            </Delta>
+          )
+        }
+        note={!d.health.ai.enabled ? t("KI ausgeschaltet", "AI switched off") : t(`${num(sum(d.ai.days.map((x) => x.requests)))} Anfragen`, `${num(sum(d.ai.days.map((x) => x.requests)))} requests`)}
+      >
+        <Sparkline values={tokens} label={t("KI-Tokens je Tag, 14 Tage", "AI tokens per day, 14 days")} height={26} />
+      </KpiTile>
+      <KpiTile
+        href="#admin/monitoring/traffic"
+        icon={WarningCircle}
+        tone={on && e.errors ? "error" : undefined}
+        label={t("Fehler 24 Std.", "Errors 24 h")}
+        value={on ? num(e.errors) : "–"}
+        unit="5xx"
+        delta={
+          !on || errorsDelta === null ? undefined : (
+            <Delta direction={errorsDelta > 0 ? "up" : errorsDelta < 0 ? "down" : "same"} bad={errorsDelta > 0} good={errorsDelta < 0}>
+              {errorsDelta ? t(`${sign(errorsDelta)}${num(Math.abs(errorsDelta))} zum Vortag`, `${sign(errorsDelta)}${num(Math.abs(errorsDelta))} vs. the day before`) : t("wie am Vortag", "same as the day before")}
+            </Delta>
+          )
+        }
+        note={on ? t(`Quote ${percent(e.requests ? e.errors / e.requests : 0)} · ${num(e.requests)} Anfragen`, `rate ${percent(e.requests ? e.errors / e.requests : 0)} · ${num(e.requests)} requests`) : t("Statistik aus", "statistics off")}
+      >
+        <Sparkline values={e.hourly} label={t("Fehler (5xx) je Stunde, 24 Std.", "Errors (5xx) per hour, 24 h")} tone={2} height={26} />
+      </KpiTile>
     </div>
+  );
+}
+
+const sum = (values: number[]) => values.reduce((a, n) => a + n, 0);
+// "6,6 MB" → ["6,6", "MB"]
+const splitUnit = (text: string): [string, string] => {
+  const at = text.lastIndexOf(" ");
+  return at < 0 ? [text, ""] : [text.slice(0, at), text.slice(at + 1)];
+};
+
+function KpiTile({ href, icon: TileIcon, label, value, unit, delta, note, tone, children }: { href: string; icon: Icon; label: string; value: string; unit?: string; delta?: ReactNode; note?: ReactNode; tone?: "error"; children?: ReactNode }) {
+  return (
+    <a className={`mon-kpi${tone ? ` tone-${tone}` : ""}`} href={href}>
+      <span className="mon-kpi-label">
+        <TileIcon size={15} aria-hidden />
+        {label}
+      </span>
+      <span className="mon-kpi-value">
+        {value}
+        {unit && <small> {unit}</small>}
+      </span>
+      <span className="mon-kpi-foot">
+        <span className="mon-kpi-notes">
+          {delta}
+          {note && <span className="mon-kpi-note">{note}</span>}
+        </span>
+        {children && (
+          <span className="mon-kpi-trend" aria-hidden>
+            {children}
+          </span>
+        )}
+      </span>
+    </a>
+  );
+}
+
+function Delta({ direction, bad, good, title, children }: { direction: "up" | "down" | "same"; bad?: boolean; good?: boolean; title?: string; children: ReactNode }) {
+  const Arrow = direction === "up" ? TrendUp : direction === "down" ? TrendDown : null;
+  return (
+    <span className={`mon-delta${bad ? " bad" : good ? " good" : ""}`} title={title}>
+      {Arrow && <Arrow size={12} weight="bold" aria-hidden />}
+      {children}
+    </span>
   );
 }
 
@@ -354,11 +474,10 @@ function Traffic({ d }: { d: MonitoringOverview }) {
   return (
     <Card
       id="traffic"
-      wide
       title={t("Anfragen & Fehler", "Requests & errors")}
       description={t(
-        `Pro Minute, ${rangeLabel(d.requests.range, t)} · ${num(total)} Anfragen, ${num(errors)} Fehler (5xx) · p50 ${ms(d.kpis.p50)}, p95 ${ms(d.kpis.p95)} in der letzten Stunde`,
-        `Per minute, ${rangeLabel(d.requests.range, t)} · ${num(total)} requests, ${num(errors)} errors (5xx) · p50 ${ms(d.kpis.p50)}, p95 ${ms(d.kpis.p95)} in the last hour`,
+        `Pro Minute, ${rangeLabel(d.requests.range, t)} · ${num(total)} Anfragen, ${num(errors)} Fehler (5xx) · zuletzt ${d.collecting.enabled ? num(d.kpis.requestsPerMinute) : "–"}/Min. · p50 ${ms(d.kpis.p50)}, p95 ${ms(d.kpis.p95)} in der letzten Stunde`,
+        `Per minute, ${rangeLabel(d.requests.range, t)} · ${num(total)} requests, ${num(errors)} errors (5xx) · last ${d.collecting.enabled ? num(d.kpis.requestsPerMinute) : "–"}/min · p50 ${ms(d.kpis.p50)}, p95 ${ms(d.kpis.p95)} in the last hour`,
       )}
     >
       {!d.collecting.since ? (
@@ -414,7 +533,10 @@ function Signins({ d }: { d: MonitoringOverview }) {
     { key: "failed", label: t("fehlgeschlagen", "failed"), values: d.signins.map((s) => s.failed), color: 1 },
   ];
   return (
-    <Card id="signins" title={t("Anmeldungen", "Sign-ins")} description={t(`Pro Tag, 14 Tage · ${num(ok)} erfolgreich, ${num(failed)} fehlgeschlagen`, `Per day, 14 days · ${num(ok)} successful, ${num(failed)} failed`)}>
+    <Card id="signins" title={t("Anmeldungen", "Sign-ins")} description={t(
+        `Pro Tag, 14 Tage · ${num(ok)} erfolgreich, ${num(failed)} fehlgeschlagen · heute ${num(d.kpis.signinsToday)}, ${num(d.kpis.failedSigninsToday)} fehlgeschlagen`,
+        `Per day, 14 days · ${num(ok)} successful, ${num(failed)} failed · today ${num(d.kpis.signinsToday)}, ${num(d.kpis.failedSigninsToday)} failed`,
+      )}>
       <Legend items={series.map((s) => ({ label: s.label, color: s.color }))} />
       <BarChart title={t("Anmeldungen je Tag", "Sign-ins per day")} description={t("Erfolgreiche und fehlgeschlagene Anmeldungen der letzten 14 Tage.", "Successful and failed sign-ins of the last 14 days.")} labels={d.signins.map((s) => shortDay(s.day))} tips={d.signins.map((s) => longDay(s.day))} series={series} formatY={(n) => num(n)} />
       <ChartTable caption={t("Anmeldungen je Tag", "Sign-ins per day")} head={[t("Tag", "Day"), series[0].label, series[1].label]} rows={[...d.signins].reverse().map((s) => [longDay(s.day), num(s.ok), num(s.failed)])} />
@@ -566,17 +688,17 @@ function Queues({ d }: { d: MonitoringOverview }) {
       tone: q.webhooksGivenUp ? "warn" : undefined,
     },
   ];
-  const max = Math.max(10, ...rows.map((r) => r.value || 0));
+  // A dot per queue: grey when not set up, amber when something was given up,
+  // blue while work waits, green when empty. The text says the same.
+  const state = (r: (typeof rows)[number]): Tone => (r.value === null ? "off" : r.tone ? r.tone : r.value ? "info" : "ok");
   return (
     <Card id="queues" title={t("Warteschlangen", "Queues")} description={t("Was gerade auf Bearbeitung wartet.", "What is waiting to be processed right now.")}>
-      <ul className="mon-bars">
+      <ul className="mon-queues">
         {rows.map((r) => (
-          <li key={r.key}>
+          <li key={r.key} className={state(r)}>
+            <i aria-hidden />
             <span>{r.label}</span>
-            <strong>{r.tone ? <StatusBadge tone={r.tone}>{r.text}</StatusBadge> : r.text}</strong>
-            <i aria-hidden>
-              <b style={{ width: `${r.value ? Math.max(2, (r.value / max) * 100) : 0}%` }} />
-            </i>
+            <strong>{r.text}</strong>
           </li>
         ))}
       </ul>

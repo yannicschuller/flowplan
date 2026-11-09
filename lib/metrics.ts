@@ -438,6 +438,38 @@ export async function requestSeries(range: RequestRange, now = Date.now()): Prom
   return { range, bucketMs, points };
 }
 
+// Requests and 5xx of the last 24 hours – per hour for a trend – and of the
+// 24 hours before, from the minutes (kept 48 hours). `previous` is null
+// while collecting has not covered both days yet (no invented comparison).
+export async function errorsDay(now = Date.now()) {
+  const end = floorTo(now, HOUR);
+  const start = end - 23 * HOUR;
+  const first = await collectingSince();
+  const hours = new Map<number, number>();
+  let requests = 0,
+    errors = 0,
+    previousRequests = 0,
+    previousErrors = 0;
+  for (const m of (await minutesSince(now - 2 * DAY)).values()) {
+    if (m.at >= now - DAY) {
+      requests += m.requests;
+      errors += m.errors;
+    } else {
+      previousRequests += m.requests;
+      previousErrors += m.errors;
+    }
+    if (m.at >= start) hours.set(floorTo(m.at, HOUR), (hours.get(floorTo(m.at, HOUR)) || 0) + m.errors);
+  }
+  const hourly: (number | null)[] = [];
+  for (let at = start; at <= end; at += HOUR) hourly.push(first === null || at + HOUR <= first ? null : hours.get(at) || 0);
+  return {
+    requests,
+    errors,
+    previous: first !== null && first <= now - 2 * DAY ? { requests: previousRequests, errors: previousErrors } : null,
+    hourly,
+  };
+}
+
 // People active per hour (7 days); the running hour from memory.
 export async function activeSeries(now = Date.now(), hours = 168): Promise<{ at: number; people: number | null }[]> {
   const s = state();

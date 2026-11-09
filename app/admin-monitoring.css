@@ -1,0 +1,271 @@
+/* Administration → Überwachung (components/settings/admin/monitoring.tsx):
+   even health tiles, a row of five key figures, the wide requests card and
+   two stacks of cards below that leave no holes. Sizes follow the main
+   column (container "main"), so the side panels do not break the layout. */
+
+/* ---------- Health: 3 × 3 tiles of one height ---------- */
+.mon-health ul {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+/* The "error" tone also matches the global .error box (margin 20px 0, red
+   13px text): reset it, or that tile ends up shorter than its row. */
+.mon-health-tile,
+.mon-health-tile.error {
+  align-items: center;
+  margin: 0;
+  font-size: inherit;
+}
+
+/* ---------- Key figures ---------- */
+.mon-kpis {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0 0 14px;
+}
+.mon-kpi {
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  gap: 2px;
+  min-width: 0;
+  padding: 12px 14px 11px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--text);
+  text-decoration: none;
+}
+.mon-kpi:hover {
+  border-color: color-mix(in srgb, var(--blue) 40%, var(--border));
+}
+.mon-kpi.tone-error {
+  border-color: color-mix(in srgb, #c43a3a 45%, var(--border));
+}
+.mon-kpi-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--secondary);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+.mon-kpi-label svg {
+  flex: none;
+  color: var(--muted);
+}
+.mon-kpi.tone-error .mon-kpi-label svg {
+  color: #a43c3f;
+}
+.mon-kpi-value {
+  font-size: 24px;
+  font-weight: 620;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mon-kpi-value small {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--muted);
+}
+.mon-kpi-foot {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  margin-top: 2px;
+}
+.mon-kpi-notes {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+.mon-kpi-note {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+.mon-kpi-trend {
+  flex: none;
+  width: 64px;
+  padding-bottom: 2px;
+}
+.mon-kpi-meter {
+  display: block;
+  height: 6px;
+  margin-bottom: 4px;
+  border-radius: 999px;
+  background: var(--hover);
+  overflow: hidden;
+}
+.mon-kpi-meter b {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--chart-1);
+}
+.mon-kpi-meter.bad b {
+  background: #d1544f;
+}
+.mon-delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--secondary);
+  font-size: 12px;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+}
+.mon-delta svg {
+  flex: none;
+}
+.mon-delta.good {
+  color: #3f6d52;
+}
+.mon-delta.bad,
+.mon-kpi-bad {
+  color: #a43c3f;
+}
+[data-theme="dark"] .mon-kpi.tone-error .mon-kpi-label svg,
+[data-theme="dark"] .mon-delta.bad,
+[data-theme="dark"] .mon-kpi-bad {
+  color: #f3b0b0;
+}
+[data-theme="dark"] .mon-delta.good {
+  color: #a8d8b9;
+}
+[data-theme="dark"] .mon-kpi-meter.bad b {
+  background: #eb6e6e;
+}
+/* An arrow up reads backwards in right-to-left text: mirror it. */
+[dir="rtl"] .mon-delta svg {
+  transform: scaleX(-1);
+}
+
+/* ---------- Cards: the wide requests card, then two stacks ---------- */
+.mon .mon-card#traffic {
+  margin-bottom: 14px;
+}
+.mon-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 14px;
+  margin-bottom: 22px;
+}
+.mon-column {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+.mon-column > .setting-group {
+  min-width: 0;
+  margin: 0;
+}
+
+/* ---------- Queues: one line per queue with a status dot ---------- */
+.mon-queues {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mon-queues li {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+  padding: 4px 0;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+}
+.mon-queues li:first-child {
+  border-top: 0;
+}
+.mon-queues i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #3f9d63;
+}
+.mon-queues li.info i {
+  background: var(--chart-1);
+}
+.mon-queues li.warn i {
+  background: #d9a32c;
+}
+.mon-queues li.error i {
+  background: #d1544f;
+}
+.mon-queues li.off i {
+  background: color-mix(in srgb, var(--muted) 55%, transparent);
+}
+.mon-queues li.off :is(span, strong) {
+  color: var(--muted);
+}
+.mon-queues strong {
+  font-weight: 550;
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+.mon-queues li.warn strong {
+  color: #6f5b22;
+}
+[data-theme="dark"] .mon-queues li.warn strong {
+  color: #f2c27a;
+}
+
+/* ---------- Narrower main columns ---------- */
+@container main (max-width: 1040px) {
+  /* 3 + 2 tiles */
+  .mon-kpis {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+  .mon-kpi {
+    grid-column: span 2;
+  }
+  .mon-kpi:nth-child(n + 4) {
+    grid-column: span 3;
+  }
+}
+@container main (max-width: 875px) {
+  .mon-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@container main (max-width: 640px) {
+  .mon-health ul {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  /* 9 tiles in two columns: the last one across both. */
+  .mon-health li:last-child {
+    grid-column: 1 / -1;
+  }
+  /* 2 + 2 + 1 tiles, the last one across both. */
+  .mon-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .mon-kpi,
+  .mon-kpi:nth-child(n + 4) {
+    grid-column: auto;
+  }
+  .mon-kpi:last-child {
+    grid-column: 1 / -1;
+  }
+  .mon-kpi-value {
+    font-size: 21px;
+  }
+}
+@container main (max-width: 340px) {
+  .mon-health ul,
+  .mon-kpis {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
