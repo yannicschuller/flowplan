@@ -9,7 +9,7 @@
 // (lib/keyboard-caret.ts has the arithmetic).
 import type { EditorView } from "@tiptap/pm/view";
 import { caretScroll, visibleBand } from "@/lib/keyboard-caret";
-import { remeasureKeyboard, scrollPane } from "./mobile-tab-bar";
+import { onKeyboardMove, remeasureKeyboard, scrollPane } from "./mobile-tab-bar";
 
 // Whether it took care of the scrolling (for handleScrollToSelection).
 export function keepCaretAboveKeyboard(view: EditorView) {
@@ -57,7 +57,10 @@ export function keepCaretAboveKeyboard(view: EditorView) {
 
 // Also when the keyboard itself moves: it comes up after the tap, iOS
 // reports its size late and moves the visible area. Once the keyboard
-// watcher has measured (its frame comes first), the caret follows.
+// watcher has measured (its frame comes first), the caret follows – also
+// after the watcher's own late measurements, which find a size iOS reported
+// without an event (#181: a tap on the last line of an existing document
+// stayed behind the keyboard that came up after it).
 export function followKeyboard(view: EditorView) {
   const vv = window.visualViewport;
   if (!vv) return () => {};
@@ -70,8 +73,10 @@ export function followKeyboard(view: EditorView) {
   };
   vv.addEventListener("resize", follow);
   vv.addEventListener("scroll", follow);
+  const stopMoves = onKeyboardMove(follow);
   follow();
   return () => {
+    stopMoves();
     cancelAnimationFrame(frame);
     vv.removeEventListener("resize", follow);
     vv.removeEventListener("scroll", follow);

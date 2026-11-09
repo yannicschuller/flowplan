@@ -307,9 +307,12 @@ label.hit-check {
   .document-editor :is(h1, h2, h3) {
     padding-bottom: 6px;
   }
-  /* The taller tools leave the end of the page visible above them. */
+  /* The taller tools leave the end of the page visible above them – and,
+     with the keyboard open, room for the keyboard as well (#181,
+     app/globals.css): without it the pane could not scroll the last lines
+     of a document out from behind an iPhone's keyboard. */
   .page-layout .editor-wrapper {
-    padding-bottom: 68px;
+    padding-bottom: calc(68px + max(var(--keyboard-inset, 0px), var(--keyboard-cover, 0px)));
   }
   .page-layout .page-content {
     padding-bottom: 66px;
