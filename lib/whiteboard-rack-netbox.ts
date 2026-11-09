@@ -3,7 +3,7 @@
 // (lib/whiteboard-rack-server.ts); this maps the answers to the JSON format
 // of the rack export (lib/whiteboard-rack.ts racksJson), which the board
 // then checks and places like an imported file. Pure, so it can be tested.
-import { RACK_JSON_FORMAT, cableTypes, deviceKinds, type CableType, type DeviceKind, type Face, type PortType } from "./whiteboard-rack";
+import { MAX_IPS, MAX_ROLES, RACK_JSON_FORMAT, cableTypes, cleanIp, cleanRoles, deviceKinds, nicPort, normalizeMac, type CableType, type DeviceKind, type Face, type PortType } from "./whiteboard-rack";
 
 type Ref = { id?: number; name?: string; slug?: string; value?: string; label?: string; display?: string } | null | undefined;
 export type NetboxRack = { id: number; name?: string; display?: string; site?: Ref; location?: Ref; u_height?: number; width?: Ref; max_weight?: number | null; weight_unit?: Ref };
@@ -21,7 +21,17 @@ export type NetboxDevice = {
   serial?: string;
   asset_tag?: string | null;
   comments?: string;
+  // Host name and addresses (#187): NetBox has no host name field, so the
+  // primary IP's DNS name stands for it.
+  primary_ip?: NetboxIpRef;
+  primary_ip4?: NetboxIpRef;
+  primary_ip6?: NetboxIpRef;
+  oob_ip?: NetboxIpRef;
+  tags?: { name?: string; slug?: string; display?: string }[] | null;
 };
+type NetboxIpRef = { id?: number; address?: string; dns_name?: string; display?: string } | null | undefined;
+// An IP address assigned to an interface (ipam/ip-addresses).
+export type NetboxIpAddress = { id: number; address?: string; dns_name?: string; assigned_object_type?: string | null; assigned_object_id?: number | null; status?: Ref };
 export type NetboxPort = {
   id: number;
   device?: Ref;
@@ -32,6 +42,10 @@ export type NetboxPort = {
   maximum_draw?: number | null;
   allocated_draw?: number | null;
   mgmt_only?: boolean;
+  // MAC of an interface: NetBox up to 4.1 has mac_address, 4.2 and later
+  // primary_mac_address (and mac_address as a read-only copy).
+  mac_address?: string | null;
+  primary_mac_address?: { mac_address?: string } | null;
 };
 export type NetboxTermination = { object_type?: string; termination_type?: string; object_id?: number; termination_id?: number; object?: { id?: number; device?: Ref } };
 export type NetboxCable = {
@@ -56,6 +70,7 @@ export type NetboxData = {
   powerPorts: NetboxPort[];
   powerOutlets: NetboxPort[];
   cables: NetboxCable[];
+  ipAddresses?: NetboxIpAddress[];
 };
 // Kinds of ports, as NetBox's API names them in cable terminations.
 export const NETBOX_PORT_OBJECTS = {
@@ -138,8 +153,31 @@ function portFace(kind: DeviceKind, source: PortSource): Face {
   return ["switch", "router", "firewall", "patch"].includes(kind) ? "front" : "rear";
 }
 
+// The addresses of a device: primary IPv4 and IPv6 first, then the
+// out-of-band (BMC) address.
+export function netboxIps(d: NetboxDevice) {
+  const out: string[] = [];
+  for (const ref of [d.primary_ip4, d.primary_ip6, d.primary_ip, d.oob_ip]) {
+    const ip = cleanIp(ref?.address);
+    if (ip && !out.includes(ip)) out.push(ip);
+  }
+  return out.slice(0, MAX_IPS);
+}
+const portMac = (port: NetboxPort) => normalizeMac(port.primary_mac_address?.mac_address) || normalizeMac(port.mac_address);
+// The device's role and its tags become its roles.
+export function netboxRoles(d: NetboxDevice) {
+  const role = d.role || d.device_role;
+  const names = [text(role?.name || role?.display, 40), ...(d.tags || []).map((tag) => text(tag?.name || tag?.display, 40))];
+  return cleanRoles(names.filter(Boolean))?.slice(0, MAX_ROLES);
+}
 export function netboxToRacks(data: NetboxData) {
   const types = new Map(data.deviceTypes.map((t) => [t.id, t]));
+  // Interface → its first IP address (ipam, when the token may read it).
+  const interfaceIps = new Map<number, string>();
+  for (const a of data.ipAddresses || []) {
+    const ip = cleanIp(a.address);
+    if (ip && a.assigned_object_type === "dcim.interface" && typeof a.assigned_object_id === "number" && !interfaceIps.has(a.assigned_object_id)) interfaceIps.set(a.assigned_object_id, ip);
+  }
   const racks = data.racks.slice(0, 50).map((r) => {
     const width = Number(value(r.width)) || 19;
     return {
@@ -176,6 +214,9 @@ export function netboxToRacks(data: NetboxData) {
       if (source === "powerPorts") powerW += Number(port.allocated_draw || port.maximum_draw || 0) || 0;
       const portId = `p${i + 1}`;
       portIds.set(`${NETBOX_PORT_OBJECTS[source]}:${port.id}`, { device: id, port: portId });
+      const nic = source === "interfaces" && nicPort(portType);
+      const mac = nic ? portMac(port) : null;
+      const ip = nic ? interfaceIps.get(port.id) : undefined;
       return [
         {
           id: portId,
@@ -184,15 +225,30 @@ export function netboxToRacks(data: NetboxData) {
           face: portFace(kind, source),
           ...(text(port.label, 80) ? { label: text(port.label, 80) } : {}),
           ...(port.untagged_vlan?.vid ? { vlan: String(port.untagged_vlan.vid) } : {}),
+          ...(mac ? { mac } : {}),
+          ...(ip ? { ip } : {}),
         },
       ];
     });
+    // The device's MAC: that of the interface holding its primary IP, else
+    // of the first interface with a MAC that is not for management only.
+    const own = (portsBy.get(d.id) || []).filter((p) => p.source === "interfaces" && portMac(p.port));
+    const primaryIds = new Set((data.ipAddresses || []).filter((a) => [d.primary_ip4?.id, d.primary_ip6?.id, d.primary_ip?.id].includes(a.id)).map((a) => a.assigned_object_id));
+    const main = own.find((p) => primaryIds.has(p.port.id)) || own.find((p) => !p.port.mgmt_only) || own[0];
+    const mac = main ? portMac(main.port) : null;
+    const ips = netboxIps(d);
+    const roles = netboxRoles(d);
+    const hostname = text(d.primary_ip4?.dns_name || d.primary_ip6?.dns_name || d.primary_ip?.dns_name, 253);
     return {
       id,
       name: text(d.name || d.display) || text(type.model) || `#${d.id}`,
       ...(racked ? { rack: `nb-rack-${d.rack!.id}`, u: Math.max(1, Math.floor(d.position!)) } : {}),
       kind,
       height,
+      ...(hostname ? { hostname } : {}),
+      ...(ips.length ? { ips } : {}),
+      ...(mac ? { mac } : {}),
+      ...(roles ? { roles } : {}),
       ...(type.is_full_depth === false ? { depth: face } : {}),
       ...(text(type.manufacturer?.name) ? { manufacturer: text(type.manufacturer?.name, 80) } : {}),
       ...(text(type.model) ? { model: text(type.model, 80) } : {}),

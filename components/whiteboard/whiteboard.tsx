@@ -159,6 +159,7 @@ import { boardSignal, useFacilitation } from "./facilitation";
 import { sharedUpdate } from "@/lib/whiteboard-private-mode";
 // Rack planning: racks, devices, ports and cables (#90).
 import { applyRackLayout, cableTypeFor, deviceOf, isCable, portAt, rackOf, remapRack, snapDevice, RACK_HEADER, RACK_U, RACK_FOOTER, RACK_MAX_U } from "@/lib/whiteboard-rack";
+import { DeviceCard, useDeviceCard } from "./rack-card";
 import { RACK_DRAG_TYPE, RackInspector, RackStyleControls, RackWorld, dropRackItem, rackItemClass, rackKey, setRackFocus } from "./rack-panels";
 
 const EmojiPicker = dynamic(() => loadView(() => import("../emoji-picker")), {
@@ -1177,6 +1178,27 @@ export default function Whiteboard({
     [itemsMap, read],
   );
   const selected = items.filter((i) => selection.has(i.id));
+  // The card of a device (#187, rack-card.tsx): not while presenting, with
+  // a tool other than selecting, while a text is edited or a menu or dialog
+  // of the board is open.
+  const deviceCard = useDeviceCard(
+    presenting !== null ||
+      tool !== "select" ||
+      !!editing ||
+      !!cellEdit ||
+      !!commentOpen ||
+      moreOpen ||
+      actionsOpen ||
+      plusOpen ||
+      moderationOpen ||
+      shapeMenu ||
+      emojiOpen ||
+      cardOpen ||
+      arrangeOpen ||
+      imagesOpen ||
+      templatesOpen ||
+      (!!diagram && !["racks", "library", "rack-details"].includes(diagram.kind)),
+  );
   const removeSelected = () =>
     change(() => {
       // A rack goes together with the devices in it.
@@ -1393,6 +1415,7 @@ export default function Whiteboard({
   function onBackgroundDown(e: ReactPointerEvent<SVGSVGElement>) {
     if (notePen(e)) setPenOnlyState(true);
     setHover(null);
+    deviceCard.dismiss();
     if (e.pointerType === "touch") {
       pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (pointers.current.size === 2) {
@@ -1609,6 +1632,9 @@ export default function Whiteboard({
     void e;
   }
   function onItemDown(e: ReactPointerEvent, item: WhiteboardItem) {
+    // A press ends the device's card; a long press with a finger opens it.
+    deviceCard.dismiss(item.id);
+    if (item.type === "device" && tool === "select" && presenting === null) deviceCard.press(e, item.id);
     // A click on a port of a device shows that port in the details (#90).
     if (item.type === "device" && tool === "select") {
       const port = (e.target as Element).closest?.("[data-port]")?.getAttribute("data-port");
@@ -1704,6 +1730,12 @@ export default function Whiteboard({
     if (foreign(e)) return;
     const p = toWorld(e.clientX, e.clientY);
     lastPointer.current = p;
+    deviceCard.pressMove(e);
+    // A mouse resting on a device (no button, no gesture): its card.
+    if (e.pointerType !== "touch") {
+      const over = !gesture.current && !e.buttons ? (e.target as Element).closest?.("[data-item]")?.getAttribute("data-item") : null;
+      deviceCard.hover(over && byId.get(over)?.type === "device" ? over : null);
+    }
     if (extras.onMove(e)) return;
     if (editable && (tool === "pen" || tool === "eraser") && isHovering(e)) showHover(p);
     else if (hover) showHover(null);
@@ -1918,6 +1950,7 @@ export default function Whiteboard({
   }
   function onUp(e: ReactPointerEvent<SVGSVGElement>) {
     notePenActivity(e);
+    deviceCard.pressEnd();
     pointers.current.delete(e.pointerId);
     if (extras.onUp()) return;
     if (foreign(e)) return;
@@ -2140,6 +2173,19 @@ export default function Whiteboard({
     }
     if (extras.onKeyDown(e)) return;
     const mod = e.metaKey || e.ctrlKey;
+    // The card of a device: I shows it for the selected device, Escape ends it.
+    if (e.key === "Escape" && deviceCard.card) {
+      e.preventDefault();
+      deviceCard.dismiss();
+      return;
+    }
+    if (e.key.toLowerCase() === "i" && !mod && !e.altKey && selection.size === 1 && byId.get([...selection][0])?.type === "device") {
+      e.preventDefault();
+      const id = [...selection][0];
+      if (deviceCard.card?.id === id) deviceCard.dismiss();
+      else deviceCard.open(id, "key");
+      return;
+    }
     if (e.key === " ") {
       setSpace(true);
       e.preventDefault();
@@ -2499,9 +2545,32 @@ export default function Whiteboard({
   );
   // Details of a rack, device or cable: beside the board, on phones a sheet.
   function openRackDetails() {
+    deviceCard.dismiss();
     if (layout.dock) return setDiagram({ kind: "rack-details" });
     window.dispatchEvent(new Event("flowplan-rack-details"));
     requestAnimationFrame(() => document.querySelector<HTMLInputElement>(".wb-rack-inspector input, .wb-rack-inspector select")?.focus());
+  }
+  function deviceCardView() {
+    const open = deviceCard.card;
+    const item = open ? byId.get(open.id) : undefined;
+    const rect = svg.current?.getBoundingClientRect();
+    if (!open || !item || item.type !== "device" || !rect) return null;
+    const a = toScreen({ x: item.x, y: item.y }),
+      b = toScreen({ x: item.x + item.w, y: item.y + item.h });
+    return (
+      <DeviceCard
+        item={item}
+        items={items}
+        box={{ left: rect.left + a.x, top: rect.top + a.y, right: rect.left + b.x, bottom: rect.top + b.y }}
+        focusFirst={open.via === "key"}
+        onPointerEnter={deviceCard.keep}
+        onPointerLeave={deviceCard.leave}
+        onClose={(refocus) => {
+          deviceCard.dismiss();
+          if (refocus) container.current?.focus({ preventScroll: true });
+        }}
+      />
+    );
   }
   const boardApi: BoardApi = {
     pageId,
@@ -3483,6 +3552,7 @@ export default function Whiteboard({
         onPointerLeave={() => {
           queueCursor(null);
           setHover(null);
+          deviceCard.hover(null);
         }}
         onDoubleClick={onDoubleClick}
       >
@@ -3519,6 +3589,7 @@ export default function Whiteboard({
                   pages={pages}
                   editing={editing === item.id ? "" : undefined}
                   cards={rowCards}
+                  deviceCards
                 />
               </g>
             ))}
@@ -4766,6 +4837,7 @@ export default function Whiteboard({
       </Modal>
       <DiagramPanels board={boardApi} panel={diagram} />
       <RackInspector board={boardApi} beside={diagram?.kind === "library" || diagram?.kind === "racks"} />
+      {deviceCardView()}
     </div>
     </BoardContext.Provider>
   );

@@ -126,6 +126,7 @@ function ShapeBody({
   pages,
   editing,
   cards,
+  deviceCards,
 }: {
   item: WhiteboardItem;
   items: Map<string, WhiteboardItem>;
@@ -133,6 +134,8 @@ function ShapeBody({
   editing?: ReactNode;
   // Live data of database records shown as cards.
   cards?: Map<string, RowCard>;
+  // The board shows its own card for devices instead of their tooltip.
+  deviceCards?: boolean;
 }) {
   const t = useT();
   const transform = `translate(${item.x} ${item.y})${item.rotation ? ` rotate(${item.rotation} ${item.w / 2} ${item.h / 2})` : ""}`;
@@ -143,7 +146,7 @@ function ShapeBody({
     case "rack":
       return <g transform={`translate(${item.x} ${item.y})`} dangerouslySetInnerHTML={{ __html: rackSvg(item, rackContext(items), t) }} />;
     case "device":
-      return <g transform={`translate(${item.x} ${item.y})`} dangerouslySetInnerHTML={{ __html: deviceSvg(item, items, rackContext(items), t) }} />;
+      return <g transform={`translate(${item.x} ${item.y})`} dangerouslySetInnerHTML={{ __html: deviceSvg(item, items, rackContext(items), t, { title: !deviceCards }) }} />;
     case "sticky":
       return (
         <g transform={transform}>

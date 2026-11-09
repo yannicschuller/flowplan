@@ -10,7 +10,7 @@ import { all, audit, id, one, run, lockFor } from "./db";
 import { HttpError } from "./auth";
 import { isGuest, requireMember, requirePage } from "./permissions";
 import { safeFetch } from "./safe-fetch";
-import { cleanDevice } from "./whiteboard-rack";
+import { cleanDevice, withoutAddresses } from "./whiteboard-rack";
 import { netboxToRacks, type NetboxData } from "./whiteboard-rack-netbox";
 import type { Identity } from "./types";
 
@@ -56,8 +56,9 @@ export async function saveRackTemplate(user: Identity, pageId: unknown, raw: unk
   const page = await boardPage(user, pageId, true);
   await requireMember(user, page.workspace_id, "editor");
   const input = saveInput.parse(raw);
-  const device = cleanDevice(input.device);
-  if (!device) throw new HttpError(400, "Ungültiges Gerät.");
+  const cleaned = cleanDevice(input.device);
+  if (!cleaned) throw new HttpError(400, "Ungültiges Gerät.");
+  const device = withoutAddresses(cleaned);
   await lockFor(`rack-templates:${page.workspace_id}`);
   if (((await one<{ n: number }>("SELECT COUNT(*) n FROM rack_device_templates WHERE workspace_id=?", page.workspace_id))?.n || 0) >= 500)
     throw new HttpError(409, "Dieser Arbeitsbereich hat schon 500 eigene Geräte.");
@@ -182,7 +183,7 @@ export async function fetchNetbox(raw: unknown, fetcher: NetboxFetch = defaultFe
   if (devices.length > MAX_DEVICES) throw new HttpError(400, TOO_LARGE);
   const deviceIds = devices.map((d) => d.id);
   const typeIds = [...new Set(devices.map((d) => (d.device_type as { id?: number } | undefined)?.id).filter((n): n is number => typeof n === "number"))];
-  const [deviceTypes, interfaces, frontPorts, rearPorts, consolePorts, powerPorts, powerOutlets, cables] = await Promise.all([
+  const [deviceTypes, interfaces, frontPorts, rearPorts, consolePorts, powerPorts, powerOutlets, cables, ipAddresses] = await Promise.all([
     byIds<NetboxData["deviceTypes"][number]>("dcim/device-types", "id", typeIds),
     byIds<NetboxData["interfaces"][number]>("dcim/interfaces", "device_id", deviceIds),
     byIds<NetboxData["frontPorts"][number]>("dcim/front-ports", "device_id", deviceIds),
@@ -191,10 +192,16 @@ export async function fetchNetbox(raw: unknown, fetcher: NetboxFetch = defaultFe
     byIds<NetboxData["powerPorts"][number]>("dcim/power-ports", "device_id", deviceIds),
     byIds<NetboxData["powerOutlets"][number]>("dcim/power-outlets", "device_id", deviceIds),
     byIds<NetboxData["cables"][number]>("dcim/cables", "device_id", deviceIds),
+    // The interfaces' IP addresses (#187): optional, a token without
+    // access to IPAM still imports everything else.
+    byIds<NonNullable<NetboxData["ipAddresses"]>[number]>("ipam/ip-addresses", "device_id", deviceIds).catch((error) => {
+      if (error instanceof HttpError && error.status === 400 && /Token/.test(error.message)) return [];
+      throw error;
+    }),
   ]);
   // A cable between two of the devices is listed for both of them.
   const unique = [...new Map(cables.map((c) => [c.id, c])).values()];
-  return { racks, devices, deviceTypes, interfaces, frontPorts, rearPorts, consolePorts, powerPorts, powerOutlets, cables: unique };
+  return { racks, devices, deviceTypes, interfaces, frontPorts, rearPorts, consolePorts, powerPorts, powerOutlets, cables: unique, ipAddresses };
 }
 export async function netboxImport(user: Identity, pageId: unknown, raw: unknown, fetcher?: NetboxFetch) {
   if (user.demo) throw new HttpError(403, "In der Demo nicht verfügbar. Registriere dich, um das zu nutzen.");

@@ -213,7 +213,16 @@
   min-width: 0;
   font-size: 12px;
 }
-.wb-rack-field > span:first-child {
+/* Text fields: spaced like the fields that are labels (globals.css). */
+.wb-rack-field.text {
+  margin-bottom: 18px;
+}
+.wb-rack-field > .wb-rack-label {
+  display: block;
+  margin: 0;
+}
+.wb-rack-field > span:first-child,
+.wb-rack-field > .wb-rack-label {
   color: var(--muted);
   font-weight: 500;
 }
@@ -686,4 +695,225 @@
   .wb-rack-port-main {
     grid-template-columns: 10px minmax(0, 1fr) 76px 70px auto;
   }
+}
+
+/* ---- network fields and roles (#187) ---- */
+.wb-field-error {
+  color: var(--red, #c92a2a);
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+.wb-rack-form [aria-invalid="true"],
+.wb-rack-ports [aria-invalid="true"] {
+  border-color: var(--red, #c92a2a);
+}
+.wb-rack-roles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+}
+.wb-rack-roles:focus-within {
+  outline: 2px solid var(--blue);
+  outline-offset: -1px;
+}
+.wb-rack-form .wb-rack-roles input[type="text"] {
+  flex: 1 1 90px;
+  width: auto;
+  min-width: 90px;
+  padding: 2px 4px;
+  border: 0;
+  background: transparent;
+  outline: none;
+}
+.wb-rack-role,
+.wb-device-card-roles li {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+  padding: 1px 4px 1px 8px;
+  border-radius: 999px;
+  background: var(--blue-light);
+  color: var(--accent-strong, var(--blue));
+  font-size: 12px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.wb-rack-role button {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 999px;
+  color: inherit;
+}
+.wb-rack-role button:hover {
+  background: color-mix(in srgb, currentColor 14%, transparent);
+}
+.wb-rack-role-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.wb-rack-role-suggestions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 8px;
+  border: 1px dashed var(--border);
+  border-radius: 999px;
+  color: var(--secondary, var(--muted));
+  font-size: 12px;
+}
+.wb-rack-role-suggestions button:hover {
+  border-style: solid;
+  color: var(--text);
+}
+.wb-rack-port-extra.net {
+  grid-template-columns: 1fr 1fr;
+}
+.wb-rack-port-extra.net > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.wb-rack-port-extra.net .wb-field-error {
+  font-size: 11px;
+}
+
+/* ---- the device card on the board (#187) ---- */
+.wb-device-card {
+  position: fixed;
+  z-index: 40;
+  width: min(300px, calc(100vw - 16px));
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  border-radius: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  font-size: 12.5px;
+  line-height: 1.4;
+  text-align: start;
+}
+.wb-device-card:focus {
+  outline: none;
+}
+.wb-device-card:focus-visible {
+  outline: 2px solid var(--blue);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .wb-device-card {
+    animation: wb-device-card-in 0.14s ease-out;
+  }
+  @keyframes wb-device-card-in {
+    from {
+      opacity: 0;
+      transform: translateY(3px);
+    }
+  }
+}
+.wb-device-card-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+}
+.wb-device-card-head strong {
+  display: block;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.wb-device-card-head small {
+  color: var(--muted);
+}
+.wb-device-card-swatch {
+  width: 10px;
+  height: 30px;
+  margin-top: 2px;
+  border-radius: 3px;
+  background: #3b5bdb;
+}
+.wb-device-card-close,
+.wb-device-card-copy {
+  display: inline-flex;
+  padding: 4px;
+  border-radius: 6px;
+  color: var(--muted);
+}
+.wb-device-card-close:hover,
+.wb-device-card-copy:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.wb-device-card-roles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.wb-device-card-roles li {
+  padding: 1px 8px;
+}
+.wb-device-card dl {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+}
+.wb-device-card dl > div {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+.wb-device-card dt {
+  color: var(--muted);
+}
+.wb-device-card dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.wb-device-card-net {
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: var(--surface);
+}
+.wb-device-card-net dd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.wb-device-card-notes {
+  margin: 0;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+  color: var(--secondary, var(--muted));
+}
+[data-theme="dark"] .wb-field-error {
+  color: #ff8787;
+}
+[data-theme="dark"] .wb-rack-form [aria-invalid="true"],
+[data-theme="dark"] .wb-rack-ports [aria-invalid="true"] {
+  border-color: #ff8787;
+}
+.wb-rack-table-net {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
 }
