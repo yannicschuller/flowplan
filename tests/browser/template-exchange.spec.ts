@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { openSidebarTool } from "./sidebar-tools";
 import { readFileSync } from "node:fs";
 
 test("templates can be searched, exported as a file and imported again", async ({
@@ -34,7 +35,7 @@ test("templates can be searched, exported as a file and imported again", async (
   await page.goto(`/#page=${p.id}`);
   if (testInfo.project.name === "mobile")
     await page.locator(".topbar").getByRole("button", { name: "Navigation öffnen" }).click();
-  await page.getByRole("button", { name: "Vorlagen", exact: true }).click();
+  await openSidebarTool(page, "Vorlagen");
   const dialog = page.getByRole("dialog", { name: "Vorlagen" });
   await dialog.getByLabel("Vorlagen durchsuchen").fill(`Protokoll ${tag}`);
   const row = dialog.locator(".saved-template-row", {

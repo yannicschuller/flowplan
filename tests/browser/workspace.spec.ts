@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { openSidebarTool } from "./sidebar-tools";
 
 // The view's search: the "Suchen" chip turns into the field (and folds back
 // when it is left empty).
@@ -470,9 +471,7 @@ test("content archives download and restore through settings with files intact",
       .locator(".topbar")
       .getByRole("button", { name: "Navigation öffnen", exact: true })
       .click();
-  await page
-    .getByRole("button", { name: "Einstellungen", exact: true })
-    .click();
+  await openSidebarTool(page, "Einstellungen");
   // The landing page of the settings: the tile leads to the section.
   await page.getByRole("link", { name: /^Import & Export/ }).click();
   const downloadPromise = page.waitForEvent("download");
@@ -877,7 +876,7 @@ test("saved page templates create complete independent databases from the galler
       .locator(".topbar")
       .getByRole("button", { name: "Navigation öffnen", exact: true })
       .click();
-  await page.getByRole("button", { name: "Vorlagen", exact: true }).click();
+  await openSidebarTool(page, "Vorlagen");
   const gallery = page.getByRole("dialog", { name: "Vorlagen", exact: true });
   await gallery
     .locator(".utility-row")
@@ -1014,7 +1013,7 @@ test("saved template management renames, changes visibility, deletes and restore
       .locator(".topbar")
       .getByRole("button", { name: "Navigation öffnen", exact: true })
       .click();
-  await page.getByRole("button", { name: "Vorlagen", exact: true }).click();
+  await openSidebarTool(page, "Vorlagen");
   const gallery = page.getByRole("dialog", { name: "Vorlagen", exact: true });
   await gallery
     .getByRole("button", { name: `${name} bearbeiten`, exact: true })

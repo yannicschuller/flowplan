@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { openSidebarTool } from "./sidebar-tools";
 
 // The trash (#123, #124): pages with an emoji, a library icon or none line up;
 // a page is deleted permanently with its sub-pages after a confirmation that
@@ -80,7 +81,7 @@ test("template trash: delete permanently and empty", async ({ page }, testInfo) 
   }
   await page.goto("/#home");
   if (testInfo.project.name === "mobile") await page.locator(".topbar").getByRole("button", { name: "Navigation öffnen" }).click();
-  await page.getByRole("button", { name: "Vorlagen", exact: true }).first().click();
+  await openSidebarTool(page, "Vorlagen");
   const gallery = page.getByRole("dialog", { name: "Vorlagen", exact: true });
   await gallery.getByRole("checkbox", { name: /Vorlagen-Papierkorb/ }).check();
   await expect(gallery.getByText("Vorlagen im Papierkorb werden nach 30 Tagen endgültig gelöscht.")).toBeVisible();
