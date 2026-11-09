@@ -93,5 +93,5 @@ test("the new page dialog offers the journal type", async ({ page }) => {
   await page.request.post("/api/auth/demo", { headers: { origin } });
   await page.goto("/");
   await page.getByRole("button", { name: /Neue Seite/ }).first().click();
-  await expect(page.getByRole("button", { name: /Journal/ })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Neue Seite" }).getByRole("radio", { name: "Journal" })).toBeVisible();
 });

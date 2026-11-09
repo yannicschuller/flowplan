@@ -67,37 +67,41 @@ export function DatabaseKindPicker({
     },
     { id: "empty" as const, icon: Rows, label: t("Leer", "Empty"), hint: t("Nur ein Titel", "Only a title") },
   ];
+  const hint = kinds.find((kind) => kind.id === value)?.hint;
+  // "Art" with the kinds as one segmented row, the chosen one's fields as a
+  // line below; saved database templates follow as chips (the "New page"
+  // dialog, app/new-page-dialog.css).
   return (
-    <fieldset className="database-kinds">
-      <legend>{t("Art der Datenbank", "Kind of database")}</legend>
-      {kinds.map((kind) => (
-        <label key={kind.id} data-active={value === kind.id}>
-          <input type="radio" name="database-kind" checked={value === kind.id} onChange={() => onChange(kind.id)} />
-          <kind.icon size={18} />
-          <span>
-            <strong>{kind.label}</strong>
-            <small>{kind.hint}</small>
-          </span>
-        </label>
-      ))}
+    <fieldset className="np-kind" aria-label={t("Art der Datenbank", "Kind of database")}>
+      <span className="np-row-label" aria-hidden="true">
+        {t("Art", "Kind")}
+      </span>
+      <div className="segmented np-segmented">
+        {kinds.map((kind) => (
+          <label key={kind.id} data-active={value === kind.id} title={kind.hint}>
+            <input type="radio" name="database-kind" checked={value === kind.id} onChange={() => onChange(kind.id)} />
+            <kind.icon size={14} aria-hidden="true" />
+            {kind.label}
+          </label>
+        ))}
+      </div>
+      {hint && <small className="np-kind-hint">{hint}</small>}
       {templates.length > 0 && (
-        <>
-          <p className="database-kinds-heading">{t("Deine Vorlagen", "Your templates")}</p>
+        <div className="np-kind-templates">
+          <span className="np-kind-templates-heading">{t("Deine Vorlagen", "Your templates")}</span>
           {templates.map((template) => (
-            <label key={template.id} data-active={value === `template:${template.id}`}>
+            <label key={template.id} className="np-kind-template" data-active={value === `template:${template.id}`}>
               <input
                 type="radio"
                 name="database-kind"
                 checked={value === `template:${template.id}`}
                 onChange={() => onChange(`template:${template.id}`, template)}
               />
-              <Star size={18} />
-              <span>
-                <strong>{template.name}</strong>
-              </span>
+              <Star size={13} aria-hidden="true" />
+              {template.name}
             </label>
           ))}
-        </>
+        </div>
       )}
     </fieldset>
   );

@@ -1,0 +1,324 @@
+/* "Neue Seite" (components/new-page-dialog.tsx): the name on top, the kinds of
+   page as compact tiles, one line about the chosen one, its options in place
+   and the space as a row. The buttons stick to the bottom edge; on phones the
+   sheet ends at the on-screen keyboard and its middle scrolls. Only the
+   app's tokens (app/globals.css) and its controls (.button, .segmented,
+   .fp-select). */
+.modal.np-dialog {
+  --np-pad: 23px;
+  display: flex;
+  flex-direction: column;
+  width: min(480px, calc(100% - 32px));
+}
+.np-dialog > *,
+.np-form > * {
+  flex-shrink: 0;
+}
+.np-form {
+  display: flex;
+  flex-direction: column;
+  flex: 1 0 auto;
+}
+.np-name {
+  margin-bottom: 16px;
+}
+.np-name input {
+  font-size: 15px;
+  padding: 10px 12px;
+}
+.np-form .duplicate-hint {
+  margin: -6px 0 14px;
+}
+
+/* The kinds of page: compact tiles, four per row. */
+.np-types {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.np-type {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  height: 64px;
+  padding: 6px 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--secondary);
+  font-size: 12px;
+  font-weight: 550;
+  line-height: 1.2;
+  text-align: center;
+}
+.np-type svg {
+  width: 22px;
+  height: 22px;
+  color: var(--secondary);
+}
+.np-type span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+.np-type:hover {
+  background: var(--surface);
+}
+.np-type:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+.np-type.chosen {
+  border-color: var(--blue);
+  background: var(--blue-light);
+  box-shadow: inset 0 0 0 1px var(--blue);
+}
+.np-type.chosen svg,
+.np-type.chosen span {
+  color: var(--accent-strong);
+}
+
+/* One line about the chosen kind. */
+.np-desc {
+  margin: 10px 2px 0;
+  min-height: 19px;
+  font-size: 13px;
+  color: var(--muted);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* The chosen kind's options, below a line. */
+.np-options {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.np-options + .np-row {
+  margin-top: 12px;
+}
+
+/* Rows: the label on the start side, the control beside it. */
+.np-row,
+.np-kind {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 6px;
+  margin: 16px 0 0;
+  font-weight: 400;
+}
+.np-options .np-row,
+.np-options .np-kind {
+  margin: 0;
+}
+.np-kind {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+}
+.np-row-label {
+  font-weight: 500;
+  font-size: 13px;
+  color: var(--secondary);
+}
+.np-segmented {
+  width: 100%;
+  justify-self: stretch;
+}
+.np-segmented label {
+  flex: 1;
+  gap: 5px;
+  min-width: 0;
+  padding: 6px;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+.np-segmented label svg {
+  width: 14px;
+  height: 14px;
+}
+.np-segmented label:has(input:focus-visible) {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+.np-kind-hint {
+  grid-column: 2;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+}
+/* Saved database templates. */
+.np-kind-templates {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.np-kind-templates-heading {
+  font-size: 12px;
+  color: var(--muted);
+}
+.np-kind-template {
+  position: relative;
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--secondary);
+  cursor: pointer;
+}
+.np-kind-template[data-active="true"] {
+  border-color: var(--blue);
+  background: var(--blue-light);
+  color: var(--accent-strong);
+}
+.np-kind-template input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.np-kind-template:has(input:focus-visible) {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+.np-pdf {
+  margin: 0;
+  font-size: 13px;
+}
+
+/* The space: a folder in front of the value. */
+.np-select {
+  position: relative;
+  display: block;
+  min-width: 0;
+}
+.np-select > svg {
+  position: absolute;
+  inset-inline-start: 11px;
+  top: 50%;
+  z-index: 1;
+  translate: 0 -50%;
+  color: var(--muted);
+  pointer-events: none;
+}
+.np-select .fp-select {
+  width: 100%;
+  padding: 7px 10px;
+  padding-inline-start: 34px;
+  font-size: 13.5px;
+}
+
+/* The buttons stick to the bottom edge of the dialog. */
+.np-footer {
+  position: sticky;
+  bottom: calc(-1 * var(--np-pad));
+  z-index: 5;
+  margin: auto calc(-1 * var(--np-pad)) calc(-1 * var(--np-pad));
+  padding: 12px var(--np-pad) var(--np-pad);
+  background: var(--modal-bg, var(--bg));
+  border-top: 1px solid var(--border);
+}
+.np-space {
+  margin-bottom: 20px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .np-type {
+    transition: none;
+  }
+}
+
+@media (max-width: 600px) {
+  .modal.modal-sheet.np-dialog {
+    --np-pad: 20px;
+    width: 100%;
+  }
+  .np-footer {
+    bottom: calc(-20px - var(--safe-bottom, 0px));
+    margin-inline: calc(-20px - var(--safe-left, 0px)) calc(-20px - var(--safe-right, 0px));
+    margin-bottom: calc(-20px - var(--safe-bottom, 0px));
+    padding: 12px calc(20px + var(--safe-right, 0px)) calc(14px + var(--safe-bottom, 0px)) calc(20px + var(--safe-left, 0px));
+  }
+  /* 16 px: iOS zooms into smaller fields on focus. */
+  .np-name input {
+    font-size: 16px;
+  }
+  .np-footer .button {
+    flex: 1;
+    padding: 11px 14px;
+  }
+  .np-type {
+    height: 66px;
+  }
+  .np-type span {
+    font-size: 11.5px;
+  }
+  .np-segmented label {
+    padding: 7px 4px;
+    font-size: 12px;
+  }
+  .np-segmented label svg {
+    display: none;
+  }
+  /* Phones stack the kind of database: the label above, the control at
+     full width. */
+  .np-kind {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .np-kind-hint,
+  .np-kind-templates {
+    grid-column: 1;
+  }
+  .np-row {
+    grid-template-columns: 56px minmax(0, 1fr);
+  }
+  .np-desc {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  /* The on-screen keyboard is open (useSoftKeyboard, components/mobile-tab-
+     bar.tsx): the sheet reaches from just below the top down to the
+     keyboard – placed from the top like the docked toolbar, since iOS
+     resolves bottom: against the height from before the keyboard (#120).
+     The buttons stay right above the keyboard, the middle scrolls. */
+  html.keyboard-docked .modal.modal-sheet.np-dialog {
+    --np-top: max(calc(var(--safe-top, 0px) + 12px), calc(var(--keyboard-visible-end) - 92dvh));
+    top: var(--np-top);
+    bottom: auto;
+    height: calc(var(--keyboard-visible-end) - var(--np-top));
+    max-height: none;
+    padding-bottom: 20px;
+  }
+  html.keyboard-docked .np-dialog .np-footer {
+    bottom: -20px;
+    margin-bottom: -20px;
+    padding-bottom: 12px;
+  }
+  /* Room for the round "Hide keyboard" button at the right edge. */
+  html.keyboard-docked:has(.hide-keyboard-fab) .np-dialog .np-footer {
+    padding-right: calc(64px + var(--safe-right, 0px));
+  }
+}

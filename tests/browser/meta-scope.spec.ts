@@ -88,7 +88,7 @@ test("a template of one space used in another brings its tags along as chosen", 
   await page.getByRole("button", { name: /Neue Seite/ }).first().click();
   const create = page.getByRole("dialog", { name: "Neue Seite" });
   await create.getByRole("combobox", { name: "Bereich", exact: true }).selectOption({ label: other.name });
-  await create.getByRole("button", { name: /Aus Vorlage/ }).click();
+  await create.getByRole("radio", { name: /Aus Vorlage/ }).click();
   const gallery = page.getByRole("dialog", { name: "Vorlagen" });
   // Only the target space's and the workspace's templates at first.
   const row = gallery.locator(".saved-template-row", { hasText: `Angebot ${stamp}` });
