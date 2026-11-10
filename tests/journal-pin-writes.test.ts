@@ -58,6 +58,23 @@ await act({ action: "journal.relock", pageId: journal });
 const unlock = async (who: Identity) => await act({ action: "journal.unlock", pageId: journal, pin: PIN }, who);
 const relock = async (who: Identity) => await act({ action: "journal.relock", pageId: journal }, who);
 
+test("no new page below a locked journal, none moved into it", async () => {
+  assert.equal(await status(() => create({ title: "Eingeschleust", parentId: journal }, member)), 423);
+  assert.equal(await status(() => create({ title: "Eingeschleust", parentId: note }, member)), 423);
+  const mine = await create({ title: "Meine Seite" }, member);
+  assert.equal(await status(() => act({ action: "page.move", pageId: mine, parentId: journal }, member)), 423);
+  assert.equal(await status(() => act({ action: "page.move", pageId: mine, targetId: note, placement: "after" }, member)), 423);
+  assert.equal(await status(() => act({ action: "page.moveCheck", pageId: mine, parentId: journal }, member)), 423);
+  assert.equal((await page(mine)).parent_id, null);
+  // With the PIN both work.
+  await unlock(member);
+  const child = await create({ title: "Mit PIN" , parentId: journal }, member);
+  assert.equal((await page(child)).parent_id, journal);
+  await act({ action: "page.move", pageId: mine, parentId: journal }, member);
+  assert.equal((await page(mine)).parent_id, journal);
+  await relock(member);
+});
+
 test("no paragraph from an older version without the PIN", async () => {
   assert.equal(await status(() => act({ action: "snapshot.restoreBlock", pageId: note, snapshotId, text: "SECRET-NOTE" }, member)), 423);
   // No hint whether the text was there.
@@ -124,5 +141,35 @@ test("a synced block made on a journal day stays behind the PIN", async () => {
   // With the PIN it is offered again.
   await unlock(member);
   assert.equal(JSON.stringify(await listSyncedBlocks(member, wid)).includes("SECRET-OLD"), true);
+  await relock(member);
+});
+
+test("a page with a locked journal below it is not moved or trashed without the PIN", async () => {
+  const parent = await create({ title: "Eltern" }, member);
+  const inner = await create({ title: "Inneres Tagebuch", kind: "journal", parentId: parent });
+  await act({ action: "journal.lock", pageId: inner, pin: PIN });
+  await act({ action: "journal.relock", pageId: inner });
+  const other = await create({ title: "Anderswo" }, member);
+  assert.equal(await status(() => act({ action: "page.move", pageId: parent, parentId: other }, member)), 423);
+  assert.equal(await status(() => act({ action: "page.delete", pageId: parent }, member)), 423);
+  assert.equal((await page(parent)).parent_id, null);
+  assert.equal((await page(inner)).deleted_at, null);
+  await act({ action: "journal.unlock", pageId: inner, pin: PIN }, member);
+  await act({ action: "page.move", pageId: parent, parentId: other }, member);
+  await act({ action: "page.delete", pageId: parent }, member);
+  assert.ok((await page(inner)).deleted_at);
+});
+
+test("no bookmarks into a bookmarks database behind the PIN", async () => {
+  const saved = await act({ action: "page.fromShare", workspaceId: wid, spaceId: team, as: "bookmark", url: "https://example.org/eins" }, member);
+  await unlock(owner);
+  await act({ action: "page.move", pageId: saved.id, parentId: journal });
+  await relock(owner);
+  assert.equal(await status(() => act({ action: "page.fromShare", workspaceId: wid, spaceId: team, as: "bookmark", url: "https://example.org/zwei" }, member)), 423);
+  const html = '<DL><DT><A HREF="https://example.org/drei">Drei</A></DL>';
+  assert.equal(await status(() => act({ action: "bookmarks.import", workspaceId: wid, spaceId: team, html }, member)), 423);
+  await unlock(member);
+  await act({ action: "page.fromShare", workspaceId: wid, spaceId: team, as: "bookmark", url: "https://example.org/zwei" }, member);
+  assert.equal((await act({ action: "bookmarks.import", workspaceId: wid, spaceId: team, html }, member)).id, saved.id);
   await relock(member);
 });

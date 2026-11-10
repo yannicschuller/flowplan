@@ -679,6 +679,8 @@ async function moveDestination(user: Identity, p: Page, b: Record<string, unknow
   const destinationParent = parent
     ? (await requirePage(user, parent, true))
     : null;
+  // Not into a journal (or below one) behind a PIN the person has not entered.
+  if (destinationParent) await requireUnlocked(user, destinationParent);
   const sid: string =
     destinationParent?.space_id ||
     target?.space_id ||
@@ -1215,6 +1217,8 @@ async function runCommand(
         const parent = b.parentId ? uuid.parse(b.parentId) : null;
         if (parent) {
           const p = await requirePage(user, parent, true);
+          // Nothing new below a journal behind a PIN not entered.
+          await requireUnlocked(user, p);
           if (p.space_id !== sid)
             throw new HttpError(
               400,
@@ -1420,7 +1424,9 @@ async function runCommand(
           !["editor", "owner"].includes(await spaceRole(user, destination) || "")
         )
           throw new HttpError(403, "Keine Schreibrechte im Zielbereich.");
-        await forEachAsync(subtree, async (child) => await requirePage(user, child, true, true));
+        // Every page that goes along: editable, and behind no journal PIN
+        // the person has not entered (a journal further down).
+        await forEachAsync(subtree, async (child) => await requireUnlocked(user, await requirePage(user, child, true, true)));
         // Tags and definitions of the source space (or workspace) the
         // pages carry: mapped, copied or removed as chosen (`meta`), never
         // dropped silently (#136, lib/meta-scope-server.ts).
@@ -1705,7 +1711,9 @@ async function runCommand(
       case "page.delete": {
         const p = await write();
         const subtree = await descendants(p.id);
-        await forEachAsync(subtree, async (child) => await requirePage(user, child, true, true));
+        // Every page that goes along: editable, and behind no journal PIN
+        // the person has not entered (a journal further down).
+        await forEachAsync(subtree, async (child) => await requireUnlocked(user, await requirePage(user, child, true, true)));
         for (const child of subtree) {
           await run(
             "DELETE FROM publication_pages WHERE page_id=? OR root_id=?",
@@ -3332,7 +3340,8 @@ async function runCommand(
         if (b.as === "bookmark") {
           if (!safeLink) throw new HttpError(400, "Ein Lesezeichen braucht einen Link.");
           const db = await bookmarksDatabase(wid(), sid, user.id);
-          await requirePage(user, db, true);
+          // The bookmarks database may lie below a journal with a PIN.
+          await requireUnlocked(user, await requirePage(user, db, true));
           const saved = await addBookmarks(db, user.id, [
             { title: title.slice(0, 300), url: safeLink, note: text.slice(0, 2000), content: article },
           ]);
@@ -3379,7 +3388,7 @@ async function runCommand(
         const items = parseBookmarksHtml(z.string().max(20_000_000).parse(b.html));
         if (!items.length) throw new HttpError(400, "In der Datei wurden keine Lesezeichen gefunden.");
         const db = await bookmarksDatabase(wid(), sid, user.id);
-        await requirePage(user, db, true);
+        await requireUnlocked(user, await requirePage(user, db, true));
         const saved = await addBookmarks(db, user.id, items);
         result = { id: db, added: saved.added, skipped: saved.skipped };
         break;
