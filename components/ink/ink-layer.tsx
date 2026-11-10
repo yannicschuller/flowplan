@@ -546,6 +546,7 @@ export function InkLayer({
             strokeLinejoin="round"
           />
         )}
+        {laser.length > 0 && <circle className="ink-laser-dot" cx={laser[laser.length - 1].x} cy={laser[laser.length - 1].y} r={tolerance(6)} />}
         {showSelection && (
           <g className="ink-selection">
             <rect
