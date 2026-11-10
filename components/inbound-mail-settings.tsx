@@ -211,6 +211,14 @@ export function InboundMailSettings({ workspaceId, pages, onError }: { workspace
           })}
         </ul>
       )}
+      <div className="setting-row wide">
+        <p className="ws-note">
+          {t(
+            "Workflows mit „Nur geprüfte Absender“ starten nur, wenn die Administration INBOUND_MAIL_AUTHSERV_ID setzt – die Kennung, mit der der eigene Mailserver oder Anbieter seinen Authentication-Results-Header beginnt.",
+            "Workflows set to “Verified senders only” start only once the administrators set INBOUND_MAIL_AUTHSERV_ID – the id your own mail server or provider starts its Authentication-Results header with.",
+          )}
+        </p>
+      </div>
       {data && !data.imap && (
         <div className="setting-row wide">
           <p className="ws-note">

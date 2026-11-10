@@ -8,10 +8,13 @@
 // own) proves nothing about From and stays "unknown"; any failure of the
 // From domain is "fail".
 //
-// Which header counts: an attacker can put an Authentication-Results header
-// into the message; the receiving server adds its own on top. With
-// INBOUND_MAIL_AUTHSERV_ID only headers of that server count; without, only
-// the topmost one. No database access here.
+// Which header counts: an attacker can put Authentication-Results headers
+// into the message; the receiving server adds its own on top (RFC 8601).
+// With INBOUND_MAIL_AUTHSERV_ID only the topmost header of that server
+// counts – a forged one with the same id further down adds nothing. Without
+// it nothing tells the server's header from the sender's (a server may add
+// none), so a pass never counts: the topmost header can only make it "fail".
+// No database access here.
 
 export type MailVerdict = "pass" | "fail" | "unknown";
 
@@ -50,7 +53,8 @@ export function verdictFromResults(results: Result[], from: string): MailVerdict
   const fromDomain = domainOf(from);
   const dmarc = results.find((r) => r.method === "dmarc");
   if (dmarc) {
-    if (dmarc.result === "pass") return "pass";
+    // A pass only for the From domain (header.from) – else it says nothing about From.
+    if (dmarc.result === "pass" && aligned(domainOf(dmarc.props["header.from"] || ""), fromDomain)) return "pass";
     if (dmarc.result === "fail") return "fail";
   }
   let pass = false,
@@ -75,8 +79,12 @@ export function mailVerdict(headers: Map<string, string[]> | [string, string][],
   const all = (name: string) =>
     headers instanceof Map ? headers.get(name) || [] : headers.filter(([k]) => String(k).toLowerCase() === name).map(([, v]) => String(v));
   const values = all("authentication-results").map(parseAuthResults);
-  const trusted = authservId ? values.filter((v) => v.authserv === authservId) : values.slice(0, 1);
-  if (trusted.length) return verdictFromResults(trusted.flatMap((v) => v.results), from);
+  if (authservId) {
+    const own = values.find((v) => v.authserv === authservId);
+    if (own) return verdictFromResults(own.results, from);
+  } else if (values.length) {
+    return verdictFromResults(values[0].results, from) === "fail" ? "fail" : "unknown";
+  }
   // Mailgun's own headers: a failure counts, a pass cannot be aligned.
   const mailgun = [...all("x-mailgun-spf"), ...all("x-mailgun-dkim-check-result")].map((v) => v.trim().toLowerCase());
   if (mailgun.some((v) => v === "fail")) return "fail";
