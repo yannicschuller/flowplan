@@ -243,7 +243,12 @@ export function PlaceholderPicker({ ctx, onPick, onClose }: { ctx: PickerContext
   const search = useRef<HTMLInputElement>(null);
   useEffect(() => search.current?.focus(), []);
   useEffect(() => setActive(0), [query]);
-  useEffect(() => document.getElementById(`${list}-${active}`)?.scrollIntoView({ block: "nearest" }), [active, list]);
+  // A block, not an arrow's value: newer Chromium (Electron 45, Chrome 156)
+  // returns a Promise from scrollIntoView, and an effect's return value is
+  // its cleanup – React called the Promise when the picker closed (#182).
+  useEffect(() => {
+    document.getElementById(`${list}-${active}`)?.scrollIntoView({ block: "nearest" });
+  }, [active, list]);
   const key = (e: KeyboardEvent) => {
     if (e.key === "ArrowDown") setActive((a) => Math.min(items.length - 1, a + 1));
     else if (e.key === "ArrowUp") setActive((a) => Math.max(0, a - 1));
