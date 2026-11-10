@@ -723,11 +723,12 @@ export const commandActions: ActionDoc[] = [
     action: "notebook.sheet.add",
     summary: "Add sheets to a notebook page",
     description:
-      "Needs editor rights. Adds `count` (default 1) empty sheets after the sheet `after` (null or missing: at the end), optionally with their own `paper` (template blank, lined-college, lined-wide, grid, dotted, cornell, music; size a4 or letter; orientation portrait or landscape; color light or dark). The ink of a sheet is read and written with GET/POST /api/pages/{id}/ink?surface={sheetId}. Other notebook actions: notebook.sheet.duplicate {sheetId}, notebook.sheet.delete {sheetId}, notebook.sheet.move {order}, notebook.sheet.paper {sheetIds, paper|null}, notebook.paper {paper, all?}, notebook.import {fileId, pages: [{width, height}], after?} – all answer with the notebook's paper and sheets.",
+      "Needs editor rights. Adds `count` (default 1) empty sheets after the sheet `after` (null or missing: at the end; `at` = start: before the first sheet), optionally with their own `paper` (template blank, lined-college, lined-wide, grid, dotted, cornell, music; size a4 or letter; orientation portrait or landscape; color light or dark). The ink of a sheet is read and written with GET/POST /api/pages/{id}/ink?surface={sheetId}. Other notebook actions: notebook.sheet.duplicate {sheetId}, notebook.sheet.delete {sheetId}, notebook.sheet.move {order}, notebook.sheet.paper {sheetIds, paper|null}, notebook.paper {paper, all?}, notebook.import {fileId (a PDF attached to the page), pages: [{width, height}] (at most 500), after? or at = start, replaceEmpty?} – each PDF page becomes a sheet with that page as background; all answer with the notebook's paper and sheets.",
     input: z.object({
       action: z.literal("notebook.sheet.add"),
       pageId: uuid,
       after: z.string().max(40).nullable().optional(),
+      at: z.literal("start").optional(),
       count: z.number().int().min(1).max(50).optional(),
       paper: z
         .object({

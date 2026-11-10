@@ -143,7 +143,7 @@ test("a PDF becomes a notebook: one sheet per page, ink on top, exported again",
   const controls = page.getByRole("toolbar", { name: "Notizbuch" });
   await controls.getByRole("button", { name: "Weitere Aktionen" }).click();
   const chooser = page.waitForEvent("filechooser");
-  await page.getByRole("menuitem", { name: "PDF importieren …" }).click();
+  await page.getByRole("menuitem", { name: "PDF einfügen …" }).click();
   await (await chooser).setFiles({ name: "Skript.pdf", mimeType: "application/pdf", buffer: samplePdf(["Kapitel eins", "Kapitel zwei", "Kapitel drei"]) });
   // The empty first sheet made way for the three pages.
   await expect(page.locator(".notebook-sheet")).toHaveCount(3, { timeout: 20_000 });
@@ -171,6 +171,16 @@ test("a PDF becomes a notebook: one sheet per page, ink on top, exported again",
   const pdf = await PDFDocument.load(readFileSync((await (await download).path())!));
   expect(pdf.getPageCount()).toBe(3);
   expect(pdf.getPage(1).getWidth()).toBe(612);
+  // A second PDF goes in front of the first sheet; the written sheet keeps its ink.
+  await thumbs.getByRole("button", { name: "Aktionen für Blatt 1" }).click();
+  const front = page.waitForEvent("filechooser");
+  await page.getByRole("menuitem", { name: "PDF davor einfügen …" }).click();
+  await (await front).setFiles({ name: "Deckblatt.pdf", mimeType: "application/pdf", buffer: samplePdf(["Deckblatt", "Inhalt"]) });
+  await expect(page.locator(".notebook-sheet")).toHaveCount(5, { timeout: 20_000 });
+  const after = await (await page.request.get(`/api/pages/${id}`)).json();
+  expect(after.notebook.sheets.map((s: { background: { page: number } }) => s.background.page)).toEqual([1, 2, 1, 2, 3]);
+  expect(after.notebook.sheets[0].background.file).not.toBe(after.notebook.sheets[2].background.file);
+  await expect(strokes(sheet(page, 3))).toHaveCount(1);
 });
 
 test("drawing block in a document: /zeichnen, the pen draws, it is saved and comes back", async ({ page }, info) => {

@@ -11,7 +11,7 @@
 import { z } from "zod";
 import { all, id, one, run } from "./db";
 import { HttpError } from "./auth";
-import { cleanPaper, DEFAULT_PAPER, fullPaper, insertAfter, sameSheets, type Paper, type PaperOverride } from "./notebook-paper";
+import { cleanPaper, DEFAULT_PAPER, fullPaper, insertAfter, MAX_IMPORT_PAGES, MAX_SHEETS, sameSheets, type Paper, type PaperOverride } from "./notebook-paper";
 import { copyPageInk, deleteSurface, mayEditInk, pageInkDocs, writeSurface } from "./page-ink-store";
 import { emptyInk, hasInk, inkText, parseInk, serializeInk, type InkDoc } from "./ink/model";
 import { cleanRecognizedText } from "./ink/recognized";
@@ -19,9 +19,7 @@ import { isPdfFile } from "./ink-store";
 import type { Identity, Page } from "./types";
 import { forEachAsync } from "./each-async";
 
-export const MAX_SHEETS = 1000;
-// Pages one PDF import may bring.
-export const MAX_IMPORT_PAGES = 500;
+export { MAX_SHEETS, MAX_IMPORT_PAGES };
 
 export type NotebookBackground = { file: string; page: number; width: number; height: number };
 export type NotebookSheet = { id: string; position: number; paper: PaperOverride; background: NotebookBackground | null };
@@ -107,6 +105,22 @@ export function pdfImportSheets(fileId: string, sizes: { width: number; height: 
 const sheetId = z.string().regex(/^[\w-]{1,40}$/);
 const after = sheetId.nullable().optional();
 
+// Where new sheets go: after a sheet, before the first one, or at the end.
+export type SheetPlace = { after: string } | "start" | "end";
+export function sheetPlace(b: Record<string, unknown>): SheetPlace {
+  if (b.at === "start") return "start";
+  const previous = after.parse(b.after ?? null) ?? null;
+  return previous ? { after: previous } : "end";
+}
+// `ids` with the new sheets `created` (in their order) at `place`; an
+// unknown sheet to follow puts them at the end.
+export function placeSheets(ids: string[], created: string[], place: SheetPlace): string[] {
+  const fresh = new Set(created);
+  const list = ids.filter((x) => !fresh.has(x));
+  const index = place === "start" ? 0 : place === "end" ? list.length : list.indexOf(place.after) + 1 || list.length;
+  return [...list.slice(0, index), ...created, ...list.slice(index)];
+}
+
 // The notebook commands (lib/api.ts); `page` is checked for editing.
 export async function notebookCommand(user: Identity, page: Page, action: string, b: Record<string, unknown>) {
   if (page.kind !== "notebook") throw new HttpError(400, "Kein Notizbuch.");
@@ -132,17 +146,11 @@ export async function notebookCommand(user: Identity, page: Page, action: string
     case "notebook.sheet.add": {
       const count = z.number().int().min(1).max(50).default(1).parse(b.count ?? undefined);
       await room(count);
-      let previous = after.parse(b.after ?? null) ?? null;
-      if (previous) await known(previous);
-      let ids = await order(page.id);
+      const place = sheetPlace(b);
+      if (typeof place === "object") await known(place.after);
       const created: string[] = [];
-      for (let i = 0; i < count; i++) {
-        const sid = await insertSheet(page.id, cleanPaper(b.paper));
-        ids = insertAfter(ids, sid, previous);
-        previous = sid;
-        created.push(sid);
-      }
-      await writeOrder(page.id, ids);
+      for (let i = 0; i < count; i++) created.push(await insertSheet(page.id, cleanPaper(b.paper)));
+      await writeOrder(page.id, placeSheets(await order(page.id), created, place));
       result.created = created;
       break;
     }
@@ -190,19 +198,15 @@ export async function notebookCommand(user: Identity, page: Page, action: string
         .parse(b.pages);
       await room(sizes.length);
       const backgrounds = pdfImportSheets(file.id, sizes);
-      let previous = after.parse(b.after ?? null) ?? null;
-      if (previous) await known(previous);
+      // Before the first sheet, after any sheet or at the end.
+      const place = sheetPlace(b);
+      if (typeof place === "object") await known(place.after);
       // A fresh notebook (one empty sheet) becomes the PDF.
       const sheets = await notebookSheets(page.id);
       const replace = b.replaceEmpty === true && sheets.length === 1 && !sheets[0].background && !hasInk((await pageInkDocs(page.id)).get(sheets[0].id)?.doc);
-      let ids = await order(page.id);
       const created: string[] = [];
-      for (const background of backgrounds) {
-        const sid = await insertSheet(page.id, {}, background);
-        ids = insertAfter(ids, sid, previous);
-        previous = sid;
-        created.push(sid);
-      }
+      for (const background of backgrounds) created.push(await insertSheet(page.id, {}, background));
+      let ids = placeSheets(await order(page.id), created, place);
       if (replace) {
         await run("DELETE FROM notebook_sheets WHERE id=?", sheets[0].id);
         await deleteSurface(page.id, sheets[0].id);

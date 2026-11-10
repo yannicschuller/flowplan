@@ -100,7 +100,9 @@ locked pages). The stored document has one page key: the surface.
 
 Notebook structure (sheets, order, paper, PDF import) goes through the
 command API: `notebook.sheet.add`, `.duplicate`, `.delete`, `.move`,
-`.paper`, `notebook.paper`, `notebook.import` (`lib/notebook.ts`).
+`.paper`, `notebook.paper`, `notebook.import` (`lib/notebook.ts`). New
+sheets and inserted PDFs go after the sheet `after`, at the end (`after`
+null) or before the first sheet (`at: "start"`), see `placeSheets`.
 
 ## Handwriting recognition (iPhone/iPad app)
 

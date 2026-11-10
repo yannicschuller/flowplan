@@ -47,14 +47,22 @@ import {
   PAPER_TEMPLATES,
   paperLayout,
   paperSize,
+  MAX_IMPORT_PAGES,
+  MAX_SHEETS,
   type Paper,
   type PaperOverride,
 } from "@/lib/notebook-paper";
 import type { NotebookPayload, NotebookSheet } from "@/lib/notebook";
 import { idempotencyHeaders } from "@/lib/idempotency-key";
+import { Select } from "../select";
+import { stepZoom } from "@/lib/pinch-zoom";
+import { usePinchZoom } from "./use-pinch-zoom";
 
 export type { NotebookPayload };
 type CommandAnswer = { paper: Paper; sheets: NotebookSheet[]; created?: string[]; ink?: Record<string, { doc: InkDoc; version: number }> };
+// Where new sheets go (lib/notebook.ts sheetPlace): before the first sheet,
+// after a sheet, or at the end (after: null).
+type Place = { at: "start" } | { after: string | null };
 
 
 const sizeOf = (paper: Paper, sheet: Pick<NotebookSheet, "paper" | "background">): PageSize =>
@@ -141,6 +149,8 @@ export default function NotebookView({
   const [current, setCurrent] = useState(sheets[0]?.id || "");
   const currentRef = useRef(current);
   currentRef.current = current;
+  const sheetsRef = useRef(sheets);
+  sheetsRef.current = sheets;
   const onScroll = useCallback(() => {
     const el = scroller.current;
     if (!el) return;
@@ -156,9 +166,11 @@ export default function NotebookView({
     setCurrent(sheetId);
     if (focus) el.focus({ preventScroll: true });
   }, []);
-  const changeZoom = useCallback((next: number) => setZoom(Math.min(ZOOMS.max, Math.max(ZOOMS.min, Math.round(next * 4) / 4))), []);
-  const onPan = useCallback((dx: number, dy: number) => scroller.current?.scrollBy(dx, dy), []);
-  const onZoom = useCallback((factor: number) => setZoom((z) => Math.min(ZOOMS.max, Math.max(ZOOMS.min, Math.round(z * factor * 4) / 4))), []);
+  // Buttons and keys go in steps; two fingers and trackpads zoom freely,
+  // anchored where they pinch, and two fingers pan (use-pinch-zoom.ts).
+  const zoomStep = useCallback((direction: 1 | -1) => setZoom((z) => stepZoom(z, direction, ZOOMS.step, ZOOMS)), []);
+  const sheetsBox = useRef<HTMLDivElement>(null);
+  usePinchZoom({ scroller, content: sheetsBox, sheetSelector: ".notebook-sheet", zoom, setZoom, limits: ZOOMS });
 
   // ---- Thumbnails ----
   const [thumbs, setThumbs] = useState(false);
@@ -207,8 +219,8 @@ export default function NotebookView({
     [apply, onError, pageId],
   );
   const addSheet = useCallback(
-    async (after: string | null) => {
-      const answer = await run({ action: "notebook.sheet.add", after });
+    async (after: string | null, place: Place = { after }) => {
+      const answer = await run({ action: "notebook.sheet.add", ...place });
       const created = answer?.created?.[0];
       if (created) requestAnimationFrame(() => show(created));
     },
@@ -267,9 +279,28 @@ export default function NotebookView({
 
   // ---- PDF import and export ----
   const fileInput = useRef<HTMLInputElement>(null);
+  // Where the PDF chosen next goes; the dialog that asks.
+  const pdfPlace = useRef<Place>({ after: null });
+  const [inserting, setInserting] = useState<string | null>(null);
+  const choosePdf = (place: Place) => {
+    pdfPlace.current = place;
+    fileInput.current?.click();
+  };
   const importPdf = useCallback(
-    async (file: File) => {
-      setBusy(t("PDF wird importiert …", "Importing PDF …"));
+    async (file: File, place: Place = { after: currentRef.current || null }) => {
+      // Full notebooks take no more sheets: said before anything is uploaded.
+      const list = sheetsRef.current;
+      const fresh = list.length === 1 && !list[0].background && !editor.docRef.current.pages[list[0].id]?.length;
+      const room = Math.min(MAX_IMPORT_PAGES, MAX_SHEETS - list.length + (fresh ? 1 : 0));
+      if (file.type !== "application/pdf" && !/\.pdf$/i.test(file.name)) {
+        onError(t("Bitte ein PDF wählen.", "Please choose a PDF."));
+        return;
+      }
+      if (room <= 0) {
+        onError(t(`Ein Notizbuch hat höchstens ${MAX_SHEETS} Blätter.`, `A notebook has at most ${MAX_SHEETS} sheets.`));
+        return;
+      }
+      setBusy(t("PDF wird hochgeladen …", "Uploading PDF …"));
       try {
         await sync.flush();
         const form = new FormData();
@@ -280,14 +311,16 @@ export default function NotebookView({
         if (!response.ok) throw new Error(uploaded.error || t("Das PDF konnte nicht hochgeladen werden.", "The PDF could not be uploaded."));
         if (uploaded.mime !== "application/pdf") throw new Error(t("Bitte ein PDF wählen.", "Please choose a PDF."));
         const doc = await loadPdf(uploaded.url);
-        const count = Math.min(doc.numPages, 500);
+        const count = Math.min(doc.numPages, room);
         const pages: PageSize[] = [];
         for (let i = 1; i <= count; i++) {
+          if (i === 1 || i % 10 === 0) setBusy(t(`Seiten werden gelesen … ${i} von ${count}`, `Reading pages … ${i} of ${count}`));
           const viewport = (await doc.getPage(i)).getViewport({ scale: 1 });
           pages.push({ width: viewport.width, height: viewport.height });
         }
-        const answer = await run({ action: "notebook.import", fileId: uploaded.id, pages, after: currentRef.current || null, replaceEmpty: true });
-        if (doc.numPages > count)
+        setBusy(t("Blätter werden angelegt …", "Adding sheets …"));
+        const answer = await run({ action: "notebook.import", fileId: uploaded.id, pages, ...place, replaceEmpty: true });
+        if (answer && doc.numPages > count)
           setNotice({ text: t(`Nur die ersten ${count} von ${doc.numPages} Seiten wurden übernommen.`, `Only the first ${count} of ${doc.numPages} pages were taken over.`) });
         const first = answer?.created?.[0];
         if (first) requestAnimationFrame(() => show(first));
@@ -297,8 +330,17 @@ export default function NotebookView({
         setBusy("");
       }
     },
-    [onError, pageId, run, show, sync, t],
+    [editor, onError, pageId, run, show, sync, t],
   );
+  // "Insert PDF": a notebook with nothing on it yet takes the PDF at once,
+  // otherwise the dialog asks where (after the current sheet first).
+  const insertPdf = () => {
+    const list = sheetsRef.current;
+    if (list.length === 1 && !list[0].background && !editor.docRef.current.pages[list[0].id]?.length) return choosePdf({ after: null });
+    const at = list.findIndex((s) => s.id === currentRef.current);
+    setInserting(at < 0 || at === list.length - 1 ? "end" : `after:${list[at].id}`);
+  };
+  const placeOf = (choice: string): Place => (choice === "start" ? { at: "start" } : choice.startsWith("after:") ? { after: choice.slice(6) } : { after: null });
   // "New notebook from PDF".
   useEffect(() => {
     if (!canEdit) return;
@@ -342,8 +384,6 @@ export default function NotebookView({
   };
 
   // ---- Keys ----
-  const sheetsRef = useRef(sheets);
-  sheetsRef.current = sheets;
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
@@ -354,10 +394,10 @@ export default function NotebookView({
       const index = Math.max(0, list.findIndex((s) => s.id === currentRef.current));
       if (mod && (event.key === "+" || event.key === "=")) {
         event.preventDefault();
-        setZoom((z) => Math.min(ZOOMS.max, z + ZOOMS.step));
+        zoomStep(1);
       } else if (mod && event.key === "-") {
         event.preventDefault();
-        setZoom((z) => Math.max(ZOOMS.min, z - ZOOMS.step));
+        zoomStep(-1);
       } else if (mod && event.key === "0") {
         event.preventDefault();
         setZoom(1);
@@ -376,7 +416,7 @@ export default function NotebookView({
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [addSheet, canEdit, show, sync]);
+  }, [addSheet, canEdit, show, sync, zoomStep]);
 
   // ---- Rendering ----
   const layouts = useMemo(
@@ -434,6 +474,12 @@ export default function NotebookView({
       <button type="button" role="menuitem" onClick={() => (setMenu(null), void addSheet(sheet.id))}>
         <Plus size={16} /> {t("Neues Blatt danach", "New sheet after")}
       </button>
+      <button type="button" role="menuitem" onClick={() => (setMenu(null), choosePdf(index === 0 ? { at: "start" } : { after: sheets[index - 1].id }))}>
+        <FilePdf size={16} /> {t("PDF davor einfügen …", "Insert PDF before …")}
+      </button>
+      <button type="button" role="menuitem" onClick={() => (setMenu(null), choosePdf({ after: sheet.id }))}>
+        <FilePdf size={16} /> {t("PDF danach einfügen …", "Insert PDF after …")}
+      </button>
       <button type="button" role="menuitem" onClick={() => (setMenu(null), void duplicate(sheet.id))}>
         <CopySimple size={16} /> {t("Duplizieren", "Duplicate")}
       </button>
@@ -472,11 +518,11 @@ export default function NotebookView({
           <span className="notebook-position" aria-live="polite">
             {t(`Blatt ${currentIndex + 1} von ${sheets.length}`, `Sheet ${currentIndex + 1} of ${sheets.length}`)}
           </span>
-          <button type="button" className="icon-button" aria-label={t("Verkleinern", "Zoom out")} title={t("Verkleinern", "Zoom out") + keyHints.suffix("Mod+-")} onClick={() => changeZoom(zoom - ZOOMS.step)}>
+          <button type="button" className="icon-button" aria-label={t("Verkleinern", "Zoom out")} title={t("Verkleinern", "Zoom out") + keyHints.suffix("Mod+-")} onClick={() => zoomStep(-1)}>
             <MagnifyingGlassMinus size={18} />
           </button>
           <span className="notebook-zoom">{Math.round(zoom * 100)} %</span>
-          <button type="button" className="icon-button" aria-label={t("Vergrößern", "Zoom in")} title={t("Vergrößern", "Zoom in") + keyHints.suffix("Mod+=")} onClick={() => changeZoom(zoom + ZOOMS.step)}>
+          <button type="button" className="icon-button" aria-label={t("Vergrößern", "Zoom in")} title={t("Vergrößern", "Zoom in") + keyHints.suffix("Mod+=")} onClick={() => zoomStep(1)}>
             <MagnifyingGlassPlus size={18} />
           </button>
           <button type="button" className="icon-button" aria-label={t("An Breite anpassen", "Fit to width")} title={t("An Breite anpassen", "Fit to width") + keyHints.suffix("Mod+0")} onClick={() => setZoom(1)}>
@@ -503,6 +549,12 @@ export default function NotebookView({
                   <button type="button" role="menuitem" onClick={() => (setMenu(null), void addSheet(null))}>
                     {t("Am Ende", "At the end")}
                   </button>
+                  <button type="button" role="menuitem" onClick={() => (setMenu(null), void addSheet(null, { at: "start" }))}>
+                    {t("Vor dem ersten Blatt", "Before the first sheet")}
+                  </button>
+                  <button type="button" role="menuitem" onClick={() => (setMenu(null), insertPdf())}>
+                    <FilePdf size={16} /> {t("PDF einfügen …", "Insert PDF …")}
+                  </button>
                 </div>
               )}
             </div>
@@ -527,8 +579,8 @@ export default function NotebookView({
             {menu === "more" && (
               <div ref={placeMenu} className="ink-menu notebook-menu notebook-menu-end" role="menu" aria-label={t("Weitere Aktionen", "More actions")}>
                 {canEdit && (
-                  <button type="button" role="menuitem" onClick={() => (setMenu(null), fileInput.current?.click())}>
-                    <FilePdf size={16} /> {t("PDF importieren …", "Import PDF …")}
+                  <button type="button" role="menuitem" onClick={() => (setMenu(null), insertPdf())}>
+                    <FilePdf size={16} /> {t("PDF einfügen …", "Insert PDF …")}
                   </button>
                 )}
                 <button type="button" role="menuitem" onClick={() => (setMenu(null), void exportPdf())}>
@@ -555,7 +607,7 @@ export default function NotebookView({
             onChange={(e) => {
               const file = e.target.files?.[0];
               e.target.value = "";
-              if (file) void importPdf(file);
+              if (file) void importPdf(file, pdfPlace.current);
             }}
           />
         </div>
@@ -668,7 +720,7 @@ export default function NotebookView({
           </nav>
         )}
         <div className="notebook-scroll" ref={scroller} onScroll={onScroll}>
-          <div className="notebook-sheets" style={{ width }}>
+          <div className="notebook-sheets" ref={sheetsBox} style={{ width }}>
             {sheets.map((sheet, index) => {
               const size = sizes.get(sheet.id)!;
               const look = layouts.get(sheet.id)!;
@@ -692,8 +744,6 @@ export default function NotebookView({
                     size={size}
                     editor={editor}
                     editing={canEdit}
-                    onPan={onPan}
-                    onZoom={onZoom}
                     onConvert={canEdit && canRecognize ? () => void convert(sheet.id) : undefined}
                     label={t(`Handschrift auf Blatt ${index + 1}`, `Handwriting on sheet ${index + 1}`)}
                   />
@@ -774,6 +824,50 @@ export default function NotebookView({
             </button>
             <button type="button" className="button primary" onClick={() => void savePaper()}>
               {t("Übernehmen", "Apply")}
+            </button>
+          </div>
+        </div>
+      </Modal>
+      <Modal open={!!inserting} onClose={() => setInserting(null)} title={t("PDF einfügen", "Insert PDF")} className="notebook-insert-dialog">
+        <div className="notebook-paper-form">
+          <p>
+            {t(
+              "Jede Seite des PDFs wird ein eigenes Blatt mit der Seite als Hintergrund; darauf schreibst du wie auf jedem Blatt.",
+              "Each page of the PDF becomes a sheet of its own with the page as background; you write on it like on any sheet.",
+            )}
+          </p>
+          <label className="notebook-insert-place">
+            {t("Einfügen", "Insert")}
+            <Select value={inserting || "end"} onChange={(e) => setInserting(e.target.value)}>
+              <option value="start">{t("Vor dem ersten Blatt", "Before the first sheet")}</option>
+              {sheets.slice(0, -1).map((s, i) => (
+                <option key={s.id} value={`after:${s.id}`}>
+                  {t(`Nach Blatt ${i + 1}`, `After sheet ${i + 1}`)}
+                </option>
+              ))}
+              <option value="end">{t(`Am Ende (nach Blatt ${sheets.length})`, `At the end (after sheet ${sheets.length})`)}</option>
+            </Select>
+          </label>
+          <p className="notebook-insert-hint">
+            {t(
+              `Höchstens ${MAX_IMPORT_PAGES} Seiten auf einmal, ${MAX_SHEETS} Blätter je Notizbuch.`,
+              `At most ${MAX_IMPORT_PAGES} pages at a time, ${MAX_SHEETS} sheets per notebook.`,
+            )}
+          </p>
+          <div className="modal-actions">
+            <button type="button" className="button" onClick={() => setInserting(null)}>
+              {t("Abbrechen", "Cancel")}
+            </button>
+            <button
+              type="button"
+              className="button primary"
+              onClick={() => {
+                const choice = inserting || "end";
+                setInserting(null);
+                choosePdf(placeOf(choice));
+              }}
+            >
+              <FilePdf size={16} /> {t("PDF wählen …", "Choose PDF …")}
             </button>
           </div>
         </div>

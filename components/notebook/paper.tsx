@@ -34,8 +34,19 @@ export function PdfBackground({ src, page, width, eager = false }: { src: string
   useEffect(() => {
     if (!visible || !canvas.current || width <= 0) return;
     let alive = true;
+    // Drawn aside and copied over when done: after a zoom the page shown
+    // before stays (stretched) until the sharp one is there, no blank flash.
+    const aside = document.createElement("canvas");
     loadPdf(src)
-      .then((doc) => (alive && canvas.current ? renderPage(doc, page, canvas.current, width) : undefined))
+      .then((doc) => (alive ? renderPage(doc, page, aside, width) : undefined))
+      .then(() => {
+        const el = canvas.current;
+        if (!alive || !el || !aside.width) return;
+        el.width = aside.width;
+        el.height = aside.height;
+        el.getContext("2d")?.drawImage(aside, 0, 0);
+        aside.width = aside.height = 0;
+      })
       .catch(() => alive && setFailed(true));
     return () => {
       alive = false;

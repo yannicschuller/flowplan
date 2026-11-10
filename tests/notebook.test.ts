@@ -15,7 +15,7 @@ const { run, id, one, all, tableNames, tableColumns } = await import("../lib/db"
 const { createWorkspace } = await import("../lib/seed");
 const { command, bootstrap, pageData } = await import("../lib/api");
 const paper = await import("../lib/notebook-paper");
-const { notebookData, notebookSheets, pdfImportSheets, notebookArchive, importNotebook, notebookText, MAX_SHEETS } = await import("../lib/notebook");
+const { notebookData, notebookSheets, pdfImportSheets, placeSheets, sheetPlace, notebookArchive, importNotebook, notebookText, MAX_SHEETS } = await import("../lib/notebook");
 const store = await import("../lib/page-ink-store");
 const { saveFileInk, saveFileRecognized, readFileInk } = await import("../lib/ink-store");
 const { processSearchIndex, searchWorkspace } = await import("../lib/search-index");
@@ -364,6 +364,56 @@ test("PDF import: each page becomes a sheet with that page as background", async
   await assert.rejects(async () => await nb(owner, { action: "notebook.import", pageId: pid, fileId: image, pages: [{ width: 1, height: 1 }] }), { status: 400 });
   await assert.rejects(async () => await nb(owner, { action: "notebook.import", pageId: pid, fileId: id(), pages: [{ width: 612, height: 792 }] }), { status: 404 });
   await assert.rejects(async () => await nb(owner, { action: "notebook.import", pageId: pid, fileId: fid, pages: [] }));
+});
+
+test("inserting a PDF into a notebook: before the first sheet, after any sheet, at the end", async () => {
+  // Where the new sheets go (pure).
+  assert.deepEqual(placeSheets(["a", "b", "c"], ["x", "y"], "start"), ["x", "y", "a", "b", "c"]);
+  assert.deepEqual(placeSheets(["a", "b", "c"], ["x", "y"], "end"), ["a", "b", "c", "x", "y"]);
+  assert.deepEqual(placeSheets(["a", "b", "c"], ["x"], { after: "b" }), ["a", "b", "x", "c"]);
+  assert.deepEqual(placeSheets(["a", "b", "c"], ["x"], { after: "c" }), ["a", "b", "c", "x"]);
+  // The new ids may already be in the list (as stored); an unknown sheet means the end.
+  assert.deepEqual(placeSheets(["x", "a", "y", "b"], ["x", "y"], { after: "a" }), ["a", "x", "y", "b"]);
+  assert.deepEqual(placeSheets(["a", "b"], ["x"], { after: "gone" }), ["a", "b", "x"]);
+  assert.deepEqual(sheetPlace({ at: "start", after: "a" }), "start");
+  assert.deepEqual(sheetPlace({ after: "a" }), { after: "a" });
+  assert.deepEqual(sheetPlace({ after: null }), "end");
+  assert.deepEqual(sheetPlace({}), "end");
+  assert.throws(() => sheetPlace({ after: "../x" }));
+
+  const pid = await create("Mitschrift");
+  const [first] = (await nb(owner, { action: "notebook.sheet.add", pageId: pid, count: 2 })).sheets;
+  // Handwriting on the first sheet: the notebook is not "empty", nothing is replaced.
+  await store.savePageInk(owner, pid, first.id, { base: 0, doc: on(first.id, pen(1)) });
+  const fid = id();
+  await run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fid, pid, "Folien.pdf", "application/pdf", 10, owner.id);
+  const size = { width: 612, height: 792 };
+  const page = (s: Sheets["sheets"][number]) => (s.background as { page: number } | null)?.page ?? 0;
+  const front = await nb(owner, { action: "notebook.import", pageId: pid, fileId: fid, at: "start", pages: [size, size], replaceEmpty: true });
+  assert.deepEqual(front.sheets.map(page), [1, 2, 0, 0, 0]);
+  assert.deepEqual(front.created, front.sheets.slice(0, 2).map((s) => s.id));
+  assert.equal(front.sheets[2].id, first.id, "the written sheet stays");
+  const middle = await nb(owner, { action: "notebook.import", pageId: pid, fileId: fid, after: first.id, pages: [size] });
+  assert.deepEqual(middle.sheets.map(page), [1, 2, 0, 1, 0, 0]);
+  const end = await nb(owner, { action: "notebook.import", pageId: pid, fileId: fid, pages: [size, size, size] });
+  assert.deepEqual(end.sheets.map(page), [1, 2, 0, 1, 0, 0, 1, 2, 3]);
+  assert.deepEqual(end.sheets.map((s) => s.position), [0, 1, 2, 3, 4, 5, 6, 7, 8]);
+  // The ink of the written sheet is untouched; the new sheets carry none.
+  const data = await notebookData(owner, (await one<Parameters<typeof notebookData>[1]>("SELECT * FROM pages WHERE id=?", pid))!);
+  assert.equal(data.sheets.find((s) => s.id === first.id)!.ink.pages[first.id].length, 1);
+  assert.equal(data.sheets.filter((s) => s.background && Object.keys(s.ink.pages).length).length, 0);
+  // Readers may not insert; an unknown sheet to follow is refused; the sheet limit holds.
+  await assert.rejects(async () => await nb(viewer, { action: "notebook.import", pageId: pid, fileId: fid, at: "start", pages: [size] }), { status: 403 });
+  await assert.rejects(async () => await nb(owner, { action: "notebook.import", pageId: pid, fileId: fid, after: "unknown-sheet", pages: [size] }), { status: 404 });
+  await assert.rejects(async () => await nb(owner, { action: "notebook.import", pageId: pid, fileId: fid, pages: Array.from({ length: 501 }, () => size) }));
+  for (let i = 0; i < 2; i++) await nb(owner, { action: "notebook.import", pageId: pid, fileId: fid, pages: Array.from({ length: 495 }, () => size) });
+  await assert.rejects(async () => await nb(owner, { action: "notebook.import", pageId: pid, fileId: fid, at: "start", pages: [size, size] }), { status: 413 });
+  // Blank sheets can go to the front as well.
+  const other = await create("Leer vorne");
+  const before = await notebookSheets(other);
+  const added = await nb(owner, { action: "notebook.sheet.add", pageId: other, at: "start" });
+  assert.equal(added.sheets[0].id, added.created![0]);
+  assert.equal(added.sheets[1].id, before[0].id);
 });
 
 test("PDF export: one page per sheet, paper and PDF backgrounds, ink as vectors", async () => {
