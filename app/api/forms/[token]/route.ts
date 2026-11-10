@@ -3,7 +3,7 @@ import { requireBodySize, sanitizeFileName, stripLocation, verifiedMime } from "
 import { z } from "zod";
 import { mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { activeUser, checkOrigin, HttpError, hash } from "@/lib/auth";
+import { activeUserFromRequest, checkOrigin, HttpError, hash, refuseReadToken } from "@/lib/auth";
 import { confirmFormAnswer, deleteFormDraft, formDraft, getForm, saveFormDraft, saveFormSubmission } from "@/lib/forms";
 import {
   FORM_FILE_BYTES,
@@ -13,6 +13,7 @@ import {
 import { one, run, id, transaction, onTransactionRollback } from "@/lib/db";
 import { enforceQuota } from "@/lib/instance-ops";
 import { takeAnonymousBudget } from "@/lib/anonymous-budget";
+import { enforceUserStorage } from "@/lib/user-limits";
 import { clientAddress } from "@/lib/client-address";
 import { contentLocale, withRequestLocale } from "@/lib/content-locale";
 import { createTicket, mailTicketLink } from "@/lib/service-desk";
@@ -27,8 +28,9 @@ async function handlePOST(
   try {
     await checkOrigin(req);
     const { token } = await params;
-    const user = await activeUser(),
-      form = await getForm(token, user);
+    const user = await activeUserFromRequest(req);
+    refuseReadToken(user);
+    const form = await getForm(token, user);
     const FORM_ANSWERS_PER_HOUR = 1000;
     const fileFields = form.fields.filter((f) => f.type === "files");
     let raw: string;
@@ -114,11 +116,14 @@ async function handlePOST(
         (await one<{ n: number }>("SELECT count(*) n FROM form_submissions WHERE form_token=? AND created_at>?", token, Date.now() - 3600000))?.n || 0;
       if (perForm >= FORM_ANSWERS_PER_HOUR)
         throw new HttpError(429, "Dieses Formular hat gerade viele Antworten erhalten. Bitte später erneut versuchen.");
-      // Files from anonymous answers draw on the form's daily budget, since
-      // nobody's personal storage limit applies to them.
+      // Every file counts against a bound: the submitter's personal storage
+      // limit when they are signed in; the form's daily budget for visitors
+      // without an account, and for anonymous forms, whose files belong to
+      // nobody (so no personal limit counts them later).
       let bytes = 0;
       for (const files of buffers.values()) for (const { data } of files) bytes += data.length;
-      if (bytes && !user) await takeAnonymousBudget(`form:${token}`, bytes);
+      if (bytes && user) await enforceUserStorage(user, bytes);
+      if (bytes && (!user || form.anonymous)) await takeAnonymousBudget(`form:${token}`, bytes);
       const dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads");
       if (buffers.size) mkdirSync(dir, { recursive: true });
       for (const [fieldId, files] of buffers) {
@@ -195,7 +200,8 @@ function draftHandler(kind: "get" | "put" | "delete") {
     try {
       if (kind !== "get") await checkOrigin(req);
       const { token } = await params;
-      const user = await activeUser();
+      const user = await activeUserFromRequest(req);
+      if (kind !== "get") refuseReadToken(user);
       if (kind === "get") return NextResponse.json({ draft: await formDraft(token, user) });
       if (kind === "delete") return NextResponse.json(await deleteFormDraft(token, user));
       requireBodySize(req, 110_000, "Entwurf zu groß.");

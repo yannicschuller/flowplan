@@ -69,6 +69,9 @@ test("a phone that switches accounts takes its push token along; unregister forg
   await registerMobileDevice(anna.user, anna.token, { installationId, platform: "android", pushToken: shared });
   await registerMobileDevice(ben.user, ben.token, { installationId, platform: "android", pushToken: shared });
   assert.equal((await one<{ user_id: string }>("SELECT user_id FROM push_subscriptions WHERE endpoint=?", `expo:${shared}`))!.user_id, ben.user.id);
+  // A read-only API token does not remove the app.
+  await assert.rejects(async () => await unregisterMobileDevice({ ...ben.user, apiScope: "read" }, installationId), (e: { status?: number }) => e.status === 403);
+  assert.ok(await one("SELECT id FROM mobile_devices WHERE user_id=?", ben.user.id));
   await unregisterMobileDevice(ben.user, installationId);
   assert.equal(await one("SELECT id FROM mobile_devices WHERE user_id=?", ben.user.id), undefined);
   assert.equal(await one("SELECT id FROM push_subscriptions WHERE endpoint=?", `expo:${shared}`), undefined);

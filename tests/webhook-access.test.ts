@@ -150,3 +150,63 @@ test("schema 92 seals plain secrets from before once; until then they are read a
   assert.ok(!after.includes(fresh.token) && !after.includes(fresh.secret));
   await assert.rejects(async () => await receiveGitWebhook(gitToken, new Headers({ "x-github-event": "ping", "x-hub-signature-256": signature }), body), /Nicht gefunden/, "the old address ends");
 });
+
+test("a stored Matrix or Slack token never goes to a new address or format without being entered again", async () => {
+  const bob = await person("Bob");
+  await run("INSERT INTO members VALUES(?,?,?)", wid, bob.id, "owner");
+  const credentials = async (hookId: string) => (await listWebhooks(bob, wid)).find((h) => h.id === hookId)!.credentials;
+  const address = async (hookId: string) => (await listWebhooks(bob, wid)).find((h) => h.id === hookId)!.url;
+  const matrix = await createWebhook(owner, {
+    workspaceId: wid,
+    url: "https://127.0.0.1:9/owner",
+    events: ["row.created"],
+    format: "matrix",
+    config: { matrixRoom: "!room:example.test" },
+    credentials: { token: "syt_DUMMY_owner_matrix" },
+  });
+  const slack = await createWebhook(owner, {
+    workspaceId: wid,
+    url: "https://127.0.0.1:9/unused",
+    events: ["row.created"],
+    format: "slack",
+    config: { slackChannel: "C0123" },
+    credentials: { token: "xoxb-DUMMY-owner-slack" },
+  });
+  const refused = (e: { status?: number; message?: string }) => e.status === 400 && /Zugangsdaten erneut/.test(e.message || "");
+  // Another address, or another format pointing elsewhere: refused, nothing changes.
+  await assert.rejects(
+    updateWebhook(bob, { workspaceId: wid, id: matrix.id, url: "https://127.0.0.1:9/bob", events: ["row.created"], format: "matrix", config: { matrixRoom: "!room:example.test" } }),
+    refused,
+  );
+  await assert.rejects(
+    updateWebhook(bob, { workspaceId: wid, id: slack.id, url: "https://127.0.0.1:9/bob", events: ["row.created"], format: "matrix", config: { matrixRoom: "!room:example.test" } }),
+    refused,
+  );
+  // Empty credentials keep the stored ones and count as none.
+  await assert.rejects(
+    updateWebhook(bob, { workspaceId: wid, id: matrix.id, url: "https://127.0.0.1:9/bob", events: ["row.created"], format: "matrix", config: { matrixRoom: "!room:example.test" }, credentials: {} }),
+    refused,
+  );
+  assert.equal(await address(matrix.id), "https://127.0.0.1:9/owner");
+  assert.equal(await address(slack.id), "https://slack.com/api/chat.postMessage");
+  // Same server: events, room and channel change, the token stays.
+  await updateWebhook(bob, { workspaceId: wid, id: matrix.id, url: "https://127.0.0.1:9/owner", events: ["row.updated"], format: "matrix", config: { matrixRoom: "!other:example.test" } });
+  await updateWebhook(bob, { workspaceId: wid, id: slack.id, events: ["row.updated"], format: "slack", config: { slackChannel: "C0456" } });
+  await updateWebhook(bob, { workspaceId: wid, id: slack.id, url: "https://127.0.0.1:9/ignored", events: ["row.updated"], format: "slack", config: { slackChannel: "C0456" } });
+  assert.deepEqual(await credentials(matrix.id), { token: true, signingSecret: false });
+  assert.deepEqual(await credentials(slack.id), { token: true, signingSecret: false });
+  // With the token entered again the move is fine; a format without a token drops it.
+  await updateWebhook(bob, {
+    workspaceId: wid,
+    id: matrix.id,
+    url: "https://127.0.0.1:9/bob",
+    events: ["row.created"],
+    format: "matrix",
+    config: { matrixRoom: "!room:example.test" },
+    credentials: { token: "syt_DUMMY_bob_matrix" },
+  });
+  assert.equal(await address(matrix.id), "https://127.0.0.1:9/bob");
+  await updateWebhook(bob, { workspaceId: wid, id: slack.id, url: "https://127.0.0.1:9/bob-discord", events: ["row.created"], format: "discord" });
+  assert.deepEqual(await credentials(slack.id), { token: false, signingSecret: false });
+  await run("DELETE FROM webhooks WHERE id IN (?,?)", matrix.id, slack.id);
+});

@@ -380,6 +380,7 @@ const exact: Record<string, string> = {
   "Datenbank nicht gefunden.": "Database not found.",
   "Kein Arbeitsbereich.": "No workspace.",
   "Dieses API-Token darf nur lesen.": "This API token may only read.",
+  "Für eine neue Adresse oder ein anderes Format bitte die Zugangsdaten erneut eingeben.": "For a new address or another format, please enter the credentials again.",
   "Diese Seite ist gesperrt.": "This page is locked.",
   "Neue Arbeitsbereiche legen auf dieser Instanz nur Admins an.": "On this instance only administrators create new workspaces.",
   "Als Symbol sind ein Emoji, ein Bibliothekssymbol oder ein Bild (PNG, JPEG, WebP bis 100 KB) möglich.": "An icon can be an emoji, a library icon or an image (PNG, JPEG, WebP up to 100 KB).",

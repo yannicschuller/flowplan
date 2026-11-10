@@ -143,6 +143,15 @@ export async function activeUser() {
   const u = await currentUser();
   return u?.twoFactorSetup ? null : u;
 }
+// The same from a request's own headers (identityFromRequest).
+export async function activeUserFromRequest(req: Request) {
+  const u = await identityFromRequest(req);
+  return u?.twoFactorSetup ? null : u;
+}
+// State-changing handlers that accept API tokens: read tokens only read.
+export function refuseReadToken(user: Pick<Identity, "apiScope"> | null | undefined) {
+  if (user?.apiScope === "read") throw new HttpError(403, "Dieses API-Token darf nur lesen.");
+}
 // Ends the person's other sessions (after a password change), keeping this one.
 export async function endOtherSessions(userId: string) {
   const token = (await cookies()).get(cookieName)?.value;
