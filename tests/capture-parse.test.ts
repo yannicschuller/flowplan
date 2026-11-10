@@ -46,6 +46,31 @@ test("German, English and French date words", () => {
   assert.equal(dates("morgen und übermorgen").length, 1, "one due date: the first");
 });
 
+test("ordinary words are no dates: mon, Sun, 24/7, 2h; heute abend is one date", () => {
+  assert.deepEqual(dates("Appeler mon médecin", "fr"), []);
+  assert.deepEqual(dates("Sun cream kaufen", "en"), []);
+  assert.deepEqual(dates("Sat down with Ann", "en"), []);
+  assert.deepEqual(dates("Wed in June", "en"), []);
+  assert.deepEqual(dates("mon rendez-vous", "fr"), []);
+  assert.deepEqual(dates("Kino heute abend"), [["heute abend", { date: today }]]);
+  assert.deepEqual(dates("Kino heute Abend 20 Uhr"), [["heute Abend 20 Uhr", { date: today, time: "20:00" }]]);
+  assert.deepEqual(dates("Support 24/7 klären"), []);
+  assert.deepEqual(dates("Meeting 2h vorbereiten"), []);
+  assert.deepEqual(dates("Réunion de 2h", "fr"), []);
+  // Still dates: with a dot, a word before it, the English short form in English.
+  assert.deepEqual(dates("call Bob fri", "en"), [["fri", { date: "2026-10-30" }]]);
+  assert.deepEqual(dates("next sun", "en"), [["next sun", { date: "2026-11-01" }]]);
+  assert.deepEqual(dates("by Sat", "en"), [["by Sat", { date: "2026-10-31" }]]);
+  assert.deepEqual(dates("Sun. brunch", "en"), [["Sun.", { date: "2026-11-01" }]]);
+  assert.deepEqual(dates("rappeler lundi", "fr"), [["lundi", { date: "2026-11-02" }]]);
+  assert.deepEqual(dates("demain 15h", "fr"), [["demain 15h", { date: "2026-10-27", time: "15:00" }]]);
+  assert.deepEqual(dates("à 15h", "fr"), [["à 15h", { date: today, time: "15:00" }]]);
+  assert.deepEqual(dates("15h30", "fr"), [["15h30", { date: today, time: "15:30" }]]);
+  assert.deepEqual(dates("am 24/12"), [["am 24/12", { date: "2026-12-24" }]]);
+  const parsed = parseCapture("Kino heute abend", { today, properties: [{ id: "due", name: "Fällig", type: "date" }], members: [] });
+  assert.equal(parsed.title, "Kino");
+});
+
 test("tags, people and priority", () => {
   const list = tokens("Angebot schreiben #kunde #Q4-plan @anna !hoch #27", { today });
   assert.deepEqual(
