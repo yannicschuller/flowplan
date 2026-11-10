@@ -26470,6 +26470,22 @@ tr:hover .row-open-mark,
     --keyboard-fill-shadow: 0 0 0 100vh var(--bg);
     --keyboard-fill-clip: inset(0 calc(-1 * var(--safe-right, 0px)) -100vh calc(-1 * var(--safe-left, 0px)));
   }
+  /* The shadow only paints: a tap into that strip still reached what lay
+     hidden under it (a "Comment" button, the text). Below the visible
+     area's end nothing is meant to be used while the keyboard is open, so
+     a blocker there takes the taps – over everything, dialogs included,
+     whose docked toolbars sit above that end. */
+  html.keyboard-docked body::after {
+    content: "";
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: var(--keyboard-visible-end);
+    height: 100vh;
+    background: var(--bg);
+    z-index: 2147483000;
+    touch-action: none;
+  }
   /* A record's content (the record dialog, which lives outside the shell,
      and records written inline in a feed) keeps its toolbar in place – until
      one writes in it with the keyboard open: then the toolbar docks above
