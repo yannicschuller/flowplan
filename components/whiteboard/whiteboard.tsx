@@ -117,16 +117,20 @@ import { MediaSearch } from "./media-search";
 import { useBoardAi } from "./ai-panel";
 import {
   alignItems,
+  BOARD_CLIPBOARD_TYPE,
+  boardCopyText,
   boundsOf,
   clusterItems,
   distributeItems,
   mindmapLayout,
   mindmapRoot,
+  pastesBoardItems,
   recognizeStroke,
   snapBox,
   stackItems,
   strokeHit,
   type AlignMode,
+  type BoardCopy,
   type ClusterMode,
   type Guide,
 } from "@/lib/whiteboard-tools";
@@ -268,6 +272,8 @@ const colorFor = (id: string) =>
       personColors.length
   ];
 let clipboard: WhiteboardItem[] = [];
+// What the last copy wrote to the system clipboard (see pastesBoardItems).
+let clipboardCopy: BoardCopy | null = null;
 
 // The actions menu scrolls within what is visible of the board: on phones
 // the board can reach below the tab bar, which would hide its last entries.
@@ -2206,15 +2212,8 @@ export default function Whiteboard({
       duplicate();
       return;
     }
-    if (mod && e.key.toLowerCase() === "c") {
-      clipboard = selected.map((i) => ({ ...i }));
-      return;
-    }
-    if (mod && e.key.toLowerCase() === "v" && editable && clipboard.length) {
-      e.preventDefault();
-      duplicate(clipboard, 40);
-      return;
-    }
+    // Ctrl+C and Ctrl+V go on as copy and paste events (onCopy, onPaste).
+    if (mod && e.key.toLowerCase() === "c") return;
     if (
       (e.key === "Delete" || e.key === "Backspace") &&
       editable &&
@@ -2384,10 +2383,33 @@ export default function Whiteboard({
       onError((e as Error).message);
     }
   }
+  function onCopy(e: React.ClipboardEvent) {
+    if (presenting !== null || editing || (e.target as HTMLElement).closest("input, textarea, select, [contenteditable=true]")) return;
+    clipboard = selected.map((i) => ({ ...i }));
+    clipboardCopy = null;
+    if (!clipboard.length) return;
+    clipboardCopy = { token: crypto.randomUUID(), text: boardCopyText(clipboard) };
+    e.preventDefault();
+    e.clipboardData.setData("text/plain", clipboardCopy.text);
+    e.clipboardData.setData(BOARD_CLIPBOARD_TYPE, clipboardCopy.token);
+  }
   function onPaste(e: React.ClipboardEvent) {
     // Pasting into a field of a side panel (rack name, notes …) is the
     // field's own business – as for keys in onKeyDown (#187).
     if (!editable || editing || (e.target as HTMLElement).closest("input, textarea, select, [contenteditable=true]")) return;
+    // The board's own copy, unless something else was copied since.
+    if (
+      clipboard.length &&
+      pastesBoardItems(clipboardCopy, {
+        token: e.clipboardData.getData(BOARD_CLIPBOARD_TYPE),
+        text: e.clipboardData.getData("text/plain"),
+        files: e.clipboardData.files.length,
+      })
+    ) {
+      e.preventDefault();
+      duplicate(clipboard, 40);
+      return;
+    }
     const file = [...e.clipboardData.files].find((f) =>
       f.type.startsWith("image/"),
     );
@@ -2402,7 +2424,7 @@ export default function Whiteboard({
       e.preventDefault();
       return;
     }
-    if (text && !clipboard.length) {
+    if (text) {
       e.preventDefault();
       const at = center();
       let id = "";
@@ -3495,6 +3517,7 @@ export default function Whiteboard({
       }}
       onKeyDown={onKeyDown}
       onKeyUp={(e) => e.key === " " && setSpace(false)}
+      onCopy={onCopy}
       onPaste={onPaste}
       onDragOver={(e) =>
         editable && (e.dataTransfer.types.includes("Files") || e.dataTransfer.types.includes(LIBRARY_DRAG_TYPE) || e.dataTransfer.types.includes(RACK_DRAG_TYPE)) && e.preventDefault()

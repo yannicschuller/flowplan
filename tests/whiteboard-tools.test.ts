@@ -11,6 +11,8 @@ import {
   recognizeStroke,
   pressureOutline,
   strokeHit,
+  boardCopyText,
+  pastesBoardItems,
 } from "../lib/whiteboard-tools";
 import type { WhiteboardItem } from "../lib/whiteboard-model";
 
@@ -112,4 +114,20 @@ test("the eraser hits a pen stroke near its line, not inside its box", () => {
   assert.ok(!strokeHit(stroke, { x: 260, y: 260 }, 3), "outside the box");
   // A single dot.
   assert.ok(strokeHit({ x: 10, y: 10, w: 1, h: 1, points: [0, 0] }, { x: 12, y: 10 }, 1));
+});
+
+test("paste: board items only while their copy is on the system clipboard", () => {
+  const copy = { token: "t1", text: boardCopyText([{ text: "**Idee**" }, {}, { text: "Zweite" }]) };
+  assert.equal(copy.text, "Idee\nZweite");
+  // Right after Ctrl+C: the items come back.
+  assert.equal(pastesBoardItems(copy, { token: "t1", text: "Idee\nZweite", files: 0 }), true);
+  // Something copied in another app since then: an image, text or Mermaid.
+  assert.equal(pastesBoardItems(copy, { token: "", text: "", files: 1 }), false);
+  assert.equal(pastesBoardItems(copy, { token: "", text: "graph TD; A-->B", files: 0 }), false);
+  // A copy from another board or tab.
+  assert.equal(pastesBoardItems(copy, { token: "t0", text: "Idee\nZweite", files: 0 }), false);
+  // Browsers that drop the own type: the same plain text still counts.
+  assert.equal(pastesBoardItems(copy, { token: "", text: " Idee\nZweite\n", files: 0 }), true);
+  // Nothing copied on the board.
+  assert.equal(pastesBoardItems(null, { token: "", text: "Hallo", files: 0 }), false);
 });
