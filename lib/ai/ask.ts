@@ -189,7 +189,7 @@ export async function textCandidates(
 // The journal day of a page: its own date, or that of the day it lies
 // directly below (a notebook of the day).
 export async function journalDayOf(pageId: string): Promise<string | null> {
-  return (await one<{ day: string | null }>(`SELECT ${JOURNAL_DAY_SQL} day FROM pages p WHERE p.id=?`, pageId))?.day || null;
+  return (await one<{ day: string | null }>(`SELECT ${JOURNAL_DAY_SQL} AS day FROM pages p WHERE p.id=?`, pageId))?.day || null;
 }
 
 // Earlier turns: alternating, starting with a question, shortened.
