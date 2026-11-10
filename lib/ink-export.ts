@@ -3,11 +3,12 @@
 // notebook sheets become SVG pictures (lib/ink/svg.ts) with their typed and
 // recognised text; callers have checked that the page may be read.
 import { drawBlockHeight, drawBlockId, drawBlockPaper, DRAW_BLOCK_WIDTH } from "./draw-block-node";
-import { blockPaperLayout, effectivePaper, paperLayout, paperSize, paperSvg } from "./notebook-paper";
+import { blockPaperLayout, effectivePaper, paperImageOf, paperLayout, paperSize, paperSvg } from "./notebook-paper";
+import { imageDataUrls, pageFileIds } from "./notebook-library";
 import { notebookPaper, notebookSheets } from "./notebook";
 import { pageInkDocs } from "./page-ink-store";
 import { inkSvg } from "./ink/svg";
-import { inkText } from "./ink/model";
+import { inkFiles, inkText, type InkItem } from "./ink/model";
 import { ct } from "./content-locale";
 import { escaped } from "./document-server";
 import { publicFile } from "./publication";
@@ -15,6 +16,12 @@ import type { Page } from "./types";
 import { mapAsync, replaceAsync } from "./each-async";
 
 export type InkPicture = { svg: string | null; text: string; width: number; height: number };
+
+async function pictureUrls(pageId: string, items: InkItem[], paperFile?: string) {
+  const files = inkFiles({ format: "flowplan-ink", version: 1, unit: "pt", pages: { s: items } });
+  if (paperFile) files.push(paperFile);
+  return files.length ? await imageDataUrls(files, await pageFileIds(pageId)) : new Map<string, string>();
+}
 
 // A drawing block of a document (attributes as stored in its HTML) or a
 // sheet of a notebook; null when the page has no such surface.
@@ -31,7 +38,10 @@ export async function inkPicture(page: Pick<Page, "id" | "kind" | "title">, attr
     const size = sheet.background ? { width: sheet.background.width, height: sheet.background.height } : paperSize(paper);
     // A PDF page as background cannot be drawn here: plain paper of its size.
     const layout = sheet.background ? paperLayout({ ...paper, template: "blank", color: "light" }, size) : paperLayout(paper, size);
-    return { svg: inkSvg(items, size, { paper: paperSvg(layout), title: page.title, dark: !sheet.background && paper.color === "dark" }), text, ...size };
+    // Pictures go into the picture itself (the export leaves Flowplan).
+    const urls = await pictureUrls(page.id, items, layout.image?.file);
+    const imageHref = (file: string) => urls.get(file) ?? null;
+    return { svg: inkSvg(items, size, { paper: paperSvg(layout, { imageHref }), title: page.title, dark: !sheet.background && paper.color === "dark", imageHref }), text, ...size };
   }
   const size = { width: DRAW_BLOCK_WIDTH, height: drawBlockHeight(attrs.height) };
   if (!items.length) return { svg: null, text, ...size };
@@ -75,15 +85,31 @@ export async function publicNotebookSheets(page: Pick<Page, "id" | "title">, tok
     const paper = effectivePaper(defaults, sheet.paper);
     const size = sheet.background ? { width: sheet.background.width, height: sheet.background.height } : paperSize(paper);
     const label = ct(`Blatt ${index + 1}`, `Sheet ${index + 1}`);
+    // Files of the published page only (pictures, own paper, PDF pages).
+    const shared = new Map<string, string | null>();
+    const shareUrl = async (file: string) => {
+      if (!shared.has(file))
+        shared.set(
+          file,
+          await publicFile(token, file)
+            .then(() => `/api/share/${token}/files/${file}`)
+            .catch(() => null),
+        );
+      return shared.get(file)!;
+    };
+    for (const file of inkFiles({ format: "flowplan-ink", version: 1, unit: "pt", pages: { s: items } })) await shareUrl(file);
+    const imageHref = (file: string) => shared.get(file) ?? null;
     let src: string | null = null;
-    if (sheet.background)
-      try {
-        await publicFile(token, sheet.background.file);
-        src = `/api/share/${token}/files/${sheet.background.file}`;
-      } catch {}
+    if (sheet.background) src = await shareUrl(sheet.background.file);
     if (sheet.background && src)
-      return { id: sheet.id, label, ...size, background: { src, page: sheet.background.page }, ink: inkSvg(items, size, { title: label }) };
+      return { id: sheet.id, label, ...size, background: { src, page: sheet.background.page }, ink: inkSvg(items, size, { title: label, imageHref }) };
+    // An own template that is a PDF page: drawn like a PDF background.
+    const own = !sheet.background ? paperImageOf(paper) : null;
+    if (own) await shareUrl(own.file);
+    const ownSrc = own ? shared.get(own.file) : null;
+    if (own?.kind === "pdf" && ownSrc)
+      return { id: sheet.id, label, ...size, background: { src: ownSrc, page: 1 }, ink: inkSvg(items, size, { title: label, imageHref }) };
     const layout = sheet.background ? paperLayout({ ...paper, template: "blank", color: "light" }, size) : paperLayout(paper, size);
-    return { id: sheet.id, label, ...size, svg: inkSvg(items, size, { paper: paperSvg(layout), title: label, dark: !sheet.background && paper.color === "dark" }) };
+    return { id: sheet.id, label, ...size, svg: inkSvg(items, size, { paper: paperSvg(layout, { imageHref }), title: label, dark: !sheet.background && paper.color === "dark", imageHref }) };
   });
 }

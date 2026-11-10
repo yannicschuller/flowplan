@@ -421,3 +421,31 @@ test("screenshots: iPad and desktop, light and dark", async ({ page }, info) => 
   await pen(cdp, path({ x: area.x + 60, y: area.y + 140 }, { x: area.x + 300, y: area.y + 150 }, 30));
   await page.screenshot({ path: `${shots}/notebook-draw-block-desktop-light.png` });
 });
+
+test("pictures and stickers: upload, frame (resize, front/back), sticker panel, saved and back after a reload", async ({ page }) => {
+  const { create } = await setup(page);
+  const id = await create("Bilderheft", "notebook");
+  await openNotebook(page, id);
+  // A picture from a file: a 2 × 2 PNG.
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGP4z8DAwMDAxMDAwMDAAAANHQEDasKb6QAAAABJRU5ErkJggg==", "base64");
+  await page.getByRole("button", { name: "Bild oder Sticker einfügen" }).click();
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("menuitem", { name: "Bild aus Datei …" }).click();
+  await (await chooser).setFiles({ name: "punkt.png", mimeType: "image/png", buffer: png });
+  const pictures = sheet(page, 0).locator(".ink-strokes [data-image] image");
+  await expect(pictures).toHaveCount(1);
+  // In its frame: the bar offers crop, order, opacity, duplicate, delete.
+  await expect(page.getByRole("button", { name: "Zuschneiden" })).toBeVisible();
+  await page.getByRole("button", { name: "Duplizieren" }).click();
+  await expect(pictures).toHaveCount(2);
+  await page.keyboard.press("Delete");
+  await expect(pictures).toHaveCount(1);
+  // A built-in sticker.
+  await page.getByRole("button", { name: "Bild oder Sticker einfügen" }).click();
+  await page.getByRole("menuitem", { name: "Sticker …" }).click();
+  await page.getByRole("listitem", { name: "Herz" }).click();
+  await expect(sheet(page, 0).locator(".ink-strokes [data-image]")).toHaveCount(2);
+  await expect(page.locator(".notebook-status")).toHaveText("Gespeichert", { timeout: 15_000 });
+  await page.reload();
+  await expect(sheet(page, 0).locator(".ink-strokes [data-image]")).toHaveCount(2, { timeout: 30_000 });
+});

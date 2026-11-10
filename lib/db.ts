@@ -1287,11 +1287,24 @@ function migrate(d: DatabaseSync) {
   // "grant-kinds-100"); an older version would not write them, hence the
   // new number.
   migrateGrantKinds(d);
+  // Notebook stickers and own paper templates (lib/notebook-library.ts):
+  // new tables only – an older version leaves them alone – so the schema
+  // number stays.
+  migrateNotebookLibrary(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
   forgetStatements(d);
   globalDb.flowplanSchema = SCHEMA_VERSION;
+}
+// A person's stickers per workspace (a picture, or ink items) and a
+// workspace's paper templates (a picture or one PDF page), as blobs like
+// template_files: counted in workspaceBytes (lib/instance-ops.ts).
+function migrateNotebookLibrary(d: DatabaseSync) {
+  d.exec(`CREATE TABLE IF NOT EXISTS notebook_stickers(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,name TEXT NOT NULL,mime TEXT NOT NULL,data BLOB,items TEXT,width REAL NOT NULL,height REAL NOT NULL,created_at INTEGER NOT NULL);
+    CREATE INDEX IF NOT EXISTS notebook_stickers_owner ON notebook_stickers(workspace_id,user_id);
+    CREATE TABLE IF NOT EXISTS notebook_templates(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,name TEXT NOT NULL,kind TEXT NOT NULL CHECK(kind IN ('image','pdf')),mime TEXT NOT NULL,data BLOB NOT NULL,width REAL NOT NULL,height REAL NOT NULL,fit TEXT NOT NULL DEFAULT 'stretch' CHECK(fit IN ('stretch','tile')),created_by TEXT REFERENCES users(id) ON DELETE SET NULL,created_at INTEGER NOT NULL);
+    CREATE INDEX IF NOT EXISTS notebook_templates_workspace ON notebook_templates(workspace_id);`);
 }
 // Schema 97 – Workflows (#168, renumbered at the final merge, docs/specs/workflows.md §4): one workflow
 // per page of kind "workflow" (state, who runs it), its draft as a Yjs

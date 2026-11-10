@@ -8,12 +8,15 @@
 //     background: {file, page, width, height} – page `page` of the PDF file
 //                 `file` (attached to the notebook page), its size as shown
 //                 in points; the ink lies over it like on a PDF.
+//     paper.image: an own paper template (lib/notebook-paper.ts PaperImage),
+//                 a copy attached to the page (lib/notebook-library.ts).
 import { z } from "zod";
 import { all, id, one, run } from "./db";
 import { HttpError } from "./auth";
 import { cleanPaper, DEFAULT_PAPER, fullPaper, insertAfter, MAX_IMPORT_PAGES, MAX_SHEETS, sameSheets, type Paper, type PaperOverride } from "./notebook-paper";
 import { copyPageInk, deleteSurface, mayEditInk, pageInkDocs, writeSurface } from "./page-ink-store";
-import { emptyInk, hasInk, inkText, parseInk, serializeInk, type InkDoc } from "./ink/model";
+import { emptyInk, hasInk, inkText, mapInkFiles, parseInk, serializeInk, type InkDoc } from "./ink/model";
+import { resolvePaperImage } from "./notebook-library";
 import { cleanRecognizedText } from "./ink/recognized";
 import { isPdfFile } from "./ink-store";
 import type { Identity, Page } from "./types";
@@ -135,9 +138,17 @@ export async function notebookCommand(user: Identity, page: Page, action: string
     if (n + count > MAX_SHEETS) throw new HttpError(413, `Ein Notizbuch hat höchstens ${MAX_SHEETS} Blätter.`);
   };
   const result: Record<string, unknown> = {};
+  // An own template chosen in the dialog becomes a copy on the page.
+  const withImage = async (raw: unknown): Promise<PaperOverride> => {
+    const paper = cleanPaper(raw);
+    const image = raw && typeof raw === "object" ? await resolvePaperImage(user, page, (raw as { image?: unknown }).image) : undefined;
+    if (image !== undefined) paper.image = image;
+    else delete paper.image;
+    return paper;
+  };
   switch (action) {
     case "notebook.paper": {
-      const paper = { ...(await notebookPaper(page.id)), ...cleanPaper(b.paper) };
+      const paper = { ...(await notebookPaper(page.id)), ...(await withImage(b.paper)) };
       await run("UPDATE notebooks SET paper=? WHERE page_id=?", JSON.stringify(paper), page.id);
       // "For all sheets": their own choices go.
       if (b.all === true) await run("UPDATE notebook_sheets SET paper='{}' WHERE page_id=? AND background IS NULL", page.id);
@@ -149,7 +160,8 @@ export async function notebookCommand(user: Identity, page: Page, action: string
       const place = sheetPlace(b);
       if (typeof place === "object") await known(place.after);
       const created: string[] = [];
-      for (let i = 0; i < count; i++) created.push(await insertSheet(page.id, cleanPaper(b.paper)));
+      const own = await withImage(b.paper);
+      for (let i = 0; i < count; i++) created.push(await insertSheet(page.id, own));
       await writeOrder(page.id, placeSheets(await order(page.id), created, place));
       result.created = created;
       break;
@@ -182,7 +194,7 @@ export async function notebookCommand(user: Identity, page: Page, action: string
     }
     case "notebook.sheet.paper": {
       const ids = z.array(sheetId).min(1).max(MAX_SHEETS).parse(b.sheetIds);
-      const paper = b.paper === null ? {} : cleanPaper(b.paper);
+      const paper = b.paper === null ? {} : await withImage(b.paper);
       for (const sid of ids) await run("UPDATE notebook_sheets SET paper=? WHERE id=? AND page_id=?", JSON.stringify(paper), await known(sid), page.id);
       break;
     }
@@ -229,17 +241,27 @@ export async function notebookCommand(user: Identity, page: Page, action: string
 // attachments to the copies (PDF backgrounds).
 export async function copyNotebook(fromPage: string, toPage: string, files: Map<string, string> = new Map(), by: string | null = null) {
   await run("DELETE FROM notebook_sheets WHERE page_id=?", toPage);
-  await run("INSERT INTO notebooks(page_id,paper,updated_at) VALUES(?,?,?) ON CONFLICT(page_id) DO UPDATE SET paper=excluded.paper", toPage, JSON.stringify(await notebookPaper(fromPage)), Date.now());
+  await run("INSERT INTO notebooks(page_id,paper,updated_at) VALUES(?,?,?) ON CONFLICT(page_id) DO UPDATE SET paper=excluded.paper", toPage, JSON.stringify(withPaperFiles(await notebookPaper(fromPage), files)), Date.now());
   const surfaces = new Map<string, string>();
   for (const sheet of await notebookSheets(fromPage)) {
     const background = sheet.background ? (files.get(sheet.background.file) ? { ...sheet.background, file: files.get(sheet.background.file)! } : null) : null;
     // A background the copy cannot have becomes plain paper of its size.
-    const sid = await insertSheet(toPage, sheet.background && !background ? { template: "blank" } : sheet.paper, background);
+    const sid = await insertSheet(toPage, sheet.background && !background ? { template: "blank" } : withPaperFiles(sheet.paper, files), background);
     await run("UPDATE notebook_sheets SET position=? WHERE id=?", sheet.position, sid);
     surfaces.set(sheet.id, sid);
   }
   if (!surfaces.size) await insertSheet(toPage);
-  await copyPageInk(fromPage, toPage, surfaces, by);
+  await copyPageInk(fromPage, toPage, surfaces, by, files);
+}
+// Paper with its own template's file swapped for the copy's (none: the
+// template's picture is left out, the lines underneath show).
+export function withPaperFiles<T extends PaperOverride>(paper: T, files: Map<string, string>): T {
+  if (!paper.image?.file) return paper;
+  const file = files.get(paper.image.file) ?? files.get(paper.image.file.toLowerCase());
+  const next = { ...paper };
+  if (file) next.image = { ...paper.image, file };
+  else delete next.image;
+  return next;
 }
 
 export const notebookArchiveSchema = z.object({
@@ -275,16 +297,17 @@ export async function notebookArchive(pageId: string): Promise<NotebookArchive> 
 // archive's file ids to the imported ones.
 export async function importNotebook(pageId: string, data: NotebookArchive, files: Map<string, string>, by: string | null) {
   await run("DELETE FROM notebook_sheets WHERE page_id=?", pageId);
-  await run("INSERT INTO notebooks(page_id,paper,updated_at) VALUES(?,?,?) ON CONFLICT(page_id) DO UPDATE SET paper=excluded.paper", pageId, JSON.stringify(fullPaper(data.paper)), Date.now());
+  await run("INSERT INTO notebooks(page_id,paper,updated_at) VALUES(?,?,?) ON CONFLICT(page_id) DO UPDATE SET paper=excluded.paper", pageId, JSON.stringify(withPaperFiles(fullPaper(data.paper), files)), Date.now());
   await forEachAsync(data.sheets, async (sheet, index) => {
     const raw = sheet.background ? backgroundSchema.safeParse(sheet.background) : null;
     const file = raw?.success ? files.get(raw.data.file) : undefined;
     const background = raw?.success && file ? { ...raw.data, file } : null;
-    const sid = await insertSheet(pageId, raw?.success && !background ? { template: "blank" } : cleanPaper(sheet.paper), background);
+    const sid = await insertSheet(pageId, raw?.success && !background ? { template: "blank" } : withPaperFiles(cleanPaper(sheet.paper), files), background);
     await run("UPDATE notebook_sheets SET position=? WHERE id=?", index, sid);
     if (sheet.ink) {
       // The archive's page key was the old sheet id: the only page is this sheet.
-      const doc = parseInk(sheet.ink);
+      // Pictures point to the imported files (others are left out).
+      const doc = mapInkFiles(parseInk(sheet.ink), (file) => files.get(file) ?? files.get(file.toLowerCase()) ?? null);
       const items = Object.values(doc.pages)[0] || [];
       if (items.length) await writeSurface(pageId, sid, { ...emptyInk(), pages: { [sid]: items } }, cleanRecognizedText(sheet.recognized), by);
     }

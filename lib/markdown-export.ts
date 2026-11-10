@@ -1,3 +1,4 @@
+import { pageFileIds, serverImageLoader } from "./notebook-library";
 import { withLookups, type Awaitable } from "./resolve-ahead";
 import { workflowExportGraph } from "./workflows/archive";
 import { isFormattedText, toPlain } from "./inline-markdown";
@@ -683,6 +684,9 @@ async function collect(user: Identity, options: MarkdownExportOptions) {
         );
         // Background PDFs only when the person could download them.
         const files = new Set(await flatMapAsync(sheets, async (sheet) => (sheet.background && await fileInfo(sheet.background.file) ? [sheet.background.file] : [])));
+        const pageFiles = await pageFileIds(page.id);
+        // Own paper templates that are PDF pages load like backgrounds.
+        for (const sheet of pdfSheets) if (sheet.paper?.image?.kind === "pdf" && sheet.paper.image.file && pageFiles.has(sheet.paper.image.file)) files.add(sheet.paper.image.file);
         pending.push({
           path: pdfPath,
           build: () =>
@@ -696,7 +700,8 @@ async function collect(user: Identity, options: MarkdownExportOptions) {
                   return null;
                 }
               },
-              { title: page.title },
+              // Pictures on sheets and own paper: the page's PNG and JPEG files.
+              { title: page.title, loadImage: serverImageLoader(pageFiles) },
             ),
         });
         markdown += markdownLink(ct("Notizbuch als PDF", "Notebook as PDF"), relative(path, pdfPath)) + "\n\n";

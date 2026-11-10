@@ -35,7 +35,7 @@ import {
   type Pt,
 } from "@/lib/ink/geometry";
 import { inkFontFamily, type InkFont } from "@/lib/ink/fonts";
-import { inkId, type InkDoc, type InkItem, type InkStroke, type InkText } from "@/lib/ink/model";
+import { inkId, type InkDoc, type InkImage, type InkItem, type InkStroke, type InkText } from "@/lib/ink/model";
 import { HIGHLIGHTER_OPACITY, PEN_COLORS } from "@/lib/ink/presets";
 import {
   drawsWith,
@@ -50,6 +50,9 @@ import {
   type PressureTrack,
 } from "@/lib/stylus";
 import type { InkEditor } from "./use-ink-editor";
+import { fileSrc, ImageFrame, InkImageItem, type ImageAction } from "./ink-image";
+import { imageAt } from "@/lib/ink/image";
+import { splitHighlights } from "@/lib/ink/svg";
 
 type XY = { x: number; y: number };
 // How long the pen rests at the end of a stroke before it snaps (ms).
@@ -66,13 +69,15 @@ type Gesture =
   | { kind: "tap"; pointer: number; client: XY; at: XY }
   | { kind: "pan"; touches: Map<number, XY>; distance: number; zoom: number };
 
-// The ink of a page, back to front: highlighter strokes in one layer, the rest in another.
-const InkItems = memo(function InkItems({ items, layer }: { items: InkItem[]; layer: "highlight" | "ink" }) {
+// The ink of a page, back to front: highlighter strokes in one layer, the
+// rest in another. Highlighter above a picture (in order) is drawn among
+// the ink, multiplied, so it shows on the picture (lib/ink/svg.ts).
+const InkItems = memo(function InkItems({ items, layer, src }: { items: InkItem[]; layer: "highlight" | "ink"; src?: (file: string) => string }) {
+  const under = splitHighlights(items);
   return (
     <>
-      {items.map((item) => {
-        if (layer === "highlight") {
-          if (item.type !== "highlighter") return null;
+      {items.map((item, index) => {
+        if (item.type === "highlighter" && (layer === "highlight") === index < under) {
           const { d } = strokePath(item);
           return (
             <path
@@ -84,10 +89,12 @@ const InkItems = memo(function InkItems({ items, layer }: { items: InkItem[]; la
               strokeWidth={item.width}
               strokeLinecap="round"
               strokeLinejoin="round"
+              style={index >= under ? { mixBlendMode: "multiply" } : undefined}
             />
           );
         }
-        if (item.type === "highlighter") return null;
+        if (layer === "highlight" || item.type === "highlighter") return null;
+        if (item.type === "image") return <InkImageItem key={item.id} item={item} src={src} />;
         if (item.type === "text") return <InkTextItem key={item.id} item={item} />;
         const { d, fill } = strokePath(item);
         return fill ? (
@@ -129,6 +136,8 @@ export function InkLayer({
   onConvert,
   label,
   fingersScroll = false,
+  onImageAction,
+  imageSrc = fileSrc,
 }: {
   page: string;
   size: PageSize;
@@ -146,6 +155,10 @@ export function InkLayer({
   // Fingers scroll even with pen-only drawing off (a drawing block not
   // activated yet: the document keeps scrolling under a finger).
   fingersScroll?: boolean;
+  // "Save as sticker" in a picture's frame (notebooks).
+  onImageAction?: (action: ImageAction, item: InkImage) => void;
+  // The address of a picture's file.
+  imageSrc?: (file: string) => string;
 }) {
   const t = useT();
   const active = !!editor && editing;
@@ -461,6 +474,13 @@ export function InkLayer({
       if (g.items !== items) ed.change(page, () => g.items);
     } else if (g.kind === "lasso") {
       clearDraft();
+      // A tap with the lasso on a picture puts it in its frame.
+      const [first] = g.polygon;
+      if (g.polygon.every((p) => Math.hypot(p.x - first.x, p.y - first.y) <= tolerance(6))) {
+        const hit = imageAt(items, first, tolerance(4));
+        ed.pick(hit ? { page, id: hit.id } : null);
+        if (hit) return;
+      }
       const ids = lassoItems(items, g.polygon);
       ed.setSelection(ids.length ? { page, ids } : null);
     } else if (g.kind === "move" || g.kind === "scale") {
@@ -505,6 +525,8 @@ export function InkLayer({
     return unionBox(shown.filter((i) => ids.has(i.id)).map(itemBounds));
   }, [selected, shown]);
   const showSelection = active && editor?.tool === "lasso" && selectionBox;
+  const pickedItem =
+    active && editor?.tool === "lasso" && editor.picked?.page === page ? (shown.find((i) => i.id === editor.picked!.id && i.type === "image") as InkImage | undefined) : undefined;
   const percent = (v: number, of: number) => `${(v / (of || 1)) * 100}%`;
   const touchAction = !active ? undefined : penOnly ? "pan-x pan-y pinch-zoom" : "none";
   return (
@@ -522,7 +544,7 @@ export function InkLayer({
       onContextMenu={active ? (e) => e.preventDefault() : undefined}
     >
       <svg className="ink-highlights" viewBox={`0 0 ${size.width} ${size.height}`} preserveAspectRatio="none" aria-hidden="true">
-        <InkItems items={visible} layer="highlight" />
+        <InkItems items={visible} layer="highlight" src={imageSrc} />
         <path ref={draftHighlight} className="ink-draft" fill="none" strokeOpacity={HIGHLIGHTER_OPACITY} strokeLinecap="round" strokeLinejoin="round" />
       </svg>
       <svg
@@ -533,7 +555,7 @@ export function InkLayer({
         aria-label={label || t(`Anmerkungen auf Seite ${page}`, `Annotations on page ${page}`)}
         data-count={visible.length}
       >
-        <InkItems items={visible} layer="ink" />
+        <InkItems items={visible} layer="ink" src={imageSrc} />
         <path ref={draftInk} className="ink-draft" strokeLinecap="round" strokeLinejoin="round" />
         <path ref={lassoPath} className="ink-lasso" fill="none" vectorEffect="non-scaling-stroke" />
         {laser.length > 0 && (
@@ -605,6 +627,21 @@ export function InkLayer({
             <ArrowsOutSimple size={15} />
           </span>
         </div>
+      )}
+      {pickedItem && editor && (
+        <ImageFrame
+          item={pickedItem}
+          items={items}
+          size={size}
+          scale={scale}
+          root={root}
+          src={imageSrc}
+          onPreview={setPreview}
+          onCommit={(next) => editor.change(page, () => next)}
+          onClose={() => editor.pick(null)}
+          onPick={(id) => editor.pick({ page, id })}
+          onAction={onImageAction}
+        />
       )}
       {typing && (
         <textarea

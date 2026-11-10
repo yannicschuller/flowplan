@@ -17,7 +17,7 @@ import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import { requireUnlocked } from "./journal-extras";
 import { isEncryptedPage } from "./e2ee-server";
-import { emptyInk, INK_LIMITS, inkItemCount, inkText, parseInk, serializeInk, type InkDoc } from "./ink/model";
+import { emptyInk, INK_LIMITS, inkItemCount, inkText, mapInkFiles, parseInk, serializeInk, type InkDoc, type InkItem } from "./ink/model";
 import { mergeInk } from "./ink/merge";
 import { cleanRecognizedText } from "./ink/recognized";
 import { recordPageEdit } from "./page-activity";
@@ -119,6 +119,37 @@ export async function pageInkVersions(user: Identity, pageId: string): Promise<R
   );
 }
 
+// Item types a client says it knows (`knows` of a save). A save from a
+// version before pictures cannot have meant to delete them: the pictures
+// it does not carry are kept where they were in the stored ink.
+export const KNOWN_LATER_TYPES = ["image"] as const;
+export function keepUnknownItems(ours: InkItem[], stored: InkItem[], knows: readonly string[]): InkItem[] {
+  const missing = new Set(KNOWN_LATER_TYPES.filter((type) => !knows.includes(type)));
+  if (!missing.size) return ours;
+  const present = new Set(ours.map((i) => i.id));
+  if (!stored.some((i) => missing.has(i.type as (typeof KNOWN_LATER_TYPES)[number]) && !present.has(i.id))) return ours;
+  const out = ours.slice();
+  const known = new Set(stored.map((i) => i.id));
+  stored.forEach((item, index) => {
+    if (!missing.has(item.type as (typeof KNOWN_LATER_TYPES)[number]) || present.has(item.id)) return;
+    // Before the item that followed it in the stored ink, if that is still
+    // there; otherwise under what the save added (new items stay on top).
+    const next = stored.slice(index + 1).find((i) => present.has(i.id));
+    let at = next ? out.findIndex((i) => i.id === next.id) : -1;
+    if (at < 0) at = out.findIndex((i) => !known.has(i.id));
+    out.splice(at < 0 ? out.length : at, 0, item);
+    present.add(item.id);
+  });
+  return out;
+}
+// Pictures may only show files attached to the page itself.
+export async function onlyPageFiles(pageId: string, items: InkItem[]): Promise<InkItem[]> {
+  if (!items.some((i) => i.type === "image" && i.file)) return items;
+  const files = new Set((await all<{ id: string }>("SELECT id FROM files WHERE page_id=?", pageId)).map((r) => r.id.toLowerCase()));
+  const kept = items.filter((i) => i.type !== "image" || !i.file || files.has(i.file));
+  return kept.length === items.length ? items : kept;
+}
+
 export type SavePageInkResult = {
   version: number;
   conflict: { by: string | null; at: number; version: number } | null;
@@ -126,7 +157,8 @@ export type SavePageInkResult = {
   doc?: InkDoc;
 };
 export async function savePageInk(user: Identity, pageId: string, surface: string, input: unknown, now = Date.now()): Promise<SavePageInkResult> {
-  const body = (input && typeof input === "object" ? input : {}) as { base?: unknown; doc?: unknown; recognized?: unknown };
+  const body = (input && typeof input === "object" ? input : {}) as { base?: unknown; doc?: unknown; recognized?: unknown; knows?: unknown };
+  const knows = Array.isArray(body.knows) ? body.knows.filter((k): k is string => typeof k === "string") : [];
   const base = Number(body.base);
   if (!Number.isInteger(base) || base < 0 || !body.doc || typeof body.doc !== "object") throw new HttpError(400, "Ungültige Eingabe.");
   checkSurface(surface);
@@ -160,6 +192,14 @@ export async function savePageInk(user: Identity, pageId: string, surface: strin
         doc = surfaceDoc(mergeInk(original, ours, parseInk(current.data)), surface);
         merged = true;
       }
+    }
+    // Pictures an older client did not know stay; pictures of other pages' files go.
+    const storedItems = current ? parseInk(current.data).pages[surface] || [] : [];
+    const sent = doc.pages[surface] || [];
+    const kept = await onlyPageFiles(page.id, keepUnknownItems(sent, storedItems, knows));
+    if (kept !== sent) {
+      doc = surfaceDoc({ ...emptyInk(), pages: { [surface]: kept } }, surface);
+      merged = true;
     }
     const data = serializeInk(doc);
     if (data.length > INK_LIMITS.bytes) throw new HttpError(413, "Zu viel Handschrift auf einer Fläche.");
@@ -244,7 +284,9 @@ export async function pageInkDocs(pageId: string) {
 }
 // Copies ink to another page (duplicates, imports); `surfaces` maps old to
 // new surface ids (default: the same id). No versions are copied.
-export async function copyPageInk(fromPage: string, toPage: string, surfaces?: Map<string, string>, by: string | null = null) {
+// `files` maps attachments of the source to their copies: pictures of files
+// without a copy are left out (a copy of the same page keeps them all).
+export async function copyPageInk(fromPage: string, toPage: string, surfaces?: Map<string, string>, by: string | null = null, files?: Map<string, string>) {
   for (const row of await all<{ surface: string; data: string; text: string; recognized: string }>(
     "SELECT surface,data,text,recognized FROM page_ink WHERE page_id=?",
     fromPage,
@@ -252,7 +294,8 @@ export async function copyPageInk(fromPage: string, toPage: string, surfaces?: M
     const target = surfaces ? surfaces.get(row.surface) : row.surface;
     if (!target) continue;
     const doc = parseInk(row.data);
-    const items = doc.pages[row.surface] || [];
+    const mapped = fromPage === toPage && !files ? doc : mapInkFiles(doc, (file) => files?.get(file) ?? files?.get(file.toLowerCase()) ?? null);
+    const items = mapped.pages[row.surface] || [];
     const moved = emptyInk();
     if (items.length) moved.pages[target] = items;
     await writeSurface(toPage, target, moved, row.recognized, by);

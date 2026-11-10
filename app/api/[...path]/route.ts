@@ -60,6 +60,7 @@ import { runSpaceGitExport, spaceGitOverview, spaceGitStatus } from "@/lib/space
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { storeUpload } from "@/lib/page-upload";
+import { createTemplate, libraryFile } from "@/lib/notebook-library";
 import {
   requireUser,
   checkOrigin,
@@ -1112,6 +1113,20 @@ async function handleGET(
       if (ids.length > MAX_PLACEHOLDER_IDS) throw new HttpError(400, "Ungültige Eingabe.");
       return NextResponse.json({ placeholders: await placeholdersFor(user, ids) }, { headers: { "Cache-Control": "private, no-store" } });
     }
+    // Pictures of own stickers and paper templates of notebooks.
+    if (path.length === 2 && path[0] === "notebook-library") {
+      const asset = await libraryFile(user, path[1]);
+      return new Response(new Uint8Array(asset.data), {
+        headers: {
+          "Content-Type": /^image\/(png|jpeg|gif|webp)$/.test(asset.mime) ? asset.mime : "application/octet-stream",
+          "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(asset.name)}`,
+          "Cache-Control": "private, max-age=3600",
+          "X-Content-Type-Options": "nosniff",
+          "Content-Security-Policy": "default-src 'none'; sandbox",
+          "Cross-Origin-Resource-Policy": "same-origin",
+        },
+      });
+    }
     if (path[0] === "files" && path[1]) {
       const file = await one<{
         id: string;
@@ -1638,6 +1653,28 @@ async function handlePOST(
       const result = await endMySessions(user, jar.get(cookieName)?.value, await req.json().catch(() => ({})));
       if (result.current) jar.delete(cookieName);
       return NextResponse.json(result);
+    }
+    // A new own paper template of notebooks (lib/notebook-library.ts).
+    if (path.length === 1 && path[0] === "notebook-library") {
+      if (user.demo || user.apiScope === "clipper") throw new HttpError(403, "Hier nicht verfügbar.");
+      requireBodySize(req, 21 * 1024 * 1024, "Maximal 20 MB pro Vorlage.");
+      const data = await req.formData();
+      const file = data.get("file");
+      if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
+      const bytes = Buffer.from(await file.arrayBuffer());
+      return NextResponse.json(
+        await transaction(
+          async () =>
+            await createTemplate(user, {
+              pageId: data.get("pageId"),
+              name: data.get("name"),
+              fit: data.get("fit"),
+              pdfPage: data.get("pdfPage"),
+              file: { name: file.name, type: file.type, bytes },
+            }),
+          user,
+        ),
+      );
     }
     if (path[0] === "upload") {
       const data = await req.formData();

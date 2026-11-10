@@ -32597,3 +32597,312 @@ html.native-app body {
   border: 1px dashed var(--border);
   border-radius: 8px;
 }
+
+/* ---------- Notebooks: pictures, stickers, own paper (components/ink/ink-image.tsx,
+   components/notebook/notebook-insert.tsx, sticker-panel.tsx, custom-paper.tsx) ---------- */
+.ink-image-frame {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1.5px solid #1c7ed6;
+  cursor: move;
+  touch-action: none;
+  transform-origin: 50% 50%;
+}
+.ink-image-frame.is-cropping {
+  border-style: dashed;
+  cursor: default;
+}
+.ink-image-handle,
+.ink-image-rotate {
+  position: absolute;
+  z-index: 1;
+  box-sizing: border-box;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border: 2px solid #1c7ed6;
+  border-radius: 50%;
+  background: #fff;
+  touch-action: none;
+}
+/* A larger target for fingers and the pen than the dot shows. */
+.ink-image-handle::before,
+.ink-image-rotate::before {
+  content: "";
+  position: absolute;
+  inset: -11px;
+}
+.ink-image-handle.is-nw {
+  left: 0;
+  top: 0;
+  cursor: nwse-resize;
+}
+.ink-image-handle.is-n {
+  left: 50%;
+  top: 0;
+  cursor: ns-resize;
+}
+.ink-image-handle.is-ne {
+  left: 100%;
+  top: 0;
+  cursor: nesw-resize;
+}
+.ink-image-handle.is-e {
+  left: 100%;
+  top: 50%;
+  cursor: ew-resize;
+}
+.ink-image-handle.is-se {
+  left: 100%;
+  top: 100%;
+  cursor: nwse-resize;
+}
+.ink-image-handle.is-s {
+  left: 50%;
+  top: 100%;
+  cursor: ns-resize;
+}
+.ink-image-handle.is-sw {
+  left: 0;
+  top: 100%;
+  cursor: nesw-resize;
+}
+.ink-image-handle.is-w {
+  left: 0;
+  top: 50%;
+  cursor: ew-resize;
+}
+:is(.ink-image-handle.is-n, .ink-image-handle.is-s, .ink-image-handle.is-e, .ink-image-handle.is-w) {
+  border-radius: 4px;
+}
+.is-cropping .ink-image-handle {
+  border-radius: 2px;
+  background: #1c7ed6;
+  border-color: #fff;
+}
+.ink-image-rotate {
+  left: 50%;
+  top: -30px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin: 0 0 0 -12px;
+  color: #1c7ed6;
+  cursor: grab;
+}
+.ink-image-whole {
+  position: absolute;
+  box-sizing: border-box;
+  outline: 1px dashed #1c7ed6a0;
+  pointer-events: none;
+}
+.ink-image-whole img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  opacity: 0.35;
+}
+.ink-image-bar {
+  z-index: 2;
+}
+.ink-selection-bar .ink-image-text {
+  display: inline-flex;
+  gap: 4px;
+  width: auto;
+  padding: 0 10px;
+  font-size: 13px;
+}
+.ink-image-text:disabled {
+  opacity: 0.4;
+}
+.ink-selection-bar label.ink-image-alpha {
+  display: inline-flex;
+  flex-direction: row;
+  margin: 0;
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px;
+  color: inherit;
+}
+.ink-image-alpha input {
+  width: 80px;
+  accent-color: #4dabf7;
+}
+.notebook-paper-image {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.notebook-library-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+.notebook-library-grid.is-stickers {
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+}
+.notebook-library-tile {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 6px;
+  min-height: 72px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.2;
+}
+.notebook-library-tile:hover {
+  border-color: var(--blue);
+  background: var(--hover);
+}
+.notebook-library-tile:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+.notebook-library-tile img {
+  max-width: 100%;
+  max-height: 96px;
+  object-fit: contain;
+}
+.notebook-library-tile > span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.notebook-library-ink {
+  display: block;
+  width: 56px;
+  height: 56px;
+}
+.notebook-library-ink svg {
+  width: 100%;
+  height: 100%;
+}
+.notebook-library-item {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.notebook-library-name {
+  overflow: hidden;
+  font-size: 12px;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.notebook-library-actions {
+  display: flex;
+  justify-content: center;
+}
+.notebook-library-hint,
+.notebook-library-empty {
+  margin: 8px 0;
+  color: var(--secondary);
+  font-size: 13px;
+}
+.notebook-sticker-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--hover);
+}
+.notebook-sticker-tabs button {
+  flex: 1;
+  min-height: 34px;
+  border-radius: 8px;
+  color: var(--secondary);
+  font-size: 14px;
+}
+.notebook-sticker-tabs button.active {
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: 0 1px 3px #0002;
+}
+.notebook-sticker-stamps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+.notebook-sticker-stamps .button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.notebook-own-paper .notebook-template-preview {
+  overflow: hidden;
+  max-height: 92px;
+}
+.notebook-own-paper .notebook-template-preview :is(img, canvas) {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+}
+.notebook-own-template {
+  position: relative;
+}
+.notebook-own-template .input {
+  width: 100%;
+  font-size: 12px;
+}
+.notebook-own-actions {
+  display: flex;
+  gap: 2px;
+}
+.notebook-own-actions .icon-button {
+  width: 26px;
+  height: 26px;
+}
+.notebook-own-add {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 6px;
+  min-height: 120px;
+  padding: 8px 6px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  color: var(--secondary);
+  font-size: 12px;
+}
+.notebook-own-add:hover {
+  border-color: var(--blue);
+  color: var(--blue);
+}
+.notebook-own-fit label {
+  flex-direction: row;
+  margin: 0;
+}
+.notebook-own-fit {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-top: 8px;
+}
+.notebook-template-chosen {
+  position: relative;
+  width: 160px;
+  max-height: 240px;
+  overflow: hidden;
+  border-radius: 6px;
+  box-shadow: 0 1px 3px #0003;
+}
+.notebook-template-chosen img,
+.notebook-template-chosen canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.notebook-template-chosen .notebook-pdf {
+  position: static;
+}

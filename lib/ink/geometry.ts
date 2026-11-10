@@ -4,6 +4,8 @@
 import { recognizeStroke } from "../whiteboard-tools";
 import { inkFontAdvance } from "./fonts";
 import { inkId, type InkItem, type InkStroke, type InkText } from "./model";
+import { hitImage, imageBounds, imageCentre } from "./image";
+import { stickerTintable } from "./stickers";
 
 export type Pt = { x: number; y: number; p: number };
 export type Box = { x: number; y: number; w: number; h: number };
@@ -99,6 +101,7 @@ export function textBox(item: InkText): Box {
 }
 export function itemBounds(item: InkItem): Box {
   if (item.type === "text") return textBox(item);
+  if (item.type === "image") return imageBounds(item);
   let [minX, minY, maxX, maxY] = [Infinity, Infinity, -Infinity, -Infinity];
   for (let i = 0; i + 2 < item.points.length; i += 3) {
     minX = Math.min(minX, item.points[i]);
@@ -124,6 +127,7 @@ function segmentDistance(p: XY, a: XY, b: XY) {
 }
 // Is the item within `tolerance` page units of the point?
 export function hitItem(item: InkItem, p: XY, tolerance: number) {
+  if (item.type === "image") return hitImage(item, p, tolerance);
   const box = itemBounds(item);
   if (p.x < box.x - tolerance || p.x > box.x + box.w + tolerance || p.y < box.y - tolerance || p.y > box.y + box.h + tolerance) return false;
   if (item.type === "text") return true;
@@ -136,9 +140,10 @@ export function hitItem(item: InkItem, p: XY, tolerance: number) {
 
 // ---- Erasers ----
 
-// Stroke eraser: whole items touched by the eraser path go.
+// Stroke eraser: whole items touched by the eraser path go. Pictures and
+// stickers stay (they are deleted from their frame).
 export function eraseItems(items: InkItem[], path: XY[], radius: number) {
-  const kept = items.filter((item) => !path.some((p) => hitItem(item, p, radius)));
+  const kept = items.filter((item) => item.type === "image" || !path.some((p) => hitItem(item, p, radius)));
   return kept.length === items.length ? items : kept;
 }
 
@@ -163,7 +168,7 @@ export function erasePartial(items: InkItem[], path: XY[], radius: number) {
   let changed = false;
   const out: InkItem[] = [];
   for (const item of items) {
-    if (!path.some((p) => hitItem(item, p, radius))) {
+    if (item.type === "image" || !path.some((p) => hitItem(item, p, radius))) {
       out.push(item);
       continue;
     }
@@ -207,6 +212,7 @@ export function lassoItems(items: InkItem[], polygon: XY[]): string[] {
         const b = textBox(item);
         return insidePolygon({ x: b.x + b.w / 2, y: b.y + b.h / 2 }, polygon);
       }
+      if (item.type === "image") return insidePolygon(imageCentre(item), polygon);
       const pts = strokePoints(item);
       const inside = pts.filter((p) => insidePolygon(p, polygon)).length;
       return inside > 0 && inside >= pts.length / 2;
@@ -223,6 +229,14 @@ export function transformItems(items: InkItem[], ids: Set<string>, t: { dx?: num
   return items.map((item): InkItem => {
     if (!ids.has(item.id)) return item;
     if (item.type === "text") return { ...item, x: mx(item.x), y: my(item.y), size: round2(Math.max(2, item.size * scale)) };
+    if (item.type === "image") {
+      // The centre moves (a turned picture turns around it).
+      const cx = item.x + item.w / 2,
+        cy = item.y + item.h / 2;
+      const w = round2(Math.max(1, item.w * scale)),
+        h = round2(Math.max(1, item.h * scale));
+      return { ...item, x: round2(mx(cx) - w / 2), y: round2(my(cy) - h / 2), w, h };
+    }
     const points = item.points.slice();
     for (let i = 0; i + 2 < points.length; i += 3) {
       points[i] = mx(points[i]);
@@ -232,7 +246,10 @@ export function transformItems(items: InkItem[], ids: Set<string>, t: { dx?: num
   });
 }
 export const recolorItems = (items: InkItem[], ids: Set<string>, color: string) =>
-  items.map((item) => (ids.has(item.id) && item.type !== "highlighter" ? { ...item, color } : item));
+  items.map((item) =>
+    // Pictures keep their colours; built-in stickers of one colour take it.
+    ids.has(item.id) && item.type !== "highlighter" && !(item.type === "image" && !stickerTintable(item.sticker)) ? { ...item, color } : item,
+  );
 // Copies with new ids (duplicate, paste).
 export const copyItems = (items: InkItem[], dx = 0, dy = 0) =>
   items.map((item) => {

@@ -21,6 +21,9 @@ block of documents (`components/ink/draw-block*.tsx`,
 | `lib/ink/notebook-pdf.ts` | `notebookPdf(sheets, load)`: a notebook as PDF (paper as vectors or the imported PDF page, ink on top) |
 | `lib/ink/merge.ts` | `mergeInk(base, ours, theirs)`: three-way merge by item id (concurrent saves) |
 | `lib/ink/svg.ts` | `inkSvg(items, size, { paper })`: ink as an SVG document (published pages, exports) |
+| `lib/ink/image.ts` | Pictures and stickers: bounds and hits (turned), the frame's resize/rotate/crop, order front/back, placing a new one |
+| `lib/ink/stickers.ts` | Built-in stickers (paths in a 100 × 100 box, CC0; `public/stickers/*.svg` are written from them), date/time stamps as ink |
+| `components/ink/ink-image.tsx` | `<InkImageItem>` (drawing) and `<ImageFrame>` (move, resize, rotate, crop, order, opacity, duplicate, delete, save as sticker) |
 | `lib/ink/recognition.ts` | Handwriting recognition in the iPhone/iPad app (contract below) |
 | `lib/ink/recognized.ts` | Cleaning and capping recognised text |
 | `lib/ink-store.ts` | Server: ink of PDF files (`file_ink`, `file_ink_versions`, `recognized`) |
@@ -71,6 +74,26 @@ block of documents (`components/ink/draw-block*.tsx`,
   Times for `serif`, Courier for `mono`, Helvetica for the rest, no
   embedding. Versions before `font` read such text in Helvetica and drop
   the field when they save that surface.
+- Pictures and stickers (`type: "image"`):
+  `{ id, type: "image", x, y, w, h, file?, sticker?, color?, rotation?, crop?, opacity? }`.
+  `file` is a file attached to the same page (the server drops pictures of
+  any other file when the ink is saved; page copies, archives and imports
+  point them to the copied files), `sticker` a built-in sticker
+  (`lib/ink/stickers.ts`; `color` tints one-colour ones). `(x, y, w, h)` is
+  the box shown before `rotation` (degrees clockwise around its centre);
+  `crop` the shown part of the whole picture in fractions (0–1). Drawn in
+  item order among the ink, so a picture can lie under the ink or over it;
+  highlighter strokes above a picture are drawn multiplied over it. Erasers
+  leave pictures alone (they are deleted from their frame); the lasso takes
+  them by their centre. At most 200 per page. In exports: SVG `<image>`
+  (published pages: the share link's file address; exports leaving
+  Flowplan: data: addresses), PDF: PNG/JPEG embedded once per file (the
+  browser converts other types through a canvas; the server's Markdown
+  export embeds PNG/JPEG with their EXIF orientation, others as grey boxes).
+- Older versions drop `image` items when they read ink. So that they do not
+  delete pictures when they save, a save carries `knows: ["image"]`; a save
+  without it keeps the stored pictures it did not carry (lib/page-ink-store.ts
+  `keepUnknownItems`), at their place in the stored order.
 - Items are back to front. Page keys: PDF page numbers (`"1"`, `"2"`, …);
   other surfaces may use any key matching `[\w.-]{1,64}` (e.g. a notebook
   page id).
