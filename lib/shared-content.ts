@@ -19,7 +19,7 @@ import { cleanHtml, cleanHtmlAsync, htmlState, stateHtml } from "./document-serv
 import { ensureRowDocument } from "./row-documents";
 import type { Field, Row } from "./types";
 import { formulaReferences } from "./formula";
-import { readRestricted, writeRestricted } from "./field-access";
+import { publicHiddenFieldIds, readRestricted, stripCells, writeRestricted } from "./field-access";
 import { cellText } from "./cell-text";
 import {
   fileIdOf,
@@ -46,7 +46,10 @@ export const publicField = (f: Field) =>
   ].includes(f.type);
 // Properties a publication may show. Formulas count when every property
 // they read is public as well (no relations, people or dynamic prop()).
+// Never one the field rules hide from public readers (an AI, progress or
+// time property that reads a property with a read rule).
 export function publicFieldIds(fields: Field[]) {
+  const hiddenByRule = publicHiddenFieldIds(fields);
   const result = new Map<string, boolean>();
   const visit = (field: Field, trail: Set<string>): boolean => {
     if (result.has(field.id)) return result.get(field.id)!;
@@ -69,7 +72,7 @@ export function publicFieldIds(fields: Field[]) {
     result.set(field.id, ok);
     return ok;
   };
-  return new Set(fields.filter((f) => visit(f, new Set())).map((f) => f.id));
+  return new Set(fields.filter((f) => !hiddenByRule.has(f.id) && visit(f, new Set())).map((f) => f.id));
 }
 export const publicFieldsOf = (fields: Field[]) => {
   const ids = publicFieldIds(fields);
@@ -79,25 +82,28 @@ export const publicFieldsOf = (fields: Field[]) => {
 // ones plus relations into databases of the same share and files.
 export function guestFields(fields: Field[], pages: { id: string }[]) {
   const visible = publicFieldsOf(fields),
+    hiddenByRule = publicHiddenFieldIds(fields),
     published = new Set(pages.map((p) => p.id));
   return fields.filter(
     (f) =>
       visible(f) ||
-      (!readRestricted(f) &&
+      (!hiddenByRule.has(f.id) &&
+        !readRestricted(f) &&
         (f.type === "files" ||
           (f.type === "relation" &&
             !!f.relationPage &&
             published.has(f.relationPage)))),
   );
 }
-const guestWritable = (f: Field, pages: { id: string }[]) =>
-  writablePublicField(f) ||
+const guestWritable = (f: Field, pages: { id: string }[], fields: Field[]) =>
+  !publicHiddenFieldIds(fields).has(f.id) &&
+  (writablePublicField(f) ||
   (!readRestricted(f) &&
     !writeRestricted(f) &&
     (f.type === "files" ||
       (f.type === "relation" &&
         !!f.relationPage &&
-        pages.some((p) => p.id === f.relationPage))));
+        pages.some((p) => p.id === f.relationPage)))));
 export const writablePublicField = (f: Field) =>
   publicField(f) &&
   !writeRestricted(f) &&
@@ -135,9 +141,12 @@ async function source(token: string, pageId?: string, rowId?: string) {
           ),
         )
       : [];
-  const cells: Record<string, unknown> = row
+  // As stored (merged on write) and as guests see it (shown and hashed):
+  // without what the field rules hide from public readers.
+  const stored: Record<string, unknown> = row
     ? JSON.parse(String(row.cells))
     : {};
+  const cells = stripCells(stored, publicHiddenFieldIds(fields));
   const version = createHash("sha256")
     .update(
       JSON.stringify([
@@ -150,7 +159,7 @@ async function source(token: string, pageId?: string, rowId?: string) {
       ]),
     )
     .digest("hex");
-  return { ...context, row, doc, fields, cells, version };
+  return { ...context, row, doc, fields, cells, stored, version };
 }
 // Stored file references appear to guests as URLs of this share.
 async function shareFileUrl(token: string, url: string) {
@@ -262,7 +271,7 @@ async function validatedCells(
   const patch = z.record(z.string(), z.unknown()).parse(input);
   const cells = { ...current };
   for (const [key, value] of Object.entries(patch)) {
-    const f = fields.find((f) => f.id === key && guestWritable(f, share.pages));
+    const f = fields.find((f) => f.id === key && guestWritable(f, share.pages, fields));
     if (!f)
       throw new HttpError(
         403,
@@ -503,7 +512,7 @@ export async function mutateSharedContent(token: string, input: unknown) {
           409,
           "Der Eintrag wurde inzwischen geändert. Bitte neu laden.",
         );
-      const cells = await validatedCells(b.cells ?? {}, s.fields, s.cells, {
+      const cells = await validatedCells(b.cells ?? {}, s.fields, s.stored, {
         token,
         pages: s.pages,
         pageId: s.page.id,
@@ -513,7 +522,7 @@ export async function mutateSharedContent(token: string, input: unknown) {
         JSON.stringify(cells), nowText(),
         s.row.id,
       );
-      await rowChanged(null, s.page, s.row.id, s.cells, cells, s.fields);
+      await rowChanged(null, s.page, s.row.id, s.stored, cells, s.fields);
       await audit("guest", "share.cells", s.page.id, s.row.id);
       return await sharedContent(token, b.pageId, b.rowId);
     }
@@ -546,7 +555,7 @@ export async function mutateSharedContent(token: string, input: unknown) {
       // Live editing saves the content continuously; saving then only
       // changes the title or the properties.
       if (b.html === undefined && s.row) {
-        const cells = await validatedCells(b.cells ?? {}, s.fields, s.cells, {
+        const cells = await validatedCells(b.cells ?? {}, s.fields, s.stored, {
           token,
           pages: s.pages,
           pageId: s.page.id,
@@ -556,7 +565,7 @@ export async function mutateSharedContent(token: string, input: unknown) {
           JSON.stringify(cells), nowText(),
           s.row.id,
         );
-        await rowChanged(null, s.page, s.row.id, s.cells, cells, s.fields);
+        await rowChanged(null, s.page, s.row.id, s.stored, cells, s.fields);
       } else if (
         b.html !== undefined &&
         (s.page.kind === "document" || s.row)
@@ -577,7 +586,7 @@ export async function mutateSharedContent(token: string, input: unknown) {
           doc.destroy();
         }
         if (s.row) {
-          const cells = await validatedCells(b.cells ?? {}, s.fields, s.cells, {
+          const cells = await validatedCells(b.cells ?? {}, s.fields, s.stored, {
             token,
             pages: s.pages,
             pageId: s.page.id,
@@ -604,7 +613,7 @@ export async function mutateSharedContent(token: string, input: unknown) {
             canonical, nowText(),
             s.row.id,
           );
-          await rowChanged(null, s.page, s.row.id, s.cells, cells, s.fields);
+          await rowChanged(null, s.page, s.row.id, s.stored, cells, s.fields);
         } else {
           await run(
             "INSERT INTO snapshots(id,page_id,state,html,title,created_by) VALUES(?,?,?,?,?,?)",

@@ -8,6 +8,7 @@ import { HttpError } from "./auth";
 import { requireMember, spaceRole } from "./permissions";
 import { publicFile, publicTree } from "./publication";
 import { publicField } from "./shared-content";
+import { publicHiddenFieldIds } from "./field-access";
 import { cleanHtml, cleanHtmlAsync, htmlState } from "./document-server";
 import { ensureRowDocument } from "./row-documents";
 import { createPage } from "./seed";
@@ -166,7 +167,11 @@ export async function copyPublication(user: Identity, input: unknown) {
       "SELECT fields,views FROM databases WHERE page_id=?",
       p.id,
     ))!;
-    const fields = (JSON.parse(stored.fields) as Field[]).filter(publicField);
+    // Public properties only, never one the field rules hide from public
+    // readers (an AI, progress or time property reading a restricted one).
+    const defined = JSON.parse(stored.fields) as Field[];
+    const hiddenByRule = publicHiddenFieldIds(defined);
+    const fields = defined.filter((f) => publicField(f) && !hiddenByRule.has(f.id));
     const kept = new Set(fields.map((f) => f.id));
     // Layouts may reference removed properties; the copy starts with a table.
     const views: View[] = [
