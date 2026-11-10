@@ -255,12 +255,15 @@ async function handleGET(
     // Link from the confirmation e-mail.
     if (action === "verify") {
       const token = new URL(req.url).searchParams.get("token") || "";
-      const userId = await verifyEmail(token);
-      // Confirmed: signed in right away in the browser that signed up;
-      // elsewhere the person signs in themselves.
       const jar = await cookies();
-      // An account with an authenticator app always signs in with its code,
-      // and one that signs in through SSO only (OIDC_LINKED_SSO_ONLY) there.
+      // Only the browser that signed up keeps its password; elsewhere the
+      // owner sets one now (lib/local-auth.ts).
+      const confirmed = await verifyEmail(token, jar.get("flowplan_verify")?.value);
+      if (confirmed?.setPassword) return NextResponse.redirect(new URL(`/reset?token=${confirmed.setPassword}&confirmed=1`, appUrl()));
+      const userId = confirmed?.userId;
+      // Confirmed: signed in right away in the browser that signed up. An
+      // account with an authenticator app always signs in with its code, and
+      // one that signs in through SSO only (OIDC_LINKED_SSO_ONLY) there.
       const here = !!userId && jar.get("flowplan_verify")?.value === userId && !(await totpEnabled(userId)) && !(await ssoOnlyAccount(userId));
       if (userId && here) {
         jar.delete("flowplan_verify");

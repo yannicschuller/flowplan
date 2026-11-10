@@ -8,6 +8,7 @@ export async function generateMetadata(): Promise<Metadata> {
     referrer: "no-referrer",
   };
 }
-export default async function ResetPage({ searchParams }: { searchParams: Promise<{ token?: string }> }) {
-  return <ResetPassword token={(await searchParams).token || ""} />;
+export default async function ResetPage({ searchParams }: { searchParams: Promise<{ token?: string; confirmed?: string }> }) {
+  const params = await searchParams;
+  return <ResetPassword token={params.token || ""} confirmed={!!params.confirmed} />;
 }

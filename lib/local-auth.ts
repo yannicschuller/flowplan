@@ -22,7 +22,7 @@ import {
 } from "@simplewebauthn/server";
 import { all, id, inTransaction, lockFor, one, run } from "./db";
 import { db } from "./db-driver";
-import { HttpError, acceptInvites, adminGroup, appUrl, hash, inviteTokenShape, rememberPolicy } from "./auth";
+import { HttpError, acceptInvites, acceptPendingInvites, adminGroup, appUrl, hash, inviteTokenShape, rememberPolicy } from "./auth";
 import { instanceSettings } from "./instance-settings";
 import { loopbackHost, plainHttpInstance } from "./instance-https";
 import { mailConfig, queueLinkMail } from "./mail";
@@ -568,11 +568,27 @@ export async function confirmAddress(userId: string) {
   if (user) await acceptInvites(user, true);
 }
 // The link from the e-mail: confirms the address; returns who it was.
-export async function verifyEmail(token: string) {
+// `registrant` is the account the opening browser signed up (the
+// flowplan_verify cookie). Opened anywhere else, the link proves only that
+// its reader owns the address – not that they chose the password: someone
+// may have signed up for another person's (invited) address. Then nothing
+// set before the confirmation survives, and the owner sets the password
+// with a fresh one-time link (`setPassword`); invitations wait for that.
+export async function verifyEmail(token: string, registrant?: string | null): Promise<{ userId: string; setPassword?: string } | null> {
   const userId = await takeToken(token, "verify");
   if (!userId) return null;
+  const account = await accountOf(userId);
+  if (account && !account.email_verified && registrant !== userId) {
+    await db.tx(async () => {
+      await run("UPDATE local_accounts SET password_hash='',email_verified=1 WHERE user_id=?", userId);
+      await run("UPDATE users SET email_verified=1 WHERE id=?", userId);
+      for (const table of ["sessions", "passkeys", "api_tokens", "mobile_devices", "app_devices", "user_totp", "user_identities"])
+        await run(`DELETE FROM ${table} WHERE user_id=?`, userId);
+    });
+    return { userId, setPassword: await issueToken(userId, "reset") };
+  }
   await confirmAddress(userId);
-  return userId;
+  return { userId };
 }
 // The link once more, for "Link erneut senden" (same answer for every address).
 export async function resendVerification(input: unknown, locale: Locale) {
@@ -623,6 +639,9 @@ export async function resetPassword(input: unknown, locale: Locale) {
   await run("UPDATE local_accounts SET password_hash=? WHERE user_id=?", await hashPassword(valid.data), userId);
   // The link came by e-mail (or from an admin): the address counts as confirmed.
   if (await one("SELECT 1 FROM local_accounts WHERE user_id=? AND email_verified=0", userId)) await confirmAddress(userId);
+  // Confirmed before, but its owner sets the password only now (the
+  // confirmation link was opened in another browser): invitations follow.
+  else await acceptPendingInvites(userId);
   // Whoever knew the old password is signed out everywhere.
   await run("DELETE FROM sessions WHERE user_id=?", userId);
   securityEvent("account.password_reset", { actorId: userId });

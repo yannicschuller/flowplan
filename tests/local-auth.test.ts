@@ -131,8 +131,8 @@ test("open sign-ups, confirmation by e-mail accepts invitations", async () => {
   assert.match(confirm.subject, /bestätigen/);
   const token = new URL(linkIn(confirm.text)).searchParams.get("token")!;
   assert.equal(await auth.verifyEmail("falsch"), null);
-  assert.equal(await auth.verifyEmail(token), user.id);
-  assert.equal(await auth.verifyEmail(token), null, "used once");
+  assert.deepEqual(await auth.verifyEmail(token, user.id), { userId: user.id });
+  assert.equal(await auth.verifyEmail(token, user.id), null, "used once");
   assert.ok(await auth.passwordLogin({ email: "cem@example.test", password: "ein-langes-passwort" }, "10.0.3.9", "de"));
   assert.ok(await one("SELECT 1 FROM members WHERE user_id=? AND workspace_id=?", user.id, wid));
   // With sign-ups open, anyone may register; a second account per address not.
@@ -140,6 +140,43 @@ test("open sign-ups, confirmation by e-mail accepts invitations", async () => {
   assert.equal(await auth.signupOpen(), true);
   await auth.register({ name: "Dana", email: "dana@example.test", password: "ein-langes-passwort" }, "de");
   await assert.rejects(auth.register({ name: "Dana 2", email: "DANA@example.test", password: "ein-langes-passwort" }, "de"), /schon ein Konto/);
+});
+
+test("a confirmation link opened in another browser does not keep the registrant's password", async () => {
+  // local-auth/register-preclaim-verified-by-invitee-click: someone signs up
+  // for an invited address; its owner opens the confirmation link.
+  await saveInstanceSettings({ ...(await instanceSettings()), allowSignup: false });
+  const ana = (await one<{ user_id: string }>("SELECT user_id FROM local_accounts WHERE email='ana@example.test'"))!.user_id;
+  const wid = id();
+  await run("INSERT INTO workspaces(id,name,created_by) VALUES(?,?,?)", wid, "Dora's team", ana);
+  await run("INSERT INTO invites(id,workspace_id,email,role,created_by,guest) VALUES(?,?,?,?,?,0)", id(), wid, "dora@example.test", "editor", ana);
+  sent.length = 0;
+  const { user, pending } = await auth.register({ name: "Dora", email: "dora@example.test", password: "attacker-chosen-pw" }, "de");
+  assert.equal(pending, true);
+  await assert.rejects(
+    auth.register({ name: "Dora", email: "dora@example.test", password: "doras-own-password" }, "de"),
+    (e: unknown) => e instanceof auth.AccountExists && e.noted,
+  );
+  // Whatever the registrant might hold for the account goes as well.
+  await run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", "s-dora", user.id, "[]", Date.now() + 60_000);
+  await run("INSERT INTO api_tokens(id,user_id,name,scope,token_hash,prefix,created_at) VALUES(?,?,?,?,?,?,?)", id(), user.id, "x", "write", "dummy-hash-dora", "fp_x", Date.now());
+  await mail.flushMailQueue();
+  const token = new URL(linkIn(sent.find((m) => m.to === "dora@example.test" && /bestätigen/.test(m.subject))!.text)).searchParams.get("token")!;
+  // Opened without the sign-up browser's cookie (another person's registrant
+  // id in it counts the same).
+  const opened = await auth.verifyEmail(token, "someone-else");
+  assert.equal(opened?.userId, user.id);
+  assert.ok(opened?.setPassword, "a one-time link to set the password");
+  await assert.rejects(auth.passwordLogin({ email: "dora@example.test", password: "attacker-chosen-pw" }, "10.0.5.1", "de"));
+  assert.equal(await one("SELECT 1 FROM sessions WHERE user_id=?", user.id), undefined);
+  assert.equal(await one("SELECT 1 FROM api_tokens WHERE user_id=?", user.id), undefined);
+  assert.equal((await one<{ email_verified: number }>("SELECT email_verified FROM local_accounts WHERE user_id=?", user.id))!.email_verified, 1);
+  assert.equal(await one("SELECT 1 FROM members WHERE user_id=?", user.id), undefined, "no membership before the owner set a password");
+  // The owner sets the password: now the invitation is accepted.
+  await auth.resetPassword({ token: opened!.setPassword!, password: "doras-own-password" }, "de");
+  assert.ok(await one("SELECT 1 FROM members WHERE user_id=? AND workspace_id=? AND role='editor'", user.id, wid));
+  assert.ok(await auth.passwordLogin({ email: "dora@example.test", password: "doras-own-password" }, "10.0.5.1", "de"));
+  await assert.rejects(auth.passwordLogin({ email: "dora@example.test", password: "attacker-chosen-pw" }, "10.0.5.2", "de"));
 });
 
 test("password reset by e-mail and by an administrator's link", async () => {

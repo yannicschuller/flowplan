@@ -6,7 +6,9 @@ import { BrandMark } from "./brand-mark";
 import { useT } from "./i18n";
 import { AppProfilesLink } from "./app-profiles-link";
 
-export default function ResetPassword({ token }: { token: string }) {
+// `confirmed`: the confirmation link of a new account, opened in another
+// browser than the one that signed up – its owner chooses the password now.
+export default function ResetPassword({ token, confirmed = false }: { token: string; confirmed?: boolean }) {
   const t = useT();
   const [busy, setBusy] = useState(false),
     [message, setMessage] = useState(""),
@@ -38,7 +40,23 @@ export default function ResetPassword({ token }: { token: string }) {
         flowplan
       </div>
       <section className="login-card">
-        <h1>{done ? t("Passwort geändert.", "Password changed.") : t("Neues Passwort", "New password")}</h1>
+        <h1>
+          {done
+            ? confirmed
+              ? t("Passwort festgelegt.", "Password set.")
+              : t("Passwort geändert.", "Password changed.")
+            : confirmed
+              ? t("Adresse bestätigt – Passwort festlegen", "Address confirmed – set your password")
+              : t("Neues Passwort", "New password")}
+        </h1>
+        {confirmed && !done && token && (
+          <p>
+            {t(
+              "Der Link wurde nicht in dem Browser geöffnet, in dem das Konto angelegt wurde. Damit nur du dich anmelden kannst, legst du das Passwort jetzt fest – ein vorher gewähltes gilt nicht mehr. Danach erscheinen auch Arbeitsbereiche, zu denen du eingeladen wurdest.",
+              "The link was not opened in the browser where the account was created. So that only you can sign in, set the password now – one chosen before no longer applies. Afterwards, workspaces you were invited to appear as well.",
+            )}
+          </p>
+        )}
         {done ? (
           <>
             <p>{t("Melde dich jetzt mit dem neuen Passwort an.", "Sign in with the new password now.")}</p>
