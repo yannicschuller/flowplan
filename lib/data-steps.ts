@@ -25,6 +25,7 @@ export const IDENTITIES_STEP = "identities-88";
 export const REACTION_EMOJI_STEP = "reaction-emoji-fe0f";
 export const ISSUE_PROVIDERS_STEP = "issue-providers-95";
 export const GRANT_KINDS_STEP = "grant-kinds-100";
+export const SYNCED_JOURNAL_STEP = "synced-journal-parent";
 
 // In the order the schema versions introduced them. A function: the
 // modules of the steps import lib/db.ts, which may still be loading.
@@ -36,6 +37,7 @@ export const dataSteps = (): DataStep[] => [
   { name: REACTION_EMOJI_STEP, run: reactionEmojiPresentation },
   { name: ISSUE_PROVIDERS_STEP, run: issueProvidersCheck },
   { name: GRANT_KINDS_STEP, run: grantKinds },
+  { name: SYNCED_JOURNAL_STEP, run: syncedBlocksIntoJournals },
 ];
 
 // Runs the steps not done yet (`only`: just these). Several instances on
@@ -279,4 +281,28 @@ async function grantKinds() {
   await run(`UPDATE grants SET ${fill("space")} WHERE resource_kind IS NULL AND ${page} AND ${space}`);
   // Only the number: which pages or people is nobody's business in the log.
   if (Number(ambiguous)) console.warn(`Freigaben: ${ambiguous} Freigabe(n) auf einer Kennung, die Seite und Bereich zugleich ist, gelten nur noch für den Bereich.`);
+}
+
+// Synced blocks made on a journal day were created at the root of the
+// space, outside the journal and so outside its PIN (lib/api.ts
+// synced.create now puts them under the journal). Each such block – a
+// synced page without a parent – moves under the journal of the earliest
+// day in its space that shows it. Blocks no journal day shows stay where
+// they are.
+async function syncedBlocksIntoJournals() {
+  const orphans = new Map(
+    (await all<{ id: string; space_id: string }>("SELECT id,space_id FROM pages WHERE synced=1 AND parent_id IS NULL")).map((p) => [p.id, p.space_id]),
+  );
+  if (!orphans.size) return;
+  const days = await all<{ parent_id: string; space_id: string; html: string }>(
+    `SELECT p.parent_id,p.space_id,d.html FROM pages p JOIN documents d ON d.page_id=p.id JOIN pages j ON j.id=p.parent_id
+     WHERE p.journal_date IS NOT NULL AND j.kind='journal' AND d.html LIKE '%data-synced-block=%'
+     ORDER BY p.created_at,p.id`,
+  );
+  for (const day of days)
+    for (const [, block] of day.html.matchAll(/data-synced-block="([0-9a-f-]{36})"/g)) {
+      if (orphans.get(block) !== day.space_id) continue;
+      await run("UPDATE pages SET parent_id=? WHERE id=? AND parent_id IS NULL", day.parent_id, block);
+      orphans.delete(block);
+    }
 }

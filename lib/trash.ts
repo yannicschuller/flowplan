@@ -2,7 +2,8 @@ import { z } from "zod";
 import { all, audit, one, run, transaction, daysAgoText } from "./db";
 import { HttpError } from "./auth";
 import { instanceSettings } from "./instance-settings";
-import { pageRole, requireMember } from "./permissions";
+import { pageRole, requireMember, requirePage } from "./permissions";
+import { journalLocked, requireUnlocked } from "./journal-extras";
 import { listRowTrash, purgeTrashedRow, ROW_TRASH_DAYS } from "./row-trash";
 import { expireTrashedFiles, listFileTrash, purgeFiles } from "./file-trash";
 import { canManageSpace, purgePages, purgeSpace } from "./workspace-lifecycle";
@@ -36,6 +37,37 @@ async function trashedTree(user: Identity, root: Page) {
     root.id,
   );
   return await filterAsync(pages, async (p) => p.id === root.id || await purgeable(user, p));
+}
+
+// page.restore: the page with its trashed sub-pages – those this person may
+// edit (as trashedTree) and that lie behind no journal PIN they have not
+// entered. A sub-page left out stays in the trash with everything below it.
+// A page that is not in the trash brings back nothing below it (sub-pages
+// moved to the trash on their own stay there).
+export async function restoreTrashedPage(user: Identity, input: Record<string, unknown>) {
+  const page = await requirePage(user, uuid.parse(input.pageId), true, true);
+  await requireUnlocked(user, page);
+  if (
+    page.parent_id &&
+    (await one<Page>("SELECT * FROM pages WHERE id=?", page.parent_id))?.deleted_at
+  )
+    await run("UPDATE pages SET parent_id=NULL WHERE id=?", page.id);
+  if (!page.deleted_at) return { ok: true };
+  const restored = new Set([page.id]);
+  let level = [page.id];
+  while (level.length) {
+    const children = await all<Page>(
+      `SELECT * FROM pages WHERE parent_id IN (${level.map(() => "?").join(",")}) AND deleted_at IS NOT NULL`,
+      ...level,
+    );
+    level = (await filterAsync(
+      children.filter((p) => !restored.has(p.id)),
+      async (p) => (await purgeable(user, p)) && !(await journalLocked(user, p)),
+    )).map((p) => p.id);
+    for (const id of level) restored.add(id);
+  }
+  for (const id of restored) await run("UPDATE pages SET deleted_at=NULL WHERE id=?", id);
+  return { ok: true };
 }
 
 // page.purge: one trashed page with its trashed sub-pages. Inside the command

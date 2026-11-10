@@ -12,6 +12,7 @@ import { one } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import { requireRow } from "./row-documents";
+import { requireUnlocked } from "./journal-extras";
 import { htmlState, jsonHtml } from "./document-server";
 import { htmlBlocks } from "./text-diff";
 import { rewriteDocument, rewriteSchema } from "./document-rewrite";
@@ -63,6 +64,9 @@ const LIST_ITEMS = new Set(["listItem", "taskItem"]);
 export async function restoreBlock(user: Identity, raw: unknown) {
   const b = input.parse(raw);
   const page = await requirePage(user, b.pageId, true);
+  // Behind a journal PIN not entered: refused before the version is read
+  // (its answer would tell whether a paragraph was there).
+  await requireUnlocked(user, page);
   if (page.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
   if (b.rowId) await requireRow(user, page.id, b.rowId, true);
   else if (page.kind !== "document") throw new HttpError(400, "Kein Dokument.");
