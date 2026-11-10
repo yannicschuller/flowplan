@@ -34,10 +34,10 @@ import { limitAi } from "../action-limits";
 import { all, one } from "../db";
 import { contentLocale, ct } from "../content-locale";
 import { pageRole, requirePage, spaceRole } from "../permissions";
-import { refreshSearchIndex, termMatches } from "../search-index";
+import { JOURNAL_DAY_SQL, refreshSearchIndex, termMatches } from "../search-index";
 import type { Identity, Page, Space } from "../types";
 import { aiFilter } from "./access";
-import { chunkPlain, questionTerms, rankPassages, selectPassages, type Passage } from "./chunks";
+import { chunkPlain, fold, questionTerms, rankPassages, selectPassages, type Passage } from "./chunks";
 import { helpCandidates, helpTitle, helpUrl } from "./help";
 import type { ChatMessage } from "./providers";
 import { requireAi } from "./run";
@@ -58,6 +58,9 @@ export const ASK_LIMITS = {
   maxSources: 8,
   // Sources whose text is read and ranked.
   candidates: 24,
+  // "The last …": the newest journal days that contain a term of the
+  // question are read besides them, however they rank.
+  newestDays: 8,
   // "Diese Seite": the open page in full, smaller for models on the own server.
   pageChars: { local: 12_000, remote: 60_000 },
 } as const;
@@ -160,10 +163,33 @@ export async function askWorkspaces(user: Identity, current: string): Promise<{ 
 
 // Full-text candidates: pages and records (not comments or files) that
 // contain any of the terms, best first (also lib/ai/link-candidates.ts).
-export async function textCandidates(workspaceId: string, terms: string[], scope: { pages: Set<string> | null; spaceId?: string }, limit = 400) {
+// `files`: a hit on a file of a page (not of a database) counts for the
+// page, whose text for the AI includes its files (lib/ai/sources.ts).
+// `journalDays`: journal days only, newest first (lib/search-index.ts).
+export async function textCandidates(
+  workspaceId: string,
+  terms: string[],
+  scope: { pages: Set<string> | null; spaceId?: string },
+  limit = 400,
+  options: { files?: boolean; journalDays?: boolean } = {},
+) {
   if (!terms.length) return [];
   await refreshSearchIndex();
-  return (await termMatches(workspaceId, terms, { spaceId: scope.spaceId, limit })).filter((r) => !/^[cmf]:/.test(r.row_id) && (!scope.pages || scope.pages.has(r.page_id)));
+  const rows = await termMatches(workspaceId, terms, { spaceId: scope.spaceId, limit, journalDays: options.journalDays });
+  const databases = new Set<string>();
+  if (options.files) {
+    const pages = [...new Set(rows.filter((r) => r.row_id.startsWith("f:")).map((r) => r.page_id))];
+    for (const pageId of pages) if ((await one<{ kind: string }>("SELECT kind FROM pages WHERE id=?", pageId))?.kind === "database") databases.add(pageId);
+  }
+  return rows
+    .map((r) => (options.files && r.row_id.startsWith("f:") && !databases.has(r.page_id) ? { ...r, row_id: "" } : r))
+    .filter((r) => !/^[cmf]:/.test(r.row_id) && (!scope.pages || scope.pages.has(r.page_id)));
+}
+
+// The journal day of a page: its own date, or that of the day it lies
+// directly below (a notebook of the day).
+export async function journalDayOf(pageId: string): Promise<string | null> {
+  return (await one<{ day: string | null }>(`SELECT ${JOURNAL_DAY_SQL} day FROM pages p WHERE p.id=?`, pageId))?.day || null;
 }
 
 // Earlier turns: alternating, starting with a question, shortened.
@@ -234,8 +260,20 @@ export async function prepareAsk(user: Identity, raw: AskInput, signal?: AbortSi
   // shared list with page titles.
   const recent = asksForRecent(terms);
   const searchTerms = terms.filter((t) => !RECENT_WORDS.has(t));
+  // "The last …": per term the newest journal days that contain it – the
+  // ranking by words alone prefers short old entries that repeat a name.
+  const newest: string[] = [];
   for (const workspace of workspaces) {
-    const lists = [await textCandidates(workspace.id, searchTerms, scope), ...(searchTerms.length > 1 ? (await mapAsync(searchTerms, async (term) => await textCandidates(workspace.id, [term], scope, 60))) : [])];
+    const lists = [
+      await textCandidates(workspace.id, searchTerms, scope, 400, { files: true }),
+      ...(searchTerms.length > 1 ? (await mapAsync(searchTerms, async (term) => await textCandidates(workspace.id, [term], scope, 60, { files: true }))) : []),
+    ];
+    if (recent)
+      for (const term of searchTerms) {
+        const days = await textCandidates(workspace.id, [term], scope, ASK_LIMITS.newestDays * 2, { files: true, journalDays: true });
+        lists.push(days);
+        for (const r of days) if (!newest.includes(r.page_id)) newest.push(r.page_id);
+      }
     for (const list of lists) {
       const seen = new Set<string>();
       list.forEach((r) => {
@@ -273,27 +311,36 @@ export async function prepareAsk(user: Identity, raw: AskInput, signal?: AbortSi
 
   // What the AI may read – before any text is loaded.
   const ranked = [...candidates.values()].sort((a, b) => b.fused - a.fused);
-  const readable = (await aiFilter(
+  const allowed = await aiFilter(
     user,
     // The open page is there in full already.
     ranked.filter((c) => !(current && c.pageId === current.page.id && !c.rowId)).map((c) => ({ ...c, rowId: c.rowId || null })),
-  )).slice(0, ASK_LIMITS.candidates);
+  );
+  const readable = allowed.slice(0, ASK_LIMITS.candidates);
+  // "The last …": the newest readable days come along however they rank.
+  if (recent) {
+    const days: typeof allowed = [];
+    for (const pageId of newest) {
+      const c = allowed.find((a) => a.pageId === pageId && !a.rowId);
+      if (c && !days.includes(c)) days.push(c);
+    }
+    const dated = await mapAsync(days, async (c) => ({ c, day: (await journalDayOf(c.pageId)) || "" }));
+    dated.sort((a, b) => b.day.localeCompare(a.day));
+    for (const { c } of dated.slice(0, ASK_LIMITS.newestDays)) if (!readable.includes(c)) readable.push(c);
+  }
 
-  // Dates of journal days: in the source label, and for "the last …" the
-  // newest days rank first.
+  // Dates of journal days (and of pages directly below a day): in the
+  // source label, and for "the last …" the newest days rank first.
   const dates = new Map<string, string>();
   for (const c of readable)
     if (!c.rowId) {
-      const date = (await one<{ journal_date: string | null }>("SELECT journal_date FROM pages WHERE id=?", c.pageId))?.journal_date;
+      const date = await journalDayOf(c.pageId);
       if (date) dates.set(c.pageId, date);
     }
-  const byDate = [...new Set(dates.values())].sort().reverse();
-  const recency = (pageId: string) => {
-    const date = dates.get(pageId);
-    return recent && date ? 3 / (1 + byDate.indexOf(date)) : 0;
-  };
   const names = nameLookup();
   const passages: Passage[] = [];
+  // Folded text of each dated source, for the recency boost below.
+  const datedText = new Map<string, string>();
   const meta = new Map<string, Omit<AskSource, "n">>();
   await forEachAsync(readable, async (c, rank) => {
     const source = await sourceText(c.pageId, c.rowId || null, names);
@@ -321,10 +368,27 @@ export async function prepareAsk(user: Identity, raw: AskInput, signal?: AbortSi
       ...(workspaceId ? { workspaceId, workspaceName: workspaceNames.get(workspaceId) || "" } : {}),
     });
     const chunks = source.chunks.length ? source.chunks : [title];
+    if (recent && dates.has(c.pageId)) datedText.set(k, fold([title, ...chunks].join("\n")));
     chunks.forEach((text, index) =>
-      passages.push({ key: k, text, title, index, sourceRank: rank, boost: (c.chunks.has(index) ? 3 / (1 + c.chunks.get(index)!) : 0) + recency(c.pageId) }),
+      passages.push({ key: k, text, title, index, sourceRank: rank, boost: c.chunks.has(index) ? 3 / (1 + c.chunks.get(index)!) : 0 }),
     );
   });
+  // "The last …": per term, the days that contain it newest first. A term
+  // that runs through many days (a person, a class, a project) is what the
+  // question follows and weighs more than one that occurs on a single day
+  // ("Themen"). Only passages with a term of the question are lifted.
+  if (recent && datedText.size) {
+    const keys = [...datedText.keys()].sort((a, b) => (dates.get(b.split("/")[0]) || "").localeCompare(dates.get(a.split("/")[0]) || ""));
+    const perTerm = searchTerms.map((t) => keys.filter((k) => datedText.get(k)!.includes(t)));
+    const total = perTerm.reduce((sum, days) => sum + days.length, 0);
+    const recency = new Map<string, number>();
+    if (total)
+      perTerm.forEach((days) => days.forEach((k, rank) => recency.set(k, (recency.get(k) || 0) + (3 * days.length) / total / (1 + rank))));
+    for (const p of passages) {
+      const extra = recency.get(p.key);
+      if (extra && searchTerms.some((t) => fold(p.text).includes(t))) p.boost = (p.boost || 0) + extra;
+    }
+  }
   // The Flowplan help, in the language of the interface.
   const help = new Set<string>();
   if (withHelp) {

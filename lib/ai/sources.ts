@@ -4,6 +4,8 @@
 import { mapAsync } from "../each-async";
 import { pageMetaSearchText } from "../page-properties-server";
 import { notebookText } from "../notebook";
+import { pageInkSearchText } from "../page-ink-store";
+import { parseRecognizedMap } from "../ink/recognized";
 import { all, one } from "../db";
 import { publicHiddenFieldIds } from "../field-access";
 import { ct } from "../content-locale";
@@ -106,6 +108,30 @@ async function databaseFields(pageId: string): Promise<Field[]> {
   return fields;
 }
 
+// The text of a page's files as the search index has it (lib/search-index.ts):
+// PDFs and Office files, images and scanned PDFs read by OCR
+// (lib/file-text.ts), typed and recognised handwriting on PDFs. Readers of
+// the page see these files; database pages are left out (their files
+// belong to records with their own access).
+export const FILE_TEXT_LIMIT = 20_000;
+export async function pageFileText(pageId: string, max = FILE_TEXT_LIMIT): Promise<string> {
+  const files = await all<{ name: string; text: string | null; ink: string | null; recognized: string | null }>(
+    "SELECT f.name,t.text,i.text ink,i.recognized FROM files f LEFT JOIN file_texts t ON t.file_id=f.id LEFT JOIN file_ink i ON i.file_id=f.id WHERE f.page_id=? AND f.deleted_at IS NULL ORDER BY f.created_at,f.id",
+    pageId,
+  );
+  const parts: string[] = [];
+  let used = 0;
+  for (const f of files) {
+    const body = [f.text || "", f.ink || "", ...Object.values(parseRecognizedMap(f.recognized))].map((t) => t.trim()).filter(Boolean).join("\n");
+    if (!body) continue;
+    const part = `${ct("Datei", "File")} „${f.name || ""}“:\n${body}`.slice(0, max - used);
+    parts.push(part);
+    used += part.length;
+    if (used >= max) break;
+  }
+  return parts.join("\n\n");
+}
+
 // Text chunks of a page (rowId empty) or of one record, or null when it is
 // gone. Whiteboards contribute their title only.
 export async function sourceText(pageId: string, rowId?: string | null, names = nameLookup()): Promise<SourceText | null> {
@@ -129,11 +155,23 @@ export async function sourceText(pageId: string, rowId?: string | null, names = 
       return { pageId, rowId: null, title: page.title, kind: "whiteboard", chunks: racks ? chunkPlain(racks) : [] };
     }
     // Notebooks: the text typed or recognised on their sheets.
-    if (page.kind === "notebook") return { pageId, rowId: null, title: page.title, kind: "document", chunks: (await notebookText(page.id)).map((text) => text.slice(0, 4000)) };
+    // The text of a PDF imported as sheets comes with its file.
+    const files = await pageFileText(page.id);
+    const fileChunks = files ? chunkPlain(files) : [];
+    if (page.kind === "notebook")
+      return { pageId, rowId: null, title: page.title, kind: "document", chunks: [...(await notebookText(page.id)).map((text) => text.slice(0, 4000)), ...fileChunks] };
     const html = (await one<{ html: string | null }>("SELECT html FROM documents WHERE page_id=?", pageId))?.html || "";
     // Tags and property values (#70) as one short chunk before the text.
     const meta = (await pageMetaSearchText(pageId)).slice(0, 1000);
-    return { pageId, rowId: null, title: page.title, kind: page.kind as SourceText["kind"], chunks: [...(meta ? [meta] : []), ...chunkHtml(html)] };
+    // Drawing blocks still in the document: typed and recognised handwriting.
+    const ink = (await pageInkSearchText(pageId, page.kind, html)).slice(0, 20_000);
+    return {
+      pageId,
+      rowId: null,
+      title: page.title,
+      kind: page.kind as SourceText["kind"],
+      chunks: [...(meta ? [meta] : []), ...chunkHtml(html), ...(ink ? chunkPlain(ink) : []), ...fileChunks],
+    };
   }
   const row = await one<RowData>(
     "SELECT r.id,r.page_id,r.cells,r.content,r.number,r.created_at,r.updated_at,r.created_by,r.updated_by,d.html FROM rows r LEFT JOIN row_documents d ON d.row_id=r.id WHERE r.id=? AND r.page_id=?",

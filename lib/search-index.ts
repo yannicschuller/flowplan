@@ -224,6 +224,11 @@ export async function processSearchIndex(limit = BATCH) {
         }
         await indexRow(entry.page_id, entry.row_id, fields.get(entry.page_id)!);
       }
+      // Handwriting and file texts (OCR, PDFs) are part of what the AI
+      // reads of a page (lib/ai/sources.ts): its meaning search embeds the
+      // page again (unchanged chunks keep their vectors).
+      if (!entry.row_id || entry.row_id.startsWith("f:"))
+        await run("INSERT INTO ai_embed_dirty(page_id,row_id) VALUES(?,'') ON CONFLICT DO NOTHING", entry.page_id);
       await run(
         "DELETE FROM search_dirty WHERE page_id=? AND row_id=?",
         entry.page_id,
@@ -244,12 +249,17 @@ const SHORT_TERMS = 4;
 // BM25; shorter ones (two-character Chinese, Japanese, Korean or Thai
 // words, which MATCH cannot find) through a scan like the short search
 // above, ranked by how many of them occur (in the title or the text), and follow the index's hits.
+// `journalDays`: only journal days and the pages directly below one (a
+// notebook of the day), with their files, newest day first – for "the last
+// …" questions (lib/ai/ask.ts); only terms of three characters or more.
+export const JOURNAL_DAY_SQL = "COALESCE(p.journal_date,(SELECT d.journal_date FROM pages d WHERE d.id=p.parent_id))";
 export async function termMatches(
   workspaceId: string,
   terms: string[],
-  options: { spaceId?: string; limit: number },
+  options: { spaceId?: string; limit: number; journalDays?: boolean },
 ): Promise<{ page_id: string; row_id: string }[]> {
-  const scope = `p.workspace_id=? AND p.deleted_at IS NULL${options.spaceId ? " AND p.space_id=?" : ""}`;
+  const days = options.journalDays ? ` AND (s.row_id='' OR s.row_id LIKE 'f:%') AND ${JOURNAL_DAY_SQL} IS NOT NULL` : "";
+  const scope = `p.workspace_id=? AND p.deleted_at IS NULL${options.spaceId ? " AND p.space_id=?" : ""}${days}`;
   const scopeArgs = [workspaceId, ...(options.spaceId ? [options.spaceId] : [])];
   const long = terms.filter((t) => !isShortTerm(t)),
     short = terms.filter(isShortTerm).slice(0, SHORT_TERMS);
@@ -258,13 +268,13 @@ export async function termMatches(
     ? (await all<{ page_id: string; row_id: string }>(
         `SELECT s.page_id,s.row_id FROM search_index s JOIN pages p ON p.id=s.page_id
          WHERE ${match.where} AND ${scope}
-         ORDER BY ${match.rank}${entryOrder()} LIMIT ${options.limit}`,
+         ORDER BY ${options.journalDays ? `${JOURNAL_DAY_SQL} DESC,` : ""}${match.rank}${entryOrder()} LIMIT ${options.limit}`,
         ...match.whereArgs,
         ...scopeArgs,
         ...match.rankArgs,
       ))
     : [];
-  if (short.length && rows.length < options.limit) {
+  if (short.length && rows.length < options.limit && !options.journalDays) {
     const seen = new Set(rows.map((r) => `${r.page_id}:${r.row_id}`));
     // A term in the title counts twice, as in BM25 above.
     const hits = short.map(() => `(CASE WHEN ${sql.instr("s.title", "?")}>0 THEN 2 ELSE 0 END)+(CASE WHEN ${sql.instr("s.body", "?")}>0 THEN 1 ELSE 0 END)`).join("+");
