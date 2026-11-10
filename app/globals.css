@@ -24333,6 +24333,17 @@ h3 .block-reactions {
     bottom: auto;
     height: calc(var(--ask-vv-height, 100dvh) - max(var(--safe-top), 10px));
   }
+  /* Below it, behind the keyboard, the sheet's background instead of the
+     page showing through a strip iOS 26 can leave above the keyboard (like
+     the docked formatting toolbar, see html.keyboard-docked). The panel
+     clips its children (overflow), hence a shadow, not a ::after; the clip
+     keeps the rounded top and drops the sheet's own shadow meanwhile.
+     The :is() matches every shell and only adds weight: enough to win over
+     the dark overlay's shadow (:root[data-theme="dark"] …). */
+  :root.ask-keyboard .app-shell:is(.ask-open, .ask-overlay, *) .ask-panel {
+    box-shadow: 0 0 0 100vh var(--bg);
+    clip-path: inset(0 0 -100vh round 16px 16px 0 0);
+  }
   .ask-keyboard .ask-panel .ai-ask-note,
   .ask-keyboard .ask-panel .ai-ask-empty {
     display: none;
@@ -26441,6 +26452,23 @@ tr:hover .row-open-mark,
        iOS has moved the visible area (#181): the toolbar grew by the home
        indicator's room and covered that much more of the text. */
     padding-bottom: 4px;
+    box-shadow: var(--keyboard-fill-shadow);
+    clip-path: var(--keyboard-fill-clip);
+  }
+  /* Everything below a bar docked on the keyboard is filled with the bar's
+     background, down to the end of the layout: iOS 26 can leave a strip
+     between the visible area's end and the keyboard (a measured iPhone:
+     about 120 px above the form accessory bar, which is translucent glass
+     itself), and the text and toasts behind it showed through there. A
+     spread shadow rather than a ::after: the toolbar scrolls sideways
+     (overflow-x) and would clip and scroll its own children; the shadow is
+     not clipped by that, takes no taps (the text above stays reachable)
+     and adds no scrollable overflow. The clip keeps only the bar itself and
+     what lies below it (the shadow would cover the text above otherwise),
+     and reaches into the side insets. */
+  html.keyboard-docked {
+    --keyboard-fill-shadow: 0 0 0 100vh var(--bg);
+    --keyboard-fill-clip: inset(0 calc(-1 * var(--safe-right, 0px)) -100vh calc(-1 * var(--safe-left, 0px)));
   }
   /* A record's content (the record dialog, which lives outside the shell,
      and records written inline in a feed) keeps its toolbar in place – until
@@ -26463,6 +26491,8 @@ tr:hover .row-open-mark,
     border-width: 1px 0 0;
     padding: 4px 8px;
     scrollbar-width: none;
+    box-shadow: var(--keyboard-fill-shadow);
+    clip-path: var(--keyboard-fill-clip);
   }
   html.keyboard-docked .row-document .editor-wrapper:focus-within .editor-toolbar::-webkit-scrollbar {
     display: none;
@@ -26486,6 +26516,15 @@ tr:hover .row-open-mark,
      dialogs and menus. */
   html.keyboard-docked .hide-keyboard-fab {
     display: inline-flex;
+  }
+  /* A toast keeps above the keyboard and the docked toolbar (44 px buttons,
+     its padding and border: 53 px), placed from the top for the same reason
+     as the toolbar (#120) – from bottom: it lay behind the keyboard, or in
+     the strip iOS 26 can leave above it, which is filled now. */
+  html.keyboard-docked .toast {
+    top: calc(var(--keyboard-visible-end) - 53px - 12px);
+    bottom: auto;
+    transform: translate(-50%, -100%);
   }
 }
 .hide-keyboard-fab {
