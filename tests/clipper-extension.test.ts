@@ -245,6 +245,44 @@ test("end-to-end encrypted spaces are neither offered nor written to", async () 
   }
 });
 
+test("saving below a page needs the rights of page.create; guests only append and capture", async () => {
+  const { command } = await import("../lib/api");
+  const guest = await account("clip-guest"),
+    outsider = await account("clip-outsider");
+  await run("INSERT INTO members VALUES(?,?,?)", wid, guest.id, "editor");
+  await run("INSERT INTO members VALUES(?,?,?)", wid, outsider.id, "editor");
+  await command(anna, { action: "member.guest", workspaceId: wid, userId: guest.id, guest: true });
+  const shared = await createPage(wid, space, anna.id, "Geteilt", "document");
+  const table = await createPage(wid, space, anna.id, "Sammlung", "database");
+  for (const pageId of [shared, table]) await command(anna, { action: "grant.set", resourceId: pageId, userId: guest.id, role: "editor" });
+  // A private space the member has no role in, with one page granted.
+  const secret = ((await command(anna, { action: "space.create", workspaceId: wid, name: "Privat", private: true })) as { id: string }).id;
+  const granted = await createPage(wid, secret, anna.id, "Freigegeben", "document");
+  await command(anna, { action: "grant.set", resourceId: granted, userId: outsider.id, role: "editor" });
+  const children = async (parent: string) => Number((await one<{ n: number }>("SELECT COUNT(*) n FROM pages WHERE parent_id=?", parent))!.n);
+  const url = "https://news.example/clip";
+  for (const [who, parent] of [[guest, shared], [outsider, granted]] as const) {
+    for (const mode of ["page", "selection"] as const)
+      await assert.rejects(
+        async () => await saveClip(who, { mode, target: { workspaceId: wid, pageId: parent }, url, title: "Unterseite", html: "<p>x</p>" }),
+        (e: { status?: number }) => e.status === 403,
+      );
+    // No bookmarks database lands in the space either.
+    await assert.rejects(async () => await saveClip(who, { mode: "bookmark", target: { workspaceId: wid, pageId: parent }, url }), (e: { status?: number }) => e.status === 403);
+    assert.equal(await children(parent), 0);
+    // Highlights are appended to the shared page.
+    assert.equal((await saveClip(who, { mode: "highlight", target: { workspaceId: wid, pageId: parent }, url, text: "Ein Satz" })).pageId, parent);
+    assert.match(await html(parent), /Ein Satz/);
+  }
+  // A record in a shared database.
+  const record = await saveClip(guest, { mode: "page", target: { workspaceId: wid, pageId: table }, url, title: "Als Eintrag", html: "<p>Text</p>" });
+  assert.equal(record.pageId, table);
+  assert.ok(record.rowId);
+  // Members with the space rights still create sub pages.
+  const sub = await saveClip(anna, { mode: "page", target: { workspaceId: wid, pageId: shared }, url, title: "Erlaubt", html: "<p>ok</p>" });
+  assert.equal((await one<{ parent_id: string }>("SELECT parent_id FROM pages WHERE id=?", sub.pageId))!.parent_id, shared);
+});
+
 test("the extension asks for minimal permissions and ships its strings", () => {
   const manifest = JSON.parse(readFileSync("extensions/browser/manifest.json", "utf8"));
   assert.equal(manifest.manifest_version, 3);

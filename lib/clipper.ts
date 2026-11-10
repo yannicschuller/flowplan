@@ -194,7 +194,11 @@ export async function saveClip(user: Identity, raw: unknown) {
   const result = await transaction(async () => {
     if (input.mode === "bookmark") {
       // The space's bookmarks database, or the chosen one if it is one.
-      const db = target?.kind === "database" && await isBookmarks(target.id) ? target.id : (await bookmarksDatabase(workspaceId, target?.space_id || space!.id, user.id));
+      const chosen = target?.kind === "database" && await isBookmarks(target.id);
+      // Otherwise the space's bookmarks database, which may be created
+      // there: the rights of page.create in the space, as for page.fromShare.
+      if (target && !chosen) await writableSpace(user, workspaceId, target.space_id);
+      const db = chosen ? target.id : (await bookmarksDatabase(workspaceId, target?.space_id || space!.id, user.id));
       await requirePage(user, db, true);
       const saved = await addBookmarks(db, user.id, [{ title, url: input.url, note: input.description?.slice(0, 2000) }]);
       if (!saved.added) throw new HttpError(409, "Dieser Link ist schon unter den Lesezeichen.");
@@ -239,6 +243,10 @@ export async function saveClip(user: Identity, raw: unknown) {
       await tagRecord(target.id, saved.rowId, tags);
       return { pageId: target.id, rowId: saved.rowId };
     }
+    // A new page below the target needs the rights of page.create: full
+    // membership as editor and editor rights in the space. Guests only
+    // append to pages shared with them (highlights) or capture records.
+    if (target) await writableSpace(user, workspaceId, target.space_id);
     const pageId = await createPage(workspaceId, target?.space_id || space!.id, user.id, title, "document", target?.id || null);
     const html = cleanHtml(`<p>${link(input.url, input.url)}</p>${tagLine}<hr>${content}`);
     await run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), pageId);
