@@ -19,7 +19,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
 import { all, id, lockFor, one, run, transaction } from "./db";
-import { adminGroup, HttpError, touchSession } from "./auth";
+import { adminGroup, HttpError, refuseReadToken, touchSession } from "./auth";
 import { cellText } from "./cell-text";
 import { openTasksEverywhere } from "./doc-tasks";
 import { sortTasks } from "./task-order";
@@ -290,6 +290,7 @@ export async function deviceIdentity(deviceId: string): Promise<Identity | null>
 }
 
 export async function unregisterMobileDevice(user: Identity, installationId: unknown) {
+  refuseReadToken(user);
   const device = await one<{ id: string; push_subscription_id: string | null }>(
     "SELECT id,push_subscription_id FROM mobile_devices WHERE user_id=? AND installation_id=?",
     user.id,
