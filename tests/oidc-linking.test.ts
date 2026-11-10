@@ -402,3 +402,15 @@ test("merge: the authenticator app moves re-sealed when the target has none", as
   assert.equal(await tf.useSecondFactor(target.id, totp.totpCode(setup.secret, Date.now())), true);
   assert.equal(await one("SELECT 1 FROM local_accounts WHERE user_id=?", source.id), undefined);
 });
+
+test("an SSO sign-in writes the address together with the provider's confirmation", async () => {
+  // users-email/changed-without-resetting-email-verified
+  const first = await link.resolveOidcSignIn(sso("eve-addr", "eve-addr@example.test"), "de");
+  const userId = (first as { userId: string }).userId;
+  await run("UPDATE users SET email_verified=1 WHERE id=?", userId);
+  const row = async () => ({ ...(await one<{ email: string; email_verified: number }>("SELECT email,email_verified FROM users WHERE id=?", userId))! });
+  await link.knownAccount(sso("eve-addr", "victim-addr@example.test", false), "de");
+  assert.deepEqual(await row(), { email: "victim-addr@example.test", email_verified: 0 });
+  await link.knownAccount(sso("eve-addr", "victim-addr@example.test", true), "de");
+  assert.deepEqual(await row(), { email: "victim-addr@example.test", email_verified: 1 });
+});

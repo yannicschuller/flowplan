@@ -370,3 +370,16 @@ test("the two-factor policy applies to LDAP accounts as to passwords", async () 
   assert.ok("pending" in next);
   assert.ok((await pendingToken(alice, false)).split(".").length === 5);
 });
+
+test("a changed directory address drops the confirmation of the old one", async () => {
+  // users-email/changed-without-resetting-email-verified
+  person("frank");
+  const frank = (await ldapPasswordLogin("frank", "secret-pw", "203.0.113.20", "de")).userId;
+  await run("UPDATE users SET email_verified=1 WHERE id=?", frank);
+  const row = async () => ({ ...(await one<{ email: string; email_verified: number }>("SELECT email,email_verified FROM users WHERE id=?", frank))! });
+  await syncLdapAccounts();
+  assert.deepEqual(await row(), { email: "frank@example.org", email_verified: 1 });
+  directory.get(`uid=frank,ou=people,${BASE}`)!.attrs.mail = ["victim@example.org"];
+  await syncLdapAccounts();
+  assert.deepEqual(await row(), { email: "victim@example.org", email_verified: 0 });
+});

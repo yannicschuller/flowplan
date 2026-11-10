@@ -46,8 +46,11 @@ export async function knownAccount(p: OidcProfile, locale: Locale) {
   if (!user) return null;
   if (user.disabled) throw disabledError(locale);
   // SSO accounts take name and address from the provider; an account with
-  // e-mail and password keeps its own (it was linked, #101).
-  if (!(await isLocalAccount(userId))) await run("UPDATE users SET name=?,email=? WHERE id=?", p.name, p.email, userId);
+  // e-mail and password keeps its own (it was linked, #101). The address is
+  // written together with whether the provider vouches for it, so no request
+  // sees the new address with the old confirmation.
+  if (!(await isLocalAccount(userId)))
+    await run("UPDATE users SET name=?,email=?,email_verified=? WHERE id=?", p.name, p.email, p.emailVerified ? 1 : 0, userId);
   await touchIdentity(p.issuer, p.subject, p.email);
   return userId;
 }
