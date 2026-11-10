@@ -377,8 +377,10 @@ export function htmlToMarkdown(
         const url = context.url(String(node.attrs.src || "")),
           alt = String(node.attrs.alt || ct("Bild", "Image"));
         const caption = captionText(node.attrs.caption);
+        // An image without alt text keeps none (the label only stands in
+        // for a missing picture).
         return url
-          ? `![${markdownText(alt)}](<${markdownUrl(url)}>${caption ? imageTitle(caption) : ""})`
+          ? `![${markdownText(String(node.attrs.alt || ""))}](<${markdownUrl(url)}>${caption ? imageTitle(caption) : ""})`
           : `${markdownText(alt)} ${ct("(nicht verfügbar)", "(not available)")}` + (caption ? ` – ${markdownText(caption)}` : "");
       }
       case "media": {
@@ -418,7 +420,8 @@ export function htmlToMarkdown(
               content[0] +
               content
                 .slice(1)
-                .map((line) => "\n" + " ".repeat(prefix.length) + line)
+                // A task's content starts after "- ", not after its "[x] ".
+                .map((line) => "\n" + " ".repeat(node.type.name === "taskList" ? 2 : prefix.length) + line)
                 .join(""),
           );
         });

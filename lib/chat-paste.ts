@@ -4,7 +4,7 @@
 // tab-separated lines become a table, "☐" a checklist, and every line its own
 // paragraph. Copied web pages with rendered KaTeX keep their formulas as LaTeX.
 import { Marked, type Tokens } from "marked";
-import { TASK_LISTS } from "./task-list-html";
+import { taskList } from "./task-list-html";
 
 const OPEN = "",
   CLOSE = "",
@@ -67,12 +67,16 @@ export function chatTextToHtml(text: string): string {
     out.push(line);
   }
   const marked = new Marked({ gfm: true, breaks: false, async: false });
-  marked.use({ renderer: { html: ({ text: raw }: Tokens.HTML | Tokens.Tag) => escapeHtml(raw) } });
-  const html = (marked.parse(out.join("\n")) as string)
-    // Task lists as the editor has them.
-    .replace(TASK_LISTS, (_, items: string) =>
-      `<ul data-type="taskList">${items.replace(/<li><input([^>]*)>\s*([\s\S]*?)<\/li>/g, (_m: string, attrs: string, body: string) => `<li data-type="taskItem" data-checked="${/checked/.test(attrs)}"><p>${body.replace(/^<p>|<\/p>$/g, "")}</p></li>`)}</ul>`,
-    );
+  marked.use({
+    renderer: {
+      html: ({ text: raw }: Tokens.HTML | Tokens.Tag) => escapeHtml(raw),
+      // Task lists as the editor has them.
+      list(token: Tokens.List) {
+        return taskList.call(this, token);
+      },
+    },
+  });
+  const html = marked.parse(out.join("\n")) as string;
   const tex = (i: string) => escapeHtml(formulas[Number(i)] ?? "");
   return html
     .replace(new RegExp(`<p>\\s*${OPEN}(\\d+)${CLOSE}\\s*</p>`, "g"), (_, i: string) => `<div data-math="${tex(i)}"></div>`)

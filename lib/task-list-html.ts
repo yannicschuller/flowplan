@@ -1,47 +1,52 @@
-// The task lists in HTML rendered by marked, found in linear time: use as
-// `html.replace(TASK_LISTS, (list, items) => …)`.
+// Task lists ("- [ ] …") as the editor has them, rendered from marked's list
+// tokens: use as the `list` renderer (`renderer: { list(token) { return
+// taskList.call(this, token) } }`). Nested lists and items with several
+// paragraphs keep their structure, as they are rendered by marked itself.
 //
-// It matches exactly what the regex
-//   /<ul>\s*((?:<li><input[^>]*type="checkbox"[^>]*>[\s\S]*?<\/li>\s*)+)<\/ul>/g
-// did: a list whose first item starts with a checkbox runs to the first
-// "</li>" that only white space separates from a "</ul>", and `items` is
-// everything between "<ul>\s*" and that "</ul>". That regex backtracked
-// exponentially on input like '<ul><li><input' followed by many
-// 'type="checkbox"' (CodeQL js/redos), and the server renders Markdown sent
-// through the API, MCP, synced issues and imports.
-type TaskListReplacer = (list: string, items: string) => string;
+// Earlier this was a regex over marked's HTML, which ended a list at the
+// first "</li></ul>" – the end of a nested list – so subtasks lost their
+// checkbox and later tasks fell out of the list.
+import type { Renderer, Token, Tokens } from "marked";
 
-function replaceTaskLists(html: string, replace: TaskListReplacer): string {
-  const listStart = /<ul>\s*<li><input([^>]*)>/g;
-  const listEnd = /<\/li>\s*<\/ul>/g;
-  let out = "";
-  let copied = 0;
-  // The first list end found so far (-1: none left, -2: not searched yet):
-  // searches only ever move forwards, so the whole run stays linear.
-  let endAt = -2;
-  let endLength = 0;
-  for (let start = listStart.exec(html); start; start = listStart.exec(html)) {
-    if (!start[1].includes('type="checkbox"')) {
-      listStart.lastIndex = start.index + 1;
-      continue;
-    }
-    const bodyFrom = listStart.lastIndex;
-    if (endAt === -2 || (endAt !== -1 && endAt < bodyFrom)) {
-      listEnd.lastIndex = bodyFrom;
-      const end = listEnd.exec(html);
-      endAt = end ? end.index : -1;
-      endLength = end ? end[0].length : 0;
-    }
-    if (endAt === -1) break; // no list end left: no later list can match either
-    const after = endAt + endLength;
-    const itemsFrom = start.index + start[0].indexOf("<li>");
-    out += html.slice(copied, start.index) + replace(html.slice(start.index, after), html.slice(itemsFrom, after - "</ul>".length));
-    copied = after;
-    listStart.lastIndex = after;
-  }
-  return copied === 0 ? html : out + html.slice(copied);
-}
+// "- [ ]" without text: marked reads no task, but it is an empty one.
+const EMPTY_TASK = /^\[([ xX])\]$/;
+const isTask = (item: Tokens.ListItem) => item.task || EMPTY_TASK.test(item.text.trim());
 
-export const TASK_LISTS = {
-  [Symbol.replace]: (html: string, replace: TaskListReplacer) => replaceTaskLists(html, replace),
+type Options = {
+  // The rendered first line of a task, to take attributes from (the due date).
+  head?: (html: string) => { html: string; attrs: string };
 };
+
+// A list with task items as task lists (runs of other items stay plain
+// bullet lists, as the editor splits them anyway); false for other lists,
+// so marked renders them as usual.
+export function taskList(this: Renderer, token: Tokens.List, options: Options = {}): string | false {
+  if (token.ordered || !token.items.some(isTask)) return false;
+  const parser = this.parser;
+  const runs: { task: boolean; items: string[] }[] = [];
+  for (const item of token.items) {
+    const task = isTask(item);
+    let html: string;
+    if (!task) html = `<li>${parser.parse(item.tokens)}</li>\n`;
+    else {
+      const empty = !item.task && EMPTY_TASK.exec(item.text.trim());
+      const checked = empty ? empty[1] !== " " : !!item.checked;
+      const tokens = empty ? [] : item.tokens.filter((t) => t.type !== "checkbox");
+      // The first paragraph is the task's text; what follows (more
+      // paragraphs, nested lists) is rendered as it is.
+      const first = tokens[0] as Tokens.Text | Tokens.Paragraph | undefined;
+      let head = "",
+        rest: Token[] = tokens;
+      if (first && (first.type === "text" || first.type === "paragraph")) {
+        head = parser.parseInline(first.tokens ? first.tokens.filter((t) => t.type !== "checkbox") : [{ type: "text", raw: first.text, text: first.text }]);
+        rest = tokens.slice(1);
+      }
+      const done = options.head ? options.head(head) : { html: head, attrs: "" };
+      html = `<li data-type="taskItem" data-checked="${checked}"${done.attrs}><p>${done.html}</p>${parser.parse(rest)}</li>\n`;
+    }
+    const run = runs[runs.length - 1];
+    if (run && run.task === task) run.items.push(html);
+    else runs.push({ task, items: [html] });
+  }
+  return runs.map((run) => `<ul${run.task ? ' data-type="taskList"' : ""}>${run.task ? "" : "\n"}${run.items.join("")}</ul>\n`).join("");
+}

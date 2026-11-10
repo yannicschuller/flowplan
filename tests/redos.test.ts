@@ -2,7 +2,6 @@
 // time and still find what they found before.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { TASK_LISTS } from "../lib/task-list-html";
 import { previewKind } from "../lib/code-block-options";
 import { markdownToRawHtml } from "../lib/markdown-html";
 import { chatTextToHtml } from "../lib/chat-paste";
@@ -14,10 +13,16 @@ const fast = (run: () => unknown) => {
   assert.ok(ms < 100, `took ${Math.round(ms)} ms`);
 };
 
-test("task lists are found in linear time (#21, #22, #30, #31)", () => {
-  const attack = "<ul><li><input" + 'type="checkbox"type="checkbox"></li><li><input'.repeat(50_000);
-  fast(() => attack.replace(TASK_LISTS, () => "x"));
-  fast(() => '<ul><li><input type="checkbox">'.repeat(50_000).replace(TASK_LISTS, () => "x"));
+// Task lists are rendered from marked's tokens now (lib/task-list-html.ts),
+// no regex runs over the HTML any more.
+test("task lists are rendered in linear time (#21, #22, #30, #31)", () => {
+  // marked itself takes a while for long lists: a looser bound than fast().
+  for (const markdown of ["- [ ] a\n".repeat(5_000), "- [ ] a\n  - [x] b\n".repeat(2_000), '<ul><li><input type="checkbox">'.repeat(50_000)]) {
+    const start = performance.now();
+    markdownToRawHtml(markdown);
+    chatTextToHtml(markdown);
+    assert.ok(performance.now() - start < 3000);
+  }
 });
 
 test("pasted chat checklists still become task lists", () => {
@@ -27,20 +32,7 @@ test("pasted chat checklists still become task lists", () => {
   );
 });
 
-test("task lists match as the regex did", () => {
-  const items = (html: string) => html.replace(TASK_LISTS, (list, inner) => `[${list === html ? "all" : list}|${inner}]`);
-  assert.equal(items('<ul>\n<li><input type="checkbox"> a</li>\n</ul>'), '[all|<li><input type="checkbox"> a</li>\n]');
-  // The first item decides, and the list runs to the first "</li> </ul>".
-  assert.equal(
-    items('<ul>\n<li><input disabled="" type="checkbox"> a</li>\n<li>b</li>\n</ul>'),
-    '[all|<li><input disabled="" type="checkbox"> a</li>\n<li>b</li>\n]',
-  );
-  assert.equal(items("<ul><li>a</li></ul>"), "<ul><li>a</li></ul>");
-  assert.equal(items('<ul><li><input type="radio"></li></ul>'), '<ul><li><input type="radio"></li></ul>');
-  assert.equal(
-    items('<p>x</p><ul><li><input type="checkbox">a</li></ul><ul><li><input type="checkbox" checked>b</li> </ul>'),
-    '<p>x</p>[<ul><li><input type="checkbox">a</li></ul>|<li><input type="checkbox">a</li>][<ul><li><input type="checkbox" checked>b</li> </ul>|<li><input type="checkbox" checked>b</li> ]',
-  );
+test("task lists keep their items and due dates", () => {
   assert.equal(
     markdownToRawHtml("- [x] done\n- [ ] open 📅 2026-05-04"),
     '<ul data-type="taskList"><li data-type="taskItem" data-checked="true"><p>done</p></li>\n<li data-type="taskItem" data-checked="false" data-due="2026-05-04"><p>open</p></li>\n</ul>\n',

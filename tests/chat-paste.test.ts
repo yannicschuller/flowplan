@@ -54,3 +54,13 @@ test("copied table cells keep backslashes and pipes", () => {
   assert.match(html, /<td>C:\\Daten\\<\/td>\s*<td>a\\\|b<\/td>/);
   assert.equal(html.match(/<td>/g)?.length, 4);
 });
+
+test("nested checklists stay one task list with subtasks", () => {
+  const html = chatTextToHtml("**Plan**\n- [ ] buy\n  - [x] milk\n- [ ] call");
+  assert.equal(
+    html.replace(/\n/g, ""),
+    '<p><strong>Plan</strong></p><ul data-type="taskList"><li data-type="taskItem" data-checked="false"><p>buy</p>' +
+      '<ul data-type="taskList"><li data-type="taskItem" data-checked="true"><p>milk</p></li></ul></li>' +
+      '<li data-type="taskItem" data-checked="false"><p>call</p></li></ul>',
+  );
+});
