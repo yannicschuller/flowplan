@@ -1467,7 +1467,9 @@ async function runCommand(
       }
       case "synced.create": {
         // The content of a new synced block: a document under the page that
-        // first shows it (and so with its permissions).
+        // first shows it (and so with its permissions). On a journal day
+        // under its journal instead (a day stays removable as empty), so
+        // the journal's PIN covers it too.
         const host = await write();
         const html = z.string().max(500_000).optional().parse(b.html) || "";
         const sid = await createPage(
@@ -1476,7 +1478,7 @@ async function runCommand(
           user.id,
           "Synchronisierter Block",
           "document",
-          host.journal_date ? null : host.id,
+          host.journal_date ? host.parent_id : host.id,
         );
         await run("UPDATE pages SET synced=1 WHERE id=?", sid);
         if (html)
