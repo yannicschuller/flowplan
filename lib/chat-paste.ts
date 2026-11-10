@@ -13,8 +13,11 @@ const OPEN = "",
 const escapeHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 // Whether plain text is worth converting (otherwise it is pasted as usual).
+// A single line only with a formula that looks like one ("\(t=0\)",
+// "$$\frac{a}{b}$$"), not "sed 's/\(foo\)/'" or "kill $$".
+const MATH_LIKE = /\\[A-Za-z]+|[\^_=]/;
 export function looksLikeChatText(text: string) {
-  if (!text.includes("\n")) return /\\\(|\\\[|\$\$/.test(text);
+  if (!text.includes("\n")) return [...text.matchAll(LATEX_PATTERN)].some((m) => MATH_LIKE.test(m[1] ?? m[2] ?? m[3]));
   // A fenced code block (```mermaid … ```) becomes a code block; a Mermaid
   // diagram shows its picture (#95).
   if (/^ {0,3}(`{3,}|~{3,})[^`\n]*\n[\s\S]*?\n {0,3}\1\s*$/m.test(text)) return true;
@@ -56,6 +59,9 @@ export function chatTextToHtml(text: string): string {
       out.push("", row(rows[0]), `|${" --- |".repeat(width)}`, ...rows.slice(1).map(row), "");
       continue;
     }
+    // "[1]: https://…" (a list of sources) stays text: Markdown would take
+    // it for a link definition and drop it.
+    line = line.replace(/^( {0,3})\[(?=[^\]\n]+\]:)/, "$1\\[");
     line = line.replace(/^(\s*)☐\s*/, "$1- [ ] ").replace(/^(\s*)[☑☒]\s*/, "$1- [x] ").replace(/^(\s*)•\s+/, "$1- ");
     // Chat answers put one thought per line: each line its own paragraph,
     // except inside lists and tables.

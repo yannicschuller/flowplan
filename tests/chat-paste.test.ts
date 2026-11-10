@@ -64,3 +64,17 @@ test("nested checklists stay one task list with subtasks", () => {
       '<li data-type="taskItem" data-checked="false"><p>call</p></li></ul>',
   );
 });
+
+test("ordinary text is not taken for formulas or link definitions", () => {
+  // Shell lines with \( \) or $$ are pasted as they are.
+  assert.equal(looksLikeChatText("sed 's/\\(foo\\)bar/\\1/' file.txt"), false);
+  assert.equal(looksLikeChatText("echo $$ > run.pid; kill $$"), false);
+  assert.equal(looksLikeChatText("Path is C:\\[tmp]\\new and D:\\[x]\\old"), false);
+  // A formula on a single line still is one.
+  assert.equal(looksLikeChatText("Setzen wir \\(t=0\\) ein."), true);
+  assert.equal(looksLikeChatText("$$\\frac{a}{b}$$"), true);
+  // "[1]: https://…" lines stay text instead of vanishing as link definitions.
+  const html = chatTextToHtml("**Sources**\n[1]: https://example.test/a\n[2]: https://example.test/b");
+  assert.match(html, /<p>\[1\]: <a href="https:\/\/example\.test\/a">https:\/\/example\.test\/a<\/a><\/p>/);
+  assert.match(html, /<p>\[2\]: <a href="https:\/\/example\.test\/b">/);
+});
