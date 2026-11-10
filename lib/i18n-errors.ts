@@ -519,6 +519,8 @@ const exact: Record<string, string> = {
   "Zu viele Demos von dieser Adresse. Bitte später erneut versuchen.": "Too many demos from this address. Please try again later.",
   "Gerade laufen zu viele Demos. Bitte in ein paar Minuten erneut versuchen.": "Too many demos are running right now. Please try again in a few minutes.",
   "Dieses Journal ist gesperrt.": "This journal is locked.",
+  "Diese Wiederholung kann Flowplan nicht abbilden (nur täglich, wöchentlich, monatlich oder jährlich mit Intervall, Anzahl oder Enddatum).":
+    "Flowplan cannot represent this repetition (only daily, weekly, monthly or yearly with an interval, a count or an end date).",
   "Die Aufgabe wurde inzwischen geändert. Bitte neu laden.": "The task was changed in the meantime. Please reload.",
   "Bitte gültige Blöcke auswählen.": "Please select valid blocks.",
   "Bitte benachbarte Blöcke derselben Ebene auswählen.": "Please select neighbouring blocks on the same level.",
