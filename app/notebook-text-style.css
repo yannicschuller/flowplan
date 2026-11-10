@@ -1,0 +1,227 @@
+/* ===== Text style bar (components/ink/text-style-bar.tsx) =====
+   The second row of the lasso's selection bar when it holds text, and the
+   bar over a text box being typed (.ink-text-float). Both are dark bars
+   (.ink-selection-bar, app/globals.css) in either theme; their menus are
+   .ink-menu (light or dark with the theme). The .ink-selection-bar button
+   rule reaches into the menus, so each control states its own size. */
+.ink-selection-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.ink-selection-bar.has-text {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+.ink-selection-bar.has-text > .ink-text-bar {
+  padding-top: 4px;
+  border-top: 1px solid #ffffff1f;
+}
+.ink-selection-bar.ink-text-float {
+  z-index: 3;
+}
+.ink-selection-bar .ink-text-font {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: auto;
+  min-width: 96px;
+  max-width: 150px;
+  padding: 0 8px;
+}
+.ink-text-font-name {
+  overflow: hidden;
+  font-size: 15px;
+  line-height: 1.1;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.ink-text-font-name.is-mixed {
+  font-size: 14px;
+  color: #b3afbd;
+}
+.ink-selection-bar .ink-text-size {
+  width: auto;
+  min-width: 46px;
+  padding: 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.ink-text-size-label small {
+  margin-left: 2px;
+  font-size: 10px;
+  font-weight: 500;
+  opacity: 0.7;
+}
+.ink-text-sep {
+  flex-shrink: 0;
+  width: 1px;
+  height: 20px;
+  margin: 0 3px;
+  background: #ffffff2e;
+}
+.ink-selection-bar .ink-text-toggle.active,
+.ink-selection-bar .ink-text-toggle.active:hover {
+  background: #ecebf1;
+  color: #1d1c23;
+}
+/* Mixed: some of the boxes have it. */
+.ink-selection-bar .ink-text-toggle.is-mixed {
+  box-shadow: inset 0 -3px 0 -1px #ecebf180;
+}
+.ink-text-mixed {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* The menus: face, size, alignment and line height. */
+/* The page surface may set line-height: 0 (PDF pages, sheets). */
+.ink-text-menu,
+.ink-text-bar {
+  line-height: 1.3;
+}
+.ink-text-menu {
+  display: grid;
+  gap: 10px;
+}
+.ink-text-menu .ink-panel-sec-head {
+  min-height: 18px;
+}
+.ink-selection-bar .ink-text-menu .ink-panel-fonts button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  height: 40px;
+  padding: 0 10px 0 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--text);
+}
+.ink-selection-bar .ink-text-menu .ink-panel-fonts button:hover {
+  background: var(--hover);
+}
+.ink-selection-bar .ink-text-menu .ink-panel-fonts button.active {
+  border-color: var(--blue);
+  background: var(--blue-light);
+}
+.ink-selection-bar .ink-text-menu .ink-segmented button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: auto;
+  min-width: 0;
+  height: 34px;
+  padding: 0 6px;
+  border-radius: 7px;
+  color: var(--secondary);
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.ink-selection-bar .ink-text-menu .ink-segmented button:hover {
+  background: color-mix(in srgb, var(--bg) 45%, transparent);
+  color: var(--text);
+}
+.ink-selection-bar .ink-text-menu .ink-segmented button.active {
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: 0 1px 3px #1d1a1426;
+}
+[data-theme="dark"] .ink-selection-bar .ink-text-menu .ink-segmented button.active {
+  background: #3a3842;
+  box-shadow: 0 1px 2px #0006;
+}
+/* Alignment: icons only, the names for screen readers. */
+.ink-text-aligns button > span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.ink-text-size-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ink-selection-bar .ink-text-size-field button,
+.ink-text-size-field button {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+}
+.ink-text-size-field button:disabled {
+  opacity: 0.4;
+}
+.ink-menu .ink-text-size-field label {
+  margin: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: row;
+  align-items: center;
+  min-width: 0;
+  gap: 6px;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--secondary);
+  font-size: 13px;
+}
+.ink-text-size-field label:focus-within {
+  border-color: var(--blue);
+  outline: 1px solid var(--blue);
+}
+.ink-text-size-field input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+.ink-text-size-field input::-webkit-inner-spin-button,
+.ink-text-size-field input::-webkit-outer-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+
+/* The text tool's panel: style of new text (components/ink/ink-panel.tsx). */
+.ink-panel-text-toggles {
+  display: flex;
+  gap: 6px;
+}
+.ink-toolbar .ink-panel .ink-text-toggle {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+}
+.ink-toolbar .ink-panel .ink-text-toggle.active,
+.ink-toolbar .ink-panel .ink-text-toggle.active:hover:not(:disabled) {
+  border-color: var(--blue);
+  background: var(--blue-light);
+  color: var(--blue);
+}

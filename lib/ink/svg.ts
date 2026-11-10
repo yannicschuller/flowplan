@@ -3,12 +3,14 @@
 // layer (components/ink/ink-layer.tsx): highlighter under the ink at 40 %,
 // multiplied; pen strokes with pressure as filled outlines. Text names its
 // face (lib/ink/fonts.ts) with fallbacks: inside Flowplan's pages the face
-// itself shows, an SVG opened elsewhere uses the fallback.
+// itself shows, an SVG opened elsewhere uses the fallback; bold, italic,
+// underline, alignment and line height of the box (lib/ink/text-style.ts).
 import { lineWidth, strokePath } from "./geometry";
 import type { InkImage, InkItem } from "./model";
 import { fullBox, imageCentre } from "./image";
 import { builtinSticker, stickerSvgElements } from "./stickers";
 import { inkFontFamily } from "./fonts";
+import { lineHeightOf, svgAnchor, textAnchorX } from "./text-style";
 import { HIGHLIGHTER_OPACITY } from "./presets";
 import { dashArray, shapePaths, SHAPE_FILL_OPACITY } from "./shapes";
 import type { PageSize } from "./coords";
@@ -86,11 +88,17 @@ export function inkSvgElements(items: InkItem[], { dark = false, imageHref }: { 
         ? `<path d="${d}" fill="${color(item.color)}"/>`
         : `<path d="${d}" fill="none" stroke="${color(item.color)}" stroke-width="${r2(lineWidth(item))}" stroke-linecap="round" stroke-linejoin="round"/>`;
     } else if (item.type === "text") {
+      const x = r2(textAnchorX(item));
       const lines = item.text
         .split("\n")
-        .map((line, i) => `<tspan x="${r2(item.x)}" dy="${i ? r2(item.size * 1.25) : 0}">${xml(line) || " "}</tspan>`)
+        .map((line, i) => `<tspan x="${x}" dy="${i ? r2(item.size * lineHeightOf(item)) : 0}">${xml(line) || " "}</tspan>`)
         .join("");
-      ink += `<text x="${r2(item.x)}" y="${r2(item.y + item.size * 0.8)}" font-size="${r2(item.size)}" fill="${color(item.color)}" font-family="${xml(inkFontFamily(item.font))}"${item.rotation ? ` transform="rotate(${r2(item.rotation)} ${r2(item.x)} ${r2(item.y)})"` : ""} xml:space="preserve">${lines}</text>`;
+      const look =
+        (item.bold ? ` font-weight="bold"` : "") +
+        (item.italic ? ` font-style="italic"` : "") +
+        (item.underline ? ` text-decoration="underline"` : "") +
+        (item.align ? ` text-anchor="${svgAnchor(item)}"` : "");
+      ink += `<text x="${x}" y="${r2(item.y + item.size * 0.8)}" font-size="${r2(item.size)}" fill="${color(item.color)}" font-family="${xml(inkFontFamily(item.font))}"${look}${item.rotation ? ` transform="rotate(${r2(item.rotation)} ${r2(item.x)} ${r2(item.y)})"` : ""} xml:space="preserve">${lines}</text>`;
     }
   });
   return (highlights ? `<g style="mix-blend-mode:multiply">${highlights}</g>` : "") + ink;

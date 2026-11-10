@@ -55,12 +55,36 @@ export type InkText = {
   // Typeface (lib/ink/fonts.ts); none: Helvetica as before. Optional, so
   // older versions read such text (and drop the face when they save).
   font?: InkFont;
+  // The look of the whole box (lib/ink/text-style.ts): bold, italic,
+  // underlined, the lines aligned in the box (none: left) and the line
+  // height in em (none: 1.25). Optional like `font`: older versions show
+  // such text plain, left-aligned at 1.25 and drop the fields when they
+  // save that surface (the text itself stays).
+  bold?: true;
+  italic?: true;
+  underline?: true;
+  align?: InkTextAlign;
+  lineHeight?: number;
   // Turned clockwise by this many degrees around (x, y) (the lasso's
   // rotation handle); none: upright. Optional like `font`: older versions
   // show such text upright and drop the turn when they save that surface.
   rotation?: number;
   rec?: InkRec;
 };
+export type InkTextAlign = "center" | "right";
+export const LINE_HEIGHT = { default: 1.25, min: 0.8, max: 3 };
+// The look fields of a text item as stored (after `font`); defaults (plain,
+// left, 1.25) are left out.
+export function cleanTextLook(raw: Record<string, unknown>): Pick<InkText, "bold" | "italic" | "underline" | "align" | "lineHeight"> {
+  const lh = finite(raw.lineHeight) ? round2(clamp(raw.lineHeight, LINE_HEIGHT.min, LINE_HEIGHT.max)) : LINE_HEIGHT.default;
+  return {
+    ...(raw.bold === true ? { bold: true as const } : {}),
+    ...(raw.italic === true ? { italic: true as const } : {}),
+    ...(raw.underline === true ? { underline: true as const } : {}),
+    ...(raw.align === "center" || raw.align === "right" ? { align: raw.align } : {}),
+    ...(lh !== LINE_HEIGHT.default ? { lineHeight: lh } : {}),
+  };
+}
 // A picture on the page: a file attached to the page (`file`) or one of the
 // built-in stickers (`sticker`, lib/ink/stickers.ts). (x, y, w, h) is the
 // box it is shown in, before `rotation` (degrees, clockwise, around the
@@ -161,6 +185,7 @@ export function cleanItem(raw: unknown): InkItem | null {
       y: round2(clamp(item.y, -1e5, 1e5)),
       text: item.text.slice(0, INK_LIMITS.textLength),
       ...(isInkFont(item.font) ? { font: item.font } : {}),
+      ...cleanTextLook(item),
       ...(finite(item.rotation) && normalRotation(item.rotation) ? { rotation: normalRotation(item.rotation) } : {}),
       ...withRec(item),
     };

@@ -22,7 +22,8 @@ block of documents (`components/ink/draw-block*.tsx`,
 | `lib/ink/presets.ts` | Tools, colours, widths and the free width ranges, the 3 favourite pens of earlier versions, text style, recent own colours, Pencil double-tap setting, snap setting (per device, `localStorage`) |
 | `lib/ink/favorites.ts` | Favourite pens: up to 8 of tool (pen, highlighter, text) + colour + width (+ face), add/move/remove, the one in hand; per device (`flowplan-ink-favorites`; taken over once from `flowplan-ink-presets`, which stays for older versions) |
 | `lib/ink/eraser.ts` | Eraser kinds – whole strokes, parts (`erasePartial` splits strokes), highlighter only – and the partial eraser's size (screen px); per device |
-| `lib/ink/fonts.ts` | Typefaces of text: CSS families with fallbacks, rough advance per face, nearest standard PDF font |
+| `lib/ink/fonts.ts` | Typefaces of text: CSS families with fallbacks, rough advance per face, nearest standard PDF font (also bold/italic cuts) |
+| `lib/ink/text-style.ts` | The look of whole text boxes (face, size, colour, bold, italic, underline, alignment, line height): `withTextLook`/`applyTextLook` (canonical stored form, same list when nothing changes), `sharedTextLook` (null where a selection differs), the anchor and baselines SVG and PDF share |
 | `lib/ink/color.ts` | Hex ↔ hue/saturation/value for the colour picker |
 | `lib/ink/pdf-export.ts` | `flattenInk(pdfBytes, doc)` → new PDF with the ink as vectors (pdf-lib); `drawInk` for any page |
 | `lib/ink/notebook-pdf.ts` | `notebookPdf(sheets, load)`: a notebook as PDF (paper as vectors or the imported PDF page, ink on top) |
@@ -55,6 +56,7 @@ block of documents (`components/ink/draw-block*.tsx`,
 | `components/ink/ink-style-picker.tsx` | `<InkCustomColor editor>` ("+" after the colours in the toolbar row: colour picker in a menu) |
 | `components/ink/color-picker.tsx` | `<ColorPicker value onChange onCommit recent>`: saturation/brightness area, hue slider, hex field, eyedropper (EyeDropper API, hidden where missing), recent colours (pointer, Pencil, keyboard) |
 | `components/ink/panel-parts.tsx` | Building blocks of the panels: segmented radio buttons, slider, section head, setting switch |
+| `components/ink/text-style-bar.tsx` | `<TextStyleBar>`: face, size (presets, slider, number), bold/italic/underline, alignment + line height, colour – the second row of the selection bar when it holds text (applies to every chosen text box, "—" where they differ) and `<FloatingTextBar>` over a box being typed with the text tool |
 
 ## Storage format (version 1)
 
@@ -93,6 +95,29 @@ block of documents (`components/ink/draw-block*.tsx`,
   Times for `serif`, Courier for `mono`, Helvetica for the rest, no
   embedding. Versions before `font` read such text in Helvetica and drop
   the field when they save that surface.
+- Optional look of a text box as a whole (`lib/ink/text-style.ts`):
+  `bold: true`, `italic: true`, `underline: true`, `align: "center" |
+  "right"` (none: left), `lineHeight` (em, 0.8–3; none: 1.25). Defaults
+  are never stored. Alignment works inside the box's rough width (the
+  longest line × the face's advance, a little more in bold): `(x, y)`
+  stays the top left; centred lines are centred on `x + w/2`, right-aligned
+  ones end at `x + w` – so changing alignment or size never moves the box.
+  SVG: `font-weight`, `font-style`, `text-decoration`, `text-anchor` and
+  `dy`; PDFs: the standard bold/oblique cuts (Helvetica-Bold, Times-Italic,
+  Courier-BoldOblique …, Helvetica for the handwriting faces), each line
+  placed with the font's own widths, underline as a thin filled bar. Faces
+  without a cut of their own (Instrument Serif bold, Caveat, Patrick Hand
+  bold/italic) are made bolder or slanted by the browser. Versions before
+  these fields show such text plain, left-aligned at 1.25 and drop the
+  fields when they save that surface (the text itself stays).
+- Editing the look: the lasso's bar gets a second row when the selection
+  holds text (one undo step per change; a slider, number or colour-picker
+  run is one step via `editor.styleSelectionText(patch, mergeKey)`); with
+  the text tool a tap on a text box opens it with a floating style bar –
+  text and look are then one undo step when the box closes; "Text
+  bearbeiten" in the selection bar does the same for one chosen box.
+  ⌘B/⌘I/⌘U while typing. The text tool's panel sets the look of new text
+  (per device).
 - Optional `rec: { id, t }` on any item: written during the notebook
   audio recording `id`, `t` milliseconds into it (pauses not counted;
   `lib/ink/audio-sync.ts`, `lib/notebook-audio.ts`). Set by the editor for

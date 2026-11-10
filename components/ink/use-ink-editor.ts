@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { copyItems, itemBounds, recolorItems, unionBox } from "@/lib/ink/geometry";
 import { emptyHistory, record, redo as redoStep, undo as undoStep, type History } from "@/lib/ink/history";
-import { withPage, type InkDoc, type InkItem, type InkRec } from "@/lib/ink/model";
+import { cleanTextLook, withPage, type InkDoc, type InkItem, type InkRec } from "@/lib/ink/model";
 import { stampNewItems } from "@/lib/ink/audio-sync";
 import { inkClipboard, setInkClipboard, subscribeInkClipboard } from "@/lib/ink/clipboard";
 import { fitOnPage, reorderItems, setItemsWidth, transformSelected, translation, type Affine } from "@/lib/ink/selection";
@@ -30,8 +30,9 @@ import {
   snapSetting,
   type InkTool,
   type PencilSetting,
+  type TextStyle,
 } from "@/lib/ink/presets";
-import type { InkFont } from "@/lib/ink/fonts";
+import { applyTextLook, type TextAlign, type TextLookPatch } from "@/lib/ink/text-style";
 import { clampEraserSize, loadEraserSetting, saveEraserSetting, type EraserMode } from "@/lib/ink/eraser";
 import {
   DEFAULT_FAVORITES,
@@ -49,8 +50,11 @@ import { forgetPen, onPencilAction, penOnlySetting, setPenOnly as storePenOnly }
 export type InkSelection = { page: string; ids: string[] };
 // The picture or sticker in its frame (components/ink/ink-picture.tsx).
 export type InkPicked = { page: string; id: string };
-// Width: line width, or the font size of text; font: text only.
-type Style = { color: string; width: number; font?: InkFont };
+// Width: line width, or the font size of text; font and the look of the
+// box (bold, italic, underline, alignment, line height): text only.
+type Style = TextStyle;
+// A change of it: bold, italic, underline off and "left" are the defaults.
+type StylePatch = Partial<Omit<Style, "bold" | "italic" | "underline" | "align">> & { bold?: boolean; italic?: boolean; underline?: boolean; align?: TextAlign };
 
 export type InkEditor = Awaited<ReturnType<typeof useInkEditor>>;
 
@@ -120,6 +124,9 @@ export function useInkEditor(initial: InkDoc, { active = true }: { active?: bool
   // While a notebook records audio (components/notebook/notebook-audio.tsx):
   // the mark that items new in a change get (lib/ink/audio-sync.ts).
   const stampRef = useRef<(() => InkRec | null) | null>(null);
+  // Changes that follow each other quickly with the same key (a slider
+  // dragged, a number typed, the colour picker moved) are one undo step.
+  const lastMerge = useRef<{ key: string; doc: InkDoc; at: number } | null>(null);
   // A change the person made: one undo step.
   const commit = useCallback((change: InkDoc) => {
     const before = docRef.current;
@@ -176,13 +183,17 @@ export function useInkEditor(initial: InkDoc, { active = true }: { active?: bool
   const widths = tool === "highlighter" ? HIGHLIGHTER_WIDTHS : tool === "text" ? TEXT_SIZES : PEN_WIDTHS;
   // The free width (or text size) slider of the tool in hand.
   const widthRange = WIDTH_RANGES[tool === "highlighter" ? "highlighter" : tool === "text" ? "text" : "pen"];
-  const setStyle = (patch: Partial<Style>) => {
-    if (tool === "highlighter") setHighlighter((s) => ({ ...s, ...patch }));
+  const setStyle = (patch: StylePatch) => {
+    const { color, width } = patch;
+    const plain = { ...(color !== undefined ? { color } : {}), ...(width !== undefined ? { width } : {}) };
+    if (tool === "highlighter") setHighlighter((s) => ({ ...s, ...plain }));
     else if (tool === "text") {
-      const next = { ...text, ...patch };
+      const merged = { ...text, ...patch };
+      // Defaults (plain, left, 1.25) are left out, as in stored text.
+      const next: Style = { color: merged.color, width: merged.width, ...(merged.font ? { font: merged.font } : {}), ...cleanTextLook(merged) };
       setText(next);
       saveTextStyle(next);
-    } else setPen((s) => ({ ...s, ...patch }));
+    } else setPen((s) => ({ ...s, ...plain }));
   };
   // An own colour (the colour picker) is kept among the recent ones.
   const rememberCustomColor = (color: string) => setRecentColors((list) => rememberColor(color, list));
@@ -298,6 +309,23 @@ export function useInkEditor(initial: InkDoc, { active = true }: { active?: bool
     if (!selection) return;
     change(selection.page, (items) => reorderItems(items, new Set(selection.ids), where));
   };
+  // The look of the text boxes among the chosen items (lib/ink/text-style.ts):
+  // one undo step, or one for a run of changes with the same `merge` key.
+  const styleSelectionText = (patch: TextLookPatch, merge?: string) => {
+    if (!selection) return;
+    const page = selection.page;
+    const items = docRef.current.pages[page] || [];
+    const next = applyTextLook(items, new Set(selection.ids), patch);
+    if (next === items) return;
+    const doc = withPage(docRef.current, page, next);
+    const key = merge ? `${page}:${selection.ids.join(",")}:${merge}` : null;
+    const last = lastMerge.current;
+    if (key && last && last.key === key && last.doc === docRef.current && Date.now() - last.at < 1500) {
+      docRef.current = doc;
+      setDocState(doc);
+    } else commit(doc);
+    lastMerge.current = key ? { key, doc: docRef.current, at: Date.now() } : null;
+  };
   // Fine, medium, bold (0–2): pen and highlighter widths, text sizes.
   const setSelectionWidth = (step: number) => {
     if (!selection) return;
@@ -383,6 +411,7 @@ export function useInkEditor(initial: InkDoc, { active = true }: { active?: bool
     nudgeSelection,
     reorderSelection,
     setSelectionWidth,
+    styleSelectionText,
     selectAll,
     duplicateSelection,
     textStyle: text,

@@ -33,7 +33,9 @@ import {
   type Box,
   type Pt,
 } from "@/lib/ink/geometry";
-import { inkFontFamily, type InkFont } from "@/lib/ink/fonts";
+import { inkFontFamily } from "@/lib/ink/fonts";
+import { lineHeightOf, svgAnchor, textAnchorX, textLook, withTextLook, type TextLook, type TextLookPatch } from "@/lib/ink/text-style";
+import { FloatingTextBar, TextStyleBar } from "./text-style-bar";
 import { inkId, type InkDoc, type InkImage, type InkItem, type InkStroke, type InkText } from "@/lib/ink/model";
 import { HIGHLIGHTER_OPACITY } from "@/lib/ink/presets";
 import { STROKE_ERASER_RADIUS, eraseWith as erase, type EraserMode } from "@/lib/ink/eraser";
@@ -175,19 +177,24 @@ const InkItemView = memo(function InkItemView({ item, dim, multiply, src }: { it
   );
 });
 function InkTextItem({ item, className }: { item: InkText; className?: string }) {
+  const x = textAnchorX(item);
   return (
     <text
       className={className}
-      x={item.x}
+      x={x}
       y={item.y + item.size * 0.8}
       transform={item.rotation ? `rotate(${item.rotation} ${item.x} ${item.y})` : undefined}
       fontSize={item.size}
       fill={item.color}
       fontFamily={inkFontFamily(item.font)}
+      fontWeight={item.bold ? "bold" : undefined}
+      fontStyle={item.italic ? "italic" : undefined}
+      textDecoration={item.underline ? "underline" : undefined}
+      textAnchor={item.align ? svgAnchor(item) : undefined}
       style={{ whiteSpace: "pre" }}
     >
       {item.text.split("\n").map((line, i) => (
-        <tspan key={i} x={item.x} dy={i ? item.size * 1.25 : 0}>
+        <tspan key={i} x={x} dy={i ? item.size * lineHeightOf(item) : 0}>
           {line || " "}
         </tspan>
       ))}
@@ -272,7 +279,8 @@ export function InkLayer({
     previewRef.current = next;
     setPreviewState(next);
   };
-  type Typing = { id: string | null; x: number; y: number; size: number; color: string; font?: InkFont; rotation?: number; text: string };
+  // The box being typed: its place, text and look (lib/ink/text-style.ts).
+  type Typing = { id: string | null; x: number; y: number; rotation?: number; text: string; look: TextLook };
   const [typing, setTypingState] = useState<Typing | null>(null);
   // The field can end twice (Enter, then blur as it goes): only once counts.
   const typingRef = useRef<Typing | null>(null);
@@ -280,6 +288,11 @@ export function InkLayer({
     typingRef.current = next;
     setTypingState(next);
   };
+  // The text field and its style bar (text-style-bar.tsx): a tap on the bar
+  // keeps the field open (it may take the focus away for a moment).
+  const textField = useRef<HTMLTextAreaElement>(null);
+  const textBar = useRef<HTMLDivElement>(null);
+  const barTouched = useRef(0);
   const [laser, setLaser] = useState<(XY & { t: number })[]>([]);
   const editorRef = useRef(editor);
   editorRef.current = editor;
@@ -777,12 +790,44 @@ export function InkLayer({
   }
 
   // ---- Text ----
+  const typingOf = (item: InkText): Typing => ({ id: item.id, x: item.x, y: item.y, rotation: item.rotation, text: item.text, look: textLook(item) });
   function openText(at: XY) {
     const ed = editor!;
     const hit = [...items].reverse().find((item): item is InkText => item.type === "text" && hitItem(item, at, tolerance(4)));
-    if (hit) setTyping({ id: hit.id, x: hit.x, y: hit.y, size: hit.size, color: hit.color, font: hit.font, rotation: hit.rotation, text: hit.text });
-    else setTyping({ id: null, x: at.x, y: at.y - ed.style.width * 0.6, size: ed.style.width, color: ed.style.color, font: ed.style.font, text: "" });
+    if (hit) return setTyping(typingOf(hit));
+    // New text: the text tool's style (ink-panel.tsx).
+    const s = ed.style;
+    const look: TextLook = {
+      font: s.font,
+      size: s.width,
+      color: s.color,
+      bold: !!s.bold,
+      italic: !!s.italic,
+      underline: !!s.underline,
+      align: s.align || "left",
+      lineHeight: lineHeightOf(s),
+    };
+    setTyping({ id: null, x: at.x, y: at.y - s.width * 0.6, text: "", look });
   }
+  // A text box chosen with the lasso: typed in again with the text tool.
+  function editText(id: string) {
+    const hit = items.find((i): i is InkText => i.id === id && i.type === "text");
+    if (!hit || !editor) return;
+    editor.setTool("text");
+    setTyping(typingOf(hit));
+  }
+  // The style bar while typing: the box's look; for new text also the text
+  // tool's (the next box starts so).
+  function styleTyping(patch: TextLookPatch) {
+    const now = typingRef.current;
+    if (!now) return;
+    setTyping({ ...now, look: { ...now.look, ...patch } });
+    if (!now.id && editor) {
+      const { size, ...rest } = patch;
+      editor.setStyle({ ...rest, ...(size !== undefined ? { width: size } : {}) });
+    }
+  }
+  // Text and look are one undo step; an emptied box goes.
   function commitText() {
     const entry = typingRef.current;
     setTyping(null);
@@ -790,15 +835,29 @@ export function InkLayer({
     const text = entry.text.replace(/\s+$/, "");
     editor.change(page, (list) => {
       if (entry.id) {
-        const current = list.find((i) => i.id === entry.id);
+        const current = list.find((i): i is InkText => i.id === entry.id && i.type === "text");
         if (!current) return list;
         if (!text) return list.filter((i) => i.id !== entry.id);
-        if (current.type === "text" && current.text === text) return list;
-        return list.map((i) => (i.id === entry.id ? { ...(i as InkText), text } : i));
+        const styled = withTextLook(current.text === text ? current : { ...current, text }, entry.look);
+        return styled === current ? list : list.map((i) => (i.id === entry.id ? styled : i));
       }
       if (!text) return list;
-      return [...list, { id: inkId(), type: "text", color: entry.color, size: entry.size, x: entry.x, y: entry.y, text, ...(entry.font ? { font: entry.font } : {}) }];
+      return [...list, withTextLook({ id: inkId(), type: "text", color: entry.look.color, size: entry.look.size, x: entry.x, y: entry.y, text }, entry.look)];
     });
+  }
+  // Focus left the field or its bar: the box is done – unless it went
+  // between them, or the bar was just tapped (the field gets it back).
+  function textFocusLeft(to: EventTarget | null) {
+    const node = to as Node | null;
+    if (node && (node === textField.current || textBar.current?.contains(node))) return;
+    if (Date.now() - barTouched.current < 600) {
+      setTimeout(() => {
+        const now = document.activeElement;
+        if (typingRef.current && now !== textField.current && !textBar.current?.contains(now)) textField.current?.focus({ preventScroll: true });
+      }, 0);
+      return;
+    }
+    commitText();
   }
 
   const shown = preview ?? items;
@@ -896,7 +955,18 @@ export function InkLayer({
       )}
       <div ref={readout} className="ink-measure" hidden />
       {showSelection && !preview && editor && selected && (
-        <InkSelectionBar editor={editor} page={page} size={size} box={selectionBox} items={shown.filter((i) => selected.ids.includes(i.id))} onConvert={onConvert} aiPageId={aiPageId} onOutline={onOutline} onSticker={onSaveSticker} />
+        <InkSelectionBar
+          editor={editor}
+          page={page}
+          size={size}
+          box={selectionBox}
+          items={shown.filter((i) => selected.ids.includes(i.id))}
+          onConvert={onConvert}
+          aiPageId={aiPageId}
+          onOutline={onOutline}
+          onSticker={onSaveSticker}
+          onEditText={editText}
+        />
       )}
       {pickedItem && editor && (
         <ImageFrame
@@ -915,6 +985,7 @@ export function InkLayer({
       )}
       {typing && (
         <textarea
+          ref={textField}
           autoFocus
           className="ink-ui ink-text-input"
           aria-label={t("Text auf der Seite", "Text on the page")}
@@ -922,9 +993,14 @@ export function InkLayer({
           style={{
             left: percent(typing.x, size.width),
             top: percent(typing.y, size.height),
-            fontSize: typing.size * scale,
-            fontFamily: inkFontFamily(typing.font),
-            color: typing.color,
+            fontSize: typing.look.size * scale,
+            fontFamily: inkFontFamily(typing.look.font),
+            color: typing.look.color,
+            lineHeight: typing.look.lineHeight,
+            ...(typing.look.bold ? { fontWeight: 700 } : {}),
+            ...(typing.look.italic ? { fontStyle: "italic" } : {}),
+            ...(typing.look.underline ? { textDecoration: "underline" } : {}),
+            ...(typing.look.align !== "left" ? { textAlign: typing.look.align } : {}),
             ...(typing.rotation ? { transform: `rotate(${typing.rotation}deg)`, transformOrigin: "0 0" } : {}),
           }}
           value={typing.text}
@@ -932,6 +1008,14 @@ export function InkLayer({
           onChange={(e) => setTyping({ ...typing, text: e.target.value })}
           onPointerDown={(e) => e.stopPropagation()}
           onKeyDown={(e) => {
+            const k = e.key.toLowerCase();
+            if ((e.metaKey || e.ctrlKey) && !e.altKey && (k === "b" || k === "i" || k === "u")) {
+              // ⌘B, ⌘I, ⌘U: bold, italic, underline of the whole box.
+              e.preventDefault();
+              const key = k === "b" ? "bold" : k === "i" ? "italic" : "underline";
+              styleTyping({ [key]: !typing.look[key] });
+              return;
+            }
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
               commitText();
@@ -948,9 +1032,25 @@ export function InkLayer({
               setTimeout(() => field.isConnected && field.focus(), 0);
               return;
             }
-            commitText();
+            textFocusLeft(e.relatedTarget);
           }}
         />
+      )}
+      {typing && editor && (
+        <FloatingTextBar
+          anchor={textField}
+          barRef={textBar}
+          label={t("Textstil", "Text style")}
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            barTouched.current = Date.now();
+            // Buttons keep the focus in the text field; fields take it.
+            if (!(e.target as Element).closest("input, select, textarea, .color-picker")) e.preventDefault();
+          }}
+          onBlur={(e) => textFocusLeft(e.relatedTarget)}
+        >
+          <TextStyleBar className="ink-selection-row" look={typing.look} onChange={styleTyping} color={{ recent: editor.recentColors, onRemember: editor.rememberCustomColor }} />
+        </FloatingTextBar>
       )}
     </div>
   );
