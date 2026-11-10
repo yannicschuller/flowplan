@@ -14,7 +14,7 @@ import { useMenuPlacement } from "./menu-placement";
 import { ColorPicker } from "./color-picker";
 
 // A button with a menu under it; closes on a tap elsewhere and on Escape.
-function InkPopover({
+export function InkPopover({
   label,
   title,
   className,

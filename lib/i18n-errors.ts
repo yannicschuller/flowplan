@@ -875,6 +875,7 @@ const exact: Record<string, string> = {
   "Modelle lassen sich nur bei Ollama herunterladen.": "Models can only be downloaded with Ollama.",
   "Zu viele KI-Anfragen in kurzer Zeit. Bitte später erneut versuchen.": "Too many AI requests in a short time. Please try again later.",
   "Der Text für die KI ist zu lang.": "The text for the AI is too long.",
+  "Zu viele Bilder für die KI.": "Too many images for the AI.",
   "Die KI-Anfrage ist fehlgeschlagen.": "The AI request failed.",
   "Diese Seite ist für die KI gesperrt.": "This page is closed to the AI.",
   "Änderungsvorschläge gibt es nur für Dokumente.": "Suggested changes are only available for documents.",

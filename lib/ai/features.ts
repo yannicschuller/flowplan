@@ -55,6 +55,16 @@ export const AI_FEATURES = [
     ],
   },
   {
+    // "In Text umwandeln" of a lasso selection in notebooks and drawing
+    // blocks (lib/ai/handwriting.ts): the strokes go as a picture.
+    id: "handwriting",
+    label: ["Handschrift in Text", "Handwriting to text"],
+    description: [
+      "Markierte Handschrift in Notizbüchern und Zeichnungen in Text umwandeln – der Ausschnitt geht als Bild an das Modell, das Bilder verstehen muss.",
+      "Convert selected handwriting in notebooks and drawings to text – the snippet goes to the model as a picture, so it must understand images.",
+    ],
+  },
+  {
     // The AI nodes of workflows (lib/workflows/nodes/ai.ts): data only, never actions.
     id: "workflows",
     label: ["KI in Workflows", "AI in workflows"],

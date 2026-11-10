@@ -84,8 +84,14 @@ function textOps(item: InkText, font: PDFFont, fontName: PDFName, map?: ColorMap
   item.text.split("\n").forEach((line, i) => {
     if (!line) return;
     // The page system has y downwards: the text matrix turns the glyphs upright.
-    const baseline = item.y + item.size * 0.8 + i * item.size * 1.25;
-    ops.push(beginText(), setFontAndSize(fontName, item.size), setTextMatrix(1, 0, 0, -1, n(item.x), n(baseline)), showText(font.encodeText(encodable(font, line))), endText());
+    // Turned text (rotation, clockwise on the page) turns around its top left.
+    const a = ((item.rotation || 0) * Math.PI) / 180;
+    const cos = Math.cos(a),
+      sin = Math.sin(a);
+    const down = item.size * 0.8 + i * item.size * 1.25;
+    const x = item.x - down * sin,
+      y = item.y + down * cos;
+    ops.push(beginText(), setFontAndSize(fontName, item.size), setTextMatrix(cos, sin, sin, -cos, n(x), n(y)), showText(font.encodeText(encodable(font, line))), endText());
   });
   return ops;
 }

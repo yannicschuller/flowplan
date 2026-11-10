@@ -42,6 +42,10 @@ export type InkText = {
   // Typeface (lib/ink/fonts.ts); none: Helvetica as before. Optional, so
   // older versions read such text (and drop the face when they save).
   font?: InkFont;
+  // Turned clockwise by this many degrees around (x, y) (the lasso's
+  // rotation handle); none: upright. Optional like `font`: older versions
+  // show such text upright and drop the turn when they save that surface.
+  rotation?: number;
 };
 export type InkItem = InkStroke | InkText;
 export type InkDoc = {
@@ -59,6 +63,16 @@ const COLOR = /^#[0-9a-f]{6}$/i;
 const KEY = /^[\w.-]{1,64}$/;
 const finite = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n);
 const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
+
+// Degrees in (-180, 180], two decimals; 0 for (almost) upright.
+export function normalRotation(degrees: number) {
+  if (!Number.isFinite(degrees)) return 0;
+  let d = degrees % 360;
+  if (d > 180) d -= 360;
+  if (d <= -180) d += 360;
+  d = round2(d);
+  return Math.abs(d) < 0.01 ? 0 : d;
+}
 
 let counter = 0;
 // Short ids are enough: they only tell items of one page apart.
@@ -96,6 +110,7 @@ export function cleanItem(raw: unknown): InkItem | null {
       y: round2(clamp(item.y, -1e5, 1e5)),
       text: item.text.slice(0, INK_LIMITS.textLength),
       ...(isInkFont(item.font) ? { font: item.font } : {}),
+      ...(finite(item.rotation) && normalRotation(item.rotation) ? { rotation: normalRotation(item.rotation) } : {}),
     };
   }
   return null;

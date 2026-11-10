@@ -13,6 +13,8 @@ block of documents (`components/ink/draw-block*.tsx`,
 | `lib/ink/model.ts` | Types, limits, `parseInk` (strict, drops junk), `serializeInk`, `inkText` (search), `withPage` |
 | `lib/ink/coords.ts` | Page units ↔ screen, ↔ device pixels (zoom, DPR), page as shown → PDF user space (rotation, crop box) |
 | `lib/ink/geometry.ts` | Pressure outline, bounds, hit tests, stroke and partial eraser, lasso, move/resize/recolour/copy, shape snapping (uses `recognizeStroke` from `lib/whiteboard-tools.ts`), `heldStill` |
+| `lib/ink/selection.ts` | The lasso's selection over every item type: tap to pick, affine move/scale/turn (corners, 15° snap, pinch), front/back, width steps, text next to it, pastes kept on the page |
+| `lib/ink/clipboard.ts` | The ink clipboard of the tab, shared by all editors (sheet → sheet, notebook → drawing block) |
 | `lib/ink/history.ts` | Undo/redo of whole states |
 | `lib/ink/presets.ts` | Tools, colours, widths and the free width ranges, 3 favourite pens, text style, recent own colours, Pencil double-tap setting, snap setting (per device, `localStorage`) |
 | `lib/ink/fonts.ts` | Typefaces of text: CSS families with fallbacks, rough advance per face, nearest standard PDF font |
@@ -27,7 +29,11 @@ block of documents (`components/ink/draw-block*.tsx`,
 | `lib/page-ink-store.ts` | Server: ink of a page's surfaces – notebook sheets, drawing blocks (`page_ink`, `page_ink_versions`) |
 | `lib/ink-export.ts` | Server: pictures of drawing blocks and sheets for published pages and exports |
 | `components/ink/use-surface-sync.ts` | Saving surfaces while drawing, merging, following others, recognition for search |
-| `components/ink/convert.ts` | "Convert to text" of a lasso selection |
+| `components/ink/convert.ts` | "Convert to text" of a lasso selection on the device (iPhone/iPad app) |
+| `components/ink/ai-convert.tsx` | "Convert to text" with the instance's AI (`lib/ai/handwriting.ts`): dialog with the picture, the recognised text to edit, insert in place / next to it / copy |
+| `components/ink/ink-selection-bar.tsx` | The bar over a selection: colour (palette, own colours, picker) and width, cut, copy, duplicate, front, back, convert, delete |
+| `components/ink/ink-image.ts` | Items as an SVG/PNG of just their area (system clipboard, AI recognition) |
+| `components/ink/system-clipboard.ts` | Copied ink also on the system clipboard (PNG, SVG where supported, typed text) |
 | `components/ink/use-ink-editor.ts` | `useInkEditor(initial)`: the editing session; `useInkShortcuts(editor, on)` |
 | `components/ink/ink-layer.tsx` | `<InkLayer>`: renders and takes input for one page |
 | `components/ink/ink-toolbar.tsx` | `<InkToolbar editor>`: tools, favourites, colours, widths, eraser kind, undo/redo, paste, pen settings; children go at the end |
@@ -71,6 +77,11 @@ block of documents (`components/ink/draw-block*.tsx`,
   Times for `serif`, Courier for `mono`, Helvetica for the rest, no
   embedding. Versions before `font` read such text in Helvetica and drop
   the field when they save that surface.
+- Optional `rotation` of text: degrees clockwise (−180…180, two
+  decimals) around `(x, y)`, set by turning a lasso selection; left out
+  when upright. SVG draws it as `rotate(r x y)`, PDFs turn the text
+  matrix. Versions before `rotation` show such text upright and drop the
+  field when they save that surface (the text itself stays).
 - Items are back to front. Page keys: PDF page numbers (`"1"`, `"2"`, …);
   other surfaces may use any key matching `[\w.-]{1,64}` (e.g. a notebook
   page id).
@@ -140,6 +151,35 @@ control and direction characters removed) and searched like typed text. A
 lasso selection with pen strokes offers **Convert to text**: the text
 replaces the strokes as a text item (notebooks, PDFs) or becomes paragraphs
 below the block (drawing blocks); one undo step of the ink.
+
+Where the instance's AI may run for the page (feature `handwriting`,
+`lib/ai/handwriting.ts`), notebooks and drawing blocks use it instead: the
+selected pen strokes as a PNG (drawn in the browser) go to
+`POST /api/ai/handwriting { pageId, image }` → `{ text }` – a vision model
+is needed. Editors of unlocked pages only; PIN journals, encrypted spaces,
+pages closed to the AI and the person's rules refuse, rate limits and
+usage statistics as for every prompt. The text is shown to edit and then
+placed as a text box (the text tool's colour, size, face) in the strokes'
+place or next to them, or copied; one undo step.
+
+## Lasso selection
+
+Tap an item to pick it (the top one; a highlighter only where nothing is
+drawn over it), or draw a loop around items. The selection moves by its
+body, scales by its four corners (around the opposite one; free with the
+mouse or pen, Shift or a finger keeps the aspect), turns by the handle
+above it (snaps to 15° within 4°, Shift always in 15° steps) and – held by
+a finger – scales and turns with a second finger. Strokes and text turn
+with it (text keeps its turn in `rotation`). The bar recolours (palette,
+recent own colours, picker), sets the width (fine/medium/bold for pen,
+highlighter and text), cuts, copies, duplicates, brings to the front or
+back, converts and deletes; keys: ⌘X/⌘C/⌘V/⌘D, ⌘] / ⌘[, arrows nudge
+(Shift: 10 pt), ⌘A on a notebook, Delete, Escape. Every action is one undo
+step and a normal ink change (saved, merged by item id; an order changed
+only by one side survives a merge). The clipboard is shared by every ink
+editor of the tab, so a cut on one sheet pastes onto another (the sheet
+last touched; moved onto the page if it would stick out), and copies also
+go to the system clipboard as a picture.
 
 ## Components
 

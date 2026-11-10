@@ -325,6 +325,46 @@ test("without the app there is no Convert to text", async ({ page }, info) => {
   await expect(bar.getByRole("button", { name: "In Text umwandeln" })).toHaveCount(0);
 });
 
+test("lasso: tap selects one stroke, turn with the handle, cut and paste onto another sheet, each one undo step", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "Pen input runs on the desktop project.");
+  const { create } = await setup(page);
+  const id = await create(`Lasso ${Date.now()}`, "notebook");
+  const tools = await openNotebook(page, id);
+  const controls = page.getByRole("toolbar", { name: "Notizbuch" });
+  const cdp = await page.context().newCDPSession(page);
+  const box = (await sheet(page, 0).boundingBox())!;
+  await pen(cdp, path({ x: box.x + 100, y: box.y + 150 }, { x: box.x + 300, y: box.y + 160 }));
+  await pen(cdp, path({ x: box.x + 100, y: box.y + 300 }, { x: box.x + 300, y: box.y + 310 }));
+  await expect(strokes(sheet(page, 0))).toHaveCount(2);
+  await tools.getByRole("radio", { name: "Lasso", exact: true }).click();
+  // A tap on the first stroke picks only it.
+  await page.mouse.click(box.x + 200, box.y + 155 + Math.sin(7) * 5);
+  const bar = page.getByRole("toolbar", { name: "Auswahl" });
+  await expect(bar).toBeVisible();
+  await expect(sheet(page, 0).locator(".ink-handle")).toHaveCount(5);
+  // Turn by the handle above the box: one undo step.
+  const handle = (await sheet(page, 0).locator(".ink-handle-rotate").boundingBox())!;
+  const before = await strokes(sheet(page, 0)).first().getAttribute("d");
+  await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(handle.x + 150, handle.y + 80, { steps: 8 });
+  await page.mouse.up();
+  await expect.poll(() => strokes(sheet(page, 0)).first().getAttribute("d")).not.toBe(before);
+  await tools.getByRole("button", { name: "Rückgängig" }).click();
+  await expect.poll(() => strokes(sheet(page, 0)).first().getAttribute("d")).toBe(before);
+  // Cut, then paste onto a second sheet.
+  await page.mouse.click(box.x + 200, box.y + 155 + Math.sin(7) * 5);
+  await bar.getByRole("button", { name: "Ausschneiden" }).click();
+  await expect(strokes(sheet(page, 0))).toHaveCount(1);
+  await page.locator(".notebook-add-end").click();
+  await expect(page.locator(".notebook-sheet")).toHaveCount(2);
+  const second = (await sheet(page, 1).boundingBox())!;
+  await page.mouse.click(second.x + 40, second.y + 40);
+  await tools.getByRole("button", { name: "Einfügen" }).click();
+  await expect(strokes(sheet(page, 1))).toHaveCount(1);
+  await expect(controls.getByRole("status")).toHaveText("Gespeichert", { timeout: 10_000 });
+});
+
 test("notebooks on the phone: sheets fit the width, the overview opens over them", async ({ page }, info) => {
   test.skip(info.project.name !== "mobile", "The phone layout.");
   const { create } = await setup(page);
