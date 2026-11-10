@@ -9,6 +9,7 @@ import { Select } from "../select";
 import { isTrigger, nodeSpec } from "@/lib/workflows/catalog";
 import { labelSchema, type WorkflowGraph, type WorkflowNode } from "@/lib/workflows/graph";
 import { ConfigForm } from "./config-form";
+import { PartBoundary } from "./part-boundary";
 import { duration, issuesOf, specName, type Issue, type TimelineStep, type Workspace, useStableT } from "./model";
 import { NodeIcon } from "./node-icon";
 import { runsInlineHere } from "./node-card";
@@ -111,10 +112,13 @@ export function NodePanel({
             </small>
           )}
         </div>
-        <ConfigForm
-          ctx={{ pageId, node, ws, databases, picker: { graph, nodeId: node.id, ws, values }, triggerDatabase: (trigger?.config.database as string) || null, disabled: !editable }}
-          onChange={(config) => onChange({ ...node, config })}
-        />
+        {/* A field, its placeholders or the picker that fails shows an error here – the builder stays (#182). */}
+        <PartBoundary key={node.id} part={`settings of ${node.type}`}>
+          <ConfigForm
+            ctx={{ pageId, node, ws, databases, picker: { graph, nodeId: node.id, ws, values }, triggerDatabase: (trigger?.config.database as string) || null, disabled: !editable }}
+            onChange={(config) => onChange({ ...node, config })}
+          />
+        </PartBoundary>
         {!isTrigger(node.type) && (
           <fieldset className="wf-group">
             <legend>{t("Bei Fehler", "On error")}</legend>
