@@ -52,6 +52,9 @@ import { visibleViewTabs, viewRecordOpenMode } from "@/lib/view-toolbar";
 import { DatabaseToolbarChips } from "./database-toolbar";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import { parsePageLocation, pageLocationHash } from "@/lib/page-location";
+import { plainClick, relationClick } from "@/lib/related-record";
+import { RelatedRecord, useRelatedRecord } from "./related-record";
+import { shownPageIcon } from "@/lib/page-link-icons";
 import { leaveTo } from "@/lib/history-nav";
 import { scheduleFields } from "@/lib/database-timeline";
 import DatabaseTimeline from "./database-timeline";
@@ -373,9 +376,14 @@ export default function DatabaseView({
   mutate,
   onError,
   ai,
+  record,
 }: {
   // AI features of the person (bootstrap); without it no AI controls.
   ai?: AiStatus;
+  // Only this record's dialog, on top of another view: a related record
+  // opened from a relation cell (#192, components/related-record.tsx).
+  // Closing the dialog calls onClose; the views are not shown.
+  record?: { id: string; onClose: () => void; onOpenInDatabase: () => void };
   data: DatabaseData;
   page: Page;
   userId: string;
@@ -413,7 +421,7 @@ export default function DatabaseView({
     [filterOpen, setFilterOpen] = useState(false),
     [newField, setNewField] = useState(false),
     [newView, setNewView] = useState(false),
-    [rowId, setLocalRowId] = useState<string | null>(null),
+    [rowId, setLocalRowId] = useState<string | null>(record?.id ?? null),
     [fieldDraft, setFieldDraft] = useState<
       Field & { bidirectional?: boolean; inverseName?: string }
     >({
@@ -786,6 +794,16 @@ export default function DatabaseView({
     [data, fields, view, query, filterNow],
   );
   const selected = data.rows.find((r) => r.id === rowId);
+  // A related record on top of another view (#192): it closes with its
+  // dialog (or once it is gone: deleted, moved, turned into a page).
+  const recordGone = !!record && !selected;
+  const recordRef = useRef(record);
+  recordRef.current = record;
+  useEffect(() => {
+    if (recordGone) recordRef.current?.onClose();
+  }, [recordGone]);
+  // Records of other databases from relation cells open on top (#192).
+  const relatedRecord = useRelatedRecord();
   const selectedEditable = editable && selected?.role !== "viewer";
   // Open for reading: the text without editing, handles or block menus.
   const readingRecord = !!selected && selectedEditable && readRows.includes(selected.id);
@@ -2075,7 +2093,17 @@ export default function DatabaseView({
                 })}
                 // The record's own icon in front of its title (#190).
                 className={target.icon ? "relation-with-icon" : undefined}
-                onClick={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  // A plain click stays in this view (#192): a record of
+                  // another database opens on top of it; Ctrl/⌘- and
+                  // middle clicks keep the link.
+                  const how = relationClick(e, f.relationPage!, page.id);
+                  if (how === "native") return;
+                  e.preventDefault();
+                  if (how === "here") setRowId(rid);
+                  else relatedRecord.open({ pageId: f.relationPage!, rowId: rid }, e.currentTarget);
+                }}
               >
                 {target.icon && <PageIcon name={target.icon} size={15} className="relation-icon" />}
                 {cellText(target.cells.title) || t("Ohne Titel", "Untitled")}
@@ -3000,6 +3028,7 @@ export default function DatabaseView({
     <div
       className="database"
       ref={boardRef}
+      hidden={!!record}
       data-database-page={page.id}
       onContextMenu={(e) => {
         // Records (rows, cards, list items) get their own menu; fields
@@ -3014,6 +3043,8 @@ export default function DatabaseView({
         setRecordMenu({ x: e.clientX, y: e.clientY, rowIds });
       }}
     >
+      {/* A related record on top of another view: its dialog only (#192). */}
+      {!record && (<>
       <ScrollFade className="database-tabs" role="group" aria-label={t("Ansichten", "Views")}>
         {viewTabs.shown.map((v) => {
           const Icon = viewIcons[v.type];
@@ -4092,6 +4123,7 @@ export default function DatabaseView({
       )}
       </>
       </ViewTransition>
+      </>)}
       <input
         type="file"
         accept=".csv,.md,.markdown,.zip"
@@ -5734,6 +5766,25 @@ export default function DatabaseView({
       >
         {selected && (
           <div className="row-detail" ref={watchRecordWidth}>
+            {record && (
+              // Opened from a relation in another view (#192): where the
+              // record lives, and the way there.
+              <p className="related-record-origin">
+                <PageIcon name={shownPageIcon(page.icon, "database")} size={15} />
+                <span>{pages.find((p) => p.id === page.id)?.title || page.title}</span>
+                <a
+                  href={pageLocationHash({ pageId: page.id, rowId: selected.id })}
+                  onClick={(e) => {
+                    if (!plainClick(e)) return;
+                    e.preventDefault();
+                    record.onOpenInDatabase();
+                  }}
+                >
+                  <ArrowSquareOut size={14} aria-hidden />
+                  {t("In Datenbank öffnen", "Open in database")}
+                </a>
+              </p>
+            )}
             {occurrence?.rowId === selected.id &&
               parseRecurrence(selected.recurrence) && (
                 <div className="occurrence-banner" role="status">
@@ -6279,6 +6330,20 @@ export default function DatabaseView({
         />
       )}
     </div>
+    {relatedRecord.target && (
+      <RelatedRecord
+        target={relatedRecord.target}
+        onClose={relatedRecord.close}
+        onOpenInDatabase={relatedRecord.openInDatabase}
+        onChanged={onRefresh}
+        onError={onError}
+        userId={userId}
+        members={members}
+        pages={pages}
+        ai={ai}
+        favoriteRows={favoriteRows}
+      />
+    )}
     </SprintContext.Provider>
   );
 }

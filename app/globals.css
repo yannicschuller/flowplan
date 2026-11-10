@@ -4205,6 +4205,35 @@ td:hover .link-cell-edit,
   background: var(--surface);
   font-size: 13px;
 }
+/* A related record on top of another view (#192): its database and the
+   way there; the database's own views are not shown. */
+.database[hidden] {
+  display: none;
+}
+.related-record-origin {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin: 0 0 12px;
+  color: var(--secondary);
+  font-size: 13px;
+}
+.related-record-origin > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.related-record-origin > a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  color: var(--blue);
+  text-decoration: none;
+}
+.related-record-origin > a:hover {
+  text-decoration: underline;
+}
 .occurrence-actions {
   display: flex;
   flex-wrap: wrap;

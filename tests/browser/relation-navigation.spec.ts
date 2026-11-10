@@ -68,8 +68,9 @@ test("relation values link to related records and records list incoming links", 
     hasText: "Alpha",
   });
   await expect(link).toBeVisible();
+  // A plain click opens the project on top of the tasks (#192).
   await link.click();
-  await expect(page).toHaveURL(new RegExp(`page=${projects}.*row=${alpha}`));
+  await expect(page).toHaveURL(new RegExp(`#page=${tasks}$`));
   const entry = page.getByRole("dialog", { name: "Eintrag", exact: true });
   await expect(
     entry.getByRole("heading", { name: "Alpha", exact: true }),
