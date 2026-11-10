@@ -20,7 +20,7 @@ import { queryRows } from "./database";
 import { calendarRange, calendarSchema } from "./database-calendar";
 import { scheduleFields } from "./database-timeline";
 import { cellText } from "./cell-text";
-import { parseRecurrence } from "./recurrence";
+import { icsRecurrenceLines, localDay, parseRecurrence, recurrenceSchema, type Recurrence } from "./recurrence";
 import { rowChanged, rowCreated } from "./automations";
 import { trashRow } from "./row-trash";
 import { maintainRowOrders } from "./row-order-server";
@@ -110,7 +110,8 @@ const ctag = (rows: Row[]) => hash(rows.map((r) => etag(r)).join(",")).slice(0, 
 /* ---------- iCalendar ---------- */
 
 const icsText = (s: string) => s.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
-const unText = (s: string) => s.replace(/\\n/gi, "\n").replace(/\\([,;\\])/g, "$1");
+// One pass: "\\n" is a backslash and an n, not a line break.
+const unText = (s: string) => s.replace(/\\([nN,;\\])/g, (_, c: string) => (c === "n" || c === "N" ? "\n" : c));
 const utc = (iso: string) => new Date(iso).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
 const compact = (date: string) => date.slice(0, 10).replace(/-/g, "");
 const addDays = (date: string, days: number) => {
@@ -151,12 +152,7 @@ function eventIcs(ctx: Context, row: Row) {
   if (range.timed) lines.push(`DTSTART:${utc(range.start)}`, `DTEND:${utc(range.end)}`);
   else lines.push(`DTSTART;VALUE=DATE:${compact(range.start)}`, `DTEND;VALUE=DATE:${compact(addDays(range.end, 1))}`);
   const rule = parseRecurrence((row as Row & { recurrence?: string }).recurrence);
-  if (rule) {
-    const parts = [`FREQ=${rule.freq.toUpperCase()}`, `INTERVAL=${rule.interval}`];
-    if (rule.count) parts.push(`COUNT=${rule.count}`);
-    if (rule.until) parts.push(`UNTIL=${compact(rule.until)}${range.timed ? "T235959Z" : ""}`);
-    lines.push(`RRULE:${parts.join(";")}`);
-  }
+  if (rule) lines.push(...icsRecurrenceLines(rule, range.start, range.timed, ctx.zone));
   lines.push("END:VEVENT", "END:VCALENDAR");
   return lines.map(fold).join("\r\n") + "\r\n";
 }
@@ -195,12 +191,79 @@ export function parseEvent(body: string) {
   let end = when(prop("DTEND"));
   // All-day ends are exclusive in iCalendar; the database keeps the last day.
   if (end?.allDay) end = { ...end, value: addDays(end.value, -1) };
+  const exdates = [...block.matchAll(/^EXDATE((?:;[^:\r\n]*)?):(.*)$/gim)].flatMap((m) =>
+    m[2].split(",").map((value) => when({ params: m[1], value: value.trim() })!),
+  );
   return {
     uid: prop("UID")?.value || "",
     title: unText(prop("SUMMARY")?.value || "").slice(0, 500),
     start,
     end: end && end.value !== start.value ? end : null,
+    rrule: prop("RRULE")?.value || "",
+    exdates,
   };
+}
+
+// The repeat rule of a PUT event as the app keeps it: FREQ, INTERVAL, COUNT,
+// UNTIL and EXDATE, plus what only restates the start (BYDAY of a weekly
+// rule on its weekday, the month-end rules eventIcs sends). Anything else
+// the app cannot repeat is refused rather than dropped. Skipped dates and
+// the end are local days in `zone`, as in the calendar.
+export function eventRecurrence(event: ReturnType<typeof parseEvent>, zone: string): Recurrence | null {
+  if (!event.rrule) return null;
+  const refuse = (): never => {
+    throw new HttpError(403, "Diese Wiederholung kann Flowplan nicht abbilden (nur täglich, wöchentlich, monatlich oder jährlich mit Intervall, Anzahl oder Enddatum).");
+  };
+  const parts = new Map<string, string>();
+  for (const part of event.rrule.split(";")) {
+    const [key, value = ""] = part.split("=");
+    if (!key || parts.has(key.toUpperCase())) refuse();
+    parts.set(key.toUpperCase(), value.toUpperCase());
+  }
+  const freq = parts.get("FREQ")?.toLowerCase();
+  if (freq !== "daily" && freq !== "weekly" && freq !== "monthly" && freq !== "yearly") return refuse();
+  const day = (v: { allDay: boolean; value: string }) => (v.allDay ? v.value : localDay(v.value, zone));
+  const first = Temporal.PlainDate.from(day(event.start));
+  const weekdays = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"];
+  let anchor: number | undefined;
+  for (const [key, value] of parts) {
+    if (["FREQ", "INTERVAL", "COUNT", "UNTIL", "WKST"].includes(key)) continue;
+    const sameDay = key === "BYDAY" && freq === "weekly" && value === weekdays[first.dayOfWeek - 1];
+    const sameMonth = key === "BYMONTH" && freq === "yearly" && Number(value) === first.month;
+    const sameMonthDay = key === "BYMONTHDAY" && value === String(first.day) && first.day <= 28;
+    // BYMONTHDAY=28,…,n;BYSETPOS=-1: the n-th, or the last day of shorter months.
+    const monthEnd =
+      key === "BYMONTHDAY" &&
+      parts.get("BYSETPOS") === "-1" &&
+      /^28(,29(,30(,31)?)?)?$/.test(value) &&
+      (freq === "monthly" || (freq === "yearly" && parts.get("BYMONTH") === "2" && value === "28,29"));
+    if (monthEnd) anchor = Number(value.split(",").at(-1));
+    else if (!(sameDay || sameMonth || sameMonthDay || (key === "BYSETPOS" && value === "-1" && parts.get("BYMONTHDAY")))) refuse();
+  }
+  if (anchor !== undefined && (first.day < 28 || first.day > anchor)) refuse();
+  const until = parts.get("UNTIL");
+  let untilDay: string | undefined;
+  if (until) {
+    const d = /^(\d{4})(\d{2})(\d{2})(T\d{6}Z?)?$/.exec(until);
+    if (!d) return refuse();
+    const value = d[4]
+      ? `${d[1]}-${d[2]}-${d[3]}T${d[4].slice(1, 3)}:${d[4].slice(3, 5)}:${d[4].slice(5, 7)}${d[4].endsWith("Z") ? "Z" : ""}`
+      : `${d[1]}-${d[2]}-${d[3]}`;
+    untilDay = d[4]?.endsWith("Z") ? localDay(value, zone) : value.slice(0, 10);
+  }
+  const count = parts.has("COUNT") ? Number(parts.get("COUNT")) : undefined;
+  // A single occurrence is no repetition.
+  if (count === 1) return null;
+  const exclude = [...new Set(event.exdates.map(day))].filter((d) => d > first.toString()).sort();
+  const parsed = recurrenceSchema.safeParse({
+    freq,
+    interval: parts.has("INTERVAL") ? Number(parts.get("INTERVAL")) : 1,
+    ...(untilDay ? { until: untilDay } : {}),
+    ...(count !== undefined ? { count } : {}),
+    ...(exclude.length ? { exclude } : {}),
+    ...(anchor !== undefined && anchor !== first.day ? { day: anchor } : {}),
+  });
+  return parsed.success ? parsed.data : refuse();
 }
 
 /* ---------- WebDAV ---------- */
@@ -322,6 +385,13 @@ export async function handleCalDav(request: Request): Promise<Response> {
       const event = parseEvent(body);
       const { start, end } = scheduleFields(ctx.fields, ctx.view);
       if (!start) return new Response("Diese Ansicht hat kein Datum", { status: 409 });
+      let recurrence: Recurrence | null;
+      try {
+        recurrence = eventRecurrence(event, ctx.zone);
+      } catch (e) {
+        return new Response((e as Error).message, { status: e instanceof HttpError ? e.status : 400 });
+      }
+      const rule = recurrence ? JSON.stringify(recurrence) : "";
       const patch: Record<string, unknown> = { [start.id]: event.start.value };
       if (end) patch[end.id] = event.end?.value ?? "";
       if (event.title) patch[ctx.fields[0].id] = event.title;
@@ -337,20 +407,21 @@ export async function handleCalDav(request: Request): Promise<Response> {
           await assertRowAccess(ctx.user, ctx.page, stored, true);
           const before = JSON.parse(stored.cells as unknown as string);
           const after = { ...before, ...patch };
-          await run("UPDATE rows SET cells=?,version=version+1,updated_at=?,updated_by=? WHERE id=?", JSON.stringify(after), nowText(), ctx.user.id, row.id);
+          await run("UPDATE rows SET cells=?,recurrence=?,version=version+1,updated_at=?,updated_by=? WHERE id=?", JSON.stringify(after), rule, nowText(), ctx.user.id, row.id);
           await rowChanged(ctx.user, ctx.page, row.id, before, after, ctx.fields);
           return row.id;
         }
         // A new event: a new record (the client's name becomes its id when it is one).
         const rid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rowId) && !(await one("SELECT 1 FROM row_trash WHERE id=?", rowId)) ? rowId : id();
         await run(
-          "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by) VALUES(?,?,?,?,?,?)",
+          "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,recurrence) VALUES(?,?,?,?,?,?,?)",
           rid,
           ctx.page.id,
           JSON.stringify({ [ctx.fields[0].id]: event.title || "Termin", ...patch }),
           Date.now(),
           ctx.user.id,
           ctx.user.id,
+          rule,
         );
         await rowCreated(ctx.user, ctx.page, rid);
         return rid;

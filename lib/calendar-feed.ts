@@ -13,7 +13,7 @@ import { queryRows } from "./database";
 import { calendarRange, calendarSchema } from "./database-calendar";
 import { visibleRows } from "./row-access";
 import { cellText } from "./cell-text";
-import { parseRecurrence } from "./recurrence";
+import { icsRecurrenceLines, parseRecurrence } from "./recurrence";
 import type { Field, Identity, Page, Row, View } from "./types";
 
 const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
@@ -140,18 +140,7 @@ export async function calendarFeed(token: string) {
     else
       lines.push(`DTSTART;VALUE=DATE:${day(range.start)}`, `DTEND;VALUE=DATE:${day(nextDay(range.end))}`);
     const rule = parseRecurrence((row as Row & { recurrence?: string }).recurrence);
-    if (rule) {
-      const parts = [`FREQ=${rule.freq.toUpperCase()}`, `INTERVAL=${rule.interval}`];
-      if (rule.count) parts.push(`COUNT=${rule.count}`);
-      if (rule.until) parts.push(`UNTIL=${day(rule.until)}${range.timed ? "T235959Z" : ""}`);
-      lines.push(`RRULE:${parts.join(";")}`);
-      for (const skipped of rule.exclude || [])
-        lines.push(
-          range.timed
-            ? `EXDATE:${utc(`${skipped}${range.start.slice(10)}`)}`
-            : `EXDATE;VALUE=DATE:${day(skipped)}`,
-        );
-    }
+    if (rule) lines.push(...icsRecurrenceLines(rule, range.start, range.timed, zone));
     lines.push("END:VEVENT");
   }
   lines.push("END:VCALENDAR");

@@ -197,3 +197,40 @@ export function nextOccurrence(
   const day = Math.min(rule.day ?? d.day, moved.daysInMonth);
   return moved.with({ day }).toString();
 }
+
+/* ---------- iCalendar (lib/calendar-feed.ts, lib/caldav.ts) ---------- */
+
+const icsDay = (date: string) => date.slice(0, 10).replace(/-/g, "");
+const icsInstant = (value: string) =>
+  Temporal.Instant.from(value)
+    .toString({ smallestUnit: "second" })
+    .replace(/[-:]/g, "");
+// The RRULE and EXDATE lines of a repeating entry whose DTSTART is `start`:
+// an all-day date, or an instant sent in UTC. Clients expand a UTC DTSTART
+// in UTC, so skipped dates (local days in `zone`) are sent as the instants
+// that expansion gives. Month ends are clamped as in occurrenceDates
+// (31 Jan → 28 Feb → 31 Mar), not skipped as a plain RFC 5545 rule would.
+export function icsRecurrenceLines(rule: Recurrence, start: string, timed: boolean, zone = "UTC") {
+  const parts = [`FREQ=${rule.freq.toUpperCase()}`, `INTERVAL=${rule.interval}`];
+  const first = Temporal.PlainDate.from(timed ? start.slice(0, 10) : start);
+  const day = (rule.freq === "monthly" || rule.freq === "yearly") && rule.day ? rule.day : first.day;
+  if (rule.freq === "monthly" && day > 28)
+    parts.push(`BYMONTHDAY=${[28, 29, 30, 31].filter((d) => d <= day).join(",")}`, "BYSETPOS=-1");
+  if (rule.freq === "yearly" && first.month === 2 && day === 29)
+    parts.push("BYMONTH=2", "BYMONTHDAY=28,29", "BYSETPOS=-1");
+  if (rule.count) parts.push(`COUNT=${rule.count}`);
+  if (rule.until) parts.push(`UNTIL=${icsDay(rule.until)}${timed ? "T235959Z" : ""}`);
+  const lines = [`RRULE:${parts.join(";")}`];
+  for (const skipped of rule.exclude || []) {
+    if (!timed) {
+      lines.push(`EXDATE;VALUE=DATE:${icsDay(skipped)}`);
+      continue;
+    }
+    const days = Temporal.PlainDate.from(localDay(start, zone)).until(
+      Temporal.PlainDate.from(skipped),
+      { largestUnit: "days" },
+    ).days;
+    lines.push(`EXDATE:${icsInstant(Temporal.Instant.from(start).add({ hours: 24 * days }).toString())}`);
+  }
+  return lines;
+}

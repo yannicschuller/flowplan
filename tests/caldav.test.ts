@@ -91,3 +91,68 @@ test("all-day and floating times", () => {
   const e = parseEvent("BEGIN:VEVENT\nDTSTART;VALUE=DATE:20261001\nDTEND;VALUE=DATE:20261002\nSUMMARY:Tag\\, ganz\nEND:VEVENT");
   assert.deepEqual([e.title, e.start.value, e.end], ["Tag, ganz", "2026-10-01", null]);
 });
+
+const version = async (rid: string) => (await one<{ version: number }>("SELECT version FROM rows WHERE id=?", rid))!.version;
+const recurrence = async (rid: string) => (await one<{ recurrence: string }>("SELECT recurrence FROM rows WHERE id=?", rid))!.recurrence;
+const ics = async (rid: string) => await (await dav("GET", `${calendar}${rid}.ics`)).text();
+
+test("a detached occurrence is skipped in the series (EXDATE)", async () => {
+  const rid = (await act({ action: "row.create", pageId, cells: { title: "Jour fixe", start: "2026-11-02T09:00Z", end: "2026-11-02T10:00Z" } })).id;
+  await act({ action: "row.recurrence", pageId, rowId: rid, version: await version(rid), recurrence: { freq: "weekly", interval: 1 } });
+  await act({ action: "row.detachOccurrence", pageId, rowId: rid, version: await version(rid), date: "2026-11-16", startField: "start", endField: "end", timeZone: "Europe/Berlin" });
+  const text = await ics(rid);
+  assert.match(text, /RRULE:FREQ=WEEKLY;INTERVAL=1\r\n/);
+  assert.match(text, /EXDATE:20261116T090000Z\r\n/);
+});
+
+test("month-end and leap-day series are clamped in external calendars too", async () => {
+  const monthly = (await act({ action: "row.create", pageId, cells: { title: "Abrechnung", start: "2026-01-31" } })).id;
+  await act({ action: "row.recurrence", pageId, rowId: monthly, version: await version(monthly), recurrence: { freq: "monthly", interval: 1, count: 4 } });
+  assert.match(await ics(monthly), /RRULE:FREQ=MONTHLY;INTERVAL=1;BYMONTHDAY=28,29,30,31;BYSETPOS=-1;COUNT=4\r\n/);
+  const birthday = (await act({ action: "row.create", pageId, cells: { title: "Geburtstag", start: "2028-02-29" } })).id;
+  await act({ action: "row.recurrence", pageId, rowId: birthday, version: await version(birthday), recurrence: { freq: "yearly", interval: 1 } });
+  assert.match(await ics(birthday), /RRULE:FREQ=YEARLY;INTERVAL=1;BYMONTH=2;BYMONTHDAY=28,29;BYSETPOS=-1\r\n/);
+  const plain = (await act({ action: "row.create", pageId, cells: { title: "Mitte", start: "2026-01-15" } })).id;
+  await act({ action: "row.recurrence", pageId, rowId: plain, version: await version(plain), recurrence: { freq: "monthly", interval: 1 } });
+  assert.match(await ics(plain), /RRULE:FREQ=MONTHLY;INTERVAL=1\r\n/);
+  // The same rule comes back unchanged.
+  const get = await dav("GET", `${calendar}${monthly}.ics`);
+  assert.equal((await dav("PUT", `${calendar}${monthly}.ics`, await get.text(), { "if-match": get.headers.get("etag")! })).status, 204);
+  assert.deepEqual(JSON.parse(await recurrence(monthly)), { freq: "monthly", interval: 1, count: 4 });
+});
+
+test("a title with a backslash and n survives a round trip", async () => {
+  const rid = (await act({ action: "row.create", pageId, cells: { title: "C:\\new\\notes", start: "2026-10-08T08:00Z" } })).id;
+  const get = await dav("GET", `${calendar}${rid}.ics`);
+  const body = (await get.text()).replace("DTSTART:20261008T080000Z", "DTSTART:20261009T080000Z");
+  assert.equal((await dav("PUT", `${calendar}${rid}.ics`, body, { "if-match": get.headers.get("etag")! })).status, 204);
+  assert.deepEqual([(await cells(rid)).title, (await cells(rid)).start], ["C:\\new\\notes", "2026-10-09T08:00Z"]);
+  assert.equal(parseEvent("BEGIN:VEVENT\nDTSTART:20261001T080000Z\nSUMMARY:Zeile\\neins\\Nzwei\\\\n\nEND:VEVENT").title, "Zeile\neins\nzwei\\n");
+});
+
+test("a series created over CalDAV keeps its rule; rules the app cannot repeat are refused", async () => {
+  const event = (uid: string, rrule: string, extra = "") =>
+    `BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:${uid}\r\nSUMMARY:Serie\r\nDTSTART;TZID=Europe/Berlin:20261103T100000\r\nDTEND;TZID=Europe/Berlin:20261103T110000\r\n${rrule ? `RRULE:${rrule}\r\n` : ""}${extra}END:VEVENT\r\nEND:VCALENDAR\r\n`;
+  const uid = "0b6a1f3e-2c4d-4e5f-8a9b-0c1d2e3f4a5b";
+  const created = await dav("PUT", `${calendar}${uid}.ics`, event(uid, "FREQ=WEEKLY;COUNT=10;BYDAY=TU;WKST=MO", "EXDATE;TZID=Europe/Berlin:20261110T100000\r\n"), { "if-none-match": "*" });
+  assert.equal(created.status, 201);
+  assert.deepEqual(JSON.parse(await recurrence(uid)), { freq: "weekly", interval: 1, count: 10, exclude: ["2026-11-10"] });
+  const text = await ics(uid);
+  assert.match(text, /RRULE:FREQ=WEEKLY;INTERVAL=1;COUNT=10\r\n/);
+  assert.match(text, /EXDATE:20261110T090000Z\r\n/);
+  // UNTIL in UTC is a local day; a rule removed in the client goes here too.
+  let get = await dav("GET", `${calendar}${uid}.ics`);
+  assert.equal((await dav("PUT", `${calendar}${uid}.ics`, event(uid, "FREQ=DAILY;INTERVAL=2;UNTIL=20261130T225959Z"), { "if-match": get.headers.get("etag")! })).status, 204);
+  assert.deepEqual(JSON.parse(await recurrence(uid)), { freq: "daily", interval: 2, until: "2026-11-30" });
+  get = await dav("GET", `${calendar}${uid}.ics`);
+  assert.equal((await dav("PUT", `${calendar}${uid}.ics`, event(uid, ""), { "if-match": get.headers.get("etag")! })).status, 204);
+  assert.equal(await recurrence(uid), "");
+  // Unsupported rules: refused, nothing stored.
+  for (const rule of ["FREQ=WEEKLY;BYDAY=MO,WE", "FREQ=MONTHLY;BYDAY=1MO", "FREQ=HOURLY", "FREQ=DAILY;INTERVAL=500"]) {
+    const other = id();
+    const answer = await dav("PUT", `${calendar}${other}.ics`, event(other, rule), { "if-none-match": "*" });
+    assert.equal(answer.status, 403, rule);
+    assert.match(await answer.text(), /Wiederholung/);
+    assert.equal(await one("SELECT 1 FROM rows WHERE id=?", other), undefined);
+  }
+});

@@ -489,3 +489,20 @@ test("calendar preferences and timed values survive copies, templates, snapshots
     }),
   );
 });
+
+test("exported repeat rules clamp month ends like the app and skip in the expansion's time", async () => {
+  const { icsRecurrenceLines, occurrenceDates } = await import("../lib/recurrence");
+  const monthly = { freq: "monthly" as const, interval: 1, count: 4 };
+  assert.deepEqual(occurrenceDates("2026-01-31", monthly, "2026-02-01", "2026-12-31"), ["2026-02-28", "2026-03-31", "2026-04-30"]);
+  assert.deepEqual(icsRecurrenceLines(monthly, "2026-01-31", false), ["RRULE:FREQ=MONTHLY;INTERVAL=1;BYMONTHDAY=28,29,30,31;BYSETPOS=-1;COUNT=4"]);
+  assert.deepEqual(icsRecurrenceLines({ freq: "monthly", interval: 1 }, "2026-01-30", false), ["RRULE:FREQ=MONTHLY;INTERVAL=1;BYMONTHDAY=28,29,30;BYSETPOS=-1"]);
+  assert.deepEqual(icsRecurrenceLines({ freq: "yearly", interval: 1 }, "2028-02-29", false), ["RRULE:FREQ=YEARLY;INTERVAL=1;BYMONTH=2;BYMONTHDAY=28,29;BYSETPOS=-1"]);
+  assert.deepEqual(icsRecurrenceLines({ freq: "yearly", interval: 1 }, "2026-01-31", false), ["RRULE:FREQ=YEARLY;INTERVAL=1"]);
+  // A continued series on the 31st from 28 Feb.
+  assert.deepEqual(icsRecurrenceLines({ freq: "monthly", interval: 1, day: 31 }, "2026-02-28", false), ["RRULE:FREQ=MONTHLY;INTERVAL=1;BYMONTHDAY=28,29,30,31;BYSETPOS=-1"]);
+  // Skipped dates are local days; Tue 00:30 Berlin is Monday 23:30Z.
+  assert.deepEqual(
+    icsRecurrenceLines({ freq: "weekly", interval: 1, exclude: ["2026-11-17"] }, "2026-11-09T23:30:00Z", true, "Europe/Berlin"),
+    ["RRULE:FREQ=WEEKLY;INTERVAL=1", "EXDATE:20261116T233000Z"],
+  );
+});
