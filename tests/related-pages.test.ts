@@ -147,3 +147,25 @@ test("titles in Chinese relate by their words, two-character ones too", async ()
   assert.ok(reasons(summary).includes("title"));
   assert.ok(!reasons(other).length);
 });
+
+test("records: a multi-select property hidden by a read rule never makes records related", async () => {
+  const hiddenDb = await createPage(wid, space, admin.id, "Kandidaten", "database");
+  const { database } = await import("../lib/api");
+  const d = await database(hiddenDb);
+  await command(admin, {
+    action: "database.update",
+    pageId: hiddenDb,
+    version: d.version,
+    fields: [
+      { id: "title", name: "Name", type: "text" },
+      { id: "verdict", name: "Einstufung", type: "multiselect", options: ["Absage", "Zusage"], access: { read: "owners" } },
+    ],
+    views: d.views,
+  });
+  const add = async (title: string, verdict: string[]) => ((await command(admin, { action: "row.create", pageId: hiddenDb, cells: { title, verdict } })) as { id: string }).id;
+  const a = await add("Quokka", ["Absage"]);
+  const b = await add("Narwal", ["Absage"]);
+  const tagged = (items: { rowId?: string; reasons: string[] }[]) => items.some((i) => i.rowId === b && i.reasons.includes("tags"));
+  assert.equal(tagged((await relatedPages(ben, hiddenDb, a)).items), false);
+  assert.equal(tagged((await relatedPages(admin, hiddenDb, a)).items), true);
+});

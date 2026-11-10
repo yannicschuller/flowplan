@@ -20,6 +20,7 @@
 import { all, one } from "./db";
 import { pageRole, requireMember, requirePage } from "./permissions";
 import { hiddenRowIds } from "./row-access";
+import { hiddenFieldsFor } from "./field-access";
 import { journalLocked } from "./journal-extras";
 import { requireRow } from "./row-documents";
 import { refreshSearchIndex, termMatches } from "./search-index";
@@ -158,10 +159,12 @@ export async function relatedPages(user: Identity, pageId: string, rowId: string
   for (const target of targets.slice(0, 8))
     for (const source of await linkingTo(page.workspace_id, linkNeedle(target.pageId, target.rowId), 20)) add(source.page_id, source.row_id || null, 1.5, "shared-links");
 
-  // Records: others in the same database with the same tags.
+  // Records: others in the same database with the same tags (only
+  // properties the person may read).
   const fields = rowId ? (await fieldsOf(pageId)) : [];
   const own = rowId ? (await cellsOf(rowId)) : {};
-  const tagFields = fields.filter((f) => f.type === "multiselect" && Array.isArray(own[f.id]) && (own[f.id] as unknown[]).length);
+  const hiddenFields = rowId ? await hiddenFieldsFor(user, page, fields) : new Set<string>();
+  const tagFields = fields.filter((f) => f.type === "multiselect" && !hiddenFields.has(f.id) && Array.isArray(own[f.id]) && (own[f.id] as unknown[]).length);
   if (tagFields.length)
     for (const row of await all<{ id: string; cells: string }>("SELECT id,cells FROM rows WHERE page_id=? AND id<>? LIMIT 3000", pageId, rowId!)) {
       let cells: Record<string, unknown> = {};
