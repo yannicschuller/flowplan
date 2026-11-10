@@ -120,6 +120,7 @@ import {
   BOARD_CLIPBOARD_TYPE,
   boardCopyText,
   boundsOf,
+  clampResize,
   clusterItems,
   distributeItems,
   mindmapLayout,
@@ -1883,14 +1884,7 @@ export default function Whiteboard({
         if (handle.includes("w")) x = origin.x + origin.w - w;
         if (handle.includes("n")) y = origin.y + origin.h - h;
       }
-      change(() =>
-        setProps(g.id, {
-          x: Math.round(w < 20 ? origin.x : x),
-          y: Math.round(h < 20 ? origin.y : y),
-          w: Math.round(Math.max(20, w)),
-          h: Math.round(Math.max(20, h)),
-        }),
-      );
+      change(() => setProps(g.id, clampResize(origin, handle, { x, y, w, h })));
     } else if (g.kind === "rotate") {
       let angle =
         (Math.atan2(p.y - g.center.y, p.x - g.center.x) * 180) / Math.PI + 90;

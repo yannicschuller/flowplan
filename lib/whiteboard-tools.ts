@@ -371,3 +371,14 @@ export function pastesBoardItems(
   // Browsers that drop own clipboard types still keep the plain text.
   return !paste.files && paste.text.trim() === copy.text;
 }
+
+// The box of a resize, at least 20×20: below that the edge opposite the
+// dragged handle stays where it is (the right edge for a west handle, the
+// bottom edge for a north one).
+export function clampResize(origin: Box, handle: string, box: Box, min = 20): Box {
+  const w = Math.max(min, box.w),
+    h = Math.max(min, box.h);
+  const x = box.w >= min ? box.x : handle.includes("w") ? origin.x + origin.w - min : origin.x;
+  const y = box.h >= min ? box.y : handle.includes("n") ? origin.y + origin.h - min : origin.y;
+  return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) };
+}

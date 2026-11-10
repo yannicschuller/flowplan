@@ -13,6 +13,7 @@ import {
   strokeHit,
   boardCopyText,
   pastesBoardItems,
+  clampResize,
 } from "../lib/whiteboard-tools";
 import type { WhiteboardItem } from "../lib/whiteboard-model";
 
@@ -130,4 +131,18 @@ test("paste: board items only while their copy is on the system clipboard", () =
   assert.equal(pastesBoardItems(copy, { token: "", text: " Idee\nZweite\n", files: 0 }), true);
   // Nothing copied on the board.
   assert.equal(pastesBoardItems(null, { token: "", text: "Hallo", files: 0 }), false);
+});
+
+test("resize: below the minimum size the opposite edge stays put", () => {
+  const origin = { x: 0, y: 0, w: 100, h: 100 };
+  // West handle 80 px to the right: 20 wide, right edge at 100.
+  assert.deepEqual(clampResize(origin, "w", { x: 80, y: 0, w: 20, h: 100 }), { x: 80, y: 0, w: 20, h: 100 });
+  // One pixel further: still 20 wide at x 80, no jump back to 0.
+  assert.deepEqual(clampResize(origin, "w", { x: 81, y: 0, w: 19, h: 100 }), { x: 80, y: 0, w: 20, h: 100 });
+  // Far past the right edge.
+  assert.deepEqual(clampResize(origin, "nw", { x: 300, y: 250, w: -200, h: -150 }), { x: 80, y: 80, w: 20, h: 20 });
+  // East and south handles keep the left and top edges.
+  assert.deepEqual(clampResize(origin, "se", { x: 0, y: 0, w: 5, h: 3 }), { x: 0, y: 0, w: 20, h: 20 });
+  // Normal sizes are only rounded.
+  assert.deepEqual(clampResize(origin, "e", { x: 0, y: 0, w: 150.4, h: 100 }), { x: 0, y: 0, w: 150, h: 100 });
 });
