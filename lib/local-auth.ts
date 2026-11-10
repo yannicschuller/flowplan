@@ -128,8 +128,11 @@ export function setupAllowed(given: unknown) {
   const token = setupToken();
   if (!token) return true;
   if (typeof given !== "string" || !given) return false;
-  const a = Buffer.from(hash(given)),
-    b = Buffer.from(hash(token));
+  // A "+" in the token (Render's generated values, base64) arrives as a
+  // space when the link's query is read as a form: both count the same.
+  const plus = (value: string) => value.replace(/ /g, "+");
+  const a = Buffer.from(hash(plus(given))),
+    b = Buffer.from(hash(plus(token)));
   return timingSafeEqual(a, b);
 }
 // The address an invitation link (?invite=…) creates an account for, as

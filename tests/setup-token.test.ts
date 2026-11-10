@@ -63,3 +63,17 @@ test("the admin group is matched literally in the admin list", async () => {
     else process.env.OIDC_ADMIN_GROUP = before;
   }
 });
+
+test("a setup token with a + also works when the link turned it into a space", async () => {
+  const { setupAllowed } = await import("../lib/local-auth");
+  const before = process.env.FLOWPLAN_SETUP_TOKEN;
+  process.env.FLOWPLAN_SETUP_TOKEN = "ab+cd/ef+gh";
+  try {
+    assert.equal(setupAllowed("ab+cd/ef+gh"), true);
+    assert.equal(setupAllowed("ab cd/ef gh"), true);
+    assert.equal(setupAllowed("ab cd/ef"), false);
+    assert.equal(setupAllowed("abxcd/efxgh"), false);
+  } finally {
+    process.env.FLOWPLAN_SETUP_TOKEN = before;
+  }
+});
