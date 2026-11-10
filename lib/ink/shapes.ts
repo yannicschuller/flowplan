@@ -274,6 +274,30 @@ export function rotateShape(shape: InkShape, deg: number, about = shapeCentre(sh
   }
   return mapPts(shape, turn);
 }
+// Through an affine map (x' = a·x + c·y + e, y' = b·x + d·y + f), as the
+// lasso selection moves, scales and turns it (lib/ink/selection.ts). Lines
+// and polygons map their corners exactly; boxes (rect, ellipse, star) keep
+// being boxes: their centre is mapped, width and height follow their own
+// axes and the turn goes into `box`'s rotation (a skew of a turned box is
+// left out – a corner drag scales the selection's upright frame).
+export function affineShape(shape: InkShape, m: { a: number; b: number; c: number; d: number; e: number; f: number }): InkShape {
+  const apply = (p: XY) => ({ x: m.a * p.x + m.c * p.y + m.e, y: m.b * p.x + m.d * p.y + m.f });
+  if (!shape.box) return mapPts(shape, apply);
+  const [x, y, w, h, rot] = shape.box;
+  const c = Math.cos(rad(rot)),
+    s = Math.sin(rad(rot));
+  const u = { x: m.a * c + m.c * s, y: m.b * c + m.d * s };
+  const v = { x: -m.a * s + m.c * c, y: -m.b * s + m.d * c };
+  const su = Math.hypot(u.x, u.y),
+    sv = Math.hypot(v.x, v.y);
+  const centre = apply({ x, y });
+  const out: InkShape = {
+    ...shape,
+    box: [coord(centre.x), coord(centre.y), r2(clamp(w * su, 0.5, 1e5)), r2(clamp(h * sv, 0.5, 1e5)), normDeg((Math.atan2(u.y, u.x) * 180) / Math.PI)],
+  };
+  if (shape.radius) out.radius = r2(shape.radius * Math.min(su, sv));
+  return out;
+}
 // The rotation shown for a shape (its own, or the line's direction).
 export function shapeAngle(shape: InkShape) {
   if (shape.box) return shape.box[4];

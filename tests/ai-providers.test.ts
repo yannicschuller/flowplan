@@ -262,3 +262,24 @@ test("redactSecrets removes keys, bearer tokens and key parameters", () => {
   assert.equal(redactSecrets("nothing secret here"), "nothing secret here");
   assert.ok(!redactSecrets(`token ${Buffer.from(KEY).toString("base64")}`, [KEY]).includes(Buffer.from(KEY).toString("base64").slice(0, 20)));
 });
+
+test("pictures go with a user message in each provider's own format", async () => {
+  const withImage = { messages: [{ role: "user" as const, content: "Lies das", images: [{ mime: "image/png" as const, data: "iVBORw0K" }] }], maxTokens: 50 };
+  await complete({ kind: "ollama", baseUrl: origin, model: "llava", trusted: true }, withImage);
+  assert.deepEqual(JSON.parse(seen.at(-1)!.body).messages[0], { role: "user", content: "Lies das", images: ["iVBORw0K"] });
+  await complete({ kind: "openai", baseUrl: `${origin}/v1`, model: "gpt-test", trusted: true }, withImage);
+  assert.deepEqual(JSON.parse(seen.at(-1)!.body).messages[0].content, [
+    { type: "text", text: "Lies das" },
+    { type: "image_url", image_url: { url: "data:image/png;base64,iVBORw0K" } },
+  ]);
+  await complete({ kind: "anthropic", baseUrl: origin, model: "claude-sonnet-5-5", apiKey: KEY, trusted: true }, withImage);
+  assert.deepEqual(JSON.parse(seen.at(-1)!.body).messages[0].content, [
+    { type: "image", source: { type: "base64", media_type: "image/png", data: "iVBORw0K" } },
+    { type: "text", text: "Lies das" },
+  ]);
+  await complete({ kind: "gemini", baseUrl: origin, model: "gemini-test", apiKey: KEY, trusted: true }, withImage);
+  assert.deepEqual(JSON.parse(seen.at(-1)!.body).contents[0].parts, [{ inline_data: { mime_type: "image/png", data: "iVBORw0K" } }, { text: "Lies das" }]);
+  // Without pictures the messages stay plain text.
+  await complete({ kind: "openai", baseUrl: `${origin}/v1`, model: "gpt-test", trusted: true }, ask);
+  assert.equal(JSON.parse(seen.at(-1)!.body).messages[1].content, "Sag hallo");
+});

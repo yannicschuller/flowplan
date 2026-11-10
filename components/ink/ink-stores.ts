@@ -79,15 +79,18 @@ export const chosenUnit = () => rulerPrefs().unit;
 
 // ---- Shape tool ----
 
-export type ShapeToolSettings = { kind: ShapeToolKind; fill: boolean; dash: "solid" | "dash" | "dot" };
+// `fillColor`: the fill of new closed shapes while `fill` is on; null: the
+// line's colour.
+export type ShapeToolSettings = { kind: ShapeToolKind; fill: boolean; fillColor: string | null; dash: "solid" | "dash" | "dot" };
 const SHAPE_KEY = "flowplan-ink-shape";
-const shapeDefaults: ShapeToolSettings = { kind: "auto", fill: false, dash: "solid" };
+const shapeDefaults: ShapeToolSettings = { kind: "auto", fill: false, fillColor: null, dash: "solid" };
 const shapeSettings = store<ShapeToolSettings>(shapeDefaults, () => {
   const s = read(SHAPE_KEY);
   if (!s) return shapeDefaults;
   return {
     kind: SHAPE_TOOL_KINDS.includes(s.kind) ? s.kind : "auto",
     fill: s.fill === true,
+    fillColor: typeof s.fillColor === "string" && /^#[0-9a-f]{6}$/i.test(s.fillColor) ? s.fillColor.toLowerCase() : null,
     dash: s.dash === "dash" || s.dash === "dot" ? s.dash : "solid",
   };
 });

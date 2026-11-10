@@ -12,12 +12,16 @@ block of documents (`components/ink/draw-block*.tsx`,
 | --- | --- |
 | `lib/ink/model.ts` | Types, limits, `parseInk` (strict, drops junk), `serializeInk`, `inkText` (search), `withPage` |
 | `lib/ink/coords.ts` | Page units ↔ screen, ↔ device pixels (zoom, DPR), page as shown → PDF user space (rotation, crop box) |
-| `lib/ink/geometry.ts` | Pressure outline, bounds, hit tests, stroke and partial eraser, lasso, move/resize/recolour/copy, shape snapping (`snapShape`, `withShape`, `toFreehand`, `pageAnchors`), `heldStill` |
-| `lib/ink/shapes.ts` | Shapes (`InkShape`): checking (`cleanShape`), outline and parts (fill, dashes, arrow heads), moving/scaling/rotating, handles and dragging them, snapping (15° angles, squares/circles within 8 %, magnet to other shapes' corners) |
+| `lib/ink/geometry.ts` | Pressure outline, bounds, hit tests, stroke and partial eraser (a shape cut by it becomes freehand), lasso, move/resize/recolour/copy, shape snapping (`snapShape`, `withShape`, `toFreehand`, `pageAnchors`), `heldStill` |
+| `lib/ink/shapes.ts` | Shapes (`InkShape`): checking (`cleanShape`), outline and parts (fill, dashes, arrow heads), moving/scaling/rotating (`affineShape` for the lasso's transform), handles and dragging them, snapping (15° angles, squares/circles within 8 %, magnet to other shapes' corners) |
 | `lib/ink/shape-recognize.ts` | Recognising a hand-drawn stroke (`recognizeShape`), the shape tool's drag (`dragShape`), resizing while the pen rests (`followPen`) |
 | `lib/ink/ruler.ts` | Ruler, set square (protractor) and compass: edges, straightening along them, scale ticks in cm/in, angle snapping, angles between lines, arcs |
+| `lib/ink/selection.ts` | The lasso's selection over every item type: tap to pick (`itemAt`, also the shape tool's pick with `isShape`), affine move/scale/turn (corners, 15° snap, pinch; shapes through `affineShape`, turning into their box's rotation), front/back, width steps, text next to it, pastes kept on the page |
+| `lib/ink/clipboard.ts` | The ink clipboard of the tab, shared by all editors (sheet → sheet, notebook → drawing block) |
 | `lib/ink/history.ts` | Undo/redo of whole states |
-| `lib/ink/presets.ts` | Tools, colours, widths and the free width ranges, 3 favourite pens, text style, recent own colours, Pencil double-tap setting, snap setting (per device, `localStorage`) |
+| `lib/ink/presets.ts` | Tools, colours, widths and the free width ranges, the 3 favourite pens of earlier versions, text style, recent own colours, Pencil double-tap setting, snap setting (per device, `localStorage`) |
+| `lib/ink/favorites.ts` | Favourite pens: up to 8 of tool (pen, highlighter, text) + colour + width (+ face), add/move/remove, the one in hand; per device (`flowplan-ink-favorites`; taken over once from `flowplan-ink-presets`, which stays for older versions) |
+| `lib/ink/eraser.ts` | Eraser kinds – whole strokes, parts (`erasePartial` splits strokes), highlighter only – and the partial eraser's size (screen px); per device |
 | `lib/ink/fonts.ts` | Typefaces of text: CSS families with fallbacks, rough advance per face, nearest standard PDF font |
 | `lib/ink/color.ts` | Hex ↔ hue/saturation/value for the colour picker |
 | `lib/ink/pdf-export.ts` | `flattenInk(pdfBytes, doc)` → new PDF with the ink as vectors (pdf-lib); `drawInk` for any page |
@@ -30,17 +34,23 @@ block of documents (`components/ink/draw-block*.tsx`,
 | `lib/page-ink-store.ts` | Server: ink of a page's surfaces – notebook sheets, drawing blocks (`page_ink`, `page_ink_versions`) |
 | `lib/ink-export.ts` | Server: pictures of drawing blocks and sheets for published pages and exports |
 | `components/ink/use-surface-sync.ts` | Saving surfaces while drawing, merging, following others, recognition for search |
-| `components/ink/convert.ts` | "Convert to text" of a lasso selection |
+| `components/ink/convert.ts` | "Convert to text" of a lasso selection on the device (iPhone/iPad app) |
+| `components/ink/ai-convert.tsx` | "Convert to text" with the instance's AI (`lib/ai/handwriting.ts`): dialog with the picture, the recognised text to edit, insert in place / next to it / copy |
+| `components/ink/ink-selection-bar.tsx` | The bar over a selection: colour (palette, own colours, picker) and width, cut, copy, duplicate, front, back, convert, delete |
+| `components/ink/ink-image.ts` | Items as an SVG/PNG of just their area (system clipboard, AI recognition) |
+| `components/ink/system-clipboard.ts` | Copied ink also on the system clipboard (PNG, SVG where supported, typed text) |
 | `components/ink/use-ink-editor.ts` | `useInkEditor(initial)`: the editing session; `useInkShortcuts(editor, on)` |
 | `components/ink/ink-layer.tsx` | `<InkLayer>`: renders and takes input for one page |
 | `components/ink/ink-shape.tsx` | Drawing a shape item, the draft while drawing |
-| `components/ink/shape-editor.tsx` | `<ShapeEditor>`: handles and bar of one selected shape |
+| `components/ink/shape-editor.tsx` | `<ShapeEditor>`: handles and bar of one selected shape (several selected: the lasso's box and `<InkSelectionBar>`) |
 | `components/ink/ink-ruler.tsx` | `<InkRuler>` on its page, `rulerGuide` (strokes along it) |
-| `components/ink/shape-toolbar.tsx` | `<ShapeToolOptions>`, `<RulerControls>` in the toolbar |
+| `components/ink/shape-panel.tsx` | The shape tool's panel sections (preview, kind grid, line style, fill on/off + colour), `<RulerSection>` (off, ruler, set square, compass; shape and gear panel), `<RulerToggle>` (the ruler's button in the toolbar row) |
 | `components/ink/ink-stores.ts` | The ruler's place and the shape tool's choices (per device, outside React state) |
-| `components/ink/ink-toolbar.tsx` | `<InkToolbar editor>`: tools, favourites, colours, widths, eraser kind, undo/redo, paste, pen settings; children go at the end |
-| `components/ink/ink-style-picker.tsx` | `<InkCustomColor editor>` ("+" after the colours: colour picker) and `<InkWidthControl editor>` (free width; for text size and face), each a button with its menu – self-contained |
-| `components/ink/color-picker.tsx` | `<ColorPicker value onChange onCommit recent>`: saturation/brightness area, hue slider, hex field, recent colours (pointer, Pencil, keyboard) |
+| `components/ink/ink-toolbar.tsx` | `<InkToolbar editor page?>`: tools, favourites, colours, widths, ruler button, undo/redo, paste, gear; tapping the tool in hand again (or the gear) opens its panel; children go at the end |
+| `components/ink/ink-panel.tsx` | `<InkPanel>`: a tool's panel – favourites, live preview, width (presets + slider), text face, colour (picker beside the panel), eraser kinds and size, "clear page", the shape tool's sections, input settings (switches) |
+| `components/ink/ink-style-picker.tsx` | `<InkCustomColor editor>` ("+" after the colours in the toolbar row: colour picker in a menu) |
+| `components/ink/color-picker.tsx` | `<ColorPicker value onChange onCommit recent>`: saturation/brightness area, hue slider, hex field, eyedropper (EyeDropper API, hidden where missing), recent colours (pointer, Pencil, keyboard) |
+| `components/ink/panel-parts.tsx` | Building blocks of the panels: segmented radio buttons, slider, section head, setting switch |
 
 ## Storage format (version 1)
 
@@ -93,6 +103,14 @@ block of documents (`components/ink/draw-block*.tsx`,
   surface, the server gives every stroke that came back unchanged (same id,
   colour, width, points) its shape again (`keepShapes`, `lib/ink/merge.ts`);
   a shape it moved or erased stays a plain stroke there. No version bump.
+  The partial eraser leaves the pieces of a shape as freehand strokes, the
+  stroke eraser takes it whole, "highlighter only" leaves it alone;
+  "convert to text" skips shapes.
+- Optional `rotation` of text: degrees clockwise (−180…180, two
+  decimals) around `(x, y)`, set by turning a lasso selection; left out
+  when upright. SVG draws it as `rotate(r x y)`, PDFs turn the text
+  matrix. Versions before `rotation` show such text upright and drop the
+  field when they save that surface (the text itself stays).
 - Items are back to front. Page keys: PDF page numbers (`"1"`, `"2"`, …);
   other surfaces may use any key matching `[\w.-]{1,64}` (e.g. a notebook
   page id).
@@ -163,6 +181,35 @@ lasso selection with pen strokes offers **Convert to text**: the text
 replaces the strokes as a text item (notebooks, PDFs) or becomes paragraphs
 below the block (drawing blocks); one undo step of the ink.
 
+Where the instance's AI may run for the page (feature `handwriting`,
+`lib/ai/handwriting.ts`), notebooks and drawing blocks use it instead: the
+selected pen strokes as a PNG (drawn in the browser) go to
+`POST /api/ai/handwriting { pageId, image }` → `{ text }` – a vision model
+is needed. Editors of unlocked pages only; PIN journals, encrypted spaces,
+pages closed to the AI and the person's rules refuse, rate limits and
+usage statistics as for every prompt. The text is shown to edit and then
+placed as a text box (the text tool's colour, size, face) in the strokes'
+place or next to them, or copied; one undo step.
+
+## Lasso selection
+
+Tap an item to pick it (the top one; a highlighter only where nothing is
+drawn over it), or draw a loop around items. The selection moves by its
+body, scales by its four corners (around the opposite one; free with the
+mouse or pen, Shift or a finger keeps the aspect), turns by the handle
+above it (snaps to 15° within 4°, Shift always in 15° steps) and – held by
+a finger – scales and turns with a second finger. Strokes and text turn
+with it (text keeps its turn in `rotation`). The bar recolours (palette,
+recent own colours, picker), sets the width (fine/medium/bold for pen,
+highlighter and text), cuts, copies, duplicates, brings to the front or
+back, converts and deletes; keys: ⌘X/⌘C/⌘V/⌘D, ⌘] / ⌘[, arrows nudge
+(Shift: 10 pt), ⌘A on a notebook, Delete, Escape. Every action is one undo
+step and a normal ink change (saved, merged by item id; an order changed
+only by one side survives a merge). The clipboard is shared by every ink
+editor of the tab, so a cut on one sheet pastes onto another (the sheet
+last touched; moved onto the page if it would stick out), and copies also
+go to the system clipboard as a picture.
+
 ## Components
 
 ```tsx
@@ -196,13 +243,18 @@ editor.reset(parseInk(loaded)); // after loading (clears undo)
   `onZoom`.
 - Holding the pen still for ~0.5 s at the end of a stroke snaps it to a
   line, arrow, rectangle/square (also rounded), ellipse/circle, triangle,
-  diamond, polygon (up to 8 corners) or star (setting in the toolbar);
+  diamond, polygon (up to 8 corners) or star (setting in the input
+  settings of the panels);
   moving on without lifting resizes it (lines follow with their end). The
   stroke as drawn is one undo step before the shape: undo goes back to
   freehand. The shape tool (S) recognises at once or drags a chosen shape
   from corner to corner; a tap with it (or the lasso) on a shape selects it
-  for editing.
-- Ruler (toolbar): lies on one page in its real scale; one finger moves it,
+  for editing. Its panel (tap the tool again) holds the kind, width, line
+  style, colour and fill of new shapes and the ruler's instrument. One
+  selected shape gets its own handles and bar; in a selection of several
+  the lasso's box moves, scales and turns shapes with the rest.
+- Ruler (its button in the toolbar row; set square and compass in the
+  shape tool's and the gear's panel): lies on one page in its real scale; one finger moves it,
   two turn it (snapping to multiples of 15°); a stroke beginning within
   ~26 px of an edge follows it, with its length shown. The set square
   shows the angles between straight lines through its zero point and

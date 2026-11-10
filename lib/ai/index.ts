@@ -9,7 +9,7 @@
 // AI may read.
 //
 // FEATURE IDS (lib/ai/features.ts): "write" | "summarize" | "ask" | "database"
-// | "actions" | "whiteboard".
+// | "actions" | "whiteboard" | "workflows" | "handwriting".
 // Add new ones there; administration and settings pick them up.
 //
 // SERVER
@@ -100,6 +100,10 @@
 //     aiJson in lib/ai/json.ts: parsed robustly, validated, one retry).
 //     POST /api/ai/database/{cell,queue,propose}, GET /api/ai/database/status.
 //
+//   handwriting (lib/ai/handwriting.ts, POST /api/ai/handwriting { pageId,
+//     image }): a PNG of a lasso selection → its plain text, shown to edit
+//     before anything is placed. The only feature that sends a picture
+//     (ChatMessage.images, lib/ai/providers.ts – the model needs vision).
 //   actions (lib/ai/actions.ts, POST /api/ai/actions/{propose,run}): the
 //     model proposes pages, tasks, text and records as JSON tool calls; the
 //     server checks them as the person and shows a preview; only confirmed

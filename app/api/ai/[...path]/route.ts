@@ -32,6 +32,7 @@ import { checkDeviceSuggestion, suggestCapture, SUGGEST_LIMITS } from "@/lib/ai/
 import { improveCapture, IMPROVE_LIMITS } from "@/lib/ai/capture-improve";
 import { clusterNotes, generateStructure, splitNotes, summarizeBoard } from "@/lib/ai/whiteboard";
 import { aiDraftWorkflow } from "@/lib/workflows/ai-builder";
+import { HANDWRITING_BODY_LIMIT, recognizeHandwriting } from "@/lib/ai/handwriting";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -220,6 +221,9 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ path: st
       if (path[1] === "generate") return NextResponse.json(await generateStructure(user, b, req.signal), noStore);
       if (path[1] === "split") return NextResponse.json(await splitNotes(user, b, req.signal), noStore);
     }
+    // Handwriting of a lasso selection → text (lib/ai/handwriting.ts).
+    if (path.length === 1 && path[0] === "handwriting")
+      return NextResponse.json(await recognizeHandwriting(user, await body(req, HANDWRITING_BODY_LIMIT), req.signal), noStore);
     // The workflow AI builder (lib/workflows/ai-builder.ts): a sentence → a draft graph to review.
     if (path.length === 2 && path[0] === "workflow" && path[1] === "draft") return NextResponse.json(await aiDraftWorkflow(user, await body(req, 20_000), req.signal), noStore);
     // AI in databases.

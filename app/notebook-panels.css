@@ -1,0 +1,1022 @@
+/* ===== Ink tool panels (components/ink/ink-panel.tsx) =====
+   Opened from the ink toolbar (.ink-toolbar), so its button rules reach in
+   here: each control states its own size and colours. The panel is an
+   .ink-menu (placed by components/ink/menu-placement.ts). */
+.ink-menu.ink-panel {
+  display: block;
+  width: min(360px, calc(100vw - 16px - var(--safe-left, 0px) - var(--safe-right, 0px)));
+  padding: 0;
+  border-radius: 14px;
+  box-shadow: 0 16px 40px #0005;
+  overscroll-behavior: contain;
+  font-size: 14px;
+}
+[data-theme="dark"] .ink-menu.ink-panel {
+  background: var(--surface);
+}
+.ink-panel:focus {
+  outline: none;
+}
+.ink-toolbar button.active.is-open {
+  background: var(--ink-bar-active);
+  color: var(--ink-bar-bg);
+}
+.ink-panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 8px 4px 16px;
+}
+.ink-panel-head h3 {
+  margin: 0 auto 0 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+.ink-panel-head-favs {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+}
+.ink-toolbar .ink-panel-head .ink-preset {
+  min-width: 40px;
+  height: 30px;
+  margin: 0;
+}
+.ink-toolbar :is(.ink-panel-fav-add, .ink-panel-fav-edit, .ink-panel-close) {
+  min-width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  color: var(--secondary);
+}
+.ink-toolbar .ink-panel-fav-add {
+  border: 1px dashed var(--border);
+}
+.ink-preset-text {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1;
+}
+.ink-panel-sec {
+  display: grid;
+  gap: 10px;
+  padding: 12px 16px;
+}
+.ink-panel-sec + .ink-panel-sec {
+  border-top: 1px solid var(--border);
+}
+.ink-panel-preview-sec {
+  padding-top: 8px;
+}
+.ink-panel-sec-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}
+.ink-panel-pill {
+  padding: 1px 7px;
+  border-radius: 6px;
+  background: var(--hover);
+  color: var(--secondary);
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.ink-panel-preview {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 62px;
+  padding: 0 16px;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #fff repeating-linear-gradient(to bottom, transparent 0 19px, #c9d6e8b3 19px 20px);
+  box-shadow: inset 0 0 0 1px #0000001a;
+  line-height: 1;
+  white-space: nowrap;
+}
+.ink-panel-preview svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* Segmented radio buttons (width presets, eraser kind). */
+.ink-segmented {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 2px;
+  padding: 3px;
+  border-radius: 9px;
+  background: var(--hover);
+}
+.ink-toolbar .ink-segmented button {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+  height: 34px;
+  padding: 0 6px;
+  border-radius: 7px;
+  color: var(--secondary);
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.ink-toolbar .ink-segmented button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--bg) 45%, transparent);
+  color: var(--text);
+}
+.ink-toolbar .ink-segmented button.active,
+.ink-toolbar .ink-segmented button.active:hover:not(:disabled) {
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: 0 1px 3px #1d1a1426;
+}
+[data-theme="dark"] .ink-toolbar .ink-segmented button.active,
+[data-theme="dark"] .ink-toolbar .ink-segmented button.active:hover:not(:disabled) {
+  background: #3a3842;
+  box-shadow: 0 1px 2px #0006;
+}
+.ink-segmented button:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+.ink-segmented .ink-width {
+  width: 18px;
+}
+
+/* Slider: native range input over a drawn track with preset dots; the
+   thumb's centre runs from 12 px to 12 px before the end. */
+.ink-slider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 28px;
+}
+.ink-slider-end {
+  display: grid;
+  place-items: center;
+  min-width: 12px;
+  color: var(--secondary);
+}
+.ink-slider-dot {
+  display: block;
+  border-radius: 99px;
+  background: var(--secondary);
+}
+.ink-slider-ring {
+  display: block;
+  border-radius: 50%;
+  border: 1.5px solid var(--secondary);
+}
+.ink-slider-a {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1;
+}
+.ink-slider-a.small {
+  font-size: 11px;
+}
+.ink-slider-track {
+  --fill: calc(12px + (100% - 24px) * var(--p, 0));
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+}
+.ink-slider-track::before {
+  content: "";
+  position: absolute;
+  inset: 11px 0 auto;
+  height: 6px;
+  border-radius: 99px;
+  background: linear-gradient(to right, var(--blue) 0 var(--fill), var(--hover) var(--fill));
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.ink-slider-tick {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: calc(12px + (100% - 24px) * var(--t));
+  width: 4px;
+  height: 4px;
+  margin: -2px 0 0 -2px;
+  border-radius: 50%;
+  background: var(--muted);
+  opacity: 0.8;
+  pointer-events: none;
+}
+.ink-slider-track input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  touch-action: none;
+  cursor: pointer;
+}
+.ink-slider-track input[type="range"]::-webkit-slider-runnable-track {
+  height: 28px;
+  background: transparent;
+}
+.ink-slider-track input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 24px;
+  height: 24px;
+  margin-top: 2px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px #0004, 0 0 0 1px #0001;
+}
+.ink-slider-track input[type="range"]::-moz-range-track {
+  background: transparent;
+}
+.ink-slider-track input[type="range"]::-moz-range-thumb {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px #0004, 0 0 0 1px #0001;
+}
+.ink-slider-track input[type="range"]:focus-visible::-webkit-slider-thumb {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+.ink-slider-track input[type="range"]:focus-visible::-moz-range-thumb {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+/* Colours. */
+.ink-panel-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.ink-toolbar .ink-panel .ink-swatch {
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  margin: 0;
+  padding: 0;
+}
+[data-theme="dark"] .ink-panel .ink-swatch {
+  box-shadow: inset 0 0 0 1px #ffffff30;
+}
+.ink-panel .ink-swatch.active,
+.ink-panel-rainbow[aria-expanded="true"] {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+.ink-panel-swatch-sep {
+  width: 1px;
+  height: 22px;
+  margin: 0 2px;
+  background: var(--border);
+}
+.ink-toolbar .ink-panel .ink-panel-rainbow {
+  display: grid;
+  place-items: center;
+  background: conic-gradient(from 90deg, #f03e3e, #f59f00, #fab005, #40c057, #15aabf, #4c6ef5, #ae3ec9, #f03e3e) !important;
+}
+.ink-panel-rainbow > span {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--bg);
+  color: var(--text);
+}
+/* "Eigene Farbe": beside the panel where there is room, else inside it. */
+.ink-panel-flyout {
+  position: fixed;
+  z-index: 231;
+  display: grid;
+  gap: 12px;
+  width: 280px;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  box-shadow: 0 16px 40px #0005;
+}
+[data-theme="dark"] .ink-panel-flyout {
+  background: var(--surface);
+}
+.ink-panel-flyout::before {
+  content: "";
+  position: absolute;
+  top: calc(var(--arrow, 100px) - 6px);
+  left: -7px;
+  width: 12px;
+  height: 12px;
+  background: inherit;
+  border-left: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  transform: rotate(45deg);
+}
+.ink-panel-flyout.is-inline {
+  position: static;
+  width: auto;
+  padding: 12px;
+  box-shadow: none;
+  background: var(--bg);
+}
+.ink-panel-flyout.is-inline::before {
+  display: none;
+}
+.ink-panel-flyout-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 600;
+}
+.ink-toolbar .ink-panel-flyout-head button {
+  min-width: 28px;
+  height: 28px;
+  color: var(--secondary);
+}
+.ink-toolbar .color-picker-eyedropper {
+  flex-shrink: 0;
+  min-width: 36px;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--secondary);
+}
+.color-picker-recent-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* Input settings: title, description below, switch or select on the right. */
+.ink-panel-sec.ink-panel-settings {
+  gap: 0;
+  padding: 12px 0 4px;
+}
+.ink-panel-settings .ink-panel-sec-head {
+  padding: 0 16px 2px;
+}
+.ink-panel-setting {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px 14px;
+  padding: 10px 16px;
+}
+.ink-panel-setting + .ink-panel-setting {
+  border-top: 1px solid var(--border);
+}
+.ink-panel-setting-title {
+  font-weight: 500;
+  line-height: 1.35;
+}
+.ink-panel-setting-desc {
+  grid-column: 1;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+.ink-panel-setting > :is(.switch, select) {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+}
+.ink-toolbar .ink-panel button.switch {
+  display: block;
+  min-width: 0;
+  width: 38px;
+  height: 22px;
+  padding: 0;
+  border-radius: 999px;
+  background: var(--hover);
+}
+.ink-toolbar .ink-panel button.switch:hover:not(:disabled) {
+  background: var(--hover);
+}
+.ink-toolbar .ink-panel button.switch[aria-checked="true"],
+.ink-toolbar .ink-panel button.switch[aria-checked="true"]:hover:not(:disabled) {
+  background: var(--blue);
+}
+.ink-panel-select {
+  max-width: 132px;
+  height: 32px;
+  padding: 0 8px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.ink-panel-sec.ink-panel-more-sec {
+  padding: 0;
+}
+.ink-toolbar .ink-panel-more {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  height: auto;
+  padding: 12px 16px;
+  border-radius: 0 0 14px 14px;
+  color: var(--secondary);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* Fonts, each in itself. */
+.ink-panel-fonts {
+  display: grid;
+  gap: 4px;
+}
+.ink-toolbar .ink-panel-fonts button {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  height: 40px;
+  padding: 0 10px 0 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--text);
+}
+.ink-toolbar .ink-panel-fonts button.active,
+.ink-toolbar .ink-panel-fonts button.active:hover:not(:disabled) {
+  border-color: var(--blue);
+  background: var(--blue-light);
+  color: var(--text);
+}
+.ink-panel-font-name {
+  overflow: hidden;
+  font-size: 16px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.ink-panel-font-name.font-serif,
+.ink-panel-font-name.font-patrick {
+  font-size: 18px;
+}
+.ink-panel-font-name.font-caveat {
+  font-size: 21px;
+}
+.ink-panel-font-name.font-mono {
+  font-size: 14px;
+}
+.ink-panel-font-meta {
+  display: flex;
+  flex-shrink: 0;
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.ink-panel-fonts .active .ink-panel-font-meta {
+  color: var(--blue);
+}
+
+/* Eraser. */
+.ink-panel-note {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+.ink-toolbar .ink-panel-clear {
+  display: flex;
+  justify-content: flex-start;
+  gap: 8px;
+  width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 8px;
+  color: #c92a2a;
+  font-weight: 500;
+}
+[data-theme="dark"] .ink-toolbar .ink-panel-clear {
+  color: #ff8787;
+}
+.ink-panel-confirm p {
+  margin: 0 0 10px;
+}
+.ink-panel-confirm > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.ink-toolbar .ink-panel button.button {
+  display: inline-flex;
+  min-width: 0;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 6px;
+  color: var(--text);
+}
+.ink-toolbar .ink-panel button.button.danger-solid {
+  color: #fff;
+}
+.ink-toolbar .ink-panel button.button:hover:not(:disabled) {
+  background: var(--hover);
+}
+.ink-toolbar .ink-panel button.button.danger-solid:hover:not(:disabled) {
+  background: var(--signal);
+  color: #fff;
+}
+
+/* Favourites: reorder and remove. */
+.ink-panel-favs {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ink-panel-favs li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 40px;
+}
+.ink-panel-fav-chip {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 40px;
+  height: 30px;
+  margin-right: 6px;
+  border-radius: 8px;
+  background: #f6f4ef;
+  box-shadow: inset 0 0 0 1px #0002;
+}
+.ink-panel-fav-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.ink-toolbar .ink-panel-favs button {
+  min-width: 32px;
+  height: 32px;
+}
+.ink-panel-fav-done {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* ===== Paper dialog (components/notebook/paper-dialog.tsx) =====
+   One column below 800 px, the preview on the left from there on, a bottom
+   sheet on phones. The buttons stick to the bottom edge. */
+.modal-subtitle {
+  margin-left: 10px;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.modal.notebook-paper-dialog {
+  --pd-x: 23px;
+  width: min(660px, calc(100% - 32px));
+  padding-bottom: 0;
+}
+.paper-dialog-body {
+  display: grid;
+  gap: 18px;
+}
+.paper-dialog-preview {
+  display: none;
+}
+.paper-dialog-main {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+}
+.paper-dialog-section {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.paper-dialog-section > legend {
+  margin: 0 0 8px;
+  padding: 0;
+}
+.paper-dialog-section > legend,
+.paper-dialog-legend {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.paper-dialog-legend {
+  margin: 0;
+}
+.paper-dialog-templates {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+}
+.paper-dialog-templates label {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  justify-items: center;
+  align-content: start;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--secondary);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.3;
+  text-align: center;
+  cursor: pointer;
+}
+.paper-dialog-templates label.chosen {
+  border-color: var(--blue);
+  box-shadow: inset 0 0 0 1px var(--blue);
+  background: var(--blue-light);
+  color: var(--text);
+  font-weight: 600;
+}
+.paper-dialog-templates input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.paper-dialog-templates label:has(input:focus-visible) {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+.paper-dialog-tile {
+  position: relative;
+  display: block;
+  width: 100%;
+  max-width: 46px;
+  aspect-ratio: 595 / 842;
+  overflow: hidden;
+  border-radius: 2px;
+  background: #fff;
+  box-shadow: 0 0 0 1px #0000001a, 0 1px 3px #0002;
+}
+.paper-dialog-tile.is-dark {
+  background: #1f2125;
+}
+[data-theme="dark"] .paper-dialog-tile {
+  box-shadow: 0 0 0 1px #ffffff2e, 0 1px 3px #0008;
+}
+.paper-dialog-check {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  display: none;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--blue);
+  color: var(--on-accent);
+}
+.paper-dialog-templates label.chosen .paper-dialog-check {
+  display: grid;
+}
+.paper-dialog-group {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+}
+[data-theme="dark"] .paper-dialog-group {
+  background: var(--surface);
+}
+.paper-dialog-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  min-height: 48px;
+  padding: 7px 7px 7px 16px;
+}
+.paper-dialog-row + .paper-dialog-row {
+  border-top: 1px solid var(--border);
+}
+.paper-dialog-row-label {
+  font-weight: 500;
+}
+.paper-dialog-row .segmented label {
+  gap: 7px;
+  min-height: 32px;
+}
+.notebook-paper-dialog .segmented label:has(input:focus-visible) {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+[data-theme="dark"] .notebook-paper-dialog .segmented label[data-active="true"] {
+  background: #3a3842;
+  box-shadow: 0 1px 2px #0006;
+}
+.paper-dialog-ori {
+  display: inline-block;
+  border: 1.6px solid currentColor;
+  border-radius: 2px;
+}
+.paper-dialog-ori.is-portrait {
+  width: 10px;
+  height: 13px;
+}
+.paper-dialog-ori.is-landscape {
+  width: 14px;
+  height: 10px;
+}
+.paper-dialog-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px #0004;
+}
+[data-theme="dark"] .paper-dialog-dot {
+  box-shadow: inset 0 0 0 1px #fff4;
+}
+.paper-dialog-dot.is-light {
+  background: #fff;
+}
+.paper-dialog-dot.is-dark {
+  background: #1f2125;
+}
+/* "Anwenden auf": a list of options with their sentence … */
+.paper-dialog-scopes {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+}
+[data-theme="dark"] .paper-dialog-scopes {
+  background: var(--surface);
+}
+.paper-dialog-scopes label {
+  position: relative;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: start;
+  gap: 0 12px;
+  margin: 0;
+  padding: 10px 16px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.paper-dialog-scopes label + label {
+  border-top: 1px solid var(--border);
+}
+.paper-dialog-scopes input {
+  grid-row: span 2;
+  width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
+  padding: 0;
+  accent-color: var(--blue);
+}
+.paper-dialog-scopes label[data-active="true"] {
+  background: color-mix(in srgb, var(--blue-light) 55%, transparent);
+}
+.paper-dialog-scope-short,
+.paper-dialog-note {
+  display: none;
+}
+.paper-dialog-scope-note {
+  grid-column: 2;
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.paper-dialog-foot {
+  position: sticky;
+  z-index: 5;
+  bottom: 0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  margin: 18px calc(-1 * var(--pd-x)) 0;
+  padding: 14px var(--pd-x);
+  border-top: 1px solid var(--border);
+  background: var(--modal-bg, var(--bg));
+}
+@media (min-width: 800px) {
+  .modal.notebook-paper-dialog {
+    width: min(820px, calc(100% - 48px));
+  }
+  .paper-dialog-body {
+    grid-template-columns: 250px minmax(0, 1fr);
+    align-items: start;
+    gap: 0 28px;
+  }
+  .paper-dialog-preview {
+    position: sticky;
+    top: var(--modal-heading-bottom, 0px);
+    display: grid;
+    justify-items: center;
+    gap: 10px;
+    margin: 0;
+    padding: 18px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: #e9e6de;
+  }
+  [data-theme="dark"] .paper-dialog-preview {
+    background: #0f0e13;
+  }
+  .paper-dialog-sheet {
+    position: relative;
+    display: block;
+    width: 100%;
+    background: #fff;
+    box-shadow: 0 0 0 1px #0000001f, 0 2px 10px #0003;
+  }
+  .paper-dialog-sheet.is-dark {
+    background: #1f2125;
+    box-shadow: 0 0 0 1px #ffffff1f, 0 2px 10px #0006;
+  }
+  .paper-dialog-preview figcaption {
+    font-size: 12.5px;
+    text-align: center;
+    color: var(--secondary);
+  }
+  .paper-dialog-preview figcaption b {
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .paper-dialog-templates {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  /* … from 800 px a segmented control with the sentence below. */
+  .paper-dialog-scopes {
+    display: flex;
+    gap: 2px;
+    padding: 3px;
+    border: 0;
+    border-radius: 9px;
+    background: var(--hover);
+    overflow: visible;
+  }
+  [data-theme="dark"] .paper-dialog-scopes {
+    background: var(--hover);
+  }
+  .paper-dialog-scopes label {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    justify-content: center;
+    min-height: 34px;
+    padding: 6px 14px;
+    border-radius: 7px;
+    color: var(--secondary);
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .paper-dialog-scopes label + label {
+    border-top: 0;
+  }
+  .paper-dialog-scopes label[data-active="true"] {
+    background: var(--bg);
+    color: var(--text);
+    box-shadow: 0 1px 3px #1d1a1426;
+  }
+  [data-theme="dark"] .paper-dialog-scopes label[data-active="true"] {
+    background: #3a3842;
+    box-shadow: 0 1px 2px #0006;
+  }
+  .paper-dialog-scopes input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+  .paper-dialog-scopes label:has(input:focus-visible) {
+    outline: 2px solid var(--blue);
+    outline-offset: 1px;
+  }
+  .paper-dialog-scope-short,
+  .paper-dialog-note {
+    display: block;
+  }
+  .paper-dialog-scope-long,
+  .paper-dialog-scope-note {
+    display: none;
+  }
+  .paper-dialog-note {
+    margin: 2px 2px 0;
+    font-size: 12.5px;
+    color: var(--muted);
+  }
+}
+@media (max-width: 600px) {
+  .modal.modal-sheet.notebook-paper-dialog {
+    --pd-x: calc(20px + var(--safe-left, 0px));
+    width: 100%;
+    padding-bottom: 0;
+  }
+  .paper-dialog-foot {
+    padding-bottom: calc(12px + var(--safe-bottom, 0px));
+  }
+  .paper-dialog-foot .button {
+    flex: 1;
+    padding: 11px 14px;
+    font-size: 15px;
+  }
+  .paper-dialog-templates {
+    display: flex;
+    margin: 0 calc(-1 * var(--pd-x));
+    padding: 2px var(--pd-x) 4px;
+    overflow-x: auto;
+    scroll-padding: 0 var(--pd-x);
+    scrollbar-width: none;
+  }
+  .paper-dialog-templates label {
+    flex: 0 0 74px;
+  }
+  .paper-dialog-row {
+    gap: 8px;
+    min-height: 52px;
+    padding: 8px 8px 8px 14px;
+  }
+  .paper-dialog-row-label {
+    white-space: nowrap;
+  }
+  .paper-dialog-row .segmented label {
+    gap: 6px;
+    min-height: 34px;
+    padding: 6px 8px;
+  }
+}
+/* Colours are round, in the toolbar row too. */
+.ink-toolbar .ink-swatch {
+  border-radius: 50%;
+}
+.ink-menu .color-picker-hex {
+  margin: 0;
+}
+
+/* The shape tool's panel (components/ink/shape-panel.tsx): the kinds in a
+   grid of icon tiles, the fill's "same as the line" swatch, the ruler. */
+.ink-segmented.ink-panel-kinds {
+  grid-auto-flow: row;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 3px;
+}
+.ink-toolbar .ink-segmented.ink-panel-kinds button {
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  height: 52px;
+  padding: 0 2px;
+  font-size: 11px;
+  font-weight: 500;
+}
+.ink-panel-kinds button span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ink-toolbar .ink-segmented.ink-panel-dashes button,
+.ink-toolbar .ink-segmented.ink-panel-rulers button {
+  gap: 5px;
+  padding: 0 4px;
+  font-size: 12px;
+}
+.ink-toolbar .ink-segmented.ink-panel-dashes button span,
+.ink-toolbar .ink-segmented.ink-panel-rulers button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ink-panel-fills {
+  padding: 2px 16px 10px;
+}
+.ink-toolbar .ink-panel .ink-swatch.ink-swatch-same {
+  background: linear-gradient(135deg, var(--swatch) 50%, color-mix(in srgb, var(--swatch) 25%, #fff) 50%) !important;
+}

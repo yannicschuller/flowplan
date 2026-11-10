@@ -1,14 +1,28 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { BookmarkSimple, X } from "@phosphor-icons/react";
-import { useT, useLocale } from "./i18n";
-import { localeTag } from "@/lib/i18n";
+import { BookmarkSimple, CheckCircle, Circle, CircleDashed, MagnifyingGlass, X } from "@phosphor-icons/react";
+import { useT } from "./i18n";
 import { Select } from "./select";
-import { api, PageIcon } from "./ui";
+import { api, Avatar, PageIcon } from "./ui";
 import { ListSkeleton } from "./skeleton";
+import { dueLabel, dueState } from "@/lib/task-due-plugin";
+import { dueGroupName, groupByDue } from "@/lib/due-groups";
 import type { CrossFilter } from "@/lib/cross-records";
 
-type Record_ = { pageId: string; database: string; icon: string; rowId: string; key: string; title: string; status: string; due: string | null; done: boolean };
+type Record_ = {
+  pageId: string;
+  database: string;
+  icon: string;
+  rowId: string;
+  key: string;
+  title: string;
+  rowIcon: string;
+  status: string;
+  due: string | null;
+  done: boolean;
+  tracked: boolean;
+  people: { id: string; name: string }[];
+};
 type Result = { records: Record_[]; databases: { id: string; title: string }[]; limited: boolean; views: { id: string; name: string; filter: CrossFilter }[] };
 const initial: CrossFilter = { mine: true, open: true, due: "any", databases: [], query: "" };
 
@@ -24,7 +38,6 @@ export function MyRecords({
   onError: (message: string) => void;
 }) {
   const t = useT();
-  const locale = useLocale();
   const [filter, setFilter] = useState<CrossFilter>(initial);
   const [active, setActive] = useState<string>("");
   const [result, setResult] = useState<Result | null>(null);
@@ -44,8 +57,54 @@ export function MyRecords({
     setActive("");
     setFilter({ ...filter, ...patch });
   };
-  const today = new Date().toISOString().slice(0, 10);
-  const date = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString(localeTag(locale), { day: "2-digit", month: "short" });
+  // A status pill tinted like the board's: done green, in progress blue.
+  const statusTone = (r: Record_) =>
+    r.done ? "green" : /^(in arbeit|in progress|doing|in bearbeitung|läuft)$/i.test(r.status) ? "blue" : "gray";
+  const row = (r: Record_) => (
+    <li key={r.rowId} className="my-record" data-done={r.done}>
+      {r.tracked ? (
+        <span className="my-record-state" role="img" aria-label={r.done ? t("Erledigt", "Completed") : t("Offen", "Open")} title={r.done ? t("Erledigt", "Completed") : t("Offen", "Open")}>
+          {r.done ? <CheckCircle size={18} weight="fill" /> : <Circle size={18} />}
+        </span>
+      ) : (
+        <span className="my-record-state none" aria-hidden="true">
+          <CircleDashed size={18} />
+        </span>
+      )}
+      <button type="button" className="my-record-main" onClick={() => onOpen(r.pageId, r.rowId)}>
+        <span className="my-record-title">
+          {r.rowIcon && <PageIcon name={r.rowIcon} size={15} className="my-record-icon" />}
+          {r.key && (
+            <>
+              <span className="sprint-row-id">{r.key}</span>{" "}
+            </>
+          )}
+          {r.title || t("Ohne Titel", "Untitled")}
+        </span>
+        <span className="my-record-db">
+          <PageIcon name={r.icon} size={13} />
+          <span>{r.database || t("Ohne Titel", "Untitled")}</span>
+        </span>
+      </button>
+      <span className="my-record-meta">
+        {r.status && <span className={`tag tag-${statusTone(r)} my-record-status`}>{r.status}</span>}
+        {r.due && (
+          <span className={`task-due task-due-${dueState(r.due, r.done)}`}>
+            <span className="task-due-icon" aria-hidden="true">📅</span>
+            {dueLabel(r.due)}
+          </span>
+        )}
+        {r.people.length > 0 && (
+          <span className="my-record-people">
+            {r.people.slice(0, 3).map((p) => (
+              <Avatar key={p.id} name={p.name} userId={p.id} small />
+            ))}
+            {r.people.length > 3 && <span className="my-record-more">+{r.people.length - 3}</span>}
+          </span>
+        )}
+      </span>
+    </li>
+  );
   return (
     <div className="my-records">
       {result && (
@@ -74,11 +133,11 @@ export function MyRecords({
         </div>
       )}
       <div className="record-filters">
-        <label className="checkbox-label">
+        <label className="record-toggle">
           <input type="checkbox" checked={filter.mine} onChange={(e) => set({ mine: e.target.checked })} />
           {t("Mir zugewiesen", "Assigned to me")}
         </label>
-        <label className="checkbox-label">
+        <label className="record-toggle">
           <input type="checkbox" checked={filter.open} onChange={(e) => set({ open: e.target.checked })} />
           {t("Nur offene", "Open only")}
         </label>
@@ -100,7 +159,10 @@ export function MyRecords({
             </option>
           ))}
         </Select>
-        <input type="search" aria-label={t("Einträge durchsuchen", "Search records")} placeholder={t("Suchen …", "Search …")} value={filter.query} onChange={(e) => set({ query: e.target.value })} />
+        <span className="record-search">
+          <MagnifyingGlass size={14} aria-hidden="true" />
+          <input type="search" aria-label={t("Einträge durchsuchen", "Search records")} placeholder={t("Suchen …", "Search …")} value={filter.query} onChange={(e) => set({ query: e.target.value })} />
+        </span>
         {naming === null ? (
           <button className="button compact" onClick={() => setNaming("")}>
             <BookmarkSimple /> {t("Als Ansicht speichern", "Save as view")}
@@ -138,21 +200,14 @@ export function MyRecords({
             : t("Keine passenden Einträge.", "No matching records.")}
         </p>
       ) : (
-        <ul className="my-records-list">
-          {result.records.map((r) => (
-            <li key={r.rowId} data-done={r.done}>
-              <button type="button" onClick={() => onOpen(r.pageId, r.rowId)}>
-                {r.key && <span className="sprint-row-id">{r.key}</span>}
-                <span className="my-record-title">{r.title || t("Ohne Titel", "Untitled")}</span>
-              </button>
-              <span className="my-record-db">
-                <PageIcon name={r.icon} size={13} /> {r.database}
-              </span>
-              {r.status && <span className="muted">{r.status}</span>}
-              {r.due && <span className={`task-due ${!r.done && r.due < today ? "task-due-overdue" : ""}`}>📅 {date(r.due)}</span>}
-            </li>
-          ))}
-        </ul>
+        groupByDue(result.records.map((r) => ({ ...r, checked: r.done }))).map(([name, list]) => (
+          <section key={name} className={`my-records-group ${name === "Überfällig" ? "overdue" : ""}`}>
+            <h2>
+              {dueGroupName(name, t)} <small>{list.length}</small>
+            </h2>
+            <ul className="my-records-list">{list.map(row)}</ul>
+          </section>
+        ))
       )}
       {result?.limited && <p className="muted">{t("Die ersten 500 Einträge – grenze die Suche ein.", "The first 500 records – narrow the search.")}</p>}
     </div>

@@ -18,6 +18,7 @@ import {
   shapeVertices,
   snapAngle,
   snapLineEnd,
+  affineShape,
   type InkShape,
   type XY,
 } from "../lib/ink/shapes";
@@ -45,6 +46,8 @@ import {
   unwrapAngle,
   type RulerState,
 } from "../lib/ink/ruler";
+import { cornerScale, isShape, itemAt, pinchTransform, rotation, setItemsWidth, transformSelected, translation } from "../lib/ink/selection";
+import { eraseWith } from "../lib/ink/eraser";
 
 // ---- Synthetic hand drawing ----
 let seed = 1;
@@ -338,4 +341,52 @@ test("compass: arcs without jumps, radius in millimetres", () => {
   assert.ok(arc.every((p) => Math.abs(Math.hypot(p.x, p.y) - 50) < 1e-9));
   assert.equal(round(snapRadius(PT_PER_CM * 3.04, "cm") / PT_PER_CM, 2), 3);
   assert.equal(snapRadius(0, "cm"), PT_PER_CM / 10);
+});
+
+test("the lasso's selection moves, scales and turns shapes as shapes", () => {
+  const rect = withShape({ id: "r", type: "pen", color: "#1f1f1f", width: 2, points: [] }, { kind: "rect", box: [100, 100, 80, 40, 0], radius: 6 });
+  const line = withShape({ id: "l", type: "pen", color: "#1f1f1f", width: 2, points: [] }, { kind: "line", pts: [0, 0, 40, 0], arrow: "end" });
+  const ids = new Set(["r", "l"]);
+  // Turned by 30° around (100, 100): the box keeps its size, the turn goes into its rotation.
+  const [r1, l1] = transformSelected([rect, line], ids, rotation(Math.PI / 6, { x: 100, y: 100 })) as InkStroke[];
+  assert.deepEqual(r1.shape!.box, [100, 100, 80, 40, 30]);
+  assert.equal(r1.shape!.radius, 6);
+  assert.equal(r1.shape!.kind, "rect");
+  assert.ok(l1.shape!.arrow === "end" && l1.shape!.pts!.length === 4);
+  // The outline follows the shape.
+  assert.deepEqual(r1.points, withShape(r1, r1.shape!).points);
+  // A corner drag scales the upright frame; a turned box takes the scale along its own axes.
+  const box = { x: 60, y: 80, w: 80, h: 40 };
+  const [r2] = transformSelected([rect], new Set(["r"]), cornerScale(box, "se", { x: 220, y: 120 }, false)) as InkStroke[];
+  assert.deepEqual(r2.shape!.box, [140, 100, 160, 40, 0]);
+  assert.equal(r2.shape!.radius, 6);
+  const [r3] = transformSelected([r1], new Set(["r"]), translation(10, -5)) as InkStroke[];
+  assert.deepEqual(r3.shape!.box, [110, 95, 80, 40, 30]);
+  // Pinch: uniform scale and turn.
+  const pinched = affineShape({ kind: "ellipse", box: [0, 0, 20, 10, 0] }, pinchTransform([{ x: -10, y: 0 }, { x: 10, y: 0 }], [{ x: 0, y: -20 }, { x: 0, y: 20 }]));
+  assert.deepEqual(pinched.box, [0, 0, 40, 20, 90]);
+  // Width steps redraw the outline (arrow heads depend on the width).
+  const [wide] = setItemsWidth([line], new Set(["l"]), 2) as InkStroke[];
+  assert.ok(wide.shape && wide.width !== line.width);
+  assert.deepEqual(wide.points, withShape(wide, wide.shape!).points);
+});
+
+test("one picking for lasso taps and the shape tool; eraser kinds and shapes", () => {
+  const rect = withShape({ id: "r", type: "pen", color: "#1f1f1f", width: 2, points: [] }, { kind: "rect", box: [100, 100, 80, 40, 0] });
+  const stroke: InkStroke = { id: "s", type: "pen", color: "#1f1f1f", width: 2, points: [60, 80, 0.5, 140, 80, 0.5] };
+  const mark: InkStroke = { id: "h", type: "highlighter", color: "#ffd43b", width: 12, points: [60, 120, 0.5, 140, 120, 0.5] };
+  const items = [rect, stroke, mark];
+  // The stroke lies on the rectangle's top edge and on top of it: the lasso takes it, the shape tool the shape.
+  assert.equal(itemAt(items, { x: 100, y: 80 }, 4), "s");
+  assert.equal(itemAt(items, { x: 100, y: 80 }, 4, isShape), "r");
+  assert.equal(itemAt(items, { x: 100, y: 100 }, 4, isShape), null);
+  const path = [{ x: 140, y: 100 }];
+  // Whole strokes: the shape goes as a whole.
+  assert.deepEqual(eraseWith(items, path, "stroke", 3).map((i) => i.id), ["s", "h"]);
+  // Highlighter only: the shape stays.
+  assert.equal(eraseWith(items, path, "highlighter", 3), items);
+  // Parts: what is left of the shape is freehand.
+  const parts = eraseWith(items, path, "partial", 3) as InkStroke[];
+  const rest = parts.filter((i) => i.id !== "s" && i.id !== "h");
+  assert.ok(rest.length >= 1 && rest.every((i) => !i.shape && i.type === "pen"));
 });
