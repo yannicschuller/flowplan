@@ -729,7 +729,9 @@ export async function exportArchive(user: Identity, wid: string) {
 // budget than Flowplan's own archives, shared across nested ZIPs through
 // `budget`, and entries that unpack hundreds of times larger than they are
 // (zip bombs) are refused.
-export type ZipOptions = { foreign?: boolean; maxEntries?: number; budget?: { left: number } };
+// `largeEntries` (foreign only): entries whose name matches may be as large
+// as the ZIP itself (PDFs of an import) instead of 10 MB.
+export type ZipOptions = { foreign?: boolean; maxEntries?: number; budget?: { left: number }; largeEntries?: RegExp };
 const FOREIGN_LIMIT = 512 * 1024 * 1024,
   MAX_RATIO = 200;
 export async function readZip(
@@ -797,7 +799,9 @@ export async function readZip(
           const max =
             entry.fileName === "flowplan.json"
               ? MANIFEST_LIMIT
-              : 10 * 1024 * 1024;
+              : options.foreign && options.largeEntries?.test(entry.fileName)
+                ? ARCHIVE_LIMIT
+                : 10 * 1024 * 1024;
           if (!options.foreign && entry.fileName === "flowplan.json" && entry.uncompressedSize > MANIFEST_LIMIT) {
             fail(new HttpError(413, MANIFEST_TOO_LARGE));
             return;

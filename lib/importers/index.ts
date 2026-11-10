@@ -1,8 +1,10 @@
 // Imports from other tools: AFFiNE (workspace file .affine or snapshot ZIP),
 // Confluence (space export), Evernote (.enex), Google Docs (Takeout with
-// .html or .docx), Microsoft Word (.docx, several in a ZIP) and Obsidian
-// vaults. Older Word files (.doc) and OneNote are refused with what to do
-// instead (lib/importers/word.ts). The file is
+// .html or .docx), GoodNotes (PDF exports, several in a ZIP, as notebooks –
+// lib/importers/goodnotes.ts), Microsoft Word (.docx, several in a ZIP) and
+// Obsidian vaults. Older Word files (.doc), OneNote and GoodNotes' own
+// format (.goodnotes) are refused with what to do instead
+// (lib/importers/word.ts, lib/importers/goodnotes.ts). The file is
 // read with the ZIP reader's limits, recognised (or taken as the source the
 // person chose), turned into an import tree and then previewed or written.
 // A large upload arrives as a file on disk (lib/importers/upload.ts): an
@@ -18,18 +20,20 @@ import { parseAffine, type AffineOptions } from "./affine";
 import { isSnapshotZip, isSqlite, readAffineFile, readSnapshotZip } from "./affine-read";
 import { parseEnex } from "./evernote";
 import { isGoogleTakeout, parseGoogleDocs, resolveDocx } from "./google-docs";
+import { isPdf, isPdfArchive, parseGoodNotesUpload, refuseGoodNotes } from "./goodnotes";
 import { isObsidianVault, parseObsidian } from "./obsidian";
 import { isWordArchive, parseWord, refuseLegacyOffice } from "./word";
 import { previewImport, requireSpace, writeImport, type ImportMode, type ImportPreview, type ImportResult } from "./write";
 import { maxImportEntries, type ImportSource, type ImportTree } from "./types";
 import type { Identity } from "../types";
 
-const importTitle = (name: string) => posix.basename(name.replaceAll("\\", "/")).replace(/\.(zip|enex|html?|docx|affine)$/i, "") || "Import";
+const importTitle = (name: string) => posix.basename(name.replaceAll("\\", "/")).replace(/\.(zip|enex|html?|docx|affine|pdf)$/i, "") || "Import";
 const isZip = (bytes: Buffer) => bytes[0] === 0x50 && bytes[1] === 0x4b;
 
 // The entries of a ZIP; a single folder around everything is dropped.
 export async function zipEntries(bytes: Buffer, budget = { left: 512 * 1024 * 1024 }) {
-  let entries = await readZip(bytes, { foreign: true, maxEntries: maxImportEntries(), budget });
+  // PDFs (GoodNotes, attachments) may be as large as the ZIP.
+  let entries = await readZip(bytes, { foreign: true, maxEntries: maxImportEntries(), budget, largeEntries: /\.(pdf|goodnotes)$/i });
   const names = [...entries.keys()];
   const tops = new Set(names.map((n) => n.split("/")[0]));
   if (tops.size === 1 && names.every((n) => n.includes("/"))) {
@@ -42,7 +46,7 @@ export async function zipEntries(bytes: Buffer, budget = { left: 512 * 1024 * 10
 export function detectSource(name: string, bytes: Buffer, entries?: Map<string, Buffer>): ImportSource | null {
   if (isSqlite(bytes)) return /\.(affine|db)$/i.test(name) || !entries ? "affine" : null;
   if (/\.enex$/i.test(name) || (!isZip(bytes) && /<en-export[\s>]/.test(bytes.subarray(0, 4096).toString("utf8")))) return "evernote";
-  if (!entries) return /\.docx$/i.test(name) ? "word" : /\.html?$/i.test(name) ? "gdocs" : null;
+  if (!entries) return /\.docx$/i.test(name) ? "word" : /\.html?$/i.test(name) ? "gdocs" : isPdf(bytes) ? "goodnotes" : null;
   const names = [...entries.keys()];
   if (names.length && names.every((n) => /\.enex$/i.test(n))) return "evernote";
   if (names.includes("word/document.xml")) return "word";
@@ -51,6 +55,7 @@ export function detectSource(name: string, bytes: Buffer, entries?: Map<string, 
   if (isObsidianVault(entries)) return "obsidian";
   if (isWordArchive(entries)) return "word";
   if (isGoogleTakeout(entries)) return "gdocs";
+  if (isPdfArchive(entries)) return "goodnotes";
   return null;
 }
 
@@ -71,6 +76,7 @@ export async function parseImport(name: string, input: Buffer | { path: string }
   if (!Buffer.isBuffer(input)) {
     const head = fileHead(input.path);
     refuseLegacyOffice(name, head);
+    refuseGoodNotes(name, head);
     // The workspace file stays on disk, however large it is.
     if (isSqlite(head) && (!chosen || chosen === "auto" || chosen === "affine")) {
       const ws = readAffineFile(input.path, importTitle(name));
@@ -87,6 +93,7 @@ export async function parseImport(name: string, input: Buffer | { path: string }
   }
   const bytes = input;
   refuseLegacyOffice(name, bytes);
+  refuseGoodNotes(name, bytes);
   const budget = { left: 512 * 1024 * 1024 };
   const zipped = isZip(bytes);
   const entries = zipped ? await zipEntries(bytes, budget) : undefined;
@@ -118,6 +125,9 @@ export async function parseImport(name: string, input: Buffer | { path: string }
         entries && !entries.has("word/document.xml") ? entries : new Map([[posix.basename(name) || "dokument.docx", bytes]]);
       return resolveDocx(parseGoogleDocs(docEntries, title), docEntries, budget);
     }
+    case "goodnotes":
+      // A PDF, or a ZIP of PDFs: one notebook each.
+      return parseGoodNotesUpload(name, bytes, entries, title);
     case "word": {
       // A single document or a ZIP of them (folders become parent pages);
       // a .docx is a ZIP itself.

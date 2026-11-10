@@ -1,13 +1,15 @@
 "use client";
-// Import from AFFiNE, Confluence, Evernote, Google Docs, Microsoft Word and
-// Obsidian (lib/importers): the file is uploaded once – as the raw request body,
+// Import from AFFiNE, Confluence, Evernote, Google Docs, GoodNotes (PDFs as
+// notebooks), Microsoft Word and Obsidian (lib/importers): the file is uploaded once – as the raw request body,
 // streamed to disk on the server (#76) – for a preview (counts and
 // warnings); the import then names that upload instead of sending it again.
 // Both run on the server as a background job (#163): the request answers at
 // once with the job, and the page asks for its progress until it is done –
 // a large workspace takes longer than a reverse proxy waits for an answer.
+// Several PDFs chosen at once are sent as one ZIP (lib/stored-zip.ts).
 import { useState } from "react";
-import { FileDoc, UploadSimple } from "@phosphor-icons/react";
+import { FileDoc, NotePencil, UploadSimple } from "@phosphor-icons/react";
+import { storedZip } from "@/lib/stored-zip";
 import { serverMessage } from "@/lib/i18n-errors";
 import { useT } from "./i18n";
 import { Select } from "./select";
@@ -27,6 +29,9 @@ type Preview = {
   databases?: number;
   journalDays?: number;
   collections?: number;
+  // GoodNotes: notebooks (one per PDF) and their sheets.
+  notebooks?: number;
+  sheets?: number;
   // Page properties (by name) and page icons the import sets.
   properties?: number;
   icons?: number;
@@ -137,6 +142,7 @@ export function ImportSources({
     confluence: "Confluence",
     evernote: "Evernote",
     gdocs: "Google Docs",
+    goodnotes: "GoodNotes",
     word: "Microsoft Word",
     obsidian: "Obsidian",
   };
@@ -179,7 +185,7 @@ export function ImportSources({
       const result = (await request(file, false, preview?.upload)) as Result;
       setPreview(null);
       setFile(null);
-      const extra = (result.whiteboards || 0) + (result.databases || 0) + (result.wrapper ? 1 : 0);
+      const extra = (result.whiteboards || 0) + (result.databases || 0) + (result.notebooks || 0) + (result.wrapper ? 1 : 0);
       setDone(
         mode === "database"
           ? t(`${result.rows} Einträge und ${result.files} Dateien importiert.`, `${result.rows} records and ${result.files} files imported.`)
@@ -199,22 +205,40 @@ export function ImportSources({
       }
     }
   };
+  // Several files at once: PDFs only, packed into one ZIP.
+  const chooseMany = async (chosen: File[]) => {
+    if (chosen.length === 1) return void choose(chosen[0]);
+    if (!chosen.every((f) => /\.pdf$/i.test(f.name) || f.type === "application/pdf")) {
+      onError(t("Mehrere Dateien auf einmal gehen nur als PDFs. Andere Exporte bitte einzeln oder als ZIP wählen.", "Several files at once work for PDFs only. Please choose other exports one at a time or as a ZIP."));
+      return;
+    }
+    try {
+      const zip = storedZip(await Promise.all(chosen.map(async (f) => ({ name: f.name, data: new Uint8Array(await f.arrayBuffer()) }))));
+      void choose(new File([zip as BlobPart], `${t("Notizbücher", "Notebooks")}.zip`, { type: "application/zip" }));
+    } catch {
+      onError(t("Die Dateien konnten nicht gelesen werden.", "The files could not be read."));
+    }
+  };
   const busy = !!progress;
   return (
     <div className="setting-row wide import-sources" id="import-tools">
       <div className="setting-text">
-        <span className="setting-label">{t("AFFiNE, Confluence, Evernote, Google Docs, Microsoft Word oder Obsidian", "AFFiNE, Confluence, Evernote, Google Docs, Microsoft Word or Obsidian")}</span>
+        <span className="setting-label">{t("AFFiNE, Confluence, Evernote, Google Docs, GoodNotes, Microsoft Word oder Obsidian", "AFFiNE, Confluence, Evernote, Google Docs, GoodNotes, Microsoft Word or Obsidian")}</span>
         <small>
           {t(
-            "AFFiNE: die Arbeitsbereichsdatei (.affine) mit Ordnern, Sammlungen, Datenbanken, Whiteboards und Journal oder ein Snapshot-Export (ZIP). Confluence: Bereichsexport als HTML oder XML (ZIP). Evernote: Notizbuch als ENEX-Datei (mehrere als ZIP). Google Docs: Google-Takeout-ZIP oder einzelne Dokumente als HTML oder Word. Microsoft Word: ein Dokument (.docx) oder mehrere als ZIP, Ordner werden zu Seiten. Obsidian: der Tresor als ZIP. Seitenbaum, Bilder, Anhänge, Links zwischen Seiten, Hinweisboxen, Aufgaben und Tags werden übernommen. Vor dem Import siehst du, was übernommen wird.",
-            "AFFiNE: the workspace file (.affine) with folders, collections, databases, whiteboards and journal, or a snapshot export (ZIP). Confluence: space export as HTML or XML (ZIP). Evernote: notebook as an ENEX file (several as a ZIP). Google Docs: a Google Takeout ZIP or single documents as HTML or Word. Microsoft Word: one document (.docx) or several as a ZIP, folders become pages. Obsidian: the vault as a ZIP. The page tree, images, attachments, links between pages, callouts, tasks and tags come along. Before the import you see what will be imported.",
+            "AFFiNE: die Arbeitsbereichsdatei (.affine) mit Ordnern, Sammlungen, Datenbanken, Whiteboards und Journal oder ein Snapshot-Export (ZIP). Confluence: Bereichsexport als HTML oder XML (ZIP). Evernote: Notizbuch als ENEX-Datei (mehrere als ZIP). Google Docs: Google-Takeout-ZIP oder einzelne Dokumente als HTML oder Word. GoodNotes: Notizbücher als PDF (mehrere auf einmal oder als ZIP), jedes wird ein Notizbuch. Microsoft Word: ein Dokument (.docx) oder mehrere als ZIP, Ordner werden zu Seiten. Obsidian: der Tresor als ZIP. Seitenbaum, Bilder, Anhänge, Links zwischen Seiten, Hinweisboxen, Aufgaben und Tags werden übernommen. Vor dem Import siehst du, was übernommen wird.",
+            "AFFiNE: the workspace file (.affine) with folders, collections, databases, whiteboards and journal, or a snapshot export (ZIP). Confluence: space export as HTML or XML (ZIP). Evernote: notebook as an ENEX file (several as a ZIP). Google Docs: a Google Takeout ZIP or single documents as HTML or Word. GoodNotes: notebooks as PDF (several at once or as a ZIP), each becomes a notebook. Microsoft Word: one document (.docx) or several as a ZIP, folders become pages. Obsidian: the vault as a ZIP. The page tree, images, attachments, links between pages, callouts, tasks and tags come along. Before the import you see what will be imported.",
           )}
         </small>
       </div>
       <div className="ws-form ws-form-inline">
         <div className="ws-field">
           <label htmlFor="import-source">{t("Quelle", "Source")}</label>
-          <Select id="import-source" value={source} onChange={(e) => setSource(e.target.value)} disabled={busy} aria-label={t("Quelle des Imports", "Source of the import")}>
+          <Select id="import-source" value={source} onChange={(e) => {
+              setSource(e.target.value);
+              // Notebooks only come as pages.
+              if (e.target.value === "goodnotes") setMode("pages");
+            }} disabled={busy} aria-label={t("Quelle des Imports", "Source of the import")}>
             <option value="auto">{t("Automatisch erkennen", "Detect automatically")}</option>
             {Object.entries(names).map(([value, name]) => (
               <option key={value} value={value}>
@@ -237,7 +261,7 @@ export function ImportSources({
         )}
         <div className="ws-field">
           <label htmlFor="import-source-mode">{t("Importieren als", "Import as")}</label>
-          <Select id="import-source-mode" value={mode} onChange={(e) => setMode(e.target.value as "pages" | "database")} disabled={busy} aria-label={t("Importieren als", "Import as")}>
+          <Select id="import-source-mode" value={mode} onChange={(e) => setMode(e.target.value as "pages" | "database")} disabled={busy || source === "goodnotes"} aria-label={t("Importieren als", "Import as")}>
             <option value="pages">{t("Seiten (Ordner als Unterseiten)", "Pages (folders as sub-pages)")}</option>
             <option value="database">{t("Neue Datenbank (Tags, Daten, Ordner als Eigenschaften)", "New database (tags, dates, folders as properties)")}</option>
           </Select>
@@ -248,14 +272,15 @@ export function ImportSources({
             {t("Datei auswählen und prüfen", "Choose and check file")}
             <input
               type="file"
-              accept=".zip,.affine,.enex,.html,.htm,.docx,.doc,.one,.onetoc2,.onepkg,application/zip"
+              accept=".zip,.affine,.enex,.html,.htm,.docx,.doc,.one,.onetoc2,.onepkg,.pdf,.goodnotes,application/zip,application/pdf"
+              multiple
               hidden
               disabled={!canWrite || busy}
               aria-label={t("Datei für den Import", "File to import")}
               onChange={(e) => {
-                const chosen = e.target.files?.[0];
+                const chosen = [...(e.target.files || [])];
                 e.target.value = "";
-                if (chosen) void choose(chosen);
+                if (chosen.length) void chooseMany(chosen);
               }}
             />
           </label>
@@ -268,6 +293,17 @@ export function ImportSources({
             {t(
               "Ein Word-Dokument (.docx) wird eine Seite mit dem Dateinamen als Titel; ein ZIP mit mehreren .docx-Dateien wird ein Seitenbaum, Ordner werden zu übergeordneten Seiten. Ältere Word-Dateien (.doc) bitte vorher als .docx speichern. OneNote: Seite oder Abschnitt in OneNote als Word-Dokument (.docx) exportieren.",
               "A Word document (.docx) becomes a page titled by its file name; a ZIP with several .docx files becomes a page tree, folders become parent pages. Please save older Word files (.doc) as .docx first. OneNote: export the page or section from OneNote as a Word document (.docx).",
+            )}
+          </span>
+        </p>
+      )}
+      {source === "goodnotes" && (
+        <p className="import-sources-hint">
+          <NotePencil aria-hidden />
+          <span>
+            {t(
+              "In GoodNotes das Notizbuch über Teilen bzw. Exportieren als PDF sichern (mit Seitenvorlagen). Jedes PDF wird ein Notizbuch mit dem Dateinamen als Titel, jede Seite ein Blatt mit der Seite als Hintergrund – du schreibst darauf weiter. Mehrere PDFs auf einmal oder ein ZIP (etwa der Backup-Ordner im PDF-Format) ergeben mehrere Notizbücher, Ordner werden zu übergeordneten Seiten. Das GoodNotes-eigene Format (.goodnotes) kann Flowplan nicht lesen.",
+              "In GoodNotes, save the notebook as PDF via Share or Export (with page templates). Each PDF becomes a notebook titled by its file name, each page a sheet with the page as its background – you keep writing on it. Several PDFs at once or a ZIP (for example the backup folder in PDF format) give several notebooks, folders become parent pages. Flowplan cannot read GoodNotes' own format (.goodnotes).",
             )}
           </span>
         </p>
@@ -293,12 +329,17 @@ export function ImportSources({
             {mode === "pages" && preview.wrapper && (
               <li>{t(`Alles unter einer Seite „${preview.wrapper}“`, `Everything below a page “${preview.wrapper}”`)}</li>
             )}
-            <li>{mode === "database" ? t(`${preview.pages} Einträge`, `${preview.pages} records`) : t(`${preview.pages} Seiten`, `${preview.pages} pages`)}</li>
+            {!(preview.notebooks && !preview.pages) && (
+              <li>{mode === "database" ? t(`${preview.pages} Einträge`, `${preview.pages} records`) : t(`${preview.pages} Seiten`, `${preview.pages} pages`)}</li>
+            )}
             {preview.folders > 0 && mode === "pages" && <li>{t(`${preview.folders} Ordner als Seiten`, `${preview.folders} folders as pages`)}</li>}
             <li>{t(`${preview.files} Dateien (${(preview.bytes / 1048576).toFixed(1)} MB)`, `${preview.files} files (${(preview.bytes / 1048576).toFixed(1)} MB)`)}</li>
             {preview.tags > 0 && <li>{t(`${preview.tags} Tags`, `${preview.tags} tags`)}</li>}
             {mode === "pages" && !!preview.whiteboards && <li>{t(`${preview.whiteboards} Whiteboards`, `${preview.whiteboards} whiteboards`)}</li>}
             {mode === "pages" && !!preview.databases && <li>{t(`${preview.databases} Datenbanken`, `${preview.databases} databases`)}</li>}
+            {!!preview.notebooks && (
+              <li>{t(`${preview.notebooks} Notizbücher mit ${preview.sheets || 0} Blättern`, `${preview.notebooks} notebooks with ${preview.sheets || 0} sheets`)}</li>
+            )}
             {!!preview.collections && <li>{t(`${preview.collections} Sammlungen als Seiten`, `${preview.collections} collections as pages`)}</li>}
             {!!preview.journalDays && <li>{t(`${preview.journalDays} Tage ins Journal`, `${preview.journalDays} days into the journal`)}</li>}
             {mode === "pages" && !!preview.properties && <li>{t(`${preview.properties} Eigenschaften`, `${preview.properties} properties`)}</li>}
@@ -350,7 +391,7 @@ export function ImportSources({
             >
               {t("Abbrechen", "Cancel")}
             </button>
-            <button type="button" className="button primary" onClick={() => void start()} disabled={!canWrite || preview.tooMany || (!preview.pages && !preview.folders && !preview.templates)}>
+            <button type="button" className="button primary" onClick={() => void start()} disabled={!canWrite || preview.tooMany || (!preview.pages && !preview.folders && !preview.templates && !preview.notebooks)}>
               {t("Importieren", "Import")}
             </button>
           </div>
