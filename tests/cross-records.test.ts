@@ -98,3 +98,58 @@ test("the record layout keeps the title visible and drops unknown properties; vi
   );
   assert.deepEqual((await database(web)).recordLayout!.hidden, ["due"]);
 });
+
+test("properties hidden from the reader neither show nor filter, search or sort", async () => {
+  const owners = { read: "owners" };
+  const pageId = (await act({ action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, kind: "database", title: "Secret" })).id as string;
+  await act({
+    action: "database.update",
+    pageId,
+    version: (await database(pageId)).version,
+    fields: [
+      { id: "title", name: "Title", type: "text" },
+      { id: "status", name: "Status", type: "select", options: ["Open", "Done"], access: owners },
+      { id: "who", name: "Assignee", type: "person", access: owners },
+      { id: "due", name: "Due", type: "date", access: owners },
+      { id: "key", name: "ID", type: "id", prefix: "SEC", access: owners },
+    ],
+    views: (await database(pageId)).views,
+  });
+  await act({ action: "row.create", pageId, cells: { title: "Raise", status: "Done", who: other.id, due: "2020-01-01" } });
+  // The owner sees it all.
+  const own = (await crossRecords(me, wid, { mine: false, open: false, databases: [pageId] })).records;
+  assert.deepEqual(own.map((r) => [r.key, r.status, r.due, r.done, r.people.length]), [["SEC-1", "Done", "2020-01-01", true, 1]]);
+  // "Assigned to me" cannot probe a hidden person property.
+  assert.equal((await crossRecords(other, wid, { databases: [pageId], open: false })).records.length, 0);
+  // A hidden status is unknown: the record counts as open, without a pill.
+  const [seen, ...rest] = (await crossRecords(other, wid, { mine: false, databases: [pageId] })).records;
+  assert.equal(rest.length, 0);
+  assert.deepEqual(
+    { title: seen.title, key: seen.key, status: seen.status, due: seen.due, done: seen.done, tracked: seen.tracked, people: seen.people },
+    { title: "Raise", key: "", status: "", due: null, done: false, tracked: false, people: [] },
+  );
+  // A hidden due date is no date; a hidden ticket key does not match.
+  for (const due of ["overdue", "week", "dated"])
+    assert.equal((await crossRecords(other, wid, { mine: false, databases: [pageId], due })).records.length, 0, due);
+  assert.equal((await crossRecords(other, wid, { mine: false, databases: [pageId], query: "sec-1" })).records.length, 0);
+});
+
+test("a title derived from a hidden property is not shown or searched", async () => {
+  const pageId = (await act({ action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, kind: "database", title: "Derived" })).id as string;
+  await act({
+    action: "database.update",
+    pageId,
+    version: (await database(pageId)).version,
+    fields: [
+      { id: "name", name: "Name", type: "formula", formula: 'prop("Code")' },
+      { id: "code", name: "Code", type: "text", access: { read: "owners" } },
+    ],
+    views: (await database(pageId)).views,
+  });
+  const { id: rowId } = await act({ action: "row.create", pageId, cells: { code: "Zeus" } });
+  await run("UPDATE rows SET cells=? WHERE id=?", JSON.stringify({ name: "Zeus", code: "Zeus" }), rowId);
+  assert.equal((await crossRecords(me, wid, { mine: false, databases: [pageId] })).records[0].title, "Zeus");
+  const seen = (await crossRecords(other, wid, { mine: false, databases: [pageId] })).records;
+  assert.deepEqual(seen.map((r) => r.title), [""]);
+  assert.equal((await crossRecords(other, wid, { mine: false, databases: [pageId], query: "zeus" })).records.length, 0);
+});
