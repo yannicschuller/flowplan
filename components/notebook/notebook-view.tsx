@@ -66,6 +66,7 @@ import { idempotencyHeaders } from "@/lib/idempotency-key";
 import { Select } from "../select";
 import { stepZoom } from "@/lib/pinch-zoom";
 import { usePinchZoom } from "./use-pinch-zoom";
+import { useNotebookAudio } from "./notebook-audio";
 import { NotebookInsertMenu, useNotebookInsert } from "./notebook-insert";
 import { browserImageLoader, savePictureAsSticker, saveSelectionAsSticker } from "./notebook-media";
 import { CustomPaperSection, PaperImageLayer } from "./custom-paper";
@@ -164,6 +165,8 @@ export default function NotebookView({
 
   // ---- Layout, zoom, current sheet ----
   const scroller = useRef<HTMLDivElement>(null);
+  // Audio recordings, synced to the ink (notebook-audio.tsx).
+  const audio = useNotebookAudio({ pageId, editor, canEdit, scroller, onError });
   const [fit, setFit] = useState(760);
   const [zoom, setZoom] = useState(1);
   useEffect(() => {
@@ -816,6 +819,7 @@ export default function NotebookView({
               <Rows size={18} />
             </button>
           )}
+          {audio.button}
           <div className="notebook-menu-anchor">
             <button
               type="button"
@@ -871,6 +875,10 @@ export default function NotebookView({
             }}
           />
         </div>
+      </div>
+      {/* Hidden, not unmounted, while presenting: recording and playback go on. */}
+      <div className="notebook-audio-bars" hidden={!!presentation}>
+        {audio.bar}
       </div>
       {presenter && !presentation && (
         <p className="notebook-notice notebook-follow-notice" role="status">
@@ -1042,6 +1050,7 @@ export default function NotebookView({
                     size={size}
                     editor={editor}
                     editing={canEdit}
+                    playback={audio.playback}
                     onImageAction={
                       canEdit
                         ? (_action, item) =>

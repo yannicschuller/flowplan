@@ -18,6 +18,7 @@ import type { PageSize } from "@/lib/ink/coords";
 import { itemBounds, textBox, unionBox } from "@/lib/ink/geometry";
 import { inkId, INK_LIMITS, type InkItem, type InkText } from "@/lib/ink/model";
 import { besideBox } from "@/lib/ink/selection";
+import { firstRec } from "@/lib/ink/audio-sync";
 import { blobBase64, inkAreaPng } from "./ink-image";
 import type { InkEditor } from "./use-ink-editor";
 
@@ -91,6 +92,8 @@ export function AiConvertDialog({
       y: Math.round(at.y * 100) / 100,
       text: text.slice(0, INK_LIMITS.textLength),
       ...(style.font ? { font: style.font } : {}),
+      // Keeps when the handwriting was written (notebook audio).
+      ...firstRec(pens),
     };
   };
   const place = (mode: "replace" | "beside") => {

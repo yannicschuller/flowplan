@@ -33,6 +33,7 @@ block of documents (`components/ink/draw-block*.tsx`,
 | `components/ink/ink-picture.tsx` | `<InkImageItem>` (drawing) and `<ImageFrame>` (move, resize, rotate, crop, order, opacity, duplicate, delete, save as sticker) |
 | `lib/ink/recognition.ts` | Handwriting recognition in the iPhone/iPad app (contract below) |
 | `lib/ink/recognized.ts` | Cleaning and capping recognised text |
+| `lib/ink/audio-sync.ts` | Notebook audio: limits, recording format, time marks (`rec`) on new items, what playback has not reached |
 | `lib/ink-store.ts` | Server: ink of PDF files (`file_ink`, `file_ink_versions`, `recognized`) |
 | `lib/page-ink-store.ts` | Server: ink of a page's surfaces – notebook sheets, drawing blocks (`page_ink`, `page_ink_versions`) |
 | `lib/ink-export.ts` | Server: pictures of drawing blocks and sheets for published pages and exports |
@@ -92,6 +93,21 @@ block of documents (`components/ink/draw-block*.tsx`,
   Times for `serif`, Courier for `mono`, Helvetica for the rest, no
   embedding. Versions before `font` read such text in Helvetica and drop
   the field when they save that surface.
+- Optional `rec: { id, t }` on any item: written during the notebook
+  audio recording `id`, `t` milliseconds into it (pauses not counted;
+  `lib/ink/audio-sync.ts`, `lib/notebook-audio.ts`). Set by the editor for
+  items new in a change while recording (`editor.stampRef`); pieces of a
+  partly erased stroke, lasso moves/turns/duplicates and pasted copies keep
+  their original's mark; text converted from handwriting takes the first
+  mark of the strokes it replaces. Shapes, pictures and stickers are marked
+  like strokes. Sheets copied or moved into **another** notebook (page
+  overview) and ink saved as a sticker lose their marks (the recordings stay
+  with the source notebook); deleting a sheet leaves the recordings alone,
+  duplicating a whole notebook copies them with the same ids. Playback dims
+  items of the playing recording with `t` later than its position
+  (`<InkLayer playback>`). Versions before `rec` read such ink and drop the
+  field when they save that surface: those items then simply show during
+  playback.
 - Shapes: a `pen` stroke may carry `shape` (`lib/ink/shapes.ts`), e.g.
   `"shape": { "kind": "rect", "box": [cx, cy, w, h, rotation°], "radius": 6, "fill": "#1c5fd6", "dash": "dash" }`.
   Kinds: `line` (`pts` x1, y1, x2, y2; `arrow` `"end"`/`"both"`),

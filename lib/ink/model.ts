@@ -24,6 +24,12 @@ export const INK_LIMITS = {
 };
 
 export type InkStrokeType = "pen" | "highlighter";
+// When the item was written during an audio recording of a notebook
+// (lib/notebook-audio.ts): the recording's id and the time into it in
+// milliseconds. Optional, so older versions read such ink (and drop the
+// field when they save that surface: the item then plays as always shown).
+export type InkRec = { id: string; t: number };
+export const INK_REC_MAX_MS = 3 * 60 * 60 * 1000 + 60_000;
 export type InkStroke = {
   id: string;
   type: InkStrokeType;
@@ -35,6 +41,7 @@ export type InkStroke = {
   // Pen only: an editable shape (lib/ink/shapes.ts); `points` is then its
   // outline, which is what versions without shapes draw (and keep).
   shape?: InkShape;
+  rec?: InkRec;
 };
 export type InkText = {
   id: string;
@@ -52,6 +59,7 @@ export type InkText = {
   // rotation handle); none: upright. Optional like `font`: older versions
   // show such text upright and drop the turn when they save that surface.
   rotation?: number;
+  rec?: InkRec;
 };
 // A picture on the page: a file attached to the page (`file`) or one of the
 // built-in stickers (`sticker`, lib/ink/stickers.ts). (x, y, w, h) is the
@@ -74,6 +82,7 @@ export type InkImage = {
   rotation?: number;
   crop?: { x: number; y: number; w: number; h: number };
   opacity?: number;
+  rec?: InkRec;
 };
 export type InkItem = InkStroke | InkText | InkImage;
 export type InkDoc = {
@@ -94,6 +103,17 @@ const STICKER = /^[a-z][a-z0-9-]{0,39}$/;
 const finite = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n);
 const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
 
+// The recording mark of a stored item, or null when it is unusable.
+export function cleanRec(raw: unknown): InkRec | null {
+  if (!raw || typeof raw !== "object") return null;
+  const { id, t } = raw as { id?: unknown; t?: unknown };
+  if (typeof id !== "string" || !/^[\w-]{1,40}$/.test(id) || !finite(t)) return null;
+  return { id, t: Math.round(clamp(t, 0, INK_REC_MAX_MS)) };
+}
+const withRec = (raw: Record<string, unknown>) => {
+  const rec = cleanRec(raw.rec);
+  return rec ? { rec } : {};
+};
 // Degrees in (-180, 180], two decimals; 0 for (almost) upright.
 export function normalRotation(degrees: number) {
   if (!Number.isFinite(degrees)) return 0;
@@ -128,7 +148,7 @@ export function cleanItem(raw: unknown): InkItem | null {
     }
     if (!points.length) return null;
     const shape = item.type === "pen" ? cleanShape(item.shape) : undefined;
-    return { id, type: item.type, color, width: round2(clamp(item.width, 0.1, 200)), points, ...(shape ? { shape } : {}) };
+    return { id, type: item.type, color, width: round2(clamp(item.width, 0.1, 200)), points, ...(shape ? { shape } : {}), ...withRec(item) };
   }
   if (item.type === "text") {
     if (typeof item.text !== "string" || !item.text.trim() || !finite(item.x) || !finite(item.y) || !finite(item.size)) return null;
@@ -142,6 +162,7 @@ export function cleanItem(raw: unknown): InkItem | null {
       text: item.text.slice(0, INK_LIMITS.textLength),
       ...(isInkFont(item.font) ? { font: item.font } : {}),
       ...(finite(item.rotation) && normalRotation(item.rotation) ? { rotation: normalRotation(item.rotation) } : {}),
+      ...withRec(item),
     };
   }
   if (item.type === "image") return cleanImage(item, id);
@@ -176,6 +197,8 @@ function cleanImage(item: Record<string, unknown>, id: string): InkImage | null 
     if (x > 0 || y > 0 || w < 1 || h < 1) out.crop = { x: r4(x), y: r4(y), w: r4(w), h: r4(h) };
   }
   if (finite(item.opacity) && item.opacity < 1) out.opacity = round2(clamp(item.opacity, 0.05, 1));
+  const rec = cleanRec(item.rec);
+  if (rec) out.rec = rec;
   return out;
 }
 

@@ -36,6 +36,7 @@ import { imageInfo, jpegInfo } from "./image-decode";
 import { sanitizeFileName, stripLocation, verifiedMime } from "./upload-safety";
 import { itemBounds, transformItems, unionBox } from "./ink/geometry";
 import { cleanItem, INK_LIMITS, type InkItem } from "./ink/model";
+import { withoutRec } from "./ink/audio-sync";
 import { cleanPaperImage, PAPER_FITS, type PaperFit, type PaperImage } from "./notebook-paper";
 import type { Identity, Page } from "./types";
 
@@ -175,7 +176,8 @@ async function roomForSticker(user: Identity, workspaceId: string, bytes: number
 // files are left out (their file belongs to a page); built-in stickers stay.
 export function stickerInk(raw: unknown): { items: InkItem[]; width: number; height: number } {
   const list = z.array(z.unknown()).min(1).max(NOTEBOOK_LIBRARY_LIMITS.stickerItems).parse(raw);
-  const items = list.map(cleanItem).filter((i): i is InkItem => !!i && !(i.type === "image" && i.file));
+  // Without recording marks: a sticker is placed anywhere, any time.
+  const items = withoutRec(list.map(cleanItem).filter((i): i is InkItem => !!i && !(i.type === "image" && i.file)));
   const box = unionBox(items.map(itemBounds));
   if (!items.length || !box) throw new HttpError(400, "Die Auswahl ist leer.");
   const moved = transformItems(items, new Set(items.map((i) => i.id)), { dx: -box.x, dy: -box.y });

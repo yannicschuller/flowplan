@@ -16955,6 +16955,221 @@ h3 .block-reactions {
   width: 100%;
 }
 
+/* Notebook audio (components/notebook/notebook-audio.tsx): the recording
+   and player bars under the notebook bar, the list of recordings, and the
+   ink playback has not reached yet. */
+.ink-layer svg .ink-unspoken {
+  opacity: 0.14;
+}
+.ink-layer svg path,
+.ink-layer svg text,
+.ink-layer svg g[data-image] {
+  transition: opacity 0.25s ease-out;
+}
+/* The bars stay in the notebook's column; hidden while presenting. */
+.notebook-audio-bars:not([hidden]) {
+  display: contents;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ink-layer svg path,
+  .ink-layer svg text {
+    transition: none;
+  }
+}
+.notebook-scroll[data-audio-seek] .ink-layer {
+  cursor: pointer;
+}
+.notebook-audio-button.is-recording {
+  color: #d92d20;
+}
+.notebook-audio-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+}
+.notebook-audio-bar.is-error {
+  background: #fde8ea;
+  color: #8a1f2b;
+}
+:root[data-theme="dark"] .notebook-audio-bar.is-error {
+  background: #3d1d22;
+  color: #ffb4bb;
+}
+.notebook-audio-bar .icon-button {
+  width: 36px;
+  height: 36px;
+  padding: 8px;
+  border-radius: 8px;
+}
+.notebook-audio-bar .icon-button:hover,
+.notebook-audio-bar .icon-button.active {
+  background: var(--hover);
+}
+.notebook-audio-bar .button {
+  min-height: 32px;
+  padding: 4px 12px;
+}
+.notebook-audio-live {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #d92d20;
+  animation: voice-pulse 1.2s ease-in-out infinite;
+}
+.notebook-audio-bar.is-paused .notebook-audio-live {
+  animation: none;
+  opacity: 0.45;
+}
+@media (prefers-reduced-motion: reduce) {
+  .notebook-audio-live {
+    animation: none;
+  }
+}
+.notebook-audio-time {
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  min-width: 3.4em;
+}
+.notebook-audio-time.is-total {
+  font-weight: 400;
+  color: var(--secondary);
+  text-align: right;
+}
+.notebook-audio-limit {
+  color: var(--secondary);
+  font-variant-numeric: tabular-nums;
+}
+.notebook-audio-meter {
+  flex: 1 1 80px;
+  max-width: 220px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--hover);
+  overflow: hidden;
+}
+.notebook-audio-meter span {
+  display: block;
+  height: 100%;
+  background: #2f9e44;
+  transform-origin: left center;
+  transition: transform 80ms linear;
+}
+.notebook-audio-stop {
+  margin-left: auto;
+  gap: 6px;
+}
+.notebook-audio-stop svg {
+  color: #d92d20;
+}
+.notebook-audio-upload {
+  flex: 1 1 200px;
+}
+.notebook-audio-bar progress {
+  flex: 1 1 120px;
+  max-width: 240px;
+  height: 6px;
+}
+.notebook-audio-scrub {
+  flex: 1 1 160px;
+  min-width: 120px;
+  accent-color: var(--blue);
+}
+.notebook-audio-speed {
+  min-width: 52px;
+  font-variant-numeric: tabular-nums;
+}
+.notebook-audio-menu {
+  width: min(340px, calc(100vw - 32px - var(--safe-left, 0px) - var(--safe-right, 0px)));
+  max-height: min(420px, 70dvh);
+  overflow-y: auto;
+}
+.notebook-menu .notebook-audio-record {
+  justify-content: flex-start;
+  font-weight: 550;
+}
+.notebook-audio-dot {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #d92d20;
+}
+.notebook-audio-empty {
+  margin: 4px 10px 6px;
+  color: var(--secondary);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.notebook-audio-list {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.notebook-audio-list li {
+  display: flex;
+  align-items: center;
+  border-radius: 8px;
+}
+.notebook-audio-list li.is-current {
+  background: var(--blue-light);
+}
+.notebook-menu .notebook-audio-item {
+  flex: 1;
+  min-width: 0;
+}
+.notebook-audio-name {
+  display: grid;
+  min-width: 0;
+}
+.notebook-audio-name strong,
+.notebook-audio-name small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.notebook-audio-name strong {
+  font-weight: 550;
+}
+.notebook-audio-name small {
+  color: var(--secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.notebook-audio-actions {
+  display: flex;
+  flex: none;
+}
+.notebook-menu .notebook-audio-actions .icon-button {
+  width: 32px;
+  min-height: 32px;
+  padding: 7px;
+  justify-content: center;
+}
+.notebook-menu .notebook-audio-actions .icon-button.danger {
+  color: var(--danger, #b42318);
+}
+@media (max-width: 640px) {
+  .notebook-audio-bar {
+    gap: 4px;
+    padding: 4px 8px;
+  }
+  .notebook-audio-limit,
+  .notebook-audio-time.is-total {
+    display: none;
+  }
+  .notebook-audio-scrub {
+    min-width: 80px;
+  }
+}
+
 /* Printing and "save as PDF": the page as a clean document on A4. */
 @page {
   size: A4;

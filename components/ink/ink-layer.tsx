@@ -70,6 +70,7 @@ import type { InkEditor } from "./use-ink-editor";
 import { fileSrc, ImageFrame, InkImageItem, type ImageAction } from "./ink-picture";
 import { splitHighlights } from "@/lib/ink/svg";
 import { useLocale } from "../i18n";
+import { isUnspoken, type Playback } from "@/lib/ink/audio-sync";
 import { dragShape, followPen, type ShapeName } from "@/lib/ink/shape-recognize";
 import { defaultUnit } from "@/lib/ink/ruler";
 import type { InkShape } from "@/lib/ink/shapes";
@@ -121,44 +122,62 @@ type Gesture =
 // The ink of a page, back to front: highlighter strokes in one layer, the
 // rest in another. Highlighter above a picture (in order) is drawn among
 // the ink, multiplied, so it shows on the picture (lib/ink/svg.ts).
-const InkItems = memo(function InkItems({ items, layer, src }: { items: InkItem[]; layer: "highlight" | "ink"; src?: (file: string) => string }) {
+// With `playback`, what the recording has not reached yet is dimmed (notebook
+// audio); each item is its own memo, so playing re-draws only those that change.
+const InkItems = memo(function InkItems({
+  items,
+  layer,
+  src,
+  playback = null,
+}: {
+  items: InkItem[];
+  layer: "highlight" | "ink";
+  src?: (file: string) => string;
+  playback?: Playback;
+}) {
   const under = splitHighlights(items);
   return (
     <>
       {items.map((item, index) => {
-        if (item.type === "highlighter" && (layer === "highlight") === index < under) {
-          const { d } = strokePath(item);
-          return (
-            <path
-              key={item.id}
-              d={d}
-              fill="none"
-              stroke={item.color}
-              strokeOpacity={HIGHLIGHTER_OPACITY}
-              strokeWidth={item.width}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              style={index >= under ? { mixBlendMode: "multiply" } : undefined}
-            />
-          );
-        }
-        if (layer === "highlight" || item.type === "highlighter") return null;
-        if (item.type === "image") return <InkImageItem key={item.id} item={item} src={src} />;
-        if (item.type === "text") return <InkTextItem key={item.id} item={item} />;
-        if (item.shape) return <InkShapeItem key={item.id} item={item} />;
-        const { d, fill } = strokePath(item);
-        return fill ? (
-          <path key={item.id} d={d} fill={item.color} />
-        ) : (
-          <path key={item.id} d={d} fill="none" stroke={item.color} strokeWidth={lineWidth(item)} strokeLinecap="round" strokeLinejoin="round" />
-        );
+        const shown = item.type === "highlighter" ? (layer === "highlight") === index < under : layer === "ink";
+        if (!shown) return null;
+        return <InkItemView key={item.id} item={item} dim={isUnspoken(item, playback)} multiply={item.type === "highlighter" && index >= under} src={src} />;
       })}
     </>
   );
 });
-function InkTextItem({ item }: { item: InkText }) {
+const InkItemView = memo(function InkItemView({ item, dim, multiply, src }: { item: InkItem; dim: boolean; multiply: boolean; src?: (file: string) => string }) {
+  const className = dim ? "ink-unspoken" : undefined;
+  if (item.type === "image") return <InkImageItem item={item} src={src} dim={dim} />;
+  if (item.type === "text") return <InkTextItem item={item} className={className} />;
+  if (item.type === "highlighter") {
+    const { d } = strokePath(item);
+    return (
+      <path
+        className={className}
+        d={d}
+        fill="none"
+        stroke={item.color}
+        strokeOpacity={HIGHLIGHTER_OPACITY}
+        strokeWidth={item.width}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        style={multiply ? { mixBlendMode: "multiply" } : undefined}
+      />
+    );
+  }
+  if (item.shape) return <InkShapeItem item={item} className={className} />;
+  const { d, fill } = strokePath(item);
+  return fill ? (
+    <path className={className} d={d} fill={item.color} />
+  ) : (
+    <path className={className} d={d} fill="none" stroke={item.color} strokeWidth={lineWidth(item)} strokeLinecap="round" strokeLinejoin="round" />
+  );
+});
+function InkTextItem({ item, className }: { item: InkText; className?: string }) {
   return (
     <text
+      className={className}
       x={item.x}
       y={item.y + item.size * 0.8}
       transform={item.rotation ? `rotate(${item.rotation} ${item.x} ${item.y})` : undefined}
@@ -201,6 +220,7 @@ export function InkLayer({
   onImageAction,
   onSaveSticker,
   imageSrc = fileSrc,
+  playback = null,
 }: {
   page: string;
   size: PageSize;
@@ -229,6 +249,8 @@ export function InkLayer({
   onSaveSticker?: (items: InkItem[]) => void;
   // The address of a picture's file.
   imageSrc?: (file: string) => string;
+  // Notebook audio playing: items written later in it are dimmed.
+  playback?: Playback;
 }) {
   const t = useT();
   const active = !!editor && editing;
@@ -814,7 +836,7 @@ export function InkLayer({
       onContextMenu={active ? (e) => e.preventDefault() : undefined}
     >
       <svg className="ink-highlights" viewBox={`0 0 ${size.width} ${size.height}`} preserveAspectRatio="none" aria-hidden="true">
-        <InkItems items={visible} layer="highlight" src={imageSrc} />
+        <InkItems items={visible} layer="highlight" src={imageSrc} playback={playback} />
         <path ref={draftHighlight} className="ink-draft" fill="none" strokeOpacity={HIGHLIGHTER_OPACITY} strokeLinecap="round" strokeLinejoin="round" />
       </svg>
       <svg
@@ -825,7 +847,7 @@ export function InkLayer({
         aria-label={label || t(`Anmerkungen auf Seite ${page}`, `Annotations on page ${page}`)}
         data-count={visible.length}
       >
-        <InkItems items={visible} layer="ink" src={imageSrc} />
+        <InkItems items={visible} layer="ink" src={imageSrc} playback={playback} />
         <path ref={draftInk} className="ink-draft" strokeLinecap="round" strokeLinejoin="round" />
         <path ref={lassoPath} className="ink-lasso" fill="none" vectorEffect="non-scaling-stroke" />
         {laser.length > 0 && (

@@ -5,7 +5,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { copyItems, itemBounds, recolorItems, unionBox } from "@/lib/ink/geometry";
 import { emptyHistory, record, redo as redoStep, undo as undoStep, type History } from "@/lib/ink/history";
-import { withPage, type InkDoc, type InkItem } from "@/lib/ink/model";
+import { withPage, type InkDoc, type InkItem, type InkRec } from "@/lib/ink/model";
+import { stampNewItems } from "@/lib/ink/audio-sync";
 import { inkClipboard, setInkClipboard, subscribeInkClipboard } from "@/lib/ink/clipboard";
 import { fitOnPage, reorderItems, setItemsWidth, transformSelected, translation, type Affine } from "@/lib/ink/selection";
 import type { PageSize } from "@/lib/ink/coords";
@@ -116,10 +117,15 @@ export function useInkEditor(initial: InkDoc, { active = true }: { active?: bool
     setSelection(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // While a notebook records audio (components/notebook/notebook-audio.tsx):
+  // the mark that items new in a change get (lib/ink/audio-sync.ts).
+  const stampRef = useRef<(() => InkRec | null) | null>(null);
   // A change the person made: one undo step.
-  const commit = useCallback((next: InkDoc) => {
+  const commit = useCallback((change: InkDoc) => {
     const before = docRef.current;
-    if (next === before) return;
+    if (change === before) return;
+    const rec = stampRef.current?.();
+    const next = rec ? stampNewItems(before, change, rec) : change;
     docRef.current = next;
     setDocState(next);
     setHistory(record(historyRef.current, before));
@@ -331,6 +337,7 @@ export function useInkEditor(initial: InkDoc, { active = true }: { active?: bool
     commit,
     change,
     applyRemote,
+    stampRef,
     undo,
     redo,
     canUndo: history.past.length > 0,

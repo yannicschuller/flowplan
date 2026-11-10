@@ -1,6 +1,7 @@
 import { ensureLocal } from "./storage";
 import { open } from "node:fs/promises";
 import { resolve } from "node:path";
+import { Readable } from "node:stream";
 import { HttpError } from "./auth";
 
 export async function fileResponse(
@@ -18,6 +19,7 @@ export async function fileResponse(
   } catch {
     throw new HttpError(404, "Datei fehlt.");
   }
+  let streaming = false;
   try {
     const { size } = await handle.stat();
     const inline =
@@ -66,23 +68,14 @@ export async function fileResponse(
     }
     headers["Content-Length"] = String(Math.max(0, end - start + 1));
     if (req.method === "HEAD") return new Response(null, { status, headers });
-    const buffer = Buffer.alloc(Math.max(0, end - start + 1));
-    let offset = 0;
-    while (offset < buffer.length) {
-      const result = await handle.read(
-        buffer,
-        offset,
-        buffer.length - offset,
-        start + offset,
-      );
-      if (!result.bytesRead) break;
-      offset += result.bytesRead;
-    }
-    return new Response(new Uint8Array(buffer.subarray(0, offset)), {
-      status,
-      headers,
-    });
+    if (end < start) return new Response(new Uint8Array(0), { status, headers });
+    // Streamed from the disk: long recordings and videos are never read
+    // into memory as a whole (a player asks for "bytes=0-" first).
+    const stream = handle.createReadStream({ start, end, autoClose: true });
+    streaming = true;
+    return new Response(Readable.toWeb(stream) as ReadableStream<Uint8Array>, { status, headers });
   } finally {
-    await handle.close();
+    // A stream closes the file itself when it ends or is cancelled.
+    if (!streaming) await handle.close();
   }
 }

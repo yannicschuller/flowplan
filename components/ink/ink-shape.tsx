@@ -7,7 +7,7 @@ import { lineWidth } from "@/lib/ink/geometry";
 import type { InkStroke } from "@/lib/ink/model";
 import { dashArray, shapePaths, SHAPE_FILL_OPACITY } from "@/lib/ink/shapes";
 
-export const InkShapeItem = memo(function InkShapeItem({ item }: { item: InkStroke }) {
+export const InkShapeItem = memo(function InkShapeItem({ item, className }: { item: InkStroke; className?: string }) {
   const shape = item.shape!;
   const { body, heads, closed } = shapePaths(shape, item.width);
   const width = lineWidth(item);
@@ -16,6 +16,7 @@ export const InkShapeItem = memo(function InkShapeItem({ item }: { item: InkStro
   return (
     <>
       <path
+        className={className}
         d={body}
         fill={fill}
         fillOpacity={fill === "none" ? undefined : SHAPE_FILL_OPACITY}
@@ -25,7 +26,7 @@ export const InkShapeItem = memo(function InkShapeItem({ item }: { item: InkStro
         strokeLinejoin="round"
         strokeDasharray={dash?.join(" ")}
       />
-      {heads && <path d={heads} fill="none" stroke={item.color} strokeWidth={width} strokeLinecap="round" strokeLinejoin="round" />}
+      {heads && <path className={className} d={heads} fill="none" stroke={item.color} strokeWidth={width} strokeLinecap="round" strokeLinejoin="round" />}
     </>
   );
 });

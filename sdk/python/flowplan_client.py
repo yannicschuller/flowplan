@@ -1723,6 +1723,10 @@ LinkTargetsQuery = TypedDict("LinkTargetsQuery", {
     "ids": Required[str],  # Comma-separated `<pageId>` or `<pageId>:<rowId>`
 }, total=False)
 
+NotebookRecordingsQuery = TypedDict("NotebookRecordingsQuery", {
+    "upload": str,  # Recording ID of an upload in progress
+}, total=False)
+
 SnapshotChangesQuery = TypedDict("SnapshotChangesQuery", {
     "against": str,  # Compare with this version instead of the current content
 }, total=False)
@@ -2272,6 +2276,14 @@ class FlowplanClient:
     def link_targets(self, query: "LinkTargetsQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Icons of linked pages and records — For links in documents: the icon (emoji, `icon:<name>:<colour>`, `/api/files/<id>` or empty for the default) and kind of each page (`<pageId>`) or record (`<pageId>:<rowId>`) the caller may read; others are left out. At most 100 IDs. Answered with `Cache-Control: no-store`. (GET /api/link-targets)"""
         return self._json("GET", "/api/link-targets", query=dict(query) if query else None, headers=headers)
+
+    def notebook_recordings(self, page_id: str, query: Optional["NotebookRecordingsQuery"] = None, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Audio recordings of a notebook — The recordings (`fileId` is served by GET /api/files/{fileId} with range requests), whether you may add some, the storage left for them (`room`, bytes; null: no limit) and the limits (three hours, size, chunk size). With `upload`: how much of an unfinished upload the server has. Ink written during a recording carries `rec: {id, t}` (lib/ink/README.md). Journals behind a PIN: 423 until unlocked. Answered with `Cache-Control: no-store`. (GET /api/pages/{pageId}/recordings)"""
+        return self._json("GET", "/api/pages/" + _p(page_id) + "/recordings", query=dict(query) if query else None, headers=headers)
+
+    def notebook_recording_action(self, page_id: str, body: dict[str, Any], headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Upload, finish, rename or delete a notebook recording — Upload: `?upload=<recording id>&offset=<bytes the server has>&type=<audio/webm|audio/ogg|audio/mp4>` with the raw bytes as `application/octet-stream` (at most 4 MiB per request; a repeated chunk is ignored, a gap answers 409). Then JSON `{action: "finish", recId, name, durationMs}` stores it as a file of the notebook (counted against the quota; at most three hours; 413 when too long, too large for its length or over the quota; 415 for other content). Also `{action: "rename", recId, name}`, `{action: "delete", recId}` (into the trash with its file) and `{action: "discard", recId}` (drops an unfinished upload). Needs editor rights; not on locked pages or in encrypted spaces. (POST /api/pages/{pageId}/recordings)"""
+        return self._json("POST", "/api/pages/" + _p(page_id) + "/recordings", json_body=body, headers=headers)
 
     def page_preview(self, page_id: str, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Short preview of a page — Answered with `Cache-Control: no-store`. (GET /api/pages/{pageId}/preview)"""

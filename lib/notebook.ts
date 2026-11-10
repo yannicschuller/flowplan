@@ -21,6 +21,7 @@ import { cleanRecognizedText } from "./ink/recognized";
 import { isPdfFile } from "./ink-store";
 import type { Identity, Page } from "./types";
 import { forEachAsync } from "./each-async";
+import { copyRecordings, recordingsArchive, recordingsArchiveSchema, restoreRecordings } from "./notebook-audio";
 import { cleanLinks, cleanOutline, cleanTitle, parseLinks, parseOutline, type NotebookLink, type OutlineEntry } from "./notebook-organize-model";
 import { organizeCommand, ORGANIZE_ACTIONS, trashSheets } from "./notebook-organize";
 
@@ -297,6 +298,8 @@ export async function copyNotebook(fromPage: string, toPage: string, files: Map<
   }
   if (!surfaces.size) await insertSheet(toPage);
   await copyPageInk(fromPage, toPage, surfaces, by, files);
+  // Audio recordings whose files were copied (lib/notebook-audio.ts).
+  await copyRecordings(fromPage, toPage, files, by);
   // Titles, bookmarks, links and the contents point to the copies.
   const sheets = await notebookSheets(fromPage);
   for (const sheet of sheets) await writeSheetMeta(surfaces.get(sheet.id)!, { ...sheet, links: remapLinks(sheet.links, surfaces) });
@@ -340,17 +343,22 @@ export const notebookArchiveSchema = z.object({
       }),
     )
     .max(MAX_SHEETS),
+  // Audio recordings (lib/notebook-audio.ts): the file ids refer to the
+  // archive's files. Older archives have none.
+  recordings: recordingsArchiveSchema.optional(),
   // The table of contents, sheets by their index ("_0").
   outline: z.unknown().optional(),
 });
 export type NotebookArchive = z.infer<typeof notebookArchiveSchema>;
 export async function notebookArchive(pageId: string): Promise<NotebookArchive> {
   const inks = await pageInkDocs(pageId);
+  const recordings = await recordingsArchive(pageId);
   const sheets = await notebookSheets(pageId);
   // Sheets are referred to by their place in the archive.
   const index = new Map(sheets.map((s, i) => [s.id, `_${i}`]));
   const outline = remapOutline(await notebookOutline(pageId, sheets), index);
   return {
+    ...(recordings.length ? { recordings } : {}),
     paper: await notebookPaper(pageId),
     sheets: sheets.map((sheet) => {
       const ink = inks.get(sheet.id);
@@ -389,6 +397,7 @@ export async function importNotebook(pageId: string, data: NotebookArchive, file
     created.set(`_${index}`, sid);
   });
   if (!data.sheets.length) await insertSheet(pageId);
+  await restoreRecordings(pageId, data.recordings, files, by);
   // Titles, bookmarks, links and contents (archives from before have none).
   await forEachAsync(data.sheets, async (sheet, index) => {
     if (!sheet.title && !sheet.bookmark && !sheet.links) return;

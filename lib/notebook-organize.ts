@@ -402,8 +402,10 @@ export async function transferSheets(user: Identity, b: Record<string, unknown>)
   }
   for (const row of rows)
     await writeSheetMeta(copies.get(row.id)!, { title: row.title, bookmark: row.bookmark, links: remapLinks(parseLinks(row.links), copies) as NotebookLink[] });
-  // Pictures point to the copies of their files.
-  await copyPageInk(source.id, target.id, copies, user.id, files);
+  // Pictures point to the copies of their files. Audio recordings stay with
+  // the source notebook (moving too), so the copies lose their recording
+  // marks (lib/ink/audio-sync.ts): they show in full during playback there.
+  await copyPageInk(source.id, target.id, copies, user.id, files, { dropRec: true });
   const created = [...copies.values()];
   await writeOrder(target.id, placeSheets(await order(target.id), created, place));
   // The contents entries of these sheets come along.

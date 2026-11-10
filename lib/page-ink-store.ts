@@ -19,6 +19,7 @@ import { requireUnlocked } from "./journal-extras";
 import { isEncryptedPage } from "./e2ee-server";
 import { emptyInk, INK_LIMITS, inkItemCount, inkText, mapInkFiles, parseInk, serializeInk, type InkDoc, type InkItem } from "./ink/model";
 import { keepShapes, mergeInk } from "./ink/merge";
+import { withoutRec } from "./ink/audio-sync";
 import { cleanRecognizedText } from "./ink/recognized";
 import { recordPageEdit } from "./page-activity";
 import type { Identity, Page } from "./types";
@@ -287,7 +288,16 @@ export async function pageInkDocs(pageId: string) {
 // new surface ids (default: the same id). No versions are copied.
 // `files` maps attachments of the source to their copies: pictures of files
 // without a copy are left out (a copy of the same page keeps them all).
-export async function copyPageInk(fromPage: string, toPage: string, surfaces?: Map<string, string>, by: string | null = null, files?: Map<string, string>) {
+// `dropRec`: the copies leave the notebook without its audio recordings, so
+// items lose their recording marks (lib/ink/audio-sync.ts).
+export async function copyPageInk(
+  fromPage: string,
+  toPage: string,
+  surfaces?: Map<string, string>,
+  by: string | null = null,
+  files?: Map<string, string>,
+  { dropRec = false }: { dropRec?: boolean } = {},
+) {
   for (const row of await all<{ surface: string; data: string; text: string; recognized: string }>(
     "SELECT surface,data,text,recognized FROM page_ink WHERE page_id=?",
     fromPage,
@@ -296,7 +306,7 @@ export async function copyPageInk(fromPage: string, toPage: string, surfaces?: M
     if (!target) continue;
     const doc = parseInk(row.data);
     const mapped = fromPage === toPage && !files ? doc : mapInkFiles(doc, (file) => files?.get(file) ?? files?.get(file.toLowerCase()) ?? null);
-    const items = mapped.pages[row.surface] || [];
+    const items = dropRec ? withoutRec(mapped.pages[row.surface] || []) : mapped.pages[row.surface] || [];
     const moved = emptyInk();
     if (items.length) moved.pages[target] = items;
     await writeSurface(toPage, target, moved, row.recognized, by);

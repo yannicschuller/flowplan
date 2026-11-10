@@ -33,15 +33,19 @@ import { palmLikely } from "@/lib/stylus";
 export const fileSrc = (file: string) => `/api/files/${file}`;
 
 // One picture or sticker in the ink SVG (page units).
-export const InkImageItem = memo(function InkImageItem({ item, src = fileSrc }: { item: InkImage; src?: (file: string) => string }) {
+// `dim`: notebook audio playback has not reached it yet (.ink-unspoken; its
+// own opacity is kept under the dimming).
+export const InkImageItem = memo(function InkImageItem({ item, src = fileSrc, dim = false }: { item: InkImage; src?: (file: string) => string; dim?: boolean }) {
   const c = imageCentre(item);
   const transform = item.rotation ? `rotate(${item.rotation} ${c.x} ${c.y})` : undefined;
   const opacity = item.opacity !== undefined && item.opacity < 1 ? item.opacity : undefined;
+  const className = dim ? "ink-unspoken" : undefined;
+  const style = dim && opacity !== undefined ? { opacity: opacity * 0.14 } : undefined;
   if (item.sticker) {
     const sticker = builtinSticker(item.sticker);
     if (!sticker) return null;
     return (
-      <g transform={transform} opacity={opacity} data-image={item.id}>
+      <g className={className} style={style} transform={transform} opacity={opacity} data-image={item.id}>
         <svg
           x={item.x}
           y={item.y}
@@ -58,7 +62,7 @@ export const InkImageItem = memo(function InkImageItem({ item, src = fileSrc }: 
   if (!item.file) return null;
   const full = fullBox(item);
   return (
-    <g transform={transform} opacity={opacity} data-image={item.id}>
+    <g className={className} style={style} transform={transform} opacity={opacity} data-image={item.id}>
       <svg x={item.x} y={item.y} width={item.w} height={item.h} viewBox={`${item.x - full.x} ${item.y - full.y} ${item.w} ${item.h}`} preserveAspectRatio="none">
         <image href={src(item.file)} x={0} y={0} width={full.w} height={full.h} preserveAspectRatio="none" />
       </svg>
