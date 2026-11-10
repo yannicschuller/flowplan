@@ -87,6 +87,14 @@ COPY --chmod=644 lib/instance-move-pull.ts /app/instance-move-pull.ts
 # Job), node /app/scripts/db-schema.mjs.
 COPY --chmod=644 scripts/db-migrate.mjs scripts/db-search-rebuild.mjs scripts/db-schema.mjs /app/scripts/
 COPY --chmod=644 lib/db-driver/pg-ddl.mjs lib/db-driver/postgres-schema.json /app/lib/db-driver/
+# Any UID/GID (#193): Compose's user: "UID:GID" may run the image as a user
+# without an entry in /etc/passwd. Everything it writes goes to the data
+# folder, /tmp (HOME, see docker/entrypoint.sh) or Next's cache below; the
+# app code stays read-only for it.
+RUN setpriv --version \
+  && mkdir -p /app/.next/cache && chown node:node /app/.next/cache && chmod 1777 /app/.next/cache
+# The default user; started as root (user: "0:0"), the entrypoint switches to
+# PUID:PGID (default 1000:1000) with setpriv (util-linux, in the base image).
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
