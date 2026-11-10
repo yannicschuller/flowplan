@@ -327,3 +327,24 @@ test("share links, guest writes and publication copies leave out properties deri
   assert.doesNotMatch(copiedCells, /abgeleitet-456|geheim-123/);
   await command(ana, { action: "page.publish", pageId: db, enabled: false });
 });
+
+test("capturing a record leaves out the title and URL properties the person may not change", async () => {
+  const db = ((await command(ana, { action: "page.create", workspaceId: wid, spaceId: space, title: "Eingang", kind: "database" })) as { id: string }).id;
+  const defs: Field[] = [
+    { id: "title", name: "Name", type: "text", access: { write: "owners" } },
+    { id: "link", name: "Link", type: "url", access: { write: "owners" } },
+    { id: "alt", name: "Quelle", type: "url" },
+  ];
+  await command(ana, { action: "database.update", pageId: db, version: (await database(db)).version, fields: defs, views: (await database(db)).views });
+  const cellsOf = async (rid: string) => JSON.parse((await one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", rid))!.cells);
+  await fails(async () => await command(ben, { action: "row.create", pageId: db, cells: { title: "X" } }), 403);
+  const asBen = (await command(ben, { action: "capture.record", pageId: db, title: "CAPTURED-BY-BEN", url: "https://example.test/b" })) as { rowId: string };
+  const ben1 = await cellsOf(asBen.rowId);
+  assert.equal(ben1.title, undefined);
+  assert.equal(ben1.link, undefined);
+  assert.equal(ben1.alt, "https://example.test/b");
+  // The title stays in the text.
+  assert.match((await one<{ content: string }>("SELECT content FROM rows WHERE id=?", asBen.rowId))!.content, /CAPTURED-BY-BEN/);
+  const asAna = (await command(ana, { action: "capture.record", pageId: db, title: "Von Ana", url: "https://example.test/a" })) as { rowId: string };
+  assert.deepEqual(await cellsOf(asAna.rowId), { title: "Von Ana", link: "https://example.test/a" });
+});

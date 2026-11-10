@@ -91,16 +91,22 @@ export async function captureRecord(user: Identity, raw: unknown) {
   }
   const fields = JSON.parse((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", page.id))!.fields) as Field[];
   const template = await selectedRowTemplate(page.id, input.templateId);
-  // Only properties this person may change (lib/field-access.ts).
-  const cells: Record<string, unknown> = template ? stripCells(JSON.parse(template.cells), await unwritableFieldIds(user, page, fields)) : {};
+  // Only properties this person may change (lib/field-access.ts): the
+  // template's cells, the title and the URL property alike.
+  const unwritable = await unwritableFieldIds(user, page, fields);
+  const cells: Record<string, unknown> = template ? stripCells(JSON.parse(template.cells), unwritable) : {};
   const link = /^https?:\/\/\S+$/i.test(input.url?.trim() || "") ? input.url!.trim() : input.text?.match(/https?:\/\/\S+/)?.[0] || "";
   const text = (input.text || "").replace(link, "").trim();
   const title =
     input.title?.trim() || text.split("\n")[0].slice(0, 120) || (link ? new URL(link).hostname : "") || ct("Notiz", "Note");
-  cells[fields[0]?.id || "title"] = title.slice(0, 1000);
-  const urlField = fields.find((f) => f.type === "url");
+  const titleId = fields[0]?.id || "title";
+  if (!unwritable.has(titleId)) cells[titleId] = title.slice(0, 1000);
+  const urlField = fields.find((f) => f.type === "url" && !unwritable.has(f.id));
   if (link && urlField) cells[urlField.id] = link;
+  // A title the person may not set stays in the text instead.
+  const lostTitle = unwritable.has(titleId) && input.title?.trim() ? textHtml(input.title.trim()) : "";
   const parts = [
+    lostTitle,
     textHtml(text),
     link && !urlField ? `<p><a href="${esc(link)}">${esc(link)}</a></p>` : "",
     input.article ? `${text || (link && !urlField) ? "<hr>" : ""}${cleanHtml(input.article)}` : "",
