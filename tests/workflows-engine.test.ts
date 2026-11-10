@@ -340,6 +340,34 @@ test("schedules fire once per slot, also when the tick runs twice; dates once pe
   await act({ action: "workflow.pause", pageId: dates.pageId });
 });
 
+test("every two weeks keeps its rhythm when republished or resumed; slots while paused are not made up", async () => {
+  const trigger = node("trigger.schedule", { freq: "weekly", interval: 2, weekday: 1, time: "09:00", timeZone: "UTC" });
+  const notify = node("notify.person", { to: [owner.id], message: "Alle zwei Wochen", channels: ["inbox"] });
+  const graph = chain(trigger, notify);
+  const { pageId } = await workflow("Biweekly", graph);
+  const at = (iso: string) => Date.parse(iso);
+  const activatedAt = async (iso: string) => await run("UPDATE workflows SET activated_at=? WHERE page_id=?", at(iso), pageId);
+  // First activated on Monday 2 November 2026, before 09:00.
+  await activatedAt("2026-11-02T08:00:00Z");
+  assert.equal(await processWorkflowSchedules(at("2026-11-02T10:00:00Z")), 1);
+  assert.equal(await processWorkflowSchedules(at("2026-11-09T10:00:00Z")), 0);
+  assert.equal(await processWorkflowSchedules(at("2026-11-16T10:00:00Z")), 1);
+  // Republished on 24 November with a changed label: still due on the 30th.
+  await act({ action: "workflow.draft", pageId, graph: { ...graph, nodes: [graph.nodes[0], { ...graph.nodes[1], label: "Neu" }] } });
+  assert.equal((await act({ action: "workflow.activate", pageId })).ok, true);
+  await activatedAt("2026-11-24T08:00:00Z");
+  assert.equal(await processWorkflowSchedules(at("2026-11-30T10:00:00Z")), 1);
+  assert.equal(await processWorkflowSchedules(at("2026-12-07T10:00:00Z")), 0);
+  // Paused over the 14th and resumed on the 15th: not made up, the 28th is next.
+  await act({ action: "workflow.pause", pageId });
+  await act({ action: "workflow.activate", pageId });
+  await activatedAt("2026-12-15T08:00:00Z");
+  assert.equal(await processWorkflowSchedules(at("2026-12-15T10:00:00Z")), 0);
+  assert.equal(await processWorkflowSchedules(at("2026-12-21T10:00:00Z")), 0);
+  assert.equal(await processWorkflowSchedules(at("2026-12-28T10:00:00Z")), 1);
+  await act({ action: "workflow.pause", pageId });
+});
+
 test("page changes are debounced: one event 2 minutes after the last edit", async () => {
   const trigger = node("trigger.page.changed", { scope: { kind: "workspace" }, what: ["title"] });
   const notify = node("notify.person", { to: [owner.id], message: `Umbenannt: {{${trigger.id}.page.title}}`, channels: ["inbox"] });

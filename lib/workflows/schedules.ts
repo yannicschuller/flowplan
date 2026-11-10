@@ -46,8 +46,24 @@ export async function processWorkflowSchedules(now = Date.now()) {
       time: String(c.time || "09:00"),
       timeZone: String(c.timeZone || graph?.settings.timeZone || "UTC"),
     };
-    const slot = latestSlot(trigger, new Date(t.activated_at || now).toISOString(), now);
-    if (!slot) continue;
+    // The rhythm ("every 2 weeks") counts from the last slot that fired, so
+    // republishing or resuming keeps it; slots from before the activation
+    // (while paused) are not made up.
+    const activated = t.activated_at || now;
+    const last = await one<{ key: string }>("SELECT key FROM automation_runs WHERE automation_id=? AND row_id='@schedule' ORDER BY key DESC LIMIT 1", `wf:${t.page_id}:${t.node_id}`);
+    let since = activated;
+    if (last && /^\d{4}-\d{2}-\d{2}T/.test(last.key)) {
+      try {
+        // The start of that day in the schedule's time zone.
+        const start = Temporal.PlainDate.from(last.key.slice(0, 10)).toZonedDateTime(trigger.timeZone).epochMilliseconds;
+        if (start <= now) since = start;
+      } catch {
+        // An unknown time zone: latestSlot() finds no slot either.
+      }
+    }
+    const anchor = new Date(since).toISOString();
+    const slot = latestSlot(trigger, anchor, now);
+    if (!slot || slot.at < activated) continue;
     await transaction(async () => {
       if (!(await once(t.page_id, t.node_id, "@schedule", slot.key, now))) return;
       await emitWorkflowEvent("schedule", {
