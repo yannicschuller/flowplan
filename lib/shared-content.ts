@@ -683,16 +683,25 @@ async function liveSync(
   let sourceHtml = member.html;
   try {
     if (b.update && b.pgen === pgen) {
+      // Every update a guest sends counts, also one that changes nothing
+      // visible (it could carry data outside the document).
+      await limitLiveChanges(token);
+      await takeAnonymousBudget(`live:${token}`, Math.ceil((b.update.length * 3) / 4), GUEST_LIVE_MB);
       const before = stateHtml(doc);
+      const kept = Y.encodeStateAsUpdate(doc);
       Y.applyUpdate(doc, Buffer.from(b.update, "base64"));
       const after = stateHtml(doc);
-      if (after !== before) {
-        await limitLiveChanges(token);
+      if (after === before) {
+        // Nothing of the document changed: what else the update carried is
+        // not kept in the projection.
+        doc.destroy();
+        doc = new Y.Doc();
+        Y.applyUpdate(doc, kept);
+      } else {
         // A link may grow a document only so far; what members wrote may
         // stay larger (the check is on growth, not on size).
         if (after.length > MAX_GUEST_DOCUMENT && after.length > before.length)
           throw new HttpError(413, "Das Dokument ist für die Bearbeitung über einen Link zu groß geworden.");
-        await takeAnonymousBudget(`live:${token}`, Math.ceil((b.update.length * 3) / 4), GUEST_LIVE_MB);
         const safe = await writableHtml(after, token, pages, member.html);
         const real = new Y.Doc();
         try {

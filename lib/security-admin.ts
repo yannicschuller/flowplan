@@ -25,6 +25,7 @@ import { SECURITY_THRESHOLDS } from "./security-detect";
 import { isSecurityKind, securityRules, type SecurityRule } from "./security-kinds";
 import { incidentThreshold, notificationPrefs } from "./notification-prefs";
 import type { Identity } from "./types";
+import { dropLiveProjections } from "./shared-live";
 
 const HOUR = 3_600_000,
   DAY = 24 * HOUR;
@@ -548,6 +549,7 @@ export async function securityAction(admin: Identity, input: unknown, requestHea
       const link = await one<{ token: string; root_id: string }>("SELECT token,root_id FROM share_links WHERE token LIKE ?", `${b.id}%`);
       if (!link) throw new HttpError(404, "Diesen Link gibt es nicht mehr.");
       await run("DELETE FROM share_links WHERE token=?", link.token);
+      await dropLiveProjections([link.token]);
       securityEvent("admin.settings", { actorId: admin.id, headers: requestHeaders, severity: "info", detail: `share link revoked ${link.root_id}` });
       break;
     }

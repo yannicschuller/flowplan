@@ -6,6 +6,7 @@ import { removePages } from "./search-store";
 import { HttpError } from "./auth";
 import { memberRole, requireMember, spaceRole } from "./permissions";
 import type { Field, Identity, Page, Space } from "./types";
+import { dropLiveProjectionsOfRoot } from "./shared-live";
 const uuid = z.string().uuid();
 export async function canManageSpace(user: Identity, space: Space) {
   const role = await memberRole(user, space.workspace_id);
@@ -35,6 +36,7 @@ async function revokePage(pageId: string) {
     pageId,
   );
   await run("DELETE FROM publications WHERE page_id=?", pageId);
+  await dropLiveProjectionsOfRoot(pageId);
   await run("DELETE FROM share_links WHERE root_id=?", pageId);
   await run("DELETE FROM share_link_pages WHERE page_id=?", pageId);
   await run("UPDATE pages SET public_token=NULL WHERE id=?", pageId);

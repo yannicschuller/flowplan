@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import * as Y from "yjs";
 import { Node } from "prosemirror-model";
 import { updateYFragment } from "y-prosemirror";
-import { one, run, id } from "./db";
+import { all, one, run, id } from "./db";
 import { cleanHtml, htmlState, stateHtml, htmlJson } from "./document-server";
 import { documentSchema } from "./document-schema";
 
@@ -17,10 +17,22 @@ export type LiveEntry = {
   generation: string;
   pgen: string;
 };
+// The key starts with a hash of the link alone, so the projections of a
+// revoked link can be removed together (dropLiveProjections).
+const tokenPrefix = (token: string) => `${createHash("sha256").update(`share-live\u0000${token}`).digest("hex").slice(0, 32)}:`;
 export const liveKey = (token: string, pageId: string, rowId = "") =>
+  tokenPrefix(token) +
   createHash("sha256")
     .update(`${token}\u0000${pageId}\u0000${rowId}`)
     .digest("hex");
+// A link was revoked: its projections go with it (with `rootId`, those of
+// every link on that page).
+export async function dropLiveProjections(tokens: string[]) {
+  for (const token of tokens) await run("DELETE FROM share_live WHERE key LIKE ?", `${tokenPrefix(token)}%`);
+}
+export async function dropLiveProjectionsOfRoot(rootId: string) {
+  await dropLiveProjections((await all<{ token: string }>("SELECT token FROM share_links WHERE root_id=?", rootId)).map((l) => l.token));
+}
 export async function loadLive(key: string) {
   return await one<LiveEntry>(
     "SELECT state,source_html,generation,pgen FROM share_live WHERE key=?",

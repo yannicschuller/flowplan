@@ -27,6 +27,7 @@ import { safeFetch } from "./safe-fetch";
 import type { Field, Identity, Page, Row, View } from "./types";
 import { DEFAULT_SIDEBAR_MODE, SIDEBAR_MODES, sidebarMode, type SidebarMode } from "./journal-nav";
 import { findAsync, someAsync } from "./each-async";
+import { dropLiveProjections } from "./shared-live";
 
 let cachedSchema: Awaited<ReturnType<typeof documentSchema>> | undefined;
 const schema = () => (cachedSchema ??= documentSchema());
@@ -534,6 +535,7 @@ const JOURNAL_TREE = `WITH RECURSIVE tree(id) AS (SELECT ? UNION SELECT p.id FRO
 async function revokePublicAccess(user: Identity, journal: Page) {
   const links = await all<{ token: string }>(`${JOURNAL_TREE} SELECT token FROM share_links WHERE root_id IN (SELECT id FROM tree)`, journal.id);
   for (const link of links) await run("DELETE FROM share_links WHERE token=?", link.token);
+  await dropLiveProjections(links.map((l) => l.token));
   const widerLinks = await all<{ token: string }>(`${JOURNAL_TREE} SELECT DISTINCT token FROM share_link_pages WHERE page_id IN (SELECT id FROM tree)`, journal.id);
   await run(`${JOURNAL_TREE} DELETE FROM share_link_pages WHERE page_id IN (SELECT id FROM tree)`, journal.id);
   const published = await all<{ id: string }>(

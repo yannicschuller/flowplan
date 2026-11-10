@@ -250,3 +250,45 @@ test("readers cannot edit live and a restored version resets guest projections",
   );
   assert.equal(await memberHtml(pid), "<p>Text</p>");
 });
+
+test("updates that change nothing visible are counted and not kept; revoking a link removes its projections", async () => {
+  const { pid, token } = await setup("<p>Start</p>");
+  const { liveKey } = await import("../lib/shared-live");
+  const { anonymousBytesToday } = await import("../lib/anonymous-budget");
+  const key = liveKey(token, pid);
+  const g = guest(token, pid);
+  await g.sync();
+  const size = async () => (await one<{ n: number }>("SELECT length(state) n FROM share_live WHERE key=?", key))?.n || 0;
+  const requests = async () => (await one<{ n: number }>("SELECT count(*) n FROM share_live_requests WHERE token=?", token))?.n || 0;
+  const stored = await size(),
+    counted = await requests(),
+    bytes = await anonymousBytesToday(`live:${token}`);
+  // Data outside the document (another root type) …
+  g.doc.getMap("junk").set("blob", "x".repeat(200_000));
+  await g.sync();
+  // … is counted against the link's limits but not stored.
+  assert.equal(await requests(), counted + 1);
+  assert.ok((await anonymousBytesToday(`live:${token}`)) >= bytes + 200_000);
+  assert.ok((await size()) < stored + 1000, "the projection did not grow");
+  const fresh = guest(token, pid);
+  await fresh.sync();
+  assert.equal(fresh.doc.getMap("junk").get("blob"), undefined);
+  assert.equal(await memberHtml(pid), "<p>Start</p>");
+  // The per-minute limit applies to such updates too.
+  await run("DELETE FROM share_live_requests WHERE token=?", token);
+  for (let i = 0; i < 120; i++) await run("INSERT INTO share_live_requests VALUES(?,?)", token, Date.now());
+  g.doc.getMap("junk").set("more", "y");
+  await fails(async () => await g.sync(), 429);
+  await run("DELETE FROM share_live_requests WHERE token=?", token);
+  // A real edit still goes through.
+  applyHtml(g.doc, "<p>Start</p><p>Gast</p>");
+  await g.sync();
+  assert.equal(await memberHtml(pid), "<p>Start</p><p>Gast</p>");
+  // Revoking the link removes its projections; another link keeps its own.
+  const other = (await command(owner, { action: "share.create", pageId: pid, role: "editor", name: "Andere" })) as { token: string };
+  await guest(other.token, pid).sync();
+  assert.ok(await one("SELECT 1 FROM share_live WHERE key=?", key));
+  await command(owner, { action: "share.revoke", pageId: pid, token });
+  assert.equal(await one("SELECT 1 FROM share_live WHERE key=?", key), undefined);
+  assert.ok(await one("SELECT 1 FROM share_live WHERE key=?", liveKey(other.token, pid)));
+});
