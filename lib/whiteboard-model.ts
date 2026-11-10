@@ -2,6 +2,7 @@
 // "items": id → Y.Map of the properties below. Every property is a plain
 // JSON value, so moving, resizing and editing text of the same item by
 // different people merge property by property.
+import * as Y from "yjs";
 import { diagramText, type MarkerKind, type TimelineData } from "./whiteboard-diagram-model";
 import { plainText } from "./whiteboard-richtext";
 // Rack planning (#90): racks, devices and cables between their ports.
@@ -227,4 +228,24 @@ export function connectorPoint(
     dy ? target.h / 2 / Math.abs(dy) : Infinity,
   );
   return { x: cx + dx * scale, y: cy + dy * scale };
+}
+
+// Comment threads and votes are shared Yjs types, so replies and votes by
+// different people merge. Copies (duplicated pages, Ctrl+D, archives) store
+// them as plain JSON: they are carried over into the shared type, never
+// replaced by an empty one.
+export function sharedArray(map: Y.Map<unknown>, key: string): Y.Array<unknown> {
+  const value = map.get(key);
+  if (value instanceof Y.Array) return value as Y.Array<unknown>;
+  const list = Y.Array.from<unknown>(Array.isArray(value) ? value : []);
+  map.set(key, list);
+  return list;
+}
+export function sharedMap(map: Y.Map<unknown>, key: string): Y.Map<unknown> {
+  const value = map.get(key);
+  if (value instanceof Y.Map) return value as Y.Map<unknown>;
+  const entries = value && typeof value === "object" && !Array.isArray(value) ? Object.entries(value) : [];
+  const shared = new Y.Map<unknown>(entries);
+  map.set(key, shared);
+  return shared;
 }

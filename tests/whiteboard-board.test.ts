@@ -451,3 +451,38 @@ test("GIF search: only with a key, results checked", () => {
   assert.deepEqual(tenor.map((r) => [r.thumbnail, r.height, r.credit]), [["https://media.tenor.com/s.gif", 200, "Danke via Tenor"]]);
   assert.throws(() => parseGifResults("tenor", { nope: true }));
 });
+
+test("copied boards keep their comment threads and votes on the next reply or vote", async () => {
+  const { sharedArray, sharedMap } = await import("../lib/whiteboard-model");
+  const from = new Y.Doc();
+  const pin = new Y.Map<unknown>();
+  from.getMap<Y.Map<unknown>>("items").set("pin", pin);
+  pin.set("type", "comment");
+  const messages = new Y.Array<unknown>();
+  pin.set("messages", messages);
+  messages.push([{ id: "m1", author: "u1", name: "Ann", text: "first", at: 1 }, { id: "m2", author: "u2", name: "Bob", text: "second", at: 2 }]);
+  const votes = new Y.Map<unknown>();
+  pin.set("votes", votes);
+  votes.set("u1", true);
+  votes.set("u2", true);
+  // A copy writes the plain JSON values, as copies of pages, Ctrl+D and archives do.
+  const to = new Y.Doc();
+  const copy = new Y.Map<unknown>();
+  to.getMap<Y.Map<unknown>>("items").set("pin", copy);
+  for (const [key, value] of Object.entries(pin.toJSON())) copy.set(key, value);
+  to.transact(() => {
+    sharedArray(copy, "messages").push([{ id: "m3", author: "u3", name: "Cy", text: "reply", at: 3 }]);
+    sharedMap(copy, "votes").set("u3", true);
+  });
+  const json = copy.toJSON() as WhiteboardItem;
+  assert.deepEqual(json.messages?.map((m) => m.id), ["m1", "m2", "m3"]);
+  assert.deepEqual(Object.keys(json.votes || {}).sort(), ["u1", "u2", "u3"]);
+  // Shared types already in place stay the same instance.
+  assert.equal(sharedArray(pin, "messages"), messages);
+  assert.equal(sharedMap(pin, "votes"), votes);
+  // Missing values start empty.
+  const fresh = new Y.Map<unknown>();
+  to.getMap<Y.Map<unknown>>("items").set("fresh", fresh);
+  assert.equal(sharedArray(fresh, "messages").length, 0);
+  assert.equal(sharedMap(fresh, "votes").size, 0);
+});

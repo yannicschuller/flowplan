@@ -108,6 +108,8 @@ import {
   type WhiteboardItemType,
   type WhiteboardMeta,
   emptyTable,
+  sharedArray,
+  sharedMap,
 } from "@/lib/whiteboard-model";
 import { compressImage } from "@/lib/image-compress";
 import { DURATION, interpolateCamera, tween } from "@/lib/motion";
@@ -1044,12 +1046,7 @@ export default function Whiteboard({
     const map = itemsMap.get(id);
     if (!map || !text.trim()) return;
     change(() => {
-      let list = map.get("messages");
-      if (!(list instanceof Y.Array)) {
-        list = new Y.Array();
-        map.set("messages", list);
-      }
-      (list as Y.Array<unknown>).push([
+      sharedArray(map, "messages").push([
         {
           id: crypto.randomUUID(),
           author: userId,
@@ -1076,13 +1073,9 @@ export default function Whiteboard({
     if (!has && myVotes >= voting.max)
       return onError(t(`Du hast alle ${voting.max} Stimmen vergeben.`, `You have used all ${voting.max} votes.`));
     change(() => {
-      let votes = map.get("votes");
-      if (!(votes instanceof Y.Map)) {
-        votes = new Y.Map();
-        map.set("votes", votes);
-      }
-      if (has) (votes as Y.Map<unknown>).delete(userId);
-      else (votes as Y.Map<unknown>).set(userId, true);
+      const votes = sharedMap(map, "votes");
+      if (has) votes.delete(userId);
+      else votes.set(userId, true);
     });
   }
   function resetVotes() {
