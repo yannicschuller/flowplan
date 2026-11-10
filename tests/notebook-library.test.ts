@@ -46,7 +46,7 @@ const create = async (title: string, kind = "notebook") =>
 const pageOf = async (pid: string) => (await one<Page>("SELECT * FROM pages WHERE id=?", pid))!;
 const sheetsOf = async (pid: string) => ((await command(owner, { action: "notebook.sheet.add", pageId: pid, count: 1 })) as { sheets: { id: string }[] }).sheets;
 
-function png(w: number, h: number, shade = 0x80) {
+function png(w: number, h: number, shade = 0x80, stored = false) {
   const crc = (buf: Buffer) => {
     let c = ~0;
     for (const b of buf) {
@@ -69,7 +69,7 @@ function png(w: number, h: number, shade = 0x80) {
   ihdr[8] = 8;
   ihdr[9] = 2;
   const rows = Buffer.concat(Array.from({ length: h }, () => Buffer.concat([Buffer.from([0]), Buffer.alloc(w * 3, shade)])));
-  return Buffer.concat([Buffer.from("89504e470d0a1a0a", "hex"), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(rows)), chunk("IEND", Buffer.alloc(0))]);
+  return Buffer.concat([Buffer.from("89504e470d0a1a0a", "hex"), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(rows, stored ? { level: 0 } : {})), chunk("IEND", Buffer.alloc(0))]);
 }
 async function attach(user: Identity, pid: string, content: Buffer, name = "bild.png", mime = "image/png") {
   const fid = id();
@@ -185,9 +185,11 @@ test("paper templates: members add a picture or a PDF page; only the one who add
 });
 
 test("the quota holds for templates", async () => {
-  await run("UPDATE workspaces SET quota_mb=? WHERE id=?", 0.0001, wid);
+  // Whole megabytes: quota_mb is an integer column on PostgreSQL. The
+  // picture is stored uncompressed, larger than the 1 MB allowed.
+  await run("UPDATE workspaces SET quota_mb=? WHERE id=?", 1, wid);
   try {
-    await assert.rejects(newTemplate(owner, { name: "gross.png", type: "image/png", bytes: png(200, 200) }), /Speicherkontingent/);
+    await assert.rejects(newTemplate(owner, { name: "gross.png", type: "image/png", bytes: png(800, 800, 0x80, true) }), /Speicherkontingent/);
   } finally {
     await run("UPDATE workspaces SET quota_mb=NULL WHERE id=?", wid);
   }
