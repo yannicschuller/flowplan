@@ -14,7 +14,9 @@ block of documents (`components/ink/draw-block*.tsx`,
 | `lib/ink/coords.ts` | Page units ↔ screen, ↔ device pixels (zoom, DPR), page as shown → PDF user space (rotation, crop box) |
 | `lib/ink/geometry.ts` | Pressure outline, bounds, hit tests, stroke and partial eraser, lasso, move/resize/recolour/copy, shape snapping (uses `recognizeStroke` from `lib/whiteboard-tools.ts`), `heldStill` |
 | `lib/ink/history.ts` | Undo/redo of whole states |
-| `lib/ink/presets.ts` | Tools, colours, widths, 3 favourite pens, Pencil double-tap setting, snap setting (per device, `localStorage`) |
+| `lib/ink/presets.ts` | Tools, colours, widths and the free width ranges, 3 favourite pens, text style, recent own colours, Pencil double-tap setting, snap setting (per device, `localStorage`) |
+| `lib/ink/fonts.ts` | Typefaces of text: CSS families with fallbacks, rough advance per face, nearest standard PDF font |
+| `lib/ink/color.ts` | Hex ↔ hue/saturation/value for the colour picker |
 | `lib/ink/pdf-export.ts` | `flattenInk(pdfBytes, doc)` → new PDF with the ink as vectors (pdf-lib); `drawInk` for any page |
 | `lib/ink/notebook-pdf.ts` | `notebookPdf(sheets, load)`: a notebook as PDF (paper as vectors or the imported PDF page, ink on top) |
 | `lib/ink/merge.ts` | `mergeInk(base, ours, theirs)`: three-way merge by item id (concurrent saves) |
@@ -29,6 +31,8 @@ block of documents (`components/ink/draw-block*.tsx`,
 | `components/ink/use-ink-editor.ts` | `useInkEditor(initial)`: the editing session; `useInkShortcuts(editor, on)` |
 | `components/ink/ink-layer.tsx` | `<InkLayer>`: renders and takes input for one page |
 | `components/ink/ink-toolbar.tsx` | `<InkToolbar editor>`: tools, favourites, colours, widths, eraser kind, undo/redo, paste, pen settings; children go at the end |
+| `components/ink/ink-style-picker.tsx` | `<InkCustomColor editor>` ("+" after the colours: colour picker) and `<InkWidthControl editor>` (free width; for text size and face), each a button with its menu – self-contained |
+| `components/ink/color-picker.tsx` | `<ColorPicker value onChange onCommit recent>`: saturation/brightness area, hue slider, hex field, recent colours (pointer, Pencil, keyboard) |
 
 ## Storage format (version 1)
 
@@ -41,7 +45,8 @@ block of documents (`components/ink/draw-block*.tsx`,
     "1": [
       { "id": "k3x9a01ab", "type": "highlighter", "color": "#ffd43b", "width": 14, "points": [72, 80, 0.5, 200, 80, 0.5] },
       { "id": "k3x9a02cd", "type": "pen", "color": "#1f1f1f", "width": 1.6, "points": [100, 100, 0.31, 101.5, 100.8, 0.42] },
-      { "id": "k3x9a03ef", "type": "text", "color": "#e03131", "size": 14, "x": 72, "y": 300, "text": "Geprüft" }
+      { "id": "k3x9a03ef", "type": "text", "color": "#e03131", "size": 14, "x": 72, "y": 300, "text": "Geprüft" },
+      { "id": "k3x9a04gh", "type": "text", "color": "#1f1f1f", "size": 28, "x": 72, "y": 340, "text": "Notiz", "font": "caveat" }
     ]
   }
 }
@@ -56,7 +61,16 @@ block of documents (`components/ink/draw-block*.tsx`,
   round caps and joins. Highlighters are lines of `width`, opacity 0.4,
   multiplied with the page, always behind the ink.
 - Text: `(x, y)` is the top left, baseline at `y + 0.8·size`, lines
-  `1.25·size` apart, Helvetica.
+  `1.25·size` apart. Optional `font`: `sans` (Instrument Sans), `serif`
+  (Instrument Serif), `mono` (JetBrains Mono), `caveat`, `patrick`
+  (Patrick Hand); without it Helvetica, as before. Faces are in
+  `public/fonts.css` (the browser fetches one only when shown). Exports:
+  SVG names the face with fallbacks (inside Flowplan the face shows; a
+  standalone SVG, EPUB or Word file shows the fallback); PDFs (notebook
+  export, "Download with annotations") use the nearest standard PDF font –
+  Times for `serif`, Courier for `mono`, Helvetica for the rest, no
+  embedding. Versions before `font` read such text in Helvetica and drop
+  the field when they save that surface.
 - Items are back to front. Page keys: PDF page numbers (`"1"`, `"2"`, …);
   other surfaces may use any key matching `[\w.-]{1,64}` (e.g. a notebook
   page id).

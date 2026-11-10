@@ -1,9 +1,12 @@
 // Ink as an SVG document, for read-only places without React: published
 // pages, exports (PDF print view, EPUB, Markdown). Drawn like the ink
 // layer (components/ink/ink-layer.tsx): highlighter under the ink at 40 %,
-// multiplied; pen strokes with pressure as filled outlines.
+// multiplied; pen strokes with pressure as filled outlines. Text names its
+// face (lib/ink/fonts.ts) with fallbacks: inside Flowplan's pages the face
+// itself shows, an SVG opened elsewhere uses the fallback.
 import { lineWidth, strokePath } from "./geometry";
 import type { InkItem } from "./model";
+import { inkFontFamily } from "./fonts";
 import { HIGHLIGHTER_OPACITY } from "./presets";
 import type { PageSize } from "./coords";
 
@@ -41,7 +44,7 @@ export function inkSvgElements(items: InkItem[], { dark = false }: { dark?: bool
         .split("\n")
         .map((line, i) => `<tspan x="${r2(item.x)}" dy="${i ? r2(item.size * 1.25) : 0}">${xml(line) || " "}</tspan>`)
         .join("");
-      ink += `<text x="${r2(item.x)}" y="${r2(item.y + item.size * 0.8)}" font-size="${r2(item.size)}" fill="${color(item.color)}" font-family="Helvetica, Arial, sans-serif" xml:space="preserve">${lines}</text>`;
+      ink += `<text x="${r2(item.x)}" y="${r2(item.y + item.size * 0.8)}" font-size="${r2(item.size)}" fill="${color(item.color)}" font-family="${xml(inkFontFamily(item.font))}" xml:space="preserve">${lines}</text>`;
     }
   }
   return (highlights ? `<g style="mix-blend-mode:multiply">${highlights}</g>` : "") + ink;

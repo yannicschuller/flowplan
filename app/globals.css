@@ -12298,6 +12298,7 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   display: flex;
   flex-direction: row;
   flex-wrap: nowrap;
+  margin: 0;
   gap: 0;
   padding: 4px;
   border-radius: 14px;
@@ -19048,6 +19049,217 @@ h3 .block-reactions {
   margin: -4px 0 4px 26px;
   font-size: 12px;
   color: var(--secondary);
+}
+/* Own colour and free width / text size and face (components/ink/ink-style-picker.tsx,
+   components/ink/color-picker.tsx), in an .ink-menu. */
+.ink-toolbar .ink-swatch-custom {
+  display: grid;
+  place-items: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0;
+  background: conic-gradient(#e03131, #f08c00, #ffd43b, #2f9e44, #1c7ed6, #7048e8, #e03131) !important;
+  color: #fff;
+}
+.ink-toolbar .ink-swatch-custom svg {
+  filter: drop-shadow(0 0 1px #0009);
+}
+.ink-swatch-custom-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  box-shadow: 0 0 0 2px var(--ink-bar-bg), inset 0 0 0 1px #0003;
+}
+.ink-picker {
+  gap: 10px;
+  width: min(280px, calc(100vw - 32px - var(--safe-left, 0px) - var(--safe-right, 0px)));
+}
+.ink-picker-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-weight: 600;
+}
+.ink-picker-head output {
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+  color: var(--secondary);
+}
+.ink-picker-slider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ink-picker-slider input[type="range"] {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  margin: 0;
+  accent-color: var(--blue);
+  touch-action: none;
+}
+.ink-picker-number {
+  width: 64px;
+  height: 32px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+.ink-picker-preview {
+  display: grid;
+  place-items: center;
+  height: 64px;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #fcfbf8;
+  box-shadow: inset 0 0 0 1px #0001;
+  line-height: 1;
+  white-space: nowrap;
+}
+.ink-picker-preview svg {
+  width: 100%;
+  height: 100%;
+}
+.ink-picker-fonts {
+  display: grid;
+  gap: 4px;
+}
+.ink-toolbar .ink-picker-fonts button {
+  justify-content: start;
+  height: 38px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 17px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ink-toolbar .ink-picker-fonts button.active {
+  border-color: var(--blue);
+  background: var(--blue-light);
+  color: var(--blue);
+}
+.ink-toolbar .ink-picker-fonts button:hover:not(.active) {
+  background: var(--hover);
+  color: var(--text);
+}
+.color-picker {
+  display: grid;
+  gap: 10px;
+}
+.color-picker-area {
+  position: relative;
+  height: 150px;
+  border-radius: 10px;
+  background: linear-gradient(to top, #000, #0000), linear-gradient(to right, #fff, var(--hue));
+  box-shadow: inset 0 0 0 1px #0002;
+  cursor: crosshair;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.color-picker-area:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+.color-picker-thumb {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  border-radius: 50%;
+  border: 3px solid #fff;
+  box-shadow: 0 0 0 1px #0006, 0 2px 6px #0005;
+  pointer-events: none;
+}
+.color-picker-hue {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 24px;
+  margin: 0;
+  border-radius: 12px;
+  background: linear-gradient(to right, #f00, #ff0 17%, #0f0 33%, #0ff 50%, #00f 67%, #f0f 83%, #f00);
+  box-shadow: inset 0 0 0 1px #0002;
+  touch-action: none;
+}
+.color-picker-hue:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+.color-picker-hue::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 3px solid #fff;
+  background: transparent;
+  box-shadow: 0 0 0 1px #0006, 0 2px 6px #0005;
+}
+.color-picker-hue::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 3px solid #fff;
+  background: transparent;
+  box-shadow: 0 0 0 1px #0006, 0 2px 6px #0005;
+}
+.color-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.color-picker-preview {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 1px #0003;
+}
+.ink-menu .color-picker-hex {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--secondary);
+  font-size: 13px;
+}
+.color-picker-hex input {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-mono, "JetBrains Mono", monospace);
+  font-size: 14px;
+  text-transform: lowercase;
+}
+.color-picker-hex input[aria-invalid="true"] {
+  border-color: #e03131;
+}
+.color-picker-recent {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.ink-toolbar .color-picker-recent .ink-swatch {
+  min-width: 28px;
+  height: 28px;
+}
+.color-picker-recent .ink-swatch.active {
+  outline-color: var(--blue);
 }
 .ink-versions {
   max-height: 50vh;

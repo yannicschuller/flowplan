@@ -34,6 +34,7 @@ import {
   type Box,
   type Pt,
 } from "@/lib/ink/geometry";
+import { inkFontFamily, type InkFont } from "@/lib/ink/fonts";
 import { inkId, type InkDoc, type InkItem, type InkStroke, type InkText } from "@/lib/ink/model";
 import { HIGHLIGHTER_OPACITY, PEN_COLORS } from "@/lib/ink/presets";
 import {
@@ -105,7 +106,7 @@ function InkTextItem({ item }: { item: InkText }) {
       y={item.y + item.size * 0.8}
       fontSize={item.size}
       fill={item.color}
-      fontFamily="Helvetica, Arial, sans-serif"
+      fontFamily={inkFontFamily(item.font)}
       style={{ whiteSpace: "pre" }}
     >
       {item.text.split("\n").map((line, i) => (
@@ -166,7 +167,7 @@ export function InkLayer({
     previewRef.current = next;
     setPreviewState(next);
   };
-  type Typing = { id: string | null; x: number; y: number; size: number; color: string; text: string };
+  type Typing = { id: string | null; x: number; y: number; size: number; color: string; font?: InkFont; text: string };
   const [typing, setTypingState] = useState<Typing | null>(null);
   // The field can end twice (Enter, then blur as it goes): only once counts.
   const typingRef = useRef<Typing | null>(null);
@@ -473,8 +474,8 @@ export function InkLayer({
   function openText(at: XY) {
     const ed = editor!;
     const hit = [...items].reverse().find((item): item is InkText => item.type === "text" && hitItem(item, at, tolerance(4)));
-    if (hit) setTyping({ id: hit.id, x: hit.x, y: hit.y, size: hit.size, color: hit.color, text: hit.text });
-    else setTyping({ id: null, x: at.x, y: at.y - ed.style.width * 0.6, size: ed.style.width, color: ed.style.color, text: "" });
+    if (hit) setTyping({ id: hit.id, x: hit.x, y: hit.y, size: hit.size, color: hit.color, font: hit.font, text: hit.text });
+    else setTyping({ id: null, x: at.x, y: at.y - ed.style.width * 0.6, size: ed.style.width, color: ed.style.color, font: ed.style.font, text: "" });
   }
   function commitText() {
     const entry = typingRef.current;
@@ -490,7 +491,7 @@ export function InkLayer({
         return list.map((i) => (i.id === entry.id ? { ...(i as InkText), text } : i));
       }
       if (!text) return list;
-      return [...list, { id: inkId(), type: "text", color: entry.color, size: entry.size, x: entry.x, y: entry.y, text }];
+      return [...list, { id: inkId(), type: "text", color: entry.color, size: entry.size, x: entry.x, y: entry.y, text, ...(entry.font ? { font: entry.font } : {}) }];
     });
   }
 
@@ -615,6 +616,7 @@ export function InkLayer({
             left: percent(typing.x, size.width),
             top: percent(typing.y, size.height),
             fontSize: typing.size * scale,
+            fontFamily: inkFontFamily(typing.font),
             color: typing.color,
           }}
           value={typing.text}

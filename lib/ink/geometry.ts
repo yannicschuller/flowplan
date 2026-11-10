@@ -2,6 +2,7 @@
 // stroke and partial eraser, lasso selection, moving and resizing, and shape
 // snapping (hold the pen at the end of a stroke). All in page units.
 import { recognizeStroke } from "../whiteboard-tools";
+import { inkFontAdvance } from "./fonts";
 import { inkId, type InkItem, type InkStroke, type InkText } from "./model";
 
 export type Pt = { x: number; y: number; p: number };
@@ -89,11 +90,12 @@ export function strokePath(stroke: InkStroke): { d: string; fill: boolean } {
 
 // ---- Bounds and hits ----
 
-// Text is measured roughly (no fonts on the server): 0.55 em per character.
+// Text is measured roughly (no fonts on the server): an average advance per
+// character of its face (0.55 em for Helvetica).
 export function textBox(item: InkText): Box {
   const lines = item.text.split("\n");
   const longest = Math.max(1, ...lines.map((l) => l.length));
-  return { x: item.x, y: item.y, w: longest * item.size * 0.55, h: lines.length * item.size * 1.25 };
+  return { x: item.x, y: item.y, w: longest * item.size * inkFontAdvance(item.font), h: lines.length * item.size * 1.25 };
 }
 export function itemBounds(item: InkItem): Box {
   if (item.type === "text") return textBox(item);

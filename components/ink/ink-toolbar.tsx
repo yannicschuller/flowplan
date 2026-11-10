@@ -1,7 +1,8 @@
 "use client";
 // The toolbar of an ink editing session (components/ink/use-ink-editor.ts):
-// tools, three favourite pens, colours, widths, eraser kind, undo/redo,
-// paste and the pen settings (pen-only drawing, shape snapping, Apple Pencil
+// tools, three favourite pens, colours (and an own one), widths (and a free
+// one; for text also the face), eraser kind, undo/redo, paste and the pen
+// settings (pen-only drawing, shape snapping, Apple Pencil
 // double-tap). `children` go at the end (save, done, …).
 import { useEffect, useRef, useState } from "react";
 import {
@@ -21,6 +22,7 @@ import { useKeyboardHints } from "@/lib/keyboard-hints";
 import type { InkTool, PencilSetting } from "@/lib/ink/presets";
 import { INK_TOOL_KEYS, type InkEditor } from "./use-ink-editor";
 import { useMenuPlacement } from "./menu-placement";
+import { InkCustomColor, InkWidthControl } from "./ink-style-picker";
 
 export function InkToolbar({
   editor,
@@ -108,43 +110,49 @@ export function InkToolbar({
         ))}
       </div>
       {styled && (
-        <div role="radiogroup" aria-label={t("Farbe", "Colour")} className="ink-group">
-          {editor.palette.map((c) => (
-            <button
-              key={c}
-              type="button"
-              role="radio"
-              aria-checked={editor.style.color === c}
-              aria-label={t(`Farbe ${c}`, `Colour ${c}`)}
-              className={`ink-swatch${editor.style.color === c ? " active" : ""}`}
-              style={{ "--swatch": c } as React.CSSProperties}
-              onClick={() => editor.setStyle({ color: c })}
-            />
-          ))}
+        <div className="ink-group">
+          <div role="radiogroup" aria-label={t("Farbe", "Colour")} className="ink-group">
+            {editor.palette.map((c) => (
+              <button
+                key={c}
+                type="button"
+                role="radio"
+                aria-checked={editor.style.color === c}
+                aria-label={t(`Farbe ${c}`, `Colour ${c}`)}
+                className={`ink-swatch${editor.style.color === c ? " active" : ""}`}
+                style={{ "--swatch": c } as React.CSSProperties}
+                onClick={() => editor.setStyle({ color: c })}
+              />
+            ))}
+          </div>
+          <InkCustomColor editor={editor} />
         </div>
       )}
       {styled && (
-        <div role="radiogroup" aria-label={editor.tool === "text" ? t("Schriftgröße", "Text size") : t("Strichstärke", "Line width")} className="ink-group">
-          {editor.widths.map((w, i) => (
-            <button
-              key={w}
-              type="button"
-              role="radio"
-              aria-checked={editor.style.width === w}
-              aria-label={widthLabel(i)}
-              title={widthLabel(i)}
-              className={editor.style.width === w ? "active" : ""}
-              onClick={() => editor.setStyle({ width: w })}
-            >
-              {editor.tool === "text" ? (
-                <span className="ink-size" style={{ fontSize: 11 + i * 3 }}>
-                  A
-                </span>
-              ) : (
-                <span className="ink-width" style={{ height: 2 + i * 2.5 }} />
-              )}
-            </button>
-          ))}
+        <div className="ink-group">
+          <div role="radiogroup" aria-label={editor.tool === "text" ? t("Schriftgröße", "Text size") : t("Strichstärke", "Line width")} className="ink-group">
+            {editor.widths.map((w, i) => (
+              <button
+                key={w}
+                type="button"
+                role="radio"
+                aria-checked={editor.style.width === w}
+                aria-label={widthLabel(i)}
+                title={widthLabel(i)}
+                className={editor.style.width === w ? "active" : ""}
+                onClick={() => editor.setStyle({ width: w })}
+              >
+                {editor.tool === "text" ? (
+                  <span className="ink-size" style={{ fontSize: 11 + i * 3 }}>
+                    A
+                  </span>
+                ) : (
+                  <span className="ink-width" style={{ height: 2 + i * 2.5 }} />
+                )}
+              </button>
+            ))}
+          </div>
+          <InkWidthControl editor={editor} />
         </div>
       )}
       {editor.tool === "eraser" && (

@@ -7,6 +7,8 @@
 // device pixel ratio. A stroke keeps its points as a flat list of
 // x, y, pressure triples, rounded to two decimals.
 
+import { isInkFont, type InkFont } from "./fonts";
+
 export const INK_FORMAT = "flowplan-ink";
 export const INK_VERSION = 1;
 export const INK_LIMITS = {
@@ -37,6 +39,9 @@ export type InkText = {
   x: number;
   y: number;
   text: string;
+  // Typeface (lib/ink/fonts.ts); none: Helvetica as before. Optional, so
+  // older versions read such text (and drop the face when they save).
+  font?: InkFont;
 };
 export type InkItem = InkStroke | InkText;
 export type InkDoc = {
@@ -90,6 +95,7 @@ export function cleanItem(raw: unknown): InkItem | null {
       x: round2(clamp(item.x, -1e5, 1e5)),
       y: round2(clamp(item.y, -1e5, 1e5)),
       text: item.text.slice(0, INK_LIMITS.textLength),
+      ...(isInkFont(item.font) ? { font: item.font } : {}),
     };
   }
   return null;
