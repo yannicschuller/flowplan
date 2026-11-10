@@ -3,6 +3,56 @@
 # app. With S3_BUCKET set, Litestream first restores the database from the
 # bucket when none exists yet and then replicates every change to it.
 set -eu
+DATA="${FLOWPLAN_DATA_DIR:-/app/data}"
+
+# Who runs Flowplan (#193). The image starts as the user node (UID 1000).
+# Compose's user: "UID:GID" (docker run --user) starts it as any other user,
+# also one without an entry in /etc/passwd. Started as root (user: "0:0"),
+# the entrypoint gives the data folder to PUID:PGID (default 1000:1000, the
+# user node) and runs itself again as that user: the app never runs as root.
+# PGID defaults to PUID.
+valid_id() {
+  case "$1" in
+    '' | *[!0-9]*) return 1 ;;
+  esac
+  [ "${#1}" -le 10 ] && [ "$1" -gt 0 ] && [ "$1" -lt 4294967295 ]
+}
+if [ -n "${PUID:-}${PGID:-}" ]; then
+  if ! { valid_id "${PUID:-1000}" && valid_id "${PGID:-${PUID:-1000}}"; }; then
+    echo "PUID and PGID must be numeric user and group IDs other than 0 (PUID=${PUID:-}, PGID=${PGID:-})." >&2
+    exit 1
+  fi
+fi
+if [ "$(id -u)" = 0 ]; then
+  uid="${PUID:-1000}"
+  gid="${PGID:-${PUID:-1000}}"
+  mkdir -p "$DATA"
+  # Only when the owner differs: no recursive chown on every start. A move
+  # or restore staged by a command run as root (docker exec as root) is
+  # handed over as well.
+  if [ "$(stat -c %u:%g "$DATA")" != "$uid:$gid" ]; then
+    echo "Giving the data folder $DATA to UID $uid, GID $gid."
+    chown -R "$uid:$gid" "$DATA" || echo "Could not change the owner of $DATA." >&2
+  fi
+  for staged in restore-pending move-incoming; do
+    if [ -e "$DATA/$staged" ] && [ "$(stat -c %u:%g "$DATA/$staged")" != "$uid:$gid" ]; then
+      chown -R "$uid:$gid" "$DATA/$staged" || true
+    fi
+  done
+  if [ "$uid" = 1000 ]; then HOME=/home/node; else HOME=/tmp; fi
+  export HOME
+  exec setpriv --reuid="$uid" --regid="$gid" --clear-groups -- "$0" "$@"
+fi
+if [ -n "${PUID:-}${PGID:-}" ] && [ "${PUID:-1000}:${PGID:-${PUID:-1000}}" != "$(id -u):$(id -g)" ]; then
+  echo "PUID/PGID are ignored: the container runs as UID $(id -u), GID $(id -g), not as root. Set user: \"0:0\" for PUID/PGID, or simply user: \"${PUID:-1000}:${PGID:-${PUID:-1000}}\"." >&2
+fi
+# A user without a home of its own (user: "UID:GID" with no passwd entry
+# gets HOME=/): anything that writes below HOME writes to /tmp.
+if [ -z "${HOME:-}" ] || [ ! -d "$HOME" ] || [ ! -w "$HOME" ]; then
+  HOME=/tmp
+  export HOME
+fi
+
 # Render (render.yaml) gives a web service its public onrender.com address
 # (RENDER_EXTERNAL_URL, RENDER_EXTERNAL_HOSTNAME); a Blueprint cannot put it
 # into APP_URL, so it stands in here until APP_URL is set (custom domain).
@@ -15,16 +65,17 @@ if [ -z "${APP_URL:-}" ]; then
     export APP_URL
   fi
 fi
-DATA="${FLOWPLAN_DATA_DIR:-/app/data}"
 DB="$DATA/flowplan.sqlite"
 mkdir -p "$DATA" 2>/dev/null || true
-# The image runs as the user node (UID 1000). A host folder mounted as the
-# data directory must belong to it; otherwise SQLite fails over and over with
-# "unable to open database file". Say so once and stop instead.
+# A host folder mounted as the data directory must belong to the user
+# Flowplan runs as; otherwise SQLite fails over and over with "unable to
+# open database file". Say so once and stop instead.
 if ! { [ -d "$DATA" ] && [ -w "$DATA" ] && touch "$DATA/.write-test" 2>/dev/null && rm -f "$DATA/.write-test"; }; then
-  echo "Flowplan cannot write to its data folder $DATA (running as UID $(id -u), GID $(id -g))." >&2
-  echo "A mounted host folder must belong to UID 1000, e.g.: sudo chown -R 1000:1000 /path/to/flowplan-data" >&2
-  echo "Or use a named Docker volume, which gets the right owner automatically." >&2
+  owner="$(stat -c %u:%g "$DATA" 2>/dev/null || echo "UID:GID")"
+  echo "Flowplan cannot write to its data folder $DATA (running as UID $(id -u), GID $(id -g); the folder belongs to $owner)." >&2
+  echo "Either run Flowplan as the folder's owner: user: \"$owner\" in Compose (docker run --user $owner)," >&2
+  echo "or let Flowplan take the folder: user: \"0:0\" with PUID and PGID (it then runs as that user, never as root)," >&2
+  echo "or give the folder to UID 1000: sudo chown -R 1000:1000 /path/to/flowplan-data, or use a named Docker volume." >&2
   echo "See https://docs.flowplan.org/en/coolify-and-proxy#volume-permissions" >&2
   exit 1
 fi
