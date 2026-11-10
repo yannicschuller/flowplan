@@ -58,6 +58,17 @@ await act({ action: "journal.relock", pageId: journal });
 const unlock = async (who: Identity) => await act({ action: "journal.unlock", pageId: journal, pin: PIN }, who);
 const relock = async (who: Identity) => await act({ action: "journal.relock", pageId: journal }, who);
 
+test("no paragraph from an older version without the PIN", async () => {
+  assert.equal(await status(() => act({ action: "snapshot.restoreBlock", pageId: note, snapshotId, text: "SECRET-NOTE" }, member)), 423);
+  // No hint whether the text was there.
+  assert.equal(await status(() => act({ action: "snapshot.restoreBlock", pageId: note, snapshotId, text: "Nie da" }, member)), 423);
+  assert.doesNotMatch((await one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", note))!.html, /SECRET-NOTE/);
+  await unlock(member);
+  await act({ action: "snapshot.restoreBlock", pageId: note, snapshotId, text: "SECRET-NOTE" }, member);
+  assert.match((await one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", note))!.html, /SECRET-NOTE/);
+  await relock(member);
+});
+
 test("a synced block made on a journal day stays behind the PIN", async () => {
   await unlock(owner);
   const synced = (await act({ action: "synced.create", pageId: day, html: "<p>SECRET-SYNCED</p>" })).id;
