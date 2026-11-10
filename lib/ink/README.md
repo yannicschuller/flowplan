@@ -14,7 +14,9 @@ block of documents (`components/ink/draw-block*.tsx`,
 | `lib/ink/coords.ts` | Page units ↔ screen, ↔ device pixels (zoom, DPR), page as shown → PDF user space (rotation, crop box) |
 | `lib/ink/geometry.ts` | Pressure outline, bounds, hit tests, stroke and partial eraser, lasso, move/resize/recolour/copy, shape snapping (uses `recognizeStroke` from `lib/whiteboard-tools.ts`), `heldStill` |
 | `lib/ink/history.ts` | Undo/redo of whole states |
-| `lib/ink/presets.ts` | Tools, colours, widths and the free width ranges, 3 favourite pens, text style, recent own colours, Pencil double-tap setting, snap setting (per device, `localStorage`) |
+| `lib/ink/presets.ts` | Tools, colours, widths and the free width ranges, the 3 favourite pens of earlier versions, text style, recent own colours, Pencil double-tap setting, snap setting (per device, `localStorage`) |
+| `lib/ink/favorites.ts` | Favourite pens: up to 8 of tool (pen, highlighter, text) + colour + width (+ face), add/move/remove, the one in hand; per device (`flowplan-ink-favorites`; taken over once from `flowplan-ink-presets`, which stays for older versions) |
+| `lib/ink/eraser.ts` | Eraser kinds – whole strokes, parts (`erasePartial` splits strokes), highlighter only – and the partial eraser's size (screen px); per device |
 | `lib/ink/fonts.ts` | Typefaces of text: CSS families with fallbacks, rough advance per face, nearest standard PDF font |
 | `lib/ink/color.ts` | Hex ↔ hue/saturation/value for the colour picker |
 | `lib/ink/pdf-export.ts` | `flattenInk(pdfBytes, doc)` → new PDF with the ink as vectors (pdf-lib); `drawInk` for any page |
@@ -30,9 +32,10 @@ block of documents (`components/ink/draw-block*.tsx`,
 | `components/ink/convert.ts` | "Convert to text" of a lasso selection |
 | `components/ink/use-ink-editor.ts` | `useInkEditor(initial)`: the editing session; `useInkShortcuts(editor, on)` |
 | `components/ink/ink-layer.tsx` | `<InkLayer>`: renders and takes input for one page |
-| `components/ink/ink-toolbar.tsx` | `<InkToolbar editor>`: tools, favourites, colours, widths, eraser kind, undo/redo, paste, pen settings; children go at the end |
-| `components/ink/ink-style-picker.tsx` | `<InkCustomColor editor>` ("+" after the colours: colour picker) and `<InkWidthControl editor>` (free width; for text size and face), each a button with its menu – self-contained |
-| `components/ink/color-picker.tsx` | `<ColorPicker value onChange onCommit recent>`: saturation/brightness area, hue slider, hex field, recent colours (pointer, Pencil, keyboard) |
+| `components/ink/ink-toolbar.tsx` | `<InkToolbar editor page?>`: tools, favourites, colours, widths, undo/redo, paste, gear; tapping the tool in hand again (or the gear) opens its panel; children go at the end |
+| `components/ink/ink-panel.tsx` | `<InkPanel>`: a tool's panel – favourites, live preview, width (presets + slider), text face, colour (picker beside the panel), eraser kinds and size, "clear page", input settings (switches) |
+| `components/ink/ink-style-picker.tsx` | `<InkCustomColor editor>` ("+" after the colours in the toolbar row: colour picker in a menu) |
+| `components/ink/color-picker.tsx` | `<ColorPicker value onChange onCommit recent>`: saturation/brightness area, hue slider, hex field, eyedropper (EyeDropper API, hidden where missing), recent colours (pointer, Pencil, keyboard) |
 
 ## Storage format (version 1)
 

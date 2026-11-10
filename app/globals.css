@@ -18954,10 +18954,6 @@ h3 .block-reactions {
   opacity: 0.35;
   cursor: default;
 }
-.ink-labels button {
-  padding: 0 10px;
-  font-size: 13px;
-}
 .ink-swatch {
   width: 26px;
   min-width: 26px;
@@ -19037,21 +19033,13 @@ h3 .block-reactions {
   align-items: center;
   gap: 8px;
 }
-.ink-menu-select {
-  flex-wrap: wrap;
-  margin-top: 4px;
-}
-.ink-menu-select select {
-  flex: 1;
-  min-width: 0;
-}
 .ink-menu-hint {
   margin: -4px 0 4px 26px;
   font-size: 12px;
   color: var(--secondary);
 }
-/* Own colour and free width / text size and face (components/ink/ink-style-picker.tsx,
-   components/ink/color-picker.tsx), in an .ink-menu. */
+/* Own colour (components/ink/ink-style-picker.tsx, components/ink/color-picker.tsx),
+   in an .ink-menu; the tool panels are in app/notebook-panels.css. */
 .ink-toolbar .ink-swatch-custom {
   display: grid;
   place-items: center;
@@ -19073,82 +19061,6 @@ h3 .block-reactions {
 .ink-picker {
   gap: 10px;
   width: min(280px, calc(100vw - 32px - var(--safe-left, 0px) - var(--safe-right, 0px)));
-}
-.ink-picker-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  font-weight: 600;
-}
-.ink-picker-head output {
-  font-variant-numeric: tabular-nums;
-  font-weight: 400;
-  color: var(--secondary);
-}
-.ink-picker-slider {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.ink-picker-slider input[type="range"] {
-  flex: 1;
-  min-width: 0;
-  height: 32px;
-  margin: 0;
-  accent-color: var(--blue);
-  touch-action: none;
-}
-.ink-picker-number {
-  width: 64px;
-  height: 32px;
-  padding: 0 6px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-  color: var(--text);
-  font: inherit;
-  font-variant-numeric: tabular-nums;
-}
-.ink-picker-preview {
-  display: grid;
-  place-items: center;
-  height: 64px;
-  overflow: hidden;
-  border-radius: 10px;
-  background: #fcfbf8;
-  box-shadow: inset 0 0 0 1px #0001;
-  line-height: 1;
-  white-space: nowrap;
-}
-.ink-picker-preview svg {
-  width: 100%;
-  height: 100%;
-}
-.ink-picker-fonts {
-  display: grid;
-  gap: 4px;
-}
-.ink-toolbar .ink-picker-fonts button {
-  justify-content: start;
-  height: 38px;
-  padding: 0 12px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  color: var(--text);
-  font-size: 17px;
-  text-align: left;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.ink-toolbar .ink-picker-fonts button.active {
-  border-color: var(--blue);
-  background: var(--blue-light);
-  color: var(--blue);
-}
-.ink-toolbar .ink-picker-fonts button:hover:not(.active) {
-  background: var(--hover);
-  color: var(--text);
 }
 .color-picker {
   display: grid;
@@ -29289,52 +29201,6 @@ label.ws-search input {
 .notebook-insert-hint {
   color: var(--secondary);
   font-size: 13px;
-}
-.notebook-paper-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px 28px;
-}
-.notebook-templates {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
-  gap: 10px;
-  width: 100%;
-}
-.notebook-templates label {
-  display: grid;
-  justify-items: center;
-  gap: 6px;
-  padding: 8px 6px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  font-size: 12px;
-  text-align: center;
-  cursor: pointer;
-}
-.notebook-templates label.chosen {
-  border-color: var(--blue);
-  background: var(--blue-light);
-}
-.notebook-templates input {
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
-}
-.notebook-templates label:has(input:focus-visible) {
-  outline: 2px solid var(--blue);
-  outline-offset: 2px;
-}
-.notebook-template-preview {
-  position: relative;
-  display: block;
-  width: 64px;
-  aspect-ratio: 595 / 842;
-  background: #fff;
-  box-shadow: 0 1px 3px #0003;
-}
-.notebook-template-preview.is-dark {
-  background: #1f2125;
 }
 @media (max-width: 760px) {
   .notebook-view {

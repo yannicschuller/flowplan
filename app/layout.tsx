@@ -15,6 +15,7 @@ import "./admin-users.css";
 import "./new-page-dialog.css";
 import "katex/dist/katex.min.css";
 import "./share-dialog.css";
+import "./notebook-panels.css";
 import { requestLocale } from "@/lib/i18n-server";
 import { localeTag, translate } from "@/lib/i18n";
 import { siteUrl } from "@/lib/seo";

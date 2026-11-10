@@ -32,6 +32,7 @@ import { useInkEditor, useInkShortcuts } from "../ink/use-ink-editor";
 import { useSurfaceSync } from "../ink/use-surface-sync";
 import { convertSelection } from "../ink/convert";
 import { PaperSvg, PdfBackground } from "./paper";
+import { PaperDialog, type PaperScope } from "./paper-dialog";
 import { takeNotebookImport } from "./pending-import";
 import { loadPdf } from "../pdf-viewer";
 import { useKeyboardHints } from "@/lib/keyboard-hints";
@@ -41,10 +42,6 @@ import type { PageSize } from "@/lib/ink/coords";
 import {
   effectivePaper,
   moveTo,
-  PAPER_COLORS,
-  PAPER_ORIENTATIONS,
-  PAPER_SIZES,
-  PAPER_TEMPLATES,
   paperLayout,
   paperSize,
   MAX_IMPORT_PAGES,
@@ -257,15 +254,8 @@ export default function NotebookView({
 
   // ---- Paper dialog ----
   const [paperFor, setPaperFor] = useState<string | null>(null);
-  const [draft, setDraft] = useState<Paper>(paper);
-  const [scope, setScope] = useState<"sheet" | "all" | "new">("sheet");
-  const openPaper = (sheetId: string) => {
-    const sheet = sheets.find((s) => s.id === sheetId);
-    setDraft(effectivePaper(paper, sheet?.paper));
-    setScope("sheet");
-    setPaperFor(sheetId);
-  };
-  const savePaper = async () => {
+  const openPaper = (sheetId: string) => setPaperFor(sheetId);
+  const savePaper = async (draft: Paper, scope: PaperScope) => {
     const sheetId = paperFor;
     setPaperFor(null);
     if (!sheetId) return;
@@ -503,7 +493,7 @@ export default function NotebookView({
   return (
     <div className={`notebook-view${thumbs ? " with-thumbs" : ""}`}>
       <div className="notebook-bar">
-        {canEdit && <InkToolbar editor={editor} toolKeys label={t("Schreibwerkzeuge", "Writing tools")} />}
+        {canEdit && <InkToolbar editor={editor} toolKeys page={current} label={t("Schreibwerkzeuge", "Writing tools")} />}
         <div className="notebook-controls" role="toolbar" aria-label={t("Notizbuch", "Notebook")}>
           <button
             type="button"
@@ -758,76 +748,14 @@ export default function NotebookView({
           </div>
         </div>
       </div>
-      <Modal open={!!paperFor} onClose={() => setPaperFor(null)} title={t("Papier", "Paper")} className="notebook-paper-dialog">
-        <div className="notebook-paper-form">
-          <fieldset>
-            <legend>{t("Vorlage", "Template")}</legend>
-            <div className="notebook-templates">
-              {PAPER_TEMPLATES.map((template) => (
-                <label key={template} className={draft.template === template ? "chosen" : ""}>
-                  <input type="radio" name="notebook-template" checked={draft.template === template} onChange={() => setDraft({ ...draft, template })} />
-                  <span className={`notebook-template-preview${draft.color === "dark" ? " is-dark" : ""}`}>
-                    <PaperSvg layout={paperLayout({ ...draft, template, orientation: "portrait" })} />
-                  </span>
-                  <span>{templateName(template)}</span>
-                </label>
-              ))}
-            </div>
-          </fieldset>
-          <div className="notebook-paper-row">
-            <fieldset>
-              <legend>{t("Format", "Size||paper")}</legend>
-              {PAPER_SIZES.map((size) => (
-                <label key={size}>
-                  <input type="radio" name="notebook-size" checked={draft.size === size} onChange={() => setDraft({ ...draft, size })} />
-                  {size === "a4" ? "A4" : "Letter"}
-                </label>
-              ))}
-            </fieldset>
-            <fieldset>
-              <legend>{t("Ausrichtung", "Orientation")}</legend>
-              {PAPER_ORIENTATIONS.map((orientation) => (
-                <label key={orientation}>
-                  <input type="radio" name="notebook-orientation" checked={draft.orientation === orientation} onChange={() => setDraft({ ...draft, orientation })} />
-                  {orientation === "portrait" ? t("Hochformat", "Portrait") : t("Querformat", "Landscape")}
-                </label>
-              ))}
-            </fieldset>
-            <fieldset>
-              <legend>{t("Papierfarbe", "Paper colour")}</legend>
-              {PAPER_COLORS.map((color) => (
-                <label key={color}>
-                  <input type="radio" name="notebook-color" checked={draft.color === color} onChange={() => setDraft({ ...draft, color })} />
-                  {color === "light" ? t("Hell", "Light") : t("Dunkel", "Dark")}
-                </label>
-              ))}
-            </fieldset>
-          </div>
-          <fieldset>
-            <legend>{t("Anwenden auf", "Apply to")}</legend>
-            <label>
-              <input type="radio" name="notebook-scope" checked={scope === "sheet"} onChange={() => setScope("sheet")} />
-              {t("Dieses Blatt", "This sheet")}
-            </label>
-            <label>
-              <input type="radio" name="notebook-scope" checked={scope === "new"} onChange={() => setScope("new")} />
-              {t("Standard des Notizbuchs (Blätter ohne eigenes Papier)", "Notebook default (sheets without their own paper)")}
-            </label>
-            <label>
-              <input type="radio" name="notebook-scope" checked={scope === "all"} onChange={() => setScope("all")} />
-              {t("Alle Blätter", "All sheets")}
-            </label>
-          </fieldset>
-          <div className="modal-actions">
-            <button type="button" className="button" onClick={() => setPaperFor(null)}>
-              {t("Abbrechen", "Cancel")}
-            </button>
-            <button type="button" className="button primary" onClick={() => void savePaper()}>
-              {t("Übernehmen", "Apply")}
-            </button>
-          </div>
-        </div>
-      </Modal>
+      <PaperDialog
+        open={!!paperFor}
+        sheetNumber={Math.max(0, sheets.findIndex((s) => s.id === paperFor)) + 1}
+        paper={effectivePaper(paper, sheets.find((s) => s.id === paperFor)?.paper)}
+        templateName={templateName}
+        onClose={() => setPaperFor(null)}
+        onApply={(draft, scope) => void savePaper(draft, scope)}
+      />
       <Modal open={!!inserting} onClose={() => setInserting(null)} title={t("PDF einfügen", "Insert PDF")} className="notebook-insert-dialog">
         <div className="notebook-paper-form">
           <p>
