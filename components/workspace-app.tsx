@@ -245,6 +245,7 @@ import {
 } from "./database-kind-picker";
 import { UnlinkedMentions } from "./unlinked-mentions";
 import { RelatedPages } from "./related-pages";
+import { useDiscoveryPanelsShown } from "@/lib/discovery-panels-prefs";
 import { NewPageDialog } from "./new-page-dialog";
 import {
   FollowButton,
@@ -413,6 +414,8 @@ export default function WorkspaceApp({
   const t = useT();
   const statusLabel = useStatusLabel();
   const locale = useLocale();
+  // Related pages, backlinks and unlinked mentions below pages (#191).
+  const discoveryPanels = useDiscoveryPanelsShown();
   // A language fixed in the profile: the server already renders it; the
   // cookie follows for the pages before signing in. No reload – a cookie the
   // browser keeps elsewhere must not lead to a loop.
@@ -4289,6 +4292,7 @@ export default function WorkspaceApp({
                   )}
                   </ViewBoundary>
                   {!data.draft && (<>
+                  {discoveryPanels && (
                   <div className="backlinks">
                     {!data.locked && !data.encrypted && <RelatedPages key={`related-${data.page.id}`} pageId={data.page.id} />}
                     {!data.locked && !data.encrypted && (
@@ -4333,6 +4337,7 @@ export default function WorkspaceApp({
                       </>
                     )}
                   </div>
+                  )}
                   <div className="subpages">
                     {activePages
                       // Journal days are listed by the journal itself.
