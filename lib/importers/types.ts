@@ -7,7 +7,12 @@ import type { ImportedBoard } from "../whiteboard-import";
 import type { Field, View } from "../types";
 import type { FrontmatterValue } from "../frontmatter";
 
-export type ImportSource = "affine" | "confluence" | "evernote" | "gdocs" | "obsidian" | "word";
+export type ImportSource = "affine" | "confluence" | "evernote" | "gdocs" | "goodnotes" | "obsidian" | "word";
+
+// A sheet of an imported notebook (GoodNotes PDF, lib/importers/goodnotes.ts):
+// page `page` (from 1) of the PDF `file` (a key of the tree's files) as its
+// background, its size as shown in points.
+export type ImportSheet = { file: string; page: number; width: number; height: number };
 
 export type ImportDatabase = {
   fields: Field[];
@@ -36,9 +41,11 @@ export type ImportPage = {
   url?: string;
   // Not a document: a whiteboard (items may name pages of the import by
   // their pageRef placeholder) or a database. Both only in "pages" mode.
-  kind?: "document" | "whiteboard" | "database";
+  // A notebook (GoodNotes): its sheets, only in "pages" mode as well.
+  kind?: "document" | "whiteboard" | "database" | "notebook";
   board?: ImportedBoard;
   database?: ImportDatabase;
+  notebook?: { sheets: ImportSheet[] };
   // A journal day (YYYY-MM-DD): written into that day of the workspace's
   // journal instead of becoming a page of its own; appended when the day
   // already exists.

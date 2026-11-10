@@ -278,9 +278,10 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     icon: "Database",
     title: { de: "Import & Export", en: "Import & export" },
     description: { de: "Importieren, exportieren, Archive wiederherstellen und der Papierkorb.", en: "Import, export, restore archives and the trash." },
-    keywords: { de: "export import zip json markdown pdf epub notion appflowy jira trello affine confluence evernote google docs obsidian backup sicherung wiederherstellen papierkorb aufbewahrung versionen", en: "export import zip json markdown pdf epub notion appflowy jira trello affine confluence evernote google docs obsidian backup restore trash retention versions" },
+    keywords: { de: "export import zip json markdown pdf epub notion appflowy jira trello affine confluence evernote google docs goodnotes notizbuch obsidian backup sicherung wiederherstellen papierkorb aufbewahrung versionen", en: "export import zip json markdown pdf epub notion appflowy jira trello affine confluence evernote google docs goodnotes notebook obsidian backup restore trash retention versions" },
     entries: [
       { title: { de: "Aus Notion, AppFlowy, Confluence, Evernote oder Obsidian importieren", en: "Import from Notion, AppFlowy, Confluence, Evernote or Obsidian" }, keywords: { de: "google docs markdown zip", en: "google docs markdown zip" }, anchor: "import" },
+      { title: { de: "Aus GoodNotes importieren", en: "Import from GoodNotes" }, keywords: { de: "pdf notizbuch handschrift ipad", en: "pdf notebook handwriting ipad" }, anchor: "import" },
       { title: { de: "Aus Jira oder Trello importieren", en: "Import from Jira or Trello" }, anchor: "import" },
       { title: { de: "Arbeitsbereich exportieren", en: "Export workspace" }, anchor: "export" },
       { title: { de: "Bereich als Markdown exportieren", en: "Export space as Markdown" }, keywords: { de: "pdf epub e-book", en: "pdf epub e-book" }, anchor: "export" },
