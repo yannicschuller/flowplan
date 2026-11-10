@@ -1,7 +1,7 @@
 // Geometry of ink: stroke outlines (pressure), bounds, hit tests, the
 // stroke and partial eraser, lasso selection, moving and resizing, and shape
 // snapping (hold the pen at the end of a stroke). All in page units.
-import { inkFontAdvance } from "./fonts";
+import { lineHeightOf, textWidth } from "./text-style";
 import { recognizeShape, type ShapeName } from "./shape-recognize";
 import { magnetShape, scaleShape, shapeAnchors, shapeBounds, shapeDistance, shapePoints, type InkShape } from "./shapes";
 import { inkId, type InkItem, type InkStroke, type InkText } from "./model";
@@ -94,13 +94,13 @@ export function strokePath(stroke: InkStroke): { d: string; fill: boolean } {
 // ---- Bounds and hits ----
 
 // Text is measured roughly (no fonts on the server): an average advance per
-// character of its face (0.55 em for Helvetica).
+// character of its face (0.55 em for Helvetica, a little more in bold), and
+// its line height (lib/ink/text-style.ts).
 // Turned text: the box around its turned corners.
 export function textBox(item: InkText): Box {
   const lines = item.text.split("\n");
-  const longest = Math.max(1, ...lines.map((l) => l.length));
-  const w = longest * item.size * inkFontAdvance(item.font),
-    h = lines.length * item.size * 1.25;
+  const w = textWidth(item),
+    h = lines.length * item.size * lineHeightOf(item);
   if (!item.rotation) return { x: item.x, y: item.y, w, h };
   const a = (item.rotation * Math.PI) / 180;
   const cos = Math.cos(a),

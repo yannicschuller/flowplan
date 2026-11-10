@@ -717,3 +717,51 @@ test.describe("notebook audio", () => {
     await expect.poll(() => page.evaluate(() => (document.querySelector(".notebook-audio-player audio") as HTMLAudioElement).currentTime)).toBeGreaterThan(0.4);
   });
 });
+
+test("text: edit an existing box's look while typing and for a lasso selection (mixed), each one undo step, kept after a reload", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "Mouse input runs on the desktop project.");
+  const { create } = await setup(page);
+  const id = await create(`Text ${Date.now()}`, "notebook");
+  const tools = await openNotebook(page, id);
+  const controls = page.getByRole("toolbar", { name: "Notizbuch" });
+  const box = (await sheet(page, 0).boundingBox())!;
+  const texts = sheet(page, 0).locator(".ink-strokes text");
+  // Two text boxes.
+  await tools.getByRole("radio", { name: "Text", exact: true }).click();
+  await page.mouse.click(box.x + 100, box.y + 120);
+  await page.keyboard.type("Erste Zeile");
+  await page.keyboard.press("Enter");
+  await page.mouse.click(box.x + 100, box.y + 260);
+  await page.keyboard.type("Zweite");
+  await page.keyboard.press("Enter");
+  await expect(texts).toHaveCount(2);
+  // A tap on the first opens it with the style bar; bold and a face apply to the box.
+  await page.mouse.click(box.x + 110, box.y + 125);
+  const float = page.getByRole("toolbar", { name: "Textstil" });
+  await expect(float).toBeVisible();
+  await float.getByRole("button", { name: "Fett" }).click();
+  await expect(page.locator(".ink-text-input")).toBeFocused();
+  await float.getByRole("button", { name: "Schrift" }).click();
+  await page.getByRole("radio", { name: /Instrument Serif/ }).click();
+  await page.locator(".ink-text-input").focus();
+  await page.keyboard.press("Enter");
+  await expect(texts.first()).toHaveAttribute("font-weight", "bold");
+  await expect(texts.first()).toHaveAttribute("font-family", /Instrument Serif/);
+  // Lasso both: the bar shows mixed bold; centring and bold apply to both, one undo step each.
+  await tools.getByRole("radio", { name: "Lasso", exact: true }).click();
+  await lasso(page, { x: box.x + 60, y: box.y + 80, width: 400, height: 240 });
+  const bar = page.getByRole("toolbar", { name: "Auswahl" });
+  await expect(bar.getByRole("button", { name: "Fett" })).toHaveAttribute("aria-pressed", "mixed");
+  await bar.getByRole("button", { name: "Fett" }).click();
+  await expect(texts.nth(1)).toHaveAttribute("font-weight", "bold");
+  await bar.getByRole("button", { name: "Ausrichtung und Zeilenabstand" }).click();
+  await page.getByRole("radio", { name: "Mitte" }).click();
+  await expect(texts.first()).toHaveAttribute("text-anchor", "middle");
+  await expect(texts.nth(1)).toHaveAttribute("text-anchor", "middle");
+  await tools.getByRole("button", { name: "Rückgängig" }).click();
+  await expect(texts.first()).not.toHaveAttribute("text-anchor", "middle");
+  await expect(texts.nth(1)).toHaveAttribute("font-weight", "bold");
+  await expect(controls.getByRole("status")).toHaveText("Gespeichert", { timeout: 10_000 });
+  await page.reload();
+  await expect(sheet(page, 0).locator(".ink-strokes text").nth(1)).toHaveAttribute("font-weight", "bold", { timeout: 30_000 });
+});

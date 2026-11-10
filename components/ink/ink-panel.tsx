@@ -3,7 +3,9 @@
 // the tool in hand again, or the gear. Pen and highlighter: favourite pens,
 // a live preview, the width (presets and a slider), the colour (standard
 // colours, the last own one and the colour picker beside the panel) and the
-// input settings. Text: size, face and colour; the input settings folded
+// input settings. Text: size, face, style (bold, italic, underline,
+// alignment, line height) and colour – for new text; text on the page has
+// its own bar (text-style-bar.tsx); the input settings folded
 // into one row. Eraser: its kind, the size of the partial eraser and
 // clearing the page. Shapes: a preview, the kind, width, line style, colour,
 // fill and the ruler (components/ink/shape-panel.tsx). Lasso and laser
@@ -20,6 +22,8 @@ import { placeMenu } from "./menu-placement";
 import { ColorPicker } from "./color-picker";
 import { InkSlider, SectionHead, Segmented, SettingSwitch } from "./panel-parts";
 import { RulerSection, ShapeFillSection, ShapeKindSection, ShapeLineSection, ShapePreview } from "./shape-panel";
+import { AlignControls, LookToggles } from "./text-style-bar";
+import { LINE_HEIGHT } from "@/lib/ink/model";
 
 type T = ReturnType<typeof useT>;
 const STYLED: InkTool[] = ["pen", "highlighter", "text"];
@@ -89,7 +93,18 @@ function Preview({ editor }: { editor: InkEditor }) {
   return (
     <div className="ink-panel-preview" aria-hidden="true">
       {editor.tool === "text" ? (
-        <span style={{ fontFamily: inkFontFamily(font), fontSize: Math.max(12, Math.min(width * 1.33, 40)), color }}>{t("Notizen am Rand", "Notes in the margin")}</span>
+        <span
+          style={{
+            fontFamily: inkFontFamily(font),
+            fontSize: Math.max(12, Math.min(width * 1.33, 40)),
+            color,
+            fontWeight: editor.style.bold ? 700 : undefined,
+            fontStyle: editor.style.italic ? "italic" : undefined,
+            textDecoration: editor.style.underline ? "underline" : undefined,
+          }}
+        >
+          {t("Notizen am Rand", "Notes in the margin")}
+        </span>
       ) : (
         <svg viewBox="0 0 326 62" preserveAspectRatio="xMidYMid meet">
           <path
@@ -180,6 +195,24 @@ function FontSection({ editor }: { editor: InkEditor }) {
           );
         })}
       </div>
+    </section>
+  );
+}
+
+// Text: bold, italic, underline, alignment and line height of new text
+// (text-style-bar.tsx has the same controls for text on the page).
+function TextLookSection({ editor }: { editor: InkEditor }) {
+  const t = useT();
+  const id = useId();
+  const s = editor.style;
+  const look = { bold: !!s.bold, italic: !!s.italic, underline: !!s.underline, align: s.align || ("left" as const), lineHeight: s.lineHeight ?? LINE_HEIGHT.default };
+  return (
+    <section className="ink-panel-sec ink-panel-text-look" aria-labelledby={id}>
+      <SectionHead id={id} label={t("Stil", "Style")} />
+      <div className="ink-panel-text-toggles" role="group" aria-labelledby={id}>
+        <LookToggles look={look} onChange={editor.setStyle} />
+      </div>
+      <AlignControls look={look} onChange={editor.setStyle} />
     </section>
   );
 }
@@ -527,6 +560,7 @@ export function InkPanel({ editor, page, fromGear, align, onClose }: { editor: I
             {(styled || shape) && <WidthSection editor={editor} />}
             {shape && <ShapeLineSection />}
             {tool === "text" && <FontSection editor={editor} />}
+            {tool === "text" && <TextLookSection editor={editor} />}
             {(styled || shape) && <ColorSection editor={editor} />}
             {shape && <ShapeFillSection editor={editor} />}
             {tool === "eraser" && <EraserSection editor={editor} page={page} />}

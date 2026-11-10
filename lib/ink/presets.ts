@@ -3,6 +3,7 @@
 // Pencil's double-tap or squeeze does.
 import type { PencilAction } from "../stylus";
 import { isInkFont, type InkFont } from "./fonts";
+import { cleanTextLook, type InkText } from "./model";
 
 // "shape": draws shapes (or recognises a stroke at once), with the pen's colour and width.
 export type InkTool = "pen" | "highlighter" | "eraser" | "lasso" | "text" | "laser" | "shape";
@@ -86,13 +87,14 @@ export function rememberColor(color: string, list = loadRecentColors()): string[
   return next;
 }
 
-// The text tool's colour, size and face, on this device.
-export type TextStyle = { color: string; width: number; font?: InkFont };
+// The text tool's colour, size, face and look of new text (bold, italic,
+// underline, alignment, line height: as in lib/ink/model.ts), on this device.
+export type TextStyle = { color: string; width: number; font?: InkFont } & Pick<InkText, "bold" | "italic" | "underline" | "align" | "lineHeight">;
 export function loadTextStyle(): TextStyle | null {
   try {
     const s = JSON.parse(read(TEXT_KEY) || "null");
     if (s && COLOR.test(s.color) && Number.isFinite(s.width))
-      return { color: s.color, width: clampWidth("text", s.width), ...(isInkFont(s.font) ? { font: s.font } : {}) };
+      return { color: s.color, width: clampWidth("text", s.width), ...(isInkFont(s.font) ? { font: s.font } : {}), ...cleanTextLook(s) };
   } catch {}
   return null;
 }

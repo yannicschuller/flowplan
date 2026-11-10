@@ -35,6 +35,30 @@ const ADVANCE: Record<InkFont, number> = { sans: 0.53, serif: 0.46, mono: 0.6, c
 export const inkFontAdvance = (font?: InkFont | null) => (font && ADVANCE[font]) || 0.55;
 
 // PDF exports use the standard PDF fonts (no font embedding): the nearest
-// one for each face. The handwriting faces come out as Helvetica.
-export type InkPdfFont = "Helvetica" | "Times-Roman" | "Courier";
-export const inkPdfFont = (font?: InkFont | null): InkPdfFont => (font === "serif" ? "Times-Roman" : font === "mono" ? "Courier" : "Helvetica");
+// one for each face, in its bold, italic (oblique) or bold italic cut. The
+// handwriting faces come out as Helvetica. In the browser, faces without a
+// bold or italic cut of their own (Instrument Serif bold, Caveat, Patrick
+// Hand) are thickened or slanted by the browser.
+export type InkPdfFamily = "Helvetica" | "Times" | "Courier";
+export type InkPdfFont =
+  | "Helvetica"
+  | "Helvetica-Bold"
+  | "Helvetica-Oblique"
+  | "Helvetica-BoldOblique"
+  | "Times-Roman"
+  | "Times-Bold"
+  | "Times-Italic"
+  | "Times-BoldItalic"
+  | "Courier"
+  | "Courier-Bold"
+  | "Courier-Oblique"
+  | "Courier-BoldOblique";
+export const inkPdfFamily = (font?: InkFont | null): InkPdfFamily => (font === "serif" ? "Times" : font === "mono" ? "Courier" : "Helvetica");
+export function inkPdfFont(font?: InkFont | null, { bold = false, italic = false }: { bold?: boolean; italic?: boolean } = {}): InkPdfFont {
+  const family = inkPdfFamily(font);
+  if (family === "Times") return bold && italic ? "Times-BoldItalic" : bold ? "Times-Bold" : italic ? "Times-Italic" : "Times-Roman";
+  if (bold && italic) return `${family}-BoldOblique`;
+  if (bold) return `${family}-Bold`;
+  if (italic) return `${family}-Oblique`;
+  return family;
+}
