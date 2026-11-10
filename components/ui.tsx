@@ -145,8 +145,11 @@ export function Modal({
   className = "",
   actions,
   sheet = false,
+  subtitle,
 }: {
   className?: string;
+  // Quieter words after the title ("Blatt 3"); not part of the dialog's name.
+  subtitle?: string;
   actions?: ReactNode;
   // Phones (up to 600 px): a bottom sheet with a grab handle that is
   // dragged down to close (components/sheet-drag.ts).
@@ -252,7 +255,10 @@ export function Modal({
           <div className="modal-scroll-sentinel" aria-hidden />
           {sheet && <div className={SHEET_HANDLE} aria-hidden />}
           <div className="modal-heading" data-stuck={stuck || undefined}>
-            <Dialog.Title>{title}</Dialog.Title>
+            <Dialog.Title>
+              {title}
+              {subtitle && <span className="modal-subtitle">{subtitle}</span>}
+            </Dialog.Title>
             <Dialog.Close className="icon-button" aria-label={t("Schließen", "Close")}>
               <X size={20} />
             </Dialog.Close>

@@ -17,8 +17,6 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "../i18n";
 import { clientToPage, type PageSize } from "@/lib/ink/coords";
 import {
-  eraseItems,
-  erasePartial,
   flatPoints,
   hitItem,
   heldStill,
@@ -34,7 +32,8 @@ import {
 } from "@/lib/ink/geometry";
 import { inkFontFamily, type InkFont } from "@/lib/ink/fonts";
 import { inkId, type InkDoc, type InkItem, type InkStroke, type InkText } from "@/lib/ink/model";
-import { HIGHLIGHTER_OPACITY } from "@/lib/ink/presets";
+import { HIGHLIGHTER_OPACITY, PEN_COLORS } from "@/lib/ink/presets";
+import { STROKE_ERASER_RADIUS, eraseWith as erase, type EraserMode } from "@/lib/ink/eraser";
 import {
   CORNERS,
   cornerPoint,
@@ -76,7 +75,7 @@ const ROTATE_OFFSET = 26;
 
 type Gesture =
   | { kind: "draw"; pointer: number; type: string; stroke: InkStroke; raw: Pt[]; track: PressureTrack; timed: (XY & { t: number })[]; anchor: XY; snapped: boolean }
-  | { kind: "erase"; pointer: number; partial: boolean; items: InkItem[] }
+  | { kind: "erase"; pointer: number; mode: EraserMode; radius: number; items: InkItem[] }
   | { kind: "lasso"; pointer: number; polygon: XY[] }
   // The selection dragged by its body (move), a corner (scale) or the
   // rotation handle; a second finger turns it into a pinch.
@@ -300,8 +299,7 @@ export function InkLayer({
     }, HOLD_MS);
   }
   function eraseWith(g: Extract<Gesture, { kind: "erase" }>, path: XY[]) {
-    const radius = tolerance(g.partial ? 10 : 6);
-    const next = g.partial ? erasePartial(g.items, path, radius) : eraseItems(g.items, path, radius);
+    const next = erase(g.items, path, g.mode, tolerance(g.radius));
     if (next !== g.items) {
       g.items = next;
       setPreview(next);
@@ -374,7 +372,9 @@ export function InkLayer({
     e.preventDefault();
     root.current?.setPointerCapture?.(e.pointerId);
     if (ed.tool === "eraser" || isEraser(e)) {
-      const g: Gesture = { kind: "erase", pointer: e.pointerId, partial: ed.eraserMode === "partial" && !isEraser(e), items };
+      // The eraser end of a pen takes whole strokes, as before.
+      const mode: EraserMode = isEraser(e) ? "stroke" : ed.eraserMode;
+      const g: Gesture = { kind: "erase", pointer: e.pointerId, mode, radius: mode === "partial" ? ed.eraserSize : STROKE_ERASER_RADIUS, items };
       gesture.current = g;
       eraseWith(g, [at]);
       return;

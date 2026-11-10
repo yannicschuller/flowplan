@@ -18,23 +18,31 @@ import {
   PEN_WIDTHS,
   TEXT_SIZES,
   WIDTH_RANGES,
-  loadPresets,
   loadRecentColors,
   loadTextStyle,
   rememberColor,
   saveTextStyle,
   pencilResult,
   pencilSetting,
-  savePresets,
   setPencilSetting,
   setSnapSetting,
   snapSetting,
-  type EraserMode,
-  type InkPreset,
   type InkTool,
   type PencilSetting,
 } from "@/lib/ink/presets";
 import type { InkFont } from "@/lib/ink/fonts";
+import { clampEraserSize, loadEraserSetting, saveEraserSetting, type EraserMode } from "@/lib/ink/eraser";
+import {
+  DEFAULT_FAVORITES,
+  MAX_FAVORITES,
+  addFavorite as addTo,
+  favoriteIndex,
+  loadFavorites,
+  moveFavorite as moveIn,
+  removeFavorite as removeFrom,
+  saveFavorites,
+  type InkFavorite,
+} from "@/lib/ink/favorites";
 import { forgetPen, onPencilAction, penOnlySetting, setPenOnly as storePenOnly } from "@/lib/stylus";
 
 export type InkSelection = { page: string; ids: string[] };
@@ -61,9 +69,9 @@ export function useInkEditor(initial: InkDoc, { active = true }: { active?: bool
   const [highlighter, setHighlighter] = useState<Style>({ color: HIGHLIGHTER_COLORS[0], width: HIGHLIGHTER_WIDTHS[1] });
   const [text, setText] = useState<Style>({ color: PEN_COLORS[0], width: TEXT_SIZES[1] });
   const [recentColors, setRecentColors] = useState<string[]>([]);
-  const [presets, setPresets] = useState<InkPreset[]>(DEFAULT_PRESETS);
-  const [preset, setPreset] = useState<number | null>(0);
-  const [eraserMode, setEraserMode] = useState<EraserMode>("stroke");
+  const [favorites, setFavoritesState] = useState<InkFavorite[]>(DEFAULT_FAVORITES);
+  const [eraserMode, setEraserModeState] = useState<EraserMode>("stroke");
+  const [eraserSize, setEraserSizeState] = useState<number>(10);
   const [penOnly, setPenOnlyState] = useState(false);
   const [snap, setSnapState] = useState(true);
   const [pencil, setPencilState] = useState<PencilSetting>("system");
@@ -76,9 +84,13 @@ export function useInkEditor(initial: InkDoc, { active = true }: { active?: bool
   const pageSizes = useRef(new Map<string, PageSize>());
   // Choices remembered on this device.
   useEffect(() => {
-    const stored = loadPresets();
-    setPresets(stored);
-    setPen({ color: stored[0].color, width: stored[0].width });
+    const stored = loadFavorites();
+    setFavoritesState(stored);
+    const firstPen = stored.find((f) => f.type === "pen");
+    if (firstPen) setPen({ color: firstPen.color, width: firstPen.width });
+    const eraser = loadEraserSetting();
+    setEraserModeState(eraser.mode);
+    setEraserSizeState(eraser.size);
     const textStyle = loadTextStyle();
     if (textStyle) setText(textStyle);
     setRecentColors(loadRecentColors());
@@ -146,13 +158,6 @@ export function useInkEditor(initial: InkDoc, { active = true }: { active?: bool
   const widths = tool === "highlighter" ? HIGHLIGHTER_WIDTHS : tool === "text" ? TEXT_SIZES : PEN_WIDTHS;
   // The free width (or text size) slider of the tool in hand.
   const widthRange = WIDTH_RANGES[tool === "highlighter" ? "highlighter" : tool === "text" ? "text" : "pen"];
-  // A favourite in hand follows changes of colour and width.
-  const updatePreset = ({ color, width }: Partial<Style>) => {
-    if (preset === null || (tool !== "pen" && tool !== "highlighter") || presets[preset]?.type !== tool) return;
-    const next = presets.map((p, i) => (i === preset ? { ...p, ...(color ? { color } : {}), ...(width ? { width } : {}) } : p));
-    setPresets(next);
-    savePresets(next);
-  };
   const setStyle = (patch: Partial<Style>) => {
     if (tool === "highlighter") setHighlighter((s) => ({ ...s, ...patch }));
     else if (tool === "text") {
@@ -160,22 +165,51 @@ export function useInkEditor(initial: InkDoc, { active = true }: { active?: bool
       setText(next);
       saveTextStyle(next);
     } else setPen((s) => ({ ...s, ...patch }));
-    updatePreset(patch);
   };
   // An own colour (the colour picker) is kept among the recent ones.
   const rememberCustomColor = (color: string) => setRecentColors((list) => rememberColor(color, list));
-  const pickPreset = (index: number) => {
-    const p = presets[index];
-    if (!p) return;
-    if (p.type === "highlighter") setHighlighter({ color: p.color, width: p.width });
-    else setPen({ color: p.color, width: p.width });
-    setPreset(index);
-    setTool(p.type);
+  // ---- Favourite pens (lib/ink/favorites.ts) ----
+  // The tool and style in hand as a favourite (null: a tool without style).
+  const current: InkFavorite | null =
+    tool === "pen" || tool === "highlighter" || tool === "text"
+      ? { type: tool, color: style.color, width: style.width, ...(tool === "text" && style.font ? { font: style.font } : {}) }
+      : null;
+  const favorite = favoriteIndex(favorites, current);
+  const setFavorites = (next: InkFavorite[]) => {
+    setFavoritesState(next);
+    saveFavorites(next);
   };
-  const choose = (next: InkTool) => {
-    // Picking the pen or highlighter by hand leaves the favourites alone.
-    if (next !== tool) setPreset(null);
-    setTool(next);
+  const pickFavorite = (index: number) => {
+    const f = favorites[index];
+    if (!f) return;
+    if (f.type === "highlighter") setHighlighter({ color: f.color, width: f.width });
+    else if (f.type === "text") {
+      const next = { color: f.color, width: f.width, ...(f.font ? { font: f.font } : {}) };
+      setText(next);
+      saveTextStyle(next);
+    } else setPen({ color: f.color, width: f.width });
+    setTool(f.type);
+  };
+  // Keeps the tool and style in hand as a favourite (at the end).
+  const addFavorite = () => current && setFavorites(addTo(favorites, current));
+  const removeFavorite = (index: number) => setFavorites(removeFrom(favorites, index));
+  const moveFavorite = (from: number, to: number) => setFavorites(moveIn(favorites, from, to));
+
+  // ---- Eraser (lib/ink/eraser.ts) ----
+  const setEraserMode = (mode: EraserMode) => {
+    setEraserModeState(mode);
+    saveEraserSetting({ mode, size: eraserSize });
+  };
+  const setEraserSize = (value: number) => {
+    const size = clampEraserSize(value);
+    setEraserSizeState(size);
+    saveEraserSetting({ mode: eraserMode, size });
+  };
+  // Everything on a page goes (one undo step).
+  const clearPage = (page: string) => {
+    if (!docRef.current.pages[page]?.length) return;
+    change(page, () => []);
+    if (selection?.page === page) setSelection(null);
   };
 
   const setPenOnly = (on: boolean) => {
@@ -292,7 +326,7 @@ export function useInkEditor(initial: InkDoc, { active = true }: { active?: bool
     dirty: doc !== saved,
     markSaved: setSaved,
     tool,
-    setTool: choose,
+    setTool,
     style,
     setStyle,
     palette,
@@ -300,11 +334,18 @@ export function useInkEditor(initial: InkDoc, { active = true }: { active?: bool
     widthRange,
     recentColors,
     rememberCustomColor,
-    presets,
-    preset,
-    pickPreset,
+    favorites,
+    favorite,
+    pickFavorite,
+    addFavorite,
+    removeFavorite,
+    moveFavorite,
+    canAddFavorite: !!current && favorite < 0 && favorites.length < MAX_FAVORITES,
     eraserMode,
     setEraserMode,
+    eraserSize,
+    setEraserSize,
+    clearPage,
     penOnly,
     setPenOnly,
     snap,
