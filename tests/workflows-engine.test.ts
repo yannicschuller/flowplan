@@ -368,6 +368,18 @@ test("every two weeks keeps its rhythm when republished or resumed; slots while 
   await act({ action: "workflow.pause", pageId });
 });
 
+test("date triggers read a date with a time on the day of the workflow's time zone", async () => {
+  const dateTrigger = node("trigger.record.date", { database: dbId, field: "due", offsetDays: 0, mode: "reached" });
+  const notify = node("notify.person", { to: [owner.id], message: `Heute fällig: {{${dateTrigger.id}.record.title}}`, channels: ["inbox"] });
+  const { pageId } = await workflow("Zoned", { ...chain(dateTrigger, notify), settings: { timeZone: "America/New_York", triggerOnOwnChanges: false, limits: {} } });
+  await run("UPDATE workflows SET activated_at=? WHERE page_id=?", Date.parse("2030-03-01T12:00:00Z"), pageId);
+  // 21:00 on 20 March in New York is already the 21st in UTC.
+  await act({ action: "row.create", pageId: dbId, cells: { title: "Evening", due: "2030-03-21T01:00Z" } });
+  assert.equal(await processWorkflowSchedules(Date.parse("2030-03-20T03:30:00Z")), 0, "still the 19th in New York");
+  assert.equal(await processWorkflowSchedules(Date.parse("2030-03-20T16:00:00Z")), 1, "the 20th in New York");
+  await act({ action: "workflow.pause", pageId });
+});
+
 test("page changes are debounced: one event 2 minutes after the last edit", async () => {
   const trigger = node("trigger.page.changed", { scope: { kind: "workspace" }, what: ["title"] });
   const notify = node("notify.person", { to: [owner.id], message: `Umbenannt: {{${trigger.id}.page.title}}`, channels: ["inbox"] });
