@@ -620,7 +620,16 @@ function drawioPage(model: XmlNode, prefix: string, images: ImageBag) {
     const cell = byId.get(id);
     if (!cell || !cell.vertex || !cell.geo || depth > 50) return { x: 0, y: 0 };
     const parent = offset(cell.parent, depth + 1);
-    const value = { x: parent.x + cell.geo.x, y: parent.y + cell.geo.y };
+    // Relative geometry (ports, labels on a shape): x and y are fractions of
+    // the parent's size, plus an offset in pixels.
+    const box = byId.get(cell.parent);
+    const value =
+      cell.geo.relative && box?.vertex && box.geo
+        ? {
+            x: parent.x + cell.geo.x * box.geo.w + (cell.geo.points.offset?.x || 0),
+            y: parent.y + cell.geo.y * box.geo.h + (cell.geo.points.offset?.y || 0),
+          }
+        : { x: parent.x + cell.geo.x, y: parent.y + cell.geo.y };
     offsets.set(id, value);
     return value;
   };

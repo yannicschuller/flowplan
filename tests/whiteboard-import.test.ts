@@ -283,3 +283,20 @@ test("Excalidraw lines and arrows through several points keep their course", asy
   // Fresh, distinct ids.
   assert.equal(new Set(board.items.map((i) => i.id)).size, board.items.length);
 });
+
+test("draw.io children with relative geometry sit on their parent (ports, labels)", async () => {
+  const xml = `<mxfile><diagram id="p" name="P"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/>
+<mxCell id="box" value="Server" style="rounded=0;" vertex="1" parent="1"><mxGeometry x="100" y="50" width="200" height="100" as="geometry"/></mxCell>
+<mxCell id="port" value="" style="ellipse;" vertex="1" parent="box"><mxGeometry x="1" y="0.5" width="20" height="20" relative="1" as="geometry"><mxPoint x="-10" y="-10" as="offset"/></mxGeometry></mxCell>
+<mxCell id="plain" value="" style="ellipse;" vertex="1" parent="box"><mxGeometry x="10" y="20" width="20" height="20" as="geometry"/></mxCell>
+</root></mxGraphModel></diagram></mxfile>`;
+  const board = await parseBoardFile("ports.drawio", xml);
+  const items = byId(board.items);
+  const box = items.get("p0-box")!,
+    port = items.get("p0-port")!,
+    plain = items.get("p0-plain")!;
+  // On the right edge, vertically centred: 200·1 − 10 and 100·0.5 − 10.
+  assert.deepEqual([port.x - box.x, port.y - box.y], [190, 40]);
+  // Children with absolute geometry stay relative to the parent's corner.
+  assert.deepEqual([plain.x - box.x, plain.y - box.y], [10, 20]);
+});
