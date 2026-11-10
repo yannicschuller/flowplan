@@ -30346,6 +30346,27 @@ label.ws-search input {
   opacity: 0.75;
   font-variant-numeric: tabular-nums;
 }
+/* The shortcut on the undo button takes the toast's own colour, not the
+   page's muted grey and border (kbd above), which vanished on the
+   inverted toast. */
+.toast .toast-kbd {
+  color: inherit;
+  border-color: color-mix(in srgb, currentColor 35%, transparent);
+}
+/* Dark mode: a raised dark card with light text instead of the inverted
+   light one, which glared on the dark page; the error toast keeps red. */
+[data-theme="dark"] .toast:not(.toast-error) {
+  background: #2a2932;
+  color: var(--text);
+  border: 1px solid #3a3843;
+  box-shadow: 0 10px 30px #00000066;
+}
+[data-theme="dark"] .toast:not(.toast-error) .toast-action {
+  border-color: #4a4855;
+}
+[data-theme="dark"] .toast:not(.toast-error) .toast-action:hover {
+  background: #ffffff14;
+}
 .skeleton {
   display: grid;
   gap: 12px;
