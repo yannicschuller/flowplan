@@ -1025,6 +1025,7 @@ const exact: Record<string, string> = {
   "Höchstens 50 E-Mail-Eingänge pro Arbeitsbereich.": "At most 50 inbound e-mail addresses per workspace.",
   "Format nicht unterstützt.": "Format not supported.",
   "Zu viele E-Mails an diese Adresse. Bitte später erneut versuchen.": "Too many e-mails to this address. Please try again later.",
+  "E-Mails wurden verworfen, weil diese Adresse einen Tag lang ihr Stunden- oder Tageslimit erreicht hatte.": "E-mails were dropped because this address had reached its hourly or daily limit for a whole day.",
   "Das Ziel dieses E-Mail-Eingangs ist nicht mehr beschreibbar.": "The target of this inbound address can no longer be written to.",
   "E-Mail zu groß.": "E-mail too large.",
   "Die E-Mail konnte nicht verarbeitet werden.": "The e-mail could not be processed.",

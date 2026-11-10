@@ -23,6 +23,7 @@ import { hiddenFieldsFor, readOnlyFieldIds, stripCells, unwritableFieldIds } fro
 import { pageTagNames } from "./page-properties-server";
 import { isTagField } from "./page-properties";
 import { findAsync } from "./each-async";
+import { dropLiveProjectionsOfRoot } from "./shared-live";
 
 // What the move changes, for the confirmation.
 export async function pageToRecordPlan(user: Identity, pageId: string) {
@@ -170,6 +171,7 @@ export async function pageToRecord(user: Identity, pageId: string, databaseId: s
     // Sharing of the page ends; the record follows the database.
     await run("DELETE FROM grants WHERE resource_id=?", page.id);
     await run("DELETE FROM share_link_pages WHERE page_id=?", page.id);
+    await dropLiveProjectionsOfRoot(page.id);
     await run("DELETE FROM share_links WHERE root_id=?", page.id);
     await run("DELETE FROM publication_pages WHERE page_id=? OR root_id=?", page.id, page.id);
     await run("DELETE FROM publications WHERE page_id=?", page.id);

@@ -17,6 +17,7 @@ import {
 import { cellText } from "./cell-text";
 import type { Field, Identity } from "./types";
 import { isLeader } from "./cluster/leader";
+import { workersPaused } from "./instance-read-only";
 
 // Text blocks of stored document HTML, one entry per paragraph-like element.
 export const htmlParagraphs = (html: string) =>
@@ -238,7 +239,7 @@ export async function startRetentionWorker() {
   if (runtime.flowplanRetentionTimer) return;
   const tick = async () => {
     // Cluster mode: the leader only (lib/cluster/leader.ts).
-    if (!isLeader()) return;
+    if (!isLeader() || (await workersPaused())) return;
     try {
       await pruneSnapshots();
       // Pages, spaces, records and templates after the trash period (#123).

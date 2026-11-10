@@ -20,6 +20,7 @@ import {
 import { rememberTaskTarget } from "./notification-targets";
 import type { Field, Identity, Page } from "./types";
 import { isLeader } from "./cluster/leader";
+import { workersPaused } from "./instance-read-only";
 
 export const MAX_REMINDERS_PER_USER = 1000;
 export {
@@ -280,7 +281,7 @@ export async function startReminderWorker(onFired: () => void) {
   if (runtime.flowplanReminderTimer) return;
   const tick = async () => {
     // Cluster mode: the leader only (lib/cluster/leader.ts).
-    if (!isLeader()) return;
+    if (!isLeader() || (await workersPaused())) return;
     try {
       if (await processDateReminders()) onFired();
     } catch (error) {

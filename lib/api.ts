@@ -1724,6 +1724,7 @@ async function runCommand(
             child,
           );
           await run("DELETE FROM publications WHERE page_id=?", child);
+          await dropLiveProjectionsOfRoot(child);
           await run("DELETE FROM share_links WHERE root_id=?", child);
           await run("DELETE FROM share_link_pages WHERE page_id=?", child);
           await run(
@@ -3784,3 +3785,4 @@ import { ct } from "./content-locale";
 import { TABLE_DATABASE_LIMITS, tableToDatabase } from "./table-database";
 import { ensureBlockIds, linkedBlockIds } from "./block-links";
 import { filterAsync, forEachAsync, mapAsync } from "./each-async";
+import { dropLiveProjectionsOfRoot } from "./shared-live";

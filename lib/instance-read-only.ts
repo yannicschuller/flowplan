@@ -28,6 +28,7 @@ const ALLOWED = [
   /^\/api\/admin\/instance-move$/,
   /^\/api\/move\//,
   /^\/api\/(home\/data|presence|activity|capture\/preview|clip)$/,
+  /^\/api\/mobile\/widgets\/data$/,
   /^\/api\/whiteboards\/[^/]+\/cursor$/,
 ];
 export const readOnlyMessage = (movedTo: string | null) =>
@@ -40,4 +41,15 @@ export async function readOnlyRefusal(path: string): Promise<string | null> {
   if (!state.readOnly) return null;
   if (ALLOWED.some((pattern) => pattern.test(path))) return null;
   return readOnlyMessage(state.movedTo);
+}
+
+// Background workers (started in instrumentation.ts) that change the
+// database or other systems skip their round while the instance is
+// read-only: the frozen source must not take in mail, send notifications,
+// sync calendars or run workflows that would be lost on the new instance
+// (or happen twice). Mail stays unseen and queues stay queued for the
+// target. Derived work (search index, file texts) and the operations and
+// metrics counters keep running, and so does the move itself.
+export async function workersPaused(): Promise<boolean> {
+  return (await readOnlyState()).readOnly;
 }

@@ -1,15 +1,11 @@
 import { NextResponse } from "next/server";
-import { ZodError } from "zod";
 import { HttpError } from "@/lib/auth";
-import { withContentLocale } from "@/lib/content-locale";
-import { localizedMessage } from "@/lib/i18n-errors";
-import { pickLocale, type Locale } from "@/lib/i18n";
+import { withDevice } from "@/lib/mobile-device-route";
 import { captureTargets, MAX_CAPTURE_FILES, saveCapture, spotlightItems } from "@/lib/mobile-capture";
-import { limitWidgets, widgetLocale, widgetUser } from "@/lib/mobile-widgets";
+import { limitWidgets } from "@/lib/mobile-widgets";
 import type { UploadFile } from "@/lib/mobile-widget-actions";
 import { requireBodySize } from "@/lib/upload-safety";
 import { maxUploadMbFor } from "@/lib/user-limits";
-import type { Identity } from "@/lib/types";
 import { withIdempotency } from "@/lib/idempotency";
 
 export const runtime = "nodejs";
@@ -24,28 +20,6 @@ const headers = { "Cache-Control": "no-store" };
 const JSON_LIMIT = 150_000;
 // The whole request with its files; each file has its own limit as well.
 const MAX_REQUEST = 100 * 1024 * 1024;
-
-function failure(e: unknown, locale: Locale) {
-  const status = e instanceof HttpError ? e.status : e instanceof ZodError || e instanceof SyntaxError ? 400 : 500;
-  if (status === 500) console.error(e);
-  const message = status === 500 ? "Fehler" : e instanceof ZodError || e instanceof SyntaxError ? "Ungültige Anfrage." : (e as Error).message;
-  return NextResponse.json({ error: localizedMessage(message, locale) }, { status, headers });
-}
-
-async function withDevice(req: Request, handle: (user: Identity) => Promise<Response>) {
-  const lang = new URL(req.url).searchParams.get("lang");
-  const fallback = pickLocale(null, req.headers.get("accept-language"));
-  const user = await widgetUser(req.headers.get("authorization"));
-  if (!user) return failure(new HttpError(401, "Bitte melde dich an."), fallback);
-  const locale = await widgetLocale(user, lang, req.headers.get("accept-language"));
-  return withContentLocale(locale, async () => {
-    try {
-      return await handle(user);
-    } catch (e) {
-      return failure(e, locale);
-    }
-  });
-}
 
 export async function GET(req: Request, { params }: { params: Promise<{ action: string }> }) {
   const { action } = await params;

@@ -338,6 +338,27 @@ test("read-only mode refuses changes with 423 and lets reads and sign-in through
   await assert.doesNotReject(async () => await checkOrigin(request("/api/command")));
 });
 
+test("background workers pause while the instance is read-only", async () => {
+  const { workersPaused } = await import("../lib/instance-read-only");
+  const { flushWebhooks } = await import("../lib/webhooks");
+  const hook = id(),
+    delivery = id();
+  await run("INSERT INTO webhooks(id,workspace_id,url,events,secret,created_at) VALUES(?,?,?,?,?,?)", hook, wid, "https://hooks.example.test/x", "[]", "dummy-secret", Date.now());
+  await run("INSERT INTO webhook_deliveries(id,webhook_id,body,next_at,created_at) VALUES(?,?,?,?,?)", delivery, hook, "{}", 0, Date.now());
+  const nextAt = async () => (await one<{ next_at: number }>("SELECT next_at FROM webhook_deliveries WHERE id=?", delivery))!.next_at;
+  assert.equal(await workersPaused(), false);
+  for (const state of [{ readOnlyAt: Date.now() }, { movedTo: "https://new.example.test" }]) {
+    await run("INSERT INTO instance_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", MOVE_KEY, JSON.stringify(state));
+    assert.equal(await workersPaused(), true);
+    // The delivery stays queued: not claimed, not sent from the frozen source.
+    await flushWebhooks();
+    assert.equal(await nextAt(), 0);
+  }
+  await run("DELETE FROM instance_settings WHERE key=?", MOVE_KEY);
+  assert.equal(await workersPaused(), false);
+  await run("DELETE FROM webhooks WHERE id=?", hook);
+});
+
 test("step-up: password for password accounts, a fresh sign-in for SSO, never an API token", async () => {
   const local = await admin("local");
   await run("INSERT INTO local_accounts(user_id,email,password_hash,is_admin,email_verified,created_at) VALUES(?,?,?,?,?,?)", local.id, local.email, await hashPassword("korrekt-pferd-batterie"), 1, 1, Date.now());

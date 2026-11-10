@@ -47,6 +47,7 @@ import { noteWorkerRun } from "./ops-events";
 import type { Field, Identity, Page, User } from "./types";
 import { mapAsync } from "./each-async";
 import { isLeader } from "./cluster/leader";
+import { workersPaused } from "./instance-read-only";
 
 export type IssueProvider = "github" | "gitlab" | "forgejo";
 export const ISSUE_PROVIDERS = ["github", "gitlab", "forgejo"] as const;
@@ -1448,7 +1449,11 @@ export function startIssueSyncWorker() {
   if (runtime.flowplanIssueTimer) return;
   // Cluster mode: the poll on the leader only (lib/cluster/leader.ts); the
   // quick pushes below on the instance where the change was made.
-  const poll = () => void (isLeader() && pollAll());
+  const poll = () =>
+    void (isLeader() &&
+      workersPaused().then(async (paused) => {
+        if (!paused) await pollAll();
+      }));
   runtime.flowplanIssueTimer = setInterval(poll, POLL_EVERY);
   runtime.flowplanIssueTimer.unref();
   setTimeout(poll, 90_000).unref();
@@ -1457,7 +1462,11 @@ export function startIssueSyncWorker() {
     clearTimeout(timers.get(pageId));
     const timer = setTimeout(() => {
       timers.delete(pageId);
-      void syncIssues(pageId, { pushOnly: true }).catch((error) => console.error("Issue push failed", error));
+      void workersPaused()
+        .then(async (paused) => {
+          if (!paused) await syncIssues(pageId, { pushOnly: true });
+        })
+        .catch((error) => console.error("Issue push failed", error));
     }, 5000);
     timer.unref();
     timers.set(pageId, timer);

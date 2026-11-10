@@ -15,6 +15,7 @@ import { afterTransaction } from "../db-driver/context";
 import { backoff, executeStep, LEASE_MS, type StepRow } from "./engine";
 import { dispatchEvents } from "./events";
 import { workflowLimits } from "./limits";
+import { workersPaused } from "../instance-read-only";
 import { noteWorkflow } from "./monitoring";
 
 type State = {
@@ -96,6 +97,9 @@ async function pump() {
   }
   s.pumping = true;
   try {
+    // Not while the instance moves (lib/instance-read-only.ts): the steps
+    // stay queued for the new instance.
+    if (await workersPaused()) return;
     do {
       s.again = false;
       await dispatchEvents();
@@ -163,7 +167,15 @@ export function startWorkflowWorker() {
   onBus("workflow:wake", () => wake());
   s.poll = setInterval(() => wake(), Number(process.env.FLOWPLAN_WORKFLOW_POLL_MS) || 5_000);
   s.poll.unref?.();
-  s.sweep = setInterval(() => void sweepLeases().catch(() => {}), Number(process.env.FLOWPLAN_WORKFLOW_SWEEP_MS) || 60_000);
+  s.sweep = setInterval(
+    () =>
+      void workersPaused()
+        .then(async (paused) => {
+          if (!paused) await sweepLeases();
+        })
+        .catch(() => {}),
+    Number(process.env.FLOWPLAN_WORKFLOW_SWEEP_MS) || 60_000,
+  );
   s.sweep.unref?.();
   onShutdown(() => void stopWorkflowWorker());
   void import("./schedules").then((m) => m.startWorkflowSchedules());

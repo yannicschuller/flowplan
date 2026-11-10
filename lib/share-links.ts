@@ -5,6 +5,7 @@ import { inPinJournal, lockedPageIds, pinJournalPageIds, PIN_JOURNAL_NOT_SHARED,
 import { HttpError } from "./auth";
 import { protectionChanges } from "./share-access";
 import type { Identity, Page } from "./types";
+import { dropLiveProjections } from "./shared-live";
 
 export type ShareLink = {
   token: string;
@@ -36,11 +37,8 @@ export async function manageShareLink(
   await requireUnlocked(user, root);
   if (input.action !== "share.revoke" && root.kind === "workflow") throw new HttpError(409, "Workflow-Seiten lassen sich nicht veröffentlichen oder per Link teilen.");
   if (input.action === "share.revoke") {
-    await run(
-      "DELETE FROM share_links WHERE token=? AND root_id=?",
-      z.string().uuid().parse(input.token),
-      pageId,
-    );
+    const token = z.string().uuid().parse(input.token);
+    if ((await run("DELETE FROM share_links WHERE token=? AND root_id=?", token, pageId)).changes) await dropLiveProjections([token]);
     return { ok: true };
   }
   // Password and end date of an existing link (lib/share-access.ts).

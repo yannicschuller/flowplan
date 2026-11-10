@@ -18,6 +18,7 @@ import { notePushResult, type PushResult } from "./metrics";
 import { NOTIFICATION_CATEGORIES, notificationCategory, openApprovalOf, type NotificationCategory } from "./notification-targets";
 import { encryptForDevice, plaintextJson, pushContent, relayConfig, relayTokenAad, sendBatched, sendToRelay, type RelayCategory, type RelayMessage, type RelayResult, type RelaySender } from "./push-relay";
 import { forEachAsync } from "./each-async";
+import { workersPaused } from "./instance-read-only";
 const runtime = globalThis as unknown as {
   flowplanPushTimer?: ReturnType<typeof setInterval>;
   flowplanPushRun?: Promise<void>;
@@ -238,6 +239,7 @@ export async function flushPushQueue(
   sendExpo: ExpoSender = sendExpoPush,
   sendRelay: RelaySender = sendToRelay,
 ) {
+  if (await workersPaused()) return;
   const now = Date.now();
   await run(
     "DELETE FROM push_subscriptions WHERE session_token IN (SELECT token FROM sessions WHERE expires<=?) OR user_id IN (SELECT id FROM users WHERE disabled=1)",

@@ -40,6 +40,7 @@ import {
   type LdapEntry,
 } from "./ldap";
 import { isLeader } from "./cluster/leader";
+import { workersPaused } from "./instance-read-only";
 
 type LdapAccount = { user_id: string; dn: string; username: string; groups_json: string; is_admin: number; locked: number; synced_at: number | null };
 
@@ -273,7 +274,9 @@ export function startLdapSyncWorker() {
   // Cluster mode: the leader only (lib/cluster/leader.ts).
   const tick = () =>
     isLeader() &&
-    void syncLdapAccounts().catch((error) => console.error("LDAP sync failed", error instanceof Error ? error.message : error));
+    void (async () => {
+      if (!(await workersPaused())) await syncLdapAccounts();
+    })().catch((error) => console.error("LDAP sync failed", error instanceof Error ? error.message : error));
   setTimeout(tick, 60_000).unref?.();
   runtime.flowplanLdapTimer = setInterval(tick, 3600_000);
   runtime.flowplanLdapTimer.unref?.();

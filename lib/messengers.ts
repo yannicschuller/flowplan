@@ -72,6 +72,7 @@ import {
 } from "./messenger-send";
 import { filterAsync } from "./each-async";
 import { isLeader } from "./cluster/leader";
+import { workersPaused } from "./instance-read-only";
 
 export const MAX_ATTEMPTS = 6;
 export const DISABLE_AFTER = 3;
@@ -662,6 +663,7 @@ async function handle(job: Job, bot: Bot | null, services: Record<MessengerServi
 }
 
 export async function flushMessengerQueue(now = Date.now()) {
+  if (await workersPaused()) return;
   await run("DELETE FROM messenger_deliveries WHERE created_at<?", now - 7 * DAY);
   const jobs = await all<Job>(
     `SELECT t.*,d.id delivery_id,d.attempts,d.notification_id,d.title d_title,d.body d_body,d.url d_url,
@@ -898,7 +900,7 @@ export async function pollTelegram(timeout = 20, now = Date.now()) {
 export function ensureTelegramPolling() {
   if (runtime.flowplanTelegramPoll || runtime.flowplanMessengerHttp) return;
   runtime.flowplanTelegramPoll = (async () => {
-    while (await pendingLinks()) {
+    while (!(await workersPaused()) && (await pendingLinks())) {
       try {
         await pollTelegram(20);
       } catch {
@@ -1064,7 +1066,7 @@ export function startMessengerWorker() {
     void dispatchMessengers();
     // A code may have been made by another process (several replicas).
     // Telegram's long poll runs on the leader only (one getUpdates at a time).
-    if (!isLeader()) return;
+    if (!isLeader() || (await workersPaused())) return;
     try {
       if (await pendingLinks()) ensureTelegramPolling();
     } catch (error) {

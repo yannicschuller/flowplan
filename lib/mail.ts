@@ -15,6 +15,7 @@ import { notificationUrl } from "./page-location";
 import { LOCKED_NOTICE, lockedNotification } from "./journal-extras";
 import { mapAsync } from "./each-async";
 import { isLeader } from "./cluster/leader";
+import { workersPaused } from "./instance-read-only";
 
 export type MailConfig = {
   host: string;
@@ -341,7 +342,7 @@ export async function queueNotificationDigests(now = Date.now()) {
 // given up after 8 attempts.
 export async function flushMailQueue(now = Date.now()) {
   const config = mailConfig();
-  if (!config) return;
+  if (!config || (await workersPaused())) return;
   const due = await all<{ id: string; recipient: string; subject: string; text: string; html: string; attempts: number }>(
     "SELECT id,recipient,subject,text,html,attempts FROM mail_queue WHERE sent_at IS NULL AND attempts<8 AND next_at<=? ORDER BY next_at LIMIT 50",
     now,
@@ -381,6 +382,7 @@ export function dispatchMail() {
 export function startMailWorker() {
   if (runtime.flowplanMailTimer || !mailConfig()) return;
   runtime.flowplanMailTimer = setInterval(async () => {
+    if (await workersPaused()) return;
     // Digests are put together by the leader (cluster mode); every instance
     // sends from the queue (each message is claimed before it goes).
     if (isLeader()) {
