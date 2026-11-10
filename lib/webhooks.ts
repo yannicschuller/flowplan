@@ -381,13 +381,19 @@ export async function emitWebhook(
           : {}),
       };
   }
-  let notice: Notice | undefined;
+  // One notice per reader: titles of related records as they may read them.
+  const notices = new Map<string, Notice>();
   for (const hook of hooks) {
     if (hook.id === runtime.flowplanHookQuiet) continue;
     if (!(JSON.parse(hook.events) as string[]).includes(event)) continue;
     if (hook.page_id && hook.page_id !== data.pageId) continue;
-    if (data.pageId && !(await readerMaySee(await hookReader(hook), data.pageId, data.rowId))) continue;
-    await queueDelivery(hook, workspaceId, event, data, async () => (notice ??= (await buildNotice(event, data, actor))));
+    const reader = await hookReader(hook);
+    if (data.pageId && !(await readerMaySee(reader, data.pageId, data.rowId))) continue;
+    await queueDelivery(hook, workspaceId, event, data, async () => {
+      const key = reader?.id || "";
+      if (!notices.has(key)) notices.set(key, await buildNotice(event, data, actor, reader));
+      return notices.get(key)!;
+    });
     queued++;
   }
   if (queued) queueMicrotask(() => void dispatchWebhooks());
