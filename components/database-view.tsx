@@ -2073,8 +2073,11 @@ export default function DatabaseView({
                   pageId: f.relationPage,
                   rowId: rid,
                 })}
+                // The record's own icon in front of its title (#190).
+                className={target.icon ? "relation-with-icon" : undefined}
                 onClick={(e) => e.stopPropagation()}
               >
+                {target.icon && <PageIcon name={target.icon} size={15} className="relation-icon" />}
                 {cellText(target.cells.title) || t("Ohne Titel", "Untitled")}
               </a>
             ) : (

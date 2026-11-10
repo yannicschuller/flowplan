@@ -3665,6 +3665,21 @@ tr:hover .row-open,
 .relation-links a:hover {
   text-decoration: underline;
 }
+/* A related record with an icon of its own (#190): the icon in front of
+   the title; links without one stay as they were. */
+.relation-links a.relation-with-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.relation-links a > .relation-icon {
+  margin: 0;
+  vertical-align: baseline;
+}
+/* In the picker: closer to the title than the checkbox's gap. */
+.relation-options .relation-icon {
+  margin-right: -4px;
+}
 /* Link properties (url, email, phone; issue #67): a shortened link that
    opens, the full value as title; a pencil to edit on hover or focus,
    always shown on touch screens. */

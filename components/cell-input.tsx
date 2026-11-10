@@ -19,6 +19,7 @@ import { aliasList } from "@/lib/aliases";
 import { isLinkField } from "@/lib/cell-links";
 import { LinkInput } from "./link-cell";
 import { TagCellInput } from "./tag-cell-input";
+import { PageIcon } from "./ui";
 export type CellFile = { url: string; name: string; mime: string };
 // The editor of formatted text (#126) loads with the first text cell that
 // is edited (TipTap is shared with the comment composer's chunk). Without a
@@ -466,6 +467,8 @@ function RelationPicker({
                 )
               }
             />
+            {/* The record's own icon, as in the relation cell (#190). */}
+            {r.icon && <PageIcon name={r.icon} size={15} className="relation-icon" />}
             {cellText(r.cells.title) || t("Ohne Titel", "Untitled")}
           </label>
         ))}
