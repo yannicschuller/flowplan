@@ -998,6 +998,12 @@ const exact: Record<string, string> = {
   "Ungültige Fläche.": "Invalid drawing surface.",
   "Diese Seite hat keine Handschrift.": "This page has no handwriting.",
   "Ein Notizbuch braucht mindestens ein Blatt.": "A notebook needs at least one sheet.",
+  // The page overview of notebooks (lib/notebook-organize.ts).
+  "Ein Titel gehört zu einem Blatt.": "A title belongs to one sheet.",
+  "Bitte einen Titel angeben.": "Please enter a title.",
+  "Das Blatt ist nicht mehr im Papierkorb.": "The sheet is no longer in the trash.",
+  "Das ist dasselbe Notizbuch.": "That is the same notebook.",
+  "In verschlüsselten Bereichen nicht möglich.": "Not possible in encrypted spaces.",
   "Die Blätter haben sich inzwischen geändert.": "The sheets have changed in the meantime.",
   "Nur PDFs lassen sich als Notizbuch öffnen.": "Only PDFs can be opened as a notebook.",
   "Zu viele Zeichnungen auf dieser Seite.": "Too many drawings on this page.",

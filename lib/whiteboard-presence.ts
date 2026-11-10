@@ -1,4 +1,4 @@
-// Live cursors on whiteboards: positions go through memory and are pushed to
+// Live cursors on whiteboards (and the presenter of a notebook): positions go through memory and are pushed to
 // everyone on the same board (server-sent events), no database round trip.
 // One hub per process; in cluster mode cursor moves and board signals also
 // go to the other instances (lib/cluster/bus.ts), whose hubs keep the same
@@ -16,6 +16,12 @@ export type BoardCursor = {
   laser?: boolean;
   // The visible part of the board (sent while others follow this person).
   view?: BoardView;
+  // Notebooks (components/notebook/use-notebook-live.ts): the sheet the
+  // point is on (x, y in its points) and, while presenting, since when.
+  sheet?: string;
+  present?: number;
+  // The presenter's fading marker (drawn like the laser, as a highlighter).
+  mark?: boolean;
 };
 type Listener = { userId: string; send: (event: string) => void };
 type Board = { cursors: Map<string, BoardCursor>; listeners: Set<Listener> };
@@ -52,7 +58,7 @@ function sweep(pageId: string, b: Board) {
   if (!b.cursors.size && !b.listeners.size) boards.delete(pageId);
 }
 
-type Point = { x: number; y: number; laser?: boolean; view?: BoardView };
+type Point = { x: number; y: number; laser?: boolean; view?: BoardView; sheet?: string; present?: number; mark?: boolean };
 const bus = globalThis as unknown as { flowplanBoardBus?: boolean };
 if (!bus.flowplanBoardBus) {
   bus.flowplanBoardBus = true;
@@ -83,6 +89,9 @@ function moveHere(pageId: string, user: { id: string; name: string }, point: Poi
       y: Math.round(point.y),
       at: Date.now(),
       ...(point.laser ? { laser: true } : {}),
+      ...(point.sheet ? { sheet: point.sheet } : {}),
+      ...(point.present ? { present: point.present } : {}),
+      ...(point.mark ? { mark: true } : {}),
       ...(point.view
         ? {
             view: {

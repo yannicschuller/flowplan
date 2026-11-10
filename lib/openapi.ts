@@ -70,7 +70,9 @@ export const commandActionNames = [
   "row.template.save", "row.template.default", "row.template.delete", "row.template.apply", "row.trash.restore", "row.trash.purge",
   "rows.import", "rows.bulk", "rows.transfer", "timeline.cascade", "timeline.link",
   "citation.import", "citation.remove", "whiteboard.sync", "whiteboard.toRecords", "dashboard.save",
-  "notebook.paper", "notebook.sheet.add", "notebook.sheet.duplicate", "notebook.sheet.delete", "notebook.sheet.move", "notebook.sheet.paper", "notebook.import", "search.save", "search.delete",
+  "notebook.paper", "notebook.sheet.add", "notebook.sheet.duplicate", "notebook.sheet.delete", "notebook.sheet.move", "notebook.sheet.paper", "notebook.import",
+  "notebook.sheet.meta", "notebook.sheet.links", "notebook.outline", "notebook.outline.add", "notebook.sheets.duplicate", "notebook.sheets.delete",
+  "notebook.trash.restore", "notebook.sheets.transfer", "search.save", "search.delete",
   "collection.create", "collection.update", "collection.delete", "collection.restore", "collection.duplicate", "collection.reorder",
   "thread.create", "thread.reply", "thread.resolve", "thread.edit", "thread.deleteMessage", "thread.react",
   "comment.create", "comment.resolve", "comment.react", "reminder.set",
@@ -723,7 +725,7 @@ export const commandActions: ActionDoc[] = [
     action: "notebook.sheet.add",
     summary: "Add sheets to a notebook page",
     description:
-      "Needs editor rights. Adds `count` (default 1) empty sheets after the sheet `after` (null or missing: at the end; `at` = start: before the first sheet), optionally with their own `paper` (template blank, lined-college, lined-wide, grid, dotted, cornell, music; size a4 or letter; orientation portrait or landscape; color light or dark). The ink of a sheet is read and written with GET/POST /api/pages/{id}/ink?surface={sheetId}. Other notebook actions: notebook.sheet.duplicate {sheetId}, notebook.sheet.delete {sheetId}, notebook.sheet.move {order}, notebook.sheet.paper {sheetIds, paper|null}, notebook.paper {paper, all?}, notebook.import {fileId (a PDF attached to the page), pages: [{width, height}] (at most 500), after? or at = start, replaceEmpty?} – each PDF page becomes a sheet with that page as background; all answer with the notebook's paper and sheets.",
+      "Needs editor rights. Adds `count` (default 1) empty sheets after the sheet `after` (null or missing: at the end; `at` = start: before the first sheet), optionally with their own `paper` (template blank, lined-college, lined-wide, grid, dotted, cornell, music; size a4 or letter; orientation portrait or landscape; color light or dark). The ink of a sheet is read and written with GET/POST /api/pages/{id}/ink?surface={sheetId}. Other notebook actions: notebook.sheet.duplicate {sheetId}, notebook.sheet.delete {sheetId}, notebook.sheet.move {order}, notebook.sheet.paper {sheetIds, paper|null}, notebook.paper {paper, all?}, notebook.import {fileId (a PDF attached to the page), pages: [{width, height}] (at most 500), after? or at = start, replaceEmpty?} – each PDF page becomes a sheet with that page as background. Organising: notebook.sheet.meta {sheetIds, title? (one sheet), bookmark?}, notebook.sheet.links {sheetId, links: [{id, x, y, w, h, label?, target: {sheet} | {page}}]}, notebook.outline {outline: [{id, sheet, title, level 0–2, y?}]} (the table of contents), notebook.outline.add {sheetId, title, level?, y?}, notebook.sheets.duplicate {sheetIds}, notebook.sheets.delete {sheetIds} (into the notebook's trash, kept 30 days; answers `trashed`), notebook.trash.restore {trashIds}, notebook.sheets.transfer {sheetIds, targetPageId, mode copy|move, after? or at = start} (editor rights on the target, and on the source to move). All answer with the notebook's paper, sheets (with title, bookmark, links where set) and outline.",
     input: z.object({
       action: z.literal("notebook.sheet.add"),
       pageId: uuid,
@@ -742,7 +744,18 @@ export const commandActions: ActionDoc[] = [
     result: z.object({
       created: z.array(z.string()),
       paper: z.object({ template: z.string(), size: z.string(), orientation: z.string(), color: z.string() }),
-      sheets: z.array(z.object({ id: z.string(), position: z.number(), paper: z.object({}).passthrough(), background: z.object({}).passthrough().nullable() })),
+      sheets: z.array(
+        z.object({
+          id: z.string(),
+          position: z.number(),
+          paper: z.object({}).passthrough(),
+          background: z.object({}).passthrough().nullable(),
+          title: z.string().optional(),
+          bookmark: z.boolean().optional(),
+          links: z.array(z.object({}).passthrough()).optional(),
+        }),
+      ),
+      outline: z.array(z.object({ id: z.string(), sheet: z.string(), title: z.string(), level: z.number(), y: z.number().optional() })).optional(),
     }),
   },
   {
