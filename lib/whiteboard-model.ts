@@ -237,7 +237,7 @@ export function connectorPoint(
 export function sharedArray(map: Y.Map<unknown>, key: string): Y.Array<unknown> {
   const value = map.get(key);
   if (value instanceof Y.Array) return value as Y.Array<unknown>;
-  const list = Y.Array.from<unknown>(Array.isArray(value) ? value : []);
+  const list = Y.Array.from(Array.isArray(value) ? (value as object[]) : []) as Y.Array<unknown>;
   map.set(key, list);
   return list;
 }
