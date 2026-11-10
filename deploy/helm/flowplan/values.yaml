@@ -196,8 +196,10 @@ serviceAccount:
 podAnnotations: {}
 podLabels: {}
 
-# The image runs as the user "node" (uid/gid 1000). Another runAsUser works
-# as well: it writes only to /app/data, /tmp and /app/.next/cache.
+# Flowplan runs as the user "node" (uid/gid 1000). Another runAsUser works
+# as well: it writes only to /app/data, /tmp and /app/.next/cache. Keep
+# runAsUser set: the image declares no USER (it starts as root to apply
+# PUID/PGID in Docker, #193), so runAsNonRoot alone would refuse to start.
 podSecurityContext:
   runAsNonRoot: true
   runAsUser: 1000

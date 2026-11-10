@@ -12,6 +12,8 @@
 // On PostgreSQL it also rebuilds the trigram indexes (REINDEX), e.g. after
 // pg_trgm was installed or upgraded.
 // db-dialect-scan: sqlite-only file – the SQLite branch edits the file directly.
+// First: started with docker exec as root, continue as PUID:PGID (#193).
+import "./drop-root.mjs";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 

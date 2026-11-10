@@ -18,6 +18,13 @@ import { closeSync, createReadStream, createWriteStream, openSync, readFileSync,
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
+// Started with docker exec as root, continue as PUID:PGID (#193); copied
+// alone, without drop-root.mjs next to it, the script runs as it was started.
+if (process.getuid?.() === 0 && process.env.FLOWPLAN_DROP_ROOT === "1") {
+  await import(new URL("./drop-root.mjs", import.meta.url).href).catch((error) => {
+    if (error?.code !== "ERR_MODULE_NOT_FOUND") throw error;
+  });
+}
 const fail = (message) => {
   console.error(message);
   process.exit(1);

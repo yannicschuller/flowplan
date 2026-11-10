@@ -1,12 +1,14 @@
-// Who runs the container (#193): the image's own user node (UID 1000), any
-// UID/GID from Compose's user: "UID:GID", or root (user: "0:0") handing the
-// data folder to PUID:PGID and switching to that user with setpriv – the app
-// never runs as root. Docker is not available in the tests: the entrypoint
-// runs in a scratch folder with stubs for id, stat, chown, setpriv and node.
+// Who runs the container (#193), like the linuxserver.io images: the image
+// starts as root (no USER) and the entrypoint hands the data folder to
+// PUID:PGID (default 1000:1000) and switches to that user with setpriv – the
+// app never runs as root. Any UID/GID from Compose's user: "UID:GID" (or
+// Kubernetes' runAsUser) runs as that user directly. Docker is not available
+// in the tests: the entrypoint runs in a scratch folder with stubs for id,
+// stat, chown, setpriv and node.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -79,9 +81,11 @@ function run(env: Record<string, string>, prepare?: (data: string) => void): Run
   }
 }
 
-test("the image keeps USER node, has setpriv and a Next cache any UID can write", () => {
-  assert.match(dockerfile, /^USER node$/m);
-  assert.doesNotMatch(dockerfile, /^USER (root|0)\b/m);
+test("the image declares no USER (starts as root for PUID/PGID), has setpriv and a Next cache any UID can write", () => {
+  assert.doesNotMatch(dockerfile, /^USER\b/m);
+  assert.match(dockerfile, /^ENV FLOWPLAN_DROP_ROOT=1$/m);
+  assert.match(dockerfile, /COPY --chmod=644 scripts\/drop-root\.mjs \/app\/drop-root\.mjs/);
+  assert.match(dockerfile, /COPY --chmod=644 scripts\/drop-root\.mjs \/app\/scripts\/drop-root\.mjs/);
   assert.match(dockerfile, /RUN setpriv --version/);
   assert.match(dockerfile, /mkdir -p \/app\/\.next\/cache && chown node:node \/app\/\.next\/cache && chmod 1777 \/app\/\.next\/cache/);
   // Only the cache: the app code is never made writable.
@@ -89,18 +93,18 @@ test("the image keeps USER node, has setpriv and a Next cache any UID can write"
   assert.match(entrypoint, /exec setpriv --reuid="\$uid" --regid="\$gid" --clear-groups -- "\$0" "\$@"/);
 });
 
-test("the Helm chart still runs as UID 1000 without root", () => {
+test("the Helm chart still runs as UID 1000 without root (runAsUser is needed: the image has no USER)", () => {
   assert.match(helmValues, /runAsNonRoot: true\s*\n\s+runAsUser: 1000\s*\n\s+runAsGroup: 1000/);
 });
 
-test("started as node: no switch, no chown, the server runs as 1000", () => {
+test("started as node (user: or runAsUser 1000): no switch, no chown, the server runs as 1000", () => {
   const r = run({ FAKE_UID: "1000", FAKE_GID: "1000" });
   assert.equal(r.status, 0, r.stderr);
   assert.deepEqual(r.log, ["node server.js uid=1000 gid=1000 home=<dir>/home"]);
   assert.equal(r.stderr, "");
 });
 
-test("started as root without PUID/PGID: data folder to 1000:1000 if needed, then node via setpriv", () => {
+test("the default start (root) without PUID/PGID: data folder to 1000:1000 if needed, then node via setpriv", () => {
   const r = run({ FAKE_UID: "0", FAKE_GID: "0", FAKE_OWNER: "0:0" });
   assert.equal(r.status, 0, r.stderr);
   assert.deepEqual(r.log.slice(0, 2), [
@@ -121,7 +125,7 @@ test("started as root, data folder already belongs to the target: no chown", () 
   ]);
 });
 
-test("started as root with PUID/PGID: chown once, then the server as PUID:PGID with HOME in /tmp", () => {
+test("the default start (root) with PUID/PGID: chown once, then the server as PUID:PGID with HOME in /tmp", () => {
   const r = run({ FAKE_UID: "0", FAKE_GID: "0", FAKE_OWNER: "1000:1000", PUID: "1001", PGID: "1002" });
   assert.equal(r.status, 0, r.stderr);
   assert.deepEqual(r.log, [
@@ -142,13 +146,19 @@ test("PGID defaults to PUID", () => {
   ]);
 });
 
-test("started as root: a restore staged by root is handed over although the top folder matches", () => {
-  const r = run(
-    { FAKE_UID: "0", FAKE_GID: "0", FAKE_OWNER: "1001:1001", FAKE_STAGED_OWNER: "0:0", PUID: "1001" },
-    (data) => mkdirSync(join(data, "restore-pending")),
-  );
-  assert.equal(r.status, 0, r.stderr);
-  assert.equal(r.log[0], "chown -R 1001:1001 <dir>/data/restore-pending");
+test("the default start (root): something root left directly in the data folder is handed over although the folder matches", () => {
+  for (const name of ["restore-pending", "move-incoming"]) {
+    const r = run({ FAKE_UID: "0", FAKE_GID: "0", FAKE_OWNER: "1001:1001", FAKE_STAGED_OWNER: "0:0", PUID: "1001" }, (data) => mkdirSync(join(data, name)));
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(r.log.slice(0, 2), ["chown -R 1001:1001 <dir>/data", "setpriv uid=1001 gid=1001 clear-groups=yes home=/tmp"], name);
+  }
+  // Everything matches, also the entries in the folder: no chown.
+  const r = run({ FAKE_UID: "0", FAKE_GID: "0", FAKE_OWNER: "1001:1001", PUID: "1001" }, (data) => {
+    mkdirSync(join(data, "uploads"));
+    writeFileSync(join(data, "flowplan.sqlite"), "");
+    writeFileSync(join(data, ".flowplan.sqlite-litestream"), "");
+  });
+  assert.equal(r.log.filter((line) => line.startsWith("chown")).length, 0);
 });
 
 test("PUID/PGID must be numbers other than 0", () => {
@@ -163,11 +173,12 @@ test("PUID/PGID must be numbers other than 0", () => {
   }
 });
 
-test("started as another user with PUID/PGID: one hint, then the normal start", () => {
+test("started via user: as another user with PUID/PGID: one hint, then the normal start", () => {
   const r = run({ FAKE_UID: "1000", FAKE_GID: "1000", PUID: "1001", PGID: "1001" });
   assert.equal(r.status, 0, r.stderr);
   assert.equal(r.stderr.trim().split("\n").length, 1);
-  assert.match(r.stderr, /PUID\/PGID are ignored: the container runs as UID 1000, GID 1000, not as root\. Set user: "0:0" for PUID\/PGID, or simply user: "1001:1001"\./);
+  assert.match(r.stderr, /PUID\/PGID are ignored: the container was started as UID 1000, GID 1000 \(user:, --user or runAsUser\)\. PUID\/PGID need the image's default start: remove user:, or set only user: "1001:1001"\./);
+  assert.doesNotMatch(r.stderr, /0:0/);
   assert.deepEqual(r.log, ["node server.js uid=1000 gid=1000 home=<dir>/home"]);
   // Matching the current user: nothing to say.
   const same = run({ FAKE_UID: "1001", FAKE_GID: "1001", PUID: "1001" });
@@ -190,12 +201,78 @@ test("a data folder the user cannot write: the message names user:, PUID/PGID, c
   assert.deepEqual(r.log, []);
   assert.match(r.stderr, /cannot write to its data folder .* \(running as UID 1001, GID 1001; the folder belongs to 1000:1000\)/);
   assert.match(r.stderr, /user: "1000:1000" in Compose/);
-  assert.match(r.stderr, /user: "0:0" with PUID and PGID/);
+  assert.match(r.stderr, /PUID and PGID without user:/);
+  assert.doesNotMatch(r.stderr, /"0:0"/);
   assert.match(r.stderr, /sudo chown -R 1000:1000/);
   assert.match(r.stderr, /named Docker volume/);
 });
 
 test("the write check's message is in the entrypoint", () => {
-  assert.match(entrypoint, /user: \\"0:0\\" with PUID and PGID/);
+  assert.match(entrypoint, /PUID and PGID without user:/);
+  assert.doesNotMatch(entrypoint, /user: \\?"0:0/);
   assert.match(entrypoint, /docs\.flowplan\.org\/en\/coolify-and-proxy#volume-permissions/);
+});
+
+test("the user switch comes before everything else in the entrypoint", () => {
+  const at = (needle: string) => {
+    const i = entrypoint.indexOf(needle);
+    assert.ok(i >= 0, needle);
+    return i;
+  };
+  const exec = at('exec setpriv --reuid="$uid"');
+  for (const later of ["restore-pending/READY", "litestream restore", "exec node server.js", "RENDER_EXTERNAL_URL", ".write-test"]) assert.ok(at(later) > exec, later);
+});
+
+test("the default start (root) with PUID=0 or PGID=0: refused, nothing runs, nothing changes owner", () => {
+  const refused: Record<string, string>[] = [{ PUID: "0" }, { PUID: "1001", PGID: "0" }, { PGID: "0" }];
+  for (const env of refused) {
+    const r = run({ FAKE_UID: "0", FAKE_GID: "0", FAKE_OWNER: "0:0", ...env });
+    assert.equal(r.status, 1, JSON.stringify(env));
+    assert.deepEqual(r.log, []);
+  }
+});
+
+// The helper scripts drop root themselves (docker exec runs as root now).
+const dropRoot = await import("../scripts/drop-root.mjs");
+
+test("drop-root: PUID:PGID as the entrypoint (default 1000:1000, PGID defaults to PUID, 0 refused)", () => {
+  assert.deepEqual(dropRoot.dropRootTarget({}), { uid: 1000, gid: 1000 });
+  assert.deepEqual(dropRoot.dropRootTarget({ PUID: "1001" }), { uid: 1001, gid: 1001 });
+  assert.deepEqual(dropRoot.dropRootTarget({ PUID: "1001", PGID: "1002" }), { uid: 1001, gid: 1002 });
+  const invalid: Record<string, string>[] = [{ PUID: "0" }, { PGID: "0" }, { PUID: "abc" }, { PUID: "-5" }, { PUID: "00" }];
+  for (const env of invalid) assert.match(String(dropRoot.dropRootTarget(env).error), /other than 0/, JSON.stringify(env));
+});
+
+test("every script the image runs by hand imports drop-root first", () => {
+  for (const file of ["scripts/move.mjs", "scripts/db-migrate.mjs", "scripts/db-search-rebuild.mjs", "scripts/db-schema.mjs"]) {
+    const source = readFileSync(file, "utf8");
+    const firstImport = source.match(/^import .*$/m)?.[0];
+    assert.equal(firstImport, 'import "./drop-root.mjs";', file);
+  }
+  // decrypt.mjs also works copied alone: a guarded import before any file access.
+  const decrypt = readFileSync("scripts/decrypt.mjs", "utf8");
+  assert.ok(decrypt.indexOf('import(new URL("./drop-root.mjs"') < decrypt.indexOf("statSync(source)"));
+});
+
+test("drop-root as root in the image: continues as PUID:PGID and hands the data folder over; elsewhere nothing", { skip: process.getuid?.() !== 0 && "needs root" }, () => {
+  const dir = mkdtempSync(join(tmpdir(), "flowplan-drop-root-"));
+  try {
+    const data = join(dir, "data");
+    mkdirSync(data);
+    chmodSync(dir, 0o755);
+    const probe = `import "${join(process.cwd(), "scripts/drop-root.mjs")}"; console.log(process.getuid() + ":" + process.getgid() + ":" + process.getgroups().filter((g) => g !== process.getgid()).length);`;
+    const go = (env: Record<string, string>) =>
+      spawnSync(process.execPath, ["--input-type=module", "-e", probe], { encoding: "utf8", env: { NODE_ENV: "production", PATH: process.env.PATH, FLOWPLAN_DATA_DIR: data, ...env } });
+    const dropped = go({ FLOWPLAN_DROP_ROOT: "1", PUID: "1001", PGID: "1002" });
+    assert.equal(dropped.status, 0, dropped.stderr);
+    assert.equal(dropped.stdout.trim(), "1001:1002:0");
+    assert.equal(`${statSync(data).uid}:${statSync(data).gid}`, "1001:1002");
+    assert.equal(go({ FLOWPLAN_DROP_ROOT: "1" }).stdout.trim(), "1000:1000:0");
+    assert.equal(go({}).stdout.trim().split(":").slice(0, 2).join(":"), "0:0", "outside the image: unchanged");
+    const refused = go({ FLOWPLAN_DROP_ROOT: "1", PUID: "0" });
+    assert.equal(refused.status, 1);
+    assert.match(refused.stderr, /other than 0/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

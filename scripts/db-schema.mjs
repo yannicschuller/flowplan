@@ -10,6 +10,9 @@
 //   DATABASE_URL=postgres://… node /app/scripts/db-schema.mjs     (in the image)
 //
 // FLOWPLAN_PG_SCHEMA picks the schema (namespace; default public).
+// First: started as root (docker exec, the cluster compose's schema
+// service), continue as PUID:PGID (#193).
+import "./drop-root.mjs";
 import { existsSync, readFileSync } from "node:fs";
 import pg from "pg";
 
