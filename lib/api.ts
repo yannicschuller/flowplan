@@ -2598,7 +2598,19 @@ async function runCommand(
       case "notebook.sheet.move":
       case "notebook.sheet.paper":
       case "notebook.import":
+      // The page overview (lib/notebook-organize.ts).
+      case "notebook.sheet.meta":
+      case "notebook.sheet.links":
+      case "notebook.outline":
+      case "notebook.outline.add":
+      case "notebook.sheets.duplicate":
+      case "notebook.sheets.delete":
+      case "notebook.trash.restore":
         result = await notebookCommand(user, await write(), action, b);
+        break;
+      // Copy or move sheets into another notebook: rights on both checked there.
+      case "notebook.sheets.transfer":
+        result = await transferSheets(user, b);
         break;
       case "row.access":
         result = await setRowAccess(user, b);
@@ -3649,6 +3661,14 @@ export const editActions = new Set([
   "notebook.sheet.paper",
   "notebook.paper",
   "notebook.import",
+  "notebook.sheet.meta",
+  "notebook.sheet.links",
+  "notebook.outline",
+  "notebook.outline.add",
+  "notebook.sheets.duplicate",
+  "notebook.sheets.delete",
+  "notebook.trash.restore",
+  "notebook.sheets.transfer",
   "row.recurrence",
   "row.repeat",
   "row.detachOccurrence",
@@ -3775,6 +3795,7 @@ import { purgeTrashedFile, restoreFile, trashFiles, trashUnusedFiles } from "./f
 import { emptyTrash, purgeTemplate, purgeTrashedPage, restoreTrashedPage, trashDays } from "./trash";
 import { dashboardData, saveDashboard } from "./dashboard";
 import { notebookArchive, notebookCommand, notebookData } from "./notebook";
+import { transferSheets } from "./notebook-organize";
 import { quotaCheckpoint, setWorkspaceQuota } from "./instance-ops";
 import { rowChanged, rowCreated } from "./automations";
 import { workflowCommand } from "./workflows/commands";

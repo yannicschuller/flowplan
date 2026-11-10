@@ -1,7 +1,8 @@
 "use client";
 // The bar over a lasso selection (components/ink/ink-layer.tsx): colour
 // (palette, own colours lately used, colour picker) and width, cut, copy,
-// duplicate, to the front or back, "In Text umwandeln" and delete. Every
+// duplicate, to the front or back, "In Text umwandeln", "Als Überschrift
+// ins Inhaltsverzeichnis" (text in the selection, notebooks) and delete. Every
 // button is one undo step. Kept inside the page surface's width.
 import { useLayoutEffect, useRef, useState } from "react";
 import {
@@ -11,6 +12,7 @@ import {
   SelectionBackground,
   SelectionForeground,
   TextAa,
+  TextHOne,
   Trash,
 } from "@phosphor-icons/react";
 import { useT } from "../i18n";
@@ -34,6 +36,7 @@ export function InkSelectionBar({
   items,
   onConvert,
   aiPageId,
+  onOutline,
 }: {
   editor: InkEditor;
   page: string;
@@ -44,6 +47,9 @@ export function InkSelectionBar({
   // instance's AI is not available here.
   onConvert?: () => void;
   aiPageId?: string;
+  // Notebooks: the selection's typed text becomes a heading of the contents
+  // (components/notebook/outline-api.ts), at the top of the selection.
+  onOutline?: (title: string, y: number) => void;
 }) {
   const t = useT();
   const keyHints = useKeyboardHints();
@@ -54,6 +60,14 @@ export function InkSelectionBar({
   const blockedHint = useAiBlockedHint();
   const aiShown = !!aiPageId && ai !== "hidden";
   const pens = items.some((i) => i.type === "pen");
+  // The typed text, top to bottom and left to right, on one line.
+  const heading = items
+    .flatMap((i) => (i.type === "text" ? [i] : []))
+    .sort((a, b) => a.y - b.y || a.x - b.x)
+    .map((i) => i.text)
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
   const colored = items.filter((i) => i.type !== "highlighter");
   const colors = new Set(colored.map((i) => i.color));
   const color = colors.size === 1 ? [...colors][0] : null;
@@ -140,6 +154,7 @@ export function InkSelectionBar({
               ai === "blocked" ? { disabled: true, title: blockedHint, className: "ink-convert" } : { className: "ink-convert" },
             )
           : onConvert && button(t("In Text umwandeln", "Convert to text"), <TextAa size={17} />, onConvert, "", { className: "ink-convert" }))}
+      {onOutline && heading && button(t("Als Überschrift ins Inhaltsverzeichnis", "Add to the contents as a heading"), <TextHOne size={17} />, () => onOutline(heading, Math.max(0, box.y)), "", { className: "ink-outline" })}
       {button(t("Auswahl löschen", "Delete selection"), <Trash size={17} />, () => editor.deleteSelection(), "Delete")}
       {converting && aiPageId && (
         <AiConvertDialog editor={editor} page={page} size={size} pageId={aiPageId} items={items} onClose={() => setConverting(false)} />

@@ -3,14 +3,26 @@
 // imported PDF – one below the other, written on with the ink engine
 // (components/ink, lib/ink/README.md). Thumbnails to jump, add, duplicate,
 // delete, reorder (drag or keys) and change the paper; zoom; export as PDF.
-// Ink is saved as it is drawn (components/ink/use-surface-sync.ts). Loaded
-// on first use (workspace-app.tsx), with the ink code.
+// The page overview (notebook-overview.tsx: grid, bookmarks, search,
+// selection, table of contents), links on sheets (sheet-links.tsx) and
+// presenting with follow mode (notebook-presentation.tsx) organise it
+// (lib/notebook-organize.ts). Ink is saved as it is drawn
+// (components/ink/use-surface-sync.ts). Loaded on first use
+// (workspace-app.tsx), with the ink code.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
   ArrowsOut,
+  BookmarkSimple,
   CopySimple,
+  FolderSimple,
+  LinkSimple,
+  ListBullets,
+  PencilSimpleLine,
+  Presentation,
+  SquaresFour,
+  ArrowCounterClockwise,
   DotsThree,
   DotsThreeVertical,
   FileArrowDown,
@@ -54,9 +66,24 @@ import { idempotencyHeaders } from "@/lib/idempotency-key";
 import { Select } from "../select";
 import { stepZoom } from "@/lib/pinch-zoom";
 import { usePinchZoom } from "./use-pinch-zoom";
+import { NotebookOverview, type OverviewActions } from "./notebook-overview";
+import { BookmarkRibbon, SheetPicture } from "./sheet-thumb";
+import { SheetLinks } from "./sheet-links";
+import { LinkDialog, TitleDialog, TransferDialog, TrashDialog } from "./notebook-dialogs";
+import { NotebookPresentation } from "./notebook-presentation";
+import { useNotebookLive } from "./use-notebook-live";
+import { addOutlineHeading, NOTEBOOK_STRUCTURE_EVENT, type NotebookStructureEvent } from "./outline-api";
+import type { NotebookLink, NotebookLinkTarget, OutlineEntry } from "@/lib/notebook-organize-model";
 
 export type { NotebookPayload };
-type CommandAnswer = { paper: Paper; sheets: NotebookSheet[]; created?: string[]; ink?: Record<string, { doc: InkDoc; version: number }> };
+type CommandAnswer = {
+  paper: Paper;
+  sheets: NotebookSheet[];
+  outline?: OutlineEntry[];
+  created?: string[];
+  trashed?: string[];
+  ink?: Record<string, { doc: InkDoc; version: number }>;
+};
 // Where new sheets go (lib/notebook.ts sheetPlace): before the first sheet,
 // after a sheet, or at the end (after: null).
 type Place = { at: "start" } | { after: string | null };
@@ -90,8 +117,11 @@ export default function NotebookView({
   const canEdit = editable && notebook.canEdit;
   const [paper, setPaper] = useState<Paper>(notebook.paper);
   const [sheets, setSheets] = useState<NotebookSheet[]>(() =>
-    notebook.sheets.map(({ id, position, paper: own, background }) => ({ id, position, paper: own, background })),
+    notebook.sheets.map(({ id, position, paper: own, background, title, bookmark, links }) => ({ id, position, paper: own, background, title, bookmark, links })),
   );
+  const [outline, setOutline] = useState<OutlineEntry[]>(notebook.outline || []);
+  // Recognised handwriting as loaded (search in the overview).
+  const recognized = useMemo(() => Object.fromEntries(notebook.sheets.flatMap((s) => (s.recognized ? [[s.id, s.recognized]] : []))), [notebook.sheets]);
   const initial = useMemo(() => {
     const doc = emptyInk();
     for (const sheet of notebook.sheets) {
@@ -107,7 +137,7 @@ export default function NotebookView({
   const sizes = useMemo(() => new Map(sheets.map((s) => [s.id, sizeOf(paper, s)])), [sheets, paper]);
   const sizesRef = useRef(sizes);
   sizesRef.current = sizes;
-  const [notice, setNotice] = useState<{ text: string; error?: boolean } | null>(null);
+  const [notice, setNotice] = useState<{ text: string; error?: boolean; action?: { label: string; run: () => void } } | null>(null);
   const sync = useSurfaceSync({
     pageId,
     editor,
@@ -156,10 +186,13 @@ export default function NotebookView({
     const found = list.findLast((s) => s.offsetTop <= middle) || list[0];
     if (found?.dataset.sheet) setCurrent(found.dataset.sheet);
   }, []);
-  const show = useCallback((sheetId: string, focus = false) => {
+  // `y`: a place on the sheet in points (a heading of the contents).
+  const show = useCallback((sheetId: string, focus = false, y = 0) => {
     const el = scroller.current?.querySelector<HTMLElement>(`.notebook-sheet[data-sheet="${sheetId}"]`);
     if (!el || !scroller.current) return;
-    scroller.current.scrollTo({ top: el.offsetTop - 12, behavior: "auto" });
+    const size = sizesRef.current.get(sheetId);
+    const offset = y > 0 && size ? (y * el.clientWidth) / size.width - 40 : 0;
+    scroller.current.scrollTo({ top: el.offsetTop - 12 + Math.max(0, offset), behavior: "auto" });
     setCurrent(sheetId);
     if (focus) el.focus({ preventScroll: true });
   }, []);
@@ -193,6 +226,7 @@ export default function NotebookView({
     (answer: CommandAnswer) => {
       setPaper(answer.paper);
       setSheets(answer.sheets);
+      if (answer.outline) setOutline(answer.outline);
       for (const sid of answer.created || []) {
         const ink = answer.ink?.[sid];
         const items = ink ? parseInk(ink.doc).pages[sid] || [] : [];
@@ -230,40 +264,184 @@ export default function NotebookView({
     const created = answer?.created?.[0];
     if (created) requestAnimationFrame(() => show(created));
   };
-  const [deleting, setDeleting] = useState<string | null>(null);
-  const remove = async (sheetId: string) => {
-    setDeleting(null);
-    const index = sheets.findIndex((s) => s.id === sheetId);
-    sync.forget(sheetId);
-    const answer = await run({ action: "notebook.sheet.delete", sheetId });
-    if (answer) editor.applyRemote(sheetId, []);
-    const next = answer?.sheets[Math.min(index, (answer?.sheets.length || 1) - 1)];
-    if (next) setCurrent(next.id);
+  // Deleting goes into the notebook's trash: the notice undoes it, "Gelöschte
+  // Blätter …" restores later (lib/notebook-organize.ts).
+  const restore = useCallback(
+    async (trashIds: string[]) => {
+      const answer = await run({ action: "notebook.trash.restore", trashIds });
+      const first = answer?.created?.[0];
+      if (first) requestAnimationFrame(() => show(first));
+      return !!answer;
+    },
+    [run, show],
+  );
+  const remove = async (ids: string[]) => {
+    if (!ids.length) return;
+    await sync.flush();
+    const index = sheets.findIndex((s) => s.id === ids[0]);
+    const answer = await run(ids.length === 1 ? { action: "notebook.sheet.delete", sheetId: ids[0] } : { action: "notebook.sheets.delete", sheetIds: ids });
+    if (!answer) return;
+    for (const sid of ids) {
+      sync.forget(sid);
+      editor.applyRemote(sid, []);
+    }
+    const next = answer.sheets[Math.min(Math.max(0, index), answer.sheets.length - 1)];
+    if (next && ids.includes(currentRef.current)) setCurrent(next.id);
+    const trashed = answer.trashed || [];
+    setNotice({
+      text: ids.length === 1 ? t("Blatt gelöscht.", "Sheet deleted.") : t(`${ids.length} Blätter gelöscht.`, `${ids.length} sheets deleted.`),
+      action: trashed.length ? { label: t("Rückgängig", "Undo"), run: () => (setNotice(null), void restore(trashed)) } : undefined,
+    });
   };
-  const move = async (sheetId: string, to: number) => {
-    const order = moveTo(
-      sheets.map((s) => s.id),
-      sheetId,
-      to,
-    );
-    if (order.join() === sheets.map((s) => s.id).join()) return;
+  const moveOrder = async (order: string[]) => {
+    if (order.join() === sheetsRef.current.map((s) => s.id).join()) return;
     // At once on the screen; the server confirms.
-    setSheets(order.map((sid) => sheets.find((s) => s.id === sid)!));
+    const byId = new Map(sheetsRef.current.map((s) => [s.id, s]));
+    setSheets(order.map((sid) => byId.get(sid)!));
     await run({ action: "notebook.sheet.move", order });
   };
+  const move = async (sheetId: string, to: number) =>
+    await moveOrder(
+      moveTo(
+        sheets.map((s) => s.id),
+        sheetId,
+        to,
+      ),
+    );
+  const bookmark = async (ids: string[], on: boolean) => {
+    // At once on the screen; the server confirms.
+    setSheets((list) => list.map((s) => (ids.includes(s.id) ? { ...s, bookmark: on || undefined } : s)));
+    await run({ action: "notebook.sheet.meta", sheetIds: ids, bookmark: on });
+  };
+  const duplicateMany = async (ids: string[]) => {
+    await sync.flush();
+    const answer = await run(ids.length === 1 ? { action: "notebook.sheet.duplicate", sheetId: ids[0] } : { action: "notebook.sheets.duplicate", sheetIds: ids });
+    if ((answer?.created?.length || 0) > 1) setNotice({ text: t(`${answer!.created!.length} Blätter dupliziert.`, `${answer!.created!.length} sheets duplicated.`) });
+  };
+  const saveOutline = async (next: OutlineEntry[]) => {
+    setOutline(next);
+    await run({ action: "notebook.outline", outline: next });
+  };
+  // A sheet's title, or a sheet marked as a chapter of the contents.
+  const [titleFor, setTitleFor] = useState<{ kind: "rename" | "chapter"; sheet: string } | null>(null);
+  const saveTitle = async (value: string) => {
+    const target = titleFor;
+    setTitleFor(null);
+    if (!target) return;
+    if (target.kind === "rename") await run({ action: "notebook.sheet.meta", sheetIds: [target.sheet], title: value });
+    else if (value) await run({ action: "notebook.outline.add", sheetId: target.sheet, title: value });
+  };
+  // Into another notebook.
+  const [transferring, setTransferring] = useState<string[] | null>(null);
+  const transfer = async (target: string, mode: "copy" | "move", place: "start" | "end") => {
+    const ids = transferring || [];
+    setTransferring(null);
+    if (!ids.length) return;
+    await sync.flush();
+    try {
+      const answer = await api<CommandAnswer & { target: { id: string; title: string }; copied: number }>("/api/command", {
+        action: "notebook.sheets.transfer",
+        pageId,
+        targetPageId: target,
+        sheetIds: ids,
+        mode,
+        ...(place === "start" ? { at: "start" } : { after: null }),
+      });
+      if (mode === "move")
+        for (const sid of ids) {
+          sync.forget(sid);
+          editor.applyRemote(sid, []);
+        }
+      apply(answer);
+      if (mode === "move" && ids.includes(currentRef.current) && answer.sheets[0]) setCurrent(answer.sheets[0].id);
+      const name = answer.target.title || t("Ohne Titel", "Untitled");
+      setNotice({
+        text:
+          mode === "move"
+            ? answer.copied === 1
+              ? t(`Blatt nach „${name}“ verschoben.`, `Moved the sheet to “${name}”.`)
+              : t(`${answer.copied} Blätter nach „${name}“ verschoben.`, `Moved ${answer.copied} sheets to “${name}”.`)
+            : answer.copied === 1
+              ? t(`Blatt nach „${name}“ kopiert.`, `Copied the sheet to “${name}”.`)
+              : t(`${answer.copied} Blätter nach „${name}“ kopiert.`, `Copied ${answer.copied} sheets to “${name}”.`),
+        action: { label: t("Öffnen", "Open"), run: () => (window.location.hash = `page=${answer.target.id}`) },
+      });
+    } catch (e) {
+      onError((e as Error).message);
+    }
+  };
+  // Links on a sheet.
+  const [linking, setLinking] = useState<{ sheet: string; link: NotebookLink | null } | null>(null);
+  const saveLinks = async (sheetId: string, links: NotebookLink[]) => {
+    setSheets((list) => list.map((s) => (s.id === sheetId ? { ...s, links: links.length ? links : undefined } : s)));
+    await run({ action: "notebook.sheet.links", sheetId, links });
+  };
+  const saveLink = async (value: { label: string; target: NotebookLinkTarget; area: boolean }) => {
+    const at = linking;
+    setLinking(null);
+    if (!at) return;
+    const list = sheetsRef.current.find((s) => s.id === at.sheet)?.links || [];
+    const size = sizesRef.current.get(at.sheet) || { width: 595, height: 842 };
+    const link: NotebookLink = at.link
+      ? { ...at.link, target: value.target, ...(value.label ? { label: value.label } : {}) }
+      : {
+          id: Math.random().toString(36).slice(2, 12),
+          // A new one below the others, near the top left.
+          x: 48,
+          y: Math.min(size.height - 80, 48 + list.length * 44),
+          w: value.area ? 220 : 160,
+          h: value.area ? 90 : 28,
+          ...(value.label ? { label: value.label } : {}),
+          target: value.target,
+        };
+    if (!value.label) delete link.label;
+    await saveLinks(at.sheet, at.link ? list.map((l) => (l.id === link.id ? link : l)) : [...list, link]);
+  };
+  const followLink = (target: NotebookLinkTarget) => {
+    if ("sheet" in target) show(target.sheet, true);
+    else window.location.hash = `page=${target.page}`;
+  };
+  const sheetName = useCallback(
+    (sid: string) => {
+      const i = sheetsRef.current.findIndex((s) => s.id === sid);
+      const sheet = sheetsRef.current[i];
+      return sheet?.title || t(`Blatt ${i + 1}`, `Sheet ${i + 1}`);
+    },
+    [t],
+  );
+  const [trashOpen, setTrashOpen] = useState(false);
+  // The lasso's "Als Überschrift ins Inhaltsverzeichnis" (selected text).
+  const outlineFromSelection = (sheetId: string, title: string, y: number) =>
+    void addOutlineHeading(pageId, { sheetId, title, y })
+      .then(() => setNotice({ text: t(`„${title}“ steht jetzt im Inhaltsverzeichnis.`, `“${title}” is now in the contents.`) }))
+      .catch((e) => onError((e as Error).message));
+  // Other parts of the notebook (the lasso: a heading for the contents).
+  useEffect(() => {
+    const take = (event: Event) => {
+      const detail = (event as NotebookStructureEvent).detail;
+      if (detail?.pageId === pageId && detail.answer && typeof detail.answer === "object" && "sheets" in detail.answer) apply(detail.answer as CommandAnswer);
+    };
+    window.addEventListener(NOTEBOOK_STRUCTURE_EVENT, take);
+    return () => window.removeEventListener(NOTEBOOK_STRUCTURE_EVENT, take);
+  }, [apply, pageId]);
 
   // ---- Paper dialog ----
-  const [paperFor, setPaperFor] = useState<string | null>(null);
-  const openPaper = (sheetId: string) => setPaperFor(sheetId);
+  // The sheets the dialog is for (one, or a selection in the overview).
+  const [paperFor, setPaperFor] = useState<string[] | null>(null);
+  const openPaper = (sheetId: string | string[]) => {
+    // PDF pages keep their page as background.
+    const ids = (Array.isArray(sheetId) ? sheetId : [sheetId]).filter((sid) => !sheets.find((s) => s.id === sid)?.background);
+    if (ids.length) setPaperFor(ids);
+  };
   const savePaper = async (draft: Paper, scope: PaperScope) => {
-    const sheetId = paperFor;
+    const sheetIds = paperFor;
     setPaperFor(null);
-    if (!sheetId) return;
+    if (!sheetIds?.length) return;
     if (scope === "sheet") {
       // Only what differs from the notebook is the sheet's own.
       const own: PaperOverride = {};
       for (const key of ["template", "size", "orientation", "color"] as const) if (draft[key] !== paper[key]) Object.assign(own, { [key]: draft[key] });
-      await run({ action: "notebook.sheet.paper", sheetIds: [sheetId], paper: own });
+      await run({ action: "notebook.sheet.paper", sheetIds, paper: own });
     } else await run({ action: "notebook.paper", paper: draft, all: scope === "all" });
   };
 
@@ -337,7 +515,8 @@ export default function NotebookView({
     const file = takeNotebookImport(pageId);
     if (file) void importPdf(file);
   }, [canEdit, importPdf, pageId]);
-  const exportPdf = async () => {
+  // All sheets, or those chosen in the overview.
+  const exportPdf = async (only?: string[]) => {
     setBusy(t("PDF wird erstellt …", "Creating PDF …"));
     try {
       if (canEdit) await sync.flush();
@@ -346,7 +525,7 @@ export default function NotebookView({
       const bytes = await notebookPdf(
         notebookPdfSheets(
           paper,
-          sheets.map((s) => ({ ...s, ink: doc })),
+          sheets.filter((s) => !only || only.includes(s.id)).map((s) => ({ ...s, ink: doc })),
         ),
         async (file) => {
           const response = await fetch(`/api/files/${file}`, { credentials: "same-origin" });
@@ -371,6 +550,37 @@ export default function NotebookView({
     setBusy("");
     if (result === "empty") setNotice({ text: t("In der Auswahl wurde kein Text erkannt.", "No text was recognised in the selection.") });
     if (result === "failed") setNotice({ text: t("Die Handschrift konnte nicht erkannt werden.", "The handwriting could not be recognised."), error: true });
+  };
+
+  // ---- Page overview, presenting, following ----
+  const [overview, setOverview] = useState<"pages" | "outline" | null>(null);
+  const live = useNotebookLive(pageId);
+  // Presenting (follow: null) or following someone (their user id).
+  const [presentation, setPresentation] = useState<{ follow: string | null } | null>(null);
+  const presenter = live.presenters[0] || null;
+  const followed = presentation?.follow ? live.presenters.find((p) => p.userId === presentation.follow) || null : null;
+  // The presenter stopped: following ends with a word.
+  const wasFollowing = useRef<string | null>(null);
+  useEffect(() => {
+    if (presentation?.follow && followed) wasFollowing.current = followed.name;
+    if (presentation?.follow && !followed && wasFollowing.current) {
+      const name = wasFollowing.current;
+      wasFollowing.current = null;
+      setPresentation(null);
+      setNotice({ text: t(`${name} präsentiert nicht mehr.`, `${name} stopped presenting.`) });
+    }
+  }, [presentation, followed, t]);
+  const overviewActions: OverviewActions = {
+    show: (sid, y) => requestAnimationFrame(() => show(sid, true, y)),
+    move: moveOrder,
+    duplicate: duplicateMany,
+    remove,
+    bookmark,
+    paper: (ids) => openPaper(ids),
+    exportPdf: (ids) => exportPdf(ids),
+    transfer: (ids) => setTransferring(ids),
+    outline: saveOutline,
+    addChapter: (sid) => setTitleFor({ kind: "chapter", sheet: sid }),
   };
 
   // ---- Keys ----
@@ -459,32 +669,47 @@ export default function NotebookView({
     };
   }, [menu]);
 
-  const sheetMenu = (sheet: NotebookSheet, index: number) => (
+  const sheetMenu = (sheet: NotebookSheet, index: number, close: () => void = () => setMenu(null)) => (
     <div ref={placeStartMenu} className="ink-menu notebook-menu" role="menu" aria-label={t(`Blatt ${index + 1}`, `Sheet ${index + 1}`)}>
-      <button type="button" role="menuitem" onClick={() => (setMenu(null), void addSheet(sheet.id))}>
+      <button type="button" role="menuitem" onClick={() => (close(), void bookmark([sheet.id], !sheet.bookmark))}>
+        <BookmarkSimple size={16} weight={sheet.bookmark ? "fill" : "regular"} /> {sheet.bookmark ? t("Lesezeichen entfernen", "Remove bookmark") : t("Als Lesezeichen", "Bookmark")}
+      </button>
+      <button type="button" role="menuitem" onClick={() => (close(), setTitleFor({ kind: "rename", sheet: sheet.id }))}>
+        <PencilSimpleLine size={16} /> {t("Umbenennen …", "Rename …")}
+      </button>
+      <button type="button" role="menuitem" onClick={() => (close(), setTitleFor({ kind: "chapter", sheet: sheet.id }))}>
+        <ListBullets size={16} /> {t("Seite als Kapitel markieren …", "Mark page as a chapter …")}
+      </button>
+      <button type="button" role="menuitem" onClick={() => (close(), setLinking({ sheet: sheet.id, link: null }))}>
+        <LinkSimple size={16} /> {t("Link einfügen …", "Insert link …")}
+      </button>
+      <button type="button" role="menuitem" onClick={() => (close(), void addSheet(sheet.id))}>
         <Plus size={16} /> {t("Neues Blatt danach", "New sheet after")}
       </button>
-      <button type="button" role="menuitem" onClick={() => (setMenu(null), choosePdf(index === 0 ? { at: "start" } : { after: sheets[index - 1].id }))}>
+      <button type="button" role="menuitem" onClick={() => (close(), choosePdf(index === 0 ? { at: "start" } : { after: sheets[index - 1].id }))}>
         <FilePdf size={16} /> {t("PDF davor einfügen …", "Insert PDF before …")}
       </button>
-      <button type="button" role="menuitem" onClick={() => (setMenu(null), choosePdf({ after: sheet.id }))}>
+      <button type="button" role="menuitem" onClick={() => (close(), choosePdf({ after: sheet.id }))}>
         <FilePdf size={16} /> {t("PDF danach einfügen …", "Insert PDF after …")}
       </button>
-      <button type="button" role="menuitem" onClick={() => (setMenu(null), void duplicate(sheet.id))}>
+      <button type="button" role="menuitem" onClick={() => (close(), void duplicate(sheet.id))}>
         <CopySimple size={16} /> {t("Duplizieren", "Duplicate")}
       </button>
       {!sheet.background && (
-        <button type="button" role="menuitem" onClick={() => (setMenu(null), openPaper(sheet.id))}>
+        <button type="button" role="menuitem" onClick={() => (close(), openPaper(sheet.id))}>
           <Rows size={16} /> {t("Papier ändern …", "Change paper …")}
         </button>
       )}
-      <button type="button" role="menuitem" disabled={index === 0} onClick={() => (setMenu(null), void move(sheet.id, index - 1))}>
+      <button type="button" role="menuitem" onClick={() => (close(), setTransferring([sheet.id]))}>
+        <FolderSimple size={16} /> {t("In anderes Notizbuch …", "To another notebook …")}
+      </button>
+      <button type="button" role="menuitem" disabled={index === 0} onClick={() => (close(), void move(sheet.id, index - 1))}>
         <ArrowUp size={16} /> {t("Nach oben", "Move up")}
       </button>
-      <button type="button" role="menuitem" disabled={index === sheets.length - 1} onClick={() => (setMenu(null), void move(sheet.id, index + 1))}>
+      <button type="button" role="menuitem" disabled={index === sheets.length - 1} onClick={() => (close(), void move(sheet.id, index + 1))}>
         <ArrowDown size={16} /> {t("Nach unten", "Move down")}
       </button>
-      <button type="button" role="menuitem" className="danger" disabled={sheets.length <= 1} onClick={() => (setMenu(null), setDeleting(sheet.id))}>
+      <button type="button" role="menuitem" className="danger" disabled={sheets.length <= 1} onClick={() => (close(), void remove([sheet.id]))}>
         <Trash size={16} /> {t("Löschen", "Delete")}
       </button>
     </div>
@@ -504,6 +729,25 @@ export default function NotebookView({
             onClick={toggleThumbs}
           >
             <SidebarSimple size={18} />
+          </button>
+          <button
+            type="button"
+            className={`icon-button${overview ? " active" : ""}`}
+            aria-pressed={!!overview}
+            aria-label={t("Alle Blätter und Inhalt", "All sheets and contents")}
+            title={t("Alle Blätter und Inhalt", "All sheets and contents")}
+            onClick={() => setOverview(overview ? null : "pages")}
+          >
+            <SquaresFour size={18} />
+          </button>
+          <button
+            type="button"
+            className="icon-button"
+            aria-label={t("Präsentieren", "Present")}
+            title={t("Präsentieren (Vollbild, andere können folgen)", "Present (full screen, others can follow)")}
+            onClick={() => (setOverview(null), setPresentation({ follow: null }))}
+          >
+            <Presentation size={18} />
           </button>
           <span className="notebook-position" aria-live="polite">
             {t(`Blatt ${currentIndex + 1} von ${sheets.length}`, `Sheet ${currentIndex + 1} of ${sheets.length}`)}
@@ -576,6 +820,14 @@ export default function NotebookView({
                 <button type="button" role="menuitem" onClick={() => (setMenu(null), void exportPdf())}>
                   <FileArrowDown size={16} /> {t("Als PDF exportieren", "Export as PDF")}
                 </button>
+                <button type="button" role="menuitem" onClick={() => (setMenu(null), setOverview("outline"))}>
+                  <ListBullets size={16} /> {t("Inhaltsverzeichnis", "Table of contents")}
+                </button>
+                {canEdit && (
+                  <button type="button" role="menuitem" onClick={() => (setMenu(null), setTrashOpen(true))}>
+                    <ArrowCounterClockwise size={16} /> {t("Gelöschte Blätter …", "Deleted sheets …")}
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -602,9 +854,23 @@ export default function NotebookView({
           />
         </div>
       </div>
+      {presenter && !presentation && (
+        <p className="notebook-notice notebook-follow-notice" role="status">
+          <Presentation size={16} aria-hidden="true" />
+          {t(`${presenter.name} präsentiert dieses Notizbuch.`, `${presenter.name} is presenting this notebook.`)}
+          <button type="button" className="button primary" onClick={() => (setOverview(null), setPresentation({ follow: presenter.userId }))}>
+            {t("Folgen", "Follow")}
+          </button>
+        </p>
+      )}
       {notice && (
         <p className={`notebook-notice${notice.error ? " is-error" : ""}`} role={notice.error ? "alert" : "status"}>
           {notice.text}
+          {notice.action && (
+            <button type="button" className="text-button" onClick={notice.action.run}>
+              {notice.action.label}
+            </button>
+          )}
           <button type="button" className="icon-button" aria-label={t("Hinweis schließen", "Dismiss")} onClick={() => setNotice(null)}>
             <X size={14} />
           </button>
@@ -652,7 +918,7 @@ export default function NotebookView({
                       type="button"
                       className="notebook-thumb-open"
                       aria-current={sheet.id === current ? "page" : undefined}
-                      aria-label={t(`Blatt ${index + 1}`, `Sheet ${index + 1}`)}
+                      aria-label={t(`Blatt ${index + 1}`, `Sheet ${index + 1}`) + (sheet.title ? `: ${sheet.title}` : "")}
                       title={
                         canEdit
                           ? t("Zum Blatt; zum Verschieben ziehen", "Go to the sheet; drag to move") +
@@ -671,18 +937,22 @@ export default function NotebookView({
                         void move(sheet.id, index + (e.key === "ArrowUp" ? -1 : 1));
                       }}
                     >
-                      <span
-                        className={`notebook-thumb-paper${look.paper.color === "dark" && !sheet.background ? " is-dark" : ""}`}
-                        style={{ aspectRatio: `${size.width} / ${size.height}` }}
-                      >
-                        {sheet.background ? (
-                          <PdfBackground src={`/api/files/${sheet.background.file}`} page={sheet.background.page} width={120} />
-                        ) : (
-                          <PaperSvg layout={look.layout!} />
-                        )}
-                        <InkLayer page={sheet.id} size={size} doc={editor.doc} label={t(`Vorschau von Blatt ${index + 1}`, `Preview of sheet ${index + 1}`)} />
+                      <span className="notebook-thumb-frame">
+                        <SheetPicture
+                          sheet={sheet}
+                          size={size}
+                          layout={look.layout}
+                          dark={look.paper.color === "dark" && !sheet.background}
+                          doc={editor.doc}
+                          width={120}
+                          label={t(`Vorschau von Blatt ${index + 1}`, `Preview of sheet ${index + 1}`)}
+                        />
+                        {sheet.bookmark && <BookmarkRibbon label={t("Lesezeichen", "Bookmark")} />}
                       </span>
-                      <span className="notebook-thumb-number">{index + 1}</span>
+                      <span className="notebook-thumb-number">
+                        {index + 1}
+                        {sheet.title && <span className="notebook-thumb-title">{sheet.title}</span>}
+                      </span>
                     </button>
                     <div className="notebook-menu-anchor notebook-thumb-more">
                       <button
@@ -708,6 +978,23 @@ export default function NotebookView({
               </button>
             )}
           </nav>
+        )}
+        {overview && (
+          <NotebookOverview
+            sheets={sheets}
+            sizes={sizes}
+            layouts={layouts}
+            doc={editor.doc}
+            recognized={recognized}
+            outline={outline}
+            current={current}
+            canEdit={canEdit}
+            tab={overview}
+            onTab={setOverview}
+            actions={overviewActions}
+            sheetMenu={sheetMenu}
+            onClose={() => setOverview(null)}
+          />
         )}
         <div className="notebook-scroll" ref={scroller} onScroll={onScroll}>
           <div className="notebook-sheets" ref={sheetsBox} style={{ width }}>
@@ -736,8 +1023,21 @@ export default function NotebookView({
                     editing={canEdit}
                     onConvert={canEdit && canRecognize ? () => void convert(sheet.id) : undefined}
                     aiPageId={canEdit ? pageId : undefined}
+                    onOutline={canEdit ? (title, y) => outlineFromSelection(sheet.id, title, y) : undefined}
                     label={t(`Handschrift auf Blatt ${index + 1}`, `Handwriting on sheet ${index + 1}`)}
                   />
+                  {sheet.links && (
+                    <SheetLinks
+                      links={sheet.links}
+                      size={size}
+                      editable={canEdit}
+                      areas={!canEdit || editor.tool === "lasso" || editor.tool === "laser"}
+                      sheetName={sheetName}
+                      onFollow={followLink}
+                      onChange={(links) => void saveLinks(sheet.id, links)}
+                      onEdit={(link) => setLinking({ sheet: sheet.id, link })}
+                    />
+                  )}
                 </section>
               );
             })}
@@ -751,8 +1051,9 @@ export default function NotebookView({
       </div>
       <PaperDialog
         open={!!paperFor}
-        sheetNumber={Math.max(0, sheets.findIndex((s) => s.id === paperFor)) + 1}
-        paper={effectivePaper(paper, sheets.find((s) => s.id === paperFor)?.paper)}
+        sheetNumber={Math.max(0, sheets.findIndex((s) => s.id === paperFor?.[0])) + 1}
+        sheetCount={paperFor?.length || 1}
+        paper={effectivePaper(paper, sheets.find((s) => s.id === paperFor?.[0])?.paper)}
         templateName={templateName}
         onClose={() => setPaperFor(null)}
         onApply={(draft, scope) => void savePaper(draft, scope)}
@@ -801,17 +1102,68 @@ export default function NotebookView({
           </div>
         </div>
       </Modal>
-      <Modal open={!!deleting} onClose={() => setDeleting(null)} title={t("Blatt löschen?", "Delete sheet?")}>
-        <p>{t("Das Blatt und alles, was darauf geschrieben ist, werden gelöscht.", "The sheet and everything written on it will be deleted.")}</p>
-        <div className="modal-actions">
-          <button type="button" className="button" onClick={() => setDeleting(null)}>
-            {t("Abbrechen", "Cancel")}
-          </button>
-          <button type="button" className="button danger-solid" onClick={() => deleting && void remove(deleting)}>
-            {t("Löschen", "Delete")}
-          </button>
-        </div>
-      </Modal>
+      <TitleDialog
+        open={!!titleFor}
+        title={titleFor?.kind === "chapter" ? t("Seite als Kapitel markieren", "Mark page as a chapter") : t("Blatt umbenennen", "Rename sheet")}
+        label={titleFor?.kind === "chapter" ? t("Titel des Kapitels", "Chapter title") : t("Titel des Blatts", "Sheet title")}
+        hint={
+          titleFor?.kind === "chapter"
+            ? t("Das Kapitel erscheint im Inhaltsverzeichnis (Übersicht → Inhalt).", "The chapter shows in the table of contents (overview → Contents).")
+            : t("Leer lassen für die Nummer.", "Leave empty for the number.")
+        }
+        initial={titleFor ? sheets.find((s) => s.id === titleFor.sheet)?.title || "" : ""}
+        submit={titleFor?.kind === "chapter" ? t("Hinzufügen", "Add") : t("Speichern", "Save")}
+        onClose={() => setTitleFor(null)}
+        onSave={(value) => void saveTitle(value)}
+      />
+      <TransferDialog
+        open={!!transferring}
+        pageId={pageId}
+        count={transferring?.length || 0}
+        canMove={!!transferring && transferring.length < sheets.length}
+        onClose={() => setTransferring(null)}
+        onTransfer={(target, mode, place) => void transfer(target, mode, place)}
+      />
+      <LinkDialog
+        open={!!linking}
+        pageId={pageId}
+        sheets={sheets}
+        sheetId={linking?.sheet || ""}
+        link={linking?.link || null}
+        onClose={() => setLinking(null)}
+        onSave={(value) => void saveLink(value)}
+        onDelete={
+          linking?.link
+            ? () => {
+                const at = linking;
+                setLinking(null);
+                if (at?.link) void saveLinks(at.sheet, (sheets.find((s) => s.id === at.sheet)?.links || []).filter((l) => l.id !== at.link!.id));
+              }
+            : undefined
+        }
+      />
+      <TrashDialog open={trashOpen} pageId={pageId} onClose={() => setTrashOpen(false)} onRestore={restore} />
+      {presentation && (!presentation.follow || followed) && (
+        <NotebookPresentation
+          pageId={pageId}
+          title={title}
+          sheets={sheets}
+          sizes={sizes}
+          layouts={layouts}
+          doc={editor.doc}
+          start={current}
+          follow={presentation.follow ? followed : null}
+          onPoint={live.onPoint}
+          onFollowLink={(target) => {
+            setPresentation(null);
+            window.location.hash = `page=${target.page}`;
+          }}
+          onClose={(sid) => {
+            setPresentation(null);
+            requestAnimationFrame(() => show(sid));
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -149,6 +149,7 @@ export function InkLayer({
   onZoom,
   onConvert,
   aiPageId,
+  onOutline,
   label,
   fingersScroll = false,
 }: {
@@ -166,6 +167,8 @@ export function InkLayer({
   // The page the surface belongs to: "Convert to text" with the instance's
   // AI where it may read that page (components/ink/ai-convert.tsx).
   aiPageId?: string;
+  // Notebooks: "Als Überschrift ins Inhaltsverzeichnis" for selected text.
+  onOutline?: (title: string, y: number) => void;
   // The name of the surface for screen readers.
   label?: string;
   // Fingers scroll even with pen-only drawing off (a drawing block not
@@ -645,6 +648,7 @@ export function InkLayer({
             strokeLinejoin="round"
           />
         )}
+        {laser.length > 0 && <circle className="ink-laser-dot" cx={laser[laser.length - 1].x} cy={laser[laser.length - 1].y} r={tolerance(6)} />}
         {showSelection && (
           <g className="ink-selection">
             <rect
@@ -675,7 +679,7 @@ export function InkLayer({
         )}
       </svg>
       {showSelection && !preview && editor && selected && (
-        <InkSelectionBar editor={editor} page={page} size={size} box={selectionBox} items={shown.filter((i) => selected.ids.includes(i.id))} onConvert={onConvert} aiPageId={aiPageId} />
+        <InkSelectionBar editor={editor} page={page} size={size} box={selectionBox} items={shown.filter((i) => selected.ids.includes(i.id))} onConvert={onConvert} aiPageId={aiPageId} onOutline={onOutline} />
       )}
       {typing && (
         <textarea

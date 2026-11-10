@@ -22,6 +22,8 @@ const TEXT_SOURCES = [
   "SELECT c.body t FROM comments c JOIN pages p ON p.id=c.page_id WHERE p.workspace_id=?",
   "SELECT m.body t FROM inline_messages m JOIN inline_threads h ON h.id=m.thread_id JOIN pages p ON p.id=h.page_id WHERE p.workspace_id=? AND m.deleted=0",
   "SELECT s.background t FROM notebook_sheets s JOIN pages p ON p.id=s.page_id WHERE p.workspace_id=? AND s.background IS NOT NULL",
+  // Deleted sheets that may come back (lib/notebook-organize.ts).
+  "SELECT s.sheet t FROM notebook_sheet_trash s JOIN pages p ON p.id=s.page_id WHERE p.workspace_id=?",
   "SELECT v.value t FROM page_property_values v JOIN pages p ON p.id=v.page_id WHERE p.workspace_id=?",
   "SELECT d.fields||' '||d.views t FROM databases d JOIN pages p ON p.id=d.page_id WHERE p.workspace_id=?",
   "SELECT x.tiles t FROM dashboards x JOIN pages p ON p.id=x.page_id WHERE p.workspace_id=?",

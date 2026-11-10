@@ -18,13 +18,25 @@ import { cleanRecognizedText } from "./ink/recognized";
 import { isPdfFile } from "./ink-store";
 import type { Identity, Page } from "./types";
 import { forEachAsync } from "./each-async";
+import { cleanLinks, cleanOutline, cleanTitle, parseLinks, parseOutline, type NotebookLink, type OutlineEntry } from "./notebook-organize-model";
+import { organizeCommand, ORGANIZE_ACTIONS, trashSheets } from "./notebook-organize";
 
 export { MAX_SHEETS, MAX_IMPORT_PAGES };
 
 export type NotebookBackground = { file: string; page: number; width: number; height: number };
-export type NotebookSheet = { id: string; position: number; paper: PaperOverride; background: NotebookBackground | null };
-export type NotebookSheetData = NotebookSheet & { ink: InkDoc; version: number };
-export type NotebookPayload = { paper: Paper; sheets: NotebookSheetData[]; canEdit: boolean };
+// title, bookmark, links: only when the sheet has them (lib/notebook-organize.ts).
+export type NotebookSheet = {
+  id: string;
+  position: number;
+  paper: PaperOverride;
+  background: NotebookBackground | null;
+  title?: string;
+  bookmark?: boolean;
+  links?: NotebookLink[];
+};
+// recognized: the text recognised in the handwriting (search in the overview).
+export type NotebookSheetData = NotebookSheet & { ink: InkDoc; version: number; recognized?: string };
+export type NotebookPayload = { paper: Paper; sheets: NotebookSheetData[]; canEdit: boolean; outline?: OutlineEntry[] };
 
 const backgroundSchema = z.object({
   file: z.uuid(),
@@ -53,13 +65,41 @@ export async function notebookPaper(pageId: string): Promise<Paper> {
   return fullPaper(JSON.parse((await one<{ paper: string }>("SELECT paper FROM notebooks WHERE page_id=?", pageId))?.paper || "{}"));
 }
 export async function notebookSheets(pageId: string): Promise<NotebookSheet[]> {
-  return (await all<{ id: string; position: number; paper: string; background: string | null }>(
-    "SELECT id,position,paper,background FROM notebook_sheets WHERE page_id=? ORDER BY position,created_at",
+  const rows = await all<{ id: string; position: number; paper: string; background: string | null; title: string | null; bookmark: number | null; links: string | null }>(
+    "SELECT id,position,paper,background,title,bookmark,links FROM notebook_sheets WHERE page_id=? ORDER BY position,created_at",
     pageId,
-  )).map((s) => ({ id: s.id, position: s.position, paper: parsePaper(s.paper), background: parseBackground(s.background) }));
+  );
+  const ids = new Set(rows.map((s) => s.id));
+  return rows.map((s) => {
+    const links = parseLinks(s.links, ids);
+    return {
+      id: s.id,
+      position: s.position,
+      paper: parsePaper(s.paper),
+      background: parseBackground(s.background),
+      ...(s.title ? { title: s.title } : {}),
+      ...(s.bookmark ? { bookmark: true } : {}),
+      ...(links.length ? { links } : {}),
+    };
+  });
+}
+// The table of contents, without entries of sheets that are gone.
+export async function notebookOutline(pageId: string, sheets?: NotebookSheet[]): Promise<OutlineEntry[]> {
+  const stored = (await one<{ outline: string | null }>("SELECT outline FROM notebooks WHERE page_id=?", pageId))?.outline;
+  return parseOutline(stored, new Set((sheets ?? (await notebookSheets(pageId))).map((s) => s.id)));
+}
+// A sheet's title, bookmark and links as stored (copies, restores).
+export async function writeSheetMeta(sheetId: string, meta: { title?: unknown; bookmark?: unknown; links?: unknown }) {
+  await run(
+    "UPDATE notebook_sheets SET title=?,bookmark=?,links=? WHERE id=?",
+    cleanTitle(meta.title),
+    meta.bookmark ? 1 : 0,
+    JSON.stringify(cleanLinks(meta.links)),
+    sheetId,
+  );
 }
 
-async function insertSheet(pageId: string, paper: PaperOverride = {}, background: NotebookBackground | null = null, sheetId = id()) {
+export async function insertSheet(pageId: string, paper: PaperOverride = {}, background: NotebookBackground | null = null, sheetId: string = id()) {
   await run(
     "INSERT INTO notebook_sheets(id,page_id,position,paper,background,created_at) VALUES(?,?,?,?,?,?)",
     sheetId,
@@ -71,10 +111,10 @@ async function insertSheet(pageId: string, paper: PaperOverride = {}, background
   );
   return sheetId;
 }
-async function writeOrder(pageId: string, ids: string[]) {
+export async function writeOrder(pageId: string, ids: string[]) {
   await forEachAsync(ids, async (sheetId, index) => await run("UPDATE notebook_sheets SET position=? WHERE id=? AND page_id=?", index, sheetId, pageId));
 }
-const order = async (pageId: string) => (await notebookSheets(pageId)).map((s) => s.id);
+export const order = async (pageId: string) => (await notebookSheets(pageId)).map((s) => s.id);
 
 // A new notebook with its first sheet (lib/seed.ts createPage).
 export async function createNotebook(pageId: string, paper: Partial<Paper> = {}) {
@@ -84,13 +124,15 @@ export async function createNotebook(pageId: string, paper: Partial<Paper> = {})
 
 export async function notebookData(user: Identity, page: Page): Promise<NotebookPayload> {
   const inks = await pageInkDocs(page.id);
+  const sheets = await notebookSheets(page.id);
   return {
     paper: await notebookPaper(page.id),
-    sheets: (await notebookSheets(page.id)).map((sheet) => {
+    sheets: sheets.map((sheet) => {
       const ink = inks.get(sheet.id);
-      return { ...sheet, ink: ink?.doc ?? emptyInk(), version: ink?.version ?? 0 };
+      return { ...sheet, ink: ink?.doc ?? emptyInk(), version: ink?.version ?? 0, ...(ink?.recognized ? { recognized: ink.recognized } : {}) };
     }),
     canEdit: await mayEditInk(user, page),
+    outline: await notebookOutline(page.id, sheets),
   };
 }
 
@@ -157,8 +199,12 @@ export async function notebookCommand(user: Identity, page: Page, action: string
     case "notebook.sheet.duplicate": {
       const source = await known(sheetId.parse(b.sheetId));
       await room(1);
-      const row = (await one<{ paper: string; background: string | null }>("SELECT paper,background FROM notebook_sheets WHERE id=?", source))!;
+      const row = (await one<{ paper: string; background: string | null; title: string | null; bookmark: number | null; links: string | null }>(
+        "SELECT paper,background,title,bookmark,links FROM notebook_sheets WHERE id=?",
+        source,
+      ))!;
       const sid = await insertSheet(page.id, parsePaper(row.paper), parseBackground(row.background));
+      await writeSheetMeta(sid, { title: row.title, bookmark: row.bookmark, links: parseLinks(row.links) });
       await copyPageInk(page.id, page.id, new Map([[source, sid]]), user.id);
       await writeOrder(page.id, insertAfter(await order(page.id), sid, source));
       result.created = [sid];
@@ -167,11 +213,8 @@ export async function notebookCommand(user: Identity, page: Page, action: string
       break;
     }
     case "notebook.sheet.delete": {
-      const sid = await known(sheetId.parse(b.sheetId));
-      if ((await order(page.id)).length <= 1) throw new HttpError(400, "Ein Notizbuch braucht mindestens ein Blatt.");
-      await run("DELETE FROM notebook_sheets WHERE id=? AND page_id=?", sid, page.id);
-      await deleteSurface(page.id, sid);
-      await writeOrder(page.id, await order(page.id));
+      // Into the notebook's trash (lib/notebook-organize.ts): undo, restore.
+      result.trashed = await trashSheets(user, page, [await known(sheetId.parse(b.sheetId))]);
       break;
     }
     case "notebook.sheet.move": {
@@ -217,10 +260,12 @@ export async function notebookCommand(user: Identity, page: Page, action: string
       break;
     }
     default:
-      throw new HttpError(400, "Unbekannte Aktion.");
+      if (!ORGANIZE_ACTIONS.has(action)) throw new HttpError(400, "Unbekannte Aktion.");
+      Object.assign(result, await organizeCommand(user, page, action, b));
   }
   await touch();
-  return { ...result, paper: await notebookPaper(page.id), sheets: await notebookSheets(page.id) };
+  const sheets = await notebookSheets(page.id);
+  return { ...result, paper: await notebookPaper(page.id), sheets, outline: await notebookOutline(page.id, sheets) };
 }
 
 // ---- Copies, archives, exports ----
@@ -240,6 +285,19 @@ export async function copyNotebook(fromPage: string, toPage: string, files: Map<
   }
   if (!surfaces.size) await insertSheet(toPage);
   await copyPageInk(fromPage, toPage, surfaces, by);
+  // Titles, bookmarks, links and the contents point to the copies.
+  const sheets = await notebookSheets(fromPage);
+  for (const sheet of sheets) await writeSheetMeta(surfaces.get(sheet.id)!, { ...sheet, links: remapLinks(sheet.links, surfaces) });
+  await writeOutline(toPage, remapOutline(await notebookOutline(fromPage, sheets), surfaces));
+}
+// Links and contents entries of copied sheets: to the copies; links to
+// sheets that were not copied go.
+export const remapLinks = (links: NotebookLink[] | undefined, sheets: Map<string, string>) =>
+  (links || []).flatMap((link) => ("sheet" in link.target ? (sheets.has(link.target.sheet) ? [{ ...link, target: { sheet: sheets.get(link.target.sheet)! } }] : []) : [link]));
+export const remapOutline = (outline: OutlineEntry[], sheets: Map<string, string>) =>
+  cleanOutline(outline.flatMap((entry) => (sheets.has(entry.sheet) ? [{ ...entry, sheet: sheets.get(entry.sheet)! }] : [])));
+export async function writeOutline(pageId: string, outline: OutlineEntry[]) {
+  await run("UPDATE notebooks SET outline=? WHERE page_id=?", JSON.stringify(cleanOutline(outline)), pageId);
 }
 
 export const notebookArchiveSchema = z.object({
@@ -252,23 +310,39 @@ export const notebookArchiveSchema = z.object({
         // The stored ink (lib/ink/README.md), checked again on import.
         ink: z.string().max(6_500_000).optional(),
         recognized: z.string().max(10000).optional(),
+        // Since the page overview (lib/notebook-organize.ts); links point to
+        // sheets by their index in the archive ("_3").
+        title: z.string().max(1000).optional(),
+        bookmark: z.boolean().optional(),
+        links: z.unknown().optional(),
       }),
     )
     .max(MAX_SHEETS),
+  // The table of contents, sheets by their index ("_0").
+  outline: z.unknown().optional(),
 });
 export type NotebookArchive = z.infer<typeof notebookArchiveSchema>;
 export async function notebookArchive(pageId: string): Promise<NotebookArchive> {
   const inks = await pageInkDocs(pageId);
+  const sheets = await notebookSheets(pageId);
+  // Sheets are referred to by their place in the archive.
+  const index = new Map(sheets.map((s, i) => [s.id, `_${i}`]));
+  const outline = remapOutline(await notebookOutline(pageId, sheets), index);
   return {
     paper: await notebookPaper(pageId),
-    sheets: (await notebookSheets(pageId)).map((sheet) => {
+    sheets: sheets.map((sheet) => {
       const ink = inks.get(sheet.id);
+      const links = remapLinks(sheet.links, index);
       return {
         paper: sheet.paper,
         ...(sheet.background ? { background: sheet.background } : {}),
         ...(ink && hasInk(ink.doc) ? { ink: serializeInk(ink.doc), ...(ink.recognized ? { recognized: ink.recognized } : {}) } : {}),
+        ...(sheet.title ? { title: sheet.title } : {}),
+        ...(sheet.bookmark ? { bookmark: true } : {}),
+        ...(links.length ? { links } : {}),
       };
     }),
+    ...(outline.length ? { outline } : {}),
   };
 }
 // Restores a notebook from an archive onto a new page; `files` maps the
@@ -276,6 +350,7 @@ export async function notebookArchive(pageId: string): Promise<NotebookArchive> 
 export async function importNotebook(pageId: string, data: NotebookArchive, files: Map<string, string>, by: string | null) {
   await run("DELETE FROM notebook_sheets WHERE page_id=?", pageId);
   await run("INSERT INTO notebooks(page_id,paper,updated_at) VALUES(?,?,?) ON CONFLICT(page_id) DO UPDATE SET paper=excluded.paper", pageId, JSON.stringify(fullPaper(data.paper)), Date.now());
+  const created = new Map<string, string>();
   await forEachAsync(data.sheets, async (sheet, index) => {
     const raw = sheet.background ? backgroundSchema.safeParse(sheet.background) : null;
     const file = raw?.success ? files.get(raw.data.file) : undefined;
@@ -288,8 +363,15 @@ export async function importNotebook(pageId: string, data: NotebookArchive, file
       const items = Object.values(doc.pages)[0] || [];
       if (items.length) await writeSurface(pageId, sid, { ...emptyInk(), pages: { [sid]: items } }, cleanRecognizedText(sheet.recognized), by);
     }
+    created.set(`_${index}`, sid);
   });
   if (!data.sheets.length) await insertSheet(pageId);
+  // Titles, bookmarks, links and contents (archives from before have none).
+  await forEachAsync(data.sheets, async (sheet, index) => {
+    if (!sheet.title && !sheet.bookmark && !sheet.links) return;
+    await writeSheetMeta(created.get(`_${index}`)!, { title: sheet.title, bookmark: sheet.bookmark, links: remapLinks(cleanLinks(sheet.links), created) });
+  });
+  if (data.outline) await writeOutline(pageId, remapOutline(cleanOutline(data.outline), created));
 }
 
 // Typed and recognised text of all sheets, in order (exports, summaries).

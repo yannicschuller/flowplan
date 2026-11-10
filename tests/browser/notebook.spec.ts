@@ -513,3 +513,59 @@ test("screenshots: iPad and desktop, light and dark", async ({ page }, info) => 
   await pen(cdp, path({ x: area.x + 60, y: area.y + 140 }, { x: area.x + 300, y: area.y + 150 }, 30));
   await page.screenshot({ path: `${shots}/notebook-draw-block-desktop-light.png` });
 });
+
+test("page overview: bookmark, filter, select and delete with undo, contents, presenting", async ({ page }, info) => {
+  test.skip(info.project.name.includes("mobile"), "desktop layout");
+  const { command, create } = await setup(page);
+  const id = await create("Übersicht", "notebook");
+  await command({ action: "notebook.sheet.add", pageId: id, count: 5 });
+  await openNotebook(page, id, 6);
+  await page.getByRole("button", { name: "Alle Blätter und Inhalt" }).click();
+  const overview = page.getByRole("dialog", { name: "Seitenübersicht" });
+  await expect(overview.locator(".notebook-cell")).toHaveCount(6);
+  // Bookmark sheet 2 and filter.
+  await overview.locator('.notebook-cell[data-index="1"]').hover();
+  await overview.getByRole("button", { name: "Blatt 2 als Lesezeichen" }).click();
+  await overview.getByRole("button", { name: "Nur Lesezeichen" }).click();
+  await expect(overview.locator(".notebook-cell")).toHaveCount(1);
+  await overview.getByRole("button", { name: "Nur Lesezeichen" }).click();
+  // Select sheets 3–5 with Shift, delete, undo.
+  await overview.getByRole("button", { name: "Auswählen" }).click();
+  await overview.locator('.notebook-cell[data-index="2"] .notebook-cell-open').click();
+  await overview.locator('.notebook-cell[data-index="4"] .notebook-cell-open').click({ modifiers: ["Shift"] });
+  await expect(overview.getByText("3 ausgewählt")).toBeVisible();
+  // Paper for the three: the dialog says so and changes only them.
+  await overview.getByRole("button", { name: "Papier …" }).click();
+  const paperDialog = page.getByRole("dialog", { name: "Papier" });
+  await expect(paperDialog.getByText("3 Blätter", { exact: true })).toBeVisible();
+  await paperDialog.getByText("Gepunktet", { exact: true }).click();
+  await paperDialog.getByRole("button", { name: "Übernehmen" }).click();
+  await expect(paperDialog).toHaveCount(0);
+  const papers = (await (await page.request.get(`/api/pages/${id}`)).json()).notebook.sheets.map((s: { paper?: unknown }) => s.paper);
+  expect(papers.slice(2, 5)).toEqual([{ template: "dotted" }, { template: "dotted" }, { template: "dotted" }]);
+  expect(papers[1]).toEqual({});
+  await overview.getByRole("button", { name: "Löschen" }).click();
+  await expect(overview.locator(".notebook-cell")).toHaveCount(3);
+  await page.getByRole("button", { name: "Rückgängig" }).click();
+  await expect(overview.locator(".notebook-cell")).toHaveCount(6);
+  // Keyboard reorder: Alt+→ moves sheet 1 behind sheet 2.
+  await overview.getByRole("button", { name: "Fertig" }).click();
+  await overview.locator('.notebook-cell[data-index="0"] .notebook-cell-open').focus();
+  await page.keyboard.press("Alt+ArrowRight");
+  await expect(overview.locator('.notebook-cell[data-index="0"]')).toHaveAttribute("data-sheet", /./);
+  // Contents.
+  await overview.getByRole("tab", { name: "Inhalt" }).click();
+  await overview.getByRole("button", { name: /als Kapitel/ }).click();
+  await page.getByLabel("Titel des Kapitels").fill("Einleitung");
+  await page.getByRole("button", { name: "Hinzufügen" }).click();
+  await expect(overview.getByRole("button", { name: /Einleitung/ })).toBeVisible();
+  await page.keyboard.press("Escape");
+  // Presenting: full screen view, next sheet, Escape ends.
+  await page.getByRole("button", { name: "Präsentieren" }).click();
+  const show = page.locator(".notebook-presentation");
+  await expect(show).toBeVisible();
+  await page.keyboard.press("PageDown");
+  await expect(show.locator(".notebook-presentation-count")).toHaveText("2 / 6");
+  await page.keyboard.press("Escape");
+  await expect(show).toHaveCount(0);
+});

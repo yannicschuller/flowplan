@@ -131,6 +131,15 @@ command API: `notebook.sheet.add`, `.duplicate`, `.delete`, `.move`,
 `.paper`, `notebook.paper`, `notebook.import` (`lib/notebook.ts`). New
 sheets and inserted PDFs go after the sheet `after`, at the end (`after`
 null) or before the first sheet (`at: "start"`), see `placeSheets`.
+Organising (page overview, `lib/notebook-organize.ts`, model and pure
+helpers in `lib/notebook-organize-model.ts`): `notebook.sheet.meta`
+(title, bookmark), `.sheet.links` (areas linking to a sheet or page – kept
+outside the ink, so older clients never drop them), `notebook.outline` /
+`.outline.add` (table of contents), `.sheets.duplicate`, `.sheets.delete`
+(into `notebook_sheet_trash`, 30 days, with the ink), `.trash.restore`,
+`.sheets.transfer` (copy/move into another notebook). Presenting and
+follow mode share the whiteboards' cursor channel
+(`components/notebook/use-notebook-live.ts`).
 
 ## Handwriting recognition (iPhone/iPad app)
 

@@ -33,6 +33,7 @@ function Choice<V extends string>({ name, value, chosen, onChange, children }: {
 export function PaperDialog({
   open,
   sheetNumber,
+  sheetCount = 1,
   paper,
   onApply,
   onClose,
@@ -40,7 +41,9 @@ export function PaperDialog({
 }: {
   open: boolean;
   sheetNumber: number;
-  // The sheet's paper as it is now (its own choices over the notebook's).
+  // Several sheets chosen in the page overview: "These 3 sheets".
+  sheetCount?: number;
+  // The sheet's (the first chosen sheet's) paper as it is now (its own choices over the notebook's).
   paper: Paper;
   onApply: (draft: Paper, scope: PaperScope) => void;
   onClose: () => void;
@@ -60,9 +63,17 @@ export function PaperDialog({
   const scopes: { value: PaperScope; short: string; long: string; note: string }[] = [
     {
       value: "sheet",
-      short: t("Dieses Blatt", "This sheet"),
-      long: t("Dieses Blatt", "This sheet"),
-      note: t(`Nur Blatt ${sheetNumber} bekommt dieses Papier. Andere Blätter bleiben, wie sie sind.`, `Only sheet ${sheetNumber} gets this paper. Other sheets stay as they are.`),
+      ...(sheetCount > 1
+        ? {
+            short: t("Diese Blätter", "These sheets"),
+            long: t(`Die ${sheetCount} ausgewählten Blätter`, `The ${sheetCount} selected sheets`),
+            note: t(`Nur die ${sheetCount} ausgewählten Blätter bekommen dieses Papier (PDF-Seiten bleiben). Andere Blätter bleiben, wie sie sind.`, `Only the ${sheetCount} selected sheets get this paper (PDF pages stay). Other sheets stay as they are.`),
+          }
+        : {
+            short: t("Dieses Blatt", "This sheet"),
+            long: t("Dieses Blatt", "This sheet"),
+            note: t(`Nur Blatt ${sheetNumber} bekommt dieses Papier. Andere Blätter bleiben, wie sie sind.`, `Only sheet ${sheetNumber} gets this paper. Other sheets stay as they are.`),
+          }),
     },
     {
       value: "new",
@@ -80,7 +91,7 @@ export function PaperDialog({
   const orientationName = (o: Paper["orientation"]) => (o === "portrait" ? t("Hochformat", "Portrait") : t("Querformat", "Landscape"));
   const colorName = (c: Paper["color"]) => (c === "light" ? t("Hell", "Light") : t("Dunkel", "Dark"));
   return (
-    <Modal open={open} onClose={onClose} title={t("Papier", "Paper")} subtitle={t(`Blatt ${sheetNumber}`, `Sheet ${sheetNumber}`)} className="notebook-paper-dialog" sheet>
+    <Modal open={open} onClose={onClose} title={t("Papier", "Paper")} subtitle={sheetCount > 1 ? t(`${sheetCount} Blätter`, `${sheetCount} sheets`) : t(`Blatt ${sheetNumber}`, `Sheet ${sheetNumber}`)} className="notebook-paper-dialog" sheet>
       <div className="paper-dialog-body">
         <figure className="paper-dialog-preview" aria-hidden="true">
           <span className={`paper-dialog-sheet${draft.color === "dark" ? " is-dark" : ""}`} style={{ aspectRatio: `${size.width} / ${size.height}` }}>
