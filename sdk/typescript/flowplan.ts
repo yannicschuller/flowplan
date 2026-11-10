@@ -1432,7 +1432,7 @@ export type CommandTemplateDependenciesResult = {
   }[];
 };
 
-/** Make a record repeat when it is done. Needs editor rights on the record. When the record becomes done (the database's done rule), a copy is created with `field` (a date property) moved to the next occurrence and other dates moved by as many days. Monthly and yearly rules keep the day of the month (`day`, default: the current date's day); `weekdays` (1 = Monday) picks days of a weekly rule. `repeat: null` removes the rule. */
+/** Make a record repeat when it is done. Needs editor rights on the record. When the record becomes done (the database's done rule), a copy is created with `field` (a date property) moved to the next occurrence and other dates moved by as many days. Monthly and yearly rules keep the day of the month (`day`, default: the current date's day); `weekdays` (1 = Monday) picks days of a weekly rule. `timeZone` (IANA, default UTC) is the zone a timed date's day and local time are counted in. `repeat: null` removes the rule. */
 export type CommandRowRepeat = {
   action: "row.repeat";
   pageId: string;
@@ -1444,6 +1444,7 @@ export type CommandRowRepeat = {
     weekdays?: number[];
     day?: number;
     field: string;
+    timeZone?: string;
   } | null;
 };
 
