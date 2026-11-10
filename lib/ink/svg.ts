@@ -10,6 +10,7 @@ import { fullBox, imageCentre } from "./image";
 import { builtinSticker, stickerSvgElements } from "./stickers";
 import { inkFontFamily } from "./fonts";
 import { HIGHLIGHTER_OPACITY } from "./presets";
+import { dashArray, shapePaths, SHAPE_FILL_OPACITY } from "./shapes";
 import type { PageSize } from "./coords";
 
 const xml = (text: string) =>
@@ -71,6 +72,14 @@ export function inkSvgElements(items: InkItem[], { dark = false, imageHref }: { 
       else ink += `${path} style="mix-blend-mode:multiply"/>`;
     } else if (item.type === "image") {
       ink += imageSvgElement(item, item.file ? (imageHref?.(item.file) ?? null) : null);
+    } else if (item.type === "pen" && item.shape) {
+      const { body, heads, closed } = shapePaths(item.shape, item.width);
+      const width = r2(lineWidth(item));
+      const dash = dashArray(item.shape.dash, width);
+      const fill = closed && item.shape.fill ? `fill="${color(item.shape.fill)}" fill-opacity="${SHAPE_FILL_OPACITY}"` : `fill="none"`;
+      const line = `stroke="${color(item.color)}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round"`;
+      ink += `<path d="${body}" ${fill} ${line}${dash ? ` stroke-dasharray="${dash.join(" ")}"` : ""}/>`;
+      if (heads) ink += `<path d="${heads}" fill="none" ${line}/>`;
     } else if (item.type === "pen") {
       const { d, fill } = strokePath(item);
       ink += fill

@@ -981,3 +981,42 @@
 .ink-menu .color-picker-hex {
   margin: 0;
 }
+
+/* The shape tool's panel (components/ink/shape-panel.tsx): the kinds in a
+   grid of icon tiles, the fill's "same as the line" swatch, the ruler. */
+.ink-segmented.ink-panel-kinds {
+  grid-auto-flow: row;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 3px;
+}
+.ink-toolbar .ink-segmented.ink-panel-kinds button {
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  height: 52px;
+  padding: 0 2px;
+  font-size: 11px;
+  font-weight: 500;
+}
+.ink-panel-kinds button span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ink-toolbar .ink-segmented.ink-panel-dashes button,
+.ink-toolbar .ink-segmented.ink-panel-rulers button {
+  gap: 5px;
+  padding: 0 4px;
+  font-size: 12px;
+}
+.ink-toolbar .ink-segmented.ink-panel-dashes button span,
+.ink-toolbar .ink-segmented.ink-panel-rulers button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ink-panel-fills {
+  padding: 2px 16px 10px;
+}
+.ink-toolbar .ink-panel .ink-swatch.ink-swatch-same {
+  background: linear-gradient(135deg, var(--swatch) 50%, color-mix(in srgb, var(--swatch) 25%, #fff) 50%) !important;
+}

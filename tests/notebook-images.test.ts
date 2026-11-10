@@ -25,9 +25,10 @@ import {
 } from "../lib/ink/image";
 import { eraseItems, erasePartial, itemBounds, lassoItems, recolorItems, transformItems } from "../lib/ink/geometry";
 import { mergePage } from "../lib/ink/merge";
-import { itemAt, rotation, scaling, setItemsWidth, sharedWidthStep, transformSelected } from "../lib/ink/selection";
+import { itemAt, reorderItems, rotation, scaling, setItemsWidth, sharedWidthStep, transformSelected } from "../lib/ink/selection";
+import { withShape } from "../lib/ink/geometry";
 import { eraseWith } from "../lib/ink/eraser";
-import { inkSvg } from "../lib/ink/svg";
+import { inkSvg, inkSvgElements } from "../lib/ink/svg";
 import { drawInk, imageMatrix, inkPdfContext } from "../lib/ink/pdf-export";
 import { notebookPdf, notebookPdfSheets } from "../lib/ink/notebook-pdf";
 import { STICKERS, stampItems, stickerSvg, stickerTintable } from "../lib/ink/stickers";
@@ -208,6 +209,16 @@ test("the lasso's selection: a tap picks the picture, turns and scales carry it,
   assert.equal(setItemsWidth([img], new Set(["img1"]), 2)[0], img);
   assert.equal(sharedWidthStep([img, stroke]), null);
   for (const mode of ["stroke", "partial", "highlighter"] as const) assert.ok(eraseWith([img], [{ x: 200, y: 150 }], mode, 20).includes(img), mode);
+  // With a shape: both turn together, the shape stays a shape; order front/back across kinds.
+  const rect = withShape({ id: "r", type: "pen", color: "#e03131", width: 2, points: [] }, { kind: "rect", box: [100, 100, 200, 100, 0] });
+  const [pic, box] = transformSelected([img, rect], new Set(["img1", "r"]), rotation(Math.PI / 2, { x: 200, y: 150 })) as [InkImage, InkItem];
+  assert.equal(pic.rotation, 90);
+  assert.ok(box.type === "pen" && box.shape);
+  assert.deepEqual(reorderItems([img, rect, stroke], new Set(["img1"]), "front").map((i) => i.id), ["r", "s", "img1"]);
+  // SVG keeps the order: shape, picture, ink over it.
+  const svg = inkSvgElements([rect, img, stroke], { imageHref: () => "a.png" });
+  const at = ["#e03131", "<image", "#000000"].map((x) => svg.indexOf(x));
+  assert.ok(at[0] >= 0 && at[0] < at[1] && at[1] < at[2], svg);
 });
 
 test("concurrent saves merge pictures like strokes: moved by one, drawn on by the other", () => {

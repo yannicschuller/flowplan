@@ -5,11 +5,12 @@
 // colours, the last own one and the colour picker beside the panel) and the
 // input settings. Text: size, face and colour; the input settings folded
 // into one row. Eraser: its kind, the size of the partial eraser and
-// clearing the page. Lasso and laser (gear only): the input settings.
+// clearing the page. Shapes: a preview, the kind, width, line style, colour,
+// fill and the ruler (components/ink/shape-panel.tsx). Lasso and laser
+// (gear only): the ruler and the input settings.
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, CaretRight, Check, PencilSimpleLine, Plus, Trash, X } from "@phosphor-icons/react";
 import { useLocale, useT } from "../i18n";
-import { Switch } from "../settings-ui";
 import { HIGHLIGHTER_OPACITY, clampWidth, type InkTool, type PencilSetting } from "@/lib/ink/presets";
 import { INK_FONTS, INK_FONT_NAMES, inkFontFamily, type InkFont } from "@/lib/ink/fonts";
 import { ERASER_SIZE, type EraserMode } from "@/lib/ink/eraser";
@@ -17,6 +18,8 @@ import { MAX_FAVORITES, favoriteMark, type InkFavorite } from "@/lib/ink/favorit
 import type { InkEditor } from "./use-ink-editor";
 import { placeMenu } from "./menu-placement";
 import { ColorPicker } from "./color-picker";
+import { InkSlider, SectionHead, Segmented, SettingSwitch } from "./panel-parts";
+import { RulerSection, ShapeFillSection, ShapeKindSection, ShapeLineSection, ShapePreview } from "./shape-panel";
 
 type T = ReturnType<typeof useT>;
 const STYLED: InkTool[] = ["pen", "highlighter", "text"];
@@ -29,6 +32,7 @@ export const toolName = (t: T, tool: InkTool) =>
     lasso: t("Lasso", "Lasso"),
     text: t("Text", "Text"),
     laser: t("Laserpointer", "Laser pointer"),
+    shape: t("Formen", "Shapes"),
   })[tool];
 
 // ---- Favourite chips (also in the toolbar row) ----
@@ -75,134 +79,6 @@ export function FavoriteChips({ editor, className = "ink-preset" }: { editor: In
 function useNumber() {
   const locale = useLocale();
   return useCallback((n: number, digits = 1) => n.toLocaleString(locale, { maximumFractionDigits: digits }), [locale]);
-}
-
-// ---- Building blocks ----
-
-// Radio buttons in a row (role radiogroup): one tab stop, arrow keys move.
-function Segmented<V extends string | number>({
-  label,
-  value,
-  options,
-  onChange,
-  className = "",
-}: {
-  label: string;
-  value: V | null;
-  options: { value: V; label: string; icon?: React.ReactNode }[];
-  onChange: (value: V) => void;
-  className?: string;
-}) {
-  const refs = useRef<(HTMLButtonElement | null)[]>([]);
-  const chosen = options.findIndex((o) => o.value === value);
-  const onKey = (event: React.KeyboardEvent, index: number) => {
-    const delta = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 0;
-    if (!delta) return;
-    event.preventDefault();
-    const next = (index + delta + options.length) % options.length;
-    onChange(options[next].value);
-    refs.current[next]?.focus();
-  };
-  return (
-    <div className={`ink-segmented ${className}`} role="radiogroup" aria-label={label}>
-      {options.map((o, i) => (
-        <button
-          key={String(o.value)}
-          ref={(el) => {
-            refs.current[i] = el;
-          }}
-          type="button"
-          role="radio"
-          aria-checked={i === chosen}
-          tabIndex={i === chosen || (chosen < 0 && i === 0) ? 0 : -1}
-          className={i === chosen ? "active" : ""}
-          onClick={() => onChange(o.value)}
-          onKeyDown={(e) => onKey(e, i)}
-        >
-          {o.icon}
-          <span>{o.label}</span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-// A slider on a square-root scale (fine widths get more room), with dots
-// where the presets are. Native range input: keys, VoiceOver, Pencil.
-function InkSlider({
-  label,
-  value,
-  min,
-  max,
-  onChange,
-  valueText,
-  ticks = [],
-  lo,
-  hi,
-  linear = false,
-}: {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  onChange: (value: number) => void;
-  valueText: string;
-  ticks?: number[];
-  lo: React.ReactNode;
-  hi: React.ReactNode;
-  linear?: boolean;
-}) {
-  const STEPS = 1000;
-  const toPos = (v: number) => {
-    const f = Math.min(1, Math.max(0, (v - min) / (max - min)));
-    return linear ? f : Math.sqrt(f);
-  };
-  const fromPos = (p: number) => min + (max - min) * (linear ? p : p * p);
-  const pos = toPos(value);
-  return (
-    <div className="ink-slider">
-      <span className="ink-slider-end" aria-hidden="true">
-        {lo}
-      </span>
-      <div className="ink-slider-track" style={{ "--p": pos } as React.CSSProperties}>
-        {ticks.map((tick) => (
-          <span key={tick} className="ink-slider-tick" style={{ "--t": toPos(tick) } as React.CSSProperties} aria-hidden="true" />
-        ))}
-        <input
-          type="range"
-          min={0}
-          max={STEPS}
-          step={1}
-          value={Math.round(pos * STEPS)}
-          aria-label={label}
-          aria-valuetext={valueText}
-          onChange={(e) => onChange(fromPos(Number(e.target.value) / STEPS))}
-        />
-      </div>
-      <span className="ink-slider-end" aria-hidden="true">
-        {hi}
-      </span>
-    </div>
-  );
-}
-
-function SectionHead({ id, label, value }: { id?: string; label: string; value?: string }) {
-  return (
-    <div className="ink-panel-sec-head">
-      <span id={id}>{label}</span>
-      {value && <output className="ink-panel-pill">{value}</output>}
-    </div>
-  );
-}
-
-function SettingSwitch({ title, description, checked, onChange }: { title: string; description: string; checked: boolean; onChange: (on: boolean) => void }) {
-  return (
-    <div className="ink-panel-setting">
-      <span className="ink-panel-setting-title">{title}</span>
-      <span className="ink-panel-setting-desc">{description}</span>
-      <Switch checked={checked} onChange={onChange} label={title} />
-    </div>
-  );
 }
 
 // ---- Sections ----
@@ -421,7 +297,10 @@ function InputSection({ editor, folded }: { editor: InkEditor; folded: boolean }
       />
       <SettingSwitch
         title={t("Formen beim Halten begradigen", "Straighten shapes when holding")}
-        description={t("Am Ende eines Strichs kurz stillhalten: Linie, Rechteck, Ellipse …", "Hold still at the end of a stroke: line, rectangle, ellipse …")}
+        description={t(
+          "Am Ende eines Strichs kurz stillhalten: Linie, Pfeil, Rechteck, Kreis, Vieleck, Stern … Weiterziehen ändert die Größe; mit dem Lasso antippen zum Bearbeiten.",
+          "Hold still at the end of a stroke: line, arrow, rectangle, circle, polygon, star … Keep moving to resize; tap with the lasso to edit.",
+        )}
         checked={editor.snap}
         onChange={editor.setSnap}
       />
@@ -561,6 +440,8 @@ export function InkPanel({ editor, page, fromGear, align, onClose }: { editor: I
   const t = useT();
   const tool = editor.tool;
   const styled = STYLED.includes(tool);
+  // The shape tool draws with the pen's colour and width, but has no favourites.
+  const shape = tool === "shape";
   const [editing, setEditing] = useState(false);
   const panel = useRef<HTMLDivElement | null>(null);
   // Placed under its button (menu-placement.ts) and again whenever its
@@ -592,7 +473,7 @@ export function InkPanel({ editor, page, fromGear, align, onClose }: { editor: I
     [align],
   );
   useEffect(() => setEditing(false), [tool]);
-  const title = fromGear && !styled && tool !== "eraser" ? t("Stifteinstellungen", "Pen settings") : toolName(t, tool);
+  const title = fromGear && !styled && !shape && tool !== "eraser" ? t("Stifteinstellungen", "Pen settings") : toolName(t, tool);
   return (
     <div
       ref={ref}
@@ -639,16 +520,18 @@ export function InkPanel({ editor, page, fromGear, align, onClose }: { editor: I
           <FavoritesEditor editor={editor} onDone={() => setEditing(false)} />
         ) : (
           <>
-            {styled && (
-              <div className="ink-panel-sec ink-panel-preview-sec">
-                <Preview editor={editor} />
-              </div>
+            {(styled || shape) && (
+              <div className="ink-panel-sec ink-panel-preview-sec">{shape ? <ShapePreview editor={editor} /> : <Preview editor={editor} />}</div>
             )}
-            {styled && <WidthSection editor={editor} />}
+            {shape && <ShapeKindSection />}
+            {(styled || shape) && <WidthSection editor={editor} />}
+            {shape && <ShapeLineSection />}
             {tool === "text" && <FontSection editor={editor} />}
-            {styled && <ColorSection editor={editor} />}
+            {(styled || shape) && <ColorSection editor={editor} />}
+            {shape && <ShapeFillSection editor={editor} />}
             {tool === "eraser" && <EraserSection editor={editor} page={page} />}
-            <InputSection key={tool} editor={editor} folded={!fromGear && (tool === "text" || tool === "eraser")} />
+            {(shape || fromGear) && <RulerSection editor={editor} />}
+            <InputSection key={tool} editor={editor} folded={!fromGear && (tool === "text" || tool === "eraser" || shape)} />
           </>
         )}
       </div>

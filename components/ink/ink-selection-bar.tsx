@@ -64,7 +64,8 @@ export function InkSelectionBar({
   const ai = useAiAvailability("handwriting", aiPageId || null);
   const blockedHint = useAiBlockedHint();
   const aiShown = !!aiPageId && ai !== "hidden";
-  const pens = items.some((i) => i.type === "pen");
+  // Handwriting only: shapes are never converted to text.
+  const pens = items.some((i) => i.type === "pen" && !i.shape);
   // The typed text, top to bottom and left to right, on one line.
   const heading = items
     .flatMap((i) => (i.type === "text" ? [i] : []))

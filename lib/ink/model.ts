@@ -8,6 +8,7 @@
 // x, y, pressure triples, rounded to two decimals.
 
 import { isInkFont, type InkFont } from "./fonts";
+import { cleanShape, type InkShape } from "./shapes";
 
 export const INK_FORMAT = "flowplan-ink";
 export const INK_VERSION = 1;
@@ -31,6 +32,9 @@ export type InkStroke = {
   width: number;
   // x, y, pressure (0–1), x, y, pressure, …
   points: number[];
+  // Pen only: an editable shape (lib/ink/shapes.ts); `points` is then its
+  // outline, which is what versions without shapes draw (and keep).
+  shape?: InkShape;
 };
 export type InkText = {
   id: string;
@@ -123,7 +127,8 @@ export function cleanItem(raw: unknown): InkItem | null {
       points.push(round2(clamp(x, -1e5, 1e5)), round2(clamp(y, -1e5, 1e5)), round2(clamp(p, 0, 1)));
     }
     if (!points.length) return null;
-    return { id, type: item.type, color, width: round2(clamp(item.width, 0.1, 200)), points };
+    const shape = item.type === "pen" ? cleanShape(item.shape) : undefined;
+    return { id, type: item.type, color, width: round2(clamp(item.width, 0.1, 200)), points, ...(shape ? { shape } : {}) };
   }
   if (item.type === "text") {
     if (typeof item.text !== "string" || !item.text.trim() || !finite(item.x) || !finite(item.y) || !finite(item.size)) return null;

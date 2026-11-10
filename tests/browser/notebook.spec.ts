@@ -597,3 +597,74 @@ test("page overview: bookmark, filter, select and delete with undo, contents, pr
   await page.keyboard.press("Escape");
   await expect(show).toHaveCount(0);
 });
+
+test("notebook: shapes snap when holding, stay editable, and the ruler straightens strokes", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "Pen input runs on the desktop project.");
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const { create } = await setup(page);
+  const id = await create(`Formen ${Date.now()}`, "notebook");
+  const tools = await openNotebook(page, id);
+  const box = (await sheet(page, 0).boundingBox())!;
+  // A rough rectangle, held at the end: a rectangle shape.
+  const ring = [
+    { x: box.x + 80, y: box.y + 100 },
+    { x: box.x + 300, y: box.y + 104 },
+    { x: box.x + 298, y: box.y + 220 },
+    { x: box.x + 82, y: box.y + 218 },
+    { x: box.x + 81, y: box.y + 102 },
+  ];
+  await page.mouse.move(ring[0].x, ring[0].y);
+  await page.mouse.down();
+  for (const p of ring.slice(1)) await page.mouse.move(p.x, p.y, { steps: 8 });
+  await page.waitForTimeout(800);
+  await page.mouse.up();
+  await expect(page.getByRole("toolbar", { name: "Notizbuch" }).getByRole("status")).toHaveText("Gespeichert", { timeout: 10_000 });
+  let data = await (await page.request.get(`/api/pages/${id}`)).json();
+  const surface = data.notebook.sheets[0].id;
+  expect(data.notebook.sheets[0].ink.pages[surface][0].shape.kind).toBe("rect");
+  // The lasso picks it with a tap; the bar fills it.
+  await tools.getByRole("radio", { name: "Lasso" }).click();
+  await page.mouse.click(box.x + 190, box.y + 102);
+  const bar = page.getByRole("toolbar", { name: "Form bearbeiten" });
+  await expect(bar).toBeVisible();
+  await bar.getByRole("button", { name: "Füllung" }).click();
+  await bar.getByRole("button", { name: "Füllung #e03131" }).click();
+  await expect.poll(async () => (await (await page.request.get(`/api/pages/${id}`)).json()).notebook.sheets[0].ink.pages[surface][0].shape.fill, { timeout: 10_000 }).toBe("#e03131");
+  // The ruler: a wavy stroke along its top edge becomes straight.
+  await tools.getByRole("radio", { name: "Stift", exact: true }).click();
+  await tools.getByRole("button", { name: "Lineal einblenden" }).click();
+  const ruler = (await page.locator(".ink-ruler-body rect").boundingBox())!;
+  const y = ruler.y - 6;
+  await page.mouse.move(ruler.x + 40, y);
+  await page.mouse.down();
+  for (let i = 1; i <= 12; i++) await page.mouse.move(ruler.x + 40 + i * 15, y - Math.sin(i) * 6);
+  await expect(page.locator(".ink-measure").filter({ hasText: "cm" })).toBeVisible();
+  await page.mouse.up();
+  await expect.poll(async () => {
+    const d = await (await page.request.get(`/api/pages/${id}`)).json();
+    const items = d.notebook.sheets[0].ink.pages[surface];
+    const ys = items[items.length - 1].points.filter((_: number, i: number) => i % 3 === 1);
+    return items.length === 2 && Math.max(...ys) - Math.min(...ys) < 0.5;
+  }, { timeout: 10_000 }).toBe(true);
+  await tools.getByRole("button", { name: "Lineal ausblenden" }).click();
+  // The shape tool's panel (tap the tool again): kind, fill, line style; then drag.
+  await tools.getByRole("radio", { name: "Formen" }).click();
+  await tools.getByRole("radio", { name: "Formen" }).click();
+  const panel = page.getByRole("dialog", { name: "Formen" });
+  await panel.getByRole("radio", { name: "Ellipse" }).click();
+  await panel.getByRole("switch", { name: "Füllen" }).click();
+  await panel.getByRole("radio", { name: "Gestrichelt" }).click();
+  await panel.getByRole("button", { name: "Schließen" }).click();
+  await page.mouse.move(box.x + 120, box.y + 320);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 260, box.y + 400, { steps: 8 });
+  await page.mouse.up();
+  await expect.poll(async () => {
+    const d = await (await page.request.get(`/api/pages/${id}`)).json();
+    const items = d.notebook.sheets[0].ink.pages[surface];
+    const last = items[items.length - 1];
+    return `${last.shape?.kind} ${!!last.shape?.fill} ${last.shape?.dash}`;
+  }, { timeout: 10_000 }).toBe("ellipse true dash");
+  expect(errors).toEqual([]);
+});

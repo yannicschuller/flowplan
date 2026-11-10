@@ -18,7 +18,7 @@ import { requirePage } from "./permissions";
 import { requireUnlocked } from "./journal-extras";
 import { isEncryptedPage } from "./e2ee-server";
 import { emptyInk, INK_LIMITS, inkItemCount, inkText, mapInkFiles, parseInk, serializeInk, type InkDoc, type InkItem } from "./ink/model";
-import { mergeInk } from "./ink/merge";
+import { keepShapes, mergeInk } from "./ink/merge";
 import { cleanRecognizedText } from "./ink/recognized";
 import { recordPageEdit } from "./page-activity";
 import type { Identity, Page } from "./types";
@@ -177,7 +177,8 @@ export async function savePageInk(user: Identity, pageId: string, surface: strin
       const count = (await one<{ n: number }>("SELECT COUNT(*) n FROM page_ink WHERE page_id=?", page.id))?.n ?? 0;
       if (count >= MAX_SURFACES) throw new HttpError(413, "Zu viele Zeichnungen auf dieser Seite.");
     }
-    let doc = ours;
+    // Strokes saved back unchanged by a version without shapes keep theirs.
+    let doc = current ? keepShapes(surfaceDoc(parseInk(current.data), surface), ours) : ours;
     let merged = false;
     const conflict =
       current && current.version !== base ? { by: await userName(current.updated_by), at: current.updated_at, version: current.version } : null;
@@ -189,7 +190,7 @@ export async function savePageInk(user: Identity, pageId: string, surface: strin
           : parseInk((await one<{ data: string }>("SELECT data FROM page_ink_versions WHERE page_id=? AND surface=? AND version=?", page.id, surface, base))?.data);
       const known = base === 0 || !!(await one("SELECT 1 FROM page_ink_versions WHERE page_id=? AND surface=? AND version=?", page.id, surface, base));
       if (known) {
-        doc = surfaceDoc(mergeInk(original, ours, parseInk(current.data)), surface);
+        doc = surfaceDoc(mergeInk(original, doc, parseInk(current.data)), surface);
         merged = true;
       }
     }

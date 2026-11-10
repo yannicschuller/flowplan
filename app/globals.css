@@ -33532,7 +33532,7 @@ html.native-app body {
   border-radius: 8px;
 }
 
-/* ---------- Notebooks: pictures, stickers, own paper (components/ink/ink-image.tsx,
+/* ---------- Notebooks: pictures, stickers, own paper (components/ink/ink-picture.tsx,
    components/notebook/notebook-insert.tsx, sticker-panel.tsx, custom-paper.tsx) ---------- */
 .ink-image-frame {
   position: absolute;
@@ -33841,4 +33841,177 @@ html.native-app body {
 }
 .notebook-template-chosen .notebook-pdf {
   position: static;
+}
+/* ---------- Ink: shapes and the ruler (components/ink/shape-editor.tsx,
+   ink-ruler.tsx, shape-toolbar.tsx) ---------- */
+.ink-layer > svg.ink-ruler-layer,
+.ink-layer > svg.ink-shape-edit {
+  overflow: visible;
+}
+.ink-shape-outline {
+  stroke: #1c7ed6;
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+  opacity: 0.8;
+}
+.ink-shape-body,
+.ink-shape-handle {
+  pointer-events: all;
+  touch-action: none;
+  cursor: move;
+}
+.ink-shape-handle {
+  cursor: grab;
+}
+.ink-shape-handle.rotate .ink-handle {
+  fill: #1c7ed6;
+}
+.ink-shape-stem {
+  stroke: #1c7ed6;
+  stroke-width: 1;
+}
+.ink-shape-bar {
+  transform: translateX(-50%);
+  flex-wrap: nowrap;
+}
+.ink-shape-bar .ink-swatch {
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+}
+.ink-shape-bar .ink-swatch.active {
+  outline: 2px solid #ecebf1;
+  outline-offset: 1px;
+}
+.ink-shape-fill-anchor {
+  position: relative;
+  display: grid;
+}
+.ink-shape-fills {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+}
+.ink-swatch-none {
+  background: linear-gradient(135deg, transparent 45%, #e03131 45% 55%, transparent 55%), #fff !important;
+}
+/* Readouts by the pen: length along the ruler, angles, the shape snapped to. */
+.ink-measure {
+  position: absolute;
+  z-index: 2;
+  transform: translate(-50%, -50%);
+  padding: 2px 7px;
+  border-radius: 99px;
+  background: #1d1c23e6;
+  color: #fff;
+  font: 600 12px/1.4 system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.ink-ruler-body > rect,
+.ink-ruler-body > path {
+  fill: #f4f6fbd0;
+  stroke: #5c6478;
+  stroke-width: 1;
+  filter: drop-shadow(0 2px 6px #0003);
+}
+.ink-ruler-body,
+.ink-ruler-grab {
+  pointer-events: visiblePainted;
+  touch-action: none;
+  cursor: grab;
+}
+.ink-ruler-grab {
+  pointer-events: all;
+}
+.ink-ruler-tick {
+  stroke: #2b3040;
+  stroke-width: 1;
+  fill: none;
+}
+.ink-ruler-tick.faint {
+  opacity: 0.35;
+  stroke-dasharray: 3 3;
+}
+.ink-ruler-text {
+  fill: #2b3040;
+  font-family: system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.ink-ruler-text.faint {
+  opacity: 0.6;
+}
+.ink-ruler-text.strong {
+  font-weight: 600;
+  fill: #1c5fd6;
+}
+.ink-ruler-text.measure {
+  paint-order: stroke;
+  stroke: #fff;
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+.ink-ruler-centre,
+.ink-compass-needle {
+  fill: #1c5fd6;
+}
+.ink-compass-circle {
+  fill: none;
+  stroke: #1c7ed6;
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+  opacity: 0.7;
+}
+.ink-compass-arm {
+  stroke: #1c5fd6;
+  stroke-width: 2;
+}
+.ink-ruler-ray {
+  stroke: #1c7ed6;
+  stroke-width: 1.5;
+  stroke-dasharray: 2 3;
+}
+.ink-ruler-arc {
+  stroke: #e8590c;
+  stroke-width: 1.5;
+}
+.ink-ruler-measures .ink-ruler-text.strong {
+  fill: #e8590c;
+}
+.ink-ruler-unit {
+  position: absolute;
+  z-index: 2;
+  transform: translate(-50%, -50%);
+  min-width: 34px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 99px;
+  background: #1d1c23cc;
+  color: #fff;
+  font: 600 12px/1 system-ui, sans-serif;
+}
+.ink-ruler-radius {
+  margin-top: -26px;
+}
+[data-theme="dark"] .ink-ruler-body > rect,
+[data-theme="dark"] .ink-ruler-body > path {
+  fill: #2a2d38d8;
+  stroke: #9aa2b6;
+}
+[data-theme="dark"] .ink-ruler-tick {
+  stroke: #e4e7ef;
+}
+[data-theme="dark"] .ink-ruler-text {
+  fill: #e4e7ef;
+}
+[data-theme="dark"] .ink-ruler-text.strong {
+  fill: #74c0fc;
+}
+[data-theme="dark"] .ink-ruler-text.measure {
+  stroke: #1d1c23;
 }

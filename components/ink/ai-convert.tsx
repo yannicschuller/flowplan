@@ -40,7 +40,7 @@ export function AiConvertDialog({
 }) {
   const t = useT();
   // The strokes as they were when the dialog opened.
-  const [pens] = useState(() => items.filter((i) => i.type === "pen"));
+  const [pens] = useState(() => items.filter((i) => i.type === "pen" && !i.shape));
   const [png, setPng] = useState<{ blob: Blob; url: string } | null>(null);
   const [state, setState] = useState<State>({ step: "ready" });
   const abort = useRef<AbortController | null>(null);

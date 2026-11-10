@@ -4,7 +4,8 @@
 import type { PencilAction } from "../stylus";
 import { isInkFont, type InkFont } from "./fonts";
 
-export type InkTool = "pen" | "highlighter" | "eraser" | "lasso" | "text" | "laser";
+// "shape": draws shapes (or recognises a stroke at once), with the pen's colour and width.
+export type InkTool = "pen" | "highlighter" | "eraser" | "lasso" | "text" | "laser" | "shape";
 export type { EraserMode } from "./eraser";
 export type InkPreset = { type: "pen" | "highlighter"; color: string; width: number };
 

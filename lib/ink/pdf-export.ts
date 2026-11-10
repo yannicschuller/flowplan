@@ -30,6 +30,7 @@ import {
   setGraphicsState,
   setLineCap,
   setLineJoin,
+  setDashPattern,
   setLineWidth,
   setStrokingColor,
   setTextMatrix,
@@ -49,6 +50,7 @@ import { builtinSticker, shapePaint } from "./stickers";
 import { splitHighlights } from "./svg";
 import { HIGHLIGHTER_OPACITY } from "./presets";
 import { inkPdfFont, type InkPdfFont } from "./fonts";
+import { dashArray, shapeParts, SHAPE_FILL_OPACITY, type XY } from "./shapes";
 
 const color = (hex: string) => rgb(parseInt(hex.slice(1, 3), 16) / 255, parseInt(hex.slice(3, 5), 16) / 255, parseInt(hex.slice(5, 7), 16) / 255);
 const n = (v: number) => Math.round(v * 100) / 100;
@@ -73,6 +75,26 @@ function strokeOps(item: InkStroke, map?: ColorMap): PDFOperator[] {
     ...path.slice(1).map((p) => lineTo(n(p.x), n(p.y))),
     stroke(),
   ];
+}
+
+// A shape: its fill (translucent, `fillState`), the outline with its
+// dashes, arrow heads solid.
+function shapeOps(item: InkStroke, fillState: PDFName | null, map?: ColorMap): PDFOperator[] {
+  const shape = item.shape!;
+  const { body, closed, heads } = shapeParts(shape, item.width);
+  if (!body.length) return [];
+  const path = (list: XY[], close: boolean) => [moveTo(n(list[0].x), n(list[0].y)), ...list.slice(1).map((p) => lineTo(n(p.x), n(p.y))), ...(close ? [closePath()] : [])];
+  const ops: PDFOperator[] = [];
+  if (closed && shape.fill && fillState)
+    ops.push(pushGraphicsState(), setGraphicsState(fillState), setFillingColor(mapped(shape.fill, map)), ...path(body, true), fill(), popGraphicsState());
+  const width = lineWidth(item);
+  const dash = dashArray(shape.dash, width);
+  ops.push(setStrokingColor(mapped(item.color, map)), setLineWidth(n(width)), setLineCap(LineCapStyle.Round), setLineJoin(LineJoinStyle.Round));
+  if (dash) ops.push(setDashPattern(dash, 0));
+  ops.push(...path(body, closed), stroke());
+  if (dash) ops.push(setDashPattern([], 0));
+  for (const head of heads) ops.push(...path(head, false), stroke());
+  return ops;
 }
 
 // Characters the standard fonts (WinAnsi) cannot show become "?".
@@ -112,12 +134,13 @@ export class InkExportError extends Error {}
 // EXIF orientation of a JPEG still to apply (1: none). null: not available.
 export type InkImageBytes = { bytes: Uint8Array | ArrayBuffer; type: "png" | "jpg"; orientation?: number };
 export type InkImageLoader = (file: string) => Promise<InkImageBytes | null>;
-// Resources shared by the pages of one PDF (fonts, highlighter state,
-// pictures – each file embedded once).
+// Resources shared by the pages of one PDF (fonts, highlighter and shape
+// fill state, pictures – each file embedded once).
 export type InkPdfContext = {
   pdf: PDFDocument;
   fonts: Partial<Record<InkPdfFont, PDFFont>>;
   highlighter: PDFRef | null;
+  shapeFill?: PDFRef | null;
   loadImage?: InkImageLoader;
   images: Map<string, Promise<{ image: PDFImage; orientation: number } | null>>;
   alphas: Map<number, PDFRef>;
@@ -126,6 +149,7 @@ export const inkPdfContext = (pdf: PDFDocument, { loadImage }: { loadImage?: Ink
   pdf,
   fonts: {},
   highlighter: null,
+  shapeFill: null,
   loadImage,
   images: new Map(),
   alphas: new Map(),
@@ -245,9 +269,15 @@ export async function drawInk(context: InkPdfContext, page: PDFPage, items: InkI
   };
   if (highlights.length) ops.push(pushGraphicsState(), setGraphicsState(highlightState()), ...highlights.flatMap((h) => strokeOps(h, colors)), popGraphicsState());
   const fontNames: Partial<Record<InkPdfFont, PDFName>> = {};
+  let fillState: PDFName | null = null;
+  if (items.some((i) => i.type === "pen" && i.shape?.fill)) {
+    context.shapeFill ??= context.pdf.context.register(context.pdf.context.obj({ Type: "ExtGState", ca: SHAPE_FILL_OPACITY }));
+    fillState = page.node.newExtGState("FlowplanInkShapeFill", context.shapeFill);
+  }
   for (const [index, item] of items.entries()) {
     if (item.type === "highlighter" && index >= under) ops.push(pushGraphicsState(), setGraphicsState(highlightState()), ...strokeOps(item, colors), popGraphicsState());
     else if (item.type === "image") ops.push(...(await imageOps(context, page, item)));
+    else if (item.type === "pen" && item.shape) ops.push(...shapeOps(item, fillState, colors));
     else if (item.type === "pen") ops.push(...strokeOps(item, colors));
     else if (item.type === "text") {
       const face = inkPdfFont(item.font);

@@ -15,7 +15,7 @@ export type ConvertResult = "done" | "empty" | "failed";
 export async function convertSelection(editor: InkEditor, size: PageSize, onText?: (text: string) => void): Promise<ConvertResult> {
   const selection = editor.selection;
   if (!selection) return "empty";
-  const pens = editor.selectedItems().filter((i) => i.type === "pen");
+  const pens = editor.selectedItems().filter((i) => i.type === "pen" && !i.shape);
   const request = recognitionRequest(recognitionId("convert"), size, pens);
   if (!request) return "empty";
   const result = await recognizeInk(request);
