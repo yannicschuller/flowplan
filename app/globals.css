@@ -33815,15 +33815,9 @@ html.native-app body {
     flex: 0 0 74px;
   }
 }
-.notebook-own-fit label {
-  flex-direction: row;
-  margin: 0;
-}
-.notebook-own-fit {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 14px;
-  margin-top: 8px;
+.segmented.notebook-own-fit {
+  justify-self: start;
+  margin-top: 4px;
 }
 .notebook-template-chosen {
   position: relative;

@@ -139,9 +139,9 @@ export function CustomPaperSection({
         </button>
       </div>
       {draft.image?.template && templates?.find((tpl) => tpl.id === draft.image?.template)?.kind === "image" && (
-        <div className="notebook-own-fit" role="radiogroup" aria-label={t("Anordnung", "Layout||paper template")}>
+        <div className="segmented notebook-own-fit" role="radiogroup" aria-label={t("Anordnung", "Layout||paper template")}>
           {(["stretch", "tile"] as PaperFit[]).map((fit) => (
-            <label key={fit}>
+            <label key={fit} data-active={(draft.image?.fit || "stretch") === fit}>
               <input type="radio" name="notebook-own-fit" checked={(draft.image?.fit || "stretch") === fit} onChange={() => onChoose({ ...draft.image!, fit }, templates?.find((tpl) => tpl.id === draft.image?.template))} />
               {fit === "stretch" ? t("Auf das Blatt strecken", "Stretch to the sheet") : t("Kacheln", "Tile")}
             </label>
