@@ -2,7 +2,9 @@ import { test, expect } from "@playwright/test";
 
 // The "@" dialog works from the keyboard like the slash menu and the
 // command palette: the first hit is highlighted, the arrow keys move the
-// highlight, Enter inserts it and Escape returns to the text.
+// highlight, Enter inserts it and Escape returns to the text – with the "@"
+// and the search typed, as without the dialog. Inside a word (an e-mail
+// address) "@" is typed without it.
 test("the mention dialog is used with the arrow keys, Enter and Escape", async ({ page }, info) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
@@ -64,6 +66,7 @@ test("the mention dialog is used with the arrow keys, Enter and Escape", async (
 
   // Records arrive later from the server and are highlighted like pages.
   // The field starts empty again after a page was inserted.
+  await page.keyboard.type(" ");
   await page.keyboard.press("@");
   await expect(search).toBeFocused();
   await expect(search).toHaveValue("");
@@ -72,21 +75,36 @@ test("the mention dialog is used with the arrow keys, Enter and Escape", async (
   await page.keyboard.press("Enter");
   await expect(editor.getByRole("link", { name: `Wartung ${tag}` })).toHaveAttribute("href", `/#page=${notes}&row=${row}`);
 
-  // Without a hit Enter does nothing; Escape closes the dialog and the
-  // caret is back in the text.
+  // Without a hit Enter types the "@" and the search into the text; the
+  // caret is back in the text behind them.
+  await page.keyboard.type(" ");
   await page.keyboard.press("@");
   await page.keyboard.type(`nichts ${tag}`);
   await expect(selected).toHaveCount(0);
   await page.keyboard.press("Enter");
-  await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveCount(0);
+  await expect(editor).toBeFocused();
+  await expect(editor).toContainText(`Wartung ${tag} @nichts ${tag}`);
+  // Escape does the same.
+  await page.keyboard.type(" ");
+  await page.keyboard.press("@");
+  await expect(search).toBeFocused();
+  await page.keyboard.type("x");
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
   await expect(editor).toBeFocused();
   await page.keyboard.type(" Ende");
-  await expect(editor).toContainText(`Wartung ${tag} Ende`);
+  await expect(editor).toContainText(`@nichts ${tag} @x Ende`);
+  // After a letter or digit – an e-mail address – "@" is typed at once.
+  await page.keyboard.type(" ada");
+  await page.keyboard.press("@");
+  await page.keyboard.type("example.org");
+  await expect(dialog).toHaveCount(0);
+  await expect(editor).toContainText("ada@example.org");
 
   // The highlight is scrolled into view: ArrowUp from the first option
   // goes to the last one of the long list.
+  await page.keyboard.type(" ");
   await page.keyboard.press("@");
   await expect(selected).toHaveCount(1);
   await page.keyboard.press("ArrowUp");
