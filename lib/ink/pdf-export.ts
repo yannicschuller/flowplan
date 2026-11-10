@@ -2,7 +2,8 @@
 // ("Download with annotations"). The original bytes are not changed; the
 // result is a new PDF with the same pages. Pen strokes with pressure become
 // filled outlines, other strokes lines with round ends, the highlighter a
-// translucent multiply layer under the ink, text Helvetica.
+// translucent multiply layer under the ink, text in the nearest standard
+// PDF font of its face (lib/ink/fonts.ts: Helvetica, Times, Courier).
 import {
   LineCapStyle,
   LineJoinStyle,
@@ -38,6 +39,7 @@ import { viewToPdfMatrix, type Matrix } from "./coords";
 import { lineWidth, strokeOutline, strokePoints, variesInWidth } from "./geometry";
 import type { InkDoc, InkItem, InkStroke, InkText } from "./model";
 import { HIGHLIGHTER_OPACITY } from "./presets";
+import { inkPdfFont, type InkPdfFont } from "./fonts";
 
 const color = (hex: string) => rgb(parseInt(hex.slice(1, 3), 16) / 255, parseInt(hex.slice(3, 5), 16) / 255, parseInt(hex.slice(5, 7), 16) / 255);
 const n = (v: number) => Math.round(v * 100) / 100;
@@ -64,7 +66,7 @@ function strokeOps(item: InkStroke, map?: ColorMap): PDFOperator[] {
   ];
 }
 
-// Characters Helvetica (WinAnsi) cannot show become "?".
+// Characters the standard fonts (WinAnsi) cannot show become "?".
 function encodable(font: PDFFont, text: string) {
   let out = "";
   for (const ch of text) {
@@ -90,9 +92,11 @@ function textOps(item: InkText, font: PDFFont, fontName: PDFName, map?: ColorMap
 
 export class InkExportError extends Error {}
 
-// Resources shared by the pages of one PDF (font, highlighter state).
-export type InkPdfContext = { pdf: PDFDocument; font: PDFFont | null; highlighter: PDFRef | null };
-export const inkPdfContext = (pdf: PDFDocument): InkPdfContext => ({ pdf, font: null, highlighter: null });
+// Resources shared by the pages of one PDF (fonts, highlighter state).
+export type InkPdfContext = { pdf: PDFDocument; fonts: Partial<Record<InkPdfFont, PDFFont>>; highlighter: PDFRef | null };
+export const inkPdfContext = (pdf: PDFDocument): InkPdfContext => ({ pdf, fonts: {}, highlighter: null });
+const STANDARD: Record<InkPdfFont, StandardFonts> = { Helvetica: StandardFonts.Helvetica, "Times-Roman": StandardFonts.TimesRoman, Courier: StandardFonts.Courier };
+const FONT_KEYS: Record<InkPdfFont, string> = { Helvetica: "FlowplanInkFont", "Times-Roman": "FlowplanInkSerif", Courier: "FlowplanInkMono" };
 
 // Draws ink onto a page; `matrix` takes page units (top left, y down) to
 // the page's PDF user space. `colors` swaps ink colours (dark paper).
@@ -107,13 +111,14 @@ export async function drawInk(context: InkPdfContext, page: PDFPage, items: InkI
     const name = page.node.newExtGState("FlowplanInkHighlight", context.highlighter);
     ops.push(pushGraphicsState(), setGraphicsState(name), ...highlights.flatMap((h) => strokeOps(h, colors)), popGraphicsState());
   }
-  let fontName: PDFName | null = null;
+  const fontNames: Partial<Record<InkPdfFont, PDFName>> = {};
   for (const item of items) {
     if (item.type === "pen") ops.push(...strokeOps(item, colors));
     else if (item.type === "text") {
-      context.font ??= await context.pdf.embedFont(StandardFonts.Helvetica);
-      fontName ??= page.node.newFontDictionary("FlowplanInkFont", context.font.ref);
-      ops.push(...textOps(item, context.font, fontName, colors));
+      const face = inkPdfFont(item.font);
+      const font = (context.fonts[face] ??= await context.pdf.embedFont(STANDARD[face]));
+      const fontName = (fontNames[face] ??= page.node.newFontDictionary(FONT_KEYS[face], font.ref));
+      ops.push(...textOps(item, font, fontName, colors));
     }
   }
   ops.push(popGraphicsState());

@@ -13,7 +13,12 @@ import {
   PEN_COLORS,
   PEN_WIDTHS,
   TEXT_SIZES,
+  WIDTH_RANGES,
   loadPresets,
+  loadRecentColors,
+  loadTextStyle,
+  rememberColor,
+  saveTextStyle,
   pencilResult,
   pencilSetting,
   savePresets,
@@ -25,10 +30,12 @@ import {
   type InkTool,
   type PencilSetting,
 } from "@/lib/ink/presets";
+import type { InkFont } from "@/lib/ink/fonts";
 import { forgetPen, onPencilAction, penOnlySetting, setPenOnly as storePenOnly } from "@/lib/stylus";
 
 export type InkSelection = { page: string; ids: string[] };
-type Style = { color: string; width: number };
+// Width: line width, or the font size of text; font: text only.
+type Style = { color: string; width: number; font?: InkFont };
 
 export type InkEditor = Awaited<ReturnType<typeof useInkEditor>>;
 
@@ -49,6 +56,7 @@ export function useInkEditor(initial: InkDoc, { active = true }: { active?: bool
   const [pen, setPen] = useState<Style>({ color: DEFAULT_PRESETS[0].color, width: DEFAULT_PRESETS[0].width });
   const [highlighter, setHighlighter] = useState<Style>({ color: HIGHLIGHTER_COLORS[0], width: HIGHLIGHTER_WIDTHS[1] });
   const [text, setText] = useState<Style>({ color: PEN_COLORS[0], width: TEXT_SIZES[1] });
+  const [recentColors, setRecentColors] = useState<string[]>([]);
   const [presets, setPresets] = useState<InkPreset[]>(DEFAULT_PRESETS);
   const [preset, setPreset] = useState<number | null>(0);
   const [eraserMode, setEraserMode] = useState<EraserMode>("stroke");
@@ -63,6 +71,9 @@ export function useInkEditor(initial: InkDoc, { active = true }: { active?: bool
     const stored = loadPresets();
     setPresets(stored);
     setPen({ color: stored[0].color, width: stored[0].width });
+    const textStyle = loadTextStyle();
+    if (textStyle) setText(textStyle);
+    setRecentColors(loadRecentColors());
     setPenOnlyState(penOnlySetting() === "on");
     setSnapState(snapSetting());
     setPencilState(pencilSetting());
@@ -125,19 +136,26 @@ export function useInkEditor(initial: InkDoc, { active = true }: { active?: bool
   const style = tool === "highlighter" ? highlighter : tool === "text" ? text : pen;
   const palette = tool === "highlighter" ? HIGHLIGHTER_COLORS : PEN_COLORS;
   const widths = tool === "highlighter" ? HIGHLIGHTER_WIDTHS : tool === "text" ? TEXT_SIZES : PEN_WIDTHS;
+  // The free width (or text size) slider of the tool in hand.
+  const widthRange = WIDTH_RANGES[tool === "highlighter" ? "highlighter" : tool === "text" ? "text" : "pen"];
   // A favourite in hand follows changes of colour and width.
-  const updatePreset = (patch: Partial<Style>) => {
+  const updatePreset = ({ color, width }: Partial<Style>) => {
     if (preset === null || (tool !== "pen" && tool !== "highlighter") || presets[preset]?.type !== tool) return;
-    const next = presets.map((p, i) => (i === preset ? { ...p, ...patch } : p));
+    const next = presets.map((p, i) => (i === preset ? { ...p, ...(color ? { color } : {}), ...(width ? { width } : {}) } : p));
     setPresets(next);
     savePresets(next);
   };
   const setStyle = (patch: Partial<Style>) => {
     if (tool === "highlighter") setHighlighter((s) => ({ ...s, ...patch }));
-    else if (tool === "text") setText((s) => ({ ...s, ...patch }));
-    else setPen((s) => ({ ...s, ...patch }));
+    else if (tool === "text") {
+      const next = { ...text, ...patch };
+      setText(next);
+      saveTextStyle(next);
+    } else setPen((s) => ({ ...s, ...patch }));
     updatePreset(patch);
   };
+  // An own colour (the colour picker) is kept among the recent ones.
+  const rememberCustomColor = (color: string) => setRecentColors((list) => rememberColor(color, list));
   const pickPreset = (index: number) => {
     const p = presets[index];
     if (!p) return;
@@ -240,6 +258,9 @@ export function useInkEditor(initial: InkDoc, { active = true }: { active?: bool
     setStyle,
     palette,
     widths,
+    widthRange,
+    recentColors,
+    rememberCustomColor,
     presets,
     preset,
     pickPreset,

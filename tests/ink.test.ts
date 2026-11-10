@@ -3,7 +3,7 @@
 // into a PDF.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { PDFDocument, degrees } from "pdf-lib";
+import { PDFDocument, PDFName, degrees } from "pdf-lib";
 import { samplePdf } from "./helpers/pdf";
 import {
   applyMatrix,
@@ -32,7 +32,10 @@ import {
   transformItems,
 } from "../lib/ink/geometry";
 import { emptyHistory, record, redo, undo } from "../lib/ink/history";
-import { pencilResult } from "../lib/ink/presets";
+import { WIDTH_RANGES, clampWidth, pencilResult, rememberColor } from "../lib/ink/presets";
+import { inkFontFamily, inkPdfFont } from "../lib/ink/fonts";
+import { inkSvg } from "../lib/ink/svg";
+import { hexToHsv, hsvToHex, normalizeHex } from "../lib/ink/color";
 import { flattenInk } from "../lib/ink/pdf-export";
 
 const pen = (id: string, points: [number, number, number?][], extra: Partial<InkStroke> = {}): InkStroke => ({
@@ -308,4 +311,64 @@ test("download with annotations: the original pages with the ink as vectors on t
   assert.match(text, /Zeile 2/);
   await before.loadingTask.destroy();
   await after.loadingTask.destroy();
+});
+
+test("text faces: optional, kept when known, older text unchanged; SVG and PDF name the face", async () => {
+  const doc = parseInk({
+    pages: {
+      "1": [
+        { id: "old", type: "text", color: "#1f1f1f", size: 14, x: 10, y: 20, text: "Alt" },
+        { id: "hand", type: "text", color: "#1f1f1f", size: 30, x: 10, y: 60, text: "Hand", font: "caveat" },
+        { id: "serif", type: "text", color: "#1f1f1f", size: 12, x: 10, y: 120, text: "Serif", font: "serif" },
+        { id: "odd", type: "text", color: "#1f1f1f", size: 12, x: 10, y: 160, text: "Odd", font: "Comic Sans" },
+      ],
+    },
+  });
+  const [old, hand, serif, odd] = doc.pages["1"] as InkText[];
+  // Text without a face stays exactly as stored before (no new field).
+  assert.deepEqual(old, { id: "old", type: "text", color: "#1f1f1f", size: 14, x: 10, y: 20, text: "Alt" });
+  assert.equal(hand.font, "caveat");
+  assert.equal(serif.font, "serif");
+  assert.equal("font" in odd, false);
+  assert.deepEqual(parseInk(serializeInk(doc)), doc);
+  // Narrower faces get a narrower box.
+  assert.ok(itemBounds({ ...hand, font: undefined }).w > itemBounds(hand).w);
+  const svg = inkSvg(doc.pages["1"], { width: 200, height: 200 });
+  assert.match(svg, /font-family="Helvetica, Arial, sans-serif"[^>]*>.*Alt/);
+  assert.match(svg, /font-family="Caveat, &quot;Segoe Print&quot;/);
+  assert.equal(inkFontFamily(undefined), "Helvetica, Arial, sans-serif");
+  assert.deepEqual([inkPdfFont(undefined), inkPdfFont("serif"), inkPdfFont("mono"), inkPdfFont("caveat")], ["Helvetica", "Times-Roman", "Courier", "Helvetica"]);
+  const bytes = await flattenInk(samplePdf(["Eins"]), withPage(emptyInk(), "1", doc.pages["1"]));
+  const fonts = (await PDFDocument.load(bytes)).context
+    .enumerateIndirectObjects()
+    .map(([, obj]) => String((obj as { get?: (k: unknown) => unknown }).get?.(PDFName.of("BaseFont")) ?? ""))
+    .filter(Boolean);
+  assert.ok(fonts.includes("/Times-Roman"), fonts.join());
+  assert.ok(fonts.includes("/Helvetica"), fonts.join());
+});
+
+test("free widths stay in range; own colours are remembered, standard ones not", () => {
+  assert.equal(clampWidth("pen", 0.01), WIDTH_RANGES.pen.min);
+  assert.equal(clampWidth("pen", 2.44), 2.4);
+  assert.equal(clampWidth("highlighter", 100), WIDTH_RANGES.highlighter.max);
+  assert.equal(clampWidth("text", 12.6), 13);
+  assert.equal(clampWidth("text", Number.NaN), WIDTH_RANGES.text.min);
+  let recent = rememberColor("#AA3377", []);
+  assert.deepEqual(recent, ["#aa3377"]);
+  recent = rememberColor("#1f1f1f", recent);
+  assert.deepEqual(recent, ["#aa3377"]);
+  recent = rememberColor("#123456", recent);
+  recent = rememberColor("#aa3377", recent);
+  assert.deepEqual(recent, ["#aa3377", "#123456"]);
+  for (let i = 0; i < 12; i++) recent = rememberColor(`#0000${(i + 16).toString(16)}`, recent);
+  assert.equal(recent.length, 8);
+});
+
+test("colour picker: hex ↔ hue, saturation, value", () => {
+  assert.equal(normalizeHex("ABC"), "#aabbcc");
+  assert.equal(normalizeHex("#12345"), null);
+  assert.deepEqual(hexToHsv("#ff0000"), { h: 0, s: 1, v: 1 });
+  assert.equal(hsvToHex({ h: 120, s: 1, v: 1 }), "#00ff00");
+  assert.equal(hsvToHex({ h: 0, s: 0, v: 0 }), "#000000");
+  for (const c of ["#1f1f1f", "#1c5fd6", "#e03131", "#ffd43b", "#7048e8", "#fefefe"]) assert.equal(hsvToHex(hexToHsv(c)), c);
 });
