@@ -228,7 +228,11 @@ export async function transferRows(user: Identity, sourcePageId: string, raw: un
       // Time entries follow their property, if it was carried over.
       for (const [fid, to] of mapping) await run("UPDATE time_entries SET field_id=? WHERE row_id=? AND field_id=?", to.id, row.id, fid);
       for (const table of ["date_reminders", "editor_presence", "row_status_log"]) await run(`DELETE FROM ${table} WHERE row_id=? AND page_id=?`, row.id, source.id);
-      if (fileIds.size) await run(`UPDATE files SET page_id=? WHERE page_id=? AND id IN (${[...fileIds].map(() => "?").join(",")})`, target.id, source.id, ...fileIds);
+      // Only files the person may see move along; a reference to a hidden
+      // record's file stays behind and keeps that file's permissions.
+      const hiddenNow = (hiddenFiles ??= await hiddenFileIds(user, source));
+      const movable = [...fileIds].filter((f) => !hiddenNow.has(f));
+      if (movable.length) await run(`UPDATE files SET page_id=? WHERE page_id=? AND id IN (${movable.map(() => "?").join(",")})`, target.id, source.id, ...movable);
       results.push(row.id);
     }
   }

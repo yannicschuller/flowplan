@@ -121,3 +121,57 @@ test("a file of a record template appears in private and visible records made fr
   await record(editor, "From the bait template", [secret]);
   assert.ok((await hiddenFor(editor)).has(secret));
 });
+
+// Re-homing or duplicating by reference (rows.transfer move, record.toPage,
+// template.save) must not hand over a hidden record's file either.
+const { mkdirSync, writeFileSync } = await import("node:fs");
+const { one, all } = await import("../lib/db");
+async function stored(u: Identity, name: string) {
+  const fid = await upload(u, name);
+  mkdirSync(join(process.env.FLOWPLAN_DATA_DIR!, "uploads"), { recursive: true });
+  writeFileSync(join(process.env.FLOWPLAN_DATA_DIR!, "uploads", fid), "secret bytes");
+  return fid;
+}
+const otherDb = ((await command(owner, { action: "page.create", workspaceId: wid, spaceId: team, title: "Archiv", kind: "database" })) as { id: string }).id;
+await command(owner, {
+  action: "database.update",
+  pageId: otherDb,
+  version: (await database(otherDb)).version,
+  fields: [
+    { id: "title", name: "Name", type: "text" },
+    { id: "att", name: "Files", type: "files" },
+  ],
+  views: (await database(otherDb)).views,
+});
+
+test("moving a record does not take along a hidden record's file it refers to; own files move", async () => {
+  const secret = await stored(owner, "move-secret.pdf");
+  await record(owner, "Private move", [secret], "private");
+  const own = await stored(editor, "move-own.txt");
+  const bait = await record(editor, "Bait move", [secret, own]);
+  await command(editor, { action: "rows.transfer", pageId: dbId, rowIds: [bait], targetPageId: otherDb, mode: "move" });
+  assert.equal((await one<{ page_id: string }>("SELECT page_id FROM files WHERE id=?", secret))!.page_id, dbId, "the hidden file stays with its database");
+  assert.equal((await one<{ page_id: string }>("SELECT page_id FROM files WHERE id=?", own))!.page_id, otherDb, "the editor's own file moves along");
+});
+
+test("turning a record into a page does not copy a hidden record's file", async () => {
+  const secret = await stored(owner, "page-secret.pdf");
+  await record(owner, "Private page", [secret], "private");
+  const own = await stored(editor, "page-own.txt");
+  const bait = await record(editor, "Bait page", [secret, own]);
+  const moved = (await command(editor, { action: "record.toPage", pageId: dbId, rowId: bait, spaceId: team, parentId: null })) as { id?: string; pageId?: string };
+  const pageId = moved.pageId || moved.id!;
+  const copies = await all<{ name: string }>("SELECT name FROM files WHERE page_id=?", pageId);
+  assert.deepEqual(copies.map((c) => c.name), ["page-own.txt"]);
+});
+
+test("saving a template does not capture a hidden record's file by reference", async () => {
+  const secret = await stored(owner, "tpl-secret.pdf");
+  await record(owner, "Private tpl", [secret], "private");
+  const own = await stored(editor, "tpl-own.txt");
+  const doc = ((await command(editor, { action: "page.create", workspaceId: wid, spaceId: team, title: "Köder" })) as { id: string }).id;
+  await run("UPDATE documents SET html=? WHERE page_id=?", `<p><a href="/api/files/${secret}">a</a> <a href="/api/files/${own}">b</a></p>`, doc);
+  const tpl = ((await command(editor, { action: "template.save", pageId: doc, name: "Köder" })) as { id: string }).id;
+  const captured = await all<{ original_id: string }>("SELECT original_id FROM template_files WHERE template_id=?", tpl);
+  assert.deepEqual(captured.map((c) => c.original_id), [own]);
+});
