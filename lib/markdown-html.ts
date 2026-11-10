@@ -311,7 +311,7 @@ export function markdownToRawHtml(
         const details = /^<details>\s*<summary>([\s\S]*?)<\/summary>\s*$/i.exec(text);
         if (details) return `<details><summary>${escaped(decode(details[1].replace(/<[^>]*>/g, "")))}</summary><div>`;
         if (/^<\/details>\s*$/i.test(text)) return "</div></details>";
-        if (/^<\/?(?:u|mark|sup|sub)>$|^<br\s*\/?>$/i.test(text)) return text;
+        if (/^<\/?(?:u|mark|sup|sub|strong|em|s)>$|^<br\s*\/?>$/i.test(text)) return text;
         // In the source view inline formatting comes as HTML; what is kept
         // is decided by the cleaning below and the editor's schema.
         if (options.source && /^<\/?(?:u|mark|sup|sub|s|span)\b[^<>]*>$|^<br\s*\/?>$/i.test(text)) return text;
