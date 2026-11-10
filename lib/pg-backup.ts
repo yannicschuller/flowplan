@@ -487,6 +487,27 @@ const SETVAL = /^SELECT pg_catalog\.setval\('((?:[^']|'')+)', (-?\d+), (true|fal
 const QUALIFIED = new RegExp(`^(${IDENT})\\.(${IDENT})$`);
 const unquote = (id: string) => (id.startsWith('"') ? id.slice(1, -1).replace(/""/g, '"') : id);
 
+// The COPY being read: which of its fields go on (null: all), how many it has.
+export type CopyState = { keep: number[] | null; fields: number; skip: boolean };
+// One line of pg_restore's output inside a COPY: whether it ends the COPY
+// and the line psql gets for it (null: none). Only the dump's own end
+// marker may reach psql as one: a row psql would read as "\." (a filtered
+// row whose first kept field is "\.", or one that starts with it) would end
+// the COPY early and the lines after it would run as SQL – pg_dump writes a
+// backslash in a value as "\\", so no row of a genuine dump starts so.
+export function copyLine(copy: CopyState, line: string): { end: boolean; send: string | null } {
+  if (line === "\\.") return { end: true, send: copy.skip ? null : line };
+  if (copy.skip) return { end: false, send: null };
+  let send = line;
+  if (copy.keep) {
+    const fields = line.split("\t");
+    if (fields.length !== copy.fields) throw new ForeignObjectsError("a row of the dump does not match its COPY");
+    send = copy.keep.map((i) => fields[i]).join("\t");
+  }
+  if (send.startsWith("\\.")) throw new ForeignObjectsError("a row of the dump reads as the end of its COPY");
+  return { end: false, send };
+}
+
 // The restore's one transaction, through psql (not pg_restore straight
 // into the database: pg_restore 17 and newer set transaction_timeout,
 // which a PostgreSQL 16 server refuses – the image's client tools are 18).
@@ -545,23 +566,15 @@ async function loadData(o: { pgRestore: string; psql: string; path: string; list
     ].join("\n"),
   );
   const sequences = new Map<string, bigint>();
-  // The COPY being read: which of its fields go on (null: all), how many it has.
-  let copy: { keep: number[] | null; fields: number; skip: boolean } | null = null;
+  let copy: CopyState | null = null;
   let refused: Error | null = null;
   try {
     for await (const line of { [Symbol.asyncIterator]: () => iterator }) {
       if (writerDone) break;
       if (copy) {
-        if (line === "\\.") {
-          if (!copy.skip) await send("\\.\n");
-          copy = null;
-        } else if (copy.skip) continue;
-        else if (!copy.keep) await send(`${line}\n`);
-        else {
-          const fields = line.split("\t");
-          if (fields.length !== copy.fields) throw new ForeignObjectsError("a row of the dump does not match its COPY");
-          await send(`${copy.keep.map((i) => fields[i]).join("\t")}\n`);
-        }
+        const step = copyLine(copy, line);
+        if (step.send !== null) await send(`${step.send}\n`);
+        if (step.end) copy = null;
         continue;
       }
       if (SCRIPT_NOISE.some((re) => re.test(line))) {
