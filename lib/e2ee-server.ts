@@ -407,10 +407,11 @@ export async function e2eeCommand(user: Identity, action: string, b: Record<stri
         );
       if (space.owner_id !== data.userId)
         await run(
-          "INSERT INTO grants(resource_id,user_id,group_id,role) VALUES(?,?,'',?) ON CONFLICT(resource_id,user_id,group_id) DO UPDATE SET role=excluded.role",
+          "INSERT INTO grants(resource_id,user_id,group_id,role,resource_kind,workspace_id) VALUES(?,?,'',?,'space',?) ON CONFLICT(resource_id,user_id,group_id) DO UPDATE SET role=excluded.role,resource_kind=excluded.resource_kind,workspace_id=excluded.workspace_id",
           space.id,
           data.userId,
           data.role,
+          space.workspace_id,
         );
       await audit(user.id, "e2ee.member.add", space.id, data.userId);
       return { ok: true };

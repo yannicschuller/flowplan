@@ -49,11 +49,16 @@ export async function requireMember(
     );
   return role;
 }
-async function grantRole(user: Identity, resource: string): Promise<Role | null> {
-  return await memoized(`grant:${resource}:${user.id}`, async () => {
+// A grant counts only for the resource it was written for: a page or a
+// space, in its workspace. Pages and spaces once could share an id (an
+// encrypted space chooses its own), so the id alone does not say which.
+async function grantRole(user: Identity, kind: "page" | "space", resource: string, workspace: string): Promise<Role | null> {
+  return await memoized(`grant:${kind}:${workspace}:${resource}:${user.id}`, async () => {
     const grants = await all<{ role: Role }>(
-      "SELECT role FROM grants WHERE resource_id=? AND (user_id=? OR group_id IN (SELECT group_id FROM group_members WHERE user_id=?))",
+      "SELECT role FROM grants WHERE resource_id=? AND resource_kind=? AND workspace_id=? AND (user_id=? OR group_id IN (SELECT group_id FROM group_members WHERE user_id=?))",
       resource,
+      kind,
+      workspace,
       user.id,
       user.id,
     );
@@ -65,7 +70,7 @@ export async function spaceRole(user: Identity, space: Space): Promise<Role | nu
   const membership = await memberRole(user, space.workspace_id);
   if (!membership) return null;
   if (space.owner_id === user.id) return membership;
-  const grant = await grantRole(user, space.id);
+  const grant = await grantRole(user, "space", space.id, space.workspace_id);
   if (grant) return rank[grant] < rank[membership] ? grant : membership;
   return space.visibility === "team" && !(await isGuest(user, space.workspace_id))
     ? membership
@@ -76,7 +81,7 @@ export async function pageRole(user: Identity, page: Page): Promise<Role | null>
   if (!space || space.deleted_at) return null;
   const membership = await memberRole(user, page.workspace_id);
   if (!membership) return null;
-  const direct = await grantRole(user, page.id);
+  const direct = await grantRole(user, "page", page.id, page.workspace_id);
   if (direct) return rank[direct] < rank[membership] ? direct : membership;
   const seen = new Set<string>();
   let current: Page | undefined = page;
@@ -85,7 +90,7 @@ export async function pageRole(user: Identity, page: Page): Promise<Role | null>
     seen.add(current.id);
     current = await pageRow(current.parent_id);
     if (current) {
-      const inherited = await grantRole(user, current.id);
+      const inherited = await grantRole(user, "page", current.id, page.workspace_id);
       if (inherited)
         return rank[inherited] < rank[membership] ? inherited : membership;
     }

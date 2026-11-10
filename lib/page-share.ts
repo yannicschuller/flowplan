@@ -45,9 +45,10 @@ export async function pageShares(user: Identity, pageId: string) {
   if (!manage && await isGuest(user, page.workspace_id)) return { manage, people: [], pending: [] };
   const people = (await all<{ id: string; name: string; email: string; role: Role; guest: number }>(
     `SELECT u.id,u.name,u.email,g.role,EXISTS(SELECT 1 FROM workspace_guests w WHERE w.workspace_id=? AND w.user_id=u.id) guest
-     FROM grants g JOIN users u ON u.id=g.user_id WHERE g.resource_id=? AND g.user_id<>'' ORDER BY u.name`,
+     FROM grants g JOIN users u ON u.id=g.user_id WHERE g.resource_id=? AND g.resource_kind='page' AND g.workspace_id=? AND g.user_id<>'' ORDER BY u.name`,
     page.workspace_id,
     page.id,
+    page.workspace_id,
   )).map((p) => ({ ...p, email: manage ? p.email : "", guest: !!p.guest }));
   const pending = manage
     ? (await all<{ email: string; role: Role }>("SELECT email,role FROM invite_grants WHERE resource_id=? ORDER BY email", page.id))
@@ -83,7 +84,7 @@ export async function sharePage(user: Identity, raw: unknown) {
       // A guest's role caps their grants: raise it to what this page needs.
       await run("UPDATE members SET role=? WHERE workspace_id=? AND user_id=?", b.role, page.workspace_id, target.id);
     await run("DELETE FROM grants WHERE resource_id=? AND user_id=? AND group_id=''", page.id, target.id);
-    await run("INSERT INTO grants VALUES(?,?,?,?)", page.id, target.id, "", b.role);
+    await run("INSERT INTO grants(resource_id,user_id,group_id,role,resource_kind,workspace_id) VALUES(?,?,?,?,'page',?)", page.id, target.id, "", b.role, page.workspace_id);
     const workspace = await one<{ name: string }>("SELECT name FROM workspaces WHERE id=?", page.workspace_id);
     // The e-mail goes out right away; the summary then leaves this one out.
     const mailed = mailAllowed(email) && await queueShareMail({ userId: target.id, inviter: user.name, pageId: page.id, page: page.title, workspace: workspace?.name || "Flowplan" });
@@ -168,7 +169,7 @@ export async function updatePageShare(user: Identity, raw: unknown) {
   } else {
     if (!(await one("SELECT 1 FROM members WHERE workspace_id=? AND user_id=?", page.workspace_id, b.userId))) throw new HttpError(400, "Mitglied fehlt.");
     await run("DELETE FROM grants WHERE resource_id=? AND user_id=? AND group_id=''", page.id, b.userId);
-    await run("INSERT INTO grants VALUES(?,?,?,?)", page.id, b.userId, "", b.role);
+    await run("INSERT INTO grants(resource_id,user_id,group_id,role,resource_kind,workspace_id) VALUES(?,?,?,?,'page',?)", page.id, b.userId, "", b.role, page.workspace_id);
     if (b.role === "editor" && await one("SELECT 1 FROM workspace_guests WHERE workspace_id=? AND user_id=?", page.workspace_id, b.userId))
       await run("UPDATE members SET role='editor' WHERE workspace_id=? AND user_id=? AND role='viewer'", page.workspace_id, b.userId);
   }

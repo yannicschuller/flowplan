@@ -75,6 +75,12 @@ export async function transferPages(
     toWorkspace,
     ...ids,
   );
+  // The rights that remain belong to the pages in their new workspace.
+  await run(
+    `UPDATE grants SET workspace_id=? WHERE resource_kind='page' AND resource_id IN (${placeholders})`,
+    toWorkspace,
+    ...ids,
+  );
   // Stored vectors of the pages and their records (semantic search) follow.
   await run(
     `UPDATE ai_embeddings SET workspace_id=? WHERE page_id IN (${placeholders})`,

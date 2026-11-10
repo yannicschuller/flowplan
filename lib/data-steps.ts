@@ -24,6 +24,7 @@ export const SAVED_SEARCHES_STEP = "saved-searches-85";
 export const IDENTITIES_STEP = "identities-88";
 export const REACTION_EMOJI_STEP = "reaction-emoji-fe0f";
 export const ISSUE_PROVIDERS_STEP = "issue-providers-95";
+export const GRANT_KINDS_STEP = "grant-kinds-100";
 
 // In the order the schema versions introduced them. A function: the
 // modules of the steps import lib/db.ts, which may still be loading.
@@ -34,6 +35,7 @@ export const dataSteps = (): DataStep[] => [
   { name: SEALED_SECRETS_MIGRATION, run: sealSecrets },
   { name: REACTION_EMOJI_STEP, run: reactionEmojiPresentation },
   { name: ISSUE_PROVIDERS_STEP, run: issueProvidersCheck },
+  { name: GRANT_KINDS_STEP, run: grantKinds },
 ];
 
 // Runs the steps not done yet (`only`: just these). Several instances on
@@ -248,4 +250,33 @@ async function issueProvidersCheck() {
   );
   for (const c of checks) await run(`ALTER TABLE issue_connections DROP CONSTRAINT "${c.name.replace(/"/g, '""')}"`);
   await run("ALTER TABLE issue_connections ADD CONSTRAINT issue_connections_provider_check CHECK(provider IN ('github','gitlab','forgejo'))");
+}
+
+// Schema 100 – every grant names the kind and workspace of its resource
+// (lib/permissions.ts reads only grants bound to the page or space asked
+// about). An id that is only a page's or only a space's takes that one.
+// An id that is both (an encrypted space created with a page's id before
+// space.create refused that) cannot say which object a grant was meant
+// for, and the page is the side that must not be opened: such a grant goes
+// to the space – except a group grant whose group belongs to the page's
+// workspace, which only the page's own sharing can have written (the
+// encrypted space's path writes grants for people, never for groups, and
+// grant.set is refused on an encrypted space). A person losing a page grant
+// this way gets it back by sharing the page again. Grants of resources that
+// no longer exist keep NULL and count for nothing.
+async function grantKinds() {
+  const page = "EXISTS(SELECT 1 FROM pages p WHERE p.id=grants.resource_id)";
+  const space = "EXISTS(SELECT 1 FROM spaces s WHERE s.id=grants.resource_id)";
+  const fill = (kind: "page" | "space") =>
+    `resource_kind='${kind}',workspace_id=(SELECT workspace_id FROM ${kind === "page" ? "pages" : "spaces"} WHERE id=grants.resource_id)`;
+  await run(`UPDATE grants SET ${fill("page")} WHERE resource_kind IS NULL AND ${page} AND NOT ${space}`);
+  await run(`UPDATE grants SET ${fill("space")} WHERE resource_kind IS NULL AND ${space} AND NOT ${page}`);
+  await run(
+    `UPDATE grants SET ${fill("page")} WHERE resource_kind IS NULL AND ${page} AND ${space}
+     AND COALESCE(group_id,'')!='' AND EXISTS(SELECT 1 FROM groups g JOIN pages p ON p.workspace_id=g.workspace_id WHERE g.id=grants.group_id AND p.id=grants.resource_id)`,
+  );
+  const ambiguous = (await one<{ n: number }>(`SELECT COUNT(*) AS n FROM grants WHERE resource_kind IS NULL AND ${page} AND ${space}`))!.n;
+  await run(`UPDATE grants SET ${fill("space")} WHERE resource_kind IS NULL AND ${page} AND ${space}`);
+  // Only the number: which pages or people is nobody's business in the log.
+  if (Number(ambiguous)) console.warn(`Freigaben: ${ambiguous} Freigabe(n) auf einer Kennung, die Seite und Bereich zugleich ist, gelten nur noch für den Bereich.`);
 }

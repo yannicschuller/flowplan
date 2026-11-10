@@ -39,7 +39,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 99;
+export const SCHEMA_VERSION = 100;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 // Schema 97 (workflows): tables created with their seq column (and its
@@ -1279,6 +1279,14 @@ function migrate(d: DatabaseSync) {
   // for phones and larger screens (page_view_prefs of the database page;
   // NULL: never chosen, the default applies).
   migrateRecordPropertyPrefs(d);
+  // Schema 100 – grants bound to their resource (lib/permissions.ts): the
+  // kind ('page' or 'space') and the workspace of the resource a grant was
+  // written for. Pages and spaces could share an id (an encrypted space
+  // chose its own), so a space's grant counted for the page with that id.
+  // Existing grants are filled in a data step (lib/data-steps.ts,
+  // "grant-kinds-100"); an older version would not write them, hence the
+  // new number.
+  migrateGrantKinds(d);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
@@ -1372,6 +1380,18 @@ export function migrateRecordPropertyPrefs(d: DatabaseSync) {
   const columns = (d.prepare("PRAGMA table_info(page_view_prefs)").all() as { name: string }[]).map((c) => c.name);
   if (!columns.includes("record_properties_phone")) d.exec("ALTER TABLE page_view_prefs ADD COLUMN record_properties_phone INTEGER");
   if (!columns.includes("record_properties_desktop")) d.exec("ALTER TABLE page_view_prefs ADD COLUMN record_properties_desktop INTEGER");
+}
+export function migrateGrantKinds(d: DatabaseSync) {
+  const columns = (d.prepare("PRAGMA table_info(grants)").all() as { name: string }[]).map((c) => c.name);
+  if (!columns.includes("resource_kind")) d.exec("ALTER TABLE grants ADD COLUMN resource_kind TEXT");
+  if (!columns.includes("workspace_id")) d.exec("ALTER TABLE grants ADD COLUMN workspace_id TEXT");
+  // A grant written without them (an older instance during a rolling
+  // update, a direct insert) gets them from its resource – only when the id
+  // is a page's or a space's, not both: such a grant counts for nothing.
+  d.exec(`CREATE INDEX IF NOT EXISTS grants_workspace ON grants(workspace_id,resource_kind);
+    CREATE TRIGGER IF NOT EXISTS grants_resource_kind AFTER INSERT ON grants WHEN NEW.resource_kind IS NULL BEGIN
+      UPDATE grants SET resource_kind=CASE WHEN EXISTS(SELECT 1 FROM pages WHERE id=NEW.resource_id) THEN 'page' ELSE 'space' END,workspace_id=COALESCE((SELECT workspace_id FROM pages WHERE id=NEW.resource_id),(SELECT workspace_id FROM spaces WHERE id=NEW.resource_id)) WHERE resource_id IS NEW.resource_id AND user_id IS NEW.user_id AND group_id IS NEW.group_id AND resource_kind IS NULL AND EXISTS(SELECT 1 FROM pages WHERE id=NEW.resource_id)!=EXISTS(SELECT 1 FROM spaces WHERE id=NEW.resource_id);
+    END;`);
 }
 export function migrateFileTrash(d: DatabaseSync) {
   const columns = (d.prepare("PRAGMA table_info(files)").all() as { name: string }[]).map((c) => c.name);

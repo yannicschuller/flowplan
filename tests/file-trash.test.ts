@@ -285,7 +285,7 @@ test("only people who may edit the page delete files; private files stay invisib
   const doc = await page("Rechte");
   const fid = await file(doc, "team.png");
   // Viewers and guests: no delete, not even with a share that lets the guest edit.
-  await run("INSERT INTO grants VALUES(?,?,?,?)", doc, guest.id, "", "editor");
+  await run("INSERT INTO grants(resource_id,user_id,group_id,role) VALUES(?,?,?,?)", doc, guest.id, "", "editor");
   assert.equal((await listed(viewer)).find((i) => i.id === fid)?.canDelete, false);
   await assert.rejects(act(viewer, { action: "file.delete", fileIds: [fid] }), { status: 403 });
   await assert.rejects(act(guest, { action: "file.delete", fileIds: [fid] }), { status: 403 });

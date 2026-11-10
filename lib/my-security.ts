@@ -71,7 +71,7 @@ export async function mySecurity(user: Identity, currentToken: string | undefine
   const people = [
     ...(await all<{ page_id: string; title: string; user_id: string; name: string; email: string; role: string; guest: number }>(
       `SELECT p.id page_id,p.title,u.id user_id,u.name,u.email,g.role,EXISTS(SELECT 1 FROM workspace_guests wg WHERE wg.workspace_id=p.workspace_id AND wg.user_id=u.id) guest
-       FROM grants g JOIN pages p ON p.id=g.resource_id JOIN users u ON u.id=g.user_id
+       FROM grants g JOIN pages p ON p.id=g.resource_id AND g.resource_kind='page' AND g.workspace_id=p.workspace_id JOIN users u ON u.id=g.user_id
        WHERE p.created_by=? AND g.group_id='' AND g.user_id<>? AND p.deleted_at IS NULL ORDER BY p.title LIMIT 300`,
       user.id,
       user.id,

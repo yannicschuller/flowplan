@@ -61,7 +61,7 @@ test("page.purge deletes the trashed page with its sub-pages and everything hang
     kept = await file(keep, f.owner);
   await run("INSERT INTO notifications(id,user_id,page_id,body) VALUES(?,?,?,?)", id(), f.editor.id, root, "Hi");
   await run("INSERT INTO task_reminders(user_id,page_id,text,due) VALUES(?,?,?,?)", f.owner.id, root, "x", "2026-01-01");
-  await run("INSERT INTO grants VALUES(?,?,?,?)", child, f.viewer.id, "", "viewer");
+  await run("INSERT INTO grants(resource_id,user_id,group_id,role) VALUES(?,?,?,?)", child, f.viewer.id, "", "viewer");
   await processSearchIndex(10_000);
   assert.ok((await count("SELECT * FROM search_index WHERE page_id=?", root)) > 0);
 
@@ -126,7 +126,7 @@ test("a sub-page someone may not edit stays in the trash on its own", async () =
   const root = await f.page("Root"),
     child = await f.page("Child", root);
   // The editor may edit the root (a grant), but not the child (viewer grant).
-  await run("INSERT INTO grants VALUES(?,?,?,?)", child, f.editor.id, "", "viewer");
+  await run("INSERT INTO grants(resource_id,user_id,group_id,role) VALUES(?,?,?,?)", child, f.editor.id, "", "viewer");
   await command(f.owner, { action: "page.delete", pageId: root });
   await command(f.editor, { action: "page.purge", pageId: root });
   assert.equal(await exists(root), false);
@@ -140,7 +140,7 @@ test("trash.empty deletes only what this person may delete, records included", a
   const mine = await f.page("Mine"),
     readOnly = await f.page("Read only"),
     table = await f.page("Table", undefined, "database");
-  await run("INSERT INTO grants VALUES(?,?,?,?)", readOnly, f.editor.id, "", "viewer");
+  await run("INSERT INTO grants(resource_id,user_id,group_id,role) VALUES(?,?,?,?)", readOnly, f.editor.id, "", "viewer");
   const priv = ((await command(f.owner, { action: "space.create", workspaceId: f.wid, name: "Mine", private: true })) as { id: string }).id;
   const secret = await f.page("Secret", undefined, "document", f.owner, priv);
   const row = (await command(f.owner, { action: "row.create", pageId: table, cells: { title: "Gone" } })) as { id: string };
