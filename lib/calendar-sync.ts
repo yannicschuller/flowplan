@@ -369,7 +369,9 @@ function failed(answer: Answer, what: string): never {
 // timed ones as UTC instants to the minute ("2026-10-06T08:00Z").
 export type EventContent = { title: string; allDay: boolean; start: string; end: string; description: string };
 export type Attendee = { email: string; name: string };
-export type RemoteEvent = EventContent & { id: string; deleted: boolean; updated: string; attendees: Attendee[] };
+// `plain`: the description read as plain text, when it was read as HTML. Our
+// own text can look like HTML ("<b>"), so its echo is matched against both.
+export type RemoteEvent = EventContent & { id: string; deleted: boolean; updated: string; attendees: Attendee[]; plain?: string };
 type CalendarInfo = { id: string; name: string; primary: boolean };
 
 const addDays = (date: string, days: number) => Temporal.PlainDate.from(date.slice(0, 10)).add({ days }).toString();
@@ -437,6 +439,10 @@ type GoogleEvent = {
   end?: GoogleTime;
   attendees?: { email?: string; displayName?: string; resource?: boolean }[];
 };
+// Google descriptions are HTML when edited in its web UI; our pushes are plain
+// text that may contain "<u8>" or "<anna@example.org>". Only the tags Google
+// writes mark a description as HTML.
+const HTML_TAG = /<\/?(?:br|p|div|a|b|i|u|strong|em|ul|ol|li|span|h[1-6])(?:\s[^>]*)?\/?>/i;
 export function fromGoogle(item: GoogleEvent): RemoteEvent {
   const base = { id: String(item.id), updated: item.updated || new Date(0).toISOString() };
   if (item.status === "cancelled" || !item.start)
@@ -453,6 +459,7 @@ export function fromGoogle(item: GoogleEvent): RemoteEvent {
     end = minute(item.end?.dateTime ? Temporal.Instant.from(item.end.dateTime) : first.add({ hours: 1 }));
   }
   const description = item.description || "";
+  const html = HTML_TAG.test(description);
   return {
     ...base,
     deleted: false,
@@ -460,7 +467,8 @@ export function fromGoogle(item: GoogleEvent): RemoteEvent {
     allDay,
     start,
     end,
-    description: stripFooter(/<[a-z][^>]*>/i.test(description) ? htmlToText(description) : description),
+    description: stripFooter(html ? htmlToText(description) : description),
+    ...(html ? { plain: stripFooter(description) } : {}),
     attendees: (item.attendees || [])
       .filter((a) => a.email && !a.resource)
       .map((a) => ({ email: String(a.email).toLowerCase(), name: a.displayName || "" }))
@@ -921,6 +929,12 @@ async function applyRemote(ctx: Context, event: RemoteEvent, items: Map<string, 
     }, ctx.user);
     result.deleted++;
     return;
+  }
+  // Our own plain text that looked like HTML: read it as the text it is.
+  if (event.plain !== undefined && item) {
+    const [known] = await rowsOf(ctx, [item.row_id]);
+    const local = known && localContent(known, ctx.fields, ctx.view, ctx.zone);
+    if (local && normalizeText(event.plain) === normalizeText(local.description)) event = { ...event, description: event.plain };
   }
   const remoteHash = contentHash(event);
   if (!item) {

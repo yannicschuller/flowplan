@@ -271,6 +271,43 @@ test("Google: records go out, events come in, changes and deletions both ways", 
   assert.equal((await one<{ n: number }>("SELECT COUNT(*) n FROM calendar_sync_items WHERE mapping_id=?", mapping))!.n, 0);
 });
 
+test("Google: a document with angle brackets or tag-like text survives its own echo", async () => {
+  const { replaceRowDocument } = await import("../lib/row-documents");
+  const pageId = await calendarDatabase("Termine Klammern");
+  const cid = (await one<{ id: string }>("SELECT id FROM calendar_connections WHERE user_id=? AND provider='google'", owner.id))!.id;
+  await run("DELETE FROM calendar_sync_mappings WHERE connection_id=?", cid);
+  const google = fakeGoogle();
+  handlers = [tokenEndpoint(() => ""), google.handler];
+  const day = soon(3);
+  const docs = [
+    "<h2>Agenda</h2><ul><li>Parser: <strong>Vec&lt;u8&gt;</strong> statt String</li><li>Kontakt: Anna &lt;anna@example.org&gt;</li></ul>",
+    "<p>Fett mit &lt;b&gt;Text&lt;/b&gt; und &lt;br&gt; schreiben</p>",
+  ];
+  const rids: string[] = [];
+  for (const doc of docs) {
+    const rid = (await act({ action: "row.create", pageId, cells: { title: "Review", start: `${day}T08:00Z`, end: `${day}T09:00Z` } })).id;
+    await replaceRowDocument(rid, doc, owner.id);
+    rids.push(rid);
+  }
+  const html = async (rid: string) => (await one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", rid))!.html;
+  const before = await Promise.all(rids.map(html));
+  const mapping = (await act({ action: "calendarSync.map", connectionId: cid, pageId, viewId: "cal", calendarId: "primary" })).id;
+  let result = await sync.syncCalendarMapping(mapping);
+  assert.equal(result.pushed, 2);
+  for (let i = 0; i < 2; i++) {
+    result = await sync.syncCalendarMapping(mapping);
+    assert.deepEqual([result.updated, result.pushed, result.conflicts], [0, 0, 0]);
+  }
+  assert.deepEqual(await Promise.all(rids.map(html)), before);
+  // Real HTML from the calendar is still read as HTML.
+  const event = [...google.events.values()].find((e) => e.extendedProperties.private.flowplanRow === rids[0])!;
+  google.touch({ ...event, description: "<p>Neu <b>fett</b></p><ul><li>Punkt</li></ul>" });
+  result = await sync.syncCalendarMapping(mapping);
+  assert.equal(result.updated, 1);
+  assert.match(await html(rids[0]), /<p>Neu fett<\/p><p>Punkt<\/p>/);
+  await run("DELETE FROM calendar_sync_mappings WHERE id=?", mapping);
+});
+
 test("Google: rate limits back off, an expired sync token starts over, errors back off the mapping", async () => {
   const pageId = await calendarDatabase("Termine Retry");
   const cid = (await one<{ id: string }>("SELECT id FROM calendar_connections WHERE user_id=? AND provider='google'", owner.id))!.id;
