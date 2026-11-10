@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies, headers } from "next/headers";
 import { ZodError } from "zod";
-import { activeUser, checkOrigin, cookieName, hash, HttpError } from "@/lib/auth";
+import { activeUser, checkOrigin, cookieName, hash, HttpError, refuseWhileReadOnly } from "@/lib/auth";
 import { withRequestLocale } from "@/lib/content-locale";
 import {
   identityFromDeviceToken,
@@ -63,6 +63,9 @@ export const POST = withRequestLocale(handlePOST);
 async function handlePOST(req: Request, { params }: { params: Promise<{ action: string }> }) {
   try {
     const { action } = await params;
+    // Every action here changes something; the device-token branches below
+    // skip checkOrigin, so the read-only check of a move comes first.
+    await refuseWhileReadOnly(req);
     // Browsers never send this header by themselves: no origin check needed.
     const authorization = (await headers()).get("authorization");
     if (action === "unregister" && authorization?.startsWith("Bearer fpd_"))

@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server";
-import { ZodError } from "zod";
 import { HttpError } from "@/lib/auth";
 import { withContentLocale } from "@/lib/content-locale";
-import { localizedMessage } from "@/lib/i18n-errors";
-import { pickLocale, type Locale } from "@/lib/i18n";
+import { pickLocale } from "@/lib/i18n";
 import { deviceFromToken } from "@/lib/mobile-devices";
 import { notificationAction } from "@/lib/notification-actions";
 import { widgetLocale } from "@/lib/mobile-widgets";
 import { withIdempotency } from "@/lib/idempotency";
+import { deviceFailure, refuseDeviceWrite } from "@/lib/mobile-device-route";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,13 +19,6 @@ export const dynamic = "force-dynamic";
 // (workflow approvals, docs/specs/workflows.md §11.8)
 const headers = { "Cache-Control": "no-store" };
 
-function failure(e: unknown, locale: Locale) {
-  const status = e instanceof HttpError ? e.status : e instanceof ZodError || e instanceof SyntaxError ? 400 : 500;
-  if (status === 500) console.error(e);
-  const message = status === 500 ? "Fehler" : e instanceof ZodError || e instanceof SyntaxError ? "Ungültige Anfrage." : (e as Error).message;
-  return NextResponse.json({ error: localizedMessage(message, locale) }, { status, headers });
-}
-
 // A notification button tapped twice (or retried) acts once per Idempotency-Key.
 export const POST = withIdempotency(handlePOST);
 async function handlePOST(req: Request) {
@@ -34,16 +26,17 @@ async function handlePOST(req: Request) {
   const fallback = pickLocale(null, req.headers.get("accept-language"));
   // Browsers never send this header by themselves: no origin check needed.
   const found = await deviceFromToken(req.headers.get("authorization"));
-  if (!found) return failure(new HttpError(401, "Bitte melde dich an."), fallback);
+  if (!found) return deviceFailure(new HttpError(401, "Bitte melde dich an."), fallback);
   const { user, device } = found;
   const locale = await widgetLocale(user, query.get("lang"), req.headers.get("accept-language"));
   return withContentLocale(locale, async () => {
     try {
+      await refuseDeviceWrite(req);
       const text = await req.text();
       if (text.length > 10_000) throw new HttpError(413, "Anfrage zu groß.");
       return NextResponse.json(await notificationAction(user, JSON.parse(text || "{}"), device), { headers });
     } catch (e) {
-      return failure(e, locale);
+      return deviceFailure(e, locale);
     }
   });
 }

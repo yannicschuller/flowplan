@@ -28,6 +28,7 @@ const ALLOWED = [
   /^\/api\/admin\/instance-move$/,
   /^\/api\/move\//,
   /^\/api\/(home\/data|presence|activity|capture\/preview|clip)$/,
+  /^\/api\/mobile\/widgets\/data$/,
   /^\/api\/whiteboards\/[^/]+\/cursor$/,
 ];
 export const readOnlyMessage = (movedTo: string | null) =>
