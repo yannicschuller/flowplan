@@ -9,7 +9,7 @@ import { footnoteText } from "./footnotes";
 import { fenceLanguage } from "./code-languages";
 import { importedCodeAttributes, splitInfo } from "./code-block-options";
 import { isDrawioXml } from "./drawio";
-import { TASK_LISTS } from "./task-list-html";
+import { taskList } from "./task-list-html";
 
 const escaped = (text: string) =>
   text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
@@ -216,9 +216,15 @@ export function markdownToRawHtml(
     },
     renderer: (token) => footnote(String(token.note || "")),
   };
+  // An escaped caret ("\^C") is text, never a block id marker: it stays an
+  // entity, which blockMarkers() in lib/markdown-import.ts leaves alone.
+  const caret: TokenizerAndRendererExtension = {
+    name: "escape",
+    renderer: (token) => (token.text === "^" ? "&#94;" : false),
+  };
   const marked = new Marked({ gfm: true, breaks: false, async: false });
   marked.use({
-    extensions: [footnoteRef],
+    extensions: [footnoteRef, caret],
     hooks: { processAllTokens: (tokens) => attachCaptions(tokens as Token[]) },
     renderer: {
       link({ href, tokens }: Tokens.Link) {
@@ -235,9 +241,27 @@ export function markdownToRawHtml(
         return caption ? `<figure class="block-figure">${image}<figcaption>${escaped(caption)}</figcaption></figure>` : image;
       },
       table(token: Tokens.Table) {
-        const html = Renderer.prototype.table.call(this, token);
+        let html = Renderer.prototype.table.call(this, token);
+        // An empty header row is how Markdown writes a table without one
+        // (lib/markdown.ts does so): the table starts with its rows.
+        if (token.rows.length && token.header.every((cell) => !cell.text.trim())) html = html.replace(/<thead>[\s\S]*?<\/thead>\n?/, "");
         const caption = (token as Captioned).flowplanCaption;
         return caption ? html.replace(/^<table>/, `<table><caption>${escaped(caption)}</caption>`) : html;
+      },
+      // Task list items become editor task items; "📅 2026-05-04" (Obsidian
+      // Tasks) at the end of the text becomes the due date (a block marker
+      // " ^id" may follow, #88).
+      list(token: Tokens.List) {
+        return taskList.call(this, token, {
+          head: (html) => {
+            let attrs = "";
+            html = html.replace(/\s*📅\s*(\d{4}-\d{2}-\d{2})(?=(?:\s+\^[A-Za-z0-9-]{1,64})?\s*$)/, (_d: string, date: string) => {
+              attrs = ` data-due="${date}"`;
+              return "";
+            });
+            return { html, attrs };
+          },
+        });
       },
       blockquote({ tokens }: Tokens.Blockquote) {
         const body = this.parser.parse(tokens);
@@ -287,7 +311,7 @@ export function markdownToRawHtml(
         const details = /^<details>\s*<summary>([\s\S]*?)<\/summary>\s*$/i.exec(text);
         if (details) return `<details><summary>${escaped(decode(details[1].replace(/<[^>]*>/g, "")))}</summary><div>`;
         if (/^<\/details>\s*$/i.test(text)) return "</div></details>";
-        if (/^<\/?(?:u|mark|sup|sub)>$|^<br\s*\/?>$/i.test(text)) return text;
+        if (/^<\/?(?:u|mark|sup|sub|strong|em|s)>$|^<br\s*\/?>$/i.test(text)) return text;
         // In the source view inline formatting comes as HTML; what is kept
         // is decided by the cleaning below and the editor's schema.
         if (options.source && /^<\/?(?:u|mark|sup|sub|s|span)\b[^<>]*>$|^<br\s*\/?>$/i.test(text)) return text;
@@ -298,25 +322,10 @@ export function markdownToRawHtml(
   const html = (marked.parse(body) as string)
     // A captioned image alone in its paragraph stands on its own.
     .replace(/<p>(<figure class="block-figure"><img [^>]*><figcaption>[^<]*<\/figcaption><\/figure>)<\/p>/g, "$1")
+    // An image alone in its paragraph stands on its own too (otherwise the
+    // editor keeps an empty paragraph in front of it).
+    .replace(/<p>(<img [^>]*>)<\/p>/g, "$1")
     // Inline formulas: $`a^2`$
-    .replace(/\$<code>([^<]*)<\/code>\$/g, (_, expression: string) => `<span data-math="${expression}">${expression}</span>`)
-    // Task list items become editor task items; "📅 2026-05-04" (Obsidian
-    // Tasks) at the end of the text becomes the due date.
-    .replace(
-      TASK_LISTS,
-      (_, items: string) =>
-        `<ul data-type="taskList">${items.replace(
-          /<li><input([^>]*)>\s*([\s\S]*?)<\/li>/g,
-          (_m: string, attrs: string, body: string) => {
-            let due = "";
-            // (A block marker " ^id" may follow, #88.)
-            body = body.replace(/\s*📅\s*(\d{4}-\d{2}-\d{2})(?=(?:\s+\^[A-Za-z0-9-]{1,64})?\s*(?:<\/p>|<ul|<ol|$))/, (_d: string, date: string) => {
-              due = ` data-due="${date}"`;
-              return "";
-            });
-            return `<li data-type="taskItem" data-checked="${/checked/.test(attrs)}"${due}><p>${body.replace(/^<p>|<\/p>$/g, "")}</p></li>`;
-          },
-        )}</ul>`,
-    );
+    .replace(/\$<code>([^<]*)<\/code>\$/g, (_, expression: string) => `<span data-math="${expression}">${expression}</span>`);
   return html;
 }

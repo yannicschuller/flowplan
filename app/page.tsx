@@ -12,7 +12,8 @@ import { MaintenanceBanner } from "@/components/maintenance-banner";
 import { MoveBanner } from "@/components/move-banner";
 import { readOnlyState } from "@/lib/instance-read-only";
 import { redirect } from "next/navigation";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
+import { WORKSPACE_COOKIE, lastWorkspace } from "@/lib/last-workspace";
 import { sourceUrl } from "@/lib/about";
 import { maintenanceNotice } from "@/lib/admin-ops";
 import { instanceSettings } from "@/lib/instance-settings";
@@ -54,13 +55,16 @@ export default async function Home({
   // An invitation link: taken over by whoever opens it signed in, and the
   // app opens in that workspace.
   const invited = invite ? (await acceptInviteToken((await one<User>("SELECT * FROM users WHERE id=?", user.id))!, invite)) : null;
+  // Otherwise the workspace last open on this device (#188); bootstrap
+  // falls back to the first one when the person is no longer a member.
+  const remembered = lastWorkspace((await cookies()).get(WORKSPACE_COOKIE)?.value);
   return (
     <>
       {/* A scheduled maintenance announced in Administration → Operations. */}
       <MoveBanner initial={move} poll />
       <MaintenanceBanner initial={await maintenanceNotice()} />
       <WorkspaceApp
-        initial={(await bootstrap(user, invited || undefined, (await headers()).get("user-agent"))) as never}
+        initial={(await bootstrap(user, invited || remembered, (await headers()).get("user-agent"))) as never}
         inviteResult={invite ? (invited ? "accepted" : "invalid") : undefined}
         useTemplate={
           useTemplate && (/^[0-9a-f-]{36}$/i.test(useTemplate) || /^starter:[A-Za-z]{1,40}$/.test(useTemplate))

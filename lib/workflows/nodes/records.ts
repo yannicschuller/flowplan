@@ -18,8 +18,8 @@ import { recordStatusChange } from "../../automations";
 import { databaseSettings } from "../../database-settings";
 import type { Field, Filter, Identity, Page, Row } from "../../types";
 import type { WorkflowCondition, WorkflowConditionGroup } from "../catalog";
-import { hasPlaceholders, isEmpty, renderText, renderValue } from "../placeholders";
-import { coerceToField } from "../values";
+import { hasPlaceholders, isEmpty, renderCompare, renderValue } from "../placeholders";
+import { coerceToField, compareNumberText } from "../values";
 import { databaseFields, recordValue, refId } from "./data";
 import { dryRun, StepError, type NodeImpl, type NodeRun } from "./types";
 
@@ -246,9 +246,9 @@ export const recordFind: NodeImpl = async (ctx) => {
         kind: "condition",
         field: field.id,
         op: cond.op,
-        value: renderText(cond.value || "", ctx.scope),
-        ...(cond.values ? { values: cond.values.map((v) => renderText(v, ctx.scope)) } : {}),
-        ...(cond.to !== undefined ? { to: renderText(cond.to, ctx.scope) } : {}),
+        value: compareNumberText(cond.op, renderCompare(cond.value || "", ctx.scope)),
+        ...(cond.values ? { values: cond.values.map((v) => renderCompare(v, ctx.scope)) } : {}),
+        ...(cond.to !== undefined ? { to: compareNumberText(cond.op, renderCompare(cond.to, ctx.scope)) } : {}),
         ...(cond.timeZone || ["in_relative", "not_in_relative"].includes(cond.op) ? { timeZone: cond.timeZone || ctx.scope.timeZone } : {}),
         ...(cond.days !== undefined ? { days: cond.days } : {}),
       } as Filter;

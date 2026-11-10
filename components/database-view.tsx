@@ -123,6 +123,7 @@ import { useAi, useAiAvailability, useAiBlockedHint } from "./ai-context";
 import { AiSummaryDialog, type AiSummaryTarget } from "./ai-summary";
 import { UnlinkedMentions } from "./unlinked-mentions";
 import { DuplicateHint, RelatedPages } from "./related-pages";
+import { useDiscoveryPanelsShown } from "@/lib/discovery-panels-prefs";
 import { MarkdownRecordsImport } from "./markdown-records-import";
 import { DatabaseExportMenu, RecordExportMenu } from "./record-export";
 import { ContactCard, ContactsMenu, LdapMarker, contactLocked, type ContactsData } from "./contacts";
@@ -397,6 +398,8 @@ export default function DatabaseView({
   // "Mit KI zusammenfassen" for the view's records or one record.
   const aiSummarize = useAiAvailability("summarize", page.id);
   const aiBlockedHint = useAiBlockedHint();
+  // Record backlinks, unlinked mentions and related pages (#191).
+  const discoveryPanels = useDiscoveryPanelsShown();
   const [aiSummary, setAiSummary] = useState<AiSummaryTarget | null>(null);
   // The server sends this database's rows once (as rows); relations to
   // itself and rollups read them from here.
@@ -5954,6 +5957,7 @@ export default function DatabaseView({
                     </button>
                   )}
                 </RecordPropertiesFold>
+                {discoveryPanels && (<>
                 <RelationBacklinks
                   key={`backlinks-${selected.id}-${selected.version}`}
                   pageId={page.id}
@@ -5971,6 +5975,7 @@ export default function DatabaseView({
                   onError={onError}
                 />
                 <RelatedPages key={`related-${selected.id}`} pageId={page.id} rowId={selected.id} />
+                </>)}
               </div>
               <div className="row-main">
                 <RowDocument

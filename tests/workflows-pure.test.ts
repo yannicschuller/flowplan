@@ -138,6 +138,20 @@ test("values into properties: types, options, numbers with comma, refusals", () 
   assert.equal(coerceToField("3,5", f("number")), 3.5);
   assert.equal(coerceToField("1,234.5", f("number")), 1234.5);
   assert.equal(toNumber("x"), null);
+  // One separator before three digits is a decimal separator; dots (or commas)
+  // group thousands only with two groups or a decimal part of the other kind.
+  assert.equal(toNumber("1.234"), 1.234);
+  assert.equal(toNumber("0.500"), 0.5);
+  assert.equal(toNumber("0.125"), 0.125);
+  assert.equal(toNumber("0,500"), 0.5);
+  assert.equal(toNumber("1,234"), 1.234);
+  assert.equal(toNumber("-0.250"), -0.25);
+  assert.equal(toNumber("1.234.567"), 1234567);
+  assert.equal(toNumber("1.234.567,89"), 1234567.89);
+  assert.equal(toNumber("1,234,567"), 1234567);
+  assert.equal(toNumber("12.345,6"), 12345.6);
+  assert.equal(toNumber("0.500,5"), null);
+  assert.equal(coerceToField("1.234", f("number")), 1.234);
   assert.equal(coerceToField("done", f("select", { options: ["Open", "Done"] })), "Done");
   assert.throws(() => coerceToField("Later", f("select", { options: ["Open"] })), ValueError);
   assert.deepEqual(coerceToField("a, B", f("multiselect", { options: ["A", "b"] })), ["A", "b"]);

@@ -48,7 +48,7 @@ test("common blocks survive Markdown and back unchanged", () => {
     '<div data-mermaid="graph TD&#10;A --&gt; B">graph</div>' +
     "<details><summary>Mehr</summary><div><p>Innen</p></div></details>" +
     "<table><tr><th><p>A</p></th><th><p>B</p></th></tr><tr><td><p>1</p></td><td><p>2</p></td></tr></table>" +
-    '<p><img src="/api/files/11111111-1111-4111-8111-111111111111" alt="Bild"></p>' +
+    '<img src="/api/files/11111111-1111-4111-8111-111111111111" alt="Bild">' +
     "<hr><p>Ende</p>";
   const before = canonical(html);
   const { source, html: after } = roundTrip(html);
@@ -91,6 +91,81 @@ test("blocks without Markdown form become markers and come back unchanged", () =
 test("what Markdown cannot hold is named before applying", () => {
   const { source } = roundTrip('<p style="text-align: center" dir="rtl" data-indent="2">مرحبا</p>');
   assert.deepEqual(source.lossy.sort(), ["Ausrichtung", "Einzug", "Textrichtung"]);
+});
+
+// Document → Markdown → document keeps the content as it was.
+const same = (html: string) => {
+  const before = canonical(html);
+  const { source, html: after } = roundTrip(html);
+  assert.equal(after, before, `Markdown was ${JSON.stringify(source.markdown)}`);
+  return source.markdown;
+};
+const imported = (markdown: string) => canonical(markdownToHtml(markdown, (href) => href));
+const task = (checked: boolean, body: string) =>
+  `<li data-type="taskItem" data-checked="${checked}"><p>${body}</p></li>`;
+
+test("nested task lists come in as nested task lists and go out as Markdown lists", () => {
+  // Import: the subtask keeps its checkbox, the later task stays in the list.
+  assert.equal(
+    imported("- [x] a\n  - [ ] b\n- [ ] d"),
+    canonical(`<ul data-type="taskList"><li data-type="taskItem" data-checked="true"><p>a</p><ul data-type="taskList">${task(false, "b")}</ul></li>${task(false, "d")}</ul>`),
+  );
+  assert.equal(
+    imported("- [ ] buy\n  - milk\n- [ ] call"),
+    canonical(`<ul data-type="taskList"><li data-type="taskItem" data-checked="false"><p>buy</p><ul><li><p>milk</p></li></ul></li>${task(false, "call")}</ul>`),
+  );
+  // Export: continuation lines are indented to the item's content, not
+  // past it (which would make an indented code block).
+  const markdown = same(
+    `<ul data-type="taskList"><li data-type="taskItem" data-checked="true"><p>a</p><p>more</p><ul data-type="taskList">${task(false, "b")}</ul></li>${task(false, "c")}</ul>`,
+  );
+  assert.equal(markdown, "- [x] a\n  \n  more\n  \n  - [ ] b\n- [ ] c\n");
+});
+
+test("an empty task stays an empty task", () => {
+  same(`<ul data-type="taskList">${task(false, "a")}${task(false, "")}${task(true, "")}</ul>`);
+  assert.equal(imported("- [ ] a\n- [ ] \n- [x] c"), canonical(`<ul data-type="taskList">${task(false, "a")}${task(false, "")}${task(true, "c")}</ul>`));
+  // Brackets written as text stay text.
+  same("<ul><li><p>[ ]</p></li><li><p>[x] nor this</p></li></ul>");
+});
+
+test("text ending in ' ^word' is text, not a block id", () => {
+  same("<p>Press ctrl ^C</p><p>2 ^3 equals 8</p><p>first</p><p>^abc</p><h2>Power ^2</h2><ul><li><p>item ^x</p></li></ul>");
+  // Block ids the export writes still come back.
+  const marked = canonical('<p data-block-id="abc">Linked ^C</p>');
+  const markdown = markdownSource(marked, (blockId) => blockId === "abc").markdown;
+  assert.equal(markdown, "Linked \\^C ^abc\n");
+  assert.equal(canonical(markdownToHtml(markdown, (href) => href, { source: true })), marked);
+});
+
+test("inline code and formulas in table cells stay code and formulas", () => {
+  const markdown = same('<table><tr><th><p>A</p></th></tr><tr><td><p><code>x|y</code> and <span data-math="a^2">a^2</span></p></td></tr></table>');
+  assert.match(markdown, /`x\\\|y` and \$`a\^2`\$/);
+});
+
+test("bold and italic ending in punctuation before a letter keep their formatting", () => {
+  same("<p><strong>Note:</strong>text and <strong>(a)</strong>b and <em>x.</em>y and a<em>(b)</em></p><p><strong><em>both:</em></strong>c</p>");
+  // Where Markdown can hold it, the export stays Markdown.
+  assert.equal(same("<p><strong>Note:</strong> text <em>a</em>b</p>"), "**Note:** text *a*b\n");
+});
+
+test("bare web addresses stay plain text without backslashes", () => {
+  same("<p>see https://example.test/a_b_c and www.example.com and a@b.co</p>");
+  same('<p><a href="https://example.test/a_b">https://example.test/a_b</a></p>');
+});
+
+test("images do not get an empty paragraph before them", () => {
+  assert.equal(
+    imported("text\n\n![a](https://e.test/a.png)\n\nmore"),
+    canonical('<p>text</p><img src="https://e.test/a.png" alt="a"><p>more</p>'),
+  );
+  same('<p>text</p><img src="/api/files/11111111-1111-4111-8111-111111111111" alt=""><p>more</p>');
+});
+
+test("headings ending in '#' and tables without a header row survive", () => {
+  same("<h2>Ticket #</h2><h2>foo ##</h2><h3>#</h3>");
+  same("<table><tr><td><p>a</p></td><td><p></p></td></tr><tr><td><p></p></td><td><p>d</p></td></tr></table>");
+  same("<table><tr><th><p>A</p></th><th><p>B</p></th></tr><tr><td><p>1</p></td><td><p>2</p></td></tr></table>");
 });
 
 async function user(name: string): Promise<Identity> {

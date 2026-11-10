@@ -49,7 +49,14 @@ export function markdownText(text: string) {
     .replace(/[`*_{}\[\]<>|~$]/g, "\\$&")
     .replace(/^(\s*)(#{1,6}|[-+])(?=\s)/gm, "$1\\$2")
     .replace(/^(\s*\d+)([.)])(?=\s)/gm, "$1\\$2")
-    .replace(/^(\s*)(=+|-+)\s*$/gm, "$1\\$2");
+    .replace(/^(\s*)(=+|-+)\s*$/gm, "$1\\$2")
+    // " ^word" would read as a block id marker (lib/markdown-import.ts).
+    .replace(/(^|\s)\^(?=[A-Za-z0-9-])/g, "$1\\^")
+    // Bare web and mail addresses stay text: unescaped, GitHub Markdown
+    // would make them links (with the backslashes above in the address).
+    .replace(/(?<=[A-Za-z]):\/\//g, "\\://")
+    .replace(/\b(www)\./gi, "$1\\.")
+    .replace(/(?<=[\w.+-])@(?=[\w-]+\.)/g, "\\@");
 }
 export function markdownUrl(url: string) {
   return url.replace(/[\s<>\\"()|]/g, (c) => encodeURIComponent(c));
@@ -71,15 +78,20 @@ function codeMeta(node: Node, language: string) {
   const attrs = node.attrs as Partial<CodeBlockOptions>;
   return fenceMeta({ ...attrs, view: attrs.view ?? (language === "mermaid" ? "code" : null) });
 }
+// In a table cell "|" ends the cell: it is written "\|", which GitHub
+// Markdown reads back as "|" inside code too. Only code with line breaks
+// (or "\|" of its own) stays HTML there.
+const htmlCodeInTable = (source: string) => /\n|\\\|/.test(source);
 function inlineCode(source: string, inTable = false) {
-  if (inTable)
+  if (inTable && htmlCodeInTable(source))
     return `<code>${htmlText(source).replaceAll("|", "&#124;").replace(/\n/g, "<br>")}</code>`;
   const fence = "`".repeat(
     Math.max(1, ...(source.match(/`+/g) || []).map((run) => run.length + 1)),
   );
   const value = source.replace(/\n/g, " "),
     pad = /^`|`$|^ .* $/.test(value) && !/^[ ]+$/.test(value) ? " " : "";
-  return `${fence}${pad}${value}${pad}${fence}`;
+  const code = `${fence}${pad}${value}${pad}${fence}`;
+  return inTable ? code.replaceAll("|", "\\|") : code;
 }
 const htmlText = (text: string) =>
   text
@@ -87,11 +99,30 @@ const htmlText = (text: string) =>
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
-function wrapMark(text: string, delimiter: string) {
+function wrapMark(text: string, delimiter: string, close = delimiter) {
   const match = /^(\s*)([\s\S]*?)(\s*)$/.exec(text)!;
   return match[2]
-    ? match[1] + delimiter + match[2] + delimiter + match[3]
+    ? match[1] + delimiter + match[2] + close + match[3]
     : text;
+}
+// "**Note:**text" is no bold in Markdown: a delimiter between punctuation
+// inside and a letter outside does not open or close. There the marks are
+// written as HTML (<strong>Note:</strong>text), which the import reads.
+const WORD = /[\p{L}\p{N}]/u,
+  PUNCTUATION = /[\p{P}\p{S}]/u;
+function needsHtmlMarks(markdown: string, before: string, after: string) {
+  const inner = markdown.trim();
+  if (!inner) return false;
+  return (
+    (!/^\s/.test(markdown) && PUNCTUATION.test(inner[0]) && WORD.test(before)) ||
+    (!/\s$/.test(markdown) && PUNCTUATION.test(inner[inner.length - 1]) && WORD.test(after))
+  );
+}
+// The character next to an inline node, as far as it decides the above.
+function edge(node: Node, end: boolean) {
+  if (!node.isText) return "";
+  const text = node.text || "";
+  return (end ? text[text.length - 1] : text[0]) || "";
 }
 // Source view ("Als Markdown bearbeiten"): what Markdown cannot hold stays
 // intact. Blocks without a Markdown form become a marker
@@ -256,7 +287,7 @@ export function htmlToMarkdown(
     if (node.attrs.reactions) source.lossy.add(tr("Reaktionen", "Reactions"));
     if (node.attrs.journalSince) source.lossy.add(tr("Übertragene Aufgaben", "Carried-over tasks"));
   }
-  function inline(node: Node, inTable = false): string {
+  function inline(node: Node, inTable = false, before = "", after = ""): string {
     if (node.type.name === "hardBreak") return "  \n";
     // In the source view a citation stays as HTML, so applying keeps it.
     if (node.type.name === "citation" && source) {
@@ -279,25 +310,30 @@ export function htmlToMarkdown(
       return markdownText("@" + String(node.attrs.label || ""));
     if (node.type.name === "mathInline") {
       const value = String(node.attrs.expression || "");
-      return inTable
+      return inTable && htmlCodeInTable(value)
         ? inlineCode(value, true)
         : /[`\n]/.test(value)
-          ? inlineCode(value)
-          : `$${inlineCode(value)}$`;
+          ? inlineCode(value, inTable)
+          : `$${inlineCode(value, inTable)}$`;
     }
     if (!node.isText) {
       let result = "";
-      node.forEach((child) => (result += inline(child, inTable)));
+      node.forEach((child, _offset, index) => {
+        const previous = index > 0 ? edge(node.child(index - 1), true) : "",
+          next = index < node.childCount - 1 ? edge(node.child(index + 1), false) : "";
+        result += inline(child, inTable, previous, next);
+      });
       return result;
     }
     const isCode = node.marks.some((mark) => mark.type.name === "code");
     let result = isCode
       ? inlineCode(node.text || "", inTable)
       : markdownText(node.text || "");
+    const html = needsHtmlMarks(result, before, after);
     for (const mark of node.marks) {
-      if (mark.type.name === "bold") result = wrapMark(result, "**");
-      if (mark.type.name === "italic") result = wrapMark(result, "*");
-      if (mark.type.name === "strike") result = wrapMark(result, "~~");
+      if (mark.type.name === "bold") result = html ? wrapMark(result, "<strong>", "</strong>") : wrapMark(result, "**");
+      if (mark.type.name === "italic") result = html ? wrapMark(result, "<em>", "</em>") : wrapMark(result, "*");
+      if (mark.type.name === "strike") result = html ? wrapMark(result, "<s>", "</s>") : wrapMark(result, "~~");
       if (mark.type.name === "underline") result = `<u>${result}</u>`;
       if (mark.type.name === "highlight" && !(source && mark.attrs.color)) result = `<mark>${result}</mark>`;
       if (mark.type.name === "link") {
@@ -354,7 +390,8 @@ export function htmlToMarkdown(
         return (
           "#".repeat(Math.max(1, Math.min(6, Number(node.attrs.level) || 1))) +
           " " +
-          inline(node, inTable)
+          // A trailing "#" run would be read as the closing sequence.
+          inline(node, inTable).replace(/(^|\s)#(#*\s*)$/, "$1\\#$2")
         );
       case "horizontalRule":
         return "---";
@@ -377,8 +414,10 @@ export function htmlToMarkdown(
         const url = context.url(String(node.attrs.src || "")),
           alt = String(node.attrs.alt || ct("Bild", "Image"));
         const caption = captionText(node.attrs.caption);
+        // An image without alt text keeps none (the label only stands in
+        // for a missing picture).
         return url
-          ? `![${markdownText(alt)}](<${markdownUrl(url)}>${caption ? imageTitle(caption) : ""})`
+          ? `![${markdownText(String(node.attrs.alt || ""))}](<${markdownUrl(url)}>${caption ? imageTitle(caption) : ""})`
           : `${markdownText(alt)} ${ct("(nicht verfügbar)", "(not available)")}` + (caption ? ` – ${markdownText(caption)}` : "");
       }
       case "media": {
@@ -418,7 +457,8 @@ export function htmlToMarkdown(
               content[0] +
               content
                 .slice(1)
-                .map((line) => "\n" + " ".repeat(prefix.length) + line)
+                // A task's content starts after "- ", not after its "[x] ".
+                .map((line) => "\n" + " ".repeat(node.type.name === "taskList" ? 2 : prefix.length) + line)
                 .join(""),
           );
         });

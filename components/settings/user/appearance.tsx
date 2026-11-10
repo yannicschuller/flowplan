@@ -1,6 +1,7 @@
 "use client";
 // Settings → Darstellung & Sprache: language (profile, all devices),
-// light or dark (this device), the editor's block handles and code blocks
+// light or dark (this device), the related pages and backlinks below pages
+// and records (this device), the editor's block handles and code blocks
 // and draw.io's theme
 // and interface (this device),
 // keyboard shortcuts and the introduction.
@@ -12,6 +13,7 @@ import { Select } from "../../select";
 import { CONTROL, SaveState, SettingGroup, SettingRow, SwitchRow, useSaveState } from "../../settings-ui";
 import { setLineNumbersByDefault, useLineNumbersByDefault } from "@/lib/code-block-prefs";
 import { setBlockHandlesAlways, useBlockHandlesAlways } from "@/lib/block-handle-prefs";
+import { setDiscoveryPanelsShown, useDiscoveryPanelsShown } from "@/lib/discovery-panels-prefs";
 import { useUserSettings } from "../user-context";
 import { setDrawioPref, useDrawioPrefs } from "@/lib/drawio-prefs";
 import { DRAWIO_UIS, type DrawioUi } from "@/lib/drawio";
@@ -23,6 +25,7 @@ export default function AppearanceSection() {
   const [status, run] = useSaveState();
   const lineNumbers = useLineNumbersByDefault();
   const handlesAlways = useBlockHandlesAlways();
+  const discoveryPanels = useDiscoveryPanelsShown();
   const drawio = useDrawioPrefs();
   return (
     <>
@@ -68,6 +71,15 @@ export default function AppearanceSection() {
             </label>
           </div>
         </SettingRow>
+        <SwitchRow
+          label={t("Verwandte Seiten und Rückverweise anzeigen", "Show related pages and backlinks")}
+          description={t(
+            "Unter Seiten und Einträgen: Verwandte Seiten, „Verlinkt von“, „Verknüpft von“ und nicht verlinkte Erwähnungen. Nur auf diesem Gerät.",
+            "Below pages and records: Related pages, Linked from and Unlinked mentions. On this device only.",
+          )}
+          checked={discoveryPanels}
+          onChange={setDiscoveryPanelsShown}
+        />
       </SettingGroup>
       <SettingGroup id="editor" title={t("Editor", "Editor")}>
         <SwitchRow

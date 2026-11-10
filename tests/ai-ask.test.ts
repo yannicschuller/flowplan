@@ -100,6 +100,17 @@ test("documents are split into paragraphs and chunks with their heading", () => 
   assert.ok(huge.length > 2 && huge.every((c) => c.length <= CHUNK_MAX));
 });
 
+test("lines starting with H after a line break stay text; headings without text are indexed", () => {
+  assert.deepEqual(chunkHtml("<p>Adresse:<br>Hauptstraße 5</p>"), ["Adresse:\nHauptstraße 5"]);
+  assert.deepEqual(chunkHtml("<p>Zeile A</p><p>Hotel Adler ist gebucht</p><div>Zimmer 12</div>"), ["Zeile A\nHotel Adler ist gebucht\nZimmer 12"]);
+  assert.deepEqual(htmlParagraphs("<li>Hallo</li><h2>Hinweise</h2>").map((p) => [p.text, p.heading]), [["Hallo", false], ["Hinweise", true]]);
+  // A heading with nothing after it, or a page of headings only.
+  assert.deepEqual(chunkHtml("<p>Text davor</p><h2>Offene Punkte</h2>"), ["Text davor", "Offene Punkte"]);
+  assert.deepEqual(chunkHtml("<h1>Eins</h1><h2>Zwei</h2>"), ["Eins", "Zwei"]);
+  // A heading with text is not repeated as a chunk of its own.
+  assert.deepEqual(chunkHtml("<h2>Kapitel</h2><p>Text</p>"), ["Kapitel\nText"]);
+});
+
 test("table rows lose the separators of empty cells, quickly", () => {
   const cells = (texts: string[]) => `<tr>${texts.map((t) => `<td>${t}</td>`).join("")}</tr>`;
   const started = performance.now();

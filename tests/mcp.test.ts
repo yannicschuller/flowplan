@@ -177,6 +177,72 @@ test("private records of others stay hidden in database queries", async () => {
   assert.ok((await call(anaWrite, "query_database", { databaseId: tasksDb })).text.includes("Anas Privatsache"));
 });
 
+test("a record's document can be written on create and update (#189)", async () => {
+  const db = await createPage(wid, teamSpace, ana.id, "Projekte", "database");
+  const titleField = JSON.parse((await call(benWrite, "query_database", { databaseId: db })).text).fields[0].name as string;
+  const docHtml = async (rid: string) => (await one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", rid))!.html;
+  const created = await call(benWrite, "create_record", {
+    databaseId: db,
+    properties: { [titleField]: "Mit Dokument" },
+    document: "## Ziel\n\n- [ ] Plan schreiben\n\nText **fett**",
+  });
+  assert.equal(created.error, false, created.text);
+  const record = JSON.parse(created.text);
+  assert.match(await docHtml(record.id), /<h2[^>]*>Ziel<\/h2>/);
+  assert.match(await docHtml(record.id), /data-type="taskItem"/);
+  let got = JSON.parse((await call(benWrite, "get_record", { databaseId: db, recordId: record.id })).text);
+  assert.match(got.document, /## Ziel/);
+  assert.match(got.document, /\*\*fett\*\*/);
+  // Counted as Ben's edit of the database, as in the editor.
+  assert.ok(await one("SELECT 1 FROM page_edits WHERE page_id=? AND user_id=?", db, ben.id));
+
+  // Append keeps what is there.
+  const appended = await call(benWrite, "update_record", { databaseId: db, recordId: record.id, document: "Nachtrag", documentMode: "append" });
+  assert.equal(appended.error, false, appended.text);
+  got = JSON.parse((await call(benWrite, "get_record", { databaseId: db, recordId: record.id })).text);
+  assert.match(got.document, /## Ziel[\s\S]*Nachtrag/);
+  // Replace (the default) puts the new text in place; the old one is kept as a version.
+  const replaced = await call(benWrite, "update_record", { databaseId: db, recordId: record.id, document: "Ganz **neu**" });
+  assert.equal(replaced.error, false, replaced.text);
+  got = JSON.parse((await call(benWrite, "get_record", { databaseId: db, recordId: record.id })).text);
+  assert.equal(got.document.includes("Ziel"), false);
+  assert.match(got.document, /Ganz \*\*neu\*\*/);
+  assert.equal(got.title, "Mit Dokument");
+  assert.ok(await one("SELECT 1 FROM row_snapshots WHERE row_id=?", record.id));
+  // Properties and the document in one call.
+  const both = await call(benWrite, "update_record", { databaseId: db, recordId: record.id, properties: { [titleField]: "Beides" }, document: "Zweiter Stand" });
+  assert.equal(both.error, false, both.text);
+  got = JSON.parse((await call(benWrite, "get_record", { databaseId: db, recordId: record.id })).text);
+  assert.equal(got.title, "Beides");
+  assert.match(got.document, /Zweiter Stand/);
+
+  // Raw HTML in the Markdown stays harmless.
+  await call(benWrite, "update_record", { databaseId: db, recordId: record.id, document: '<img src=x onerror="alert(1)"><script>alert(2)</script>' });
+  assert.equal(/<img[^>]*onerror|<script/i.test(await docHtml(record.id)), false);
+
+  // A read token may not write it.
+  const before = await docHtml(record.id);
+  const read = await call(benRead, "update_record", { databaseId: db, recordId: record.id, document: "Darf nicht" });
+  assert.equal(read.error, true);
+  assert.match(read.text, /only read/);
+  assert.equal(await docHtml(record.id), before);
+
+  // Another person's private record stays untouched.
+  const { id: privateId } = (await command(ana, { action: "row.create", pageId: db, cells: { title: "Privat" } })) as { id: string };
+  await run("UPDATE rows SET access='private' WHERE id=?", privateId);
+  assert.equal((await call(benWrite, "update_record", { databaseId: db, recordId: privateId, document: "Ben war hier" })).error, true);
+  assert.equal(((await one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", privateId))?.html || "").includes("Ben"), false);
+
+  // A locked database takes no document.
+  await run("UPDATE pages SET locked=1 WHERE id=?", db);
+  assert.equal((await call(benWrite, "update_record", { databaseId: db, recordId: record.id, document: "Gesperrt" })).error, true);
+  assert.equal(await docHtml(record.id), before);
+  const rowsBefore = Number((await one<{ n: number }>("SELECT COUNT(*) n FROM rows WHERE page_id=?", db))!.n);
+  assert.equal((await call(benWrite, "create_record", { databaseId: db, properties: { [titleField]: "Neu" }, document: "x" })).error, true);
+  assert.equal(Number((await one<{ n: number }>("SELECT COUNT(*) n FROM rows WHERE page_id=?", db))!.n), rowsBefore);
+  await run("UPDATE pages SET locked=0 WHERE id=?", db);
+});
+
 test("invalid arguments are tool errors, not crashes", async () => {
   const answer = await call(benWrite, "read_page", { pageId: "not-a-uuid" });
   assert.equal(answer.error, true);

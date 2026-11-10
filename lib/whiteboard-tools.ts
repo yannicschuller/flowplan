@@ -3,6 +3,7 @@
 // clustering sticky notes, mind-map layout, recognising drawn shapes and
 // the outline of a pressure-sensitive pen stroke.
 import type { Point, ShapeKind, WhiteboardItem } from "./whiteboard-model";
+import { plainText } from "./whiteboard-richtext";
 
 type Box = { x: number; y: number; w: number; h: number };
 export type Guide = { axis: "x" | "y"; at: number; from: number; to: number };
@@ -346,4 +347,38 @@ export function strokeHit(item: Pick<WhiteboardItem, "x" | "y" | "w" | "h" | "po
     if (Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy)) <= reach) return true;
   }
   return false;
+}
+
+// Copy and paste of board items. Ctrl+C keeps the items in the tab and marks
+// the system clipboard with a token of its own (plus the items' plain text).
+// A paste puts the items back only while that copy is still what the system
+// clipboard holds; anything copied elsewhere since (an image, text, Mermaid)
+// is pasted as such.
+export const BOARD_CLIPBOARD_TYPE = "application/x-flowplan-whiteboard";
+export type BoardCopy = { token: string; text: string };
+export function boardCopyText(items: Pick<WhiteboardItem, "text">[]) {
+  return items
+    .map((item) => (typeof item.text === "string" ? plainText(item.text).trim() : ""))
+    .filter(Boolean)
+    .join("\n");
+}
+export function pastesBoardItems(
+  copy: BoardCopy | null,
+  paste: { token: string; text: string; files: number },
+) {
+  if (!copy) return false;
+  if (paste.token) return paste.token === copy.token;
+  // Browsers that drop own clipboard types still keep the plain text.
+  return !paste.files && paste.text.trim() === copy.text;
+}
+
+// The box of a resize, at least 20×20: below that the edge opposite the
+// dragged handle stays where it is (the right edge for a west handle, the
+// bottom edge for a north one).
+export function clampResize(origin: Box, handle: string, box: Box, min = 20): Box {
+  const w = Math.max(min, box.w),
+    h = Math.max(min, box.h);
+  const x = box.w >= min ? box.x : handle.includes("w") ? origin.x + origin.w - min : origin.x;
+  const y = box.h >= min ? box.y : handle.includes("n") ? origin.y + origin.h - min : origin.y;
+  return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) };
 }

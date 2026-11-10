@@ -25,6 +25,15 @@ const localNow = (now: number, zone: string) => {
     return Temporal.Instant.fromEpochMilliseconds(now).toZonedDateTimeISO("UTC");
   }
 };
+// The day of a date cell in the workflow's time zone: a moment ("…T01:00Z")
+// on the day it falls on there, as the views read it; a date as written.
+function cellDay(value: string, zone: string) {
+  if (value.length > 10 && /(?:Z|[+-]\d{2}:?\d{2})$/i.test(value)) {
+    const ms = Date.parse(value);
+    if (Number.isFinite(ms)) return localNow(ms, zone).toPlainDate().toString();
+  }
+  return value.slice(0, 10);
+}
 async function once(pageId: string, nodeId: string, rowId: string, key: string, now: number) {
   return !!(await run("INSERT INTO automation_runs(automation_id,row_id,key,at) VALUES(?,?,?,?) ON CONFLICT DO NOTHING", `wf:${pageId}:${nodeId}`, rowId, key, now)).changes;
 }
@@ -46,8 +55,24 @@ export async function processWorkflowSchedules(now = Date.now()) {
       time: String(c.time || "09:00"),
       timeZone: String(c.timeZone || graph?.settings.timeZone || "UTC"),
     };
-    const slot = latestSlot(trigger, new Date(t.activated_at || now).toISOString(), now);
-    if (!slot) continue;
+    // The rhythm ("every 2 weeks") counts from the last slot that fired, so
+    // republishing or resuming keeps it; slots from before the activation
+    // (while paused) are not made up.
+    const activated = t.activated_at || now;
+    const last = await one<{ key: string }>("SELECT key FROM automation_runs WHERE automation_id=? AND row_id='@schedule' ORDER BY key DESC LIMIT 1", `wf:${t.page_id}:${t.node_id}`);
+    let since = activated;
+    if (last && /^\d{4}-\d{2}-\d{2}T/.test(last.key)) {
+      try {
+        // The start of that day in the schedule's time zone.
+        const start = Temporal.PlainDate.from(last.key.slice(0, 10)).toZonedDateTime(trigger.timeZone).epochMilliseconds;
+        if (start <= now) since = start;
+      } catch {
+        // An unknown time zone: latestSlot() finds no slot either.
+      }
+    }
+    const anchor = new Date(since).toISOString();
+    const slot = latestSlot(trigger, anchor, now);
+    if (!slot || slot.at < activated) continue;
     await transaction(async () => {
       if (!(await once(t.page_id, t.node_id, "@schedule", slot.key, now))) return;
       await emitWorkflowEvent("schedule", {
@@ -80,17 +105,21 @@ export async function processWorkflowSchedules(now = Date.now()) {
       const cells = JSON.parse(row.cells) as Record<string, unknown>;
       const value = cells[c.field];
       if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}/.test(value)) continue;
-      const due = value.slice(0, 10);
+      const due = cellDay(value, zone);
+      const keyOf = (day: string) => (c.mode === "overdue" ? day : `${day}${c.offsetDays ? `${c.offsetDays > 0 ? "+" : ""}${c.offsetDays}` : ""}`);
       let key: string | null = null;
       if (c.mode === "overdue") {
-        if (due < today && !isDone(rule, cells)) key = due;
+        if (due < today && !isDone(rule, cells)) key = keyOf(due);
       } else {
         const target = Temporal.PlainDate.from(due).add({ days: c.offsetDays || 0 }).toString();
         // Reached today (or since activation), at the time if one is set.
-        if (target <= today && target >= activatedDay && (!c.time || target < today || clock >= c.time)) key = `${due}${c.offsetDays ? `${c.offsetDays > 0 ? "+" : ""}${c.offsetDays}` : ""}`;
+        if (target <= today && target >= activatedDay && (!c.time || target < today || clock >= c.time)) key = keyOf(due);
       }
       if (!key) continue;
       const k = key;
+      // Fired before under the UTC day of the moment (before it was read in the zone): not again.
+      const utcKey = keyOf(value.slice(0, 10));
+      if (utcKey !== k && (await one("SELECT 1 FROM automation_runs WHERE automation_id=? AND row_id=? AND key=?", `wf:${t.page_id}:${t.node_id}`, row.id, utcKey))) continue;
       await transaction(async () => {
         if (!(await once(t.page_id, t.node_id, row.id, k, now))) return;
         await emitWorkflowEvent("record.date", {

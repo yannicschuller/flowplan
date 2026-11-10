@@ -41,6 +41,41 @@ test("single paragraphs come back from an older version", async () => {
   await assert.rejects(async () => await act({ action: "snapshot.restoreBlock", pageId, snapshotId, text: "Never there" }), /nicht in dieser Version/);
 });
 
+// What the version history sends for a change (components/version-changes.tsx).
+type Change = { type: string; text?: string; parts?: { type: string; text: string }[] };
+const oldText = (c: Change) => (c.type === "changed" ? c.parts!.filter((p) => p.type !== "added").map((p) => p.text).join("") : c.type === "added" ? null : c.text!);
+const newText = (c: Change) => (c.type === "changed" ? c.parts!.filter((p) => p.type !== "removed").map((p) => p.text).join("") : null);
+async function restoreFirst(old: string, now: string) {
+  await seed(old);
+  const snapshotId = (await act({ action: "page.snapshot", pageId })).id as string;
+  await seed(now);
+  const changes = (await snapshotChanges(owner, pageId, snapshotId)).changes as Change[];
+  const i = changes.findIndex((c) => c.type === "removed" || c.type === "changed");
+  let after: string | null = null;
+  for (let j = i - 1; j >= 0 && !after; j--) after = oldText(changes[j]);
+  await act({ action: "snapshot.restoreBlock", pageId, snapshotId, text: oldText(changes[i]), after, replace: newText(changes[i]) });
+  return await html();
+}
+
+test("paragraphs with line breaks or formulas, list items and repeated text are restored in place", async () => {
+  // A line break splits the paragraph in the comparison; the whole paragraph returns.
+  assert.match(await restoreFirst("<p>Intro</p><p>line one<br>line two</p><p>End</p>", "<p>Intro</p><p>End</p>"), /<p>Intro<\/p><p>line one<br ?\/?>line two<\/p><p>End<\/p>/);
+  assert.match(await restoreFirst("<p>Intro</p><p>line one<br>line two</p>", "<p>Intro</p><p>line one<br>line 2</p>"), /<p>Intro<\/p><p>line one<br ?\/?>line two<\/p>$/);
+  // The second line of a paragraph that kept its first: the paragraph is whole again, once.
+  assert.match(await restoreFirst("<p>Intro</p><p>line one<br>line two</p>", "<p>Intro</p><p>line one</p>"), /<p>Intro<\/p><p>line one<br ?\/?>line two<\/p>$/);
+  // Inline formulas are part of the compared text.
+  assert.match(
+    await restoreFirst('<p>Intro</p><p>Energy <span data-math="E=mc^2" class="math-inline">E=mc^2</span> rules</p><p>End</p>', "<p>Intro</p><p>End</p>"),
+    /<p>Intro<\/p><p>Energy <span[^>]*data-math="E=mc\^2"[^>]*>[^<]*<\/span> rules<\/p><p>End<\/p>/,
+  );
+  // A list item comes back as a list item, not as a paragraph in the one before.
+  assert.match(await restoreFirst("<ul><li><p>a</p></li><li><p>b</p></li></ul><p>End</p>", "<ul><li><p>a</p></li></ul><p>End</p>"), /<ul><li><p>a<\/p><\/li><li><p>b<\/p><\/li><\/ul><p>End<\/p>/);
+  // A paragraph after a list goes after the list.
+  assert.match(await restoreFirst("<ul><li><p>a</p></li></ul><p>End</p>", "<ul><li><p>a</p></li></ul>"), /<ul><li><p>a<\/p><\/li><\/ul><p>End<\/p>/);
+  // With repeated text, the paragraph goes after the right one.
+  assert.match(await restoreFirst("<p>Note</p><p>x</p><p>Note</p><p>second kept</p>", "<p>Note</p><p>x</p><p>Note</p>"), /<p>Note<\/p><p>x<\/p><p>Note<\/p><p>second kept<\/p>/);
+});
+
 // created_at has whole seconds: versions saved within one second came in
 // table order (oldest first on SQLite, any order on PostgreSQL), so "the
 // newest version" in the history could be an older one. seq breaks the tie.

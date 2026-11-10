@@ -20,17 +20,30 @@ function fail(field: Field, value: unknown): never {
   const shown = typeof value === "string" ? value : JSON.stringify(value);
   throw new ValueError(`„${String(shown).slice(0, 80)}“ passt nicht in die Eigenschaft „${field.name}“.`);
 }
-// Numbers from text: dot and comma as decimal separator.
+// Numbers from text: dot and comma as decimal separator. One of them groups
+// thousands only with two or more groups ("1.234.567") or a decimal part
+// after the other one ("1.234,5", "1,234.5"), never after a leading 0: a
+// single "1.234" or "0,500" is a decimal number.
+const DOT_GROUPS = /^-?[1-9]\d{0,2}(?:(?:\.\d{3}){2,}(?:,\d+)?|(?:\.\d{3})+,\d+)$/;
+const COMMA_GROUPS = /^-?[1-9]\d{0,2}(?:(?:,\d{3}){2,}(?:\.\d+)?|(?:,\d{3})+\.\d+)$/;
 export function toNumber(value: unknown): number | null {
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
   if (typeof value !== "string") return null;
   let s = value.trim().replace(/\s/g, "");
   if (!s) return null;
-  if (/^-?\d{1,3}(\.\d{3})+(,\d+)?$/.test(s)) s = s.replace(/\./g, "").replace(",", ".");
-  else if (/^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(s)) s = s.replace(/,/g, "");
+  if (DOT_GROUPS.test(s)) s = s.replace(/\./g, "").replace(",", ".");
+  else if (COMMA_GROUPS.test(s)) s = s.replace(/,/g, "");
   else s = s.replace(",", ".");
   const n = Number(s);
   return Number.isFinite(n) ? n : null;
+}
+// The compare value of a number condition (greater, less, between) with the
+// separators toNumber() accepts, as the filters read numbers ("1000,5" → "1000.5").
+const NUMBER_OPS = new Set(["gt", "gte", "lt", "lte", "between"]);
+export function compareNumberText(op: string, text: string): string {
+  if (!NUMBER_OPS.has(op)) return text;
+  const n = toNumber(text);
+  return n === null ? text : String(n);
 }
 const list = (value: unknown): unknown[] =>
   Array.isArray(value) ? value : isEmpty(value) ? [] : typeof value === "string" ? value.split(",").map((s) => s.trim()).filter(Boolean) : [value];

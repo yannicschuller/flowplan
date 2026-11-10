@@ -70,6 +70,11 @@ const WEEKDAYS: Record<string, number> = {
 };
 // Abbreviations only with a dot or as the whole English short form.
 const SHORT_WEEKDAYS = new Set(["so", "mo", "di", "mi", "do", "fr", "sa"]);
+// The English short forms are words elsewhere ("mon" in French): without a
+// dot or a word before them ("next", "by") only in English, and "sun",
+// "sat" and "wed", English words too, not even there.
+const ENGLISH_SHORT = new Set(["sun", "mon", "tue", "wed", "thu", "fri", "sat"]);
+const WORD_SHORT = new Set(["sun", "sat", "wed"]);
 const MONTHS: Record<string, number> = {
   januar: 1, jänner: 1, februar: 2, märz: 3, april: 4, mai: 5, juni: 6, juli: 7, august: 8, september: 9, oktober: 10, november: 11, dezember: 12,
   january: 1, february: 2, march: 3, may: 5, june: 6, july: 7, october: 10, december: 12,
@@ -100,7 +105,7 @@ const nextWeekday = (today: string, wanted: number, skipToday = true) => {
 };
 const DATE_RULES: DateRule[] = [
   rule("(?:day\\s+after\\s+tomorrow|übermorgen|après-demain|apres-demain)", (_m, t) => addDays(t, 2)),
-  rule("(?:heute|today|aujourd'hui|aujourd’hui|tonight|heute\\s+abend|ce\\s+soir)", (_m, t) => t),
+  rule("(?:heute\\s+abend|heute|today|aujourd'hui|aujourd’hui|tonight|ce\\s+soir)", (_m, t) => t),
   rule("(?:morgen|tomorrow|demain)", (_m, t) => addDays(t, 1)),
   // Next week: its Monday.
   rule("(?:nächste\\s+woche|kommende\\s+woche|next\\s+week|(?:la\\s+)?semaine\\s+prochaine)", (_m, t) => nextWeekday(t, 1)),
@@ -114,9 +119,11 @@ const DATE_RULES: DateRule[] = [
     return addDays(t, /^(w|s)/i.test(m[2]) ? n * 7 : n);
   }),
   // "nächsten Montag", "next friday", "vendredi prochain", "am Montag", "Mo."
-  rule(`(?:(?:nächsten|nächster|kommenden|diesen|next|this|ce)\\s+)?(${WEEKDAY_NAMES})(\\.)?(?:\\s+prochain)?`, (m, t) => {
+  rule(`(?:(?:nächsten|nächster|kommenden|diesen|next|this|ce)\\s+)?(${WEEKDAY_NAMES})(\\.)?(?:\\s+prochain)?`, (m, t, locale) => {
     const name = m[1].toLowerCase();
     if (SHORT_WEEKDAYS.has(name) && !m[2]) return null;
+    const qualified = m[0].trim().length > m[1].length;
+    if (ENGLISH_SHORT.has(name) && !m[2] && !qualified && (locale !== "en" || WORD_SHORT.has(name))) return null;
     return nextWeekday(t, WEEKDAYS[name]);
   }),
   // ISO: 2026-12-24
@@ -129,6 +136,8 @@ const DATE_RULES: DateRule[] = [
   }),
   // 24/12, 12/24 (English), with a year
   rule("(\\d{1,2})/(\\d{1,2})(?:/(\\d{4}|\\d{2}))?", (m, t, locale) => {
+    // "24/7" alone means "always".
+    if (m[0] === "24/7") return null;
     let [a, b] = [Number(m[1]), Number(m[2])];
     // English: month first, unless the first number cannot be a month.
     const monthFirst = locale === "en" ? a <= 12 : b > 12;
@@ -164,15 +173,18 @@ const TIME_RULES: { re: RegExp; time: (m: RegExpExecArray) => string | null }[] 
       return hm((h % 12) + (m[3].toLowerCase() === "p" ? 12 : 0), Number(m[2] || 0));
     },
   },
+  // "15h30", "à 15h"; a bare "15h" (also a duration: "2h") is WEAK_TIME.
   {
-    re: new RegExp(`${B}(?:(?:à|a|vers)\\s+)?(\\d{1,2})h(\\d{2})?${E}`, "giu"),
-    time: (m) => hm(Number(m[1]), Number(m[2] || 0)),
+    re: new RegExp(`${B}(?:(?:(?:à|a|vers)\\s+)(\\d{1,2})h(\\d{2})?|(\\d{1,2})h(\\d{2}))${E}`, "giu"),
+    time: (m) => (m[1] ? hm(Number(m[1]), Number(m[2] || 0)) : hm(Number(m[3]), Number(m[4]))),
   },
   {
     re: new RegExp(`${B}(?:(?:um|at|à|a|gegen|vers)\\s+)?([01]?\\d|2[0-3]):([0-5]\\d)${E}`, "giu"),
     time: (m) => hm(Number(m[1]), Number(m[2])),
   },
 ];
+// A bare "15h": a time only right next to a date ("demain 15h").
+const WEAK_TIME = [{ re: new RegExp(`${B}(\\d{1,2})h${E}`, "giu"), time: (m: RegExpExecArray) => hm(Number(m[1]), 0) }];
 function hm(h: number, m: number) {
   return h >= 0 && h <= 23 && m >= 0 && m <= 59 ? `${pad(h)}:${pad(m)}` : null;
 }
@@ -244,10 +256,14 @@ export function tokens(raw: string, context: ParseContext): CaptureToken[] {
     push("priority", { start, end: start + word.length, raw: word }, level);
   }
   const date = firstMatch(text, DATE_RULES, (index, m) => DATE_RULES[index].day(m, context.today, locale), taken);
-  const time = firstMatch(text, TIME_RULES, (index, m) => TIME_RULES[index].time(m), date ? [...taken, date] : taken);
+  // A time right next to the date belongs to it ("morgen 15 Uhr", "15 Uhr morgen").
+  const near = (a: Span, b: Span) => /^[\s,]*(?:um|at|à)?[\s,]*$/i.test(text.slice(Math.min(a.end, b.end), Math.max(a.start, b.start)));
+  let time = firstMatch(text, TIME_RULES, (index, m) => TIME_RULES[index].time(m), date ? [...taken, date] : taken);
+  if (!time && date) {
+    const weak = firstMatch(text, WEAK_TIME, (index, m) => WEAK_TIME[index].time(m), [...taken, date]);
+    if (weak && near(date, weak)) time = weak;
+  }
   if (date || time) {
-    // A time right next to the date belongs to it ("morgen 15 Uhr", "15 Uhr morgen").
-    const near = (a: Span, b: Span) => /^[\s,]*(?:um|at|à)?[\s,]*$/i.test(text.slice(Math.min(a.end, b.end), Math.max(a.start, b.start)));
     if (date && time && near(date, time)) {
       const start = Math.min(date.start, time.start),
         end = Math.max(date.end, time.end);

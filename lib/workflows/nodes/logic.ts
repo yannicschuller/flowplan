@@ -4,8 +4,8 @@ import { isFormattedText } from "../../inline-markdown";
 import type { Field, Filter } from "../../types";
 import type { WorkflowCondition, WorkflowConditionGroup } from "../catalog";
 import { conditionField } from "../legacy";
-import { isEmpty, renderText, renderValue, type RenderScope } from "../placeholders";
-import { toNumber } from "../values";
+import { isEmpty, renderCompare, renderText, renderValue, type RenderScope } from "../placeholders";
+import { compareNumberText, toNumber } from "../values";
 import { databaseFields, personValue, refId } from "./data";
 import { dryRun, FAR, StepError, type NodeImpl, type NodeRun } from "./types";
 import { id, one, run } from "../../db";
@@ -43,13 +43,13 @@ export async function evaluateConditions(group: WorkflowConditionGroup, scope: R
   const fieldCache = new Map<string, Field[]>();
   const now = new Date();
   const test = async (c: WorkflowCondition): Promise<boolean> => {
-    const text = (v: string | undefined) => (v === undefined ? undefined : renderText(v, scope));
+    const text = (v: string | undefined) => (v === undefined ? undefined : compareNumberText(c.op, renderCompare(v, scope)));
     const filter = {
       kind: "condition",
       field: "x",
       op: c.op,
       value: text(c.value) ?? "",
-      ...(c.values ? { values: c.values.map((v) => renderText(v, scope)) } : {}),
+      ...(c.values ? { values: c.values.map((v) => renderCompare(v, scope)) } : {}),
       ...(c.to !== undefined ? { to: text(c.to) } : {}),
       ...(c.timeZone || ["in_relative", "not_in_relative"].includes(c.op) ? { timeZone: c.timeZone || timeZone } : {}),
       ...(c.days !== undefined ? { days: c.days } : {}),

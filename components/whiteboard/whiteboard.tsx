@@ -108,6 +108,8 @@ import {
   type WhiteboardItemType,
   type WhiteboardMeta,
   emptyTable,
+  sharedArray,
+  sharedMap,
 } from "@/lib/whiteboard-model";
 import { compressImage } from "@/lib/image-compress";
 import { DURATION, interpolateCamera, tween } from "@/lib/motion";
@@ -115,16 +117,21 @@ import { MediaSearch } from "./media-search";
 import { useBoardAi } from "./ai-panel";
 import {
   alignItems,
+  BOARD_CLIPBOARD_TYPE,
+  boardCopyText,
   boundsOf,
+  clampResize,
   clusterItems,
   distributeItems,
   mindmapLayout,
   mindmapRoot,
+  pastesBoardItems,
   recognizeStroke,
   snapBox,
   stackItems,
   strokeHit,
   type AlignMode,
+  type BoardCopy,
   type ClusterMode,
   type Guide,
 } from "@/lib/whiteboard-tools";
@@ -266,6 +273,8 @@ const colorFor = (id: string) =>
       personColors.length
   ];
 let clipboard: WhiteboardItem[] = [];
+// What the last copy wrote to the system clipboard (see pastesBoardItems).
+let clipboardCopy: BoardCopy | null = null;
 
 // The actions menu scrolls within what is visible of the board: on phones
 // the board can reach below the tab bar, which would hide its last entries.
@@ -1044,12 +1053,7 @@ export default function Whiteboard({
     const map = itemsMap.get(id);
     if (!map || !text.trim()) return;
     change(() => {
-      let list = map.get("messages");
-      if (!(list instanceof Y.Array)) {
-        list = new Y.Array();
-        map.set("messages", list);
-      }
-      (list as Y.Array<unknown>).push([
+      sharedArray(map, "messages").push([
         {
           id: crypto.randomUUID(),
           author: userId,
@@ -1076,13 +1080,9 @@ export default function Whiteboard({
     if (!has && myVotes >= voting.max)
       return onError(t(`Du hast alle ${voting.max} Stimmen vergeben.`, `You have used all ${voting.max} votes.`));
     change(() => {
-      let votes = map.get("votes");
-      if (!(votes instanceof Y.Map)) {
-        votes = new Y.Map();
-        map.set("votes", votes);
-      }
-      if (has) (votes as Y.Map<unknown>).delete(userId);
-      else (votes as Y.Map<unknown>).set(userId, true);
+      const votes = sharedMap(map, "votes");
+      if (has) votes.delete(userId);
+      else votes.set(userId, true);
     });
   }
   function resetVotes() {
@@ -1884,14 +1884,7 @@ export default function Whiteboard({
         if (handle.includes("w")) x = origin.x + origin.w - w;
         if (handle.includes("n")) y = origin.y + origin.h - h;
       }
-      change(() =>
-        setProps(g.id, {
-          x: Math.round(w < 20 ? origin.x : x),
-          y: Math.round(h < 20 ? origin.y : y),
-          w: Math.round(Math.max(20, w)),
-          h: Math.round(Math.max(20, h)),
-        }),
-      );
+      change(() => setProps(g.id, clampResize(origin, handle, { x, y, w, h })));
     } else if (g.kind === "rotate") {
       let angle =
         (Math.atan2(p.y - g.center.y, p.x - g.center.x) * 180) / Math.PI + 90;
@@ -2213,15 +2206,8 @@ export default function Whiteboard({
       duplicate();
       return;
     }
-    if (mod && e.key.toLowerCase() === "c") {
-      clipboard = selected.map((i) => ({ ...i }));
-      return;
-    }
-    if (mod && e.key.toLowerCase() === "v" && editable && clipboard.length) {
-      e.preventDefault();
-      duplicate(clipboard, 40);
-      return;
-    }
+    // Ctrl+C and Ctrl+V go on as copy and paste events (onCopy, onPaste).
+    if (mod && e.key.toLowerCase() === "c") return;
     if (
       (e.key === "Delete" || e.key === "Backspace") &&
       editable &&
@@ -2391,10 +2377,33 @@ export default function Whiteboard({
       onError((e as Error).message);
     }
   }
+  function onCopy(e: React.ClipboardEvent) {
+    if (presenting !== null || editing || (e.target as HTMLElement).closest("input, textarea, select, [contenteditable=true]")) return;
+    clipboard = selected.map((i) => ({ ...i }));
+    clipboardCopy = null;
+    if (!clipboard.length) return;
+    clipboardCopy = { token: crypto.randomUUID(), text: boardCopyText(clipboard) };
+    e.preventDefault();
+    e.clipboardData.setData("text/plain", clipboardCopy.text);
+    e.clipboardData.setData(BOARD_CLIPBOARD_TYPE, clipboardCopy.token);
+  }
   function onPaste(e: React.ClipboardEvent) {
     // Pasting into a field of a side panel (rack name, notes …) is the
     // field's own business – as for keys in onKeyDown (#187).
     if (!editable || editing || (e.target as HTMLElement).closest("input, textarea, select, [contenteditable=true]")) return;
+    // The board's own copy, unless something else was copied since.
+    if (
+      clipboard.length &&
+      pastesBoardItems(clipboardCopy, {
+        token: e.clipboardData.getData(BOARD_CLIPBOARD_TYPE),
+        text: e.clipboardData.getData("text/plain"),
+        files: e.clipboardData.files.length,
+      })
+    ) {
+      e.preventDefault();
+      duplicate(clipboard, 40);
+      return;
+    }
     const file = [...e.clipboardData.files].find((f) =>
       f.type.startsWith("image/"),
     );
@@ -2409,7 +2418,7 @@ export default function Whiteboard({
       e.preventDefault();
       return;
     }
-    if (text && !clipboard.length) {
+    if (text) {
       e.preventDefault();
       const at = center();
       let id = "";
@@ -3502,6 +3511,7 @@ export default function Whiteboard({
       }}
       onKeyDown={onKeyDown}
       onKeyUp={(e) => e.key === " " && setSpace(false)}
+      onCopy={onCopy}
       onPaste={onPaste}
       onDragOver={(e) =>
         editable && (e.dataTransfer.types.includes("Files") || e.dataTransfer.types.includes(LIBRARY_DRAG_TYPE) || e.dataTransfer.types.includes(RACK_DRAG_TYPE)) && e.preventDefault()

@@ -516,3 +516,37 @@ test("Mermaid subgraphs: frames and their titles do not overlap", () => {
   for (let i = 0; i < boxes.length; i++)
     for (let j = i + 1; j < boxes.length; j++) assert.ok(!overlap(boxes[i], boxes[j]), `${frames[i].text}/${frames[j].text}`);
 });
+
+test("Mermaid: header and statements on one line, as in many READMEs", () => {
+  for (const text of ["graph TD; A-->B; B-->C;", "graph LR; A-->B", "flowchart TB;A-->B;B-->C"]) {
+    const r = importDiagram(text);
+    assert.equal(r.kind, "flowchart", text);
+    assert.ok(r.drafts.filter((d) => d.type === "shape").length >= 2, text);
+    assert.ok(r.drafts.some((d) => d.type === "connector"), text);
+    assert.deepEqual(r.skipped, [], text);
+  }
+  const lr = importDiagram("graph LR; A-->B");
+  const byText = new Map(lr.drafts.map((d) => [d.text, d]));
+  assert.ok(byText.get("B")!.x > byText.get("A")!.x, "the direction of the header counts");
+  // The header alone with a semicolon still works.
+  assert.equal(importDiagram("graph TD;\nA-->B").drafts.length, 3);
+});
+
+test("Mermaid state diagram: the -- between concurrent regions is no state", () => {
+  const r = importDiagram("stateDiagram-v2\n[*] --> Active\nstate Active {\n  [*] --> NumLockOff\n  --\n  [*] --> CapsLockOff\n}");
+  assert.ok(!r.drafts.some((d) => d.text === "--"));
+  assert.ok(r.drafts.some((d) => d.text === "NumLockOff") && r.drafts.some((d) => d.text === "CapsLockOff"));
+  assert.deepEqual(r.skipped, []);
+});
+
+test("Mermaid flowchart: an edge to an empty subgraph keeps the subgraph as a node", () => {
+  const r = importDiagram("flowchart TB\nsubgraph S\nend\nA --> S\nA --> B");
+  const shapes = r.drafts.filter((d) => d.type === "shape").map((d) => d.text).sort();
+  assert.deepEqual(shapes, ["A", "B", "S"]);
+  assert.equal(r.drafts.filter((d) => d.type === "connector").length, 2);
+  // A subgraph with members still takes the edge on its frame.
+  const full = importDiagram("flowchart TB\nsubgraph S\nC\nend\nA --> S");
+  assert.ok(full.drafts.some((d) => d.type === "frame" && d.text === "S"));
+  assert.ok(!full.drafts.some((d) => d.type === "shape" && d.text === "S"));
+  assert.equal(full.drafts.filter((d) => d.type === "connector").length, 1);
+});

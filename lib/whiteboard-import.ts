@@ -316,6 +316,33 @@ export function parseExcalidraw(text: string): ImportedBoard {
           return { ...(tid && shapeIds.has(tid) ? { id: tid } : {}), x: x + num(p[0]), y: y + num(p[1]) };
         };
         const isArrow = e.type === "arrow";
+        const style = { stroke: stroke || "#1e1e1e", strokeWidth, ...(dashed ? { dashed } : {}) };
+        const closed = num(first[0]) === num(last[0]) && num(first[1]) === num(last[1]);
+        // Bent and closed lines (polygons) through several points: one
+        // straight connector per segment, so their course stays. The arrow
+        // heads and bindings sit on the first and last segment.
+        if (points.length > 2 && !e.elbowed && (!e.roundness || closed)) {
+          const step = Math.ceil((points.length - 1) / 100);
+          const course = points.filter((_, k) => k % step === 0 || k === points.length - 1);
+          const middle = Math.floor((course.length - 2) / 2);
+          for (let k = 0; k < course.length - 1; k++)
+            items.push({
+              id: k ? `${id}-${k}` : id,
+              type: "connector",
+              x: 0,
+              y: 0,
+              w: 0,
+              h: 0,
+              from: k ? end(undefined, course[k]) : end(e.startBinding, first),
+              to: k === course.length - 2 ? end(e.endBinding, last) : end(undefined, course[k + 1]),
+              ...style,
+              route: "straight",
+              endArrow: k === course.length - 2 && isArrow && e.endArrowhead !== null,
+              ...(!k && isArrow && e.startArrowhead ? { startArrow: true } : {}),
+              ...(labelText && k === middle ? { text: labelText } : {}),
+            });
+          return;
+        }
         items.push({
           id,
           type: "connector",
@@ -325,9 +352,7 @@ export function parseExcalidraw(text: string): ImportedBoard {
           h: 0,
           from: end(e.startBinding, first),
           to: end(e.endBinding, last),
-          stroke: stroke || "#1e1e1e",
-          strokeWidth,
-          ...(dashed ? { dashed } : {}),
+          ...style,
           route: e.elbowed ? "elbow" : points.length > 2 && e.roundness ? "curved" : "straight",
           endArrow: isArrow && e.endArrowhead !== null,
           ...(isArrow && e.startArrowhead ? { startArrow: true } : {}),
@@ -595,7 +620,16 @@ function drawioPage(model: XmlNode, prefix: string, images: ImageBag) {
     const cell = byId.get(id);
     if (!cell || !cell.vertex || !cell.geo || depth > 50) return { x: 0, y: 0 };
     const parent = offset(cell.parent, depth + 1);
-    const value = { x: parent.x + cell.geo.x, y: parent.y + cell.geo.y };
+    // Relative geometry (ports, labels on a shape): x and y are fractions of
+    // the parent's size, plus an offset in pixels.
+    const box = byId.get(cell.parent);
+    const value =
+      cell.geo.relative && box?.vertex && box.geo
+        ? {
+            x: parent.x + cell.geo.x * box.geo.w + (cell.geo.points.offset?.x || 0),
+            y: parent.y + cell.geo.y * box.geo.h + (cell.geo.points.offset?.y || 0),
+          }
+        : { x: parent.x + cell.geo.x, y: parent.y + cell.geo.y };
     offsets.set(id, value);
     return value;
   };

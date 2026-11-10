@@ -28,7 +28,7 @@ import { myTasks } from "./doc-tasks";
 import { lockedPageIds, requireUnlocked } from "./journal-extras";
 import { validateCellPatch } from "./database-operations";
 import { readableDatabase, stripHiddenCells } from "./field-access";
-import { requireRow } from "./row-documents";
+import { ensureRowDocument, requireRow } from "./row-documents";
 import { localizedMessage } from "./i18n-errors";
 import { contentLocale } from "./content-locale";
 import { buildInfo } from "./build-info";
@@ -325,6 +325,49 @@ async function tasks(user: Identity, args: { workspaceId?: string; includeDone?:
 export async function appendToPage(user: Identity, args: { pageId: string; markdown: string }) {
   return await appendHtmlToPage(user, { pageId: args.pageId, html: markdownToHtml(args.markdown) });
 }
+// The Yjs change that appends HTML to a stored document or replaces its
+// content, as the editor would send it.
+function documentUpdate(state: Uint8Array | null, html: string, input: string, mode: "append" | "replace") {
+  const schema = documentSchema();
+  const added = PMNode.fromJSON(
+    schema,
+    htmlJson(cleanHtml(input) || "<p></p>"),
+  );
+  const ydoc = new Y.Doc();
+  try {
+    Y.applyUpdate(ydoc, state || htmlState(html));
+    const before = Y.encodeStateVector(ydoc);
+    const doc = PMNode.fromJSON(schema, yDocToProsemirrorJSON(ydoc, "default"));
+    // An empty page starts with the new text instead of a blank line.
+    const empty = doc.childCount === 1 && doc.firstChild!.type.name === "paragraph" && !doc.firstChild!.content.size;
+    const next = doc.type.create(doc.attrs, empty || mode === "replace" ? added.content : doc.content.append(added.content));
+    ydoc.transact(() =>
+      updateYFragment(ydoc, ydoc.getXmlFragment("default"), next, { mapping: new Map(), isOMark: new Map() }),
+    );
+    // Without a stored state the server takes the full state, not a diff.
+    return state ? Y.encodeStateAsUpdate(ydoc, before) : Y.encodeStateAsUpdate(ydoc);
+  } finally {
+    ydoc.destroy();
+  }
+}
+// A record's document (Markdown) written like an edit in the record's
+// editor ("row.document.sync"): versions, mentions, tasks, live editors,
+// the activity and the same access checks (lib/row-documents.ts).
+async function writeRecordDocument(
+  user: Identity,
+  args: { databaseId: string; recordId: string; markdown: string; mode?: "append" | "replace" },
+) {
+  const { row } = await requireRow(user, args.databaseId, args.recordId, true);
+  const stored = await ensureRowDocument(row);
+  const update = documentUpdate(stored.state, stored.html, markdownToHtml(args.markdown), args.mode || "replace");
+  await command(user, {
+    action: "row.document.sync",
+    pageId: args.databaseId,
+    rowId: row.id,
+    generation: stored.generation,
+    update: Buffer.from(update).toString("base64"),
+  });
+}
 // The same for HTML (highlights from the browser extension, lib/clipper.ts).
 export async function appendHtmlToPage(user: Identity, args: { pageId: string; html: string }) {
   const page = await requirePage(user, args.pageId, true);
@@ -335,33 +378,13 @@ export async function appendHtmlToPage(user: Identity, args: { pageId: string; h
     page.id,
   );
   if (!stored) throw new HttpError(404, "Dokument nicht gefunden.");
-  const schema = documentSchema();
-  const added = PMNode.fromJSON(
-    schema,
-    htmlJson(cleanHtml(args.html) || "<p></p>"),
-  );
-  const ydoc = new Y.Doc();
-  try {
-    Y.applyUpdate(ydoc, stored.state || htmlState(stored.html));
-    const before = Y.encodeStateVector(ydoc);
-    const doc = PMNode.fromJSON(schema, yDocToProsemirrorJSON(ydoc, "default"));
-    // An empty page starts with the new text instead of a blank line.
-    const empty = doc.childCount === 1 && doc.firstChild!.type.name === "paragraph" && !doc.firstChild!.content.size;
-    const next = doc.type.create(doc.attrs, empty ? added.content : doc.content.append(added.content));
-    ydoc.transact(() =>
-      updateYFragment(ydoc, ydoc.getXmlFragment("default"), next, { mapping: new Map(), isOMark: new Map() }),
-    );
-    // Without a stored state the server takes the full state, not a diff.
-    const update = stored.state ? Y.encodeStateAsUpdate(ydoc, before) : Y.encodeStateAsUpdate(ydoc);
-    await command(user, {
-      action: "document.sync",
-      pageId: page.id,
-      generation: stored.generation,
-      update: Buffer.from(update).toString("base64"),
-    });
-  } finally {
-    ydoc.destroy();
-  }
+  const update = documentUpdate(stored.state, stored.html, args.html, "append");
+  await command(user, {
+    action: "document.sync",
+    pageId: page.id,
+    generation: stored.generation,
+    update: Buffer.from(update).toString("base64"),
+  });
   return { ok: true, pageId: page.id, url: pageLink(page.id) };
 }
 async function createPage(
@@ -406,30 +429,50 @@ async function cellPatch(user: Identity, page: Page, fields: Field[], input: Rec
   }
   return await validateCellPatch(user, page, fields, patch);
 }
-async function createRecord(user: Identity, args: { databaseId: string; properties: Record<string, unknown> }) {
+async function createRecord(
+  user: Identity,
+  args: { databaseId: string; properties: Record<string, unknown>; document?: string },
+) {
   const page = await requirePage(user, args.databaseId, true);
   await requireUnlocked(user, page);
   if (page.kind !== "database") throw new HttpError(400, "Keine Datenbank.");
   const cells = await cellPatch(user, page, (await readableDatabase(user, page, await database(page.id))).fields, args.properties);
   const { id } = (await command(user, { action: "row.create", pageId: page.id, cells })) as { id: string };
+  // The text takes the place of a default template's document.
+  if (args.document !== undefined)
+    await writeRecordDocument(user, { databaseId: page.id, recordId: id, markdown: args.document });
   return { id, databaseId: page.id, url: `${pageLink(page.id)}&row=${id}` };
 }
 async function updateRecord(
   user: Identity,
-  args: { databaseId: string; recordId: string; properties: Record<string, unknown>; version?: number },
+  args: {
+    databaseId: string;
+    recordId: string;
+    properties?: Record<string, unknown>;
+    version?: number;
+    document?: string;
+    documentMode?: "append" | "replace";
+  },
 ) {
+  if (args.properties === undefined && args.document === undefined)
+    throw new HttpError(400, "Nothing to change: pass properties or document.");
   const { page, row } = await requireRow(user, args.databaseId, args.recordId, true);
   await requireUnlocked(user, page);
-  const cells = await cellPatch(user, page, (await readableDatabase(user, page, await database(page.id))).fields, args.properties);
-  await command(user, {
-    action: "row.update",
-    pageId: page.id,
-    rowId: row.id,
-    // Without a version the current one counts (last write wins).
-    version: args.version ?? row.version,
-    cells,
-  });
-  return { ok: true, id: row.id, version: (args.version ?? row.version) + 1 };
+  if (args.properties !== undefined) {
+    const cells = await cellPatch(user, page, (await readableDatabase(user, page, await database(page.id))).fields, args.properties);
+    await command(user, {
+      action: "row.update",
+      pageId: page.id,
+      rowId: row.id,
+      // Without a version the current one counts (last write wins).
+      version: args.version ?? row.version,
+      cells,
+    });
+  }
+  if (args.document !== undefined)
+    await writeRecordDocument(user, { databaseId: page.id, recordId: row.id, markdown: args.document, mode: args.documentMode });
+  const version = (await one<{ version: number }>("SELECT version FROM rows WHERE id=?", row.id))?.version ?? row.version;
+  return { ok: true, id: row.id, version };
 }
 
 // ---- Tool catalogue ----
@@ -543,7 +586,8 @@ const tools: Tool[] = [
   {
     name: "get_record",
     title: "Read a database record",
-    description: "Returns one database record with all properties and its record document as Markdown.",
+    description:
+      "Returns one database record with all properties and its record document (the page-like text of the record) as Markdown. Write the document with create_record or update_record (`document`), not with a separate page.",
     input: z.object({ databaseId: id("Page ID of the database"), recordId: id("Record ID") }),
     write: false,
     run: getRecord as Tool["run"],
@@ -592,24 +636,27 @@ const tools: Tool[] = [
     name: "create_record",
     title: "Create a database record",
     description:
-      "Adds a record to a database. Properties by name (or ID): text, number, date (YYYY-MM-DD), select option, list of options (for a property with tagOptions: tag names, a new name creates the tag), true/false, person (e-mail or name), relation (record IDs). Text properties with `markdown: true` take inline Markdown (**bold**, _italic_, ~~strike~~, `code`, [label](https://…), \\n for a line break; a backslash keeps * _ ~ ` [ ] \\ literal); the title is plain text.",
+      "Adds a record to a database. Properties by name (or ID): text, number, date (YYYY-MM-DD), select option, list of options (for a property with tagOptions: tag names, a new name creates the tag), true/false, person (e-mail or name), relation (record IDs). Text properties with `markdown: true` take inline Markdown (**bold**, _italic_, ~~strike~~, `code`, [label](https://…), \\n for a line break; a backslash keeps * _ ~ ` [ ] \\ literal); the title is plain text. `document` writes the record's own document (Markdown: headings, lists, task lists, tables, code) – use it for longer text about the record instead of creating a separate page.",
     input: z.object({
       databaseId: id("Page ID of the database"),
       properties: z.record(z.string().max(200), z.unknown()).describe("e.g. {\"Name\": \"Call Anna\", \"Status\": \"Open\"}"),
+      document: z.string().max(MAX_TEXT).optional().describe(`The record's document as Markdown. ${CODE_FENCES}`),
     }),
     write: true,
     run: createRecord as Tool["run"],
   },
   {
     name: "update_record",
-    title: "Update record properties",
+    title: "Update a database record",
     description:
-      "Changes properties of an existing record; properties not named stay as they are. Text properties with `markdown: true` take inline Markdown as in create_record. Pass the version from get_record or query_database to avoid overwriting a newer change.",
+      "Changes properties and/or the document of an existing record; properties not named stay as they are. Text properties with `markdown: true` take inline Markdown as in create_record. Pass the version from get_record or query_database to avoid overwriting a newer change of the properties. `document` (Markdown) replaces the record's document, or with documentMode \"append\" adds to its end; the previous text is kept as a version.",
     input: z.object({
       databaseId: id("Page ID of the database"),
       recordId: id("Record ID"),
-      properties: z.record(z.string().max(200), z.unknown()),
+      properties: z.record(z.string().max(200), z.unknown()).optional(),
       version: z.number().int().min(0).optional(),
+      document: z.string().max(MAX_TEXT).optional().describe(`The record's document as Markdown. ${CODE_FENCES}`),
+      documentMode: z.enum(["replace", "append"]).optional().describe("Default: replace"),
     }),
     write: true,
     run: updateRecord as Tool["run"],

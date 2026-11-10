@@ -99,6 +99,7 @@ import { shownPageIcon } from "@/lib/page-link-icons";
 import { ancestorIds, journalFoldKey, journalFolds, spaceFoldChanges } from "@/lib/sidebar-folds";
 import type { UndoPlan } from "@/lib/undo";
 import { appCache, bootKey, clearAppCache, pageCachePolicy, pageKey } from "@/lib/swr-cache";
+import { workspaceCookie } from "@/lib/last-workspace";
 import { configurePrefetch, installPrefetch, pendingPrefetch, prefetchPage, prefetchRecord, INTENT_DELAY } from "./prefetch";
 import { ListSkeleton, viewShapeOf } from "./skeleton";
 import { anyOf, byBlockId, byText, bySelector, jumpTo, snippetHit } from "@/lib/jump";
@@ -245,6 +246,7 @@ import {
 } from "./database-kind-picker";
 import { UnlinkedMentions } from "./unlinked-mentions";
 import { RelatedPages } from "./related-pages";
+import { useDiscoveryPanelsShown } from "@/lib/discovery-panels-prefs";
 import { NewPageDialog } from "./new-page-dialog";
 import {
   FollowButton,
@@ -413,6 +415,8 @@ export default function WorkspaceApp({
   const t = useT();
   const statusLabel = useStatusLabel();
   const locale = useLocale();
+  // Related pages, backlinks and unlinked mentions below pages (#191).
+  const discoveryPanels = useDiscoveryPanelsShown();
   // A language fixed in the profile: the server already renders it; the
   // cookie follows for the pages before signing in. No reload – a cookie the
   // browser keeps elsewhere must not lead to a loop.
@@ -954,6 +958,12 @@ export default function WorkspaceApp({
     });
     cache.set(bootKey(bootState.workspace.id), bootState, { policy: "memory" });
   }, [bootState]);
+  // A reload, a new tab or the next visit opens this workspace again (#188,
+  // lib/last-workspace.ts).
+  useEffect(() => {
+    const cookie = workspaceCookie(bootState.workspace.id);
+    if (cookie) document.cookie = cookie;
+  }, [bootState.workspace.id]);
   // Loading ahead on hover, touch and focus (components/prefetch.ts).
   useEffect(() => {
     configurePrefetch({
@@ -4289,6 +4299,7 @@ export default function WorkspaceApp({
                   )}
                   </ViewBoundary>
                   {!data.draft && (<>
+                  {discoveryPanels && (
                   <div className="backlinks">
                     {!data.locked && !data.encrypted && <RelatedPages key={`related-${data.page.id}`} pageId={data.page.id} />}
                     {!data.locked && !data.encrypted && (
@@ -4333,6 +4344,7 @@ export default function WorkspaceApp({
                       </>
                     )}
                   </div>
+                  )}
                   <div className="subpages">
                     {activePages
                       // Journal days are listed by the journal itself.
