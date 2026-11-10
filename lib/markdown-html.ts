@@ -241,7 +241,10 @@ export function markdownToRawHtml(
         return caption ? `<figure class="block-figure">${image}<figcaption>${escaped(caption)}</figcaption></figure>` : image;
       },
       table(token: Tokens.Table) {
-        const html = Renderer.prototype.table.call(this, token);
+        let html = Renderer.prototype.table.call(this, token);
+        // An empty header row is how Markdown writes a table without one
+        // (lib/markdown.ts does so): the table starts with its rows.
+        if (token.rows.length && token.header.every((cell) => !cell.text.trim())) html = html.replace(/<thead>[\s\S]*?<\/thead>\n?/, "");
         const caption = (token as Captioned).flowplanCaption;
         return caption ? html.replace(/^<table>/, `<table><caption>${escaped(caption)}</caption>`) : html;
       },

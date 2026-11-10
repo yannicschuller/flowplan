@@ -361,7 +361,8 @@ export function htmlToMarkdown(
         return (
           "#".repeat(Math.max(1, Math.min(6, Number(node.attrs.level) || 1))) +
           " " +
-          inline(node, inTable)
+          // A trailing "#" run would be read as the closing sequence.
+          inline(node, inTable).replace(/(^|\s)#(#*\s*)$/, "$1\\#$2")
         );
       case "horizontalRule":
         return "---";
