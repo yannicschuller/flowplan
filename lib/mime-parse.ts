@@ -225,9 +225,19 @@ function splitHead(data: Buffer) {
   const m = text.match(/\r?\n\r?\n/);
   if (!m || m.index === undefined) {
     // Only headers (or only a body when the first line is no header).
-    return /^[!-9;-~]+:/.test(text) ? { head: text, body: Buffer.alloc(0) } : { head: "", body: data };
+    return /^[!-9;-~]+:/.test(text) ? { head: headText(data), body: Buffer.alloc(0) } : { head: "", body: data };
   }
-  return { head: text.slice(0, m.index), body: data.subarray(m.index + m[0].length) };
+  return { head: headText(data.subarray(0, m.index)), body: data.subarray(m.index + m[0].length) };
+}
+// Unencoded headers are UTF-8 in practice (RFC 6532); older mailers send
+// Latin-1, which is rarely valid UTF-8.
+const utf8 = new TextDecoder("utf-8", { fatal: true });
+function headText(bytes: Buffer) {
+  try {
+    return utf8.decode(bytes);
+  } catch {
+    return bytes.toString("latin1");
+  }
 }
 
 function splitMultipart(body: Buffer, boundary: string): Buffer[] {

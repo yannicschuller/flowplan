@@ -88,3 +88,33 @@ test("crafted headers are parsed in linear time (no ReDoS)", () => {
   assert.equal(parseDate("Mon, 1 Jan 2024 10:00:00 +0100 (CET)")?.toISOString(), "2024-01-01T09:00:00.000Z");
   assert.equal(parseDate("Mon (".repeat(20_000)), null);
 });
+
+test("raw UTF-8 headers (RFC 6532) are read as UTF-8, raw Latin-1 headers still as Latin-1", () => {
+  const utf8 = parseMime(Buffer.from(
+    [
+      "From: Jürgen Groß <juergen@example.com>",
+      "To: team@example.test",
+      "Subject: Grüße aus Köln",
+      'Content-Type: multipart/mixed; boundary="b"',
+      "",
+      "--b",
+      "Content-Type: text/plain; charset=utf-8",
+      "",
+      "Hallo",
+      "--b",
+      'Content-Type: application/pdf; name="Übersicht.pdf"',
+      'Content-Disposition: attachment; filename="Übersicht.pdf"',
+      "Content-Transfer-Encoding: base64",
+      "",
+      Buffer.from("%PDF-1.4").toString("base64"),
+      "--b--",
+      "",
+    ].join("\r\n"),
+    "utf8",
+  ));
+  assert.equal(utf8.subject, "Grüße aus Köln");
+  assert.deepEqual(utf8.attachments.map((a) => a.filename), ["Übersicht.pdf"]);
+  assert.equal(utf8.text.trim(), "Hallo");
+  const latin1 = parseMime(Buffer.from("From: a@example.com\r\nSubject: Grüße\r\n\r\nText\r\n", "latin1"));
+  assert.equal(latin1.subject, "Grüße");
+});
