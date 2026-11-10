@@ -3,6 +3,8 @@ import { mkdirSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
 import { resolve } from "node:path";
 import { all, one, run, id, onTransactionRollback } from "./db";
 import { requirePage } from "./permissions";
+import { requireUnlocked } from "./journal-extras";
+import { hiddenFileIds } from "./row-files";
 import { cleanHtml } from "./document-server";
 import { HttpError } from "./auth";
 import type { Identity, Field } from "./types";
@@ -64,6 +66,7 @@ export async function captureTemplateFiles(
   if (references.size > 200)
     throw new HttpError(413, "Höchstens 200 Anhänge je Vorlage.");
   let total = 0;
+  const hiddenOf = new Map<string, Set<string>>();
   for (const fid of references) {
     const file = await one<{ page_id: string; name: string; mime: string }>(
       "SELECT * FROM files WHERE id=? AND deleted_at IS NULL",
@@ -72,7 +75,12 @@ export async function captureTemplateFiles(
     // Deleted (in the trash or for good, #164): the reference stays and
     // shows as a missing file, like in the page itself.
     if (!file) continue;
-    await requirePage(user, file.page_id);
+    const page = await requirePage(user, file.page_id);
+    await requireUnlocked(user, page);
+    // A file of a record hidden from this person is not captured; the
+    // reference stays as it is (lib/row-files.ts).
+    if (!hiddenOf.has(page.id)) hiddenOf.set(page.id, await hiddenFileIds(user, page));
+    if (hiddenOf.get(page.id)!.has(fid)) continue;
     let bytes: Buffer;
     try {
       bytes = readFileSync(

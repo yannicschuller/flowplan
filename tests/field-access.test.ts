@@ -291,3 +291,60 @@ test("AI sources leave restricted properties out", async () => {
   assert.ok(!text.includes("vertraulich-xyz"));
   assert.ok(!JSON.stringify(await sourceText(pid)).includes("Gehalt"));
 });
+
+test("share links, guest writes and publication copies leave out properties derived from a restricted one", async () => {
+  const db = ((await command(ana, { action: "page.create", workspaceId: wid, spaceId: space, title: "Bewertungen", kind: "database" })) as { id: string }).id;
+  const defs: Field[] = [
+    { id: "title", name: "Name", type: "text" },
+    { id: "secret", name: "Intern", type: "text", access: { read: "owners" } },
+    { id: "summary", name: "Zusammenfassung", type: "text", ai: { prompt: "Fasse {Intern} zusammen" } },
+    { id: "open", name: "Offen", type: "text" },
+  ];
+  await command(ana, { action: "database.update", pageId: db, version: (await database(db)).version, fields: defs, views: (await database(db)).views });
+  const rid = ((await command(ana, { action: "row.create", pageId: db, cells: { title: "Erika", secret: "geheim-123", open: "sichtbar" } })) as { id: string }).id;
+  await run("UPDATE rows SET cells=? WHERE id=?", JSON.stringify({ title: "Erika", secret: "geheim-123", summary: "abgeleitet-456", open: "sichtbar" }), rid);
+  assert.ok(publicHiddenFieldIds(defs).has("summary"));
+  const token = ((await command(ana, { action: "share.create", pageId: db, role: "editor", includeChildren: false, name: "Gäste" })) as { token: string }).token;
+  const shared = await sharedContent(token, db, rid);
+  assert.ok(!shared.fields.some((f) => f.id === "summary" || f.id === "secret"));
+  assert.ok(shared.fields.some((f) => f.id === "open"));
+  assert.equal(JSON.stringify(shared).includes("abgeleitet-456"), false);
+  // Neither an edit nor a new record writes the derived property; other properties still change.
+  await fails(async () => await mutateSharedContent(token, { action: "cells", pageId: db, rowId: rid, version: shared.version, cells: { summary: "überschrieben" } }), 403);
+  await fails(async () => await mutateSharedContent(token, { action: "create", pageId: db, cells: { title: "Gast", summary: "x" } }), 403);
+  await mutateSharedContent(token, { action: "cells", pageId: db, rowId: rid, version: shared.version, cells: { open: "neu" } });
+  const kept = JSON.parse((await one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", rid))!.cells);
+  assert.deepEqual({ open: kept.open, summary: kept.summary, secret: kept.secret }, { open: "neu", summary: "abgeleitet-456", secret: "geheim-123" });
+  // A copy of the publication carries neither the property nor its values.
+  await command(ana, { action: "page.publish", pageId: db, enabled: true, allowCopy: true });
+  const visitorWorkspace = await createWorkspace(ben.id, "Besuch");
+  const visitorSpace = (await one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", visitorWorkspace))!.id;
+  const publicToken = (await one<{ public_token: string }>("SELECT public_token FROM pages WHERE id=?", db))!.public_token;
+  const copy = ((await command(ben, { action: "publication.copy", token: publicToken, workspaceId: visitorWorkspace, spaceId: visitorSpace })) as { id: string }).id;
+  const copied = JSON.parse((await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", copy))!.fields) as Field[];
+  assert.deepEqual(copied.map((f) => f.id), ["title", "open"]);
+  const copiedCells = (await one<{ cells: string }>("SELECT cells FROM rows WHERE page_id=?", copy))!.cells;
+  assert.doesNotMatch(copiedCells, /abgeleitet-456|geheim-123/);
+  await command(ana, { action: "page.publish", pageId: db, enabled: false });
+});
+
+test("capturing a record leaves out the title and URL properties the person may not change", async () => {
+  const db = ((await command(ana, { action: "page.create", workspaceId: wid, spaceId: space, title: "Eingang", kind: "database" })) as { id: string }).id;
+  const defs: Field[] = [
+    { id: "title", name: "Name", type: "text", access: { write: "owners" } },
+    { id: "link", name: "Link", type: "url", access: { write: "owners" } },
+    { id: "alt", name: "Quelle", type: "url" },
+  ];
+  await command(ana, { action: "database.update", pageId: db, version: (await database(db)).version, fields: defs, views: (await database(db)).views });
+  const cellsOf = async (rid: string) => JSON.parse((await one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", rid))!.cells);
+  await fails(async () => await command(ben, { action: "row.create", pageId: db, cells: { title: "X" } }), 403);
+  const asBen = (await command(ben, { action: "capture.record", pageId: db, title: "CAPTURED-BY-BEN", url: "https://example.test/b" })) as { rowId: string };
+  const ben1 = await cellsOf(asBen.rowId);
+  assert.equal(ben1.title, undefined);
+  assert.equal(ben1.link, undefined);
+  assert.equal(ben1.alt, "https://example.test/b");
+  // The title stays in the text.
+  assert.match((await one<{ content: string }>("SELECT content FROM rows WHERE id=?", asBen.rowId))!.content, /CAPTURED-BY-BEN/);
+  const asAna = (await command(ana, { action: "capture.record", pageId: db, title: "Von Ana", url: "https://example.test/a" })) as { rowId: string };
+  assert.deepEqual(await cellsOf(asAna.rowId), { title: "Von Ana", link: "https://example.test/a" });
+});

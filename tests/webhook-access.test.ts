@@ -210,3 +210,33 @@ test("a stored Matrix or Slack token never goes to a new address or format witho
   assert.deepEqual(await credentials(slack.id), { token: false, signingSecret: false });
   await run("DELETE FROM webhooks WHERE id IN (?,?)", matrix.id, slack.id);
 });
+
+test("chat notices show titles of related records only when the webhook's owner may read them", async () => {
+  const hook = await createWebhook(owner, { workspaceId: wid, url: "http://127.0.0.1:9/chat", events: ["row.created"], format: "discord" });
+  const secretRow = ((await command(ben, { action: "row.create", pageId: secretDb, cells: { title: "SECRET-REL-TITLE" } })) as { id: string }).id;
+  const teamRow = ((await command(ben, { action: "row.create", pageId: teamDb, cells: { title: "Team-Ziel" } })) as { id: string }).id;
+  const linking = await createPage(wid, team, ben.id, "Verknüpfungen", "database");
+  await command(ben, {
+    action: "database.update",
+    pageId: linking,
+    version: (await databaseOf(linking)).version,
+    fields: [
+      { id: "title", name: "Title", type: "text" },
+      { id: "secret", name: "Privat", type: "relation", relationPage: secretDb },
+      { id: "goal", name: "Ziel", type: "relation", relationPage: teamDb },
+    ],
+    views: (await databaseOf(linking)).views,
+  });
+  await run("DELETE FROM webhook_deliveries WHERE webhook_id=?", hook.id);
+  await command(ben, { action: "row.create", pageId: linking, cells: { title: "Team-Eintrag", secret: [secretRow], goal: [teamRow] } });
+  const sent = await bodies(hook.id);
+  assert.equal(sent.length, 1);
+  const notice = (JSON.parse(sent[0]) as { notice: { changes: { name: string; value: string }[] } }).notice;
+  assert.ok(!sent[0].includes("SECRET-REL-TITLE"), sent[0]);
+  assert.equal(notice.changes.find((c) => c.name === "Ziel")?.value, "Team-Ziel");
+  // A team record related by id from another database is not shown either.
+  await run("DELETE FROM webhook_deliveries WHERE webhook_id=?", hook.id);
+  await run("UPDATE rows SET access='private' WHERE id=?", teamRow);
+  await command(ben, { action: "row.create", pageId: linking, cells: { title: "Noch einer", goal: [teamRow] } });
+  assert.ok(!(await bodies(hook.id))[0].includes("Team-Ziel"));
+});

@@ -112,6 +112,33 @@ export async function triggerMatches(type: string, config: Payload, event: Workf
 }
 
 // The trigger's output for an event, as `who` may see it.
+// A stored trigger output (the last real event, built for the runner) as
+// another person sees it: the record again with their read rules, and
+// nothing derived from a property hidden from them (old values, the list of
+// changed properties, form answers, the date of a hidden date property).
+export async function outputFor(type: string, output: Payload, who: Identity, config: Record<string, unknown> = {}): Promise<Payload> {
+  const ref = output.record as { id?: string } | null | undefined;
+  if (ref?.id) {
+    const rec = await recordValue(who, ref.id);
+    const page = rec ? await one<Page>("SELECT * FROM pages WHERE id=?", rec.database.id) : undefined;
+    const fields = page ? await databaseFields(page.id) : [];
+    const hidden = page ? await hiddenFieldsFor(who, page, fields) : new Set(fields.map((f) => f.id));
+    const next: Payload = { ...output, record: rec };
+    if (output.before && typeof output.before === "object") next.before = Object.fromEntries(Object.entries(output.before as Payload).filter(([k]) => !hidden.has(k)));
+    if (Array.isArray(output.changed)) next.changed = (output.changed as unknown[]).filter((k) => typeof k === "string" && !hidden.has(k));
+    if ("answers" in output) {
+      const answers: Payload = {};
+      for (const f of fields) if (rec && f.id in rec.fields && rec.fields[f.id] !== null && rec.fields[f.id] !== "") answers[f.name] = rec.fields[f.id];
+      next.answers = answers;
+    }
+    if (type === "trigger.record.date" && (!rec || hidden.has(String(config.field || "")))) next.date = null;
+    return next;
+  }
+  const pageRef = output.page as { id?: string } | null | undefined;
+  if (pageRef?.id) return { ...output, page: await pageValue(pageRef.id) };
+  return output;
+}
+
 export async function triggerOutput(type: string, event: Pick<WorkflowEvent, "workspace_id" | "page_id" | "row_id" | "actor_id">, payload: Payload, who: Identity | null): Promise<Payload> {
   const actor = await personValue(event.actor_id, event.workspace_id);
   const record = async () => (event.row_id ? await recordValue(who, event.row_id) : null);

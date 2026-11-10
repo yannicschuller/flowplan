@@ -8,6 +8,7 @@ import { databaseSettings } from "./database-settings";
 import { doneRule, isDone } from "./database-settings-schema";
 import type { Notice, NoticeEvent, NoticeItem } from "./notification-templates";
 import { pageRole } from "./permissions";
+import { journalLocked } from "./journal-extras";
 import { visibleRows } from "./row-access";
 import type { Field, Identity, Page } from "./types";
 import { filterAsync, mapAsync } from "./each-async";
@@ -23,8 +24,26 @@ const fieldsOf = async (pageId: string) => {
 };
 export const titleOf = (fields: Field[], cells: Cells) => cellText(cells[fields[0]?.id || "title"]).trim();
 
+// Titles of related records as `reader` (the person a webhook speaks for)
+// may read them: records of the relation's database only, a database they
+// may open (not behind a PIN they have not entered), never private records
+// (the channel is not a person) nor records hidden from them.
+async function relatedTitles(field: Field, ids: string[], reader: Identity | null | undefined) {
+  if (!reader || !field.relationPage || !ids.length) return [];
+  const page = await one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", field.relationPage);
+  if (!page || !(await pageRole(reader, page)) || (await journalLocked(reader, page))) return [];
+  const stored = (await mapAsync(ids, async (rid) =>
+    await one<{ id: string; cells: string; access: string; created_by: string | null }>(
+      "SELECT id,cells,access,created_by FROM rows WHERE id=? AND page_id=? AND access!='private'",
+      rid,
+      page.id,
+    ))).filter((r): r is NonNullable<typeof r> => !!r);
+  const target = await fieldsOf(page.id);
+  return (await visibleRows(reader, page, stored)).map((r) => titleOf(target, JSON.parse(r.cells)));
+}
+
 // A cell as people read it: names instead of user IDs, ✓ for checkboxes.
-async function display(field: Field, value: unknown): Promise<string> {
+async function display(field: Field, value: unknown, reader?: Identity | null): Promise<string> {
   if (value === null || value === undefined || value === "") return "";
   if (field.type === "checkbox") return value === true ? "✓" : "✗";
   if (field.type === "person" || field.type === "created_by" || field.type === "updated_by") {
@@ -33,19 +52,15 @@ async function display(field: Field, value: unknown): Promise<string> {
   }
   if (field.type === "relation") {
     const ids = (Array.isArray(value) ? value : [value]).filter((v): v is string => typeof v === "string").slice(0, 10);
-    const target = field.relationPage ? (await fieldsOf(field.relationPage)) : [];
-    return (await mapAsync(ids, async (rid) => {
-        const row = await one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", rid);
-        return row ? titleOf(target, JSON.parse(row.cells)) : "";
-      }))
-      .filter(Boolean)
-      .join(", ");
+    return (await relatedTitles(field, ids, reader)).filter(Boolean).join(", ");
   }
   if (typeof value === "object" && !Array.isArray(value)) return "";
   return cellText(value);
 }
 
-export async function buildNotice(event: NoticeEvent, data: Record<string, unknown>, actor?: string | null): Promise<Notice> {
+// `reader`: the person the notice goes out for (titles of related records
+// only as far as they may read them).
+export async function buildNotice(event: NoticeEvent, data: Record<string, unknown>, actor?: string | null, reader?: Identity | null): Promise<Notice> {
   const pageId = typeof data.pageId === "string" ? data.pageId : "";
   const rowId = typeof data.rowId === "string" ? data.rowId : null;
   const page = pageId ? (await one<{ title: string; parent_id: string | null }>("SELECT title,parent_id FROM pages WHERE id=?", pageId)) : undefined;
@@ -75,9 +90,9 @@ export async function buildNotice(event: NoticeEvent, data: Record<string, unkno
     event === "row.updated"
       ? fields.filter((f) => Array.isArray(data.changed) && data.changed.includes(f.id))
       : event === "row.created" || event === "form.submitted"
-        ? (await filterAsync(fields.slice(1), async (f) => await display(f, cells[f.id])))
+        ? (await filterAsync(fields.slice(1), async (f) => await display(f, cells[f.id], reader)))
         : [];
-  notice.changes = await mapAsync(shown.slice(0, 20), async (f) => ({ name: f.name, value: await display(f, cells[f.id]) }));
+  notice.changes = await mapAsync(shown.slice(0, 20), async (f) => ({ name: f.name, value: await display(f, cells[f.id], reader) }));
   return notice;
 }
 

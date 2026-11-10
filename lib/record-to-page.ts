@@ -17,6 +17,7 @@ import { pageRole, requireMember, requirePage, spaceRole } from "./permissions";
 import { lockedPageIds, requireUnlocked } from "./journal-extras";
 import { requireRow } from "./row-documents";
 import { hiddenRowIds } from "./row-access";
+import { hiddenFileIds } from "./row-files";
 import { trashRow } from "./row-trash";
 import { maintainRowOrders } from "./row-order-server";
 import { autoDatabaseSnapshot } from "./database-operations";
@@ -178,11 +179,14 @@ const uploadsDir = () => resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "upl
 // to (new rows, copies of the uploads; the S3 mirror follows the new rows).
 // The originals stay with the database: the record in the trash still shows
 // them after "Wiederherstellen", and versions of other records that refer to
-// them keep working. A file without a local upload keeps its reference.
-async function copyFiles(fileIds: string[], database: Page, pageId: string, userId: string) {
+// them keep working. A file without a local upload keeps its reference, as
+// does one of a record hidden from the person (lib/row-files.ts).
+async function copyFiles(user: Identity, fileIds: string[], database: Page, pageId: string) {
   const copies = new Map<string, string>();
   const dir = uploadsDir();
+  const hidden = fileIds.length ? await hiddenFileIds(user, database) : new Set<string>();
   for (const fid of fileIds) {
+    if (hidden.has(fid)) continue;
     const file = await one<{ name: string; mime: string; size: number }>("SELECT name,mime,size FROM files WHERE id=? AND page_id=? AND deleted_at IS NULL", fid, database.id);
     const from = resolve(dir, fid);
     if (!file || !existsSync(from)) continue;
@@ -195,7 +199,7 @@ async function copyFiles(fileIds: string[], database: Page, pageId: string, user
         unlinkSync(destination);
       } catch {}
     });
-    await run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fresh, pageId, file.name, file.mime, file.size, userId);
+    await run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fresh, pageId, file.name, file.mime, file.size, user.id);
     copies.set(fid, fresh);
   }
   return copies;
@@ -253,7 +257,7 @@ export async function recordToPage(
       ),
     ),
   ];
-  const copies = await copyFiles(fileIds, database, pageId, user.id);
+  const copies = await copyFiles(user, fileIds, database, pageId);
   const swap = (text: string) =>
     copies.size ? text.replace(FILE_URL, (match, fid: string) => (copies.has(fid.toLowerCase()) ? `/api/files/${copies.get(fid.toLowerCase())}` : match)) : text;
   await run("UPDATE pages SET icon=?,cover=?,created_by=? WHERE id=?", swap(row.icon || "file"), swap(row.cover || ""), creator, pageId);
