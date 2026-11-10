@@ -203,6 +203,14 @@ function resolveTarget(format: ChatFormat, url: string, config: HookConfig, cred
     throw new HttpError(400, "Antworten aus Slack brauchen einen Bot-Token.");
   return url;
 }
+// An address as it is stored (normalized), "" when it is none.
+function normalizedAddress(raw: string) {
+  try {
+    return new URL(raw).href;
+  } catch {
+    return "";
+  }
+}
 function storedCredentials(format: ChatFormat, credentials: Credentials) {
   const kept: Credentials = {};
   if (credentials.token && (format === "slack" || format === "matrix")) kept.token = credentials.token;
@@ -256,9 +264,20 @@ export async function updateWebhook(user: Identity, input: unknown) {
   await requireHookPage(user, b.workspaceId, b.pageId);
   const previous = openCredentials(hook);
   const merged = b.credentials === null ? {} : b.credentials ? { ...previous, ...b.credentials } : previous;
-  const credentials = storedCredentials(b.format, merged);
+  let credentials = storedCredentials(b.format, merged);
   const stored = shownUrl(hook);
-  const target = resolveTarget(b.format, b.url ?? stored, b.config, credentials);
+  let target = resolveTarget(b.format, b.url ?? stored, b.config, credentials);
+  // A stored token stays with the server and platform it was entered for
+  // (as for issue sync and messengers): another address or format needs it
+  // again. Compared by where it would be sent, so a Slack bot-token hook
+  // (always slack.com) keeps it.
+  if (b.format !== hook.format || normalizedAddress(target) !== stored) {
+    if (credentials.token && credentials.token === previous.token)
+      throw new HttpError(400, "Für eine neue Adresse oder ein anderes Format bitte die Zugangsdaten erneut eingeben.");
+    // A new token: nothing of the old credentials comes along.
+    credentials = storedCredentials(b.format, b.credentials || {});
+    target = resolveTarget(b.format, b.url ?? stored, b.config, credentials);
+  }
   const url = stored && target === stored ? stored : (await checkTarget(target)).href;
   await run(
     "UPDATE webhooks SET url=?,events=?,page_id=?,format=?,templates=?,config=?,credentials=? WHERE id=?",
