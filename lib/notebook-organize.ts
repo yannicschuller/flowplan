@@ -21,7 +21,7 @@ import { requireUnlocked } from "./journal-extras";
 import { isEncryptedPage } from "./e2ee-server";
 import { quotaCheckpoint } from "./instance-ops";
 import { copyPageInk, deleteSurface, pageInkDocs, writeSurface } from "./page-ink-store";
-import { emptyInk, parseInk, serializeInk, type InkDoc } from "./ink/model";
+import { emptyInk, inkFiles, parseInk, serializeInk, type InkDoc } from "./ink/model";
 import { cleanRecognizedText } from "./ink/recognized";
 import { cleanPaper, effectivePaper, MAX_SHEETS, type PaperOverride } from "./notebook-paper";
 import {
@@ -48,6 +48,7 @@ import {
   sheetPlace,
   writeOrder,
   writeOutline,
+  withPaperFiles,
   writeSheetMeta,
   type NotebookBackground,
 } from "./notebook";
@@ -310,7 +311,8 @@ export async function notebookPeers(user: Identity, page: Page) {
   return { pages: out };
 }
 
-// Copies of upload files on another page (PDF backgrounds), counted against
+// Copies of upload files on another page (PDF backgrounds, own paper
+// templates, pictures), counted against
 // the target workspace's quota; removed again if the transaction fails.
 async function copyFilesTo(target: Page, fileIds: string[], user: Identity) {
   const map = new Map<string, string>();
@@ -372,12 +374,27 @@ export async function transferSheets(user: Identity, b: Record<string, unknown>)
   // The paper as it looks: the target's default may differ.
   const [fromPaper, toPaper] = [await notebookPaper(source.id), await notebookPaper(target.id)];
   const backgrounds = rows.map((r) => parseBackground(r.background));
-  const files = await copyFilesTo(target, [...new Set(backgrounds.flatMap((bg) => (bg ? [bg.file] : [])))], user);
+  const looks = rows.map((row) => effectivePaper(fromPaper, parsePaper(row.paper)));
+  // Files that come along as copies on the target page (its quota):
+  // PDF backgrounds, own paper templates and pictures on the sheets.
+  const inks = await pageInkDocs(source.id);
+  const wantedFiles = new Set([
+    ...backgrounds.flatMap((bg) => (bg ? [bg.file] : [])),
+    ...looks.flatMap((paper) => (paper.image?.file ? [paper.image.file] : [])),
+    ...rows.flatMap((row) => {
+      const ink = inks.get(row.id)?.doc;
+      return ink ? inkFiles({ ...ink, pages: { [row.id]: ink.pages[row.id] || [] } }) : [];
+    }),
+  ]);
+  const sourceFiles = new Set((await all<{ id: string }>("SELECT id FROM files WHERE page_id=?", source.id)).map((f) => f.id.toLowerCase()));
+  const files = await copyFilesTo(target, [...wantedFiles].filter((f) => sourceFiles.has(f.toLowerCase())), user);
   const copies = new Map<string, string>();
   for (const [i, row] of rows.entries()) {
-    const looks = effectivePaper(fromPaper, parsePaper(row.paper));
     const own: PaperOverride = {};
-    for (const key of ["template", "size", "orientation", "color"] as const) if (looks[key] !== toPaper[key]) Object.assign(own, { [key]: looks[key] });
+    for (const key of ["template", "size", "orientation", "color"] as const) if (looks[i][key] !== toPaper[key]) Object.assign(own, { [key]: looks[i][key] });
+    // An own template as the copy of its file (none could be made: the lines show).
+    const image = withPaperFiles({ image: looks[i].image ?? null }, files).image ?? null;
+    if (image || toPaper.image) own.image = image;
     const bg = backgrounds[i];
     const background: NotebookBackground | null = bg && files.get(bg.file) ? { ...bg, file: files.get(bg.file)! } : null;
     // A background that could not be copied becomes blank paper of its size.
@@ -385,7 +402,8 @@ export async function transferSheets(user: Identity, b: Record<string, unknown>)
   }
   for (const row of rows)
     await writeSheetMeta(copies.get(row.id)!, { title: row.title, bookmark: row.bookmark, links: remapLinks(parseLinks(row.links), copies) as NotebookLink[] });
-  await copyPageInk(source.id, target.id, copies, user.id);
+  // Pictures point to the copies of their files.
+  await copyPageInk(source.id, target.id, copies, user.id, files);
   const created = [...copies.values()];
   await writeOrder(target.id, placeSheets(await order(target.id), created, place));
   // The contents entries of these sheets come along.

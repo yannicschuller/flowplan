@@ -13,8 +13,29 @@ export type PaperTemplate = (typeof PAPER_TEMPLATES)[number];
 export type PaperSize = (typeof PAPER_SIZES)[number];
 export type PaperOrientation = (typeof PAPER_ORIENTATIONS)[number];
 export type PaperColor = (typeof PAPER_COLORS)[number];
-export type Paper = { template: PaperTemplate; size: PaperSize; orientation: PaperOrientation; color: PaperColor };
-// A sheet's own choices; what it leaves out comes from the notebook.
+// An own paper template (lib/notebook-templates.ts) on the paper: a picture
+// or a PDF page under the ink instead of the template's lines, stretched to
+// the sheet or tiled at its own size. `file` is the copy attached to the
+// notebook page (so the paper stays when the template is deleted);
+// `template` names the template it came from. Before the copy exists (a
+// choice in the paper dialog) only `template` and `fit` are set; the server
+// fills in the rest. Versions before own templates drop `image` and show
+// `template` (the built-in template underneath, "blank" by default).
+export const PAPER_FITS = ["stretch", "tile"] as const;
+export type PaperFit = (typeof PAPER_FITS)[number];
+export type PaperImage = {
+  file?: string;
+  template?: string;
+  name?: string;
+  kind?: "image" | "pdf";
+  // Its own size in points (tiles; the proportions of the preview).
+  width?: number;
+  height?: number;
+  fit: PaperFit;
+};
+export type Paper = { template: PaperTemplate; size: PaperSize; orientation: PaperOrientation; color: PaperColor; image?: PaperImage | null };
+// A sheet's own choices; what it leaves out comes from the notebook
+// (`image: null`: no own template on this sheet although the notebook has one).
 export type PaperOverride = Partial<Paper>;
 
 export const DEFAULT_PAPER: Paper = { template: "lined-college", size: "a4", orientation: "portrait", color: "light" };
@@ -29,10 +50,34 @@ export const SHEET_SIZES: Record<PaperSize, { width: number; height: number }> =
 export const RULING = { college: 20.25, wide: 24.75 };
 export const GRID_STEP = 5 * MM;
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export function cleanPaperImage(raw: unknown): PaperImage | null {
+  if (!raw || typeof raw !== "object") return null;
+  const value = raw as Record<string, unknown>;
+  const fit: PaperFit = PAPER_FITS.includes(value.fit as PaperFit) ? (value.fit as PaperFit) : "stretch";
+  const out: PaperImage = { fit };
+  if (typeof value.template === "string" && UUID.test(value.template)) out.template = value.template.toLowerCase();
+  if (typeof value.file === "string" && UUID.test(value.file)) {
+    const w = Number(value.width),
+      h = Number(value.height);
+    if (!Number.isFinite(w) || !Number.isFinite(h) || w < 1 || h < 1) return null;
+    out.file = value.file.toLowerCase();
+    out.kind = value.kind === "pdf" ? "pdf" : "image";
+    out.width = Math.round(Math.min(14400, w) * 100) / 100;
+    out.height = Math.round(Math.min(14400, h) * 100) / 100;
+    if (typeof value.name === "string" && value.name.trim()) out.name = value.name.trim().slice(0, 200);
+  }
+  return out.file || out.template ? out : null;
+}
 export function cleanPaper(raw: unknown): PaperOverride {
   const out: PaperOverride = {};
   if (!raw || typeof raw !== "object") return out;
   const value = raw as Record<string, unknown>;
+  if (value.image === null) out.image = null;
+  else if (value.image !== undefined) {
+    const image = cleanPaperImage(value.image);
+    if (image) out.image = image;
+  }
   if (PAPER_TEMPLATES.includes(value.template as PaperTemplate)) out.template = value.template as PaperTemplate;
   if (PAPER_SIZES.includes(value.size as PaperSize)) out.size = value.size as PaperSize;
   if (PAPER_ORIENTATIONS.includes(value.orientation as PaperOrientation)) out.orientation = value.orientation as PaperOrientation;
@@ -41,7 +86,24 @@ export function cleanPaper(raw: unknown): PaperOverride {
 }
 export const fullPaper = (raw: unknown): Paper => ({ ...DEFAULT_PAPER, ...cleanPaper(raw) });
 // The paper a sheet shows: its own choices over the notebook's.
-export const effectivePaper = (defaults: Paper, override: PaperOverride | null | undefined): Paper => ({ ...defaults, ...cleanPaper(override) });
+export const effectivePaper = (defaults: Paper, override: PaperOverride | null | undefined): Paper => {
+  const paper = { ...defaults, ...cleanPaper(override) };
+  if (!paper.image) delete paper.image;
+  return paper;
+};
+// The own template a sheet shows (a copy on the page), or null.
+export const paperImageOf = (paper: Pick<Paper, "image">): (PaperImage & { file: string; width: number; height: number }) | null =>
+  paper.image?.file && paper.image.width && paper.image.height ? (paper.image as PaperImage & { file: string; width: number; height: number }) : null;
+// Tiles of an own template on a sheet (page units): the whole sheet when
+// stretched, its own size from the top left when tiled (at most 400).
+export function paperImageTiles(image: Pick<PaperImage, "fit" | "width" | "height">, size: { width: number; height: number }) {
+  if (image.fit !== "tile" || !image.width || !image.height) return [{ x: 0, y: 0, w: size.width, h: size.height }];
+  const w = Math.max(image.width, size.width / 20),
+    h = Math.max(image.height, size.height / 20);
+  const out: { x: number; y: number; w: number; h: number }[] = [];
+  for (let y = 0; y < size.height && out.length < 400; y += h) for (let x = 0; x < size.width && out.length < 400; x += w) out.push({ x: r2(x), y: r2(y), w: r2(w), h: r2(h) });
+  return out;
+}
 
 export function paperSize(paper: Pick<Paper, "size" | "orientation">) {
   const base = SHEET_SIZES[paper.size] || SHEET_SIZES.a4;
@@ -51,7 +113,7 @@ export function paperSize(paper: Pick<Paper, "size" | "orientation">) {
 export type PaperShape =
   | { type: "line"; x1: number; y1: number; x2: number; y2: number; width: number; color: string }
   | { type: "dot"; x: number; y: number; r: number; color: string };
-export type PaperLayout = { width: number; height: number; background: string; shapes: PaperShape[] };
+export type PaperLayout = { width: number; height: number; background: string; shapes: PaperShape[]; image?: PaperImage };
 
 export const PAPER_TONES = {
   light: { background: "#ffffff", line: "#c9d6e8", margin: "#eaa9a9", grid: "#d9dfe7", dot: "#a9b2be", staff: "#8f98a3", text: "#1f1f1f" },
@@ -82,6 +144,9 @@ export function paperLayout(paper: Paper, size = paperSize(paper)): PaperLayout 
   const tone = PAPER_TONES[paper.color] || PAPER_TONES.light;
   const { width: w, height: h } = size;
   const shapes: PaperShape[] = [];
+  // An own template replaces the lines.
+  const own = paperImageOf(paper);
+  if (own) return { width: w, height: h, background: tone.background, shapes, image: own };
   switch (paper.template) {
     case "lined-college":
     case "lined-wide": {
@@ -148,10 +213,19 @@ export function blockPaperLayout(kind: "blank" | "lined" | "grid", size: { width
   return { width: size.width, height: size.height, background: "transparent", shapes };
 }
 
-// The shapes as SVG elements (sheet view, published page, exports).
-export function paperSvg(layout: PaperLayout) {
+// The shapes as SVG elements (sheet view, published page, exports). An own
+// template's picture is drawn when `imageHref` gives its address (PDF pages
+// cannot be drawn in SVG: the sheet view and published pages draw those
+// with pdf.js under the SVG).
+export function paperSvg(layout: PaperLayout, { imageHref }: { imageHref?: (file: string) => string | null } = {}) {
   let out =
     layout.background === "transparent" ? "" : `<rect x="0" y="0" width="${r2(layout.width)}" height="${r2(layout.height)}" fill="${layout.background}"/>`;
+  const href = layout.image?.file && layout.image.kind !== "pdf" ? imageHref?.(layout.image.file) : null;
+  if (layout.image && href) {
+    const safe = href.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+    for (const tile of paperImageTiles(layout.image, layout))
+      out += `<image href="${safe}" x="${tile.x}" y="${tile.y}" width="${tile.w}" height="${tile.h}" preserveAspectRatio="none"/>`;
+  }
   for (const s of layout.shapes)
     out +=
       s.type === "line"

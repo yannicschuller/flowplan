@@ -34,7 +34,7 @@ import {
   type Pt,
 } from "@/lib/ink/geometry";
 import { inkFontFamily, type InkFont } from "@/lib/ink/fonts";
-import { inkId, type InkDoc, type InkItem, type InkStroke, type InkText } from "@/lib/ink/model";
+import { inkId, type InkDoc, type InkImage, type InkItem, type InkStroke, type InkText } from "@/lib/ink/model";
 import { HIGHLIGHTER_OPACITY } from "@/lib/ink/presets";
 import { STROKE_ERASER_RADIUS, eraseWith as erase, type EraserMode } from "@/lib/ink/eraser";
 import {
@@ -67,6 +67,8 @@ import {
   type PressureTrack,
 } from "@/lib/stylus";
 import type { InkEditor } from "./use-ink-editor";
+import { fileSrc, ImageFrame, InkImageItem, type ImageAction } from "./ink-picture";
+import { splitHighlights } from "@/lib/ink/svg";
 import { useLocale } from "../i18n";
 import { dragShape, followPen, type ShapeName } from "@/lib/ink/shape-recognize";
 import { defaultUnit } from "@/lib/ink/ruler";
@@ -116,13 +118,15 @@ type Gesture =
   | { kind: "tap"; pointer: number; client: XY; at: XY; select?: boolean }
   | { kind: "pan"; touches: Map<number, XY>; distance: number; zoom: number };
 
-// The ink of a page, back to front: highlighter strokes in one layer, the rest in another.
-const InkItems = memo(function InkItems({ items, layer }: { items: InkItem[]; layer: "highlight" | "ink" }) {
+// The ink of a page, back to front: highlighter strokes in one layer, the
+// rest in another. Highlighter above a picture (in order) is drawn among
+// the ink, multiplied, so it shows on the picture (lib/ink/svg.ts).
+const InkItems = memo(function InkItems({ items, layer, src }: { items: InkItem[]; layer: "highlight" | "ink"; src?: (file: string) => string }) {
+  const under = splitHighlights(items);
   return (
     <>
-      {items.map((item) => {
-        if (layer === "highlight") {
-          if (item.type !== "highlighter") return null;
+      {items.map((item, index) => {
+        if (item.type === "highlighter" && (layer === "highlight") === index < under) {
           const { d } = strokePath(item);
           return (
             <path
@@ -134,10 +138,12 @@ const InkItems = memo(function InkItems({ items, layer }: { items: InkItem[]; la
               strokeWidth={item.width}
               strokeLinecap="round"
               strokeLinejoin="round"
+              style={index >= under ? { mixBlendMode: "multiply" } : undefined}
             />
           );
         }
-        if (item.type === "highlighter") return null;
+        if (layer === "highlight" || item.type === "highlighter") return null;
+        if (item.type === "image") return <InkImageItem key={item.id} item={item} src={src} />;
         if (item.type === "text") return <InkTextItem key={item.id} item={item} />;
         if (item.shape) return <InkShapeItem key={item.id} item={item} />;
         const { d, fill } = strokePath(item);
@@ -192,6 +198,9 @@ export function InkLayer({
   onOutline,
   label,
   fingersScroll = false,
+  onImageAction,
+  onSaveSticker,
+  imageSrc = fileSrc,
 }: {
   page: string;
   size: PageSize;
@@ -214,6 +223,12 @@ export function InkLayer({
   // Fingers scroll even with pen-only drawing off (a drawing block not
   // activated yet: the document keeps scrolling under a finger).
   fingersScroll?: boolean;
+  // "Save as sticker" in a picture's frame (notebooks).
+  onImageAction?: (action: ImageAction, item: InkImage) => void;
+  // "Als Sticker speichern" in the bar of a lasso selection (notebooks).
+  onSaveSticker?: (items: InkItem[]) => void;
+  // The address of a picture's file.
+  imageSrc?: (file: string) => string;
 }) {
   const t = useT();
   const active = !!editor && editing;
@@ -655,6 +670,15 @@ export function InkLayer({
     const g = gesture.current;
     const ed = editor;
     if (!g || !ed) return;
+    // The item a tap picked: a picture or sticker alone opens in its frame
+    // (components/ink/ink-picture.tsx), anything else is selected.
+    const pickItem = (hit: string | null) => {
+      if (hit && items.find((i) => i.id === hit)?.type === "image") ed.pick({ page, id: hit });
+      else {
+        ed.pick(null);
+        ed.setSelection(hit ? { page, ids: [hit] } : null);
+      }
+    };
     if (g.kind === "pan") {
       g.touches.delete(e.pointerId);
       if (g.touches.size) return;
@@ -677,7 +701,7 @@ export function InkLayer({
       if (cancelled || Math.hypot(e.clientX - g.client.x, e.clientY - g.client.y) > 10) return;
       if (g.select) {
         const hit = itemAt(items, g.at, tolerance(10));
-        ed.setSelection(hit ? { page, ids: [hit] } : null);
+        pickItem(hit);
       } else openText(g.at);
       return;
     }
@@ -714,14 +738,15 @@ export function InkLayer({
       if (g.items !== items) ed.change(page, () => g.items);
     } else if (g.kind === "lasso") {
       clearDraft();
-      // A tap picks the one item under it; a loop what it goes around.
+      // A tap picks the one item under it – a picture or sticker opens in
+      // its frame (components/ink/ink-picture.tsx); a loop what it goes around.
       if (isTap(g.polygon, tolerance(6))) {
-        const hit = itemAt(items, g.polygon[0], tolerance(e.pointerType === "pen" ? 6 : 8));
-        ed.setSelection(hit ? { page, ids: [hit] } : null);
+        pickItem(itemAt(items, g.polygon[0], tolerance(e.pointerType === "pen" ? 6 : 8)));
         return;
       }
       const ids = lassoItems(items, g.polygon);
-      ed.setSelection(ids.length ? { page, ids } : null);
+      if (ids.length === 1) pickItem(ids[0]);
+      else ed.setSelection(ids.length ? { page, ids } : null);
     } else if (g.kind === "transform") {
       const current = previewRef.current;
       setPreview(null);
@@ -769,6 +794,8 @@ export function InkLayer({
     return unionBox(shown.filter((i) => ids.has(i.id)).map(itemBounds));
   }, [selected, shown]);
   const showSelection = active && editor?.tool === "lasso" && !shapeItem && selectionBox;
+  const pickedItem =
+    active && editor?.tool === "lasso" && editor.picked?.page === page ? (shown.find((i) => i.id === editor.picked!.id && i.type === "image") as InkImage | undefined) : undefined;
   const percent = (v: number, of: number) => `${(v / (of || 1)) * 100}%`;
   const center = (p: XY) => ({ cx: p.x, cy: p.y });
   const touchAction = !active ? undefined : penOnly ? "pan-x pan-y pinch-zoom" : "none";
@@ -787,7 +814,7 @@ export function InkLayer({
       onContextMenu={active ? (e) => e.preventDefault() : undefined}
     >
       <svg className="ink-highlights" viewBox={`0 0 ${size.width} ${size.height}`} preserveAspectRatio="none" aria-hidden="true">
-        <InkItems items={visible} layer="highlight" />
+        <InkItems items={visible} layer="highlight" src={imageSrc} />
         <path ref={draftHighlight} className="ink-draft" fill="none" strokeOpacity={HIGHLIGHTER_OPACITY} strokeLinecap="round" strokeLinejoin="round" />
       </svg>
       <svg
@@ -798,7 +825,7 @@ export function InkLayer({
         aria-label={label || t(`Anmerkungen auf Seite ${page}`, `Annotations on page ${page}`)}
         data-count={visible.length}
       >
-        <InkItems items={visible} layer="ink" />
+        <InkItems items={visible} layer="ink" src={imageSrc} />
         <path ref={draftInk} className="ink-draft" strokeLinecap="round" strokeLinejoin="round" />
         <path ref={lassoPath} className="ink-lasso" fill="none" vectorEffect="non-scaling-stroke" />
         {laser.length > 0 && (
@@ -847,7 +874,22 @@ export function InkLayer({
       )}
       <div ref={readout} className="ink-measure" hidden />
       {showSelection && !preview && editor && selected && (
-        <InkSelectionBar editor={editor} page={page} size={size} box={selectionBox} items={shown.filter((i) => selected.ids.includes(i.id))} onConvert={onConvert} aiPageId={aiPageId} onOutline={onOutline} />
+        <InkSelectionBar editor={editor} page={page} size={size} box={selectionBox} items={shown.filter((i) => selected.ids.includes(i.id))} onConvert={onConvert} aiPageId={aiPageId} onOutline={onOutline} onSticker={onSaveSticker} />
+      )}
+      {pickedItem && editor && (
+        <ImageFrame
+          item={pickedItem}
+          items={items}
+          size={size}
+          scale={scale}
+          root={root}
+          src={imageSrc}
+          onPreview={setPreview}
+          onCommit={(next) => editor.change(page, () => next)}
+          onClose={() => editor.pick(null)}
+          onPick={(id) => editor.pick({ page, id })}
+          onAction={onImageAction}
+        />
       )}
       {typing && (
         <textarea

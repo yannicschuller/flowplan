@@ -2608,6 +2608,34 @@ async function runCommand(
       case "notebook.trash.restore":
         result = await notebookCommand(user, await write(), action, b);
         break;
+      // Pictures, own stickers and paper templates of notebooks (lib/notebook-library.ts).
+      case "notebook.pictures":
+        result = { pictures: await notebookPictures(user, b.pageId) };
+        break;
+      case "notebook.stickers":
+        result = { stickers: await listStickers(user, b.pageId) };
+        break;
+      case "notebook.sticker.save":
+        result = await saveSticker(user, b);
+        break;
+      case "notebook.sticker.rename":
+        result = await renameSticker(user, b);
+        break;
+      case "notebook.sticker.delete":
+        result = await deleteSticker(user, b);
+        break;
+      case "notebook.sticker.insert":
+        result = await insertSticker(user, b);
+        break;
+      case "notebook.templates":
+        result = { templates: await listTemplates(user, b.pageId) };
+        break;
+      case "notebook.template.update":
+        result = await updateTemplate(user, b);
+        break;
+      case "notebook.template.delete":
+        result = await deleteTemplate(user, b);
+        break;
       // Copy or move sheets into another notebook: rights on both checked there.
       case "notebook.sheets.transfer":
         result = await transferSheets(user, b);
@@ -3795,6 +3823,7 @@ import { purgeTrashedFile, restoreFile, trashFiles, trashUnusedFiles } from "./f
 import { emptyTrash, purgeTemplate, purgeTrashedPage, restoreTrashedPage, trashDays } from "./trash";
 import { dashboardData, saveDashboard } from "./dashboard";
 import { notebookArchive, notebookCommand, notebookData } from "./notebook";
+import { deleteSticker, deleteTemplate, insertSticker, listStickers, listTemplates, notebookPictures, renameSticker, saveSticker, updateTemplate } from "./notebook-library";
 import { transferSheets } from "./notebook-organize";
 import { quotaCheckpoint, setWorkspaceQuota } from "./instance-ops";
 import { rowChanged, rowCreated } from "./automations";

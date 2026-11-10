@@ -6,7 +6,7 @@
 // (shapes, images) only add their case to `transformItem`.
 import { hitItem, itemBounds, unionBox, withShape, type Box } from "./geometry";
 import { affineShape } from "./shapes";
-import { normalRotation, type InkItem } from "./model";
+import { normalRotation, type InkImage, type InkItem } from "./model";
 import { HIGHLIGHTER_WIDTHS, PEN_WIDTHS, TEXT_SIZES } from "./presets";
 
 type XY = { x: number; y: number };
@@ -47,6 +47,7 @@ export function transformItem(item: InkItem, m: Affine): InkItem {
     void _old;
     return { ...rest, x: round2(at.x), y: round2(at.y), size: round2(Math.min(400, Math.max(2, item.size * scale))), ...(turn ? { rotation: turn } : {}) };
   }
+  if (item.type === "image") return transformImage(item, m);
   const width = round2(Math.min(200, Math.max(0.1, item.width * scale)));
   // A shape stays a shape: its own geometry is transformed and its outline
   // (`points`) drawn again from it; turning goes into its box's rotation.
@@ -58,6 +59,21 @@ export function transformItem(item: InkItem, m: Affine): InkItem {
     points[i + 1] = round2(p.y);
   }
   return { ...item, points, width };
+}
+// A picture keeps its proportions under a turn or an even scale; an uneven
+// scale stretches it along its own sides (exact while it stands upright).
+// Its centre goes through the transform, its turn adds the transform's.
+function transformImage(item: InkImage, m: Affine): InkImage {
+  const theta = ((item.rotation || 0) * Math.PI) / 180;
+  const ux = { x: m.a * Math.cos(theta) + m.c * Math.sin(theta), y: m.b * Math.cos(theta) + m.d * Math.sin(theta) };
+  const uy = { x: -m.a * Math.sin(theta) + m.c * Math.cos(theta), y: -m.b * Math.sin(theta) + m.d * Math.cos(theta) };
+  const w = round2(Math.min(1e4, Math.max(1, item.w * Math.hypot(ux.x, ux.y)))),
+    h = round2(Math.min(1e4, Math.max(1, item.h * Math.hypot(uy.x, uy.y))));
+  const c = applyPoint(m, { x: item.x + item.w / 2, y: item.y + item.h / 2 });
+  const turn = normalRotation((Math.atan2(ux.y, ux.x) * 180) / Math.PI);
+  const { rotation: _old, ...rest } = item;
+  void _old;
+  return { ...rest, x: round2(c.x - w / 2), y: round2(c.y - h / 2), w, h, ...(turn ? { rotation: turn } : {}) };
 }
 export const transformSelected = (items: InkItem[], ids: Set<string>, m: Affine) => items.map((item) => (ids.has(item.id) ? transformItem(item, m) : item));
 
@@ -167,7 +183,7 @@ export function setItemsWidth(items: InkItem[], ids: Set<string>, step: number) 
   const i = Math.max(0, Math.min(WIDTH_STEPS - 1, Math.round(step)));
   let changed = false;
   const next = items.map((item): InkItem => {
-    if (!ids.has(item.id)) return item;
+    if (!ids.has(item.id) || item.type === "image") return item;
     if (item.type === "text") {
       if (item.size === TEXT_SIZES[i]) return item;
       changed = true;
@@ -185,7 +201,7 @@ export function setItemsWidth(items: InkItem[], ids: Set<string>, step: number) 
 // The step the chosen items share, or null when they differ (or have none).
 export function sharedWidthStep(items: InkItem[]): number | null {
   const steps = new Set(
-    items.map((item) => (item.type === "text" ? TEXT_SIZES.indexOf(item.size) : (item.type === "highlighter" ? HIGHLIGHTER_WIDTHS : PEN_WIDTHS).indexOf(item.width))),
+    items.filter((item) => item.type !== "image").map((item) => (item.type === "text" ? TEXT_SIZES.indexOf(item.size) : (item.type === "highlighter" ? HIGHLIGHTER_WIDTHS : PEN_WIDTHS).indexOf(item.width))),
   );
   return steps.size === 1 && !steps.has(-1) ? [...steps][0] : null;
 }

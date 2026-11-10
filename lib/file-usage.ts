@@ -2,7 +2,8 @@
 // appears anywhere in the current content of its workspace – documents and
 // synced blocks, records (properties, icons, covers, texts, record
 // documents), records in the trash, comments and text comments, whiteboards
-// (also private mode), notebook backgrounds, page icons and covers, page
+// (also private mode), notebook backgrounds, own paper templates and pictures
+// on sheets, page icons and covers, page
 // properties, database settings, dashboards and start pages. Any form counts:
 // /api/files/<id>, a share link's /api/share/<token>/files/<id>, an absolute
 // address, or a bare id ({"file":"<id>"} of a notebook sheet). Version
@@ -22,6 +23,10 @@ const TEXT_SOURCES = [
   "SELECT c.body t FROM comments c JOIN pages p ON p.id=c.page_id WHERE p.workspace_id=?",
   "SELECT m.body t FROM inline_messages m JOIN inline_threads h ON h.id=m.thread_id JOIN pages p ON p.id=h.page_id WHERE p.workspace_id=? AND m.deleted=0",
   "SELECT s.background t FROM notebook_sheets s JOIN pages p ON p.id=s.page_id WHERE p.workspace_id=? AND s.background IS NOT NULL",
+  // Own paper templates of notebooks and sheets, pictures on sheets.
+  "SELECT n.paper t FROM notebooks n JOIN pages p ON p.id=n.page_id WHERE p.workspace_id=?",
+  "SELECT s.paper t FROM notebook_sheets s JOIN pages p ON p.id=s.page_id WHERE p.workspace_id=?",
+  `SELECT i.data t FROM page_ink i JOIN pages p ON p.id=i.page_id WHERE p.workspace_id=? AND i.data LIKE '%"image"%'`,
   // Deleted sheets that may come back (lib/notebook-organize.ts).
   "SELECT s.sheet t FROM notebook_sheet_trash s JOIN pages p ON p.id=s.page_id WHERE p.workspace_id=?",
   "SELECT v.value t FROM page_property_values v JOIN pages p ON p.id=v.page_id WHERE p.workspace_id=?",

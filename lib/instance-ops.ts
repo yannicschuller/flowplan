@@ -33,7 +33,10 @@ export async function workspaceBytes(workspaceId: string) {
         "SELECT SUM(length(tf.data)) n FROM template_files tf JOIN templates t ON t.id=tf.template_id WHERE t.workspace_id=?",
         workspaceId,
       ))?.n || 0,
-    )
+    ) +
+    // Notebook stickers and paper templates (lib/notebook-library.ts).
+    Number((await one<{ n: number | null }>("SELECT SUM(COALESCE(length(data),0)) n FROM notebook_stickers WHERE workspace_id=?", workspaceId))?.n || 0) +
+    Number((await one<{ n: number | null }>("SELECT SUM(length(data)) n FROM notebook_templates WHERE workspace_id=?", workspaceId))?.n || 0)
   );
 }
 export async function workspaceQuotaMb(workspaceId: string) {

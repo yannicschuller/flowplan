@@ -28,6 +28,9 @@ block of documents (`components/ink/draw-block*.tsx`,
 | `lib/ink/notebook-pdf.ts` | `notebookPdf(sheets, load)`: a notebook as PDF (paper as vectors or the imported PDF page, ink on top) |
 | `lib/ink/merge.ts` | `mergeInk(base, ours, theirs)`: three-way merge by item id (concurrent saves) |
 | `lib/ink/svg.ts` | `inkSvg(items, size, { paper })`: ink as an SVG document (published pages, exports) |
+| `lib/ink/image.ts` | Pictures and stickers: bounds and hits (turned), the frame's resize/rotate/crop, order front/back, placing a new one |
+| `lib/ink/stickers.ts` | Built-in stickers (paths in a 100 × 100 box, CC0; `public/stickers/*.svg` are written from them), date/time stamps as ink |
+| `components/ink/ink-picture.tsx` | `<InkImageItem>` (drawing) and `<ImageFrame>` (move, resize, rotate, crop, order, opacity, duplicate, delete, save as sticker) |
 | `lib/ink/recognition.ts` | Handwriting recognition in the iPhone/iPad app (contract below) |
 | `lib/ink/recognized.ts` | Cleaning and capping recognised text |
 | `lib/ink-store.ts` | Server: ink of PDF files (`file_ink`, `file_ink_versions`, `recognized`) |
@@ -36,7 +39,7 @@ block of documents (`components/ink/draw-block*.tsx`,
 | `components/ink/use-surface-sync.ts` | Saving surfaces while drawing, merging, following others, recognition for search |
 | `components/ink/convert.ts` | "Convert to text" of a lasso selection on the device (iPhone/iPad app) |
 | `components/ink/ai-convert.tsx` | "Convert to text" with the instance's AI (`lib/ai/handwriting.ts`): dialog with the picture, the recognised text to edit, insert in place / next to it / copy |
-| `components/ink/ink-selection-bar.tsx` | The bar over a selection: colour (palette, own colours, picker) and width, cut, copy, duplicate, front, back, convert, delete |
+| `components/ink/ink-selection-bar.tsx` | The bar over a selection: colour (palette, own colours, picker) and width, cut, copy, duplicate, front, back, convert, save as sticker (notebooks), delete |
 | `components/ink/ink-image.ts` | Items as an SVG/PNG of just their area (system clipboard, AI recognition) |
 | `components/ink/system-clipboard.ts` | Copied ink also on the system clipboard (PNG, SVG where supported, typed text) |
 | `components/ink/use-ink-editor.ts` | `useInkEditor(initial)`: the editing session; `useInkShortcuts(editor, on)` |
@@ -111,6 +114,26 @@ block of documents (`components/ink/draw-block*.tsx`,
   when upright. SVG draws it as `rotate(r x y)`, PDFs turn the text
   matrix. Versions before `rotation` show such text upright and drop the
   field when they save that surface (the text itself stays).
+- Pictures and stickers (`type: "image"`):
+  `{ id, type: "image", x, y, w, h, file?, sticker?, color?, rotation?, crop?, opacity? }`.
+  `file` is a file attached to the same page (the server drops pictures of
+  any other file when the ink is saved; page copies, archives and imports
+  point them to the copied files), `sticker` a built-in sticker
+  (`lib/ink/stickers.ts`; `color` tints one-colour ones). `(x, y, w, h)` is
+  the box shown before `rotation` (degrees clockwise around its centre);
+  `crop` the shown part of the whole picture in fractions (0–1). Drawn in
+  item order among the ink, so a picture can lie under the ink or over it;
+  highlighter strokes above a picture are drawn multiplied over it. Erasers
+  leave pictures alone (they are deleted from their frame); the lasso takes
+  them by their centre. At most 200 per page. In exports: SVG `<image>`
+  (published pages: the share link's file address; exports leaving
+  Flowplan: data: addresses), PDF: PNG/JPEG embedded once per file (the
+  browser converts other types through a canvas; the server's Markdown
+  export embeds PNG/JPEG with their EXIF orientation, others as grey boxes).
+- Older versions drop `image` items when they read ink. So that they do not
+  delete pictures when they save, a save carries `knows: ["image"]`; a save
+  without it keeps the stored pictures it did not carry (lib/page-ink-store.ts
+  `keepUnknownItems`), at their place in the stored order.
 - Items are back to front. Page keys: PDF page numbers (`"1"`, `"2"`, …);
   other surfaces may use any key matching `[\w.-]{1,64}` (e.g. a notebook
   page id).
@@ -218,6 +241,15 @@ only by one side survives a merge). The clipboard is shared by every ink
 editor of the tab, so a cut on one sheet pastes onto another (the sheet
 last touched; moved onto the page if it would stick out), and copies also
 go to the system clipboard as a picture.
+
+Pictures and stickers: a tap on one (or a loop around it alone) opens its
+own frame (`components/ink/ink-picture.tsx`: crop, opacity, eight resize
+handles, "save as sticker"); in a selection with other items they move,
+scale and turn with them (`transformItem`: the centre goes through the
+transform, the sides scale along their own direction, the turn adds up),
+keep their colours (one-colour built-in stickers take a new colour) and
+have no width. In notebooks the bar also saves the selection as a sticker
+(`saveSelectionAsSticker`; pictures of files are left out of an ink sticker).
 
 ## Components
 

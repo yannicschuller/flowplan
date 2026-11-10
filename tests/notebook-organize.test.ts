@@ -197,7 +197,7 @@ test("table of contents: set as a whole, headings added in sheet order, entries 
 
 test("several sheets: duplicate after the last one, delete into the trash, restore with ink and place", async () => {
   const { pid, ids } = await threeSheets("Mehrere");
-  await store.writeSurface(pid, ids[0], on(ids[0], pen(1), pen(2)), "Erkannt", owner.id);
+  await store.writeSurface(pid, ids[0], on(ids[0], pen(1), { id: "sticker", type: "image", sticker: "heart", x: 5, y: 5, w: 40, h: 40 }), "Erkannt", owner.id);
   await nb(owner, { action: "notebook.sheet.meta", pageId: pid, sheetIds: [ids[0]], title: "Erstes", bookmark: true });
   const dup = await nb(owner, { action: "notebook.sheets.duplicate", pageId: pid, sheetIds: [ids[2], ids[0]] });
   assert.equal(dup.created?.length, 2);
@@ -224,6 +224,7 @@ test("several sheets: duplicate after the last one, delete into the trash, resto
   assert.deepEqual(back.sheets.map((s) => s.id), [ids[0], ids[1], ids[2], ...dup.created!]);
   const ink = await store.readPageInk(owner, pid, ids[0]);
   assert.equal(ink.doc.pages[ids[0]].length, 2);
+  assert.ok(ink.doc.pages[ids[0]].some((i) => i.type === "image"), "pictures come back from the trash");
   assert.equal(ink.recognized, "Erkannt");
   assert.equal(back.sheets[0].bookmark, true);
   assert.equal((await sheetTrash(page)).length, 0);
@@ -240,7 +241,6 @@ test("copy and move sheets into another notebook: rights on both, ink, paper as 
   const to = await create("Ziel");
   const [targetFirst] = await notebookSheets(to);
   await nb(owner, { action: "notebook.paper", pageId: to, paper: { template: "grid" } });
-  await store.writeSurface(from, ids[1], on(ids[1], pen(3)), "", owner.id);
   await nb(owner, { action: "notebook.sheet.meta", pageId: from, sheetIds: [ids[1]], title: "Wichtig" });
   await nb(owner, { action: "notebook.outline.add", pageId: from, sheetId: ids[1], title: "Kapitel" });
   await nb(owner, {
@@ -258,6 +258,14 @@ test("copy and move sheets into another notebook: rights on both, ink, paper as 
   writeFileSync(join(process.env.FLOWPLAN_DATA_DIR!, "uploads", file), "%PDF-1.4 test");
   await run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", file, from, "a.pdf", "application/pdf", 13, owner.id);
   await run("UPDATE notebook_sheets SET background=? WHERE id=?", JSON.stringify({ file, page: 2, width: 595, height: 842 }), ids[2]);
+  // A picture on the second sheet, an own paper template on it too.
+  const [picture, paperFile] = [id(), id()];
+  for (const f of [picture, paperFile]) {
+    writeFileSync(join(process.env.FLOWPLAN_DATA_DIR!, "uploads", f), "png");
+    await run("INSERT INTO files(id,page_id,name,mime,size,created_by,width,height) VALUES(?,?,?,?,?,?,?,?)", f, from, "a.png", "image/png", 3, owner.id, 2, 2);
+  }
+  await store.writeSurface(from, ids[1], on(ids[1], pen(3), { id: "pic", type: "image", file: picture, x: 10, y: 10, w: 50, h: 50 }), "", owner.id);
+  await run("UPDATE notebook_sheets SET paper=? WHERE id=?", JSON.stringify({ image: { file: paperFile, kind: "image", width: 595, height: 842, fit: "stretch" } }), ids[1]);
 
   // Viewers may not write into a notebook; strangers see neither.
   await assert.rejects(async () => await nb(viewer, { action: "notebook.sheets.transfer", pageId: from, targetPageId: to, sheetIds: [ids[1]], mode: "copy" }), { status: 403 });
@@ -273,11 +281,18 @@ test("copy and move sheets into another notebook: rights on both, ink, paper as 
   assert.equal(target.length, 3);
   assert.equal(target[0].id, targetFirst.id);
   const [a, b] = [target[1], target[2]];
-  // The source's default paper (lined) stays lined in a grid notebook.
-  assert.deepEqual(a.paper, { template: "lined-college" });
+  // The source's default paper (lined) stays lined in a grid notebook; the
+  // own template and the picture come along as copies on the target page.
+  const { image: ownPaper, ...lines } = a.paper as Record<string, unknown> & { image?: { file: string } };
+  assert.deepEqual(lines, { template: "lined-college" });
+  assert.ok(ownPaper && ownPaper.file !== paperFile);
+  assert.equal((await one<{ page_id: string }>("SELECT page_id FROM files WHERE id=?", ownPaper.file))?.page_id, to);
+  const pic = (await store.readPageInk(owner, to, a.id)).doc.pages[a.id].find((i) => i.type === "image");
+  assert.ok(pic && pic.type === "image" && pic.file !== picture);
+  assert.equal((await one<{ page_id: string }>("SELECT page_id FROM files WHERE id=?", pic.file!))?.page_id, to);
   assert.equal(a.title, "Wichtig");
   assert.deepEqual(a.links?.map((l) => [l.id, l.target]), [["in", { sheet: b.id }]], "a link to a sheet left behind goes");
-  assert.equal((await store.readPageInk(owner, to, a.id)).doc.pages[a.id].length, 1);
+  assert.equal((await store.readPageInk(owner, to, a.id)).doc.pages[a.id].length, 2);
   assert.ok(b.background && b.background.file !== file, "the PDF is copied onto the target page");
   assert.equal((await one<{ page_id: string }>("SELECT page_id FROM files WHERE id=?", b.background!.file))?.page_id, to);
   assert.deepEqual((await notebookOutline(to)).map((e) => [e.title, e.sheet]), [["Kapitel", a.id]]);

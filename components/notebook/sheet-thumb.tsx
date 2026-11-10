@@ -7,6 +7,7 @@ import { memo, useEffect, useRef, useState } from "react";
 import { BookmarkSimple } from "@phosphor-icons/react";
 import { InkLayer } from "../ink/ink-layer";
 import { PaperSvg, PdfBackground } from "./paper";
+import { PaperImageLayer } from "./custom-paper";
 import type { InkDoc } from "@/lib/ink/model";
 import type { PageSize } from "@/lib/ink/coords";
 import type { PaperLayout } from "@/lib/notebook-paper";
@@ -52,7 +53,10 @@ export const SheetPicture = memo(function SheetPicture({
         (sheet.background ? (
           <PdfBackground src={`/api/files/${sheet.background.file}`} page={sheet.background.page} width={width} eager />
         ) : layout ? (
-          <PaperSvg layout={layout} />
+          <>
+            <PaperSvg layout={layout} />
+            {layout.image && <PaperImageLayer image={layout.image} size={size} width={width} />}
+          </>
         ) : null)}
       {seen && <InkLayer page={sheet.id} size={size} doc={doc} label={label} />}
     </span>

@@ -209,7 +209,7 @@ export async function duplicatePages(
           target,
         );
         // Drawing blocks keep their ids: the copy gets their ink.
-        await copyPageInk(p.id, target, undefined, user.id);
+        await copyPageInk(p.id, target, undefined, user.id, fileIds);
       } else {
         const source = (await one<{
           fields: string;

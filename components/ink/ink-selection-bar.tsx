@@ -2,7 +2,8 @@
 // The bar over a lasso selection (components/ink/ink-layer.tsx): colour
 // (palette, own colours lately used, colour picker) and width, cut, copy,
 // duplicate, to the front or back, "In Text umwandeln", "Als Überschrift
-// ins Inhaltsverzeichnis" (text in the selection, notebooks) and delete. Every
+// ins Inhaltsverzeichnis" (text in the selection, notebooks), "Als Sticker
+// speichern" (notebooks) and delete. Every
 // button is one undo step. Kept inside the page surface's width.
 import { useLayoutEffect, useRef, useState } from "react";
 import {
@@ -11,6 +12,7 @@ import {
   Scissors,
   SelectionBackground,
   SelectionForeground,
+  Sticker,
   TextAa,
   TextHOne,
   Trash,
@@ -37,6 +39,7 @@ export function InkSelectionBar({
   onConvert,
   aiPageId,
   onOutline,
+  onSticker,
 }: {
   editor: InkEditor;
   page: string;
@@ -50,6 +53,8 @@ export function InkSelectionBar({
   // Notebooks: the selection's typed text becomes a heading of the contents
   // (components/notebook/outline-api.ts), at the top of the selection.
   onOutline?: (title: string, y: number) => void;
+  // Notebooks: "Als Sticker speichern" (components/notebook/notebook-media.ts).
+  onSticker?: (items: InkItem[]) => void;
 }) {
   const t = useT();
   const keyHints = useKeyboardHints();
@@ -156,6 +161,7 @@ export function InkSelectionBar({
             )
           : onConvert && button(t("In Text umwandeln", "Convert to text"), <TextAa size={17} />, onConvert, "", { className: "ink-convert" }))}
       {onOutline && heading && button(t("Als Überschrift ins Inhaltsverzeichnis", "Add to the contents as a heading"), <TextHOne size={17} />, () => onOutline(heading, Math.max(0, box.y)), "", { className: "ink-outline" })}
+      {onSticker && button(t("Als Sticker speichern", "Save as sticker"), <Sticker size={17} />, () => onSticker(items), "", { className: "ink-sticker" })}
       {button(t("Auswahl löschen", "Delete selection"), <Trash size={17} />, () => editor.deleteSelection(), "Delete")}
       {converting && aiPageId && (
         <AiConvertDialog editor={editor} page={page} size={size} pageId={aiPageId} items={items} onClose={() => setConverting(false)} />

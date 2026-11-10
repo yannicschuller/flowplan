@@ -5,12 +5,17 @@
 // on the left (real orientation and paper colour); below that one column,
 // on phones a bottom sheet with the templates as a strip. Only the body
 // scrolls; the buttons stay at the bottom edge. Native radio inputs
-// throughout (one tab stop per group, arrow keys, VoiceOver).
+// throughout (one tab stop per group, arrow keys, VoiceOver). Below the
+// built-in templates the workspace's own ones ("Eigene", "Vorlage
+// hinzufügen …", components/notebook/custom-paper.tsx); choosing a built-in
+// one clears an own template.
 import { useEffect, useId, useState } from "react";
 import { Check } from "@phosphor-icons/react";
 import { useT } from "../i18n";
 import { Modal } from "../ui";
 import { PaperSvg } from "./paper";
+import { CustomPaperSection, PaperImageLayer } from "./custom-paper";
+import type { TemplateEntry } from "./notebook-media";
 import { PAPER_COLORS, PAPER_ORIENTATIONS, PAPER_SIZES, PAPER_TEMPLATES, paperLayout, paperSize, type Paper } from "@/lib/notebook-paper";
 import type { PaperThumb } from "@/lib/notebook-paper-thumb";
 
@@ -38,6 +43,8 @@ export function PaperDialog({
   onApply,
   onClose,
   templateName,
+  pageId,
+  onError,
 }: {
   open: boolean;
   sheetNumber: number;
@@ -48,18 +55,26 @@ export function PaperDialog({
   onApply: (draft: Paper, scope: PaperScope) => void;
   onClose: () => void;
   templateName: (template: Paper["template"]) => string;
+  // The notebook page (own templates of its workspace); without it no "Eigene".
+  pageId?: string;
+  onError?: (message: string) => void;
 }) {
   const t = useT();
   const [draft, setDraft] = useState<Paper>(paper);
   const [scope, setScope] = useState<PaperScope>("sheet");
+  // The own template chosen in this dialog (its picture for the preview).
+  const [own, setOwn] = useState<TemplateEntry | null>(null);
   const noteId = useId();
   useEffect(() => {
     if (!open) return;
     setDraft(paper);
+    setOwn(null);
     setScope("sheet");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
   const size = paperSize(draft);
+  const ownChosen = own && draft.image?.template === own.id ? own : null;
+  const ownName = draft.image ? ownChosen?.name || draft.image.name || t("Eigene Vorlage", "Own template") : null;
   const scopes: { value: PaperScope; short: string; long: string; note: string }[] = [
     {
       value: "sheet",
@@ -95,10 +110,14 @@ export function PaperDialog({
       <div className="paper-dialog-body">
         <figure className="paper-dialog-preview" aria-hidden="true">
           <span className={`paper-dialog-sheet${draft.color === "dark" ? " is-dark" : ""}`} style={{ aspectRatio: `${size.width} / ${size.height}` }}>
-            <PaperSvg layout={paperLayout(draft)} thumb={PREVIEW} />
+            {draft.image ? (
+              <PaperImageLayer image={{ ...draft.image, ...(ownChosen ? { kind: ownChosen.kind, width: ownChosen.width, height: ownChosen.height } : {}) }} src={ownChosen?.url} size={size} width={210} eager />
+            ) : (
+              <PaperSvg layout={paperLayout(draft)} thumb={PREVIEW} />
+            )}
           </span>
           <figcaption>
-            <b>{templateName(draft.template)}</b>
+            <b>{ownName ?? templateName(draft.template)}</b>
             {[draft.size === "a4" ? "A4" : "Letter", orientationName(draft.orientation), colorName(draft.color)].join(" · ")}
           </figcaption>
         </figure>
@@ -107,8 +126,8 @@ export function PaperDialog({
             <legend>{t("Vorlage", "Template")}</legend>
             <div className="paper-dialog-templates">
               {PAPER_TEMPLATES.map((template) => (
-                <label key={template} className={draft.template === template ? "chosen" : ""}>
-                  <input type="radio" name="notebook-template" checked={draft.template === template} onChange={() => setDraft({ ...draft, template })} />
+                <label key={template} className={!draft.image && draft.template === template ? "chosen" : ""}>
+                  <input type="radio" name="notebook-template" checked={!draft.image && draft.template === template} onChange={() => setDraft({ ...draft, template, image: null })} />
                   <span className={`paper-dialog-tile${draft.color === "dark" ? " is-dark" : ""}`}>
                     <PaperSvg layout={paperLayout({ ...draft, template, orientation: "portrait" })} thumb={TILE} />
                   </span>
@@ -120,6 +139,17 @@ export function PaperDialog({
               ))}
             </div>
           </fieldset>
+          {pageId && (
+            <CustomPaperSection
+              pageId={pageId}
+              draft={draft}
+              onChoose={(image, entry) => {
+                setDraft({ ...draft, image });
+                setOwn(entry ?? null);
+              }}
+              onError={onError || (() => {})}
+            />
+          )}
           <div className="paper-dialog-section">
             <h3 className="paper-dialog-legend">{t("Blatt", "Sheet")}</h3>
             <div className="paper-dialog-group">

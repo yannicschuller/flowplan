@@ -46,6 +46,8 @@ import {
 import { forgetPen, onPencilAction, penOnlySetting, setPenOnly as storePenOnly } from "@/lib/stylus";
 
 export type InkSelection = { page: string; ids: string[] };
+// The picture or sticker in its frame (components/ink/ink-picture.tsx).
+export type InkPicked = { page: string; id: string };
 // Width: line width, or the font size of text; font: text only.
 type Style = { color: string; width: number; font?: InkFont };
 
@@ -75,7 +77,13 @@ export function useInkEditor(initial: InkDoc, { active = true }: { active?: bool
   const [penOnly, setPenOnlyState] = useState(false);
   const [snap, setSnapState] = useState(true);
   const [pencil, setPencilState] = useState<PencilSetting>("system");
-  const [selection, setSelection] = useState<InkSelection | null>(null);
+  const [selection, setSelectionState] = useState<InkSelection | null>(null);
+  const [picked, setPicked] = useState<InkPicked | null>(null);
+  // A selection by the lasso and a picture in its frame are never both shown.
+  const setSelection = useCallback((next: InkSelection | null) => {
+    setSelectionState(next);
+    if (next) setPicked(null);
+  }, []);
   // Shared by the ink editors of this tab (lib/ink/clipboard.ts).
   const clipboard = useSyncExternalStore(subscribeInkClipboard, inkClipboard, () => null);
   const setClipboard = setInkClipboard;
@@ -141,6 +149,7 @@ export function useInkEditor(initial: InkDoc, { active = true }: { active?: bool
     setDocState(result.state);
     setHistory(result.history);
     setSelection(null);
+    setPicked(null);
   };
   const undo = () => step("undo");
   const redo = () => step("redo");
@@ -150,7 +159,10 @@ export function useInkEditor(initial: InkDoc, { active = true }: { active?: bool
       if (now !== next) previousTool.current = now;
       return next;
     });
-    if (next !== "lasso") setSelection(null);
+    if (next !== "lasso") {
+      setSelection(null);
+      setPicked(null);
+    }
   }, []);
   // The style of the tool in hand (pen, highlighter or text).
   const style = tool === "highlighter" ? highlighter : tool === "text" ? text : pen;
@@ -371,6 +383,17 @@ export function useInkEditor(initial: InkDoc, { active = true }: { active?: bool
     paste,
     clipboard,
     lastPage,
+    picked,
+    // Picks a picture (null: none); the lasso is the tool for it.
+    pick: (next: InkPicked | null) => {
+      setPicked(next);
+      if (next) {
+        setSelection(null);
+        setToolState("lasso");
+        lastPage.current = next.page;
+      }
+    },
+    setClipboard,
   };
 }
 
@@ -381,6 +404,31 @@ export function useInkEditor(initial: InkDoc, { active = true }: { active?: bool
 // With `tools`, single keys pick a tool (P pen, H highlighter, E eraser,
 // L lasso, T text, K laser, S shapes) – for surfaces that are the whole page
 // (notebooks), not inside a document where keys type text.
+// Keys for the picked picture: Delete, ⌘C, ⌘D, Escape, arrows (Shift:
+// further). True when the key was used.
+function pickedKey(ed: InkEditor, event: KeyboardEvent, mod: boolean) {
+  const picked = ed.picked!;
+  const items = ed.docRef.current.pages[picked.page] || [];
+  const item = items.find((i) => i.id === picked.id);
+  if (!item || item.type !== "image") return false;
+  const k = event.key.toLowerCase();
+  if (event.key === "Delete" || event.key === "Backspace") {
+    ed.pick(null);
+    ed.change(picked.page, (list) => list.filter((i) => i.id !== picked.id));
+  } else if (mod && k === "c") ed.setClipboard([item]);
+  else if (mod && k === "d") {
+    const [copy] = copyItems([item], 16, 16);
+    ed.change(picked.page, (list) => [...list, copy]);
+    ed.pick({ page: picked.page, id: copy.id });
+  } else if (event.key === "Escape") ed.pick(null);
+  else if (event.key.startsWith("Arrow") && !mod) {
+    const step = event.shiftKey ? 10 : 1;
+    const dx = event.key === "ArrowLeft" ? -step : event.key === "ArrowRight" ? step : 0;
+    const dy = event.key === "ArrowUp" ? -step : event.key === "ArrowDown" ? step : 0;
+    ed.change(picked.page, (list) => list.map((i) => (i.id === picked.id && i.type === "image" ? { ...i, x: i.x + dx, y: i.y + dy } : i)));
+  } else return false;
+  return true;
+}
 export const INK_TOOL_KEYS: Record<string, InkTool> = { p: "pen", h: "highlighter", e: "eraser", l: "lasso", t: "text", k: "laser", s: "shape" };
 export function useInkShortcuts(editor: InkEditor | null, enabled: boolean, { tools = false }: { tools?: boolean } = {}) {
   const ref = useRef(editor);
@@ -403,6 +451,8 @@ export function useInkShortcuts(editor: InkEditor | null, enabled: boolean, { to
       } else if (mod && k === "y") {
         event.preventDefault();
         ed.redo();
+      } else if (ed.picked && !ed.selection && pickedKey(ed, event, mod)) {
+        event.preventDefault();
       } else if (ed.selection && (event.key === "Delete" || event.key === "Backspace")) {
         event.preventDefault();
         ed.deleteSelection();

@@ -17,6 +17,8 @@ export const INK_LIMITS = {
   itemsPerPage: 4000,
   pointsPerStroke: 6000,
   textLength: 1000,
+  // Pictures and stickers on one page (each is one item).
+  imagesPerPage: 200,
   // The stored JSON of a whole ink document.
   bytes: 6_000_000,
 };
@@ -51,7 +53,29 @@ export type InkText = {
   // show such text upright and drop the turn when they save that surface.
   rotation?: number;
 };
-export type InkItem = InkStroke | InkText;
+// A picture on the page: a file attached to the page (`file`) or one of the
+// built-in stickers (`sticker`, lib/ink/stickers.ts). (x, y, w, h) is the
+// box it is shown in, before `rotation` (degrees, clockwise, around the
+// box's centre); `crop` is the part of the picture shown, in fractions of
+// its full size (0–1); `opacity` 0.05–1. Optional fields, so a picture
+// without them is the whole file, upright and opaque. Versions before
+// pictures drop the item (the server keeps it for them, see README).
+export type InkImage = {
+  id: string;
+  type: "image";
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  file?: string;
+  sticker?: string;
+  // Tint of a one-colour built-in sticker.
+  color?: string;
+  rotation?: number;
+  crop?: { x: number; y: number; w: number; h: number };
+  opacity?: number;
+};
+export type InkItem = InkStroke | InkText | InkImage;
 export type InkDoc = {
   format: typeof INK_FORMAT;
   version: number;
@@ -65,6 +89,8 @@ export const emptyInk = (): InkDoc => ({ format: INK_FORMAT, version: INK_VERSIO
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const COLOR = /^#[0-9a-f]{6}$/i;
 const KEY = /^[\w.-]{1,64}$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const STICKER = /^[a-z][a-z0-9-]{0,39}$/;
 const finite = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n);
 const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
 
@@ -118,7 +144,39 @@ export function cleanItem(raw: unknown): InkItem | null {
       ...(finite(item.rotation) && normalRotation(item.rotation) ? { rotation: normalRotation(item.rotation) } : {}),
     };
   }
+  if (item.type === "image") return cleanImage(item, id);
   return null;
+}
+
+function cleanImage(item: Record<string, unknown>, id: string): InkImage | null {
+  const file = typeof item.file === "string" && UUID.test(item.file) ? item.file.toLowerCase() : undefined;
+  const sticker = !file && typeof item.sticker === "string" && STICKER.test(item.sticker) ? item.sticker : undefined;
+  if ((!file && !sticker) || !finite(item.x) || !finite(item.y) || !finite(item.w) || !finite(item.h)) return null;
+  const out: InkImage = {
+    id,
+    type: "image",
+    x: round2(clamp(item.x, -1e5, 1e5)),
+    y: round2(clamp(item.y, -1e5, 1e5)),
+    w: round2(clamp(item.w, 1, 1e5)),
+    h: round2(clamp(item.h, 1, 1e5)),
+    ...(file ? { file } : { sticker }),
+  };
+  if (sticker && typeof item.color === "string" && COLOR.test(item.color)) out.color = item.color.toLowerCase();
+  if (finite(item.rotation)) {
+    const turn = round2((((item.rotation % 360) + 540) % 360) - 180);
+    if (turn) out.rotation = turn;
+  }
+  const crop = item.crop as Record<string, unknown> | undefined;
+  if (crop && typeof crop === "object" && finite(crop.x) && finite(crop.y) && finite(crop.w) && finite(crop.h)) {
+    const x = clamp(crop.x, 0, 0.99),
+      y = clamp(crop.y, 0, 0.99);
+    const w = clamp(crop.w, 0.01, 1 - x),
+      h = clamp(crop.h, 0.01, 1 - y);
+    const r4 = (n: number) => Math.round(n * 10000) / 10000;
+    if (x > 0 || y > 0 || w < 1 || h < 1) out.crop = { x: r4(x), y: r4(y), w: r4(w), h: r4(h) };
+  }
+  if (finite(item.opacity) && item.opacity < 1) out.opacity = round2(clamp(item.opacity, 0.05, 1));
+  return out;
 }
 
 // Reads stored ink (an object or its JSON); anything unexpected is dropped.
@@ -139,7 +197,11 @@ export function parseInk(value: unknown): InkDoc {
   let count = 0;
   for (const [key, list] of Object.entries(pages as Record<string, unknown>)) {
     if (!KEY.test(key) || !Array.isArray(list) || ++count > INK_LIMITS.pages) continue;
-    const items = list.slice(0, INK_LIMITS.itemsPerPage).map(cleanItem).filter((i): i is InkItem => !!i);
+    let images = 0;
+    const items = list
+      .slice(0, INK_LIMITS.itemsPerPage)
+      .map(cleanItem)
+      .filter((i): i is InkItem => !!i && (i.type !== "image" || ++images <= INK_LIMITS.imagesPerPage));
     if (items.length) doc.pages[key] = items;
   }
   return doc;
@@ -154,6 +216,26 @@ export function serializeInk(doc: InkDoc): string {
 }
 
 export const inkItemCount = (doc: InkDoc) => Object.values(doc.pages).reduce((n, list) => n + list.length, 0);
+// Files the pictures of a document show (attachments of the page).
+export function inkFiles(doc: InkDoc): string[] {
+  const out = new Set<string>();
+  for (const list of Object.values(doc.pages)) for (const item of list) if (item.type === "image" && item.file) out.add(item.file);
+  return [...out];
+}
+// The document with picture files swapped (copies of a page; `map` gives
+// the copy's file, or null: the picture goes).
+export function mapInkFiles(doc: InkDoc, map: (file: string) => string | null | undefined): InkDoc {
+  const pages: Record<string, InkItem[]> = {};
+  for (const [key, list] of Object.entries(doc.pages)) {
+    const items = list.flatMap((item): InkItem[] => {
+      if (item.type !== "image" || !item.file) return [item];
+      const file = map(item.file);
+      return file ? [{ ...item, file }] : [];
+    });
+    if (items.length) pages[key] = items;
+  }
+  return { ...doc, pages };
+}
 export const hasInk = (doc: InkDoc | null | undefined) => !!doc && Object.values(doc.pages).some((list) => list.length > 0);
 
 // The typed text of all pages (search index).

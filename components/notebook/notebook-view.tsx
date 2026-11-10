@@ -66,6 +66,9 @@ import { idempotencyHeaders } from "@/lib/idempotency-key";
 import { Select } from "../select";
 import { stepZoom } from "@/lib/pinch-zoom";
 import { usePinchZoom } from "./use-pinch-zoom";
+import { NotebookInsertMenu, useNotebookInsert } from "./notebook-insert";
+import { browserImageLoader, savePictureAsSticker, saveSelectionAsSticker } from "./notebook-media";
+import { CustomPaperSection, PaperImageLayer } from "./custom-paper";
 import { NotebookOverview, type OverviewActions } from "./notebook-overview";
 import { BookmarkRibbon, SheetPicture } from "./sheet-thumb";
 import { SheetLinks } from "./sheet-links";
@@ -441,6 +444,8 @@ export default function NotebookView({
       // Only what differs from the notebook is the sheet's own.
       const own: PaperOverride = {};
       for (const key of ["template", "size", "orientation", "color"] as const) if (draft[key] !== paper[key]) Object.assign(own, { [key]: draft[key] });
+      // An own template (or none where the notebook has one).
+      if (JSON.stringify(draft.image ?? null) !== JSON.stringify(paper.image ?? null)) own.image = draft.image ?? null;
       await run({ action: "notebook.sheet.paper", sheetIds, paper: own });
     } else await run({ action: "notebook.paper", paper: draft, all: scope === "all" });
   };
@@ -500,6 +505,18 @@ export default function NotebookView({
     },
     [editor, onError, pageId, run, show, sync, t],
   );
+  // Pictures and stickers: insert menu, paste, drop (notebook-insert.tsx);
+  // a PDF among dropped files is imported as sheets.
+  const insert = useNotebookInsert({
+    pageId,
+    editor,
+    sizeOf: (sheetId) => sizesRef.current.get(sheetId),
+    current: () => currentRef.current,
+    canEdit,
+    onError,
+    onBusy: setBusy,
+    onPdf: (file) => void importPdf(file),
+  });
   // "Insert PDF": a notebook with nothing on it yet takes the PDF at once,
   // otherwise the dialog asks where (after the current sheet first).
   const insertPdf = () => {
@@ -531,7 +548,7 @@ export default function NotebookView({
           const response = await fetch(`/api/files/${file}`, { credentials: "same-origin" });
           return response.ok ? response.arrayBuffer() : null;
         },
-        { title },
+        { title, loadImage: browserImageLoader((file) => `/api/files/${file}`) },
       );
       downloadBlob(`${fileName(title)}.pdf`, new Blob([bytes as BlobPart], { type: "application/pdf" }));
     } catch {
@@ -793,6 +810,7 @@ export default function NotebookView({
               )}
             </div>
           )}
+          {canEdit && <NotebookInsertMenu pageId={pageId} editor={editor} insert={insert} current={() => currentRef.current} onError={onError} />}
           {canEdit && sheets.find((s) => s.id === current && !s.background) && (
             <button type="button" className="icon-button" aria-label={t("Papier ändern", "Change paper")} title={t("Papier ändern", "Change paper")} onClick={() => openPaper(current)}>
               <Rows size={18} />
@@ -996,7 +1014,7 @@ export default function NotebookView({
             onClose={() => setOverview(null)}
           />
         )}
-        <div className="notebook-scroll" ref={scroller} onScroll={onScroll}>
+        <div className="notebook-scroll" ref={scroller} onScroll={onScroll} {...insert.dropProps}>
           <div className="notebook-sheets" ref={sheetsBox} style={{ width }}>
             {sheets.map((sheet, index) => {
               const size = sizes.get(sheet.id)!;
@@ -1014,13 +1032,33 @@ export default function NotebookView({
                   {sheet.background ? (
                     <PdfBackground src={`/api/files/${sheet.background.file}`} page={sheet.background.page} width={width} eager={index < 2} />
                   ) : (
-                    <PaperSvg layout={look.layout!} />
+                    <>
+                      <PaperSvg layout={look.layout!} />
+                      {look.layout?.image && <PaperImageLayer image={look.layout.image} size={size} width={width} eager={index < 2} />}
+                    </>
                   )}
                   <InkLayer
                     page={sheet.id}
                     size={size}
                     editor={editor}
                     editing={canEdit}
+                    onImageAction={
+                      canEdit
+                        ? (_action, item) =>
+                            item.file &&
+                            void savePictureAsSticker(item.file, pageId, title || t("Bild", "Picture"))
+                              .then(() => setNotice({ text: t("Als Sticker gespeichert – zu finden unter Einfügen › Sticker › Meine Sticker.", "Saved as a sticker – find it under Insert › Stickers › My stickers.") }))
+                              .catch((e: Error) => onError(e.message))
+                        : undefined
+                    }
+                    onSaveSticker={
+                      canEdit
+                        ? (items) =>
+                            void saveSelectionAsSticker(items, pageId, t("Auswahl", "Selection"))
+                              .then(() => setNotice({ text: t("Als Sticker gespeichert – zu finden unter Einfügen › Sticker › Meine Sticker.", "Saved as a sticker – find it under Insert › Stickers › My stickers.") }))
+                              .catch((e: Error) => onError(e.message))
+                        : undefined
+                    }
                     onConvert={canEdit && canRecognize ? () => void convert(sheet.id) : undefined}
                     aiPageId={canEdit ? pageId : undefined}
                     onOutline={canEdit ? (title, y) => outlineFromSelection(sheet.id, title, y) : undefined}
@@ -1055,6 +1093,8 @@ export default function NotebookView({
         sheetCount={paperFor?.length || 1}
         paper={effectivePaper(paper, sheets.find((s) => s.id === paperFor?.[0])?.paper)}
         templateName={templateName}
+        pageId={pageId}
+        onError={onError}
         onClose={() => setPaperFor(null)}
         onApply={(draft, scope) => void savePaper(draft, scope)}
       />
