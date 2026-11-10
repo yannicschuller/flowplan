@@ -162,6 +162,11 @@ export function paperSvg(layout: PaperLayout) {
 
 // ---- Order of sheets ----
 
+// Sheets of one notebook, and pages one PDF import may bring (checked by
+// lib/notebook.ts, shown before an upload by the notebook view).
+export const MAX_SHEETS = 1000;
+export const MAX_IMPORT_PAGES = 500;
+
 // `ids` with `id` inserted after `after` (null: at the end).
 export function insertAfter(ids: string[], id: string, after: string | null) {
   const list = ids.filter((x) => x !== id);

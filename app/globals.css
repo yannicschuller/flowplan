@@ -29063,6 +29063,17 @@ label.ws-search input {
   gap: 6px;
   font-size: 14px;
 }
+.notebook-paper-form p {
+  margin: 0;
+}
+.notebook-paper-form .notebook-insert-place {
+  flex-wrap: wrap;
+  gap: 8px 10px;
+}
+.notebook-insert-hint {
+  color: var(--secondary);
+  font-size: 13px;
+}
 .notebook-paper-row {
   display: flex;
   flex-wrap: wrap;
