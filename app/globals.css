@@ -2505,7 +2505,41 @@ tr:hover .row-open,
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   min-height: 20px;
+}
+/* Nothing leaves the card: long titles and words without spaces break
+   anywhere; links, chips and file names end in an ellipsis (their full
+   value is the title); relation and person names wrap. */
+.record-card {
+  min-width: 0;
+}
+.record-card > strong,
+.card-properties > span,
+.card-bottom > :first-child {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.card-properties :is(.tags, .relation-links, .file-cell, .person-cell, .date-cell) {
+  min-width: 0;
+  max-width: 100%;
+}
+.card-properties .tag,
+.card-properties .sprint-chip {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.card-properties .relation-links a {
+  min-width: 0;
+  max-width: 100%;
+}
+.card-properties .person-cell .avatar {
+  flex-shrink: 0;
 }
 .card-open {
   color: #b5bdc9;
@@ -15430,6 +15464,13 @@ li[data-journal-since] > label::after {
   cursor: default;
   font-variant-numeric: tabular-nums;
 }
+/* The calendar emoji sits in its own box (centred on its own); with the
+   date in one line box, the emoji's taller ascent pushed the date low. */
+.task-due-icon {
+  display: inline-block;
+  font-size: 10px;
+  line-height: 1;
+}
 button.task-due,
 label.task-due {
   cursor: pointer;
@@ -20791,60 +20832,256 @@ h3 .block-reactions {
   height: 22px;
   margin-left: -4px;
 }
+/* The filter bar: every control 32 px high, toggles boxed like the
+   inputs next to them (the saved views above are the rounded chips). */
 .record-filters {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 14px;
-  margin-bottom: 14px;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 13px;
 }
-.record-filters input[type="search"] {
-  flex: 1 1 160px;
+.record-filters :is(.fp-select, .record-toggle, .button.compact),
+.record-search input,
+.record-view-name input {
+  height: 32px;
+  font-size: 13px;
+}
+.record-toggle {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  font-weight: 400;
+  padding: 0 11px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--secondary);
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+.record-toggle:hover {
+  border-color: color-mix(in srgb, var(--border) 60%, var(--muted));
+}
+.record-toggle:has(input:checked) {
+  border-color: color-mix(in srgb, var(--blue) 45%, var(--border));
+  background: var(--blue-light);
+  color: var(--accent-strong);
+}
+.record-toggle:has(input:focus-visible) {
+  box-shadow: 0 0 0 3px #3b3fd81a;
+}
+.record-toggle input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--blue);
+}
+.record-filters .fp-select {
+  padding: 0 10px;
+}
+.record-filters .button.compact {
+  padding: 0 12px;
+}
+.record-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1 1 180px;
   min-width: 0;
+}
+.record-search > svg {
+  position: absolute;
+  left: 10px;
+  color: var(--muted);
+  pointer-events: none;
+}
+.record-search input {
+  width: 100%;
+  padding: 0 10px 0 30px;
 }
 .record-view-name {
   display: flex;
+  align-items: center;
   gap: 6px;
 }
+.record-view-name input {
+  padding: 0 10px;
+}
+
+/* The records, grouped by due date like the tasks from documents: state,
+   title with its database below, then status, due date and people. */
+.my-records-group h2 {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 18px 0 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.my-records-group.overdue h2 {
+  color: #b42318;
+}
+:root[data-theme="dark"] .my-records-group.overdue h2 {
+  color: #ff9d92;
+}
 .my-records-list {
-  display: grid;
   margin: 0;
   padding: 0;
   list-style: none;
+  border-top: 1px solid var(--border);
 }
-.my-records-list li {
-  display: flex;
-  flex-wrap: wrap;
+.my-record {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
   align-items: center;
   gap: 4px 12px;
-  padding: 8px 4px;
-  border-top: 1px solid var(--border);
+  padding: 9px 8px;
+  border-bottom: 1px solid var(--border);
   font-size: 13.5px;
+  transition: background-color 0.15s ease;
 }
-.my-records-list li > button {
-  display: flex;
-  flex: 1 1 260px;
-  gap: 8px;
+.my-record:hover,
+.my-record:focus-within {
+  background: var(--hover);
+}
+.my-record-state {
+  display: inline-flex;
+  align-self: start;
+  margin-top: 1px;
+  color: var(--muted);
+}
+.my-record-state.none {
+  opacity: 0.55;
+}
+.my-record[data-done="true"] .my-record-state {
+  color: #2f8a55;
+}
+:root[data-theme="dark"] .my-record[data-done="true"] .my-record-state {
+  color: #5cc98a;
+}
+.my-record-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-content: stretch;
+  justify-items: start;
+  gap: 3px;
   min-width: 0;
   padding: 0;
   color: var(--text);
   text-align: left;
 }
-.my-records-list li[data-done="true"] .my-record-title {
-  color: var(--muted);
-  text-decoration: line-through;
+.my-record-main:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
 }
 .my-record-title {
+  display: -webkit-box;
+  max-width: 100%;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  font-weight: 500;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.my-record-title .my-record-icon {
+  margin-right: 5px;
+  vertical-align: -2px;
+}
+.my-record-title .sprint-row-id {
+  font-weight: 400;
+}
+.my-record[data-done="true"] .my-record-title {
+  color: var(--muted);
+  text-decoration: line-through;
 }
 .my-record-db {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
+  max-width: 100%;
   color: var(--secondary);
-  font-size: 12.5px;
+  font-size: 12px;
+}
+.my-record-db > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.my-record-db > :is(svg, img, span:first-child) {
+  flex-shrink: 0;
+}
+.my-record-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+.my-record-meta .task-due {
+  margin: 0;
+}
+.my-record-status {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.my-record-people {
+  display: inline-flex;
+  align-items: center;
+}
+.my-record-people .avatar + .avatar {
+  margin-left: -6px;
+  box-shadow: 0 0 0 2px var(--bg);
+}
+.my-record-more {
+  margin-left: 4px;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+@container main (max-width: 640px) {
+  .record-filters {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  .record-filters > .fp-select,
+  .record-toggle {
+    min-width: 0;
+  }
+  .record-toggle {
+    justify-content: center;
+  }
+  .record-search,
+  .record-filters > .button,
+  .record-view-name {
+    grid-column: 1 / -1;
+  }
+  .record-view-name input {
+    flex: 1;
+    min-width: 0;
+  }
+  .my-record {
+    grid-template-columns: 20px minmax(0, 1fr);
+    padding: 11px 4px;
+  }
+  .my-record-meta {
+    grid-column: 2;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
 }
 
 /* ---------- CalDAV (components/calendar-subscribe.tsx) ---------- */

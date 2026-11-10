@@ -7,6 +7,7 @@ import { HttpError } from "./auth";
 import { requireMember, requirePage } from "./permissions";
 import { lockedPageIds } from "./journal-extras";
 import { visibleRows } from "./row-access";
+import { hiddenFieldsFor } from "./field-access";
 import { cellText } from "./cell-text";
 import { databaseSettings } from "./database-settings";
 import { doneRule, isDone } from "./database-settings-schema";
@@ -47,9 +48,13 @@ export async function crossRecords(user: Identity, workspaceId: string, input: u
     rowId: string;
     key: string;
     title: string;
+    rowIcon: string;
     status: string;
     due: string | null;
     done: boolean;
+    // Whether the database knows "done" (a status or checkbox property).
+    tracked: boolean;
+    people: string[];
   }[] = [];
   const databases: { id: string; title: string }[] = [];
   // Databases behind a journal PIN the person has not entered stay out.
@@ -67,6 +72,9 @@ export async function crossRecords(user: Identity, workspaceId: string, input: u
     const people = fields.filter((f) => f.type === "person");
     // "Mine" needs a person property; such databases are skipped then.
     if (filter.mine && !people.length) continue;
+    // Who a record is given to, from the person properties the reader sees.
+    const hidden = people.length ? await hiddenFieldsFor(user, page, fields) : new Set<string>();
+    const shownPeople = people.filter((f) => !hidden.has(f.id));
     databases.push({ id: page.id, title: page.title });
     const rule = doneRule(fields, await databaseSettings(page.id));
     const due = dueField(fields);
@@ -94,9 +102,15 @@ export async function crossRecords(user: Identity, workspaceId: string, input: u
         rowId: r.id,
         key,
         title,
+        rowIcon: r.icon || "",
         status: rule && rule.field.type === "select" ? cellText(r.cells[rule.field.id]) : "",
         due: date,
         done,
+        tracked: !!rule,
+        people: [...new Set(shownPeople.flatMap((f) => {
+          const v = r.cells[f.id];
+          return (Array.isArray(v) ? v : [v]).filter((x): x is string => typeof x === "string" && !!x);
+        }))],
       });
       if (out.length >= MAX) break;
     }
@@ -104,7 +118,19 @@ export async function crossRecords(user: Identity, workspaceId: string, input: u
   }
   // Dated first (soonest), then the rest by database.
   out.sort((a, b) => (a.due && b.due ? a.due.localeCompare(b.due) : a.due ? -1 : b.due ? 1 : a.database.localeCompare(b.database, "de")));
-  return { records: out, databases, limited: out.length >= MAX };
+  // Names of the people shown, for their avatars.
+  const ids = [...new Set(out.flatMap((r) => r.people))];
+  const names = new Map<string, string>();
+  for (let i = 0; i < ids.length; i += 500) {
+    const chunk = ids.slice(i, i + 500);
+    for (const u of await all<{ id: string; name: string }>(`SELECT id,name FROM users WHERE id IN (${chunk.map(() => "?").join(",")})`, ...chunk))
+      names.set(u.id, u.name);
+  }
+  return {
+    records: out.map((r) => ({ ...r, people: r.people.filter((p) => names.has(p)).map((p) => ({ id: p, name: names.get(p)! })) })),
+    databases,
+    limited: out.length >= MAX,
+  };
 }
 
 /* ---------- Saved views ---------- */
