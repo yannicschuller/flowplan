@@ -1449,7 +1449,11 @@ export function startIssueSyncWorker() {
   if (runtime.flowplanIssueTimer) return;
   // Cluster mode: the poll on the leader only (lib/cluster/leader.ts); the
   // quick pushes below on the instance where the change was made.
-  const poll = () => void (isLeader() && workersPaused().then((paused) => paused || pollAll()));
+  const poll = () =>
+    void (isLeader() &&
+      workersPaused().then(async (paused) => {
+        if (!paused) await pollAll();
+      }));
   runtime.flowplanIssueTimer = setInterval(poll, POLL_EVERY);
   runtime.flowplanIssueTimer.unref();
   setTimeout(poll, 90_000).unref();
@@ -1459,7 +1463,9 @@ export function startIssueSyncWorker() {
     const timer = setTimeout(() => {
       timers.delete(pageId);
       void workersPaused()
-        .then((paused) => paused || syncIssues(pageId, { pushOnly: true }))
+        .then(async (paused) => {
+          if (!paused) await syncIssues(pageId, { pushOnly: true });
+        })
         .catch((error) => console.error("Issue push failed", error));
     }, 5000);
     timer.unref();
