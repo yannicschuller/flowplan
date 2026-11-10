@@ -42,7 +42,11 @@ export function parseMermaid(text: string): ParsedDiagram {
   const body = lines.slice(1);
   const h = header.text;
   let m: RegExpMatchArray | null;
-  if ((m = h.match(/^(flowchart|graph)(?:\s+(TB|TD|BT|LR|RL))?\s*;?$/))) return flowchart(body, direction(m[2] === "TD" ? "TB" : m[2]));
+  // Statements may follow the header on its line ("graph TD; A-->B;").
+  if ((m = h.match(/^(flowchart|graph)(?:\s+(TB|TD|BT|LR|RL))?\s*(?:;(.*))?$/))) {
+    const rest = m[3]?.trim();
+    return flowchart(rest ? [{ ...header, text: rest }, ...body] : body, direction(m[2] === "TD" ? "TB" : m[2]));
+  }
   if (/^sequenceDiagram\s*$/.test(h)) return sequence(body);
   if (/^classDiagram(-v2)?\s*$/.test(h)) return classDiagram(body);
   if (/^erDiagram\s*$/.test(h)) return erDiagram(body);
@@ -302,11 +306,14 @@ function flowchart(lines: Line[], dir: LayoutDirection): ParsedDiagram {
       const s = part.trim();
       if (s) statement(s, line);
     }
-  // Edges to a subgraph lead to its frame.
+  // Edges to a subgraph lead to its frame. An empty subgraph has no frame:
+  // it stays a node of its own, so its edges are kept.
+  const hasMembers = (id: string): boolean =>
+    [...nodes.values()].some((n) => n.group === id) || groups.some((c) => c.parent === id && hasMembers(c.id));
   for (const g of groups) {
     const name = g.id.slice(6);
     const n = nodes.get(name);
-    if (!n || n.lib || n.shape || n.label !== name) continue;
+    if (!n || n.lib || n.shape || n.label !== name || !hasMembers(g.id)) continue;
     nodes.delete(name);
     for (const e of edges) {
       if (e.from === name) e.from = g.id;
@@ -646,6 +653,8 @@ function stateDiagram(lines: Line[]): ParsedDiagram {
       n.label = n.label === id ? `${id}\n${cleanLabel(m[2])}` : `${n.label}\n${cleanLabel(m[2])}`;
       continue;
     }
+    // "--" separates concurrent regions of a composite state.
+    if (s === "--") continue;
     if ((m = s.match(/^state\s+([\w-]+)$/)) || (m = s.match(/^([\w-]+)$/))) {
       state(m[1], "to");
       continue;
