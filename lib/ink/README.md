@@ -12,7 +12,10 @@ block of documents (`components/ink/draw-block*.tsx`,
 | --- | --- |
 | `lib/ink/model.ts` | Types, limits, `parseInk` (strict, drops junk), `serializeInk`, `inkText` (search), `withPage` |
 | `lib/ink/coords.ts` | Page units ↔ screen, ↔ device pixels (zoom, DPR), page as shown → PDF user space (rotation, crop box) |
-| `lib/ink/geometry.ts` | Pressure outline, bounds, hit tests, stroke and partial eraser, lasso, move/resize/recolour/copy, shape snapping (uses `recognizeStroke` from `lib/whiteboard-tools.ts`), `heldStill` |
+| `lib/ink/geometry.ts` | Pressure outline, bounds, hit tests, stroke and partial eraser, lasso, move/resize/recolour/copy, shape snapping (`snapShape`, `withShape`, `toFreehand`, `pageAnchors`), `heldStill` |
+| `lib/ink/shapes.ts` | Shapes (`InkShape`): checking (`cleanShape`), outline and parts (fill, dashes, arrow heads), moving/scaling/rotating, handles and dragging them, snapping (15° angles, squares/circles within 8 %, magnet to other shapes' corners) |
+| `lib/ink/shape-recognize.ts` | Recognising a hand-drawn stroke (`recognizeShape`), the shape tool's drag (`dragShape`), resizing while the pen rests (`followPen`) |
+| `lib/ink/ruler.ts` | Ruler, set square (protractor) and compass: edges, straightening along them, scale ticks in cm/in, angle snapping, angles between lines, arcs |
 | `lib/ink/history.ts` | Undo/redo of whole states |
 | `lib/ink/presets.ts` | Tools, colours, widths and the free width ranges, 3 favourite pens, text style, recent own colours, Pencil double-tap setting, snap setting (per device, `localStorage`) |
 | `lib/ink/fonts.ts` | Typefaces of text: CSS families with fallbacks, rough advance per face, nearest standard PDF font |
@@ -30,6 +33,11 @@ block of documents (`components/ink/draw-block*.tsx`,
 | `components/ink/convert.ts` | "Convert to text" of a lasso selection |
 | `components/ink/use-ink-editor.ts` | `useInkEditor(initial)`: the editing session; `useInkShortcuts(editor, on)` |
 | `components/ink/ink-layer.tsx` | `<InkLayer>`: renders and takes input for one page |
+| `components/ink/ink-shape.tsx` | Drawing a shape item, the draft while drawing |
+| `components/ink/shape-editor.tsx` | `<ShapeEditor>`: handles and bar of one selected shape |
+| `components/ink/ink-ruler.tsx` | `<InkRuler>` on its page, `rulerGuide` (strokes along it) |
+| `components/ink/shape-toolbar.tsx` | `<ShapeToolOptions>`, `<RulerControls>` in the toolbar |
+| `components/ink/ink-stores.ts` | The ruler's place and the shape tool's choices (per device, outside React state) |
 | `components/ink/ink-toolbar.tsx` | `<InkToolbar editor>`: tools, favourites, colours, widths, eraser kind, undo/redo, paste, pen settings; children go at the end |
 | `components/ink/ink-style-picker.tsx` | `<InkCustomColor editor>` ("+" after the colours: colour picker) and `<InkWidthControl editor>` (free width; for text size and face), each a button with its menu – self-contained |
 | `components/ink/color-picker.tsx` | `<ColorPicker value onChange onCommit recent>`: saturation/brightness area, hue slider, hex field, recent colours (pointer, Pencil, keyboard) |
@@ -71,6 +79,20 @@ block of documents (`components/ink/draw-block*.tsx`,
   Times for `serif`, Courier for `mono`, Helvetica for the rest, no
   embedding. Versions before `font` read such text in Helvetica and drop
   the field when they save that surface.
+- Shapes: a `pen` stroke may carry `shape` (`lib/ink/shapes.ts`), e.g.
+  `"shape": { "kind": "rect", "box": [cx, cy, w, h, rotation°], "radius": 6, "fill": "#1c5fd6", "dash": "dash" }`.
+  Kinds: `line` (`pts` x1, y1, x2, y2; `arrow` `"end"`/`"both"`),
+  `polygon` (`pts`, 3–8 corners: triangles, diamonds, …), `rect`
+  (`radius` for rounded corners), `ellipse`, `star` (`n` points, `inner`
+  radius share) – the last three with `box`. `fill` is drawn at 25 %
+  opacity, `dash` is `dash` or `dot`. The stroke's `points` are always the
+  shape's outline (pressure kept even; arrow heads drawn there and back),
+  rewritten whenever the shape changes. **Older versions** drop the
+  `shape` field when they read the ink and show `points`: the same outline
+  as a plain line, without fill and dashes. When such a version saves the
+  surface, the server gives every stroke that came back unchanged (same id,
+  colour, width, points) its shape again (`keepShapes`, `lib/ink/merge.ts`);
+  a shape it moved or erased stays a plain stroke there. No version bump.
 - Items are back to front. Page keys: PDF page numbers (`"1"`, `"2"`, …);
   other surfaces may use any key matching `[\w.-]{1,64}` (e.g. a notebook
   page id).
@@ -173,4 +195,17 @@ editor.reset(parseInk(loaded)); // after loading (clears undo)
   With pen-only off, one finger draws and two fingers call `onPan` /
   `onZoom`.
 - Holding the pen still for ~0.5 s at the end of a stroke snaps it to a
-  line, rectangle, ellipse, triangle or diamond (setting in the toolbar).
+  line, arrow, rectangle/square (also rounded), ellipse/circle, triangle,
+  diamond, polygon (up to 8 corners) or star (setting in the toolbar);
+  moving on without lifting resizes it (lines follow with their end). The
+  stroke as drawn is one undo step before the shape: undo goes back to
+  freehand. The shape tool (S) recognises at once or drags a chosen shape
+  from corner to corner; a tap with it (or the lasso) on a shape selects it
+  for editing.
+- Ruler (toolbar): lies on one page in its real scale; one finger moves it,
+  two turn it (snapping to multiples of 15°); a stroke beginning within
+  ~26 px of an edge follows it, with its length shown. The set square
+  shows the angles between straight lines through its zero point and
+  snaps onto where two lines cross; the compass draws arcs of its radius
+  (a full turn becomes a circle shape). Fingers always move the ruler, the
+  pen draws (pen-only drawing unchanged).

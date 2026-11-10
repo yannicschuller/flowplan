@@ -289,9 +289,9 @@ export function useInkEditor(initial: InkDoc, { active = true }: { active?: bool
 // Keyboard shortcuts while editing: undo/redo, delete, copy, paste,
 // duplicate, Escape (clears the selection before anything else closes).
 // With `tools`, single keys pick a tool (P pen, H highlighter, E eraser,
-// L lasso, T text, K laser) – for surfaces that are the whole page
+// L lasso, T text, K laser, S shapes) – for surfaces that are the whole page
 // (notebooks), not inside a document where keys type text.
-export const INK_TOOL_KEYS: Record<string, InkTool> = { p: "pen", h: "highlighter", e: "eraser", l: "lasso", t: "text", k: "laser" };
+export const INK_TOOL_KEYS: Record<string, InkTool> = { p: "pen", h: "highlighter", e: "eraser", l: "lasso", t: "text", k: "laser", s: "shape" };
 export function useInkShortcuts(editor: InkEditor | null, enabled: boolean, { tools = false }: { tools?: boolean } = {}) {
   const ref = useRef(editor);
   ref.current = editor;

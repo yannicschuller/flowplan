@@ -15,6 +15,7 @@ import {
   HighlighterCircle,
   Lasso,
   PencilSimple,
+  Shapes,
   TextT,
 } from "@phosphor-icons/react";
 import { useT } from "../i18n";
@@ -23,6 +24,7 @@ import type { InkTool, PencilSetting } from "@/lib/ink/presets";
 import { INK_TOOL_KEYS, type InkEditor } from "./use-ink-editor";
 import { useMenuPlacement } from "./menu-placement";
 import { InkCustomColor, InkWidthControl } from "./ink-style-picker";
+import { RulerControls, ShapeToolOptions } from "./shape-toolbar";
 
 export function InkToolbar({
   editor,
@@ -65,10 +67,11 @@ export function InkToolbar({
     ["highlighter", t("Textmarker", "Highlighter"), <HighlighterCircle key="h" size={19} />],
     ["eraser", t("Radierer", "Eraser"), <Eraser key="e" size={19} />],
     ["lasso", t("Lasso", "Lasso"), <Lasso key="l" size={19} />],
+    ["shape", t("Formen", "Shapes"), <Shapes key="s" size={19} />],
     ["text", t("Text", "Text"), <TextT key="t" size={19} />],
     ["laser", t("Laserpointer", "Laser pointer"), <CursorClick key="z" size={19} />],
   ];
-  const styled = editor.tool === "pen" || editor.tool === "highlighter" || editor.tool === "text";
+  const styled = editor.tool === "pen" || editor.tool === "highlighter" || editor.tool === "text" || editor.tool === "shape";
   const widthLabel = (i: number) =>
     editor.tool === "text"
       ? [t("Kleine Schrift", "Small text"), t("Mittlere Schrift", "Medium text"), t("Große Schrift", "Large text")][i]
@@ -165,6 +168,8 @@ export function InkToolbar({
           </button>
         </div>
       )}
+      {editor.tool === "shape" && <ShapeToolOptions />}
+      <RulerControls editor={editor} />
       <div className="ink-group">
         <button type="button" aria-label={t("Rückgängig", "Undo")} title={t("Rückgängig", "Undo") + keyHints.suffix("Mod+Z")} disabled={!editor.canUndo} onClick={editor.undo}>
           <ArrowArcLeft size={19} />
@@ -198,7 +203,12 @@ export function InkToolbar({
                 <input type="checkbox" checked={editor.snap} onChange={(e) => editor.setSnap(e.target.checked)} />
                 {t("Formen beim Halten begradigen", "Straighten shapes when holding")}
               </label>
-              <span className="ink-menu-hint">{t("Am Ende eines Strichs kurz stillhalten: Linie, Rechteck, Ellipse …", "Hold still at the end of a stroke: line, rectangle, ellipse …")}</span>
+              <span className="ink-menu-hint">
+                {t(
+                  "Am Ende eines Strichs kurz stillhalten: Linie, Pfeil, Rechteck, Kreis, Vieleck, Stern … Weiterziehen ändert die Größe; mit dem Lasso antippen zum Bearbeiten.",
+                  "Hold still at the end of a stroke: line, arrow, rectangle, circle, polygon, star … Keep moving to resize; tap with the lasso to edit.",
+                )}
+              </span>
               <label className="ink-menu-select">
                 {t("Apple Pencil doppelt tippen", "Apple Pencil double-tap")}
                 <select value={editor.pencil} onChange={(e) => editor.setPencil(e.target.value as PencilSetting)}>
