@@ -128,7 +128,7 @@ test("restoring from the trash: not behind the PIN, and only sub-pages the perso
   const root = await create({ title: "Wurzel" }, member);
   const readOnly = await create({ title: "Nur lesen", parentId: root });
   const editable = await create({ title: "Bearbeitbar", parentId: root }, member);
-  await run("INSERT INTO grants VALUES(?,?,?,?)", readOnly, member.id, "", "viewer");
+  await run("INSERT INTO grants(resource_id,user_id,group_id,role) VALUES(?,?,?,?)", readOnly, member.id, "", "viewer");
   // The owner moves all three to the trash; the member brings back what they may edit.
   await act({ action: "page.delete", pageId: root });
   await act({ action: "page.restore", pageId: root }, member);
