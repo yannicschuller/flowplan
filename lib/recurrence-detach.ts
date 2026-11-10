@@ -3,11 +3,12 @@ import { all, id, one, run, nowText } from "./db";
 import { HttpError } from "./auth";
 import { requireRow, replaceRowDocument } from "./row-documents";
 import { maintainRowOrders } from "./row-order-server";
-import { Temporal } from "./date-values";
+import { Temporal, validZone } from "./date-values";
 import {
+  localDay,
   occurrenceDates,
+  occurrenceValue,
   parseRecurrence,
-  shiftDateValue,
   type Recurrence,
 } from "./recurrence";
 import type { Field, Identity } from "./types";
@@ -21,6 +22,9 @@ const input = z.object({
   endField: z.string().min(1).max(200).optional(),
   // "single": only this occurrence; "following": this and all later ones.
   mode: z.enum(["single", "following"]).default("single"),
+  // The zone `date` is a day in (the calendar's); timed occurrences keep
+  // their local time there across a clock change.
+  timeZone: z.string().max(100).refine(validZone, "Ungültige Zeitzone.").default("UTC"),
 });
 
 // "Only this occurrence": the occurrence becomes its own record with the
@@ -50,21 +54,19 @@ export async function detachOccurrence(user: Identity, raw: unknown) {
   if (!start || (b.endField && (!end || end.id === start.id)))
     throw new HttpError(400, "Ungültiges Datumsfeld.");
   const cells = JSON.parse(String(row.cells)) as Record<string, unknown>;
-  const first = cells[start.id];
+  const first = cells[start.id],
+    zone = b.timeZone;
   if (
     typeof first !== "string" ||
     !first ||
-    !occurrenceDates(first, rule, b.date, b.date).includes(b.date)
+    !occurrenceDates(first, rule, b.date, b.date, 1, zone).includes(b.date)
   )
     throw new HttpError(409, "Diesen Termin gibt es in der Serie nicht.");
   if (b.mode === "single" && (rule.exclude?.length || 0) >= 200)
     throw new HttpError(409, "Diese Serie hat bereits 200 Ausnahmen.");
-  const shift = Temporal.PlainDate.from(first.slice(0, 10)).until(
-    Temporal.PlainDate.from(b.date),
-  ).days;
-  const copy = { ...cells, [start.id]: shiftDateValue(first, shift) };
+  const copy = { ...cells, [start.id]: occurrenceValue(first, first, b.date, zone) };
   if (end && typeof cells[end.id] === "string" && cells[end.id])
-    copy[end.id] = shiftDateValue(cells[end.id] as string, shift);
+    copy[end.id] = occurrenceValue(cells[end.id] as string, first, b.date, zone);
   // Splitting a series: the old one ends the day before, the new record
   // continues the rule (remaining count, later exclusions) from this date.
   let tail = "",
@@ -74,19 +76,29 @@ export async function detachOccurrence(user: Identity, raw: unknown) {
     const before = occurrenceDates(
       first,
       plain,
-      first.slice(0, 10),
+      localDay(first, zone),
       Temporal.PlainDate.from(b.date).subtract({ days: 1 }).toString(),
       100000,
+      zone,
     ).length;
     // Occurrences before this date, including the stored first one.
     const done = before + 1;
     const later = rule.exclude?.filter((d) => d > b.date);
     const remaining = rule.count ? rule.count - done : undefined;
+    // A month-end series split at a clamped date (28 Feb of a series on
+    // the 31st) keeps its day of the month.
+    const anchor = rule.day ?? Temporal.PlainDate.from(localDay(first, zone)).day;
+    const day =
+      (rule.freq === "monthly" || rule.freq === "yearly") &&
+      anchor !== Temporal.PlainDate.from(b.date).day
+        ? anchor
+        : undefined;
     if (remaining === undefined || remaining >= 2)
       tail = JSON.stringify({
         ...rule,
         count: remaining,
         exclude: later?.length ? later : undefined,
+        day,
       });
     const earlier = rule.exclude?.filter((d) => d < b.date);
     head =

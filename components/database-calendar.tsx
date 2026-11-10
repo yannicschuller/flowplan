@@ -22,9 +22,10 @@ import { CalendarSubscribe } from "./calendar-subscribe";
 import DateInput from "./date-input";
 import {
   OCCURRENCE_SEPARATOR,
+  localDay,
   occurrenceDates,
+  occurrenceValue,
   parseRecurrence,
-  shiftDateValue,
 } from "@/lib/recurrence";
 import { cellText } from "@/lib/database";
 import {
@@ -87,7 +88,7 @@ export default function DatabaseCalendar({
   pageId: string;
   editable: boolean;
   viewEditable: boolean;
-  onOpen: (id: string, occurrence?: string) => void;
+  onOpen: (id: string, occurrence?: string, zone?: string) => void;
   onCreate: (cells: Record<string, unknown>) => Promise<unknown>;
   onSchedule: (input: Record<string, unknown>) => Promise<unknown>;
   onView: (patch: Partial<View>) => Promise<unknown>;
@@ -135,10 +136,12 @@ export default function DatabaseCalendar({
       const first = row.cells[start.id];
       if (!rule || typeof first !== "string" || !first) return [row];
       const last = end ? row.cells[end.id] : undefined;
+      // Occurrences are local days in the calendar's zone and keep their
+      // local time across a clock change.
       const span =
         typeof last === "string" && last
-          ? Temporal.PlainDate.from(first.slice(0, 10)).until(
-              Temporal.PlainDate.from(last.slice(0, 10)),
+          ? Temporal.PlainDate.from(localDay(first, zone)).until(
+              Temporal.PlainDate.from(localDay(last, zone)),
             ).days
           : 0;
       return [
@@ -148,29 +151,26 @@ export default function DatabaseCalendar({
           rule,
           Temporal.PlainDate.from(from).subtract({ days: span }).toString(),
           to,
-        ).map((date) => {
-          const shift = Temporal.PlainDate.from(first.slice(0, 10)).until(
-            Temporal.PlainDate.from(date),
-          ).days;
-          return {
-            ...row,
-            id: `${row.id}${OCCURRENCE_SEPARATOR}${date}`,
-            cells: {
-              ...row.cells,
-              [start.id]: shiftDateValue(first, shift),
-              ...(end && typeof last === "string" && last
-                ? { [end.id]: shiftDateValue(last, shift) }
-                : {}),
-            },
-          };
-        }),
+          400,
+          zone,
+        ).map((date) => ({
+          ...row,
+          id: `${row.id}${OCCURRENCE_SEPARATOR}${date}`,
+          cells: {
+            ...row.cells,
+            [start.id]: occurrenceValue(first, first, date, zone),
+            ...(end && typeof last === "string" && last
+              ? { [end.id]: occurrenceValue(last, first, date, zone) }
+              : {}),
+          },
+        })),
       ];
     });
-  }, [baseRows, start, end, days]);
+  }, [baseRows, start, end, days, zone]);
   const occurrence = (id: string) => id.includes(OCCURRENCE_SEPARATOR);
   const openRow = (id: string) => {
     const [rowId, date] = id.split(OCCURRENCE_SEPARATOR);
-    onOpen(rowId, date);
+    onOpen(rowId, date, zone);
   };
   const ranges = useMemo(
     () =>

@@ -6,12 +6,11 @@ import { rowRole } from "./row-access";
 import { requireRow } from "./row-documents";
 import { cellText } from "./database";
 import {
-  Temporal,
   formatDateValue,
   validDateValue,
   validZone,
 } from "./date-values";
-import { occurrenceDates, parseRecurrence, shiftDateValue } from "./recurrence";
+import { occurrenceDates, occurrenceValue, parseRecurrence } from "./recurrence";
 import {
   ARM_GRACE_MS,
   reminderOffsets,
@@ -206,43 +205,28 @@ export async function processDateReminders(now = Date.now()) {
     // Repeating entries remind for every occurrence: the latest due one that
     // has not fired yet.
     const rule = parseRecurrence(reminder.recurrence);
+    const zone = validZone(reminder.time_zone) ? reminder.time_zone : "UTC";
     const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
-    const candidates = [
-      value,
-      ...(rule
-        ? occurrenceDates(
-            value,
-            rule,
-            day(armed - 86400000),
-            day(now + 8 * 86400000),
-          ).map((date) =>
-            shiftDateValue(
-              value,
-              Temporal.PlainDate.from(value.slice(0, 10)).until(
-                Temporal.PlainDate.from(date),
-              ).days,
-            ),
+    // Occurrences move in the person's zone (09:00 stays 09:00 after a clock
+    // change). Only the last days matter: an offset is at most a week, and a
+    // window from `armed` would stop at the occurrence limit of a long daily
+    // series. Older ones count only when nothing is due recently.
+    const occurrences = (from: number, to: number, limit?: number) =>
+      rule
+        ? occurrenceDates(value, rule, day(from - 86400000), day(to), limit, zone).map((date) =>
+            occurrenceValue(value, value, date, zone),
           )
-        : []),
-    ];
-    const due = candidates
-      .map((occurrence) => ({
-        occurrence,
-        target: reminderTarget(
-          occurrence,
-          reminder.offset_minutes,
-          reminder.time_zone,
-        ),
-      }))
-      .filter(
-        (c) =>
-          c.target &&
-          c.target.epochMilliseconds <= now &&
-          c.target.epochMilliseconds >= armed - ARM_GRACE_MS,
-      )
-      .at(-1);
-    if (!due || due.occurrence === reminder.fired_value) continue;
-    const occurrence = due.occurrence;
+        : [];
+    const recent = Math.max(armed, now - 8 * 86400000);
+    let candidates = [value, ...occurrences(recent, now + 8 * 86400000)];
+    const isDue = (occurrence: string) => {
+      const target = reminderTarget(occurrence, reminder.offset_minutes, reminder.time_zone);
+      return !!target && target.epochMilliseconds <= now && target.epochMilliseconds >= armed - ARM_GRACE_MS;
+    };
+    if (rule && armed < recent && !candidates.slice(1).some(isDue))
+      candidates = [value, ...occurrences(armed, recent, 20000), ...candidates.slice(1)];
+    const occurrence = candidates.filter(isDue).at(-1);
+    if (!occurrence || occurrence === reminder.fired_value) continue;
     const page = await one<Page>(
       "SELECT * FROM pages WHERE id=? AND deleted_at IS NULL",
       reminder.page_id,

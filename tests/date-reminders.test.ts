@@ -295,3 +295,54 @@ test("past moments do not flood, access and schema changes are respected", async
     undefined,
   );
 });
+
+test("repeating entries remind at the local time after a clock change and keep going after years", async () => {
+  const series = (await command(owner, {
+    action: "page.create",
+    workspaceId: wid,
+    spaceId: space.id,
+    title: "Serien",
+    kind: "database",
+  })) as { id: string };
+  await command(owner, {
+    action: "database.update",
+    pageId: series.id,
+    version: (await one<{ version: number }>("SELECT version FROM databases WHERE page_id=?", series.id))!.version,
+    fields: [
+      { id: "title", name: "Name", type: "text" },
+      { id: "due", name: "Fällig", type: "date" },
+    ],
+    views: [{ id: "t", name: "Tabelle", type: "table", filters: [], sorts: [] }],
+  });
+  // A series with a reminder in Berlin, armed `armedAt`, already fired for `fired`.
+  const remind = async (due: string, rule: unknown, armedAt: number, fired: string | null = null) => {
+    const rowId = ((await command(owner, { action: "row.create", pageId: series.id, cells: { title: "Serie", due } })) as { id: string }).id;
+    await run("UPDATE rows SET recurrence=? WHERE id=?", JSON.stringify(rule), rowId);
+    await run(
+      "INSERT INTO date_reminders(user_id,page_id,row_id,field_id,offset_minutes,time_zone,observed_value,armed_at,fired_value) VALUES(?,?,?,?,?,?,?,?,?)",
+      owner.id, series.id, rowId, "due", 0, "Europe/Berlin", due, armedAt, fired,
+    );
+    return rowId;
+  };
+  const fired = async (rowId: string) =>
+    (await one<{ fired_value: string | null }>("SELECT fired_value FROM date_reminders WHERE row_id=?", rowId))!.fired_value;
+  // Weekly at 09:00 Berlin from 20 Oct 2026 (summer time): on 27 Oct, in
+  // winter time, the reminder comes at 09:00 local = 08:00Z, not 07:00Z.
+  const weekly = await remind("2026-10-20T07:00:00Z", { freq: "weekly", interval: 1 }, Date.parse("2026-10-20T06:00:00Z"));
+  await processDateReminders(Date.parse("2026-10-20T07:01:00Z"));
+  assert.equal(await fired(weekly), "2026-10-20T07:00:00Z");
+  await processDateReminders(Date.parse("2026-10-27T07:30:00Z"));
+  assert.equal(await fired(weekly), "2026-10-20T07:00:00Z");
+  await processDateReminders(Date.parse("2026-10-27T08:01:00Z"));
+  assert.equal(await fired(weekly), "2026-10-27T08:00:00Z");
+  // A daily series armed 500 days ago still reminds for today's occurrence.
+  const now = Date.parse("2026-11-10T08:05:00Z");
+  const daily = await remind("2025-06-01T07:00:00Z", { freq: "daily", interval: 1 }, now - 500 * 86400000, "2026-11-09T08:00:00Z");
+  await processDateReminders(now);
+  assert.equal(await fired(daily), "2026-11-10T08:00:00Z");
+  // A series that ended long ago and already reminded for its last
+  // occurrence stays silent.
+  const ended = await remind("2025-06-01T07:00:00Z", { freq: "daily", interval: 1, count: 500 }, now - 600 * 86400000, "2026-10-13T07:00:00Z");
+  await processDateReminders(now);
+  assert.equal(await fired(ended), "2026-10-13T07:00:00Z");
+});

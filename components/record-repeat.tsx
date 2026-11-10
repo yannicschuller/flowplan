@@ -3,8 +3,8 @@
 // next one is created with its date moved on (lib/repeat-records.ts).
 import { useT } from "./i18n";
 import { Select } from "./select";
-import { nextOccurrence, parseRepeat, type RepeatRule } from "@/lib/recurrence";
-import { validDateValue } from "@/lib/date-values";
+import { localDay, nextOccurrence, parseRepeat, type RepeatRule } from "@/lib/recurrence";
+import { browserZone, validDateValue } from "@/lib/date-values";
 import type { Field, Row } from "@/lib/types";
 
 // i18n-table: 2 4 – [key, German, English, German unit, English unit]
@@ -40,10 +40,13 @@ export function RecordRepeat({
   const dates = fields.filter((f) => f.type === "date");
   const rule = parseRepeat(row.repeat);
   if (!dates.length) return null;
-  const save = (repeat: RepeatRule | null) => void act({ action: "row.repeat", rowId: row.id, version: row.version, repeat });
+  // The rule counts days in this person's zone (lib/repeat-records.ts).
+  const zone = browserZone();
+  const save = (repeat: RepeatRule | null) =>
+    void act({ action: "row.repeat", rowId: row.id, version: row.version, repeat: repeat && { ...repeat, timeZone: zone } });
   const base: RepeatRule = rule || { freq: "weekly", interval: 1, field: dates[0].id };
   const current = rule && row.cells[rule.field];
-  const next = rule && validDateValue(current) ? nextOccurrence(current, rule) : null;
+  const next = rule && validDateValue(current) ? nextOccurrence(localDay(current, rule.timeZone || "UTC"), rule) : null;
   return (
     <div className="row-property record-repeat">
       <span>{t("Wiederkehrende Aufgabe", "Repeating task")}</span>

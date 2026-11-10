@@ -7,7 +7,7 @@ import { z } from "zod";
 import { id, one, run, nowText } from "./db";
 import { HttpError } from "./auth";
 import { requireRow, replaceRowDocument } from "./row-documents";
-import { nextOccurrence, parseRepeat, repeatSchema, shiftDateValue } from "./recurrence";
+import { localDay, nextOccurrence, parseRepeat, repeatSchema, shiftDateValue } from "./recurrence";
 import { Temporal, validDateValue } from "./date-values";
 import { doneRule, isDone, type DatabaseSettings } from "./database-settings-schema";
 import type { Field, Identity } from "./types";
@@ -37,7 +37,7 @@ export async function setRowRepeat(user: Identity, input: unknown) {
     const raw = row.cells as unknown;
     const value = ((typeof raw === "string" ? JSON.parse(raw) : raw) as Cells)[rule.field];
     if (rule.freq !== "daily" && rule.freq !== "weekly" && !rule.day && validDateValue(value))
-      rule.day = Temporal.PlainDate.from(value.slice(0, 10)).day;
+      rule.day = Temporal.PlainDate.from(localDay(value, rule.timeZone)).day;
     if (rule.freq !== "weekly") delete rule.weekdays;
     stored = JSON.stringify(rule);
   }
@@ -70,18 +70,20 @@ export async function spawnNextRecord(
   );
   const rule = parseRepeat(row?.repeat);
   if (!row || !rule) return null;
-  const today = new Date().toISOString().slice(0, 10);
+  // Rules set before the zone was kept count in UTC, as they did.
+  const zone = rule.timeZone || "UTC";
+  const today = Temporal.Now.plainDateISO(zone).toString();
   const current = after[rule.field];
-  const base = validDateValue(current) ? current : today;
+  const base = validDateValue(current) ? localDay(current, zone) : today;
   const next = nextOccurrence(base, rule);
-  const days = Temporal.PlainDate.from(base.slice(0, 10)).until(Temporal.PlainDate.from(next), { largestUnit: "days" }).days;
+  const days = Temporal.PlainDate.from(base).until(Temporal.PlainDate.from(next), { largestUnit: "days" }).days;
   const cells: Cells = {};
   for (const [key, value] of Object.entries(after)) {
     const field = fields.find((f) => f.id === key);
     if (field && COMPUTED.has(field.type)) continue;
-    cells[key] = field?.type === "date" && validDateValue(value) ? shiftDateValue(value, days) : value;
+    cells[key] = field?.type === "date" && validDateValue(value) ? shiftDateValue(value, days, zone) : value;
   }
-  cells[rule.field] = validDateValue(current) ? shiftDateValue(current, days) : next;
+  cells[rule.field] = validDateValue(current) ? shiftDateValue(current, days, zone) : next;
   // Open again: the status it had before, or an unticked box.
   cells[done.field.id] = done.field.type === "checkbox" ? false : before[done.field.id] ?? "";
   const rid = id(),

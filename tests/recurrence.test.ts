@@ -548,3 +548,148 @@ test("a repeating record creates its successor once it is done", async () => {
   const third = (await one<{ cells: string }>("SELECT cells FROM rows WHERE page_id=? AND id NOT IN (?,?)", page, rid, next))!;
   assert.equal(JSON.parse(third.cells).due, "2026-03-31");
 });
+
+test("occurrences are local days in the calendar's zone and keep their local time across a clock change", () => {
+  const { localDay, occurrenceValue } = recurrenceModule;
+  const weekly = { freq: "weekly" as const, interval: 1 };
+  // Tue 20 Oct 2026 10:00 Berlin (summer time): 27 Oct is 10:00 winter time.
+  assert.equal(shiftDateValue("2026-10-20T08:00:00Z", 7, "Europe/Berlin"), "2026-10-27T09:00:00Z");
+  assert.equal(occurrenceValue("2026-10-20T08:00:00Z", "2026-10-20T08:00:00Z", "2026-10-27", "Europe/Berlin"), "2026-10-27T09:00:00Z");
+  // Without a zone (or in UTC) the stored value keeps its text.
+  assert.equal(shiftDateValue("2026-10-20T08:00Z", 7), "2026-10-27T08:00Z");
+  assert.equal(shiftDateValue("2026-10-20", 7, "Europe/Berlin"), "2026-10-27");
+  // Tue 00:30 Berlin is Monday in UTC; the series repeats on Tuesdays.
+  assert.equal(localDay("2026-11-09T23:30:00Z", "Europe/Berlin"), "2026-11-10");
+  assert.deepEqual(
+    occurrenceDates("2026-11-09T23:30:00Z", weekly, "2026-11-11", "2026-11-30", 400, "Europe/Berlin"),
+    ["2026-11-17", "2026-11-24"],
+  );
+  // Sun 1 Nov 18:00 Los Angeles (2 Nov 02:00Z): the week 9–15 Nov shows Sun 15 Nov.
+  const la = occurrenceDates("2026-11-02T02:00:00Z", weekly, "2026-11-09", "2026-11-15", 400, "America/Los_Angeles");
+  assert.deepEqual(la, ["2026-11-15"]);
+  assert.equal(occurrenceValue("2026-11-02T02:00:00Z", "2026-11-02T02:00:00Z", "2026-11-15", "America/Los_Angeles"), "2026-11-16T02:00:00Z");
+  // Impossible end and skip dates are refused instead of breaking the calendar.
+  assert.equal(recurrenceSchema.safeParse({ freq: "monthly", interval: 1, until: "2026-02-30" }).success, false);
+  assert.equal(recurrenceSchema.safeParse({ freq: "daily", interval: 1, exclude: ["2026-13-01"] }).success, false);
+  assert.equal(parseRecurrence(JSON.stringify({ freq: "monthly", interval: 1, until: "2026-02-30" })), null);
+  // A kept day of the month: a series continued from 28 Feb on the 31st.
+  assert.deepEqual(
+    occurrenceDates("2026-02-28", { freq: "monthly", interval: 1, day: 31 }, "2026-03-01", "2026-06-01"),
+    ["2026-03-31", "2026-04-30", "2026-05-31"],
+  );
+  assert.deepEqual(
+    occurrenceDates("2029-02-28", { freq: "yearly", interval: 1, day: 29 }, "2030-01-01", "2032-12-31"),
+    ["2030-02-28", "2031-02-28", "2032-02-29"],
+  );
+});
+
+test("detaching and splitting keep the local time and the day of the month", async () => {
+  const owner = await account("rec-zone");
+  const wid = await createWorkspace(owner.id, "Serienzonen");
+  const page = (
+    (await command(owner, {
+      action: "page.create",
+      workspaceId: wid,
+      spaceId: (await bootstrap(owner, wid)).spaces[0].id,
+      title: "Serie",
+      kind: "database",
+    })) as { id: string }
+  ).id;
+  await command(owner, {
+    action: "database.update",
+    pageId: page,
+    version: (await database(page)).version,
+    fields: [
+      { id: "title", name: "Name", type: "text" },
+      { id: "start", name: "Beginn", type: "date" },
+      { id: "end", name: "Ende", type: "date" },
+    ],
+    views: (await database(page)).views,
+  });
+  const version = async (rid: string) => (await one<{ version: number }>("SELECT version FROM rows WHERE id=?", rid))!.version;
+  const create = async (cells: Record<string, unknown>, recurrence: Record<string, unknown>) => {
+    const rid = ((await command(owner, { action: "row.create", pageId: page, cells: { title: "Serie", ...cells } })) as { id: string }).id;
+    await command(owner, { action: "row.recurrence", pageId: page, rowId: rid, version: await version(rid), recurrence });
+    return rid;
+  };
+  const detach = async (rid: string, date: string, mode: string, extra: Record<string, unknown> = {}) =>
+    ((await command(owner, {
+      action: "row.detachOccurrence",
+      pageId: page,
+      rowId: rid,
+      version: await version(rid),
+      date,
+      startField: "start",
+      endField: "end",
+      mode,
+      ...extra,
+    })) as { id: string }).id;
+  const row = async (rid: string) => (await rows(page)).find((r) => r.id === rid)!;
+  // Tue 20 Oct 2026 10:00–11:00 Berlin; "only this" on 27 Oct (winter time).
+  const meeting = await create({ start: "2026-10-20T08:00:00Z", end: "2026-10-20T09:00:00Z" }, { freq: "weekly", interval: 1 });
+  const single = await detach(meeting, "2026-10-27", "single", { timeZone: "Europe/Berlin" });
+  assert.deepEqual([(await row(single)).cells.start, (await row(single)).cells.end], ["2026-10-27T09:00:00Z", "2026-10-27T10:00:00Z"]);
+  // Tue 00:30 Berlin: the occurrence is a Tuesday in that zone.
+  const night = await create({ start: "2026-11-09T23:30:00Z" }, { freq: "weekly", interval: 1 });
+  const tuesday = await detach(night, "2026-11-17", "single", { timeZone: "Europe/Berlin" });
+  assert.equal((await row(tuesday)).cells.start, "2026-11-16T23:30:00Z");
+  // A monthly series on the 31st split at the clamped 28 Feb goes on with 31 Mar.
+  const rent = await create({ start: "2026-01-31" }, { freq: "monthly", interval: 1 });
+  const tail = await detach(rent, "2026-02-28", "following");
+  assert.equal((await row(tail)).cells.start, "2026-02-28");
+  const rule = parseRecurrence((await row(tail)).recurrence)!;
+  assert.deepEqual(occurrenceDates("2026-02-28", rule, "2026-03-01", "2026-05-31"), ["2026-03-31", "2026-04-30", "2026-05-31"]);
+});
+
+test("a repeating record moves on in the zone of the rule", async () => {
+  const owner = await account("repeat-zone");
+  const wid = await createWorkspace(owner.id, "Wiederkehrend in LA");
+  const page = (
+    (await command(owner, {
+      action: "page.create",
+      workspaceId: wid,
+      spaceId: (await bootstrap(owner, wid)).spaces[0].id,
+      title: "Aufgaben",
+      kind: "database",
+      databaseKind: "empty",
+    })) as { id: string }
+  ).id;
+  await command(owner, {
+    action: "database.update",
+    pageId: page,
+    version: (await database(page)).version,
+    fields: [
+      { id: "title", name: "Name", type: "text" },
+      { id: "status", name: "Status", type: "select", options: ["Offen", "Erledigt"] },
+      { id: "due", name: "Fällig", type: "date" },
+    ],
+    views: (await database(page)).views,
+  });
+  const stored = async (r: string) => (await one<{ version: number; cells: string; repeat: string }>("SELECT version,cells,repeat FROM rows WHERE id=?", r))!;
+  const successor = async (cells: Record<string, unknown>, repeat: Record<string, unknown>) => {
+    const rid = ((await command(owner, { action: "row.create", pageId: page, cells: { title: "Bericht", status: "Offen", ...cells } })) as { id: string }).id;
+    await command(owner, { action: "row.repeat", pageId: page, rowId: rid, version: (await stored(rid)).version, repeat: { field: "due", interval: 1, ...repeat } });
+    await command(owner, { action: "row.update", pageId: page, rowId: rid, version: (await stored(rid)).version, cells: { status: "Erledigt" } });
+    const next = (await one<{ id: string }>("SELECT id FROM rows WHERE page_id=? AND repeat!='' AND id!=? ORDER BY position DESC", page, rid))!.id;
+    return JSON.parse((await stored(next)).cells).due;
+  };
+  // Mon 9 Nov 2026 18:00 Los Angeles (10 Nov 02:00Z), weekly on Monday: Mon 16 Nov 18:00.
+  assert.equal(
+    await successor({ due: "2026-11-10T02:00:00Z" }, { freq: "weekly", weekdays: [1], timeZone: "America/Los_Angeles" }),
+    "2026-11-17T02:00:00Z",
+  );
+  // Mon 26 Oct 2026 09:00 Berlin (winter time) from Mon 19 Oct 09:00 (summer time).
+  assert.equal(
+    await successor({ due: "2026-10-19T07:00:00Z" }, { freq: "weekly", timeZone: "Europe/Berlin" }),
+    "2026-10-26T08:00:00Z",
+  );
+  // Monthly from 1 Mar 00:30 Berlin (28 Feb in UTC) keeps the 1st.
+  assert.equal(
+    await successor({ due: "2026-02-28T23:30:00Z" }, { freq: "monthly", timeZone: "Europe/Berlin" }),
+    "2026-03-31T22:30:00Z",
+  );
+  await assert.rejects(
+    async () => await successor({ due: "2026-11-10" }, { freq: "weekly", timeZone: "Nowhere/Zone" }),
+    /Zeitzone|Invalid|invalid/,
+  );
+});

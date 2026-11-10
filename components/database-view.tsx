@@ -428,6 +428,8 @@ export default function DatabaseView({
     [occurrence, setOccurrence] = useState<{
       rowId: string;
       date: string;
+      // The calendar's zone, which the date is a day in.
+      zone?: string;
     } | null>(null);
   // Everything in the view is dragged with pointer events
   // (components/pointer-drag.ts, #100): rows, cards, columns, view tabs. A
@@ -451,10 +453,10 @@ export default function DatabaseView({
   const [freshRowId, setFreshRowId] = useState<string | null>(null);
   // The record last opened: its row or card takes the focus back after closing.
   const lastOpened = useRef<string | null>(null);
-  function setRowId(id: string | null, occurrence?: string) {
+  function setRowId(id: string | null, occurrence?: string, zone?: string) {
     if (id) lastOpened.current = id;
     else setOpenAsPage(false);
-    setOccurrence(id && occurrence ? { rowId: id, date: occurrence } : null);
+    setOccurrence(id && occurrence ? { rowId: id, date: occurrence, zone } : null);
     setLocalRowId(id);
     if (routeNavigation) {
       const hash = pageLocationHash({
@@ -4004,7 +4006,7 @@ export default function DatabaseView({
           version={data.database.version}
           editable={editable}
           viewEditable={viewEditable}
-          onOpen={(id, date) => setRowId(id, date)}
+          onOpen={(id, date, zone) => setRowId(id, date, zone)}
           onCreate={createRow}
           onView={updateView}
           onSchedule={(input) => rowChange(input, (sent) => mutate({ pageId: page.id, ...sent }))}
@@ -5768,6 +5770,7 @@ export default function DatabaseView({
                               rowId: selected.id,
                               version: selected.version,
                               date: occurrence.date,
+                              timeZone: occurrence.zone || view.calendar?.timeZone || browserZone(),
                               startField: series.id,
                               mode,
                               ...(start && end ? { endField: end.id } : {}),

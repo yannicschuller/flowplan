@@ -1,22 +1,25 @@
 import { z } from "zod";
-import { Temporal } from "./date-values";
+import { Temporal, hasOffset, isTimed, validDateValue, validZone } from "./date-values";
 
 // Repeating entries: the stored dates are the first occurrence; later ones
 // are derived for display only and share the record.
+// A real calendar day: "2026-02-30" would break every later calculation.
+const calendarDay = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .refine(validDateValue, "Ungültiges Datum.");
 export const recurrenceSchema = z
   .object({
     freq: z.enum(["daily", "weekly", "monthly", "yearly"]),
     interval: z.number().int().min(1).max(99),
-    until: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/)
-      .optional(),
+    until: calendarDay.optional(),
     count: z.number().int().min(2).max(1000).optional(),
     // Single occurrences that are skipped.
-    exclude: z
-      .array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/))
-      .max(200)
-      .optional(),
+    exclude: z.array(calendarDay).max(200).optional(),
+    // Monthly and yearly: the day of the month the series was started on,
+    // when the stored first date is a clamped one (a series split at 28 Feb
+    // of a series on the 31st goes on with 31 Mar).
+    day: z.number().int().min(1).max(31).optional(),
   })
   .refine((r) => !(r.until && r.count), "Entweder Enddatum oder Anzahl.");
 export type Recurrence = z.infer<typeof recurrenceSchema>;
@@ -51,24 +54,43 @@ export function recurrenceText(rule: Recurrence) {
       ? `${base}, ${rule.count}-mal`
       : base;
 }
-// Start dates (YYYY-MM-DD) of occurrences after the first one that fall into
-// [from, to]. Month ends are clamped (31 Jan → 28/29 Feb).
+// The calendar day of a stored date value in `zone`: a timed value with an
+// offset is an instant, so 00:30 in Berlin is the day before in UTC. All-day
+// and floating values keep their own date.
+export function localDay(value: string, zone = "UTC") {
+  if (!isTimed(value) || !hasOffset(value) || !validZone(zone))
+    return value.slice(0, 10);
+  return Temporal.Instant.from(value)
+    .toZonedDateTimeISO(zone)
+    .toPlainDate()
+    .toString();
+}
+// Start dates (YYYY-MM-DD, local days in `zone`) of occurrences after the
+// first one that fall into [from, to]. Month ends are clamped (31 Jan →
+// 28/29 Feb).
 export function occurrenceDates(
   start: string,
   rule: Recurrence,
   from: string,
   to: string,
   limit = 400,
+  zone = "UTC",
 ) {
-  const base = Temporal.PlainDate.from(start.slice(0, 10)),
+  const base = Temporal.PlainDate.from(localDay(start, zone)),
     first = Temporal.PlainDate.from(from),
     last = Temporal.PlainDate.from(to);
   const end =
     rule.until && Temporal.PlainDate.compare(rule.until, last) < 0
       ? Temporal.PlainDate.from(rule.until)
       : last;
-  const step = (k: number) =>
-    base.add({ [units[rule.freq]]: k * rule.interval });
+  const anchor =
+    rule.freq === "monthly" || rule.freq === "yearly" ? rule.day : undefined;
+  const step = (k: number) => {
+    const date = base.add({ [units[rule.freq]]: k * rule.interval });
+    return anchor && anchor !== date.day
+      ? date.with({ day: Math.min(anchor, date.daysInMonth) })
+      : date;
+  };
   // Skip ahead for fixed-length steps instead of walking from the start.
   let k = 1;
   if (rule.freq === "daily" || rule.freq === "weekly") {
@@ -89,12 +111,34 @@ export function occurrenceDates(
   }
   return dates;
 }
-// Moves a stored date value to another day, keeping any time part.
-export function shiftDateValue(value: string, days: number) {
+// Moves a stored date value to another day, keeping any time part. A timed
+// value moves in `zone`, so 09:00 stays 09:00 across a clock change.
+export function shiftDateValue(value: string, days: number, zone = "UTC") {
+  if (isTimed(value) && hasOffset(value) && zone !== "UTC" && validZone(zone))
+    return Temporal.Instant.from(value)
+      .toZonedDateTimeISO(zone)
+      .toPlainDateTime()
+      .add({ days })
+      .toZonedDateTime(zone, { disambiguation: "compatible" })
+      .toInstant()
+      .toString();
   return (
     Temporal.PlainDate.from(value.slice(0, 10)).add({ days }).toString() +
     value.slice(10)
   );
+}
+// The value of the occurrence on `date` (a local day from occurrenceDates).
+export function occurrenceValue(
+  value: string,
+  first: string,
+  date: string,
+  zone = "UTC",
+) {
+  const days = Temporal.PlainDate.from(localDay(first, zone)).until(
+    Temporal.PlainDate.from(date),
+    { largestUnit: "days" },
+  ).days;
+  return shiftDateValue(value, days, zone);
 }
 
 /* ---------- Repeating records ("wiederkehrende Aufgabe") ---------- */
@@ -102,6 +146,7 @@ export function shiftDateValue(value: string, days: number) {
 // Unlike a repeating entry above, a repeating record is a real record per
 // occurrence: once it is done, the next one is created with its dates moved
 // on (lib/repeat-records.ts). `field` is the date property that is moved;
+// `date` below is a local day (localDay with the rule's `timeZone`);
 // `weekdays` (ISO, 1 = Monday) picks days within a weekly rule; `day` keeps
 // the day of the month for monthly and yearly rules, so 31 Jan → 28 Feb →
 // 31 Mar instead of drifting to the 28th.
@@ -111,6 +156,9 @@ export const repeatSchema = z.object({
   weekdays: z.array(z.number().int().min(1).max(7)).max(7).optional(),
   day: z.number().int().min(1).max(31).optional(),
   field: z.string().min(1).max(500),
+  // The zone of the person who set the rule: a timed date is a day there
+  // (Monday 18:00 in Los Angeles is Tuesday in UTC) and keeps its local time.
+  timeZone: z.string().max(100).refine(validZone, "Ungültige Zeitzone.").optional(),
 });
 export type RepeatRule = z.infer<typeof repeatSchema>;
 export function parseRepeat(raw: unknown): RepeatRule | null {
