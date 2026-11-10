@@ -27,8 +27,8 @@ import { wakeAfterCommit } from "./queue";
 import { graphOf } from "./engine";
 import { workflowLimits } from "./limits";
 import { mayObserve, runnerIdentity } from "./runner";
-import { pageValue, personValue, recordValue } from "./nodes/data";
-import { sampleOutput, triggerOutput } from "./nodes/triggers";
+import { personValue } from "./nodes/data";
+import { outputFor, sampleOutput, triggerOutput } from "./nodes/triggers";
 import { notePause } from "./notices";
 
 const uuid = z.string().uuid();
@@ -597,7 +597,8 @@ export async function startTestRun(user: Identity, raw: unknown) {
     if (!output) throw new HttpError(404, "Noch kein echtes Ereignis.");
     const pageRef = output.record?.database?.id ?? output.page?.id;
     if (pageRef && !(await mayObserve(tester, pageRef, output.record?.id))) throw new HttpError(404, "Noch kein echtes Ereignis.");
-    triggerValue = output.record ? { ...output, record: await recordValue(tester, output.record.id) } : output.page ? { ...output, page: await pageValue(output.page.id) } : output;
+    // Built for the runner: rebuilt for the tester, without what their read rules hide.
+    triggerValue = await outputFor(node.type, output as Record<string, unknown>, tester, node.config);
   }
   const runId = await createRun({
     workflow: { page_id: page.id, workspace_id: page.workspace_id, runner_id: user.id },

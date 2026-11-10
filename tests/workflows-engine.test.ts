@@ -507,3 +507,37 @@ test("archives carry draft and versions (imported paused), never runs; exports a
   assert.match(Buffer.from(md.bytes as Uint8Array).toString("utf8"), /- Archived set/);
   await act({ action: "workflow.pause", pageId });
 });
+
+test("a test run from the last event shows the tester only the properties their read rules allow", async () => {
+  const secretFields: Field[] = [
+    { id: "title", name: "Title", type: "text" },
+    { id: "status", name: "Status", type: "select", options: ["Open", "Doing", "Done"] },
+    { id: "salary", name: "Salary", type: "number", access: { read: "owners" } },
+  ];
+  const secretDb = (await act({ action: "page.create", workspaceId: wid, spaceId: space, kind: "database", title: "Payroll" })).id as string;
+  await act({ action: "database.update", pageId: secretDb, version: (await database(secretDb)).version, fields: secretFields, views: (await database(secretDb)).views });
+  const trigger = node("trigger.record.changed", { database: secretDb });
+  const notify = node("notify.person", { to: ["@creator"], title: "Changed", message: "x", channels: ["inbox"] });
+  const { pageId } = await workflow("Payroll watch", chain(trigger, notify));
+  const rid = (await act({ action: "row.create", pageId: secretDb, cells: { title: "Alice", status: "Open", salary: 1111 } })).id as string;
+  const v = (await one<{ version: number }>("SELECT version FROM rows WHERE id=?", rid))!.version;
+  await act({ action: "row.update", pageId: secretDb, rowId: rid, version: v, cells: { status: "Doing", salary: 2222 } });
+  await drainWorkflows();
+  const triggerOut = async (runId: string) => JSON.parse((await one<{ output: string }>("SELECT output FROM workflow_steps WHERE run_id=? AND node_id=?", runId, trigger.id))!.output);
+  // The owner's test run keeps the restricted value.
+  const own = await act({ action: "workflow.test", pageId, mode: "dry", data: { kind: "last" } });
+  const ownOut = await triggerOut(own.runId);
+  assert.equal(ownOut.before.salary, 1111);
+  assert.ok(ownOut.changed.includes("salary"));
+  // The editor (no read rule for salary) sees neither the old value nor that it changed.
+  const test = await act({ action: "workflow.test", pageId, mode: "dry", data: { kind: "last" } }, editor);
+  assert.equal(test.ok, true, JSON.stringify(test.issues));
+  const out = await triggerOut(test.runId);
+  assert.equal("salary" in out.before, false, JSON.stringify(out));
+  assert.equal(out.changed.includes("salary"), false);
+  assert.ok(out.changed.includes("status"));
+  assert.equal("salary" in out.record.fields, false);
+  assert.doesNotMatch(JSON.stringify(out), /1111|2222/);
+  await drainWorkflows();
+  await act({ action: "workflow.pause", pageId });
+});
