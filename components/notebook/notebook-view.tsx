@@ -745,6 +745,7 @@ export default function NotebookView({
                     editor={editor}
                     editing={canEdit}
                     onConvert={canEdit && canRecognize ? () => void convert(sheet.id) : undefined}
+                    aiPageId={canEdit ? pageId : undefined}
                     label={t(`Handschrift auf Blatt ${index + 1}`, `Handwriting on sheet ${index + 1}`)}
                   />
                 </section>

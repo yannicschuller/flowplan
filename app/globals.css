@@ -18891,6 +18891,86 @@ h3 .block-reactions {
   width: 24px;
   color: #b3afbd;
 }
+/* Lasso selection: corner and rotation handles, the bar's style menu,
+   "In Text umwandeln" with the AI (components/ink/ink-selection-bar.tsx,
+   components/ink/ai-convert.tsx). */
+.ink-rotate-stem {
+  stroke: #1c7ed6;
+  stroke-width: 1.5;
+}
+.ink-handle-rotate {
+  fill: #1c7ed6;
+  stroke: #fff;
+}
+.ink-selection-bar {
+  max-width: calc(100% - 8px);
+  overflow-x: auto;
+  scrollbar-width: none;
+  z-index: 2;
+}
+.ink-selection-bar button:disabled {
+  opacity: 0.4;
+}
+.ink-selection-bar .ink-selection-style {
+  width: 36px;
+}
+.ink-selection-dot {
+  display: block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--swatch);
+  box-shadow: 0 0 0 2px #ecebf1;
+}
+.ink-selection-colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ink-selection-colors .ink-swatch {
+  margin: 0;
+}
+.ink-selection-widths {
+  display: flex;
+  gap: 6px;
+}
+.ink-selection-widths button {
+  display: grid;
+  flex: 1;
+  place-items: center;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+.ink-selection-widths button.active {
+  border-color: var(--blue);
+  outline: 1px solid var(--blue);
+}
+.ink-ai-convert-preview {
+  display: block;
+  max-width: 100%;
+  max-height: 180px;
+  margin: 0 auto 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  object-fit: contain;
+}
+.ink-ai-convert-label {
+  display: block;
+  margin-bottom: 4px;
+  font-weight: 600;
+  font-size: 13px;
+}
+.ink-ai-convert-text {
+  width: 100%;
+  font: inherit;
+  resize: vertical;
+}
+.ink-ai-convert-actions {
+  flex-wrap: wrap;
+}
 .ink-text-input {
   position: absolute;
   min-width: 120px;

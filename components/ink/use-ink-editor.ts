@@ -2,10 +2,14 @@
 // The state of an ink editing session shared by the ink layers of all pages
 // and the toolbar: the ink, undo/redo, tool, colours, favourites, selection
 // and clipboard. See lib/ink/README.md.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { copyItems, itemBounds, recolorItems, unionBox } from "@/lib/ink/geometry";
 import { emptyHistory, record, redo as redoStep, undo as undoStep, type History } from "@/lib/ink/history";
 import { withPage, type InkDoc, type InkItem } from "@/lib/ink/model";
+import { inkClipboard, setInkClipboard, subscribeInkClipboard } from "@/lib/ink/clipboard";
+import { fitOnPage, reorderItems, setItemsWidth, transformSelected, translation, type Affine } from "@/lib/ink/selection";
+import type { PageSize } from "@/lib/ink/coords";
+import { writeSystemClipboard } from "./system-clipboard";
 import {
   DEFAULT_PRESETS,
   HIGHLIGHTER_COLORS,
@@ -64,8 +68,12 @@ export function useInkEditor(initial: InkDoc, { active = true }: { active?: bool
   const [snap, setSnapState] = useState(true);
   const [pencil, setPencilState] = useState<PencilSetting>("system");
   const [selection, setSelection] = useState<InkSelection | null>(null);
-  const [clipboard, setClipboard] = useState<InkItem[] | null>(null);
+  // Shared by the ink editors of this tab (lib/ink/clipboard.ts).
+  const clipboard = useSyncExternalStore(subscribeInkClipboard, inkClipboard, () => null);
+  const setClipboard = setInkClipboard;
   const lastPage = useRef<string>("1");
+  // The size of each page shown (InkLayer fills it in): pastes stay on the page.
+  const pageSizes = useRef(new Map<string, PageSize>());
   // Choices remembered on this device.
   useEffect(() => {
     const stored = loadPresets();
@@ -213,10 +221,40 @@ export function useInkEditor(initial: InkDoc, { active = true }: { active?: bool
     if (!selection) return;
     change(selection.page, (items) => recolorItems(items, new Set(selection.ids), color));
   };
+  // Copies into the tab's ink clipboard and – where the browser lets it –
+  // the system clipboard as a picture (PNG, SVG) and the typed text.
   const copySelection = () => {
     const items = selectedItems();
-    if (items.length) setClipboard(items);
+    if (items.length) {
+      setClipboard(items);
+      writeSystemClipboard(items);
+    }
     return items.length;
+  };
+  const cutSelection = () => {
+    const count = copySelection();
+    if (count) deleteSelection();
+    return count;
+  };
+  // One undo step: a transform of the chosen items (move, scale, turn).
+  const transformSelection = (m: Affine) => {
+    if (!selection) return;
+    change(selection.page, (items) => transformSelected(items, new Set(selection.ids), m));
+  };
+  const nudgeSelection = (dx: number, dy: number) => transformSelection(translation(dx, dy));
+  const reorderSelection = (where: "front" | "back") => {
+    if (!selection) return;
+    change(selection.page, (items) => reorderItems(items, new Set(selection.ids), where));
+  };
+  // Fine, medium, bold (0–2): pen and highlighter widths, text sizes.
+  const setSelectionWidth = (step: number) => {
+    if (!selection) return;
+    change(selection.page, (items) => setItemsWidth(items, new Set(selection.ids), step));
+  };
+  const selectAll = (page = selection?.page || lastPage.current) => {
+    const ids = (docRef.current.pages[page] || []).map((i) => i.id);
+    setSelection(ids.length ? { page, ids } : null);
+    if (ids.length) setTool("lasso");
   };
   // Pastes onto a page (the last one drawn on), a little offset when it
   // lands on the page it was copied from.
@@ -224,7 +262,8 @@ export function useInkEditor(initial: InkDoc, { active = true }: { active?: bool
     if (!items?.length) return;
     const existing = new Set((docRef.current.pages[page] || []).map((i) => i.id));
     const offset = items.some((i) => existing.has(i.id)) ? 12 : 0;
-    const copies = copyItems(items, offset, offset);
+    const size = pageSizes.current.get(page);
+    const copies = size ? fitOnPage(copyItems(items, offset, offset), size) : copyItems(items, offset, offset);
     change(page, (list) => [...list, ...copies]);
     setSelection({ page, ids: copies.map((c) => c.id) });
     setTool("lasso");
@@ -279,15 +318,25 @@ export function useInkEditor(initial: InkDoc, { active = true }: { active?: bool
     deleteSelection,
     recolorSelection,
     copySelection,
+    cutSelection,
+    transformSelection,
+    nudgeSelection,
+    reorderSelection,
+    setSelectionWidth,
+    selectAll,
     duplicateSelection,
+    textStyle: text,
+    pageSizes,
     paste,
     clipboard,
     lastPage,
   };
 }
 
-// Keyboard shortcuts while editing: undo/redo, delete, copy, paste,
-// duplicate, Escape (clears the selection before anything else closes).
+// Keyboard shortcuts while editing: undo/redo, delete, copy, cut, paste,
+// duplicate, ⌘] / ⌘[ to the front or back, arrows nudge (Shift: 10 pt),
+// Escape (clears the selection before anything else closes); with `tools`
+// also ⌘A (everything on the sheet).
 // With `tools`, single keys pick a tool (P pen, H highlighter, E eraser,
 // L lasso, T text, K laser) – for surfaces that are the whole page
 // (notebooks), not inside a document where keys type text.
@@ -303,7 +352,7 @@ export function useInkShortcuts(editor: InkEditor | null, enabled: boolean, { to
       const ed = ref.current;
       if (!ed) return;
       const target = event.target as HTMLElement | null;
-      if (target?.closest?.("input, textarea, [contenteditable=true]")) return;
+      if (target?.closest?.("input, textarea, [contenteditable=true], [role=dialog]")) return;
       const mod = event.metaKey || event.ctrlKey;
       const k = event.key.toLowerCase();
       if (mod && k === "z") {
@@ -318,6 +367,19 @@ export function useInkShortcuts(editor: InkEditor | null, enabled: boolean, { to
         ed.deleteSelection();
       } else if (mod && k === "c" && ed.selection) {
         if (ed.copySelection()) event.preventDefault();
+      } else if (mod && k === "x" && ed.selection) {
+        if (ed.cutSelection()) event.preventDefault();
+      } else if (mod && (event.key === "]" || event.key === "[") && ed.selection) {
+        event.preventDefault();
+        ed.reorderSelection(event.key === "]" ? "front" : "back");
+      } else if (ed.selection && !mod && event.key.startsWith("Arrow")) {
+        event.preventDefault();
+        const step = event.shiftKey ? 10 : 1;
+        const [dx, dy] = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[event.key] || [0, 0];
+        ed.nudgeSelection(dx, dy);
+      } else if (mod && k === "a" && toolsRef.current) {
+        event.preventDefault();
+        ed.selectAll();
       } else if (mod && k === "v" && ed.clipboard) {
         event.preventDefault();
         ed.paste();

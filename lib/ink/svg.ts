@@ -44,7 +44,7 @@ export function inkSvgElements(items: InkItem[], { dark = false }: { dark?: bool
         .split("\n")
         .map((line, i) => `<tspan x="${r2(item.x)}" dy="${i ? r2(item.size * 1.25) : 0}">${xml(line) || " "}</tspan>`)
         .join("");
-      ink += `<text x="${r2(item.x)}" y="${r2(item.y + item.size * 0.8)}" font-size="${r2(item.size)}" fill="${color(item.color)}" font-family="${xml(inkFontFamily(item.font))}" xml:space="preserve">${lines}</text>`;
+      ink += `<text x="${r2(item.x)}" y="${r2(item.y + item.size * 0.8)}" font-size="${r2(item.size)}" fill="${color(item.color)}" font-family="${xml(inkFontFamily(item.font))}"${item.rotation ? ` transform="rotate(${r2(item.rotation)} ${r2(item.x)} ${r2(item.y)})"` : ""} xml:space="preserve">${lines}</text>`;
     }
   }
   return (highlights ? `<g style="mix-blend-mode:multiply">${highlights}</g>` : "") + ink;

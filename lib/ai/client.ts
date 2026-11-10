@@ -189,6 +189,13 @@ export function splitSources(text: string, sources: AskSource[]): { shown: AskSo
   return { shown: sources.filter(visible), hidden: sources.filter((s, i) => !visible(s, i)) };
 }
 
+// ---- Handwriting → text (POST /api/ai/handwriting, lib/ai/handwriting.ts) ----
+
+// The plain text of handwriting in a PNG (base64) of a lasso selection.
+export async function recognizeHandwritingAi(body: { pageId: string; image: string }, signal?: AbortSignal) {
+  return (await postJson<{ text: string }>("/api/ai/handwriting", body, signal)).text || "";
+}
+
 // ---- AI actions (POST /api/ai/actions/{propose,run}, lib/ai/actions.ts) ----
 
 export type { ActionPreview, ActionResult } from "./actions";

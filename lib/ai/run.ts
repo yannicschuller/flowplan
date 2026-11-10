@@ -19,6 +19,10 @@ export const AI_LIMITS = {
   maxTokens: 8192,
   // Parallel answers per person.
   concurrent: 3,
+  // Pictures in a prompt (lib/ai/handwriting.ts): per request, and the
+  // base64 characters of each.
+  images: 2,
+  imageChars: 4_000_000,
 } as const;
 
 export type AiRunInput = {
@@ -44,7 +48,16 @@ export type AiRunOptions = {
 const inputSchema = z.object({
   system: z.string().max(AI_LIMITS.maxPromptChars).optional(),
   messages: z
-    .array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().max(AI_LIMITS.maxPromptChars) }))
+    .array(
+      z.object({
+        role: z.enum(["user", "assistant"]),
+        content: z.string().max(AI_LIMITS.maxPromptChars),
+        images: z
+          .array(z.object({ mime: z.enum(["image/png", "image/jpeg"]), data: z.string().min(1).max(AI_LIMITS.imageChars).regex(/^[A-Za-z0-9+/]+={0,2}$/) }))
+          .max(AI_LIMITS.images)
+          .optional(),
+      }),
+    )
     .min(1)
     .max(AI_LIMITS.maxMessages),
   maxTokens: z.number().int().min(1).max(AI_LIMITS.maxTokens).optional(),
@@ -67,6 +80,7 @@ export async function* aiStream(user: Identity, feature: AiFeature, raw: AiRunIn
   const input = inputSchema.parse(raw);
   const size = (input.system?.length || 0) + input.messages.reduce((sum, m) => sum + m.content.length, 0);
   if (size > AI_LIMITS.maxPromptChars) throw new HttpError(413, "Der Text für die KI ist zu lang.");
+  if (input.messages.reduce((n, m) => n + (m.images?.length || 0), 0) > AI_LIMITS.images) throw new HttpError(413, "Zu viele Bilder für die KI.");
   if (!options.charged) limitAi(user.id);
   const count = running.get(user.id) || 0;
   if (count >= AI_LIMITS.concurrent) throw new HttpError(429, "Zu viele KI-Anfragen in kurzer Zeit. Bitte später erneut versuchen.");

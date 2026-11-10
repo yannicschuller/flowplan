@@ -22,7 +22,11 @@ export type AiConfig = {
   // Set by an administrator (may reach private addresses, may use http).
   trusted: boolean;
 };
-export type ChatMessage = { role: "user" | "assistant"; content: string };
+// Pictures go with a user message to models that understand images
+// (handwriting recognition, lib/ai/handwriting.ts): base64 without a
+// data: prefix. A model without vision answers with an error or ignores them.
+export type ChatImage = { mime: "image/png" | "image/jpeg"; data: string };
+export type ChatMessage = { role: "user" | "assistant"; content: string; images?: ChatImage[] };
 export type ChatInput = {
   system?: string;
   messages: ChatMessage[];
@@ -93,18 +97,32 @@ function chatRequest(config: AiConfig, input: ChatInput): { url: string; body: u
   const maxTokens = Math.max(1, Math.min(16_384, Math.round(input.maxTokens ?? 1024)));
   const temperature = input.temperature === undefined ? undefined : Math.max(0, Math.min(config.kind === "anthropic" ? 1 : 2, input.temperature));
   const messages = input.messages.map((m) => ({ role: m.role, content: m.content }));
+  const pictures = (m: ChatMessage) => (m.role === "user" && m.images?.length ? m.images : null);
   switch (config.kind) {
-    case "ollama":
+    case "ollama": {
+      const withImages = input.messages.map((m, i) => {
+        const images = pictures(m);
+        return images ? { ...messages[i], images: images.map((img) => img.data) } : messages[i];
+      });
       return {
         url: `${base(config)}/api/chat`,
         body: {
           model: config.model,
           stream: true,
-          messages: input.system ? [{ role: "system", content: input.system }, ...messages] : messages,
+          messages: input.system ? [{ role: "system", content: input.system }, ...withImages] : withImages,
           options: { num_predict: maxTokens, ...(temperature === undefined ? {} : { temperature }) },
         },
       };
+    }
     case "openai": {
+      const withImages = input.messages.map((m, i) => {
+        const images = pictures(m);
+        if (!images) return messages[i];
+        return {
+          role: m.role,
+          content: [{ type: "text", text: m.content }, ...images.map((img) => ({ type: "image_url", image_url: { url: `data:${img.mime};base64,${img.data}` } }))],
+        };
+      });
       // api.openai.com wants max_completion_tokens; compatible servers max_tokens.
       const official = /^https:\/\/([^/]+\.)?openai\.com(\/|$)/i.test(base(config));
       return {
@@ -112,13 +130,21 @@ function chatRequest(config: AiConfig, input: ChatInput): { url: string; body: u
         body: {
           model: config.model,
           stream: true,
-          messages: input.system ? [{ role: "system", content: input.system }, ...messages] : messages,
+          messages: input.system ? [{ role: "system", content: input.system }, ...withImages] : withImages,
           ...(official ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens }),
           ...(temperature === undefined ? {} : { temperature }),
         },
       };
     }
-    case "anthropic":
+    case "anthropic": {
+      const withImages = input.messages.map((m, i) => {
+        const images = pictures(m);
+        if (!images) return messages[i];
+        return {
+          role: m.role,
+          content: [...images.map((img) => ({ type: "image", source: { type: "base64", media_type: img.mime, data: img.data } })), { type: "text", text: m.content }],
+        };
+      });
       return {
         url: `${base(config)}/v1/messages`,
         body: {
@@ -129,16 +155,20 @@ function chatRequest(config: AiConfig, input: ChatInput): { url: string; body: u
           // written is billed).
           max_tokens: THINKING_CLAUDE.test(config.model) ? maxTokens + 16_000 : maxTokens,
           ...(input.system ? { system: input.system } : {}),
-          messages,
+          messages: withImages,
           // Current Claude models refuse sampling settings (HTTP 400), and
           // the API drops them for every model: never sent.
         },
       };
+    }
     case "gemini":
       return {
         url: `${base(config)}/v1beta/models/${geminiModel(config.model)}:streamGenerateContent?alt=sse`,
         body: {
-          contents: input.messages.map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] })),
+          contents: input.messages.map((m) => ({
+            role: m.role === "assistant" ? "model" : "user",
+            parts: [...(pictures(m) || []).map((img) => ({ inline_data: { mime_type: img.mime, data: img.data } })), { text: m.content }],
+          })),
           ...(input.system ? { systemInstruction: { parts: [{ text: input.system }] } } : {}),
           generationConfig: { maxOutputTokens: maxTokens, ...(temperature === undefined ? {} : { temperature }) },
         },
