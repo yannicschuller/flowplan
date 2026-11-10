@@ -5,11 +5,16 @@
 // (Shift: in larger steps), the hue is a native range input. Colours are
 // "#rrggbb". `onChange` follows every move; `onCommit` comes at the end of a
 // drag, a key press, a valid hex or a recent colour (to remember it).
+// Where the browser has the EyeDropper API (Chrome, Edge – not Safari), a
+// button picks a colour from the screen; elsewhere it is not shown.
 import { useEffect, useRef, useState } from "react";
+import { Eyedropper } from "@phosphor-icons/react";
 import { useT } from "../i18n";
 import { hexToHsv, hsvToHex, normalizeHex, type Hsv } from "@/lib/ink/color";
 
 const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
+type EyeDropperApi = new () => { open: () => Promise<{ sRGBHex: string }> };
+const eyeDropper = () => (typeof window !== "undefined" ? (window as unknown as { EyeDropper?: EyeDropperApi }).EyeDropper : undefined);
 
 export function ColorPicker({
   value,
@@ -39,6 +44,23 @@ export function ColorPicker({
   useEffect(() => setHex(value), [value]);
   const area = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
+  // After mounting (the server has no window).
+  const [canPick, setCanPick] = useState(false);
+  useEffect(() => setCanPick(!!eyeDropper()), []);
+  const pickFromScreen = async () => {
+    const Api = eyeDropper();
+    if (!Api) return;
+    try {
+      const color = normalizeHex((await new Api().open()).sRGBHex);
+      if (!color) return;
+      current.current = color;
+      setHsv(hexToHsv(color));
+      onChange(color);
+      onCommit?.(color);
+    } catch {
+      // Cancelled (Escape).
+    }
+  };
 
   const apply = (next: Hsv, commit = false) => {
     setHsv(next);
@@ -111,7 +133,7 @@ export function ColorPicker({
       <div className="color-picker-row">
         <span className="color-picker-preview" style={{ background: value }} aria-hidden="true" />
         <label className="color-picker-hex">
-          <span>{t("Hex", "Hex")}</span>
+          <span className="sr-only">{t("Hex", "Hex")}</span>
           <input
             type="text"
             inputMode="text"
@@ -152,7 +174,13 @@ export function ColorPicker({
             }}
           />
         </label>
+        {canPick && (
+          <button type="button" className="color-picker-eyedropper" aria-label={t("Farbe vom Bildschirm aufnehmen", "Pick a colour from the screen")} title={t("Pipette", "Eyedropper")} onClick={() => void pickFromScreen()}>
+            <Eyedropper size={17} />
+          </button>
+        )}
       </div>
+      {recent.length > 0 && <span className="color-picker-recent-label">{t("Zuletzt verwendet", "Recently used")}</span>}
       {recent.length > 0 && (
         <div className="color-picker-recent" role="group" aria-label={t("Zuletzt verwendet", "Recently used")}>
           {recent.map((c) => (

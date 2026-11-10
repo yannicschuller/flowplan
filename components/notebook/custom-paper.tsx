@@ -5,7 +5,7 @@
 // a PDF (a planner page, a form), renaming and deleting. Choosing one sets
 // `paper.image = { template, fit }`; the server copies it onto the page.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PencilSimple, Plus, Trash } from "@phosphor-icons/react";
+import { Check, PencilSimple, Plus, Trash } from "@phosphor-icons/react";
 import { useT } from "../i18n";
 import { api, Modal } from "../ui";
 import { PdfBackground } from "./paper";
@@ -16,16 +16,19 @@ import { createTemplate, listTemplates, preparePicture, type TemplateEntry } fro
 const fileSrc = (file: string) => `/api/files/${file}`;
 
 // The own template of a sheet over its paper colour, under the ink.
-export function PaperImageLayer({ image, size, width, eager = false }: { image: PaperImage; size: { width: number; height: number }; width: number; eager?: boolean }) {
-  if (!image.file) return null;
-  if (image.kind === "pdf") return <PdfBackground src={fileSrc(image.file)} page={1} width={width} eager={eager} />;
+// `src`: another address of the picture (a template not yet on the page,
+// in the paper dialog's preview).
+export function PaperImageLayer({ image, size, width, eager = false, src }: { image: PaperImage; size: { width: number; height: number }; width: number; eager?: boolean; src?: string }) {
+  const url = src || (image.file ? fileSrc(image.file) : null);
+  if (!url) return null;
+  if (image.kind === "pdf") return <PdfBackground src={url} page={1} width={width} eager={eager} />;
   const tile = image.fit === "tile" && image.width && image.height;
   return (
     <span
       className="notebook-paper-image"
       aria-hidden="true"
       style={{
-        backgroundImage: `url("${fileSrc(image.file)}")`,
+        backgroundImage: `url("${url}")`,
         backgroundSize: tile ? `${(Math.max(image.width!, size.width / 20) / size.width) * 100}% ${(Math.max(image.height!, size.height / 20) / size.height) * 100}%` : "100% 100%",
         backgroundRepeat: tile ? "repeat" : "no-repeat",
       }}
@@ -46,7 +49,8 @@ export function CustomPaperSection({
 }: {
   pageId: string;
   draft: Paper;
-  onChoose: (image: PaperImage | null) => void;
+  // The template's entry too when one of the list is chosen (its picture).
+  onChoose: (image: PaperImage | null, entry?: TemplateEntry) => void;
   onError: (message: string) => void;
 }) {
   const t = useT();
@@ -87,13 +91,13 @@ export function CustomPaperSection({
     }
   };
   return (
-    <fieldset className="notebook-own-paper">
+    <fieldset className="paper-dialog-section notebook-own-paper">
       <legend>{t("Eigene", "Own||paper templates")}</legend>
-      <div className="notebook-templates">
+      <div className="paper-dialog-templates">
         {templates?.map((template) => (
           <label key={template.id} className={`notebook-own-template${chosen === template.id ? " chosen" : ""}`}>
-            <input type="radio" name="notebook-template" checked={chosen === template.id} onChange={() => onChoose({ template: template.id, fit: template.fit })} />
-            <span className="notebook-template-preview" style={{ aspectRatio: `${template.width} / ${template.height}` }}>
+            <input type="radio" name="notebook-template" checked={chosen === template.id} onChange={() => onChoose({ template: template.id, fit: template.fit }, template)} />
+            <span className={`paper-dialog-tile${draft.color === "dark" ? " is-dark" : ""}`} style={{ aspectRatio: `${template.width} / ${template.height}` }}>
               <TemplatePreview template={template} />
             </span>
             {renaming?.id === template.id ? (
@@ -112,8 +116,11 @@ export function CustomPaperSection({
                 onBlur={() => void rename()}
               />
             ) : (
-              <span>{template.name}</span>
+              <span className="paper-dialog-tile-name">{template.name}</span>
             )}
+            <span className="paper-dialog-check" aria-hidden="true">
+              <Check size={11} weight="bold" />
+            </span>
             {template.canEdit && (
               <span className="notebook-own-actions">
                 <button type="button" className="icon-button" aria-label={t(`${template.name} umbenennen`, `Rename ${template.name}`)} onClick={(e) => (e.preventDefault(), setRenaming({ id: template.id, name: template.name }))}>
@@ -135,7 +142,7 @@ export function CustomPaperSection({
         <div className="notebook-own-fit" role="radiogroup" aria-label={t("Anordnung", "Layout||paper template")}>
           {(["stretch", "tile"] as PaperFit[]).map((fit) => (
             <label key={fit}>
-              <input type="radio" name="notebook-own-fit" checked={(draft.image?.fit || "stretch") === fit} onChange={() => onChoose({ ...draft.image!, fit })} />
+              <input type="radio" name="notebook-own-fit" checked={(draft.image?.fit || "stretch") === fit} onChange={() => onChoose({ ...draft.image!, fit }, templates?.find((tpl) => tpl.id === draft.image?.template))} />
               {fit === "stretch" ? t("Auf das Blatt strecken", "Stretch to the sheet") : t("Kacheln", "Tile")}
             </label>
           ))}
@@ -149,7 +156,7 @@ export function CustomPaperSection({
         onAdded={(template) => {
           setAdding(false);
           setTemplates((list) => [...(list || []), template]);
-          onChoose({ template: template.id, fit: template.fit });
+          onChoose({ template: template.id, fit: template.fit }, template);
         }}
       />
     </fieldset>

@@ -16,6 +16,7 @@ import { transferTargets } from "@/lib/row-transfer";
 import { computeMetric, metricSchema, metricSources } from "@/lib/dashboard-metric";
 import { requireBodySize, sanitizeFileName, stripLocation, verifiedMime } from "@/lib/upload-safety";
 import { boardCursors, moveCursor, watchBoard } from "@/lib/whiteboard-presence";
+import { notebookPeers, sheetTrash } from "@/lib/notebook-organize";
 import { storageOverview } from "@/lib/storage-overview";
 import { offlineChanges, parseSince } from "@/lib/offline-changes";
 import { offlineAssets } from "@/lib/offline-assets-server";
@@ -444,6 +445,15 @@ async function handleGET(
       // Journal days: hidden, one dot per month or each day.
       const days = z.enum(["hide", "month", "show"]).catch("hide").parse(url.searchParams.get("days") || "hide");
       return NextResponse.json(await pageGraph(user, wid, { days }), { headers: { "Cache-Control": "no-store" } });
+    }
+    // The page overview of a notebook (lib/notebook-organize.ts): pages for
+    // its pickers, or its deleted sheets.
+    if (path.length === 3 && path[0] === "pages" && path[2] === "notebook") {
+      const page = await requirePage(user, z.uuid().parse(path[1]));
+      await requireUnlocked(user, page);
+      if (page.kind !== "notebook") throw new HttpError(400, "Kein Notizbuch.");
+      const part = z.enum(["peers", "trash"]).parse(url.searchParams.get("part"));
+      return NextResponse.json(part === "peers" ? await notebookPeers(user, page) : { trash: await sheetTrash(page) }, { headers: { "Cache-Control": "no-store" } });
     }
     if (path.length === 3 && path[0] === "pages" && path[2] === "unlinked") {
       const page = await requirePage(user, z.uuid().parse(path[1]));
@@ -963,7 +973,8 @@ async function handleGET(
     }
     if (path.length === 3 && path[0] === "whiteboards" && path[2] === "cursors") {
       const page = await requirePage(user, z.uuid().parse(path[1]));
-      if (page.kind !== "whiteboard") throw new HttpError(400, "Kein Whiteboard.");
+      // Notebooks share the channel: presenting and following (components/notebook).
+      if (page.kind !== "whiteboard" && page.kind !== "notebook") throw new HttpError(400, "Kein Whiteboard.");
       await requireUnlocked(user, page);
       const boardAllowed = streamGuard(
         hash((await cookies()).get(cookieName)?.value || ""),
@@ -1296,12 +1307,17 @@ async function handlePOST(
       if (Number(req.headers.get("content-length") || 0) > 512)
         throw new HttpError(413, "Cursoranfrage zu groß.");
       const page = await requirePage(user, z.uuid().parse(path[1]));
-      if (page.kind !== "whiteboard") throw new HttpError(400, "Kein Whiteboard.");
+      if (page.kind !== "whiteboard" && page.kind !== "notebook") throw new HttpError(400, "Kein Whiteboard.");
+      // A notebook's presenter: the sheet shown and since when (follow mode).
+      if (page.kind === "notebook") await requireUnlocked(user, page);
       const body = z
         .object({
           x: z.number().finite().min(-1e7).max(1e7),
           y: z.number().finite().min(-1e7).max(1e7),
           laser: z.boolean().optional(),
+          sheet: z.string().regex(/^[\w-]{1,40}$/).optional(),
+          present: z.number().int().min(0).max(1e14).optional(),
+          mark: z.boolean().optional(),
           view: z
             .object({
               x: z.number().finite().min(-1e7).max(1e7),

@@ -4,7 +4,7 @@
 // already attached to the page, stickers), pasting a picture (⌘V) and
 // dropping files onto a sheet. A new picture lands in the middle of what
 // is visible of the current sheet (dropped: where it was dropped), in its
-// frame, ready to move, resize, turn or crop (components/ink/ink-image.tsx).
+// frame, ready to move, resize, turn or crop (components/ink/ink-picture.tsx).
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Camera, Image as ImageIcon, Images, Plus, Sticker } from "@phosphor-icons/react";
 import { useT } from "../i18n";

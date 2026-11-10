@@ -94,10 +94,27 @@ export function strokePath(stroke: InkStroke): { d: string; fill: boolean } {
 
 // Text is measured roughly (no fonts on the server): an average advance per
 // character of its face (0.55 em for Helvetica).
+// Turned text: the box around its turned corners.
 export function textBox(item: InkText): Box {
   const lines = item.text.split("\n");
   const longest = Math.max(1, ...lines.map((l) => l.length));
-  return { x: item.x, y: item.y, w: longest * item.size * inkFontAdvance(item.font), h: lines.length * item.size * 1.25 };
+  const w = longest * item.size * inkFontAdvance(item.font),
+    h = lines.length * item.size * 1.25;
+  if (!item.rotation) return { x: item.x, y: item.y, w, h };
+  const a = (item.rotation * Math.PI) / 180;
+  const cos = Math.cos(a),
+    sin = Math.sin(a);
+  const corners = [
+    [0, 0],
+    [w, 0],
+    [0, h],
+    [w, h],
+  ].map(([u, v]) => ({ x: item.x + u * cos - v * sin, y: item.y + u * sin + v * cos }));
+  const xs = corners.map((c) => c.x),
+    ys = corners.map((c) => c.y);
+  const x = Math.min(...xs),
+    y = Math.min(...ys);
+  return { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y };
 }
 export function itemBounds(item: InkItem): Box {
   if (item.type === "text") return textBox(item);

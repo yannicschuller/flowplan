@@ -25,6 +25,8 @@ import {
 } from "../lib/ink/image";
 import { eraseItems, erasePartial, itemBounds, lassoItems, recolorItems, transformItems } from "../lib/ink/geometry";
 import { mergePage } from "../lib/ink/merge";
+import { itemAt, rotation, scaling, setItemsWidth, sharedWidthStep, transformSelected } from "../lib/ink/selection";
+import { eraseWith } from "../lib/ink/eraser";
 import { inkSvg } from "../lib/ink/svg";
 import { drawInk, imageMatrix, inkPdfContext } from "../lib/ink/pdf-export";
 import { notebookPdf, notebookPdfSheets } from "../lib/ink/notebook-pdf";
@@ -185,6 +187,27 @@ test("erasers leave pictures alone; the lasso takes them by their middle; moves 
   const recoloured = recolorItems([img, heart, star], new Set(["img1", "h", "st"]), "#2f9e44");
   assert.deepEqual(recoloured.map((i) => (i as InkImage).color), [undefined, "#2f9e44", undefined]);
   assert.ok(stickerTintable("heart") && !stickerTintable("star"));
+});
+
+test("the lasso's selection: a tap picks the picture, turns and scales carry it, no width, every eraser mode leaves it", () => {
+  const img = picture();
+  const stroke: InkItem = { id: "s", type: "pen", color: "#000000", width: 2, points: [120, 120, 0.5, 140, 120, 0.5] };
+  // Ink drawn over the picture is picked first, the picture elsewhere.
+  assert.equal(itemAt([img, stroke], { x: 130, y: 120 }, 3), "s");
+  assert.equal(itemAt([img, stroke], { x: 250, y: 170 }, 3), "img1");
+  // Turned by 90° around its centre: same box, turn added.
+  const turned = transformSelected([img, stroke], new Set(["img1", "s"]), rotation(Math.PI / 2, { x: 200, y: 150 }))[0] as InkImage;
+  assert.deepEqual([turned.x, turned.y, turned.w, turned.h, turned.rotation], [100, 100, 200, 100, 90]);
+  // Scaled from the top left: the centre moves with it, sides doubled.
+  const scaled = transformSelected([img], new Set(["img1"]), scaling(2, 2, { x: 100, y: 100 }))[0] as InkImage;
+  assert.deepEqual([scaled.x, scaled.y, scaled.w, scaled.h, scaled.rotation], [100, 100, 400, 200, undefined]);
+  // A turned picture stretched along x: its own sides follow (exact at 90°).
+  const stretched = transformSelected([turned], new Set(["img1"]), scaling(2, 1, { x: 200, y: 150 }))[0] as InkImage;
+  assert.deepEqual([stretched.w, stretched.h, stretched.rotation], [200, 200, 90]);
+  // Width steps skip pictures.
+  assert.equal(setItemsWidth([img], new Set(["img1"]), 2)[0], img);
+  assert.equal(sharedWidthStep([img, stroke]), null);
+  for (const mode of ["stroke", "partial", "highlighter"] as const) assert.ok(eraseWith([img], [{ x: 200, y: 150 }], mode, 20).includes(img), mode);
 });
 
 test("concurrent saves merge pictures like strokes: moved by one, drawn on by the other", () => {

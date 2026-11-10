@@ -1,9 +1,11 @@
 "use client";
 // The toolbar of an ink editing session (components/ink/use-ink-editor.ts):
-// tools, three favourite pens, colours (and an own one), widths (and a free
-// one; for text also the face), eraser kind, undo/redo, paste and the pen
-// settings (pen-only drawing, shape snapping, Apple Pencil
-// double-tap). `children` go at the end (save, done, …).
+// tools, favourite pens, colours (and an own one), widths, undo/redo, paste
+// and the gear. Tapping the tool in hand again – or the gear – opens its
+// panel (components/ink/ink-panel.tsx: free width, text face, colour
+// picker, favourites, eraser kinds, pen settings). `page`: the page the
+// person looks at (the eraser's "clear page"; else the last one drawn on).
+// `children` go at the end (save, done, …).
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowArcLeft,
@@ -19,37 +21,44 @@ import {
 } from "@phosphor-icons/react";
 import { useT } from "../i18n";
 import { useKeyboardHints } from "@/lib/keyboard-hints";
-import type { InkTool, PencilSetting } from "@/lib/ink/presets";
+import type { InkTool } from "@/lib/ink/presets";
 import { INK_TOOL_KEYS, type InkEditor } from "./use-ink-editor";
-import { useMenuPlacement } from "./menu-placement";
-import { InkCustomColor, InkWidthControl } from "./ink-style-picker";
+import { InkCustomColor } from "./ink-style-picker";
+import { FavoriteChips, InkPanel } from "./ink-panel";
+
+// Tools with a panel of their own (tap the tool in hand again).
+const PANEL_TOOLS: InkTool[] = ["pen", "highlighter", "text", "eraser"];
 
 export function InkToolbar({
   editor,
   children,
   toolKeys = false,
   label,
+  page,
 }: {
   editor: InkEditor;
   children?: React.ReactNode;
   toolKeys?: boolean;
   label?: string;
+  page?: string;
 }) {
   const t = useT();
   const keyHints = useKeyboardHints();
-  const [settings, setSettings] = useState(false);
-  const menu = useRef<HTMLDivElement>(null);
-  const placeMenu = useMenuPlacement();
+  // The open panel: under the tool in hand, or under the gear.
+  const [panel, setPanel] = useState<"tool" | "gear" | null>(null);
+  const anchor = useRef<HTMLElement | null>(null);
+  const opener = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
-    if (!settings) return;
+    if (!panel) return;
     const close = (event: PointerEvent) => {
-      if (!menu.current?.contains(event.target as Node)) setSettings(false);
+      if (!anchor.current?.contains(event.target as Node)) setPanel(null);
     };
-    // Escape closes the menu, not what the toolbar is in.
+    // Escape closes the panel, not what the toolbar is in.
     const key = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       event.stopPropagation();
-      setSettings(false);
+      setPanel(null);
+      opener.current?.focus();
     };
     document.addEventListener("pointerdown", close, true);
     window.addEventListener("keydown", key, true);
@@ -57,7 +66,15 @@ export function InkToolbar({
       document.removeEventListener("pointerdown", close, true);
       window.removeEventListener("keydown", key, true);
     };
-  }, [settings]);
+  }, [panel]);
+  // The tool panel follows the tool in hand (a favourite, keys, Pencil
+  // double-tap) and closes for a tool without one.
+  useEffect(() => {
+    if (!PANEL_TOOLS.includes(editor.tool)) setPanel((p) => (p === "tool" ? null : p));
+  }, [editor.tool]);
+  const panelFor = (align: "start" | "end") => (
+    <InkPanel editor={editor} page={page || editor.lastPage.current} fromGear={panel === "gear"} align={align} onClose={() => (setPanel(null), opener.current?.focus())} />
+  );
   // Single-key tool shortcuts where they are on (useInkShortcuts `tools`).
   const toolKey = (tool: InkTool) => (toolKeys ? keyHints.suffix(Object.entries(INK_TOOL_KEYS).find(([, v]) => v === tool)?.[0].toUpperCase() || "") : "");
   const tools: [InkTool, string, React.ReactNode][] = [
@@ -76,39 +93,51 @@ export function InkToolbar({
   return (
     <div className="ink-toolbar" role="toolbar" aria-label={label || t("Werkzeuge zum Anmerken", "Annotation tools")}>
       <div role="radiogroup" aria-label={t("Werkzeug", "Tool")} className="ink-group">
-        {tools.map(([id, label, icon]) => (
-          <button
-            key={id}
-            type="button"
-            role="radio"
-            aria-checked={editor.tool === id}
-            aria-label={label}
-            title={label + toolKey(id)}
-            className={editor.tool === id ? "active" : ""}
-            onClick={() => editor.setTool(id)}
-          >
-            {icon}
-          </button>
-        ))}
-      </div>
-      <div className="ink-group" role="group" aria-label={t("Lieblingsstifte", "Favourite pens")}>
-        {editor.presets.map((p, i) => (
-          <button
-            key={i}
-            type="button"
-            aria-pressed={editor.preset === i && editor.tool === p.type}
-            aria-label={t(`Lieblingsstift ${i + 1}`, `Favourite pen ${i + 1}`)}
-            title={t(`Lieblingsstift ${i + 1} (Farbe und Breite ändern sich mit)`, `Favourite pen ${i + 1} (follows colour and width changes)`)}
-            className={`ink-preset${editor.preset === i && editor.tool === p.type ? " active" : ""}`}
-            onClick={() => editor.pickPreset(i)}
-          >
+        {tools.map(([id, label, icon]) => {
+          const on = editor.tool === id;
+          const hasPanel = on && PANEL_TOOLS.includes(id);
+          const button = (
+            <button
+              key={id}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              aria-label={label}
+              aria-haspopup={hasPanel ? "dialog" : undefined}
+              aria-expanded={hasPanel ? panel === "tool" : undefined}
+              title={label + toolKey(id) + (hasPanel ? ` – ${t("noch einmal tippen für Einstellungen", "tap again for settings")}` : "")}
+              className={`${on ? "active" : ""}${hasPanel && panel === "tool" ? " is-open" : ""}`}
+              onClick={(e) => {
+                if (hasPanel) {
+                  opener.current = e.currentTarget;
+                  setPanel((p) => (p === "tool" ? null : "tool"));
+                } else editor.setTool(id);
+              }}
+            >
+              {icon}
+            </button>
+          );
+          return hasPanel ? (
             <span
-              className={`ink-preset-mark ${p.type}`}
-              style={{ "--swatch": p.color, "--mark": `${Math.max(2, Math.min(10, p.type === "highlighter" ? p.width / 2 : p.width * 1.6))}px` } as React.CSSProperties}
-            />
-          </button>
-        ))}
+              key={id}
+              className="ink-menu-anchor"
+              ref={(el) => {
+                if (panel === "tool") anchor.current = el;
+              }}
+            >
+              {button}
+              {panel === "tool" && panelFor("start")}
+            </span>
+          ) : (
+            button
+          );
+        })}
       </div>
+      {editor.favorites.length > 0 && (
+        <div className="ink-group" role="group" aria-label={t("Lieblingsstifte", "Favourite pens")}>
+          <FavoriteChips editor={editor} />
+        </div>
+      )}
       {styled && (
         <div className="ink-group">
           <div role="radiogroup" aria-label={t("Farbe", "Colour")} className="ink-group">
@@ -152,17 +181,6 @@ export function InkToolbar({
               </button>
             ))}
           </div>
-          <InkWidthControl editor={editor} />
-        </div>
-      )}
-      {editor.tool === "eraser" && (
-        <div role="radiogroup" aria-label={t("Radierer", "Eraser")} className="ink-group ink-labels">
-          <button type="button" role="radio" aria-checked={editor.eraserMode === "stroke"} className={editor.eraserMode === "stroke" ? "active" : ""} onClick={() => editor.setEraserMode("stroke")}>
-            {t("Ganze Striche", "Whole strokes")}
-          </button>
-          <button type="button" role="radio" aria-checked={editor.eraserMode === "partial"} className={editor.eraserMode === "partial" ? "active" : ""} onClick={() => editor.setEraserMode("partial")}>
-            {t("Teilweise", "Partial")}
-          </button>
         </div>
       )}
       <div className="ink-group">
@@ -177,39 +195,26 @@ export function InkToolbar({
             <ClipboardText size={19} />
           </button>
         )}
-        <div className="ink-menu-anchor" ref={menu}>
+        <div
+          className="ink-menu-anchor"
+          ref={(el) => {
+            if (panel === "gear") anchor.current = el;
+          }}
+        >
           <button
             type="button"
             aria-label={t("Stifteinstellungen", "Pen settings")}
             title={t("Stifteinstellungen", "Pen settings")}
-            aria-expanded={settings}
-            onClick={() => setSettings((s) => !s)}
+            aria-haspopup="dialog"
+            aria-expanded={panel === "gear"}
+            onClick={(e) => {
+              opener.current = e.currentTarget;
+              setPanel((p) => (p === "gear" ? null : "gear"));
+            }}
           >
             <GearSix size={19} />
           </button>
-          {settings && (
-            <div ref={placeMenu} className="ink-menu" role="group" aria-label={t("Stifteinstellungen", "Pen settings")}>
-              <label>
-                <input type="checkbox" checked={editor.penOnly} onChange={(e) => editor.setPenOnly(e.target.checked)} />
-                {t("Nur mit dem Stift zeichnen", "Draw with the pen only")}
-              </label>
-              <span className="ink-menu-hint">{t("Finger blättern und zoomen dann.", "Fingers then scroll and zoom.")}</span>
-              <label>
-                <input type="checkbox" checked={editor.snap} onChange={(e) => editor.setSnap(e.target.checked)} />
-                {t("Formen beim Halten begradigen", "Straighten shapes when holding")}
-              </label>
-              <span className="ink-menu-hint">{t("Am Ende eines Strichs kurz stillhalten: Linie, Rechteck, Ellipse …", "Hold still at the end of a stroke: line, rectangle, ellipse …")}</span>
-              <label className="ink-menu-select">
-                {t("Apple Pencil doppelt tippen", "Apple Pencil double-tap")}
-                <select value={editor.pencil} onChange={(e) => editor.setPencil(e.target.value as PencilSetting)}>
-                  <option value="system">{t("Wie in den iPad-Einstellungen", "As in the iPad settings")}</option>
-                  <option value="eraser">{t("Radierer", "Eraser")}</option>
-                  <option value="previous">{t("Letztes Werkzeug", "Last tool")}</option>
-                  <option value="off">{t("Nichts", "Nothing")}</option>
-                </select>
-              </label>
-            </div>
-          )}
+          {panel === "gear" && panelFor("end")}
         </div>
       </div>
       {children && <div className="ink-group ink-end">{children}</div>}

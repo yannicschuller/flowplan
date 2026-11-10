@@ -27,6 +27,8 @@ const TEXT_SOURCES = [
   "SELECT n.paper t FROM notebooks n JOIN pages p ON p.id=n.page_id WHERE p.workspace_id=?",
   "SELECT s.paper t FROM notebook_sheets s JOIN pages p ON p.id=s.page_id WHERE p.workspace_id=?",
   `SELECT i.data t FROM page_ink i JOIN pages p ON p.id=i.page_id WHERE p.workspace_id=? AND i.data LIKE '%"image"%'`,
+  // Deleted sheets that may come back (lib/notebook-organize.ts).
+  "SELECT s.sheet t FROM notebook_sheet_trash s JOIN pages p ON p.id=s.page_id WHERE p.workspace_id=?",
   "SELECT v.value t FROM page_property_values v JOIN pages p ON p.id=v.page_id WHERE p.workspace_id=?",
   "SELECT d.fields||' '||d.views t FROM databases d JOIN pages p ON p.id=d.page_id WHERE p.workspace_id=?",
   "SELECT x.tiles t FROM dashboards x JOIN pages p ON p.id=x.page_id WHERE p.workspace_id=?",

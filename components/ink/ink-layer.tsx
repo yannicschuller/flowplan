@@ -14,12 +14,9 @@
 // while the pen draws. Holding the pen still at the end of a stroke snaps it
 // to a line or shape.
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowsOutSimple, Copy, CopySimple, TextAa, Trash } from "@phosphor-icons/react";
 import { useT } from "../i18n";
 import { clientToPage, type PageSize } from "@/lib/ink/coords";
 import {
-  eraseItems,
-  erasePartial,
   flatPoints,
   hitItem,
   heldStill,
@@ -29,7 +26,6 @@ import {
   polylinePath,
   snapStroke,
   strokePath,
-  transformItems,
   unionBox,
   type Box,
   type Pt,
@@ -37,6 +33,23 @@ import {
 import { inkFontFamily, type InkFont } from "@/lib/ink/fonts";
 import { inkId, type InkDoc, type InkImage, type InkItem, type InkStroke, type InkText } from "@/lib/ink/model";
 import { HIGHLIGHTER_OPACITY, PEN_COLORS } from "@/lib/ink/presets";
+import { STROKE_ERASER_RADIUS, eraseWith as erase, type EraserMode } from "@/lib/ink/eraser";
+import {
+  CORNERS,
+  cornerPoint,
+  cornerScale,
+  handleAt,
+  isTap,
+  itemAt,
+  pinchTransform,
+  rotateHandlePoint,
+  rotation,
+  rotationDegrees,
+  transformSelected,
+  translation,
+  type Handle,
+} from "@/lib/ink/selection";
+import { InkSelectionBar } from "./ink-selection-bar";
 import {
   drawsWith,
   isEraser,
@@ -50,23 +63,29 @@ import {
   type PressureTrack,
 } from "@/lib/stylus";
 import type { InkEditor } from "./use-ink-editor";
-import { fileSrc, ImageFrame, InkImageItem, type ImageAction } from "./ink-image";
-import { imageAt } from "@/lib/ink/image";
+import { fileSrc, ImageFrame, InkImageItem, type ImageAction } from "./ink-picture";
 import { splitHighlights } from "@/lib/ink/svg";
 
 type XY = { x: number; y: number };
 // How long the pen rests at the end of a stroke before it snaps (ms).
 const HOLD_MS = 550;
 const LASER_MS = 700;
+// Selection handles: how far a press reaches them, how far above the box
+// the rotation handle sits (CSS pixels).
+const HANDLE_REACH = 14;
+const ROTATE_OFFSET = 26;
 
 type Gesture =
   | { kind: "draw"; pointer: number; type: string; stroke: InkStroke; raw: Pt[]; track: PressureTrack; timed: (XY & { t: number })[]; anchor: XY; snapped: boolean }
-  | { kind: "erase"; pointer: number; partial: boolean; items: InkItem[] }
+  | { kind: "erase"; pointer: number; mode: EraserMode; radius: number; items: InkItem[] }
   | { kind: "lasso"; pointer: number; polygon: XY[] }
-  | { kind: "move"; pointer: number; start: XY; ids: Set<string>; base: InkItem[] }
-  | { kind: "scale"; pointer: number; origin: XY; start: number; ids: Set<string>; base: InkItem[] }
+  // The selection dragged by its body (move), a corner (scale) or the
+  // rotation handle; a second finger turns it into a pinch.
+  | { kind: "transform"; pointer: number; handle: Handle | "move"; start: XY; last?: XY; box: Box; ids: Set<string>; base: InkItem[]; touch: boolean }
+  | { kind: "pinch"; pointers: Map<number, XY>; from: [XY, XY]; ids: Set<string>; base: InkItem[] }
   | { kind: "laser"; pointer: number }
-  | { kind: "tap"; pointer: number; client: XY; at: XY }
+  // A tap that may turn into a scroll: places text, or picks the item under a finger (lasso).
+  | { kind: "tap"; pointer: number; client: XY; at: XY; select?: boolean }
   | { kind: "pan"; touches: Map<number, XY>; distance: number; zoom: number };
 
 // The ink of a page, back to front: highlighter strokes in one layer, the
@@ -111,6 +130,7 @@ function InkTextItem({ item }: { item: InkText }) {
     <text
       x={item.x}
       y={item.y + item.size * 0.8}
+      transform={item.rotation ? `rotate(${item.rotation} ${item.x} ${item.y})` : undefined}
       fontSize={item.size}
       fill={item.color}
       fontFamily={inkFontFamily(item.font)}
@@ -134,9 +154,12 @@ export function InkLayer({
   onPan,
   onZoom,
   onConvert,
+  aiPageId,
+  onOutline,
   label,
   fingersScroll = false,
   onImageAction,
+  onSaveSticker,
   imageSrc = fileSrc,
 }: {
   page: string;
@@ -150,6 +173,11 @@ export function InkLayer({
   // "Convert to text" for a selection with handwriting: only where the
   // device recognises it (lib/ink/recognition.ts).
   onConvert?: () => void;
+  // The page the surface belongs to: "Convert to text" with the instance's
+  // AI where it may read that page (components/ink/ai-convert.tsx).
+  aiPageId?: string;
+  // Notebooks: "Als Überschrift ins Inhaltsverzeichnis" for selected text.
+  onOutline?: (title: string, y: number) => void;
   // The name of the surface for screen readers.
   label?: string;
   // Fingers scroll even with pen-only drawing off (a drawing block not
@@ -157,6 +185,8 @@ export function InkLayer({
   fingersScroll?: boolean;
   // "Save as sticker" in a picture's frame (notebooks).
   onImageAction?: (action: ImageAction, item: InkImage) => void;
+  // "Als Sticker speichern" in the bar of a lasso selection (notebooks).
+  onSaveSticker?: (items: InkItem[]) => void;
   // The address of a picture's file.
   imageSrc?: (file: string) => string;
 }) {
@@ -180,7 +210,7 @@ export function InkLayer({
     previewRef.current = next;
     setPreviewState(next);
   };
-  type Typing = { id: string | null; x: number; y: number; size: number; color: string; font?: InkFont; text: string };
+  type Typing = { id: string | null; x: number; y: number; size: number; color: string; font?: InkFont; rotation?: number; text: string };
   const [typing, setTypingState] = useState<Typing | null>(null);
   // The field can end twice (Enter, then blur as it goes): only once counts.
   const typingRef = useRef<Typing | null>(null);
@@ -247,6 +277,10 @@ export function InkLayer({
     setTyping(null);
   }, [active]);
 
+  useEffect(() => {
+    editor?.pageSizes.current.set(page, size);
+  }, [editor, page, size]);
+
   const toPage = (clientX: number, clientY: number) => clientToPage(clientX, clientY, root.current!.getBoundingClientRect(), size);
   const tolerance = (px: number) => px / scale;
 
@@ -283,8 +317,7 @@ export function InkLayer({
     }, HOLD_MS);
   }
   function eraseWith(g: Extract<Gesture, { kind: "erase" }>, path: XY[]) {
-    const radius = tolerance(g.partial ? 10 : 6);
-    const next = g.partial ? erasePartial(g.items, path, radius) : eraseItems(g.items, path, radius);
+    const next = erase(g.items, path, g.mode, tolerance(g.radius));
     if (next !== g.items) {
       g.items = next;
       setPreview(next);
@@ -307,6 +340,26 @@ export function InkLayer({
       running.touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
       return;
     }
+    // A second finger on a selection held by a finger: pinch to scale and turn it.
+    if (e.pointerType === "touch" && running?.kind === "transform" && running.touch) {
+      const first = running.last ?? running.start;
+      const second = toPage(e.clientX, e.clientY);
+      // The pinch goes on from where the drag got to.
+      const base = previewRef.current ?? running.base;
+      root.current?.setPointerCapture?.(e.pointerId);
+      gesture.current = {
+        kind: "pinch",
+        pointers: new Map([
+          [running.pointer, first],
+          [e.pointerId, second],
+        ]),
+        from: [first, second],
+        ids: running.ids,
+        base,
+      };
+      setPreview(base);
+      return;
+    }
     // The hand holding the pen, or anything else while a gesture runs.
     if (running) return;
     if (notePen(e)) ed.setPenOnly(true);
@@ -320,11 +373,26 @@ export function InkLayer({
       gesture.current = { kind: "tap", pointer: e.pointerId, client: { x: e.clientX, y: e.clientY }, at };
       return;
     }
+    if (fingerOnly && ed.tool === "lasso") {
+      // A finger moves, scales and turns a selection; elsewhere it scrolls,
+      // and a tap picks the item under it.
+      const target = selectionTarget(at);
+      if (!target) {
+        gesture.current = { kind: "tap", pointer: e.pointerId, client: { x: e.clientX, y: e.clientY }, at, select: true };
+        return;
+      }
+      e.preventDefault();
+      root.current?.setPointerCapture?.(e.pointerId);
+      gesture.current = { ...target, pointer: e.pointerId, start: at, touch: true };
+      return;
+    }
     if (fingerOnly) return;
     e.preventDefault();
     root.current?.setPointerCapture?.(e.pointerId);
     if (ed.tool === "eraser" || isEraser(e)) {
-      const g: Gesture = { kind: "erase", pointer: e.pointerId, partial: ed.eraserMode === "partial" && !isEraser(e), items };
+      // The eraser end of a pen takes whole strokes, as before.
+      const mode: EraserMode = isEraser(e) ? "stroke" : ed.eraserMode;
+      const g: Gesture = { kind: "erase", pointer: e.pointerId, mode, radius: mode === "partial" ? ed.eraserSize : STROKE_ERASER_RADIUS, items };
       gesture.current = g;
       eraseWith(g, [at]);
       return;
@@ -335,20 +403,10 @@ export function InkLayer({
       return;
     }
     if (ed.tool === "lasso") {
-      const box = ed.selection?.page === page ? ed.selectionBox : null;
-      if (box) {
-        const ids = new Set(ed.selection!.ids);
-        const handle = { x: box.x + box.w, y: box.y + box.h };
-        if (Math.hypot(at.x - handle.x, at.y - handle.y) <= tolerance(16)) {
-          const origin = { x: box.x, y: box.y };
-          gesture.current = { kind: "scale", pointer: e.pointerId, origin, start: Math.max(1, Math.hypot(at.x - origin.x, at.y - origin.y)), ids, base: items };
-          return;
-        }
-        const pad = tolerance(8);
-        if (at.x >= box.x - pad && at.x <= box.x + box.w + pad && at.y >= box.y - pad && at.y <= box.y + box.h + pad) {
-          gesture.current = { kind: "move", pointer: e.pointerId, start: at, ids, base: items };
-          return;
-        }
+      const target = selectionTarget(at);
+      if (target) {
+        gesture.current = { ...target, pointer: e.pointerId, start: at, touch: e.pointerType === "touch" };
+        return;
       }
       ed.setSelection(null);
       gesture.current = { kind: "lasso", pointer: e.pointerId, polygon: [at] };
@@ -372,6 +430,21 @@ export function InkLayer({
     };
     drawDraft();
     armSnap();
+  }
+
+  // What a press at `at` grabs of this page's selection: a handle, the
+  // body (with a margin) or nothing.
+  function selectionTarget(at: XY): { kind: "transform"; handle: Handle | "move"; box: Box; ids: Set<string>; base: InkItem[] } | null {
+    const ed = editor;
+    const box = ed?.selection?.page === page ? ed.selectionBox : null;
+    if (!ed || !box) return null;
+    const ids = new Set(ed.selection!.ids);
+    const handle = handleAt(box, at, tolerance(HANDLE_REACH), tolerance(ROTATE_OFFSET));
+    if (handle) return { kind: "transform", handle, box, ids, base: items };
+    const pad = tolerance(8);
+    if (at.x >= box.x - pad && at.x <= box.x + box.w + pad && at.y >= box.y - pad && at.y <= box.y + box.h + pad)
+      return { kind: "transform", handle: "move", box, ids, base: items };
+    return null;
   }
 
   function startPan(e: React.PointerEvent, running: Gesture) {
@@ -404,6 +477,14 @@ export function InkLayer({
       if (now.length >= 2) g.zoom = Math.hypot(now[0].x - now[1].x, now[0].y - now[1].y) / g.distance;
       return;
     }
+    if (g.kind === "pinch") {
+      if (!g.pointers.has(e.pointerId)) return;
+      e.preventDefault();
+      g.pointers.set(e.pointerId, toPage(e.clientX, e.clientY));
+      const now = [...g.pointers.values()];
+      if (now.length === 2) setPreview(transformSelected(g.base, g.ids, pinchTransform(g.from, [now[0], now[1]])));
+      return;
+    }
     if (g.kind === "tap" || g.pointer !== e.pointerId) return;
     e.preventDefault();
     const rect = root.current!.getBoundingClientRect();
@@ -431,13 +512,18 @@ export function InkLayer({
     else if (g.kind === "lasso") {
       g.polygon.push(...pts);
       drawDraft();
-    } else if (g.kind === "move") {
+    } else if (g.kind === "transform") {
       const p = pts[pts.length - 1];
-      setPreview(transformItems(g.base, g.ids, { dx: p.x - g.start.x, dy: p.y - g.start.y }));
-    } else if (g.kind === "scale") {
-      const p = pts[pts.length - 1];
-      const factor = Math.max(0.1, Math.hypot(p.x - g.origin.x, p.y - g.origin.y) / g.start);
-      setPreview(transformItems(g.base, g.ids, { scale: factor, ox: g.origin.x, oy: g.origin.y }));
+      g.last = p;
+      const { box } = g;
+      const centre = { x: box.x + box.w / 2, y: box.y + box.h / 2 };
+      const m =
+        g.handle === "move"
+          ? translation(p.x - g.start.x, p.y - g.start.y)
+          : g.handle === "rotate"
+            ? rotation((rotationDegrees(centre, g.start, p, e.shiftKey) * Math.PI) / 180, centre)
+            : cornerScale(box, g.handle, p, e.shiftKey || g.touch);
+      setPreview(transformSelected(g.base, g.ids, m));
     } else if (g.kind === "laser") {
       const now = Date.now();
       setLaser((trail) => [...trail.filter((p) => now - p.t < LASER_MS), ...pts.map((p) => ({ ...p, t: now }))]);
@@ -448,6 +534,15 @@ export function InkLayer({
     const g = gesture.current;
     const ed = editor;
     if (!g || !ed) return;
+    // The item a tap picked: a picture or sticker alone opens in its frame
+    // (components/ink/ink-picture.tsx), anything else is selected.
+    const pickItem = (hit: string | null) => {
+      if (hit && items.find((i) => i.id === hit)?.type === "image") ed.pick({ page, id: hit });
+      else {
+        ed.pick(null);
+        ed.setSelection(hit ? { page, ids: [hit] } : null);
+      }
+    };
     if (g.kind === "pan") {
       g.touches.delete(e.pointerId);
       if (g.touches.size) return;
@@ -455,12 +550,23 @@ export function InkLayer({
       if (Math.abs(g.zoom - 1) > 0.15) onZoom?.(g.zoom);
       return;
     }
+    if (g.kind === "pinch") {
+      if (!g.pointers.has(e.pointerId)) return;
+      gesture.current = null;
+      const current = previewRef.current;
+      setPreview(null);
+      if (current && current !== g.base) ed.change(page, () => current);
+      return;
+    }
     if (g.pointer !== e.pointerId) return;
     gesture.current = null;
     if (holdTimer.current) clearTimeout(holdTimer.current);
     if (g.kind === "tap") {
       if (cancelled || Math.hypot(e.clientX - g.client.x, e.clientY - g.client.y) > 10) return;
-      openText(g.at);
+      if (g.select) {
+        const hit = itemAt(items, g.at, tolerance(10));
+        pickItem(hit);
+      } else openText(g.at);
       return;
     }
     if (g.kind === "draw") {
@@ -474,19 +580,19 @@ export function InkLayer({
       if (g.items !== items) ed.change(page, () => g.items);
     } else if (g.kind === "lasso") {
       clearDraft();
-      // A tap with the lasso on a picture puts it in its frame.
-      const [first] = g.polygon;
-      if (g.polygon.every((p) => Math.hypot(p.x - first.x, p.y - first.y) <= tolerance(6))) {
-        const hit = imageAt(items, first, tolerance(4));
-        ed.pick(hit ? { page, id: hit.id } : null);
-        if (hit) return;
+      // A tap picks the one item under it – a picture or sticker opens in
+      // its frame (components/ink/ink-picture.tsx); a loop what it goes around.
+      if (isTap(g.polygon, tolerance(6))) {
+        pickItem(itemAt(items, g.polygon[0], tolerance(e.pointerType === "pen" ? 6 : 8)));
+        return;
       }
       const ids = lassoItems(items, g.polygon);
-      ed.setSelection(ids.length ? { page, ids } : null);
-    } else if (g.kind === "move" || g.kind === "scale") {
+      if (ids.length === 1) pickItem(ids[0]);
+      else ed.setSelection(ids.length ? { page, ids } : null);
+    } else if (g.kind === "transform") {
       const current = previewRef.current;
       setPreview(null);
-      if (current) ed.change(page, () => current);
+      if (current && !cancelled) ed.change(page, () => current);
     }
   }
 
@@ -494,7 +600,7 @@ export function InkLayer({
   function openText(at: XY) {
     const ed = editor!;
     const hit = [...items].reverse().find((item): item is InkText => item.type === "text" && hitItem(item, at, tolerance(4)));
-    if (hit) setTyping({ id: hit.id, x: hit.x, y: hit.y, size: hit.size, color: hit.color, font: hit.font, text: hit.text });
+    if (hit) setTyping({ id: hit.id, x: hit.x, y: hit.y, size: hit.size, color: hit.color, font: hit.font, rotation: hit.rotation, text: hit.text });
     else setTyping({ id: null, x: at.x, y: at.y - ed.style.width * 0.6, size: ed.style.width, color: ed.style.color, font: ed.style.font, text: "" });
   }
   function commitText() {
@@ -528,6 +634,7 @@ export function InkLayer({
   const pickedItem =
     active && editor?.tool === "lasso" && editor.picked?.page === page ? (shown.find((i) => i.id === editor.picked!.id && i.type === "image") as InkImage | undefined) : undefined;
   const percent = (v: number, of: number) => `${(v / (of || 1)) * 100}%`;
+  const center = (p: XY) => ({ cx: p.x, cy: p.y });
   const touchAction = !active ? undefined : penOnly ? "pan-x pan-y pinch-zoom" : "none";
   return (
     <div
@@ -568,6 +675,7 @@ export function InkLayer({
             strokeLinejoin="round"
           />
         )}
+        {laser.length > 0 && <circle className="ink-laser-dot" cx={laser[laser.length - 1].x} cy={laser[laser.length - 1].y} r={tolerance(6)} />}
         {showSelection && (
           <g className="ink-selection">
             <rect
@@ -578,55 +686,27 @@ export function InkLayer({
               fill="none"
               vectorEffect="non-scaling-stroke"
             />
-            <circle cx={selectionBox.x + selectionBox.w} cy={selectionBox.y + selectionBox.h} r={tolerance(8)} className="ink-handle" />
+            {!preview && (
+              <>
+                <line
+                  className="ink-rotate-stem"
+                  x1={selectionBox.x + selectionBox.w / 2}
+                  y1={selectionBox.y - tolerance(4)}
+                  x2={rotateHandlePoint(selectionBox, tolerance(ROTATE_OFFSET)).x}
+                  y2={rotateHandlePoint(selectionBox, tolerance(ROTATE_OFFSET)).y}
+                  vectorEffect="non-scaling-stroke"
+                />
+                <circle {...center(rotateHandlePoint(selectionBox, tolerance(ROTATE_OFFSET)))} r={tolerance(7)} className="ink-handle ink-handle-rotate" />
+                {CORNERS.map((corner) => (
+                  <circle key={corner} {...center(cornerPoint(selectionBox, corner))} r={tolerance(6)} className={`ink-handle ink-handle-${corner}`} />
+                ))}
+              </>
+            )}
           </g>
         )}
       </svg>
-      {showSelection && !preview && editor && (
-        <div
-          className="ink-ui ink-selection-bar"
-          role="toolbar"
-          aria-label={t("Auswahl", "Selection")}
-          style={{
-            left: percent(selectionBox.x, size.width),
-            top: selectionBox.y > 60 ? `calc(${percent(selectionBox.y, size.height)} - 48px)` : `calc(${percent(selectionBox.y + selectionBox.h, size.height)} + 10px)`,
-          }}
-          onPointerDown={(e) => e.stopPropagation()}
-        >
-          {PEN_COLORS.map((c) => (
-            <button
-              key={c}
-              type="button"
-              className="ink-swatch"
-              style={{ "--swatch": c } as React.CSSProperties}
-              aria-label={t(`Farbe ${c}`, `Colour ${c}`)}
-              onClick={() => editor.recolorSelection(c)}
-            />
-          ))}
-          <button type="button" aria-label={t("Kopieren", "Copy")} title={t("Kopieren", "Copy")} onClick={() => editor.copySelection()}>
-            <Copy size={17} />
-          </button>
-          <button type="button" aria-label={t("Duplizieren", "Duplicate")} title={t("Duplizieren", "Duplicate")} onClick={() => editor.duplicateSelection()}>
-            <CopySimple size={17} />
-          </button>
-          {onConvert && shown.some((i) => i.type === "pen" && selected?.ids.includes(i.id)) && (
-            <button
-              type="button"
-              className="ink-convert"
-              aria-label={t("In Text umwandeln", "Convert to text")}
-              title={t("In Text umwandeln", "Convert to text")}
-              onClick={onConvert}
-            >
-              <TextAa size={17} />
-            </button>
-          )}
-          <button type="button" aria-label={t("Auswahl löschen", "Delete selection")} title={t("Auswahl löschen", "Delete selection")} onClick={() => editor.deleteSelection()}>
-            <Trash size={17} />
-          </button>
-          <span className="ink-selection-hint" title={t("Am Griff unten rechts ziehen, um die Größe zu ändern", "Drag the handle at the bottom right to resize")}>
-            <ArrowsOutSimple size={15} />
-          </span>
-        </div>
+      {showSelection && !preview && editor && selected && (
+        <InkSelectionBar editor={editor} page={page} size={size} box={selectionBox} items={shown.filter((i) => selected.ids.includes(i.id))} onConvert={onConvert} aiPageId={aiPageId} onOutline={onOutline} onSticker={onSaveSticker} />
       )}
       {pickedItem && editor && (
         <ImageFrame
@@ -655,6 +735,7 @@ export function InkLayer({
             fontSize: typing.size * scale,
             fontFamily: inkFontFamily(typing.font),
             color: typing.color,
+            ...(typing.rotation ? { transform: `rotate(${typing.rotation}deg)`, transformOrigin: "0 0" } : {}),
           }}
           value={typing.text}
           maxLength={1000}

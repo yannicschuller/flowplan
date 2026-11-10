@@ -234,6 +234,7 @@ export default function DrawBlockEditor({ node, editor: doc, extension, updateAt
             editing={writable}
             fingersScroll={!active}
             onConvert={writable && canRecognize ? () => void convert() : undefined}
+            aiPageId={writable ? pageId : undefined}
             label={t("Handschrift", "Handwriting")}
           />
         )}

@@ -13,8 +13,12 @@ block of documents (`components/ink/draw-block*.tsx`,
 | `lib/ink/model.ts` | Types, limits, `parseInk` (strict, drops junk), `serializeInk`, `inkText` (search), `withPage` |
 | `lib/ink/coords.ts` | Page units ↔ screen, ↔ device pixels (zoom, DPR), page as shown → PDF user space (rotation, crop box) |
 | `lib/ink/geometry.ts` | Pressure outline, bounds, hit tests, stroke and partial eraser, lasso, move/resize/recolour/copy, shape snapping (uses `recognizeStroke` from `lib/whiteboard-tools.ts`), `heldStill` |
+| `lib/ink/selection.ts` | The lasso's selection over every item type: tap to pick, affine move/scale/turn (corners, 15° snap, pinch), front/back, width steps, text next to it, pastes kept on the page |
+| `lib/ink/clipboard.ts` | The ink clipboard of the tab, shared by all editors (sheet → sheet, notebook → drawing block) |
 | `lib/ink/history.ts` | Undo/redo of whole states |
-| `lib/ink/presets.ts` | Tools, colours, widths and the free width ranges, 3 favourite pens, text style, recent own colours, Pencil double-tap setting, snap setting (per device, `localStorage`) |
+| `lib/ink/presets.ts` | Tools, colours, widths and the free width ranges, the 3 favourite pens of earlier versions, text style, recent own colours, Pencil double-tap setting, snap setting (per device, `localStorage`) |
+| `lib/ink/favorites.ts` | Favourite pens: up to 8 of tool (pen, highlighter, text) + colour + width (+ face), add/move/remove, the one in hand; per device (`flowplan-ink-favorites`; taken over once from `flowplan-ink-presets`, which stays for older versions) |
+| `lib/ink/eraser.ts` | Eraser kinds – whole strokes, parts (`erasePartial` splits strokes), highlighter only – and the partial eraser's size (screen px); per device |
 | `lib/ink/fonts.ts` | Typefaces of text: CSS families with fallbacks, rough advance per face, nearest standard PDF font |
 | `lib/ink/color.ts` | Hex ↔ hue/saturation/value for the colour picker |
 | `lib/ink/pdf-export.ts` | `flattenInk(pdfBytes, doc)` → new PDF with the ink as vectors (pdf-lib); `drawInk` for any page |
@@ -23,19 +27,24 @@ block of documents (`components/ink/draw-block*.tsx`,
 | `lib/ink/svg.ts` | `inkSvg(items, size, { paper })`: ink as an SVG document (published pages, exports) |
 | `lib/ink/image.ts` | Pictures and stickers: bounds and hits (turned), the frame's resize/rotate/crop, order front/back, placing a new one |
 | `lib/ink/stickers.ts` | Built-in stickers (paths in a 100 × 100 box, CC0; `public/stickers/*.svg` are written from them), date/time stamps as ink |
-| `components/ink/ink-image.tsx` | `<InkImageItem>` (drawing) and `<ImageFrame>` (move, resize, rotate, crop, order, opacity, duplicate, delete, save as sticker) |
+| `components/ink/ink-picture.tsx` | `<InkImageItem>` (drawing) and `<ImageFrame>` (move, resize, rotate, crop, order, opacity, duplicate, delete, save as sticker) |
 | `lib/ink/recognition.ts` | Handwriting recognition in the iPhone/iPad app (contract below) |
 | `lib/ink/recognized.ts` | Cleaning and capping recognised text |
 | `lib/ink-store.ts` | Server: ink of PDF files (`file_ink`, `file_ink_versions`, `recognized`) |
 | `lib/page-ink-store.ts` | Server: ink of a page's surfaces – notebook sheets, drawing blocks (`page_ink`, `page_ink_versions`) |
 | `lib/ink-export.ts` | Server: pictures of drawing blocks and sheets for published pages and exports |
 | `components/ink/use-surface-sync.ts` | Saving surfaces while drawing, merging, following others, recognition for search |
-| `components/ink/convert.ts` | "Convert to text" of a lasso selection |
+| `components/ink/convert.ts` | "Convert to text" of a lasso selection on the device (iPhone/iPad app) |
+| `components/ink/ai-convert.tsx` | "Convert to text" with the instance's AI (`lib/ai/handwriting.ts`): dialog with the picture, the recognised text to edit, insert in place / next to it / copy |
+| `components/ink/ink-selection-bar.tsx` | The bar over a selection: colour (palette, own colours, picker) and width, cut, copy, duplicate, front, back, convert, save as sticker (notebooks), delete |
+| `components/ink/ink-image.ts` | Items as an SVG/PNG of just their area (system clipboard, AI recognition) |
+| `components/ink/system-clipboard.ts` | Copied ink also on the system clipboard (PNG, SVG where supported, typed text) |
 | `components/ink/use-ink-editor.ts` | `useInkEditor(initial)`: the editing session; `useInkShortcuts(editor, on)` |
 | `components/ink/ink-layer.tsx` | `<InkLayer>`: renders and takes input for one page |
-| `components/ink/ink-toolbar.tsx` | `<InkToolbar editor>`: tools, favourites, colours, widths, eraser kind, undo/redo, paste, pen settings; children go at the end |
-| `components/ink/ink-style-picker.tsx` | `<InkCustomColor editor>` ("+" after the colours: colour picker) and `<InkWidthControl editor>` (free width; for text size and face), each a button with its menu – self-contained |
-| `components/ink/color-picker.tsx` | `<ColorPicker value onChange onCommit recent>`: saturation/brightness area, hue slider, hex field, recent colours (pointer, Pencil, keyboard) |
+| `components/ink/ink-toolbar.tsx` | `<InkToolbar editor page?>`: tools, favourites, colours, widths, undo/redo, paste, gear; tapping the tool in hand again (or the gear) opens its panel; children go at the end |
+| `components/ink/ink-panel.tsx` | `<InkPanel>`: a tool's panel – favourites, live preview, width (presets + slider), text face, colour (picker beside the panel), eraser kinds and size, "clear page", input settings (switches) |
+| `components/ink/ink-style-picker.tsx` | `<InkCustomColor editor>` ("+" after the colours in the toolbar row: colour picker in a menu) |
+| `components/ink/color-picker.tsx` | `<ColorPicker value onChange onCommit recent>`: saturation/brightness area, hue slider, hex field, eyedropper (EyeDropper API, hidden where missing), recent colours (pointer, Pencil, keyboard) |
 
 ## Storage format (version 1)
 
@@ -74,6 +83,11 @@ block of documents (`components/ink/draw-block*.tsx`,
   Times for `serif`, Courier for `mono`, Helvetica for the rest, no
   embedding. Versions before `font` read such text in Helvetica and drop
   the field when they save that surface.
+- Optional `rotation` of text: degrees clockwise (−180…180, two
+  decimals) around `(x, y)`, set by turning a lasso selection; left out
+  when upright. SVG draws it as `rotate(r x y)`, PDFs turn the text
+  matrix. Versions before `rotation` show such text upright and drop the
+  field when they save that surface (the text itself stays).
 - Pictures and stickers (`type: "image"`):
   `{ id, type: "image", x, y, w, h, file?, sticker?, color?, rotation?, crop?, opacity? }`.
   `file` is a file attached to the same page (the server drops pictures of
@@ -140,6 +154,15 @@ command API: `notebook.sheet.add`, `.duplicate`, `.delete`, `.move`,
 `.paper`, `notebook.paper`, `notebook.import` (`lib/notebook.ts`). New
 sheets and inserted PDFs go after the sheet `after`, at the end (`after`
 null) or before the first sheet (`at: "start"`), see `placeSheets`.
+Organising (page overview, `lib/notebook-organize.ts`, model and pure
+helpers in `lib/notebook-organize-model.ts`): `notebook.sheet.meta`
+(title, bookmark), `.sheet.links` (areas linking to a sheet or page – kept
+outside the ink, so older clients never drop them), `notebook.outline` /
+`.outline.add` (table of contents), `.sheets.duplicate`, `.sheets.delete`
+(into `notebook_sheet_trash`, 30 days, with the ink), `.trash.restore`,
+`.sheets.transfer` (copy/move into another notebook). Presenting and
+follow mode share the whiteboards' cursor channel
+(`components/notebook/use-notebook-live.ts`).
 
 ## Handwriting recognition (iPhone/iPad app)
 
@@ -163,6 +186,44 @@ control and direction characters removed) and searched like typed text. A
 lasso selection with pen strokes offers **Convert to text**: the text
 replaces the strokes as a text item (notebooks, PDFs) or becomes paragraphs
 below the block (drawing blocks); one undo step of the ink.
+
+Where the instance's AI may run for the page (feature `handwriting`,
+`lib/ai/handwriting.ts`), notebooks and drawing blocks use it instead: the
+selected pen strokes as a PNG (drawn in the browser) go to
+`POST /api/ai/handwriting { pageId, image }` → `{ text }` – a vision model
+is needed. Editors of unlocked pages only; PIN journals, encrypted spaces,
+pages closed to the AI and the person's rules refuse, rate limits and
+usage statistics as for every prompt. The text is shown to edit and then
+placed as a text box (the text tool's colour, size, face) in the strokes'
+place or next to them, or copied; one undo step.
+
+## Lasso selection
+
+Tap an item to pick it (the top one; a highlighter only where nothing is
+drawn over it), or draw a loop around items. The selection moves by its
+body, scales by its four corners (around the opposite one; free with the
+mouse or pen, Shift or a finger keeps the aspect), turns by the handle
+above it (snaps to 15° within 4°, Shift always in 15° steps) and – held by
+a finger – scales and turns with a second finger. Strokes and text turn
+with it (text keeps its turn in `rotation`). The bar recolours (palette,
+recent own colours, picker), sets the width (fine/medium/bold for pen,
+highlighter and text), cuts, copies, duplicates, brings to the front or
+back, converts and deletes; keys: ⌘X/⌘C/⌘V/⌘D, ⌘] / ⌘[, arrows nudge
+(Shift: 10 pt), ⌘A on a notebook, Delete, Escape. Every action is one undo
+step and a normal ink change (saved, merged by item id; an order changed
+only by one side survives a merge). The clipboard is shared by every ink
+editor of the tab, so a cut on one sheet pastes onto another (the sheet
+last touched; moved onto the page if it would stick out), and copies also
+go to the system clipboard as a picture.
+
+Pictures and stickers: a tap on one (or a loop around it alone) opens its
+own frame (`components/ink/ink-picture.tsx`: crop, opacity, eight resize
+handles, "save as sticker"); in a selection with other items they move,
+scale and turn with them (`transformItem`: the centre goes through the
+transform, the sides scale along their own direction, the turn adds up),
+keep their colours (one-colour built-in stickers take a new colour) and
+have no width. In notebooks the bar also saves the selection as a sticker
+(`saveSelectionAsSticker`; pictures of files are left out of an ink sticker).
 
 ## Components
 

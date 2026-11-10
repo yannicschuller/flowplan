@@ -13,6 +13,9 @@ test("without a setup token on a public address the setup is flagged", async () 
   assert.equal(await auth.firstAccount(), true);
   assert.equal(auth.unprotectedSetup(), true);
   assert.match(await auth.setupWarning(), /FLOWPLAN_SETUP_TOKEN/);
+  // The warning and the hint with a token show the same link, with a placeholder.
+  assert.match(await auth.setupWarning(), /https:\/\/flowplan\.example\.test\/register\?setup=<your FLOWPLAN_SETUP_TOKEN>/);
+  assert.equal(await auth.setupHint(), "", "no token: the warning says it");
   assert.equal((await auth.loginOptions()).unprotectedSetup, true);
   const before = process.env.APP_URL;
   try {
