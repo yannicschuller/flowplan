@@ -75,7 +75,9 @@ async function readStatus<T>(key: string): Promise<T | null> {
 async function storeEntry(userId: string, entry: LdapEntry, groups: string[], now: number) {
   const profile = entryProfile(entry);
   await run("UPDATE users SET name=? WHERE id=?", profile.name, userId);
-  if (profile.email) await run("UPDATE users SET email=? WHERE id=?", profile.email, userId);
+  // A different address is confirmed by nobody yet: the old confirmation goes.
+  if (profile.email)
+    await run("UPDATE users SET email_verified=CASE WHEN lower(email)=lower(?) THEN email_verified ELSE 0 END,email=? WHERE id=?", profile.email, profile.email, userId);
   await run(
     "UPDATE ldap_accounts SET dn=?,groups_json=?,is_admin=?,synced_at=? WHERE user_id=?",
     entry.dn,

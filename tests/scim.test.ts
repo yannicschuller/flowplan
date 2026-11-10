@@ -335,3 +335,18 @@ test("the administration sees the last requests", async () => {
   assert.ok(await one("SELECT 1 FROM scim_requests WHERE method='POST' AND path='/Users' AND status=201"));
   assert.ok(overview.tokens.every((t) => !("token_hash" in t)));
 });
+
+test("a new address from SCIM is not confirmed by the old address's confirmation", async () => {
+  // users-email/changed-without-resetting-email-verified
+  const mallory = id();
+  await run("INSERT INTO users(id,subject,name,email,email_verified) VALUES(?,?,?,?,1)", mallory, `https://idp|${mallory}`, "Mallory", "mallory@example.com");
+  const created = await scim("POST", "/Users", okta("mallory@example.com", { externalId: "mallory" }));
+  assert.equal(await userIdOf(created.body.id), mallory);
+  const verified = async () => (await one<{ email: string; email_verified: number }>("SELECT email,email_verified FROM users WHERE id=?", mallory))!;
+  // The same address again (case aside): the confirmation stays.
+  await scim("PUT", `/Users/${created.body.id}`, okta("mallory@example.com", { externalId: "mallory", emails: [{ primary: true, value: "Mallory@example.com" }] }));
+  assert.equal((await verified()).email_verified, 1);
+  // Another address: nobody vouched for it yet.
+  await scim("PUT", `/Users/${created.body.id}`, okta("mallory@example.com", { externalId: "mallory", emails: [{ primary: true, value: "victim2@example.com" }] }));
+  assert.deepEqual({ ...(await verified()) }, { email: "victim2@example.com", email_verified: 0 });
+});

@@ -411,7 +411,9 @@ const isLocal = async (userId: string) => !!(await one("SELECT 1 FROM local_acco
 async function updateProfile(userId: string, input: UserInput) {
   await run("UPDATE users SET name=? WHERE id=?", flowplanName(input), userId);
   // An account with e-mail and password keeps its address: it signs in with it.
-  if (input.email && !(await isLocal(userId))) await run("UPDATE users SET email=? WHERE id=?", input.email, userId);
+  // A different address is confirmed by nobody yet: the old confirmation goes.
+  if (input.email && !(await isLocal(userId)))
+    await run("UPDATE users SET email_verified=CASE WHEN lower(email)=lower(?) THEN email_verified ELSE 0 END,email=? WHERE id=?", input.email, input.email, userId);
 }
 async function uniqueUserName(userName: string, except?: string) {
   if (await one("SELECT 1 FROM scim_users WHERE lower(user_name)=lower(?) AND id<>?", userName, except || ""))

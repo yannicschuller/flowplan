@@ -36,7 +36,7 @@ test("with e-mail set up, a new account confirms its address before signing in",
   await resendVerification({ email: "lena@example.test" }, "de");
   assert.equal((await mails()).filter((m) => m.recipient === "lena@example.test").length, 1);
   assert.equal(await verifyEmail("wrong-token"), null);
-  assert.equal(await verifyEmail(linkIn(sent[0].text)), result.user.id);
+  assert.deepEqual(await verifyEmail(linkIn(sent[0].text), result.user.id), { userId: result.user.id });
   assert.ok(await passwordLogin({ email: "lena@example.test", password: "a-long-password" }, "1.1.1.2", "de"));
   // Signing up again with the address does not reveal the account: the
   // sign-up page answers as usual (AccountExists.noted), Lena gets a note.
