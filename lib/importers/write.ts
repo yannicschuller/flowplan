@@ -15,6 +15,7 @@ import { isEncryptedPage } from "../e2ee-server";
 import { appendHtmlToPage } from "../mcp";
 import { boardState, storeBoardImages } from "../whiteboard-import-server";
 import { writeWhiteboard } from "../whiteboard";
+import { importNotebook } from "../notebook";
 import { cleanHtml, htmlState } from "../document-server";
 import { enforceQuota } from "../instance-ops";
 import { enforceUserStorage } from "../user-limits";
@@ -47,6 +48,9 @@ export type ImportPreview = {
   databases?: number;
   journalDays?: number;
   collections?: number;
+  // Notebooks and their sheets (GoodNotes PDFs).
+  notebooks?: number;
+  sheets?: number;
   // Page properties (by name) and page icons the import sets.
   properties?: number;
   icons?: number;
@@ -64,7 +68,7 @@ export type ImportPreview = {
   tooMany?: boolean;
 };
 export type ImportResult = ImportPreview & { rootIds: string[]; rows: number; databaseId?: string };
-const special = (page: ImportPage) => page.kind === "whiteboard" || page.kind === "database";
+const special = (page: ImportPage) => page.kind === "whiteboard" || page.kind === "database" || page.kind === "notebook";
 // The pages a mode writes: databases and whiteboards only as pages; a
 // document that is a record's content (#82) only in database mode, where
 // databases are left out.
@@ -83,6 +87,8 @@ const decodeKey = (key: string) => {
 function referencedFiles(tree: ImportTree, mode: ImportMode = "pages") {
   const used = new Map<string, string>();
   for (const page of pagesFor(tree, mode)) {
+    // A notebook's PDF backgrounds belong to the notebook.
+    for (const sheet of page.notebook?.sheets || []) if (tree.files.has(sheet.file) && !used.has(sheet.file)) used.set(sheet.file, page.key);
     for (const html of [page.html, ...(page.database?.rows.map((r) => r.html) || [])])
       for (const match of html.matchAll(PLACEHOLDER))
         if (match[1] === "file") {
@@ -152,8 +158,11 @@ export async function previewImport(user: Identity, workspaceId: string, spaceId
   const boards = tree.pages.filter((p) => p.kind === "whiteboard").length;
   const databases = tree.pages.filter((p) => p.kind === "database").length;
   const journalDays = new Set(tree.pages.filter((p) => p.journalDate).map((p) => p.journalDate)).size;
+  const notebooks = tree.pages.filter((p) => p.kind === "notebook");
+  const sheets = notebooks.reduce((n, p) => n + (p.notebook?.sheets.length || 0), 0);
   if (mode === "database" && boards + databases)
     warnings.push("Whiteboards und Datenbanken werden nur beim Import als Seiten übernommen.");
+  if (mode === "database" && notebooks.length) warnings.push("Notizbücher werden nur beim Import als Seiten übernommen.");
   const notes = tree.pages.filter((p) => !p.folder && !special(p)).length;
   const count = mode === "database" ? notes : pages.length;
   const limit = maxImportPages();
@@ -183,6 +192,7 @@ export async function previewImport(user: Identity, workspaceId: string, spaceId
     warnings,
     ...(boards ? { whiteboards: boards } : {}),
     ...(databases ? { databases } : {}),
+    ...(notebooks.length && mode === "pages" ? { notebooks: notebooks.length, sheets } : {}),
     ...(journalDays && mode === "pages" ? { journalDays } : {}),
     ...(tree.collections ? { collections: tree.collections } : {}),
     ...(properties && mode === "pages" ? { properties } : {}),
@@ -242,6 +252,7 @@ export async function writeImport(user: Identity, workspaceId: string, spaceId: 
       // Journal days: an existing day of that date, or one new day per date.
       const days = new Map<string, { id: string; existing: boolean }>();
       const journal = ordered.some(({ page }) => page.journalDate) ? (await importJournal(user, workspaceId, spaceId)) : null;
+      let created = 0;
       for (const { page } of ordered) {
         if (page.journalDate && journal && mode === "pages") {
           let day = days.get(page.journalDate);
@@ -263,10 +274,11 @@ export async function writeImport(user: Identity, workspaceId: string, spaceId: 
           continue;
         }
         const parent = page.parent ? pageIds.get(page.parent) || null : null;
-        pageIds.set(
-          page.key,
-          await createPage(workspaceId, spaceId, user.id, page.title.slice(0, 200) || ct("Ohne Titel", "Untitled"), page.kind === "whiteboard" || page.kind === "database" ? page.kind : "document", parent),
-        );
+        const pid = await createPage(workspaceId, spaceId, user.id, page.title.slice(0, 200) || ct("Ohne Titel", "Untitled"), special(page) ? page.kind! : "document", parent);
+        // Siblings in the order of the source (pages created within the
+        // same millisecond would otherwise share their position).
+        await run("UPDATE pages SET position=position+? WHERE id=?", ++created, pid);
+        pageIds.set(page.key, pid);
       }
       for (const day of days.values()) if (day.existing) existingDays.add(day.id);
       // Records that carry a document of the import (#82): their ids now, so
@@ -418,6 +430,17 @@ export async function writeImport(user: Identity, workspaceId: string, spaceId: 
             ? { ...page.board, items: page.board.items.map((item) => (item.type === "card" && item.pageId && recordOf.has(item.pageId) ? { ...item, ...recordOf.get(item.pageId)! } : item)) }
             : page.board;
           await writeWhiteboard(pid, boardState(board, urls), placeholders);
+          continue;
+        }
+        if (page.kind === "notebook") {
+          // Each sheet with its page of the PDF as background (lib/notebook.ts):
+          // the stored file's id stands for itself.
+          const sheets = (page.notebook?.sheets || []).flatMap((sheet) => {
+            const file = fileUrls.get(sheet.file);
+            const fid = file?.url.slice("/api/files/".length);
+            return fid ? [{ background: { file: fid, page: sheet.page, width: sheet.width, height: sheet.height } }] : [];
+          });
+          if (sheets.length) await importNotebook(pid, { paper: {}, sheets }, new Map(sheets.map((s) => [s.background.file, s.background.file])), user.id);
           continue;
         }
         if (page.kind === "database" && page.database) {

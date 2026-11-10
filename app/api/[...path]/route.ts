@@ -1498,8 +1498,8 @@ async function handlePOST(
         });
       return NextResponse.json(data.get("dryRun") === "1" ? (await records()) : await trackJob(user, "import", files[0].name, records));
     }
-    // AFFiNE, Confluence, Evernote, Google Docs, Microsoft Word and Obsidian
-    // (lib/importers):
+    // AFFiNE, Confluence, Evernote, Google Docs, GoodNotes (PDF), Microsoft
+    // Word and Obsidian (lib/importers):
     // dryRun=1 answers with a preview (counts and warnings) only. The file
     // comes as a form (up to 100 MB, held in memory) or as the raw request
     // body with the fields in the query (up to the import limit, streamed
@@ -1555,7 +1555,7 @@ async function handlePOST(
           z.uuid().parse(fields.get("spaceId")),
           file,
           {
-            source: z.enum(["auto", "affine", "confluence", "evernote", "gdocs", "obsidian", "word"]).catch("auto").parse(fields.get("source") || "auto"),
+            source: z.enum(["auto", "affine", "confluence", "evernote", "gdocs", "goodnotes", "obsidian", "word"]).catch("auto").parse(fields.get("source") || "auto"),
             mode: fields.get("mode") === "database" ? "database" : "pages",
             dryRun,
             // AFFiNE (#167): "0" keeps documents linked from one other

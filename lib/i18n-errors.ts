@@ -875,6 +875,7 @@ const exact: Record<string, string> = {
   "Modelle lassen sich nur bei Ollama herunterladen.": "Models can only be downloaded with Ollama.",
   "Zu viele KI-Anfragen in kurzer Zeit. Bitte später erneut versuchen.": "Too many AI requests in a short time. Please try again later.",
   "Der Text für die KI ist zu lang.": "The text for the AI is too long.",
+  "Zu viele Bilder für die KI.": "Too many images for the AI.",
   "Die KI-Anfrage ist fehlgeschlagen.": "The AI request failed.",
   "Diese Seite ist für die KI gesperrt.": "This page is closed to the AI.",
   "Änderungsvorschläge gibt es nur für Dokumente.": "Suggested changes are only available for documents.",
@@ -1196,6 +1197,13 @@ const exact: Record<string, string> = {
   "OneNote-Dateien (.one, .onetoc2, .onepkg) kann Flowplan nicht lesen. Exportiere in OneNote die Seite oder den Abschnitt als Word-Dokument (.docx) – unter Windows über Datei → Exportieren – und importiere es über „Microsoft Word“. Bietet deine OneNote-Version nur PDF an, lade das PDF als Datei hoch.":
     "Flowplan cannot read OneNote files (.one, .onetoc2, .onepkg). In OneNote, export the page or section as a Word document (.docx) – on Windows via File → Export – and import it with “Microsoft Word”. If your version of OneNote only offers PDF, upload the PDF as a file.",
   "Keine Notizen (.md) gefunden.": "No notes (.md) found.",
+  // GoodNotes PDF exports as notebooks (lib/importers/goodnotes.ts).
+  "GoodNotes-Dateien (.goodnotes) haben ein eigenes, nicht offengelegtes Format, das Flowplan nicht liest. Exportiere das Notizbuch in GoodNotes als PDF (Teilen bzw. Exportieren → PDF) und importiere das PDF – Handschrift, Seitenvorlagen und eingefügte PDFs bleiben so erhalten.":
+    "GoodNotes files (.goodnotes) use GoodNotes' own, undocumented format, which Flowplan does not read. In GoodNotes, export the notebook as PDF (Share or Export → PDF) and import the PDF – that keeps the handwriting, page templates and inserted PDFs.",
+  "Keine PDF-Dateien gefunden.": "No PDF files found.",
+  "Bitte ein PDF (etwa aus GoodNotes exportiert) oder ein ZIP mit PDFs hochladen.": "Please upload a PDF (for example exported from GoodNotes) or a ZIP with PDFs.",
+  "Dateien, die keine PDFs sind, werden übersprungen.": "Files that are not PDFs are skipped.",
+  "Notizbücher werden nur beim Import als Seiten übernommen.": "Notebooks are only imported when importing as pages.",
   // AFFiNE workspaces (lib/importers/affine*.ts).
   "Die AFFiNE-Datei kann nicht gelesen werden.": "The AFFiNE file cannot be read.",
   "Die Datei ist keine AFFiNE-Arbeitsbereichsdatei.": "The file is not an AFFiNE workspace file.",
@@ -1427,6 +1435,10 @@ const patterns: [RegExp, string][] = [
   [/^(.+): Word-Datei konnte nicht gelesen werden\.$/, "$1: the Word file could not be read."],
   [/^(.+): ältere Word-Datei \(\.doc\) übersprungen – bitte in Word, LibreOffice oder Pages als \.docx speichern\.$/, "$1: older Word file (.doc) skipped – please save it as .docx in Word, LibreOffice or Pages."],
   [/^(.+): OneNote-Datei übersprungen – bitte in OneNote als Word-Dokument \(\.docx\) exportieren\.$/, "$1: OneNote file skipped – please export it from OneNote as a Word document (.docx)."],
+  [/^(.+): GoodNotes-Datei übersprungen – bitte in GoodNotes als PDF exportieren\.$/, "$1: GoodNotes file skipped – please export it from GoodNotes as PDF."],
+  [/^(.+): Das PDF kann nicht gelesen werden \(beschädigt oder mit Passwort geschützt\) und wird übersprungen\.$/, "$1: the PDF cannot be read (damaged or password-protected) and is skipped."],
+  [/^(.+): Nur die ersten (\d+) von (\d+) Seiten werden übernommen\.$/, "$1: only the first $2 of $3 pages are imported."],
+  [/^(.+): Seiten mit ungültiger Größe werden übersprungen\.$/, "$1: pages with an invalid size are skipped."],
   [/^Block „(.+)“ wird nicht übernommen\.$/, "Block “$1” is not imported."],
   [/^Datenbank-Spalte vom Typ „(.+)“ als Text übernommen\.$/, "Database column of type “$1” imported as text."],
   [/^(\d+) Dokumente im Papierkorb werden nicht übernommen\.$/, "$1 documents in the trash are not imported."],

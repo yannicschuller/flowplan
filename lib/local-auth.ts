@@ -120,9 +120,21 @@ export function unprotectedSetup() {
     return false;
   }
 }
+// The setup link as the server log shows it: never with the token itself –
+// logs end up in log collectors and support requests (#194).
+export const SETUP_TOKEN_PLACEHOLDER = "<your FLOWPLAN_SETUP_TOKEN>";
+const setupLink = () => `${appUrl().replace(/\/$/, "")}/register?setup=${SETUP_TOKEN_PLACEHOLDER}`;
 export async function setupWarning() {
   if (!unprotectedSetup() || !(await firstAccount())) return "";
-  return `Flowplan: no FLOWPLAN_SETUP_TOKEN is set and ${appUrl()} is not a local address. Until the first account exists, anyone who reaches this address can create the administrator or restore a backup. Set FLOWPLAN_SETUP_TOKEN and create the first account via ${appUrl().replace(/\/$/, "")}/register?setup=<token> (https://docs.flowplan.org/en/configuration).`;
+  return `Flowplan: no FLOWPLAN_SETUP_TOKEN is set and ${appUrl()} is not a local address. Until the first account exists, anyone who reaches this address can create the administrator or restore a backup. Set FLOWPLAN_SETUP_TOKEN and create the first account via ${setupLink()} (https://docs.flowplan.org/en/configuration).`;
+}
+// The note at start while the instance is not set up yet and
+// FLOWPLAN_SETUP_TOKEN is set: where the first account (the administrator)
+// is created. "" once an account exists, without the token (setupWarning
+// covers that) or without password sign-in (the admin group of SSO/LDAP).
+export async function setupHint() {
+  if (!setupToken() || !localLoginEnabled() || !(await firstAccount())) return "";
+  return `Flowplan is not set up yet. Create the first account (the administrator) at ${setupLink()} – put the value of FLOWPLAN_SETUP_TOKEN in place of the placeholder (it is not written to the log).`;
 }
 export function setupAllowed(given: unknown) {
   const token = setupToken();

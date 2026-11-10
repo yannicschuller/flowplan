@@ -239,7 +239,7 @@ Ein fairer Vergleich ist schwer – jedes dieser Werkzeuge kann etwas gut. Das h
 | **Whiteboards** | ✅ | ❌ nur Einbettungen | ✅ Cloud | ✅ Edgeless-Modus | ⚠️ nicht eingebaut, soweit wir wissen | ❌ |
 | **Journal** | ✅ | ⚠️ Vorlagen | ⚠️ Vorlagen | ✅ | ⚠️ Vorlagen | ⚠️ Vorlagen |
 | **Ende-zu-Ende-Verschlüsselung** | ⚠️ verschlüsselte Bereiche, nur Dokumente⁴ | ❌ | ❌ | ⚠️ nur lokale Daten, soweit wir wissen | ⚠️ Stand unklar | ❌ |
-| **Import aus anderen Tools** | ✅ Notion, Confluence, AFFiNE, AppFlowy, Obsidian, Evernote, Google Docs, Microsoft Word, Jira, Trello | ✅ | ⚠️ wenige Formate | ✅ Notion, Markdown, HTML | ✅ Notion, Markdown, CSV | ✅ Notion, Confluence, Markdown |
+| **Import aus anderen Tools** | ✅ Notion, Confluence, AFFiNE, AppFlowy, Obsidian, Evernote, Google Docs, Microsoft Word, GoodNotes (PDF), Jira, Trello | ✅ | ⚠️ wenige Formate | ✅ Notion, Markdown, HTML | ✅ Notion, Markdown, CSV | ✅ Notion, Confluence, Markdown |
 | **Apps (iOS / Android / Desktop)** | ⚠️ Desktop und iOS; Android als APK | ✅ | ⚠️ nur mobil | ⚠️ Desktop; mobile Apps noch neu | ✅ | ⚠️ Desktop; mobil im Browser |
 | **Echtzeit-Zusammenarbeit** | ✅ | ✅ | ✅ | ✅ | ✅ mit AppFlowy Cloud | ✅ |
 
@@ -471,7 +471,7 @@ Ja. Dokumente werden immer zuerst im Browser gespeichert und abgeglichen, sobald
 <details>
 <summary><b>Wie ziehe ich von Notion, Confluence, AFFiNE oder Obsidian um?</b></summary>
 
-Unter **Einstellungen → Import & Export → Import**: Exporte aus Notion und Confluence, die AFFiNE-Arbeitsbereichsdatei, Obsidian-Vaults (als Seiten oder als Datenbank), dazu AppFlowy, Evernote, Google Docs, Microsoft Word (.docx), Markdown, HTML und CSV. Eine Vorschau zeigt, was importiert wird, bevor etwas angelegt wird. Siehe [Umzug zu Flowplan](https://docs.flowplan.org/de/migrate).
+Unter **Einstellungen → Import & Export → Import**: Exporte aus Notion und Confluence, die AFFiNE-Arbeitsbereichsdatei, Obsidian-Vaults (als Seiten oder als Datenbank), dazu AppFlowy, Evernote, Google Docs, Microsoft Word (.docx), GoodNotes-Notizbücher (als PDF), Markdown, HTML und CSV. Eine Vorschau zeigt, was importiert wird, bevor etwas angelegt wird. Siehe [Umzug zu Flowplan](https://docs.flowplan.org/de/migrate).
 
 </details>
 

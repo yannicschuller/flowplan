@@ -4,17 +4,21 @@
 // (pdf.js, drawn once the sheet comes near the visible area).
 import { memo, useEffect, useRef, useState } from "react";
 import { paperSvg, type PaperLayout } from "@/lib/notebook-paper";
+import { thumbLayout, type PaperThumb } from "@/lib/notebook-paper-thumb";
 import { loadPdf, renderPage } from "../pdf-viewer";
 
-export const PaperSvg = memo(function PaperSvg({ layout, className = "notebook-paper" }: { layout: PaperLayout; className?: string }) {
+// `thumb`: drawn small (lib/notebook-paper-thumb.ts) – lines keep a minimum
+// width on the screen, optionally only the top left part is shown.
+export const PaperSvg = memo(function PaperSvg({ layout, className = "notebook-paper", thumb }: { layout: PaperLayout; className?: string; thumb?: PaperThumb }) {
+  const small = thumb ? thumbLayout(layout, thumb) : null;
   return (
     <svg
       className={className}
-      viewBox={`0 0 ${layout.width} ${layout.height}`}
-      preserveAspectRatio="none"
+      viewBox={small ? small.viewBox : `0 0 ${layout.width} ${layout.height}`}
+      preserveAspectRatio={small ? "xMinYMin slice" : "none"}
       aria-hidden="true"
       focusable="false"
-      dangerouslySetInnerHTML={{ __html: paperSvg(layout) }}
+      dangerouslySetInnerHTML={{ __html: paperSvg(small ? small.layout : layout) }}
     />
   );
 });

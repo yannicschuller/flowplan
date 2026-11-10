@@ -125,7 +125,15 @@ function chip(view: EditorView, pos: number, node: PMNode, editable: boolean) {
   const el = document.createElement(editable ? "button" : "span");
   el.contentEditable = "false";
   el.className = `task-due task-due-${due ? dueState(due, !!node.attrs.checked) : "later"}`;
-  el.textContent = due ? `📅 ${dueLabel(due)}` : "";
+  // The calendar in its own box: centred on its own, so the emoji's taller
+  // line box does not push the date off the pill's middle.
+  if (due) {
+    const icon = document.createElement("span");
+    icon.className = "task-due-icon";
+    icon.setAttribute("aria-hidden", "true");
+    icon.textContent = "📅";
+    el.append(icon, dueLabel(due));
+  }
   if (due) el.title = `Fällig am ${new Date(`${due}T00:00:00Z`).toLocaleDateString(LOCALE_TAG, { timeZone: "UTC" })}${editable ? " – klicken zum Ändern oder Entfernen" : ""}`;
   if (editable && el instanceof HTMLButtonElement) {
     el.type = "button";
