@@ -55,6 +55,15 @@ test("my open records across all databases", async () => {
   assert.deepEqual((await crossRecords(me, wid, { query: "app-1" })).records.map((r) => r.title), ["Login"]);
 });
 
+test("records carry their people, status and whether they can be done", async () => {
+  const all = await crossRecords(me, wid, { mine: false, open: false, databases: [app] });
+  const others = all.records.find((r) => r.title === "Other's")!;
+  assert.deepEqual(others.people, [{ id: other.id, name: "other" }]);
+  assert.equal(others.status, "Open");
+  assert.equal(others.tracked, true);
+  assert.equal(others.rowIcon, "");
+});
+
 test("saved views are personal", async () => {
   await act({ action: "recordView.save", workspaceId: wid, name: "Overdue", filter: { due: "overdue" } });
   assert.deepEqual((await recordViews(me, wid)).map((v) => [v.name, v.filter.due]), [["Overdue", "overdue"]]);

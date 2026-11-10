@@ -11,7 +11,8 @@ import { optimistic } from "@/lib/optimistic";
 import { api, PageIcon } from "./ui";
 import { MyRecords } from "./my-records";
 import { ListSkeleton } from "./skeleton";
-import { dueLabel, dueState, localToday } from "@/lib/task-due-plugin";
+import { dueLabel, dueState } from "@/lib/task-due-plugin";
+import { dueGroupName, groupByDue } from "@/lib/due-groups";
 
 type Task = {
   pageId: string;
@@ -27,43 +28,6 @@ type Task = {
   workspaceId?: string;
 };
 type Others = { workspaceId: string; name: string; tasks: Task[] }[];
-const shift = (day: string, days: number) => {
-  const d = new Date(`${day}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-};
-// Group names are German keys; shown in the reader's language.
-const groupName = (name: string, t: (de: string, en: string) => string) =>
-  ({
-    Überfällig: t("Überfällig", "Overdue"),
-    Heute: t("Heute", "Today"),
-    "Nächste 7 Tage": t("Nächste 7 Tage", "Next 7 days"),
-    Später: t("Später", "Later"),
-    "Ohne Datum": t("Ohne Datum", "No date"),
-    Erledigt: t("Erledigt", "Completed"),
-  })[name] ?? name;
-export function groupTasks(tasks: Task[], today = localToday()) {
-  const week = shift(today, 7);
-  const groups: [string, Task[]][] = [
-    ["Überfällig", []],
-    ["Heute", []],
-    ["Nächste 7 Tage", []],
-    ["Später", []],
-    ["Ohne Datum", []],
-    ["Erledigt", []],
-  ];
-  const at = (name: string) => groups.find(([n]) => n === name)![1];
-  for (const task of tasks) {
-    if (task.checked) at("Erledigt").push(task);
-    else if (!task.due) at("Ohne Datum").push(task);
-    else if (task.due < today) at("Überfällig").push(task);
-    else if (task.due === today) at("Heute").push(task);
-    else if (task.due <= week) at("Nächste 7 Tage").push(task);
-    else at("Später").push(task);
-  }
-  return groups.filter(([, list]) => list.length);
-}
-
 export function MyTasks({
   workspaceId,
   onOpen,
@@ -188,7 +152,14 @@ export function MyTasks({
           {task.title || t("Ohne Titel", "Untitled")}
         </button>
         <label className={`task-due ${task.due ? `task-due-${dueState(task.due, task.checked)}` : "task-due-add"}`}>
-          {task.due ? `📅 ${dueLabel(task.due)}` : t("+ Datum", "+ Date")}
+          {task.due ? (
+            <>
+              <span className="task-due-icon" aria-hidden="true">📅</span>
+              {dueLabel(task.due)}
+            </>
+          ) : (
+            t("+ Datum", "+ Date")
+          )}
           <input
             type="date"
             aria-label={t(`Fälligkeit von ${task.text}`, `Due date of ${task.text}`)}
@@ -248,13 +219,13 @@ export function MyTasks({
           </p>
         </div>
       ) : (
-        groupTasks(
+        groupByDue(
           // Tasks folding away keep their place until they are gone.
           settling.size ? tasks.map((x) => (settling.has(`${x.pageId}:${x.rowId}:${x.index}`) ? { ...x, checked: false } : x)) : tasks,
         ).map(([name, list]) => (
           <section key={name} className={`my-tasks-group ${name === "Überfällig" ? "overdue" : ""}`}>
             <h2>
-              {groupName(name, t)} <small>{list.length}</small>
+              {dueGroupName(name, t)} <small>{list.length}</small>
             </h2>
             <ul>
               {list.map(item)}
