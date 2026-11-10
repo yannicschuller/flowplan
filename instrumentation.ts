@@ -3,20 +3,25 @@ export async function register() {
     process.env.NEXT_RUNTIME === "nodejs" &&
     process.env.NEXT_PHASE !== "phase-production-build"
   ) {
+    // What is running, as the first line Flowplan writes (#194).
+    const { buildInfo, versionLine } = await import("./lib/build-info");
+    console.log(versionLine());
     // Cluster mode (FLOWPLAN_CLUSTER=1): PostgreSQL, Redis and S3 are
     // checked first – the process exits naming what is missing – then the
     // bus, the leader election and the heartbeat start (lib/cluster). Both
     // modes: a graceful shutdown on SIGTERM/SIGINT.
     const { startInstance } = await import("./lib/cluster/runtime");
     const { poolStats } = await import("./lib/db-driver");
-    const { buildInfo } = await import("./lib/build-info");
     await startInstance({ pool: poolStats, version: buildInfo().version || null });
     // A new instance on a public address without FLOWPLAN_SETUP_TOKEN: the
     // first visitor could create the administrator (lib/local-auth.ts).
+    // With the token: where the first account is created (without the token).
     try {
-      const { setupWarning } = await import("./lib/local-auth");
+      const { setupHint, setupWarning } = await import("./lib/local-auth");
       const warning = await setupWarning();
       if (warning) console.warn(warning);
+      const hint = await setupHint();
+      if (hint) console.log(hint);
     } catch (e) {
       console.error("Setup check failed:", (e as Error)?.message);
     }
