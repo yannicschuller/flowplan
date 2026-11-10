@@ -93,9 +93,20 @@ COPY --chmod=644 lib/db-driver/pg-ddl.mjs lib/db-driver/postgres-schema.json /ap
 # app code stays read-only for it.
 RUN setpriv --version \
   && mkdir -p /app/.next/cache && chown node:node /app/.next/cache && chmod 1777 /app/.next/cache
-# The default user; started as root (user: "0:0"), the entrypoint switches to
-# PUID:PGID (default 1000:1000) with setpriv (util-linux, in the base image).
-USER node
+# Helper scripts started with docker exec (as root, see below) continue as
+# PUID:PGID before they write anything (scripts/drop-root.mjs).
+COPY --chmod=644 scripts/drop-root.mjs /app/drop-root.mjs
+COPY --chmod=644 scripts/drop-root.mjs /app/scripts/drop-root.mjs
+# No USER (#193), like the linuxserver.io images: the container starts as
+# root only so that docker/entrypoint.sh can give the data folder to
+# PUID:PGID (default 1000:1000, the user node); it then switches to that
+# user with setpriv (util-linux, in the base image) before anything else
+# runs – the app never runs as root. user: "UID:GID" (or Kubernetes'
+# runAsUser) starts it as that user directly. docker exec and the
+# HEALTHCHECK below run as root unless -u is given; the healthcheck only
+# fetches /api/health and writes nothing, the helper scripts drop root
+# themselves (FLOWPLAN_DROP_ROOT).
+ENV FLOWPLAN_DROP_ROOT=1
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"

@@ -179,7 +179,7 @@ helm install flowplan deploy/helm/flowplan -n flowplan \
 | `service.type`, `service.port` | `ClusterIP`, `80` | Service |
 | `ingress.*` | disabled | Ingress (`networking.k8s.io/v1`) |
 | `resources` | 100m / 256Mi, limit 1Gi | Requests and limits |
-| `podSecurityContext`, `securityContext` | uid/gid 1000, no privileges | As in the image (user `node`) |
+| `podSecurityContext`, `securityContext` | uid/gid 1000, no privileges | The user `node` of the image; keep `runAsUser` set (the image declares no `USER`) |
 | `startupProbe`, `livenessProbe`, `readinessProbe` | on | HTTP checks on `/api/health` |
 | `cluster.enabled` | `false` | Cluster mode (above) instead of one pod with SQLite |
 | `cluster.replicas` | `2` | Pods in cluster mode |

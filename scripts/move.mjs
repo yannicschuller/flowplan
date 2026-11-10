@@ -8,7 +8,8 @@
 //   npm run move -- --from https://old.example.org --token fpmove_…
 //   docker run --rm -v flowplan-data:/app/data -e APP_URL=https://new.example.org \
 //     ghcr.io/yannicschuller/flowplan node /app/move.mjs --from … --token …
-//   (runs as UID 1000; with user: "UID:GID" or PUID/PGID add --user UID:GID)
+//   (continues as PUID:PGID, default 1000:1000, when started as root – the
+//   image's default; with user: "UID:GID" add --user UID:GID)
 //
 // Options:
 //   --from <url>        address of the old instance (its APP_URL)
@@ -22,6 +23,8 @@
 //
 // The address may be internal (LAN, VPN) and plain http here: whoever runs
 // this command chooses where it connects.
+// First: started with docker exec as root, continue as PUID:PGID (#193).
+import "./drop-root.mjs";
 import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";

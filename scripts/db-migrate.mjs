@@ -23,6 +23,8 @@
 // canonical values. Derived data is not copied but rebuilt by Flowplan at
 // its first start: the search index (FTS5 / the trigram table), pgvector's
 // table (from ai_embeddings, lib/ai/vector-store.ts).
+// First: started with docker exec as root, continue as PUID:PGID (#193).
+import "./drop-root.mjs";
 import { DatabaseSync } from "node:sqlite";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
