@@ -2654,6 +2654,8 @@ async function runCommand(
         break;
       case "comment.react": {
         const p = await requirePage(user, pid());
+        // Comments behind a journal PIN not entered stay as they are.
+        await requireUnlocked(user, p);
         const commentId = uuid.parse(b.commentId);
         const comment = await one<{ row_id: string | null }>(
           "SELECT row_id FROM comments WHERE id=? AND page_id=?",
@@ -2689,6 +2691,7 @@ async function runCommand(
       }
       case "comment.create": {
         const p = await requirePage(user, pid());
+        await requireUnlocked(user, p);
         if (b.rowId) await requireRow(user, p.id, uuid.parse(b.rowId));
         const body = z.string().trim().min(1).max(5000).parse(b.body);
         await run(
@@ -2723,21 +2726,29 @@ async function runCommand(
         }
         break;
       }
-      case "comment.resolve":
-        await requirePage(user, pid(), true);
+      case "comment.resolve": {
+        const p = await requirePage(user, pid(), true);
+        await requireUnlocked(user, p);
+        // A record's comment: only with access to the record (as react).
+        const commentId = uuid.parse(b.commentId);
+        const rowId =
+          (await one<{ row_id: string | null }>("SELECT row_id FROM comments WHERE id=? AND page_id=?", commentId, p.id))?.row_id ??
+          (await one<{ row_id: string | null }>("SELECT row_id FROM shared_comments WHERE id=? AND page_id=?", commentId, p.id))?.row_id;
+        if (rowId) await requireRow(user, p.id, rowId);
         await run(
           "UPDATE comments SET resolved=? WHERE id=? AND page_id=?",
           b.resolved ? 1 : 0,
-          uuid.parse(b.commentId),
-          pid(),
+          commentId,
+          p.id,
         );
         await run(
           "UPDATE shared_comments SET resolved=? WHERE id=? AND page_id=?",
           b.resolved ? 1 : 0,
-          uuid.parse(b.commentId),
-          pid(),
+          commentId,
+          p.id,
         );
         break;
+      }
       case "row.appearance":
         result = await setRowAppearance(user, b);
         break;

@@ -75,6 +75,37 @@ test("no new page below a locked journal, none moved into it", async () => {
   await relock(member);
 });
 
+test("no comments, reactions or resolving behind the PIN", async () => {
+  assert.equal(await status(() => act({ action: "comment.create", pageId: note, body: "Ohne PIN" }, member)), 423);
+  assert.equal(await status(() => act({ action: "comment.react", pageId: note, commentId: comment, emoji: "👍" }, member)), 423);
+  assert.equal(await status(() => act({ action: "comment.resolve", pageId: note, commentId: comment, resolved: true }, member)), 423);
+  assert.equal(await one("SELECT 1 FROM comments WHERE page_id=? AND body='Ohne PIN'", note), undefined);
+  assert.equal(await one("SELECT 1 FROM comment_reactions WHERE comment_id=?", comment), undefined);
+  assert.equal((await one<{ resolved: number }>("SELECT resolved FROM comments WHERE id=?", comment))!.resolved, 0);
+  await unlock(member);
+  await act({ action: "comment.create", pageId: note, body: "Mit PIN" }, member);
+  await act({ action: "comment.react", pageId: note, commentId: comment, emoji: "👍" }, member);
+  await act({ action: "comment.resolve", pageId: note, commentId: comment, resolved: true }, member);
+  assert.ok(await one("SELECT 1 FROM comments WHERE page_id=? AND body='Mit PIN'", note));
+  assert.equal((await one<{ resolved: number }>("SELECT resolved FROM comments WHERE id=?", comment))!.resolved, 1);
+  await relock(member);
+});
+
+test("resolving a record's comment checks the record too", async () => {
+  // Outside the journal: a private record of the owner the member cannot see.
+  const db = await create({ title: "Aufgaben", kind: "database", databaseKind: "empty" });
+  const title = (await api.database(db)).fields[0].id;
+  const rid = (await act({ action: "row.create", pageId: db, cells: { [title]: "Olgas Eintrag" } })).id;
+  const recordComment = id();
+  await run("INSERT INTO comments(id,page_id,row_id,author_id,body) VALUES(?,?,?,?,?)", recordComment, db, rid, owner.id, "Zum Eintrag");
+  await run("UPDATE rows SET access='private' WHERE id=?", rid);
+  assert.equal(await status(() => act({ action: "comment.resolve", pageId: db, commentId: recordComment, resolved: true }, member)), 404);
+  assert.equal((await one<{ resolved: number }>("SELECT resolved FROM comments WHERE id=?", recordComment))!.resolved, 0);
+  // The owner sees the record and resolves it.
+  await act({ action: "comment.resolve", pageId: db, commentId: recordComment, resolved: true });
+  assert.equal((await one<{ resolved: number }>("SELECT resolved FROM comments WHERE id=?", recordComment))!.resolved, 1);
+});
+
 test("no paragraph from an older version without the PIN", async () => {
   assert.equal(await status(() => act({ action: "snapshot.restoreBlock", pageId: note, snapshotId, text: "SECRET-NOTE" }, member)), 423);
   // No hint whether the text was there.
