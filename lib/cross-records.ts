@@ -69,16 +69,27 @@ export async function crossRecords(user: Identity, workspaceId: string, input: u
     const raw = await one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", page.id);
     if (!raw) continue;
     const fields = JSON.parse(raw.fields) as Field[];
-    const people = fields.filter((f) => f.type === "person");
+    // Properties hidden from the reader (lib/field-access.ts, derived ones
+    // included) count as empty: they neither show nor filter, search or
+    // sort. visibleRows() drops their cells as well.
+    const hidden = await hiddenFieldsFor(user, page, fields);
+    const shown = (f: Field | undefined) => !!f && !hidden.has(f.id);
+    // Who a record is given to, from the person properties the reader sees.
+    const people = fields.filter((f) => f.type === "person" && shown(f));
     // "Mine" needs a person property; such databases are skipped then.
     if (filter.mine && !people.length) continue;
-    // Who a record is given to, from the person properties the reader sees.
-    const hidden = people.length ? await hiddenFieldsFor(user, page, fields) : new Set<string>();
-    const shownPeople = people.filter((f) => !hidden.has(f.id));
     databases.push({ id: page.id, title: page.title });
-    const rule = doneRule(fields, await databaseSettings(page.id));
-    const due = dueField(fields);
-    const idField = fields.find((f) => f.type === "id");
+    // A hidden status or checkbox: "done" is unknown, the record counts as open.
+    const found = doneRule(fields, await databaseSettings(page.id));
+    const rule = found && shown(found.field) ? found : null;
+    // A hidden due date: no date.
+    const foundDue = dueField(fields);
+    const due = shown(foundDue) ? foundDue : undefined;
+    // A hidden ID property: no ticket key; a hidden title: none (shown as
+    // "Untitled", like everywhere else).
+    const foundId = fields.find((f) => f.type === "id");
+    const idField = shown(foundId) ? foundId : undefined;
+    const titleField = shown(fields[0]) ? fields[0] : undefined;
     const rows = (await visibleRows(
       user,
       page,
@@ -92,7 +103,7 @@ export async function crossRecords(user: Identity, workspaceId: string, input: u
       if (filter.due === "dated" && !date) continue;
       if (filter.due === "overdue" && !(date && date < today && !done)) continue;
       if (filter.due === "week" && !(date && date <= week)) continue;
-      const title = cellText(r.cells[fields[0]?.id || "title"]);
+      const title = titleField ? cellText(r.cells[titleField.id]) : "";
       const key = idField ? ticketId(idField, r.number) : "";
       if (filter.query && !`${title} ${key}`.toLowerCase().includes(filter.query.toLowerCase())) continue;
       out.push({
@@ -107,7 +118,7 @@ export async function crossRecords(user: Identity, workspaceId: string, input: u
         due: date,
         done,
         tracked: !!rule,
-        people: [...new Set(shownPeople.flatMap((f) => {
+        people: [...new Set(people.flatMap((f) => {
           const v = r.cells[f.id];
           return (Array.isArray(v) ? v : [v]).filter((x): x is string => typeof x === "string" && !!x);
         }))],
