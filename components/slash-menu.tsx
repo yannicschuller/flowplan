@@ -1,9 +1,11 @@
 "use client";
 import { useT } from "./i18n";
-import { useEffect, useId, useRef, type ComponentType } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ComponentType } from "react";
 import { createPortal } from "react-dom";
 import { CaretLeft, CaretRight, ClockCounterClockwise } from "@phosphor-icons/react";
 import type { SlashCommand, SlashGroup, SlashSection } from "@/lib/slash-commands";
+import { placeAtCaret, visibleArea, type Area, type Placement } from "@/lib/caret-popover";
+import { safeInsets } from "./safe-area";
 
 export type SlashItem = SlashCommand & {
   id: string;
@@ -28,6 +30,28 @@ export const slashGroupLabels = (t: T): Record<SlashGroup, string> => ({
   extensions: t("Erweiterungen", "Extensions"),
   advanced: t("Weitere", "More"),
 });
+
+// The part of the screen a popover next to the caret may use: the visible
+// area (the visual viewport, which the keyboard shrinks), below the status
+// bar and above a toolbar fixed at the bottom – docked on the keyboard, or
+// the document's toolbar and the tab bar on phones.
+export function popoverArea(menu?: Element | null): Area {
+  const vv = window.visualViewport;
+  const viewport = vv ? { offsetTop: vv.offsetTop, height: vv.height } : { offsetTop: 0, height: window.innerHeight };
+  const safe = safeInsets();
+  const full = visibleArea(viewport, { safeTop: safe.top });
+  let toolbarTop: number | null = null;
+  for (const bar of document.querySelectorAll<HTMLElement>(".editor-toolbar, .mobile-tab-bar")) {
+    if (menu?.contains(bar) || getComputedStyle(bar).position !== "fixed") continue;
+    const rect = bar.getBoundingClientRect();
+    // Only a bar along the bottom edge (not one at the top of the screen).
+    if (!rect.height || rect.top <= (full.top + full.bottom) / 2 || rect.top >= full.bottom) continue;
+    toolbarTop = Math.min(toolbarTop ?? Infinity, rect.top);
+  }
+  const area = visibleArea(viewport, { safeTop: safe.top, toolbarTop });
+  // Without a bar the home indicator keeps its room.
+  return toolbarTop == null && !document.documentElement.classList.contains("keyboard-docked") ? { ...area, bottom: area.bottom - safe.bottom } : area;
+}
 
 // The block menu next to the caret: sections of blocks that follow typing
 // after "/", arrow keys move across the sections, Enter chooses. From the
@@ -80,15 +104,53 @@ export function SlashMenu({
     document.addEventListener("pointerdown", outside, true);
     return () => document.removeEventListener("pointerdown", outside, true);
   }, [onClose]);
+  // Placed inside the part of the screen the person sees (lib/caret-popover.ts):
+  // with the keyboard open that is the visual viewport above the docked
+  // toolbar, below the status bar – placed against innerHeight, the menu lay
+  // behind the keyboard or up under the status bar on iPhones, where it could
+  // not be scrolled (the touches went to what covered it or past it).
   // Inside a dialog the menu lives in the dialog (its focus trap and
   // outside-click handling). Dialogs are no containing block for fixed
-  // children (app/globals.css, .modal), so window coordinates hold there too.
-  const height = 360,
-    fitsBelow = anchor.bottom + 6 + height < window.innerHeight - 8;
-  const style = {
+  // children (app/globals.css, .modal), so window coordinates hold there too;
+  // should anything still shift the menu, it is measured and moved back.
+  const [place, setPlace] = useState<Placement | null>(null);
+  const [, setViewportTick] = useState(0);
+  // The keyboard coming up or iOS moving the visible area re-places it.
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const again = () => setViewportTick((n) => n + 1);
+    vv.addEventListener("resize", again);
+    vv.addEventListener("scroll", again);
+    return () => {
+      vv.removeEventListener("resize", again);
+      vv.removeEventListener("scroll", again);
+    };
+  }, []);
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const list = el.querySelector<HTMLElement>(".slash-menu-list");
+    // What the menu takes in full: its frame plus the whole list.
+    const full = el.offsetHeight - (list?.clientHeight ?? 0) + (list?.scrollHeight ?? 0);
+    const next = placeAtCaret(anchor, full, popoverArea(el));
+    setPlace((prev) => (prev && prev.top === next.top && prev.maxHeight === next.maxHeight && prev.below === next.below ? prev : next));
+  });
+  // Where it really landed: a containing block (or a web view resolving
+  // fixed positions against another frame) would move it off the caret.
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el || !place) return;
+    const shift = Math.round(el.getBoundingClientRect().top - place.top);
+    // (The opening animation moves it a few pixels itself.)
+    if (Math.abs(shift) > 12) el.style.top = `${place.top - shift}px`;
+  });
+  const style: React.CSSProperties = {
     left: Math.max(8, Math.min(anchor.left, window.innerWidth - 328)),
-    top: fitsBelow ? anchor.bottom + 6 : anchor.top - 6,
-    ...(fitsBelow ? {} : { transform: "translateY(-100%)" }),
+    top: place?.top ?? anchor.bottom + 6,
+    // Measured and placed before the first paint (the layout effects
+    // above); not hidden meanwhile – its search field takes the focus.
+    maxHeight: place?.maxHeight ?? 360,
   };
   const label = t("Block hinzufügen", "Add block");
   let index = 0;
@@ -97,6 +159,8 @@ export function SlashMenu({
       ref={box}
       className="slash-menu"
       style={style}
+      // A swipe on it near the left edge is not the sidebar's swipe.
+      data-no-edge-swipe=""
       // With its own search field the menu is a small dialog; next to the
       // caret it is just the list, the editor keeps the focus.
       role={search !== undefined ? "dialog" : undefined}

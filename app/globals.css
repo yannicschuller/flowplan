@@ -25818,10 +25818,18 @@ td.ai-filled {
    kinds. Overrides the earlier .slash-menu rules above. */
 .slash-menu {
   max-height: 360px;
+  /* A swipe on the menu scrolls its list, nothing else: no pinch or
+     sideways pan of the page, and (below) no scrolling handed on to the
+     document at the list's ends – on iPhones that moved the page, the caret
+     and the menu with it instead of the entries. The height comes from the
+     room on screen (components/slash-menu.tsx). */
+  touch-action: pan-y;
 }
 .slash-menu-list {
   display: block;
   padding: 4px 6px 6px;
+  min-height: 0;
+  overscroll-behavior: contain;
 }
 .slash-menu-group + .slash-menu-group {
   margin-top: 2px;
