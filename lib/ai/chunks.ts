@@ -20,13 +20,16 @@ function trimCells(text: string) {
   return text.slice(start, end);
 }
 
+// Marks a heading's paragraph: a control character, never text.
+const HEADING = "\u0002";
 // The paragraphs of an HTML document as plain text: block elements end a
 // paragraph, headings are kept as their own paragraphs (marked), scripts,
 // styles and tags disappear.
 export function htmlParagraphs(html: string): { text: string; heading: boolean }[] {
   const marked = html
+    .replace(/[\u0001\u0002]/g, " ")
     .replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, " ")
-    .replace(/<h[1-6][^>]*>/gi, "\u0001H")
+    .replace(/<h[1-6][^>]*>/gi, "\u0001" + HEADING)
     .replace(/<\/(p|h[1-6]|li|blockquote|pre|tr|div|figcaption|dt|dd|summary|details|table|ul|ol)>/gi, "\u0001")
     .replace(/<br\s*\/?>/gi, "\u0001")
     .replace(/<\/t[dh]>/gi, " · ")
@@ -34,7 +37,7 @@ export function htmlParagraphs(html: string): { text: string; heading: boolean }
   return marked
     .split("\u0001")
     .map((part) => {
-      const heading = part.startsWith("H");
+      const heading = part.startsWith(HEADING);
       const text = trimCells(decode(heading ? part.slice(1) : part).replace(/\s+/g, " "));
       return { text, heading };
     })
@@ -60,14 +63,18 @@ function split(text: string, max = CHUNK_MAX): string[] {
 
 // Paragraphs merged into chunks up to CHUNK_TARGET characters. A heading
 // starts a new chunk and is repeated as its first line, so a chunk keeps its
-// context.
+// context; a heading without text after it is a chunk of its own.
 export function chunkParagraphs(paragraphs: { text: string; heading?: boolean }[], target = CHUNK_TARGET): string[] {
   const chunks: string[] = [];
   let current: string[] = [],
     size = 0,
-    heading = "";
+    heading = "",
+    // The current heading is in a chunk already.
+    used = false;
   const flush = () => {
-    if (current.length && current.some((c) => c !== heading)) chunks.push(current.join("\n"));
+    if (current.some((c) => c !== heading)) chunks.push(current.join("\n"));
+    else if (heading && !used) chunks.push(heading);
+    used = true;
     current = heading ? [heading] : [];
     size = heading.length;
   };
@@ -75,6 +82,7 @@ export function chunkParagraphs(paragraphs: { text: string; heading?: boolean }[
     if (p.heading) {
       flush();
       heading = p.text.slice(0, 200);
+      used = false;
       current = [heading];
       size = heading.length;
       continue;
