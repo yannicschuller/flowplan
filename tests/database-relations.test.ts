@@ -399,6 +399,24 @@ test("rollup configuration validates actual target properties and related data r
   });
 });
 
+test("related records carry their icon for relation cells and pickers (#190)", async () => {
+  const customers = await create("Customers"),
+    tasks = await create("Tasks");
+  await schema(customers, [{ id: "title", name: "Title", type: "text" }]);
+  await schema(tasks, [
+    { id: "title", name: "Title", type: "text" },
+    { id: "customer", name: "Customer", type: "relation", relationPage: customers },
+  ]);
+  const acme = (await command(owner, { action: "row.create", pageId: customers, cells: { title: "Acme" } })) as { id: string };
+  const plain = (await command(owner, { action: "row.create", pageId: customers, cells: { title: "Plain" } })) as { id: string };
+  await command(owner, { action: "row.appearance", pageId: customers, rowId: acme.id, version: 1, icon: "🚀" });
+  await command(owner, { action: "row.create", pageId: tasks, cells: { title: "Call", customer: [acme.id, plain.id] } });
+  const data = (await pageData(editor, tasks)) as any;
+  const related = data.related[customers] as Row[];
+  assert.equal(related.find((r) => r.id === acme.id)?.icon, "🚀");
+  assert.ok(!related.find((r) => r.id === plain.id)?.icon);
+});
+
 test("rollup settings and computed results survive archive round trips", async () => {
   const from = await create("Archive source"),
     to = await create("Archive target");
