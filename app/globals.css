@@ -28979,6 +28979,10 @@ label.ws-search input {
   overflow: auto;
   overscroll-behavior: contain;
   padding: 20px;
+  /* Fingers scroll; pinching zooms the sheets (use-pinch-zoom.ts), not the
+     whole page – also over the ink layer, whose touch-action is narrowed by
+     this one. */
+  touch-action: pan-x pan-y;
 }
 .notebook-sheets {
   display: flex;

@@ -55,6 +55,8 @@ import {
 import type { NotebookPayload, NotebookSheet } from "@/lib/notebook";
 import { idempotencyHeaders } from "@/lib/idempotency-key";
 import { Select } from "../select";
+import { stepZoom } from "@/lib/pinch-zoom";
+import { usePinchZoom } from "./use-pinch-zoom";
 
 export type { NotebookPayload };
 type CommandAnswer = { paper: Paper; sheets: NotebookSheet[]; created?: string[]; ink?: Record<string, { doc: InkDoc; version: number }> };
@@ -164,9 +166,11 @@ export default function NotebookView({
     setCurrent(sheetId);
     if (focus) el.focus({ preventScroll: true });
   }, []);
-  const changeZoom = useCallback((next: number) => setZoom(Math.min(ZOOMS.max, Math.max(ZOOMS.min, Math.round(next * 4) / 4))), []);
-  const onPan = useCallback((dx: number, dy: number) => scroller.current?.scrollBy(dx, dy), []);
-  const onZoom = useCallback((factor: number) => setZoom((z) => Math.min(ZOOMS.max, Math.max(ZOOMS.min, Math.round(z * factor * 4) / 4))), []);
+  // Buttons and keys go in steps; two fingers and trackpads zoom freely,
+  // anchored where they pinch, and two fingers pan (use-pinch-zoom.ts).
+  const zoomStep = useCallback((direction: 1 | -1) => setZoom((z) => stepZoom(z, direction, ZOOMS.step, ZOOMS)), []);
+  const sheetsBox = useRef<HTMLDivElement>(null);
+  usePinchZoom({ scroller, content: sheetsBox, sheetSelector: ".notebook-sheet", zoom, setZoom, limits: ZOOMS });
 
   // ---- Thumbnails ----
   const [thumbs, setThumbs] = useState(false);
@@ -390,10 +394,10 @@ export default function NotebookView({
       const index = Math.max(0, list.findIndex((s) => s.id === currentRef.current));
       if (mod && (event.key === "+" || event.key === "=")) {
         event.preventDefault();
-        setZoom((z) => Math.min(ZOOMS.max, z + ZOOMS.step));
+        zoomStep(1);
       } else if (mod && event.key === "-") {
         event.preventDefault();
-        setZoom((z) => Math.max(ZOOMS.min, z - ZOOMS.step));
+        zoomStep(-1);
       } else if (mod && event.key === "0") {
         event.preventDefault();
         setZoom(1);
@@ -412,7 +416,7 @@ export default function NotebookView({
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [addSheet, canEdit, show, sync]);
+  }, [addSheet, canEdit, show, sync, zoomStep]);
 
   // ---- Rendering ----
   const layouts = useMemo(
@@ -514,11 +518,11 @@ export default function NotebookView({
           <span className="notebook-position" aria-live="polite">
             {t(`Blatt ${currentIndex + 1} von ${sheets.length}`, `Sheet ${currentIndex + 1} of ${sheets.length}`)}
           </span>
-          <button type="button" className="icon-button" aria-label={t("Verkleinern", "Zoom out")} title={t("Verkleinern", "Zoom out") + keyHints.suffix("Mod+-")} onClick={() => changeZoom(zoom - ZOOMS.step)}>
+          <button type="button" className="icon-button" aria-label={t("Verkleinern", "Zoom out")} title={t("Verkleinern", "Zoom out") + keyHints.suffix("Mod+-")} onClick={() => zoomStep(-1)}>
             <MagnifyingGlassMinus size={18} />
           </button>
           <span className="notebook-zoom">{Math.round(zoom * 100)} %</span>
-          <button type="button" className="icon-button" aria-label={t("Vergrößern", "Zoom in")} title={t("Vergrößern", "Zoom in") + keyHints.suffix("Mod+=")} onClick={() => changeZoom(zoom + ZOOMS.step)}>
+          <button type="button" className="icon-button" aria-label={t("Vergrößern", "Zoom in")} title={t("Vergrößern", "Zoom in") + keyHints.suffix("Mod+=")} onClick={() => zoomStep(1)}>
             <MagnifyingGlassPlus size={18} />
           </button>
           <button type="button" className="icon-button" aria-label={t("An Breite anpassen", "Fit to width")} title={t("An Breite anpassen", "Fit to width") + keyHints.suffix("Mod+0")} onClick={() => setZoom(1)}>
@@ -716,7 +720,7 @@ export default function NotebookView({
           </nav>
         )}
         <div className="notebook-scroll" ref={scroller} onScroll={onScroll}>
-          <div className="notebook-sheets" style={{ width }}>
+          <div className="notebook-sheets" ref={sheetsBox} style={{ width }}>
             {sheets.map((sheet, index) => {
               const size = sizes.get(sheet.id)!;
               const look = layouts.get(sheet.id)!;
@@ -740,8 +744,6 @@ export default function NotebookView({
                     size={size}
                     editor={editor}
                     editing={canEdit}
-                    onPan={onPan}
-                    onZoom={onZoom}
                     onConvert={canEdit && canRecognize ? () => void convert(sheet.id) : undefined}
                     label={t(`Handschrift auf Blatt ${index + 1}`, `Handwriting on sheet ${index + 1}`)}
                   />
