@@ -6,6 +6,7 @@
 // still comes once. Retention runs here once a day as well.
 import { all, one, run, transaction } from "../db";
 import { isLeader } from "../cluster/leader";
+import { workersPaused } from "../instance-read-only";
 import { latestSlot } from "../automation-schedule";
 import { databaseSettings } from "../database-settings";
 import { doneRule, isDone } from "../database-settings-schema";
@@ -143,7 +144,7 @@ export function startWorkflowSchedules() {
   if (holder.flowplanWorkflowSchedule) return;
   const tick = async () => {
     // Cluster mode: the leader only (lib/cluster/leader.ts).
-    if (!isLeader()) return;
+    if (!isLeader() || (await workersPaused())) return;
     try {
       await processWorkflowSchedules();
       await flushNotices();

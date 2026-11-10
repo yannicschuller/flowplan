@@ -453,15 +453,10 @@ test("POST /api/inbound-mail/<token>: stores, checks the signing key, refuses un
 
 /* ---------- IMAP ---------- */
 
-test("the IMAP poller routes inbox+<token> mail, marks it seen and leaves the rest", async () => {
-  const { id: addressId } = await save({ pageId: inboxPage, senders: ["example.com"] });
-  const token = await tokenOf(addressId);
-  const messages = new Map<number, Buffer>([
-    [7, Buffer.from(fixture("related-inline.eml").toString("latin1").replaceAll("abcdefghijklmnopqrstuvwxyz234567", token), "latin1")],
-    // No token: marked seen, nothing stored.
-    [8, Buffer.from("From: x@example.com\r\nTo: other@example.test\r\nSubject: Fremd\r\n\r\nx")],
-  ]);
+// A fake IMAP server with the given messages (UID → raw mail).
+async function fakeImap(messages: Map<number, Buffer>) {
   const seen: number[] = [];
+  const fetched: number[] = [];
   const commands: string[] = [];
   const server = createServer((socket: Socket) => {
     socket.write("* OK fake IMAP ready\r\n");
@@ -476,10 +471,11 @@ test("the IMAP poller routes inbox+<token> mail, marks it seen and leaves the re
         const cmd = rest.join(" ");
         commands.push(cmd.split(" ").slice(0, 2).join(" "));
         if (/^LOGIN/.test(cmd)) socket.write(cmd === 'LOGIN "inbox" "pa\\"ss"' ? `${tag} OK logged in\r\n` : `${tag} NO bad\r\n`);
-        else if (/^SELECT/.test(cmd)) socket.write(`* 2 EXISTS\r\n${tag} OK [READ-WRITE] selected\r\n`);
+        else if (/^SELECT/.test(cmd)) socket.write(`* ${messages.size} EXISTS\r\n${tag} OK [READ-WRITE] selected\r\n`);
         else if (/^UID SEARCH UNSEEN/.test(cmd)) socket.write(`* SEARCH ${[...messages.keys()].filter((u) => !seen.includes(u)).join(" ")}\r\n${tag} OK done\r\n`);
         else if (/^UID FETCH/.test(cmd)) {
           const uid = Number(cmd.split(" ")[2]);
+          fetched.push(uid);
           const data = messages.get(uid)!;
           socket.write(Buffer.concat([Buffer.from(`* 1 FETCH (UID ${uid} BODY[] {${data.length}}\r\n`), data, Buffer.from(`)\r\n${tag} OK fetched\r\n`)]));
         } else if (/^UID STORE/.test(cmd)) {
@@ -494,6 +490,20 @@ test("the IMAP poller routes inbox+<token> mail, marks it seen and leaves the re
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
   const port = (server.address() as { port: number }).port;
+  const options = { host: "127.0.0.1", port, user: "inbox", password: 'pa"ss', tls: false };
+  return { seen, fetched, commands, options, port, close: () => server.close() };
+}
+
+test("the IMAP poller routes inbox+<token> mail, marks it seen and leaves the rest", async () => {
+  const { id: addressId } = await save({ pageId: inboxPage, senders: ["example.com"] });
+  const token = await tokenOf(addressId);
+  const messages = new Map<number, Buffer>([
+    [7, Buffer.from(fixture("related-inline.eml").toString("latin1").replaceAll("abcdefghijklmnopqrstuvwxyz234567", token), "latin1")],
+    // No token: marked seen, nothing stored.
+    [8, Buffer.from("From: x@example.com\r\nTo: other@example.test\r\nSubject: Fremd\r\n\r\nx")],
+  ]);
+  const imap = await fakeImap(messages);
+  const { seen, commands, port } = imap;
   try {
     const before = Number((await one<{ n: number }>("SELECT COUNT(*) n FROM pages WHERE parent_id=?", inboxPage))!.n);
     const result = await inbound.pollInboundMailbox({ host: "127.0.0.1", port, user: "inbox", password: 'pa"ss', tls: false });
@@ -509,6 +519,28 @@ test("the IMAP poller routes inbox+<token> mail, marks it seen and leaves the re
     assert.equal((await inbound.pollInboundMailbox({ host: "127.0.0.1", port, user: "inbox", password: 'pa"ss', tls: false })).processed, 0);
     await assert.rejects(inbound.pollInboundMailbox({ host: "127.0.0.1", port, user: "inbox", password: "wrong", tls: false }), /IMAP LOGIN/);
   } finally {
-    server.close();
+    imap.close();
+  }
+});
+
+test("the IMAP poller does not connect while the instance is read-only for a move", async () => {
+  const { id: addressId } = await save({ pageId: inboxPage, senders: ["example.org"] });
+  const token = await tokenOf(addressId);
+  const imap = await fakeImap(new Map([[1, Buffer.from(`From: ada@example.org\r\nTo: inbox+${token}@example.test\r\nSubject: Umzug\r\n\r\nx`)]]));
+  const { MOVE_KEY } = await import("../lib/instance-read-only");
+  const count = async () => Number((await one<{ n: number }>("SELECT COUNT(*) n FROM pages WHERE parent_id=?", inboxPage))!.n);
+  const before = await count();
+  try {
+    await run("INSERT INTO instance_settings(key,value) VALUES(?,?)", MOVE_KEY, JSON.stringify({ readOnlyAt: Date.now() }));
+    assert.equal((await inbound.pollInboundMailbox(imap.options)).processed, 0);
+    assert.deepEqual(imap.commands, [], "no IMAP session at all: the mail stays unseen for the new instance");
+    assert.equal(await count(), before);
+    await run("DELETE FROM instance_settings WHERE key=?", MOVE_KEY);
+    assert.equal((await inbound.pollInboundMailbox(imap.options)).processed, 1);
+    assert.deepEqual(imap.seen, [1]);
+    assert.equal(await count(), before + 1);
+  } finally {
+    await run("DELETE FROM instance_settings WHERE key=?", MOVE_KEY);
+    imap.close();
   }
 });

@@ -22,6 +22,7 @@ import { userLocale } from "./user-locale";
 import { db } from "./db-driver";
 import { localeTag, type Locale } from "./i18n";
 import { isLeader } from "./cluster/leader";
+import { workersPaused } from "./instance-read-only";
 
 export async function disableInactiveAccounts(now = Date.now()) {
   const days = (await instanceSettings()).inactiveDays;
@@ -211,7 +212,7 @@ export function startInactiveWorker() {
   if (runtime.flowplanInactiveTimer) return;
   runtime.flowplanInactiveTimer = setInterval(async () => {
     // Cluster mode: the leader only (lib/cluster/leader.ts).
-    if (!isLeader()) return;
+    if (!isLeader() || (await workersPaused())) return;
     try {
       await disableInactiveAccounts();
       await deleteInactiveAccounts();

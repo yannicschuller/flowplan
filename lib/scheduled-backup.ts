@@ -23,6 +23,7 @@ import { sendToSftp, sftpBackupActive, sftpBackupStatus } from "./sftp-backup";
 import { runDueSpaceGitExports } from "./space-git-export";
 import { firstAccount } from "./local-auth";
 import { isLeader } from "./cluster/leader";
+import { workersPaused } from "./instance-read-only";
 
 const dataDir = () => resolve(process.env.FLOWPLAN_DATA_DIR || "./data");
 const DAY_MS = 86400_000;
@@ -166,7 +167,7 @@ export function startBackupWorker() {
   };
   const tick = async () => {
     // Cluster mode: the leader only (lib/cluster/leader.ts).
-    if (runtime.flowplanBackupBusy || !isLeader()) return;
+    if (runtime.flowplanBackupBusy || !isLeader() || (await workersPaused())) return;
     runtime.flowplanBackupBusy = true;
     try {
       if (await backupDue()) {

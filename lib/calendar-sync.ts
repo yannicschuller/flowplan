@@ -42,6 +42,7 @@ import { validZone } from "./date-values";
 import type { Field, Identity, Page, Row, View } from "./types";
 import { flatMapAsync } from "./each-async";
 import { isLeader } from "./cluster/leader";
+import { workersPaused } from "./instance-read-only";
 
 export const calendarProviders = ["google", "microsoft"] as const;
 export type CalendarProvider = (typeof calendarProviders)[number];
@@ -1138,7 +1139,7 @@ export async function syncOwnMapping(user: Identity, input: unknown) {
 
 const runtime = globalThis as unknown as { flowplanCalendarTimer?: ReturnType<typeof setInterval>; flowplanCalendarBusy?: boolean };
 export async function syncDueCalendars(now = Date.now()) {
-  if (runtime.flowplanCalendarBusy) return;
+  if (runtime.flowplanCalendarBusy || (await workersPaused())) return;
   runtime.flowplanCalendarBusy = true;
   try {
     for (const m of await all<{ id: string }>("SELECT id FROM calendar_sync_mappings WHERE next_at<=? ORDER BY next_at LIMIT 50", now))

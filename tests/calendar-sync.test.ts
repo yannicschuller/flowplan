@@ -335,6 +335,30 @@ test("Google: rate limits back off, an expired sync token starts over, errors ba
   await run("DELETE FROM calendar_sync_mappings WHERE id=?", mapping);
 });
 
+test("the sync worker pauses while the instance is read-only for a move", async () => {
+  const pageId = await calendarDatabase("Termine Umzug");
+  const cid = (await one<{ id: string }>("SELECT id FROM calendar_connections WHERE user_id=? AND provider='google'", owner.id))!.id;
+  await run("DELETE FROM calendar_sync_mappings WHERE connection_id=?", cid);
+  const google = fakeGoogle();
+  handlers = [tokenEndpoint(() => ""), google.handler];
+  const mapping = (await act({ action: "calendarSync.map", connectionId: cid, pageId, viewId: "cal", calendarId: "primary" })).id;
+  await run("UPDATE calendar_sync_mappings SET next_at=0,last_sync_at=NULL WHERE id=?", mapping);
+  const { MOVE_KEY } = await import("../lib/instance-read-only");
+  await run("INSERT INTO instance_settings(key,value) VALUES(?,?)", MOVE_KEY, JSON.stringify({ readOnlyAt: Date.now() }));
+  try {
+    requests.length = 0;
+    await sync.syncDueCalendars();
+    assert.equal(requests.length, 0, "no call to the provider, no token refresh");
+    assert.equal((await one<{ last_sync_at: number | null }>("SELECT last_sync_at FROM calendar_sync_mappings WHERE id=?", mapping))!.last_sync_at, null);
+  } finally {
+    await run("DELETE FROM instance_settings WHERE key=?", MOVE_KEY);
+  }
+  await sync.syncDueCalendars();
+  assert.ok(requests.length > 0);
+  assert.ok((await one<{ last_sync_at: number | null }>("SELECT last_sync_at FROM calendar_sync_mappings WHERE id=?", mapping))!.last_sync_at);
+  await run("DELETE FROM calendar_sync_mappings WHERE id=?", mapping);
+});
+
 test("records the person may only read are not synced", async () => {
   const pageId = await calendarDatabase("Nur lesen");
   const day = soon(5);

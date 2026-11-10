@@ -10,6 +10,7 @@ import { pageRole, requirePage } from "./permissions";
 import { Temporal } from "./date-values";
 import type { Identity, Page } from "./types";
 import { isLeader } from "./cluster/leader";
+import { workersPaused } from "./instance-read-only";
 
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((v) => {
   try {
@@ -119,7 +120,7 @@ export function startReviewWorker(onSent: () => void) {
   if (runtime.flowplanReviewTimer) return;
   const tick = async () => {
     // Cluster mode: the leader only (lib/cluster/leader.ts).
-    if (!isLeader()) return;
+    if (!isLeader() || (await workersPaused())) return;
     try {
       if (await processPageReviews()) onSent();
     } catch (error) {

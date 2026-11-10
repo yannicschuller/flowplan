@@ -39,6 +39,7 @@ import type { Field, Identity, Page } from "./types";
 import { mapAsync } from "./each-async";
 import { mailVerdict, sendgridVerdict, type MailVerdict } from "./mail-auth";
 import { isLeader } from "./cluster/leader";
+import { workersPaused } from "./instance-read-only";
 
 export const INBOUND_MAILS_PER_HOUR = 60;
 export const INBOUND_FILE_BYTES = 10 * 1024 * 1024;
@@ -783,6 +784,8 @@ const IMAP_MESSAGE_BYTES = INBOUND_REQUEST_BYTES;
 // (429) or day (413) leaves it unseen for the next round.
 export async function pollInboundMailbox(options = imapOptionsFromEnv()) {
   if (!options) return { processed: 0 };
+  // Not while the instance moves: the mail stays unseen for the new instance.
+  if (await workersPaused()) return { processed: 0 };
   const client = new ImapClient(options);
   let processed = 0;
   try {

@@ -24,6 +24,7 @@ import { runInlineWorkflows, runRuleAutomations, runScheduledRule } from "./work
 import { recordWorkflowEvents } from "./workflows/hooks";
 import { queueIssuePush } from "./issue-sync-queue";
 import { isLeader } from "./cluster/leader";
+import { workersPaused } from "./instance-read-only";
 
 type Cells = Record<string, unknown>;
 type Event = "created" | "form" | "updated" | "overdue";
@@ -250,7 +251,7 @@ export function startAutomationWorker(onFired: () => void) {
   if (runtime.flowplanAutomationTimer) return;
   const tick = async () => {
     // Cluster mode: the leader only (lib/cluster/leader.ts).
-    if (!isLeader()) return;
+    if (!isLeader() || (await workersPaused())) return;
     try {
       if (await transactionalOverdue()) onFired();
       if (await transaction(async () => await processScheduledAutomations())) onFired();

@@ -47,6 +47,7 @@ import {
 } from "./database-fields";
 import { nameLookup } from "./sources";
 import { isLeader } from "../cluster/leader";
+import { workersPaused } from "../instance-read-only";
 
 export type AiCellMode = "compute" | "fill" | "auto";
 export const AI_QUEUE_LIMITS = { perRequest: 1000, perPerson: 5000, attempts: 3 } as const;
@@ -433,7 +434,7 @@ export function startAiWorker() {
   if (runtime.flowplanAiTimer) return;
   const tick = async () => {
     // Cluster mode: the leader only (lib/cluster/leader.ts).
-    if (runtime.flowplanAiBusy || !isLeader()) return;
+    if (runtime.flowplanAiBusy || !isLeader() || (await workersPaused())) return;
     runtime.flowplanAiBusy = true;
     try {
       await processAutoDirty();

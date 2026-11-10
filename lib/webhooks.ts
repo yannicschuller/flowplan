@@ -52,6 +52,7 @@ import { buildNotice, dueItems, localClock, recordUrl } from "./notification-eve
 import type { Identity, Page, User } from "./types";
 import { mapAsync } from "./each-async";
 import { mentionEvent } from "./workflows/hooks";
+import { workersPaused } from "./instance-read-only";
 
 export const webhookEvents = {
   "row.created": "Neuer Eintrag in einer Datenbank",
@@ -487,6 +488,7 @@ async function deliverAndRecord(delivery: Delivery) {
 
 const deliveryColumns = "d.id delivery_id,d.body,d.attempts,w.id,w.workspace_id,w.created_by,w.url,w.secret,w.format,w.config,w.templates,w.credentials";
 export async function flushWebhooks(now = Date.now()) {
+  if (await workersPaused()) return;
   const due = await all<Delivery>(
     `SELECT ${deliveryColumns} FROM webhook_deliveries d JOIN webhooks w ON w.id=d.webhook_id
      WHERE d.delivered_at IS NULL AND d.attempts<6 AND d.next_at<=? ORDER BY d.next_at LIMIT 50`,
@@ -570,6 +572,7 @@ export function dispatchWebhooks() {
 export function startWebhookWorker() {
   if (runtime.flowplanHookTimer) return;
   runtime.flowplanHookTimer = setInterval(async () => {
+    if (await workersPaused()) return;
     try {
       await transaction(async () => await processDigests());
     } catch (error) {
