@@ -30,6 +30,7 @@ export function markdownToHtmlAsync(
 // (table, code, quote, list …). The marker goes; the block keeps the id.
 const TRAILING = /\s\^([A-Za-z0-9-]{1,64})\s*$/;
 const ALONE = /^\s*\^([A-Za-z0-9-]{1,64})\s*$/;
+const ESCAPED_CARET = "\uFDD0";
 const isTag = (node: ChildNode | null | undefined): node is Element => !!node && node.type === "tag";
 // The plain text an element's own content ends with (nested lists and
 // blocks skipped); null when it ends with formatting, code or a link.
@@ -54,7 +55,9 @@ function takeTrailing(el: Element) {
 }
 export function blockMarkers(html: string) {
   if (!html.includes("^")) return html;
-  const doc = parseDocument(html, { decodeEntities: true });
+  // Escaped carets (rendered as an entity by lib/markdown-html.ts) are kept
+  // out of the marker search.
+  const doc = parseDocument(html.replaceAll("&#94;", ESCAPED_CARET), { decodeEntities: true });
   const handled = new Set<Element>();
   // List items: the marker at the end of the item's own line.
   for (const li of DomUtils.findAll((el) => el.name === "li", doc.children)) {
@@ -81,5 +84,5 @@ export function blockMarkers(html: string) {
     const id = takeTrailing(el);
     if (id && !el.attribs["data-block-id"]) el.attribs["data-block-id"] = id;
   }
-  return DomUtils.getOuterHTML(doc.children, { encodeEntities: "utf8" });
+  return DomUtils.getOuterHTML(doc.children, { encodeEntities: "utf8" }).replaceAll(ESCAPED_CARET, "^");
 }

@@ -216,9 +216,15 @@ export function markdownToRawHtml(
     },
     renderer: (token) => footnote(String(token.note || "")),
   };
+  // An escaped caret ("\^C") is text, never a block id marker: it stays an
+  // entity, which blockMarkers() in lib/markdown-import.ts leaves alone.
+  const caret: TokenizerAndRendererExtension = {
+    name: "escape",
+    renderer: (token) => (token.text === "^" ? "&#94;" : false),
+  };
   const marked = new Marked({ gfm: true, breaks: false, async: false });
   marked.use({
-    extensions: [footnoteRef],
+    extensions: [footnoteRef, caret],
     hooks: { processAllTokens: (tokens) => attachCaptions(tokens as Token[]) },
     renderer: {
       link({ href, tokens }: Tokens.Link) {

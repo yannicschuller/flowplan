@@ -49,7 +49,9 @@ export function markdownText(text: string) {
     .replace(/[`*_{}\[\]<>|~$]/g, "\\$&")
     .replace(/^(\s*)(#{1,6}|[-+])(?=\s)/gm, "$1\\$2")
     .replace(/^(\s*\d+)([.)])(?=\s)/gm, "$1\\$2")
-    .replace(/^(\s*)(=+|-+)\s*$/gm, "$1\\$2");
+    .replace(/^(\s*)(=+|-+)\s*$/gm, "$1\\$2")
+    // " ^word" would read as a block id marker (lib/markdown-import.ts).
+    .replace(/(^|\s)\^(?=[A-Za-z0-9-])/g, "$1\\^");
 }
 export function markdownUrl(url: string) {
   return url.replace(/[\s<>\\"()|]/g, (c) => encodeURIComponent(c));
