@@ -50,6 +50,7 @@ import {
   type PressureTrack,
 } from "@/lib/stylus";
 import type { InkEditor } from "./use-ink-editor";
+import { isUnspoken, type Playback } from "@/lib/ink/audio-sync";
 
 type XY = { x: number; y: number };
 // How long the pen rests at the end of a stroke before it snaps (ms).
@@ -67,41 +68,44 @@ type Gesture =
   | { kind: "pan"; touches: Map<number, XY>; distance: number; zoom: number };
 
 // The ink of a page, back to front: highlighter strokes in one layer, the rest in another.
-const InkItems = memo(function InkItems({ items, layer }: { items: InkItem[]; layer: "highlight" | "ink" }) {
+// With `playback`, what the recording has not reached yet is dimmed (notebook
+// audio); each item is its own memo, so playing re-draws only those that change.
+const InkItems = memo(function InkItems({ items, layer, playback = null }: { items: InkItem[]; layer: "highlight" | "ink"; playback?: Playback }) {
   return (
     <>
-      {items.map((item) => {
-        if (layer === "highlight") {
-          if (item.type !== "highlighter") return null;
-          const { d } = strokePath(item);
-          return (
-            <path
-              key={item.id}
-              d={d}
-              fill="none"
-              stroke={item.color}
-              strokeOpacity={HIGHLIGHTER_OPACITY}
-              strokeWidth={item.width}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          );
-        }
-        if (item.type === "highlighter") return null;
-        if (item.type === "text") return <InkTextItem key={item.id} item={item} />;
-        const { d, fill } = strokePath(item);
-        return fill ? (
-          <path key={item.id} d={d} fill={item.color} />
-        ) : (
-          <path key={item.id} d={d} fill="none" stroke={item.color} strokeWidth={lineWidth(item)} strokeLinecap="round" strokeLinejoin="round" />
-        );
-      })}
+      {items.map((item) =>
+        (layer === "highlight") === (item.type === "highlighter") ? <InkItemView key={item.id} item={item} dim={isUnspoken(item, playback)} /> : null,
+      )}
     </>
   );
 });
-function InkTextItem({ item }: { item: InkText }) {
+const InkItemView = memo(function InkItemView({ item, dim }: { item: InkItem; dim: boolean }) {
+  const className = dim ? "ink-unspoken" : undefined;
+  if (item.type === "text") return <InkTextItem item={item} className={className} />;
+  const { d, fill } = strokePath(item);
+  if (item.type === "highlighter")
+    return (
+      <path
+        className={className}
+        d={d}
+        fill="none"
+        stroke={item.color}
+        strokeOpacity={HIGHLIGHTER_OPACITY}
+        strokeWidth={item.width}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    );
+  return fill ? (
+    <path className={className} d={d} fill={item.color} />
+  ) : (
+    <path className={className} d={d} fill="none" stroke={item.color} strokeWidth={lineWidth(item)} strokeLinecap="round" strokeLinejoin="round" />
+  );
+});
+function InkTextItem({ item, className }: { item: InkText; className?: string }) {
   return (
     <text
+      className={className}
       x={item.x}
       y={item.y + item.size * 0.8}
       fontSize={item.size}
@@ -129,6 +133,7 @@ export function InkLayer({
   onConvert,
   label,
   fingersScroll = false,
+  playback = null,
 }: {
   page: string;
   size: PageSize;
@@ -146,6 +151,8 @@ export function InkLayer({
   // Fingers scroll even with pen-only drawing off (a drawing block not
   // activated yet: the document keeps scrolling under a finger).
   fingersScroll?: boolean;
+  // Notebook audio playing: items written later in it are dimmed.
+  playback?: Playback;
 }) {
   const t = useT();
   const active = !!editor && editing;
@@ -522,7 +529,7 @@ export function InkLayer({
       onContextMenu={active ? (e) => e.preventDefault() : undefined}
     >
       <svg className="ink-highlights" viewBox={`0 0 ${size.width} ${size.height}`} preserveAspectRatio="none" aria-hidden="true">
-        <InkItems items={visible} layer="highlight" />
+        <InkItems items={visible} layer="highlight" playback={playback} />
         <path ref={draftHighlight} className="ink-draft" fill="none" strokeOpacity={HIGHLIGHTER_OPACITY} strokeLinecap="round" strokeLinejoin="round" />
       </svg>
       <svg
@@ -533,7 +540,7 @@ export function InkLayer({
         aria-label={label || t(`Anmerkungen auf Seite ${page}`, `Annotations on page ${page}`)}
         data-count={visible.length}
       >
-        <InkItems items={visible} layer="ink" />
+        <InkItems items={visible} layer="ink" playback={playback} />
         <path ref={draftInk} className="ink-draft" strokeLinecap="round" strokeLinejoin="round" />
         <path ref={lassoPath} className="ink-lasso" fill="none" vectorEffect="non-scaling-stroke" />
         {laser.length > 0 && (

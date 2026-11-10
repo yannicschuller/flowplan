@@ -21,6 +21,12 @@ export const INK_LIMITS = {
 };
 
 export type InkStrokeType = "pen" | "highlighter";
+// When the item was written during an audio recording of a notebook
+// (lib/notebook-audio.ts): the recording's id and the time into it in
+// milliseconds. Optional, so older versions read such ink (and drop the
+// field when they save that surface: the item then plays as always shown).
+export type InkRec = { id: string; t: number };
+export const INK_REC_MAX_MS = 3 * 60 * 60 * 1000 + 60_000;
 export type InkStroke = {
   id: string;
   type: InkStrokeType;
@@ -29,6 +35,7 @@ export type InkStroke = {
   width: number;
   // x, y, pressure (0–1), x, y, pressure, …
   points: number[];
+  rec?: InkRec;
 };
 export type InkText = {
   id: string;
@@ -42,6 +49,7 @@ export type InkText = {
   // Typeface (lib/ink/fonts.ts); none: Helvetica as before. Optional, so
   // older versions read such text (and drop the face when they save).
   font?: InkFont;
+  rec?: InkRec;
 };
 export type InkItem = InkStroke | InkText;
 export type InkDoc = {
@@ -59,6 +67,18 @@ const COLOR = /^#[0-9a-f]{6}$/i;
 const KEY = /^[\w.-]{1,64}$/;
 const finite = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n);
 const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
+
+// The recording mark of a stored item, or null when it is unusable.
+export function cleanRec(raw: unknown): InkRec | null {
+  if (!raw || typeof raw !== "object") return null;
+  const { id, t } = raw as { id?: unknown; t?: unknown };
+  if (typeof id !== "string" || !/^[\w-]{1,40}$/.test(id) || !finite(t)) return null;
+  return { id, t: Math.round(clamp(t, 0, INK_REC_MAX_MS)) };
+}
+const withRec = (raw: Record<string, unknown>) => {
+  const rec = cleanRec(raw.rec);
+  return rec ? { rec } : {};
+};
 
 let counter = 0;
 // Short ids are enough: they only tell items of one page apart.
@@ -83,7 +103,7 @@ export function cleanItem(raw: unknown): InkItem | null {
       points.push(round2(clamp(x, -1e5, 1e5)), round2(clamp(y, -1e5, 1e5)), round2(clamp(p, 0, 1)));
     }
     if (!points.length) return null;
-    return { id, type: item.type, color, width: round2(clamp(item.width, 0.1, 200)), points };
+    return { id, type: item.type, color, width: round2(clamp(item.width, 0.1, 200)), points, ...withRec(item) };
   }
   if (item.type === "text") {
     if (typeof item.text !== "string" || !item.text.trim() || !finite(item.x) || !finite(item.y) || !finite(item.size)) return null;
@@ -96,6 +116,7 @@ export function cleanItem(raw: unknown): InkItem | null {
       y: round2(clamp(item.y, -1e5, 1e5)),
       text: item.text.slice(0, INK_LIMITS.textLength),
       ...(isInkFont(item.font) ? { font: item.font } : {}),
+      ...withRec(item),
     };
   }
   return null;

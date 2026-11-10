@@ -57,6 +57,7 @@ import { idempotencyHeaders } from "@/lib/idempotency-key";
 import { Select } from "../select";
 import { stepZoom } from "@/lib/pinch-zoom";
 import { usePinchZoom } from "./use-pinch-zoom";
+import { useNotebookAudio } from "./notebook-audio";
 
 export type { NotebookPayload };
 type CommandAnswer = { paper: Paper; sheets: NotebookSheet[]; created?: string[]; ink?: Record<string, { doc: InkDoc; version: number }> };
@@ -134,6 +135,8 @@ export default function NotebookView({
 
   // ---- Layout, zoom, current sheet ----
   const scroller = useRef<HTMLDivElement>(null);
+  // Audio recordings, synced to the ink (notebook-audio.tsx).
+  const audio = useNotebookAudio({ pageId, editor, canEdit, scroller, onError });
   const [fit, setFit] = useState(760);
   const [zoom, setZoom] = useState(1);
   useEffect(() => {
@@ -564,6 +567,7 @@ export default function NotebookView({
               <Rows size={18} />
             </button>
           )}
+          {audio.button}
           <div className="notebook-menu-anchor">
             <button
               type="button"
@@ -612,6 +616,7 @@ export default function NotebookView({
           />
         </div>
       </div>
+      {audio.bar}
       {notice && (
         <p className={`notebook-notice${notice.error ? " is-error" : ""}`} role={notice.error ? "alert" : "status"}>
           {notice.text}
@@ -744,6 +749,7 @@ export default function NotebookView({
                     size={size}
                     editor={editor}
                     editing={canEdit}
+                    playback={audio.playback}
                     onConvert={canEdit && canRecognize ? () => void convert(sheet.id) : undefined}
                     label={t(`Handschrift auf Blatt ${index + 1}`, `Handwriting on sheet ${index + 1}`)}
                   />

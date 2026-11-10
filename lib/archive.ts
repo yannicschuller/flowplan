@@ -3,6 +3,7 @@ import { importWorkflow, workflowArchive, workflowArchiveSchema } from "./workfl
 import { reconcileTagFields } from "./tag-fields";
 import { copyDashboard, dashboardTiles } from "./dashboard";
 import { importNotebook, notebookArchive, notebookArchiveSchema } from "./notebook";
+import { restoreRecordings } from "./notebook-audio";
 import { pageInkDocs, writeSurface, inkBlockIds } from "./page-ink-store";
 import { emptyInk, hasInk, parseInk, serializeInk } from "./ink/model";
 import { aliasList, pageAliases, storedAliases } from "./aliases";
@@ -1556,6 +1557,8 @@ async function importEntries(
           user.id,
         );
       for (const f of data.files) await importFileInk(fileMap.get(f.id)!, f.ink, user.id);
+      // Notebook recordings once their files are there (lib/notebook-audio.ts).
+      for (const p of data.pages) if (p.kind === "notebook" && p.notebook?.recordings) await restoreRecordings(pageMap.get(p.id)!, p.notebook.recordings, fileMap, user.id);
       for (const p of data.pages) {
         await validateCover(pageMap.get(p.id)!, rewriteUrl(p.cover));
         await validateIcon(pageMap.get(p.id)!, rewriteUrl(p.icon));

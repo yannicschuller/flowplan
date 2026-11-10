@@ -46,6 +46,18 @@ export function verifiedMime(claimed: string, data: Buffer) {
   return type;
 }
 
+// Notebook recordings (lib/notebook-audio.ts) take only what MediaRecorder
+// writes: Opus in WebM or Ogg, AAC in MP4 (Safari). The claimed type may
+// carry codecs ("audio/webm;codecs=opus"); the content must match it, or
+// the recording is refused (null) – never stored as a plain download.
+export const RECORDING_MIMES = ["audio/webm", "audio/ogg", "audio/mp4"] as const;
+export type RecordingMime = (typeof RECORDING_MIMES)[number];
+export function recordingMime(claimed: string, head: Buffer): RecordingMime | null {
+  const base = (claimed || "").toLowerCase().split(";")[0].trim();
+  if (!(RECORDING_MIMES as readonly string[]).includes(base)) return null;
+  return verifiedMime(base, head) === base ? (base as RecordingMime) : null;
+}
+
 /* ---------- Location in photos ---------- */
 
 // Removes the GPS position from JPEG (EXIF GPS data and XMP) and PNG

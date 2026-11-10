@@ -421,3 +421,52 @@ test("screenshots: iPad and desktop, light and dark", async ({ page }, info) => 
   await pen(cdp, path({ x: area.x + 60, y: area.y + 140 }, { x: area.x + 300, y: area.y + 150 }, 30));
   await page.screenshot({ path: `${shots}/notebook-draw-block-desktop-light.png` });
 });
+
+// Audio recordings (components/notebook/notebook-audio.tsx): Chromium's fake
+// microphone records, a stroke written meanwhile carries the recording's
+// moment, stopping uploads it, and playback dims what comes later.
+test.describe("notebook audio", () => {
+  test.use({ launchOptions: { args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"] }, permissions: ["microphone"] });
+  test("record while writing, upload, play back in step, jump to a stroke", async ({ page }, info) => {
+    test.skip(info.project.name !== "desktop", "Pen input runs on the desktop project.");
+    const { create } = await setup(page);
+    const id = await create(`Vorlesung ${Date.now()}`, "notebook");
+    await openNotebook(page, id);
+    const controls = page.getByRole("toolbar", { name: "Notizbuch" });
+    await controls.getByRole("button", { name: "Aufnahmen" }).click();
+    await page.getByRole("menuitem", { name: "Aufnahme starten" }).click();
+    const bar = page.getByRole("region", { name: "Aufnahme" });
+    await expect(bar.getByRole("button", { name: "Aufnahme pausieren" })).toBeVisible();
+    await page.waitForTimeout(2000);
+    const cdp = await page.context().newCDPSession(page);
+    const box = (await sheet(page, 0).boundingBox())!;
+    await pen(cdp, path({ x: box.x + 90, y: box.y + 140 }, { x: box.x + 380, y: box.y + 180 }));
+    await page.waitForTimeout(1500);
+    await bar.getByRole("button", { name: "Beenden" }).click();
+    await expect(page.getByText(/ist gespeichert/)).toBeVisible({ timeout: 20_000 });
+    const list = await (await page.request.get(`/api/pages/${id}/recordings`)).json();
+    expect(list.recordings).toHaveLength(1);
+    const recording = list.recordings[0];
+    expect(recording.durationMs).toBeGreaterThan(2500);
+    const data = await (await page.request.get(`/api/pages/${id}`)).json();
+    const [first] = data.notebook.sheets.map((s: { id: string }) => s.id);
+    const stroke = data.notebook.sheets[0].ink.pages[first][0];
+    expect(stroke.rec.id).toBe(recording.id);
+    expect(stroke.rec.t).toBeGreaterThan(1500);
+    // The audio is served with ranges.
+    const ranged = await page.request.get(`/api/files/${recording.fileId}`, { headers: { range: "bytes=0-99" } });
+    expect(ranged.status()).toBe(206);
+    expect(ranged.headers()["content-type"]).toMatch(/^audio\//);
+    // Playing from the start: the stroke is not "spoken" yet.
+    await controls.getByRole("button", { name: "Aufnahmen" }).click();
+    await page.locator(".notebook-audio-item").first().click();
+    const player = page.locator(".notebook-audio-player");
+    await player.getByRole("button", { name: "Pause" }).click().catch(() => {});
+    await player.locator("input[type=range]").fill("0");
+    await expect(sheet(page, 0).locator(".ink-unspoken")).toHaveCount(1);
+    // "Play from here" on the stroke jumps to about when it was written.
+    await player.getByRole("button", { name: /Ab hier abspielen/ }).click();
+    await page.mouse.click(box.x + 235, box.y + 160);
+    await expect.poll(() => page.evaluate(() => (document.querySelector(".notebook-audio-player audio") as HTMLAudioElement).currentTime)).toBeGreaterThan(0.4);
+  });
+});

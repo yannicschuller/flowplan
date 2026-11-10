@@ -39,7 +39,7 @@ function outsideAsyncTransaction(write: boolean) {
 // PRAGMA user_version: a restore refuses a backup from a newer version
 // (lib/setup-restore.ts); older ones are brought up to date by migrate().
 // Raise it together with the "Schema NN" step at the end of migrate().
-export const SCHEMA_VERSION = 100;
+export const SCHEMA_VERSION = 101;
 // Tables with an explicit insertion order (schema 94): `ORDER BY …,seq`
 // (pages have one as well, filled by the trigger pages_created_at).
 // Schema 97 (workflows): tables created with their seq column (and its
@@ -1287,6 +1287,14 @@ function migrate(d: DatabaseSync) {
   // "grant-kinds-100"); an older version would not write them, hence the
   // new number.
   migrateGrantKinds(d);
+  // Schema 101 – audio recordings of notebooks (lib/notebook-audio.ts): per
+  // notebook its recordings, each an uploaded file of the page (counted in
+  // the storage, in the trash with it) with its length; the id is the one
+  // the ink written meanwhile refers to (`rec` of an item, lib/ink/model.ts),
+  // kept in copies. `transcript` is left for a transcription (not filled yet).
+  // An older version would keep the files as plain attachments.
+  d.exec(`CREATE TABLE IF NOT EXISTS notebook_recordings(page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,id TEXT NOT NULL,file_id TEXT NOT NULL REFERENCES files(id) ON DELETE CASCADE,name TEXT NOT NULL,duration_ms INTEGER NOT NULL,created_by TEXT,created_at INTEGER NOT NULL,transcript TEXT,PRIMARY KEY(page_id,id));
+    CREATE INDEX IF NOT EXISTS notebook_recordings_file ON notebook_recordings(file_id);`);
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);

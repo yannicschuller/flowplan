@@ -5,6 +5,11 @@ import { PAGE_LOCALE } from "./locale-tag";
 import { securityRules } from "./security-kinds";
 
 const exact: Record<string, string> = {
+  // Notebook audio recordings (lib/notebook-audio.ts).
+  "Der Speicher reicht für diese Aufnahme nicht.": "The storage is not enough for this recording.",
+  "Dieses Audioformat wird nicht unterstützt.": "This audio format is not supported.",
+  "Die Aufnahme ist bereits gespeichert.": "The recording is already saved.",
+  "Die Aufnahme ist leer.": "The recording is empty.",
   // Workflows (#168, §11.8): approvals from the apps' push notifications.
   "Die Frist dieser Freigabe ist abgelaufen.": "The deadline of this approval has passed.",
   "Dieses Gerät war zu lange nicht aktiv. Bitte in Flowplan öffnen.": "This device has not been active for too long. Please open it in Flowplan.",

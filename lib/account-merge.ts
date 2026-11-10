@@ -117,6 +117,7 @@ export const USER_REFERENCES: Record<string, MergeStrategy> = {
   "page_view_prefs.user_id": "move",
   "page_ink.updated_by": "move",
   "page_ink_versions.created_by": "move",
+  "notebook_recordings.created_by": "move",
   "page_tags.created_by": "move",
   "page_property_defs.created_by": "move",
   "document_authors.user_id": "move",

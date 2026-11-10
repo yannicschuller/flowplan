@@ -39,6 +39,8 @@ import { dayTitle as localDayTitle, isAutoDayTitle } from "./journal-title";
 import { dashboardSummary } from "./dashboard";
 import { inkPicture } from "./ink-export";
 import { notebookPaper, notebookSheets, notebookText } from "./notebook";
+import { notebookRecordings } from "./notebook-audio";
+import { formatClock } from "./ink/audio-sync";
 import { pageInkDocs } from "./page-ink-store";
 import { emptyInk } from "./ink/model";
 import { notebookPdf, notebookPdfSheets } from "./ink/notebook-pdf";
@@ -702,6 +704,17 @@ async function collect(user: Identity, options: MarkdownExportOptions) {
         markdown += markdownLink(ct("Notizbuch als PDF", "Notebook as PDF"), relative(path, pdfPath)) + "\n\n";
       } else markdown += markdownLink(ct("Notizbuch in Flowplan öffnen", "Open the notebook in Flowplan"), `${appUrl().replace(/\/$/, "")}/#page=${page.id}`) + "\n\n";
       for (const text of locked.has(page.id) ? [] : (await notebookText(page.id))) markdown += `${markdownText(text)}\n\n`;
+      // Audio recordings (lib/notebook-audio.ts): next to it in a ZIP, linked otherwise.
+      const recordings = locked.has(page.id) ? [] : await notebookRecordings(page.id);
+      if (recordings.length) {
+        markdown += `## ${markdownText(ct("Aufnahmen", "Recordings"))}\n\n`;
+        for (const r of recordings) {
+          const link = await ctx.url(`/api/files/${r.fileId}`);
+          const label = `${r.name} (${formatClock(r.durationMs)})`;
+          markdown += `- ${link ? markdownLink(label, link) : markdownText(label)}\n`;
+        }
+        markdown += "\n";
+      }
     } else if (page.kind === "workflow") {
       // Workflows (#168): the nodes as a list; in a ZIP the draft as
       // .flowplan-workflow.json next to it (no runs, no secrets).

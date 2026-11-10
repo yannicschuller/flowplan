@@ -18,6 +18,7 @@ import { cleanRecognizedText } from "./ink/recognized";
 import { isPdfFile } from "./ink-store";
 import type { Identity, Page } from "./types";
 import { forEachAsync } from "./each-async";
+import { copyRecordings, recordingsArchive, recordingsArchiveSchema, restoreRecordings } from "./notebook-audio";
 
 export { MAX_SHEETS, MAX_IMPORT_PAGES };
 
@@ -240,6 +241,8 @@ export async function copyNotebook(fromPage: string, toPage: string, files: Map<
   }
   if (!surfaces.size) await insertSheet(toPage);
   await copyPageInk(fromPage, toPage, surfaces, by);
+  // Audio recordings whose files were copied (lib/notebook-audio.ts).
+  await copyRecordings(fromPage, toPage, files, by);
 }
 
 export const notebookArchiveSchema = z.object({
@@ -255,11 +258,16 @@ export const notebookArchiveSchema = z.object({
       }),
     )
     .max(MAX_SHEETS),
+  // Audio recordings (lib/notebook-audio.ts): the file ids refer to the
+  // archive's files. Older archives have none.
+  recordings: recordingsArchiveSchema.optional(),
 });
 export type NotebookArchive = z.infer<typeof notebookArchiveSchema>;
 export async function notebookArchive(pageId: string): Promise<NotebookArchive> {
   const inks = await pageInkDocs(pageId);
+  const recordings = await recordingsArchive(pageId);
   return {
+    ...(recordings.length ? { recordings } : {}),
     paper: await notebookPaper(pageId),
     sheets: (await notebookSheets(pageId)).map((sheet) => {
       const ink = inks.get(sheet.id);
@@ -290,6 +298,7 @@ export async function importNotebook(pageId: string, data: NotebookArchive, file
     }
   });
   if (!data.sheets.length) await insertSheet(pageId);
+  await restoreRecordings(pageId, data.recordings, files, by);
 }
 
 // Typed and recognised text of all sheets, in order (exports, summaries).

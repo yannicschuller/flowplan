@@ -3109,6 +3109,21 @@ export class FlowplanClient {
   }>("GET", `/api/link-targets`, { query }, options);
   }
 
+  /** Audio recordings of a notebook — The recordings (`fileId` is served by GET /api/files/{fileId} with range requests), whether you may add some, the storage left for them (`room`, bytes; null: no limit) and the limits (three hours, size, chunk size). With `upload`: how much of an unfinished upload the server has. Ink written during a recording carries `rec: {id, t}` (lib/ink/README.md). Journals behind a PIN: 423 until unlocked. Answered with `Cache-Control: no-store`. (GET /api/pages/{pageId}/recordings) */
+  async notebookRecordings(pageId: string, query?: { upload?: string }, options?: RequestOptions): Promise<Record<string, unknown>> {
+    return this.json<Record<string, unknown>>("GET", `/api/pages/${encodeURIComponent(pageId)}/recordings`, { query }, options);
+  }
+
+  /** Upload, finish, rename or delete a notebook recording — Upload: `?upload=<recording id>&offset=<bytes the server has>&type=<audio/webm|audio/ogg|audio/mp4>` with the raw bytes as `application/octet-stream` (at most 4 MiB per request; a repeated chunk is ignored, a gap answers 409). Then JSON `{action: "finish", recId, name, durationMs}` stores it as a file of the notebook (counted against the quota; at most three hours; 413 when too long, too large for its length or over the quota; 415 for other content). Also `{action: "rename", recId, name}`, `{action: "delete", recId}` (into the trash with its file) and `{action: "discard", recId}` (drops an unfinished upload). Needs editor rights; not on locked pages or in encrypted spaces. (POST /api/pages/{pageId}/recordings) */
+  async notebookRecordingAction(pageId: string, body: {
+    action: "finish" | "rename" | "delete" | "discard";
+    recId: string;
+    name?: string;
+    durationMs?: number;
+  }, options?: RequestOptions): Promise<Record<string, unknown>> {
+    return this.json<Record<string, unknown>>("POST", `/api/pages/${encodeURIComponent(pageId)}/recordings`, { json: body }, options);
+  }
+
   /** Short preview of a page — Answered with `Cache-Control: no-store`. (GET /api/pages/{pageId}/preview) */
   async pagePreview(pageId: string, options?: RequestOptions): Promise<Record<string, unknown>> {
     return this.json<Record<string, unknown>>("GET", `/api/pages/${encodeURIComponent(pageId)}/preview`, {}, options);

@@ -23,6 +23,7 @@ block of documents (`components/ink/draw-block*.tsx`,
 | `lib/ink/svg.ts` | `inkSvg(items, size, { paper })`: ink as an SVG document (published pages, exports) |
 | `lib/ink/recognition.ts` | Handwriting recognition in the iPhone/iPad app (contract below) |
 | `lib/ink/recognized.ts` | Cleaning and capping recognised text |
+| `lib/ink/audio-sync.ts` | Notebook audio: limits, recording format, time marks (`rec`) on new items, what playback has not reached |
 | `lib/ink-store.ts` | Server: ink of PDF files (`file_ink`, `file_ink_versions`, `recognized`) |
 | `lib/page-ink-store.ts` | Server: ink of a page's surfaces – notebook sheets, drawing blocks (`page_ink`, `page_ink_versions`) |
 | `lib/ink-export.ts` | Server: pictures of drawing blocks and sheets for published pages and exports |
@@ -71,6 +72,15 @@ block of documents (`components/ink/draw-block*.tsx`,
   Times for `serif`, Courier for `mono`, Helvetica for the rest, no
   embedding. Versions before `font` read such text in Helvetica and drop
   the field when they save that surface.
+- Optional `rec: { id, t }` on any item: written during the notebook
+  audio recording `id`, `t` milliseconds into it (pauses not counted;
+  `lib/ink/audio-sync.ts`, `lib/notebook-audio.ts`). Set by the editor for
+  items new in a change while recording (`editor.stampRef`); pieces of a
+  partly erased stroke and copies keep their original's mark. Playback dims
+  items of the playing recording with `t` later than its position
+  (`<InkLayer playback>`). Versions before `rec` read such ink and drop the
+  field when they save that surface: those items then simply show during
+  playback.
 - Items are back to front. Page keys: PDF page numbers (`"1"`, `"2"`, …);
   other surfaces may use any key matching `[\w.-]{1,64}` (e.g. a notebook
   page id).
