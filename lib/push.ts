@@ -1,6 +1,7 @@
 import { notificationUrl } from "./page-location";
 import webpush from "web-push";
 import { createECDH } from "node:crypto";
+import { request as httpsRequest } from "node:https";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { z } from "zod";
@@ -205,6 +206,48 @@ export async function sendExpoPush(message: ExpoMessage) {
   if (!response.ok || result.data?.status !== "ok")
     throw Object.assign(new Error(result.data?.details?.error || "Expo push failed"), { statusCode: response.status || 502 });
 }
+// Sends one Web Push message like web-push's sendNotification, whose
+// request reads the endpoint with the legacy url.parse() – Node.js reports
+// that as "[DEP0169] DeprecationWarning" in the log (#195). The encrypted
+// body and the headers still come from web-push (generateRequestDetails,
+// without VAPID, which would parse the address the same way); the VAPID
+// header gets the endpoint's origin from the WHATWG URL. Errors carry
+// statusCode as before (WebPushError).
+export function sendWebPush(sub: webpush.PushSubscription, payload: string, options: webpush.RequestOptions) {
+  const { vapidDetails, timeout, ...rest } = options;
+  const details = webpush.generateRequestDetails(sub, payload, { ...rest, vapidDetails: null as never });
+  const endpoint = new URL(details.endpoint);
+  const headers: Record<string, string> = {};
+  for (const [name, value] of Object.entries(details.headers)) headers[name] = String(value);
+  if (vapidDetails) {
+    const vapid = webpush.getVapidHeaders(
+      endpoint.origin,
+      vapidDetails.subject,
+      vapidDetails.publicKey,
+      vapidDetails.privateKey,
+      options.contentEncoding || "aes128gcm",
+    );
+    headers.Authorization = vapid.Authorization;
+    if (vapid["Crypto-Key"]) headers["Crypto-Key"] = headers["Crypto-Key"] ? `${headers["Crypto-Key"]};${vapid["Crypto-Key"]}` : vapid["Crypto-Key"];
+  }
+  return new Promise<{ statusCode: number; body: string }>((resolve, reject) => {
+    const req = httpsRequest(endpoint, { method: details.method, headers, timeout }, (res) => {
+      let body = "";
+      res.setEncoding("utf8");
+      res.on("data", (chunk: string) => (body += chunk));
+      res.on("end", () => {
+        const status = res.statusCode || 0;
+        if (status < 200 || status > 299)
+          reject(new webpush.WebPushError("Received unexpected response code", status, res.headers as webpush.Headers, body, details.endpoint));
+        else resolve({ statusCode: status, body });
+      });
+    });
+    req.on("timeout", () => req.destroy(new Error("Socket timeout")));
+    req.on("error", reject);
+    if (details.body) req.write(details.body);
+    req.end();
+  });
+}
 function webPushOptions(keys: { publicKey: string; privateKey: string }): webpush.RequestOptions {
   return {
     vapidDetails: {
@@ -235,7 +278,7 @@ async function countPush(channel: "web" | "expo", error?: unknown) {
 }
 
 export async function flushPushQueue(
-  send: Sender = webpush.sendNotification,
+  send: Sender = sendWebPush,
   sendExpo: ExpoSender = sendExpoPush,
   sendRelay: RelaySender = sendToRelay,
 ) {
