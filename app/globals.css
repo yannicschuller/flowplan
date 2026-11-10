@@ -29730,18 +29730,80 @@ label.ws-search input {
   font-size: 13px;
   font-weight: 600;
 }
+/* The global label rule stacks label and control in a centred column:
+   in these dialogs a label is a row (checkbox or radio before its text). */
 .notebook-paper-form label {
   display: flex;
+  flex-direction: row;
   align-items: center;
   gap: 6px;
+  margin: 0;
   font-size: 14px;
+  font-weight: 400;
+  text-align: start;
+}
+/* A group of radios (Aktion, Ziel, Aussehen …) reads as a segmented
+   control, like the paper dialog: the legend above, the choices side by
+   side in one pill, the chosen one raised. */
+.notebook-paper-form fieldset:has(> label > input[type="radio"]) {
+  gap: 6px;
+}
+.notebook-paper-form fieldset:has(> label > input[type="radio"]) > legend {
+  float: left;
+  width: 100%;
+  margin: 0 0 2px;
+  padding: 0;
+}
+.notebook-paper-form fieldset:has(> label > input[type="radio"]) > label {
+  position: relative;
+  justify-content: center;
+  padding: 7px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--hover);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--secondary);
+  cursor: pointer;
+}
+.notebook-paper-form fieldset:has(> label > input[type="radio"]) > label:has(input:checked) {
+  border-color: var(--blue);
+  background: var(--blue-light, var(--bg));
+  color: var(--text);
+}
+.notebook-paper-form fieldset:has(> label > input[type="radio"]) > label:has(input:disabled) {
+  opacity: 0.5;
+  cursor: default;
+}
+.notebook-paper-form fieldset:has(> label > input[type="radio"]) > label > input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: inherit;
+}
+.notebook-paper-form fieldset:has(> label > input[type="radio"]) > label:has(input:focus-visible) {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
 }
 .notebook-paper-form p {
   margin: 0;
 }
-.notebook-paper-form .notebook-insert-place {
-  flex-wrap: wrap;
-  gap: 8px 10px;
+/* A field with its caption above (Blatt, Einfügen, Text des Links): caption
+   left-aligned, the control full width below. */
+.notebook-paper-form .notebook-insert-place,
+.notebook-paper-form .notebook-field {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.notebook-paper-form .notebook-insert-place > :not(:first-child),
+.notebook-paper-form .notebook-field > input {
+  font-weight: 400;
 }
 .notebook-insert-hint {
   color: var(--secondary);
