@@ -364,6 +364,7 @@ const NAMES = [
   "SESSION_APP_DAYS",
   "OLLAMA_URL",
   "INBOUND_MAIL_DOMAIN",
+  "INBOUND_MAIL_AUTHSERV_ID",
 ];
 const PREFIXES = ["OIDC_", "S3_", "SMTP_", "APNS_", "WEB_PUSH_", "FLOWPLAN_AI", "WHISPER_", "LDAP_", "GOOGLE_CALENDAR_", "MS_CALENDAR_", "INBOUND_IMAP_"];
 export const MOVE_ENV_GROUPS: { id: string; match: (name: string) => boolean }[] = [

@@ -12,6 +12,7 @@ import { LOCALE_TAG } from "@/lib/locale-tag";
 import { journalDayQuery, localDate as todayLocal } from "@/lib/journal-links";
 import { TaskDue, pickTaskDue } from "@/lib/task-due-plugin";
 import { CalcHint, calcHintShown } from "@/lib/calc-hint-plugin";
+import { atOpensMention } from "@/lib/mention-trigger";
 import { ImageAnnotator, type AnnotationResult } from "./image-annotator";
 import { FunctionPlotView } from "./function-plot-view";
 import { MetricView } from "./metric-view";
@@ -400,6 +401,9 @@ export default function DocumentEditor({
     [referenceActive, setReferenceActive] = useState<string | null>(null),
     [embed, setEmbed] = useState(false),
     [embedUrl, setEmbedUrl] = useState("");
+  // The mention dialog was opened by typing "@" (not from the "/" menu):
+  // Escape, or Enter without a hit, types the "@" and the search instead.
+  const referenceByAt = useRef(false);
   const [boardPicker, setBoardPicker] = useState(false),
     [boardSearch, setBoardSearch] = useState("");
   const [voice, setVoice] = useState(false);
@@ -875,7 +879,11 @@ export default function DocumentEditor({
             setSlash(null);
             return false;
           }
-          if (event.key === "@" && editable) {
+          // "@" opens the mention dialog only where a mention can start
+          // (lib/mention-trigger.ts) – inside a word, as in an e-mail
+          // address, it is typed.
+          if (event.key === "@" && editable && atOpensMention(_view.state)) {
+            referenceByAt.current = true;
             setReferences(true);
             return true;
           }
@@ -1810,7 +1818,10 @@ export default function DocumentEditor({
       keywords: ["mention", "link", "@", "seite", "person", "eintrag", "record"],
       description: t("Mit @ Wissen verknüpfen", "Connect knowledge with @"),
       icon: LinkIcon,
-      run: () => setReferences(true),
+      run: () => {
+        referenceByAt.current = false;
+        setReferences(true);
+      },
     },
     ...(rowId
       ? []
@@ -2344,6 +2355,14 @@ export default function DocumentEditor({
       },
     })),
   ];
+  // Opened by "@" and left without a hit: the "@" and what was searched
+  // are typed into the text, as without the dialog.
+  const typeReferenceAt = () => {
+    referenceByAt.current = false;
+    editor?.chain().focus().insertContent({ type: "text", text: `@${referenceQuery}` }).run();
+    setReferences(false);
+    setReferenceQuery("");
+  };
   // The highlight follows its hit, not its place: records and blocks that
   // arrive later from the server do not move it. It starts at the first hit
   // when the dialog opens or the search changes, and goes back there when
@@ -3223,6 +3242,9 @@ export default function DocumentEditor({
           editor?.commands.focus();
         }}
         open={references}
+        onEscapeKeyDown={() => {
+          if (referenceByAt.current) typeReferenceAt();
+        }}
         onClose={() => {
           setReferences(false);
           setReferenceQuery("");
@@ -3249,7 +3271,9 @@ export default function DocumentEditor({
                 if (count) setReferenceActive(referenceItems[(referenceIndex + (e.key === "ArrowDown" ? 1 : count - 1)) % count].key);
               } else if (e.key === "Enter") {
                 e.preventDefault();
-                referenceItems[referenceIndex]?.pick();
+                const item = referenceItems[referenceIndex];
+                if (item) item.pick();
+                else if (referenceByAt.current) typeReferenceAt();
               }
             }}
             placeholder={t("Suchen …", "Search …")}

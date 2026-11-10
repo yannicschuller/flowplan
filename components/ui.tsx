@@ -141,6 +141,7 @@ export function Modal({
   wide = false,
   onCloseAutoFocus,
   onOpenAutoFocus,
+  onEscapeKeyDown,
   className = "",
   actions,
   sheet = false,
@@ -158,6 +159,8 @@ export function Modal({
   onCloseAutoFocus?: (event: Event) => void;
   // Where focus goes on opening (default: the first focusable element).
   onOpenAutoFocus?: (event: Event) => void;
+  // Escape, before the dialog closes (preventDefault keeps it open).
+  onEscapeKeyDown?: (event: KeyboardEvent) => void;
 }) {
   const t = useT();
   // Failures while the dialog is open show at its top instead of as a toast
@@ -243,6 +246,7 @@ export function Modal({
           aria-modal="true"
           onCloseAutoFocus={onCloseAutoFocus}
           onOpenAutoFocus={onOpenAutoFocus}
+          onEscapeKeyDown={onEscapeKeyDown}
           ref={contentRef}
         >
           <div className="modal-scroll-sentinel" aria-hidden />

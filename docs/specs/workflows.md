@@ -1681,12 +1681,18 @@ Abweichungen und Präzisierungen der Welle 2 (bewusst):
 - **`notify.email`** ohne `Reply-To` (die Mail-Warteschlange kennt keinen);
   E-Mails an Mitglieder zählen nicht als „außerhalb“.
 - **E-Mail-Absenderprüfung**: ein `pass` zählt nur, wenn er zur
-  `From`-Domain passt (DMARC, sonst DKIM `header.d` bzw. SPF
-  `smtp.mailfrom` derselben Domain oder Elterndomain); es zählt nur der
-  oberste `Authentication-Results`-Header bzw. – mit
-  `INBOUND_MAIL_AUTHSERV_ID` – nur die des eigenen Servers. Über HTTP ohne
-  Signierschlüssel ist das Urteil immer `unknown`. Auslöser-Option `senders`:
-  `verified` / `not_failed` (Standard) / `any`.
+  `From`-Domain passt (DMARC mit `header.from` der From-Domain, sonst DKIM
+  `header.d` bzw. SPF `smtp.mailfrom` derselben Domain oder Elterndomain).
+  Mit `INBOUND_MAIL_AUTHSERV_ID` (authserv-id des eigenen empfangenden
+  Servers) zählt nur der oberste `Authentication-Results`-Header mit dieser
+  Kennung (RFC 8601: der Empfänger setzt seinen oben drauf; gefälschte mit
+  derselben Kennung darunter fügen nichts hinzu). Ohne die Variable ist das
+  Urteil nie `pass` – fügt der Server keinen Header hinzu, stammt der oberste
+  vom Absender; ein `fail` des obersten zählt (macht nur strenger), sonst
+  `unknown`. Über HTTP ohne Signierschlüssel ist das Urteil immer `unknown`.
+  Auslöser-Option `senders`: `verified` (nur `pass` – braucht also
+  `INBOUND_MAIL_AUTHSERV_ID`) / `not_failed` (Standard, auch `unknown`) /
+  `any`.
 - **HTTP**: `http://` nur mit `FLOWPLAN_WORKFLOW_HTTP_ALLOW_PRIVATE`; der feste
   Host wird so verglichen, wie eine URL ihn liest (`2130706433` = 127.0.0.1),
   damit Schreibweisen nicht an der SSRF-Prüfung vorbeikommen; Gesamt-Zeitlimit

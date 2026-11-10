@@ -464,6 +464,14 @@ function Generic({ name, label, schema, value, ctx, onChange, t }: { name: strin
         <Select id={id} value={String(value ?? schema.default ?? "")} disabled={ctx.disabled} onChange={(e) => onChange(e.target.value)}>
           {schema.enum.map((v) => <option key={v} value={v}>{enumLabel(name, v, t)}</option>)}
         </Select>
+        {name === "senders" && String(value ?? schema.default) === "verified" && (
+          <small className="muted">
+            {t(
+              "Braucht INBOUND_MAIL_AUTHSERV_ID auf dem Server (die Kennung des eigenen Mailservers in Authentication-Results) – ohne gilt kein Absender als geprüft.",
+              "Needs INBOUND_MAIL_AUTHSERV_ID on the server (your own mail server’s id in Authentication-Results) – without it no sender counts as verified.",
+            )}
+          </small>
+        )}
       </Labeled>
     );
   if (type === "boolean")
