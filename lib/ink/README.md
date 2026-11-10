@@ -12,8 +12,11 @@ block of documents (`components/ink/draw-block*.tsx`,
 | --- | --- |
 | `lib/ink/model.ts` | Types, limits, `parseInk` (strict, drops junk), `serializeInk`, `inkText` (search), `withPage` |
 | `lib/ink/coords.ts` | Page units ↔ screen, ↔ device pixels (zoom, DPR), page as shown → PDF user space (rotation, crop box) |
-| `lib/ink/geometry.ts` | Pressure outline, bounds, hit tests, stroke and partial eraser, lasso, move/resize/recolour/copy, shape snapping (uses `recognizeStroke` from `lib/whiteboard-tools.ts`), `heldStill` |
-| `lib/ink/selection.ts` | The lasso's selection over every item type: tap to pick, affine move/scale/turn (corners, 15° snap, pinch), front/back, width steps, text next to it, pastes kept on the page |
+| `lib/ink/geometry.ts` | Pressure outline, bounds, hit tests, stroke and partial eraser (a shape cut by it becomes freehand), lasso, move/resize/recolour/copy, shape snapping (`snapShape`, `withShape`, `toFreehand`, `pageAnchors`), `heldStill` |
+| `lib/ink/shapes.ts` | Shapes (`InkShape`): checking (`cleanShape`), outline and parts (fill, dashes, arrow heads), moving/scaling/rotating (`affineShape` for the lasso's transform), handles and dragging them, snapping (15° angles, squares/circles within 8 %, magnet to other shapes' corners) |
+| `lib/ink/shape-recognize.ts` | Recognising a hand-drawn stroke (`recognizeShape`), the shape tool's drag (`dragShape`), resizing while the pen rests (`followPen`) |
+| `lib/ink/ruler.ts` | Ruler, set square (protractor) and compass: edges, straightening along them, scale ticks in cm/in, angle snapping, angles between lines, arcs |
+| `lib/ink/selection.ts` | The lasso's selection over every item type: tap to pick (`itemAt`, also the shape tool's pick with `isShape`), affine move/scale/turn (corners, 15° snap, pinch; shapes through `affineShape`, turning into their box's rotation), front/back, width steps, text next to it, pastes kept on the page |
 | `lib/ink/clipboard.ts` | The ink clipboard of the tab, shared by all editors (sheet → sheet, notebook → drawing block) |
 | `lib/ink/history.ts` | Undo/redo of whole states |
 | `lib/ink/presets.ts` | Tools, colours, widths and the free width ranges, the 3 favourite pens of earlier versions, text style, recent own colours, Pencil double-tap setting, snap setting (per device, `localStorage`) |
@@ -38,10 +41,16 @@ block of documents (`components/ink/draw-block*.tsx`,
 | `components/ink/system-clipboard.ts` | Copied ink also on the system clipboard (PNG, SVG where supported, typed text) |
 | `components/ink/use-ink-editor.ts` | `useInkEditor(initial)`: the editing session; `useInkShortcuts(editor, on)` |
 | `components/ink/ink-layer.tsx` | `<InkLayer>`: renders and takes input for one page |
-| `components/ink/ink-toolbar.tsx` | `<InkToolbar editor page?>`: tools, favourites, colours, widths, undo/redo, paste, gear; tapping the tool in hand again (or the gear) opens its panel; children go at the end |
-| `components/ink/ink-panel.tsx` | `<InkPanel>`: a tool's panel – favourites, live preview, width (presets + slider), text face, colour (picker beside the panel), eraser kinds and size, "clear page", input settings (switches) |
+| `components/ink/ink-shape.tsx` | Drawing a shape item, the draft while drawing |
+| `components/ink/shape-editor.tsx` | `<ShapeEditor>`: handles and bar of one selected shape (several selected: the lasso's box and `<InkSelectionBar>`) |
+| `components/ink/ink-ruler.tsx` | `<InkRuler>` on its page, `rulerGuide` (strokes along it) |
+| `components/ink/shape-panel.tsx` | The shape tool's panel sections (preview, kind grid, line style, fill on/off + colour), `<RulerSection>` (off, ruler, set square, compass; shape and gear panel), `<RulerToggle>` (the ruler's button in the toolbar row) |
+| `components/ink/ink-stores.ts` | The ruler's place and the shape tool's choices (per device, outside React state) |
+| `components/ink/ink-toolbar.tsx` | `<InkToolbar editor page?>`: tools, favourites, colours, widths, ruler button, undo/redo, paste, gear; tapping the tool in hand again (or the gear) opens its panel; children go at the end |
+| `components/ink/ink-panel.tsx` | `<InkPanel>`: a tool's panel – favourites, live preview, width (presets + slider), text face, colour (picker beside the panel), eraser kinds and size, "clear page", the shape tool's sections, input settings (switches) |
 | `components/ink/ink-style-picker.tsx` | `<InkCustomColor editor>` ("+" after the colours in the toolbar row: colour picker in a menu) |
 | `components/ink/color-picker.tsx` | `<ColorPicker value onChange onCommit recent>`: saturation/brightness area, hue slider, hex field, eyedropper (EyeDropper API, hidden where missing), recent colours (pointer, Pencil, keyboard) |
+| `components/ink/panel-parts.tsx` | Building blocks of the panels: segmented radio buttons, slider, section head, setting switch |
 
 ## Storage format (version 1)
 
@@ -80,6 +89,23 @@ block of documents (`components/ink/draw-block*.tsx`,
   Times for `serif`, Courier for `mono`, Helvetica for the rest, no
   embedding. Versions before `font` read such text in Helvetica and drop
   the field when they save that surface.
+- Shapes: a `pen` stroke may carry `shape` (`lib/ink/shapes.ts`), e.g.
+  `"shape": { "kind": "rect", "box": [cx, cy, w, h, rotation°], "radius": 6, "fill": "#1c5fd6", "dash": "dash" }`.
+  Kinds: `line` (`pts` x1, y1, x2, y2; `arrow` `"end"`/`"both"`),
+  `polygon` (`pts`, 3–8 corners: triangles, diamonds, …), `rect`
+  (`radius` for rounded corners), `ellipse`, `star` (`n` points, `inner`
+  radius share) – the last three with `box`. `fill` is drawn at 25 %
+  opacity, `dash` is `dash` or `dot`. The stroke's `points` are always the
+  shape's outline (pressure kept even; arrow heads drawn there and back),
+  rewritten whenever the shape changes. **Older versions** drop the
+  `shape` field when they read the ink and show `points`: the same outline
+  as a plain line, without fill and dashes. When such a version saves the
+  surface, the server gives every stroke that came back unchanged (same id,
+  colour, width, points) its shape again (`keepShapes`, `lib/ink/merge.ts`);
+  a shape it moved or erased stays a plain stroke there. No version bump.
+  The partial eraser leaves the pieces of a shape as freehand strokes, the
+  stroke eraser takes it whole, "highlighter only" leaves it alone;
+  "convert to text" skips shapes.
 - Optional `rotation` of text: degrees clockwise (−180…180, two
   decimals) around `(x, y)`, set by turning a lasso selection; left out
   when upright. SVG draws it as `rotate(r x y)`, PDFs turn the text
@@ -225,4 +251,22 @@ editor.reset(parseInk(loaded)); // after loading (clears undo)
   With pen-only off, one finger draws and two fingers call `onPan` /
   `onZoom`.
 - Holding the pen still for ~0.5 s at the end of a stroke snaps it to a
-  line, rectangle, ellipse, triangle or diamond (setting in the toolbar).
+  line, arrow, rectangle/square (also rounded), ellipse/circle, triangle,
+  diamond, polygon (up to 8 corners) or star (setting in the input
+  settings of the panels);
+  moving on without lifting resizes it (lines follow with their end). The
+  stroke as drawn is one undo step before the shape: undo goes back to
+  freehand. The shape tool (S) recognises at once or drags a chosen shape
+  from corner to corner; a tap with it (or the lasso) on a shape selects it
+  for editing. Its panel (tap the tool again) holds the kind, width, line
+  style, colour and fill of new shapes and the ruler's instrument. One
+  selected shape gets its own handles and bar; in a selection of several
+  the lasso's box moves, scales and turns shapes with the rest.
+- Ruler (its button in the toolbar row; set square and compass in the
+  shape tool's and the gear's panel): lies on one page in its real scale; one finger moves it,
+  two turn it (snapping to multiples of 15°); a stroke beginning within
+  ~26 px of an edge follows it, with its length shown. The set square
+  shows the angles between straight lines through its zero point and
+  snaps onto where two lines cross; the compass draws arcs of its radius
+  (a full turn becomes a circle shape). Fingers always move the ruler, the
+  pen draws (pen-only drawing unchanged).

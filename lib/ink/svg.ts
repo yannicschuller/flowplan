@@ -8,6 +8,7 @@ import { lineWidth, strokePath } from "./geometry";
 import type { InkItem } from "./model";
 import { inkFontFamily } from "./fonts";
 import { HIGHLIGHTER_OPACITY } from "./presets";
+import { dashArray, shapePaths, SHAPE_FILL_OPACITY } from "./shapes";
 import type { PageSize } from "./coords";
 
 const xml = (text: string) =>
@@ -34,6 +35,14 @@ export function inkSvgElements(items: InkItem[], { dark = false }: { dark?: bool
   for (const item of items) {
     if (item.type === "highlighter") {
       highlights += `<path d="${strokePath(item).d}" fill="none" stroke="${color(item.color)}" stroke-opacity="${HIGHLIGHTER_OPACITY}" stroke-width="${r2(item.width)}" stroke-linecap="round" stroke-linejoin="round"/>`;
+    } else if (item.type === "pen" && item.shape) {
+      const { body, heads, closed } = shapePaths(item.shape, item.width);
+      const width = r2(lineWidth(item));
+      const dash = dashArray(item.shape.dash, width);
+      const fill = closed && item.shape.fill ? `fill="${color(item.shape.fill)}" fill-opacity="${SHAPE_FILL_OPACITY}"` : `fill="none"`;
+      const line = `stroke="${color(item.color)}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round"`;
+      ink += `<path d="${body}" ${fill} ${line}${dash ? ` stroke-dasharray="${dash.join(" ")}"` : ""}/>`;
+      if (heads) ink += `<path d="${heads}" fill="none" ${line}/>`;
     } else if (item.type === "pen") {
       const { d, fill } = strokePath(item);
       ink += fill

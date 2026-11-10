@@ -12,7 +12,8 @@
 // drawing (fingers scroll and zoom the page), the eraser end of a pen,
 // Scribble into the text field, no text selection, callout or page scroll
 // while the pen draws. Holding the pen still at the end of a stroke snaps it
-// to a line or shape.
+// to an editable shape (lib/ink/shapes.ts); the shape tool draws them; the
+// ruler, set square and compass (ink-ruler.tsx) guide strokes along them.
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "../i18n";
 import { clientToPage, type PageSize } from "@/lib/ink/coords";
@@ -23,22 +24,25 @@ import {
   itemBounds,
   lassoItems,
   lineWidth,
+  pageAnchors,
   polylinePath,
-  snapStroke,
+  snapShape,
   strokePath,
+  withShape,
   unionBox,
   type Box,
   type Pt,
 } from "@/lib/ink/geometry";
 import { inkFontFamily, type InkFont } from "@/lib/ink/fonts";
 import { inkId, type InkDoc, type InkItem, type InkStroke, type InkText } from "@/lib/ink/model";
-import { HIGHLIGHTER_OPACITY, PEN_COLORS } from "@/lib/ink/presets";
+import { HIGHLIGHTER_OPACITY } from "@/lib/ink/presets";
 import { STROKE_ERASER_RADIUS, eraseWith as erase, type EraserMode } from "@/lib/ink/eraser";
 import {
   CORNERS,
   cornerPoint,
   cornerScale,
   handleAt,
+  isShape,
   isTap,
   itemAt,
   pinchTransform,
@@ -63,6 +67,14 @@ import {
   type PressureTrack,
 } from "@/lib/stylus";
 import type { InkEditor } from "./use-ink-editor";
+import { useLocale } from "../i18n";
+import { dragShape, followPen, type ShapeName } from "@/lib/ink/shape-recognize";
+import { defaultUnit } from "@/lib/ink/ruler";
+import type { InkShape } from "@/lib/ink/shapes";
+import { InkShapeItem, paintDraft } from "./ink-shape";
+import { ShapeEditor, formatAngle, formatLength } from "./shape-editor";
+import { InkRuler, rulerGuide, type InkGuide } from "./ink-ruler";
+import { getShapeSettings, useRuler, type ShapeToolSettings } from "./ink-stores";
 
 type XY = { x: number; y: number };
 // How long the pen rests at the end of a stroke before it snaps (ms).
@@ -74,7 +86,25 @@ const HANDLE_REACH = 14;
 const ROTATE_OFFSET = 26;
 
 type Gesture =
-  | { kind: "draw"; pointer: number; type: string; stroke: InkStroke; raw: Pt[]; track: PressureTrack; timed: (XY & { t: number })[]; anchor: XY; snapped: boolean }
+  | {
+      kind: "draw";
+      pointer: number;
+      type: string;
+      stroke: InkStroke;
+      raw: Pt[];
+      track: PressureTrack;
+      timed: (XY & { t: number })[];
+      anchor: XY;
+      snapped: boolean;
+      // Snapped: the stroke as drawn (undo brings it back), the shape and
+      // where the pen was when it snapped (moving on resizes it).
+      drawn?: InkStroke;
+      snap?: { shape: InkShape; at: XY };
+      // Along the ruler or compass; the shape tool's "recognise".
+      guide?: InkGuide | null;
+      recognise?: boolean;
+    }
+  | { kind: "shape"; pointer: number; start: XY; client: XY; stroke: InkStroke | null }
   | { kind: "erase"; pointer: number; mode: EraserMode; radius: number; items: InkItem[] }
   | { kind: "lasso"; pointer: number; polygon: XY[] }
   // The selection dragged by its body (move), a corner (scale) or the
@@ -109,6 +139,7 @@ const InkItems = memo(function InkItems({ items, layer }: { items: InkItem[]; la
         }
         if (item.type === "highlighter") return null;
         if (item.type === "text") return <InkTextItem key={item.id} item={item} />;
+        if (item.shape) return <InkShapeItem key={item.id} item={item} />;
         const { d, fill } = strokePath(item);
         return fill ? (
           <path key={item.id} d={d} fill={item.color} />
@@ -137,6 +168,15 @@ function InkTextItem({ item }: { item: InkText }) {
       ))}
     </text>
   );
+}
+
+// The shape tool's fill and dashes on a new shape (the fill: its own
+// colour, or the line's).
+function withStyle(shape: InkShape, settings: ShapeToolSettings, color: string): InkShape {
+  const out: InkShape = { ...shape };
+  if (settings.dash !== "solid") out.dash = settings.dash;
+  if (settings.fill && shape.kind !== "line") out.fill = settings.fillColor || color;
+  return out;
 }
 
 export function InkLayer({
@@ -206,6 +246,13 @@ export function InkLayer({
   const [laser, setLaser] = useState<(XY & { t: number })[]>([]);
   const editorRef = useRef(editor);
   editorRef.current = editor;
+  const locale = useLocale();
+  const ruler = useRuler();
+  const rulerHere = active && ruler?.page === page ? ruler : null;
+  const unit = ruler?.unit ?? defaultUnit(size);
+  // The shape being edited is drawn by its editor while a handle moves.
+  const [hiddenId, setHiddenId] = useState<string | null>(null);
+  const readout = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const el = root.current;
@@ -225,7 +272,10 @@ export function InkLayer({
     const el = root.current;
     if (!el || !active) return;
     const block = (event: TouchEvent) => {
-      if (!event.cancelable || (event.target as Element | null)?.closest?.(".ink-ui")) return;
+      if (!event.cancelable) return;
+      // Fingers on the ruler or a shape's handles move those, never the page.
+      if ((event.target as Element | null)?.closest?.(".ink-ruler-layer, .ink-shape-edit")) return event.preventDefault();
+      if ((event.target as Element | null)?.closest?.(".ink-ui")) return;
       const stylus = [...event.touches].some((touch) => (touch as Touch & { touchType?: string }).touchType === "stylus");
       const g = gesture.current;
       // A palm next to the pen (also on another page) does not scroll the pages away under it.
@@ -273,33 +323,77 @@ export function InkLayer({
     cancelAnimationFrame(frame.current);
     frame.current = requestAnimationFrame(() => {
       const g = gesture.current;
-      if (g?.kind === "draw") {
-        const { d, fill } = strokePath(g.stroke);
+      if ((g?.kind === "draw" || g?.kind === "shape") && g.stroke) {
         const el = g.stroke.type === "highlighter" ? draftHighlight.current : draftInk.current;
         if (!el) return;
-        el.setAttribute("d", d);
-        el.setAttribute("fill", fill ? g.stroke.color : "none");
-        el.setAttribute("stroke", fill ? "none" : g.stroke.color);
-        el.setAttribute("stroke-width", String(lineWidth(g.stroke)));
+        paintDraft(el, g.stroke, g.stroke.shape ? { d: "", fill: false } : strokePath(g.stroke));
+        showMeasure(g);
       } else if (g?.kind === "lasso") lassoPath.current?.setAttribute("d", polylinePath(g.polygon) + (g.polygon.length > 2 ? "Z" : ""));
     });
   }
   function clearDraft() {
     cancelAnimationFrame(frame.current);
     for (const el of [draftInk.current, draftHighlight.current, lassoPath.current]) el?.setAttribute("d", "");
+    if (readout.current) readout.current.hidden = true;
+  }
+  // The small readout by the pen: length along the ruler or of a line, the
+  // shape just snapped to.
+  const shapeNames = (name: ShapeName) =>
+    ({
+      line: t("Linie", "Line"),
+      arrow: t("Pfeil", "Arrow"),
+      rectangle: t("Rechteck", "Rectangle"),
+      square: t("Quadrat", "Square"),
+      rounded: t("Abgerundetes Rechteck", "Rounded rectangle"),
+      ellipse: t("Ellipse", "Ellipse"),
+      circle: t("Kreis", "Circle"),
+      triangle: t("Dreieck", "Triangle"),
+      diamond: t("Raute", "Diamond"),
+      polygon: t("Vieleck", "Polygon"),
+      star: t("Stern", "Star"),
+    })[name];
+  const snapName = useRef<{ name: ShapeName; until: number } | null>(null);
+  function showMeasure(g: Extract<Gesture, { kind: "draw" } | { kind: "shape" }>) {
+    const el = readout.current;
+    if (!el || !g.stroke) return;
+    let text = "";
+    const shape = g.stroke.shape;
+    if (g.kind === "draw" && g.guide) text = g.guide.label();
+    else if (shape?.kind === "line" && shape.pts) {
+      const [x1, y1, x2, y2] = shape.pts;
+      const deg = (Math.atan2(-(y2 - y1), x2 - x1) * 180) / Math.PI;
+      text = `${formatLength(Math.hypot(x2 - x1, y2 - y1), unit, locale)} · ${formatAngle(Math.round((deg < 0 ? deg + 360 : deg) * 10) / 10, locale)}`;
+    } else if (shape && snapName.current && Date.now() < snapName.current.until) text = shapeNames(snapName.current.name);
+    el.hidden = !text;
+    if (!text) return;
+    el.textContent = text;
+    const pts = g.stroke.points;
+    const x = pts[pts.length - 3],
+      y = pts[pts.length - 2];
+    el.style.left = `${(x / (size.width || 1)) * 100}%`;
+    el.style.top = `calc(${(y / (size.height || 1)) * 100}% - 34px)`;
   }
   function armSnap() {
     if (holdTimer.current) clearTimeout(holdTimer.current);
     holdTimer.current = setTimeout(() => {
       const g = gesture.current;
-      if (g?.kind !== "draw" || g.snapped || !editorRef.current?.snap) return;
+      if (g?.kind !== "draw" || g.snapped || g.guide || (!editorRef.current?.snap && !g.recognise)) return;
       if (!heldStill(g.timed, Date.now(), HOLD_MS - 50, tolerance(4))) return;
-      const snapped = snapStroke(g.stroke);
-      if (!snapped) return;
-      g.stroke = snapped;
-      g.snapped = true;
-      drawDraft();
+      snapNow(g);
     }, HOLD_MS);
+  }
+  // The stroke drawn so far becomes the shape it looks like.
+  function snapNow(g: Extract<Gesture, { kind: "draw" }>) {
+    const result = snapShape(g.stroke, { anchors: pageAnchors(items), tolerance: tolerance(12), minSize: tolerance(14) });
+    if (!result) return false;
+    g.drawn = g.stroke;
+    g.stroke = result.stroke;
+    g.snapped = true;
+    const last = g.timed[g.timed.length - 1];
+    if (result.stroke.shape) g.snap = { shape: result.stroke.shape, at: last };
+    snapName.current = { name: result.name, until: Date.now() + 1400 };
+    drawDraft();
+    return true;
   }
   function eraseWith(g: Extract<Gesture, { kind: "erase" }>, path: XY[]) {
     const next = erase(g.items, path, g.mode, tolerance(g.radius));
@@ -397,24 +491,32 @@ export function InkLayer({
       gesture.current = { kind: "lasso", pointer: e.pointerId, polygon: [at] };
       return;
     }
-    if (ed.tool !== "pen" && ed.tool !== "highlighter") return;
+    const settings = ed.tool === "shape" ? getShapeSettings() : null;
+    if (settings && settings.kind !== "auto") {
+      gesture.current = { kind: "shape", pointer: e.pointerId, start: at, client: { x: e.clientX, y: e.clientY }, stroke: null };
+      return;
+    }
+    if (ed.tool !== "pen" && ed.tool !== "highlighter" && ed.tool !== "shape") return;
     const track: PressureTrack = { pressures: [], measured: false };
     if (e.pointerType === "pen") pushPressure(track, e.pressure);
     else track.pressures.push(0.5);
-    const raw = [{ ...at, p: track.pressures[0] }];
+    const guide = rulerGuide(rulerHere, size, scale, at, locale);
+    const raw = [{ ...(guide ? guide.map(at)[0] : at), p: track.pressures[0] }];
     gesture.current = {
       kind: "draw",
       pointer: e.pointerId,
       type: e.pointerType,
-      stroke: { id: inkId(), type: ed.tool, color: ed.style.color, width: ed.style.width, points: flatPoints(raw) },
+      stroke: { id: inkId(), type: ed.tool === "highlighter" ? "highlighter" : "pen", color: ed.style.color, width: ed.style.width, points: flatPoints(raw) },
       raw,
       track,
       timed: [{ ...at, t: Date.now() }],
       anchor: at,
       snapped: false,
+      guide,
+      recognise: !!settings,
     };
     drawDraft();
-    armSnap();
+    if (!guide) armSnap();
   }
 
   // What a press at `at` grabs of this page's selection: a handle, the
@@ -475,8 +577,42 @@ export function InkLayer({
     const rect = root.current!.getBoundingClientRect();
     const list = samples(e);
     const pts = list.map((s) => clientToPage(s.clientX, s.clientY, rect, size));
+    if (g.kind === "shape") {
+      const to = pts[pts.length - 1];
+      if (!g.stroke && Math.hypot(e.clientX - g.client.x, e.clientY - g.client.y) < 4) return;
+      const ed = editorRef.current!;
+      const settings = getShapeSettings();
+      if (settings.kind === "auto") return;
+      let shape = dragShape(settings.kind, g.start, to, { even: e.shiftKey, snap: !e.altKey });
+      if (shape.kind === "line" && !e.altKey) {
+        const anchor = pageAnchors(items).find((a) => Math.hypot(a.x - to.x, a.y - to.y) <= tolerance(12));
+        if (anchor && shape.pts) shape = { ...shape, pts: [shape.pts[0], shape.pts[1], anchor.x, anchor.y] };
+      }
+      const styled = withStyle(shape, settings, ed.style.color);
+      g.stroke = withShape(g.stroke ?? { id: inkId(), type: "pen", color: ed.style.color, width: ed.style.width, points: [] }, styled);
+      drawDraft();
+      return;
+    }
     if (g.kind === "draw") {
-      if (g.snapped) return;
+      if (g.snapped) {
+        // Moving on after snapping: lines follow with their end, shapes grow.
+        if (g.snap) {
+          g.stroke = withShape(g.stroke, followPen(g.snap.shape, g.snap.at, pts[pts.length - 1]), g.stroke.points[2] ?? 0.5);
+          drawDraft();
+        }
+        return;
+      }
+      if (g.guide) {
+        for (const [i, s] of list.entries()) {
+          if (g.type === "pen") pushPressure(g.track, s.pressure);
+          const p = g.type === "pen" ? (g.track.pressures[g.track.pressures.length - 1] ?? 0.5) : 0.5;
+          for (const q of g.guide.map(pts[i])) g.raw.push({ ...q, p });
+        }
+        if (g.raw.length > 5000) g.raw.splice(1, g.raw.length - 5000);
+        g.stroke = { ...g.stroke, points: flatPoints(g.raw) };
+        drawDraft();
+        return;
+      }
       list.forEach((s, i) => {
         if (g.type === "pen") pushPressure(g.track, s.pressure);
         else g.track.pressures.push(0.5);
@@ -545,12 +681,34 @@ export function InkLayer({
       } else openText(g.at);
       return;
     }
+    if (g.kind === "shape") {
+      clearDraft();
+      const stroke = g.stroke;
+      if (cancelled && !stroke) return;
+      if (!stroke) {
+        // A tap picks the shape under it for editing (the lasso's picking, shapes only).
+        const hit = itemAt(items, g.start, tolerance(10), isShape);
+        ed.setSelection(hit ? { page, ids: [hit] } : null);
+        return;
+      }
+      ed.change(page, (list) => [...list, stroke]);
+      ed.setSelection({ page, ids: [stroke.id] });
+      return;
+    }
     if (g.kind === "draw") {
+      // The shape tool's "recognise": no need to hold.
+      if (g.recognise && !g.snapped && !cancelled) snapNow(g);
       clearDraft();
       // A stroke the browser took over (scrolling) was not meant – unless a pen drew it.
       if (cancelled && g.type !== "pen") return;
-      const stroke = g.stroke;
-      ed.change(page, (list) => [...list, stroke]);
+      let stroke = g.stroke;
+      if (g.guide?.finish) stroke = g.guide.finish(stroke);
+      if (g.recognise && stroke.shape) stroke = withShape(stroke, withStyle(stroke.shape, getShapeSettings(), stroke.color), stroke.points[2] ?? 0.5);
+      const drawn = g.drawn;
+      // Snapped: first the stroke as drawn, then the shape – undo goes back to freehand.
+      if (drawn && stroke.shape) ed.change(page, (list) => [...list, drawn]);
+      ed.change(page, (list) => (drawn && stroke.shape ? list.map((i) => (i.id === stroke.id ? stroke : i)) : [...list, stroke]));
+      if (g.recognise && stroke.shape) ed.setSelection({ page, ids: [stroke.id] });
     } else if (g.kind === "erase") {
       setPreview(null);
       if (g.items !== items) ed.change(page, () => g.items);
@@ -597,15 +755,20 @@ export function InkLayer({
   }
 
   const shown = preview ?? items;
-  const editingId = typing?.id;
+  const editingId = typing?.id ?? hiddenId;
   const visible = editingId ? shown.filter((i) => i.id !== editingId) : shown;
   const selected = editor?.selection?.page === page ? editor.selection : null;
+  // One shape selected with the lasso or the shape tool: its own handles.
+  const shapeItem =
+    active && !preview && selected?.ids.length === 1 && (editor?.tool === "lasso" || editor?.tool === "shape")
+      ? (shown.find((i): i is InkStroke & { shape: InkShape } => i.id === selected.ids[0] && i.type === "pen" && !!i.shape) ?? null)
+      : null;
   const selectionBox: Box | null = useMemo(() => {
     if (!selected) return null;
     const ids = new Set(selected.ids);
     return unionBox(shown.filter((i) => ids.has(i.id)).map(itemBounds));
   }, [selected, shown]);
-  const showSelection = active && editor?.tool === "lasso" && selectionBox;
+  const showSelection = active && editor?.tool === "lasso" && !shapeItem && selectionBox;
   const percent = (v: number, of: number) => `${(v / (of || 1)) * 100}%`;
   const center = (p: XY) => ({ cx: p.x, cy: p.y });
   const touchAction = !active ? undefined : penOnly ? "pan-x pan-y pinch-zoom" : "none";
@@ -678,6 +841,11 @@ export function InkLayer({
           </g>
         )}
       </svg>
+      {rulerHere && <InkRuler page={page} size={size} scale={scale} state={rulerHere} items={items} />}
+      {shapeItem && editor && (
+        <ShapeEditor key={shapeItem.id} page={page} size={size} scale={scale} item={shapeItem} items={items} editor={editor} unit={unit} onHide={setHiddenId} />
+      )}
+      <div ref={readout} className="ink-measure" hidden />
       {showSelection && !preview && editor && selected && (
         <InkSelectionBar editor={editor} page={page} size={size} box={selectionBox} items={shown.filter((i) => selected.ids.includes(i.id))} onConvert={onConvert} aiPageId={aiPageId} onOutline={onOutline} />
       )}

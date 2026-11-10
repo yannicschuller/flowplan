@@ -56,3 +56,29 @@ export function mergeInk(base: InkDoc, ours: InkDoc, theirs: InkDoc): InkDoc {
   }
   return doc;
 }
+
+// Shapes kept for saves from versions without shapes: those drop a stroke's
+// `shape` field when they read it (lib/ink/model.ts cleanItem), so a stroke
+// that comes back unchanged – same id, colour, width, points – gets its
+// shape back from what is stored. A stroke they moved or erased stays a
+// plain stroke (its new outline is what they meant).
+export function keepShapes(stored: InkDoc | null | undefined, incoming: InkDoc): InkDoc {
+  if (!stored) return incoming;
+  let changed = false;
+  const pages: InkDoc["pages"] = {};
+  for (const [key, items] of Object.entries(incoming.pages)) {
+    const before = new Map((stored.pages[key] || []).flatMap((i) => (i.type === "pen" && i.shape ? [[i.id, i] as const] : [])));
+    if (!before.size) {
+      pages[key] = items;
+      continue;
+    }
+    pages[key] = items.map((item) => {
+      const old = before.get(item.id);
+      if (!old || item.type !== "pen" || item.shape || old.type !== "pen") return item;
+      if (old.color !== item.color || old.width !== item.width || old.points.length !== item.points.length || old.points.some((v, i) => v !== item.points[i])) return item;
+      changed = true;
+      return { ...item, shape: old.shape };
+    });
+  }
+  return changed ? { ...incoming, pages } : incoming;
+}

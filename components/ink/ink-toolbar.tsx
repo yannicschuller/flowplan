@@ -3,7 +3,8 @@
 // tools, favourite pens, colours (and an own one), widths, undo/redo, paste
 // and the gear. Tapping the tool in hand again – or the gear – opens its
 // panel (components/ink/ink-panel.tsx: free width, text face, colour
-// picker, favourites, eraser kinds, pen settings). `page`: the page the
+// picker, favourites, eraser kinds, shape kind and style, pen settings);
+// the ruler has its button in the row. `page`: the page the
 // person looks at (the eraser's "clear page"; else the last one drawn on).
 // `children` go at the end (save, done, …).
 import { useEffect, useRef, useState } from "react";
@@ -17,6 +18,7 @@ import {
   HighlighterCircle,
   Lasso,
   PencilSimple,
+  Shapes,
   TextT,
 } from "@phosphor-icons/react";
 import { useT } from "../i18n";
@@ -25,9 +27,10 @@ import type { InkTool } from "@/lib/ink/presets";
 import { INK_TOOL_KEYS, type InkEditor } from "./use-ink-editor";
 import { InkCustomColor } from "./ink-style-picker";
 import { FavoriteChips, InkPanel } from "./ink-panel";
+import { RulerToggle } from "./shape-panel";
 
 // Tools with a panel of their own (tap the tool in hand again).
-const PANEL_TOOLS: InkTool[] = ["pen", "highlighter", "text", "eraser"];
+const PANEL_TOOLS: InkTool[] = ["pen", "highlighter", "text", "eraser", "shape"];
 
 export function InkToolbar({
   editor,
@@ -82,10 +85,11 @@ export function InkToolbar({
     ["highlighter", t("Textmarker", "Highlighter"), <HighlighterCircle key="h" size={19} />],
     ["eraser", t("Radierer", "Eraser"), <Eraser key="e" size={19} />],
     ["lasso", t("Lasso", "Lasso"), <Lasso key="l" size={19} />],
+    ["shape", t("Formen", "Shapes"), <Shapes key="s" size={19} />],
     ["text", t("Text", "Text"), <TextT key="t" size={19} />],
     ["laser", t("Laserpointer", "Laser pointer"), <CursorClick key="z" size={19} />],
   ];
-  const styled = editor.tool === "pen" || editor.tool === "highlighter" || editor.tool === "text";
+  const styled = editor.tool === "pen" || editor.tool === "highlighter" || editor.tool === "text" || editor.tool === "shape";
   const widthLabel = (i: number) =>
     editor.tool === "text"
       ? [t("Kleine Schrift", "Small text"), t("Mittlere Schrift", "Medium text"), t("Große Schrift", "Large text")][i]
@@ -183,6 +187,9 @@ export function InkToolbar({
           </div>
         </div>
       )}
+      <div className="ink-group">
+        <RulerToggle editor={editor} />
+      </div>
       <div className="ink-group">
         <button type="button" aria-label={t("Rückgängig", "Undo")} title={t("Rückgängig", "Undo") + keyHints.suffix("Mod+Z")} disabled={!editor.canUndo} onClick={editor.undo}>
           <ArrowArcLeft size={19} />

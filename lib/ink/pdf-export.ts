@@ -25,6 +25,7 @@ import {
   setGraphicsState,
   setLineCap,
   setLineJoin,
+  setDashPattern,
   setLineWidth,
   setStrokingColor,
   setTextMatrix,
@@ -40,6 +41,7 @@ import { lineWidth, strokeOutline, strokePoints, variesInWidth } from "./geometr
 import type { InkDoc, InkItem, InkStroke, InkText } from "./model";
 import { HIGHLIGHTER_OPACITY } from "./presets";
 import { inkPdfFont, type InkPdfFont } from "./fonts";
+import { dashArray, shapeParts, SHAPE_FILL_OPACITY, type XY } from "./shapes";
 
 const color = (hex: string) => rgb(parseInt(hex.slice(1, 3), 16) / 255, parseInt(hex.slice(3, 5), 16) / 255, parseInt(hex.slice(5, 7), 16) / 255);
 const n = (v: number) => Math.round(v * 100) / 100;
@@ -64,6 +66,26 @@ function strokeOps(item: InkStroke, map?: ColorMap): PDFOperator[] {
     ...path.slice(1).map((p) => lineTo(n(p.x), n(p.y))),
     stroke(),
   ];
+}
+
+// A shape: its fill (translucent, `fillState`), the outline with its
+// dashes, arrow heads solid.
+function shapeOps(item: InkStroke, fillState: PDFName | null, map?: ColorMap): PDFOperator[] {
+  const shape = item.shape!;
+  const { body, closed, heads } = shapeParts(shape, item.width);
+  if (!body.length) return [];
+  const path = (list: XY[], close: boolean) => [moveTo(n(list[0].x), n(list[0].y)), ...list.slice(1).map((p) => lineTo(n(p.x), n(p.y))), ...(close ? [closePath()] : [])];
+  const ops: PDFOperator[] = [];
+  if (closed && shape.fill && fillState)
+    ops.push(pushGraphicsState(), setGraphicsState(fillState), setFillingColor(mapped(shape.fill, map)), ...path(body, true), fill(), popGraphicsState());
+  const width = lineWidth(item);
+  const dash = dashArray(shape.dash, width);
+  ops.push(setStrokingColor(mapped(item.color, map)), setLineWidth(n(width)), setLineCap(LineCapStyle.Round), setLineJoin(LineJoinStyle.Round));
+  if (dash) ops.push(setDashPattern(dash, 0));
+  ops.push(...path(body, closed), stroke());
+  if (dash) ops.push(setDashPattern([], 0));
+  for (const head of heads) ops.push(...path(head, false), stroke());
+  return ops;
 }
 
 // Characters the standard fonts (WinAnsi) cannot show become "?".
@@ -99,8 +121,8 @@ function textOps(item: InkText, font: PDFFont, fontName: PDFName, map?: ColorMap
 export class InkExportError extends Error {}
 
 // Resources shared by the pages of one PDF (fonts, highlighter state).
-export type InkPdfContext = { pdf: PDFDocument; fonts: Partial<Record<InkPdfFont, PDFFont>>; highlighter: PDFRef | null };
-export const inkPdfContext = (pdf: PDFDocument): InkPdfContext => ({ pdf, fonts: {}, highlighter: null });
+export type InkPdfContext = { pdf: PDFDocument; fonts: Partial<Record<InkPdfFont, PDFFont>>; highlighter: PDFRef | null; shapeFill?: PDFRef | null };
+export const inkPdfContext = (pdf: PDFDocument): InkPdfContext => ({ pdf, fonts: {}, highlighter: null, shapeFill: null });
 const STANDARD: Record<InkPdfFont, StandardFonts> = { Helvetica: StandardFonts.Helvetica, "Times-Roman": StandardFonts.TimesRoman, Courier: StandardFonts.Courier };
 const FONT_KEYS: Record<InkPdfFont, string> = { Helvetica: "FlowplanInkFont", "Times-Roman": "FlowplanInkSerif", Courier: "FlowplanInkMono" };
 
@@ -118,8 +140,14 @@ export async function drawInk(context: InkPdfContext, page: PDFPage, items: InkI
     ops.push(pushGraphicsState(), setGraphicsState(name), ...highlights.flatMap((h) => strokeOps(h, colors)), popGraphicsState());
   }
   const fontNames: Partial<Record<InkPdfFont, PDFName>> = {};
+  let fillState: PDFName | null = null;
+  if (items.some((i) => i.type === "pen" && i.shape?.fill)) {
+    context.shapeFill ??= context.pdf.context.register(context.pdf.context.obj({ Type: "ExtGState", ca: SHAPE_FILL_OPACITY }));
+    fillState = page.node.newExtGState("FlowplanInkShapeFill", context.shapeFill);
+  }
   for (const item of items) {
-    if (item.type === "pen") ops.push(...strokeOps(item, colors));
+    if (item.type === "pen" && item.shape) ops.push(...shapeOps(item, fillState, colors));
+    else if (item.type === "pen") ops.push(...strokeOps(item, colors));
     else if (item.type === "text") {
       const face = inkPdfFont(item.font);
       const font = (context.fonts[face] ??= await context.pdf.embedFont(STANDARD[face]));

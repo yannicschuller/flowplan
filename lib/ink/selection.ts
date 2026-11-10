@@ -4,7 +4,8 @@
 // the DOM; all in page units. Works over every item type through
 // `itemBounds` and one affine transform per item kind, so new kinds
 // (shapes, images) only add their case to `transformItem`.
-import { hitItem, itemBounds, unionBox, type Box } from "./geometry";
+import { hitItem, itemBounds, unionBox, withShape, type Box } from "./geometry";
+import { affineShape } from "./shapes";
 import { normalRotation, type InkItem } from "./model";
 import { HIGHLIGHTER_WIDTHS, PEN_WIDTHS, TEXT_SIZES } from "./presets";
 
@@ -46,13 +47,17 @@ export function transformItem(item: InkItem, m: Affine): InkItem {
     void _old;
     return { ...rest, x: round2(at.x), y: round2(at.y), size: round2(Math.min(400, Math.max(2, item.size * scale))), ...(turn ? { rotation: turn } : {}) };
   }
+  const width = round2(Math.min(200, Math.max(0.1, item.width * scale)));
+  // A shape stays a shape: its own geometry is transformed and its outline
+  // (`points`) drawn again from it; turning goes into its box's rotation.
+  if (item.type === "pen" && item.shape) return withShape({ ...item, width }, affineShape(item.shape, m), item.points[2] ?? 0.5);
   const points = item.points.slice();
   for (let i = 0; i + 2 < points.length; i += 3) {
     const p = applyPoint(m, { x: points[i], y: points[i + 1] });
     points[i] = round2(p.x);
     points[i + 1] = round2(p.y);
   }
-  return { ...item, points, width: round2(Math.min(200, Math.max(0.1, item.width * scale))) };
+  return { ...item, points, width };
 }
 export const transformSelected = (items: InkItem[], ids: Set<string>, m: Affine) => items.map((item) => (ids.has(item.id) ? transformItem(item, m) : item));
 
@@ -61,12 +66,15 @@ export const selectionBounds = (items: InkItem[], ids: Set<string>): Box | null 
 // ---- Picking ----
 
 // The item under a tap: ink and text drawn on top first, highlighter
-// (drawn underneath) only where nothing else is.
-export function itemAt(items: InkItem[], at: XY, tolerance: number): string | null {
-  for (let i = items.length - 1; i >= 0; i--) if (items[i].type !== "highlighter" && hitItem(items[i], at, tolerance)) return items[i].id;
-  for (let i = items.length - 1; i >= 0; i--) if (items[i].type === "highlighter" && hitItem(items[i], at, tolerance)) return items[i].id;
+// (drawn underneath) only where nothing else is. `only`: just items of a
+// kind (the shape tool picks shapes with it).
+export function itemAt(items: InkItem[], at: XY, tolerance: number, only: (item: InkItem) => boolean = () => true): string | null {
+  const hit = (item: InkItem) => only(item) && hitItem(item, at, tolerance);
+  for (let i = items.length - 1; i >= 0; i--) if (items[i].type !== "highlighter" && hit(items[i])) return items[i].id;
+  for (let i = items.length - 1; i >= 0; i--) if (items[i].type === "highlighter" && hit(items[i])) return items[i].id;
   return null;
 }
+export const isShape = (item: InkItem) => item.type === "pen" && !!item.shape;
 // A lasso that hardly moved is a tap.
 export function isTap(polygon: XY[], tolerance: number) {
   const box = unionBox(polygon.map((p) => ({ x: p.x, y: p.y, w: 0, h: 0 })));
@@ -168,6 +176,8 @@ export function setItemsWidth(items: InkItem[], ids: Set<string>, step: number) 
     const width = item.type === "highlighter" ? HIGHLIGHTER_WIDTHS[i] : PEN_WIDTHS[i];
     if (item.width === width) return item;
     changed = true;
+    // A shape's outline (arrow heads) depends on the width.
+    if (item.type === "pen" && item.shape) return withShape({ ...item, width }, item.shape, item.points[2] ?? 0.5);
     return { ...item, width };
   });
   return changed ? next : items;

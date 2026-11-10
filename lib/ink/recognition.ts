@@ -42,7 +42,8 @@ const r2 = (n: number) => Math.round(n * 100) / 100;
 // handwriting to read). Null when there is no pen stroke.
 export function recognitionRequest(id: string, size: PageSize, items: InkItem[]): InkRecognitionRequest | null {
   const strokes = items.flatMap((item) => {
-    if (item.type !== "pen") return [];
+    // Shapes are drawings, not handwriting.
+    if (item.type !== "pen" || item.shape) return [];
     const points: [number, number][] = [];
     for (let i = 0; i + 2 < item.points.length; i += 3) points.push([r2(item.points[i]), r2(item.points[i + 1])]);
     return points.length ? [{ points }] : [];
