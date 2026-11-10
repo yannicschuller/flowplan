@@ -69,6 +69,35 @@ test("no paragraph from an older version without the PIN", async () => {
   await relock(member);
 });
 
+test("restoring from the trash: not behind the PIN, and only sub-pages the person may edit", async () => {
+  await unlock(owner);
+  const trashed = await create({ title: "Weg", parentId: journal });
+  await act({ action: "page.delete", pageId: trashed });
+  await relock(owner);
+  assert.equal(await status(() => act({ action: "page.restore", pageId: trashed }, member)), 423);
+  assert.ok((await page(trashed)).deleted_at);
+  // Outside a journal: a page of the member with a sub-page the member may only read.
+  const root = await create({ title: "Wurzel" }, member);
+  const readOnly = await create({ title: "Nur lesen", parentId: root });
+  const editable = await create({ title: "Bearbeitbar", parentId: root }, member);
+  await run("INSERT INTO grants VALUES(?,?,?,?)", readOnly, member.id, "", "viewer");
+  // The owner moves all three to the trash; the member brings back what they may edit.
+  await act({ action: "page.delete", pageId: root });
+  await act({ action: "page.restore", pageId: root }, member);
+  assert.equal((await page(root)).deleted_at, null);
+  assert.equal((await page(editable)).deleted_at, null);
+  assert.ok((await page(readOnly)).deleted_at, "the read-only sub-page stays in the trash");
+  // A page that is not in the trash brings back none below it.
+  await act({ action: "page.delete", pageId: editable }, member);
+  await act({ action: "page.restore", pageId: root }, member);
+  assert.ok((await page(editable)).deleted_at);
+  // With the PIN the journal page comes back.
+  await unlock(member);
+  await act({ action: "page.restore", pageId: trashed }, member);
+  assert.equal((await page(trashed)).deleted_at, null);
+  await relock(member);
+});
+
 test("a synced block made on a journal day stays behind the PIN", async () => {
   await unlock(owner);
   const synced = (await act({ action: "synced.create", pageId: day, html: "<p>SECRET-SYNCED</p>" })).id;

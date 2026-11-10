@@ -1724,17 +1724,9 @@ async function runCommand(
         await trashWorkflows(subtree, user.id);
         break;
       }
-      case "page.restore": {
-        const p = await requirePage(user, pid(), true, true);
-        if (
-          p.parent_id &&
-          (await one<Page>("SELECT * FROM pages WHERE id=?", p.parent_id))?.deleted_at
-        )
-          await run("UPDATE pages SET parent_id=NULL WHERE id=?", p.id);
-        for (const child of await descendants(p.id))
-          await run("UPDATE pages SET deleted_at=NULL WHERE id=?", child);
+      case "page.restore":
+        await restoreTrashedPage(user, b);
         break;
-      }
       case "page.purge":
         result = await purgeTrashedPage(user, b);
         break;
@@ -3753,7 +3745,7 @@ import { aliasField, aliasList } from "./aliases";
 import { copyPublication } from "./publication-copy";
 import { purgeTrashedRow, restoreTrashedRow, trashRow } from "./row-trash";
 import { purgeTrashedFile, restoreFile, trashFiles, trashUnusedFiles } from "./file-trash";
-import { emptyTrash, purgeTemplate, purgeTrashedPage, trashDays } from "./trash";
+import { emptyTrash, purgeTemplate, purgeTrashedPage, restoreTrashedPage, trashDays } from "./trash";
 import { dashboardData, saveDashboard } from "./dashboard";
 import { notebookArchive, notebookCommand, notebookData } from "./notebook";
 import { quotaCheckpoint, setWorkspaceQuota } from "./instance-ops";
