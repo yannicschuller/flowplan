@@ -250,3 +250,36 @@ test("Excalidraw files inside a ZIP export become whiteboard pages", async () =>
   const broken = await whiteboardSnapshotItems({ id: (await page("Kaputt")).id } as never);
   assert.match(broken[0].text || "", /Kaputt\.excalidraw: .*JSON/);
 });
+
+test("Excalidraw lines and arrows through several points keep their course", async () => {
+  const scene = {
+    type: "excalidraw",
+    elements: [
+      { id: "box", type: "rectangle", x: 400, y: 100, width: 100, height: 100 },
+      // A closed triangle.
+      { id: "tri", type: "line", x: 100, y: 100, points: [[0, 0], [200, 0], [100, 150], [0, 0]] },
+      // An arrow with a bend, bound to the box at its end.
+      { id: "bend", type: "arrow", x: 100, y: 300, points: [[0, 0], [100, 0], [100, 100]], endBinding: { elementId: "box" }, startArrowhead: "arrow" },
+      // A smooth curve through three points stays one curved connector.
+      { id: "curve", type: "arrow", x: 0, y: 500, points: [[0, 0], [50, -40], [100, 0]], roundness: { type: 2 } },
+    ],
+  };
+  const board = await parseBoardFile("formen.excalidraw", JSON.stringify(scene));
+  const connectors = board.items.filter((i) => i.type === "connector");
+  const segment = (c: (typeof connectors)[number]) => [c.from!.x, c.from!.y, c.to!.x, c.to!.y];
+  // Positions are relative to the leftmost, topmost content (the curve at x 0, the triangle at y 100).
+  const shift = (s: number[]) => s.map((v, k) => v - (k % 2 ? 100 : 0));
+  const of = (local: string) => connectors.filter((c) => c.id === local || c.id.startsWith(`${local}-`));
+  const tri = of("x1");
+  assert.ok(tri.every((c) => c.endArrow === false && !c.startArrow));
+  assert.deepEqual(tri.map(segment), [[100, 100, 300, 100], [300, 100, 200, 250], [200, 250, 100, 100]].map(shift));
+  const bend = of("x2");
+  assert.equal(bend.length, 2);
+  assert.deepEqual(bend.map(segment)[0], shift([100, 300, 200, 300]));
+  // The start head on the first segment, the end head and binding on the last.
+  assert.deepEqual([bend[0].startArrow, bend[0].endArrow, bend[1].startArrow, bend[1].endArrow, bend[1].to!.id], [true, false, undefined, true, "x0"]);
+  assert.deepEqual(of("x3").map((c) => c.route), ["curved"]);
+  assert.equal(board.replaced, 0);
+  // Fresh, distinct ids.
+  assert.equal(new Set(board.items.map((i) => i.id)).size, board.items.length);
+});
