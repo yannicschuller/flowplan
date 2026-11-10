@@ -51,7 +51,12 @@ export function markdownText(text: string) {
     .replace(/^(\s*\d+)([.)])(?=\s)/gm, "$1\\$2")
     .replace(/^(\s*)(=+|-+)\s*$/gm, "$1\\$2")
     // " ^word" would read as a block id marker (lib/markdown-import.ts).
-    .replace(/(^|\s)\^(?=[A-Za-z0-9-])/g, "$1\\^");
+    .replace(/(^|\s)\^(?=[A-Za-z0-9-])/g, "$1\\^")
+    // Bare web and mail addresses stay text: unescaped, GitHub Markdown
+    // would make them links (with the backslashes above in the address).
+    .replace(/(?<=[A-Za-z]):\/\//g, "\\://")
+    .replace(/\b(www)\./gi, "$1\\.")
+    .replace(/(?<=[\w.+-])@(?=[\w-]+\.)/g, "\\@");
 }
 export function markdownUrl(url: string) {
   return url.replace(/[\s<>\\"()|]/g, (c) => encodeURIComponent(c));
