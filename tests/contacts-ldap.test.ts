@@ -341,7 +341,7 @@ test("a full member invited to a workspace reaches it – but never as a guest o
   const theirs = await ownContacts(stranger);
   await run("INSERT INTO members VALUES(?,?,?)", theirs.workspace, member.id, "editor");
   await run("INSERT INTO workspace_guests(workspace_id,user_id) VALUES(?,?)", theirs.workspace, member.id);
-  await run("INSERT INTO grants VALUES(?,?,?,?)", theirs.page, member.id, "", "editor");
+  await run("INSERT INTO grants(resource_id,user_id,group_id,role) VALUES(?,?,?,?)", theirs.page, member.id, "", "editor");
   await refusedEverywhere(member, theirs.page);
   // Being a guest in a workspace somebody else created does not count either.
   assert.equal(await directoryAccess(await user("guest-only"), theirs.workspace), false);

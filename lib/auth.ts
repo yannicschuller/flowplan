@@ -318,7 +318,7 @@ async function acceptInvite(user: User, inv: Invite) {
     )) {
       if (!(await one("SELECT 1 FROM pages WHERE id=? AND workspace_id=? AND deleted_at IS NULL", g.resource_id, inv.workspace_id))) continue;
       await run("DELETE FROM grants WHERE resource_id=? AND user_id=? AND group_id=''", g.resource_id, user.id);
-      await run("INSERT INTO grants VALUES(?,?,?,?)", g.resource_id, user.id, "", g.role);
+      await run("INSERT INTO grants(resource_id,user_id,group_id,role,resource_kind,workspace_id) VALUES(?,?,?,?,'page',?)", g.resource_id, user.id, "", g.role, inv.workspace_id);
     }
     await run("DELETE FROM invite_grants WHERE lower(email)=lower(?) AND workspace_id=?", inv.email, inv.workspace_id);
     await run("DELETE FROM invites WHERE id=?", inv.id);

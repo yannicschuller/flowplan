@@ -1166,7 +1166,10 @@ async function runCommand(
         // An encrypted space comes with its id chosen in the browser: the
         // sealed space key names the space it belongs to.
         const sid = b.encrypted && b.id !== undefined ? uuid.parse(b.id) : id();
-        if (await one("SELECT 1 FROM spaces WHERE id=?", sid)) throw new HttpError(409, "Ungültige Eingabe.");
+        // Pages and spaces share one id space (grants, links, trash): a
+        // chosen id must be new to both.
+        if (await one("SELECT 1 FROM spaces WHERE id=? UNION ALL SELECT 1 FROM pages WHERE id=?", sid, sid))
+          throw new HttpError(409, "Ungültige Eingabe.");
         await run(
           "INSERT INTO spaces(id,workspace_id,name,visibility,owner_id,icon,icon_color) VALUES(?,?,?,?,?,?,?)",
           sid,
@@ -3157,13 +3160,16 @@ async function runCommand(
           uid,
           gid,
         );
+        // Bound to the resource it is for: the page (as checked above) or the space.
         if (b.role !== "remove")
           await run(
-            "INSERT INTO grants VALUES(?,?,?,?)",
+            "INSERT INTO grants(resource_id,user_id,group_id,role,resource_kind,workspace_id) VALUES(?,?,?,?,?,?)",
             resource,
             uid,
             gid,
             z.enum(["editor", "viewer"]).parse(b.role),
+            p ? "page" : "space",
+            (p || s)!.workspace_id,
           );
         break;
       }

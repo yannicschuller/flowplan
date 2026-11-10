@@ -157,11 +157,12 @@ export async function pageToRecord(user: Identity, pageId: string, databaseId: s
     // moving up neither opens them to more people nor closes them.
     for (const child of await all<{ id: string }>("SELECT id FROM pages WHERE parent_id=? AND synced=0", page.id))
       await run(
-        `INSERT INTO grants(resource_id,user_id,group_id,role)
-         SELECT ?,g.user_id,g.group_id,g.role FROM grants g WHERE g.resource_id=?
+        `INSERT INTO grants(resource_id,user_id,group_id,role,resource_kind,workspace_id)
+         SELECT ?,g.user_id,g.group_id,g.role,'page',g.workspace_id FROM grants g WHERE g.resource_id=? AND g.resource_kind='page' AND g.workspace_id=?
          AND NOT EXISTS (SELECT 1 FROM grants c WHERE c.resource_id=? AND c.user_id IS NOT DISTINCT FROM g.user_id AND c.group_id IS NOT DISTINCT FROM g.group_id)`,
         child.id,
         page.id,
+        page.workspace_id,
         child.id,
       );
     await run("UPDATE pages SET parent_id=? WHERE parent_id=? AND synced=0", page.parent_id, page.id);

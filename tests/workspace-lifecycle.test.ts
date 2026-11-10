@@ -220,7 +220,7 @@ test("trashing a space revokes publications, guest links, forms and pending noti
     root,
     "Queued",
   );
-  await run("INSERT INTO grants VALUES(?,?,?,?)", root, f.viewer.id, "", "editor");
+  await run("INSERT INTO grants(resource_id,user_id,group_id,role) VALUES(?,?,?,?)", root, f.viewer.id, "", "editor");
   await spaceAction(f.owner, "space.delete", sid);
   for (const t of [publicToken, share.token])
     await assert.rejects(async () => await publicTree(t), { status: 404 });
@@ -306,7 +306,7 @@ test("permanent space deletion cleans records, references, grants and uploads wi
     pageId: table,
     name: "Independent template",
   })) as { id: string };
-  await run("INSERT INTO grants VALUES(?,?,?,?)", table, f.viewer.id, "", "viewer");
+  await run("INSERT INTO grants(resource_id,user_id,group_id,role) VALUES(?,?,?,?)", table, f.viewer.id, "", "viewer");
   await assert.rejects(async () => await spaceAction(f.owner, "space.purge", sid), {
     status: 409,
   });
@@ -540,7 +540,7 @@ test("leaving transfers owned private areas explicitly and removes only this mem
     f.wid,
   ))!.id;
   await run("INSERT INTO group_members VALUES(?,?)", gid, f.owner.id);
-  await run("INSERT INTO grants VALUES(?,?,?,?)", root, f.owner.id, "", "editor");
+  await run("INSERT INTO grants(resource_id,user_id,group_id,role) VALUES(?,?,?,?)", root, f.owner.id, "", "editor");
   await command(f.owner, { action: "favorite", pageId: root, value: true });
   await command(f.owner, {
     action: "member.invite",

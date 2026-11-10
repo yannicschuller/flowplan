@@ -52,7 +52,7 @@ test("shared content: links, public pages and people with access to one's own pa
   const pageId = ((await command(cara, { action: "page.create", workspaceId: wid, spaceId: space, title: "Plan", kind: "document" })) as { id: string }).id;
   await command(cara, { action: "share.create", workspaceId: wid, pageId, name: "Team-Link", role: "editor" });
   await command(cara, { action: "page.publish", workspaceId: wid, pageId, enabled: true });
-  await run("INSERT INTO grants VALUES(?,?,?,?)", pageId, dana.id, "", "editor");
+  await run("INSERT INTO grants(resource_id,user_id,group_id,role) VALUES(?,?,?,?)", pageId, dana.id, "", "editor");
   const s = await mySecurity(cara, undefined);
   assert.equal(s.links.length, 1);
   assert.equal(s.links[0].role, "editor");

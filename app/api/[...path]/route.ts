@@ -719,8 +719,7 @@ async function handleGET(
           wid,
         ),
         grants: await all(
-          "SELECT g.* FROM grants g WHERE resource_id IN (SELECT id FROM pages WHERE workspace_id=? UNION SELECT id FROM spaces WHERE workspace_id=?)",
-          wid,
+          "SELECT g.resource_id,g.user_id,g.group_id,g.role FROM grants g WHERE g.workspace_id=?",
           wid,
         ),
         // SSO groups mapped to membership and groups, and what they granted.
