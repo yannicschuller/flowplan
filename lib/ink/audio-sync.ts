@@ -93,6 +93,24 @@ export function stampNewItems(before: InkDoc, next: InkDoc, rec: InkRec): InkDoc
 
 export type Playback = { id: string; t: number } | null;
 // Not "spoken" yet: written during this recording, later than where it plays.
+// Items without their recording marks: for copies that leave the notebook
+// (sheets copied or moved into another notebook, stickers), whose
+// recordings do not come along – the mark would point to nothing there.
+export function withoutRec(items: InkItem[]): InkItem[] {
+  if (!items.some((i) => i.rec)) return items;
+  return items.map((item) => {
+    if (!item.rec) return item;
+    const copy = { ...item };
+    delete copy.rec;
+    return copy;
+  });
+}
+// The mark of the first marked item, back to front (handwriting turned into
+// text keeps when it was written), as spread fields.
+export function firstRec(items: InkItem[]): { rec?: InkRec } {
+  const first = items.find((item) => item.rec)?.rec;
+  return first ? { rec: { ...first } } : {};
+}
 export const isUnspoken = (item: InkItem, playback: Playback) => !!playback && item.rec?.id === playback.id && item.rec.t > playback.t;
 // Where to play from for an item: its moment in its recording, a little before.
 export const seekTimeOf = (item: InkItem): InkRec | null => (item.rec ? { id: item.rec.id, t: Math.max(0, item.rec.t - 1000) } : null);

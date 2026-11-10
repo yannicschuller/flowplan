@@ -346,3 +346,51 @@ test("a workspace archive brings notebooks back with their recordings", async ()
   assert.deepEqual(list.map((r) => [r.id, r.name, r.durationMs]), [[rec, "Kurs 1", 5000]]);
   assert.equal(Math.round(webmDurationMs(readFileSync(resolve(process.env.FLOWPLAN_DATA_DIR!, "uploads", list[0].fileId)))!), 5000);
 });
+
+test("marks on every kind of item; copies into another notebook and stickers drop them, deleting a sheet keeps the recording", async () => {
+  // Shapes, turned text and pictures keep their mark when stored.
+  const rec = { id: "r-9", t: 2500 };
+  const shape = cleanItem({ id: "sh", type: "pen", color: "#1f1f1f", width: 1.6, points: [0, 0, 0.5, 10, 10, 0.5], shape: { kind: "rect", box: [5, 5, 10, 10, 0] }, rec })!;
+  assert.equal(shape.type === "pen" && !!shape.shape, true);
+  assert.deepEqual(shape.rec, rec);
+  const turned = cleanItem({ id: "tx", type: "text", color: "#1f1f1f", size: 12, x: 1, y: 1, text: "Hi", rotation: 30, rec })!;
+  assert.equal(turned.type === "text" && turned.rotation, 30);
+  assert.deepEqual(turned.rec, rec);
+  const picture = cleanItem({ id: "im", type: "image", x: 1, y: 1, w: 20, h: 20, sticker: "heart", rec })!;
+  assert.deepEqual(picture.rec, rec);
+  // A picture inserted while recording is stamped like a stroke.
+  const before = withPage(emptyInk(), "s", []);
+  const stamped = sync.stampNewItems(before, withPage(before, "s", [{ ...picture, rec: undefined }]), { id: "r-10", t: 900 });
+  assert.deepEqual(stamped.pages.s[0].rec, { id: "r-10", t: 900 });
+  // Helpers: dropping marks, the first mark for converted handwriting.
+  const plain = sync.withoutRec([shape, turned, picture]);
+  assert.ok(plain.every((i) => !("rec" in i)));
+  assert.deepEqual(sync.firstRec([cleanItem({ id: "x", type: "pen", color: "#1f1f1f", width: 1, points: [1, 1, 0.5] })!, shape]), { rec });
+  assert.deepEqual(sync.firstRec([]), {});
+
+  // A notebook with a recording and marked ink on two sheets.
+  const pid = await create("Seminar");
+  const recId = crypto.randomUUID();
+  await audio.storeRecordingChunk(owner, pid, { recId, offset: 0, type: "audio/webm" }, webm());
+  await audio.finishRecording(owner, pid, { recId, name: "Sitzung", durationMs: 20_000 });
+  await command(owner, { action: "notebook.sheet.add", pageId: pid });
+  const sheets = await notebookSheets(pid);
+  assert.equal(sheets.length, 2);
+  for (const s of sheets) await store.writeSurface(pid, s.id, withPage(emptyInk(), s.id, [{ ...shape, id: `m-${s.id.slice(0, 4)}`, rec: { id: recId, t: 3000 } }]), "", owner.id);
+  // Copied into another notebook: the ink comes, its marks do not.
+  const other = await create("Anderes");
+  await command(owner, { action: "notebook.sheets.transfer", pageId: pid, targetPageId: other, sheetIds: [sheets[1].id], mode: "copy", after: null });
+  const otherSheets = await notebookSheets(other);
+  const copiedItems = (await store.readPageInk(owner, other, otherSheets[otherSheets.length - 1].id)).doc.pages[otherSheets[otherSheets.length - 1].id];
+  assert.equal(copiedItems.length, 1);
+  assert.equal(copiedItems[0].rec, undefined);
+  assert.equal((await audio.listRecordings(owner, other)).recordings.length, 0);
+  // The source keeps its marks and the recording.
+  assert.equal((await store.readPageInk(owner, pid, sheets[1].id)).doc.pages[sheets[1].id][0].rec?.id, recId);
+  // Deleting a sheet (into the notebook's trash) leaves the recording.
+  await command(owner, { action: "notebook.sheets.delete", pageId: pid, sheetIds: [sheets[1].id] });
+  assert.equal((await audio.listRecordings(owner, pid)).recordings.length, 1);
+  // A selection saved as a sticker carries no marks.
+  const { stickerInk } = await import("../lib/notebook-library");
+  assert.ok(stickerInk([shape, turned]).items.every((i) => !i.rec));
+});

@@ -1,9 +1,12 @@
 // Geometry of ink: stroke outlines (pressure), bounds, hit tests, the
 // stroke and partial eraser, lasso selection, moving and resizing, and shape
 // snapping (hold the pen at the end of a stroke). All in page units.
-import { recognizeStroke } from "../whiteboard-tools";
 import { inkFontAdvance } from "./fonts";
+import { recognizeShape, type ShapeName } from "./shape-recognize";
+import { magnetShape, scaleShape, shapeAnchors, shapeBounds, shapeDistance, shapePoints, type InkShape } from "./shapes";
 import { inkId, type InkItem, type InkStroke, type InkText } from "./model";
+import { hitImage, imageBounds, imageCentre } from "./image";
+import { stickerTintable } from "./stickers";
 
 export type Pt = { x: number; y: number; p: number };
 export type Box = { x: number; y: number; w: number; h: number };
@@ -92,13 +95,36 @@ export function strokePath(stroke: InkStroke): { d: string; fill: boolean } {
 
 // Text is measured roughly (no fonts on the server): an average advance per
 // character of its face (0.55 em for Helvetica).
+// Turned text: the box around its turned corners.
 export function textBox(item: InkText): Box {
   const lines = item.text.split("\n");
   const longest = Math.max(1, ...lines.map((l) => l.length));
-  return { x: item.x, y: item.y, w: longest * item.size * inkFontAdvance(item.font), h: lines.length * item.size * 1.25 };
+  const w = longest * item.size * inkFontAdvance(item.font),
+    h = lines.length * item.size * 1.25;
+  if (!item.rotation) return { x: item.x, y: item.y, w, h };
+  const a = (item.rotation * Math.PI) / 180;
+  const cos = Math.cos(a),
+    sin = Math.sin(a);
+  const corners = [
+    [0, 0],
+    [w, 0],
+    [0, h],
+    [w, h],
+  ].map(([u, v]) => ({ x: item.x + u * cos - v * sin, y: item.y + u * sin + v * cos }));
+  const xs = corners.map((c) => c.x),
+    ys = corners.map((c) => c.y);
+  const x = Math.min(...xs),
+    y = Math.min(...ys);
+  return { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y };
 }
 export function itemBounds(item: InkItem): Box {
   if (item.type === "text") return textBox(item);
+  if (item.type === "image") return imageBounds(item);
+  if (item.shape) {
+    const b = shapeBounds(item.shape, item.width);
+    const r = penWidth(item.width, 1) / 2;
+    return { x: b.x - r, y: b.y - r, w: b.w + 2 * r, h: b.h + 2 * r };
+  }
   let [minX, minY, maxX, maxY] = [Infinity, Infinity, -Infinity, -Infinity];
   for (let i = 0; i + 2 < item.points.length; i += 3) {
     minX = Math.min(minX, item.points[i]);
@@ -124,10 +150,12 @@ function segmentDistance(p: XY, a: XY, b: XY) {
 }
 // Is the item within `tolerance` page units of the point?
 export function hitItem(item: InkItem, p: XY, tolerance: number) {
+  if (item.type === "image") return hitImage(item, p, tolerance);
   const box = itemBounds(item);
   if (p.x < box.x - tolerance || p.x > box.x + box.w + tolerance || p.y < box.y - tolerance || p.y > box.y + box.h + tolerance) return false;
   if (item.type === "text") return true;
   const reach = tolerance + lineWidth(item) / 2;
+  if (item.shape) return shapeDistance(item.shape, p, item.width) <= reach;
   const pts = strokePoints(item);
   if (pts.length === 1) return Math.hypot(p.x - pts[0].x, p.y - pts[0].y) <= reach;
   for (let i = 1; i < pts.length; i++) if (segmentDistance(p, pts[i - 1], pts[i]) <= reach) return true;
@@ -136,9 +164,10 @@ export function hitItem(item: InkItem, p: XY, tolerance: number) {
 
 // ---- Erasers ----
 
-// Stroke eraser: whole items touched by the eraser path go.
+// Stroke eraser: whole items touched by the eraser path go. Pictures and
+// stickers stay (they are deleted from their frame).
 export function eraseItems(items: InkItem[], path: XY[], radius: number) {
-  const kept = items.filter((item) => !path.some((p) => hitItem(item, p, radius)));
+  const kept = items.filter((item) => item.type === "image" || !path.some((p) => hitItem(item, p, radius)));
   return kept.length === items.length ? items : kept;
 }
 
@@ -163,7 +192,7 @@ export function erasePartial(items: InkItem[], path: XY[], radius: number) {
   let changed = false;
   const out: InkItem[] = [];
   for (const item of items) {
-    if (!path.some((p) => hitItem(item, p, radius))) {
+    if (item.type === "image" || !path.some((p) => hitItem(item, p, radius))) {
       out.push(item);
       continue;
     }
@@ -180,9 +209,12 @@ export function erasePartial(items: InkItem[], path: XY[], radius: number) {
       } else run.push(p);
     }
     if (run.length) pieces.push(run);
+    // What is left of a shape is freehand.
+    const { shape: _shape, ...stroke } = item;
+    void _shape;
     pieces
       .filter((piece) => piece.length > 1)
-      .forEach((piece, i) => out.push({ ...item, id: i ? inkId() : item.id, points: flatPoints(piece) }));
+      .forEach((piece, i) => out.push({ ...stroke, id: i ? inkId() : item.id, points: flatPoints(piece) }));
   }
   return changed ? out : items;
 }
@@ -207,6 +239,7 @@ export function lassoItems(items: InkItem[], polygon: XY[]): string[] {
         const b = textBox(item);
         return insidePolygon({ x: b.x + b.w / 2, y: b.y + b.h / 2 }, polygon);
       }
+      if (item.type === "image") return insidePolygon(imageCentre(item), polygon);
       const pts = strokePoints(item);
       const inside = pts.filter((p) => insidePolygon(p, polygon)).length;
       return inside > 0 && inside >= pts.length / 2;
@@ -223,16 +256,29 @@ export function transformItems(items: InkItem[], ids: Set<string>, t: { dx?: num
   return items.map((item): InkItem => {
     if (!ids.has(item.id)) return item;
     if (item.type === "text") return { ...item, x: mx(item.x), y: my(item.y), size: round2(Math.max(2, item.size * scale)) };
+    if (item.type === "image") {
+      // The centre moves (a turned picture turns around it).
+      const cx = item.x + item.w / 2,
+        cy = item.y + item.h / 2;
+      const w = round2(Math.max(1, item.w * scale)),
+        h = round2(Math.max(1, item.h * scale));
+      return { ...item, x: round2(mx(cx) - w / 2), y: round2(my(cy) - h / 2), w, h };
+    }
+    const width = round2(Math.max(0.1, item.width * scale));
+    if (item.shape) return withShape({ ...item, width }, scaleShape(item.shape, t));
     const points = item.points.slice();
     for (let i = 0; i + 2 < points.length; i += 3) {
       points[i] = mx(points[i]);
       points[i + 1] = my(points[i + 1]);
     }
-    return { ...item, points, width: round2(Math.max(0.1, item.width * scale)) };
+    return { ...item, points, width };
   });
 }
 export const recolorItems = (items: InkItem[], ids: Set<string>, color: string) =>
-  items.map((item) => (ids.has(item.id) && item.type !== "highlighter" ? { ...item, color } : item));
+  items.map((item) =>
+    // Pictures keep their colours; built-in stickers of one colour take it.
+    ids.has(item.id) && item.type !== "highlighter" && !(item.type === "image" && !stickerTintable(item.sticker)) ? { ...item, color } : item,
+  );
 // Copies with new ids (duplicate, paste).
 export const copyItems = (items: InkItem[], dx = 0, dy = 0) =>
   items.map((item) => {
@@ -242,48 +288,39 @@ export const copyItems = (items: InkItem[], dx = 0, dy = 0) =>
 
 // ---- Shape snapping ----
 
-// The stroke straightened into the shape it looks like (line, rectangle,
-// ellipse, triangle, diamond), or null. Uses the whiteboard's recognition.
-export function snapStroke(stroke: InkStroke): InkStroke | null {
-  const pts = strokePoints(stroke);
-  const recognized = recognizeStroke(pts.map((p) => ({ x: p.x, y: p.y })));
-  if (!recognized) return null;
-  const pressure = round2(pts.reduce((s, p) => s + p.p, 0) / pts.length || 0.5);
-  let outline: XY[];
-  if (recognized.kind === "line") outline = [recognized.from, recognized.to];
-  else {
-    const { x, y, w, h } = recognized.box;
-    if (recognized.shape === "ellipse")
-      outline = Array.from({ length: 73 }, (_, i) => {
-        const a = (i / 72) * Math.PI * 2;
-        return { x: x + w / 2 + (Math.cos(a) * w) / 2, y: y + h / 2 + (Math.sin(a) * h) / 2 };
-      });
-    else if (recognized.shape === "triangle")
-      outline = [
-        { x: x + w / 2, y },
-        { x: x + w, y: y + h },
-        { x, y: y + h },
-        { x: x + w / 2, y },
-      ];
-    else if (recognized.shape === "diamond")
-      outline = [
-        { x: x + w / 2, y },
-        { x: x + w, y: y + h / 2 },
-        { x: x + w / 2, y: y + h },
-        { x, y: y + h / 2 },
-        { x: x + w / 2, y },
-      ];
-    else
-      outline = [
-        { x, y },
-        { x: x + w, y },
-        { x: x + w, y: y + h },
-        { x, y: y + h },
-        { x, y },
-      ];
+// A pen stroke as the shape (its outline as `points`, pressure kept even);
+// a highlighter only takes the outline – it has no editable shapes.
+export function withShape(stroke: InkStroke, shape: InkShape, pressure = 0.5): InkStroke {
+  const points = shapePoints(shape, stroke.width, round2(pressure));
+  if (stroke.type !== "pen") {
+    const { shape: _shape, ...rest } = stroke;
+    void _shape;
+    return { ...rest, points };
   }
-  return { ...stroke, points: flatPoints(outline.map((p) => ({ ...p, p: pressure }))) };
+  return { ...stroke, shape, points };
 }
+// A shape back to freehand: the outline stays as a plain stroke.
+export function toFreehand(stroke: InkStroke): InkStroke {
+  const { shape: _shape, ...rest } = stroke;
+  void _shape;
+  return rest;
+}
+// The stroke straightened into the shape it looks like (lib/ink/shape-recognize.ts),
+// ends and corners pulled onto `anchors` within `tolerance`; null when it
+// looks like no shape.
+type SnapOptions = { anchors?: XY[]; tolerance?: number; minSize?: number };
+export function snapShape(stroke: InkStroke, { anchors = [], tolerance = 0, minSize = 10 }: SnapOptions = {}): { stroke: InkStroke; name: ShapeName } | null {
+  const pts = strokePoints(stroke);
+  const recognized = recognizeShape(pts, { minSize });
+  if (!recognized) return null;
+  const pressure = pts.reduce((s, p) => s + p.p, 0) / pts.length || 0.5;
+  const shape = magnetShape(recognized.shape, anchors, tolerance);
+  return { stroke: withShape(stroke, shape, pressure), name: recognized.name };
+}
+export const snapStroke = (stroke: InkStroke, options?: SnapOptions) => snapShape(stroke, options)?.stroke ?? null;
+// Where ends and corners snap to: the corners and ends of the shapes on the page.
+export const pageAnchors = (items: InkItem[], except?: string) =>
+  items.flatMap((item) => (item.type === "pen" && item.shape && item.id !== except ? shapeAnchors(item.shape) : []));
 
 // Has the pen rested at the end of the stroke: no movement beyond
 // `tolerance` during the last `holdMs` of the timed samples?

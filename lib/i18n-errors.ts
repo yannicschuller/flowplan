@@ -10,6 +10,18 @@ const exact: Record<string, string> = {
   "Dieses Audioformat wird nicht unterstützt.": "This audio format is not supported.",
   "Die Aufnahme ist bereits gespeichert.": "The recording is already saved.",
   "Die Aufnahme ist leer.": "The recording is empty.",
+  // Notebooks: pictures, stickers, own paper templates (lib/notebook-library.ts).
+  "Sticker nicht gefunden.": "Sticker not found.",
+  "Die Auswahl ist leer.": "The selection is empty.",
+  "Bitte PNG, JPEG, GIF oder WebP verwenden.": "Please use PNG, JPEG, GIF or WebP.",
+  "Das Bild ist zu groß für einen Sticker (höchstens 5 MB).": "The picture is too large for a sticker (at most 5 MB).",
+  "Das Bild lässt sich nicht lesen.": "The picture cannot be read.",
+  "Die Auswahl ist zu groß für einen Sticker.": "The selection is too large for a sticker.",
+  "Das PDF lässt sich nicht lesen (verschlüsselt oder beschädigt).": "The PDF cannot be read (encrypted or damaged).",
+  "Diese Seite hat das PDF nicht.": "The PDF does not have this page.",
+  "Bitte ein Bild (PNG, JPEG, WebP) oder ein PDF wählen.": "Please choose a picture (PNG, JPEG, WebP) or a PDF.",
+  "Nur wer die Vorlage angelegt hat oder ein Besitzer darf sie ändern.": "Only whoever added the template or an owner may change it.",
+  "Ungültige Papiervorlage.": "Invalid paper template.",
   // Workflows (#168, §11.8): approvals from the apps' push notifications.
   "Die Frist dieser Freigabe ist abgelaufen.": "The deadline of this approval has passed.",
   "Dieses Gerät war zu lange nicht aktiv. Bitte in Flowplan öffnen.": "This device has not been active for too long. Please open it in Flowplan.",
@@ -880,6 +892,7 @@ const exact: Record<string, string> = {
   "Modelle lassen sich nur bei Ollama herunterladen.": "Models can only be downloaded with Ollama.",
   "Zu viele KI-Anfragen in kurzer Zeit. Bitte später erneut versuchen.": "Too many AI requests in a short time. Please try again later.",
   "Der Text für die KI ist zu lang.": "The text for the AI is too long.",
+  "Zu viele Bilder für die KI.": "Too many images for the AI.",
   "Die KI-Anfrage ist fehlgeschlagen.": "The AI request failed.",
   "Diese Seite ist für die KI gesperrt.": "This page is closed to the AI.",
   "Änderungsvorschläge gibt es nur für Dokumente.": "Suggested changes are only available for documents.",
@@ -1003,6 +1016,12 @@ const exact: Record<string, string> = {
   "Ungültige Fläche.": "Invalid drawing surface.",
   "Diese Seite hat keine Handschrift.": "This page has no handwriting.",
   "Ein Notizbuch braucht mindestens ein Blatt.": "A notebook needs at least one sheet.",
+  // The page overview of notebooks (lib/notebook-organize.ts).
+  "Ein Titel gehört zu einem Blatt.": "A title belongs to one sheet.",
+  "Bitte einen Titel angeben.": "Please enter a title.",
+  "Das Blatt ist nicht mehr im Papierkorb.": "The sheet is no longer in the trash.",
+  "Das ist dasselbe Notizbuch.": "That is the same notebook.",
+  "In verschlüsselten Bereichen nicht möglich.": "Not possible in encrypted spaces.",
   "Die Blätter haben sich inzwischen geändert.": "The sheets have changed in the meantime.",
   "Nur PDFs lassen sich als Notizbuch öffnen.": "Only PDFs can be opened as a notebook.",
   "Zu viele Zeichnungen auf dieser Seite.": "Too many drawings on this page.",
@@ -1290,6 +1309,10 @@ const exact: Record<string, string> = {
   "Eine Vorlage gehört zum Bereich ihrer Seite oder zum ganzen Arbeitsbereich.": "A template belongs to its page's space or to the whole workspace.",
 };
 const patterns: [RegExp, string][] = [
+  // Notebooks (lib/notebook-library.ts).
+  [/^Höchstens (\d+) eigene Sticker\.$/, "At most $1 stickers of your own."],
+  [/^Maximal (\d+) MB pro Vorlage\.$/, "At most $1 MB per template."],
+  [/^Dieser Arbeitsbereich hat schon (\d+) Papiervorlagen\.$/, "This workspace already has $1 paper templates."],
   // Workflows (#168, lib/workflows).
   [/^Anfrage fehlgeschlagen: (.+)$/, "Request failed: $1"],
   [/^Der Host (.+) ist auf dieser Instanz nicht erlaubt\.$/, "The host $1 is not allowed on this instance."],

@@ -106,3 +106,17 @@ test("text written on the PDF is found by search", async () => {
   await processSearchIndex(1000);
   assert.ok((await searchWorkspace(owner, wid, "Schlusszahlung")).length > 0);
 });
+
+test("shapes survive a save from a version that does not know them", async () => {
+  const { withShape } = await import("../lib/ink/geometry");
+  const shaped = withShape({ id: "shape1", type: "pen", color: "#1c5fd6", width: 2, points: [] }, { kind: "ellipse", box: [100, 100, 60, 60, 0], fill: "#1c5fd6" });
+  let base = (await readFileInk(owner, pdf)).version;
+  base = (await saveFileInk(owner, pdf, { base, doc: ink(shaped) })).version;
+  // An older client read it without `shape` and saves it back with a new stroke.
+  const { shape: _shape, ...plain } = shaped;
+  void _shape;
+  await saveFileInk(editor, pdf, { base, doc: ink(plain, stroke(7)) });
+  const items = (await readFileInk(owner, pdf)).doc.pages["1"];
+  assert.equal(items.length, 2);
+  assert.deepEqual((items[0] as typeof shaped).shape, shaped.shape);
+});

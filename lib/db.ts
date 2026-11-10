@@ -927,6 +927,20 @@ function migrate(d: DatabaseSync) {
     CREATE TRIGGER IF NOT EXISTS search_page_ink_update AFTER UPDATE OF text,recognized ON page_ink BEGIN INSERT INTO search_dirty SELECT NEW.page_id,'' WHERE NOT EXISTS(SELECT 1 FROM search_dirty WHERE page_id=NEW.page_id AND row_id=''); END;
     CREATE TRIGGER IF NOT EXISTS search_page_ink_delete AFTER DELETE ON page_ink BEGIN INSERT INTO search_dirty SELECT OLD.page_id,'' WHERE NOT EXISTS(SELECT 1 FROM search_dirty WHERE page_id=OLD.page_id AND row_id=''); END;
     CREATE TRIGGER IF NOT EXISTS search_notebook_sheet_delete AFTER DELETE ON notebook_sheets BEGIN INSERT INTO search_dirty SELECT OLD.page_id,'' WHERE NOT EXISTS(SELECT 1 FROM search_dirty WHERE page_id=OLD.page_id AND row_id=''); END;`);
+  // Organising notebooks (lib/notebook-organize.ts): a sheet's own title,
+  // its bookmark and its links (JSON: areas that jump to another sheet or a
+  // page), the notebook's table of contents (JSON), and deleted sheets kept
+  // with their ink for 30 days (undo, restore). Older versions ignore the
+  // columns and keep them as they are.
+  {
+    const sheetColumns = (d.prepare("PRAGMA table_info(notebook_sheets)").all() as { name: string }[]).map((c) => c.name);
+    for (const [column, type] of [["title", "TEXT NOT NULL DEFAULT ''"], ["bookmark", "INTEGER NOT NULL DEFAULT 0"], ["links", "TEXT NOT NULL DEFAULT '[]'"]])
+      if (!sheetColumns.includes(column)) d.exec(`ALTER TABLE notebook_sheets ADD COLUMN ${column} ${type}`);
+    if (!(d.prepare("PRAGMA table_info(notebooks)").all() as { name: string }[]).some((c) => c.name === "outline"))
+      d.exec("ALTER TABLE notebooks ADD COLUMN outline TEXT NOT NULL DEFAULT '[]'");
+    d.exec(`CREATE TABLE IF NOT EXISTS notebook_sheet_trash(id TEXT PRIMARY KEY,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,position INTEGER NOT NULL,sheet TEXT NOT NULL,deleted_by TEXT,deleted_at INTEGER NOT NULL);
+      CREATE INDEX IF NOT EXISTS notebook_sheet_trash_page ON notebook_sheet_trash(page_id,deleted_at);`);
+  }
   // Schema 61 – the push relay (lib/push-relay.ts, PROTOCOL.md of
   // flowplan-push): the instance's Ed25519 signing keys (private key only
   // sealed, lib/ai/secrets.ts), per app installation the relay token (sealed)
@@ -1287,6 +1301,10 @@ function migrate(d: DatabaseSync) {
   // "grant-kinds-100"); an older version would not write them, hence the
   // new number.
   migrateGrantKinds(d);
+  // Notebook stickers and own paper templates (lib/notebook-library.ts):
+  // new tables only – an older version leaves them alone – so the schema
+  // number stays.
+  migrateNotebookLibrary(d);
   // Schema 101 – audio recordings of notebooks (lib/notebook-audio.ts): per
   // notebook its recordings, each an uploaded file of the page (counted in
   // the storage, in the trash with it) with its length; the id is the one
@@ -1300,6 +1318,15 @@ function migrate(d: DatabaseSync) {
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
   forgetStatements(d);
   globalDb.flowplanSchema = SCHEMA_VERSION;
+}
+// A person's stickers per workspace (a picture, or ink items) and a
+// workspace's paper templates (a picture or one PDF page), as blobs like
+// template_files: counted in workspaceBytes (lib/instance-ops.ts).
+function migrateNotebookLibrary(d: DatabaseSync) {
+  d.exec(`CREATE TABLE IF NOT EXISTS notebook_stickers(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,name TEXT NOT NULL,mime TEXT NOT NULL,data BLOB,items TEXT,width REAL NOT NULL,height REAL NOT NULL,created_at INTEGER NOT NULL);
+    CREATE INDEX IF NOT EXISTS notebook_stickers_owner ON notebook_stickers(workspace_id,user_id);
+    CREATE TABLE IF NOT EXISTS notebook_templates(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,name TEXT NOT NULL,kind TEXT NOT NULL CHECK(kind IN ('image','pdf')),mime TEXT NOT NULL,data BLOB NOT NULL,width REAL NOT NULL,height REAL NOT NULL,fit TEXT NOT NULL DEFAULT 'stretch' CHECK(fit IN ('stretch','tile')),created_by TEXT REFERENCES users(id) ON DELETE SET NULL,created_at INTEGER NOT NULL);
+    CREATE INDEX IF NOT EXISTS notebook_templates_workspace ON notebook_templates(workspace_id);`);
 }
 // Schema 97 – Workflows (#168, renumbered at the final merge, docs/specs/workflows.md §4): one workflow
 // per page of kind "workflow" (state, who runs it), its draft as a Yjs

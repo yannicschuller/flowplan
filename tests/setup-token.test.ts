@@ -12,6 +12,22 @@ const { adminGroup, adminUserIds } = await import("../lib/auth");
 
 const ana = { name: "Ana", email: "ana@example.test", password: "ein-langes-passwort" };
 
+test("FLOWPLAN_SETUP_TOKEN: the start log names the setup link, never the token (#194)", async () => {
+  assert.equal(await auth.firstAccount(), true);
+  const hint = await auth.setupHint();
+  assert.match(hint, /https:\/\/flowplan\.example\.test\/register\?setup=<your FLOWPLAN_SETUP_TOKEN>/);
+  assert.ok(!hint.includes("einrichten-2026"), "the token stays out of the log");
+  // With the token there is nothing to warn about.
+  assert.equal(await auth.setupWarning(), "");
+  // Without password sign-in the first administrator comes through SSO or LDAP.
+  process.env.FLOWPLAN_LOCAL_LOGIN = "false";
+  try {
+    assert.equal(await auth.setupHint(), "");
+  } finally {
+    delete process.env.FLOWPLAN_LOCAL_LOGIN;
+  }
+});
+
 test("FLOWPLAN_SETUP_TOKEN: the first account needs the setup link", async () => {
   assert.equal(await auth.firstAccount(), true);
   // Without or with a wrong token the instance offers no sign-up.
@@ -37,6 +53,7 @@ test("FLOWPLAN_SETUP_TOKEN: the first account needs the setup link", async () =>
   const { user, groups } = await auth.register({ ...ana, setup: "einrichten-2026" }, "de");
   assert.deepEqual(groups, [adminGroup()]);
   assert.deepEqual(await auth.localGroups(user.id), [adminGroup()]);
+  assert.equal(await auth.setupHint(), "", "set up: no more hint");
   // Afterwards the token opens nothing: sign-ups follow the instance settings.
   assert.equal(await auth.signupOpen("einrichten-2026"), false);
   await assert.rejects(auth.register({ name: "Ben", email: "ben@example.test", password: "ein-langes-passwort", setup: "einrichten-2026" }, "en"), /Only administrators/);

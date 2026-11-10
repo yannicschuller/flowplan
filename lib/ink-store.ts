@@ -12,6 +12,7 @@ import { isEncryptedPage } from "./e2ee-server";
 import { hiddenFileIds } from "./row-files";
 import { publicFile } from "./publication";
 import { INK_LIMITS, inkItemCount, inkText, parseInk, serializeInk, type InkDoc } from "./ink/model";
+import { keepShapes } from "./ink/merge";
 import { cleanRecognizedMap, parseRecognizedMap } from "./ink/recognized";
 import type { Identity, Page } from "./types";
 
@@ -90,11 +91,14 @@ export async function saveFileInk(user: Identity, fileId: string, input: unknown
   if (await isEncryptedPage(page)) throw new HttpError(409, "Für verschlüsselte Seiten nicht verfügbar.");
   await requirePage(user, page.id, true);
   if (page.locked) throw new HttpError(409, "Seite ist gesperrt");
-  const doc = parseInk(body.doc);
-  const data = serializeInk(doc);
-  if (data.length > INK_LIMITS.bytes) throw new HttpError(413, "Zu viele Anmerkungen für eine Datei.");
+  const incoming = parseInk(body.doc);
+  if (serializeInk(incoming).length > INK_LIMITS.bytes) throw new HttpError(413, "Zu viele Anmerkungen für eine Datei.");
   return await transaction(async () => {
     const current = await stored(file.id);
+    // Strokes saved back unchanged by a version without shapes keep theirs.
+    const doc = keepShapes(current ? parseInk(current.data) : null, incoming);
+    const data = serializeInk(doc);
+    if (data.length > INK_LIMITS.bytes) throw new HttpError(413, "Zu viele Anmerkungen für eine Datei.");
     const version = (current?.version ?? 0) + 1;
     // Someone else saved after this person opened the ink: theirs is kept as
     // a version, this one wins.

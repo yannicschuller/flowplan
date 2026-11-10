@@ -18,12 +18,13 @@ import {
   setLineWidth,
   setStrokingColor,
   stroke,
+  type PDFEmbeddedPage,
   type PDFOperator,
 } from "pdf-lib";
 import type { Matrix, PageSize } from "./coords";
 import type { InkDoc, InkItem } from "./model";
-import { effectivePaper, paperLayout, paperSize, type Paper, type PaperLayout, type PaperOverride } from "../notebook-paper";
-import { drawInk, inkPdfContext, shownPageMatrix } from "./pdf-export";
+import { effectivePaper, paperImageTiles, paperLayout, paperSize, type Paper, type PaperLayout, type PaperOverride } from "../notebook-paper";
+import { drawInk, inkPdfContext, shownPageMatrix, type InkImageLoader } from "./pdf-export";
 import { DARK_INK } from "./svg";
 
 export type NotebookPdfSheet = {
@@ -90,16 +91,19 @@ function paperOps(layout: PaperLayout, matrix: Matrix): PDFOperator[] {
   return ops;
 }
 
-// `load` gives the bytes of a background PDF (null when it is gone).
+// `load` gives the bytes of a background PDF (null when it is gone);
+// `loadImage` those of pictures on the sheets and of own paper templates
+// (PNG or JPEG; without it they show as grey boxes).
 export async function notebookPdf(
   sheets: NotebookPdfSheet[],
   load: (file: string) => Promise<Uint8Array | ArrayBuffer | null>,
-  { title = "" }: { title?: string } = {},
+  { title = "", loadImage }: { title?: string; loadImage?: InkImageLoader } = {},
 ): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
   if (title) pdf.setTitle(title);
   pdf.setCreator("Flowplan");
-  const context = inkPdfContext(pdf);
+  const context = inkPdfContext(pdf, { loadImage });
+  const embeddedPages = new Map<string, Promise<PDFEmbeddedPage | null>>();
   const sources = new Map<string, Promise<PDFDocument | null>>();
   const source = (file: string) => {
     if (!sources.has(file))
@@ -130,6 +134,39 @@ export async function notebookPdf(
     const page = pdf.addPage([n(sheet.size.width), n(sheet.size.height)]);
     const matrix: Matrix = [1, 0, 0, -1, 0, n(sheet.size.height)];
     if (sheet.paper) page.pushOperators(...paperOps(sheet.paper, matrix));
+    // An own template: the picture or PDF page, stretched or tiled (PDF
+    // space has y upwards).
+    const own = sheet.paper?.image;
+    if (own?.file) {
+      const tiles = paperImageTiles(own, sheet.size);
+      const H = sheet.size.height;
+      if (own.kind === "pdf") {
+        const key = own.file;
+        if (!embeddedPages.has(key))
+          embeddedPages.set(
+            key,
+            source(own.file)
+              .then(async (doc) => (doc && doc.getPageCount() ? (await pdf.embedPages([doc.getPage(0)]))[0] : null))
+              .catch(() => null),
+          );
+        const embeddedPage = await embeddedPages.get(key)!;
+        if (embeddedPage) for (const t of tiles) page.drawPage(embeddedPage, { x: t.x, y: n(H - t.y - t.h), width: t.w, height: t.h });
+      } else if (loadImage) {
+        const found = await context.images.get(own.file) ?? (await (async () => {
+          const loaded = await loadImage(own.file!).catch(() => null);
+          if (!loaded) return null;
+          try {
+            return { image: loaded.type === "png" ? await pdf.embedPng(loaded.bytes) : await pdf.embedJpg(loaded.bytes), orientation: loaded.orientation || 1 };
+          } catch {
+            return null;
+          }
+        })());
+        if (found) {
+          context.images.set(own.file, Promise.resolve(found));
+          for (const t of tiles) page.drawImage(found.image, { x: t.x, y: n(H - t.y - t.h), width: t.w, height: t.h });
+        }
+      }
+    }
     await drawInk(context, page, sheet.items, matrix, sheet.dark ? DARK_INK : undefined);
   }
   return pdf.save();

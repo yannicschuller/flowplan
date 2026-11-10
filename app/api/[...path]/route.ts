@@ -16,6 +16,7 @@ import { transferTargets } from "@/lib/row-transfer";
 import { computeMetric, metricSchema, metricSources } from "@/lib/dashboard-metric";
 import { requireBodySize, sanitizeFileName, stripLocation, verifiedMime } from "@/lib/upload-safety";
 import { boardCursors, moveCursor, watchBoard } from "@/lib/whiteboard-presence";
+import { notebookPeers, sheetTrash } from "@/lib/notebook-organize";
 import { storageOverview } from "@/lib/storage-overview";
 import { offlineChanges, parseSince } from "@/lib/offline-changes";
 import { offlineAssets } from "@/lib/offline-assets-server";
@@ -60,6 +61,7 @@ import { runSpaceGitExport, spaceGitOverview, spaceGitStatus } from "@/lib/space
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { storeUpload } from "@/lib/page-upload";
+import { createTemplate, libraryFile } from "@/lib/notebook-library";
 import {
   requireUser,
   checkOrigin,
@@ -443,6 +445,15 @@ async function handleGET(
       // Journal days: hidden, one dot per month or each day.
       const days = z.enum(["hide", "month", "show"]).catch("hide").parse(url.searchParams.get("days") || "hide");
       return NextResponse.json(await pageGraph(user, wid, { days }), { headers: { "Cache-Control": "no-store" } });
+    }
+    // The page overview of a notebook (lib/notebook-organize.ts): pages for
+    // its pickers, or its deleted sheets.
+    if (path.length === 3 && path[0] === "pages" && path[2] === "notebook") {
+      const page = await requirePage(user, z.uuid().parse(path[1]));
+      await requireUnlocked(user, page);
+      if (page.kind !== "notebook") throw new HttpError(400, "Kein Notizbuch.");
+      const part = z.enum(["peers", "trash"]).parse(url.searchParams.get("part"));
+      return NextResponse.json(part === "peers" ? await notebookPeers(user, page) : { trash: await sheetTrash(page) }, { headers: { "Cache-Control": "no-store" } });
     }
     if (path.length === 3 && path[0] === "pages" && path[2] === "unlinked") {
       const page = await requirePage(user, z.uuid().parse(path[1]));
@@ -962,7 +973,8 @@ async function handleGET(
     }
     if (path.length === 3 && path[0] === "whiteboards" && path[2] === "cursors") {
       const page = await requirePage(user, z.uuid().parse(path[1]));
-      if (page.kind !== "whiteboard") throw new HttpError(400, "Kein Whiteboard.");
+      // Notebooks share the channel: presenting and following (components/notebook).
+      if (page.kind !== "whiteboard" && page.kind !== "notebook") throw new HttpError(400, "Kein Whiteboard.");
       await requireUnlocked(user, page);
       const boardAllowed = streamGuard(
         hash((await cookies()).get(cookieName)?.value || ""),
@@ -1111,6 +1123,20 @@ async function handleGET(
       const ids = (url.searchParams.get("ids") || "").split(",").filter(Boolean);
       if (ids.length > MAX_PLACEHOLDER_IDS) throw new HttpError(400, "Ungültige Eingabe.");
       return NextResponse.json({ placeholders: await placeholdersFor(user, ids) }, { headers: { "Cache-Control": "private, no-store" } });
+    }
+    // Pictures of own stickers and paper templates of notebooks.
+    if (path.length === 2 && path[0] === "notebook-library") {
+      const asset = await libraryFile(user, path[1]);
+      return new Response(new Uint8Array(asset.data), {
+        headers: {
+          "Content-Type": /^image\/(png|jpeg|gif|webp)$/.test(asset.mime) ? asset.mime : "application/octet-stream",
+          "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(asset.name)}`,
+          "Cache-Control": "private, max-age=3600",
+          "X-Content-Type-Options": "nosniff",
+          "Content-Security-Policy": "default-src 'none'; sandbox",
+          "Cross-Origin-Resource-Policy": "same-origin",
+        },
+      });
     }
     if (path[0] === "files" && path[1]) {
       const file = await one<{
@@ -1281,12 +1307,17 @@ async function handlePOST(
       if (Number(req.headers.get("content-length") || 0) > 512)
         throw new HttpError(413, "Cursoranfrage zu groß.");
       const page = await requirePage(user, z.uuid().parse(path[1]));
-      if (page.kind !== "whiteboard") throw new HttpError(400, "Kein Whiteboard.");
+      if (page.kind !== "whiteboard" && page.kind !== "notebook") throw new HttpError(400, "Kein Whiteboard.");
+      // A notebook's presenter: the sheet shown and since when (follow mode).
+      if (page.kind === "notebook") await requireUnlocked(user, page);
       const body = z
         .object({
           x: z.number().finite().min(-1e7).max(1e7),
           y: z.number().finite().min(-1e7).max(1e7),
           laser: z.boolean().optional(),
+          sheet: z.string().regex(/^[\w-]{1,40}$/).optional(),
+          present: z.number().int().min(0).max(1e14).optional(),
+          mark: z.boolean().optional(),
           view: z
             .object({
               x: z.number().finite().min(-1e7).max(1e7),
@@ -1638,6 +1669,28 @@ async function handlePOST(
       const result = await endMySessions(user, jar.get(cookieName)?.value, await req.json().catch(() => ({})));
       if (result.current) jar.delete(cookieName);
       return NextResponse.json(result);
+    }
+    // A new own paper template of notebooks (lib/notebook-library.ts).
+    if (path.length === 1 && path[0] === "notebook-library") {
+      if (user.demo || user.apiScope === "clipper") throw new HttpError(403, "Hier nicht verfügbar.");
+      requireBodySize(req, 21 * 1024 * 1024, "Maximal 20 MB pro Vorlage.");
+      const data = await req.formData();
+      const file = data.get("file");
+      if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
+      const bytes = Buffer.from(await file.arrayBuffer());
+      return NextResponse.json(
+        await transaction(
+          async () =>
+            await createTemplate(user, {
+              pageId: data.get("pageId"),
+              name: data.get("name"),
+              fit: data.get("fit"),
+              pdfPage: data.get("pdfPage"),
+              file: { name: file.name, type: file.type, bytes },
+            }),
+          user,
+        ),
+      );
     }
     if (path[0] === "upload") {
       const data = await req.formData();

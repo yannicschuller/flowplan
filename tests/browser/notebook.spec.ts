@@ -325,6 +325,46 @@ test("without the app there is no Convert to text", async ({ page }, info) => {
   await expect(bar.getByRole("button", { name: "In Text umwandeln" })).toHaveCount(0);
 });
 
+test("lasso: tap selects one stroke, turn with the handle, cut and paste onto another sheet, each one undo step", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "Pen input runs on the desktop project.");
+  const { create } = await setup(page);
+  const id = await create(`Lasso ${Date.now()}`, "notebook");
+  const tools = await openNotebook(page, id);
+  const controls = page.getByRole("toolbar", { name: "Notizbuch" });
+  const cdp = await page.context().newCDPSession(page);
+  const box = (await sheet(page, 0).boundingBox())!;
+  await pen(cdp, path({ x: box.x + 100, y: box.y + 150 }, { x: box.x + 300, y: box.y + 160 }));
+  await pen(cdp, path({ x: box.x + 100, y: box.y + 300 }, { x: box.x + 300, y: box.y + 310 }));
+  await expect(strokes(sheet(page, 0))).toHaveCount(2);
+  await tools.getByRole("radio", { name: "Lasso", exact: true }).click();
+  // A tap on the first stroke picks only it.
+  await page.mouse.click(box.x + 200, box.y + 155 + Math.sin(7) * 5);
+  const bar = page.getByRole("toolbar", { name: "Auswahl" });
+  await expect(bar).toBeVisible();
+  await expect(sheet(page, 0).locator(".ink-handle")).toHaveCount(5);
+  // Turn by the handle above the box: one undo step.
+  const handle = (await sheet(page, 0).locator(".ink-handle-rotate").boundingBox())!;
+  const before = await strokes(sheet(page, 0)).first().getAttribute("d");
+  await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(handle.x + 150, handle.y + 80, { steps: 8 });
+  await page.mouse.up();
+  await expect.poll(() => strokes(sheet(page, 0)).first().getAttribute("d")).not.toBe(before);
+  await tools.getByRole("button", { name: "Rückgängig" }).click();
+  await expect.poll(() => strokes(sheet(page, 0)).first().getAttribute("d")).toBe(before);
+  // Cut, then paste onto a second sheet.
+  await page.mouse.click(box.x + 200, box.y + 155 + Math.sin(7) * 5);
+  await bar.getByRole("button", { name: "Ausschneiden" }).click();
+  await expect(strokes(sheet(page, 0))).toHaveCount(1);
+  await page.locator(".notebook-add-end").click();
+  await expect(page.locator(".notebook-sheet")).toHaveCount(2);
+  const second = (await sheet(page, 1).boundingBox())!;
+  await page.mouse.click(second.x + 40, second.y + 40);
+  await tools.getByRole("button", { name: "Einfügen" }).click();
+  await expect(strokes(sheet(page, 1))).toHaveCount(1);
+  await expect(controls.getByRole("status")).toHaveText("Gespeichert", { timeout: 10_000 });
+});
+
 test("notebooks on the phone: sheets fit the width, the overview opens over them", async ({ page }, info) => {
   test.skip(info.project.name !== "mobile", "The phone layout.");
   const { create } = await setup(page);
@@ -349,8 +389,9 @@ test("the pen settings open under the gear and inside the window, wherever the t
   if (info.project.name === "desktop") await page.getByRole("button", { name: "Navigation schließen", exact: true }).click();
   const gear = tools.getByRole("button", { name: "Stifteinstellungen" });
   await gear.click();
-  const menu = page.getByRole("group", { name: "Stifteinstellungen" });
+  const menu = page.getByRole("dialog", { name: "Stifteinstellungen" });
   await expect(menu.getByText("Formen beim Halten begradigen")).toBeVisible();
+  await expect(menu.getByRole("switch", { name: "Formen beim Halten begradigen" })).toHaveAttribute("aria-checked", "true");
   const view = page.viewportSize()!;
   const at = (await gear.boundingBox())!;
   const box = (await menu.boundingBox())!;
@@ -360,6 +401,57 @@ test("the pen settings open under the gear and inside the window, wherever the t
   expect(Math.abs(box.y - (at.y + at.height))).toBeLessThan(16);
   expect(box.x).toBeLessThanOrEqual(at.x + at.width);
   expect(box.x + box.width).toBeGreaterThanOrEqual(at.x);
+});
+
+test("tool panels: tap the pen again, favourites, eraser kinds and clearing the page", async ({ page }) => {
+  const { create } = await setup(page);
+  const id = await create(`Panels ${Date.now()}`, "notebook");
+  const tools = await openNotebook(page, id);
+  const pen = tools.getByRole("radio", { name: "Stift", exact: true });
+  await expect(pen).toHaveAttribute("aria-checked", "true");
+  // Tapping the pen in hand again opens its panel.
+  await pen.click();
+  const panel = page.getByRole("dialog", { name: "Stift" });
+  await expect(panel.getByRole("slider", { name: "Strichstärke" })).toBeVisible();
+  await panel.getByRole("radio", { name: "Farbe #e03131" }).click();
+  await panel.getByRole("radio", { name: "Breit" }).click();
+  await expect(panel.getByText("3,2 pt")).toBeVisible();
+  // Kept as a favourite: a chip in the toolbar row too.
+  await panel.getByRole("button", { name: "Als Lieblingsstift speichern" }).click();
+  await expect(tools.getByRole("group", { name: "Lieblingsstifte" }).getByRole("button", { name: /Lieblingsstift 4: Stift, #e03131, 3,2 pt/ })).toHaveAttribute("aria-pressed", "true");
+  // Removed again in the list.
+  await panel.getByRole("button", { name: "Lieblingsstifte bearbeiten" }).click();
+  await panel.getByRole("button", { name: "Stift, #e03131, 3,2 pt entfernen" }).click();
+  await panel.getByRole("button", { name: "Fertig" }).click();
+  await expect(tools.getByRole("button", { name: /Lieblingsstift 4/ })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(panel).toHaveCount(0);
+
+  // A stroke, then the eraser's panel: "Nur Textmarker" leaves pen ink alone, "Seite leeren" takes it.
+  const sheetBox = (await page.locator(".notebook-sheet").first().boundingBox())!;
+  await page.mouse.move(sheetBox.x + 100, sheetBox.y + 150);
+  await page.mouse.down();
+  await page.mouse.move(sheetBox.x + 300, sheetBox.y + 160, { steps: 8 });
+  await page.mouse.up();
+  const lines = strokes(sheet(page, 0));
+  await expect(lines).toHaveCount(1);
+  const eraser = tools.getByRole("radio", { name: "Radierer", exact: true });
+  await eraser.click();
+  await eraser.click();
+  const eraserPanel = page.getByRole("dialog", { name: "Radierer" });
+  await eraserPanel.getByRole("radio", { name: "Nur Textmarker" }).click();
+  await page.keyboard.press("Escape");
+  await page.mouse.move(sheetBox.x + 200, sheetBox.y + 120);
+  await page.mouse.down();
+  await page.mouse.move(sheetBox.x + 200, sheetBox.y + 200, { steps: 8 });
+  await page.mouse.up();
+  await expect(lines).toHaveCount(1);
+  await eraser.click();
+  await eraserPanel.getByRole("button", { name: "Seite leeren …" }).click();
+  await eraserPanel.getByRole("button", { name: "Seite leeren", exact: true }).click();
+  await expect(lines).toHaveCount(0);
+  await tools.getByRole("button", { name: "Rückgängig" }).click();
+  await expect(lines).toHaveCount(1);
 });
 
 test("screenshots: iPad and desktop, light and dark", async ({ page }, info) => {
@@ -420,6 +512,161 @@ test("screenshots: iPad and desktop, light and dark", async ({ page }, info) => 
   await pen(cdp, path({ x: area.x + 60, y: area.y + 70 }, { x: area.x + 380, y: area.y + 90 }, 30));
   await pen(cdp, path({ x: area.x + 60, y: area.y + 140 }, { x: area.x + 300, y: area.y + 150 }, 30));
   await page.screenshot({ path: `${shots}/notebook-draw-block-desktop-light.png` });
+});
+
+test("pictures and stickers: upload, frame (resize, front/back), sticker panel, saved and back after a reload", async ({ page }) => {
+  const { create } = await setup(page);
+  const id = await create("Bilderheft", "notebook");
+  await openNotebook(page, id);
+  // A picture from a file: a 2 × 2 PNG.
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGP4z8DAwMDAxMDAwMDAAAANHQEDasKb6QAAAABJRU5ErkJggg==", "base64");
+  await page.getByRole("button", { name: "Bild oder Sticker einfügen" }).click();
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("menuitem", { name: "Bild aus Datei …" }).click();
+  await (await chooser).setFiles({ name: "punkt.png", mimeType: "image/png", buffer: png });
+  const pictures = sheet(page, 0).locator(".ink-strokes [data-image] image");
+  await expect(pictures).toHaveCount(1);
+  // In its frame: the bar offers crop, order, opacity, duplicate, delete.
+  await expect(page.getByRole("button", { name: "Zuschneiden" })).toBeVisible();
+  await page.getByRole("button", { name: "Duplizieren" }).click();
+  await expect(pictures).toHaveCount(2);
+  await page.keyboard.press("Delete");
+  await expect(pictures).toHaveCount(1);
+  // A built-in sticker.
+  await page.getByRole("button", { name: "Bild oder Sticker einfügen" }).click();
+  await page.getByRole("menuitem", { name: "Sticker …" }).click();
+  await page.getByRole("listitem", { name: "Herz" }).click();
+  await expect(sheet(page, 0).locator(".ink-strokes [data-image]")).toHaveCount(2);
+  await expect(page.locator(".notebook-status")).toHaveText("Gespeichert", { timeout: 15_000 });
+  await page.reload();
+  await expect(sheet(page, 0).locator(".ink-strokes [data-image]")).toHaveCount(2, { timeout: 30_000 });
+});
+
+test("page overview: bookmark, filter, select and delete with undo, contents, presenting", async ({ page }, info) => {
+  test.skip(info.project.name.includes("mobile"), "desktop layout");
+  const { command, create } = await setup(page);
+  const id = await create("Übersicht", "notebook");
+  await command({ action: "notebook.sheet.add", pageId: id, count: 5 });
+  await openNotebook(page, id, 6);
+  await page.getByRole("button", { name: "Alle Blätter und Inhalt" }).click();
+  const overview = page.getByRole("dialog", { name: "Seitenübersicht" });
+  await expect(overview.locator(".notebook-cell")).toHaveCount(6);
+  // Bookmark sheet 2 and filter.
+  await overview.locator('.notebook-cell[data-index="1"]').hover();
+  await overview.getByRole("button", { name: "Blatt 2 als Lesezeichen" }).click();
+  await overview.getByRole("button", { name: "Nur Lesezeichen" }).click();
+  await expect(overview.locator(".notebook-cell")).toHaveCount(1);
+  await overview.getByRole("button", { name: "Nur Lesezeichen" }).click();
+  // Select sheets 3–5 with Shift, delete, undo.
+  await overview.getByRole("button", { name: "Auswählen" }).click();
+  await overview.locator('.notebook-cell[data-index="2"] .notebook-cell-open').click();
+  await overview.locator('.notebook-cell[data-index="4"] .notebook-cell-open').click({ modifiers: ["Shift"] });
+  await expect(overview.getByText("3 ausgewählt")).toBeVisible();
+  // Paper for the three: the dialog says so and changes only them.
+  await overview.getByRole("button", { name: "Papier …" }).click();
+  const paperDialog = page.getByRole("dialog", { name: "Papier" });
+  await expect(paperDialog.getByText("3 Blätter", { exact: true })).toBeVisible();
+  await paperDialog.getByText("Gepunktet", { exact: true }).click();
+  await paperDialog.getByRole("button", { name: "Übernehmen" }).click();
+  await expect(paperDialog).toHaveCount(0);
+  const papers = (await (await page.request.get(`/api/pages/${id}`)).json()).notebook.sheets.map((s: { paper?: unknown }) => s.paper);
+  expect(papers.slice(2, 5)).toEqual([{ template: "dotted" }, { template: "dotted" }, { template: "dotted" }]);
+  expect(papers[1]).toEqual({});
+  await overview.getByRole("button", { name: "Löschen" }).click();
+  await expect(overview.locator(".notebook-cell")).toHaveCount(3);
+  await page.getByRole("button", { name: "Rückgängig" }).click();
+  await expect(overview.locator(".notebook-cell")).toHaveCount(6);
+  // Keyboard reorder: Alt+→ moves sheet 1 behind sheet 2.
+  await overview.getByRole("button", { name: "Fertig" }).click();
+  await overview.locator('.notebook-cell[data-index="0"] .notebook-cell-open').focus();
+  await page.keyboard.press("Alt+ArrowRight");
+  await expect(overview.locator('.notebook-cell[data-index="0"]')).toHaveAttribute("data-sheet", /./);
+  // Contents.
+  await overview.getByRole("tab", { name: "Inhalt" }).click();
+  await overview.getByRole("button", { name: /als Kapitel/ }).click();
+  await page.getByLabel("Titel des Kapitels").fill("Einleitung");
+  await page.getByRole("button", { name: "Hinzufügen" }).click();
+  await expect(overview.getByRole("button", { name: /Einleitung/ })).toBeVisible();
+  await page.keyboard.press("Escape");
+  // Presenting: full screen view, next sheet, Escape ends.
+  await page.getByRole("button", { name: "Präsentieren" }).click();
+  const show = page.locator(".notebook-presentation");
+  await expect(show).toBeVisible();
+  await page.keyboard.press("PageDown");
+  await expect(show.locator(".notebook-presentation-count")).toHaveText("2 / 6");
+  await page.keyboard.press("Escape");
+  await expect(show).toHaveCount(0);
+});
+
+test("notebook: shapes snap when holding, stay editable, and the ruler straightens strokes", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "Pen input runs on the desktop project.");
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const { create } = await setup(page);
+  const id = await create(`Formen ${Date.now()}`, "notebook");
+  const tools = await openNotebook(page, id);
+  const box = (await sheet(page, 0).boundingBox())!;
+  // A rough rectangle, held at the end: a rectangle shape.
+  const ring = [
+    { x: box.x + 80, y: box.y + 100 },
+    { x: box.x + 300, y: box.y + 104 },
+    { x: box.x + 298, y: box.y + 220 },
+    { x: box.x + 82, y: box.y + 218 },
+    { x: box.x + 81, y: box.y + 102 },
+  ];
+  await page.mouse.move(ring[0].x, ring[0].y);
+  await page.mouse.down();
+  for (const p of ring.slice(1)) await page.mouse.move(p.x, p.y, { steps: 8 });
+  await page.waitForTimeout(800);
+  await page.mouse.up();
+  await expect(page.getByRole("toolbar", { name: "Notizbuch" }).getByRole("status")).toHaveText("Gespeichert", { timeout: 10_000 });
+  let data = await (await page.request.get(`/api/pages/${id}`)).json();
+  const surface = data.notebook.sheets[0].id;
+  expect(data.notebook.sheets[0].ink.pages[surface][0].shape.kind).toBe("rect");
+  // The lasso picks it with a tap; the bar fills it.
+  await tools.getByRole("radio", { name: "Lasso" }).click();
+  await page.mouse.click(box.x + 190, box.y + 102);
+  const bar = page.getByRole("toolbar", { name: "Form bearbeiten" });
+  await expect(bar).toBeVisible();
+  await bar.getByRole("button", { name: "Füllung" }).click();
+  await bar.getByRole("button", { name: "Füllung #e03131" }).click();
+  await expect.poll(async () => (await (await page.request.get(`/api/pages/${id}`)).json()).notebook.sheets[0].ink.pages[surface][0].shape.fill, { timeout: 10_000 }).toBe("#e03131");
+  // The ruler: a wavy stroke along its top edge becomes straight.
+  await tools.getByRole("radio", { name: "Stift", exact: true }).click();
+  await tools.getByRole("button", { name: "Lineal einblenden" }).click();
+  const ruler = (await page.locator(".ink-ruler-body rect").boundingBox())!;
+  const y = ruler.y - 6;
+  await page.mouse.move(ruler.x + 40, y);
+  await page.mouse.down();
+  for (let i = 1; i <= 12; i++) await page.mouse.move(ruler.x + 40 + i * 15, y - Math.sin(i) * 6);
+  await expect(page.locator(".ink-measure").filter({ hasText: "cm" })).toBeVisible();
+  await page.mouse.up();
+  await expect.poll(async () => {
+    const d = await (await page.request.get(`/api/pages/${id}`)).json();
+    const items = d.notebook.sheets[0].ink.pages[surface];
+    const ys = items[items.length - 1].points.filter((_: number, i: number) => i % 3 === 1);
+    return items.length === 2 && Math.max(...ys) - Math.min(...ys) < 0.5;
+  }, { timeout: 10_000 }).toBe(true);
+  await tools.getByRole("button", { name: "Lineal ausblenden" }).click();
+  // The shape tool's panel (tap the tool again): kind, fill, line style; then drag.
+  await tools.getByRole("radio", { name: "Formen" }).click();
+  await tools.getByRole("radio", { name: "Formen" }).click();
+  const panel = page.getByRole("dialog", { name: "Formen" });
+  await panel.getByRole("radio", { name: "Ellipse" }).click();
+  await panel.getByRole("switch", { name: "Füllen" }).click();
+  await panel.getByRole("radio", { name: "Gestrichelt" }).click();
+  await panel.getByRole("button", { name: "Schließen" }).click();
+  await page.mouse.move(box.x + 120, box.y + 320);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 260, box.y + 400, { steps: 8 });
+  await page.mouse.up();
+  await expect.poll(async () => {
+    const d = await (await page.request.get(`/api/pages/${id}`)).json();
+    const items = d.notebook.sheets[0].ink.pages[surface];
+    const last = items[items.length - 1];
+    return `${last.shape?.kind} ${!!last.shape?.fill} ${last.shape?.dash}`;
+  }, { timeout: 10_000 }).toBe("ellipse true dash");
+  expect(errors).toEqual([]);
 });
 
 // Audio recordings (components/notebook/notebook-audio.tsx): Chromium's fake

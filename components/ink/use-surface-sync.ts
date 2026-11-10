@@ -110,7 +110,8 @@ export function useSurfaceSync({
       try {
         const doc = emptyInk();
         if (snapshot.length) doc.pages[surface] = snapshot;
-        const result = await api<SaveAnswer>(surfaceUrl(page, surface), { base: base.version, doc });
+        // `knows`: this version handles pictures (the server keeps them for older ones).
+        const result = await api<SaveAnswer>(surfaceUrl(page, surface), { base: base.version, doc, knows: ["image"] });
         let items = snapshot;
         if (result.doc) {
           // Someone saved in between: theirs merged with ours (server), and

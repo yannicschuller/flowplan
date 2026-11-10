@@ -70,7 +70,10 @@ export const commandActionNames = [
   "row.template.save", "row.template.default", "row.template.delete", "row.template.apply", "row.trash.restore", "row.trash.purge",
   "rows.import", "rows.bulk", "rows.transfer", "timeline.cascade", "timeline.link",
   "citation.import", "citation.remove", "whiteboard.sync", "whiteboard.toRecords", "dashboard.save",
-  "notebook.paper", "notebook.sheet.add", "notebook.sheet.duplicate", "notebook.sheet.delete", "notebook.sheet.move", "notebook.sheet.paper", "notebook.import", "search.save", "search.delete",
+  "notebook.paper", "notebook.sheet.add", "notebook.sheet.duplicate", "notebook.sheet.delete", "notebook.sheet.move", "notebook.sheet.paper", "notebook.import",
+  "notebook.pictures", "notebook.stickers", "notebook.sticker.save", "notebook.sticker.rename", "notebook.sticker.delete", "notebook.sticker.insert", "notebook.templates", "notebook.template.update", "notebook.template.delete",
+  "notebook.sheet.meta", "notebook.sheet.links", "notebook.outline", "notebook.outline.add", "notebook.sheets.duplicate", "notebook.sheets.delete",
+  "notebook.trash.restore", "notebook.sheets.transfer", "search.save", "search.delete",
   "collection.create", "collection.update", "collection.delete", "collection.restore", "collection.duplicate", "collection.reorder",
   "thread.create", "thread.reply", "thread.resolve", "thread.edit", "thread.deleteMessage", "thread.react",
   "comment.create", "comment.resolve", "comment.react", "reminder.set",
@@ -723,7 +726,7 @@ export const commandActions: ActionDoc[] = [
     action: "notebook.sheet.add",
     summary: "Add sheets to a notebook page",
     description:
-      "Needs editor rights. Adds `count` (default 1) empty sheets after the sheet `after` (null or missing: at the end; `at` = start: before the first sheet), optionally with their own `paper` (template blank, lined-college, lined-wide, grid, dotted, cornell, music; size a4 or letter; orientation portrait or landscape; color light or dark). The ink of a sheet is read and written with GET/POST /api/pages/{id}/ink?surface={sheetId}. Other notebook actions: notebook.sheet.duplicate {sheetId}, notebook.sheet.delete {sheetId}, notebook.sheet.move {order}, notebook.sheet.paper {sheetIds, paper|null}, notebook.paper {paper, all?}, notebook.import {fileId (a PDF attached to the page), pages: [{width, height}] (at most 500), after? or at = start, replaceEmpty?} – each PDF page becomes a sheet with that page as background; all answer with the notebook's paper and sheets.",
+      "Needs editor rights. Adds `count` (default 1) empty sheets after the sheet `after` (null or missing: at the end; `at` = start: before the first sheet), optionally with their own `paper` (template blank, lined-college, lined-wide, grid, dotted, cornell, music; size a4 or letter; orientation portrait or landscape; color light or dark). The ink of a sheet is read and written with GET/POST /api/pages/{id}/ink?surface={sheetId}. Other notebook actions: notebook.sheet.duplicate {sheetId}, notebook.sheet.delete {sheetId}, notebook.sheet.move {order}, notebook.sheet.paper {sheetIds, paper|null}, notebook.paper {paper, all?}, notebook.import {fileId (a PDF attached to the page), pages: [{width, height}] (at most 500), after? or at = start, replaceEmpty?} – each PDF page becomes a sheet with that page as background. Organising: notebook.sheet.meta {sheetIds, title? (one sheet), bookmark?}, notebook.sheet.links {sheetId, links: [{id, x, y, w, h, label?, target: {sheet} | {page}}]}, notebook.outline {outline: [{id, sheet, title, level 0–2, y?}]} (the table of contents), notebook.outline.add {sheetId, title, level?, y?}, notebook.sheets.duplicate {sheetIds}, notebook.sheets.delete {sheetIds} (into the notebook's trash, kept 30 days; answers `trashed`), notebook.trash.restore {trashIds}, notebook.sheets.transfer {sheetIds, targetPageId, mode copy|move, after? or at = start} (editor rights on the target, and on the source to move). All answer with the notebook's paper, sheets (with title, bookmark, links where set) and outline.",
     input: z.object({
       action: z.literal("notebook.sheet.add"),
       pageId: uuid,
@@ -742,7 +745,18 @@ export const commandActions: ActionDoc[] = [
     result: z.object({
       created: z.array(z.string()),
       paper: z.object({ template: z.string(), size: z.string(), orientation: z.string(), color: z.string() }),
-      sheets: z.array(z.object({ id: z.string(), position: z.number(), paper: z.object({}).passthrough(), background: z.object({}).passthrough().nullable() })),
+      sheets: z.array(
+        z.object({
+          id: z.string(),
+          position: z.number(),
+          paper: z.object({}).passthrough(),
+          background: z.object({}).passthrough().nullable(),
+          title: z.string().optional(),
+          bookmark: z.boolean().optional(),
+          links: z.array(z.object({}).passthrough()).optional(),
+        }),
+      ),
+      outline: z.array(z.object({ id: z.string(), sheet: z.string(), title: z.string(), level: z.number(), y: z.number().optional() })).optional(),
     }),
   },
   {
@@ -1543,6 +1557,8 @@ const operations: { path: string; method: "get" | "post"; op: Op }[] = [
   { path: "/api/files/{fileId}", method: "get", op: { id: "getFile", tag: "Files", summary: "Download a file", description: "Needs read access to the page the file belongs to. Supports `Range` requests.", params: [p("fileId", "File ID")], ok: { content: "application/octet-stream", description: "The file with its own content type" }, errors: [401, 403, 404] } },
   { path: "/api/upload", method: "post", op: { id: "uploadFile", tag: "Files", summary: "Upload a file to a page", description: "The size limit is the person's upload limit (default 50 MB). Photos lose their location data. `purpose=cover` requires an image. Pages of encrypted spaces take only client-encrypted files with `purpose=e2ee`.", write: true, body: { content: "multipart/form-data", schema: { type: "object", properties: { pageId: { type: "string", format: "uuid" }, file: { type: "string", format: "binary" }, purpose: { type: "string", enum: ["cover", "e2ee"] } }, required: ["pageId", "file"] }, required: true }, ok: { schema: ref("FileInfo"), description: "The stored file" }, errors: [400, 401, 403, 404, 409, 413] } },
   { path: "/api/files/placeholders", method: "get", op: { id: "imagePlaceholders", tag: "Files", summary: "Placeholders of images", description: "Size and ThumbHash of uploaded images, for showing a blurred preview in the right proportions while the image loads. `ids` lists up to 100 file IDs and `avatar:<user ID>` entries. Only files you may download and profile pictures you may see are answered; anything else is left out, as are files without a placeholder. Placeholders of older files are computed on the first request.", params: [q("ids", "Comma-separated file IDs and `avatar:<user ID>` entries", { type: "string" }, true)], ok: { schema: { type: "object", properties: { placeholders: { type: "object", additionalProperties: ref("ImagePlaceholder") } }, required: ["placeholders"] }, description: "Placeholders by ID" }, errors: [400, 401] } },
+  { path: "/api/notebook-library", method: "post", op: { id: "createNotebookTemplate", tag: "Files", summary: "Add an own paper template for notebooks", description: "Needs editor rights in the workspace of the notebook page `pageId` (not guests). `file` is a picture (PNG, JPEG, WebP) or a PDF; of a PDF only page `pdfPage` (default 1) is kept. `fit` is stretch (default) or tile. Checked like uploads (type from the content, no photo location) and counted against the workspace quota and the person's storage; at most 20 MB and 200 templates per workspace. Choose it for sheets with `paper.image = {template, fit?}` in notebook.paper, notebook.sheet.paper or notebook.sheet.add: the template is copied onto the page. Listed with notebook.templates, changed with notebook.template.update and notebook.template.delete.", write: true, body: { content: "multipart/form-data", schema: { type: "object", properties: { pageId: { type: "string", format: "uuid" }, file: { type: "string", format: "binary" }, name: { type: "string", maxLength: 120 }, fit: { type: "string", enum: ["stretch", "tile"] }, pdfPage: { type: "integer", minimum: 1 } }, required: ["pageId", "file"] }, required: true }, ok: { schema: { type: "object", additionalProperties: true }, description: "The new template" }, errors: [400, 401, 403, 404, 409, 413] } },
+  { path: "/api/notebook-library/{assetId}", method: "get", op: { id: "notebookLibraryFile", tag: "Files", summary: "Picture of an own sticker or paper template", description: "Stickers only for the person they belong to, paper templates for members of their workspace.", params: [p("assetId", "Sticker or template ID")], ok: { content: "application/octet-stream", description: "The picture or PDF page" }, errors: [401, 403, 404] } },
   { path: "/api/avatars/{userId}", method: "get", op: { id: "avatar", tag: "Files", summary: "Profile picture of a person you share a workspace with", params: [p("userId", "User ID")], ok: { content: "image/*", description: "The picture" }, errors: [401, 404] } },
   // Import and export
   { path: "/api/export/docx", method: "get", op: { id: "exportDocx", tag: "Import and export", summary: "A page or record as a Word file", description: "Reads only, so read tokens may use it. `row` picks one record of the database `page`.", params: [q("page", "Page ID", { type: "string", format: "uuid" }, true), q("row", "Record ID (one record of the database)", { type: "string", format: "uuid" })], ok: { content: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", description: "The DOCX file (Content-Disposition: attachment)" }, errors: [400, 401, 403, 404, 413] } },

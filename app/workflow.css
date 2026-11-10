@@ -707,6 +707,21 @@
   color: var(--wf-error);
   font-size: 12px;
 }
+/* A part of the builder that failed (part-boundary.tsx). */
+.wf-part-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--wf-error);
+  border-radius: 8px;
+  color: var(--wf-error);
+  font-size: 13px;
+}
+.wf-part-error code {
+  overflow-wrap: anywhere;
+}
 .wf-group,
 .wf-list,
 .wf-checks {

@@ -1,11 +1,12 @@
-// Ink tools, colours, widths and the per-device choices: three favourite
-// pens, the text style, own colours used lately and what the Apple
+// Ink tools, colours, widths and the per-device choices: the three favourite
+// pens of earlier versions (now favorites.ts), the text style, own colours used lately and what the Apple
 // Pencil's double-tap or squeeze does.
 import type { PencilAction } from "../stylus";
 import { isInkFont, type InkFont } from "./fonts";
 
-export type InkTool = "pen" | "highlighter" | "eraser" | "lasso" | "text" | "laser";
-export type EraserMode = "stroke" | "partial";
+// "shape": draws shapes (or recognises a stroke at once), with the pen's colour and width.
+export type InkTool = "pen" | "highlighter" | "eraser" | "lasso" | "text" | "laser" | "shape";
+export type { EraserMode } from "./eraser";
 export type InkPreset = { type: "pen" | "highlighter"; color: string; width: number };
 
 export const PEN_COLORS = ["#1f1f1f", "#1c5fd6", "#e03131", "#2f9e44", "#f08c00", "#7048e8"];

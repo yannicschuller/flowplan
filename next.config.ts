@@ -42,7 +42,11 @@ const config: NextConfig = {
   // runtime and falls back to JavaScript when they are missing.
   // pg (DATABASE_URL=postgres://…, lib/db-driver) loads its optional native
   // binding at runtime and falls back to JavaScript.
-  serverExternalPackages: ["node:sqlite", "pdfjs-dist", "tesseract.js", "ssh2", "pg"],
+  // yjs: bundled, every server layer (instrumentation and its workers, route
+  // handlers, server components, server rendering) evaluated its own copy –
+  // "Yjs was already imported" in the log, and a Y.Doc of one copy fails the
+  // constructor checks of another (#194). External, Node.js loads it once.
+  serverExternalPackages: ["node:sqlite", "pdfjs-dist", "tesseract.js", "ssh2", "pg", "yjs"],
   // The PDF text worker loads pdf.js and its worker module at runtime.
   outputFileTracingIncludes: {
     "/*": [

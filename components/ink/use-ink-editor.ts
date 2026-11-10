@@ -2,11 +2,15 @@
 // The state of an ink editing session shared by the ink layers of all pages
 // and the toolbar: the ink, undo/redo, tool, colours, favourites, selection
 // and clipboard. See lib/ink/README.md.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { copyItems, itemBounds, recolorItems, unionBox } from "@/lib/ink/geometry";
 import { emptyHistory, record, redo as redoStep, undo as undoStep, type History } from "@/lib/ink/history";
 import { withPage, type InkDoc, type InkItem, type InkRec } from "@/lib/ink/model";
 import { stampNewItems } from "@/lib/ink/audio-sync";
+import { inkClipboard, setInkClipboard, subscribeInkClipboard } from "@/lib/ink/clipboard";
+import { fitOnPage, reorderItems, setItemsWidth, transformSelected, translation, type Affine } from "@/lib/ink/selection";
+import type { PageSize } from "@/lib/ink/coords";
+import { writeSystemClipboard } from "./system-clipboard";
 import {
   DEFAULT_PRESETS,
   HIGHLIGHTER_COLORS,
@@ -15,26 +19,36 @@ import {
   PEN_WIDTHS,
   TEXT_SIZES,
   WIDTH_RANGES,
-  loadPresets,
   loadRecentColors,
   loadTextStyle,
   rememberColor,
   saveTextStyle,
   pencilResult,
   pencilSetting,
-  savePresets,
   setPencilSetting,
   setSnapSetting,
   snapSetting,
-  type EraserMode,
-  type InkPreset,
   type InkTool,
   type PencilSetting,
 } from "@/lib/ink/presets";
 import type { InkFont } from "@/lib/ink/fonts";
+import { clampEraserSize, loadEraserSetting, saveEraserSetting, type EraserMode } from "@/lib/ink/eraser";
+import {
+  DEFAULT_FAVORITES,
+  MAX_FAVORITES,
+  addFavorite as addTo,
+  favoriteIndex,
+  loadFavorites,
+  moveFavorite as moveIn,
+  removeFavorite as removeFrom,
+  saveFavorites,
+  type InkFavorite,
+} from "@/lib/ink/favorites";
 import { forgetPen, onPencilAction, penOnlySetting, setPenOnly as storePenOnly } from "@/lib/stylus";
 
 export type InkSelection = { page: string; ids: string[] };
+// The picture or sticker in its frame (components/ink/ink-picture.tsx).
+export type InkPicked = { page: string; id: string };
 // Width: line width, or the font size of text; font: text only.
 type Style = { color: string; width: number; font?: InkFont };
 
@@ -58,20 +72,34 @@ export function useInkEditor(initial: InkDoc, { active = true }: { active?: bool
   const [highlighter, setHighlighter] = useState<Style>({ color: HIGHLIGHTER_COLORS[0], width: HIGHLIGHTER_WIDTHS[1] });
   const [text, setText] = useState<Style>({ color: PEN_COLORS[0], width: TEXT_SIZES[1] });
   const [recentColors, setRecentColors] = useState<string[]>([]);
-  const [presets, setPresets] = useState<InkPreset[]>(DEFAULT_PRESETS);
-  const [preset, setPreset] = useState<number | null>(0);
-  const [eraserMode, setEraserMode] = useState<EraserMode>("stroke");
+  const [favorites, setFavoritesState] = useState<InkFavorite[]>(DEFAULT_FAVORITES);
+  const [eraserMode, setEraserModeState] = useState<EraserMode>("stroke");
+  const [eraserSize, setEraserSizeState] = useState<number>(10);
   const [penOnly, setPenOnlyState] = useState(false);
   const [snap, setSnapState] = useState(true);
   const [pencil, setPencilState] = useState<PencilSetting>("system");
-  const [selection, setSelection] = useState<InkSelection | null>(null);
-  const [clipboard, setClipboard] = useState<InkItem[] | null>(null);
+  const [selection, setSelectionState] = useState<InkSelection | null>(null);
+  const [picked, setPicked] = useState<InkPicked | null>(null);
+  // A selection by the lasso and a picture in its frame are never both shown.
+  const setSelection = useCallback((next: InkSelection | null) => {
+    setSelectionState(next);
+    if (next) setPicked(null);
+  }, []);
+  // Shared by the ink editors of this tab (lib/ink/clipboard.ts).
+  const clipboard = useSyncExternalStore(subscribeInkClipboard, inkClipboard, () => null);
+  const setClipboard = setInkClipboard;
   const lastPage = useRef<string>("1");
+  // The size of each page shown (InkLayer fills it in): pastes stay on the page.
+  const pageSizes = useRef(new Map<string, PageSize>());
   // Choices remembered on this device.
   useEffect(() => {
-    const stored = loadPresets();
-    setPresets(stored);
-    setPen({ color: stored[0].color, width: stored[0].width });
+    const stored = loadFavorites();
+    setFavoritesState(stored);
+    const firstPen = stored.find((f) => f.type === "pen");
+    if (firstPen) setPen({ color: firstPen.color, width: firstPen.width });
+    const eraser = loadEraserSetting();
+    setEraserModeState(eraser.mode);
+    setEraserSizeState(eraser.size);
     const textStyle = loadTextStyle();
     if (textStyle) setText(textStyle);
     setRecentColors(loadRecentColors());
@@ -127,6 +155,7 @@ export function useInkEditor(initial: InkDoc, { active = true }: { active?: bool
     setDocState(result.state);
     setHistory(result.history);
     setSelection(null);
+    setPicked(null);
   };
   const undo = () => step("undo");
   const redo = () => step("redo");
@@ -136,7 +165,10 @@ export function useInkEditor(initial: InkDoc, { active = true }: { active?: bool
       if (now !== next) previousTool.current = now;
       return next;
     });
-    if (next !== "lasso") setSelection(null);
+    if (next !== "lasso") {
+      setSelection(null);
+      setPicked(null);
+    }
   }, []);
   // The style of the tool in hand (pen, highlighter or text).
   const style = tool === "highlighter" ? highlighter : tool === "text" ? text : pen;
@@ -144,13 +176,6 @@ export function useInkEditor(initial: InkDoc, { active = true }: { active?: bool
   const widths = tool === "highlighter" ? HIGHLIGHTER_WIDTHS : tool === "text" ? TEXT_SIZES : PEN_WIDTHS;
   // The free width (or text size) slider of the tool in hand.
   const widthRange = WIDTH_RANGES[tool === "highlighter" ? "highlighter" : tool === "text" ? "text" : "pen"];
-  // A favourite in hand follows changes of colour and width.
-  const updatePreset = ({ color, width }: Partial<Style>) => {
-    if (preset === null || (tool !== "pen" && tool !== "highlighter") || presets[preset]?.type !== tool) return;
-    const next = presets.map((p, i) => (i === preset ? { ...p, ...(color ? { color } : {}), ...(width ? { width } : {}) } : p));
-    setPresets(next);
-    savePresets(next);
-  };
   const setStyle = (patch: Partial<Style>) => {
     if (tool === "highlighter") setHighlighter((s) => ({ ...s, ...patch }));
     else if (tool === "text") {
@@ -158,22 +183,51 @@ export function useInkEditor(initial: InkDoc, { active = true }: { active?: bool
       setText(next);
       saveTextStyle(next);
     } else setPen((s) => ({ ...s, ...patch }));
-    updatePreset(patch);
   };
   // An own colour (the colour picker) is kept among the recent ones.
   const rememberCustomColor = (color: string) => setRecentColors((list) => rememberColor(color, list));
-  const pickPreset = (index: number) => {
-    const p = presets[index];
-    if (!p) return;
-    if (p.type === "highlighter") setHighlighter({ color: p.color, width: p.width });
-    else setPen({ color: p.color, width: p.width });
-    setPreset(index);
-    setTool(p.type);
+  // ---- Favourite pens (lib/ink/favorites.ts) ----
+  // The tool and style in hand as a favourite (null: a tool without style).
+  const current: InkFavorite | null =
+    tool === "pen" || tool === "highlighter" || tool === "text"
+      ? { type: tool, color: style.color, width: style.width, ...(tool === "text" && style.font ? { font: style.font } : {}) }
+      : null;
+  const favorite = favoriteIndex(favorites, current);
+  const setFavorites = (next: InkFavorite[]) => {
+    setFavoritesState(next);
+    saveFavorites(next);
   };
-  const choose = (next: InkTool) => {
-    // Picking the pen or highlighter by hand leaves the favourites alone.
-    if (next !== tool) setPreset(null);
-    setTool(next);
+  const pickFavorite = (index: number) => {
+    const f = favorites[index];
+    if (!f) return;
+    if (f.type === "highlighter") setHighlighter({ color: f.color, width: f.width });
+    else if (f.type === "text") {
+      const next = { color: f.color, width: f.width, ...(f.font ? { font: f.font } : {}) };
+      setText(next);
+      saveTextStyle(next);
+    } else setPen({ color: f.color, width: f.width });
+    setTool(f.type);
+  };
+  // Keeps the tool and style in hand as a favourite (at the end).
+  const addFavorite = () => current && setFavorites(addTo(favorites, current));
+  const removeFavorite = (index: number) => setFavorites(removeFrom(favorites, index));
+  const moveFavorite = (from: number, to: number) => setFavorites(moveIn(favorites, from, to));
+
+  // ---- Eraser (lib/ink/eraser.ts) ----
+  const setEraserMode = (mode: EraserMode) => {
+    setEraserModeState(mode);
+    saveEraserSetting({ mode, size: eraserSize });
+  };
+  const setEraserSize = (value: number) => {
+    const size = clampEraserSize(value);
+    setEraserSizeState(size);
+    saveEraserSetting({ mode: eraserMode, size });
+  };
+  // Everything on a page goes (one undo step).
+  const clearPage = (page: string) => {
+    if (!docRef.current.pages[page]?.length) return;
+    change(page, () => []);
+    if (selection?.page === page) setSelection(null);
   };
 
   const setPenOnly = (on: boolean) => {
@@ -219,10 +273,40 @@ export function useInkEditor(initial: InkDoc, { active = true }: { active?: bool
     if (!selection) return;
     change(selection.page, (items) => recolorItems(items, new Set(selection.ids), color));
   };
+  // Copies into the tab's ink clipboard and – where the browser lets it –
+  // the system clipboard as a picture (PNG, SVG) and the typed text.
   const copySelection = () => {
     const items = selectedItems();
-    if (items.length) setClipboard(items);
+    if (items.length) {
+      setClipboard(items);
+      writeSystemClipboard(items);
+    }
     return items.length;
+  };
+  const cutSelection = () => {
+    const count = copySelection();
+    if (count) deleteSelection();
+    return count;
+  };
+  // One undo step: a transform of the chosen items (move, scale, turn).
+  const transformSelection = (m: Affine) => {
+    if (!selection) return;
+    change(selection.page, (items) => transformSelected(items, new Set(selection.ids), m));
+  };
+  const nudgeSelection = (dx: number, dy: number) => transformSelection(translation(dx, dy));
+  const reorderSelection = (where: "front" | "back") => {
+    if (!selection) return;
+    change(selection.page, (items) => reorderItems(items, new Set(selection.ids), where));
+  };
+  // Fine, medium, bold (0–2): pen and highlighter widths, text sizes.
+  const setSelectionWidth = (step: number) => {
+    if (!selection) return;
+    change(selection.page, (items) => setItemsWidth(items, new Set(selection.ids), step));
+  };
+  const selectAll = (page = selection?.page || lastPage.current) => {
+    const ids = (docRef.current.pages[page] || []).map((i) => i.id);
+    setSelection(ids.length ? { page, ids } : null);
+    if (ids.length) setTool("lasso");
   };
   // Pastes onto a page (the last one drawn on), a little offset when it
   // lands on the page it was copied from.
@@ -230,7 +314,8 @@ export function useInkEditor(initial: InkDoc, { active = true }: { active?: bool
     if (!items?.length) return;
     const existing = new Set((docRef.current.pages[page] || []).map((i) => i.id));
     const offset = items.some((i) => existing.has(i.id)) ? 12 : 0;
-    const copies = copyItems(items, offset, offset);
+    const size = pageSizes.current.get(page);
+    const copies = size ? fitOnPage(copyItems(items, offset, offset), size) : copyItems(items, offset, offset);
     change(page, (list) => [...list, ...copies]);
     setSelection({ page, ids: copies.map((c) => c.id) });
     setTool("lasso");
@@ -260,7 +345,7 @@ export function useInkEditor(initial: InkDoc, { active = true }: { active?: bool
     dirty: doc !== saved,
     markSaved: setSaved,
     tool,
-    setTool: choose,
+    setTool,
     style,
     setStyle,
     palette,
@@ -268,11 +353,18 @@ export function useInkEditor(initial: InkDoc, { active = true }: { active?: bool
     widthRange,
     recentColors,
     rememberCustomColor,
-    presets,
-    preset,
-    pickPreset,
+    favorites,
+    favorite,
+    pickFavorite,
+    addFavorite,
+    removeFavorite,
+    moveFavorite,
+    canAddFavorite: !!current && favorite < 0 && favorites.length < MAX_FAVORITES,
     eraserMode,
     setEraserMode,
+    eraserSize,
+    setEraserSize,
+    clearPage,
     penOnly,
     setPenOnly,
     snap,
@@ -286,19 +378,65 @@ export function useInkEditor(initial: InkDoc, { active = true }: { active?: bool
     deleteSelection,
     recolorSelection,
     copySelection,
+    cutSelection,
+    transformSelection,
+    nudgeSelection,
+    reorderSelection,
+    setSelectionWidth,
+    selectAll,
     duplicateSelection,
+    textStyle: text,
+    pageSizes,
     paste,
     clipboard,
     lastPage,
+    picked,
+    // Picks a picture (null: none); the lasso is the tool for it.
+    pick: (next: InkPicked | null) => {
+      setPicked(next);
+      if (next) {
+        setSelection(null);
+        setToolState("lasso");
+        lastPage.current = next.page;
+      }
+    },
+    setClipboard,
   };
 }
 
-// Keyboard shortcuts while editing: undo/redo, delete, copy, paste,
-// duplicate, Escape (clears the selection before anything else closes).
+// Keyboard shortcuts while editing: undo/redo, delete, copy, cut, paste,
+// duplicate, ⌘] / ⌘[ to the front or back, arrows nudge (Shift: 10 pt),
+// Escape (clears the selection before anything else closes); with `tools`
+// also ⌘A (everything on the sheet).
 // With `tools`, single keys pick a tool (P pen, H highlighter, E eraser,
-// L lasso, T text, K laser) – for surfaces that are the whole page
+// L lasso, T text, K laser, S shapes) – for surfaces that are the whole page
 // (notebooks), not inside a document where keys type text.
-export const INK_TOOL_KEYS: Record<string, InkTool> = { p: "pen", h: "highlighter", e: "eraser", l: "lasso", t: "text", k: "laser" };
+// Keys for the picked picture: Delete, ⌘C, ⌘D, Escape, arrows (Shift:
+// further). True when the key was used.
+function pickedKey(ed: InkEditor, event: KeyboardEvent, mod: boolean) {
+  const picked = ed.picked!;
+  const items = ed.docRef.current.pages[picked.page] || [];
+  const item = items.find((i) => i.id === picked.id);
+  if (!item || item.type !== "image") return false;
+  const k = event.key.toLowerCase();
+  if (event.key === "Delete" || event.key === "Backspace") {
+    ed.pick(null);
+    ed.change(picked.page, (list) => list.filter((i) => i.id !== picked.id));
+  } else if (mod && k === "c") ed.setClipboard([item]);
+  else if (mod && k === "d") {
+    const [copy] = copyItems([item], 16, 16);
+    ed.change(picked.page, (list) => [...list, copy]);
+    ed.pick({ page: picked.page, id: copy.id });
+  } else if (event.key === "Escape") ed.pick(null);
+  else if (event.key.startsWith("Arrow") && !mod) {
+    const step = event.shiftKey ? 10 : 1;
+    const dx = event.key === "ArrowLeft" ? -step : event.key === "ArrowRight" ? step : 0;
+    const dy = event.key === "ArrowUp" ? -step : event.key === "ArrowDown" ? step : 0;
+    ed.change(picked.page, (list) => list.map((i) => (i.id === picked.id && i.type === "image" ? { ...i, x: i.x + dx, y: i.y + dy } : i)));
+  } else return false;
+  return true;
+}
+export const INK_TOOL_KEYS: Record<string, InkTool> = { p: "pen", h: "highlighter", e: "eraser", l: "lasso", t: "text", k: "laser", s: "shape" };
 export function useInkShortcuts(editor: InkEditor | null, enabled: boolean, { tools = false }: { tools?: boolean } = {}) {
   const ref = useRef(editor);
   ref.current = editor;
@@ -310,7 +448,7 @@ export function useInkShortcuts(editor: InkEditor | null, enabled: boolean, { to
       const ed = ref.current;
       if (!ed) return;
       const target = event.target as HTMLElement | null;
-      if (target?.closest?.("input, textarea, [contenteditable=true]")) return;
+      if (target?.closest?.("input, textarea, [contenteditable=true], [role=dialog]")) return;
       const mod = event.metaKey || event.ctrlKey;
       const k = event.key.toLowerCase();
       if (mod && k === "z") {
@@ -320,11 +458,26 @@ export function useInkShortcuts(editor: InkEditor | null, enabled: boolean, { to
       } else if (mod && k === "y") {
         event.preventDefault();
         ed.redo();
+      } else if (ed.picked && !ed.selection && pickedKey(ed, event, mod)) {
+        event.preventDefault();
       } else if (ed.selection && (event.key === "Delete" || event.key === "Backspace")) {
         event.preventDefault();
         ed.deleteSelection();
       } else if (mod && k === "c" && ed.selection) {
         if (ed.copySelection()) event.preventDefault();
+      } else if (mod && k === "x" && ed.selection) {
+        if (ed.cutSelection()) event.preventDefault();
+      } else if (mod && (event.key === "]" || event.key === "[") && ed.selection) {
+        event.preventDefault();
+        ed.reorderSelection(event.key === "]" ? "front" : "back");
+      } else if (ed.selection && !mod && event.key.startsWith("Arrow")) {
+        event.preventDefault();
+        const step = event.shiftKey ? 10 : 1;
+        const [dx, dy] = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[event.key] || [0, 0];
+        ed.nudgeSelection(dx, dy);
+      } else if (mod && k === "a" && toolsRef.current) {
+        event.preventDefault();
+        ed.selectAll();
       } else if (mod && k === "v" && ed.clipboard) {
         event.preventDefault();
         ed.paste();
