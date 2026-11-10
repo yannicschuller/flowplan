@@ -3,6 +3,18 @@
 # app. With S3_BUCKET set, Litestream first restores the database from the
 # bucket when none exists yet and then replicates every change to it.
 set -eu
+# Render (render.yaml) gives a web service its public onrender.com address
+# (RENDER_EXTERNAL_URL, RENDER_EXTERNAL_HOSTNAME); a Blueprint cannot put it
+# into APP_URL, so it stands in here until APP_URL is set (custom domain).
+if [ -z "${APP_URL:-}" ]; then
+  if [ -n "${RENDER_EXTERNAL_URL:-}" ]; then
+    APP_URL="$RENDER_EXTERNAL_URL"
+    export APP_URL
+  elif [ -n "${RENDER_EXTERNAL_HOSTNAME:-}" ]; then
+    APP_URL="https://$RENDER_EXTERNAL_HOSTNAME"
+    export APP_URL
+  fi
+fi
 DATA="${FLOWPLAN_DATA_DIR:-/app/data}"
 DB="$DATA/flowplan.sqlite"
 mkdir -p "$DATA" 2>/dev/null || true
