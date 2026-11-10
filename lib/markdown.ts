@@ -78,15 +78,20 @@ function codeMeta(node: Node, language: string) {
   const attrs = node.attrs as Partial<CodeBlockOptions>;
   return fenceMeta({ ...attrs, view: attrs.view ?? (language === "mermaid" ? "code" : null) });
 }
+// In a table cell "|" ends the cell: it is written "\|", which GitHub
+// Markdown reads back as "|" inside code too. Only code with line breaks
+// (or "\|" of its own) stays HTML there.
+const htmlCodeInTable = (source: string) => /\n|\\\|/.test(source);
 function inlineCode(source: string, inTable = false) {
-  if (inTable)
+  if (inTable && htmlCodeInTable(source))
     return `<code>${htmlText(source).replaceAll("|", "&#124;").replace(/\n/g, "<br>")}</code>`;
   const fence = "`".repeat(
     Math.max(1, ...(source.match(/`+/g) || []).map((run) => run.length + 1)),
   );
   const value = source.replace(/\n/g, " "),
     pad = /^`|`$|^ .* $/.test(value) && !/^[ ]+$/.test(value) ? " " : "";
-  return `${fence}${pad}${value}${pad}${fence}`;
+  const code = `${fence}${pad}${value}${pad}${fence}`;
+  return inTable ? code.replaceAll("|", "\\|") : code;
 }
 const htmlText = (text: string) =>
   text
@@ -286,11 +291,11 @@ export function htmlToMarkdown(
       return markdownText("@" + String(node.attrs.label || ""));
     if (node.type.name === "mathInline") {
       const value = String(node.attrs.expression || "");
-      return inTable
+      return inTable && htmlCodeInTable(value)
         ? inlineCode(value, true)
         : /[`\n]/.test(value)
-          ? inlineCode(value)
-          : `$${inlineCode(value)}$`;
+          ? inlineCode(value, inTable)
+          : `$${inlineCode(value, inTable)}$`;
     }
     if (!node.isText) {
       let result = "";
