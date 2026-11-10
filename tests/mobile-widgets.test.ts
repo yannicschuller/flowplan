@@ -440,6 +440,76 @@ test("checking off from the phone: long tasks, mentions with a due date, records
   assert.equal((await complete(locked)).status, 409);
 });
 
+test("my tasks include open records I am assigned to, with the web's rights", async () => {
+  const me = await account("widget-assignee");
+  await run("INSERT INTO members VALUES(?,?,?)", wid, me.user.id, "editor");
+  const M = (await phone(me)).device;
+  const other = editor.user.id;
+  const db = await makeDatabase(owner.user, wid, sid, "Tickets", [
+    { id: "title", name: "Title", type: "text" },
+    { id: "status", name: "Status", type: "select", options: ["Open", "Done"] },
+    { id: "who", name: "Verantwortlich", type: "person" },
+    { id: "start", name: "Start", type: "date" },
+    { id: "due", name: "Due", type: "date" },
+  ]);
+  const fix = await addRow(owner.user, db, { title: "Fix login", status: "Open", who: me.user.id, due: TODAY, start: day(-9) });
+  await addRow(owner.user, db, { title: "Write docs", who: [other, me.user.id] });
+  await addRow(owner.user, db, { title: "Late invoice", status: "Open", who: [me.user.id], due: day(-3) });
+  await addRow(owner.user, db, { title: "Shipped", status: "Done", who: me.user.id, due: TODAY });
+  await addRow(owner.user, db, { title: "Not mine", status: "Open", who: other, due: TODAY });
+  const secret = await addRow(owner.user, db, { title: "Private salary talk", status: "Open", who: me.user.id, due: TODAY });
+  await run("UPDATE rows SET access='private' WHERE id=?", secret);
+  const shared = await addRow(owner.user, db, { title: "Look only", status: "Open", who: me.user.id });
+  await run("UPDATE rows SET access='readonly' WHERE id=?", shared);
+
+  const records = async (config: Record<string, unknown> = {}) =>
+    ((await one_(M, "tasks", { source: "mine", filter: "open", max: 10, ...config })).items as Record<string, any>[]).filter((t) => t.pageId === db);
+  const open = await records();
+  // Overdue first, then today, then the ones without a date in the
+  // database's order (lib/task-order.ts).
+  assert.deepEqual(open.map((t) => t.text), ["Late invoice", "Fix login", "Write docs", "Look only"]);
+  const first = open.find((t) => t.rowId === fix)!;
+  // The due date is the property named like one, not simply the first date.
+  assert.deepEqual([first.source, first.due, first.page, first.done, first.canEdit], ["row", TODAY, "Tickets", false, true]);
+  assert.match(first.url, new RegExp(fix));
+  assert.equal(open.find((t) => t.rowId === shared)!.canEdit, false);
+  assert.doesNotMatch(JSON.stringify(await widgets(M, [{ kind: "tasks", config: { source: "mine" } }])), /salary|Not mine|Shipped/);
+  assert.deepEqual((await records({ filter: "today" })).map((t) => t.text), ["Fix login"]);
+  assert.deepEqual((await records({ filter: "overdue" })).map((t) => t.text), ["Late invoice"]);
+  // The same records as "Records from databases" on the web page.
+  const { crossRecords } = await import("../lib/cross-records");
+  assert.deepEqual(
+    (await crossRecords(me.user, wid, {})).records.map((r) => r.rowId).sort(),
+    open.map((t) => t.rowId).sort(),
+  );
+
+  // Ticking one off sets the database's "done" state and drops it.
+  await act(M, { action: "task.complete", source: "row", pageId: db, rowId: fix, done: true });
+  assert.equal(JSON.parse((await one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", fix))!.cells).status, "Done");
+  assert.equal((await records()).some((t) => t.rowId === fix), false);
+  await assert.rejects(act(M, { action: "task.complete", source: "row", pageId: db, rowId: shared, done: true }), (e: { status: number }) => e.status === 403);
+  await assert.rejects(act(M, { action: "task.complete", source: "row", pageId: db, rowId: secret, done: true }), (e: { status: number }) => e.status === 404);
+
+  // A viewer assigned to a record sees it, but cannot tick it.
+  await command(owner.user, { action: "row.update", pageId: db, rowId: fix, version: (await one<{ version: number }>("SELECT version FROM rows WHERE id=?", fix))!.version, cells: { status: "Open", who: viewer.user.id } });
+  const looking = ((await one_(V, "tasks", { source: "mine" })).items as Record<string, any>[]).find((t) => t.rowId === fix)!;
+  assert.equal(looking.canEdit, false);
+  await assert.rejects(act(V, { action: "task.complete", source: "row", pageId: db, rowId: fix, done: true }), (e: { status: number }) => e.status === 403);
+
+  // A read rule on the person property: nothing counts as "mine" any more.
+  // On the "done" property: shown, but not ticked off from the phone.
+  const fields = (await database(db)).fields as Field[];
+  const withRule = (id: string) => fields.map((f) => (f.id === id ? { ...f, access: { read: "owners" } } : f)) as Field[];
+  const update = async (list: Field[]) => command(owner.user, { action: "database.update", pageId: db, version: (await database(db)).version, fields: list, views: (await database(db)).views });
+  await update(withRule("status"));
+  const hiddenDone = await records();
+  assert.ok(hiddenDone.length >= 3);
+  assert.ok(hiddenDone.every((t) => t.canEdit === false));
+  await update(withRule("who"));
+  assert.deepEqual(await records(), []);
+  await update(fields);
+});
+
 test("pinned views and counters show only what the person may read", async () => {
   const rows = [
     { title: "Won deal", stage: "won", amount: 10, secret: "S-100" },
@@ -553,12 +623,19 @@ test("journals behind a PIN show 'locked'; encrypted spaces only a status", asyn
     const encryptedSpace = id();
     await run("INSERT INTO spaces(id,workspace_id,name,owner_id,visibility) VALUES(?,?,?,?,?)", encryptedSpace, wid, "Vault", owner.user.id, "private");
     const secretPage = await createPage(wid, encryptedSpace, owner.user.id, "Merger plans", "document");
+    // A record assigned to the person there stays out of "My tasks".
+    const secretDb = await createPage(wid, encryptedSpace, owner.user.id, "Merger tasks", "database");
+    await run("UPDATE databases SET fields=? WHERE page_id=?", JSON.stringify([{ id: "title", name: "Title", type: "text" }, { id: "who", name: "Who", type: "person" }]), secretDb);
+    await run("INSERT INTO rows(id,page_id,cells) VALUES(?,?,?)", id(), secretDb, JSON.stringify({ title: "Merger task", who: O.id }));
     await run("UPDATE spaces SET encrypted=1,encrypt_titles=1 WHERE id=?", encryptedSpace);
     await run("INSERT INTO favorites(user_id,page_id) VALUES(?,?)", O.id, secretPage);
     const result = await widgets(O, [
       { kind: "pinned", config: { mode: "favorites" } },
       { kind: "pinned", config: { mode: "page", pageId: secretPage } },
+      { kind: "tasks", config: { source: "mine" } },
     ]);
+    assert.equal(result[2].ok, true);
+    assert.equal(result[2].data!.items.some((i: { pageId: string }) => i.pageId === secretDb), false);
     assert.equal(result[0].data!.items.find((i: { id: string }) => i.id === secretPage).encrypted, true);
     assert.deepEqual(result[1].data, { title: "", encrypted: true, url: `/#page=${secretPage}`, items: [] });
     assert.doesNotMatch(JSON.stringify(result), /Merger/);

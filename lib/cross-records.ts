@@ -23,8 +23,14 @@ export const crossFilterSchema = z.object({
 export type CrossFilter = z.infer<typeof crossFilterSchema>;
 
 const MAX = 500;
-const dueField = (fields: Field[]) =>
+// The date a record is due: a date property named like one, else the first.
+export const dueField = (fields: Field[]) =>
   fields.find((f) => f.type === "date" && /fällig|due|deadline|frist|termin|bis/i.test(f.name)) || fields.find((f) => f.type === "date");
+
+// Whether a person stands in a person property ("Assignee", "Verantwortlich"):
+// one user id, or a list of them.
+export const assignedTo = (people: Field[], cells: Record<string, unknown>, userId: string) =>
+  people.some((f) => cells[f.id] === userId || (Array.isArray(cells[f.id]) && (cells[f.id] as unknown[]).includes(userId)));
 
 export async function crossRecords(user: Identity, workspaceId: string, input: unknown) {
   await requireMember(user, workspaceId);
@@ -71,7 +77,7 @@ export async function crossRecords(user: Identity, workspaceId: string, input: u
       await all<Row & { cells: string }>("SELECT * FROM rows WHERE page_id=? ORDER BY position", page.id),
     )).map((r) => ({ ...r, cells: JSON.parse(r.cells as unknown as string) as Record<string, unknown> }));
     for (const r of rows) {
-      if (filter.mine && !people.some((f) => r.cells[f.id] === user.id || (Array.isArray(r.cells[f.id]) && (r.cells[f.id] as unknown[]).includes(user.id)))) continue;
+      if (filter.mine && !assignedTo(people, r.cells, user.id)) continue;
       const done = isDone(rule, r.cells);
       if (filter.open && done) continue;
       const date = due && typeof r.cells[due.id] === "string" && r.cells[due.id] ? String(r.cells[due.id]).slice(0, 10) : null;

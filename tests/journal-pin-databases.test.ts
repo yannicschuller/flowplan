@@ -19,6 +19,7 @@ const { whiteboardRowCards } = await import("../lib/whiteboard-cards");
 const { crossRecords } = await import("../lib/cross-records");
 const { listRowTrash } = await import("../lib/row-trash");
 const { createCalendarFeed, calendarFeed } = await import("../lib/calendar-feed");
+const { widgetsData } = await import("../lib/mobile-widgets");
 
 async function account(name: string) {
   const uid = id();
@@ -48,11 +49,11 @@ await act({
   pageId: db,
   version: d.version,
   views: [...d.views, { id: "cal", name: "Kalender", type: "calendar", dateField: "when", filters: [], sorts: [] }],
-  fields: [...d.fields, { id: "when", name: "Wann", type: "date" }],
+  fields: [...d.fields, { id: "when", name: "Wann", type: "date" }, { id: "who", name: "Verantwortlich", type: "person" }],
 });
 d = await api.database(db);
 const title = d.fields[0].id;
-const rid = (await act({ action: "row.create", pageId: db, cells: { [title]: "SECRET-ROW-TITLE", when: "2026-11-10" } })).id;
+const rid = (await act({ action: "row.create", pageId: db, cells: { [title]: "SECRET-ROW-TITLE", when: "2026-11-10", who: member.id } })).id;
 const trashed = (await act({ action: "row.create", pageId: db, cells: { [title]: "SECRET-TRASHED" } })).id;
 await act({ action: "row.delete", pageId: db, rowId: trashed });
 await run(
@@ -76,6 +77,7 @@ const leaks = async () => {
   const cards = await whiteboardRowCards(member, [{ pageId: db, rowId: rid }]);
   const cross = await crossRecords(member, wid, { mine: false });
   const trash = await listRowTrash(member, wid);
+  const widget = await widgetsData(member, { today: "2026-11-10", zone: "UTC", widgets: [{ kind: "tasks", config: { source: "mine" } }] });
   let ics = "";
   await status(async () => (ics = (await calendarFeed(token)) as unknown as string));
   let html = "";
@@ -85,13 +87,14 @@ const leaks = async () => {
     cards: !!cards[rid] || Object.values(cards).some((c) => c.title.includes("SECRET")),
     cross: JSON.stringify(cross).includes("SECRET-ROW-TITLE"),
     trash: trash.some((t) => t.title.includes("SECRET-TRASHED")),
+    widget: JSON.stringify(widget).includes("SECRET-ROW-TITLE"),
     feed: String(ics).includes("SECRET-ROW-TITLE"),
     document: doc === 200 && html.includes("SECRET-ROW-BODY"),
   };
 };
 
 test("records below a locked journal stay closed without the PIN", async () => {
-  assert.deepEqual(await leaks(), { related: false, cards: false, cross: false, trash: false, feed: false, document: false });
+  assert.deepEqual(await leaks(), { related: false, cards: false, cross: false, trash: false, widget: false, feed: false, document: false });
   // The lock screen of the journal instead of a server error.
   const data = (await api.pageData(member, db)) as { locked?: { journalId: string } };
   assert.equal(data.locked?.journalId, journal);
@@ -105,7 +108,7 @@ test("records below a locked journal stay closed without the PIN", async () => {
 
 test("after journal.unlock the same ways work again", async () => {
   await act({ action: "journal.unlock", pageId: journal, pin: "471108" }, member);
-  assert.deepEqual(await leaks(), { related: true, cards: true, cross: true, trash: true, feed: true, document: true });
+  assert.deepEqual(await leaks(), { related: true, cards: true, cross: true, trash: true, widget: true, feed: true, document: true });
   assert.equal(await status(async () => await act({ action: "rows.transfer", pageId: db, rowIds: [rid], targetPageId: mine, mode: "copy" }, member)), 200);
   assert.equal((await api.rows(mine)).length, 1);
 });

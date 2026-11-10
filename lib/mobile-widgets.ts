@@ -29,7 +29,8 @@ import { validZone } from "./date-values";
 import { openTasksEverywhere, taskKey } from "./doc-tasks";
 import { priorityField, priorityRank, sortTasks, type OrderedTask } from "./task-order";
 import { rewriteStoredDocument } from "./document-rewrite";
-import { visibleFields } from "./field-access";
+import { unwritableFieldIds, visibleFields } from "./field-access";
+import { assignedTo, dueField } from "./cross-records";
 import { formatNumber } from "./field-format";
 import { localizedMessage } from "./i18n-errors";
 import { isLocale, localeTag, pickLocale, type Locale } from "./i18n";
@@ -327,6 +328,76 @@ export type WidgetTask = {
 const dueFilter = (filter: "today" | "overdue" | "open", today: string) => (due: string | null) =>
   filter === "open" ? true : filter === "today" ? due === today : !!due && due < today;
 
+// Open records the person stands in a person property of ("Assignee",
+// "Verantwortlich"), in every database they may read across their
+// workspaces: the web's "Records from databases" with "Assigned to me" and
+// "Open only" (lib/cross-records.ts). Only what they may read counts: private
+// records of others, databases behind a journal PIN and end-to-end encrypted
+// spaces (lockedPageIds) stay out, and so does a person, date or done
+// property hidden from them. Checking one off sets the database's "done"
+// state (task.complete).
+async function myRecordTasks(user: Identity, keep: (due: string | null) => boolean) {
+  const out: (WidgetTask & { order: OrderedTask })[] = [];
+  // Cells hold user ids; the LIKE only narrows, assignedTo() decides.
+  const like = `%${user.id}%`;
+  for (const wid of await workspaceIds(user)) {
+    const locked = await lockedPageIds(user, wid);
+    const pages = await all<Page & { encrypted: number }>(
+      `SELECT p.*,COALESCE(s.encrypted,0) encrypted FROM pages p JOIN spaces s ON s.id=p.space_id
+       WHERE p.workspace_id=? AND p.kind='database' AND p.deleted_at IS NULL AND s.deleted_at IS NULL
+         AND EXISTS (SELECT 1 FROM rows r WHERE r.page_id=p.id AND r.cells LIKE ?)
+       ORDER BY lower(p.title) LIMIT 500`,
+      wid,
+      like,
+    );
+    for (const page of pages) {
+      if (page.encrypted || locked.has(page.id)) continue;
+      const role = await pageRole(user, page);
+      if (!role) continue;
+      const raw = await one<{ fields: string; settings: string | null }>("SELECT fields,settings FROM databases WHERE page_id=?", page.id);
+      const fields = parse<Field[]>(raw?.fields, []);
+      const shown = await visibleFields(user, page, fields);
+      const people = shown.filter((f) => f.type === "person");
+      if (!people.length) continue;
+      const rule = doneRule(fields, parse(raw?.settings, undefined));
+      const ruleVisible = !!rule && shown.includes(rule.field);
+      const ruleWritable = ruleVisible && !(await unwritableFieldIds(user, page, fields)).has(rule.field.id);
+      const due = dueField(shown);
+      const priority = priorityField(shown);
+      const database = clip(page.title || untitled(), DETAIL);
+      const rows = await visibleRows(
+        user,
+        page,
+        (await all<Row & { cells: string }>("SELECT * FROM rows WHERE page_id=? AND cells LIKE ? ORDER BY position LIMIT 2000", page.id, like)).map(
+          (r) => ({ ...r, cells: parse<Record<string, unknown>>(r.cells as unknown as string, {}) }) as Row,
+        ),
+      );
+      for (const [position, row] of rows.entries()) {
+        if (!assignedTo(people, row.cells, user.id)) continue;
+        if (ruleVisible && isDone(rule, row.cells)) continue;
+        const value = due ? row.cells[due.id] : null;
+        const date = typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 10) : null;
+        if (!keep(date)) continue;
+        out.push({
+          source: "row",
+          pageId: page.id,
+          rowId: row.id,
+          text: rowTitle({ fields, shown }, row),
+          due: date,
+          done: false,
+          page: database,
+          url: url(page.id, row.id),
+          canEdit: ruleWritable && rank[row.role || role] >= 2 && !page.locked,
+          // Equal dates: priority, then the database, then its own order.
+          order: { due: date, priority: priorityRank(priority, row.cells[priority?.id ?? ""]), page: page.title, pageId: page.id, index: position },
+        });
+        if (out.length >= 500) return out;
+      }
+    }
+  }
+  return out;
+}
+
 async function tasksData(ctx: Context, config: WidgetConfig<"tasks">) {
   const { user, today } = ctx;
   const keep = dueFilter(config.filter, today);
@@ -359,6 +430,7 @@ async function tasksData(ctx: Context, config: WidgetConfig<"tasks">) {
         canEdit: await canEdit(t.pageId),
         order: { due: t.due, page: t.title, pageId: t.pageId, rowId: t.rowId, index: t.index },
       }));
+    items.push(...(await myRecordTasks(user, keep)));
   } else if (config.source === "page") {
     const access = await requireAccess(user, config.pageId);
     heading = headingOf(access);
