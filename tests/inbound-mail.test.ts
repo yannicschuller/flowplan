@@ -544,3 +544,45 @@ test("the IMAP poller does not connect while the instance is read-only for a mov
     imap.close();
   }
 });
+
+test("a full address does not hold up the shared IMAP mailbox; its mail is given up after a day", async () => {
+  const { id: limitedId } = await save({ pageId: inboxPage, senders: ["example.org"] });
+  const { id: otherId } = await save({ pageId: inboxPage, senders: ["example.org"] });
+  const limited = await tokenOf(limitedId),
+    other = await tokenOf(otherId);
+  const start = Date.now();
+  // The limited address has taken its 60 mails this hour.
+  const fill = async (at: number) => {
+    for (let i = 0; i < inbound.INBOUND_MAILS_PER_HOUR; i++) await run("INSERT INTO inbound_deliveries(address_id,at) VALUES(?,?)", limitedId, at);
+  };
+  await fill(start);
+  const raw = (token: string, subject: string) => Buffer.from(`From: ada@example.org\r\nTo: inbox+${token}@example.test\r\nSubject: ${subject}\r\nMessage-ID: <${subject}@example.org>\r\n\r\nx`);
+  const messages = new Map<number, Buffer>();
+  for (let uid = 1000; uid < 1110; uid++) messages.set(uid, raw(limited, `flood-${uid}`));
+  messages.set(1110, raw(other, "wichtig"));
+  const imap = await fakeImap(messages);
+  try {
+    let polls = 0;
+    while (!imap.seen.includes(1110) && polls < 5) {
+      const fetchedBefore = imap.fetched.length;
+      await inbound.pollInboundMailbox(imap.options, () => start);
+      assert.ok(imap.fetched.length - fetchedBefore <= 50, "one batch per poll");
+      polls++;
+    }
+    assert.ok(imap.seen.includes(1110), "the other address's mail is delivered");
+    assert.ok(polls <= 3, `within ${polls} polls`);
+    assert.ok(await one("SELECT 1 FROM pages WHERE parent_id=? AND title='wichtig'", inboxPage));
+    // The flood waits, unseen.
+    assert.deepEqual(imap.seen, [1110]);
+    // Still full a day later: the waiting mail is given up and the address says so.
+    const later = start + 25 * 3_600_000;
+    await fill(later);
+    for (let i = 0; i < 5 && imap.seen.length < messages.size; i++) await inbound.pollInboundMailbox(imap.options, () => later);
+    assert.equal(imap.seen.length, messages.size, "nothing stays unseen forever");
+    assert.match((await one<{ last_error: string }>("SELECT last_error FROM inbound_addresses WHERE id=?", limitedId))!.last_error, /verworfen/);
+    assert.equal((await one<{ n: number }>("SELECT COUNT(*) n FROM pages WHERE parent_id=? AND title LIKE 'flood-%'", inboxPage))!.n, 0);
+  } finally {
+    imap.close();
+    await run("DELETE FROM inbound_deliveries WHERE address_id=?", limitedId);
+  }
+});

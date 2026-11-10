@@ -778,21 +778,41 @@ export async function tokenFromRecipients(recipients: string[]) {
 const IMAP_BATCH = 50;
 // Larger messages are not fetched; their attachments could not be kept.
 const IMAP_MESSAGE_BYTES = INBOUND_REQUEST_BYTES;
+// Mail an address could not take for this long is given up (marked seen).
+const IMAP_DEFER_MS = 24 * HOUR;
+export const INBOUND_DEFER_DROPPED = "E-Mails wurden verworfen, weil diese Adresse einen Tag lang ihr Stunden- oder Tageslimit erreicht hatte.";
+// Kept in memory (one mailbox, polled by the leader): the UID the last poll
+// stopped at and since when each deferred message waits. After a restart
+// the poll starts from the beginning again and the day starts anew.
+const imapState = globalThis as unknown as { flowplanInboundCursor?: number; flowplanInboundDeferred?: Map<number, number> };
 
 // One poll: every unseen message is routed by its +token. Stored,
 // duplicate, rejected and unroutable mail is marked as seen; a full hour
-// (429) or day (413) leaves it unseen for the next round.
-export async function pollInboundMailbox(options = imapOptionsFromEnv()) {
+// (429) or day (413) leaves it unseen for a later round. The mail of one
+// address cannot hold up the others: each poll starts after the UID the
+// previous one stopped at (and wraps around), further mail of an address
+// that is full is skipped within the poll, and mail that waited a day is
+// given up with a note on the address.
+export async function pollInboundMailbox(options = imapOptionsFromEnv(), now: () => number = Date.now) {
   if (!options) return { processed: 0 };
   // Not while the instance moves: the mail stays unseen for the new instance.
   if (await workersPaused()) return { processed: 0 };
   const client = new ImapClient(options);
+  const deferred = (imapState.flowplanInboundDeferred ??= new Map());
   let processed = 0;
   try {
     await client.connect();
     await client.login();
     await client.select(process.env.INBOUND_IMAP_FOLDER || "INBOX");
-    for (const uid of (await client.searchUnseen()).slice(0, IMAP_BATCH)) {
+    const unseen = [...new Set(await client.searchUnseen())].sort((a, b) => a - b);
+    // Mail seen elsewhere in the meantime is forgotten.
+    const present = new Set(unseen);
+    for (const uid of deferred.keys()) if (!present.has(uid)) deferred.delete(uid);
+    const cursor = imapState.flowplanInboundCursor ?? 0;
+    const ordered = [...unseen.filter((u) => u > cursor), ...unseen.filter((u) => u <= cursor)];
+    const full = new Map<string, string>(); // token → address id
+    for (const uid of ordered.slice(0, IMAP_BATCH)) {
+      imapState.flowplanInboundCursor = uid;
       const raw = await client.fetchMessage(uid);
       if (!raw || raw.length > IMAP_MESSAGE_BYTES) {
         await client.markSeen(uid);
@@ -804,15 +824,34 @@ export async function pollInboundMailbox(options = imapOptionsFromEnv()) {
         await client.markSeen(uid);
         continue;
       }
-      try {
-        await receiveInboundMail(token, mail, Date.now(), "imap");
-        processed++;
-      } catch (error) {
-        const status = error instanceof HttpError ? error.status : 500;
-        if (status === 429 || status === 413) continue;
-        console.error("E-Mail-Eingang fehlgeschlagen:", String((error as Error)?.message || error));
+      if (!full.has(token)) {
+        try {
+          await receiveInboundMail(token, mail, now(), "imap");
+          processed++;
+          deferred.delete(uid);
+          await client.markSeen(uid);
+          continue;
+        } catch (error) {
+          const status = error instanceof HttpError ? error.status : 500;
+          if (status === 429 || status === 413) full.set(token, (await inboundAddressByToken(token))?.id || "");
+          else {
+            console.error("E-Mail-Eingang fehlgeschlagen:", String((error as Error)?.message || error));
+            deferred.delete(uid);
+            await client.markSeen(uid);
+            continue;
+          }
+        }
       }
+      // The address is full: the mail waits, at most a day.
+      const since = deferred.get(uid) ?? now();
+      if (now() - since < IMAP_DEFER_MS) {
+        deferred.set(uid, since);
+        continue;
+      }
+      deferred.delete(uid);
       await client.markSeen(uid);
+      const addressId = full.get(token);
+      if (addressId) await noteError(addressId, INBOUND_DEFER_DROPPED);
     }
   } finally {
     await client.logout();
