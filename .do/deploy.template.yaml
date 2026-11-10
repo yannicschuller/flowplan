@@ -1,0 +1,101 @@
+# DigitalOcean App Platform template for Flowplan – the "Deploy to
+# DigitalOcean" button in the README
+# (https://cloud.digitalocean.com/apps/new?repo=https://github.com/yannicschuller/flowplan/tree/main).
+#
+# App Platform has no persistent volumes: the container's disk is reset on
+# every deploy and restart. So Flowplan runs on PostgreSQL (a dev database,
+# below) instead of SQLite in /app/data, and uploaded files need S3 object
+# storage – a Spaces bucket – or they are lost on the next deploy. Fill in
+# the S3_* values when you create the app (or later under Settings → App-Level
+# or Component Environment Variables) before anyone uploads a file.
+#
+# A dev database has no backups and is meant for trying out. For real use,
+# upgrade it to a managed database (Databases → the dev database → Upgrade) or
+# attach an existing managed PostgreSQL 16+ cluster.
+#
+# Secrets: App Platform cannot generate values, so you enter them when
+# creating the app (marked "required" below) – e.g. with
+#   openssl rand -hex 24       (FLOWPLAN_SETUP_TOKEN)
+#   openssl rand -base64 32    (FLOWPLAN_ENCRYPTION_KEY)
+# Docs: https://docs.flowplan.org/en/installation#digitalocean-app-platform
+spec:
+  name: flowplan
+  region: fra
+  services:
+    - name: web
+      image:
+        registry_type: GHCR
+        registry: yannicschuller
+        repository: flowplan
+        tag: latest
+      http_port: 3000
+      # SQLite is not used here, but keep one instance unless you set up
+      # cluster mode (Redis, shared keys): https://docs.flowplan.org/en/cluster
+      instance_count: 1
+      instance_size_slug: apps-s-1vcpu-1gb
+      health_check:
+        http_path: /api/health
+        initial_delay_seconds: 30
+      envs:
+        # The app's public address: the ondigitalocean.app URL, or the
+        # primary custom domain once you add one (then redeploy).
+        - key: APP_URL
+          scope: RUN_TIME
+          value: ${APP_URL}
+        # DigitalOcean's databases use a certificate of their own CA;
+        # uselibpqcompat=true makes sslmode=require encrypt without checking
+        # it, as libpq (psql, pg_dump) does.
+        - key: DATABASE_URL
+          scope: RUN_TIME
+          value: ${db.DATABASE_URL}&uselibpqcompat=true
+        # Required: the first account only via <APP_URL>/register?setup=<token>.
+        - key: FLOWPLAN_SETUP_TOKEN
+          scope: RUN_TIME
+          type: SECRET
+          value: ""
+        # Required here: the container's disk is not kept, so the key for
+        # stored secrets (and for files in the bucket) must not live on it.
+        - key: FLOWPLAN_ENCRYPTION_KEY
+          scope: RUN_TIME
+          type: SECRET
+          value: ""
+        # Uploads: a Spaces bucket (or any S3-compatible storage). Without
+        # it, uploaded files are lost on every deploy.
+        - key: S3_BUCKET
+          scope: RUN_TIME
+          value: ""
+        - key: S3_ENDPOINT
+          scope: RUN_TIME
+          value: https://fra1.digitaloceanspaces.com
+        - key: S3_REGION
+          scope: RUN_TIME
+          value: us-east-1
+        - key: S3_ACCESS_KEY_ID
+          scope: RUN_TIME
+          type: SECRET
+          value: ""
+        - key: S3_SECRET_ACCESS_KEY
+          scope: RUN_TIME
+          type: SECRET
+          value: ""
+        # Optional: browser push keeps working across deploys only with fixed
+        # keys (npx web-push generate-vapid-keys). Empty: new keys per deploy.
+        - key: WEB_PUSH_PUBLIC_KEY
+          scope: RUN_TIME
+          value: ""
+        - key: WEB_PUSH_PRIVATE_KEY
+          scope: RUN_TIME
+          type: SECRET
+          value: ""
+  ingress:
+    rules:
+      - component:
+          name: web
+        match:
+          path:
+            prefix: /
+  databases:
+    - name: db
+      engine: PG
+      version: "16"
+      production: false

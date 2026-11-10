@@ -1,0 +1,39 @@
+#cloud-config
+# Flowplan on a new server – paste this file as "user data" / "cloud-init"
+# when creating a server with Ubuntu 24.04 or Debian 12 (Hetzner Cloud,
+# Netcup, IONOS, DigitalOcean Droplets, Vultr, Scaleway, OVHcloud …).
+#
+# ┌──────────────────────────────────────────────────────────────────────┐
+# │ SET YOUR DOMAIN: the line FLOWPLAN_DOMAIN= below, e.g.               │
+# │   FLOWPLAN_DOMAIN=flowplan.example.com                               │
+# │ and point its DNS A/AAAA record to the new server's address.         │
+# │ Left empty, Flowplan starts at http://<server address> without HTTPS │
+# │ (for trying out only).                                               │
+# └──────────────────────────────────────────────────────────────────────┘
+#
+# On first boot this runs deploy/install.sh from the repository: Docker,
+# /opt/flowplan with Flowplan + Caddy (automatic HTTPS), secrets generated on
+# the server, firewall (SSH, 80, 443), automatic security updates. After a few
+# minutes, sign in to the server and read /root/flowplan-README.txt – it holds
+# the link for the first account. Progress: /var/log/flowplan-install.log
+# Docs: https://docs.flowplan.org/en/installation#any-server-cloud-init-or-install-script
+write_files:
+  - path: /root/flowplan.conf
+    permissions: "0600"
+    content: |
+      FLOWPLAN_DOMAIN=
+      # Optional: e-mail for Let's Encrypt notices about the certificate.
+      FLOWPLAN_ACME_EMAIL=
+      # weekly: pull the newest image every Sunday night and restart.
+      # off: update by hand (docker compose pull && docker compose up -d).
+      FLOWPLAN_AUTO_UPDATE=off
+      # Image tag: latest (releases), a fixed version like 0.9.1, or beta.
+      FLOWPLAN_VERSION=latest
+
+package_update: true
+packages:
+  - ca-certificates
+  - curl
+
+runcmd:
+  - [bash, -c, "umask 077 && set -a && . /root/flowplan.conf && set +a && curl -fsSL https://raw.githubusercontent.com/yannicschuller/flowplan/main/deploy/install.sh -o /root/flowplan-install.sh && bash /root/flowplan-install.sh \"$FLOWPLAN_DOMAIN\" 2>&1 | tee /var/log/flowplan-install.log"]

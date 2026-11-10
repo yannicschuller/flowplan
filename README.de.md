@@ -39,7 +39,7 @@
 ## Inhalt
 
 - [Auf einen Blick](#auf-einen-blick)
-- [Schnellstart](#schnellstart)
+- [Schnellstart](#schnellstart) · [Bereitstellen](#bereitstellen)
 - [Funktionen](#funktionen) · [Screenshots](#screenshots) · [Flowplan im Vergleich](#flowplan-im-vergleich) · [Datenschutz von Grund auf](#datenschutz-von-grund-auf)
 - Genauer hingeschaut: [Schreiben](#schreiben-und-denken) · [Datenbanken](#ordnen-mit-datenbanken) · [KI](#ki-optional) · [Whiteboards und Journal](#whiteboards-und-ein-journal) · [Handschrift](#handschrift-und-notizbücher) · [Startseite](#eine-startseite-nach-deinem-geschmack) · [Gemeinsam](#gemeinsam-überall)
 - [Für Admins und Integrationen](#für-admins-und-integrationen): [Architektur](#architektur), [Systemanforderungen](#systemanforderungen), [Sicherheit](#sicherheit)
@@ -136,6 +136,23 @@ Images entstehen nur bei einem Release oder von Hand: **Actions → Docker image
 </details>
 
 Mehr in der Dokumentation: [Installation](https://docs.flowplan.org/de/installation) · [Konfiguration](https://docs.flowplan.org/de/configuration) · [Speicher, S3 und Sicherung](https://docs.flowplan.org/de/storage-and-backups) · [Betrieb](https://docs.flowplan.org/de/operations)
+
+## Bereitstellen
+
+Mit einem Klick zur laufenden Instanz unter eigener Adresse – oder mit einem Befehl auf jedem Server:
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/yannicschuller/flowplan)
+[![Deploy to DigitalOcean](https://www.deploytodo.com/do-btn-blue.svg)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/yannicschuller/flowplan/tree/main)
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/yannicschuller/flowplan/main/deploy/install.sh | sudo bash -s -- flowplan.example.com
+```
+
+- **Render** ([`render.yaml`](render.yaml)): das Image mit einer dauerhaften Disk auf `/app/data` – Disks gibt es nur mit einer bezahlten Instanz (Starter oder größer); die Adresse ist die von `onrender.com`, bis du `APP_URL` auf deine Domain setzt.
+- **DigitalOcean App Platform** ([`.do/deploy.template.yaml`](.do/deploy.template.yaml)): dort gibt es keine Volumes, deshalb liegen die Daten in einer PostgreSQL-Datenbank, und Uploads brauchen einen Spaces-Bucket (`S3_*`) – ohne ihn gehen Dateien bei jedem Deploy verloren; die Dev-Datenbank hat keine Sicherungen.
+- **Jeder Server** mit Ubuntu 24.04 oder Debian 12 (Hetzner, Netcup, IONOS …): [`deploy/cloud-init.yaml`](deploy/cloud-init.yaml) beim Anlegen des Servers als „User Data“ einfügen (darin `FLOWPLAN_DOMAIN=` setzen) oder den Befehl oben auf einem bestehenden Server ausführen – Docker, Caddy mit HTTPS, erzeugte Secrets, Firewall; die Daten bleiben in einem Docker-Volume auf dem Server.
+
+Schritt für Schritt: [Mit einem Klick bereitstellen](https://docs.flowplan.org/de/installation#mit-einem-klick-bereitstellen).
 
 ## Funktionen
 
