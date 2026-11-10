@@ -32,6 +32,14 @@ export function toNumber(value: unknown): number | null {
   const n = Number(s);
   return Number.isFinite(n) ? n : null;
 }
+// The compare value of a number condition (greater, less, between) with the
+// separators toNumber() accepts, as the filters read numbers ("1000,5" → "1000.5").
+const NUMBER_OPS = new Set(["gt", "gte", "lt", "lte", "between"]);
+export function compareNumberText(op: string, text: string): string {
+  if (!NUMBER_OPS.has(op)) return text;
+  const n = toNumber(text);
+  return n === null ? text : String(n);
+}
 const list = (value: unknown): unknown[] =>
   Array.isArray(value) ? value : isEmpty(value) ? [] : typeof value === "string" ? value.split(",").map((s) => s.trim()).filter(Boolean) : [value];
 

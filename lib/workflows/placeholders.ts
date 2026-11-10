@@ -447,6 +447,15 @@ export function renderTemplate(text: string, scope: RenderScope, options: { whol
 }
 export const renderText = (text: string, scope: RenderScope) => String(renderTemplate(text, scope));
 export const renderValue = (text: string, scope: RenderScope) => renderTemplate(text, scope, { whole: true });
+// The compare value of a condition: a value that is exactly one placeholder
+// keeps the form the operators compare – dates as YYYY-MM-DD (or the
+// moment), yes/no as true/false; anything else is text as renderText makes it.
+export function renderCompare(text: string, scope: RenderScope): string {
+  const value = renderValue(text, scope);
+  if (typeof value === "string") return value;
+  if (typeof value === "boolean") return String(value);
+  return valueText(value, scope.locale, scope.timeZone);
+}
 // For an HTTP header (§7.4): no CR/LF or other control characters, ≤ 8 KB.
 export const headerSafe = (s: string) => s.replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 8192);
 

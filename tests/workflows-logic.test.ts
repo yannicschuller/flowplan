@@ -331,3 +331,52 @@ test("pause with “cancel running runs” cancels waiting runs and their approv
   assert.deepEqual((await runsOf(pageId)).map((r) => r.status), ["cancelled", "cancelled"]);
   assert.deepEqual((await all<{ decision: string }>("SELECT decision FROM workflow_approvals WHERE page_id=?", pageId)).map((a) => a.decision), ["cancelled", "cancelled"]);
 });
+
+test("conditions: date and yes/no placeholders as compare value, decimal comma (If, Switch, Find records)", async () => {
+  const { evaluateConditions } = await import("../lib/workflows/nodes/logic");
+  const scope = { values: { n_a: { due: "2026-11-01", flag: true, off: false, price: 1234.5, name: "Ann" }, $today: "2026-11-09", $now: "2026-11-09T10:00:00.000Z" }, timeZone: "Europe/Berlin", locale: "de" as const };
+  const c = (left: string, op: string, value?: string, extra: object = {}) =>
+    evaluateConditions({ kind: "group", join: "and", rules: [{ kind: "condition", left, op, value, ...extra } as never] }, scope as never, scope.timeZone);
+  assert.equal(await c("{{n_a.due}}", "before", "{{$today}}"), true);
+  assert.equal(await c("{{n_a.due}}", "after", "{{$today}}"), false);
+  assert.equal(await c("{{n_a.due}}", "on_or_before", "{{$now}}"), true);
+  assert.equal(await c("{{$today}}", "after", "{{n_a.due}}"), true);
+  assert.equal(await c("{{n_a.due}}", "eq", "{{n_a.due}}"), true);
+  assert.equal(await c("{{n_a.due}}", "between", "{{n_a.due}}", { to: "{{$today}}" }), true);
+  assert.equal(await c("{{n_a.flag}}", "eq", "{{n_a.flag}}"), true);
+  assert.equal(await c("{{n_a.flag}}", "eq", "{{n_a.off}}"), false);
+  assert.equal(await c("{{n_a.off}}", "eq", "false"), true);
+  // Text around a placeholder stays text in the workflow's language.
+  assert.equal(await c("Fällig 01.11.2026", "eq", "Fällig {{n_a.due}}"), true);
+  assert.equal(await c("{{n_a.name}}", "eq", "ann"), true);
+  // A decimal comma in the compare value counts as on the left side.
+  assert.equal(await c("{{n_a.price}}", "gt", "1000,5"), true);
+  assert.equal(await c("{{n_a.price}}", "lt", "1000,5"), false);
+  assert.equal(await c("{{n_a.price}}", "between", "1000,5", { to: "2000,25" }), true);
+  assert.equal(await c("{{n_a.price}}", "gt", "1000.5"), true);
+
+  // Switch with a date placeholder as a case value.
+  const t = manualTrigger();
+  const sw = node("logic.switch", { value: "2020-01-01", cases: [{ id: "a", label: "Früher", op: "before", value: "{{$today}}" }] }, "Wann");
+  const a = node("logic.set", { values: [{ name: "x", value: "A", type: "text" }] }, "A");
+  const d = node("logic.set", { values: [{ name: "x", value: "D", type: "text" }] }, "D");
+  const sp = await workflow("Switch date", { nodes: [t, sw, a, d], edges: [edge(t, sw), edge(sw, a, "case:a"), edge(sw, d, "default")] });
+  await manual(sp.pageId);
+  await drainWorkflows();
+  assert.ok((await stepsOf((await lastRun(sp.pageId)).id)).some((s) => s.node_id === a.id));
+
+  // Find records: due before today, and a number with a decimal comma.
+  const dates = await makeDatabase("Fristen", [{ id: "title", name: "Title", type: "text" }, { id: "due", name: "Due", type: "date" }, { id: "n", name: "Count", type: "number" }] as never);
+  await act({ action: "row.create", pageId: dates, cells: { title: "old", due: "2020-01-01", n: 2.5 } });
+  await act({ action: "row.create", pageId: dates, cells: { title: "future", due: "2099-01-01", n: 1 } });
+  const t2 = manualTrigger();
+  const before = node("action.record.find", { database: dates, filter: { kind: "group", join: "and", rules: [{ kind: "condition", left: "due", op: "before", value: "{{$today}}" }] }, limit: 10 }, "Alt");
+  const more = node("action.record.find", { database: dates, filter: { kind: "group", join: "and", rules: [{ kind: "condition", left: "n", op: "gt", value: "1,5" }] }, limit: 10 }, "Mehr");
+  const fp = await workflow("Find date", chain(t2, before, more));
+  await manual(fp.pageId);
+  await drainWorkflows();
+  const r = await lastRun(fp.pageId);
+  assert.equal(r.status, "succeeded");
+  assert.equal(((await outputOf(r.id, before.id)) as { count: number }).count, 1);
+  assert.equal(((await outputOf(r.id, more.id)) as { count: number }).count, 1);
+});
