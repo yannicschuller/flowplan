@@ -23,6 +23,7 @@
 .link-rule-field {
   display: grid;
   gap: 4px;
+  margin: 0;
   min-width: 0;
 }
 .link-rule-field > span {
@@ -34,9 +35,11 @@
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 13px;
 }
+.link-rule-head > input,
 .link-rule-field > input {
   width: 100%;
   min-width: 0;
+  margin: 0;
 }
 .link-rule-problems {
   margin: 0;

@@ -13,6 +13,7 @@
 import { Extension, combineTransactionSteps } from "@tiptap/core";
 import { isHistoryTransaction } from "@tiptap/pm/history";
 import { Plugin, PluginKey, type EditorState, type Transaction } from "@tiptap/pm/state";
+import type { EditorView } from "@tiptap/pm/view";
 import { ReplaceStep } from "@tiptap/pm/transform";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { AUTO_LINK_SCAN, compileRules, findAutoLinks, type AutoLinkRule, type CompiledRule } from "./auto-link";
@@ -71,7 +72,12 @@ function insertedRanges(transactions: readonly Transaction[], oldState: EditorSt
 
 export function autoLinkPlugin(options: { rules?: () => readonly CompiledRule[]; allow?: (href: string) => boolean } = {}) {
   const rulesOf = options.rules || workspaceAutoLinkRules;
+  let editorView: EditorView | null = null;
   return new Plugin<State>({
+    view(view) {
+      editorView = view;
+      return { destroy: () => void (editorView = null) };
+    },
     key: autoLinkKey,
     state: {
       init: () => ({ added: null }),
@@ -94,13 +100,15 @@ export function autoLinkPlugin(options: { rules?: () => readonly CompiledRule[];
       const paste = transactions.some((tr) => tr.getMeta("uiEvent") === "paste");
       const head = newState.selection.head;
       const code = newState.schema.marks.code;
-      const tr = newState.tr;
-      const added: Range[] = [];
+      const added: (Range & { href: string })[] = [];
       let budget = AUTO_LINK_SCAN.total;
       for (const range of insertedRanges(transactions, oldState)) {
         // Typing inserts a character or splits a block; anything longer that
         // is not a paste came from the program (templates, AI, imports).
         if (!paste && newState.doc.textBetween(range.from, range.to, "\n", "￼").length > 2) continue;
+        // A Markdown delimiter (`, *, _, ~, =) may still close a mark: its
+        // input rule runs after it, and a link would keep the code mark out.
+        if (!paste && /^[`*_~=^]$/.test(newState.doc.textBetween(range.from, range.to))) continue;
         const blocks: { node: PMNode; pos: number }[] = [];
         newState.doc.nodesBetween(range.from, range.to, (node, pos) => {
           if (node.isTextblock) {
@@ -129,13 +137,30 @@ export function autoLinkPlugin(options: { rules?: () => readonly CompiledRule[];
             if (newState.doc.rangeHasMark(a, b, link) || (code && newState.doc.rangeHasMark(a, b, code))) continue;
             if (added.some((r) => r.from < b && a < r.to)) continue;
             if (options.allow && !options.allow(match.href)) continue;
-            tr.addMark(a, b, link.create({ href: match.href }));
-            added.push({ from: a, to: b });
+            added.push({ from: a, to: b, href: match.href });
           }
         }
       }
       if (!added.length) return null;
-      return tr.setMeta(autoLinkKey, { added });
+      const build = (state: EditorState) => {
+        const tr = state.tr;
+        for (const r of added) tr.addMark(r.from, r.to, link.create({ href: r.href }));
+        // Text typed right after a pasted link is not part of it.
+        if (added.some((r) => r.to === head)) tr.setStoredMarks(tr.doc.resolve(head).marks().filter((m) => m.type !== link));
+        return tr.setMeta(autoLinkKey, { added: added.map(({ from, to }) => ({ from, to })) });
+      };
+      // In an editor the links follow as a step of their own, once the
+      // change is written to the collaboration document: y-tiptap cannot
+      // track positions for a mark step appended to a structural change
+      // that is not synchronised yet (a paste into an empty paragraph).
+      // It still joins the same undo step (typed within the capture time).
+      const view = editorView;
+      if (!view) return build(newState);
+      const doc = newState.doc;
+      setTimeout(() => {
+        if (editorView === view && !view.isDestroyed && view.state.doc === doc) view.dispatch(build(view.state));
+      });
+      return null;
     },
   });
 }
@@ -154,10 +179,11 @@ export function undoAutoLink(state: EditorState, dispatch?: (tr: Transaction) =>
   return true;
 }
 
-// For TipTap editors: before the undo of collaboration or history.
+// For TipTap editors: before the undo of collaboration (priority 1000) or
+// history.
 export const AutoLinkRules = Extension.create<{ allow?: (href: string) => boolean }>({
   name: "autoLinkRules",
-  priority: 1000,
+  priority: 1100,
   addOptions() {
     return {};
   },

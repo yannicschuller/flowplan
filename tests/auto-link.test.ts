@@ -128,6 +128,15 @@ test("typing a word boundary after a match links it; typing on inside the word d
   assert.equal(state.doc.textContent, "See ABC-12 and #42.");
 });
 
+test("a Markdown delimiter after a match waits: `ABC-1` can still become code", () => {
+  let state = type(create(doc(p("Code: "))), "`ABC-1`");
+  assert.deepEqual(links(state), []);
+  state = type(state, " ");
+  assert.deepEqual(links(state), [], "the delimiter, not the match, ends at the boundary");
+  state = type(create(doc(p("x "))), "ABC-2* ");
+  assert.deepEqual(links(state), []);
+});
+
 test("Enter after a match links it", () => {
   let state = type(create(doc(p("Fix "))), "ABC-7");
   state = apply(state, state.tr.split(state.selection.from));
@@ -139,6 +148,10 @@ test("pasting text links every match in it", () => {
   let state = create(doc(p("Notes: ")));
   const pasted = new Slice(p("ABC-1, ABC-22 and #3").content, 0, 0);
   state = apply(state, state.tr.replaceSelection(pasted).setMeta("uiEvent", "paste").setMeta("paste", true));
+  assert.deepEqual(links(state).map(([text]) => text), ["ABC-1", "ABC-22", "#3"]);
+  // Typing on right after a pasted link does not extend it.
+  assert.ok(state.storedMarks && !state.storedMarks.some((m) => m.type.name === "link"));
+  state = type(state, "x");
   assert.deepEqual(links(state).map(([text]) => text), ["ABC-1", "ABC-22", "#3"]);
   // Inserted the same way by the program (a template, the AI): no links.
   let other = create(doc(p("Notes: ")));
