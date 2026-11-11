@@ -307,6 +307,28 @@ async function meetingFor(user: Identity, meetingId: string, write: boolean) {
 
 // ---- Status ----
 
+// A block nobody recorded with yet has no row: an empty status (the editor
+// asks for every block it shows). Says nothing about other blocks – any
+// unknown id answers the same.
+export async function meetingStatusOrNew(user: Identity, meetingId: string) {
+  const id = uuid.parse(meetingId);
+  if (await meetingRow(id)) return await meetingStatus(user, id);
+  return {
+    id,
+    pageId: null,
+    rowId: null,
+    status: "new",
+    error: null,
+    durationMs: 0,
+    sessions: [],
+    audio: [],
+    audioUntil: null,
+    summarizedAt: null,
+    consentAt: null,
+    consentRequired: false,
+    transcription: transcriptionEnabled(),
+  };
+}
 export async function meetingStatus(user: Identity, meetingId: string, options: { content?: boolean } = {}) {
   const { row, page } = await meetingFor(user, meetingId, false);
   const settings = await meetingSettings(row.workspace_id);

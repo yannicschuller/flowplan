@@ -120,6 +120,7 @@ export const USER_REFERENCES: Record<string, MergeStrategy> = {
   "notebook_recordings.created_by": "move",
   "meetings.created_by": "move",
   "meetings.consent_by": "move",
+  "meeting_reminders.user_id": "move",
   "notebook_sheet_trash.deleted_by": "move",
   "notebook_stickers.user_id": "move",
   "notebook_templates.created_by": "move",

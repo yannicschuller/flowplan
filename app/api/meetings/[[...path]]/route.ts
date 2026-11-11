@@ -13,6 +13,7 @@
 //   POST /api/meetings/{id}/summarize        the summary again (other instructions)
 //   POST /api/meetings/{id}/ask              "Frag diese Besprechung" (text stream)
 //   POST /api/meetings/{id}/audio/delete     remove the kept audio now
+//   POST /api/meetings/{id}/event            the block's calendar event (its reminder)
 //   GET/POST /api/meetings/settings?workspaceId=   the workspace's defaults
 //   GET  /api/meetings/events?workspaceId=&date=&zone=   appointments of a day
 //
@@ -33,6 +34,7 @@ import {
   finishMeetingSession,
   meetingChunks,
   meetingStatus,
+  meetingStatusOrNew,
   MEETING_CHUNK_BYTES,
   MEETING_COPY,
   readMeetingSettings,
@@ -44,6 +46,7 @@ import {
   type MeetingUpload,
 } from "@/lib/meetings";
 import type { MeetingTrack } from "@/lib/meeting-core";
+import { linkMeetingEvent } from "@/lib/meeting-reminders";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -82,7 +85,11 @@ export const GET = withRequestLocale(async (req: Request, { params }: { params: 
       const zone = z.string().max(100).catch("UTC").parse(url.searchParams.get("zone") || "UTC");
       return NextResponse.json({ events: await databaseEvents(user, workspaceId, date, zone) }, noStore);
     }
-    if (path.length === 1) return NextResponse.json(await meetingStatus(user, path[0], { content: url.searchParams.get("content") === "1" }), noStore);
+    if (path.length === 1)
+      return NextResponse.json(
+        url.searchParams.get("content") === "1" ? await meetingStatus(user, path[0], { content: true }) : await meetingStatusOrNew(user, path[0]),
+        noStore,
+      );
     if (path.length === 2 && path[1] === "chunks")
       return NextResponse.json(await meetingChunks(user, path[0], Number(url.searchParams.get("session"))), noStore);
     throw new HttpError(404, "Nicht gefunden.");
@@ -168,6 +175,8 @@ export const POST = withRequestLocale(async (req: Request, { params }: { params:
     if (path.length === 2 && action === "retry") return NextResponse.json(await retryMeeting(user, meetingId, (await json(req)).language), noStore);
     if (path.length === 2 && action === "summarize") return NextResponse.json(await regenerateSummary(user, meetingId, await json(req)), noStore);
     if (path.length === 2 && action === "ask") return await askMeeting(user, meetingId, await json(req, 200_000), req.signal);
+    // The block's calendar event: its reminder (lib/meeting-reminders.ts).
+    if (path.length === 2 && action === "event") return NextResponse.json(await linkMeetingEvent(user, meetingId, await json(req)), noStore);
     if (path.length === 3 && action === "audio" && sub === "delete") return NextResponse.json(await deleteMeetingAudio(user, meetingId), noStore);
     throw new HttpError(404, "Nicht gefunden.");
   } catch (e) {

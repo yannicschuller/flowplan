@@ -123,6 +123,7 @@ export function cleanHtml(html: string, transform?: sanitize.Transformer) {
         "data-meeting-date",
         "data-meeting-attendees",
         "data-meeting-event",
+        "data-meeting-start",
         "data-meeting-instructions",
         "data-meeting-prompt",
         "data-meeting-part",

@@ -50,7 +50,7 @@ type Status = {
   status: string;
   error: string | null;
   durationMs: number;
-  sessions: { n: number; state: string; byName: string }[];
+  sessions: { n: number; offsetMs: number; state: string; byName: string }[];
   audio: { session: number; track: MeetingTrack; url: string }[];
   audioUntil: number | null;
   consentRequired: boolean;
@@ -115,11 +115,10 @@ function MeetingView({ node, updateAttributes, editor, extension, getPos }: Node
   const load = useCallback(async () => {
     if (!/^[0-9a-f-]{36}$/i.test(meetingId)) return;
     try {
+      // A block nobody recorded with yet answers an empty status ("new").
       setStatus(await getJson<Status>(`/api/meetings/${meetingId}`));
-    } catch (error) {
-      // Not recorded yet: no row on the server.
-      if ((error as { status?: number }).status !== 404) setStatus(null);
-      else setStatus(null);
+    } catch {
+      setStatus(null);
     }
   }, [meetingId]);
   useEffect(() => void load(), [load]);
@@ -171,13 +170,8 @@ function MeetingView({ node, updateAttributes, editor, extension, getPos }: Node
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [status, segmentElement],
   );
-  const offsets = useRef(new Map<number, number>());
-  const sessionOffset = (n: number) => offsets.current.get(n) || 0;
-  useEffect(() => {
-    void getJson<{ sessions: { n: number; offsetMs: number }[] }>(`/api/meetings/${meetingId}`)
-      .then((s) => (offsets.current = new Map(s.sessions.map((x) => [x.n, x.offsetMs / 1000]))))
-      .catch(() => {});
-  }, [meetingId, status?.audio.length]);
+  // Where each session's audio starts in the transcript's time.
+  const sessionOffset = (n: number) => (status?.sessions.find((s) => s.n === n)?.offsetMs || 0) / 1000;
   useEffect(() => {
     const el = root.current;
     if (!el) return;
@@ -381,13 +375,25 @@ function MeetingView({ node, updateAttributes, editor, extension, getPos }: Node
       const entry = member ? { id: member.id, name: member.name } : { name: a.name || a.email };
       if (!people.some((p) => (entry.id ? p.id === entry.id : p.name === entry.name))) people.push(entry);
     }
+    const key = event.rowId ? `row:${event.rowId}@${event.start.slice(0, 10)}` : `ics:${event.uid || event.title}@${event.start.slice(0, 10)}`;
     updateAttributes({
       title: event.title || node.attrs.title,
       date: event.start.slice(0, 10) || date,
       attendees: JSON.stringify(people),
-      event: event.rowId ? `row:${event.rowId}@${event.start.slice(0, 10)}` : `ics:${event.uid || event.title}@${event.start.slice(0, 10)}`,
+      event: key,
+      eventStart: event.start,
     });
     setPanel("");
+    // The reminder when the event starts goes to whoever linked it.
+    void postJson(`/api/meetings/${meetingId}/event`, {
+      pageId: context.pageId,
+      rowId: context.rowId || null,
+      event: key,
+      title: event.title || String(node.attrs.title || ""),
+      start: event.start,
+      timed: event.timed,
+      zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    }).catch(handle);
   };
   const addAttendee = (a: Attendee) => {
     if (attendees.some((p) => (a.id ? p.id === a.id : p.name === a.name))) return;

@@ -9276,6 +9276,7 @@
   "The manifest redirects to another address.": "Le manifeste redirige vers une autre adresse.",
   "The mapping does not fit the database's properties.": "L’association ne correspond pas aux propriétés de la base de données.",
   "The marked passage is checked again when saving. If it changed, your draft is kept.": "Le passage marqué est revérifié lors de l’enregistrement. S’il a changé, votre brouillon est conservé.",
+  "The meeting “{0}” starts soon.": "La réunion « {0} » commence bientôt.",
   "The meeting block was removed from the page.": "Le bloc de réunion a été retiré de la page.",
   "The meeting has reached its maximum length.": "La réunion a atteint sa durée maximale.",
   "The meeting is being processed.": "La réunion est en cours de traitement.",

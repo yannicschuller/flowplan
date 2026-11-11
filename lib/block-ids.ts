@@ -47,6 +47,8 @@ export const BLOCK_ID_TYPES = [
   "syncedBlock",
   "columns",
   "bibliography",
+  // The meeting block (#199): its reminder opens the page there.
+  "meeting",
 ];
 const ITEMS = ["listItem", "taskItem"];
 

@@ -15,6 +15,7 @@
 import { Node } from "@tiptap/core";
 import { circled } from "./meeting-core";
 import { formatTimestamp } from "./transcript";
+import { validBlockId } from "./block-ids";
 
 const attr = (name: string, fallback = "") => ({
   default: fallback,
@@ -43,6 +44,8 @@ export const Meeting = Node.create({
       attendees: attr("data-meeting-attendees", "[]"),
       // The calendar event it belongs to ("row:<id>@<date>" / "ics:<uid>@<date>").
       event: attr("data-meeting-event"),
+      // When that event starts (ISO date or date-time), for the reminder.
+      eventStart: attr("data-meeting-start"),
       instructions: attr("data-meeting-instructions", "auto"),
       prompt: attr("data-meeting-prompt"),
     };
@@ -63,6 +66,9 @@ export const Meeting = Node.create({
       "data-meeting-date": node.attrs.date,
       "data-meeting-attendees": node.attrs.attendees,
       "data-meeting-event": node.attrs.event,
+      "data-meeting-start": node.attrs.eventStart,
+      // Its block id (lib/block-ids.ts): links and the reminder open it.
+      ...(validBlockId(node.attrs.blockId) ? { "data-block-id": node.attrs.blockId } : {}),
       "data-meeting-instructions": node.attrs.instructions,
       "data-meeting-prompt": node.attrs.prompt,
       class: "meeting-block",
@@ -137,11 +143,21 @@ export const MeetingCite = Node.create({
 export const meetingExtensions = [Meeting, MeetingSummary, MeetingAgenda, MeetingTranscript, MeetingSegmentNode, MeetingCite];
 
 // The empty block as HTML (inserted by the API, the journal's meeting note).
-export function meetingHtml(o: { meetingId: string; title: string; date?: string; attendees?: { id?: string; name: string }[]; event?: string; instructions?: string; prompt?: string }) {
+export function meetingHtml(o: {
+  meetingId: string;
+  title: string;
+  date?: string;
+  attendees?: { id?: string; name: string }[];
+  event?: string;
+  eventStart?: string;
+  blockId?: string;
+  instructions?: string;
+  prompt?: string;
+}) {
   const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   return (
     `<div data-meeting="${esc(o.meetingId)}" data-meeting-title="${esc(o.title)}" data-meeting-date="${esc(o.date || "")}" data-meeting-attendees="${esc(JSON.stringify(o.attendees || []))}"` +
-    ` data-meeting-event="${esc(o.event || "")}" data-meeting-instructions="${esc(o.instructions || "auto")}" data-meeting-prompt="${esc(o.prompt || "")}" class="meeting-block">` +
+    ` data-meeting-event="${esc(o.event || "")}" data-meeting-start="${esc(o.eventStart || "")}"${o.blockId && validBlockId(o.blockId) ? ` data-block-id="${o.blockId}"` : ""} data-meeting-instructions="${esc(o.instructions || "auto")}" data-meeting-prompt="${esc(o.prompt || "")}" class="meeting-block">` +
     `<p class="meeting-title">${esc(o.title)}</p><div class="meeting-parts">` +
     `<div data-meeting-part="summary"><p></p></div><div data-meeting-part="agenda"><p></p></div><div data-meeting-part="transcript"></div></div></div>`
   );

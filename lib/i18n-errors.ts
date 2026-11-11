@@ -1463,6 +1463,7 @@ const patterns: [RegExp, string][] = [
   [/^(.+) hat „(.+)“ geändert$/, "$1 changed “$2”"],
   [/^(.+) hat mehrmals eine falsche PIN für „(.+)“ eingegeben$/, "$1 entered a wrong PIN for “$2” several times"],
   [/^Erinnerung: „(.+)“ – (.+): (.+)$/, "Reminder: “$1” – $2: $3"],
+  [/^Die Besprechung „(.+)“ beginnt gleich\.$/, "The meeting “$1” starts soon."],
   // A chat app the instance turned off (lib/messengers.ts).
   [/^Chat-App (.+) ausgeschaltet: wiederholt abgewiesen \((.+)\)\. Bitte unter Einstellungen → Benachrichtigungen prüfen und wieder einschalten\.$/, "Chat app $1 switched off: refused repeatedly ($2). Please check it under Settings → Notifications and switch it on again."],
   [/^„(.+)“ wartet auf deine Prüfung$/, "“$1” is waiting for your review"],

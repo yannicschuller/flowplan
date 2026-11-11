@@ -1344,7 +1344,8 @@ function migrateWorkspaceTheme(d: DatabaseSync) {
 // state of the recording and its processing, the sessions ("continue
 // later") with their offsets and tracks, the audio kept as files of the
 // page (removed after the workspace's retention, audio_until) and who
-// confirmed the consent. workspaces.meeting_settings (JSON, NULL = the
+// confirmed the consent; meeting_reminders the reminder when the block's
+// calendar event starts. workspaces.meeting_settings (JSON, NULL = the
 // defaults): instructions, retention, consent. api_tokens.ai: the token's
 // "KI und Transkription" permission (off unless chosen). An older version
 // would not know the block, hence the new number.
@@ -1356,6 +1357,11 @@ function migrateMeetings(d: DatabaseSync) {
     d.exec("ALTER TABLE workspaces ADD COLUMN meeting_settings TEXT");
   if (!(d.prepare("PRAGMA table_info(api_tokens)").all() as { name: string }[]).some((c) => c.name === "ai"))
     d.exec("ALTER TABLE api_tokens ADD COLUMN ai INTEGER NOT NULL DEFAULT 0");
+  // The reminder when the calendar event of a meeting block starts
+  // (lib/meeting-reminders.ts): one per block, for whoever linked the event;
+  // fired_at makes it fire once per event occurrence (event_key names it).
+  d.exec(`CREATE TABLE IF NOT EXISTS meeting_reminders(meeting_id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,row_id TEXT,event_key TEXT NOT NULL,title TEXT NOT NULL DEFAULT '',remind_at INTEGER NOT NULL,fired_at INTEGER,created_at INTEGER NOT NULL);
+    CREATE INDEX IF NOT EXISTS meeting_reminders_due ON meeting_reminders(fired_at,remind_at);`);
 }
 // A person's stickers per workspace (a picture, or ink items) and a
 // workspace's paper templates (a picture or one PDF page), as blobs like

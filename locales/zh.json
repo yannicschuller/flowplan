@@ -9276,6 +9276,7 @@
   "The manifest redirects to another address.": "清单重定向到另一个地址。",
   "The mapping does not fit the database's properties.": "映射不符合数据库的属性。",
   "The marked passage is checked again when saving. If it changed, your draft is kept.": "保存时会再次检查标记的段落。如果它已更改，你的草稿将被保留。",
+  "The meeting “{0}” starts soon.": "会议“{0}”即将开始。",
   "The meeting block was removed from the page.": "会议块已从页面中移除。",
   "The meeting has reached its maximum length.": "会议已达到最长时长。",
   "The meeting is being processed.": "会议正在处理中。",
