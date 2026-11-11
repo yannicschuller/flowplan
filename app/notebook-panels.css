@@ -1003,16 +1003,29 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.ink-toolbar .ink-segmented.ink-panel-dashes button,
-.ink-toolbar .ink-segmented.ink-panel-rulers button {
-  gap: 5px;
+/* Line style: the line samples alone (their names as tooltips and for
+   screen readers) – the names do not fit in every language. */
+.ink-toolbar .ink-segmented.ink-panel-dashes button {
+  justify-content: center;
   padding: 0 4px;
-  font-size: 12px;
 }
-.ink-toolbar .ink-segmented.ink-panel-dashes button span,
+/* Measuring tools: icon tiles like the kinds, names on up to two lines
+   ("Équerre rapporteur"). */
+.ink-toolbar .ink-segmented.ink-panel-rulers button {
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  height: 52px;
+  padding: 0 3px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.15;
+  white-space: normal;
+  text-align: center;
+}
 .ink-toolbar .ink-segmented.ink-panel-rulers button span {
-  overflow: hidden;
-  text-overflow: ellipsis;
+  max-width: 100%;
+  overflow-wrap: break-word;
 }
 .ink-panel-fills {
   padding: 2px 16px 10px;
