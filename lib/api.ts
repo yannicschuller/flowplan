@@ -1,6 +1,7 @@
 import { withReadMemo } from "./read-memo";
 import { setUserTextMenu, userTextMenu } from "./user-text-menu";
 import { deleteWorkspaceFont, plainLook, renameWorkspaceFont, saveWorkspaceTheme, setPlainLook, workspaceLook } from "./workspace-fonts";
+import { saveWorkspaceLinkRules, workspaceLinkRules } from "./auto-link-rules";
 import { requireDocumentSize } from "./document-size";
 import { patchStillApplies } from "./row-patch";
 import { bannersFor } from "./instance-banners";
@@ -310,11 +311,13 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
     role: string;
     guest: number;
     theme?: string | null;
+    link_rules?: string | null;
   }>(
     "SELECT w.*,m.role,EXISTS(SELECT 1 FROM workspace_guests g WHERE g.workspace_id=w.id AND g.user_id=m.user_id) guest FROM workspaces w JOIN members m ON m.workspace_id=w.id WHERE m.user_id=? ORDER BY w.created_at",
     user.id,
-    // The look comes once, parsed, for the open workspace (`look` below).
-  )).map(({ theme: _theme, ...w }) => w);
+    // The look and the link rules come once, parsed, for the open
+    // workspace (`look` and `linkRules` below).
+  )).map(({ theme: _theme, link_rules: _rules, ...w }) => w);
   const workspace = workspaces.find((w) => w.id === wid) || workspaces[0];
   if (!workspace) throw new HttpError(404, "Kein Arbeitsbereich.");
   // Workflow pages are not for guests (#168).
@@ -341,6 +344,8 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
     // person chose Flowplan's own look instead.
     look: await workspaceLook(workspace.id),
     plainLook: await plainLook(user.id),
+    // Automatic links (#202, lib/auto-link.ts) for the editors.
+    linkRules: await workspaceLinkRules(workspace.id),
     // "Menü bei Textauswahl" (#200, lib/text-menu-pref.ts).
     textMenu: await userTextMenu(user.id),
     pages,
@@ -880,6 +885,10 @@ async function runCommand(
         break;
       case "workspace.theme":
         result = await saveWorkspaceTheme(user, wid(), b.theme);
+        break;
+      // Automatic link rules (#202): owners replace the list.
+      case "workspace.linkRules":
+        result = await saveWorkspaceLinkRules(user, wid(), b.rules);
         break;
       case "workspace.font.rename":
         result = await renameWorkspaceFont(user, wid(), b.fontId, b.name);

@@ -238,6 +238,22 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     ],
   },
   {
+    id: "autolinks",
+    area: "settings",
+    group: "workspace",
+    icon: "LinkSimple",
+    title: { de: "Automatische Links", en: "Automatic links" },
+    description: { de: "Muster wie ABC-123 beim Tippen und Einfügen zu Links machen.", en: "Turn patterns like ABC-123 into links while typing and pasting." },
+    keywords: {
+      de: "automatische links autolink verlinken regex regulärer ausdruck muster vorlage ticket jira github issue linkify",
+      en: "automatic links autolink linkify regex regular expression pattern template ticket jira github issue",
+    },
+    entries: [
+      { title: { de: "Regeln für automatische Links", en: "Automatic link rules" }, anchor: "link-rules" },
+      { title: { de: "Regeln ausprobieren", en: "Try the rules" }, anchor: "link-rules-test" },
+    ],
+  },
+  {
     id: "members",
     area: "settings",
     group: "workspace",

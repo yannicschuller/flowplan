@@ -6,6 +6,7 @@
 // /api/openapi.json, readable at /api/docs; tests/openapi.test.ts keeps the
 // routes, the command actions and the SDKs in step with it.
 import { workspaceThemeSchema } from "./workspace-theme";
+import { autoLinkRulesSchema } from "./auto-link";
 import { textMenuPrefSchema } from "./text-menu-pref";
 import { MAX_HOME_WIDGETS, MAX_LAYOUT_BYTES, saveSchema } from "./home-layout-schema";
 import { MAX_TILES, tileSizes, tileTypes } from "./dashboard-schema";
@@ -55,7 +56,7 @@ const ref = (name: string) => ({ $ref: `#/components/schemas/${name}` });
 // API tokens and therefore not listed.
 export const commandActionNames = [
   "workspace.create", "workspace.update", "workspace.delete", "workspace.leave", "workspace.import",
-  "workspace.look", "workspace.theme", "workspace.font.rename", "workspace.font.delete",
+  "workspace.look", "workspace.theme", "workspace.linkRules", "workspace.font.rename", "workspace.font.delete",
   "profile.onboarded", "profile.language", "profile.plainLook", "profile.textMenu", "notification.reset", "notification.email", "notification.weekly", "shortcuts.save",
   "home.save", "home.reset", "home.note", "home.config", "home.default",
   "account.deletePlan", "account.delete",
@@ -147,6 +148,18 @@ export const commandActions: ActionDoc[] = [
       theme: workspaceThemeSchema.nullable(),
     }),
     result: z.object({ theme: workspaceThemeSchema.nullable(), fonts: z.array(z.object({ id: uuid, name: str, format: z.enum(["woff2", "woff", "truetype", "opentype"]), variable: z.boolean() })) }),
+  },
+  {
+    action: "workspace.linkRules",
+    summary: "Set the workspace's automatic link rules",
+    description:
+      "Needs the owner role. Replaces the whole list (at most 50 rules). Text that matches a rule's `pattern` (a JavaScript regular expression, at most 200 characters, run with the `g` and `u` flags; it may not match empty text or repeat a group that repeats itself) becomes a link while someone types or pastes it in a page, a record's document or a comment. `template` is an http(s) or mailto address with `{match}` (the whole match) and `$1`…`$9` or `{1}`…`{9}` (capture groups), each URL-encoded. Existing text is not changed. Every member and guest gets the rules in the bootstrap (`linkRules`).",
+    input: z.object({
+      action: z.literal("workspace.linkRules"),
+      workspaceId: uuid,
+      rules: autoLinkRulesSchema,
+    }),
+    result: z.object({ rules: z.array(z.object({ id: str, name: str, pattern: str, template: str, enabled: z.boolean() })) }),
   },
   {
     action: "profile.plainLook",

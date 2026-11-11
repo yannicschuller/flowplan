@@ -35,6 +35,7 @@ import {
   safeCommentLink,
   type CommentNode,
 } from "@/lib/comment-content";
+import { AutoLinkRules } from "@/lib/auto-link-plugin";
 const Mention = Node.create({
   name: "mention",
   group: "inline",
@@ -109,6 +110,8 @@ export function CommentComposer({
         link: { openOnClick: false, isAllowedUri: safeCommentLink },
       }),
       Mention,
+      // The workspace's automatic links (#202), as long as comments allow them.
+      AutoLinkRules.configure({ allow: safeCommentLink }),
       Extension.create({
         name: "commentLimits",
         addProseMirrorPlugins() {

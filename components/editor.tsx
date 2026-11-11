@@ -18,6 +18,7 @@ import { ImageAnnotator, type AnnotationResult } from "./image-annotator";
 import { FunctionPlotView } from "./function-plot-view";
 import { MetricView } from "./metric-view";
 import { TicketRefs } from "@/lib/ticket-ref-plugin";
+import { AutoLinkRules } from "@/lib/auto-link-plugin";
 import {
   resolveSuggestions,
   suggestionGroups,
@@ -690,6 +691,8 @@ export default function DocumentEditor({
         TaskDue,
         CalcHint.configure({ locale }),
         TicketRefs.configure({ pageId }),
+        // The workspace's automatic links (#202) while typing and pasting.
+        AutoLinkRules,
         Suggestion,
         SuggestChanges.configure({
           enabled: () => suggestingRef.current,
