@@ -385,11 +385,26 @@ export async function mobileSummary(user: Identity, todayInput?: unknown) {
   const unread = Number(
     (await one<{ n: number }>("SELECT COUNT(*) n FROM notifications WHERE user_id=? AND read_at IS NULL", user.id))?.n || 0,
   );
-  // Overdue, today, upcoming, undated – as in the "Tasks" widget.
+  // Overdue, today, upcoming, undated – as in the "Tasks" widget with "My
+  // tasks": the document tasks and the open records assigned to the person
+  // (myRecordTasks, loaded when used: lib/mobile-widgets.ts imports this file).
+  const { myRecordTasks } = await import("./mobile-widgets");
   const tasks = sortTasks(
-    (await openTasksEverywhere(user))
-      .filter((t) => t.assigned || t.journal || t.due)
-      .map((t) => ({ ...t, page: t.title })),
+    [
+      ...(await openTasksEverywhere(user))
+        .filter((t) => t.assigned || t.journal || t.due)
+        .map((t) => ({
+          due: t.due,
+          page: t.title,
+          pageId: t.pageId,
+          rowId: t.rowId,
+          index: t.index,
+          text: t.text,
+          title: t.title,
+          url: `/${pageLocationHash({ pageId: t.pageId, ...(t.rowId ? { rowId: t.rowId } : {}) })}`,
+        })),
+      ...(await myRecordTasks(user, () => true)).map((t) => ({ ...t.order, text: t.text, title: t.page, url: t.url })),
+    ],
     today,
   );
   const due = tasks.filter((t) => t.due && t.due <= today);
@@ -404,7 +419,7 @@ export async function mobileSummary(user: Identity, todayInput?: unknown) {
         text: t.text.slice(0, 200),
         page: (t.title || "").slice(0, 120),
         due: t.due,
-        url: `/${pageLocationHash({ pageId: t.pageId, ...(t.rowId ? { rowId: t.rowId } : {}) })}`,
+        url: t.url,
       })),
     },
     timer: await runningTimer(user),

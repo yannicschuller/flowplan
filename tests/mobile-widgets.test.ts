@@ -483,6 +483,29 @@ test("my tasks include open records I am assigned to, with the web's rights", as
     open.map((t) => t.rowId).sort(),
   );
 
+  // Everywhere else the apps list "my tasks": the same records.
+  // The overview's summary (simple widgets, Siri's count, local reminders).
+  const summary = await mobileSummary(me.user, TODAY);
+  assert.deepEqual(summary.tasks.items.map((t) => t.text), ["Late invoice", "Fix login", "Write docs", "Look only"]);
+  assert.deepEqual([summary.tasks.due, summary.tasks.overdue, summary.tasks.open], [2, 1, 4]);
+  assert.match(summary.tasks.items[1].url, new RegExp(fix));
+  // Spotlight.
+  const { spotlightItems } = await import("../lib/mobile-capture");
+  const spotlight = (await spotlightItems(me.user)).tasks;
+  assert.deepEqual(spotlight.map((t) => t.text), ["Late invoice", "Fix login", "Write docs", "Look only"]);
+  assert.deepEqual(spotlight[1], { id: `${db}:${fix}:row`, text: "Fix login", page: "Tickets", due: TODAY, url: first.url });
+  // The calendar widget: the ones due in its days ("What's on today?").
+  const calendar = async (range: string) => ((await one_(M, "calendar", { range })).items as Record<string, any>[]).filter((i) => i.type === "task");
+  assert.deepEqual(await calendar("today"), [{ type: "task", title: "Fix login", day: TODAY, start: TODAY, end: TODAY, timed: false, calendar: "Tickets", url: first.url }]);
+  assert.deepEqual((await one_(M, "calendar", { range: "week", tasks: false })).items, []);
+  for (const answer of [summary, await spotlightItems(me.user), await widgets(M, [{ kind: "calendar", config: { range: "week" } }])])
+    assert.doesNotMatch(JSON.stringify(answer), /salary|Not mine|Shipped/);
+  // A record a chosen calendar view shows already stays one event.
+  const views = [...(await database(db)).views, { id: "cal", name: "Calendar", type: "calendar", filters: [], sorts: [], dateField: "due" }] as View[];
+  await command(owner.user, { action: "database.update", pageId: db, version: (await database(db)).version, fields: (await database(db)).fields, views });
+  const both = ((await one_(M, "calendar", { range: "today", sources: [{ pageId: db, viewId: "cal" }] })).items as Record<string, any>[]).filter((i) => /Fix login/.test(i.title));
+  assert.deepEqual(both.map((i) => i.type), ["event"]);
+
   // Ticking one off sets the database's "done" state and drops it.
   await act(M, { action: "task.complete", source: "row", pageId: db, rowId: fix, done: true });
   assert.equal(JSON.parse((await one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", fix))!.cells).status, "Done");
