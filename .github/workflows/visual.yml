@@ -43,7 +43,21 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+        # The browser's system packages come from Ubuntu. GitHub's runners
+        # sometimes cannot resolve security.ubuntu.com (Nov 2026: hours of
+        # "Temporary failure resolving"); the runners' own Azure mirror
+        # carries the same security pocket. Retried with a pause as well.
+        run: |
+          for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
+            if [ -f "$f" ]; then sudo sed -i -E 's#https?://security\.ubuntu\.com/ubuntu#http://azure.archive.ubuntu.com/ubuntu#g' "$f"; fi
+          done
+          echo 'Acquire::Retries "5";' | sudo tee /etc/apt/apt.conf.d/80-retries > /dev/null
+          for attempt in 1 2 3; do
+            npx playwright install --with-deps chromium && exit 0
+            echo "Chromium install failed (attempt $attempt), retrying"
+            sleep $((attempt * 20))
+          done
+          exit 1
       - run: npm run build
         env:
           NEXT_TELEMETRY_DISABLED: "1"
