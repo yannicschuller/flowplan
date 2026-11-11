@@ -216,7 +216,7 @@ test("typed comparisons handle dates, numeric zeroes, booleans, array membership
   // Every formula error, as the table shows it, matches no condition.
   const quote: Field = { id: "q", name: "Quote", type: "formula" };
   for (const code of ["#DIV/0", "#RELATION", "#ERROR", "#CYCLE"])
-    for (const [op, value] of [["not_empty", ""], ["neq", "5"], ["empty", ""]] as const)
+    for (const [op, value] of [["notempty", ""], ["neq", "5"], ["empty", ""]] as const)
       assert.equal(matches({ q: code }, condition("q", op, value), quote), false, `${code} ${op}`);
 });
 
