@@ -157,6 +157,31 @@ test("Notion exports become nested pages, databases with record pages and attach
   assert.doesNotMatch(rowHtml, /Status: Offen/);
 });
 
+test("files above 10 MB: nested ZIPs always, attachments up to the upload limit", async () => {
+  const { saveInstanceSettings } = await import("../lib/instance-settings");
+  // Notion's large exports: a Part ZIP above 10 MB of smaller files.
+  const parts: Record<string, string | Buffer> = { [`Ordner ${hex(5)}.md`]: "# Ordner\n\n" };
+  for (let i = 0; i < 11; i++) {
+    parts[`Ordner ${hex(5)}/teil${i}.bin`] = randomBytes(1024 * 1024);
+    parts[`Ordner ${hex(5)}.md`] += `[Teil ${i}](Ordner%20${hex(5)}/teil${i}.bin)\n`;
+  }
+  const inner = await zip(parts);
+  assert.ok(inner.length > 10 * 1024 * 1024);
+  const nested = await importZip(owner, wid, space, await zip({ "Export-abc-Part-1.zip": inner }));
+  assert.equal(nested.pages, 1);
+  assert.equal(nested.files, 11);
+  // A single attachment above 10 MB, allowed by the upload limit.
+  const big = await zip({ [`Scan ${hex(6)}.md`]: "# Scan\n\n[PDF](scan.pdf)\n", "scan.pdf": randomBytes(11 * 1024 * 1024) });
+  await assert.rejects(importZip(owner, wid, space, big), /Größenlimit/);
+  await saveInstanceSettings({ maxUploadMb: 20 });
+  try {
+    const result = await importZip(owner, wid, space, big);
+    assert.equal(result.files, 1);
+  } finally {
+    await saveInstanceSettings({ maxUploadMb: 10 });
+  }
+});
+
 test("imports need write access, content and stay within limits", async () => {
   const simple = await zip({ "Notiz.md": "Hallo" });
   await assert.rejects(

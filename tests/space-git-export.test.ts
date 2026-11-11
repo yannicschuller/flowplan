@@ -1,10 +1,11 @@
 import { test, after } from "node:test";
 import { onPostgres } from "./helpers/backend";
 import assert from "node:assert/strict";
-import { cpSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync, existsSync } from "node:fs";
+import { cpSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync, existsSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync, spawn } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import type { Identity } from "../lib/types";
 process.env.FLOWPLAN_DATA_DIR = mkdtempSync(join(tmpdir(), "flowplan-space-git-"));
 process.env.APP_URL = "https://flowplan.example.test";
@@ -226,6 +227,34 @@ test("files of the repository that are not part of the export stay", { skip: !ex
   assert.equal(status.last?.error, null, String(status.last?.error));
   assert.equal(status.last?.pushed, false);
   assert.ok(existsSync(join(clone(), "LICENSE")));
+});
+
+test("an attachment above 10 MB is synced, not refused like a foreign import", { skip: !existsSync(backend) && "git http-backend missing" }, async () => {
+  process.env.SPACE_GIT_EXPORT = "true";
+  local();
+  execFileSync("git", ["init", "--bare", "-q", "-b", "main", join(repos, "big.git")]);
+  execFileSync("git", ["config", "--file", join(repos, "big.git", "config"), "http.receivepack", "true"]);
+  const archive = String((await as(ben)({ action: "space.create", name: "Scans" })).id);
+  const page = String((await as(ben)({ action: "page.create", spaceId: archive, title: "Handbuch", kind: "document" })).id);
+  const fid = id(),
+    size = 11 * 1024 * 1024;
+  mkdirSync(join(process.env.FLOWPLAN_DATA_DIR!, "uploads"), { recursive: true });
+  writeFileSync(join(process.env.FLOWPLAN_DATA_DIR!, "uploads", fid), randomBytes(size));
+  await run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fid, page, "scan.pdf", "application/pdf", size, ben.id);
+  await write(page, `<p>Siehe <a href="/api/files/${fid}">scan.pdf</a></p>`);
+  await save(ben, archive, { url: `http://127.0.0.1:${port}/big.git`, username: "flowplan", token: "secret-token" });
+  try {
+    const status = await runSpaceGitExport(ben, archive);
+    assert.equal(status.last?.error, null, String(status.last?.error));
+    assert.equal(status.last?.pushed, true);
+    const dir = mkdtempSync(join(tmpdir(), "flowplan-space-git-clone-"));
+    execFileSync("git", ["clone", "-q", `http://flowplan:secret-token@127.0.0.1:${port}/big.git`, dir]);
+    const scan = execFileSync("git", ["-C", dir, "ls-files"], { encoding: "utf8" }).split("\n").find((name) => name.endsWith("scan.pdf"));
+    assert.ok(scan);
+    assert.equal(statSync(join(dir, scan)).size, size);
+  } finally {
+    await as(ben)({ action: "space.gitExport", spaceId: archive, enabled: false });
+  }
 });
 
 test("a repository saved while a run was in progress starts from a fresh copy", { skip: !existsSync(backend) && "git http-backend missing" }, async () => {

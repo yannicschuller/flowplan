@@ -730,9 +730,19 @@ export async function exportArchive(user: Identity, wid: string) {
 // budget than Flowplan's own archives, shared across nested ZIPs through
 // `budget`, and entries that unpack hundreds of times larger than they are
 // (zip bombs) are refused.
-// `largeEntries` (foreign only): entries whose name matches may be as large
-// as the ZIP itself (PDFs of an import) instead of 10 MB.
-export type ZipOptions = { foreign?: boolean; maxEntries?: number; budget?: { left: number }; largeEntries?: RegExp };
+// A foreign entry may be as large as an upload (archiveFileLimit, at least
+// 10 MB); nested ZIPs (Notion's "Export-…-Part-1.zip") and entries matching
+// `largeEntries` (PDFs of an import) as large as a ZIP itself – the budget
+// bounds them all together.
+// `own` (foreign only): a ZIP Flowplan just wrote itself (the Markdown export
+// the Git syncs unpack): entries up to `own.entryBytes`, no zip-bomb check.
+export type ZipOptions = {
+  foreign?: boolean;
+  maxEntries?: number;
+  budget?: { left: number };
+  largeEntries?: RegExp;
+  own?: { entryBytes: number };
+};
 const FOREIGN_LIMIT = 512 * 1024 * 1024,
   MAX_RATIO = 200;
 export async function readZip(
@@ -741,6 +751,7 @@ export async function readZip(
 ): Promise<Map<string, Buffer>> {
   if (bytes.length > ARCHIVE_LIMIT)
     throw new HttpError(413, "ZIP darf maximal 100 MB groß sein.");
+  const perFile = options.foreign ? options.own?.entryBytes ?? (await archiveFileLimit()) : 10 * 1024 * 1024;
   return new Promise((resolve, reject) =>
     fromBuffer(
       bytes,
@@ -800,9 +811,9 @@ export async function readZip(
           const max =
             entry.fileName === "flowplan.json"
               ? MANIFEST_LIMIT
-              : options.foreign && options.largeEntries?.test(entry.fileName)
-                ? ARCHIVE_LIMIT
-                : 10 * 1024 * 1024;
+              : options.foreign && !options.own && (/\.zip$/i.test(entry.fileName) || options.largeEntries?.test(entry.fileName))
+                ? Math.max(ARCHIVE_LIMIT, perFile)
+                : perFile;
           if (!options.foreign && entry.fileName === "flowplan.json" && entry.uncompressedSize > MANIFEST_LIMIT) {
             fail(new HttpError(413, MANIFEST_TOO_LARGE));
             return;
@@ -811,7 +822,7 @@ export async function readZip(
             entry.uncompressedSize > max ||
             total + entry.uncompressedSize > EXPANDED_LIMIT ||
             entry.uncompressedSize > budget.left ||
-            (options.foreign && entry.uncompressedSize > 1024 * 1024 && entry.uncompressedSize > entry.compressedSize * MAX_RATIO)
+            (options.foreign && !options.own && entry.uncompressedSize > 1024 * 1024 && entry.uncompressedSize > entry.compressedSize * MAX_RATIO)
           ) {
             fail(
               new HttpError(
