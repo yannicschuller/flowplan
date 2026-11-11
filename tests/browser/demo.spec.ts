@@ -20,14 +20,15 @@ test("the demo button opens a throwaway workspace that is deleted on leaving", a
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   try {
+    // The website's "Demo ausprobieren" links to /demo (app/demo/page.tsx):
+    // switched off it leads to the sign-in, switched on it starts a demo.
     setDemo(false);
-    await page.goto("/");
+    await page.goto("/demo");
+    await expect(page).toHaveURL(/\/login/);
     await expect(page.getByRole("button", { name: "Anmelden", exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Demo/ })).toHaveCount(0);
 
     setDemo(true);
-    await page.goto("/");
-    await page.getByRole("button", { name: "Demo ausprobieren" }).first().click();
+    await page.goto("/demo");
     await expect(page.locator(".demo-banner")).toBeVisible({ timeout: 20_000 });
     await expect(page.locator(".sidebar")).toContainText("Willkommen in der Demo");
     await expect(page.locator(".sidebar")).toContainText("Editor-Rundgang");
@@ -45,8 +46,15 @@ test("the demo button opens a throwaway workspace that is deleted on leaving", a
     const embed = await page.request.get("/api/embed?url=https%3A%2F%2Fexample.com%2F");
     expect(embed.status()).toBe(403);
 
-    await page.getByRole("button", { name: "Demo beenden" }).click();
-    await expect(page.getByRole("heading", { level: 1 })).toContainText("Alles, woran ihr arbeitet.");
+    // The banner is rendered on the server: a click before hydration is
+    // lost (slow on the dev server), so it is repeated until it ends the demo.
+    await expect(async () => {
+      const ended = page.waitForResponse((r) => r.url().endsWith("/api/auth/trial-end"), { timeout: 3000 });
+      await page.getByRole("button", { name: "Demo beenden" }).click({ timeout: 3000 });
+      await ended;
+    }).toPass({ timeout: 30_000 });
+    // Back on the sign-in page (the start page moved to the website).
+    await expect(page.getByRole("button", { name: "Anmelden", exact: true })).toBeVisible({ timeout: 15_000 });
     expect(db.prepare("SELECT 1 FROM users WHERE id=?").get(uid)).toBeUndefined();
     expect(db.prepare("SELECT 1 FROM workspaces WHERE id=?").get(ws)).toBeUndefined();
     expect(errors).toEqual([]);
@@ -72,7 +80,8 @@ test("the live channel of a document closes once the session ends", async ({ bro
   });
   const { id } = await created.json();
   const { generation } = await (await page.request.get(`/api/pages/${id}`)).json();
-  await page.goto("/docs");
+  // Any page of the server will do (/docs moved to the documentation site).
+  await page.goto("/robots.txt");
   await page.evaluate(
     ({ id, generation }) => {
       const events: string[] = [];
