@@ -1327,6 +1327,11 @@ function migrate(d: DatabaseSync) {
   // column, so the schema number stays.
   if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "text_menu"))
     d.exec("ALTER TABLE users ADD COLUMN text_menu TEXT");
+  // Automatic link rules of a workspace (#202, lib/auto-link-rules.ts):
+  // workspaces.link_rules (JSON, NULL = none). An older version ignores the
+  // column (nothing is linked automatically), so the schema number stays.
+  if (!(d.prepare("PRAGMA table_info(workspaces)").all() as { name: string }[]).some((c) => c.name === "link_rules"))
+    d.exec("ALTER TABLE workspaces ADD COLUMN link_rules TEXT");
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);

@@ -19,6 +19,7 @@ import {
   Info,
   Key,
   ListChecks,
+  LinkSimple,
   LockKey,
   Megaphone,
   Microphone,
@@ -52,6 +53,7 @@ import ConnectionsSection from "./user/connections";
 import ClipperSection from "./user/clipper";
 import WorkspaceSection from "./user/workspace";
 import WorkspaceLookSection from "./user/workspace-look";
+import LinkRulesSection from "./user/link-rules";
 import MembersSection from "./user/members";
 import GroupsSection from "./user/groups";
 import SpacesSection from "./user/spaces";
@@ -95,6 +97,7 @@ export const ICONS: Record<string, Icon> = {
   Info,
   Key,
   ListChecks,
+  LinkSimple,
   LockKey,
   Megaphone,
   Microphone,
@@ -128,6 +131,7 @@ const USER_COMPONENTS: Record<string, ComponentType> = {
   clipper: ClipperSection,
   workspace: WorkspaceSection,
   look: WorkspaceLookSection,
+  autolinks: LinkRulesSection,
   members: MembersSection,
   groups: GroupsSection,
   spaces: SpacesSection,

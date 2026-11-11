@@ -5,6 +5,18 @@ import { PAGE_LOCALE } from "./locale-tag";
 import { securityRules } from "./security-kinds";
 
 const exact: Record<string, string> = {
+  // Automatic link rules of a workspace (#202, lib/auto-link-rules.ts).
+  "Das Muster fehlt.": "The pattern is missing.",
+  "Das Muster ist länger als 200 Zeichen.": "The pattern is longer than 200 characters.",
+  "Das Muster ist kein gültiger regulärer Ausdruck.": "The pattern is not a valid regular expression.",
+  "Das Muster darf nicht auf leeren Text passen.": "The pattern must not match empty text.",
+  "Das Muster wiederholt eine Gruppe, die selbst schon wiederholt (zu langsam).": "The pattern repeats a group that repeats itself (too slow).",
+  "Die Link-Vorlage fehlt.": "The link template is missing.",
+  "Die Link-Vorlage ist länger als 500 Zeichen.": "The link template is longer than 500 characters.",
+  "Die Link-Vorlage muss mit https://, http:// oder mailto: beginnen.": "The link template must start with https://, http:// or mailto:.",
+  "Die Link-Vorlage ergibt keine gültige Adresse.": "The link template does not give a valid address.",
+  "Der Name ist länger als 60 Zeichen.": "The name is longer than 60 characters.",
+  "Höchstens 50 Regeln.": "At most 50 rules.",
   // Meeting notes and the tokens' AI permission (#199, lib/meetings.ts, lib/ai/token-access.ts).
   "Dieses API-Token hat keine Berechtigung „KI und Transkription“.": "This API token has no permission for “AI and transcription”.",
   "KI und Transkription sind für API-Tokens auf dieser Instanz ausgeschaltet.": "AI and transcription are switched off for API tokens on this instance.",
