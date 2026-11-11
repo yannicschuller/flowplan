@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
+import { openPageMenu, phoneTopBar } from "./page-top-bar";
 
 test("follow a page, see changes since the last visit and recently viewed pages", async ({ page }, info) => {
   test.skip(!process.env.FLOWPLAN_DATA_DIR, "Needs the test server data directory.");
@@ -32,13 +33,23 @@ test("follow a page, see changes since the last visit and recently viewed pages"
   };
   await sync("<p>Ursprünglicher Plan für das Quartal</p>");
   await page.goto(`/#page=${pageId}`);
-  // The creator follows the page.
-  const follow = page.getByRole("button", { name: "Nicht mehr folgen" });
-  await expect(follow).toHaveAttribute("aria-pressed", "true");
-  await follow.click();
-  await expect(page.getByRole("button", { name: "Seite folgen" })).toHaveAttribute("aria-pressed", "false");
-  await page.getByRole("button", { name: "Seite folgen" }).click();
-  await expect(page.getByRole("button", { name: "Nicht mehr folgen" })).toBeVisible();
+  // The creator follows the page (on phones: in the ⋯ menu).
+  if (phoneTopBar(page)) {
+    const follow = (await openPageMenu(page)).getByRole("menuitemcheckbox", { name: "Folgen", exact: true });
+    await expect(follow).toHaveAttribute("aria-checked", "true");
+    await follow.click();
+    await expect(follow).toHaveAttribute("aria-checked", "false");
+    await follow.click();
+    await expect(follow).toHaveAttribute("aria-checked", "true");
+    await page.keyboard.press("Escape");
+  } else {
+    const follow = page.getByRole("button", { name: "Nicht mehr folgen" });
+    await expect(follow).toHaveAttribute("aria-pressed", "true");
+    await follow.click();
+    await expect(page.getByRole("button", { name: "Seite folgen" })).toHaveAttribute("aria-pressed", "false");
+    await page.getByRole("button", { name: "Seite folgen" }).click();
+    await expect(page.getByRole("button", { name: "Nicht mehr folgen" })).toBeVisible();
+  }
 
   // Someone else changes the page while we are away.
   const db = new DatabaseSync(join(process.env.FLOWPLAN_DATA_DIR!, "flowplan.sqlite"));

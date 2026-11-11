@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { openSidebarTool } from "./sidebar-tools";
+import { openShare } from "./page-top-bar";
 
 // The view's search: the "Suchen" chip turns into the field (and folds back
 // when it is left empty).
@@ -1142,7 +1143,7 @@ test("independent guest links provide read, comment and edit access with revocat
     title: `Shared roles ${testInfo.project.name}`,
   });
   await page.goto(`/#page=${created.id}`);
-  await page.getByRole("button", { name: "Teilen", exact: true }).click();
+  await openShare(page);
   const dialog = page.getByRole("dialog", {
     name: "Seite teilen",
     exact: true,
@@ -1266,7 +1267,7 @@ test("independent guest links provide read, comment and edit access with revocat
       patch: { locked: true },
     });
     await page.goto(`/#page=${created.id}`);
-    await page.getByRole("button", { name: "Teilen", exact: true }).click();
+    await openShare(page);
     await dialog.getByRole("tab", { name: /^Links/ }).click();
     await dialog
       .getByRole("button", { name: "Mehr zu Bearbeitungslink", exact: true })
