@@ -8,8 +8,7 @@ import { readModeIds, toggleReadMode } from "@/lib/read-mode";
 import { pinnedColumnLeft, pinnedColumnWidth, SELECTION_COLUMN, tableWidth } from "@/lib/pinned-column";
 import { isLinkField } from "@/lib/cell-links";
 import { LinkCellDisplay, LinkValue } from "./link-cell";
-import { csvImportText } from "@/lib/cell-text";
-import { type CsvContext, csvImporter, databaseCsv, viewCsvFields } from "@/lib/database-csv";
+import { type CsvContext, csvImporter, databaseCsv, parseCsvFile, viewCsvFields } from "@/lib/database-csv";
 import { recordsClipboard } from "@/lib/database-clipboard";
 import { suggestedPrefix } from "@/lib/ticket-ids";
 import { parentField, treeOrder } from "@/lib/subtasks";
@@ -193,7 +192,6 @@ import {
   ArrowLeft,
   ArrowRight,
 } from "@phosphor-icons/react";
-import Papa from "papaparse";
 import { isFormattedText } from "@/lib/inline-markdown";
 import { InlineText } from "./inline-text";
 import { Modal, viewIcons, download, Avatar, api, PageIcon, SHEET_MEDIA } from "./ui";
@@ -795,8 +793,9 @@ export default function DatabaseView({
         related,
         data.relatedSchemas,
         new Date(filterNow),
+        { members, sprints: data.database.settings?.sprints },
       ),
-    [data, fields, view, query, filterNow],
+    [data, fields, view, query, filterNow, members],
   );
   const selected = data.rows.find((r) => r.id === rowId);
   // A related record on top of another view (#192): it closes with its
@@ -4145,29 +4144,36 @@ export default function DatabaseView({
             e.target.value = "";
             return;
           }
-          const result = Papa.parse<Record<string, string>>(await f.text(), {
-            header: true,
-            skipEmptyLines: true,
-            // The apostrophes the CSV export puts before formula-like text
-            // (in names and values) come off again.
-            transformHeader: csvImportText,
-            transform: csvImportText,
-          });
-          if (result.errors.length) {
+          const result = parseCsvFile(await f.text());
+          if (result.unreadable) {
             onError(t("CSV konnte nicht gelesen werden.", "The CSV could not be read."));
             return;
           }
           // Properties with a column in the file; names become ids again.
-          const columns = new Set(result.meta.fields || []);
-          const imported = result.data.map(
+          const columns = new Set(result.columns);
+          const imported = result.rows.map(
             csvImporter(
               fields.filter((f) => !computedTypes.includes(f.type) && columns.has(f.name)),
               fields,
               csvContext(),
             ),
           );
-          await act({ action: "rows.import", rows: imported });
+          const done = (await act({ action: "rows.import", rows: imported })) as
+            | { newOptions?: { name: string; options: string[] }[] }
+            | null;
           e.target.value = "";
+          // Values that were not options yet were added as options: say where.
+          const added = done?.newOptions || [];
+          if (added.length)
+            showToast({
+              text: added
+                .map((f) =>
+                  f.options.length === 1
+                    ? t(`Neue Option „${f.options[0]}“ in „${f.name}“ angelegt.`, `New option “${f.options[0]}” added to “${f.name}”.`)
+                    : t(`${f.options.length} neue Optionen in „${f.name}“ angelegt.`, `${f.options.length} new options added to “${f.name}”.`),
+                )
+                .join(" "),
+            });
         }}
       />
       {markdownFiles && (

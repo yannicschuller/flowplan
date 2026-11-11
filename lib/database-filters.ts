@@ -11,6 +11,7 @@ import { z } from "zod";
 import { cellText } from "./cell-text";
 import { isFormattedText, toPlain } from "./inline-markdown";
 import { isEmptyValue } from "./empty-value";
+import { isFormulaError } from "./formula";
 import type { Field, Filter, FilterGroup, FilterNode, View } from "./types";
 export const filterOperators = [
   "contains",
@@ -230,7 +231,7 @@ export function matches(
   if (
     field &&
     ["formula", "rollup"].includes(field.type) &&
-    /^#(ERROR|ACCESS|PROPERTY|CYCLE|LIMIT)/.test(s.toUpperCase())
+    isFormulaError(raw)
   )
     return false;
   if (multiValueOperators.has(f.op)) {

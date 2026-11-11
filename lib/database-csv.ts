@@ -6,12 +6,14 @@
 // values stay as stored (numbers, ISO dates, true/false), so the import gives
 // them back unchanged; it looks the names up again. Client-safe and pure.
 import Papa from "papaparse";
-import { CSV_FORMULA, cellText, csvListSplitter } from "./cell-text";
+import { CSV_FORMULA, cellText, csvImportText, csvListSplitter } from "./cell-text";
+import { validDateValue } from "./date-values";
 import { sqlTimestampToIso } from "./date-values";
 import { isTimestampType } from "./field-format";
 import { fileIdOf, fileUrls } from "./file-cells";
 import { escapeInline, isFormattedText, toPlain } from "./inline-markdown";
 import { foldName } from "./page-properties";
+import { parseCheckbox, parseDate, parseNumber } from "./table-database";
 import type { Field, Row, View } from "./types";
 
 export type CsvContext = {
@@ -144,6 +146,31 @@ export function databaseCsv(fields: Field[], allFields: Field[], rows: Pick<Row,
   );
 }
 
+// A CSV file for the import: rows by column name. Only a broken quote makes
+// it unreadable – a single column has no delimiter to detect (the comma is
+// taken), and short or long rows keep the cells they have.
+export function parseCsvFile(text: string) {
+  const result = Papa.parse<Record<string, string>>(text, {
+    header: true,
+    skipEmptyLines: true,
+    // The apostrophes the CSV export puts before formula-like text (in
+    // names and values) come off again.
+    transformHeader: csvImportText,
+    transform: csvImportText,
+  });
+  return {
+    rows: result.data,
+    columns: result.meta.fields || [],
+    unreadable: result.errors.some((e) => e.type === "Quotes"),
+  };
+}
+const numberValue = (text: string): number | string | null => {
+  if (!text.trim()) return null;
+  // Also as JavaScript writes very small and large numbers ("1e-7").
+  const n = parseNumber(text) ?? (/^[+-]?(?:\d+\.?\d*|\.\d+)e[+-]?\d+$/i.test(text.trim()) ? Number(text.trim()) : null);
+  return n !== null && Number.isFinite(n) ? n : text;
+};
+
 // The CSV import: a function from one CSV row (parsed with csvImportText) to
 // the cells of `fields`, the writable properties that have a column in the
 // file; properties without a column (hidden in the exported view) are left
@@ -184,10 +211,21 @@ export function csvImporter(fields: Field[], allFields: Field[], ctx: CsvContext
       fields.map((f) => {
         const text = row[f.name] || "";
         switch (f.type) {
+          // Numbers, checkboxes, dates and options also as people write
+          // them ("1,5", "Yes", "05.11.2026", "offen"); an empty number
+          // stays empty. What cannot be read stays as written: the server
+          // refuses it with the property's name (rows.import).
           case "number":
-            return [f.id, Number(text || 0)];
+            return [f.id, numberValue(text)];
           case "checkbox":
-            return [f.id, ["true", "1", "ja"].includes(text.toLowerCase())];
+            return [f.id, text.trim() ? (parseCheckbox(text) ?? { "1": true, "0": false }[text.trim()] ?? text) : false];
+          case "date":
+            return [f.id, !text.trim() ? "" : validDateValue(text.trim()) ? text.trim() : parseDate(text) || text];
+          case "select":
+            return [
+              f.id,
+              f.options?.includes(text) ? text : (f.options || []).find((o) => foldName(o) === foldName(text)) ?? text,
+            ];
           case "multiselect":
           case "aliases":
             return [f.id, lists.get(f.id)!(text)];

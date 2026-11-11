@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import Papa from "papaparse";
 import { csvImportText } from "../lib/cell-text";
-import { type CsvContext, csvImporter, databaseCsv, viewCsvFields } from "../lib/database-csv";
+import { type CsvContext, csvImporter, databaseCsv, parseCsvFile, viewCsvFields } from "../lib/database-csv";
 import type { Field } from "../lib/types";
 
 const fields: Field[] = [
@@ -213,4 +213,50 @@ test("placeholders link nobody unless one real record has exactly that title", (
   assert.deepEqual(importer([""])({ Stelle: "untitled" }).to, []);
   // The one record titled "Untitled", with no untitled record beside it.
   assert.deepEqual(importer(["Untitled", "Klinik"])({ Stelle: "Untitled" }).to, ["c0"]);
+});
+
+test("numbers, checkboxes, dates and options: empty stays empty, common writings are read", () => {
+  const typed: Field[] = [
+    { id: "n", name: "Zahl", type: "number" },
+    { id: "d", name: "Datum", type: "date" },
+    { id: "c", name: "Ok", type: "checkbox" },
+    { id: "s", name: "Status", type: "select", options: ["Offen", "Erledigt"] },
+  ];
+  const importer = csvImporter(typed, typed, ctx);
+  // An export round trip: an empty number stays empty, not 0.
+  const csv = databaseCsv(typed, typed, [
+    { cells: { n: null, d: "2026-11-05", c: false, s: "Offen" } },
+    { cells: { n: 0.0000001, d: "2026-11-05T09:30:00Z", c: true, s: "" } },
+  ], ctx);
+  assert.deepEqual(parse(csv).data.map(importer), [
+    { n: null, d: "2026-11-05", c: false, s: "Offen" },
+    { n: 0.0000001, d: "2026-11-05T09:30:00Z", c: true, s: "" },
+  ]);
+  assert.deepEqual(importer({ Zahl: "1,5", Datum: "05.11.2026", Ok: "Yes", Status: "offen" }), {
+    n: 1.5,
+    d: "2026-11-05",
+    c: true,
+    s: "Offen",
+  });
+  assert.deepEqual(importer({ Zahl: "1.234,56", Datum: "", Ok: "nein", Status: "" }), { n: 1234.56, d: "", c: false, s: "" });
+  // What cannot be read stays as written: the import refuses a number,
+  // checkbox or date with the property's name instead of losing or inventing
+  // a value (tests/rows-import.test.ts); an unknown option is kept.
+  assert.deepEqual(importer({ Zahl: "12 %", Datum: "2026-02-30", Ok: "vielleicht", Status: "Neu" }), {
+    n: "12 %",
+    d: "2026-02-30",
+    c: "vielleicht",
+    s: "Neu",
+  });
+});
+
+test("a file with one column, short or long rows reads; a broken quote does not", () => {
+  const one = parseCsvFile(databaseCsv([fields[0]], fields, [{ cells: { title: "Alpha" } }, { cells: { title: "Beta" } }], ctx));
+  assert.equal(one.unreadable, false);
+  assert.deepEqual(one.columns, ["Name"]);
+  assert.deepEqual(one.rows.map((r) => r.Name), ["Alpha", "Beta"]);
+  const ragged = parseCsvFile("Name,Notiz\r\nA\r\nB,x,\r\n");
+  assert.equal(ragged.unreadable, false);
+  assert.deepEqual(ragged.rows.map((r) => [r.Name, r.Notiz]), [["A", undefined], ["B", "x"]]);
+  assert.equal(parseCsvFile('Name,Notiz\r\n"A,x\r\n').unreadable, true);
 });
