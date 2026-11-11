@@ -30,6 +30,8 @@ test("menus and outline stay at the text in a scrolled record", async ({ page },
     kind: "database",
   });
   const row = await command({ action: "row.create", pageId: db.id, cells: { title: "Langer Eintrag" } });
+  // A touch selection on a phone shows the text menu only with "Immer" (#200).
+  if (phone) await command({ action: "profile.textMenu", textMenu: "always" });
 
   for (const mode of ["center", "side", "full"]) {
     const current = await (await page.request.get(`/api/pages/${db.id}`)).json();

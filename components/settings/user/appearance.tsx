@@ -18,6 +18,8 @@ import { setDiscoveryPanelsShown, useDiscoveryPanelsShown } from "@/lib/discover
 import { useUserSettings } from "../user-context";
 import { setDrawioPref, useDrawioPrefs } from "@/lib/drawio-prefs";
 import { DRAWIO_UIS, type DrawioUi } from "@/lib/drawio";
+import type { TextMenuPref } from "@/lib/text-menu-pref";
+import { setTextMenuPrefLocal, textMenuPref, useTextMenuPref } from "@/lib/text-menu-pref-client";
 
 export default function AppearanceSection() {
   const t = useT();
@@ -29,6 +31,20 @@ export default function AppearanceSection() {
   const handlesAlways = useBlockHandlesAlways();
   const discoveryPanels = useDiscoveryPanelsShown();
   const drawio = useDrawioPrefs();
+  const textMenu = useTextMenuPref();
+  const [textMenuStatus, runTextMenu] = useSaveState();
+  const chooseTextMenu = (value: TextMenuPref) => {
+    const before = textMenuPref();
+    setTextMenuPrefLocal(value);
+    void runTextMenu(async () => {
+      try {
+        await mutate({ action: "profile.textMenu", textMenu: value });
+      } catch (e) {
+        setTextMenuPrefLocal(before);
+        throw e;
+      }
+    });
+  };
   return (
     <>
       <SettingGroup id="language" title={t("Sprache und Erscheinungsbild", "Language and appearance")}>
@@ -99,6 +115,29 @@ export default function AppearanceSection() {
         />
       </SettingGroup>
       <SettingGroup id="editor" title={t("Editor", "Editor")}>
+        <SettingRow
+          anchor="text-menu"
+          label={t("Menü bei Textauswahl", "Menu on text selection")}
+          description={t(
+            "Das Menü mit Reaktionen, Formatierung und Kommentieren über markiertem Text. Nur am Computer: beim Markieren mit Maus, Trackpad oder Tastatur, nicht mit dem Finger. Ein Rechtsklick öffnet es immer. Gilt auf allen Geräten.",
+            "The menu with reactions, formatting and comments above selected text. Only on a computer: when selecting with a mouse, trackpad or keyboard, not with a finger. A right click always opens it. Applies on all devices.",
+          )}
+        >
+          <SaveState status={textMenuStatus} />
+          <div className="segmented" role="radiogroup" aria-label={t("Menü bei Textauswahl", "Menu on text selection")}>
+            {(
+              [
+                ["always", t("Immer", "Always")],
+                ["computer", t("Nur am Computer", "Only on a computer")],
+                ["never", t("Nie", "Never")],
+              ] as const
+            ).map(([value, label]) => (
+              <label key={value} data-active={textMenu === value}>
+                <input type="radio" name="text-menu" checked={textMenu === value} onChange={() => chooseTextMenu(value)} /> {label}
+              </label>
+            ))}
+          </div>
+        </SettingRow>
         <SwitchRow
           label={t("Griffe immer anzeigen", "Always show block handles")}
           description={t(

@@ -6,6 +6,7 @@
 // /api/openapi.json, readable at /api/docs; tests/openapi.test.ts keeps the
 // routes, the command actions and the SDKs in step with it.
 import { workspaceThemeSchema } from "./workspace-theme";
+import { textMenuPrefSchema } from "./text-menu-pref";
 import { MAX_HOME_WIDGETS, MAX_LAYOUT_BYTES, saveSchema } from "./home-layout-schema";
 import { MAX_TILES, tileSizes, tileTypes } from "./dashboard-schema";
 import { PAPER_COLORS, PAPER_ORIENTATIONS, PAPER_SIZES, PAPER_TEMPLATES } from "./notebook-paper";
@@ -55,7 +56,7 @@ const ref = (name: string) => ({ $ref: `#/components/schemas/${name}` });
 export const commandActionNames = [
   "workspace.create", "workspace.update", "workspace.delete", "workspace.leave", "workspace.import",
   "workspace.look", "workspace.theme", "workspace.font.rename", "workspace.font.delete",
-  "profile.onboarded", "profile.language", "profile.plainLook", "notification.reset", "notification.email", "notification.weekly", "shortcuts.save",
+  "profile.onboarded", "profile.language", "profile.plainLook", "profile.textMenu", "notification.reset", "notification.email", "notification.weekly", "shortcuts.save",
   "home.save", "home.reset", "home.note", "home.config", "home.default",
   "account.deletePlan", "account.delete",
   "space.create", "space.update", "space.delete", "space.restore", "space.purge", "space.duplicate", "space.gitExport", "space.reorder",
@@ -153,6 +154,13 @@ export const commandActions: ActionDoc[] = [
     description: "For the caller, in every workspace and on all devices; light or dark stays a choice per device.",
     input: z.object({ action: z.literal("profile.plainLook"), plain: z.boolean() }),
     result: z.object({ plainLook: z.boolean() }),
+  },
+  {
+    action: "profile.textMenu",
+    summary: "When selecting text shows the text menu",
+    description: "For the caller, on all devices: always, only for a selection made with a mouse, trackpad or keyboard (computer, the default), or never. A right click opens the menu in every case.",
+    input: z.object({ action: z.literal("profile.textMenu"), textMenu: textMenuPrefSchema }),
+    result: z.object({ textMenu: textMenuPrefSchema }),
   },
   {
     action: "space.create",

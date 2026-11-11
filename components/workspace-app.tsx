@@ -273,6 +273,7 @@ import { ENCRYPTED_TITLE } from "@/lib/e2ee";
 import { CalendarX, Compass, LockKey } from "@phosphor-icons/react";
 import { queueDrawioOpen, setDrawioEditor } from "@/lib/drawio-prefs";
 import { WorkspaceThemeStyle } from "./workspace-theme-style";
+import { setTextMenuPrefLocal } from "@/lib/text-menu-pref-client";
 // Shown while the parts load (they use the reader's language).
 function Loading({ what }: { what: "emoji" | "document" | "whiteboard" }) {
   const t = useT();
@@ -542,6 +543,8 @@ export default function WorkspaceApp({
   // comes back by itself, the error toast says why).
   const [layers, setLayers] = useState<Layer[]>([]);
   const boot = useMemo(() => layers.reduce((b, layer) => (layer.boot ? safeLayer(layer.boot, b) : b), bootState), [bootState, layers]);
+  // "Menü bei Textauswahl" (#200): the editors' text menus read it.
+  useEffect(() => setTextMenuPrefLocal(boot.textMenu), [boot.textMenu]);
   // The draw.io editor the documents' blocks open (lib/drawio-prefs.ts).
   setDrawioEditor(boot.instance?.drawio);
   const data = useMemo(

@@ -1,4 +1,5 @@
 import { withReadMemo } from "./read-memo";
+import { setUserTextMenu, userTextMenu } from "./user-text-menu";
 import { deleteWorkspaceFont, plainLook, renameWorkspaceFont, saveWorkspaceTheme, setPlainLook, workspaceLook } from "./workspace-fonts";
 import { requireDocumentSize } from "./document-size";
 import { patchStillApplies } from "./row-patch";
@@ -340,6 +341,8 @@ export async function bootstrap(user: Identity, wid?: string, agent?: string | n
     // person chose Flowplan's own look instead.
     look: await workspaceLook(workspace.id),
     plainLook: await plainLook(user.id),
+    // "Menü bei Textauswahl" (#200, lib/text-menu-pref.ts).
+    textMenu: await userTextMenu(user.id),
     pages,
     pageCounts: await pageCounts(user, workspace.id, pages),
     // "Tage in der Seitenleiste" of journals that differ from the default.
@@ -864,6 +867,10 @@ async function runCommand(
       // Flowplan's own look instead of the workspaces' (#196).
       case "profile.plainLook":
         result = await setPlainLook(user, b.plain);
+        break;
+      // The text menu on selecting text (#200, lib/text-menu-pref.ts).
+      case "profile.textMenu":
+        result = await setUserTextMenu(user, b.textMenu);
         break;
       // A workspace's look: read by its members (the settings list every
       // uploaded face), changed by its owners (lib/workspace-fonts.ts).

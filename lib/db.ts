@@ -1317,6 +1317,11 @@ function migrate(d: DatabaseSync) {
   migrateWorkspaceTheme(d);
   // Schema 103 – meeting notes (#199, lib/meetings.ts).
   migrateMeetings(d);
+  // "Menü bei Textauswahl" per person (#200, lib/text-menu-pref.ts):
+  // users.text_menu, NULL = the default. An older version ignores the
+  // column, so the schema number stays.
+  if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "text_menu"))
+    d.exec("ALTER TABLE users ADD COLUMN text_menu TEXT");
   // A database from a newer version keeps its number.
   if (Number((d.prepare("PRAGMA user_version").get() as { user_version: number }).user_version) < SCHEMA_VERSION)
     d.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
