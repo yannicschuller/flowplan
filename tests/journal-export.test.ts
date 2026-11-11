@@ -99,6 +99,10 @@ test("the ZIP import turns exported days into the days of a journal again", asyn
   assert.ok(result.pages > 0);
   const imported = await all<Page>("SELECT * FROM pages WHERE space_id=? AND kind='journal'", target);
   assert.equal(imported.length, 2, "both journals are journals again");
+  // With their titles, and the inner one below its page again.
+  assert.deepEqual(imported.map((j) => j.title).sort(), ["Baulogbuch", "Tagebuch"]);
+  const inner = imported.find((j) => j.title === "Baulogbuch")!;
+  assert.equal((await one<{ title: string }>("SELECT title FROM pages WHERE id=?", inner.parent_id))?.title, "Haus");
   const restored = (await findAsync(imported, async (j) => (await all("SELECT 1 FROM pages WHERE parent_id=?", j.id)).length === 3))!;
   const restoredDays = await all<Page>("SELECT * FROM pages WHERE parent_id=? ORDER BY journal_date", restored.id);
   assert.deepEqual(restoredDays.map((d) => d.journal_date), ["2026-09-30", "2026-10-26", "2026-10-27"]);
