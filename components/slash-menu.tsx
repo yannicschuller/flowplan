@@ -66,7 +66,8 @@ export function popoverArea(menu?: Element | null): Area {
 export function SlashMenu({
   sections,
   active,
-  anchor,
+  anchor: givenAnchor,
+  measureAnchor,
   search,
   parent,
   onBack,
@@ -81,6 +82,9 @@ export function SlashMenu({
   sections: SlashSection<SlashItem>[];
   active: number;
   anchor: { left: number; top: number; bottom: number };
+  // Where the "/" is now: the page can scroll under an open menu (iOS
+  // bringing the line above the keyboard), the menu then follows it.
+  measureAnchor?: () => { left: number; top: number; bottom: number } | null;
   search?: string;
   // The entry whose second level is shown.
   parent?: SlashItem | null;
@@ -93,6 +97,7 @@ export function SlashMenu({
 }) {
   const t = useT();
   const id = useId();
+  const anchor = measureAnchor?.() ?? givenAnchor;
   const box = useRef<HTMLDivElement>(null);
   const groupLabel = slashGroupLabels(t);
   const count = sections.reduce((sum, section) => sum + section.items.length, 0);
@@ -131,12 +136,19 @@ export function SlashMenu({
     const again = () => setViewportTick((n) => n + 1);
     vv?.addEventListener("resize", again);
     vv?.addEventListener("scroll", again);
+    // The page or the pane scrolling under the menu (the caret brought into
+    // view above the keyboard) moves the "/" – the menu goes with it.
+    const scrolled = (event: Event) => {
+      if (!(event.target instanceof Node && box.current?.contains(event.target))) again();
+    };
+    window.addEventListener("scroll", scrolled, true);
     const stop = onKeyboardMove(again);
     remeasureKeyboard();
     const timers = [80, 200, 400, 700, 1100].map((ms) => setTimeout(again, ms));
     return () => {
       vv?.removeEventListener("resize", again);
       vv?.removeEventListener("scroll", again);
+      window.removeEventListener("scroll", scrolled, true);
       stop();
       for (const t of timers) clearTimeout(t);
     };

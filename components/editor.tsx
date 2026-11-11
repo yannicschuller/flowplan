@@ -2911,6 +2911,14 @@ export default function DocumentEditor({
           sections={slashSectionList}
           active={Math.min(slashActive, Math.max(0, slashMatches.length - 1))}
           anchor={slashAnchor}
+          measureAnchor={() => {
+            if (!editor || editor.isDestroyed) return null;
+            try {
+              return editor.view.coordsAtPos(Math.min(slash.from, editor.state.doc.content.size));
+            } catch {
+              return null;
+            }
+          }}
           search={slash.mode === "button" ? slash.query : undefined}
           parent={slashParent}
           onBack={() => slashBack.current()}
