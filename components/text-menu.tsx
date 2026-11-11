@@ -8,7 +8,7 @@
 // (formatting, comment) take over. The right click (a long press where the
 // browser reports it as one, e.g. Android) opens it in every mode.
 // Reactions for the paragraph, formatting, calculating a selected
-// expression, a comment, copying. "Umwandeln in" changes the type
+// expression (insert or copy the result), a comment, copying. "Umwandeln in" changes the type
 // of the line (text, heading, list, quote, code) and keeps its text; it is
 // offered on right-click, so the menu over a selection stays small. In the
 // desktop app a right click on a misspelled word adds the spell checker's
@@ -54,7 +54,8 @@ import { hasLatexText } from "@/lib/chat-paste";
 import { latexToFormulas } from "@/lib/latex-convert";
 import { reactionBlockAt, setReactions, parseReactions } from "@/lib/block-reactions";
 import { pickTaskDue, taskAtSelection } from "@/lib/task-due-plugin";
-import type { MathAction } from "@/lib/math-solve";
+import { mathActionResult, type MathAction } from "@/lib/math-solve";
+import { showToast } from "./toast";
 
 const reactions = ["👍", "❤️", "🎉", "😄", "👀", "✅", "🙏", "🔥"];
 type Place = { x: number; y: number; mode: "selection" | "context" };
@@ -512,17 +513,37 @@ export function TextMenu({
             </button>
           )}
           {calc.map((action) => (
-            <button
-              key={action.kind + action.text}
-              type="button"
-              role="menuitem"
-              title={t("Hinter der Auswahl einfügen", "Insert after the selection")}
-              onClick={run(() => editor.view.dispatch(editor.state.tr.insertText(` ${action.text}`, to)))}
-            >
-              <Equals size={15} />
-              <span>{action.label}</span>
-              <strong>{action.text.replace(/^[=⇒]\s*/, "")}</strong>
-            </button>
+            // The row inserts the result after the selection; the button at
+            // its end copies it (a sibling, so Tab reaches it and Enter on
+            // either does only its own thing).
+            <div key={action.kind + action.text} className="text-menu-calc-row">
+              <button
+                type="button"
+                role="menuitem"
+                title={t("Hinter der Auswahl einfügen", "Insert after the selection")}
+                onClick={run(() => editor.view.dispatch(editor.state.tr.insertText(` ${action.text}`, to)))}
+              >
+                <Equals size={15} />
+                <span>{action.label}</span>
+                <strong>{mathActionResult(action)}</strong>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="text-menu-calc-copy"
+                aria-label={t("Ergebnis kopieren", "Copy result")}
+                title={t("Ergebnis kopieren", "Copy result")}
+                onClick={() => {
+                  const text = mathActionResult(action);
+                  void navigator.clipboard
+                    ?.writeText(text)
+                    .then(() => showToast({ text: t("Kopiert", "Copied") }))
+                    .catch(() => showToast({ text: t("Kopieren nicht möglich.", "Copying failed."), tone: "error" }));
+                }}
+              >
+                <Copy size={15} />
+              </button>
+            </div>
           ))}
         </div>
       )}

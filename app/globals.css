@@ -18192,6 +18192,32 @@ h3 .block-reactions {
   background: var(--hover);
   color: var(--text);
 }
+/* A calculation's row: inserting the result, and copying it at the end (#200 follow-up). */
+.text-menu-calc-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+.text-menu-calc-row > button:first-child {
+  flex: 1;
+  min-width: 0;
+}
+.text-menu-calc .text-menu-calc-copy {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  min-height: 32px;
+  padding: 0;
+}
+@media (pointer: coarse) {
+  .text-menu-calc .text-menu-calc-copy {
+    width: 44px;
+    min-height: 44px;
+  }
+}
 .text-menu-calc strong {
   color: var(--text);
   font-weight: 600;
@@ -18272,6 +18298,10 @@ h3 .block-reactions {
   .text-menu.selection {
     flex-direction: column;
     align-items: stretch;
+    /* As wide as its rows need, up to the screen: without it the width
+       stops at the space right of the selection's middle (the menu is
+       moved left only afterwards), cutting a calculation's result short. */
+    width: max-content;
   }
   .text-menu.selection .text-menu-reactions {
     border-right: 0;
