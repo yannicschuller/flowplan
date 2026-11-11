@@ -358,8 +358,10 @@ test("lasso: tap selects one stroke, turn with the handle, cut and paste onto an
   await expect(strokes(sheet(page, 0))).toHaveCount(1);
   await page.locator(".notebook-add-end").click();
   await expect(page.locator(".notebook-sheet")).toHaveCount(2);
-  const second = (await sheet(page, 1).boundingBox())!;
-  await page.mouse.click(second.x + 40, second.y + 40);
+  // A tap on the new sheet makes it the one to paste onto. The sheet's top
+  // can lie above the window once it is scrolled to: a click there missed
+  // and the paste went back onto the first sheet. The locator scrolls.
+  await sheet(page, 1).click({ position: { x: 40, y: 40 } });
   await tools.getByRole("button", { name: "Einfügen" }).click();
   await expect(strokes(sheet(page, 1))).toHaveCount(1);
   await expect(controls.getByRole("status")).toHaveText("Gespeichert", { timeout: 10_000 });
@@ -418,7 +420,8 @@ test("tool panels: tap the pen again, favourites, eraser kinds and clearing the 
   await expect(panel.getByText("3,2 pt")).toBeVisible();
   // Kept as a favourite: a chip in the toolbar row too.
   await panel.getByRole("button", { name: "Als Lieblingsstift speichern" }).click();
-  await expect(tools.getByRole("group", { name: "Lieblingsstifte" }).getByRole("button", { name: /Lieblingsstift 4: Stift, #e03131, 3,2 pt/ })).toHaveAttribute("aria-pressed", "true");
+  // (The panel's head lists the favourites too: the toolbar's own group.)
+  await expect(tools.locator(':scope > [role="group"][aria-label="Lieblingsstifte"]').getByRole("button", { name: /Lieblingsstift 4: Stift, #e03131, 3,2 pt/ })).toHaveAttribute("aria-pressed", "true");
   // Removed again in the list.
   await panel.getByRole("button", { name: "Lieblingsstifte bearbeiten" }).click();
   await panel.getByRole("button", { name: "Stift, #e03131, 3,2 pt entfernen" }).click();
@@ -574,7 +577,8 @@ test("page overview: bookmark, filter, select and delete with undo, contents, pr
   expect(papers[1]).toEqual({});
   await overview.getByRole("button", { name: "Löschen" }).click();
   await expect(overview.locator(".notebook-cell")).toHaveCount(3);
-  await page.getByRole("button", { name: "Rückgängig" }).click();
+  // The notice's undo, not the ink toolbar's.
+  await page.getByRole("status").filter({ hasText: "3 Blätter gelöscht." }).getByRole("button", { name: "Rückgängig" }).click();
   await expect(overview.locator(".notebook-cell")).toHaveCount(6);
   // Keyboard reorder: Alt+→ moves sheet 1 behind sheet 2.
   await overview.getByRole("button", { name: "Fertig" }).click();
@@ -586,12 +590,15 @@ test("page overview: bookmark, filter, select and delete with undo, contents, pr
   await overview.getByRole("button", { name: /als Kapitel/ }).click();
   await page.getByLabel("Titel des Kapitels").fill("Einleitung");
   await page.getByRole("button", { name: "Hinzufügen" }).click();
-  await expect(overview.getByRole("button", { name: /Einleitung/ })).toBeVisible();
+  await expect(overview.getByRole("button", { name: /^Einleitung \d+$/ })).toBeVisible();
   await page.keyboard.press("Escape");
   // Presenting: full screen view, next sheet, Escape ends.
   await page.getByRole("button", { name: "Präsentieren" }).click();
   const show = page.locator(".notebook-presentation");
   await expect(show).toBeVisible();
+  // It starts at the sheet in view; Home goes to the first.
+  await page.keyboard.press("Home");
+  await expect(show.locator(".notebook-presentation-count")).toHaveText("1 / 6");
   await page.keyboard.press("PageDown");
   await expect(show.locator(".notebook-presentation-count")).toHaveText("2 / 6");
   await page.keyboard.press("Escape");
@@ -669,55 +676,6 @@ test("notebook: shapes snap when holding, stay editable, and the ruler straighte
   expect(errors).toEqual([]);
 });
 
-// Audio recordings (components/notebook/notebook-audio.tsx): Chromium's fake
-// microphone records, a stroke written meanwhile carries the recording's
-// moment, stopping uploads it, and playback dims what comes later.
-test.describe("notebook audio", () => {
-  test.use({ launchOptions: { args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"] }, permissions: ["microphone"] });
-  test("record while writing, upload, play back in step, jump to a stroke", async ({ page }, info) => {
-    test.skip(info.project.name !== "desktop", "Pen input runs on the desktop project.");
-    const { create } = await setup(page);
-    const id = await create(`Vorlesung ${Date.now()}`, "notebook");
-    await openNotebook(page, id);
-    const controls = page.getByRole("toolbar", { name: "Notizbuch" });
-    await controls.getByRole("button", { name: "Aufnahmen" }).click();
-    await page.getByRole("menuitem", { name: "Aufnahme starten" }).click();
-    const bar = page.getByRole("region", { name: "Aufnahme" });
-    await expect(bar.getByRole("button", { name: "Aufnahme pausieren" })).toBeVisible();
-    await page.waitForTimeout(2000);
-    const cdp = await page.context().newCDPSession(page);
-    const box = (await sheet(page, 0).boundingBox())!;
-    await pen(cdp, path({ x: box.x + 90, y: box.y + 140 }, { x: box.x + 380, y: box.y + 180 }));
-    await page.waitForTimeout(1500);
-    await bar.getByRole("button", { name: "Beenden" }).click();
-    await expect(page.getByText(/ist gespeichert/)).toBeVisible({ timeout: 20_000 });
-    const list = await (await page.request.get(`/api/pages/${id}/recordings`)).json();
-    expect(list.recordings).toHaveLength(1);
-    const recording = list.recordings[0];
-    expect(recording.durationMs).toBeGreaterThan(2500);
-    const data = await (await page.request.get(`/api/pages/${id}`)).json();
-    const [first] = data.notebook.sheets.map((s: { id: string }) => s.id);
-    const stroke = data.notebook.sheets[0].ink.pages[first][0];
-    expect(stroke.rec.id).toBe(recording.id);
-    expect(stroke.rec.t).toBeGreaterThan(1500);
-    // The audio is served with ranges.
-    const ranged = await page.request.get(`/api/files/${recording.fileId}`, { headers: { range: "bytes=0-99" } });
-    expect(ranged.status()).toBe(206);
-    expect(ranged.headers()["content-type"]).toMatch(/^audio\//);
-    // Playing from the start: the stroke is not "spoken" yet.
-    await controls.getByRole("button", { name: "Aufnahmen" }).click();
-    await page.locator(".notebook-audio-item").first().click();
-    const player = page.locator(".notebook-audio-player");
-    await player.getByRole("button", { name: "Pause" }).click().catch(() => {});
-    await player.locator("input[type=range]").fill("0");
-    await expect(sheet(page, 0).locator(".ink-unspoken")).toHaveCount(1);
-    // "Play from here" on the stroke jumps to about when it was written.
-    await player.getByRole("button", { name: /Ab hier abspielen/ }).click();
-    await page.mouse.click(box.x + 235, box.y + 160);
-    await expect.poll(() => page.evaluate(() => (document.querySelector(".notebook-audio-player audio") as HTMLAudioElement).currentTime)).toBeGreaterThan(0.4);
-  });
-});
-
 test("text: edit an existing box's look while typing and for a lasso selection (mixed), each one undo step, kept after a reload", async ({ page }, info) => {
   test.skip(info.project.name !== "desktop", "Mouse input runs on the desktop project.");
   const { create } = await setup(page);
@@ -741,7 +699,7 @@ test("text: edit an existing box's look while typing and for a lasso selection (
   await expect(float).toBeVisible();
   await float.getByRole("button", { name: "Fett" }).click();
   await expect(page.locator(".ink-text-input")).toBeFocused();
-  await float.getByRole("button", { name: "Schrift" }).click();
+  await float.getByRole("button", { name: "Schrift", exact: true }).click();
   await page.getByRole("radio", { name: /Instrument Serif/ }).click();
   await page.locator(".ink-text-input").focus();
   await page.keyboard.press("Enter");

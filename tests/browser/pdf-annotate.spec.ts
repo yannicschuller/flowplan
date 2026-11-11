@@ -223,7 +223,9 @@ test("holding the pen snaps a line; the lasso moves and recolours it; ⌘S saves
   await page.mouse.down();
   for (const p of ring.slice(1)) await page.mouse.move(p.x, p.y, { steps: 5 });
   await page.mouse.up();
-  const bar = page.getByRole("toolbar", { name: "Auswahl" });
+  // The snapped line is a shape: one shape in the loop gets the shape's own
+  // bar and handles (components/ink/shape-editor.tsx), not the selection bar.
+  const bar = page.getByRole("toolbar", { name: "Form bearbeiten" });
   await expect(bar).toBeVisible();
   await page.mouse.move(start.x + 150, start.y);
   await page.mouse.down();
