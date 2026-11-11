@@ -30,7 +30,7 @@
 // hear the audio) and a journal that is unlocked. Transcription and the AI
 // follow their own switches; API tokens need "KI und Transkription"
 // (lib/ai/token-access.ts).
-import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, rmdir, stat, writeFile } from "node:fs/promises";
 import { renameSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { Fragment, Node as PMNode } from "@tiptap/pm/model";
@@ -351,7 +351,7 @@ const startInput = z.object({
   pageId: z.uuid(),
   rowId: z.uuid().nullable().optional(),
   tracks: z.array(trackSchema).min(1).max(2),
-  mime: z.string().regex(/^audio\/[\w.+-]+$/).max(100).default("audio/webm"),
+  mime: z.string().regex(/^(audio\/[\w.+-]+|text\/plain)$/).max(100).default("audio/webm"),
   consent: z.boolean().optional(),
 });
 // A new recording session ("continue later" starts another one; its times
@@ -452,7 +452,7 @@ export async function meetingChunks(user: Identity, meetingId: string, n: number
 
 const finishInput = z.object({
   session: z.number().int().min(1),
-  parts: z.record(trackSchema, z.number().int().min(1).max(MAX_PARTS)),
+  parts: z.partialRecord(trackSchema, z.number().int().min(1).max(MAX_PARTS)),
   durationMs: z.number().min(0).max(MEETING_MAX_SECONDS * 1000 + 60_000),
   // The block's language for speaker names and the summary.
   language: z.enum(["de", "en", "fr", "zh"]).optional(),
@@ -737,6 +737,8 @@ async function keepOrDropAudio(actor: Identity, row: MeetingRow, session: Meetin
     });
   } finally {
     await rm(stagingDir(row.id, session.n), { recursive: true, force: true }).catch(() => {});
+    // The meeting's folder once no session is staged any more.
+    await rmdir(resolve(stagingRoot(), row.id)).catch(() => {});
   }
 }
 
@@ -901,7 +903,8 @@ export async function fillRecordProperties(actor: Identity, row: MeetingRow) {
     .map((a) => a?.id)
     .filter((v): v is string => typeof v === "string" && !!v);
   const attendeeField = usable.find((f) => f.type === "person" && NAMES.attendees.test(f.name));
-  if (attendeeField && people.length) patch[attendeeField.id] = people;
+  // A person property holds one member: the first attendee who is one.
+  if (attendeeField && people.length && empty(cells[attendeeField.id])) patch[attendeeField.id] = people[0];
   const durationField = usable.find((f) => f.type === "number" && NAMES.duration.test(f.name));
   if (durationField) patch[durationField.id] = Math.max(1, Math.round((Number(row.duration_ms) || 0) / 60_000));
   const statusField = usable.find((f) => f.type === "select" && NAMES.status.test(f.name.trim()));

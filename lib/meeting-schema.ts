@@ -50,6 +50,7 @@ export const Meeting = Node.create({
   parseHTML: () => [
     {
       tag: "div[data-meeting]",
+      priority: 1000,
       contentElement: ".meeting-parts",
       getAttrs: (el) => (MEETING_ID.test((el as HTMLElement).getAttribute("data-meeting") || "") ? null : false),
     },
@@ -77,7 +78,7 @@ const part = (name: string, kind: string, content: string) =>
     content,
     defining: true,
     isolating: true,
-    parseHTML: () => [{ tag: `div[data-meeting-part="${kind}"]` }],
+    parseHTML: () => [{ tag: `div[data-meeting-part="${kind}"]`, priority: 1000 }],
     renderHTML: () => ["div", { "data-meeting-part": kind, class: `meeting-part meeting-${kind}` }, 0],
   });
 export const MeetingSummary = part("meetingSummary", "summary", "block+");
@@ -99,7 +100,7 @@ export const MeetingSegmentNode = Node.create({
       session: { default: 1, parseHTML: (el: HTMLElement) => num(el.getAttribute("data-session")) || 1, renderHTML: () => ({}) },
     };
   },
-  parseHTML: () => [{ tag: "p[data-segment]" }],
+  parseHTML: () => [{ tag: "p[data-segment]", priority: 1000 }],
   renderHTML: ({ node }) => [
     "p",
     {
@@ -129,7 +130,7 @@ export const MeetingCite = Node.create({
       sid: attr("data-meeting-cite"),
     };
   },
-  parseHTML: () => [{ tag: "sup[data-meeting-cite]" }],
+  parseHTML: () => [{ tag: "sup[data-meeting-cite]", priority: 1000 }],
   renderHTML: ({ node }) => ["sup", { "data-meeting-cite": node.attrs.sid, "data-n": String(node.attrs.n), class: "meeting-cite" }, circled(Number(node.attrs.n))],
 });
 
