@@ -182,3 +182,13 @@ test("a deleted day is reported and can be created anew", async () => {
   // The deleted page stays in the trash as an ordinary page.
   assert.equal((await one<{ journal_date: string | null }>("SELECT journal_date FROM pages WHERE id=?", first))!.journal_date, null);
 });
+
+test("an invalid journal date is a validation error, not a crash", async () => {
+  const { journalDate } = await import("../lib/journal");
+  for (const date of ["", "2026-13-45", "kein Datum"]) assert.equal(journalDate.safeParse(date).success, false, date);
+  assert.equal(journalDate.safeParse("2028-02-29").success, true);
+  await assert.rejects(
+    async () => await command(user, { action: "journal.roll", pageId: journalId, date: "2026-13-45" }),
+    (e: Error) => e.name === "ZodError",
+  );
+});
