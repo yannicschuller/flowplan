@@ -1,7 +1,7 @@
 import { withReadMemo } from "./read-memo";
 import { setUserTextMenu, userTextMenu } from "./user-text-menu";
-import { deleteWorkspaceFont, plainLook, renameWorkspaceFont, saveWorkspaceTheme, setPlainLook, workspaceLook } from "./workspace-fonts";
-import { saveWorkspaceLinkRules, workspaceLinkRules } from "./auto-link-rules";
+import { deleteWorkspaceFont, importLook, plainLook, renameWorkspaceFont, saveWorkspaceTheme, setPlainLook, workspaceLook } from "./workspace-fonts";
+import { importLinkRules, saveWorkspaceLinkRules, workspaceLinkRules } from "./auto-link-rules";
 import { requireDocumentSize } from "./document-size";
 import { patchStillApplies } from "./row-patch";
 import { bannersFor } from "./instance-banners";
@@ -1025,6 +1025,9 @@ async function runCommand(
         const backup = z
           .object({
             format: z.literal("flowplan-1"),
+            // Look and link rules (#196, #202): exports from before have
+            // none; checked like the ZIP archive's further down.
+            workspace: z.object({ theme: z.unknown().optional(), linkRules: z.unknown().optional() }).optional(),
             pages: z
               .array(
                 z.object({
@@ -1190,9 +1193,19 @@ async function runCommand(
             await reconcileTagFields(user, np);
           }
         }
+        // The look without uploaded faces (a JSON export has none: those
+        // slots stay at the default) and the link rules, as in the ZIP
+        // archive (lib/archive.ts): owners only, a look only into a
+        // workspace without one, rules added; invalid ones are counted.
+        const look = backup.workspace?.theme ? await importLook(user, wid(), { theme: backup.workspace.theme, fonts: [] }) : { droppedTheme: false };
         result = {
           pages: backup.pages.length,
           pageIds: Object.fromEntries(mapped),
+          omittedSettings: {
+            linkRules: (await importLinkRules(user, wid(), backup.workspace?.linkRules)).dropped,
+            fonts: 0,
+            theme: look.droppedTheme ? 1 : 0,
+          },
         };
         break;
       }

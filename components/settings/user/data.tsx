@@ -65,6 +65,13 @@ export default function DataSection() {
   const [zipBusy, setZipBusy] = useState(false);
   const [importSpace, setImportSpace] = useState("");
   const [results, setResults] = useState<Record<string, Result>>({});
+  // Link rules, faces or a theme of a restored archive that did not pass
+  // the settings' checks (lib/archive.ts omittedSettings).
+  const omittedNote = (omitted?: { linkRules?: number; fonts?: number; theme?: number }) => {
+    const n = (omitted?.linkRules || 0) + (omitted?.fonts || 0) + (omitted?.theme || 0);
+    if (!n) return "";
+    return ` ${n === 1 ? t("Eine ungültige Einstellung des Arbeitsbereichs (Link-Regel, Schrift oder Aussehen) wurde nicht übernommen.", "One invalid workspace setting (link rule, font or appearance) was not taken over.") : t(`${n} ungültige Einstellungen des Arbeitsbereichs (Link-Regeln, Schriften oder Aussehen) wurden nicht übernommen.`, `${n} invalid workspace settings (link rules, fonts or appearance) were not taken over.`)}`;
+  };
   const report = (key: string, result: Result) => setResults((all) => ({ ...all, [key]: result }));
   const target = importSpace || boot.spaces[0]?.id || "";
   const fail = (key: string) => (e: unknown) => report(key, { tone: "error", text: (e as Error).message });
@@ -297,7 +304,7 @@ export default function DataSection() {
                     await onRefresh();
                     report("restore", {
                       tone: "ok",
-                      text: t(`${result.pages} ${result.pages === 1 ? "Seite" : "Seiten"} und ${result.files} ${result.files === 1 ? "Datei" : "Dateien"} importiert.${result.omittedRelations ? ` ${result.omittedRelations} Verknüpfungen zu nicht enthaltenen Einträgen konnten nicht übernommen werden.` : ""}`, `${result.pages} ${result.pages === 1 ? "page" : "pages"} and ${result.files} ${result.files === 1 ? "file" : "files"} imported.${result.omittedRelations ? ` ${result.omittedRelations} links to records not included could not be kept.` : ""}`),
+                      text: t(`${result.pages} ${result.pages === 1 ? "Seite" : "Seiten"} und ${result.files} ${result.files === 1 ? "Datei" : "Dateien"} importiert.${result.omittedRelations ? ` ${result.omittedRelations} Verknüpfungen zu nicht enthaltenen Einträgen konnten nicht übernommen werden.` : ""}`, `${result.pages} ${result.pages === 1 ? "page" : "pages"} and ${result.files} ${result.files === 1 ? "file" : "files"} imported.${result.omittedRelations ? ` ${result.omittedRelations} links to records not included could not be kept.` : ""}`) + omittedNote(result.omittedSettings),
                     });
                   } catch (e) {
                     fail("restore")(e);
@@ -315,8 +322,8 @@ export default function DataSection() {
                   input.value = "";
                   report("restore", null);
                   try {
-                    await mutate({ action: "workspace.import", workspaceId: boot.workspace.id, spaceId: boot.spaces[0].id, backup: JSON.parse(await file.text()) });
-                    report("restore", { tone: "ok", text: t("Backup importiert.", "Backup imported.") });
+                    const imported = (await mutate({ action: "workspace.import", workspaceId: boot.workspace.id, spaceId: boot.spaces[0].id, backup: JSON.parse(await file.text()) })) as { omittedSettings?: { linkRules?: number; fonts?: number; theme?: number } } | undefined;
+                    report("restore", { tone: "ok", text: t("Backup importiert.", "Backup imported.") + omittedNote(imported?.omittedSettings) });
                   } catch (e) {
                     fail("restore")(e);
                   }
