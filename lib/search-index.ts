@@ -501,7 +501,8 @@ export async function searchWorkspace(
   // SQLite's LIKE ignores the case of ASCII letters only: a short query (at
   // most two letters, so at most four spellings) is looked up in every mix
   // of lower and upper case, as ILIKE on PostgreSQL finds it.
-  const spellings = sql.name === "postgres"
+  // Only for a short query: they double with every letter.
+  const spellings = sql.name === "postgres" || !short
     ? [query]
     : [...new Set([...query].reduce((found, c) => {
         const cases = new Set([c, c.toLowerCase(), c.toUpperCase()].filter((v) => [...v].length === 1));
