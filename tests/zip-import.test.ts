@@ -157,6 +157,75 @@ test("Notion exports become nested pages, databases with record pages and attach
   assert.doesNotMatch(rowHtml, /Status: Offen/);
 });
 
+test("files above 10 MB: nested ZIPs always, attachments up to the upload limit", async () => {
+  const { saveInstanceSettings } = await import("../lib/instance-settings");
+  // Notion's large exports: a Part ZIP above 10 MB of smaller files.
+  const parts: Record<string, string | Buffer> = { [`Ordner ${hex(5)}.md`]: "# Ordner\n\n" };
+  for (let i = 0; i < 11; i++) {
+    parts[`Ordner ${hex(5)}/teil${i}.bin`] = randomBytes(1024 * 1024);
+    parts[`Ordner ${hex(5)}.md`] += `[Teil ${i}](Ordner%20${hex(5)}/teil${i}.bin)\n`;
+  }
+  const inner = await zip(parts);
+  assert.ok(inner.length > 10 * 1024 * 1024);
+  const nested = await importZip(owner, wid, space, await zip({ "Export-abc-Part-1.zip": inner }));
+  assert.equal(nested.pages, 1);
+  assert.equal(nested.files, 11);
+  // A single attachment above 10 MB, allowed by the upload limit.
+  const big = await zip({ [`Scan ${hex(6)}.md`]: "# Scan\n\n[PDF](scan.pdf)\n", "scan.pdf": randomBytes(11 * 1024 * 1024) });
+  await assert.rejects(importZip(owner, wid, space, big), /Größenlimit/);
+  await saveInstanceSettings({ maxUploadMb: 20 });
+  try {
+    const result = await importZip(owner, wid, space, big);
+    assert.equal(result.files, 1);
+  } finally {
+    await saveInstanceSettings({ maxUploadMb: 10 });
+  }
+});
+
+test("Flowplan's own Markdown export comes back with its tree, titles and databases", async () => {
+  const { command } = await import("../lib/api");
+  const { exportMarkdown } = await import("../lib/markdown-export");
+  const { htmlState } = await import("../lib/document-server");
+  const act = async (b: Record<string, unknown>) => (await command(owner, { workspaceId: wid, ...b })) as { id: string };
+  const write = async (pid: string, html: string) => await run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), pid);
+  const source = (await act({ action: "space.create", name: "Quelle" })).id;
+  const root = (await act({ action: "page.create", spaceId: source, title: "Projekt Über", kind: "document" })).id;
+  await write(root, "<p>Wurzeltext.</p>");
+  const child = (await act({ action: "page.create", spaceId: source, title: "Kind", kind: "document", parentId: root })).id;
+  await write(child, "<p>Kindtext.</p>");
+  const grand = (await act({ action: "page.create", spaceId: source, title: "Enkel", kind: "document", parentId: child })).id;
+  await write(grand, "<p>Enkeltext.</p>");
+  const db = (await act({ action: "page.create", spaceId: source, title: "Aufgaben", kind: "database", parentId: root })).id;
+  const row = (await act({ action: "row.create", pageId: db, cells: { title: "Eins" } })).id;
+  await run("UPDATE rows SET content=? WHERE id=?", "<p>Notiz zum Eintrag.</p>", row);
+  const tree = async (spaceId: string) => {
+    const list = await all<{ id: string; title: string; kind: string; parent_id: string | null }>(
+      "SELECT id,title,kind,parent_id FROM pages WHERE space_id=? AND deleted_at IS NULL",
+      spaceId,
+    );
+    return list
+      .filter((p) => p.title !== "Willkommen bei Flowplan")
+      .map((p) => `${p.kind}:${p.title} <- ${list.find((x) => x.id === p.parent_id)?.title ?? "-"}`)
+      .sort();
+  };
+  const expected = ["database:Aufgaben <- Projekt Über", "document:Enkel <- Kind", "document:Kind <- Projekt Über", "document:Projekt Über <- -"];
+  for (const options of [{ pageId: root }, { spaceId: source }]) {
+    const bytes = (await exportMarkdown(owner, { ...options, format: "zip", includeSubpages: true })).bytes as Buffer;
+    const target = (await act({ action: "space.create", name: "Ziel" })).id;
+    await importZip(owner, wid, target, bytes);
+    assert.deepEqual(await tree(target), expected, JSON.stringify(options));
+    const page = async (title: string) => (await one<{ id: string }>("SELECT id FROM pages WHERE space_id=? AND title=?", target, title))!.id;
+    const html = async (title: string) => (await one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", await page(title)))!.html;
+    assert.match(await html("Projekt Über"), /Wurzeltext/);
+    assert.doesNotMatch(await html("Projekt Über"), /Unterseiten|Aufgaben/);
+    assert.match(await html("Enkel"), /Enkeltext/);
+    const records = await rows(await page("Aufgaben"));
+    assert.deepEqual(records.map((r) => r.cells.title), ["Eins"]);
+    assert.match(String(records[0].content), /Notiz zum Eintrag/);
+    assert.doesNotMatch(String(records[0].content), /flowplan|title:/);
+  }
+});
+
 test("imports need write access, content and stay within limits", async () => {
   const simple = await zip({ "Notiz.md": "Hallo" });
   await assert.rejects(

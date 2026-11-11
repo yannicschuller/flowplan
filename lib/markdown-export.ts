@@ -23,7 +23,7 @@ import { cellText } from "./cell-text";
 import { sqlTimestampToIso } from "./date-values";
 // Created and edited time (SQLite text, UTC) export as ISO 8601 instants.
 const timestampTypes = new Set<string>(["created_at", "updated_at"]);
-import { writeZip } from "./archive";
+import { readZip, writeZip } from "./archive";
 import {
   htmlToMarkdown,
   markdownText,
@@ -88,6 +88,11 @@ export const MAX_MARKDOWN_EXPORT_RECORDS = MAX_ARCHIVE_ROWS,
   // Every record brings its file and, with the history, its comments and
   // versions; the Git export reads the same ZIP back (lib/git-export.ts).
   MAX_MARKDOWN_EXPORT_ENTRIES = 1_000_000;
+// Unpacks a ZIP exportMarkdown made (the Git syncs, lib/git-export.ts and
+// lib/space-git-export.ts) within the export's own limits, not those of a
+// foreign import: an attachment above 10 MB used to fail the sync.
+export const readMarkdownExport = (bytes: Buffer) =>
+  readZip(bytes, { foreign: true, maxEntries: MAX_MARKDOWN_EXPORT_ENTRIES, own: { entryBytes: MAX_BYTES } });
 // The folder of a top-level page in a space export and in the scheduled
 // export (lib/scheduled-markdown-export.ts).
 export const exportFolder = (page: { id: string; title: string }) => `${exportName(page.title).slice(0, 60)}-${page.id.slice(0, 8)}`;

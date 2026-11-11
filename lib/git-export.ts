@@ -21,7 +21,6 @@ import git from "isomorphic-git";
 import http from "isomorphic-git/http/node";
 import type { HttpClient } from "isomorphic-git";
 import { id, one, run, transaction, nowText } from "./db";
-import { readZip } from "./archive";
 import { requirePage } from "./permissions";
 import { requireUnlocked } from "./journal-extras";
 import { htmlState } from "./document-server";
@@ -33,7 +32,7 @@ import { frontmatterAliases, pageAliases, storedAliases } from "./aliases";
 import { syncMetaFromFrontmatter } from "./page-properties-server";
 import { importMarkdownRecords } from "./markdown-records";
 import type { Identity } from "./types";
-import { MAX_MARKDOWN_EXPORT_ENTRIES } from "./markdown-export";
+import { readMarkdownExport } from "./markdown-export";
 
 export type GitConfig = { url: string; branch: string; username: string; token: string; importChanges: boolean };
 export function gitConfig(): GitConfig | null {
@@ -296,7 +295,7 @@ export async function syncGit(
       // The previous copy of this page, also under an older title.
       for (const old of readdirSync(dir()))
         if (old !== ".git" && old.endsWith(`-${item.pageId.slice(0, 8)}`)) rmSync(resolve(dir(), old), { recursive: true, force: true });
-      for (const [name, data] of await readZip(item.bytes, { foreign: true, maxEntries: MAX_MARKDOWN_EXPORT_ENTRIES })) {
+      for (const [name, data] of await readMarkdownExport(item.bytes)) {
         const path = resolve(target, name);
         if (!path.startsWith(target + "/")) continue;
         mkdirSync(dirname(path), { recursive: true });

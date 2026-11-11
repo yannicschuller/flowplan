@@ -7,6 +7,9 @@ import type { Identity, Row } from "../lib/types";
 import {
   applyQueue,
   mergeChange,
+  retryLater,
+  withoutConflict,
+  type Conflict,
   type QueuedChange,
 } from "../lib/offline-queue";
 process.env.FLOWPLAN_DATA_DIR = mkdtempSync(
@@ -68,6 +71,24 @@ test("waiting changes show in the rows of their database", () => {
       ["c", "C"],
     ],
   );
+});
+
+test("a server that is briefly unreachable keeps the waiting changes", () => {
+  // The proxy while the app restarts, a timeout, a rate limit: sent again.
+  for (const status of [408, 429, 502, 503, 504]) assert.equal(retryLater(status), true, String(status));
+  // A final answer: the change is discarded with a notice.
+  for (const status of [400, 403, 404, 409, 413, 422, 423, 500]) assert.equal(retryLater(status), false, String(status));
+});
+
+test("resolving a conflict keeps the conflicts found meanwhile", () => {
+  const conflict = (id: string): Conflict => ({ change: { ...update({ title: id }, { title: "Alt" }), id }, current: null, fields: ["title"] });
+  const first = conflict("a"),
+    meanwhile = conflict("b");
+  // The list when the person clicked, then a flush added another one.
+  const shown = [first],
+    now = [...shown, meanwhile];
+  assert.deepEqual(withoutConflict(now, first), [meanwhile]);
+  assert.deepEqual(withoutConflict(shown, first), []);
 });
 
 test("changes merge with foreign edits of other fields and report conflicts", () => {

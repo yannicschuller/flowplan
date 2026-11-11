@@ -52,9 +52,13 @@ const splitTitle = (column: string) => {
   return { title, aliases };
 };
 
+// Marks inside a word ("<strong>Pro</strong>jektmappe", "H<sub>2</sub>O")
+// leave it whole; every other tag separates words.
+const INLINE_TAG = /<\/?(?:a|b|i|u|s|em|strong|span|mark|sub|sup|code)(?:\s[^>]*)?>/gi;
 export function htmlText(html: string) {
   return html
     .replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, " ")
+    .replace(INLINE_TAG, "")
     .replace(/<[^>]*>/g, " ")
     .replace(/&nbsp;/g, " ")
     .replace(/&lt;/g, "<")
@@ -179,6 +183,15 @@ export async function ensureSearchIndex() {
         "INSERT INTO search_dirty SELECT page_id,'f:'||id FROM files WHERE page_id IS NOT NULL ON CONFLICT DO NOTHING",
       );
       await run("INSERT INTO search_meta(key) VALUES('extras')");
+    });
+  }
+  if (!(await one("SELECT 1 FROM search_meta WHERE key='inline-marks'"))) {
+    // Once: pages and records indexed while formatting split words
+    // ("<strong>Pro</strong>jekt", htmlText) are indexed again.
+    await transaction(async () => {
+      await run("INSERT INTO search_dirty SELECT id,'' FROM pages WHERE true ON CONFLICT DO NOTHING");
+      await run("INSERT INTO search_dirty SELECT page_id,id FROM rows WHERE true ON CONFLICT DO NOTHING");
+      await run("INSERT INTO search_meta(key) VALUES('inline-marks')");
     });
   }
   if (!(await one("SELECT 1 FROM search_state WHERE id=1"))) {
@@ -485,22 +498,32 @@ export async function searchWorkspace(
   const short = [...query].length < 3;
   const match = textMatch([query]);
   const snip = snippet([query], MARK_START, MARK_END);
-  const titleLike = sql.ilike("s.title", "?");
+  // SQLite's LIKE ignores the case of ASCII letters only: a short query (at
+  // most two letters, so at most four spellings) is looked up in every mix
+  // of lower and upper case, as ILIKE on PostgreSQL finds it.
+  const spellings = sql.name === "postgres"
+    ? [query]
+    : [...new Set([...query].reduce((found, c) => {
+        const cases = new Set([c, c.toLowerCase(), c.toUpperCase()].filter((v) => [...v].length === 1));
+        return found.flatMap((start) => [...cases].map((v) => start + v));
+      }, [""]))];
+  const anyLike = (column: string) => `(${spellings.map(() => `${sql.ilike(column, "?")} ESCAPE '\\'`).join(" OR ")})`;
+  const titleLike = anyLike("s.title");
   const candidates = (await all<
     Page & { row_id: string; hit_title: string; snippet: string }
   >(
     short
       ? `SELECT p.*,s.row_id,s.title hit_title,'' snippet FROM search_index s JOIN pages p ON p.id=s.page_id
-         WHERE ${scope} AND (${titleLike} ESCAPE '\\' OR ${sql.ilike("s.body", "?")} ESCAPE '\\')
-         ORDER BY (CASE WHEN ${titleLike} ESCAPE '\\' THEN 1 ELSE 0 END) DESC,p.updated_at DESC${entryOrder()} LIMIT 1000`
+         WHERE ${scope} AND (${titleLike} OR ${anyLike("s.body")})
+         ORDER BY (CASE WHEN ${titleLike} THEN 1 ELSE 0 END) DESC,p.updated_at DESC${entryOrder()} LIMIT 1000`
       : `SELECT p.*,s.row_id,s.title hit_title,${snip.sql} snippet
          FROM search_index s JOIN pages p ON p.id=s.page_id
          WHERE ${match.where} AND ${scope}
          ORDER BY ${match.rank},p.updated_at DESC${entryOrder()} LIMIT 1000`,
     ...(short
       ? (() => {
-          const like = `%${query.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-          return [...scopeArgs, like, like, like];
+          const like = spellings.map((v) => `%${v.replace(/[\\%_]/g, (c) => `\\${c}`)}%`);
+          return [...scopeArgs, ...like, ...like, ...like];
         })()
       : [...snip.args, ...match.whereArgs, ...scopeArgs, ...match.rankArgs]),
   )).map((hit) => (short ? hit : { ...hit, snippet: snip.finish(hit.snippet) }));

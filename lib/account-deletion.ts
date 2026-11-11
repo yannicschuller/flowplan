@@ -1,5 +1,6 @@
 // Deleting an account: by an admin once it was deactivated, or by the
 // person themself (Settings → General → Your profile).
+// tests/account-deletion.test.ts checks that no personal row is left.
 // Workspaces only this person belonged to are removed, shared workspaces get
 // another owner if needed, private spaces go with the person. What they
 // contributed to shared workspaces stays, under "Deleted account"; personal
@@ -12,6 +13,7 @@ import { ssoOnlyAccount } from "./identities";
 import { keepSpaceTemplates, purgePages, purgeWorkspace } from "./workspace-lifecycle";
 import type { Identity, Page } from "./types";
 import { mapAsync } from "./each-async";
+import { stopRunning } from "./time-tracking";
 
 type Plan = {
   name: string;
@@ -87,6 +89,35 @@ const PERSONAL = [
   // SSO identities (#101): a shell left behind never signs in again.
   "user_identities",
   "oidc_pending_links",
+  // What a real deletion removes by cascade has to go from a shell too:
+  // calendar sync (sealed tokens; the worker would keep syncing), guest
+  // access, encryption keys, devices and in-flight sign-ins, the person's
+  // own settings, drafts and sticker library.
+  "calendar_sync_mappings",
+  "calendar_connections",
+  "calendar_oauth_flows",
+  "caldav_profile_links",
+  "carddav_profile_links",
+  "workspace_guests",
+  "e2ee_space_keys",
+  "e2ee_identities",
+  "app_devices",
+  "idempotency_keys",
+  "push_tests",
+  "background_jobs",
+  "widget_counter_days",
+  "widget_focus",
+  "weekly_digests",
+  "sidebar_state",
+  "form_drafts",
+  "capture_targets",
+  "instance_banner_seen",
+  "notebook_stickers",
+  "inline_reactions",
+  // No foreign key, so not even a real deletion removed these: access to
+  // single records and the cursor on a whiteboard.
+  "row_grants",
+  "whiteboard_presence",
 ];
 
 // Disabling an account (Administration → Users, SCIM "active": false, the
@@ -268,6 +299,15 @@ async function removeAccount(userId: string, removed: { id: string }[], successo
   await run("UPDATE spaces SET owner_id=NULL WHERE owner_id=?", userId);
   // Who made records done (schema 96): nobody any more.
   await run("UPDATE row_status_log SET user_id=NULL WHERE user_id=?", userId);
+  // Share links keep working for those who have them; who created one is
+  // no reason to keep the account as a shell.
+  await run("UPDATE share_links SET created_by=NULL WHERE created_by=?", userId);
+  // Tracked time stays with the records (reports, billing); a timer still
+  // running stops now (after the devices went: no push to them).
+  await stopRunning(userId);
+  try {
+    await inSavepoint(async () => await run("DELETE FROM oidc_flows WHERE link_user_id=?", userId));
+  } catch {}
   try {
     await inSavepoint(async () => await run("DELETE FROM users WHERE id=?", userId));
   } catch {
