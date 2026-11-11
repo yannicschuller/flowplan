@@ -26114,6 +26114,86 @@ td.ai-filled {
 .shortcut-hint {
   margin: 14px 0 0;
 }
+/* The box keeps its rounded corners and clips (#205): the list scrolls in
+   .shortcuts-body, edge to edge, so its scrollbar runs inside the rounded
+   outline instead of squaring off the right corners of the dialog (a
+   dialog that scrolls itself paints a classic scrollbar over them in
+   Chromium). Title and search field stay above the list (#204). */
+.modal.shortcuts-dialog {
+  --shortcuts-pad: 23px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-inline: 0;
+  padding-bottom: 0;
+}
+@media (max-width: 767px) {
+  .modal.shortcuts-dialog {
+    --shortcuts-pad: 20px;
+  }
+}
+.modal.shortcuts-dialog > :not(.shortcuts-body, .modal-scroll-sentinel) {
+  flex-shrink: 0;
+  margin-inline: var(--shortcuts-pad);
+}
+.shortcuts-dialog > .modal-heading {
+  margin-bottom: 8px;
+}
+.shortcuts-body {
+  /* Containing block of the sr-only status, which would otherwise make the
+     clipped box scrollable. */
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px var(--shortcuts-pad) var(--shortcuts-pad);
+  border-top: 1px solid var(--border);
+}
+/* The list is as wide as the dialog (a grid column would grow to its
+   widest row); on phones the keys and buttons of the changeable rows go
+   below the name, so "Ctrl + Alt + N  Ändern  ×" is not cut off. */
+.shortcuts-body :is(.shortcut-groups, .shortcut-group dl) {
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (max-width: 600px) {
+  .shortcuts-body .shortcut-group-editable .shortcut-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .shortcuts-body .shortcut-group-editable .shortcut-row dd {
+    justify-content: flex-start;
+  }
+  .shortcuts-body .shortcut-row:not(.shortcut-group-editable *) {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+  .shortcuts-body .shortcut-row dd {
+    flex-wrap: wrap;
+    flex-shrink: 1;
+    min-width: 0;
+  }
+}
+.shortcut-search {
+  position: relative;
+  margin-bottom: 12px;
+}
+.shortcut-search svg {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  translate: 0 -50%;
+  color: var(--muted);
+  pointer-events: none;
+}
+.shortcut-search input {
+  width: 100%;
+  padding-left: 32px;
+}
+.shortcut-empty {
+  margin: 18px 0 6px;
+  text-align: center;
+}
 /* Page tree: the row is the focusable tree item (roving tabindex). */
 .page-nav:focus-visible {
   outline: 2px solid var(--blue);
