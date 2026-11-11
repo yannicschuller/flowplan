@@ -93,6 +93,12 @@ export function localValue(value: unknown, zone: string) {
     .toPlainDateTime()
     .toString({ smallestUnit: "millisecond" });
 }
+// The value of a date field (components/date-input.tsx): whole minutes
+// without seconds, so the field shows "08:30", not "08:30:00.000".
+export function fieldValue(value: unknown, zone: string) {
+  const local = localValue(value, zone);
+  return isTimed(local) ? local.replace(/(T\d{2}:\d{2}):00(?:\.0+)?$/, "$1") : local;
+}
 export function formatDateValue(
   value: unknown,
   zone = browserZone(),
@@ -154,7 +160,7 @@ export function draftDateValue(
     if (!validDateValue(text) || isTimed(text)) throw new InvalidDateDraft("invalid date");
     return text;
   }
-  if (isTimed(current) && text === localValue(current, zone) && occurrence === "reject")
+  if (isTimed(current) && (text === localValue(current, zone) || text === fieldValue(current, zone)) && occurrence === "reject")
     return instantOf(current, zone).toString();
   return localToInstant(text, zone, occurrence);
 }
