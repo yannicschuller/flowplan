@@ -1200,6 +1200,13 @@ kbd,
   margin: 0 0 21px;
   border-radius: 0;
   box-shadow: none !important;
+  /* A <textarea> of one line (components/page-title-field.tsx): on one line
+     like an input where there is room, wrapped on phones (app/mobile-ux.css). */
+  display: block;
+  min-height: 0;
+  resize: none;
+  overflow: hidden;
+  white-space: pre;
 }
 .page-title:focus {
   outline: none;

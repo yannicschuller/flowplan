@@ -61,6 +61,7 @@ import { TagOptionsContext } from "./tag-options-context";
 import { contextOf, parseSearchTokens, tagToken } from "@/lib/page-properties";
 import { Tag as TagIcon } from "@phosphor-icons/react";
 import { SidebarMore, SidebarToolRow, type SidebarAccountItem, type SidebarTool } from "./sidebar-tools";
+import { PageTitleField } from "./page-title-field";
 import { openPageAliases, AliasIcon } from "./page-aliases";
 import { ShareDialog } from "./share-dialog";
 import { AskPanel, useMedia, type AskRequest } from "./ai-ask";
@@ -1257,7 +1258,7 @@ export default function WorkspaceApp({
   useEffect(() => {
     if (!shownPage || focusTitleOf.current !== shownPage) return;
     focusTitleOf.current = null;
-    document.querySelector<HTMLInputElement>("input.page-title")?.focus();
+    document.querySelector<HTMLTextAreaElement>("textarea.page-title")?.focus();
   }, [shownPage]);
   useEffect(() => {
     if (!shownPage || screenRef.current !== "page") return;
@@ -4101,7 +4102,7 @@ export default function WorkspaceApp({
                         onError={(message) => notifyError(new Error(message))}
                       />
                     ) : (
-                    <input
+                    <PageTitleField
                       key={`${data.page.id}-title`}
                       className="page-title"
                       aria-label={t("Seitentitel", "Page title")}

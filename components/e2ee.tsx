@@ -12,6 +12,7 @@ import { CONTROL, SettingGroup, SettingRow, StatusBadge } from "./settings-ui";
 import { Select } from "./select";
 import type { SaveStatus } from "@/lib/save-status";
 import type { Page, Space } from "@/lib/types";
+import { PageTitleField } from "./page-title-field";
 import {
   AUTOLOCK_CHOICES,
   addMember,
@@ -390,7 +391,7 @@ export function EncryptedTitleInput({
   const state = useE2ee();
   const known = !page.title_cipher || decryptedTitle(page.id, page.title_cipher) !== undefined;
   return (
-    <input
+    <PageTitleField
       key={`${page.id}-title-${known}-${state.unlocked}`}
       className="page-title"
       aria-label={t("Seitentitel", "Page title")}

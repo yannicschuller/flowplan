@@ -178,3 +178,34 @@ test("the graph offers journal days hidden, per month or each", async ({ page },
   await command({ action: "page.delete", pageId: journal.id });
   await command({ action: "page.delete", pageId: target.id });
 });
+
+// A day's title ("Dienstag, 10. November 2026") is longer than a phone is
+// wide: it wraps onto a second line instead of being cut off; wider windows
+// keep the one-line title. Enter adds no line break, the title stays one line
+// of text.
+test("long page titles wrap on phones instead of being cut off", async ({ page }, info) => {
+  const { boot, command, read } = await setup(page);
+  // The title of a journal day, as a page of its own (the same field).
+  const name = "Dienstag, 10. November 2026";
+  const { id: pageId } = await command({ action: "page.create", spaceId: boot.spaces[0].id, title: name, kind: "document" });
+  await page.goto(`/#page=${pageId}`);
+  const title = page.getByLabel("Seitentitel", { exact: true });
+  await expect(title).toHaveValue(name, { timeout: 30000 });
+  const fit = () => title.evaluate((el) => ({ sw: el.scrollWidth, cw: el.clientWidth, sh: el.scrollHeight, ch: el.clientHeight, line: parseFloat(getComputedStyle(el).lineHeight) }));
+  const box = await fit();
+  // Nothing hidden sideways or below.
+  expect(box.sw).toBeLessThanOrEqual(box.cw);
+  expect(box.sh).toBeLessThanOrEqual(box.ch + 1);
+  if (info.project.name === "mobile") expect(box.ch).toBeGreaterThan(box.line * 1.5);
+  else expect(box.ch).toBeLessThan(box.line * 1.5);
+
+  // Enter adds no line break; the new title is saved as one line.
+  await title.click();
+  await page.keyboard.press("End");
+  await page.keyboard.type(" Notizen");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type(" mehr");
+  await expect(title).toHaveValue(`${name} Notizen mehr`);
+  await title.blur();
+  await expect.poll(async () => (await read(pageId)).page.title).toBe(`${name} Notizen mehr`);
+});

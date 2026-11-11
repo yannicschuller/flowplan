@@ -617,3 +617,13 @@ label.hit-check {
     overflow-x: clip;
   }
 }
+
+/* ===== A page's title wraps on phones instead of being cut off: a journal
+   day's "Dienstag, 10. November 2026" is wider than the screen
+   (components/page-title-field.tsx grows the field with its lines). ===== */
+@media (max-width: 767px) {
+  .page-title {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}
