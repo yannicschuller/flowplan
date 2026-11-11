@@ -7,7 +7,7 @@
 // speichern" (notebooks) and delete; with text in the selection a second
 // row for its look (components/ink/text-style-bar.tsx). Every
 // button is one undo step. Kept inside the page surface's width.
-import { useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import {
   Copy,
   CopySimple,
@@ -29,6 +29,7 @@ import { PEN_COLORS } from "@/lib/ink/presets";
 import { sharedWidthStep, WIDTH_STEPS } from "@/lib/ink/selection";
 import { sharedTextLook } from "@/lib/ink/text-style";
 import { TextStyleBar } from "./text-style-bar";
+import { MenuAvoid } from "./menu-placement";
 import { useAiAvailability, useAiBlockedHint } from "../ai-context";
 import { ColorPicker } from "./color-picker";
 import { InkPopover } from "./ink-style-picker";
@@ -91,6 +92,15 @@ export function InkSelectionBar({
   const look = sharedTextLook(items);
   const onlyText = items.length === 1 && items[0].type === "text" ? items[0] : null;
 
+  // Its menus open where they leave the selection in view.
+  const avoid = useCallback(() => {
+    const layer = bar.current?.parentElement;
+    if (!layer) return null;
+    const r = layer.getBoundingClientRect();
+    const k = r.width / (size.width || 1);
+    return { left: r.left + box.x * k, top: r.top + box.y * k, right: r.left + (box.x + box.w) * k, bottom: r.top + (box.y + box.h) * k };
+  }, [box.x, box.y, box.w, box.h, size.width]);
+
   // Above the box and its rotation handle, else below it; inside the page.
   useLayoutEffect(() => {
     const el = bar.current;
@@ -120,7 +130,8 @@ export function InkSelectionBar({
       style={place ? { left: place.left, top: place.top } : { left: 0, top: 0, visibility: "hidden" }}
       onPointerDown={(e) => e.stopPropagation()}
     >
-      <div className="ink-selection-row">
+      <MenuAvoid.Provider value={avoid}>
+        <div className="ink-selection-row">
         <InkPopover
           label={t("Farbe und Stärke", "Colour and width")}
           className="ink-selection-style"
@@ -181,6 +192,7 @@ export function InkSelectionBar({
       {converting && aiPageId && (
         <AiConvertDialog editor={editor} page={page} size={size} pageId={aiPageId} items={items} onClose={() => setConverting(false)} />
       )}
+      </MenuAvoid.Provider>
     </div>
   );
 }

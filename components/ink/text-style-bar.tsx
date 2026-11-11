@@ -9,13 +9,14 @@
 // Where boxes differ, a control shows "—" (mixed) and applies to all of
 // them. Every control is one undo step; a slider or number run is one too
 // (the `merge` key of `onChange`).
-import { useId, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useId, useLayoutEffect, useRef, useState } from "react";
 import { Check, Minus, Plus, TextAlignCenter, TextAlignLeft, TextAlignRight, TextB, TextItalic, TextUnderline } from "@phosphor-icons/react";
 import { useLocale, useT } from "../i18n";
 import { INK_FONTS, INK_FONT_NAMES, inkFontFamily, type InkFont } from "@/lib/ink/fonts";
 import { PEN_COLORS, TEXT_SIZES, WIDTH_RANGES, clampWidth } from "@/lib/ink/presets";
 import { LINE_HEIGHTS, TEXT_ALIGNS, type SharedTextLook, type TextAlign, type TextLookPatch } from "@/lib/ink/text-style";
 import { InkPopover } from "./ink-style-picker";
+import { MenuAvoid } from "./menu-placement";
 import { ColorPicker } from "./color-picker";
 import { InkSlider, SectionHead, Segmented } from "./panel-parts";
 
@@ -344,6 +345,8 @@ export function FloatingTextBar({
 }) {
   const [place, setPlace] = useState<{ left: number; top: number } | null>(null);
   const frame = useRef(0);
+  // Its menus (size, face, …) open where they leave the text in view.
+  const avoid = useCallback(() => anchor.current?.getBoundingClientRect() ?? null, [anchor]);
   useLayoutEffect(() => {
     const el = barRef.current;
     const field = anchor.current;
@@ -377,7 +380,7 @@ export function FloatingTextBar({
       {...events}
       style={place ? { left: place.left, top: place.top } : { left: 0, top: 0, visibility: "hidden" }}
     >
-      {children}
+      <MenuAvoid.Provider value={avoid}>{children}</MenuAvoid.Provider>
     </div>
   );
 }
