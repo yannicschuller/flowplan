@@ -13,7 +13,6 @@ import { loginReturnPath } from "@/lib/page-location";
 import { useEffect, useId, useRef, useState, type FormEvent, type MouseEvent } from "react";
 import { ArrowRight, ArrowSquareOut, EnvelopeSimple, Fingerprint, ShieldCheck, SpinnerGap } from "@phosphor-icons/react";
 import { PlainHttpNote, SetupTokenNote } from "./plain-http-note";
-import { browserSupportsWebAuthn, startAuthentication } from "@simplewebauthn/browser";
 import { LanguageSwitch, useLocale, useT } from "./i18n";
 import type { LoginOptions } from "@/lib/local-auth";
 import type { LegalLinks } from "@/lib/legal-links";
@@ -37,6 +36,11 @@ import {
 // start, and the one before it comes back when the sign-in returns with an
 // error (or the app could not open it).
 const BEFORE_KEY = "flowplan:sign-in-before";
+// The WebAuthn library loads only when a passkey is used: the sign-in page
+// stays within its JavaScript budget (scripts/quality-check.mjs). This is
+// the same test as its browserSupportsWebAuthn().
+const browserSupportsWebAuthn = () =>
+  globalThis?.PublicKeyCredential !== undefined && typeof globalThis.PublicKeyCredential === "function";
 function noteAttempt(way: SignInWay) {
   try {
     sessionStorage.setItem(BEFORE_KEY, readLastSignIn() || "");
@@ -268,6 +272,7 @@ export default function Login({
   };
   const signInWithPasskey = async () => {
     const options = await post("passkey-options");
+    const { startAuthentication } = await import("@simplewebauthn/browser");
     let response;
     try {
       response = await startAuthentication({ optionsJSON: options });

@@ -57,13 +57,25 @@ function shiftDay(date: string, days: number) {
   return d.toISOString().slice(0, 10);
 }
 
-// Unchecked tasks; nested tasks travel with their parent task.
+// A task without anything in it (nor in its subtasks): not carried over.
+const emptyTask = (task: PMNode) => {
+  if (task.textContent.trim()) return false;
+  let atom = false;
+  task.descendants((node) => {
+    if (node.isAtom && node.type.name !== "hardBreak") atom = true;
+    return !atom;
+  });
+  return !atom;
+};
+// Open tasks – unchecked: also in progress, deferred and with another
+// Obsidian symbol, not done or cancelled (lib/task-status.ts); nested
+// tasks travel with their parent task. Empty tasks stay where they are.
 export function openTasks(doc: PMNode) {
   const tasks: PMNode[] = [];
   doc.descendants((node) => {
     if (node.type.name !== "taskItem") return true;
     if (node.attrs.checked) return true;
-    tasks.push(node);
+    if (!emptyTask(node)) tasks.push(node);
     return false;
   });
   return tasks;
@@ -75,7 +87,7 @@ export function withoutOpenTasks(
   keep: (task: PMNode) => boolean = () => false,
 ): PMNode {
   const strip = (node: PMNode): PMNode | null => {
-    if (node.type.name === "taskItem" && !node.attrs.checked && !keep(node))
+    if (node.type.name === "taskItem" && !node.attrs.checked && !keep(node) && !emptyTask(node))
       return null;
     if (node.isLeaf || node.isTextblock) return node;
     const children: PMNode[] = [];

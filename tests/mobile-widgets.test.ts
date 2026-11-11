@@ -970,3 +970,20 @@ test("tasks in a sensible order: overdue, today, upcoming, undated – the same 
     ["Late medium", "Today high", "Today low", "Today none", "Undated high"],
   );
 });
+
+// Task states (#201): in progress, deferred and other symbols are open on
+// the phone too; cancelled and done are not.
+test("the Tasks widget lists tasks in progress, deferred and with other symbols, not cancelled ones", async () => {
+  const doc = ((await command(owner.user, { action: "page.create", workspaceId: wid, spaceId: sid, title: "States", kind: "document" })) as { id: string }).id;
+  const item = (text: string, attrs: string, checked = false) => `<li data-type="taskItem" data-checked="${checked}" data-due="${TODAY}"${attrs}><p>${text}</p></li>`;
+  await writeDocument(
+    owner.user,
+    wid,
+    doc,
+    `<ul data-type="taskList">${item("Open one", "")}${item("Running", ' data-status="progress"')}${item("Pushed back", ' data-status="deferred"')}${item("Question", ' data-symbol="?"')}${item("Dropped", ' data-status="cancelled"', true)}${item("Finished", "", true)}</ul>`,
+  );
+  const page = await one_(O, "tasks", { source: "page", pageId: doc, max: 10 });
+  assert.deepEqual(page.items.map((t: { text: string }) => t.text), ["Open one", "Running", "Pushed back", "Question"]);
+  const mine = (await one_(O, "tasks", { filter: "today", max: 10 })).items.map((t: { text: string }) => t.text);
+  assert.ok(mine.includes("Running") && !mine.includes("Dropped"));
+});

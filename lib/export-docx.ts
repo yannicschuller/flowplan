@@ -5,6 +5,7 @@
 // a monospace style and footnotes as real footnotes – packed as a ZIP
 // (lib/archive.ts).
 import type { Node } from "@tiptap/pm/model";
+import { STATUS_BOX, taskStatusOf } from "./task-status";
 import { audit } from "./db";
 import { appUrl, HttpError } from "./auth";
 import { writeZip } from "./archive";
@@ -352,7 +353,7 @@ export async function buildDocx(options: DocxOptions): Promise<Buffer> {
         if (child.type.name === "paragraph") {
           const prefix =
             kind === "taskList" && first
-              ? run({ text: item.attrs.checked ? "☑ " : "☐ ", props: { fonts: "Segoe UI Symbol" } })
+              ? run({ text: `${STATUS_BOX[taskStatusOf(item.attrs)]} `, props: { fonts: "Segoe UI Symbol" } })
               : "";
           const due =
             kind === "taskList" && first && /^\d{4}-\d{2}-\d{2}$/.test(String(item.attrs.due || ""))
@@ -368,7 +369,7 @@ export async function buildDocx(options: DocxOptions): Promise<Buffer> {
         blockNode(child, { ...itemBlock, numPr: undefined });
         first = false;
       });
-      if (first) paragraph(kind === "taskList" ? run({ text: item.attrs.checked ? "☑" : "☐" }) : "", paragraphProps(null, itemBlock, numId ? "ListParagraph" : undefined));
+      if (first) paragraph(kind === "taskList" ? run({ text: STATUS_BOX[taskStatusOf(item.attrs)] }) : "", paragraphProps(null, itemBlock, numId ? "ListParagraph" : undefined));
     });
   }
   function table(node: Node, block: Block) {

@@ -1,0 +1,91 @@
+/* Settings → Workspace → Automatic links (#202,
+   components/settings/user/link-rules.tsx): one card row per rule and the
+   tester. */
+.link-rule {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 14px 22px;
+  border: 0;
+  border-top: 1px solid var(--border);
+  min-width: 0;
+}
+.link-rule-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.link-rule-head > input {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 500;
+}
+.link-rule-field {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  min-width: 0;
+}
+.link-rule-field > span {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.link-rule input.mono,
+.link-rule-preview code {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 13px;
+}
+.link-rule-head > input,
+.link-rule-field > input {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+}
+.link-rule-problems {
+  margin: 0;
+  padding-left: 18px;
+  color: #a43c3f;
+  font-size: 12.5px;
+}
+[data-theme="dark"] .link-rule-problems {
+  color: #f3b0b0;
+}
+.link-rule-help {
+  margin: 0;
+  padding: 12px 22px 16px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.link-rule-tester {
+  display: grid;
+  gap: 10px;
+}
+.link-rule-tester textarea {
+  width: 100%;
+}
+.link-rule-preview {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.link-rule-preview p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+.link-rule-preview ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--secondary);
+  font-size: 12.5px;
+}
+@media (max-width: 700px) {
+  .link-rule,
+  .link-rule-help {
+    padding-inline: 16px;
+  }
+}

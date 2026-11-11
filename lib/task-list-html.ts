@@ -6,11 +6,23 @@
 // Earlier this was a regex over marked's HTML, which ended a list at the
 // first "</li></ul>" – the end of a nested list – so subtasks lost their
 // checkbox and later tasks fell out of the list.
+//
+// Besides "[ ]" and "[x]" the states of Obsidian (#201, lib/task-status.ts):
+// "[/]" in progress, "[-]" cancelled, "[>]" deferred, and further symbols
+// ("[?]", "[!]" …) kept as they are on an open task.
 import type { Renderer, Token, Tokens } from "marked";
+import { attrsOfSymbol, statusHtml } from "./task-status";
 
-// "- [ ]" without text: marked reads no task, but it is an empty one.
-const EMPTY_TASK = /^\[([ xX])\]$/;
-const isTask = (item: Tokens.ListItem) => item.task || EMPTY_TASK.test(item.text.trim());
+// "[/] …" and the like: marked reads no task there, nor in "- [ ]" without text.
+const SYMBOL_TASK = /^\[([^\]\s]| )\](?=[ \t\n]|$)/;
+const symbolOf = (item: Tokens.ListItem) => {
+  if (item.task) return null;
+  const match = SYMBOL_TASK.exec(item.text.trimStart());
+  return match && attrsOfSymbol(match[1]) ? match[1] : null;
+};
+const isTask = (item: Tokens.ListItem) => item.task || symbolOf(item) !== null;
+// The symbol as marked rendered it at the start of the text.
+const RENDERED_SYMBOL = /^\[(?:&[#a-z0-9]+;|[^\]<\s]| )\][ \t]*/;
 
 type Options = {
   // The rendered first line of a task, to take attributes from (the due date).
@@ -25,13 +37,13 @@ export function taskList(this: Renderer, token: Tokens.List, options: Options = 
   const parser = this.parser;
   const runs: { task: boolean; items: string[] }[] = [];
   for (const item of token.items) {
+    const symbol = symbolOf(item);
     const task = isTask(item);
     let html: string;
     if (!task) html = `<li>${parser.parse(item.tokens)}</li>\n`;
     else {
-      const empty = !item.task && EMPTY_TASK.exec(item.text.trim());
-      const checked = empty ? empty[1] !== " " : !!item.checked;
-      const tokens = empty ? [] : item.tokens.filter((t) => t.type !== "checkbox");
+      const attrs = symbol !== null ? attrsOfSymbol(symbol)! : { checked: !!item.checked, status: null, symbol: null };
+      const tokens = item.tokens.filter((t) => t.type !== "checkbox");
       // The first paragraph is the task's text; what follows (more
       // paragraphs, nested lists) is rendered as it is.
       const first = tokens[0] as Tokens.Text | Tokens.Paragraph | undefined;
@@ -39,10 +51,11 @@ export function taskList(this: Renderer, token: Tokens.List, options: Options = 
         rest: Token[] = tokens;
       if (first && (first.type === "text" || first.type === "paragraph")) {
         head = parser.parseInline(first.tokens ? first.tokens.filter((t) => t.type !== "checkbox") : [{ type: "text", raw: first.text, text: first.text }]);
+        if (symbol !== null) head = head.replace(RENDERED_SYMBOL, "");
         rest = tokens.slice(1);
       }
       const done = options.head ? options.head(head) : { html: head, attrs: "" };
-      html = `<li data-type="taskItem" data-checked="${checked}"${done.attrs}><p>${done.html}</p>${parser.parse(rest)}</li>\n`;
+      html = `<li data-type="taskItem" data-checked="${attrs.checked}"${statusHtml(attrs)}${done.attrs}><p>${done.html}</p>${parser.parse(rest)}</li>\n`;
     }
     const run = runs[runs.length - 1];
     if (run && run.task === task) run.items.push(html);

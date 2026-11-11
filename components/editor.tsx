@@ -1,6 +1,7 @@
 "use client";
 import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { safeCollisionPadding } from "./safe-area";
+import { TaskStatusMenu, type TaskStatusTarget } from "./task-status-menu";
 import { matchedAlias, pageAliases } from "@/lib/aliases";
 import { DocumentOutline, OutlineToggle, useOutline } from "./document-outline";
 import { chatTextToHtml, looksLikeChatText, mathFromPastedHtml } from "@/lib/chat-paste";
@@ -17,6 +18,7 @@ import { ImageAnnotator, type AnnotationResult } from "./image-annotator";
 import { FunctionPlotView } from "./function-plot-view";
 import { MetricView } from "./metric-view";
 import { TicketRefs } from "@/lib/ticket-ref-plugin";
+import { AutoLinkRules } from "@/lib/auto-link-plugin";
 import {
   resolveSuggestions,
   suggestionGroups,
@@ -611,6 +613,8 @@ export default function DocumentEditor({
     setSyncedPicker(null);
   }
   const openFootnote = useRef((_target: FootnoteEdit) => {});
+  // The menu of a task's states (#201): right click or long press on its box.
+  const [statusMenu, setStatusMenu] = useState<TaskStatusTarget | null>(null);
   const slashState = useRef(slash);
   slashState.current = slash;
   const slashActiveRef = useRef(slashActive);
@@ -682,11 +686,13 @@ export default function DocumentEditor({
         BlockShortcuts,
         PlainNewLine,
         TaskList,
-        FlowTaskItem.configure({ nested: true }),
+        FlowTaskItem.configure({ nested: true, translate: t, onStatusMenu: (pos, anchor) => setStatusMenu({ pos, anchor }) }),
         ListTidy,
         TaskDue,
         CalcHint.configure({ locale }),
         TicketRefs.configure({ pageId }),
+        // The workspace's automatic links (#202) while typing and pasting.
+        AutoLinkRules,
         Suggestion,
         SuggestChanges.configure({
           enabled: () => suggestingRef.current,
@@ -2930,6 +2936,7 @@ export default function DocumentEditor({
             </DocumentBlockControls>
           )}
         </div>
+        <TaskStatusMenu editor={editor} target={statusMenu} onClose={() => setStatusMenu(null)} />
         {editor?.isActive("table") && editable && (
           <TableTools
             editor={editor}

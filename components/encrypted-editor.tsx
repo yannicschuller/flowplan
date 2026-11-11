@@ -14,7 +14,8 @@ import { useEditor, EditorContent, useEditorState } from "@tiptap/react";
 import { HeadingFolds } from "@/lib/heading-folds-plugin";
 import StarterKit from "@tiptap/starter-kit";
 import TaskList from "@tiptap/extension-task-list";
-import TaskItem from "@tiptap/extension-task-item";
+import { FlowTaskItem } from "@/lib/document-schema";
+import { TaskStatusMenu, type TaskStatusTarget } from "./task-status-menu";
 import Placeholder from "@tiptap/extension-placeholder";
 import Highlight from "@tiptap/extension-highlight";
 import Collaboration from "@tiptap/extension-collaboration";
@@ -163,6 +164,7 @@ export default function EncryptedEditor({
   // show a preview of them, and only people with the key can give a block
   // its id.
   const copyBlockLink = useRef((_pos: number) => {});
+  const [statusMenu, setStatusMenu] = useState<TaskStatusTarget | null>(null);
 
   const editor = useEditor(
     {
@@ -171,7 +173,8 @@ export default function EncryptedEditor({
       extensions: [
         StarterKit.configure({ undoRedo: false, link: { openOnClick: false, HTMLAttributes: { rel: "noopener noreferrer" } } }),
         TaskList,
-        TaskItem.configure({ nested: true }),
+        // The states of a task and Ctrl/Cmd+L (#201), as in other documents.
+        FlowTaskItem.configure({ nested: true, translate: t, onStatusMenu: (pos, anchor) => setStatusMenu({ pos, anchor }) }),
         Highlight,
         Table.configure({ resizable: false }),
         TableRow,
@@ -483,6 +486,7 @@ export default function EncryptedEditor({
       </div>
       {!loaded && <p className="muted">{t("Wird entschlüsselt …", "Decrypting …")}</p>}
       <EditorContent editor={editor} />
+      <TaskStatusMenu editor={editor} target={statusMenu} onClose={() => setStatusMenu(null)} />
       {aiRequest && editor && (
         <AiWriter key={`${aiRequest.kind}-${aiRequest.from}-${aiRequest.to}`} editor={editor} pageId={pageId} request={aiRequest} encrypted onClose={() => setAiRequest(null)} />
       )}

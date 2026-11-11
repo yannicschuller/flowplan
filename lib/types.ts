@@ -287,6 +287,8 @@ export type Bootstrap = {
   // chose Flowplan's own look instead.
   look?: import("./workspace-theme").WorkspaceLook;
   plainLook?: boolean;
+  // The workspace's automatic link rules (#202, lib/auto-link.ts).
+  linkRules?: import("./auto-link").AutoLinkRule[];
   // "Menü bei Textauswahl" (#200, lib/text-menu-pref.ts).
   textMenu?: import("./text-menu-pref").TextMenuPref;
   spaces: Space[];

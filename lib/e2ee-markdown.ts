@@ -1,6 +1,7 @@
 // Markdown from the editor's document (ProseMirror JSON), in the browser:
 // the decrypted export of an encrypted page never passes the server.
 // Covers what the encrypted editor offers; unknown blocks keep their text.
+import { markdownSymbol } from "./task-status";
 type Mark = { type: string; attrs?: Record<string, unknown> };
 export type JsonNode = { type: string; text?: string; attrs?: Record<string, unknown>; marks?: Mark[]; content?: JsonNode[] };
 
@@ -64,7 +65,7 @@ function block(node: JsonNode): string {
             node.type === "orderedList"
               ? `${(Number(node.attrs?.start) || 1) + index}.`
               : node.type === "taskList"
-                ? `- [${item.attrs?.checked ? "x" : " "}]`
+                ? `- [${markdownSymbol(item.attrs)}]`
                 : "-";
           return `${marker} ${indent(blocks(item.content || [], "\n"), " ".repeat(marker.length + 1))}`;
         })
