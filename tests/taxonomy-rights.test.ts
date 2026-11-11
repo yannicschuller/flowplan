@@ -69,3 +69,20 @@ test("tagging several pages needs the PIN of a locked journal", async () => {
   await assert.rejects(async () => await act(editor, { action: "pages.tag", workspaceId: wid, pageIds: [journal], addTags: ["Gelesen"] }), /gesperrt/);
   assert.deepEqual(await all("SELECT 1 FROM page_tag_links WHERE page_id=?", journal), []);
 });
+
+test("meta.usage names only pages the owner may read", async () => {
+  const tag = (await act(owner, { action: "tag.save", workspaceId: wid, name: "Bewerbung", spaceId: null })).id;
+  // A page in the editor's private space carries the workspace tag.
+  const own = (await act(editor, { action: "space.create", workspaceId: wid, name: "Emils Ecke", private: true })).id;
+  const secret = (await act(editor, { action: "page.create", workspaceId: wid, spaceId: own, title: "Bewerbung bei der Konkurrenz", kind: "document" })).id;
+  await act(editor, { action: "page.properties", pageId: secret, tags: ["Bewerbung"] });
+  // The workspace owner cannot open it …
+  await assert.rejects(async () => await act(owner, { action: "page.properties", pageId: secret, addTags: [] }), /Berechtigung/);
+  // … and the usage of the tag outside the team space counts it without its title.
+  const answer = (await act(owner, { action: "meta.usage", workspaceId: wid, kind: "tag", id: tag, spaceId: team })) as unknown as {
+    usage: { spaceId: string; pages: number; titles: string[] }[];
+  };
+  const there = answer.usage.find((u) => u.spaceId === own)!;
+  assert.equal(there.pages, 1);
+  assert.deepEqual(there.titles, [], "meta.usage reveals the title of a page the owner may not read");
+});
